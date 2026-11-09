@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronRight, Plus } from "lucide-react";
+import type { ZodError } from "zod";
 
 import { EmptyState } from "@/components/shared/EmptyState";
+import { FieldError } from "@/components/shared/FieldError";
 import { FormField } from "@/components/shared/FormField";
-import { Modal } from "@/components/shared/Modal";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,83 +15,100 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/useToast";
 import {
-  arbolDePaisAction,
   cambiarActivacionNodoAction,
   contarOrdenesSinEntregarAction,
   crearNodoAction,
   renombrarNodoAction,
 } from "@/lib/actions/geografia-plataforma";
 import {
+  cambiarActivacionGeograficaSchema,
+  crearNodoGeograficoSchema,
   GEO_NOMBRE_MAX,
   normalizarNombreGeografico,
-  type NivelGeografico,
-  type ProvinciaPlataformaDTO,
+  renombrarNodoGeograficoSchema,
+  type NodoArbolPlataformaDTO,
+  type TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
+import { activoEnCascada } from "@/lib/repositories/_shared/geografia-activa";
 import {
-  filtrarArbolGeografico,
+  filtrarArbolDeNodos,
   type FiltroEstadoGeografico,
 } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
-import {
-  estadoGeografico,
-  type EstadoGeografico,
-} from "@/app/(app)/configuracion/_shared/geografia-estado-label";
 
-import { arbolDeTresNiveles } from "./arbol-de-tres-niveles";
+import { ConfirmarCambio, type FilaDeCambio } from "./ConfirmarCambio";
 
-// FICHA 374/375 → SL-20 (design §8) — EL ÁRBOL EDITABLE DE LA GEOGRAFÍA DE UN PAÍS, del superadmin.
+// SL-20 (design §8) → SLT-46 (design §6; R14, R20–R22, R52, R58, R59, R61) — EL PANEL «LUGARES»
+// DEL SUPERADMIN: el árbol de un país a cualquier profundidad, según la maqueta T0.2 (versión 7).
 //
-// Movido desde `/configuracion/geografia` y adaptado:
-//   - trabaja UN país (`paisId`) y nombra los niveles con SUS nombres (`etiquetas`, R20): ningún
-//     texto da por hecho Costa Rica;
-//   - el alta lleva un código opcional (R29);
-//   - SIN zonas: son de cada empresa, y en plataforma esa lectura mezclaría las de todas. Sale la
-//     marca «sin zona» y el aviso de zonas que se quedarían sin distritos;
-//   - el retiro pide el conteo de órdenes sin entregar de TODAS las empresas (R31): si falla, lo dice
-//     y deja retirar igual.
+//   - Cada fila dice su nombre, el singular del tipo de su profundidad, su código y si está retirada.
+//   - «+ <tipo siguiente>» solo si el país tiene tipo para la profundidad siguiente y el lugar no está
+//     retirado (R21). El tipo del lugar nuevo es el de su profundidad: no se elige (R14).
+//   - No hay control para mover un lugar a otro padre (R22).
+//   - SIN zonas: son de cada empresa, y en plataforma esa lectura mezclaría las de todas.
 //
-// QUITAR NO ES BORRAR: retirar un nodo apaga SU flag, sin tocar a sus descendientes, y reactivarlo
-// devuelve el árbol como estaba (R30). Renombrar no toca el código, que es la identidad del nodo.
+// CONFIRMACIÓN ANTES DE ESCRIBIR (decisión del 2026-11-09, design §6). Toda escritura —alta,
+// renombre, retiro y reactivación— corre primero el MISMO esquema zod que el servidor (R58); si no
+// pasa, el error queda en su campo y el modal no se abre (R59). Si pasa, `ConfirmarCambio` enseña el
+// antes → después y la action solo se llama al confirmar; el desenlace `ok` refresca la página (el
+// árbol llega otra vez por props) y el cambio concurrente del renombre lo avisa el propio modal
+// (R61). Pedir el estado que el lugar ya tiene es `ok` y también refresca (P12).
+//
+// QUITAR NO ES BORRAR: retirar un lugar apaga SU flag, sin tocar a sus descendientes, y reactivarlo
+// devuelve el árbol como estaba. Renombrar no toca el código, que es la identidad del lugar.
 
 type FieldErrors = Record<string, string[]>;
 
+/** Lo que el modal necesita leer del resultado de cualquiera de las cuatro actions. */
+type Resultado = { status: string; motivo?: string; fieldErrors?: FieldErrors };
+
 /** El formulario de alta, con su padre YA fijado por la fila desde la que se abrió. */
 interface AltaEnCurso {
-  nivel: NivelGeografico;
-  /** `null` solo en el primer nivel, que cuelga del país. */
+  /** La profundidad del lugar nuevo: la de su padre + 1, o 1 en la raíz. */
+  profundidad: number;
+  /** `null` solo en la raíz, que cuelga del país. */
   padreId: string | null;
-  padreNombre: string | null;
+  /** Los nombres de la cadena del padre, de la raíz al padre; vacía en la raíz. */
+  cadena: string[];
 }
 
-/** El nodo que se renombra o cuya retirada se confirma. */
+/** El lugar que se renombra, se retira o se reactiva. */
 interface NodoObjetivo {
-  nivel: NivelGeografico;
   id: string;
   nombre: string;
+  profundidad: number;
 }
 
-/** El conteo de órdenes sin entregar de la confirmación (R31). */
+/** El conteo de órdenes sin entregar del retiro (R20). */
 type EstadoConteo = { estado: "cargando" } | { estado: "ok"; ordenes: number } | { estado: "error" };
+
+/** La escritura que espera confirmación en el modal, ya validada. */
+type Pendiente =
+  | {
+      tipo: "alta";
+      entrada: { paisId: string } | { padreId: string };
+      nombre: string;
+      codigo: string | null;
+      profundidad: number;
+      cadena: string[];
+    }
+  | { tipo: "renombre"; nodo: NodoObjetivo; nombre: string }
+  | { tipo: "retiro"; nodo: NodoObjetivo }
+  | { tipo: "reactivacion"; nodo: NodoObjetivo };
 
 const OPCIONES_ESTADO: readonly { valor: FiltroEstadoGeografico; etiqueta: string }[] = [
   { valor: "todos", etiqueta: "Todos" },
   { valor: "activos", etiqueta: "Activos" },
-  { valor: "retirados", etiqueta: "Inactivos" },
+  { valor: "retirados", etiqueta: "Retirados" },
 ];
-
-const HIJO: Record<NivelGeografico, NivelGeografico | null> = {
-  provincia: "canton",
-  canton: "distrito",
-  distrito: null,
-};
 
 export interface GeografiaAdminModuleProps {
   paisId: string;
   paisNombre: string;
-  /** Los nombres de nivel DEL PAÍS (R20). */
-  etiquetas: EtiquetasGeograficas;
-  initialProvincias: ProvinciaPlataformaDTO[];
-  /** La primera lectura del árbol falló: `initialProvincias` viene vacío por el fallo, no por el país. */
+  /** Los tipos de nivel DEL PAÍS, uno por profundidad (`nivel_1`…`nivel_P`). */
+  tipos: TipoNivelDTO[];
+  /** Las raíces del árbol del país, con sus descendientes a cualquier profundidad. */
+  raices: NodoArbolPlataformaDTO[];
+  /** La lectura del árbol falló: `raices` viene vacío por el fallo, no por el país. */
   cargaErrorInicial?: boolean;
 }
 
@@ -98,21 +117,46 @@ function enFrase(texto: string): string {
   return texto.toLocaleLowerCase("es");
 }
 
+/** Los errores por campo de un esquema que no pasó, con la misma forma que el `validation_error`. */
+function erroresDe(error: ZodError): FieldErrors {
+  const salida: FieldErrors = {};
+  const porCampo = error.flatten().fieldErrors as Record<string, string[] | undefined>;
+  for (const [campo, mensajes] of Object.entries(porCampo)) {
+    if (mensajes !== undefined && mensajes.length > 0) salida[campo] = mensajes;
+  }
+  return salida;
+}
+
+/** Cada id del árbol con los nombres de su cadena, de la raíz a él (para el «dentro de» del alta). */
+function cadenasDe(raices: readonly NodoArbolPlataformaDTO[]): Map<string, string[]> {
+  const cadenas = new Map<string, string[]>();
+  const recorrer = (nodos: readonly NodoArbolPlataformaDTO[], previa: string[]) => {
+    for (const nodo of nodos) {
+      const cadena = [...previa, nodo.nombre];
+      cadenas.set(nodo.id, cadena);
+      recorrer(nodo.hijos, cadena);
+    }
+  };
+  recorrer(raices, []);
+  return cadenas;
+}
+
 export function GeografiaAdminModule({
   paisId,
   paisNombre,
-  etiquetas,
-  initialProvincias,
+  tipos,
+  raices,
   cargaErrorInicial = false,
 }: Readonly<GeografiaAdminModuleProps>) {
   const toast = useToast();
-  const singular = (nivel: NivelGeografico) => etiquetas[nivel].singular;
+  const router = useRouter();
 
-  const [provincias, setProvincias] = useState<ProvinciaPlataformaDTO[]>(initialProvincias);
-  const [cargaError, setCargaError] = useState(cargaErrorInicial);
-  // El formulario de alta o de renombrado se abre lejos de la fila (arriba de la sección): el foco
-  // salta a él y, al cerrarlo, vuelve al botón que lo abrió. Sin esto, con teclado o lector de
-  // pantalla, el formulario aparecía sin aviso y al cerrarlo el foco caía al `body`.
+  const tipoDe = useMemo(() => new Map(tipos.map((t) => [t.profundidad, t])), [tipos]);
+  const cadenas = useMemo(() => cadenasDe(raices), [raices]);
+  const tipoRaiz = tipoDe.get(1) ?? null;
+
+  // El formulario de alta o de renombre se abre lejos de la fila (arriba del panel): el foco salta a
+  // él y, al cerrarlo, vuelve al botón que lo abrió.
   const origenDelFoco = useRef<HTMLElement | null>(null);
 
   const [texto, setTexto] = useState("");
@@ -123,41 +167,29 @@ export function GeografiaAdminModule({
   const [nombre, setNombre] = useState("");
   const [codigo, setCodigo] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [guardando, setGuardando] = useState(false);
 
   const [renombrado, setRenombrado] = useState<NodoObjetivo | null>(null);
   const [nombreNuevo, setNombreNuevo] = useState("");
   const [erroresRenombrado, setErroresRenombrado] = useState<FieldErrors>({});
-  const [renombrando, setRenombrando] = useState(false);
 
-  const [alternando, setAlternando] = useState<string | null>(null);
-  const [objetivo, setObjetivo] = useState<NodoObjetivo | null>(null);
+  /** El error de una fila cuyo retiro o reactivación no pasó la validación (R59). */
+  const [errorDeFila, setErrorDeFila] = useState<{ id: string; mensaje: string } | null>(null);
+
+  // El contenido del modal se conserva al cerrarlo para que no se vacíe durante la salida.
+  const [pendiente, setPendiente] = useState<Pendiente | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
   const [conteo, setConteo] = useState<EstadoConteo>({ estado: "cargando" });
   const peticionDeConteo = useRef(0);
 
-  /** Toda operación termina releyendo el árbol: el árbol es la única verdad. */
-  async function refetch() {
-    try {
-      const res = await arbolDePaisAction({ paisId });
-      if (res.status === "ok") {
-        setProvincias(arbolDeTresNiveles(res.raices));
-        setCargaError(false);
-      } else {
-        setCargaError(true);
-      }
-    } catch {
-      setCargaError(true);
-    }
-  }
-
-  const filtradas = useMemo(
-    () => filtrarArbolGeografico(provincias, { texto, estado }),
-    [provincias, texto, estado],
-  );
+  const filtradas = useMemo(() => filtrarArbolDeNodos(raices, { texto, estado }), [raices, texto, estado]);
 
   // Con un filtro puesto el árbol ya viene recortado: se abre entero.
   const filtrando = texto.trim() !== "" || estado !== "todos";
   const abierto = (id: string) => filtrando || expandidos.has(id);
+
+  function singular(profundidad: number): string {
+    return tipoDe.get(profundidad)?.nombreSingular ?? "";
+  }
 
   function alternarExpansion(id: string) {
     setExpandidos((previos) => {
@@ -166,32 +198,6 @@ export function GeografiaAdminModule({
       else siguiente.add(id);
       return siguiente;
     });
-  }
-
-  /**
-   * R31 — abre la confirmación Y pide el conteo en el mismo gesto. El testigo descarta la respuesta
-   * de una confirmación ya cerrada o sustituida.
-   */
-  function abrirConfirmacion(nodo: NodoObjetivo) {
-    setObjetivo(nodo);
-    setConteo({ estado: "cargando" });
-    peticionDeConteo.current += 1;
-    const testigo = peticionDeConteo.current;
-    void (async () => {
-      try {
-        const res = await contarOrdenesSinEntregarAction({ nivel: nodo.nivel, id: nodo.id });
-        if (testigo !== peticionDeConteo.current) return;
-        // Cualquier desenlace que no sea `ok` es «no se pudo contar», y NO bloquea (R31).
-        setConteo(res.status === "ok" ? { estado: "ok", ordenes: res.ordenes } : { estado: "error" });
-      } catch {
-        if (testigo === peticionDeConteo.current) setConteo({ estado: "error" });
-      }
-    })();
-  }
-
-  function cerrarConfirmacion() {
-    peticionDeConteo.current += 1;
-    setObjetivo(null);
   }
 
   function recordarOrigenDelFoco() {
@@ -214,9 +220,13 @@ export function GeografiaAdminModule({
     devolverFoco();
   }
 
-  function abrirAlta(nivel: NivelGeografico, padre: { id: string; nombre: string } | null) {
+  function abrirAlta(profundidad: number, padre: { id: string } | null) {
     recordarOrigenDelFoco();
-    setAlta({ nivel, padreId: padre?.id ?? null, padreNombre: padre?.nombre ?? null });
+    setAlta({
+      profundidad,
+      padreId: padre?.id ?? null,
+      cadena: padre === null ? [] : (cadenas.get(padre.id) ?? []),
+    });
     setNombre("");
     setCodigo("");
     setErrors({});
@@ -231,195 +241,288 @@ export function GeografiaAdminModule({
     setAlta(null);
   }
 
-  /** Cada nivel manda EXACTAMENTE las claves de su schema (`.strict()`). */
-  function cuerpoDelAlta(enCurso: AltaEnCurso, nombreLimpio: string) {
-    const codigoLimpio = codigo.trim() === "" ? {} : { codigo: codigo.trim() };
-    if (enCurso.nivel === "provincia") {
-      return { nivel: "provincia" as const, nombre: nombreLimpio, paisId, ...codigoLimpio };
-    }
-    if (enCurso.nivel === "canton") {
-      return { nivel: "canton" as const, nombre: nombreLimpio, provinciaId: enCurso.padreId ?? "", ...codigoLimpio };
-    }
-    return { nivel: "distrito" as const, nombre: nombreLimpio, cantonId: enCurso.padreId ?? "", ...codigoLimpio };
+  function abrirModal(siguiente: Pendiente) {
+    setPendiente(siguiente);
+    setModalAbierto(true);
   }
 
-  async function guardarAlta() {
+  function cerrarModal() {
+    peticionDeConteo.current += 1;
+    setModalAbierto(false);
+  }
+
+  /** R58, R59: el alta pasa por `crearNodoGeograficoSchema` antes de abrir el modal. */
+  function pedirAlta() {
     if (alta === null) return;
     const limpio = normalizarNombreGeografico(nombre);
     if (limpio === "") {
       setErrors({ nombre: ["Este campo es obligatorio."] });
       return;
     }
-
-    setGuardando(true);
-    try {
-      const res = await crearNodoAction(cuerpoDelAlta(alta, limpio));
-      if (res.status === "ok") {
-        // Decisión 15: forma neutra. «dado de alta» concordaba con el nodo, y una aldea no es «dado».
-        toast.success(`Se dio de alta «${limpio}» (${singular(alta.nivel)}).`);
-        cerrarAlta();
-        await refetch();
-        return;
-      }
-      if (res.status === "validation_error") {
-        setErrors(res.fieldErrors);
-        toast.error(mensajeDeValidacion(res.fieldErrors));
-        return;
-      }
-      if (res.status === "conflict") {
-        setErrors({ nombre: [mensajeDeDesenlace("conflict")] });
-      }
-      toast.error(mensajeDeDesenlace(res.status));
-      await refetch();
-    } catch {
-      toast.error(mensajeDeDesenlace("error"));
-    } finally {
-      setGuardando(false);
+    const codigoLimpio = codigo.trim();
+    const destino = alta.padreId === null ? { paisId } : { padreId: alta.padreId };
+    const entrada = { ...destino, nombre: limpio, ...(codigoLimpio === "" ? {} : { codigo: codigoLimpio }) };
+    const parsed = crearNodoGeograficoSchema.safeParse(entrada);
+    if (!parsed.success) {
+      setErrors(erroresDe(parsed.error));
+      return;
     }
+    setErrors({});
+    abrirModal({
+      tipo: "alta",
+      entrada: destino,
+      nombre: limpio,
+      codigo: codigoLimpio === "" ? null : codigoLimpio,
+      profundidad: alta.profundidad,
+      cadena: alta.cadena,
+    });
   }
 
-  /** Renombrar no pide confirmación: es reversible con otro renombrado (ficha 375). */
-  async function guardarRenombrado() {
+  /** R58, R59, R61: el renombre lleva el nombre que el modal mostró como «antes». */
+  function pedirRenombrado() {
     if (renombrado === null) return;
     const limpio = normalizarNombreGeografico(nombreNuevo);
     if (limpio === "") {
       setErroresRenombrado({ nombre: ["Este campo es obligatorio."] });
       return;
     }
-
-    setRenombrando(true);
-    try {
-      const res = await renombrarNodoAction({ nivel: renombrado.nivel, id: renombrado.id, nombre: limpio });
-      if (res.status === "ok") {
-        toast.success(`«${renombrado.nombre}» ahora es «${limpio}».`);
-        cerrarRenombrado();
-        await refetch();
-        return;
-      }
-      if (res.status === "validation_error") {
-        setErroresRenombrado(res.fieldErrors);
-        toast.error(mensajeDeValidacion(res.fieldErrors));
-        return;
-      }
-      if (res.status === "conflict") {
-        setErroresRenombrado({ nombre: [mensajeDeDesenlace("conflict")] });
-      }
-      toast.error(mensajeDeDesenlace(res.status));
-      await refetch();
-    } catch {
-      toast.error(mensajeDeDesenlace("error"));
-    } finally {
-      setRenombrando(false);
+    const parsed = renombrarNodoGeograficoSchema.safeParse({
+      id: renombrado.id,
+      nombre: limpio,
+      nombreAnterior: renombrado.nombre,
+    });
+    if (!parsed.success) {
+      setErroresRenombrado(erroresDe(parsed.error));
+      return;
     }
+    setErroresRenombrado({});
+    abrirModal({ tipo: "renombre", nodo: renombrado, nombre: limpio });
   }
 
-  /** Activar no pide confirmación: es aditivo. */
-  async function activar(nodo: NodoObjetivo) {
-    setAlternando(nodo.id);
-    try {
-      const res = await cambiarActivacionNodoAction({ nivel: nodo.nivel, id: nodo.id, activo: true });
-      if (res.status === "ok") toast.success(`Se activó «${nodo.nombre}».`);
-      else toast.error(mensajeDeDesenlace(res.status));
-      await refetch();
-    } catch {
-      toast.error(mensajeDeDesenlace("error"));
-    } finally {
-      setAlternando(null);
+  /** R58, R59 para el retiro y la reactivación; el retiro pide además el conteo de R20. */
+  function pedirActivacion(nodo: NodoObjetivo, activo: boolean) {
+    const parsed = cambiarActivacionGeograficaSchema.safeParse({ id: nodo.id, activo });
+    if (!parsed.success) {
+      setErrorDeFila({ id: nodo.id, mensaje: "Este lugar no tiene un identificador válido; recarga la página." });
+      return;
     }
+    setErrorDeFila(null);
+    if (activo) {
+      abrirModal({ tipo: "reactivacion", nodo });
+      return;
+    }
+    abrirModal({ tipo: "retiro", nodo });
+    pedirConteo(nodo.id);
   }
 
-  async function confirmarRetirada() {
-    if (objetivo === null) return;
-    const res = await cambiarActivacionNodoAction({ nivel: objetivo.nivel, id: objetivo.id, activo: false });
-    if (res.status === "ok") {
-      toast.success(`Se desactivó «${objetivo.nombre}».`);
-      cerrarConfirmacion();
+  /**
+   * R20 — el conteo se pide al abrir el retiro y no lo bloquea. El testigo descarta la respuesta de
+   * una confirmación ya cerrada o sustituida.
+   */
+  function pedirConteo(id: string) {
+    setConteo({ estado: "cargando" });
+    peticionDeConteo.current += 1;
+    const testigo = peticionDeConteo.current;
+    void (async () => {
+      try {
+        const res = await contarOrdenesSinEntregarAction({ id });
+        if (testigo !== peticionDeConteo.current) return;
+        setConteo(res.status === "ok" ? { estado: "ok", ordenes: res.ordenes } : { estado: "error" });
+      } catch {
+        if (testigo === peticionDeConteo.current) setConteo({ estado: "error" });
+      }
+    })();
+  }
+
+  /** Lo que el modal pinta según la escritura pendiente (tabla antes → después de design §6). */
+  function modalDe(p: Pendiente): {
+    titulo: string;
+    descripcion: string;
+    filas: FilaDeCambio[];
+    confirmLabel: string;
+    destructivo: boolean;
+    children?: ReactNode;
+  } {
+    if (p.tipo === "alta") {
+      const tipo = singular(p.profundidad);
+      return {
+        titulo: `Alta: ${tipo}`,
+        descripcion: `Dentro de ${[paisNombre, ...p.cadena].join(" › ")}.`,
+        filas: [
+          { etiqueta: "Nombre", antes: null, despues: p.nombre },
+          { etiqueta: "Código", antes: null, despues: p.codigo ?? "Sin código" },
+          { etiqueta: "Tipo", antes: null, despues: tipo },
+        ],
+        confirmLabel: "Sí, crear",
+        destructivo: false,
+      };
+    }
+    if (p.tipo === "renombre") {
+      return {
+        titulo: `Renombrar: ${singular(p.nodo.profundidad)}`,
+        descripcion:
+          "Cambiar el nombre no lo mueve, no lo retira ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.",
+        filas: [{ etiqueta: "Nombre", antes: p.nodo.nombre, despues: p.nombre }],
+        confirmLabel: "Sí, renombrar",
+        destructivo: false,
+      };
+    }
+    const retiro = p.tipo === "retiro";
+    return {
+      titulo: `${retiro ? "Retirar" : "Reactivar"} «${p.nodo.nombre}»`,
+      descripcion: retiro
+        ? `${singular(p.nodo.profundidad)}. Retirarlo no lo borra ni toca a lo que cuelga de él: deja de ofrecerse y se puede reactivar.`
+        : `${singular(p.nodo.profundidad)}. Vuelve a ofrecerse con lo que cuelga de él.`,
+      filas: [
+        {
+          etiqueta: "Estado",
+          antes: retiro ? "Activo" : "Retirado",
+          despues: retiro ? "Retirado" : "Activo",
+        },
+      ],
+      confirmLabel: retiro ? "Sí, retirar" : "Sí, reactivar",
+      destructivo: retiro,
+      children: retiro ? <p className="text-sm">{textoDelConteo(conteo)}</p> : undefined,
+    };
+  }
+
+  /** La escritura confirmada: se llama una sola vez, desde «Sí, …» del modal (R58). */
+  function ejecutarPendiente(): Promise<Resultado> {
+    const p = pendiente;
+    if (p === null) return Promise.resolve({ status: "error" });
+    if (p.tipo === "alta") {
+      return crearNodoAction({ ...p.entrada, nombre: p.nombre, ...(p.codigo === null ? {} : { codigo: p.codigo }) });
+    }
+    if (p.tipo === "renombre") {
+      // R61: el «antes» que el modal mostró viaja para que el servidor detecte un cambio concurrente.
+      return renombrarNodoAction({ id: p.nodo.id, nombre: p.nombre, nombreAnterior: p.nodo.nombre });
+    }
+    return cambiarActivacionNodoAction({ id: p.nodo.id, activo: p.tipo === "reactivacion" });
+  }
+
+  /** `ok`: el modal ya se cerró y la página se refresca (también si ya estaba así, P12). */
+  function alConfirmarConExito() {
+    const p = pendiente;
+    if (p === null) return;
+    if (p.tipo === "alta") {
+      // Decisión 15: forma neutra. «dado de alta» concordaba con el lugar, y una aldea no es «dado».
+      toast.success(`Se dio de alta «${p.nombre}» (${singular(p.profundidad)}).`);
+      cerrarAlta();
+    } else if (p.tipo === "renombre") {
+      toast.success(`«${p.nodo.nombre}» ahora es «${p.nombre}».`);
+      cerrarRenombrado();
     } else {
-      toast.error(mensajeDeDesenlace(res.status));
+      toast.success(`Se ${p.tipo === "retiro" ? "retiró" : "reactivó"} «${p.nodo.nombre}».`);
     }
-    await refetch();
   }
 
-  /** Las acciones de una fila, comunes a los tres niveles. */
-  function accionesDe(nodo: NodoObjetivo) {
-    return {
-      alternando: alternando === nodo.id,
-      onActivar: () => void activar(nodo),
-      onRetirar: () => abrirConfirmacion(nodo),
-      onRenombrar: () => abrirRenombrado(nodo),
-    };
+  /** `validation_error` y `conflict` por nombre van al campo, como antes; lo demás, a un aviso. */
+  function alRechazar(res: Resultado) {
+    const p = pendiente;
+    const ponerErrores =
+      p?.tipo === "alta" ? setErrors : p?.tipo === "renombre" ? setErroresRenombrado : null;
+    if (res.status === "validation_error" && res.fieldErrors !== undefined) {
+      ponerErrores?.(res.fieldErrors);
+      toast.error(mensajeDeValidacion(res.fieldErrors));
+      return;
+    }
+    if (res.status === "conflict") ponerErrores?.({ nombre: [mensajeDeDesenlace("conflict")] });
+    toast.error(mensajeDeDesenlace(res.status));
+    router.refresh();
   }
 
-  /** El botón «Añadir <hijo>» de una fila, si su nivel tiene hijos. */
-  function altaDeHijo(nodo: NodoObjetivo) {
-    const hijo = HIJO[nodo.nivel];
-    if (hijo === null) return {};
-    const texto = `Añadir ${enFrase(singular(hijo))}`;
-    return {
-      onAgregarHijo: () => abrirAlta(hijo, { id: nodo.id, nombre: nodo.nombre }),
-      etiquetaAgregarHijo: `${texto} a ${nodo.nombre}`,
-      textoAgregarHijo: texto,
-    };
+  /** Una rama del árbol, a cualquier profundidad. `cadena` son los flags de sus ascendientes. */
+  function rama(nodos: readonly NodoArbolPlataformaDTO[], cadena: readonly boolean[]): ReactNode {
+    return nodos.map((n) => {
+      const nodo: NodoObjetivo = { id: n.id, nombre: n.nombre, profundidad: n.profundidad };
+      const tipoHijo = tipoDe.get(n.profundidad + 1) ?? null;
+      const flags = [...cadena, n.activo];
+      const tieneHijos = n.hijos.length > 0;
+      const expandido = tieneHijos ? abierto(n.id) : undefined;
+      return (
+        <li key={n.id} className={n.profundidad === 1 ? "px-2 py-1" : undefined}>
+          <FilaNodo
+            nodo={n}
+            tipo={singular(n.profundidad)}
+            disponible={activoEnCascada(flags)}
+            detalle={
+              tipoHijo === null || !tieneHijos
+                ? undefined
+                : `${n.hijos.length} ${enFrase(n.hijos.length === 1 ? tipoHijo.nombreSingular : tipoHijo.nombrePlural)}`
+            }
+            expandido={expandido}
+            onExpandir={() => alternarExpansion(n.id)}
+            onRenombrar={() => abrirRenombrado(nodo)}
+            onRetirar={() => pedirActivacion(nodo, false)}
+            onReactivar={() => pedirActivacion(nodo, true)}
+            agregarHijo={
+              tipoHijo === null || !n.activo
+                ? null
+                : {
+                    texto: tipoHijo.nombreSingular,
+                    etiqueta: `Añadir ${enFrase(tipoHijo.nombreSingular)} a ${n.nombre}`,
+                    onClick: () => abrirAlta(n.profundidad + 1, { id: n.id }),
+                  }
+            }
+          />
+          {errorDeFila?.id === n.id ? <FieldError>{errorDeFila.mensaje}</FieldError> : null}
+          {tieneHijos && expandido ? (
+            <ul className="ml-5 flex flex-col border-l border-border pl-2">{rama(n.hijos, flags)}</ul>
+          ) : null}
+        </li>
+      );
+    });
   }
 
-  /** «3 cantones» con los nombres del país. */
-  function cuantos(n: number, nivel: NivelGeografico): string {
-    return `${n} ${enFrase(n === 1 ? etiquetas[nivel].singular : etiquetas[nivel].plural)}`;
-  }
-
-  /** Los textos de estado con los nombres del país. */
-  function textosDeEstado(e: EstadoGeografico): { insignia: string | null; motivo: string | null } {
-    if (e.tipo === "activo") return { insignia: null, motivo: null };
-    if (e.tipo === "inactivo_propio") return { insignia: "Inactivo", motivo: null };
-    const ascendiente = enFrase(singular(e.ascendiente));
-    return {
-      insignia: `Inactivo por su ${ascendiente}`,
-      motivo: `Primero hay que activar su ${ascendiente}.`,
-    };
-  }
-
-  const nivel1 = enFrase(singular("provincia"));
+  const modal = pendiente === null ? null : modalDe(pendiente);
+  const textoRaiz = tipoRaiz === null ? null : `Añadir ${enFrase(tipoRaiz.nombreSingular)}`;
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby="geografia-arbol-titulo">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 id="geografia-arbol-titulo" className="text-base font-semibold">
-            {`División de ${paisNombre}`}
+            Lugares
           </h2>
           <p className="max-w-prose text-sm text-muted-foreground">
-            Los tres niveles que la app ofrece al cargar y al corregir órdenes. Desactivar un nodo no
-            lo borra: deja de ofrecerse y se puede volver a activar cuando haga falta.
+            {`La división de ${paisNombre} que la app ofrece al cargar y al corregir órdenes. Retirar un lugar no lo borra: deja de ofrecerse y se puede reactivar cuando haga falta.`}
           </p>
         </div>
-        <Button type="button" onClick={() => abrirAlta("provincia", null)}>
-          <Plus aria-hidden="true" />
-          {`Añadir ${nivel1}`}
-        </Button>
+        {tipoRaiz === null ? null : (
+          <Button
+            type="button"
+            className="min-h-11 sm:min-h-8"
+            aria-label={textoRaiz ?? undefined}
+            onClick={() => abrirAlta(1, null)}
+          >
+            <Plus aria-hidden="true" />
+            {tipoRaiz.nombreSingular}
+          </Button>
+        )}
       </div>
 
-      {cargaError ? (
+      {cargaErrorInicial ? (
         <Alert variant="destructive">
           <AlertDescription>No se pudo cargar la división del país.</AlertDescription>
         </Alert>
       ) : null}
 
-      {/* Un `<form>` con nombre: Enter guarda y el lector de pantalla lo anuncia como región. La
-          `key` lo vuelve a montar al abrirlo desde otra fila, para que el foco salte otra vez. */}
+      {/* Un `<form>` con nombre: Enter pide guardar y el lector de pantalla lo anuncia como región.
+          La `key` lo vuelve a montar al abrirlo desde otra fila, para que el foco salte otra vez. */}
       {alta !== null ? (
         <form
-          key={`alta-${alta.nivel}-${alta.padreId ?? paisId}`}
+          key={`alta-${alta.padreId ?? paisId}`}
           aria-labelledby="geografia-alta-titulo"
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            void guardarAlta();
+            pedirAlta();
           }}
           className="flex flex-col gap-4 rounded-md border border-border p-4"
         >
-          <h3 id="geografia-alta-titulo" className="text-sm font-semibold">{`Alta: ${singular(alta.nivel)}`}</h3>
+          <h3 id="geografia-alta-titulo" className="text-sm font-semibold">{`Alta: ${singular(alta.profundidad)}`}</h3>
           <p className="text-sm text-muted-foreground">
-            {alta.padreNombre !== null ? `Dentro de ${alta.padreNombre}.` : `En ${paisNombre}.`}
+            {alta.cadena.length > 0 ? `Dentro de ${alta.cadena.join(" › ")}.` : `En ${paisNombre}.`}
           </p>
 
           <FormField id="geografia-nombre" label="Nombre" error={errors.nombre} required>
@@ -442,11 +545,14 @@ export function GeografiaAdminModule({
             <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} />
           </FormField>
 
+          {/* Un error de forma (país o padre) no es de ningún campo tecleado. */}
+          <FieldError messages={errors.formato ?? errors.paisId ?? errors.padreId} />
+
           <div className="flex items-center gap-2">
-            <Button type="submit" loading={guardando}>
-              {guardando ? "Guardando…" : "Guardar"}
+            <Button type="submit" className="min-h-11 sm:min-h-8">
+              Guardar
             </Button>
-            <Button type="button" variant="outline" onClick={cerrarAlta} disabled={guardando}>
+            <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={cerrarAlta}>
               Cancelar
             </Button>
           </div>
@@ -460,13 +566,13 @@ export function GeografiaAdminModule({
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            void guardarRenombrado();
+            pedirRenombrado();
           }}
           className="flex flex-col gap-4 rounded-md border border-border p-4"
         >
-          <h3 id="geografia-renombrar-titulo" className="text-sm font-semibold">{`Renombrar: ${singular(renombrado.nivel)}`}</h3>
+          <h3 id="geografia-renombrar-titulo" className="text-sm font-semibold">{`Renombrar: ${singular(renombrado.profundidad)}`}</h3>
           <p className="text-sm text-muted-foreground">
-            {`Se llama «${renombrado.nombre}». Cambiar el nombre no lo mueve, no lo desactiva ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.`}
+            {`Se llama «${renombrado.nombre}». Cambiar el nombre no lo mueve, no lo retira ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.`}
           </p>
 
           <FormField id="geografia-nombre-nuevo" label="Nombre" error={erroresRenombrado.nombre} required>
@@ -480,10 +586,10 @@ export function GeografiaAdminModule({
           </FormField>
 
           <div className="flex items-center gap-2">
-            <Button type="submit" loading={renombrando}>
-              {renombrando ? "Guardando…" : "Guardar"}
+            <Button type="submit" className="min-h-11 sm:min-h-8">
+              Guardar
             </Button>
-            <Button type="button" variant="outline" onClick={cerrarRenombrado} disabled={renombrando}>
+            <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={cerrarRenombrado}>
               Cancelar
             </Button>
           </div>
@@ -491,7 +597,7 @@ export function GeografiaAdminModule({
       ) : null}
 
       {/* Sin división no hay nada que buscar ni filtrar: la barra solo sale con algo debajo. */}
-      {provincias.length > 0 ? (
+      {raices.length > 0 ? (
         <div className="flex flex-wrap items-center gap-3">
           <Input
             type="search"
@@ -507,163 +613,93 @@ export function GeografiaAdminModule({
 
       {/* Si la lectura falló y no hay nada leído, solo queda el aviso de arriba: pintar además
           «aún no tiene división» sería disfrazar el fallo de estado vacío. */}
-      {cargaError && provincias.length === 0 ? null : filtradas.length === 0 ? (
+      {cargaErrorInicial && raices.length === 0 ? null : filtradas.length === 0 ? (
         <div className="rounded-md border border-border">
-          {provincias.length === 0 ? (
+          {raices.length === 0 ? (
             <EmptyState
               title="Este país aún no tiene división cargada."
               // El botón por su rótulo, y no «el primer <nivel>»: el nombre del nivel puede ser
               // femenino y la frase no se concuerda (decisión 15).
-              description={`Carga un CSV con toda la división o usa «Añadir ${nivel1}» para ir a mano.`}
+              description={
+                tipoRaiz === null
+                  ? "Carga un CSV con toda la división."
+                  : `Carga un CSV con toda la división o usa «+ ${tipoRaiz.nombreSingular}» para ir a mano.`
+              }
             />
           ) : (
             <EmptyState title="Sin resultados." description="Prueba con otro nombre o cambia el filtro de estado." />
           )}
         </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-          {filtradas.map((provincia) => {
-            const nodoP: NodoObjetivo = { nivel: "provincia", id: provincia.id, nombre: provincia.nombre };
-            return (
-              <li key={provincia.id} className="px-2 py-1">
-                <FilaNodo
-                  nodo={nodoP}
-                  codigo={provincia.codigo}
-                  textos={textosDeEstado(estadoGeografico({ provincia: provincia.activo }))}
-                  disponible={estadoGeografico({ provincia: provincia.activo }).tipo === "activo"}
-                  detalle={cuantos(provincia.cantones.length, "canton")}
-                  expandido={abierto(provincia.id)}
-                  onExpandir={() => alternarExpansion(provincia.id)}
-                  {...accionesDe(nodoP)}
-                  {...altaDeHijo(nodoP)}
-                />
-
-                {abierto(provincia.id) ? (
-                  <ul className="ml-5 flex flex-col border-l border-border pl-2">
-                    {provincia.cantones.map((canton) => {
-                      const nodoC: NodoObjetivo = { nivel: "canton", id: canton.id, nombre: canton.nombre };
-                      const estadoC = estadoGeografico({ provincia: provincia.activo, canton: canton.activo });
-                      return (
-                        <li key={canton.id}>
-                          <FilaNodo
-                            nodo={nodoC}
-                            codigo={canton.codigo}
-                            textos={textosDeEstado(estadoC)}
-                            disponible={estadoC.tipo === "activo"}
-                            detalle={cuantos(canton.distritos.length, "distrito")}
-                            expandido={abierto(canton.id)}
-                            onExpandir={() => alternarExpansion(canton.id)}
-                            {...accionesDe(nodoC)}
-                            {...altaDeHijo(nodoC)}
-                          />
-
-                          {abierto(canton.id) ? (
-                            <ul className="ml-5 flex flex-col border-l border-border pl-2">
-                              {canton.distritos.map((distrito) => {
-                                const nodoD: NodoObjetivo = { nivel: "distrito", id: distrito.id, nombre: distrito.nombre };
-                                const estadoD = estadoGeografico({
-                                  provincia: provincia.activo,
-                                  canton: canton.activo,
-                                  distrito: distrito.activo,
-                                });
-                                return (
-                                  <li key={distrito.id}>
-                                    <FilaNodo
-                                      nodo={nodoD}
-                                      codigo={distrito.codigo}
-                                      textos={textosDeEstado(estadoD)}
-                                      disponible={estadoD.tipo === "activo"}
-                                      {...accionesDe(nodoD)}
-                                    />
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">{rama(filtradas, [])}</ul>
       )}
 
-      {/* La ventana la cierra el desenlace, no el clic (`closeOnConfirm={false}`). */}
-      <Modal
-        open={objetivo !== null}
-        onOpenChange={(abierta) => {
-          if (!abierta) cerrarConfirmacion();
-        }}
-        title="Desactivar"
-        confirmLabel="Desactivar"
-        cancelLabel="Cancelar"
-        confirmVariant="destructive"
-        closeOnConfirm={false}
-        // R31: mientras el conteo está en vuelo no se confirma; en cuanto se resuelve, ok o error, sí.
-        confirmDisabled={conteo.estado === "cargando"}
-        onConfirm={confirmarRetirada}
-        onError={() => toast.error(mensajeDeDesenlace("error"))}
-      >
-        <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
-          <li>{objetivo === null ? "" : `Vas a desactivar «${objetivo.nombre}» (${singular(objetivo.nivel)}).`}</li>
-          <li>{textoDelConteo(conteo)}</li>
-        </ul>
-      </Modal>
+      {modal === null ? null : (
+        <ConfirmarCambio<Resultado>
+          open={modalAbierto}
+          onOpenChange={(abierta) => {
+            if (!abierta) cerrarModal();
+          }}
+          titulo={modal.titulo}
+          descripcion={modal.descripcion}
+          filas={modal.filas}
+          confirmLabel={modal.confirmLabel}
+          destructivo={modal.destructivo}
+          accion={ejecutarPendiente}
+          onExito={alConfirmarConExito}
+          onRechazo={alRechazar}
+        >
+          {modal.children}
+        </ConfirmarCambio>
+      )}
     </section>
   );
 }
 
-/** Una fila del árbol: nombre, código, estado y sus acciones. */
+/** Una fila del árbol: nombre, tipo, código, estado y sus acciones. Sin «mover» (R22). */
 function FilaNodo({
   nodo,
-  codigo,
-  textos,
+  tipo,
   disponible,
   detalle,
   expandido,
-  alternando = false,
   onExpandir,
-  onActivar,
-  onRetirar,
   onRenombrar,
-  onAgregarHijo,
-  etiquetaAgregarHijo,
-  textoAgregarHijo,
+  onRetirar,
+  onReactivar,
+  agregarHijo,
 }: Readonly<{
-  nodo: NodoObjetivo;
-  codigo: string | null;
-  textos: { insignia: string | null; motivo: string | null };
+  nodo: NodoArbolPlataformaDTO;
+  /** El singular del tipo de su profundidad (R21). */
+  tipo: string;
+  /** Disponibilidad efectiva: ni él ni ningún ascendiente retirado. */
   disponible: boolean;
   detalle?: string;
-  /** `undefined` en una hoja: no se pliega. */
+  /** `undefined` en un lugar sin hijos: no se pliega. */
   expandido?: boolean;
-  alternando?: boolean;
-  onExpandir?: () => void;
-  onActivar: () => void;
-  onRetirar: () => void;
+  onExpandir: () => void;
   onRenombrar: () => void;
-  onAgregarHijo?: () => void;
-  etiquetaAgregarHijo?: string;
-  textoAgregarHijo?: string;
+  onRetirar: () => void;
+  onReactivar: () => void;
+  agregarHijo: { texto: string; etiqueta: string; onClick: () => void } | null;
 }>) {
   const { nombre } = nodo;
-  const { insignia, motivo } = textos;
+  // Objetivo táctil de 44px en móvil; en escritorio, la altura compacta del árbol.
+  const tactil = "min-h-11 sm:min-h-7";
 
   return (
     <div
-      data-nodo={`${nodo.nivel}:${nodo.id}`}
+      data-nodo={nodo.id}
       className="flex flex-wrap items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent"
     >
       {expandido === undefined ? (
-        <span aria-hidden="true" className="inline-block w-6" />
+        <span aria-hidden="true" className="inline-block w-11 sm:w-7" />
       ) : (
         <Button
           type="button"
           variant="ghost"
-          size="xs"
+          size="icon-sm"
+          className="size-11 sm:size-7"
           aria-expanded={expandido}
           aria-label={`${expandido ? "Contraer" : "Expandir"} ${nombre}`}
           onClick={onExpandir}
@@ -677,58 +713,61 @@ function FilaNodo({
 
       <span className={disponible ? "font-medium" : "font-medium text-muted-foreground"}>{nombre}</span>
 
-      {codigo === null ? null : <span className="font-mono text-xs text-muted-foreground">{codigo}</span>}
+      {tipo === "" ? null : <Badge variant="outline">{tipo}</Badge>}
+
+      {nodo.codigo === null ? null : <span className="font-mono text-xs text-muted-foreground">{nodo.codigo}</span>}
 
       {detalle === undefined ? null : <span className="text-xs text-muted-foreground">({detalle})</span>}
 
-      {insignia === null ? null : (
-        <Badge variant={motivo === null ? "secondary" : "outline"}>{insignia}</Badge>
-      )}
+      {nodo.activo ? null : <Badge variant="secondary">Retirado</Badge>}
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {agregarHijo === null ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={tactil}
+            aria-label={agregarHijo.etiqueta}
+            onClick={agregarHijo.onClick}
+          >
+            <Plus aria-hidden="true" />
+            {agregarHijo.texto}
+          </Button>
+        )}
+
         <Button
           type="button"
           variant="ghost"
-          size="xs"
+          size="sm"
+          className={tactil}
           aria-label={`Renombrar ${nombre}`}
-          disabled={alternando}
           onClick={onRenombrar}
         >
           Renombrar
         </Button>
 
-        {onAgregarHijo === undefined ? null : (
-          <Button type="button" variant="outline" size="xs" aria-label={etiquetaAgregarHijo} onClick={onAgregarHijo}>
-            <Plus aria-hidden="true" />
-            {textoAgregarHijo}
-          </Button>
-        )}
-
-        {disponible ? (
+        {nodo.activo ? (
           <Button
             type="button"
             variant="ghost"
-            size="xs"
-            aria-label={`Desactivar ${nombre}`}
-            disabled={alternando}
+            size="sm"
+            className={tactil}
+            aria-label={`Retirar ${nombre}`}
             onClick={onRetirar}
           >
-            Desactivar
+            Retirar
           </Button>
         ) : (
-          // En el heredado, «Activar» va apagado con el motivo en el nombre accesible y en el `title`.
-          // `outline` y no `default`: con varios nodos retirados la lista se llenaba de botones
-          // primarios que competían con el único primario de la sección, «Añadir <nivel 1>».
           <Button
             type="button"
             variant="outline"
-            size="xs"
-            aria-label={motivo === null ? `Activar ${nombre}` : `Activar ${nombre}. ${motivo}`}
-            title={motivo ?? undefined}
-            disabled={motivo !== null || alternando}
-            onClick={onActivar}
+            size="sm"
+            className={tactil}
+            aria-label={`Reactivar ${nombre}`}
+            onClick={onReactivar}
           >
-            Activar
+            Reactivar
           </Button>
         )}
       </div>
@@ -736,11 +775,11 @@ function FilaNodo({
   );
 }
 
-/** La línea del conteo en la confirmación (R31), en sus tres estados. */
+/** La línea del conteo en el retiro (R20), en sus tres estados. No bloquea el retiro. */
 function textoDelConteo(conteo: EstadoConteo): string {
   if (conteo.estado === "cargando") return "Contando las órdenes sin entregar de este nodo, de todas las empresas…";
   if (conteo.estado === "error") {
-    return "No se pudo contar las órdenes sin entregar de este nodo. Puedes desactivarlo igual.";
+    return "No se pudo contar las órdenes sin entregar de este nodo. Puedes retirarlo igual.";
   }
   return `Órdenes sin entregar en este nodo, de todas las empresas: ${conteo.ordenes}.`;
 }

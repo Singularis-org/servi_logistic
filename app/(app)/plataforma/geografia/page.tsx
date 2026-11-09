@@ -6,7 +6,6 @@ import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { PaisDTO } from "@/lib/types/pais";
 
-import { arbolDeTresNiveles } from "./_components/arbol-de-tres-niveles";
 import { GeografiaPlataformaModule } from "./_components/GeografiaPlataformaModule";
 
 /**
@@ -47,7 +46,8 @@ export default async function GeografiaPlataformaPage({
       <GeografiaPlataformaModule
         paises={paises}
         paisElegido={elegido}
-        provincias={arbol?.status === "ok" ? arbolDeTresNiveles(arbol.raices) : []}
+        tipos={arbol?.status === "ok" ? arbol.tipos : []}
+        raices={arbol?.status === "ok" ? arbol.raices : []}
         paisesError={listado.status !== "ok"}
         divisionError={arbol !== null && arbol.status !== "ok"}
       />

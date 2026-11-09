@@ -989,3 +989,31 @@ provisional de §4.7. Si el reviewer pide alinear, §4.7 debe actualizarse.
 - tsc --noEmit: sin salida, exit 0
 
 Veredicto: T6.5 hecha, verde en test, lint y typecheck.
+
+### T6.1 — `GeografiaAdminModule`: árbol de N niveles, panel «Lugares» (R12, R14, R20–R22, R52, R58, R59, R61)
+- Reescrito `_components/GeografiaAdminModule.tsx` (props `{ paisId, paisNombre, tipos, raices, cargaErrorInicial? }`;
+  lee el árbol de las props, refresca con `router.refresh()`). `page.tsx` pasa `arbol.tipos`/`arbol.raices`;
+  `GeografiaPlataformaModule.tsx` solo reenvía las props. Borrado `_components/arbol-de-tres-niveles.ts` (sin otros
+  importadores). `app/(app)/configuracion/_shared/filtrar-arbol-geografico.ts` gana `filtrarArbolDeNodos`
+  (N niveles); `filtrarArbolGeografico` (Tarifas) no cambia.
+- Cuatro escrituras (crear, renombrar con `nombreAnterior`, retirar con conteo R20, reactivar) validan con el
+  esquema zod antes de abrir `ConfirmarCambio`.
+- Tests: nuevo `tests/components/geografia-arbol-n-niveles.test.tsx`; ajustados
+  `tests/unit/components/geografia-plataforma-page.test.tsx`, `tests/components/GeografiaPlataformaAltaPais.test.tsx`
+  (solo montaje) y `tests/unit/utils/filtrar-arbol-geografico.test.ts` (+5 casos N niveles).
+- Mapa R → test (`geografia-arbol-n-niveles.test.tsx`): R21 chip por nivel, chevron con aria-expanded, «+ <tipo
+  siguiente>» solo con tipo siguiente y no en retirados ni último nivel; R14 sin campo de tipo; R22 «ninguna fila
+  ofrece mover…»; R58/R59 por cada acción (inválido sin modal ni action; válido con antes → después; cancelar no
+  llama; confirmar llama una vez); R61 «conflict con motivo cambio_concurrente avisa en el modal y refresca»;
+  P12 reactivar ya activo = éxito; R12 caso CR Provincia/Cantón/Distrito.
+- Aserciones cambiadas en `geografia-plataforma-page.test.tsx` (motivo: forma nueva de actions R14 y modal R58):
+  mock del árbol con `tipos`; encabezado «División de <país>» → «Lugares»; altas confirman «Sí, crear» con
+  `{nombre, paisId, codigo}`/`{padreId, nombre}`; R31 «Desactivar» → «Retirar»/«Sí, retirar», conteo `{id}`,
+  cambio `{id, activo}`, «Puedes desactivarlo igual.» → «Puedes retirarlo igual.»; vacío «usa «+ Departamento»».
+- Salida: vitest 4 archivos, `70 passed (70)` (antes 44 en los 3 existentes); eslint 8 archivos sin hallazgos; tsc
+  sin errores; guardia `etiquetas-geograficas-sin-literal` 6/6.
+- **Desvíos a revisar (reviewer/humano):** botones «Sí, crear/renombrar/retirar/reactivar»; «+ <Tipo>» visible con
+  nombre accesible «Añadir <tipo> a <padre>»; textos «Desactivar/Activar/Inactivos» → «Retirar/Reactivar/Retirados»
+  (vocabulario de la maqueta; toca a CR, R12); sin chip «Inactivo por su <nivel>» heredado (nombre atenuado);
+  el confirmar del retiro no se bloquea mientras se cuenta (antes sí); texto propio para id inválido
+  («Este lugar no tiene un identificador válido; recarga la página.»).

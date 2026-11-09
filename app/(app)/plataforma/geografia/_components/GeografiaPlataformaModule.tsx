@@ -30,7 +30,7 @@ import {
 } from "@/lib/actions/geografia-plataforma";
 import { PAISES_ISO_3166_1, type PaisDelCatalogo } from "@/lib/constants/paises-iso-3166-1";
 import { COLUMNAS_DIVISION } from "@/lib/types/division-csv";
-import type { ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
+import type { NodoArbolPlataformaDTO, TipoNivelDTO } from "@/lib/types/geografia-nodo";
 import {
   etiquetasDePais,
   PAIS_NOMBRE_MAX,
@@ -59,18 +59,21 @@ export interface GeografiaPlataformaModuleProps {
   paises: PaisDTO[];
   /** El país cuya geografía se trabaja, o `null` si aún no hay ninguno. */
   paisElegido: PaisDTO | null;
-  /** El árbol del país elegido, sin zonas. */
-  provincias: ProvinciaPlataformaDTO[];
+  /** Los tipos de nivel del país elegido, uno por profundidad. */
+  tipos: TipoNivelDTO[];
+  /** El árbol del país elegido a cualquier profundidad, sin zonas. */
+  raices: NodoArbolPlataformaDTO[];
   /** No se pudo leer la lista de países: `paises` llega vacío, pero NO porque no haya ninguno. */
   paisesError?: boolean;
-  /** No se pudo leer la división del país elegido: `provincias` llega vacío por el fallo. */
+  /** No se pudo leer la división del país elegido: `raices` llega vacío por el fallo. */
   divisionError?: boolean;
 }
 
 export function GeografiaPlataformaModule({
   paises,
   paisElegido,
-  provincias,
+  tipos,
+  raices,
   paisesError = false,
   divisionError = false,
 }: Readonly<GeografiaPlataformaModuleProps>) {
@@ -146,8 +149,8 @@ export function GeografiaPlataformaModule({
             key={`arbol-${paisElegido.id}`}
             paisId={paisElegido.id}
             paisNombre={paisElegido.nombre}
-            etiquetas={etiquetas}
-            initialProvincias={provincias}
+            tipos={tipos}
+            raices={raices}
             cargaErrorInicial={divisionError}
           />
         </>

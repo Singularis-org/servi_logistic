@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { NodoArbolPlataformaDTO, ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
+import type { NodoArbolPlataformaDTO, ProvinciaPlataformaDTO, TipoNivelDTO } from "@/lib/types/geografia-nodo";
 import type { PaisDTO } from "@/lib/types/pais";
 
 vi.mock("@/app/_components/LogoutButton", () => ({
@@ -104,8 +104,8 @@ const ARBOL: ProvinciaPlataformaDTO[] = [
   },
 ];
 
-// SLT-46 (T4.1): la action devuelve el árbol de N niveles (`raices`); la página lo proyecta a los tres
-// niveles de `ARBOL`. Mismo árbol, en la forma nueva del contrato.
+// SLT-46 (T4.1, T6.1): la action devuelve el árbol de N niveles (`raices`) y los tipos del país, y la
+// página los pasa tal cual al panel «Lugares». Mismo árbol que `ARBOL`, en la forma nueva del contrato.
 const RAICES: NodoArbolPlataformaDTO[] = ARBOL.map((p) => ({
   id: p.id,
   nombre: p.nombre,
@@ -124,6 +124,21 @@ const RAICES: NodoArbolPlataformaDTO[] = ARBOL.map((p) => ({
   })),
 }));
 
+// Los tipos de Guatemala, con los mismos nombres que sus `nivelN*`.
+const TIPOS: TipoNivelDTO[] = [
+  ["Departamento", "Departamentos"],
+  ["Municipio", "Municipios"],
+  ["Aldea", "Aldeas"],
+].map(([nombreSingular, nombrePlural], i) => ({
+  id: `t${i + 1}`,
+  clave: `nivel_${i + 1}`,
+  profundidad: i + 1,
+  nombreSingular,
+  nombrePlural,
+  digitosCodigo: null,
+  codigoHeredaPrefijo: false,
+}));
+
 function actorDe(rol: string) {
   return { usuarioId: "u-1", rol };
 }
@@ -136,7 +151,7 @@ async function montar(paisPedido?: string) {
 beforeEach(() => {
   vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("superadmin") as never);
   acciones.listarPaisesAction.mockResolvedValue({ status: "ok", paises: [HONDURAS, GUATEMALA] });
-  acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", tipos: [], raices: RAICES });
+  acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", tipos: TIPOS, raices: RAICES });
 });
 
 afterEach(() => {
@@ -165,7 +180,8 @@ describe("R21 — la puerta, antes de leer", () => {
     acciones.arbolDePaisAction.mockClear();
     await montar();
     expect(acciones.arbolDePaisAction).toHaveBeenCalledWith({ paisId: "GT" });
-    expect(screen.getByRole("heading", { name: "División de Guatemala" })).toBeInTheDocument();
+    // SLT-46 T6.1: el panel del árbol se titula «Lugares» (maqueta T0.2, versión 7).
+    expect(screen.getByRole("heading", { name: "Lugares" })).toBeInTheDocument();
   });
 });
 
@@ -199,7 +215,7 @@ describe("R20 — los niveles con los nombres del país elegido", () => {
 
   it("el alta de un nodo lleva el país y el código opcional", async () => {
     const user = userEvent.setup();
-    acciones.crearNodoAction.mockResolvedValue({ status: "ok", id: "p-new", nivel: "provincia" });
+    acciones.crearNodoAction.mockResolvedValue({ status: "ok", id: "p-new" });
     await montar("GT");
 
     await user.click(screen.getByRole("button", { name: "Añadir departamento" }));
@@ -208,12 +224,15 @@ describe("R20 — los niveles con los nombres del país elegido", () => {
     await user.type(screen.getByLabelText(/^Código oficial/), "17");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
-    expect(acciones.crearNodoAction).toHaveBeenCalledWith({
-      nivel: "provincia",
-      nombre: "Petén",
-      paisId: "GT",
-      codigo: "17",
-    });
+    // SLT-46 (R58): guardar abre la confirmación; la action se llama al confirmar, sin `nivel` (R14).
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, crear" }));
+    await waitFor(() =>
+      expect(acciones.crearNodoAction).toHaveBeenCalledWith({
+        nombre: "Petén",
+        paisId: "GT",
+        codigo: "17",
+      }),
+    );
   });
 });
 
@@ -223,42 +242,34 @@ describe("R31 — el conteo de la confirmación no bloquea el retiro", () => {
     acciones.contarOrdenesSinEntregarAction.mockResolvedValue({ status: "ok", ordenes: 7 });
     await montar("GT");
 
-    await user.click(screen.getByRole("button", { name: "Desactivar Escuintla" }));
+    // SLT-46 T6.1: «Retirar» (maqueta T0.2) y el conteo por id, sin `nivel`.
+    await user.click(screen.getByRole("button", { name: "Retirar Escuintla" }));
     const dialogo = await screen.findByRole("dialog");
     expect(
       await within(dialogo).findByText("Órdenes sin entregar en este nodo, de todas las empresas: 7."),
     ).toBeInTheDocument();
-    expect(acciones.contarOrdenesSinEntregarAction).toHaveBeenCalledWith({ nivel: "provincia", id: "p-gua" });
+    expect(acciones.contarOrdenesSinEntregarAction).toHaveBeenCalledWith({ id: "p-gua" });
   });
 
-  it("si el conteo falla, lo dice y deja desactivar", async () => {
+  it("si el conteo falla, lo dice y deja retirar", async () => {
     const user = userEvent.setup();
     acciones.contarOrdenesSinEntregarAction.mockResolvedValue({ status: "error" });
-    acciones.cambiarActivacionNodoAction.mockResolvedValue({
-      status: "ok",
-      nivel: "provincia",
-      id: "p-gua",
-      activo: false,
-    });
+    acciones.cambiarActivacionNodoAction.mockResolvedValue({ status: "ok", id: "p-gua", activo: false });
     await montar("GT");
 
-    await user.click(screen.getByRole("button", { name: "Desactivar Escuintla" }));
+    await user.click(screen.getByRole("button", { name: "Retirar Escuintla" }));
     const dialogo = await screen.findByRole("dialog");
     expect(
       await within(dialogo).findByText(
-        "No se pudo contar las órdenes sin entregar de este nodo. Puedes desactivarlo igual.",
+        "No se pudo contar las órdenes sin entregar de este nodo. Puedes retirarlo igual.",
       ),
     ).toBeInTheDocument();
 
-    const desactivar = within(dialogo).getByRole("button", { name: "Desactivar" });
-    expect(desactivar).toBeEnabled();
-    await user.click(desactivar);
+    const retirar = within(dialogo).getByRole("button", { name: "Sí, retirar" });
+    expect(retirar).toBeEnabled();
+    await user.click(retirar);
     await waitFor(() =>
-      expect(acciones.cambiarActivacionNodoAction).toHaveBeenCalledWith({
-        nivel: "provincia",
-        id: "p-gua",
-        activo: false,
-      }),
+      expect(acciones.cambiarActivacionNodoAction).toHaveBeenCalledWith({ id: "p-gua", activo: false }),
     );
   });
 });
@@ -474,12 +485,13 @@ describe("Decisión 13 — estados vacío y de error, y foco del alta", () => {
   });
 
   it("un país sin división muestra el estado vacío con los nombres del país y sin barra de búsqueda", async () => {
-    acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", tipos: [], raices: [] });
+    acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", tipos: TIPOS, raices: [] });
     await montar("GT");
 
     expect(screen.getByText("Este país aún no tiene división cargada.")).toBeInTheDocument();
     expect(
-      screen.getByText("Carga un CSV con toda la división o usa «Añadir departamento» para ir a mano."),
+      // SLT-46 T6.1: el botón dice «+ Departamento» (maqueta T0.2).
+      screen.getByText("Carga un CSV con toda la división o usa «+ Departamento» para ir a mano."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("searchbox")).toBeNull();
   });
@@ -495,7 +507,7 @@ describe("Decisión 13 — estados vacío y de error, y foco del alta", () => {
 
   it("el alta lleva el foco al nombre, guarda con Enter y al cancelar el foco vuelve al botón que la abrió", async () => {
     const user = userEvent.setup();
-    acciones.crearNodoAction.mockResolvedValue({ status: "ok", id: "c-new", nivel: "canton" });
+    acciones.crearNodoAction.mockResolvedValue({ status: "ok", id: "c-new" });
     await montar("GT");
 
     const abrir = screen.getByRole("button", { name: "Añadir municipio a Escuintla" });
@@ -509,11 +521,12 @@ describe("Decisión 13 — estados vacío y de error, y foco del alta", () => {
 
     await user.click(abrir);
     await user.keyboard("Palín{Enter}");
+    // SLT-46 (R58): Enter pide guardar y abre la confirmación; se llama al confirmar, con el padre.
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, crear" }));
     await waitFor(() =>
       expect(acciones.crearNodoAction).toHaveBeenCalledWith({
-        nivel: "canton",
+        padreId: "p-gua",
         nombre: "Palín",
-        provinciaId: "p-gua",
       }),
     );
     // Decisión 15: el aviso no concuerda en género con el nodo.

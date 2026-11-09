@@ -54,7 +54,7 @@ function paisDadoDeAlta(id: string): PaisDTO {
 
 async function abrirAltaYEscribir(paises: PaisDTO[], consulta: string) {
   const user = userEvent.setup();
-  render(<GeografiaPlataformaModule paises={paises} paisElegido={null} provincias={[]} />);
+  render(<GeografiaPlataformaModule paises={paises} paisElegido={null} tipos={[]} raices={[]} />);
   await user.click(screen.getByRole("button", { name: "Nuevo país" }));
   const input = await screen.findByRole("combobox", { name: /País/ });
   await user.type(input, consulta);

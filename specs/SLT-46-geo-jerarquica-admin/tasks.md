@@ -195,7 +195,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
   `motivo: "cambio_concurrente"` (§4.7, §6). (R58, R59, R61)
   *Hecho:* `tests/components/confirmar-cambio.test.tsx` verde (pinta antes → después; cancelar no llama
   a la acción; confirmar la llama una vez; el motivo concurrente avisa y refresca).
-- [ ] **T6.1** `GeografiaAdminModule.tsx`: árbol recursivo, tipo por nodo, «Agregar <tipo>» solo con tipo
+- [x] **T6.1** `GeografiaAdminModule.tsx`: árbol recursivo, tipo por nodo, «Agregar <tipo>» solo con tipo
   siguiente, sin mover ni elegir tipo (§6); alta, renombre (con `nombreAnterior`), retiro y
   reactivación de nodo validan con el esquema y pasan por `ConfirmarCambio` (§6, tabla). (R14, R21,
   R22, R52, R58, R59, R61)
