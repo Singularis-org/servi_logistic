@@ -16,7 +16,7 @@
 
 ## T1 — El corte (R10) · backend
 
-- [ ] **T1.1** Sin código nuevo: el corte es `fechaDeEfectoPorDefecto(tipoVigente, ahora)` de
+- [x] **T1.1** Sin código nuevo: el corte es `fechaDeEfectoPorDefecto(tipoVigente, ahora)` de
   `lib/planes/ciclo.ts` (SLT-86), que no cambia. Se fija su contrato para el maestro con un test propio.
   *Hecho:* `tests/unit/planes/proximo-periodo-de-cobro.test.ts` en verde con, por cada tipo:
   - quincenal: el 1 a las 00:00 → el 16; el 15 a las 23:59:59.999 → el 16; el 16 a las 00:00 → el 1 del mes
