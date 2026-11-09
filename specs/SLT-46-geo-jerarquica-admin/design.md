@@ -1,10 +1,16 @@
 # SLT-46 — geo-jerarquica-admin · design.md
 
 > Escrito por `spec_author` el 2026-11-06 sobre la rama apilada en SLT-45 (contiene SLT-43, SLT-44,
-> SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R52). El alcance y la tabla «Decisiones
+> SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R62). El alcance y la tabla «Decisiones
 > cerradas» no se reabren aquí. Revisado el mismo día con las respuestas del humano a P1–P9 (filas
 > «P<n>» de `## Decisiones cerradas`) y a P10 (etiqueta de nivel 3 de un país de 2 niveles, §2.4).
-> No queda nada abierto.
+>
+> Revisión del 2026-11-09: maqueta T0.2 aprobada (lienzo
+> https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7) y dos decisiones nuevas del humano:
+> reordenar niveles arrastrando (§2.4 «Reordenar niveles», R53–R57) y confirmar antes de escribir con
+> control de cambio concurrente (§4.7, §6, R58–R61); título del alta (R62). Sin migraciones nuevas.
+> Abiertas P11–P13 (`requirements.md`): P12 y P13 siguen lo que ya hay (R19; arrastre nativo, sin
+> táctil); P11 (confirmar «Disponible» y la carga CSV) queda fuera de R58 hasta que el humano responda.
 >
 > El MCP del grafo responde, pero no tiene indexado este worktree (`list_projects` no lo lista): la
 > exploración se hizo con Grep/Read.
@@ -34,8 +40,13 @@ términos `tipo_nivel_geografico`, `nodo_geografico` (escritor), `pais_tipos_de_
 | Guardias `nodo-geografico-sin-escritor`, `geografia-renombrado-punto-unico`, `geografia-sin-borrado-fisico`, `slt43-migraciones-aditivas` | `tests/unit/guards/`, `tests/unit/db/` | La primera se retira (lo anunciaba); las otras se ajustan (§9) |
 | Fixture de países de 2 y 4 niveles | `tests/fixtures/paises-de-prueba-geo.ts` (SLT-45) | Se reutiliza para los tests de N niveles |
 | Base propia para bajar migraciones | `tests/integration/db/_fixtures/base-propia-43.ts` | Molde de la ida y vuelta de SLT-46 |
+| *(2026-11-09)* `PaisRepository.renombrarTipo` / `agregarNivel`, `PaisService.renombrarTipo` / `agregarNivel` y sus actions | T3.2, T4.3, T4.4 (hechas) | Se **extienden**: la entrada gana el «antes» del modal y el resultado, `conflict` por cambio concurrente (§4.7). `reordenarTipos` es nuevo y reutiliza sus piezas (`nombresDeNivelEnPais`, `appendAccionPlataforma`) |
+| *(2026-11-09)* `Modal` (`@base-ui/react/dialog`, `confirmLabel`, `closeOnConfirm`, `confirmDisabled`) | `components/shared/Modal.tsx`; ya lo usan el retiro de nodo y el alta de país | Base del modal de confirmación (§6). Nada nuevo de shadcn |
+| *(2026-11-09)* Librería de arrastrar y soltar | Ninguna en `package.json` (Grep `dnd\|sortable\|drag`) | No se añade: arrastre nativo del navegador + teclado (§6; alternativa en §12) |
+| *(2026-11-09)* Candado de fila con `tx.$queryRaw\`… FOR UPDATE\`` | `CierreDiaRepository`, `CorreccionFechaReprogramacionRepository` | Mismo patrón para serializar las escrituras de tipos de un país (§2.4) |
 
-Nada de lo encontrado escribe el nodo desde la app ni edita tipos: se sigue.
+Nada de lo encontrado escribe el nodo desde la app ni edita tipos, ni reordena niveles o confirma
+con antes → después: se sigue.
 
 ## 1. Resumen
 
@@ -48,6 +59,11 @@ pantalla del superadmin pasa a un árbol de N niveles; el alta de país recibe l
 (P2); a un país ya creado se le agrega un nivel al final (P3); los nombres de un tipo se editan y, en
 los niveles 1–3, se copian a `pais.nivel_N_*`. El CSV de división admite P niveles y se cruza con los
 nodos. Tres migraciones, todas aditivas; ninguna toca `orden`.
+
+Desde el 2026-11-09, además: los niveles se reordenan arrastrando (en un país ya creado eso solo
+reasigna los nombres de cada profundidad) y toda escritura de la pantalla pasa por un modal de
+confirmación antes → después; el servidor rechaza con `conflict` lo que cambió mientras tanto. Sin
+migraciones nuevas.
 
 ## 2. Modelo de datos
 
@@ -127,6 +143,11 @@ Agregar un nivel (P3) **no necesita valor nuevo**: es la creación de un tipo y 
 `tipo_nivel_geografico_creado`, con `detalle = {"origen": "nivel_agregado", "profundidad": k}` para
 distinguirla del alta de país (que va junto a `pais_creado` y lleva `"origen": "alta_de_pais"`).
 
+Reordenar niveles (2026-11-09) **tampoco**: es una reasignación de nombres y usa
+`tipo_nivel_geografico_renombrado`, con `detalle = {"campo": "singular" | "plural", "origen":
+"reordenado"}` (R56). La edición de un tipo sigue como está (sin `origen`, T3.2 hecha). Ninguna
+migración ni valor de enum nuevo.
+
 ### 2.4 Tipos y `pais.nivel_N_*` (R23, R25, R27, R46–R51) — decisiones P2 y P3
 
 **El problema (P2).** `pais.nivel_{1,2,3}_{singular,plural}` son `NOT NULL` (SL-20) y la función
@@ -190,6 +211,44 @@ su país; si los dos nombres son iguales → `sin_cambio`; `tipoNivelGeografico.
 los tipos 1–3 que el país tenga, con los mismos valores (no hay trigger en `tipo_nivel_geografico`,
 así que no hay bucle) → historial.
 
+**Reordenar niveles (R54–R57) — decisión del 2026-11-09.** En el alta de país el orden es solo el de
+la lista que llega a `crearPaisSchema` (R54): no hay contrato nuevo. En un país ya creado,
+`PaisRepository.reordenarTipos(paisId, niveles, actor) → "no_existe" | "cambio_concurrente" |
+"sin_cambio" | "reordenado"`, donde `niveles` es la lista en el orden nuevo, cada elemento
+`{ tipoId, nombreSingular, nombrePlural }` con los nombres **que el modal mostró como «antes»** de ese
+tipo. En una transacción:
+
+1. Candado del país: `tx.$queryRaw\`SELECT "id" FROM "pais" WHERE "id" = ${paisId} FOR UPDATE\``.
+   Sin fila → `no_existe`.
+2. Lee los tipos del país (`id`, `clave`, nombres). Si el conjunto de ids no es exactamente el de
+   `niveles` (otra persona agregó un nivel, o un id es de otro país) o algún nombre de `niveles` no es
+   el actual de su tipo → `cambio_concurrente` (R57). Los repetidos y el tamaño 2–10 ya los rechazó
+   zod.
+3. Para cada profundidad k, nombres nuevos = los de `niveles[k-1]`; nombres actuales = los del tipo de
+   clave `nivel_<k>`. Si ninguno cambia → `sin_cambio` (R56).
+4. `tipoNivelGeografico.update` solo de los tipos cuyos nombres cambian (`where: { id }`; sin
+   `clave`, `digitosCodigo` ni `codigoHeredaPrefijo` en `data`). Los nombres de tipo no son únicos,
+   así que el intercambio no choca a mitad de camino.
+5. Si cambia algún tipo de profundidad 1–3: **un solo** `pais.update` con las columnas
+   `nivel_k_*` de los que cambian → la función `pais_tipos_de_nivel` hace su upsert de los tipos 1–3
+   y los encuentra con esos mismos valores; la regla de código que copia sale de
+   `pais.digitos_codigo_nivel_k`, que no cambia (R55). En un país de 2 tipos, `nivel_3_*` sigue `''`
+   y no nace `nivel_3` (R46).
+6. Historial: una fila `tipo_nivel_geografico_renombrado` por nombre cambiado, `entidadId` el tipo de
+   esa profundidad, `entidadEtiqueta` su singular nuevo, `detalle = {campo, origen: "reordenado"}`.
+
+Ningún nodo se lee ni se escribe: el tipo de un nodo sale de su profundidad (P1) y su `tipo_id` sigue
+apuntando al mismo tipo, que ahora se llama distinto. Para Costa Rica, reordenar cambia las etiquetas
+de las empresas en su siguiente carga (R27), como una edición de nombres.
+
+**Candado del país en toda escritura de tipos (2026-11-09).** `renombrarTipo` (tras leer el `paisId`
+del tipo) y `agregarNivel` toman el mismo `FOR UPDATE` sobre la fila `pais` antes de leer los tipos.
+Así las tres escrituras de tipos de un país quedan en fila y la comparación con el «antes» (§4.7) es
+exacta; sin el candado, un agregar nivel en paralelo no tocaría `pais` (P+1 > 3) y el reordenamiento no
+lo vería. El único `(pais_id, clave)` se queda como respaldo de R49 y su test de carrera no cambia de
+desenlace (una de las dos altas responde `conflict`; con el candado, por cambio concurrente en vez de
+por el único: la action responde `conflict` en ambos casos).
+
 **Etiquetas de las empresas (R27, R51).** Salen de `pais.nivel_N_*` (`etiquetasDePais` →
 `EtiquetasGeograficasProvider` en `app/(app)/layout.tsx`): con la copia, R27 sale sin tocarlas. Para
 un país de 2 niveles `nivel3Singular` es `''`: `etiquetasDePais` devuelve para `distrito` la etiqueta
@@ -243,14 +302,23 @@ Borde → service → repositorio, como SL-20. Todas las actions en `lib/actions
 | Esquema | Forma (`.strict()`) | Cambia |
 |---|---|---|
 | `crearNodoGeograficoSchema` | `{ paisId, nombre, codigo? }` (raíz) \| `{ padreId, nombre, codigo? }` (hijo) | Antes, discriminada por `nivel` |
-| `renombrarNodoGeograficoSchema` | `{ id, nombre }` | Sin `nivel` |
+| `renombrarNodoGeograficoSchema` | `{ id, nombre, nombreAnterior }` | Sin `nivel`; **2026-11-09:** gana `nombreAnterior` (el «antes» del modal, obligatorio, R61) |
 | `cambiarActivacionGeograficaSchema` | `{ id, activo }` | Sin `nivel` |
 | `nodoGeograficoSchema` (conteo) | `{ id }` | Sin `nivel` |
 | `crearPaisSchema` | `{ id, tipos: { singular, plural }[] }` con 2–10 tipos (P2) y `nombrePaisSchema` (2–40) | Antes, seis campos `nivelNSingular/Plural` |
-| `renombrarTipoNivelSchema` (nuevo) | `{ tipoId, nombreSingular, nombrePlural }` | — |
-| `agregarNivelPaisSchema` (nuevo, P3) | `{ paisId, nombreSingular, nombrePlural }` (2–40). Sin campo de posición: siempre al final | — |
+| `renombrarTipoNivelSchema` (nuevo) | `{ tipoId, nombreSingular, nombrePlural, anterior: { nombreSingular, nombrePlural } }` | **2026-11-09:** gana `anterior` (obligatorio, R61) |
+| `agregarNivelPaisSchema` (nuevo, P3) | `{ paisId, nombreSingular, nombrePlural, profundidad }` (nombres 2–40; `profundidad` entero 3–10). Sin campo de posición: siempre al final | **2026-11-09:** gana `profundidad`, la que el modal mostró para el nivel nuevo (P+1). No elige sitio: si al guardar no es P+1 → cambio concurrente (R61) |
+| `reordenarTiposSchema` (nuevo, 2026-11-09) | `{ paisId, niveles: { tipoId, nombreSingular, nombrePlural }[] }`, 2–10 elementos, `tipoId` distintos (`superRefine`), nombres 2–40 (los del «antes») | — (R57) |
 
-No hay esquema ni action para quitar un tipo o un nivel (R50).
+No hay esquema ni action para quitar un tipo o un nivel (R50). `crearNodoGeograficoSchema`,
+`cambiarActivacionGeograficaSchema` y `crearPaisSchema` no ganan «antes»: un alta no tiene estado
+previo que comparar (sus choques ya son `conflict`, R16, R24) y pedir el estado `activo` que ya tiene es
+éxito (R19; ver P12).
+
+Los esquemas viven en `lib/types/`, que ya viaja al navegador: la pantalla los usa para validar antes
+de abrir el modal (R58, R59) y el service los vuelve a correr (R60). Lo que solo sabe el servidor
+(nombre imprimible de la ficha 392, choque normalizado con hermanos, regla de código del tipo) se queda
+en el servidor y llega como `validation_error`/`conflict` tras confirmar.
 
 Ninguno acepta `padreId` en el renombre ni en el cambio de estado (R22): `.strict()` lo rechaza.
 
@@ -263,6 +331,10 @@ desenlaces (`unauthenticated`, `forbidden`, `validation_error`, `not_found`, `co
 log sin datos). Nuevas: `renombrarTipoNivelAction(input)` → `PaisService.renombrarTipo` y
 `agregarNivelPaisAction(input)` → `PaisService.agregarNivel`. El `catch` de `esViolacionDeUnico` →
 `conflict` sigue en altas y renombres (R5) y cubre la carrera de agregar nivel (R49).
+Nueva el 2026-11-09: `reordenarTiposAction(input)` → `PaisService.reordenarTipos`, mismo borde
+(`puerta` → service en `comoPlataforma`), desenlaces `ok`, `validation_error`, `not_found`,
+`conflict` (con `motivo: "cambio_concurrente"`), `forbidden`, `unauthenticated` y `error`. No hay
+action de mover nodos ni de cambiar la clave o la profundidad de un tipo (R22, R55).
 
 ### 4.3 Services
 
@@ -270,14 +342,15 @@ log sin datos). Nuevas: `renombrarTipoNivelAction(input)` → `PaisService.renom
 |---|---|---|
 | `GeografiaService` | `listarArbolDePais(paisId, actor)` | rol → `repo.arbolDePais(paisId)` → `{ status: "ok", tipos, raices }` |
 | | `crear(input, actor)` | rol (R39) → `rechazoDeNombreDeEtiqueta` → `repo.contextoDeAlta(destino)` (`null` → `not_found`) → tipo de la profundidad (`null` → `validation_error`, R15) → hermanos por `normalizeName` (R16) → `validarCodigoDeTipo` (R17) → `repo.crear(…)` |
-| | `renombrar(input, actor)` | rol → nombre imprimible → `repo.hermanosDeNodo(id)` → choque normalizado excluyendo al propio (R18) → `repo.renombrar` |
+| | `renombrar(input, actor)` | rol → nombre imprimible → `repo.hermanosDeNodo(id)` → choque normalizado excluyendo al propio (R18) → `repo.renombrar(id, nombre, nombreAnterior, actorId)`; `cambio_concurrente` → `{ status: "conflict", motivo: "cambio_concurrente" }` (R61) |
 | | `cambiarActivacion(input, actor)` | rol → `repo.cambiarActivacion(id, activo)` (R19) |
 | | `contarOrdenesSinEntregar(input, actor)` | rol → `repo.profundidadDeNodo(id)`; 1/2/3 → `ordenes.contarSinEntregarPorNodoGeografico("provincia"/"canton"/"distrito", id)` (método de SLT-65, sin cambios); > 3 o inexistente → 0 (R20) |
 | | `listarArbol(actor)` (maestro, Tarifas) | Sin cambios |
 | `CargaDivisionService` | `cargar(paisId, archivo, actor)` | rol → archivo (sin cambios) → `repo.leerDivisionDePais(paisId)` (`null` → `not_found`) → columnas obligatorias según P (R30) → `planificarDivision` → `repo.importarDivision` |
 | `PaisService` | `crear(input, actor)` | rol → `crearPaisSchema` → nombre del catálogo → `repo.crear(datos con tipos)` |
-| | `renombrarTipo(input, actor)` (nuevo) | rol → `renombrarTipoNivelSchema` → `repo.renombrarTipo` → `no_existe` → `not_found`; `sin_cambio`/`renombrado` → `ok` (R25, R26) |
-| | `agregarNivel(input, actor)` (nuevo, P3) | rol → `agregarNivelPaisSchema` → `repo.agregarNivel` → `no_existe` → `not_found`; `tope` → `validation_error` en `paisId` («Este país ya tiene 10 niveles»); tipo → `{ status: "ok", tipo }` (R48, R49) |
+| | `renombrarTipo(input, actor)` (nuevo) | rol → `renombrarTipoNivelSchema` → `repo.renombrarTipo(tipoId, nombres, anterior, actor)` → `no_existe` → `not_found`; `sin_cambio`/`renombrado` → `ok` (R25, R26); `cambio_concurrente` → `conflict` con motivo (R61) |
+| | `agregarNivel(input, actor)` (nuevo, P3) | rol → `agregarNivelPaisSchema` → `repo.agregarNivel(paisId, nombres, profundidad, actor)` → `no_existe` → `not_found`; `tope` → `validation_error` en `paisId` («Este país ya tiene 10 niveles»); `cambio_concurrente` (P+1 ≠ `profundidad`) → `conflict` con motivo (R61); tipo → `{ status: "ok", tipo }` (R48, R49). El tope se mira antes que la profundidad |
+| | `reordenarTipos(input, actor)` (nuevo, 2026-11-09) | rol (R39) → `reordenarTiposSchema` (`validation_error`, R57) → `repo.reordenarTipos` → `no_existe` → `not_found`; `cambio_concurrente` → `conflict` con motivo; `sin_cambio`/`reordenado` → `{ status: "ok" }` (R55–R57) |
 | | `cambiarDisponible` | Sin cambios: no mira los niveles (R28) |
 
 Todos los métodos comprueban `GESTION_ROLES` (`ROLES_PLATAFORMA`) **antes** de tocar el repositorio
@@ -295,7 +368,7 @@ pasa a leer el nodo:
 | `contextoDeAlta({ paisId } \| { padreId })` | `{ paisId, profundidad, tipo: TipoNivelDTO \| null, codigoPadre, hermanos: {id, nombre}[] } \| null`; una consulta al padre (o al país) con sus hijos (o raíces) y el tipo de la profundidad siguiente |
 | `crear(datos, actorId)` | Transacción: `nodoGeografico.create` (con `tipoId`, `profundidad`, `padreId`, `paisId`, `nombre`, `codigoOficial`; `nombreNormalizado` lo pisa el trigger) → etiqueta con la cadena de nombres (subiendo por `padre_id`, a lo sumo P lecturas) → historial `nodo_geografico_creado`. Deja escapar el único. |
 | `hermanosDeNodo(id)` | Hermanos incluido él, o `null` |
-| `renombrar(id, nombre, actorId)` | Igual que hoy (`no_existe`/`sin_cambio`/`renombrado`), sobre el nodo; solo escribe `nombre` |
+| `renombrar(id, nombre, nombreAnterior, actorId)` | Igual que hoy (`no_existe`/`sin_cambio`/`renombrado`), sobre el nodo; solo escribe `nombre`. **2026-11-09:** si el nombre actual ya es `nombre` → `sin_cambio` (R18); si no, `updateMany({ where: { id, nombre: nombreAnterior } })` y, con 0 filas, `cambio_concurrente` (comparar y escribir en una sentencia, R61) |
 | `cambiarActivacion(id, activo, actorId)` | Igual que hoy, sobre el nodo; solo escribe `activo` |
 | `profundidadDeNodo(id)` | `number \| null` |
 | `leerDivisionDePais(paisId)` | `{ tipos: TipoNivelDTO[]; nodos: NodoExistente[] } \| null` (con `profundidad`), de `nodo_geografico` ordenado por `id` (orden estable de SL-20) |
@@ -303,10 +376,13 @@ pasa a leer el nodo:
 
 `GeoPrismaClient` pierde `provincia`, `canton` y `distrito` del `Pick` en las escrituras (R1).
 
-`PaisRepository` (escritor único de `tipo_nivel_geografico`, R43): `crear(datos con tipos, actor)` y
-`renombrarTipo(tipoId, singular, plural, actor) → "no_existe" | "sin_cambio" | "renombrado"` y
-`agregarNivel(paisId, singular, plural, actor) → "no_existe" | "tope" | TipoNivelDTO` (§2.4). Ninguno
-borra tipos (R50). `PaisPrismaClient` gana `tipoNivelGeografico`, `historialPlataforma` y `usuario`.
+`PaisRepository` (escritor único de `tipo_nivel_geografico`, R43): `crear(datos con tipos, actor)`,
+`renombrarTipo(tipoId, nombres, anterior, actor) → "no_existe" | "sin_cambio" | "cambio_concurrente" |
+"renombrado"`, `agregarNivel(paisId, nombres, profundidad, actor) → "no_existe" | "tope" |
+"cambio_concurrente" | TipoNivelDTO` y, nuevo el 2026-11-09, `reordenarTipos(paisId, niveles, actor) →
+"no_existe" | "cambio_concurrente" | "sin_cambio" | "reordenado"` (§2.4). Los tres toman el candado del
+país (§2.4). En `renombrarTipo`, `sin_cambio` (los nombres pedidos ya son los actuales) se mira antes
+que el «antes». Ninguno borra tipos (R50). `PaisPrismaClient` gana `tipoNivelGeografico`, `historialPlataforma` y `usuario`.
 Donde la pantalla del superadmin pintaba los nombres de nivel de `pais`, pasa a pintar los tipos del
 país (`TipoNivelDTO[]`), así el `''` de un país de 2 niveles no se pinta nunca.
 
@@ -328,6 +404,26 @@ interface NodoArbolPlataformaDTO { id: string; nombre: string; codigo: string | 
 
 `ProvinciaPlataformaDTO`/`CantonPlataformaDTO` se retiran si no queda consumidor (el árbol de la
 empresa, `ProvinciaArbolDTO`, no cambia).
+
+### 4.7 Cambio concurrente (R61, R57) — decisión del 2026-11-09
+
+Sin columna de versión ni migración: el cliente manda el «antes» que el modal mostró y el
+repositorio lo compara con la base dentro de la transacción, **después** de mirar si lo pedido ya está
+(eso es éxito, R18/R26/R56).
+
+| Escritura | «Antes» que viaja | Comparación |
+|---|---|---|
+| Renombre de nodo | `nombreAnterior` | `updateMany` con `nombre = nombreAnterior` en el `where` (una sentencia) |
+| Edición de nombres de tipo | `anterior.{nombreSingular,nombrePlural}` | Bajo el candado del país, los dos nombres actuales del tipo |
+| Agregar nivel | `profundidad` (= P+1 que se mostró) | Bajo el candado, número de tipos + 1 |
+| Reordenar | `niveles[].{tipoId, nombres}` | Bajo el candado, conjunto de ids y nombres actuales (§2.4) |
+| Alta de país, alta de nodo, retiro/reactivación | — | Ya cubiertos: `conflict` por nombre/código (R16, R24); estado pedido = actual es éxito (R19, P12) |
+
+Resultado común en services y actions: `{ status: "conflict"; motivo: "cambio_concurrente" }`, una
+variante **nueva** de la unión; los `conflict` que ya existían (nombre de hermano, país repetido, la
+carrera del único) no cambian de forma (R12). La pantalla, ante ese motivo, avisa «Este dato cambió
+mientras tanto; revisa el valor actual» (texto final en la maqueta), cierra el modal y hace
+`router.refresh()` para mostrar lo que hay en la base. Nada se escribe (R61).
 
 ## 5. CSV de división (R30–R34) — decisiones P4 y P6
 
@@ -354,21 +450,56 @@ empresa, `ProvinciaArbolDTO`, no cambia).
 
 ## 6. Pantalla (`app/(app)/plataforma/geografia/**`) — decisión P9
 
-**Maqueta antes de implementar (R52).** El árbol de N niveles, la lista de tipos del alta, la edición
-de tipos y «agregar nivel» pasan por una maqueta que hace una persona y aprueba el humano antes de
-escribir los componentes. Lo que sigue es el contrato funcional (qué datos y qué acciones hay), no la
-forma visual; la forma la fija la maqueta. El backend (T1–T5, T7, T8) no espera a la maqueta.
+**Maqueta aprobada (R52).** La forma visual de la pantalla es la maqueta T0.2, **aprobada por el
+humano el 2026-11-09**: lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7. Lo que
+sigue es el contrato funcional (qué datos y qué acciones hay); disposición, textos y estilos salen de
+la maqueta. Si algo de la maqueta choca con este contrato, T6 para y pregunta.
 
 - `page.tsx`: igual (404 a quien no es de plataforma antes de leer; `?pais=`), pasa `tipos` y `raices`.
 - `GeografiaAdminModule.tsx`: árbol recursivo de `NodoArbolPlataformaDTO`, con el singular del tipo de
   cada nodo; acciones por fila: renombrar, retirar/reactivar (con el conteo de R20), «Agregar
   <singular del tipo siguiente>» solo si existe tipo para profundidad + 1 (R21). Sin mover (R22).
-- `GeografiaPlataformaModule.tsx`: el alta de país pide una lista ordenada de tipos (añadir/quitar
-  filas, 2–10); la carga CSV muestra la equivalencia `nivel_k = <tipo>` para k = 1..P.
-- Nuevo `_components/TiposDeNivelPais.tsx`: lista de tipos del país con editar singular/plural y
-  «Agregar nivel» al final (oculto con 10 tipos); sin quitar (R50).
-- Para CR el árbol tiene los mismos tres niveles, nombres, acciones y mensajes que hoy (R12).
-- Componentes de `components/ui/` existentes; nada nuevo de shadcn.
+- `GeografiaPlataformaModule.tsx`: el alta de país pide una lista ordenada de tipos, titulada
+  «Niveles N (máximo 10)»; agregar fila oculto con 10, quitar fila no disponible con 2 (R62); las
+  filas se reordenan con `ListaReordenable` (R53, R54). La carga CSV muestra la equivalencia
+  `nivel_k = <tipo>` para k = 1..P.
+- Nuevo `_components/TiposDeNivelPais.tsx`: lista de tipos del país con editar singular/plural,
+  reordenar con `ListaReordenable` (el nuevo orden se ve en pantalla sin guardarse hasta confirmar,
+  R55) y «Agregar nivel» al final (oculto con 10 tipos); sin quitar (R50).
+- Nuevo `_components/ListaReordenable.tsx` (R53): cada fila con una manija ⠿ que es un `button`
+  (`aria-label` «Mover <nombre>, posición k de N»). Arrastre con los eventos nativos del navegador
+  (`draggable`, `dragstart`/`dragover`/`drop`) solo desde la manija; con la manija enfocada,
+  `ArrowUp`/`ArrowDown` mueven la fila una posición, el foco sigue en la manija y una región
+  `aria-live` anuncia la posición nueva. Sin flechas ni botones de subir/bajar visibles. Componente
+  controlado: recibe la lista y emite el nuevo orden; no llama a actions.
+- Nuevo `_components/ConfirmarCambio.tsx` (R58–R61): sobre `components/shared/Modal`
+  (`closeOnConfirm={false}`, el desenlace lo cierra). Recibe filas `{ etiqueta, antes, despues }` y la
+  acción a ejecutar; pinta el antes → después. Lo usan todas las escrituras de la tabla de abajo.
+- Para CR el árbol tiene los mismos tres niveles, nombres, acciones y mensajes que hoy (R12), más el
+  modal de confirmación de la decisión del 2026-11-09.
+- Componentes de `components/ui/` y `components/shared/` existentes; nada nuevo de shadcn; ninguna
+  librería nueva (arrastre nativo, §12).
+
+**Confirmación antes de escribir (R58–R61).** Flujo común: el superadmin pide guardar → la pantalla
+corre el esquema zod de §4.1 sobre lo escrito → si falla, error en el campo y no se abre el modal
+(R59) → si pasa, modal con antes → después → «Cancelar» no llama a nada (R59) → «Confirmar» llama a
+la action con el «antes» de §4.7 → `ok`: cierra y refresca; `validation_error`/`conflict` por nombre:
+error en el campo, como hoy; `conflict` con `motivo: "cambio_concurrente"`: aviso y refresco, sin
+escribir (R61). Esto reemplaza el criterio de SL-20 (comentarios de la ficha 375 en
+`GeografiaAdminModule.tsx`) de que renombrar y reactivar no piden confirmación.
+
+| Acción | Antes | Después |
+|---|---|---|
+| Alta de país | — | Código, nombre y los niveles en orden (`nivel_1`…`nivel_P`) |
+| Alta de nodo | — (padre: su cadena de nombres) | Nombre, código y tipo del nodo nuevo |
+| Renombre de nodo | Nombre actual | Nombre nuevo |
+| Edición de tipo | Singular y plural actuales | Singular y plural nuevos |
+| Reordenar niveles | Nombre de cada profundidad hoy | Nombre de cada profundidad tras el orden nuevo |
+| Agregar nivel | Niveles actuales (1..P) | Los mismos y el nuevo como nivel P+1 |
+| Retiro / reactivación | Activo / Retirado (en el retiro, con el conteo de R20) | Retirado / Activo |
+
+P11 (abierta): el interruptor «Disponible» y la carga CSV no están en la tabla mientras el humano no
+responda.
 
 ## 7. Historial de plataforma (R35–R38) — decisiones P3, P5, P7
 
@@ -381,6 +512,7 @@ forma visual; la forma la fija la maqueta. El backend (T1–T5, T7, T8) no esper
 | Alta de país | `pais_creado` + `tipo_nivel_geografico_creado` × P | `pais` / `tipo_nivel_geografico` | País / singular del tipo | `detalle = {origen: "alta_de_pais", profundidad}` en cada tipo |
 | Agregar nivel | `tipo_nivel_geografico_creado` | `tipo_nivel_geografico` | Singular del tipo nuevo | `detalle = {origen: "nivel_agregado", profundidad}` |
 | Edición de tipo | `tipo_nivel_geografico_renombrado` × nombres cambiados | `tipo_nivel_geografico` | Singular nuevo | `valor_anterior`, `valor_nuevo`, `detalle.campo` |
+| Reordenar niveles (2026-11-09) | `tipo_nivel_geografico_renombrado` × nombres cambiados | `tipo_nivel_geografico` (el tipo de cada profundidad) | Singular nuevo | `valor_anterior`, `valor_nuevo`, `detalle = {campo, origen: "reordenado"}` |
 
 Todo con `appendAccionPlataforma(tx, …)` dentro de la transacción del cambio. Nada en
 `historial_accion` (R38); el filtro de `/historico/acciones` sigue excluyendo `nodo_geografico` porque
@@ -459,7 +591,7 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R48, R49 | `tests/integration/db/pais-agregar-nivel.test.ts` (2 → 3: tipo creado y `pais.nivel_3_*` copiado; 4 → 5: solo tipo; nodos y otros tipos intactos; 10 → `tope`; dos altas en paralelo → una `conflict`; sin país → `no_existe`) y `pais-service.test.ts` (desenlaces y `validation_error` por nombre) |
 | R50 | `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` (incluye `tipoNivelGeografico`) y `geografia-plataforma-action.test.ts` (lista de exports sin action de quitar nivel) |
 | R51 | `tests/unit/types/pais-etiquetas.test.ts` (`etiquetasDePais` con nivel 3 vacío → la etiqueta del nivel 2; con nombre → el nombre) |
-| R52 | Revisión del reviewer: `progress/impl_SLT-46.md` anota la maqueta aprobada (fecha y referencia) con fecha anterior al primer commit de T6 |
+| R52 | Revisión del reviewer: `progress/impl_SLT-46.md` anota la maqueta aprobada (2026-11-09, lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7) con fecha anterior al primer commit de T6, y lo implementado sigue la maqueta |
 | R25, R26 | `tests/integration/db/pais-tipos-edicion.test.ts` (tipo 2 → tipo + `pais.nivel_2_*`; tipo 4 → solo tipo; igual → sin escribir; inexistente → `not_found`) y `pais-service.test.ts` |
 | R27 | `tests/components/etiquetas-geograficas.test.tsx` (las etiquetas salen de `pais.nivel_N_*` editado) + `pais-tipos-edicion.test.ts` (`PaisRepository.deLaEmpresa` devuelve el nombre nuevo) |
 | R28 | `tests/integration/db/pais-disponible.test.ts` (país de 4 niveles → disponible `ok`) |
@@ -470,13 +602,22 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R35, R36 | `tests/integration/db/geografia-registro-accion.test.ts` (filas, entidad `nodo_geografico`, etiqueta, en la misma tx: si el historial falla no queda el nodo) |
 | R37 | `pais-alta-tipos.test.ts`, `pais-agregar-nivel.test.ts` y `pais-tipos-edicion.test.ts` (los dos nombres cambiados → dos filas con `detalle.campo`) |
 | R38 | `geografia-registro-accion.test.ts` (`historial_accion` sin filas nuevas) |
-| R39 | `geografia-service.test.ts`, `carga-division-service.test.ts`, `pais-service.test.ts` (rol `maestro` → `forbidden`, doble de repo que falla si se le llama) y `geografia-plataforma-action.test.ts` |
+| R39 | `geografia-service.test.ts`, `carga-division-service.test.ts`, `pais-service.test.ts` (rol `maestro` → `forbidden`, doble de repo que falla si se le llama; incluye `reordenarTipos`) y `geografia-plataforma-action.test.ts` |
 | R40 | `tests/integration/db/geografia-superadmin-sin-empresa.test.ts` (ampliado a tipos y profundidad 4) |
 | R41 | `tests/integration/db/geo-nodo-rls.test.ts` (existente de SLT-43, sin cambios) |
 | R42 | `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` |
 | R43 | `tests/unit/guards/nodo-geografico-escritor-unico.guardia.test.ts` y `geografia-renombrado-punto-unico.guardia.test.ts` |
 | R44 | `slt46-nodo-copia-vieja.test.ts` (`pg_get_functiondef('orden_nodo_geografico')` igual al de SLT-43; `zona_distrito` sin cambios de esquema) + `tests/integration/db/orden-nodo-escritura.test.ts` (existente) |
 | R45 | Gate completo de CI: sin archivos nuevos en `e2e/`; E2E existentes en verde |
+| R53 | `tests/components/lista-reordenable.test.tsx` (arrastrar la fila 3 sobre la 1 → orden emitido; con la manija enfocada, `ArrowUp`/`ArrowDown` mueven una posición, el foco sigue en la manija y la región `aria-live` anuncia la posición; arrastrar desde fuera de la manija no mueve; no hay botones de subir/bajar) |
+| R54 | `tests/components/GeografiaPlataformaAltaPais.test.tsx` (reordenar y confirmar → `crearPaisAction` recibe `tipos` en el orden de pantalla) + `pais-alta-tipos.test.ts` existente (claves en el orden de la lista) |
+| R55 | `tests/integration/db/pais-reordenar-tipos.test.ts` (país de 4 tipos con nodos en las 4 profundidades: invertir 1↔2 y mover el 4 al 1 → nombres por profundidad; `pais.nivel_1..3_*` copiados; ids, claves, `digitos_codigo`, `codigo_hereda_prefijo` y todos los nodos —`tipo_id`, `profundidad`, `nombre`— iguales; CR: reglas de código intactas; país de 2 tipos: sin `nivel_3`, R46) |
+| R56 | `pais-reordenar-tipos.test.ts` (una fila `tipo_nivel_geografico_renombrado` por nombre cambiado con `detalle.campo` y `detalle.origen = "reordenado"`; orden actual → sin escritura ni historial; si el historial falla no queda ningún nombre cambiado) |
+| R57 | `tests/unit/types/pais-schemas.test.ts` (repetidos, 1 y 11 → error), `pais-service.test.ts` (desenlaces; `maestro` → `forbidden` con doble que falla) y `pais-reordenar-tipos.test.ts` (país inexistente → `no_existe`; falta un tipo, sobra uno, uno de otro país, nombre distinto → `cambio_concurrente` sin escribir) |
+| R58, R59 | `tests/components/confirmar-cambio.test.tsx` (pinta antes → después; cancelar no llama a la acción) y, por acción, `GeografiaPlataformaAltaPais.test.tsx` (alta de país), `geografia-arbol-n-niveles.test.tsx` (alta, renombre, retiro y reactivación de nodo) y `tipos-de-nivel-pais.test.tsx` (edición de tipo, reordenar, agregar nivel): dato inválido → sin modal y error en el campo, action no llamada; dato válido → modal con antes → después y action no llamada hasta confirmar |
+| R60 | `geografia-plataforma-action.test.ts` (cada action de escritura con una entrada inválida —nombre de 1 carácter, 11 tipos, `tipoId` repetidos— → `validation_error`, sin llamar a ningún método de escritura del repositorio) |
+| R61 | `tests/integration/db/geografia-cambio-concurrente.test.ts` (renombre de nodo, edición de tipo y agregar nivel con un «antes» viejo → `cambio_concurrente` sin escribir ni historial; «antes» viejo pero el valor ya es el pedido → `sin_cambio`; dos agregar nivel con la misma `profundidad` en paralelo → uno `ok`, otro `conflict`), `geografia-service.test.ts` y `pais-service.test.ts` (`cambio_concurrente` → `{status:"conflict", motivo:"cambio_concurrente"}`; los `conflict` de antes sin `motivo`) y los tests de componente de R58 (aviso y refresco ante ese motivo) |
+| R62 | `GeografiaPlataformaAltaPais.test.tsx` (título «Niveles 2 (máximo 10)» con 2 filas y «Niveles 10 (máximo 10)» con 10; con 2 filas no se puede quitar; con 10 no se puede agregar) |
 
 ## 12. Alternativas descartadas
 
@@ -513,6 +654,24 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 11. **Insertar un nivel en medio o quitar el último** (P3). Insertar en medio cambia la profundidad de
     nodos ya escritos (prohibido hasta SLT-48, R6); quitar choca con la baja lógica y con los nodos que
     ya usan el tipo. El humano lo descartó.
+12. **Reordenar moviendo los tipos** (cambiar la clave `nivel_<k>` de cada tipo, y con ella su regla de
+    código) en vez de reasignar nombres (2026-11-09). Los nodos apuntan a su tipo por `tipo_id`: un nodo
+    de profundidad 1 quedaría con el tipo `nivel_2`, contra P1, y la sincronía vieja → nodo se lo
+    pisaría en el siguiente eco (§2.2). Además, el único `(pais_id, clave)` haría chocar el intercambio a
+    mitad de camino. El humano fijó «solo reasigna los nombres».
+13. **Librería de arrastrar y soltar** (p. ej. `@dnd-kit/core` + `@dnd-kit/sortable`). Daría arrastre
+    táctil y accesibilidad hecha, pero es una dependencia nueva que pide los cuatro checks y aprobación
+    (`docs/architecture.md > Dependencias de terceros`) para una lista de 2–10 filas. Se usa el arrastre
+    nativo con teclado; si el humano pide táctil (P13), se reabre con los cuatro checks.
+14. **Columna de versión (`actualizado_en` o `version`) para el cambio concurrente.** Sería un `ADD
+    COLUMN` en `nodo_geografico` y `tipo_nivel_geografico` (aditivo, pero migración nueva, y el humano
+    pidió evitarlas) y la copia de SLT-43 no la mantiene en las escrituras por SQL. Comparar con el
+    «antes» que mostró el modal detecta lo que importa (que el valor que vio la persona ya no está) sin
+    tocar el esquema.
+15. **Validar solo en el servidor y abrir el modal con su respuesta** (una «prevalidación» por action).
+    Duplica cada action y aún así el dato puede cambiar entre prevalidar y guardar. Se valida en la
+    pantalla con los mismos esquemas, el servidor vuelve a validar al guardar y el «antes» cubre lo que
+    cambió.
 
 ## 13. Riesgos
 
@@ -529,7 +688,14 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
   JSDoc de `etiquetasDePais`. Tras un `down.sql` de `…120200`, un país de 2 niveles ya creado ganaría
   un `nivel_3` vacío en su siguiente escritura de `pais` (§3).
 - **Tests existentes que cambian de forma de entrada** (`{nivel, id}` → `{id}`; seis nombres → lista de
-  tipos): las aserciones de resultado se conservan; el reviewer lo comprueba (R12).
+  tipos): las aserciones de resultado se conservan; el reviewer lo comprueba (R12). Desde el
+  2026-11-09 también ganan el «antes» (`nombreAnterior`, `anterior`, `profundidad`) los tests ya
+  verdes de renombre de nodo, edición de tipo y agregar nivel (T3, T4 hechas): mismo criterio, solo
+  cambia la entrada.
+- **Reordenar en un país con nodos cambia lo que significan los nombres** (2026-11-09): tras invertir
+  Provincia y Cantón en CR, los nodos de profundidad 1 se llaman «Cantón» en la pantalla y en las
+  etiquetas de las empresas, y la regla de código de cada profundidad no se mueve. Es lo que decidió el
+  humano (solo nombres); el modal de confirmación lo muestra antes → después.
 
 ## 14. Dependencias de terceros
 

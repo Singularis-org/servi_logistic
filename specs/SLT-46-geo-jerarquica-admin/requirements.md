@@ -30,6 +30,9 @@
 > columna «Decisión» dice qué fila de `## Decisiones cerradas` cubre; «Alcance» es el bloque de arriba.
 > Las preguntas P1–P9 las respondió el humano el 2026-11-06 (filas «P<n>» de `## Decisiones
 > cerradas`); P2 y P3 cambiaron la propuesta y de ahí salen R46–R50.
+> Revisión F1.2 del 2026-11-09 (`spec_author`): la maqueta T0.2 aprobada y las decisiones del humano
+> de ese día (filas fechadas 2026-11-09 de `## Decisiones cerradas`) dan R53–R62. «Reordenar» es
+> reasignar los nombres de cada profundidad; ningún tipo ni nodo cambia de profundidad.
 
 ### Fuente de las escrituras y sincronía invertida
 
@@ -129,7 +132,7 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R39 | SI un rol que no es de plataforma invoca cualquier operación de esta pantalla (árbol del país, alta de país, edición de tipo, agregar nivel, alta, renombre, retiro y reactivación de nodo, conteo de órdenes, carga CSV, disponibilidad), ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | E2E (el rol se prueba en el service) |
+| R39 | SI un rol que no es de plataforma invoca cualquier operación de esta pantalla (árbol del país, alta de país, edición de tipo, reordenar niveles, agregar nivel, alta, renombre, retiro y reactivación de nodo, conteo de órdenes, carga CSV, disponibilidad), ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | E2E (el rol se prueba en el service) |
 | R40 | Las operaciones de R39 DEBEN completarse con un superadmin que no pertenece a ninguna empresa, sin fallar con `EmpresaNoResuelta`. | Historial |
 | R41 | SI una operación en el contexto de una empresa intenta escribir `nodo_geografico` o `tipo_nivel_geografico`, ENTONCES la base DEBE rechazarla (`42501`) sin escribir nada. | Alcance |
 
@@ -146,7 +149,27 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R52 | La pantalla (árbol de N niveles, lista de tipos del alta, edición de tipos y agregar nivel) NO DEBE implementarse hasta que exista una maqueta aprobada por el humano, con su fecha y su referencia anotadas en `progress/impl_SLT-46.md`, y lo implementado DEBE seguir esa maqueta. | P9 |
+| R52 | La pantalla (árbol de N niveles, lista de tipos del alta, edición de tipos y agregar nivel) NO DEBE implementarse hasta que exista una maqueta aprobada por el humano, con su fecha y su referencia anotadas en `progress/impl_SLT-46.md`, y lo implementado DEBE seguir esa maqueta. | P9; Maqueta T0.2 aprobada |
+
+### Reordenar niveles
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R53 | MIENTRAS el superadmin arma la lista de tipos del alta de país o reordena los niveles de un país ya creado, la pantalla DEBE permitir mover una fila arrastrándola por su manija (⠿) y, con la manija enfocada, una posición arriba o abajo con las flechas del teclado; NO DEBE mostrar flechas ni botones de subir y bajar. | Reordenar niveles arrastrando |
+| R54 | CUANDO el superadmin confirma el alta de un país tras reordenar su lista de tipos, el sistema DEBE crear las claves `nivel_1`…`nivel_P` en el orden en que la lista quedó en pantalla (R23). | Reordenar niveles arrastrando |
+| R55 | CUANDO el superadmin confirma un nuevo orden de los niveles de un país ya creado, el sistema DEBE dejar en el tipo de cada profundidad k el nombre singular y plural del tipo que quedó en la posición k y, DONDE k es 1, 2 o 3, copiarlo a `pais.nivel_k_singular`/`_plural`, todo en una sola transacción; NO DEBE cambiar el id, la clave, la profundidad ni la regla de código de ningún tipo, ni ningún nodo (ni su tipo, que sigue siendo el de su profundidad). | Reordenar niveles arrastrando; P1; ¿El nombre de tipo corregido se copia a `pais.nivel_N_*`? |
+| R56 | CUANDO un reordenamiento cambia nombres, el sistema DEBE guardar en la misma transacción una fila `tipo_nivel_geografico_renombrado` por cada nombre que cambió, con el anterior, el nuevo, el campo (`singular` o `plural`) y el origen «reordenado» en `detalle`; SI el orden pedido es el actual, ENTONCES DEBE responder éxito sin escribir nada ni guardar historial. | Reordenar niveles arrastrando; P7; Historial |
+| R57 | SI el reordenamiento trae tipos repetidos o menos de 2 o más de 10, ENTONCES el sistema DEBE responder `validation_error`; SI el país no existe, ENTONCES `not_found`; SI la lista no es exactamente el conjunto de tipos que el país tiene al guardar (falta uno, sobra uno o es de otro país) o algún nombre no es el que el tipo tiene al guardar, ENTONCES `conflict` (cambio concurrente); en ningún rechazo DEBE escribir nada. | Reordenar niveles arrastrando |
+
+### Confirmación antes de escribir
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R58 | CUANDO el superadmin pide guardar un alta de país, un alta de nodo, un renombre de nodo, una edición de nombres de tipo, un reordenamiento de niveles, un agregar nivel, o el retiro o la reactivación de un nodo, la pantalla DEBE validar los datos con los mismos esquemas de entrada que aplica el servidor y, si son válidos, DEBE mostrar un modal de confirmación con el antes → después del cambio; NO DEBE llamar a ninguna action de escritura hasta que el superadmin confirme en ese modal. | Confirmación antes de escribir |
+| R59 | SI los datos no pasan la validación de la pantalla, ENTONCES la pantalla NO DEBE abrir el modal de confirmación y DEBE mostrar el error en el campo; SI el superadmin cancela el modal, ENTONCES NO DEBE llamarse ninguna action de escritura. | Confirmación antes de escribir |
+| R60 | CUANDO llega a una action de escritura de esta pantalla una entrada que la pantalla habría rechazado, el sistema DEBE responder `validation_error` sin escribir nada (el servidor valida aunque la pantalla ya haya validado). | Confirmación antes de escribir |
+| R61 | SI al guardar un renombre de nodo, una edición de nombres de tipo o un agregar nivel el dato que el modal mostró como «antes» ya no es el de la base (otro superadmin lo cambió), ENTONCES el sistema DEBE responder `conflict` con motivo de cambio concurrente sin escribir nada, y la pantalla DEBE avisar que el dato cambió mientras tanto; SI el valor de la base ya es el pedido, ENTONCES rige R18 (éxito sin escribir). | Confirmación antes de escribir |
+| R62 | MIENTRAS el superadmin arma la lista de tipos del alta de país, el bloque DEBE titularse «Niveles N (máximo 10)», con N el número de filas, y la pantalla NO DEBE permitir quitar una fila cuando hay 2 ni agregar una cuando hay 10. | Título del alta de país |
 
 ### Cobertura de las decisiones cerradas
 
@@ -158,17 +181,21 @@
 | ¿País disponible sin 3 niveles antes de SLT-48? | R28, R29 |
 | Retirar nodo (baja lógica) | R7, R16, R19, R20, R42, R50 |
 | E2E | R39, R45 |
-| Historial | R35–R38, R40 |
+| Historial | R35–R38, R40, R56 |
 | Migraciones | R4, R8, R9, R10, R47 |
-| P1 Tipo de un nodo nuevo | R14 |
+| P1 Tipo de un nodo nuevo | R14, R55 |
 | P2 De 2 a 10 niveles | R8, R23, R24, R46, R47, R51 |
 | P3 Agregar un nivel al final | R37, R48, R49, R50 |
 | P4 Cabeceras neutras del CSV | R30, R31 |
 | P5 Entidad `nodo_geografico` | R35 |
 | P6 SL-20 R49 superado | R31 |
-| P7 Una fila por nombre de tipo cambiado | R37 |
+| P7 Una fila por nombre de tipo cambiado | R37, R56 |
 | P8 `--equivalencia-geografia` | R13 |
 | P9 Maqueta aprobada antes de la UI | R52 |
+| Maqueta T0.2 aprobada (2026-11-09) | R52, R53, R58, R62 |
+| Reordenar niveles arrastrando (2026-11-09) | R53, R54, R55, R56, R57 |
+| Confirmación antes de escribir (2026-11-09) | R58, R59, R60, R61 |
+| Título del alta de país (2026-11-09) | R62 |
 
 ## Preguntas abiertas
 Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondidas por el humano el
@@ -176,7 +203,20 @@ Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondida
 
 P10 (spec_author, revisión F1.2) respondida por el humano el 2026-11-06: pasa a `## Decisiones cerradas`.
 
-Ninguna.
+Revisión F1.2 del 2026-11-09 (`spec_author`). Mientras no se respondan, P12 y P13 siguen lo que ya
+hay y P11 queda fuera de R58; ninguna bloquea el backend.
+
+- **P11. ¿El interruptor «Disponible» y la carga CSV también piden confirmación?** La decisión nombra
+  guardar, editar, crear, agregar nivel y retirar/reactivar; esas dos acciones también escriben y no
+  se nombran. *Propuesta:* sí, con el mismo modal (disponible: «No disponible → Disponible»; CSV:
+  nombre del archivo y país, sin el resumen, que solo se sabe al cargar). Hoy R58 no las incluye.
+- **P12. Si otro superadmin ya retiró (o reactivó) el lugar mientras el modal estaba abierto, ¿se
+  avisa?** Hoy R19 (cerrado) responde éxito sin escribir. *Propuesta:* se queda así; la pantalla
+  recarga y muestra el estado. Si el humano quiere un aviso, haría falta un `conflict` y cambiaría R19.
+- **P13. ¿El arrastre tiene que funcionar en pantallas táctiles?** El arrastre nativo del navegador
+  no funciona con el dedo; hacerlo táctil pide una librería (`design.md §12`), que necesita su
+  aprobación. *Propuesta:* no; la pantalla del superadmin es de escritorio y el teclado es la
+  alternativa (R53).
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -199,3 +239,7 @@ Ninguna.
 | 2026-11-06 | P8. ¿Dónde vive la comparación fila a fila? | Modo de solo lectura `--equivalencia-geografia` en el script de SLT-43. |
 | 2026-11-06 | P10. ¿Etiqueta del nivel 3 en las pantallas de empresa de un país de 2 niveles? | Repetir la del nivel 2 (singular y plural), no la neutra «Nivel 3» que proponía el spec. Ocultar esas columnas queda para SLT-47. |
 | 2026-11-06 | P9. ¿La pantalla pasa por diseño? | Sí: árbol de N niveles, lista de tipos, edición de tipos y agregar nivel pasan por una maqueta que aprueba el humano antes de implementarlos; el backend puede avanzar antes. |
+| 2026-11-09 | Maqueta T0.2 aprobada | Aprobada por el humano («aprobado»): lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7. Es la forma visual de la pantalla. |
+| 2026-11-09 | Reordenar niveles arrastrando | Se reordena arrastrando por una manija ⠿, sin flechas visibles; con la manija enfocada, las flechas del teclado como alternativa. En el alta, reordena la lista antes de crear. En un país ya creado, solo reasigna los nombres (singular/plural) de cada profundidad: los nodos no se mueven y el tipo de cada nodo sigue siendo el de su profundidad (P1); una transacción, historial de una fila por nombre cambiado (P7) y copia a `pais.nivel_1..3_*`. |
+| 2026-11-09 | Confirmación antes de escribir | Toda acción de la pantalla que guarda, edita, crea, agrega nivel o retira/reactiva pide confirmación en un modal con el antes → después; la pantalla valida antes de mostrar el modal y el servidor vuelve a validar al guardar; si el dato cambió mientras tanto, avisa y no guarda (`conflict`). |
+| 2026-11-09 | Título del alta de país | «Niveles N (máximo 10)»; el mínimo de 2 se impone sin decirlo en el título (con 2 filas no se puede quitar otra). |

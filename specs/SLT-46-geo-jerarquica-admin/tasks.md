@@ -5,7 +5,10 @@
 > `pnpm exec vitest related --run <archivos tocados>` en verde, y un commit propio
 > (`feat(SLT-46): …` / `test(SLT-46): …`). Referencias a `design.md` como §n.
 >
-> P1–P10 están cerradas (2026-11-06, `requirements.md > Decisiones cerradas`).
+> P1–P10 están cerradas (2026-11-06, `requirements.md > Decisiones cerradas`). El 2026-11-09 el humano
+> aprobó la maqueta T0.2 y cerró «reordenar niveles arrastrando», «confirmación antes de escribir» y
+> el título del alta: de ahí R53–R62 y las tasks T3.3, T3.4, T4.5, T4.6, T6.4 y T6.5 (y el ajuste de
+> T6.1–T6.3). P11–P13 siguen abiertas sin bloquear el backend.
 >
 > Regla de oro: **T2 (la base) va antes que cualquier escritura de la app.** El código nuevo escribe el
 > nodo y confía en el trigger de copia; sin él, la geografía vieja se queda atrás.
@@ -33,13 +36,15 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 - [ ] **T0.1** Comprobar que la rama arranca en verde: `./init.sh` y, con base,
   `pnpm exec vitest run tests/integration/db/geo-sincronia-geografia.test.ts tests/integration/db/carga-division.test.ts`.
   *Hecho:* verde anotado en `progress/impl_SLT-46.md` con el sha de partida.
-- [ ] **T0.2** **Maqueta de la pantalla (P9, R52). La hace una persona y la aprueba el humano; no la
-  hace un agente.** Cubre el árbol de N niveles (con el tipo de cada nodo y «agregar hijo»), la lista
-  ordenada de 2–10 tipos del alta de país, la edición de singular/plural de cada tipo y «agregar
-  nivel» al final (sin quitar). Contrato funcional en `design.md §6`. **Bloquea T6.1, T6.2 y T6.3.**
-  Corre en paralelo con T1–T5.
-  *Hecho:* en `progress/impl_SLT-46.md`, la referencia a la maqueta (archivo o enlace), quién la hizo,
-  y la aprobación del humano con fecha.
+- [x] **T0.2** **Maqueta de la pantalla (P9, R52). La aprueba el humano.** Cubre el árbol de N niveles
+  (con el tipo de cada nodo y «agregar hijo»), la lista ordenada de 2–10 tipos del alta de país, la
+  edición de singular/plural de cada tipo y «agregar nivel» al final (sin quitar). Contrato funcional
+  en `design.md §6`. Bloqueaba T6.
+  *Hecho (2026-11-09):* **aprobada por el humano** («aprobado», `progress/features/SLT-46.md >
+  Decisiones`, 2026-11-09): lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7, con
+  reordenar arrastrando por ⠿, título «Niveles N (máximo 10)» y modal de confirmación antes → después.
+  Falta copiar esa línea (fecha, enlace, versión y quién la hizo) a `progress/impl_SLT-46.md` antes del
+  primer commit de T6, como pide R52; lo hace el implementer o el leader, no el spec.
 
 ## T1 — Tipos y utilidades puras (depende de T0.1)
 
@@ -101,6 +106,24 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   *Hecho:* `tests/integration/db/pais-alta-tipos.test.ts`, `pais-tipos-edicion.test.ts` y
   `pais-agregar-nivel.test.ts` verdes (2 → 3 con copia a `pais.nivel_3_*`; 4 → 5; tope 10; carrera →
   único; nodos intactos).
+- [ ] **T3.3** *(2026-11-09)* `PaisRepository` e `IPaisRepository`: `reordenarTipos(paisId, niveles,
+  actor)` (§2.4 «Reordenar niveles») y el candado `FOR UPDATE` de la fila `pais` en `reordenarTipos`,
+  `renombrarTipo` y `agregarNivel`; `renombrarTipo` gana `anterior` y `agregarNivel` gana
+  `profundidad`, ambos con `cambio_concurrente` (§4.7). Sin migraciones ni valores de enum nuevos.
+  Adapta la llamada de `PaisService` lo justo para que `typecheck` siga verde (el contrato del
+  service es T4.5). (R46, R55, R56, R57, R61)
+  *Hecho:* `tests/integration/db/pais-reordenar-tipos.test.ts` verde (nombres por profundidad; copia a
+  `pais.nivel_1..3_*`; ids, claves, regla de código y nodos intactos; país de 2 sin `nivel_3`; historial
+  con `origen: "reordenado"`; orden actual sin escribir; `no_existe`; `cambio_concurrente` sin escribir)
+  y la parte de tipos de `tests/integration/db/geografia-cambio-concurrente.test.ts`;
+  `pais-tipos-edicion.test.ts` y `pais-agregar-nivel.test.ts` siguen verdes con la entrada nueva
+  (mismos resultados).
+- [ ] **T3.4** [P] *(2026-11-09)* `GeoRepository.renombrar(id, nombre, nombreAnterior, actorId)` con
+  `cambio_concurrente` por comparar y escribir en una sentencia (§4.4, §4.7); adapta la llamada de
+  `GeografiaService` lo justo para `typecheck`. (R18, R61)
+  *Hecho:* la parte de nodos de `geografia-cambio-concurrente.test.ts` verde («antes» viejo →
+  sin escribir ni historial; valor ya pedido → `sin_cambio`); `geo-repository.escrituras.test.ts` y
+  `geografia-renombrado.test.ts` verdes con la entrada nueva.
 
 ## T4 — Services y actions (depende de T3)
 
@@ -119,6 +142,23 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   *Hecho:* `tests/unit/actions/geografia-plataforma-action.test.ts` y
   `geografia-plataforma.composition-root.test.ts` verdes (incluida la lista de exports sin action de
   mover ni de quitar nivel; único → `conflict` en agregar nivel).
+- [ ] **T4.5** *(2026-11-09; depende de T3.3, T3.4)* Esquemas de §4.1: `nombreAnterior` en
+  `renombrarNodoGeograficoSchema`, `anterior` en `renombrarTipoNivelSchema`, `profundidad` en
+  `agregarNivelPaisSchema` y `reordenarTiposSchema` nuevo; `PaisService.reordenarTipos` /
+  `IPaisService`; variante `{ status: "conflict"; motivo: "cambio_concurrente" }` en los resultados de
+  `GeografiaService.renombrar`, `PaisService.renombrarTipo`, `agregarNivel` y `reordenarTipos`, con el
+  rol antes de todo. (R39, R55, R57, R60, R61)
+  *Hecho:* `tests/unit/types/pais-schemas.test.ts` y `tests/unit/types/geografia-nodo.test.ts` (campos
+  obligatorios nuevos; repetidos, 1 y 11 niveles rechazados); `pais-service.test.ts` y
+  `geografia-service.test.ts` (desenlaces nuevos; los `conflict` de antes sin `motivo`; `maestro` →
+  `forbidden` en `reordenarTipos` con doble que falla si se le llama).
+- [ ] **T4.6** *(2026-11-09; depende de T4.5)* `reordenarTiposAction` en
+  `lib/actions/geografia-plataforma.ts` y paso del «antes» en las actions existentes. (R39, R57, R60,
+  R61)
+  *Hecho:* `geografia-plataforma-action.test.ts` (entrada inválida en cada action de escritura →
+  `validation_error` sin escribir; `cambio_concurrente` → `conflict` con motivo; la lista de exports gana
+  `reordenarTiposAction` y sigue sin mover ni quitar nivel) y
+  `geografia-plataforma.composition-root.test.ts` verdes.
 
 ## T5 — Integración y equivalencia (depende de T4)
 
@@ -139,22 +179,42 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   *Hecho de T5:* todo verde con `HAY_BASE_DE_DATOS`; cada cambio de test existente listado en
   `progress/impl_SLT-46.md` con su motivo.
 
-## T6 — Pantalla (depende de **T0.2, maqueta aprobada**, y de T4)
+## T6 — Pantalla (depende de **T0.2, maqueta aprobada**, de T4 y de T4.6)
 
-Ninguna de estas tareas empieza sin la aprobación de T0.2 anotada en `progress/impl_SLT-46.md`. Lo
-implementado sigue la maqueta; si algo de la maqueta choca con `design.md §6`, se para y se pregunta.
-(R52)
+Maqueta aprobada el 2026-11-09 (T0.2). Ninguna de estas tareas empieza sin esa aprobación copiada en
+`progress/impl_SLT-46.md` (R52). Lo implementado sigue la maqueta (lienzo
+https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la maqueta choca con
+`design.md §6`, se para y se pregunta. T6.4 y T6.5 van antes que T6.1–T6.3, que los usan.
 
+- [ ] **T6.4** [P] *(2026-11-09)* `_components/ListaReordenable.tsx`: manija ⠿ como `button`,
+  arrastre nativo solo desde la manija, `ArrowUp`/`ArrowDown` con la manija enfocada, foco que se queda
+  en la manija, región `aria-live`; sin flechas visibles; controlado, sin actions (§6). (R53)
+  *Hecho:* `tests/components/lista-reordenable.test.tsx` verde.
+- [ ] **T6.5** [P] *(2026-11-09)* `_components/ConfirmarCambio.tsx` sobre `components/shared/Modal`:
+  filas antes → después, `closeOnConfirm={false}`, aviso y `router.refresh()` ante
+  `motivo: "cambio_concurrente"` (§4.7, §6). (R58, R59, R61)
+  *Hecho:* `tests/components/confirmar-cambio.test.tsx` verde (pinta antes → después; cancelar no llama
+  a la acción; confirmar la llama una vez; el motivo concurrente avisa y refresca).
 - [ ] **T6.1** `GeografiaAdminModule.tsx`: árbol recursivo, tipo por nodo, «Agregar <tipo>» solo con tipo
-  siguiente, sin mover ni elegir tipo (§6). (R14, R21, R22, R52)
-  *Hecho:* `tests/components/geografia-arbol-n-niveles.test.tsx` verde.
-- [ ] **T6.2** [P] `GeografiaPlataformaModule.tsx`: alta de país con lista de 2–10 tipos; equivalencia
-  `nivel_k` del CSV para P niveles. (R23, R30, R52)
-  *Hecho:* `tests/components/GeografiaPlataformaAltaPais.test.tsx` adaptado (2 y 10 filas; sin
-  añadir una 11.ª ni quitar por debajo de 2).
-- [ ] **T6.3** [P] `_components/TiposDeNivelPais.tsx` (editar nombres y «Agregar nivel» al final, oculto
-  con 10 tipos, sin quitar) y su uso en la página. (R25–R27, R48, R50, R52)
-  *Hecho:* `tests/components/tipos-de-nivel-pais.test.tsx` y `tests/unit/components/geografia-plataforma-page.test.tsx` verdes.
+  siguiente, sin mover ni elegir tipo (§6); alta, renombre (con `nombreAnterior`), retiro y
+  reactivación de nodo validan con el esquema y pasan por `ConfirmarCambio` (§6, tabla). (R14, R21,
+  R22, R52, R58, R59, R61)
+  *Hecho:* `tests/components/geografia-arbol-n-niveles.test.tsx` verde, con los casos de R58/R59 de
+  esas cuatro acciones.
+- [ ] **T6.2** [P] `GeografiaPlataformaModule.tsx`: alta de país con lista de 2–10 tipos titulada
+  «Niveles N (máximo 10)», reordenable con `ListaReordenable`, validada con `crearPaisSchema` y
+  confirmada con `ConfirmarCambio`; equivalencia `nivel_k` del CSV para P niveles. (R23, R30, R52, R53,
+  R54, R58, R59, R62)
+  *Hecho:* `tests/components/GeografiaPlataformaAltaPais.test.tsx` adaptado (2 y 10 filas; título con
+  N; sin añadir una 11.ª ni quitar por debajo de 2; orden de pantalla = orden enviado; dato inválido
+  sin modal; confirmar llama a la action).
+- [ ] **T6.3** [P] `_components/TiposDeNivelPais.tsx` (editar nombres, reordenar con
+  `ListaReordenable` y guardar el orden con `reordenarTiposAction`, «Agregar nivel» al final con su
+  `profundidad`, oculto con 10 tipos, sin quitar; cada escritura con `ConfirmarCambio` y su «antes») y
+  su uso en la página. (R25–R27, R48, R50, R52, R53, R55, R58, R59, R61)
+  *Hecho:* `tests/components/tipos-de-nivel-pais.test.tsx` (incluye reordenar sin guardar hasta
+  confirmar y el aviso de cambio concurrente) y `tests/unit/components/geografia-plataforma-page.test.tsx`
+  verdes.
 
 ## T7 — Guardias (depende de T3)
 
@@ -178,7 +238,7 @@ implementado sigue la maqueta; si algo de la maqueta choca con `design.md §6`, 
 
 ## T9 — Cierre
 
-- [ ] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R52) en `progress/impl_SLT-46.md`; R45: sin
+- [ ] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R62) en `progress/impl_SLT-46.md`; R45: sin
   archivos nuevos en `e2e/`; R52: aprobación de la maqueta anotada con fecha anterior al primer commit
   de T6.
 
@@ -215,6 +275,8 @@ Código:
 - `app/(app)/plataforma/geografia/_components/GeografiaAdminModule.tsx`
 - `app/(app)/plataforma/geografia/_components/GeografiaPlataformaModule.tsx`
 - `app/(app)/plataforma/geografia/_components/TiposDeNivelPais.tsx`
+- `app/(app)/plataforma/geografia/_components/ListaReordenable.tsx`
+- `app/(app)/plataforma/geografia/_components/ConfirmarCambio.tsx`
 - `scripts/geo-backfill-nodo.ts`
 
 Tests:
@@ -230,6 +292,7 @@ Tests:
 - `tests/unit/utils/division-csv.test.ts`
 - `tests/unit/types/geografia-nodo.test.ts`
 - `tests/unit/types/pais-etiquetas.test.ts`
+- `tests/unit/types/pais-schemas.test.ts`
 - `tests/unit/services/geografia-service.test.ts`
 - `tests/unit/services/carga-division-service.test.ts`
 - `tests/unit/services/pais-service.test.ts`
@@ -240,6 +303,8 @@ Tests:
 - `tests/components/GeografiaPlataformaAltaPais.test.tsx`
 - `tests/components/geografia-arbol-n-niveles.test.tsx`
 - `tests/components/tipos-de-nivel-pais.test.tsx`
+- `tests/components/lista-reordenable.test.tsx`
+- `tests/components/confirmar-cambio.test.tsx`
 - `tests/components/etiquetas-geograficas.test.tsx`
 - `tests/integration/db/slt46-nodo-copia-vieja.test.ts`
 - `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts`
@@ -251,6 +316,8 @@ Tests:
 - `tests/integration/db/pais-alta-tipos.test.ts`
 - `tests/integration/db/pais-tipos-edicion.test.ts`
 - `tests/integration/db/pais-agregar-nivel.test.ts`
+- `tests/integration/db/pais-reordenar-tipos.test.ts`
+- `tests/integration/db/geografia-cambio-concurrente.test.ts`
 - `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts`
 - `tests/integration/db/pais-disponible.test.ts`
 - `tests/integration/db/geografia-registro-accion.test.ts`
