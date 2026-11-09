@@ -89,7 +89,7 @@ Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 
 
 ### T4 — Cierre
 
-- [ ] **T4.1** — `./init.sh` verde. **Hecho:** sin rojos ni aviso de tamaño; revisión del diff: nada
+- [x] **T4.1** — `./init.sh` verde. **Hecho:** sin rojos ni aviso de tamaño; revisión del diff: nada
   en `lib/`, `db/` ni migraciones (R72).
 
 ## Trazabilidad R → test (S1)

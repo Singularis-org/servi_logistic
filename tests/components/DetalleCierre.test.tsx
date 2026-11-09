@@ -190,6 +190,47 @@ describe("R2, R3 — identidad, estado y retención arriba", () => {
     expect(dialogo.textContent).toContain("Bodega central · GAM · 8F2A11C4 · Solicitado 2026-11-07 18:42");
   });
 
+  it("aprobado: la fecha de resolución y quién lo resolvió", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: "Carlos R." },
+    });
+    expect((await cabecera()).textContent).toContain(
+      "Bodega central · GAM · 8F2A11C4 · Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10 por Carlos R.",
+    );
+  });
+
+  it("rechazado: la fecha del rechazo", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, estado: "rechazado", resueltoAt: "2026-11-08T01:20:00.000Z" },
+    });
+    expect((await cabecera()).textContent).toContain("Solicitado 2026-11-07 18:42 · Rechazado 2026-11-07 19:20");
+  });
+
+  it("vencido: «Del … · venció sin solicitarse»", async () => {
+    mensajero("central", "vencido", { detalle: { ...MENSAJERO, estado: "vencido" } });
+    expect((await cabecera()).textContent).toContain("8F2A11C4 · Del 2026-11-07 18:42 · venció sin solicitarse");
+  });
+
+  it("bodega: quién lo solicitó, cuántos mensajeros, folio y fecha", async () => {
+    bodega("central", "decidir");
+    expect((await cabecera()).textContent).toContain(
+      "Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros · C07B3E19 · Solicitado 2026-11-07 19:05",
+    );
+  });
+
+  it("bodega recibida: «Recibido … por …»", async () => {
+    bodega("central", "solo lectura", {
+      ...BODEGA,
+      conciliado: true,
+      faltaPorRecibir: "0.00",
+      conciliadoAt: "2026-11-08T15:12:00.000Z",
+      conciliadoPorNombre: "Carlos R.",
+    });
+    expect((await cabecera()).textContent).toContain(
+      "Solicitado 2026-11-07 19:05 · Recibido 2026-11-08 09:12 por Carlos R.",
+    );
+  });
+
   it("con 2 reprogramadas retenidas la cabecera lo dice; con 0, nada", async () => {
     mensajero("central", "decidir");
     expect(await screen.findByText("Retiene 2 paquetes reprogramados para hoy")).toBeTruthy();

@@ -87,3 +87,26 @@ Negativos con valores que no aparecen por casualidad: R9 busca `₡94.350`, `₡
 MCP del grafo: el índice de este worktree no existe; se trabajó con Grep/Read.
 
 **Veredicto:** S1 implementada y probada (57 tests nuevos + B7 y censo, 12 mutaciones muertas); el gate local no corre por `feature_list.json` y el tamaño del PR está en rojo (3122/1000): requiere decisión del leader/humano.
+
+## Revisión 2382740f — cambios pedidos (B1-B3), 2026-11-09
+
+**B1 — R2 completo.** Cinco tests nuevos en `tests/components/DetalleCierre.test.tsx`, con literales en la cabecera: aprobado («… · Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10 por Carlos R.»), rechazado («… · Rechazado 2026-11-07 19:20»), vencido («8F2A11C4 · Del 2026-11-07 18:42 · venció sin solicitarse»), subtítulo de bodega («Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros · C07B3E19 · Solicitado 2026-11-07 19:05») y bodega recibida («… · Recibido 2026-11-08 09:12 por Carlos R.»). `DetalleCierre.test.tsx`: 24/24 contra `slt95_s1`. Mutaciones (aplicadas con autocomprobación y revertidas):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| B1a | `fechasMensajero` sin la fecha de resolución | 2 rojos (aprobado, rechazado) |
+| B1b | `fechasMensajero` sin quién resolvió | 1 rojo (aprobado) |
+| B1c | `fechasBodega` sin «Recibido …» | 1 rojo (bodega recibida) |
+| B1d | `fechasBodega` sin «por …» | 1 rojo (bodega recibida) |
+| B1e | subtítulo de bodega sin quién ni cuántos | 1 rojo (subtítulo de bodega) |
+| B1f | sin la rama de vencido | 1 rojo (vencido) |
+
+No apareció ningún fallo de lógica; no se tocó código de la app.
+
+**B2 — T4.1.** El gate local del leader salió verde: `INIT_EXIT=0`, base `slt95_s1`, tras `8f0a4d87`. T4.1 marcada en `tasks.md`. Los bloqueos de arriba (slug de `feature_list.json` y tamaño del PR) quedaron resueltos por el leader y Carlos (`15b532d3`).
+
+**B3 — E2E en local.** Base desechable NUEVA `slt95_e2e` (mismo Postgres local, `DROP/CREATE`, `prisma migrate deploy` «All migrations have been successfully applied», `pnpm run db:seed` «Seed de catalogos completado»). `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3044` y secretos efímeros, como `gate.yml` (BUILD_EXIT=0). Sin otro servidor en 3000/3044/54329. `E2E_PUERTO=3044 pnpm exec playwright test --project=dinero --reporter=list`: el grupo contiene los tres specs pedidos (`ajuste-pago-mensajero-cierre` 2 ok, `cierre-bodega-satelite` 3 ok, `cierres-admin` 3 ok).
+
+- Corrida 1: `84 passed (4.1m)`, E2E_EXIT=0.
+- Corrida 2 (misma base, seguida): `84 passed (4.0m)`, E2E_EXIT=0.
+- 0 failed, 0 skipped, 0 flaky en las dos. Nada que atribuir a S1 ni a inestables conocidos.
