@@ -83,9 +83,10 @@ export const contextoPagoMensajeros = (mensajeros: number, ajustes: number): str
     : cuantos(mensajeros, "mensajero", "mensajeros");
 export const NOTA_LE_QUEDA_MENSAJERO = `sin ${IMPUESTO_ROTULO}, ya restados mensajero y bodega`;
 export const NOTA_LE_QUEDA_BODEGA = `sin ${IMPUESTO_ROTULO}, ya restados mensajeros y satélite`;
-// «1 entregada» y no `cuantos(n, "entregada", …)`: el literal suelto es un código de estado retirado (455).
+// Texto propio y no el nombre del resultado: el participio plural suelto («entregadas») es el
+// nombre de un estado retirado (ficha 455) y el nombre vigente pide su botón de información (456).
 export const contextoGestiones = (entregadas: number, vuelven: number): string =>
-  `${entregadas === 1 ? "1 entregada" : `${entregadas} entregadas`} · ${vuelven} vuelven o con novedad`;
+  `${cuantos(entregadas, "entrega", "entregas")} · ${vuelven} vuelven o con novedad`;
 export const contextoTuGanancia = (ajustados: number): string =>
   ajustados === 0
     ? ""

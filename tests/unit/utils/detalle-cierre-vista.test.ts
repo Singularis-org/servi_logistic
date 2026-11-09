@@ -115,7 +115,7 @@ describe("cifrasDe (R6, R8)", () => {
       ["Gestiones", "19"],
       ["Tu ganancia", "3000.00"],
     ]);
-    expect(cifras.map((c) => c.contexto)).toEqual(["", "12 entregadas · 7 vuelven o con novedad", "1 pago ajustado por la bodega"]);
+    expect(cifras.map((c) => c.contexto)).toEqual(["", "12 entregas · 7 vuelven o con novedad", "1 pago ajustado por la bodega"]);
   });
 
   it("bodega: la cifra 2 es «Debe llegar a la central» y la 3 «Pago a mensajeros»", () => {
