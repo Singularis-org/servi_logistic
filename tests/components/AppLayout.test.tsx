@@ -163,12 +163,28 @@ vi.mock("@/lib/ayuda/catalogo", async (importOriginal) => {
 // ⭑ SL-20 (design §7; R19) — los nombres de nivel del país de la empresa. Se doblan las dos piezas:
 //   · el servicio, para saber CON QUÉ empresa se preguntó (y que el superadmin no pregunta);
 //   · el proveedor, para AFIRMAR QUE ALGUIEN LE PASA LAS ETIQUETAS, no que se importa.
-const { etiquetasDeEmpresaMock, propsDelProveedorEtiquetas } = vi.hoisted(() => ({
-  etiquetasDeEmpresaMock: vi.fn(),
-  propsDelProveedorEtiquetas: [] as { etiquetas: unknown }[],
-}));
+// SLT-81 (design §7.1): la lectura es `paisDeLaEmpresaParaUi`, que trae las etiquetas Y la regla del
+// teléfono; `paisDeLaEmpresaMock` la doble y `etiquetasDeEmpresaMock` sigue dando las etiquetas.
+const { etiquetasDeEmpresaMock, telefonoDeEmpresaMock, propsDelProveedorEtiquetas, propsDelProveedorPais } =
+  vi.hoisted(() => ({
+    etiquetasDeEmpresaMock: vi.fn(),
+    telefonoDeEmpresaMock: vi.fn(),
+    propsDelProveedorEtiquetas: [] as { etiquetas: unknown }[],
+    propsDelProveedorPais: [] as { telefono: unknown }[],
+  }));
 vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
-  construirPaisService: () => ({ etiquetasDeEmpresa: etiquetasDeEmpresaMock }),
+  construirPaisService: () => ({
+    paisDeLaEmpresaParaUi: async (organizacionId: string) => ({
+      etiquetas: await etiquetasDeEmpresaMock(organizacionId),
+      telefono: telefonoDeEmpresaMock() ?? null,
+    }),
+  }),
+}));
+vi.mock("@/providers/PaisDeLaEmpresaProvider", () => ({
+  PaisDeLaEmpresaProvider: ({ telefono, children }: { telefono: unknown; children: ReactNode }) => {
+    propsDelProveedorPais.push({ telefono });
+    return <>{children}</>;
+  },
 }));
 vi.mock("@/providers/EtiquetasGeograficasProvider", () => ({
   EtiquetasGeograficasProvider: ({ etiquetas, children }: { etiquetas: unknown; children: ReactNode }) => {
@@ -628,7 +644,9 @@ describe("SL-20/T5.1 — el layout baja los nombres de nivel del país de la emp
 
   beforeEach(() => {
     propsDelProveedorEtiquetas.length = 0;
+    propsDelProveedorPais.length = 0;
     etiquetasDeEmpresaMock.mockReset();
+    telefonoDeEmpresaMock.mockReset();
     cookieTemaMock.mockReturnValue(undefined);
   });
 
@@ -662,6 +680,32 @@ describe("SL-20/T5.1 — el layout baja los nombres de nivel del país de la emp
     expect(screen.getByTestId("page-children")).toBeInTheDocument();
     expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: ETIQUETAS_NEUTRAS }]);
     expect(enLosLogs).toHaveBeenCalled();
+    enLosLogs.mockRestore();
+  });
+
+  it("SLT-81 (design §7.1): con empresa, la misma lectura baja al proveedor el prefijo y los dígitos", async () => {
+    const telefono = { paisNombre: "Panamá", prefijo: "507", digitosNacionales: 8 };
+    etiquetasDeEmpresaMock.mockResolvedValue(DEPARTAMENTO);
+    telefonoDeEmpresaMock.mockReturnValue(telefono);
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-pa" });
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(etiquetasDeEmpresaMock).toHaveBeenCalledTimes(1);
+    expect(propsDelProveedorPais).toEqual([{ telefono }]);
+  });
+
+  it("SLT-81 R23: el superadmin y una lectura rota bajan `telefono: null`, nunca el prefijo de otro país", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "s1", rol: "superadmin", organizacionId: null });
+    await renderLayout(<div>Contenido</div>);
+    expect(propsDelProveedorPais).toEqual([{ telefono: null }]);
+
+    propsDelProveedorPais.length = 0;
+    const enLosLogs = vi.spyOn(console, "error").mockImplementation(() => {});
+    etiquetasDeEmpresaMock.mockRejectedValue(new Error("sin país"));
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-rota" });
+    await renderLayout(<div>Contenido</div>);
+    expect(propsDelProveedorPais).toEqual([{ telefono: null }]);
     enLosLogs.mockRestore();
   });
 });

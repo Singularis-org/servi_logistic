@@ -280,3 +280,31 @@ export const ETIQUETAS_NEUTRAS: EtiquetasGeograficas = {
   canton: { singular: "Nivel 2", plural: "Nivel 2" },
   distrito: { singular: "Nivel 3", plural: "Nivel 3" },
 };
+
+/**
+ * SLT-81 (design §7.1; R18–R23) — la regla del teléfono del país de la empresa, para pintarla junto a
+ * un teléfono. `null` si al país le falta el prefijo o los dígitos (R23): entonces no se pinta el
+ * prefijo de ningún otro país.
+ */
+export interface TelefonoDelPais {
+  paisNombre: string;
+  prefijo: string;
+  digitosNacionales: number;
+}
+
+export function telefonoDelPais(
+  pais: Pick<PaisDTO, "nombre" | "prefijoTelefonico" | "telefonoDigitosNacionales">,
+): TelefonoDelPais | null {
+  if (!pais.prefijoTelefonico || pais.telefonoDigitosNacionales === null) return null;
+  return {
+    paisNombre: pais.nombre,
+    prefijo: pais.prefijoTelefonico,
+    digitosNacionales: pais.telefonoDigitosNacionales,
+  };
+}
+
+/** SLT-81 (design §7.1): lo que el layout del portal baja del país de la empresa, en una sola lectura. */
+export interface PaisDeLaEmpresaParaUi {
+  etiquetas: EtiquetasGeograficas;
+  telefono: TelefonoDelPais | null;
+}

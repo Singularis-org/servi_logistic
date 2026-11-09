@@ -26,9 +26,11 @@ import {
   etiquetasDePais,
   MENSAJE_ZONA,
   PAIS_FUERA_DEL_CATALOGO,
+  telefonoDelPais,
   type CambiarDisponibilidadPaisInput,
   type DatosDeTipoDocumentoNuevo,
   type EtiquetasGeograficas,
+  type PaisDeLaEmpresaParaUi,
   type PaisDTO,
   type TipoDocumentoNuevoInput,
 } from "@/lib/types/pais";
@@ -156,6 +158,12 @@ export class PaisService implements IPaisService {
     // Inventar unas etiquetas aquí escondería ese fallo.
     if (!pais) throw new Error(`etiquetas de nivel: no se encontró el país de la empresa ${organizacionId}`);
     return etiquetasDePais(pais);
+  }
+
+  async paisDeLaEmpresaParaUi(organizacionId: string): Promise<PaisDeLaEmpresaParaUi> {
+    const pais = await this.repo.deLaEmpresa(organizacionId);
+    if (!pais) throw new Error(`datos del país para la UI: no se encontró el país de la empresa ${organizacionId}`);
+    return { etiquetas: etiquetasDePais(pais), telefono: telefonoDelPais(pais) };
   }
 
   // ── SLT-81 ──────────────────────────────────────────────────────────────────────────────────────

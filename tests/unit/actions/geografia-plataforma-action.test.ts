@@ -62,6 +62,7 @@ function paisDoble(o: Partial<Record<keyof IPaisService, Espia>> = {}) {
     crear: vi.fn(async () => ({ status: "conflict" as const, campo: "id" as const })),
     cambiarDisponible: vi.fn(async () => ({ status: "ok" as const, id: "CR", disponible: false })),
     etiquetasDeEmpresa: vi.fn(),
+    paisDeLaEmpresaParaUi: vi.fn(),
     // SLT-81
     actualizarDatos: vi.fn(async () => ({ status: "requiere_confirmacion" as const, empresas: 3 })),
     listarTiposDocumento: vi.fn(async () => ({ status: "ok" as const, tipos: [] })),

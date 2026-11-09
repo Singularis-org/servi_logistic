@@ -10,7 +10,8 @@ import { TemaProvider } from "@/providers/TemaProvider";
 import { AyudaProvider } from "@/providers/AyudaProvider";
 import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
 import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
-import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
+import { ETIQUETAS_NEUTRAS, type PaisDeLaEmpresaParaUi } from "@/lib/types/pais";
+import { PaisDeLaEmpresaProvider } from "@/providers/PaisDeLaEmpresaProvider";
 import { AsistenteProvider } from "@/providers/AsistenteProvider";
 import { AsistentePanel } from "@/components/shared/AsistentePanel";
 import { leerResumenesAyuda } from "@/lib/ayuda/catalogo";
@@ -34,6 +35,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+
+/** Sin empresa o con la lectura rota: nombres neutros y ningún prefijo (SLT-81 R23: nunca el de otro país). */
+const PAIS_SIN_EMPRESA: PaisDeLaEmpresaParaUi = { etiquetas: ETIQUETAS_NEUTRAS, telefono: null };
 
 export default async function AppLayout({
   children,
@@ -91,8 +95,10 @@ export default async function AppLayout({
   // ⭑ SL-20 (design §7; R19) — LA CUARTA LECTURA: cómo llama el país de la empresa a cada nivel
   // geográfico. Va en el mismo `Promise.all` por la razón de arriba. Sin empresa (el superadmin, o un
   // actor sin `organizacionId`) no hay país del que leerlas: `ETIQUETAS_NEUTRAS`, sin consulta.
-  const [usuarioRow, avisosRecordados, revisionSinpe, etiquetas] = !actor
-    ? ([null, false, null, ETIQUETAS_NEUTRAS] as const)
+  // SLT-81 (design §7.1): la MISMA lectura trae la regla del teléfono del país (prefijo y dígitos);
+  // no se suma ninguna consulta.
+  const [usuarioRow, avisosRecordados, revisionSinpe, paisDeLaEmpresa] = !actor
+    ? ([null, false, null, PAIS_SIN_EMPRESA] as const)
     : deLaPlataforma
     ? await Promise.all([
         comoPlataforma("SL-32", "nombre del superadmin en el pie", () =>
@@ -100,7 +106,7 @@ export default async function AppLayout({
         ),
         false,
         null,
-        ETIQUETAS_NEUTRAS,
+        PAIS_SIN_EMPRESA,
       ])
     : await Promise.all([
         new UserRepository(getPrismaClient()).findById(actor.usuarioId),
@@ -108,8 +114,9 @@ export default async function AppLayout({
         pideRevisionSinpe
           ? resolverRevisionSinpePendiente(actor, new ZonaRepository(getPrismaClient()))
           : null,
-        etiquetasDelActor(actor.organizacionId ?? null),
+        paisDelActor(actor.organizacionId ?? null),
       ]);
+  const { etiquetas, telefono } = paisDeLaEmpresa;
   const usuario =
     actor && usuarioRow
       ? { nombre: nombreCompletoUsuario(usuarioRow), rolLabel: ROL_LABELS[actor.rol] }
@@ -168,7 +175,10 @@ export default async function AppLayout({
                   SÓLO a `{children}`, como el mapa de la ayuda: es ahí donde viven las pantallas
                   que los pintan. No pinta ninguna caja. */}
               <AyudaProvider mapa={mapaAyuda}>
-                <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+                {/* SLT-81 (design §7.1) — el prefijo del país, junto a las etiquetas y por la misma razón. */}
+                <PaisDeLaEmpresaProvider telefono={telefono}>
+                  <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+                </PaisDeLaEmpresaProvider>
               </AyudaProvider>
             </SidebarInset>
           </SidebarProvider>
@@ -246,20 +256,21 @@ async function mapaAyudaDelActor(rol: RolValue | null): Promise<Record<string, s
 }
 
 /**
- * SL-20 (design §7; R19) — los nombres de nivel del país de la empresa del actor.
+ * SL-20 (design §7; R19) — los nombres de nivel del país de la empresa del actor, y desde SLT-81
+ * (design §7.1) la regla de su teléfono.
  *
  * Mismo criterio que `mapaAyudaDelActor`: este layout se pinta en TODAS las páginas del portal, así que
- * un fallo aquí no puede dar un 500 en todas. `etiquetasDeEmpresa` lanza si la empresa no tiene país
+ * un fallo aquí no puede dar un 500 en todas. `paisDeLaEmpresaParaUi` lanza si la empresa no tiene país
  * visible (un dato roto, no un caso normal: `organizacion.pais_id` es NOT NULL); entonces se pintan las
  * neutras («Nivel 1»…) y el error queda en `console.error`, que es lo que se lee en los logs. No se
  * sustituyen por las de un país: eso escondería el fallo detrás de unos nombres que parecen buenos.
  */
-async function etiquetasDelActor(organizacionId: string | null): Promise<EtiquetasGeograficas> {
-  if (!organizacionId) return ETIQUETAS_NEUTRAS;
+async function paisDelActor(organizacionId: string | null): Promise<PaisDeLaEmpresaParaUi> {
+  if (!organizacionId) return PAIS_SIN_EMPRESA;
   try {
-    return await construirPaisService().etiquetasDeEmpresa(organizacionId);
+    return await construirPaisService().paisDeLaEmpresaParaUi(organizacionId);
   } catch (error) {
-    console.error("[geografía] no se pudieron leer los nombres de nivel; se pintan los neutros", error);
-    return ETIQUETAS_NEUTRAS;
+    console.error("[geografía] no se pudieron leer los datos del país; se pintan los neutros", error);
+    return PAIS_SIN_EMPRESA;
   }
 }

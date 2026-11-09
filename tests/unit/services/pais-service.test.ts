@@ -336,6 +336,28 @@ describe("T2.3 — etiquetas de nivel de la empresa (R19)", () => {
     await expect(new PaisService(repo).etiquetasDeEmpresa("org-x")).rejects.toThrow("org-x");
   });
 
+  it("SLT-81 (design §7.1): paisDeLaEmpresaParaUi da etiquetas y teléfono con una sola lectura", async () => {
+    const repo = repoDoble({ deLaEmpresa: COSTA_RICA });
+    const r = await new PaisService(repo).paisDeLaEmpresaParaUi("org-cr");
+    expect(r.etiquetas).toEqual(etiquetasDePais(COSTA_RICA));
+    expect(r.telefono).toEqual({
+      paisNombre: COSTA_RICA.nombre,
+      prefijo: COSTA_RICA.prefijoTelefonico,
+      digitosNacionales: COSTA_RICA.telefonoDigitosNacionales,
+    });
+    expect(repo.deLaEmpresa).toHaveBeenCalledTimes(1);
+  });
+
+  it("SLT-81 R23: país sin prefijo → telefono null; empresa sin país → falla con su id", async () => {
+    const sinPrefijo = await new PaisService(
+      repoDoble({ deLaEmpresa: { ...PAIS_XA, prefijoTelefonico: null } }),
+    ).paisDeLaEmpresaParaUi("org-xa");
+    expect(sinPrefijo.telefono).toBeNull();
+    await expect(new PaisService(repoDoble({ deLaEmpresa: null })).paisDeLaEmpresaParaUi("org-x")).rejects.toThrow(
+      "org-x",
+    );
+  });
+
   it("ETIQUETAS_NEUTRAS no son las de ningún país: ni las de Costa Rica", () => {
     expect(ETIQUETAS_NEUTRAS).toEqual({
       provincia: { singular: "Nivel 1", plural: "Nivel 1" },

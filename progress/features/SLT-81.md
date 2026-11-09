@@ -30,6 +30,8 @@ de `dev`, que aún no trae el catálogo ni la validación de SLT-42.
 
 - 2026-11-07 (tras tanda 1, `progress/impl_SLT-81.md > Tanda 1`): los 11 desvíos del design quedan aceptados (humano), incluidos la clave del tipo (`[^a-z0-9]` → `_`, «N.I.T.» → `n_i_t`), el rechazo de un nombre sin letras ni dígitos, Tuvalu en vez de Bouvet en el test, `tipoDocumentoPorId` y `actualizarDatos` con número de empresas en el repositorio, y la migración en `20261108120000`.
 
+- 2026-11-09 (tras tanda 2, `progress/impl_SLT-81.md > Tanda 2 · bloque 2`): los 5 desvíos aceptados uno por uno (humano): aviso «Datos incompletos» con `role="note"`; error de lectura de tipos en vez de «falta tipo activo»; campo «Documento» en el alta de país; rechazo de R15 bajo la tabla, no toast; quitar filas del borrador del alta mientras quede más de una.
+
 ## Preguntas abiertas
 Ninguna.
 

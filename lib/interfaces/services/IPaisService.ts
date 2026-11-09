@@ -2,6 +2,7 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
   CambiarDisponibilidadPaisInput,
   EtiquetasGeograficas,
+  PaisDeLaEmpresaParaUi,
   PaisDisponibleDTO,
   PaisDTO,
   PaisParaAltaDTO,
@@ -122,4 +123,10 @@ export interface IPaisService {
    * sesión; sin empresa (el superadmin) el layout usa `ETIQUETAS_NEUTRAS` y no llama aquí.
    */
   etiquetasDeEmpresa(organizacionId: string): Promise<EtiquetasGeograficas>;
+
+  /**
+   * SLT-81 (design §7.1; R18–R23): las etiquetas y la regla del teléfono del país de la empresa, con
+   * la misma única lectura de `etiquetasDeEmpresa`. Lanza igual que ella si la empresa no tiene país.
+   */
+  paisDeLaEmpresaParaUi(organizacionId: string): Promise<PaisDeLaEmpresaParaUi>;
 }
