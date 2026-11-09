@@ -1118,6 +1118,10 @@ misma transacción que el país; la casilla viene desmarcada. Sin migración (la
   pasa de 5 a 6 (la fila «Disponibilidad» no tiene «antes»); se añade la aserción de esa fila.
 - `GeografiaPlataformaAltaPais.test.tsx` «R23, R54: confirmar llama una vez…»: el `toHaveBeenCalledWith`
   gana `disponible: false`.
+- `tests/unit/components/geografia-plataforma-page.test.tsx` «R23, R42 — alta de país eligiéndolo del
+  catálogo › el envío lleva el id elegido y los niveles en orden, sin nombre de país»: el
+  `toHaveBeenCalledWith` gana `disponible: false` (respaldo R63). Se le pasó a T6.6 y lo encontró la
+  review (vuelta 1, B1); corregido en la vuelta 2.
 
 ### R63 → test
 - `tests/unit/types/pais-schemas.test.ts` (describe «R63»): true/false se conservan; sin el campo, la

@@ -369,6 +369,8 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
         { singular: "Municipio", plural: "Municipios" },
         { singular: "Distrito", plural: "Distritos" },
       ],
+      // R63: la casilla «Disponible» viaja siempre; desmarcada por defecto.
+      disponible: false,
     });
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/plataforma/geografia?pais=SV"));
   });
