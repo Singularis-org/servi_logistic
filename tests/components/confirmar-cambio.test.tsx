@@ -131,28 +131,60 @@ describe("ConfirmarCambio", () => {
     expect(onRechazo).not.toHaveBeenCalled();
   });
 
-  it("con cambio concurrente avisa, refresca, no llama a onExito y deja solo Cerrar (R61)", async () => {
+  // D2 (humano, 2026-11-09): ante el cambio concurrente el modal se cierra y el aviso queda en la
+  // pantalla, fuera del diálogo (§4.7); antes el modal seguía abierto con el aviso y solo «Cerrar».
+  it("con cambio concurrente cierra el modal, avisa en la pantalla y refresca, sin onExito ni onRechazo (R61)", async () => {
     const accion = vi
       .fn()
       .mockResolvedValue({ status: "conflict", motivo: "cambio_concurrente" });
     const onExito = vi.fn();
     const onRechazo = vi.fn();
-    render(<Harness accion={accion} onExito={onExito} onRechazo={onRechazo} />);
+    const onOpenChange = vi.fn();
+    render(
+      <Harness
+        accion={accion}
+        onExito={onExito}
+        onRechazo={onRechazo}
+        onOpenChange={onOpenChange}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: "Sí, renombrar" }));
 
-    const aviso = await screen.findByRole("alert");
-    expect(aviso.textContent).toContain(
-      "Otra persona cambió este dato mientras tanto; revisa el valor actual.",
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    const aviso = screen.getByRole("alert");
+    expect(aviso.textContent).toBe("Este dato cambió mientras tanto; revisa el valor actual.");
     expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(accion).toHaveBeenCalledTimes(1);
     expect(onExito).not.toHaveBeenCalled();
     expect(onRechazo).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Sí, renombrar" })).toBeNull();
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: "Cerrar" }));
-    expect(accion).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  it("el aviso del cambio concurrente se olvida al volver a abrir el modal (D2)", async () => {
+    function HarnessReabrible() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reabrir
+          </button>
+          <ConfirmarCambio<Resultado>
+            open={open}
+            onOpenChange={setOpen}
+            titulo="¿Renombrar San José?"
+            filas={FILAS}
+            confirmLabel="Sí, renombrar"
+            accion={vi.fn().mockResolvedValue({ status: "conflict", motivo: "cambio_concurrente" })}
+          />
+        </>
+      );
+    }
+    render(<HarnessReabrible />);
+    await userEvent.click(screen.getByRole("button", { name: "Sí, renombrar" }));
+    await screen.findByRole("alert");
+    await userEvent.click(screen.getByRole("button", { name: "Reabrir" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("con otro desenlace cierra y pasa el resultado a onRechazo sin refrescar (R59)", async () => {

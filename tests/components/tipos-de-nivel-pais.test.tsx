@@ -191,7 +191,8 @@ describe("R53, R55 — reordenar sin guardar hasta confirmar", () => {
     expect(screen.queryByText("Orden sin guardar")).toBeNull();
   });
 
-  it("R61: con motivo «cambio_concurrente» el modal avisa y la página se refresca", async () => {
+  // D2 (humano, 2026-11-09): el modal se cierra y el aviso queda en la pantalla (antes, dentro del modal).
+  it("R61: con motivo «cambio_concurrente» el modal se cierra, la pantalla avisa y la página se refresca", async () => {
     const user = userEvent.setup();
     acciones.reordenarTiposAction.mockResolvedValue({ status: "conflict", motivo: "cambio_concurrente" });
     montar();
@@ -201,11 +202,10 @@ describe("R53, R55 — reordenar sin guardar hasta confirmar", () => {
     const dialogo = await screen.findByRole("dialog", { name: "Guardar el orden de los niveles" });
     await user.click(within(dialogo).getByRole("button", { name: "Sí, guardar" }));
 
-    expect(
-      await within(dialogo).findByText("Otra persona cambió este dato mientras tanto; revisa el valor actual."),
-    ).toBeInTheDocument();
-    expect(within(dialogo).queryByRole("button", { name: "Sí, guardar" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByText("Este dato cambió mientras tanto; revisa el valor actual.")).toBeInTheDocument();
     expect(routerMock.refresh).toHaveBeenCalled();
+    expect(acciones.reordenarTiposAction).toHaveBeenCalledTimes(1);
   });
 });
 

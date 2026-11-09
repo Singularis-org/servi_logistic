@@ -16,10 +16,10 @@ import {
 
 // SLT-46 (design §4.7 y §6; R58, R59, R61): toda escritura de la pantalla de geografía pasa por aquí
 // con el antes → después ya validado. El modal no se cierra solo al confirmar (`closeOnConfirm`
-// false): el desenlace de la action decide. Ante el cambio concurrente el modal SIGUE abierto con el
-// aviso y solo «Cerrar» (decisión del leader en T6.5, frente al «cierra el modal» de §4.7): así el
-// aviso queda dentro del foco atrapado del diálogo y la acción no se puede reintentar con el «antes»
-// viejo; el refresco ya trae el valor actual detrás.
+// false): el desenlace de la action decide. Ante el cambio concurrente (§4.7; decisión humana D2 de
+// la review, 2026-11-09) el modal se CIERRA sin escribir nada, el aviso queda en la pantalla, fuera
+// del diálogo, y la página se refresca para traer el valor actual. El aviso vive aquí (no en cada
+// módulo) para que los cinco usos lo pinten igual; se olvida al volver a abrir el modal.
 
 /** Lo mínimo que comparten los resultados de las actions de `geografia-plataforma.ts`. */
 export type ResultadoDeCambio = { status: string; motivo?: string };
@@ -58,17 +58,16 @@ export interface ConfirmarCambioProps<R extends ResultadoDeCambio> {
 
   // Textos con valor por defecto, sobreescribibles para i18n.
   cancelLabel?: string;
-  cerrarLabel?: string;
   encabezadoDato?: string;
   encabezadoAntes?: string;
   encabezadoDespues?: string;
   /** Lo que oye el lector de pantalla en lugar de «—». */
   textoSinValor?: string;
+  /** Aviso en pantalla (fuera del modal) cuando el dato cambió mientras tanto. */
   avisoConcurrente?: ReactNode;
 }
 
-const AVISO_CONCURRENTE =
-  "Otra persona cambió este dato mientras tanto; revisa el valor actual.";
+const AVISO_CONCURRENTE = "Este dato cambió mientras tanto; revisa el valor actual.";
 
 function esCambioConcurrente(resultado: ResultadoDeCambio): boolean {
   return resultado.status === "conflict" && resultado.motivo === "cambio_concurrente";
@@ -87,7 +86,6 @@ export function ConfirmarCambio<R extends ResultadoDeCambio>({
   onExito,
   onRechazo,
   cancelLabel = "Cancelar",
-  cerrarLabel = "Cerrar",
   encabezadoDato = "Dato",
   encabezadoAntes = "Antes",
   encabezadoDespues = "Después",
@@ -96,12 +94,12 @@ export function ConfirmarCambio<R extends ResultadoDeCambio>({
 }: Readonly<ConfirmarCambioProps<R>>) {
   const router = useRouter();
   const [concurrente, setConcurrente] = useState(false);
-  // El aviso pertenece a una apertura: al cerrarse el modal se olvida, sin efecto (patrón de
-  // ajustar estado cuando cambia una prop).
+  // El aviso sobrevive al cierre del modal (se ve en la pantalla) y se olvida al volver a abrirlo,
+  // sin efecto (patrón de ajustar estado cuando cambia una prop).
   const [openPrevio, setOpenPrevio] = useState(open);
   if (open !== openPrevio) {
     setOpenPrevio(open);
-    if (!open) setConcurrente(false);
+    if (open) setConcurrente(false);
   }
 
   async function confirmar() {
@@ -122,6 +120,7 @@ export function ConfirmarCambio<R extends ResultadoDeCambio>({
     }
     if (esCambioConcurrente(resultado)) {
       setConcurrente(true);
+      onOpenChange(false);
       router.refresh();
       return;
     }
@@ -130,62 +129,61 @@ export function ConfirmarCambio<R extends ResultadoDeCambio>({
   }
 
   return (
-    <Modal
-      open={open}
-      onOpenChange={onOpenChange}
-      title={titulo}
-      description={descripcion}
-      confirmLabel={confirmLabel}
-      confirmVariant={destructivo ? "destructive" : "default"}
-      cancelLabel={concurrente ? cerrarLabel : cancelLabel}
-      hideConfirm={concurrente}
-      closeOnConfirm={false}
-      onConfirm={confirmar}
-      size="lg"
-      // Objetivo táctil de 44px para los botones del pie, que el Modal pinta con la altura por defecto.
-      className="[&_[data-slot=button]]:min-h-11"
-    >
-      <div className="flex flex-col gap-4">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead scope="col">{encabezadoDato}</TableHead>
-              <TableHead scope="col">{encabezadoAntes}</TableHead>
-              <TableHead scope="col">{encabezadoDespues}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filas.map((fila) => (
-              <TableRow key={fila.etiqueta}>
-                <TableHead scope="row" className="text-muted-foreground">
-                  {fila.etiqueta}
-                </TableHead>
-                <TableCell className="whitespace-normal">
-                  {fila.antes === null ? (
-                    <>
-                      <span aria-hidden="true">—</span>
-                      <span className="sr-only">{textoSinValor}</span>
-                    </>
-                  ) : (
-                    fila.antes
-                  )}
-                </TableCell>
-                <TableCell className="font-medium whitespace-normal">
-                  {fila.despues}
-                </TableCell>
+    <>
+      {concurrente ? (
+        <Alert>
+          <AlertDescription>{avisoConcurrente}</AlertDescription>
+        </Alert>
+      ) : null}
+      <Modal
+        open={open}
+        onOpenChange={onOpenChange}
+        title={titulo}
+        description={descripcion}
+        confirmLabel={confirmLabel}
+        confirmVariant={destructivo ? "destructive" : "default"}
+        cancelLabel={cancelLabel}
+        closeOnConfirm={false}
+        onConfirm={confirmar}
+        size="lg"
+        // Objetivo táctil de 44px para los botones del pie, que el Modal pinta con la altura por defecto.
+        className="[&_[data-slot=button]]:min-h-11"
+      >
+        <div className="flex flex-col gap-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{encabezadoDato}</TableHead>
+                <TableHead scope="col">{encabezadoAntes}</TableHead>
+                <TableHead scope="col">{encabezadoDespues}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {children}
-        {concurrente ? (
-          <Alert variant="destructive">
-            <AlertDescription className="text-destructive">
-              {avisoConcurrente}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-      </div>
-    </Modal>
+            </TableHeader>
+            <TableBody>
+              {filas.map((fila) => (
+                <TableRow key={fila.etiqueta}>
+                  <TableHead scope="row" className="text-muted-foreground">
+                    {fila.etiqueta}
+                  </TableHead>
+                  <TableCell className="whitespace-normal">
+                    {fila.antes === null ? (
+                      <>
+                        <span aria-hidden="true">—</span>
+                        <span className="sr-only">{textoSinValor}</span>
+                      </>
+                    ) : (
+                      fila.antes
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium whitespace-normal">
+                    {fila.despues}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {children}
+        </div>
+      </Modal>
+    </>
   );
 }

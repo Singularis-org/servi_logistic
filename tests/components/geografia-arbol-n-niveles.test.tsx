@@ -302,7 +302,8 @@ describe("R58, R59, R61 — renombre de un lugar", () => {
     expect(toastMock.success).toHaveBeenCalledWith("«Arica» ahora es «Arica Nueva».");
   });
 
-  it("R61 — un `conflict` con `motivo: cambio_concurrente` avisa en el modal y refresca", async () => {
+  // D2 (humano, 2026-11-09): el modal se cierra y el aviso queda en la pantalla (antes, dentro del modal).
+  it("R61 — un `conflict` con `motivo: cambio_concurrente` cierra el modal, avisa en la pantalla y refresca", async () => {
     acciones.renombrarNodoAction.mockResolvedValue({ status: "conflict", motivo: "cambio_concurrente" });
     const { user, campo } = await abrirRenombreDeArica();
     await user.type(campo, "Arica Nueva");
@@ -310,9 +311,8 @@ describe("R58, R59, R61 — renombre de un lugar", () => {
     const dialogo = await screen.findByRole("dialog");
     await user.click(within(dialogo).getByRole("button", { name: "Sí, renombrar" }));
 
-    expect(
-      await within(dialogo).findByText("Otra persona cambió este dato mientras tanto; revisa el valor actual."),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("alert")).toHaveTextContent("Este dato cambió mientras tanto; revisa el valor actual.");
     expect(routerMock.refresh).toHaveBeenCalled();
     expect(acciones.renombrarNodoAction).toHaveBeenCalledTimes(1);
   });
