@@ -166,7 +166,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   service). (R14–R19)
 - [x] **T5.2** [P] `tests/integration/db/slt46-equivalencia-geografia.test.ts` (secuencia completa por el
   service en CR de prueba y en el de 4 niveles; comparación fila a fila). (R11, R12)
-- [ ] **T5.3** [P] `tests/integration/db/carga-division.test.ts` adaptado a la forma nueva sin cambiar
+- [x] **T5.3** [P] `tests/integration/db/carga-division.test.ts` adaptado a la forma nueva sin cambiar
   resultados, retirando solo el caso «decision 4: dos homónimos normalizados» (P6: SL-20 R49 superado
   por SLT-46), con un comentario en su lugar que cita P6; y `carga-division-n-niveles.test.ts` (país
   de 4 niveles y uno de 2). (R31, R33)

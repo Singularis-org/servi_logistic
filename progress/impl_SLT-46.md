@@ -679,3 +679,41 @@ profundidad con `IS NOT DISTINCT FROM`; un id de un solo lado también es difere
 **Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `Test Files 1 passed (1) · Tests 4 passed (4)`
 (dos rojos intermedios eran conteos esperados mal sumados por mí: 7 sembrados en 1–3 y 3 en 4, no 8 y 2);
 `eslint` → «No issues found»; `pnpm run typecheck` → exit 0.
+
+### T5.3 — carga CSV a la forma nueva y a P niveles (2026-11-09)
+
+**Archivos.** Adaptados `tests/integration/db/carga-division.test.ts` y
+`tests/integration/db/geo-lecturas-catalogo.test.ts`; nuevo `tests/integration/db/carga-division-n-niveles.test.ts`
+(11 casos).
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `carga-division` › «crea, cuelga cada nodo…», «R33: … `division_cargada`», «la segunda carga…», «a un nodo sin codigo…», «la geografia de OTRO pais…» | `creados` `{provincia, canton, distrito}` → `{1, 2, 3}` con las mismas cifras (también en `detalle.creados` del historial) | R33, §5, §7; leader: «es forma» |
+| `carga-division` › «decision 4: con dos homonimos normalizados…» | **Retirado**; en su lugar, un comentario que cita P6 (SL-20 R49 superado por SLT-46) | P6, design §5, tasks T5.3; leader |
+| `carga-division` › «T4.1 `listArbolDePais`…» → «T4.1 `arbolDePais`…» | Sin cast: llama a `GeoRepository.arbolDePais("XA")` y afirma `raices` con los mismos nodos, nombres, códigos, `activo` y orden (Región › Comuna › Aldea, Barrio); la forma pasa a `hijos` y cada nodo gana `profundidad` y `tipoId`. CR: `raices.length > 0` y sin «Región», igual que antes | §4.4; leader (a) |
+| `carga-division` › «retirar uno ya retirado…» y su CONTRAPRUEBA | `{ status: "ok", nivel: "provincia", id, activo }` → `{ status: "ok", id, activo }` (3 `toEqual`). **Ver nota abajo** | §4.1 (la entrada pierde `nivel`); contrato del service de T4.1 (`IGeografiaService`: «los `ok` ya no repiten el `nivel` de la entrada») |
+| `geo-lecturas-catalogo` › «R17 — CR y XA: mismos ids, nombres, codigos y flags propios» | Ya no importa `arbolDeTresNiveles` de `app/`: compara `GeoRepository.arbolDePais(p).raices` (sin `tipoId`) con `hoy.listArbolDePais` puesto en forma de nodo (profundidad 1/2/3 por tabla, distrito sin hijos), con el mismo `arbolCanonico` (ahora también canoniza `hijos`). Mismos valores esperados (CR y XA iguales, XA no vacío, código `"1"`, sin la provincia de CR) | Leader: «que pruebe el REPOSITORIO sin importar nada de `app/`» |
+
+**Nota para el reviewer (`nivel` en el `ok`).** El leader no nombró estas tres aserciones. Las cambié
+porque son la misma forma que autorizó para `geografia-superadmin-sin-empresa` (T5.4, «pasar el bloque a la
+forma nueva», cuyos `expect` de `renombrado`/`retiro` llevaban `nivel`) y porque el `nivel` del `ok` era el
+eco del campo de entrada que §4.1 retira: el status, el id y el `activo` siguen afirmados. Si no se acepta,
+basta revertir esas tres líneas (quedarían rojas: el service ya no devuelve `nivel` desde T4.1).
+
+**Nuevo `carga-division-n-niveles.test.ts`** (R30–R34, R36):
+- `XP` (4 niveles): crea a las 4 profundidades bajo sembrados y en rama nueva, cada nodo con `nivel_<k>`
+  y bajo su padre (`creados {1:1,2:1,3:2,4:2}`, `existentes 3`); una sola `division_cargada` (entidad `pais`,
+  `creados` por profundidad, actor); completa el código vacío de un nodo 4 sin renombrar ni reactivar, y
+  la recarga no escribe nodos ni historial; sin `codigo_nivel_4` → `archivo_rechazado` «Faltan columnas
+  obligatorias: codigo_nivel_4.»; hueco entre filas buenas → `invalido` línea 3, sin escribir; fallo del
+  único en el `createMany` de la profundidad 4 → nada de las profundidades 1–3 queda; CR no cuenta como
+  existente en XP.
+- `XT` (2 niveles, por `PaisRepository.crear`, sin `nivel_3`): cuatro columnas bastan, tipos por profundidad;
+  columnas `nivel_3`/`codigo_nivel_3` → dos avisos y nada a profundidad 3; completar códigos + historial
+  `creados {1,2}` en cada carga que escribe; código con espacio entre filas buenas → `invalido`, sin escribir.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `carga-division` + `carga-division-n-niveles` +
+`geo-lecturas-catalogo`: `Test Files 3 passed (3) · Tests 34 passed (34)` (antes: `carga-division` 9 rojos de
+16). `eslint` de los tres → «No issues found»; `pnpm run typecheck` → exit 0.

@@ -6,7 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
-import { arbolDeTresNiveles } from "@/app/(app)/plataforma/geografia/_components/arbol-de-tres-niveles";
+import type { NodoArbolPlataformaDTO, ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import * as hoy from "@/scripts/geo-equivalencia/lecturas-de-hoy";
 import { comoApp, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -72,12 +72,44 @@ function arbolCanonico(nodos: readonly ConNombre[]): unknown {
   return porGruposDeNombre(nodos).map((grupo) =>
     grupo.map((n) => {
       const copia: Record<string, unknown> = { ...n };
-      for (const hijos of ["cantones", "distritos"]) {
+      for (const hijos of ["cantones", "distritos", "hijos"]) {
         if (Array.isArray(copia[hijos])) copia[hijos] = arbolCanonico(copia[hijos] as ConNombre[]);
       }
       return copia;
     }),
   );
+}
+
+/** Un nodo del arbol por nodo, sin su `tipoId` (la lectura de hoy no lo tiene), a cualquier profundidad. */
+interface NodoComparable {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  activo: boolean;
+  profundidad: number;
+  hijos: NodoComparable[];
+}
+
+function delRepositorio(n: NodoArbolPlataformaDTO): NodoComparable {
+  return { id: n.id, nombre: n.nombre, codigo: n.codigo, activo: n.activo, profundidad: n.profundidad, hijos: n.hijos.map(delRepositorio) };
+}
+
+/**
+ * SLT-46 (T5.3): la lectura de hoy (provincias → cantones → distritos) con la forma del arbol por nodo.
+ * Solo cambia la forma: la profundidad es la de la tabla de cada fila, y un distrito no tiene hijos.
+ */
+function deHoyComoNodos(provincias: readonly ProvinciaPlataformaDTO[]): NodoComparable[] {
+  const plano = (n: { id: string; nombre: string; codigo: string | null; activo: boolean }, profundidad: number) => ({
+    id: n.id,
+    nombre: n.nombre,
+    codigo: n.codigo,
+    activo: n.activo,
+    profundidad,
+  });
+  return provincias.map((p) => ({
+    ...plano(p, 1),
+    hijos: p.cantones.map((c) => ({ ...plano(c, 2), hijos: c.distritos.map((d) => ({ ...plano(d, 3), hijos: [] })) })),
+  }));
 }
 
 /** Como conjunto: ordenado por su JSON (con las listas internas ya ordenadas por quien llama). */
@@ -248,12 +280,12 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
       const r = await conEscenario(async (tx, e) => {
         const salida = [];
         for (const paisId of ["CR", "XA"]) {
-          // SLT-46 (T4): `listArbolDePais` se retiro; el arbol de tres niveles es ahora la proyeccion
-          // que pinta la pantalla del arbol de N niveles (`arbolDePais`).
+          // SLT-46 (T5.3): `listArbolDePais` se retiro; el metodo del REPOSITORIO es `arbolDePais`, el
+          // arbol por nodo. Se compara con la lectura de hoy puesta en esa forma (sin nada de `app/`).
           const nuevo = await comoPlataforma("SLT-44", "test de R17", async () =>
-            arbolDeTresNiveles((await new GeoRepository(clienteConSavepoint(tx)).arbolDePais(paisId))?.raices ?? []),
+            ((await new GeoRepository(clienteConSavepoint(tx)).arbolDePais(paisId))?.raices ?? []).map(delRepositorio),
           );
-          const deHoy = await hoy.listArbolDePais(tx, paisId);
+          const deHoy = deHoyComoNodos(await hoy.listArbolDePais(tx, paisId));
           salida.push({ paisId, nuevo, deHoy });
         }
         return { e, salida };
