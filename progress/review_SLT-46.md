@@ -157,3 +157,48 @@ diseño son menores o esperan decisión humana.
 ## Para la vuelta 2
 Corregir B1. m1, m2 (tras D2), m4 y m5 son ediciones de spec y pueden ir en la misma tanda. Hay que volver a correr
 `tests/unit/components/geografia-plataforma-page.test.tsx` y `tests/components/GeografiaPlataformaAltaPais.test.tsx`.
+
+## Vuelta 2 (acotada a 34e3482d..2e569d84)
+
+### Veredicto: **APROBADO** (OK)
+
+Sin bloqueantes. Los hallazgos nuevos son menores (n1–n3).
+
+### Checklist
+- [x] **B1 resuelto** (`dab245c7`): `geografia-plataforma-page.test.tsx` espera `disponible: false` con R63 de respaldo. El archivo entero pasa.
+- [x] **D2 implementado** (`3e4a9908`). Ante `conflict` + `cambio_concurrente`, `ConfirmarCambio` hace tres cosas:
+  - llama a `onOpenChange(false)`;
+  - pinta `<Alert>` (`role="alert"`) fuera del `Modal`;
+  - hace `router.refresh()`.
+
+  El aviso se olvida al volver a abrir el modal. Se quitó `cerrarLabel`/`hideConfirm`. Los tests son:
+  - `confirmar-cambio.test.tsx`: cierre, aviso fuera del diálogo, refresh ×1, acción ×1, sin `onExito`/`onRechazo`; además un caso nuevo de reapertura que olvida el aviso;
+  - los casos R61 de `geografia-arbol-n-niveles.test.tsx` y de `tipos-de-nivel-pais.test.tsx`.
+
+  En `GeografiaAdminModule`, `cerrarModal` solo pone `modalAbierto=false` y no desmonta el componente, así que el aviso sobrevive. Correcto.
+- [x] **D3 sin cambios de aserción fuera de los textos** (`d67d6712`). En los tests solo cambian nombres de diálogo, «Cancelar» → «Volver» y «Sí, crear» → «Sí, agregar» (alta de lugar). Hay una aserción nueva: «Columnas del CSV de carga». Los cambios de los casos R61 son los de D2, no los de D3. No se tocaron filas, llamadas ni payloads.
+- [x] **Spec actualizado** (`1500c134`):
+  - m1: P11–P13 en `## Decisiones cerradas`, R58 con «Disponible» y CSV, `@dnd-kit` en design §6/§12/§14 y en tasks. No queda «arrastre nativo» ni «P11 (abierta)».
+  - m4: §4.3 `ok` sin `nivel`.
+  - m5: §4.1 `fieldErrors.formato`/`nombre`.
+  - m6: desvíos de cadena, `TipoNivelDTO` y orden de la carga CSV.
+  - m8: fila R39 aclarada en `impl_SLT-46.md`.
+  - §4.7 y tasks reescritos con D2. D1 anotado en design.
+- [x] **Ninguna dependencia nueva** en el rango: `package.json`, el lockfile y `docs/dependencias.md` no cambian.
+- [x] **Tamaño del PR:** `scripts/tamano-pr.mjs` sigue sin existir en el worktree (`MODULE_NOT_FOUND`, m7). Está la marca `<!-- tamano-pr-aceptado: … -->` en `progress/features/SLT-46.md`, con la cita del humano. Con eso queda cubierto.
+- [x] **Verificación ejecutada** (base `logistic_slt46` local, `--maxWorkers=1`, 8 GB):
+  - `confirmar-cambio`, `geografia-arbol-n-niveles`, `tipos-de-nivel-pais`, `GeografiaPlataformaAltaPais` y `geografia-plataforma-page`: 5 archivos, 96/96 en verde;
+  - `tsc --noEmit` en verde;
+  - `eslint` sobre `_components/` y los 5 tests, limpio.
+
+### «Sí, crear» → «Sí, agregar» (alta de lugar)
+No veo problema. D1 aceptó «Sí, <verbo>» de forma genérica. El título nuevo es «¿Agregar «X»?», y el botón con el mismo verbo sigue el patrón de los demás modales (renombrar, retirar, reactivar, guardar). El alta de país conserva «Sí, crear» con «¿Crear <país> con estos niveles?», que también es coherente. Ver n3.
+
+### Hallazgos nuevos (menores)
+- **n1. Dónde se ve el aviso concurrente.** El `Alert` se pinta donde está montado `ConfirmarCambio`:
+  - en `GeografiaAdminModule`, al final de la sección, debajo del árbol, que puede quedar fuera de la vista con un árbol largo;
+  - en el alta de país, dentro del diálogo «Nuevo país».
+
+  `role="alert"` lo anuncia igual al lector de pantalla y cumple R61. Es solo una cuestión de colocación visual, a cotejar con la maqueta si importa.
+- **n2. Otro mensaje de `conflict` en `TiposDeNivelPais`.** `mensajeDeDesenlace("conflict")` sigue diciendo «Otra persona cambió los niveles mientras tanto…». Es el desenlace de un `conflict` que no es `cambio_concurrente` (va por `onRechazo`) y no está en el rango. Lo anoto por coherencia con el texto nuevo de D2. No bloquea.
+- **n3. D3 lo anotó el leader, no el humano.** El cotejo con la maqueta v7 lo hizo el leader. «Sí, agregar» no aparece literalmente en la nota D3, aunque entra en el patrón. El reviewer sigue sin poder abrir el lienzo. Si el humano quiere, que lo confirme en el PR.
