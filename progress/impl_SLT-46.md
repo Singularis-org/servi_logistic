@@ -933,3 +933,12 @@ no el de producción). Anotar cada resultado en esta bitácora, sección «Ensay
 | Carga de 10 000 filas: tiempo y `creados` (frente a 120 s) | |
 | Vuelta + edición con código anterior | |
 | ¿El build corta si la migración falla? | |
+
+### Verificación de cierre de la tanda 3 (implementer, 2026-11-09)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → exit 0.
+- `eslint` de los 42 `.ts`/`.tsx` tocados desde `f12f6529` → exit 0.
+- Guardias (337 archivos con `guard` en la ruta, 7 lotes de ≤ 50, `--maxWorkers=1`, `logistic_slt46`):
+  `552`, `663`, `4 failed | 767 passed (771)`, `812`, `710`, `750 | 1 skipped`, `475`. Único rojo:
+  `dependencias-declaradas-presentes` (4, el preexistente aceptado). `guard-dependencias-aprobadas`, verde.
+  (El proceso se cortó por memoria del sistema DESPUÉS del séptimo lote; los 337 archivos habían corrido.)
