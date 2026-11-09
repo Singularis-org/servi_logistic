@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Central · cierres de bodega</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width:1440px;height:900px;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
+  <div aria-hidden="true" style="width:240px;background:#1C1C1A;flex-shrink:0"></div>
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div aria-hidden="true" style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff;flex-shrink:0"></div>
+    <div style="padding:24px 32px;display:flex;flex-direction:column;gap:16px">
+      <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <h1 style="margin:0;font-size:24px;font-weight:700">Cierres del día</h1>
+          <p style="margin:0;font-size:14px;color:#44403c">Los cierres que mandan las bodegas satélite. Márcalos recibidos cuando llegue el dinero.</p>
+        </div>
+        <div role="group" aria-label="Tipo de cierre" style="display:flex;padding:4px;border-radius:10px;background:#ffffff;border:1px solid #e7e5e4">
+          <button type="button" aria-pressed="true" style="font:inherit;font-size:14px;font-weight:600;height:36px;padding:0 16px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Bodega</button>
+          <button type="button" style="font:inherit;font-size:14px;height:36px;padding:0 16px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer">Mensajero</button>
+        </div>
+      </header>
+
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c">Fecha de solicitud<input type="text" value="Cualquier fecha" style="font:inherit;font-size:14px;height:36px;width:180px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c">Bodega<input type="text" value="Todas" style="font:inherit;font-size:14px;height:36px;width:180px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
+        <span style="flex:1"></span>
+        <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Descargar</button>
+      </div>
+
+      <div role="tablist" aria-label="Cierres de bodega por estado" style="display:flex;gap:24px;border-bottom:1px solid #e7e5e4">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
+          <button type="button" role="tab" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+
+      <section aria-label="Cierres de bodega" style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
+        <div style="display:grid;grid-template-columns:110px 1fr 1fr 120px 70px 1fr 1fr 1fr 170px 130px;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4">
+          <span>Folio</span><span>Bodega</span><span>Solicitó</span><span>Solicitado</span><span style="text-align:right">Cierres</span><span style="text-align:right">Debe llegar</span><span style="text-align:right">Recibido</span><span style="text-align:right">Falta</span><span style="padding-left:16px">Estado</span><span></span>
+        </div>
+        <sc-for list="{{filas}}" as="f" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:110px 1fr 1fr 120px 70px 1fr 1fr 1fr 170px 130px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{f.folio}}</span>
+            <span>{{f.bodega}}</span>
+            <span style="color:#44403c">{{f.quien}}</span>
+            <span style="color:#44403c">{{f.fecha}}</span>
+            <span style="text-align:right">{{f.n}}</span>
+            <span style="text-align:right;font-weight:600">{{f.debe}}</span>
+            <span style="text-align:right">{{f.recibido}}</span>
+            <span style="{{f.faltaStyle}}">{{f.falta}}</span>
+            <span style="padding-left:16px"><span style="{{f.estStyle}}">{{f.est}}</span></span>
+            <span style="text-align:right"><button type="button" style="{{f.btnStyle}}">{{f.accion}}</button></span>
+          </div>
+        </sc-for>
+      </section>
+      <p style="margin:0;font-size:13px;color:#44403c">{{pie}}</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { tab: 'pend' }; }
+  renderVals() {
+    const tab = this.state.tab;
+    const pill = (bg, fg) => 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:' + bg + ';color:' + fg;
+    const pend = pill('#fef3c7', '#92400e'), ok = pill('#d1fae5', '#047857'), inc = pill('#fff7ed', '#9a3412');
+    const primary = 'font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer';
+    const sec = 'font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;color:#111111;cursor:pointer';
+    const falta = (on) => 'text-align:right' + (on ? ';color:#92400e;font-weight:600' : ';color:#44403c');
+    const tabStyle = (on) => 'font:inherit;font-size:14px;font-weight:' + (on ? '600' : '500') + ';color:' + (on ? '#111111' : '#44403c') + ';background:transparent;border:0;border-bottom:2px solid ' + (on ? '#111111' : 'transparent') + ';padding:10px 2px;cursor:pointer';
+    const pendientes = [
+      { folio: '#C07B3E19', bodega: 'Limón', quien: 'Sara Satélite', fecha: '07/11 19:55', n: 3, debe: '₡438.163,27', recibido: '—', falta: '₡438.163,27', faltaStyle: falta(true), est: 'Pendiente de conciliar', estStyle: pend, accion: 'Ver / conciliar', btnStyle: primary },
+      { folio: '#D2201F0B', bodega: 'Turrialba', quien: 'Oscar Satélite', fecha: '07/11 18:20', n: 1, debe: '₡0,00', recibido: '—', falta: '₡0,00', faltaStyle: falta(false), est: 'Pendiente de conciliar', estStyle: pend, accion: 'Ver / conciliar', btnStyle: primary },
+      { folio: '#A1F20B77', bodega: 'Limón', quien: 'Sara Satélite', fecha: '06/11 20:02', n: 2, debe: '₡349.100,00', recibido: '₡334.100,00', falta: '₡15.000,00', faltaStyle: falta(true), est: 'Recibido incompleto', estStyle: inc, accion: 'Ver / corregir', btnStyle: primary }
+    ];
+    const conciliados = [
+      { folio: '#7B0D11C2', bodega: 'Limón', quien: 'Sara Satélite', fecha: '05/11 19:48', n: 3, debe: '₡414.980,50', recibido: '₡414.980,50', falta: '₡0,00', faltaStyle: falta(false), est: 'Recibido', estStyle: ok, accion: 'Ver', btnStyle: sec },
+      { folio: '#33E9A0D4', bodega: 'Limón', quien: 'Sara Satélite', fecha: '04/11 19:30', n: 2, debe: '₡338.800,00', recibido: '₡338.800,00', falta: '₡0,00', faltaStyle: falta(false), est: 'Recibido', estStyle: ok, accion: 'Ver', btnStyle: sec }
+    ];
+    return {
+      tabs: [
+        { label: 'Por conciliar 3', pick: () => this.setState({ tab: 'pend' }), style: tabStyle(tab === 'pend') },
+        { label: 'Conciliados 21', pick: () => this.setState({ tab: 'conc' }), style: tabStyle(tab === 'conc') }
+      ],
+      filas: tab === 'pend' ? pendientes : conciliados,
+      pie: tab === 'pend' ? 'Un cierre que llegó incompleto sigue aquí hasta que la diferencia se reciba o se corrija.' : 'Mostrando 2 de 21 · 10 por página'
+    };
+  }
+}
+</script>
+</body>
+</html>

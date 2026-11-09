@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Satélite · cierres de sus mensajeros</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width:1440px;height:900px;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
+  <div aria-hidden="true" style="width:240px;background:#1C1C1A;flex-shrink:0"></div>
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div aria-hidden="true" style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff;flex-shrink:0"></div>
+    <div style="padding:24px 32px;display:flex;flex-direction:column;gap:16px;min-height:0">
+      <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <h1 style="margin:0;font-size:24px;font-weight:700">Cierres del día</h1>
+          <p style="margin:0;font-size:14px;color:#44403c">Bodega satélite · Limón. Revisa el cierre de cada mensajero y apruébalo o recházalo.</p>
+        </div>
+        <div role="group" aria-label="Tipo de cierre" style="display:flex;padding:4px;border-radius:10px;background:#ffffff;border:1px solid #e7e5e4">
+          <button type="button" style="font:inherit;font-size:14px;height:36px;padding:0 16px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer">Bodega</button>
+          <button type="button" aria-pressed="true" style="font:inherit;font-size:14px;font-weight:600;height:36px;padding:0 16px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Mensajero</button>
+        </div>
+      </header>
+
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c">Fecha de solicitud<input type="text" value="Cualquier fecha" style="font:inherit;font-size:14px;height:36px;width:180px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c">Mensajero<input type="text" value="Todos" style="font:inherit;font-size:14px;height:36px;width:180px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c">Estado<input type="text" value="Todos" style="font:inherit;font-size:14px;height:36px;width:160px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c;flex:1;min-width:200px">Buscar<input type="search" placeholder="Mensajero o folio" style="font:inherit;font-size:14px;height:36px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
+        <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Descargar</button>
+      </div>
+
+      <div role="tablist" aria-label="Cierres del día por estado" style="display:flex;gap:24px;border-bottom:1px solid #e7e5e4">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
+          <button type="button" role="tab" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+
+      <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
+        <div style="display:grid;grid-template-columns:110px 1.4fr 150px 150px 1fr 1fr 1.6fr 140px;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4">
+          <span>Folio</span><span>Mensajero</span><span>{{colFecha}}</span><span>Estado</span><span style="text-align:right">Recaudado</span><span style="text-align:right">Pago al mensajero</span><span style="padding-left:16px">Señales</span><span></span>
+        </div>
+        <sc-for list="{{filas}}" as="f" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:110px 1.4fr 150px 150px 1fr 1fr 1.6fr 140px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{f.folio}}</span>
+            <span>{{f.mens}}</span>
+            <span style="color:#44403c">{{f.fecha}}</span>
+            <span><span style="{{f.estStyle}}">{{f.est}}</span></span>
+            <span style="text-align:right">{{f.rec}}</span>
+            <span style="text-align:right">{{f.pago}}</span>
+            <span style="padding-left:16px;font-size:12px;color:#92400e">{{f.senal}}</span>
+            <span style="text-align:right"><button type="button" style="{{f.btnStyle}}">{{f.accion}}</button></span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:0;font-size:13px;color:#44403c">{{pie}}</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { tab: 'pend' }; }
+  renderVals() {
+    const tab = this.state.tab;
+    const pill = (bg, fg) => 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:' + bg + ';color:' + fg;
+    const primary = 'font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer';
+    const sec = 'font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;color:#111111;cursor:pointer';
+    const tabStyle = (on) => 'font:inherit;font-size:14px;font-weight:' + (on ? '600' : '500') + ';color:' + (on ? '#111111' : '#44403c') + ';background:transparent;border:0;border-bottom:2px solid ' + (on ? '#111111' : 'transparent') + ';padding:10px 2px;cursor:pointer';
+    const pend = [
+      { folio: '#8F2A11C4', mens: 'Ana Mensajera', fecha: '07/11 18:42', est: 'Solicitado', estStyle: pill('#fef3c7', '#92400e'), rec: '₡285.275,00', pago: '₡45.000,55', senal: '1 incidente sin indemnizar · 6 vuelven a bodega', accion: 'Ver / decidir', btnStyle: primary },
+      { folio: '#2C91B0AA', mens: 'Beto Mensajero', fecha: '07/11 18:55', est: 'Solicitado', estStyle: pill('#fef3c7', '#92400e'), rec: '₡146.089,07', pago: '₡25.000,25', senal: '1 pago ajustado', accion: 'Ver / decidir', btnStyle: primary },
+      { folio: '#71D0E3F2', mens: 'Carla Mensajera', fecha: '06/11 19:10', est: 'Vencido', estStyle: pill('#fee2e2', '#b91c1c'), rec: '₡98.400,00', pago: '₡18.000,00', senal: 'Mensajero bloqueado · 1', accion: 'Ver', btnStyle: sec }
+    ];
+    const res = [
+      { folio: '#5E11A0B3', mens: 'Ana Mensajera', fecha: '06/11 19:30', est: 'Aprobado', estStyle: pill('#d1fae5', '#047857'), rec: '₡301.120,00', pago: '₡47.500,00', senal: 'Pago liquidado', accion: 'Ver', btnStyle: sec },
+      { folio: '#B40C7D21', mens: 'Beto Mensajero', fecha: '06/11 19:44', est: 'Rechazado', estStyle: pill('#fee2e2', '#b91c1c'), rec: '₡120.000,00', pago: '₡22.000,00', senal: 'Bloqueante hasta re-solicitud', accion: 'Ver', btnStyle: sec }
+    ];
+    return {
+      tabs: [
+        { label: 'Pendientes 3', pick: () => this.setState({ tab: 'pend' }), style: tabStyle(tab === 'pend') },
+        { label: 'Resueltos 12', pick: () => this.setState({ tab: 'res' }), style: tabStyle(tab === 'res') }
+      ],
+      filas: tab === 'pend' ? pend : res,
+      colFecha: tab === 'pend' ? 'Solicitado' : 'Resuelto',
+      pie: tab === 'pend' ? 'Un cierre vencido se puede destrabar desde su detalle («Destrabar cierre vencido»).' : 'Mostrando 2 de 12 · 10 por página'
+    };
+  }
+}
+</script>
+</body>
+</html>

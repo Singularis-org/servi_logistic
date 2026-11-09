@@ -214,7 +214,7 @@ body{margin:0}
   </section>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"tipo":{"editor":"enum","options":["mensajero","bodega"],"default":"mensajero"},"modo":{"editor":"enum","options":["decidir","solo lectura"],"default":"decidir"},"cifras":{"editor":"enum","options":["normales","grandes"],"default":"normales"},"tabInicial":{"editor":null},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"tipo":{"editor":"enum","options":["mensajero","bodega"],"default":"mensajero"},"modo":{"editor":"enum","options":["decidir","solo lectura"],"default":"decidir"},"cifras":{"editor":"enum","options":["normales","grandes"],"default":"normales"},"audiencia":{"editor":"enum","options":["central","satelite"],"default":"central"},"tabInicial":{"editor":null},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   constructor(p) { super(p); this.state = { tab: null }; }
   renderVals() {
@@ -223,6 +223,7 @@ class Component extends DCLogic {
     const f = (this.props.cifras ?? 'normales') === 'grandes' ? 350 : 1;
     const esBodega = tipo === 'bodega';
     const decidir = modo === 'decidir';
+    const sat = (this.props.audiencia ?? 'central') === 'satelite';
     const fmt = (c) => {
       const v = Math.round(c * f), neg = v < 0, a = Math.abs(v);
       const ent = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -321,7 +322,8 @@ class Component extends DCLogic {
     ];
 
     let acciones;
-    if (esBodega) acciones = decidir ? [{ label: 'Cerrar', style: btn() }, { label: 'Marcar recibido', style: btn('primary') }]
+    if (esBodega && sat) acciones = [{ label: 'Cerrar', style: btn('primary') }];
+    else if (esBodega) acciones = decidir ? [{ label: 'Cerrar', style: btn() }, { label: 'Marcar recibido', style: btn('primary') }]
       : [{ label: 'Desmarcar', style: btn() }, { label: 'Cerrar', style: btn('primary') }];
     else acciones = decidir ? [{ label: 'Rechazar', style: btn('danger') }, { label: 'Revisar paquetes y aprobar', style: btn('primary') }]
       : [{ label: 'Cerrar', style: btn('primary') }];
@@ -330,7 +332,7 @@ class Component extends DCLogic {
       esBodega, tabs, metodos, reparto, cascadas, filas, chips, mensajeros, tiendas, acciones,
       k: { rec: fmt(D.rec), mens: fmt(D.mens), neto: fmt(D.neto) },
       titulo: esBodega ? 'Cierre de bodega · Limón' : 'Cierre de Ana Mensajera',
-      sub: esBodega ? 'Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros' : 'Bodega central · GAM',
+      sub: esBodega ? 'Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros' : (sat ? 'Bodega satélite · Limón' : 'Bodega central · GAM'),
       folio: esBodega ? '#C07B3E19' : '#8F2A11C4',
       fechas: esBodega ? (decidir ? 'Solicitado 07/11/2026 19:05' : 'Solicitado 07/11/2026 19:05 · Recibido 08/11/2026 09:12')
         : (decidir ? 'Solicitado 07/11/2026 18:42' : 'Solicitado 07/11/2026 18:42 · Aprobado 07/11/2026 19:10 por Carlos R.'),
@@ -338,7 +340,7 @@ class Component extends DCLogic {
       estadoStyle: decidir ? pill('#fef3c7', '#92400e') : pill('#d1fae5', '#047857'),
       retiene: !esBodega,
       hayAvisos: decidir,
-      avisos: esBodega ? '2 pagos al mensajero ajustados · falta marcar el dinero recibido'
+      avisos: esBodega ? (sat ? '2 pagos al mensajero ajustados · la central aún no marca el dinero recibido' : '2 pagos al mensajero ajustados · falta marcar el dinero recibido')
         : '1 incidente sin indemnizar · 2 rechazados por la tienda · 1 pago ajustado · 6 paquetes vuelven a bodega',
       k2label: esBodega ? 'Debe llegar a la central' : 'Se le paga hoy a la tienda',
       k2valor: fmt(esBodega ? D.central : D.hoy),
@@ -348,12 +350,12 @@ class Component extends DCLogic {
       k3sub: esBodega ? '2 mensajeros · 2 ajustes' : '19 gestiones · 1 ajustada',
       k4sub: esBodega ? 'sin IVA, ya restados mensajeros y satélite' : 'sin IVA, ya restados mensajero y bodega',
       gridDinero: 'display:grid;gap:16px;grid-template-columns:repeat(' + (esBodega ? 3 : 2) + ',minmax(0,1fr))',
-      porTienda: !esBodega,
+      porTienda: true,
       gCabStyle: 'display:grid;grid-template-columns:' + cols + ';font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4;gap:8px',
       gFilaStyle: 'display:grid;grid-template-columns:' + cols + ';font-size:14px;padding:10px 0;border-bottom:1px solid #f5f5f4;align-items:center;gap:8px',
       conc: decidir ? { decl: fmt(D.central), rec: '—', falta: fmt(D.central), quien: 'Aún nadie' }
         : { decl: fmt(D.central), rec: fmt(D.central), falta: fmt(0), quien: 'Carlos R. · 08/11/2026 09:12' },
-      pieTexto: esBodega ? 'Declarado ' + fmt(D.central) + (decidir ? ' · márcalo recibido cuando llegue' : '')
+      pieTexto: esBodega ? 'Declarado ' + fmt(D.central) + (sat ? (decidir ? ' · la central lo marca recibido cuando llega' : '') : (decidir ? ' · márcalo recibido cuando llegue' : ''))
         : (decidir ? 'Aprobar pide confirmar los 6 paquetes e indemnizar el incidente' : 'Recaudado ' + fmt(D.rec) + ' · 19 gestiones'),
       enDinero: tab === 'dinero', enGestiones: tab === 'gestiones', enRechazos: tab === 'rechazos',
       enMensajeros: tab === 'mensajeros', enConciliacion: tab === 'conciliacion', enPago: tab === 'pago'
