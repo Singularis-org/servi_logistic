@@ -20,6 +20,7 @@ de `dev`, que aún no trae el catálogo ni la validación de SLT-42.
 - Cupo fullstack: SLT-83 y SLT-86 en vuelo; SLT-81 sigue en `pending` hasta F1.3, que comprueba el cupo y el cruce de archivos.
 
 ## Decisiones
+<!-- tamano-pr-aceptado: 2026-11-09 · spec aprobado y feature hecha completa (backend, pantalla, 5 formularios, E2E); la regla de tamaño entró en dev después de empezar y partirla ahora rehace el trabajo (humano) -->
 - 2026-11-06: el humano decide arrancar SLT-81 sin esperar a SLT-46 («SLT-81 sin esperar a SLT-46»); SLT-46 se adapta después.
 - 2026-11-06 (/afinar-feature): ver tabla de decisiones en `specs/SLT-81-*/requirements.md`.
   Tarjeta editada: `zone:fullstack`, descripción nueva y comentario. El ítem SLT-46 del checklist
