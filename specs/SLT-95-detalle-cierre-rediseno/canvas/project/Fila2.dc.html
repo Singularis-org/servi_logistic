@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Fila desplegada de una gestión</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width:1080px;height:1180px;box-sizing:border-box;background:#F7F7F5;padding:24px;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
+  <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;overflow:hidden">
+    <!-- fila cerrada -->
+    <div style="display:grid;grid-template-columns:70px 1.7fr 110px 1fr 1fr 1fr 1.3fr 40px;gap:8px;align-items:center;padding:10px 16px;font-size:14px;background:#fafaf9;border-bottom:1px solid #e7e5e4">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:13px">1001</span>
+      <span>Beto Ruiz <span style="font-size:12px;color:#44403c">· Tienda Norte</span></span>
+      <span><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:#d1fae5;color:#047857">Entregado</span></span>
+      <span style="text-align:right">₡25.000,00</span><span style="text-align:right">₡4.520,00</span><span style="text-align:right">₡1.800,00</span>
+      <span style="padding-left:16px;font-size:12px;color:#92400e">Pago ajustado</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#44403c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg>
+    </div>
+
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">
+      <!-- cabecera: solo datos de la orden -->
+      <dl style="margin:0;display:grid;grid-template-columns:140px 140px minmax(0,1fr);gap:32px;padding-bottom:16px;border-bottom:1px solid #f5f5f4">
+        <div style="display:flex;flex-direction:column;gap:4px"><dt style="font-size:12px;color:#44403c">Orden</dt><dd style="margin:0;font-size:14px">REM-001</dd></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><dt style="font-size:12px;color:#44403c">Producto</dt><dd style="margin:0;font-size:14px">Caja</dd></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><dt style="font-size:12px;color:#44403c">Dirección</dt><dd style="margin:0;font-size:14px">Calle 1, Barrio Amón, San José</dd></div>
+      </dl>
+
+      <!-- el dinero: 4 tarjetas, cada una con título, total y sus partes -->
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch">
+
+        <section style="border:1px solid #e7e5e4;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">RECIBIÓ EL MENSAJERO</h4>
+            <span style="font-size:24px;font-weight:700">₡25.000,00</span>
+          </div>
+          <dl style="margin:0;display:grid;grid-template-columns:1fr auto;row-gap:8px;font-size:14px;padding-top:12px;border-top:1px solid #f5f5f4">
+            <dt style="color:#44403c">Efectivo</dt><dd style="margin:0;text-align:right">₡15.000,00</dd>
+            <dt style="color:#44403c">SINPE</dt><dd style="margin:0;text-align:right">₡10.000,00</dd>
+          </dl>
+          <button type="button" style="margin-top:auto;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;align-self:flex-start">Corregir métodos de pago</button>
+        </section>
+
+        <section style="border:1px solid #e7e5e4;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">SE LE COBRA A LA TIENDA</h4>
+            <span style="font-size:24px;font-weight:700">₡4.520,00</span>
+          </div>
+          <dl style="margin:0;display:grid;grid-template-columns:1fr auto;row-gap:8px;font-size:14px;padding-top:12px;border-top:1px solid #f5f5f4">
+            <dt style="color:#44403c">Flete por entregado</dt><dd style="margin:0;text-align:right">₡3.955,00</dd>
+            <dt style="color:#44403c">Comisión COD</dt><dd style="margin:0;text-align:right">₡565,00</dd>
+            <dt style="color:#44403c;font-size:13px">IVA incluido</dt><dd style="margin:0;text-align:right;font-size:13px;color:#44403c">₡520,00</dd>
+          </dl>
+          <button type="button" onClick="{{toggle}}" aria-expanded="{{abierto}}" style="margin-top:auto;font:inherit;font-size:13px;color:#1d4ed8;background:transparent;border:0;padding:0;cursor:pointer;align-self:flex-start">{{toggleLabel}}</button>
+        </section>
+
+        <section style="border:1px solid #f59e0b;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">SE LE PAGA AL MENSAJERO</h4><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e">Ajustado</span></div>
+            <span style="font-size:24px;font-weight:700">₡1.800,00</span>
+          </div>
+          <dl style="margin:0;display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:8px;font-size:14px;padding-top:12px;border-top:1px solid #f5f5f4">
+            <dt style="color:#44403c">Antes</dt><dd style="margin:0;text-align:right">₡2.500,00</dd>
+            <dt style="color:#44403c">Tarifa</dt><dd style="margin:0;text-align:right">Precio propio del mensajero</dd>
+            <dt style="color:#44403c">Motivo</dt><dd style="margin:0;text-align:right">«Entrega compartida con Luis»</dd>
+            <dt style="color:#44403c">Ajustó</dt><dd style="margin:0;text-align:right">Carlos R. · 07/11 19:02</dd>
+          </dl>
+          <button type="button" style="margin-top:auto;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;align-self:flex-start">Ajustar pago</button>
+        </section>
+
+        <section style="border:1px dashed #d6d3d1;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;background:#fafaf9">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">FULFILLMENT · SE COBRÓ AL CREAR LA ORDEN</h4>
+            <span style="font-size:24px;font-weight:700">₡678,00</span>
+          </div>
+          <dl style="margin:0;display:grid;grid-template-columns:1fr auto;row-gap:8px;font-size:14px;padding-top:12px;border-top:1px solid #e7e5e4">
+            <dt style="color:#44403c">Fulfillment</dt><dd style="margin:0;text-align:right">₡600,00</dd>
+            <dt style="color:#44403c">IVA 13 %</dt><dd style="margin:0;text-align:right">₡78,00</dd>
+          </dl>
+          <p style="margin:0;font-size:13px;color:#44403c">Se cargó al saldo de la tienda el 06/11/2026, una vez por paquete. No depende de esta gestión ni de este cierre.</p>
+        </section>
+      </div>
+
+      <sc-if value="{{abierto}}" hint-placeholder-val="{{ true }}">
+        <section aria-label="Cómo se calculó el cobro a la tienda" style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+            <div style="border:1px solid #e7e5e4;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><h5 style="margin:0;font-size:15px;font-weight:600">Flete por entregado</h5><span style="font-size:16px;font-weight:700">₡3.955,00</span></div>
+              <dl style="margin:0;display:grid;grid-template-columns:110px 1fr;row-gap:10px;font-size:14px">
+                <dt style="color:#44403c">Tarifa</dt><dd style="margin:0">Grupo «San José centro»<br><span style="font-size:13px;color:#44403c">de la zona GAM</span></dd>
+                <dt style="color:#44403c">Valor</dt><dd style="margin:0;display:flex;justify-content:space-between"><span>Monto fijo</span><span>₡3.500,00</span></dd>
+                <dt style="color:#44403c">IVA 13 %</dt><dd style="margin:0;display:flex;justify-content:space-between"><span></span><span>+ ₡455,00</span></dd>
+              </dl>
+            </div>
+            <div style="border:1px solid #e7e5e4;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><h5 style="margin:0;font-size:15px;font-weight:600">Comisión COD</h5><span style="font-size:16px;font-weight:700">₡565,00</span></div>
+              <dl style="margin:0;display:grid;grid-template-columns:110px 1fr;row-gap:10px;font-size:14px">
+                <dt style="color:#44403c">Tarifa</dt><dd style="margin:0">Valor base<br><span style="font-size:13px;color:#44403c">de la zona GAM</span></dd>
+                <dt style="color:#44403c">Valor</dt><dd style="margin:0;display:flex;justify-content:space-between"><span>2 % de ₡25.000,00</span><span>₡500,00</span></dd>
+                <dt style="color:#44403c">IVA 13 %</dt><dd style="margin:0;display:flex;justify-content:space-between"><span></span><span>+ ₡65,00</span></dd>
+              </dl>
+            </div>
+          </div>
+          <p style="margin:0;font-size:13px;color:#44403c">Tarifas tal como estaban al crear el cierre (07/11/2026 18:42). Si después cambian, aquí no cambia nada.</p>
+        </section>
+      </sc-if>
+
+      <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding-top:14px;border-top:1px solid #f5f5f4">
+        <div style="display:flex;gap:8px"><button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Evidencia 1</button><button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Evidencia 2</button></div>
+        <button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Corregir el resultado</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { abierto: true }; }
+  renderVals() {
+    const abierto = this.state.abierto;
+    return {
+      abierto,
+      toggleLabel: abierto ? 'Ocultar cómo se calculó' : 'Ver cómo se calculó',
+      toggle: () => this.setState({ abierto: !abierto })
+    };
+  }
+}
+</script>
+</body>
+</html>
