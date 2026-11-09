@@ -104,6 +104,9 @@ export default defineConfig({
         "planes-costeo",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
         "tarifas-maqueta",
+        // SLT-81 R25: el superadmin da de alta un país con sus datos y un tipo; el alta de empresa
+        // ofrece su prefijo y sus tipos. Deja el país dado de alta: la corrida siguiente elige otro.
+        "datos-pais-superadmin",
       ),
     },
     {
