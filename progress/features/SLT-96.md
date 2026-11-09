@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.2: spec en `specs/SLT-96-consolidacion-cero-recibida/`. Hotfix: rama desde `origin/prod`, PR a `prod` y luego a `dev`.
+F2: PR #101 a `prod` abierto (reviewer OK vuelta 2, gate local verde). Pendiente: T6 en Preview por Carlos, CI `gate-completo`, merge, y llevar a `dev`.
 
 ## Evaluación
 fullstack: validación en cliente (`components/shared/monto-cliente.ts`, `MarcarRecibidoDialog.tsx`) y en el borde (`marcarConsolidacionRecibidaSchema`, corrección 473). low: sin migración (el CHECK de `cierre_bodega.monto_recibido` ya admite `>= 0`).
