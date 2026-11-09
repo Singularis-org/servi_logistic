@@ -815,3 +815,21 @@ tipo de `tx` usa `TxDeTest` de `_postgres-real` en vez de repetir su definición
 `geografia-admin-n-niveles`, `slt46-equivalencia-geografia`, `carga-division`, `carga-division-n-niveles`,
 `geo-lecturas-catalogo`, `geografia-registro-accion`, `geografia-superadmin-sin-empresa`, `pais-disponible`,
 `geo-equivalencia-geografia` → `Test Files 9 passed (9) · Tests 89 passed (89)`. T5.5 y T8.1 marcadas `[x]`.
+
+### `migracion-slt43-ida-y-vuelta` en rojo por las migraciones de SLT-46 (2026-11-09)
+
+**Diagnóstico.** Es la lista del test de SLT-43, no la migración. Su `beforeAll` arma una base propia con
+`aplicarMigracionesHasta(db, "99999999999999", DE_SLT43)`: todas menos las seis de SLT-43, porque las de `dev`
+posteriores «no tocan lo que crean las seis». Las tres de SLT-46 (`20261106120000/120100/120200`) rompen esa
+premisa: `120100` crea un trigger sobre `nodo_geografico` y `120200` reemplaza una función que escribe en
+`tipo_nivel_geografico`, objetos que crean las seis. Aplicadas antes de la ida → `42P01`. Las migraciones de
+SLT-46 están bien ordenadas (van detrás de SLT-43 en disco) y no se tocan.
+
+**Arreglo** (solo preparación de la base; ninguna aserción cambia). Constante `SOBRE_SLT43` con las tres de
+SLT-46, excluidas de la base propia junto con `DE_SLT43`; cabecera actualizada con la excepción. Ninguna de las
+tres añade columnas, así que el Prisma de las fábricas no las echa en falta. La ida y vuelta de SLT-46 sigue
+cubierta por `migracion-slt46-ida-y-vuelta`.
+
+**Salida real** (`logistic_slt46` local, bases desechables `slt43_`/`slt46_`, `--maxWorkers=1`):
+`migracion-slt43-ida-y-vuelta` + `migracion-slt46-ida-y-vuelta` → `Test Files 2 passed (2) · Tests 13 passed (13)`.
+`eslint` → «No issues found».
