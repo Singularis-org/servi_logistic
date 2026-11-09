@@ -482,6 +482,11 @@ la maqueta. Si algo de la maqueta choca con este contrato, T6 para y pregunta.
   acción a ejecutar; pinta el antes → después. Lo usan todas las escrituras de la tabla de abajo.
 - Para CR el árbol tiene los mismos tres niveles, nombres, acciones y mensajes que hoy (R12), más el
   modal de confirmación de la decisión del 2026-11-09.
+- **Decisión D1 (humano, 2026-11-09, review vuelta 1).** Se aceptan los textos de pantalla nuevos que
+  ve el superadmin de Costa Rica: «Desactivar/Activar/Inactivos» pasa a «Retirar/Reactivar/Retirados»,
+  los botones de confirmar pasan a «Sí, <verbo>» y desaparece el chip «Inactivo por su <nivel>» (el
+  nombre se muestra atenuado). Quedan dentro de R12, que se refiere al desenlace del servidor (status,
+  campos de error, mensajes y filas viejas), y el servidor responde igual.
 - Componentes de `components/ui/` y `components/shared/` existentes; nada nuevo de shadcn; ninguna
   librería nueva (arrastre nativo, §12).
 
