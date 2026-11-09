@@ -8,7 +8,6 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import { cambiarTipoCobroSchema, previsualizarCustomSchema, type TopeExcedido, type TopesPlan } from "@/lib/types/planes";
 
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ajuste planes-custom (D10, D13; 2026-11-03) — el borde de dos operaciones nuevas del superadmin, con un
 // repositorio doble y el reloj fijo:
 //   · D10: cambiar SOLO el tipo de cobro del plan actual (quién → zod → existe → tiene plan → repositorio);
@@ -72,7 +71,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
+  servicio = new PlanesService(repo, () => AHORA);
 });
 
 describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan actual", () => {
