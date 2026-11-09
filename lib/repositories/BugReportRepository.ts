@@ -153,22 +153,30 @@ export class BugReportRepository implements IBugReportRepository {
   detalle(id: string): Promise<DetalleDeReporte | null> {
     return comoPlataforma(FICHA, MOTIVO_LEER, () =>
       this.prisma.$transaction(async (tx) => {
-        const r = await tx.bugReport.findFirst({
-          where: { id, deletedAt: null },
-          include: {
-            organization: { select: { nombre: true } },
-            reporter: { select: { email: true } },
-            statusChanges: { orderBy: ORDEN_HISTORIAL },
-          },
-        });
+        // Las relaciones se leen EN SERIE, cada una con su `await`, sobre los FK proyectados: un
+        // `include` de varias hermanas hace que Prisma las lance a la vez sobre la única conexión de la
+        // transacción (brazo C de la guardia de consultas concurrentes; patrón de
+        // `leerDescriptivosDeOrdenes` en `CierreDiaRepository`).
+        const r = await tx.bugReport.findFirst({ where: { id, deletedAt: null } });
         if (!r) return null;
+        const empresa = await tx.organizacion.findUnique({
+          where: { id: r.organizationId },
+          select: { nombre: true },
+        });
+        const reportero = await tx.usuario.findUnique({ where: { id: r.reporterUserId }, select: { email: true } });
+        // Las dos FK son NOT NULL con CASCADE: si falta una, el reporte se borró entre medias.
+        if (!empresa || !reportero) return null;
+        const historial = await tx.bugReportStatusChange.findMany({
+          where: { bugReportId: r.id },
+          orderBy: ORDEN_HISTORIAL,
+        });
         return {
           reporte: {
             id: r.id,
             descripcion: r.description,
-            empresa: r.organization.nombre,
+            empresa: empresa.nombre,
             usuario: r.reporterName,
-            correo: r.reporter.email,
+            correo: reportero.email,
             rol: r.reporterRole,
             pagina: r.pagePath,
             navegador: r.userAgent,
@@ -180,7 +188,7 @@ export class BugReportRepository implements IBugReportRepository {
             creadoEn: r.createdAt.toISOString(),
             estado: r.status,
           },
-          historial: r.statusChanges.map((h) => ({
+          historial: historial.map((h) => ({
             id: h.id,
             desde: h.fromStatus,
             hacia: h.toStatus,
