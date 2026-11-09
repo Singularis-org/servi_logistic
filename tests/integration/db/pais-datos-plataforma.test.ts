@@ -186,12 +186,17 @@ describeSiHayBase("SLT-81 — datos del país contra Postgres", () => {
       ["DNI", "dni", "XA_dni", true],
       ["Pasaporte", "pasaporte_xa", "XA_pasaporte_xa", true],
     ]);
-    expect(r.historial.map((h) => [h.accion, h.entidadTipo, h.actorUsuarioId])).toEqual([
-      ["pais_creado", "pais", r.actorId],
-      ["tipo_documento_creado", "tipo_documento", r.actorId],
-      ["tipo_documento_creado", "tipo_documento", r.actorId],
-    ]);
-    expect(r.historial[1].detalle).toEqual({ clave: "dni", caracteres: "digitos", largoMin: 8, largoMax: 9 });
+    // Las tres filas salen de un solo `createMany`: mismo `createdAt` y el desempate por `id` (uuid) es
+    // al azar. Se comparan sin depender del orden.
+    expect(r.historial.map((h) => [h.accion, h.entidadTipo, h.entidadEtiqueta, h.actorUsuarioId])).toEqual(
+      expect.arrayContaining([
+        ["pais_creado", "pais", "País de alta XA", r.actorId],
+        ["tipo_documento_creado", "tipo_documento", "DNI", r.actorId],
+        ["tipo_documento_creado", "tipo_documento", "Pasaporte", r.actorId],
+      ]),
+    );
+    expect(r.historial).toHaveLength(3);
+    expect(r.historial.find((h) => h.entidadEtiqueta === "DNI")?.detalle).toEqual({ clave: "dni", caracteres: "digitos", largoMin: 8, largoMax: 9 });
   });
 
   it("R6: un tipo con clave repetida tumba el alta: ni país ni tipos ni historial", async () => {

@@ -386,3 +386,11 @@ corre CI; R25 lo corre el check `e2e` de CI.
   `vitest related` de los archivos con conflicto → 1 archivo, 36 tests verdes.
 - `./init.sh` → rojo en el paso del validador: `specs/SLT-96-consolidacion-cero-recibida/` (llega con `dev`)
   no tiene ficha en `feature_list.json`. Ajeno a SLT-81: lo resuelve el leader reimportando el board (F0).
+
+## CI PR #105: rojo y arreglo
+
+- Run 42659947966, shard 2/3: `pais-datos-plataforma.test.ts > R6/R17: el alta crea el país...` falló en
+  `historial[1].detalle` (llegó el de `pasaporte_xa`, se esperaba `dni`). Causa: las 3 filas del alta salen de
+  un solo `createMany` con el mismo `createdAt`; el desempate por `id` (uuid) es al azar. Test frágil, no fallo
+  de código (R17 no fija orden entre filas de una misma operación). Arreglo: aserción sin orden
+  (`arrayContaining` + largo 3 + detalle buscado por etiqueta «DNI»). Sin cambios al baseline.
