@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bug, X } from "lucide-react";
 
@@ -82,10 +82,38 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
   const enviando = estado === "enviando";
   const vacia = texto.trim() === "";
 
+  // M3 (review): al cerrar, el panel vuelve al formulario. El aviso de «Gracias» o de fallo es de esa
+  // apertura y no reaparece al reabrir; el borrador no se toca. Un envío en curso se deja terminar.
   function cerrar() {
     setAbierto(false);
+    setEstado((actual) => (actual === "enviando" ? actual : "editando"));
     botonRef.current?.focus();
   }
+
+  function abrir() {
+    // Un envío que terminó con el panel cerrado no deja su aviso para la siguiente apertura.
+    setEstado((actual) => (actual === "enviando" ? actual : "editando"));
+    setAbierto(true);
+  }
+
+  // M4 (review): Escape cierra el panel esté donde esté el foco. El listener vive solo mientras el panel
+  // está abierto y respeta un Escape ya consumido por otro (un menú, un diálogo), igual que
+  // `MultiSelectFilter`. No lo consume él: el panel no es modal. Si el foco estaba fuera del panel, se
+  // queda donde estaba (propuesta): devolverlo al botón se lo robaría a lo que la persona estaba usando.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!abierto) return;
+    function alPulsarTecla(e: KeyboardEvent) {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const activo = document.activeElement;
+      const focoDentro = activo === document.body || (activo !== null && !!panelRef.current?.contains(activo));
+      setAbierto(false);
+      setEstado((actual) => (actual === "enviando" ? actual : "editando"));
+      if (focoDentro) botonRef.current?.focus();
+    }
+    document.addEventListener("keydown", alPulsarTecla);
+    return () => document.removeEventListener("keydown", alPulsarTecla);
+  }, [abierto]);
 
   function alEscribir(siguiente: string) {
     cambiar(siguiente);
@@ -113,21 +141,14 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
     setEstado(enviado ? "gracias" : "error");
   }
 
-  function alPulsarTecla(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      cerrar();
-    }
-  }
-
   return (
     <>
       {abierto && (
         <Card
           id={idPanel}
           role="dialog"
+          ref={panelRef}
           aria-labelledby={idTitulo}
-          onKeyDown={alPulsarTecla}
           className={cn(
             "fixed right-5 z-40 w-[min(22rem,calc(100vw-2.5rem))] gap-3 shadow-lg",
             sobreChat ? "bottom-40" : "bottom-20",
@@ -186,7 +207,7 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
         aria-expanded={abierto}
         aria-controls={abierto ? idPanel : undefined}
         data-posicion={sobreChat ? "sobre-chat" : "esquina"}
-        onClick={() => (abierto ? cerrar() : setAbierto(true))}
+        onClick={() => (abierto ? cerrar() : abrir())}
         className={cn(
           "fixed right-5 z-40 flex size-12 items-center justify-center rounded-full border bg-card text-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 active:scale-95",
           sobreChat ? "bottom-24" : "bottom-5",

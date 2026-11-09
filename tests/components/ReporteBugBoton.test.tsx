@@ -113,6 +113,49 @@ describe("R4 — el panel", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(window.localStorage.getItem(CLAVE)).toBe("se cae al guardar");
   });
+
+  // Review M4: Escape cierra aunque el foco esté fuera del panel, solo mientras está abierto, y respeta
+  // un Escape que ya consumió otro.
+  it("Escape lo cierra con el foco fuera del panel, sin tocar el borrador ni robar el foco", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <input aria-label="Otro campo de la página" />
+        <ReporteBugBoton usuarioId={USUARIO} />
+      </>,
+    );
+    await user.click(botonFlotante());
+    escribir("no guarda la zona");
+    const otro = screen.getByRole("textbox", { name: "Otro campo de la página" });
+    otro.focus();
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(false);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(botonFlotante().getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(otro);
+    expect(window.localStorage.getItem(CLAVE)).toBe("no guarda la zona");
+  });
+
+  it("un Escape ya consumido (`defaultPrevented`) no lo cierra, y cerrado no escucha", async () => {
+    const consumir = (e: KeyboardEvent) => {
+      if (e.key === "Escape") e.preventDefault();
+    };
+    const quitar = vi.spyOn(document, "removeEventListener");
+    const { user } = await abrir();
+    document.addEventListener("keydown", consumir, { capture: true });
+    try {
+      await user.keyboard("{Escape}");
+      expect(screen.getByRole("dialog")).toBeTruthy();
+    } finally {
+      document.removeEventListener("keydown", consumir, { capture: true });
+    }
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Al cerrar, el listener del panel se quita.
+    expect(quitar.mock.calls.some(([tipo, fn]) => tipo === "keydown" && fn !== consumir)).toBe(true);
+    quitar.mockRestore();
+  });
 });
 
 describe("R5 — Enviar deshabilitado", () => {
@@ -200,6 +243,32 @@ describe("R9, R10 — el envío", () => {
 
     // Al volver a escribir, el «Gracias» se va.
     escribir("otro");
+    expect(screen.queryByText("Gracias, recibimos tu reporte")).toBeNull();
+  });
+
+  // Review M3: el aviso es de esa apertura. Al cerrar y reabrir, el panel vuelve al formulario vacío.
+  it("cerrar y reabrir tras un envío bueno muestra el formulario vacío, sin «Gracias»", async () => {
+    action.mockResolvedValue({ status: "enviado" });
+    const { user } = await abrir();
+    escribir("el mapa no carga");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    expect(await screen.findByText("Gracias, recibimos tu reporte")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+    await user.click(botonFlotante());
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText("Gracias, recibimos tu reporte")).toBeNull();
+    expect((campo() as HTMLTextAreaElement).value).toBe("");
+    expect(screen.getByText("0/500")).toBeTruthy();
+
+    // Lo mismo cerrando con Escape.
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+    await user.click(botonFlotante());
+    escribir("otro fallo");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    expect(await screen.findByText("Gracias, recibimos tu reporte")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await user.click(botonFlotante());
     expect(screen.queryByText("Gracias, recibimos tu reporte")).toBeNull();
   });
 

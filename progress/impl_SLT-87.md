@@ -281,3 +281,78 @@ datos»). La causa: el `.env` del worktree trae `PRISMA_LOG_QUERIES=params`, y c
 
 **Veredicto:** T7–T9 hechas. El E2E sale verde dos veces seguidas (0 failed, 0 skipped, 0 flaky) y las guardias
 están verdes salvo el rojo del baseline. `./init.sh` y `tamano-pr` quedan para el leader.
+
+## Tanda de menores de la review (M2–M4)
+
+### Archivos
+- `app/(app)/layout.tsx`: el contenido pasa de `pb-12` a `pb-40 lg:pb-12` (M2), con la cuenta en el comentario.
+- `components/shared/ReporteBugBoton.tsx`: cerrar y abrir reinician el aviso (M3); Escape por listener en
+  `document` mientras el panel está abierto (M4). Se quita el `onKeyDown` de la `Card`.
+- `tests/components/AppLayout.test.tsx`: test nuevo de M2.
+- `tests/components/ReporteBugBoton.test.tsx`: tests nuevos de M3 y M4.
+
+### La cuenta del padding (M2)
+Las alturas se miden desde abajo, 4 px por unidad de Tailwind:
+- Fuera de `/mis-asignaciones`, el botón de reportar va en `bottom-5` (20 px) y mide 48 px: llega a 68 px.
+- En `/mis-asignaciones`, el chat va en `bottom-5` y mide 56 px: llega a 76 px. Encima, el botón de reportar va
+  en `bottom-24` (96 px) y mide 48 px: llega a **144 px**.
+- `pb-40` son **160 px**, más que 144. Al final del scroll nada queda debajo de un botón, con 16 px de aire en el
+  peor caso y 92 px en el resto.
+- Un solo valor para todas las rutas: el layout es de servidor y no sabe la ruta, y en móvil sobran 160 px al
+  final. Es lo más simple que cubre los dos casos.
+- Se aplica por debajo de `lg` y no solo de `md`: la barra de `EnvioForm.tsx:574` va pegada abajo hasta `lg`.
+  Desde `lg` queda `pb-12` como estaba. **(propuesta)**
+- Límite: el padding resuelve el final del scroll. Mientras se hace scroll, una barra `sticky bottom-0` (la
+  paginación, la de `EnvioForm`) sigue pegada al borde de la ventana, y su extremo derecho puede quedar bajo el
+  botón. Al llegar al final sube por encima. Desplazar el botón o las barras es otro cambio de UI que no se hizo
+  aquí. **(propuesta)**
+
+### M3 y M4
+- **M3.** `cerrar()` vuelve el estado a `editando`, salvo un envío en curso. `abrir()` hace lo mismo, por si un
+  envío terminó con el panel cerrado. El borrador no se toca.
+- **M4.** `useEffect` sobre `abierto`: registra `keydown` en `document` solo con el panel abierto y lo quita al
+  cerrar, igual que `MultiSelectFilter`. Ignora el evento si trae `defaultPrevented` y no lo consume él (el
+  panel no es modal). Cierra sin tocar el borrador.
+  - Con el foco fuera del panel, el foco se queda donde estaba. Solo vuelve al botón si estaba dentro del panel
+    o en `body`; si no, se le robaría a lo que la persona estaba usando. **(propuesta)**
+
+### Tests nuevos
+- `AppLayout.test.tsx` › «el contenido deja 160px al final por debajo de `lg`…»: el `SidebarInset` lleva `pb-40`
+  y `lg:pb-12`, y no lleva `pb-12`.
+- `ReporteBugBoton.test.tsx` › «cerrar y reabrir tras un envío bueno muestra el formulario vacío, sin
+  «Gracias»»: cierra con «Cerrar» y con Escape (M3).
+- `ReporteBugBoton.test.tsx` › «Escape lo cierra con el foco fuera del panel, sin tocar el borrador ni robar el
+  foco» (M4).
+- `ReporteBugBoton.test.tsx` › «un Escape ya consumido (`defaultPrevented`) no lo cierra, y cerrado no
+  escucha» (M4).
+
+### Salida real
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit`, exit 0, sin errores.
+- `pnpm exec eslint` sobre los 4 archivos → sin salida, exit 0.
+- `pnpm exec vitest run` → `Test Files 6 passed (6)`, `Tests 100 passed (100)`, 9.35 s:
+  - `AppLayout.test.tsx` 24/24;
+  - `ReporteBugBoton.test.tsx` 15/15;
+  - `asistente-panel-hermano.guardia` 12/12;
+  - `revision-sinpe-no-bloquea.guardia` 7/7;
+  - `push-alta-punto-unico.guardia` 24/24;
+  - `superficie-de-uso.guardia` 18/18.
+- **E2E**, sobre `servi_logistic_slt87_e2e` sin recrearla. El entorno es el de la tanda anterior, con
+  `PRISMA_LOG_QUERIES=""` y `NEXT_PUBLIC_APP_URL=http://localhost:3044`. Los puertos 3044 y 54329 estaban libres.
+  - `next build` → exit 0, 3 min 47 s.
+  - `playwright test e2e/reporte-de-bugs.spec.ts --project=aislamiento` → **17 passed (55.2 s)**, 0 failed,
+    0 flaky, 0 skipped.
+  - `playwright test --project=reparto` → **14 passed, 1 failed, 1 flaky, 0 skipped (3.3 min)**. Los dos son de
+    `e2e/mis-asignaciones.spec.ts`:
+    - `:110` «(a) recoger por guía → Entregar…» falló dos veces:
+      - intento 1: timeout de 30 s en el clic de `combobox «Método de pago línea 1»` («element is not stable»,
+        luego «detached from the DOM»);
+      - reintento: `PrismaClientKnownRequestError`, la transacción de la fábrica de órdenes caducó (5316 ms >
+        5000 ms) en `webhook-estado-encolado.ts:119`, antes de abrir la página.
+    - `:131` «(b) recoger por guía → Rechazar…» falló una vez y pasó en el reintento (flaky).
+    - Ninguno trae «intercepts pointer events»: 0 coincidencias en el log. No es el botón tapando el clic.
+  - Repetido solo, `playwright test e2e/mis-asignaciones.spec.ts --project=reparto` → **4 passed (30.0 s)**,
+    0 failed, 0 flaky, 0 skipped. Es carga de la máquina en la corrida del grupo (la transacción caducada lo
+    muestra), no el diff. Lo confirma el check `e2e` de CI (M1).
+
+**Veredicto:** M2–M4 resueltos con tests. Typecheck, lint y vitest en verde. El E2E de SLT-87 da 17/17. `reparto`
+da un rojo y un flaky por carga, y los 4 tests pasan corridos solos.

@@ -152,14 +152,23 @@ export default async function AppLayout({
                 hidden) para no convertir el main en contenedor de scroll vertical. */}
             {/* `pb-12` (48px): aire al final de TODAS las páginas del portal. Sin él, el
                 último elemento queda pegado al borde inferior y, en el módulo del mensajero,
-                debajo del botón flotante del chat. */}
+                debajo del botón flotante del chat.
+                SLT-87 (review M2): por debajo de `lg` es `pb-40` (160px). Ahí los botones
+                flotantes caen sobre el contenido, y la barra de acciones de `EnvioForm` va
+                pegada abajo hasta `lg`. La cuenta, con lo más alto que flota:
+                  · en `/mis-asignaciones`, el botón de reportar (`bottom-24`, 96px, + 48px)
+                    termina a 144px, encima del chat (`bottom-5`, 20px, + 56px = 76px);
+                  · en el resto, el botón de reportar (`bottom-5` + 48px) termina a 68px.
+                160 > 144: al final del scroll nada queda debajo de ningún botón, con 16px de
+                aire en el peor caso. Un solo valor para todas las rutas: el layout no sabe la
+                ruta, y 160px de más al final de una página en móvil no estorban. */}
             {/* `data-rol` + `group/app`: el rol del actor viaja por CSS hasta el `PageHeader`,
                 que se tiñe con un color claro distinto por portal (pedido humano). Se pone aquí
                 porque es el único sitio que ya resuelve al actor; el header sigue siendo
                 presentación pura, usable desde páginas server y client. */}
             <SidebarInset
               data-rol={actor?.rol}
-              className="group/app overflow-x-clip pb-12"
+              className="group/app overflow-x-clip pb-40 lg:pb-12"
             >
               <SidebarTrigger className={"relative md:hidden"} />
               {/* ⭑ Ficha 433 — el proveedor envuelve SÓLO a `{children}` porque es ahí donde
