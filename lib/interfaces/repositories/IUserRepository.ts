@@ -18,6 +18,11 @@ export interface UsuarioPublico {
   estado: EstadoUsuario;
   cedula: string;
   tipoIdentificacionId: string;
+  /**
+   * SLT-81 (R16): el nombre de su tipo de documento, aunque esté inactivo. Solo lo trae `findById`
+   * (la lectura de la edición); el resto de lecturas no lo pide.
+   */
+  tipoIdentificacionNombre?: string | null;
   rolId: string;
   // Feature 27/R14: flag de fulfillment de la tienda (solo `true` para adminTienda,
   // invariante R4a). Se expone en la forma publica para el prefill de la UI.
@@ -68,6 +73,8 @@ export interface CreateUsuarioInput {
   passwordHash: string;
   cedula: string;
   tipoIdentificacionId: string;
+  /** SLT-81 (R16): el nombre de su tipo de documento, aunque esté inactivo. Solo lo trae `obtener`. */
+  tipoIdentificacionNombre?: string | null;
   rolId: string;
   estado?: EstadoUsuario;
   // Feature 27/R8/R9: flag de fulfillment; el repo mapea `?? false` al persistir.
@@ -337,8 +344,9 @@ export interface IUserRepository {
   ): Promise<UsuarioPublico | null>;
   /**
    * SLT-42 (R5): con `paisId`, solo los tipos activos de ese pais, en el orden del catalogo. Sin el,
-   * el catalogo entero ordenado por `value`: solo lo pide la pantalla de plataforma del alta de
-   * empresa, que no tiene empresa de la que sacar el pais (su selector por pais es de SLT-81).
+   * el catalogo entero (tambien los inactivos) ordenado por `value`: SLT-81 (R16) lo usa en
+   * `UsuarioService.obtener` para el nombre del tipo de un usuario, que puede estar inactivo; con
+   * empresa en el contexto, la RLS lo acota a su pais.
    */
   listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]>;
   /** Feature 25: catalogo `rol` proyectado a id/value, ordenado por `value`. */

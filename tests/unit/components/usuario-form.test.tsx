@@ -43,10 +43,13 @@ import {
   UsuarioForm,
   type UsuarioFormHandle,
 } from "@/app/(app)/configuracion/_components/UsuarioForm";
+import { PaisDeLaEmpresaProvider } from "@/providers/PaisDeLaEmpresaProvider";
+import { AVISO_SIN_PREFIJO } from "@/components/shared/PrefijoTelefonico";
 
+// SLT-81 (R18): la opción se rotula con `nombre`; aquí coincide con el `value` para no tocar los casos viejos.
 const TIPOS = [
-  { id: "t1", value: "cedula" },
-  { id: "t2", value: "ruc" },
+  { id: "t1", value: "cedula", nombre: "cedula", clave: "cedula" },
+  { id: "t2", value: "ruc", nombre: "ruc", clave: "ruc" },
 ];
 
 // El `id` es el UUID del catálogo `rol` (lo que el backend espera en `rolId`);
@@ -1100,4 +1103,70 @@ describe("UsuarioForm — cambio pendiente de rol/zona (ficha 379/T9)", () => {
     // Y no ha salido ninguna escritura por el camino: evaluar no escribe.
     expect(actualizarUsuarioMock).not.toHaveBeenCalled();
   }, 15000);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// SLT-81 (design §7.2) — prefijo y tipos del país de la empresa
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+describe("UsuarioForm — país de la empresa (SLT-81)", () => {
+  const TIPOS_PA = [
+    { id: "pa-ced", value: "PA_cedula", nombre: "Cédula panameña", clave: "cedula" },
+    { id: "pa-pas", value: "PA_pasaporte", nombre: "Pasaporte", clave: "pasaporte" },
+  ];
+  const PANAMA = { paisNombre: "Panamá", prefijo: "507", digitosNacionales: 8 };
+
+  function conPais(ui: ReactElement, telefono: typeof PANAMA | null) {
+    return renderIsolated(<PaisDeLaEmpresaProvider telefono={telefono}>{ui}</PaisDeLaEmpresaProvider>);
+  }
+
+  it("R18: muestra +<prefijo> del proveedor y los tipos activos por nombre, en el orden recibido", async () => {
+    listarTiposIdentificacionMock.mockResolvedValue({ status: "ok", tipos: TIPOS_PA });
+    const user = userEvent.setup();
+    conPais(<UsuarioForm mode="crear" />, PANAMA);
+
+    expect(screen.getByText("+507")).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(listarTiposIdentificacionMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    const opciones = within(await screen.findByRole("listbox")).getAllByRole("option");
+    expect(opciones.map((o) => o.textContent)).toEqual(["Cédula panameña", "Pasaporte"]);
+  });
+
+  it("R23: sin prefijo cargado, el teléfono va sin prefijo y con el aviso", () => {
+    conPais(<UsuarioForm mode="crear" />, null);
+    expect(screen.getByRole("note")).toHaveTextContent(AVISO_SIN_PREFIJO);
+    expect(screen.queryByText(/^\+\d+$/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Teléfono")).toBeInTheDocument();
+  });
+
+  it("R16: el tipo inactivo del usuario se muestra deshabilitado como su valor actual", async () => {
+    listarTiposIdentificacionMock.mockResolvedValue({ status: "ok", tipos: TIPOS_PA });
+    const user = userEvent.setup();
+    const usuario: UsuarioPublico = {
+      ...USUARIO,
+      tipoIdentificacionId: "pa-ruc-viejo",
+      tipoIdentificacionNombre: "RUC",
+    };
+    conPais(<UsuarioForm mode="editar" usuario={usuario} />, PANAMA);
+
+    const trigger = screen.getByRole("combobox", { name: "Tipo de documento" });
+    await waitFor(() => expect(trigger).toHaveTextContent("RUC (inactivo)"));
+    await user.click(trigger);
+    const lista = await screen.findByRole("listbox");
+    const inactiva = within(lista).getByRole("option", { name: "RUC (inactivo)" });
+    expect(inactiva).toHaveAttribute("aria-disabled", "true");
+    expect(within(lista).getByRole("option", { name: "Cédula panameña" })).toBeInTheDocument();
+  });
+
+  it("R16: el tipo inactivo no se ofrece a otro usuario ni en un alta", async () => {
+    listarTiposIdentificacionMock.mockResolvedValue({ status: "ok", tipos: TIPOS_PA });
+    const user = userEvent.setup();
+    conPais(<UsuarioForm mode="editar" usuario={{ ...USUARIO, tipoIdentificacionId: "pa-ced" }} />, PANAMA);
+    await waitFor(() => expect(listarTiposIdentificacionMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    const opciones = within(await screen.findByRole("listbox")).getAllByRole("option");
+    expect(opciones.map((o) => o.textContent)).toEqual(["Cédula panameña", "Pasaporte"]);
+  });
 });
