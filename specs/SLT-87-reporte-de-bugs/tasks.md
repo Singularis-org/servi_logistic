@@ -15,7 +15,7 @@
       `REVOKE ALL … FROM servi_app` (design §2).
   - **Hecho:** `prisma migrate deploy` y `pnpm run db:rollback` aplican y revierten sobre una base
     desechable, y `pnpm run typecheck` está verde.
-- [ ] **T2. Clasificación y excepción** (dep. T1).
+- [x] **T2. Clasificación y excepción** (dep. T1).
   - **Archivos:** `BugReport` en `MODELOS_DE_PLATAFORMA` y `BugReportRepository.ts` en
     `EXCEPCIONES_DE_PLATAFORMA`, con la ficha `"SL-17"` y el motivo de design §2.3.
   - **Hecho:** `pnpm run test:guardias` verde (`organizacion-en-modelos`,

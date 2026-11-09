@@ -260,6 +260,14 @@ esta bien hecha, no solo si "funciona".
   el trigger `AFTER INSERT` `cobro_plataforma_traza_al_registrar` sobre esa tabla, en la misma
   transacción; `servi_app` no la escribe (`REVOKE`) y nadie la cambia (`SL085`, también el dueño). Las
   filas que rellenó la migración `20261109120000` salen con `reconstruido = true`.
+- **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
+  plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
+  empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo
+  `lib/repositories/BugReportRepository.ts`, en `comoPlataforma` y con su entrada en
+  `EXCEPCIONES_DE_PLATAFORMA`; la empresa, el usuario y el rol salen de la sesión. Su `organization_id`
+  va en inglés (decisión Q5 del 2026-11-09) y es un atributo, quién reportó: no reparte la tabla.
+  La copia por correo a `BUG_REPORT_EMAILS` es síncrona, va después del guardado y su fallo no lo
+  tumba (`lib/services/ReporteBugService.ts`).
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
