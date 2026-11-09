@@ -22,6 +22,7 @@ import {
   CASCADA_CENTRAL_TITULO,
   DESTINO_TIPO_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
+  PARA_LA_CENTRAL_LABEL,
   estadoConciliacionDe,
   hayGestionEnModeloNuevo,
   type EstadoConciliacion,
@@ -546,6 +547,16 @@ function cuentaQueda(
   };
 }
 
+/**
+ * Los rótulos de `lineasCascadaCentral` que en el detalle único se llaman como su cifra: dentro de
+ * «Dinero» una cifra tiene un solo nombre (R9; decisión de Carlos 2026-11-09). La función compartida
+ * no cambia: el detalle viejo de bodega sigue con sus rótulos hasta que S6 lo sustituya.
+ */
+const ROTULO_UNICO_CENTRAL: Readonly<Record<string, string>> = {
+  [PAGO_MENSAJERO_LABEL]: L.PAGO_A_MENSAJEROS_LABEL,
+  [PARA_LA_CENTRAL_LABEL]: L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL,
+};
+
 /** La cascada «Lo que va a la central» de hoy (`lineasCascadaCentral`), en formato de cuenta. */
 function cuentaCentral(d: DetalleBodegaVista): CuentaVista {
   const lineas = lineasCascadaCentral(
@@ -561,7 +572,7 @@ function cuentaCentral(d: DetalleBodegaVista): CuentaVista {
   return {
     titulo: CASCADA_CENTRAL_TITULO,
     lineas: lineas.map((l) => ({
-      label: l.label,
+      label: ROTULO_UNICO_CENTRAL[l.label] ?? l.label,
       monto: l.monto,
       signo: l.signo,
       tipo: l.destacado ? "total" : "partida",
@@ -581,9 +592,9 @@ export function lineasDinero(
     return {
       reparto: reparto(
         [
-          [L.A_LA_CENTRAL, d.paraLaCentral],
-          [L.A_LOS_MENSAJEROS, d.totalPagoMensajero],
-          [L.A_LA_BODEGA_SATELITE, d.totalIngresoBodegaRechazos],
+          [L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL, d.paraLaCentral],
+          [L.PAGO_A_MENSAJEROS_LABEL, d.totalPagoMensajero],
+          [GANA_BODEGA_SATELITE_LABEL, d.totalIngresoBodegaRechazos],
         ],
         d.porcentajesReparto,
       ),
@@ -607,8 +618,8 @@ export function lineasDinero(
   return {
     reparto: reparto(
       [
-        [L.A_LA_TIENDA_HOY, e.pagoTienda],
-        [L.SE_LO_COBRA_LA_EMPRESA, e.cobradoSobreRecaudado],
+        [L.SE_LE_PAGA_HOY_LABEL, e.pagoTienda],
+        [L.SALE_DE_LO_RECAUDADO_LABEL, e.cobradoSobreRecaudado],
       ],
       e.porcentajesReparto,
     ),

@@ -142,11 +142,8 @@ export const PIE_MENSAJERO_LECTURA =
 // --- Dinero (R14, R16) ---
 export const REPARTO_REGION_LABEL = "Reparto de lo recaudado";
 export const REPARTO_TITULO = "¿A dónde va lo recaudado?";
-export const A_LA_TIENDA_HOY = "A la tienda hoy";
-export const SE_LO_COBRA_LA_EMPRESA = `Se lo cobra ${EMPRESA.enFrase}`;
-export const A_LA_CENTRAL = "A la central";
-export const A_LOS_MENSAJEROS = "A los mensajeros";
-export const A_LA_BODEGA_SATELITE = "A la bodega satélite";
+// El reparto NO tiene rótulos propios: cada parte se llama como su cifra o su línea de cuenta
+// (decisión de Carlos 2026-11-09, R9/R14/R16: una cifra, un nombre).
 export const CUENTA_FACTURA_TITULO = "Lo que se le factura a la tienda";
 export const FLETE_POR_ENTREGADO_LABEL = `Flete por entregado + ${IMPUESTO_ROTULO}`;
 export const COMISION_COD_LABEL = `Comisión COD + ${IMPUESTO_ROTULO}`;

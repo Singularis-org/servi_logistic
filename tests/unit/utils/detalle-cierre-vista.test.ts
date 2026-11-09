@@ -323,8 +323,8 @@ describe("lineasDinero (R14, R15, R16)", () => {
   it("mensajero: reparto, lo que se factura y lo que le queda, con su signo", () => {
     const d = lineasDinero("mensajero", MENSAJERO)!;
     expect(d.reparto.map((p) => [p.label, p.monto, p.porcentaje])).toEqual([
-      ["A la tienda hoy", "94350.00", null],
-      ["Se lo cobra la empresa", "5650.00", null],
+      ["Se le paga hoy a la tienda", "94350.00", null],
+      ["Sale de lo recaudado", "5650.00", null],
     ]);
     expect(d.cuentas.map((c) => c.titulo)).toEqual([
       "Lo que se le factura a la tienda",
@@ -369,20 +369,20 @@ describe("lineasDinero (R14, R15, R16)", () => {
   it("bodega: lo que va a la central, lo que se factura y lo que le queda, con − mensajeros y − satélite", () => {
     const d = lineasDinero("bodega", BODEGA);
     expect(d.reparto.map((p) => [p.label, p.monto])).toEqual([
-      ["A la central", "96500.00"],
-      ["A los mensajeros", "3000.00"],
-      ["A la bodega satélite", "500.00"],
+      ["Debe llegar a la central", "96500.00"],
+      ["Pago a mensajeros", "3000.00"],
+      ["Gana la bodega satélite", "500.00"],
     ]);
     expect(d.cuentas.map((c) => c.titulo)).toEqual([
       "Lo que va a la central",
       "Lo que se le factura a la tienda",
       "De lo facturado, le queda a la empresa",
     ]);
-    expect(filas(d.cuentas[0]).map((f) => f.slice(1))).toEqual([
-      ["100000.00", "neutro", "partida"],
-      ["3000.00", "resta", "partida"],
-      ["500.00", "resta", "partida"],
-      ["96500.00", "neutro", "total"],
+    expect(filas(d.cuentas[0])).toEqual([
+      ["Total general", "100000.00", "neutro", "partida"],
+      ["Pago a mensajeros", "3000.00", "resta", "partida"],
+      ["Gana la bodega satélite", "500.00", "resta", "partida"],
+      ["Debe llegar a la central", "96500.00", "neutro", "total"],
     ]);
     expect(filas(d.cuentas[2]).slice(2, 4)).toEqual([
       ["Pago a mensajeros", "3000.00", "resta", "partida"],

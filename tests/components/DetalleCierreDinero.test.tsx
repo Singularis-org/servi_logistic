@@ -157,8 +157,8 @@ describe("mensajero · «Dinero»: reparto, dos cuentas y por tienda (R14, R15)"
     verMensajero();
     const reparto = screen.getByRole("region", { name: "Reparto de lo recaudado" });
     expect(reparto.textContent).toContain("¿A dónde va lo recaudado?");
-    expect(reparto.textContent).toContain("A la tienda hoy ₡94.350");
-    expect(reparto.textContent).toContain("Se lo cobra la empresa ₡5.650");
+    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡94.350");
+    expect(reparto.textContent).toContain("Sale de lo recaudado ₡5.650");
   });
 
   it("«Lo que se le factura a la tienda»: partidas, subtotal punteado, «+» y total en negrita", () => {
@@ -222,14 +222,14 @@ describe("bodega: «Debe llegar a la central» y las tres cuentas (R6, R16)", ()
   it("lo que va a la central, lo que se factura y lo que le queda, con − mensajeros y − satélite", async () => {
     await verBodega();
     const reparto = screen.getByRole("region", { name: "Reparto de lo recaudado" });
-    expect(reparto.textContent).toContain("A la central ₡96.500");
-    expect(reparto.textContent).toContain("A los mensajeros ₡3.000");
-    expect(reparto.textContent).toContain("A la bodega satélite ₡500");
+    expect(reparto.textContent).toContain("Debe llegar a la central ₡96.500");
+    expect(reparto.textContent).toContain("Pago a mensajeros ₡3.000");
+    expect(reparto.textContent).toContain("Gana la bodega satélite ₡500");
     expect(lineas("Lo que va a la central")).toEqual([
       ["Total general", "₡100.000"],
-      ["− Pago al mensajero", "₡3.000"],
+      ["− Pago a mensajeros", "₡3.000"],
       ["− Gana la bodega satélite", "₡500"],
-      ["Para la central", "₡96.500"],
+      ["Debe llegar a la central", "₡96.500"],
     ]);
     expect(lineas("Lo que se le factura a la tienda").at(-1)).toEqual(["Total facturado", "₡7.910"]);
     expect(lineas("De lo facturado, le queda a la empresa")).toEqual([
@@ -240,6 +240,40 @@ describe("bodega: «Debe llegar a la central» y las tres cuentas (R6, R16)", ()
       ["Le queda a la empresa", "₡3.500"],
     ]);
     expect(screen.getByRole("region", { name: "Por tienda" })).toBeTruthy();
+  });
+});
+
+describe("R9 — dentro de «Dinero», una cifra tiene un solo nombre", () => {
+  /** Cada importe del panel «Dinero» con TODOS los rótulos bajo los que se lee (reparto y cuentas). */
+  function rotulosPorImporte(): Record<string, string[]> {
+    const panel = screen.getByRole("tabpanel");
+    const vistos: Record<string, Set<string>> = {};
+    const anotar = (importe: string, rotulo: string) => (vistos[importe] ??= new Set()).add(rotulo);
+    const reparto = within(panel).getByRole("region", { name: "Reparto de lo recaudado" });
+    for (const li of reparto.querySelectorAll("li")) {
+      const importe = li.querySelector("strong")?.textContent ?? "";
+      anotar(importe, (li.textContent ?? "").replace(importe, "").trim());
+    }
+    for (const linea of panel.querySelectorAll("[data-signo]")) {
+      const rotulo = (linea.querySelector("[data-rotulo]")?.textContent ?? "").replace(/^[−+] /, "");
+      anotar(linea.querySelector("[data-monto]")?.textContent ?? "", rotulo);
+    }
+    return Object.fromEntries(Object.entries(vistos).map(([k, v]) => [k, [...v]]));
+  }
+
+  it("mensajero: «Se le paga hoy a la tienda» y «Sale de lo recaudado», sin otro rótulo", () => {
+    verMensajero();
+    const r = rotulosPorImporte();
+    expect(r["₡94.350"]).toEqual(["Se le paga hoy a la tienda"]);
+    expect(r["₡5.650"]).toEqual(["Sale de lo recaudado"]);
+  });
+
+  it("bodega: «Debe llegar a la central», «Pago a mensajeros» y «Gana la bodega satélite», sin otro rótulo", async () => {
+    await verBodega();
+    const r = rotulosPorImporte();
+    expect(r["₡96.500"]).toEqual(["Debe llegar a la central"]);
+    expect(r["₡3.000"]).toEqual(["Pago a mensajeros"]);
+    expect(r["₡500"]).toEqual(["Gana la bodega satélite"]);
   });
 });
 

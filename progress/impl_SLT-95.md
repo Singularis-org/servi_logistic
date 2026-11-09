@@ -110,3 +110,11 @@ No apareció ningún fallo de lógica; no se tocó código de la app.
 - Corrida 1: `84 passed (4.1m)`, E2E_EXIT=0.
 - Corrida 2 (misma base, seguida): `84 passed (4.0m)`, E2E_EXIT=0.
 - 0 failed, 0 skipped, 0 flaky en las dos. Nada que atribuir a S1 ni a inestables conocidos.
+
+## Un nombre por cifra en «Dinero» (decisión de Carlos, 5eec5117), 2026-11-09
+
+- La leyenda del reparto usa la constante de la cifra o de la cuenta (sin rótulos propios): mensajero «Se le paga hoy a la tienda» (`SE_LE_PAGA_HOY_LABEL`) y «Sale de lo recaudado» (`SALE_DE_LO_RECAUDADO_LABEL`); bodega «Debe llegar a la central» (`DEBE_LLEGAR_A_LA_CENTRAL_LABEL`), «Pago a mensajeros» (`PAGO_A_MENSAJEROS_LABEL`) y «Gana la bodega satélite» (`GANA_BODEGA_SATELITE_LABEL`). Se borraron `A_LA_TIENDA_HOY`, `SE_LO_COBRA_LA_EMPRESA`, `A_LA_CENTRAL`, `A_LOS_MENSAJEROS` y `A_LA_BODEGA_SATELITE`.
+- **Consecuencia necesaria para R9 en bodega:** la cuenta «Lo que va a la central» (`lineasCascadaCentral`) llamaba a `paraLaCentral` «Para la central» y a `totalPagoMensajero` «Pago al mensajero». En el detalle único esas dos líneas se renombran a «Debe llegar a la central» y «Pago a mensajeros» (mapa `ROTULO_UNICO_CENTRAL` en `detalle-cierre-vista.ts`); `lineasCascadaCentral` no cambia y el detalle viejo de bodega sigue igual hasta S6. Sin esto, el test nuevo de R9 queda en rojo.
+- Test nuevo `DetalleCierreDinero.test.tsx` «R9 — dentro de «Dinero», una cifra tiene un solo nombre»: lee del panel cada importe con todos sus rótulos (reparto + cuentas) y exige uno solo, con literales (mensajero ₡94.350 y ₡5.650; bodega ₡96.500, ₡3.000 y ₡500).
+- Mutaciones (revertidas): R9a reparto de bodega vuelve a «A la central» → 2 rojos; R9b la cuenta central vuelve a «Para la central» → 2 rojos; R9c el reparto del mensajero vuelve a «Se lo cobra la empresa» → 2 rojos.
+- Verificación contra `slt95_s1`: tests de S1 + identidades + cascadas 132/132; typecheck exit 0 (`NODE_OPTIONS=--max-old-space-size=8192`); eslint de lo tocado exit 0; `pnpm run test:rapido` completo RAPIDO_EXIT=0 (100+100+100+57 archivos en verde; 245 rojos heredados del baseline, fuera de la selección).
