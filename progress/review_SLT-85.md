@@ -122,3 +122,26 @@ revisión se borró al terminar.
 - El test R4 compara los movimientos y las deudas con el trigger y sin él, y salen idénticos.
 - El diff no toca ninguna función ni ninguna tabla de SL-40, SLT-66 ni SLT-83.
 - No lo comprobé en local: `tests/integration/db/demo-qa.test.ts`, que cubre el borrado de las demos con la FK `reverso_de` a la propia tabla. Lo corre el CI con el disparador `demo-qa`.
+
+## Vuelta 2 (acotada a 9c65e6d0..8b6b601b)
+
+Reviso solo lo que pidió el leader: si B1, B2, m1 y m3 quedan resueltos, cómo salen las guardias y la
+ida y vuelta de la migración en una base nueva. m2 queda como aviso para el deploy, por decisión del
+leader en `progress/features/SLT-85.md`.
+
+| Hallazgo | Commit | Estado | Evidencia |
+|---|---|---|---|
+| B1 | `9fe70dc3` | Resuelto | `migracion-slt85-ida-y-vuelta.test.ts:163-176`: la consulta a `pg_proc` hace `JOIN pg_namespace` con `nspname = 'public'`, y la de `pg_trigger` hace `JOIN` con `pg_class` y `pg_namespace`, también con `public`, sobre `cobro_plataforma_movimiento`. `catalogo-postgres-acota-esquema.guardia.test.ts`: 7/7 |
+| B2 | `8b6b601b` | Resuelto | T5.3 está `[x]`. La constancia de los E2E en local está en `progress/impl_SLT-85.md` › «Tanda 3»: grupo `dinero` 84/0/0 flaky; `aislamiento` (sl40, planes-costeo, dos-empresas-humo) 25/0/0, con `CI=1` y una base nueva. T5.2 se sustituye por `gate-completo` de CI, por decisión del humano anotada en `progress/features/SLT-85.md` y en la propia task. Los E2E no los volví a correr: me baso en la bitácora |
+| m1 | `607bfa35` | Resuelto | `down.sql:12-13`: `LOCK TABLE "cobro_plataforma_movimiento" IN SHARE ROW EXCLUSIVE MODE` va justo después del `BEGIN`, antes del `DO` |
+| m3 | `9fe97705` | Resuelto | `design.md §1.4` ya dice `trazas CobroPlataformaTraza[]` y `reversos[]`, con el porqué (el único es compuesto) |
+
+**Lo que corrí:**
+- `pnpm run test:guardias`: 342 archivos: 338 pasan, 1 falla y 3 se saltan. 4 812 tests: 4 783 pasan, 4 fallan y 25 se saltan. Los 4 fallos son todos de `dependencias-declaradas-presentes.guardia.test.ts`, que está en `tests/baseline-rojos.json`. No queda ningún rojo fuera del baseline.
+- `migracion-slt85-ida-y-vuelta.test.ts` con `DATABASE_URL` apuntando a una base propia nueva, `servi_logistic_slt85_rev2`. El test, además, crea y borra su propia `slt85_iv_<rand>`. Resultado: 5/5, ninguno saltado, ya con el `LOCK` nuevo en el down.
+- Borré la base. No quedan bases `servi_logistic_slt85_rev*` ni `slt85_iv_*`.
+
+**Regresiones del rango:** ninguna. El rango solo toca el test (la consulta de `existe()`), `down.sql` (una línea) y la documentación.
+
+### Veredicto vuelta 2: OK
+No quedan bloqueantes. m2 queda abierto como aviso de operación para el deploy a producción, por decisión del leader.
