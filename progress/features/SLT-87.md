@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-87 | reporte-de-bugs | fullstack | high | feature/SLT-87-reporte-de-bugs | Camilo | in_progress |
+| SLT-87 | reporte-de-bugs | fullstack | high | feature/SLT-87-reporte-de-bugs | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4 (2026-11-09): spec de la entrega 1 aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer. Máximo de imágenes (5, contador «{n}/5 imágenes») anotado en SLT-98.
+done (2026-11-09): PR #106 mergeado en dev (3f3d1652), gate-completo verde. Entrega 1 de 3; siguen SLT-97 y SLT-98.
 
 ## Evaluación
 - zone fullstack: tabla nueva + storage + correo + botón en layout + módulo de plataforma.
@@ -32,3 +32,8 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-09 · PR https://github.com/Singularis-org/servi_logistic/pull/106 mergeado por el humano en dev (3f3d1652). `gate-completo` verde; los E2E de aislamiento, dinero y reparto también en verde en CI.
+- Resumen: botón flotante y panel para usuarios de empresa (ni superadmin ni páginas públicas), borrador de texto en localStorage, descripción de 500 como máximo con contador «{n}/500», guardado en la tabla de plataforma `bug_report` (sin políticas, REVOKE servi_app) con contexto de la sesión y solo la ruta, y copia por correo a BUG_REPORT_EMAILS sin romper el guardado.
+- Revisión F2.2: OK; M2–M4 arreglados antes del PR. Un rojo de CI (el censo de updated_at, 17 → 18 tablas) se arregló en d533b247.
+- Deuda: en móvil, al hacer scroll, la paginación o la barra de EnvioForm pueden quedar bajo el botón (el humano lo mira en dev). Aviso: el `.env` del checkout principal apunta a un Supabase prohibido.
+- Worktree: `wt.sh done` lo dejó entero porque había archivos en uso; reintentar. Bases `servi_logistic_slt87` y `servi_logistic_slt87_e2e` pendientes de borrar con autorización.
