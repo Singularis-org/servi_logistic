@@ -296,3 +296,51 @@ manda o en casos extremos:
 `nivelN*`). Con los esquemas `.strict()` de T4.4, **las 8 llamadas responden `validation_error`**. `tsc` no
 lo ve (las actions reciben `unknown`). La lectura sí tiene puente (`arbol-de-tres-niveles.ts`, T4.1); las
 escrituras no. Pasarlas a la entrada nueva es UI (T6, bloqueada por la maqueta T0.2): no se tocó.
+
+### Desviaciones del design a revisar (reviewer)
+
+1. **Etiqueta del historial de un nodo de la hoja a la raíz** («Cabagra · Buenos Aires · Puntarenas»),
+   mientras §7 dice «cadena raíz → nodo». Se eligió el orden de las etiquetas de provincia/cantón/distrito
+   de SL-20 (`etiquetaDeEntidad`), para que CR no cambie de texto (R12). `GeoRepository.cadenaDeNombres`.
+2. **`TipoNivelDTO` con `digitosCodigo` y `codigoHeredaPrefijo`** (de `ReglaDeCodigoDeTipo`), que §4.6 no
+   lista: sin ellos `validarCodigoDeTipo` no se puede usar con lo que devuelven `contextoDeAlta` y
+   `leerDivisionDePais` (ya anotado en la tanda 1).
+3. **`PaisRepository.crear` (seis nombres) sigue** junto a `crearConTipos`; §4.4 pide un solo
+   `crear(datos con tipos)`. Ya no tiene llamador en la app (`DatosDeAltaDePais` lo dice); solo lo usa
+   `tests/integration/db/pais-repositorio.test.ts`, que afirma `historial = [pais_creado]` y 1 fila, y R37
+   pide P + 1 filas: retirarlo cambia el resultado de ese test. **Pendiente de decisión** (aviso de T3.2).
+   En `GeoRepository`/`IGeoRepository` no queda ninguna forma por nivel.
+4. Los `ok` de alta/renombre/estado del service sin `nivel` (ver la auditoría).
+5. `CargaDivisionService` lee la división antes de mirar las columnas obligatorias (necesita P): un país
+   inexistente con cabecera mala es `not_found` (antes `archivo_rechazado`). §4.3 lo ordena así.
+6. Puente de lectura `app/(app)/plataforma/geografia/_components/arbol-de-tres-niveles.ts` (T4.1) y
+   `creados[1..3]` en `GeografiaPlataformaModule.tsx` (T4.2): la pantalla sigue pintando 3 niveles hasta T6.
+7. `tests/integration/db/_fixtures/alta-por-nivel-46.ts`: adaptador de los tests existentes al alta por
+   nodo (calcula la profundidad y el tipo con `contextoDeAlta`), para que esas suites solo cambien la llamada.
+
+### Mapa R → test (tanda 2)
+
+| R | Test (archivo › caso) |
+|---|---|
+| R1 | `tests/unit/guards/geografia-vieja-sin-escritor.guardia.test.ts` (+ contraprueba); `geo-repository.escrituras` › «el doble no declara provincia/canton/distrito» |
+| R5 (borde) | `tests/unit/actions/geografia-plataforma-action.test.ts` › alta con P2002 / 23505 del driver → `conflict`; otra causa → `error` con log |
+| R12 (unit) | `tests/unit/services/geografia-service.test.ts` (casos de SL-20 con nodos de CR, mismos mensajes de código) y `carga-division-service.test.ts` (P = 3) |
+| R14, R15, R16 | `geografia-service.test.ts` › tipo de la profundidad, profundidad 4, sin tipo → `validation_error` sin llamar `crear`, raíz/hijo/padre retirado, `conflict`, `not_found` |
+| R18, R19 | `geografia-service.test.ts` (profundidad 4, sin cambio) + `geo-repository.escrituras` (solo escribe `nombre`/`activo`) |
+| R20 | `geografia-service.test.ts` › 1/2/3 → nivel al repo de órdenes; 4/10/inexistente → 0 sin llamarlo |
+| R21 (datos) | `geografia-service.test.ts` › `{tipos, raices}`; `composition-root` › árbol vacío |
+| R22 | `geografia-nodo.test.ts` (`padreId` en renombre/estado → error) y `geografia-plataforma-action.test.ts` › lista exacta de exports, sin mover |
+| R23, R24 | `pais-service.test.ts` (orden, 2/10 aceptados, 0/1/11 → `validation_error`) + `pais-alta-tipos` (T3.2) |
+| R25, R26 | `pais-service.test.ts` + `pais-tipos-edicion` (T3.2) + `composition-root` › `not_found` sin escribir |
+| R28 | `pais-service.test.ts` › `cambiarDisponible` con un doble que solo admite ese método |
+| R30, R32, R34 | `carga-division-service.test.ts` › P = 2/3/4, «Faltan columnas obligatorias», hueco, tope de filas sin leer la base |
+| R33, R36 (unit) | `geo-repository.escrituras` › `importarDivision` por profundidad, `division_cargada` con `creados` por profundidad solo si escribe |
+| R35 (unit) | `geo-repository.escrituras` › `entidadTipo = nodo_geografico` en alta, renombre y estado, a profundidad 4 |
+| R39 | `geografia-service`, `carga-division-service`, `pais-service` › `maestro` → `forbidden` con doble que revienta si se le llama (+ contraprueba) |
+| R42 | `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` (nodo, tipo, `DELETE FROM`) |
+| R43 | `tests/unit/guards/nodo-geografico-escritor-unico.guardia.test.ts` y `geografia-renombrado-punto-unico.guardia.test.ts` |
+| R48, R49 | `pais-service.test.ts` › `tope` → `validation_error` «Este país ya tiene 10 niveles», `not_found`, P2002 sube; `geografia-plataforma-action.test.ts` › P2002/23505 → `conflict`; `pais-agregar-nivel` (T3.2) |
+| R50 | `geografia-sin-borrado-fisico` (tipo) y `geografia-plataforma-action.test.ts` › exports sin «quitar» |
+
+Pendientes (T5, T6, T8, T9): R11, R13, R21 (pantalla), R27 (componente), R29, R31 (integración),
+R35/R36/R38/R40 (integración, T5.4), R41, R45, R52, y la equivalencia de R12 en integración.
