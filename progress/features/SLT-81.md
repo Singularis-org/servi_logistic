@@ -32,6 +32,8 @@ de `dev`, que aún no trae el catálogo ni la validación de SLT-42.
 
 - 2026-11-09 (tras tanda 2, `progress/impl_SLT-81.md > Tanda 2 · bloque 2`): los 5 desvíos aceptados uno por uno (humano): aviso «Datos incompletos» con `role="note"`; error de lectura de tipos en vez de «falta tipo activo»; campo «Documento» en el alta de país; rechazo de R15 bajo la tabla, no toast; quitar filas del borrador del alta mientras quede más de una.
 
+- 2026-11-09 (tras tanda 3, `progress/impl_SLT-81.md > Tanda 3 · bloque 3`): los 7 desvíos aceptados uno por uno (humano): nombre del país en el aviso de WhatsApp; consulta extra al editar un usuario para el nombre del tipo (R16); sin prefijo ni aviso en el alta de empresa hasta elegir país; el aviso del alta solo mira el prefijo; postulación sin empresa sin consultar la base; la guardia de R24 ignora `"cedula"` como nombre del campo; test viejo del alta elige país antes que tipo.
+
 ## Preguntas abiertas
 Ninguna.
 
