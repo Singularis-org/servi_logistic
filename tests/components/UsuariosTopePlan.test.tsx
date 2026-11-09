@@ -108,7 +108,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   listarTiposIdentificacionMock.mockResolvedValue({
     status: "ok",
-    tipos: [{ id: "t1", value: "cedula" }],
+    // SLT-81 (R18): la opción se rotula con `nombre`.
+    tipos: [{ id: "t1", value: "cedula", nombre: "cedula", clave: "cedula" }],
   });
   listarRolesMock.mockResolvedValue({
     status: "ok",
