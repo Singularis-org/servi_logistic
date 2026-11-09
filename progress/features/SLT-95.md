@@ -44,3 +44,5 @@ Tarjeta: zone frontend, complexity high. La descripción incluye piezas que pued
 ## Modelos (overrides)
 
 ## Cierre
+
+<!-- tamano-pr-aceptado: 2026-11-09 · Carlos: «no separemos código para que no hayan daños, va dentro lo justo y necesario lo demás va en otro pr». S1 = componente base + sus tests (3122 líneas, ~1320 de tests). -->
