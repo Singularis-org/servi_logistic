@@ -53,6 +53,7 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/plataforma/vehiculos": "nucleo",
   // SLT-97: los reportes de problema los ve solo la plataforma (superadmin).
   "/plataforma/reportes": "nucleo",
+  "/plataforma/reportes/[reporteId]": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "/recoleccion": "nucleo",
   "/recepcion-satelite": "nucleo",

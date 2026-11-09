@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { ReporteFilaDTO } from "@/lib/types/reporte-bug";
+import type { ReporteDetalleDTO, ReporteFilaDTO } from "@/lib/types/reporte-bug";
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 
@@ -35,6 +35,7 @@ const toastMock = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi
 vi.mock("@/hooks/useToast", () => ({ useToast: () => toastMock }));
 
 import ReportesPage, { type ReportesPageDeps } from "@/app/(app)/plataforma/reportes/page";
+import ReporteDetallePage, { type ReporteDetallePageDeps } from "@/app/(app)/plataforma/reportes/[reporteId]/page";
 
 const ROLES_DE_EMPRESA = ["maestro", "admin", "adminTienda", "adminSatelite", "mensajero", "apiKey"];
 
@@ -56,10 +57,29 @@ function fila(n: number, extra: Partial<ReporteFilaDTO> = {}): ReporteFilaDTO {
   };
 }
 
+const ID_REPORTE = "33333333-3333-4333-8333-333333333333";
+
+const DETALLE: ReporteDetalleDTO = {
+  id: ID_REPORTE,
+  descripcion: "La tabla no carga",
+  empresa: "Acme",
+  usuario: "Ana",
+  correo: "ana@acme.test",
+  rol: "admin",
+  pagina: "/ordenes",
+  navegador: "Mozilla/5.0",
+  ventana: null,
+  appInstalada: null,
+  creadoEn: "2026-11-09T14:05:00.000Z",
+  estado: "new",
+  destinosPermitidos: ["in_review", "resolved", "dismissed"],
+};
+
 const deps = {
   getActor: vi.fn(),
   listar: vi.fn(),
   listarEmpresas: vi.fn(),
+  ver: vi.fn(),
 };
 
 function actorDe(rol: string) {
@@ -68,6 +88,14 @@ function actorDe(rol: string) {
 
 async function montarListado(searchParams: Record<string, string | string[] | undefined> = {}) {
   const ui = await ReportesPage({ searchParams: Promise.resolve(searchParams) }, deps as unknown as ReportesPageDeps);
+  return render(ui);
+}
+
+async function montarDetalle(reporteId: string) {
+  const ui = await ReporteDetallePage(
+    { params: Promise.resolve({ reporteId }) },
+    deps as unknown as ReporteDetallePageDeps,
+  );
   return render(ui);
 }
 
@@ -86,6 +114,7 @@ async function opcionesDe(user: ReturnType<typeof userEvent.setup>, nombre: stri
 beforeEach(() => {
   deps.getActor.mockResolvedValue(actorDe("superadmin"));
   deps.listar.mockResolvedValue({ status: "ok", items: [fila(1)], total: 1, pagina: 1 });
+  deps.ver.mockResolvedValue({ status: "ok", reporte: DETALLE, historial: [] });
   deps.listarEmpresas.mockResolvedValue({
     status: "ok",
     empresas: [
@@ -105,9 +134,31 @@ describe("R2 — la puerta, antes de leer", () => {
     for (const actor of [null, ...ROLES_DE_EMPRESA.map(actorDe)]) {
       deps.getActor.mockResolvedValue(actor);
       await expect(montarListado()).rejects.toThrow("NEXT_NOT_FOUND");
+      await expect(montarDetalle(ID_REPORTE)).rejects.toThrow("NEXT_NOT_FOUND");
     }
     expect(deps.listar).not.toHaveBeenCalled();
     expect(deps.listarEmpresas).not.toHaveBeenCalled();
+    expect(deps.ver).not.toHaveBeenCalled();
+  });
+});
+
+describe("R14, R15 — el detalle", () => {
+  it("un id que no es uuid, que no existe o borrado da notFound", async () => {
+    // Que no es uuid: la action responde `validation_error`; que no existe o está borrado, `not_found`.
+    deps.ver.mockResolvedValueOnce({ status: "validation_error", fieldErrors: { reporteId: ["x"] } });
+    await expect(montarDetalle("no-es-uuid")).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(deps.ver).toHaveBeenLastCalledWith({ reporteId: "no-es-uuid" });
+
+    deps.ver.mockResolvedValueOnce({ status: "not_found" });
+    await expect(montarDetalle(ID_REPORTE)).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(deps.ver).toHaveBeenLastCalledWith({ reporteId: ID_REPORTE });
+  });
+
+  it("un reporte que existe se pinta con su título y el enlace de vuelta al listado", async () => {
+    await montarDetalle(ID_REPORTE);
+    expect(screen.getByRole("heading", { level: 1, name: "Reporte" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver a reportes" })).toHaveAttribute("href", "/plataforma/reportes");
+    expect(screen.getByText("La tabla no carga")).toBeInTheDocument();
   });
 });
 
