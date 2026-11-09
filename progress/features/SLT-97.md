@@ -17,6 +17,10 @@ F1.0 (2026-11-09): tomada, worktree montado y afinada. Sigue F1.2 (spec_author).
 ## Decisiones
 - 2026-11-09 · Alcance y decisiones → `specs/SLT-97-reporte-bugs-modulo-superadmin/requirements.md`.
 
+- 2026-11-09 · Humano: P1 = C, un solo PR con el exceso aceptado (~2.300–2.450 líneas). P2 = se puede saltar hacia adelante (desde Nuevo a cualquiera de los otros; desde En revisión a Resuelto o Descartado; volver atrás, nunca). P3 = nota de 500 como máximo, con contador «{n}/500»; vacía o solo espacios = sin nota. P4 = el listado abre en «Pendientes» (Nuevo y En revisión), del más reciente al más antiguo, en páginas de 25.
+
+<!-- tamano-pr-aceptado: 2026-11-09 · ~29 archivos y ~2.300–2.450 líneas (unas 2,3 veces el máximo), la mitad tests; el humano eligió no partir: «Una sola, aceptar exceso». -->
+
 ## Preguntas abiertas
 Ninguna.
 
