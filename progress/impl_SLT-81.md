@@ -260,3 +260,113 @@ Pendientes del Bloque 4: R25 (E2E) y T4.2/T4.3.
 ### Preguntas abiertas
 - Ninguna que bloquee. A revisar: desvío 2 (`obtener` lee la lista sin país para el nombre del tipo
   inactivo) y desvío 6 (la guardia de R24 descuenta `"cedula"` como nombre de campo).
+
+## Tanda 4 · bloque 4
+
+Fecha: 2026-11-09. Rol: implementer (directo, sin subagentes, por indicación del leader). Sin
+dependencias nuevas. Grep/Read (worktree sin indexar).
+
+### Commits
+| Commit | Task |
+|---|---|
+| `c01b1bd0` | T4.1 (previo): `superadmin-empresas.spec.ts` y `altaDeEmpresaPorPantalla` (`_superadmin-fixture.ts`) eligen «Cédula física» y no «cedula» (+ la línea de Decisiones de la tanda 3 en `progress/features/SLT-81.md`) |
+| `9f7adee1` | T4.1: `e2e/datos-pais-superadmin.spec.ts` + entrada en `playwright.config.ts` (proyecto `aislamiento`) |
+| `0e8467f4` | T4.2: `docs/architecture.md > País por empresa` |
+| (este) | T4.3: mapa R1–R28 y verificación |
+
+### Archivos
+- Nuevo: `e2e/datos-pais-superadmin.spec.ts` (2 casos, serial).
+- `playwright.config.ts`: `datos-pais-superadmin` al final de `aislamiento`. La matriz de
+  `.github/workflows/gate.yml` (`grupo: [aislamiento, reparto, dinero]`) y `docs/verification.md`
+  no cambian: el spec cae en un grupo que ya existe.
+- `e2e/_superadmin-fixture.ts`, `e2e/superadmin-empresas.spec.ts`: el nombre de la opción del tipo.
+- `docs/architecture.md`: dos sub-bullets nuevos bajo «País por empresa» (datos del país; formularios
+  del país) y la excepción de UI de `pais-sin-literales` pasa de «SLT-81» a «SLT-92».
+
+### El E2E (R25)
+- **País:** el primero de `PA, GT, HN, SV, NI, DO, PY, UY, BO, PE, CL, AR, VE, MX, ES, PT` que la
+  base no tenga (lectura con `clienteDueno`); si se agotan, falla con un mensaje que lo dice.
+- **Datos:** prefijo `getCountryCallingCode`; dígitos y teléfono del maestro de
+  `getExampleNumber(pais, libphonenumber-js/mobile/examples)` (validados con `max` en local: PA 8,
+  GT 8, HN 8, SV 8, NI 8, DO 10, PY 9…); zona, la primera que ofrece el selector al escribir
+  «America»; tipo «Documento E2E <hex>», dígitos, 8–10; documento de 9 dígitos.
+- **Caso 1:** «Nuevo país» → el prefijo llega cargado con el oficial (R26) → «Dar de alta» → en
+  `?pais=<id>` la región «Datos del país» no dice «Datos incompletos», sus `dd` son `+<prefijo>`,
+  los dígitos y la zona, y la tabla trae una fila con el tipo y su interruptor activo.
+- **Caso 2:** `/plataforma/empresas`, se elige el país: `prefijo-telefonico` = `+<prefijo>`; el
+  `listbox` del tipo tiene exactamente 1 opción, con el nombre del tipo; el alta sale
+  (`AVISO_EMPRESA_CREADA`, la fila por slug con el país) y en la base la empresa es de ese país y el
+  maestro tiene ese tipo y el teléfono nacional.
+- Alta de empresa sin geografía: `OrganizacionService.validarConElPais` solo exige prefijo, dígitos,
+  zona y un tipo activo (SLT-42 R6), y `PaisService.crear` deja el país `disponible`: no se carga CSV.
+- **No corrido en local** (necesita base desechable y `.env`, por indicación del leader): queda para
+  el check `e2e` de CI. Compila (`pnpm typecheck`, el `tsconfig` incluye `e2e/`) y Playwright lo lista.
+
+### Desvíos
+1. **Commit `c01b1bd0` fuera de las tasks.** Desde T3.3 el `Select` de tipo del alta de empresa rotula
+   cada opción con su `nombre` («Cédula física»), no con el `value`. `superadmin-empresas.spec.ts`
+   (grupo `plataforma-vacia`, del que depende `aislamiento`) y `altaDeEmpresaPorPantalla` seguían
+   pulsando la opción «cedula» y habrían caído en CI. No hay otro E2E que pulse una opción de tipo.
+2. **T4.1 y T4.3 quedan sin marcar:** T4.1 pide dos corridas locales y el check `e2e` de CI; T4.3 pide `./init.sh` verde y cada R pasando (R25 y la integración solo corren en CI).
+3. **`./init.sh` rojo por algo ajeno** (ver Verificación): el validador del board corta antes de los
+   tests. Los pasos que siguen se corrieron a mano, en el mismo orden.
+
+### Mapa R1–R28 → test
+| R | Test (archivo › caso) |
+|---|---|
+| R1 | `tests/unit/services/pais-service-datos.test.ts` › «SLT-81 R1 — solo el superadmin escribe los datos del país»; `tests/unit/actions/geografia-plataforma-action.test.ts` › «SLT-81 R1 — las actions de los datos del país: puerta antes de validar, sin tocar el servicio» |
+| R2 | `tests/components/GeografiaDatosDelPais.test.tsx` › «R2 — la sección muestra los cuatro datos del país, también los tipos inactivos»; E2E caso 1 |
+| R3 | `GeografiaDatosDelPais.test.tsx` › «R3 — un país incompleto nombra cada dato que falta» |
+| R4 | `tests/integration/db/pais-datos-plataforma.test.ts` › «R4: CR llega completo de las migraciones de SLT-42: 506, 8, America/Costa_Rica y cinco tipos activos» |
+| R5 | `pais-service-datos.test.ts` › «SLT-81 R5 — el alta exige prefijo, dígitos, zona y al menos un tipo»; `tests/components/GeografiaPlataformaAltaPais.test.tsx` › «R5: sin dígitos, sin zona y con el tipo vacío no envía y marca cada campo» |
+| R6 | `pais-datos-plataforma.test.ts` › «R6: un tipo con clave repetida tumba el alta: ni país ni tipos ni historial» y «R6/R17: el alta crea el país, sus tipos en orden…» |
+| R7 | `pais-service-datos.test.ts` › «SLT-81 R7 — formato del prefijo y de los dígitos» |
+| R8 | `tests/unit/utils/zonas-iana.test.ts`; `pais-service-datos.test.ts` › «SLT-81 R8 — la zona está en la lista del servidor y la base la conoce»; `pais-datos-plataforma.test.ts` › «R8: zonaConocidaPorLaBase pregunta a pg_timezone_names»; `GeografiaDatosDelPais.test.tsx` › «R8 — el selector de zona busca por texto…» |
+| R9 | `pais-service-datos.test.ts` › «R9: «cedula fisica» contra «Cédula  Física» en el mismo país → conflict en el nombre», «R9 en el alta: dos tipos con el mismo nombre plegado…» |
+| R10 | `pais-service-datos.test.ts` › «R10: con 3 empresas y sin confirmar → requiere_confirmacion {empresas: 3} y no escribe», «R10: confirmando 2 cuando son 3…», «R10: confirmando 3 → guarda…»; `GeografiaDatosDelPais.test.tsx` › «R10: con empresas, un segundo paso dice «afecta a 3 empresas» y reenvía con 3» |
+| R11 | `pais-service-datos.test.ts` › «R11: un país sin empresas guarda sin confirmación»; `GeografiaDatosDelPais.test.tsx` › «R11: sin empresas guarda a la primera, sin segundo paso» |
+| R12 | `pais-datos-plataforma.test.ts` › «R12: tras cambiar la zona y los dígitos de PA, las reglas de una empresa de PA dan los nuevos y nada guardado cambia (ni en PA ni en CR)» |
+| R13 | `pais-service-datos.test.ts` › «R13: alta de un tipo en un país existente con value PA_<clave>», «R13: el servicio no ofrece borrar un tipo»; `GeografiaDatosDelPais.test.tsx` › «R13 — alta, edición y activación de tipos; sin borrar»; `tests/unit/guards/tipos-documento-sin-borrado.guardia.test.ts` |
+| R14 | `pais-datos-plataforma.test.ts` › «R14: tras cambiar el largo del tipo, el usuario guardado con el formato viejo sigue igual y se edita sin revalidar; un alta nueva exige el nuevo» |
+| R15 | `pais-service-datos.test.ts` › «R15: desactivar el único activo → validation_error…»; `pais-datos-plataforma.test.ts` › «R15: dos desactivaciones a la vez de los dos últimos activos dejan uno activo» |
+| R16 | `pais-datos-plataforma.test.ts` › «R16: desactivar un tipo no cambia el de los usuarios que ya lo tienen»; `tests/unit/components/usuario-form.test.tsx` › «R16: el tipo inactivo del usuario se muestra deshabilitado como su valor actual» |
+| R17 | `pais-datos-plataforma.test.ts` › «R17: actualizarDatos deja una fila con antes, después y empresas…», «R13/R17: … guardar igual no deja ninguna», «R17: si el historial falla, el cambio no queda» |
+| R18 | `usuario-form.test.tsx` › «R18: muestra +<prefijo> del proveedor y los tipos activos por nombre, en el orden recibido» |
+| R19 | `tests/integration/postulacion-page.test.tsx` › «R19: dentro de `conEmpresa` de una empresa de XA…»; `tests/components/PostulacionForm.test.tsx` › «R19: pinta +<prefijo> junto al teléfono» |
+| R20 | `tests/components/empresas-module.test.tsx` › «R20: al elegir Ecuador muestra +593 y solo sus tipos; al pasar a Costa Rica el tipo elegido se vacía»; E2E caso 2 |
+| R21 | `tests/components/CorregirDatosCliente.ordenes.test.tsx` › «R21: muestra +<prefijo>…» |
+| R22 | `tests/components/DestinatariosField.test.tsx` › «R22: con un teléfono que no sirve, el aviso dice +<prefijo> y <n> dígitos del país» |
+| R23 | `tests/components/PrefijoTelefonico.test.tsx` › «R23: sin prefijo, el teléfono va solo con el aviso…»; casos R23 de `usuario-form.test.tsx` |
+| R24 | `tests/unit/guards/formularios-pais-sin-literales.guardia.test.ts` › «%s no trae `506` ni una lista fija de tipos» (7 archivos) + «CONTRAPRUEBA» |
+| R25 | `e2e/datos-pais-superadmin.spec.ts` (proyecto `aislamiento`) › «R25: «Nuevo país» con prefijo, dígitos, zona y un tipo deja el país completo», «R25: el alta de empresa de ese país muestra su prefijo y exactamente su tipo, y sale bien» |
+| R26 | `tests/unit/utils/prefijo-oficial.test.ts` › «SLT-81 R26 — prefijo oficial»; `pais-service-datos.test.ts` › «SLT-81 R26 — solo el prefijo oficial según libphonenumber»; `GeografiaPlataformaAltaPais.test.tsx` › «R26: al elegir el país, el prefijo aparece cargado con el oficial»; `GeografiaDatosDelPais.test.tsx` › «R26 — el formulario trae cargado el prefijo oficial» |
+| R27 | `postulacion-page.test.tsx` › «R27: sin empresa en el contexto dice «La postulación se abre desde la página de una empresa», sin formulario ni tipos» |
+| R28 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` › «SLT-81 R28: ninguna excepcion lleva SLT-81 y las cuatro de la UI llevan SLT-92» |
+
+Todos los R tienen al menos un test que existe. Corren aquí los de unidad, componente y guardia; los
+de `tests/integration/db/` (R4, R6, R12, R14, R17 y parte de R8, R15, R16) se saltan sin base y los
+corre CI; R25 lo corre el check `e2e` de CI.
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0 (incluye `e2e/`).
+- `pnpm exec eslint` de los 4 archivos de `e2e/` y `playwright.config.ts`: «No issues found».
+- `pnpm exec playwright test --list --project=aislamiento`: lista
+  `[aislamiento] › datos-pais-superadmin.spec.ts:132:5 › R25: «Nuevo país»…` y `…:180:5 › R25: el
+  alta de empresa…`; «Total: 88 tests in 18 files».
+- `vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 38/38 (el spec está en exactamente
+  un proyecto; sin `skip`/`only`).
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: **exit 1** en el paso 3+4, antes de los tests:
+  «✗ feature_list.json invalido: features en vuelo sin assignee en el tracker: SLT-85». Es la copia
+  del board del worktree principal (otra ficha); no se tocó.
+- Los pasos siguientes, a mano:
+  - `node scripts/check-perfil.mjs`: exit 0, «6/6 docs revisados en los ultimos 60 dias».
+  - `pnpm run lint`: exit 0, 0 errores (244 avisos del repo; `eslint --quiet` de los archivos de la
+    rama contra `origin/dev`: 0 errores).
+  - `pnpm run test:rapido` (related contra `origin/dev` + guardias): exit 0. Related: 846 archivos (762 pasan, 84 saltados), 12074 tests (11448 pasan, 626 saltados), 0 fallos. Guardias: 333 archivos (330 pasan, 3 saltados), 4664 tests (4639 pasan, 25 saltados), 0 fallos; «245 rojo(s) heredado(s) del baseline no cuentan en esta seleccion».
+
+**Veredicto:** T4.2 hecha. T4.3: mapa y verificación hechos, sin marcar (su «Hecho» pide `./init.sh` verde y que R25 y la integración pasen, y eso es de CI). T4.1 escrita y listada, pendiente de su corrida en CI. Typecheck, lint, guardias y related en verde; `./init.sh` rojo solo por SLT-85 sin assignee (ajeno).
+
+### Preguntas abiertas
+- `./init.sh` no llega a verde mientras SLT-85 siga en vuelo sin assignee en el board (lo resuelve el leader/humano).
+- El E2E no se corrió en local: su primera corrida será la de CI.
+

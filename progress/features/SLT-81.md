@@ -41,6 +41,7 @@ Ninguna.
 - 2026-11-06 · Tanda 1 (backend_dev): T0.0, T0.1 y Bloque 1 (T1.1–T1.6) hechos; typecheck, lint, guardias (baseline) y unit verdes; integración a CI. Detalle: `progress/impl_SLT-81.md > Tanda 1`.
 - 2026-11-09 · Tanda 2 (frontend_dev): Bloque 2 (T2.1, T2.2) hecho; `@sin-superficie` retiradas; typecheck, lint, guardias (baseline) y tests de componente verdes. Detalle: `progress/impl_SLT-81.md > Tanda 2 · bloque 2`.
 - 2026-11-09 · Tanda 3 (frontend_dev): Bloque 3 (T3.1–T3.7) hecho: prefijo en el portal, los cinco formularios y la postulación («Preparar + aviso»), guardias de R24 y de tipos sin borrado; 8 desvíos anotados; typecheck, lint, guardias (baseline) y `vitest related` verdes. Detalle: `progress/impl_SLT-81.md > Tanda 3 · bloque 3`.
+- 2026-11-09 · Tanda 4 (implementer): Bloque 4: E2E `datos-pais-superadmin` en `aislamiento` (listado, sin correr: a CI), `docs/architecture.md`, mapa R1–R28; arreglados 2 E2E que elegían la opción «cedula». `./init.sh` rojo solo por SLT-85 sin assignee (ajeno); typecheck, lint, guardias y related verdes a mano. T4.1/T4.3 sin marcar hasta CI. Detalle: `progress/impl_SLT-81.md > Tanda 4 · bloque 4`.
 
 ## Modelos (overrides)
 

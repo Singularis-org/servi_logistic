@@ -89,7 +89,7 @@
   entrada en `playwright.config.ts` (proyecto `aislamiento`).
   **Hecho:** dos corridas seguidas sobre la misma base local, 0 failed / 0 skipped / 0 flaky;
   `e2e-sin-saltos.guardia` verde. En CI, el check `e2e` verde.
-- [ ] **T4.2 — Documentación.** `docs/architecture.md > País por empresa` (escritura de los datos
+- [x] **T4.2 — Documentación.** `docs/architecture.md > País por empresa` (escritura de los datos
   del país, confirmación por número de empresas, lista de zonas, prefijo oficial) y la mención de
   que las excepciones de `pais-sin-literales` de la UI son de SLT-92, si el doc las nombra.
   **Hecho:** el párrafo nombra los archivos nuevos y la guardia nueva; ningún doc ni test atribuye
