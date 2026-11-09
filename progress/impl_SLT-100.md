@@ -165,6 +165,10 @@ posible archivo extra, `CierresAdminPage.test.tsx`, y dos rótulos que no cuadra
 «init.sh invoca scripts/verificar-dependencias.mjs», y `init.sh` no lo invoca. Vienen de antes y no son de este
 diff: `init.sh` y `scripts/verificar-dependencias.mjs` son iguales a `origin/dev`. Aviso al leader.
 
+**Fix T1 (regresión de 9545b5d):** `CierresAdminRepository.ts` comparaba `resueltoPorUsuario === null` y los dobles
+sin ese campo (undefined) rompían con `TypeError`; ahora guarda por falsy. Tests sin cambios. Base `slt100_t1`:
+3 archivos (`cierres-admin-repository`, `cierre-pagos-lectura`, `cierre-resuelto-por-sql-real`) `Tests 74 passed (74)`; `tsc --noEmit` exit 0.
+
 ## T2–T4 · frontend_dev · 2026-11-09
 
 Base desechable propia `slt100_fe_vitest` (mismo servidor local que la del `.env`, `DROP`/`CREATE`,

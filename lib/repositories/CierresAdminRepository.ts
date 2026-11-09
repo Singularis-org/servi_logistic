@@ -1480,7 +1480,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       rechazosDeTienda: rechazosDeTienda.map(toRechazoDeTienda),
       // SLT-100 (R80): `null` sin resolutor. La regla del estado (solo aprobado/rechazado) es del servicio.
       resueltoPorNombre:
-        cierre.resueltoPorUsuario === null ? null : nombreCompletoUsuario(cierre.resueltoPorUsuario),
+        cierre.resueltoPorUsuario ? nombreCompletoUsuario(cierre.resueltoPorUsuario) : null,
       // Grano: N gestiones de una orden comparten su UNICA fila congelada.
       // Sin fallback (R14/decision (a)): si falta la fila, es un error DURO, no un silencio
       // que muestre datos vivos disfrazados de congelados.
