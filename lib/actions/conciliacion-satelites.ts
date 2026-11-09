@@ -177,8 +177,9 @@ export async function listarConsolidacionesSateliteCompletoAction(
 /**
  * R9/R10/R11/R13 — MARCAR una consolidacion como RECIBIDA, con su monto.
  *
- * El monto muere en el BORDE si esta ausente, es negativo o trae tres decimales (R10,
- * `montoPositivoSchema`), y en ese caso no se llama al servicio ni se escribe nada.
+ * El monto muere en el BORDE si esta ausente, es negativo o trae tres decimales (R10), y en ese caso
+ * no se llama al servicio ni se escribe nada. SLT-96: el borde admite monto >= 0; el 0 solo vale con
+ * lo declarado en 0, y eso lo decide el repositorio contra la base (`validation_error` si no).
  */
 export async function marcarConsolidacionRecibidaAction(
   input: unknown,
@@ -197,8 +198,9 @@ export async function marcarConsolidacionRecibidaAction(
 /**
  * ⭑ FICHA 473 (R10/R11) — CORREGIR el monto recibido de una consolidacion YA conciliada.
  *
- * Calco de `marcarConsolidacionRecibidaAction` con el MISMO schema (`.strict()`, monto > 0 con
- * ≤ 2 decimales, nota ≤ 500): sesion primero, validacion en el borde, rol en el servicio.
+ * Calco de `marcarConsolidacionRecibidaAction` con el MISMO schema (`.strict()`, monto >= 0 con
+ * ≤ 2 decimales, nota ≤ 500): sesion primero, validacion en el borde, rol en el servicio. SLT-96: el
+ * 0 solo con lo declarado en 0, decidido por el repositorio.
  */
 export async function corregirConsolidacionRecibidaAction(
   input: unknown,

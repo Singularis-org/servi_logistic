@@ -54,6 +54,11 @@ export const MARCAR_RECIBIDO_TEXTO = {
 /** Errores de campo que este formulario puede levantar por sí solo, antes de enviar. */
 export const MARCAR_RECIBIDO_ERROR = {
   monto: "Escribí un monto válido, mayor que cero y con dos decimales como máximo.",
+  /**
+   * SLT-96 (R13) — el aviso cuando lo declarado es 0: ahí el 0 SÍ vale, y decir «mayor que cero»
+   * mandaría a la persona a teclear un monto que no recibió.
+   */
+  montoConCero: "Escribí un monto válido, de cero o más y con dos decimales como máximo.",
   notaLarga: (max: number) => `La nota no puede pasar de ${max} caracteres.`,
 } as const;
 

@@ -9,6 +9,8 @@ import {
 } from "@/lib/actions/conciliacion-satelites";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IConciliacionSatelitesService } from "@/lib/interfaces/services/IConciliacionSatelitesService";
+import { montoPositivoSchema } from "@/lib/types/wallet";
+import { MENSAJE_MONTO_RECIBIDO_FORMA } from "@/lib/types/conciliacion-satelites";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T8 (R10/R27) — EL BORDE: SIN SESION, ENTRADA INVALIDA, Y LO QUE NO SE ESCRIBE.
@@ -97,7 +99,6 @@ describe("431/T8 (R10) — el monto muere en el borde, y no se escribe nada", ()
     ["ausente", {}],
     ["cadena vacia", { montoRecibido: "" }],
     ["negativo", { montoRecibido: "-1.00" }],
-    ["cero", { montoRecibido: "0" }],
     ["con TRES decimales", { montoRecibido: "485.123" }],
     ["no numerico", { montoRecibido: "mucho" }],
     ["un number y no un string", { montoRecibido: 485 }],
@@ -113,17 +114,19 @@ describe("431/T8 (R10) — el monto muere en el borde, y no se escribe nada", ()
     expect(service.marcarRecibida).not.toHaveBeenCalled();
   });
 
-  it("⭑ el CERO se rechaza a proposito: «recibi ₡0» no es una marca, es no marcar", async () => {
-    // Se reusa `montoPositivoSchema` TAL CUAL (> 0) en vez de relajarlo aqui. Si el humano quiere
-    // admitir el 0, se cambia la pieza COMPARTIDA y se enteran sus otros consumidores — que es el
-    // punto. Reescribir «cuanto dinero es valido» en esta ficha seria la segunda definicion que un
-    // dia diverge (leccion de la ficha 381).
+  it("⭑ SLT-96: el CERO pasa el borde y llega al servicio, que decide contra lo declarado", async () => {
+    // La 431 lo rechazaba aqui («recibi ₡0 no es una marca»). Carlos (2026-11-09) lo admite SOLO con
+    // lo declarado en 0, y eso el borde no lo sabe: deja pasar la forma y el repositorio decide.
     const service = fakeService();
     const r = await marcarConsolidacionRecibidaAction(
       { cierreBodegaId: CB, montoRecibido: "0.00" },
       { service, ...conActor(MAESTRO) },
     );
-    expect(r.status).toBe("validation_error");
+    expect(r.status).toBe("ok");
+    expect(service.marcarRecibida).toHaveBeenCalledWith(
+      { cierreBodegaId: CB, montoRecibido: "0.00" },
+      MAESTRO,
+    );
   });
 
   it("un monto VALIDO pasa, con y sin nota", async () => {
@@ -250,7 +253,6 @@ describe("473/T4 — corregirConsolidacionRecibidaAction", () => {
 
   it.each([
     ["monto ausente", {}],
-    ["monto 0", { montoRecibido: "0" }],
     ["monto negativo", { montoRecibido: "-5.00" }],
     ["monto con tres decimales", { montoRecibido: "200800.001" }],
     ["monto no numerico", { montoRecibido: "doscientos" }],
@@ -309,5 +311,117 @@ describe("473/T4 — corregirConsolidacionRecibidaAction", () => {
         ),
       ).toEqual({ status });
     }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ SLT-96 «Consolidación de ₡0 no se puede marcar recibida» (R5/R6/R8) — el borde admite la FORMA
+// del 0 en marcar y corregir; si vale, lo decide el repositorio leyendo lo declarado de la base.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const ACCIONES = [
+  ["marcar", marcarConsolidacionRecibidaAction, "marcarRecibida"],
+  ["corregir", corregirConsolidacionRecibidaAction, "corregirRecibida"],
+] as const;
+
+describe("SLT-96 (R6) — la forma del monto en el borde, en marcar y en corregir", () => {
+  const RECHAZOS: Array<[string, Record<string, unknown>]> = [
+    ["ausente", {}],
+    ["vacio", { montoRecibido: "" }],
+    ["negativo", { montoRecibido: "-1.00" }],
+    ["-0", { montoRecibido: "-0" }],
+    ["-0.00", { montoRecibido: "-0.00" }],
+    ["0 con tres decimales", { montoRecibido: "0.000" }],
+    // Vuelta 2 (H1): el separador del cero es el PUNTO literal. Con el punto sin escapar en el
+    // regex, "0,00", "0a0" y "0-0" pasaban el borde y reventaban en `Prisma.Decimal` (error interno),
+    // y "0x0" / "0e0" se aceptaban como cero.
+    ["0 con coma", { montoRecibido: "0,00" }],
+    ["0a0", { montoRecibido: "0a0" }],
+    ["0-0", { montoRecibido: "0-0" }],
+    ["0x0", { montoRecibido: "0x0" }],
+    ["0e0", { montoRecibido: "0e0" }],
+    ["con tres decimales", { montoRecibido: "485.123" }],
+    ["no numerico", { montoRecibido: "mucho" }],
+    ["un number 0", { montoRecibido: 0 }],
+    ["un number", { montoRecibido: 485 }],
+  ];
+
+  for (const [nombre, accion, metodo] of ACCIONES) {
+    it.each(RECHAZOS)(
+      `R6 ${nombre} con monto %s -> validation_error en el campo y el servicio NI SE LLAMA`,
+      async (_n, parche) => {
+        const service = fakeService();
+        const r = await accion({ cierreBodegaId: CB, ...parche }, { service, ...conActor(MAESTRO) });
+        expect(r.status).toBe("validation_error");
+        if (r.status === "validation_error") {
+          expect(r.fieldErrors.montoRecibido?.length ?? 0).toBeGreaterThan(0);
+        }
+        for (const fn of Object.values(service)) expect(fn).not.toHaveBeenCalled();
+        void metodo;
+      },
+    );
+
+    it.each(["0", "0.0", "0.00", "485.00", "0.01"])(
+      `R6 ${nombre} con monto %s llega al servicio tal cual`,
+      async (monto) => {
+        const service = fakeService();
+        const r = await accion(
+          { cierreBodegaId: CB, montoRecibido: monto },
+          { service, ...conActor(MAESTRO) },
+        );
+        expect(r.status).toBe("ok");
+        expect(service[metodo]).toHaveBeenCalledWith(
+          { cierreBodegaId: CB, montoRecibido: monto },
+          MAESTRO,
+        );
+      },
+    );
+
+    it(`R5 ${nombre}: una clave «declarado» en la entrada muere en el borde (lo declarado sale de la base)`, async () => {
+      const service = fakeService();
+      const r = await accion(
+        { cierreBodegaId: CB, montoRecibido: "0.00", declarado: "0.00" },
+        { service, ...conActor(MAESTRO) },
+      );
+      expect(r.status).toBe("validation_error");
+      for (const fn of Object.values(service)) expect(fn).not.toHaveBeenCalled();
+    });
+  }
+
+  it("R6 el aviso de forma del monto es el literal del contrato", async () => {
+    const service = fakeService();
+    const r = await marcarConsolidacionRecibidaAction(
+      { cierreBodegaId: CB, montoRecibido: "-0" },
+      { service, ...conActor(MAESTRO) },
+    );
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { montoRecibido: ["El monto debe ser 0 o mayor, con hasta 2 decimales."] },
+    });
+    // El literal de arriba ES el contrato; esta linea solo comprueba que la constante no se aparto.
+    expect(MENSAJE_MONTO_RECIBIDO_FORMA).toBe("El monto debe ser 0 o mayor, con hasta 2 decimales.");
+  });
+
+  it("R2 el validation_error del servicio (0 con declarado distinto de 0) llega tal cual", async () => {
+    const fe = { montoRecibido: ["Solo se puede registrar 0 cuando lo declarado es 0."] };
+    const service = fakeService({
+      marcarRecibida: vi.fn(async () => ({ status: "validation_error" as const, fieldErrors: fe })),
+    });
+    expect(
+      await marcarConsolidacionRecibidaAction(
+        { cierreBodegaId: CB, montoRecibido: "0.00" },
+        { service, ...conActor(MAESTRO) },
+      ),
+    ).toEqual({ status: "validation_error", fieldErrors: fe });
+  });
+});
+
+describe("SLT-96 (R8) — `montoPositivoSchema` no cambia", () => {
+  it.each(["0", "0.00"])("R8 montoPositivoSchema sigue rechazando %s", (v) => {
+    expect(montoPositivoSchema.safeParse(v).success).toBe(false);
+  });
+
+  it("R8 control: montoPositivoSchema acepta 0.01", () => {
+    expect(montoPositivoSchema.safeParse("0.01").success).toBe(true);
   });
 });
