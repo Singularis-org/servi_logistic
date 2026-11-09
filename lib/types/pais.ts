@@ -61,6 +61,9 @@ export const crearPaisSchema = z
       .array(tipoDeAltaSchema)
       .min(PAIS_NIVELES_MIN, `Un país tiene al menos ${PAIS_NIVELES_MIN} niveles.`)
       .max(PAIS_NIVELES_MAX, `Un país tiene como mucho ${PAIS_NIVELES_MAX} niveles.`),
+    // R63 (decisión humana 2026-11-09): el país puede nacer disponible o no. Opcional: quien no lo
+    // manda conserva lo de antes (la columna es `NOT NULL DEFAULT true`); la pantalla siempre lo manda.
+    disponible: z.boolean().optional(),
   })
   .strict();
 

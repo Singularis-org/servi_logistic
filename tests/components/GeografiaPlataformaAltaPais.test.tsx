@@ -216,7 +216,9 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
     expect(filaDelModal(confirmar, "nivel_1")).toHaveTextContent("Departamento / Departamentos");
     expect(filaDelModal(confirmar, "nivel_2")).toHaveTextContent("Municipio / Municipios");
     expect(filaDelModal(confirmar, "nivel_3")).toHaveTextContent("Aldea / Aldeas");
-    expect(within(confirmar).getAllByText("Sin valor")).toHaveLength(5);
+    // R63: el resumen gana la fila «Disponibilidad» (también sin «antes»): 5 → 6.
+    expect(filaDelModal(confirmar, "Disponibilidad")).toHaveTextContent("No disponible");
+    expect(within(confirmar).getAllByText("Sin valor")).toHaveLength(6);
 
     await user.click(within(confirmar).getByRole("button", { name: "Cancelar" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Dar de alta un país" })).toBeNull());
@@ -240,13 +242,63 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
     await user.click(within(confirmar).getByRole("button", { name: "Sí, crear" }));
 
     await waitFor(() => expect(crearPaisAction).toHaveBeenCalledTimes(1));
+    // R63: `disponible` siempre viaja; sin tocar la casilla, false.
     expect(crearPaisAction).toHaveBeenCalledWith({
       id: "SV",
       tipos: [
         { singular: "Municipio", plural: "Municipios" },
         { singular: "Departamento", plural: "Departamentos" },
       ],
+      disponible: false,
     });
+  });
+
+  it("R63: la casilla «Disponible para crear empresas» arranca desmarcada", async () => {
+    const { dialogo } = await abrirAlta();
+    expect(within(dialogo).getByRole("checkbox", { name: "Disponible para crear empresas" })).not.toBeChecked();
+  });
+
+  it("R63: marcada, el resumen dice «Disponible» y la action la recibe en la misma alta", async () => {
+    crearPaisAction.mockResolvedValue({ status: "ok", pais: paisDadoDeAlta("SV") });
+    const { user, dialogo } = await abrirAlta();
+    await elegirPais(user, dialogo);
+    await escribirNivel(user, dialogo, 1, "Departamento", "Departamentos");
+    await escribirNivel(user, dialogo, 2, "Municipio", "Municipios");
+    await escribirNivel(user, dialogo, 3, "Aldea", "Aldeas");
+    await user.click(within(dialogo).getByRole("checkbox", { name: "Disponible para crear empresas" }));
+    const confirmar = await pedirAlta(user, dialogo);
+
+    expect(filaDelModal(confirmar, "Disponibilidad")).toHaveTextContent("Disponible");
+    expect(filaDelModal(confirmar, "Disponibilidad")).not.toHaveTextContent("No disponible");
+    await user.click(within(confirmar).getByRole("button", { name: "Sí, crear" }));
+
+    await waitFor(() => expect(crearPaisAction).toHaveBeenCalledTimes(1));
+    expect(crearPaisAction).toHaveBeenCalledWith({
+      id: "SV",
+      tipos: [
+        { singular: "Departamento", plural: "Departamentos" },
+        { singular: "Municipio", plural: "Municipios" },
+        { singular: "Aldea", plural: "Aldeas" },
+      ],
+      disponible: true,
+    });
+  });
+
+  it("R63: con 3 niveles no hay aviso; con 2 o 4, avisa «país aún no habilitado» hasta SLT-48", async () => {
+    const { user, dialogo } = await abrirAlta();
+    const aviso = () => within(dialogo).queryByText(/«país aún no habilitado».*SLT-48/);
+    expect(aviso()).toBeNull();
+
+    await user.click(within(dialogo).getByRole("button", { name: "Quitar nivel 3" }));
+    expect(aviso()).toHaveTextContent("Con 2 niveles");
+    expect(within(dialogo).getByRole("checkbox", { name: "Disponible para crear empresas" })).toHaveAccessibleDescription(
+      /país aún no habilitado/,
+    );
+
+    await user.click(within(dialogo).getByRole("button", { name: "Agregar nivel" }));
+    expect(aviso()).toBeNull();
+    await user.click(within(dialogo).getByRole("button", { name: "Agregar nivel" }));
+    expect(aviso()).toHaveTextContent("Con 4 niveles");
   });
 
   it("un `validation_error` del servidor vuelve al formulario con su mensaje", async () => {

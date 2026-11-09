@@ -216,6 +216,14 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
   confirmar y el aviso de cambio concurrente) y `tests/unit/components/geografia-plataforma-page.test.tsx`
   verdes.
 
+- [x] **T6.6** *(2026-11-09, decisión del humano)* `crearPaisSchema` gana `disponible?`;
+  `PaisRepository.crear` lo escribe en el mismo `pais.create` (sin migración); en
+  `GeografiaPlataformaModule.tsx`, casilla «Disponible para crear empresas» desmarcada, enviada en el
+  alta, en el resumen del modal y con el aviso de «país aún no habilitado» hasta SLT-48 si la lista no
+  tiene 3 niveles (§4.1, §4.4, §6). (R63)
+  *Hecho:* `pais-schemas.test.ts`, `pais-alta-tipos.test.ts` (R63, con contraprueba) y
+  `GeografiaPlataformaAltaPais.test.tsx` verdes.
+
 ## T7 — Guardias (depende de T3)
 
 - [x] **T7.1** **Retirar** `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` y crear
@@ -238,7 +246,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
 
 ## T9 — Cierre
 
-- [ ] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R62) en `progress/impl_SLT-46.md`; R45: sin
+- [ ] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R63) en `progress/impl_SLT-46.md`; R45: sin
   archivos nuevos en `e2e/`; R52: aprobación de la maqueta anotada con fecha anterior al primer commit
   de T6.
 

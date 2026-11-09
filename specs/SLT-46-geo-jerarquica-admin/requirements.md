@@ -33,6 +33,7 @@
 > Revisión F1.2 del 2026-11-09 (`spec_author`): la maqueta T0.2 aprobada y las decisiones del humano
 > de ese día (filas fechadas 2026-11-09 de `## Decisiones cerradas`) dan R53–R62. «Reordenar» es
 > reasignar los nombres de cada profundidad; ningún tipo ni nodo cambia de profundidad.
+> 2026-11-09 (implementer, decisión del humano «1»): el alta de país acepta `disponible`: R63.
 
 ### Fuente de las escrituras y sincronía invertida
 
@@ -108,6 +109,7 @@
 |---|---|---|
 | R28 | CUANDO el superadmin marca disponible un país, el sistema DEBE aceptarlo tenga los niveles que tenga (también con nodos de profundidad 4 o más), con el historial de SL-20 (R47). | ¿País disponible sin 3 niveles antes de SLT-48? |
 | R29 | MIENTRAS un país disponible no es de 3 niveles, la creación de órdenes de sus empresas DEBE seguir respondiendo «país aún no habilitado» (regla de SLT-45), sin cambios en SLT-46. | ¿País disponible sin 3 niveles antes de SLT-48? |
+| R63 | CUANDO el superadmin da de alta un país, el sistema DEBE aceptar en la entrada un `disponible` booleano opcional y guardarlo en la misma escritura que crea el país, dentro de la transacción de R23; SI la entrada no lo trae, ENTONCES el país DEBE quedar disponible (el valor por defecto de la columna, como antes de R63); la pantalla DEBE ofrecer la casilla «Disponible para crear empresas» desmarcada por defecto, enviarla siempre en el alta, mostrarla en el resumen del modal de confirmación (R58) y, MIENTRAS la lista no tiene 3 niveles, avisar junto a la casilla que sus empresas verán «país aún no habilitado» hasta SLT-48 (R29); el historial del alta DEBE ser el de R37, sin filas nuevas. | Disponible en el alta de país |
 
 ### Carga CSV de la división
 
@@ -178,7 +180,7 @@
 | ¿Una tarjeta o dos? | R44 |
 | ¿Mover nodos? | R6, R22 |
 | ¿El nombre de tipo corregido se copia a `pais.nivel_N_*`? | R25, R27 |
-| ¿País disponible sin 3 niveles antes de SLT-48? | R28, R29 |
+| ¿País disponible sin 3 niveles antes de SLT-48? | R28, R29, R63 |
 | Retirar nodo (baja lógica) | R7, R16, R19, R20, R42, R50 |
 | E2E | R39, R45 |
 | Historial | R35–R38, R40, R56 |
@@ -196,6 +198,7 @@
 | Reordenar niveles arrastrando (2026-11-09) | R53, R54, R55, R56, R57 |
 | Confirmación antes de escribir (2026-11-09) | R58, R59, R60, R61 |
 | Título del alta de país (2026-11-09) | R62 |
+| Disponible en el alta de país (2026-11-09) | R63 |
 
 ## Preguntas abiertas
 Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondidas por el humano el
@@ -243,3 +246,4 @@ hay y P11 queda fuera de R58; ninguna bloquea el backend.
 | 2026-11-09 | Reordenar niveles arrastrando | Se reordena arrastrando por una manija ⠿, sin flechas visibles; con la manija enfocada, las flechas del teclado como alternativa. En el alta, reordena la lista antes de crear. En un país ya creado, solo reasigna los nombres (singular/plural) de cada profundidad: los nodos no se mueven y el tipo de cada nodo sigue siendo el de su profundidad (P1); una transacción, historial de una fila por nombre cambiado (P7) y copia a `pais.nivel_1..3_*`. |
 | 2026-11-09 | Confirmación antes de escribir | Toda acción de la pantalla que guarda, edita, crea, agrega nivel o retira/reactiva pide confirmación en un modal con el antes → después; la pantalla valida antes de mostrar el modal y el servidor vuelve a validar al guardar; si el dato cambió mientras tanto, avisa y no guarda (`conflict`). |
 | 2026-11-09 | Título del alta de país | «Niveles N (máximo 10)»; el mínimo de 2 se impone sin decirlo en el título (con 2 filas no se puede quitar otra). |
+| 2026-11-09 | Disponible en el alta de país | El alta acepta `disponible` y lo guarda en la misma transacción que el país (sin segundo paso ni migración: la columna ya es `NOT NULL DEFAULT true`). La casilla de la pantalla viene desmarcada: un país nuevo nace no disponible si no se marca. Quien no manda el campo conserva el `true` de antes. Costa Rica y los países existentes no cambian. Historial: el de R37, sin fila de disponibilidad. |

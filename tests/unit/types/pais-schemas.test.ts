@@ -75,6 +75,26 @@ describe("R24/P2 — el alta de país trae de 2 a 10 tipos", () => {
   });
 });
 
+describe("R63 — el alta de país acepta `disponible` (decisión humana 2026-11-09)", () => {
+  it("acepta `disponible` true y false y lo conserva", () => {
+    expect(crearPaisSchema.parse({ id: "GT", tipos: tipos(3), disponible: false }).disponible).toBe(false);
+    expect(crearPaisSchema.parse({ id: "GT", tipos: tipos(2), disponible: true }).disponible).toBe(true);
+  });
+
+  it("es opcional: sin él la entrada sigue valiendo y no se inventa un valor", () => {
+    const r = crearPaisSchema.parse({ id: "GT", tipos: tipos(3) });
+    expect("disponible" in r).toBe(false);
+  });
+
+  it("rechaza un `disponible` que no es booleano, en su campo", () => {
+    for (const valor of ["true", 1, null]) {
+      const r = crearPaisSchema.safeParse({ id: "GT", tipos: tipos(3), disponible: valor });
+      expect(r.success).toBe(false);
+      expect(r.error?.issues[0].path).toEqual(["disponible"]);
+    }
+  });
+});
+
 describe("R25/R26 — editar los nombres de un tipo", () => {
   // SLT-46 (2026-11-09, §4.1): la entrada gana `anterior` (obligatorio); aquí siempre válido, para que
   // cada caso mida lo que dice su nombre.

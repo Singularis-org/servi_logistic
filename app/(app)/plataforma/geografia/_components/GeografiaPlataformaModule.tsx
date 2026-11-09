@@ -9,8 +9,10 @@ import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -268,6 +270,12 @@ type AltaPendiente = CrearPaisInput & { nombre: string };
 /** Maqueta T0.2: el alta arranca con tres filas vacías, la forma más común. */
 const FILAS_INICIALES = 3;
 
+/** R29 (regla de SLT-45): solo un país de 3 niveles crea órdenes hasta SLT-48. */
+const NIVELES_QUE_CREAN_ORDENES = 3;
+
+/** R63: cómo se lee `disponible` en el modal de confirmación. */
+const estadoDeDisponible = (valor: boolean) => (valor ? "Disponible" : "No disponible");
+
 /** R42: busca por nombre (sin acentos ni mayúsculas) o por código. */
 function casaPais(pais: PaisDelCatalogo, consulta: string): boolean {
   const q = normalizeName(consulta);
@@ -319,9 +327,13 @@ function NuevoPaisDialog({
 }>) {
   const toast = useToast();
   const tituloNivelesId = useId();
+  const disponibleId = useId();
+  const avisoDisponibleId = useId();
   const opciones = paisesPorDarDeAlta(idsDadosDeAlta);
   const [pais, setPais] = useState<PaisDelCatalogo | null>(null);
   const [filas, setFilas] = useState<FilaDeNivel[]>(filasVacias);
+  // R63 (decisión humana 2026-11-09): desmarcada; un país nuevo nace no disponible si no se marca.
+  const [disponible, setDisponible] = useState(false);
   const [errores, setErrores] = useState<Record<string, string[]>>({});
   const [erroresDeFila, setErroresDeFila] = useState<Record<string, ErroresDeFila>>({});
   const [pendiente, setPendiente] = useState<AltaPendiente | null>(null);
@@ -329,6 +341,7 @@ function NuevoPaisDialog({
   function reiniciar() {
     setPais(null);
     setFilas(filasVacias());
+    setDisponible(false);
     setErrores({});
     setErroresDeFila({});
     setPendiente(null);
@@ -344,6 +357,7 @@ function NuevoPaisDialog({
     const parsed = crearPaisSchema.safeParse({
       id: pais?.id ?? "",
       tipos: filas.map((f) => ({ singular: f.singular, plural: f.plural })),
+      disponible,
     });
     if (parsed.success && pais !== null) {
       setErrores({});
@@ -397,6 +411,7 @@ function NuevoPaisDialog({
 
   const titulo = `Niveles ${filas.length} (máximo ${PAIS_NIVELES_MAX})`;
   const erroresDeLista = [...(errores.tipos ?? []), ...(errores.entrada ?? [])];
+  const sinOrdenesHastaSlt48 = filas.length !== NIVELES_QUE_CREAN_ORDENES;
 
   return (
     <Modal
@@ -474,6 +489,27 @@ function NuevoPaisDialog({
           </p>
         </section>
 
+        {/* R63: la casilla viaja en el alta; con otra cantidad de niveles que 3 avisa de R29. */}
+        <div className="flex flex-col gap-1">
+          <div className="flex min-h-11 items-center gap-2">
+            <Checkbox
+              id={disponibleId}
+              checked={disponible}
+              aria-describedby={sinOrdenesHastaSlt48 ? avisoDisponibleId : undefined}
+              onCheckedChange={(marcado) => setDisponible(marcado === true)}
+            />
+            <Label htmlFor={disponibleId} className="cursor-pointer text-sm font-normal">
+              Disponible para crear empresas
+            </Label>
+          </div>
+          {sinOrdenesHastaSlt48 ? (
+            <p id={avisoDisponibleId} className="max-w-prose text-xs text-muted-foreground">
+              Con {filas.length} niveles, sus empresas verán «país aún no habilitado» al crear órdenes
+              hasta SLT-48.
+            </p>
+          ) : null}
+        </div>
+
         {erroresDeLista.length > 0 ? (
           <Alert variant="destructive">
             <AlertDescription>{erroresDeLista[0]}</AlertDescription>
@@ -499,14 +535,16 @@ function NuevoPaisDialog({
                   antes: null,
                   despues: `${t.singular} / ${t.plural}`,
                 })),
+                { etiqueta: "Disponibilidad", antes: null, despues: estadoDeDisponible(pendiente.disponible ?? false) },
               ]
         }
         confirmLabel="Sí, crear"
-        // R54: `tipos` en el orden en pantalla; el nombre no viaja, lo pone el servidor (R23).
+        // R54: `tipos` en el orden en pantalla; el nombre no viaja, lo pone el servidor (R23). R63:
+        // `disponible` siempre viaja, en la misma alta.
         accion={() =>
           pendiente === null
             ? Promise.resolve<CrearPaisActionResult>({ status: "error" })
-            : crearPaisAction({ id: pendiente.id, tipos: pendiente.tipos })
+            : crearPaisAction({ id: pendiente.id, tipos: pendiente.tipos, disponible: pendiente.disponible ?? false })
         }
         onExito={alExito}
         onRechazo={alRechazar}

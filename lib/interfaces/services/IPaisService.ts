@@ -85,7 +85,7 @@ export interface IPaisService {
 
   /**
    * R23, R24 y R37/R39: el rol antes de validar y de tocar la base; el código y el nombre normalizado,
-   * únicos. SLT-46: la entrada es `{ id, tipos }` (`crearPaisSchema`, 2–10 tipos).
+   * únicos. SLT-46: la entrada es `{ id, tipos, disponible? }` (`crearPaisSchema`, 2–10 tipos; R63).
    */
   crear(input: unknown, actor: Actor): Promise<CrearPaisServiceResult>;
 

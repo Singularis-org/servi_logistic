@@ -1089,3 +1089,54 @@ Veredicto: T6.5 hecha, verde en test, lint y typecheck.
   `dependencias-declaradas-presentes` (4, el aceptado del baseline) y `superficie-de-uso` (1, las tres
   `@sin-superficie` vencidas de `lib/actions/geografia-plataforma.ts`; ver el bloqueo de T6.3).
 - Sin push. E2E: ninguno escrito ni tocado (R45).
+
+## T6.6 — el alta de país acepta `disponible` (implementer, 2026-11-09; R63)
+
+Decisión del humano («1», 2026-11-09, en `progress/features/SLT-46.md`): el alta guarda `disponible` en la
+misma transacción que el país; la casilla viene desmarcada. Sin migración (la columna ya es
+`NOT NULL DEFAULT true`). Costa Rica y los países existentes no cambian.
+
+### Archivos
+- `lib/types/pais.ts`: `crearPaisSchema` gana `disponible: z.boolean().optional()`.
+- `lib/repositories/PaisRepository.ts`: `crear` pasa `disponible` al mismo `pais.create` (sin segundo
+  paso). `undefined` no se manda y rige el `DEFAULT true`: quien no lo envía se comporta como antes.
+- `lib/interfaces/services/IPaisService.ts`: solo el JSDoc de `crear`.
+- `app/(app)/plataforma/geografia/_components/GeografiaPlataformaModule.tsx`: casilla «Disponible para
+  crear empresas» (`Checkbox` + `Label` existentes), desmarcada, que se reinicia al cerrar; viaja siempre
+  en `crearPaisAction`; fila «Disponibilidad» (sin «antes») en el modal; con una lista que no tiene 3
+  niveles, aviso junto a la casilla (y como su `aria-describedby`): «Con N niveles, sus empresas verán
+  «país aún no habilitado» al crear órdenes hasta SLT-48».
+- Spec: R63 en `requirements.md` (+ cobertura y fila en `## Decisiones cerradas`), `design.md` §4.1, §4.4,
+  §6 (texto y tabla del modal) y §11; T6.6 en `tasks.md` (y T9.1 pasa a R1–R63).
+- Historial: sin cambios. El alta registra lo de R37 (`pais_creado` + una `tipo_nivel_geografico_creado`
+  por tipo); no hay fila de disponibilidad (el test lo fija).
+- `lib/actions/geografia-plataforma.ts` sin tocar (la action pasa la entrada tal cual; las tres
+  `@sin-superficie` siguen esperando al humano).
+
+### Aserciones existentes que cambian (obligadas por la decisión)
+- `GeografiaPlataformaAltaPais.test.tsx` «R58, R59: datos válidos abren la confirmación…»: `Sin valor`
+  pasa de 5 a 6 (la fila «Disponibilidad» no tiene «antes»); se añade la aserción de esa fila.
+- `GeografiaPlataformaAltaPais.test.tsx` «R23, R54: confirmar llama una vez…»: el `toHaveBeenCalledWith`
+  gana `disponible: false`.
+
+### R63 → test
+- `tests/unit/types/pais-schemas.test.ts` (describe «R63»): true/false se conservan; sin el campo, la
+  salida no lo inventa; `"true"`, `1` y `null` → error en `["disponible"]`.
+- `tests/integration/db/pais-alta-tipos.test.ts` (2 casos R63, contra `logistic_slt46`): `false`, `true`
+  y sin él → `false`, `true`, `true` tanto en el país que devuelve `crear` (el `RETURNING` del mismo
+  insert) como en la base; historial = R37; con el historial caído y `disponible: false` no queda el país.
+  **Contraprueba:** comentando `disponible` en el `create`, el caso principal sale rojo (1 failed); restaurado.
+- `tests/components/GeografiaPlataformaAltaPais.test.tsx` (3 casos R63): casilla desmarcada; marcada →
+  resumen «Disponible» y la action recibe `disponible: true`; aviso con 2 y 4 niveles, no con 3.
+
+### Salida real
+- `vitest run GeografiaPlataformaAltaPais.test.tsx pais-schemas.test.ts --maxWorkers=1` → `Test Files 2 passed (2)` · `Tests 36 passed (36)`.
+- `vitest run pais-alta-tipos pais-repositorio pais-disponible --maxWorkers=1` (base `logistic_slt46`) → `Test Files 3 passed (3)` · `Tests 20 passed (20)`.
+- `vitest run pais-service.test.ts geografia-plataforma-action.test.ts --maxWorkers=1` → `Test Files 2 passed (2)` · `Tests 226 passed (226)`.
+- `tsc --noEmit` → exit 0. `eslint` de los 7 archivos tocados → exit 0.
+- Guardias (333 archivos: 238 de `tests/unit/guards` en 4 lotes + 95 fuera en 2, `--maxWorkers=1`, sin
+  `HAY_BASE_DE_DATOS`): `4 failed | 775 (779)`, `932`, `1007`, `1 failed | 645 | 1 skipped (647)`,
+  `528 | 24 skipped (552)`, `789`. Rojos: `dependencias-declaradas-presentes` (4, aceptado del baseline) y
+  `superficie-de-uso` (1, las tres `@sin-superficie` de `lib/actions/geografia-plataforma.ts`, pendiente del
+  humano). Ningún rojo nuevo.
+- Sin push. E2E: ninguno escrito ni tocado (R45).

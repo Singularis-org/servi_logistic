@@ -275,4 +275,55 @@ describeSiHayBase("SLT-46 — PaisRepository.crear contra Postgres", () => {
 
     expect(r).toEqual({ uno: "lanza", diez: "creado", doce: "lanza", tiposXT: 10, paisXU: 0 });
   });
+
+  // R63 (decisión humana 2026-11-09): el alta acepta `disponible` y lo escribe en el MISMO `create`
+  // del país. Lo que devuelve `crear` sale del `RETURNING` de ese insert: si el valor llegara por un
+  // segundo paso, el país devuelto traería el `DEFAULT true`. Sin `disponible`, rige el default.
+  it("R63: el país nace con el `disponible` pedido (false y true) en el mismo insert; sin él, true; el historial no cambia", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      const repo = new PaisRepository(clienteConSavepoint(tx));
+      const altas = {
+        XT: await repo.crear({ id: "XT", nombre: "País XT", tipos: TIPOS.slice(0, 2), disponible: false }, { usuarioId: actorId }),
+        XU: await repo.crear({ id: "XU", nombre: "País XU", tipos: TIPOS.slice(0, 3), disponible: true }, { usuarioId: actorId }),
+        XV: await repo.crear({ id: "XV", nombre: "País XV", tipos: TIPOS.slice(0, 4) }, { usuarioId: actorId }),
+      };
+      const devuelto = Object.fromEntries(
+        Object.entries(altas).map(([id, a]) => [id, a.estado === "creado" ? a.pais.disponible : a.estado]),
+      );
+      const enBase = Object.fromEntries(
+        (await tx.pais.findMany({ where: { id: { in: ["XT", "XU", "XV"] } }, select: { id: true, disponible: true } })).map(
+          (p) => [p.id, p.disponible],
+        ),
+      );
+      const historial = await tx.historialPlataforma.findMany({
+        where: { paisId: { in: ["XT", "XU", "XV"] }, actorUsuarioId: actorId },
+        select: { paisId: true, accion: true },
+      });
+      const acciones = (id: string) => historial.filter((h) => h.paisId === id).map((h) => h.accion).sort();
+      return { devuelto, enBase, xt: acciones("XT"), xu: acciones("XU") };
+    });
+
+    expect(r.devuelto).toEqual({ XT: false, XU: true, XV: true });
+    expect(r.enBase).toEqual({ XT: false, XU: true, XV: true });
+    // Lo mismo que registraba el alta (R37): `pais_creado` y una fila por tipo; nada de disponibilidad.
+    expect(r.xt).toEqual(["pais_creado", "tipo_nivel_geografico_creado", "tipo_nivel_geografico_creado"]);
+    expect(r.xu).toEqual(["pais_creado", ...Array(3).fill("tipo_nivel_geografico_creado")]);
+  });
+
+  it("R63: con `disponible: false` y el historial caído no queda el país (misma transacción)", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      const roto = new PaisRepository(clienteConSavepoint(tx, "plataforma"));
+      const fallo = await roto
+        .crear({ id: "XT", nombre: "País XT", tipos: TIPOS, disponible: false }, { usuarioId: actorId })
+        .then(
+          () => null,
+          (e: unknown) => (e instanceof Error ? e.name : String(e)),
+        );
+      return { fallo, paises: await tx.pais.count({ where: { id: "XT" } }) };
+    });
+
+    expect(r).toEqual({ fallo: "RegistroCaido", paises: 0 });
+  });
 });

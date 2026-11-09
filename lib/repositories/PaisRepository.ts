@@ -97,7 +97,8 @@ export class PaisRepository implements IPaisRepository {
 
   /**
    * SLT-46 (design §2.4; R23, R37, R46). En una transacción:
-   *   1. `pais.create` con los tipos 1–3 en `nivel_{1,2,3}_*` (con P = 2, `''` en los de nivel 3) →
+   *   1. `pais.create` con los tipos 1–3 en `nivel_{1,2,3}_*` (con P = 2, `''` en los de nivel 3) y su
+   *      `disponible` (R63) →
    *      el trigger crea `nivel_1..min(P,3)` con la regla de código de `pais` (un país nuevo, sin
    *      dígitos);
    *   2. `createMany` de `nivel_4..nivel_P`, sin regla de código;
@@ -107,7 +108,7 @@ export class PaisRepository implements IPaisRepository {
    * cualquier otro error sube tal cual, para que la action lo registre y responda `error` (R36).
    */
   async crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado> {
-    const { id, nombre, tipos } = datos;
+    const { id, nombre, tipos, disponible } = datos;
     // El service ya lo validó (2–10); con otra cantidad el país quedaría sin su catálogo entero.
     if (tipos.length < 2 || tipos.length > PAIS_NIVELES_MAX) {
       throw new Error(`alta de país: ${tipos.length} tipos de nivel, fuera de 2–${PAIS_NIVELES_MAX}`);
@@ -126,6 +127,9 @@ export class PaisRepository implements IPaisRepository {
             nivel2Plural: n2.plural,
             nivel3Singular: n3.singular,
             nivel3Plural: n3.plural,
+            // R63: en el mismo `create` que el país, sin un segundo paso. Sin valor (`undefined`),
+            // Prisma no manda la columna y rige su `DEFAULT true`, como antes de R63.
+            disponible,
           },
           select: SELECT_PAIS,
         });

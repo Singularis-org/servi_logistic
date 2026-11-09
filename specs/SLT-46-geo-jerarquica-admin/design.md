@@ -1,7 +1,7 @@
 # SLT-46 — geo-jerarquica-admin · design.md
 
 > Escrito por `spec_author` el 2026-11-06 sobre la rama apilada en SLT-45 (contiene SLT-43, SLT-44,
-> SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R62). El alcance y la tabla «Decisiones
+> SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R63). El alcance y la tabla «Decisiones
 > cerradas» no se reabren aquí. Revisado el mismo día con las respuestas del humano a P1–P9 (filas
 > «P<n>» de `## Decisiones cerradas`) y a P10 (etiqueta de nivel 3 de un país de 2 niveles, §2.4).
 >
@@ -305,7 +305,7 @@ Borde → service → repositorio, como SL-20. Todas las actions en `lib/actions
 | `renombrarNodoGeograficoSchema` | `{ id, nombre, nombreAnterior }` | Sin `nivel`; **2026-11-09:** gana `nombreAnterior` (el «antes» del modal, obligatorio, R61) |
 | `cambiarActivacionGeograficaSchema` | `{ id, activo }` | Sin `nivel` |
 | `nodoGeograficoSchema` (conteo) | `{ id }` | Sin `nivel` |
-| `crearPaisSchema` | `{ id, tipos: { singular, plural }[] }` con 2–10 tipos (P2) y `nombrePaisSchema` (2–40) | Antes, seis campos `nivelNSingular/Plural` |
+| `crearPaisSchema` | `{ id, tipos: { singular, plural }[], disponible? }` con 2–10 tipos (P2) y `nombrePaisSchema` (2–40); `disponible` booleano opcional | Antes, seis campos `nivelNSingular/Plural`. **2026-11-09 (R63):** gana `disponible?`; sin él, la columna toma su `DEFAULT true` |
 | `renombrarTipoNivelSchema` (nuevo) | `{ tipoId, nombreSingular, nombrePlural, anterior: { nombreSingular, nombrePlural } }` | **2026-11-09:** gana `anterior` (obligatorio, R61) |
 | `agregarNivelPaisSchema` (nuevo, P3) | `{ paisId, nombreSingular, nombrePlural, profundidad }` (nombres 2–40; `profundidad` entero 3–10). Sin campo de posición: siempre al final | **2026-11-09:** gana `profundidad`, la que el modal mostró para el nivel nuevo (P+1). No elige sitio: si al guardar no es P+1 → cambio concurrente (R61) |
 | `reordenarTiposSchema` (nuevo, 2026-11-09) | `{ paisId, niveles: { tipoId, nombreSingular, nombrePlural }[] }`, 2–10 elementos, `tipoId` distintos (`superRefine`), nombres 2–40 (los del «antes») | — (R57) |
@@ -376,7 +376,9 @@ pasa a leer el nodo:
 
 `GeoPrismaClient` pierde `provincia`, `canton` y `distrito` del `Pick` en las escrituras (R1).
 
-`PaisRepository` (escritor único de `tipo_nivel_geografico`, R43): `crear(datos con tipos, actor)`,
+`PaisRepository` (escritor único de `tipo_nivel_geografico`, R43): `crear(datos con tipos y
+`disponible?`, actor)` (R63: `disponible` va en el mismo `pais.create` que abre la transacción, sin
+segundo paso; `undefined` no se manda y rige el `DEFAULT true`; el historial sigue siendo el de R37),
 `renombrarTipo(tipoId, nombres, anterior, actor) → "no_existe" | "sin_cambio" | "cambio_concurrente" |
 "renombrado"`, `agregarNivel(paisId, nombres, profundidad, actor) → "no_existe" | "tope" |
 "cambio_concurrente" | TipoNivelDTO` y, nuevo el 2026-11-09, `reordenarTipos(paisId, niveles, actor) →
@@ -461,7 +463,10 @@ la maqueta. Si algo de la maqueta choca con este contrato, T6 para y pregunta.
   <singular del tipo siguiente>» solo si existe tipo para profundidad + 1 (R21). Sin mover (R22).
 - `GeografiaPlataformaModule.tsx`: el alta de país pide una lista ordenada de tipos, titulada
   «Niveles N (máximo 10)»; agregar fila oculto con 10, quitar fila no disponible con 2 (R62); las
-  filas se reordenan con `ListaReordenable` (R53, R54). La carga CSV muestra la equivalencia
+  filas se reordenan con `ListaReordenable` (R53, R54). **2026-11-09 (R63):** casilla «Disponible
+  para crear empresas», desmarcada por defecto, que viaja siempre en `crearPaisAction`; con una lista
+  que no tiene 3 niveles, aviso junto a la casilla de que sus empresas verán «país aún no habilitado»
+  hasta SLT-48 (R29). La carga CSV muestra la equivalencia
   `nivel_k = <tipo>` para k = 1..P.
 - Nuevo `_components/TiposDeNivelPais.tsx`: lista de tipos del país con editar singular/plural,
   reordenar con `ListaReordenable` (el nuevo orden se ve en pantalla sin guardarse hasta confirmar,
@@ -490,7 +495,7 @@ escribir (R61). Esto reemplaza el criterio de SL-20 (comentarios de la ficha 375
 
 | Acción | Antes | Después |
 |---|---|---|
-| Alta de país | — | Código, nombre y los niveles en orden (`nivel_1`…`nivel_P`) |
+| Alta de país | — | Código, nombre, los niveles en orden (`nivel_1`…`nivel_P`) y la disponibilidad (R63) |
 | Alta de nodo | — (padre: su cadena de nombres) | Nombre, código y tipo del nodo nuevo |
 | Renombre de nodo | Nombre actual | Nombre nuevo |
 | Edición de tipo | Singular y plural actuales | Singular y plural nuevos |
@@ -618,6 +623,7 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R60 | `geografia-plataforma-action.test.ts` (cada action de escritura con una entrada inválida —nombre de 1 carácter, 11 tipos, `tipoId` repetidos— → `validation_error`, sin llamar a ningún método de escritura del repositorio) |
 | R61 | `tests/integration/db/geografia-cambio-concurrente.test.ts` (renombre de nodo, edición de tipo y agregar nivel con un «antes» viejo → `cambio_concurrente` sin escribir ni historial; «antes» viejo pero el valor ya es el pedido → `sin_cambio`; dos agregar nivel con la misma `profundidad` en paralelo → uno `ok`, otro `conflict`), `geografia-service.test.ts` y `pais-service.test.ts` (`cambio_concurrente` → `{status:"conflict", motivo:"cambio_concurrente"}`; los `conflict` de antes sin `motivo`) y los tests de componente de R58 (aviso y refresco ante ese motivo) |
 | R62 | `GeografiaPlataformaAltaPais.test.tsx` (título «Niveles 2 (máximo 10)» con 2 filas y «Niveles 10 (máximo 10)» con 10; con 2 filas no se puede quitar; con 10 no se puede agregar) |
+| R63 | `tests/unit/types/pais-schemas.test.ts` (acepta `disponible` true/false, opcional, rechaza no booleanos), `tests/integration/db/pais-alta-tipos.test.ts` (país con `disponible=false`, `true` y sin él → false, true, true en el `RETURNING` del mismo insert y en la base; historial = R37; historial caído → no queda el país) y `GeografiaPlataformaAltaPais.test.tsx` (casilla desmarcada; resumen «Disponibilidad»; la action recibe `disponible`; aviso con 2 y 4 niveles, no con 3) |
 
 ## 12. Alternativas descartadas
 
