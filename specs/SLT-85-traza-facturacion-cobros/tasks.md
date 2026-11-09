@@ -1,7 +1,8 @@
 # SLT-85 — traza-facturacion-cobros · tasks.md
 
-> Diseño: `design.md`. Requisitos: `requirements.md` (R1–R27). Las tasks marcadas **(Pn)** dependen de la
-> respuesta del humano a esa pregunta abierta; si cambia, se ajustan antes de empezar.
+> Diseño: `design.md`. Requisitos: `requirements.md` (R1–R27). Las marcas **(Pn)** remiten a las decisiones
+> P1–P4, cerradas el 2026-11-09 (tabla «Decisiones cerradas»). El exceso de líneas del PR está aceptado
+> por el humano (2026-11-09): un solo PR.
 > Capa: todo es `backend_dev` (`db/`, `lib/db/`, `scripts/`, `tests/`). Sin pantalla.
 
 ## T1 — Modelo Prisma y clasificación

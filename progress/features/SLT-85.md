@@ -17,6 +17,10 @@ F1.0 (2026-11-09): tomada y worktree montado. Afinada con /afinar-feature; sigue
 ## Decisiones
 - 2026-11-09 · Alcance y decisiones → `specs/SLT-85-traza-facturacion-cobros/requirements.md`. Tarjeta de Trello actualizada con el período (sí del humano).
 
+- 2026-11-09 · F1.2: spec escrito (R1–R27; trigger AFTER INSERT sobre `cobro_plataforma_movimiento`, tabla `cobro_plataforma_traza`, relleno con `reconstruido`). Humano: P1 plan al cobrar, P2 período de los históricos con el tipo de hoy, P3 borrado igual que los movimientos, P4 down.sql se niega si hay filas en vivo. Todas = recomendación de spec_author.
+
+<!-- tamano-pr-aceptado: 2026-11-09 · ~1.100–1.300 líneas, casi todo tests de integración; partir dejaría el reverso de cargos viejos sin traza en producción. Humano: «Aceptar en un PR». -->
+
 ## Preguntas abiertas
 Ninguna.
 

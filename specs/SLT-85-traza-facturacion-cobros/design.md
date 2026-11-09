@@ -1,6 +1,6 @@
 # SLT-85 — traza-facturacion-cobros · design.md
 
-> Requisitos: `requirements.md` (R1–R27; P1–P4 abiertas, escrito según su recomendación). Hereda el
+> Requisitos: `requirements.md` (R1–R27; P1–P4 cerradas por el humano el 2026-11-09, tabla «Decisiones cerradas»). Hereda el
 > diseño de `specs/SL-40-cobro-plataforma-por-orden/` («SL-40 §N»), `specs/SLT-66-planes-sin-tope-maestro-y-costeo/`,
 > `specs/SLT-83-planes-costo-por-orden-porcentual/` («SLT-83 §N») y `specs/SLT-86-planes-periodo-facturacion/`.
 > Escrito por `spec_author` el 2026-11-09.
@@ -120,7 +120,7 @@ cambia ni la duplica. Sin moneda (decisión «IVA y moneda», abierta hasta SL-2
 - **Nadie cambia una fila** (R24, P3): trigger `cobro_plataforma_traza_inmutable`
   `BEFORE UPDATE … FOR EACH ROW`, que lanza `SQLSTATE 'SL085'` para cualquier rol, el dueño incluido.
   Ningún camino legítimo actualiza esta tabla.
-- **Borrar** (P3 a): cerrado para la app (el `REVOKE`) y para el código (guardia, §5). El dueño solo borra
+- **Borrar** (P3): cerrado para la app (el `REVOKE`) y para el código (guardia, §5). El dueño solo borra
   en cascada desde `orden` o `cobro_plataforma_movimiento` (las limpiezas de tests) o en el borrado de las
   empresas demo de QA (`scripts/demo-qa/borrar.ts`, que borra por catálogo todas las tablas con
   `organizacion_id` y salta las FK de una tabla a sí misma). Es la regla que ya tienen los movimientos.
@@ -198,7 +198,7 @@ nombra la decisión del 2026-11-09, no el tramo recortado a la entrada de la emp
 mitad de período, `periodo_inicio_at` es el inicio del calendario, anterior a su entrada. `ocurrido_at` es
 UTC sin zona como el resto (decisión 2026-10-28 de SL-24), que es lo que esperan las dos funciones.
 
-**Plan del instante** (P1 a): `organizacion.plan_id` es el plan aplicado. Un cambio pendiente
+**Plan del instante** (P1): `organizacion.plan_id` es el plan aplicado. Un cambio pendiente
 (`plan_cambio_*`) cuenta solo cuando el job `plan_aplicar_cambio_empresa` lo aplica, igual que para
 `plan_de_la_empresa`. Con `fuente = 'empresa'` o `'global'` el plan se copia igual: dice qué plan tenía la
 empresa, y la fuente dice de dónde salió el importe.
@@ -218,7 +218,7 @@ A mano, como las de SL-40 (`db:migrate:create` falla con P3006 en este repo). En
      fila en `cobro_plataforma_porcentual_orden` (las órdenes porcentuales solo tienen movimientos de la
      conciliación, siempre con esas condiciones), con su `%` y mínimo; si no, `fijo` con
      `valor_fijo = monto`. `valor_cobrado = monto`. Período con `plan_tipo_cobro` de la empresa **de hoy**
-     si hoy tiene plan (P2 a), calculado sobre `ocurrido_at`. Vacíos: `num_guia`, `monto_cobrar`,
+     si hoy tiene plan (P2), calculado sobre `ocurrido_at`. Vacíos: `num_guia`, `monto_cobrar`,
      `estado_orden`, `plan_id`, `plan_nombre`. `reconstruido = true`;
    - **reversos**: igual, con `valor_cobrado = −monto` y `reverso_de` = la traza del movimiento
      `secuencia − 1` de la misma orden, que la sentencia anterior ya escribió.

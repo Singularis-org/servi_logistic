@@ -20,9 +20,7 @@
 
 > Escritos por `spec_author` el 2026-11-09. «Movimiento» es una fila de `cobro_plataforma_movimiento`
 > (SL-40); «traza» es la fila nueva de esta ficha. «La plataforma» es el rol dueño de la base, el que usa el
-> superadmin (`comoPlataforma`); «la app» es el rol `servi_app` en contexto de empresa. Los requisitos
-> marcados con **(Pn)** están escritos según la recomendación de la pregunta abierta Pn: si el humano
-> decide otra cosa, cambian.
+> superadmin (`comoPlataforma`); «la app» es el rol `servi_app` en contexto de empresa.
 
 ### Cuándo se escribe
 
@@ -54,7 +52,7 @@
 - **R9** — El sistema DEBE escribir en la traza la fuente del movimiento: `empresa`, `plan`, `global` o
   `sin_configurar`. SI la fuente es `sin_configurar`, ENTONCES el valor fijo y el valor cobrado DEBEN ser
   0,00.
-- **R10** — **(P1)** CUANDO escribe una fila de traza, el sistema DEBE copiar el identificador y el nombre
+- **R10** — CUANDO escribe una fila de traza, el sistema DEBE copiar el identificador y el nombre
   del plan asignado a la empresa en ese instante; SI la empresa no tiene plan, ENTONCES DEBE dejar los dos
   vacíos.
 - **R11** — El sistema DEBE escribir como valor cobrado el importe del movimiento, positivo en un cargo y
@@ -78,12 +76,12 @@
   tipo de movimiento, cargo anulado, fuente, valor cobrado, fecha de cobro, y el tipo de cobro con su
   porcentaje y mínimo o su valor fijo) y con vacíos el número de guía, el `monto_cobrar`, el estado de la
   orden, el plan y su nombre.
-- **R18** — **(P2)** CUANDO la migración rellena una fila, el sistema DEBE calcular su período con la
+- **R18** — CUANDO la migración rellena una fila, el sistema DEBE calcular su período con la
   regla de SLT-86 a partir de la fecha de cobro y del tipo de cobro que tiene la empresa al aplicar la
   migración; SI la empresa no tiene plan en ese momento, ENTONCES DEBE dejar el período vacío.
 - **R19** — SI al terminar el relleno queda algún movimiento sin su fila de traza, ENTONCES la migración
   DEBE fallar sin dejar nada aplicado.
-- **R20** — **(P4)** La migración DEBE poder revertirse sin tocar ningún movimiento; SI hay alguna fila de
+- **R20** — La migración DEBE poder revertirse sin tocar ningún movimiento; SI hay alguna fila de
   traza con `reconstruido = false`, ENTONCES la reversión DEBE negarse sin cambiar nada.
 
 ### Quién lee y quién escribe
@@ -93,7 +91,7 @@
 - **R22** — La plataforma DEBE poder leer las filas de traza de todas las empresas.
 - **R23** — SI la app intenta insertar, cambiar o borrar una fila de traza, ENTONCES el sistema DEBE
   rechazarlo (`42501`) sin cambiar nada.
-- **R24** — **(P3)** SI cualquier rol, incluida la plataforma, intenta cambiar una fila de traza, ENTONCES
+- **R24** — SI cualquier rol, incluida la plataforma, intenta cambiar una fila de traza, ENTONCES
   el sistema DEBE rechazarlo sin cambiar nada.
 - **R25** — Ningún archivo de `lib/` ni de `app/` DEBE escribir, cambiar ni borrar filas de traza.
 - **R26** — SI una fila de traza apunta a una orden, a un movimiento o a otra fila de traza de otra
@@ -121,38 +119,15 @@
 | Nombres en la base | R27 |
 | Cuándo se escribe | R1, R2, R3 |
 | Ruta | Sin R: es de proceso. Lo hace cumplir `scripts/validate-features.mjs` (la migración exige la ruta completa) |
+| P1 · plan que se copia | R10 |
+| P2 · período de los históricos | R18 |
+| P3 · nadie cambia ni borra | R23, R24, R25 |
+| P4 · reversión de la migración | R20 |
+| Tamaño del PR | Sin R: es de proceso. La línea `tamano-pr-aceptado` va en `progress/features/SLT-85.md` |
 
 ## Preguntas abiertas
 
-> Cada una con la recomendación de `spec_author`. El spec está escrito según la recomendación; los
-> requisitos afectados llevan la marca (Pn).
-
-- **P1 — ¿Qué plan se copia en `plan_id` y `plan_nombre`?** Afecta a R10.
-  - **a) (recomendada)** El plan asignado a la empresa en el instante del movimiento, sea cual sea la
-    fuente. Es el mismo instante que el período (R14), no toca nada de SLT-83 y el importe sigue
-    explicado por la regla congelada (porcentaje, mínimo o valor fijo).
-  - b) El plan que fijó la regla. En una orden porcentual, el plan que había al **crearla**, que puede no
-    ser el de cuando entra en el estado final (un cambio de plan aplicado entre medias). Exige guardar el
-    plan en `cobro_plataforma_porcentual_orden` al dar de alta la orden y tocar el trigger de alta de
-    SLT-83.
-- **P2 — Período de los históricos: ¿con qué tipo de cobro?** Afecta a R18. La base no guarda el tipo de
-  cobro que tenía la empresa cuando se registró un cobro antiguo.
-  - **a) (recomendada)** Con el tipo de cobro que tiene la empresa al aplicar la migración (el único que se
-    conoce), y vacío si hoy no tiene plan. La fila ya sale `reconstruido`.
-  - b) Dejar el período vacío en todos los históricos, como el resto de lo que no se guardó.
-- **P3 — «Nunca se borra»: ¿también para el dueño de la base?** Afecta a R24.
-  - **a) (recomendada)** Nadie puede **cambiar** una fila (un trigger lo rechaza para todos los roles).
-    **Borrar** queda cerrado para la app (`REVOKE`, R23) y para el código (guardia, R25); el dueño solo
-    borra en cascada al borrar la orden o la empresa entera: las limpiezas de los tests y el borrado de
-    las empresas demo de QA (`scripts/demo-qa/borrar.ts`, SL-43). Es la misma regla que ya tienen los
-    movimientos.
-  - b) Un trigger que rechaza también el borrado para todos. Rompe el borrado de la demo de QA y las
-    limpiezas de los tests que borran órdenes.
-- **P4 — ¿Puede revertirse la migración con filas escritas en vivo?** Afecta a R20.
-  - **a) (recomendada)** No: el `down.sql` se niega si hay alguna fila con `reconstruido = false`, porque
-    esa copia del momento no se puede volver a sacar. Es el mismo criterio que el `down.sql` de SLT-66
-    (`20261031140100`), que se niega a bajar si hay movimientos de fuente `plan`.
-  - b) Sí: el `down.sql` borra la tabla entera, también las filas en vivo.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -170,3 +145,8 @@
 | 2026-11-09 | Nombres en la base | `snake_case` en español, como el resto de la base (`docs/conventions.md`). |
 | 2026-11-09 | Cuándo se escribe | En la misma transacción que el movimiento de `cobro_plataforma_movimiento`: no puede haber movimiento sin su fila de traza ni al revés. |
 | 2026-11-09 | Ruta | Completa: toca dinero y hace migración (`docs/specs.md > Tres rutas`). |
+| 2026-11-09 | P1 · ¿Qué plan se copia en `plan_id` y `plan_nombre`? | El plan asignado a la empresa en el instante del movimiento, sea cual sea la fuente. No el plan que fijó la regla al crear la orden. |
+| 2026-11-09 | P2 · Período de los históricos: ¿con qué tipo de cobro? | Con el tipo de cobro que tiene la empresa al aplicar la migración; vacío si en ese momento no tiene plan. La fila sale `reconstruido`. |
+| 2026-11-09 | P3 · «Nunca se borra»: ¿también para el dueño de la base? | Igual que los movimientos: nadie cambia una fila (ni el dueño). Borrar está cerrado para la app y para el código; solo se borra en cascada en el borrado de la demo de QA y en las limpiezas de los tests. |
+| 2026-11-09 | P4 · ¿Puede revertirse la migración con filas escritas en vivo? | No: el `down.sql` se niega si hay alguna fila con `reconstruido = false`. |
+| 2026-11-09 | Tamaño del PR | Se acepta el exceso de líneas sobre `gate.tamano_pr` en un solo PR (migración y relleno no se pueden partir). |
