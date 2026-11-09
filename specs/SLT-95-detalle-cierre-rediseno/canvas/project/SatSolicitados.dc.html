@@ -11,91 +11,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <style>body{margin:0}</style>
 </helmet>
-<div style="width:1440px;height:900px;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
-  <div aria-hidden="true" style="width:240px;background:#1C1C1A;flex-shrink:0"></div>
-  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
-    <div aria-hidden="true" style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff;flex-shrink:0"></div>
-    <div style="padding:24px 32px;display:flex;flex-direction:column;gap:16px">
-      <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px">
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <h1 style="margin:0;font-size:24px;font-weight:700">Cierres del día</h1>
-          <p style="margin:0;font-size:14px;color:#44403c">Bodega satélite · Limón. Lo que ya enviaste a la central y si ya llegó.</p>
-        </div>
-        <div role="group" aria-label="Tipo de cierre" style="display:flex;padding:4px;border-radius:10px;background:#ffffff;border:1px solid #e7e5e4">
-          <button type="button" aria-pressed="true" style="font:inherit;font-size:14px;font-weight:600;height:36px;padding:0 16px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Bodega</button>
-          <button type="button" style="font:inherit;font-size:14px;height:36px;padding:0 16px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer">Mensajero</button>
-        </div>
-      </header>
-
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:1px solid #e7e5e4">
-        <div role="tablist" aria-label="Cierre de bodega por etapa" style="display:flex;gap:24px">
-          <button type="button" role="tab" style="font:inherit;font-size:14px;font-weight:500;color:#44403c;background:transparent;border:0;border-bottom:2px solid transparent;padding:10px 2px;cursor:pointer">A consolidar 3</button>
-          <button type="button" role="tab" aria-selected="true" style="font:inherit;font-size:14px;font-weight:600;color:#111111;background:transparent;border:0;border-bottom:2px solid #111111;padding:10px 2px;cursor:pointer">Solicitados 8</button>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input type="text" aria-label="Fecha de solicitud" value="Últimos 30 días" style="font:inherit;font-size:14px;height:36px;width:170px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff">
-          <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Descargar</button>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
-        <div style="background:#FFF8D9;border:1px solid #FFD000;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Por llegar a la central</span>
-          <span style="font-size:22px;font-weight:700">₡438.163,27</span>
-          <span style="font-size:12px;color:#44403c">1 cierre de bodega pendiente de conciliar</span>
-        </div>
-        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Recibido por la central (30 días)</span>
-          <span style="font-size:22px;font-weight:700">₡2.871.400,10</span>
-          <span style="font-size:12px;color:#44403c">7 cierres de bodega</span>
-        </div>
-        <div style="background:#ffffff;border:1px solid #f59e0b;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Falta por recibir</span>
-          <span style="font-size:22px;font-weight:700;color:#92400e">₡15.000,00</span>
-          <span style="font-size:12px;color:#44403c">1 llegó incompleto</span>
-        </div>
-      </div>
-
-      <section aria-label="Cierres de bodega solicitados" style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
-        <div style="display:grid;grid-template-columns:110px 120px 80px 1fr 1fr 1fr 1fr 1fr 170px 70px;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4">
-          <span>Folio</span><span>Solicitado</span><span style="text-align:right">Cierres</span><span style="text-align:right">Recaudado</span><span style="text-align:right">Pago mensajeros</span><span style="text-align:right">Debe llegar</span><span style="text-align:right">Recibido</span><span style="text-align:right">Falta</span><span style="padding-left:16px">Estado</span><span></span>
-        </div>
-        <sc-for list="{{filas}}" as="f" hint-placeholder-count="5">
-          <div style="display:grid;grid-template-columns:110px 120px 80px 1fr 1fr 1fr 1fr 1fr 170px 70px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{f.folio}}</span>
-            <span style="color:#44403c">{{f.fecha}}</span>
-            <span style="text-align:right">{{f.n}}</span>
-            <span style="text-align:right">{{f.rec}}</span>
-            <span style="text-align:right">{{f.pago}}</span>
-            <span style="text-align:right;font-weight:600">{{f.debe}}</span>
-            <span style="text-align:right">{{f.recibido}}</span>
-            <span style="{{f.faltaStyle}}">{{f.falta}}</span>
-            <span style="padding-left:16px"><span style="{{f.estStyle}}">{{f.est}}</span></span>
-            <span style="text-align:right"><button type="button" style="font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Ver</button></span>
-          </div>
-        </sc-for>
-      </section>
-      <p style="margin:0;font-size:13px;color:#44403c">«Ver» abre el cierre de bodega con su dinero, sus gestiones, sus mensajeros y lo que marcó la central. Si la central anotó algo al recibir, aparece en «Conciliación».</p>
-    </div>
-  </main>
+<div style="width:1440px;height:900px">
+<dc-import name="ColaCierres" tipo="bodega" rol="satelite" tabInicial="2" hint-size="1440px,900px"></dc-import>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  renderVals() {
-    const pill = (bg, fg) => 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:' + bg + ';color:' + fg;
-    const pend = pill('#fef3c7', '#92400e'), ok = pill('#d1fae5', '#047857'), inc = pill('#fff7ed', '#9a3412');
-    const falta = (on) => 'text-align:right' + (on ? ';color:#92400e;font-weight:600' : ';color:#44403c');
-    return {
-      filas: [
-        { folio: '#C07B3E19', fecha: '07/11 19:55', n: 3, rec: '₡529.764,07', pago: '₡88.000,80', debe: '₡438.163,27', recibido: '—', falta: '₡438.163,27', faltaStyle: falta(true), est: 'Pendiente de conciliar', estStyle: pend },
-        { folio: '#A1F20B77', fecha: '06/11 20:02', n: 2, rec: '₡412.300,00', pago: '₡61.000,00', debe: '₡349.100,00', recibido: '₡334.100,00', falta: '₡15.000,00', faltaStyle: falta(true), est: 'Recibido incompleto', estStyle: inc },
-        { folio: '#7B0D11C2', fecha: '05/11 19:48', n: 3, rec: '₡501.880,50', pago: '₡84.500,00', debe: '₡414.980,50', recibido: '₡414.980,50', falta: '₡0,00', faltaStyle: falta(false), est: 'Recibido', estStyle: ok },
-        { folio: '#33E9A0D4', fecha: '04/11 19:30', n: 2, rec: '₡398.200,00', pago: '₡58.000,00', debe: '₡338.800,00', recibido: '₡338.800,00', falta: '₡0,00', faltaStyle: falta(false), est: 'Recibido', estStyle: ok },
-        { folio: '#0E77B6A9', fecha: '03/11 19:12', n: 1, rec: '₡0,00', pago: '₡0,00', debe: '₡0,00', recibido: '₡0,00', falta: '₡0,00', faltaStyle: falta(false), est: 'Recibido', estStyle: ok }
-      ]
-    };
-  }
+  renderVals() { return {}; }
 }
 </script>
 </body>

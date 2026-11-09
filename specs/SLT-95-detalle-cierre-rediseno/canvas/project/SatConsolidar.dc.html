@@ -11,115 +11,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <style>body{margin:0}</style>
 </helmet>
-<div style="width:1440px;height:900px;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
-  <div aria-hidden="true" style="width:240px;background:#1C1C1A;flex-shrink:0"></div>
-  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
-    <div aria-hidden="true" style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff;flex-shrink:0"></div>
-    <div style="padding:24px 32px;display:flex;flex-direction:column;gap:16px;flex:1;min-height:0">
-      <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px">
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <h1 style="margin:0;font-size:24px;font-weight:700">Cierres del día</h1>
-          <p style="margin:0;font-size:14px;color:#44403c">Bodega satélite · Limón. Junta los cierres aprobados de tus mensajeros y envíalos a la central.</p>
-        </div>
-        <div role="group" aria-label="Tipo de cierre" style="display:flex;padding:4px;border-radius:10px;background:#ffffff;border:1px solid #e7e5e4">
-          <button type="button" aria-pressed="true" style="font:inherit;font-size:14px;font-weight:600;height:36px;padding:0 16px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Bodega</button>
-          <button type="button" style="font:inherit;font-size:14px;height:36px;padding:0 16px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer">Mensajero</button>
-        </div>
-      </header>
-
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:1px solid #e7e5e4">
-        <div role="tablist" aria-label="Cierre de bodega por etapa" style="display:flex;gap:24px">
-          <button type="button" role="tab" aria-selected="true" style="font:inherit;font-size:14px;font-weight:600;color:#111111;background:transparent;border:0;border-bottom:2px solid #111111;padding:10px 2px;cursor:pointer">A consolidar 3</button>
-          <button type="button" role="tab" style="font:inherit;font-size:14px;font-weight:500;color:#44403c;background:transparent;border:0;border-bottom:2px solid transparent;padding:10px 2px;cursor:pointer">Solicitados 8</button>
-        </div>
-        <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;margin-bottom:8px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Descargar</button>
-      </div>
-
-      <sc-if value="{{bloqueado}}" hint-placeholder-val="{{ false }}">
-        <div role="status" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:14px">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>
-          <strong style="font-weight:600">Todavía no puedes consolidar:</strong>
-          <span>Beto Mensajero tiene un cierre sin resolver. Apruébalo o recházalo primero.</span>
-        </div>
-      </sc-if>
-
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
-        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Recaudado</span>
-          <span style="font-size:22px;font-weight:700">₡529.764,07</span>
-          <div style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:#44403c">
-            <div style="display:flex;justify-content:space-between"><span>Efectivo</span><span>₡389.764,07</span></div>
-            <div style="display:flex;justify-content:space-between"><span>SINPE</span><span>₡140.000,00</span></div>
-          </div>
-        </div>
-        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Pago a mensajeros</span>
-          <span style="font-size:22px;font-weight:700">₡88.000,80</span>
-          <span style="font-size:12px;color:#44403c">3 mensajeros · se paga del efectivo</span>
-        </div>
-        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Gana la bodega satélite</span>
-          <span style="font-size:22px;font-weight:700">₡3.600,00</span>
-          <span style="font-size:12px;color:#44403c">por devoluciones y no entregadas</span>
-        </div>
-        <div style="background:#FFF8D9;border:1px solid #FFD000;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
-          <span style="font-size:13px;color:#44403c">Debe llegar a la central</span>
-          <span style="font-size:22px;font-weight:700">₡438.163,27</span>
-          <span style="font-size:12px;color:#44403c">recaudado − mensajeros − bodega</span>
-        </div>
-      </div>
-
-      <sc-if value="{{centralDebe}}" hint-placeholder-val="{{ false }}">
-        <div role="status" style="display:flex;gap:10px;padding:10px 14px;border-radius:10px;background:#ffffff;border:1px solid #f59e0b;font-size:14px;color:#44403c">
-          <strong style="color:#92400e;font-weight:600">La central debe ₡12.500,00.</strong>
-          <span>El efectivo no alcanzó para pagarle a todos los mensajeros (el pago no puede ser parcial).</span>
-        </div>
-      </sc-if>
-
-      <section aria-label="Cierres del día a consolidar" style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px;flex:1;min-height:0;overflow:auto">
-        <div style="display:grid;grid-template-columns:110px 1.3fr 130px 1fr 1fr 1fr 1fr 1.2fr 110px;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4">
-          <span>Folio</span><span>Mensajero</span><span>Aprobado</span><span style="text-align:right">Recaudado</span><span style="text-align:right">Pago</span><span style="text-align:right">Gana bodega</span><span style="text-align:right">A la central</span><span style="padding-left:16px">Señales</span><span></span>
-        </div>
-        <sc-for list="{{filas}}" as="f" hint-placeholder-count="3">
-          <div style="display:grid;grid-template-columns:110px 1.3fr 130px 1fr 1fr 1fr 1fr 1.2fr 110px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{f.folio}}</span>
-            <span>{{f.mens}}</span>
-            <span style="color:#44403c">{{f.aprob}}</span>
-            <span style="text-align:right">{{f.rec}}</span>
-            <span style="text-align:right">{{f.pago}}</span>
-            <span style="text-align:right">{{f.bod}}</span>
-            <span style="text-align:right;font-weight:600">{{f.central}}</span>
-            <span style="padding-left:16px;font-size:12px;color:#92400e">{{f.senal}}</span>
-            <a href="#cierre" style="text-align:right;color:#1d4ed8;font-size:14px">Ver su cierre</a>
-          </div>
-        </sc-for>
-      </section>
-
-      <footer style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:12px;border-top:1px solid #e7e5e4">
-        <span style="font-size:13px;color:#44403c">{{pie}}</span>
-        <button type="button" disabled="{{bloqueado}}" style="{{btnStyle}}">Solicitar cierre de bodega</button>
-      </footer>
-    </div>
-  </main>
+<div style="width:1440px;height:900px">
+<dc-import name="ColaCierres" tipo="bodega" rol="satelite" hint-size="1440px,900px"></dc-import>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"estado":{"editor":"enum","options":["listo","bloqueado","central debe"],"default":"listo"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  renderVals() {
-    const estado = this.props.estado ?? 'listo';
-    const bloqueado = estado === 'bloqueado';
-    return {
-      bloqueado,
-      centralDebe: estado === 'central debe',
-      filas: [
-        { folio: '#5E11A0B3', mens: 'Ana Mensajera', aprob: '07/11 19:10', rec: '₡285.275,00', pago: '₡45.000,55', bod: '₡1.200,00', central: '₡239.074,45', senal: '1 pago ajustado' },
-        { folio: '#2C91B0AA', mens: 'Beto Mensajero', aprob: '07/11 19:22', rec: '₡146.089,07', pago: '₡25.000,25', bod: '₡2.400,00', central: '₡118.688,82', senal: '' },
-        { folio: '#71D0E3F2', mens: 'Carla Mensajera', aprob: '07/11 19:40', rec: '₡98.400,00', pago: '₡18.000,00', bod: '₡0,00', central: '₡80.400,00', senal: '' }
-      ],
-      pie: bloqueado ? 'Se habilita cuando no quede ningún cierre de mensajero por resolver.' : 'Se enviarán los 3 cierres aprobados a la central. No se puede deshacer.',
-      btnStyle: 'font:inherit;font-size:14px;font-weight:500;height:40px;padding:0 18px;border-radius:8px;border:0;cursor:' + (bloqueado ? 'not-allowed' : 'pointer') + ';background:' + (bloqueado ? '#d6d3d1' : '#111111') + ';color:' + (bloqueado ? '#44403c' : '#ffffff')
-    };
-  }
+  renderVals() { return {}; }
 }
 </script>
 </body>

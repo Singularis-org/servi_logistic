@@ -25,6 +25,8 @@ Tarjeta: zone frontend, complexity high. La descripción incluye piezas que pued
   - PA5: se retira la impresión del detalle del admin (ficha 223): «creo que no lo están usando»; quien necesite algo usa el botón de descarga (Excel).
   - PA6: el Excel debe funcionar solo con el modelo nuevo; proponer un documento NUEVO para el modelo nuevo (diseño de columnas a aprobar por Carlos). Pendiente: qué pasa con los cierres del modelo viejo y si la empresa ya activó tarifas nuevas.
 
+- 2026-11-09, Carlos tras ver el canvas de bodega: es un REDISEÑO COMPLETO del módulo de cierres, «no dejes absolutamente nada fuera». Lo que hace la satélite con sus mensajeros es lo mismo que hace la central con los suyos: componentes IGUALES con props distintas, nunca uno por rol. Se vuelve al diseño inicial para unificar: cola de cierres, detalle, fila de gestión y diálogos como componentes únicos parametrizados (tipo mensajero|bodega × rol central|satélite|mensajero). Faltaban: cola de la central, todos los diálogos de decisión y los de la central (registrar/anular pago, corregir métodos, corregir resultado).
+
 ## Preguntas abiertas
 
 ## Tandas

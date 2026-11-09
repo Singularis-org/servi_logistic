@@ -43,7 +43,7 @@
             <dt style="color:#44403c">Efectivo</dt><dd style="margin:0;text-align:right">₡15.000,00</dd>
             <dt style="color:#44403c">SINPE</dt><dd style="margin:0;text-align:right">₡10.000,00</dd>
           </dl>
-          <button type="button" style="margin-top:auto;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;align-self:flex-start">Corregir métodos de pago</button>
+          <sc-if value="{{puedeCorregirMetodos}}" hint-placeholder-val="{{ true }}"><button type="button" style="margin-top:auto;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;align-self:flex-start">Corregir métodos de pago</button></sc-if>
         </section>
 
         <section style="border:1px solid #e7e5e4;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
@@ -70,9 +70,10 @@
             <dt style="color:#44403c">Motivo</dt><dd style="margin:0;text-align:right">«Entrega compartida con Luis»</dd>
             <dt style="color:#44403c">Ajustó</dt><dd style="margin:0;text-align:right">Carlos R. · 07/11 19:02</dd>
           </dl>
-          <button type="button" style="margin-top:auto;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;align-self:flex-start">Ajustar pago</button>
+          <sc-if value="{{puedeAjustar}}" hint-placeholder-val="{{ true }}"><button type="button" style="margin-top:auto;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;align-self:flex-start">Ajustar pago</button></sc-if>
         </section>
 
+        <sc-if value="{{verFulfillment}}" hint-placeholder-val="{{ true }}">
         <section style="border:1px dashed #d6d3d1;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;background:#fafaf9">
           <div style="display:flex;flex-direction:column;gap:4px">
             <h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">FULFILLMENT · SE COBRÓ AL CREAR LA ORDEN</h4>
@@ -84,6 +85,7 @@
           </dl>
           <p style="margin:0;font-size:13px;color:#44403c">Se cargó al saldo de la tienda el 06/11/2026, una vez por paquete. No depende de esta gestión ni de este cierre.</p>
         </section>
+        </sc-if>
       </div>
 
       <sc-if value="{{abierto}}" hint-placeholder-val="{{ true }}">
@@ -112,18 +114,26 @@
 
       <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding-top:14px;border-top:1px solid #f5f5f4">
         <div style="display:flex;gap:8px"><button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Evidencia 1</button><button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Evidencia 2</button></div>
-        <button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Corregir el resultado</button>
+        <sc-if value="{{puedeCorregirResultado}}" hint-placeholder-val="{{ true }}"><button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Corregir el resultado</button></sc-if>
       </div>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1180}}'>
+<script type="text/x-dc" data-dc-script data-props='{"audiencia":{"editor":"enum","options":["central","satelite","mensajero","solo lectura"],"default":"central"},"$preview":{"width":1080,"height":1180}}'>
 class Component extends DCLogic {
   constructor(p) { super(p); this.state = { abierto: true }; }
   renderVals() {
     const abierto = this.state.abierto;
+    // Un solo componente; la audiencia decide qué se ve y qué se puede tocar.
+    // central: todo · satelite: solo «Ajustar pago», sin Fulfillment · mensajero (/cierre-dia): sin acciones, sin Fulfillment
+    // solo lectura (gestiones dentro del cierre de bodega): sin acciones, con Fulfillment.
+    const a = this.props.audiencia ?? 'central';
     return {
+      puedeCorregirMetodos: a === 'central',
+      puedeAjustar: a === 'central' || a === 'satelite',
+      puedeCorregirResultado: a === 'central',
+      verFulfillment: a === 'central' || a === 'solo lectura',
       abierto,
       toggleLabel: abierto ? 'Ocultar cómo se calculó' : 'Ver cómo se calculó',
       toggle: () => this.setState({ abierto: !abierto })

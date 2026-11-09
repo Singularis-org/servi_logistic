@@ -20,16 +20,20 @@ body{margin:0}
     <div style="width:240px;background:#1C1C1A"></div>
     <div style="flex:1;display:flex;flex-direction:column">
       <div style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff"></div>
-      <div style="padding:24px;display:flex;flex-direction:column;gap:12px">
-        <div style="height:40px;width:420px;border-radius:8px;background:#e7e5e4"></div>
-        <div style="height:360px;border-radius:12px;background:#ffffff;border:1px solid #e7e5e4"></div>
-      </div>
+      <sc-if value="{{esModal}}" hint-placeholder-val="{{ true }}">
+        <div style="padding:24px;display:flex;flex-direction:column;gap:12px">
+          <div style="height:40px;width:420px;border-radius:8px;background:#e7e5e4"></div>
+          <div style="height:360px;border-radius:12px;background:#ffffff;border:1px solid #e7e5e4"></div>
+        </div>
+      </sc-if>
     </div>
   </div>
-  <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(17,17,17,0.5)"></div>
+  <sc-if value="{{esModal}}" hint-placeholder-val="{{ true }}">
+    <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(17,17,17,0.5)"></div>
+  </sc-if>
 
-  <!-- EL MODAL: 75 % de 1440 = 1080, alto máx 100dvh − 2rem -->
-  <section role="dialog" aria-modal="true" aria-labelledby="titulo-cierre" style="position:absolute;left:180px;top:16px;width:1080px;height:868px;box-sizing:border-box;background:#F7F7F5;border:1px solid #e7e5e4;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.18);padding:24px;display:flex;flex-direction:column;gap:16px">
+  <!-- EL COMPONENTE: modal (75 % de 1440) o página (/cierre-dia del mensajero) -->
+  <section role="{{rolSeccion}}" aria-modal="{{esModal}}" aria-labelledby="titulo-cierre" style="{{marcoStyle}}">
 
     <!-- CABECERA -->
     <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-shrink:0">
@@ -43,46 +47,38 @@ body{margin:0}
         </div>
         <p style="margin:0;font-size:14px;color:#44403c">{{sub}} · <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{folio}}</span> · {{fechas}}</p>
       </div>
-      <button type="button" aria-label="Cerrar" style="width:36px;height:36px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
-      </button>
+      <sc-if value="{{esModal}}" hint-placeholder-val="{{ true }}">
+        <button type="button" aria-label="Cerrar" style="width:36px;height:36px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </sc-if>
     </header>
 
-    <!-- POR REVISAR -->
+    <!-- POR REVISAR / AVISO -->
     <sc-if value="{{hayAvisos}}" hint-placeholder-val="{{ true }}">
-      <div role="status" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:14px;flex-wrap:wrap;flex-shrink:0">
+      <div role="status" style="{{avisoStyle}}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>
-        <strong style="font-weight:600">Por revisar:</strong>
+        <strong style="font-weight:600">{{avisoTitulo}}</strong>
         <span>{{avisos}}</span>
       </div>
     </sc-if>
 
-    <!-- 4 CIFRAS -->
-    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;flex-shrink:0">
-      <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0">
-        <span style="font-size:13px;color:#44403c">Recaudado</span>
-        <span style="font-size:22px;font-weight:700;line-height:1.15;overflow-wrap:anywhere">{{k.rec}}</span>
-        <div style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:#44403c">
-          <sc-for list="{{metodos}}" as="m" hint-placeholder-count="3">
-            <div style="display:flex;justify-content:space-between;gap:8px"><span>{{m.label}}</span><span>{{m.valor}}</span></div>
-          </sc-for>
+    <!-- CIFRAS (4 en central y satélite; 3 para el mensajero) -->
+    <div style="{{cifrasGrid}}">
+      <sc-for list="{{cifras}}" as="c" hint-placeholder-count="4">
+        <div style="{{c.caja}}">
+          <span style="font-size:13px;color:#44403c">{{c.label}}</span>
+          <span style="{{c.valorStyle}}">{{c.valor}}</span>
+          <sc-if value="{{c.conMetodos}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:#44403c">
+              <sc-for list="{{metodos}}" as="m" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;gap:8px"><span>{{m.label}}</span><span>{{m.valor}}</span></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <span style="font-size:12px;color:#44403c">{{c.sub}}</span>
         </div>
-      </div>
-      <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0">
-        <span style="font-size:13px;color:#44403c">{{k2label}}</span>
-        <span style="{{k2style}}">{{k2valor}}</span>
-        <span style="font-size:12px;color:#44403c">{{k2sub}}</span>
-      </div>
-      <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0">
-        <span style="font-size:13px;color:#44403c">{{k3label}}</span>
-        <span style="font-size:22px;font-weight:700;line-height:1.15;overflow-wrap:anywhere">{{k.mens}}</span>
-        <span style="font-size:12px;color:#44403c">{{k3sub}}</span>
-      </div>
-      <div style="background:#FFF8D9;border:1px solid #FFD000;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0">
-        <span style="font-size:13px;color:#44403c">Le queda a la empresa</span>
-        <span style="font-size:22px;font-weight:700;line-height:1.15;overflow-wrap:anywhere">{{k.neto}}</span>
-        <span style="font-size:12px;color:#44403c">{{k4sub}}</span>
-      </div>
+      </sc-for>
     </div>
 
     <!-- PESTAÑAS -->
@@ -145,24 +141,34 @@ body{margin:0}
           </div>
           <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
             <div style="{{gCabStyle}}">
-              <span>Guía</span><span>Destinatario · tienda</span>
-              <sc-if value="{{esBodega}}" hint-placeholder-val="{{ false }}"><span>Mensajero</span></sc-if>
-              <span>Resultado</span><span style="text-align:right">Recibido</span><span style="text-align:right">Cobro a tienda</span><span style="text-align:right">Pago mensajero</span><span style="padding-left:16px">Señales</span><span></span>
+              <sc-for list="{{gCols}}" as="gc" hint-placeholder-count="8"><span style="{{gc.style}}">{{gc.label}}</span></sc-for>
+              <span></span>
             </div>
             <sc-for list="{{filas}}" as="f" hint-placeholder-count="8">
               <div style="{{gFilaStyle}}">
-                <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{f.guia}}</span>
-                <span style="min-width:0"><span>{{f.dest}}</span><br><span style="font-size:12px;color:#44403c">{{f.tienda}}</span></span>
-                <sc-if value="{{esBodega}}" hint-placeholder-val="{{ false }}"><span>{{f.mens}}</span></sc-if>
-                <span><span style="{{f.resStyle}}">{{f.res}}</span></span>
-                <span style="text-align:right">{{f.recibido}}</span>
-                <span style="text-align:right">{{f.cobro}}</span>
-                <span style="text-align:right">{{f.pago}}</span>
-                <span style="padding-left:16px;font-size:12px;color:#92400e">{{f.senal}}</span>
-                <button type="button" aria-label="Ver detalle de la gestión" style="width:32px;height:32px;border:0;background:transparent;border-radius:8px;color:#44403c;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+                <sc-for list="{{f.celdas}}" as="ce" hint-placeholder-count="8"><span style="{{ce.style}}">{{ce.v}}</span></sc-for>
+                <span style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+                  <sc-if value="{{f.devolver}}" hint-placeholder-val="{{ false }}"><button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 10px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Devolver a gestión</button></sc-if>
+                  <button type="button" aria-label="Ver detalle de la gestión" style="width:32px;height:32px;border:0;background:transparent;border-radius:8px;color:#44403c;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+                </span>
               </div>
             </sc-for>
           </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{enCorregir}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <section style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;font-size:14px">
+            <h3 style="margin:0;font-size:15px;font-weight:600">Cómo corregir</h3>
+            <p style="margin:0;color:#44403c">Si una gestión quedó mal, devuélvela a gestión: sale de este cierre, sus totales se recalculan y la orden vuelve a Entregas para que la gestiones de nuevo. Cuando termines, vuelve a enviar el cierre a aprobación.</p>
+            <p style="margin:0;color:#92400e">Envíalo hoy: si el corte de la noche llega antes, lo que corregiste pasa a un cierre nuevo.</p>
+          </section>
+          <section style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
+            <h3 style="margin:12px 0 4px;font-size:15px;font-weight:600">Órdenes por volver a gestionar</h3>
+            <div style="display:grid;grid-template-columns:110px 1.6fr 1fr 220px 140px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center"><span style="font-family:'JetBrains Mono',monospace;font-size:13px">REM-007</span><span>Sofía Arias</span><span style="color:#44403c">Tienda Norte</span><span><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#fef3c7;color:#92400e">Falta volver a gestionarla</span></span><a href="#entregas" style="text-align:right;color:#1d4ed8">Ir a Entregas</a></div>
+            <div style="display:grid;grid-template-columns:110px 1.6fr 1fr 220px 140px;gap:8px;font-size:14px;padding:12px 0;align-items:center"><span style="font-family:'JetBrains Mono',monospace;font-size:13px">REM-011</span><span>Andrés Mora</span><span style="color:#44403c">Tienda Sur</span><span><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#d1fae5;color:#047857">Ya la volviste a gestionar</span></span><span></span></div>
+          </section>
         </div>
       </sc-if>
 
@@ -214,16 +220,20 @@ body{margin:0}
   </section>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"tipo":{"editor":"enum","options":["mensajero","bodega"],"default":"mensajero"},"modo":{"editor":"enum","options":["decidir","solo lectura"],"default":"decidir"},"cifras":{"editor":"enum","options":["normales","grandes"],"default":"normales"},"audiencia":{"editor":"enum","options":["central","satelite"],"default":"central"},"tabInicial":{"editor":null},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"tipo":{"editor":"enum","options":["mensajero","bodega"],"default":"mensajero"},"modo":{"editor":"enum","options":["decidir","solo lectura","vencido","en curso","rechazado"],"default":"decidir"},"cifras":{"editor":"enum","options":["normales","grandes"],"default":"normales"},"audiencia":{"editor":"enum","options":["central","satelite","mensajero"],"default":"central"},"marco":{"editor":"enum","options":["modal","pagina"],"default":"modal"},"tabInicial":{"editor":null},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   constructor(p) { super(p); this.state = { tab: null }; }
   renderVals() {
     const tipo = this.props.tipo ?? 'mensajero';
     const modo = this.props.modo ?? 'decidir';
+    const aud = this.props.audiencia ?? 'central';
     const f = (this.props.cifras ?? 'normales') === 'grandes' ? 350 : 1;
     const esBodega = tipo === 'bodega';
+    const sat = aud === 'satelite';
+    const mens = aud === 'mensajero';                 // el propio mensajero (/cierre-dia)
     const decidir = modo === 'decidir';
-    const sat = (this.props.audiencia ?? 'central') === 'satelite';
+    const vencido = modo === 'vencido', enCurso = modo === 'en curso', rechazado = modo === 'rechazado';
+    const esModal = (this.props.marco ?? 'modal') === 'modal';
     const fmt = (c) => {
       const v = Math.round(c * f), neg = v < 0, a = Math.abs(v);
       const ent = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -259,15 +269,36 @@ class Component extends DCLogic {
     const metodos = [['Efectivo', D.ef], ['SINPE', D.si], ['Transferencia', D.tr]]
       .filter((m) => m[1] > 0).map((m) => ({ label: m[0], valor: fmt(m[1]) }));
 
-    const defs = esBodega
-      ? [['dinero', 'Dinero'], ['gestiones', 'Gestiones 31'], ['mensajeros', 'Mensajeros 2'], ['conciliacion', 'Conciliación']]
-      : [['dinero', 'Dinero'], ['gestiones', 'Gestiones 19'], ['rechazos', 'Rechazados por la tienda 2']].concat(decidir ? [] : [['pago', 'Pago al mensajero']]);
-    const tab = this.state.tab ?? this.props.tabInicial ?? 'dinero';
+    // ---------- pestañas ----------
+    let defs;
+    if (esBodega) defs = [['dinero', 'Dinero'], ['gestiones', 'Gestiones 31'], ['mensajeros', 'Mensajeros 2'], ['conciliacion', 'Conciliación']];
+    else if (mens) defs = (rechazado ? [['corregir', 'Corregir']] : []).concat([['gestiones', 'Gestiones 19'], ['rechazos', 'Rechazados por la tienda 2']]);
+    else defs = [['dinero', 'Dinero'], ['gestiones', 'Gestiones 19'], ['rechazos', 'Rechazados por la tienda 2']]
+      .concat(modo === 'solo lectura' && !sat ? [['pago', 'Pago al mensajero']] : []);
+    const tab = this.state.tab ?? this.props.tabInicial ?? defs[0][0];
     const tabs = defs.map((d) => ({
       label: d[1], pick: () => this.setState({ tab: d[0] }),
       style: 'font:inherit;font-size:14px;font-weight:' + (d[0] === tab ? '600' : '500') + ';color:' + (d[0] === tab ? '#111111' : '#44403c') + ';background:transparent;border:0;border-bottom:2px solid ' + (d[0] === tab ? '#111111' : 'transparent') + ';padding:10px 2px;cursor:pointer'
     }));
 
+    // ---------- cifras ----------
+    const caja = (hl) => 'border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0;' + (hl ? 'background:#FFF8D9;border:1px solid #FFD000' : 'background:#ffffff;border:1px solid #e7e5e4');
+    const cif = (label, valor, sub, hl, conMetodos, color) => ({ label, valor, sub: sub || '', conMetodos: !!conMetodos, caja: caja(hl), valorStyle: big + (color ? ';color:' + color : '') });
+    let cifras;
+    if (mens) cifras = [
+      cif('Recaudado', fmt(D.rec), '', false, true),
+      cif('Gestiones', '19', '12 entregadas · 7 vuelven o con novedad'),
+      cif('Tu ganancia', fmt(D.mens), '1 pago ajustado por la bodega', true)
+    ];
+    else cifras = [
+      cif('Recaudado', fmt(D.rec), '', false, true),
+      cif(esBodega ? 'Debe llegar a la central' : 'Se le paga hoy a la tienda', fmt(esBodega ? D.central : D.hoy),
+          esBodega ? (decidir ? 'Aún no se marca recibido' : 'Recibido completo') : '2 tiendas · ganan en total ' + fmt(D.gana), false, false, esBodega ? '' : '#047857'),
+      cif(esBodega ? 'Pago a mensajeros' : 'Pago al mensajero', fmt(D.mens), esBodega ? '2 mensajeros · 2 ajustes' : '19 gestiones · 1 ajustada'),
+      cif('Le queda a la empresa', fmt(D.neto), esBodega ? 'sin IVA, ya restados mensajeros y satélite' : 'sin IVA, ya restados mensajero y bodega', true)
+    ];
+
+    // ---------- dinero ----------
     const seg = (label, c, color) => ({
       label, valor: fmt(c), pct: '(' + Math.round(c / D.rec * 100) + ' %)',
       barra: 'width:' + (c / D.rec * 100).toFixed(2) + '%;background:' + color,
@@ -276,7 +307,6 @@ class Component extends DCLogic {
     const reparto = esBodega
       ? [seg('A la central', D.central, '#111111'), seg('A los mensajeros', D.mens, '#1d4ed8'), seg('A la bodega satélite', D.sat, '#f59e0b')]
       : [seg('A la tienda hoy', D.hoy, '#047857'), seg('Se lo cobra la empresa', D.cobra, '#111111')];
-
     const facturado = { titulo: 'Lo que se le factura a la tienda', lineas: [
       ln('Flete por entregado + IVA', D.flete), ln('Comisión COD + IVA', D.com),
       ln('Sale de lo recaudado', D.flete + D.com, 'sub'),
@@ -293,6 +323,7 @@ class Component extends DCLogic {
       ln('− Gana la bodega satélite', D.sat, 'menos'), ln('Debe llegar a la central', D.central, 'total')] };
     const cascadas = esBodega ? [central, facturado, queda] : [facturado, queda];
 
+    // ---------- gestiones ----------
     const r = (bg, fg) => 'font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:' + bg + ';color:' + fg;
     const ok = r('#d1fae5', '#047857'), am = r('#fef3c7', '#92400e'), gr = r('#f5f5f4', '#44403c'), rd = r('#fee2e2', '#b91c1c');
     const raw = [
@@ -305,9 +336,21 @@ class Component extends DCLogic {
       ['1007', 'Sofía Arias', 'Tienda Norte', 'Beto Mensajero', 'Reprogramado', am, 0, 113000, 80000, 'Vuelve a bodega'],
       ['1011', 'Andrés Mora', 'Tienda Sur', 'Ana Mensajera', 'Devolución', gr, 0, 226000, 100000, 'Vuelve a bodega']
     ];
-    const filas = raw.map((x) => ({ guia: x[0], dest: x[1], tienda: x[2], mens: x[3], res: x[4], resStyle: x[5],
-      recibido: x[6] ? fmt(x[6]) : '—', cobro: fmt(x[7]), pago: fmt(x[8]), senal: esBodega && x[9].indexOf('indemnizar') >= 0 ? 'Dañado' : x[9] }));
-    const cols = esBodega ? '70px 1.5fr 1.1fr 110px 1fr 1fr 1fr 1.2fr 40px' : '70px 1.7fr 110px 1fr 1fr 1fr 1.3fr 40px';
+    const M = "font-family:'JetBrains Mono',monospace;font-size:13px", R = 'text-align:right', S = 'padding-left:16px;font-size:12px;color:#92400e';
+    // El mensajero ve lo suyo: lo recibido y su ganancia. No ve el cobro a la tienda.
+    const gColsDef = mens
+      ? [['Guía'], ['Destinatario · tienda'], ['Resultado'], ['Recibido', R], ['Ganancia', R], ['Señales', 'padding-left:16px']]
+      : [['Guía'], ['Destinatario · tienda']].concat(esBodega ? [['Mensajero']] : []).concat([['Resultado'], ['Recibido', R], ['Cobro a tienda', R], ['Pago mensajero', R], ['Señales', 'padding-left:16px']]);
+    const gCols = gColsDef.map((c) => ({ label: c[0], style: c[1] || '' }));
+    const filas = raw.map((x) => {
+      const senal = mens ? (x[9].indexOf('indemnizar') >= 0 ? 'Dañado' : x[9] === 'Sin tarifa de pago' ? 'Sin tarifa' : x[9]) : (esBodega && x[9].indexOf('indemnizar') >= 0 ? 'Dañado' : x[9]);
+      const destino = { v: x[1] + ' · ' + x[2], style: 'min-width:0' };
+      const celdas = mens
+        ? [{ v: x[0], style: M }, destino, { v: x[4], style: x[5] }, { v: x[6] ? fmt(x[6]) : '—', style: R }, { v: fmt(x[8]), style: R }, { v: senal, style: S }]
+        : [{ v: x[0], style: M }, destino].concat(esBodega ? [{ v: x[3], style: '' }] : []).concat([{ v: x[4], style: x[5] }, { v: x[6] ? fmt(x[6]) : '—', style: R }, { v: fmt(x[7]), style: R }, { v: fmt(x[8]), style: R }, { v: senal, style: S }]);
+      return { celdas, devolver: mens && (enCurso || rechazado) };
+    });
+    const cols = (mens ? '70px 1.9fr 120px 1fr 1fr 1.3fr' : esBodega ? '70px 1.5fr 1.1fr 110px 1fr 1fr 1fr 1.2fr' : '70px 1.7fr 110px 1fr 1fr 1fr 1.3fr') + (mens && (enCurso || rechazado) ? ' 190px' : ' 40px');
     const chipBase = 'font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:999px;cursor:pointer;';
     const chips = [['Todas ' + (esBodega ? 31 : 19), true], ['Entregado ' + (esBodega ? 22 : 12)], ['Reprogramado 2'], ['Novedad 1'], ['Devolución ' + (esBodega ? 5 : 3)], ['Incidente 1'], ['Con señales 3', false, true]]
       .map((c) => ({ label: c[0], style: chipBase + (c[1] ? 'background:#111111;color:#ffffff;border:1px solid #111111' : c[2] ? 'background:#ffffff;color:#92400e;border:1px solid #f59e0b' : 'background:#ffffff;color:#111111;border:1px solid #e7e5e4') }));
@@ -321,43 +364,69 @@ class Component extends DCLogic {
       { nombre: 'Tienda Sur', rec: fmt(10527500), hoy: fmt(8117633), gana: fmt(8117633) }
     ];
 
+    // ---------- pie: las acciones dependen de quién mira y en qué estado está ----------
     let acciones;
-    if (esBodega && sat) acciones = [{ label: 'Cerrar', style: btn('primary') }];
+    if (mens) acciones = enCurso ? [{ label: 'Solicitar cierre', style: btn('primary') }]
+      : rechazado ? [{ label: 'Solicitar aprobación del cierre rechazado', style: btn('primary') }]
+      : vencido ? [{ label: 'Solicitar aprobación del cierre vencido', style: btn('primary') }]
+      : [{ label: 'Cerrar', style: btn('primary') }];
+    else if (esBodega && sat) acciones = [{ label: 'Cerrar', style: btn('primary') }];
     else if (esBodega) acciones = decidir ? [{ label: 'Cerrar', style: btn() }, { label: 'Marcar recibido', style: btn('primary') }]
       : [{ label: 'Desmarcar', style: btn() }, { label: 'Cerrar', style: btn('primary') }];
+    else if (vencido) acciones = [{ label: 'Cerrar', style: btn() }, { label: 'Destrabar cierre vencido', style: btn('danger') }];
     else acciones = decidir ? [{ label: 'Rechazar', style: btn('danger') }, { label: 'Revisar paquetes y aprobar', style: btn('primary') }]
       : [{ label: 'Cerrar', style: btn('primary') }];
 
+    // ---------- estado y avisos ----------
+    let estado, estadoStyle;
+    if (esBodega) { estado = decidir ? 'Pendiente de conciliar' : 'Recibido'; estadoStyle = decidir ? pill('#fef3c7', '#92400e') : pill('#d1fae5', '#047857'); }
+    else if (enCurso) { estado = 'Sin solicitar'; estadoStyle = pill('#f5f5f4', '#44403c'); }
+    else if (rechazado) { estado = 'Rechazado'; estadoStyle = pill('#fee2e2', '#b91c1c'); }
+    else if (vencido) { estado = 'Vencido'; estadoStyle = pill('#fee2e2', '#b91c1c'); }
+    else { estado = decidir ? 'Solicitado' : 'Aprobado'; estadoStyle = decidir ? pill('#fef3c7', '#92400e') : pill('#d1fae5', '#047857'); }
+
+    let hayAvisos = decidir || vencido || rechazado, avisoTitulo = 'Por revisar:', avisos = '';
+    if (esBodega) avisos = sat ? '2 pagos al mensajero ajustados · la central aún no marca el dinero recibido' : '2 pagos al mensajero ajustados · falta marcar el dinero recibido';
+    else if (mens && rechazado) { avisoTitulo = 'Motivo del rechazo:'; avisos = '«Faltan 2 paquetes de Tienda Norte». Corrige y vuelve a enviarlo hoy.'; }
+    else if (mens && vencido) { avisoTitulo = 'Tu cierre venció sin enviarse a aprobación.'; avisos = 'Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo.'; }
+    else if (mens && enCurso) { hayAvisos = true; avisoTitulo = 'Antes de cerrar:'; avisos = 'Tienes 2 paquetes en reparto sin gestionar. Gestiónalos para poder solicitar el cierre.'; }
+    else if (vencido) { avisoTitulo = 'Vencido:'; avisos = 'El mensajero no lo envió a aprobación y está bloqueado. Destrabarlo es una excepción: queda como solicitado en su nombre.'; }
+    else avisos = '1 incidente sin indemnizar · 2 rechazados por la tienda · 1 pago ajustado · 6 paquetes vuelven a bodega';
+
+    let pieTexto;
+    if (esBodega) pieTexto = 'Declarado ' + fmt(D.central) + (sat ? (decidir ? ' · la central lo marca recibido cuando llega' : '') : (decidir ? ' · márcalo recibido cuando llegue' : ''));
+    else if (mens) pieTexto = enCurso ? 'Se agrupan todas tus gestiones pendientes. No se puede deshacer.' : rechazado ? 'Se envía con las gestiones que tenga al enviarlo.' : vencido ? 'No se recalculan los montos ya registrados.' : 'Los montos son los que quedaron congelados al solicitar el cierre.';
+    else pieTexto = vencido ? 'Destrabar lo deja como solicitado; después se aprueba o rechaza por la vía normal.' : decidir ? 'Aprobar pide confirmar los 6 paquetes e indemnizar el incidente' : 'Recaudado ' + fmt(D.rec) + ' · 19 gestiones';
+
+    const titulo = esBodega ? 'Cierre de bodega · Limón' : (mens ? 'Tu cierre del día' : 'Cierre de Ana Mensajera');
+    const sub = esBodega ? 'Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros' : (sat || (mens && false) ? 'Bodega satélite · Limón' : 'Bodega central · GAM');
+    const fechas = esBodega ? (decidir ? 'Solicitado 07/11/2026 19:05' : 'Solicitado 07/11/2026 19:05 · Recibido 08/11/2026 09:12')
+      : enCurso ? 'Hoy, 08/11/2026 · sin solicitar'
+      : rechazado ? 'Solicitado 07/11/2026 18:42 · Rechazado 07/11/2026 19:20'
+      : vencido ? 'Del 06/11/2026 · venció sin solicitarse'
+      : (decidir ? 'Solicitado 07/11/2026 18:42' : 'Solicitado 07/11/2026 18:42 · Aprobado 07/11/2026 19:10 por Carlos R.');
+
     return {
-      esBodega, tabs, metodos, reparto, cascadas, filas, chips, mensajeros, tiendas, acciones,
-      k: { rec: fmt(D.rec), mens: fmt(D.mens), neto: fmt(D.neto) },
-      titulo: esBodega ? 'Cierre de bodega · Limón' : 'Cierre de Ana Mensajera',
-      sub: esBodega ? 'Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros' : (sat ? 'Bodega satélite · Limón' : 'Bodega central · GAM'),
-      folio: esBodega ? '#C07B3E19' : '#8F2A11C4',
-      fechas: esBodega ? (decidir ? 'Solicitado 07/11/2026 19:05' : 'Solicitado 07/11/2026 19:05 · Recibido 08/11/2026 09:12')
-        : (decidir ? 'Solicitado 07/11/2026 18:42' : 'Solicitado 07/11/2026 18:42 · Aprobado 07/11/2026 19:10 por Carlos R.'),
-      estado: esBodega ? (decidir ? 'Pendiente de conciliar' : 'Recibido') : (decidir ? 'Solicitado' : 'Aprobado'),
-      estadoStyle: decidir ? pill('#fef3c7', '#92400e') : pill('#d1fae5', '#047857'),
-      retiene: !esBodega,
-      hayAvisos: decidir,
-      avisos: esBodega ? (sat ? '2 pagos al mensajero ajustados · la central aún no marca el dinero recibido' : '2 pagos al mensajero ajustados · falta marcar el dinero recibido')
-        : '1 incidente sin indemnizar · 2 rechazados por la tienda · 1 pago ajustado · 6 paquetes vuelven a bodega',
-      k2label: esBodega ? 'Debe llegar a la central' : 'Se le paga hoy a la tienda',
-      k2valor: fmt(esBodega ? D.central : D.hoy),
-      k2style: big + (esBodega ? '' : ';color:#047857'),
-      k2sub: esBodega ? (decidir ? 'Aún no se marca recibido' : 'Recibido completo') : '2 tiendas · ganan en total ' + fmt(D.gana),
-      k3label: esBodega ? 'Pago a mensajeros' : 'Pago al mensajero',
-      k3sub: esBodega ? '2 mensajeros · 2 ajustes' : '19 gestiones · 1 ajustada',
-      k4sub: esBodega ? 'sin IVA, ya restados mensajeros y satélite' : 'sin IVA, ya restados mensajero y bodega',
+      esModal, rolSeccion: esModal ? 'dialog' : 'region',
+      marcoStyle: esModal
+        ? 'position:absolute;left:180px;top:16px;width:1080px;height:868px;box-sizing:border-box;background:#F7F7F5;border:1px solid #e7e5e4;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.18);padding:24px;display:flex;flex-direction:column;gap:16px'
+        : 'position:absolute;left:240px;top:64px;right:0;bottom:0;box-sizing:border-box;background:#F7F7F5;padding:24px 32px;display:flex;flex-direction:column;gap:16px',
+      esBodega, tabs, metodos, reparto, cascadas, filas, chips, mensajeros, tiendas, acciones, cifras,
+      cifrasGrid: 'display:grid;grid-template-columns:repeat(' + cifras.length + ',minmax(0,1fr));gap:12px;flex-shrink:0',
+      titulo, sub, fechas, estado, estadoStyle,
+      folio: esBodega ? '#C07B3E19' : (enCurso ? 'Solicitud nueva' : '#8F2A11C4'),
+      retiene: !esBodega && !enCurso,
+      hayAvisos, avisoTitulo, avisos,
+      avisoStyle: 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;font-size:14px;flex-wrap:wrap;flex-shrink:0;' + ((rechazado || vencido) ? 'background:#fee2e2;color:#b91c1c' : 'background:#fef3c7;color:#92400e'),
       gridDinero: 'display:grid;gap:16px;grid-template-columns:repeat(' + (esBodega ? 3 : 2) + ',minmax(0,1fr))',
       porTienda: true,
+      gCols,
       gCabStyle: 'display:grid;grid-template-columns:' + cols + ';font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4;gap:8px',
       gFilaStyle: 'display:grid;grid-template-columns:' + cols + ';font-size:14px;padding:10px 0;border-bottom:1px solid #f5f5f4;align-items:center;gap:8px',
       conc: decidir ? { decl: fmt(D.central), rec: '—', falta: fmt(D.central), quien: 'Aún nadie' }
         : { decl: fmt(D.central), rec: fmt(D.central), falta: fmt(0), quien: 'Carlos R. · 08/11/2026 09:12' },
-      pieTexto: esBodega ? 'Declarado ' + fmt(D.central) + (sat ? (decidir ? ' · la central lo marca recibido cuando llega' : '') : (decidir ? ' · márcalo recibido cuando llegue' : ''))
-        : (decidir ? 'Aprobar pide confirmar los 6 paquetes e indemnizar el incidente' : 'Recaudado ' + fmt(D.rec) + ' · 19 gestiones'),
-      enDinero: tab === 'dinero', enGestiones: tab === 'gestiones', enRechazos: tab === 'rechazos',
+      pieTexto,
+      enDinero: tab === 'dinero', enGestiones: tab === 'gestiones', enRechazos: tab === 'rechazos', enCorregir: tab === 'corregir',
       enMensajeros: tab === 'mensajeros', enConciliacion: tab === 'conciliacion', enPago: tab === 'pago'
     };
   }
