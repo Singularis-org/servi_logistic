@@ -344,3 +344,37 @@ escrituras no. Pasarlas a la entrada nueva es UI (T6, bloqueada por la maqueta T
 
 Pendientes (T5, T6, T8, T9): R11, R13, R21 (pantalla), R27 (componente), R29, R31 (integración),
 R35/R36/R38/R40 (integración, T5.4), R41, R45, R52, y la equivalencia de R12 en integración.
+
+### Salida real de la verificación (2026-11-09, sobre `56939f04` + `15a8f761`)
+
+Base `logistic_slt46` local; `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-size=8192`. Sin `./init.sh`.
+
+- `pnpm exec tsc --noEmit` → exit 0.
+- `pnpm exec eslint` sobre los 43 `.ts/.tsx` tocados en `b0b7ff43..HEAD` → exit 0, 0 errores, 1 aviso
+  (`tests/integration/db/geografia-alta.test.ts:102` `'s' is defined but never used`).
+- Unit tocados (11 archivos: `geo-repository.escrituras`, `geografia-service`, `carga-division-service`,
+  `nombres-que-imprime-la-etiqueta`, `pais-service`, `geografia-plataforma-action`,
+  `geografia-plataforma.composition-root`, `geografia-plataforma-page`, `geografia-nodo`, `pais-schemas`,
+  `components/GeografiaPlataformaAltaPais`): primera corrida `Test Files 1 failed | 10 passed (11) ·
+  Tests 4 failed | 445 passed (449)` (los 4 `nivel=…` del log); tras `15a8f761`,
+  `geografia-plataforma-action` → `Tests 99 passed (99)`. Total: 449/449.
+- Guardias, todas (337 archivos con `guard` en la ruta, 7 lotes de ≤ 50): `552`, `663`,
+  `4 failed | 767`, `812`, `710`, `750 | 1 skipped`, `475` → **4 734 tests, 4 rojos, todos de
+  `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`** (en `tests/baseline-rojos.json`).
+  Las cuatro de T7 en verde.
+- Integración tocada, una por una:
+
+| Suite | Resultado | Lectura |
+|---|---|---|
+| `geografia-alta` | 15/15 | verde |
+| `geo-sincronia-geografia` | 8/8 | verde |
+| `geo-lecturas-catalogo` | 8/8 | verde (ver «SIN RESPALDO» de la auditoría) |
+| `pais-alta-tipos` / `pais-tipos-edicion` / `pais-agregar-nivel` | 6/6, 7/7, 7/7 | verde (T3.2) |
+| `pais-disponible` | 4/4 | verde |
+| `geografia-cascada-reversible`, `geografia-registro-accion`, `geografia-renombrado` | paran en `beforeAll` | **entorno**: «`usuario` está vacía» (base sin siembra); no se creó usuario |
+| `geografia-superadmin-sin-empresa` | 2 rojos / 2 verdes | **T5.4 pendiente**: el bloque sigue mandando la forma vieja (`crearPaisAction` de seis campos → `validation_error`, luego `raices[0]` indefinido; conteo con `{nivel,id}` → `validation_error`) |
+| `carga-division` | 9 rojos / 7 verdes | **T5.3 pendiente**: `creados` `{provincia,canton,distrito}` frente a `{1,2,3}` (mismas cifras), el cast de `listArbolDePais` (`is not a function`) y el caso P6 de homónimos sin retirar |
+| `pais-repositorio` | 1 rojo / 6 verdes | **decisión pendiente** (Desviaciones 3): «R23/R33/R41: crea el país…» llama a `PaisService.crear` con seis campos → `validation_error` desde T4.3; adaptarlo a `tipos` cambia su `historial = [pais_creado]` por R37 |
+
+Ningún rojo de integración es de T3/T4/T7 fuera de lo que T5 tiene que adaptar o de la decisión de
+`pais-repositorio`; el comportamiento nuevo (T3.2) está verde contra Postgres.
