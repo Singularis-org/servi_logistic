@@ -36,8 +36,10 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 - 2026-11-09 (humano, P11): el interruptor «Disponible» y la carga del CSV también piden confirmación en modal.
 - 2026-11-09 (humano, P12): si otro ya dejó el lugar en el estado pedido, es éxito y la pantalla se refresca.
 - 2026-11-09 (humano, P13): el reordenar funciona también con el dedo, con `@dnd-kit/core` + `sortable` + `utilities` (clásica) como **excepción** al check 2 (sin release desde 2024-12). Filas en `docs/dependencias.md` como `aprobada` (humano, «aprobado», 2026-11-09); se instalan en la tanda de UI con versión exacta. No hay otra librería de arrastre en el repo (`BulkUpload.tsx` solo usa el soltar archivos nativo).
+- 2026-11-09 (humano, «1»): el alta de país acepta `disponible` y lo guarda en la misma transacción que el país. La casilla viene **desmarcada** por defecto (propuesta del leader, el humano no la contradijo): un país nuevo nace no disponible si no se marca. Costa Rica y los países existentes no cambian; sin migración.
 
 ## Preguntas abiertas
+- 2026-11-09 (implementer, tanda 4): borrar las 3 anotaciones `@sin-superficie SLT-46 T6.3` vencidas en `lib/actions/geografia-plataforma.ts` (208, 236, 261), que ponen en rojo `superficie-de-uso`. El permiso del entorno denegó la edición al implementer: decide el humano.
 
 ## Tandas
 - 2026-11-09 · T3.3, T3.4, T4.5, T4.6, T5.1–T5.5, T8.1, T8.2 + @dnd-kit instalada · `d74b64ea`…`7906350f` · tsc 0; eslint 0; T5.5 249/249; T5.1–T5.4 y T8.1 89/89; equivalencia 585 = 585; guardias 337, único rojo el del baseline. `ok` sin `nivel` en renombrar/retirar/reactivar: respaldo derivado de §4.1, no escrito en §4.3 (lo mira el reviewer). Prueba ida y vuelta de SLT-43 arreglada en su lista de migraciones (`456c8046`).
