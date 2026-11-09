@@ -104,6 +104,8 @@ export default defineConfig({
         "planes-costeo",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
         "tarifas-maqueta",
+        // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.
+        "reporte-de-bugs",
       ),
     },
     {
@@ -182,6 +184,9 @@ export default defineConfig({
         INTEGRACIONES_PROBADOR_DOBLE: "1",
         INTEGRACIONES_CLAVES_CIFRADO,
         INTEGRACIONES_CLAVE_ACTIVA,
+        // SLT-87 (design §9; R15): la copia de cada reporte de problema. El dominio reservado va al
+        // emisor de consola, y con `AUTH_OTP_DEBUG_LOG=1` su cuerpo sale en el log.
+        BUG_REPORT_EMAILS: "reportes-e2e@example.test",
       },
       reuseExistingServer: !CI,
       // `next start` sube en segundos; `next dev` compila la primera ruta al pedir `url`.

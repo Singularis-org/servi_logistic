@@ -203,6 +203,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "recepcion-satelite": "nucleo",
   "recoleccion-tienda": "nucleo",
   "recuperar-orden": "nucleo",
+  // SLT-87: avisar de un fallo no depende de ningún módulo.
+  "reporte-bug": "nucleo",
   "reprogramadas-retenidas": "nucleo",
   "resolver-novedad": "nucleo",
   "ruta-mensajero": "nucleo",

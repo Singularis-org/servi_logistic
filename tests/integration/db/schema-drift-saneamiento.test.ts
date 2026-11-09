@@ -100,7 +100,7 @@ function tablasConDefaultEnUpdatedAt(): string[] {
 }
 
 describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
-  it("el censo encuentra las DIECISIETE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
+  it("el censo encuentra las DIECIOCHO tablas cuyo CREATE TABLE le puso default a updated_at", () => {
     // Contrapeso: si el parser se rompiera y devolviera [], el caso de abajo pasaria por vacio
     // en vez de por limpio. Esta lista es la que devuelve la BASE viva consultando
     // `information_schema.columns` (evidencia en progress/chore_saneamiento-deudas.md).
@@ -119,6 +119,12 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // `@default(now()) @updatedAt` y por eso el caso de abajo sigue en verde y `migrate dev` no
       // propondra un `DROP DEFAULT` sobre ella.
       "asistente_uso_diario",
+      // SLT-87 (2026-11-09) - los reportes de problema del botón flotante. Su `CREATE TABLE`
+      // (`20261110120000_bug_report/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` -- el mismo molde que `grupo_distritos`
+      // y `tarifa_valor` (SLT-52)--; el modelo `BugReport` lo declara con
+      // `@default(now()) @updatedAt`.
+      "bug_report",
       // SL-40 (2026-10-23) - el valor global del cobro de la plataforma por orden. Su `CREATE TABLE`
       // (`20261023130000_cobro_plataforma_tarifa/migration.sql`) escribe
       // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo
