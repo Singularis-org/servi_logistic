@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties } from "rea
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bug,
   Building2,
   Car,
   ChartColumn,
@@ -209,6 +210,9 @@ export const ICON_BY_KEY: Record<IconKey, SidebarIcon> = {
   // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin. Icono PROPIO, distinto
   // del `truck` de «Entregas»: un tipo de vehículo del catálogo no es el reparto.
   car: Car,
+  // SLT-97 (R1): «Reportes», los reportes de bugs que llegan de las empresas, del superadmin. Icono
+  // PROPIO, distinto de los de las otras secciones de plataforma: un reporte no es un catálogo.
+  bug: Bug,
 };
 
 // Entrada escalonada de los items al cargar (solo la primera vez). Cada item
