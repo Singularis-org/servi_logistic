@@ -163,8 +163,14 @@ async function asignar(organizacionId: string, planId: string | null): Promise<v
 async function existe(): Promise<{ tabla: boolean; funciones: number; triggerDelLibro: number }> {
   const { rows } = await db.query(
     `SELECT to_regclass('public.cobro_plataforma_traza') IS NOT NULL AS tabla,
-            (SELECT count(*)::int FROM pg_proc WHERE proname IN ('cobro_plataforma_traza_al_registrar', 'cobro_plataforma_traza_inmutable')) AS funciones,
-            (SELECT count(*)::int FROM pg_trigger WHERE tgname = 'cobro_plataforma_traza_al_registrar') AS "triggerDelLibro"`,
+            (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'public'
+                AND p.proname IN ('cobro_plataforma_traza_al_registrar', 'cobro_plataforma_traza_inmutable')) AS funciones,
+            (SELECT count(*)::int FROM pg_trigger t
+               JOIN pg_class c ON c.oid = t.tgrelid
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relname = 'cobro_plataforma_movimiento'
+                AND t.tgname = 'cobro_plataforma_traza_al_registrar') AS "triggerDelLibro"`,
   );
   return rows[0] as { tabla: boolean; funciones: number; triggerDelLibro: number };
 }
