@@ -46,7 +46,7 @@
 
 ## Bloque C — Interfaz
 
-- [ ] **T7 [P]. Borrador** (dep. T3; R6, R7, R8).
+- [x] **T7 [P]. Borrador** (dep. T3; R6, R7, R8).
   - **Archivo:** `hooks/useBorradorReporteBug.ts` (design §8.3).
   - **Hecho:** sus casos de `tests/components/ReporteBugBoton.test.tsx` verdes.
 - [ ] **T8. Botón, panel y montaje** (dep. T6, T7; R1–R5, R9, R10).
