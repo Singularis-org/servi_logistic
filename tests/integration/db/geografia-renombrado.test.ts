@@ -266,7 +266,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
         const filas = await registro(s.distrito);
         expect(filas).toHaveLength(1);
         expect(filas[0].accion).toBe("nodo_geografico_renombrado");
-        expect(filas[0].entidad_tipo).toBe("distrito");
+        expect(filas[0].entidad_tipo).toBe("nodo_geografico");
         expect(filas[0].entidad_id).toBe(s.distrito);
       });
     });

@@ -512,6 +512,17 @@ el `beforeAll` y nunca había corrido contra el código de T3.1; al crear el act
 Cambiar `"distrito"` → `"nodo_geografico"` es un cambio de resultado que ni tasks ni el leader autorizaron
 para este archivo: **pendiente de autorización** (es una línea, respaldada por R35/§7).
 
+**Cierre de T3.4 (2026-11-09).** El leader autorizó (decisión para T5.4: las aserciones de `entidad_tipo`
+por nivel pasan a `nodo_geografico`, P5) cambiar esa línea:
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `geografia-renombrado` › «una fila `nodo_geografico_renombrado` sobre la entidad del nivel» | `entidad_tipo` `"distrito"` → `"nodo_geografico"` (sigue: 1 fila, acción y `entidad_id` iguales) | R35, design §7, P5; autorización del leader |
+
+Salida real (base `logistic_slt46` local, `--maxWorkers=1`): `eslint` → «No issues found»;
+`geografia-renombrado` + `geografia-cambio-concurrente`: `Test Files 2 passed (2) · Tests 26 passed (26)`;
+`geo-repository.escrituras`: `Test Files 1 passed (1) · Tests 32 passed (32)`. T3.4 marcada `[x]`.
+
 ### T4.5 — esquemas, `PaisService.reordenarTipos` y `conflict` con motivo (2026-11-09)
 
 **Archivos.** `lib/types/pais.ts` (`reordenarTiposSchema`, `TIPO_REPETIDO_AL_REORDENAR`),

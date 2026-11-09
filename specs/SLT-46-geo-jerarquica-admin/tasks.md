@@ -118,7 +118,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   y la parte de tipos de `tests/integration/db/geografia-cambio-concurrente.test.ts`;
   `pais-tipos-edicion.test.ts` y `pais-agregar-nivel.test.ts` siguen verdes con la entrada nueva
   (mismos resultados).
-- [ ] **T3.4** [P] *(2026-11-09)* `GeoRepository.renombrar(id, nombre, nombreAnterior, actorId)` con
+- [x] **T3.4** [P] *(2026-11-09)* `GeoRepository.renombrar(id, nombre, nombreAnterior, actorId)` con
   `cambio_concurrente` por comparar y escribir en una sentencia (§4.4, §4.7); adapta la llamada de
   `GeografiaService` lo justo para `typecheck`. (R18, R61)
   *Hecho:* la parte de nodos de `geografia-cambio-concurrente.test.ts` verde («antes» viejo →
