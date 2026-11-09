@@ -32,13 +32,13 @@
 
 ## T2 — Repositorio (R2, R10–R17) · backend · depende de T1
 
-- [ ] **T2.1** `esPlanDisponible(plan, versionPendiente)` en `lib/planes/costo-concreto.ts` (design §3, paso 3).
+- [x] **T2.1** `esPlanDisponible(plan, versionPendiente)` en `lib/planes/costo-concreto.ts` (design §3, paso 3).
   *Hecho:* casos en `tests/unit/services/mi-plan-cambio-service.test.ts` (público con costo; archivado;
   custom; sin precio; versión pendiente sin costo).
-- [ ] **T2.2** Tipos `EmpresaParaElMaestro`, `ResultadoCambioDelMaestro`, `ResultadoCancelarDelMaestro` en
+- [x] **T2.2** Tipos `EmpresaParaElMaestro`, `ResultadoCambioDelMaestro`, `ResultadoCancelarDelMaestro` en
   `IPlanesRepository`; `PlanVista` y los tres `*Result` de §4 en `lib/types/planes.ts`. Sin el estado
   `pendiente_de_plataforma` (P3). *Hecho:* typecheck.
-- [ ] **T2.3** `empresaParaElMaestro`, `cambiarPlanPorLaEmpresa(org, plan, actor, ahora)` y
+- [x] **T2.3** `empresaParaElMaestro`, `cambiarPlanPorLaEmpresa(org, plan, actor, ahora)` y
   `cancelarCambioPorLaEmpresa` en `PlanesRepository`, en el orden de §3: el corte se calcula bajo el cerrojo
   con el tipo vigente; reutiliza `bloquearEmpresa`, `excedidosDe`, `escribirPendiente`,
   `cancelarPendienteDeEmpresaEnTx`, `fechaDeEfectoPorDefecto` e `inicioDelDiaPlataforma`. Ampliar el `motivo`

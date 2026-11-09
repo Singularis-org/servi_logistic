@@ -1,4 +1,4 @@
-import type { VersionPlan } from "@/lib/types/planes";
+import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
 
 // SLT-66 (design §4.2.1; R28, R20) — si un plan tiene costo concreto. Puro y sin `@prisma/client`:
 // lo importan el servicio, `costeo.ts` (que llega a componentes cliente) y la pantalla.
@@ -13,4 +13,21 @@ export type PlanParaCosto = Pick<VersionPlan, "precio" | "costoPorOrden" | "cost
  */
 export function tieneCostoConcreto(plan: PlanParaCosto): boolean {
   return plan.precio.tipo === "monto" && (plan.costoPorOrden !== null || plan.costoPorOrdenPorcentual !== null);
+}
+
+/** Lo que `esPlanDisponible` mira de un plan del catálogo. */
+export type PlanParaDisponible = PlanParaCosto & Pick<PlanDTO, "visibilidad" | "archivado">;
+
+/**
+ * SLT-99 (design §3 paso 3; R5, R12) — si el maestro puede elegir el plan: público, no archivado y con costo
+ * concreto, también en la versión de su cambio programado (la regla de `PlanesService.sinCostoConcreto`), que
+ * puede regir antes del corte. Una sola regla para el carrusel y para la escritura bajo cerrojo.
+ */
+export function esPlanDisponible(plan: PlanParaDisponible, versionPendiente: PlanParaCosto | null): boolean {
+  return (
+    plan.visibilidad === "publico" &&
+    !plan.archivado &&
+    tieneCostoConcreto(plan) &&
+    (versionPendiente === null || tieneCostoConcreto(versionPendiente))
+  );
 }
