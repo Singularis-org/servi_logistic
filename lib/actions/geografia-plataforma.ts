@@ -205,7 +205,6 @@ export type RenombrarTipoNivelActionResult = RenombrarTipoNivelServiceResult | S
  * SLT-46 (R25, R26): los dos nombres de un tipo de nivel. Pedir los que ya tiene es `ok` sin escribir;
  * un tipo que no existe es `not_found`. El nombre de un tipo no es único: un fallo de la base es
  * `error` con log (R36).
- * @sin-superficie SLT-46 T6.3 (`TiposDeNivelPais.tsx`) le da pantalla; espera la maqueta aprobada de T0.2 (R52), que aún no existe.
  */
 export async function renombrarTipoNivelAction(
   input: unknown,
@@ -233,7 +232,6 @@ export type AgregarNivelPaisActionResult =
  * paralelo: la segunda, tras el candado del país, ve que `profundidad` ya no es P+1 y vuelve como
  * `conflict` con `motivo: "cambio_concurrente"` (R61). Si aun así saltara el único de `nivel_<P+1>`
  * (respaldo), el `P2002` sube del servicio y aquí es `conflict` sin motivo.
- * @sin-superficie SLT-46 T6.3 («Agregar nivel» en `TiposDeNivelPais.tsx`) le da pantalla; espera la maqueta aprobada de T0.2 (R52), que aún no existe.
  */
 export async function agregarNivelPaisAction(
   input: unknown,
@@ -258,7 +256,6 @@ export type ReordenarTiposActionResult = ReordenarTiposServiceResult | SinPermis
  * actual es `ok` sin escribir; un país que no existe, `not_found`; una lista que ya no es la del país,
  * `conflict` con `motivo: "cambio_concurrente"`. Reordenar solo cambia nombres, que no son únicos:
  * un fallo de la base es `error` con log, sin datos (R36).
- * @sin-superficie SLT-46 T6.3 (reordenar en `TiposDeNivelPais.tsx`) le da pantalla; la maqueta ya está aprobada y T6 es la tanda siguiente.
  */
 export async function reordenarTiposAction(
   input: unknown,
