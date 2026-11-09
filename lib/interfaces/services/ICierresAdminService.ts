@@ -503,6 +503,12 @@ export type CierreDetalleAdminServiceResult =
        * no hace falta la marca `…Registrado` que la 264 si necesito.
        */
       rechazosDeTienda: CierreRechazoDeTienda[];
+      /**
+       * SLT-100 (R80): quien resolvio el cierre, para la cabecera («Aprobado <fecha> por <nombre>»).
+       * Solo con estado `aprobado`/`rechazado`; en otro estado o sin resolutor, `null`. Opcional y
+       * ausente se pinta igual que `null`: sin «por …».
+       */
+      resueltoPorNombre?: string | null;
     }
   | { status: "forbidden" } // rol invalido (R1)
   | { status: "no_encontrada" }; // id inexistente o de otra bodega/zona (R13)

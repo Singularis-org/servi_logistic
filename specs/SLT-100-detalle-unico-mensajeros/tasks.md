@@ -19,7 +19,7 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** — Confirmar el censo de lo que hoy lee el interior del modal del admin, y anotarlo
+- [x] **T0.1** — Confirmar el censo de lo que hoy lee el interior del modal del admin, y anotarlo
   en `progress/impl_SLT-100.md`:
   - `grep -l` en `tests/components/` por `<CierresAdminModule` y por «Detalle del cierre»,
     «Comprobante detallado», «Total de la empresa», «Decisión del cierre»;
@@ -28,7 +28,7 @@
 
   **Hecho:** la lista coincide con `## Archivos esperados`. Si aparece uno más, se añade aquí y
   se avisa al leader (el tamaño aceptado es este).
-- [ ] **T0.2** [P] — Leer y anotar con archivo:línea:
+- [x] **T0.2** [P] — Leer y anotar con archivo:línea:
   - la forma de `DescargaFilasResult` (rama `ok`);
   - dónde viven `separarParaDevolucion`, `efectoAlAprobar`, `motivoGestionLegible`,
     `INGRESO_BODEGA_RECHAZOS_SLA_LABEL`/`_MANUAL_LABEL` y las constantes de encabezado de R82;
@@ -37,7 +37,7 @@
 
   **Hecho:** nota en `impl_SLT-100.md`. Si `setDestrabar` necesita un tipo distinto, se para y se
   pregunta.
-- [ ] **T0.3** [P] — Fijar el escenario E2E:
+- [x] **T0.3** [P] — Fijar el escenario E2E:
   - las entradas (órdenes, montos, tarifas de tienda y de mensajero, un rechazo) que producen los
     números del escenario A (`design.md > Verificación`);
   - el escenario B (modelo nuevo) con sus cuatro cifras derivadas a mano.
@@ -47,7 +47,7 @@
 
 ## T1 — Servidor: quién resolvió (R80) · `backend_dev`
 
-- [ ] **T1.1** — Test de integración **primero**, en rojo:
+- [x] **T1.1** — Test de integración **primero**, en rojo:
   `tests/integration/db/cierre-resuelto-por-sql-real.test.ts`.
   - Siembra: aprobado por «Carla Resolutora»; `solicitado` sin resolutor; aprobado de otra zona.
   - Con autocomprobación de las tres filas sembradas.
@@ -55,7 +55,7 @@
     satélite → `null` (no encontrado).
 
   **Hecho:** rojo antes de T1.2 por falta del campo.
-- [ ] **T1.2** — `findCierreByIdEnAlcance` en `lib/repositories/CierresAdminRepository.ts`:
+- [x] **T1.2** — `findCierreByIdEnAlcance` en `lib/repositories/CierresAdminRepository.ts`:
   - añadir `resueltoPorUsuario: { select: NOMBRE_USUARIO_SELECT }` **solo** al `select` del
     detalle;
   - devolver `resueltoPorNombre`;
@@ -63,7 +63,7 @@
 
   **Hecho:** T1.1 en verde. Dos mutaciones anotadas como muertas: sin la relación en el `select`;
   con `mensajero` en su lugar.
-- [ ] **T1.3** — `verCierreDetalle` en `lib/services/CierresAdminService.ts`:
+- [x] **T1.3** — `verCierreDetalle` en `lib/services/CierresAdminService.ts`:
   - emite `resueltoPorNombre` solo con estado `aprobado`/`rechazado`; en otro caso, `null`;
   - campo opcional en `ICierresAdminService.ts`.
 

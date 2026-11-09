@@ -1011,6 +1011,13 @@ export class CierresAdminService implements ICierresAdminService {
       // `grupos`, `totalesIngreso`, `ganancia`, `pagoTienda`, `partesPorTienda` ni el desglose: R6/R7
       // se cumplen aqui por AUSENCIA de codigo, porque la lista no trae nada que sumar.
       rechazosDeTienda: found.rechazosDeTienda,
+      // SLT-100 (R80): solo un cierre RESUELTO tiene a quien nombrar. Un `rechazado` que el
+      // mensajero vuelve a solicitar conserva `resuelto_por`; sin esta regla arrastraria al
+      // resolutor anterior a la cabecera de un `solicitado`.
+      resueltoPorNombre:
+        found.cierre.estado === "aprobado" || found.cierre.estado === "rechazado"
+          ? (found.resueltoPorNombre ?? null)
+          : null,
     };
   }
 
