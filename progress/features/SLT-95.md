@@ -37,6 +37,8 @@ Tarjeta: zone frontend, complexity high. La descripción incluye piezas que pued
 - 2026-11-09, Carlos sobre el spec v2: PA1 según recomendación (tarjetas de «Solicitados» fuera del filtro de fecha, la lista sí lo respeta); PA2 sí (la página muestra primero el cierre que pide acción); PA3 aprueba el Excel del modelo nuevo tal como está en design.md. La aprobación del spec queda pendiente de su respuesta sobre la versión del arnés.
 - 2026-11-09, Carlos APROBÓ el spec v2 (F1.4), por escrito: «entonces spec aprobada, comienza». SLT-95 se queda con S1; S2–S17 van como fichas nuevas con sus dependencias.
 
+- 2026-11-09, Carlos: «unificamos». Una cifra, un nombre: la barra de reparto usa el nombre de la cuenta/cifra («Se le paga hoy a la tienda», «Sale de lo recaudado», «Debe llegar a la central», «Pago a mensajeros», «Gana la bodega satélite»). R14 y R16 corregidos; resuelve el choque con R9 que marcó el reviewer.
+
 ## Preguntas abiertas
 
 ## Tandas

@@ -191,8 +191,9 @@ Cada requisito lleva entre corchetes la rebanada que lo implementa (`## Rebanada
   arriba y nombre accesible que contenga «Detalle del cierre» o «Detalle del cierre de bodega»;
   DONDE sea página, DEBE ser una región sin X.
 - **R14** [S1] — En «Dinero» de mensajero, el detalle DEBE mostrar: el reparto «¿A dónde va lo
-  recaudado?» en «A la tienda hoy» = `pagoTienda` y «Se lo cobra la empresa» =
-  `cobradoSobreRecaudado`; la cascada «Lo que se le factura a la tienda» (`fleteConIva`,
+  recaudado?» en «Se le paga hoy a la tienda» = `pagoTienda` y «Sale de lo recaudado» =
+  `cobradoSobreRecaudado` (decisión de Carlos 2026-11-09: el reparto usa el MISMO nombre que la
+  cifra o la cuenta, para cumplir R9); la cascada «Lo que se le factura a la tienda» (`fleteConIva`,
   `comisionConIva`, subtotal «Sale de lo recaudado» = `cobradoSobreRecaudado`, flete de no entrega
   `fleteDevolucionConIva` rotulado según el modelo como hoy, «Total facturado» =
   `totalesIngreso.total`); la cascada «De lo facturado, le queda a la empresa» (total facturado,
@@ -202,9 +203,10 @@ Cada requisito lleva entre corchetes la rebanada que lo implementa (`## Rebanada
 - **R15** [S1] — Las cascadas del detalle, de la fila (R27, R28) y de la conciliación (R43, R59)
   DEBEN pintarse en formato cascada: una partida por línea, «−» o «+» delante de lo que se resta o
   suma, subtotal con raya punteada y total en negrita con raya continua.
-- **R16** [S1] — En «Dinero» de bodega, el detalle DEBE mostrar: el reparto en «A la central» =
-  `paraLaCentral`, «A los mensajeros» = `totalPagoMensajero` y «A la bodega satélite» =
-  `totalIngresoBodegaRechazos`; las cascadas «Lo que va a la central» (las líneas de hoy,
+- **R16** [S1] — En «Dinero» de bodega, el detalle DEBE mostrar: el reparto en «Debe llegar a la
+  central» = `paraLaCentral`, «Pago a mensajeros» = `totalPagoMensajero` y «Gana la bodega
+  satélite» = `totalIngresoBodegaRechazos` (mismos nombres que la cuenta, decisión de Carlos
+  2026-11-09); las cascadas «Lo que va a la central» (las líneas de hoy,
   `lineasCascadaCentral`), «Lo que se le factura a la tienda» y «De lo facturado, le queda a la
   empresa» (con − pago a mensajeros y − gana la bodega satélite); y «Por tienda» del agregado con
   dos o más tiendas.
