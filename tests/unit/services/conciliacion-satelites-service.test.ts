@@ -435,3 +435,73 @@ describe("431/T8 — las lecturas: paginacion, recorte y tope de descarga", () =
     expect(r.items[0].totalEfectivo).toBe("2300.00");
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ SLT-96 «Consolidación de ₡0 no se puede marcar recibida» (R2/R4/R9) — el servicio traduce el
+// desenlace `monto_cero_no_permitido` del repositorio, que es quien lee lo declarado de la base.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-96 — el 0 con lo declarado distinto de 0", () => {
+  // El literal ES el contrato (R2): no se compara contra la constante que lo genera.
+  const ESPERADO = {
+    status: "validation_error",
+    fieldErrors: { montoRecibido: ["Solo se puede registrar 0 cuando lo declarado es 0."] },
+  };
+
+  it("R2 marcar: `monto_cero_no_permitido` del repositorio -> validation_error en el campo del monto", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ marcarConciliado: vi.fn(async () => "monto_cero_no_permitido" as const) }),
+    );
+    const r = await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO);
+    expect(r).toEqual(ESPERADO);
+    expect(escrituras.marcarConciliado).toHaveBeenCalledTimes(1);
+    expect(escrituras.corregirConciliacion).not.toHaveBeenCalled();
+  });
+
+  it("R4 corregir: `monto_cero_no_permitido` del repositorio -> validation_error en el campo del monto", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ corregirConciliacion: vi.fn(async () => "monto_cero_no_permitido" as const) }),
+    );
+    const r = await service.corregirRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO);
+    expect(r).toEqual(ESPERADO);
+    expect(escrituras.marcarConciliado).not.toHaveBeenCalled();
+  });
+
+  it("R9 marcar con 0 una inexistente: `fuera_de_alcance` -> no_encontrada, igual que con monto > 0", async () => {
+    const { service } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ marcarConciliado: vi.fn(async () => "fuera_de_alcance" as const) }),
+    );
+    expect(
+      await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO),
+    ).toEqual({ status: "no_encontrada" });
+  });
+
+  it("R9 corregir con 0 una inexistente: `fuera_de_alcance` -> no_encontrada", async () => {
+    const { service } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ corregirConciliacion: vi.fn(async () => "fuera_de_alcance" as const) }),
+    );
+    expect(
+      await service.corregirRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO),
+    ).toEqual({ status: "no_encontrada" });
+  });
+
+  it("R1 marcar con 0 aceptado por el repositorio -> ok, y el monto viaja como STRING tal cual", async () => {
+    const { service, escrituras } = newService();
+    const r = await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO);
+    expect(r).toEqual({ status: "ok", cierreBodegaId: "cb1" });
+    const arg = llamadasDe(escrituras.marcarConciliado)[0][0] as { montoRecibido: unknown };
+    expect(arg.montoRecibido).toBe("0.00");
+  });
+
+  it("el rol sigue primero: sin acceso total, ni con 0 se llama al repositorio", async () => {
+    const { service, escrituras } = newService();
+    expect(
+      await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MENSAJERO),
+    ).toEqual({ status: "forbidden" });
+    for (const fn of Object.values(escrituras)) expect(fn).not.toHaveBeenCalled();
+  });
+});
