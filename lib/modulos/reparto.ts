@@ -205,6 +205,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "recuperar-orden": "nucleo",
   // SLT-87: avisar de un fallo no depende de ningún módulo.
   "reporte-bug": "nucleo",
+  // SLT-97: el módulo de reportes del superadmin, de plataforma.
+  "reportes-bug-plataforma": "nucleo",
   "reprogramadas-retenidas": "nucleo",
   "resolver-novedad": "nucleo",
   "ruta-mensajero": "nucleo",
