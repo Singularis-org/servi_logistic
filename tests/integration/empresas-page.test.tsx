@@ -55,7 +55,7 @@ vi.mock("@/lib/actions/cobro-plataforma", () => ({
 // SL-20 (R9, R45): los países del `Select` del alta, solo los disponibles.
 const { paisesMock } = vi.hoisted(() => ({ paisesMock: vi.fn() }));
 vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
-  listarPaisesDisponibles: (...a: unknown[]) => paisesMock(...a),
+  listarPaisesParaAlta: (...a: unknown[]) => paisesMock(...a),
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -112,7 +112,10 @@ beforeEach(() => {
   tiposMock.mockResolvedValue([{ id: "t-1", value: "cedula" }]);
   pendientesMock.mockResolvedValue({ estado: "ok", organizacionIds: ["org-b"] });
   verCobroMock.mockResolvedValue({ status: "ok", cobroGlobal: { monto: null } });
-  paisesMock.mockResolvedValue({ status: "ok", paises: [{ id: "CR", nombre: "Costa Rica" }] });
+  paisesMock.mockResolvedValue({
+    status: "ok",
+    paises: [{ id: "CR", nombre: "Costa Rica", prefijoTelefonico: null, tiposDocumento: [] }],
+  });
 });
 
 afterEach(() => cleanup());
@@ -160,19 +163,16 @@ describe("SL-32 (R29, R35) — con el superadmin, la página pinta el listado", 
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("el catálogo de tipos de documento baja al selector del formulario", async () => {
-    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
-    tiposMock.mockResolvedValue([
-      { id: "t-1", value: "cedula" },
-      { id: "t-2", value: "pasaporte" },
-    ]);
+  it("SLT-81 R20: los tipos llegan con cada país (`listarPaisesParaAlta`); el catálogo entero ya no se lee", async () => {
+    const actor = { usuarioId: "sa-1", rol: "superadmin" as const };
+    actorMock.mockResolvedValue(actor);
 
     render(await EmpresasPage());
 
-    expect(tiposMock).toHaveBeenCalledTimes(1);
-    screen.getByRole("combobox", { name: "Tipo de documento" }).click();
-    const opciones = await screen.findAllByRole("option");
-    expect(opciones.map((o) => o.textContent)).toEqual(["cedula", "pasaporte"]);
+    expect(paisesMock).toHaveBeenCalledWith(actor);
+    expect(tiposMock).not.toHaveBeenCalled();
+    // Sin país elegido no hay tipos que ofrecer.
+    expect(screen.getByRole("combobox", { name: "Tipo de documento" })).toHaveAttribute("data-disabled");
   });
 
   // SL-41 (R38): la página pasa al módulo qué bienvenidas siguen pendientes.
@@ -266,8 +266,8 @@ describe("SL-20 (R9, R45) — la página baja los países disponibles al alta", 
     paisesMock.mockResolvedValue({
       status: "ok",
       paises: [
-        { id: "CR", nombre: "Costa Rica" },
-        { id: "EC", nombre: "Ecuador" },
+        { id: "CR", nombre: "Costa Rica", prefijoTelefonico: null, tiposDocumento: [] },
+        { id: "EC", nombre: "Ecuador", prefijoTelefonico: null, tiposDocumento: [] },
       ],
     });
 
