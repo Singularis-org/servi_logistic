@@ -137,3 +137,50 @@ reviewer · 2026-11-09 · rama `feature/SLT-95-detalle-cierre-rediseno` · diff 
 
 **RECHAZADO (CAMBIOS)**: B1 (tests de R2), B2 (T4.1) y B3 (constancia de los E2E). El código de S1
 es correcto. Lo que falta son tests, una marca en `tasks.md` y evidencia, sin cambios de lógica.
+
+## Vuelta 2 (acotada a 2382740f..492e3f2f)
+
+Commits: 5d125de2 (B1-B3), 5eec5117 (R14/R16 corregidos por decisión de Carlos), 492e3f2f (m1 en
+código). Tests contra `slt95_s1`: S1 + identidades + `CierreBodegaDetalleCascadas` 132/132.
+
+### Mutaciones mías (revertidas con `git checkout`; `git status` limpio)
+
+| Mutación | Resultado |
+|---|---|
+| R2: `fechasMensajero` sin la resolución | **muerta**, 2 rojos |
+| R2: `fechasBodega` sin «Recibido …» | **muerta**, 1 rojo |
+| R2: `fechaConQuien` sin «por <quién>» | **muerta**, 2 rojos |
+| R9: la cuenta central conserva «Pago al mensajero» (se quita el mapeo en `ROTULO_UNICO_CENTRAL`) | **muerta**, 3 rojos |
+| R9: el reparto del mensajero vuelve a un rótulo propio («A la tienda hoy») | **muerta**, 3 rojos |
+
+### Hallazgos de la vuelta 1
+
+- [x] **B1** resuelto. Hay 5 tests de cabecera con literales: aprobado y rechazado con fecha y quién,
+      bodega recibida, subtítulo de bodega y vencido. Las dos mutaciones que sobrevivían ahora mueren.
+- [x] **B2** resuelto. T4.1 está `[x]` y la salida del gate está anotada en `impl_SLT-95.md`.
+- [x] **B3** resuelto. Constancia en `impl_SLT-95.md`: `--project=dinero` (incluye
+      `ajuste-pago-mensajero-cierre`, `cierre-bodega-satelite` y `cierres-admin`) dio 84/84 dos
+      veces seguidas sobre la base desechable nueva `slt95_e2e`, con 0 tests inestables.
+- [x] **m1** resuelto. Carlos decidió «unificamos» (`progress/features/SLT-95.md`), y R14/R16 están
+      corregidos en `requirements.md`. En el código:
+      - la leyenda del reparto usa la constante de su cifra o cuenta;
+      - en el detalle nuevo de bodega, «Lo que va a la central» rotula `paraLaCentral` y
+        `totalPagoMensajero` como «Debe llegar a la central» y «Pago a mensajeros»;
+      - `lineasCascadaCentral` no cambia, así que la pantalla vieja de bodega conserva sus rótulos
+        hasta S6 y su test sigue verde.
+
+      El test nuevo de R9 lee del DOM cada importe del panel con todos sus rótulos, y exige uno solo.
+- Sin regresiones: el diff de la vuelta no toca `lib/`, `db/` ni ningún cálculo. El cambio de
+  `cuentaCentral` solo renombra rótulos y deja los importes y signos como estaban.
+
+### menor (nuevo)
+
+- **m8 — `ROTULO_UNICO_CENTRAL` empareja por el texto del rótulo.** Si un día cambia el texto de
+  `PAGO_MENSAJERO_LABEL` o de `PARA_LA_CENTRAL_LABEL`, el mapeo dejaría de aplicarse sin avisar.
+  El test de R9 lo detectaría, así que no bloquea.
+- Siguen abiertos para SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» los menores
+  m3 (quitar las `@sin-superficie`) y m6 (el servidor no envía quién resolvió el cierre).
+
+### Veredicto vuelta 2
+
+**OK**: no queda ningún bloqueante.
