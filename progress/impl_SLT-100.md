@@ -164,3 +164,169 @@ posible archivo extra, `CierresAdminPage.test.tsx`, y dos rótulos que no cuadra
 `Tests 4 failed | 4807 passed | 1 skipped`. Los 4 rojos son de `dependencias-declaradas-presentes.guardia.test.ts`:
 «init.sh invoca scripts/verificar-dependencias.mjs», y `init.sh` no lo invoca. Vienen de antes y no son de este
 diff: `init.sh` y `scripts/verificar-dependencias.mjs` son iguales a `origin/dev`. Aviso al leader.
+
+## T2–T4 · frontend_dev · 2026-11-09
+
+Base desechable propia `slt100_fe_vitest` (mismo servidor local que la del `.env`, `DROP`/`CREATE`,
+`prisma migrate deploy`, `db:seed`; la URL nunca se imprimió). Sin dependencias nuevas, sin `prisma
+generate`, sin dev server. **T5 (E2E) NO se hizo: paro por tamaño** (ver «Aviso de tamaño» al final).
+
+### Archivos (31 en esta tanda; 42 en la rama contra `origin/dev`)
+
+Pantalla:
+- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx` — el `<Modal title="Detalle del cierre">`
+  pasa a `<DetalleCierre tipo="mensajero" marco="modal">` con `modoAdminDe`, pestañas (`GestionesPorResultado`
+  + `SeccionSinGestion` + «Descargar»; `RechazosDeTiendaCierre`; `PagoMensajeroSeccion` si
+  `ofrecerPagoEnDetalle`) y acciones del pie (`esResoluble` → rechazar/aprobar; `vencido` → destrabar). Los
+  tres diálogos de corrección/ajuste salen a hermanos. `confirmarDestrabar` relee el detalle si está abierto
+  sobre ese cierre (R83). `DetalleAbierto` gana `resueltoPorNombre`. Ya no importa `CierreFacturaDetalle` ni
+  `CascadasCierreMensajero`; se quitan `money`/`hayGestionEnModeloNuevo`/`destinoCierre` sin uso.
+- `app/(app)/cierres-admin/_components/cierre-factura.tsx` — **solo `export`** en 10 declaraciones
+  (`SeccionSinGestion`, `separarParaDevolucion`, `efectoAlAprobar`, `RECHAZOS_NOTA`, `RECHAZOS_LISTA_LABEL`,
+  `RECHAZOS_FECHA_COL`, `FILA_GUIA_COL`, `FILA_DESTINATARIO_COL`, `FILA_TIENDA_LABEL`, `FILA_MOTIVO_LABEL`).
+- `app/(app)/cierres-admin/_components/CascadasCierreMensajero.tsx` — **archivo extra**: solo la anotación
+  `@sin-superficie` (lo exige `superficie-de-uso`: el design suponía que `/cierre-dia` lo montaba, y no lo
+  monta). Motivo: «SLT-100 sustituyó el modal del admin por el detalle único; lo retira SLT-115».
+- `components/private/cierres/detalle/detalle-cierre-vista.ts` — `modoAdminDe` (R79);
+  `DetalleMensajeroVista.desgloseIngresoBodega`; `vistaMensajeroDesdeAdmin` acepta el resultado sin `status`,
+  pasa `resueltoPorNombre` (R80) y el desglose (null en modelo nuevo o sin `sla`/`manual`, R81);
+  `notaOrigenIngresoBodega` + `cuentaQueda` con notas bajo «− pago a la bodega».
+- `components/private/cierres/detalle/detalle-cierre-labels.ts` — `RECHAZOS_VACIO` (D27),
+  `tituloDescargaGestiones`, `COBRO_A_LA_TIENDA_COL`, `PAGO_AL_MENSAJERO_COL = PESTANA_PAGO`.
+- `components/private/cierres/detalle/RechazosDeTiendaCierre.tsx` (nuevo, R17).
+- `components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts` (nuevo, R82).
+- `DetalleCierre.tsx`, `CifrasCierre.tsx`, `DineroCierre.tsx`, `Cuenta.tsx` — solo se quita `@sin-superficie`.
+
+Tests nuevos: `tests/components/CierresAdminDetalleUnico.test.tsx`,
+`tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts`, `tests/fixtures/detalle-cierre-admin-anterior.tsx`
+(**extra**, ver T4.1). Ampliado: `tests/unit/utils/detalle-cierre-vista.test.ts`.
+
+Tests adaptados: los 10 de `tests/components/` de la lista, más `CierresAdminPage.test.tsx` y
+`CierreFacturaPapel.test.tsx` (avisados en T0.1). Guardias: `cierre-detalle-superficies`, `impresion-flujo`,
+`liquidacion-money-safe` (censo) y **`estado-con-info`** (extra: una entrada en `USOS_PERMITIDOS`).
+
+### Decisiones tomadas (del leader o mías, anotadas)
+
+- **Nota de R81** con la constante: «Automático (por plazo vencido) ₡x · Manual (mensajero) ₡y» (leader).
+- **«Descargar»**: encabezado «Pago al mensajero» = `PESTANA_PAGO` (leader); «Cobro a la tienda» nueva.
+  `PAGO_MENSAJERO_COL` («Pago mensajero») no se toca. Las filas salen de `Object.values(grupos).flat()`.
+- **R81 en la vista** y no en el componente: `notaOrigenIngresoBodega` vive en `detalle-cierre-vista.ts`
+  (que ya importaba de `cierre-detalle-shared.tsx`) para que `detalle-cierre-labels.ts` siga puro.
+- **«Pago al mensajero» solo con audiencia central**: S1 (`pestanasDe`) lo exige; el modal de antes lo
+  pintaba con `puedeRegistrarPago` aunque la audiencia fuera satélite. En producción la satélite no tiene ese
+  permiso ([P3]/R6), así que no cambia nada visible; en los tests que montaban el módulo sin `audiencia` (por
+  defecto `satelite`) con el permiso, se añade `audiencia="admin"`.
+- **Nombre del diálogo**: el de S1 es «Detalle del cierre · Cierre de <nombre>». En Testing Library un nombre
+  string es coincidencia EXACTA (el design suponía subcadena, que es lo que hace Playwright): los tests pasan a
+  `/^Detalle del cierre · /`.
+- `factura-contraste`: verde sin tocarla. Sus anclas `CierresAdminModule.tsx:749/770/781` (botones de
+  `AccionesCola`, que no cambian) ya estaban desfasadas antes de esta ficha; no las muevo para no sumar archivo.
+
+### T4.1 — antes leía X, ahora lee Y
+
+| Archivo | Antes | Ahora |
+|---|---|---|
+| `CierresAdminModule.test.tsx` | `dialog` «Detalle del cierre» exacto; regiones «Totales del cierre», «Liquidación», «Pago a tienda», «Ingreso de la empresa», «Ingreso de bodega … del cierre»; filas directas; «Debe» en rojo | `/^Detalle del cierre · /`; `group` «Cifras del cierre»; cuenta «De lo facturado, le queda…» (Total facturado ₡3.672,50); cifra «Se le paga hoy a la tienda» (₡21.327,50); cuenta «Lo que se le factura a la tienda» (mismos 4 importes); línea «− Ingreso de bodega…» con ₡9.200 y la nota «Automático (por plazo vencido) ₡6.000 · Manual (mensajero) ₡3.200»; clic en «Gestiones (n)» antes de las filas. «Debe» se **invierte** (D3) y el rojo se afirma sobre «Le queda a la empresa» −₡1.500 (fixture `netoEmpresa` "-1500.00", el que deriva el servidor) |
+| `CierresAdminPagoMensajero.test.tsx` | región «Pago al mensajero» en el modal; «Aprobar» | `audiencia="admin"`; `irAPago` pulsa la pestaña si existe; pie con `/^(Aprobar|Revisar paquetes y aprobar)$/` |
+| `CierresAdminIndemnizacion.test.tsx`, `CierresAdminConfirmacionFisica.test.tsx` | «Aprobar» de la sección «Decisión del cierre» | el botón del pie, `APROBAR_PIE` (el rótulo lo decide S1 por paquetes que vuelven, R12) |
+| `CierresAdminDeepLink.test.tsx` | «Cerrar» del `Modal` | `getAllByRole("button",{name:"Cerrar"})[0]` = el del pie (el 2.º es la X) |
+| `CierreMensajeroDetalleCascadas.test.tsx`, `CierreMensajeroDesglosePorTienda.test.tsx` | las cascadas 395/396 dentro del modal del módulo | **se montan directamente** con `tests/fixtures/detalle-cierre-admin-anterior.tsx` (las mismas props que pasaba el módulo). Ver nota abajo |
+| `CierrePremioPendiente.test.tsx` | región «Pago al mensajero» | `audiencia="admin"` + clic en la pestaña «Pago al mensajero» |
+| `cierre-detalle-ajuste-badge.test.tsx`, `CorregirResultadoCierre.test.tsx` | filas del modal | clic en «Gestiones (n)» antes de la fila |
+| `CierresAdminPage.test.tsx` (extra) | `dialog` «Detalle del cierre» exacto | `/^Detalle del cierre · /`; «Aprobar» del pie sin cambios (no hay paquetes) |
+| `CierreFacturaPapel.test.tsx` (extra) | «las DOS rutas montan `CierreFacturaDetalle`» + `max-h-[70vh]` del admin | la del mensajero la monta y la del admin **no** (D12); el escenario sintético del modal se conserva como peor caso de la regla genérica de impresión, con el comentario corregido |
+
+**Nota para el reviewer (las dos de cascadas, 54 casos):** el design pedía «mismos literales sobre «Dinero»»,
+pero «Gana la tienda», «Liquidación», «Debe» y las notas del tiempo verbal no existen en el «Dinero» aprobado
+(D3, D20, D25). No borro ninguna aserción: los dos tests pasan a vigilar los componentes que siguen en el
+árbol con `@sin-superficie` hasta SLT-115 «Retirar los componentes de cierre sustituidos». Lo que el admin ve
+ahora lo vigilan `DineroIdentidadesEnPantalla`, `CierresAdminDetalleUnico` y el E2E pendiente.
+
+### T4.2 / T4.3 — guardias
+
+- `cierre-detalle-superficies`: el censo de `<CierreFacturaDetalle>` queda en `CierreDiaModule` (≥1); nuevo
+  `describe` que censa las superficies del detalle único de mensajero (`<DetalleCierre tipo="mensajero">`) y
+  exige `<SeccionSinGestion ordenes= registrado=>` y `<RechazosDeTiendaCierre rechazos=>` con expresión del
+  servidor; autocomprobación: la lista es exactamente `CierresAdminModule.tsx`.
+- `impresion-flujo`: se retira el caso `max-h-[70vh]` y entra «el módulo del admin no monta
+  `CierreFacturaDetalle` ni `HojaFactura`, y sí `DetalleCierre`». Contraprueba = mutación M4.
+- `liquidacion-money-safe`: **sí hubo que tocarla** (contra lo que preveía T4.3): su censo exige listar los
+  archivos nuevos de `components/private/cierres/` (dos líneas). `DineroIdentidadesEnPantalla` no se toca y
+  sigue verde.
+- `columnas-asercion-de-orden` descubrió el módulo nuevo por su sufijo (rojo hasta que el test de T2.2 lo
+  nombró): es la contraprueba de descubrimiento de T2.2.
+- `superficie-de-uso` verde sin ninguna `@sin-superficie` en `components/private/cierres/detalle/`
+  (`grep -r "@sin-superficie S1 de SLT-95" components/` vacío; `vistaBodegaDesdeAdmin` no la necesita: la
+  guardia mira alcanzabilidad por módulo).
+
+### Mutaciones (script con copia y restauración; `grep` posterior confirma el árbol limpio)
+
+| Mutación | Test | Resultado |
+|---|---|---|
+| M1 `modoAdminDe("vencido")` → «solo lectura» | DetalleUnico + vista | MUERTA (4 rojos) |
+| M2 estado vacío sin texto | DetalleUnico | MUERTA (1) |
+| M3 «Pago al mensajero» también a la satélite | DetalleUnico | MUERTA (1) |
+| M4 `CierreFacturaDetalle` montada de nuevo en «Gestiones» | DetalleUnico | MUERTA (1) |
+| M5 nota de R81 retirada | DetalleUnico + vista | MUERTA (2) |
+| M6 destrabe sin segunda lectura | DetalleUnico | MUERTA (1) |
+| M7 importe ausente → `"0"` | columnas | MUERTA (2) |
+| M8 `resueltoPorNombre` no llega a la vista | DetalleUnico + vista | MUERTA (2) |
+| M9 sin `SeccionSinGestion` | DetalleUnico | MUERTA (2) |
+| M10 encabezado «Pago mensajero» | columnas | MUERTA (1) |
+
+### Mapa R → test (T2–T4)
+
+| R | Test |
+|---|---|
+| R17 | `CierresAdminDetalleUnico` «Rechazados por la tienda» (0 → texto D27; 2 → filas guía/destinatario/motivo/tienda/fecha y la nota) |
+| R18 | `CierresAdminDetalleUnico` R18 (central con permiso / satélite / sin permiso); `CierresAdminPagoMensajero`; `CierrePremioPendiente` |
+| R19 | `CierresAdminDetalleUnico` («Pasaron a Novedad interna» con conteo; no registrado) |
+| R21 | `CierresAdminDetalleUnico` («Descargar …», sin `.hoja-imprimible` ni «Imprimir»); `impresion-flujo`; `CierreFacturaPapel` |
+| R38 | `CierresAdminDetalleUnico` R38 (admin y satélite); `CierresAdminDeepLink`; `cierre-detalle-superficies` |
+| R39 | `CierresAdminDetalleUnico` R39; `CierresAdminConfirmacionFisica`; `CierresAdminIndemnizacion`; `CierresAdminModule` (R10/R11) |
+| R71 | `liquidacion-money-safe` (censo con los dos archivos nuevos); `detalle-cierre-descarga-columnas` (sin `"0"`) |
+| R79 | `detalle-cierre-vista` «modoAdminDe»; `CierresAdminDetalleUnico` R79 (pie por estado) |
+| R80 | `detalle-cierre-vista` (llega / null); `CierresAdminDetalleUnico` R80 (con y sin «por») |
+| R81 | `detalle-cierre-vista` (viejo / nuevo / sin desglose); `CierresAdminDetalleUnico` R81; `CierresAdminModule` 102/R8 |
+| R82 | `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts` |
+| R83 | `CierresAdminDetalleUnico` R83 (ok → forzar + 2.ª lectura en decidir; conflict → error de hoy, 1 lectura, sigue vencido) |
+| R77 | **pendiente** (T5) |
+
+### Comandos (salida real)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `TSC_EXIT=0`.
+- `pnpm exec eslint <31 archivos>` → `0 errors, 1 warning` (`CierreEstado` sin uso en
+  `CierreMensajeroDetalleCascadas.test.tsx`, ya estaba en `HEAD`).
+- Conjunto afectado (`vitest run` de los 17 archivos de componentes y guardias de la ficha + `tests/unit/descarga`):
+  `Test Files 67 passed (67) · Tests 1038 passed (1038)`.
+- `tests/components/CierresAdminDetalleUnico.test.tsx`: `Tests 22 passed (22)`.
+- `pnpm run test:guardias`: `Test Files 2 failed | 340 passed (342)`, `Tests 5 failed | 4807 passed | 1 skipped`.
+  4 rojos son `dependencias-declaradas-presentes` (heredados, ya avisados por backend_dev en T1); el 5.º era
+  `estado-con-info` (el módulo de columnas nuevo usa `RESULTADO_FILA_LABEL`): se añadió su excepción clase D y
+  re-ejecutado da `Tests 17 passed (17)`.
+- `pnpm run test:rapido` (con presupuesto): `423 relacionados -> FUERA (presupuesto 150)`; guardias y disparados
+  `341 archivos`: 100+100+100+41 passed, `RAPIDO_EXIT=0`.
+- `TEST_RAPIDO_SIN_PRESUPUESTO=1 pnpm run test:rapido` (los 632, completo): **`RAPIDO_EXIT=1`**. Seis tandas
+  verdes y una con `Test Files 2 failed | 98 passed`, `Tests 20 failed | 1361 passed | 1 skipped`:
+  `tests/unit/repositories/cierres-admin-repository.test.ts` (18) y `tests/unit/repositories/cierre-pagos-lectura.test.ts`
+  (2), todos con `TypeError: Cannot read properties of undefined (reading 'nombre')` en
+  `nombreCompletoUsuario` ← `CierresAdminRepository.findCierreByIdEnAlcance` (`lib/repositories/CierresAdminRepository.ts:1483`).
+  **Es de T1 (backend_dev), no de esta tanda:** los dobles de Prisma de esos tests no traen `resueltoPorUsuario`
+  (`undefined`) y el código solo compara `=== null`. No los toco: `lib/` y sus tests unitarios son de backend_dev.
+  Arreglo mínimo sugerido: `cierre.resueltoPorUsuario ? nombreCompletoUsuario(...) : null` (o `== null`).
+
+### Aviso de tamaño — T5 no se hizo
+
+La rama tiene **42 archivos contra `origin/dev`** (el tamaño aceptado, D22). T5 añade `e2e/cierres-rediseno.spec.ts`
+y adapta los 9 E2E de T5.2 → **52 archivos**, por encima del límite de ~50 que fija `tasks.md`. Paro y aviso al
+leader antes de seguir. Lo que T5 tendrá que hacer, ya visto:
+- en los 9 specs, `getByRole("dialog", { name: "Detalle del cierre" })` sigue casando (Playwright compara por
+  subcadena), pero «Totales del cierre», «Órdenes del cierre», «Liquidación», los KPI «Total de la empresa» y la
+  región «Ingreso de bodega por devoluciones a origen del cierre» ya no existen: pasan a `group` «Cifras del
+  cierre», la pestaña «Gestiones (n)», las cuentas y la nota de R81;
+- el pie aprueba con «Revisar paquetes y aprobar» cuando hay paquetes que vuelven (`cierres-admin` (a));
+- escenario B sin validar todavía contra `e2e/_tarifas-activacion-fixture.ts`; base E2E nueva aún no creada.
+
+**Veredicto T2–T4:** detalle único montado en `/cierres-admin`, 22 tests nuevos + 10 mutaciones muertas,
+afectados y guardias verdes salvo los 4 heredados; T5 parada por tamaño y 20 rojos de T1 en tests de
+repositorio para backend_dev.

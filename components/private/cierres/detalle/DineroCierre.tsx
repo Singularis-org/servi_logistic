@@ -23,9 +23,6 @@ export interface DineroCierreProps {
   dinero: DineroVista;
 }
 
-/**
- * @sin-superficie S1 de SLT-95 es el componente base sin montar; lo monta S2 (SLT-100) en /cierres-admin
- */
 export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
   const conBarra = dinero.reparto.every((p) => p.porcentaje !== null);
   return (

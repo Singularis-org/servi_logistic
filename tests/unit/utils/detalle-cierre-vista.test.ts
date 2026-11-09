@@ -6,6 +6,7 @@ import {
   cifrasDe,
   lineasDinero,
   metodosVisibles,
+  modoAdminDe,
   pestanasDe,
   vistaBodegaDesdeAdmin,
   vistaMensajeroDesdeAdmin,
@@ -489,5 +490,96 @@ describe("de los resultados del servidor a la vista (T0.2)", () => {
     } as unknown as Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
     expect(vistaBodegaDesdeAdmin(r).conteos).toEqual({ gestiones: 19, mensajeros: 2, pagosAjustados: 3 });
     expect(vistaBodegaDesdeAdmin(r).folio).toBe("ABCDEF12");
+  });
+});
+
+// SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (T2.1) — lo que S2 añade a la
+// lógica pura. Esperados escritos a mano, como el resto del archivo.
+describe("SLT-100 — modoAdminDe (R79)", () => {
+  it.each([
+    ["solicitado", "decidir"],
+    ["vencido", "vencido"],
+    ["aprobado", "solo lectura"],
+    ["rechazado", "solo lectura"],
+  ] as const)("un cierre %s se abre en modo «%s»", (estado, modo) => {
+    expect(modoAdminDe(estado)).toBe(modo);
+  });
+});
+
+describe("SLT-100 — la nota del origen del ingreso de bodega (R81, D25)", () => {
+  const lineaBodega = (v: DetalleMensajeroVista) => lineasDinero("mensajero", v)!.cuentas[1].lineas[3];
+
+  it("modelo viejo con desglose: la nota va bajo «− pago a la bodega», con los rótulos de hoy", () => {
+    const linea = lineaBodega({ ...MENSAJERO, desgloseIngresoBodega: { sla: "2700.00", manual: "0.00" } });
+    expect(linea.label).toBe("Ingreso de bodega por devoluciones a origen");
+    expect(linea.monto).toBe("500.00");
+    expect(linea.signo).toBe("resta");
+    expect(linea.notas).toEqual(["Automático (por plazo vencido) ₡2.700 · Manual (mensajero) ₡0"]);
+  });
+
+  it("modelo nuevo: sin nota aunque llegue el desglose", () => {
+    const nuevo = {
+      ...MENSAJERO,
+      empresa: { ...MENSAJERO.empresa!, modeloNuevo: true },
+      desgloseIngresoBodega: { sla: "2700.00", manual: "0.00" },
+    };
+    expect(lineaBodega(nuevo).notas).toBeUndefined();
+  });
+
+  it("sin desglose: sin nota", () => {
+    expect(lineaBodega({ ...MENSAJERO, desgloseIngresoBodega: null }).notas).toBeUndefined();
+    expect(lineaBodega(MENSAJERO).notas).toBeUndefined();
+  });
+});
+
+describe("SLT-100 — vistaMensajeroDesdeAdmin pasa lo nuevo del servidor (R80, R81)", () => {
+  const base = {
+    cierre: {
+      cierreId: "aaaaaaaa-bbbb-4ccc-8ddd-0000c0ffee99",
+      mensajeroNombre: "Ana Mensajera",
+      destinoTipo: "bodega_central",
+      destinoZonaNombre: "GAM",
+      estado: "aprobado",
+      totales: MENSAJERO.totales,
+      totalPagoMensajero: "3000.00",
+      totalIngresoBodegaRechazos: "500.00",
+      solicitadoAt: "2026-11-08T00:42:00.000Z",
+      resueltoAt: "2026-11-08T01:10:00.000Z",
+      motivoRechazo: null,
+    },
+    grupos: { entregado: [], reprogramado: [], novedad: [], devolucion_a_origen_por_rechazo: [], incidente: [] },
+    totalesIngreso: { ...MENSAJERO.empresa!.totalesIngreso },
+    ivaFacturado: "910.00",
+    pagoTienda: "94350.00",
+    cobradoSobreRecaudado: "5650.00",
+    netoEmpresa: "3500.00",
+    ganaLaTienda: "92090.00",
+    partesPorTienda: [],
+    ordenesSinGestion: [],
+    rechazosDeTienda: [],
+    desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "500.00", total: "500.00" },
+  };
+  const vista = (extra: object) =>
+    vistaMensajeroDesdeAdmin({ ...base, ...extra } as unknown as Extract<CierreDetalleAdminServiceResult, { status: "ok" }>);
+
+  it("el nombre de quien resolvió llega a la vista y a la cabecera", () => {
+    const v = vista({ resueltoPorNombre: "Carla Resolutora" });
+    expect(v.resueltoPorNombre).toBe("Carla Resolutora");
+  });
+
+  it("sin el campo (dobles viejos) queda en null: sin «por …»", () => {
+    expect(vista({}).resueltoPorNombre).toBeNull();
+  });
+
+  it("el desglose del ingreso de bodega llega en el modelo viejo, sin el total", () => {
+    expect(vista({}).desgloseIngresoBodega).toEqual({ sla: "0.00", manual: "500.00" });
+  });
+
+  it("y queda en null en el modelo nuevo", () => {
+    const grupos = {
+      ...base.grupos,
+      entregado: [{ resultado: "entregado", ajustesPago: [], ingresoEmpresa: { tarifaModelo: "nuevo" } }],
+    };
+    expect(vista({ grupos }).desgloseIngresoBodega).toBeNull();
   });
 });

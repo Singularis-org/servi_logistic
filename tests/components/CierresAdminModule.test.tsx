@@ -346,10 +346,12 @@ describe("CierresAdminModule", () => {
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
-    const totales = within(dialog).getByRole("region", {
-      name: "Totales del cierre",
+    // SLT-100: antes la región «Totales del cierre» del comprobante; en el detalle único, las
+    // cifras de arriba (R6/R7): «Recaudado» con sus métodos debajo. Mismos literales.
+    const totales = within(dialog).getByRole("group", {
+      name: "Cifras del cierre",
     });
     // FICHA 359 — LA IDENTIDAD DE LA FACTURA DEL CIERRE, AHORA LEGIBLE EN PANTALLA:
     // 100 + 50,25 + 10,10 = 160,35. Con la 230 estos cuatro se pintaban ₡100, ₡50, ₡10 y
@@ -384,17 +386,18 @@ describe("CierresAdminModule", () => {
     renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
 
-    // El bruto es un renglón del bloque de liquidación del comprobante.
+    // SLT-100: el bruto era un renglón de «Liquidación»; en el detalle único es el «Total
+    // facturado» con el que abre la cuenta de lo que le queda a la empresa. Mismo literal.
     const liquidacion = within(dialog).getByRole("region", {
-      name: "Liquidación",
+      name: "De lo facturado, le queda a la empresa",
     });
     expect(within(liquidacion).getByText("₡3.672,50")).toBeInTheDocument();
-    // Ganancia positiva: no se muestra ni la ganancia ni el "Debe".
-    expect(within(liquidacion).queryByText("Ganancia")).toBeNull();
-    expect(within(liquidacion).queryByText("Debe")).toBeNull();
-    expect(within(liquidacion).queryByText("₡2.172,50")).toBeNull();
+    // Ganancia positiva: no se muestra ni la ganancia ni el "Debe" (D3: en ningún sitio).
+    expect(within(dialog).queryByText("Ganancia")).toBeNull();
+    expect(within(dialog).queryByText("Debe")).toBeNull();
+    expect(within(dialog).queryByText("₡2.172,50")).toBeNull();
   });
 
   it("el detalle muestra el pago a tienda derivado server-side (sin recalcular)", async () => {
@@ -430,15 +433,17 @@ describe("CierresAdminModule", () => {
     renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
 
-    const pago = within(dialog).getByRole("region", { name: "Pago a tienda" });
+    // SLT-100: antes la tarjeta «Pago a tienda»; en el detalle único, la cifra «Se le paga hoy a
+    // la tienda» (D20: una cifra, un nombre). Mismo literal.
+    const pago = within(dialog).getByRole("group", { name: "Se le paga hoy a la tienda" });
     // FICHA 359: 25.000 − 2.825 − 847,50 = 21.327,50, y ahora la resta se puede LEER. Con la
     // 230 la pantalla decía ₡21.328 y los tres operandos daban ₡21.327 al restarlos a ojo.
     expect(within(pago).getByText("₡21.327,50")).toBeInTheDocument();
   });
 
-  it("muestra 'Debe' en rojo cuando la ganancia es negativa (el pago supera el ingreso)", async () => {
+  it("sin 'Debe' (D3): lo que le queda a la empresa en negativo va en rojo cuando el pago supera el ingreso", async () => {
     const user = userEvent.setup();
     verDetalleMock.mockResolvedValue({
       ordenesSinGestion: [],
@@ -453,7 +458,9 @@ describe("CierresAdminModule", () => {
       ganancia: "-1500.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
-      netoEmpresa: "0.00",
+      // SLT-100: el neto que deriva el servidor para este cierre (0 − 0 − 1.500 − 0); con "0.00"
+      // la fixtura mentía sobre la cifra que ahora se pinta.
+      netoEmpresa: "-1500.00",
       ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
@@ -461,14 +468,17 @@ describe("CierresAdminModule", () => {
     renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    // Ganancia negativa -> se rotula "Debe" y el monto va en rojo.
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100 (D3 de SLT-95, aprobada por Carlos): se quita «Debe»; la única cifra de lo que gana
+    // la empresa es «Le queda a la empresa», y en negativo va con su signo y en rojo. La aserción
+    // de «Debe» se INVIERTE (convención del repo) y el rojo se afirma sobre la cifra que lo
+    // sustituye, con el mismo importe −₡1.500 (0 facturado − 1.500 de pago al mensajero).
     const liquidacion = within(dialog).getByRole("region", {
-      name: "Liquidación",
+      name: "De lo facturado, le queda a la empresa",
     });
-    expect(within(liquidacion).queryByText("Ganancia")).toBeNull();
-    expect(within(liquidacion).getByText("Debe")).toBeInTheDocument();
-    const monto = within(liquidacion).getByText("-₡1.500");
+    expect(within(dialog).queryByText("Ganancia")).toBeNull();
+    expect(within(dialog).queryByText("Debe")).toBeNull();
+    const monto = within(liquidacion).getByText("-₡1.500", { selector: "[data-tipo=total] [data-monto]" });
     expect(monto).toBeInTheDocument();
     expect(monto).toHaveClass("text-danger-strong");
   });
@@ -503,8 +513,10 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    const panel = within(dialog).getByRole("region", { name: "Ingreso de la empresa" });
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100: antes el panel «Ingreso de la empresa»; en el detalle único, la cuenta «Lo que se le
+    // factura a la tienda». Mismos literales.
+    const panel = within(dialog).getByRole("region", { name: "Lo que se le factura a la tienda" });
     // Cada concepto va con su IVA incluido, en un solo monto, y el total es el del SERVIDOR.
     // FICHA 359 — la advertencia A1 de la 230 («la columna puede no cuadrar a ojo por ±1/±2»)
     // deja de aplicar aquí: 2.825 + 847,50 + 1.130 = 4.802,50, y es exactamente lo que se lee.
@@ -586,7 +598,9 @@ describe("CierresAdminModule", () => {
     renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Entregado" });
 
     // El botón identifica SU orden, no un genérico repetido por fila.
@@ -660,7 +674,9 @@ describe("CierresAdminModule", () => {
     renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Entregado" });
     expect(
       within(region).queryByRole("button", { name: /Desglose de ingreso/ }),
@@ -704,8 +720,10 @@ describe("CierresAdminModule", () => {
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Entregado" });
     await abrirFila(user, region, "REM-001");
     // Monto recibido y método van juntos en el desplegable de la orden.
@@ -751,8 +769,10 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Entregado" });
     await abrirFila(user, region, "REM-SINTARIFA");
     expect(within(region).getByText("Sin tarifa")).toBeInTheDocument();
@@ -804,10 +824,12 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
 
     // Entrega con pago 0.00 pero SIN el flag: nada de badge, ni desplegada.
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const entregadas = within(dialog).getByRole("region", { name: "Entregado" });
     await abrirFila(user, entregadas, "REM-ENT");
     expect(within(entregadas).queryByText("Sin tarifa")).not.toBeInTheDocument();
@@ -853,8 +875,10 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
     await abrirFila(user, region, "REM-REC");
     expect(within(region).getByText("Sin tarifa")).toBeInTheDocument();
@@ -894,8 +918,10 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
     await abrirFila(user, region, "REM-REC");
     expect(within(region).getByText("₡3.500")).toBeInTheDocument();
@@ -934,17 +960,24 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100 (R81, D25): antes era la tarjeta «Ingreso de bodega por devoluciones a origen del
+    // cierre»; en el detalle único es la línea «− pago a la bodega» de la cuenta de lo que le queda
+    // a la empresa, con el desglose por origen como nota debajo. Mismos importes.
     const region = within(dialog).getByRole("region", {
-      name: "Ingreso de bodega por devoluciones a origen del cierre",
+      name: "De lo facturado, le queda a la empresa",
     });
+    const linea = within(region)
+      .getByText("− Ingreso de bodega por devoluciones a origen")
+      .closest("[data-signo]") as HTMLElement;
     // El total combinado (56) + las dos sublíneas del desglose por origen (102/R8).
-    expect(within(region).getByText("₡9.200")).toBeInTheDocument();
-    expect(within(region).getByText("Automático (por plazo vencido)")).toBeInTheDocument();
-    expect(within(region).getByText("₡6.000")).toBeInTheDocument();
-    expect(within(region).getByText("Manual (mensajero)")).toBeInTheDocument();
-    expect(within(region).getByText("₡3.200")).toBeInTheDocument();
+    expect(within(linea).getByText("₡9.200")).toBeInTheDocument();
+    expect(
+      within(linea).getByText(
+        "Automático (por plazo vencido) ₡6.000 · Manual (mensajero) ₡3.200",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("feature 102/R9: cada fila rechazada se marca como SLA (cron) o Manual (mensajero) según esRechazoSla", async () => {
@@ -996,8 +1029,10 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
     // Cada fila trae su marca de origen: SLA para el escalado, Manual para el del mensajero.
     await abrirFila(user, region, "REM-SLA", "Cliente SLA");
@@ -1041,8 +1076,10 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
+    // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+    await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
     const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
     await abrirFila(user, region, "REM-001");
     await user.click(
@@ -1093,7 +1130,7 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
     await user.click(within(dialog).getByRole("button", { name: "Aprobar" }));
 
@@ -1128,7 +1165,7 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
     await user.click(within(dialog).getByRole("button", { name: "Rechazar" }));
 
@@ -1173,7 +1210,7 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
     await user.click(within(dialog).getByRole("button", { name: "Rechazar" }));
 
@@ -1227,7 +1264,7 @@ describe("CierresAdminModule", () => {
       within(historico).getByRole("button", { name: /^Ver el cierre resuelto de/ }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
     expect(
       within(dialog).queryByRole("button", { name: "Aprobar" }),
@@ -1262,7 +1299,7 @@ describe("CierresAdminModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
     await user.click(within(dialog).getByRole("button", { name: "Aprobar" }));
 
@@ -1285,7 +1322,7 @@ describe("CierresAdminModule", () => {
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
     await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(
-      screen.queryByRole("dialog", { name: "Detalle del cierre" }),
+      screen.queryByRole("dialog", { name: /^Detalle del cierre · / }),
     ).not.toBeInTheDocument();
   });
 
@@ -1364,7 +1401,7 @@ describe("CierresAdminModule", () => {
     // El comprobante del `vencido` ofrece «Ver» (solo lectura del detalle) junto al destrabar.
     await user.click(screen.getByRole("button", { name: /^Ver el cierre de/ }));
     const dialog = await screen.findByRole("dialog", {
-      name: "Detalle del cierre",
+      name: /^Detalle del cierre · /,
     });
     expect(
       within(dialog).queryByRole("button", { name: "Aprobar" }),

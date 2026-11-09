@@ -73,7 +73,7 @@
 
 ## T2 — Lógica pura y piezas nuevas · `frontend_dev` (depende de T1.3 para el tipo)
 
-- [ ] **T2.1** — `detalle-cierre-vista.ts`:
+- [x] **T2.1** — `detalle-cierre-vista.ts`:
   - `modoAdminDe(estado)` (R79);
   - `vistaMensajeroDesdeAdmin` pasa `resueltoPorNombre` (R80) y `desgloseIngresoBodega` (R81);
   - `lineasDinero` añade la nota bajo «− pago a la bodega» (R81).
@@ -83,7 +83,7 @@
   - la nota «Automático (por plazo vencido) ₡2.700 · Manual ₡0» (formato de `money()`) en el
     modelo viejo, y ausente en el nuevo y sin desglose;
   - `resueltoPorNombre` llega a la vista.
-- [ ] **T2.2** [P] — `detalle-cierre-descarga-columnas.ts` (R82). **Hecho:**
+- [x] **T2.2** [P] — `detalle-cierre-descarga-columnas.ts` (R82). **Hecho:**
   `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts` afirma:
   - las 7 cabeceras en orden, escritas como literal en el test;
   - una fila con los strings del doble;
@@ -91,12 +91,12 @@
 
   `columnas-sensibles.guardia` sigue verde con el módulo descubierto. Contraprueba: renombrar el
   sufijo hace que la guardia deje de verlo, y se anota.
-- [ ] **T2.3** [P] — `RechazosDeTiendaCierre.tsx` y sus textos en `detalle-cierre-labels.ts` (R17,
+- [x] **T2.3** [P] — `RechazosDeTiendaCierre.tsx` y sus textos en `detalle-cierre-labels.ts` (R17,
   D27). **Hecho:** cubierto en T3.2.
 
 ## T3 — Montaje en `/cierres-admin` · `frontend_dev` (depende de T2)
 
-- [ ] **T3.1** — `CierresAdminModule.tsx`:
+- [x] **T3.1** — `CierresAdminModule.tsx`:
   - sustituye el `<Modal title="Detalle del cierre">` por `<DetalleCierre>` con audiencia, modo,
     pestañas y acciones (`design.md > Qué cambia`);
   - los diálogos de corrección y ajuste quedan como hermanos;
@@ -108,7 +108,7 @@
   - typecheck verde;
   - `CierresAdminModule.tsx` ya no importa `CierreFacturaDetalle` ni `CascadasCierreMensajero`;
   - `git diff` de `cierre-factura.tsx` = solo `export`.
-- [ ] **T3.2** — Test nuevo `tests/components/CierresAdminDetalleUnico.test.tsx`. Monta el módulo
+- [x] **T3.2** — Test nuevo `tests/components/CierresAdminDetalleUnico.test.tsx`. Monta el módulo
   con dobles del servicio, por audiencia (`admin`/`satelite`) y estado, y afirma con literales:
   - el diálogo «Detalle del cierre» es el nuevo: `tablist` con «Dinero», «Gestiones (n)» y
     «Rechazados por la tienda (0)» (R38);
@@ -131,7 +131,7 @@
   **Hecho:** verde. Mutaciones muertas anotadas en `impl_SLT-100.md`: modo de `vencido` → `"solo
   lectura"`; estado vacío sin texto; «Pago al mensajero» también a la satélite; `HojaFactura`
   montada de nuevo.
-- [ ] **T3.3** — Quitar las 6 `@sin-superficie` de `components/private/cierres/detalle/` (D21).
+- [x] **T3.3** — Quitar las 6 `@sin-superficie` de `components/private/cierres/detalle/` (D21).
   **Hecho:**
   - `superficie-de-uso.guardia` verde sin ellas;
   - si exige conservar una en un export aún sin uso (p. ej. `vistaBodegaDesdeAdmin`), queda solo
@@ -140,7 +140,7 @@
 
 ## T4 — Tests y guardias que cambian · `frontend_dev` (depende de T3.1)
 
-- [ ] **T4.1** — Adaptar, **sin quitar lo que vigilan** (misma aserción y mismo literal sobre la
+- [x] **T4.1** — Adaptar, **sin quitar lo que vigilan** (misma aserción y mismo literal sobre la
   región nueva; tabla en `design.md > Tests y guardias que cambian`), los tests que abren el modal:
   - `CierresAdminModule`, `CierresAdminPagoMensajero`, `CierresAdminIndemnizacion`;
   - `CierresAdminDeepLink`, `CierresAdminConfirmacionFisica`;
@@ -149,7 +149,7 @@
 
   **Hecho:** verdes. En `impl_SLT-100.md`, por archivo, una línea «antes leía X, ahora lee Y».
   Ninguna aserción borrada sin su sustituta.
-- [ ] **T4.2** [P] — Guardias:
+- [x] **T4.2** [P] — Guardias:
   - `cierre-detalle-superficies` (censo con la superficie nueva y sus tres datos);
   - `impresion-flujo` (se retira el caso `max-h-[70vh]` del admin; caso nuevo: el módulo del
     admin no monta `CierreFacturaDetalle` ni `HojaFactura`);
@@ -157,7 +157,7 @@
 
   **Hecho:** verdes. Contraprueba de `impresion-flujo`: volver a montar `CierreFacturaDetalle` en
   el módulo la pone en rojo.
-- [ ] **T4.3** — `DineroIdentidadesEnPantalla.test.tsx` y `liquidacion-money-safe.test.ts` siguen
+- [x] **T4.3** — `DineroIdentidadesEnPantalla.test.tsx` y `liquidacion-money-safe.test.ts` siguen
   verdes sin tocarlos (R71). `pnpm run test:guardias` verde. **Hecho:** salida anotada.
 
 ## T5 — E2E · `frontend_dev` (depende de T3, T4)

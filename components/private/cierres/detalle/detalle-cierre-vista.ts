@@ -30,9 +30,12 @@ import {
 import {
   FLETE_DEV_CON_IVA_LABEL,
   FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL,
+  INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
   PAGO_MENSAJERO_LABEL,
   rotuloIngresoBodega,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+import { money } from "@/lib/config/moneda";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
 import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
 
@@ -95,6 +98,11 @@ export interface DetalleMensajeroVista {
   /** `null` con audiencia mensajero: el dinero de la empresa no llega a su pantalla (R9). */
   empresa: DineroEmpresaMensajero | null;
   conteos: ConteosMensajero;
+  /**
+   * SLT-100 (R81): de dónde salió el ingreso de bodega (plazo vencido / manual), los STRING del
+   * servidor. Solo en el modelo viejo; `null` o ausente = no se pinta la nota.
+   */
+  desgloseIngresoBodega?: { sla: string; manual: string } | null;
   /** Bloqueo del mensajero (audiencia mensajero, vencido): lo redacta `avisoBloqueo`. */
   bloqueo?: BloqueoDetalle | null;
   /** Por qué no puede solicitar todavía (audiencia mensajero, en curso). `null` = sí puede. */
@@ -129,11 +137,7 @@ export interface DetalleBodegaVista {
 
 // ═══ Cabecera (R2) ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Folio corto y estable: los últimos 8 del id, como el comprobante de hoy (`cierre-factura.tsx`).
- *
- * @sin-superficie S1 de SLT-95 es el componente base sin montar; lo monta S2 (SLT-100) en /cierres-admin
- */
+/** Folio corto y estable: los últimos 8 del id, como el comprobante de hoy (`cierre-factura.tsx`). */
 export function folioDe(id: string): string {
   return id.slice(-8).toUpperCase();
 }
@@ -168,6 +172,16 @@ export function fechasBodega(d: DetalleBodegaVista): string {
 
 export function estadoConciliacionBodega(d: DetalleBodegaVista): EstadoConciliacion {
   return estadoConciliacionDe({ conciliado: d.conciliado, faltaPorRecibir: d.faltaPorRecibir });
+}
+
+/**
+ * SLT-100 (R79) — el modo del detalle que abren la central y la satélite, por el estado del cierre:
+ * solo un `solicitado` se decide por la vía normal y un `vencido` se destraba (feature 111).
+ */
+export function modoAdminDe(estado: CierreEstado): Modo {
+  if (estado === "solicitado") return "decidir";
+  if (estado === "vencido") return "vencido";
+  return "solo lectura";
 }
 
 // ═══ Cifras (R6, R7, R8) ═══════════════════════════════════════════════════════════════════════
@@ -534,17 +548,27 @@ function cuentaQueda(
   pago: [string, string],
   bodega: [string, string],
   neto: string,
+  notasBodega?: readonly string[],
 ): CuentaVista {
+  const lineaBodega = partida(bodega[0], bodega[1], "resta");
   return {
     titulo: L.CUENTA_QUEDA_TITULO,
     lineas: [
       partida(L.TOTAL_FACTURADO_LABEL, total),
       partida(L.IVA_NO_ES_DE_LA_EMPRESA, iva, "resta"),
       partida(pago[0], pago[1], "resta"),
-      partida(bodega[0], bodega[1], "resta"),
+      notasBodega && notasBodega.length > 0 ? { ...lineaBodega, notas: notasBodega } : lineaBodega,
       { label: L.LE_QUEDA_A_LA_EMPRESA_LABEL, monto: neto, signo: "neutro", tipo: "total" },
     ],
   };
+}
+
+/**
+ * SLT-100 (R81, D25) — la nota del origen del ingreso de bodega, con los rótulos de hoy
+ * (`INGRESO_BODEGA_RECHAZOS_*_LABEL`). `money()` es formato, no aritmética (R71).
+ */
+export function notaOrigenIngresoBodega(d: { sla: string; manual: string }): string {
+  return `${INGRESO_BODEGA_RECHAZOS_SLA_LABEL} ${money(d.sla)} · ${INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL} ${money(d.manual)}`;
 }
 
 /**
@@ -631,6 +655,8 @@ export function lineasDinero(
         [PAGO_MENSAJERO_LABEL, d.totalPagoMensajero],
         [rotuloIngresoBodega(e.modeloNuevo), e.totalIngresoBodegaRechazos],
         e.netoEmpresa,
+        // R81: la misma regla con la que la pintaba el modal (`CierreFacturaDetalle`).
+        !e.modeloNuevo && d.desgloseIngresoBodega ? [notaOrigenIngresoBodega(d.desgloseIngresoBodega)] : undefined,
       ),
     ],
     porTienda: marcaDeVariasTiendas(e.partesPorTienda) === null ? null : e.partesPorTienda,
@@ -639,7 +665,7 @@ export function lineasDinero(
 
 // ═══ De los resultados del servidor a la vista (T0.2) ═════════════════════════════════════════
 
-type DetalleAdminOk = Extract<CierreDetalleAdminServiceResult, { status: "ok" }>;
+type DetalleAdminOk = Omit<Extract<CierreDetalleAdminServiceResult, { status: "ok" }>, "status">;
 type DetalleBodegaOk = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
 
 function destinoLegible(tipo: CierreDestinoTipo, zona: string): string {
@@ -653,6 +679,7 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
     gestiones.filter((g) => vuelveABodegaElPaquete({ origen: "gestion", resultado: g.resultado })).length +
     r.ordenesSinGestion.filter(() => vuelveABodegaElPaquete({ origen: "barrida" })).length;
   const modeloNuevo = hayGestionEnModeloNuevo(r.grupos);
+  const desglose = r.desgloseIngresoBodegaRechazos;
   return {
     mensajeroNombre: r.cierre.mensajeroNombre,
     destino: destinoLegible(r.cierre.destinoTipo, r.cierre.destinoZonaNombre),
@@ -660,6 +687,7 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
     estado: r.cierre.estado,
     solicitadoAt: r.cierre.solicitadoAt,
     resueltoAt: r.cierre.resueltoAt,
+    resueltoPorNombre: r.resueltoPorNombre ?? null,
     reprogramadasRetenidasHoy: r.cierre.reprogramadasRetenidasHoy ?? 0,
     motivoRechazo: r.cierre.motivoRechazo,
     totales: r.cierre.totales,
@@ -675,6 +703,11 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
       partesPorTienda: r.partesPorTienda,
       modeloNuevo,
     },
+    // R81: oculto en el modelo nuevo (el origen solo existe para un rechazo) o sin desglose.
+    desgloseIngresoBodega:
+      modeloNuevo || desglose?.sla === undefined || desglose?.manual === undefined
+        ? null
+        : { sla: desglose.sla, manual: desglose.manual },
     conteos: {
       gestiones: gestiones.length,
       entregadas: r.grupos.entregado.length,

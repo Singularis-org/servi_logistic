@@ -14,9 +14,6 @@ function cuantos(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
-/**
- * @sin-superficie S1 de SLT-95 es el componente base sin montar; lo monta S2 (SLT-100) en /cierres-admin
- */
 export const DETALLE_CIERRE_PREFIJO = "Detalle del cierre";
 export const DETALLE_CIERRE_BODEGA_PREFIJO = "Detalle del cierre de bodega";
 
@@ -158,3 +155,13 @@ export const POR_TIENDA_COLUMNAS = {
   hoy: "Se le paga hoy",
   gana: "Gana en total",
 } as const;
+
+// --- Pestañas que rellena S2 (SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)») ---
+/** R17, D27 — estado vacío de «Rechazados por la tienda». */
+export const RECHAZOS_VACIO = "Este cierre no tiene paquetes rechazados por la tienda.";
+/** R21 — título del archivo de «Descargar» en «Gestiones». */
+export const tituloDescargaGestiones = (folio: string): string => `Gestiones del cierre ${folio}`;
+/** R82 — encabezado de `ingresoEmpresa.total` en la descarga del detalle. */
+export const COBRO_A_LA_TIENDA_COL = "Cobro a la tienda";
+/** R82 — se llama como su cifra y su pestaña en el detalle (D20: una cifra, un nombre). */
+export const PAGO_AL_MENSAJERO_COL = PESTANA_PAGO;

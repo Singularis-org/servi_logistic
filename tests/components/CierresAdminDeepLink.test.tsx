@@ -202,11 +202,11 @@ describe("R39/R40 — la dirección abre el detalle de ESE cierre", () => {
     renderModule();
 
     expect(
-      await screen.findByRole("dialog", { name: "Detalle del cierre" }),
+      await screen.findByRole("dialog", { name: /^Detalle del cierre · / }),
     ).toBeInTheDocument();
     expect(verDetalleMock).toHaveBeenCalledWith({ cierreId: CIERRE_ENLAZADO });
     // El nombre del mensajero del cierre enlazado se lee DENTRO del detalle abierto.
-    const dialogo = screen.getByRole("dialog", { name: "Detalle del cierre" });
+    const dialogo = screen.getByRole("dialog", { name: /^Detalle del cierre · / });
     expect(within(dialogo).getAllByText(/Zoe del Histórico/).length).toBeGreaterThan(0);
   });
 
@@ -216,7 +216,7 @@ describe("R39/R40 — la dirección abre el detalle de ESE cierre", () => {
     parametros = new URLSearchParams({ [PARAM_CIERRE]: CIERRE_ENLAZADO });
     renderModule([makeResumen({ cierreId: "otro-cierre", mensajeroNombre: "Ana Mensajera" })]);
 
-    await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     expect(verDetalleMock).toHaveBeenCalledTimes(1);
     expect(verDetalleMock).toHaveBeenCalledWith({ cierreId: CIERRE_ENLAZADO });
   });
@@ -228,13 +228,13 @@ describe("R39/R40 — la dirección abre el detalle de ESE cierre", () => {
     // control aparece más de una vez: se espera a que ESTÉ, no a cuántos hay.
     await screen.findAllByRole("button", { name: /Ver \/ decidir/ });
     expect(verDetalleMock).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog", { name: "Detalle del cierre" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /^Detalle del cierre · / })).not.toBeInTheDocument();
   });
 
   it("se abre UNA vez por navegación, no una por render", async () => {
     parametros = new URLSearchParams({ [PARAM_CIERRE]: CIERRE_ENLAZADO });
     const { rerender } = renderModule();
-    await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
 
     const cola = paginaInicial([]);
     for (let i = 0; i < 3; i++) {
@@ -265,7 +265,7 @@ describe("R41 — el cierre que no existe o queda fuera de alcance", () => {
         "El cierre ya no está disponible. Actualizando la lista.",
       ),
     );
-    expect(screen.queryByRole("dialog", { name: "Detalle del cierre" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /^Detalle del cierre · / })).not.toBeInTheDocument();
     expect(screen.queryByText(/Zoe del Histórico/)).not.toBeInTheDocument();
   });
 
@@ -288,8 +288,9 @@ describe("R45 — al cerrar, la dirección deja de nombrar el cierre", () => {
     parametros = new URLSearchParams({ [PARAM_CIERRE]: CIERRE_ENLAZADO });
     renderModule();
 
-    const dialogo = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(dialogo).getByRole("button", { name: "Cerrar" }));
+    const dialogo = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100: el primero es «Cerrar» del pie del detalle único; el segundo, la X del diálogo.
+    await user.click(within(dialogo).getAllByRole("button", { name: "Cerrar" })[0]);
 
     expect(replaceMock).toHaveBeenCalledWith("/cierres-admin", { scroll: false });
   });
@@ -299,8 +300,9 @@ describe("R45 — al cerrar, la dirección deja de nombrar el cierre", () => {
     parametros = new URLSearchParams({ tab: "historico", [PARAM_CIERRE]: CIERRE_ENLAZADO });
     renderModule();
 
-    const dialogo = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(dialogo).getByRole("button", { name: "Cerrar" }));
+    const dialogo = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100: el primero es «Cerrar» del pie del detalle único; el segundo, la X del diálogo.
+    await user.click(within(dialogo).getAllByRole("button", { name: "Cerrar" })[0]);
 
     expect(replaceMock).toHaveBeenCalledWith("/cierres-admin?tab=historico", {
       scroll: false,
@@ -315,8 +317,9 @@ describe("R45 — al cerrar, la dirección deja de nombrar el cierre", () => {
 
     const controles = await screen.findAllByRole("button", { name: /Ver \/ decidir/ });
     await user.click(controles[0]);
-    const dialogo = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(dialogo).getByRole("button", { name: "Cerrar" }));
+    const dialogo = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100: el primero es «Cerrar» del pie del detalle único; el segundo, la X del diálogo.
+    await user.click(within(dialogo).getAllByRole("button", { name: "Cerrar" })[0]);
 
     expect(replaceMock).not.toHaveBeenCalled();
   });
@@ -334,7 +337,7 @@ describe("el enlace y quien lo construye hablan del MISMO parámetro", () => {
     parametros = new URLSearchParams(query);
     renderModule();
 
-    await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     expect(verDetalleMock).toHaveBeenCalledWith({ cierreId: CIERRE_ENLAZADO });
   });
 });

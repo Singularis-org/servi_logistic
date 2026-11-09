@@ -40,6 +40,9 @@ import type {
 // Todos los textos esperados están escritos A MANO, con sus tildes, y NO importados del módulo
 // que los produce: una aserción contra su propia fuente está siempre verde. El 2026-08-07 este
 // repo encontró siete etiquetas mal escritas que doce mil tests daban por buenas.
+/** SLT-100 (R39): el botón de aprobar del pie del detalle único, con o sin paquetes que vuelven. */
+const APROBAR_PIE = /^(Aprobar|Revisar paquetes y aprobar)$/;
+
 vi.mock("@/lib/actions/cierres-admin", () => ({
   listarGestionesCierresAdminCompleto: vi.fn(),
   verCierreDetalle: vi.fn(),
@@ -274,8 +277,10 @@ async function pulsarAprobar(user: ReturnType<typeof userEvent.setup>) {
     </SWRConfig>,
   );
   await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-  const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-  await user.click(within(dialog).getByRole("button", { name: "Aprobar" }));
+  const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+  // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+  // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+  await user.click(within(dialog).getByRole("button", { name: APROBAR_PIE }));
 }
 
 /** Abre la ventana de confirmación física y la devuelve. */
@@ -516,12 +521,14 @@ describe("T4.2/R36 — la cámara no se queda montada detrás de nada", () => {
 
     // 1) Con el detalle abierto pero la ventana cerrada: nada de cámara.
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     expect(screen.queryByRole("button", { name: BOTON_ESCANEAR })).toBeNull();
 
     // 2) Al abrir la ventana, aparece: la ausencia de arriba es del cierre de la ventana y no
     //    de un componente que nunca se montó.
-    await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
     const dialog = await screen.findByRole("dialog", { name: VENTANA });
     expect(within(dialog).getByRole("button", { name: BOTON_ESCANEAR })).toBeInTheDocument();
 
@@ -832,8 +839,10 @@ describe("T4.6/R35 — cerrar la ventana sin completarla no envía nada", () => 
 
     // Reabrir NO obliga a re-escanear lo ya leído: no existe una confirmación a medias
     // persistida, así que lo confirmado vive mientras el detalle siga abierto.
-    const detalle = screen.getByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+    const detalle = screen.getByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
     const dos = await screen.findByRole("dialog", { name: VENTANA });
     expect(progreso(dos)).toBe("Paquetes confirmados: 1 de 2.");
   });
@@ -846,15 +855,17 @@ describe("T4.6/R35 — cerrar la ventana sin completarla no envía nada", () => 
     await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
 
     await user.click(
-      within(screen.getByRole("dialog", { name: "Detalle del cierre" })).getAllByRole(
+      within(screen.getByRole("dialog", { name: /^Detalle del cierre · / })).getAllByRole(
         "button",
         { name: "Cerrar" },
       )[0],
     );
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+    const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
     const dos = await screen.findByRole("dialog", { name: VENTANA });
     expect(progreso(dos)).toBe("Paquetes confirmados: 0 de 2.");
     expect(aprobarMock).not.toHaveBeenCalled();
@@ -1607,7 +1618,7 @@ describe("451/R36 — cerrar la ventana sin completarla no envía nada", () => {
 
     expect(aprobarMock).not.toHaveBeenCalled();
     // El detalle sigue abierto: el cierre no se tocó.
-    expect(screen.getByRole("dialog", { name: "Detalle del cierre" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /^Detalle del cierre · / })).toBeInTheDocument();
   });
 });
 

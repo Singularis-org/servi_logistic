@@ -331,7 +331,9 @@ async function abrirDetalleDelModulo(opciones: {
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
   }
 
-  const dialogo = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+  const dialogo = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+  // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
+  await user.click(within(dialogo).getByRole("tab", { name: /^Gestiones \(/ }));
   await user.click(within(dialogo).getByRole("button", { name: BOTON_FILA_RECHAZO }));
   return { user, dialogo };
 }
