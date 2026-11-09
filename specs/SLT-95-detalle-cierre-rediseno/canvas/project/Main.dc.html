@@ -195,12 +195,15 @@ body{margin:0}
       </sc-if>
 
       <sc-if value="{{enConciliacion}}" hint-placeholder-val="{{ false }}">
-        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:16px 18px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;font-size:14px">
-          <div><div style="font-size:13px;color:#44403c">Declarado</div><div style="font-size:18px;font-weight:700">{{conc.decl}}</div></div>
-          <div><div style="font-size:13px;color:#44403c">Recibido</div><div style="font-size:18px;font-weight:700">{{conc.rec}}</div></div>
-          <div><div style="font-size:13px;color:#44403c">Falta por recibir</div><div style="font-size:18px;font-weight:700">{{conc.falta}}</div></div>
-          <div><div style="font-size:13px;color:#44403c">Marcó</div><div style="font-size:14px">{{conc.quien}}</div></div>
-        </div>
+        <section style="max-width:520px;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+          <h3 style="margin:0;font-size:15px;font-weight:600">Conciliación</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:14px">
+            <div style="display:flex;justify-content:space-between;gap:12px"><span>Debe llegar a la central</span><span>{{conc.decl}}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;color:#44403c"><span>− Recibido</span><span>{{conc.rec}}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-weight:700;border-top:1px solid #e7e5e4;padding-top:8px"><span>Falta por recibir</span><span>{{conc.falta}}</span></div>
+            <div style="color:#44403c;font-size:13px;border-top:1px dashed #e7e5e4;padding-top:8px">Marcó: {{conc.quien}}</div>
+          </div>
+        </section>
       </sc-if>
 
       <sc-if value="{{enPago}}" hint-placeholder-val="{{ false }}">

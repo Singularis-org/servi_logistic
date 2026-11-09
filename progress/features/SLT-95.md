@@ -27,6 +27,9 @@ Tarjeta: zone frontend, complexity high. La descripción incluye piezas que pued
 
 - 2026-11-09, Carlos tras ver el canvas de bodega: es un REDISEÑO COMPLETO del módulo de cierres, «no dejes absolutamente nada fuera». Lo que hace la satélite con sus mensajeros es lo mismo que hace la central con los suyos: componentes IGUALES con props distintas, nunca uno por rol. Se vuelve al diseño inicial para unificar: cola de cierres, detalle, fila de gestión y diálogos como componentes únicos parametrizados (tipo mensajero|bodega × rol central|satélite|mensajero). Faltaban: cola de la central, todos los diálogos de decisión y los de la central (registrar/anular pago, corregir métodos, corregir resultado).
 
+- 2026-11-09, Carlos: las tarjetas con mucha información (fila desplegada, cálculo, conciliación) llevan el formato de las cascadas de la pestaña Dinero: partidas en líneas simples, «−»/«+» delante, raya y total en negrita. Barra de filtros y descarga = componentes existentes (BuscadorFiltros + DescargarDatasetButton).
+- 2026-11-09, Carlos sobre el Excel: los cierres del modelo viejo SÍ se siguen descargando con el formato actual; el documento nuevo es para el modelo nuevo. No sabe si la empresa ya activó las tarifas nuevas (medir en prod con script de solo lectura).
+
 ## Preguntas abiertas
 
 ## Tandas
