@@ -18,7 +18,7 @@
     - `prisma validate` y `pnpm run typecheck` verdes; aquí se confirma `new` como valor de enum
       (design §14);
     - `prisma migrate deploy` y `pnpm run db:rollback` aplican y revierten sobre una base desechable.
-- [ ] **T2. Clasificación y excepción** (dep. T1; R3).
+- [x] **T2. Clasificación y excepción** (dep. T1; R3).
   - **Archivos:**
     - `BugReportStatusChange` en `MODELOS_DE_PLATAFORMA` (`lib/db/modelos-de-negocio.ts`);
     - el motivo nuevo de `BugReportRepository.ts` en `lib/db/excepciones-aislamiento.ts` (design §5).
