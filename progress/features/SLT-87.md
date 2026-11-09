@@ -19,6 +19,8 @@ F1.4 (2026-11-09): spec de la entrega 1 aprobado por el humano («Aprobado, impl
 
 <!-- tamano-pr-aceptado: 2026-11-09 · entrega 1: 28 archivos y 2164 líneas reales (la estimación era ~1.400); separar el correo dejaría reportes que nadie ve. Humano: «Aceptar» y, con la cifra real, «Sí, un solo PR». -->
 
+- 2026-11-09 · F2.2 (4bbcf107): OK, 0 bloqueantes, 5 menores. Humano: M2 (el botón tapa la paginación o las acciones en móvil) se arregla antes del PR; el leader suma M3 (el «Gracias» reaparece al reabrir) y M4 (Escape). M5 (título) corregido. M1: los E2E de reparto y dinero se verifican en CI.
+
 ## Preguntas abiertas
 Ninguna.
 
