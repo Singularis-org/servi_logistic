@@ -9,6 +9,8 @@ import {
   agregarNivelPaisSchema,
   crearPaisSchema,
   renombrarTipoNivelSchema,
+  reordenarTiposSchema,
+  TIPO_REPETIDO_AL_REORDENAR,
 } from "@/lib/types/pais";
 
 // SLT-46 (design §4.1) — el borde del alta de país con su lista de tipos (R23, R24, P2), de la
@@ -122,5 +124,98 @@ describe("R49/P3 — agregar un nivel al final", () => {
     expect(agregarNivelPaisSchema.safeParse({ profundidad: 4, paisId: "cr", nombreSingular: "Barrio", nombrePlural: "Barrios" }).success).toBe(
       false,
     );
+  });
+});
+
+// SLT-46 (2026-11-09, design §4.1, §4.7) — el «antes» que viaja con cada escritura de tipos (R61) y el
+// esquema del reordenamiento (R57).
+
+describe("R61 — el «antes» es obligatorio en la edición de un tipo y en agregar nivel", () => {
+  const RENOMBRE = { tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones" };
+  const NIVEL = { paisId: "CR", nombreSingular: "Barrio", nombrePlural: "Barrios" };
+
+  it("renombrar un tipo sin `anterior`, o con un `anterior` incompleto o con campos de más, no entra", () => {
+    const sin = renombrarTipoNivelSchema.safeParse(RENOMBRE);
+    expect(sin.success).toBe(false);
+    if (!sin.success) expect(Object.keys(sin.error.flatten().fieldErrors)).toContain("anterior");
+    expect(renombrarTipoNivelSchema.safeParse({ ...RENOMBRE, anterior: { nombreSingular: "Provincia" } }).success).toBe(false);
+    expect(
+      renombrarTipoNivelSchema.safeParse({
+        ...RENOMBRE,
+        anterior: { nombreSingular: "Provincia", nombrePlural: "Provincias", clave: "nivel_1" },
+      }).success,
+    ).toBe(false);
+    // CONTRAPRUEBA: con el «antes» completo, entra (normalizado igual que los nombres).
+    const con = renombrarTipoNivelSchema.parse({
+      ...RENOMBRE,
+      anterior: { nombreSingular: " Provincia ", nombrePlural: "Provincias" },
+    });
+    expect(con.anterior).toEqual({ nombreSingular: "Provincia", nombrePlural: "Provincias" });
+  });
+
+  it("agregar nivel sin `profundidad`, o con una fuera de 3–10 o no entera, no entra; 3 y 10 sí", () => {
+    const sin = agregarNivelPaisSchema.safeParse(NIVEL);
+    expect(sin.success).toBe(false);
+    if (!sin.success) expect(Object.keys(sin.error.flatten().fieldErrors)).toContain("profundidad");
+    for (const profundidad of [2, 11, 3.5, "4"]) {
+      expect(agregarNivelPaisSchema.safeParse({ ...NIVEL, profundidad }).success, String(profundidad)).toBe(false);
+    }
+    for (const profundidad of [3, PAIS_NIVELES_MAX]) {
+      expect(agregarNivelPaisSchema.safeParse({ ...NIVEL, profundidad }).success, String(profundidad)).toBe(true);
+    }
+  });
+});
+
+describe("R57 — el esquema del reordenamiento", () => {
+  /** `n` niveles con ids y nombres válidos y distintos. */
+  const niveles = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      tipoId: `t${i + 1}`,
+      nombreSingular: `Nivel ${i + 1}`,
+      nombrePlural: `Niveles ${i + 1}`,
+    }));
+
+  it("acepta 2 y 10 niveles distintos, con los nombres normalizados y en el orden recibido", () => {
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: niveles(PAIS_NIVELES_MIN) }).success).toBe(true);
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: niveles(PAIS_NIVELES_MAX) }).success).toBe(true);
+    const r = reordenarTiposSchema.parse({
+      paisId: "CR",
+      niveles: [
+        { tipoId: "t2", nombreSingular: "  Can  tón ", nombrePlural: "Cantones" },
+        { tipoId: "t1", nombreSingular: "Provincia", nombrePlural: "Provincias" },
+      ],
+    });
+    expect(r.niveles.map((n) => [n.tipoId, n.nombreSingular])).toEqual([
+      ["t2", "Can tón"],
+      ["t1", "Provincia"],
+    ]);
+  });
+
+  it("rechaza 1 y 11 niveles, con el error en `niveles`", () => {
+    for (const n of [PAIS_NIVELES_MIN - 1, PAIS_NIVELES_MAX + 1]) {
+      const r = reordenarTiposSchema.safeParse({ paisId: "CR", niveles: niveles(n) });
+      expect(r.success, String(n)).toBe(false);
+      if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toEqual(["niveles"]);
+    }
+  });
+
+  it("rechaza un tipo repetido con su mensaje en `niveles`; CONTRAPRUEBA: los mismos ids sin repetir entran", () => {
+    const repetidos = [...niveles(3), niveles(3)[0]];
+    const r = reordenarTiposSchema.safeParse({ paisId: "CR", niveles: repetidos });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.flatten().fieldErrors.niveles).toContain(TIPO_REPETIDO_AL_REORDENAR);
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: niveles(3) }).success).toBe(true);
+  });
+
+  it("rechaza nombres fuera de 2–40, un tipo vacío, claves de más y un país que no es alfa-2", () => {
+    const con = (cambio: Record<string, unknown>) => [{ ...niveles(1)[0], ...cambio }, niveles(2)[1]];
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: con({ nombreSingular: "R" }) }).success).toBe(false);
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: con({ nombrePlural: "x".repeat(41) }) }).success).toBe(
+      false,
+    );
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: con({ tipoId: "" }) }).success).toBe(false);
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: con({ clave: "nivel_1" }) }).success).toBe(false);
+    expect(reordenarTiposSchema.safeParse({ paisId: "cr", niveles: niveles(2) }).success).toBe(false);
+    expect(reordenarTiposSchema.safeParse({ paisId: "CR", niveles: niveles(2), profundidad: 1 }).success).toBe(false);
   });
 });

@@ -75,21 +75,76 @@ const codigoGeoSchema = z
 
 const idDeNodoSchema = z.string().min(1);
 
+/** Las claves que admite el alta de un nodo; cualquier otra es una forma que no es la de hoy. */
+const CLAVES_DEL_ALTA = ["paisId", "padreId", "nombre", "codigo"] as const;
+
+/**
+ * El campo de `fieldErrors` donde va un error de FORMATO del alta (claves que no son de esta forma,
+ * o el destino sin decidir). No es un dato que la persona teclee, así que no cabe en `nombre` ni en
+ * `codigo`; un campo propio lo deja fuera de `entrada`, que es lo que `.strict()` producía.
+ */
+export const CAMPO_DE_FORMATO = "formato";
+
+/** Decisión del humano (2026-11-09): el mensaje claro de una entrada con la forma de antes. */
+export function mensajeDeFormatoNoValido(sobrantes: readonly string[]): string {
+  return (
+    `Formato no válido: no se admiten los campos ${sobrantes.join(", ")}. ` +
+    "El alta lleva el país (raíz) o el padre (hijo), el nombre y, si se quiere, el código."
+  );
+}
+export const DESTINO_SIN_DECIDIR = "Formato no válido: el alta lleva el país (raíz) o el padre (hijo), uno de los dos.";
+
 /**
  * El alta: raiz de un pais (`paisId`) o hijo de un nodo (`padreId`) de cualquier profundidad.
- * Cada rama es `.strict()`: traer las dos claves, o ninguna, es `validation_error` y no una
- * eleccion silenciosa de una de ellas; un `nivel` o un `tipoId` tambien.
+ * Traer las dos claves, o ninguna, es `validation_error` y no una eleccion silenciosa de una de
+ * ellas; un `nivel`, un `provinciaId` o un `tipoId` tambien.
+ *
+ * SLT-46 (decisión del humano 2026-11-09): un solo objeto y no una `z.union` de dos `.strict()`. Con la
+ * union, cualquier fallo (también la falta de `nombre`) salía como «Invalid input» en `formErrors`
+ * (→ `fieldErrors.entrada`): la pantalla perdía el error del campo. Ahora cada campo da su error en su
+ * clave (`nombre`, `paisId`, `codigo`, …, como antes de SLT-46) y una forma que no es esta (claves
+ * de más, o país y padre a la vez, o ninguno) da un mensaje de formato no válido en
+ * `fieldErrors.formato`. El refinamiento corre también cuando un campo ya falló (`when`), para que
+ * una forma vieja sin nombre diga las dos cosas.
  */
-export const crearNodoGeograficoSchema = z.union([
-  z
-    .object({
-      paisId: z.string().regex(/^[A-Z]{2}$/, "El país no es válido."),
-      nombre: nombreGeoSchema,
-      codigo: codigoGeoSchema,
-    })
-    .strict(),
-  z.object({ padreId: idDeNodoSchema, nombre: nombreGeoSchema, codigo: codigoGeoSchema }).strict(),
-]);
+export const crearNodoGeograficoSchema = z
+  .object({
+    paisId: z.string().regex(/^[A-Z]{2}$/, "El país no es válido.").optional(),
+    padreId: idDeNodoSchema.optional(),
+    nombre: nombreGeoSchema,
+    codigo: codigoGeoSchema,
+  })
+  .loose()
+  .superRefine(
+    (v, ctx) => {
+      if (typeof v !== "object" || v === null) return;
+      const sobrantes = Object.keys(v).filter((k) => !(CLAVES_DEL_ALTA as readonly string[]).includes(k));
+      if (sobrantes.length > 0) {
+        ctx.addIssue({ code: "custom", path: [CAMPO_DE_FORMATO], message: mensajeDeFormatoNoValido(sobrantes) });
+        return;
+      }
+      const conPais = "paisId" in v && v.paisId !== undefined;
+      const conPadre = "padreId" in v && v.padreId !== undefined;
+      if (conPais === conPadre) ctx.addIssue({ code: "custom", path: [CAMPO_DE_FORMATO], message: DESTINO_SIN_DECIDIR });
+    },
+    { when: () => true },
+  )
+  .transform(({ paisId, padreId, nombre, codigo }): AltaDeRaiz | AltaDeHijo =>
+    // El refinamiento ya garantizó que viene exactamente uno de los dos.
+    paisId !== undefined ? { paisId, nombre, codigo } : { padreId: padreId as string, nombre, codigo },
+  );
+
+interface AltaDeRaiz {
+  paisId: string;
+  nombre: string;
+  codigo?: string;
+}
+
+interface AltaDeHijo {
+  padreId: string;
+  nombre: string;
+  codigo?: string;
+}
 
 export type CrearNodoGeograficoInput = z.infer<typeof crearNodoGeograficoSchema>;
 

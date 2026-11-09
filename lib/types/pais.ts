@@ -115,6 +115,40 @@ export const agregarNivelPaisSchema = z
 
 export type AgregarNivelPaisInput = z.infer<typeof agregarNivelPaisSchema>;
 
+/** R57: el mensaje de una lista de reordenar con el mismo tipo dos veces. */
+export const TIPO_REPETIDO_AL_REORDENAR = "Un tipo de nivel aparece más de una vez en el orden.";
+
+/**
+ * SLT-46 (2026-11-09, design §2.4 «Reordenar niveles», §4.1; R55–R57): el orden nuevo de los niveles
+ * de un país ya creado. Cada elemento es un tipo con los nombres que el modal mostró como «antes» (no
+ * los nuevos: la posición en la lista ES el cambio). El repositorio compara ids y nombres con la base
+ * bajo el candado del país (cambio concurrente). Aquí solo lo que se ve sin la base: 2–10 elementos,
+ * `tipoId` distintos y nombres 2–40.
+ */
+export const reordenarTiposSchema = z
+  .object({
+    paisId: z.string().regex(CODIGO_PAIS, "El código son dos letras mayúsculas (ISO 3166-1 alfa-2)."),
+    niveles: z
+      .array(
+        z
+          .object({ tipoId: z.string().min(1), nombreSingular: nombrePaisSchema, nombrePlural: nombrePaisSchema })
+          .strict(),
+      )
+      .min(PAIS_NIVELES_MIN, `Un país tiene al menos ${PAIS_NIVELES_MIN} niveles.`)
+      .max(PAIS_NIVELES_MAX, `Un país tiene como mucho ${PAIS_NIVELES_MAX} niveles.`)
+      .superRefine((niveles, ctx) => {
+        // Un id repetido haría que un tipo tomara dos posiciones y otro ninguna.
+        const vistos = new Set<string>();
+        niveles.forEach((n, i) => {
+          if (vistos.has(n.tipoId)) ctx.addIssue({ code: "custom", path: [i, "tipoId"], message: TIPO_REPETIDO_AL_REORDENAR });
+          vistos.add(n.tipoId);
+        });
+      }),
+  })
+  .strict();
+
+export type ReordenarTiposInput = z.infer<typeof reordenarTiposSchema>;
+
 /**
  * Enmienda 2026-10-26, decisión 6 (R47): encender o apagar la cobertura de un país. `disponible` es
  * el estado DESEADO, no un interruptor: pedir el que ya tiene es éxito sin escribir.

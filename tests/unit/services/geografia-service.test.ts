@@ -821,3 +821,34 @@ describe("SLT-46 R21 — el arbol del pais a N niveles, con sus tipos", () => {
     expect(await service.listarArbolDePais("XZ", SUPERADMIN)).toEqual({ status: "ok", tipos: [], raices: [] });
   });
 });
+
+// =================================================================================================
+// SLT-46 R61 (2026-11-09, design §4.3, §4.7) — el renombre con un «antes» que ya no es el de la base
+// =================================================================================================
+
+describe("SLT-46 R61 — renombrar: el cambio concurrente es un `conflict` con motivo", () => {
+  it("el repositorio responde `cambio_concurrente` → `{ status: conflict, motivo: cambio_concurrente }`; recibe el «antes»", async () => {
+    const { service, repo } = build({
+      hermanosDeNodo: vi.fn(async () => [{ id: "d1", nombre: "Cabagra" }]),
+      renombrar: vi.fn(async () => "cambio_concurrente" as const),
+    });
+    expect(await service.renombrar({ id: "d1", nombre: "Cabagrita", nombreAnterior: "Cabagra" }, SUPERADMIN)).toEqual({
+      status: "conflict",
+      motivo: "cambio_concurrente",
+    });
+    expect(repo.renombrar).toHaveBeenCalledWith("d1", "Cabagrita", "Cabagra", "u-superadmin");
+  });
+
+  it("CONTRAPRUEBA (R12): el `conflict` por un hermano con el mismo nombre sigue SIN motivo y no llega al repositorio", async () => {
+    const { service, repo } = build({
+      hermanosDeNodo: vi.fn(async () => [
+        { id: "d1", nombre: "Cabagra" },
+        { id: "d2", nombre: "Boruca" },
+      ]),
+    });
+    const r = await service.renombrar({ id: "d1", nombre: "Boruca", nombreAnterior: "Cabagra" }, SUPERADMIN);
+    expect(r).toEqual({ status: "conflict" });
+    expect(r).not.toHaveProperty("motivo");
+    expect(repo.renombrar).not.toHaveBeenCalled();
+  });
+});

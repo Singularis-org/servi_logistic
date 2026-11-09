@@ -9,6 +9,9 @@ import {
   nodoGeograficoSchema,
   normalizarNombreGeografico,
   renombrarNodoGeograficoSchema,
+  CAMPO_DE_FORMATO,
+  DESTINO_SIN_DECIDIR,
+  mensajeDeFormatoNoValido,
 } from "@/lib/types/geografia-nodo";
 import { normalizeName } from "@/lib/utils/normalize";
 
@@ -207,5 +210,75 @@ describe("SLT-46 R14/R16 — el alta es raiz de un pais o hijo de un nodo, sin e
 
   it("el pais de una raiz es un codigo ISO alfa-2", () => {
     expect(crearNodoGeograficoSchema.safeParse({ paisId: "cr", nombre: "Puntarenas" }).success).toBe(false);
+  });
+});
+
+// SLT-46 (2026-11-09, design §4.1, §4.7) — el «antes» del renombre (R61) y los errores del alta
+// (decisión del humano: sin `nombre` → `fieldErrors.nombre`; forma vieja → formato no válido).
+
+describe("R61 — el renombre lleva `nombreAnterior`, obligatorio", () => {
+  it("sin `nombreAnterior`, o vacío, no entra; con él, entra tal cual (no se normaliza: es el de la base)", () => {
+    const sin = renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombre: "Carmen" });
+    expect(sin.success).toBe(false);
+    if (!sin.success) expect(Object.keys(sin.error.flatten().fieldErrors)).toEqual(["nombreAnterior"]);
+    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombre: "Carmen", nombreAnterior: "" }).success).toBe(false);
+    expect(renombrarNodoGeograficoSchema.parse({ id: "n1", nombre: "Carmen", nombreAnterior: "El  Carmen" })).toEqual({
+      id: "n1",
+      nombre: "Carmen",
+      nombreAnterior: "El  Carmen",
+    });
+  });
+});
+
+describe("Decisión 2026-11-09 — los errores del alta de un nodo van a su campo, no a `entrada`", () => {
+  const errores = (entrada: unknown) => {
+    const r = crearNodoGeograficoSchema.safeParse(entrada);
+    if (r.success) throw new Error("se esperaba un rechazo");
+    // `formato` no es una clave de la entrada (la añade el refinamiento): el tipo de zod no la conoce.
+    return r.error.flatten() as { formErrors: string[]; fieldErrors: Record<string, string[] | undefined> };
+  };
+
+  it("sin `nombre`, el error va en `fieldErrors.nombre` (raíz y hijo), sin `formErrors`", () => {
+    for (const entrada of [{ paisId: "CR" }, { padreId: "n1" }]) {
+      const e = errores(entrada);
+      expect(Object.keys(e.fieldErrors)).toEqual(["nombre"]);
+      expect(e.formErrors).toEqual([]);
+    }
+  });
+
+  it("un nombre de un carácter y un país mal escrito dan su error en su campo", () => {
+    expect(Object.keys(errores({ paisId: "CR", nombre: "a" }).fieldErrors)).toEqual(["nombre"]);
+    expect(Object.keys(errores({ paisId: "cr", nombre: "Puntarenas" }).fieldErrors)).toEqual(["paisId"]);
+  });
+
+  it("la forma vieja (`nivel` + `provinciaId`) da «Formato no válido» en `fieldErrors.formato`, nombrando los campos", () => {
+    const e = errores({ nivel: "canton", provinciaId: "p1", nombre: "Buenos Aires" });
+    expect(Object.keys(e.fieldErrors)).toEqual([CAMPO_DE_FORMATO]);
+    expect(e.fieldErrors[CAMPO_DE_FORMATO]).toEqual([mensajeDeFormatoNoValido(["nivel", "provinciaId"])]);
+    expect(mensajeDeFormatoNoValido(["nivel", "provinciaId"])).toMatch(
+      /^Formato no válido: no se admiten los campos nivel, provinciaId\./,
+    );
+    expect(e.formErrors).toEqual([]);
+  });
+
+  it("la forma vieja sin nombre dice las dos cosas: el nombre y el formato", () => {
+    const e = errores({ nivel: "distrito", cantonId: "c1" });
+    expect(Object.keys(e.fieldErrors).sort()).toEqual([CAMPO_DE_FORMATO, "nombre"]);
+  });
+
+  it("país y padre a la vez, o ninguno de los dos, es formato no válido con su mensaje", () => {
+    expect(errores({ paisId: "CR", padreId: "n1", nombre: "Puntarenas" }).fieldErrors[CAMPO_DE_FORMATO]).toEqual([
+      DESTINO_SIN_DECIDIR,
+    ]);
+    expect(errores({ nombre: "Puntarenas" }).fieldErrors[CAMPO_DE_FORMATO]).toEqual([DESTINO_SIN_DECIDIR]);
+  });
+
+  it("CONTRAPRUEBA: la forma de hoy entra y la raíz sale sin la clave del hijo (y al revés)", () => {
+    expect(crearNodoGeograficoSchema.parse({ paisId: "CR", nombre: " Puntarenas " })).toEqual({
+      paisId: "CR",
+      nombre: "Puntarenas",
+    });
+    expect("padreId" in crearNodoGeograficoSchema.parse({ paisId: "CR", nombre: "Puntarenas" })).toBe(false);
+    expect("paisId" in crearNodoGeograficoSchema.parse({ padreId: "n1", nombre: "Cabagra" })).toBe(false);
   });
 });

@@ -67,6 +67,8 @@ function paisDoble(o: Partial<Record<keyof IPaisService, Espia>> = {}) {
     // SLT-46 (T4.4): los llaman `renombrarTipoNivelAction` y `agregarNivelPaisAction`.
     renombrarTipo: vi.fn(async () => ({ status: "ok" as const })),
     agregarNivel: vi.fn(async () => ({ status: "not_found" as const })),
+    // SLT-46 (T4.6): lo llama `reordenarTiposAction`.
+    reordenarTipos: vi.fn(async () => ({ status: "ok" as const })),
     ...o,
   } satisfies Record<keyof IPaisService, Espia>;
 }

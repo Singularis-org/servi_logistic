@@ -11,6 +11,7 @@ import type {
   ListarPaisesDisponiblesServiceResult,
   ListarPaisesServiceResult,
   RenombrarTipoNivelServiceResult,
+  ReordenarTiposServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import {
@@ -20,6 +21,7 @@ import {
   PAIS_FUERA_DEL_CATALOGO,
   PAIS_NIVELES_MAX,
   renombrarTipoNivelSchema,
+  reordenarTiposSchema,
   type CambiarDisponibilidadPaisInput,
   type EtiquetasGeograficas,
 } from "@/lib/types/pais";
@@ -137,6 +139,24 @@ export class PaisService implements IPaisService {
     if (r === "tope") return { status: "validation_error", fieldErrors: { paisId: [PAIS_TOPE_DE_NIVELES] } };
     if (r === "cambio_concurrente") return CAMBIO_CONCURRENTE;
     return { status: "ok", tipo: r };
+  }
+
+  /**
+   * SLT-46 (2026-11-09; R55–R57). El orden actual es éxito sin escribir (`sin_cambio`). Que la lista
+   * siga siendo exactamente la del país y con sus nombres lo decide el repositorio bajo el candado del
+   * país: aquí solo la forma (2–10, sin repetidos, nombres 2–40).
+   */
+  async reordenarTipos(input: unknown, actor: Actor): Promise<ReordenarTiposServiceResult> {
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
+
+    const validada = reordenarTiposSchema.safeParse(input);
+    if (!validada.success) return errorDeValidacion(validada.error);
+    const { paisId, niveles } = validada.data;
+
+    const r = await this.repo.reordenarTipos(paisId, niveles, { usuarioId: actor.usuarioId });
+    if (r === "no_existe") return { status: "not_found" };
+    if (r === "cambio_concurrente") return CAMBIO_CONCURRENTE;
+    return { status: "ok" };
   }
 
   /** R47. El historial lo escribe el repositorio, solo si la fila cambió. No mira los niveles (R28). */

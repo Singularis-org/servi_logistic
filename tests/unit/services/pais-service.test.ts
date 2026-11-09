@@ -414,6 +414,97 @@ describe("R48/R49 — agregar un nivel al final", () => {
   });
 });
 
+// SLT-46 (2026-11-09, design §4.3, §4.7) — reordenar niveles (R55–R57) y el cambio concurrente (R61).
+
+const REORDEN_VALIDO = {
+  paisId: "XA",
+  niveles: [
+    { tipoId: "t-2", nombreSingular: " Comuna ", nombrePlural: "Comunas" },
+    { tipoId: "t-1", nombreSingular: "Región", nombrePlural: "Regiones" },
+  ],
+};
+
+describe("R55–R57 — reordenar los niveles de un país", () => {
+  it.each(["reordenado", "sin_cambio"] as const)(
+    "el repositorio responde `%s` → `ok`; recibe el país, la lista normalizada en su orden y el actor",
+    async (resultado) => {
+      const repo = repoDoble({ reordenarTipos: resultado });
+      expect(await new PaisService(repo).reordenarTipos(REORDEN_VALIDO, SUPERADMIN)).toEqual({ status: "ok" });
+      expect(repo.reordenarTipos).toHaveBeenCalledWith(
+        "XA",
+        [
+          { tipoId: "t-2", nombreSingular: "Comuna", nombrePlural: "Comunas" },
+          { tipoId: "t-1", nombreSingular: "Región", nombrePlural: "Regiones" },
+        ],
+        { usuarioId: "u-super" },
+      );
+    },
+  );
+
+  it("R57: un país que no existe es `not_found`", async () => {
+    const repo = repoDoble({ reordenarTipos: "no_existe" });
+    expect(await new PaisService(repo).reordenarTipos(REORDEN_VALIDO, SUPERADMIN)).toEqual({ status: "not_found" });
+  });
+
+  it("R57: la lista ya no es la del país (o un nombre cambió) → `conflict` con motivo de cambio concurrente", async () => {
+    const repo = repoDoble({ reordenarTipos: "cambio_concurrente" });
+    expect(await new PaisService(repo).reordenarTipos(REORDEN_VALIDO, SUPERADMIN)).toEqual({
+      status: "conflict",
+      motivo: "cambio_concurrente",
+    });
+  });
+
+  it.each<[string, unknown[]]>([
+    ["un tipo repetido", [REORDEN_VALIDO.niveles[0], REORDEN_VALIDO.niveles[0]]],
+    ["un solo nivel", [REORDEN_VALIDO.niveles[0]]],
+    ["once niveles", nTipos(11).map((t, i) => ({ tipoId: `t-${i}`, nombreSingular: t.singular, nombrePlural: t.plural }))],
+  ])("R57: %s → `validation_error` en `niveles`, sin tocar la base", async (_c, niveles) => {
+    const repo = repoDoble();
+    const r = await new PaisService(repo).reordenarTipos({ paisId: "XA", niveles }, SUPERADMIN);
+    expect(r.status).toBe("validation_error");
+    if (r.status !== "validation_error") return;
+    expect(Object.keys(r.fieldErrors)).toContain("niveles");
+    expect(repo.reordenarTipos).not.toHaveBeenCalled();
+  });
+});
+
+describe("R61 — el cambio concurrente es un `conflict` NUEVO, con motivo; los de antes no cambian", () => {
+  const RENOMBRE = {
+    tipoId: "t-2",
+    nombreSingular: "Municipio",
+    nombrePlural: "Municipios",
+    anterior: { nombreSingular: "Cantón", nombrePlural: "Cantones" },
+  };
+  const NIVEL = { paisId: "XA", nombreSingular: "Sector", nombrePlural: "Sectores", profundidad: 4 };
+
+  it("renombrar un tipo con un «antes» que ya no es el de la base → `conflict` con motivo", async () => {
+    const repo = repoDoble({ renombrarTipo: "cambio_concurrente" });
+    expect(await new PaisService(repo).renombrarTipo(RENOMBRE, SUPERADMIN)).toEqual({
+      status: "conflict",
+      motivo: "cambio_concurrente",
+    });
+  });
+
+  it("agregar nivel con una profundidad que ya no es P+1 → `conflict` con motivo", async () => {
+    const repo = repoDoble({ agregarNivel: "cambio_concurrente" });
+    expect(await new PaisService(repo).agregarNivel(NIVEL, SUPERADMIN)).toEqual({
+      status: "conflict",
+      motivo: "cambio_concurrente",
+    });
+  });
+
+  it("CONTRAPRUEBA (R12): el `conflict` del alta de país (código o nombre repetido) sigue SIN motivo", async () => {
+    const r = await new PaisService(repoDoble()).crear({ ...entradaValida(), id: "CR" }, SUPERADMIN);
+    expect(r).toEqual({ status: "conflict", campo: "id" });
+    expect(r).not.toHaveProperty("motivo");
+    const duplicado = await new PaisService(repoDoble({ crear: { estado: "duplicado", campo: "nombre" } })).crear(
+      entradaValida(),
+      SUPERADMIN,
+    );
+    expect(duplicado).toEqual({ status: "conflict", campo: "nombre" });
+  });
+});
+
 describe("R39 — el rol se mira ANTES de validar y de tocar el repositorio", () => {
   const operaciones: Array<[string, (s: PaisService, a: Actor) => Promise<unknown>]> = [
     ["listar", (s, a) => s.listar(a)],
@@ -424,6 +515,9 @@ describe("R39 — el rol se mira ANTES de validar y de tocar el repositorio", ()
     ["renombrarTipo (entrada inválida)", (s, a) => s.renombrarTipo({ basura: true }, a)],
     ["agregarNivel", (s, a) => s.agregarNivel({ paisId: "XA", nombreSingular: "Uno", nombrePlural: "Unos", profundidad: 3 }, a)],
     ["agregarNivel (entrada inválida)", (s, a) => s.agregarNivel({ basura: true }, a)],
+    // SLT-46 (2026-11-09, R57): reordenar también mira el rol antes de validar y de tocar la base.
+    ["reordenarTipos", (s, a) => s.reordenarTipos(REORDEN_VALIDO, a)],
+    ["reordenarTipos (entrada inválida)", (s, a) => s.reordenarTipos({ basura: true }, a)],
     ["cambiarDisponible", (s, a) => s.cambiarDisponible({ id: "XA", disponible: true }, a)],
   ];
 

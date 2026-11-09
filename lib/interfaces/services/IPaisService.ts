@@ -55,6 +55,18 @@ export type AgregarNivelPaisServiceResult =
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | CambioConcurrenteResult;
 
+/**
+ * SLT-46 (2026-11-09; R55–R57): `ok` también cuando el orden pedido es el actual (`sin_cambio`, sin
+ * escribir). Lista mal formada (repetidos, menos de 2, más de 10) → `validation_error`; la lista ya no
+ * es la del país o un nombre cambió → cambio concurrente.
+ */
+export type ReordenarTiposServiceResult =
+  | { status: "ok" }
+  | { status: "not_found" }
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | CambioConcurrenteResult;
+
 /** Enmienda 2026-10-26, decisión 6 (R47): `ok` también cuando el país ya estaba así (sin escribir). */
 export type CambiarDisponibilidadPaisServiceResult =
   | { status: "ok"; id: string; disponible: boolean }
@@ -82,6 +94,12 @@ export interface IPaisService {
 
   /** SLT-46 (P3; R48, R49, R39): agrega un nivel al final del país (`agregarNivelPaisSchema`). */
   agregarNivel(input: unknown, actor: Actor): Promise<AgregarNivelPaisServiceResult>;
+
+  /**
+   * SLT-46 (2026-11-09; R39, R55–R57): el nuevo orden de los niveles de un país ya creado
+   * (`reordenarTiposSchema`). El rol antes de validar y de tocar la base.
+   */
+  reordenarTipos(input: unknown, actor: Actor): Promise<ReordenarTiposServiceResult>;
 
   /**
    * R47 y R37: el rol antes de tocar la base; `not_found` si el país no existe. No mira los niveles

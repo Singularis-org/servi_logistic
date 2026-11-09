@@ -511,3 +511,62 @@ escribe `"nodo_geografico"` desde T3.1 (R35, design §7, P5). No lo causa T3.4: 
 el `beforeAll` y nunca había corrido contra el código de T3.1; al crear el actor en el test, aparece.
 Cambiar `"distrito"` → `"nodo_geografico"` es un cambio de resultado que ni tasks ni el leader autorizaron
 para este archivo: **pendiente de autorización** (es una línea, respaldada por R35/§7).
+
+### T4.5 — esquemas, `PaisService.reordenarTipos` y `conflict` con motivo (2026-11-09)
+
+**Archivos.** `lib/types/pais.ts` (`reordenarTiposSchema`, `TIPO_REPETIDO_AL_REORDENAR`),
+`lib/types/geografia-nodo.ts` (alta de nodo sin `z.union`; `CAMPO_DE_FORMATO`, `mensajeDeFormatoNoValido`,
+`DESTINO_SIN_DECIDIR`), `lib/interfaces/services/IPaisService.ts` (`ReordenarTiposServiceResult`,
+`reordenarTipos`), `lib/services/PaisService.ts` (`reordenarTipos`); tests `pais-schemas`, `geografia-nodo`,
+`pais-service`, `geografia-service` (casos nuevos) y el doble de `IPaisService` en
+`geografia-plataforma-action`. `anterior`, `profundidad`, `nombreAnterior` y la variante `{ status:
+"conflict"; motivo: "cambio_concurrente" }` en `renombrarTipo`/`agregarNivel`/`renombrar` ya entraron en
+T3.3/T3.4 (ver sus «Desviación»).
+
+**Qué hace.**
+- `reordenarTiposSchema`: `{ paisId, niveles: { tipoId, nombreSingular, nombrePlural }[] }` `.strict()`,
+  2–10 elementos, nombres 2–40 (normalizados como el alta), `tipoId` distintos por `superRefine` (el error
+  cae en `fieldErrors.niveles`).
+- `PaisService.reordenarTipos`: rol → esquema → `repo.reordenarTipos` → `no_existe` → `not_found`;
+  `cambio_concurrente` → `conflict` con motivo; `sin_cambio`/`reordenado` → `ok`.
+- **Alta de nodo (decisión del humano 2026-11-09).** `crearNodoGeograficoSchema` deja de ser
+  `z.union` de dos `.strict()`: es UN objeto con `paisId?`, `padreId?`, `nombre`, `codigo?` (`.loose()`)
+  más un `superRefine` que corre aunque otro campo haya fallado (`when: () => true`) y un `transform` a la
+  unión `{paisId,…} | {padreId,…}` (el tipo `CrearNodoGeograficoInput` no cambia para quien lo usa).
+  Resultado:
+  - sin `nombre` → `fieldErrors.nombre` (como antes de SLT-46), sin `formErrors`;
+  - claves que no son de esta forma (p. ej. la vieja `{ nivel, provinciaId|cantonId, … }`) →
+    `fieldErrors.formato = ["Formato no válido: no se admiten los campos nivel, provinciaId. El alta lleva
+    el país (raíz) o el padre (hijo), el nombre y, si se quiere, el código."]`;
+  - país y padre a la vez, o ninguno → `fieldErrors.formato = ["Formato no válido: el alta lleva el país
+    (raíz) o el padre (hijo), uno de los dos."]`;
+  - una forma vieja sin nombre da los dos (`nombre` y `formato`).
+  **Decisión a revisar:** el campo elegido es `formato` (constante `CAMPO_DE_FORMATO`), no `nombre` ni
+  `entrada`: no es un dato que la persona teclee y así no se confunde con el error del nombre. La pantalla
+  vieja (`mensajeDeValidacion` de `GeografiaAdminModule.tsx`) solo lee `nombre`/`codigo`: con la forma
+  vieja con nombre, el toast mostrará el genérico de `validation_error` hasta T6 (no se tocó UI).
+
+**Tests nuevos (T4.5 «Hecho»).**
+- `pais-schemas`: `anterior` obligatorio (sin él, incompleto o con clave de más → error; con él, se
+  normaliza); `profundidad` obligatoria (2, 11, 3.5, "4" → error; 3 y 10 → ok); reordenar: 2 y 10 ok, orden
+  conservado y normalizado; 1 y 11 → error en `niveles`; repetido → `TIPO_REPETIDO_AL_REORDENAR` (con
+  contraprueba); nombres fuera de 2–40, `tipoId` vacío, claves de más, país no alfa-2.
+- `geografia-nodo`: `nombreAnterior` obligatorio y sin normalizar; los seis casos de la decisión del alta
+  (sin nombre, campo propio, forma vieja, forma vieja sin nombre, destino sin decidir, contraprueba).
+- `pais-service`: `reordenarTipos` `reordenado`/`sin_cambio` → `ok` con la lista normalizada en su orden;
+  `no_existe` → `not_found`; `cambio_concurrente` → `conflict` con motivo; repetido / 1 / 11 →
+  `validation_error` en `niveles` sin tocar el repo; `renombrarTipo` y `agregarNivel` con
+  `cambio_concurrente` → `conflict` con motivo; contraprueba: los `conflict` del alta de país siguen sin
+  `motivo`; R39: `reordenarTipos` (válida e inválida) → `forbidden` con el repo que lanza, y contraprueba.
+- `geografia-service`: `cambio_concurrente` → `conflict` con motivo, el repo recibe el «antes»;
+  contraprueba: el `conflict` por hermano sigue sin `motivo` y no llega al repositorio.
+
+**Cambios de aserción en tests existentes.** Ninguno en esta task (los casos existentes del alta de nodo
+—`validation_error` con `cantonId`, raíz sin país, etc.— siguen verdes sin tocarlos).
+
+**Salida real.**
+- `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0; `eslint` de lo tocado → 0.
+- Unit (`pais-service`, `geografia-service`, `pais-schemas`, `geografia-nodo`, `geografia-plataforma-action`,
+  `geografia-plataforma.composition-root`, `nombres-que-imprime-la-etiqueta`):
+  `Test Files 7 passed (7) · Tests 374 passed (374)`; tras ajustar el tipo del helper de
+  `geografia-nodo`: `Tests 30 passed (30)` en ese archivo.

@@ -142,7 +142,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   *Hecho:* `tests/unit/actions/geografia-plataforma-action.test.ts` y
   `geografia-plataforma.composition-root.test.ts` verdes (incluida la lista de exports sin action de
   mover ni de quitar nivel; único → `conflict` en agregar nivel).
-- [ ] **T4.5** *(2026-11-09; depende de T3.3, T3.4)* Esquemas de §4.1: `nombreAnterior` en
+- [x] **T4.5** *(2026-11-09; depende de T3.3, T3.4)* Esquemas de §4.1: `nombreAnterior` en
   `renombrarNodoGeograficoSchema`, `anterior` en `renombrarTipoNivelSchema`, `profundidad` en
   `agregarNivelPaisSchema` y `reordenarTiposSchema` nuevo; `PaisService.reordenarTipos` /
   `IPaisService`; variante `{ status: "conflict"; motivo: "cambio_concurrente" }` en los resultados de
