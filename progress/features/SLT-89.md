@@ -23,6 +23,7 @@ países» (PR #107), que trae 43, 44, 45, 65 y 71. Siguiente: acotar (`/afinar-f
 ## Decisiones
 - 2026-11-09 (humano): «arranca 89, ignora las que están en proceso de geografía, están pausadas de
   momento»: la rama nace sobre `feature/SLT-46-geo-jerarquica-admin`; las fichas geo en vuelo no se tocan.
+- 2026-11-09 · Alcance y decisiones cerradas en `specs/SLT-89-geo-jerarquica-zonas/requirements.md` (`/afinar-feature`; descripción de la tarjeta actualizada, complexity:high).
 
 ## Preguntas abiertas
 
