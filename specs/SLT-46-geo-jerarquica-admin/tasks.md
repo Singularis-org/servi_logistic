@@ -246,9 +246,12 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
 
 ## T9 — Cierre
 
-- [ ] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R63) en `progress/impl_SLT-46.md`; R45: sin
+- [x] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R63) en `progress/impl_SLT-46.md`; R45: sin
   archivos nuevos en `e2e/`; R52: aprobación de la maqueta anotada con fecha anterior al primer commit
   de T6.
+  *Hecho (2026-11-09):* mapa consolidado, R45 y R52 en `progress/impl_SLT-46.md > T9.1`. La parte
+  «`./init.sh` verde» (y T0.1) queda en el check `gate-completo` de CI: el gate local con la pila entera
+  tarda horas y el leader pidió no correrlo.
 
 ## Archivos esperados
 
