@@ -1,4 +1,4 @@
-# SLT-87 «Reporte de bugs: botón flotante y módulo del superadmin»
+# SLT-87 «Reporte de bugs: botón flotante y envío»
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
