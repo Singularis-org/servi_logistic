@@ -8,7 +8,7 @@
 
 ## Bloque A — Datos
 
-- [ ] **T1. Enum, columna, historial y triggers** (R3, R16, R18, R21, R23).
+- [x] **T1. Enum, columna, historial y triggers** (R3, R16, R18, R21, R23).
   - **Archivos:**
     - en `db/schema.prisma`, el enum `BugReportStatus`, `status` en `BugReport` (con `@default(new)` y el
       índice) y el modelo `BugReportStatusChange` con su inverso;
@@ -49,7 +49,7 @@
 
 ## Bloque C — Interfaz
 
-- [ ] **T6 [P]. Menú** (dep. —; R1, R2).
+- [x] **T6 [P]. Menú** (dep. —; R1, R2).
   - **Archivos:**
     - código: el ítem «Reportes» y `IconKey "bug"` en `lib/auth/menu-visibility.ts`, y `bug: Bug` en
       `app/(app)/_components/Sidebar.tsx`;

@@ -6501,11 +6501,52 @@ model BugReport {
   updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at")
   /// Borrado lógico (R19). En SLT-87 nada lo escribe.
   deletedAt      DateTime?    @map("deleted_at")
+  /// SLT-97 (design §2.1; R16): nace «Nuevo»; el trigger `bug_report_status_solo_adelante`
+  /// (20261111120000) solo lo deja avanzar.
+  status         BugReportStatus @default(new)
 
-  organization Organizacion @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  reporter     Usuario      @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization  Organizacion            @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  reporter      Usuario                 @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  statusChanges BugReportStatusChange[] // SLT-97: su historial de cambios de estado; CASCADE
 
   @@index([createdAt(sort: Desc), id])
   @@index([organizationId, createdAt(sort: Desc)])
+  // SLT-97 (design §2.1): el filtro por estado del listado del superadmin.
+  @@index([status, createdAt(sort: Desc), id])
   @@map("bug_report")
+}
+
+// SLT-97 (design §2.1) — el estado de un reporte de problema. Solo avanza: new → in_review → resolved o
+// dismissed, o new → resolved o dismissed (trigger `bug_report_status_solo_adelante`, SL097).
+enum BugReportStatus {
+  new
+  in_review
+  resolved
+  dismissed
+
+  @@map("bug_report_status")
+}
+
+// SLT-97 (design §2.2-§2.4; R21, R23) — historial de cambios de estado de un reporte. De PLATAFORMA, como
+// `bug_report`: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261111120000, igual que los `CHECK` y el trigger de inmutabilidad (SL097). Sin `updated_at` ni
+// `deleted_at` a propósito: la fila no se cambia ni se borra, salvo en cascada con su reporte.
+// `actorUserId` es opaco y sin FK, como en `plan_rastro` y `vehiculo_rastro`: la autoría sobrevive a la
+// cuenta. La escribe solo `lib/repositories/BugReportRepository.ts`, en `comoPlataforma`.
+model BugReportStatusChange {
+  id          String          @id @default(uuid())
+  bugReportId String          @map("bug_report_id")
+  fromStatus  BugReportStatus @map("from_status")
+  toStatus    BugReportStatus @map("to_status")
+  /// `null` = sin nota; si hay, 1-500 tras recortar (`NOTA_MAX`, `lib/types/reporte-bug.ts`).
+  note        String?
+  actorUserId String          @map("actor_user_id")
+  /// Nombre del superadmin en el momento del cambio.
+  actorName   String          @map("actor_name") @db.VarChar(120)
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  bugReport BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([bugReportId, createdAt(sort: Desc), id])
+  @@map("bug_report_status_change")
 }
