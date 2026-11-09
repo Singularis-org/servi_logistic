@@ -25,6 +25,8 @@ F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarje
 
 - 2026-11-09 · F2.2 vuelta 1 (9c65e6d0): RECHAZADO. B1 guardia `catalogo-postgres-acota-esquema` (consultas del test de ida y vuelta sin acotar esquema); B2 falta cierre (E2E locales). Leader: se corrigen B1, m1 (LOCK en down.sql) y m3 (design `trazas[]`); los E2E del grupo dinero se corren en local; `./init.sh` lo sustituye el gate-completo en CI (preferencia del humano). m2 (con BEGIN explícito, un fallo de `migrate deploy` muestra 25P02 en vez del error real): es aviso de operación para el deploy a producción, no se cambia.
 
+- 2026-11-09 · F2.2 vuelta 2 (305b32c8): OK, 0 bloqueantes. Arreglos 9fe97705, 9fe70dc3, 607bfa35, 8b6b601b; E2E locales dinero 84/0 y aislamiento 25/0. Integrado origin/dev sin conflictos. PR a dev.
+
 ## Preguntas abiertas
 Ninguna.
 
