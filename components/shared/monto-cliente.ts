@@ -63,3 +63,31 @@ export function montoValido(monto: string, max?: string): boolean {
   if (!/^\d+(\.\d{1,2})?$/.test(limpio) || !/[1-9]/.test(limpio)) return false;
   return max === undefined || montoMenorOIgual(limpio, max);
 }
+
+/**
+ * ¿El monto (STRING money-safe) es cero? Comparación TEXTUAL ("0", "0.00", "-0.00"), no
+ * aritmética: nada de `Number`/`parseFloat`.
+ *
+ * FICHA 395 — vivía privada dentro de `cierre-factura.tsx`; la 395 la movió a
+ * `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx`. SLT-96 la PROMUEVE aquí,
+ * tal cual, porque ahora también la necesita el diálogo compartido de «Marcar recibido»
+ * (`components/shared/conciliacion/`), que no puede importar de una ruta de `app/`.
+ * `cierre-detalle-shared.tsx` la re-exporta para que sus cuatro lectores no cambien de import.
+ * Se mueve en vez de copiarse: dos lectores del cero que se separen es la misma plata leída
+ * distinta según por qué pantalla se entre.
+ */
+export function esMontoCero(monto: string): boolean {
+  return /^-?0(\.0+)?$/.test(monto.trim());
+}
+
+/**
+ * SLT-96 — la forma de `montoValido` SIN exigir un dígito distinto de cero: hasta 2 decimales
+ * y ≥ 0 ("0", "0.0", "0.00" pasan; "-0.00", "0.000" y "" no). Sin tope y sin signo.
+ *
+ * Solo para el diálogo de «Marcar recibido» cuando lo declarado es 0: es el único caso en que
+ * el servidor admite el 0 (lo decide él, leyendo lo declarado de la base). En cualquier otro
+ * sitio se sigue usando `montoValido`, que lo rechaza.
+ */
+export function montoValidoOCero(monto: string): boolean {
+  return /^\d+(\.\d{1,2})?$/.test(monto.trim());
+}

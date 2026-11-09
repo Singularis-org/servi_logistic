@@ -594,18 +594,13 @@ export function esMontoNegativo(value: string | null): boolean {
 }
 
 /**
- * ¿El monto (STRING money-safe) es cero? Comparación TEXTUAL ("0", "0.00", "-0.00"), no
- * aritmética: nada de `Number`/`parseFloat` (R13), igual que `esMontoNegativo`.
+ * ¿El monto (STRING money-safe) es cero? Comparación TEXTUAL, no aritmética (R13).
  *
- * FICHA 395 — vivía privada dentro de `cierre-factura.tsx`, donde apaga el renglón de un
- * concepto que no se cobró. La necesita también el detalle del cierre de mensajero, para decidir
- * si hay un flete por rechazo del que hablar antes de escribir su tiempo verbal. Se MUEVE aquí
- * en vez de copiarse: dos lectores del cero que se separen es la misma plata leída distinta
- * según por qué pantalla se entre.
+ * SLT-96 — PROMOVIDA a `components/shared/monto-cliente.ts`, porque también la lee el diálogo
+ * compartido de «Marcar recibido». Se re-exporta aquí para que sus lectores de `app/(app)/`
+ * (`cierre-factura`, `CascadasCierreMensajero`, `SaldosSatelitesTable`) no cambien de import.
  */
-export function esMontoCero(monto: string): boolean {
-  return /^-?0(\.0+)?$/.test(monto.trim());
-}
+export { esMontoCero } from "@/components/shared/monto-cliente";
 
 /** Une la jerarquía geográfica en una línea legible (omite los vacíos). */
 export function ubicacion(g: CierreDetalleGestion): string {
