@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { test, expect, devices, type Browser, type BrowserContext, type Cookie, type Page } from "@playwright/test";
+import { test, expect, devices, type Browser, type BrowserContext, type Cookie, type Locator, type Page } from "@playwright/test";
 
 import {
   abrirBaseE2E,
@@ -17,7 +17,9 @@ import { LogDelServidor } from "./_dos-empresas-fixture";
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
+  enlacesDelMenu,
   entrarConOtp,
+  NO_ENCONTRADO,
   olvidarDispositivos,
   SUPERADMIN_DE_PRUEBA,
 } from "./_superadmin-fixture";
@@ -281,5 +283,229 @@ test.describe("SLT-87 — el envío", () => {
     expect(linea).toContain(`to=${DESTINATARIO} `);
     // A nadie más: ningún correo al maestro que reporta (R15).
     expect(leido).not.toContain(`to=${empresa.maestro.email}`);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SLT-97 «Reporte de bugs: módulo del superadmin» (T9; design §10)            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * El módulo `/plataforma/reportes` de punta a punta: el maestro envía, el superadmin lo encuentra desde
+ * el menú, abre el detalle, lo pasa a «En revisión» con nota y a «Resuelto» sin ella, y el filtro de
+ * estado lo saca de «Pendientes». Lo fino (textos, contador, transiciones prohibidas, paginación) lo
+ * prueban `tests/components/ReporteDetalle.test.tsx` y
+ * `tests/unit/components/reportes-plataforma-page.test.tsx`.
+ *
+ * DOS CORRIDAS SOBRE LA MISMA BASE. El reporte se localiza por su descripción, que lleva un UUID de esta
+ * corrida, y el listado se filtra por la empresa que crea el `beforeAll` (nueva en cada corrida): ni el
+ * orden por fecha ni los reportes de otras corridas o de otras empresas mueven la fila a otra página.
+ * Nunca se cuenta el listado ni se toma «la primera fila»; solo se cuentan las entradas del historial
+ * de ESTE reporte, que nadie más toca.
+ *
+ * Los tres casos van en serie: el segundo usa la sesión del superadmin y el reporte resuelto del primero.
+ */
+
+const TEXTO_MODULO = {
+  menu: "Reportes",
+  tituloListado: "Reportes",
+  tituloDetalle: "Reporte",
+  filtroEstado: "Estado",
+  filtroEmpresa: "Empresa",
+  pendientes: "Pendientes",
+  todos: "Todos",
+  nuevo: "Nuevo",
+  enRevision: "En revisión",
+  resuelto: "Resuelto",
+  rolMaestro: "Maestro",
+  bloqueDescripcion: "Descripción",
+  bloqueContexto: "Contexto",
+  bloqueEstado: "Estado",
+  bloqueHistorial: "Historial",
+  nuevoEstado: "Nuevo estado",
+  nota: "Nota interna (opcional)",
+  cambiarEstado: "Cambiar estado",
+  exito: "Estado actualizado.",
+  sinNota: "Sin nota",
+  historialVacio: "Todavía no hay cambios de estado.",
+  cerrado:
+    "Este reporte está cerrado y ya no cambia de estado. Si el problema vuelve, entrará como un reporte nuevo.",
+  cargaError: "No se pudo cargar el listado de reportes.",
+} as const;
+
+/** Abre un `Select` de Base UI y elige la opción por su texto exacto; espera a que se cierre. */
+async function elegirOpcion(page: Page, combobox: Locator, opcion: string): Promise<void> {
+  await combobox.click();
+  await page.getByRole("option", { name: opcion, exact: true }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+}
+
+function bloque(page: Page, nombre: string): Locator {
+  return page.getByRole("region", { name: nombre, exact: true });
+}
+
+test.describe("SLT-97 — el módulo del superadmin", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let nombreEmpresa = "";
+  let descripcion = "";
+  let sesionSuperadmin: Cookie[] = [];
+
+  function filaDelReporte(page: Page): Locator {
+    return page.getByRole("row").filter({ hasText: descripcion });
+  }
+
+  test.beforeAll(async () => {
+    const db = abrirBaseE2E();
+    try {
+      const org = await db.organizacion.findUniqueOrThrow({
+        where: { id: empresa.organizacionId },
+        select: { nombre: true },
+      });
+      nombreEmpresa = org.nombre;
+    } finally {
+      await db.$disconnect();
+    }
+  });
+
+  test("el superadmin abre «Reportes» desde el menú y ve el reporte enviado", async ({ page, browser }) => {
+    test.setTimeout(300_000);
+
+    // Paso 1 — envío: el maestro desde `/ordenes`, con una descripción de esta corrida.
+    descripcion = `E2E SLT-97 módulo ${randomUUID()}`;
+    await comoMaestro(page, "/ordenes");
+    await enviarReporte(page, descripcion);
+
+    const ctx = await browser.newContext();
+    try {
+      const sa = await ctx.newPage();
+      const db = abrirBaseE2E();
+      try {
+        await conCandadoDelSuperadmin(() => asegurarSuperadmin(db));
+        await conCandadoDelSuperadmin(async () => {
+          await olvidarDispositivos(db, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
+          await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+        });
+      } finally {
+        await db.$disconnect();
+      }
+
+      // Paso 2 — listado (R1, R5, R6): desde el menú, con los filtros por defecto en la URL limpia.
+      await sa
+        .getByRole("navigation", { name: "Navegación principal" })
+        .getByRole("link", { name: TEXTO_MODULO.menu, exact: true })
+        .click();
+      await expect(sa).toHaveURL(/\/plataforma\/reportes$/);
+      await expect(sa.getByRole("heading", { level: 1, name: TEXTO_MODULO.tituloListado })).toBeVisible();
+      const filtroEstado = sa.getByRole("combobox", { name: TEXTO_MODULO.filtroEstado, exact: true });
+      await expect(filtroEstado).toHaveText(TEXTO_MODULO.pendientes);
+
+      // La empresa de la corrida: así la fila no se va a otra página por los reportes de otras corridas.
+      await elegirOpcion(
+        sa,
+        sa.getByRole("combobox", { name: TEXTO_MODULO.filtroEmpresa, exact: true }),
+        nombreEmpresa,
+      );
+      await expect(sa).toHaveURL(new RegExp(`[?&]empresa=${empresa.organizacionId}(&|$)`));
+      await expect(filtroEstado).toHaveText(TEXTO_MODULO.pendientes);
+
+      const fila = filaDelReporte(sa);
+      await expect(fila).toHaveCount(1);
+      await expect(fila).toContainText(nombreEmpresa);
+      await expect(fila).toContainText(empresa.maestro.nombre);
+      await expect(fila.getByRole("cell", { name: TEXTO_MODULO.rolMaestro, exact: true })).toBeVisible();
+      await expect(fila.getByText(TEXTO_MODULO.nuevo, { exact: true })).toBeVisible();
+      await expect(fila).toContainText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC/);
+
+      // Paso 3 — detalle (R6, R14, R22): la fila lleva al detalle de ESE reporte.
+      await fila.getByRole("link").click();
+      await expect(sa).toHaveURL(/\/plataforma\/reportes\/[0-9a-f-]{36}$/);
+      await expect(
+        sa.getByRole("heading", { level: 1, name: TEXTO_MODULO.tituloDetalle, exact: true }),
+      ).toBeVisible();
+      await expect(bloque(sa, TEXTO_MODULO.bloqueDescripcion)).toContainText(descripcion);
+      const contexto = bloque(sa, TEXTO_MODULO.bloqueContexto);
+      await expect(contexto).toContainText(nombreEmpresa);
+      await expect(contexto).toContainText(empresa.maestro.nombre);
+      await expect(contexto).toContainText(empresa.maestro.email);
+      await expect(contexto.getByText("/ordenes", { exact: true })).toBeVisible();
+      const historial = bloque(sa, TEXTO_MODULO.bloqueHistorial);
+      await expect(historial.getByText(TEXTO_MODULO.historialVacio, { exact: true })).toBeVisible();
+      const entradas = historial.getByRole("listitem");
+
+      // Paso 4 — primer cambio (R17, R20, R21, R22): «En revisión» con una nota de esta corrida.
+      const estado = bloque(sa, TEXTO_MODULO.bloqueEstado);
+      const destino = estado.getByRole("combobox", { name: TEXTO_MODULO.nuevoEstado, exact: true });
+      await expect(estado.getByText(TEXTO_MODULO.nuevo, { exact: true })).toBeVisible();
+      const nota = `Nota E2E SLT-97 ${randomUUID()}`;
+      await elegirOpcion(sa, destino, TEXTO_MODULO.enRevision);
+      await estado.getByLabel(TEXTO_MODULO.nota, { exact: true }).fill(nota);
+      await expect(estado.getByText(`${nota.length}/500`, { exact: true })).toBeVisible();
+      await estado.getByRole("button", { name: TEXTO_MODULO.cambiarEstado }).click();
+      await expect(estado.getByRole("status")).toHaveText(TEXTO_MODULO.exito, { timeout: 30_000 });
+      // El historial nuevo llega con el `router.refresh()`: se espera a él, no a un tiempo.
+      await expect(entradas).toHaveCount(1, { timeout: 30_000 });
+      await expect(entradas.nth(0)).toContainText(`${TEXTO_MODULO.nuevo} → ${TEXTO_MODULO.enRevision}`);
+      await expect(entradas.nth(0)).toContainText(nota);
+      await expect(entradas.nth(0)).toContainText(SUPERADMIN_DE_PRUEBA.SUPERADMIN_NOMBRE);
+      await expect(estado.getByText(TEXTO_MODULO.enRevision, { exact: true })).toBeVisible();
+
+      // Paso 5 — segundo cambio (R17, R19, R22): «Resuelto» sin nota; el formulario se va.
+      await elegirOpcion(sa, destino, TEXTO_MODULO.resuelto);
+      await expect(estado.getByLabel(TEXTO_MODULO.nota, { exact: true })).toHaveValue("");
+      await estado.getByRole("button", { name: TEXTO_MODULO.cambiarEstado }).click();
+      await expect(entradas).toHaveCount(2, { timeout: 30_000 });
+      await expect(entradas.nth(0)).toContainText(`${TEXTO_MODULO.enRevision} → ${TEXTO_MODULO.resuelto}`);
+      await expect(entradas.nth(0)).toContainText(TEXTO_MODULO.sinNota);
+      await expect(entradas.nth(1)).toContainText(`${TEXTO_MODULO.nuevo} → ${TEXTO_MODULO.enRevision}`);
+      await expect(entradas.nth(1)).toContainText(nota);
+      await expect(estado.getByText(TEXTO_MODULO.cerrado, { exact: true })).toBeVisible();
+      await expect(estado.getByText(TEXTO_MODULO.resuelto, { exact: true })).toBeVisible();
+      await expect(estado.getByRole("combobox")).toHaveCount(0);
+      await expect(estado.getByRole("textbox")).toHaveCount(0);
+      await expect(estado.getByRole("button", { name: TEXTO_MODULO.cambiarEstado })).toHaveCount(0);
+
+      sesionSuperadmin = await ctx.cookies();
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test("un resuelto no está en Pendientes y sí en Todos", async ({ page }) => {
+    // Paso 6 (R7): usa el reporte resuelto y la sesión del caso anterior.
+    expect(sesionSuperadmin.length, "no hay sesión del superadmin: falló el caso anterior").toBeGreaterThan(0);
+    expect(descripcion, "no hay reporte: falló el caso anterior").not.toBe("");
+    await page.context().addCookies(sesionSuperadmin);
+    await page.goto(`/plataforma/reportes?empresa=${empresa.organizacionId}`);
+
+    // Anti-vacío: el listado se pintó con la empresa y «Pendientes»; sin esto, una página caída también
+    // daría «no está la fila».
+    await expect(page.getByRole("heading", { level: 1, name: TEXTO_MODULO.tituloListado })).toBeVisible();
+    const filtroEstado = page.getByRole("combobox", { name: TEXTO_MODULO.filtroEstado, exact: true });
+    await expect(filtroEstado).toHaveText(TEXTO_MODULO.pendientes);
+    await expect(page.getByRole("combobox", { name: TEXTO_MODULO.filtroEmpresa, exact: true })).toHaveText(
+      nombreEmpresa,
+    );
+    await expect(page.getByText(TEXTO_MODULO.cargaError)).toHaveCount(0);
+    await expect(filaDelReporte(page)).toHaveCount(0);
+
+    await elegirOpcion(page, filtroEstado, TEXTO_MODULO.todos);
+    await expect(page).toHaveURL(/[?&]estado=todos(&|$)/);
+    await expect(page).toHaveURL(new RegExp(`[?&]empresa=${empresa.organizacionId}(&|$)`));
+    const fila = filaDelReporte(page);
+    await expect(fila).toHaveCount(1);
+    await expect(fila.getByText(TEXTO_MODULO.resuelto, { exact: true })).toBeVisible();
+  });
+
+  test("el maestro ve no encontrado en /plataforma/reportes", async ({ page }) => {
+    // R2: su menú no tiene «Reportes» (anti-vacío: `enlacesDelMenu` espera a que el menú se pinte)…
+    await comoMaestro(page, "/dashboard");
+    expect(await enlacesDelMenu(page)).not.toContain(TEXTO_MODULO.menu);
+
+    // …y la dirección escrita a mano le da el 404 del portal, sin nada del listado.
+    await page.goto("/plataforma/reportes");
+    await expect(page.getByRole("heading", { level: 1, name: NO_ENCONTRADO })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: TEXTO_MODULO.tituloListado })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: TEXTO_MODULO.filtroEstado, exact: true })).toHaveCount(0);
   });
 });
