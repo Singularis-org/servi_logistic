@@ -759,3 +759,50 @@ basta revertir esas tres líneas (quedarían rojas: el service ya no devuelve `n
 parado en el `beforeAll`, `superadmin-sin-empresa` 2 rojos). Tras la corrida, `BV`/`HM`/`XP`/`XN`/`XT`/`XA` y
 sus nodos: 0 en la base; `usuario`: 0. `eslint` de los tres → «No issues found»; `pnpm run typecheck` → exit 0
 (un rojo intermedio de tipo, `rol: string` en el actor de `pais-disponible`, corregido con `as const`).
+
+### T5.5 — las suites existentes en verde (2026-11-09)
+
+**Corrida.** `tests/integration/db/geografia-*.test.ts` (18 archivos), `geo-sincronia-geografia`,
+`geo-nodo-rls`, `orden-nodo-escritura` y `tests/integration/api/v2-paises-de-prueba.route.test.ts`.
+Antes de esta task: `Test Files 3 failed | 19 passed (22) · Tests 223 passed | 26 skipped (249)`. Los tres
+rojos eran el `beforeAll` de suites que leían filas de una base sembrada (`usuario.findFirst()`,
+`orden.findFirst()`); `logistic_slt46` no tiene usuarios ni órdenes, así que sus 26 casos ni corrían.
+
+**Cambios en tests existentes (solo fixture; ninguna aserción).**
+
+| Archivo | Cambio | Motivo |
+|---|---|---|
+| `geografia-cascada-reversible` | El actor se crea en la transacción revertida de cada caso (`crearOrganizacion` + `insertarUsuario`) en vez de `usuario.findFirst()` en el `beforeAll` | Leader: filas de `usuario` como fixture dentro del test; mismo cambio que `geografia-renombrado` (T3.4) y `geografia-registro-accion` (T5.4) |
+| `geografia-historico-intacto` | Estatus, tienda y zona de la orden histórica con `crearFksDeOrden` (SL-11) en la transacción revertida (tras `crearOrganizacion` + `fijarEmpresa`), en vez de `orden.findFirst()` | Leader: filas de `orden`/`usuario` como fixture dentro del test |
+| `geografia-ordenes-sin-entregar` | Tienda y zona con `crearFksDeOrden` en la transacción revertida, en vez de `orden.findFirst()`; los estatus siguen leyéndose del catálogo (`order_status`, de migración) | Ídem |
+
+Las demás suites de la lista ya estaban verdes con la forma de entrada que les dieron T3/T4 (`{id}`,
+`{paisId}|{padreId}`, `altaPorNivel`), auditada en «Tanda 2 › Cambios de aserción»; ninguna cambia aquí.
+`geo-nodo-rls` (R41), `orden-nodo-escritura` (R44) y `v2-paises-de-prueba.route` (R29) pasan sin tocarlas.
+
+**Resumen de T5 — cambios de aserción en tests existentes y su autorización.**
+- `geografia-renombrado`, `geografia-registro-accion` (4 `expect`): `entidad_tipo` por nivel →
+  `nodo_geografico` (P5, R35; autorizado por el leader).
+- `carga-division`, `geografia-superadmin-sin-empresa`: `creados` por nivel → por profundidad, mismas cifras
+  (R33; «es forma», leader).
+- `carga-division`: caso P6 retirado con comentario (P6; leader); `listArbolDePais` por cast →
+  `GeoRepository.arbolDePais` con los mismos valores (leader (a)).
+- `geo-lecturas-catalogo`: compara el repositorio con la lectura de hoy sin `app/` (leader).
+- `geografia-superadmin-sin-empresa`: entradas a la forma nueva con el «antes»; historial +3
+  `tipo_nivel_geografico_creado` (R37, decisión humana P+1; leader «ampliarlo a tipos»).
+- **A revisar:** el `ok` de renombre/retiro/reactivación sin `nivel` en `carga-division` (3) y
+  `geografia-superadmin-sin-empresa` (3). Ver la nota de T5.3.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): las 22 suites → `Test Files 22 passed (22) ·
+Tests 249 passed (249)`. `eslint` de los tres archivos → exit 0; `pnpm run typecheck` → exit 0.
+
+**Cierre de T5.5 (implementer, 2026-11-09).** Revisados los tres diffs: solo cambia de dónde salen el
+actor y las FK (fixture dentro de la transacción revertida); ningún `expect` cambia. Ajuste de estilo: el
+tipo de `tx` usa `TxDeTest` de `_postgres-real` en vez de repetir su definición. Recorrida propia
+(`logistic_slt46`, `--maxWorkers=1`): las 22 suites → `Test Files 22 passed (22) · Tests 249 passed (249)`;
+`eslint` de los tres → «No issues found».
+
+**Verificación de T5.1–T5.4 y T8.1 por nombre** (`logistic_slt46`, `--maxWorkers=1`):
+`geografia-admin-n-niveles`, `slt46-equivalencia-geografia`, `carga-division`, `carga-division-n-niveles`,
+`geo-lecturas-catalogo`, `geografia-registro-accion`, `geografia-superadmin-sin-empresa`, `pais-disponible`,
+`geo-equivalencia-geografia` → `Test Files 9 passed (9) · Tests 89 passed (89)`. T5.5 y T8.1 marcadas `[x]`.

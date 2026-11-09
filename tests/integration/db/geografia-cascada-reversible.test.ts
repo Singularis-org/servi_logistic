@@ -3,6 +3,8 @@ import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
+import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
+import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -10,6 +12,7 @@ import {
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
 
 /**
@@ -53,18 +56,21 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
   let prisma: PrismaClient;
   let actorUsuarioId: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const usuario = await prisma.usuario.findFirst({ select: { id: true } });
-    if (!usuario) {
-      throw new Error(
-        "hay DATABASE_URL pero `usuario` esta vacia: sin actor no se puede ejercer el registro de " +
-          "acciones que acompaña al cambio de flag. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    actorUsuarioId = usuario.id;
   });
+
+  /**
+   * SLT-46 (T5.5): el actor se crea DENTRO de la transaccion revertida de cada caso (fixture de
+   * `superadmin-32`), en vez de tomar el primer `usuario` de la base: una base sin sembrar dejaba la
+   * suite parada en el `beforeAll` (SL-31). Solo cambia de donde sale el actor; lo afirmado, igual.
+   */
+  async function sembrarActor(tx: TxDeTest): Promise<void> {
+    const org = await crearOrganizacion(tx);
+    const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
+    if (!u.desenlace.ok) throw new Error(`no se sembro el actor: ${JSON.stringify(u.desenlace)}`);
+    actorUsuarioId = u.id;
+  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -77,6 +83,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarActor(tx);
 
       const zona = (
         await tx.zona.create({ data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Zona ${SUFIJO}` }, select: { id: true } })

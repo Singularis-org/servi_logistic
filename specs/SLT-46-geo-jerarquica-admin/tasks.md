@@ -172,7 +172,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   de 4 niveles y uno de 2). (R31, R33)
 - [x] **T5.4** [P] Ampliar `geografia-registro-accion.test.ts`, `geografia-superadmin-sin-empresa.test.ts`
   y `pais-disponible.test.ts`. (R28, R35, R36, R38, R40)
-- [ ] **T5.5** Pasar las suites existentes `tests/integration/db/geografia-*.test.ts`,
+- [x] **T5.5** Pasar las suites existentes `tests/integration/db/geografia-*.test.ts`,
   `geo-sincronia-geografia.test.ts`, `geo-nodo-rls.test.ts`, `orden-nodo-escritura.test.ts` y
   `tests/integration/api/v2-paises-de-prueba.route.test.ts`; solo cambia la forma de la entrada
   (`{id}`), nunca un resultado. (R12, R29, R41, R44)
@@ -230,7 +230,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
 
 ## T8 — Script y ensayo (depende de T2)
 
-- [ ] **T8.1** Modo `--equivalencia-geografia` en `scripts/geo-backfill-nodo.ts`, solo lectura, sin
+- [x] **T8.1** Modo `--equivalencia-geografia` en `scripts/geo-backfill-nodo.ts`, solo lectura, sin
   tocar los modos de SLT-43, y
   `tests/integration/db/geo-equivalencia-geografia.test.ts`. (R13)
 - [ ] **T8.2** Dejar en `progress/impl_SLT-46.md` el guion del ensayo de §10 para la persona que lo corre

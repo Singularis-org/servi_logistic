@@ -3,12 +3,15 @@ import type { PrismaClient } from "@prisma/client";
 
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
 
 /**
@@ -45,22 +48,24 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
   let tiendaId: string;
   let zonaId: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const fila = await prisma.orden.findFirst({
-      select: { estatusId: true, tiendaId: true, zonaId: true },
-    });
-    if (!fila) {
-      throw new Error(
-        "hay DATABASE_URL pero `orden` esta vacia: sin una fila de la que tomar las FK " +
-          "(estatus, tienda, zona) no se puede sembrar la orden historica, que ES este test. " +
-          "Este archivo NO debe pasar en verde asi.",
-      );
-    }
-    estatusId = fila.estatusId;
-    tiendaId = fila.tiendaId;
-    zonaId = fila.zonaId;
   });
+
+  /**
+   * SLT-46 (T5.5): las FK de la orden (estatus, tienda, zona) se crean DENTRO de la transaccion
+   * revertida de cada caso (`crearFksDeOrden`, SL-11), en vez de tomarlas de la primera `orden` de la
+   * base: una base sin sembrar dejaba la suite parada en el `beforeAll`. Solo cambia de donde salen;
+   * lo afirmado, igual.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    const org = await crearOrganizacion(tx);
+    await fijarEmpresa(tx, org.id);
+    const fks = await crearFksDeOrden(tx);
+    estatusId = fks.estatusId;
+    tiendaId = fks.tiendaId;
+    zonaId = fks.zonaId;
+  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -72,6 +77,7 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
 
       const provincia = (
         await tx.provincia.create({ data: { nombre: `Prov hist ${SUFIJO}` }, select: { id: true } })
