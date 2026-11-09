@@ -4,12 +4,14 @@ import { useEffect, useId, useState } from "react";
 import useSWR from "swr";
 
 import { Modal } from "@/components/shared/Modal";
+import { PrefijoTelefonico } from "@/components/shared/PrefijoTelefonico";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useTelefonoDelPais } from "@/hooks/use-telefono-del-pais";
 import type { CorregirDatosClienteActionResult } from "@/lib/actions/corregir-datos-cliente";
 import { obtenerUbicacionOrden } from "@/lib/actions/corregir-datos-cliente";
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
@@ -322,6 +324,9 @@ export function CorregirDatosClienteModal({
   // SL-20 (design §7; R19): los rótulos de los tres desplegables son los nombres de nivel del país
   // de la empresa. Antes eran `CORREGIR_PROVINCIA_LABEL` y sus dos hermanas, con los de Costa Rica.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-81 (R21): solo el adorno del prefijo del país de la empresa. El teléfono NO se valida con
+  // libphonenumber aquí (SLT-42 R14): el cliente y el servidor siguen con el mismo schema de siempre.
+  const telefonoDelPais = useTelefonoDelPais();
   const destinatarioId = useId();
   const telefonoId = useId();
   const productoId = useId();
@@ -619,14 +624,16 @@ export function CorregirDatosClienteModal({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={telefonoId}>{CORREGIR_TELEFONO_LABEL}</Label>
-          <Input
-            id={telefonoId}
-            type="tel"
-            value={telefono}
-            onChange={(event) => setTelefono(event.target.value)}
-            required
-            aria-invalid={telefonoError ? true : undefined}
-          />
+          <PrefijoTelefonico prefijo={telefonoDelPais?.prefijo ?? null}>
+            <Input
+              id={telefonoId}
+              type="tel"
+              value={telefono}
+              onChange={(event) => setTelefono(event.target.value)}
+              required
+              aria-invalid={telefonoError ? true : undefined}
+            />
+          </PrefijoTelefonico>
           {telefonoError ? (
             <p role="alert" className="text-sm text-destructive">
               {telefonoError}
