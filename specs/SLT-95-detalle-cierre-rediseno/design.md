@@ -1,319 +1,406 @@
-# SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)» — design
+# SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)» — design (v2)
+
+> v2 del 2026-11-09. Conserva del v1: la carpeta-módulo puro (`detalle-cierre-vista.ts`), el
+> origen de cada cifra existente, el nombre accesible conservado, los diálogos con callbacks y las
+> alternativas descartadas 1-4. Cambia: cuatro componentes en vez de uno, viven en
+> `components/private/cierres/` (los usan `/cierres-admin`, `/cierre-dia` y `/wallet/satelites`),
+> las cifras de la nota p1 se derivan en el servidor, el Excel nuevo y el corte en 17 rebanadas.
 
 ## Lo que ya existe
 
 **Términos buscados:**
-- board (`feature_list.json`, todos los estados): «detalle del cierre», «Le queda a la
-  empresa», «verFulfillment», «Por revisar», «pestañas por tipo», «Incidente de /cierre-dia»;
-- `specs/`: «un solo componente», «fila desplegada», «Ver cómo se calculó», «Le queda a la
-  empresa»;
-- código: `cierre-detalle-shared`, `CierreFacturaDetalle`, `CascadasCierreMensajero`,
-  `CierresBodegaAdminModule`, `GestionesPorResultado`, `verFulfillment`, `GANANCIA_DEBE_LABEL`,
-  `ConciliacionAcciones`.
+- board (`feature_list.json`, todos los estados): «cierre», «conciliación», «consolidación»,
+  «cierre de bodega», «cierre-dia», «Excel», «trato»;
+- `specs/`: «un solo componente», «fila desplegada», «Ver cómo se calculó», «Por conciliar», «A
+  consolidar», «Le queda a la empresa»;
+- código (Grep/Read; ver la nota del grafo): `CierreFacturaDetalle`, `CascadasCierreMensajero`,
+  `CascadaDinero`, `GestionesPorResultado`, `CierresAdminModule`, `CierresBodegaAdminModule`,
+  `ConsolidacionBodegaModule`, `ConciliacionSatelite`, `BuscadorFiltros`, `DescargarDatasetButton`,
+  `Modal`, `paraLaCentral`, `derivarPendienteCierre`, `cierre_detail_concepto`,
+  `gestion_pago_congelado`, `orden_fulfillment_movimiento`, `hojasAdicionales`.
 
 **Resultado:**
-- **Board:** solo SLT-95. Ninguna ficha, viva ni cerrada, rediseña este modal. SLT-96
-  «Consolidación de ₡0 no se puede marcar recibida» está `done` y toca `ConciliacionAcciones`:
-  se reutiliza tal cual.
-- **Specs:** nada que lo especifique. Las fichas previas que fijaron lo que este detalle pinta, y
-  que esta feature respeta, son: 393 (cascadas de bodega), 395 (cascadas del mensajero), 396 (por
-  tienda), 425 (rechazos de tienda), 431 (conciliación en lugar de aprobar bodega), 462
-  (retención), 478 y 486 (fila y evidencias), 481 (fulfillment solo central), SL-39 (IVA aparte,
-  «Le queda a la empresa») y SLT-56 (ajuste del pago). Ninguna de ellas es este rediseño.
-- **Grafo:** el índice del worktree (`R-job-singularis-projects-servi_logistic-.worktrees-SLT-95-detalle-cierre-rediseno`)
-  no existe todavía. Se exploró con Grep/Read sobre el worktree, que nace de `dev` (e9aa915f).
+- **Board:** ninguna ficha, viva ni cerrada, rediseña el módulo. Relacionadas, sin solaparse:
+  - SLT-96 «Consolidación de ₡0 no se puede marcar recibida» (`done`): `ConciliacionAcciones` se
+    reutiliza tal cual.
+  - SLT-57 «Tarifas flexibles: retirar el modelo viejo» (`pending`): retirará el modelo viejo; hasta
+    entonces el rediseño pinta los dos (D19).
+  - SLT-65 «Geografía jerárquica: consultas de órdenes, cierres y zonas sobre el nodo»
+    (`in_progress`): toca consultas de cierres en el servidor. Las rebanadas fullstack (S5, S7, S8,
+    S9, S12-S15) pasan el candado de archivos contra ella antes de tomarse.
+  - SLT-94 «Cobro de fulfillment por paquete y marca «se recoge en tienda»» (`done`): de ella sale
+    `orden_fulfillment_movimiento`, origen de la fecha del cargo (R65).
+- **Specs:** fijaron lo que estas pantallas pintan y esta feature respeta: 393 (cascadas de bodega),
+  395 (cascadas del mensajero), 396 (por tienda), 425 (rechazos de tienda), 431 (conciliación),
+  462 (retención), 478 y 486 (fila y evidencias), 481 (fulfillment solo central), SL-39 (IVA
+  aparte), SLT-56 (ajuste del pago), SLT-73 (conciliar en la central), 170/184/464 (paginación,
+  descargas, libros de varias hojas). Ninguna es este rediseño.
+- **Grafo:** el índice del worktree
+  (`R-job-singularis-projects-servi_logistic-.worktrees-SLT-95-detalle-cierre-rediseno`) no existe.
+  Se exploró con Grep/Read sobre el worktree.
 
-**Qué se reutiliza** (no se re-crea nada de esto):
+## Zona por rebanada
 
-| Pieza existente | Dónde | Uso en SLT-95 |
+| Rebanada | Zona | Por qué |
 |---|---|---|
-| `CascadaDinero`, `LineaCascada` | `cierres-admin/_components/CascadaDinero.tsx` | las cascadas de «Dinero» |
-| `DesglosePorTienda`, `marcaDeVariasTiendas` | `DesglosePorTienda.tsx` | «Por tienda» y su umbral |
-| `lineasCascadaCentral`, `lineasCascadaDueno` (hoy privadas) | `CierresBodegaAdminModule.tsx` | se exportan o se mueven a un archivo puro para reusarlas (B) |
-| `EstadoCierreBadge`, `esMontoCero`, `esMontoNegativo`, rótulos `*_LABEL` | `cierre-detalle-shared.tsx` | cabecera, métodos en 0, signos |
-| `estadoConciliacionDe`, `ESTADO_CONCILIACION_LABEL` | `cierre-labels.ts` | estado de bodega |
-| `ConciliacionAcciones` | `components/shared/conciliacion/` | pie de bodega |
-| `RetieneReprogramadasBadge`, `MarcaAjustado`, `BotonesEvidencia`, `VisorEvidencia` | `cierres-admin/_components/` | cabecera, fila |
-| `PagoMensajeroSeccion` | idem | pestaña «Pago al mensajero» |
-| `GestionesPorResultado` | `cierre-factura.tsx` | «Gestiones» en A1, sin tocarla |
-| Diálogos de corrección, ajuste, rechazo, confirmación física e indemnización | `CierresAdminModule.tsx` y sus hijos | se siguen montando en el módulo; el detalle solo recibe callbacks |
-| `hrefDetalleCierre` | `lib/utils/cierre-enlace.ts` | «Ver su cierre» |
-| `money()` | formateador compartido | toda cifra |
-
-## Zona
-
-`frontend`, confirmada para A1, A2, B y C:
-- **Pago del incidente en `/cierre-dia`:** el servidor ya deriva `pagoMensajero` para todas las
-  gestiones (`CierreDiaService.listarCierreDia → derivarPagos`, incidente incluido). La tabla
-  (`CierreDiaModule.tsx`, rama `incidente`) y su descarga (`filaDescargaDiaIncidente`)
-  simplemente no lo pintan.
-- **Títulos de Excel:** se declaran en `app/(app)/cierres-admin/_components/*-descarga-columnas.ts`,
-  y cada fila del «Detalle» ya trae `ingresoEmpresa.tarifaModelo`.
-- **`verFulfillment` en bodega:** el detalle de bodega solo lo sirve el servidor a
-  `esAccesoTotal` (`CierresBodegaAdminService`, `forbidden` para el resto). Por eso basta con
-  pasar `verFulfillment={audiencia === "admin"}` a la fila. Hoy no lo pasa y cae en su default
-  `true`. Ningún dato sensible viaja a quien no debe.
-
-Solo la rebanada D (PA2), si se aprueba, sería `fullstack`: lectura de
-`cierre_detail_concepto` y `gestion_pago_congelado` en los repositorios del detalle, más los
-derivados que falten, en el servicio.
+| S1, S2, S3, S4, S6, S10, S11, S16, S17 | frontend | Solo presentación; todo dato ya llega. |
+| S5 | fullstack | Los textos con voseo o sin tildes también salen del servidor (`CierreDiaService` `motivoBloqueo`, `ConsolidacionBodegaService` bloqueos y errores). Solo cambian strings. |
+| S7 | fullstack | «Por conciliar / Conciliados» cambia el `WHERE` de las listas de bodega de la central (`CierresBodegaAdminRepository`). |
+| S8 | fullstack | Nuevas derivaciones en `ConsolidacionBodegaService` (R67) y el bloqueo con nombres (R47). |
+| S9 | fullstack | **Permiso nuevo**: el adminSatelite lee el detalle de SU cierre de bodega (R50); filtro de fecha en «Solicitados» (R52); tarjetas (R68). |
+| S12, S13, S14 | fullstack | Cifras de la nota p1 (R64-R70). |
+| S15 | fullstack | Las filas de la descarga necesitan los campos de S12. |
 
 ## Modelo de datos, RLS y migraciones
 
-Ninguno. No hay tablas, columnas, RLS ni migraciones, y por tanto no hay `down.sql`. Los
-contratos `CierreDetalleAdminServiceResult` y `CierreBodegaDetalleServiceResult` no cambian.
+**Ninguno en ninguna rebanada.** No hay tablas, columnas, índices, RLS ni migraciones; por tanto no
+hay `down.sql`. Las lecturas nuevas (S9, S12-S14) van sobre tablas que ya tienen `organizacion_id`
+y RLS por empresa (`cierre_detail_concepto`, `gestion_pago_congelado`, `tarifa_valor`,
+`orden_fulfillment_movimiento`, `pago_mensajero` y sus imputaciones), con el mismo filtro de empresa
+que ya aplican sus repositorios. Los contratos de servicio crecen **solo con campos aditivos**; no
+se quita ni renombra ninguno (S16 retira código de pantalla, no contratos).
 
 ## Autorización
 
-Sin cambios: todo se sigue decidiendo en el servidor y baja por props.
-- `page.tsx` calcula `audiencia`, `puedeRegistrarPago`, `puedeCorregirPagos`,
-  `puedeCorregirResultado`, `puedeAjustarPagoMensajero` y `puedeConciliar`, como hoy.
-- El detalle recibe esos permisos ya resueltos como presencia o ausencia de callbacks. No conoce
-  roles.
+Todo se decide en el servidor y baja por props; los componentes no conocen roles, solo `audiencia`,
+`rol` y la presencia o ausencia de callbacks.
+
+- `/cierres-admin/page.tsx` sigue calculando `audiencia`, `puedeRegistrarPago`,
+  `puedeCorregirPagos`, `puedeCorregirResultado`, `puedeAjustarPagoMensajero` y `puedeConciliar`
+  como hoy (inventario-central §A). La audiencia `central` = `esAccesoTotal`; `satelite` =
+  adminSatelite.
+- `/cierre-dia/page.tsx` sigue siendo solo del rol mensajero (`notFound` para los demás).
+- **Único cambio de permiso (S9, R50):** `CierresBodegaAdminService.verDetalle` hoy responde
+  `forbidden` a todo lo que no es `esAccesoTotal`. Se admite además al adminSatelite **solo** para
+  cierres de bodega con `zona_id` = la zona del actor; el filtro de zona va en el `WHERE` del
+  repositorio (no se lee y se descarta). Fuera de su zona, `forbidden`; sin zona, `forbidden`. El
+  resultado lleva `audiencia: "satelite"` y el servicio **no emite** `fulfillment`/`ivaFulfillment`
+  ni la marca `desmarcable` para esa audiencia (vacía el dato en el servidor, no lo oculta la
+  pantalla). Test de integración contra la base, con un cierre de otra zona que debe dar
+  `forbidden` (memoria «probar el WHERE donde vive»).
+- Módulo: el de cierres sigue colgando de `nucleo` (`lib/modulos/reparto.ts`); no cambia.
 
 ## Datos que dependen del país
 
-- **Moneda:** solo vía `money()` (config de país).
-- **Métodos de pago:** sus rótulos salen de `METODO_LABEL`, como hoy.
-- **Impuestos:** el IVA llega ya calculado del servidor. No hay geografía nueva.
+- **Moneda:** solo vía `money()` (config de país). Ningún símbolo escrito en los componentes.
+- **Métodos de pago:** rótulos de `METODO_LABEL`, como hoy.
+- **Impuestos:** el IVA llega calculado (snapshots y `cierre_detail_concepto.iva_pct`); el «IVA
+  13 %» de la maqueta se pinta con el `iva_pct` congelado, nunca escrito.
+- **Fechas:** «este mes» y «30 días» (R68, R69) se cortan en la zona horaria de la empresa con las
+  utilidades de `lib/utils/fecha-cr.ts` que ya usa el módulo (SLT-92 «Pantallas: fechas y teléfonos
+  en la zona y el prefijo del país de la empresa» las generalizará; no se adelanta).
 
-## Diseño del componente
+## Arquitectura: cuatro componentes
 
-Carpeta nueva: `app/(app)/cierres-admin/_components/detalle-cierre/`. Se usa en un solo módulo,
-así que se queda junto a la página, sin promoverla a `shared/` (`docs/architecture.md >
-Componentes`).
+Carpeta nueva `components/private/cierres/` (datos de dinero por props desde el Server Component;
+`docs/architecture.md > Componentes`). Se usa desde tres módulos, por eso no vive en
+`app/(app)/cierres-admin/_components/`.
 
-| Archivo | Rebanada | Qué es |
-|---|---|---|
-| `detalle-cierre-vista.ts` | A1 (+A2, B) | **Módulo puro**, sin React, que traduce el resultado del servidor a la vista (ver abajo). |
-| `detalle-cierre-labels.ts` | A1 | Rótulos nuevos: «Por revisar», nombres de las 4 cifras, pestañas, reparto, notas. Reusa los `*_LABEL` existentes cuando la cifra ya tiene nombre (regla 2). |
-| `DetalleCierre.tsx` | A1 | El caparazón (ver abajo). |
-| `CifrasCierre.tsx` | A1 | Las 4 tarjetas, con métodos y contexto. |
-| `DineroCierre.tsx` | A1 (+B) | Reparto + cascadas + «Por tienda», por tipo. |
-| `GestionesCierre.tsx` | A2 | Filtros por resultado y «Con señales», tabla, fila plegable. |
-| `FilaGestionCierre.tsx` | A2 | Fila desplegada opción 2: 4 tarjetas 2x2 + «Ver cómo se calculó» + acciones. |
-| `MensajerosCierreBodega.tsx` | B | Pestañas «Mensajeros» y «Conciliación». |
-
-**`detalle-cierre-vista.ts`** reúne todo lo que se puede probar sin montar nada. Solo cuenta
-cardinales; los importes pasan como referencias a los strings del servidor:
-- `cifrasDe(detalle)`;
-- `metodosVisibles(totales)`, con `esMontoCero`;
-- `avisosPorRevisar(detalle)`;
-- `pestanasDe(tipo, detalle, opciones)`;
-- `senalesDe(gestion)`;
-- `conteosPorResultado(gestiones)`.
-
-**`DetalleCierre.tsx`** se monta sobre el `Dialog` de `components/ui`, no sobre `Modal`, porque
-`Modal` pone su propio pie de confirmar y cancelar, y el canvas pide una cabecera con cierre (X)
-y un pie de acciones propio. La rejilla es `flex-col` con `max-h-[calc(100dvh-2rem)]`:
-- cabecera, «Por revisar», cifras y `tablist` llevan `shrink-0`;
-- el `tabpanel` lleva `flex-1 min-h-0 overflow-auto`, y es el único scroll (R10);
-- el pie lleva `shrink-0`.
-
-El ancho sigue siendo el 75 % de siempre.
-
-**Contrato:**
-
-```ts
-type DetalleCierreProps =
-  | {
-      tipo: "mensajero";
-      detalle: DetalleAbiertoMensajero;          // el estado que hoy guarda CierresAdminModule
-      audiencia: "admin" | "satelite";
-      acciones: {                               // ausente = no se ofrece (R11, R24)
-        onRechazar?: () => void; onAprobar?: () => void;
-        onCorregirPagos?: (g) => void; onCorregirResultado?: (g) => void; onAjustarPago?: (g) => void;
-        onVerEvidencia: (url: string) => void;
-      };
-      pagoMensajero?: ReactNode;                // la PagoMensajeroSeccion ya montada (R19), o nada
-      onCerrar: () => void;
-    }
-  | {
-      tipo: "bodega";
-      detalle: DetalleAbiertoBodega;             // el estado que hoy guarda CierresBodegaAdminModule
-      audiencia: "admin" | "satelite";
-      conciliacion?: ReactNode;                 // ConciliacionAcciones ya montada (R11), o nada
-      onVerEvidencia: (url: string) => void;
-      onCerrar: () => void;
-    };
+```
+components/private/cierres/
+  detalle/   DetalleCierre.tsx · CifrasCierre.tsx · DineroCierre.tsx · Cuenta.tsx
+             detalle-cierre-vista.ts (puro) · detalle-cierre-labels.ts
+  fila/      GestionesCierre.tsx · FilaGestion.tsx · fila-gestion-vista.ts (puro)        (S3)
+  cola/      ColaCierres.tsx · cola-cierres-vista.ts (puro) · cola-cierres-labels.ts      (S4)
+  dialogos/  VisorEvidencia.tsx · dialogos-labels.ts                                      (S5)
 ```
 
-Los diálogos (rechazo, confirmación física, indemnización, correcciones, ajuste) siguen viviendo
-en los módulos, que ya tienen su estado y sus Server Actions. El detalle solo dispara callbacks.
-Así A1 no mueve lógica de aprobación.
+`Cuenta.tsx` es la tarjeta en formato cascada de D16 (partida por línea, «−»/«+» delante del
+rótulo, subtotal con raya punteada, total en negrita con raya continua). La usan «Dinero», la fila,
+«Ver cómo se calculó», «Conciliación» y `/wallet/satelites` (R15, R78). Cada línea lleva
+`data-signo` para que `DineroIdentidadesEnPantalla.test.tsx` siga pudiendo leer y comprobar las
+restas del DOM.
 
-**Nombre accesible (R31).** El título visible es la identidad («Cierre de <mensajero>»,
-«Cierre de bodega · <zona>»). Un prefijo `sr-only` «Detalle del cierre · » o «Detalle del
-cierre de bodega · » mantiene el nombre del diálogo que usan los E2E (`getByRole("dialog", {
-name: "Detalle del cierre" })`, que compara por subcadena). Los E2E que solo abren y aprueban no
-cambian.
+### 1. Detalle del cierre — `DetalleCierre`
 
-### De dónde sale cada cifra (R5, R12, R13, R20-R22)
+```ts
+type Audiencia = "central" | "satelite" | "mensajero";
+type Modo = "decidir" | "solo lectura" | "vencido" | "en curso" | "rechazado";
+type Marco = "modal" | "pagina";
 
-| Cifra en pantalla | Campo del servidor (sin cambios) |
+type DetalleCierreProps =
+  | { tipo: "mensajero"; detalle: DetalleMensajeroVista; audiencia: Audiencia; modo: Modo; marco: Marco;
+      pestanas: SlotsMensajero; acciones: AccionesPie; onCerrar?: () => void }
+  | { tipo: "bodega"; detalle: DetalleBodegaVista; audiencia: Exclude<Audiencia, "mensajero">;
+      modo: "decidir" | "solo lectura"; marco: "modal";
+      pestanas: SlotsBodega; acciones: AccionesPie; onCerrar: () => void };
+
+// Ausente = no se ofrece (R12). Los flujos viven en el módulo que monta el detalle.
+type AccionesPie = Partial<Record<"rechazar" | "aprobar" | "destrabar" | "solicitar" |
+  "solicitarRechazado" | "solicitarVencido", () => void>> & { conciliacion?: ReactNode };
+
+// Cuerpos de pestaña que no son «Dinero»: los monta quien usa el detalle (S2, S3, S6, S11).
+type SlotsMensajero = { gestiones: ReactNode; rechazos: ReactNode; pago?: ReactNode; corregir?: ReactNode };
+type SlotsBodega = { gestiones: ReactNode; mensajeros: ReactNode; conciliacion: ReactNode };
+```
+
+`DetalleMensajeroVista` y `DetalleBodegaVista` los produce `detalle-cierre-vista.ts` a partir de
+`CierreDetalleAdminServiceResult`, `CierreBodegaDetalleServiceResult` y, para el mensajero, del
+resultado de `CierreDiaService` (S10, S11). La vista solo **elige y cuenta**: los importes son
+referencias a los strings del servidor.
+
+Funciones puras de `detalle-cierre-vista.ts` (S1): `cifrasDe(tipo, audiencia, detalle)`,
+`metodosVisibles(totales)`, `avisosDe(tipo, audiencia, modo, detalle)`, `pestanasDe(tipo,
+audiencia, modo, opciones)`, `accionesDe(tipo, audiencia, modo, permisos)`, `lineasDinero(tipo,
+detalle)`.
+
+Rejilla (R11): `flex-col` con `max-h-[calc(100dvh-2rem)]` en modal y `h-full` en página; cabecera,
+franja, cifras y `tablist` con `shrink-0`; el `tabpanel` con `flex-1 min-h-0 overflow-auto` (único
+scroll); pie `shrink-0`. Modal sobre el `Dialog` de `components/ui` (como en el v1: `Modal` impone
+su propio pie de confirmar/cancelar y el detalle tiene un pie de acciones propio); ancho del 75 %.
+Nombre accesible (R13): título visible = identidad; prefijo `sr-only` «Detalle del cierre · » o
+«Detalle del cierre de bodega · », que es lo que localizan los E2E de hoy.
+
+### 2. Cola de cierres — `ColaCierres` (S4, S7, S8, S9, S10)
+
+```ts
+type ColaCierresProps = {
+  tipo: "mensajero" | "bodega"; rol: "central" | "satelite" | "mensajero";
+  pestanas: { id: string; label: string; conteo: number }[]; pestanaActiva: string; onPestana: (id: string) => void;
+  barra: ReactNode;               // FiltrosCierresBarra (BuscadorFiltros) + DescargarDatasetButton, tal cual
+  aviso?: string;                 // bloqueo de «Solicitar cierre de bodega» (R46, R47)
+  tarjetas?: TarjetaCifra[];      // A consolidar, Solicitados, mensajero (R45, R49, R60)
+  filas: FilaCola[];              // columnas por (tipo, rol, pestaña) de cola-cierres-vista.ts
+  pie?: { texto: string; boton?: { label: string; deshabilitado: boolean; onClick: () => void } };
+  paginacion?: ReactNode;         // la de hoy (ListaComprobantes / paginado 170)
+};
+```
+
+Las columnas por `(tipo, rol, pestaña)` salen de `columnasCola()` en `cola-cierres-vista.ts`
+(tabla de R33, R34, R44, R45, R49, R60), probada sin montar nada.
+
+### 3. Fila de una gestión — `FilaGestion` (S3)
+
+```ts
+type FilaGestionProps = {
+  gestion: GestionVista; audiencia: "central" | "satelite" | "mensajero" | "solo lectura";
+  quienMiraEsCentral: boolean;    // decide Fulfillment en «solo lectura» (R25, R30)
+  acciones: Partial<Record<"corregirMetodos" | "ajustarPago" | "corregirResultado" | "devolver", (g) => void>>;
+  onVerEvidencia: (urls: string[], inicio: number) => void;
+};
+```
+
+Lo que se ve por audiencia sale de `fila-gestion-vista.ts` (tablas de R25 y R26). La regla de hoy de
+cuándo se ofrece cada acción (estado `solicitado`/`vencido`, resultado, `pagos.length`, `pagoMensajero
+!== null`; inventario-central §A) se mueve sin cambios desde `cierre-factura.tsx` a esa función.
+
+### 4. Diálogos (S5)
+
+No hay un componente nuevo de caja: es el `Modal` existente (D17). S5 aporta `VisorEvidencia`
+(Anterior/Siguiente, «foto i de n»; R54) y `dialogos-labels.ts` con los textos en «tú». Los 18
+diálogos de R53 siguen en sus archivos de hoy; quién monta cada uno:
+
+| Diálogo | Archivo de hoy | Quién lo ve |
+|---|---|---|
+| Rechazar, Confirmar paquetes, Indemnizar, Destrabar | `CierresAdminModule.tsx`, `cierre-confirmacion-fisica.tsx` | central y satélite |
+| Ajustar pago | `AjustarPagoMensajeroDialog.tsx` | central y satélite |
+| Corregir métodos, Corregir el resultado | `CorregirPagosDialog.tsx`, `CorregirResultadoDialog.tsx` | central |
+| Registrar pago, Anular pago | `RegistrarPagoMensajeroDialog.tsx`, `components/shared/liquidacion/*` | central |
+| Evidencia | `VisorEvidencia.tsx` (nuevo, sustituye los dos visores idénticos de hoy) | todos |
+| Solicitar cierre de bodega | `ConsolidacionBodegaModule.tsx` → módulo que monte la cola satélite (S8) | satélite |
+| Marcar recibido, Corregir recibido, Desmarcar | `components/shared/conciliacion/*` | central |
+| Solicitar cierre del día, Enviar vencido, Enviar rechazado, Devolver a gestión | `CierreDiaModule.tsx` | mensajero |
+
+### Props → quién las usa
+
+| Componente y props | Pantalla (canvas) | Rebanada |
+|---|---|---|
+| Detalle · mensajero · central · decidir · modal | Central 2 «Ver / decidir» | S2 |
+| Detalle · mensajero · central · solo lectura · modal | Central 4 «Cierre aprobado» (con «Pago al mensajero») | S2 |
+| Detalle · mensajero · central · vencido · modal | Central 5 «Destrabar» | S2 |
+| Detalle · mensajero · satélite · decidir / solo lectura / vencido · modal | Satélite 2 | S2 |
+| Detalle · bodega · central · decidir / solo lectura · modal | Central 8 y 9 | S6 |
+| Detalle · bodega · satélite · solo lectura · modal | Satélite 6 (nuevo) | S9 |
+| Detalle · mensajero · mensajero · solo lectura · modal | Mensajero 5 | S10 |
+| Detalle · mensajero · mensajero · en curso / rechazado / vencido · página | Mensajero 1, 2, 3 | S11 |
+| Cola · mensajero · central | Central 1 y 3 | S4 |
+| Cola · mensajero · satélite | Satélite 1 | S4 |
+| Cola · bodega · central | Central 7 | S7 |
+| Cola · bodega · satélite | Satélite 3, 4, 5 | S8, S9 |
+| Cola · rol mensajero | Mensajero 4 | S10 |
+| Fila · central / satélite / mensajero / solo lectura | Componente Fila + 3 instancias | S3 (mensajero: S10) |
+
+### Qué sustituye cada componente
+
+| Hoy | Lo sustituye | Rebanada | Se borra en |
+|---|---|---|---|
+| Cuerpo del modal «Detalle del cierre» de `CierresAdminModule.tsx` (incluye «Decisión del cierre») | `DetalleCierre` tipo mensajero | S2 | S16 |
+| `CascadasCierreMensajero.tsx` | `DineroCierre` | S2 | S16 |
+| `CierreFacturaDetalle` (audiencia admin: KPIs, Totales, Ingreso de la empresa, Liquidación/«Debe», hoja de impresión) | `DetalleCierre` + `CifrasCierre` | S2 | S16 |
+| `CierreFacturaDetalle` (audiencia mensajero, modal de `/cierre-dia`) | `DetalleCierre` audiencia mensajero | S10 | S16 |
+| Impresión del detalle del admin (`HojaFactura`/`HojaResumen` de `cierre-factura.tsx`, `@media print` del flujo, ficha 223) | «Descargar» (`DescargarDatasetButton`) | S2 | S16 (la hoja del mensajero cae con S10) |
+| `GestionesPorResultado` (5 pestañas + fila desplegada) | `GestionesCierre` + `FilaGestion` | S3, S10 | S16 |
+| `CierreFacturaResumen`, `CierresAdminHistoricoLista.tsx`, `ListaComprobantes.tsx` (tarjetas de cola) | `ColaCierres` | S4 | S16 |
+| Cuerpo del modal «Detalle del cierre de bodega», `TotalesPanel`/`TotalesIngresoPanel` y bloques por cierre del día de `CierresBodegaAdminModule.tsx` | `DetalleCierre` tipo bodega | S6 | S16 |
+| `CierresBodegaSolicitadosLista.tsx`, `CierresBodegaResueltosLista.tsx` | `ColaCierres` bodega · central | S7 | S16 |
+| `ConsolidacionBodegaModule.tsx` (A consolidar / Solicitados) | `ColaCierres` bodega · satélite | S8, S9 | S16 |
+| Paneles de `/cierre-dia` (Totales del día, Ganancia, secciones por resultado, `PanelCorreccion`, «Cierres solicitados») | `DetalleCierre` página + `ColaCierres` rol mensajero | S10, S11 | S16 |
+| Fila desplegada de `ConciliacionSatelite.tsx` | dos `Cuenta` + enlace al detalle | S17 | — (se edita en sitio) |
+| Botones «Ver evidencia 1…n» (`botones-evidencia.tsx`) y los dos visores | un botón + `VisorEvidencia` | S5 | S16 |
+| `CascadaDinero.tsx` | `Cuenta.tsx` | S2-S6 | S16 |
+
+### Qué se reutiliza tal cual
+
+`BuscadorFiltros` (vía `FiltrosCierresBarra`), `DescargarDatasetButton`, `Modal`, `Dialog` de
+`components/ui`, `CierresTabs` (conmutador), `EstadoCierreBadge`, `estadoConciliacionDe`,
+`esMontoCero`, `esMontoNegativo`, `money()`, los `*_LABEL` existentes, `ConciliacionAcciones`,
+`PagoMensajeroSeccion`, `PagosRegistradosTabla`, `RegistrarPagoDialog`, `AnularPagoDialog`,
+`DesglosePagoField`, `EscanerGuiaCard` y el cuerpo de la confirmación física, `MarcaAjustado`,
+`RetieneReprogramadasBadge`, `PendienteLiquidarBadge`, `DesglosePorTienda` (`marcaDeVariasTiendas`),
+`hrefDetalleCierre`, `avisoBloqueo`, `construirDescarga` con `hojasAdicionales` (464). Se mueven sin
+cambiar ni una línea `lineasCascadaCentral` y `lineasCascadaDueno` a
+`app/(app)/cierres-admin/_components/cascadas-bodega.ts` (S1).
+
+## De dónde sale cada cifra
+
+### Cifras que ya llegan (sin cambios de servidor)
+
+| Cifra | Campo |
 |---|---|
-| Recaudado + métodos | `cierre.totales.{general,efectivo,simpe,transferencia}` |
-| Se le paga hoy a la tienda / A la tienda hoy | `pagoTienda` (mensajero) |
-| ganan en total | `ganaLaTienda` |
+| Recaudado + métodos | `totales.{general,efectivo,simpe,transferencia}` |
+| Se le paga hoy a la tienda / A la tienda hoy | `pagoTienda` |
+| ganan en total / Gana en total | `ganaLaTienda`, `partesPorTienda[].ganaLaTienda` |
 | Se lo cobra la empresa / Sale de lo recaudado | `cobradoSobreRecaudado` |
-| Debe llegar a la central / A la central / Declarado | `paraLaCentral` (bodega) |
-| Pago al mensajero / a mensajeros / A los mensajeros | `cierre.totalPagoMensajero` |
-| Pago a la bodega / Gana la bodega satélite | `cierre.totalIngresoBodegaRechazos` |
-| Flete por entregado + IVA, Comisión COD + IVA, Flete de no entregadas + IVA, Total facturado | `totalesIngreso.{fleteConIva,comisionConIva,fleteDevolucionConIva,total}` |
+| Debe llegar a la central / A la central (bodega y por cierre del día del detalle) | `paraLaCentral`, `cierres[].paraLaCentral` |
+| Pago al mensajero / a mensajeros / Tu ganancia | `totalPagoMensajero` |
+| Pago a la bodega / Gana la bodega satélite | `totalIngresoBodegaRechazos` |
+| Facturado por concepto, Total facturado | `totalesIngreso.{fleteConIva,comisionConIva,fleteDevolucionConIva,total}` |
 | − IVA | `ivaFacturado` |
 | Le queda a la empresa | `netoEmpresa` |
-| Por tienda | `partesPorTienda[].{recaudado,pagoTienda,ganaLaTienda}` |
-| Mensajeros (bodega) | `cierres[].{totales.general,totalPagoMensajero,paraLaCentral,gestionesAjustadas}` |
-| Conciliación | campos de la marca en `cierre` (los que hoy lee `ConciliacionAcciones`; T0.3 los verifica) |
-| Fila: recibido, métodos | `montoRecibido`, `pagos[]` |
-| Fila: cobro a la tienda y conceptos | `ingresoEmpresa.{total,flete,ivaFlete,comisionCod,ivaComisionCod,fleteDevolucion,ivaFleteDevolucion,fleteConIva,…}` |
-| Fila: pago y ajuste | `pagoMensajero`, `ajustesPago[]` |
-| Fila: fulfillment | `ingresoEmpresa.{fulfillment,ivaFulfillment}` |
-| Fila: tarifa del modelo viejo | `ingresoEmpresa.tarifa` + `esCentral` + `*Origen` |
+| Conciliación | `montoRecibido`, `faltaPorRecibir`, `conciliadoAt`, `conciliadoPorNombre`, `conciliadoNota`, `desmarcable` |
+| Pago entregado | `pendientePagoMensajero` (`null` = no aprobado) |
+| A consolidar: Recaudado, Pago a mensajeros, Gana la bodega, La central debe | `totalesAgregados`, `totalPagoMensajeroAgregado`, `totalIngresoBodegaRechazosAgregado`, `totalCentralDebeAgregado` |
+| Fila: recibido, métodos, cobro y conceptos, pago, ajuste, fulfillment | `montoRecibido`, `pagos[]`, `ingresoEmpresa.*`, `pagoMensajero`, `ajustesPago[]`, `ingresoEmpresa.{fulfillment,ivaFulfillment}` |
+| Fila: tarifa del modelo viejo | `ingresoEmpresa.tarifa` + `esCentral` + `*Origen` (como hoy) |
+| Mensajero: Gestiones, Tu ganancia, Recaudado | `listarCierreDia` (grupos, `totalPagoMensajero`, `totales`) |
 
-**Desaparece de la pantalla:** `ganancia` (y con ella «Debe», D3). Sigue viajando en el
-contrato; no se toca el servidor.
+**Desaparece de la pantalla:** `ganancia` (y con ella «Debe», D3). Sigue en el contrato.
 
-**No existen hoy, PA2:** porcentajes del reparto, «IVA incluido» sumado, total del fulfillment
-con IVA, tarifa por concepto del modelo nuevo, tarifa del pago al mensajero, fecha del cargo del
-fulfillment y «Sin tarifa de pago» en admin. Por defecto, la barra de reparto se pinta como
-leyenda con importes, sin anchos proporcionales. Se pinta cada IVA por concepto en «Ver cómo se
-calculó», y el fulfillment con sus dos líneas, sin total.
+### Cifras nuevas (nota p1): se derivan en el servidor
 
-### `/cierre-dia` (C)
+Todas con `Prisma.Decimal` en el servicio y emitidas como string de escala 2 (conteos y porcentajes
+como enteros). Ninguna escribe nada.
 
-- `CierreDiaModule.tsx`: la rama `incidente` de las columnas añade `columnaPago`, la misma de
-  las demás secciones (R28). `COLUMNA_CAUSA_INCIDENTE` y la ausencia de indemnización no cambian.
-- `cierre-dia-descarga-columnas.ts`: `filaDescargaDiaIncidente` y sus columnas añaden
-  `pagoMensajero` (R29).
+| Cifra (R) | Derivación | Dónde |
+|---|---|---|
+| Reparto en % (R70) | Porcentajes enteros por **mayor resto** (suman 100) de las partes sobre `totales.general`. Mensajero: [`pagoTienda`, `cobradoSobreRecaudado`]. Bodega: [`paraLaCentral`, `totalPagoMensajero`, `totalIngresoBodegaRechazos`]. `null` si `general` ≤ 0 o alguna parte < 0. Empate de restos: gana la primera parte. | util puro nuevo `lib/utils/porcentajes-reparto.ts`; lo llaman `CierresAdminService.verCierreDetalle` y `CierresBodegaAdminService.verDetalle` |
+| Señales de la cola (R70) | Por cierre de la página: nº de `incidente` con `indemnizacion IS NULL`, nº de gestiones con al menos un ajuste de pago, nº de gestiones retornables (`gestion-retorno.ts`). Una sola consulta agregada por página, patrón `contarPorCierre`. | `CierresAdminRepository` + servicio |
+| Debe llegar a la central, A consolidar (R67) | `paraLaCentral(totalesAgregados.general, totalPagoMensajeroAgregado, totalIngresoBodegaRechazosAgregado)` y, por cada `CierreBodegaResumenLite`, `paraLaCentral` de sus propios snapshots. Misma función de `lib/utils/ingreso-empresa.ts`. | `ConsolidacionBodegaService` (`ICierreBodegaService`) |
+| Tarjetas de Solicitados (R68) | Por llegar = Σ `paraLaCentral` con `conciliado = false`; Recibido (30 días) = Σ `montoRecibido` con `conciliadoAt` en los últimos 30 días calendario; Falta = Σ `faltaPorRecibir` > 0 con `conciliado = true`. Con sus conteos. Zona del actor; sin filtro de fecha. | `CierreBodegaRepository` + `ConsolidacionBodegaService` |
+| Ganancia pendiente de pago (R69) | Σ `pendientePagoMensajero` de los cierres `aprobado` del mensajero (misma `derivarPendienteCierre` y `sumarVigentesPorCierre` de la cola) y nº de cierres con pendiente > 0. | `CierreDiaService` |
+| Ganancia pagada este mes (R69) | Σ montos de los pagos **vigentes** al mensajero con fecha del pago en el mes en curso; nº de pagos. | `CierreDiaService` + repositorio de pagos de liquidación |
+| Tarifa de cada concepto, modelo nuevo (R64) | Lectura de `cierre_detail_concepto` (`modo`, `valor`, `iva_pct`, `nivel`) + nombre de grupo/zona de su `tarifa_valor`. La base de un porcentaje es la que usa `derivarIngresoOrden` para ese concepto (T0 de S12 la confirma con la línea). | repositorios del detalle (mensajero y bodega) |
+| IVA incluido en el cobro (R65) | `ivaFlete` + `ivaComisionCod` + `ivaFleteDevolucion` de la gestión. | servicios del detalle |
+| Fulfillment «Se cobró» y fecha del cargo (R65) | `fulfillment` + `ivaFulfillment`; fecha = `created_at` del último movimiento `cargo` sin reverso posterior de la orden en `orden_fulfillment_movimiento`. Solo para audiencia central. | servicios del detalle |
+| Pago por tarifa y ajuste (R66) | `gestion_pago_congelado.importe` (actor mensajero) con `modo`/`nivel`/`valor`; ajuste = `pagoMensajero` − importe, con signo. T0 de S12 confirma que un ajuste (SLT-56) no re-congela `importe`; si lo hiciera, el «por tarifa» sale del `anterior` del primer ajuste. | servicios del detalle |
+| Sin tarifa de pago en admin (R66) | `tarifaFaltante` real (hoy llega `false` en admin), con la misma regla que `/cierre-dia`. | `CierresAdminService` |
 
-### Títulos de Excel (C)
+### Números escritos a mano para los tests
 
-`cierres-gestiones-fundida-descarga-columnas.ts` exporta `columnasGestionFundida(filas)`. Esta
-función devuelve los mismos encabezados de hoy, salvo `fleteDevolucionConIva`, que pasa de
-`FLETE_DEV_CON_IVA_LABEL` («Flete por devolución a origen + IVA») a
-`FLETE_NO_ENTREGADAS_CON_IVA_LABEL`. El cambio solo aplica cuando todas las filas traen
-`tarifaModelo === "nuevo"`.
+Escenario «cierre de mensajero, modelo viejo» (S1 los usa en dobles; S2 los siembra en E2E):
 
-`ingresoBodega` ya sale como `INGRESO_BODEGA_RECHAZOS_COL` = «Ingreso bodega», que es neutro, y
-no cambia.
+| Dato | Valor |
+|---|---|
+| Efectivo / SINPE / Transferencia | 70 000,00 / 30 000,00 / 0,00 → Recaudado **100 000,00** (Transferencia no aparece) |
+| Flete con IVA | 4 520,00 (4 000,00 + 520,00) |
+| Comisión COD con IVA | 1 130,00 (1 000,00 + 130,00) |
+| Sale de lo recaudado | **5 650,00** |
+| Se le paga hoy a la tienda | 100 000,00 − 5 650,00 = **94 350,00** |
+| Flete de no entrega con IVA | 2 260,00 (2 000,00 + 260,00) |
+| Total facturado | 4 520,00 + 1 130,00 + 2 260,00 = **7 910,00** |
+| IVA facturado | 520,00 + 130,00 + 260,00 = **910,00** |
+| Pago al mensajero / Pago a la bodega | 3 000,00 / 500,00 |
+| Le queda a la empresa | 7 910,00 − 910,00 − 3 000,00 − 500,00 = **3 500,00** |
+| Gana la tienda en total | 100 000,00 − 7 910,00 = **92 090,00** |
+| Reparto (S13) | 94,35 % / 5,65 % → **94 % / 6 %** |
 
-Los llamadores (`DescargarCierresButton` y su acción de detalle) piden las filas y después
-construyen la config con esas columnas. El caso mixto se resuelve según PA6. Las **claves** no
-cambian: los filtros de columnas guardados por el usuario siguen valiendo.
+Escenario «cierre de bodega» con los mismos números agregados: Debe llegar a la central =
+100 000,00 − 3 000,00 − 500,00 = **96 500,00**; reparto 96,5 % / 3 % / 0,5 % → **97 % / 3 % / 0 %**
+(empate de restos 0,5: gana la primera).
+
+Escenario «gestión del modelo nuevo» (S12): flete monto fijo 3 500,00 + IVA 13 % 455,00 =
+**3 955,00**; comisión 2 % de 25 000,00 = 500,00 + IVA 65,00 = **565,00**; se le cobra **4 520,00**,
+de eso IVA **520,00**; pago por tarifa 2 500,00, ajuste −700,00, se le paga **1 800,00**; fulfillment
+600,00 + IVA 78,00 = **678,00**.
+
+Un caso negativo: `netoEmpresa` = −250,00 se pinta «−₡250,00» (o la forma de `money()`), nunca 0.
+
+## Excel (S15) — propuesta para aprobar (PA3)
+
+**Regla de formato (R73-R75):** el modelo de cada cierre sale de `cierre_detail.tarifa_modelo`
+(`incluyeModeloNuevo` en los resúmenes; `tarifaModelo` por fila de gestión). Solo viejo → formato
+actual, idéntico byte a byte en columnas, títulos y claves. Solo nuevo → documento nuevo. Mixto →
+libro con las hojas del documento nuevo (cierres del modelo nuevo) seguidas de «Cierres modelo
+anterior» y «Gestiones modelo anterior» con el formato actual (cierres del viejo); ningún cierre en
+dos hojas del mismo tipo. Hoy en prod todo es viejo (D19): el formato actual es el que se usa.
+
+**Documento nuevo (modelo nuevo):**
+
+| Hoja | Una fila por | Columnas |
+|---|---|---|
+| Cierres | cierre | Folio · Mensajero (o Bodega) · Destino · Estado · Solicitado · Resuelto · Efectivo · SINPE · Transferencia · Recaudado · Se le paga a la tienda (mensajero) / Debe llegar a la central (bodega) · Gana la tienda en total · Pago al mensajero · Pago a la bodega satélite · Total facturado · IVA facturado · Le queda a la empresa · Gestiones · Pagos ajustados · Pago entregado (solo central) · *bodega:* Cierres incluidos · Recibido · Falta por recibir · Estado de conciliación · Conciliado por · Conciliado el |
+| Gestiones | gestión | Folio del cierre · Mensajero · Fecha de gestión · Nº Guía · Nº Remisión · Destinatario · Tienda · Resultado · Motivo · Recibido · Efectivo · SINPE · Transferencia · Flete por entregado · Tarifa del flete · IVA del flete · Comisión COD · Tarifa de la comisión · IVA de la comisión · Flete de no entregadas · Tarifa del flete de no entregadas · IVA del flete de no entregadas · Se le cobra a la tienda · De eso, IVA · Pago por tarifa · Tarifa del pago · Ajuste · Pago al mensajero · Motivo del ajuste · Ajustó · Gana la bodega satélite · Fulfillment · IVA de fulfillment · Fulfillment cargado el (las tres solo central) · Señales |
+| Por tienda | cierre × tienda | Folio · Tienda · Recaudado · Se le paga hoy · Gana en total |
+| Rechazados por la tienda | rechazo | Folio · Nº Guía · Destinatario · Motivo · Tienda · Fecha del rechazo |
+
+«Tarifa de …» = texto «<modo> <valor> · <nivel> · <grupo o zona>» (p. ej. «Monto fijo ₡3.500,00 ·
+grupo · San José centro»). Los importes van como en las descargas de hoy (mismo formateador de
+celda). La satélite no recibe las columnas de fulfillment ni «Pago entregado». La descarga del
+mensajero en `/cierre-dia` no cambia de documento; solo gana «Ganancia» en Incidente (R58).
+
+## Trato «tú» (S5)
+
+Se cambian los textos, no las claves ni la lógica. Alcance: los labels de
+`app/(app)/cierres-admin/_components/*-labels.ts`, `cierre-labels.ts`, `pago-mensajero-labels.ts`,
+los literales de `CierresAdminModule.tsx`, `CierreDiaModule.tsx`, `ConsolidacionBodegaModule.tsx`,
+`components/shared/liquidacion/liquidacion-labels.ts`, `components/shared/conciliacion/*`,
+`lib/constants/bloqueo-mensajero.ts`, y los mensajes de `CierreDiaService` y
+`ConsolidacionBodegaService` que la pantalla muestra (con tildes: «No tienes gestiones…», «se envió a
+aprobación»). Guardia nueva `tests/unit/guards/cierres-trato-tu.guardia.test.ts`: recorre ese censo
+y falla con una lista de formas de voseo (`\b(tenés|podés|indicá|resolvé|intentá|iniciá|escaneá|
+confirmá|rechazá|escribile|contactá|avisá|revisá|gestionalos)\b` y similares), con una contraprueba
+que la pone en rojo.
 
 ## Verificación de lo que ve el usuario
 
-Regla del proyecto: el backend sin pantalla no es entrega, y hay que comparar con números.
-- **E2E nuevo `e2e/detalle-cierre-rediseno.spec.ts`** (A1, y se amplía en A2 y B). Usa el
-  escenario de `e2e/_escenarios/cierres.ts` con importes sembrados conocidos y abre el detalle
-  como maestro. Lee las 4 cifras, los métodos visibles y las dos cascadas, y los compara con
-  **literales** calculados a mano en el propio spec (`importe(…)`), no con la función que los
-  genera.
-- **Comprobaciones del mismo E2E:**
-  - un método en 0 no aparece;
-  - no existe ningún texto «Debe»;
-  - el pie sigue visible tras desplazar el cuerpo (`boundingBox` dentro del viewport);
-  - «Aprobar» funciona igual que hoy.
-- **Identidades en pantalla:** `tests/components/DineroIdentidadesEnPantalla.test.tsx` se
-  amplía con la superficie nueva: recaudado − cobrado sobre lo recaudado = se le paga hoy;
-  facturado − IVA − pago − bodega = le queda. Se leen del DOM.
-- **Antes de promover:** Carlos lo aprueba en Preview (memoria del proyecto). El leader
-  adjunta capturas de un cierre real de mensajero y de bodega con sus cifras al lado de las del
-  detalle actual.
+- **Componentes (S1):** dobles con los números de arriba; se leen del DOM con literales escritos en
+  el test, nunca con la función que los produce (memoria «aserción contra su propia fuente»).
+- **E2E por rol, ambos modelos (R77):** `e2e/cierres-rediseno.spec.ts`, sembrado con
+  `e2e/_escenarios/cierres.ts` (un cierre del modelo viejo y uno del nuevo activando tarifas como
+  `e2e/tarifas-activacion.spec.ts`):
+  - central (S2): 4 cifras, métodos, dos cascadas, sin «Debe», pie visible tras desplazar, Aprobar;
+  - satélite (S2, S9): mismas cifras, sin «Pago al mensajero» ni fulfillment; su cierre de bodega;
+  - mensajero (S10, S11): 3 cifras, sin dinero de la empresa, «Ganancia» en Incidente;
+  - fila (S3, S12): modelo viejo con la tarifa congelada de hoy; modelo nuevo con la tarifa del
+    concepto.
 
-## Inventario: qué se reemplaza y qué pruebas se ven afectadas
-
-**Producción reemplazada en `/cierres-admin`.** Se deja de montar, pero no se borra (PA8):
-
-| Ahora | Quién lo monta hoy | Después |
-|---|---|---|
-| Cuerpo del `<Modal title="Detalle del cierre">` | `CierresAdminModule.tsx` | `<DetalleCierre tipo="mensajero">` |
-| `CascadasCierreMensajero` | idem | `DineroCierre` |
-| `CierreFacturaDetalle` (audiencia admin) | idem | cifras + pestañas. Lo sigue montando `CierreDiaModule` con audiencia mensajero |
-| Sección «Decisión del cierre» (Aprobar/Rechazar) | idem | pie de `DetalleCierre` |
-| Cuerpo del `<Modal title="Detalle del cierre de bodega">` | `CierresBodegaAdminModule.tsx` | `<DetalleCierre tipo="bodega">` (B) |
-| `TotalesPanel`, `TotalesIngresoPanel`, cascadas y desglose por cierre del día | idem | «Dinero», «Mensajeros» (B) |
-| `GestionesPorResultado` | los dos módulos y `CierreFacturaDetalle` | A1 la monta dentro de «Gestiones»; A2 y B la sustituyen en admin por `GestionesCierre`. Sigue en `/cierre-dia` |
-
-**E2E afectados (11).**
-- Usan regiones o rótulos que desaparecen y hay que reescribir:
-  - `e2e/cierres-admin.spec.ts`: región «Totales del cierre»;
-  - `e2e/wallet-iva-aparte-sl39.spec.ts`: «Liquidación», «Debe», región «Lo que le queda a…»;
-  - `e2e/ajuste-pago-mensajero-cierre.spec.ts`: región «Lo que le queda…» y el detalle de
-    bodega;
-  - `e2e/cierre-bodega-satelite.spec.ts`: región «Totales del cierre de bodega»;
-  - `e2e/reglas-bloqueos-cierre.spec.ts`: «Totales del cierre».
-- Solo abren el diálogo y pulsan «Aprobar». Se re-ejecutan y no deberían cambiar gracias al
-  nombre accesible conservado:
-  - `e2e/cierres-admin-rechazos-sla.spec.ts`;
-  - `e2e/cierre-vencido-modelo.spec.ts`;
-  - `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts`;
-  - `e2e/tarifas-activacion.spec.ts`;
-  - `e2e/tarifas-valor-propio-mensajero.spec.ts`;
-  - `e2e/tope-intentos-por-empresa.spec.ts`.
-- Para C: `e2e/cierre-dia.spec.ts` se re-ejecuta.
-
-**Tests de componentes y guardias que montan el detalle del admin y pasarán a montar
-`DetalleCierre`:**
-- `tests/components/CierresAdminModule.test.tsx`
-- `CierresAdminPagoMensajero.test.tsx`
-- `CierresAdminIndemnizacion.test.tsx`
-- `CierresAdminDeepLink.test.tsx`
-- `CierresAdminConfirmacionFisica.test.tsx`
-- `CierresAdminRetieneReprogramadas.test.tsx`
-- `CierreMensajeroDetalleCascadas.test.tsx`
-- `CierreMensajeroDesglosePorTienda.test.tsx`
-- `CierreRechazosDeTienda.test.tsx`
-- `CierreFacturaSinGestionar.test.tsx`
-- `CierrePremioPendiente.test.tsx`
-- `CorregirPagosCierre.test.tsx`
-- `CorregirResultadoCierre.test.tsx`
-- `cierre-detalle-ajuste-badge.test.tsx`
-- `DineroIdentidadesEnPantalla.test.tsx`
-- en B: `CierreBodegaDetalleCascadas.test.tsx`, `CierreBodegaDesglosePorTienda.test.tsx`,
-  `CierreBodegaDetalleGestiones.test.tsx`, `CierresBodegaAdminRefresco.test.tsx`;
-- guardias: `tests/unit/guards/cierre-detalle-superficies.guardia.test.ts` (264/R30, 425/R14),
-  `cascada-central-en-las-dos-pantallas.guardia.test.ts` (393/R38),
-  `cierre-bodega-vocabulario.guardia.test.ts`, `factura-contraste.guardia.test.ts` e
-  `impresion-flujo.guardia.test.ts`. Se adaptan **ampliando el censo** a la superficie nueva,
-  nunca quitando lo que vigilan.
-
-Que cada uno cambie o no depende de lo que afirma. El implementer lo confirma ejecutándolo en
-T1.1 y anota en `progress/impl_SLT-95.md` cuáles tocó y por qué.
-
-**No se tocan:** los tests que montan `CierreFacturaDetalle` o `GestionesPorResultado`
-directamente, porque esos componentes no cambian:
-- `CierreFacturaPapel`, `CierreFacturaFilaIncidente`, `CierreFacturaFechaCR`,
-  `CierreDesgloseModeloNuevo`, `CierreIngresoBodegaModeloNuevo`, `CierreEvidenciasVarias486`,
-  `CierreDetallePagos`, `ComprobanteMensajeroOrigenRechazo`, `CierreTarifaAplicada`,
-  `CierreTarifaEspecial`, `CierreCobrosDeLaGestion`.
-
-**Para C:**
-- `tests/components/CierreDiaModuleIncidente.test.tsx`: su caso «la tabla de incidentes NO tiene
-  columna de… ningún monto» se reescribe a «tiene la de pago y no la de indemnización»;
-- `tests/unit/descarga/cierre-dia-descarga-columnas.test.ts`;
-- `tests/components/descarga/CierresAdminDescargaDetallada.test.tsx` y
-  `CierresBodegaDescargaDetallada.test.tsx`, por los títulos.
+  Cada rebanada amplía el mismo archivo con su `describe`.
+- **Mutación antes de creer el verde:** cambiar `netoEmpresa` por `ganancia` en `cifrasDe` y el
+  `WHERE` de alcance de S9 deben poner rojo su test.
+- **Antes de promover:** Carlos aprueba cada rebanada en Preview (memoria del proyecto), con
+  capturas de un cierre real al lado del detalle viejo.
 
 ## Alternativas descartadas
 
-1. **Reescribir `CierreFacturaDetalle` en su sitio.** Esa hoja la monta también `/cierre-dia`
-   con audiencia `mensajero`, y es la que se imprime (223). Cambiarla rediseña la pantalla del
-   mensajero, que no entra, y arrastra la guardia de impresión y una docena de tests que hoy la
-   protegen. Un componente nuevo deja intacta la hoja del mensajero.
-2. **Dos componentes, uno por tipo, que compartan piezas.** Contradice D1 (opción A del canvas,
-   decisión cerrada). Además deja dos caparazones que divergen en scroll, pie y «Por revisar»,
-   que son justo las reglas que el canvas quiere iguales.
-3. **Calcular en el cliente las cifras que faltan** (porcentajes, IVA incluido, fulfillment con
-   IVA). Rompe la regla money-safe del repo: ni una operación aritmética sobre importes en
-   pantalla (395, `liquidacion-money-safe`). Si Carlos las quiere, se derivan en el servidor
-   (rebanada D).
-4. **Mover los diálogos de aprobación dentro del componente nuevo.** Más reutilizable, pero
-   mueve lógica de aprobar y rechazar en un PR que debía ser solo presentación. Se mantienen en
-   los módulos y el detalle recibe callbacks.
+1. **Reescribir `CierreFacturaDetalle` en su sitio.** Arrastra la hoja de impresión y su guardia y
+   una docena de tests que la protegen, y mezcla tres audiencias en un archivo de 2 849 líneas. Un
+   componente nuevo se monta por rebanada y el viejo se retira al final (S16).
+2. **Un componente por rol o por tipo** (detalle de central, de satélite, de mensajero). Contradice
+   D1 y D15: «componentes iguales con props distintas, nunca uno por rol».
+3. **Calcular en el cliente las cifras que faltan** (porcentajes, IVA incluido, fulfillment con IVA,
+   sumas de las tarjetas). Rompe la regla money-safe (`liquidacion-money-safe`, 395): se derivan en
+   el servidor (S12-S14).
+4. **Mover los diálogos y sus Server Actions dentro del detalle.** Mueve lógica de aprobar en
+   rebanadas que son de presentación. Los diálogos se quedan en los módulos; el detalle dispara
+   callbacks.
+5. **Reutilizar `CascadaDinero` para D16.** Pinta el operador pegado al importe («−₡3.000»); el
+   canvas lo pone delante de la partida («− Pago al mensajero … ₡3.000»). Cambiarla movería a la
+   vez las pantallas viejas que la usan. `Cuenta.tsx` nace con el formato aprobado y `CascadaDinero`
+   se borra en S16.
+6. **Un solo PR con `tamano-pr-aceptado`.** ~300 archivos y miles de líneas: imposible de revisar.
+   Se parte en 17 rebanadas (D9).
 
 ## Dependencias de terceros
 
-Ninguna nueva. Se usan las primitivas `Dialog` y `Badge` de `components/ui` (shadcn), que ya
-están.
+Ninguna nueva. Se usan `Dialog`, `Tabs` y `Badge` de `components/ui` y `exceljs` (ya aprobado) vía
+`construirDescarga`.

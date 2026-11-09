@@ -1,265 +1,239 @@
-# SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)» — tasks
+# SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)» — tasks (v2)
 
-> El orden sigue el corte propuesto en `requirements.md > PA1`: C → A1 → A2 → B. Si Carlos
-> acepta el corte, cada bloque es una ficha con su propio PR y su gate. Si no, la feature entera
-> excede `gate.tamano_pr` y necesita `tamano-pr-aceptado`.
+> v2 del 2026-11-09. El rediseño completo se parte en 17 rebanadas (`requirements.md >
+> Rebanadas`). **Esta ficha, SLT-95, implementa solo S1** («Detalle de cierre único: componente
+> base»): el componente de detalle con cabecera, franja, cifras, pestañas, scroll, pie y «Dinero»,
+> probado con dobles y **sin montar** en ninguna pantalla (`docs/specs.md > Partir una feature`:
+> lo que aún no puede verse va sin enlace). S2 lo monta en `/cierres-admin`.
 >
-> `[P]` = paralelizable con la task anterior del mismo bloque. Reparto por capa: todo esto es de
-> `frontend_dev`. Solo la rebanada D (PA2), si se aprueba, añade `backend_dev`.
+> `## Archivos esperados` lista solo los de S1, que es lo que `scripts/archivos-en-vuelo.mjs` debe
+> ver como en vuelo. Los de las demás rebanadas están en `## Plan de las demás rebanadas` y pasan a
+> su propio `tasks.md` cuando se especifique cada ficha.
 >
-> Antes del primer gate, copiar `.env` al worktree (memoria del proyecto: sin `.env`, el gate
-> sale verde saltándose la integración).
+> `[P]` = paralelizable con la task anterior. Todo S1 es de `frontend_dev`. Antes del primer gate,
+> copiar `.env` al worktree (memoria: sin `.env` el gate sale verde saltándose la integración).
 
-## T0 — Comprobaciones previas (sin código)
+## S1 — Detalle de cierre único: componente base (SLT-95)
 
-- [ ] **T0.1** — Confirmar que `CierreDiaService.listarCierreDia` deja `pagoMensajero` no nulo
-  en las gestiones `incidente`, y que `verCierrePasado` lee el snapshot. **Hecho:** nota en
-  `progress/impl_SLT-95.md`, con la línea del servicio.
-- [ ] **T0.2** [P] — Comprobar si el alcance del maestro en `CierresAdminService.verCierreDetalle`
-  incluye cierres del día con destino satélite (para «Ver su cierre», PA7). **Hecho:** nota con
-  el `WHERE` de `findCierreByIdEnAlcance` y la conclusión.
-- [ ] **T0.3** [P] — Listar los campos de la marca de conciliación que trae
-  `CierreBodegaDetalleServiceResult.cierre` (recibido, falta, quién y cuándo). **Hecho:** nota.
-  Si falta alguno, se para y se pregunta (no se inventa).
+Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 6 de tests ~390).
 
-## Bloque C — `/cierre-dia` incidente y títulos de Excel (R28-R30)
+### T0 — Comprobaciones previas (sin código)
 
-- [ ] **T1.C1** — Rama `incidente` de las columnas de `CierreDiaModule.tsx`: añadir
-  `columnaPago`. **Hecho:** `CierreDiaModuleIncidente.test.tsx` afirma que la columna de pago
-  existe con el importe del doble y que la de indemnización no (R28).
-- [ ] **T1.C2** [P] — `cierre-dia-descarga-columnas.ts`: columna de pago en la sección
-  `incidente`. **Hecho:** `cierre-dia-descarga-columnas.test.ts` afirma el encabezado y que el
-  valor de la celda es el literal del doble (R29).
-- [ ] **T1.C3** — `columnasGestionFundida(filas)` en
-  `cierres-gestiones-fundida-descarga-columnas.ts`, y que la usen `DescargarCierresButton` y
-  `DescargarGestionesDialog` después de obtener las filas. **Hecho:** tests de los archivos de
-  detalle de mensajero y de bodega afirman el título nuevo con filas solo del modelo nuevo, el de
-  hoy con filas solo del viejo, y la misma `clave` en ambos (R30). El caso mixto, según la
-  respuesta a PA6.
-- [ ] **T1.C4** — Gate y E2E local de `e2e/cierre-dia.spec.ts`. **Hecho:** `./init.sh` verde, y
-  E2E verde contra una base desechable.
+- [ ] **T0.1** — Confirmar que un componente exportado y aún no montado no pone rojo ninguna guardia
+  (`superficie-de-uso.guardia.test.ts` y la de dependencias). **Hecho:** nota en
+  `progress/impl_SLT-95.md`. Si alguna lo marca, se para y se pregunta (no se monta a escondidas).
+- [ ] **T0.2** [P] — Confirmar los campos de `CierreDetalleAdminServiceResult` y
+  `CierreBodegaDetalleServiceResult` que usa la tabla `design.md > De dónde sale cada cifra`
+  (`pagoTienda`, `cobradoSobreRecaudado`, `netoEmpresa`, `ganaLaTienda`, `partesPorTienda`,
+  `paraLaCentral`, `totalesIngreso`, `ivaFacturado`, `rechazosDeTienda`,
+  `reprogramadasRetenidasHoy`). **Hecho:** nota con el archivo y la línea de cada uno. Si falta
+  uno, se para.
 
-## Bloque A1 — Componente y detalle del mensajero (R1-R12, R17-R19, R26, R27, R31)
+### T1 — Lógica pura
 
-- [ ] **T2.1** — `detalle-cierre-vista.ts` (puro): `cifrasDe`, `metodosVisibles`,
-  `avisosPorRevisar`, `pestanasDe`, `conteosPorResultado`. **Hecho:**
-  `tests/unit/utils/detalle-cierre-vista.test.ts` cubre:
-  - las 4 cifras apuntan al campo exacto (R5);
-  - el método en "0.00" se omite (R6);
-  - los conteos de avisos, y sin avisos no hay franja (R4);
-  - las pestañas por estado y permiso (R9).
+- [ ] **T1.1** — `components/private/cierres/detalle/detalle-cierre-vista.ts`: `cifrasDe`,
+  `metodosVisibles`, `avisosDe`, `pestanasDe`, `accionesDe`, `lineasDinero` para `tipo`
+  mensajero y bodega y las tres audiencias. **Hecho:** `tests/unit/utils/detalle-cierre-vista.test.ts`
+  cubre, con los números de `design.md > Números escritos a mano`:
+  - las cifras apuntan al campo exacto y en orden: 4 con central/satélite, 3 con mensajero (R6);
+  - SINPE/Transferencia en "0.00" se omiten (R7);
+  - avisos por modo y audiencia, y lista vacía sin asuntos (R4);
+  - pestañas por la tabla de R10, con «Rechazados por la tienda (0)» presente (R10, D11);
+  - acciones del pie por la tabla de R12, con y sin permiso (R12);
+  - contraprueba: con `netoEmpresa` cambiado en el doble, la cifra 4 cambia.
+- [ ] **T1.2** [P] — `detalle-cierre-labels.ts`: rótulos nuevos en «tú», reusando los `*_LABEL`
+  existentes donde la cifra ya tiene nombre. **Hecho:** typecheck verde; ningún rótulo «Debe» ni
+  «Ganancia» de la empresa exportado (R9).
+- [ ] **T1.3** [P] — Mover `lineasCascadaCentral` y `lineasCascadaDueno` de
+  `CierresBodegaAdminModule.tsx` a `app/(app)/cierres-admin/_components/cascadas-bodega.ts`, sin
+  cambiar ni una línea; el módulo las importa. **Hecho:** `CierreBodegaDetalleCascadas.test.tsx`
+  verde sin tocar sus aserciones.
 
-  Y una contraprueba: con un importe cambiado en el doble, la cifra cambia.
-- [ ] **T2.2** [P] — `detalle-cierre-labels.ts`: rótulos nuevos, reusando los `*_LABEL`
-  existentes. **Hecho:** typecheck verde, y ningún rótulo «Debe» ni «Ganancia» exportado (R8).
-- [ ] **T2.3** — `CifrasCierre.tsx` y `DineroCierre.tsx` (tipo mensajero). **Hecho:**
-  `tests/components/DetalleCierreMensajero.test.tsx` lee del DOM:
-  - las 4 cifras con los literales del doble (R5, R7);
-  - el reparto y las dos cascadas (R12);
-  - «Por tienda» solo con dos o más tiendas (R12.4);
-  - ningún texto «Debe» (R8);
-  - un `netoEmpresa` negativo con su signo (R5).
-- [ ] **T2.4** — `DetalleCierre.tsx`, sobre `components/ui/dialog`, con estas piezas:
-  - cabecera y estado (R2, R3);
-  - «Por revisar» (R4);
-  - `tablist` (R9, R31);
-  - un solo `tabpanel` desplazable (R10);
-  - pie fijo con «Rechazar»/«Aprobar» o «Cerrar» (R11);
-  - «Gestiones» con `GestionesPorResultado` y la sección sin gestión (R17);
-  - «Rechazados por la tienda» (R18);
-  - «Pago al mensajero» por slot (R19).
+### T2 — Componentes
 
-  **Hecho:** el mismo test de componentes afirma:
-  - el nombre accesible del diálogo contiene «Detalle del cierre»;
-  - roles `tab`/`tabpanel`;
-  - solo el panel tiene `overflow-auto`;
-  - los botones del pie según estado;
-  - la pestaña de rechazos con conteo y oculta sin rechazos;
-  - la pestaña de pago solo con el slot.
-- [ ] **T2.5** — `CierresAdminModule.tsx`: sustituir el cuerpo del modal por
-  `<DetalleCierre tipo="mensajero">`, pasando callbacks y slots. Los diálogos no se mueven.
-  **Hecho:** los tests de componentes del inventario de `design.md` que montan el detalle del
-  admin quedan verdes, adaptados sin quitar lo que vigilan. La lista de los tocados va en
-  `progress/impl_SLT-95.md`.
-- [ ] **T2.6** — Guardias: ampliar el censo de `cierre-detalle-superficies.guardia.test.ts`
-  (264/R30, 425/R14) a `DetalleCierre`, revisar `factura-contraste` e `impresion-flujo`, y
-  añadir a `DineroIdentidadesEnPantalla.test.tsx` las identidades de la superficie nueva.
-  **Hecho:** `pnpm run test:guardias` verde. Cada guardia tiene un caso que falla si se quita la
-  prop o la cifra (mutación manual anotada).
-- [ ] **T2.7** — Guardia money-safe de la carpeta `detalle-cierre/`: sin `Number(`,
-  `parseFloat(`, `parseInt(`, `.toFixed(` ni aritmética sobre importes. Se hace ampliando el
-  censo de `tests/unit/guards/liquidacion-money-safe.test.ts`. **Hecho:** la guardia caza un
-  `Number(monto)` colado en un archivo de la carpeta (contraprueba) (R26).
-- [ ] **T2.8** — E2E `e2e/detalle-cierre-rediseno.spec.ts`. Escenario sembrado con importes
-  conocidos y un método en 0; el maestro abre «Ver / decidir». Comprueba:
-  - las 4 cifras, los métodos y las cascadas contra **literales** escritos en el spec (R27);
-  - sin «Debe» (R8);
-  - el método en 0 ausente (R6);
-  - el pie visible tras desplazar el cuerpo (R10);
-  - «Aprobar» completa como hoy (R11).
+- [ ] **T2.1** — `Cuenta.tsx`: tarjeta en formato cascada (R15) con `data-signo` por línea.
+  **Hecho:** cubierta por `DetalleCierreDinero.test.tsx` (operador delante del rótulo, subtotal con
+  raya punteada, total en negrita).
+- [ ] **T2.2** — `CifrasCierre.tsx` y `DineroCierre.tsx` (mensajero y bodega). **Hecho:**
+  `tests/components/DetalleCierreDinero.test.tsx` lee del DOM con literales:
+  - mensajero: 100 000,00 · 94 350,00 · 3 000,00 · 3 500,00; contexto «ganan en total» 92 090,00
+    (R6, R8); Transferencia ausente (R7);
+  - reparto 94 350,00 / 5 650,00 y las dos cascadas (5 650,00; 7 910,00; −910,00; −3 000,00;
+    −500,00; 3 500,00) (R14);
+  - «Por tienda» solo con dos o más tiendas (R14);
+  - bodega: 96 500,00 y las tres cascadas (R16);
+  - audiencia mensajero: 3 cifras y ningún texto del dinero de la empresa (R6, R9);
+  - ningún «Debe»; `netoEmpresa` −250,00 con su signo (R9, R6).
+- [ ] **T2.3** — `DetalleCierre.tsx` sobre `components/ui/dialog` (marco modal) o región (marco
+  página): cabecera y estado (R2, R3), franja fija (R4, R5), cifras, `tablist` (R10, R20), un solo
+  `tabpanel` desplazable (R11), pie fijo (R12), slots de pestaña. **Hecho:**
+  `tests/components/DetalleCierre.test.tsx` afirma:
+  - nombre accesible con «Detalle del cierre» / «Detalle del cierre de bodega» en modal, y región sin
+    X en página (R13);
+  - estado de cada modo con `EstadoCierreBadge` / `estadoConciliacionDe` (R2);
+  - marca de retención con `reprogramadasRetenidasHoy` = 2, ausente con 0 (R3);
+  - la franja con los conteos de un doble y ausente sin asuntos (R4); fuera del panel con scroll (R5);
+  - roles `tab`/`tabpanel` y que solo el panel tiene `overflow-auto` (R11, R20);
+  - los botones del pie para cada fila de la tabla de R12, y que pulsar uno llama a su callback;
+  - un componente para todo: el mismo `DetalleCierre` se monta con las 9 combinaciones de R12 (R1).
 
-  Adaptar `e2e/cierres-admin.spec.ts`, `e2e/wallet-iva-aparte-sl39.spec.ts`,
-  `e2e/ajuste-pago-mensajero-cierre.spec.ts` (parte de mensajero) y
-  `e2e/reglas-bloqueos-cierre.spec.ts`. **Hecho:**
-  - verdes en local con base desechable;
-  - re-ejecutados verdes los otros seis E2E del inventario;
-  - mutación: cambiar `netoEmpresa` por `ganancia` en `cifrasDe` pone rojo el E2E.
-- [ ] **T2.9** — Gate y revisión visual. **Hecho:**
-  - `./init.sh` verde;
-  - capturas de un cierre real (Preview) con las cifras del detalle viejo al lado, anotadas en
-    `progress/impl_SLT-95.md`;
-  - Carlos lo aprueba en Preview antes de promover.
+### T3 — Guardias
 
-## Bloque A2 — Lista y fila desplegada del mensajero (R14, R15, R22-R25)
+- [ ] **T3.1** — Ampliar el censo de `tests/unit/guards/liquidacion-money-safe.test.ts` a
+  `components/private/cierres/`. **Hecho:** la guardia caza un `Number(monto)` colado en un archivo
+  de la carpeta (contraprueba anotada) (R71).
+- [ ] **T3.2** [P] — `tests/components/DineroIdentidadesEnPantalla.test.tsx`: añadir la superficie
+  nueva (recaudado − sale de lo recaudado = se le paga hoy; facturado − IVA − pago − bodega = le
+  queda; recaudado − mensajeros − bodega = debe llegar a la central), leídas del DOM vía
+  `data-signo`. **Hecho:** verde, y rojo si se cambia una línea del doble.
 
-- [ ] **T3.1** — `senalesDe` en `detalle-cierre-vista.ts`. **Hecho:** test unitario con una
-  gestión por señal, y una sin ninguna (R15).
-- [ ] **T3.2** — `GestionesCierre.tsx`: filtros con conteo, «Todas», «Con señales» y la tabla
-  con sus columnas (R14). **Hecho:** `tests/components/DetalleCierreGestiones.test.tsx`:
-  - los conteos de los filtros;
-  - filtrar deja solo ese resultado;
-  - las columnas con literales del doble.
-- [ ] **T3.3** — `FilaGestionCierre.tsx`: datos de la orden, las 4 tarjetas, «Ver cómo se
-  calculó» y las acciones por callback. **Hecho:** `tests/components/DetalleCierreFila.test.tsx`:
-  - las 4 tarjetas con literales, sin los métodos en 0 (R22);
-  - «Sin dato» en lugar de ₡0 sin `ingresoEmpresa` (R22);
-  - el ajuste con el pago anterior, el motivo y quién (R22);
-  - una tarjeta por concepto, que pliega y despliega (R23);
-  - el modelo viejo muestra la columna de tarifa aplicada (R23);
-  - sin callback no hay botón (R24);
-  - el fulfillment, solo con audiencia `admin` y no nulo (R25).
-- [ ] **T3.4** — En `DetalleCierre`, «Gestiones» pasa a `GestionesCierre`; la sección sin
-  gestión se queda (R17). **Hecho:**
-  - los tests de A1 siguen verdes;
-  - el E2E de T2.8 despliega una gestión y lee sus 4 tarjetas con literales;
-  - `./init.sh` verde.
+### T4 — Cierre
 
-## Bloque B — Detalle de bodega (R13, R16, R20, R21 y las partes [B])
+- [ ] **T4.1** — `./init.sh` verde. **Hecho:** sin rojos ni aviso de tamaño; revisión del diff: nada
+  en `lib/`, `db/` ni migraciones (R72).
 
-- [ ] **T4.1** — Mover `lineasCascadaCentral` y `lineasCascadaDueno` a
-  `cierres-admin/_components/cascadas-bodega.ts` (puro, exportado) sin cambiar ni una línea.
-  **Hecho:** `CierreBodegaDetalleCascadas.test.tsx` verde sin tocar sus aserciones.
-- [ ] **T4.2** — `detalle-cierre-vista.ts` con el tipo `bodega`: cifras, avisos, pestañas, y las
-  gestiones de todos los cierres del día con su mensajero. **Hecho:** casos de bodega en
-  `detalle-cierre-vista.test.ts` (R5, R4, R9, R14).
-- [ ] **T4.3** — `DineroCierre` (bodega) y `MensajerosCierreBodega.tsx`. **Hecho:**
-  `tests/components/DetalleCierreBodega.test.tsx`:
-  - las 4 cifras y el reparto en tres (R5, R13);
-  - las tres cascadas con literales (R13);
-  - «Por tienda» según PA3;
-  - una fila por mensajero con «Ver su cierre» → `/cierres-admin?cierre=<id>` (R20; PA7);
-  - conciliación con «—» sin marca (R21).
-- [ ] **T4.4** — `CierresBodegaAdminModule.tsx`: `<DetalleCierre tipo="bodega">`, con
-  `ConciliacionAcciones` como slot del pie (R11) y `verFulfillment={audiencia === "admin"}`
-  (R25). **Hecho:**
-  - el test de bodega afirma que la fila no ofrece corrección ni ajuste (R16) y el fulfillment
-    según la audiencia (R25);
-  - `CierreBodegaDesglosePorTienda`, `CierreBodegaDetalleGestiones` y
-    `CierresBodegaAdminRefresco` adaptados y verdes;
-  - guardias `cascada-central-en-las-dos-pantallas` y `cierre-bodega-vocabulario` con el censo
-    ampliado.
-- [ ] **T4.5** — E2E: `e2e/cierre-bodega-satelite.spec.ts` y la parte de bodega de
-  `e2e/ajuste-pago-mensajero-cierre.spec.ts`. El caso de bodega de
-  `e2e/detalle-cierre-rediseno.spec.ts` lee las 4 cifras y la conciliación con literales.
-  **Hecho:**
-  - verdes en local;
-  - `./init.sh` verde;
-  - aprobación de Carlos en Preview.
-
-## Trazabilidad R → test
+## Trazabilidad R → test (S1)
 
 | R | Test |
 |---|---|
-| R1 | `tests/components/DetalleCierreMensajero.test.tsx` (abrir desde cola y resueltos); `DetalleCierreBodega.test.tsx` |
-| R2, R3 | `DetalleCierreMensajero.test.tsx`; `DetalleCierreBodega.test.tsx` |
-| R4 | `tests/unit/utils/detalle-cierre-vista.test.ts` (avisos); `DetalleCierreMensajero.test.tsx` (franja ausente si resuelto) |
-| R5, R7 | `detalle-cierre-vista.test.ts`; `DetalleCierreMensajero.test.tsx`; `DetalleCierreBodega.test.tsx`; `e2e/detalle-cierre-rediseno.spec.ts` |
-| R6 | `detalle-cierre-vista.test.ts`; `e2e/detalle-cierre-rediseno.spec.ts` |
-| R8 | `DetalleCierreMensajero.test.tsx`; `e2e/detalle-cierre-rediseno.spec.ts`; `e2e/wallet-iva-aparte-sl39.spec.ts` (adaptado) |
-| R9 | `detalle-cierre-vista.test.ts`; `DetalleCierreMensajero.test.tsx` |
-| R10 | `DetalleCierreMensajero.test.tsx` (un solo `overflow-auto`); `e2e/detalle-cierre-rediseno.spec.ts` (pie visible tras desplazar) |
-| R11 | `DetalleCierreMensajero.test.tsx`; `tests/components/CierresAdminModule.test.tsx`; `e2e/detalle-cierre-rediseno.spec.ts` |
-| R12 | `DetalleCierreMensajero.test.tsx`; `tests/components/DineroIdentidadesEnPantalla.test.tsx` |
-| R13 | `DetalleCierreBodega.test.tsx`; `DineroIdentidadesEnPantalla.test.tsx` |
-| R14 | `tests/components/DetalleCierreGestiones.test.tsx` |
-| R15 | `detalle-cierre-vista.test.ts` (`senalesDe`) |
-| R16 | `DetalleCierreBodega.test.tsx` |
-| R17 | `tests/unit/guards/cierre-detalle-superficies.guardia.test.ts` (censo ampliado); `tests/components/CierreFacturaSinGestionar.test.tsx` |
-| R18 | `tests/components/CierreRechazosDeTienda.test.tsx` (adaptado) |
-| R19 | `tests/components/CierresAdminPagoMensajero.test.tsx` (adaptado) |
-| R20, R21 | `DetalleCierreBodega.test.tsx` |
-| R22, R23, R24, R25 | `tests/components/DetalleCierreFila.test.tsx` |
-| R26 | `tests/unit/guards/liquidacion-money-safe.test.ts` (censo ampliado + contraprueba); revisión del diff: sin `lib/`, `db/` ni migraciones |
-| R27 | `e2e/detalle-cierre-rediseno.spec.ts` (literales del escenario) |
-| R28 | `tests/components/CierreDiaModuleIncidente.test.tsx` |
-| R29 | `tests/unit/descarga/cierre-dia-descarga-columnas.test.ts` |
-| R30 | `tests/components/descarga/CierresAdminDescargaDetallada.test.tsx`; `tests/components/descarga/CierresBodegaDescargaDetallada.test.tsx` |
-| R31 | `DetalleCierreMensajero.test.tsx`; los E2E que localizan el diálogo por «Detalle del cierre» |
+| R1 | `tests/components/DetalleCierre.test.tsx` (las 9 combinaciones con un solo componente) |
+| R2, R3 | `tests/components/DetalleCierre.test.tsx` |
+| R4 | `tests/unit/utils/detalle-cierre-vista.test.ts`; `DetalleCierre.test.tsx` |
+| R5 | `DetalleCierre.test.tsx` |
+| R6, R7, R8 | `detalle-cierre-vista.test.ts`; `tests/components/DetalleCierreDinero.test.tsx` |
+| R9 | `DetalleCierreDinero.test.tsx` |
+| R10 | `detalle-cierre-vista.test.ts`; `DetalleCierre.test.tsx` |
+| R11, R12, R13 | `DetalleCierre.test.tsx`; `detalle-cierre-vista.test.ts` (R12) |
+| R14, R15, R16 | `DetalleCierreDinero.test.tsx`; `tests/components/DineroIdentidadesEnPantalla.test.tsx` |
+| R20 | `DetalleCierre.test.tsx` |
+| R71 | `tests/unit/guards/liquidacion-money-safe.test.ts` (censo + contraprueba) |
+| R72 | revisión del diff en T4.1 |
+
+El E2E por rol (R77) entra con S2, que es la primera rebanada que monta el detalle: S1 no se ve.
 
 ## Archivos esperados
 
-Bloque C:
-- `app/(app)/cierre-dia/_components/CierreDiaModule.tsx`
-- `app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas.ts`
-- `app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts`
-- `app/(app)/cierres-admin/_components/DescargarCierresButton.tsx`
-- `app/(app)/cierres-admin/_components/DescargarGestionesDialog.tsx`
-- `tests/components/CierreDiaModuleIncidente.test.tsx`
-- `tests/unit/descarga/cierre-dia-descarga-columnas.test.ts`
-- `tests/unit/descarga/cierres-gestiones-paridad.test.ts`
-- `tests/components/descarga/CierresAdminDescargaDetallada.test.tsx`
-- `tests/components/descarga/CierresBodegaDescargaDetallada.test.tsx`
-
-Bloque A1:
-- `app/(app)/cierres-admin/_components/detalle-cierre/detalle-cierre-vista.ts`
-- `app/(app)/cierres-admin/_components/detalle-cierre/detalle-cierre-labels.ts`
-- `app/(app)/cierres-admin/_components/detalle-cierre/DetalleCierre.tsx`
-- `app/(app)/cierres-admin/_components/detalle-cierre/CifrasCierre.tsx`
-- `app/(app)/cierres-admin/_components/detalle-cierre/DineroCierre.tsx`
-- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`
-- `tests/unit/utils/detalle-cierre-vista.test.ts`
-- `tests/components/DetalleCierreMensajero.test.tsx`
-- `tests/components/CierresAdminModule.test.tsx`
-- `tests/components/CierresAdminPagoMensajero.test.tsx`
-- `tests/components/CierresAdminIndemnizacion.test.tsx`
-- `tests/components/CierresAdminDeepLink.test.tsx`
-- `tests/components/CierresAdminConfirmacionFisica.test.tsx`
-- `tests/components/CierresAdminRetieneReprogramadas.test.tsx`
-- `tests/components/CierreMensajeroDetalleCascadas.test.tsx`
-- `tests/components/CierreMensajeroDesglosePorTienda.test.tsx`
-- `tests/components/CierreRechazosDeTienda.test.tsx`
-- `tests/components/CierreFacturaSinGestionar.test.tsx`
-- `tests/components/CierrePremioPendiente.test.tsx`
-- `tests/components/CorregirPagosCierre.test.tsx`
-- `tests/components/CorregirResultadoCierre.test.tsx`
-- `tests/components/cierre-detalle-ajuste-badge.test.tsx`
-- `tests/components/DineroIdentidadesEnPantalla.test.tsx`
-- `tests/unit/guards/cierre-detalle-superficies.guardia.test.ts`
-- `tests/unit/guards/factura-contraste.guardia.test.ts`
-- `tests/unit/guards/impresion-flujo.guardia.test.ts`
-- `tests/unit/guards/liquidacion-money-safe.test.ts`
-- `e2e/detalle-cierre-rediseno.spec.ts`
-- `e2e/_escenarios/cierres.ts`
-- `e2e/cierres-admin.spec.ts`
-- `e2e/wallet-iva-aparte-sl39.spec.ts`
-- `e2e/ajuste-pago-mensajero-cierre.spec.ts`
-- `e2e/reglas-bloqueos-cierre.spec.ts`
-
-Bloque A2:
-- `app/(app)/cierres-admin/_components/detalle-cierre/GestionesCierre.tsx`
-- `app/(app)/cierres-admin/_components/detalle-cierre/FilaGestionCierre.tsx`
-- `tests/components/DetalleCierreGestiones.test.tsx`
-- `tests/components/DetalleCierreFila.test.tsx`
-
-Bloque B:
-- `app/(app)/cierres-admin/_components/detalle-cierre/MensajerosCierreBodega.tsx`
+- `components/private/cierres/detalle/detalle-cierre-vista.ts`
+- `components/private/cierres/detalle/detalle-cierre-labels.ts`
+- `components/private/cierres/detalle/DetalleCierre.tsx`
+- `components/private/cierres/detalle/CifrasCierre.tsx`
+- `components/private/cierres/detalle/DineroCierre.tsx`
+- `components/private/cierres/detalle/Cuenta.tsx`
 - `app/(app)/cierres-admin/_components/cascadas-bodega.ts`
 - `app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx`
-- `tests/components/DetalleCierreBodega.test.tsx`
-- `tests/components/CierreBodegaDetalleCascadas.test.tsx`
-- `tests/components/CierreBodegaDesglosePorTienda.test.tsx`
-- `tests/components/CierreBodegaDetalleGestiones.test.tsx`
-- `tests/components/CierresBodegaAdminRefresco.test.tsx`
-- `tests/unit/guards/cascada-central-en-las-dos-pantallas.guardia.test.ts`
-- `tests/unit/guards/cierre-bodega-vocabulario.guardia.test.ts`
-- `e2e/cierre-bodega-satelite.spec.ts`
+- `tests/unit/utils/detalle-cierre-vista.test.ts`
+- `tests/components/DetalleCierre.test.tsx`
+- `tests/components/DetalleCierreDinero.test.tsx`
+- `tests/components/DineroIdentidadesEnPantalla.test.tsx`
+- `tests/unit/guards/liquidacion-money-safe.test.ts`
+
+## Plan de las demás rebanadas
+
+Cada una se crea como ficha con `/afinar-feature` y `depends_on` encadenado, y tendrá su propio
+spec (que hereda R, decisiones y diseño de este). Estimaciones a mano; el implementer para si el
+gate avisa del 80 %.
+
+### S2 «Detalle de cierre único en /cierres-admin (mensajeros)» — frontend · depende de S1
+R17-R19, R21, R38, R39, R77 (central y satélite). ~32 archivos, ~900 líneas (la mitad, tests que hoy
+montan el modal).
+- `CierresAdminModule.tsx` monta `DetalleCierre` tipo mensajero (decidir, solo lectura, vencido) con
+  las audiencias central y satélite; «Gestiones» monta `GestionesPorResultado` tal cual hasta S3;
+  «Rechazados por la tienda» con estado vacío; «Pago al mensajero» = `PagoMensajeroSeccion`;
+  «Descargar» en lugar de la impresión.
+- Tests a adaptar (sin quitar lo que vigilan): `CierresAdminModule`, `CierresAdminPagoMensajero`,
+  `CierresAdminIndemnizacion`, `CierresAdminDeepLink`, `CierresAdminConfirmacionFisica`,
+  `CierresAdminRetieneReprogramadas`, `CierreMensajeroDetalleCascadas`,
+  `CierreMensajeroDesglosePorTienda`, `CierreRechazosDeTienda`, `CierreFacturaSinGestionar`,
+  `CierrePremioPendiente`, `cierre-detalle-ajuste-badge`; guardias `cierre-detalle-superficies`,
+  `factura-contraste`, `impresion-flujo` (censo ampliado; la de impresión deja de exigir la hoja en
+  el admin).
+- E2E: nuevo `e2e/cierres-rediseno.spec.ts` (central y satélite, modelo viejo y nuevo, literales);
+  adaptar `e2e/cierres-admin.spec.ts`, `e2e/wallet-iva-aparte-sl39.spec.ts`,
+  `e2e/ajuste-pago-mensajero-cierre.spec.ts`, `e2e/reglas-bloqueos-cierre.spec.ts`; re-ejecutar los
+  otros seis que abren el diálogo.
+- **Hecho:** E2E verde en local con base desechable; mutación `netoEmpresa`→`ganancia` lo pone rojo.
+
+### S3 «Fila de gestión única y lista con filtros» — frontend · depende de S2
+R22-R30. ~16 archivos, ~800 líneas. `fila/GestionesCierre.tsx`, `FilaGestion.tsx`,
+`fila-gestion-vista.ts`; sustituye `GestionesPorResultado` en el detalle del admin. Tests nuevos
+`DetalleCierreGestiones.test.tsx`, `FilaGestion.test.tsx` (tablas de R25/R26 por audiencia; «Sin
+dato»; modelo viejo con la tarifa congelada de hoy); adaptar `CorregirPagosCierre`,
+`CorregirResultadoCierre`, `CierreEvidenciasVarias486`. E2E: despliega una gestión de cada modelo y
+lee sus tarjetas con literales.
+
+### S4 «Cola de cierres única: mensajeros (central y satélite)» — frontend · depende de S2
+R32-R37. ~22 archivos, ~850 líneas. `cola/ColaCierres.tsx`, `cola-cierres-vista.ts`,
+`cola-cierres-labels.ts`; `CierresAdminModule.tsx` deja de montar `CierreFacturaResumen`,
+`CierresAdminHistoricoLista`, `ListaComprobantes`. Tests de cola (columnas por rol y pestaña; «Pago
+entregado» y «Registrar pago» solo central); E2E: la satélite no ve «Pago entregado».
+
+### S5 «Diálogos del módulo de cierres y trato tú» — fullstack · depende de S3, S4
+R53-R57. ~30 archivos, ~700 líneas (casi todo strings). `dialogos/VisorEvidencia.tsx`,
+`dialogos-labels.ts`; labels del módulo, `CierreDiaService` y `ConsolidacionBodegaService` (solo
+textos); `RegistrarPagoMensajeroDialog` pasa `mensajeSinSaldo`. Guardia nueva
+`tests/unit/guards/cierres-trato-tu.guardia.test.ts` con contraprueba. Tests que afirman textos con
+voseo se actualizan al nuevo texto.
+
+### S6 «Detalle de cierre de bodega en el detalle único (central)» — frontend · depende de S3
+R31, R40-R43. ~20 archivos, ~800 líneas. Pestañas «Mensajeros» y «Conciliación»;
+`CierresBodegaAdminModule.tsx` monta `DetalleCierre` tipo bodega con `ConciliacionAcciones` en el
+pie; filas en «solo lectura». Adaptar `CierreBodegaDetalleCascadas`,
+`CierreBodegaDesglosePorTienda`, `CierreBodegaDetalleGestiones`, `CierresBodegaAdminRefresco`,
+guardias `cascada-central-en-las-dos-pantallas` y `cierre-bodega-vocabulario`;
+`e2e/cierre-bodega-satelite.spec.ts`.
+
+### S7 «Cola de bodega de la central: Por conciliar / Conciliados» — fullstack · depende de S4, S6
+R44. ~14 archivos, ~600 líneas. `WHERE` de las dos listas en `CierresBodegaAdminRepository`
+(incompleto en «Por conciliar»), servicio y descargas; `ColaCierres` bodega · central. **Test de
+integración** del `WHERE` contra la base (pendiente, incompleto, recibido) con mutación.
+
+### S8 «Bodega satélite: A consolidar con la cola única» — fullstack · depende de S4, S5
+R45-R48, R67. ~22 archivos, ~850 líneas. `ConsolidacionBodegaService` emite «Debe llegar a la
+central» agregado y por cierre (misma `paraLaCentral`), y el bloqueo con los nombres; `ColaCierres`
+bodega · satélite pestaña 1; diálogo con resumen. Test de servicio con literales (100 000,00 −
+3 000,00 − 500,00 = 96 500,00) y de integración del bloqueo.
+
+### S9 «Bodega satélite: Solicitados y su cierre de bodega en lectura» — fullstack · depende de S6, S8
+R49-R52, R68. ~20 archivos, ~800 líneas. Permiso del adminSatelite en
+`CierresBodegaAdminService.verDetalle` acotado por zona en el `WHERE`, sin fulfillment; tarjetas de
+R68; filtro de fecha en la lista. Test de integración: cierre de otra zona → `forbidden`; E2E de la
+satélite abriendo su cierre de bodega.
+
+### S10 «/cierre-dia: detalle y cola únicos para el mensajero» — frontend · depende de S3, S4
+R58-R60. ~18 archivos, ~800 líneas. Modal de cierre pasado = `DetalleCierre` audiencia mensajero;
+«Cierres solicitados» = `ColaCierres` rol mensajero (tarjetas vacías hasta S14: se omiten, no se
+pintan con 0); «Ganancia» en Incidente y su descarga. Adaptar `CierreDiaModuleIncidente`,
+`cierre-dia-descarga-columnas`, `e2e/cierre-dia.spec.ts`; E2E del mensajero con literales.
+
+### S11 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» — frontend · depende de S10
+R61-R63 (y la respuesta a PA2). ~16 archivos, ~850 líneas. `CierreDiaModule.tsx` monta
+`DetalleCierre` marco página; pestaña «Corregir»; «Devolver a gestión» en la fila.
+
+### S12 «Cifras del servidor en la fila: tarifas, IVA, pago y fulfillment» — fullstack · depende de S3
+R64-R66. ~18 archivos, ~850 líneas. Lecturas en `CierresAdminRepository` y
+`CierresBodegaAdminRepository` (`cierre_detail_concepto` + `tarifa_valor`, `gestion_pago_congelado`,
+`orden_fulfillment_movimiento`); derivaciones en sus servicios; la fila las pinta. T0: base del
+porcentaje en `derivarIngresoOrden` y si un ajuste re-congela `importe`. Tests de servicio con los
+literales del escenario «modelo nuevo» y de integración de las lecturas.
+
+### S13 «Cifras del servidor: reparto en % y señales de la cola» — fullstack · depende de S4
+R70. ~14 archivos, ~600 líneas. `lib/utils/porcentajes-reparto.ts` (mayor resto) con tests 94/6 y
+97/3/0 y los casos `null`; conteos por página en `CierresAdminRepository`.
+
+### S14 «Cifras del servidor: ganancia pendiente y pagada del mensajero» — fullstack · depende de S10
+R69. ~10 archivos, ~450 líneas. `CierreDiaService`; test con dos cierres aprobados (pendientes
+45 000,55 y 2 500,00 → 47 500,55; 2 cierres) y un pago anulado que no cuenta.
+
+### S15 «Excel del modelo nuevo de cierres» — fullstack · depende de S12 y de la aprobación de PA3
+R73-R75. ~14 archivos, ~800 líneas. Columnas nuevas en
+`cierres-gestiones-fundida-descarga-columnas.ts` y la hoja de cierres; elección de formato por
+modelo en `DescargarCierresButton.tsx` y `DescargarGestionesDialog.tsx`. Tests: solo viejo =
+formato actual idéntico (claves y títulos); solo nuevo; mixto sin cierres repetidos.
+
+### S16 «Retirar los componentes de cierre sustituidos» (chore) — frontend · depende de S1-S15, S17
+R76. ~25 archivos (casi todo borrados). Borra lo de `design.md > Qué sustituye cada componente` y
+los tests que solo los montaban; guardia que falla si `app/` vuelve a importarlos.
+
+### S17 «Estado de cuenta de la satélite: conciliación en pestaña» — frontend · depende de S6
+R78. ~10 archivos, ~450 líneas. `EstadoCuentaSatelite.tsx`, `ConciliacionSatelite.tsx` con
+`Cuenta` y el enlace al detalle de bodega.

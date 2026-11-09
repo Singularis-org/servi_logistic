@@ -1,303 +1,491 @@
-# SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)» — requirements
+# SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)» — requirements (v2)
 
-> Ruta: completa (complexity `high`, pantalla de dinero). Zona propuesta: `frontend` (ver
-> `design.md > Zona`). Escrito por spec_author el 2026-11-09 desde `progress/features/SLT-95.md`
-> y el canvas aprobado copiado en `canvas/project/` (n1, n2, `Main.dc.html`, `Fila2.dc.html`).
-> El canvas es una maqueta con datos inventados: **sus cifras y textos de ejemplo no son
-> requisitos**; los nombres de las cifras, la estructura y las reglas sí.
+> Ruta: completa (complexity `high`, pantallas de dinero, permisos en S9b). Escrito por spec_author
+> el 2026-11-09. **v2 reescribe el v1 del mismo día**: el alcance pasó de «el detalle» al
+> **rediseño completo del módulo de cierres** (decisión de Carlos, D15) y Carlos aprobó el canvas
+> entero (D18).
+>
+> Fuentes: `progress/features/SLT-95.md` (decisiones fechadas), el canvas aprobado en
+> `canvas/project/` (`canvas.json`, notas n0, n1, n2, c3, s2, m2, p1, p2; componentes
+> `Main.dc.html`, `ColaCierres.dc.html`, `Fila2.dc.html`, `Dialogos.dc.html`) y los inventarios
+> `inventario-bodega.md` e `inventario-central-dialogos.md`.
+>
+> El canvas es una maqueta con datos inventados: **sus cifras, nombres de personas y textos de
+> ejemplo no son requisitos**. La estructura, los nombres de las cifras, las reglas, las props y los
+> comportamientos sí.
+
+## Qué cambió respecto al v1
+
+| v1 | v2 |
+|---|---|
+| Un componente de detalle para `/cierres-admin` | **Cuatro** componentes únicos parametrizados para todo el módulo: detalle, cola, fila de gestión y diálogos (D15). |
+| Cola, resueltos, `/cierre-dia`, consolidación y `/wallet/satelites` fuera | Dentro. Nada se deja fuera (D15). |
+| Cifras que no llegan del servidor: se omiten (PA2) | **Todas van** (D10): se derivan en el servidor de datos que ya existen (R64-R70). |
+| «Rechazados por la tienda» oculta sin rechazos (PA4) | Siempre visible, con estado vacío (D11). |
+| Impresión: Ctrl+P de la pestaña activa (PA5) | Se quita la impresión; se usa «Descargar» (D12). |
+| Títulos de Excel según modelo (R30 del v1) | Documento **nuevo** para el modelo nuevo; el modelo viejo baja con el formato actual (D14, D19). |
+| Corte C → A1 → A2 → B | Corte en 17 rebanadas (`## Rebanadas`). SLT-95 se queda con la primera, **S1**. |
+| — | Trato «tú» en todo el módulo (D6, regla 7). |
+| — | Cambios de comportamiento de la nota p2 (R21, R44, R47, R50, R52, R54, R57, R78). |
+
+Siguen valiendo del v1, renumerados: cabecera, «Por revisar», 4 cifras, métodos en 0 ocultos, sin
+«Debe», un solo scroll, pie fijo, pestañas, cascadas de «Dinero», fila 2x2, «Ver cómo se calculó»,
+señales, pestañas de bodega, sin cambios de dinero y accesibilidad.
 
 ## Alcance
 
-Un solo componente de detalle de cierre, con `tipo` `mensajero` o `bodega`, que sustituye a los
-dos modales de `/cierres-admin`:
+El módulo de cierres entero, en las tres audiencias:
 
-- el «Detalle del cierre» del mensajero, que abren «Ver / decidir» (cola) y «Ver el cierre…»
-  (resueltos);
-- el «Detalle del cierre de bodega», que abren «Ver / decidir» (cola) y «Ver el cierre de bodega
-  resuelto…» (resueltos).
+- **Central** (maestro/admin): `/cierres-admin` › Mensajero (cola, detalle, fila, diálogos de
+  decisión, de la fila y del pago) y › Bodega (cola «Por conciliar / Conciliados», detalle de
+  bodega, conciliación); `/wallet/satelites` y `/wallet/satelites/[zonaId]`.
+- **Bodega satélite** (adminSatelite): `/cierres-admin` › Mensajero (la misma cola y el mismo
+  detalle que la central, con audiencia satélite) y › Bodega («A consolidar / Solicitados» y su
+  cierre de bodega en solo lectura).
+- **Mensajero**: `/cierre-dia` (su cierre de hoy, rechazado o vencido como página; sus cierres
+  solicitados con la misma cola; el detalle de un cierre pasado).
 
-Forma común: cabecera con identidad y estado, franja «Por revisar», 4 cifras (métodos de pago en
-0 ocultos), pestañas por tipo, un solo scroll y acciones fijas al pie. Fila de gestión desplegada
-según la opción 2 del canvas. «Le queda a la empresa» es la única cifra de ganancia: se quita
-«Debe».
+Todo se pinta con **cuatro componentes únicos** (D15, nota n0):
 
-Incluye además:
-- el pago al mensajero en la sección «Incidente» de `/cierre-dia` y en su Excel;
-- los títulos del Excel según el modelo de tarifas;
-- el fulfillment de la fila según la audiencia también en el detalle de bodega.
+1. **Detalle del cierre** — props `tipo` (mensajero|bodega) × `audiencia`
+   (central|satélite|mensajero) × `modo` (decidir|solo lectura|vencido|en curso|rechazado) ×
+   `marco` (modal|página).
+2. **Cola de cierres** — props `tipo` × `rol` (central|satélite|mensajero).
+3. **Fila de una gestión** — prop `audiencia` (central|satélite|mensajero|solo lectura).
+4. **Diálogos** — uno por acción, misma caja (`Modal` existente), botones al pie.
 
-**Sin cambios de dinero.** Ningún cálculo, snapshot, asiento ni Server Action de escritura
-cambia. Lo único que cambia es la presentación y de qué campo del servidor sale cada cifra.
+**Sin cambios de dinero** (D5): ningún cálculo, snapshot, asiento, tarifa ni Server Action de
+escritura cambia. Las cifras nuevas se **derivan en el servidor** de datos que ya existen y se
+pintan como string.
 
 ## Lo que NO entra
 
-- `/cierre-dia` del mensajero (su tabla en vivo y su comprobante `CierreFacturaDetalle` con
-  audiencia `mensajero`), salvo la columna de pago del incidente y su Excel (R28-R29).
-- `/wallet/satelites` (`ConciliacionSatelite`): su fila desplegada con la cuenta de la
-  consolidación queda como está. El detalle de bodega reutiliza sus mismas piezas
-  (`ConciliacionAcciones`, `estadoConciliacionDe`), no la pantalla.
-- La cola y los resueltos de `/cierres-admin` (listas, comprobantes compactos, filtros,
-  descargas de resumen): solo cambia el modal que abren.
-- Los diálogos que el detalle ya abre: rechazo con motivo, confirmación física, indemnización,
-  corregir pagos, corregir resultado, ajustar pago, registrar y anular pago, marcar recibido,
-  corregir y desmarcar. Se montan igual; solo cambia desde dónde se pulsan.
-- Toda cifra que hoy no llega del servidor (PA2): no se inventa ni se calcula en el cliente.
+- Cambiar cómo se calcula o se asienta cualquier importe, o qué se congela al solicitar un cierre.
+- Activar el modelo nuevo de tarifas o retirar el viejo (eso es SLT-57 «Tarifas flexibles: retirar
+  el modelo viejo»).
+- Las superficies que solo **enlazan** a un cierre (`/wallet/mensajeros`, `/wallet/tiendas`,
+  `/mi-wallet`, `/wallet`, `/ordenes`, notificaciones; inventario §D): siguen enlazando igual.
+  `hrefDetalleCierre` no cambia.
+- El editor de desglose (`DesglosePagoField`), el escáner (`EscanerGuiaCard`) y los formularios de
+  pago (`RegistrarPagoDialog`, `AnularPagoDialog`): se reutilizan dentro de los diálogos sin
+  rediseñarse; solo cambian sus textos al trato «tú» (R56).
 
 ## Decisiones cerradas (no reabrir)
 
 | # | Fecha · quién | Decisión |
 |---|---|---|
-| D1 | 2026-11-08 · Carlos | Opción A: UN componente (tipo `mensajero`/`bodega`) para «Ver detalle» y «Ver / decidir» del mensajero y «Ver / decidir» de bodega. |
-| D2 | 2026-11-08 · Carlos | Fila desplegada opción 2: 4 tarjetas en 2x2 (Recibió el mensajero / Se le cobra a la tienda / Se le paga al mensajero / Fulfillment). «Ver cómo se calculó» = una tarjeta por concepto. |
-| D3 | 2026-11-08 · Carlos | «Le queda a la empresa» es la única cifra de ganancia; se quita «Debe». |
+| D1 | 2026-11-08 · Carlos | Opción A: UN componente de detalle (tipo `mensajero`/`bodega`) para «Ver detalle» y «Ver / decidir». **v2:** se extiende a todas las audiencias y a `/cierre-dia` (D15). |
+| D2 | 2026-11-08 · Carlos | Fila desplegada opción 2: 4 tarjetas en 2x2. «Ver cómo se calculó» = una tarjeta por concepto. |
+| D3 | 2026-11-08 · Carlos | «Le queda a la empresa» es la única cifra de ganancia de la empresa; se quita «Debe». |
 | D4 | 2026-11-08 · Carlos | Los métodos de pago en 0 no se muestran. |
 | D5 | 2026-11-08 · Carlos | Sin cambios de dinero. |
-| D6 | 2026-11-08 · canvas n2 | Reglas: 1) identidad y estado arriba; 2) cada cifra una vez, con un nombre; 3) lo que pide atención, primero; 4) acciones fijas al pie; 5) un solo scroll; 6) métodos de pago en 0 ocultos. |
-| D7 | 2026-11-08 · canvas n1 | Lo que cambia con el tipo: cifra 2 («Se le paga hoy a la tienda» / «Debe llegar a la central»); estados (Solicitado/Aprobado/Rechazado/Vencido / Pendiente/Recibido/Incompleto); pestañas (+ «Rechazados por la tienda» y «Pago al mensajero» / + «Mensajeros» y «Conciliación»); en Dinero, bodega suma «Lo que va a la central»; en Gestiones, bodega añade la columna Mensajero y es solo lectura; pie (Aprobar/Rechazar / Marcar recibido/Corregir/Desmarcar). |
-| D8 | 2026-11-08 · tarjeta | Incluye: pago al mensajero en Incidente de `/cierre-dia` y su Excel; títulos de Excel según modelo; `verFulfillment` por audiencia en bodega. |
+| D6 | canvas n2 | Reglas: 1) identidad y estado arriba; 2) cada cifra una vez, un nombre; 3) lo que pide atención, primero; 4) acciones fijas al pie; 5) un solo scroll; 6) métodos en 0 ocultos; **7) un solo trato: tú** (v2). |
+| D7 | canvas n1 (v2) | Cambia con la prop: cifra 2 («Se le paga hoy a la tienda» / «Debe llegar a la central»); el mensajero ve 3 cifras (Recaudado, Gestiones, Tu ganancia) y no ve el dinero de la empresa; pestañas (+ «Rechazados por la tienda», «Pago al mensajero» (central, aprobado) · bodega + «Mensajeros» y «Conciliación» · mensajero rechazado + «Corregir»); pie (Aprobar/Rechazar · Destrabar · Marcar recibido/Desmarcar · Solicitar cierre · Solicitar aprobación). |
+| D8 | 2026-11-08 · tarjeta | Incluye el pago al mensajero (= «Ganancia») en Incidente de `/cierre-dia` y su Excel, y `verFulfillment` por audiencia en bodega. **v2:** «títulos de Excel según modelo» queda sustituido por D14. |
+| D9 | 2026-11-09 · Carlos (PA1) | Se parte en rebanadas, una ficha por rebanada. |
+| D10 | 2026-11-09 · Carlos (PA2) | TODAS las cifras del canvas van; la rebanada de cifras del servidor deja de ser opcional. |
+| D11 | 2026-11-09 · Carlos (PA4) | «Rechazados por la tienda» no se oculta sin rechazos: se muestra con su estado vacío. |
+| D12 | 2026-11-09 · Carlos (PA5) | Se quita la impresión del detalle; quien la necesite usa «Descargar». |
+| D13 | 2026-11-09 · Carlos (PA7 v1) | El código muerto se retira en una ficha aparte. |
+| D14 | 2026-11-09 · Carlos (PA6) | Excel: documento nuevo para el modelo nuevo (columnas a aprobar en este spec); los cierres del modelo viejo siguen bajando con el formato actual. |
+| D15 | 2026-11-09 · Carlos | Rediseño completo del módulo, «no dejes absolutamente nada fuera». Lo que hace la satélite con sus mensajeros es lo mismo que la central: componentes IGUALES con props distintas, nunca uno por rol. |
+| D16 | 2026-11-09 · Carlos | Tarjetas con mucha información (fila, cálculo, conciliación) en formato cascada: partidas en líneas simples, «−»/«+» delante, raya y total en negrita. |
+| D17 | 2026-11-09 · Carlos / n0 | Se reutilizan tal cual: barra de DataTable = `BuscadorFiltros` + `DescargarDatasetButton`; `Modal` para los diálogos; el conmutador Bodega/Mensajero. |
+| D18 | 2026-11-09 · Carlos | Canvas aprobado (versión 33) con sus notas, incluidas p1 (cifras a traer del servidor) y p2 (cambios de comportamiento). |
+| D19 | 2026-11-09 · medición en prod (leader) | La empresa NO ha activado el modelo nuevo: `tarifa_valor` = 0 filas; `cierre_detail` = 918 gestiones, todas `tarifa_modelo = viejo`. El formato actual del Excel es el de todos los cierres de prod; el documento nuevo no tendrá datos hasta que se activen tarifas. Las vistas del modelo viejo deben verse bien con el rediseño y el E2E cubre los dos modelos. |
 
-Cobertura: D1 → R1; D2 → R22, R23; D3 → R5, R8; D4 → R6, R22; D5 → R26, R27; D6 → R2, R4,
-R8, R10, R11, R6; D7 → R2, R5, R9, R11, R13, R16; D8 → R25, R28, R29, R30.
+Cobertura: D1 → R1; D2 → R25, R27, R28; D3 → R6, R9; D4 → R7, R27; D5 → R71, R72; D6 → R2,
+R4, R5, R6, R7, R11, R12, R56; D7 → R6, R10, R12; D8 → R30, R58; D9 → `## Rebanadas`;
+D10 → R64-R70; D11 → R17; D12 → R21; D13 → R76; D14 → R73, R74, R75; D15 → R1, R22, R32, R53;
+D16 → R15; D17 → R32, R37, R53; D18 → R21, R44, R47, R50, R52, R54, R57, R78 y R64-R70;
+D19 → R29, R73, R77.
 
 ## Requisitos (EARS)
 
-Cada requisito lleva entre corchetes la rebanada en la que entraría si se acepta el corte de PA1
-(C = `/cierre-dia` y Excel; A1 = componente y mensajero; A2 = lista y fila desplegada;
-B = bodega).
+Cada requisito lleva entre corchetes la rebanada que lo implementa (`## Rebanadas`). **SLT-95 = S1.**
 
-### Componente común
+### A. Detalle del cierre (un componente)
 
-- **R1** [A1, B] — CUANDO el usuario pulsa «Ver / decidir» o «Ver el cierre…» de un cierre de
-  mensajero, o «Ver / decidir» o «Ver el cierre de bodega resuelto…» de un cierre de bodega, en
-  `/cierres-admin`, el sistema DEBE abrir el mismo componente de detalle, con el tipo
-  `mensajero` o `bodega` según el cierre.
-- **R2** [A1, B] — El detalle DEBE mostrar arriba, antes de cualquier cifra, la identidad del
-  cierre y su estado:
-  - mensajero: nombre del mensajero, destino, folio, fecha de solicitud y, si la hay, la de
-    resolución; estado Solicitado, Aprobado, Rechazado o Vencido;
-  - bodega: zona, quién lo solicitó, número de mensajeros, folio y fechas; estado de
-    conciliación Pendiente de conciliar, Recibido o Recibido incompleto.
+- **R1** [S1] — El sistema DEBE pintar todo detalle de cierre del módulo (de mensajero o de bodega;
+  visto por la central, la satélite o el mensajero; en modal o en página) con un único componente,
+  parametrizado por `tipo`, `audiencia`, `modo` y `marco`. Ninguna pantalla DEBE montar otro
+  componente de detalle de cierre.
+- **R2** [S1] — El detalle DEBE mostrar arriba, antes de cualquier cifra, la identidad y el estado:
+  - mensajero: título («Cierre de <mensajero>», o «Tu cierre del día» con audiencia mensajero),
+    destino, folio, fechas (solicitud; resolución y quién, si la hay);
+  - bodega: «Cierre de bodega · <zona>», quién lo solicitó, número de mensajeros, folio y fechas
+    (solicitud; recibido, si lo hay).
 
-  El estado DEBE salir de la misma función que pinta hoy ese estado en la lista
-  (`EstadoCierreBadge`, `estadoConciliacionDe`).
-- **R3** [A1] — SI el cierre de mensajero retiene reprogramadas (`reprogramadasRetenidasHoy`
-  > 0), ENTONCES la cabecera DEBE mostrar la marca de retención con la cifra del servidor.
-- **R4** [A1, B] — MIENTRAS el cierre esté pendiente de decisión (mensajero `solicitado`;
-  bodega con conciliación pendiente o incompleta), SI hay al menos un asunto que atender,
-  ENTONCES el detalle DEBE mostrar, entre la cabecera y las cifras, una franja «Por revisar» con
-  cada asunto y su conteo. Asuntos:
-  - mensajero: incidentes sin indemnizar; rechazados por la tienda; gestiones con pago ajustado;
-    paquetes que vuelven a bodega (el mismo conjunto que pide la confirmación física);
-  - bodega: gestiones con pago ajustado; dinero sin marcar como recibido; dinero recibido
-    incompleto.
-
-  SI no hay ningún asunto, o el cierre ya está resuelto, ENTONCES la franja NO DEBE pintarse.
-- **R5** [A1, B] — El detalle DEBE mostrar exactamente cuatro cifras, en este orden, cada una
-  con el string del servidor pintado con el formateador compartido:
+  Estados: mensajero «Sin solicitar» (en curso), Solicitado, Aprobado, Rechazado, Vencido; bodega
+  Pendiente de conciliar, Recibido, Recibido incompleto. El estado DEBE salir de las funciones que
+  lo pintan hoy (`EstadoCierreBadge`, `estadoConciliacionDe`).
+- **R3** [S1] — SI el cierre de mensajero retiene reprogramadas (`reprogramadasRetenidasHoy` > 0),
+  ENTONCES la cabecera DEBE mostrar la marca de retención con esa cifra.
+- **R4** [S1] — Entre la cabecera y las cifras, el detalle DEBE mostrar una franja con lo que pide
+  atención, y NO DEBE pintarla si no hay nada:
+  - modo decidir (central o satélite, mensajero): «Por revisar:» con incidentes sin indemnizar,
+    rechazados por la tienda, pagos ajustados y paquetes que vuelven a bodega, cada uno con su
+    conteo; los que valen 0 no aparecen;
+  - modo decidir, bodega: pagos ajustados y, si falta, que el dinero no se ha marcado recibido
+    (satélite: «la central aún no marca el dinero recibido»);
+  - modo vencido, central o satélite: que el mensajero no lo envió y está bloqueado, y que
+    destrabar es una excepción;
+  - audiencia mensajero, rechazado: «Motivo del rechazo:» con el motivo, o «La bodega no indicó un
+    motivo.»;
+  - audiencia mensajero, vencido o bloqueado: el texto de `avisoBloqueo` (`conCta: false`);
+  - audiencia mensajero, en curso, con `puedesSolicitar = false`: «Antes de cerrar:» con el
+    `motivoBloqueo` del servidor.
+- **R5** [S1] — La franja de R4 DEBE quedar fija (fuera de la región con desplazamiento).
+- **R6** [S1] — Con audiencia central o satélite, el detalle DEBE mostrar exactamente cuatro
+  cifras, en este orden, con el string del servidor pintado con el formateador compartido:
 
   | # | Mensajero | Bodega |
   |---|---|---|
-  | 1 | «Recaudado» = `cierre.totales.general` | «Recaudado» = `cierre.totales.general` |
+  | 1 | «Recaudado» = `totales.general` | «Recaudado» = `totales.general` |
   | 2 | «Se le paga hoy a la tienda» = `pagoTienda` | «Debe llegar a la central» = `paraLaCentral` |
-  | 3 | «Pago al mensajero» = `cierre.totalPagoMensajero` | «Pago a mensajeros» = `cierre.totalPagoMensajero` |
+  | 3 | «Pago al mensajero» = `totalPagoMensajero` | «Pago a mensajeros» = `totalPagoMensajero` |
   | 4 | «Le queda a la empresa» = `netoEmpresa` | «Le queda a la empresa» = `netoEmpresa` |
 
-  Un valor negativo DEBE pintarse con su signo, sin recortarlo a cero.
-- **R6** [A1, B] — Bajo «Recaudado», el detalle DEBE listar efectivo, SINPE y transferencia del
-  cierre. SI un método vale cero, ENTONCES NO DEBE pintarse.
-- **R7** [A1, B] — Cada cifra DEBE llevar su línea de contexto, hecha solo de conteos y de
-  strings del servidor:
-  - cifra 2 del mensajero: número de tiendas y «ganan en total» `ganaLaTienda`;
-  - cifra 2 de bodega: el estado de conciliación;
-  - cifra 3: número de gestiones y cuántas tienen el pago ajustado (mensajero), o número de
-    mensajeros y gestiones ajustadas (bodega);
-  - cifra 4: nota fija de qué se restó.
-- **R8** [A1, B] — El detalle NO DEBE pintar el renglón «Debe», ni la `ganancia` del contrato,
-  ni ningún otro rótulo de ganancia distinto de «Le queda a la empresa». Dentro de una misma
-  pestaña, una misma cifra del servidor NO DEBE aparecer con dos rótulos distintos.
-- **R9** [A1, B] — El detalle DEBE ofrecer pestañas según el tipo, y abrir en «Dinero»:
-  - mensajero: «Dinero»; «Gestiones» con su conteo; «Rechazados por la tienda» con su conteo,
-    solo si hay al menos uno (PA4); «Pago al mensajero», solo cuando hoy se ofrece el pago en el
-    detalle (cierre aprobado y permiso de pagar);
-  - bodega: «Dinero»; «Gestiones» con su conteo; «Mensajeros» con su conteo; «Conciliación».
-- **R10** [A1, B] — MIENTRAS el detalle esté abierto, el cuerpo de la pestaña activa DEBE ser
-  la única región con desplazamiento. Cabecera, «Por revisar», cifras, pestañas y pie DEBEN
-  seguir visibles al desplazar el cuerpo.
-- **R11** [A1, B] — El pie DEBE quedar fijo y contener las acciones del cierre y una línea de
-  contexto:
-  - mensajero `solicitado`: «Rechazar» y «Aprobar», que lanzan los mismos flujos de hoy (motivo
-    obligatorio; confirmación física; indemnización);
-  - mensajero en cualquier otro estado: solo «Cerrar»;
-  - bodega: las acciones de conciliación que ya decide `ConciliacionAcciones` para ese estado
-    (Marcar recibido / Corregir / Desmarcar), solo con permiso de conciliar, y «Cerrar».
+  Con audiencia mensajero DEBE mostrar tres: «Recaudado», «Gestiones» (número de gestiones del
+  cierre) y «Tu ganancia» = `totalPagoMensajero`. Un valor negativo DEBE pintarse con su signo.
+- **R7** [S1] — Bajo «Recaudado», el detalle DEBE listar efectivo, SINPE y transferencia, y NO DEBE
+  pintar un método que valga cero.
+- **R8** [S1] — Cada cifra DEBE llevar su línea de contexto, hecha solo de conteos y strings del
+  servidor: cifra 2 mensajero = número de tiendas y «ganan en total» `ganaLaTienda`; cifra 2 bodega
+  = estado de conciliación; cifra 3 = gestiones y cuántas con pago ajustado (mensajero) o mensajeros
+  y ajustes (bodega); cifra 4 = nota fija de qué se restó; «Gestiones» = entregadas y cuántas
+  vuelven o con novedad; «Tu ganancia» = cuántos pagos ajustó la bodega.
+- **R9** [S1] — El detalle NO DEBE pintar «Debe», ni `ganancia`, ni otro rótulo de ganancia de la
+  empresa que «Le queda a la empresa». Con audiencia mensajero NO DEBE pintar ninguna cifra del
+  dinero de la empresa (cobro a la tienda, facturado, IVA, le queda, pago a la bodega). Dentro de
+  una pestaña, una misma cifra del servidor NO DEBE aparecer con dos rótulos.
+- **R10** [S1] — El detalle DEBE ofrecer estas pestañas, con su conteo, y abrir en la primera:
 
-### Dinero
+  | tipo · audiencia · modo | Pestañas |
+  |---|---|
+  | mensajero · central | Dinero · Gestiones (n) · Rechazados por la tienda (n) · Pago al mensajero (solo aprobado y con permiso de pagar) |
+  | mensajero · satélite | Dinero · Gestiones (n) · Rechazados por la tienda (n) |
+  | mensajero · mensajero · rechazado | Corregir · Gestiones (n) · Rechazados por la tienda (n) |
+  | mensajero · mensajero · otro modo | Gestiones (n) · Rechazados por la tienda (n) |
+  | bodega · central o satélite | Dinero · Gestiones (n) · Mensajeros (n) · Conciliación |
+- **R11** [S1] — MIENTRAS el detalle esté abierto, el cuerpo de la pestaña activa DEBE ser la única
+  región con desplazamiento; cabecera, franja, cifras, pestañas y pie DEBEN seguir visibles.
+- **R12** [S1] — El pie DEBE quedar fijo, con una línea de contexto y estas acciones (las que
+  dependen de un permiso solo aparecen con ese permiso, igual que hoy):
 
-- **R12** [A1] — En «Dinero» del mensajero, el detalle DEBE mostrar, en este orden:
-  1. el reparto de lo recaudado en «A la tienda hoy» = `pagoTienda` y «Se lo cobra la empresa»
-     = `cobradoSobreRecaudado`;
-  2. la cascada «Lo que se le factura a la tienda»: `fleteConIva`, `comisionConIva`, subtotal
-     «Sale de lo recaudado» = `cobradoSobreRecaudado`, flete de no entrega
-     (`fleteDevolucionConIva`, rotulado según el modelo como hoy) y total facturado =
-     `totalesIngreso.total`;
-  3. la cascada «De lo facturado, le queda a la empresa»: total facturado, − `ivaFacturado`,
-     − `totalPagoMensajero`, − `totalIngresoBodegaRechazos` (rotulado según el modelo como hoy),
-     = `netoEmpresa`;
-  4. SI `partesPorTienda` tiene dos o más tiendas, ENTONCES la tabla «Por tienda» con
-     recaudado, «Se le paga hoy» y «Gana en total» de cada una, en el orden del servidor.
-- **R13** [B] — En «Dinero» de bodega, el detalle DEBE mostrar:
-  1. el reparto de lo recaudado en «A la central» = `paraLaCentral`, «A los mensajeros» =
-     `cierre.totalPagoMensajero` y «A la bodega satélite» = `cierre.totalIngresoBodegaRechazos`;
-  2. la cascada «Lo que va a la central», con las mismas líneas que hoy (`lineasCascadaCentral`);
-  3. «Lo que se le factura a la tienda» y «De lo facturado, le queda a la empresa», con
-     − pago a mensajeros y − gana la bodega satélite;
-  4. SI hay dos o más tiendas, ENTONCES «Por tienda» del agregado (PA3).
+  | tipo · audiencia · modo | Acciones |
+  |---|---|
+  | mensajero · central/satélite · decidir | «Rechazar» y «Aprobar». SI hay paquetes que vuelven, el botón dice «Revisar paquetes y aprobar» y la línea dice cuántos paquetes hay que confirmar y cuántos incidentes indemnizar |
+  | mensajero · central/satélite · vencido | «Cerrar» y «Destrabar cierre vencido» |
+  | mensajero · central/satélite · solo lectura | «Cerrar» |
+  | bodega · central | las acciones que ya decide `ConciliacionAcciones` para el estado (Marcar recibido / Corregir / Desmarcar), y «Cerrar» |
+  | bodega · satélite | «Cerrar» |
+  | mensajero · mensajero · en curso | «Solicitar cierre» |
+  | mensajero · mensajero · rechazado | «Solicitar aprobación del cierre rechazado» |
+  | mensajero · mensajero · vencido | «Solicitar aprobación del cierre vencido» |
+  | mensajero · mensajero · solo lectura | «Cerrar» |
 
-### Gestiones
+  Cada acción DEBE lanzar el mismo flujo que hoy (motivo obligatorio; confirmación física;
+  indemnización; destrabar; conciliación; solicitar y re-solicitar).
+- **R13** [S1] — DONDE `marco` sea modal, el detalle DEBE ser un `dialog` con botón «Cerrar» (X)
+  arriba y nombre accesible que contenga «Detalle del cierre» o «Detalle del cierre de bodega»;
+  DONDE sea página, DEBE ser una región sin X.
+- **R14** [S1] — En «Dinero» de mensajero, el detalle DEBE mostrar: el reparto «¿A dónde va lo
+  recaudado?» en «A la tienda hoy» = `pagoTienda` y «Se lo cobra la empresa» =
+  `cobradoSobreRecaudado`; la cascada «Lo que se le factura a la tienda» (`fleteConIva`,
+  `comisionConIva`, subtotal «Sale de lo recaudado» = `cobradoSobreRecaudado`, flete de no entrega
+  `fleteDevolucionConIva` rotulado según el modelo como hoy, «Total facturado» =
+  `totalesIngreso.total`); la cascada «De lo facturado, le queda a la empresa» (total facturado,
+  − IVA `ivaFacturado`, − pago al mensajero, − pago a la bodega `totalIngresoBodegaRechazos`
+  rotulado según el modelo, = `netoEmpresa`); y SI `partesPorTienda` tiene dos o más tiendas,
+  «Por tienda» con recaudado, «Se le paga hoy» y «Gana en total», en el orden del servidor.
+- **R15** [S1] — Las cascadas del detalle, de la fila (R27, R28) y de la conciliación (R43, R59)
+  DEBEN pintarse en formato cascada: una partida por línea, «−» o «+» delante de lo que se resta o
+  suma, subtotal con raya punteada y total en negrita con raya continua.
+- **R16** [S1] — En «Dinero» de bodega, el detalle DEBE mostrar: el reparto en «A la central» =
+  `paraLaCentral`, «A los mensajeros» = `totalPagoMensajero` y «A la bodega satélite» =
+  `totalIngresoBodegaRechazos`; las cascadas «Lo que va a la central» (las líneas de hoy,
+  `lineasCascadaCentral`), «Lo que se le factura a la tienda» y «De lo facturado, le queda a la
+  empresa» (con − pago a mensajeros y − gana la bodega satélite); y «Por tienda» del agregado con
+  dos o más tiendas.
+- **R17** [S2] — «Rechazados por la tienda» DEBE listar los `rechazosDeTienda` (guía, destinatario,
+  motivo, tienda, fecha) con la nota de que no suman al pago del mensajero. SI no hay ninguno,
+  ENTONCES la pestaña DEBE seguir visible con su conteo 0 y un estado vacío.
+- **R18** [S2] — «Pago al mensajero» DEBE montar la sección de pago de hoy (pendiente, registrar,
+  anular, pagos registrados), con el mismo permiso y la misma relectura tras registrar o anular.
+- **R19** [S2] — El detalle de mensajero DEBE seguir mostrando, en «Gestiones», las órdenes que el
+  corte pasó a «Novedad interna» y su marca de registro.
+- **R20** [S1] — Las pestañas DEBEN exponerse como `tablist`/`tab`/`tabpanel`, y cada cifra y cada
+  región de dinero DEBE tener un nombre accesible único.
+- **R21** [S2] — El detalle NO DEBE ofrecer impresión. En «Gestiones» DEBE ofrecer «Descargar»
+  (el `DescargarDatasetButton` existente) con las gestiones de ese cierre, con las mismas columnas
+  que la audiencia ve en la tabla.
 
-- **R14** [A2, B] — En «Gestiones», el detalle DEBE listar todas las gestiones del cierre (en
-  bodega, las de todos sus cierres del día) con filtros por resultado. Cada filtro lleva su
-  conteo, y hay además «Todas» y «Con señales». Columnas: guía, destinatario y tienda, resultado,
-  recibido (`montoRecibido`), cobro a la tienda (`ingresoEmpresa.total`), pago al mensajero
-  (`pagoMensajero`), señales. En bodega va además la columna Mensajero.
-- **R15** [A2, B] — Las señales de una gestión DEBEN derivarse solo de campos que ya llegan:
-  - «Pago ajustado»: `ajustesPago` no vacío;
-  - incidente sin indemnizar: `resultado = incidente` e `indemnizacion = null`;
-  - vuelve a bodega: reprogramado o devolución a origen;
-  - rechazo automático: `esRechazoSla`;
-  - sin tarifa congelada: `ingresoEmpresa` sin tarifa.
+### B. Lista de gestiones y fila (un componente de fila)
 
-  Una gestión sin ninguna DEBE mostrar la celda vacía.
-- **R16** [B] — MIENTRAS el detalle sea de tipo `bodega`, ninguna fila DEBE ofrecer acciones
-  de corrección ni de ajuste. Las evidencias sí se pueden ver.
-- **R17** [A1] — El detalle de mensajero DEBE seguir mostrando la sección de órdenes sin
-  gestionar (264) y su marca de registro, en «Gestiones» y con las props del servidor.
-- **R18** [A1] — «Rechazados por la tienda» DEBE listar los `rechazosDeTienda` del servidor,
-  con guía, destinatario, motivo, tienda y fecha, y la nota de que no suman al pago del
-  mensajero.
-- **R19** [A1] — «Pago al mensajero» DEBE montar la sección de pago de hoy (pendiente,
-  registrar y anular), con el mismo permiso y la misma relectura tras registrar o anular.
-- **R20** [B] — «Mensajeros» DEBE mostrar una fila por cierre del día incluido, con mensajero,
-  número de gestiones, recaudado (`totales.general`), pago (`totalPagoMensajero`), a la central
-  (`paraLaCentral`), señales (`gestionesAjustadas`) y un enlace «Ver su cierre» a
-  `hrefDetalleCierre(cierreDiaId)` (PA7).
-- **R21** [B] — «Conciliación» DEBE mostrar declarado (`paraLaCentral`), recibido (`—` sin
-  marca, nunca ₡0), falta por recibir (`faltaPorRecibir`) y quién marcó y cuándo («Aún nadie»
-  sin marca).
+- **R22** [S3] — El sistema DEBE pintar toda gestión de un cierre con un único componente de fila,
+  parametrizado por `audiencia` (central, satélite, mensajero, solo lectura).
+- **R23** [S3] — «Gestiones» DEBE ofrecer filtros por resultado con su conteo, más «Todas» y «Con
+  señales». Columnas: guía, destinatario · tienda, resultado, recibido, y además:
+  - central y satélite: cobro a la tienda (`ingresoEmpresa.total`), pago al mensajero, señales;
+  - bodega: además la columna Mensajero;
+  - mensajero: «Ganancia» (`pagoMensajero`) y señales, sin cobro a la tienda.
+- **R24** [S3] — Las señales de una gestión DEBEN derivarse solo de campos que llegan: «Pago
+  ajustado» (`ajustesPago` no vacío); incidente sin indemnizar; «Vuelve a bodega» (reprogramado,
+  novedad, devolución a origen); rechazo automático (`esRechazoSla`); «Sin tarifa de pago»
+  (`tarifaFaltante`). Una gestión sin ninguna DEBE mostrar la celda vacía.
+- **R25** [S3] — CUANDO el usuario despliega una gestión, la fila DEBE mostrar los datos de la orden
+  (orden, producto, dirección) y las tarjetas de dinero que permite su audiencia:
 
-### Fila desplegada
+  | Tarjeta | central | satélite | mensajero | solo lectura |
+  |---|---|---|---|---|
+  | Recibió el mensajero | sí | sí | sí | sí |
+  | Se le cobra a la tienda (+ «Ver cómo se calculó») | sí | sí | no | sí |
+  | Se le paga al mensajero (mensajero: «Tu ganancia») | sí | sí | sí | sí |
+  | Fulfillment | sí | no | no | solo si quien mira es la central |
+- **R26** [S3] — Las acciones de la fila DEBEN aparecer SOLO cuando hoy se ofrecen (mismo permiso,
+  mismo estado del cierre, mismo resultado, mismo callback):
 
-- **R22** [A2, B] — CUANDO el usuario despliega una gestión, el detalle DEBE mostrar:
-  - los datos de la orden (remisión, producto, dirección);
-  - cuatro tarjetas en 2x2:
-    - «Recibió el mensajero»: `montoRecibido` y sus `pagos` por método, sin los métodos en 0;
-    - «Se le cobra a la tienda»: `ingresoEmpresa.total` y cada concepto no nulo con su IVA;
-    - «Se le paga al mensajero»: `pagoMensajero`. Si hubo ajuste: la marca «Ajustado», el pago
-      anterior, el motivo y quién y cuándo del último ajuste;
-    - «Fulfillment»: `fulfillment` e `ivaFulfillment`, solo según R25.
+  | Acción | central | satélite | mensajero | solo lectura |
+  |---|---|---|---|---|
+  | Corregir métodos de pago | sí | no | no | no |
+  | Ajustar pago | sí | sí | no | no |
+  | Corregir el resultado | sí | no | no | no |
+  | Ver evidencia | sí | sí | sí | sí |
+  | Devolver a gestión | no | no | en curso o rechazado (R51) | no |
+- **R27** [S3] — Las tarjetas DEBEN mostrar, en formato cascada (R15): «Recibió el mensajero» =
+  `pagos` por método sin los de 0 y total `montoRecibido`; «Se le cobra a la tienda» = cada concepto
+  no nulo con IVA y total `ingresoEmpresa.total`; «Se le paga al mensajero» = `pagoMensajero` y, si
+  hubo ajuste, la marca «Ajustado», el motivo y quién y cuándo del último ajuste; «Fulfillment» =
+  `fulfillment` e `ivaFulfillment`. SI una tarjeta no tiene dato, ENTONCES DEBE decir «Sin dato»,
+  no ₡0.
+- **R28** [S3] — CUANDO el usuario pulsa «Ver cómo se calculó», la fila DEBE desplegar una tarjeta
+  por concepto cobrado, con su base y su IVA tal como llegan, y la nota de que son las tarifas
+  congeladas al crear el cierre. Pulsar otra vez DEBE plegarlo.
+- **R29** [S3] — SI la gestión es del modelo viejo, ENTONCES «Ver cómo se calculó» DEBE mostrar la
+  tarifa congelada aplicada (columna GAM, no GAM o pacto especial) y los rótulos del modelo viejo,
+  como hoy en el desglose. SI es del modelo nuevo, ENTONCES DEBE mostrar la tarifa del concepto de
+  R64.
+- **R30** [S3] — El fulfillment de la fila DEBE mostrarse solo cuando quien mira es la central y
+  `fulfillment` no es nulo, en el detalle de mensajero y en el de bodega.
+- **R31** [S6] — MIENTRAS el detalle sea de tipo bodega, sus filas DEBEN usar la audiencia «solo
+  lectura»: ninguna acción de corrección ni de ajuste; las evidencias sí.
 
-  SI una tarjeta no tiene dato (sin `ingresoEmpresa`, pago `null`), ENTONCES DEBE decir «Sin
-  dato», no ₡0.
-- **R23** [A2, B] — CUANDO el usuario pulsa «Ver cómo se calculó» en «Se le cobra a la tienda»,
-  el detalle DEBE desplegar una tarjeta por concepto cobrado (flete, comisión, flete de no
-  entrega), con su base y su IVA tal como llegan. En el modelo viejo, además, la tarifa
-  congelada aplicada (columna GAM, no GAM o pacto especial), como hoy en el desglose. Debajo, la
-  nota de que son las tarifas congeladas al crear el cierre. Pulsar otra vez DEBE plegarlo.
-- **R24** [A2] — La fila del mensajero DEBE ofrecer «Corregir métodos de pago», «Ajustar pago»,
-  «Corregir el resultado» y las evidencias SOLO cuando hoy se ofrecen: mismo permiso, mismo
-  estado del cierre y mismo callback.
-- **R25** [A2, B] — El fulfillment de la fila DEBE mostrarse solo con audiencia `admin` y
-  `fulfillment` no nulo, en el detalle de mensajero y en el de bodega.
+### C. Cola de cierres (un componente)
 
-### Dinero intacto
+- **R32** [S4] — El sistema DEBE pintar toda lista de cierres del módulo con un único componente de
+  cola, parametrizado por `tipo` y `rol`, con: título «Cierres del día» y descripción por rol;
+  pestañas con conteo; la barra existente (`BuscadorFiltros` + `DescargarDatasetButton`) con los
+  filtros de hoy por rol; tarjetas de cifras cuando el rol las tiene; una tabla con una fila por
+  cierre y sus acciones; y un pie.
+- **R33** [S4] — La cola de cierres de mensajeros DEBE ser la misma para central y satélite:
+  pestañas «Pendientes (n)» / «Resueltos (n)»; columnas Folio, Mensajero, Solicitado (Resuelto en
+  Resueltos), Estado, Recaudado, Pago al mensajero, Señales; acciones «Ver / decidir» (solicitado),
+  «Ver» y «Destrabar» (vencido), «Ver» (resueltos).
+- **R34** [S4] — DONDE el rol sea central, la pestaña «Resueltos» DEBE añadir la columna «Pago
+  entregado» («Pendiente <monto>», «Liquidado», o «—» si no está aprobado), y la acción «Registrar
+  pago» en un aprobado con pendiente mayor que cero. DONDE el rol sea satélite, NO DEBE mostrar ni
+  la columna ni la acción.
+- **R35** [S4] — La columna Señales de la cola DEBE mostrar, de lo que ya llega por fila: mensajero
+  bloqueado (con su conteo), reprogramadas retenidas y «Bloqueante hasta re-solicitud» en un
+  rechazado.
+- **R36** [S4] — CUANDO el usuario pulsa «Ver / decidir» o «Ver» en la cola, el sistema DEBE abrir
+  el detalle único (R1) del cierre de esa fila, en el modo que corresponde a su estado.
+- **R37** [S4] — El conmutador «Bodega» / «Mensajero» DEBE seguir siendo el de hoy (`CierresTabs`),
+  sin cambios de comportamiento.
 
-- **R26** [A1, A2, B] — Los archivos del detalle NO DEBEN convertir un importe a número ni
-  sumar, restar, redondear o reordenar importes en el cliente. La feature NO DEBE modificar
-  servicios, repositorios, Server Actions, `db/` ni migraciones.
-- **R27** [A1, B] — Para un mismo cierre, cada cifra del detalle nuevo DEBE ser igual al
-  céntimo al campo del servidor que la alimenta, y al importe que el escenario E2E espera
-  escrito como literal.
+### D. Detalle de mensajero en `/cierres-admin`
 
-### `/cierre-dia` y Excel
+- **R38** [S2] — CUANDO la central o la satélite abre un cierre de mensajero (cola, resueltos o
+  enlace `?cierre=`), el sistema DEBE abrir el detalle único con `tipo` mensajero y la audiencia
+  del actor, en lugar del modal actual.
+- **R39** [S2] — Los diálogos de decisión que lanza el pie (rechazar, confirmar paquetes,
+  indemnizar, destrabar, registrar pago tras aprobar) DEBEN seguir funcionando igual, con el
+  `Modal` existente.
 
-- **R28** [C] — La sección «Incidente» de `/cierre-dia` DEBE mostrar la columna de pago al
-  mensajero con el `pagoMensajero` que el servidor devuelve para esa gestión. La indemnización
-  DEBE seguir sin mostrarse.
-- **R29** [C] — La descarga de la sección «Incidente» de `/cierre-dia` DEBE incluir la columna
-  de pago al mensajero con el mismo valor que la pantalla.
-- **R30** [C] — CUANDO todas las gestiones de un archivo «Detalle» de cierres son del modelo
-  nuevo, la columna de flete de no entrega DEBE titularse como en la pantalla del modelo nuevo
-  (`FLETE_NO_ENTREGADAS_CON_IVA_LABEL`). CUANDO todas son del viejo, DEBE conservar el título de
-  hoy (`FLETE_DEV_CON_IVA_LABEL`). La clave de la columna NO DEBE cambiar. La columna de
-  ingreso de bodega ya lleva un título neutro («Ingreso bodega») y no cambia. El caso mixto y el
-  alcance exacto de archivos quedan en PA6.
+### E. Bodega
 
-### Accesibilidad
+- **R40** [S6] — CUANDO la central abre un cierre de bodega, el sistema DEBE abrir el detalle único
+  con `tipo` bodega y audiencia central, en lugar del modal actual.
+- **R41** [S6] — «Gestiones» de bodega DEBE listar las gestiones de todos los cierres del día
+  incluidos, con la columna Mensajero.
+- **R42** [S6] — «Mensajeros» DEBE mostrar una fila por cierre del día incluido: mensajero,
+  gestiones, recaudado, pago, a la central (`paraLaCentral` de ese cierre), señales
+  (`gestionesAjustadas`) y el enlace «Ver su cierre» a `hrefDetalleCierre(cierreDiaId)`.
+- **R43** [S6] — «Conciliación» DEBE mostrar en formato cascada «Debe llegar a la central»
+  (`paraLaCentral`), «− Recibido» (`—` sin marca, nunca ₡0), «Falta por recibir»
+  (`faltaPorRecibir`) y quién marcó y cuándo («Aún nadie» sin marca).
+- **R44** [S7] — La cola de bodega de la central DEBE tener las pestañas «Por conciliar (n)» y
+  «Conciliados (n)». «Por conciliar» DEBE incluir los pendientes de conciliar y los recibidos
+  incompletos; «Conciliados», solo los recibidos completos. Columnas: Folio, Bodega, Solicitó,
+  Solicitado, Cierres, Debe llegar, Recibido, Falta, Estado. Acciones: «Ver / conciliar»
+  (pendiente), «Ver / corregir» (incompleto), «Ver» (recibido).
+- **R45** [S8] — La pestaña «A consolidar» de la satélite DEBE mostrar: tarjetas «Recaudado» (con
+  métodos), «Pago a mensajeros», «Gana la bodega satélite», «Debe llegar a la central» (R67) y, SI
+  `totalCentralDebeAgregado` ≠ 0, «La central debe» con su nota; la tabla de cierres del día a
+  consolidar con Folio, Mensajero, Aprobado, Recaudado, Pago, Gana bodega, A la central (R67),
+  Señales y «Ver su cierre»; y al pie el botón «Solicitar cierre de bodega».
+- **R46** [S8] — MIENTRAS la satélite no pueda solicitar el cierre de bodega, el botón DEBE estar
+  deshabilitado y la cola DEBE mostrar el aviso con el motivo.
+- **R47** [S8] — SI el motivo es que hay cierres de mensajero sin resolver, ENTONCES el aviso DEBE
+  nombrar a los mensajeros que los tienen.
+- **R48** [S8] — El diálogo «Solicitar cierre de bodega» DEBE mostrar el resumen Recaudado, Pago a
+  mensajeros, Gana la bodega satélite y Debe llegar a la central, con las mismas cifras de las
+  tarjetas.
+- **R49** [S9] — La pestaña «Solicitados» de la satélite DEBE mostrar las tarjetas «Por llegar a la
+  central», «Recibido por la central (30 días)» y «Falta por recibir» (R68), y la tabla con Folio,
+  Solicitado, Cierres, Recaudado, Debe llegar, Recibido, Falta, Estado y «Ver».
+- **R50** [S9] — CUANDO la satélite pulsa «Ver» en uno de sus cierres de bodega, el sistema DEBE
+  abrir el detalle único con `tipo` bodega, audiencia satélite y modo solo lectura. SI el cierre de
+  bodega no es de su zona, ENTONCES el servidor DEBE responder `forbidden` y la pantalla no DEBE
+  mostrar nada de él.
+- **R51** [S9] — Con audiencia satélite, el detalle de bodega NO DEBE mostrar fulfillment ni
+  acciones de conciliación.
+- **R52** [S9] — La lista «Solicitados» DEBE respetar el filtro de fecha de solicitud, igual que su
+  descarga.
 
-- **R31** [A1, B] — El diálogo DEBE conservar en su nombre accesible «Detalle del cierre» o
-  «Detalle del cierre de bodega», además de la identidad. Las pestañas DEBEN exponerse como
-  `tablist`/`tab`/`tabpanel`, y cada cifra y cada región de dinero DEBE tener un nombre
-  accesible único.
+- **R78** [S17] — `/wallet/satelites/[zonaId]` DEBE ofrecer las pestañas «Conciliación» y
+  «Movimientos», abriendo en «Conciliación». CUANDO la central despliega una consolidación, la fila
+  DEBE mostrar dos tarjetas en formato cascada («Lo que va a la central»: métodos, recaudado,
+  − pago a mensajeros, − gana la bodega satélite, = debe llegar a la central; «Conciliación»: debe
+  llegar, − recibido, = falta por recibir) y el enlace «Ver el cierre de bodega completo», que abre
+  el detalle único de ese cierre de bodega. Las cifras, acciones y avisos de hoy no cambian.
+
+### F. Diálogos (una caja)
+
+- **R53** [S5] — Todo diálogo del módulo DEBE montarse sobre el `Modal` existente, con título,
+  descripción, cuerpo y los botones al pie. Los diálogos son: rechazar, confirmar paquetes,
+  indemnizar, destrabar, ajustar pago, registrar pago, anular pago, corregir métodos, corregir el
+  resultado, evidencia, solicitar cierre de bodega, marcar recibido, corregir recibido, desmarcar,
+  solicitar cierre del día, enviar cierre vencido, enviar cierre rechazado y devolver a gestión.
+- **R54** [S5] — El visor de evidencia DEBE ser un solo diálogo con «Anterior», «Siguiente» y
+  «foto i de n» en la descripción. La fila DEBE ofrecer un solo botón «Ver evidencia (n)» (o «Ver
+  evidencia» con una foto) en lugar de un botón por foto.
+- **R55** [S5] — El diálogo «Solicitar cierre del día» DEBE mostrar el resumen Gestiones, Recaudado
+  y Tu ganancia, con las cifras de la página.
+- **R56** [S5] — Todos los textos del módulo (pantallas, diálogos, toasts, avisos y mensajes del
+  servidor que el módulo muestra) DEBEN usar el trato «tú» y llevar sus tildes. Ningún texto del
+  módulo DEBE contener voseo («Indicá», «tenés», «podés», «resolvé»…).
+- **R57** [S5] — SI se intenta registrar un pago a un mensajero sin saldo, ENTONCES el diálogo DEBE
+  decir que el mensajero no tiene ganancia pendiente, sin mencionar una tienda.
+
+### G. Mensajero (`/cierre-dia`)
+
+- **R58** [S10] — La sección «Incidente» de `/cierre-dia` y su descarga DEBEN incluir la columna
+  «Ganancia» con el `pagoMensajero` de la gestión. La indemnización DEBE seguir sin mostrarse.
+- **R59** [S10] — CUANDO el mensajero pulsa «Ver» en uno de sus cierres, el sistema DEBE abrir el
+  detalle único con audiencia mensajero, modo solo lectura y marco modal, con la nota de que los
+  montos son los congelados al solicitar.
+- **R60** [S10; tarjetas en S14] — «Cierres solicitados» de `/cierre-dia` DEBE ser la cola única con rol mensajero:
+  tarjetas «Ganancia pendiente de pago» y «Ganancia pagada este mes» (R69); columnas Folio,
+  Solicitado, Destino, Estado, Recaudado, Ganancia, Pago («Pendiente de pago», «Liquidado», el
+  motivo en un rechazado, «—»); acción «Ver»; paginación de hoy.
+- **R61** [S11] — `/cierre-dia` DEBE pintar el cierre en curso del mensajero con el detalle único,
+  audiencia mensajero, modo en curso y marco página: gestiones con «Devolver a gestión» y el pie
+  «Solicitar cierre».
+- **R62** [S11] — MIENTRAS el mensajero tenga un cierre rechazado, `/cierre-dia` DEBE pintarlo en
+  modo rechazado: pestaña «Corregir» con la explicación de hoy y «Órdenes por volver a gestionar»
+  (con «Ya la volviste a gestionar» / «Falta volver a gestionarla» e «Ir a Entregas»), y el pie
+  «Solicitar aprobación del cierre rechazado».
+- **R63** [S11] — MIENTRAS el mensajero tenga un cierre vencido, `/cierre-dia` DEBE pintarlo en
+  modo vencido con el pie «Solicitar aprobación del cierre vencido».
+
+### H. Cifras nuevas del servidor (nota p1)
+
+Ninguna cambia dinero: todas se derivan en el servidor de datos que ya existen y viajan como string
+de escala 2 (o entero, en porcentajes y conteos). La pantalla solo las pinta.
+
+- **R64** [S12] — CUANDO la gestión es del modelo nuevo, el servidor DEBE emitir, por concepto
+  cobrado a la tienda, su tarifa congelada (`cierre_detail_concepto`: modo, valor, % de IVA, nivel y
+  el grupo o la zona de su `tarifa_valor`), y la fila DEBE pintarla en «Ver cómo se calculó».
+- **R65** [S12] — El servidor DEBE emitir, por gestión: el IVA incluido en el cobro a la tienda
+  (`ivaFlete` + `ivaComisionCod` + `ivaFleteDevolucion`), el total del fulfillment con IVA y la fecha
+  en que se cargó al saldo de la tienda, y la fila DEBE pintarlos («de eso, IVA», «Se cobró», «Se
+  cargó al saldo de la tienda el …»).
+- **R66** [S12] — El servidor DEBE emitir, por gestión con pago congelado, el pago «por tarifa»
+  (`gestion_pago_congelado.importe` del mensajero, con su modo y nivel) y, si hubo ajuste, la
+  diferencia con su signo hasta `pagoMensajero`; la tarjeta «Se le paga al mensajero» DEBE pintarlos
+  en cascada. Con audiencia central o satélite, `tarifaFaltante` DEBE llegar con su valor real.
+- **R67** [S8] — El servidor DEBE emitir «Debe llegar a la central» del conjunto a consolidar y de
+  cada cierre del día a consolidar, con la misma derivación que `paraLaCentral`.
+- **R68** [S9] — El servidor DEBE emitir para la zona de la satélite: «Por llegar a la central»
+  (suma de `paraLaCentral` de sus cierres de bodega sin conciliar), «Recibido por la central (30
+  días)» (suma de `montoRecibido` conciliado en los últimos 30 días calendario de Costa Rica) y
+  «Falta por recibir» (suma de `faltaPorRecibir` positivo de los recibidos incompletos), con sus
+  conteos. Estas tarjetas NO DEBEN depender del filtro de fecha.
+- **R69** [S14] — El servidor DEBE emitir para el mensajero: «Ganancia pendiente de pago» (suma de
+  `pendientePagoMensajero` de sus cierres aprobados, con el número de cierres con pendiente > 0) y
+  «Ganancia pagada este mes» (suma de sus pagos vigentes con fecha del pago en el mes en curso de
+  Costa Rica, con el número de pagos).
+- **R70** [S13] — El servidor DEBE emitir el reparto de lo recaudado en porcentajes enteros que
+  sumen 100, y la barra de «Dinero» DEBE dibujarse con ellos. SI lo recaudado es cero o alguna parte
+  es negativa, ENTONCES el servidor DEBE emitir `null` y la pantalla DEBE pintar solo la leyenda con
+  los importes. La cola de mensajeros DEBE además mostrar en Señales, por cierre, incidentes sin
+  indemnizar, pagos ajustados y paquetes que vuelven, con conteos emitidos por el servidor.
+
+### I. Dinero intacto y verificación
+
+- **R71** [todas] — Los componentes del módulo NO DEBEN convertir un importe a número ni sumar,
+  restar, redondear o reordenar importes en el cliente.
+- **R72** [todas] — Ninguna rebanada DEBE modificar cómo se calcula, congela o asienta un importe:
+  ni snapshots, ni asientos, ni tarifas, ni Server Actions de escritura, ni migraciones.
+- **R77** [S2, S3, S6, S9, S10, S11, S12] — Para un mismo cierre, cada cifra que ve cada audiencia
+  (central, satélite, mensajero) DEBE ser igual al céntimo al importe escrito a mano en el escenario
+  E2E, con un cierre del modelo viejo y otro del modelo nuevo.
+
+### J. Excel
+
+- **R73** [S15] — SI todas las gestiones de los cierres de una descarga son del modelo viejo,
+  ENTONCES el archivo DEBE salir con el formato actual, sin cambiar columnas, títulos ni claves.
+- **R74** [S15] — SI todas son del modelo nuevo, ENTONCES el archivo DEBE salir con el documento
+  nuevo (`design.md > Excel`).
+- **R75** [S15] — SI una descarga mezcla cierres de los dos modelos, ENTONCES el archivo DEBE llevar
+  las hojas del documento nuevo con los cierres del modelo nuevo y las hojas del formato actual con
+  los del viejo, sin repetir ningún cierre.
+
+### K. Retiro
+
+- **R76** [S16] — Cuando todas las rebanadas estén en `dev`, ningún archivo de `app/` DEBE importar
+  los componentes sustituidos (`design.md > Qué sustituye cada componente`), y esos componentes DEBEN
+  estar borrados.
+
+## Rebanadas
+
+Detalle de archivos, tamaño y tareas en `tasks.md`; reparto y dependencias, aquí. Cada una es una
+ficha con su PR, su gate y su E2E. SLT-95 se queda con S1 y su `description` se acota a ella.
+
+| # | Ficha | Zona | R | Archivos | Depende de |
+|---|---|---|---|---|---|
+| S1 | **SLT-95** «Rediseño del detalle de cierre (mensajero y bodega)» → acotar a «Detalle de cierre único: componente base» | frontend | R1-R16, R20, R71 | ~13 | — |
+| S2 | nueva «Detalle de cierre único en /cierres-admin (mensajeros)» | frontend | R17-R19, R21, R38, R39, R77 | ~32 | S1 |
+| S3 | nueva «Fila de gestión única y lista con filtros» | frontend | R22-R30 | ~16 | S2 |
+| S4 | nueva «Cola de cierres única: mensajeros (central y satélite)» | frontend | R32-R37 | ~22 | S2 |
+| S5 | nueva «Diálogos del módulo de cierres y trato tú» | fullstack | R53-R57 | ~30 | S3, S4 |
+| S6 | nueva «Detalle de cierre de bodega en el detalle único (central)» | frontend | R31, R40-R43 | ~20 | S3 |
+| S7 | nueva «Cola de bodega de la central: Por conciliar / Conciliados» | fullstack | R44 | ~14 | S4, S6 |
+| S8 | nueva «Bodega satélite: A consolidar con la cola única» | fullstack | R45-R48, R67 | ~22 | S4, S5 |
+| S9 | nueva «Bodega satélite: Solicitados y su cierre de bodega en lectura» | fullstack | R49-R52, R68 | ~20 | S6, S8 |
+| S10 | nueva «/cierre-dia: detalle y cola únicos para el mensajero» | frontend | R58-R60 | ~18 | S3, S4 |
+| S11 | nueva «/cierre-dia: el cierre de hoy, rechazado o vencido como página» | frontend | R61-R63 | ~16 | S10 |
+| S12 | nueva «Cifras del servidor en la fila: tarifas, IVA, pago y fulfillment» | fullstack | R64-R66 | ~18 | S3 |
+| S13 | nueva «Cifras del servidor: reparto en % y señales de la cola» | fullstack | R70 | ~14 | S4 |
+| S14 | nueva «Cifras del servidor: ganancia pendiente y pagada del mensajero» | fullstack | R69 | ~10 | S10 |
+| S15 | nueva «Excel del modelo nuevo de cierres» | fullstack | R73-R75 | ~14 | S12 |
+| S16 | nueva (chore) «Retirar los componentes de cierre sustituidos» | frontend | R76 | ~25 | S1-S15, S17 |
+| S17 | nueva «Estado de cuenta de la satélite: conciliación en pestaña» | frontend | R78 | ~10 | S6 |
+
+Las rebanadas sin dependencia entre sí pueden ir en paralelo (S3 ‖ S4; S6 ‖ S10 ‖ S12 ‖ S13), pero
+varias tocan `CierresAdminModule.tsx` o `CierresBodegaAdminModule.tsx`: el candado de archivos
+(`docs/equipo.md`) decide si dos van a la vez.
 
 ## Preguntas abiertas
 
-- **PA1 (bloqueante): no cabe en un PR.** `## Archivos esperados` de `tasks.md` lista 58 rutas
-  (código, tests unitarios, de componentes y E2E), frente al límite de 40 archivos y 1000 líneas
-  (`docs/gate.md > Tamaño del PR`; el aviso salta al 80 %, 32 archivos). Corte propuesto en
-  rebanadas verticales que se mergean solas:
-  - **C — ficha nueva, va primero (independiente).** Pago del incidente en `/cierre-dia` y su
-    Excel, y títulos de Excel según modelo (R28-R30). 10 archivos, frontend.
-  - **A1 — SLT-95 (la ficha original se queda con esta).** Componente común y detalle del
-    mensajero (R1-R12, R17-R19, R26, R27, R31). En «Gestiones» se monta la lista de hoy
-    (`GestionesPorResultado`), sin tocarla. Quita «Debe». 33 archivos, más de la mitad tests
-    existentes que montan el modal: queda en el aviso del 80 %.
-  - **A2 — ficha nueva, `depends_on` A1.** Lista con filtros y señales, y fila desplegada
-    opción 2 en el mensajero (R14, R15, R22-R25). 4 archivos nuevos más los tests de A1 que
-    vuelva a tocar.
-  - **B — ficha nueva, `depends_on` A2.** Detalle de bodega en el mismo componente (R13, R16,
-    R20, R21 y las partes [B]). 11 archivos.
-  - **D — opcional, fullstack, solo si Carlos lo quiere (PA2).**
-
-  A1 superará casi seguro las 1000 líneas: un componente nuevo y ~20 tests adaptados. Hay dos
-  salidas:
-  - aceptar `tamano-pr-aceptado` para A1;
-  - partirla otra vez: A1a = caparazón, cifras y «Dinero» detrás de una bandera sin enlace; A1b
-    = cambio del modal y adaptación de tests y E2E.
-
-  ¿Aceptas el corte, y cuál de las dos salidas para A1?
-- **PA2: cifras del canvas que hoy NO llegan del servidor.** No se inventan ni se calculan en el
-  cliente. Por defecto se omiten en A1, A2 y B:
-  - a) los porcentajes y anchos de la barra de reparto;
-  - b) «IVA incluido» sumado en la tarjeta de cobro (llegan `ivaFlete`, `ivaComisionCod` y
-    `ivaFleteDevolucion` por separado);
-  - c) el total del fulfillment con IVA (llegan los dos sumandos);
-  - d) en el modelo nuevo, la tarifa de cada concepto (nivel, grupo, zona, monto fijo o %) y la
-    del pago al mensajero («Precio propio del mensajero»). Están congeladas en
-    `cierre_detail_concepto` y `gestion_pago_congelado`, pero no viajan al detalle;
-  - e) la fecha en que el fulfillment se cargó al saldo de la tienda;
-  - f) «Sin tarifa de pago» en el detalle de admin: `tarifaFaltante` llega siempre `false`.
-
-  ¿Se omiten, o se abre la rebanada D (fullstack, lectura de datos congelados y derivados en el
-  servidor, sin cambio de dinero)?
-- **PA3: bodega sin «Por tienda» ni cascadas por mensajero en el canvas.** Hoy existen: 396
-  R19/R20 y 393 R15. Propuesta:
-  - conservar «Por tienda» del agregado en «Dinero» (umbral de dos tiendas);
-  - sustituir las cascadas por mensajero por la pestaña «Mensajeros» y su «Ver su cierre».
-
-  ¿De acuerdo?
-- **PA4:** «Rechazados por la tienda» sin rechazos: ¿se oculta la pestaña? Por defecto sí.
-- **PA5: impresión (223).** Con pestañas, Ctrl+P sobre el detalle del admin imprime solo la
-  pestaña activa. La hoja del mensajero en `/cierre-dia` no cambia. ¿Aceptado?
-- **PA6: títulos de Excel según modelo.**
-  - a) ¿Qué archivos? Propuesta: el «Detalle» fundido de cierres de mensajero y de bodega, que
-    trae `tarifaModelo` por fila. Los resúmenes por cierre no traen el modelo.
-  - b) Un archivo mixto (gestiones de los dos modelos en el rango): ¿rótulo neutro, los dos
-    rótulos, o el del modelo vigente de la empresa?
-- **PA7: «Ver su cierre» en bodega** abre `/cierres-admin?cierre=<cierreDiaId>`. Funciona si el
-  alcance del maestro en `verCierreDetalle` incluye los cierres con destino satélite (T0.2 lo
-  comprueba). Si no, ¿se omite el enlace?
-- **PA8: código muerto.** Al dejar de montarse en `/cierres-admin`, las ramas de audiencia
-  `admin` de `CierreFacturaDetalle` (Liquidación, «Debe», tarjetas de cabecera) y
-  `CascadasCierreMensajero` solo las usarían sus propios tests. `/cierre-dia` sigue usando
-  `CierreFacturaDetalle` con audiencia `mensajero`. Propuesta: retirarlas en un `chore` aparte,
-  para no inflar A1. ¿De acuerdo?
+- **PA1: «Recibido por la central (30 días)» frente al filtro.** R68 deja las tres tarjetas de
+  «Solicitados» fuera del filtro de fecha (son estado), mientras la lista lo respeta (R52). ¿De
+  acuerdo, o quieres que las tarjetas sigan al filtro?
+- **PA2: varios cierres rechazados a la vez en `/cierre-dia`.** Hoy la página muestra un panel de
+  corrección por cada cierre rechazado («1 de 2»). El canvas solo dibuja uno. Propuesta: la página
+  pinta el que pide acción primero (vencido, luego el rechazado más antiguo, luego el de hoy) y los
+  demás se abren desde «Cierres solicitados» en modo rechazado. ¿De acuerdo?
+- **PA3: documento Excel del modelo nuevo.** Propuesta de hojas y columnas en `design.md > Excel`.
+  Necesita tu aprobación antes de S15 (D14). Hoy no tendría datos en prod (D19).
