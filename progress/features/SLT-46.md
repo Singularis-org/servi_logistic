@@ -7,8 +7,8 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 2026-11-06: spec aprobado (F1.4, «si», por escrito) y tarjeta en in_progress. Implementer lanzado
-con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0–T9. Rama sobre SLT-45 (PR #89).
+F2.3 2026-11-09: T1–T9.1 hechas (R1–R63); review APROBADO en vuelta 2 (`progress/review_SLT-46.md`). PR a dev abierto, apilado sobre SLT-45 (#89).
+Antes de `done`: `gate-completo` verde en CI (cierra T0.1), merge humano en orden #44 → #55 → #75 → #81 → #89 → este, y el ensayo T8.2 sobre la copia de producción (persona).
 
 ## Evaluación
 - zone fullstack: pantalla de geografía del superadmin a N niveles, alta de país con catálogo de tipos,
