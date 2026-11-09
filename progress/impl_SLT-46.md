@@ -1017,3 +1017,31 @@ Veredicto: T6.5 hecha, verde en test, lint y typecheck.
   (vocabulario de la maqueta; toca a CR, R12); sin chip «Inactivo por su <nivel>» heredado (nombre atenuado);
   el confirmar del retiro no se bloquea mientras se cuenta (antes sí); texto propio para id inválido
   («Este lugar no tiene un identificador válido; recarga la página.»).
+
+### T6.2 — alta de país a 2–10 niveles, «Disponible» y CSV con confirmación (R23, R30, R33, R52–R54, R58, R59, R62; P11)
+- Modificado `_components/GeografiaPlataformaModule.tsx`: alta con `ListaReordenable` (3 filas vacías al arrancar),
+  título «Niveles N (máximo 10)», quitar solo la última y solo con > 2, «Agregar nivel» oculto con 10,
+  equivalencia «Columnas del CSV: nivel_1 = … · …» en vivo; valida con `crearPaisSchema` y confirma con
+  `ConfirmarCambio` («Dar de alta un país», «Sí, crear») → `crearPaisAction({ id, tipos })` en el orden de pantalla.
+  «Disponible» (P11): modal «Disponibilidad de <país>», «Sí, cambiar». CSV (P11): modal «Cargar la división»
+  (Archivo, País), «Sí, cargar»; columnas `nivel_k`/`codigo_nivel_k` k = 1..P desde `tipos`; resumen por profundidad
+  con el plural de cada tipo.
+- Tests: `tests/components/GeografiaPlataformaAltaPais.test.tsx` (14) y `tests/unit/components/geografia-plataforma-page.test.tsx` (31).
+- Mapa R → test: R23/R54 «confirmar llama una vez a la action con `{ id, tipos }` en el orden en pantalla»; R53
+  «cada fila tiene su manija ⠿ y no hay flechas…»; R54 «la equivalencia del CSV se ve en vivo, en el orden en
+  pantalla»; R58/R59 «un dato inválido marca el campo y no abre el modal…», «datos válidos abren la confirmación…;
+  cancelar no llama»; R62 «arranca con 3 filas…», «con 2 filas … no hay forma de quitar otra», «solo la última fila
+  se puede quitar», «llega a 10 filas y … no deja agregar una 11.ª»; R30 «nivel_k y codigo_nivel_k para k = 1..4»,
+  «un país de 2 niveles pide solo cuatro columnas»; R33 «el resumen pinta lo creado en cada profundidad…»; P11
+  «cancelar la confirmación no llama a la action ni mueve el interruptor», «cancelar la confirmación no carga nada».
+- Aserciones cambiadas en `geografia-plataforma-page.test.tsx`: envío del alta `{ id, tipos }` tras «Sí, crear»
+  (R23/R54, R58); conflicto del alta tras «Sí, crear» (R58); R47 interruptor pasa por el modal «Sí, cambiar» (P11);
+  CSV `subir()` pasa por el modal «Sí, cargar» (P11). Llamadas, `aria-checked` y refresh sin cambios.
+- Salida: vitest 3 archivos `66 passed (66)`; eslint 3 archivos sin hallazgos; tsc sin errores; guardia
+  `etiquetas-geograficas-sin-literal` 6/6.
+- **ABIERTO (bloqueo, decide el humano):** la casilla «Disponible para crear empresas» del alta y su aviso «país aún
+  no habilitado» NO están: `crearPaisSchema` es `.strict()` sin `disponible` y la columna nace `DEFAULT true`.
+  Opciones: (a) backend añade `disponible?` al esquema y al repositorio (cambio de backend, fuera del encargo);
+  (b) dos llamadas no atómicas (`crearPaisAction` + `cambiarDisponibilidadPaisAction`); (c) quitar la casilla del alta.
+- Desvíos de texto a cotejar con la maqueta v7: títulos de los modales, «Sí, cambiar»/«Sí, cargar», prefijo
+  «Columnas del CSV:»; «Quitar» oculto (no deshabilitado) donde no aplica.

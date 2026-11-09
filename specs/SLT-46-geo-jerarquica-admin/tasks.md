@@ -201,7 +201,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
   R22, R52, R58, R59, R61)
   *Hecho:* `tests/components/geografia-arbol-n-niveles.test.tsx` verde, con los casos de R58/R59 de
   esas cuatro acciones.
-- [ ] **T6.2** [P] `GeografiaPlataformaModule.tsx`: alta de país con lista de 2–10 tipos titulada
+- [x] **T6.2** [P] `GeografiaPlataformaModule.tsx`: alta de país con lista de 2–10 tipos titulada
   «Niveles N (máximo 10)», reordenable con `ListaReordenable`, validada con `crearPaisSchema` y
   confirmada con `ConfirmarCambio`; equivalencia `nivel_k` del CSV para P niveles. (R23, R30, R52, R53,
   R54, R58, R59, R62)
