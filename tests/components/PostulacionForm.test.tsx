@@ -53,9 +53,9 @@ const VEHICULOS: SelectOption[] = [
   { value: "veh-carro", label: "Carro" },
 ];
 
-function renderForm() {
+function renderForm(prefijo: string | null = "507") {
   return render(
-    <PostulacionForm tiposIdentificacion={TIPOS} vehiculos={VEHICULOS} />,
+    <PostulacionForm tiposIdentificacion={TIPOS} vehiculos={VEHICULOS} prefijo={prefijo} />,
   );
 }
 
@@ -508,5 +508,20 @@ describe("PostulacionForm — el ojito de cada contraseña (286: R1, R9, R14)", 
     expect(screen.getByLabelText("Contraseña")).toHaveValue("Clave-Larga-1");
     expect(screen.getByLabelText("Confirmar contraseña")).toHaveValue("Clave-Larga-1");
     expect(mockedPostular).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-81 (design §7.3; R19, R23): el prefijo del país de la empresa, junto al teléfono.
+describe("PostulacionForm — prefijo del país de la empresa (SLT-81)", () => {
+  it("R19: pinta +<prefijo> junto al teléfono", () => {
+    renderForm("507");
+    expect(screen.getByText("+507")).toBeInTheDocument();
+    expect(screen.queryByText(/no tiene prefijo telefónico cargado/)).toBeNull();
+  });
+
+  it("R23: sin prefijo cargado, el teléfono va solo con el aviso", () => {
+    renderForm(null);
+    expect(screen.getByText(/no tiene prefijo telefónico cargado/)).toBeInTheDocument();
+    expect(screen.queryByText(/^\+\d+$/)).toBeNull();
   });
 });

@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { FormField } from "@/components/shared/FormField";
+import { PrefijoTelefonico } from "@/components/shared/PrefijoTelefonico";
 import { PasswordInput } from "@/components/shared/PasswordInput";
 
 // Feature 21 — formulario de postulacion de mensajero (T9: R2, R3, R10, R11, R26).
@@ -118,8 +119,11 @@ function validarTotal(
 }
 
 export interface PostulacionFormProps {
+  /** SLT-81 (R19): solo los tipos activos del país de la empresa, por nombre y en su orden. */
   tiposIdentificacion: SelectOption[];
   vehiculos: SelectOption[];
+  /** SLT-81 (R19, R23): prefijo del país de la empresa; `null` si no lo tiene cargado. */
+  prefijo: string | null;
 }
 
 const ACCEPT_IMAGES = POSTULACION_ALLOWED_MIME.join(",");
@@ -127,6 +131,7 @@ const ACCEPT_IMAGES = POSTULACION_ALLOWED_MIME.join(",");
 export function PostulacionForm({
   tiposIdentificacion,
   vehiculos,
+  prefijo,
 }: PostulacionFormProps) {
   const [isPending, startTransition] = useTransition();
 
@@ -422,13 +427,18 @@ export function PostulacionForm({
           label={TEXTO_LABELS.telefono}
           error={fieldErrors.telefono}
         >
-          <Input
-            type="text"
-            inputMode="numeric"
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ""))}
-            disabled={isPending}
-          />
+          {(control) => (
+            <PrefijoTelefonico prefijo={prefijo}>
+              <Input
+                {...control}
+                type="text"
+                inputMode="numeric"
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ""))}
+                disabled={isPending}
+              />
+            </PrefijoTelefonico>
+          )}
         </FormField>
 
         {/* Tipo de documento (Select) */}
