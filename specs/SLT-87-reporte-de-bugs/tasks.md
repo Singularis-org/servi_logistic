@@ -23,7 +23,7 @@
 
 ## Bloque B — Servidor
 
-- [ ] **T3 [P]. Configuración y tipos** (R12, R16, R20).
+- [x] **T3 [P]. Configuración y tipos** (R12, R16, R20).
   - **Archivos:** `lib/config/reporte-bug.ts` (`DESCRIPCION_MAX`, `destinatariosReporteBug`),
     `lib/types/reporte-bug.ts` (zod `strict` de la entrada y los DTO) y `BUG_REPORT_EMAILS=` en
     `.env.example`.
