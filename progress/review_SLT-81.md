@@ -149,3 +149,11 @@ implementer. Va anotado para que nadie dé R25 por verificado antes del check `e
 - `pnpm test:guardias` → 330 archivos pasan, 3 saltados y 1 que falla: `dependencias-declaradas-presentes`, con 4 tests en rojo, todos del baseline (`tests/baseline-rojos.json`).
 - `git merge-tree --write-tree HEAD origin/dev` → 2 conflictos (M1).
 - Integración contra Postgres y E2E: no se corrieron. Los corre CI.
+
+## Correcciones
+- **M1** — `e69bfe9c` (Merge origin/dev en SLT-81): `FichaQueLoRetira = "SLT-92" | "SLT-90" | "SL-22"`;
+  UI en SLT-92, planes en SLT-90 con el motivo de `dev`; título y lista del test con las mismas fichas.
+  `pais-sin-literales.guardia` 36/36 verde, typecheck exit 0.
+- **M2** — `407700f3` (chore(SLT-81): migracion renombrada tras dev): `20261109130000_slt81_historial_datos_pais`,
+  detrás de `20261109120000_cobro_plataforma_traza`; `M`/`M_ANTERIOR`, `down.sql`, schema, design, tasks y
+  bitácora actualizados. SQL igual: ninguna migración de `dev` toca los enums de `historial_plataforma`.
