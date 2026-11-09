@@ -9,6 +9,9 @@
 
 BEGIN;
 
+-- Frena movimientos nuevos (y su traza en vivo) entre la comprobación y el DROP TABLE.
+LOCK TABLE "cobro_plataforma_movimiento" IN SHARE ROW EXCLUSIVE MODE;
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "cobro_plataforma_traza" WHERE NOT "reconstruido") THEN
