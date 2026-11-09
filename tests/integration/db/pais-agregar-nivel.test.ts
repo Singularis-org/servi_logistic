@@ -20,12 +20,12 @@ import {
 // SLT-46 (T3.2; design §2.4 «Agregar un nivel», P3) — `PaisRepository.agregarNivel` contra Postgres.
 //   · R48: 2 → 3 crea `nivel_3` y copia sus nombres a `pais.nivel_3_*`; 4 → 5 crea solo el tipo; los
 //     nodos y los demás tipos quedan intactos.
-//   · R49: con 10 tipos, `tope`; sin país, `no_existe`; dos altas en paralelo → una choca con el único
-//     `(pais_id, clave)` (`P2002`, que la action traduce a `conflict`). Ningún rechazo escribe.
+//   · R49: con 10 tipos, `tope`; sin país, `no_existe`; dos altas en paralelo → la segunda, tras el
+//     candado del país, es `cambio_concurrente` (la action lo traduce a `conflict`). Ningún rechazo escribe.
 //   · R37: una fila `tipo_nivel_geografico_creado` con `origen: "nivel_agregado"` y su profundidad.
 //
-// Casi todo va en una transacción del dueño que se revierte. La carrera NO puede: el segundo `INSERT`
-// solo choca con el único si el primero COMMITEA (si revierte, entra). Ese caso commitea el país
+// Casi todo va en una transacción del dueño que se revierte. La carrera NO puede: la segunda alta
+// solo ve el nivel nuevo si la primera COMMITEA. Ese caso commitea el país
 // `XV` bajo el lock de escrituras reales y lo borra en un `finally` (el `afterAll` exige que no quede).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -38,6 +38,10 @@ const DOS = [
 ];
 
 const PAIS_CARRERA = "XV";
+
+// SLT-46 (2026-11-09, design §4.7): la entrada gana `profundidad`, la P+1 que mostró la pantalla. En
+// cada caso es la vigente, así que los resultados no cambian (salvo la carrera, ver su comentario).
+const nombres = (nombreSingular: string, nombrePlural: string) => ({ nombreSingular, nombrePlural });
 
 async function actorDePrueba(tx: TxDeTest): Promise<string> {
   const org = await crearOrganizacion(tx);
@@ -72,9 +76,9 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const repo = new PaisRepository(clienteConSavepoint(tx));
-      await repo.crearConTipos({ id: "XT", nombre: "País XT", tipos: DOS }, { usuarioId: actorId });
+      await repo.crear({ id: "XT", nombre: "País XT", tipos: DOS }, { usuarioId: actorId });
       const antes = await tiposDe(tx, "XT");
-      const tipo = await repo.agregarNivel("XT", "Comuna", "Comunas", { usuarioId: actorId });
+      const tipo = await repo.agregarNivel("XT", nombres("Comuna", "Comunas"), 3, { usuarioId: actorId });
       const despues = await tiposDe(tx, "XT");
       const pais = await tx.pais.findUnique({ where: { id: "XT" }, select: { nivel3Singular: true, nivel3Plural: true } });
       return { actorId, antes, tipo, despues, pais, historial: deNivelAgregado(await historialDeNivel(tx, "XT")) };
@@ -114,7 +118,7 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
         nodos: await tx.nodoGeografico.findMany({ where: { paisId }, orderBy: { id: "asc" } }),
       });
       const antes = await foto();
-      const tipo = await new PaisRepository(clienteConSavepoint(tx)).agregarNivel(paisId, "Manzana", "Manzanas", {
+      const tipo = await new PaisRepository(clienteConSavepoint(tx)).agregarNivel(paisId, nombres("Manzana", "Manzanas"), 5, {
         usuarioId: actorId,
       });
       return { antes, tipo, despues: await foto() };
@@ -132,14 +136,14 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const repo = new PaisRepository(clienteConSavepoint(tx));
-      const nombres = (n: number) => Array.from({ length: n }, (_, i) => ({ singular: `Nivel ${i + 1}`, plural: `Niveles ${i + 1}` }));
-      await repo.crearConTipos({ id: "XT", nombre: "País XT", tipos: nombres(10) }, { usuarioId: actorId });
-      await repo.crearConTipos({ id: "XU", nombre: "País XU", tipos: nombres(9) }, { usuarioId: actorId });
+      const listaDe = (n: number) => Array.from({ length: n }, (_, i) => ({ singular: `Nivel ${i + 1}`, plural: `Niveles ${i + 1}` }));
+      await repo.crear({ id: "XT", nombre: "País XT", tipos: listaDe(10) }, { usuarioId: actorId });
+      await repo.crear({ id: "XU", nombre: "País XU", tipos: listaDe(9) }, { usuarioId: actorId });
       const antesXT = await tiposDe(tx, "XT");
 
-      const diez = await repo.agregarNivel("XT", "Once", "Onces", { usuarioId: actorId });
-      const nueve = await repo.agregarNivel("XU", "Diez", "Dieces", { usuarioId: actorId });
-      const otraVez = await repo.agregarNivel("XU", "Once", "Onces", { usuarioId: actorId });
+      const diez = await repo.agregarNivel("XT", nombres("Once", "Onces"), 11, { usuarioId: actorId });
+      const nueve = await repo.agregarNivel("XU", nombres("Diez", "Dieces"), 10, { usuarioId: actorId });
+      const otraVez = await repo.agregarNivel("XU", nombres("Once", "Onces"), 11, { usuarioId: actorId });
       return {
         diez,
         nueve: typeof nueve === "string" ? nueve : nueve.clave,
@@ -165,7 +169,7 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
   it("R49: sin país es `no_existe` y no escribe nada", async () => {
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
-      const resultado = await new PaisRepository(clienteConSavepoint(tx)).agregarNivel("XY", "Comuna", "Comunas", {
+      const resultado = await new PaisRepository(clienteConSavepoint(tx)).agregarNivel("XY", nombres("Comuna", "Comunas"), 3, {
         usuarioId: actorId,
       });
       return {
@@ -181,9 +185,9 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
   it("R48/R37: si el historial falla, ni el tipo ni pais.nivel_3_* quedan (misma transacción)", async () => {
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
-      await new PaisRepository(clienteConSavepoint(tx)).crearConTipos({ id: "XT", nombre: "País XT", tipos: DOS }, { usuarioId: actorId });
+      await new PaisRepository(clienteConSavepoint(tx)).crear({ id: "XT", nombre: "País XT", tipos: DOS }, { usuarioId: actorId });
       const fallo = await new PaisRepository(clienteConSavepoint(tx, "plataforma"))
-        .agregarNivel("XT", "Comuna", "Comunas", { usuarioId: actorId })
+        .agregarNivel("XT", nombres("Comuna", "Comunas"), 3, { usuarioId: actorId })
         .then(
           () => null,
           (e: unknown) => (e instanceof Error ? e.name : String(e)),
@@ -198,7 +202,12 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
     expect(r).toEqual({ fallo: "RegistroCaido", claves: ["nivel_1", "nivel_2"], pais: { nivel3Singular: "" } });
   });
 
-  it("R49: dos altas de nivel en paralelo sobre el mismo país → una crea nivel_3 y la otra choca con el único (P2002), sin escribir", async () => {
+  // SLT-46 (2026-11-09, design §2.4 «Candado del país»): desde que `agregarNivel` toma el `FOR UPDATE`
+  // de la fila `pais` antes de contar, la segunda alta ya no puede leer P = 2: espera al candado, lee
+  // P = 3 y su `profundidad` (3) deja de ser P+1 → `cambio_concurrente`, sin escribir. Antes chocaba
+  // con el único (`P2002`). En los dos casos la action responde `conflict` (design §2.4 lo autoriza);
+  // el único `(pais_id, clave)` queda de respaldo. Cambio de aserción autorizado por el leader.
+  it("R49/R61: dos altas de nivel en paralelo con la misma profundidad → una crea nivel_3 y la otra es `cambio_concurrente`, sin escribir", async () => {
     // Un cliente por participante: el de `crearPrismaDeTest` tiene un pool de 2 conexiones, y el
     // bloqueo, las dos altas y la consulta que las vigila necesitan cuatro a la vez.
     const [clienteA, clienteB, clienteBloqueo] = [crearPrismaDeTest(), crearPrismaDeTest(), crearPrismaDeTest()];
@@ -210,23 +219,22 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
       const actor = { usuarioId: randomUUID() }; // sin usuario: el historial congela al sistema
       try {
         await limpiar(); // por si una corrida anterior murió a mitad
-        const alta = await new PaisRepository(base).crearConTipos(
+        const alta = await new PaisRepository(base).crear(
           { id: PAIS_CARRERA, nombre: "País de la carrera XV", tipos: DOS },
           actor,
         );
         if (alta.estado !== "creado") throw new Error(`no se creó ${PAIS_CARRERA}: ${JSON.stringify(alta)}`);
 
-        // Para que las dos lean P = 2 ANTES de que ninguna commitee, una tercera transacción bloquea la
-        // fila del país. La primera en insertar el tipo se queda esperando en la comprobación de la FK
-        // (`FOR KEY SHARE` contra este `FOR UPDATE`); la segunda, en el único, detrás de la primera.
-        // Cuando las dos esperan (las dos ya leyeron país y cuenta), se suelta.
+        // Para que las dos arranquen a la vez, una tercera transacción toma el candado del país; las dos
+        // altas se quedan esperando en su propio `FOR UPDATE` de la fila `pais`. Cuando las dos esperan,
+        // se suelta: entra una, y la otra solo sigue cuando la primera commitea.
         let carrera: Promise<PromiseSettledResult<unknown>[]> | null = null;
         await clienteBloqueo.$transaction(
           async (bloqueo) => {
             await bloqueo.$executeRawUnsafe(`SELECT 1 FROM "pais" WHERE "id" = $1 FOR UPDATE`, PAIS_CARRERA);
             carrera = Promise.allSettled([
-              new PaisRepository(clienteA).agregarNivel(PAIS_CARRERA, "Comuna", "Comunas", actor),
-              new PaisRepository(clienteB).agregarNivel(PAIS_CARRERA, "Barrio", "Barrios", actor),
+              new PaisRepository(clienteA).agregarNivel(PAIS_CARRERA, nombres("Comuna", "Comunas"), 3, actor),
+              new PaisRepository(clienteB).agregarNivel(PAIS_CARRERA, nombres("Barrio", "Barrios"), 3, actor),
             ]);
             const limite = Date.now() + 15_000;
             for (;;) {
@@ -234,7 +242,7 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
                 `SELECT count(*)::int AS n FROM pg_stat_activity
                   WHERE datname = current_database()
                     AND cardinality(pg_blocking_pids(pid)) > 0
-                    AND query ILIKE '%INSERT INTO%tipo_nivel_geografico%'`,
+                    AND query ILIKE '%FROM "pais"%FOR UPDATE%'`,
               );
               if (n >= 2) break;
               if (Date.now() > limite) throw new Error(`solo ${n} de las 2 altas llegaron a esperar el bloqueo`);
@@ -245,8 +253,10 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
         );
         const resultados = await (carrera as unknown as Promise<PromiseSettledResult<unknown>[]>);
 
+        const valores = resultados.flatMap((x) => (x.status === "fulfilled" ? [x.value] : []));
         return {
-          ganadas: resultados.filter((x) => x.status === "fulfilled").map((x) => (x as PromiseFulfilledResult<{ clave: string }>).value.clave),
+          ganadas: valores.flatMap((v) => (typeof v === "object" && v !== null ? [(v as { clave: string }).clave] : [])),
+          rechazos: valores.filter((v) => typeof v === "string"),
           unicos: resultados.filter((x) => x.status === "rejected" && esViolacionDeUnico(x.reason)).length,
           claves: (await tiposDe(base, PAIS_CARRERA)).map((t) => t.clave),
           historial: deNivelAgregado(await historialDeNivel(base, PAIS_CARRERA)).length,
@@ -257,16 +267,22 @@ describeSiHayBase("SLT-46 — PaisRepository.agregarNivel contra Postgres", () =
       }
     });
 
-    expect(r).toEqual({ ganadas: ["nivel_3"], unicos: 1, claves: ["nivel_1", "nivel_2", "nivel_3"], historial: 1 });
+    expect(r).toEqual({
+      ganadas: ["nivel_3"],
+      rechazos: ["cambio_concurrente"],
+      unicos: 0,
+      claves: ["nivel_1", "nivel_2", "nivel_3"],
+      historial: 1,
+    });
   }, 60_000);
 
   it("R49 CONTRAPRUEBA de la carrera: las mismas dos altas, una detrás de otra, entran las dos (nivel_3 y nivel_4)", async () => {
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const repo = new PaisRepository(clienteConSavepoint(tx));
-      await repo.crearConTipos({ id: "XT", nombre: "País XT", tipos: DOS }, { usuarioId: actorId });
-      const a = await repo.agregarNivel("XT", "Comuna", "Comunas", { usuarioId: actorId });
-      const b = await repo.agregarNivel("XT", "Barrio", "Barrios", { usuarioId: actorId });
+      await repo.crear({ id: "XT", nombre: "País XT", tipos: DOS }, { usuarioId: actorId });
+      const a = await repo.agregarNivel("XT", nombres("Comuna", "Comunas"), 3, { usuarioId: actorId });
+      const b = await repo.agregarNivel("XT", nombres("Barrio", "Barrios"), 4, { usuarioId: actorId });
       return [a, b].map((x) => (typeof x === "string" ? x : x.clave));
     });
 

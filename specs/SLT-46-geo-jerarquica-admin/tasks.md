@@ -106,7 +106,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   *Hecho:* `tests/integration/db/pais-alta-tipos.test.ts`, `pais-tipos-edicion.test.ts` y
   `pais-agregar-nivel.test.ts` verdes (2 → 3 con copia a `pais.nivel_3_*`; 4 → 5; tope 10; carrera →
   único; nodos intactos).
-- [ ] **T3.3** *(2026-11-09)* `PaisRepository` e `IPaisRepository`: `reordenarTipos(paisId, niveles,
+- [x] **T3.3** *(2026-11-09)* `PaisRepository` e `IPaisRepository`: `reordenarTipos(paisId, niveles,
   actor)` (§2.4 «Reordenar niveles») y el candado `FOR UPDATE` de la fila `pais` en `reordenarTipos`,
   `renombrarTipo` y `agregarNivel`; `renombrarTipo` gana `anterior` y `agregarNivel` gana
   `profundidad`, ambos con `cambio_concurrente` (§4.7). Sin migraciones ni valores de enum nuevos.

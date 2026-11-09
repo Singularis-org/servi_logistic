@@ -43,7 +43,7 @@ const tipoDeAltaSchema = z.object({ singular: nombrePaisSchema, plural: nombrePa
  * El alta de un país (R23, R24, R41; enmienda 2026-10-26, decisión 5) con su lista ORDENADA de tipos:
  * el primero es `nivel_1`, el último `nivel_P`. El país se ELIGE del catálogo ISO 3166-1: la entrada
  * trae su código (`id`) y los nombres de cada tipo, que sí se teclean. El nombre no viaja: lo pone el
- * servicio desde el catálogo (`DatosDeAltaDePaisConTipos`). Sin regla de código: la pantalla no la
+ * servicio desde el catálogo (`DatosDeAltaDePais`). Sin regla de código: la pantalla no la
  * ofrece y el país nuevo acepta códigos de texto libre (R17); solo Costa Rica la tiene, puesta por su
  * migración.
  *
@@ -66,23 +66,26 @@ export const crearPaisSchema = z
 
 export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
 
-/** Lo que `PaisRepository.crearConTipos` escribe: la entrada validada más el nombre del catálogo (R23). */
-export type DatosDeAltaDePaisConTipos = CrearPaisInput & { nombre: string };
+/**
+ * Lo que `PaisRepository.crear` escribe: la entrada validada más el nombre del catálogo (R23).
+ * SLT-46 (decisión humana 2026-11-09): es la única alta; la de SL-20 con seis nombres fijos se retiró.
+ */
+export type DatosDeAltaDePais = CrearPaisInput & { nombre: string };
 
 /**
- * Lo que escribe `PaisRepository.crear`, el alta de SL-20 (seis nombres fijos, tres tipos que pone el
- * trigger). Ya no tiene esquema ni llamador de la app: solo lo usa
- * `tests/integration/db/pais-repositorio.test.ts`, y su retiro está pendiente de decisión
- * (`IPaisRepository.crear`).
+ * R25, R26: los dos nombres de un tipo ya creado, con las cotas del alta (2–40).
+ *
+ * SLT-46 (2026-11-09, design §4.7; R61): `anterior` son los nombres que el modal de confirmación
+ * mostró como «antes». El repositorio los compara con la base bajo el candado del país: si otra
+ * persona los cambió mientras tanto, nada se escribe (cambio concurrente). Obligatorio: sin él la
+ * comparación no se puede hacer y una edición a ciegas pisaría la ajena.
  */
-export type DatosDeAltaDePais = Pick<PaisDTO, "id" | "nombre"> & NombresDeNivelesDePais;
-
-/** R25, R26: los dos nombres de un tipo ya creado, con las cotas del alta (2–40). */
 export const renombrarTipoNivelSchema = z
   .object({
     tipoId: z.string().min(1),
     nombreSingular: nombrePaisSchema,
     nombrePlural: nombrePaisSchema,
+    anterior: z.object({ nombreSingular: nombrePaisSchema, nombrePlural: nombrePaisSchema }).strict(),
   })
   .strict();
 
@@ -92,12 +95,21 @@ export type RenombrarTipoNivelInput = z.infer<typeof renombrarTipoNivelSchema>;
  * P3 (R48, R49): agregar un nivel. Sin campo de posición a propósito: siempre va al final, debajo
  * del más profundo; insertar en medio reescribiría la profundidad de nodos existentes. El tope de
  * 10 no se puede ver aquí (depende de cuántos tipos tiene el país); lo aplica el repositorio.
+ *
+ * SLT-46 (2026-11-09, design §4.7; R61): `profundidad` es la que el modal mostró para el nivel nuevo
+ * (P+1). No elige sitio: si al guardar el país ya no tiene P tipos, es cambio concurrente. Va de 3 a
+ * 10 porque un país nace con al menos 2 tipos y tiene como mucho 10.
  */
 export const agregarNivelPaisSchema = z
   .object({
     paisId: z.string().regex(CODIGO_PAIS, "El código son dos letras mayúsculas (ISO 3166-1 alfa-2)."),
     nombreSingular: nombrePaisSchema,
     nombrePlural: nombrePaisSchema,
+    profundidad: z
+      .number()
+      .int("La profundidad es un número entero.")
+      .min(PAIS_NIVELES_MIN + 1, `Un nivel nuevo va al menos en la profundidad ${PAIS_NIVELES_MIN + 1}.`)
+      .max(PAIS_NIVELES_MAX, `Un país tiene como mucho ${PAIS_NIVELES_MAX} niveles.`),
   })
   .strict();
 

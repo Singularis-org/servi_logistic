@@ -18,7 +18,7 @@ import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTes
 //   · R27 (datos): `deLaEmpresa`, en el contexto de la empresa, devuelve el nombre nuevo.
 //
 // Todo en una transacción del dueño que se revierte. País `XU` de 4 tipos, creado por el propio
-// repositorio (`crearConTipos`).
+// repositorio (`crear`).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -31,6 +31,13 @@ const TIPOS = [
   { singular: "Sector", plural: "Sectores" },
 ];
 
+// SLT-46 (2026-11-09, design §4.7): la entrada gana el «antes»; aquí siempre es el vigente, así que
+// los resultados de cada caso no cambian. El «antes» viejo lo mide `geografia-cambio-concurrente`.
+const nombres = (nombreSingular: string, nombrePlural: string) => ({ nombreSingular, nombrePlural });
+const ANTES: Record<number, { nombreSingular: string; nombrePlural: string }> = Object.fromEntries(
+  TIPOS.map((t, i) => [i + 1, nombres(t.singular, t.plural)]),
+);
+
 async function actorDePrueba(tx: TxDeTest): Promise<string> {
   const org = await crearOrganizacion(tx);
   const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
@@ -40,7 +47,7 @@ async function actorDePrueba(tx: TxDeTest): Promise<string> {
 
 /** El país XU de 4 tipos y el id de cada tipo por profundidad. */
 async function paisDeCuatro(tx: TxDeTest, actorId: string): Promise<(k: number) => string> {
-  const alta = await new PaisRepository(clienteConSavepoint(tx)).crearConTipos(
+  const alta = await new PaisRepository(clienteConSavepoint(tx)).crear(
     { id: "XU", nombre: "País XU", tipos: TIPOS },
     { usuarioId: actorId },
   );
@@ -89,8 +96,8 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
       const antes = await foto(tx);
       const resultado = await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(
         tipo(2),
-        "Departamento",
-        "Departamentos",
+        { nombreSingular: "Departamento", nombrePlural: "Departamentos" },
+        ANTES[2],
         { usuarioId: actorId },
       );
       return { resultado, antes, despues: await foto(tx) };
@@ -110,7 +117,7 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
       const actorId = await actorDePrueba(tx);
       const tipo = await paisDeCuatro(tx, actorId);
       const antes = await foto(tx);
-      const resultado = await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(tipo(4), "Barrio", "Barrios", {
+      const resultado = await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(tipo(4), nombres("Barrio", "Barrios"), ANTES[4], {
         usuarioId: actorId,
       });
       return { resultado, antes, despues: await foto(tx) };
@@ -129,9 +136,9 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
       const tipo = await paisDeCuatro(tx, actorId);
       const repo = new PaisRepository(clienteConSavepoint(tx));
       const antes = await foto(tx);
-      const igual = await repo.renombrarTipo(tipo(2), "Provincia", "Provincias", { usuarioId: actorId });
+      const igual = await repo.renombrarTipo(tipo(2), nombres("Provincia", "Provincias"), ANTES[2], { usuarioId: actorId });
       const trasIgual = { foto: await foto(tx), historial: await historialDeRenombre(tx) };
-      const soloPlural = await repo.renombrarTipo(tipo(2), "Provincia", "Provincias del país", { usuarioId: actorId });
+      const soloPlural = await repo.renombrarTipo(tipo(2), nombres("Provincia", "Provincias del país"), ANTES[2], { usuarioId: actorId });
       return { antes, igual, trasIgual, soloPlural, historial: await historialDeRenombre(tx), id: tipo(2), actorId };
     });
 
@@ -157,7 +164,7 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
       const actorId = await actorDePrueba(tx);
       await paisDeCuatro(tx, actorId);
       const antes = await foto(tx);
-      const resultado = await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(randomUUID(), "Barrio", "Barrios", {
+      const resultado = await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(randomUUID(), nombres("Barrio", "Barrios"), ANTES[4], {
         usuarioId: actorId,
       });
       return {
@@ -174,7 +181,9 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const tipo = await paisDeCuatro(tx, actorId);
-      await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(tipo(1), "Estado", "Estados", { usuarioId: actorId });
+      await new PaisRepository(clienteConSavepoint(tx)).renombrarTipo(tipo(1), nombres("Estado", "Estados"), ANTES[1], {
+        usuarioId: actorId,
+      });
       return { id: tipo(1), actorId, historial: await historialDeRenombre(tx) };
     });
 
@@ -199,7 +208,7 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
       const tipo = await paisDeCuatro(tx, actorId);
       const antes = await foto(tx);
       const fallo = await new PaisRepository(clienteConSavepoint(tx, "plataforma"))
-        .renombrarTipo(tipo(1), "Estado", "Estados", { usuarioId: actorId })
+        .renombrarTipo(tipo(1), nombres("Estado", "Estados"), ANTES[1], { usuarioId: actorId })
         .then(
           () => null,
           (e: unknown) => (e instanceof Error ? e.name : String(e)),
@@ -220,7 +229,7 @@ describeSiHayBase("SLT-46 — PaisRepository.renombrarTipo contra Postgres", () 
       await comoApp(tx, empresa.id);
       const antes = await repo.deLaEmpresa(empresa.id);
       await comoDueno(tx);
-      await repo.renombrarTipo(tipo(1), "Estado", "Estados", { usuarioId: actorId });
+      await repo.renombrarTipo(tipo(1), nombres("Estado", "Estados"), ANTES[1], { usuarioId: actorId });
       await comoApp(tx, empresa.id);
       const despues = await repo.deLaEmpresa(empresa.id);
       return { antes, despues };

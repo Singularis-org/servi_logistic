@@ -3,7 +3,7 @@ import { RolValue } from "@prisma/client";
 
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type {
-  CrearPaisConTiposRepoResultado,
+  CrearPaisRepoResultado,
   IPaisRepository,
 } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
@@ -22,7 +22,7 @@ import { ETIQUETAS_NEUTRAS, etiquetasDePais, type PaisDTO } from "@/lib/types/pa
 //     cobertura, solo a la plataforma.
 //
 // SLT-46 (T4.3; design §4.3) — la entrada del alta pasa de seis nombres fijos a la lista ordenada
-// `tipos` (2–10, R23/R24) y el servicio llama a `crearConTipos`; los casos de SL-20 conservan su
+// `tipos` (2–10, R23/R24) y el servicio llama a `crear`; los casos de SL-20 conservan su
 // desenlace y su mensaje. Nuevos: `renombrarTipo` (R25, R26), `agregarNivel` (R48, R49),
 // `cambiarDisponible` sin mirar niveles (R28) y el rol antes de todo con un doble que LANZA (R39).
 // El SQL lo miden `pais-repositorio`, `pais-alta-tipos`, `pais-tipos-edicion` y `pais-agregar-nivel`.
@@ -95,11 +95,12 @@ function nTipos(n: number): Tipo[] {
 function repoDoble(
   o: {
     paises?: PaisDTO[];
-    crearConTipos?: CrearPaisConTiposRepoResultado;
+    crear?: CrearPaisRepoResultado;
     deLaEmpresa?: PaisDTO | null;
     cambiarDisponible?: "no_existe" | "sin_cambio" | "cambiado";
-    renombrarTipo?: "no_existe" | "sin_cambio" | "renombrado";
-    agregarNivel?: "no_existe" | "tope" | TipoNivelDTO;
+    renombrarTipo?: Awaited<ReturnType<IPaisRepository["renombrarTipo"]>>;
+    agregarNivel?: Awaited<ReturnType<IPaisRepository["agregarNivel"]>>;
+    reordenarTipos?: Awaited<ReturnType<IPaisRepository["reordenarTipos"]>>;
   } = {},
 ) {
   const paises = o.paises ?? [COSTA_RICA];
@@ -107,14 +108,10 @@ function repoDoble(
     listar: vi.fn(async () => paises),
     listarDisponibles: vi.fn(async () => paises.filter((p) => p.disponible).map(({ id, nombre }) => ({ id, nombre }))),
     porId: vi.fn(async (id: string) => paises.find((p) => p.id === id) ?? null),
-    // SLT-46: el alta de seis nombres ya no tiene llamador en el servicio.
-    crear: vi.fn<IPaisRepository["crear"]>(async () => {
-      throw new Error("PaisService ya no llama al `crear` de SL-20");
-    }),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
     cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => o.cambiarDisponible ?? "cambiado"),
-    crearConTipos: vi.fn<IPaisRepository["crearConTipos"]>(async (datos) =>
-      o.crearConTipos ?? {
+    crear: vi.fn<IPaisRepository["crear"]>(async (datos) =>
+      o.crear ?? {
         estado: "creado",
         pais: {
           id: datos.id,
@@ -135,6 +132,7 @@ function repoDoble(
     ),
     renombrarTipo: vi.fn<IPaisRepository["renombrarTipo"]>(async () => o.renombrarTipo ?? "renombrado"),
     agregarNivel: vi.fn<IPaisRepository["agregarNivel"]>(async () => o.agregarNivel ?? TIPO_4),
+    reordenarTipos: vi.fn<IPaisRepository["reordenarTipos"]>(async () => o.reordenarTipos ?? "reordenado"),
   } satisfies IPaisRepository;
   return repo;
 }
@@ -154,19 +152,20 @@ describe("R23 — alta de un país del catálogo", () => {
     const r = await new PaisService(repo).crear(conTipo(0, { singular: "  Depar   tamento " }), SUPERADMIN);
 
     expect(r.status).toBe("ok");
-    expect(repo.crearConTipos).toHaveBeenCalledTimes(1);
-    expect(repo.crearConTipos.mock.calls[0]).toEqual([
+    expect(repo.crear).toHaveBeenCalledTimes(1);
+    expect(repo.crear.mock.calls[0]).toEqual([
       { id: "PE", nombre: "Perú", tipos: TIPOS_PE.map((t, i) => (i === 0 ? { ...t, singular: "Depar tamento" } : t)) },
       { usuarioId: "u-super" },
     ]);
-    expect(repo.crear).not.toHaveBeenCalled();
+    // (SLT-46, decisión 2026-11-09: retirada la aserción «el `crear` de seis nombres no se llama»;
+    // ese método ya no existe y `crear` es la única alta.)
   });
 
   it("R23: el orden de la lista se conserva tal cual hasta el repositorio (el primero es `nivel_1`)", async () => {
     const repo = repoDoble();
     const invertida = [...TIPOS_PE].reverse();
     await new PaisService(repo).crear(entradaValida(invertida), SUPERADMIN);
-    expect(repo.crearConTipos.mock.calls[0][0].tipos).toEqual(invertida);
+    expect(repo.crear.mock.calls[0][0].tipos).toEqual(invertida);
   });
 
   it("el nombre no se teclea: una entrada con `nombre` es `validation_error` y no toca la base", async () => {
@@ -174,14 +173,14 @@ describe("R23 — alta de un país del catálogo", () => {
     const r = await new PaisService(repo).crear({ ...entradaValida(), nombre: "Perusalem" }, SUPERADMIN);
     expect(r.status).toBe("validation_error");
     expect(repo.listar).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("un código que ya existe es `conflict` por `id` y no crea nada", async () => {
     const repo = repoDoble();
     const r = await new PaisService(repo).crear({ ...entradaValida(), id: "CR" }, SUPERADMIN);
     expect(r).toEqual({ status: "conflict", campo: "id" });
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -191,20 +190,20 @@ describe("R23 — alta de un país del catálogo", () => {
     const repo = repoDoble({ paises: [COSTA_RICA, { ...PAIS_XA, nombre }] });
     const r = await new PaisService(repo).crear(entradaValida(), SUPERADMIN);
     expect(r).toEqual({ status: "conflict", campo: "nombre" });
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it.each<["id" | "nombre"]>([["id"], ["nombre"]])(
     "si la base rechaza el único (%s, una carrera), es `conflict` con ese campo",
     async (campo) => {
-      const repo = repoDoble({ crearConTipos: { estado: "duplicado", campo } });
+      const repo = repoDoble({ crear: { estado: "duplicado", campo } });
       expect(await new PaisService(repo).crear(entradaValida(), SUPERADMIN)).toEqual({ status: "conflict", campo });
     },
   );
 
   it("un error del repositorio que no es de único no se traga", async () => {
     const repo = repoDoble();
-    repo.crearConTipos.mockRejectedValueOnce(new Error("la base se cayó"));
+    repo.crear.mockRejectedValueOnce(new Error("la base se cayó"));
     await expect(new PaisService(repo).crear(entradaValida(), SUPERADMIN)).rejects.toThrow("la base se cayó");
   });
 
@@ -225,21 +224,21 @@ describe("R23 — alta de un país del catálogo", () => {
     if (r.status !== "validation_error") return;
     expect(Object.keys(r.fieldErrors)).toContain(campo);
     expect(repo.listar).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("un campo de más (la regla de código) se rechaza: el alta no la ofrece", async () => {
     const repo = repoDoble();
     const r = await new PaisService(repo).crear({ ...entradaValida(), digitosCodigoNivel1: 2 }, SUPERADMIN);
     expect(r.status).toBe("validation_error");
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("SLT-46: un campo de más dentro de un tipo (la regla de código) también se rechaza", async () => {
     const repo = repoDoble();
     const r = await new PaisService(repo).crear(conTipo(0, { digitosCodigo: 2 } as Record<string, unknown>), SUPERADMIN);
     expect(r.status).toBe("validation_error");
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("SLT-46: la entrada de seis nombres fijos de SL-20 ya no vale (`validation_error`, sin tocar la base)", async () => {
@@ -258,7 +257,7 @@ describe("R23 — alta de un país del catálogo", () => {
     );
     expect(r.status).toBe("validation_error");
     expect(repo.listar).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("los bordes de un nombre de nivel valen: 2 y 40 caracteres", async () => {
@@ -274,8 +273,8 @@ describe("R24 — de 2 a 10 tipos", () => {
     const repo = repoDoble();
     const r = await new PaisService(repo).crear(entradaValida(nTipos(n)), SUPERADMIN);
     expect(r.status).toBe("ok");
-    expect(repo.crearConTipos).toHaveBeenCalledTimes(1);
-    expect(repo.crearConTipos.mock.calls[0][0].tipos).toEqual(nTipos(n));
+    expect(repo.crear).toHaveBeenCalledTimes(1);
+    expect(repo.crear.mock.calls[0][0].tipos).toEqual(nTipos(n));
   });
 
   it.each([
@@ -287,7 +286,7 @@ describe("R24 — de 2 a 10 tipos", () => {
     const r = await new PaisService(repo).crear(entradaValida(nTipos(n)), SUPERADMIN);
     expect(r).toEqual({ status: "validation_error", fieldErrors: { tipos: [mensaje] } });
     expect(repo.listar).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 });
 
@@ -308,26 +307,33 @@ describe("R41 — un código fuera del catálogo es `validation_error` en `id`, 
     if (r.status !== "validation_error") return;
     expect(Object.keys(r.fieldErrors)).toEqual(["id"]);
     expect(repo.listar).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("un código que no es texto también es `validation_error` en `id`", async () => {
     const repo = repoDoble();
     const r = await new PaisService(repo).crear({ ...entradaValida(), id: 506 }, SUPERADMIN);
     expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["id"]);
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 });
 
 describe("R25/R26 — renombrar un tipo de nivel", () => {
-  const entrada = { tipoId: "t-2", nombreSingular: "  Muni   cipio ", nombrePlural: "Municipios" };
+  // SLT-46 (2026-11-09, §4.1): la entrada gana `anterior`, los nombres que el modal mostró como «antes».
+  const ANTERIOR = { nombreSingular: "Cantón", nombrePlural: "Cantones" };
+  const entrada = { tipoId: "t-2", nombreSingular: "  Muni   cipio ", nombrePlural: "Municipios", anterior: ANTERIOR };
 
   it.each(["renombrado", "sin_cambio"] as const)(
     "el repositorio responde `%s` → `ok`; recibe el tipo, los nombres normalizados y el actor",
     async (resultado) => {
       const repo = repoDoble({ renombrarTipo: resultado });
       expect(await new PaisService(repo).renombrarTipo(entrada, SUPERADMIN)).toEqual({ status: "ok" });
-      expect(repo.renombrarTipo).toHaveBeenCalledWith("t-2", "Muni cipio", "Municipios", { usuarioId: "u-super" });
+      expect(repo.renombrarTipo).toHaveBeenCalledWith(
+        "t-2",
+        { nombreSingular: "Muni cipio", nombrePlural: "Municipios" },
+        ANTERIOR,
+        { usuarioId: "u-super" },
+      );
     },
   );
 
@@ -359,12 +365,15 @@ describe("R25/R26 — renombrar un tipo de nivel", () => {
 });
 
 describe("R48/R49 — agregar un nivel al final", () => {
-  const entrada = { paisId: "XA", nombreSingular: " Sector ", nombrePlural: "Sectores" };
+  // SLT-46 (2026-11-09, §4.1): la entrada gana `profundidad`, la P+1 que el modal mostró.
+  const entrada = { paisId: "XA", nombreSingular: " Sector ", nombrePlural: "Sectores", profundidad: 4 };
 
   it("R48: el tipo creado vuelve en `ok`; el repositorio recibe el país, los nombres normalizados y el actor", async () => {
     const repo = repoDoble({ agregarNivel: TIPO_4 });
     expect(await new PaisService(repo).agregarNivel(entrada, SUPERADMIN)).toEqual({ status: "ok", tipo: TIPO_4 });
-    expect(repo.agregarNivel).toHaveBeenCalledWith("XA", "Sector", "Sectores", { usuarioId: "u-super" });
+    expect(repo.agregarNivel).toHaveBeenCalledWith("XA", { nombreSingular: "Sector", nombrePlural: "Sectores" }, 4, {
+      usuarioId: "u-super",
+    });
   });
 
   it("R49: con 10 tipos (`tope`) es `validation_error` en `paisId` con «Este país ya tiene 10 niveles»", async () => {
@@ -392,7 +401,9 @@ describe("R48/R49 — agregar un nivel al final", () => {
     ["singular de 1 carácter", { nombreSingular: "S" }, "nombreSingular"],
     ["plural de 41 caracteres", { nombrePlural: "a".repeat(41) }, "nombrePlural"],
     ["código de país en minúsculas", { paisId: "xa" }, "paisId"],
-    ["una posición (`profundidad`): siempre va al final", { profundidad: 2 }, "entrada"],
+    // SLT-46 (2026-11-09, §4.1): `profundidad` pasa a ser campo (el «antes», 3–10); una profundidad 2
+    // sigue rechazada, ahora en su propio campo y no como campo de más.
+    ["una posición (`profundidad`): siempre va al final", { profundidad: 2 }, "profundidad"],
   ])("R49: %s → validation_error en `%s`, sin tocar la base", async (_t, cambio, campo) => {
     const repo = repoDoble();
     const r = await new PaisService(repo).agregarNivel({ ...entrada, ...cambio }, SUPERADMIN);
@@ -409,9 +420,9 @@ describe("R39 — el rol se mira ANTES de validar y de tocar el repositorio", ()
     ["listarDisponibles", (s, a) => s.listarDisponibles(a)],
     ["crear", (s, a) => s.crear(entradaValida(), a)],
     ["crear (entrada inválida)", (s, a) => s.crear({ basura: true }, a)],
-    ["renombrarTipo", (s, a) => s.renombrarTipo({ tipoId: "t-1", nombreSingular: "Uno", nombrePlural: "Unos" }, a)],
+    ["renombrarTipo", (s, a) => s.renombrarTipo({ tipoId: "t-1", nombreSingular: "Uno", nombrePlural: "Unos", anterior: { nombreSingular: "Dos", nombrePlural: "Doses" } }, a)],
     ["renombrarTipo (entrada inválida)", (s, a) => s.renombrarTipo({ basura: true }, a)],
-    ["agregarNivel", (s, a) => s.agregarNivel({ paisId: "XA", nombreSingular: "Uno", nombrePlural: "Unos" }, a)],
+    ["agregarNivel", (s, a) => s.agregarNivel({ paisId: "XA", nombreSingular: "Uno", nombrePlural: "Unos", profundidad: 3 }, a)],
     ["agregarNivel (entrada inválida)", (s, a) => s.agregarNivel({ basura: true }, a)],
     ["cambiarDisponible", (s, a) => s.cambiarDisponible({ id: "XA", disponible: true }, a)],
   ];
@@ -444,15 +455,15 @@ describe("R37 — un rol de empresa no gestiona países", () => {
     expect(await servicio.crear(entradaValida(), actor)).toEqual({ status: "forbidden" });
     expect(await servicio.listar(actor)).toEqual({ status: "forbidden" });
     expect(await servicio.listarDisponibles(actor)).toEqual({ status: "forbidden" });
-    expect(await servicio.renombrarTipo({ tipoId: "t-1", nombreSingular: "Uno", nombrePlural: "Unos" }, actor)).toEqual({
+    expect(await servicio.renombrarTipo({ tipoId: "t-1", nombreSingular: "Uno", nombrePlural: "Unos", anterior: { nombreSingular: "Dos", nombrePlural: "Doses" } }, actor)).toEqual({
       status: "forbidden",
     });
-    expect(await servicio.agregarNivel({ paisId: "XA", nombreSingular: "Uno", nombrePlural: "Unos" }, actor)).toEqual({
+    expect(await servicio.agregarNivel({ paisId: "XA", nombreSingular: "Uno", nombrePlural: "Unos", profundidad: 3 }, actor)).toEqual({
       status: "forbidden",
     });
     expect(repo.listar).not.toHaveBeenCalled();
     expect(repo.listarDisponibles).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
     expect(repo.renombrarTipo).not.toHaveBeenCalled();
     expect(repo.agregarNivel).not.toHaveBeenCalled();
   });

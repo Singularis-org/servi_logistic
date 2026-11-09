@@ -410,12 +410,12 @@ describe("SL-20/R47 — disponibilidad de un país por el borde, con el servicio
       listar: vi.fn(),
       listarDisponibles: vi.fn(),
       porId: vi.fn(),
-      crear: vi.fn(),
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(async () => resultado),
-      crearConTipos: vi.fn(),
+      crear: vi.fn(),
       renombrarTipo: vi.fn(),
       agregarNivel: vi.fn(),
+      reordenarTipos: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
@@ -451,17 +451,17 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
       listar: vi.fn(async () => []),
       listarDisponibles: vi.fn(),
       porId: vi.fn(),
-      crear: vi.fn(),
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(),
-      // SLT-46 (T4.3): el servicio da el alta con `crearConTipos`; el `pais` del doble solo lleva lo que mira el caso.
-      crearConTipos: vi.fn(async (datos: { id: string; nombre: string }) => ({
+      // SLT-46 (T4.3): el servicio da el alta con `crear`; el `pais` del doble solo lleva lo que mira el caso.
+      crear: vi.fn(async (datos: { id: string; nombre: string }) => ({
         estado: "creado" as const,
         pais: { id: datos.id, nombre: datos.nombre },
         tipos: [],
       })),
       renombrarTipo: vi.fn(),
       agregarNivel: vi.fn(),
+      reordenarTipos: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
@@ -479,7 +479,7 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
     const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
     const r = await crearPaisAction({ id: "GT", ...NIVELES }, deps);
     expect(r.status === "ok" && r.pais.nombre).toBe("Guatemala");
-    expect(repo.crearConTipos).toHaveBeenCalledWith({ id: "GT", nombre: "Guatemala", ...NIVELES }, { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.crear).toHaveBeenCalledWith({ id: "GT", nombre: "Guatemala", ...NIVELES }, { usuarioId: SUPERADMIN.usuarioId });
   });
 
   it("R41: un código fuera del catálogo es `validation_error` en `id` y no toca la base", async () => {
@@ -489,7 +489,6 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
     expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["id"]);
     expect(repo.listar).not.toHaveBeenCalled();
     expect(repo.crear).not.toHaveBeenCalled();
-    expect(repo.crearConTipos).not.toHaveBeenCalled();
   });
 });
 
@@ -512,12 +511,12 @@ describe("SLT-46 R25, R48, R49 — renombrar un tipo y agregar un nivel por el b
       listar: vi.fn(),
       listarDisponibles: vi.fn(),
       porId: vi.fn(),
-      crear: vi.fn(),
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(),
-      crearConTipos: vi.fn(),
+      crear: vi.fn(),
       renombrarTipo: vi.fn(async () => "renombrado" as const),
       agregarNivel: vi.fn(async () => TIPO),
+      reordenarTipos: vi.fn(),
       ...o,
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
@@ -526,13 +525,17 @@ describe("SLT-46 R25, R48, R49 — renombrar un tipo y agregar un nivel por el b
     return { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
   }
 
-  const RENOMBRE = { tipoId: "t1", nombreSingular: "  Región ", nombrePlural: "Regiones" };
-  const NIVEL = { paisId: "XA", nombreSingular: " Barrio ", nombrePlural: "Barrios" };
+  // SLT-46 (2026-11-09, §4.1): el renombre gana `anterior` y agregar nivel, `profundidad` (el «antes»).
+  const ANTERIOR = { nombreSingular: "Provincia", nombrePlural: "Provincias" };
+  const RENOMBRE = { tipoId: "t1", nombreSingular: "  Región ", nombrePlural: "Regiones", anterior: ANTERIOR };
+  const NIVEL = { paisId: "XA", nombreSingular: " Barrio ", nombrePlural: "Barrios", profundidad: 4 };
 
   it("R25: renombrar un tipo pasa la entrada validada y el actor al repositorio y responde `ok`", async () => {
     const repo = repoDoble();
     expect(await renombrarTipoNivelAction(RENOMBRE, conRepo(repo))).toEqual({ status: "ok" });
-    expect(repo.renombrarTipo).toHaveBeenCalledWith("t1", "Región", "Regiones", { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.renombrarTipo).toHaveBeenCalledWith("t1", { nombreSingular: "Región", nombrePlural: "Regiones" }, ANTERIOR, {
+      usuarioId: SUPERADMIN.usuarioId,
+    });
   });
 
   it("R26: los nombres que ya tiene (`sin_cambio`) también son `ok`", async () => {
@@ -571,7 +574,9 @@ describe("SLT-46 R25, R48, R49 — renombrar un tipo y agregar un nivel por el b
   it("R48: agregar un nivel pasa la entrada validada y el actor, y devuelve el tipo creado", async () => {
     const repo = repoDoble();
     expect(await agregarNivelPaisAction(NIVEL, conRepo(repo))).toEqual({ status: "ok", tipo: TIPO });
-    expect(repo.agregarNivel).toHaveBeenCalledWith("XA", "Barrio", "Barrios", { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.agregarNivel).toHaveBeenCalledWith("XA", { nombreSingular: "Barrio", nombrePlural: "Barrios" }, 4, {
+      usuarioId: SUPERADMIN.usuarioId,
+    });
   });
 
   it("R49: un país que no existe es `not_found`", async () => {

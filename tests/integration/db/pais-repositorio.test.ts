@@ -26,18 +26,20 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let base: PrismaClient;
 
+// SLT-46 (decisión humana 2026-11-09): el alta de seis nombres fijos se retiró; `crear` recibe la
+// lista ordenada `tipos` y deja `pais_creado` más una `tipo_nivel_geografico_creado` por tipo (R37).
+// Solo cambia la forma de la entrada y, por R37, el historial del alta (1 → P + 1 filas).
 const DATOS_XA = {
   id: "XA",
   nombre: "País de alta XA",
-  nivel1Singular: "Región",
-  nivel1Plural: "Regiones",
-  nivel2Singular: "Comuna",
-  nivel2Plural: "Comunas",
-  nivel3Singular: "Barrio",
-  nivel3Plural: "Barrios",
+  tipos: [
+    { singular: "Región", plural: "Regiones" },
+    { singular: "Comuna", plural: "Comunas" },
+    { singular: "Barrio", plural: "Barrios" },
+  ],
 };
 
-/** La entrada del alta por el servicio (R23, R41): el código del catálogo y los seis nombres de nivel. */
+/** Los nombres de nivel que `pais` guarda tras el alta de PE (los tres tipos, copiados a `nivel_N_*`). */
 const NIVELES_PE = {
   id: "PE",
   nivel1Singular: "Departamento",
@@ -70,7 +72,17 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const servicio = new PaisService(new PaisRepository(clienteConSavepoint(tx)));
-      const alta = await servicio.crear(NIVELES_PE, { usuarioId: actorId, rol: "superadmin" });
+      const alta = await servicio.crear(
+        {
+          id: "PE",
+          tipos: [
+            { singular: NIVELES_PE.nivel1Singular, plural: NIVELES_PE.nivel1Plural },
+            { singular: NIVELES_PE.nivel2Singular, plural: NIVELES_PE.nivel2Plural },
+            { singular: NIVELES_PE.nivel3Singular, plural: NIVELES_PE.nivel3Plural },
+          ],
+        },
+        { usuarioId: actorId, rol: "superadmin" },
+      );
       const fila = await tx.pais.findUnique({ where: { id: "PE" } });
       const provincias = await tx.provincia.count({ where: { paisId: "PE" } });
       const historial = await tx.historialPlataforma.findMany({
@@ -88,16 +100,31 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     });
     expect(r.fila).toMatchObject(esperado);
     expect(r.provincias).toBe(0);
-    expect(r.historial).toEqual([
-      {
-        accion: "pais_creado",
-        entidadTipo: "pais",
-        entidadId: "PE",
-        entidadEtiqueta: "Perú",
-        actorUsuarioId: r.actorId,
-        actorNombre: expect.any(String),
-      },
-    ]);
+    // R37 (SLT-46): `pais_creado` y una `tipo_nivel_geografico_creado` por cada uno de los 3 tipos.
+    const tipoCreado = (entidadEtiqueta: string) => ({
+      accion: "tipo_nivel_geografico_creado",
+      entidadTipo: "tipo_nivel_geografico",
+      entidadId: expect.any(String),
+      entidadEtiqueta,
+      actorUsuarioId: r.actorId,
+      actorNombre: expect.any(String),
+    });
+    expect(r.historial).toHaveLength(4);
+    expect(r.historial).toEqual(
+      expect.arrayContaining([
+        {
+          accion: "pais_creado",
+          entidadTipo: "pais",
+          entidadId: "PE",
+          entidadEtiqueta: "Perú",
+          actorUsuarioId: r.actorId,
+          actorNombre: expect.any(String),
+        },
+        tipoCreado("Departamento"),
+        tipoCreado("Provincia"),
+        tipoCreado("Distrito"),
+      ]),
+    );
   });
 
   it("R23: un código o un nombre que ya están los rechaza la base como `duplicado`, sin escribir nada", async () => {
@@ -116,7 +143,8 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     expect(r.mismoCodigo).toEqual({ estado: "duplicado", campo: "id" });
     expect(r.mismoNombre).toEqual({ estado: "duplicado", campo: "nombre" });
     expect(r.paises).toBe(1);
-    expect(r.historial).toBe(1);
+    // R37 (SLT-46): la única alta que entró deja P + 1 = 4 filas; los dos rechazos, ninguna.
+    expect(r.historial).toBe(DATOS_XA.tipos.length + 1);
   });
 
   it("listar y porId leen el país con su regla de código: Costa Rica la tiene, un país nuevo no", async () => {

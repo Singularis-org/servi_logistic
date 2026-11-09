@@ -69,7 +69,7 @@ const esperadoTipo = (k: number) => ({
   codigoHeredaPrefijo: false,
 });
 
-describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () => {
+describeSiHayBase("SLT-46 — PaisRepository.crear contra Postgres", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
   });
@@ -82,9 +82,9 @@ describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () 
       const actorId = await actorDePrueba(tx);
       const repo = new PaisRepository(clienteConSavepoint(tx));
       const altas = {
-        XT: await repo.crearConTipos({ id: "XT", nombre: "País XT", tipos: TIPOS.slice(0, 2) }, { usuarioId: actorId }),
-        XU: await repo.crearConTipos({ id: "XU", nombre: "País XU", tipos: TIPOS.slice(0, 3) }, { usuarioId: actorId }),
-        XV: await repo.crearConTipos({ id: "XV", nombre: "País XV", tipos: TIPOS.slice(0, 4) }, { usuarioId: actorId }),
+        XT: await repo.crear({ id: "XT", nombre: "País XT", tipos: TIPOS.slice(0, 2) }, { usuarioId: actorId }),
+        XU: await repo.crear({ id: "XU", nombre: "País XU", tipos: TIPOS.slice(0, 3) }, { usuarioId: actorId }),
+        XV: await repo.crear({ id: "XV", nombre: "País XV", tipos: TIPOS.slice(0, 4) }, { usuarioId: actorId }),
       };
       const tipos = { XT: await tiposDe(tx, "XT"), XU: await tiposDe(tx, "XU"), XV: await tiposDe(tx, "XV") };
       const pais = { XT: await nivelesDePais(tx, "XT"), XU: await nivelesDePais(tx, "XU"), XV: await nivelesDePais(tx, "XV") };
@@ -124,7 +124,7 @@ describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () 
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const repo = new PaisRepository(clienteConSavepoint(tx));
-      await repo.crearConTipos({ id: "XV", nombre: "País XV", tipos: TIPOS }, { usuarioId: actorId });
+      await repo.crear({ id: "XV", nombre: "País XV", tipos: TIPOS }, { usuarioId: actorId });
       const ids = await tx.tipoNivelGeografico.findMany({ where: { paisId: "XV" }, select: { id: true, clave: true } });
       const historial = await tx.historialPlataforma.findMany({
         where: { paisId: "XV" },
@@ -167,13 +167,23 @@ describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () 
       const claves = async () => (await tiposDe(tx, "XT")).map((t) => t.clave);
       const pasos: Record<string, string[]> = {};
 
-      await repo.crearConTipos({ id: "XT", nombre: "País XT", tipos: TIPOS.slice(0, 2) }, { usuarioId: actorId });
+      await repo.crear({ id: "XT", nombre: "País XT", tipos: TIPOS.slice(0, 2) }, { usuarioId: actorId });
       pasos.alta = await claves();
       const ids = await tx.tipoNivelGeografico.findMany({ where: { paisId: "XT" }, select: { id: true, clave: true } });
       const idDe = (clave: string) => ids.find((t) => t.clave === clave)?.id ?? "";
-      await repo.renombrarTipo(idDe("nivel_1"), "Estado", "Estados", { usuarioId: actorId });
+      await repo.renombrarTipo(
+        idDe("nivel_1"),
+        { nombreSingular: "Estado", nombrePlural: "Estados" },
+        { nombreSingular: "Región", nombrePlural: "Regiones" },
+        { usuarioId: actorId },
+      );
       pasos.tipo1 = await claves();
-      await repo.renombrarTipo(idDe("nivel_2"), "Municipio", "Municipios", { usuarioId: actorId });
+      await repo.renombrarTipo(
+        idDe("nivel_2"),
+        { nombreSingular: "Municipio", nombrePlural: "Municipios" },
+        { nombreSingular: "Provincia", nombrePlural: "Provincias" },
+        { usuarioId: actorId },
+      );
       pasos.tipo2 = await claves();
       await tx.$executeRawUnsafe(`UPDATE "pais" SET "nombre" = 'País XT renombrado' WHERE "id" = 'XT'`);
       pasos.nombre = await claves();
@@ -201,13 +211,13 @@ describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () 
       const actorId = await actorDePrueba(tx);
       const roto = new PaisRepository(clienteConSavepoint(tx, "plataforma"));
       const fallo = await roto
-        .crearConTipos({ id: "XV", nombre: "País XV", tipos: TIPOS }, { usuarioId: actorId })
+        .crear({ id: "XV", nombre: "País XV", tipos: TIPOS }, { usuarioId: actorId })
         .then(
           () => null,
           (e: unknown) => (e instanceof Error ? e.name : String(e)),
         );
       const tras = { paises: await tx.pais.count({ where: { id: "XV" } }), tipos: (await tiposDe(tx, "XV")).length };
-      const sano = await new PaisRepository(clienteConSavepoint(tx)).crearConTipos(
+      const sano = await new PaisRepository(clienteConSavepoint(tx)).crear(
         { id: "XV", nombre: "País XV", tipos: TIPOS },
         { usuarioId: actorId },
       );
@@ -222,8 +232,8 @@ describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () 
       const actorId = await actorDePrueba(tx);
       const repo = new PaisRepository(clienteConSavepoint(tx));
       const crTiposAntes = await tiposDe(tx, "CR");
-      const mismoCodigo = await repo.crearConTipos({ id: "CR", nombre: "Otro", tipos: TIPOS }, { usuarioId: actorId });
-      const mismoNombre = await repo.crearConTipos({ id: "XU", nombre: "Costa Rica", tipos: TIPOS }, { usuarioId: actorId });
+      const mismoCodigo = await repo.crear({ id: "CR", nombre: "Otro", tipos: TIPOS }, { usuarioId: actorId });
+      const mismoNombre = await repo.crear({ id: "XU", nombre: "Costa Rica", tipos: TIPOS }, { usuarioId: actorId });
       return {
         mismoCodigo,
         mismoNombre,
@@ -247,7 +257,7 @@ describeSiHayBase("SLT-46 — PaisRepository.crearConTipos contra Postgres", () 
       const repo = new PaisRepository(clienteConSavepoint(tx));
       const once = Array.from({ length: 11 }, (_, i) => ({ singular: `Nivel ${i + 1}`, plural: `Niveles ${i + 1}` }));
       const rechazo = async (n: number, id: "XT" | "XU") =>
-        repo.crearConTipos({ id, nombre: `País ${id}`, tipos: once.slice(0, n) }, { usuarioId: randomUUID() }).then(
+        repo.crear({ id, nombre: `País ${id}`, tipos: once.slice(0, n) }, { usuarioId: randomUUID() }).then(
           (x) => x.estado,
           (e: unknown) => (e instanceof Error ? "lanza" : String(e)),
         );

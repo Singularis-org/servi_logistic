@@ -403,3 +403,57 @@ Sha de partida: `f12f6529`. Sin T6 ni `@dnd-kit` (tanda siguiente). Base `logist
   control de cambio concurrente (R61 solo nombra renombre de nodo, edición de tipo y agregar nivel; R57
   el reordenar). No se inventa contrato: se reporta al leader.
 - P12: estado pedido = actual → éxito sin escribir (R19 tal cual).
+
+### T3.3 — reordenar tipos, candado del país y «antes» en las escrituras de tipos (2026-11-09)
+
+**Archivos.** `lib/interfaces/repositories/IPaisRepository.ts`, `lib/repositories/PaisRepository.ts`,
+`lib/interfaces/services/IPaisService.ts`, `lib/services/PaisService.ts`, `lib/types/pais.ts`; tests
+nuevos `tests/integration/db/pais-reordenar-tipos.test.ts` (9 casos) y
+`tests/integration/db/geografia-cambio-concurrente.test.ts` (parte de tipos, 6 casos); adaptados
+`pais-repositorio`, `pais-alta-tipos`, `pais-tipos-edicion`, `pais-agregar-nivel` (integración),
+`pais-service`, `pais-schemas`, `geografia-plataforma-action`, `geografia-plataforma.composition-root` (unit).
+
+**Qué hace.**
+- `reordenarTipos(paisId, niveles, actor)` (§2.4): candado → conjunto de ids y nombres vigentes (si no,
+  `cambio_concurrente`) → `sin_cambio` si ninguna profundidad cambia → `update` de nombres por tipo +
+  un solo `pais.update` de los niveles 1–3 que cambian → una fila `tipo_nivel_geografico_renombrado` por
+  nombre con `detalle = {campo, origen: "reordenado"}`.
+- Candado `SELECT "id" FROM "pais" WHERE "id" = $1 FOR UPDATE` (`bloquearPais`) en `reordenarTipos`,
+  `renombrarTipo` (tras leer el `paisId` del tipo; relee el tipo bajo el candado) y `agregarNivel`.
+- `renombrarTipo(tipoId, nombres, anterior, actor)`: `sin_cambio` ANTES que el «antes»; luego
+  `cambio_concurrente` si los actuales ≠ `anterior`. `agregarNivel(paisId, nombres, profundidad, actor)`:
+  `tope` ANTES que la profundidad; `cambio_concurrente` si P+1 ≠ `profundidad`.
+- **Retirado** (decisión humana 2026-11-09) el `crear` de seis nombres y su tipo `DatosDeAltaDePais` viejo;
+  `crearConTipos` pasa a llamarse `crear` (§4.4) y `DatosDeAltaDePaisConTipos` → `DatosDeAltaDePais`,
+  `CrearPaisConTiposRepoResultado` → `CrearPaisRepoResultado`. Llamadores y dobles actualizados.
+- Sin migraciones ni valores de enum nuevos.
+
+**Desviación (adelanto de T4.5).** Para que el service no pasara un «antes» inventado, en este commit ya
+entran `anterior` en `renombrarTipoNivelSchema`, `profundidad` (entero 3–10) en `agregarNivelPaisSchema` y
+la variante `{ status: "conflict"; motivo: "cambio_concurrente" }` en los resultados de `renombrarTipo` y
+`agregarNivel` del service (con su mapeo). Sin eso, `typecheck` solo se podía mantener pasando los nombres
+pedidos como «antes» (todo renombre real habría sido `cambio_concurrente`) o una profundidad falsa. T4.5
+completa el resto (reordenar en el service, nodo, tests de los desenlaces nuevos).
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `pais-repositorio` › «R23/R33/R41: crea el país…» | Entrada `{id, tipos}`; historial `[pais_creado]` → 4 filas (`pais_creado` + 3 `tipo_nivel_geografico_creado`) | Decisión humana 2026-11-09 (P+1, R37) |
+| `pais-repositorio` › «R23: un código o un nombre…» | `repo.crear` con `tipos`; `historial` 1 → `tipos.length + 1` (4) | Ídem |
+| `pais-agregar-nivel` › carrera | Título; vigila el `FOR UPDATE` del país (no el `INSERT`); `{ganadas:["nivel_3"], unicos:1}` → `{ganadas:["nivel_3"], rechazos:["cambio_concurrente"], unicos:0}` | Leader: «la carrera puede dar `cambio_concurrente` en vez del único» (§2.4, la action responde `conflict` en ambos) |
+| `pais-service` › «crea el país con el nombre DEL CATÁLOGO…» | Retirado `expect(repo.crear).not.toHaveBeenCalled()` (afirmaba que el `crear` de seis nombres no se llamaba; ese método ya no existe y el nombre pasó a la única alta) | Decisión humana 2026-11-09 (retirar `crear` viejo) |
+| `pais-service` › «R49: una posición (`profundidad`)…» | `fieldErrors` esperado `entrada` → `profundidad` (sigue `validation_error` sin tocar la base: `profundidad: 2` ya no es un campo de más sino uno fuera de 3–10) | §4.1 (gana `profundidad`) |
+| `geografia-plataforma.composition-root` › «SLT-46 R49: agregar un nivel… `not_found`» | «el país se buscó con `pais.findUnique`» → «con el `$queryRaw … FOR UPDATE`» (el doble del cliente gana `$queryRaw`) | §2.4 «Candado del país» |
+| Resto (`pais-tipos-edicion`, `pais-alta-tipos`, `pais-agregar-nivel` salvo la carrera, `pais-service`, `pais-schemas`, `geografia-plataforma-action`, composition-root del renombre) | Solo la forma de la entrada (`{nombreSingular, nombrePlural}` + `anterior`/`profundidad` vigentes) y `crearConTipos` → `crear`; mismos resultados | §4.1, §4.4 |
+
+**Salida real** (base `logistic_slt46` local, `--maxWorkers=1`):
+- `pnpm run typecheck` → exit 0. `pnpm exec eslint` de los 15 archivos tocados → exit 0, sin avisos.
+- Integración (`pais-reordenar-tipos`, `geografia-cambio-concurrente`, `pais-tipos-edicion`,
+  `pais-agregar-nivel`, `pais-alta-tipos`, `pais-repositorio`): `Test Files 6 passed (6) · Tests 41 passed (41)`.
+- Unit (`pais-service`, `geografia-plataforma-action`, `geografia-plataforma.composition-root`,
+  `pais-schemas`, `paises-plataforma.composition-root`): `Test Files 5 passed (5) · Tests 205 passed (205)`.
+- Guardias que miran repositorios/SQL (`aprobacion-escrituras-cubiertas`, `catalogo-postgres-acota-esquema`,
+  `geografia-lecturas-sin-nodo-fk`, `geografia-sin-borrado-fisico`, `geografia-sin-cte-recursiva`,
+  `nodo-geografico-escritor-unico`, `sql-a-mano-por-empresa`, `geografia-renombrado-punto-unico`,
+  `geografia-vieja-sin-escritor`): `Test Files 9 passed (9) · Tests 142 passed (142)`.

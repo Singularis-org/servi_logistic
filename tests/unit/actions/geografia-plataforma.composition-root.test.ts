@@ -32,6 +32,9 @@ const paisFindMany = vi.fn(async () => []);
 const paisFindUnique = vi.fn<(args: { where: { id: string } }) => Promise<{ nombre: string } | null>>(async () => null);
 const paisUpdateMany = vi.fn<(args: unknown) => Promise<{ count: number }>>(async () => ({ count: 1 }));
 const historialCreateMany = vi.fn<(args: { data: unknown[] }) => Promise<{ count: number }>>(async () => ({ count: 1 }));
+// SLT-46 (2026-11-09, design §2.4 «Candado del país»): agregar, renombrar y reordenar tipos toman el
+// `SELECT … FOR UPDATE` de la fila `pais` con `$queryRaw`; sin filas, el país no existe.
+const queryRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<unknown[]>>(async () => []);
 const usuarioFindUnique = vi.fn(async () => ({ nombre: "Super", primerApellido: "Admin", rol: { value: "superadmin" } }));
 
 const cliente = {
@@ -45,6 +48,7 @@ const cliente = {
   organizacion: {},
   nodoGeografico: { findMany: nodoGeograficoFindMany, findUnique: nodoGeograficoFindUnique },
   tipoNivelGeografico: { findMany: tipoNivelFindMany, findUnique: tipoNivelFindUnique },
+  $queryRaw: queryRaw,
   $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(cliente)),
 };
 
@@ -133,16 +137,27 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
   });
 
   it("SLT-46 R25: renombrar un tipo llega al repositorio de países: un tipo que no está es `not_found` y no escribe", async () => {
-    const r = await acciones.renombrarTipoNivelAction({ tipoId: "t-x", nombreSingular: "Región", nombrePlural: "Regiones" }, deps);
+    const r = await acciones.renombrarTipoNivelAction(
+      {
+        tipoId: "t-x",
+        nombreSingular: "Región",
+        nombrePlural: "Regiones",
+        anterior: { nombreSingular: "Provincia", nombrePlural: "Provincias" },
+      },
+      deps,
+    );
     expect(r).toEqual({ status: "not_found" });
     expect(tipoNivelFindUnique.mock.calls[0][0].where).toEqual({ id: "t-x" });
     expect(historialCreateMany).not.toHaveBeenCalled();
   });
 
   it("SLT-46 R49: agregar un nivel llega al repositorio de países: un país que no está es `not_found` y no escribe", async () => {
-    const r = await acciones.agregarNivelPaisAction({ paisId: "XZ", nombreSingular: "Barrio", nombrePlural: "Barrios" }, deps);
+    const r = await acciones.agregarNivelPaisAction({ paisId: "XZ", nombreSingular: "Barrio", nombrePlural: "Barrios", profundidad: 3 }, deps);
     expect(r).toEqual({ status: "not_found" });
-    expect(paisFindUnique.mock.calls.some(([a]) => a.where.id === "XZ")).toBe(true);
+    // SLT-46 (2026-11-09): el país se busca con el candado (`FOR UPDATE`), no con `findUnique` (§2.4).
+    expect(queryRaw.mock.calls.some(([sql, ...valores]) => sql.join("?").includes('FROM "pais"') && valores.includes("XZ"))).toBe(
+      true,
+    );
     expect(historialCreateMany).not.toHaveBeenCalled();
   });
 

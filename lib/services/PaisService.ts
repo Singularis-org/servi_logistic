@@ -37,6 +37,9 @@ const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);
 /** R49: el mensaje de «agregar nivel» cuando el país ya tiene el máximo (design §4.3). */
 export const PAIS_TOPE_DE_NIVELES = `Este país ya tiene ${PAIS_NIVELES_MAX} niveles`;
 
+/** R61 (design §4.7): el desenlace común cuando el «antes» del modal ya no es el de la base. */
+const CAMBIO_CONCURRENTE = { status: "conflict", motivo: "cambio_concurrente" } as const;
+
 /** `.strict()` deja un campo de más en `formErrors`, no en `fieldErrors`: se nombra aparte (`entrada`). */
 function errorDeValidacion(error: z.ZodError): { status: "validation_error"; fieldErrors: Record<string, string[]> } {
   const { formErrors, fieldErrors } = error.flatten();
@@ -71,7 +74,7 @@ export class PaisService implements IPaisService {
    * país para una persona. La base sigue decidiendo ante una carrera.
    *
    * SLT-46: los nombres de nivel llegan como lista ordenada `tipos` (2–10, R24); el repositorio crea
-   * exactamente esos tipos (`crearConTipos`).
+   * exactamente esos tipos.
    */
   async crear(input: unknown, actor: Actor): Promise<CrearPaisServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
@@ -90,24 +93,28 @@ export class PaisService implements IPaisService {
       return { status: "conflict", campo: "nombre" };
     }
 
-    const r = await this.repo.crearConTipos(datos, { usuarioId: actor.usuarioId });
+    const r = await this.repo.crear(datos, { usuarioId: actor.usuarioId });
     if (r.estado === "duplicado") return { status: "conflict", campo: r.campo };
     return { status: "ok", pais: r.pais };
   }
 
   /**
-   * R25, R26. Pedir los nombres que ya tiene es éxito: el repositorio no escribe (`sin_cambio`). La
-   * copia a `pais.nivel_N_*` (tipos 1–3) y el historial los hace el repositorio.
+   * R25, R26, R61. Pedir los nombres que ya tiene es éxito: el repositorio no escribe (`sin_cambio`),
+   * aunque el «antes» sea viejo. Si el «antes» ya no es el de la base, cambio concurrente. La copia a
+   * `pais.nivel_N_*` (tipos 1–3) y el historial los hace el repositorio.
    */
   async renombrarTipo(input: unknown, actor: Actor): Promise<RenombrarTipoNivelServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     const validada = renombrarTipoNivelSchema.safeParse(input);
     if (!validada.success) return errorDeValidacion(validada.error);
-    const { tipoId, nombreSingular, nombrePlural } = validada.data;
+    const { tipoId, nombreSingular, nombrePlural, anterior } = validada.data;
 
-    const r = await this.repo.renombrarTipo(tipoId, nombreSingular, nombrePlural, { usuarioId: actor.usuarioId });
+    const r = await this.repo.renombrarTipo(tipoId, { nombreSingular, nombrePlural }, anterior, {
+      usuarioId: actor.usuarioId,
+    });
     if (r === "no_existe") return { status: "not_found" };
+    if (r === "cambio_concurrente") return CAMBIO_CONCURRENTE;
     return { status: "ok" };
   }
 
@@ -121,11 +128,14 @@ export class PaisService implements IPaisService {
 
     const validada = agregarNivelPaisSchema.safeParse(input);
     if (!validada.success) return errorDeValidacion(validada.error);
-    const { paisId, nombreSingular, nombrePlural } = validada.data;
+    const { paisId, nombreSingular, nombrePlural, profundidad } = validada.data;
 
-    const r = await this.repo.agregarNivel(paisId, nombreSingular, nombrePlural, { usuarioId: actor.usuarioId });
+    const r = await this.repo.agregarNivel(paisId, { nombreSingular, nombrePlural }, profundidad, {
+      usuarioId: actor.usuarioId,
+    });
     if (r === "no_existe") return { status: "not_found" };
     if (r === "tope") return { status: "validation_error", fieldErrors: { paisId: [PAIS_TOPE_DE_NIVELES] } };
+    if (r === "cambio_concurrente") return CAMBIO_CONCURRENTE;
     return { status: "ok", tipo: r };
   }
 

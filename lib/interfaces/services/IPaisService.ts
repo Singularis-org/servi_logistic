@@ -25,25 +25,35 @@ export type CrearPaisServiceResult =
   | { status: "conflict"; campo: "id" | "nombre" };
 
 /**
- * SLT-46 (R25, R26): `ok` también cuando los nombres ya eran esos (`sin_cambio`, sin escribir). Sin
- * `conflict`: el nombre de un tipo no es único.
+ * SLT-46 (2026-11-09, design §4.7; R57, R61): el «antes» que mostró el modal ya no es el de la base.
+ * Variante NUEVA de la unión: los `conflict` que ya existían (nombre de hermano, país repetido, la
+ * carrera del único) no llevan `motivo` y no cambian de forma (R12). La pantalla, ante este motivo,
+ * avisa y recarga. Nada se escribió.
+ */
+export type CambioConcurrenteResult = { status: "conflict"; motivo: "cambio_concurrente" };
+
+/**
+ * SLT-46 (R25, R26, R61): `ok` también cuando los nombres ya eran esos (`sin_cambio`, sin escribir).
+ * El único `conflict` es el cambio concurrente: el nombre de un tipo no es único.
  */
 export type RenombrarTipoNivelServiceResult =
   | { status: "ok" }
   | { status: "not_found" }
   | { status: "forbidden" }
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | CambioConcurrenteResult;
 
 /**
- * SLT-46 (P3; R48, R49): `tipo` es el tipo creado al final. El tope (10 tipos) es `validation_error`
- * en `paisId`. La carrera de dos altas de nivel no aparece aquí: el único sube y la action lo hace
- * `conflict`.
+ * SLT-46 (P3; R48, R49, R61): `tipo` es el tipo creado al final. El tope (10 tipos) es
+ * `validation_error` en `paisId`. Otra alta de nivel que ganó la carrera es cambio concurrente
+ * (`profundidad` ya no es P+1); si aun así salta el único, sube y la action lo hace `conflict`.
  */
 export type AgregarNivelPaisServiceResult =
   | { status: "ok"; tipo: TipoNivelDTO }
   | { status: "not_found" }
   | { status: "forbidden" }
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | CambioConcurrenteResult;
 
 /** Enmienda 2026-10-26, decisión 6 (R47): `ok` también cuando el país ya estaba así (sin escribir). */
 export type CambiarDisponibilidadPaisServiceResult =

@@ -74,47 +74,52 @@ describe("R24/P2 — el alta de país trae de 2 a 10 tipos", () => {
 });
 
 describe("R25/R26 — editar los nombres de un tipo", () => {
+  // SLT-46 (2026-11-09, §4.1): la entrada gana `anterior` (obligatorio); aquí siempre válido, para que
+  // cada caso mida lo que dice su nombre.
+  const ANTES = { anterior: { nombreSingular: "Provincia", nombrePlural: "Provincias" } };
+
   it("acepta `{tipoId, nombreSingular, nombrePlural}` con nombres de 2–40", () => {
     expect(
-      renombrarTipoNivelSchema.safeParse({ tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones" }).success,
+      renombrarTipoNivelSchema.safeParse({ ...ANTES, tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones" }).success,
     ).toBe(true);
   });
 
   it("rechaza nombres fuera de 2–40, un tipo vacío y claves desconocidas", () => {
-    expect(renombrarTipoNivelSchema.safeParse({ tipoId: "t1", nombreSingular: "R", nombrePlural: "Regiones" }).success).toBe(
+    expect(renombrarTipoNivelSchema.safeParse({ ...ANTES, tipoId: "t1", nombreSingular: "R", nombrePlural: "Regiones" }).success).toBe(
       false,
     );
     expect(
-      renombrarTipoNivelSchema.safeParse({ tipoId: "t1", nombreSingular: "Región", nombrePlural: "x".repeat(41) }).success,
+      renombrarTipoNivelSchema.safeParse({ ...ANTES, tipoId: "t1", nombreSingular: "Región", nombrePlural: "x".repeat(41) }).success,
     ).toBe(false);
-    expect(renombrarTipoNivelSchema.safeParse({ tipoId: "", nombreSingular: "Región", nombrePlural: "Regiones" }).success).toBe(
+    expect(renombrarTipoNivelSchema.safeParse({ ...ANTES, tipoId: "", nombreSingular: "Región", nombrePlural: "Regiones" }).success).toBe(
       false,
     );
     expect(
-      renombrarTipoNivelSchema.safeParse({ tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones", clave: "nivel_2" })
+      renombrarTipoNivelSchema.safeParse({ ...ANTES, tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones", clave: "nivel_2" })
         .success,
     ).toBe(false);
   });
 });
 
 describe("R49/P3 — agregar un nivel al final", () => {
+  // SLT-46 (2026-11-09, §4.1): la entrada gana `profundidad` (3–10, obligatoria); aquí siempre válida.
   it("acepta `{paisId, nombreSingular, nombrePlural}`", () => {
-    const r = agregarNivelPaisSchema.parse({ paisId: "CR", nombreSingular: " Barrio ", nombrePlural: "Barrios" });
-    expect(r).toEqual({ paisId: "CR", nombreSingular: "Barrio", nombrePlural: "Barrios" });
+    const r = agregarNivelPaisSchema.parse({ paisId: "CR", nombreSingular: " Barrio ", nombrePlural: "Barrios", profundidad: 4 });
+    expect(r).toEqual({ paisId: "CR", nombreSingular: "Barrio", nombrePlural: "Barrios", profundidad: 4 });
   });
 
   it("rechaza nombres fuera de 2–40 caracteres", () => {
-    expect(agregarNivelPaisSchema.safeParse({ paisId: "CR", nombreSingular: "B", nombrePlural: "Barrios" }).success).toBe(false);
+    expect(agregarNivelPaisSchema.safeParse({ profundidad: 4, paisId: "CR", nombreSingular: "B", nombrePlural: "Barrios" }).success).toBe(false);
     expect(
-      agregarNivelPaisSchema.safeParse({ paisId: "CR", nombreSingular: "Barrio", nombrePlural: "x".repeat(41) }).success,
+      agregarNivelPaisSchema.safeParse({ profundidad: 4, paisId: "CR", nombreSingular: "Barrio", nombrePlural: "x".repeat(41) }).success,
     ).toBe(false);
   });
 
   it("no admite posición: siempre va al final, y el país es un código alfa-2", () => {
     expect(
-      agregarNivelPaisSchema.safeParse({ paisId: "CR", nombreSingular: "Barrio", nombrePlural: "Barrios", posicion: 2 }).success,
+      agregarNivelPaisSchema.safeParse({ profundidad: 4, paisId: "CR", nombreSingular: "Barrio", nombrePlural: "Barrios", posicion: 2 }).success,
     ).toBe(false);
-    expect(agregarNivelPaisSchema.safeParse({ paisId: "cr", nombreSingular: "Barrio", nombrePlural: "Barrios" }).success).toBe(
+    expect(agregarNivelPaisSchema.safeParse({ profundidad: 4, paisId: "cr", nombreSingular: "Barrio", nombrePlural: "Barrios" }).success).toBe(
       false,
     );
   });
