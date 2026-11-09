@@ -30,18 +30,25 @@
         </sc-if>
       </header>
 
-      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-        <sc-for list="{{filtros}}" as="fi" hint-placeholder-count="3">
-          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c">{{fi.label}}<input type="text" value="{{fi.valor}}" style="font:inherit;font-size:14px;height:36px;width:170px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
-        </sc-for>
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#44403c;flex:1;min-width:180px">Buscar<input type="search" placeholder="{{buscarPh}}" style="font:inherit;font-size:14px;height:36px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff"></label>
-        <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Descargar</button>
-      </div>
-
       <div role="tablist" aria-label="{{tabsAria}}" style="display:flex;gap:24px;border-bottom:1px solid #e7e5e4">
         <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
           <button type="button" role="tab" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
         </sc-for>
+      </div>
+
+      <!-- Barra EXISTENTE de DataTable: BuscadorFiltros (componente compartido) + DescargarDatasetButton. No se rediseña: se reutiliza tal cual, h-8. -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div style="position:relative;width:300px;height:32px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#78716c" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="position:absolute;left:10px;top:8px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <input type="search" aria-label="Buscar" placeholder="{{buscarPh}}" style="font:inherit;font-size:14px;width:100%;height:32px;box-sizing:border-box;padding:0 10px 0 32px;border:1px solid #e7e5e4;border-radius:8px;background:#ffffff">
+        </div>
+        <sc-for list="{{filtros}}" as="fi" hint-placeholder-count="2">
+          <button type="button" style="font:inherit;font-size:14px;height:32px;padding:0 10px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;display:flex;align-items:center;gap:6px"><span style="color:#44403c">{{fi.label}}:</span> {{fi.valor}} <span aria-hidden="true" style="color:#78716c">▾</span></button>
+        </sc-for>
+        <button type="button" style="font:inherit;font-size:14px;height:32px;padding:0 10px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg>{{filtrosLabel}} <span aria-hidden="true" style="color:#78716c">▾</span></button>
+        <button type="button" style="font:inherit;font-size:14px;height:32px;padding:0 8px;border:0;background:transparent;color:#44403c;cursor:pointer">Limpiar todo</button>
+        <span style="flex:1"></span>
+        <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>Descargar <span aria-hidden="true" style="color:#78716c">▾</span></button>
       </div>
 
       <sc-if value="{{aviso}}" hint-placeholder-val="{{ false }}">
@@ -202,11 +209,17 @@ class Component extends DCLogic {
       pie = t1 ? 'Un cierre «Recibido incompleto» se queda aquí hasta que la diferencia se reciba o se corrija.' : 'Mostrando 2 de 21 · 10 por página';
     }
 
+    // La barra es la de FiltrosCierresBarra (BuscadorFiltros): el placeholder y los filtros
+    // disponibles son los de hoy (Fecha de solicitud, Bodega, Mensajero, Estado según el rol).
+    // Aquí se pinta un filtro ya puesto para que se vea cómo queda.
+    buscarPh = 'Usa los filtros para acotar los cierres';
+    filtros = rol === 'mensajero' ? [] : [{ label: 'Fecha de solicitud', valor: 'Últimos 7 días' }];
+    const filtrosLabel = filtros.length ? 'Filtros (' + filtros.length + ')' : 'Filtros';
     const n = cols.length;
     const plantilla = (n >= 10 ? '110px 1fr 1fr 110px 70px 1fr 1fr 1fr 170px' : n === 9 && !esBodega ? '110px 1.3fr 120px 120px 1fr 1fr 1.2fr 1.5fr' : n === 9 ? '110px 1.2fr 120px 1fr 1fr 1fr 1fr 1.3fr' : '110px 1.4fr 120px 120px 1fr 1fr 1.6fr') + ' 200px';
     const plantillaB = rol === 'mensajero' ? '110px 120px 1fr 120px 1fr 1fr 1.6fr 200px' : esBodega && sat && !t1 ? '110px 110px 70px 1fr 1fr 1fr 1fr 170px 200px' : plantilla;
     return {
-      hayToggle: rol !== 'mensajero',
+      hayToggle: rol !== 'mensajero', filtrosLabel,
       esBodega, esMensajero: !esBodega, tglBodega: tgl(esBodega), tglMens: tgl(!esBodega),
       descripcion, filtros, buscarPh, tabs, tabsAria, tablaAria, aviso, avisoTexto,
       hayKpis: kpis.length > 0, kpis, kpiGrid: 'display:grid;gap:12px;grid-template-columns:repeat(' + kpis.length + ',minmax(0,1fr))',

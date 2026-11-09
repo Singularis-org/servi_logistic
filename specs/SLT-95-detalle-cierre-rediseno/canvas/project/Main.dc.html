@@ -134,10 +134,14 @@ body{margin:0}
 
       <sc-if value="{{enGestiones}}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;flex-direction:column;gap:12px">
-          <div role="group" aria-label="Filtrar por resultado" style="display:flex;gap:8px;flex-wrap:wrap">
-            <sc-for list="{{chips}}" as="ch" hint-placeholder-count="7">
-              <button type="button" style="{{ch.style}}">{{ch.label}}</button>
-            </sc-for>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div role="group" aria-label="Filtrar por resultado" style="display:flex;gap:8px;flex-wrap:wrap;flex:1">
+              <sc-for list="{{chips}}" as="ch" hint-placeholder-count="7">
+                <button type="button" style="{{ch.style}}">{{ch.label}}</button>
+              </sc-for>
+            </div>
+            <!-- DescargarDatasetButton existente: reemplaza a la impresión del detalle -->
+            <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>Descargar <span aria-hidden="true" style="color:#78716c">▾</span></button>
           </div>
           <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
             <div style="{{gCabStyle}}">
