@@ -190,7 +190,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
   arrastre nativo solo desde la manija, `ArrowUp`/`ArrowDown` con la manija enfocada, foco que se queda
   en la manija, región `aria-live`; sin flechas visibles; controlado, sin actions (§6). (R53)
   *Hecho:* `tests/components/lista-reordenable.test.tsx` verde.
-- [ ] **T6.5** [P] *(2026-11-09)* `_components/ConfirmarCambio.tsx` sobre `components/shared/Modal`:
+- [x] **T6.5** [P] *(2026-11-09)* `_components/ConfirmarCambio.tsx` sobre `components/shared/Modal`:
   filas antes → después, `closeOnConfirm={false}`, aviso y `router.refresh()` ante
   `motivo: "cambio_concurrente"` (§4.7, §6). (R58, R59, R61)
   *Hecho:* `tests/components/confirmar-cambio.test.tsx` verde (pinta antes → después; cancelar no llama

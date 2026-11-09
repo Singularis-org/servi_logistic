@@ -958,3 +958,34 @@ no el de producción). Anotar cada resultado en esta bitácora, sección «Ensay
 - Manija 44 px, `touch-none`, `focus-visible:ring-3`.
 - R53 → `tests/components/lista-reordenable.test.tsx` (9 casos). El arrastre real no se prueba en jsdom.
 - Salida: `Test Files 1 passed (1)` · `Tests 9 passed (9)`; eslint de los dos archivos 0; tsc sin errores.
+
+### T6.5 — `ConfirmarCambio` (R58, R59, R61)
+#### Archivos
+- creado `app/(app)/plataforma/geografia/_components/ConfirmarCambio.tsx`
+- creado `tests/components/confirmar-cambio.test.tsx`
+
+#### Firma
+`ConfirmarCambio<R extends ResultadoDeCambio>(props: ConfirmarCambioProps<R>)`, con
+`ResultadoDeCambio = { status: string; motivo?: string }`, `FilaDeCambio = { etiqueta: string; antes: ReactNode | null; despues: ReactNode }`.
+Props: `open`, `onOpenChange`, `titulo`, `descripcion?`, `filas`, `confirmLabel`, `destructivo?`,
+`children?`, `accion: () => Promise<R>`, `onExito?(r: R)`, `onRechazo?(r: R | { status: "error" })`,
+y textos con default (`cancelLabel`, `cerrarLabel`, `encabezadoDato/Antes/Despues`, `textoSinValor`,
+`avisoConcurrente`).
+
+#### Decisión
+Ante `conflict` + `motivo: "cambio_concurrente"` el modal **sigue abierto** con el aviso (`role="alert"`),
+sin botón confirmar y con «Cerrar»; hace `router.refresh()`. §4.7 decía «cierra el modal»; el leader
+pidió esta variante en T6.5. El texto del aviso es el del leader («Otra persona cambió…»), no el
+provisional de §4.7. Si el reviewer pide alinear, §4.7 debe actualizarse.
+
+#### R → test (`tests/components/confirmar-cambio.test.tsx`)
+- R58: «pinta cada fila con su antes y su después…», «confirmar llama a la acción una sola vez…», «con ok cierra…»
+- R59: «cancelar cierra sin llamar a la acción», «con otro desenlace cierra y pasa el resultado a onRechazo…»
+- R61: «con cambio concurrente avisa, refresca, no llama a onExito y deja solo Cerrar»
+
+#### Salida
+- vitest (solo este archivo): Test Files 1 passed (1) · Tests 8 passed (8)
+- eslint (los dos archivos): No issues found
+- tsc --noEmit: sin salida, exit 0
+
+Veredicto: T6.5 hecha, verde en test, lint y typecheck.
