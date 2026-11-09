@@ -570,3 +570,54 @@ T3.3/T3.4 (ver sus «Desviación»).
   `geografia-plataforma.composition-root`, `nombres-que-imprime-la-etiqueta`):
   `Test Files 7 passed (7) · Tests 374 passed (374)`; tras ajustar el tipo del helper de
   `geografia-nodo`: `Tests 30 passed (30)` en ese archivo.
+
+### T4.6 — `reordenarTiposAction` y el «antes» por el borde (2026-11-09)
+
+**Archivos.** `lib/actions/geografia-plataforma.ts`; tests `tests/unit/actions/geografia-plataforma-action.test.ts`
+y `geografia-plataforma.composition-root.test.ts`.
+
+**Qué hace.** `reordenarTiposAction(input)`: `puerta` → `PaisService.reordenarTipos` dentro de
+`comoPlataforma`; la entrada pasa tal cual (la valida el service, como `renombrarTipoNivelAction` y
+`agregarNivelPaisAction`); un fallo de la base es `error` con log `reordenamiento de niveles -` (sin datos).
+Lleva `@sin-superficie` (T6.3 le da pantalla) para la guardia `superficie-de-uso`. El «antes» de las
+actions existentes ya viaja: `renombrarNodoAction` valida con `renombrarNodoGeograficoSchema` (con
+`nombreAnterior`) y pasa `parsed.data`; `renombrarTipoNivelAction` y `agregarNivelPaisAction` pasan la
+entrada al service, que valida `anterior`/`profundidad`. Comentarios del módulo y de
+`agregarNivelPaisAction` actualizados (la carrera ahora sale por cambio concurrente; el único, de respaldo).
+`EXCEPCIONES_DE_PLATAFORMA` no cambia: lista el ARCHIVO, que ya estaba.
+
+**Tests nuevos.**
+- R60: 15 entradas inválidas (alta de país con 11 tipos y con nombre de 1 carácter, disponibilidad sin
+  `disponible`, alta y renombre de nodo con nombre de 1 carácter, renombre sin «antes», retiro sin `activo`,
+  CSV sin archivo, edición de tipo con nombre de 1 carácter y sin «antes», agregar nivel con nombre de 1
+  carácter y sin `profundidad`, reordenar con 11 niveles, con `tipoId` repetidos y con nombre de 1 carácter)
+  → `validation_error`, con servicios REALES sobre repositorios que lanzan si se tocan; contraprueba: con
+  entrada válida el mismo repositorio sí se toca.
+- R61: edición de tipo, agregar nivel, reordenar y renombre de nodo con `cambio_concurrente` en el repo →
+  `{ status: "conflict", motivo: "cambio_concurrente" }`, y el «antes» llega al repositorio tal cual;
+  contraprueba: el `conflict` del único sigue sin `motivo`.
+- R55–R57 por el borde: `reordenado`/`sin_cambio` → `ok`; `no_existe` → `not_found`; fallo → `error` con log
+  sin datos; corre en `comoPlataforma`.
+- Decisión del alta de nodo por el borde: sin `nombre` → `fieldErrors.nombre`; forma vieja →
+  `fieldErrors.formato` («Formato no válido…»), sin `entrada`.
+- `ACCIONES` (sin sesión → `unauthenticated`, `maestro` → `forbidden`, sin tocar servicios) y «corre en
+  plataforma» ganan `reordenarTiposAction`; composition-root: reordenar con el cliente falso → candado sin
+  fila → `not_found`, sin historial.
+
+**Cambios de aserción en tests existentes.** La lista exacta de exports (R22, R50) gana
+`"reordenarTiposAction"` (lo pide T4.6); sigue sin ninguna action de mover ni de quitar nivel (el filtro
+`/mover|padre|quitar|borrar|eliminar|retirarNivel|retirarTipo/` no cambia). Ninguna otra.
+
+**Salida real.**
+- `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0; `eslint` de los 3 archivos →
+  «No issues found».
+- `geografia-plataforma-action`: `Test Files 1 passed (1) · Tests 127 passed (127)`.
+- `geografia-plataforma.composition-root` + guardias `superficie-de-uso` y `plataforma-solo-en-lista`:
+  `Test Files 3 passed (3) · Tests 34 passed (34)`.
+- **Todas las guardias** (332 archivos con `guard` en la ruta, 7 lotes de ≤ 50, `--maxWorkers=1`):
+  `1 failed | 527 passed | 24 skipped (552)`, `666`, `4 failed | 763 passed (767)`, `836`, `726`,
+  `720 | 1 skipped`, `423` → 5 rojos, ninguno de esta tanda:
+  - 4 de `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts` (en `tests/baseline-rojos.json`);
+  - 1 de `tests/guards/guard-dependencias-aprobadas.test.ts` › «el registro no lista paquetes que ya no
+    están instalados»: `@dnd-kit/{core,sortable,utilities}` están aprobadas en `docs/dependencias.md`
+    (`f12f6529`) y aún no instaladas (lo hace T6). Preexistente; no se tocó.

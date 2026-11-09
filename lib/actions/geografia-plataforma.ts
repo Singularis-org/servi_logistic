@@ -26,6 +26,7 @@ import type {
   IPaisService,
   ListarPaisesServiceResult,
   RenombrarTipoNivelServiceResult,
+  ReordenarTiposServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { esViolacionDeUnico } from "@/lib/repositories/_shared/prisma-unique";
@@ -50,8 +51,9 @@ import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
 //
 // Los servicios vuelven a mirar `GESTION_ROLES`: la puerta de aquí es la primera, no la única (R37).
 //
-// `crearPaisAction`, `renombrarTipoNivelAction` y `agregarNivelPaisAction` pasan la entrada tal cual
-// al servicio, que la valida (`crearPaisSchema`, `renombrarTipoNivelSchema`, `agregarNivelPaisSchema`):
+// `crearPaisAction`, `renombrarTipoNivelAction`, `agregarNivelPaisAction` y `reordenarTiposAction`
+// pasan la entrada tal cual al servicio, que la valida (`crearPaisSchema`, `renombrarTipoNivelSchema`,
+// `agregarNivelPaisSchema`, `reordenarTiposSchema`):
 // el alta exige que el código esté en el catálogo ISO 3166-1 (R41) y el servicio pone el nombre del
 // catálogo (R23).
 //
@@ -64,6 +66,11 @@ import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
 // cuando la base falla. Solo el único violado de un alta, un renombre de nodo o un nivel agregado es
 // `conflict` (SLT-46 R5, R49). El árbol y el listado de países no lo llevan: son la carga de la
 // pantalla, y su fallo sube a la página.
+//
+// SLT-46 (2026-11-09, design §4.7; R61): el renombre de nodo, la edición de un tipo, agregar nivel y
+// reordenar llevan el «antes» que mostró el modal de confirmación; si ya no es el de la base, el
+// servicio devuelve `{ status: "conflict", motivo: "cambio_concurrente" }` y aquí pasa tal cual. Los
+// `conflict` de antes (único, hermano, país repetido) siguen sin `motivo`.
 
 const FICHA = "SL-20";
 const MOTIVO =
@@ -223,7 +230,9 @@ export type AgregarNivelPaisActionResult =
 /**
  * SLT-46 (P3; R48, R49): un nivel más, siempre al final. El tope de 10 es `validation_error` en
  * `paisId` y un país que no existe, `not_found` (los decide el servicio). Dos altas de nivel en
- * paralelo chocan en el único de `nivel_<P+1>`: el `P2002` sube del servicio y aquí es `conflict`.
+ * paralelo: la segunda, tras el candado del país, ve que `profundidad` ya no es P+1 y vuelve como
+ * `conflict` con `motivo: "cambio_concurrente"` (R61). Si aun así saltara el único de `nivel_<P+1>`
+ * (respaldo), el `P2002` sube del servicio y aquí es `conflict` sin motivo.
  * @sin-superficie SLT-46 T6.3 («Agregar nivel» en `TiposDeNivelPais.tsx`) le da pantalla; espera la maqueta aprobada de T0.2 (R52), que aún no existe.
  */
 export async function agregarNivelPaisAction(
@@ -238,6 +247,30 @@ export async function agregarNivelPaisAction(
   } catch (error) {
     if (esViolacionDeUnico(error)) return { status: "conflict" };
     return registrarFallo("alta de nivel", "-", error);
+  }
+}
+
+export type ReordenarTiposActionResult = ReordenarTiposServiceResult | SinPermiso | ErrorInterno;
+
+/**
+ * SLT-46 (2026-11-09; R55–R57, R61): el nuevo orden de los niveles de un país ya creado. La entrada
+ * pasa tal cual al servicio, que la valida (`reordenarTiposSchema`: 2–10, sin repetidos). El orden
+ * actual es `ok` sin escribir; un país que no existe, `not_found`; una lista que ya no es la del país,
+ * `conflict` con `motivo: "cambio_concurrente"`. Reordenar solo cambia nombres, que no son únicos:
+ * un fallo de la base es `error` con log, sin datos (R36).
+ * @sin-superficie SLT-46 T6.3 (reordenar en `TiposDeNivelPais.tsx`) le da pantalla; la maqueta ya está aprobada y T6 es la tanda siguiente.
+ */
+export async function reordenarTiposAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<ReordenarTiposActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.reordenarTipos(input, p.actor));
+  } catch (error) {
+    return registrarFallo("reordenamiento de niveles", "-", error);
   }
 }
 

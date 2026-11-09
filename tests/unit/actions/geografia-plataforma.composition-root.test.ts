@@ -161,6 +161,24 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
     expect(historialCreateMany).not.toHaveBeenCalled();
   });
 
+  it("SLT-46 R57: reordenar llega al repositorio de países: un país que no está (candado sin fila) es `not_found` y no escribe", async () => {
+    const r = await acciones.reordenarTiposAction(
+      {
+        paisId: "XZ",
+        niveles: [
+          { tipoId: "t-2", nombreSingular: "Comuna", nombrePlural: "Comunas" },
+          { tipoId: "t-1", nombreSingular: "Región", nombrePlural: "Regiones" },
+        ],
+      },
+      deps,
+    );
+    expect(r).toEqual({ status: "not_found" });
+    expect(queryRaw.mock.calls.some(([sql, ...valores]) => sql.join("?").includes("FOR UPDATE") && valores.includes("XZ"))).toBe(
+      true,
+    );
+    expect(historialCreateMany).not.toHaveBeenCalled();
+  });
+
   it("R47: pedir el estado que el país ya tiene es `ok` y NO escribe historial", async () => {
     paisUpdateMany.mockResolvedValueOnce({ count: 0 });
     paisFindUnique.mockResolvedValueOnce({ nombre: "Costa Rica" });

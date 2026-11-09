@@ -152,7 +152,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   obligatorios nuevos; repetidos, 1 y 11 niveles rechazados); `pais-service.test.ts` y
   `geografia-service.test.ts` (desenlaces nuevos; los `conflict` de antes sin `motivo`; `maestro` →
   `forbidden` en `reordenarTipos` con doble que falla si se le llama).
-- [ ] **T4.6** *(2026-11-09; depende de T4.5)* `reordenarTiposAction` en
+- [x] **T4.6** *(2026-11-09; depende de T4.5)* `reordenarTiposAction` en
   `lib/actions/geografia-plataforma.ts` y paso del «antes» en las actions existentes. (R39, R57, R60,
   R61)
   *Hecho:* `geografia-plataforma-action.test.ts` (entrada inválida en cada action de escritura →

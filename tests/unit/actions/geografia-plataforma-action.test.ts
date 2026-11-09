@@ -14,16 +14,21 @@ import {
   listarPaisesAction,
   renombrarNodoAction,
   renombrarTipoNivelAction,
+  reordenarTiposAction,
   type GeografiaPlataformaDeps,
 } from "@/lib/actions/geografia-plataforma";
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import { contextoActual } from "@/lib/db/contexto-empresa";
+import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { ICargaDivisionService } from "@/lib/interfaces/services/ICargaDivisionService";
 import type { IGeografiaService } from "@/lib/interfaces/services/IGeografiaService";
 import type { IPaisService } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import { CargaDivisionService } from "@/lib/services/CargaDivisionService";
+import { GeografiaService } from "@/lib/services/GeografiaService";
 import { PAIS_TOPE_DE_NIVELES, PaisService } from "@/lib/services/PaisService";
+import { CAMPO_DE_FORMATO } from "@/lib/types/geografia-nodo";
 
 // SL-20 (T4.3, T4.6; design §4, §5, §6) — el borde de la geografía y los países del superadmin.
 //
@@ -35,6 +40,8 @@ import { PAIS_TOPE_DE_NIVELES, PaisService } from "@/lib/services/PaisService";
 // SLT-46 (T4.4; design §4.1, §4.2): los nodos viajan por id, sin `nivel` (`{paisId}` o `{padreId}` en
 // el alta; `{id}` en el resto). Los casos de SL-20 conservan su desenlace con la forma nueva. Se suman
 // `renombrarTipoNivelAction` y `agregarNivelPaisAction`, y la lista de exports del módulo (R22, R50).
+// T4.6 (2026-11-09): `reordenarTiposAction`, el «antes» en las escrituras (R61) y R60 (el servidor
+// valida aunque la pantalla ya lo haya hecho).
 
 const SUPERADMIN: Actor = { usuarioId: "u-super", rol: ROLES_PLATAFORMA[0] };
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: RolValue.maestro };
@@ -111,6 +118,7 @@ const ACCIONES: [string, (deps: GeografiaPlataformaDeps) => Promise<{ status: st
   ["cargarDivisionAction", (d) => cargarDivisionAction(new FormData(), d)],
   ["renombrarTipoNivelAction", (d) => renombrarTipoNivelAction({ basura: true }, d)],
   ["agregarNivelPaisAction", (d) => agregarNivelPaisAction({ basura: true }, d)],
+  ["reordenarTiposAction", (d) => reordenarTiposAction({ basura: true }, d)],
 ];
 
 afterEach(() => {
@@ -231,6 +239,7 @@ describe("SL-20/R32 — el servicio corre dentro de `comoPlataforma` y recibe la
     ["renombrarTipoNivelAction", (d: GeografiaPlataformaDeps) => renombrarTipoNivelAction({ tipoId: "t1" }, d), "paisService", "renombrarTipo"],
     ["agregarNivelPaisAction", (d: GeografiaPlataformaDeps) => agregarNivelPaisAction({ paisId: "XA" }, d), "paisService", "agregarNivel"],
     ["crearPaisAction", (d: GeografiaPlataformaDeps) => crearPaisAction({ id: "XA" }, d), "paisService", "crear"],
+    ["reordenarTiposAction", (d: GeografiaPlataformaDeps) => reordenarTiposAction({ paisId: "XA" }, d), "paisService", "reordenarTipos"],
     ["cambiarDisponibilidadPaisAction", (d: GeografiaPlataformaDeps) => cambiarDisponibilidadPaisAction({ id: "CR", disponible: false }, d), "paisService", "cambiarDisponible"],
     ["cargarDivisionAction", (d: GeografiaPlataformaDeps) => cargarDivisionAction(csv("x"), d), "cargaDivisionService", "cargar"],
   ] as const)("%s corre en plataforma", async (_n, accion, servicio, metodo) => {
@@ -673,6 +682,7 @@ describe("SLT-46 R22, R50 — la lista de exports del borde", () => {
       "listarPaisesAction",
       "renombrarNodoAction",
       "renombrarTipoNivelAction",
+      "reordenarTiposAction",
     ]);
     for (const nombre of Object.keys(accionesDelModulo)) {
       expect(nombre, nombre).not.toMatch(/mover|padre|quitar|borrar|eliminar|retirarNivel|retirarTipo/i);
@@ -687,5 +697,197 @@ describe("SLT-46 R22, R50 — la lista de exports del borde", () => {
     );
     expect(geografiaService.renombrar).not.toHaveBeenCalled();
     expect(geografiaService.cambiarActivacion).not.toHaveBeenCalled();
+  });
+});
+
+// =================================================================================================
+// SLT-46 T4.6 (2026-11-09; design §4.2, §4.7) — reordenar, el servidor valida aunque la pantalla ya
+// haya validado (R60), y el cambio concurrente por el borde (R61)
+// =================================================================================================
+
+/** Un repositorio que LANZA en cuanto se toca cualquier método: si la action escribiera, reventaría. */
+function queLanza<T extends object>(nombre: string): T {
+  return new Proxy({} as T, {
+    get(_t, metodo) {
+      if (metodo === "then") return undefined; // no es una promesa
+      return () => {
+        throw new Error(`${nombre}.${String(metodo)} no debía llamarse`);
+      };
+    },
+  });
+}
+
+describe("SLT-46 R60 — cada action de escritura con una entrada que la pantalla habría rechazado: `validation_error` sin tocar el repositorio", () => {
+  // Servicios REALES sobre repositorios que lanzan: el `validation_error` tiene que salir antes de la
+  // primera lectura o escritura (la del esquema del borde o la del servicio, según la action).
+  function deps(): GeografiaPlataformaDeps {
+    const geoRepo = queLanza<IGeoRepository>("geoRepo");
+    return {
+      getActor: async () => SUPERADMIN,
+      paisService: new PaisService(queLanza<IPaisRepository>("paisRepo")),
+      geografiaService: new GeografiaService(geoRepo, queLanza<{ contarSinEntregarPorNodoGeografico: () => Promise<number> }>("ordenes")),
+      cargaDivisionService: new CargaDivisionService(geoRepo),
+    };
+  }
+  const tipos = (n: number) => Array.from({ length: n }, (_, i) => ({ singular: `Nivel ${i + 1}`, plural: `Niveles ${i + 1}` }));
+  const niveles = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ tipoId: `t${i + 1}`, nombreSingular: `Nivel ${i + 1}`, nombrePlural: `Niveles ${i + 1}` }));
+
+  it.each<[string, (d: GeografiaPlataformaDeps) => Promise<{ status: string }>]>([
+    ["alta de país con 11 tipos", (d) => crearPaisAction({ id: "GT", tipos: tipos(11) }, d)],
+    ["alta de país con un nombre de 1 carácter", (d) => crearPaisAction({ id: "GT", tipos: [{ singular: "R", plural: "Rs" }, ...tipos(1)] }, d)],
+    ["disponibilidad sin `disponible`", (d) => cambiarDisponibilidadPaisAction({ id: "CR" }, d)],
+    ["alta de nodo con un nombre de 1 carácter", (d) => crearNodoAction({ paisId: "CR", nombre: "a" }, d)],
+    ["renombre de nodo con un nombre de 1 carácter", (d) => renombrarNodoAction({ id: "n1", nombre: "a", nombreAnterior: "Uno" }, d)],
+    ["renombre de nodo sin «antes»", (d) => renombrarNodoAction({ id: "n1", nombre: "Otro" }, d)],
+    ["retiro de nodo sin `activo`", (d) => cambiarActivacionNodoAction({ id: "n1" }, d)],
+    ["carga CSV sin archivo", (d) => cargarDivisionAction(csv("x", "d.csv", null), d)],
+    [
+      "edición de tipo con un nombre de 1 carácter",
+      (d) => renombrarTipoNivelAction({ tipoId: "t1", nombreSingular: "R", nombrePlural: "Rs", anterior: { nombreSingular: "Uno", nombrePlural: "Unos" } }, d),
+    ],
+    ["edición de tipo sin «antes»", (d) => renombrarTipoNivelAction({ tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones" }, d)],
+    ["agregar nivel con un nombre de 1 carácter", (d) => agregarNivelPaisAction({ paisId: "XA", nombreSingular: "B", nombrePlural: "Bs", profundidad: 3 }, d)],
+    ["agregar nivel sin `profundidad`", (d) => agregarNivelPaisAction({ paisId: "XA", nombreSingular: "Barrio", nombrePlural: "Barrios" }, d)],
+    ["reordenar con 11 niveles", (d) => reordenarTiposAction({ paisId: "XA", niveles: niveles(11) }, d)],
+    ["reordenar con `tipoId` repetidos", (d) => reordenarTiposAction({ paisId: "XA", niveles: [...niveles(2), niveles(1)[0]] }, d)],
+    ["reordenar con un nombre de 1 carácter", (d) => reordenarTiposAction({ paisId: "XA", niveles: [{ ...niveles(1)[0], nombreSingular: "N" }, niveles(2)[1]] }, d)],
+  ])("%s", async (_c, accion) => {
+    expect((await accion(deps())).status).toBe("validation_error");
+  });
+
+  it("CONTRAPRUEBA: con una entrada válida el mismo repositorio SÍ se toca (la action llega a escribir)", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    // El repo que lanza hace que la action caiga en su `catch`: `error` con log, no `validation_error`.
+    expect((await reordenarTiposAction({ paisId: "XA", niveles: niveles(2) }, deps())).status).toBe("error");
+    expect(String(log.mock.calls[0][0])).toContain("reordenamiento de niveles");
+  });
+});
+
+describe("SLT-46 R61 — el cambio concurrente sale del borde como `conflict` con motivo", () => {
+  const CONCURRENTE = { status: "conflict", motivo: "cambio_concurrente" };
+
+  function repoPaisCon(o: Partial<Record<keyof IPaisRepository, Espia>>) {
+    return {
+      listar: vi.fn(),
+      listarDisponibles: vi.fn(),
+      porId: vi.fn(),
+      deLaEmpresa: vi.fn(),
+      cambiarDisponible: vi.fn(),
+      crear: vi.fn(),
+      renombrarTipo: vi.fn(),
+      agregarNivel: vi.fn(),
+      reordenarTipos: vi.fn(),
+      ...o,
+    } satisfies Record<keyof IPaisRepository, Espia>;
+  }
+  const conPais = (repo: ReturnType<typeof repoPaisCon>) => ({
+    getActor: async () => SUPERADMIN,
+    paisService: new PaisService(repo as unknown as IPaisRepository),
+  });
+
+  it("edición de tipo, agregar nivel y reordenar: el repositorio dice `cambio_concurrente` → `conflict` con motivo", async () => {
+    const repo = repoPaisCon({
+      renombrarTipo: vi.fn(async () => "cambio_concurrente" as const),
+      agregarNivel: vi.fn(async () => "cambio_concurrente" as const),
+      reordenarTipos: vi.fn(async () => "cambio_concurrente" as const),
+    });
+    const anterior = { nombreSingular: "Provincia", nombrePlural: "Provincias" };
+    expect(await renombrarTipoNivelAction({ tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones", anterior }, conPais(repo))).toEqual(CONCURRENTE);
+    expect(await agregarNivelPaisAction({ paisId: "XA", nombreSingular: "Barrio", nombrePlural: "Barrios", profundidad: 4 }, conPais(repo))).toEqual(CONCURRENTE);
+    const orden = [
+      { tipoId: "t2", ...anterior },
+      { tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones" },
+    ];
+    expect(await reordenarTiposAction({ paisId: "XA", niveles: orden }, conPais(repo))).toEqual(CONCURRENTE);
+    // El «antes» llegó al repositorio tal cual lo mandó la pantalla.
+    expect(repo.renombrarTipo).toHaveBeenCalledWith("t1", { nombreSingular: "Región", nombrePlural: "Regiones" }, anterior, { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.agregarNivel).toHaveBeenCalledWith("XA", { nombreSingular: "Barrio", nombrePlural: "Barrios" }, 4, { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.reordenarTipos).toHaveBeenCalledWith("XA", orden, { usuarioId: SUPERADMIN.usuarioId });
+  });
+
+  it("renombre de nodo: el repositorio dice `cambio_concurrente` → `conflict` con motivo, y recibe el «antes»", async () => {
+    const renombrar = vi.fn(async () => "cambio_concurrente" as const);
+    const geoRepo = { hermanosDeNodo: vi.fn(async () => [{ id: "n1", nombre: "Uno" }]), renombrar } as unknown as IGeoRepository;
+    const deps = { getActor: async () => SUPERADMIN, geografiaService: new GeografiaService(geoRepo, { contarSinEntregarPorNodoGeografico: vi.fn() }) };
+    expect(await renombrarNodoAction({ id: "n1", nombre: "Otro", nombreAnterior: "Uno" }, deps)).toEqual(CONCURRENTE);
+    expect(renombrar).toHaveBeenCalledWith("n1", "Otro", "Uno", SUPERADMIN.usuarioId);
+  });
+
+  it("CONTRAPRUEBA: el `conflict` del único violado (renombre de nodo) sigue SIN motivo", async () => {
+    const conUnico = {
+      getActor: async () => SUPERADMIN,
+      geografiaService: geografiaDoble({
+        renombrar: vi.fn(async () => {
+          throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "7" });
+        }),
+      }) as unknown as IGeografiaService,
+    };
+    expect(await renombrarNodoAction({ id: "n1", nombre: "Otro", nombreAnterior: "Uno" }, conUnico)).toEqual({ status: "conflict" });
+  });
+});
+
+describe("SLT-46 R55–R57 — reordenar los niveles por el borde, con el servicio REAL", () => {
+  const ORDEN = {
+    paisId: "XA",
+    niveles: [
+      { tipoId: "t2", nombreSingular: "Comuna", nombrePlural: "Comunas" },
+      { tipoId: "t1", nombreSingular: "Región", nombrePlural: "Regiones" },
+    ],
+  };
+  const conRepo = (reordenarTipos: Espia) => ({
+    getActor: async () => SUPERADMIN,
+    paisService: new PaisService({ reordenarTipos } as unknown as IPaisRepository),
+  });
+
+  it.each(["reordenado", "sin_cambio"] as const)("el repositorio responde `%s` → `ok`", async (r) => {
+    expect(await reordenarTiposAction(ORDEN, conRepo(vi.fn(async () => r)))).toEqual({ status: "ok" });
+  });
+
+  it("un país que no existe es `not_found`", async () => {
+    expect(await reordenarTiposAction(ORDEN, conRepo(vi.fn(async () => "no_existe" as const)))).toEqual({ status: "not_found" });
+  });
+
+  it("R36: un fallo de la base es `error` con log, sin datos de la fila", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await reordenarTiposAction(
+      ORDEN,
+      conRepo(
+        vi.fn(async () => {
+          throw new Error("la base se cayó; nombre=Juan Pérez");
+        }),
+      ),
+    );
+    expect(r).toEqual({ status: "error" });
+    const linea = String(log.mock.calls[0][0]);
+    expect(linea).toContain("reordenamiento de niveles");
+    expect(linea).not.toContain("Juan");
+    expect(linea).not.toContain("Comuna");
+  });
+
+  it("corre dentro de `comoPlataforma`", async () => {
+    let contexto: unknown;
+    const reordenarTipos = vi.fn(async () => {
+      contexto = contextoActual();
+      return "reordenado" as const;
+    });
+    await reordenarTiposAction(ORDEN, conRepo(reordenarTipos));
+    expect(contexto).toMatchObject({ tipo: "plataforma", ficha: "SL-20" });
+  });
+});
+
+describe("Decisión 2026-11-09 — el alta de nodo por el borde: el error en su campo, no en `entrada`", () => {
+  it("sin `nombre` → `fieldErrors.nombre`; la forma vieja → «Formato no válido» en `fieldErrors.formato`", async () => {
+    const { deps, geografiaService } = todosLosDobles(SUPERADMIN);
+    const sinNombre = await crearNodoAction({ padreId: "n1" }, deps);
+    if (sinNombre.status !== "validation_error") throw new Error(`se esperaba validation_error: ${sinNombre.status}`);
+    expect(Object.keys(sinNombre.fieldErrors)).toEqual(["nombre"]);
+
+    const vieja = await crearNodoAction({ nivel: "canton", provinciaId: "p1", nombre: "Buenos Aires" }, deps);
+    if (vieja.status !== "validation_error") throw new Error(`se esperaba validation_error: ${vieja.status}`);
+    expect(Object.keys(vieja.fieldErrors)).toEqual([CAMPO_DE_FORMATO]);
+    expect(vieja.fieldErrors[CAMPO_DE_FORMATO]?.[0]).toMatch(/^Formato no válido/);
+    expect(vieja.fieldErrors).not.toHaveProperty("entrada");
+    expect(geografiaService.crear).not.toHaveBeenCalled();
   });
 });
