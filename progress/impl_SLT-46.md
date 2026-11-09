@@ -378,3 +378,28 @@ Base `logistic_slt46` local; `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-siz
 
 Ningún rojo de integración es de T3/T4/T7 fuera de lo que T5 tiene que adaptar o de la decisión de
 `pais-repositorio`; el comportamiento nuevo (T3.2) está verde contra Postgres.
+
+## Tanda 3 (2026-11-09): T3.3, T3.4, T4.5, T4.6, T5, T8 (backend, sin UI)
+
+Sha de partida: `f12f6529`. Sin T6 ni `@dnd-kit` (tanda siguiente). Base `logistic_slt46` local.
+
+### R52 — maqueta aprobada (T0.2)
+
+- **Fecha:** 2026-11-09 (anterior a cualquier commit de T6: aún no hay ninguno).
+- **Referencia:** lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, **versión 7**.
+- **Quién la hizo:** Claude, a pedido del humano.
+- **Aprobación:** el humano, el 2026-11-09, con «aprobado» (`progress/features/SLT-46.md > Decisiones`).
+- Contenido aprobado: reordenar solo arrastrando por ⠿ (sin flechas visibles; teclado con la manija
+  enfocada), título «Niveles N (máximo 10)», modal de confirmación antes → después en guardar, editar,
+  crear, agregar nivel y retirar, validando antes de escribir.
+
+### Decisiones del humano (2026-11-09) que entran en esta tanda
+
+- Retirar `PaisRepository.crear` (seis nombres) y su contrato; `pais-repositorio.test.ts` a la forma
+  nueva (historial P+1 filas, R37). Cambio de aserción autorizado.
+- Entrada de alta de nodo (`z.union`): sin `nombre` → `fieldErrors.nombre`; forma vieja → error claro
+  de formato no válido (no `fieldErrors.entrada`).
+- P11: «Disponible» y CSV confirman en la pantalla. En backend: §4.7 y R61 no les asignan «antes» ni
+  control de cambio concurrente (R61 solo nombra renombre de nodo, edición de tipo y agregar nivel; R57
+  el reordenar). No se inventa contrato: se reporta al leader.
+- P12: estado pedido = actual → éxito sin escribir (R19 tal cual).
