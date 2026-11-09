@@ -652,3 +652,30 @@ revertida; `GeografiaService` sobre `clienteConSavepoint`. El `afterAll` exige
 
 **Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `Test Files 1 passed (1) · Tests 16 passed (16)`;
 `eslint` → «No issues found»; `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0.
+
+### T5.2 — `slt46-equivalencia-geografia.test.ts` (2026-11-09)
+
+**Archivo nuevo.** `tests/integration/db/slt46-equivalencia-geografia.test.ts` (4 casos). Comparación fila
+a fila en SQL: `nodo_geografico` (profundidad ≤ 3) `FULL OUTER JOIN` la unión de
+`provincia`/`canton`/`distrito` del país por `id`, comparando nombre, código, `activo`, padre, país y
+profundidad con `IS NOT DISTINCT FROM`; un id de un solo lado también es diferencia.
+
+- **Control:** CR antes de la secuencia = 0 diferencias.
+- **CR (R11, R12):** en una transacción revertida, por `GeografiaService`/`CargaDivisionService` con un
+  actor real: alta de provincia sin código, cantón `199` y distrito `19901` bajo San José (regla 1/3/5
+  dígitos con prefijo); renombre de la provincia, el cantón y un distrito sembrado; retiro y
+  reactivación de un cantón sembrado; retiro del distrito nuevo; CSV de SL-20 que completa el código `8`
+  de la provincia nueva y le crea un cantón y dos distritos (`creados {1:0, 2:1, 3:2}`, `existentes 1`,
+  `codigosCompletados 1`). Resultado: 0 diferencias en los ~591 nodos de CR y 6 filas más a cada lado.
+- **País de 4 niveles (`XP`):** altas en 1–4, renombres en 2, 3 (sembrado) y 4, retiro/reactivación en 3,
+  reactivación de un sembrado retirado, retiro de una raíz, CSV de 4 niveles (`creados {1:1,2:1,3:1,4:1}`,
+  un código completado). 0 diferencias en 1–3 (13 filas) y ningún nodo de profundidad 4 (5) con fila vieja (R3).
+- **Contraprueba:** con `nodo_geografico_copia_a_geografia_vieja` apagado en la transacción revertida, un
+  renombre por el service deja exactamente 1 diferencia (la comparación no es vacía por construcción);
+  tras el rollback el trigger sigue encendido.
+
+**Cambios de aserción en tests existentes.** Ninguno.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `Test Files 1 passed (1) · Tests 4 passed (4)`
+(dos rojos intermedios eran conteos esperados mal sumados por mí: 7 sembrados en 1–3 y 3 en 4, no 8 y 2);
+`eslint` → «No issues found»; `pnpm run typecheck` → exit 0.
