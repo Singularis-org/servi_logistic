@@ -21,10 +21,13 @@ F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarje
 
 <!-- tamano-pr-aceptado: 2026-11-09 · ~1.100–1.300 líneas, casi todo tests de integración; partir dejaría el reverso de cargos viejos sin traza en producción. Humano: «Aceptar en un PR». -->
 
+- 2026-11-09 · (humano, tras implementar) Un reverso histórico sin su cargo hace fallar la migración (R19 tal cual). ANTES del deploy a producción se cuenta en prod cuántos reversos no tienen cargo; con 0 se despliega, con más se decide con el dato. Leader acepta las propuestas técnicas 1–3 del implementer: `trazas[]` en Prisma (1 a 1 por el único SQL), el CHECK de `reverso_de` que también hace fallar el movimiento, y que la inmutabilidad deje pasar el cambio de empresa para que salga SL017 (R26).
+
 ## Preguntas abiertas
 Ninguna.
 
 ## Tandas
+- 2026-11-09 · T1–T5 · f4317328, bd499da6, 5a789878, c972899c, 0053975d · R1–R27 con test; vitest contra Postgres 71/71 (3 nuevos + suites de SL-40 y SLT-83); ida y vuelta de la migración con 19 movimientos: el libro sale idéntico y la traza cuadra 19/19; el down se niega con filas en vivo. Typecheck y guardias tenían rojos por `libphonenumber-js`, que faltaba en el node_modules del checkout principal: el leader corrió `pnpm install --frozen-lockfile`. La base `servi_logistic_slt85` se tiene que recrear antes de reutilizarla.
 
 ## Modelos (overrides)
 
