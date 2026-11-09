@@ -23,6 +23,7 @@ F1.4 (2026-11-09): spec de la entrega 1 aprobado por el humano («Aprobado, impl
 Ninguna.
 
 ## Tandas
+- 2026-11-09 · T1–T9 · 39896156…56aefdc1 · R1–R20 con test; typecheck 0; vitest de backend 152/152 (integración 9/9) y de frontend 134/134; test:guardias solo con el rojo del baseline; ida y vuelta de la migración 20261110120000 OK; E2E 17/17 ×2. Grupo aislamiento: 91/94, los 3 rojos de la landing `/` (timeout de carga) pasan cuando se corren solos: vigilar en CI. tamano-pr: 28 archivos y 2164 líneas (lo aceptado eran ~1.400). AVISO: el `.env` del checkout principal apunta a un proyecto Supabase prohibido (BASES_PROHIBIDAS); en el `.env` del worktree se vaciaron esas variables.
 
 ## Modelos (overrides)
 
