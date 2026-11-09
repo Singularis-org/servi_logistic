@@ -259,7 +259,7 @@ export function TiposDeNivelPais({ paisId, tipos }: Readonly<TiposDeNivelPaisPro
   function modalDe(p: Pendiente): { titulo: string; descripcion: string; filas: FilaDeCambio[]; confirmLabel: string } {
     if (p.tipo === "reorden") {
       return {
-        titulo: "Guardar el orden de los niveles",
+        titulo: "¿Guardar el nuevo orden de niveles?",
         descripcion:
           "Cada nivel toma el nombre que quedó en su posición. Los lugares no se mueven: siguen en su nivel.",
         filas: p.niveles.map((n, i) => ({
@@ -272,7 +272,7 @@ export function TiposDeNivelPais({ paisId, tipos }: Readonly<TiposDeNivelPaisPro
     }
     if (p.tipo === "renombre") {
       return {
-        titulo: `Editar el nivel ${p.posicion}`,
+        titulo: `¿Guardar el cambio del nivel ${p.posicion}?`,
         descripcion: "Cambia cómo se llama el nivel en todas las pantallas. Los lugares no cambian.",
         filas: [
           { etiqueta: "Singular", antes: p.tipoNivel.nombreSingular, despues: p.nuevo.singular },
@@ -282,7 +282,7 @@ export function TiposDeNivelPais({ paisId, tipos }: Readonly<TiposDeNivelPaisPro
       };
     }
     return {
-      titulo: `Agregar el nivel ${p.profundidad}`,
+      titulo: `¿Agregar el nivel ${p.profundidad}?`,
       descripcion: "El nivel nuevo va al final, debajo del más profundo. Un nivel no se puede quitar después.",
       filas: [
         ...actuales.map((t, i) => ({ etiqueta: `Nivel ${i + 1}`, antes: nombresDe(t), despues: nombresDe(t) })),

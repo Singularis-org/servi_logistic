@@ -213,7 +213,8 @@ describe("R58, R59 — alta de un lugar", () => {
     await user.type(screen.getByLabelText(/^Código oficial/), "0102");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
-    const dialogo = await screen.findByRole("dialog");
+    // D3 (maqueta v7): el título es una pregunta.
+    const dialogo = await screen.findByRole("dialog", { name: "¿Agregar «Pozo Almonte»?" });
     expect(within(dialogo).getByText("Dentro de Chile › Norte.")).toBeInTheDocument();
     expect(filasDelModal(dialogo)).toEqual([
       ["Nombre", "—Sin valor", "Pozo Almonte"],
@@ -221,7 +222,7 @@ describe("R58, R59 — alta de un lugar", () => {
       ["Tipo", "—Sin valor", "Comuna"],
     ]);
 
-    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Volver" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.crearNodoAction).not.toHaveBeenCalled();
   });
@@ -232,7 +233,7 @@ describe("R58, R59 — alta de un lugar", () => {
     await user.type(screen.getByLabelText(/^Nombre/), "Pozo Almonte");
     await user.type(screen.getByLabelText(/^Código oficial/), "0102");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, crear" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, agregar" }));
 
     await waitFor(() => expect(acciones.crearNodoAction).toHaveBeenCalledTimes(1));
     expect(acciones.crearNodoAction).toHaveBeenCalledWith({ padreId: "r1", nombre: "Pozo Almonte", codigo: "0102" });
@@ -245,7 +246,7 @@ describe("R58, R59 — alta de un lugar", () => {
     const user = await abrirAltaEnNorte();
     await user.type(screen.getByLabelText(/^Nombre/), "Arica");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, crear" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, agregar" }));
 
     expect(await screen.findByText("Ya existe un nodo con ese nombre o ese código.")).toBeInTheDocument();
     expect(screen.getByLabelText(/^Nombre/)).toHaveAttribute("aria-invalid", "true");
@@ -278,9 +279,9 @@ describe("R58, R59, R61 — renombre de un lugar", () => {
     await user.type(campo, "Arica Nueva");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
-    const dialogo = await screen.findByRole("dialog");
+    const dialogo = await screen.findByRole("dialog", { name: "¿Renombrar «Arica»?" });
     expect(filasDelModal(dialogo)).toEqual([["Nombre", "Arica", "Arica Nueva"]]);
-    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Volver" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.renombrarNodoAction).not.toHaveBeenCalled();
   });
@@ -342,14 +343,14 @@ describe("R58, R59, R20 — retiro de un lugar", () => {
     await expandir(user, "Norte");
     await user.click(screen.getByRole("button", { name: "Retirar Arica" }));
 
-    const dialogo = await screen.findByRole("dialog");
+    const dialogo = await screen.findByRole("dialog", { name: "¿Retirar «Arica»?" });
     expect(filasDelModal(dialogo)).toEqual([["Estado", "Activo", "Retirado"]]);
     expect(
       await within(dialogo).findByText("Órdenes sin entregar en este nodo, de todas las empresas: 3."),
     ).toBeInTheDocument();
     expect(acciones.contarOrdenesSinEntregarAction).toHaveBeenCalledWith({ id: "c1" });
 
-    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Volver" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.cambiarActivacionNodoAction).not.toHaveBeenCalled();
   });
@@ -392,9 +393,9 @@ describe("R58, R59 — reactivación de un lugar", () => {
     montar();
     await user.click(screen.getByRole("button", { name: "Reactivar Sur" }));
 
-    const dialogo = await screen.findByRole("dialog");
+    const dialogo = await screen.findByRole("dialog", { name: "¿Reactivar «Sur»?" });
     expect(filasDelModal(dialogo)).toEqual([["Estado", "Retirado", "Activo"]]);
-    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Volver" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.cambiarActivacionNodoAction).not.toHaveBeenCalled();
     expect(acciones.contarOrdenesSinEntregarAction).not.toHaveBeenCalled();
@@ -453,7 +454,7 @@ describe("R12 — Costa Rica, los mismos tres niveles", () => {
       ["Tipo", "—Sin valor", "Provincia"],
     ]);
     expect(acciones.crearNodoAction).not.toHaveBeenCalled();
-    await user.click(within(dialogo).getByRole("button", { name: "Sí, crear" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Sí, agregar" }));
 
     await waitFor(() => expect(acciones.crearNodoAction).toHaveBeenCalledTimes(1));
     expect(acciones.crearNodoAction).toHaveBeenCalledWith({ paisId: "CR", nombre: "Limón", codigo: "7" });

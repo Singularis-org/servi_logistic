@@ -92,7 +92,7 @@ describe("ConfirmarCambio", () => {
     const accion = vi.fn();
     const onOpenChange = vi.fn();
     render(<Harness accion={accion} onOpenChange={onOpenChange} />);
-    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(screen.getByRole("button", { name: "Volver" }));
     expect(accion).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

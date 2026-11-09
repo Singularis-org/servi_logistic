@@ -131,7 +131,7 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
 
   async function pedirAlta(user: Usuario, dialogo: HTMLElement) {
     await user.click(within(dialogo).getByRole("button", { name: "Dar de alta" }));
-    return screen.findByRole("dialog", { name: "Dar de alta un país" });
+    return screen.findByRole("dialog", { name: "¿Crear El Salvador con estos niveles?" });
   }
 
   function filaDelModal(modal: HTMLElement, dato: string) {
@@ -199,7 +199,7 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
 
     expect(within(dialogo).getByLabelText(/^Nivel 2, en singular/)).toHaveAttribute("aria-invalid", "true");
     expect(within(dialogo).getByText("Debe tener al menos 2 caracteres.")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Dar de alta un país" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "¿Crear El Salvador con estos niveles?" })).toBeNull();
     expect(crearPaisAction).not.toHaveBeenCalled();
   });
 
@@ -209,6 +209,8 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
     await escribirNivel(user, dialogo, 1, "Departamento", "Departamentos");
     await escribirNivel(user, dialogo, 2, "Municipio", "Municipios");
     await escribirNivel(user, dialogo, 3, "Aldea", "Aldeas");
+    // D3 (maqueta v7): encabezado de la equivalencia de columnas.
+    expect(within(dialogo).getByText("Columnas del CSV de carga")).toBeInTheDocument();
     const confirmar = await pedirAlta(user, dialogo);
 
     expect(filaDelModal(confirmar, "Código")).toHaveTextContent("SV");
@@ -220,8 +222,8 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
     expect(filaDelModal(confirmar, "Disponibilidad")).toHaveTextContent("No disponible");
     expect(within(confirmar).getAllByText("Sin valor")).toHaveLength(6);
 
-    await user.click(within(confirmar).getByRole("button", { name: "Cancelar" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Dar de alta un país" })).toBeNull());
+    await user.click(within(confirmar).getByRole("button", { name: "Volver" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "¿Crear El Salvador con estos niveles?" })).toBeNull());
     expect(crearPaisAction).not.toHaveBeenCalled();
   });
 

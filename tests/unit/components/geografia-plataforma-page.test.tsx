@@ -248,7 +248,7 @@ describe("R20 — los niveles con los nombres del país elegido", () => {
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     // SLT-46 (R58): guardar abre la confirmación; la action se llama al confirmar, sin `nivel` (R14).
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, crear" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, agregar" }));
     await waitFor(() =>
       expect(acciones.crearNodoAction).toHaveBeenCalledWith({
         nombre: "Petén",
@@ -358,7 +358,7 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     }
     await user.click(within(dialogo).getByRole("button", { name: "Dar de alta" }));
     expect(acciones.crearPaisAction).not.toHaveBeenCalled();
-    const confirmar = await screen.findByRole("dialog", { name: "Dar de alta un país" });
+    const confirmar = await screen.findByRole("dialog", { name: "¿Crear El Salvador con estos niveles?" });
     await user.click(within(confirmar).getByRole("button", { name: "Sí, crear" }));
 
     await waitFor(() => expect(acciones.crearPaisAction).toHaveBeenCalledTimes(1));
@@ -401,7 +401,7 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     }
     await user.click(within(dialogo).getByRole("button", { name: "Dar de alta" }));
     // SLT-46 (R58): el `conflict` llega tras confirmar; el modal se cierra y el error vuelve al buscador.
-    const confirmar = await screen.findByRole("dialog", { name: "Dar de alta un país" });
+    const confirmar = await screen.findByRole("dialog", { name: "¿Crear El Salvador con estos niveles?" });
     await user.click(within(confirmar).getByRole("button", { name: "Sí, crear" }));
     expect(await within(dialogo).findByText("Ese país ya está dado de alta.")).toBeInTheDocument();
   });
@@ -419,7 +419,7 @@ describe("R47 — el interruptor «Disponible» del país elegido", () => {
 
     await user.click(interruptor);
     // SLT-46 (P11): el interruptor pide confirmación con el antes → después; sin ella no se llama.
-    const confirmar = await screen.findByRole("dialog", { name: "Disponibilidad de Guatemala" });
+    const confirmar = await screen.findByRole("dialog", { name: "¿Cambiar la disponibilidad de Guatemala?" });
     const estado = within(confirmar).getByRole("rowheader", { name: "Estado" }).closest("tr") as HTMLElement;
     expect(within(estado).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Disponible", "No disponible"]);
     expect(acciones.cambiarDisponibilidadPaisAction).not.toHaveBeenCalled();
@@ -437,8 +437,8 @@ describe("R47 — el interruptor «Disponible» del país elegido", () => {
 
     const interruptor = screen.getByRole("switch", { name: "Disponible: Guatemala" });
     await user.click(interruptor);
-    const confirmar = await screen.findByRole("dialog", { name: "Disponibilidad de Guatemala" });
-    await user.click(within(confirmar).getByRole("button", { name: "Cancelar" }));
+    const confirmar = await screen.findByRole("dialog", { name: "¿Cambiar la disponibilidad de Guatemala?" });
+    await user.click(within(confirmar).getByRole("button", { name: "Volver" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.cambiarDisponibilidadPaisAction).not.toHaveBeenCalled();
@@ -460,7 +460,7 @@ describe("R24, R25, R28, R48 — la carga CSV", () => {
     await user.upload(screen.getByLabelText("Archivo CSV"), archivo);
     await user.click(screen.getByRole("button", { name: "Cargar" }));
     // SLT-46 (P11): antes de cargar, el modal con el archivo y el país; la action, al confirmar.
-    const confirmar = await screen.findByRole("dialog", { name: "Cargar la división" });
+    const confirmar = await screen.findByRole("dialog", { name: "¿Cargar la división de Guatemala?" });
     expect(within(confirmar).getByRole("rowheader", { name: "Archivo" }).closest("tr")).toHaveTextContent("division.csv");
     expect(within(confirmar).getByRole("rowheader", { name: "País" }).closest("tr")).toHaveTextContent("Guatemala");
     expect(acciones.cargarDivisionAction).not.toHaveBeenCalled();
@@ -513,8 +513,8 @@ describe("R24, R25, R28, R48 — la carga CSV", () => {
     await montar("GT");
     await user.upload(screen.getByLabelText("Archivo CSV"), new File(["x"], "division.csv", { type: "text/csv" }));
     await user.click(screen.getByRole("button", { name: "Cargar" }));
-    const confirmar = await screen.findByRole("dialog", { name: "Cargar la división" });
-    await user.click(within(confirmar).getByRole("button", { name: "Cancelar" }));
+    const confirmar = await screen.findByRole("dialog", { name: "¿Cargar la división de Guatemala?" });
+    await user.click(within(confirmar).getByRole("button", { name: "Volver" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.cargarDivisionAction).not.toHaveBeenCalled();
@@ -588,7 +588,7 @@ describe("R30, R33 — la carga CSV a P niveles", () => {
     await montar("GT");
     await user.upload(screen.getByLabelText("Archivo CSV"), new File(["x"], "division.csv", { type: "text/csv" }));
     await user.click(screen.getByRole("button", { name: "Cargar" }));
-    const confirmar = await screen.findByRole("dialog", { name: "Cargar la división" });
+    const confirmar = await screen.findByRole("dialog", { name: "¿Cargar la división de Guatemala?" });
     await user.click(within(confirmar).getByRole("button", { name: "Sí, cargar" }));
 
     const resumen = (await screen.findByText("Carga hecha. Altas:")).parentElement as HTMLElement;
@@ -667,7 +667,7 @@ describe("Decisión 13 — estados vacío y de error, y foco del alta", () => {
     await user.click(abrir);
     await user.keyboard("Palín{Enter}");
     // SLT-46 (R58): Enter pide guardar y abre la confirmación; se llama al confirmar, con el padre.
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, crear" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Sí, agregar" }));
     await waitFor(() =>
       expect(acciones.crearNodoAction).toHaveBeenCalledWith({
         padreId: "p-gua",

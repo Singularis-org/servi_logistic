@@ -346,20 +346,20 @@ export function GeografiaAdminModule({
     if (p.tipo === "alta") {
       const tipo = singular(p.profundidad);
       return {
-        titulo: `Alta: ${tipo}`,
+        titulo: `¿Agregar «${p.nombre}»?`,
         descripcion: `Dentro de ${[paisNombre, ...p.cadena].join(" › ")}.`,
         filas: [
           { etiqueta: "Nombre", antes: null, despues: p.nombre },
           { etiqueta: "Código", antes: null, despues: p.codigo ?? "Sin código" },
           { etiqueta: "Tipo", antes: null, despues: tipo },
         ],
-        confirmLabel: "Sí, crear",
+        confirmLabel: "Sí, agregar",
         destructivo: false,
       };
     }
     if (p.tipo === "renombre") {
       return {
-        titulo: `Renombrar: ${singular(p.nodo.profundidad)}`,
+        titulo: `¿Renombrar «${p.nodo.nombre}»?`,
         descripcion:
           "Cambiar el nombre no lo mueve, no lo retira ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.",
         filas: [{ etiqueta: "Nombre", antes: p.nodo.nombre, despues: p.nombre }],
@@ -369,7 +369,7 @@ export function GeografiaAdminModule({
     }
     const retiro = p.tipo === "retiro";
     return {
-      titulo: `${retiro ? "Retirar" : "Reactivar"} «${p.nodo.nombre}»`,
+      titulo: `¿${retiro ? "Retirar" : "Reactivar"} «${p.nodo.nombre}»?`,
       descripcion: retiro
         ? `${singular(p.nodo.profundidad)}. Retirarlo no lo borra ni toca a lo que cuelga de él: deja de ofrecerse y se puede reactivar.`
         : `${singular(p.nodo.profundidad)}. Vuelve a ofrecerse con lo que cuelga de él.`,

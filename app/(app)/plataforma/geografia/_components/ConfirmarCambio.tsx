@@ -85,7 +85,8 @@ export function ConfirmarCambio<R extends ResultadoDeCambio>({
   accion,
   onExito,
   onRechazo,
-  cancelLabel = "Cancelar",
+  // D3 (maqueta v7): el secundario de una confirmación es «Volver» (vuelve al formulario).
+  cancelLabel = "Volver",
   encabezadoDato = "Dato",
   encabezadoAntes = "Antes",
   encabezadoDespues = "Después",

@@ -154,14 +154,14 @@ describe("R53, R55 — reordenar sin guardar hasta confirmar", () => {
     await moverPrimeroAbajo(user);
 
     await user.click(screen.getByRole("button", { name: "Guardar orden…" }));
-    const dialogo = await screen.findByRole("dialog", { name: "Guardar el orden de los niveles" });
+    const dialogo = await screen.findByRole("dialog", { name: "¿Guardar el nuevo orden de niveles?" });
     expect(filasDelModal(dialogo)).toEqual([
       ["Nivel 1", "Región / Regiones", "Comuna / Comunas"],
       ["Nivel 2", "Comuna / Comunas", "Región / Regiones"],
       ["Nivel 3", "Barrio / Barrios", "Barrio / Barrios"],
     ]);
 
-    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Volver" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.reordenarTiposAction).not.toHaveBeenCalled();
     // Cancelar no descarta: el orden sigue en pantalla sin guardar.
@@ -175,7 +175,7 @@ describe("R53, R55 — reordenar sin guardar hasta confirmar", () => {
     await moverPrimeroAbajo(user);
 
     await user.click(screen.getByRole("button", { name: "Guardar orden…" }));
-    const dialogo = await screen.findByRole("dialog", { name: "Guardar el orden de los niveles" });
+    const dialogo = await screen.findByRole("dialog", { name: "¿Guardar el nuevo orden de niveles?" });
     await user.click(within(dialogo).getByRole("button", { name: "Sí, guardar" }));
 
     await waitFor(() => expect(acciones.reordenarTiposAction).toHaveBeenCalledTimes(1));
@@ -199,7 +199,7 @@ describe("R53, R55 — reordenar sin guardar hasta confirmar", () => {
     await moverPrimeroAbajo(user);
 
     await user.click(screen.getByRole("button", { name: "Guardar orden…" }));
-    const dialogo = await screen.findByRole("dialog", { name: "Guardar el orden de los niveles" });
+    const dialogo = await screen.findByRole("dialog", { name: "¿Guardar el nuevo orden de niveles?" });
     await user.click(within(dialogo).getByRole("button", { name: "Sí, guardar" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -238,7 +238,7 @@ describe("R25, R26 — editar singular y plural", () => {
     await user.type(screen.getByLabelText(/^Plural/), "Zonas");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
-    const dialogo = await screen.findByRole("dialog", { name: "Editar el nivel 2" });
+    const dialogo = await screen.findByRole("dialog", { name: "¿Guardar el cambio del nivel 2?" });
     expect(filasDelModal(dialogo)).toEqual([
       ["Singular", "Comuna", "Zona"],
       ["Plural", "Comunas", "Zonas"],
@@ -263,8 +263,8 @@ describe("R25, R26 — editar singular y plural", () => {
     await user.click(screen.getByRole("button", { name: "Editar nivel 1, Región" }));
     await user.type(screen.getByLabelText(/^Plural/), "s");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
-    const dialogo = await screen.findByRole("dialog", { name: "Editar el nivel 1" });
-    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    const dialogo = await screen.findByRole("dialog", { name: "¿Guardar el cambio del nivel 1?" });
+    await user.click(within(dialogo).getByRole("button", { name: "Volver" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(acciones.renombrarTipoNivelAction).not.toHaveBeenCalled();
@@ -325,7 +325,7 @@ describe("R48, R49 — agregar un nivel al final", () => {
     await user.type(screen.getByLabelText(/^Plural/), "Manzanas");
     await user.click(screen.getByRole("button", { name: "Agregar" }));
 
-    const dialogo = await screen.findByRole("dialog", { name: "Agregar el nivel 4" });
+    const dialogo = await screen.findByRole("dialog", { name: "¿Agregar el nivel 4?" });
     expect(filasDelModal(dialogo)).toEqual([
       ["Nivel 1", "Región / Regiones", "Región / Regiones"],
       ["Nivel 2", "Comuna / Comunas", "Comuna / Comunas"],

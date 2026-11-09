@@ -239,7 +239,7 @@ function InterruptorDisponible({ pais }: Readonly<{ pais: PaisDTO }>) {
         onOpenChange={(abierto) => {
           if (!abierto) setPedido(null);
         }}
-        titulo={`Disponibilidad de ${pais.nombre}`}
+        titulo={`¿Cambiar la disponibilidad de ${pais.nombre}?`}
         descripcion="Solo decide si el país se ofrece al dar de alta una empresa nueva. Apagarlo no afecta a las empresas que ya están en él."
         filas={[{ etiqueta: "Estado", antes: estado(disponible), despues: estado(pedido ?? !disponible) }]}
         confirmLabel="Sí, cambiar"
@@ -484,7 +484,7 @@ function NuevoPaisDialog({
             </div>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Columnas del CSV: </span>
+            <span className="block font-medium text-foreground">Columnas del CSV de carga</span>
             <span className="font-mono">{equivalenciaEnVivo(filas)}</span>
           </p>
         </section>
@@ -522,7 +522,7 @@ function NuevoPaisDialog({
         onOpenChange={(abierto) => {
           if (!abierto) setPendiente(null);
         }}
-        titulo="Dar de alta un país"
+        titulo={`¿Crear ${pendiente?.nombre ?? "el país"} con estos niveles?`}
         descripcion="Los niveles se crean en este orden: el primero es el de más arriba."
         filas={
           pendiente === null
@@ -686,7 +686,7 @@ function CargaDivisionCsv({
       <ConfirmarCambio<CargarDivisionActionResult>
         open={confirmando}
         onOpenChange={setConfirmando}
-        titulo="Cargar la división"
+        titulo={`¿Cargar la división de ${paisNombre}?`}
         descripcion="Lo que ya existe no cambia; si una sola fila está mal, no se carga nada."
         filas={[
           { etiqueta: "Archivo", antes: null, despues: archivo?.name ?? "" },
