@@ -9,12 +9,12 @@
 > **con la tabla nueva vacía, Costa Rica no cambia** (R38): toda task que toque una lectura deja
 > verdes, sin cambiar aserciones, los tests de integración existentes de esa lectura.
 >
-> P1–P3 de `requirements.md` siguen abiertas; las tasks están escritas con su propuesta. Si P2 se
-> cierra «sí», T7 no empieza sin la maqueta aprobada (T0.2).
+> P1–P3 cerradas por el humano el 2026-11-09 (`requirements.md > Decisiones cerradas`). Tercera
+> regla: **ninguna task de T7 empieza sin la maqueta aprobada (T0.2, R48)**; T1–T6 no la esperan.
 >
-> **Tamaño estimado del PR:** ~75 archivos (41 de código, base y docs; 33 de tests, de ellos 10 de
-> componentes que solo se adaptan a la nueva entrada del formulario; 1 E2E) y ~7 000 líneas
-> (≈2 800 de código y SQL, ≈4 200 de tests), sin `specs/` ni `progress/`. Pasa el máximo por defecto (40 archivos / 1 000
+> **Tamaño estimado del PR:** ~78 archivos (42 de código, base y docs; 35 de tests, de ellos 10 de
+> componentes que solo se adaptan a la nueva entrada del formulario; 1 E2E) y ~7 600 líneas
+> (≈2 950 de código y SQL, ≈4 650 de tests), sin `specs/` ni `progress/`. Pasa el máximo por defecto (40 archivos / 1 000
 > líneas); el humano decidió una sola tarjeta («¿Partir la tarjeta? No»).
 
 ## T0 — Lo heredado (no se re-crea)
@@ -42,9 +42,15 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [ ] **T0.1** Comprobar que la rama arranca en verde (`./init.sh`; si la base local no da, el check
   `gate-completo` de CI) y anotar el sha de partida en `progress/impl_SLT-89.md`.
   *Hecho:* verde anotado.
-- [ ] **T0.2** *(solo si P2 se cierra «sí»)* Maqueta del selector de N niveles, del modal único de
-  guardado de zona y del diálogo de miembros de grupo, aprobada por el humano; fecha y enlace en
-  `progress/impl_SLT-89.md`. Bloquea T7.
+- [ ] **T0.2** Maqueta de la parte visual, **bloqueante para T7.1, T7.2 y T7.3** (R48, decisión P2
+  del 2026-11-09). La arma el leader en un lienzo y la aprueba el humano; el implementer no la hace.
+  Cubre: el selector de N niveles (herencia, excepciones, bloqueos, búsqueda), el modal único de
+  guardado de zona con el aviso de impacto y la marca central, y en Tarifas el árbol de miembros y el
+  modal antes → después de las cuatro escrituras de grupos (crear, renombrar, cambiar miembros,
+  borrar) con el aviso de cambio concurrente.
+  *Hecho:* en `progress/impl_SLT-89.md`, la referencia al lienzo y la línea «Maqueta aprobada por el
+  humano el AAAA-MM-DD», escritas antes del primer commit de T7. Sin esa línea, T7 no empieza; T1–T6
+  siguen.
 
 ## T1 — La base (depende de T0.1)
 
@@ -121,22 +127,33 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T5 — Grupos sobre el nodo (depende de T2.5 y T3.2)
 
-- [ ] **T5.1** Esquemas de grupo (`nodoIds`, `antes`), `CambiarGrupoResult` con
-  `cambio_concurrente`, `GrupoDistritosDTO.nodos` en `lib/types/tarifa-flexible.ts`. (R17, R22)
+- [ ] **T5.1** Esquemas de grupo en `lib/types/tarifa-flexible.ts` (§6): `nodoIds`; `antes` en
+  cambiar miembros; `nombreAnterior` en renombrar; `antes: { nombre, distritoIds, nodoIds, valores }`
+  en borrar; `GrupoDistritosDTO.nodos`. `CambiarGrupoResult` y `BorrarGrupoResult` con
+  `conflict`/`cambio_concurrente` en `IGrupoDistritosService.ts`. (R17, R43–R45)
+  *Hecho:* typecheck verde sin tocar los llamadores de hoy (los campos nuevos son opcionales).
 - [ ] **T5.2** `GrupoDistritosRepository` (`nodosCubiertos`, `distritosEnOtroGrupo` sobre las dos
-  tablas, reparto por tabla, candado y «antes», historial con el recuento de las dos) y
-  `GrupoDistritosService` (cobertura, rol); interfaces; `lib/actions/tarifas.ts`. (R17, R18, R22, R31,
-  R37)
+  tablas, reparto por tabla, historial con el recuento de las dos) y `GrupoDistritosService`
+  (cobertura, rol); interfaces; `lib/actions/tarifas.ts`. (R17, R18, R31, R37)
+- [ ] **T5.2b** Cambio concurrente en las cuatro escrituras de grupos (§5.4): candado `FOR UPDATE`
+  del grupo, `mismoConjunto`, comparación del «antes» en `renombrar`, `fijarDistritos` y `borrar`
+  (después de `not_found`, antes de escribir), desenlace `cambio_concurrente` en repositorio y
+  `conflict` en service; las actions `renombrarGrupoDistritos`, `cambiarDistritosDeGrupo` y
+  `borrarGrupoDistritos` pasan el «antes» al service. Escribe `tests/integration/db/grupo-cambio-concurrente.test.ts`
+  (los casos de design §10, fila R43–R46) y los casos nuevos de
+  `tests/integration/actions/tarifas-action.test.ts`. Depende de T5.1 y T5.2. (R43–R46)
+  *Hecho:* esos dos archivos y los casos nuevos de `grupo-distritos-service.test.ts` (T5.5) en verde,
+  y los tests existentes de SLT-52/54 sobre grupos sin cambiar aserciones.
 - [ ] **T5.3** `TarifasPantallaRepository.distritosDeZona` desde el catálogo y `nodosDeZona` nuevo;
   `TarifasPantallaService.cargarZona` con `nodos`; interfaces. (R23, R38)
 - [ ] **T5.4** `tests/integration/db/grupo-nodo.test.ts`: miembro cantón y distrito heredado;
   precedencia distrito > cantón > provincia en cobro y pago (zona del mensajero); orden sin distrito
   sin grupo; normalización al guardar zona (asignado ↔ heredado conserva grupo, sale de la zona lo
-  saca con historial); fuera de cobertura y en otro grupo rechazados; cambio concurrente. (R17–R22,
-  R31)
+  saca con historial); fuera de cobertura y en otro grupo rechazados. (R17–R21, R31)
 - [ ] **T5.5** [P] `tests/unit/services/grupo-distritos-service.test.ts` y
-  `tests/unit/services/tarifas-pantalla-service.test.ts`: roles (`admin` lee, no escribe; otros
-  `forbidden` con doble que falla). (R37)
+  `tests/unit/services/tarifas-pantalla-service.test.ts`: roles en las cuatro escrituras y en la
+  lectura (`admin` lee, no escribe; otros `forbidden` con doble que falla); `cambio_concurrente` →
+  `conflict` con motivo. (R37, R43–R45)
 
 ## T6 — Aislamiento y equivalencia (depende de T3, T4, T5)
 
@@ -147,7 +164,10 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [ ] **T6.3** Dejar en `progress/impl_SLT-89.md` el guion para la persona que corre los tres scripts
   de R39 sobre la copia (ningún agente lo ejecuta). (R39)
 
-## T7 — Pantallas (depende de T2.4, T3.1, T4.1, T5.1; y de T0.2 si P2 = sí)
+## T7 — Pantallas (depende de T0.2 —maqueta aprobada—, T2.4, T3.1, T4.1, T5.1 y T5.2b)
+
+Cada task de este bloque sigue la maqueta aprobada en T0.2; si la maqueta pide algo que el spec no da,
+se para y se pregunta (design §8.4). (R48)
 
 - [ ] **T7.1** `GeografiaSelector` de N niveles (§8.1) y búsqueda N niveles en
   `_shared/filtrar-arbol-geografico.ts`; `tests/unit/components/geografia-selector-n-niveles.test.tsx`
@@ -160,8 +180,12 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   cifras, «Confirmar» bloqueado hasta tenerlas, cancelar no llama, `antes` siempre enviado,
   `cambio_concurrente` avisa y refresca). Los tests de componente de zonas que montan el formulario se
   adaptan a la nueva entrada sin cambiar lo que afirman. (R12, R13, R16)
-- [ ] **T7.3** `TarifasGrupos` con árbol de miembros y modal (§8.3); casos en
-  `tests/components/TarifasGrupos.test.tsx`. (R22, R23)
+- [ ] **T7.3** `TarifasGrupos` con árbol de miembros y el modal antes → después de las cuatro
+  escrituras (§8.3): validación previa con los esquemas, «antes» enviado al confirmar, borrar dentro
+  del mismo modal con el texto de SLT-54 R43, aviso `aria-live` y recarga ante `cambio_concurrente`;
+  textos nuevos en `tarifas-textos.ts`. Casos en `tests/components/TarifasGrupos.test.tsx` (§10, filas
+  R22 y R47); los casos de SLT-54 R42/R43 que ya hay se adaptan a llegar al botón por el modal sin
+  cambiar lo que afirman. (R22, R23, R47)
 
 ## T8 — E2E (depende de T7)
 
@@ -175,8 +199,9 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [ ] **T9.1** `docs/architecture.md` (Multi-empresa > Geografía jerárquica y Tarifas flexibles): la
   tabla hermana, la regla de miembros y el trigger de `orden`; `lib/types/historial-accion.ts` y
   `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` con el tipo nuevo.
-- [ ] **T9.2** `./init.sh` verde; mapa `R<n> → test` (R1–R42) en `progress/impl_SLT-89.md`; revisión
-  del diff contra R42 (sin cambios en filtros/exportes, FK viejas, regla de guardado, modelo viejo).
+- [ ] **T9.2** `./init.sh` verde; mapa `R<n> → test` (R1–R48) en `progress/impl_SLT-89.md`; revisión
+  del diff contra R42 (sin cambios en filtros/exportes, FK viejas, regla de guardado, modelo viejo,
+  grupo de la orden sin distrito) y de R48 (aprobación de la maqueta anterior al primer commit de T7).
 
 ## Archivos esperados
 
@@ -223,6 +248,7 @@ Código:
 - `app/(app)/configuracion/zonas/_components/GeografiaSelector.tsx`
 - `app/(app)/configuracion/_shared/filtrar-arbol-geografico.ts`
 - `app/(app)/configuracion/tarifas/_components/TarifasGrupos.tsx`
+- `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts`
 - `docs/architecture.md`
 
 Tests:
@@ -258,6 +284,8 @@ Tests:
 - `tests/integration/db/zona-nodo-rastro.test.ts`
 - `tests/integration/db/zona-nodo-dos-empresas.test.ts`
 - `tests/integration/db/grupo-nodo.test.ts`
+- `tests/integration/db/grupo-cambio-concurrente.test.ts`
+- `tests/integration/actions/tarifas-action.test.ts`
 - `tests/integration/db/slt89-equivalencia-cr.test.ts`
 - `e2e/zonas-nodo-canton.spec.ts`
 

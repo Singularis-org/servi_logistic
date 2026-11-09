@@ -1,6 +1,7 @@
 # SLT-89 — geo-jerarquica-zonas · design.md
 
-> Cómo se cumple `requirements.md` (R1–R42). Escrito por `spec_author` el 2026-11-09 sobre la rama
+> Cómo se cumple `requirements.md` (R1–R48; R43–R48 añadidos el 2026-11-09 con las respuestas del
+> humano a P1–P3: §5.2, §5.4, §6, §8.3, §8.4, §10, §11). Escrito por `spec_author` el 2026-11-09 sobre la rama
 > `feature/SLT-89-geo-jerarquica-zonas` (apilada sobre SLT-46, que trae 43, 44, 45, 65 y 71).
 > El MCP del grafo no tenía indexado este worktree: todo lo de abajo sale de Grep/Read del código.
 > Sin dependencias nuevas.
@@ -26,7 +27,8 @@ modelo viejo» lo excluyen, y SLT-90 «Planes: ciclo y cobro en la zona de cada 
 | Grupos | `grupo_distritos`, `grupo_distritos_distrito`, `GrupoDistritosService`/`Repository`, `lib/actions/tarifas.ts`, `TarifasGrupos.tsx` (SLT-52/54) | La tabla vieja sigue con los distritos asignados; una tabla hermana para el resto (§2.2) |
 | Resolver de tarifas | `_shared/resolver-tarifas.ts` (`gruposDeDistritos`, `grupoDe`) | Se generaliza a «miembro más cercano» (§4.3) sin cambiar `ParTarifa` |
 | Resolución de ubicación | v1 `geo-resolucion.ts` (vía `OrdenRepository` → `zonaQueCubre`), v2 `geo-ubicacion.ts` `resolverUbicacion` | No se tocan: heredan por el catálogo (R6, R7, R40) |
-| Modal y aviso de cambio concurrente | `components/shared/Modal.tsx`; patrón §4.7 de SLT-46 | Mismo resultado `{ status: "conflict", motivo: "cambio_concurrente" }` |
+| Modal y aviso de cambio concurrente | `components/shared/Modal.tsx`; patrón §4.7 de SLT-46 (`ConfirmarCambio.tsx` vive en `app/(app)/plataforma/geografia/_components/`, no se importa desde Configuración: se sigue el mismo patrón sobre `Modal`) | Mismo resultado `{ status: "conflict", motivo: "cambio_concurrente" }` |
+| Escrituras de grupos | `GrupoDistritosRepository.crear` / `renombrar` / `fijarDistritos` / `borrar`, `GrupoDistritosService`, actions de `lib/actions/tarifas.ts`, texto `borrarGrupoDetalle` de `tarifas-textos.ts` (SLT-54 R42, R43) | Ganan el «antes» y el `conflict` (§5.4); el texto de R43 entra tal cual en el modal de borrar |
 | Confirmación de la marca central | `impactoZonaCentral`, `descripcionConfirmacion` en `CrearZonaForm.tsx` (ficha 376) | Su texto entra tal cual en el modal único (§8.2) |
 | Scripts de equivalencia y rendimiento | `pnpm geo:equivalencia-dinero`, `geo:equivalencia-consultas`, `geo:explain-consultas` (SLT-44/65) | Se corren sin cambios: comparan la lectura congelada con la nueva (R39) |
 | Guardias | `organizacion-en-modelos`, `fk-misma-empresa`, `unicos-por-empresa`, `rls-por-empresa`, `historial-accion-escrituras-cubiertas`, `etiquetas-geograficas-sin-literal`, `geografia-sin-cte-recursiva`, helper `tests/unit/db/_migraciones-aditivas.ts` | Se cumplen; no se crean guardias nuevas salvo la de migraciones aditivas de SLT-89 |
@@ -203,7 +205,7 @@ colapso de `zonaQueCubre`. Todo en memoria sobre el catálogo: sin CTE (`geograf
    profundidad ≥ 4 no puede ser lugar de una orden en SLT-89).
 
 Número fijo de consultas por lote: +1 siempre, +la carga del catálogo cuando la empresa tiene
-miembros nuevos. Los pares sin distrito siguen sin grupo (R20, P1). `ClienteCobros` y `ClientePagos`
+miembros nuevos. Los pares sin distrito siguen sin grupo (R20; decisión P1 del 2026-11-09: va en SLT-48). `ClienteCobros` y `ClientePagos`
 ganan los delegados de la carga (`grupoDistritosNodo`, `zonaNodo`, `nodoGeografico`,
 `tipoNivelGeografico`, `organizacion` y el de marcas).
 
@@ -271,7 +273,7 @@ no tiene grupos) y sin historial de nodos (R30, SLT-76).
 
 - Entrada: `distritoIds` y `nodoIds` (los dos `[]` por defecto en el esquema); en `fijar`, `antes:
   { distritoIds, nodoIds }` opcional. `SELECT … FROM grupo_distritos WHERE id = $1 FOR UPDATE`, luego
-  comparación con el «antes» → `cambio_concurrente` (R22).
+  comparación con el «antes» → `cambio_concurrente` (R43). Detalle de las cuatro escrituras en §5.4.
 - El service valida con `nodosCubiertos` (R17, R18) y `distritosEnOtroGrupo` sobre las dos tablas.
 - El repositorio reparte: distrito con `zona_distrito` en la zona → `grupo_distritos_distrito`;
   cualquier otro → `grupo_distritos_nodo`. Por diferencia, como hoy. Historial `grupo_distritos_*`
@@ -300,6 +302,37 @@ Salida: `{ cambianDeZona, cambianDeTarifa, noSeMueven: { enBodegaSatelite, conGe
 enCierre } }`. Action `impactoAsignacionZona(input)` en `lib/actions/zonas.ts` (zod en el borde, tope
 de 5 000 ids), `ZonaService.impactoAsignacion` (solo `maestro`, R36).
 
+### 5.4 Escrituras de grupos: «antes» y cambio concurrente (R43–R46) — decisión P3 del 2026-11-09
+
+Mismo patrón que SLT-46 §4.7: sin columna de versión ni migración. El cliente manda el «antes» que
+el modal mostró; el repositorio, dentro de su transacción y **bajo `SELECT … FROM grupo_distritos
+WHERE id = $1 FOR UPDATE`**, lo compara con la base **después** de mirar si el grupo existe (si no,
+`not_found` como hoy) y antes de escribir nada. El candado sobre la fila del grupo choca con el
+`FOR KEY SHARE` que Postgres toma al insertar una fila hija con FK al grupo (`tarifa_valor`,
+`grupo_distritos_distrito`, `grupo_distritos_nodo`): mientras dura la comparación nadie puede añadir
+un valor ni un miembro a ese grupo, así que lo comparado sigue valiendo al escribir.
+
+| Escritura | «Antes» que manda el cliente | Comparación, bajo el candado | Si no coincide |
+|---|---|---|---|
+| Crear grupo | — (no hay estado previo) | Las de hoy: nombre libre en la zona (SLT-52 R10) y R18 (cubierto, no en otro grupo) | `validation_error` de hoy (R46) |
+| Renombrar | `nombreAnterior: string` (el nombre que el modal pintó a la izquierda) | Si el nombre actual ya es el pedido → sigue como hoy. Si no, nombre actual = `nombreAnterior` | `cambio_concurrente` (R44) |
+| Cambiar miembros | `antes: { distritoIds: string[]; nodoIds: string[] }` (los miembros que el modal pintó) | Conjunto actual de `grupo_distritos_distrito` ∪ `grupo_distritos_nodo` del grupo = `distritoIds ∪ nodoIds` (sin orden ni repetidos) | `cambio_concurrente` (R43) |
+| Borrar | `antes: { nombre: string; distritoIds: string[]; nodoIds: string[]; valores: number }` | Nombre actual = `nombre`; miembros como en «cambiar miembros»; número de `tarifa_valor` del grupo = `valores` (el mismo conteo que hoy pinta SLT-54 R43, `_count.valores` de `grupoConZona`, los de tienda incluidos) | `cambio_concurrente` (R45) |
+
+- La comparación de «cambiar miembros» y «borrar» usa una función pura nueva `mismoConjunto(a, b)`
+  en el repositorio (orden y repetidos no cuentan), con casos en el test de integración.
+- `cambio_concurrente` no escribe nada: ni filas de negocio ni historial (`grupo_distritos_cambiado` /
+  `grupo_distritos_borrado`). Con el «antes» igual a la base, cada escritura deja exactamente lo de
+  hoy (mismo historial, mismos conteos, R31).
+- Repositorio: `renombrar(id, nombre, actor, nombreAnterior?) → "ok" | "not_found" | "nombre_repetido"
+  | "cambio_concurrente"`; `fijarDistritos(…, antes?)` gana `"cambio_concurrente"`; `borrar(id, actor,
+  antes?) → "ok" | "not_found" | "cambio_concurrente"`. El parámetro nuevo va al final y opcional
+  para no romper a los llamadores de hoy (tests de SLT-52/54, fábricas); la pantalla lo manda siempre
+  y `TarifasGrupos.test.tsx` lo fija (como `antes` de la zona, §6).
+- Service: `renombrarGrupo(id, nombre, actor, nombreAnterior?)`, `borrarGrupo(id, actor, antes?)`;
+  el rol se mira primero (R37) y `cambio_concurrente` → `{ status: "conflict"; motivo:
+  "cambio_concurrente" }`.
+
 ## 6. Contratos
 
 | Pieza | Cambio |
@@ -309,8 +342,12 @@ de 5 000 ids), `ZonaService.impactoAsignacion` (solo `maestro`, R36).
 | `ZonaDTO` | + `nodosCount` |
 | `impactoAsignacionZona` | nuevo, entrada `{ zonaId?: string; distritoIds: string[]; nodoIds: string[] }`, salida `{ status: "ok"; impacto: ImpactoAsignacionDTO } \| ZonaActionError` |
 | `listarArbolDeZonas` | nuevo, salida `{ status: "ok"; arbol: ArbolDeZonasDTO } \| forbidden \| unauthenticated` |
-| `crearGrupoSchema`, `fijarDistritosSchema`, `cambiarDistritosDeGrupoSchema` | + `nodoIds` (default `[]`); `cambiarDistritosDeGrupoSchema` + `antes` opcional |
-| `CambiarGrupoResult` | + `conflict` con motivo `cambio_concurrente` |
+| `crearGrupoSchema`, `fijarDistritosSchema`, `cambiarDistritosDeGrupoSchema` | + `nodoIds` (default `[]`); `cambiarDistritosDeGrupoSchema` + `antes: { distritoIds, nodoIds }` opcional (R43) |
+| `renombrarGrupoDistritosSchema` | `{ id, nombre, nombreAnterior? }` (R44) |
+| `borrarGrupoDistritosSchema` | `{ id, antes?: { nombre, distritoIds, nodoIds, valores: z.number().int().min(0) } }` (R45); listas de `idSchema`, como `distritoIdsSchema` |
+| `CambiarGrupoResult` (renombrar y cambiar miembros) | + `{ status: "conflict"; motivo: "cambio_concurrente" }` |
+| `BorrarGrupoResult` | + `{ status: "conflict"; motivo: "cambio_concurrente" }` |
+| `CrearGrupoResult` | sin cambio (R46: un alta no tiene «antes») |
 | `GrupoDistritosDTO` | + `nodos` |
 | `DistritoDeSelector` (Tarifas) | sin cambio; `CargarZonaResult` gana `nodos` (sub-árbol de §4.4) |
 | API v1 / v2 | sin cambios de contrato (R40) |
@@ -348,11 +385,36 @@ tener las cifras. `conflict`/`cambio_concurrente` → cierra, aviso `aria-live` 
 Los tests de componente de la 376 se adaptan solo en cómo llegan al botón (un modal en vez de uno
 condicional); sus aserciones de texto e impacto no cambian.
 
-### 8.3 `TarifasGrupos` (R17, R22, R23)
+### 8.3 `TarifasGrupos` (R17, R22, R23, R43–R47)
 
 El diálogo de miembros muestra el sub-árbol cubierto (`nodos` de `CargarZonaResult`) con casillas a
-cualquier profundidad; los miembros de otro grupo, bloqueados con su nombre. Guardar → modal antes →
-después → action con `antes`. La marca especial de solo lectura (SLT-54 R45) se queda en los distritos.
+cualquier profundidad; los miembros de otro grupo, bloqueados con su nombre. La marca especial de solo
+lectura (SLT-54 R45) se queda en los distritos.
+
+Flujo común a las cuatro escrituras (R22): el diálogo de edición (nombre y/o miembros) valida con los
+esquemas de `lib/types/tarifa-flexible.ts` (`crearGrupoSchema`, `renombrarGrupoSchema`,
+`fijarDistritosSchema`); inválido → error en el campo, sin modal, sin llamada. Válido → modal de
+confirmación sobre `Modal` (`closeOnConfirm={false}`) con filas antes → después:
+
+| Escritura | Antes | Después | «Antes» que viaja al confirmar |
+|---|---|---|---|
+| Crear | «Sin grupo» | nombre; miembros con nivel y padre | — |
+| Renombrar | nombre actual | nombre nuevo | `nombreAnterior` |
+| Cambiar miembros | miembros actuales | entran / salen, con nivel y padre | `antes.{distritoIds,nodoIds}` del `GrupoDistritosDTO` mostrado |
+| Borrar | nombre y número de miembros | «Sin grupo» + `borrarGrupoDetalle(n)` (texto de SLT-54 R43, sin cambios, `confirmVariant="destructive"`) | `antes.{nombre,distritoIds,nodoIds,valores}`; `valores` = el mismo `n` que pinta el texto |
+
+Borrar deja de tener su `Modal` propio: es una fila más de esta tabla. Ante `conflict` con
+`cambio_concurrente` (R47): cierra el modal, pinta el aviso en una región `aria-live` fuera del modal y
+recarga la zona (`cargarZonaTarifas`, como hace hoy tras guardar). Los demás desenlaces (validación,
+`not_found`, `forbidden`) se pintan como hoy. Los textos nuevos (títulos del modal, «Sin grupo», el
+aviso) van a `tarifas-textos.ts`; las etiquetas de nivel salen de `tipos`, nunca de literales.
+
+### 8.4 Maqueta antes de la parte visual (R48) — decisión P2 del 2026-11-09
+
+§8.1, §8.2 y §8.3 describen el comportamiento, no el aspecto. El leader arma la maqueta de las tres
+piezas en un lienzo y el humano la aprueba; la referencia al lienzo y la fecha van a
+`progress/impl_SLT-89.md` (T0.2). Ninguna task de T7 empieza antes. Si la maqueta contradice algo de
+este diseño o de `requirements.md`, se para y se pregunta: no se ajusta el spec en silencio.
 
 ## 9. Equivalencia y rendimiento (R38, R39)
 
@@ -377,15 +439,18 @@ después → action con `antes`. La marca especial de solo lectura (SLT-54 R45) 
 | R14, R15 | `tests/integration/db/zona-nodo-impacto.test.ts` (aviso = guardado; sin escrituras; tarifa con y sin activación) |
 | R17, R18, R19, R21 | `tests/integration/db/grupo-nodo.test.ts`; `tests/unit/services/grupo-distritos-service.test.ts` |
 | R20 | `grupo-nodo.test.ts` (orden sin distrito bajo un cantón con grupo → sin grupo) |
-| R22, R23 | `tests/components/TarifasGrupos.test.tsx`; `grupo-nodo.test.ts` (cambio concurrente) |
+| R22, R23 | `tests/components/TarifasGrupos.test.tsx` (por cada una de las cuatro escrituras: inválido → sin modal ni llamada; válido → antes → después, action no llamada hasta confirmar, cancelar no llama, «antes» enviado; borrar conserva el texto de SLT-54 R43) |
+| R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts` (por escritura: «antes» igual → escribe lo de hoy; distinto → `cambio_concurrente` sin filas de negocio ni historial; borrar con un valor o un miembro añadido entre medias → no borra; renombrar al nombre que ya tiene → como hoy; grupo inexistente → `not_found`; crear con nombre recién tomado o miembro recién metido en otro grupo → `validation_error`); `tests/unit/services/grupo-distritos-service.test.ts` (traducción a `conflict`); `tests/integration/actions/tarifas-action.test.ts` (las actions pasan el «antes» y devuelven el `conflict`) |
+| R47 | `tests/components/TarifasGrupos.test.tsx` (cierra, aviso `aria-live`, recarga la zona) |
 | R24–R27 | `tests/unit/components/geografia-selector-n-niveles.test.tsx` |
+| R48 | Revisión: en `progress/impl_SLT-89.md` la referencia al lienzo y la fecha de aprobación son anteriores al primer commit de T7 (`git log`) |
 | R28, R29 | `tests/integration/db/orden-nodo-mas-profundo.test.ts` |
 | R30, R31 | `tests/integration/db/zona-nodo-rastro.test.ts` |
 | R32 | `tests/unit/db/slt89-migraciones-aditivas.test.ts` |
 | R33 | `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts` |
 | R34, R35 | `tests/integration/db/zona-nodo-dos-empresas.test.ts` (RLS, misma empresa, SL021, cobertura y precio por empresa) |
 | R36 | `tests/unit/services/zona-service.test.ts`, `tests/unit/services/geografia-service.test.ts` |
-| R37 | `tests/unit/services/grupo-distritos-service.test.ts`, `tests/unit/services/tarifas-pantalla-service.test.ts` |
+| R37 | `tests/unit/services/grupo-distritos-service.test.ts` (crear, renombrar, cambiar miembros y borrar), `tests/unit/services/tarifas-pantalla-service.test.ts` |
 | R38 | `tests/integration/db/slt89-equivalencia-cr.test.ts` + suites existentes sin cambios |
 | R39 | Salida de los tres scripts pegada en el PR (persona) |
 | R40 | Suite de contrato v1 de SLT-45 sin cambios |
@@ -410,15 +475,27 @@ después → action con `antes`. La marca especial de solo lectura (SLT-54 R45) 
 5. **Miembros de grupo solo en la tabla nueva desde ahora** (la vieja congelada). Descartada: un
    distrito saldría de la zona sin que la cascada lo sacara del grupo, y la escritura de grupos de CR
    cambiaría de tabla (historial y FK distintos de hoy).
-6. **Pasar el cantón al resolver de tarifas (P1).** Pospuesta, no descartada: ~15 archivos más para un
-   caso que hoy no existe en CR; va con SLT-48 si el humano no dice otra cosa.
+6. **Pasar el cantón al resolver de tarifas (P1).** Pospuesta: ~15 archivos más para un caso que hoy
+   no existe en CR. El humano la mandó a SLT-48 «Geografía jerárquica: retirar modelo viejo» el
+   2026-11-09.
+7. **Modal solo en lo que SLT-89 toca (crear grupo y cambiar miembros), dejando renombrar y borrar
+   como hoy** (la propuesta de P3). Descartada por el humano el 2026-11-09: toda escritura de grupos
+   pasa por el modal con cambio concurrente (§5.4).
+8. **Columna de versión (`updated_at` o contador) en `grupo_distritos` para el cambio concurrente.**
+   Descartada: es una migración sobre una tabla existente y un `UPDATE` más en cada escritura de
+   miembros y valores (los valores ni siquiera escriben en el grupo); SLT-46 §4.7 ya fijó el patrón del
+   «antes» sin versión, y el candado de §5.4 cubre las altas de valores y miembros por la FK.
+9. **Comparar en «borrar» los ids de los valores en vez de su número.** Descartada: el modal muestra
+   el número (SLT-54 R43), no los valores; el «antes» compara lo que la persona vio (SLT-46 §4.7).
 
 ## 12. Riesgos
 
 - **Normalización de miembros (§5.1 paso 7)** es la pieza nueva con más casos; se prueba con una
   tabla de casos (asignado → heredado, heredado → asignado, sale de la zona, excepción en otra zona)
   contra Postgres real.
-- **Tamaño del PR:** ~75 archivos y ~7 000 líneas (sin `specs/` ni `progress/`), por encima del
-  máximo de 40 archivos / 1 000 líneas. El humano decidió una sola tarjeta («¿Partir la tarjeta?»); se
+- **Tamaño del PR:** ~78 archivos y ~7 600 líneas (sin `specs/` ni `progress/`; +3 archivos y ~600
+  líneas por P3), por encima del máximo de 40 archivos / 1 000 líneas. El humano decidió una sola tarjeta («¿Partir la tarjeta?»); se
   dice aquí para que la revisión lo sepa.
 - **Rama apilada:** depende de SLT-46 (PR #107) sin mergear.
+- **Maqueta (R48):** T7 queda parada hasta la aprobación; el backend (T1–T6) no depende de ella. Si la
+  maqueta pide algo que el contrato de §6 no da (p. ej. otro dato en el «antes»), se vuelve al spec.

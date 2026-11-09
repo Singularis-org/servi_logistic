@@ -79,10 +79,15 @@
 | R17 | CUANDO el `maestro` crea un grupo o fija sus miembros, el sistema DEBE aceptar como miembro cualquier nodo cubierto por la zona del grupo (asignado a ella o heredado), a cualquier profundidad, y dejar exactamente esos miembros. | ¿Qué agrupa un grupo de tarifas? |
 | R18 | SI un nodo pedido no está cubierto por la zona del grupo, o ya es miembro de otro grupo de esa zona, ENTONCES el sistema DEBE responder `validation_error` nombrando el nodo, sin escribir nada (la regla de SLT-52 R11 llevada al nodo). | ¿Qué agrupa un grupo de tarifas? |
 | R19 | El grupo de tarifas de una orden con distrito en una zona DEBE ser el del miembro más cercano subiendo desde su distrito (el distrito, luego su cantón, luego su provincia…) entre los grupos de esa zona; en el pago, la zona es la del mensajero y en el cobro la de la orden (SLT-52 R16, R19, R21). | ¿Qué agrupa un grupo de tarifas? («gana el más específico») |
-| R20 | Una orden sin distrito NO DEBE usar grupos de tarifas, como hoy (SLT-52 R18). Ver P1. | ¿Qué agrupa un grupo de tarifas? |
+| R20 | Una orden sin distrito NO DEBE usar grupos de tarifas, como hoy (SLT-52 R18), aunque su cantón o un ancestro sea miembro de un grupo de su zona; darle grupo queda para SLT-48 «Geografía jerárquica: retirar modelo viejo». | ¿Qué agrupa un grupo de tarifas?; ¿La orden sin distrito usa grupo? |
 | R21 | CUANDO un guardado de zona deja a un miembro de un grupo sin la cobertura de la zona del grupo, el sistema DEBE sacarlo de ese grupo en la misma transacción y dejar una fila `grupo_distritos_cambiado` por grupo afectado, con cuántos miembros había y cuántos quedan; CUANDO el miembro sigue cubierto por esa zona (aunque pase de asignado a heredado o al revés), DEBE seguir en su grupo. | ¿Qué agrupa un grupo de tarifas?; ¿Qué pasa con las órdenes pendientes…? |
-| R22 | CUANDO el `maestro` pide crear un grupo o cambiar sus miembros, la pantalla DEBE mostrar un modal con el antes → después de los miembros y no escribir hasta la confirmación; SI al guardar los miembros del grupo en la base no son los que el modal mostró como «antes», ENTONCES el sistema DEBE responder `conflict` con motivo `cambio_concurrente` sin escribir nada. Ver P3. | Confirmación (heredada SLT-46) |
+| R22 | CUANDO el `maestro` pide crear un grupo, renombrarlo, cambiar sus miembros o borrarlo en Tarifas, la pantalla DEBE validar la entrada con los mismos esquemas que el servidor (si no es válida: error en su campo, sin modal y sin llamar a la action) y, si es válida, mostrar un modal con el antes → después: al crear, «sin grupo» → nombre y miembros; al renombrar, nombre de antes → nombre nuevo; al cambiar miembros, los que entran y los que salen; al borrar, nombre y número de miembros → «sin grupo», con el aviso de SLT-54 R43 de cuántos valores se borran con él (los de tienda incluidos). NO DEBE llamar a la action de escritura hasta que el `maestro` confirme, y cancelar NO DEBE escribir nada. Cada miembro DEBE mostrarse con su nivel y el nombre de su padre. | Confirmación (heredada SLT-46); Toda escritura de grupos pasa por el modal |
 | R23 | La pantalla de Tarifas DEBE ofrecer como posibles miembros de un grupo los nodos cubiertos por su zona, en árbol a todas sus profundidades, con el nombre del tipo de cada nivel; MIENTRAS la empresa no está activada, DEBE seguir mostrando de solo lectura la marca de zona especial de cada distrito (SLT-54 R45). | ¿Qué agrupa un grupo de tarifas?; ¿Pantalla para marcar zona especial por nodo? |
+| R43 | SI al cambiar los miembros de un grupo los que tiene en la base (distritos y demás nodos) no son los que el modal mostró como «antes», ENTONCES el sistema DEBE responder `conflict` con motivo `cambio_concurrente` sin escribir nada. | Confirmación; Toda escritura de grupos pasa por el modal |
+| R44 | SI al renombrar un grupo su nombre en la base no es el que el modal mostró como «antes» ni el nombre pedido, ENTONCES el sistema DEBE responder `conflict` con motivo `cambio_concurrente` sin escribir nada (ni nombre ni historial). | Toda escritura de grupos pasa por el modal |
+| R45 | SI al borrar un grupo su nombre, sus miembros (distritos y demás nodos) o su número de valores en la base no son los que el modal mostró como «antes», ENTONCES el sistema DEBE responder `conflict` con motivo `cambio_concurrente` sin borrar el grupo, ni sus miembros, ni sus valores, ni escribir historial. SI el grupo ya no existe, ENTONCES DEBE responder `not_found` como hoy. | Toda escritura de grupos pasa por el modal |
+| R46 | Crear un grupo no lleva «antes» (no hay estado previo): SI mientras el modal estaba abierto otro guardado tomó el mismo nombre en la zona o metió uno de los miembros pedidos en otro grupo o lo dejó sin cobertura, ENTONCES el sistema DEBE rechazarlo con los mismos `validation_error` de hoy (nombre repetido, SLT-52 R10) y de R18, sin escribir nada. | Toda escritura de grupos pasa por el modal |
+| R47 | CUANDO una escritura de grupo responde `conflict` con motivo `cambio_concurrente`, la pantalla DEBE cerrar el modal, avisar «Este dato cambió mientras tanto; revisa el valor actual» en una región visible con `aria-live` y volver a cargar los grupos y valores de la zona. | Confirmación (heredada SLT-46); Toda escritura de grupos pasa por el modal |
 
 ### Selector de N niveles
 
@@ -92,6 +97,7 @@
 | R25 | CUANDO el `maestro` marca un nodo, el selector DEBE asignar ese nodo (no sus descendientes uno a uno), quitar de la selección los descendientes que estaban asignados a esta misma zona y mostrarlos como heredados; los descendientes asignados a otra zona DEBEN quedar a la vista como excepciones. | ¿Un distrito puede ir a otra zona que su cantón? |
 | R26 | El selector NO DEBE permitir marcar un nodo asignado a otra zona (SLT-75 R15), ni un nodo que ya hereda esta misma zona de un ancestro marcado; SÍ DEBE permitir marcar un nodo que hereda otra zona (crea una excepción). | ¿Un distrito puede ir a otra zona que su cantón?; heredada SLT-75 |
 | R27 | CUANDO se abre una zona existente, el selector DEBE preseleccionar exactamente sus nodos asignados, retirados incluidos; la búsqueda DEBE encontrar nodos de cualquier profundidad con la normalización de nombres de siempre (`normalizeName`). | Alcance |
+| R48 | El selector de N niveles (R24–R27), el modal del guardado de zona (R12, R13, R16) y lo de grupos en Tarifas (R22, R23, R47) DEBEN programarse solo después de que el humano apruebe su maqueta, y DEBEN corresponder a ella; la referencia al lienzo y la fecha de aprobación DEBEN constar en `progress/impl_SLT-89.md` antes del primer commit de esas pantallas. El backend no espera a la maqueta. | ¿Maqueta antes de la parte visual? |
 
 ### Orden apuntando a cualquier nodo cubierto
 
@@ -121,7 +127,7 @@
 | R | Requisito | Decisión |
 |---|---|---|
 | R36 | SI un rol que no es `maestro` invoca crear o guardar una zona, el cálculo de impacto o el árbol de zonas, ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | Permisos |
-| R37 | SI un rol que no es `maestro` ni `admin` lee los grupos o los nodos de una zona en Tarifas, o un rol que no es `maestro` crea un grupo o cambia sus miembros, ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | Permisos |
+| R37 | SI un rol que no es `maestro` ni `admin` lee los grupos o los nodos de una zona en Tarifas, o un rol que no es `maestro` crea, renombra, borra un grupo o cambia sus miembros, ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | Permisos |
 
 ### Costa Rica igual
 
@@ -141,7 +147,11 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R42 | Esta feature NO DEBE cambiar: los filtros, exportes y nombres de lugar que muestran listados y etiquetas (SLT-47); las columnas `distrito_id` ni las FK viejas (SLT-48); la regla de qué profundidades se aceptan al crear una orden (SLT-45); el modelo viejo de tarifas (SLT-57). Es una sola tarjeta y un solo PR. | ¿Partir la tarjeta?; Alcance (Lo que NO entra) |
+| R42 | Esta feature NO DEBE cambiar: los filtros, exportes y nombres de lugar que muestran listados y etiquetas (SLT-47); las columnas `distrito_id` ni las FK viejas (SLT-48); la regla de qué profundidades se aceptan al crear una orden (SLT-45); el modelo viejo de tarifas (SLT-57); el grupo de una orden sin distrito (SLT-48, R20). Es una sola tarjeta y un solo PR. | ¿Partir la tarjeta?; Alcance (Lo que NO entra); ¿La orden sin distrito usa grupo? |
+
+> Numeración: R43–R47 (escrituras de grupos con modal y cambio concurrente) están en «Grupos de
+> tarifas sobre el nodo» y R48 (maqueta) en «Selector de N niveles»; se añadieron el 2026-11-09 tras
+> las respuestas del humano y no se renumeró lo anterior.
 
 ### Cobertura de las decisiones cerradas
 
@@ -153,29 +163,18 @@
 | ¿Un distrito puede ir a otra zona que su cantón? | R2, R3, R11, R24, R25, R26 |
 | ¿E2E? | R35, R41 |
 | ¿Partir la tarjeta? | R42 |
+| ¿La orden sin distrito usa grupo? (P1) | R20, R42 |
+| ¿Maqueta antes de la parte visual? (P2) | R48 |
+| Toda escritura de grupos pasa por el modal (P3) | R22, R43, R44, R45, R46, R47 |
 | Herencia (SLT-44) | R6, R7, R9 |
-| Confirmación (SLT-46) | R12, R15, R16, R22 |
+| Confirmación (SLT-46) | R12, R15, R16, R22, R43, R47 |
 | Permisos | R34, R36, R37 |
 | Migraciones (SLT-43) | R29, R32, R33, R34 |
 
 ## Preguntas abiertas
 
-Escritas por `spec_author` el 2026-11-09. El spec está escrito con la propuesta de cada una; si el
-humano elige otra cosa, cambian los requisitos citados.
-
-- **P1. ¿Una orden sin distrito (solo cantón) usa el grupo de tarifas de su cantón o provincia?**
-  La decisión «gana el más específico» diría que sí, pero hoy el cálculo de tarifas solo recibe el
-  distrito de la orden: para darle el cantón hay que tocar los ~15 sitios que arman ese cálculo
-  (listado, API, cotización, carga, cierre, devoluciones). En Costa Rica hoy no hay órdenes así con
-  zona. **Propuesta:** no en SLT-89; la orden sin distrito sigue sin grupo (R20) y se resuelve en
-  SLT-48 «Geografía jerárquica: retirar modelo viejo», cuando el lugar de la orden pase a ser el nodo.
-- **P2. ¿El selector de N niveles y el modal de impacto pasan por una maqueta aprobada antes de
-  programarlos?** En SLT-46 «Geografía jerárquica: administración de países» la pantalla esperó a la
-  maqueta (su P9). **Propuesta:** sí, la misma regla: la parte visual (T7) no empieza sin maqueta
-  aprobada; el backend avanza antes.
-- **P3. ¿El modal antes → después vale también para renombrar y borrar un grupo?** Esas dos
-  escrituras no cambian con esta feature (borrar ya pide confirmación, SLT-54 R43). **Propuesta:** el
-  modal entra solo en lo que SLT-89 toca: guardar zona, crear grupo y cambiar miembros (R12, R22).
+Ninguna. P1–P3 (escritas por `spec_author` el 2026-11-09) las respondió el humano el 2026-11-09 y
+están en «Decisiones cerradas».
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -186,6 +185,9 @@ humano elige otra cosa, cambian los requisitos citados.
 | 2026-11-09 | ¿Un distrito puede ir a otra zona que su cantón? | Sí, gana el más específico; el selector muestra herencia y excepciones. |
 | 2026-11-09 | ¿E2E? | Sí: asignar un cantón, aviso de impacto, confirmar, orden en ese cantón con zona y precio esperados, y aislamiento entre dos empresas. |
 | 2026-11-09 | ¿Partir la tarjeta? | No, una sola. |
+| 2026-11-09 | ¿La orden sin distrito usa grupo? (P1) | No en SLT-89: la orden sin distrito (solo cantón) sigue sin grupo de tarifas; va en SLT-48 «Geografía jerárquica: retirar modelo viejo». |
+| 2026-11-09 | ¿Maqueta antes de la parte visual? (P2) | Sí: el selector de N niveles, el modal de impacto y lo de grupos en Tarifas esperan una maqueta aprobada por el humano (la arma el leader en un lienzo); el backend avanza antes. |
+| 2026-11-09 | Toda escritura de grupos pasa por el modal (P3) | En Tarifas, crear, renombrar, cambiar miembros y borrar un grupo pasan por el modal antes → después con validación previa y control de cambio concurrente (SLT-46 §4.7). Borrar, que ya pedía confirmación (SLT-54 R43), pasa a ese modal. |
 | heredada SLT-44 | Herencia | Gana la asignación más cercana subiendo; colapso 1/0/>1 (`_shared/zona-colapso.ts`). |
 | heredada SLT-46 | Confirmación | Toda escritura pasa por modal antes → después con control de cambio concurrente. |
 | heredada | Permisos | Zonas: solo `maestro`; grupos: lectura maestro+admin, escritura maestro. |
