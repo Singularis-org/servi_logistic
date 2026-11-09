@@ -28,6 +28,8 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 - 2026-11-06 · Alcance y decisiones cerradas en `specs/SLT-46-geo-jerarquica-admin/requirements.md`
   (`/afinar-feature`; SLT-46 editada, SLT-89 creada para las zonas, SLT-48 suma mover nodos y depende de SLT-89).
 - 2026-11-09 (humano): la pantalla vieja no lleva puente; SLT-46 no abre PR hasta tener la maqueta aprobada y T6 hecha. Maqueta en el lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH (T0.2), pendiente de aprobación.
+- 2026-11-09 (humano): los niveles se reordenan arrastrando (drag and drop, con ▲▼ como alternativa de teclado), en el alta y en un país ya creado. En un país ya creado solo reasigna los nombres de cada profundidad (los lugares no se mueven: el tipo sale de la profundidad, P1). Falta pasarlo al spec (R nuevo) tras aprobar la maqueta.
+- 2026-11-09 (humano): toda acción que guarda, edita o retira pide confirmación en un modal («¿Seguro?», antes → después) y valida antes de escribir. Falta pasarlo al spec tras aprobar la maqueta.
 
 ## Preguntas abiertas
 - 2026-11-09 (implementer, tanda 2): ¿retirar `PaisRepository.crear` (seis nombres) y adaptar `pais-repositorio.test.ts` (1 rojo; su historial pasa a P+1 filas por R37)? Decide el humano.
