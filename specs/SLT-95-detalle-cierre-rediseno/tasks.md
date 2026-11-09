@@ -19,10 +19,10 @@ Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 
 
 ### T0 — Comprobaciones previas (sin código)
 
-- [ ] **T0.1** — Confirmar que un componente exportado y aún no montado no pone rojo ninguna guardia
+- [x] **T0.1** — Confirmar que un componente exportado y aún no montado no pone rojo ninguna guardia
   (`superficie-de-uso.guardia.test.ts` y la de dependencias). **Hecho:** nota en
   `progress/impl_SLT-95.md`. Si alguna lo marca, se para y se pregunta (no se monta a escondidas).
-- [ ] **T0.2** [P] — Confirmar los campos de `CierreDetalleAdminServiceResult` y
+- [x] **T0.2** [P] — Confirmar los campos de `CierreDetalleAdminServiceResult` y
   `CierreBodegaDetalleServiceResult` que usa la tabla `design.md > De dónde sale cada cifra`
   (`pagoTienda`, `cobradoSobreRecaudado`, `netoEmpresa`, `ganaLaTienda`, `partesPorTienda`,
   `paraLaCentral`, `totalesIngreso`, `ivaFacturado`, `rechazosDeTienda`,
@@ -31,7 +31,7 @@ Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 
 
 ### T1 — Lógica pura
 
-- [ ] **T1.1** — `components/private/cierres/detalle/detalle-cierre-vista.ts`: `cifrasDe`,
+- [x] **T1.1** — `components/private/cierres/detalle/detalle-cierre-vista.ts`: `cifrasDe`,
   `metodosVisibles`, `avisosDe`, `pestanasDe`, `accionesDe`, `lineasDinero` para `tipo`
   mensajero y bodega y las tres audiencias. **Hecho:** `tests/unit/utils/detalle-cierre-vista.test.ts`
   cubre, con los números de `design.md > Números escritos a mano`:
@@ -41,20 +41,20 @@ Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 
   - pestañas por la tabla de R10, con «Rechazados por la tienda (0)» presente (R10, D11);
   - acciones del pie por la tabla de R12, con y sin permiso (R12);
   - contraprueba: con `netoEmpresa` cambiado en el doble, la cifra 4 cambia.
-- [ ] **T1.2** [P] — `detalle-cierre-labels.ts`: rótulos nuevos en «tú», reusando los `*_LABEL`
+- [x] **T1.2** [P] — `detalle-cierre-labels.ts`: rótulos nuevos en «tú», reusando los `*_LABEL`
   existentes donde la cifra ya tiene nombre. **Hecho:** typecheck verde; ningún rótulo «Debe» ni
   «Ganancia» de la empresa exportado (R9).
-- [ ] **T1.3** [P] — Mover `lineasCascadaCentral` y `lineasCascadaDueno` de
+- [x] **T1.3** [P] — Mover `lineasCascadaCentral` y `lineasCascadaDueno` de
   `CierresBodegaAdminModule.tsx` a `app/(app)/cierres-admin/_components/cascadas-bodega.ts`, sin
   cambiar ni una línea; el módulo las importa. **Hecho:** `CierreBodegaDetalleCascadas.test.tsx`
   verde sin tocar sus aserciones.
 
 ### T2 — Componentes
 
-- [ ] **T2.1** — `Cuenta.tsx`: tarjeta en formato cascada (R15) con `data-signo` por línea.
+- [x] **T2.1** — `Cuenta.tsx`: tarjeta en formato cascada (R15) con `data-signo` por línea.
   **Hecho:** cubierta por `DetalleCierreDinero.test.tsx` (operador delante del rótulo, subtotal con
   raya punteada, total en negrita).
-- [ ] **T2.2** — `CifrasCierre.tsx` y `DineroCierre.tsx` (mensajero y bodega). **Hecho:**
+- [x] **T2.2** — `CifrasCierre.tsx` y `DineroCierre.tsx` (mensajero y bodega). **Hecho:**
   `tests/components/DetalleCierreDinero.test.tsx` lee del DOM con literales:
   - mensajero: 100 000,00 · 94 350,00 · 3 000,00 · 3 500,00; contexto «ganan en total» 92 090,00
     (R6, R8); Transferencia ausente (R7);
@@ -64,7 +64,7 @@ Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 
   - bodega: 96 500,00 y las tres cascadas (R16);
   - audiencia mensajero: 3 cifras y ningún texto del dinero de la empresa (R6, R9);
   - ningún «Debe»; `netoEmpresa` −250,00 con su signo (R9, R6).
-- [ ] **T2.3** — `DetalleCierre.tsx` sobre `components/ui/dialog` (marco modal) o región (marco
+- [x] **T2.3** — `DetalleCierre.tsx` sobre `components/ui/dialog` (marco modal) o región (marco
   página): cabecera y estado (R2, R3), franja fija (R4, R5), cifras, `tablist` (R10, R20), un solo
   `tabpanel` desplazable (R11), pie fijo (R12), slots de pestaña. **Hecho:**
   `tests/components/DetalleCierre.test.tsx` afirma:
@@ -79,10 +79,10 @@ Tamaño estimado: 13 archivos, ~950 líneas (6 de código nuevo ~560, 1 movido, 
 
 ### T3 — Guardias
 
-- [ ] **T3.1** — Ampliar el censo de `tests/unit/guards/liquidacion-money-safe.test.ts` a
+- [x] **T3.1** — Ampliar el censo de `tests/unit/guards/liquidacion-money-safe.test.ts` a
   `components/private/cierres/`. **Hecho:** la guardia caza un `Number(monto)` colado en un archivo
   de la carpeta (contraprueba anotada) (R71).
-- [ ] **T3.2** [P] — `tests/components/DineroIdentidadesEnPantalla.test.tsx`: añadir la superficie
+- [x] **T3.2** [P] — `tests/components/DineroIdentidadesEnPantalla.test.tsx`: añadir la superficie
   nueva (recaudado − sale de lo recaudado = se le paga hoy; facturado − IVA − pago − bodega = le
   queda; recaudado − mensajeros − bodega = debe llegar a la central), leídas del DOM vía
   `data-signo`. **Hecho:** verde, y rojo si se cambia una línea del doble.

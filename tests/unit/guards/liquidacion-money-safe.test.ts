@@ -147,6 +147,17 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // con él DENTRO: rojo nombrando la ruta. Es un archivo de cliente, así que pesan las cuatro
   // aserciones, incluidas la de `.toFixed(` y la de la biblioteca de decimales.
   "app/(app)/wallet/mensajeros/_components/wallet-mensajeros-labels.ts",
+  // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T3.1, R71) — el módulo de
+  // cierres rediseñado vive en `components/private/cierres/` y pinta TODO el dinero de un cierre:
+  // cifras, reparto y cuentas. Es cliente, así que pesan las cuatro aserciones. La cláusula de
+  // auto-captura de abajo mete en el censo cualquier archivo nuevo de esa carpeta (las rebanadas
+  // S2-S17 añaden `fila/`, `cola/` y `dialogos/`), o el primer test cae.
+  "components/private/cierres/detalle/detalle-cierre-vista.ts",
+  "components/private/cierres/detalle/detalle-cierre-labels.ts",
+  "components/private/cierres/detalle/DetalleCierre.tsx",
+  "components/private/cierres/detalle/CifrasCierre.tsx",
+  "components/private/cierres/detalle/DineroCierre.tsx",
+  "components/private/cierres/detalle/Cuenta.tsx",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */
@@ -198,6 +209,8 @@ describe("barrido transversal money-safe y de fuga de datos (feature 172)", () =
     const propios = [
       ...listarArchivos(path.join(RAIZ, "components/shared/liquidacion")),
       ...listarArchivos(path.join(RAIZ, "lib")).filter((a) => /[Ll]iquidacion/.test(a)),
+      // SLT-95 (T3.1, R71): todo el módulo de cierres rediseñado.
+      ...listarArchivos(path.join(RAIZ, "components/private/cierres")),
     ].map(relativa);
 
     expect(propios.length).toBeGreaterThan(0);
@@ -263,6 +276,12 @@ describe("barrido transversal money-safe y de fuga de datos (feature 172)", () =
     const real = codigo("components/shared/liquidacion/PagosRegistradosTabla.tsx");
     expect(cazadas(real)).toBe(0);
     expect(cazadas(`${real}\nconst x = Number(pago.monto);`)).toBe(1);
+
+    // SLT-95 (T3.1, R71) — la misma contraprueba sobre un archivo de `components/private/cierres/`:
+    // limpio tal cual, y cazado en cuanto se le cuela un `Number(monto)`.
+    const cuenta = codigo("components/private/cierres/detalle/Cuenta.tsx");
+    expect(cazadas(cuenta)).toBe(0);
+    expect(cazadas(`${cuenta}\nconst x = Number(l.monto);`)).toBe(1);
   });
 
   it("el DTO del comprobante no declara ningún identificador salvo el `id` del pago", () => {
