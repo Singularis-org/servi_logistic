@@ -280,7 +280,7 @@ export type ListarConsolidacionesSateliteCompletoInput = z.infer<
  * Vive aparte de `montoPositivoSchema` porque esa pieza la comparten la wallet y los pagos de gestion,
  * que siguen rechazando el 0 a proposito.
  */
-const montoCeroSchema = z.string().trim().regex(/^0+(.0{1,2})?$/);
+const montoCeroSchema = z.string().trim().regex(/^0+(\.0{1,2})?$/);
 
 /** SLT-96 — el aviso del borde cuando el monto de marcar/corregir no tiene forma de monto >= 0. */
 export const MENSAJE_MONTO_RECIBIDO_FORMA = "El monto debe ser 0 o mayor, con hasta 2 decimales.";

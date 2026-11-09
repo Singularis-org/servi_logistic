@@ -332,6 +332,14 @@ describe("SLT-96 (R6) — la forma del monto en el borde, en marcar y en corregi
     ["-0", { montoRecibido: "-0" }],
     ["-0.00", { montoRecibido: "-0.00" }],
     ["0 con tres decimales", { montoRecibido: "0.000" }],
+    // Vuelta 2 (H1): el separador del cero es el PUNTO literal. Con el punto sin escapar en el
+    // regex, "0,00", "0a0" y "0-0" pasaban el borde y reventaban en `Prisma.Decimal` (error interno),
+    // y "0x0" / "0e0" se aceptaban como cero.
+    ["0 con coma", { montoRecibido: "0,00" }],
+    ["0a0", { montoRecibido: "0a0" }],
+    ["0-0", { montoRecibido: "0-0" }],
+    ["0x0", { montoRecibido: "0x0" }],
+    ["0e0", { montoRecibido: "0e0" }],
     ["con tres decimales", { montoRecibido: "485.123" }],
     ["no numerico", { montoRecibido: "mucho" }],
     ["un number 0", { montoRecibido: 0 }],

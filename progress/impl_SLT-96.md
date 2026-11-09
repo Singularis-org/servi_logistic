@@ -174,3 +174,32 @@ esperado: la rama solo **restringe**.
 ### Veredicto T1
 R1-R9 están implementados según `design.md` §2. Cada uno tiene su test, y las 12 mutaciones quedaron medidas en
 rojo. El INT corrió contra Postgres real, con 7 tests ejecutados.
+
+## Vuelta 2 · cambios pedidos por el reviewer (`progress/review_SLT-96.md`, H1 y H2) — backend_dev, 2026-11-09
+
+### H1 (R6): el punto del regex del cero
+- **Causa.** `lib/types/conciliacion-satelites.ts` quedó con `/^0+(.0{1,2})?$/`, con el punto sin escapar. Al
+  escribir el archivo con un script inline por la shell se perdió una barra de escape. El M7 de la vuelta 1 se
+  escribió por el mismo camino, así que mutó el regex ya roto y no lo detectó.
+- **Efecto.**
+  - `"0,00"`, `"0a0"` y `"0-0"` pasaban el borde y reventaban en `Prisma.Decimal`: daban un error interno en vez
+    de `validation_error`.
+  - `"0x0"` y `"0e0"` se aceptaban como cero.
+- **Arreglo.** El regex es ahora `/^0+(\.0{1,2})?$/`, como en `design.md` §2.1. Lo edité con la herramienta de
+  edición, no por la shell.
+- **Test.** Al `it.each` de rechazos de R6 en AC, que se ejecuta para marcar Y para corregir, se le añadieron:
+  «0 con coma» (`"0,00"`), `"0a0"`, `"0-0"`, `"0x0"` y `"0e0"`. Cada caso exige `validation_error` con
+  `fieldErrors.montoRecibido` y que el servicio no se llame.
+- **Mutación H1** (quitar la `\` del regex): con el script `mut-h1.cjs`, escrito a archivo y no inline, que
+  restaura el archivo y comprueba que quedó idéntico (`restaurado: true`). El comando fue
+  `pnpm exec vitest run tests/unit/actions/conciliacion-satelites-actions.test.ts`:
+  - Sale `exit=1 Tests 10 failed | 62 passed (72)`.
+  - Los rojos son exactamente los 5 casos nuevos en marcar y los 5 en corregir.
+- **Sin mutar:** `Test Files 1 passed (1) · Tests 72 passed (72)`.
+- `pnpm exec eslint` sobre los 2 archivos da `LINT=0`. El typecheck, con `NODE_OPTIONS=--max-old-space-size=8192`,
+  da `TC_EXIT=0`.
+- `DATABASE_URL` se exportó a la desechable `slt96_t1` antes de cada vitest.
+
+### H2: tasks.md
+Las casillas de T1, T2 y T3 de `specs/SLT-96-consolidacion-cero-recibida/tasks.md` están en `[x]` (12 casillas).
+T3 la corrió el leader: gate local verde, `INIT_EXIT=0`, contra `slt96_t1`. T4 a T6 siguen abiertas.

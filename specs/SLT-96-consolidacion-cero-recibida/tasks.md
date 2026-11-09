@@ -14,17 +14,17 @@ están en `requirements.md > Trazabilidad`. `[P]` = puede ir en paralelo con las
 
 Dep.: —
 
-- [ ] `lib/types/conciliacion-satelites.ts`: `montoCeroSchema`, `montoRecibidoSchema`,
+- [x] `lib/types/conciliacion-satelites.ts`: `montoCeroSchema`, `montoRecibidoSchema`,
       `MENSAJE_MONTO_RECIBIDO_FORMA`, `MENSAJE_MONTO_CERO_CON_DECLARADO`; `marcarConsolidacionRecibidaSchema`
       usa `montoRecibidoSchema` y sigue `.strict()`; comentario de la 431 reescrito (`design.md` §2.1).
-- [ ] `lib/interfaces/repositories/ICierresBodegaAdminRepository.ts`: `MarcaConMontoResult` y los dos
+- [x] `lib/interfaces/repositories/ICierresBodegaAdminRepository.ts`: `MarcaConMontoResult` y los dos
       métodos que lo devuelven; comentarios de los dos inputs (§2.2).
-- [ ] `lib/repositories/CierresBodegaAdminRepository.ts`: `declaradoEsCero` y su uso en `marcarConciliado`
+- [x] `lib/repositories/CierresBodegaAdminRepository.ts`: `declaradoEsCero` y su uso en `marcarConciliado`
       y `corregirConciliacion`, dentro de la transacción, antes del `updateMany` y solo con monto 0.
-- [ ] `lib/interfaces/services/IConciliacionSatelitesService.ts` y `lib/services/ConciliacionSatelitesService.ts`:
+- [x] `lib/interfaces/services/IConciliacionSatelitesService.ts` y `lib/services/ConciliacionSatelitesService.ts`:
       `MarcaConMontoServiceResult` y la traducción a `validation_error` (§2.3).
-- [ ] `lib/actions/conciliacion-satelites.ts`: solo comentarios (§2.4).
-- [ ] Tests:
+- [x] `lib/actions/conciliacion-satelites.ts`: solo comentarios (§2.4).
+- [x] Tests:
   - AC: el caso «cero» sale del `it.each` de rechazos y el `it` «el CERO se rechaza a propósito» se
     reescribe. `"0"`/`"0.00"` llegan al servicio; `"-0"`, `"-0.00"` y los rechazos de siempre no, en marcar
     y en corregir (R6); clave `declarado` → `validation_error` (R5); `montoPositivoSchema` sigue
@@ -47,12 +47,12 @@ Dep.: —
 
 Dep.: — (contra el contrato de `design.md` §2.3; se integra al cerrar T1)
 
-- [ ] `components/shared/monto-cliente.ts`: `esMontoCero` movido desde
+- [x] `components/shared/monto-cliente.ts`: `esMontoCero` movido desde
       `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx`, que lo re-exporta; `montoValidoOCero`.
-- [ ] `components/shared/conciliacion/conciliacion-labels.ts`: `MARCAR_RECIBIDO_ERROR.montoConCero`.
-- [ ] `components/shared/conciliacion/MarcarRecibidoDialog.tsx`: `declaradoCero`, `montoOk` y el aviso
+- [x] `components/shared/conciliacion/conciliacion-labels.ts`: `MARCAR_RECIBIDO_ERROR.montoConCero`.
+- [x] `components/shared/conciliacion/MarcarRecibidoDialog.tsx`: `declaradoCero`, `montoOk` y el aviso
       del campo (§3); comentario de la línea 160 al día.
-- [ ] Tests:
+- [x] Tests:
   - MC (nuevo): `esMontoCero` y `montoValidoOCero`, con `"0"`, `"0.0"`, `"0.00"`, `"-0.00"`, `"0.01"`,
     `"10"`, `""`, `"0.000"`.
   - DLG (nuevo): R10, R11 (precargado, tecleado y modo corrección), R12 con un `onMarcar` doble que
@@ -64,8 +64,8 @@ Dep.: — (contra el contrato de `design.md` §2.3; se integra al cerrar T1)
 
 Dep.: T1, T2
 
-- [ ] `./init.sh` en verde, con `INIT_EXIT=$?` escrito dentro del log.
-- [ ] Mapa `R1..R13 → test` en `progress/impl_SLT-96.md`, con el nombre de cada `it`.
+- [x] `./init.sh` en verde, con `INIT_EXIT=$?` escrito dentro del log.
+- [x] Mapa `R1..R13 → test` en `progress/impl_SLT-96.md`, con el nombre de cada `it`.
 - **Hecho cuando:** el gate está verde y el mapa no deja ningún `R` sin test.
 
 ## T4 · Revisión
