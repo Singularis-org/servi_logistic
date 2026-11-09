@@ -28,7 +28,7 @@
     `lib/types/reporte-bug.ts` (zod `strict` de la entrada y los DTO) y `BUG_REPORT_EMAILS=` en
     `.env.example`.
   - **Hecho:** `tests/unit/config/reporte-bug-config.test.ts` verde.
-- [ ] **T4 [P]. Plantilla del correo** (R15, R18).
+- [x] **T4 [P]. Plantilla del correo** (R15, R18).
   - **Archivo:** `lib/services/email/plantillas/reporte-bug.ts` (design §7).
   - **Hecho:** `tests/unit/services/email/plantilla-reporte-bug.test.ts` verde.
 - [ ] **T5. Repositorio y servicio** (dep. T1, T2, T3, T4; R11, R13, R14, R15, R16, R17).
