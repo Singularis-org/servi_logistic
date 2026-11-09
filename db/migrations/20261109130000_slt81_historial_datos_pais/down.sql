@@ -1,4 +1,4 @@
--- SLT-81 — revierte 20261108120000_slt81_historial_datos_pais: quita de `historial_plataforma_accion`
+-- SLT-81 — revierte 20261109130000_slt81_historial_datos_pais: quita de `historial_plataforma_accion`
 -- los cinco valores de los datos del país y de `historial_plataforma_entidad` el `tipo_documento`.
 --
 -- ⚠️ PRECONDICIÓN: ninguna fila de `historial_plataforma` con esos valores. Si queda alguna, ABORTA con

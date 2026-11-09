@@ -12,7 +12,7 @@ El MCP del grafo no se usó: el índice del worktree no está (design, «Lo que 
 |---|---|
 | `3f3b5a75` | T0.0: la pregunta del país sin prefijo oficial pasa a «Decisiones cerradas» (+ línea de Decisiones de `progress/features/SLT-81.md`) |
 | `002d1f22` | T0.1: excepciones de `pais-sin-literales` a SLT-92 (R28) |
-| `6cf38e05` | T1.1: migración `20261108120000_slt81_historial_datos_pais` + `down.sql` + schema |
+| `6cf38e05` | T1.1: migración `20261109130000_slt81_historial_datos_pais` + `down.sql` + schema |
 | `6e55196a` | T1.2: schemas, `zonas-iana.ts`, `prefijo-oficial.ts` |
 | `8453083e` | T1.3: `IPaisRepository` / `PaisRepository` + integración |
 | `403a6417` | T1.4: `IPaisService` / `PaisService` + unit |
@@ -23,7 +23,7 @@ El MCP del grafo no se usó: el índice del worktree no está (design, «Lo que 
 
 ### Archivos
 - Spec: `specs/SLT-81-*/requirements.md` (pregunta cerrada), `design.md` §5 (la frase que remitía a ella), `tasks.md` (T0.0–T1.6 marcadas).
-- `db/migrations/20261108120000_slt81_historial_datos_pais/{migration,down}.sql`, `db/schema.prisma`.
+- `db/migrations/20261109130000_slt81_historial_datos_pais/{migration,down}.sql`, `db/schema.prisma`.
 - `lib/types/pais.ts`, `lib/utils/zonas-iana.ts` (nuevo), `lib/utils/prefijo-oficial.ts` (nuevo), `lib/validacion/telefono.ts` (solo el comentario de «único módulo»).
 - `lib/interfaces/repositories/IPaisRepository.ts`, `lib/repositories/PaisRepository.ts`.
 - `lib/interfaces/services/IPaisService.ts`, `lib/services/PaisService.ts`.
@@ -100,7 +100,7 @@ Pendientes de bloques siguientes: R2, R3, R18, R19, R21–R25, R27 (UI, guardias
 
 ### Preguntas abiertas
 - Ninguna que bloquee. A revisar por el leader: los desvíos 1, 7 y 8 (contrato del repositorio y la
-  forma de la clave) y que la migración va en `20261108120000`, detrás de `20261107130100` que trae `dev`.
+  forma de la clave) y que la migración va en `20261108120000`, detrás de `20261107130100` que trae `dev` (renombrada a `20261109130000` en F2.3).
 
 ## Tanda 2 · bloque 2
 
@@ -370,3 +370,19 @@ corre CI; R25 lo corre el check `e2e` de CI.
 - `./init.sh` no llega a verde mientras SLT-85 siga en vuelo sin assignee en el board (lo resuelve el leader/humano).
 - El E2E no se corrió en local: su primera corrida será la de CI.
 
+
+## Integración de dev (F2.3)
+- `e69bfe9c` Merge `origin/dev`. Conflictos en `tests/unit/guards/_pais-sin-literales-excepciones.ts` y
+  `pais-sin-literales.guardia.test.ts`: `FichaQueLoRetira = "SLT-92" | "SLT-90" | "SL-22"` (UI en SLT-92
+  «Pantallas: fechas y teléfonos en la zona y el prefijo del país de la empresa», planes en SLT-90
+  «Planes: ciclo y cobro en la zona de cada empresa», con el motivo de `dev`); la lista y el título del test, igual.
+- Migración renombrada con `git mv` a `20261109130000_slt81_historial_datos_pais`, detrás de la mayor de
+  `dev` (`20261109120000_cobro_plataforma_traza`). En el test de ida y vuelta, `M_ANTERIOR` =
+  `20261109120000_cobro_plataforma_traza`. SQL sin cambios: ninguna migración de SLT-94 «Cobro de
+  fulfillment por paquete y marca «se recoge en tienda»» ni de SLT-85 «Traza de facturación de los cobros
+  por orden» toca `historial_plataforma_accion`/`_entidad`.
+- Verificación: `prisma generate` (URL ficticia) ok; `pnpm typecheck` exit 0; eslint de los 3 archivos exit 0;
+  `pnpm test:guardias` → 340 pasan, 1 falla (`dependencias-declaradas-presentes`, 4 tests, baseline);
+  `vitest related` de los archivos con conflicto → 1 archivo, 36 tests verdes.
+- `./init.sh` → rojo en el paso del validador: `specs/SLT-96-consolidacion-cero-recibida/` (llega con `dev`)
+  no tiene ficha en `feature_list.json`. Ajeno a SLT-81: lo resuelve el leader reimportando el board (F0).

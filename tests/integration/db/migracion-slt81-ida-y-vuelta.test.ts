@@ -34,8 +34,8 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261107120200_slt42_usuario_documento_unico_por_tipo";
-const M = "20261108120000_slt81_historial_datos_pais";
+const M_ANTERIOR = "20261109120000_cobro_plataforma_traza";
+const M = "20261109130000_slt81_historial_datos_pais";
 const ACCIONES_NUEVAS = [
   "pais_datos_cambiados",
   "tipo_documento_creado",

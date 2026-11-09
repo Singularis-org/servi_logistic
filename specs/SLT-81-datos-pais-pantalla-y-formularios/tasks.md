@@ -23,7 +23,7 @@
 ## Bloque 1 — Datos y backend
 
 - [x] **T1.1 — Migración de los enums del historial** (design §2.1, §2.2).
-  `db/migrations/20261108120000_slt81_historial_datos_pais/{migration,down}.sql` (renombrar si `dev`
+  `db/migrations/20261109130000_slt81_historial_datos_pais/{migration,down}.sql` (renombrar si `dev`
   trae una posterior) y `db/schema.prisma`.
   **Hecho:** `prisma validate` ok; `tests/integration/db/migracion-slt81-ida-y-vuelta.test.ts` sube,
   baja y vuelve a subir; el `down` aborta si una fila usa un valor nuevo.
@@ -100,8 +100,8 @@
 
 ## Archivos esperados
 
-- `db/migrations/20261108120000_slt81_historial_datos_pais/migration.sql`
-- `db/migrations/20261108120000_slt81_historial_datos_pais/down.sql`
+- `db/migrations/20261109130000_slt81_historial_datos_pais/migration.sql`
+- `db/migrations/20261109130000_slt81_historial_datos_pais/down.sql`
 - `db/schema.prisma`
 - `lib/types/pais.ts`
 - `lib/utils/zonas-iana.ts`
