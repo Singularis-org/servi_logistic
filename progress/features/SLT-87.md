@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-87 | reporte-de-bugs | fullstack | high | feature/SLT-87-reporte-de-bugs | Camilo | pending |
+| SLT-87 | reporte-de-bugs | fullstack | high | feature/SLT-87-reporte-de-bugs | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 + /afinar-feature (2026-11-05): alcance sembrado. Siguiente: F1.2 (spec_author) cuando el humano lo pida.
+F1.4 (2026-11-09): spec de la entrega 1 aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer. Máximo de imágenes (5, contador «{n}/5 imágenes») anotado en SLT-98.
 
 ## Evaluación
 - zone fullstack: tabla nueva + storage + correo + botón en layout + módulo de plataforma.
