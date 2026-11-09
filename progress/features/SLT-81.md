@@ -38,6 +38,7 @@ Ninguna.
 ## Tandas
 - 2026-11-06 · Tanda 1 (backend_dev): T0.0, T0.1 y Bloque 1 (T1.1–T1.6) hechos; typecheck, lint, guardias (baseline) y unit verdes; integración a CI. Detalle: `progress/impl_SLT-81.md > Tanda 1`.
 - 2026-11-09 · Tanda 2 (frontend_dev): Bloque 2 (T2.1, T2.2) hecho; `@sin-superficie` retiradas; typecheck, lint, guardias (baseline) y tests de componente verdes. Detalle: `progress/impl_SLT-81.md > Tanda 2 · bloque 2`.
+- 2026-11-09 · Tanda 3 (frontend_dev): Bloque 3 (T3.1–T3.7) hecho: prefijo en el portal, los cinco formularios y la postulación («Preparar + aviso»), guardias de R24 y de tipos sin borrado; 8 desvíos anotados; typecheck, lint, guardias (baseline) y `vitest related` verdes. Detalle: `progress/impl_SLT-81.md > Tanda 3 · bloque 3`.
 
 ## Modelos (overrides)
 

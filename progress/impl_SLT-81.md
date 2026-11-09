@@ -162,3 +162,101 @@ R16 queda para T3.2 (la parte de UI es el formulario de usuario).
 
 ### Preguntas abiertas
 - Ninguna que bloquee. A revisar: los desvíos 1 y 3 (rol del aviso y rótulo «Documento»).
+
+## Tanda 3 · bloque 3
+
+Fecha: 2026-11-09. Rol: frontend_dev. Sin dependencias nuevas. El MCP del grafo no se usó (el
+worktree no está indexado, como en las tandas 1 y 2): Grep/Read.
+
+### Commits
+| Commit | Task |
+|---|---|
+| `f06f2019` | T3.1: `paisDeLaEmpresaParaUi` (misma lectura del layout), `PaisDeLaEmpresaProvider`, `useTelefonoDelPais`, `PrefijoTelefonico` (+ la línea de Decisiones del leader en `progress/features/SLT-81.md`) |
+| `257d410a` | T3.2: `UsuarioForm` (R16, R18, R23) |
+| `17ec253a` | T3.3: alta de empresa (R20) |
+| `f20e5ae0` | T3.4: corregir datos del cliente (R21) |
+| `109c2e46` | T3.5: destinatarios de WhatsApp (R22) |
+| `54c3d18c` | T3.6: postulación pública (R19, R27) |
+| `30320012` | T3.7: guardias `formularios-pais-sin-literales` (R24) y `tipos-documento-sin-borrado` (R13) |
+
+### Archivos
+- Nuevos: `providers/PaisDeLaEmpresaProvider.tsx`, `hooks/use-telefono-del-pais.ts`, `components/shared/PrefijoTelefonico.tsx`.
+- `lib/types/pais.ts` (`TelefonoDelPais`, `telefonoDelPais()`, `PaisDeLaEmpresaParaUi`), `lib/interfaces/services/IPaisService.ts` + `lib/services/PaisService.ts` (`paisDeLaEmpresaParaUi`).
+- `app/(app)/layout.tsx`: `paisDelActor` sustituye a `etiquetasDelActor`; monta `PaisDeLaEmpresaProvider` alrededor de `EtiquetasGeograficasProvider` (que no cambia).
+- `lib/interfaces/repositories/IUserRepository.ts` (`UsuarioPublico.tipoIdentificacionNombre?`, contrato de `listTiposIdentificacion()` sin país), `lib/services/UsuarioService.ts` (`obtener`).
+- Formularios: `app/(app)/configuracion/_components/UsuarioForm.tsx`, `app/(app)/plataforma/empresas/{page.tsx,_components/EmpresasModule.tsx}`, `app/(app)/ordenes/_components/CorregirDatosClienteModal.tsx`, `app/(app)/configuracion/envios-whatsapp/_components/DestinatariosField.tsx`, `app/postulacion/{page.tsx,_components/PostulacionForm.tsx}`.
+- Tests nuevos: `tests/components/PrefijoTelefonico.test.tsx`, `tests/components/DestinatariosField.test.tsx`, `tests/unit/guards/formularios-pais-sin-literales.guardia.test.ts`, `tests/unit/guards/tipos-documento-sin-borrado.guardia.test.ts`.
+- Tests ampliados o ajustados: `tests/components/AppLayout.test.tsx`, `tests/unit/services/pais-service.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts` (doble con el método nuevo), `tests/unit/components/usuario-form.test.tsx`, `tests/unit/services/usuario-service-superadmin.test.ts`, `tests/components/empresas-module.test.tsx`, `tests/components/EmpresasModule{Cobro,CobroPorcentual,Periodo,Plan}.test.tsx`, `tests/integration/empresas-page.test.tsx`, `tests/components/CorregirDatosCliente.ordenes.test.tsx`, `tests/components/PostulacionForm.test.tsx`, `tests/integration/postulacion-page.test.tsx`.
+
+### Mapa R → test (los de esta tanda)
+| R | Test |
+|---|---|
+| R13 (guardia) | `tipos-documento-sin-borrado.guardia.test.ts` «nada en lib/ ni app/ borra filas de tipo_identificacion» + contraprueba |
+| R16 (UI) | `usuario-form.test.tsx` «R16: el tipo inactivo del usuario se muestra deshabilitado como su valor actual», «R16: el tipo inactivo no se ofrece a otro usuario ni en un alta»; `usuario-service-superadmin.test.ts` «SLT-81 R16: obtener trae el nombre de su tipo aunque esté inactivo» |
+| R18 | `usuario-form.test.tsx` «R18: muestra +<prefijo> del proveedor y los tipos activos por nombre, en el orden recibido» |
+| R19 | `postulacion-page.test.tsx` «R19: dentro de `conEmpresa` de una empresa de XA…», «R19/R23: un país sin prefijo cargado baja `null`…»; `PostulacionForm.test.tsx` «R19: pinta +<prefijo> junto al teléfono» |
+| R20 | `empresas-module.test.tsx` «R20: al elegir Ecuador muestra +593 y solo sus tipos; al pasar a Costa Rica el tipo elegido se vacía», «R20: el alta envía el `value` del tipo del país elegido», «sin país elegido, el tipo está deshabilitado…»; `empresas-page.test.tsx` «SLT-81 R20: los tipos llegan con cada país…» |
+| R21 | `CorregirDatosCliente.ordenes.test.tsx` «R21: muestra +<prefijo>…», «R21: no valida el teléfono con la regla del país…» |
+| R22 | `DestinatariosField.test.tsx` «R22: con un teléfono que no sirve, el aviso dice +<prefijo> y <n> dígitos del país», «R22: con otro país, la regla es la de ese país» |
+| R23 | `PrefijoTelefonico.test.tsx` «R23: sin prefijo, el teléfono va solo con el aviso…», «R23: sin proveedor es null…», `telefonoDelPais (R23)`; casos R23 en `usuario-form`, `empresas-module`, `CorregirDatosCliente.ordenes`, `DestinatariosField`, `PostulacionForm`; `AppLayout.test.tsx` «SLT-81 R23: el superadmin y una lectura rota bajan `telefono: null`…»; `pais-service.test.ts` «SLT-81 R23: país sin prefijo → telefono null…» |
+| R24 | `formularios-pais-sin-literales.guardia.test.ts` (7 archivos + contraprueba) |
+| R27 | `postulacion-page.test.tsx` «R27: sin empresa en el contexto dice «La postulación se abre desde la página de una empresa», sin formulario ni tipos» |
+
+Pendientes del Bloque 4: R25 (E2E) y T4.2/T4.3.
+
+### Desvíos del design
+1. **`TelefonoDelPais` lleva `paisNombre`** además de `prefijo` y `digitosNacionales` (§7.1 da solo
+   los dos): el texto de R22 que fija §7.6 es «En <país> el número es…». Sale de la misma lectura.
+2. **R16: el nombre del tipo inactivo lo pone `UsuarioService.obtener`**, que llama a
+   `listTiposIdentificacion()` sin país (trae también los inactivos; con empresa en el contexto la
+   RLS `tipo_identificacion_del_pais` la acota a su país) y añade `tipoIdentificacionNombre` a
+   `UsuarioPublico` (opcional). No se tocó `UserRepository.findById`: lo lee el layout en cada página
+   y un `select` de la relación obligatoria rompería el portal si la RLS ocultara el tipo. Es una
+   consulta más, solo al abrir la edición. El contrato de `listTiposIdentificacion()` sin país se
+   reescribió: su único uso anterior (el alta de empresa) pasó a `listarPaisesParaAlta`.
+3. **`PrefijoTelefonico` con `mostrarAviso`**: en el alta de empresa, antes de elegir país, no se
+   pinta ni el prefijo ni el aviso de R23 (aún no hay país del que hablar). El árbol del componente
+   no cambia de forma con o sin prefijo, para que el `Input` no se remonte y pierda el foco.
+4. **El alta de empresa usa solo `prefijoTelefonico`** de `PaisParaAltaDTO` (no trae dígitos): un
+   país con prefijo y sin dígitos pinta el prefijo. Los formularios del portal usan `telefono: null`
+   si falta cualquiera de los dos (R23).
+5. **Postulación sin empresa no consulta nada** (tampoco vehículos) y pinta el aviso con
+   `role="note"`; el texto vive en `POSTULACION_SIN_EMPRESA` (exportado, listo para i18n).
+6. **R24 y el campo `cedula`**: la guardia descuenta `"cedula"` cuando es el NOMBRE del campo del
+   número (`id="cedula"`, `setField("cedula"`, `formData.set("cedula"`, la unión `| "cedula"` de un
+   `Record`), que existe en `UsuarioForm` y `PostulacionForm` y no habla del país. La contraprueba
+   fija que `{ value: "cedula", … }` sí la pone roja.
+7. **`empresas-module.test.tsx` «R9: sin país, el alta queda bloqueada»** ya no elige tipo (sin país
+   el `Select` está deshabilitado): sigue afirmando que el país queda marcado y que la action no se
+   llama; el tipo también queda marcado.
+
+8. **Commit extra `fd360b7e`** (`test(SLT-81)`): tres tests de Usuarios (`UsuariosTopePlan`,
+   `usuarios-aviso-zona`, `usuarios-nombre-no-imprimible`) tenían dobles de
+   `listarTiposIdentificacion` sin `nombre`; desde R18 la opción se rotula con él. Lo destapó
+   `vitest related`.
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0, 0 `error TS` (tras cada task y al final).
+- `pnpm exec eslint` de los archivos de cada commit: exit 0, sin avisos.
+- `pnpm test:guardias`: 334 archivos (330 pasan, 3 saltados, 1 falla) → 4 tests rojos, todos de
+  `dependencias-declaradas-presentes` (baseline). Las dos guardias nuevas verdes; cada una se puso
+  roja a mano una vez (`"506"` añadido a `PrefijoTelefonico.tsx`; un `tipoIdentificacion.delete` en
+  `lib/types/pais.ts`) y se revirtió.
+- Componentes y unit de cada R: `PrefijoTelefonico` 7/7; `AppLayout` + `asistente-panel-hermano` +
+  `etiquetas-geograficas-sin-literal` + `pais-service` (95 + 2 nuevos); `usuario-form` 37/37;
+  `usuario-service{,-superadmin}` 44/44; `empresas-module` + `empresas-page` 64/64 y los cuatro
+  `EmpresasModule*` verdes; `CorregirDatosCliente.ordenes` + `corregir-datos-sin-rastro.guardia` 65/65;
+  `DestinatariosField` 4/4; `postulacion-page` + `PostulacionForm` 25/25.
+- `vitest related --run --pool=threads --exclude "tests/integration/**"`, en lotes ≤ 5:
+  - lote 1 (`layout.tsx`, `PrefijoTelefonico.tsx`, `use-telefono-del-pais.ts`, `PaisDeLaEmpresaProvider.tsx`, `lib/types/pais.ts`): 235 archivos, 3863 tests, 1 fallo (`UsuariosTopePlan` «R28: crear con el tope…», el doble sin `nombre`) → arreglado en `fd360b7e`; los 3 archivos afectados, 25/25.
+  - lote 2 (`UsuarioForm`, `DestinatariosField`, `CorregirDatosClienteModal`, `EmpresasModule`, `empresas/page.tsx`): 57 archivos, 826 tests, 0 fallos.
+  - lote 3 (`PostulacionForm`, `postulacion/page.tsx`, `IPaisService`, `PaisService`, `UsuarioService`): 195 archivos, 2973 tests, 0 fallos.
+  - lote 4 (`IUserRepository.ts`): 287 archivos, 4117 pasan, 26 saltados, 0 fallos.
+  - Nota: dos lotes cortados por `timeout 590` (exit 124, carga de la máquina) se repitieron sin el corte, en segundo plano.
+- `tests/integration/postulacion-page.test.tsx` y `empresas-page.test.tsx` son de jsdom (sin base): corren y pasan aquí.
+
+**Veredicto:** T3.1–T3.7 hechas; typecheck, lint, guardias (salvo el baseline), tests de cada R y `vitest related` en verde.
+
+### Preguntas abiertas
+- Ninguna que bloquee. A revisar: desvío 2 (`obtener` lee la lista sin país para el nombre del tipo
+  inactivo) y desvío 6 (la guardia de R24 descuenta `"cedula"` como nombre de campo).

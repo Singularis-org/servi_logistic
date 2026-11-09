@@ -60,26 +60,26 @@
 
 ## Bloque 3 — Formularios (depende de T1.5)
 
-- [ ] **T3.1 — Prefijo en el portal** (§7.1). `app/(app)/layout.tsx`, `PaisService.paisDeLaEmpresaParaUi`,
+- [x] **T3.1 — Prefijo en el portal** (§7.1). `app/(app)/layout.tsx`, `PaisService.paisDeLaEmpresaParaUi`,
   `providers/PaisDeLaEmpresaProvider.tsx`, `hooks/use-telefono-del-pais.ts`,
   `components/shared/PrefijoTelefonico.tsx`.
   **Hecho:** `tests/components/PrefijoTelefonico.test.tsx` (R23); el test del layout, si existe,
   verde; `etiquetas-geograficas-sin-literal.guardia` verde.
-- [ ] **T3.2 [P] — Usuario** (§7.2; depende de T3.1). `UsuarioForm.tsx` y, si hace falta, el DTO de
+- [x] **T3.2 [P] — Usuario** (§7.2; depende de T3.1). `UsuarioForm.tsx` y, si hace falta, el DTO de
   edición. **Hecho:** `usuario-form.test.tsx` con R16, R18, R23.
-- [ ] **T3.3 [P] — Alta de empresa** (§7.4). `plataforma/empresas/page.tsx`, `EmpresasModule.tsx`.
+- [x] **T3.3 [P] — Alta de empresa** (§7.4). `plataforma/empresas/page.tsx`, `EmpresasModule.tsx`.
   **Hecho:** `empresas-module.test.tsx` con R20; los `EmpresasModule*.test.tsx` verdes con la prop
   nueva.
-- [ ] **T3.4 [P] — Corregir datos del cliente** (§7.5; depende de T3.1).
+- [x] **T3.4 [P] — Corregir datos del cliente** (§7.5; depende de T3.1).
   **Hecho:** `CorregirDatosCliente.ordenes.test.tsx` con R21; `corregir-datos-sin-rastro.guardia`
   verde.
-- [ ] **T3.5 [P] — Destinatarios de WhatsApp** (§7.6; depende de T3.1).
+- [x] **T3.5 [P] — Destinatarios de WhatsApp** (§7.6; depende de T3.1).
   **Hecho:** `tests/components/DestinatariosField.test.tsx` con R22.
-- [ ] **T3.6 — Postulación** (§7.3). `app/postulacion/page.tsx`, `PostulacionForm.tsx`.
+- [x] **T3.6 — Postulación** (§7.3). `app/postulacion/page.tsx`, `PostulacionForm.tsx`.
   **Hecho:** `postulacion-page.test.tsx` con R19 (dentro de `conEmpresa`) y R27 (sin empresa: el
   aviso «La postulación se abre desde la página de una empresa», sin formulario ni tipos);
   `PostulacionForm.test.tsx` verde.
-- [ ] **T3.7 — Guardia de R24** (§7.7; después de T3.2–T3.6).
+- [x] **T3.7 — Guardia de R24** (§7.7; después de T3.2–T3.6).
   **Hecho:** `formularios-pais-sin-literales.guardia.test.ts` y `tipos-documento-sin-borrado.guardia.test.ts`
   verdes, y cada una falla si se le reintroduce el literal o un `delete` (comprobado a mano una vez).
 
