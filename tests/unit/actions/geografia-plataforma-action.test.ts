@@ -278,7 +278,8 @@ describe("SL-20/R36, R52 — solo el único violado es `conflict`; cualquier otr
     expect(log).not.toHaveBeenCalled();
   });
 
-  it("⭑ R36: alta que falla por otra causa → `error`, NO `conflict`, y el log dice operación y nivel sin datos de la fila", async () => {
+  // SLT-46 (§4.1): la entrada ya no trae nivel; el log nombra el id que sí trae.
+  it("⭑ R36: alta que falla por otra causa → `error`, NO `conflict`, y el log dice operación e id, sin datos de la fila", async () => {
     const log = silenciarLog();
     const crear = vi.fn(async () => {
       throw otro();
@@ -288,7 +289,7 @@ describe("SL-20/R36, R52 — solo el único violado es `conflict`; cualquier otr
     expect(log).toHaveBeenCalledTimes(1);
     const linea = String(log.mock.calls[0][0]);
     expect(linea).toContain("alta de nodo");
-    expect(linea).toContain("nivel=distrito");
+    expect(linea).toContain("padre=c1");
     expect(linea).not.toContain("Juan");
   });
 
@@ -335,7 +336,7 @@ describe("SL-20/R36, R52 — solo el único violado es `conflict`; cualquier otr
     expect(log).toHaveBeenCalledTimes(1);
     const linea = String(log.mock.calls[0][0]);
     expect(linea).toContain(operacion);
-    expect(linea).toContain("nivel=distrito");
+    expect(linea).toContain("nodo=d1");
     expect(linea).not.toContain("Juan");
   });
 
@@ -352,7 +353,7 @@ describe("SL-20/R36, R52 — solo el único violado es `conflict`; cualquier otr
     expect(log).toHaveBeenCalledTimes(1);
     const linea = String(log.mock.calls[0][0]);
     expect(linea).toContain("conteo de ordenes");
-    expect(linea).toContain("nivel=canton");
+    expect(linea).toContain("nodo=c1");
     expect(linea).not.toContain("Juan");
   });
 
