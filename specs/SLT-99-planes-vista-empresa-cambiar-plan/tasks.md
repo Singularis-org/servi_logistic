@@ -60,7 +60,7 @@
 
 ## T3 — Servicio (R1, R2, R5, R12, R18) · backend · depende de T2
 
-- [ ] **T3.1** `IMiPlanCambioService` y `MiPlanCambioService` (§4): `verPlanes`, `cambiarPlan`,
+- [x] **T3.1** `IMiPlanCambioService` y `MiPlanCambioService` (§4): `verPlanes`, `cambiarPlan`,
   `cancelarCambio`, con el orden quién → zod estricto → repositorio con `ahora`. `verPlanes` calcula `corte`
   con `fechaDeEfectoPorDefecto(tipoCobro, ahora)`. Usa `mensajeTopesSobran` (`lib/planes/mensajes.ts`); si
   T5.1 aún no lo creó, lo crea aquí con su test en `planes-vista.test.ts`.
