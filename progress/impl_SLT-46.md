@@ -1253,3 +1253,74 @@ check `gate-completo` de CI** sobre el PR a `dev`. No se marca para no afirmar u
   `70 · 1057 | 1 skipped`; `53 · 673`. Único rojo: `dependencias-declaradas-presentes` (4 tests, aceptado,
   baseline). `superficie-de-uso` ya verde.
 - E2E: ninguno escrito ni tocado (R45). Sin push.
+
+## Vuelta 2 de review (implementer, 2026-11-09): B1, D1–D3, m1, m4–m8
+
+Informe: `progress/review_SLT-46.md` (vuelta 1, CAMBIOS). Decisiones D1–D3 en `progress/features/SLT-46.md`.
+
+### Commits
+| Commit | Qué |
+|---|---|
+| `dab245c7` | B1: `geografia-plataforma-page.test.tsx` espera `disponible: false` (R63); anotado en T6.6 |
+| `6b5c0daf` | D1: design §6 anota que los textos nuevos de CR quedan aceptados (dentro de R12) |
+| `1500c134` | Spec: m1 (P11–P13 cerradas, R58, `@dnd-kit` en design/tasks), m4 (§4.3 `ok` sin `nivel`), m5 (§4.1 `formato`/`nombre`), m6 (desvíos), §4.7 con D2; m8 (abajo) |
+| `3e4a9908` | D2 (frontend_dev): `ConfirmarCambio` cierra el modal ante `cambio_concurrente`, pinta el aviso fuera del modal (`Alert`, `role="alert"`) y llama `router.refresh()`; sin `onExito`/`onRechazo`; el aviso se olvida al reabrir. Se retira `cerrarLabel` (sin otro uso) |
+| `d67d6712` | D3 (frontend_dev): títulos «¿<Verbo> …?», secundario «Volver», «Columnas del CSV de carga» |
+
+### D3 — textos aplicados
+- `TiposDeNivelPais`: «¿Guardar el nuevo orden de niveles?», «¿Guardar el cambio del nivel k?», «¿Agregar el nivel k?».
+- `GeografiaPlataformaModule`: «¿Crear <país> con estos niveles?», «¿Cambiar la disponibilidad de <país>?»,
+  «¿Cargar la división de <país>?», encabezado «Columnas del CSV de carga».
+- `GeografiaAdminModule`: «¿Agregar «<nombre>»?», «¿Renombrar «<nombre>»?», «¿Retirar/Reactivar «<nombre>»?».
+- Secundario por defecto de `ConfirmarCambio` = «Volver» (el default de `components/shared/Modal` no cambia).
+- **A confirmar por el leader:** en el alta de un lugar el confirmar pasa de «Sí, crear» a «Sí, agregar»
+  (mismo verbo que el título, patrón «Sí, <verbo>» de D3). D1 aceptó «Sí, crear» para CR; si se prefiere
+  conservarlo, es una línea en `GeografiaAdminModule` y las aserciones listadas abajo.
+
+### Aserciones existentes que cambian (respaldo D2 o D3, humano/leader 2026-11-09)
+- `confirmar-cambio.test.tsx`: D2 — «con cambio concurrente… deja solo Cerrar» se reescribe: diálogo
+  cerrado, `onOpenChange(false)`, `role="alert"` con «Este dato cambió mientras tanto; revisa el valor
+  actual.», `refresh` 1 vez, acción 1 vez; caso nuevo «el aviso… se olvida al volver a abrir». D3 —
+  «Cancelar» → «Volver».
+- `geografia-arbol-n-niveles.test.tsx`: D2 — «R61 — conflict cambio_concurrente»: diálogo cerrado y aviso
+  en la pantalla. D3 — «Cancelar» → «Volver» y nombre del diálogo por su título nuevo en los cuatro
+  «válido…; cancelar no llama» (alta, renombre, retiro, reactivación); «Sí, crear» → «Sí, agregar» en
+  «confirmar llama una vez con el padre…», «un conflict por nombre de hermano…» y el caso R12 de CR.
+- `tipos-de-nivel-pais.test.tsx`: D2 — «R61: con motivo cambio_concurrente»: diálogo cerrado, aviso en la
+  pantalla, `refresh`, action 1 vez. D3 — nombres de diálogo (orden ×3, nivel 1 y 2, agregar nivel 4) y
+  «Cancelar» → «Volver» (reorden R58/R59, «cancelar el modal no llama a la action»).
+- `GeografiaPlataformaAltaPais.test.tsx`: D3 — «Dar de alta un país» → «¿Crear El Salvador con estos
+  niveles?» (×3, una en `pedirAlta`); «Cancelar» → «Volver» en «R58, R59…»; se añade la aserción de
+  «Columnas del CSV de carga».
+- `geografia-plataforma-page.test.tsx`: D3 — «Sí, crear» → «Sí, agregar» (Petén, Palín); título del alta
+  de país (×2); «Disponibilidad de Guatemala» → «¿Cambiar la disponibilidad de Guatemala?» (×2); «Cargar la
+  división» → «¿Cargar la división de Guatemala?» (×3); «Cancelar» → «Volver» en los dos «P11: cancelar…».
+
+### R61 → test (actualizado por D2)
+`tests/components/confirmar-cambio.test.tsx` › «…cierra el modal, avisa en la pantalla y refresca, sin
+onExito ni onRechazo» (cierre + aviso + `refresh`); en pantalla, `geografia-arbol-n-niveles` y
+`tipos-de-nivel-pais` › casos R61.
+
+### m8
+En el mapa consolidado de T9.1, la fila R39 aclara que el caso de la página lleva la etiqueta «R21» de
+SL-20 (la puerta de la página), no la R21 de SLT-46.
+
+### m7 — tamaño del PR (sin marcador de aceptación; lo decide el humano)
+`scripts/tamano-pr.mjs` no existe en este worktree. Medido con su misma regla (`git diff --numstat`,
+excluye `specs/**`, `progress/**`, lockfiles y snapshots; límite por defecto 40 archivos / 1000 líneas,
+`arnes.config.json` sin `gate.tamano_pr`):
+- diff propio de SLT-46 (`44d5d02e..d67d6712`): **89 archivos, +13 859 / −2 770 = 16 629 líneas**
+  (222 % del máximo de archivos, 1663 % del de líneas).
+- contra el merge-base con `origin/dev` (`689cc9df`, rama apilada sobre SLT-45 y anteriores sin mergear):
+  356 archivos, 53 607 líneas.
+
+### Salida real (sobre `d67d6712`)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → «No errors found», exit 0.
+- `eslint app/(app)/plataforma/geografia/_components` + los 5 tests de componentes tocados → exit 0.
+- `vitest run geografia-plataforma-page.test.tsx --maxWorkers=1` (B1, archivo entero) → `32 passed (32)`.
+- `vitest run confirmar-cambio geografia-arbol-n-niveles tipos-de-nivel-pais GeografiaPlataformaAltaPais
+  lista-reordenable geografia-plataforma-page --maxWorkers=1` → `Test Files 6 passed (6)` · `Tests 105 passed (105)`.
+- Guardias (337 archivos que casan `guard`, 6 lotes, `--maxWorkers=1`, sin base): `57 | 3 skipped · 670 | 24
+  skipped`; `55 · 757`; `1 failed | 54 · 4 failed | 764`; `55 · 953`; `56 · 852 | 1 skipped`; `56 · 709`.
+  Único rojo: `dependencias-declaradas-presentes` (4, aceptado del baseline).
+- Integración: no se tocó `lib/` ni `db/`; no hizo falta base. E2E: ninguno. Sin push.
