@@ -21,6 +21,8 @@ F1.4 (2026-11-09): spec de la entrega 1 aprobado por el humano («Aprobado, impl
 
 - 2026-11-09 · F2.2 (4bbcf107): OK, 0 bloqueantes, 5 menores. Humano: M2 (el botón tapa la paginación o las acciones en móvil) se arregla antes del PR; el leader suma M3 (el «Gracias» reaparece al reabrir) y M4 (Escape). M5 (título) corregido. M1: los E2E de reparto y dinero se verifican en CI.
 
+- 2026-11-09 · M2–M4 arreglados (be9ade5a): en móvil el contenido termina con pb-40 (lg:pb-12); al cerrar, el panel vuelve al formulario; Escape cierra con el foco en cualquier parte. Vitest 100/100, E2E de SLT-87 17/17; en el grupo reparto, 1 failed y 1 flaky en mis-asignaciones (carga de la máquina; corrido solo pasa 4/4, sin «intercepts pointer events»): lo confirma CI. Humano: mientras se hace scroll, las barras pegadas abajo pueden quedar bajo el botón; se mira en dev y, si molesta, ficha chica.
+
 ## Preguntas abiertas
 Ninguna.
 
