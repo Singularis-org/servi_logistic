@@ -136,3 +136,38 @@ Ningún R sin test.
 4. Test R19 extra: un reverso suelto sin cargo tumba la migración entera (23514).
 
 Veredicto: T1–T4, T5.1 y T5.4 hechos; T5.2 y T5.3 pendientes del leader.
+
+## Tanda 3 — arreglos de la review vuelta 1 (2026-11-09)
+
+| Hallazgo | Commit | Qué |
+|---|---|---|
+| m3 | `9fe97705` | `design.md §1.4`: `trazas[]` en vez de `traza?`; Prisma no admite 1 a 1 sobre el único compuesto, el 1 a 1 lo da el único SQL |
+| B1 | `9fe70dc3` | `migracion-slt85-ida-y-vuelta.test.ts` › `existe()`: `pg_proc` y `pg_trigger` acotados a `public` con `JOIN pg_namespace` (no `::regclass`: la tabla puede no existir) |
+| m1 | `607bfa35` | `down.sql`: `LOCK TABLE "cobro_plataforma_movimiento" IN SHARE ROW EXCLUSIVE MODE` tras el `BEGIN`, antes de comprobar filas en vivo |
+| B2 | este commit | E2E en local (abajo); T5.3 marcada; T5.2 sustituida por `gate-completo` de CI (decisión del humano) |
+
+### Evidencia
+- `catalogo-postgres-acota-esquema.guardia.test.ts`: 7/7 (antes 1 rojo).
+- `pnpm run test:guardias`: 342 archivos: 338 pasan, 1 falla, 3 saltados; 4 812 tests: 4 783 / 4 / 25. Los 4 rojos son de
+  `dependencias-declaradas-presentes.guardia.test.ts`, en `tests/baseline-rojos.json`. Ningún rojo fuera del baseline.
+- `migracion-slt85-ida-y-vuelta.test.ts` con el `LOCK` en el down: 5/5, ninguno saltado (base `servi_logistic_slt85`).
+- `pnpm run typecheck` (8 GB): 0 errores. `eslint` de lo tocado: limpio.
+
+### E2E en local (T5.3, B2)
+Base nueva y propia `servi_logistic_slt85_e2e` (DROP/CREATE, `prisma migrate deploy` con `20261109120000`, `db:seed`),
+recreada entre los dos grupos como en CI. `next build` con `NODE_OPTIONS=--max-old-space-size=8192` (exit 0, 437 s) y
+`next start`. Entorno de CI con `CI=1` (un reintento, `failOnFlakyTests`, `forbidOnly`); puerto 3044 y
+`NEXT_PUBLIC_APP_URL=http://localhost:3044` (`docs/verification.md > En local`), CI usa 3000.
+
+| Corrida | passed | failed | flaky | skipped | Duración |
+|---|---|---|---|---|---|
+| `CI=1 pnpm exec playwright test --project=dinero` (incluye `planes-costo-porcentual` y `cierre-modelo-nuevo-plan-porcentual`) | 84 | 0 | 0 | 0 | 6.2 min |
+| `CI=1 pnpm exec playwright test --project=aislamiento e2e/cobro-plataforma-sl40.spec.ts e2e/planes-costeo.spec.ts e2e/dos-empresas-humo.spec.ts` (más `plataforma-vacia` por dependencia) | 25 | 0 | 0 | 0 | 2.2 min |
+
+Resumen literal de playwright: `  84 passed (6.2m)` y `  25 passed (2.2m)`. Por spec en la segunda: sl40 2, dos-empresas-humo 8,
+planes-costeo 5, superadmin-arranque 3, superadmin-empresas 7.
+- Ruido del servidor sin efecto: «[geocodificacion] job sin credencial configurada» (igual que en CI).
+- Una sola corrida por grupo (no dos seguidas sobre la misma base).
+- Postgres local 16.1, no el `postgres:17` de CI.
+
+Veredicto de la tanda: B1, B2, m1 y m3 resueltos; m2 es nota de deploy para el leader (`progress/features/SLT-85.md`).

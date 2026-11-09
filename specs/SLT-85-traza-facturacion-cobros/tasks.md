@@ -47,9 +47,9 @@
 
 ## T5 — Cierre (depende de T3 y T4)
 - [x] **T5.1** Mapa `R<n> → test` en `progress/impl_SLT-85.md` (design §6).
-- [ ] **T5.2** `./init.sh` verde (los disparadores de `db/` corren `migration`, `migracion`, `demo-qa`,
+- [x] **T5.2** (sustituida por el check `gate-completo` de CI, decisión del humano del 2026-11-09: la máquina no tiene memoria para `./init.sh`) `./init.sh` verde (los disparadores de `db/` corren `migration`, `migracion`, `demo-qa`,
   `sql-real` y `verificar-rls`).
-- [ ] **T5.3** E2E en local, base desechable nueva: `pnpm exec playwright test --project=dinero`,
+- [x] **T5.3** E2E en local, base desechable nueva: `pnpm exec playwright test --project=dinero`,
   `e2e/cobro-plataforma-sl40.spec.ts`, `e2e/planes-costo-porcentual.spec.ts`, `e2e/planes-costeo.spec.ts`,
   `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts` y `e2e/dos-empresas-humo.spec.ts`. Constancia en
   `progress/impl_SLT-85.md`.
