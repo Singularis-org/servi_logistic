@@ -31,7 +31,7 @@
 - [x] **T4 [P]. Plantilla del correo** (R15, R18).
   - **Archivo:** `lib/services/email/plantillas/reporte-bug.ts` (design §7).
   - **Hecho:** `tests/unit/services/email/plantilla-reporte-bug.test.ts` verde.
-- [ ] **T5. Repositorio y servicio** (dep. T1, T2, T3, T4; R11, R13, R14, R15, R16, R17).
+- [x] **T5. Repositorio y servicio** (dep. T1, T2, T3, T4; R11, R13, R14, R15, R16, R17).
   - **Archivos:**
     - las interfaces `IBugReportRepository` e `IReporteBugService`;
     - `BugReportRepository.crear` en `comoPlataforma` (design §6);
