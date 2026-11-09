@@ -233,7 +233,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
 - [x] **T8.1** Modo `--equivalencia-geografia` en `scripts/geo-backfill-nodo.ts`, solo lectura, sin
   tocar los modos de SLT-43, y
   `tests/integration/db/geo-equivalencia-geografia.test.ts`. (R13)
-- [ ] **T8.2** Dejar en `progress/impl_SLT-46.md` el guion del ensayo de §10 para la persona que lo corre
+- [x] **T8.2** Dejar en `progress/impl_SLT-46.md` el guion del ensayo de §10 para la persona que lo corre
   (ningún agente lo ejecuta).
 
 ## T9 — Cierre

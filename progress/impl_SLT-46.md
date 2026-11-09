@@ -841,3 +841,95 @@ Aprobadas por el humano el 2026-11-09 en `docs/dependencias.md` (filas de `@dnd-
 @dnd-kit/utilities@3.2.2`: `package.json` +3 líneas (versión exacta); `pnpm-lock.yaml` +56 / −0 (las tres y la
 transitiva `@dnd-kit/accessibility@3.1.1`; ninguna otra entrada cambia). Aún sin uso en código (T6).
 `tests/guards/guard-dependencias-aprobadas.test.ts` → `Test Files 1 passed (1) · Tests 2 passed (2)`.
+
+### Revisión del `ok` sin `nivel` (implementer, 2026-11-09)
+
+El backend_dev quitó `nivel` de los `ok` de renombrar/retirar/reactivar en `carga-division` (3) y
+`geografia-superadmin-sin-empresa` (3) sin autorización explícita. Contraste con el contrato:
+- En la base de la rama (`merge-base` con `dev`, `689cc9dff`) `IGeografiaService` devolvía
+  `{ status: "ok"; nivel: NivelGeografico; id; … }`, con `NivelGeografico = "provincia" | "canton" | "distrito"`.
+- design §4.1 quita `nivel` de las tres entradas («Sin `nivel`») y la forma nueva administra nodos de
+  profundidad 1–10 (R14, P2): para un nodo de profundidad ≥ 4 no existe valor de `NivelGeografico` que
+  devolver. §4.3 no enumera la forma del `ok`, pero describe los métodos por nodo (`id`), y §4.6 sustituye
+  el vocabulario por `profundidad`/`tipoId`. Desde T4.1 `IGeografiaService` (`lib/interfaces/services/`) es
+  `{ status: "ok"; id }`, `{ …; id; activo }` y `{ …; id; nombre }`; ningún consumidor de `app/` lee `res.nivel`.
+- **Veredicto:** consecuencia de la forma nueva, no un cambio de resultado: el campo deja de poder
+  representarse a N niveles. Los demás valores de esos `ok` (`id`, `activo`, `nombre`) no cambian. Vale;
+  queda como **respaldo derivado** (§4.1 + R14), no textual, por si el reviewer lo quiere explícito en el design.
+
+### T8.2 — guion del ensayo de design §10 (para la persona que lo corre; ningún agente lo ejecuta)
+
+**Quién y dónde.** Una persona del equipo, sobre una **copia restaurada** de producción (nunca producción).
+Antes de cada comando, comprobar que `DATABASE_URL` y `DIRECT_URL` apuntan a la copia (host/ref de la copia;
+no el de producción). Anotar cada resultado en esta bitácora, sección «Ensayo T8.2 — resultados», con fecha.
+
+**0. Preparación**
+1. Restaurar el backup más reciente de producción en la copia y comprobar que abre (regla 4 de la épica).
+2. En la copia, `SELECT migration_name FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 5;` →
+   la última es la misma que en producción y ninguna `20261106*` está aplicada.
+3. Foto previa de los tipos (R47):
+   `\copy (SELECT pais_id, clave, nombre_singular, nombre_plural, digitos_codigo, codigo_hereda_prefijo FROM tipo_nivel_geografico ORDER BY 1,2) TO 'tipos_antes.csv' CSV HEADER`
+4. Línea base de SLT-43: `pnpm geo:backfill --equivalencia` → «Equivalentes.» y código 0.
+
+**1. Ida: las tres migraciones, midiendo el trigger**
+1. Aplicar con el mismo camino que el build: `pnpm exec prisma migrate deploy` (con la URL directa de la
+   copia, no el pooler `:6543`). Anotar el tiempo total (`time …`).
+2. Medir el `CREATE TRIGGER` aislado: en `psql` con `\timing on`, ejecutar `down.sql` de
+   `20261106120100_slt46_nodo_copia_a_geografia_vieja` y luego su `migration.sql`; anotar el tiempo de la
+   sentencia `CREATE TRIGGER "nodo_geografico_copia_a_geografia_vieja"` y si esperó por bloqueos
+   (`SELECT * FROM pg_locks WHERE NOT granted;` en otra sesión mientras corre). El `lock_timeout`, si hace
+   falta, lo decide el humano (como en SLT-43).
+3. Comprobar R47: repetir la foto del paso 0.3 en `tipos_despues.csv` y `diff tipos_antes.csv tipos_despues.csv`
+   → sin diferencias.
+4. `SELECT tgenabled FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid =
+   c.relnamespace WHERE t.tgname = 'nodo_geografico_copia_a_geografia_vieja' AND n.nspname = 'public';` → `O`.
+
+**2. Edición desde la app apuntada a la copia (Costa Rica, superadmin)**
+1. Alta de un cantón bajo una provincia, renombre de ese cantón, retiro de un distrito sin órdenes y su
+   reactivación; cada una confirmando en el modal.
+2. Carga CSV pequeña de CR (cabecera `nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3`,
+   3–5 filas bajo una provincia existente).
+3. `pnpm geo:backfill --equivalencia-geografia` → «Geografía equivalente.» y código 0 (P8, R13).
+4. `pnpm geo:backfill --equivalencia` → «Equivalentes.» y código 0.
+
+**3. Carga de 10 000 filas frente a los 120 s**
+1. Generar un CSV de CR con 10 000 filas de datos (el tope, `DIVISION_TOPE_DE_FILAS_CSV`) y ≤ 5 MB: una
+   provincia nueva «Ensayo SLT-46» con 100 cantones × 100 distritos, códigos vacíos.
+2. Cargarlo desde la pantalla y cronometrar desde «Cargar» hasta la respuesta; anotar el tiempo, los `creados`
+   por profundidad (esperado `{1:1, 2:100, 3:10000}`) y si hubo error de timeout. El timeout de la importación
+   es `TIMEOUT_IMPORTACION_MS = 120_000` (`GeoRepository`); cada nodo hace doble escritura (copia nodo → vieja)
+   y eco (sincronía vieja → nodo de SLT-43, que no hace bucle). **Criterio:** holgura clara bajo 120 s; si pasa
+   de ~90 s, parar y avisar al leader antes de la release.
+3. `pnpm geo:backfill --equivalencia-geografia` → código 0 tras la carga grande.
+
+**4. Vuelta: los `down.sql` en orden inverso**
+1. En `psql`, `down.sql` de `20261106120200`, luego `20261106120100`, luego `20261106120000`, y borrar sus tres
+   filas de `_prisma_migrations`.
+2. Repetir la edición del paso 2.1 desde la app con el código **anterior** (sin SLT-46) apuntado a la copia:
+   debe seguir sincronizando vieja → nodo por SQL (la sincronía de SLT-43 sigue puesta).
+   `pnpm geo:backfill --equivalencia` → código 0.
+3. Ver con `\dT+ historial_plataforma_accion`: los valores de enum añadidos por `120000` se quedan (Postgres no
+   los quita); es lo esperado y no estorba al código anterior.
+
+**5. Reaplicar**
+1. `pnpm exec prisma migrate deploy` → aplica las tres de nuevo sin error.
+2. Repetir 1.3, 1.4 y 2.3: sin diferencias, `O`, código 0.
+
+**6. Ventana del deploy (design §10.2) — a verificar en el ensayo**
+1. Con el código nuevo y la migración forzada a fallar en la copia (p. ej., un rol sin permiso de `CREATE` sobre
+   el esquema), correr el paso de base del build (`tsx scripts/migrate-deploy.ts` con las variables del ensayo)
+   y comprobar que **corta** el build en vez de dejar servir el código sin la migración. Si no corta, parar y
+   avisar al leader. Cómo forzar el fallo sin riesgo lo decide la persona del ensayo.
+2. Recordatorio para el deploy real: avisar al superadmin de no editar geografía durante la ventana.
+
+**Qué anotar (plantilla).**
+| Medida | Valor |
+|---|---|
+| `migrate deploy` de las tres (total) | |
+| `CREATE TRIGGER` aislado / ¿esperó bloqueo? | |
+| R47: `diff` de tipos antes/después | |
+| `--equivalencia-geografia` tras edición / tras carga grande / tras reaplicar | |
+| `--equivalencia` (SLT-43) en cada paso | |
+| Carga de 10 000 filas: tiempo y `creados` (frente a 120 s) | |
+| Vuelta + edición con código anterior | |
+| ¿El build corta si la migración falla? | |
