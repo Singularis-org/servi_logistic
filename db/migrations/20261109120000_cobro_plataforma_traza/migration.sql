@@ -122,8 +122,13 @@ CREATE TRIGGER "cobro_plataforma_traza_sin_cambio_de_empresa" BEFORE UPDATE OF "
 -- Para cualquier rol, el dueño incluido: ningún camino legítimo actualiza la traza, y una corrección
 -- silenciosa borraría justo lo que la tabla existe para conservar. Borrar sigue cerrado para la app por
 -- el REVOKE; el dueño solo borra en cascada (limpiezas) o en el borrado de las empresas demo.
+-- Un cambio de empresa se deja pasar a `…_sin_cambio_de_empresa`, que corre justo después (los BEFORE van
+-- por orden de nombre) y lo rechaza con SL017, como pide R26; la fila sigue sin cambiar.
 CREATE FUNCTION cobro_plataforma_traza_inmutable() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF NEW."organizacion_id" IS DISTINCT FROM OLD."organizacion_id" THEN
+    RETURN NEW;
+  END IF;
   RAISE EXCEPTION 'la traza de facturación no se cambia (cobro_plataforma_traza %)', OLD."id"
     USING ERRCODE = 'SL085';
 END $$;
