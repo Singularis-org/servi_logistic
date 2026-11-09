@@ -92,3 +92,26 @@ no ofrece «marcar» sobre una consolidación ya conciliada. Lo anoto solo como 
 
 Lo demás (R1–R5 y R7–R13, lectura de lo declarado desde la base dentro de la transacción, monto > 0 sin
 cambios) está verificado con mutaciones propias. Una vuelta 2 puede limitarse a revisar el diff de H1 y H2.
+
+## Vuelta 2 (acotada a a99dfbf2..0d290952)
+
+Revisado solo el diff del arreglo: `lib/types/conciliacion-satelites.ts`, el test de actions,
+`tasks.md` y `progress/impl_SLT-96.md`. Base `slt96_t1`, con la URL exportada y sin imprimirla.
+
+- [x] **H1 — cerrado.**
+  - El blob commiteado en `0d290952` tiene `montoCeroSchema = z.string().trim().regex(/^0+(\.0{1,2})?$/)`
+    (línea 283), igual que en `design.md`.
+  - El `it.each` de rechazos de R6 suma `"0,00"`, `"0a0"`, `"0-0"`, `"0x0"` y `"0e0"`, y aplica tanto a
+    marcar como a corregir.
+  - Corrí el test de actions y el INT de SLT-96: `Test Files 2 passed · Tests 79 passed`.
+  - **Mutación propia:** quité la `\` del punto en la línea 283. Salen `10 failed | 62 passed (72)`: los 5
+    casos nuevos en marcar y los 5 en corregir. Después restauré el archivo y lo comprobé con `cmp`; el árbol
+    quedó limpio.
+- [x] **H2 — cerrado.** T1 (líneas 17–27), T2 (50–55) y T3 (67–68) están en `[x]`. T4 en adelante siguen
+  abiertas porque vienen después de la review; es lo correcto.
+- **Regresiones del diff:** ninguna. El cambio de código es una sola línea, y los tests que se añadieron solo
+  amplían una tabla que ya existía.
+
+H3 y H4 (menores) siguen como en la vuelta 1, sin acción.
+
+### Veredicto vuelta 2: **OK**
