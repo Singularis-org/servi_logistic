@@ -88,13 +88,13 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 
 ## T3 — Repositorios (depende de T1, T2)
 
-- [ ] **T3.1** `GeoRepository` e `IGeoRepository` a §4.4: `arbolDePais`, `contextoDeAlta`, `crear`,
+- [x] **T3.1** `GeoRepository` e `IGeoRepository` a §4.4: `arbolDePais`, `contextoDeAlta`, `crear`,
   `hermanosDeNodo`, `renombrar`, `cambiarActivacion`, `profundidadDeNodo`, `leerDivisionDePais`,
   `importarDivision`, todos sobre `nodo_geografico`; historial de §7 con entidad `nodo_geografico` a
   cualquier profundidad.
   Sin `provincia`/`canton`/`distrito` en las escrituras. (R1, R14, R16, R18, R19, R33, R35, R36)
   *Hecho:* `tests/unit/repositories/geo-repository.escrituras.test.ts` adaptado; integración de T5.
-- [ ] **T3.2** [P] `PaisRepository` e `IPaisRepository`: `crear` con 2–10 tipos (`''` en `nivel_3_*`
+- [x] **T3.2** [P] `PaisRepository` e `IPaisRepository`: `crear` con 2–10 tipos (`''` en `nivel_3_*`
   si P = 2), `renombrarTipo` y `agregarNivel` (§2.4); historial `tipo_nivel_geografico_*` con una fila
   por nombre cambiado y `detalle.campo`, y `detalle.origen` en los creados (§7). Sin borrar tipos.
   (R23, R25, R26, R37, R46, R48, R49, R50)
@@ -104,17 +104,17 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 
 ## T4 — Services y actions (depende de T3)
 
-- [ ] **T4.1** `GeografiaService` e `IGeografiaService` (§4.3), con el rol antes de todo. (R14–R20, R39)
+- [x] **T4.1** `GeografiaService` e `IGeografiaService` (§4.3), con el rol antes de todo. (R14–R20, R39)
   *Hecho:* `tests/unit/services/geografia-service.test.ts`: casos de SL-20 con nodos de CR (mismos
   desenlaces y mensajes, R12), profundidad 4, sin tipo, conteo 4 → 0, `maestro` → `forbidden` con doble
   que falla si se le llama.
-- [ ] **T4.2** [P] `CargaDivisionService` e `ICargaDivisionService` (§4.3, §5). (R30–R34, R39)
+- [x] **T4.2** [P] `CargaDivisionService` e `ICargaDivisionService` (§4.3, §5). (R30–R34, R39)
   *Hecho:* `tests/unit/services/carga-division-service.test.ts` con P = 3 y P = 4 y `forbidden`.
-- [ ] **T4.3** [P] `PaisService` e `IPaisService`: `crear` con tipos, `renombrarTipo` y `agregarNivel`;
+- [x] **T4.3** [P] `PaisService` e `IPaisService`: `crear` con tipos, `renombrarTipo` y `agregarNivel`;
   `cambiarDisponible` sin mirar niveles. (R23–R26, R28, R39, R48, R49)
   *Hecho:* `tests/unit/services/pais-service.test.ts` verde (incluye `tope` → `validation_error`,
   `no_existe` → `not_found`, `maestro` → `forbidden`).
-- [ ] **T4.4** `lib/actions/geografia-plataforma.ts`: esquemas nuevos, `renombrarTipoNivelAction` y
+- [x] **T4.4** `lib/actions/geografia-plataforma.ts`: esquemas nuevos, `renombrarTipoNivelAction` y
   `agregarNivelPaisAction`. (R5, R22, R39, R40, R49, R50)
   *Hecho:* `tests/unit/actions/geografia-plataforma-action.test.ts` y
   `geografia-plataforma.composition-root.test.ts` verdes (incluida la lista de exports sin action de
@@ -158,13 +158,13 @@ implementado sigue la maqueta; si algo de la maqueta choca con `design.md §6`, 
 
 ## T7 — Guardias (depende de T3)
 
-- [ ] **T7.1** **Retirar** `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` y crear
+- [x] **T7.1** **Retirar** `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` y crear
   `nodo-geografico-escritor-unico.guardia.test.ts` (solo `GeoRepository` escribe el nodo; solo
   `PaisRepository`, los tipos; con contraprueba). (R43)
   *Hecho:* verde; un `prisma.nodoGeografico.create` inventado en otro archivo de `lib/` sale rojo.
-- [ ] **T7.2** [P] `geografia-vieja-sin-escritor.guardia.test.ts` (R1) y ajustar
+- [x] **T7.2** [P] `geografia-vieja-sin-escritor.guardia.test.ts` (R1) y ajustar
   `geografia-renombrado-punto-unico.guardia.test.ts` al nodo (R43).
-- [ ] **T7.3** [P] Ampliar `geografia-sin-borrado-fisico.guardia.test.ts` a `nodoGeografico`,
+- [x] **T7.3** [P] Ampliar `geografia-sin-borrado-fisico.guardia.test.ts` a `nodoGeografico`,
   `tipoNivelGeografico` y `DELETE FROM` SQL. (R42, R50)
   *Hecho de T7:* `pnpm run test:guardias` verde, con contraprueba en cada guardia nueva o ampliada.
 

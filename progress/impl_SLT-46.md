@@ -186,3 +186,49 @@ Decisiones a revisar:
 5. La carrera de R49 commitea el país `XV` (sin usuario: actor sistema), bajo `bajoLockDeEscrituraReal`, y lo
    borra en `finally` (también al empezar); el `afterAll` exige 0 residuos. Para que las dos lean P = 2
    antes de escribir, una tercera transacción hace `FOR UPDATE` del país hasta ver las dos esperando.
+
+## Tanda 2 (2026-11-06 → 2026-11-09): T3, T4, T7
+
+El implementer de la tanda se colgó tras commitear (`22f314b2`…`56939f04`, ya subidos) sin marcar
+`tasks.md` ni escribir esta sección. La cierra un implementer de verificación (2026-11-09) que **no
+implementa nada nuevo**: comprueba el «Hecho» de cada tarea, audita los cambios de aserción de los tests
+existentes, corre la verificación y escribe esto. T5, T6 y T8 siguen pendientes.
+
+### Commits
+
+| sha | commit |
+|---|---|
+| `22f314b2` | feat: T3.1 GeoRepository sobre nodo_geografico a cualquier profundidad |
+| `5193ae2c` | test: T7.1 escritor único del nodo y de los tipos (R43) |
+| `619d1652` | test: T7.2 geografía vieja sin escritor (R1) y renombre punto único al nodo |
+| `4d302269` | test: T7.3 sin borrado físico de nodos ni tipos, también por SQL |
+| `2ed8028b` | test: T3.1 recupera en el nodo lo que SL-20 afirmaba de las escrituras |
+| `b87733e9` | feat: T3.2 PaisRepository con tipos de nivel, renombrar tipo y agregar nivel |
+| `54bccc13` | docs: architecture cita las guardias de escritor único y geografía vieja |
+| `7303f7f6` | feat: T4.1 GeografiaService por nodo a N niveles (R14–R20, R39) |
+| `74417592` | feat: T4.2 CargaDivisionService a P niveles (R30–R34, R39) |
+| `b78c8645` | refactor: retirar de GeoRepository las formas por nivel de SL-20 |
+| `72e635e5` | test: forma de entrada por nodo en carga-division, geografia-registro-accion y geografia-renombrado |
+| `0b1f5b77` | feat: T4.3 PaisService con tipos, renombrar tipo y agregar nivel |
+| `13345c30` | test: T7.1 control positivo de tipoNivelGeografico en escritor único |
+| `53c1d455` | feat: T4.4 actions por nodo, renombrar tipo y agregar nivel; un esquema por operación |
+| `56939f04` | test: guardias de superficie y test citado tras T4.4 y T7.1 |
+
+### Estado de cada tarea (comprobado contra su «Hecho»)
+
+- **T3.1** hecha. `IGeoRepository`/`GeoRepository` tienen exactamente los métodos de §4.4 por nodo; no
+  queda ningún método por nivel (`crear(nivel,…)`, `findHermanos`, `findHermanosDeNodo`,
+  `listArbolDePais`, `leerNodoParaActivacion` retirados en `b78c8645`); `GeoPrismaClient` sin
+  `provincia`/`canton`/`distrito`; historial con entidad `nodo_geografico`.
+- **T3.2** hecha (sección «T3.2» de arriba). Queda `PaisRepository.crear` (seis nombres) junto a
+  `crearConTipos`: ver «Desviaciones» 3.
+- **T4.1–T4.4** hechas. Un solo esquema por operación, con los nombres de §4.1 (`crearNodoGeograficoSchema`,
+  `renombrarNodoGeograficoSchema`, `cambiarActivacionGeograficaSchema`, `nodoGeograficoSchema`,
+  `crearPaisSchema`, `renombrarTipoNivelSchema`, `agregarNivelPaisSchema`); los paralelos de la tanda 1
+  (`altaDeNodoSchema`, `renombrarNodoSchema`, `cambiarActivacionNodoSchema`, `nodoPorIdSchema`,
+  `crearPaisConTiposSchema`) ya no existen en `lib/`, `app/` ni `tests/`.
+- **T7.1–T7.3** hechas: `nodo-geografico-sin-escritor` retirada; `nodo-geografico-escritor-unico` y
+  `geografia-vieja-sin-escritor` nuevas, `geografia-renombrado-punto-unico` y
+  `geografia-sin-borrado-fisico` ampliadas; todas con contraprueba (archivo inventado en rojo).
+
+(La verificación de esta sección se completa en «Salida real» abajo.)
