@@ -27,6 +27,7 @@ import {
   type TxDeTest,
 } from "./_semilla-rollup";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Feature 124 / T6 — la suite de INTEGRACION del job de agregacion diaria contra el Postgres
  * local (`localhost:5432/servi_logistic`). Cubre R1, R7, R10-R20, R22-R31, R34, R35, R45, R46 y R49.
@@ -894,7 +895,7 @@ describeSiHayBase("job de agregacion diaria contra Postgres (feature 124)", () =
       await conBase(async (tx, base) => {
         await sembrarUnaOrden(tx, base);
         const repo = crearRepositorio(tx);
-        const totales = await repo.totalesDeControl(ventanaDelDia(FECHA_D));
+        const totales = await repo.totalesDeControl(ventanaDelDia(FECHA_D, ZONA_CR));
         const vistas: MedidasReconciliables[] = [];
 
         await repo.escribirFecha({

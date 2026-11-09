@@ -6,14 +6,14 @@
 // `ModulosEmpresa` REAL con lo que baja por props, y se lee lo que pinta: 8 interruptores y el núcleo,
 // con sus 8 nombres y sin control.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { RolValue } from "@prisma/client";
 
 import { MODULOS_APAGABLES, NUCLEO, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { planConConsumo } from "@/lib/planes/consumo";
 import type { VerModulosEmpresaResult } from "@/lib/types/modulos-empresa";
-import type { PlanDeEmpresaResult, PlanDTO } from "@/lib/types/planes";
+import type { PlanDeEmpresaResult, PlanDTO, PreciosQueRigenResult } from "@/lib/types/planes";
 
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -33,21 +33,28 @@ vi.mock("@/lib/actions/modulos-empresa", () => ({
 }));
 
 // SLT-58 (design §6.3; R19): la lectura del plan de la empresa y las actions de planes, como dobles.
-const { verPlanMock, verDetalleMock, asignablesMock, asignarMock, previsualizarMock } = vi.hoisted(() => ({
-  verPlanMock: vi.fn(),
-  verDetalleMock: vi.fn(),
-  asignablesMock: vi.fn(),
-  asignarMock: vi.fn(),
-  previsualizarMock: vi.fn(),
-}));
+const { verPlanMock, verDetalleMock, verPreciosMock, asignablesMock, asignarMock, previsualizarMock, cancelarMock } =
+  vi.hoisted(() => ({
+    verPlanMock: vi.fn(),
+    verDetalleMock: vi.fn(),
+    verPreciosMock: vi.fn(),
+    asignablesMock: vi.fn(),
+    asignarMock: vi.fn(),
+    previsualizarMock: vi.fn(),
+    cancelarMock: vi.fn(),
+  }));
 vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
   verPlanDeEmpresa: (...a: unknown[]) => verPlanMock(...a),
   verDetalleDePlan: (...a: unknown[]) => verDetalleMock(...a),
+  // SLT-86 (R25; review m4): los precios que regirán, para el costo del primer período de los modales.
+  verPreciosQueRigen: (...a: unknown[]) => verPreciosMock(...a),
 }));
 vi.mock("@/lib/actions/planes", () => ({
   listarPlanesAsignablesAction: (...a: unknown[]) => asignablesMock(...a),
   asignarPlanAction: (...a: unknown[]) => asignarMock(...a),
   cambiarTipoCobroAction: vi.fn(),
+  // SLT-86 (R19, R26): «Cancelar cambio» del detalle de empresa.
+  cancelarCambioEmpresaAction: (...a: unknown[]) => cancelarMock(...a),
   previsualizarAsignacionPlanAction: (...a: unknown[]) => previsualizarMock(...a),
 }));
 
@@ -87,11 +94,13 @@ beforeEach(() => {
   verMock.mockResolvedValue(OK);
   verPlanMock.mockResolvedValue({
     estado: "ok",
-    vista: { organizacionId: ORG, plan: null, asignaciones: [] },
+    vista: { organizacionId: ORG, plan: null, pendienteSinPlan: null, asignaciones: [] },
   } satisfies PlanDeEmpresaResult);
   asignablesMock.mockResolvedValue({ estado: "ok", planes: [] });
   verDetalleMock.mockResolvedValue({ estado: "not_found" });
-  previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" });
+  verPreciosMock.mockResolvedValue({ estado: "ok", precios: {} } satisfies PreciosQueRigenResult);
+  previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [] });
+  cancelarMock.mockResolvedValue({ estado: "ok" });
 });
 
 afterEach(() => cleanup());
@@ -169,13 +178,16 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
           {
             vigente: {
               nombre: "Plan Crecer",
-              topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: null },
+              topes: { porRol: { mensajero: 10 }, apiKeys: null },
               modulos: ["analitica"],
               precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
               costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
               costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
             },
-            ancla: new Date("2026-01-15T06:00:00.000Z"),
+            // SLT-86 (R5, R15, R26): la entrada, el precio del período y el pendiente.
+            entrada: new Date("2026-01-15T06:00:00.000Z"),
+            precioDelPeriodo: { tipo: "sin_precio" },
+            pendiente: null,
             uso: { ordenes: 1000, apiKeys: 0, porRol: { admin: 0, mensajero: 9, adminTienda: 0, adminSatelite: 0 } }, // SLT-66 R5: sin `maestro`
             cambio: null,
             costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
@@ -187,6 +199,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
         planId: "11111111-1111-4111-8111-111111111111",
         archivado: false,
       },
+      pendienteSinPlan: null,
       asignaciones: [],
     },
   };
@@ -196,7 +209,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     nombre: "Plan Crecer",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: null },
+    topes: { porRol: { mensajero: 10 }, apiKeys: null },
     modulos: ["analitica"],
     precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
@@ -215,14 +228,21 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
 
     const plan = screen.getByRole("region", { name: "Plan" });
     expect(within(plan).getByRole("heading", { name: "Plan Crecer" })).toBeInTheDocument();
-    expect(within(plan).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
+    // SLT-86 (R7, R8): las órdenes del período, sin tope.
+    expect(within(plan).getByText("Órdenes en el período: 1.000")).toBeInTheDocument();
     expect(within(plan).getByText("Cerca del tope")).toBeInTheDocument(); // 9 de 10 mensajeros
-    // Ajuste planes-custom (D9): el detalle del superadmin muestra tipo, monto del período y siguiente cobro.
+    // SLT-86 (R27): el tipo, el período en curso (un tramo desde la entrada) y, con el anual, el pago del
+    // inicio del período y el siguiente, el 1 de enero.
     expect(
       within(within(plan).getByRole("list", { name: "Cobro del plan" }))
         .getAllByRole("listitem")
         .map((li) => li.textContent),
-    ).toEqual(["Tipo de cobro: Anual", "Monto del período: por definir", "Siguiente cobro: 2027-01-15"]);
+    ).toEqual([
+      "Tipo de cobro: Anual",
+      "Período: 2026-01-15 – 2026-12-31 (tramo de 351 de 365 días)",
+      "Pago anual: 2026-01-15",
+      "Siguiente pago: 2027-01-01",
+    ]);
 
     const modulos = screen.getByRole("region", { name: "Módulos" });
     // La sección del plan va antes que la de los módulos.
@@ -318,7 +338,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
       await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Básico (Público)" }));
       await user.click(screen.getByRole("button", { name: "Asignar plan" }));
 
-      const campo = within(await screen.findByRole("dialog")).getByLabelText("Inicio del ciclo de órdenes");
+      const campo = within(await screen.findByRole("dialog")).getByLabelText("Inicio del período");
       // Ajuste planes-custom (D5): por defecto mañana en la hora de la plataforma, no hoy.
       expect(campo).toHaveValue("2026-10-30");
       expect(campo).toHaveAttribute("min", "2026-09-29");
@@ -331,6 +351,113 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("SLT-86 R25 (review m4) — la página cablea los precios que regirán", () => {
+    const BASICO: PlanDTO = {
+      ...ACTUAL_DTO,
+      id: "33333333-3333-4333-8333-333333333333",
+      nombre: "Básico",
+      precio: { tipo: "monto", mensual: "31000.00", descuentos: {} },
+      costoPorOrden: "100.00",
+    };
+
+    async function abrirPrimeraAsignacion() {
+      const user = userEvent.setup();
+      render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+      await user.click(screen.getByRole("combobox", { name: "Plan a asignar" }));
+      await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Básico (Público)" }));
+      await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+      return screen.findByRole("dialog");
+    }
+
+    it("lee los precios de los asignables y del plan actual con su actor", async () => {
+      actorMock.mockResolvedValue(superadmin);
+      verPlanMock.mockResolvedValue(CON_PLAN);
+      asignablesMock.mockResolvedValue({ estado: "ok", planes: [ACTUAL_DTO, BASICO] });
+
+      render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+      expect(verPreciosMock).toHaveBeenCalledWith(superadmin, { planIds: [ACTUAL_DTO.id, BASICO.id] });
+    });
+
+    it("el modal usa el precio programado que regirá en la fecha elegida", async () => {
+      // 2026-10-29 12:00 en la hora de la plataforma: la primera asignación propone el 2026-10-30.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
+      try {
+        actorMock.mockResolvedValue(superadmin);
+        asignablesMock.mockResolvedValue({ estado: "ok", planes: [BASICO] });
+        verPreciosMock.mockResolvedValue({
+          estado: "ok",
+          precios: {
+            [BASICO.id]: [
+              { desde: null, precio: BASICO.precio },
+              // Edición programada que rige desde las 00:00 del 2026-10-30 en la hora de la plataforma.
+              {
+                desde: "2026-10-30T06:00:00.000Z",
+                precio: { tipo: "monto", mensual: "62000.00", descuentos: {} },
+              },
+            ],
+          },
+        } satisfies PreciosQueRigenResult);
+
+        const modal = await abrirPrimeraAsignacion();
+
+        // Del 30 al 31 de octubre: 2 de 31 días de 62 000 (no de 31 000).
+        expect(within(modal).getByText("Costo base mensual: 4000.00")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each<[string, () => void]>([
+      ["la lectura lanza", () => verPreciosMock.mockRejectedValue(new Error("db caída"))],
+      ["la lectura no es ok", () => verPreciosMock.mockResolvedValue({ estado: "forbidden" })],
+    ])("si %s, el modal usa el precio vigente", async (_caso, preparar) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
+      try {
+        actorMock.mockResolvedValue(superadmin);
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        asignablesMock.mockResolvedValue({ estado: "ok", planes: [BASICO] });
+        preparar();
+
+        const modal = await abrirPrimeraAsignacion();
+
+        expect(within(modal).getByText("Costo base mensual: 2000.00")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("SLT-86 R26: sin plan y con una primera asignación pendiente, «Sin límites», qué plan entra y «Cancelar cambio» con la action", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPlanMock.mockResolvedValue({
+      estado: "ok",
+      vista: {
+        organizacionId: ORG,
+        plan: null,
+        pendienteSinPlan: { planNombre: "Plan Crecer", tipo: "quincenal", desde: "2026-12-01" },
+        asignaciones: [],
+      },
+    } satisfies PlanDeEmpresaResult);
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(within(plan).getByText("Sin límites")).toBeInTheDocument();
+    expect(within(plan).getByText("Plan Crecer empieza a regir el 2026-12-01")).toBeInTheDocument();
+    await user.click(within(plan).getByRole("button", { name: "Cancelar cambio" }));
+    // Decisión del 2026-11-06: la action sale de la confirmación, no del botón de la sección.
+    expect(cancelarMock).not.toHaveBeenCalled();
+    const modal = await screen.findByRole("dialog", {
+      name: "¿Cancelar el cambio a Plan Crecer programado para el 2026-12-01?",
+    });
+    await user.click(within(modal).getByRole("button", { name: "Cancelar cambio" }));
+    await waitFor(() => expect(cancelarMock).toHaveBeenCalledWith({ organizacionId: ORG }));
   });
 
   it("R19: un rol de empresa no lee el plan (notFound antes de leer)", async () => {

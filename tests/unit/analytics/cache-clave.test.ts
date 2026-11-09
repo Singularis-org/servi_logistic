@@ -4,6 +4,7 @@ import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
 import { consultaDe, MAESTRO } from "./_fake-operativa";
 import type { DimensionAnalitica } from "@/lib/analytics/types";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 128 / T1.2 — R5, R7 y R8. La CLAVE.
 //
 // La consulta NO se forja: se construye por el camino real (`prepararConsultaAnalitica`), como
@@ -129,7 +130,7 @@ describe("267/R12 · la clave de cache separa a dos integradores", () => {
       { rango: "dia" },
       { usuarioId, rol: "apiKey" },
       metricaId,
-      AHORA_267,
+      ZONA_DE_CR, AHORA_267,
       "api_key",
     );
     if (r.status !== "ok") throw new Error(`no concedio: ${JSON.stringify(r)}`);

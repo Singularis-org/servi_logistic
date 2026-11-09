@@ -19,6 +19,8 @@ import {
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import { ventanaDelDia, type VentanaDia } from "@/lib/analytics/rollup-dia";
 import { UMBRAL_AVISO_FILAS_CORRIDA } from "@/lib/config/analitica-rollup";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Feature 124 (design §2/§4/§7) — composicion del rollup diario. Este servicio NO habla
 // Prisma y NO conoce Next.js: recibe el repositorio por constructor y funde en memoria los
@@ -122,13 +124,16 @@ export class AnaliticaRollupService implements IAnaliticaRollupService {
     private readonly repo: IAnaliticaRollupRepository,
     private readonly historial: ContadorIntentos,
     private readonly deps: AnaliticaRollupDeps,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale la ventana de `fecha`. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {
     this.logger = deps.logger ?? defaultLogger;
   }
 
   async agregarFecha(fecha: string): Promise<ResumenCorrida> {
     const inicio = this.deps.now().getTime();
-    const ventana = ventanaDelDia(fecha);
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "AnaliticaRollupService"); // SLT-42 (R22, R28)
+    const ventana = ventanaDelDia(fecha, zona);
 
     const filas = await this.componerFilas(fecha, ventana);
     const totales = await this.enEtapa(fecha, "totales_de_control", () =>

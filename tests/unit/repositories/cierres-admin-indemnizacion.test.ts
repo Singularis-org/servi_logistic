@@ -9,6 +9,7 @@ import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizaci
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { CrearMovimientoInput } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 158 (T1.14, R22/R23/R26/R28) — la escritura de los montos y la emision del egreso,
 // DENTRO de la transaccion de aprobacion. Doble de Prisma con la semantica del indice unico
@@ -206,7 +207,7 @@ function aprobar(
   repo: CierresAdminRepository,
   indemnizaciones?: ReadonlyArray<{ gestionId: string; monto: string }>,
 ) {
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId: "c1",
     alcance: ALCANCE,
     nuevoEstado: "aprobado",
@@ -285,7 +286,7 @@ describe("R22 — persistir los montos y emitir el egreso, en la MISMA transacci
     const store = walletStore();
     const prisma = buildPrisma(gestiones, store);
 
-    await buildRepo(prisma).resolverCierre({
+    await buildRepo(prisma).resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE,
       nuevoEstado: "aprobado",
@@ -365,7 +366,7 @@ describe("R23 — el RECHAZO no escribe montos ni emite movimientos", () => {
     const store = walletStore();
     const prisma = buildPrisma(gestiones, store);
 
-    const res = await buildRepo(prisma).resolverCierre({
+    const res = await buildRepo(prisma).resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE,
       nuevoEstado: "rechazado",

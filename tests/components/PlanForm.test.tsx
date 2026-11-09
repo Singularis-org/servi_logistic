@@ -15,12 +15,14 @@ const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 // Ajuste planes-custom (D4): «Envíos Norte» aún no tiene plan; «Reparto Sur» ya lo tiene.
 const EMPRESAS = [
-  { id: ORG, nombre: "Envíos Norte", tienePlan: false },
-  { id: "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61", nombre: "Reparto Sur", tienePlan: true },
+  { id: ORG, nombre: "Envíos Norte", tienePlan: false, fechaDeEfectoPorDefecto: null },
+  { id: "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61", nombre: "Reparto Sur", tienePlan: true, fechaDeEfectoPorDefecto: "2026-11-01" },
 ];
 /** D5: mañana en la hora de la plataforma, como lo calcula la página. */
 const MANANA = "2026-10-30";
 const RANGO = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
+/** SLT-86 (R16): el rango de «Rige desde» de una empresa con plan. */
+const RANGO_EFECTO = { hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" };
 
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
 
@@ -29,9 +31,9 @@ const PLAN: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
+  topes: { porRol: { mensajero: 5 }, apiKeys: null },
   modulos: ["analitica"],
-  precio: { tipo: "monto", mensual: "10.00", anual: null },
+  precio: { tipo: "monto", mensual: "10.00", descuentos: {} },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
@@ -46,8 +48,9 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn(
       empresas={EMPRESAS}
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
+      rangoFechaDeEfecto={RANGO_EFECTO}
       enviar={enviar}
-      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={onGuardado}
     />,
   );
@@ -78,14 +81,15 @@ describe("SLT-58 R14 — crear un plan", () => {
     await user.click(screen.getByRole("radio", { name: "Custom" }));
     await user.click(screen.getByRole("combobox", { name: "Empresa" }));
     await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
-    await user.type(screen.getByLabelText("Órdenes por ciclo"), "3000");
     await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
     await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     await user.type(screen.getByLabelText("Costo base mensual"), "25.50");
-    await user.click(screen.getByRole("radio", { name: "Descuento sobre el anual" }));
-    await user.type(screen.getByLabelText("Porcentaje de descuento"), "10");
+    // SLT-86 (R23): el descuento anual es uno de los cuatro por período.
+    const anual = screen.getByRole("group", { name: "Descuento anual" });
+    await user.click(within(anual).getByRole("radio", { name: "Porcentaje" }));
+    await user.type(within(anual).getByRole("textbox", { name: "Porcentaje" }), "10");
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
@@ -93,17 +97,17 @@ describe("SLT-58 R14 — crear un plan", () => {
       nombre: "Plan Norte",
       visibilidad: "custom",
       organizacionId: ORG,
-      topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
+      topes: { porRol: { mensajero: 5 }, apiKeys: null },
       modulos: ["monitoreo"],
-      precio: { tipo: "monto", mensual: "25.50", anual: { tipo: "descuento", porcentaje: "10" } },
+      precio: { tipo: "monto", mensual: "25.50", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       // Ajuste planes-custom (D2, D4–D6): el custom se asigna al crearlo; la empresa no tiene plan.
       tipoCobro: "mensual",
       inicioCiclo: MANANA,
     });
-    // D12: la empresa no tiene plan; `onGuardado` recibe el siguiente ciclo de la vista previa (D13).
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte", "2026-11-30");
+    // SLT-86 (R8): sin siguiente ciclo; `onGuardado` recibe el resultado y el nombre.
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte");
   });
 
   it("R14: un plan público sin topes ni precio sale con organizacionId null y todo sin límite", async () => {
@@ -118,7 +122,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       nombre: "Libre",
       visibilidad: "publico",
       organizacionId: null,
-      topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+      topes: { porRol: {}, apiKeys: null },
       modulos: [],
       precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
@@ -158,7 +162,9 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     montarEditar();
     expect(screen.queryByRole("radiogroup", { name: "Visibilidad" })).toBeNull();
     expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Básico");
-    expect(screen.getByLabelText("Órdenes por ciclo")).toHaveValue("3000");
+    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
+    // SLT-86 (R8, R23): sin tope de órdenes.
+    expect(screen.queryByLabelText("Órdenes por ciclo")).toBeNull();
     // SLT-67: el servidor serializa «10.00»; el campo lo muestra sin «.00».
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("10");
@@ -174,40 +180,40 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       "De inmediato",
       "A partir de",
     ]);
-    await user.clear(screen.getByLabelText("Órdenes por ciclo"));
-    await user.type(screen.getByLabelText("Órdenes por ciclo"), "5000");
+    await user.type(screen.getByLabelText("API keys activas"), "2");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar).toHaveBeenCalledWith({
       planId: PLAN_ID,
       nombre: "Básico",
-      topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 5 }, apiKeys: null },
+      topes: { porRol: { mensajero: 5 }, apiKeys: 2 },
       modulos: ["analitica"],
-      precio: { tipo: "monto", mensual: "10", anual: null },
+      precio: { tipo: "monto", mensual: "10", descuentos: {} },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       vigenteDesde: null,
     });
   });
 
-  it("SLT-67: editar un plan con mensual y anual «500.00» los muestra sin «.00» y envía montos string válidos", async () => {
+  it("SLT-67: editar un plan con mensual y descuento fijo «500.00» los muestra sin «.00» y envía montos string válidos", async () => {
     const user = userEvent.setup();
     const enviar = vi.fn().mockResolvedValue(OK);
     const plan: PlanDTO = {
       ...PLAN,
-      precio: { tipo: "monto", mensual: "500.00", anual: { tipo: "fijo", monto: "5000.00" } },
+      precio: { tipo: "monto", mensual: "500.00", descuentos: { anual: { tipo: "monto", monto: "5000.00" } } },
     };
     render(<PlanForm modo="editar" plan={plan} enviar={enviar} onGuardado={vi.fn()} />);
 
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("500");
-    expect(screen.getByLabelText("Monto anual")).toHaveValue("5000");
+    const anual = screen.getByRole("group", { name: "Descuento anual" });
+    expect(within(anual).getByRole("textbox", { name: "Monto fijo" })).toHaveValue("5000");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     const precio = enviar.mock.calls[0][0].precio;
-    expect(precio).toEqual({ tipo: "monto", mensual: "500", anual: { tipo: "fijo", monto: "5000" } });
+    expect(precio).toEqual({ tipo: "monto", mensual: "500", descuentos: { anual: { tipo: "monto", monto: "5000" } } });
     expect(typeof precio.mensual).toBe("string");
     expect(precio.mensual).toMatch(/^\d{1,10}(\.\d{1,2})?$/);
   });
@@ -348,8 +354,9 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
         empresas={null}
         inicioCicloPorDefecto={MANANA}
         rangoInicioCiclo={RANGO}
+        rangoFechaDeEfecto={RANGO_EFECTO}
         enviar={vi.fn()}
-        previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+        previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
         onGuardado={vi.fn()}
       />,
     );
@@ -365,7 +372,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
 
   it("los topes dicen «Sin límite» de placeholder, enlazan la ayuda y van en una sola columna", () => {
     montarCrear();
-    for (const nombre of ["Órdenes por ciclo", "Usuarios activos con el rol Mensajero", "API keys activas"]) {
+    for (const nombre of ["Usuarios activos con el rol Mensajero", "API keys activas"]) {
       const campo = screen.getByLabelText(nombre);
       expect(campo).toHaveAttribute("placeholder", "Sin límite");
       expect(campo).toHaveAccessibleDescription("Vacío = sin límite.");
@@ -378,7 +385,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     expect(screen.getByRole("checkbox", { name: "Monitoreo" })).not.toHaveAttribute("aria-label");
   });
 
-  it("el precio ofrece «Con monto» (no «Mensual») y el pago anual lleva un título visible", async () => {
+  it("el precio ofrece «Con monto» (no «Mensual») y cada descuento lleva un título visible, sin «Pago anual»", async () => {
     const user = userEvent.setup();
     montarCrear();
 
@@ -390,9 +397,11 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     ]);
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
 
-    const anual = screen.getByRole("group", { name: "Pago anual" });
-    expect(within(anual).getByText("Pago anual")).toBeVisible();
-    expect(within(anual).getByRole("radiogroup", { name: "Pago anual" })).toBeInTheDocument();
+    // SLT-86 (R23): el pago anual fijo y su descuento se van; entra un descuento por período.
+    expect(screen.queryByRole("group", { name: "Pago anual" })).toBeNull();
+    const anual = screen.getByRole("group", { name: "Descuento anual" });
+    expect(within(anual).getByText("Descuento anual")).toBeVisible();
+    expect(within(anual).getByRole("radiogroup", { name: "Descuento anual" })).toBeInTheDocument();
   });
 
   it("al editar, el botón dice «Programar cambio» con «A partir de» y vuelve a «Guardar» con «De inmediato»", async () => {

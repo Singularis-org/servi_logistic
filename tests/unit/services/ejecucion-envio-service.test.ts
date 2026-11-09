@@ -13,6 +13,7 @@ import {
   enviosRepo,
   plantilla,
 } from "./_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 474 (T7.2) — EL MOTOR con dobles: R28-R37 y R53. La idempotencia SQL (R23/R27/R37) la
 // prueban los tests de integracion; aqui, las decisiones del motor.
@@ -58,6 +59,7 @@ function montar(o: {
   const mt = o.meta ?? meta();
   const logs: string[] = [];
   const s = new EjecucionEnvioService({
+    reglasPais: reglasPaisFijas(),
     envios,
     ejecuciones: ej.repo,
     plantillas,

@@ -82,7 +82,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "700.00",
     ingreso_ajuste: "0.00",
-    ingreso_cobro_tienda: "0.00",
+    ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */
   },
   totalIngresos: "3200.00",
   egresos: {
@@ -90,7 +90,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00",
     egreso_reverso_flete_devolucion: "0.00",
-    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
@@ -99,7 +99,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_iva_flete: "325.00",
     ingreso_iva_flete_devolucion: "0.00",
     ingreso_iva_comision_cod: "91.00",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "416.00",
 };
@@ -109,11 +109,14 @@ const FILAS_IVA = [
   "IVA del flete cobrado a la tienda",
   "IVA del flete por devolución a origen cobrado a la tienda",
   "IVA de la comisión cobrado a la tienda",
+  // SLT-94 (R20): el IVA del fulfillment y su devolución.
+  "IVA del fulfillment cobrado a la tienda",
   "IVA del flete por devolución a origen cobrado a la tienda anulado",
+  "Devolución del IVA del fulfillment a la tienda",
 ] as const;
 
 const PISTA_IVA =
-  "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.";
+  "IVA que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.";
 
 function envolver(nodo: ReactElement) {
   return render(
@@ -232,6 +235,7 @@ describe("SL-39 R7/R8 — la composición con el IVA aparte", () => {
       { rotulo: "Comisión de contra-entrega cobrada a la tienda", importe: "₡700" },
       { rotulo: "Corrección de caja (suma)", importe: "₡0" },
       { rotulo: "La empresa le cobra a una tienda", importe: "₡0" },
+      { rotulo: "Fulfillment cobrado a la tienda", importe: "₡0" }, // SLT-94 (R37)
       { rotulo: "Total de ingresos", importe: "₡3.200" },
     ]);
     const ingresos = grupo("Desglose de ingresos").textContent ?? "";
@@ -254,6 +258,8 @@ describe("SL-39 R7/R8 — la composición con el IVA aparte", () => {
       { rotulo: FILAS_IVA[1], importe: "₡0" },
       { rotulo: FILAS_IVA[2], importe: "₡91" },
       { rotulo: FILAS_IVA[3], importe: "₡0" },
+      { rotulo: FILAS_IVA[4], importe: "₡0" },
+      { rotulo: FILAS_IVA[5], importe: "₡0" },
       { rotulo: "Total del IVA", importe: "₡416" },
     ]);
   });
@@ -261,13 +267,14 @@ describe("SL-39 R7/R8 — la composición con el IVA aparte", () => {
   it("R7: las tres de ingreso entran en verde y el reverso sale en rojo, como en su columna", () => {
     pintarComposicion();
     const dl = grupo("Desglose del IVA").querySelector(":scope > dl") as HTMLElement;
-    const colores = [...dl.children].slice(0, 4).map((fila) => {
+    const colores = [...dl.children].slice(0, FILAS_IVA.length).map((fila) => {
       const dd = fila.querySelector("dd");
       if (dd?.classList.contains("text-success-strong")) return "verde";
       if (dd?.classList.contains("text-danger-strong")) return "rojo";
       return "otro";
     });
-    expect(colores).toEqual(["verde", "verde", "verde", "rojo"]);
+    // SLT-94: + el IVA del fulfillment (verde) y su devolución (rojo).
+    expect(colores).toEqual(["verde", "verde", "verde", "verde", "rojo", "rojo"]);
   });
 
   it("R7: el grupo del IVA envuelve una <dl> sin rol, como las dos columnas", () => {
@@ -283,13 +290,15 @@ describe("SL-39 R7/R8 — la composición con el IVA aparte", () => {
     pintarComposicion();
     const g = grupo("Desglose del IVA");
     const controles = within(g).getAllByRole("button", { name: /^Ver los movimientos de / });
-    expect(controles).toHaveLength(4);
+    expect(controles).toHaveLength(6);
 
     const tokens = [
       "ingreso_iva_flete",
       "ingreso_iva_flete_devolucion",
       "ingreso_iva_comision_cod",
+      "ingreso_iva_fulfillment",
       "egreso_reverso_iva_flete_devolucion",
+      "egreso_reverso_iva_fulfillment",
     ];
     for (const [i, rotulo] of FILAS_IVA.entries()) {
       await userEvent.click(within(g).getByRole("button", { name: `Ver los movimientos de ${rotulo}` }));
@@ -318,7 +327,7 @@ describe("SL-39 R7/R8 — la composición con el IVA aparte", () => {
     const { container } = pintarComposicion();
     const texto = container.querySelector('[data-slot="card-description"]')?.textContent ?? "";
     expect(texto).toBe(
-      "Ingresos y gastos propios del conjunto filtrado, concepto por concepto: fletes, comisiones, " +
+      "Ingresos y gastos propios del conjunto filtrado, concepto por concepto: fletes, fulfillment, comisiones, " +
         "gastos, sueldos, indemnizaciones, pagos a mensajeros y ajustes. El IVA cobrado a las " +
         "tiendas no es ganancia: se muestra aparte. No incluye el dinero de las tiendas: el " +
         "contra-entrega cobrado no es de la empresa y por eso no está en la ganancia.",

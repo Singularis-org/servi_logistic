@@ -14,6 +14,7 @@ import type { IVigenciaAvisoAgregado } from "@/lib/interfaces/services/IVigencia
 import { VigenciaAvisoAgregadoService } from "@/lib/services/VigenciaAvisoAgregadoService";
 import type { IAvisoAgregadoRepository } from "@/lib/interfaces/repositories/IAvisoAgregadoRepository";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 146 — B9. Tests unit del service con repositorio FALSO en memoria (sin DB): el
 // repo aplica de verdad el descarte, el limite y la ventana, para que el test compruebe
 // COMPORTAMIENTO y no llamadas. Cubre R3, R28-R33, R35 y R37.
@@ -165,7 +166,7 @@ function vigenciaFake(
 }
 
 function servicioCon(repo: RepoFake, vigencia?: IVigenciaAvisoAgregado) {
-  return new NotificacionService(repo, now, vigencia ?? vigenciaFake({}));
+  return new NotificacionService(repo, now, vigencia ?? vigenciaFake({}), undefined, reglasPaisFijas());
 }
 
 describe("R28 — el listado devuelve lo visible y no descartado, de mas reciente a mas antiguo", () => {
@@ -638,8 +639,8 @@ describe("417/R9 — un actor sin ambito: el aviso sale SIN numero y el fallo qu
     const servicio = new NotificacionService(
       repo,
       now,
-      new VigenciaAvisoAgregadoService(repoAgregado, 3, now),
-      logger,
+      new VigenciaAvisoAgregadoService(repoAgregado, 3, now, undefined, undefined, reglasPaisFijas()),
+      logger, reglasPaisFijas(),
     );
 
     const r = await servicio.listar(SAT_SIN_ZONA);
@@ -705,8 +706,8 @@ describe("418/R10 — un rol fuera de la lista blanca: el aviso sale SIN numero 
     const servicio = new NotificacionService(
       repo,
       now,
-      new VigenciaAvisoAgregadoService(repoAgregado, 3, now),
-      logger,
+      new VigenciaAvisoAgregadoService(repoAgregado, 3, now, undefined, undefined, reglasPaisFijas()),
+      logger, reglasPaisFijas(),
     );
 
     const r = await servicio.listar(MENSAJERO);
@@ -960,8 +961,8 @@ describe("462/R15 — `reprogramadas_esperan_cierre` se apaga y se enciende SOLO
     const servicio = new NotificacionService(
       repo,
       now,
-      new VigenciaAvisoAgregadoService(repoAgregado, 3, now),
-      logger,
+      new VigenciaAvisoAgregadoService(repoAgregado, 3, now, undefined, undefined, reglasPaisFijas()),
+      logger, reglasPaisFijas(),
     );
 
     const r = await servicio.listar(ADMIN_1);

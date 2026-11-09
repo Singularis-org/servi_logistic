@@ -34,9 +34,9 @@ import { emitirOrdenRechazadaEnTransaccion } from "@/lib/notificaciones/emitir";
 import type { NotificacionTxClient } from "@/lib/interfaces/repositories/INotificacionRepository";
 // Feature 261 (B5): el dia de reparto entra al SQL crudo como texto `YYYY-MM-DD` con `::date`.
 // NO se importa `startOfDayCR`: este repositorio NO resuelve ningun dia de reparto, lo RECIBE resuelto.
-// SLT-59 (R59) / SLT-79: `fechaCalendarioCR` solo fija el dia contra el que se mira si la primera ruta esta pendiente.
+// SLT-59 (R59) / SLT-79: el instante contra el que se mira si la primera ruta esta pendiente LLEGA
+// del servicio (`inicioDelDia`, en la zona del pais de la empresa; SLT-42): aqui no se calcula.
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Feature 61: estado terminal de entrega para el KPI "entregadas" del portal.
 const ESTATUS_ENTREGADA = "entregado";
@@ -776,8 +776,9 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
     ordenId: string;
     mensajeroId: string;
     gestion: GestionOrdenData;
+    inicioDelDia: Date;
   }): Promise<{ gestionId: string; ordenEventoId: string } | null> {
-    const { ordenId, mensajeroId, gestion } = input;
+    const { ordenId, mensajeroId, gestion, inicioDelDia } = input;
     return this.prisma.$transaction(async (tx) => {
       // (1) El candado de la fila. Sin el, un registro concurrente que solo INSERTA en
       // `gestion_orden` no competiria con nadie (design §5).
@@ -856,7 +857,7 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       const ahoraGestion = this.now();
       if (
         gestionable[0].tiene_coordenadas &&
-        !primeraRutaPendiente(gestionable[0].calculada_at ?? null, fechaCalendarioCR(ahoraGestion))
+        !primeraRutaPendiente(gestionable[0].calculada_at ?? null, inicioDelDia)
       ) {
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora: ahoraGestion,

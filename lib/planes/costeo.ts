@@ -2,9 +2,11 @@ import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
 import { tieneCostoConcreto, type PlanParaCosto } from "@/lib/planes/costo-concreto";
 import type { CobroDelCiclo, CosteoDelCiclo, CostoVigente, FuenteDelCosto } from "@/lib/types/consumo-plan";
 
-// SLT-66 (design §4.3; R19, R20, R10, R28) — el total estimado del ciclo que muestran «Mi plan» y el
-// detalle de empresa del superadmin. SLT-83 (design §4.3; R23): con un plan porcentual el total es lo
-// que ya se cobró, no una estimación, porque el importe de cada orden depende de su estado final.
+// SLT-66 (design §4.3; R19, R20, R28) — el total estimado del ciclo que muestran «Mi plan» y el
+// detalle de empresa del superadmin. SLT-86 (R28): el ciclo es el período en curso de calendario y la
+// base, su costo (o el de su tramo) con el descuento del período. SLT-83 (design §4.3; R23): con un
+// plan porcentual el total suma lo que ya se cobró, no una estimación, porque el importe de cada orden
+// depende de su estado final.
 //
 // La aritmética, en céntimos exactos (`lib/planes/centimos.ts`): ni `Number(` ni `parseFloat`.
 
@@ -32,40 +34,50 @@ export function costoVigenteDeLaTarifa(t: TarifaLeida): CostoVigente {
 type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
 
 /**
+ * `costoDelPeriodo` es el costo base del período en curso o de su tramo, con el descuento del período
+ * (SLT-86 R28; `cobroDelPlan(...).costo`): `null` = el plan no tiene costo base y queda «por definir»
+ * (R20). Llega calculado porque sale del precio vigente al EMPEZAR el período (R15), que no tiene por qué
+ * ser el de `plan.precio`.
+ *
  * `costoVigente` es el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo (§3.2):
  * en modo fijo nunca queda «por definir» porque cae al global o a `0.00` (R20). El total usa lo que la
  * empresa paga.
  *
- * `sinCostoConcreto` mira el PLAN, no lo que se cobra (R28): con una excepción en la empresa y un plan
- * sin costo por orden, el aviso sale igual.
+ * `sinCostoConcreto` mira el PLAN vigente, no lo que se cobra (R28 de SLT-66): con una excepción en la
+ * empresa y un plan sin costo por orden, el aviso sale igual.
  *
  * SLT-83: `cobroCiclo` es el de `plan_cobro_del_ciclo` (R24) y solo lo usa el modo porcentual: en el
- * fijo es opcional y no cambia nada.
+ * fijo es opcional y no cambia nada. SLT-86 (R28): lo cuenta desde el inicio del período en curso.
  */
-export function costeoDelCiclo(plan: PlanParaCosto, costoVigente: CostoFijo, ordenes: number, cobroCiclo?: CobroDelCiclo): CosteoFijo;
 export function costeoDelCiclo(
   plan: PlanParaCosto,
+  costoDelPeriodo: string | null,
+  costoVigente: CostoFijo,
+  ordenes: number,
+  cobroCiclo?: CobroDelCiclo,
+): CosteoFijo;
+export function costeoDelCiclo(
+  plan: PlanParaCosto,
+  costoDelPeriodo: string | null,
   costoVigente: CostoVigente,
   ordenes: number,
   cobroCiclo: CobroDelCiclo,
 ): CosteoDelCiclo;
 export function costeoDelCiclo(
   plan: PlanParaCosto,
+  costoDelPeriodo: string | null,
   costoVigente: CostoVigente,
   ordenes: number,
   cobroCiclo?: CobroDelCiclo,
 ): CosteoDelCiclo {
-  const { precio } = plan;
-  // El anual (fijo o con descuento) no entra: el total es siempre mensual (R10, R19).
-  const mensual = precio.tipo === "monto" ? aCentimos(precio.mensual) : null;
+  const base = costoDelPeriodo === null ? null : aCentimos(costoDelPeriodo);
   const comun = {
-    base: mensual === null ? { tipo: "por_definir" as const } : { tipo: "monto" as const, mensual: aTexto(mensual) },
+    base: base === null ? { tipo: "por_definir" as const } : { tipo: "monto" as const, periodo: aTexto(base) },
     sinCostoConcreto: !tieneCostoConcreto(plan),
-    anualNoAplicaAlCosto: precio.tipo === "monto" && precio.anual !== null,
   };
 
   if (costoVigente.modo === "porcentual") {
-    // R23: base + lo cobrado en el ciclo; las órdenes aún sin estado final solo se cuentan.
+    // R23: base + lo cobrado en el período; las órdenes aún sin estado final solo se cuentan.
     // Las sobrecargas lo exigen en este modo; sin él, el total sería una cifra inventada.
     if (cobroCiclo === undefined) throw new Error("costeoDelCiclo: el modo porcentual necesita lo cobrado en el ciclo");
     const cobrado = aCentimosConSigno(cobroCiclo.cobrado);
@@ -76,7 +88,7 @@ export function costeoDelCiclo(
       minimo: costoVigente.minimo,
       cobrado: aTexto(cobrado),
       pendientes: cobroCiclo.pendientes,
-      total: mensual === null ? null : aTexto(mensual + cobrado),
+      total: base === null ? null : aTexto(base + cobrado),
     };
   }
 
@@ -89,6 +101,6 @@ export function costeoDelCiclo(
     fuente: costoVigente.fuente,
     ordenes,
     subtotalOrdenes: aTexto(subtotal),
-    total: mensual === null ? null : aTexto(mensual + subtotal),
+    total: base === null ? null : aTexto(base + subtotal),
   };
 }

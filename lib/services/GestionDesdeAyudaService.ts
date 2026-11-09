@@ -16,7 +16,6 @@ import {
 // FEATURE 276 (T5, R1/R3/R4/R7): la MISMA regla y el MISMO motivo que el panel del mensajero. El
 // modulo del tope es puro y el motivo vive en `mensajes-bloqueo`: dos superficies, un solo texto.
 import { alcanzaElTope, permitidoEnElTope } from "@/lib/types/tope-intentos";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
 import type { GestionarDesdeAyudaResult } from "@/lib/types/gestion-desde-ayuda";
 import { estaEnVentanaDeEscritura } from "@/lib/types/ventana-hilo-notas";
@@ -25,8 +24,10 @@ import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
 // reescribe aqui — la tienda tiene que leer la misma frase que el mensajero.
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 // Feature 261 (B16, R31): el MISMO helper de la convencion `@db.Date` que usa la via del
-// mensajero. Mismo criterio y mismo dia; `inicioDelDiaCREnUtc` desplazaria el dia seis horas.
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+// mensajero. Mismo criterio y mismo dia; `inicioDelDiaEnUtc` desplazaria el dia. SLT-42: con la
+// zona del pais de la empresa.
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 
 /**
  * Feature 237 (design §6, T5.3) — LA TIENDA RESUELVE UNA ORDEN DESDE LA PESTAÑA DE AYUDA, y esa
@@ -84,7 +85,12 @@ export interface GestionDesdeAyudaDeps {
    * Es el MISMO servicio —y por tanto el MISMO criterio unico de la 215— que consultan el panel
    * del mensajero, el cron de SLA y el drawer del historial.
    */
-  historial: Pick<IOrdenHistorialService, "contarIntentos">;
+  historial: Pick<IOrdenHistorialService, "contarIntentos" | "topeIntentos">;
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa, con la que se calcula el dia en curso.
+   * OBLIGATORIA, como `historial`: olvidarla en el composition root rompe el typecheck.
+   */
+  reglasPais: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 // FICHA 454 (T1.15): aqui vivia `ESTATUS_AYUDA = "ayuda_tienda"`. Se resuelve desde la ayuda
@@ -180,7 +186,8 @@ export class GestionDesdeAyudaService implements IGestionDesdeAyudaService {
     //    ⚠️ NO se reutiliza `MisAsignacionesService.gestionar` para esto (design A11): aquel
     //    metodo existe con cuatro candados que esta via no puede pasar, y abrirle un modo o un
     //    actor suplantado a un metodo money-critical los deja todos a un `if` de abrirse.
-    const diaEnCurso = startOfDayCR(now);
+    // SLT-42 (R22, R28): sin zona en el pais falla aqui, antes de subir nada ni escribir.
+    const diaEnCurso = inicioDelDiaComoFecha(now, await this.deps.reglasPais.zonaHoraria());
     const fechaReparto = acceso.orden.fechaReparto;
     if (fechaReparto !== null && fechaReparto.getTime() > diaEnCurso.getTime()) {
       // R32: el motivo lleva el DIA, con palabras, sin siglas ni nombres de columna, y sale de
@@ -209,7 +216,7 @@ export class GestionDesdeAyudaService implements IGestionDesdeAyudaService {
     //    pida el resultado prohibido se rechaza igual.
     if (!permitidoEnElTope(input.resultado)) {
       const intentos = await this.deps.historial.contarIntentos(input.ordenId);
-      if (alcanzaElTope(intentos, reintentosConfig.MIN_INTENTOS_ENTREGA)) {
+      if (alcanzaElTope(intentos, await this.deps.historial.topeIntentos())) {
         // `conflict` y no `forbidden`: la orden SI es suya; lo que falla es el estado del mundo.
         return { status: "conflict", motivo: MSG_TOPE_INTENTOS_GESTION };
       }

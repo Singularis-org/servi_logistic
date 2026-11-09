@@ -5,6 +5,7 @@ import { crearOrden, crearZona, mas, sembrarBase475 } from "./_informe-transito-
 import { INFORMES_WHATSAPP } from "@/lib/whatsapp-envios/informes/catalogo";
 import { PARAMETROS_POR_DEFECTO, type ParametrosTransito } from "@/lib/whatsapp-envios/informes/transito/parametros";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T5.3, design §9) — el informe REGISTRADO EN EL CATALOGO (no uno construido aqui) lee
 // de Postgres a traves del repositorio real. Mata M13 (catalogo con un repo que no es el real).
 //
@@ -48,7 +49,7 @@ describeSiHayBase("475/M13 — composition root del catalogo contra Postgres", (
       const ahora = new Date("2026-10-05T11:00:00.000Z");
       const parametros: ParametrosTransito = { ...PARAMETROS_POR_DEFECTO, hito: "creacion", enviarSiVacio: true };
       const contar = async () => {
-        const res = await informe.generar({ parametros, ahora, conDocumento: false });
+        const res = await informe.generar({ zona: ZONA_DE_CR, parametros, ahora, conDocumento: false });
         if (res.tipo !== "contenido") throw new Error("475: con enviarSiVacio debe haber contenido");
         return Number.parseInt(res.valores.total_en_alerta, 10);
       };

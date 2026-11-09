@@ -17,6 +17,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T9, bloque 🔴 OBLIGATORIO) — EL RECHAZO DE LA NO GESTION, EJECUTADO CONTRA POSTGRES.
@@ -316,6 +317,7 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
                   nuevoEstado: "aprobado",
                   resueltoPor: adminId,
                   motivoRechazo: null,
+                  zonaHoraria: ZONA_DE_CR,
                   liberacionSinGestionar: {
                     sinGestionarEstatusId: estatus.get("novedad_interna") as string,
                     enBodegaEstatusId: estatus.get("en_bodega_central") as string,
@@ -352,6 +354,7 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
                   nuevoEstado: "rechazado",
                   resueltoPor: adminId,
                   motivoRechazo: "no cuadra la caja",
+                  zonaHoraria: ZONA_DE_CR,
                 },
           );
 

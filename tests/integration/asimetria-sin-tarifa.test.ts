@@ -5,7 +5,7 @@ import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
-import { sinValoresDelModeloNuevo } from "../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../fixtures/tarifa-tienda";
 // ⏳ 2026-09-10 (feature 415, T8): la QUINTA superficie ante el mismo hueco.
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
@@ -134,7 +134,7 @@ const TABLA_CON_TARIFA: FilaTarifa[] = [
  */
 function prismaTarifas(filas: readonly FilaTarifa[]) {
   // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-  return { tarifa: { findMany: vi.fn(async () => [...filas]) }, ...sinValoresDelModeloNuevo() };
+  return { tarifa: { findMany: vi.fn(async () => [...filas]) }, ...empresaSinActivar() };
 }
 
 function resolverReal(filas: readonly FilaTarifa[]): TarifaVigenteRepository {
@@ -335,7 +335,7 @@ async function porElCierre(filas: readonly FilaTarifa[]) {
 
 function ordenRepoDoble(): IOrdenRepository {
   return {
-    findUsuarioFulfillment: vi.fn(async () => false),
+    findUsuarioSeRecogeEnTienda: vi.fn(async () => true),
     findEstatusIdByValue: vi.fn(async () => "os-erbp"),
     findExistingRemisiones: vi.fn(async () => new Map<string, string>()),
     findAllProvincias: vi.fn(async () => PROVINCIAS),

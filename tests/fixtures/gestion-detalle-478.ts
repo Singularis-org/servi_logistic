@@ -30,6 +30,7 @@ export function tarifa478(over: Partial<TarifaSnapshotDTO> = {}): TarifaSnapshot
 
 export function ingreso478(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: null,
     cobraComision: true,
     esCentral: true,

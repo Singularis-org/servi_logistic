@@ -4,9 +4,14 @@
  * (`AGENTS.md > Paralelismo`, `docs/equipo.md`).
  *
  *   node scripts/archivos-en-vuelo.mjs                     inventario por feature en vuelo
- *   node scripts/archivos-en-vuelo.mjs --candidata QC-12   interseccion con la candidata; exit 1 si choca
- *   node scripts/archivos-en-vuelo.mjs --candidata QC-12 --acepto QC-7,QC-9
+ *   node scripts/archivos-en-vuelo.mjs --candidata PROY-12   interseccion con la candidata; exit 1 si choca
+ *   node scripts/archivos-en-vuelo.mjs --candidata PROY-12 --acepto PROY-7,PROY-9
  *                                                          choques con esas keys aceptados por el humano
+ *   node scripts/archivos-en-vuelo.mjs --candidata PROY-12 --archivos lib/a.ts,lib/b.ts
+ *                                                          ruta directa (sin spec): los archivos los da el leader
+ *
+ * La candidata declara sus archivos en `## Archivos esperados` de su `tasks.md` (ruta completa) o de
+ * su `requirements.md` unico (ruta ligera); de las features en vuelo se lee igual, de su rama.
  *
  * Por que existe: antes la validacion leia `progress/impl_<feature>.md` del disco local, pero
  * las features de los companeros viven en SUS ramas, no en tu disco. Aqui la fuente es el
@@ -57,7 +62,7 @@ const { features } = JSON.parse(readFileSync(listaPath, 'utf8'));
 const args = process.argv.slice(2);
 const iCand = args.indexOf('--candidata');
 const candidata = iCand >= 0 ? args[iCand + 1] : null;
-// `--acepto QC-a,QC-b`, `--acepto=QC-a` o la opcion repetida: keys cuyo choque acepto el humano.
+// `--acepto PROY-a,PROY-b`, `--acepto=PROY-a` o la opcion repetida: keys cuyo choque acepto el humano.
 const aceptadas = new Set();
 args.forEach((a, i) => {
   const valor = a === '--acepto' ? args[i + 1] : a.startsWith('--acepto=') ? a.slice('--acepto='.length) : null;
@@ -111,7 +116,8 @@ for (const f of enVuelo) {
   }
   const tocados = (gitOpcional('diff', '--name-only', `origin/${INTEGRACION}...${remoto}`) ?? '')
     .split('\n').filter((l) => l && !ignorable(l));
-  const tasks = gitOpcional('show', `${remoto}:${specDe(f)}/tasks.md`);
+  // Ruta ligera: no hay tasks.md, `## Archivos esperados` va en el requirements.md unico.
+  const tasks = gitOpcional('show', `${remoto}:${specDe(f)}/tasks.md`) ?? gitOpcional('show', `${remoto}:${specDe(f)}/requirements.md`);
   const esp = tasks == null ? { rutas: new Set(), sinSeccion: false } : esperados(tasks);
   inventario.push({ f, rama, publicada: true, sinSeccion: esp.sinSeccion, archivos: new Set([...tocados, ...esp.rutas]) });
 }
@@ -135,16 +141,28 @@ if (!fichaCand) {
 }
 const bases = ['.', raiz, ...(existsSync(path.join(raiz, '.worktrees'))
   ? readdirSync(path.join(raiz, '.worktrees')).map((d) => path.join(raiz, '.worktrees', d)) : [])];
+// Ruta completa: `tasks.md`. Ruta ligera: el `requirements.md` unico. Ruta directa (sin spec): los
+// archivos los da el leader con `--archivos a,b` (`docs/specs.md > Tres rutas`).
+const iArch = args.indexOf('--archivos');
+const archivosDados = iArch >= 0 ? (args[iArch + 1] ?? '').split(',').map((s) => s.trim()).filter(Boolean) : null;
 let tasksCand = null;
-for (const b of bases) {
-  const p = path.join(b, specDe(fichaCand), 'tasks.md');
-  if (existsSync(p)) { tasksCand = readFileSync(p, 'utf8'); break; }
+for (const b of archivosDados ? [] : bases) {
+  for (const nombre of ['tasks.md', 'requirements.md']) {
+    const p = path.join(b, specDe(fichaCand), nombre);
+    if (existsSync(p)) { tasksCand = readFileSync(p, 'utf8'); break; }
+  }
+  if (tasksCand != null) break;
 }
-if (tasksCand == null) {
-  console.error(`no encuentro ${specDe(fichaCand)}/tasks.md: la validacion de conflicto necesita el tasks.md de la candidata`);
+if (tasksCand == null && !archivosDados) {
+  console.error(
+    `no encuentro ${specDe(fichaCand)}/tasks.md ni requirements.md: la validacion de conflicto necesita los archivos esperados de la candidata. ` +
+    'En la ruta directa, dalos con --archivos <ruta1,ruta2>.',
+  );
   process.exit(2);
 }
-const { rutas: mios, sinSeccion: candSinSeccion } = esperados(tasksCand);
+const { rutas: mios, sinSeccion: candSinSeccion } = archivosDados
+  ? { rutas: new Set(archivosDados.map((r) => r.replace(/^\.\//, '')).filter((r) => !ignorable(r))), sinSeccion: false }
+  : esperados(tasksCand);
 const SIN_SECCION = 'su tasks.md no tiene `## Archivos esperados`: se leen las rutas de todo el archivo (docs/specs.md > tasks.md)';
 if (candSinSeccion) console.log(`AVISO: ${candidata}: ${SIN_SECCION}`);
 

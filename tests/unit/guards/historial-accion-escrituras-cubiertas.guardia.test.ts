@@ -216,6 +216,23 @@ const CENSO: EntradaCenso[] = [
   },
   // SLT-52 (R14, T6.2) — el modelo nuevo de tarifas. Un metodo por escritura; `grupo_distritos_cambiado`
   // tiene DOS productores (renombrar y mover distritos), cada uno con su propia transaccion.
+  // SLT-54 (R4, T1.2): activar deja su rastro en la misma transaccion que la fila.
+  {
+    tipos: ["tarifas_activadas"],
+    archivo: "lib/repositories/TarifaActivacionRepository.ts",
+    metodo: "activar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaActivacion\.create\(/,
+  },
+  // SLT-77 (R10, T2.2): el cambio del tope, con su rastro en la misma transaccion. Mueve dinero: bajarlo adelanta
+  // rechazos, y un rechazo genera cobro.
+  {
+    tipos: ["tope_intentos_cambiado"],
+    archivo: "lib/repositories/TopeIntentosRepository.ts",
+    metodo: "guardar",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"/,
+  },
   {
     tipos: ["tarifa_valor_fijado"],
     archivo: "lib/repositories/TarifaValorRepository.ts",
@@ -499,9 +516,10 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.rechazoTiendaCobroAnulacion\.createMany\(/,
   },
   {
-    // ⭑ Q2 (`usuario_fulfillment_cambiado`) comparte punto de escritura con el rol y la zona: es
-    // el MISMO formulario, y las N filas salen con el MISMO `lote_id`.
-    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_fulfillment_cambiado"],
+    // ⭑ Q2 comparte punto de escritura con el rol y la zona: es el MISMO formulario, y las N filas
+    // salen con el MISMO `lote_id`. SLT-94 (R8): la marca «se recoge en tienda» sustituye al
+    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`).
+    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_se_recoge_en_tienda_cambiado"],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "update",
     forma: "abre_tx",
@@ -709,22 +727,41 @@ const CENSO: EntradaCenso[] = [
   // `tests/integration/db/planes-historial.test.ts`. Ajuste planes-custom (D2): el cuerpo vive en
   // `asignarEnTx`, que recibe la `tx` de `asignar` o de `crearYAsignar` (crear y asignar un custom en
   // una sola transacción, `tests/integration/db/planes-crear-custom-asigna.test.ts`).
+  //
+  // SLT-86 (design §5.1, §5.2; R17, R20): asignar, crear un custom con empresa, cambiar el tipo y aplicar un
+  // cambio de empresa pendiente escriben por UN solo punto, `aplicarEnTx`, que recibe la `tx` de quien
+  // abrió la transacción (`asignar`, `crearYAsignar`, `cambiarTipoCobro` o `aplicarCambioDeEmpresa`). El
+  // UPDATE de `organizacion` y la fila del historial van juntos. Lo prueban
+  // `tests/integration/db/planes-cambio-empresa.test.ts` y `planes-historial.test.ts`.
   {
     tipos: ["plan_asignado"],
     archivo: "lib/repositories/PlanesRepository.ts",
-    metodo: "asignarEnTx",
+    metodo: "aplicarEnTx",
     forma: "recibe_tx",
-    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"\s+SET "plan_id"/,
   },
   // Ajuste planes-custom (D10, D16): cambiar solo el tipo de cobro del plan actual deja su fila con
   // acción PROPIA, `plan_tipo_cobro_cambiado` (el tipo de antes y el nuevo), en la misma transacción que el
-  // UPDATE. Lo prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  // UPDATE. SLT-86: por el mismo `aplicarEnTx`, con la fecha de efecto. Lo prueba
+  // `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
   {
     tipos: ["plan_tipo_cobro_cambiado"],
     archivo: "lib/repositories/PlanesRepository.ts",
-    metodo: "cambiarTipoCobro",
-    forma: "abre_tx",
-    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro"/,
+    metodo: "aplicarEnTx",
+    forma: "recibe_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"\s+SET "plan_id"[^`]*"plan_tipo_cobro"/,
+  },
+  // SLT-86 (design §5.3; R19, R21; decisión del humano del 2026-11-05): cancelar el cambio pendiente de una
+  // empresa deja su fila `plan_cambio_empresa_cancelado`. Un solo punto, `cancelarPendienteDeEmpresaEnTx`, que
+  // recibe la `tx` de «Cancelar cambio» (`cancelarCambioEmpresa`), de la petición igual a lo vigente
+  // (`cambiarEmpresaEnTx`) y del archivado (`archivar`). El UPDATE que limpia el pendiente y la fila van
+  // juntos. Lo prueba `tests/integration/db/planes-cancelar-cambio-historial.test.ts`.
+  {
+    tipos: ["plan_cambio_empresa_cancelado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "cancelarPendienteDeEmpresaEnTx",
+    forma: "recibe_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET \$\{SIN_PENDIENTE\} WHERE "id"/,
   },
 ];
 
@@ -757,6 +794,13 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
       "el borrado de vehiculos se retiro (P1: desactivar lo sustituye) y el catalogo es del " +
       "superadmin, cuyas acciones van a `vehiculo_rastro` (R20, R21); el valor queda por las filas viejas",
   },
+  {
+    tipos: ["usuario_fulfillment_cambiado"],
+    desde: "SLT-94",
+    motivo:
+      "la marca `fulfillment` se migro negada a «se recoge en tienda» (D4) y la columna vieja ya no se " +
+      "escribe; su cambio lo registra `usuario_se_recoge_en_tienda_cambiado` (R8). El valor queda por las filas viejas",
+  },
 ];
 
 /**
@@ -773,7 +817,7 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista queda vacia.
+// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
 const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
@@ -1208,7 +1252,11 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(81);
+    // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
+    // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
+    // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
+    // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(85);
   });
 });
 

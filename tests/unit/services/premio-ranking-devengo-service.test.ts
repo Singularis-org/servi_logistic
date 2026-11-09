@@ -11,6 +11,7 @@ import type { PodioFilaConFecha } from "@/lib/interfaces/repositories/IRankingSn
 import type { MovimientoDeCajaDePremio } from "@/lib/interfaces/services/ICajaPremioRankingFeedService";
 import type { PremioTx } from "@/lib/interfaces/services/IPremioRankingDevengoService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 293 (T4.2, design §7) — el servicio del PREMIO DEL RANKING, con dobles.
 //
 // Los dobles modelan la SEMANTICA de las barreras de la base, no un `if` del test:
@@ -189,7 +190,7 @@ function dobles(opciones: Opciones = {}) {
     cierreRepo,
     libroRepo,
     caja,
-    runTransaction,
+    runTransaction, reglasPaisFijas(),
   );
   return { service, snapshotRepo, cierreRepo, libroRepo, caja, log, confirmadoLibro, confirmadoCaja };
 }

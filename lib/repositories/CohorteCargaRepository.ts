@@ -21,10 +21,11 @@
 //
 // ─── LA FRONTERA DEL DIA: NI UNA ZONA HORARIA EN ESTE SQL ────────────────────────────────
 //
-// Regla heredada de la 180 y NO negociable: no hay `AT TIME ZONE`, no hay `America/Costa_Rica`,
-// no hay `date_trunc` con zona y no hay `interval '6 hours'`. El dia CR entra como el fragmento
-// `DIA_CR` que ya vive en `ConteoCargadasPorDiaRepository` —se IMPORTA, no se copia—, y ese
-// fragmento manda el desfase como PARAMETRO derivado de `lib/utils/fecha-cr.ts`.
+// Regla heredada de la 180: no se ESCRIBE ninguna zona — ni `America/Costa_Rica`, ni `date_trunc`
+// con zona escrita, ni `interval '6 hours'`. El dia entra como el fragmento `diaDeCargaEnZona`
+// que ya vive en `ConteoCargadasPorDiaRepository` —se IMPORTA, no se copia—, y ese fragmento
+// manda la zona del pais de la empresa (`consulta.zona`) como PARAMETRO de `AT TIME ZONE`
+// (SLT-42, R22/R23; decision del humano del 2026-11-06).
 //
 // Un piso mas abajo, la misma trampa: las COTAS de la ventana son las que trae `resolverRango`
 // (`inicioDelDiaCREnUtc` / `inicioDelDiaSiguienteCREnUtc`, todo borde en `...T06:00:00.000Z`).
@@ -48,7 +49,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
 import {
   condicionesSinFecha,
-  DIA_CR,
+  diaDeCargaEnZona,
 } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
 import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
@@ -162,7 +163,7 @@ export class CohorteCargaRepository implements ICohorteCargaRepository {
       WITH cohorte AS (
         SELECT o."id"         AS orden_id,
                o."created_at" AS cargada_at,
-               ${DIA_CR}      AS dia
+               ${diaDeCargaEnZona(consulta.zona)} AS dia
         FROM "orden" o
         WHERE ${where}
       ),

@@ -13,7 +13,7 @@ import type {
 import { EMPRESA } from "@/lib/config/marca";
 import { BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
 import { esquemaOrdenamiento } from "@/lib/types/ordenamiento-listado";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 
 // FICHA 362 (design §1.1, R14/R15/R17) — EL CATALOGO CERRADO del historial de acciones.
 //
@@ -50,12 +50,13 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 81 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
- * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16), y es el que consume el selector de filtros: no se
+ * Los 84 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16, y
+ * el cambio cancelado, SLT-86) y el tope de intentos de SLT-77, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
 export const HISTORIAL_ACCION_TIPOS = [
-  // --- A.1 · mueve dinero (49) ---
+  // --- A.1 · mueve dinero (51) ---
   "cierre_dia_aprobado", // cierres-admin.aprobarCierre
   "cierre_dia_rechazado", // cierres-admin.rechazarCierre
   "cierre_dia_pagos_editados", // cierres-admin.actualizarPagosGestion
@@ -69,8 +70,8 @@ export const HISTORIAL_ACCION_TIPOS = [
   "wallet_movimiento_manual_registrado", // wallet.registrarMovimientoManualAction
   "egreso_administrativo_registrado", // wallet-egresos.registrarEgresoAdministrativoAction
   "egreso_administrativo_reversado", // WalletEgresoService.reversarEgreso (su Server Action se retiro en la 458-E, M4; quedan las filas historicas)
-  "tarifa_creada", // tarifas.crearTarifa
-  "tarifa_actualizada", // tarifas.actualizarTarifa
+  "tarifa_creada", // TarifaService.crear (sembrados; sin action desde SLT-54)
+  "tarifa_actualizada", // TarifaService.actualizar (sembrados; sin action desde SLT-54)
   "incidente_aprobado", // incidentes.aprobarIncidente
   "incidente_rechazado", // incidentes.rechazarIncidente
   "cobro_gasto_fijo_aprobado", // gasto-fijo-cobro.aprobarCobroGastoFijoAction
@@ -89,7 +90,12 @@ export const HISTORIAL_ACCION_TIPOS = [
   // ⭑ Q2, CERRADA POR EL HUMANO EL 2026-09-02 — el `fulfillment` de una tienda.
   // Entra en DINERO porque activa un cobro periodico de bodega. NO entra en «permisos» aunque se
   // edite desde el mismo formulario que el rol: no cambia lo que la persona PUEDE HACER.
-  "usuario_fulfillment_cambiado", // usuarios.actualizarUsuario (solo si cambia `fulfillment`)
+  "usuario_fulfillment_cambiado", // HISTORICO desde SLT-94: ya no se escribe; queda por las filas viejas
+  // ⭑ SLT-94 (R8) — la marca «se recoge en tienda» de una tienda cambio. Sustituye a
+  // `usuario_fulfillment_cambiado` (la marca vieja se migro negada). Entra en DINERO por el mismo
+  // motivo que su antecesora: decide donde nace la orden (bodega o tienda) y con ella si se emite
+  // guia y manifiesto en el acto. `valor_anterior`/`valor_nuevo` = `"true"`/`"false"`.
+  "usuario_se_recoge_en_tienda_cambiado", // usuarios.actualizarUsuario (solo si cambia la marca)
   // ⭑ FICHA 366 — la zona estampada en una orden, re-derivada al guardar la configuracion de una
   // zona. Entra en DINERO por el MISMO motivo textual que `orden_ubicacion_corregida`: el distrito
   // re-deriva la zona y la zona decide la tarifa que se factura. La fila registra SOLO EL HECHO
@@ -271,6 +277,12 @@ export const HISTORIAL_ACCION_TIPOS = [
   "tarifa_valor_quitado", // TarifaValorService.quitarValor (R9)
   "grupo_distritos_creado", // GrupoDistritosService.crearGrupo
   "grupo_distritos_cambiado", // GrupoDistritosService.renombrarGrupo / fijarDistritos
+  // ⭑ SLT-54 (R4, design §2.2) — el maestro hizo regir el modelo nuevo. DINERO: desde ese instante
+  // la empresa cobra y paga con otro modelo. Las activadas por migracion no dejan fila: no hay actor.
+  "tarifas_activadas", // TarifaActivacionRepository.activar
+  // ⭑ SLT-77 (R10, design §2.3) — el maestro cambio el tope de intentos de entrega. DINERO: bajarlo adelanta
+  // rechazos, y un rechazo genera cobro. `valor_anterior`/`valor_nuevo` llevan los dos numeros y nada mas (R41).
+  "tope_intentos_cambiado", // TopeIntentosRepository.guardar
 
   // --- A.2 · hace desaparecer algo (11) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
@@ -294,7 +306,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // `tarifa_borrada` esta AQUI y no en «dinero» aunque mueva precio: R17 exige EXACTAMENTE una
   // categoria por tipo, y lo que la fila documenta es la desaparicion irreversible (`tarifas`
   // borra en FISICO, `db/schema.prisma`).
-  "tarifa_borrada", // tarifas.borrarTarifa
+  "tarifa_borrada", // TarifaService.borrar (sembrados; sin action desde SLT-54)
   "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
   // SLT-52: AQUI por el mismo motivo que `tarifa_borrada`: borrar un grupo es fisico y se lleva sus
   // valores por cascada (R12); lo que la fila documenta es esa desaparicion.
@@ -396,12 +408,16 @@ export const HISTORIAL_ACCION_TIPOS = [
   // (`plan`, el de la empresa) y misma categoria que `plan_asignado`. `valor_anterior` = el tipo de
   // antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
   "plan_tipo_cobro_cambiado", // PlanesRepository.cambiarTipoCobro
+  // SLT-86 (design §5.3; decisión del humano del 2026-11-05): cancelar el cambio pendiente de una empresa
+  // deja fila. Misma entidad (`plan`, el del pendiente) y misma categoria. `valor_nuevo` = «AAAA-MM-DD ·
+  // tipo» del cambio que no llegó a regir.
+  "plan_cambio_empresa_cancelado", // PlanesRepository.cancelarPendienteDeEmpresaEnTx
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
 
 /**
- * Los 29 tipos de entidad que una accion del catalogo puede afectar.
+ * Los 31 tipos de entidad que una accion del catalogo puede afectar.
  *
  * ⭑ FICHA 374 — `provincia`, `canton` y `distrito` son la PRIMERA ampliacion de este enum: nacio
  * con 17 valores en `20260902120000_historial_accion` y ninguna migracion posterior lo habia
@@ -452,6 +468,10 @@ export const HISTORIAL_ACCION_ENTIDADES = [
   // la fila sobrevive al borrado fisico del valor o del grupo.
   "tarifa_valor",
   "grupo_distritos",
+  // ⭑ SLT-54 — la activacion del modelo nuevo de tarifas, 1:1 con su tabla.
+  "tarifa_activacion",
+  // ⭑ SLT-77 — la empresa misma, 1:1 con su tabla, por el tope de intentos.
+  "organizacion",
 ] as const satisfies readonly PrismaHistorialAccionEntidad[];
 
 export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
@@ -509,6 +529,7 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   premio_ranking_anulado: "mueve_dinero",
   orden_ubicacion_corregida: "mueve_dinero",
   usuario_fulfillment_cambiado: "mueve_dinero",
+  usuario_se_recoge_en_tienda_cambiado: "mueve_dinero", // SLT-94 R8
   orden_zona_reconciliada: "mueve_dinero",
   // FICHA 376: la marca de zona central decide la columna de flete que se factura.
   zona_central_cambiada: "mueve_dinero",
@@ -555,6 +576,10 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   tarifa_valor_quitado: "mueve_dinero",
   grupo_distritos_creado: "mueve_dinero",
   grupo_distritos_cambiado: "mueve_dinero",
+  // SLT-54 (design §2.2): activar cambia el modelo con el que se cobra y se paga.
+  tarifas_activadas: "mueve_dinero",
+  // SLT-77 (design §2.3): bajar el tope adelanta rechazos, y un rechazo genera cobro.
+  tope_intentos_cambiado: "mueve_dinero",
   gestion_fecha_reprogramacion_corregida: "hace_desaparecer",
   orden_eliminada: "hace_desaparecer",
   orden_recuperada: "hace_desaparecer",
@@ -591,6 +616,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   plan_asignado: "cambia_plan",
   // D16: cambia el tipo de cobro del plan; no mueve dinero (el precio es informativo, R4 de SL-24).
   plan_tipo_cobro_cambiado: "cambia_plan",
+  // SLT-86: cancelar un cambio pendiente; tampoco mueve dinero.
+  plan_cambio_empresa_cancelado: "cambia_plan",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -620,6 +647,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   premio_ranking_anulado: "Anuló un premio del ranking",
   orden_ubicacion_corregida: "Corrigió la ubicación de una orden",
   usuario_fulfillment_cambiado: "Cambió el fulfillment de una tienda",
+  usuario_se_recoge_en_tienda_cambiado: "Cambió si se recoge en tienda",
   orden_zona_reconciliada: "Actualizó la zona de una orden",
   zona_central_cambiada: "Cambió la marca de zona central",
   zona_pago_mensajero_cambiado: "Cambió el pago al mensajero de una zona",
@@ -649,6 +677,8 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   tarifa_valor_quitado: "Quitó un valor de tarifa",
   grupo_distritos_creado: "Creó un grupo de distritos",
   grupo_distritos_cambiado: "Cambió un grupo de distritos",
+  tarifas_activadas: "Activó las tarifas nuevas",
+  tope_intentos_cambiado: "Cambió el tope de intentos de entrega",
   gestion_fecha_reprogramacion_corregida: "Corrigió la fecha de una reprogramación",
   orden_eliminada: "Eliminó una orden",
   orden_recuperada: "Recuperó una orden",
@@ -681,6 +711,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   modulo_desactivado: "Desactivó un módulo de una empresa",
   plan_asignado: "Asignó un plan a una empresa",
   plan_tipo_cobro_cambiado: "Cambió el tipo de cobro del plan de una empresa",
+  plan_cambio_empresa_cancelado: "Canceló el cambio de plan pendiente de una empresa",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */
@@ -726,6 +757,8 @@ export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
   plan: "Plan",
   tarifa_valor: "Valor de tarifa",
   grupo_distritos: "Grupo de distritos",
+  tarifa_activacion: "Activación de tarifas",
+  organizacion: "Empresa",
 };
 
 /** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */

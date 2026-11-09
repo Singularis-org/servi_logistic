@@ -19,6 +19,7 @@ import type { JobTipo } from "@prisma/client";
 import { conPushWeb } from "@/lib/notificaciones/notificacion-repo-con-push";
 import type { ErrorLogger } from "@/lib/errors";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FICHA 410 (T3.4) — EL DECORADOR, que es el UNICO punto de cableado del canal.
 //
 // Cubre R5 (el push NO crea filas nuevas), R6/R7 (uno al dia, y el cupo lo decide el INSERT), R27
@@ -126,7 +127,7 @@ function montar(opciones: {
     lector,
     canal,
     cola,
-    hayCanal: () => opciones.hayCanal ?? true,
+    reglasPais: reglasPaisFijas(), hayCanal: () => opciones.hayCanal ?? true,
     now: () => AHORA,
     logger: opciones.logger,
   });
@@ -194,7 +195,7 @@ describe("410/R6 — uno al dia por (usuario, evento), y el cupo se toma ANTES d
     const canal = new CanalDoble();
     canal.tomarCupoDelDia = vi.fn(async () => true); // ⚠️ LA MUTACION
     const cola = new ColaDoble();
-    const repo = conPushWeb(base, { lector, canal, cola, hayCanal: () => true, now: () => AHORA });
+    const repo = conPushWeb(base, { lector, canal, cola, reglasPais: reglasPaisFijas(), hayCanal: () => true, now: () => AHORA });
 
     base.siguienteId = "n-1";
     await repo.crear(ENTRADA_ELEGIBLE);
@@ -216,7 +217,7 @@ describe("410/R6 — uno al dia por (usuario, evento), y el cupo se toma ANTES d
         lector: new LectorDoble([destinatario(usuarioId, "mensajero")]),
         canal,
         cola,
-        hayCanal: () => true,
+        reglasPais: reglasPaisFijas(), hayCanal: () => true,
         now: () => AHORA,
       });
 
@@ -343,7 +344,7 @@ describe("410/R28 — un fallo del canal NO propaga, y queda REGISTRADO", () => 
       lector,
       canal: new CanalDoble(),
       cola: new ColaDoble(),
-      hayCanal: () => true,
+      reglasPais: reglasPaisFijas(), hayCanal: () => true,
       now: () => AHORA,
       logger,
     });

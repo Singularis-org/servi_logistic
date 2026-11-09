@@ -5,6 +5,8 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { FiltrosWalletService } from "@/lib/services/FiltrosWalletService";
 import { cierresDeLaCuentaSchema, conceptosConMovimientosSchema } from "@/lib/types/wallet-filtros";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 458-A (TA.3/TA.4) — el servicio de los filtros: rol ANTES de leer, orden del catalogo,
 // busqueda por dia CR o por nombre, tope con `hayMas`; y el borde `.strict()` con `.uuid()` (R12).
 
@@ -20,6 +22,7 @@ function repo(): IFiltrosWalletRepository & { [k: string]: ReturnType<typeof vi.
       { categoria: "egreso_sueldo", movimientos: 2 },
       { categoria: "ingreso_flete", movimientos: 1 },
     ]),
+    categoriasConModeloNuevoCaja: vi.fn(async () => []),
     contarConceptosTienda: vi.fn(async () => [
       { categoria: "flete", movimientos: 1 },
       { categoria: "cod_recaudado", movimientos: 3 },
@@ -31,7 +34,7 @@ function repo(): IFiltrosWalletRepository & { [k: string]: ReturnType<typeof vi.
 
 describe("FiltrosWalletService.conceptosConMovimientos (R13/R14)", () => {
   it("devuelve los conceptos en el ORDEN del catálogo, no en el de la base", async () => {
-    const r = await new FiltrosWalletService(repo()).conceptosConMovimientos({ libro: "caja" }, MAESTRO);
+    const r = await new FiltrosWalletService(repo(), undefined, reglasPaisFijas()).conceptosConMovimientos({ libro: "caja" }, MAESTRO);
     expect(r).toEqual({
       status: "ok",
       conceptos: [
@@ -43,7 +46,7 @@ describe("FiltrosWalletService.conceptosConMovimientos (R13/R14)", () => {
 
   it("mi_tienda acota a la tienda de la SESIÓN", async () => {
     const r0 = repo();
-    await new FiltrosWalletService(r0).conceptosConMovimientos({ libro: "mi_tienda" }, TIENDA);
+    await new FiltrosWalletService(r0, undefined, reglasPaisFijas()).conceptosConMovimientos({ libro: "mi_tienda" }, TIENDA);
     expect(r0.contarConceptosTienda).toHaveBeenCalledWith("t-sesion", {
       cierreId: undefined,
       desde: undefined,
@@ -60,7 +63,7 @@ describe("FiltrosWalletService.conceptosConMovimientos (R13/R14)", () => {
     ];
     for (const [input, actor] of casos) {
       const r0 = repo();
-      expect(await new FiltrosWalletService(r0).conceptosConMovimientos(input, actor)).toEqual({ status: "forbidden" });
+      expect(await new FiltrosWalletService(r0, undefined, reglasPaisFijas()).conceptosConMovimientos(input, actor)).toEqual({ status: "forbidden" });
       for (const fn of Object.values(r0)) expect(fn).not.toHaveBeenCalled();
     }
   });
@@ -72,7 +75,7 @@ describe("FiltrosWalletService.cierresDeLaCuenta (R10/R11)", () => {
     vi.mocked(r0.cierresDeTienda).mockResolvedValue([
       { cierreId: UUID_A, solicitadoAt: "2026-09-13T04:30:00.000Z", mensajero: "Juan Pérez", movimientos: 4 },
     ]);
-    const r = await new FiltrosWalletService(r0).cierresDeLaCuenta({ cuenta: "tienda", tiendaId: UUID_B }, MAESTRO);
+    const r = await new FiltrosWalletService(r0, undefined, reglasPaisFijas()).cierresDeLaCuenta({ cuenta: "tienda", tiendaId: UUID_B }, MAESTRO);
     expect(r).toEqual({
       status: "ok",
       hayMas: false,
@@ -84,7 +87,7 @@ describe("FiltrosWalletService.cierresDeLaCuenta (R10/R11)", () => {
 
   it("la búsqueda `YYYY-MM-DD` es la franja del día de Costa Rica; otro texto, el nombre del mensajero", async () => {
     const r0 = repo();
-    const svc = new FiltrosWalletService(r0);
+    const svc = new FiltrosWalletService(r0, undefined, reglasPaisFijas());
     await svc.cierresDeLaCuenta({ cuenta: "mensajero", mensajeroId: UUID_A, busqueda: "2026-09-12" }, MAESTRO);
     await svc.cierresDeLaCuenta({ cuenta: "mensajero", mensajeroId: UUID_A, busqueda: "  pérez " }, MAESTRO);
     await svc.cierresDeLaCuenta({ cuenta: "mensajero", mensajeroId: UUID_A, busqueda: "   " }, MAESTRO);
@@ -100,7 +103,7 @@ describe("FiltrosWalletService.cierresDeLaCuenta (R10/R11)", () => {
   it("solo acceso total: la tienda (que conserva su selector de la 335) y el mensajero → forbidden sin leer", async () => {
     for (const actor of [TIENDA, MENSAJERO]) {
       const r0 = repo();
-      const r = await new FiltrosWalletService(r0).cierresDeLaCuenta({ cuenta: "tienda", tiendaId: UUID_A }, actor);
+      const r = await new FiltrosWalletService(r0, undefined, reglasPaisFijas()).cierresDeLaCuenta({ cuenta: "tienda", tiendaId: UUID_A }, actor);
       expect(r).toEqual({ status: "forbidden" });
       expect(r0.cierresDeTienda).not.toHaveBeenCalled();
     }
@@ -109,17 +112,17 @@ describe("FiltrosWalletService.cierresDeLaCuenta (R10/R11)", () => {
 
 describe("bordes `.strict()` con `.uuid()` (R12)", () => {
   it("un id que no tiene forma de identificador muere en el borde", () => {
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: "tienda-A" }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: "tienda-A" }).success).toBe(false);
     expect(
-      conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: "' OR 1=1" }).success,
+      conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: "' OR 1=1" }).success,
     ).toBe(false);
     expect(cierresDeLaCuentaSchema.safeParse({ cuenta: "tienda", tiendaId: "x" }).success).toBe(false);
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: UUID_B }).success).toBe(true);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: UUID_B }).success).toBe(true);
   });
 
   it("una clave extra (el concepto elegido, otra tienda) es validation_error", () => {
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "caja", categoria: "egreso_sueldo" }).success).toBe(false);
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "mi_tienda", tiendaId: UUID_A }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "caja", categoria: "egreso_sueldo" }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "mi_tienda", tiendaId: UUID_A }).success).toBe(false);
     expect(cierresDeLaCuentaSchema.safeParse({ cuenta: "mensajero", mensajeroId: UUID_A, tiendaId: UUID_B }).success).toBe(false);
   });
 });

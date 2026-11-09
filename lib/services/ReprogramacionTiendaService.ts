@@ -3,9 +3,8 @@ import type { IGestionOrdenRepository } from "@/lib/interfaces/repositories/IGes
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 // FEATURE 276 (Q2, FIRMADA el 2026-08-24) — la TERCERA via hacia la circulacion se bloquea aqui,
-// con el MISMO motivo unico de R20 y el MISMO umbral de configuracion.
+// con el MISMO motivo unico de R20 y el MISMO tope de la empresa (SLT-77).
 import { MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type {
   IReprogramacionTiendaService,
   ReprogramarNovedadResult,
@@ -24,7 +23,7 @@ type ReprogramacionGestionRepo = Pick<IGestionOrdenRepository, "reprogramarDesde
  * 💰 FEATURE 276 (Q2) — el derivador de intentos. REQUERIDO: opcional, un composition root que se
  * lo olvidara dejaria abierta la tercera via en silencio.
  */
-type ReprogramacionHistorialSvc = Pick<IOrdenHistorialService, "contarIntentos">;
+type ReprogramacionHistorialSvc = Pick<IOrdenHistorialService, "contarIntentos" | "topeIntentos">;
 
 /**
  * Feature 100 — logica de negocio de la REPROGRAMACION por la tienda. Impone la AUTZ por tienda
@@ -87,7 +86,7 @@ export class ReprogramacionTiendaService implements IReprogramacionTiendaService
     //    FISICO que la bodega necesita registrar aunque la orden ya no se pueda repartir, y R18
     //    impide igualmente que salga.
     const intentos = await this.historial.contarIntentos(ordenId);
-    if (intentos >= reintentosConfig.MIN_INTENTOS_ENTREGA) {
+    if (intentos >= (await this.historial.topeIntentos())) {
       return { status: "conflict", motivo: MSG_TOPE_INTENTOS_ASIGNACION };
     }
 

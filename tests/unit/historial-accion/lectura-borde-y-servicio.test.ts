@@ -17,6 +17,7 @@ import {
   accionesDeCategoria,
   filtroHistorialAccionSchema,
 } from "./_reexports";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -111,7 +112,7 @@ describe("362/Q4 — el historial de acciones lo lee SOLO el maestro", () => {
     "R18: `%s` recibe forbidden en `listar` y el repositorio NO se llama",
     async (_rol, actor) => {
       const repo = repoDoble();
-      const r = await new HistorialAccionService(repo).listar({}, actor);
+      const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({}, actor);
       expect(r).toEqual({ status: "forbidden" });
       // La asercion que distingue «no ve nada» de «consulta y luego filtra».
       expect(repo.list).not.toHaveBeenCalled();
@@ -122,7 +123,7 @@ describe("362/Q4 — el historial de acciones lo lee SOLO el maestro", () => {
     "R33: `%s` recibe forbidden tambien en la DESCARGA, y el repositorio NO se llama",
     async (_rol, actor) => {
       const repo = repoDoble();
-      const r = await new HistorialAccionService(repo).listarCompleto({}, actor);
+      const r = await new HistorialAccionService(repo, reglasPaisFijas()).listarCompleto({}, actor);
       expect(r).toEqual({ status: "forbidden" });
       expect(repo.listAll).not.toHaveBeenCalled();
     },
@@ -131,7 +132,7 @@ describe("362/Q4 — el historial de acciones lo lee SOLO el maestro", () => {
   it("R18: el catalogo de actores tiene EL MISMO gate", async () => {
     const repo = repoDoble();
     for (const actor of DENEGADOS) {
-      expect(await new HistorialAccionService(repo).obtenerCatalogoActores(actor)).toEqual({
+      expect(await new HistorialAccionService(repo, reglasPaisFijas()).obtenerCatalogoActores(actor)).toEqual({
         status: "forbidden",
       });
     }
@@ -140,7 +141,7 @@ describe("362/Q4 — el historial de acciones lo lee SOLO el maestro", () => {
 
   it("sin sesion: `unauthenticated` en las tres, y ninguna consulta", async () => {
     const repo = repoDoble();
-    const svc = new HistorialAccionService(repo);
+    const svc = new HistorialAccionService(repo, reglasPaisFijas());
     expect(await svc.listar({}, null)).toEqual({ status: "unauthenticated" });
     expect(await svc.listarCompleto({}, null)).toEqual({ status: "unauthenticated" });
     expect(await svc.obtenerCatalogoActores(null)).toEqual({ status: "unauthenticated" });
@@ -152,7 +153,7 @@ describe("362/Q4 — el historial de acciones lo lee SOLO el maestro", () => {
   it("control positivo: el maestro SI lee, y el repositorio se llama", async () => {
     // Sin esto, los `not.toHaveBeenCalled()` de arriba podrian estar verdes por un servicio roto.
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({}, MAESTRO);
     expect(r.status).toBe("ok");
     expect(repo.list).toHaveBeenCalledTimes(1);
   });
@@ -165,7 +166,7 @@ describe("362/Q4 — el historial de acciones lo lee SOLO el maestro", () => {
 describe("362/T4.3 (R15/R26/R32) — el borde valida sin ejecutar consulta", () => {
   it("R15: un tipo de accion INVENTADO da `validation_error`, y no se consulta", async () => {
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar(
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar(
       { accion: ["me_lo_acabo_de_inventar"] },
       MAESTRO,
     );
@@ -177,34 +178,34 @@ describe("362/T4.3 (R15/R26/R32) — el borde valida sin ejecutar consulta", () 
     // La leccion de la 352: un filtro que se ignora en silencio enseña un conjunto que no es el
     // que se pidio, y en un registro de auditoria eso es peor que un error.
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar({ ordenId: "o-1" }, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({ ordenId: "o-1" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     expect(repo.list).not.toHaveBeenCalled();
   });
 
   it("R26: `sortDir` fuera de la lista blanca es `validation_error`", async () => {
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar({ sortDir: "aleatorio" }, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({ sortDir: "aleatorio" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     expect(repo.list).not.toHaveBeenCalled();
   });
 
   it("R26: `sortBy` fuera de la lista blanca es `validation_error`", async () => {
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar({ sortBy: "actor_nombre" }, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({ sortBy: "actor_nombre" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     expect(repo.list).not.toHaveBeenCalled();
   });
 
   it("R26: el DEFECTO es el mas RECIENTE primero", async () => {
     const repo = repoDoble();
-    await new HistorialAccionService(repo).listar({}, MAESTRO);
+    await new HistorialAccionService(repo, reglasPaisFijas()).listar({}, MAESTRO);
     expect(repo.list.mock.calls[0][0].orden).toEqual({ sortBy: "created_at", sortDir: "desc" });
   });
 
   it("R26: se puede INVERTIR, y el orden invertido llega al repositorio", async () => {
     const repo = repoDoble();
-    await new HistorialAccionService(repo).listar({ sortDir: "asc" }, MAESTRO);
+    await new HistorialAccionService(repo, reglasPaisFijas()).listar({ sortDir: "asc" }, MAESTRO);
     expect(repo.list.mock.calls[0][0].orden).toEqual({ sortBy: "created_at", sortDir: "asc" });
   });
 
@@ -220,7 +221,7 @@ describe("362/T4.3 (R15/R26/R32) — el borde valida sin ejecutar consulta", () 
 
   it("R32: un termino demasiado corto NO ejecuta la consulta", async () => {
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar(
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar(
       { q: "x".repeat(BUSQUEDA_MIN_CHARS_DEL_BORDE - 1) },
       MAESTRO,
     );
@@ -230,7 +231,7 @@ describe("362/T4.3 (R15/R26/R32) — el borde valida sin ejecutar consulta", () 
 
   it("`pageSize` se acota al tope; la pagina y el tamaño devueltos son los EFECTIVOS", async () => {
     const repo = repoDoble();
-    const r = await new HistorialAccionService(repo).listar({ pageSize: 5000 }, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({ pageSize: 5000 }, MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.pageSize).toBe(100);
@@ -292,14 +293,14 @@ describe("362/R17 — `categoria` se traduce a `accion IN (…)` en el borde", (
 
 describe("362/T4.4 (R3/R6/R17/R36) — el DTO que cruza al cliente", () => {
   it("R6: `monto` es un STRING de escala 2, nunca un number", async () => {
-    const r = await new HistorialAccionService(repoDoble()).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repoDoble(), reglasPaisFijas()).listar({}, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(typeof r.items[0].monto).toBe("string");
     expect(r.items[0].monto).toBe("15000.50");
   });
 
   it("R17: la categoria viene DERIVADA del tipo, no de una columna", async () => {
-    const r = await new HistorialAccionService(repoDoble()).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repoDoble(), reglasPaisFijas()).listar({}, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items[0].categoria).toBe("mueve_dinero");
   });
@@ -313,7 +314,7 @@ describe("362/T4.4 (R3/R6/R17/R36) — el DTO que cruza al cliente", () => {
         total: 1,
       }),
     } as Partial<IHistorialAccionRepository>);
-    const r = await new HistorialAccionService(repo).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({}, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items[0].actorNombre).toBe("Ana Torres");
     expect(r.items[0].actorRol).toBe("admin");
@@ -326,20 +327,20 @@ describe("362/T4.4 (R3/R6/R17/R36) — el DTO que cruza al cliente", () => {
         total: 1,
       }),
     } as Partial<IHistorialAccionRepository>);
-    const r = await new HistorialAccionService(repo).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({}, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items[0].actorNombre).toBeNull();
     expect(r.items[0].actorRol).toBeNull();
   });
 
   it("R38: el DTO NO lleva `entidadId` — el uuid no cruza a la pantalla ni al archivo", async () => {
-    const r = await new HistorialAccionService(repoDoble()).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repoDoble(), reglasPaisFijas()).listar({}, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items[0]).not.toHaveProperty("entidadId");
   });
 
   it("R5: el DTO NO lleva `motivo`, y no puede llevarlo: no existe en la fila", async () => {
-    const r = await new HistorialAccionService(repoDoble()).listar({}, MAESTRO);
+    const r = await new HistorialAccionService(repoDoble(), reglasPaisFijas()).listar({}, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items[0]).not.toHaveProperty("motivo");
   });
@@ -348,7 +349,7 @@ describe("362/T4.4 (R3/R6/R17/R36) — el DTO que cruza al cliente", () => {
     const repo = repoDoble({
       list: vi.fn().mockResolvedValue({ items: [fila(), fila({ id: "h-2" })], total: 4321 }),
     } as Partial<IHistorialAccionRepository>);
-    const r = await new HistorialAccionService(repo).listar({ pageSize: 2 }, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listar({ pageSize: 2 }, MAESTRO);
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items).toHaveLength(2);
     expect(r.total).toBe(4321);
@@ -364,7 +365,7 @@ describe("362/T4.4 (R3/R6/R17/R36) — el DTO que cruza al cliente", () => {
 describe("362/T6.1 (R30) — la descarga comparte filtro y orden con la pantalla", () => {
   it("el filtro y el orden que llegan a `listAll` son los MISMOS que a `list`", async () => {
     const repo = repoDoble();
-    const svc = new HistorialAccionService(repo);
+    const svc = new HistorialAccionService(repo, reglasPaisFijas());
     const entrada = { categoria: ["hace_desaparecer"], sortDir: "asc" } as const;
 
     await svc.listar(entrada, MAESTRO);
@@ -376,7 +377,7 @@ describe("362/T6.1 (R30) — la descarga comparte filtro y orden con la pantalla
 
   it("pide UNA fila mas que el tope, para distinguir «cabe justo» de «se paso»", async () => {
     const repo = repoDoble();
-    await new HistorialAccionService(repo).listarCompleto({}, MAESTRO);
+    await new HistorialAccionService(repo, reglasPaisFijas()).listarCompleto({}, MAESTRO);
     expect(repo.listAll.mock.calls[0][0].limite).toBe(descargaConfig.MAX_FILAS + 1);
   });
 
@@ -387,7 +388,7 @@ describe("362/T6.1 (R30) — la descarga comparte filtro y orden con la pantalla
     const repo = repoDoble({
       listAll: vi.fn().mockResolvedValue(demasiadas),
     } as Partial<IHistorialAccionRepository>);
-    const r = await new HistorialAccionService(repo).listarCompleto({}, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listarCompleto({}, MAESTRO);
     expect(r).toEqual({ status: "limite_excedido", maximo: descargaConfig.MAX_FILAS });
   });
 
@@ -396,7 +397,7 @@ describe("362/T6.1 (R30) — la descarga comparte filtro y orden con la pantalla
     const repo = repoDoble({
       listAll: vi.fn().mockResolvedValue(justas),
     } as Partial<IHistorialAccionRepository>);
-    const r = await new HistorialAccionService(repo).listarCompleto({}, MAESTRO);
+    const r = await new HistorialAccionService(repo, reglasPaisFijas()).listarCompleto({}, MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status !== "ok") throw new Error("esperado ok");
     expect(r.items).toHaveLength(descargaConfig.MAX_FILAS);

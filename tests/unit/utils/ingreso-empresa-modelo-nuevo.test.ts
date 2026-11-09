@@ -14,7 +14,6 @@ import {
   montoFulfillmentDeTarifa,
   pagoTiendaEmpresa,
   partesPorTienda,
-  tieneFulfillment,
   totalesIngresoEmpresa,
   type GestionDeTienda,
   type IngresoOrdenDerivado,
@@ -230,8 +229,6 @@ describe("SLT-52 R31 — fulfillment: en el costo de la API, fuera de la liquida
     const t: TarifaTienda = { modelo: "nuevo", valores };
     expect(montoFulfillmentDeTarifa(t, "14900.00").toFixed(2)).toBe("149.00");
     expect(montoFulfillmentDeTarifa(t, null).toFixed(2)).toBe("0.00");
-    // Hace fulfillment aunque el pedido valga 0: decide DONDE nace la orden.
-    expect(tieneFulfillment(t)).toBe(true);
   });
 
   it("sin concepto de fulfillment, o con 0 escrito: no hace fulfillment y suma 0.00", () => {
@@ -240,7 +237,6 @@ describe("SLT-52 R31 — fulfillment: en el costo de la API, fuera de la liquida
     const cero: ValoresTienda = { ...VALORES, tienda_fulfillment: cobro("tienda_fulfillment", "monto", "0.00") };
     for (const valores of [sin, cero]) {
       const t: TarifaTienda = { modelo: "nuevo", valores };
-      expect(tieneFulfillment(t)).toBe(false);
       expect(desgloseCargaApi(t, false, false, "14900.00")).toStrictEqual({
         costoEnvio: "3108.12",
         fulfillment: "0.00",
@@ -405,6 +401,7 @@ describe("SLT-52 R29 — las cuatro identidades de partesPorTienda con fletes de
       a === undefined && b === undefined ? null : new Prisma.Decimal(a ?? 0).plus(b ?? 0).toFixed(2);
     const total = Object.values(d).reduce<Prisma.Decimal>((acc, v) => acc.plus(v!), new Prisma.Decimal(0));
     return {
+      tarifaModelo: "nuevo",
       montoCobrar: input.montoCobrar,
       cobraComision: input.cobraComision,
       esCentral: input.esCentral,

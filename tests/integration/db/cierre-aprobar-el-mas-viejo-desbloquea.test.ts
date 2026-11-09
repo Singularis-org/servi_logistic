@@ -12,6 +12,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 271 (T5.4, R36/R12) — **APROBAR EL MAS VIEJO DEVUELVE AL MENSAJERO A LIBRE**, MEDIDO
@@ -181,7 +182,7 @@ describeSiHayBase("271/T5.4 · R36 — aprobar el mas viejo devuelve al mensajer
         mensajeroId,
       );
       const antesBloqueados = await repoLectura.findMensajerosBloqueadosPorCierres([mensajeroId]);
-      const antesDetalle = await repoLectura.findBloqueoDetalle(mensajeroId);
+      const antesDetalle = await repoLectura.findBloqueoDetalle(mensajeroId, ZONA_CR);
 
       // LA APROBACION, por el camino REAL. `resolverCierre` abre su propia `$transaction` y un
       // cliente transaccional no la expone: el proxy la resuelve invocando el callback con LA
@@ -222,7 +223,7 @@ describeSiHayBase("271/T5.4 · R36 — aprobar el mas viejo devuelve al mensajer
         await repoDespues.contarCierresAbiertosPorMensajero([mensajeroId])
       ).get(mensajeroId);
       const despuesBloqueados = await repoDespues.findMensajerosBloqueadosPorCierres([mensajeroId]);
-      const despuesDetalle = await repoDespues.findBloqueoDetalle(mensajeroId);
+      const despuesDetalle = await repoDespues.findBloqueoDetalle(mensajeroId, ZONA_CR);
 
       const estados = await tx.cierreDia.findMany({
         where: { id: { in: [viejo.id, nuevo.id] } },

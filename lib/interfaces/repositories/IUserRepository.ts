@@ -19,9 +19,9 @@ export interface UsuarioPublico {
   cedula: string;
   tipoIdentificacionId: string;
   rolId: string;
-  // Feature 27/R14: flag de fulfillment de la tienda (solo `true` para adminTienda,
-  // invariante R4a). Se expone en la forma publica para el prefill de la UI.
-  fulfillment: boolean;
+  // SLT-94 (R1/R9): marca «se recoge en tienda» (solo `false` para adminTienda, R4). Se expone
+  // en la forma publica para el prefill de la UI.
+  seRecogeEnTienda: boolean;
   // Feature 24/R27: zona asignada (solo mensajero/adminSatelite; null en el resto).
   zonaId?: string | null;
   // Feature 21: vehiculo asociado (solo mensajero; null en el resto). Se expone en
@@ -70,8 +70,8 @@ export interface CreateUsuarioInput {
   tipoIdentificacionId: string;
   rolId: string;
   estado?: EstadoUsuario;
-  // Feature 27/R8/R9: flag de fulfillment; el repo mapea `?? false` al persistir.
-  fulfillment?: boolean;
+  // SLT-94 (R3): marca «se recoge en tienda»; el repo mapea `?? true` al persistir.
+  seRecogeEnTienda?: boolean;
   // Feature 24/R27: zona (valor efectivo ya resuelto por el service).
   zonaId?: string | null;
   // Feature 21 (postulacion de mensajero): identidad + vehiculo, todos opcionales
@@ -177,18 +177,21 @@ export interface UpdateUsuarioData {
   telefono?: string;
   rolId?: string;
   tipoIdentificacionId?: string;
-  // Feature 27/R12: valor efectivo ya resuelto por el service (invariante R4a).
-  fulfillment?: boolean;
+  // SLT-94 (R4): valor efectivo ya resuelto por el service.
+  seRecogeEnTienda?: boolean;
   // Feature 24/R27: zona (valor efectivo ya resuelto por el service).
   zonaId?: string | null;
   // Feature 21: vehiculo (valor efectivo ya resuelto por el service).
   vehiculoId?: string | null;
 }
 
-// Feature 25/R29: catalogo de tipos de identificacion para poblar el select.
+// Feature 25/R29: catalogo de tipos de identificacion para poblar el select. SLT-42 (R5): `nombre` es
+// la etiqueta del catalogo del pais y `clave` la que la identifica dentro de el.
 export interface TipoIdentificacionItem {
   id: string;
   value: string;
+  nombre: string;
+  clave: string;
 }
 
 // Feature 25: catalogo de roles para poblar el select (par id/value que la UI
@@ -316,7 +319,7 @@ export interface IUserRepository {
    */
   /**
    * FICHA 362 (R7/R9): registra `usuario_rol_cambiado`, `usuario_zona_cambiada` y
-   * `usuario_fulfillment_cambiado` SOLO cuando el campo cambia de verdad, y las N filas
+   * `usuario_se_recoge_en_tienda_cambiado` (SLT-94 R8) SOLO cuando el campo cambia de verdad, y las N filas
    * comparten `lote_id`. Editar el telefono no deja rastro.
    */
   update(
@@ -332,8 +335,12 @@ export interface IUserRepository {
     estado: EstadoUsuario,
     actorUsuarioId: string | null,
   ): Promise<UsuarioPublico | null>;
-  /** Feature 25/R29: catalogo `tipo_identificacion` proyectado a id/value. */
-  listTiposIdentificacion(): Promise<TipoIdentificacionItem[]>;
+  /**
+   * SLT-42 (R5): con `paisId`, solo los tipos activos de ese pais, en el orden del catalogo. Sin el,
+   * el catalogo entero ordenado por `value`: solo lo pide la pantalla de plataforma del alta de
+   * empresa, que no tiene empresa de la que sacar el pais (su selector por pais es de SLT-81).
+   */
+  listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]>;
   /** Feature 25: catalogo `rol` proyectado a id/value, ordenado por `value`. */
   listRoles(): Promise<RolItem[]>;
 }

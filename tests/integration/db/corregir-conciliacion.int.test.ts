@@ -10,6 +10,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 473 / T2 (R1-R4, R6, R7, R13) — CORREGIR LA RECEPCION, CONTRA POSTGRES. (Su R12 lo
@@ -109,7 +110,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
     const zonaId = await sembrarZona(tx, marca);
     const id = await sembrarConsolidacion(tx, zonaId, marcador);
     const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-    const r = await repo.marcarConciliado({
+    const r = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id,
       montoRecibido: MARCADO,
       nota: "faltaron 23.000",
@@ -139,7 +140,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const [marcador, corrector] = await dosUsuarios(tx);
       const { id, repo } = await sembrarIncompleta(tx, "r1", marcador);
 
-      const res = await repo.corregirConciliacion({
+      const res = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: DECLARADO,
         nota: null,
@@ -162,7 +163,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const { id, repo } = await sembrarIncompleta(tx, "r2", marcador);
 
       const antes = new Date();
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "190000.00",
         nota: null,
@@ -186,7 +187,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const [marcador, corrector] = await dosUsuarios(tx);
       const { id, repo } = await sembrarIncompleta(tx, "r3", marcador);
 
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "190000.00",
         nota: "llego el resto el lunes",
@@ -196,7 +197,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
         where: { id },
         select: { conciliadoNota: true },
       });
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: DECLARADO,
         nota: null,
@@ -220,7 +221,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const { id, repo } = await sembrarIncompleta(tx, "r4", marcador);
       const antes = await tx.historialAccion.count({ where: { entidadId: id } });
 
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: DECLARADO,
         nota: "una nota que NO debe viajar al historial",
@@ -260,7 +261,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
 
         const filaAntes = await tx.cierreBodega.findUnique({ where: { id }, select: SELECT_MARCA });
         const historialAntes = await tx.historialAccion.count({ where: { entidadId: id } });
-        const res = await repo.corregirConciliacion({
+        const res = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
           id,
           montoRecibido: DECLARADO,
           nota: "colada",
@@ -288,7 +289,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const [, corrector] = await dosUsuarios(tx);
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
       const idFalso = `no-existe-${SUFIJO}`;
-      const res = await repo.corregirConciliacion({
+      const res = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id: idFalso,
         montoRecibido: "1.00",
         nota: null,
@@ -309,7 +310,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       await serializarEscriturasReales(tx);
       const [marcador, corrector] = await dosUsuarios(tx);
       const { id, repo } = await sembrarIncompleta(tx, "r12", marcador);
-      const res = await repo.corregirConciliacion({
+      const res = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: DECLARADO,
         nota: null,
@@ -355,7 +356,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const antes = (await lector.findConsolidacionesCompleto(zonaId)).find(
         (c) => c.cierreBodegaId === id,
       );
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: DECLARADO,
         nota: null,
@@ -381,7 +382,7 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
       const { id, zonaId, repo } = await sembrarIncompleta(tx, "r13-bajo", marcador);
       const lector = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
 
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "195800.00",
         nota: null,

@@ -13,6 +13,7 @@ import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenReposito
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { construirTokenProvider, RutaNoConfiguradoError } from "@/lib/auth/google-sa-token";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 92 (R12/R20/R27/R34-R38) — el servicio de optimizacion, con dobles y sin red.
 //
 // LA ASERCION QUE MAS IMPORTA EN ESTE ARCHIVO ES `expect(client.optimizar).not
@@ -110,7 +111,7 @@ function build(opts: {
     paradasRepo,
     client,
     { ...CONFIG, ...opts.config },
-    () => opts.now ?? T0,
+    () => opts.now ?? T0, undefined, undefined, reglasPaisFijas(),
   );
   return { service, rutas, paradasRepo, client };
 }
@@ -554,7 +555,7 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
       { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
       client,
       CONFIG,
-      () => T0,
+      () => T0, undefined, undefined, reglasPaisFijas(),
     );
 
     // SLT-79: sin ruta solo el boton recalcula (un job la omite).

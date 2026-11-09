@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { AbonoTiendaRepository } from "@/lib/repositories/AbonoTiendaRepository";
 import { AjusteCajaAnulacionRepository } from "@/lib/repositories/AjusteCajaAnulacionRepository";
@@ -153,6 +156,7 @@ function buildService(): IWalletService {
   },
   buildComprobantes(prisma), // Ficha 458-B (R74): el comprobante de la correccion
   buildBusquedaPorGuia(prisma), // FICHA 469 (design §3.3): guia o texto en el libro y en su descarga
+  construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -217,6 +221,8 @@ export interface CajaKardexDeps {
   service?: ICajaKardexService;
   getActor?: () => Promise<Actor | null>;
   origenes?: IOrigenLegibleService;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** Ficha 468 — el resultado en el BORDE: las filas con su origen legible + `kardex` (y `porGuia`). */
@@ -235,11 +241,14 @@ export interface WalletDeps {
   getActor?: () => Promise<Actor | null>;
   /** Ficha 458-A (TA.2): el origen legible de las filas; en produccion, el real sobre Prisma. */
   origenes?: IOrigenLegibleService;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** Ficha 458-A (TA.2) — composition root del origen legible (una consulta por tipo presente). */
 function buildOrigenes(): IOrigenLegibleService {
-  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()));
+  // SLT-42 (R22, R28): con la zona horaria del pais de la empresa.
+  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()), construirReglasPaisEmpresa(getPrismaClient()));
 }
 
 /** Ficha 461 (R69): las dependencias de la anulacion de una correccion, inyectables en test. */
@@ -279,7 +288,9 @@ export async function listarMovimientosAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R19: antes de tocar el service
     // Ficha 463 (R24/R33/R40): el borde DEL LIBRO — el de las cifras + termino y orden.
-    const data = listarLibroCajaSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarLibroCajaSchema(zona).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientos(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -303,7 +314,9 @@ export async function listarMovimientosCompletoAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     // Ficha 463 (R42): el borde de la descarga del libro, con termino y orden.
-    const data = listarLibroCajaCompletoSchema.parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarLibroCajaCompletoSchema(zona).parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientosCompleto(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -334,7 +347,9 @@ export async function libroCajaKardexAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
-    const data = listarLibroCajaCompletoSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarLibroCajaCompletoSchema(zona).parse(input ?? {}); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildCajaKardexService();
     const r = await service.kardex(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -358,7 +373,9 @@ export async function libroCajaKardexConDetalleAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = listarLibroCajaCompletoSchema.parse(input ?? {});
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarLibroCajaCompletoSchema(zona).parse(input ?? {});
     const service = deps.service ?? buildCajaKardexService();
     const r = await service.kardexConDetalle(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -388,7 +405,9 @@ export async function listarMovimientosDeFilaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
-    const data = listarMovimientosDeFilaSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarMovimientosDeFilaSchema(zona).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientosDeFila(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -418,7 +437,9 @@ export async function verResumenCajaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = listarMovimientosSchema.parse(input); // los filtros de la WALLET; `.strict()`: termino u orden => validation_error (463/R14)
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarMovimientosSchema(zona).parse(input); // los filtros de la WALLET; `.strict()`: termino u orden => validation_error (463/R14)
     const service = deps.service ?? buildService();
     return service.verResumenCaja(data, actor);
   });
@@ -512,7 +533,9 @@ export async function registrarMovimientoManualAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarMovimientoManualConLateralesSchema.parse(crudo); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarMovimientoManualConLateralesSchema(zona).parse(crudo); // ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null

@@ -36,6 +36,18 @@ import {
   sembrarPersonas459,
   type Personas459,
 } from "./_fixtures/escrituras-459";
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -144,6 +156,9 @@ describeSiHayBase("459/T B.13 — concurrencia del pago por cuenta y del saldo i
         URLS_NO_USADAS,
         ((fn: (tx: never) => Promise<unknown>) =>
           clienteA.$transaction((tx) => fn(tx as never), { timeout: 30_000 })) as unknown as PagoPorCuentaTxRunner,
+          undefined,
+          undefined,
+          reglasPaisFijas(),
       );
       const liquidacion = new LiquidacionService(
         new LiquidacionPagoRepository(clienteB),
@@ -152,6 +167,10 @@ describeSiHayBase("459/T B.13 — concurrencia del pago por cuenta y del saldo i
         (fn) => clienteB.$transaction((tx) => fn(tx as never), { timeout: 30_000 }),
         new CajaPagoTiendaFeedService(new WalletMovimientoRepository(clienteB)),
         new LiquidacionRepartoRepository(clienteB),
+        undefined,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
 
       const porCuenta = pagoPorCuenta.registrar(
@@ -232,7 +251,7 @@ describeSiHayBase("459/T B.13 — concurrencia del pago por cuenta y del saldo i
 
   it("R70: dos saldos iniciales A LA VEZ -> uno solo; el otro, `ya_hay_saldo_inicial`", async () => {
     await conPersonas(async (p) => {
-      const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ excluirCapital: true });
+      const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
       const dia = primer ?? fechaCalendarioCR(new Date());
 
       // Barrera: cada registro, al mirar si ya hay uno, espera al otro (o 1,5 s).
@@ -264,6 +283,9 @@ describeSiHayBase("459/T B.13 — concurrencia del pago por cuenta y del saldo i
           URLS_NO_USADAS,
           ((fn: (tx: never) => Promise<unknown>) =>
             cliente.$transaction((tx) => fn(tx as never), { timeout: 30_000 })) as unknown as AporteCapitalTxRunner,
+            undefined,
+            undefined,
+            reglasPaisFijas(),
         );
       const entrada = (monto: string) => ({
         claveIdempotencia: randomUUID(),

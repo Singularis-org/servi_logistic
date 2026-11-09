@@ -62,7 +62,7 @@ const tarifaRepoStub: ITarifaVigenteRepository = {
 function buildRepo(opciones: { omitidas?: string[]; overrides?: Partial<IOrdenRepository> } = {}) {
   const { omitidas = [], overrides = {} } = opciones;
   return {
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-1"),
     findExistingRemisiones: vi
       .fn()

@@ -17,21 +17,24 @@ import type { VersionPlan } from "@/lib/types/planes";
 
 const VIGENTE: VersionPlan = {
   nombre: "Plan Crecer",
-  topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10, adminTienda: 5 }, apiKeys: 2 },
+  topes: { porRol: { mensajero: 10, adminTienda: 5 }, apiKeys: 2 },
   modulos: ["analitica", "ranking"],
-  precio: { tipo: "monto", mensual: "45000", anual: null },
+  precio: { tipo: "monto", mensual: "45000", descuentos: {} },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del tipo.
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
-// Mitad de ciclo: ancla el 15 de enero a las 06:00 UTC, «ahora» el 1 de marzo a las 06:00 UTC.
-const ANCLA = new Date("2026-01-15T06:00:00.000Z");
+// SLT-86 (R5): entrada el 15 de enero y «ahora» el 1 de marzo a las 00:00 de la plataforma: el período
+// mensual de marzo completo; el anual, un tramo desde la entrada.
+const ENTRADA = new Date("2026-01-15T06:00:00.000Z");
 const AHORA = new Date("2026-03-01T06:00:00.000Z");
 
 function leido(extra: Partial<PlanConUsoLeido> = {}): PlanConUsoLeido {
   return {
     vigente: VIGENTE,
-    ancla: ANCLA,
+    entrada: ENTRADA,
+    precioDelPeriodo: VIGENTE.precio,
+    pendiente: null,
     uso: {
       ordenes: 1000,
       apiKeys: 2,
@@ -58,7 +61,8 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
 
     expect(screen.getByRole("heading", { name: "Plan Crecer" })).toBeInTheDocument();
     // SLT-66 R9: «Precio informativo» pasa a «Costo base»; el importe sigue sin símbolo de moneda.
-    expect(screen.getByText("Costo base: 45000.00 al mes")).toBeInTheDocument();
+    // SLT-86 (R28): el costo base del período en curso, con su tipo.
+    expect(screen.getByText("Costo base mensual: 45000.00")).toBeInTheDocument();
 
     const modulos = screen.getByRole("list", { name: "Módulos incluidos" });
     expect(within(modulos).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
@@ -72,21 +76,22 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
 
     const consumo = screen.getByRole("list", { name: "Consumo" });
     const filas = within(consumo).getAllByRole("listitem");
-    // Órdenes, los cuatro roles con tope y API keys (R2; SLT-66 R5: sin la fila del maestro).
+    // Las órdenes del período, los cuatro roles con tope y API keys (R2; SLT-66 R5: sin la fila del
+    // maestro). SLT-86 (R7, R8): las órdenes, solo un conteo, sin tope ni barra.
     expect(filas).toHaveLength(6);
-    expect(within(consumo).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
+    expect(within(consumo).getByText("Órdenes en el período: 1.000")).toBeInTheDocument();
     expect(within(consumo).getAllByText(/sin límite/)).toHaveLength(2); // admin, adminSatelite (SLT-66 R5)
 
     // 8 de 10 mensajeros → cerca; 2 de 2 API keys → lleno; 4 de 5 → cerca (80 %). La marca es texto.
     expect(within(consumo).getAllByText("Cerca del tope")).toHaveLength(2);
     expect(within(consumo).getAllByText("Lleno")).toHaveLength(1);
 
-    // Una barra por tope con máximo; las filas sin límite no la llevan.
+    // Una barra por tope con máximo; las filas sin límite y las órdenes (sin tope) no la llevan.
     const barras = within(consumo).getAllByRole("meter");
-    expect(barras).toHaveLength(4);
-    const ordenes = barras[0];
-    expect(ordenes).toHaveAttribute("aria-valuenow", "1000");
-    expect(ordenes).toHaveAttribute("aria-valuemax", "3000");
+    expect(barras).toHaveLength(3);
+    const mensajeros = barras[0];
+    expect(mensajeros).toHaveAttribute("aria-valuenow", "8");
+    expect(mensajeros).toHaveAttribute("aria-valuemax", "10");
 
     expect(screen.getByText(/^Se reinicia en \d+ días \(\d{4}-\d{2}-\d{2}\)$/)).toBeInTheDocument();
   });
@@ -100,16 +105,14 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
   });
 });
 
-// SLT-58 (design §11.3, R40): durante el ciclo corto la pantalla cuenta hasta la fecha elegida, no un
-// mes después. Sin texto nuevo del ciclo corto (P8): es la misma línea «Se reinicia».
-describe("SLT-58 R40 — «Se reinicia» durante el ciclo corto", () => {
-  it("asignada el 29 de octubre con ancla el 5 de noviembre: «Se reinicia en 7 días (2026-11-05)»", () => {
-    const anclaElegida = new Date("2026-11-05T06:00:00.000Z"); // 00:00 del 5 de noviembre (−06:00)
-    const asignadaEl29 = new Date("2026-10-29T18:00:00.000Z"); // mediodía del 29 de octubre (−06:00)
-    const p = planConConsumo(leido({ ancla: anclaElegida, cortoDesde: asignadaEl29 }), asignadaEl29);
+// SLT-86 (R27): el reinicio es el fin del período de calendario. (El ciclo corto de SLT-58 R40 se retiró,
+// P4 = a; su caso se fue con él.)
+describe("SLT-86 R27 — «Se reinicia» al fin del período de calendario", () => {
+  it("quincenal el 10 de marzo a mediodía: «Se reinicia en 6 días (2026-03-16)»", () => {
+    const p = planConConsumo(leido({ tipoCobro: "quincenal" }), new Date("2026-03-10T18:00:00.000Z"));
     render(<MiPlanModule plan={p} />);
 
-    expect(screen.getByText("Se reinicia en 7 días (2026-11-05)")).toBeInTheDocument();
+    expect(screen.getByText("Se reinicia en 6 días (2026-03-16)")).toBeInTheDocument();
   });
 });
 
@@ -158,6 +161,8 @@ describe("SLT-58 R11 — «Mi plan» es solo información", () => {
     ["con plan y cambio pendiente", () =>
       plan({ cambio: { vigenteDesde: new Date("2026-04-01T06:00:00.000Z"), version: { ...VIGENTE, nombre: "Otro" } } })],
     ["sin plan", () => null],
+    // SLT-86 (R26): el cambio pendiente de la empresa se ve, pero no se cancela desde aquí.
+    ["con un cambio de empresa pendiente", () => plan({ pendiente: { planNombre: "Pro", tipo: "anual", desde: "2026-04-01" } })],
   ])("%s: no hay botones, formularios, enlaces ni campos", (_caso, armar) => {
     const { container } = render(<MiPlanModule plan={armar()} />);
 
@@ -169,33 +174,34 @@ describe("SLT-58 R11 — «Mi plan» es solo información", () => {
   });
 });
 
-describe("Ajuste planes-custom D9 — «Mi plan» muestra el tipo de cobro, el monto del período y el siguiente cobro", () => {
-  it("mensual: el mensual del plan y el siguiente aniversario mensual del ancla", () => {
+describe("Ajuste planes-custom D9, SLT-86 R27 — «Mi plan» muestra el tipo, el período en curso y el siguiente cobro", () => {
+  it("mensual: el período de calendario completo y el siguiente cobro el 1 del mes siguiente", () => {
     render(<MiPlanModule plan={plan()} />);
     const cobro = screen.getByRole("list", { name: "Cobro del plan" });
     expect(within(cobro).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Tipo de cobro: Mensual",
-      "Monto del período: 45000.00 al mes",
-      // Ancla 15-ene, «ahora» 1-mar (hora de la plataforma): el siguiente es el 15-mar.
-      "Siguiente cobro: 2026-03-15",
+      "Período: 2026-03-01 – 2026-03-31",
+      "Siguiente cobro: 2026-04-01",
     ]);
   });
 
-  it("anual sin precio anual: mensual × 12 y el siguiente aniversario anual del ancla", () => {
-    render(<MiPlanModule plan={plan({ tipoCobro: "anual" })} />);
+  it("anual: el tramo desde la entrada, su costo proporcional, el pago del inicio y el siguiente el 1 de enero", () => {
+    const sinPrecio = { ...VIGENTE, precio: { tipo: "sin_precio" } as const };
+    render(<MiPlanModule plan={plan({ tipoCobro: "anual", vigente: sinPrecio, precioDelPeriodo: VIGENTE.precio })} />);
     const cobro = screen.getByRole("list", { name: "Cobro del plan" });
     expect(within(cobro).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Tipo de cobro: Anual",
-      "Monto del período: 540000.00 al año",
-      "Siguiente cobro: 2027-01-15",
+      "Período: 2026-01-15 – 2026-12-31 (tramo de 351 de 365 días)",
+      "Pago anual: 2026-01-15",
+      "Siguiente pago: 2027-01-01",
     ]);
+    // R12, R15: 45 000 × 12 × 351 / 365, con el precio de cuando empezó el período.
+    expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base anual: 519287.67");
   });
 
-  it("sin costo base: el monto del período queda «por definir» y el costo del ciclo no cambia", () => {
-    render(<MiPlanModule plan={plan({ vigente: { ...VIGENTE, precio: { tipo: "sin_precio" } } })} />);
-    const cobro = screen.getByRole("list", { name: "Cobro del plan" });
-    expect(within(cobro).getByText("Monto del período: por definir")).toBeInTheDocument();
-    // SLT-66: el costeo del ciclo sigue en su bloque, sin mezclarse con el cobro.
-    expect(screen.getByRole("list", { name: "Costo del ciclo" })).toHaveTextContent("Costo base: por definir");
+  it("sin costo base: «Costo base mensual: por definir» en el costo del período", () => {
+    const sinPrecio = { ...VIGENTE, precio: { tipo: "sin_precio" } as const };
+    render(<MiPlanModule plan={plan({ vigente: sinPrecio, precioDelPeriodo: sinPrecio.precio })} />);
+    expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base mensual: por definir");
   });
 });

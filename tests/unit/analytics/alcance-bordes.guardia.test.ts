@@ -9,6 +9,7 @@ import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
 import { describirDenegado } from "@/lib/analytics/auditoria";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 122 / T4.5 + T4.6(c) — GUARDIA DE BORDES (R41 y la parte de borde de R40).
 //
 // La 122 no expone ruta: es contrato. Quien lo consume son los bordes de 126, 127 y 134, y
@@ -44,7 +45,7 @@ const ENTRADA_DENEGADA = { raw: { rango: "dia" as const }, actor: TIENDA, metric
 /* --------------------------- bordes sinteticos ---------------------------- */
 
 const bordeCorrecto: Borde = (raw, actor, metricaId, logger) => {
-  const r = prepararConsultaAnalitica(raw, actor, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(raw, actor, metricaId, ZONA_DE_CR, AHORA);
   if (r.status === "forbidden") {
     logger.logError(describirDenegado({ motivo: r.motivo, actor, metricaId, filtro: raw }));
     return { status: 403, body: { code: "FORBIDDEN" } };
@@ -54,13 +55,13 @@ const bordeCorrecto: Borde = (raw, actor, metricaId, logger) => {
 };
 
 const bordeQueDevuelveListaVacia: Borde = (raw, actor, metricaId) => {
-  const r = prepararConsultaAnalitica(raw, actor, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(raw, actor, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") return { status: 200, body: { data: [] } };
   return { status: 200, body: { data: [1] } };
 };
 
 const bordeQueDevuelveCeros: Borde = (raw, actor, metricaId, logger) => {
-  const r = prepararConsultaAnalitica(raw, actor, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(raw, actor, metricaId, ZONA_DE_CR, AHORA);
   if (r.status === "forbidden") {
     logger.logError(describirDenegado({ motivo: r.motivo, actor, metricaId, filtro: raw }));
     return { status: 200, body: { total: 0 } };
@@ -69,7 +70,7 @@ const bordeQueDevuelveCeros: Borde = (raw, actor, metricaId, logger) => {
 };
 
 const bordeQueDelegaEnElWrapper: Borde = (raw, actor, metricaId, logger) => {
-  const r = prepararConsultaAnalitica(raw, actor, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(raw, actor, metricaId, ZONA_DE_CR, AHORA);
   if (r.status === "forbidden") {
     // La trampa: `normalizeError` devuelve la shape del AppError en su primera linea y NO
     // registra. El status sale bien; la auditoria no ocurre.

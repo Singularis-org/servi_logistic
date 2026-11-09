@@ -8,6 +8,7 @@ import { FormField } from "@/components/shared/FormField";
 import { FieldError } from "@/components/shared/FieldError";
 import { MontoInput } from "@/components/shared/MontoInput";
 import { TipoCobroCampo } from "@/components/shared/TipoCobroCampo";
+import { primerPeriodoDelCambio, TEXTOS_TIPO_COBRO, textoDelPeriodo } from "@/components/shared/tipo-cobro";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,13 +18,17 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { montoParaCampo } from "@/lib/config/moneda";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
   editarPlanSchema,
+  precioPlanSchema,
   previsualizarCustomSchema,
   ROLES_CON_TOPE,
+  TIPOS_COBRO,
   type CrearPlanInput,
+  type DescuentoPeriodo,
   type EditarPlanInput,
   type PlanDTO,
   type PlanResult,
@@ -34,6 +39,7 @@ import {
   type TopeExcedido,
   type VistaPreviaCustomResult,
 } from "@/lib/types/planes";
+import { esFechaCalendarioValida, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 import { TEXTOS_PLAN } from "./plan-vista";
 
@@ -49,7 +55,6 @@ export const TEXTOS_PLAN_FORM = {
   topes: "Topes",
   topesAyuda: "Vacío = sin límite.",
   topeVacio: "Sin límite",
-  ordenes: "Órdenes por ciclo",
   rol: (rol: RolConTope) => TEXTOS_PLAN.rol(ROL_LABELS[rol]),
   apiKeys: "API keys activas",
   modulos: "Módulos incluidos",
@@ -58,12 +63,11 @@ export const TEXTOS_PLAN_FORM = {
   sinPrecio: "Sin precio",
   monto: "Con monto",
   mensual: "Costo base mensual",
-  anual: "Pago anual",
-  anualNinguno: "Sin precio anual",
-  anualFijo: "Monto anual fijo",
-  anualDescuento: "Descuento sobre el anual",
-  montoAnual: "Monto anual",
-  porcentaje: "Porcentaje de descuento",
+  /** SLT-86 (R23; design §7.1): un descuento por período, en lugar del pago anual. */
+  descuento: (tipo: TipoCobro) => `Descuento ${tipo}`,
+  descuentoNinguno: "Ninguno",
+  descuentoPorcentaje: "Porcentaje",
+  descuentoMonto: "Monto fijo",
   costoPorOrden: "Costo por orden",
   costoPorOrdenAyuda: "Vacío: se aplica el valor global de la plataforma.",
   /** SLT-83 (design §6.1; R20): el modo del costo por orden. */
@@ -82,8 +86,8 @@ export const TEXTOS_PLAN_FORM = {
   programar: "Programar cambio",
   crear: "Crear plan",
   /** Ajuste planes-custom (D4): solo si la empresa elegida todavía no tiene plan. */
-  inicioCiclo: "Inicio del ciclo de órdenes",
-  inicioCicloAyuda: "El ciclo de órdenes de la empresa empieza ese día, hora de la plataforma.",
+  inicioCiclo: "Inicio del período",
+  inicioCicloAyuda: "El período de la empresa empieza ese día, hora de la plataforma.",
   revisa: "Revisa los campos marcados.",
   /** Ajuste planes-custom (D13): el mismo texto que el modal de primera asignación (SLT-58 P11). */
   vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
@@ -103,7 +107,7 @@ export const ESPERA_VISTA_PREVIA_MS = 300;
  */
 type VistaPreviaCustom =
   | { clave: string; fase: "cargando" }
-  | { clave: string; fase: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { clave: string; fase: "ok"; avisos: TopeExcedido[] }
   | { clave: string; fase: "fallo"; motivo: string[] | null };
 
 /** Rechazos de las actions de planes (design §6.5). `validation_error` va junto a su campo. */
@@ -140,7 +144,13 @@ export function mensajeDelRechazo(r: PlanResult): string | null {
 export const RECHAZO_GENERICO = RECHAZOS.generico;
 
 type Accion = "inmediato" | "programado";
-type AnualForma = "ninguno" | "fijo" | "descuento";
+/** SLT-86 (R23): la forma del descuento de un período. */
+type FormaDescuento = "ninguno" | "porcentaje" | "monto";
+/**
+ * SLT-86 (R23): el descuento de un período en el formulario. Los dos campos se conservan al cambiar de
+ * forma (no se borra lo escrito); al enviar solo viaja el de la forma elegida.
+ */
+type DescuentoDelFormulario = { forma: FormaDescuento; porcentaje: string; monto: string };
 /** SLT-83 (R20): el modo del costo por orden; al abrir un plan sale de `costoPorOrdenPorcentual !== null`. */
 type ModoCostoPorOrden = "fijo" | "porcentual";
 
@@ -148,15 +158,12 @@ type Formulario = {
   nombre: string;
   visibilidad: "publico" | "custom";
   organizacionId: string;
-  ordenes: string;
   porRol: Record<RolConTope, string>;
   apiKeys: string;
   modulos: ModuloApagable[];
   precio: PrecioPlan["tipo"];
   mensual: string;
-  anual: AnualForma;
-  montoAnual: string;
-  porcentaje: string;
+  descuentos: Record<TipoCobro, DescuentoDelFormulario>;
   /** SLT-66 (R7, R23): vacío = sin costo por orden del plan (se aplica el global). */
   costoPorOrden: string;
   /**
@@ -169,7 +176,13 @@ type Formulario = {
   /** SLT-83 (R20): vacío = sin mínimo. */
   minimoPorOrden: string;
   aplicar: Accion;
+  /**
+   * Al editar, la fecha de «A partir de» (SLT-58). Al crear un custom para una empresa que ya tiene plan,
+   * su fecha de efecto «Rige desde» (SLT-86 R16, R25).
+   */
   vigenteDesde: string;
+  /** SLT-86 (R22, R23): al editar, «Rige desde» de un cambio de precio; mañana por defecto. */
+  precioDesde: string;
   /** Ajuste planes-custom (D6): solo viaja en un custom (se asigna a su empresa al crearlo). */
   tipoCobro: TipoCobro;
   /** Ajuste planes-custom (D4, D5): solo viaja si la empresa elegida no tiene plan. */
@@ -181,14 +194,20 @@ type Errores = Record<string, string[]>;
 
 const texto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 
-function inicial(plan: PlanDTO | null, inicioCiclo: string): Formulario {
+function descuentoInicial(d: DescuentoPeriodo | undefined): DescuentoDelFormulario {
+  if (d === undefined) return { forma: "ninguno", porcentaje: "", monto: "" };
+  return d.tipo === "porcentaje"
+    ? { forma: "porcentaje", porcentaje: d.porcentaje, monto: "" }
+    : { forma: "monto", porcentaje: "", monto: montoParaCampo(d.monto) };
+}
+
+function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: string): Formulario {
   const precio = plan?.precio ?? { tipo: "sin_precio" };
-  const anual = precio.tipo === "monto" ? precio.anual : null;
+  const descuentos = precio.tipo === "monto" ? precio.descuentos : {};
   return {
     nombre: plan?.nombre ?? "",
     visibilidad: plan?.visibilidad ?? "publico",
     organizacionId: plan?.organizacionId ?? "",
-    ordenes: texto(plan?.topes.ordenesPorCiclo),
     porRol: Object.fromEntries(ROLES_CON_TOPE.map((r) => [r, texto(plan?.topes.porRol[r])])) as Record<
       RolConTope,
       string
@@ -197,9 +216,10 @@ function inicial(plan: PlanDTO | null, inicioCiclo: string): Formulario {
     modulos: plan?.modulos ?? [],
     precio: precio.tipo,
     mensual: precio.tipo === "monto" ? montoParaCampo(precio.mensual) : "",
-    anual: anual === null ? "ninguno" : anual.tipo,
-    montoAnual: anual?.tipo === "fijo" ? montoParaCampo(anual.monto) : "",
-    porcentaje: anual?.tipo === "descuento" ? anual.porcentaje : "",
+    descuentos: Object.fromEntries(TIPOS_COBRO.map((t) => [t, descuentoInicial(descuentos[t])])) as Record<
+      TipoCobro,
+      DescuentoDelFormulario
+    >,
     costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
     modoCosto: plan?.costoPorOrdenPorcentual == null ? "fijo" : "porcentual",
     porcentajePorOrden: plan?.costoPorOrdenPorcentual?.porcentaje ?? "",
@@ -207,6 +227,7 @@ function inicial(plan: PlanDTO | null, inicioCiclo: string): Formulario {
       plan?.costoPorOrdenPorcentual?.minimo == null ? "" : montoParaCampo(plan.costoPorOrdenPorcentual.minimo),
     aplicar: "inmediato",
     vigenteDesde: "",
+    precioDesde,
     tipoCobro: "mensual",
     inicioCiclo,
   };
@@ -217,15 +238,16 @@ function tope(valor: string): number | null {
   return valor.trim() === "" ? null : Number(valor.trim());
 }
 
+/** SLT-86 (R23): solo viaja el dato de la forma elegida; «Ninguno» no deja clave (sin descuento). */
 function precioDe(f: Formulario): PrecioPlan {
   if (f.precio !== "monto") return { tipo: f.precio };
-  const anual =
-    f.anual === "ninguno"
-      ? null
-      : f.anual === "fijo"
-        ? { tipo: "fijo" as const, monto: f.montoAnual.trim() }
-        : { tipo: "descuento" as const, porcentaje: f.porcentaje.trim() };
-  return { tipo: "monto", mensual: f.mensual.trim(), anual };
+  const descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const d = f.descuentos[tipo];
+    if (d.forma === "porcentaje") descuentos[tipo] = { tipo: "porcentaje", porcentaje: d.porcentaje.trim() };
+    if (d.forma === "monto") descuentos[tipo] = { tipo: "monto", monto: d.monto.trim() };
+  }
+  return { tipo: "monto", mensual: f.mensual.trim(), descuentos };
 }
 
 function versionDe(f: Formulario) {
@@ -236,7 +258,8 @@ function versionDe(f: Formulario) {
   }
   return {
     nombre: f.nombre,
-    topes: { ordenesPorCiclo: tope(f.ordenes), porRol, apiKeys: tope(f.apiKeys) },
+    // SLT-86 (R8): sin tope de órdenes.
+    topes: { porRol, apiKeys: tope(f.apiKeys) },
     // En el orden de pantalla, sea cual sea el orden en que se marcaron.
     modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
     precio: precioDe(f),
@@ -262,16 +285,21 @@ function erroresDeZod(issues: readonly { path: readonly PropertyKey[]; message: 
   return errores;
 }
 
-/** Una empresa del selector del plan custom (ajuste planes-custom, D4). */
-export type EmpresaParaCustom = { id: string; nombre: string; tienePlan: boolean };
+/**
+ * Una empresa del selector del plan custom (ajuste planes-custom, D4). SLT-86 (R25):
+ * `fechaDeEfectoPorDefecto` es el primer día de su siguiente período de calendario con su tipo vigente
+ * (`fechaDeEfectoPorDefecto` de `lib/planes/ciclo.ts`, del reloj del servidor); `null` sin plan.
+ */
+export type EmpresaParaCustom = {
+  id: string;
+  nombre: string;
+  tienePlan: boolean;
+  fechaDeEfectoPorDefecto: string | null;
+};
 
 type PropsComunes = {
-  /**
-   * Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado.
-   * `siguienteCiclo` (ajuste planes-custom, D12): al crear un custom con fecha, el día del siguiente
-   * ciclo que dio la vista previa, para redactar los `avisos` como el modal; `null` si no se leyó.
-   */
-  onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string, siguienteCiclo: string | null) => void;
+  /** Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado. */
+  onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string) => void;
 };
 
 export type PlanFormProps = PropsComunes &
@@ -290,6 +318,8 @@ export type PlanFormProps = PropsComunes &
         inicioCicloPorDefecto: string;
         /** SLT-58 (R30): el `min`/`max` de «Inicio del ciclo», del reloj del servidor. */
         rangoInicioCiclo: RangoDelInicioDelCiclo;
+        /** SLT-86 (R16): el `min`/`max` de «Rige desde» para una empresa con plan, del reloj del servidor. */
+        rangoFechaDeEfecto: RangoDelInicioDelCiclo;
         /** `crearPlanAction`, inyectada desde la página. */
         enviar: (input: CrearPlanInput) => Promise<PlanResult>;
         /**
@@ -301,6 +331,11 @@ export type PlanFormProps = PropsComunes &
     | {
         modo: "editar";
         plan: PlanDTO;
+        /**
+         * SLT-86 (R23): «Rige desde» por defecto de un cambio de precio: mañana en la hora de la plataforma.
+         * Sin él se calcula con el reloj del navegador; el campo solo aparece tras tocar el precio.
+         */
+        precioDesdePorDefecto?: string;
         /** `editarPlanAction`, inyectada desde la página. */
         enviar: (input: EditarPlanInput) => Promise<PlanResult>;
       }
@@ -316,7 +351,11 @@ export type PlanFormProps = PropsComunes &
 export function PlanForm(props: PlanFormProps) {
   const base = useId();
   const [form, setForm] = useState<Formulario>(() =>
-    inicial(props.modo === "editar" ? props.plan : null, props.modo === "crear" ? props.inicioCicloPorDefecto : ""),
+    inicial(
+      props.modo === "editar" ? props.plan : null,
+      props.modo === "crear" ? props.inicioCicloPorDefecto : "",
+      props.modo === "editar" ? (props.precioDesdePorDefecto ?? mananaCalendarioCR()) : "",
+    ),
   );
   const [errores, setErrores] = useState<Errores>({});
   const [rechazo, setRechazo] = useState<string | null>(null);
@@ -341,6 +380,16 @@ export function PlanForm(props: PlanFormProps) {
       ? (props.empresas ?? []).find((e) => e.id === form.organizacionId)
       : undefined;
   const pideInicioCiclo = empresaElegida !== undefined && !empresaElegida.tienePlan;
+  /** SLT-86 (R16, R25): un custom para una empresa que ya tiene plan pide su fecha de efecto. */
+  const pideFechaDeEfecto = empresaElegida !== undefined && empresaElegida.tienePlan;
+  /**
+   * SLT-86 (R22, R23): al editar, cambiar el costo base o un descuento pide «Rige desde» en lugar de
+   * «Aplicar»: el precio ya no se edita de inmediato. Se compara en forma canónica, como el rastro.
+   */
+  const cambiaPrecio =
+    props.modo === "editar" &&
+    cambiaElPrecio(diferenciasDelPlan(props.plan, { ...props.plan, precio: precioDe(form) }));
+  const visibles: CamposVisibles = { pideInicioCiclo, pideFechaDeEfecto, cambiaPrecio };
 
   /**
    * Ajuste planes-custom (D13): la entrada de la vista previa, solo con empresa sin plan, fecha y topes
@@ -360,16 +409,16 @@ export function PlanForm(props: PlanFormProps) {
   const [vistaPrevia, setVistaPrevia] = useState<VistaPreviaCustom | null>(null);
   /** La entrada vigente: una respuesta de otra entrada ya no se pinta. */
   const claveVigente = useRef<string | null>(null);
-  const lecturaEnVuelo = useRef<{ clave: string; promesa: Promise<string | null> } | null>(null);
+  const lecturaEnVuelo = useRef<{ clave: string; promesa: Promise<boolean> } | null>(null);
   const esperaPrevia = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
-   * D13: lee la vista previa de esa entrada y la pinta si sigue vigente. Devuelve el día del siguiente
-   * ciclo (o `null` si no se pudo leer) para redactar los avisos del `ok` al crear (D12).
+   * D13: lee la vista previa de esa entrada y la pinta si sigue vigente. Devuelve si se pudo leer: sin
+   * ella no se crea (D17). SLT-86 (R8): ya no trae el siguiente ciclo, que solo servía al aviso de órdenes.
    */
   const leerVistaPrevia = useCallback(
-    (entrada: PrevisualizarCustomInput, clave: string): Promise<string | null> => {
-      if (previsualizar === null) return Promise.resolve(null);
+    (entrada: PrevisualizarCustomInput, clave: string): Promise<boolean> => {
+      if (previsualizar === null) return Promise.resolve(false);
       if (lecturaEnVuelo.current?.clave === clave) return lecturaEnVuelo.current.promesa;
       setVistaPrevia({ clave, fase: "cargando" });
       const promesa = (async () => {
@@ -378,7 +427,7 @@ export function PlanForm(props: PlanFormProps) {
           if (claveVigente.current === clave) {
             setVistaPrevia(
               r.estado === "ok"
-                ? { clave, fase: "ok", avisos: r.avisos, siguienteCiclo: r.siguienteCiclo }
+                ? { clave, fase: "ok", avisos: r.avisos }
                 : {
                     clave,
                     fase: "fallo",
@@ -386,11 +435,11 @@ export function PlanForm(props: PlanFormProps) {
                   },
             );
           }
-          return r.estado === "ok" ? r.siguienteCiclo : null;
+          return r.estado === "ok";
         } catch (error) {
           console.error("[PlanForm] previsualizar lanzó", error);
           if (claveVigente.current === clave) setVistaPrevia({ clave, fase: "fallo", motivo: null });
-          return null;
+          return false;
         }
       })();
       const lectura = { clave, promesa };
@@ -433,13 +482,13 @@ export function PlanForm(props: PlanFormProps) {
   }
 
   /**
-   * D12: el día del siguiente ciclo para los avisos del `ok` de un custom con fecha. Se reutiliza la
-   * vista previa ya leída de esta entrada; si no la hay (se guardó durante la pausa), se lee ahora:
-   * después de crear, la empresa ya tiene plan y la vista previa la rechazaría (R31).
+   * D12, D17: antes de crear un custom con fecha, la vista previa de esta entrada tiene que estar leída.
+   * Se reutiliza la ya leída; si no la hay (se guardó durante la pausa), se lee ahora: después de crear,
+   * la empresa ya tiene plan y la vista previa la rechazaría (R31). Sin entrada no hace falta: `true`.
    */
-  async function siguienteCicloParaGuardar(): Promise<string | null> {
-    if (entradaPrevia === null || clavePrevia === null) return null;
-    if (vistaPreviaVigente?.fase === "ok") return vistaPreviaVigente.siguienteCiclo;
+  async function vistaPreviaLista(): Promise<boolean> {
+    if (entradaPrevia === null || clavePrevia === null) return true;
+    if (vistaPreviaVigente?.fase === "ok") return true;
     if (esperaPrevia.current !== null) {
       clearTimeout(esperaPrevia.current);
       esperaPrevia.current = null;
@@ -468,7 +517,7 @@ export function PlanForm(props: PlanFormProps) {
   function mostrarErrores(nuevos: Errores, nuevoRechazo: string | null = null) {
     setErrores(nuevos);
     setRechazo(nuevoRechazo);
-    const primera = camposEnOrden(props.modo, form, pideInicioCiclo).find((clave) => (nuevos[clave]?.length ?? 0) > 0);
+    const primera = camposEnOrden(props.modo, form, visibles).find((clave) => (nuevos[clave]?.length ?? 0) > 0);
     focoPendiente.current = { clave: primera ?? null };
   }
 
@@ -499,6 +548,8 @@ export function PlanForm(props: PlanFormProps) {
         // D2, D4, D6: un custom se asigna al crearlo; la fecha, solo si la empresa aún no tiene plan.
         ...(custom ? { tipoCobro: form.tipoCobro } : {}),
         ...(custom && pideInicioCiclo ? { inicioCiclo: form.inicioCiclo } : {}),
+        // SLT-86 (R16): a una empresa con plan, la fecha de efecto del cambio.
+        ...(custom && pideFechaDeEfecto ? { vigenteDesde: form.vigenteDesde } : {}),
       });
       return v.success ? { llamar: () => enviar(v.data) } : { errores: erroresDeZod(v.error.issues) };
     }
@@ -506,7 +557,8 @@ export function PlanForm(props: PlanFormProps) {
     const v = editarPlanSchema.safeParse({
       ...version,
       planId: plan.id,
-      vigenteDesde: form.aplicar === "inmediato" ? null : form.vigenteDesde,
+      // SLT-86 (R22): un cambio de precio va siempre con su «Rige desde»; lo demás, como SLT-58.
+      vigenteDesde: cambiaPrecio ? form.precioDesde : form.aplicar === "inmediato" ? null : form.vigenteDesde,
     });
     return v.success ? { llamar: () => enviar(v.data) } : { errores: erroresDeZod(v.error.issues) };
   }
@@ -526,12 +578,10 @@ export function PlanForm(props: PlanFormProps) {
     enVuelo.current = true;
     setEnviando(true);
     let r: PlanResult | null;
-    let siguienteCiclo: string | null = null;
     try {
-      siguienteCiclo = await siguienteCicloParaGuardar();
       // D17: si la vista previa que se leyó al guardar (en la pausa) no cargó, no se crea: el aviso con
       // «Reintentar» ya está en pantalla.
-      if (entradaPrevia !== null && siguienteCiclo === null) {
+      if (!(await vistaPreviaLista())) {
         enVuelo.current = false;
         setEnviando(false);
         return;
@@ -548,7 +598,7 @@ export function PlanForm(props: PlanFormProps) {
     if (r === null) {
       mostrarErrores({}, RECHAZOS.generico);
     } else if (r.estado === "ok") {
-      props.onGuardado(r, form.nombre.trim(), siguienteCiclo);
+      props.onGuardado(r, form.nombre.trim());
     } else if (r.estado === "validation_error") {
       mostrarErrores(r.fieldErrors);
     } else {
@@ -560,7 +610,7 @@ export function PlanForm(props: PlanFormProps) {
   }
 
   // Los errores que no tienen un campo VISIBLE donde ir (`_`, `planId`…) se pintan arriba del botón.
-  const conCampo = new Set(camposEnOrden(props.modo, form, pideInicioCiclo));
+  const conCampo = new Set(camposEnOrden(props.modo, form, visibles));
   const sueltos = Object.entries(errores)
     .filter(([clave]) => !conCampo.has(clave))
     .flatMap(([, mensajes]) => mensajes);
@@ -586,9 +636,16 @@ export function PlanForm(props: PlanFormProps) {
   const textoEnviar =
     props.modo === "crear"
       ? TEXTOS_PLAN_FORM.crear
-      : form.aplicar === "programado"
+      : !cambiaPrecio && form.aplicar === "programado"
         ? TEXTOS_PLAN_FORM.programar
         : TEXTOS_PLAN_FORM.guardar;
+  /** SLT-86 (R25): el primer período o tramo que abre el custom y su costo base, si hay fecha y precio válidos. */
+  const fechaDelCustom = pideInicioCiclo ? form.inicioCiclo : pideFechaDeEfecto ? form.vigenteDesde : "";
+  const precioValido = precioPlanSchema.safeParse(precioDe(form));
+  const primerPeriodo =
+    props.modo === "crear" && fechaDelCustom !== "" && precioValido.success && esFechaCalendarioValida(fechaDelCustom)
+      ? primerPeriodoDelCambio(precioValido.data, form.tipoCobro, fechaDelCustom)
+      : null;
 
   return (
     <form
@@ -637,7 +694,14 @@ export function PlanForm(props: PlanFormProps) {
                     value={form.organizacionId}
                     options={opcionesEmpresa}
                     placeholder={TEXTOS_PLAN_FORM.empresaPlaceholder}
-                    onValueChange={(v) => cambiar("organizacionId", v)}
+                    onValueChange={(v) =>
+                      // SLT-86 (R25): «Rige desde» propone el siguiente período de la empresa elegida.
+                      setForm((f) => ({
+                        ...f,
+                        organizacionId: v,
+                        vigenteDesde: (empresas ?? []).find((e) => e.id === v)?.fechaDeEfectoPorDefecto ?? "",
+                      }))
+                    }
                   />
                   {empresas === null ? (
                     <p id={idSinEmpresas} className="text-sm text-danger-strong">
@@ -658,7 +722,6 @@ export function PlanForm(props: PlanFormProps) {
         </p>
         {/* Una sola columna: en el panel (~480 px) dos columnas parten las etiquetas de rol en varias líneas. */}
         <div className="flex flex-col gap-4">
-          {campoTope("topes.ordenesPorCiclo", TEXTOS_PLAN_FORM.ordenes, form.ordenes, (v) => cambiar("ordenes", v))}
           {ROLES_CON_TOPE.map((rol) => (
             <div key={rol}>
               {campoTope(`topes.porRol.${rol}`, TEXTOS_PLAN_FORM.rol(rol), form.porRol[rol], (v) =>
@@ -717,45 +780,16 @@ export function PlanForm(props: PlanFormProps) {
             <FormField id={idDe("precio.mensual")} label={TEXTOS_PLAN_FORM.mensual} error={errorDe("precio.mensual")}>
               <MontoInput value={form.mensual} onChange={(v) => cambiar("mensual", v)} />
             </FormField>
-            {/* Título visible: sin él, los tres radios aparecen sin contexto bajo «Monto mensual». */}
-            <fieldset id={idDe("precio.anual")} className="flex flex-col gap-2">
-              <legend className="mb-2 text-sm font-medium">{TEXTOS_PLAN_FORM.anual}</legend>
-              <RadioGroup
-                aria-label={TEXTOS_PLAN_FORM.anual}
-                aria-invalid={Boolean(errorDe("precio.anual"))}
-                aria-describedby={errorDe("precio.anual") ? `${idDe("precio.anual")}-error` : undefined}
-                value={form.anual}
-                onValueChange={(v) => cambiar("anual", v === "fijo" || v === "descuento" ? v : "ninguno")}
-                options={[
-                  { value: "ninguno", label: TEXTOS_PLAN_FORM.anualNinguno },
-                  { value: "fijo", label: TEXTOS_PLAN_FORM.anualFijo },
-                  { value: "descuento", label: TEXTOS_PLAN_FORM.anualDescuento },
-                ]}
+            {TIPOS_COBRO.map((tipo) => (
+              <CampoDescuento
+                key={tipo}
+                tipo={tipo}
+                valor={form.descuentos[tipo]}
+                onCambio={(d) => setForm((f) => ({ ...f, descuentos: { ...f.descuentos, [tipo]: d } }))}
+                idDe={idDe}
+                errorDe={errorDe}
               />
-              <FieldError id={`${idDe("precio.anual")}-error`} messages={errorDe("precio.anual")} />
-            </fieldset>
-            {form.anual === "fijo" ? (
-              <FormField
-                id={idDe("precio.anual.monto")}
-                label={TEXTOS_PLAN_FORM.montoAnual}
-                error={errorDe("precio.anual.monto")}
-              >
-                <MontoInput value={form.montoAnual} onChange={(v) => cambiar("montoAnual", v)} />
-              </FormField>
-            ) : null}
-            {form.anual === "descuento" ? (
-              <FormField
-                id={idDe("precio.anual.porcentaje")}
-                label={TEXTOS_PLAN_FORM.porcentaje}
-                error={errorDe("precio.anual.porcentaje")}
-              >
-                <Input
-                  inputMode="decimal"
-                  value={form.porcentaje}
-                  onChange={(ev) => cambiar("porcentaje", ev.target.value)}
-                />
-              </FormField>
-            ) : null}
+            ))}
           </div>
         ) : null}
       </fieldset>
@@ -841,14 +875,35 @@ export function PlanForm(props: PlanFormProps) {
               />
             </FormField>
           ) : null}
+          {pideFechaDeEfecto ? (
+            <FormField
+              id={idDe("vigenteDesde")}
+              label={TEXTOS_TIPO_COBRO.rigeDesde}
+              hint={TEXTOS_TIPO_COBRO.ayudaCambioDeEmpresa}
+              error={errorDe("vigenteDesde")}
+            >
+              <Input
+                type="date"
+                value={form.vigenteDesde}
+                min={props.rangoFechaDeEfecto.min}
+                max={props.rangoFechaDeEfecto.max}
+                onChange={(ev) => cambiar("vigenteDesde", ev.target.value)}
+              />
+            </FormField>
+          ) : null}
+          {/* SLT-86 (R25): el costo base del primer período o tramo que abrirá la asignación. */}
+          {primerPeriodo !== null ? (
+            <ul className="flex flex-col gap-1 text-sm">
+              <li>{TEXTOS_TIPO_COBRO.costoBase(form.tipoCobro, primerPeriodo.costo)}</li>
+              <li>{textoDelPeriodo(form.tipoCobro, primerPeriodo.periodo)}</li>
+            </ul>
+          ) : null}
           {/* D13: la vista previa de SLT-58 R37 con los topes del formulario. D17: si no carga, bloquea
               «Crear plan» y ofrece «Reintentar», como el modal de primera asignación (P11). */}
           {pideInicioCiclo ? (
             <div aria-live="polite" aria-busy={vistaPreviaVigente?.fase === "cargando"}>
               {vistaPreviaVigente?.fase === "ok" && vistaPreviaVigente.avisos.length > 0 ? (
-                <AvisosDeTopes
-                  avisos={textosDeLosAvisosDeTopes(vistaPreviaVigente.avisos, vistaPreviaVigente.siguienteCiclo)}
-                />
+                <AvisosDeTopes avisos={textosDeLosAvisosDeTopes(vistaPreviaVigente.avisos)} />
               ) : vistaPreviaVigente?.fase === "fallo" ? (
                 <Alert variant="destructive">
                   <AlertDescription>
@@ -867,7 +922,19 @@ export function PlanForm(props: PlanFormProps) {
         </div>
       ) : null}
 
-      {props.modo === "editar" ? (
+      {/* SLT-86 (R22, R23): un cambio de precio no se aplica «de inmediato»: lleva su fecha, mañana por defecto. */}
+      {props.modo === "editar" && cambiaPrecio ? (
+        <FormField
+          id={idDe("vigenteDesde")}
+          label={TEXTOS_TIPO_COBRO.rigeDesde}
+          hint={TEXTOS_TIPO_COBRO.ayudaCambioDePrecio}
+          error={errorDe("vigenteDesde")}
+        >
+          <Input type="date" value={form.precioDesde} onChange={(ev) => cambiar("precioDesde", ev.target.value)} />
+        </FormField>
+      ) : null}
+
+      {props.modo === "editar" && !cambiaPrecio ? (
         <fieldset className="flex flex-col gap-4">
           <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.aplicar}</legend>
           <RadioGroup
@@ -924,26 +991,92 @@ export function PlanForm(props: PlanFormProps) {
  * va al primero con error). El resto va al aviso general, para que ningún rechazo se quede sin pintar
  * por caer en un campo oculto.
  */
-function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario, pideInicioCiclo: boolean): string[] {
+/** Qué campos condicionales están en pantalla ahora mismo. */
+type CamposVisibles = { pideInicioCiclo: boolean; pideFechaDeEfecto: boolean; cambiaPrecio: boolean };
+
+function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario, v: CamposVisibles): string[] {
   const claves = ["nombre"];
   if (modo === "crear") claves.push("visibilidad");
   if (modo === "crear" && f.visibilidad === "custom") claves.push("organizacionId");
-  claves.push(
-    "topes.ordenesPorCiclo",
-    ...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`),
-    "topes.apiKeys",
-    "modulos",
-    "precio",
-  );
-  if (f.precio === "monto") claves.push("precio.mensual", "precio.anual");
-  if (f.precio === "monto" && f.anual === "fijo") claves.push("precio.anual.monto");
-  if (f.precio === "monto" && f.anual === "descuento") claves.push("precio.anual.porcentaje");
+  claves.push(...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`), "topes.apiKeys", "modulos", "precio");
+  if (f.precio === "monto") {
+    claves.push("precio.mensual");
+    // SLT-86 (R10, R23): el error de un descuento va en su grupo o en el campo de su forma.
+    for (const tipo of TIPOS_COBRO) {
+      const forma = f.descuentos[tipo].forma;
+      claves.push(`precio.descuentos.${tipo}`);
+      if (forma !== "ninguno") claves.push(`precio.descuentos.${tipo}.${forma}`);
+    }
+  }
   if (f.modoCosto === "fijo") claves.push("costoPorOrden");
   else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
   if (modo === "crear" && f.visibilidad === "custom") claves.push("tipoCobro");
-  if (modo === "crear" && pideInicioCiclo) claves.push("inicioCiclo");
-  if (modo === "editar" && f.aplicar === "programado") claves.push("vigenteDesde");
+  if (modo === "crear" && v.pideInicioCiclo) claves.push("inicioCiclo");
+  if (modo === "crear" && v.pideFechaDeEfecto) claves.push("vigenteDesde");
+  if (modo === "editar" && (v.cambiaPrecio || f.aplicar === "programado")) claves.push("vigenteDesde");
   return claves;
+}
+
+interface CampoDescuentoProps {
+  tipo: TipoCobro;
+  valor: DescuentoDelFormulario;
+  onCambio: (d: DescuentoDelFormulario) => void;
+  idDe: (clave: string) => string;
+  errorDe: (clave: string) => string[] | undefined;
+}
+
+/**
+ * SLT-86 (R10, R23) — el descuento de UN período: «Ninguno», «Porcentaje» o «Monto fijo», con el campo de
+ * la forma elegida. El grupo lleva título visible para que las cuatro tandas de radios no se confundan.
+ */
+function CampoDescuento({ tipo, valor, onCambio, idDe, errorDe }: CampoDescuentoProps) {
+  const clave = `precio.descuentos.${tipo}`;
+  const titulo = TEXTOS_PLAN_FORM.descuento(tipo);
+  return (
+    <fieldset id={idDe(clave)} className="flex flex-col gap-2">
+      <legend className="mb-2 text-sm font-medium">{titulo}</legend>
+      <RadioGroup
+        aria-label={titulo}
+        aria-invalid={Boolean(errorDe(clave))}
+        aria-describedby={errorDe(clave) ? `${idDe(clave)}-error` : undefined}
+        value={valor.forma}
+        onValueChange={(v) => onCambio({ ...valor, forma: v === "porcentaje" || v === "monto" ? v : "ninguno" })}
+        options={[
+          { value: "ninguno", label: TEXTOS_PLAN_FORM.descuentoNinguno },
+          { value: "porcentaje", label: TEXTOS_PLAN_FORM.descuentoPorcentaje },
+          { value: "monto", label: TEXTOS_PLAN_FORM.descuentoMonto },
+        ]}
+      />
+      <FieldError id={`${idDe(clave)}-error`} messages={errorDe(clave)} />
+      {valor.forma === "porcentaje" ? (
+        <FormField
+          id={idDe(`${clave}.porcentaje`)}
+          label={TEXTOS_PLAN_FORM.descuentoPorcentaje}
+          error={errorDe(`${clave}.porcentaje`)}
+        >
+          {(control) => (
+            <div className="flex items-center gap-2">
+              <Input
+                {...control}
+                inputMode="decimal"
+                value={valor.porcentaje}
+                onChange={(ev) => onCambio({ ...valor, porcentaje: ev.target.value })}
+              />
+              {/* El sufijo es visual: la etiqueta ya dice «Porcentaje». */}
+              <span aria-hidden="true" className="text-sm text-muted-foreground">
+                {TEXTOS_PLAN_FORM.sufijoPorcentaje}
+              </span>
+            </div>
+          )}
+        </FormField>
+      ) : null}
+      {valor.forma === "monto" ? (
+        <FormField id={idDe(`${clave}.monto`)} label={TEXTOS_PLAN_FORM.descuentoMonto} error={errorDe(`${clave}.monto`)}>
+          <MontoInput value={valor.monto} onChange={(v) => onCambio({ ...valor, monto: v })} />
+        </FormField>
+      ) : null}
+    </fieldset>
+  );
 }
 
 /**

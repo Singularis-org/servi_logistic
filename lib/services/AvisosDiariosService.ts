@@ -9,9 +9,10 @@ import type {
   AmbitoRetenidas,
   IReprogramadasRetenidasService,
 } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { alcanzaElTope } from "@/lib/types/tope-intentos";
-import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { PlazoNovedades } from "@/lib/notificaciones/emitir";
 import {
   emitirBestEffort,
@@ -37,8 +38,8 @@ import {
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
-/** Lo unico que este servicio necesita del historial: el conteo de intentos EN LOTE (215/R4). */
-type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote">;
+/** Lo unico que este servicio necesita del historial: el conteo EN LOTE (215/R4) y el tope de la empresa. */
+type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">;
 /** Lo unico que este servicio necesita del conteo de retenidas: el resumen entero, agrupado. */
 type RetenidasSvc = Pick<IReprogramadasRetenidasService, "resumen">;
 
@@ -84,17 +85,21 @@ export class AvisosDiariosService implements IAvisosDiariosService {
      */
     private readonly notificarRetenidas: ReprogramadasEsperanCierreNotificador = notificadorNoOp,
     private readonly logger: ErrorLogger = defaultLogger,
+    /** SLT-42 (R22, R24, R28): la zona del pais de la empresa, de la que sale el dia de la corrida. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async ejecutar(now: Date): Promise<AvisosDiariosResumen> {
-    // El dia CR sale de `fechaCalendarioCR`, NUNCA de `toISOString().slice(0,10)`: en UTC, las
-    // 19:00 CR ya caen en el dia siguiente y el recordatorio del dia se partiria en dos.
-    const diaCR = fechaCalendarioCR(now);
+    // SLT-42 (R24, R28): la zona del pais de ESTA empresa, leida una vez y antes de emitir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "AvisosDiariosService.ejecutar");
+    // El dia sale de `fechaCalendario`, NUNCA de `toISOString().slice(0,10)`: en UTC, la tarde
+    // local ya cae en el dia siguiente y el recordatorio del dia se partiria en dos.
+    const diaCR = fechaCalendario(now, zona);
     const fallos = { total: 0 };
 
     const novedades = await this.emitirAvisosDeNovedades(now, diaCR, fallos);
     const represadas = await this.emitirAvisosDeRepresadas(now, diaCR, fallos);
-    const retenidas = await this.emitirAvisosDeRetenidas(now, diaCR, fallos);
+    const retenidas = await this.emitirAvisosDeRetenidas(now, zona, diaCR, fallos);
 
     return {
       fecha: diaCR,
@@ -121,8 +126,8 @@ export class AvisosDiariosService implements IAvisosDiariosService {
    * titulo lo compone el catalogo con la cifra viva al leer (409/R57), asi que el contexto es solo
    * el ambito y el dia.
    *
-   * ⚠️ `startOfDayCR(now)` Y NO `inicioDelDiaCREnUtc`: `fecha_reprogramacion` es `@db.Date` y el
-   * conteo compara contra medianoche UTC de la fecha CR, la misma convencion que el reloj de
+   * ⚠️ `inicioDelDiaComoFecha(now, zona)` Y NO `inicioDelDiaEnUtc`: `fecha_reprogramacion` es
+   * `@db.Date` y el conteo compara contra medianoche UTC de la fecha local, la misma convencion que el reloj de
    * liberacion y los timbres 315/371 (design §1.2). Con el otro helper serian seis horas de mas.
    *
    * SOLO LECTURA (R8/R49): este metodo no toca ninguna orden; `resumen` es una lectura y lo vigila
@@ -130,10 +135,11 @@ export class AvisosDiariosService implements IAvisosDiariosService {
    */
   private async emitirAvisosDeRetenidas(
     now: Date,
+    zona: string,
     diaCR: string,
     fallos: { total: number },
   ): Promise<{ total: number; ambitos: number; emitidos: number }> {
-    const resumen = await this.retenidas.resumen(startOfDayCR(now));
+    const resumen = await this.retenidas.resumen(inicioDelDiaComoFecha(now, zona), zona);
     if (resumen.total === 0) return { total: 0, ambitos: 0, emitidos: 0 }; // R10
 
     // Por ambito: clave `central` o el `zonaId`. Se suma lo de los cierres Y lo de «sin cierre».
@@ -181,6 +187,8 @@ export class AvisosDiariosService implements IAvisosDiariosService {
     const intentos = await this.historial.contarIntentosEnLote(
       conNovedades.flatMap((tienda) => tienda.ordenes.map((o) => o.ordenId)),
     );
+    // SLT-77 (R23, R34): un solo valor por corrida, y esta corre dentro de la empresa que procesa.
+    const tope = await this.historial.topeIntentos();
 
     let emitidos = 0;
     for (const tienda of conNovedades) {
@@ -190,7 +198,7 @@ export class AvisosDiariosService implements IAvisosDiariosService {
           this.notificarNovedades({
             tiendaId: tienda.tiendaId,
             diasMasAntigua: diasEnteros(tienda.masAntiguaAt, now),
-            plazo: plazoDelLote(tienda.ordenes, intentos),
+            plazo: plazoDelLote(tienda.ordenes, intentos, tope),
             diaCR,
           }),
         fallos,
@@ -302,17 +310,17 @@ function diasEnteros(desde: Date, ahora: Date): number {
  *
  * Una causa `null` (gestion vigente sin causa) cuenta como MEZCLA: no se adivina una ventana.
  *
- * El tope se decide con `alcanzaElTope` y `reintentosConfig.MIN_INTENTOS_ENTREGA` — EL MISMO
- * modulo puro y el MISMO umbral que usa `NovedadesService` para pintar `enElTope` y que usa el
+ * El tope se decide con `alcanzaElTope` y el tope de la empresa — EL MISMO
+ * modulo puro y el MISMO valor que usa `NovedadesService` para pintar `enElTope` y que usa el
  * cron para escalar. Ignorar el tope aqui es una de las nueve mutaciones obligatorias del design.
  */
 function plazoDelLote(
   ordenes: ReadonlyArray<{ ordenId: string; causa: string | null }>,
   intentos: ReadonlyMap<string, number>,
+  tope: number,
 ): PlazoNovedades {
-  const umbral = reintentosConfig.MIN_INTENTOS_ENTREGA;
   const algunaEnElTope = ordenes.some((orden) =>
-    alcanzaElTope(intentos.get(orden.ordenId) ?? 0, umbral),
+    alcanzaElTope(intentos.get(orden.ordenId) ?? 0, tope),
   );
   if (algunaEnElTope) return "mezclado";
 

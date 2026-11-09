@@ -5,7 +5,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IApiOrdenLecturaService } from "@/lib/interfaces/services/IApiOrdenLecturaService";
 import type { ApiOrdenListadoDTO } from "@/lib/types/api-orden";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 // ⏳ 2026-09-09 (feature 404, T6): los casos del campo nuevo montan la CADENA REAL
 // (route -> ApiOrdenLecturaService -> OrdenRepository -> Prisma mockeado). Con el service falso de
 // arriba pasarian aunque nadie inyectara nada y aunque el mapeo del repositorio no existiera: es
@@ -412,7 +412,7 @@ function filaOrden415(over: Record<string, unknown> = {}) {
 function prismaConTarifas(filas: ReturnType<typeof filaOrden>[], tarifas: unknown[] = [TARIFA_415]) {
   const base = prismaConOrdenes(filas);
   // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-  return { ...base, tarifa: { findMany: vi.fn(async () => tarifas) }, ...sinValoresDelModeloNuevo() };
+  return { ...base, tarifa: { findMany: vi.fn(async () => tarifas) }, ...empresaSinActivar() };
 }
 
 /** La cadena real COMPLETA, con el `TarifaVigenteRepository` de produccion. */

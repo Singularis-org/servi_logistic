@@ -21,10 +21,17 @@ import type {
   PlanDeEmpresaVista,
   PlanDTO,
   PlanResult,
+  TipoCobro,
   VistaPreviaAsignacionResult,
 } from "@/lib/types/planes";
 
-type EntradaAsignar = { organizacionId: string; planId: string; inicioCiclo?: string; tipoCobro: "mensual" | "anual" };
+type EntradaAsignar = {
+  organizacionId: string;
+  planId: string;
+  inicioCiclo?: string;
+  vigenteDesde?: string;
+  tipoCobro: TipoCobro;
+};
 type EntradaVistaPrevia = { organizacionId: string; planId: string; inicioCiclo: string };
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
@@ -34,22 +41,25 @@ const PLAN_ACTUAL = "11111111-1111-4111-8111-111111111111";
 const LEIDO: PlanConUsoLeido = {
   vigente: {
     nombre: "Plan Crecer",
-    topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
+    topes: { porRol: { mensajero: 10 }, apiKeys: 2 },
     modulos: ["analitica"],
-    precio: { tipo: "monto", mensual: "45000", anual: null },
+    precio: { tipo: "monto", mensual: "45000", descuentos: {} },
     costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   },
-  ancla: new Date("2026-01-15T06:00:00.000Z"),
+  // SLT-86 (R5, R15, R26): la entrada, el precio del período y el pendiente de la empresa.
+  entrada: new Date("2026-01-15T06:00:00.000Z"),
+  precioDelPeriodo: { tipo: "monto", mensual: "45000", descuentos: {} },
+  pendiente: null,
   // SLT-66 R5: el uso ya no lleva `maestro`.
   uso: { ordenes: 1000, apiKeys: 2, porRol: { admin: 0, mensajero: 8, adminTienda: 0, adminSatelite: 0 } },
   cambio: {
     vigenteDesde: new Date("2026-04-01T06:00:00.000Z"),
     version: {
       nombre: "Plan Crecer 2",
-      topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
+      topes: { porRol: { mensajero: 10 }, apiKeys: 2 },
       modulos: ["analitica"],
-      precio: { tipo: "monto", mensual: "45000", anual: null },
+      precio: { tipo: "monto", mensual: "45000", descuentos: {} },
       costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     },
@@ -70,6 +80,7 @@ const ASIGNACIONES: AsignacionDePlan[] = [
     tipo: "asignacion",
     tipoCobro: "mensual",
     tipoCobroAnterior: null,
+    desde: "2026-03-01", // SLT-86 (R30): la fecha de efecto que guarda la fila
   },
   {
     creadoAt: "2026-01-15T06:00:00.000Z",
@@ -78,6 +89,7 @@ const ASIGNACIONES: AsignacionDePlan[] = [
     tipo: "asignacion",
     tipoCobro: null,
     tipoCobroAnterior: null,
+    desde: null,
   },
 ];
 
@@ -85,6 +97,7 @@ function vista(extra: Partial<PlanDeEmpresaVista> = {}): PlanDeEmpresaVista {
   return {
     organizacionId: ORG,
     plan: { ...planConConsumo(LEIDO, AHORA), planId: PLAN_ACTUAL, archivado: false },
+    pendienteSinPlan: null,
     asignaciones: ASIGNACIONES,
     ...extra,
   };
@@ -94,7 +107,7 @@ function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): Plan
   return {
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
@@ -110,9 +123,9 @@ const CUSTOM_SUYO = planDTO({
   nombre: "Enterprise Norte",
   visibilidad: "custom",
   organizacionId: ORG,
-  topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 10 }, apiKeys: 2 },
+  topes: { porRol: { mensajero: 10 }, apiKeys: 5 },
   modulos: ["analitica", "monitoreo"],
-  precio: { tipo: "monto", mensual: "45000", anual: null },
+  precio: { tipo: "monto", mensual: "45000", descuentos: {} },
 });
 const CUSTOM_AJENO = planDTO({
   id: "44444444-4444-4444-8444-444444444444",
@@ -130,7 +143,10 @@ const OK: PlanResult = { estado: "ok", planId: PUBLICO.id, cambio: true, avisos:
 const RANGO: RangoDelInicioDelCiclo = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
 /** Ajuste planes-custom (D5): el inicio del ciclo por defecto es MAÑANA (lo calcula la página). */
 const MANANA = "2026-10-30";
-const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" };
+const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [] };
+/** SLT-86 (R16, R25): el rango de «Rige desde» y su valor por defecto (el siguiente período mensual). */
+const RANGO_EFECTO: RangoDelInicioDelCiclo = { hoy: "2026-03-01", min: "2026-03-01", max: "2027-03-01" };
+const FECHA_EFECTO = "2026-04-01";
 
 function montar({
   v = vista(),
@@ -158,8 +174,11 @@ function montar({
         asignarPlan={asignar}
         rangoInicioCiclo={RANGO}
         inicioCicloPorDefecto={MANANA}
+        rangoFechaDeEfecto={RANGO_EFECTO}
+        fechaDeEfectoPorDefecto={FECHA_EFECTO}
         previsualizarAsignacion={previsualizar}
         cambiarTipoCobro={vi.fn()}
+        cancelarCambioEmpresa={vi.fn()}
       />
     </ToastProvider>,
   );
@@ -210,13 +229,14 @@ describe("SLT-58 R19 — el plan de la empresa con su consumo", () => {
 
     const seccion = screen.getByRole("region", { name: "Plan" });
     expect(within(seccion).getByRole("heading", { level: 3, name: "Plan Crecer" })).toBeInTheDocument();
-    // SLT-66 R9: el precio informativo se pinta como «Costo base: …», con el importe del costeo (dos decimales).
-    expect(within(seccion).getByText("Costo base: 45000.00 al mes")).toBeInTheDocument();
+    // SLT-86 (R28): el costo base del período en curso, con su tipo y el importe del costeo (dos decimales).
+    expect(within(seccion).getByText("Costo base mensual: 45000.00")).toBeInTheDocument();
     expect(within(seccion).getByRole("list", { name: "Módulos incluidos" })).toHaveTextContent("Analítica");
 
     const consumo = within(seccion).getByRole("list", { name: "Consumo" });
-    expect(within(consumo).getAllByRole("listitem")).toHaveLength(6); // SLT-66 R5: sin la fila del rol Maestro
-    expect(within(consumo).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
+    // SLT-66 R5: sin la fila del rol Maestro. SLT-86 (R7, R8): las órdenes del período, sin tope.
+    expect(within(consumo).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(consumo).getByText("Órdenes en el período: 1.000")).toBeInTheDocument();
     expect(within(consumo).getByText("Cerca del tope")).toBeInTheDocument(); // 8 de 10 mensajeros
     expect(within(consumo).getByText("Lleno")).toBeInTheDocument(); // 2 de 2 API keys
     expect(within(seccion).getByText(/^Se reinicia en \d+ días? \(\d{4}-\d{2}-\d{2}\)$/)).toBeInTheDocument();
@@ -267,7 +287,13 @@ describe("SLT-58 R20 — asignar o cambiar el plan", () => {
     await elegir(user, "Enterprise Norte (Custom)");
     await cambiarYConfirmar(user);
 
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: CUSTOM_SUYO.id, tipoCobro: "mensual" });
+    // SLT-86 (R16): con la fecha de efecto por defecto.
+    expect(asignar).toHaveBeenCalledWith({
+      organizacionId: ORG,
+      planId: CUSTOM_SUYO.id,
+      vigenteDesde: FECHA_EFECTO,
+      tipoCobro: "mensual",
+    });
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -310,7 +336,7 @@ describe("SLT-58 R18 — un rechazo se explica y no se da por hecho", () => {
     [{ estado: "not_found" }, "El plan o la empresa ya no existe."],
     [{ estado: "archivado" }, "El plan está archivado."],
     [{ estado: "custom_de_otra_empresa" }, "Ese plan es de otra empresa."],
-    [{ estado: "sin_cambio_programado" }, "El plan ya no tiene un cambio pendiente."],
+    [{ estado: "sin_cambio_programado" }, "La empresa ya no tiene un cambio pendiente."],
   ])("R18: %o → mensaje y sin releer", async (respuesta, texto) => {
     const user = userEvent.setup();
     montar({ asignar: vi.fn().mockResolvedValue(respuesta) });
@@ -360,9 +386,10 @@ describe("SLT-58 R21 — el historial de asignaciones", () => {
     const tabla = screen.getByRole("table", { name: "Historial de asignaciones" });
     const filas = within(tabla).getAllByRole("row").slice(1);
     expect(filas.map((f) => within(f).getAllByRole("cell").map((c) => c.textContent))).toEqual([
-      // D14: la columna «Tipo de cobro»; la fila anterior al ajuste no lo guardaba («—»).
-      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Mensual"],
-      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»", "—"],
+      // D14: la columna «Tipo de cobro»; la fila anterior al ajuste no lo guardaba («—»). SLT-86 (R30):
+      // «Rige desde», la fecha que guardó la fila.
+      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Mensual", "2026-03-01"],
+      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»", "—", "—"],
     ]);
   });
 
@@ -387,13 +414,12 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
     const lineas = within(modal).getByRole("list", { name: "Esto es lo que cambia:" });
     expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Nombre del plan: Plan Crecer → Básico",
-      "Órdenes por ciclo: 3000 → sin límite",
       "Usuarios activos con el rol Mensajero: 10 → sin límite",
       "API keys activas: 2 → sin límite",
       "Deja de incluirse el módulo Analítica.",
       // `diferenciasDelPlan` compara en forma canónica (dos decimales), igual que en el correo.
-      // SLT-66 R9: la línea «Precio:» pasa a «Costo base:».
-      "Costo base: 45000.00 al mes → sin precio",
+      // SLT-66 R9: la línea «Precio:» pasa a «Costo base:». SLT-86 (R24): «{mensual} / mes».
+      "Costo base: 45000.00 / mes → sin precio",
     ]);
     expect(asignar).not.toHaveBeenCalled();
   });
@@ -409,7 +435,7 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
     const lineas = within(modal).getByRole("list", { name: "Esto es lo que cambia:" });
     expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Nombre del plan: Plan Crecer → Enterprise Norte",
-      "Órdenes por ciclo: 3000 → 5000",
+      "API keys activas: 2 → 5",
       "Se incluye el módulo Monitoreo.",
     ]);
   });
@@ -435,7 +461,12 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
     await cambiarYConfirmar(user);
 
     expect(asignar).toHaveBeenCalledTimes(1);
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, tipoCobro: "mensual" });
+    expect(asignar).toHaveBeenCalledWith({
+      organizacionId: ORG,
+      planId: PUBLICO.id,
+      vigenteDesde: FECHA_EFECTO,
+      tipoCobro: "mensual",
+    });
   });
 
   it("R20: con el plan actual archivado (fuera de los asignables) compara contra el `planActual` de la página", async () => {
@@ -451,7 +482,7 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
 
     const modal = await screen.findByRole("dialog");
     expect(within(modal).getByRole("list", { name: "Esto es lo que cambia:" })).toHaveTextContent(
-      "Órdenes por ciclo: 3000 → sin límite",
+      "API keys activas: 2 → sin límite",
     );
   });
 
@@ -538,21 +569,20 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
     expect(modal).toHaveTextContent("Asignar Enterprise Norte a Envíos Norte: desde ahora tendrá:");
     const lineas = within(modal).getByRole("list", { name: "Lo que tendrá la empresa" });
     expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Órdenes por ciclo: 5.000",
-      // SLT-66 R5: sin la línea del rol Maestro.
+      // SLT-66 R5: sin la línea del rol Maestro. SLT-86 (R8): sin la de órdenes.
       "Usuarios activos con el rol Administrador: sin límite",
       "Usuarios activos con el rol Mensajero: 10",
       "Usuarios activos con el rol Admin de tienda: sin límite",
       "Usuarios activos con el rol Admin satélite: sin límite",
-      "API keys activas: 2",
+      "API keys activas: 5",
       // SLT-66 R24: el costo base y el costo por orden del plan, antes de los módulos.
-      "Costo base: 45000 al mes",
+      "Costo base: 45000 / mes",
       "Costo por orden: se aplica el valor global",
       "Módulos incluidos: Analítica, Monitoreo",
     ]);
-    // R38: la frase con la fecha elegida sustituye a «empieza hoy».
-    expect(modal).toHaveTextContent(`El ciclo de órdenes empieza el ${MANANA}.`);
-    expect(modal).not.toHaveTextContent("El ciclo de órdenes empieza hoy.");
+    // SLT-86 (design §7.1): «El plan empieza a regir el {fecha}.» sustituye a la frase de SLT-58 R38.
+    expect(modal).toHaveTextContent(`El plan empieza a regir el ${MANANA}.`);
+    expect(modal).not.toHaveTextContent("El ciclo de órdenes empieza");
     expect(asignar).not.toHaveBeenCalled();
   });
 
@@ -561,7 +591,7 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
     montar({ v: SIN_PLAN() });
 
     const lineas = within(await abrirPrimera(user)).getByRole("list", { name: "Lo que tendrá la empresa" });
-    expect(lineas).toHaveTextContent("Órdenes por ciclo: sin límite");
+    expect(lineas).toHaveTextContent("API keys activas: sin límite");
     expect(lineas).toHaveTextContent("Módulos incluidos: Ninguno");
   });
 
@@ -595,9 +625,11 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
 describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignación", () => {
   const SIN_PLAN = () => vista({ plan: null });
   const campoFecha = (modal: HTMLElement) =>
-    within(modal).getByLabelText("Inicio del ciclo de órdenes") as HTMLInputElement;
+    within(modal).getByLabelText("Inicio del período") as HTMLInputElement;
   const vistaPreviaCon = (avisos: Extract<VistaPreviaAsignacionResult, { estado: "ok" }>["avisos"]) =>
-    ({ estado: "ok", avisos, siguienteCiclo: "2026-11-05" }) satisfies VistaPreviaAsignacionResult;
+    ({ estado: "ok", avisos }) satisfies VistaPreviaAsignacionResult;
+  const MENSAJEROS = { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero" as const, usados: 12, maximo: 10 };
+  const AVISO_MENSAJEROS = "La empresa ya tiene 12 de 10 Mensajero: no podrá activar ni crear más hasta bajar del tope.";
 
   it("R29, D5: el campo trae «mañana» por defecto, con el min/max del servidor, y la vista previa lee esa fecha", async () => {
     const user = userEvent.setup();
@@ -614,13 +646,13 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     expect(previsualizar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: MANANA });
   });
 
-  it("R29, R38: la fecha elegida viaja en la asignación y la frase la repite", async () => {
+  it("R29, SLT-86 §7.1: la fecha elegida viaja en la asignación y la frase la repite", async () => {
     const user = userEvent.setup();
     const asignar = montar({ v: SIN_PLAN() });
 
     const modal = await abrirPrimera(user);
     fireEvent.change(campoFecha(modal), { target: { value: "2026-10-05" } });
-    expect(modal).toHaveTextContent("El ciclo de órdenes empieza el 2026-10-05.");
+    expect(modal).toHaveTextContent("El plan empieza a regir el 2026-10-05.");
     await confirmarPrimera(user, modal);
 
     expect(asignar).toHaveBeenCalledWith({
@@ -631,14 +663,13 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     });
   });
 
-  it("R37: aviso de órdenes con «3.200 de 3.000» y el día del siguiente ciclo, de un rol y de las API keys", async () => {
+  it("R37, SLT-86 R8: aviso de un rol y de las API keys, sin aviso de órdenes", async () => {
     const user = userEvent.setup();
     montar({
       v: SIN_PLAN(),
       previsualizar: vi.fn().mockResolvedValue(
         vistaPreviaCon([
-          { organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 },
-          { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero", usados: 12, maximo: 10 },
+          MENSAJEROS,
           { organizacionId: ORG, empresa: "Envíos Norte", tope: "api_keys", usados: 3, maximo: 2 },
         ]),
       ),
@@ -647,8 +678,7 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     const modal = await abrirPrimera(user);
     const aviso = await within(modal).findByRole("alert");
     expect(within(aviso).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-05.",
-      "La empresa ya tiene 12 de 10 Mensajero: no podrá activar ni crear más hasta bajar del tope.",
+      AVISO_MENSAJEROS,
       "La empresa ya tiene 3 de 2 API keys activas: no podrá crear ni activar más hasta bajar del tope.",
     ]);
     // Es un aviso, no un error: el plan se puede asignar igual (R36, R42).
@@ -670,9 +700,7 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     const previsualizar = vi
       .fn()
       .mockResolvedValueOnce(VISTA_PREVIA_OK)
-      .mockResolvedValueOnce(
-        vistaPreviaCon([{ organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 }]),
-      );
+      .mockResolvedValueOnce(vistaPreviaCon([MENSAJEROS]));
     montar({ v: SIN_PLAN(), previsualizar });
 
     const modal = await abrirPrimera(user);
@@ -683,9 +711,7 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
 
     expect(previsualizar).toHaveBeenCalledTimes(2);
     expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-05" });
-    expect(await within(modal).findByRole("alert")).toHaveTextContent(
-      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-05.",
-    );
+    expect(await within(modal).findByRole("alert")).toHaveTextContent(AVISO_MENSAJEROS);
   });
 
   it("R37: una respuesta vieja no pisa la de la fecha nueva", async () => {
@@ -701,9 +727,7 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     fireEvent.change(campoFecha(modal), { target: { value: "2026-10-05" } });
     await waitFor(() => expect(within(modal).getByRole("button", { name: "Asignar plan" })).toBeEnabled());
 
-    resolverVieja(
-      vistaPreviaCon([{ organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 }]),
-    );
+    resolverVieja(vistaPreviaCon([MENSAJEROS]));
     await new Promise((r) => setTimeout(r, 0));
     expect(within(modal).queryByRole("alert")).toBeNull();
   });
@@ -813,19 +837,16 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
 
   it("R36, R42: un `ok` con avisos los deja bajo la sección, con el mismo texto que el modal", async () => {
     const user = userEvent.setup();
-    const aviso = { organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes" as const, usados: 3200, maximo: 3000 };
     montar({
       v: SIN_PLAN(),
-      previsualizar: vi.fn().mockResolvedValue(vistaPreviaCon([aviso])),
-      asignar: vi.fn().mockResolvedValue({ ...OK, avisos: [aviso] } satisfies PlanResult),
+      previsualizar: vi.fn().mockResolvedValue(vistaPreviaCon([MENSAJEROS])),
+      asignar: vi.fn().mockResolvedValue({ ...OK, avisos: [MENSAJEROS] } satisfies PlanResult),
     });
 
     await confirmarPrimera(user, await abrirPrimera(user));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(within(screen.getByRole("region", { name: "Plan" })).getByRole("alert")).toHaveTextContent(
-      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-05.",
-    );
+    expect(within(screen.getByRole("region", { name: "Plan" })).getByRole("alert")).toHaveTextContent(AVISO_MENSAJEROS);
   });
 
   it("R31: «Cambiar plan» no tiene campo de fecha, no lee la vista previa y no envía `inicioCiclo`", async () => {
@@ -836,7 +857,7 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     await elegir(user, "Básico (Público)");
     await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
     const modal = await screen.findByRole("dialog", { name: "¿Cambiar el plan de esta empresa?" });
-    expect(within(modal).queryByLabelText("Inicio del ciclo de órdenes")).toBeNull();
+    expect(within(modal).queryByLabelText("Inicio del período")).toBeNull();
     await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
 
     expect(asignar).toHaveBeenCalledTimes(1);
@@ -846,14 +867,16 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
 });
 
 describe("Ajuste planes-custom D6 — el tipo de cobro se elige en el modal de asignación", () => {
-  it("D6: la primera asignación ofrece «Mensual» y «Anual», con «Mensual» por defecto, y envía el elegido", async () => {
+  it("D6, SLT-86 R25: la primera asignación ofrece los cuatro tipos, con «Mensual» por defecto, y envía el elegido", async () => {
     const user = userEvent.setup();
     const asignar = montar({ v: vista({ plan: null }) });
 
     const modal = await abrirPrimera(user);
     const grupo = within(modal).getByRole("radiogroup", { name: "Tipo de cobro" });
     expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
+      "Quincenal",
       "Mensual",
+      "Bimestral",
       "Anual",
     ]);
     expect(within(grupo).getByRole("radio", { name: "Mensual" })).toBeChecked();
@@ -876,7 +899,12 @@ describe("Ajuste planes-custom D6 — el tipo de cobro se elige en el modal de a
     await user.click(within(grupo).getByRole("radio", { name: "Anual" }));
     await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
 
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, tipoCobro: "anual" });
+    expect(asignar).toHaveBeenCalledWith({
+      organizacionId: ORG,
+      planId: PUBLICO.id,
+      vigenteDesde: FECHA_EFECTO,
+      tipoCobro: "anual",
+    });
   });
 
   it("D6: cada apertura del modal vuelve a «Mensual»", async () => {

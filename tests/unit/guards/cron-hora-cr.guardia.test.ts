@@ -4,9 +4,9 @@ import path from "node:path";
 import {
   avisoRepartoMananaConfig,
   esHoraNocturnaCR,
-  horaUtcDeHoraCR,
-  OFFSET_CR_HORAS,
+  horaUtcDeHoraLocal,
 } from "@/lib/config/aviso-reparto-manana";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // GUARDIA DEL ARNÉS — FICHA 413 (T5.4, R9/R10/R11) — LA HORA DEL CRON, VERIFICADA SIN EJECUTARLO.
 //
@@ -30,8 +30,8 @@ import {
 // verdades. Aquí uno manda y el otro se comprueba.
 //
 // ⚠️ LA CONVERSIÓN SE ESCRIBE A MANO EN ESTE ARCHIVO (`(utc + 24 − 6) % 24`) y NO se llama a
-// `horaUtcDeHoraCR` para el aserto central: comparar la expresión contra la función que la genera
-// estaría siempre verde, y ya dejó pasar un tope que la app rechazaba. `horaUtcDeHoraCR` sí se
+// `horaUtcDeHoraLocal` para el aserto central: comparar la expresión contra la función que la genera
+// estaría siempre verde, y ya dejó pasar un tope que la app rechazaba. `horaUtcDeHoraLocal` sí se
 // ejercita aparte, como la unidad que es.
 //
 // SE DECLARA COMO GUARDIA PORQUE LEE UN FICHERO DE CONFIGURACIÓN: `vercel.json` no lo importa
@@ -132,14 +132,21 @@ describe("413/R10 — la expresión UTC corresponde a la hora CR DECLARADA", () 
   });
 
   it("la conversión de producción coincide con la escrita a mano aquí (unidad)", () => {
-    // `horaUtcDeHoraCR` es la función de producción; arriba NO se usa a propósito. Aquí sí se
+    // `horaUtcDeHoraLocal` es la función de producción; arriba NO se usa a propósito. Aquí sí se
     // ejercita, con casos escritos a mano, incluido el que cruza medianoche —que es exactamente el
-    // de esta ficha—.
-    expect(OFFSET_CR_HORAS).toBe(6);
-    expect(horaUtcDeHoraCR(19)).toBe(1); // 19:00 CR → 01:00 UTC del día siguiente
-    expect(horaUtcDeHoraCR(0)).toBe(6); // medianoche CR → 06:00 UTC (los crons vecinos)
-    expect(horaUtcDeHoraCR(7)).toBe(13); // 07:00 CR → 13:00 UTC (`avisos-diarios`, 409)
-    expect(horaUtcDeHoraCR(18)).toBe(0); // 18:00 CR → 00:00 UTC
+    // de esta ficha—. SLT-42: el desfase sale de la zona del país (CR, UTC−6 todo el año).
+    const instante = new Date("2026-09-11T12:00:00.000Z");
+    const utc = (hora: number) => horaUtcDeHoraLocal(hora, ZONA_DE_CR, instante);
+    expect(utc(19)).toBe(1); // 19:00 CR → 01:00 UTC del día siguiente
+    expect(utc(0)).toBe(6); // medianoche CR → 06:00 UTC (los crons vecinos)
+    expect(utc(7)).toBe(13); // 07:00 CR → 13:00 UTC (`avisos-diarios`, 409)
+    expect(utc(18)).toBe(0); // 18:00 CR → 00:00 UTC
+  });
+
+  it("SLT-42 (R23): con horario de verano la hora UTC sigue al desfase del instante", () => {
+    const madrid = "Europe/Madrid";
+    expect(horaUtcDeHoraLocal(19, madrid, new Date("2026-07-01T12:00:00.000Z"))).toBe(17); // UTC+2
+    expect(horaUtcDeHoraLocal(19, madrid, new Date("2026-01-15T12:00:00.000Z"))).toBe(18); // UTC+1
   });
 });
 

@@ -1,21 +1,31 @@
 import { pathToFileURL } from "node:url";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ResumenPorEmpresa } from "@/lib/db/para-cada-empresa";
+import type { IAnaliticaRollupService } from "@/lib/interfaces/services/IAnaliticaRollupService";
 import { buildAnaliticaRollupService } from "@/lib/services/jobs/analitica-rollup-diario-handler";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { fechaObjetivo, validarFechaInvocacionManual } from "@/lib/analytics/rollup-dia";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 
 // Feature 124 (R39, design §8) — INVOCACION MANUAL del rollup de UNA fecha.
 //
 // Uso:  node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/rollup-analitica-manual.ts [YYYY-MM-DD]
-// Sin argumento agrega la fecha objetivo por defecto: el dia CR que acaba de cerrar (D-1).
+// Sin argumento agrega, en cada empresa, la fecha objetivo por defecto: el dia que acaba de cerrar
+// (D-1) en la zona horaria de su pais.
+//
+// SLT-42 (design §6.1; R24, R28): recorre las empresas como el job diario (`paraCadaEmpresa`),
+// cada una en su contexto y con la zona de su pais. Una empresa sin zona falla sola y las demas
+// corren; el script sale con codigo != 0 si alguna fallo o rechazo la fecha.
 //
 // DOS guardas, y las dos son deliberadas:
 //
-// 1. **Tope de antiguedad (R39).** Solo se admiten HOY y AYER en calendario CR. Cualquier
-//    fecha mas vieja se rechaza remitiendo al backfill de la feature 125. Esto es la
-//    contrapartida operativa de R35 estricto (D3/D8): sin esta guarda, la 124 se convierte en
-//    la 125 por la puerta de atras —un recomputo de fechas pasadas, invisible y no auditado—,
-//    que es exactamente lo que R35 prohibe. El rechazo NO escribe absolutamente nada: se sale
-//    ANTES de construir el cliente Prisma.
+// 1. **Tope de antiguedad (R39).** Solo se admiten HOY y AYER en el calendario de la zona de cada
+//    empresa. Cualquier fecha mas vieja se rechaza remitiendo al backfill de la feature 125. Esto
+//    es la contrapartida operativa de R35 estricto (D3/D8): sin esta guarda, la 124 se convierte
+//    en la 125 por la puerta de atras —un recomputo de fechas pasadas, invisible y no auditado—,
+//    que es exactamente lo que R35 prohibe. El rechazo NO escribe nada en esa empresa. Una fecha
+//    mal formada se rechaza ANTES de construir el cliente Prisma; el tope, que depende de la zona,
+//    se comprueba dentro de cada empresa, antes de escribir.
 // 2. **Guarda de host (patron de la 123).** Aborta si `DATABASE_URL` no apunta a
 //    `localhost:5432/servi_logistic`. Este script escribe; correrlo por descuido contra produccion
 //    no es un incidente recuperable.
@@ -40,6 +50,48 @@ export function esDestinoLocal(url: string): boolean {
   }
 }
 
+/** Lo que el rollup manual necesita, inyectable para probarlo sin base. */
+export interface RollupManualDeps {
+  /** La fecha del argumento, o `undefined` para el D-1 de cada empresa. */
+  fechaPedida: string | undefined;
+  now: Date;
+  /** Corre `fn` una vez por empresa, en su contexto (`paraCadaEmpresa`). */
+  porEmpresa: (fn: (organizacionId: string) => Promise<void>) => Promise<ResumenPorEmpresa>;
+  /** La zona del pais de la empresa EN CURSO; sin zona, `PaisSinZonaHoraria` (R28). */
+  zonaHoraria: () => Promise<string>;
+  service: Pick<IAnaliticaRollupService, "agregarFecha">;
+  log: (mensaje: string) => void;
+}
+
+export interface ResultadoRollupManual {
+  rechazadas: { organizacionId: string; motivo: string }[];
+  fallidas: string[];
+}
+
+/**
+ * SLT-42 (R24, R28): el rollup manual de cada empresa con la zona de su pais. La fecha (la pedida
+ * o el D-1 local) se valida en esa zona ANTES de escribir; un rechazo no escribe nada en esa
+ * empresa. Conteos agregados y nada mas (R37): sin PII.
+ */
+export async function correrRollupManual(deps: RollupManualDeps): Promise<ResultadoRollupManual> {
+  const rechazadas: ResultadoRollupManual["rechazadas"] = [];
+  const resumen = await deps.porEmpresa(async (organizacionId) => {
+    const zona = await deps.zonaHoraria();
+    const fecha = deps.fechaPedida ?? fechaObjetivo(deps.now, zona);
+    const admitida = validarFechaInvocacionManual(fecha, deps.now, zona);
+    if (!admitida.ok) {
+      rechazadas.push({ organizacionId, motivo: admitida.motivo });
+      return;
+    }
+    const r = await deps.service.agregarFecha(admitida.fecha);
+    deps.log(
+      `Rollup ${organizacionId} ${r.fecha}: filasEscritas=${r.filasEscritas} ` +
+        `filasRetiradas=${r.filasRetiradas} ms=${r.ms}`,
+    );
+  });
+  return { rechazadas, fallidas: resumen.fallidas.map((f) => f.organizacionId) };
+}
+
 async function main(): Promise<void> {
   try {
     process.loadEnvFile();
@@ -48,16 +100,11 @@ async function main(): Promise<void> {
   }
 
   const now = new Date();
-  const fecha = process.argv[2] ?? fechaObjetivo(now);
+  const fechaPedida = process.argv[2];
 
-  // Guarda 1 (R39) ANTES de cualquier conexion: un rechazo no debe ni abrir la base.
-  const admitida = validarFechaInvocacionManual(fecha, now);
-  if (!admitida.ok) {
-    console.error(`RECHAZADO: ${admitida.motivo}`);
-    console.error(
-      "El job diario solo agrega hoy o el dia que acaba de cerrar. Para recomputar un rango " +
-        "historico, usa el backfill de la feature 125 (deliberado, sobre un rango explicito).",
-    );
+  // Guarda 1a (R39) ANTES de cualquier conexion: una fecha mal formada no debe ni abrir la base.
+  if (fechaPedida !== undefined && !esFechaCalendarioValida(fechaPedida)) {
+    console.error(`RECHAZADO: fecha invalida: se espera YYYY-MM-DD y llego "${fechaPedida}"`);
     process.exit(1);
     return;
   }
@@ -75,13 +122,26 @@ async function main(): Promise<void> {
 
   const prisma = getPrismaClient();
   try {
-    const service = buildAnaliticaRollupService(() => new Date());
-    // R37: conteos agregados y nada mas. Sin ids, sin PII. Sin `BigInt` (R32).
-    const resumen = await service.agregarFecha(admitida.fecha);
-    console.log(
-      `Rollup ${resumen.fecha}: filasEscritas=${resumen.filasEscritas} ` +
-        `filasRetiradas=${resumen.filasRetiradas} ms=${resumen.ms}`,
-    );
+    const reglasPais = construirReglasPaisEmpresa(prisma);
+    // R37: conteos agregados y nada mas. Sin PII (el id de la empresa no lo es). Sin `BigInt` (R32).
+    const { rechazadas, fallidas } = await correrRollupManual({
+      fechaPedida,
+      now,
+      porEmpresa: (fn) => paraCadaEmpresa(fn),
+      zonaHoraria: () => reglasPais.zonaHoraria(),
+      service: buildAnaliticaRollupService(() => new Date()),
+      log: (m) => console.log(m),
+    });
+    // Guarda 1b (R39): el tope, por empresa. Esas empresas no escribieron nada.
+    for (const r of rechazadas) console.error(`RECHAZADO en ${r.organizacionId}: ${r.motivo}`);
+    if (rechazadas.length > 0) {
+      console.error(
+        "El job diario solo agrega hoy o el dia que acaba de cerrar. Para recomputar un rango " +
+          "historico, usa el backfill de la feature 125 (deliberado, sobre un rango explicito).",
+      );
+    }
+    if (fallidas.length > 0) console.error(`Fallo en ${fallidas.length} empresa(s): ${fallidas.join(", ")}`);
+    if (rechazadas.length > 0 || fallidas.length > 0) process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
   }

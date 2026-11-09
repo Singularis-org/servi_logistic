@@ -7,6 +7,7 @@ import {
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 import type { CierreTiendaOpcionDTO } from "@/lib/types/wallet-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * FICHA 335 (C4, R23/R24) — el ETIQUETADO de las opciones del selector de cierre.
  *
@@ -85,7 +86,7 @@ describe("335 / R23 — la etiqueta dice el día y el número de movimientos, nu
 
     expect(etiqueta).toBe("Cierre del 2026-07-12 · 4 movimientos");
     // Y la tabla y la descarga, con el mismo instante, pintan exactamente ese día.
-    expect(fechaDiaMovimientoCR(instante)).toBe("2026-07-12");
+    expect(fechaDiaMovimientoCR(instante, ZONA_CR)).toBe("2026-07-12");
   });
 });
 

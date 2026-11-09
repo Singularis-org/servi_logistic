@@ -9,6 +9,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T7 (R8/R9/R11/R12/R13/R14) — MARCAR Y REVERTIR, CONTRA POSTGRES.
@@ -99,7 +100,7 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const res = await repo.marcarConciliado({
+      const res = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "485.00",
         nota: "faltaron 15.000, entran el lunes",
@@ -144,7 +145,7 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      await repo.marcarConciliado({
+      await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "485.00",
         nota: "una nota que NO debe viajar al historial",
@@ -184,13 +185,13 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const primera = await repo.marcarConciliado({
+      const primera = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "485.00",
         nota: null,
         actorUsuarioId: usuarioId,
       });
-      const segunda = await repo.marcarConciliado({
+      const segunda = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "1.00", // un monto distinto: si entrara, se veria
         nota: "colado",
@@ -219,7 +220,7 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const res = await repo.marcarConciliado({
+      const res = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id: `no-existe-${SUFIJO}`,
         montoRecibido: "1.00",
         nota: null,
@@ -243,13 +244,13 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      await repo.marcarConciliado({
+      await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "485.00",
         nota: "algo",
         actorUsuarioId: usuarioId,
       });
-      const res = await repo.revertirConciliacion({ id, actorUsuarioId: usuarioId });
+      const res = await repo.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: usuarioId });
 
       const fila = await tx.cierreBodega.findUnique({
         where: { id },
@@ -290,13 +291,13 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      await repo.marcarConciliado({
+      await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "485.00",
         nota: null,
         actorUsuarioId: usuarioId,
       });
-      await repo.revertirConciliacion({ id, actorUsuarioId: usuarioId });
+      await repo.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: usuarioId });
 
       return tx.historialAccion.findMany({
         where: { entidadId: id },
@@ -321,7 +322,7 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const res = await repo.revertirConciliacion({ id, actorUsuarioId: usuarioId });
+      const res = await repo.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: usuarioId });
       const fila = await tx.cierreBodega.findUnique({
         where: { id },
         select: { estado: true },
@@ -343,14 +344,14 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
 
-      const a = await repo.marcarConciliado({
+      const a = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "485.00",
         nota: null,
         actorUsuarioId: usuarioId,
       });
-      const b = await repo.revertirConciliacion({ id, actorUsuarioId: usuarioId });
-      const c = await repo.marcarConciliado({
+      const b = await repo.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: usuarioId });
+      const c = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "500.00",
         nota: "llego el resto",

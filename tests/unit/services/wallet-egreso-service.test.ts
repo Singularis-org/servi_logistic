@@ -9,6 +9,7 @@ import type {
 } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
 import { TIPO_EGRESO_MANUAL_A_CATEGORIA, type WalletMovimientoDTO } from "@/lib/types/wallet";
 import { NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 45 (R1/R2/R3/R7/R11/R13/R15/R16/R17/R32) — tests unit del WalletEgresoService.
 // Guardia de rol maestro; egreso manual inmutable (origen_tipo=gasto, origen_id=null,
@@ -80,6 +81,7 @@ function buildRepo(overrides: Partial<IWalletMovimientoRepository> = {}): IWalle
     }),
     listar: vi.fn().mockResolvedValue({ movimientos: [mov()], total: 1 }),
     agregarPorCategoriaYTipo: vi.fn().mockResolvedValue([]),
+    categoriasConModeloNuevo: vi.fn().mockResolvedValue([]),
     obtenerPorId: vi.fn(async (id: string) => creados.get(id) ?? null),
     agregarPorCategoria: vi
       .fn()
@@ -115,7 +117,7 @@ function crearMovCall(repo: IWalletMovimientoRepository) {
 describe("WalletEgresoService.registrarEgreso (R1/R2/R3/R7/R17)", () => {
   it("R17: rol no autorizado -> forbidden, sin tocar el repo", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.registrarEgreso(
       { claveIdempotencia: randomUUID(), tipoEgreso: "gasto_variable", monto: "100.00", descripcion: "x" },
       OTRO,
@@ -126,7 +128,7 @@ describe("WalletEgresoService.registrarEgreso (R1/R2/R3/R7/R17)", () => {
 
   it("feature 94: admin -> registra egreso (paridad con maestro)", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.registrarEgreso(
       { claveIdempotencia: randomUUID(), tipoEgreso: "gasto_variable", monto: "100.00", descripcion: "x" },
       ADMIN,
@@ -137,7 +139,7 @@ describe("WalletEgresoService.registrarEgreso (R1/R2/R3/R7/R17)", () => {
 
   it("R2: gasto variable -> categoria egreso_gasto_variable; egreso/gasto/origen_id null/registrado_por actor", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.registrarEgreso(
       { claveIdempotencia: randomUUID(), tipoEgreso: "gasto_variable", monto: "1500.00", descripcion: "Papeleria" },
       MAESTRO,
@@ -161,7 +163,7 @@ describe("WalletEgresoService.registrarEgreso (R1/R2/R3/R7/R17)", () => {
         total: 1,
       }),
     });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.registrarEgreso(
       { claveIdempotencia: randomUUID(), tipoEgreso: "sueldo", monto: "500000.00", descripcion: "Juan Perez — julio 2026" },
       MAESTRO,
@@ -178,7 +180,7 @@ describe("WalletEgresoService.registrarEgreso (R1/R2/R3/R7/R17)", () => {
 
   it("R7: persiste con un unico INSERT registrado (ficha 362)", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     await svc.registrarEgreso(
       { claveIdempotencia: randomUUID(), tipoEgreso: "gasto_variable", monto: "10.00", descripcion: "x" },
       MAESTRO,
@@ -192,7 +194,7 @@ describe("WalletEgresoService.registrarEgreso (R1/R2/R3/R7/R17)", () => {
 describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
   it("R17: rol no autorizado -> forbidden, sin leer ni crear", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "eg-1" }, OTRO);
     expect(r).toEqual({ status: "forbidden" });
     expect(repo.obtenerPorId).not.toHaveBeenCalled();
@@ -202,7 +204,7 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
   it("feature 94: admin -> reversa egreso (paridad con maestro)", async () => {
     const original = mov({ id: "eg-9", monto: "10.00" });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(original) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "eg-9" }, ADMIN);
     expect(r).toEqual({ status: "ok" });
     expect(crearMovCall(repo)).toMatchObject({ registradoPor: "u-admin", categoria: "ingreso_ajuste" });
@@ -211,7 +213,7 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
   it("R13/R16: reversa crea ingreso_ajuste de IGUAL monto (leido server-side) referenciando el original", async () => {
     const original = mov({ id: "eg-9", monto: "2222.22", descripcion: "Internet oficina", origenId: null });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(original) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     // El cliente NO provee el monto: el service lo toma del original.
     const r = await svc.reversarEgreso({ movimientoId: "eg-9" }, MAESTRO);
     expect(r).toEqual({ status: "ok" });
@@ -239,7 +241,7 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
       registradoPor: null,
     });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(cronEgreso) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "eg-cron" }, MAESTRO);
     expect(r).toEqual({ status: "ok" });
     expect(crearMovCall(repo)).toMatchObject({
@@ -260,14 +262,14 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
       // auditoria: no hubo reverso que registrar (R11).
       crearMovimientoRegistrado: vi.fn().mockResolvedValue(0),
     });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "eg-9" }, MAESTRO);
     expect(r).toEqual({ status: "already_reversed" });
   });
 
   it("not_found: el id no existe", async () => {
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(null) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "no-existe" }, MAESTRO);
     expect(r).toEqual({ status: "not_found" });
     expect(repo.crearMovimientos).not.toHaveBeenCalled();
@@ -276,7 +278,7 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
   it("not_found: el movimiento NO es un egreso administrativo (p.ej. un ingreso de cierre)", async () => {
     const ingreso = mov({ id: "in-1", tipo: "ingreso", categoria: "ingreso_flete", origenTipo: "cierre_dia" });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(ingreso) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "in-1" }, MAESTRO);
     expect(r).toEqual({ status: "not_found" });
     expect(repo.crearMovimientos).not.toHaveBeenCalled();
@@ -285,7 +287,7 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
   it("not_found: un egreso NO administrativo (origen_tipo != gasto, p.ej. pago a mensajero)", async () => {
     const pago = mov({ id: "pm-1", tipo: "egreso", categoria: "egreso_pago_mensajero", origenTipo: "pago_mensajero", origenId: "c1" });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(pago) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.reversarEgreso({ movimientoId: "pm-1" }, MAESTRO);
     expect(r).toEqual({ status: "not_found" });
     expect(repo.crearMovimientos).not.toHaveBeenCalled();
@@ -295,7 +297,7 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
 describe("WalletEgresoService.verDesgloseEgresos (R11/R17)", () => {
   it("R17: rol no autorizado -> forbidden, sin agregar", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.verDesgloseEgresos({ page: 1, pageSize: 20 }, OTRO);
     expect(r).toEqual({ status: "forbidden" });
     expect(repo.agregarPorCategoria).not.toHaveBeenCalled();
@@ -303,7 +305,7 @@ describe("WalletEgresoService.verDesgloseEgresos (R11/R17)", () => {
 
   it("feature 94: admin -> ve el desglose (paridad con maestro)", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const r = await svc.verDesgloseEgresos({ page: 1, pageSize: 20 }, ADMIN);
     expect(r.status).toBe("ok");
     expect(repo.agregarPorCategoria).toHaveBeenCalled();
@@ -320,7 +322,7 @@ describe("WalletEgresoService.verDesgloseEgresos (R11/R17)", () => {
           indemnizacion: "25.25", // feature 158/R32: entra en el desglose Y en el total
         }),
     });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const desde = new Date("2026-07-01T00:00:00.000Z");
     const r = await svc.verDesgloseEgresos({ page: 1, pageSize: 20, desde }, MAESTRO);
     expect(r.status).toBe("ok");
@@ -345,7 +347,7 @@ describe("WalletEgresoService.verDesgloseEgresos (R11/R17)", () => {
 describe("WalletEgresoService — inmutabilidad (R6)", () => {
   it("R6: el service NO expone update/delete de movimientos", () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     expect((svc as unknown as Record<string, unknown>).actualizar).toBeUndefined();
     expect((svc as unknown as Record<string, unknown>).eliminar).toBeUndefined();
     expect((svc as unknown as Record<string, unknown>).update).toBeUndefined();
@@ -388,7 +390,7 @@ describe("WalletEgresoService.registrarEgreso — la fecha elegida (R22/R23/R28)
   it("R23: con la fecha de HOY, la clave fechaMovimiento NO viaja (manda el DEFAULT de la columna)", async () => {
     conRelojEnAhora();
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
 
     const r = await svc.registrarEgreso(gasto(HOY_CR), MAESTRO);
 
@@ -401,7 +403,7 @@ describe("WalletEgresoService.registrarEgreso — la fecha elegida (R22/R23/R28)
   it("sin fecha, tampoco viaja — el camino de siempre no cambia ni un byte", async () => {
     conRelojEnAhora();
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
 
     await svc.registrarEgreso(gasto(), MAESTRO);
 
@@ -411,7 +413,7 @@ describe("WalletEgresoService.registrarEgreso — la fecha elegida (R22/R23/R28)
   it("R22: con la fecha de AYER, viaja el instante en que ese dia EMPIEZA en Costa Rica (06:00Z)", async () => {
     conRelojEnAhora();
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
 
     const r = await svc.registrarEgreso(gasto(AYER_CR), MAESTRO);
 
@@ -439,7 +441,7 @@ describe("WalletEgresoService.registrarEgreso — la fecha elegida (R22/R23/R28)
       ],
       total: 1,
     });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
 
     const r = await svc.registrarEgreso(gasto(AYER_CR), MAESTRO);
 
@@ -475,7 +477,7 @@ describe("WalletEgresoService.registrarEgreso — la fecha elegida (R22/R23/R28)
 describe("WalletEgresoService.registrarEgreso — la clave de idempotencia (461/R66/R68)", () => {
   it("la clave del cliente viaja a la fila que se inserta; `origen_id` sigue NULL", async () => {
     const repo = buildRepo();
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const clave = randomUUID();
     const r = await svc.registrarEgreso({ claveIdempotencia: clave, tipoEgreso: "sueldo", monto: "500000.00", descripcion: "Quincena" }, MAESTRO);
     expect(r.status).toBe("ok");
@@ -485,7 +487,7 @@ describe("WalletEgresoService.registrarEgreso — la clave de idempotencia (461/
   it("R68: count 0 (la clave ya tenia su fila) -> `ya_registrado` con el egreso releido POR CLAVE; no se relee por id", async () => {
     const original = mov({ id: "eg-original", categoria: "egreso_sueldo" });
     const repo = buildRepo({ crearMovimientoRegistrado: vi.fn(async () => 0), obtenerPorClave: vi.fn(async () => original) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     const clave = randomUUID();
     const r = await svc.registrarEgreso({ claveIdempotencia: clave, tipoEgreso: "sueldo", monto: "500000.00", descripcion: "Quincena" }, MAESTRO);
     expect(r).toEqual({ status: "ya_registrado", movimiento: original });
@@ -495,7 +497,7 @@ describe("WalletEgresoService.registrarEgreso — la clave de idempotencia (461/
 
   it("count 0 sin fila que releer es un error con contexto", async () => {
     const repo = buildRepo({ crearMovimientoRegistrado: vi.fn(async () => 0), obtenerPorClave: vi.fn(async () => null) });
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
     await expect(
       svc.registrarEgreso({ claveIdempotencia: randomUUID(), tipoEgreso: "gasto_variable", monto: "1.00", descripcion: "x" }, MAESTRO),
     ).rejects.toThrow(/clave de idempotencia repetida/);
@@ -535,7 +537,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
   it.each(SIN_ACCESO_TOTAL)("R19: el rol %s recibe forbidden sin tocar el repositorio ni el tope", async (rol) => {
     const repo = repoQueCorreElAntes();
     const tope = topeQueResponde("cabe");
-    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("100.00"), {
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("100.00"), {
       usuarioId: "u-x",
       rol,
       organizacionId: "org-a",
@@ -548,7 +550,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
   it("cabe: registra el egreso con la categoría del pago, y el tope corre dentro de la transacción con la empresa, el monto y la clave", async () => {
     const repo = repoQueCorreElAntes();
     const tope = topeQueResponde("cabe");
-    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("500.00"), MAESTRO_A);
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("500.00"), MAESTRO_A);
     expect(r.status).toBe("ok");
     expect(crearMovCall(repo)).toMatchObject({ tipo: "egreso", categoria: "egreso_pago_plataforma", monto: "500.00", origenTipo: "gasto" });
     expect(tope.comprobar).toHaveBeenCalledTimes(1);
@@ -558,7 +560,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
   it("R9: supera → validation_error en monto con el mensaje de R9, y no se relee nada", async () => {
     const repo = repoQueCorreElAntes();
     const tope = topeQueResponde("supera");
-    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("600.00"), MAESTRO_A);
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("600.00"), MAESTRO_A);
     expect(r).toEqual({ status: "validation_error", fieldErrors: { monto: [MENSAJE_R9] } });
     expect(repo.obtenerPorId).not.toHaveBeenCalled();
     expect(repo.obtenerPorClave).not.toHaveBeenCalled();
@@ -569,14 +571,14 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
     const repo = repoQueCorreElAntes(0);
     (repo.obtenerPorClave as ReturnType<typeof vi.fn>).mockResolvedValue(original);
     const tope = topeQueResponde("reenvio");
-    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("1000.00"), MAESTRO_A);
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("1000.00"), MAESTRO_A);
     expect(r).toEqual({ status: "ya_registrado", movimiento: original });
     expect(repo.obtenerPorClave).toHaveBeenCalledWith("clave-pago");
   });
 
   it("sin tope inyectado, registrar un pago lanza sin tocar el repositorio", async () => {
     const repo = repoQueCorreElAntes();
-    await expect(new WalletEgresoService(repo, writeClient).registrarEgreso(pagoDe("100.00"), MAESTRO_A)).rejects.toThrow(
+    await expect(new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas()).registrarEgreso(pagoDe("100.00"), MAESTRO_A)).rejects.toThrow(
       /sin el tope inyectado/,
     );
     expect(repo.crearMovimientoRegistrado).not.toHaveBeenCalled();
@@ -586,7 +588,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
     const repo = repoQueCorreElAntes();
     const tope = topeQueResponde("cabe");
     await expect(
-      new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("100.00"), MAESTRO),
+      new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("100.00"), MAESTRO),
     ).rejects.toThrow(/sin empresa/);
     expect(tope.comprobar).not.toHaveBeenCalled();
   });
@@ -594,7 +596,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
   it.each(["gasto_variable", "sueldo"] as const)("el %s no pasa por el tope: la llamada al repositorio es la de antes", async (tipoEgreso) => {
     const repo = repoQueCorreElAntes();
     const tope = topeQueResponde("supera");
-    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(
       { claveIdempotencia: randomUUID(), tipoEgreso, monto: "100.00", descripcion: "x" },
       MAESTRO_A,
     );
@@ -607,7 +609,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
     const repo = buildRepo({ crearMovimientoRegistrado: vi.fn(async () => Promise.reject(new Error("conexión caída"))) });
     const tope = topeQueResponde("cabe");
     await expect(
-      new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("100.00"), MAESTRO_A),
+      new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("100.00"), MAESTRO_A),
     ).rejects.toThrow("conexión caída");
   });
 });

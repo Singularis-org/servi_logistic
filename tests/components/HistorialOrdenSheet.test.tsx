@@ -162,6 +162,21 @@ describe("HistorialOrdenSheet — badge 'Intento X de N' (feature 47, R15/R16/R1
     expect(await within(dialog).findByText(LABEL_DESTINO)).toBeInTheDocument();
   });
 
+  it("SLT-77 R32: sin tope, dice «Intento 2» en el texto y en el nombre accesible, sin ningún «de null»", async () => {
+    const dialog = await abrir(fakeAction(okResult({ intentos: 2, umbral: null })));
+
+    expect(await within(dialog).findByText("Intento 2")).toBeInTheDocument();
+    expect(within(dialog).getByRole("status", { name: "Intento 2" })).toBeInTheDocument();
+    expect(dialog.innerHTML).not.toContain("null");
+  });
+
+  it("SLT-77 R25: con tope, el nombre accesible sigue diciendo los dos números", async () => {
+    const dialog = await abrir(fakeAction(okResult({ intentos: 2, umbral: 4 })));
+
+    expect(await within(dialog).findByText("Intento 2 de 4")).toBeInTheDocument();
+    expect(within(dialog).getByRole("status", { name: "Intentos de entrega: 2 de 4" })).toBeInTheDocument();
+  });
+
   it("R16: ok con intentos=0 NO muestra el badge (orden sin devoluciones)", async () => {
     const dialog = await abrir(fakeAction(okResult({ intentos: 0, umbral: 3 })));
 

@@ -16,6 +16,7 @@ import {
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 345 / T2.5 — LA CONSULTA PREPARADA (R7, R8, R53, R58).
 //
 // El orden de los cuatro pasos ES el contrato: parsear -> resolver rango -> resolver alcance ->
@@ -28,14 +29,14 @@ const ACTOR = (rol: string, usuarioId = "u-propio"): ActorAnalitica =>
   ({ usuarioId, rol }) as unknown as ActorAnalitica;
 
 function consultaDe(raw: object, rol = "maestro", usuarioId = "u-propio"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, ACTOR(rol, usuarioId), AHORA);
+  const preparada = prepararConsultaProductos(raw, ACTOR(rol, usuarioId), ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }
 
 describe("R8 · el alcance NO entra por la entrada del cliente", () => {
   it("una clave desconocida es `validation_error`", () => {
-    const res = prepararConsultaProductos({ rol: "maestro" }, ACTOR("adminTienda"), AHORA);
+    const res = prepararConsultaProductos({ rol: "maestro" }, ACTOR("adminTienda"), ZONA_DE_CR, AHORA);
     expect(res.status).toBe("validation_error");
   });
 
@@ -46,13 +47,13 @@ describe("R8 · el alcance NO entra por la entrada del cliente", () => {
       { tienda_id_real: ["t9"] },
       { producto: ["Base C"] },
     ]) {
-      const res = prepararConsultaProductos(raw, ACTOR("adminTienda"), AHORA);
+      const res = prepararConsultaProductos(raw, ACTOR("adminTienda"), ZONA_DE_CR, AHORA);
       expect(res.status, JSON.stringify(raw)).toBe("validation_error");
     }
   });
 
   it("el rechazo llega con los campos que fallaron", () => {
-    const res = prepararConsultaProductos({ zona_id: [] }, ACTOR("maestro"), AHORA);
+    const res = prepararConsultaProductos({ zona_id: [] }, ACTOR("maestro"), ZONA_DE_CR, AHORA);
     expect(res.status).toBe("validation_error");
     if (res.status !== "validation_error") throw new Error("imposible");
     expect(Object.keys(res.fieldErrors)).toContain("zona_id");
@@ -67,7 +68,7 @@ describe("R8 · el alcance NO entra por la entrada del cliente", () => {
       { rango: "personalizado", desde: "2020-01-01", hasta: "2026-09-01" },
     ]) {
       expect(
-        prepararConsultaProductos(raw, ACTOR("maestro"), AHORA).status,
+        prepararConsultaProductos(raw, ACTOR("maestro"), ZONA_DE_CR, AHORA).status,
         JSON.stringify(raw),
       ).toBe("validation_error");
     }
@@ -78,17 +79,17 @@ describe("R53 · si la entrada no valida, NO se resuelve el alcance", () => {
   it("un filtro malformado es `validation_error` AUNQUE el actor no exista", () => {
     // La prueba del ORDEN sin espia: con actor `null`, resolver el alcance primero daria
     // `forbidden`/`sin_sesion`. Que salga `validation_error` demuestra que el parseo fue antes.
-    const res = prepararConsultaProductos({ clave_inventada: 1 }, null, AHORA);
+    const res = prepararConsultaProductos({ clave_inventada: 1 }, null, ZONA_DE_CR, AHORA);
     expect(res.status).toBe("validation_error");
   });
 
   it("un filtro malformado es `validation_error` aunque el rol este PROHIBIDO", () => {
-    const res = prepararConsultaProductos({ clave_inventada: 1 }, ACTOR("mensajero"), AHORA);
+    const res = prepararConsultaProductos({ clave_inventada: 1 }, ACTOR("mensajero"), ZONA_DE_CR, AHORA);
     expect(res.status).toBe("validation_error");
   });
 
   it("con filtro valido y sin actor, si es `forbidden` por `sin_sesion`", () => {
-    const res = prepararConsultaProductos({}, null, AHORA);
+    const res = prepararConsultaProductos({}, null, ZONA_DE_CR, AHORA);
     expect(res).toEqual({ status: "forbidden", motivo: "sin_sesion" });
   });
 });
@@ -98,7 +99,7 @@ describe("R7 · pedir una tienda ajena se DENIEGA, no se devuelve vacio", () => 
     const res = prepararConsultaProductos(
       { tienda_id: ["t-ajena"] },
       ACTOR("adminTienda", "t-propia"),
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     // Nunca `ok` con cero filas: un tablero vacio se reporta como bug de datos y esconde el
     // intento, y el id ajeno lo aporto el propio solicitante.
@@ -130,7 +131,7 @@ describe("R7 · pedir una tienda ajena se DENIEGA, no se devuelve vacio", () => 
   it("un rol PROHIBIDO no llega ni a mirar el filtro", () => {
     for (const rol of ["adminSatelite", "mensajero"]) {
       expect(
-        prepararConsultaProductos({ tienda_id: ["t1"] }, ACTOR(rol), AHORA),
+        prepararConsultaProductos({ tienda_id: ["t1"] }, ACTOR(rol), ZONA_DE_CR, AHORA),
         rol,
       ).toEqual({ status: "forbidden", motivo: "metrica_prohibida" });
     }
@@ -149,8 +150,8 @@ describe("El rango: ausencia significa SIN FILTRO DE FECHA", () => {
   });
 
   it("es determinista con el mismo `now`", () => {
-    const uno = prepararConsultaProductos({ rango: "semana" }, ACTOR("maestro"), AHORA);
-    const dos = prepararConsultaProductos({ rango: "semana" }, ACTOR("maestro"), AHORA);
+    const uno = prepararConsultaProductos({ rango: "semana" }, ACTOR("maestro"), ZONA_DE_CR, AHORA);
+    const dos = prepararConsultaProductos({ rango: "semana" }, ACTOR("maestro"), ZONA_DE_CR, AHORA);
     expect(dos).toEqual(uno);
   });
 
@@ -187,7 +188,7 @@ describe("R58 · la clave de cache lleva PREFIJO propio y no colisiona", () => {
     const raw = { rango: "dia" as const, tienda_id: ["t1"] };
     const productos = claveDeConteoProductos(consultaDe(raw));
 
-    const entregas = prepararConteoEntregas(raw, ACTOR("maestro"), AHORA);
+    const entregas = prepararConteoEntregas(raw, ACTOR("maestro"), ZONA_DE_CR, AHORA);
     if (entregas.status !== "ok") throw new Error("filtro de prueba invalido");
 
     const otras = [

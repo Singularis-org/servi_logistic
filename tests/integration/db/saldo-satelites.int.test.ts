@@ -13,6 +13,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T9 (R17/R18/R19/R20/R21/R22) — EL SALDO SIN CONCILIAR, CONTRA POSTGRES.
@@ -220,7 +221,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       });
 
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return todos.find((s) => s.zonaId === zonaId) ?? null;
     });
 
@@ -261,7 +262,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       await sembrarConsolidacion(tx, zSinpe, usuarioId, { efectivo: "0.00", simpe: "1000.00" });
 
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return {
         efectivo: todos.find((s) => s.zonaId === zEfectivo),
         sinpe: todos.find((s) => s.zonaId === zSinpe),
@@ -290,7 +291,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
         recibido: "150.00",
       });
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return todos.find((s) => s.zonaId === zonaId) ?? null;
     });
 
@@ -306,7 +307,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       await serializarEscriturasReales(tx);
       const zonaId = await sembrarZona(tx, "vacia");
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return todos.find((s) => s.zonaId === zonaId) ?? null;
     });
 
@@ -346,7 +347,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
         diasAtras: 1,
       });
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return todos.find((s) => s.zonaId === zonaId) ?? null;
     });
 
@@ -475,7 +476,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       });
 
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return todos.find((s) => s.zonaId === zonaId) ?? null;
     });
 
@@ -500,7 +501,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       const zonaId = await sembrarZona(tx, "sin-ultima");
       await sembrarConsolidacion(tx, zonaId, usuarioId, { efectivo: "50.00", simpe: "0.00" });
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const todos = await repo.findSaldosCompleto();
+      const todos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return todos.find((s) => s.zonaId === zonaId) ?? null;
     });
     expect(r).not.toBeNull();
@@ -517,7 +518,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const antes = await repo.findResumen();
+      const antes = await repo.findResumen(ZONA_DE_CR);
 
       const zonaId = await sembrarZona(tx, "res-suma");
       // Una SIN marcar: aporta su efectivo INTEGRO (1000) al pendiente y 1 a la cola.
@@ -530,8 +531,8 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
         recibido: "485.00",
       });
 
-      const despues = await repo.findResumen();
-      const saldos = await repo.findSaldosCompleto();
+      const despues = await repo.findResumen(ZONA_DE_CR);
+      const saldos = await repo.findSaldosCompleto(ZONA_DE_CR);
       return { antes, despues, fila: saldos.find((s) => s.zonaId === zonaId) ?? null };
     });
 
@@ -562,7 +563,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const antes = await repo.findResumen();
+      const antes = await repo.findResumen(ZONA_DE_CR);
 
       const zonaId = await sembrarZona(tx, "res-rechazada");
       await sembrarConsolidacion(tx, zonaId, usuarioId, {
@@ -570,7 +571,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
         simpe: "0.00",
         estado: "rechazado",
       });
-      const despues = await repo.findResumen();
+      const despues = await repo.findResumen(ZONA_DE_CR);
       return { antes, despues };
     });
 
@@ -586,7 +587,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const antes = await repo.findResumen();
+      const antes = await repo.findResumen(ZONA_DE_CR);
 
       const zonaId = await sembrarZona(tx, "res-compensa");
       // Llego de MENOS: faltan 100.
@@ -603,7 +604,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
         estado: "aprobado",
         recibido: "1100.00",
       });
-      const despues = await repo.findResumen();
+      const despues = await repo.findResumen(ZONA_DE_CR);
       return { antes, despues };
     });
 

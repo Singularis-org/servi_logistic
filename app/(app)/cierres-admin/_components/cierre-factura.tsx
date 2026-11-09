@@ -89,7 +89,7 @@ import {
   RECHAZO_MANUAL_BADGE_LABEL,
   RECHAZO_MANUAL_BADGE_NOTA,
   PAGO_MENSAJERO_LABEL,
-  INGRESO_BODEGA_RECHAZOS_LABEL,
+  rotuloIngresoBodega,
   INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
   INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL,
   INGRESO_BRUTO_LABEL,
@@ -102,6 +102,10 @@ import {
   FLETE_CON_IVA_LABEL,
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  fleteDevConIvaDeGestion,
+  fulfillmentDeIngreso,
+  hayGestionEnModeloNuevo,
   INGRESO_TOTAL_LABEL,
   INGRESO_PANEL_LABEL,
   MensajeroBloqueadoBadge,
@@ -113,6 +117,7 @@ import {
   PARA_LA_CENTRAL_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_NOTA,
+  PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   // FICHA 395: el lector del cero SALIO de aqui y vive junto a `esMontoNegativo`, su hermano.
@@ -138,7 +143,7 @@ import {
 // FICHA 478 (P2/R19) — la etiqueta de la causa sale del SEED (nunca el slug), la misma fuente
 // que `COLUMNA_CAUSA_INCIDENTE`; y el rótulo de fulfillment, del módulo puro donde vive.
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
-import { FULFILLMENT_COL } from "./cierre-labels";
+import { FULFILLMENT_COL, PAGO_TIENDA_NOTA_MODELO_NUEVO } from "./cierre-labels";
 // SLT-56 (R21) — el botón «Ajustar pago» de la fila.
 import { FILA_AJUSTAR_PAGO, ajustarPagoAriaLabel } from "./cierre-labels";
 // Feature 213 (T6/T7): el desglose de pago se formatea en UN solo sitio (R25).
@@ -438,7 +443,8 @@ function KpiFactura({
 function ParPagoIngreso({
   pagoMensajero,
   ingresoBodegaRechazos,
-}: Readonly<{ pagoMensajero: string; ingresoBodegaRechazos: string }>) {
+  rotuloIngreso,
+}: Readonly<{ pagoMensajero: string; ingresoBodegaRechazos: string; rotuloIngreso: string }>) {
   return (
     <div className="flex flex-wrap items-stretch gap-3 py-2">
       <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5 rounded-md border border-dashed border-border px-3 py-2">
@@ -451,7 +457,7 @@ function ParPagoIngreso({
       </div>
       <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5 rounded-md border border-dashed border-border px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">
-          {INGRESO_BODEGA_RECHAZOS_LABEL}
+          {rotuloIngreso}
         </span>
         <span className="text-base font-semibold tabular-nums text-foreground">
           {money(ingresoBodegaRechazos)}
@@ -762,6 +768,7 @@ export function CierreFacturaResumen({
       solicitadoAt={cierre.solicitadoAt}
       resueltoAt={cierre.resueltoAt}
       motivoRechazo={motivoRechazoVisible(cierre.estado, cierre.motivoRechazo)}
+      modeloNuevo={cierre.incluyeModeloNuevo === true}
     />
   );
 }
@@ -842,6 +849,11 @@ interface HojaResumenProps {
    * compara un importe con otro: si falta algo lo dice `hayFaltantePorRecibir` sobre el string.
    */
   marcaConciliacion?: MarcaConciliacionComprobante;
+  /**
+   * SLT-54 (R71): el cierre tiene alguna gestión del modelo nuevo; entonces ese total incluye entregas y
+   * nombrar la devolución sería falso. Ausente ⇒ el rótulo de siempre.
+   */
+  modeloNuevo?: boolean;
 }
 
 /** Los seis campos de la marca tal como viajan en `CierreBodegaResumen`. */
@@ -879,6 +891,7 @@ function HojaResumen({
   audiencia = "admin",
   cascadaCentral,
   marcaConciliacion,
+  modeloNuevo = false,
 }: Readonly<HojaResumenProps>) {
   const [open, setOpen] = useState(false);
   // Design §7.2: en la hoja del mensajero no entra la plata de la empresa.
@@ -1033,7 +1046,7 @@ function HojaResumen({
                     mensajero, igual que en su detalle (design §7.2). */}
                 {esMensajero ? null : (
                   <LineaMonto
-                    label={INGRESO_BODEGA_RECHAZOS_LABEL}
+                    label={rotuloIngresoBodega(modeloNuevo)}
                     monto={totalIngresoBodegaRechazos}
                     ultima
                   />
@@ -1058,7 +1071,9 @@ function HojaResumen({
                   destacado
                   ultima
                 />
-                <NotaColumna>{PARA_LA_CENTRAL_NOTA}</NotaColumna>
+                <NotaColumna>
+                  {modeloNuevo ? PARA_LA_CENTRAL_NOTA_MODELO_NUEVO : PARA_LA_CENTRAL_NOTA}
+                </NotaColumna>
                 {/* R36 — el negativo NO es un error: el pago al mensajero es fijo por entrega e
                     independiente de lo recaudado, así que una jornada prepagada lo produce. Sin
                     esta nota, un «−₡1.000» en una pantalla de dinero es peor que no tenerlo. */}
@@ -1164,6 +1179,7 @@ export function CierreBodegaFacturaResumen({
       solicitadoAt={cierre.solicitadoAt}
       resueltoAt={cierre.resueltoAt}
       motivoRechazo={cierre.motivoRechazo}
+      modeloNuevo={cierre.incluyeModeloNuevo === true}
       /* Feature 393 (R20/R38): los dos datos llegan YA DERIVADOS del servidor —del mapper que
          comparten las ocho lecturas de esta cabecera—, así que la tarjeta del maestro y la de la
          satélite no pueden discrepar: salen del mismo sitio. Aquí no se calcula nada. */
@@ -1253,6 +1269,7 @@ export function CierreConsolidableFacturaResumen({
       totales={cierre.totales}
       totalPagoMensajero={cierre.totalPagoMensajero}
       totalIngresoBodegaRechazos={cierre.totalIngresoBodegaRechazos}
+      modeloNuevo={cierre.incluyeModeloNuevo === true}
     />
   );
 }
@@ -1717,6 +1734,8 @@ function FilaGestion({
 }>) {
   const [open, setOpen] = useState(false);
   const ing = g.ingresoEmpresa ?? null;
+  const esModeloNuevoFila = ing?.tarifaModelo === "nuevo";
+  const fulfillmentVisible = verFulfillment ? fulfillmentDeIngreso(ing) : null;
   // Feature 213 (T7): un método -> su etiqueta, como siempre; dos o más -> cada uno con su
   // monto, en el orden del DTO. `null` cuando la entrega no tiene líneas de pago.
   const desglose = desglosePantalla(g.pagos);
@@ -1818,7 +1837,7 @@ function FilaGestion({
               value={ing?.comisionConIva ? money(ing.comisionConIva) : null}
             />
             <DatoFila
-              label={FLETE_DEV_CON_IVA_LABEL}
+              label={fleteDevConIvaDeGestion(g)}
               value={
                 ing?.fleteDevolucionConIva
                   ? conMarcaDeOrigen(
@@ -1868,11 +1887,7 @@ function FilaGestion({
             />
             <DatoFila
               label={FULFILLMENT_COL}
-              value={
-                verFulfillment && ing?.tarifa?.fulfillment
-                  ? money(ing.tarifa.fulfillment)
-                  : null
-              }
+              value={fulfillmentVisible ? money(fulfillmentVisible) : null}
             />
             {/* FICHA 414 (R7) — LA MARCA «La tienda», la misma que la tabla en vivo del mensajero
                 pinta desde la 237/R41. Dos detalles que parecen de forma y no lo son:
@@ -1897,10 +1912,19 @@ function FilaGestion({
                 </Badge>
               </span>
             ) : null}
+            {/* SLT-54 (R71): en el nuevo la satélite cobra por cualquier resultado, y las filas tienen
+                que sumar el total de la tarjeta. Un 0 de otro resultado no es un cobro: no se pinta. */}
+            {!esMensajero &&
+            esModeloNuevoFila &&
+            g.resultado !== "devolucion_a_origen_por_rechazo" &&
+            g.ingresoBodegaRechazo !== null &&
+            !esMontoCero(g.ingresoBodegaRechazo) ? (
+              <DatoFila label={rotuloIngresoBodega(true)} value={money(g.ingresoBodegaRechazo)} />
+            ) : null}
             {g.resultado === "devolucion_a_origen_por_rechazo" ? (
               <>
                 <DatoFila
-                  label={INGRESO_BODEGA_RECHAZOS_LABEL}
+                  label={rotuloIngresoBodega(esModeloNuevoFila)}
                   value={
                     g.ingresoBodegaRechazo === null
                       ? null
@@ -2006,7 +2030,7 @@ function FilaGestion({
               con qué fórmula. Es lo que antes vivía en la fila desplegable de la tabla. */}
           {ing ? (
             <div className="mt-3 border-t border-border pt-2.5">
-              <DesgloseIngresoEmpresa g={g} />
+              <DesgloseIngresoEmpresa g={g} verFulfillment={verFulfillment} />
             </div>
           ) : null}
         </div>
@@ -2545,6 +2569,8 @@ export function CierreFacturaDetalle({
 }: Readonly<CierreFacturaDetalleProps>) {
   // Vista del MENSAJERO: la misma hoja, sin la plata de la empresa (design §7.2).
   const esMensajero = audiencia === "mensajero";
+  const modeloNuevo = hayGestionEnModeloNuevo(grupos);
+  const rotuloIngreso = rotuloIngresoBodega(modeloNuevo);
   const gananciaNegativa = ganancia !== undefined && esMontoNegativo(ganancia);
   // Feature 264 (Q4/R21): se llamaba `ordenes` y cuenta GESTIONES —suma los cinco resultados—.
   // El número no cambia; el nombre sí, porque debajo hay ahora una sección de órdenes que este
@@ -2619,17 +2645,20 @@ export function CierreFacturaDetalle({
           icon={<Store size={15} aria-hidden="true" />}
           label={PAGO_TIENDA_LABEL}
           value={money(pagoTienda)}
-          nota={PAGO_TIENDA_NOTA}
+          nota={modeloNuevo ? PAGO_TIENDA_NOTA_MODELO_NUEVO : PAGO_TIENDA_NOTA}
         />
         <TarjetaTotal
           icon={<Undo2 size={15} aria-hidden="true" />}
-          label={INGRESO_BODEGA_RECHAZOS_LABEL}
-          ariaLabel="Ingreso de bodega por devoluciones a origen del cierre"
+          label={rotuloIngreso}
+          ariaLabel={`${rotuloIngreso} del cierre`}
           value={money(desgloseIngresoBodegaRechazos.total)}
           // Feature 102/R8: las dos sublíneas del desglose por origen, cada rótulo en su
           // propio elemento (el total NO se recomputa acá: `sla + manual === total`).
           // Sin desglose por origen (cierre de bodega) la tarjeta se queda con el total.
+          // SLT-54 (R71): tampoco en el nuevo, donde una entrega caería en «Manual»: el origen solo
+          // existe para un rechazo, y el total ya no es solo de rechazos.
           nota={
+            modeloNuevo ||
             desgloseIngresoBodegaRechazos.sla === undefined ||
             desgloseIngresoBodegaRechazos.manual === undefined ? null : (
             <span className="flex flex-wrap items-center gap-x-1">
@@ -2703,7 +2732,11 @@ export function CierreFacturaDetalle({
           value={money(totalesIngreso.comisionConIva)}
         />
         <Renglon
-          label={FLETE_DEV_CON_IVA_LABEL}
+          label={
+            modeloNuevo
+              ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL
+              : FLETE_DEV_CON_IVA_LABEL
+          }
           value={money(totalesIngreso.fleteDevolucionConIva)}
         />
         <Renglon
@@ -2764,6 +2797,7 @@ export function CierreFacturaDetalle({
         <ParPagoIngreso
           pagoMensajero={cierre.totalPagoMensajero}
           ingresoBodegaRechazos={desgloseIngresoBodegaRechazos.total}
+          rotuloIngreso={rotuloIngreso}
         />
       )}
 

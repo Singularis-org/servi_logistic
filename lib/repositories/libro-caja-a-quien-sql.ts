@@ -1,8 +1,14 @@
 import { Prisma } from "@prisma/client";
 
+import { FILA_DE_CAJA_CON_MODELO_NUEVO_SQL } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 import type { ParDeGuia } from "@/lib/types/busqueda-por-guia";
 import type { AQuienCuentaTipo, AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
-import type { WalletMovimientoCategoria, WalletMovimientoTipo, WalletOrigenTipo } from "@/lib/types/wallet";
+import {
+  WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED,
+  type WalletMovimientoCategoria,
+  type WalletMovimientoTipo,
+  type WalletOrigenTipo,
+} from "@/lib/types/wallet";
 import { CATEGORIAS_CONTRA_ASIENTO_ANOTADO } from "@/lib/utils/anotacion-de-fila";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 
@@ -109,6 +115,14 @@ const INCENTIVO: RamaDeCuenta = {
   union: Prisma.sql`d."id" = w."origen_id" AND d."categoria" = 'incentivo'`,
   columna: Prisma.sql`d."mensajero_id"`,
 };
+// SLT-94 (R31/R36): `origen_id` es el id del movimiento de fulfillment; la tienda es la CONGELADA en
+// el movimiento (a la que se cobro o devolvio), no la actual de la orden.
+const FULFILLMENT: RamaDeCuenta = {
+  cuenta: "tienda",
+  tablas: Prisma.sql`"orden_fulfillment_movimiento" d`,
+  union: Prisma.sql`d."id" = w."origen_id"`,
+  columna: Prisma.sql`d."tienda_id"`,
+};
 const ABONO: RamaDeCuenta = {
   cuenta: "tienda",
   tablas: Prisma.sql`"abono_tienda" d`,
@@ -139,6 +153,7 @@ const A_QUIEN_POR_ORIGEN: Record<WalletOrigenTipo, readonly RamaDeCuenta[] | "an
   // SLT-73: la diferencia de la satélite no es de ninguna tienda ni de ningún mensajero (es de la
   // bodega satélite, que no es una cuenta de «A quién»). Sin ramas: el filtro por cuenta no la trae.
   conciliacion_bodega_ajuste: [],
+  orden_fulfillment: [FULFILLMENT], // SLT-94
 };
 
 const ORIGENES = Object.keys(A_QUIEN_POR_ORIGEN) as WalletOrigenTipo[];
@@ -359,4 +374,19 @@ export function whereLibroCajaConTerminoSql(
   if (f.porGuia !== undefined) partes.push(condicionPorGuiaSql(f.porGuia));
   else if (f.termino !== undefined) partes.push(condicionTerminoCajaSql(f.termino));
   return whereOVerdadero(partes);
+}
+
+/**
+ * D39 — las categorias cuyo rotulo depende del modelo y que, BAJO ESOS FILTROS, tienen alguna fila que
+ * nace de un cierre con el modelo nuevo. El MISMO WHERE que el libro, asi que responde por las mismas filas
+ * que suma la composicion y que cuenta el filtro de concepto. Sin importes y con los mismos parametros
+ * tenga la caja tres filas o trescientas mil.
+ */
+export function categoriasConModeloNuevoSql(f: FiltrosComunesSql & { aQuien?: AQuienFiltro }): Prisma.Sql {
+  return Prisma.sql`
+    SELECT DISTINCT w."categoria"::text AS "categoria"
+    FROM "wallet_movimiento" w
+    WHERE ${whereLibroCajaConTerminoSql(f)}
+      AND w."categoria"::text IN (${Prisma.join([...WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED])})
+      AND ${FILA_DE_CAJA_CON_MODELO_NUEVO_SQL}`;
 }

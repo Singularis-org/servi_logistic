@@ -23,6 +23,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 293 (T4.4, design §3.3/§3.4/§5) — LA GUARDA DE LA BASE Y EL CICLO COMPLETO, CONTRA
@@ -252,7 +253,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
           await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${punto}`);
           throw e;
         }
-      },
+      }, reglasPaisFijas(),
     );
   }
 
@@ -515,7 +516,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
             await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${punto}`);
             throw e;
           }
-        },
+        }, reglasPaisFijas(),
       );
 
       let exploto = false;
@@ -568,6 +569,10 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
         async (fn) => fn(tx as unknown as LiquidacionTx),
         new CajaPagoTiendaFeedService(new WalletMovimientoRepository(cliente)),
         new LiquidacionRepartoRepository(cliente),
+        undefined,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
       const imputablesDe = async () => {
         const r = await liquidacion.previsualizarRepartoMensajero(

@@ -19,6 +19,9 @@
 // consulta entera y cada capa toma lo suyo.
 
 import { describirDenegado } from "@/lib/analytics/auditoria";
+import { zonaDelBordeConActor } from "@/lib/actions/_shared/zona-del-borde";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { prepararConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { ActorAnalitica, MotivoDenegacion } from "@/lib/analytics/alcance";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -50,6 +53,8 @@ export interface ConteoHoyGestionDeps {
    * probar el contador sin esperar a manana.
    */
   readonly now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function construirServicio(now: () => Date): ConteoHoyGestionService {
@@ -60,6 +65,7 @@ function construirServicio(now: () => Date): ConteoHoyGestionService {
     // ademas esa clave incluye el DIA — asi la entrada de ayer no puede servirse hoy.
     crearConteoEntregasCacheDeNext(),
     { now },
+    construirReglasPaisEmpresa(getPrismaClient()), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -81,7 +87,8 @@ export async function consultarConteoHoyGestion(
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
-  const preparada = prepararConteoEntregas(raw, actor, now());
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparada = prepararConteoEntregas(raw, actor, zona, now());
 
   if (preparada.status === "validation_error") {
     // Se valida el filtro ENTERO aunque parte de el no se use, y a proposito: aceptar aqui un

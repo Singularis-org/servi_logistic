@@ -69,6 +69,12 @@ export const CUBETA_POR_CATEGORIA: Record<WalletTiendaMovimientoCategoria, Cubet
   // (`flete_devolucion_anulado: "cargos"`) → la cabecera dejaria de cuadrar con el saldo.
   flete_devolucion_anulado: "aFavor",
   iva_flete_devolucion_anulado: "aFavor",
+  // SLT-94 (R19/R26): el cobro de fulfillment y su IVA son CARGOS (bajan el saldo, como el flete); su
+  // devolucion se los devuelve -> `aFavor`, como la anulacion de la 458-B.
+  fulfillment: "cargos",
+  iva_fulfillment: "cargos",
+  fulfillment_anulado: "aFavor",
+  iva_fulfillment_anulado: "aFavor",
 };
 
 /**

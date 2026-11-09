@@ -12,6 +12,7 @@ import type {
 } from "@/lib/interfaces/services/IGeneracionGastosFijosService";
 import type { GastoFijoCobroPendienteNotificador } from "@/lib/notificaciones/notificadores";
 import type { GastoFijoPlantillaDTO } from "@/lib/types/gasto-fijo-plantilla";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 45 + 84 (R27/R28/R30/R31) — logica del cron DIARIO. De las plantillas ACTIVAS genera UN
 // egreso egreso_gasto_fijo por cada una que APLICA HOY (origen_id "<plantillaId>:<periodo>",
@@ -66,6 +67,7 @@ function buildMovimientoRepo(count: number): IWalletMovimientoRepository {
     crearMovimientos: vi.fn().mockResolvedValue(count),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
     obtenerPorOrigen: vi.fn(), // ficha 333: lectura por la clave del libro; este camino no la usa
@@ -119,7 +121,7 @@ describe("GeneracionGastosFijosService — solo cobra lo que aplica hoy (feature
       plantilla({ id: "p-internet", concepto: "Internet", monto: "25000.00", fechaCobro: "2026-07-15" }),
     ];
     const movRepo = buildMovimientoRepo(2);
-    const svc = new GeneracionGastosFijosService(buildPlantillaRepo(activas), movRepo, buildCobroRepo(), runTx);
+    const svc = new GeneracionGastosFijosService(buildPlantillaRepo(activas), movRepo, buildCobroRepo(), runTx, undefined, reglasPaisFijas());
 
     const r = await svc.ejecutarGeneracion(NOW);
 
@@ -153,7 +155,7 @@ describe("GeneracionGastosFijosService — solo cobra lo que aplica hoy (feature
       plantilla({ id: "no-aplica", fechaCobro: "2026-07-20" }), // mensual dia 20 -> NO el 15
     ];
     const movRepo = buildMovimientoRepo(1);
-    const svc = new GeneracionGastosFijosService(buildPlantillaRepo(activas), movRepo, buildCobroRepo(), runTx);
+    const svc = new GeneracionGastosFijosService(buildPlantillaRepo(activas), movRepo, buildCobroRepo(), runTx, undefined, reglasPaisFijas());
 
     const r = await svc.ejecutarGeneracion(NOW);
 
@@ -165,7 +167,7 @@ describe("GeneracionGastosFijosService — solo cobra lo que aplica hoy (feature
 
   it("R31: un UNICO createMany para toda la corrida (atomico)", async () => {
     const movRepo = buildMovimientoRepo(1);
-    const svc = new GeneracionGastosFijosService(buildPlantillaRepo([plantilla()]), movRepo, buildCobroRepo(), runTx);
+    const svc = new GeneracionGastosFijosService(buildPlantillaRepo([plantilla()]), movRepo, buildCobroRepo(), runTx, undefined, reglasPaisFijas());
     await svc.ejecutarGeneracion(NOW);
     expect(movRepo.crearMovimientos).toHaveBeenCalledTimes(1);
   });
@@ -173,7 +175,7 @@ describe("GeneracionGastosFijosService — solo cobra lo que aplica hoy (feature
   it("R27: las plantillas INACTIVAS no entran (el service consume listarActivas, no listar)", async () => {
     const plantillaRepo = buildPlantillaRepo([]); // el repo de activas no las devuelve
     const movRepo = buildMovimientoRepo(0);
-    const svc = new GeneracionGastosFijosService(plantillaRepo, movRepo, buildCobroRepo(), runTx);
+    const svc = new GeneracionGastosFijosService(plantillaRepo, movRepo, buildCobroRepo(), runTx, undefined, reglasPaisFijas());
 
     const r = await svc.ejecutarGeneracion(NOW);
 
@@ -199,6 +201,8 @@ describe("GeneracionGastosFijosService — clave de idempotencia por unidad", ()
       movRepo,
       buildCobroRepo(),
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
     await svc.ejecutarGeneracion(NOW);
     expect(movsDe(movRepo)[0].origenId).toBe("p-alquiler:2026-07");
@@ -211,6 +215,8 @@ describe("GeneracionGastosFijosService — clave de idempotencia por unidad", ()
       movRepo,
       buildCobroRepo(),
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
     await svc.ejecutarGeneracion(NOW);
     expect(movsDe(movRepo)[0].origenId).toBe("p-alquiler:2026-07-15");
@@ -223,6 +229,8 @@ describe("GeneracionGastosFijosService — clave de idempotencia por unidad", ()
       movRepo,
       buildCobroRepo(),
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
     await svc.ejecutarGeneracion(NOW); // 2026-07-01 + 2 semanas = 2026-07-15 -> aplica
     expect(movsDe(movRepo)[0].origenId).toBe("p-alquiler:2026-07-15");
@@ -235,7 +243,7 @@ describe("GeneracionGastosFijosService — clave de idempotencia por unidad", ()
     const dia1 = new Date("2026-08-01T18:00:00.000Z"); // 12:00 CR del 1 ago
     const legacy = plantilla({ id: "p-legacy", periodicidadUnidad: "meses", periodicidadCantidad: 1, fechaCobro: "2026-01-01" });
     const movRepo = buildMovimientoRepo(0); // ON CONFLICT DO NOTHING: la clave ya existia
-    const svc = new GeneracionGastosFijosService(buildPlantillaRepo([legacy]), movRepo, buildCobroRepo(), runTx);
+    const svc = new GeneracionGastosFijosService(buildPlantillaRepo([legacy]), movRepo, buildCobroRepo(), runTx, undefined, reglasPaisFijas());
 
     const r = await svc.ejecutarGeneracion(dia1);
 
@@ -245,7 +253,7 @@ describe("GeneracionGastosFijosService — clave de idempotencia por unidad", ()
 
   it("reejecucion del mismo dia inserta 0 (createMany devuelve 0)", async () => {
     const movRepo = buildMovimientoRepo(0); // ON CONFLICT DO NOTHING
-    const svc = new GeneracionGastosFijosService(buildPlantillaRepo([plantilla()]), movRepo, buildCobroRepo(), runTx);
+    const svc = new GeneracionGastosFijosService(buildPlantillaRepo([plantilla()]), movRepo, buildCobroRepo(), runTx, undefined, reglasPaisFijas());
     const r = await svc.ejecutarGeneracion(NOW);
     expect(r).toMatchObject({ plantillasQueAplicanHoy: 1, egresosGenerados: 0 });
   });
@@ -272,6 +280,8 @@ describe("333 — el interruptor reparte la corrida entre el libro y la cola (R5
       movRepo,
       cobroRepo,
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await svc.ejecutarGeneracion(NOW);
@@ -299,6 +309,8 @@ describe("333 — el interruptor reparte la corrida entre el libro y la cola (R5
       movRepo,
       cobroRepo,
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await svc.ejecutarGeneracion(NOW);
@@ -327,6 +339,8 @@ describe("333 — el interruptor reparte la corrida entre el libro y la cola (R5
       movRepo,
       cobroRepo,
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await svc.ejecutarGeneracion(NOW);
@@ -370,6 +384,8 @@ describe("333 — el interruptor reparte la corrida entre el libro y la cola (R5
       movRepo,
       cobroRepo,
       runnerVigilado,
+      undefined,
+      reglasPaisFijas(),
     );
 
     await svc.ejecutarGeneracion(NOW);
@@ -397,6 +413,8 @@ describe("333 — el interruptor reparte la corrida entre el libro y la cola (R5
       movRepo,
       cobroRepo,
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
 
     await expect(svc.ejecutarGeneracion(NOW)).rejects.toThrow("cobros caidos");
@@ -416,6 +434,8 @@ describe("333 — el cobro copia lo que la plantilla decia HOY (R7) y congela la
       buildMovimientoRepo(0),
       cobroRepo,
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
 
     await svc.ejecutarGeneracion(NOW);
@@ -445,6 +465,8 @@ describe("333 — el cobro copia lo que la plantilla decia HOY (R7) y congela la
       movRepo,
       buildCobroRepo(),
       runTx,
+      undefined,
+      reglasPaisFijas(),
     ).ejecutarGeneracion(NOW);
 
     const cobroRepo = buildCobroRepo(1, 1);
@@ -453,6 +475,8 @@ describe("333 — el cobro copia lo que la plantilla decia HOY (R7) y congela la
       buildMovimientoRepo(0),
       cobroRepo,
       runTx,
+      undefined,
+      reglasPaisFijas(),
     ).ejecutarGeneracion(NOW);
 
     expect(cobrosDe(cobroRepo)[0].origenId).toBe(movsDe(movRepo)[0].origenId);
@@ -478,6 +502,8 @@ describe("333 — el cobro copia lo que la plantilla decia HOY (R7) y congela la
         buildMovimientoRepo(0),
         cobroRepo,
         runTx,
+        undefined,
+        reglasPaisFijas(),
       );
 
       await svc.ejecutarGeneracion(NOW);
@@ -502,7 +528,7 @@ describe("333 — R12: una plantilla INACTIVA no genera ni egreso ni cobro", () 
       plantilla({ id: "p-inactiva-sola", activa: false, requiereAprobacion: false }),
       plantilla({ id: "p-inactiva-aprueba", activa: false, requiereAprobacion: true }),
     ]);
-    const svc = new GeneracionGastosFijosService(plantillaRepo, movRepo, cobroRepo, runTx);
+    const svc = new GeneracionGastosFijosService(plantillaRepo, movRepo, cobroRepo, runTx, undefined, reglasPaisFijas());
 
     const r = await svc.ejecutarGeneracion(NOW);
 
@@ -538,6 +564,7 @@ describe("333 — el aviso de la campana sale del service, con el total y el dia
       buildCobroRepo(0, 4),
       runTx,
       notificar,
+      reglasPaisFijas(),
     );
 
     const r = await svc.ejecutarGeneracion(NOW);
@@ -554,6 +581,7 @@ describe("333 — el aviso de la campana sale del service, con el total y el dia
       buildCobroRepo(0, 0),
       runTx,
       notificar,
+      reglasPaisFijas(),
     );
 
     await svc.ejecutarGeneracion(NOW);
@@ -569,6 +597,8 @@ describe("333 — el aviso de la campana sale del service, con el total y el dia
       buildMovimientoRepo(0),
       buildCobroRepo(0, 7),
       runTx,
+      undefined,
+      reglasPaisFijas(),
     );
 
     await expect(svc.ejecutarGeneracion(NOW)).resolves.toMatchObject({

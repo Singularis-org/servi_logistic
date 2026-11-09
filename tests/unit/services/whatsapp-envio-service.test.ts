@@ -3,6 +3,7 @@ import { WhatsappEnvioService, MSG } from "@/lib/services/WhatsappEnvioService";
 import type { GuardarEnvioInput } from "@/lib/types/envios-whatsapp";
 import type { Actor } from "@/lib/interfaces/services/IWhatsappEnvioService";
 import { MAESTRO, destinatario, envio, enviosRepo, plantilla } from "./_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 474 (T7.1) — `WhatsappEnvioService`: R1, R11-R16 (R14 y R16 enmendados), R18, R15, R20,
 // R21 y la proxima ejecucion de R25.
@@ -29,7 +30,7 @@ function montar(o: { envios?: ReturnType<typeof enviosRepo>; plantilla?: ReturnT
   const plantillas = { findEnviableDeInformeById: vi.fn(async () => (o.plantilla === undefined ? plantilla() : o.plantilla)) };
   const cola = { enqueue: vi.fn(async () => null) };
   const ejecuciones = { ultimaPorEnvio: vi.fn(async () => new Map()) };
-  const s = new WhatsappEnvioService({ envios, plantillas, cola, ejecuciones, now: () => AHORA });
+  const s = new WhatsappEnvioService({ reglasPais: reglasPaisFijas(), envios, plantillas, cola, ejecuciones, now: () => AHORA });
   return { s, envios, plantillas, cola };
 }
 

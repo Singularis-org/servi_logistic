@@ -22,12 +22,13 @@
 // servicios, sin `next/headers`, sin `@/lib/db`, sin variables de entorno y sin efectos
 // al importarse. Lo vigila `tests/unit/analytics/modulo-puro.guardia.test.ts`.
 //
-// R11 (una sola definicion del dia CR): TODA frontera sale EXCLUSIVAMENTE de
-// `inicioDelDiaCREnUtc` / `inicioDelDiaSiguienteCREnUtc` de `@/lib/utils/fecha-cr`. Aqui
-// no hay offset horario propio, ni `AT TIME ZONE`, ni una constante de seis horas, ni
-// siquiera la duracion de un dia escrita a mano: se DERIVA de los propios helpers, igual
-// que `lib/analytics/ranges.ts` hace con `FECHA_ANCLA`. Es lo que impide reintroducir por
-// la puerta de atras el off-by-one de seis horas del que avisa `ranges.ts`.
+// R11 (una sola definicion del dia): TODA frontera sale EXCLUSIVAMENTE de
+// `inicioDelDiaEnUtc` de `@/lib/utils/calendario-zona`, con la zona IANA que recibe
+// `trocear` (la del pais de la empresa, SLT-42). Aqui no hay offset horario propio, ni
+// `AT TIME ZONE`, ni una constante de horas, ni la duracion de un dia: los dias se suman
+// sobre la fecha CALENDARIO, porque en una zona con horario de verano el dia de cambio
+// dura 23 o 25 h (R23). Es lo que impide reintroducir por la puerta de atras el off-by-one
+// del que avisa `ranges.ts`.
 //
 // ---------------------------------------------------------------------------
 // INTERACCION DECLARADA CON LA FEATURE 176 (⟨D8⟩ del design de la 180)
@@ -40,10 +41,12 @@
 // archivo** y no como dos contratos incompatibles descubiertos en la pantalla.
 
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+  diaDeLaSemana,
+  diferenciaEnDiasCalendario,
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  sumarDiasCalendario,
+} from "@/lib/utils/calendario-zona";
 import { TOPE_PUNTOS_SERIE, type RangoResuelto } from "@/lib/analytics/types";
 
 /** ⟨D2⟩ — las dos granularidades que el servidor sabe producir. Dominio cerrado. */
@@ -51,59 +54,36 @@ export type GranularidadTemporal = "dia" | "semana";
 
 /** Un cubo del troceo: su clave publicable y su ventana SEMIABIERTA `[desde, hasta)`. */
 export interface CuboTemporal {
-  /** Clave publicable: fecha calendario CR del PRIMER dia incluido (`YYYY-MM-DD`). */
+  /** Clave publicable: fecha calendario local del PRIMER dia incluido (`YYYY-MM-DD`). */
   readonly clave: string;
-  /** Instante UTC inclusivo de inicio (de `inicioDelDiaCREnUtc`). */
+  /** Instante UTC inclusivo de inicio (de `inicioDelDiaEnUtc`). */
   readonly desde: Date;
-  /** Instante UTC exclusivo de fin (de `inicioDelDiaSiguienteCREnUtc`). */
+  /** Instante UTC exclusivo de fin (`inicioDelDiaEnUtc` del cubo siguiente, o `rango.hasta`). */
   readonly hasta: Date;
 }
 
 /**
- * Duracion de un dia, DERIVADA de los propios helpers en vez de escrita a mano (R11):
- * `inicioDelDiaSiguienteCREnUtc(f) - inicioDelDiaCREnUtc(f)` es, por definicion, un dia.
- * Misma tecnica y misma razon que `ranges.ts`: si algun dia Costa Rica adoptase horario
- * de verano, solo habria que tocar `lib/utils/fecha-cr.ts`.
- */
-const FECHA_ANCLA = "2000-01-01";
-const UN_DIA_MS =
-  inicioDelDiaSiguienteCREnUtc(FECHA_ANCLA).getTime() - inicioDelDiaCREnUtc(FECHA_ANCLA).getTime();
-
-/**
- * Fecha calendario CR `dias` dias DESPUES de `fecha`, sin aritmetica de calendario propia:
- * se ancla la fecha a su instante real de las 00:00 CR, se avanza y se vuelve a leer la
- * fecha calendario CR. Cruza fin de mes y fin de anio sola. Es la version hacia delante de
- * `restarDiasCalendarioCR` de `ranges.ts`.
- */
-function sumarDiasCalendarioCR(fecha: string, dias: number): string {
-  return fechaCalendarioCR(new Date(inicioDelDiaCREnUtc(fecha).getTime() + dias * UN_DIA_MS));
-}
-
-/**
- * Dias calendario CR INCLUSIVOS del rango (`desdeFecha`..`hastaFecha`): un rango de un
- * solo dia mide 1. Se cuenta sobre los instantes de las 00:00 CR de ambas fechas, no
- * sobre `hasta - desde`, para que la respuesta sea de calendario y no de duracion.
+ * Dias calendario INCLUSIVOS del rango (`desdeFecha`..`hastaFecha`): un rango de un
+ * solo dia mide 1. Se cuenta sobre las FECHAS calendario, no sobre `hasta - desde`, para
+ * que la respuesta sea de calendario y no de duracion (un dia de cambio de hora es uno).
+ * No depende de la zona: las dos fechas ya son del calendario local.
  */
 function diasCalendarioInclusivos(rango: RangoResuelto): number {
-  const primerDia = inicioDelDiaCREnUtc(rango.desdeFecha).getTime();
-  const ultimoDia = inicioDelDiaCREnUtc(rango.hastaFecha).getTime();
-  return Math.round((ultimoDia - primerDia) / UN_DIA_MS) + 1;
+  return diferenciaEnDiasCalendario(rango.desdeFecha, rango.hastaFecha) + 1;
 }
 
 /**
  * Dias a avanzar desde `fecha` hasta el comienzo del cubo SIGUIENTE.
  *
  * - `dia`: siempre 1.
- * - `semana` (⟨D6⟩ / R21): hasta el proximo LUNES de Costa Rica, ESTRICTAMENTE posterior
- *   (si `fecha` ya es lunes, avanza una semana entera). El dia de la semana se lee con
- *   `getUTCDay()` sobre el instante `...T06:00:00.000Z`, que cae en la MISMA fecha en UTC:
- *   asi el resultado no depende del huso del proceso. Misma convencion que
- *   `lunesDeLaSemanaCR` de `ranges.ts`. `getUTCDay()`: 0 = domingo ... 6 = sabado.
+ * - `semana` (⟨D6⟩ / R21): hasta el proximo LUNES local, ESTRICTAMENTE posterior
+ *   (si `fecha` ya es lunes, avanza una semana entera). El dia de la semana es el de la
+ *   FECHA calendario (`diaDeLaSemana`), asi que no depende del huso del proceso. Misma
+ *   convencion que `lunesDeLaSemana` de `ranges.ts`. 0 = domingo ... 6 = sabado.
  */
 function saltoAlCuboSiguiente(fecha: string, granularidad: GranularidadTemporal): number {
   if (granularidad === "dia") return 1;
-  const diaDeLaSemana = inicioDelDiaCREnUtc(fecha).getUTCDay();
-  const hastaElLunes = (1 - diaDeLaSemana + 7) % 7;
+  const hastaElLunes = (1 - diaDeLaSemana(fecha) + 7) % 7;
   return hastaElLunes === 0 ? 7 : hastaElLunes;
 }
 
@@ -127,30 +107,30 @@ export function granularidadDe(rango: RangoResuelto): GranularidadTemporal {
  * Invariantes que los tests fijan y de los que depende la conservacion (R12):
  *   - `trocear(r)[0].desde` es `r.desde` y `trocear(r).at(-1).hasta` es `r.hasta`;
  *   - `cubo[i].hasta === cubo[i + 1].desde` (contiguos, sin solape y sin hueco);
- *   - `clave` es `fechaCalendarioCR(desde)`, derivada del PROPIO instante frontera y no
+ *   - `clave` es `fechaCalendario(desde, zona)`, derivada del PROPIO instante frontera y no
  *     de una variable paralela, de modo que la clave no pueda divergir de la ventana que
  *     dice describir (R10).
  *
- * Con granularidad `semana` (⟨D6⟩ / R21) los cubos se anclan al LUNES de Costa Rica, PERO
+ * Con granularidad `semana` (⟨D6⟩ / R21) los cubos se anclan al LUNES local, PERO
  * el primero empieza en `rango.desde` aunque no sea lunes y su clave es ESE dia: si su
  * clave fuera el lunes anterior, la fila afirmaria contener dinero de dias que el rango
  * excluye. Por la misma razon el ultimo cubo se trunca en `rango.hasta`.
  */
-export function trocear(rango: RangoResuelto): readonly CuboTemporal[] {
+export function trocear(rango: RangoResuelto, zona: string): readonly CuboTemporal[] {
   const granularidad = granularidadDe(rango);
   const cubos: CuboTemporal[] = [];
 
   let fecha = rango.desdeFecha;
-  while (inicioDelDiaCREnUtc(fecha).getTime() < rango.hasta.getTime()) {
-    const desde = inicioDelDiaCREnUtc(fecha);
-    const fechaSiguiente = sumarDiasCalendarioCR(fecha, saltoAlCuboSiguiente(fecha, granularidad));
-    const finNatural = inicioDelDiaCREnUtc(fechaSiguiente);
+  while (inicioDelDiaEnUtc(fecha, zona).getTime() < rango.hasta.getTime()) {
+    const desde = inicioDelDiaEnUtc(fecha, zona);
+    const fechaSiguiente = sumarDiasCalendario(fecha, saltoAlCuboSiguiente(fecha, granularidad));
+    const finNatural = inicioDelDiaEnUtc(fechaSiguiente, zona);
     // Truncado al rango: el ultimo cubo nunca desborda `rango.hasta`, que ya es una
-    // frontera de dia CR (`inicioDelDiaSiguienteCREnUtc(hastaFecha)`).
+    // frontera de dia local (`inicioDelDiaSiguienteEnUtc(hastaFecha, zona)`).
     const hasta =
       finNatural.getTime() < rango.hasta.getTime() ? finNatural : new Date(rango.hasta.getTime());
 
-    cubos.push({ clave: fechaCalendarioCR(desde), desde, hasta });
+    cubos.push({ clave: fechaCalendario(desde, zona), desde, hasta });
     fecha = fechaSiguiente;
   }
 

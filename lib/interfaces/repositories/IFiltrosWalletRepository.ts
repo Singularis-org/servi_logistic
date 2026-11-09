@@ -1,5 +1,5 @@
 import type { AQuienCuentaTipo, AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
-import type { WalletMovimientoTipo } from "@/lib/types/wallet";
+import type { WalletCategoriaRotuloPorModelo, WalletMovimientoTipo } from "@/lib/types/wallet";
 
 // Ficha 458-A (TA.3/TA.4, design §3.5) — las lecturas de los filtros de la wallet. SOLO queries:
 // conteos (`_count`, nunca `_sum`) y nombres. La cuenta va SIEMPRE en el WHERE y la escribe el
@@ -52,6 +52,11 @@ export type BusquedaDeCierre =
 
 export interface IFiltrosWalletRepository {
   contarConceptosCaja(filtros: FiltrosConteoCaja): Promise<ConteoPorCategoria[]>;
+  /**
+   * D39 — de las filas que cuenta `contarConceptosCaja` con ESOS filtros, las categorias cuyo rotulo
+   * depende del modelo y que tienen alguna fila de un cierre con el modelo nuevo.
+   */
+  categoriasConModeloNuevoCaja(filtros: FiltrosConteoCaja): Promise<WalletCategoriaRotuloPorModelo[]>;
   contarConceptosTienda(tiendaId: string, filtros: FiltrosConteoTienda): Promise<ConteoPorCategoria[]>;
   /** Los cierres del libro de UNA tienda, mas recientes primero, como mucho `limite`. */
   cierresDeTienda(

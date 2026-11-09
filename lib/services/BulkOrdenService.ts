@@ -3,7 +3,7 @@
 // negocio pura (sin HTTP, sin Prisma directo, sin parseo de archivo).
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { resolverDestinoCreacion, type DestinoCreacion } from "@/lib/services/destino-creacion";
+import { resolverDestinoCreacion } from "@/lib/services/destino-creacion";
 import {
   emitirBestEffort,
   notificadorNoOp,
@@ -61,14 +61,8 @@ import {
   desgloseCargaApi,
   ivaFulfillmentDeTarifa,
   fleteEntregadoSinTarifa,
-  tieneFulfillment,
 } from "@/lib/utils/ingreso-empresa";
 import { nombreDeEstado } from "@/lib/types/order-status";
-import {
-  SIN_CUPO,
-  type ICupoPlanRepository,
-} from "@/lib/interfaces/repositories/ICupoPlanRepository";
-import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 
 /** SL-17 (D15): la tienda de la carga no existe para la empresa en curso. */
 export const MSG_TIENDA_NO_ENCONTRADA = "tienda no encontrada";
@@ -165,58 +159,9 @@ export class BulkOrdenService implements IBulkOrdenService {
      * de ordenes ya persistidas.
      */
     private readonly notificarCarga: CargaMasivaNotificador = notificadorNoOp,
-    /**
-     * SL-24 (design §6.1): la lectura previa del cupo de órdenes del plan. OPCIONAL para no tocar
-     * los constructores que ya existen (tests y `tests/fabricas/`). `SIN_CUPO` no comprueba nada
-     * y el trigger sigue siendo la autoridad. Los dos routes de carga inyectan el real.
-     */
-    private readonly cupoPlan: ICupoPlanRepository = SIN_CUPO,
+    // SLT-86 (R8): sin el 4.º parámetro, la lectura previa del cupo de órdenes del plan (SL-24 §6.1).
+    // Ningún plan topa ya las órdenes, y la base ya no tiene el trigger que las rechazaba.
   ) {}
-
-  /**
-   * SL-24 (R21) — el rechazo previo. `null` si la carga cabe, si no hay nada que crear o si la
-   * empresa no tiene tope de órdenes. Una carga que deja el uso justo en el tope cabe.
-   */
-  private async topeExcedido(pedidas: number): Promise<TopeDelPlanAlcanzado | null> {
-    if (pedidas === 0) return null;
-    const cupo = await this.cupoPlan.cupoOrdenes();
-    if (cupo === null || cupo.usados + pedidas <= cupo.maximo) return null;
-    return new TopeDelPlanAlcanzado({ tope: "ordenes", maximo: cupo.maximo, usados: cupo.usados, pedidas });
-  }
-
-  /**
-   * SL-24 (R22) — cada fila `creada` cuya remisión está en `remisiones` pasa a `error` con el
-   * mensaje del tope. Las `duplicada` y las `error` no cambian. La fila se reescribe entera: los
-   * avisos de una orden que no se creó (`estatus`, `montoAjustado`, `textoNormalizado`) se caen.
-   */
-  private filasAErrorDeTope(filas: RowResult[], remisiones: Set<string>, mensaje: string): void {
-    filas.forEach((f, idx) => {
-      if (f.resultado !== "creada" || !remisiones.has(f.numRemision)) return;
-      filas[idx] = { fila: f.fila, numRemision: f.numRemision, resultado: "error", errores: { plan: [mensaje] } };
-    });
-  }
-
-  /**
-   * SL-24 (design §6.1) — el trigger rechazó un lote: otra alta se coló entre la lectura previa y el
-   * `INSERT`. Los lotes anteriores de la misma petición ya confirmaron, así que se pregunta a la
-   * base cuáles de `pendientes` existen: esas siguen `creada` (con su estado real) y el resto pasa a
-   * `error`. Devuelve cuántas entraron. Mismo patrón que `reclasificarOmitidas`.
-   */
-  private async reclasificarTrasTope(
-    filas: RowResult[],
-    pendientes: string[],
-    tiendaId: string,
-    tope: TopeDelPlanAlcanzado,
-  ): Promise<number> {
-    const existentes =
-      pendientes.length === 0 ? new Map<string, string>() : await this.repo.findExistingRemisiones(pendientes, tiendaId);
-    for (const f of filas) {
-      const real = f.resultado === "creada" ? existentes.get(f.numRemision) : undefined;
-      if (real !== undefined) f.estatus = real;
-    }
-    this.filasAErrorDeTope(filas, new Set(pendientes.filter((r) => !existentes.has(r))), tope.message);
-    return existentes.size;
-  }
 
   async cargarMasiva(
     rows: RawRow[],
@@ -228,11 +173,11 @@ export class BulkOrdenService implements IBulkOrdenService {
 
     const tiendaId = actor.usuarioId; // R24: siempre la tienda del actor
 
-    // Feature 27/R15-R18 + 155/R1/R4/R6/R16: UNA sola lectura del flag `fulfillment` por
+    // SLT-94 (R5/R6) + 155/R1/R4/R6/R16: UNA sola lectura de la marca «se recoge en tienda» por
     // LOTE (no por fila) y UNA sola llamada al punto de decision compartido. El adminTienda
     // solo puede cargar para si mismo, asi que el dueño de las ordenes es el actor.
-    const fulfillment = await this.repo.findUsuarioFulfillment(tiendaId);
-    if (fulfillment === null) {
+    const seRecogeEnTienda = await this.repo.findUsuarioSeRecogeEnTienda(tiendaId);
+    if (seRecogeEnTienda === null) {
       // SL-17 (D15): es tambien la lectura previa de la tienda. Si no existe para la empresa en
       // curso, ninguna fila se crea y cada una dice por que, como con el estatus que falta de
       // abajo. Sin esto, la carga seguia y la paraba el trigger de la base (`EmpresaCruzada`).
@@ -244,7 +189,7 @@ export class BulkOrdenService implements IBulkOrdenService {
       }));
       return { status: "ok", summary: this.buildSummary(rows.length, filas, null) };
     }
-    const destino = resolverDestinoCreacion(fulfillment);
+    const destino = resolverDestinoCreacion(!seRecogeEnTienda);
 
     const ctx = await this.precargar(rows, destino.estatus, tiendaId);
 
@@ -302,15 +247,6 @@ export class BulkOrdenService implements IBulkOrdenService {
       });
     });
 
-    // SL-24 (R21, R22): la comprobación previa del tope del plan, ANTES del `dryRun` para que la
-    // vista previa diga lo mismo que la carga real. Si no cabe, no se persiste nada: cada fila que
-    // se iba a crear sale como error con el mensaje del tope, y sin lote.
-    const tope = await this.topeExcedido(toCreate.length);
-    if (tope !== null) {
-      this.filasAErrorDeTope(filas, new Set(toCreate.map((o) => o.numRemision)), tope.message);
-      return { status: "ok", summary: this.buildSummary(rows.length, filas, null) };
-    }
-
     // Dry-run / validación previa (R17): se omite TODA la persistencia; el summary ya lleva
     // la clasificación completa (creadas/duplicadas/error) para el preview, con el estado
     // inicial que correspondería. Al salir antes de tocar el repositorio, el dry-run no
@@ -341,36 +277,25 @@ export class BulkOrdenService implements IBulkOrdenService {
       // Feature 155/R3/R8/R11: la rama que numera usa la ruta de lote CON guia (misma
       // secuencia atomica, guarda `num_guia IS NULL`); la otra, la de siempre. Las dos
       // encolan geocodificacion por orden efectivamente insertada.
-      try {
-        if (destino.conGuia) {
-          const persistido = await this.repo.createManyOrdenesConGuia(
-            toCreate,
-            cargaMasivaConfig.BATCH_SIZE,
-            historial,
-            lote,
-          );
-          cargaId = persistido.cargaId;
-          // Feature 294: lo que no entro, se dice. Ver `reclasificarOmitidas`.
-          await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
-        } else {
-          const persistido = await this.repo.createManyOrdenes(
-            toCreate,
-            cargaMasivaConfig.BATCH_SIZE,
-            historial,
-            lote,
-          );
-          cargaId = persistido.cargaId;
-          await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
-        }
-      } catch (e) {
-        // SL-24 (design §6.1): saltó el trigger del tope. Lo que entró en un lote anterior sigue
-        // `creada`; el resto pasa a error. El id del lote solo se conoce si el cliente lo trajo: si
-        // esta petición lo creó y un lote anterior confirmó, el id no vuelve (residuo de §6.1).
-        const traducido = traducirErrorDeTope(e);
-        if (!(traducido instanceof TopeDelPlanAlcanzado)) throw traducido;
-        const pendientes = toCreate.map((o) => o.numRemision);
-        await this.reclasificarTrasTope(filas, pendientes, tiendaId, traducido);
-        cargaId = options.cargaId ?? null;
+      if (destino.conGuia) {
+        const persistido = await this.repo.createManyOrdenesConGuia(
+          toCreate,
+          cargaMasivaConfig.BATCH_SIZE,
+          historial,
+          lote,
+        );
+        cargaId = persistido.cargaId;
+        // Feature 294: lo que no entro, se dice. Ver `reclasificarOmitidas`.
+        await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
+      } else {
+        const persistido = await this.repo.createManyOrdenes(
+          toCreate,
+          cargaMasivaConfig.BATCH_SIZE,
+          historial,
+          lote,
+        );
+        cargaId = persistido.cargaId;
+        await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
       }
     }
 
@@ -446,45 +371,43 @@ export class BulkOrdenService implements IBulkOrdenService {
     // duplicarse porque sus ordenes por API nacen con SU `tienda_id`, con su wallet y sus tarifas.
     const tiendaId = actor.usuarioId;
 
-    // FULFILLMENT (2026-08-25) — EL PREDICADO DE ESTA VIA ES LA TARIFA, NO EL FLAG DEL USUARIO.
-    //
-    // La feature 155 dejo escrito que la rama (a) de esta via era "defensiva y hoy inalcanzable",
-    // y tenia razon con el predicado de entonces: `Usuario.fulfillment` solo puede quedar en
-    // `true` para el rol `adminTienda` (`UsuarioService.resolverFulfillment`) y el dueño de una
-    // key es un usuario de rol `apiKey`, asi que `findUsuarioFulfillment` respondia SIEMPRE
-    // `false` y ningun integrador con bodega en nuestras manos podia marcarse. Ese dia llego, y
-    // el predicado que lo resuelve es el MONTO de fulfillment de la tarifa que le resuelve a
-    // cada orden (`tarifas.fulfillment > 0`, ver `tieneFulfillment`). La contrapartida hay que
-    // decirla en voz alta: poner ese monto en `0.00` no solo deja de cobrar el servicio, ademas
-    // mueve donde NACEN las ordenes de esa tienda.
-    //
-    // Y ES POR ORDEN, NO POR LOTE. La tarifa se resuelve por par (tienda, zona) desde la 274, y
-    // dos filas del mismo lote pueden caer en zonas distintas. Decidir el estado por lote seria
-    // barato, pero abriria la unica incoherencia que no nos podemos permitir aqui: una orden a
-    // la que se le COBRA fulfillment y que nace esperando que alguien la recoja en la tienda.
-    // Por eso los dos destinos se preparan por adelantado y cada orden elige el suyo.
-    const destinoSinFulfillment = resolverDestinoCreacion(false);
-    const destinoConFulfillment = resolverDestinoCreacion(true);
+    // SLT-94 (R5/R6, D4, D13) — EL PREDICADO DE ESTA VIA ES LA MARCA DE LA TIENDA DUEÑA, COMO EN
+    // LA VIA SESION. Del 2026-08-25 a SLT-94 lo decidia aqui el MONTO de fulfillment de la tarifa de
+    // cada orden (`tieneFulfillment`), con dos destinos por lote; SLT-94 separa las dos cosas: el
+    // fulfillment es un COBRO (lo escribe el trigger de la base al crear la orden) y donde nace la
+    // orden lo dice solo «se recoge en tienda». Todo el lote es de una tienda (D4 de la 88), asi
+    // que hay UN destino por lote. Una cuenta dedicada de key (rol `apiKey`) siempre tiene la marca
+    // en «si» (`UsuarioService.resolverSeRecogeEnTienda`, D13): sus ordenes nacen esperando en la
+    // tienda; para bodega, la key apunta a la tienda real (ficha 302).
+    const seRecogeEnTienda = await this.repo.findUsuarioSeRecogeEnTienda(tiendaId);
+    if (seRecogeEnTienda === null) {
+      // SL-17 (D15), mismo criterio que `cargarMasiva`: el dueño no resuelve para la empresa en
+      // curso -> ninguna fila se crea y cada una dice por que.
+      const filas: CargaViaApiRow[] = rows.map((raw, idx) => ({
+        fila: idx + 1,
+        numRemision: (raw.num_remision ?? "").trim(),
+        resultado: "error",
+        errores: { tienda: [MSG_TIENDA_NO_ENCONTRADA] },
+      }));
+      return {
+        status: "ok",
+        summary: this.buildViaApiSummary(rows.length, filas, [], null),
+        manifiestoOrdenIds: [],
+      };
+    }
+    const destino = resolverDestinoCreacion(!seRecogeEnTienda);
 
-    const [ctx, estatusIdConFulfillment] = await Promise.all([
-      this.precargar(rows, destinoSinFulfillment.estatus, tiendaId),
-      this.repo.findEstatusIdByValue(destinoConFulfillment.estatus),
-    ]);
+    const ctx = await this.precargar(rows, destino.estatus, tiendaId);
 
-    if (ctx.estatusId === null || estatusIdConFulfillment === null) {
+    if (ctx.estatusId === null) {
       // R7: sin el value del catalogo, ninguna fila puede crearse y el error NOMBRA el value
-      // que falta (guarda defensiva, patrón `cargarMasiva`). Se exigen los DOS values aunque
-      // el lote acabe usando uno solo: cual toca no se sabe hasta resolver las tarifas, y un
-      // seed a medias tiene que delatarse en la primera peticion, no en la primera orden con
-      // fulfillment.
-      const faltante =
-        ctx.estatusId === null ? destinoSinFulfillment.estatus : destinoConFulfillment.estatus;
+      // que falta (guarda defensiva, patrón `cargarMasiva`).
       const filas: CargaViaApiRow[] = rows.map((raw, idx) => ({
         fila: idx + 1,
         numRemision: (raw.num_remision ?? "").trim(),
         resultado: "error",
         errores: {
-          estatus: [`estatus inicial "${faltante}" no disponible (seed pendiente)`],
+          estatus: [`estatus inicial "${destino.estatus}" no disponible (seed pendiente)`],
         },
       }));
       // Feature 141/R33: sin ordenes creadas no hay lote.
@@ -515,9 +438,6 @@ export class BulkOrdenService implements IBulkOrdenService {
     // fila de una orden que no resuelve tarifa (R28) sin recorrer el array por cada una y sin
     // contarla dos veces en el summary.
     const indicePorRemision = new Map<string, number>();
-    // FULFILLMENT: el destino de creacion de cada orden que SI resolvio tarifa. Mismo camino y
-    // mismo cruce por `numRemision` que sus hermanos de arriba.
-    const destinoPorRemision = new Map<string, DestinoCreacion>();
 
     rows.forEach((raw, idx) => {
       const fila = idx + 1;
@@ -602,15 +522,7 @@ export class BulkOrdenService implements IBulkOrdenService {
           orden.numRemision,
           orden.montoCobrar == null ? null : new Prisma.Decimal(orden.montoCobrar).toFixed(2),
         );
-        // FULFILLMENT: aqui, y solo aqui, se decide donde nace ESTA orden. El monto de la
-        // tarifa que acaba de resolver es el predicado, y el `estatusId` que se persiste sale
-        // del mismo sitio: nunca se escribe un estado que no case con lo que se cobro.
-        const destino = tieneFulfillment(tarifa) ? destinoConFulfillment : destinoSinFulfillment;
-        destinoPorRemision.set(orden.numRemision, destino);
-        conTarifa.push({
-          ...orden,
-          estatusId: destino === destinoConFulfillment ? estatusIdConFulfillment : estatusId,
-        });
+        conTarifa.push(orden);
       }
 
       // R29: ninguna de las filas que LLEGARON a resolver resolvio -> 409 y CERO persistencia.
@@ -662,63 +574,28 @@ export class BulkOrdenService implements IBulkOrdenService {
     // Feature 274/R28: lo que se persiste es `conTarifa`, NO `toCreate`: las filas sin tarifa
     // ya salieron del lote unas lineas mas arriba.
     //
-    // FULFILLMENT (2026-08-25): DOS grupos, porque `conGuia` es una opcion de la LLAMADA y las
-    // dos ramas de la bifurcacion no pueden compartirla — la rama (b) numera en el acto y la
-    // (a) no numera nada—. Lo que NO se parte es el lote: el `cargaId` del primer grupo que
-    // inserta se le pasa al segundo, asi que sigue habiendo UNA fila de `carga` por peticion
-    // (feature 141/R30) y `total_files` sigue siendo el tamaño del array recibido. Un lote
-    // homogeneo —el caso normal— hace exactamente una llamada, igual que antes.
-    // SL-24 (R21, R23): la comprobación previa del tope del plan, sobre lo que esta petición va a
-    // insertar de verdad (`conTarifa`: las filas sin tarifa ya salieron). Si no cabe, nada se
-    // persiste y el borde responde 409 con `details.codigo = "tope_plan"`.
-    const tope = await this.topeExcedido(conTarifa.length);
-    if (tope !== null) throw tope;
-
-    const grupos: Array<{ destino: DestinoCreacion; ordenes: CreateOrdenData[] }> = [
-      { destino: destinoSinFulfillment, ordenes: [] },
-      { destino: destinoConFulfillment, ordenes: [] },
-    ];
-    for (const orden of conTarifa) {
-      const destino = destinoPorRemision.get(orden.numRemision) ?? destinoSinFulfillment;
-      const grupo = grupos.find((g) => g.destino === destino);
-      if (grupo) grupo.ordenes.push(orden);
-    }
-
-    const creadas: CreateOrdenConGuiaResultRow[] = [];
-    // Feature 294: las que `skipDuplicates` descarto, acumuladas sobre los DOS grupos.
-    const omitidas: string[] = [];
-    let cargaId: string | null = null;
-    try {
-      for (const grupo of grupos) {
-        if (grupo.ordenes.length === 0) continue;
-        const persistido = await this.repo.createManyOrdenesConGuia(
-          grupo.ordenes,
-          cargaMasivaConfig.BATCH_SIZE,
-          { actorUsuarioId: tiendaId, origenTipo: "carga_api" },
-          {
-            cargaId, // null en el primero; el id ya resuelto en el segundo (R30: un solo lote)
-            usuarioCargaId: tiendaId,
-            totalFiles: rows.length,
-            name: options.name ?? null,
-          },
-          { conGuia: grupo.destino.conGuia },
-        );
-        cargaId = persistido.cargaId ?? cargaId;
-        creadas.push(...persistido.creadas);
-        omitidas.push(...persistido.omitidas);
-      }
-    } catch (e) {
-      // SL-24 (design §6.1): saltó el trigger del tope. Si no entró ninguna orden, la petición se
-      // rechaza entera con el 409 (R23). Si entró alguna en un lote anterior, el resumen lo dice
-      // fila a fila: las que existen siguen `creada` y el resto pasa a error. Las de un lote ya
-      // confirmado del grupo que falló no traen `numGuia` (residuo aceptado de §6.1).
-      const traducido = traducirErrorDeTope(e);
-      if (!(traducido instanceof TopeDelPlanAlcanzado)) throw traducido;
-      const yaCreadas = new Set(creadas.map((c) => c.numRemision));
-      const pendientes = conTarifa.map((o) => o.numRemision).filter((r) => !yaCreadas.has(r));
-      const entraron = await this.reclasificarTrasTope(filas, pendientes, tiendaId, traducido);
-      if (creadas.length === 0 && entraron === 0) throw traducido;
-    }
+    // SLT-94: UN grupo (un destino por lote). Del 2026-08-25 a SLT-94 habia dos —uno por destino,
+    // con el `cargaId` del primero pasado al segundo— porque el destino era por orden. Sin ninguna
+    // orden que crear no se llama al repositorio (feature 141/R33: sin ordenes no hay lote).
+    const persistido =
+      conTarifa.length === 0
+        ? { cargaId: null, creadas: [], omitidas: [] }
+        : await this.repo.createManyOrdenesConGuia(
+            conTarifa,
+            cargaMasivaConfig.BATCH_SIZE,
+            { actorUsuarioId: tiendaId, origenTipo: "carga_api" },
+            {
+              cargaId: null, // R15 de la 141: el id lo genera el servidor dentro de la tx
+              usuarioCargaId: tiendaId,
+              totalFiles: rows.length,
+              name: options.name ?? null,
+            },
+            { conGuia: destino.conGuia },
+          );
+    const cargaId: string | null = persistido.cargaId;
+    const creadas: CreateOrdenConGuiaResultRow[] = persistido.creadas;
+    // Feature 294: las que `skipDuplicates` descarto.
+    const omitidas: string[] = persistido.omitidas;
 
     // Feature 294 — ANTES de armar el bloque `ordenes`: una fila que no entro se reclasifica a
     // `duplicada` (ver `reclasificarOmitidas`). Hacerlo aqui y no despues es lo que impide que
@@ -743,9 +620,7 @@ export class BulkOrdenService implements IBulkOrdenService {
       if (!creada) continue;
       f.numGuia = creada.numGuia;
       f.estatus = creada.estatusValue;
-      const destinoDeLaOrden =
-        destinoPorRemision.get(creada.numRemision) ?? destinoSinFulfillment;
-      if (destinoDeLaOrden.emiteManifiesto) manifiestoOrdenIds.push(creada.ordenId);
+      if (destino.emiteManifiesto) manifiestoOrdenIds.push(creada.ordenId);
       // FULFILLMENT: el desglose de lo que paga la tienda por ESTA orden. `costoEnvio` sigue
       // siendo el total —ahora flete + IVA + fulfillment— y el sumando nuevo viaja al lado
       // para que ese total no haya que adivinarlo.
@@ -778,8 +653,8 @@ export class BulkOrdenService implements IBulkOrdenService {
       });
     }
 
-    // FULFILLMENT: las duplicadas INTRA-LOTE reportan el estatus de la fila ganadora, que ya no
-    // es el del lote sino el que decidio SU tarifa. Las duplicadas contra la base no se tocan:
+    // Las duplicadas INTRA-LOTE reportan el estatus de la fila ganadora (desde SLT-94 es siempre
+    // el del lote: un destino por lote). Las duplicadas contra la base no se tocan:
     // ahi el estatus es el de la orden que ya existia (R25), y ese no lo decide esta carga.
     const estatusPorRemision = new Map(creadas.map((c) => [c.numRemision, c.estatusValue]));
     for (const f of filas) {

@@ -27,7 +27,7 @@ warn() { echo "${YELLOW}! $1${NC}"; }
 #   GATE_SHARD=i/N      ./init.sh --completo   solo el shard i de N de la suite, SIN veredicto
 #   ./init.sh --unir <dir> <N>                 une los N informes y da el veredicto UNA vez
 # Ningun shard da veredicto: un shard puede no traer ni un archivo de `integration`, y la
-# garantia «los tres proyectos corrieron» solo vale sobre el informe unido.
+# garantia «los proyectos declarados corrieron» solo vale sobre el informe unido.
 USO="uso: ./init.sh [--rapido|--completo|--unir <dir> <N>]   (default: --rapido)"
 MODO="rapido"
 case "${1:-}" in
@@ -41,6 +41,17 @@ esac
 
 GATE_PARTE="${GATE_PARTE:-}"
 GATE_SHARD="${GATE_SHARD:-}"
+
+# METRICAS (`scripts/metricas.mjs`, `docs/gate.md > Medir el ciclo`): cada corrida local deja su
+# modo, duracion y resultado en `progress/logs/metricas.jsonl`, tambien las que fallan (por eso va
+# en un `trap EXIT`, que conserva el codigo de salida). En CI no: alli el dato lo da GitHub.
+INICIO_GATE=$(date +%s)
+registrar_gate() {
+  local codigo=$?
+  { [ -z "${CI:-}" ] && [ -f scripts/metricas.mjs ]; } || return 0
+  node scripts/metricas.mjs gate --modo "$MODO" --segundos "$(( $(date +%s) - INICIO_GATE ))" --codigo "$codigo" >/dev/null 2>&1 || true
+}
+trap registrar_gate EXIT
 # Las combinaciones sin sentido son `fail` y no se ignoran en silencio: un GATE_SHARD colado en
 # un `--rapido` haria creer que se corrio un shard cuando no se corrio nada de eso.
 if [ -n "$GATE_PARTE" ] && [ -n "$GATE_SHARD" ]; then
@@ -72,19 +83,20 @@ veredicto_tests() {
   # arriba" y el mensaje de fallo no promete algo que no entrega.
   COMPARACION=$(node scripts/comparar-baseline-rojos.mjs "$INFORME") || fail "hay rojos NUEVOS respecto del baseline (el detalle esta justo arriba)"
 
-  # GARANTIA 1: LOS TRES PROYECTOS APARECEN EN EL INFORME. Es la comprobacion que nos habria
-  # salvado el 2026-09-13. Los nombres salen de `vitest.config.mts` (`ui`, `node`,
-  # `integration`) y el reparto es el mismo de ahi, por convencion de nombre y carpeta,
-  # porque el informe JSON de vitest NO trae el proyecto de cada archivo: solo su ruta.
-  # Si falta un proyecto ENTERO, no corrio, y el gate no puede afirmar nada sobre el.
+  # GARANTIA 1: CADA PROYECTO DE VITEST DECLARADO APARECE EN EL INFORME. Es la comprobacion que
+  # habria salvado el incidente del 2026-09-13 en el proyecto de origen (ver mas abajo). Los
+  # proyectos se declaran en `arnes.config.json > gate.proyectos_vitest` (de `ui`, `node`,
+  # `integration`) y se reconocen por convencion de nombre y carpeta, porque el informe JSON de
+  # vitest NO trae el proyecto de cada archivo: solo su ruta. Si falta un proyecto ENTERO, no
+  # corrio, y el gate no puede afirmar nada sobre el. Sin declarar, la comprobacion no corre.
   LEER_PROYECTOS=$(cat <<'JS'
 const { readFileSync } = require('node:fs');
 const { relative, resolve } = require('node:path');
-let ESPERADOS = ['ui', 'node', 'integration'];
+let ESPERADOS = [];
 try {
   const cfg = JSON.parse(readFileSync('arnes.config.json', 'utf8'));
   if (Array.isArray(cfg.gate?.proyectos_vitest)) ESPERADOS = cfg.gate.proyectos_vitest;
-} catch { /* sin config: los tres de siempre */ }
+} catch { /* sin config: no hay proyectos declarados */ }
 const rutaInforme = process.argv[1];
 let informe;
 try {
@@ -101,7 +113,7 @@ const proyecto = (r) =>
       ? 'integration'
       : 'node';
 if (ESPERADOS.length === 0) {
-  console.log('comprobacion de proyectos de vitest desactivada (arnes.config.json > gate.proyectos_vitest = [])');
+  console.log('comprobacion de proyectos de vitest desactivada (arnes.config.json > gate.proyectos_vitest vacio o sin declarar)');
   process.exit(0);
 }
 const vistos = new Set();
@@ -112,7 +124,7 @@ if (faltan.length > 0) {
   console.log(`ese proyecto no llego a correr (global setup, config o un proceso caido), asi que el gate no puede afirmar nada sobre el.`);
   process.exit(1);
 }
-console.log(`los tres proyectos corrieron (${ESPERADOS.join(', ')})`);
+console.log(`los ${ESPERADOS.length} proyectos de vitest declarados corrieron (${ESPERADOS.join(', ')})`);
 JS
 )
   PROYECTOS=$(node -e "$LEER_PROYECTOS" "$INFORME" 2>&1) || fail "$PROYECTOS"
@@ -124,7 +136,7 @@ JS
   # proceso que se cayo). Ahi no se da verde.
   #
   # El disparador NO es "codigo distinto de cero y sin rojos NUEVOS" a secas, y la diferencia
-  # importa: con rojos HEREDADOS en el baseline (hoy son 8 archivos) la suite sana termina
+  # importa: con rojos HEREDADOS en el baseline la suite sana termina
   # distinta de cero en cada corrida, asi que esa version pondria el gate rojo SIEMPRE y en
   # dos dias se ignoraria. Lo contradictorio es que el informe no explique el codigo: si hay
   # al menos un archivo en rojo, el codigo ya tiene duena y el baseline sigue mandando.
@@ -231,6 +243,17 @@ echo "$PERFIL" | while IFS= read -r linea; do
   esac
 done
 
+# 4.b1 Tamano del PR de la feature de la rama actual (`gate.tamano_pr`, docs/gate.md > Tamano del
+#      PR). `fail` si pasa del maximo sin la aceptacion humana anotada; `warn` al 80%. Corre tambien
+#      en el CI (job estatico), asi que un PR grande no se mergea sin que alguien lo haya aceptado.
+[ -f scripts/tamano-pr.mjs ] || fail "falta scripts/tamano-pr.mjs: sin el, el tamano del PR no se comprueba"
+TAMANO=$(node scripts/tamano-pr.mjs 2>&1) || fail "$TAMANO"
+case "$TAMANO" in
+  AVISO:*) warn "${TAMANO#AVISO: }" ;;
+  "") ;;
+  *) ok "$TAMANO" ;;
+esac
+
 # 4.b2 Tests de arbol que el gate rapido no corre (no casan con `gate.siempre`). Solo avisa:
 #      detalle y motivo en scripts/tests-de-arbol.mjs.
 if [ -f scripts/tests-de-arbol.mjs ]; then
@@ -294,12 +317,12 @@ run_if() {
   ok "$1 paso"
 }
 
-# 6.b El `.env`, ANTES de los tests. La integracion se conecta a Postgres con `DATABASE_URL` y
-# nadie la carga por ella: `prisma.config.ts` solo la carga para el CLI de Prisma, y Vitest no lee
-# `.env` en este proyecto. Sin esto el veredicto del gate depende del shell que lo lance: el
-# 2026-09-08 la MISMA rama dio 23 archivos y 32 tests en rojo desde un shell limpio, y 1 archivo y
-# 2 tests con el `.env` cargado. Un gate cuyo resultado cambia con quien lo invoca no es una
-# verificacion (`docs/verification.md`).
+# 6.b El `.env`, ANTES de los tests. Los tests de integracion suelen necesitar `DATABASE_URL` y
+# Vitest no lee `.env` por su cuenta (el CLI del ORM a veces si, y eso confunde). Sin esto el
+# veredicto del gate depende del shell que lo lance: en el proyecto de origen (2026-09-08) la
+# MISMA rama dio 23 archivos y 32 tests en rojo desde un shell limpio, y 1 archivo y 2 tests con el
+# `.env` cargado. Un gate cuyo resultado cambia con quien lo invoca no es una verificacion
+# (`docs/gate.md`).
 #
 # Si `DATABASE_URL` YA viene del entorno, manda ella y el archivo no se toca: quien apunta a otra
 # base a proposito no debe verse pisado por el `.env` del repo.
@@ -372,10 +395,10 @@ if [ -f package.json ]; then
     # que encontrarse con que no hay reporte —y fallar— en vez de leer el de la corrida
     # anterior y dar verde sobre datos viejos.
     rm -f .vitest-rojos.json
-    # EL INCIDENTE DEL 2026-09-13, que es por lo que las dos comprobaciones de abajo existen:
-    # `./init.sh` canto `== init OK ==` con la INTEGRACION ABORTADA EN EL ARRANQUE y CERO tests
-    # corridos. El `global setup` de integracion (`tests/integration/_global-setup.ts` ->
-    # `tests/helpers/test-database.ts`) murio construyendo la base de plantilla, vitest salio con
+    # EL INCIDENTE DEL 2026-09-13 (proyecto de origen), que es por lo que las dos comprobaciones de
+    # `veredicto_tests` existen: `./init.sh` canto `== init OK ==` con la INTEGRACION ABORTADA EN EL
+    # ARRANQUE y CERO tests corridos. El `global setup` de integracion murio construyendo la base de
+    # plantilla, vitest salio con
     # codigo 1, y el gate lo dio por bueno porque el veredicto salia SOLO del JSON de rojos: un
     # proyecto que no arranca no escribe rojos, luego era invisible. No simplifiques esto.
     #

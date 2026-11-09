@@ -20,6 +20,7 @@ import {
 } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-23 (design §10): la puerta de modulo con todo encendido; aqui no se prueba el modulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -233,8 +234,9 @@ describeSiHayBase("SLT-73 T13 — el estado de cuenta de la bodega es la deuda (
         const ec = new EstadoCuentaService(
           repo,
           new RechazoTiendaCobroAnulacionRepository(cliente),
-          new OrigenLegibleService(new OrigenLegibleRepository(cliente)),
+          new OrigenLegibleService(new OrigenLegibleRepository(cliente), reglasPaisFijas()),
           busquedaPorGuiaDe(cliente),
+          reglasPaisFijas(),
         );
         const leer = async (extra: Record<string, unknown>): Promise<EstadoCuentaDTO> => {
           const r = await ec.leer(
@@ -246,7 +248,7 @@ describeSiHayBase("SLT-73 T13 — el estado de cuenta de la bodega es la deuda (
         };
         const completo = await ec.leerCompleto({ cuenta: { tipo: "bodega", id: s.zonaZ }, sortBy: "fecha", sortDir: "asc" }, maestro);
         if (completo.status !== "ok") throw new Error(`descarga: ${completo.status}`);
-        const saldos = await new SaldosSatelitesRepository(tx as unknown as PrismaClient).findSaldosCompleto();
+        const saldos = await new SaldosSatelitesRepository(tx as unknown as PrismaClient).findSaldosCompleto(ZONA_DE_CR);
         const filaZ = saldos.find((f) => f.zonaId === s.zonaZ);
         if (filaZ === undefined) throw new Error("la bodega Z no aparece en `/wallet/satelites`");
         return {

@@ -9,6 +9,17 @@ import { PAGO_POR_CUENTA_BENEFICIARIO_MAX } from "@/lib/types/pago-por-cuenta-ti
 import { listarMovimientosCompletoSchema, listarMovimientosDeFilaSchema, listarMovimientosSchema } from "@/lib/types/wallet";
 import { conceptosConMovimientosSchema, quienesDelLibroCajaSchema } from "@/lib/types/wallet-filtros";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa en el borde, sin sesion ni base: la de CR, como antes.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 // Ficha 458-E (TE.2, R59) — el selector «A quién» del libro de la caja: rol ANTES de leer, busqueda
 // sin mayusculas ni tildes, orden alfabetico, tope con `hayMas`; y el borde `.strict()` con `.uuid()`.
 // El WHERE y las opciones contra Postgres: `tests/integration/db/libro-caja-filtro-a-quien.test.ts`.
@@ -34,6 +45,7 @@ const FILAS = {
 function repo(): IFiltrosWalletRepository & { quienesDelLibroCaja: ReturnType<typeof vi.fn> } {
   return {
     contarConceptosCaja: vi.fn(),
+    categoriasConModeloNuevoCaja: vi.fn(),
     contarConceptosTienda: vi.fn(),
     cierresDeTienda: vi.fn(),
     cierresDeMensajero: vi.fn(),
@@ -71,7 +83,7 @@ describe("FiltrosWalletService.quienesDelLibroCaja (R59, R82)", () => {
   it("rol sin acceso total → forbidden SIN tocar el repositorio", async () => {
     for (const actor of [TIENDA, MENSAJERO]) {
       const r0 = repo();
-      expect(await new FiltrosWalletService(r0).quienesDelLibroCaja({}, actor)).toEqual({ status: "forbidden" });
+      expect(await new FiltrosWalletService(r0, undefined, reglasPaisFijas()).quienesDelLibroCaja({}, actor)).toEqual({ status: "forbidden" });
       expect(r0.quienesDelLibroCaja).not.toHaveBeenCalled();
     }
   });
@@ -80,7 +92,7 @@ describe("FiltrosWalletService.quienesDelLibroCaja (R59, R82)", () => {
     for (const actor of [MAESTRO, ADMIN]) {
       const r0 = repo();
       const desde = new Date("2026-09-01T06:00:00.000Z");
-      const r = await new FiltrosWalletService(r0, { quienes: 2 }).quienesDelLibroCaja({ tipo: "egreso", desde }, actor);
+      const r = await new FiltrosWalletService(r0, { quienes: 2 }, reglasPaisFijas()).quienesDelLibroCaja({ tipo: "egreso", desde }, actor);
       expect(r0.quienesDelLibroCaja).toHaveBeenCalledWith({ tipo: "egreso", desde, hasta: undefined });
       expect(r).toMatchObject({ status: "ok", hayMas: true });
     }
@@ -90,14 +102,14 @@ describe("FiltrosWalletService.quienesDelLibroCaja (R59, R82)", () => {
 describe("quienesDelLibroCajaAction — el borde", () => {
   it("sin sesion `unauthenticated` antes de validar ni leer", async () => {
     const r0 = repo();
-    const r = await quienesDelLibroCajaAction({ cuenta: "x" }, { getActor: async () => null, service: new FiltrosWalletService(r0) });
+    const r = await quienesDelLibroCajaAction({ cuenta: "x" }, { getActor: async () => null, service: new FiltrosWalletService(r0, undefined, reglasPaisFijas()) });
     expect(r).toEqual({ status: "unauthenticated" });
     expect(r0.quienesDelLibroCaja).not.toHaveBeenCalled();
   });
 
   it("una clave de mas es `validation_error` sin leer", async () => {
     const r0 = repo();
-    const r = await quienesDelLibroCajaAction({ tiendaId: UUID_A }, { getActor: async () => MAESTRO, service: new FiltrosWalletService(r0) });
+    const r = await quienesDelLibroCajaAction({ tiendaId: UUID_A }, { getActor: async () => MAESTRO, service: new FiltrosWalletService(r0, undefined, reglasPaisFijas()) });
     expect(r.status).toBe("validation_error");
     expect(r0.quienesDelLibroCaja).not.toHaveBeenCalled();
   });
@@ -127,16 +139,16 @@ describe("schemas del filtro «A quién» (design §6)", () => {
 
   it("el libro, la descarga, el detalle de fila, los conceptos de la caja y el selector son `.strict()` y aceptan `aQuien`", () => {
     const aQuien = { tipo: "tienda", id: UUID_A };
-    expect(listarMovimientosSchema.parse({ aQuien }).aQuien).toEqual(aQuien);
-    expect(listarMovimientosCompletoSchema.parse({ aQuien }).aQuien).toEqual(aQuien);
-    expect(listarMovimientosDeFilaSchema.parse({ aQuien, fila: "otros_egresos" }).aQuien).toEqual(aQuien);
-    const conceptos = conceptosConMovimientosSchema.parse({ libro: "caja", aQuien });
+    expect(listarMovimientosSchema(ZONA_CR).parse({ aQuien }).aQuien).toEqual(aQuien);
+    expect(listarMovimientosCompletoSchema(ZONA_CR).parse({ aQuien }).aQuien).toEqual(aQuien);
+    expect(listarMovimientosDeFilaSchema(ZONA_CR).parse({ aQuien, fila: "otros_egresos" }).aQuien).toEqual(aQuien);
+    const conceptos = conceptosConMovimientosSchema(ZONA_CR).parse({ libro: "caja", aQuien });
     expect(conceptos.libro === "caja" ? conceptos.aQuien : null).toEqual(aQuien);
-    expect(listarMovimientosSchema.safeParse({ quien: aQuien }).success).toBe(false);
-    expect(listarMovimientosCompletoSchema.safeParse({ quien: aQuien }).success).toBe(false);
-    expect(listarMovimientosDeFilaSchema.safeParse({ fila: "otros_egresos", quien: aQuien }).success).toBe(false);
-    expect(quienesDelLibroCajaSchema.safeParse({ aQuien }).success).toBe(false);
+    expect(listarMovimientosSchema(ZONA_CR).safeParse({ quien: aQuien }).success).toBe(false);
+    expect(listarMovimientosCompletoSchema(ZONA_CR).safeParse({ quien: aQuien }).success).toBe(false);
+    expect(listarMovimientosDeFilaSchema(ZONA_CR).safeParse({ fila: "otros_egresos", quien: aQuien }).success).toBe(false);
+    expect(quienesDelLibroCajaSchema(ZONA_CR).safeParse({ aQuien }).success).toBe(false);
     // La tienda y `mi_tienda` no admiten «A quién»: su cuenta ya es una.
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: UUID_A, aQuien }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: UUID_A, aQuien }).success).toBe(false);
   });
 });

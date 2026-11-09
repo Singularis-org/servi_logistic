@@ -66,12 +66,26 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
   });
 
   it("(a) los catalogos de `public` son EXACTAMENTE los seeds, con los valores de la 459 al final", async () => {
-    const caja = await etiquetasDeEnum(prisma, "wallet_movimiento_categoria");
-    const tienda = await etiquetasDeEnum(prisma, "wallet_tienda_movimiento_categoria");
-    const origen = await etiquetasDeEnum(prisma, "wallet_origen_tipo");
-    expect([...caja].sort()).toEqual([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort());
-    expect([...tienda].sort()).toEqual([...WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED].sort());
-    expect([...origen].sort()).toEqual([...WALLET_ORIGEN_TIPO_SEED].sort());
+    const cajaHoy = await etiquetasDeEnum(prisma, "wallet_movimiento_categoria");
+    const tiendaHoy = await etiquetasDeEnum(prisma, "wallet_tienda_movimiento_categoria");
+    const origenHoy = await etiquetasDeEnum(prisma, "wallet_origen_tipo");
+    expect([...cajaHoy].sort()).toEqual([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort());
+    expect([...tiendaHoy].sort()).toEqual([...WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED].sort());
+    expect([...origenHoy].sort()).toEqual([...WALLET_ORIGEN_TIPO_SEED].sort());
+    // SLT-94 (2026-11-08, `20261108120000_slt94_fulfillment_enums`): CUATRO valores en la caja, CUATRO en
+    // la tienda y UNO en el origen, al final de todo. Se afirman en su orden y los tramos de abajo se
+    // miden sin ellos, para no correrlos otra vez.
+    expect(cajaHoy.slice(-4)).toEqual([
+      "ingreso_fulfillment",
+      "ingreso_iva_fulfillment",
+      "egreso_reverso_fulfillment",
+      "egreso_reverso_iva_fulfillment",
+    ]);
+    expect(tiendaHoy.slice(-4)).toEqual(["fulfillment", "iva_fulfillment", "fulfillment_anulado", "iva_fulfillment_anulado"]);
+    expect(origenHoy.slice(-1)).toEqual(["orden_fulfillment"]);
+    const caja = cajaHoy.slice(0, -4);
+    const tienda = tiendaHoy.slice(0, -4);
+    const origen = origenHoy.slice(0, -1);
     // Ficha 461 (2026-09-25): sus valores van DESPUES de los de la 459 (`20260926120000`), asi que los
     // de la 459 ya no cierran la lista: se leen justo antes de los de la 461. El orden relativo —los
     // de esta ficha, contiguos y al final de lo que habia antes— es lo que se afirma.
@@ -100,9 +114,9 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     expect(origen.slice(-2, -1)).toEqual(["incentivo_mensajero"]);
     expect(origen.slice(-1)).toEqual(["conciliacion_bodega_ajuste"]);
 
-    const tipos = await etiquetasDeEnum(prisma, "historial_accion_tipo");
+    const tiposHoy = await etiquetasDeEnum(prisma, "historial_accion_tipo");
     const entidades = await etiquetasDeEnum(prisma, "historial_accion_entidad");
-    expect([...tipos].sort()).toEqual([...HISTORIAL_ACCION_TIPOS].sort());
+    expect([...tiposHoy].sort()).toEqual([...HISTORIAL_ACCION_TIPOS].sort());
     expect([...entidades].sort()).toEqual([...HISTORIAL_ACCION_ENTIDADES].sort());
     // Ficha 461: DOS tipos detras de los de la 459 (`cobro_tienda_anulado` y, con la auditoria D3,
     // `wallet_movimiento_manual_anulado`).
@@ -119,37 +133,51 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // Ajuste planes-custom D16: UN tipo mas detras de los de SLT-52 (`plan_tipo_cobro_cambiado`),
     // ninguna entidad: su migracion (20261104130100) se aplica despues de la de SLT-52. Los cortes de
     // tipos se corren una posicion mas; los de entidades no.
-    expect(tipos.slice(-26, -22)).toEqual([
+    // SLT-54: UN tipo y UNA entidad detras de todo lo anterior (20261104140000). Los cortes de abajo se
+    // miden sin ellos, para no correrlos otra vez.
+    // SLT-86: UN tipo detras de todo lo anterior (`plan_cambio_empresa_cancelado`, 20261106150000), ninguna
+    // entidad. Los cortes de tipos se miden también sin él.
+    // SLT-77: UN tipo y UNA entidad mas detras (20261107130000), medidos igual.
+    // SLT-94: UN tipo mas detras (`usuario_se_recoge_en_tienda_cambiado`, 20261108120000), ninguna
+    // entidad; se afirma y se quita antes de los cortes.
+    expect(tiposHoy.at(-1)).toBe("usuario_se_recoge_en_tienda_cambiado");
+    const tipos = tiposHoy.slice(0, -1);
+    expect(tipos.at(-1)).toBe("tope_intentos_cambiado");
+    expect(tipos.slice(-3)).toEqual(["tarifas_activadas", "plan_cambio_empresa_cancelado", "tope_intentos_cambiado"]);
+    expect(entidades.slice(-2)).toEqual(["tarifa_activacion", "organizacion"]);
+    const tiposPrevios = tipos.slice(0, -3);
+    const entidadesPrevias = entidades.slice(0, -2);
+    expect(tiposPrevios.slice(-26, -22)).toEqual([
       "pago_por_cuenta_tienda_registrado",
       "pago_por_cuenta_tienda_anulado",
       "aporte_capital_registrado",
       "aporte_capital_anulado",
     ]);
-    expect(tipos.slice(-22, -20)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
-    expect(tipos.slice(-20, -18)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
-    expect(tipos.slice(-18, -16)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
-    expect(tipos.slice(-16, -11)).toEqual([
+    expect(tiposPrevios.slice(-22, -20)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
+    expect(tiposPrevios.slice(-20, -18)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
+    expect(tiposPrevios.slice(-18, -16)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
+    expect(tiposPrevios.slice(-16, -11)).toEqual([
       "integracion_conectada",
       "integracion_actualizada",
       "integracion_probada",
       "integracion_token_regenerado",
       "integracion_desconectada",
     ]);
-    expect(tipos.slice(-11, -9)).toEqual(["modulo_activado", "modulo_desactivado"]);
-    expect(tipos.slice(-9, -8)).toEqual(["plan_asignado"]);
-    expect(tipos.slice(-8, -7)).toEqual(["cierre_dia_pago_mensajero_ajustado"]);
-    expect(tipos.slice(-7, -6)).toEqual(["zona_distrito_cambiado"]);
-    expect(tipos.slice(-6, -1)).toEqual([
+    expect(tiposPrevios.slice(-11, -9)).toEqual(["modulo_activado", "modulo_desactivado"]);
+    expect(tiposPrevios.slice(-9, -8)).toEqual(["plan_asignado"]);
+    expect(tiposPrevios.slice(-8, -7)).toEqual(["cierre_dia_pago_mensajero_ajustado"]);
+    expect(tiposPrevios.slice(-7, -6)).toEqual(["zona_distrito_cambiado"]);
+    expect(tiposPrevios.slice(-6, -1)).toEqual([
       "tarifa_valor_fijado",
       "tarifa_valor_quitado",
       "grupo_distritos_creado",
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
     ]);
-    expect(tipos.slice(-1)).toEqual(["plan_tipo_cobro_cambiado"]);
-    expect(entidades.slice(-8, -6)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-6, -2)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
-    expect(entidades.slice(-2)).toEqual(["tarifa_valor", "grupo_distritos"]);
+    expect(tiposPrevios.slice(-1)).toEqual(["plan_tipo_cobro_cambiado"]);
+    expect(entidadesPrevias.slice(-8, -6)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidadesPrevias.slice(-6, -2)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidadesPrevias.slice(-2)).toEqual(["tarifa_valor", "grupo_distritos"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

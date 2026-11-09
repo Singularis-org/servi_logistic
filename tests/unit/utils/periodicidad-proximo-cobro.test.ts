@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { aplicaHoy, proximoCobro, type PlantillaPeriodica } from "@/lib/utils/periodicidad";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 85 (R7-R12) — `proximoCobro`: la PRIMERA fecha, igual o posterior al dia calendario CR
 // del instante, en la que la plantilla cobra. Logica pura con reloj INYECTADO.
 //
@@ -42,7 +43,7 @@ describe("proximoCobro — las cuatro periodicidades del pedido (R7)", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "dias", periodicidadCantidad: 1, fechaCobro: "2026-09-01" }),
-        ahora,
+        ahora, ZONA_CR,
       ),
     ).toBe("2026-09-14");
 
@@ -54,7 +55,7 @@ describe("proximoCobro — las cuatro periodicidades del pedido (R7)", () => {
           periodicidadCantidad: 1,
           fechaCobro: "2026-09-01",
         }),
-        ahora,
+        ahora, ZONA_CR,
       ),
     ).toBe("2026-09-15");
 
@@ -66,7 +67,7 @@ describe("proximoCobro — las cuatro periodicidades del pedido (R7)", () => {
           periodicidadCantidad: 2,
           fechaCobro: "2026-09-01",
         }),
-        ahora,
+        ahora, ZONA_CR,
       ),
     ).toBe("2026-09-15");
 
@@ -78,7 +79,7 @@ describe("proximoCobro — las cuatro periodicidades del pedido (R7)", () => {
           periodicidadCantidad: 1,
           fechaCobro: "2026-09-01",
         }),
-        ahora,
+        ahora, ZONA_CR,
       ),
     ).toBe("2026-10-01");
   });
@@ -88,7 +89,7 @@ describe("proximoCobro — las cuatro periodicidades del pedido (R7)", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "dias", periodicidadCantidad: 3, fechaCobro: "2026-09-01" }),
-        ahora,
+        ahora, ZONA_CR,
       ),
     ).toBe("2026-09-16");
 
@@ -100,7 +101,7 @@ describe("proximoCobro — las cuatro periodicidades del pedido (R7)", () => {
           periodicidadCantidad: 6,
           fechaCobro: "2026-01-31",
         }),
-        mediodiaCR("2026-08-15"),
+        mediodiaCR("2026-08-15"), ZONA_CR,
       ),
     ).toBe("2027-01-31");
   });
@@ -110,7 +111,7 @@ describe("proximoCobro — antes del ancla (R8)", () => {
   it("antes del ancla el proximo cobro es el ancla", () => {
     const ahora = mediodiaCR("2026-09-14");
     for (const unidad of ["dias", "semanas", "meses"] as const) {
-      expect(proximoCobro(plantilla({ periodicidadUnidad: unidad, fechaCobro: "2026-12-01" }), ahora)).toBe(
+      expect(proximoCobro(plantilla({ periodicidadUnidad: unidad, fechaCobro: "2026-12-01" }), ahora, ZONA_CR)).toBe(
         "2026-12-01",
       );
     }
@@ -120,7 +121,7 @@ describe("proximoCobro — antes del ancla (R8)", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "dias", periodicidadCantidad: 1, fechaCobro: "2030-05-07" }),
-        mediodiaCR("2026-09-14"),
+        mediodiaCR("2026-09-14"), ZONA_CR,
       ),
     ).toBe("2030-05-07");
   });
@@ -132,7 +133,7 @@ describe("proximoCobro — hoy dispara (R9)", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "semanas", periodicidadCantidad: 2, fechaCobro: "2026-09-14" }),
-        mediodiaCR("2026-09-14"),
+        mediodiaCR("2026-09-14"), ZONA_CR,
       ),
     ).toBe("2026-09-14");
 
@@ -140,7 +141,7 @@ describe("proximoCobro — hoy dispara (R9)", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "semanas", periodicidadCantidad: 2, fechaCobro: "2026-09-01" }),
-        mediodiaCR("2026-09-29"),
+        mediodiaCR("2026-09-29"), ZONA_CR,
       ),
     ).toBe("2026-09-29");
 
@@ -148,7 +149,7 @@ describe("proximoCobro — hoy dispara (R9)", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "meses", periodicidadCantidad: 1, fechaCobro: "2026-03-01" }),
-        mediodiaCR("2026-09-01"),
+        mediodiaCR("2026-09-01"), ZONA_CR,
       ),
     ).toBe("2026-09-01");
   });
@@ -162,32 +163,32 @@ describe("proximoCobro — clamping de fin de mes (R10)", () => {
   });
 
   it("ancla 31: el proximo cobro cae 28/feb, 29/feb en bisiesto y 30/abr", () => {
-    expect(proximoCobro(ancla31, mediodiaCR("2026-02-01"))).toBe("2026-02-28");
-    expect(proximoCobro(ancla31, mediodiaCR("2026-04-01"))).toBe("2026-04-30");
+    expect(proximoCobro(ancla31, mediodiaCR("2026-02-01"), ZONA_CR)).toBe("2026-02-28");
+    expect(proximoCobro(ancla31, mediodiaCR("2026-04-01"), ZONA_CR)).toBe("2026-04-30");
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "meses", periodicidadCantidad: 1, fechaCobro: "2028-01-31" }),
-        mediodiaCR("2028-02-01"),
+        mediodiaCR("2028-02-01"), ZONA_CR,
       ),
     ).toBe("2028-02-29");
   });
 
   it("NO se saltea febrero: el dia clampeado ES el cobro, y el mes siguiente vuelve al 31", () => {
-    expect(proximoCobro(ancla31, mediodiaCR("2026-02-28"))).toBe("2026-02-28");
-    expect(proximoCobro(ancla31, mediodiaCR("2026-03-01"))).toBe("2026-03-31");
+    expect(proximoCobro(ancla31, mediodiaCR("2026-02-28"), ZONA_CR)).toBe("2026-02-28");
+    expect(proximoCobro(ancla31, mediodiaCR("2026-03-01"), ZONA_CR)).toBe("2026-03-31");
   });
 
   it("anclas 29 y 30 tambien se clampean en febrero", () => {
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "meses", periodicidadCantidad: 1, fechaCobro: "2026-01-30" }),
-        mediodiaCR("2026-02-01"),
+        mediodiaCR("2026-02-01"), ZONA_CR,
       ),
     ).toBe("2026-02-28");
     expect(
       proximoCobro(
         plantilla({ periodicidadUnidad: "meses", periodicidadCantidad: 1, fechaCobro: "2026-01-29" }),
-        mediodiaCR("2026-02-01"),
+        mediodiaCR("2026-02-01"), ZONA_CR,
       ),
     ).toBe("2026-02-28");
   });
@@ -220,15 +221,15 @@ describe("proximoCobro — barrido diferencial contra aplicaHoy (R11)", () => {
     for (const p of PLANTILLAS) {
       for (let i = 0; i < DIAS_DEL_BARRIDO; i += 1) {
         const hoy = sumarDias(INICIO, i);
-        const siguiente = proximoCobro(p, mediodiaCR(hoy));
+        const siguiente = proximoCobro(p, mediodiaCR(hoy), ZONA_CR);
 
         // 1. La fecha devuelta es POSTERIOR O IGUAL a hoy (nunca mira hacia atras).
         expect(siguiente >= hoy).toBe(true);
         // 2. Esa fecha COBRA, segun la otra implementacion de la regla.
-        expect(aplicaHoy(p, mediodiaCR(siguiente))).toBe(true);
+        expect(aplicaHoy(p, mediodiaCR(siguiente), ZONA_CR)).toBe(true);
         // 3. Y ningun dia entre hoy (incluido) y esa fecha (excluida) cobra.
         for (let d = sumarDias(hoy, 0); d < siguiente; d = sumarDias(d, 1)) {
-          expect(aplicaHoy(p, mediodiaCR(d))).toBe(false);
+          expect(aplicaHoy(p, mediodiaCR(d), ZONA_CR)).toBe(false);
         }
 
         diasEvaluados += 1;
@@ -255,29 +256,29 @@ describe("proximoCobro — reloj inyectado (R12)", () => {
     });
 
     // 06:00Z = 00:00 CR del 14; 23:00Z = 17:00 CR del 14. Mismo dia calendario CR.
-    expect(proximoCobro(p, new Date("2026-09-14T06:00:00.000Z"))).toBe("2026-09-15");
-    expect(proximoCobro(p, new Date("2026-09-14T23:00:00.000Z"))).toBe("2026-09-15");
+    expect(proximoCobro(p, new Date("2026-09-14T06:00:00.000Z"), ZONA_CR)).toBe("2026-09-15");
+    expect(proximoCobro(p, new Date("2026-09-14T23:00:00.000Z"), ZONA_CR)).toBe("2026-09-15");
 
     // La frontera del dia CR se respeta: 05:59Z del 15 son todavia las 23:59 CR del 14 (el cobro
     // esta MANANA), y 06:00Z del 15 ya son las 00:00 CR del 15 (el cobro es HOY). Misma fecha
     // devuelta, y es la correcta en los dos lados de la frontera.
-    expect(proximoCobro(p, new Date("2026-09-15T05:59:00.000Z"))).toBe("2026-09-15");
-    expect(proximoCobro(p, new Date("2026-09-15T06:00:00.000Z"))).toBe("2026-09-15");
+    expect(proximoCobro(p, new Date("2026-09-15T05:59:00.000Z"), ZONA_CR)).toBe("2026-09-15");
+    expect(proximoCobro(p, new Date("2026-09-15T06:00:00.000Z"), ZONA_CR)).toBe("2026-09-15");
     // Un minuto despues de que el cobro del 15 quede atras (00:00 CR del 16) toca el siguiente.
-    expect(proximoCobro(p, new Date("2026-09-16T06:00:00.000Z"))).toBe("2026-09-29");
+    expect(proximoCobro(p, new Date("2026-09-16T06:00:00.000Z"), ZONA_CR)).toBe("2026-09-29");
   });
 
   it("no toca ninguna dependencia externa: mismo resultado llamado dos veces", () => {
     const p = plantilla({ periodicidadUnidad: "meses", periodicidadCantidad: 1, fechaCobro: "2026-01-31" });
     const ahora = mediodiaCR("2026-02-15");
-    expect(proximoCobro(p, ahora)).toBe("2026-02-28");
-    expect(proximoCobro(p, ahora)).toBe("2026-02-28");
+    expect(proximoCobro(p, ahora, ZONA_CR)).toBe("2026-02-28");
+    expect(proximoCobro(p, ahora, ZONA_CR)).toBe("2026-02-28");
   });
 });
 
 describe("proximoCobro — cantidad invalida (defensa del CHECK >= 1)", () => {
   it("falla fuerte y con contexto en vez de emitir una fecha invalida", () => {
     const p = plantilla({ periodicidadUnidad: "dias", periodicidadCantidad: 0, fechaCobro: "2026-01-01" });
-    expect(() => proximoCobro(p, mediodiaCR("2026-09-14"))).toThrow(/periodicidadCantidad invalida/);
+    expect(() => proximoCobro(p, mediodiaCR("2026-09-14"), ZONA_CR)).toThrow(/periodicidadCantidad invalida/);
   });
 });

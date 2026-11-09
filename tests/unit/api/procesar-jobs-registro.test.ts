@@ -4,6 +4,7 @@ import { JobQueueService } from "@/lib/services/JobQueueService";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { JobTipo } from "@prisma/client";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R21) — el tipo `optimizacion_ruta` esta enganchado al drenador y NO es
 // recurrente: se encola por EVENTO (recogida con debounce, gestion inmediata), nunca por
@@ -48,6 +49,7 @@ describe("R21 — registro en el drenador", () => {
       // SL-24 (design §16.3): aplicar un cambio programado (PUNTUAL) y el barrido horario de los
       // vencidos (RECURRENTE).
       "plan_aplicar_cambio",
+      "plan_aplicar_cambio_empresa", // SLT-86 (design §5.2): aplica un cambio de empresa con fecha (PUNTUAL)
       // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
       // el recordatorio que los reparte.
       "plan_aviso_correo",
@@ -104,10 +106,10 @@ describe("R21 — registro en el drenador", () => {
 
     const spec = buildRecurrencias().get("analitica_rollup_diario");
     expect(spec).toBeDefined();
-    const { runAfter, dedupeKey } = spec!.siguiente(new Date("2026-08-02T06:30:00.000Z"));
+    const { runAfter, dedupeKey } = spec!.siguiente(new Date("2026-08-02T06:30:00.000Z"), [ZONA_DE_CR]);
     expect(runAfter.toISOString()).toBe("2026-08-03T06:30:00.000Z");
     // La clave es la fecha OBJETIVO (el dia que esa corrida agregara), no la de la corrida.
-    expect(dedupeKey).toBe("analitica_rollup_diario:2026-08-02");
+    expect(dedupeKey).toBe("analitica_rollup_diario:America/Costa_Rica:2026-08-02"); // SLT-42: con la zona
   });
 
   it("construir los handlers NO lanza: ninguna credencial se lee al registrar", () => {

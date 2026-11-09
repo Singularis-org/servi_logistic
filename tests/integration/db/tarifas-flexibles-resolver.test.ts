@@ -13,7 +13,7 @@ import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMens
 import { CONCEPTOS_TIENDA } from "@/lib/tarifas/catalogo";
 import type { ContextoPagoGestion, TarifaPago, TarifaTienda } from "@/lib/types/tarifa-flexible";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -33,7 +33,7 @@ import {
 // otra empresa; luego quita niveles y afirma que gana el siguiente.
 //
 // TODO DENTRO DE UNA TRANSACCION QUE SIEMPRE SE REVIERTE: ningun `tarifa_valor` sembrado aqui llega
-// a verlo otro test (un valor commiteado pasaria a cualquier empresa al modelo nuevo). El resolver
+// a verlo otro test (un valor commiteado se quedaria en la base de todos). El resolver
 // se ejecuta con el rol `servi_app` y la empresa A fijada (`comoApp`): la RLS es la que filtra por
 // empresa, como en produccion. Las siembras y los borrados van como dueno.
 //
@@ -172,6 +172,10 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   const V1 = (await tx.vehiculo.create({ data: { name: `slt52-v1-${sufijo}` }, select: { id: true } })).id;
   const V2 = (await tx.vehiculo.create({ data: { name: `slt52-v2-${sufijo}` }, select: { id: true } })).id;
 
+  // Las dos empresas estan activadas: este archivo prueba la eleccion dentro del modelo nuevo.
+  await sembrarActivacion(tx, A);
+  await sembrarActivacion(tx, B);
+
   const v: Record<string, string> = {};
   const s = async (etiqueta: string, d: ValorSembrado) => {
     v[etiqueta] = await sembrarValor(tx, d);
@@ -193,8 +197,9 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   await s("cOtraTiendaGrupo", { concepto: FE, valor: "9007.00", tiendaId: T2, zonaId: Z, grupoId: G1 });
   // R23: un cero escrito (reprogramado) frente a un concepto sin fila (novedad).
   await s("cCero", { concepto: "tienda_flete_reprogramado", valor: "0.00", zonaId: Z });
-  // R16: otro concepto que solo tiene valor de zona (la eleccion es por concepto).
-  await s("cFulfillment", { concepto: "tienda_fulfillment", valor: "450.25", zonaId: Z });
+  // R16: otro concepto con un solo nivel (la eleccion es por concepto). SLT-94 (R10/R12): el
+  // fulfillment solo existe como precio propio de la tienda, asi que ese es su unico nivel.
+  await s("cFulfillment", { concepto: "tienda_fulfillment", valor: "450.25", tiendaId: T });
   // R28: flete por rechazo en porcentaje del pedido, base del pago por rechazo.
   await s("cRechazo", { concepto: "tienda_flete_rechazo", modo: "porcentaje", valor: "2.50", zonaId: Z });
 
@@ -305,6 +310,69 @@ function conEscenario(fn: (tx: TxDeTest, e: Escenario) => Promise<void>) {
 }
 
 // --------------------------------------------------------------------------------------------
+// SLT-94 (R14, T3.2) — un fulfillment guardado ANTES del despliegue en zona, grupo, tienda en una
+// zona o grupo, o en porcentaje, queda inerte: no se resuelve y no se borra. El CHECK de R12
+// (`tarifa_valor_fulfillment_solo_tienda_monto`) ya no deja insertarlas, asi que el caso lo SUELTA
+// dentro de su transaccion revertida, siembra las filas viejas y lo repone `NOT VALID` (como en la
+// migracion): nada sale de la transaccion.
+// --------------------------------------------------------------------------------------------
+
+const CHECK_R12 = "tarifa_valor_fulfillment_solo_tienda_monto";
+
+async function conFilasAnterioresAlDespliegue(tx: TxDeTest, fn: () => Promise<void>): Promise<void> {
+  await tx.$executeRawUnsafe(`ALTER TABLE "tarifa_valor" DROP CONSTRAINT "${CHECK_R12}"`);
+  await fn();
+  await tx.$executeRawUnsafe(
+    `ALTER TABLE "tarifa_valor" ADD CONSTRAINT "${CHECK_R12}" CHECK ("concepto" <> 'tienda_fulfillment' OR ("tienda_id" IS NOT NULL AND "zona_id" IS NULL AND "grupo_id" IS NULL AND "modo" = 'monto')) NOT VALID`,
+  );
+}
+
+describeSiHayBase("SLT-94 resolver · el fulfillment de otro nivel o en % no se resuelve (R14)", () => {
+  it("SLT-94 R14: con filas de zona, grupo, tienda en zona y tienda en grupo, gana el precio propio (rango 3), no las de rango 1 y 2", async () => {
+    await conEscenario(async (tx, e) => {
+      const FUL: TarifaConcepto = "tienda_fulfillment";
+      await conFilasAnterioresAlDespliegue(tx, async () => {
+        await sembrarValor(tx, { concepto: FUL, valor: "7001.00", zonaId: e.Z });
+        await sembrarValor(tx, { concepto: FUL, valor: "7002.00", zonaId: e.Z, grupoId: e.G1 });
+        await sembrarValor(tx, { concepto: FUL, valor: "7003.00", tiendaId: e.T, zonaId: e.Z });
+        await sembrarValor(tx, { concepto: FUL, valor: "7004.00", tiendaId: e.T, zonaId: e.Z, grupoId: e.G1 });
+      });
+      const valores = await cobroDe(tx, e, { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 });
+      expect(valores.tienda_fulfillment).toEqual({
+        concepto: "tienda_fulfillment",
+        modo: "monto",
+        valor: "450.25",
+        ivaPct: "13.00",
+        nivel: "tienda_general",
+        tarifaValorId: e.v.cFulfillment,
+      });
+      // No se borra nada: las cuatro filas inertes siguen ahi, junto a la valida.
+      expect(await tx.tarifaValor.count({ where: { organizacionId: e.A, concepto: FUL } })).toBe(5);
+    });
+  });
+
+  it("SLT-94 R14: sin precio propio en monto (solo uno en % y filas de zona y grupo) el fulfillment queda AUSENTE", async () => {
+    await conEscenario(async (tx, e) => {
+      const FUL: TarifaConcepto = "tienda_fulfillment";
+      await borrar(tx, [e.v.cFulfillment!]);
+      await conFilasAnterioresAlDespliegue(tx, async () => {
+        await sembrarValor(tx, { concepto: FUL, modo: "porcentaje", valor: "5.00", tiendaId: e.T });
+        await sembrarValor(tx, { concepto: FUL, valor: "7001.00", zonaId: e.Z });
+        await sembrarValor(tx, { concepto: FUL, valor: "7002.00", zonaId: e.Z, grupoId: e.G1 });
+      });
+      const valores = await cobroDe(tx, e, { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 });
+      expect(valores.tienda_fulfillment).toBeUndefined();
+      // Control positivo del mismo par: el flete sigue resolviendo (el par no se quedo sin tarifa).
+      expect(valores.tienda_flete_entregado?.valor).toBe("1001.00");
+      // Otra tienda de la zona (T2): tampoco toma la fila de zona.
+      const t2 = await cobroDe(tx, e, { tiendaId: e.T2, zonaId: e.Z, distritoId: e.d1 });
+      expect(t2.tienda_fulfillment).toBeUndefined();
+      expect(await tx.tarifaValor.count({ where: { organizacionId: e.A, concepto: FUL } })).toBe(3);
+    });
+  });
+});
+
+// --------------------------------------------------------------------------------------------
 // Cobro a la tienda (R16, R17, R18, R23)
 // --------------------------------------------------------------------------------------------
 
@@ -379,7 +447,7 @@ describeSiHayBase("SLT-52 resolver · cobro a la tienda en Postgres (R16-R18, R2
     });
   });
 
-  it("R16: la eleccion es por concepto (fulfillment solo tiene zona y la toma; el flete, su tienda+grupo)", async () => {
+  it("R16: la eleccion es por concepto (fulfillment solo tiene el precio propio y lo toma; el flete, su tienda+grupo)", async () => {
     await conEscenario(async (tx, e) => {
       const valores = await cobroDe(tx, e, { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 });
       expect(valores.tienda_flete_entregado?.valor).toBe("1001.00");
@@ -388,7 +456,7 @@ describeSiHayBase("SLT-52 resolver · cobro a la tienda en Postgres (R16-R18, R2
         modo: "monto",
         valor: "450.25",
         ivaPct: "13.00",
-        nivel: "zona",
+        nivel: "tienda_general",
         tarifaValorId: e.v.cFulfillment,
       });
     });
@@ -458,6 +526,16 @@ describeSiHayBase("SLT-52 resolver · pago al mensajero y a la satelite en Postg
       const pago = await pagoDe(tx, e, ctxPago(e));
       expect(pago.mensajero).toBeNull();
       expect(pago.satelite?.valor).toBe("601.00");
+    });
+  });
+
+  it("SLT-54 R53: vehículo inactivo sigue pagando el valor que tiene guardado", async () => {
+    await conEscenario(async (tx, e) => {
+      await tx.vehiculo.update({ where: { id: e.V1 }, data: { activo: false } });
+      await borrar(tx, [e.v.p1!]);
+      const pago = await pagoDe(tx, e, ctxPago(e));
+      expect(pago.mensajero?.valor).toBe("502.00");
+      expect(pago.mensajero?.nivel).toBe("grupo_vehiculo");
     });
   });
 
@@ -726,6 +804,70 @@ describeSiHayBase("SLT-52 resolver · numero fijo de consultas por lote (R39)", 
       );
       expect(uno).toBe(3);
       expect(cincuenta).toBe(3);
+    });
+  });
+});
+
+describeSiHayBase("SLT-54 R2 · la activacion decide, no los valores", () => {
+  /** Una empresa con modelo viejo completo, activada y SIN un solo valor. */
+  async function activadaSinValores(tx: TxDeTest) {
+    await serializarEscriturasReales(tx);
+    const org = (await crearOrganizacion(tx)).id;
+    await fijarEmpresa(tx, org);
+    const fks = await crearFksDeOrden(tx);
+    const M = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+    await tx.tarifa.create({
+      data: {
+        tiendaId: fks.tiendaId,
+        zonaId: fks.zonaId,
+        valorFlete: "7777.77",
+        valorFleteDevuelto: "6666.66",
+        valorFleteGam: "5555.55",
+        valorFleteDevueltoGam: "4444.44",
+        comisionCod: "9.00",
+        ivaFlete: "13.00",
+        ivaComisionCod: "13.00",
+        fulfillment: "999.99",
+      },
+    });
+    await tx.tarifaZonaMensajero.create({
+      data: { zonaId: fks.zonaId, vehiculoId: null, cobroEntregado: "8888.88", cobroRechazado: "3333.33" },
+    });
+    await sembrarActivacion(tx, org);
+    expect(await tx.tarifaValor.count({ where: { organizacionId: org } })).toBe(0);
+    expect(await tx.tarifa.count({ where: { organizacionId: org } })).toBe(1);
+    expect(await tx.tarifaZonaMensajero.count({ where: { organizacionId: org } })).toBe(1);
+    return { org, fks, M };
+  }
+
+  it("activada sin valores: sin tarifa y sin leer el viejo", async () => {
+    await enTransaccionRevertida(base, async (tx) => {
+      const { org, fks, M } = await activadaSinValores(tx);
+      const par: ParTarifa = { tiendaId: fks.tiendaId, zonaId: fks.zonaId, distritoId: null };
+      const pago: ContextoPagoGestion = {
+        gestionId: "g-1",
+        resultado: "entregado",
+        mensajeroId: M,
+        zonaId: fks.zonaId,
+        vehiculoId: null,
+        distritoId: null,
+        tiendaId: fks.tiendaId,
+        zonaOrdenId: fks.zonaId,
+        montoCobrar: "10000.00",
+        cobraComision: true,
+      };
+      const antes = eventos.length;
+      const { cobros, pagos } = await comoEmpresa(tx, org, async () => ({
+        cobros: await resolverCobrosCon(tx, [par]),
+        pagos: await resolverPagosCon(tx, [pago]),
+      }));
+      const sql = eventos.slice(antes).map((ev) => ev.query);
+
+      // Ni 7777.77 ni 8888.88: el viejo existe y no se lee. Sin valores, cada concepto es «sin tarifa».
+      expect(cobros.get(clavePar(par))).toEqual({ modelo: "nuevo", valores: {} });
+      expect(pagos.get("g-1")).toEqual({ modelo: "nuevo", mensajero: null, satelite: null, baseFlete: "0.00" });
+      expect(sql.some((q) => /"tarifa_activacion"/.test(q))).toBe(true);
+      expect(sql.filter((q) => /"tarifas"|"tarifa_zona_mensajero"/.test(q))).toEqual([]);
     });
   });
 });

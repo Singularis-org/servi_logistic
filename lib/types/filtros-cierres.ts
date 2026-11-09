@@ -23,7 +23,11 @@
 import { z } from "zod";
 
 import type { CierreEstado } from "@/lib/types/cierre";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import {
+  esFechaCalendarioValida,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+} from "@/lib/utils/calendario-zona";
 
 /** Tope de ids por lista. Un filtro es un recorte, no un canal para mandar un dataset. */
 export const MAX_IDS_POR_FILTRO = 200;
@@ -272,3 +276,65 @@ export const CATALOGO_FILTROS_CIERRES_VACIO: CatalogoFiltrosCierresDTO = {
   mensajeros: [],
   mensajerosFiltro: [],
 };
+
+// ─── SLT-42 (design §4.3; R22, R23) — LOS FILTROS TAL COMO LOS RECIBE EL REPOSITORIO ──────────────
+//
+// `desde`/`hasta` son fechas del calendario del pais de la empresa. El repositorio no conoce la
+// zona: el SERVICIO las convierte, con la zona que lee de `IReglasPaisEmpresa`, en los dos instantes
+// que el `WHERE` compara con `solicitado_at` (un `timestamp`). El limite superior es EXCLUSIVO (las
+// 00:00 del dia siguiente a `hasta`): con `lte` se perderian los solicitados durante el ultimo dia.
+// No es `desde + 24 h`: el dia de un cambio de hora dura 23 o 25 h (R23).
+
+/** Lo que tienen en comun los filtros con rango de fechas de este modulo. */
+export interface RangoDeFechasCierres {
+  desde?: string;
+  hasta?: string;
+}
+
+/** Los limites del rango ya resueltos en la zona de la empresa. */
+export interface LimitesSolicitud {
+  /** INCLUSIVO: las 00:00 locales de `desde`. */
+  solicitadoDesde?: Date;
+  /** EXCLUSIVO: las 00:00 locales del dia siguiente a `hasta`. */
+  solicitadoHasta?: Date;
+}
+
+/**
+ * Un filtro de este modulo con `desde`/`hasta` sustituidos por sus limites ya resueltos. Las dos
+ * claves viejas quedan PROHIBIDAS (`never`): sin eso, un filtro sin resolver pasaria el typecheck
+ * por tipado estructural y el repositorio ignoraria el rango en silencio.
+ */
+export type FiltrosEnRepositorio<F extends RangoDeFechasCierres> = Omit<F, "desde" | "hasta"> &
+  LimitesSolicitud & { desde?: never; hasta?: never };
+
+/** `true` si el filtro trae `desde` o `hasta` (y por tanto hace falta la zona para resolverlo). */
+export function tieneRangoDeFechas(filtros: RangoDeFechasCierres | undefined): boolean {
+  return filtros !== undefined && (filtros.desde !== undefined || filtros.hasta !== undefined);
+}
+
+/**
+ * Convierte `desde`/`hasta` en `solicitadoDesde`/`solicitadoHasta` con la `zona` del pais de la
+ * empresa. Las claves ausentes siguen ausentes (no viajan como `undefined`), y el resto del filtro
+ * pasa tal cual. `zona` puede ser `null` solo si el filtro no trae rango: con rango y sin zona, lanza.
+ */
+export function filtrosConLimites<F extends RangoDeFechasCierres>(
+  filtros: F,
+  zona: string | null,
+): FiltrosEnRepositorio<F> {
+  const { desde, hasta, ...resto } = filtros;
+  if ((desde !== undefined || hasta !== undefined) && zona === null) {
+    throw new Error("filtrosConLimites: un rango de fechas exige la zona del pais de la empresa (SLT-42)");
+  }
+  return {
+    ...resto,
+    ...(desde !== undefined ? { solicitadoDesde: inicioDelDiaEnUtc(desde, zona as string) } : {}),
+    ...(hasta !== undefined ? { solicitadoHasta: inicioDelDiaSiguienteEnUtc(hasta, zona as string) } : {}),
+  };
+}
+
+/** `FiltrosCierres` tal como los recibe el repositorio (SLT-42). */
+export type FiltrosCierresRepo = FiltrosEnRepositorio<FiltrosCierres>;
+/** `FiltrosCierresBodega` tal como los recibe el repositorio (SLT-42). */
+export type FiltrosCierresBodegaRepo = FiltrosEnRepositorio<FiltrosCierresBodega>;
+/** `FiltrosDescargaGestiones` tal como los recibe el repositorio (SLT-42). */
+export type FiltrosDescargaGestionesRepo = FiltrosEnRepositorio<FiltrosDescargaGestiones>;

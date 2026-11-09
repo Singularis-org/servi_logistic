@@ -20,7 +20,7 @@ import { MI_ESTADO_CUENTA_TEXTO, textoAnuladoMiWallet } from "./mi-estado-cuenta
 import { opcionesDeCierre, type CierresDeLaTienda } from "./mi-wallet-cierres";
 // Ficha 461 (R44, P4): la tienda lee su libro DESDE LA TIENDA («la empresa te cobró»), no con el nombre
 // desde la empresa que ve la oficina en `/wallet/tiendas`.
-import { CATEGORIA_MI_WALLET_LABEL, ORIGEN_TIENDA_LABEL } from "./mi-wallet-labels";
+import { ORIGEN_TIENDA_LABEL, conceptoDeFilaMiWallet } from "./mi-wallet-labels";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 
 // FICHA 458-D (T D.5, design §5; R34–R36, R78, R19) — `/mi-wallet` como ESTADO DE CUENTA de la propia
@@ -52,7 +52,7 @@ function categoria(f: FilaEstadoCuentaDTO): WalletTiendaMovimientoCategoria {
 }
 
 export const ROTULOS_MI_WALLET: RotulosEstadoCuenta = {
-  concepto: (f) => CATEGORIA_MI_WALLET_LABEL[categoria(f)] ?? f.categoria,
+  concepto: conceptoDeFilaMiWallet,
   origen: (f) => ORIGEN_TIENDA_LABEL[f.origenTipo as WalletOrigenTipo] ?? null,
   // R25 (decisión del leader, revisión m3): «Anulado por la empresa», día y hora de Costa Rica y motivo.
   anulado: textoAnuladoMiWallet,

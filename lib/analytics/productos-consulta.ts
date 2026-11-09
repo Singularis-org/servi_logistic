@@ -224,6 +224,8 @@ export type PreparacionConsultaProductos =
 export function prepararConsultaProductos(
   raw: unknown,
   actor: ActorAnalitica | null,
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, con la que se resuelve el rango. */
+  zona: string,
   now?: Date,
 ): PreparacionConsultaProductos {
   const parseado = parseFiltroConteoEntregas(raw);
@@ -232,7 +234,7 @@ export function prepararConsultaProductos(
   }
 
   const entrada = entradaDeRango(parseado.filtro);
-  const rango = entrada === null ? null : resolverRango(entrada, now);
+  const rango = entrada === null ? null : resolverRango(entrada, zona, now);
 
   const resolucion = resolverAlcanceProductos(actor);
   if (resolucion.estado === "denegado") return { status: "forbidden", motivo: resolucion.motivo };

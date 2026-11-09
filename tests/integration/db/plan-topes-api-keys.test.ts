@@ -81,7 +81,7 @@ function topeDe(error: unknown): TopeDelPlanAlcanzado {
 }
 
 async function conPlan(tx: TxDeTest, org: string, apiKeys: number | null): Promise<void> {
-  const plan = await crearPlan(tx, { apiKeys, ordenes: 1000 });
+  const plan = await crearPlan(tx, { apiKeys });
   await asignarPlan(tx, org, plan);
   expect(await triggerActivo(tx, "plan_tope_api_key_alta", "api_key")).toBe(true);
   expect(await triggerActivo(tx, "plan_tope_api_key_cambio", "api_key")).toBe(true);

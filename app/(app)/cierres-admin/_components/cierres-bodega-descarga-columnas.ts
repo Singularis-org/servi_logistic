@@ -38,6 +38,7 @@ import {
   estadoConciliacionDe,
 } from "./cierre-labels";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * ⭑ FICHA 431 (T17, R28) — EL ESTADO DE UNA CONSOLIDACION EN UN ARCHIVO.
  *
@@ -141,7 +142,8 @@ export function filaDescargaBodegaPendiente(cierre: CierreBodegaResumen): Descar
   return {
     zona: cierre.zonaNombre,
     solicito: cierre.solicitadoPorNombre,
-    fecha: fechaDiaInstanteCR(cierre.solicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fecha: fechaDiaInstanteCR(cierre.solicitadoAt, ZONA_CR),
     cierresDelDia: cierre.cantidadCierres,
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,
@@ -174,7 +176,8 @@ export function filaDescargaBodegaResuelto(cierre: CierreBodegaResumen): Descarg
     estado: estadoDeConciliacion(cierre), // ⭑ ficha 431/R28: el vocabulario de la conciliación
     zona: cierre.zonaNombre,
     solicito: cierre.solicitadoPorNombre,
-    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaInstanteCR(cierre.resueltoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaInstanteCR(cierre.resueltoAt, ZONA_CR),
     general: cierre.totales.general,
     pagoMensajero: cierre.totalPagoMensajero,
     ingresoBodega: cierre.totalIngresoBodegaRechazos,
@@ -236,7 +239,8 @@ export const COLUMNAS_DESCARGA_BODEGA_SOLICITADOS: DescargaColumna[] = [
 export function filaDescargaBodegaSolicitado(cierre: CierreBodegaResumen): DescargaFila {
   return {
     estado: estadoDeConciliacion(cierre), // ⭑ ficha 431/R28
-    fechaSolicitud: fechaDiaInstanteCR(cierre.solicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fechaSolicitud: fechaDiaInstanteCR(cierre.solicitadoAt, ZONA_CR),
     cierresDelDia: cierre.cantidadCierres,
     general: cierre.totales.general,
     pagoMensajero: cierre.totalPagoMensajero,

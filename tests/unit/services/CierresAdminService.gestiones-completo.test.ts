@@ -11,7 +11,10 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestiones, FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -107,14 +110,16 @@ function dto(g: GestionAlmacen): CierreGestionDescargaDTO {
  */
 function fakeRepo(almacen: GestionAlmacen[] = ALMACEN) {
   const findGestionesPorAlcanceCompleto = vi.fn(
-    async (alcance: Alcance, filtros: FiltrosDescargaGestiones) => {
+    async (alcance: Alcance, filtros: FiltrosDescargaGestionesRepo) => {
+      // SLT-42: los limites llegan ya resueltos en la zona de la empresa (CR en este doble).
+      const instante = (dia: string) => inicioDelDiaEnUtc(dia, ZONA_CR).getTime();
       const elegidos = new Set(filtros.mensajeroIds);
       return almacen
         .filter((g) => g.destinoTipo === alcance.destinoTipo)
         .filter((g) => alcance.destinoZonaId === null || g.destinoZonaId === alcance.destinoZonaId)
         .filter((g) => elegidos.has(g.mensajeroId))
-        .filter((g) => filtros.desde === undefined || g.dia >= filtros.desde)
-        .filter((g) => filtros.hasta === undefined || g.dia <= filtros.hasta)
+        .filter((g) => filtros.solicitadoDesde === undefined || instante(g.dia) >= filtros.solicitadoDesde.getTime())
+        .filter((g) => filtros.solicitadoHasta === undefined || instante(g.dia) < filtros.solicitadoHasta.getTime())
         .map(dto);
     },
   );
@@ -152,6 +157,11 @@ function newService(repo: ReturnType<typeof fakeRepo>) {
     // Feature 293 (T2.3): lectura de premios; este caso no los ejercita.
     { sumarPremiosVivosPorCierre: vi.fn(async () => ({})) },
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, createSignedUrls };
 }

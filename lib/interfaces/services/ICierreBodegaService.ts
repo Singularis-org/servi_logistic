@@ -90,6 +90,12 @@ export interface CierreBodegaResumen {
   conciliadoPorNombre: string | null;
   /** Nota de quien marco. Se ENSENA (distingue el backfill retroactivo) y NO se descarga. */
   conciliadoNota: string | null;
+  /**
+   * D40 — ¿algun `cierre_dia` de esta consolidacion tiene una gestion congelada con el modelo nuevo? Sale
+   * de `cierre_detail.tarifa_modelo`, no del interruptor actual de la empresa. Lo puebla el repositorio;
+   * opcional en el tipo (aditivo). Ausente se lee como modelo viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 }
 
 // Cabecera de un `cierre_dia` consolidable (aprobado, sin cierre de bodega): mensajero
@@ -101,6 +107,12 @@ export interface CierreBodegaResumenLite {
   totales: CierreTotales; // snapshot del cierre_dia (money-safe)
   totalPagoMensajero: string; // feature 39/R18: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
+  /**
+   * SLT-54 (R71) — ¿este cierre_dia tiene alguna gestion congelada con el modelo nuevo? Sale de
+   * `cierre_detail.tarifa_modelo`, no del interruptor actual de la empresa. Lo puebla el repositorio;
+   * opcional en el tipo (aditivo). Ausente se lee como modelo viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 }
 
 // Un cierre_dia incluido, con su detalle de gestiones (reuso 37) + su total snapshot.
@@ -213,6 +225,7 @@ export type ListarConsolidacionServiceResult =
       totalesAgregados: CierreTotales; // suma de los consolidables (R10)
       totalPagoMensajeroAgregado: string; // feature 39/R18: suma snapshot del pago a mensajeros (STRING)
       totalIngresoBodegaRechazosAgregado: string; // feature 56/R17: suma snapshot del ingreso de bodega por rechazos (STRING)
+      incluyeModeloNuevoAgregado: boolean; // SLT-54 (R71): alguno de los consolidables incluye el modelo nuevo; un conjunto mixto cuenta
       totalNetoAgregado: string; // DERIVADO: totalesAgregados.general - lo EFECTIVAMENTE pagado a mensajeros (STRING)
       totalCentralDebeAgregado: string; // DERIVADO: pago a mensajeros que el efectivo NO alcanzo a cubrir (STRING; "0.00" si alcanzo)
       puedesSolicitar: boolean; // R6/R7

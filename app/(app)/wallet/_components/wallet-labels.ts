@@ -46,7 +46,7 @@ export const TIPO_LABEL: Record<WalletMovimientoTipo, string> = {
   egreso: "Sale",
 };
 
-export { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
+export { CATEGORIA_LABEL, conceptoDeMovimientoCaja } from "@/lib/constants/wallet-rotulos";
 
 // ── SL-39 (design §5) — el nombre del impuesto, en UN solo sitio ──
 //
@@ -56,6 +56,7 @@ export { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
 // se importa aqui para componer los rotulos y se re-exporta para los consumidores de siempre. Los
 // rotulos de cada categoria del libro (`CATEGORIA_LABEL`) no son de esta ficha.
 import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 export { IMPUESTO_ROTULO };
 
 // ── Feature 173 (T G.1/T G.2, design §8) — las DOS cifras de la caja ──
@@ -113,7 +114,7 @@ export const CAJA_RESUMEN_LABEL = {
   capitalPista: `Dinero de ${EMPRESA.enFrase} que no es ganancia.`,
   /** SL-39 (R6, design §7.1) — el IVA cobrado, region propia del bolsillo de la empresa. */
   iva: `${IMPUESTO_ROTULO} cobrado`,
-  ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.`,
+  ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.`,
   /**
    * SL-40 (R21, design §9.2) — la deuda con la plataforma. «la plataforma» va en minúscula: nombra
    * al sistema, no a una marca, y la empresa sale del módulo de marca como en el resto.
@@ -707,6 +708,7 @@ export const PROXIMO_COBRO_INACTIVA = "No se cobra";
  */
 export function proximoCobroTexto(plantilla: GastoFijoPlantillaDTO, ahora: Date): string {
   if (!plantilla.activa) return PROXIMO_COBRO_INACTIVA;
-  const fecha = proximoCobro(plantilla, ahora);
+  // SLT-81: la UI sigue en la zona de CR
+  const fecha = proximoCobro(plantilla, ahora, ZONA_CR);
   return `${fechaLegible(fecha)} de ${fecha.slice(0, 4)}`;
 }

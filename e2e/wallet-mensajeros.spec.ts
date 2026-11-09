@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { crearEscenarioCaja, importe, type CajaE2E } from "./_escenarios/caja";
-import { navegarCon } from "./_escenarios/pulsar";
+import { desplegar, navegarCon } from "./_escenarios/pulsar";
 import { paginaDe } from "./_escenarios/reparto";
 
 /**
@@ -78,7 +78,8 @@ test.describe.serial("Cuentas por pagar a mensajeros — cuenta, desglose y bloq
     await expect(devengo).toContainText(importe(3000));
     await expect(pago).toContainText(importe(1000));
 
-    await page.getByRole("button", { name: /^Ver las órdenes que componen «Pago devengado»/ }).click();
+    // D42. Este botón alterna: un segundo clic plegaría el panel.
+    await desplegar(page.getByRole("button", { name: /^Ver las órdenes que componen «Pago devengado»/ }));
     await expect(page.getByText(c.conCod.destinatario)).toBeVisible();
     await expect(page.getByText(c.sinCod.destinatario)).toBeVisible();
   });

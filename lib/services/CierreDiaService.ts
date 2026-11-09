@@ -44,10 +44,13 @@ import {
 // version de la misma regla.
 import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 // Feature 261 (B6, R19): el dia de reparto que escribe el DESHACER se resuelve AQUI, en el
-// servicio, a partir del `now` inyectable — ya no dentro del repositorio. `startOfDayCR` es el
-// helper de la convencion `@db.Date` de `fecha_reparto`; `inicioDelDiaCREnUtc` es la de las
-// columnas `timestamp` y aqui desplazaria el dia seis horas (ficha 166).
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+// servicio, a partir del `now` inyectable — ya no dentro del repositorio. `inicioDelDiaComoFecha`
+// es el helper de la convencion `@db.Date` de `fecha_reparto`; `inicioDelDiaEnUtc` es la de las
+// columnas `timestamp` y aqui desplazaria el dia (ficha 166). SLT-42: con la zona del pais de la
+// empresa, leida una vez por operacion.
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { rutasAFirmar, urlsEvidenciaFirmadas } from "@/lib/utils/evidencias-gestion";
 
 // Solo el rol autorizado en el modulo (R1/R2): el mensajero, SIEMPRE acotado a su
@@ -206,7 +209,14 @@ export class CierreDiaService implements ICierreDiaService {
      * inyectar no puede escribir en la base, que en este repo es compartida.
      */
     private readonly notificarBloqueo: MensajeroBloqueadoNotificador = notificadorNoOp,
+    /** SLT-42 (R22): la zona del pais de la empresa; el dia en curso se calcula en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez por operacion. */
+  private zona(operacion: string): Promise<string> {
+    return zonaDeLaEmpresa(this.reglasPais, `CierreDiaService.${operacion}`);
+  }
 
   /**
    * Feature 146/R24 -> FEATURE 271 (T6.8, R56) — punto UNICO de emision del aviso «cierre por
@@ -246,11 +256,15 @@ export class CierreDiaService implements ICierreDiaService {
    * `notificacion_dedupe_key` no colisiona y el segundo bloqueo SI avisa (R44). Elegir mal la
    * entidad convierte «avisar dos veces» en un silencio estructural — la leccion de la 262.
    */
-  private async avisarBloqueoPorAcumular(cierreId: string, mensajeroId: string): Promise<void> {
+  private async avisarBloqueoPorAcumular(
+    cierreId: string,
+    mensajeroId: string,
+    zona: string,
+  ): Promise<void> {
     await emitirBestEffort("mensajero_bloqueado_por_cierres", async () => {
       // El detalle se relee DESPUES de la escritura: el N que interesa es el de ahora, con el
       // cierre nuevo ya dentro. Calcularlo antes diria uno menos.
-      const bloqueo = await this.ordenRepo.findBloqueoDetalle(mensajeroId);
+      const bloqueo = await this.ordenRepo.findBloqueoDetalle(mensajeroId, zona);
       if (!bloqueo.bloqueado) return; // no quedo bloqueado: no hay nada que avisar (R40)
       const info = await this.repo.findCierreParaAviso?.(cierreId);
       if (!info) return;
@@ -292,19 +306,17 @@ export class CierreDiaService implements ICierreDiaService {
   ): Promise<ListarCierreDiaServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R1/R2
 
+    const zona = await this.zona("listarCierreDia");
+    const hoy = inicioDelDiaComoFecha(now, zona);
     // R2/R3/R10/R18: SOLO lectura (R17). Filtrado por el actor en el repo. SLT-52 (T5.1): el pago
     // EN VIVO (39/R10/R11) se resuelve POR GESTION, asi que espera a tener las gestiones.
     const [gestiones, pendientes, cierresPasados] = await Promise.all([
-      this.repo.findGestionesPendientes(actor.usuarioId),
+      this.repo.findGestionesPendientes(actor.usuarioId, zona),
       // Feature 246: el conteo excluye lo reservado para DESPUES de hoy (ver el repo). El dia se
       // resuelve AQUI, desde el `now` inyectable, y baja como parametro: ningun repositorio lee el
       // reloj para decidir un dia de reparto. La LECTURA y la ESCRITURA (`solicitarCierre`) tienen
       // que usar el MISMO ancla, o el boton se habilita y el submit lo rechaza.
-      this.repo.contarOrdenesPendientesGestion(
-        actor.usuarioId,
-        ESTADOS_PENDIENTES,
-        startOfDayCR(now),
-      ),
+      this.repo.contarOrdenesPendientesGestion(actor.usuarioId, ESTADOS_PENDIENTES, hoy),
       this.repo.findCierresByMensajero(actor.usuarioId),
     ]);
     const tarifa = await this.resolvePagosMensajero(actor.usuarioId, gestiones);
@@ -378,7 +390,7 @@ export class CierreDiaService implements ICierreDiaService {
 
     // FICHA 477 (R25/R26): sin rechazados, `[]` y NI UNA consulta mas (la pantalla mas caliente del
     // mensajero no paga nada por una feature que casi nunca aplica).
-    const correcciones = tieneRechazado ? await this.correccionesDe(actor.usuarioId) : [];
+    const correcciones = tieneRechazado ? await this.correccionesDe(actor.usuarioId, zona) : [];
 
     return {
       status: "ok",
@@ -403,11 +415,11 @@ export class CierreDiaService implements ICierreDiaService {
    * Las evidencias se firman en BEST-EFFORT, como en `verCierrePasado`: es una vista de consulta y
    * las fotos la ilustran; un storage caido no puede dejar al mensajero sin la lista que corrige.
    */
-  private async correccionesDe(mensajeroId: string): Promise<CorreccionCierreDTO[]> {
+  private async correccionesDe(mensajeroId: string, zona: string): Promise<CorreccionCierreDTO[]> {
     const pendientes = await this.repo.findCorreccionesPendientes(mensajeroId);
     const salida: CorreccionCierreDTO[] = [];
     for (const c of pendientes) {
-      const propio = await this.repo.findCierrePropioConGestiones(c.cierreId, mensajeroId);
+      const propio = await this.repo.findCierrePropioConGestiones(c.cierreId, mensajeroId, zona);
       const gestiones = propio?.gestiones ?? [];
       // Feature 486 (R3/R8): todas las fotos del cierre rechazado, en UNA sola firma.
       const paths = rutasAFirmar(gestiones);
@@ -455,7 +467,11 @@ export class CierreDiaService implements ICierreDiaService {
   ): Promise<VerCierrePasadoServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R1/R2
 
-    const found = await this.repo.findCierrePropioConGestiones(cierreId, actor.usuarioId);
+    const found = await this.repo.findCierrePropioConGestiones(
+      cierreId,
+      actor.usuarioId,
+      await this.zona("verCierrePasado"),
+    );
     if (found === null) return { status: "no_encontrada" };
 
     // R5: evidencias SOLO firmadas. Best-effort DELIBERADO (mismo criterio que el detalle del
@@ -649,6 +665,10 @@ export class CierreDiaService implements ICierreDiaService {
       return { status: "ok", via: "resolicitado" }; // R20: sin snapshot nuevo
     }
 
+    // SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez para todo el flujo de
+    // creacion y ANTES de escribir nada. La rama de re-solicitud (arriba) no la necesita.
+    const zona = await this.zona("solicitarCierre");
+
     // R11: flujo de creación de la 37 SIN CAMBIOS (precondiciones + snapshot).
     // R10: precondicion — sin ordenes pendientes de gestion. Feature 246: «pendiente» excluye lo
     // reservado para DESPUES de hoy, con EL MISMO ancla que la lectura de `listarCierreDia` (si
@@ -656,7 +676,7 @@ export class CierreDiaService implements ICierreDiaService {
     const pendientes = await this.repo.contarOrdenesPendientesGestion(
       actor.usuarioId,
       ESTADOS_PENDIENTES,
-      startOfDayCR(now),
+      inicioDelDiaComoFecha(now, zona),
     );
     if (pendientes > 0) return { status: "conflict", motivo: MSG_PENDIENTES };
 
@@ -671,13 +691,13 @@ export class CierreDiaService implements ICierreDiaService {
     // bloqueado significa exactamente `N >= 2` con todos en `solicitado`. El motivo es COMPUESTO
     // por el mismo formateador que el aviso, a partir del detalle: dice cuantos arrastra y cual
     // toca resolver primero (R15/R43), no un «ya tienes un cierre» a secas.
-    const bloqueo = await this.ordenRepo.findBloqueoDetalle(actor.usuarioId);
+    const bloqueo = await this.ordenRepo.findBloqueoDetalle(actor.usuarioId, zona);
     if (bloqueo.bloqueado) {
       return { status: "conflict", motivo: avisoBloqueo(bloqueo, { conCta: false }) };
     }
 
     // R11: no se cierra un dia vacio.
-    const gestiones = await this.repo.findGestionesPendientes(actor.usuarioId);
+    const gestiones = await this.repo.findGestionesPendientes(actor.usuarioId, zona);
     if (gestiones.length === 0) return { status: "conflict", motivo: MSG_VACIO };
 
     // R15/R16: ruteo por la zona del mensajero (server-side).
@@ -738,7 +758,7 @@ export class CierreDiaService implements ICierreDiaService {
     // bodega. Va DESPUES del cierre ya escrito y en best-effort (R47): un aviso caido no invalida
     // un cierre que el mensajero ya dio por enviado. Con `N = 0 -> 1` no emite nada (el propio
     // metodo comprueba el veredicto antes de emitir).
-    await this.avisarBloqueoPorAcumular(cierreId, actor.usuarioId);
+    await this.avisarBloqueoPorAcumular(cierreId, actor.usuarioId, zona);
 
     // Feature 111/P2: `via: "creado"` distingue el toast del camino de creación (37) del de
     // re-solicitud; los consumidores previos ignoran el campo.
@@ -781,7 +801,9 @@ export class CierreDiaService implements ICierreDiaService {
     // rechazado propio— recibe EXACTAMENTE el `conflict` de bloqueo de hoy (R5): la misma
     // respuesta para las cuatro, asi que no revela si la gestion existe. Sigue sin efectos: la
     // lectura previa no escribe nada.
-    const bloqueo = await this.ordenRepo.findBloqueoDetalle(actor.usuarioId);
+    // SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez y antes de escribir nada.
+    const zona = await this.zona("deshacerGestion");
+    const bloqueo = await this.ordenRepo.findBloqueoDetalle(actor.usuarioId, zona);
     const gestion = await this.repo.findGestionParaDeshacer(gestionId);
     // Caso (a): la gestion es del actor y su cierre es un `rechazado` del actor.
     const enCierreRechazadoPropio =
@@ -950,6 +972,8 @@ export class CierreDiaService implements ICierreDiaService {
     // R11/R18-R23: UNICA escritura, atomica. `false` = una guardia del WHERE perdio la carrera
     // dentro de la tx (p. ej. `solicitarCierre` vinculo la gestion primero, o la bodega movio
     // la orden) -> rollback, sin efectos parciales -> conflict.
+    // SLT-42 (R22): el dia en curso, en la zona ya leida, se resuelve ANTES de la escritura.
+    const diaEnCurso = inicioDelDiaComoFecha(now, zona);
     const ok = await this.repo.anularGestionYDevolverAGestion({
       gestionId: gestion.gestionId,
       ordenId: gestion.ordenId,
@@ -964,10 +988,10 @@ export class CierreDiaService implements ICierreDiaService {
       // default: el reloj se inyecta en los tests y jamas se lee dentro del calculo») y hacia
       // imposible probar «deshacer a las 23:59 del 21» sin falsear el reloj global.
       asignadoAt: now,
-      // `startOfDayCR` es el helper de la convencion `@db.Date`, la misma de `fecha_reparto`.
-      // `inicioDelDiaCREnUtc` (06:00Z) es la de las columnas `timestamp` y aqui desplazaria el
-      // dia seis horas — la trampa que cerro la ficha 166.
-      diaEnCurso: startOfDayCR(now),
+      // `inicioDelDiaComoFecha` es el helper de la convencion `@db.Date`, la misma de
+      // `fecha_reparto`. `inicioDelDiaEnUtc` es la de las columnas `timestamp` y aqui desplazaria
+      // el dia — la trampa que cerro la ficha 166.
+      diaEnCurso,
     });
     if (!ok) return { status: "conflict", motivo: MSG_ORDEN_MOVIDA };
 

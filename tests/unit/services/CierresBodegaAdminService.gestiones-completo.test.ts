@@ -6,6 +6,9 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { filtrosConLimites } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -95,6 +98,7 @@ function newService(repo: ReturnType<typeof fakeRepo>) {
   const service = new CierresBodegaAdminService(
     repo,
     { createSignedUrls } as unknown as ISignedUrlProvider,
+    reglasPaisFijas(),
   );
   return { service, createSignedUrls };
 }
@@ -121,11 +125,11 @@ describe("conjunto de gestiones de «Cierres de bodega» (feature 230, T7.2)", (
       hasta: "2026-02-28",
     });
 
-    expect(repo.findGestionesDeCierresBodegaCompleto).toHaveBeenCalledWith({
-      mensajeroIds: ["m-1", "m-2"],
-      desde: "2026-02-01",
-      hasta: "2026-02-28",
-    });
+    // SLT-42: las fechas viajan como sus limites en la zona de la empresa, y la zona tambien.
+    expect(repo.findGestionesDeCierresBodegaCompleto).toHaveBeenCalledWith(
+      filtrosConLimites({ mensajeroIds: ["m-1", "m-2"], desde: "2026-02-01", hasta: "2026-02-28" }, ZONA_CR),
+      ZONA_CR,
+    );
   });
 
   it.each(ROLES_SIN_ACCESO_TOTAL)(

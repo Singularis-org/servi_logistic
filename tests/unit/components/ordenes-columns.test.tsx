@@ -691,6 +691,7 @@ describe("ordenesColumns — feature 204 (el dinero derivado llega hecho del ser
             relaciones: conTarifa(),
             fleteConIva: "3390.00",
             comisionConIva: "657.25",
+            fulfillment: "250.50",
           }),
         ]}
         rowKey="id"

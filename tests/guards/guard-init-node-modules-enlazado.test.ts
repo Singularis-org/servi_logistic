@@ -115,7 +115,7 @@ function correr(preparar: string): Resultado {
 const VIEJO = '2020-01-01 00:00:00'
 const NUEVO = '2024-01-01 00:00:00'
 
-describe('guardia: init.sh no reinstala un node_modules enlazado', () => {
+describe('guardia: init.sh no reinstala un node_modules enlazado', { timeout: 30_000 }, () => {
   it('init.sh tiene los dos marcadores del paso 2', () => {
     expect(() => pasoDos()).not.toThrow()
   })

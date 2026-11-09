@@ -8,7 +8,7 @@ import {
   validarFechaInvocacionManual,
   ventanaDelDia,
 } from "@/lib/analytics/rollup-dia";
-import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 124 / T1.1 — la fecha objetivo del rollup y sus cotas (R5-R9, R24, R39).
 //
@@ -30,29 +30,29 @@ const FUENTE_ROLLUP_DIA = sinComentarios(
 describe("R5/R8 — fechaObjetivo: la corrida agrega el dia que ACABA DE CERRAR (D-1)", () => {
   it("con el reloj a las 00:30 CR del dia siguiente devuelve el dia que cerro", () => {
     // 06:30 UTC = 00:30 CR. Es el horario que fija D3 para la corrida programada.
-    expect(fechaObjetivo(new Date("2026-07-16T06:30:00.000Z"))).toBe("2026-07-15");
+    expect(fechaObjetivo(new Date("2026-07-16T06:30:00.000Z"), ZONA_CR)).toBe("2026-07-15");
   });
 
   it("a las 23:59:59 CR del 15 el dia cerrado sigue siendo el 14", () => {
     // 2026-07-16T05:59:59.999Z == 23:59:59.999 CR del 15.
-    expect(fechaObjetivo(new Date("2026-07-16T05:59:59.999Z"))).toBe("2026-07-14");
+    expect(fechaObjetivo(new Date("2026-07-16T05:59:59.999Z"), ZONA_CR)).toBe("2026-07-14");
   });
 
   it("a las 00:00:00 CR del 16 —el instante exacto del corte— el dia cerrado pasa a ser el 15", () => {
-    expect(fechaObjetivo(new Date("2026-07-16T06:00:00.000Z"))).toBe("2026-07-15");
+    expect(fechaObjetivo(new Date("2026-07-16T06:00:00.000Z"), ZONA_CR)).toBe("2026-07-15");
   });
 
   it("cruza el cambio de mes y el de anio sin off-by-one", () => {
-    expect(fechaObjetivo(new Date("2026-08-01T06:30:00.000Z"))).toBe("2026-07-31");
-    expect(fechaObjetivo(new Date("2027-01-01T06:30:00.000Z"))).toBe("2026-12-31");
+    expect(fechaObjetivo(new Date("2026-08-01T06:30:00.000Z"), ZONA_CR)).toBe("2026-07-31");
+    expect(fechaObjetivo(new Date("2027-01-01T06:30:00.000Z"), ZONA_CR)).toBe("2026-12-31");
     // 2026-03-01T06:30Z = 00:30 CR del 1 de marzo -> cierra el 28 de febrero (no bisiesto).
-    expect(fechaObjetivo(new Date("2026-03-01T06:30:00.000Z"))).toBe("2026-02-28");
+    expect(fechaObjetivo(new Date("2026-03-01T06:30:00.000Z"), ZONA_CR)).toBe("2026-02-28");
   });
 
   it("NO agrega el dia en curso: la fecha objetivo nunca es la fecha CR de `now`", () => {
     // Segunda mutacion de R5: si la corrida de las 00:30 CR agregara el dia en curso, esto
     // devolveria "2026-07-16".
-    expect(fechaObjetivo(new Date("2026-07-16T06:30:00.000Z"))).not.toBe("2026-07-16");
+    expect(fechaObjetivo(new Date("2026-07-16T06:30:00.000Z"), ZONA_CR)).not.toBe("2026-07-16");
   });
 });
 
@@ -68,8 +68,8 @@ describe("R9 — el resultado NO depende de la variable de entorno TZ", () => {
     const ventanas: string[] = [];
     for (const tz of ["UTC", "America/Costa_Rica", "Asia/Tokyo", "Pacific/Kiritimati"]) {
       process.env.TZ = tz;
-      observados.push(fechaObjetivo(now));
-      const v = ventanaDelDia("2026-07-15");
+      observados.push(fechaObjetivo(now, ZONA_CR));
+      const v = ventanaDelDia("2026-07-15", ZONA_CR);
       ventanas.push(`${v.desde.toISOString()}|${v.hasta.toISOString()}`);
     }
     expect(new Set(observados)).toEqual(new Set(["2026-07-15"]));
@@ -78,7 +78,7 @@ describe("R9 — el resultado NO depende de la variable de entorno TZ", () => {
 });
 
 describe("R5/R7/R24 — la ventana del dia y su corte", () => {
-  const ventana = ventanaDelDia("2026-07-15");
+  const ventana = ventanaDelDia("2026-07-15", ZONA_CR);
 
   it("es exactamente [D T06:00:00Z, D+1 T06:00:00Z)", () => {
     expect(ventana.desde.toISOString()).toBe("2026-07-15T06:00:00.000Z");
@@ -134,21 +134,21 @@ describe("R39 — la invocacion manual admite SOLO hoy o ayer", () => {
   const now = new Date("2026-07-16T06:30:00.000Z");
 
   it("acepta el dia en curso", () => {
-    expect(validarFechaInvocacionManual("2026-07-16", now)).toEqual({
+    expect(validarFechaInvocacionManual("2026-07-16", now, ZONA_CR)).toEqual({
       ok: true,
       fecha: "2026-07-16",
     });
   });
 
   it("acepta el dia que acaba de cerrar", () => {
-    expect(validarFechaInvocacionManual("2026-07-15", now)).toEqual({
+    expect(validarFechaInvocacionManual("2026-07-15", now, ZONA_CR)).toEqual({
       ok: true,
       fecha: "2026-07-15",
     });
   });
 
   it("rechaza `hoy - 10 dias` remitiendo al backfill de la 125", () => {
-    const r = validarFechaInvocacionManual("2026-07-06", now);
+    const r = validarFechaInvocacionManual("2026-07-06", now, ZONA_CR);
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("inalcanzable");
     expect(r.motivo).toContain("2026-07-06");
@@ -156,11 +156,11 @@ describe("R39 — la invocacion manual admite SOLO hoy o ayer", () => {
   });
 
   it("rechaza tambien anteayer: el limite es ayer, no «los ultimos dias»", () => {
-    expect(validarFechaInvocacionManual("2026-07-14", now).ok).toBe(false);
+    expect(validarFechaInvocacionManual("2026-07-14", now, ZONA_CR).ok).toBe(false);
   });
 
   it("rechaza una fecha futura: un dia que no ha cerrado no tiene rollup", () => {
-    const r = validarFechaInvocacionManual("2026-07-17", now);
+    const r = validarFechaInvocacionManual("2026-07-17", now, ZONA_CR);
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("inalcanzable");
     expect(r.motivo).toMatch(/futura/);
@@ -168,7 +168,7 @@ describe("R39 — la invocacion manual admite SOLO hoy o ayer", () => {
 
   it("rechaza lo que no sea `YYYY-MM-DD` en vez de intentar interpretarlo", () => {
     for (const basura of ["", "15/07/2026", "2026-7-5", "2026-07-15T00:00:00Z", "ayer"]) {
-      expect(validarFechaInvocacionManual(basura, now).ok).toBe(false);
+      expect(validarFechaInvocacionManual(basura, now, ZONA_CR).ok).toBe(false);
     }
   });
 });

@@ -17,6 +17,7 @@ import type {
   OrdenAsignabilidadRow,
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
@@ -76,7 +77,7 @@ function fakeRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository {
     softDelete: vi.fn(),
     existsEstatus: vi.fn(),
     findEstatusIdByValue: vi.fn(async (value: string) => ESTATUS_ID_BY_VALUE[value] ?? null),
-    findUsuarioFulfillment: vi.fn(),
+    findUsuarioSeRecogeEnTienda: vi.fn(),
     existsGeo: vi.fn(),
     findExistingRemisiones: vi.fn(),
     findAllProvincias: vi.fn(),
@@ -157,7 +158,7 @@ function newService(
   zonaRepo: IZonaRepository = fakeZonaRepo(),
   gate: IAsignabilidadCoordenadasService = gateTodoAsignable(),
 ) {
-  return new GuiaAsignacionService(repo, zonaRepo, gate, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+  return new GuiaAsignacionService(repo, zonaRepo, gate, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 }
 
 /** Atajo: las decisiones con las que el service llamo a `generarGuiaLote`. */

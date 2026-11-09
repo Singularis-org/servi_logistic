@@ -13,6 +13,9 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { FiltrosCierres } from "@/lib/types/filtros-cierres";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { filtrosConLimites } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 386 (2026-09-07) — el recorte por ESTADO no se pierde en la capa de servicio.
@@ -105,6 +108,11 @@ function dobles() {
       ),
     },
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 
   return { svc, findHistoricoPaginado, findColaPaginada, findHistoricoCompleto, findColaCompleta };
@@ -121,7 +129,7 @@ describe("FICHA 386 — el filtro por estado llega entero al repositorio", () =>
     expect(d.findColaPaginada).toHaveBeenCalledTimes(1);
     const [alcance, , filtros] = d.findColaPaginada.mock.calls[0]!;
     // ⭑ El bloque ENTERO, no una copia recortada: el `toEqual` compara las cinco claves.
-    expect(filtros).toEqual(FILTROS);
+    expect(filtros).toEqual(filtrosConLimites(FILTROS, ZONA_CR));
     expect(filtros?.estados).toEqual(["vencido"]);
     // Y el alcance sigue saliendo del actor, no del input.
     expect(alcance).toEqual({ destinoTipo: "bodega_central", destinoZonaId: null });
@@ -136,7 +144,7 @@ describe("FICHA 386 — el filtro por estado llega entero al repositorio", () =>
 
     expect(d.findHistoricoPaginado).toHaveBeenCalledTimes(1);
     const [, , filtros] = d.findHistoricoPaginado.mock.calls[0]!;
-    expect(filtros).toEqual(FILTROS);
+    expect(filtros).toEqual(filtrosConLimites(FILTROS, ZONA_CR));
   });
 
   it("el ARCHIVO de cada lista recibe el MISMO bloque que su página", async () => {
@@ -146,8 +154,8 @@ describe("FICHA 386 — el filtro por estado llega entero al repositorio", () =>
     await d.svc.listarPendientesCierresAdminCompleto(MAESTRO, FILTROS);
     await d.svc.listarHistoricoCierresAdminCompleto(MAESTRO, FILTROS);
 
-    expect(d.findColaCompleta.mock.calls[0]![1]).toEqual(FILTROS);
-    expect(d.findHistoricoCompleto.mock.calls[0]![1]).toEqual(FILTROS);
+    expect(d.findColaCompleta.mock.calls[0]![1]).toEqual(filtrosConLimites(FILTROS, ZONA_CR));
+    expect(d.findHistoricoCompleto.mock.calls[0]![1]).toEqual(filtrosConLimites(FILTROS, ZONA_CR));
   });
 
   it("sin filtros el repositorio sigue recibiendo `undefined`, no un bloque vacío", async () => {

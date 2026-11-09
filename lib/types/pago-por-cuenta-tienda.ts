@@ -55,52 +55,54 @@ export const comprobanteSchema = z
  * usa la ventana de los movimientos manuales (R35). La referencia es obligatoria en SINPE y
  * transferencia (R34), con el MISMO criterio que el pago a tienda de la 172.
  */
-export const registrarPagoPorCuentaTiendaSchema = z
-  .object({
-    claveIdempotencia: z.string().uuid(),
-    tiendaId: z.string().uuid(),
-    beneficiario: z
-      .string()
-      .trim()
-      .min(1, "Indique a quien se le pago.")
-      .max(
-        PAGO_POR_CUENTA_BENEFICIARIO_MAX,
-        `El beneficiario no puede superar ${PAGO_POR_CUENTA_BENEFICIARIO_MAX} caracteres.`,
-      ),
-    monto: montoLiquidacionSchema,
-    metodo: z.enum(METODO_PAGO_SEED),
-    referencia: z
-      .string()
-      .trim()
-      .max(
-        LIQUIDACION_REFERENCIA_MAX,
-        `La referencia no puede superar ${LIQUIDACION_REFERENCIA_MAX} caracteres.`,
-      )
-      .optional(),
-    motivo: z
-      .string()
-      .trim()
-      .min(1, "El motivo es obligatorio.")
-      .max(
-        PAGO_POR_CUENTA_MOTIVO_MAX,
-        `El motivo no puede superar ${PAGO_POR_CUENTA_MOTIVO_MAX} caracteres.`,
-      ),
-    fecha: fechaMovimientoSchema.optional(),
-    comprobante: comprobanteSchema.optional(),
-  })
-  .strict()
-  .superRefine((valor, ctx) => {
-    if (valor.metodo !== "efectivo" && !valor.referencia) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["referencia"],
-        message: "La referencia es obligatoria en SINPE y transferencia.",
-      });
-    }
-  });
+export function registrarPagoPorCuentaTiendaSchema(zona: string) {
+  return z
+    .object({
+      claveIdempotencia: z.string().uuid(),
+      tiendaId: z.string().uuid(),
+      beneficiario: z
+        .string()
+        .trim()
+        .min(1, "Indique a quien se le pago.")
+        .max(
+          PAGO_POR_CUENTA_BENEFICIARIO_MAX,
+          `El beneficiario no puede superar ${PAGO_POR_CUENTA_BENEFICIARIO_MAX} caracteres.`,
+        ),
+      monto: montoLiquidacionSchema,
+      metodo: z.enum(METODO_PAGO_SEED),
+      referencia: z
+        .string()
+        .trim()
+        .max(
+          LIQUIDACION_REFERENCIA_MAX,
+          `La referencia no puede superar ${LIQUIDACION_REFERENCIA_MAX} caracteres.`,
+        )
+        .optional(),
+      motivo: z
+        .string()
+        .trim()
+        .min(1, "El motivo es obligatorio.")
+        .max(
+          PAGO_POR_CUENTA_MOTIVO_MAX,
+          `El motivo no puede superar ${PAGO_POR_CUENTA_MOTIVO_MAX} caracteres.`,
+        ),
+      fecha: fechaMovimientoSchema(zona).optional(),
+      comprobante: comprobanteSchema.optional(),
+    })
+    .strict()
+    .superRefine((valor, ctx) => {
+      if (valor.metodo !== "efectivo" && !valor.referencia) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["referencia"],
+          message: "La referencia es obligatoria en SINPE y transferencia.",
+        });
+      }
+    });
+}
 
 export type RegistrarPagoPorCuentaTiendaInput = Omit<
-  z.infer<typeof registrarPagoPorCuentaTiendaSchema>,
+  z.infer<ReturnType<typeof registrarPagoPorCuentaTiendaSchema>>,
   "comprobante"
 >;
 

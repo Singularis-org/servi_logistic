@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { GestionResultado } from "@prisma/client";
+import { conceptoPorResultado, type ConceptoTienda } from "@/lib/tarifas/catalogo";
 import type { TarifaCongelada } from "@/lib/utils/cierre-detalle";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
 import type { WalletIngresoConcepto, WalletMovimientoCategoria } from "@/lib/types/wallet";
@@ -99,6 +100,11 @@ export const FUENTE_CAJA: Record<WalletMovimientoCategoria, FuenteDeAporte> = {
   // SLT-73: la diferencia de la satélite nace de la conciliación de una consolidación, no de un cierre.
   egreso_diferencia_satelite: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   ingreso_diferencia_satelite: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-94 (R32): el fulfillment se cobra al CREAR la orden, nunca en el cierre.
+  ingreso_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  ingreso_iva_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  egreso_reverso_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  egreso_reverso_iva_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
 };
 
 /**
@@ -142,6 +148,11 @@ export const FUENTE_TIENDA: Record<WalletTiendaMovimientoCategoria, FuenteDeApor
   // FICHA 458-B (design §2.3): los creditos espejo de la anulacion de un cobro por rechazo.
   flete_devolucion_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   iva_flete_devolucion_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-94 (R32): el cobro de fulfillment y su devolucion nacen de crear/eliminar la orden.
+  fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  iva_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  fulfillment_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  iva_fulfillment_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
 };
 
 /**
@@ -196,7 +207,7 @@ export interface CriterioDeAporte {
   resultados: readonly GestionResultado[];
   /** `cierre_detail.cobra_comision IS TRUE`. */
   exigeCobraComision: boolean;
-  /** `cierre_detail.tarifa_id IS NOT NULL` (sin tarifa congelada no se deriva nada, R23). */
+  /** Hay tarifa congelada: `tarifa_id IS NOT NULL` en el viejo, su concepto en el nuevo (R23, SLT-54 R64). */
   exigeTarifa: boolean;
   /**
    * `cierre_detail.monto_cobrar > 0`. Es la SUPRESION DE LOS APORTES EN CERO (Q2), no una
@@ -209,7 +220,33 @@ export interface CriterioDeAporte {
   exigePagoMensajero: boolean;
   /** FICHA 468 — `gestion_orden.indemnizacion > 0` (supresion de ceros de la indemnizacion). */
   exigeIndemnizacion: boolean;
+  /**
+   * SLT-54 (R64) — fila del modelo nuevo: `cierre_detail_concepto.concepto` que tiene que estar congelado
+   * para que una gestion de ese resultado aporte. Sustituye a `resultados` y `exigeTarifa` solo en esas
+   * filas y solo si `exigeTarifa`. Por resultado y no una lista, porque en el nuevo
+   * `ingreso_flete_devolucion` suma lo que no es entrega y cada resultado tiene su propio concepto: la
+   * orden con novedad aporta con `tienda_flete_novedad`, y no porque el cierre tenga otro flete.
+   */
+  conceptoCongeladoPorResultado: Partial<Record<GestionResultado, ConceptoTienda>>;
 }
+
+/** El flete de una entrega en el modelo nuevo: lo descontable de lo recaudado (SLT-52 R29). */
+const CONCEPTO_FLETE_ENTREGA: CriterioDeAporte["conceptoCongeladoPorResultado"] = {
+  entregado: conceptoPorResultado("tienda", "entregado"),
+};
+
+/** El flete de lo que no es entrega en el modelo nuevo: cada resultado cobra su concepto (SLT-52 R29). */
+const CONCEPTO_FLETE_NO_ENTREGA: CriterioDeAporte["conceptoCongeladoPorResultado"] = {
+  devolucion_a_origen_por_rechazo: conceptoPorResultado("tienda", "devolucion_a_origen_por_rechazo"),
+  reprogramado: conceptoPorResultado("tienda", "reprogramado"),
+  novedad: conceptoPorResultado("tienda", "novedad"),
+  incidente: conceptoPorResultado("tienda", "incidente"),
+};
+
+/** La comision no depende del flete: su concepto es uno y solo existe en la entrega (SLT-52 R30). */
+const CONCEPTO_COMISION: CriterioDeAporte["conceptoCongeladoPorResultado"] = {
+  entregado: "tienda_comision_cod",
+};
 
 /**
  * LA SUPRESION DE LOS CEROS, declarada, porque es la unica desviacion de `design.md`.
@@ -242,6 +279,7 @@ export const CRITERIO_DE_APORTE: Record<WalletIngresoConcepto, CriterioDeAporte>
     exigeMontoRecibido: false,
     exigePagoMensajero: false,
     exigeIndemnizacion: false,
+    conceptoCongeladoPorResultado: CONCEPTO_FLETE_ENTREGA,
   },
   ingreso_iva_flete: {
     resultados: ["entregado"],
@@ -251,6 +289,7 @@ export const CRITERIO_DE_APORTE: Record<WalletIngresoConcepto, CriterioDeAporte>
     exigeMontoRecibido: false,
     exigePagoMensajero: false,
     exigeIndemnizacion: false,
+    conceptoCongeladoPorResultado: CONCEPTO_FLETE_ENTREGA,
   },
   // FICHA 301 (2026-08-28): SOLO `rechazada`. La `devuelta` estuvo aqui y se fue por decision de
   // negocio. Volver a meterla sin tocar `derivarIngresoOrden` pone rojo el test de equivalencia,
@@ -263,6 +302,7 @@ export const CRITERIO_DE_APORTE: Record<WalletIngresoConcepto, CriterioDeAporte>
     exigeMontoRecibido: false,
     exigePagoMensajero: false,
     exigeIndemnizacion: false,
+    conceptoCongeladoPorResultado: CONCEPTO_FLETE_NO_ENTREGA,
   },
   ingreso_iva_flete_devolucion: {
     resultados: ["devolucion_a_origen_por_rechazo"],
@@ -272,6 +312,7 @@ export const CRITERIO_DE_APORTE: Record<WalletIngresoConcepto, CriterioDeAporte>
     exigeMontoRecibido: false,
     exigePagoMensajero: false,
     exigeIndemnizacion: false,
+    conceptoCongeladoPorResultado: CONCEPTO_FLETE_NO_ENTREGA,
   },
   // La comision COD y su IVA solo existen si la orden COBRA comision (R8/R26 de la 42). El
   // `exigeMontoCobrar` es la supresion de ceros, no parte de la formula.
@@ -283,6 +324,7 @@ export const CRITERIO_DE_APORTE: Record<WalletIngresoConcepto, CriterioDeAporte>
     exigeMontoRecibido: false,
     exigePagoMensajero: false,
     exigeIndemnizacion: false,
+    conceptoCongeladoPorResultado: CONCEPTO_COMISION,
   },
   ingreso_iva_comision_cod: {
     resultados: ["entregado"],
@@ -292,6 +334,7 @@ export const CRITERIO_DE_APORTE: Record<WalletIngresoConcepto, CriterioDeAporte>
     exigeMontoRecibido: false,
     exigePagoMensajero: false,
     exigeIndemnizacion: false,
+    conceptoCongeladoPorResultado: CONCEPTO_COMISION,
   },
 };
 
@@ -318,6 +361,7 @@ export const CRITERIO_COD_RECAUDADO: CriterioDeAporte = {
   exigeMontoRecibido: true,
   exigePagoMensajero: false,
   exigeIndemnizacion: false,
+  conceptoCongeladoPorResultado: {},
 };
 
 /**
@@ -334,6 +378,7 @@ export const CRITERIO_PAGO_MENSAJERO: CriterioDeAporte = {
   exigeMontoRecibido: false,
   exigePagoMensajero: true,
   exigeIndemnizacion: false,
+  conceptoCongeladoPorResultado: {},
 };
 
 /**
@@ -349,6 +394,7 @@ export const CRITERIO_INDEMNIZACION: CriterioDeAporte = {
   exigeMontoRecibido: false,
   exigePagoMensajero: false,
   exigeIndemnizacion: true,
+  conceptoCongeladoPorResultado: {},
 };
 
 /** FICHA 468 — el criterio de cada snapshot por gestion. `Record` total sobre el union de campos. */
@@ -370,6 +416,11 @@ export interface HechosDeAporte {
   hayPagoMensajero: boolean;
   /** FICHA 468 — `indemnizacion > 0` (un NULL cuenta como `false`). */
   hayIndemnizacion: boolean;
+  /**
+   * SLT-54 (R64) — los conceptos de `cierre_detail_concepto` de la fila. Presente = fila del modelo nuevo;
+   * sin ella, la fila es del viejo y se juzga como siempre.
+   */
+  conceptosCongelados?: ReadonlySet<ConceptoTienda>;
 }
 
 /**
@@ -378,8 +429,13 @@ export interface HechosDeAporte {
  * mismo, el detalle y su total hablarian de conjuntos distintos.
  */
 export function satisfaceCriterio(criterio: CriterioDeAporte, hechos: HechosDeAporte): boolean {
-  if (!criterio.resultados.includes(hechos.resultado)) return false;
-  if (criterio.exigeTarifa && !hechos.hayTarifa) return false;
+  if (criterio.exigeTarifa && hechos.conceptosCongelados !== undefined) {
+    const concepto = criterio.conceptoCongeladoPorResultado[hechos.resultado];
+    if (concepto === undefined || !hechos.conceptosCongelados.has(concepto)) return false;
+  } else {
+    if (!criterio.resultados.includes(hechos.resultado)) return false;
+    if (criterio.exigeTarifa && !hechos.hayTarifa) return false;
+  }
   if (criterio.exigeCobraComision && !hechos.cobraComision) return false;
   if (criterio.exigeMontoCobrar && !hechos.hayMontoCobrar) return false;
   if (criterio.exigeMontoRecibido && !hechos.hayMontoRecibido) return false;

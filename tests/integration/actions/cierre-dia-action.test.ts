@@ -17,6 +17,7 @@ import type { ITarifaZonaMensajeroRepository } from "@/lib/interfaces/repositori
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 37 — tests de integracion de las Server Actions del cierre (patron
 // asignacion-satelite-action.test.ts). Cubre `unauthenticated` sin sesion,
@@ -130,7 +131,7 @@ function realService(repo: ICierreDiaRepository): ICierreDiaService {
   const tarifaZonaRepo = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => ({ cobroEntregado: "5.00", cobroRechazado: "3.00" })),
   }) as unknown as ITarifaZonaMensajeroRepository;
-  return new CierreDiaService(repo, zonaRepo, ordenRepo, fakeSignedUrls(), tarifaZonaRepo);
+  return new CierreDiaService(repo, zonaRepo, ordenRepo, fakeSignedUrls(), tarifaZonaRepo, undefined, undefined, reglasPaisFijas());
 }
 
 function pendiente(overrides: Partial<GestionPendienteDeCierreRow> = {}): GestionPendienteDeCierreRow {

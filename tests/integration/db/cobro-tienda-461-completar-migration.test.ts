@@ -26,6 +26,7 @@ import {
   UP_461_SOBRE_ESQUEMA_ACTUAL,
   UP_COMPLETAR_461,
 } from "./_fixtures/completar-caja-461-sql";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / T B.11 — la migracion de datos que COMPLETA la linea de caja de los cobros previos,
@@ -200,7 +201,10 @@ function walletDe(tx: TxDeTest) {
     pagosATienda: new PagoTiendaCajaDocumentosRepository(tx as never),
     premios: new PremioCajaDocumentosRepository(tx as never),
     incentivos: { estadoDeDocumentos: async () => [] }, // SLT-68: lo exige `LectoresDocumentosCaja`
-  });
+  },
+  undefined,
+  undefined,
+  reglasPaisFijas(),);
 }
 
 const d = (a: string, b: string) => new Prisma.Decimal(b).sub(a).toFixed(2);

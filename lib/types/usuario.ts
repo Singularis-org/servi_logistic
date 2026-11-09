@@ -9,6 +9,7 @@ import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import type { ResultadoTopePlan } from "@/lib/types/planes";
 import type {
   RolItem,
+  TipoIdentificacionItem,
   UsuarioListItem,
   UsuarioPublico,
 } from "@/lib/interfaces/repositories/IUserRepository";
@@ -23,17 +24,26 @@ import type { ImpactoSalidaAdminSatelite } from "@/lib/interfaces/services/IUsua
 export const USUARIO_SORT_FIELDS = ["createdAt", "nombre", "email", "estado"] as const;
 export type UsuarioSortField = (typeof USUARIO_SORT_FIELDS)[number];
 
+// SLT-42 (design §4.2): el borde solo valida la FORMA del telefono y del documento. La regla depende
+// del pais de la empresa, que el schema no conoce, y la aplica `UsuarioService` (R10, R14, R17). El
+// tope es el `largo_max` mas alto que admite el catalogo (CHECK de `tipo_identificacion`); al
+// telefono le sobra para un numero internacional con separadores.
+export const USUARIO_DOCUMENTO_MAX_CHARS = 30;
+export const USUARIO_TELEFONO_MAX_CHARS = 30;
+const telefonoForma = z.string().min(1).max(USUARIO_TELEFONO_MAX_CHARS);
+const documentoForma = z.string().min(1).max(USUARIO_DOCUMENTO_MAX_CHARS);
+
 // Campos base comunes a la creacion (cualquier rol, set base — Decision 2).
 const baseCrearFields = {
   nombre: z.string().min(1),
   email: z.string().email(),
-  telefono: z.string().min(1),
+  telefono: telefonoForma,
   tipoIdentificacionId: z.string().min(1),
-  cedula: z.string().min(1),
+  cedula: documentoForma,
   rolId: z.string().min(1),
-  // Feature 27/R10: flag de fulfillment de tienda, booleano opcional en el borde.
-  // El default (false) y la invariante por rol (R4a) los aplica el service.
-  fulfillment: z.boolean().optional(),
+  // SLT-94 (R1/R3/R4): marca «se recoge en tienda», booleano opcional en el borde.
+  // El default («si») y la invariante por rol (solo adminTienda puede «no») los aplica el service.
+  seRecogeEnTienda: z.boolean().optional(),
   // Feature 24/R27/R28: zona del usuario. Solo mensajero/adminSatelite la
   // conservan; el service valida existencia y aplica la invariante por rol.
   zonaId: z.string().min(1).nullable().optional(),
@@ -71,12 +81,12 @@ export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>;
 export const actualizarUsuarioSchema = z
   .object({
     nombre: z.string().min(1),
-    telefono: z.string().min(1),
+    telefono: telefonoForma,
     rolId: z.string().min(1),
     tipoIdentificacionId: z.string().min(1),
-    // Feature 27/R13: fulfillment editable; el service recalcula la invariante
-    // R4a segun el rol resultante. `.strict()` sigue rechazando email/cedula/password.
-    fulfillment: z.boolean(),
+    // SLT-94 (R4): marca «se recoge en tienda» editable; el service recalcula la invariante
+    // segun el rol resultante. `.strict()` sigue rechazando email/cedula/password.
+    seRecogeEnTienda: z.boolean(),
     // Feature 24/R27/R28: zona editable (null la libera). El service valida
     // existencia y aplica la invariante por rol (solo mensajero/adminSatelite).
     zonaId: z.string().min(1).nullable(),
@@ -239,7 +249,7 @@ export type CambiarEstadoUsuarioResult =
   | ResultadoTopePlan
   | ActionError;
 export type ListarTiposIdentificacionResult =
-  | { status: "ok"; tipos: { id: string; value: string }[] }
+  | { status: "ok"; tipos: TipoIdentificacionItem[] }
   | ActionError;
 export type ListarRolesResult = { status: "ok"; roles: RolItem[] } | ActionError;
 

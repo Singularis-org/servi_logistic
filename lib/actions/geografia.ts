@@ -2,17 +2,10 @@
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecialService";
 import { GeografiaService } from "@/lib/services/GeografiaService";
-import type {
-  ActualizarDistritosEspecialesServiceResult,
-  IDistritoZonaEspecialService,
-} from "@/lib/interfaces/services/IDistritoZonaEspecialService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
-import { distritosEspecialesSchema } from "@/lib/types/distrito-zona-especial";
 import type {
   IGeografiaService,
   ListarArbolGeograficoServiceResult,
@@ -26,14 +19,13 @@ import type {
 // la lectura del arbol tambien pasa por la cadena de siempre —Server Action -> `GeografiaService`
 // -> `GeoRepository`— y este archivo deja de tocar Prisma para eso.
 //
-// SL-38 — ya no queda ninguna excepcion: `actualizarDistritosEspeciales`, al final del archivo, era
-// la ultima escritura con Prisma directo, y pasa por `DistritoZonaEspecialService` ->
-// `DistritoZonaEspecialRepository` desde que la marca es de la empresa.
+// SLT-54 (R28): la marca de zona especial ya no se escribe desde ninguna pantalla. Decide el flete hasta
+// activar, asi que cambiarla mientras se digita moveria importes; se configura como un grupo mas.
+// `DistritoZonaEspecialService` se queda para `scripts/demo-qa/receta.ts`.
 //
 // SL-20 (design §4) — LAS ESCRITURAS DE LA GEOGRAFIA YA NO VIVEN AQUI. El alta, el renombrado, el
 // retiro y el conteo de la confirmacion son del superadmin, que no tiene empresa, y estan en
-// `lib/actions/geografia-plataforma.ts`, dentro de `comoPlataforma`. Aqui quedan las lecturas y la
-// marca de zona especial, que son de la empresa.
+// `lib/actions/geografia-plataforma.ts`, dentro de `comoPlataforma`. Aqui queda la lectura.
 
 // Los DTO del arbol viven en `lib/types/geografia-nodo.ts` desde la ficha 374 —los produce
 // `GeoRepository`, y un repositorio no puede importar un modulo `"use server"`—. Se RE-EXPORTAN
@@ -84,52 +76,4 @@ export async function listarArbolGeografico(
   if (!actor) return { status: "unauthenticated" };
   const service = deps.geografiaService ?? buildGeografiaService();
   return service.listarArbol(actor);
-}
-
-// ── Marca de zona especial (SL-38) ───────────────────────────────────────────────────────────
-//
-// La marca es de la EMPRESA (`distrito_zona_especial`), no del distrito: escribirla no toca la
-// geografia, que es de plataforma (SL-17 R40). Conserva nombre, entrada y resultado porque la llaman
-// `CrearZonaForm` y la mockean seis tests de componentes.
-
-/** Dependencias inyectables de `actualizarDistritosEspeciales`, con el patron de `GeografiaActionDeps`. */
-export interface DistritosEspecialesActionDeps {
-  distritoZonaEspecialService?: IDistritoZonaEspecialService;
-  getActor?: () => Promise<Actor | null>;
-}
-
-/**
- * El composition root de la marca. El repositorio que recibe es el que escribe: un servicio
- * construido sin el compilaria igual si el parametro se volviera opcional, y lo mide
- * `tests/unit/actions/distritos-especiales-action.test.ts` llamando a la accion sin servicio.
- */
-function buildDistritoZonaEspecialService(): IDistritoZonaEspecialService {
-  return new DistritoZonaEspecialService(new DistritoZonaEspecialRepository(getPrismaClient()));
-}
-
-export type ActualizarDistritosEspecialesResult =
-  | ActualizarDistritosEspecialesServiceResult
-  | { status: "unauthenticated" };
-
-/**
- * Guarda la marca de zona especial de la empresa del actor para un lote de distritos. Recibe el
- * DELTA (lo que cambio en el formulario), no el estado completo: asi dos zonas abiertas a la vez no
- * se pisan la marca de los distritos que ninguna toco.
- *
- * La marca es del distrito PARA LA EMPRESA: queda visible desde cualquier zona de la empresa que lo
- * contenga, y el llamador refresca el arbol para verlo. Solo `maestro` (lo decide el servicio).
- */
-/** @sin-superficie editor de costos de zona retirado en SLT-51; vuelve en SLT-54 */
-export async function actualizarDistritosEspeciales(
-  input: unknown,
-  deps: DistritosEspecialesActionDeps = {},
-): Promise<ActualizarDistritosEspecialesResult> {
-  const actor = await (deps.getActor ?? resolveActorFromSession)();
-  if (!actor) return { status: "unauthenticated" }; // R11
-
-  const parsed = distritosEspecialesSchema.safeParse(input);
-  if (!parsed.success) return { status: "validation_error" }; // R12
-
-  const service = deps.distritoZonaEspecialService ?? buildDistritoZonaEspecialService();
-  return service.actualizar(parsed.data, actor);
 }

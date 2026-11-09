@@ -7,6 +7,17 @@ import type { WalletMovimientoDTO } from "@/lib/types/wallet";
 import { composicionDetalleConfig } from "@/lib/config/composicion-detalle";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 /**
  * Ficha 339 (T3.4, design §4.5) — el BORDE del detalle de una fila. Cubre **R32 y R34**.
  *

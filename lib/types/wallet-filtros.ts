@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { desdeDiaCRSchema, hastaDiaCRSchema } from "@/lib/types/filtro-dias-cr";
+import { desdeDiaSchema, hastaDiaSchema } from "@/lib/types/filtro-dias-cr";
 import { WALLET_MOVIMIENTO_TIPO_SEED } from "@/lib/types/wallet";
 import { aQuienFiltroSchema, type AQuienCuentaTipo, type AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 
@@ -23,37 +23,39 @@ import { aQuienFiltroSchema, type AQuienCuentaTipo, type AQuienFiltro } from "@/
 const busquedaSchema = z.string().trim().max(80);
 
 /** El libro cuyo filtro de concepto se puebla. `mi_tienda` = la tienda de la SESION (sin id). */
-export const conceptosConMovimientosSchema = z.discriminatedUnion("libro", [
-  z
-    .object({
-      libro: z.literal("caja"),
-      tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED).optional(),
-      desde: desdeDiaCRSchema.optional(),
-      hasta: hastaDiaCRSchema.optional(),
-      // Ficha 458-E (TE.2, R59): los conceptos del conjunto filtrado tambien por «A quién».
-      aQuien: aQuienFiltroSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      libro: z.literal("tienda"),
-      tiendaId: z.string().uuid(),
-      cierreId: z.string().uuid().optional(),
-      desde: desdeDiaCRSchema.optional(),
-      hasta: hastaDiaCRSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      libro: z.literal("mi_tienda"),
-      cierreId: z.string().uuid().optional(),
-      desde: desdeDiaCRSchema.optional(),
-      hasta: hastaDiaCRSchema.optional(),
-    })
-    .strict(),
-]);
+export function conceptosConMovimientosSchema(zona: string) {
+  return z.discriminatedUnion("libro", [
+    z
+      .object({
+        libro: z.literal("caja"),
+        tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED).optional(),
+        desde: desdeDiaSchema(zona).optional(),
+        hasta: hastaDiaSchema(zona).optional(),
+        // Ficha 458-E (TE.2, R59): los conceptos del conjunto filtrado tambien por «A quién».
+        aQuien: aQuienFiltroSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        libro: z.literal("tienda"),
+        tiendaId: z.string().uuid(),
+        cierreId: z.string().uuid().optional(),
+        desde: desdeDiaSchema(zona).optional(),
+        hasta: hastaDiaSchema(zona).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        libro: z.literal("mi_tienda"),
+        cierreId: z.string().uuid().optional(),
+        desde: desdeDiaSchema(zona).optional(),
+        hasta: hastaDiaSchema(zona).optional(),
+      })
+      .strict(),
+  ]);
+}
 
-export type ConceptosConMovimientosInput = z.infer<typeof conceptosConMovimientosSchema>;
+export type ConceptosConMovimientosInput = z.infer<ReturnType<typeof conceptosConMovimientosSchema>>;
 
 /**
  * Un concepto del filtro con su numero de movimientos. `categoria` es un valor del catalogo del
@@ -61,7 +63,15 @@ export type ConceptosConMovimientosInput = z.infer<typeof conceptosConMovimiento
  * tienda); el rotulo lo pone la superficie con SU diccionario (desde la empresa o desde la tienda).
  * `movimientos` es un CARDINAL (cuantas filas), nunca un importe.
  */
-export type ConceptoConMovimientosDTO = { categoria: string; movimientos: number };
+export type ConceptoConMovimientosDTO = {
+  categoria: string;
+  movimientos: number;
+  /**
+   * D39 (solo el libro de la caja) — `true` si entre esas filas hay alguna de un cierre con el modelo
+   * nuevo. Sale de `cierre_detail.tarifa_modelo`, no del interruptor actual. Ausente: el rotulo de siempre.
+   */
+  incluyeModeloNuevo?: boolean;
+};
 
 /** Los cierres del selector: de la tienda o del mensajero cuyo estado de cuenta se mira. */
 export const cierresDeLaCuentaSchema = z.discriminatedUnion("cuenta", [
@@ -114,16 +124,18 @@ export type CierresDeLaCuentaResult =
  * Entrada del selector: los MISMOS filtros de periodo y direccion que el libro (sin concepto: como el
  * de conceptos, las opciones no dependen del concepto elegido) y un texto de busqueda sobre el nombre.
  */
-export const quienesDelLibroCajaSchema = z
-  .object({
-    tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED).optional(),
-    desde: desdeDiaCRSchema.optional(),
-    hasta: hastaDiaCRSchema.optional(),
-    busqueda: busquedaSchema.optional(),
-  })
-  .strict();
+export function quienesDelLibroCajaSchema(zona: string) {
+  return z
+    .object({
+      tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED).optional(),
+      desde: desdeDiaSchema(zona).optional(),
+      hasta: hastaDiaSchema(zona).optional(),
+      busqueda: busquedaSchema.optional(),
+    })
+    .strict();
+}
 
-export type QuienesDelLibroCajaInput = z.infer<typeof quienesDelLibroCajaSchema>;
+export type QuienesDelLibroCajaInput = z.infer<ReturnType<typeof quienesDelLibroCajaSchema>>;
 
 /**
  * UNA opcion del selector «A quién». `valor` es EXACTAMENTE lo que se manda de vuelta como `aQuien`

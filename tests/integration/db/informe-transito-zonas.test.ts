@@ -5,6 +5,7 @@ import { crearOrden, crearZona, mas, repoDeTest, sembrarBase475 } from "./_infor
 import { cortesPorZona } from "@/lib/whatsapp-envios/informes/transito/calculo";
 import { diasNaturalesCRDesde } from "@/lib/utils/fecha-cr";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T2.4) — R8, R9, R17: el corte es POR ZONA, la frontera es estricta y la zona sale de
 // `orden.zona_id`. Mata M4 (un solo corte) y M5 (`<=`).
 //
@@ -35,7 +36,7 @@ describeSiHayBase("475/R8-R9-R17 — cortes por zona", () => {
           { id: b, nombre: "B", esCentral: false },
         ],
         { zonas: [{ zonaId: a, plazoDias: 10, avisoDias: 2 }] },
-        ahora,
+        ahora, ZONA_DE_CR,
       );
       const hito = mas(ahora, -9); // 9 dias: entra en A (>=8), no en B (<15)
       const enA = await crearOrden(tx, base, { clave: "a", zonaId: a, estado: "en_reparto", createdAt: hito });

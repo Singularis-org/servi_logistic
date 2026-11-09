@@ -11,11 +11,11 @@ import type {
   CierreSinGestionRow,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
   CatalogoFiltrosCierresDTO,
-  FiltrosCierres,
+  FiltrosCierresRepo,
 } from "@/lib/types/filtros-cierres";
 
 // Feature 38 — contrato del repositorio de "Cierres del dia" del admin. Solo queries
@@ -48,6 +48,7 @@ export interface CierreAdminResumenRow {
   };
   totalPagoMensajero: string; // feature 39/R17: snapshot total del pago al mensajero (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R16: snapshot total del ingreso de bodega por rechazos (STRING)
+  incluyeModeloNuevo?: boolean; // SLT-54 (R71): ver `CierreAdminResumen.incluyeModeloNuevo`
   solicitadoAt: string; // ISO
   resueltoAt: string | null; // ISO
   motivoRechazo: string | null;
@@ -127,10 +128,8 @@ export interface LiberacionSinGestionarConfig {
   /**
    * 💰 FEATURE 276 (T9, R7/R21) — el UMBRAL de intentos, INYECTADO DESDE EL SERVICIO.
    *
-   * La configuracion NO se lee en el repositorio: la regla de negocio y la config viven en
-   * `CierresAdminService`, que es quien resuelve `reintentosConfig.MIN_INTENTOS_ENTREGA`. Aqui
-   * llega como un numero y nada mas — un `import { reintentosConfig }` en este repositorio seria
-   * la segunda fuente del umbral, y la ficha 276 tiene un requisito entero (R7) para impedir eso.
+   * `CierresAdminService` lo lee con `leerTopeIntentos()` una vez por aprobacion (SLT-77, R34), y aqui
+   * llega como un numero y nada mas.
    */
   umbralIntentos: number;
 }
@@ -347,6 +346,9 @@ interface ResolverCierreBase {
   alcance: Alcance;
   resueltoPor: string;
   motivoRechazo: string | null;
+  // SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del
+  // historial. La pone el servicio; obligatoria para que un olvido de cableado no compile.
+  zonaHoraria: string;
   // Feature 158 (T1.14, R19-R23/R28): presente SOLO al aprobar -> DENTRO de la MISMA tx
   // escribe `gestion_orden.indemnizacion` (con `cierreId` y `resultado` como GUARDIA del
   // WHERE, no como filtro cosmetico) y emite el egreso `egreso_indemnizacion` del cierre.
@@ -404,6 +406,8 @@ export type ResolverCierreInput =
 export type ResolverCierreResult = "updated" | "conflict" | "fuera_de_alcance";
 
 export interface ICierresAdminRepository {
+  /** SLT-77 (design §3, R27): el tope de la empresa en contexto. Este servicio no recibe el historial. */
+  leerTopeIntentos(): Promise<number>;
   /**
    * R2/R4/R5/R8/R9: cierres del alcance (WHERE destino_tipo + destino_zona_id si !=
    * null), join a usuario/zona para nombres, orderBy solicitadoAt desc. Totales
@@ -431,7 +435,7 @@ export interface ICierresAdminRepository {
   findHistoricoPaginado(
     alcance: Alcance,
     rango: RangoPagina,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<PaginaRepositorio<CierreAdminResumenRow>>;
   /**
    * Feature 170 — FASE 2 (T J.1, R40/R41/R44/R51/R54): UNA PAGINA de la COLA de pendientes de
@@ -444,7 +448,7 @@ export interface ICierresAdminRepository {
   findColaPaginada(
     alcance: Alcance,
     rango: RangoPagina,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<PaginaRepositorio<CierreAdminResumenRow>>;
   /**
    * Feature 184 — Tanda D (T D.1, R1/R14/R15/R16): el HISTORICO ENTERO del alcance, sin recorte
@@ -459,7 +463,7 @@ export interface ICierresAdminRepository {
    */
   findHistoricoCompleto(
     alcance: Alcance,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<CierreAdminResumenRow[]>;
   /**
    * Feature 184 — Tanda D (T D.1, R1/R14/R15/R16): la COLA ENTERA de pendientes de decision del
@@ -470,7 +474,7 @@ export interface ICierresAdminRepository {
    */
   findColaCompleta(
     alcance: Alcance,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<CierreAdminResumenRow[]>;
   /**
    * Pedido humano del 2026-08-16 — las OPCIONES de los filtros de la pantalla, DERIVADAS de los
@@ -488,6 +492,11 @@ export interface ICierresAdminRepository {
   findCierreByIdEnAlcance(
     cierreId: string,
     alcance: Alcance,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<{
     cierre: CierreAdminResumenRow;
     gestiones: CierreGestionPendienteRow[];
@@ -582,7 +591,12 @@ export interface ICierresAdminRepository {
    */
   findGestionesPorAlcanceCompleto(
     alcance: Alcance,
-    filtros: FiltrosDescargaGestiones,
+    filtros: FiltrosDescargaGestionesRepo,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<CierreGestionDescargaDTO[]>;
   /**
    * R10-R15: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si

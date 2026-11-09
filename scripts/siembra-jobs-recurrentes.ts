@@ -2,12 +2,14 @@ import { pathToFileURL } from "node:url";
 import type { JobTipo } from "@prisma/client";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { seedJobLiberarReprogramadas } from "./seed-jobs-liberar-reprogramadas";
 import { seedJobAnaliticaRollupDiario } from "./seed-jobs-analitica-rollup-diario";
 import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-mantenimiento";
 import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
+import { AVISO_SIN_ZONAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 
 // Ficha 313 — REGISTRO UNICO DE LAS SIEMBRAS DE LOS JOBS RECURRENTES, y lo que las corre.
 //
@@ -41,8 +43,12 @@ import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
 // real, `tests/integration/db/job-tipo-analitica-rollup-migration.test.ts` y
 // `tests/integration/db/siembra-liberar-reprogramadas-idempotente.test.ts`.
 
-/** Encola la PRIMERA ocurrencia de un tipo recurrente. Devuelve null si ya estaba encolada. */
-export type Sembrador = (repo: IJobRepository, now: Date) => Promise<JobDTO | null>;
+/**
+ * Encola la PRIMERA ocurrencia de un tipo recurrente. Devuelve null si ya estaba encolada.
+ * SLT-42 (design §6.1): `zonas` son las de los paises con empresas, las que la cola le pasa a la
+ * recurrencia; los sembradores que no son diarios por zona las ignoran.
+ */
+export type Sembrador = (repo: IJobRepository, now: Date, zonas: readonly string[]) => Promise<JobDTO | null>;
 
 export interface SiembraRecurrente {
   /** Tipo de job, tal como se registra en `buildRecurrencias()`. */
@@ -186,11 +192,12 @@ export interface ResultadoSiembra {
  */
 export async function sembrarJobsRecurrentes(
   repo: IJobRepository,
-  now: Date = new Date(),
+  now: Date,
+  zonas: readonly string[],
 ): Promise<ResultadoSiembra[]> {
   const resultados: ResultadoSiembra[] = [];
   for (const siembra of SIEMBRAS_RECURRENTES) {
-    const fila = await siembra.sembrar(repo, now);
+    const fila = await siembra.sembrar(repo, now, zonas);
     resultados.push({
       tipo: siembra.tipo,
       creada: fila !== null,
@@ -217,8 +224,12 @@ export async function sembrarJobsRecurrentesEnBase(
 ): Promise<ResultadoSiembra[]> {
   const prisma = getPrismaClient();
   try {
+    // SLT-42 (design §6.1; R25): las zonas con empresas, como las lee la cola al re-agendar.
+    const zonas = await new PaisRepository(prisma).zonasConEmpresas();
+    // Decision del humano tras el bloque 6: sin zonas, los diarios se siembran en UTC con un error.
+    if (zonas.length === 0) console.error(AVISO_SIN_ZONAS);
     return await comoPlataforma("SL-17", "siembra de jobs recurrentes en el build", () =>
-      sembrarJobsRecurrentes(new JobRepository(prisma), now),
+      sembrarJobsRecurrentes(new JobRepository(prisma), now, zonas),
     );
   } finally {
     await prisma.$disconnect();

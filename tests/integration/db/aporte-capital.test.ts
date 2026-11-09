@@ -17,6 +17,18 @@ import {
   sembrarPersonas459,
   type Personas459,
 } from "./_fixtures/escrituras-459";
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -66,7 +78,7 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
 
   /** El ultimo dia admitido para un saldo inicial HOY en esta base (R71), o hoy si la caja esta vacia. */
   async function diaDelSaldoInicial(): Promise<string> {
-    const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ excluirCapital: true });
+    const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
     return primer ?? fechaCalendarioCR(new Date());
   }
 
@@ -88,7 +100,10 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
       cobros: { estadoDeDocumentos: async () => [] }, ajustes: { estadoDeDocumentos: async () => [] }, // ficha 461: lo exige `LectoresDocumentosCaja`; esta suite no lee cobros
       abonos: { estadoDeDocumentos: async () => [] }, // ficha 457: lo exige `LectoresDocumentosCaja`; esta suite no lee pagos de una tienda a la empresa
       egresos: { estadoDeDocumentos: async () => [] }, indemnizaciones: { estadoDeDocumentos: async () => [] }, rechazos: { estadoDeDocumentos: async () => [] }, pagosATienda: { estadoDeDocumentos: async () => [] }, premios: { estadoDeDocumentos: async () => [] }, incentivos: { estadoDeDocumentos: async () => [] }, // ficha 458-B: lo exige `LectoresDocumentosCaja`
-    });
+    },
+    undefined,
+    undefined,
+    reglasPaisFijas(),);
     const r = await svc.verResumenCaja({ page: 1, pageSize: 1 }, p.maestro);
     if (r.status !== "ok") throw new Error(`verResumenCaja: ${JSON.stringify(r)}`);
     return r.resumen.estado;
@@ -213,7 +228,7 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
 
   it("R71: un saldo inicial POSTERIOR al primer dia de la caja (sin capital) -> rechazado con el ultimo dia admitido", async () => {
     await conPersonas(async (p) => {
-      const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ excluirCapital: true });
+      const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
       const hoy = fechaCalendarioCR(new Date());
       // Sin un dia intermedio entre el primero y hoy no hay nada que rechazar: se dice en rojo.
       expect(primer, "la base de pruebas necesita movimientos de caja anteriores a hoy").not.toBeNull();

@@ -15,10 +15,20 @@ Antes de revisar, lee: `specs/<feature>/{requirements.md, design.md, tasks.md}`,
 `progress/impl_<key>.md`, `docs/architecture.md`, `docs/conventions.md`,
 `docs/verification.md`, `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md`.
 
+**Mira la ruta de la feature** (`docs/specs.md > Tres rutas`; sin ruta, la completa). En la
+**ligera** el spec es un solo `requirements.md` (sin `design.md` ni `tasks.md`) y revisas acotado al
+diff. En cualquier ruta, si el diff toca dinero, permisos, autenticacion, integraciones externas o
+webhooks, o la complejidad es alta, y la ruta no es la completa, es **BLOQUEANTE**: la feature
+tiene que subir de ruta.
+
 Verifica:
 1. **Trazabilidad:** cada `R<n>` de requirements.md mapea a un test que realmente
    lo verifica (no un test vacío). Si falta uno, es bloqueante.
-2. **Tasks:** todas en `tasks.md` marcadas `[x]`.
+2. **Tasks:** todas en `tasks.md` (o en `## Tasks` del `requirements.md`, ruta ligera) marcadas
+   `[x]`.
+2b. **Tamaño:** `node scripts/tamano-pr.mjs` en el worktree. Si pasa del máximo sin la línea
+   `<!-- tamano-pr-aceptado: … -->` en `progress/features/<key>.md`, es **BLOQUEANTE**
+   (`docs/gate.md > Tamaño del PR`).
 3. **Checkpoints:** recorre `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md` punto por punto.
    Incluye `design.md > ## Lo que ya existe`: si falta, está vacía o el diff re-crea algo de
    esa lista, es BLOQUEANTE.
@@ -40,10 +50,11 @@ En el informe que devuelves, nombra la ficha como `<key> «<title>»`.
 Si RECHAZADO, sé específico: qué requisito o checkpoint falla y qué falta para
 cumplirlo. No arregles el código tú; eso vuelve al implementer.
 
-**Un rojo del baseline no es un hallazgo.** `./init.sh` (rapido) **NO** consulta
-`tests/baseline-rojos.json` —solo lo hace el modo completo—, asi que un archivo con deuda ajena
-ya listada sale rojo ahi igual. Antes de tratarlo como bloqueante, mira si el archivo esta en esa
-lista. El 2026-09-18 costo una vuelta entera y una decision que no existia.
+**Un rojo del baseline no es un hallazgo.** Un archivo listado en `tests/baseline-rojos.json` es
+deuda ajena ya registrada: `./init.sh` lo tolera (`docs/gate.md > Rojos heredados`), pero un
+`vitest` corrido a mano lo muestra en rojo igual. Antes de tratar un rojo como bloqueante, mira si
+el archivo esta en esa lista. Confundirlos costo una vuelta entera de review en el proyecto de
+origen del arnes.
 
 **Vuelta 2 y siguientes:** si el leader te da un rango `A..B`, revisa solo ese diff contra
 los hallazgos de la vuelta anterior y sus regresiones. No amplies por tu cuenta: si ves un
@@ -55,8 +66,10 @@ motivo, anotalo como hallazgo. Escribe la vuelta como seccion nueva al final de
   cambio, la estructura de un modulo) usa primero el grafo: `search_graph`, `trace_path`,
   `get_code_snippet`, `search_code`. Grep/Read para lo que no es codigo (docs, specs, JSON,
   configs, textos de UI) y para leer un archivo antes de editarlo.
-- Tu proyecto es el de tu worktree: `list_projects` y el que tenga `root_path` en
-  `.worktrees/<key>-<slug>`. No consultes el de otro worktree.
+- Tu proyecto es el de tu worktree. Su nombre es la ruta absoluta del worktree con `:/` y `/`
+  cambiados por `-` (`R:/repo/.worktrees/PROY-8-x` -> `R-repo-.worktrees-PROY-8-x`). Confirma con
+  `index_status` (rapido); **no uses `list_projects` para buscarlo**: abre todos los indices y
+  tarda 5-15 s. No consultes el de otro worktree.
 - No indexas: el indice lo mantiene el leader. Lo que tocaste en esta tanda puede no estar
   todavia; ahi usa Grep/Read.
 - Si el MCP no responde, sigue con Grep/Read y anotalo en tu informe. No pares.

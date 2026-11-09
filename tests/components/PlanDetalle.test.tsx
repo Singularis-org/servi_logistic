@@ -27,9 +27,9 @@ const DETALLE: DetallePlan = {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
+    topes: { porRol: { mensajero: 5 }, apiKeys: null },
     modulos: ["analitica", "ranking"],
-    precio: { tipo: "monto", mensual: "10.00", anual: null },
+    precio: { tipo: "monto", mensual: "10.00", descuentos: {} },
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
@@ -41,6 +41,7 @@ const DETALLE: DetallePlan = {
     {
       id: "r-2",
       accion: "cambio_programado",
+      // SLT-86 (R30): una fila de antes de la ficha, con el tope de órdenes: se sigue pintando tal cual.
       cambios: {
         topes: {
           antes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
@@ -57,6 +58,7 @@ const DETALLE: DetallePlan = {
       accion: "creado",
       cambios: {
         nombre: { antes: null, despues: "Básico" },
+        // SLT-86 (R30): el alta de antes de la ficha guardaba `anual` en el precio.
         precio: { antes: null, despues: { tipo: "monto", mensual: "10.00", anual: null } },
       },
       actorNombre: "Sofía Admin",
@@ -97,8 +99,9 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
     montar();
     const vigente = seccion("Versión vigente");
     expect(within(vigente).getByText("Público")).toBeInTheDocument();
-    expect(within(vigente).getByText("10.00 al mes")).toBeInTheDocument();
-    expect(within(vigente).getByText("Órdenes por ciclo: 3.000")).toBeInTheDocument();
+    // SLT-86 (R24): «{mensual} / mes» y ningún tope de órdenes.
+    expect(within(vigente).getByText("10.00 / mes")).toBeInTheDocument();
+    expect(within(vigente).queryByText(/Órdenes por ciclo/)).toBeNull();
     expect(within(vigente).getByText("Usuarios activos con el rol Mensajero: 5")).toBeInTheDocument();
     expect(within(vigente).getByText("API keys activas: sin límite")).toBeInTheDocument();
     // Los módulos van como chips, igual que en `ConsumoDelPlan`.
@@ -140,7 +143,7 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
         "Órdenes por ciclo: 3000 → 5000Rige desde 2030-01-15",
       ],
       // SLT-66 R9: la línea de alta «Precio:» pasa a «Costo base:».
-      ["2026-10-01 09:00", "Sofía Admin", "Creado", "Nombre del plan: BásicoCosto base: 10.00 al mes"],
+      ["2026-10-01 09:00", "Sofía Admin", "Creado", "Nombre del plan: BásicoCosto base: 10.00 / mes"],
     ]);
   });
 
@@ -263,7 +266,7 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
       ...OK,
       avisos: [
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero", usados: 7, maximo: 5 },
-        { organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 },
+        { organizacionId: ORG, empresa: "Envíos Norte", tope: "api_keys", usados: 3, maximo: 2 },
       ],
     } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
@@ -278,9 +281,7 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     expect(
       screen.getByText("Envíos Norte ya tiene 7 usuarios activos con el rol Mensajero y el plan permite 5."),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Envíos Norte ya tiene 3200 órdenes en el ciclo en curso y el plan permite 3000."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Envíos Norte ya tiene 3 API keys activas y el plan permite 2.")).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 

@@ -22,9 +22,10 @@ const PUBLICO: PlanDelCatalogo = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: 2 },
+  topes: { porRol: { mensajero: 5 }, apiKeys: 2 },
   modulos: ["analitica"],
-  precio: { tipo: "monto", mensual: "10.00", anual: { tipo: "fijo", monto: "100.00" } },
+  // SLT-86 (R24): el costo base con un descuento por período.
+  precio: { tipo: "monto", mensual: "10.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.00" } } },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
@@ -38,7 +39,7 @@ const CUSTOM: PlanDelCatalogo = {
   nombre: "Norte a medida",
   visibilidad: "custom",
   organizacionId: "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60",
-  topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
@@ -65,11 +66,12 @@ function montar(crearPlan = vi.fn().mockResolvedValue(OK)) {
   render(
     <PlanesModule
       planes={[PUBLICO, CUSTOM, ARCHIVADO]}
-      empresas={[{ id: CUSTOM.organizacionId!, nombre: "Envíos Norte", tienePlan: true }]}
+      empresas={[{ id: CUSTOM.organizacionId!, nombre: "Envíos Norte", tienePlan: true, fechaDeEfectoPorDefecto: "2026-11-01" }]}
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+      rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
       crearPlan={crearPlan}
-      previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+      previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
     />,
   );
   return { crearPlan };
@@ -89,8 +91,9 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Básico",
       "Público",
       // SLT-66 R9, R24: la columna «Costo» lleva el costo base y el costo por orden.
-      "Costo base: 10.00 al mes, 100.00 al añoCosto por orden: se aplica el valor global",
-      "Órdenes por ciclo: 3.000Usuarios activos con el rol Mensajero: 5API keys activas: 2",
+      // SLT-86 (R24): «{mensual} / mes» y el descuento de cada período que lo tiene; sin tope de órdenes.
+      "Costo base: 10.00 / mes · Descuento anual: 10.00 %Costo por orden: se aplica el valor global",
+      "Usuarios activos con el rol Mensajero: 5API keys activas: 2",
       "1.200",
       "Desde 2030-01-15",
     ]);
@@ -98,7 +101,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Norte a medida",
       "Custom de Envíos Norte",
       "Costo base: sin precioCosto por orden: se aplica el valor global", // SLT-66 R9, R24
-      "Órdenes por ciclo: sin límiteUsuarios: sin límite por rolAPI keys activas: sin límite",
+      "Usuarios: sin límite por rolAPI keys activas: sin límite",
       "1",
       "Ninguno",
     ]);
@@ -190,8 +193,9 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
         empresas={[]}
         inicioCicloPorDefecto="2026-10-30"
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+        rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
         crearPlan={vi.fn()}
-        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       />,
     );
 

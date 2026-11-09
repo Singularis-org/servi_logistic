@@ -325,7 +325,7 @@ export const openApiSpec = {
             in: "query",
             required: false,
             description:
-              "Fecha calendario mínima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6).",
+              "Fecha calendario mínima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en la zona horaria del país de la empresa de la key.",
             schema: { type: "string", format: "date", example: "2026-08-01" },
           },
           {
@@ -333,7 +333,7 @@ export const openApiSpec = {
             in: "query",
             required: false,
             description:
-              "Fecha calendario máxima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6), así que cubre las 24 horas completas de ese día.",
+              "Fecha calendario máxima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en la zona horaria del país de la empresa de la key, así que cubre las 24 horas completas de ese día.",
             schema: { type: "string", format: "date", example: "2026-08-21" },
           },
           {
@@ -774,7 +774,7 @@ export const openApiSpec = {
             in: "query",
             required: false,
             description:
-              "Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`>=`). Formato `YYYY-MM-DD`. Si se omite, la serie arranca en el primer día del que hay datos.",
+              "Fecha calendario en la zona horaria del país de la empresa de la key, INCLUSIVA (`>=`). Formato `YYYY-MM-DD`. Si se omite, la serie arranca en el primer día del que hay datos.",
             schema: { type: "string", format: "date" },
             example: "2026-08-01",
           },
@@ -783,7 +783,7 @@ export const openApiSpec = {
             in: "query",
             required: false,
             description:
-              "Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`<=`). Formato `YYYY-MM-DD`. Si se omite, la serie llega hasta hoy. No hay tope de tamaño de ventana.",
+              "Fecha calendario en la zona horaria del país de la empresa de la key, INCLUSIVA (`<=`). Formato `YYYY-MM-DD`. Si se omite, la serie llega hasta hoy. No hay tope de tamaño de ventana.",
             schema: { type: "string", format: "date" },
             example: "2026-08-21",
           },
@@ -2206,7 +2206,7 @@ export const openApiSpec = {
               hasta: {
                 type: "string",
                 format: "date",
-                description: "Inclusivo, hora de Costa Rica.",
+                description: "Inclusivo, en la zona horaria del país de la empresa de la key.",
                 example: "2026-08-21",
               },
             },

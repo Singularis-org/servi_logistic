@@ -24,15 +24,15 @@ import type {
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ACTUAL = "11111111-1111-4111-8111-111111111111";
-const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" };
+const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [] };
 
 function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): PlanDTO {
   return {
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000.00", anual: null },
+    precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
     costoPorOrden: "100.00",
     costoPorOrdenPorcentual: null,
     archivado: false,
@@ -60,7 +60,7 @@ const ASIGNABLES = [CON_MINIMO, SIN_MINIMO, FIJO, VACIO];
 
 /** La vista de una empresa sin plan, o con el plan `ACTUAL` (fijo). */
 function vista(conPlan: boolean): PlanDeEmpresaVista {
-  if (!conPlan) return { organizacionId: ORG, plan: null, asignaciones: [] };
+  if (!conPlan) return { organizacionId: ORG, plan: null, pendienteSinPlan: null, asignaciones: [] };
   const consumo = planConConsumo(
     {
       vigente: {
@@ -71,7 +71,9 @@ function vista(conPlan: boolean): PlanDeEmpresaVista {
         costoPorOrden: ACTUAL.costoPorOrden,
         costoPorOrdenPorcentual: null,
       },
-      ancla: new Date("2026-10-01T06:00:00.000Z"),
+      entrada: new Date("2026-10-01T06:00:00.000Z"),
+      precioDelPeriodo: ACTUAL.precio,
+      pendiente: null,
       uso: { ordenes: 3, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
       cambio: null,
       tipoCobro: "mensual",
@@ -80,7 +82,12 @@ function vista(conPlan: boolean): PlanDeEmpresaVista {
     },
     new Date("2026-10-10T06:00:00.000Z"),
   );
-  return { organizacionId: ORG, plan: { ...consumo, planId: PLAN_ACTUAL, archivado: false }, asignaciones: [] };
+  return {
+    organizacionId: ORG,
+    plan: { ...consumo, planId: PLAN_ACTUAL, archivado: false },
+    pendienteSinPlan: null,
+    asignaciones: [],
+  };
 }
 
 function montar(conPlan: boolean) {
@@ -95,8 +102,11 @@ function montar(conPlan: boolean) {
         asignarPlan={vi.fn<(i: unknown) => Promise<PlanResult>>()}
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         inicioCicloPorDefecto="2026-10-30"
+        rangoFechaDeEfecto={{ hoy: "2026-10-10", min: "2026-10-10", max: "2027-10-10" }}
+        fechaDeEfectoPorDefecto="2026-11-01"
         previsualizarAsignacion={vi.fn().mockResolvedValue(VISTA_PREVIA_OK)}
         cambiarTipoCobro={vi.fn()}
+        cancelarCambioEmpresa={vi.fn()}
       />
     </ToastProvider>,
   );
@@ -210,9 +220,10 @@ describe("SLT-83 R21 — catálogo y detalle del plan", () => {
         planes={[catalogo(CON_MINIMO), catalogo(SIN_MINIMO), catalogo(FIJO)]}
         empresas={[]}
         inicioCicloPorDefecto="2026-10-30"
+        rangoFechaDeEfecto={{ hoy: "2026-10-10", min: "2026-10-10", max: "2027-10-10" }}
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         crearPlan={vi.fn()}
-        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       />,
     );
     const fila = (n: string) => screen.getByRole("link", { name: `Ver el plan ${n}` }).closest("tr")!;

@@ -13,6 +13,7 @@ import type {
   ObtenerHistorialServiceResult,
 } from "@/lib/interfaces/services/IOrdenHistorialService";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
+import type { AppErrorShape } from "@/lib/errors";
 
 // Feature 49 (T4.3, design §4.3) — Server Action de LECTURA del historial (dato interno del
 // mismo proyecto -> Server Action, no Route API; patron liberacion-reprogramada). Resuelve
@@ -28,6 +29,13 @@ export type ObtenerHistorialOrdenResult =
 export interface ObtenerHistorialOrdenDeps {
   service?: IOrdenHistorialService;
   getActor?: () => Promise<Actor | null>;
+}
+
+function toHistorialActionError(shape: AppErrorShape): { status: "unauthenticated" } {
+  if (shape.code === "UNAUTHORIZED") return { status: "unauthenticated" };
+  // SLT-77 (R27): un fallo al leer el tope no es una sesion expirada. Se propaga, como en el resto de los
+  // bordes de ordenes, y el drawer lo pinta como error de carga.
+  throw new Error(`orden-historial: AppErrorCode inesperado ${shape.code}`);
 }
 
 function buildService(): IOrdenHistorialService {
@@ -57,6 +65,5 @@ export async function obtenerHistorialOrden(
     const service = deps.service ?? buildService();
     return service.obtenerHistorial(ordenId, actor);
   });
-  // Este borde no tiene zod: el unico AppErrorShape posible es UNAUTHORIZED.
-  return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+  return isAppErrorShape(r) ? toHistorialActionError(r) : r;
 }

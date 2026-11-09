@@ -7,6 +7,7 @@ import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaS
 import { LLAMADAS_PROHIBIDAS_EN_DINERO } from "../../fixtures/money-safe";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Feature 213 / T13 — GUARDIA DE LA CAPTURA. Cuatro propiedades DURADERAS del frontend del
  * pago múltiple, cada una con CONTRAPRUEBA y con control de NO-VACUIDAD:
@@ -491,7 +492,7 @@ describe("R32 — el borde de escritura sigue aceptando `metodoPago` escalar", (
   };
 
   it("EJECUTABLE: una entrega con SOLO el escalar (sin `pagos`) sigue siendo válida", () => {
-    const r = gestionarSchema.safeParse(entregaConEscalar);
+    const r = gestionarSchema(ZONA_CR).safeParse(entregaConEscalar);
 
     expect(r.success, "el borde dejó de aceptar la forma escalar: eso es la ficha 214").toBe(true);
     if (r.success && r.data.resultado === "entregado") {
@@ -509,17 +510,17 @@ describe("R32 — el borde de escritura sigue aceptando `metodoPago` escalar", (
 
   it("CONTROL DE NO-VACUIDAD: el mismo schema rechaza lo que SÍ tiene que rechazar", () => {
     // Sin esto, un `gestionarSchema` que aceptara CUALQUIER COSA daría verde el caso de arriba.
-    const sinComo = gestionarSchema.safeParse({ ...entregaConEscalar, metodoPago: undefined });
+    const sinComo = gestionarSchema(ZONA_CR).safeParse({ ...entregaConEscalar, metodoPago: undefined });
     expect(sinComo.success, "el borde acepta un cobro sin decir cómo se cobró").toBe(false);
 
-    const inventado = gestionarSchema.safeParse({ ...entregaConEscalar, metodoPago: "cripto" });
+    const inventado = gestionarSchema(ZONA_CR).safeParse({ ...entregaConEscalar, metodoPago: "cripto" });
     expect(inventado.success, "el borde acepta un método fuera del catálogo").toBe(false);
   });
 
   it("la forma PURA de la 213 y la escalar de antes conviven: las DOS son válidas", () => {
     // R32 dicho como convivencia, que es lo que esta ficha necesita para poder mergearse sin
     // romper a nadie que aún envíe el escalar.
-    const conDesglose = gestionarSchema.safeParse({
+    const conDesglose = gestionarSchema(ZONA_CR).safeParse({
       ...entregaConEscalar,
       metodoPago: undefined,
       pagos: [
@@ -529,6 +530,6 @@ describe("R32 — el borde de escritura sigue aceptando `metodoPago` escalar", (
     });
 
     expect(conDesglose.success).toBe(true);
-    expect(gestionarSchema.safeParse(entregaConEscalar).success).toBe(true);
+    expect(gestionarSchema(ZONA_CR).safeParse(entregaConEscalar).success).toBe(true);
   });
 });

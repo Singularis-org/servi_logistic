@@ -37,13 +37,14 @@ import {
  * 2. (R28.1, R21) El superadmin, por pantalla, edita ese plan y pone el modo «Porcentual», 2 % y
  *    mínimo 500. El detalle dice «2.00 % del valor del paquete, mínimo 500.00».
  * 3. (R28.2, R28.3, R22) Lo asigna a la empresa desde el bloque «Plan» de su detalle (modal de
- *    SLT-58), con el inicio del ciclo 5 días atrás. El listado de «Empresas» dice, en «Cobro por
+ *    SLT-58), con el inicio del ciclo al menos 5 días atrás y sin tramo (`entradaSinTramo`). El listado de «Empresas» dice, en «Cobro por
  *    orden», «2.00 % (mín. 500.00)» y «del plan».
  * 4. (R28.4, R6, R18) La tienda crea una orden de `monto_cobrar` 100.000 por la carga masiva
  *    (`crearOrden`): la orden congela 2 % / 500 y la deuda de la wallet sigue en «₡0».
  * 5. (R28.5, R8, R18) La orden llega a `entregado` por la vía real (`llevarA` + `gestionar` + cierre
  *    aprobado, ficha 454): un cargo 2000.00 de fuente `plan` y la wallet dice «₡2.000».
- * 6. (R28.6, R23) «Mi plan» dice lo cobrado en el ciclo (2000.00), 0 órdenes sin estado final y el
+ * 6. (R28.6, R23) «Mi plan» dice lo cobrado en el período (2000.00; SLT-86 R28: «período» en lugar de
+ *    «ciclo»), 0 órdenes sin estado final y el
  *    total 1000.00 + 2000.00 = 3000.00.
  *
  * ZONA HORARIA: lo cobrado en el ciclo se filtra por la fecha del cargo dentro del ciclo (R24, P1).
@@ -87,21 +88,35 @@ const TEXTO = {
   planAAsignar: "Plan a asignar",
   asignarPlan: "Asignar plan",
   modal: "¿Asignar este plan a la empresa?",
-  inicioCiclo: "Inicio del ciclo de órdenes",
+  inicioCiclo: "Inicio del período",
   tipoCobro: "Tipo de cobro",
   mensual: "Mensual",
   // `textoDelCobroVigente` (R22) y la fuente de `CobroPorOrden.tsx`.
   columnaCobro: "2.00 % (mín. 500.00)",
   delPlan: "del plan",
-  // «Mi plan» (`ConsumoDelPlan` + `lineasDelCosteoPorcentual`, R23).
-  costoBase: "Costo base: 1000.00 al mes",
+  // «Mi plan» (`ConsumoDelPlan` + `lineasDelCosteoPorcentual`, R23). SLT-86 (R28; decisiones del
+  // 2026-11-05 y del 2026-11-06): «Costo base {tipo}: …» del período en curso y «período» en vez de «ciclo».
+  costoDelPeriodo: "Costo del período",
+  costoBase: "Costo base mensual: 1000.00",
   costoPorOrden: "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00",
-  cobradoCero: "Cobrado en el ciclo: 0.00",
-  pendientesUna: "Órdenes del ciclo sin estado final: 1",
-  cobrado: "Cobrado en el ciclo: 2000.00",
-  pendientesCero: "Órdenes del ciclo sin estado final: 0",
-  total: "Total del ciclo hasta hoy: 1000.00 + 2000.00 = 3000.00",
+  cobradoCero: "Cobrado en el período: 0.00",
+  pendientesUna: "Órdenes del período sin estado final: 1",
+  cobrado: "Cobrado en el período: 2000.00",
+  pendientesCero: "Órdenes del período sin estado final: 0",
+  total: "Total del período hasta hoy: 1000.00 + 2000.00 = 3000.00",
 } as const;
+
+/**
+ * SLT-86 (R5, R12): la fecha de inicio de la primera asignación. Hace al menos 5 días (ver «ZONA HORARIA»
+ * arriba) y, además, sin dejar el período mensual en curso como tramo, cuyo costo base dependería del día
+ * en que corra el spec: si hace 5 días cae en el mes en curso se usa el día 1 de este mes (aún más atrás);
+ * si cae en el mes anterior, el período en curso ya es completo y se usa tal cual.
+ */
+function entradaSinTramo(): string {
+  const haceCinco = fechaCalendarioCR(new Date(Date.now() - 5 * DIA_MS));
+  const diaUno = `${fechaCalendarioCR(new Date()).slice(0, 8)}01`;
+  return haceCinco < diaUno ? haceCinco : diaUno;
+}
 
 /** Lo que pinta `money()`: `money("0.00")` y `money("2000.00")`, escritos a mano. */
 const PINTADO = { deudaCero: "₡0", deudaTrasEntrega: "₡2.000" } as const;
@@ -186,12 +201,12 @@ async function movimientos(): Promise<string[]> {
   return filas.map((f) => `${f.ordenId === orden?.id ? "orden" : f.ordenId}:${f.tipo}:${f.monto.toFixed(2)}:${f.fuente}`);
 }
 
-/** Abre «Mi plan» del maestro y devuelve la lista «Costo del ciclo». */
-async function costoDelCiclo(page: Page): Promise<Locator> {
+/** Abre «Mi plan» del maestro y devuelve la lista «Costo del período». */
+async function costoDelPeriodo(page: Page): Promise<Locator> {
   const res = await page.goto("/mi-plan", { waitUntil: "load", timeout: 180_000 });
   expect(res?.status()).toBeLessThan(400);
   await expect(page.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
-  const lista = page.getByRole("list", { name: "Costo del ciclo", exact: true });
+  const lista = page.getByRole("list", { name: TEXTO.costoDelPeriodo, exact: true });
   await expect(lista).toBeVisible();
   return lista;
 }
@@ -247,8 +262,9 @@ test("lo asigna a la empresa y «Empresas» dice «2.00 % (mín. 500.00)» «del
 
   const modal = page.getByRole("dialog", { name: TEXTO.modal });
   await expect(modal).toBeVisible({ timeout: 30_000 });
-  // Zona horaria: el ciclo empieza 5 días atrás (dentro del rango de SLT-58 R30, ± 1 mes), no hoy.
-  await modal.getByLabel(TEXTO.inicioCiclo).fill(fechaCalendarioCR(new Date(Date.now() - 5 * DIA_MS)));
+  // Zona horaria: la entrada va al menos 5 días atrás (dentro del rango de SLT-58 R30, ± 1 mes), no hoy;
+  // y sin tramo en el período en curso (SLT-86 R12, ver `entradaSinTramo`).
+  await modal.getByLabel(TEXTO.inicioCiclo).fill(entradaSinTramo());
   const mensual = modal
     .getByRole("radiogroup", { name: TEXTO.tipoCobro })
     .getByRole("radio", { name: TEXTO.mensual, exact: true });
@@ -295,7 +311,7 @@ test("la empresa crea una orden de 100.000 y la deuda de la wallet no cambia (R2
   expect(await deudaEnWallet(maestro())).toBe(PINTADO.deudaCero);
 
   // «Mi plan» ya la cuenta como pendiente y aún no hay nada cobrado.
-  const lista = await costoDelCiclo(maestro());
+  const lista = await costoDelPeriodo(maestro());
   await expect(lista.getByText(TEXTO.cobradoCero, { exact: true })).toBeVisible();
   await expect(lista.getByText(TEXTO.pendientesUna, { exact: true })).toBeVisible();
 });
@@ -316,9 +332,9 @@ test("la orden llega a «entregado» y la deuda sube 2.000,00 (R28.5, R8, R18)",
   await maestro().screenshot({ path: info.outputPath("slt83-wallet.png"), fullPage: true });
 });
 
-test("«Mi plan» muestra lo cobrado en el ciclo, 0 órdenes sin estado final y el total (R28.6, R23)", async ({}, info) => {
+test("«Mi plan» muestra lo cobrado en el período, 0 órdenes sin estado final y el total (R28.6, R23; SLT-86 R28)", async ({}, info) => {
   test.setTimeout(240_000);
-  const lista = await costoDelCiclo(maestro());
+  const lista = await costoDelPeriodo(maestro());
   for (const linea of [TEXTO.costoBase, TEXTO.costoPorOrden, TEXTO.cobrado, TEXTO.pendientesCero, TEXTO.total]) {
     await expect(lista.getByText(linea, { exact: true })).toBeVisible();
   }

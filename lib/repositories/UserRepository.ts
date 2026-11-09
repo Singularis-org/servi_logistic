@@ -43,7 +43,7 @@ const PUBLIC_SELECT = {
   cedula: true,
   tipoIdentificacionId: true,
   rolId: true,
-  fulfillment: true, // feature 27/R14: expuesto en la forma publica (nunca el hash)
+  seRecogeEnTienda: true, // SLT-94 R9: expuesto en la forma publica (nunca el hash)
   zonaId: true, // feature 24/R27: zona asignada (mensajero/adminSatelite)
   vehiculoId: true, // feature 21: vehiculo asociado (mensajero)
   createdAt: true,
@@ -155,8 +155,8 @@ export class UserRepository implements IUserRepository {
       // §2.3: era un `create` suelto) para que el alta y su rastro sean atomicos.
       return await this.prisma.$transaction(async (tx) => {
         const usuario = await tx.usuario.create({
-          // Feature 27/R3: `fulfillment` ausente se persiste como `false` (no null).
-          data: { ...input, fulfillment: input.fulfillment ?? false },
+          // SLT-94 (R3): la marca ausente se persiste como «si» (no null).
+          data: { ...input, seRecogeEnTienda: input.seRecogeEnTienda ?? true },
           select: PUBLIC_SELECT,
         });
 
@@ -511,7 +511,7 @@ export class UserRepository implements IUserRepository {
       // FICHA 362 (R7/R9) — EL ESTADO PREVIO, LEIDO ANTES DEL `UPDATE` Y DENTRO DE LA MISMA
       // TRANSACCION.
       //
-      // Este formulario edita a la vez el rol, la zona, el `fulfillment` y media docena de datos
+      // Este formulario edita a la vez el rol, la zona, la marca «se recoge en tienda» y media docena de datos
       // personales. El registro solo se escribe para los TRES que cambian lo que la persona puede
       // hacer o lo que se le cobra, y SOLO SI CAMBIAN DE VERDAD: editar el telefono no deja fila
       // (el caso (b) de T3.1). Sin esta lectura previa no se puede distinguir «se mando el mismo
@@ -522,7 +522,7 @@ export class UserRepository implements IUserRepository {
         select: {
           rolId: true,
           zonaId: true,
-          fulfillment: true,
+          seRecogeEnTienda: true,
           rol: { select: { value: true } },
           zona: { select: { nombre: true } },
         },
@@ -542,7 +542,7 @@ export class UserRepository implements IUserRepository {
           select: {
             nombre: true,
             primerApellido: true,
-            fulfillment: true,
+            seRecogeEnTienda: true,
             rol: { select: { value: true } },
             zona: { select: { nombre: true } },
           },
@@ -577,17 +577,20 @@ export class UserRepository implements IUserRepository {
             valorNuevo: despues?.zona?.nombre ?? null,
           });
         }
-        // (3) ⭑ Q2, CERRADA POR EL HUMANO EL 2026-09-02: el `fulfillment` SI entra al catalogo,
-        // porque activa un cobro periodico de bodega — o sea, mueve dinero. Su categoria es
-        // «mueve dinero» y no «permisos», aunque se edite desde este mismo formulario: no cambia
-        // lo que la persona PUEDE HACER.
-        if (data.fulfillment !== undefined && data.fulfillment !== previo.fulfillment) {
+        // (3) SLT-94 (R8): la marca «se recoge en tienda». Hereda la decision de la Q2 de la 362
+        // (2026-09-02) sobre el `fulfillment` al que sustituye: entra al catalogo como «mueve
+        // dinero» porque decide donde nace la orden. La accion vieja
+        // `usuario_fulfillment_cambiado` queda en el enum solo para las filas historicas.
+        if (
+          data.seRecogeEnTienda !== undefined &&
+          data.seRecogeEnTienda !== previo.seRecogeEnTienda
+        ) {
           entradas.push({
-            accion: "usuario_fulfillment_cambiado",
+            accion: "usuario_se_recoge_en_tienda_cambiado",
             ...base,
             ...actor,
-            valorAnterior: previo.fulfillment ? "true" : "false",
-            valorNuevo: despues?.fulfillment ? "true" : "false",
+            valorAnterior: previo.seRecogeEnTienda ? "true" : "false",
+            valorNuevo: despues?.seRecogeEnTienda ? "true" : "false",
           });
         }
 
@@ -643,11 +646,18 @@ export class UserRepository implements IUserRepository {
     });
   }
 
-  /** Feature 25/R29: catalogo `tipo_identificacion` proyectado a id/value. */
-  async listTiposIdentificacion(): Promise<TipoIdentificacionItem[]> {
+  /** Feature 25/R29 y SLT-42 (R5): ver el contrato en `IUserRepository`. */
+  async listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]> {
+    const select = { id: true, value: true, nombre: true, clave: true };
+    if (paisId === undefined) {
+      return this.prisma.tipoIdentificacion.findMany({ select, orderBy: { value: "asc" } });
+    }
+    // El pais va en el WHERE aunque la RLS ya lo acote para `servi_app`: la consulta tiene que dar
+    // lo mismo con el rol que no la tiene (plataforma, dueño).
     return this.prisma.tipoIdentificacion.findMany({
-      select: { id: true, value: true },
-      orderBy: { value: "asc" },
+      where: { paisId, activo: true },
+      select,
+      orderBy: { orden: "asc" },
     });
   }
 
@@ -667,7 +677,7 @@ export class UserRepository implements IUserRepository {
     if (data.tipoIdentificacionId !== undefined) {
       out.tipoIdentificacionId = data.tipoIdentificacionId;
     }
-    if (data.fulfillment !== undefined) out.fulfillment = data.fulfillment; // feature 27/R12
+    if (data.seRecogeEnTienda !== undefined) out.seRecogeEnTienda = data.seRecogeEnTienda; // SLT-94 R4
     if (data.zonaId !== undefined) out.zonaId = data.zonaId; // feature 24/R27
     if (data.vehiculoId !== undefined) out.vehiculoId = data.vehiculoId; // feature 21
     return out;

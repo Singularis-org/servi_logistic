@@ -5,7 +5,7 @@ import type {
   CierreBodegaDetalleCierreRow,
   CorregirConciliacionInput,
   ICierresBodegaAdminRepository,
-  MarcaConciliacionResult,
+  MarcaConMontoResult,
   MarcarConciliadoInput,
   ResolverCierreBodegaInput,
   ResolverCierreBodegaResult,
@@ -47,15 +47,11 @@ import {
 // el que el sistema cobra, y dos agregaciones «iguales» divergen a la primera correccion.
 import { contarIntentosVigentesEnLoteCon } from "@/lib/repositories/OrdenHistorialRepository";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import { ESTADOS_COLA_SOLICITADO } from "@/lib/utils/colas-cierre";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
-import {
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 
 // Solo el estado que la 40 puede transicionar (R18): la guardia del updateMany.
@@ -133,6 +129,19 @@ async function asentarDiferenciaSatelite(
       fechaMovimiento: args.instante,
     },
   ]);
+}
+
+/**
+ * SLT-96 — ¿lo declarado de esta consolidacion es 0? `null` si no existe. Lee el SNAPSHOT de la base,
+ * dentro de la transaccion de la escritura: la peticion nunca aporta lo declarado (R5). Los snapshots
+ * no cambian despues de consolidar, asi que leerlos aqui no deja carrera con el `updateMany`.
+ */
+async function declaradoEsCero(tx: TxMarca, id: string): Promise<boolean | null> {
+  const s = await tx.cierreBodega.findUnique({
+    where: { id },
+    select: { totalGeneral: true, totalPagoMensajero: true, totalIngresoBodegaRechazos: true },
+  });
+  return s === null ? null : esperadoDe(s).isZero();
 }
 
 // Feature 69/T23: el detalle sale del SNAPSHOT -> el cliente necesita `cierreDetail`.
@@ -218,17 +227,16 @@ function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
  * escrito aparte porque la tabla y sus columnas son otras.
  */
 function filtrosBodegaWhere(
-  filtros: FiltrosCierresBodega | undefined,
+  filtros: FiltrosCierresBodegaRepo | undefined,
 ): Prisma.CierreBodegaWhereInput[] {
   if (!filtros) return [];
   const condiciones: Prisma.CierreBodegaWhereInput[] = [];
-  if (filtros.desde !== undefined || filtros.hasta !== undefined) {
+  // SLT-42 (R22): los limites llegan ya resueltos en la zona del pais de la empresa.
+  if (filtros.solicitadoDesde !== undefined || filtros.solicitadoHasta !== undefined) {
     condiciones.push({
       solicitadoAt: {
-        ...(filtros.desde !== undefined ? { gte: inicioDelDiaCREnUtc(filtros.desde) } : {}),
-        ...(filtros.hasta !== undefined
-          ? { lt: inicioDelDiaSiguienteCREnUtc(filtros.hasta) }
-          : {}),
+        ...(filtros.solicitadoDesde !== undefined ? { gte: filtros.solicitadoDesde } : {}),
+        ...(filtros.solicitadoHasta !== undefined ? { lt: filtros.solicitadoHasta } : {}),
       },
     });
   }
@@ -252,7 +260,7 @@ const ORDEN_CIERRES_BODEGA_ADMIN = {
  * en vez de caer en el historico.
  */
 function historicoBodegaWhere(
-  filtros?: FiltrosCierresBodega,
+  filtros?: FiltrosCierresBodegaRepo,
 ): Prisma.CierreBodegaWhereInput {
   const recortes = filtrosBodegaWhere(filtros);
   return {
@@ -273,7 +281,7 @@ function historicoBodegaWhere(
  * significa que un cierre de bodega deja de verse para aprobarlo, con el dinero agregado de una
  * zona entera parado hasta que alguien lo note.
  */
-function colaBodegaWhere(filtros?: FiltrosCierresBodega): Prisma.CierreBodegaWhereInput {
+function colaBodegaWhere(filtros?: FiltrosCierresBodegaRepo): Prisma.CierreBodegaWhereInput {
   const recortes = filtrosBodegaWhere(filtros);
   return {
     estado: { in: [...ESTADOS_COLA_SOLICITADO] },
@@ -329,7 +337,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * `count` de la pagina no viaja aqui, porque el total de un conjunto sin recorte es su longitud.
    */
   async findHistoricoCompleto(
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]> {
     const rows = await this.prisma.cierreBodega.findMany({
       where: historicoBodegaWhere(filtros),
@@ -353,7 +361,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * caerse de las dos.
    */
   async findColaCompleta(
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]> {
     const rows = await this.prisma.cierreBodega.findMany({
       where: colaBodegaWhere(filtros),
@@ -371,7 +379,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    */
   async findHistoricoPaginado(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // Feature 184/R16: el criterio sale de `historicoBodegaWhere`, la MISMA declaracion que usa
     // el conjunto completo del que sale el archivo. Estaba escrito aqui y habria que haberlo
@@ -402,7 +410,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    */
   async findColaPaginada(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // Feature 184/R16: mismo criterio compartido que el conjunto completo de esta cola.
     const where = colaBodegaWhere(filtros);
@@ -420,7 +428,14 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
   }
 
   /** R11 (+69/R15): cierre de bodega + cada cierre_dia con sus gestiones desde el SNAPSHOT. */
-  async findCierreBodegaConDetalle(id: string): Promise<{
+  async findCierreBodegaConDetalle(
+    id: string,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
+  ): Promise<{
     cierre: CierreBodegaResumenRow;
     cierresDia: {
       resumen: CierreBodegaDetalleCierreRow;
@@ -468,7 +483,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           gestiones: gestiones.map((g) => {
             const d = byOrden.get(g.ordenId);
             if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
-            return toPendienteRowDesdeSnapshot(g, d);
+            return toPendienteRowDesdeSnapshot(g, d, zona);
           }),
         };
       }),
@@ -499,7 +514,12 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * cierre del dia, y aqui el conjunto es un rango de meses.
    */
   async findGestionesDeCierresBodegaCompleto(
-    filtros: FiltrosDescargaGestiones,
+    filtros: FiltrosDescargaGestionesRepo,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<CierreGestionDescargaDTO[]> {
     const gestiones = await this.prisma.gestionOrden.findMany({
       where: {
@@ -529,7 +549,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       // misma fila). Una consulta para todo el conjunto, no una por gestion.
       contarIntentosVigentesEnLoteCon(this.prisma.gestionOrden, ordenIds),
     ]);
-    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden);
+    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona);
   }
 
   /**
@@ -578,6 +598,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: cierre?.zona.nombre ?? null,
             fecha: cierre?.solicitadoAt ?? new Date(),
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           monto: cierre?.totalGeneral ?? null,
           ...actor,
@@ -617,7 +638,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * aprobacion de un cierre de la central habria escrito (R10), y la diferencia de la satelite si lo
    * recibido no cuadra (R11). Si cualquier escritura falla, la marca entera revierte (R12).
    */
-  async marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConciliacionResult> {
+  async marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConMontoResult> {
     const { id, montoRecibido, nota, actorUsuarioId } = input;
     // Money-safe: el importe entra como STRING de escala 2 y se convierte AQUI, en el borde de la
     // escritura. Ni `Number`, ni `parseFloat`, ni aritmetica.
@@ -625,6 +646,15 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     const ahora = new Date();
 
     const resultado = await this.prisma.$transaction(async (tx) => {
+      // SLT-96 (R1/R2/R9): el 0 solo vale con lo declarado en 0. Se lee SOLO con monto 0, para que
+      // el camino de un monto > 0 haga las mismas consultas de siempre. Inexistente → `null`, que
+      // cae en el conteo de abajo (`fuera_de_alcance`), igual que con un monto > 0.
+      if (monto.isZero()) {
+        const cero = await declaradoEsCero(tx, id);
+        if (cero === null) return null;
+        if (!cero) return "monto_cero_no_permitido" as const;
+      }
+
       // R11: aplica SOLO si sigue pendiente de conciliar. Los DOS predicados, no uno: el estado es
       // lo que las pantallas leen y `conciliado_at` es EL predicado de la marca.
       const res = await tx.cierreBodega.updateMany({
@@ -674,6 +704,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: cierre?.zona.nombre ?? null,
             fecha: cierre?.solicitadoAt ?? ahora,
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // El monto RECIBIDO, no el consolidado: es lo que la persona afirma haber contado.
           monto,
@@ -683,7 +714,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       ]);
       return "updated" as const;
     });
-    if (resultado === "updated") return "updated";
+    if (resultado !== null) return resultado;
 
     const existe = await this.prisma.cierreBodega.count({ where: { id } });
     return existe > 0 ? "conflict" : "fuera_de_alcance"; // R11 vs no existe
@@ -752,6 +783,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: previo?.zona.nombre ?? null,
             fecha: previo?.solicitadoAt ?? new Date(),
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // EL MONTO QUE SE BORRA. Leido arriba, dentro de la misma transaccion.
           monto: previo?.montoRecibido ?? null,
@@ -787,7 +819,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * (una fila de ajuste `correccion` mas), sin tocar los anteriores. NO vuelve a asentar los cierres
    * del dia: ya los asento la marca.
    */
-  async corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConciliacionResult> {
+  async corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConMontoResult> {
     const { id, montoRecibido, nota, actorUsuarioId } = input;
     // Money-safe: STRING de escala 2 → `Prisma.Decimal` en el borde de la escritura.
     const monto = new Prisma.Decimal(montoRecibido);
@@ -804,6 +836,13 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
         },
       });
       if (previo === null) return null;
+
+      // SLT-96 (R3/R4): la misma regla del 0 que en la marca, antes de escribir nada.
+      if (monto.isZero()) {
+        const cero = await declaradoEsCero(tx, id);
+        if (cero === null) return null;
+        if (!cero) return "monto_cero_no_permitido" as const;
+      }
 
       // R6/R8: SOLO si sigue conciliada (los DOS predicados) y su monto es el leido arriba.
       const res = await tx.cierreBodega.updateMany({
@@ -842,6 +881,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: previo.zona.nombre,
             fecha: previo.solicitadoAt,
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // El monto NUEVO; el par anterior/nuevo distingue esta fila de una marca (D1).
           monto,
@@ -853,7 +893,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       ]);
       return "updated" as const;
     });
-    if (resultado === "updated") return "updated";
+    if (resultado !== null) return resultado;
 
     const existe = await this.prisma.cierreBodega.count({ where: { id } });
     return existe > 0 ? "conflict" : "fuera_de_alcance"; // R6/R8 vs R7

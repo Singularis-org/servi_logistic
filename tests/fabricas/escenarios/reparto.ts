@@ -36,6 +36,7 @@ import { crearTarifaSchema } from "../../../lib/types/tarifa";
 import { crearZonaSchema } from "../../../lib/types/zona";
 import { fechaCalendarioCR, mananaCalendarioCR } from "../../../lib/utils/fecha-cr";
 import type { EmpresaCreada, UsuarioCreado } from "../empresa-y-usuarios";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SL-43 T5 (design D1.2; R11, R15–R17) — EL NÚCLEO DEL ESCENARIO DE REPARTO, sacado de
@@ -136,7 +137,7 @@ export interface NuevaOrden {
 export interface ExtraUsuario {
   zonaId?: string;
   vehiculoId?: string;
-  fulfillment?: boolean;
+  seRecogeEnTienda?: boolean;
 }
 
 export interface AltasEscenario {
@@ -224,7 +225,7 @@ export function servicios() {
   const ordenRepo = new OrdenRepository(prisma);
   return {
     zona: new ZonaService(new ZonaRepository(prisma)), // lib/actions/zonas.ts
-    tarifa: new TarifaService(new TarifaRepository(prisma)), // lib/actions/tarifas.ts
+    tarifa: new TarifaService(new TarifaRepository(prisma)), // sin action desde SLT-54: solo siembra
     sinpe: new SinpeBodegaService(new ZonaRepository(prisma)), // lib/actions/sinpe-bodega.ts
     // app/api/ordenes/carga-masiva/chunk/route.ts
     carga: new BulkOrdenService(ordenRepo, new TarifaVigenteRepository(prisma)),
@@ -234,13 +235,15 @@ export function servicios() {
       new ZonaRepository(prisma),
       new AsignabilidadCoordenadasService(new JobRepository(prisma)),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/recepcion-satelite.ts
-    recepcion: new RecepcionSateliteService(ordenRepo, historial(prisma, ordenRepo)),
+    recepcion: new RecepcionSateliteService(ordenRepo, historial(prisma, ordenRepo), undefined, reglasPaisFijas()),
     asignacion: new AsignacionSateliteService(
       ordenRepo,
       new AsignabilidadCoordenadasService(new JobRepository(prisma)),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/mis-asignaciones.ts, con la evidencia contra el Storage que diga el entorno
     misAsignaciones: new MisAsignacionesService(
@@ -251,11 +254,14 @@ export function servicios() {
       new RutaOptimizadaRepository(prisma),
       new OrdenMensajeroMetaRepository(prisma),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/corregir-fecha-reprogramacion.ts, SIN su liberador (ver `corregirFechaReprogramacion`)
     correccionFecha: new CorreccionFechaReprogramacionService(
       new CorreccionFechaReprogramacionRepository(prisma),
       ordenRepo,
+      undefined,
+      reglasPaisFijas(),
     ),
   };
 }
@@ -349,7 +355,7 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     const [zonaCentral, zonaSatelite, tienda] = await Promise.all([
       crearZona(empresa, maestro, geoCentral, true, tarifaMensajero, opts.nombresZona?.central, opts.distritosExtra?.central),
       crearZona(empresa, maestro, geoSatelite, false, tarifaMensajero, opts.nombresZona?.satelite, opts.distritosExtra?.satelite),
-      deps.altas.usuario(empresa, "tienda", "adminTienda", { fulfillment: true }),
+      deps.altas.usuario(empresa, "tienda", "adminTienda", { seRecogeEnTienda: false }),
     ]);
     const adminSatelite = await deps.altas.usuario(empresa, "admin-satelite", "adminSatelite", { zonaId: zonaSatelite.id });
 

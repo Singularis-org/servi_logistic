@@ -43,6 +43,11 @@ export type AltaEmpresaDatos = Omit<AltaEmpresaInput, "maestro"> & {
   maestro: AltaEmpresaInput["maestro"] & { passwordHash: string };
 };
 
+/** SLT-42: lo que decide si un alta repite una empresa que ya existe (slug, maestro y pais). */
+export type AltaEmpresaRepeticion = Pick<AltaEmpresaInput, "slug" | "paisId"> & {
+  maestro: Pick<AltaEmpresaInput["maestro"], "email">;
+};
+
 /** SL-20 (R8): `paisId` = la empresa ya existe (mismo slug y maestro) en otro país. */
 export type CampoEnConflicto = "slug" | "email" | "documento" | "paisId";
 

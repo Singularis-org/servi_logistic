@@ -33,6 +33,11 @@ import { ConEtiquetasCR } from "../fabricas/etiquetas-geograficas";
 // Mismo razonamiento que el `testTimeout: 20000` de `vitest.config.ts`.
 configure({ asyncUtilTimeout: 10000 });
 
+// SLT-42 (T5.7): la página lee la zona del país de la empresa de la sesión; aquí, la de Costa Rica.
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));

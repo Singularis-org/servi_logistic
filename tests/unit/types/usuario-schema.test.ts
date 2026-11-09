@@ -70,17 +70,17 @@ describe("crearUsuarioSchema — union discriminada por passwordMode", () => {
     expect(r.success).toBe(false);
   });
 
-  it("feature 27/R10: acepta fulfillment booleano (opcional) en ambas ramas", () => {
+  it("SLT-94 R1/R3: acepta la marca seRecogeEnTienda booleana (opcional) en ambas ramas", () => {
     const manual = crearUsuarioSchema.safeParse({
       ...baseCrear,
       passwordMode: "manual",
       password: "Abcdef1!",
-      fulfillment: true,
+      seRecogeEnTienda: true,
     });
     const generate = crearUsuarioSchema.safeParse({
       ...baseCrear,
       passwordMode: "generate",
-      fulfillment: false,
+      seRecogeEnTienda: false,
     });
     const sinFlag = crearUsuarioSchema.safeParse({ ...baseCrear, passwordMode: "generate" });
     expect(manual.success).toBe(true);
@@ -88,16 +88,16 @@ describe("crearUsuarioSchema — union discriminada por passwordMode", () => {
     expect(sinFlag.success).toBe(true); // opcional
   });
 
-  it("feature 27/R10: rechaza fulfillment no booleano", () => {
+  it("SLT-94 R1: rechaza una marca no booleana", () => {
     const r = crearUsuarioSchema.safeParse({
       ...baseCrear,
       passwordMode: "generate",
-      fulfillment: "si",
+      seRecogeEnTienda: "si",
     });
     expect(r.success).toBe(false);
     if (!r.success) {
       const fields = r.error.issues.map((i) => i.path.join("."));
-      expect(fields).toContain("fulfillment");
+      expect(fields).toContain("seRecogeEnTienda");
     }
   });
 });
@@ -115,14 +115,15 @@ describe("actualizarUsuarioSchema", () => {
     }
   });
 
-  it("feature 27/R13: acepta fulfillment booleano y sigue rechazando email/cedula", () => {
-    expect(actualizarUsuarioSchema.safeParse({ fulfillment: true }).success).toBe(true);
-    expect(actualizarUsuarioSchema.safeParse({ fulfillment: false }).success).toBe(true);
-    expect(actualizarUsuarioSchema.safeParse({ fulfillment: "no" }).success).toBe(false);
-    // R13: `.strict()` sigue rechazando campos no editables aun con fulfillment.
+  it("SLT-94 R4: acepta la marca booleana en la edicion y sigue rechazando email/cedula", () => {
+    expect(actualizarUsuarioSchema.safeParse({ seRecogeEnTienda: true }).success).toBe(true);
+    expect(actualizarUsuarioSchema.safeParse({ seRecogeEnTienda: false }).success).toBe(true);
+    expect(actualizarUsuarioSchema.safeParse({ seRecogeEnTienda: "no" }).success).toBe(false);
+    // `.strict()` sigue rechazando campos no editables aun con la marca, y ya rechaza `fulfillment`.
     expect(
-      actualizarUsuarioSchema.safeParse({ fulfillment: true, email: "x@y.test" }).success,
+      actualizarUsuarioSchema.safeParse({ seRecogeEnTienda: true, email: "x@y.test" }).success,
     ).toBe(false);
+    expect(actualizarUsuarioSchema.safeParse({ fulfillment: true }).success).toBe(false);
   });
 });
 

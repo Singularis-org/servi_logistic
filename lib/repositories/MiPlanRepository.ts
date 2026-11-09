@@ -1,20 +1,24 @@
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
-import type { IMiPlanRepository, PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
+import type { IMiPlanRepository, LecturaDeMiPlan, PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { costoVigenteDeLaTarifa } from "@/lib/planes/costeo";
-import { type PrecioPlan, type RolConTope, type TopesPlan, tipoCobroSchema, versionPlanSchema } from "@/lib/types/planes";
+import { pendienteDeEmpresa, precioDelHistorial } from "@/lib/repositories/_shared/precio-del-periodo";
+import { type RolConTope, type TopesPlan, tipoCobroSchema, versionPlanSchema } from "@/lib/types/planes";
 
 // SLT-58 (design §2, §3.1) — «Mi plan» lee por `plan_de_la_empresa`, la segunda y última función que
 // `servi_app` puede ejecutar: las tablas `plan*` siguen cerradas a la app (R9).
 //
-// La empresa es la que la extensión fijó en `app.organizacion_id`, igual que `CupoPlanRepository`: en
-// una lectura por sesión `contextoActual()` vendría vacío. La función exige que el argumento sea esa
+// La empresa es la que la extensión fijó en `app.organizacion_id`: en una lectura por sesión `contextoActual()` vendría vacío. La función exige que el argumento sea esa
 // misma empresa (`42501` si no), así que no hay forma de pedir el plan de otra.
 //
 // El `jsonb` es un borde sin tipar: se valida con zod antes de salir de aquí. La `version` del cambio
 // programado se valida con `versionPlanSchema`, el mismo que usa el aplicador (SL-24 T11).
+//
+// SLT-86 (design §3.3; R15, R26, R32): la forma de 20261106120000 y 20261106130000. Con plan trae el precio
+// del período (`precio_del_periodo`) y el pendiente de la empresa (`cambio_empresa`), los dos sin actor;
+// sin plan y con una primera asignación pendiente, `{sin_plan, cambio_empresa}`.
 type MiPlanPrismaClient = Pick<PrismaClient, "$queryRaw">;
 
 /** `TIMESTAMP` sin zona, que `to_jsonb` serializa sin sufijo: sus números son UTC (decisión de SL-24). */
@@ -37,11 +41,17 @@ const ROL_DE_LA_ETIQUETA: Readonly<Record<string, RolConTope>> = {
   adminSatelite: "adminSatelite",
 };
 
+/** R26, R32: el pendiente de la empresa, sin `plan_cambio_actor_id`. */
+const cambioEmpresaSchema = z.object({ plan_nombre: z.string(), tipo_cobro: z.string(), desde: instanteUtcSchema });
+
 export const planDeLaEmpresaFilaSchema = z.object({
   nombre: z.string(),
   precio_mensual: importe,
-  precio_anual: importe,
-  descuento_anual_pct: importe,
+  // SLT-86 (R10): los descuentos vigentes, con la forma de `PrecioPlan.descuentos`.
+  descuentos: z.unknown(),
+  // SLT-86 (R15): la fila del historial que rige al empezar el período en curso. La migración y `crear`
+  // siembran una por plan, así que no puede faltar.
+  precio_del_periodo: z.object({ precio_mensual: importe, descuentos: z.unknown() }),
   // SLT-66 (M3, R18): el del plan, `null` si no lo fija; y el vigente de `cobro_plataforma_tarifa_de`.
   costo_por_orden: importe,
   // SLT-83 (M3, R1): el modo porcentual del plan; los dos `null` = no es porcentual.
@@ -56,15 +66,13 @@ export const planDeLaEmpresaFilaSchema = z.object({
   }),
   // SLT-83 (R24): `plan_cobro_del_ciclo`. `cobrado` lleva signo: un reverso del ciclo de un cargo anterior.
   cobro_ciclo: z.object({ cobrado: z.string(), pendientes: conteo }),
-  // Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro` (20261104130000).
+  // Ajuste planes-custom (D6) y SLT-86 (R1): `organizacion.plan_tipo_cobro`, uno de los cuatro tipos.
   tipo_cobro: tipoCobroSchema,
-  tope_ordenes_ciclo: conteo.nullable(),
   tope_api_keys: conteo.nullable(),
   topes_rol: z.array(z.object({ rol: z.string(), maximo: conteo })),
   modulos: z.array(z.enum(ORDEN_MODULOS)),
+  // SLT-86 (R5): la entrada de la empresa, siempre las 00:00 de un día.
   ciclo_ancla: instanteUtcSchema,
-  // SLT-58 (§11.4, R40): NULL fuera del ciclo corto.
-  ciclo_corto_desde: instanteUtcSchema.nullable(),
   uso: z.object({
     ordenes: conteo,
     api_keys: conteo,
@@ -74,21 +82,13 @@ export const planDeLaEmpresaFilaSchema = z.object({
     admin_satelite: conteo,
   }),
   cambio: z.object({ vigente_desde: instanteUtcSchema, version: versionPlanSchema }).nullable(),
+  cambio_empresa: cambioEmpresaSchema.nullable(),
 });
 
-type FilaPlanDeLaEmpresa = z.infer<typeof planDeLaEmpresaFilaSchema>;
+/** R26 sin plan (decisión del 2026-11-05): la primera asignación pendiente, sin el actor. */
+const sinPlanFilaSchema = z.object({ sin_plan: z.literal(true), cambio_empresa: cambioEmpresaSchema });
 
-/** Las mismas formas que `precioDe` de `PlanesRepository` (CHECK `plan_precio_forma`; D1: sin «negociable»). */
-function precioDe(f: FilaPlanDeLaEmpresa): PrecioPlan {
-  if (f.precio_mensual === null) return { tipo: "sin_precio" };
-  const anual =
-    f.precio_anual !== null
-      ? { tipo: "fijo" as const, monto: f.precio_anual }
-      : f.descuento_anual_pct !== null
-        ? { tipo: "descuento" as const, porcentaje: f.descuento_anual_pct }
-        : null;
-  return { tipo: "monto", mensual: f.precio_mensual, anual };
-}
+type FilaPlanDeLaEmpresa = z.infer<typeof planDeLaEmpresaFilaSchema>;
 
 function topesDe(f: FilaPlanDeLaEmpresa): TopesPlan {
   const porRol: TopesPlan["porRol"] = {};
@@ -96,7 +96,7 @@ function topesDe(f: FilaPlanDeLaEmpresa): TopesPlan {
     const rol = ROL_DE_LA_ETIQUETA[t.rol];
     if (rol !== undefined) porRol[rol] = t.maximo;
   }
-  return { ordenesPorCiclo: f.tope_ordenes_ciclo, porRol, apiKeys: f.tope_api_keys };
+  return { porRol, apiKeys: f.tope_api_keys };
 }
 
 function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
@@ -106,18 +106,20 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
     adminTienda: f.uso.admin_tienda,
     adminSatelite: f.uso.admin_satelite,
   };
+  const c = f.cambio_empresa;
   return {
     vigente: {
       nombre: f.nombre,
       topes: topesDe(f),
       modulos: f.modulos,
-      precio: precioDe(f),
+      precio: precioDelHistorial(f.precio_mensual, f.descuentos),
       costoPorOrden: f.costo_por_orden,
       costoPorOrdenPorcentual:
         f.costo_por_orden_pct === null ? null : { porcentaje: f.costo_por_orden_pct, minimo: f.costo_por_orden_minimo },
     },
-    ancla: f.ciclo_ancla,
-    cortoDesde: f.ciclo_corto_desde,
+    entrada: f.ciclo_ancla,
+    precioDelPeriodo: precioDelHistorial(f.precio_del_periodo.precio_mensual, f.precio_del_periodo.descuentos),
+    pendiente: c === null ? null : pendienteDeEmpresa(c.plan_nombre, c.tipo_cobro, c.desde),
     uso: { ordenes: f.uso.ordenes, apiKeys: f.uso.api_keys, porRol },
     cambio: f.cambio === null ? null : { vigenteDesde: f.cambio.vigente_desde, version: f.cambio.version },
     costoVigente: costoVigenteDeLaTarifa(f.costo_vigente),
@@ -126,20 +128,28 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
   };
 }
 
+function formaInesperada(error: z.ZodError): Error {
+  return new Error(`MiPlanRepository.planDeLaEmpresa: plan_de_la_empresa devolvió una forma inesperada: ${error.message}`);
+}
+
 export class MiPlanRepository implements IMiPlanRepository {
   constructor(private readonly prisma: MiPlanPrismaClient) {}
 
-  async planDeLaEmpresa(): Promise<PlanDeLaEmpresaLeido | null> {
+  async planDeLaEmpresa(): Promise<LecturaDeMiPlan> {
     const filas = await this.prisma.$queryRaw<{ plan: unknown }[]>`
       SELECT plan_de_la_empresa(current_setting('app.organizacion_id', true)) AS "plan"`;
     const crudo = filas[0]?.plan ?? null;
     if (crudo === null) return null;
     // Según el driver, el `jsonb` llega ya parseado o como texto.
     const valor: unknown = typeof crudo === "string" ? JSON.parse(crudo) : crudo;
-    const fila = planDeLaEmpresaFilaSchema.safeParse(valor);
-    if (!fila.success) {
-      throw new Error(`MiPlanRepository.planDeLaEmpresa: plan_de_la_empresa devolvió una forma inesperada: ${fila.error.message}`);
+    if (typeof valor === "object" && valor !== null && "sin_plan" in valor) {
+      const sinPlan = sinPlanFilaSchema.safeParse(valor);
+      if (!sinPlan.success) throw formaInesperada(sinPlan.error);
+      const c = sinPlan.data.cambio_empresa;
+      return { sinPlan: true, pendiente: pendienteDeEmpresa(c.plan_nombre, c.tipo_cobro, c.desde) };
     }
+    const fila = planDeLaEmpresaFilaSchema.safeParse(valor);
+    if (!fila.success) throw formaInesperada(fila.error);
     return aLeido(fila.data);
   }
 }

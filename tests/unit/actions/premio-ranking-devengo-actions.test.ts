@@ -19,6 +19,7 @@ import type {
 } from "@/lib/interfaces/services/IPremioRankingDevengoService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 293 (T4.3, design §7.3) — el BORDE de las tres Server Actions.
 //
 // Lo que se afirma aqui es lo que el borde decide y el servicio no puede: la sesion
@@ -46,7 +47,7 @@ function servicioEspia(): IPremioRankingDevengoService {
   };
 }
 
-const deps = (service: IPremioRankingDevengoService, actor: Actor | null = MAESTRO) => ({
+const deps = (service: IPremioRankingDevengoService, actor: Actor | null = MAESTRO) => ({ reglasPais: reglasPaisFijas(),
   service,
   getActor: async () => actor,
 });
@@ -292,7 +293,7 @@ async function piezasDelServicioReal(): Promise<PiezasDelServicio> {
 
   try {
     // SIN `deps.service`: este es el unico camino del archivo que ejecuta `buildService()`.
-    const r = await registrarPremioAction({ filaId: "f1" }, { getActor: async () => MAESTRO });
+    const r = await registrarPremioAction({ filaId: "f1" }, { reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO });
     // Control de no-vacuidad: si la action no hubiera llegado al servicio, lo de abajo no
     // mediria nada y `atrapado.servicio` seguiria en `null`.
     expect(r).toEqual({ status: "no_encontrado" });

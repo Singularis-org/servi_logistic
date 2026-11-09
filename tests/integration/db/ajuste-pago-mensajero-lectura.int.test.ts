@@ -19,6 +19,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * SLT-56 / T7 — LA LECTURA DE LOS AJUSTES (R19, R20, Q2), CONTRA POSTGRES REAL.
@@ -233,7 +234,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
 
   it("R19 — el detalle del cierre del dia trae los ajustes en orden cronologico con nombre, rol, importes y motivo", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.admin.findCierreByIdEnAlcance(ctx.c.cierreId, ctx.alcance);
+      const r = await ctx.admin.findCierreByIdEnAlcance(ctx.c.cierreId, ctx.alcance, ZONA_CR);
       expect(r).not.toBeNull();
       const g = porGestion(ctx, r!.gestiones);
       const e = esperados(ctx);
@@ -251,7 +252,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
 
   it("R20 — el detalle del cierre de bodega trae `gestionesAjustadas` (gestiones, no filas) y los ajustes por gestion", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
       expect(r).not.toBeNull();
       expect(r!.cierresDia).toHaveLength(1);
       const cd = r!.cierresDia[0]!;
@@ -267,7 +268,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
 
   it("R20 — un cierre del dia SIN ajustes cuenta 0 en el cierre de bodega", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
       expect(r!.cierresDia).toHaveLength(1); // control positivo
       expect(r!.cierresDia[0]!.resumen.gestionesAjustadas).toBe(0);
       expect(r!.cierresDia[0]!.gestiones.every((g) => g.ajustesPago?.length === 0)).toBe(true);
@@ -282,7 +283,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
         data: { pagoMensajero: new Prisma.Decimal("1200.50") },
         select: { id: true },
       });
-      const r = await ctx.mensajero.findCierrePropioConGestiones(ctx.c.cierreId, ctx.c.mensajero.id);
+      const r = await ctx.mensajero.findCierrePropioConGestiones(ctx.c.cierreId, ctx.c.mensajero.id, ZONA_CR);
       expect(r).not.toBeNull();
       expect(r!.gestiones).toHaveLength(3); // control positivo
       for (const fila of r!.gestiones) {
@@ -375,7 +376,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
       expect(await filas()).toEqual(["1500.00->1800.00"]);
 
       // Y el detalle de admin la sigue marcando «Ajustado»: trae su ajuste.
-      const detalle = await ctx.admin.findCierreByIdEnAlcance(c.cierreId, alcance);
+      const detalle = await ctx.admin.findCierreByIdEnAlcance(c.cierreId, alcance, ZONA_CR);
       expect(detalle).not.toBeNull();
       const enDetalle = detalle!.gestiones.find((x) => x.gestionId === c.gestionA);
       expect(enDetalle).toBeDefined();

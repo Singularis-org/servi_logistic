@@ -112,6 +112,11 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
     categoria: "bloquea",
     motivo: `Deriva de ordenes suyas rechazadas. ${VIA_ORDEN}`,
   },
+  // SLT-94: FK RESTRICT; la tienda va congelada en el cobro de fulfillment (R21/R31).
+  "OrdenFulfillmentMovimiento.tienda": {
+    categoria: "bloquea",
+    motivo: `Deriva de ordenes suyas: el cobro de fulfillment lo escribe el trigger al crearlas. ${VIA_ORDEN}`,
+  },
   "Notificacion.tienda": {
     categoria: "bloquea",
     motivo:
@@ -295,6 +300,10 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   "TarifaValor.actualizadoPorUsuario": {
     categoria: "no_alcanzable",
     motivo: `Fijar un valor de tarifa es solo del maestro (SLT-52 R13): ${SOLO_OPERADOR}`,
+  },
+  "TarifaActivacion.activadaPorUsuario": {
+    categoria: "no_alcanzable",
+    motivo: `Activar las tarifas nuevas es solo del maestro (SLT-54 R5): ${SOLO_OPERADOR}`,
   },
   // ── FICHA 410 (2026-09-10): el canal de push web ─────────────────────────────────────────────
   // Las dos son CASCADE y las dos son INALCANZABLES para una cuenta dedicada. No se clasifican

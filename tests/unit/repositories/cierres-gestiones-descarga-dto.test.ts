@@ -4,7 +4,8 @@ import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepositor
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 230 — Tandas 2 y 7 (T2.1/T7.1, R22/R26/R27/R41/R42/R43/R44/R46/R47) — el DTO que el
 // servidor emite para la hoja fundida.
@@ -26,7 +27,7 @@ import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
 // donde puede divergir sin que ninguna pantalla lo diga.
 
 const ALCANCE: Alcance = { destinoTipo: "bodega_central", destinoZonaId: null };
-const FILTROS: FiltrosDescargaGestiones = { mensajeroIds: ["m-1"] };
+const FILTROS: FiltrosDescargaGestionesRepo = { mensajeroIds: ["m-1"] };
 
 const dec = (v: string) => new Prisma.Decimal(v);
 
@@ -144,7 +145,7 @@ const repoBodega = (prisma: ReturnType<typeof prismaFalso>) =>
 async function filaAdmin(gestiones: unknown[], detalles: unknown[], intentos: unknown[] = []) {
   const filas = await repoAdmin(
     prismaFalso(gestiones, detalles, intentos),
-  ).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
+  ).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
   return filas[0]!;
 }
 
@@ -314,7 +315,7 @@ describe("DTO de la hoja fundida (feature 230, T2.1/T7.1)", () => {
     // caso se pone rojo antes de que ninguna hoja salga mal.
     const prisma = prismaFalso([gestionEntregada()], [detalle()]);
 
-    await repoAdmin(prisma).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
+    await repoAdmin(prisma).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
 
     const args = prisma.gestionOrden.groupBy.mock.calls[0]![0]!;
     // El grano: por el PAR, que es lo que hace que el conteo sea de cierres y no de gestiones.
@@ -342,7 +343,7 @@ describe("DTO de la hoja fundida (feature 230, T2.1/T7.1)", () => {
       grupos(["o-1", "c-9"]),
     );
 
-    const filas = await repoAdmin(prisma).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
+    const filas = await repoAdmin(prisma).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
 
     expect(prisma.gestionOrden.groupBy).toHaveBeenCalledTimes(1);
     const where = prisma.gestionOrden.groupBy.mock.calls[0]![0]!.where as {
@@ -356,7 +357,7 @@ describe("DTO de la hoja fundida (feature 230, T2.1/T7.1)", () => {
   it("sin gestiones tampoco se pide el conteo: cero filas no cuesta una consulta (ficha 394)", async () => {
     const prisma = prismaFalso([], []);
 
-    const filas = await repoAdmin(prisma).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
+    const filas = await repoAdmin(prisma).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
 
     expect(filas).toEqual([]);
     expect(prisma.gestionOrden.groupBy).not.toHaveBeenCalled();
@@ -435,7 +436,7 @@ describe("DTO de la hoja fundida (feature 230, T2.1/T7.1)", () => {
           detalle({ cierreId: "c-2", numRemision: "REM-B", montoCobrar: dec("200.00") }),
         ],
       ),
-    ).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
+    ).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
 
     expect(filas.map((f) => f.numRemision)).toEqual(["REM-A", "REM-B"]);
     expect(filas.map((f) => f.ingresoEmpresa?.montoCobrar)).toEqual(["100.00", "200.00"]);
@@ -460,10 +461,10 @@ describe("DTO de la hoja fundida (feature 230, T2.1/T7.1)", () => {
 
     const porCierresDelDia = await repoAdmin(
       prismaFalso(gestiones, detalles, intentos),
-    ).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
+    ).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
     const porBodega = await repoBodega(
       prismaFalso(gestiones, detalles, intentos),
-    ).findGestionesDeCierresBodegaCompleto(FILTROS);
+    ).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     expect(porBodega).toEqual(porCierresDelDia);
     expect(porBodega[0]!.intentosEntrega).toBe(2);
@@ -476,8 +477,8 @@ describe("DTO de la hoja fundida (feature 230, T2.1/T7.1)", () => {
     const admin = prismaFalso([gestionEntregada()], [detalle()]);
     const bodega = prismaFalso([gestionEntregada()], [detalle()]);
 
-    await repoAdmin(admin).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS);
-    await repoBodega(bodega).findGestionesDeCierresBodegaCompleto(FILTROS);
+    await repoAdmin(admin).findGestionesPorAlcanceCompleto(ALCANCE, FILTROS, ZONA_CR);
+    await repoBodega(bodega).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     expect(bodega.gestionOrden.groupBy.mock.calls[0]![0]).toEqual(
       admin.gestionOrden.groupBy.mock.calls[0]![0],

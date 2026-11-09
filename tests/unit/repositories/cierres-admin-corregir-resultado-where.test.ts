@@ -107,7 +107,7 @@ function clienteFalso(
     },
     // SLT-52 (T5.1): el resolver unico pregunta primero si la empresa tiene valores del modelo
     // nuevo; «ninguno» -> la resolucion es la de la 39 de arriba, sin tocar un importe (R36).
-    tarifaValor: { findFirst: vi.fn(async () => null) },
+    tarifaActivacion: { findFirst: vi.fn(async () => null) },
     // SLT-52 (T5.2): la correccion re-congela el pago de ESA gestion (borra y, en el nuevo, escribe).
     gestionPagoCongelado: {
       deleteMany: vi.fn(async (args: Record<string, unknown>) => {

@@ -21,7 +21,7 @@ import {
 /**
  * E2E — Tope de intentos de entrega (features 47, 215 y 276; SL-44 T5.4, R18).
  *
- * El umbral legal es 3 intentos (`REINTENTOS_MIN_INTENTOS`, por defecto 3). Desde la feature 276 la
+ * Toda empresa nace con un tope de 3 intentos (SLT-77), el que usa este flujo. Desde la feature 276 la
  * gestión que ALCANZA el tope ya no puede devolver la orden a circulación: con dos intentos
  * vigentes, el panel del mensajero explica la condición (nota) y deja de ofrecer «Reprogramar» y
  * «Devolver»; quedan «Entregar» y «Rechazar». Así una orden no da una cuarta vuelta: el tercer

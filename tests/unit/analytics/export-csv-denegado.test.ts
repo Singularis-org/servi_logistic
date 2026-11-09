@@ -14,6 +14,7 @@ import type { FiltroTablero } from "@/app/(app)/analitica/_components/operativo/
 
 import { AHORA, MAESTRO, TIENDA } from "./_fake-operativa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 134 — R5, R6 y R18. LOS ESTADOS QUE NO PRODUCEN ARCHIVO.
 //
 // Aqui NO se mockea la accion: se ejecuta LA DE VERDAD, con el logger y el actor inyectados.
@@ -60,7 +61,7 @@ const FILTRO_INVALIDO = { ...FILTRO, rango: "quincena" } as unknown as FiltroTab
 function accionCon(logError: ErrorLogger["logError"], actor = TIENDA) {
   const logger: ErrorLogger = { logError };
   return (entrada: EntradaOperativa) =>
-    consultarAnaliticaOperativa(entrada, {
+    consultarAnaliticaOperativa(entrada, { reglasPais: reglasPaisFijas(),
       logger,
       now: () => AHORA,
       getActor: async () => actor,
@@ -125,7 +126,7 @@ describe("Feature 134 (R6) — el intento denegado queda auditado", () => {
     // concedido lo llena de ruido justo donde hay que mirar.
     const logError = vi.fn<(registro: unknown) => void>();
     await filasDelPanel(PANEL_OK, FILTRO, (entrada) =>
-      consultarAnaliticaOperativa(entrada, {
+      consultarAnaliticaOperativa(entrada, { reglasPais: reglasPaisFijas(),
         logger: { logError },
         now: () => AHORA,
         getActor: async () => MAESTRO,

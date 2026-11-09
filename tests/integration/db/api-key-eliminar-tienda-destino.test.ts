@@ -84,7 +84,7 @@ describeSiHayBase("373/C4 — eliminar una key con tienda destino (Postgres real
         tipoIdentificacionId: TIPO_CEDULA,
         rolId: ROL_ADMIN_TIENDA,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
         zonaId: null,
       },
       select: { id: true },

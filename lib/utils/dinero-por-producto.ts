@@ -83,6 +83,7 @@ export const CRITERIO_RECAUDO_ENTREGA: CriterioDeAporte = {
   // FICHA 468: los dos hechos nuevos del criterio no gobiernan el recaudo de una entrega.
   exigePagoMensajero: false,
   exigeIndemnizacion: false,
+  conceptoCongeladoPorResultado: {},
 };
 
 /**

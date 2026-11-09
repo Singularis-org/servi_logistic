@@ -13,6 +13,7 @@ import {
   APLICACION_GESTIONES,
   gestionOrdenSinDevoluciones,
 } from "@/tests/fixtures/anclaje-devolucion";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 139 (T1.4) — DISPARO de la devolucion de RECHAZADAS al APROBAR el cierre, dentro de
 // `CierresAdminRepository.resolverCierre` (mockea Prisma, sin DB real; molde del bloque de
@@ -37,6 +38,7 @@ function buildWalletDeps() {
     crearMovimientos: vi.fn().mockResolvedValue(0),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
     obtenerPorOrigen: vi.fn(),
@@ -186,7 +188,7 @@ function makeRepo(prisma: Record<string, unknown>) {
 }
 
 function aprobar(repo: CierresAdminRepository) {
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId: "c1",
     alcance: ALCANCE_MAESTRO,
     nuevoEstado: "aprobado",
@@ -291,7 +293,7 @@ describe("CierresAdminRepository.resolverCierre — devolucion de `rechazada` (f
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
     // Aunque se pasara la config, el bloque vive DENTRO del `if (nuevoEstado === 'aprobado')`.
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "rechazado",
@@ -309,7 +311,7 @@ describe("CierresAdminRepository.resolverCierre — devolucion de `rechazada` (f
     const prisma = buildDevolucionPrisma([{ id: "o1", zonaId: "z-sat" }]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",

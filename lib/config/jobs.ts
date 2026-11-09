@@ -1,7 +1,7 @@
 // Feature 90 (R21, design §2) — configuracion de la cola de background jobs. Todos los
 // parametros se resuelven por variable de entorno con defaults sensatos (nada se hardcodea
-// en el codigo de negocio); un valor ausente/invalido cae al default. Espejo de
-// `lib/config/reintentos.ts`. El SECRETO de autorizacion NO vive aqui: se reutiliza
+// en el codigo de negocio); un valor ausente/invalido cae al default. El SECRETO de
+// autorizacion NO vive aqui: se reutiliza
 // `CRON_SECRET` via `loadCronConfig()` (no se anade un env de secreto nuevo).
 
 /** Lee un entero POSITIVO de `process.env`; ausente/vacio/invalido -> `fallback`. */

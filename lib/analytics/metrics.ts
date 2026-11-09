@@ -617,6 +617,9 @@ const CATALOGO = [
         // FICHA 458-B (revision B2): el reverso del IVA del flete por rechazo. Mismo motivo que en
         // `ingreso_flete`: la metrica pasa a publicar NETO (`bruto_y_neto`).
         "egreso_reverso_iva_flete_devolucion",
+        // SLT-94 (R37): el IVA del fulfillment por paquete y la devolucion de ese IVA (neto).
+        "ingreso_iva_fulfillment",
+        "egreso_reverso_iva_fulfillment",
       ],
     },
   },
@@ -746,6 +749,12 @@ const CATALOGO = [
         // SLT-73 (design §1.2): la diferencia de la satelite al conciliar. La caja entera, ahora 30.
         "egreso_diferencia_satelite",
         "ingreso_diferencia_satelite",
+        // SLT-94 (R37): el cobro de fulfillment por paquete, su IVA y sus devoluciones. La caja
+        // entera, ahora 34. La cifra NO cambia con ellos (cargos y reversos de cargo).
+        "ingreso_fulfillment",
+        "ingreso_iva_fulfillment",
+        "egreso_reverso_fulfillment",
+        "egreso_reverso_iva_fulfillment",
       ],
     },
   },
@@ -791,6 +800,10 @@ const CATALOGO = [
         // SL-45 (R25): QUINCE. El pago a la plataforma es un egreso propio, como el sueldo: baja la
         // ganancia igual que en la caja.
         "egreso_pago_plataforma",
+        // SLT-94 (R20/R37): DIECISIETE. El fulfillment por paquete es ganancia de la empresa y su
+        // devolucion la baja; su IVA va en `ingreso_iva`.
+        "ingreso_fulfillment",
+        "egreso_reverso_fulfillment",
       ],
     },
   },
@@ -837,6 +850,12 @@ const CATALOGO = [
         // Mismo motivo: `string[]`, el compilador no obliga.
         "flete_devolucion_anulado",
         "iva_flete_devolucion_anulado",
+        // SLT-94 (R37): el cobro de fulfillment por paquete (dos debitos) y su devolucion (dos
+        // creditos). Mismo motivo: `string[]`, el compilador no obliga.
+        "fulfillment",
+        "iva_fulfillment",
+        "fulfillment_anulado",
+        "iva_fulfillment_anulado",
       ],
     },
   },

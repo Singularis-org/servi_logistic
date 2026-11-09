@@ -199,7 +199,9 @@ function HistorialOrdenBody({ estado }: { estado: CargaState }) {
       // confirmación»; si hay una ayuda a la tienda abierta, «Ayuda solicitada a la tienda». Las
       // dos señales vienen en el MISMO `ok` (leídas después de autorizar); aquí no se deriva nada.
       const { intentos, umbral, gestionPendiente, ayudaAbierta } = estado;
-      const intentosLabel = `Intento ${intentos} de ${umbral}`;
+      // SLT-77 (design §3.2): `null` es el mensajero, que no recibe el número.
+      const intentosLabel = umbral === null ? `Intento ${intentos}` : `Intento ${intentos} de ${umbral}`;
+      const intentosAria = umbral === null ? intentosLabel : `Intentos de entrega: ${intentos} de ${umbral}`;
       return (
         <div className="flex flex-col gap-4">
           <NotaGestionPendiente
@@ -211,7 +213,7 @@ function HistorialOrdenBody({ estado }: { estado: CargaState }) {
             <Badge
               variant="secondary"
               role="status"
-              aria-label={`Intentos de entrega: ${intentos} de ${umbral}`}
+              aria-label={intentosAria}
               className="self-start"
             >
               {intentosLabel}

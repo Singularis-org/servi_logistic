@@ -7,6 +7,7 @@ import {
   fechaCalendarioCR,
   inicioDelDiaCREnUtc,
   inicioDelDiaSiguienteCREnUtc,
+  ZONA_CR,
 } from "@/lib/utils/fecha-cr";
 import type { RangoResuelto } from "@/lib/analytics/types";
 
@@ -40,7 +41,7 @@ function masDias(fecha: string, dias: number): string {
  * Construido por el borde, no a mano (ver cabecera).
  */
 function rangoDeDias(desde: string, dias: number): RangoResuelto {
-  return resolverRango({ preset: "personalizado", desde, hasta: masDias(desde, dias - 1) });
+  return resolverRango({ preset: "personalizado", desde, hasta: masDias(desde, dias - 1) }, ZONA_CR);
 }
 
 /** Dia de la semana CR de una fecha: 1 = lunes ... 0 = domingo (convencion `getUTCDay`). */
@@ -94,7 +95,7 @@ describe("R18 · la granularidad depende del tamano del rango y del tope de punt
 describe("R19 · ningun rango admisible por el borde produce mas cubos que el tope", () => {
   for (const dias of [1, 61, 62, 63, 365, 366]) {
     it(`un rango de ${dias} dias produce como mucho ${TOPE_PUNTOS_SERIE} cubos`, () => {
-      expect(trocear(rangoDeDias(LUNES, dias)).length).toBeLessThanOrEqual(TOPE_PUNTOS_SERIE);
+      expect(trocear(rangoDeDias(LUNES, dias), ZONA_CR).length).toBeLessThanOrEqual(TOPE_PUNTOS_SERIE);
     });
   }
 
@@ -107,7 +108,7 @@ describe("R19 · ningun rango admisible por el borde produce mas cubos que el to
     for (let desplazamiento = 0; desplazamiento < 7; desplazamiento += 1) {
       const inicio = masDias(LUNES, desplazamiento);
       for (let dias = 1; dias <= 366; dias += 1) {
-        const cubos = trocear(rangoDeDias(inicio, dias));
+        const cubos = trocear(rangoDeDias(inicio, dias), ZONA_CR);
         if (cubos.length > TOPE_PUNTOS_SERIE) {
           excedidos.push(`${inicio} x ${dias}d -> ${cubos.length} cubos`);
         }
@@ -118,7 +119,7 @@ describe("R19 · ningun rango admisible por el borde produce mas cubos que el to
 
   it("un rango diario produce exactamente un cubo por dia calendario CR", () => {
     for (const dias of [1, 2, 30, 61, 62]) {
-      expect(trocear(rangoDeDias(LUNES, dias)).length, `${dias} dias`).toBe(dias);
+      expect(trocear(rangoDeDias(LUNES, dias), ZONA_CR).length, `${dias} dias`).toBe(dias);
     }
   });
 });
@@ -143,7 +144,7 @@ describe("R19 · ningun rango admisible por el borde produce mas cubos que el to
 describe("R10 · la clave de cada cubo es la fecha CR de su propio instante de inicio", () => {
   it("toda clave tiene forma YYYY-MM-DD y es la fecha calendario CR de su `desde`", () => {
     for (const rango of [rangoDeDias(LUNES, 62), rangoDeDias("2026-01-07", 200)]) {
-      for (const cubo of trocear(rango)) {
+      for (const cubo of trocear(rango, ZONA_CR)) {
         expect(cubo.clave).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         expect(cubo.clave).toBe(fechaCalendarioCR(cubo.desde));
       }
@@ -153,16 +154,16 @@ describe("R10 · la clave de cada cubo es la fecha CR de su propio instante de i
   it("la clave del primer cubo es la fecha de inicio del rango, no otra", () => {
     for (const dias of [1, 62, 63, 366]) {
       const rango = rangoDeDias("2026-02-25", dias);
-      expect(trocear(rango)[0].clave, `${dias} dias`).toBe(rango.desdeFecha);
+      expect(trocear(rango, ZONA_CR)[0].clave, `${dias} dias`).toBe(rango.desdeFecha);
     }
   });
 
   it("las claves cruzan fin de mes y fin de anio sin repetirse ni saltarse un dia", () => {
     // 2026-02-28 -> 2026-03-01 (febrero no bisiesto) y 2026-12-31 -> 2027-01-01.
-    const finDeMes = trocear(rangoDeDias("2026-02-26", 5)).map((c) => c.clave);
+    const finDeMes = trocear(rangoDeDias("2026-02-26", 5), ZONA_CR).map((c) => c.clave);
     expect(finDeMes).toEqual(["2026-02-26", "2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02"]);
 
-    const finDeAnio = trocear(rangoDeDias("2026-12-30", 4)).map((c) => c.clave);
+    const finDeAnio = trocear(rangoDeDias("2026-12-30", 4), ZONA_CR).map((c) => c.clave);
     expect(finDeAnio).toEqual(["2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02"]);
   });
 
@@ -170,7 +171,7 @@ describe("R10 · la clave de cada cubo es la fecha CR de su propio instante de i
     // La trampa que R10 evita: `toISOString().slice(0, 10)` sobre un instante INTERIOR al
     // cubo emite el dia UTC, que a partir de las 18:00 CR ya es el dia siguiente. La clave
     // tiene que describir el dia CR de toda la ventana, y no lo hace por casualidad.
-    const [cubo] = trocear(rangoDeDias("2026-07-15", 3));
+    const [cubo] = trocear(rangoDeDias("2026-07-15", 3), ZONA_CR);
     const ultimoInstante = new Date(cubo.hasta.getTime() - 1);
 
     expect(fechaCalendarioCR(cubo.desde)).toBe(cubo.clave);
@@ -182,7 +183,7 @@ describe("R10 · la clave de cada cubo es la fecha CR de su propio instante de i
 
   it("no hay dos cubos con la misma clave y el orden es cronologico ascendente (R6)", () => {
     for (const dias of [1, 62, 63, 366]) {
-      const cubos = trocear(rangoDeDias("2026-03-04", dias));
+      const cubos = trocear(rangoDeDias("2026-03-04", dias), ZONA_CR);
       const claves = cubos.map((c) => c.clave);
       expect(new Set(claves).size, `${dias} dias`).toBe(claves.length);
       expect([...claves].sort(), `${dias} dias`).toEqual(claves);
@@ -208,7 +209,7 @@ describe("R21 · con granularidad semana el primer cubo se recorta al inicio del
   });
 
   it("el primer cubo empieza en el inicio del rango y su clave es ESE dia, no el lunes", () => {
-    const [primero] = trocear(rango);
+    const [primero] = trocear(rango, ZONA_CR);
     expect(primero.desde.getTime()).toBe(rango.desde.getTime());
     expect(primero.clave).toBe(INICIO_MIERCOLES);
     // El lunes anterior (2026-01-05) NO puede ser la clave: afirmaria contener dinero de
@@ -217,7 +218,7 @@ describe("R21 · con granularidad semana el primer cubo se recorta al inicio del
   });
 
   it("el segundo cubo empieza el lunes siguiente y a partir de ahi todos son lunes", () => {
-    const cubos = trocear(rango);
+    const cubos = trocear(rango, ZONA_CR);
     expect(cubos[1].clave).toBe("2026-01-12");
     expect(diaDeLaSemanaCR(cubos[1].clave)).toBe(1);
     for (const cubo of cubos.slice(1)) {
@@ -226,7 +227,7 @@ describe("R21 · con granularidad semana el primer cubo se recorta al inicio del
   });
 
   it("el primer cubo dura solo lo que falta hasta el lunes, no una semana entera", () => {
-    const [primero] = trocear(rango);
+    const [primero] = trocear(rango, ZONA_CR);
     // De miercoles a lunes hay 5 dias.
     expect(primero.hasta.getTime() - primero.desde.getTime()).toBe(5 * UN_DIA_MS);
   });
@@ -235,7 +236,7 @@ describe("R21 · con granularidad semana el primer cubo se recorta al inicio del
     for (const inicio of [LUNES, INICIO_MIERCOLES, "2026-01-11"]) {
       for (const dias of [63, 100, 365, 366]) {
         const r = rangoDeDias(inicio, dias);
-        const cubos = trocear(r);
+        const cubos = trocear(r, ZONA_CR);
         expect(cubos[cubos.length - 1].hasta.getTime(), `${inicio} x ${dias}d`).toBe(
           r.hasta.getTime(),
         );
@@ -244,7 +245,7 @@ describe("R21 · con granularidad semana el primer cubo se recorta al inicio del
   });
 
   it("un rango semanal que empieza en lunes no produce un primer cubo degenerado", () => {
-    const cubos = trocear(rangoDeDias(LUNES, 63));
+    const cubos = trocear(rangoDeDias(LUNES, 63), ZONA_CR);
     expect(cubos[0].clave).toBe(LUNES);
     expect(cubos[0].hasta.getTime() - cubos[0].desde.getTime()).toBe(7 * UN_DIA_MS);
   });
@@ -269,7 +270,7 @@ function comprobarCierreExacto(rango: RangoResuelto, cubos: readonly CuboTempora
 describe("R11 · toda frontera es un inicio de dia de Costa Rica", () => {
   it("todo `desde` y todo `hasta` cae en T06:00:00.000Z, el 00:00 de pared de CR", () => {
     for (const dias of [1, 62, 63, 366]) {
-      for (const cubo of trocear(rangoDeDias("2026-05-13", dias))) {
+      for (const cubo of trocear(rangoDeDias("2026-05-13", dias), ZONA_CR)) {
         expect(cubo.desde.toISOString(), `${dias} dias`).toMatch(/T06:00:00\.000Z$/);
         expect(cubo.hasta.toISOString(), `${dias} dias`).toMatch(/T06:00:00\.000Z$/);
       }
@@ -277,7 +278,7 @@ describe("R11 · toda frontera es un inicio de dia de Costa Rica", () => {
   });
 
   it("las fronteras coinciden con las que emite fecha-cr para esa misma fecha", () => {
-    for (const cubo of trocear(rangoDeDias("2026-05-13", 10))) {
+    for (const cubo of trocear(rangoDeDias("2026-05-13", 10), ZONA_CR)) {
       expect(cubo.desde.getTime()).toBe(inicioDelDiaCREnUtc(cubo.clave).getTime());
       expect(cubo.hasta.getTime()).toBe(inicioDelDiaSiguienteCREnUtc(cubo.clave).getTime());
     }
@@ -289,14 +290,14 @@ describe("R11 · toda frontera es un inicio de dia de Costa Rica", () => {
     for (const inicio of [LUNES, "2026-01-07", "2026-01-11"]) {
       for (const dias of [1, 2, 62, 63, 100, 365, 366]) {
         const rango = rangoDeDias(inicio, dias);
-        comprobarCierreExacto(rango, trocear(rango));
+        comprobarCierreExacto(rango, trocear(rango, ZONA_CR));
       }
     }
   });
 
   it("un rango de un solo dia produce un cubo que es el rango entero", () => {
     const rango = rangoDeDias("2026-05-13", 1);
-    const cubos = trocear(rango);
+    const cubos = trocear(rango, ZONA_CR);
     expect(cubos).toHaveLength(1);
     expect(cubos[0].clave).toBe("2026-05-13");
     comprobarCierreExacto(rango, cubos);
@@ -313,27 +314,28 @@ describe("R29 · el troceo es determinista y no depende del reloj", () => {
       const rango = rangoDeDias("2026-01-07", dias);
       const forma = (cubos: readonly CuboTemporal[]) =>
         cubos.map((c) => [c.clave, c.desde.toISOString(), c.hasta.toISOString()]);
-      expect(forma(trocear(rango)), `${dias} dias`).toEqual(forma(trocear(rango)));
+      expect(forma(trocear(rango, ZONA_CR)), `${dias} dias`).toEqual(forma(trocear(rango, ZONA_CR)));
       expect(granularidadDe(rango)).toBe(granularidadDe(rango));
     }
   });
 
-  it("granularidadDe y trocear no aceptan un `now`: su unica entrada es el rango", () => {
-    // Un segundo parametro de reloj convertiria el troceo en no determinista y romperia
-    // R26 aguas arriba. La aridad declarada es la prueba mas barata de que no existe.
+  it("granularidadDe y trocear no aceptan un `now`: sus entradas son el rango (y la zona)", () => {
+    // Un parametro de reloj convertiria el troceo en no determinista y romperia R26 aguas
+    // arriba. La aridad declarada es la prueba mas barata de que no existe. SLT-42: `trocear`
+    // recibe ademas la zona IANA, que es un dato y no un reloj.
     expect(granularidadDe.length).toBe(1);
-    expect(trocear.length).toBe(1);
+    expect(trocear.length).toBe(2);
   });
 
   it("dos rangos equivalentes resueltos en momentos distintos producen el mismo troceo", () => {
     const uno = resolverRango(
       { preset: "personalizado", desde: "2026-01-07", hasta: "2026-03-15" },
-      new Date("2026-01-01T00:00:00.000Z"),
+      ZONA_CR, new Date("2026-01-01T00:00:00.000Z"),
     );
     const otro = resolverRango(
       { preset: "personalizado", desde: "2026-01-07", hasta: "2026-03-15" },
-      new Date("2027-11-30T23:59:59.999Z"),
+      ZONA_CR, new Date("2027-11-30T23:59:59.999Z"),
     );
-    expect(trocear(uno).map((c) => c.clave)).toEqual(trocear(otro).map((c) => c.clave));
+    expect(trocear(uno, ZONA_CR).map((c) => c.clave)).toEqual(trocear(otro, ZONA_CR).map((c) => c.clave));
   });
 });

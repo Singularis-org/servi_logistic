@@ -27,6 +27,8 @@ vi.mock("@/lib/db/prisma-client", () => ({
   getPrismaClient: () => ({
     distrito: { findMany: distritoFindMany },
     tarifa: { findMany: tarifaFindMany },
+    // SLT-54 (R30): empresa sin activar, asi que la tarifa general sale de `tarifas`.
+    tarifaActivacion: { findFirst: async () => null },
   }),
   PRISMA_OMIT: {},
 }));

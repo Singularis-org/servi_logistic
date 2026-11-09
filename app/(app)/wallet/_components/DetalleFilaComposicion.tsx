@@ -18,9 +18,10 @@ import {
   DETALLE_FILA_NOMBRE,
 } from "./composicion-detalle-labels";
 import { inputDeFiltros, type WalletFiltrosValue } from "./wallet-filtros-input";
-import { CATEGORIA_LABEL, ORIGEN_LABEL, money } from "./wallet-labels";
+import { ORIGEN_LABEL, conceptoDeMovimientoCaja, money } from "./wallet-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 339 (T5.2, design 5.3/5.5) — LOS MOVIMIENTOS QUE COMPONEN UNA FILA de la tarjeta
 // «Como se compone la ganancia de la empresa».
 //
@@ -138,13 +139,14 @@ const COLUMNS: Column<WalletMovimientoDTO>[] = [
   {
     id: "fecha",
     value: COMPOSICION_DETALLE_COLUMNAS.fecha,
-    render: (m) => fechaDiaMovimientoCR(m.fechaMovimiento),
+    // SLT-81: la UI sigue en la zona de CR
+    render: (m) => fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR),
   },
   {
     id: "concepto",
     value: COMPOSICION_DETALLE_COLUMNAS.concepto,
     // R5: la etiqueta legible del catalogo, nunca el valor del enum.
-    render: (m) => CATEGORIA_LABEL[m.categoria],
+    render: (m) => conceptoDeMovimientoCaja(m),
   },
   {
     id: "detalle",
@@ -197,6 +199,7 @@ const COLUMNS: Column<WalletMovimientoDTO>[] = [
  * corte lo decide `useIsMobile` (`max-width: 767px`), el mismo hook con el que el Sidebar de la
  * app ya distingue telefono de escritorio; en el servidor devuelve `false`, o sea escritorio.
  */
+// SLT-81: la UI sigue en la zona de CR
 const COLUMNS_MOVIL: Column<WalletMovimientoDTO>[] = [
   {
     id: "movimiento",
@@ -204,10 +207,10 @@ const COLUMNS_MOVIL: Column<WalletMovimientoDTO>[] = [
     render: (m) => (
       <div className="flex flex-col gap-0.5 wrap-anywhere">
         <span className="text-xs whitespace-nowrap tabular-nums text-muted-foreground">
-          {fechaDiaMovimientoCR(m.fechaMovimiento)}
+          {fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR)}
         </span>
         {/* R5: la etiqueta legible del catalogo, nunca el valor del enum. */}
-        <span className="font-medium">{CATEGORIA_LABEL[m.categoria]}</span>
+        <span className="font-medium">{conceptoDeMovimientoCaja(m)}</span>
         {/* R17: el origen legible y, cuando la hay, la descripcion. Ninguna celda muda. */}
         <span className="text-xs text-muted-foreground">
           <OrigenMovimiento fila={m} rotulos={ORIGEN_LABEL} />

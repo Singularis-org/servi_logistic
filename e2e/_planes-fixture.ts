@@ -4,17 +4,19 @@ import type { PrismaClient } from "@prisma/client";
 
 import { ORDENES_BULK_FIELDS } from "../app/(app)/ordenes/_components/carga-masiva-fields";
 import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
+import { inicioDelDiaPlataforma } from "../lib/planes/ciclo";
 import { PlanesRepository } from "../lib/repositories/PlanesRepository";
 import { crearPlanSchema } from "../lib/types/planes";
+import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
 import { SUPERADMIN_DE_PRUEBA } from "./_superadmin-fixture";
 
-// SL-24 T9 (design §11.1, R33) — lo que el caso del tope del plan del humo de dos empresas necesita
-// antes de abrir el navegador: un plan custom con tope de órdenes asignado por el repositorio real,
-// órdenes creadas por detrás como dueño y el distrito de la plantilla enlazado a la zona de cada
-// empresa, para que la fila del archivo resuelva su zona. No va en `tests/fabricas/` (SL-43 está en
-// vuelo sobre ese directorio, design §14).
+// SL-24 T9 (design §11.1, R33) — lo que el caso del plan del humo de dos empresas necesita antes de
+// abrir el navegador: un plan custom asignado por el repositorio real, órdenes creadas por detrás como
+// dueño y el distrito de la plantilla enlazado a la zona de cada empresa, para que la fila del archivo
+// resuelva su zona. No va en `tests/fabricas/` (SL-43 está en vuelo sobre ese directorio, design §14).
+// SLT-86 (R8): ya no hay tope de órdenes; el plan custom va sin él.
 
 /** Lo que hace falta de una empresa del humo para crear órdenes suyas por detrás. */
 export interface EmpresaConZona {
@@ -34,19 +36,19 @@ async function idDelSuperadmin(dueno: PrismaClient): Promise<string> {
 }
 
 /**
- * Crea un plan custom de la empresa con tope de `n` órdenes por ciclo y los módulos apagables
- * (todos: asignarlo no apaga ninguno de los que el humo ya recorrió) y se lo asigna en la misma
- * transacción (`crearYAsignar`, D2), con `PlanesRepository` real sobre el cliente dueño, como lo hace
- * el superadmin. Devuelve el id.
+ * Crea un plan custom de la empresa sin topes (SLT-86 R8: ya no hay tope de órdenes) y con los módulos
+ * apagables (todos: asignarlo no apaga ninguno de los que el humo ya recorrió) y se lo asigna en la
+ * misma transacción (`crearYAsignar`, D2), con `PlanesRepository` real sobre el cliente dueño, como lo
+ * hace el superadmin. Devuelve el id.
  */
-export async function asignarPlanConTope(dueno: PrismaClient, organizacionId: string, n: number): Promise<string> {
+export async function asignarPlanCustom(dueno: PrismaClient, organizacionId: string): Promise<string> {
   const actor = await idDelSuperadmin(dueno);
   const repo = new PlanesRepository(dueno);
   const entrada = crearPlanSchema.parse({
     nombre: `Plan humo ${randomUUID().slice(0, 8)}`,
     visibilidad: "custom",
     organizacionId,
-    topes: { ordenesPorCiclo: n, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [...ORDEN_MODULOS],
     precio: { tipo: "sin_precio" },
     // SLT-66 R8: `costoPorOrden` es obligatorio y `null` es vacío (como `entradaDePlan` de los tests de
@@ -56,9 +58,12 @@ export async function asignarPlanConTope(dueno: PrismaClient, organizacionId: st
     // Ajuste planes-custom (D2, D6): un custom se asigna al crearlo y lleva su tipo de cobro.
     tipoCobro: "mensual",
   });
-  // D2: crear y asignar es una transacción. Sin `inicio`, el ancla queda en ahora, como el `asignar`
-  // sin fecha de antes: `ordenesDelCiclo` cuenta desde ella.
-  const creado = await repo.crearYAsignar({ ...entrada, organizacionId }, actor, { tipoCobro: "mensual" });
+  // D2: crear y asignar es una transacción. SLT-86 (R2): la primera asignación sin fecha elegida rige
+  // desde las 00:00 de hoy en la plataforma, como lo arma `PlanesService` (`efectoElegido`).
+  const ahora = new Date();
+  const hoy = fechaCalendarioCR(ahora);
+  const efecto = { clase: "inicio", fecha: hoy, desde: inicioDelDiaPlataforma(hoy), elegida: false } as const;
+  const creado = await repo.crearYAsignar({ ...entrada, organizacionId }, actor, { efecto, tipoCobro: "mensual" }, ahora);
   if (creado.estado !== "ok") {
     throw new Error(`SL-24 T9: crear el plan no lo dejó asignado: ${JSON.stringify(creado)}`);
   }
@@ -81,9 +86,10 @@ export async function crearPlanPublicoConCosto(
     nombre,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [...ORDEN_MODULOS],
-    precio: { tipo: "monto", mensual: "1000.00", anual: null },
+    // SLT-86 (R10): sin pago anual; los descuentos por período, ninguno.
+    precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
     costoPorOrden,
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
   });
@@ -91,10 +97,11 @@ export async function crearPlanPublicoConCosto(
 }
 
 /**
- * Las órdenes vivas de la empresa en el ciclo de su plan, contadas por detrás. La frontera es el ancla
- * que fijó la asignación: el ciclo recién empieza, así que el inicio es el ancla misma.
+ * Las órdenes vivas de la empresa desde la entrada de su plan, contadas por detrás. SLT-86 (R2, R35): la
+ * entrada (`plan_ciclo_ancla_at`) es las 00:00 de la plataforma del día de la asignación, así que también
+ * cuenta las órdenes creadas antes ese mismo día: quien la use compara antes y después, no un absoluto.
  */
-export async function ordenesDelCiclo(dueno: PrismaClient, organizacionId: string): Promise<number> {
+export async function ordenesDesdeLaEntrada(dueno: PrismaClient, organizacionId: string): Promise<number> {
   const [fila] = await dueno.$queryRaw<{ n: number }[]>`
     SELECT count(*)::int AS n FROM "orden" o JOIN "organizacion" g ON g."id" = o."organizacion_id"
      WHERE o."organizacion_id" = ${organizacionId} AND o."deleted_at" IS NULL
@@ -152,7 +159,7 @@ function geografiaDelEjemplo(): { provincia: string; canton: string; distrito: s
 
 /**
  * Enlaza el distrito del ejemplo de la plantilla a la zona de la empresa (`zona_distrito`), con la
- * empresa fijada: sin eso la fila sale «no tiene zona asignada» y el humo no llegaría al tope.
+ * empresa fijada: sin eso la fila sale «no tiene zona asignada» y la carga del humo no crearía la orden.
  */
 export async function enlazarDistritoDeLaPlantilla(dueno: PrismaClient, e: EmpresaConZona): Promise<void> {
   const geo = geografiaDelEjemplo();

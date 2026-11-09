@@ -19,6 +19,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 357 — «PASO POR MI BODEGA» CONTRA POSTGRES DE VERDAD.
@@ -290,6 +291,8 @@ function servicio(tx: Tx): RecepcionSateliteService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

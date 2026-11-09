@@ -8,7 +8,6 @@ import {
   costoEnvioDeTarifa,
   desgloseCargaApi,
   montoFulfillmentDeTarifa,
-  tieneFulfillment,
   type OrdenIngresoInput,
 } from "@/lib/utils/ingreso-empresa";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -577,17 +576,10 @@ describe("costosListadoOrden (feature 204) — CONTRAPRUEBA: la fórmula del nav
 // ---------------------------------------------------------------------------
 describe("fulfillment (2026-08-25)", () => {
   const conMonto = (fulfillment: string) => ({ ...TARIFA, fulfillment });
-  // SLT-52 (T5.3): `tieneFulfillment` y `montoFulfillmentDeTarifa` solo aceptan el sobre; la tarifa
-  // vieja va envuelta y los importes no cambian.
+  // SLT-52 (T5.3): `montoFulfillmentDeTarifa` solo acepta el sobre; la tarifa vieja va envuelta y los
+  // importes no cambian. SLT-94: `tieneFulfillment` (el predicado de nacimiento por tarifa) se retiro
+  // con sus casos: donde nace la orden lo decide solo la marca «se recoge en tienda» (R5/R6).
   const enSobre = (fulfillment: string) => ({ modelo: "viejo" as const, tarifa: conMonto(fulfillment) });
-
-  it("tieneFulfillment: el predicado es `> 0`, no la presencia del campo", () => {
-    expect(tieneFulfillment(enSobre("2.00"))).toBe(true);
-    expect(tieneFulfillment(enSobre("0.01"))).toBe(true);
-    expect(tieneFulfillment(enSobre("0.00"))).toBe(false);
-    // Sin tarifa no hay servicio de bodega que cobrar (mismo gap seguro que R9).
-    expect(tieneFulfillment(null)).toBe(false);
-  });
 
   it("montoFulfillmentDeTarifa: el monto exacto, y cero sin tarifa", () => {
     expect(montoFulfillmentDeTarifa(enSobre("2.50"), null).toFixed(2)).toBe("2.50");

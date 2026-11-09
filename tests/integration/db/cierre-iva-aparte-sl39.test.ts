@@ -30,6 +30,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-39 (C0, design §12.7, R21–R23, R25) — en el detalle de cierres de `cierres-admin`, la
 // «Ganancia» y «Lo que le queda a la empresa» salen SIN el IVA, que va en su propia linea.
@@ -290,8 +291,13 @@ async function sembrar(tx: TxDeTest): Promise<Corpus> {
       new LiquidacionPagoRepository(c),
       mensajeroRepo,
       sinRetenidas(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
-    bodega: new CierresBodegaAdminService(new CierresBodegaAdminRepository(c), URLS_NO_USADAS),
+    bodega: new CierresBodegaAdminService(new CierresBodegaAdminRepository(c), URLS_NO_USADAS, reglasPaisFijas()),
   };
 }
 
