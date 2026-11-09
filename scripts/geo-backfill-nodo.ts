@@ -7,8 +7,11 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 // SLT-43 (design §4; R24–R33, R40) — llena las columnas nuevas de la geografía jerárquica en las filas
 // que ya existían al migrar:
 //
-//   pnpm geo:backfill [--aplicar | --validar | --equivalencia] [--tabla <t>] [--lote 1000]
-//                     [--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]
+//   pnpm geo:backfill [--aplicar | --validar | --equivalencia | --equivalencia-geografia] [--tabla <t>]
+//                     [--lote 1000] [--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]
+//
+// `--equivalencia-geografia` es de SLT-46 (R13): solo lectura, compara fila a fila la geografía vieja
+// con los nodos de profundidad 1–3 (ver su sección).
 //
 // Las migraciones solo añaden las columnas y los triggers que las llenan al escribir; un `UPDATE` de
 // toda `orden` dentro del deploy la bloquearía mientras dura y no se podría pausar (design §8, alt. 2).
@@ -320,10 +323,129 @@ export async function equivalencia(db: ConexionSql): Promise<ResumenDeEquivalenc
 }
 
 /* -------------------------------------------------------------------------- */
+/* Equivalencia fila a fila de la geografía (--equivalencia-geografia; SLT-46) */
+/* -------------------------------------------------------------------------- */
+
+// SLT-46 (R13; design §2.2, §10). Desde SLT-46 la escritura va al nodo y un trigger la copia a
+// `provincia`/`canton`/`distrito`; este modo comprueba que las dos siguen siendo la misma geografía:
+// cada fila vieja frente al nodo con su id y la profundidad de su tabla, campo a campo (país, nombre,
+// código, `activo`, padre), y las que no tienen par en el otro lado. `--equivalencia` (SLT-43) solo
+// cuenta filas por nivel; este no se queda en el conteo.
+//
+// Solo lectura: dos `SELECT`, sin CTE que escriba. Por eso no exige `--destino`/`--base` (igual que
+// `--equivalencia`): la salvaguarda de R33 es para los modos que escriben.
+
+export type MotivoDeDiferencia = "sin_nodo" | "sin_fila_vieja" | "distinta";
+
+export type CampoDeGeografia = "pais" | "nombre" | "codigo" | "activo" | "padre";
+
+export interface DiferenciaDeGeografia {
+  paisId: string;
+  profundidad: 1 | 2 | 3;
+  /** Id de la fila vieja o del nodo: geografía, no datos de personas. */
+  id: string;
+  motivo: MotivoDeDiferencia;
+  /** Solo con `motivo = "distinta"`: los campos que no coinciden. */
+  campos: CampoDeGeografia[];
+}
+
+export interface ResumenDeEquivalenciaGeografia {
+  filasViejas: number;
+  nodos: number;
+  diferencias: DiferenciaDeGeografia[];
+  iguales: boolean;
+}
+
+// La geografía vieja con los nombres del nodo. `profundidad` es la de la tabla: un id que esté en
+// `canton` y sea un nodo de profundidad 1 sale como fila sin nodo y nodo sin fila vieja.
+const GEOGRAFIA_VIEJA = `
+  SELECT id, 1 AS profundidad, pais_id, nombre, codigo_dta AS codigo, activo, NULL::text AS padre_id FROM provincia
+  UNION ALL SELECT id, 2, pais_id, nombre, codigo_dta, activo, provincia_id FROM canton
+  UNION ALL SELECT id, 3, pais_id, nombre, codigo_dta, activo, canton_id FROM distrito`;
+
+const NODOS_1_A_3 = `
+  SELECT id, profundidad, pais_id, nombre, codigo_oficial AS codigo, activo, padre_id
+    FROM nodo_geografico WHERE profundidad BETWEEN 1 AND 3`;
+
+/**
+ * R13: compara fila a fila. `paisId` acota a un país (lo usa el test, que no puede fiarse del resto de
+ * una base compartida); el modo del script no lo pasa y compara todos.
+ */
+export async function equivalenciaGeografia(
+  db: ConexionSql,
+  opciones: { paisId?: string } = {},
+): Promise<ResumenDeEquivalenciaGeografia> {
+  const paisId = opciones.paisId ?? null;
+  const [conteo] = await db.$queryRawUnsafe<{ viejas: number; nodos: number }[]>(
+    `SELECT (SELECT count(*)::int FROM (${GEOGRAFIA_VIEJA}) v WHERE $1::text IS NULL OR v.pais_id = $1) AS viejas,
+            (SELECT count(*)::int FROM (${NODOS_1_A_3}) n WHERE $1::text IS NULL OR n.pais_id = $1) AS nodos`,
+    paisId,
+  );
+  const filas = await db.$queryRawUnsafe<
+    { pais_id: string; profundidad: number; id: string; motivo: MotivoDeDiferencia; campos: CampoDeGeografia[] }[]
+  >(
+    `WITH vieja AS (${GEOGRAFIA_VIEJA}), nueva AS (${NODOS_1_A_3})
+     SELECT COALESCE(v.pais_id, n.pais_id) AS pais_id,
+            COALESCE(v.profundidad, n.profundidad)::int AS profundidad,
+            COALESCE(v.id, n.id) AS id,
+            CASE WHEN n.id IS NULL THEN 'sin_nodo' WHEN v.id IS NULL THEN 'sin_fila_vieja' ELSE 'distinta' END AS motivo,
+            CASE WHEN v.id IS NULL OR n.id IS NULL THEN ARRAY[]::text[] ELSE array_remove(ARRAY[
+              CASE WHEN v.pais_id IS DISTINCT FROM n.pais_id THEN 'pais' END,
+              CASE WHEN v.nombre IS DISTINCT FROM n.nombre THEN 'nombre' END,
+              CASE WHEN v.codigo IS DISTINCT FROM n.codigo THEN 'codigo' END,
+              CASE WHEN v.activo IS DISTINCT FROM n.activo THEN 'activo' END,
+              CASE WHEN v.padre_id IS DISTINCT FROM n.padre_id THEN 'padre' END
+            ], NULL) END AS campos
+       FROM vieja v FULL JOIN nueva n ON n.id = v.id AND n.profundidad = v.profundidad
+      WHERE ($1::text IS NULL OR v.pais_id = $1 OR n.pais_id = $1)
+        AND (v.id IS NULL OR n.id IS NULL
+             OR (v.pais_id, v.nombre, v.codigo, v.activo, v.padre_id)
+                IS DISTINCT FROM (n.pais_id, n.nombre, n.codigo, n.activo, n.padre_id))
+      ORDER BY 1, 2, 3`,
+    paisId,
+  );
+  const diferencias = filas.map((f) => ({
+    paisId: f.pais_id,
+    profundidad: f.profundidad as 1 | 2 | 3,
+    id: f.id,
+    motivo: f.motivo,
+    campos: f.campos,
+  }));
+  return { filasViejas: conteo.viejas, nodos: conteo.nodos, diferencias, iguales: diferencias.length === 0 };
+}
+
+/** Cuántas diferencias se listan una a una; del resto solo queda el conteo por país y nivel. */
+export const MAXIMO_DE_DIFERENCIAS_LISTADAS = 50;
+
+/** La salida del modo: conteos, hasta 50 ids con su motivo y el veredicto. Sin nombres. */
+export function informeDeEquivalenciaGeografia(r: ResumenDeEquivalenciaGeografia): Ejecucion {
+  const lineas = [`geografia filas viejas=${r.filasViejas} nodos 1-3=${r.nodos}`];
+  const porNivel = new Map<string, Record<MotivoDeDiferencia, number>>();
+  for (const d of r.diferencias) {
+    const clave = `${d.paisId}/${d.profundidad}`;
+    const c = porNivel.get(clave) ?? { sin_nodo: 0, sin_fila_vieja: 0, distinta: 0 };
+    c[d.motivo]++;
+    porNivel.set(clave, c);
+  }
+  for (const [clave, c] of porNivel) {
+    lineas.push(`geografia ${clave}: sin nodo=${c.sin_nodo} sin fila vieja=${c.sin_fila_vieja} distintas=${c.distinta}`);
+  }
+  for (const d of r.diferencias.slice(0, MAXIMO_DE_DIFERENCIAS_LISTADAS)) {
+    const campos = d.campos.length > 0 ? ` (${d.campos.join(",")})` : "";
+    lineas.push(`fila ${d.paisId}/${d.profundidad} ${d.id}: ${d.motivo}${campos}`);
+  }
+  if (r.diferencias.length > MAXIMO_DE_DIFERENCIAS_LISTADAS) {
+    lineas.push(`... y ${r.diferencias.length - MAXIMO_DE_DIFERENCIAS_LISTADAS} diferencias más`);
+  }
+  lineas.push(r.iguales ? "Geografía equivalente." : "Geografía NO equivalente.");
+  return { codigoDeSalida: r.iguales ? 0 : 1, lineas };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Argumentos y ejecución                                                      */
 /* -------------------------------------------------------------------------- */
 
-export type Modo = "comprobar" | "aplicar" | "validar" | "equivalencia";
+export type Modo = "comprobar" | "aplicar" | "validar" | "equivalencia" | "equivalencia-geografia";
 
 export interface Argumentos {
   modo: Modo;
@@ -335,9 +457,14 @@ export interface Argumentos {
 }
 
 const USO =
-  "Uso: pnpm geo:backfill [--aplicar | --validar | --equivalencia] [--tabla <t>] [--lote 1000] [--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]";
+  "Uso: pnpm geo:backfill [--aplicar | --validar | --equivalencia | --equivalencia-geografia] [--tabla <t>] [--lote 1000] [--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]";
 
-const MODOS: Record<string, Modo> = { "--aplicar": "aplicar", "--validar": "validar", "--equivalencia": "equivalencia" };
+const MODOS: Record<string, Modo> = {
+  "--aplicar": "aplicar",
+  "--validar": "validar",
+  "--equivalencia": "equivalencia",
+  "--equivalencia-geografia": "equivalencia-geografia",
+};
 
 function entero(texto: string | undefined, minimo: number): number | null {
   if (texto === undefined || !/^\d+$/.test(texto)) return null;
@@ -473,6 +600,11 @@ export async function ejecutar(
     }
     for (const v of r.validadas) lineas.push(`validada ${v}`);
     return { codigoDeSalida: 0, lineas };
+  }
+
+  if (a.modo === "equivalencia-geografia") {
+    // Compara todos los países: el filtro por país es solo para los tests.
+    return informeDeEquivalenciaGeografia(await equivalenciaGeografia(db));
   }
 
   const r = await equivalencia(db);
