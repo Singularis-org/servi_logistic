@@ -18,11 +18,141 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+> Escritos por `spec_author` el 2026-11-09. «Movimiento» es una fila de `cobro_plataforma_movimiento`
+> (SL-40); «traza» es la fila nueva de esta ficha. «La plataforma» es el rol dueño de la base, el que usa el
+> superadmin (`comoPlataforma`); «la app» es el rol `servi_app` en contexto de empresa. Los requisitos
+> marcados con **(Pn)** están escritos según la recomendación de la pregunta abierta Pn: si el humano
+> decide otra cosa, cambian.
+
+### Cuándo se escribe
+
+- **R1** — El sistema DEBE tener exactamente una fila de traza por cada movimiento, ligada a él por su
+  identificador, y ninguna fila de traza sin su movimiento.
+- **R2** — CUANDO se registra un movimiento por cualquiera de los caminos que hoy lo escriben (alta de una
+  orden de cobro fijo, alta de una orden que nace anulada, anulación, recuperación, y la conciliación del
+  cobro porcentual al entrar en un estado final, al salir de él, al anular o al recuperar), el sistema DEBE
+  escribir su fila de traza en la misma transacción.
+- **R3** — SI la transacción que registra un movimiento se deshace, ENTONCES el sistema NO DEBE conservar ni
+  el movimiento ni su fila de traza; y SI la fila de traza no se puede escribir, ENTONCES el sistema NO DEBE
+  registrar el movimiento.
+- **R4** — El sistema NO DEBE cambiar, por escribir la traza, ningún movimiento ni ningún importe cobrado:
+  los movimientos y la deuda de cada empresa DEBEN ser los mismos que sin ella.
+
+### Qué guarda cada fila
+
+- **R5** — CUANDO escribe una fila de traza, el sistema DEBE copiar de la orden, tal como está en ese
+  instante: su número de guía (vacío si aún no tiene), su `monto_cobrar` (vacío si no tiene) y el código de
+  su estado.
+- **R6** — CUANDO cambian después la guía, el `monto_cobrar` o el estado de la orden, el sistema NO DEBE
+  cambiar las filas de traza ya escritas.
+- **R7** — SI la orden tiene condiciones porcentuales congeladas (SLT-83), ENTONCES el sistema DEBE
+  escribir el tipo de cobro `porcentual`, el porcentaje y el mínimo congelados, y dejar vacío el valor
+  fijo.
+- **R8** — SI la orden no tiene condiciones porcentuales congeladas, ENTONCES el sistema DEBE escribir el
+  tipo de cobro `fijo`, el valor fijo igual al importe del movimiento, y dejar vacíos el porcentaje y el
+  mínimo.
+- **R9** — El sistema DEBE escribir en la traza la fuente del movimiento: `empresa`, `plan`, `global` o
+  `sin_configurar`. SI la fuente es `sin_configurar`, ENTONCES el valor fijo y el valor cobrado DEBEN ser
+  0,00.
+- **R10** — **(P1)** CUANDO escribe una fila de traza, el sistema DEBE copiar el identificador y el nombre
+  del plan asignado a la empresa en ese instante; SI la empresa no tiene plan, ENTONCES DEBE dejar los dos
+  vacíos.
+- **R11** — El sistema DEBE escribir como valor cobrado el importe del movimiento, positivo en un cargo y
+  negativo en un reverso, con el mismo valor absoluto exacto que el movimiento y sin impuestos.
+- **R12** — El sistema DEBE escribir como fecha de cobro el instante del movimiento.
+- **R13** — CUANDO el movimiento es un reverso, el sistema DEBE escribir el tipo de movimiento `reverso` y
+  apuntar a la fila de traza del cargo que anula. CUANDO es un cargo, DEBE escribir `cargo` y no apuntar a
+  ninguna fila.
+- **R14** — MIENTRAS la empresa tiene un plan asignado, el sistema DEBE escribir, en cada fila de traza, su
+  tipo de período (`quincenal`, `mensual`, `bimestral` o `anual`) y el inicio y el fin del período de
+  calendario de ese tipo que contiene la fecha de cobro, con la regla de SLT-86 (bordes a las 00:00 de la
+  plataforma).
+- **R15** — SI la empresa no tiene plan asignado en el instante del movimiento, ENTONCES el sistema DEBE
+  dejar vacíos el tipo de período, su inicio y su fin.
+- **R16** — Una fila de traza escrita junto a su movimiento DEBE salir con `reconstruido = false`.
+
+### Históricos
+
+- **R17** — CUANDO se aplica la migración, el sistema DEBE escribir una fila de traza por cada movimiento
+  ya registrado, con `reconstruido = true`, con lo que sí se guardó entonces (empresa, orden, movimiento,
+  tipo de movimiento, cargo anulado, fuente, valor cobrado, fecha de cobro, y el tipo de cobro con su
+  porcentaje y mínimo o su valor fijo) y con vacíos el número de guía, el `monto_cobrar`, el estado de la
+  orden, el plan y su nombre.
+- **R18** — **(P2)** CUANDO la migración rellena una fila, el sistema DEBE calcular su período con la
+  regla de SLT-86 a partir de la fecha de cobro y del tipo de cobro que tiene la empresa al aplicar la
+  migración; SI la empresa no tiene plan en ese momento, ENTONCES DEBE dejar el período vacío.
+- **R19** — SI al terminar el relleno queda algún movimiento sin su fila de traza, ENTONCES la migración
+  DEBE fallar sin dejar nada aplicado.
+- **R20** — **(P4)** La migración DEBE poder revertirse sin tocar ningún movimiento; SI hay alguna fila de
+  traza con `reconstruido = false`, ENTONCES la reversión DEBE negarse sin cambiar nada.
+
+### Quién lee y quién escribe
+
+- **R21** — MIENTRAS la app trabaja en el contexto de una empresa, el sistema DEBE devolverle solo las filas
+  de traza de esa empresa, y ninguna sin contexto de empresa.
+- **R22** — La plataforma DEBE poder leer las filas de traza de todas las empresas.
+- **R23** — SI la app intenta insertar, cambiar o borrar una fila de traza, ENTONCES el sistema DEBE
+  rechazarlo (`42501`) sin cambiar nada.
+- **R24** — **(P3)** SI cualquier rol, incluida la plataforma, intenta cambiar una fila de traza, ENTONCES
+  el sistema DEBE rechazarlo sin cambiar nada.
+- **R25** — Ningún archivo de `lib/` ni de `app/` DEBE escribir, cambiar ni borrar filas de traza.
+- **R26** — SI una fila de traza apunta a una orden, a un movimiento o a otra fila de traza de otra
+  empresa, o intenta cambiar de empresa, ENTONCES el sistema DEBE rechazarlo (`SL017`).
+
+### Forma de los datos
+
+- **R27** — La tabla de traza DEBE tener exactamente las columnas de la tabla «Campos de cada fila» y del
+  período, con nombres `snake_case` en español, los importes en decimal con 2 decimales (el porcentaje con
+  2 decimales), sin columnas de impuesto ni de moneda.
+
+### Mapa decisiones → requisitos
+
+| Decisión cerrada | Requisitos |
+|---|---|
+| ¿Qué cobros cubre? | R1, R2, R7, R8, R9 |
+| ¿Se edita o se borra? | R6, R11, R13, R23, R24, R25 |
+| Campos de cada fila | R5, R7–R13, R16, R27 |
+| Número de guía | R5, R6 |
+| Históricos | R17, R18, R19, R20 |
+| Quién la lee | R21, R22 |
+| IVA y moneda | R11, R27 |
+| ¿Guarda el período de cobro? | R14, R15, R18 |
+| Importes | R11, R27 |
+| Nombres en la base | R27 |
+| Cuándo se escribe | R1, R2, R3 |
+| Ruta | Sin R: es de proceso. Lo hace cumplir `scripts/validate-features.mjs` (la migración exige la ruta completa) |
 
 ## Preguntas abiertas
 
-Ninguna.
+> Cada una con la recomendación de `spec_author`. El spec está escrito según la recomendación; los
+> requisitos afectados llevan la marca (Pn).
+
+- **P1 — ¿Qué plan se copia en `plan_id` y `plan_nombre`?** Afecta a R10.
+  - **a) (recomendada)** El plan asignado a la empresa en el instante del movimiento, sea cual sea la
+    fuente. Es el mismo instante que el período (R14), no toca nada de SLT-83 y el importe sigue
+    explicado por la regla congelada (porcentaje, mínimo o valor fijo).
+  - b) El plan que fijó la regla. En una orden porcentual, el plan que había al **crearla**, que puede no
+    ser el de cuando entra en el estado final (un cambio de plan aplicado entre medias). Exige guardar el
+    plan en `cobro_plataforma_porcentual_orden` al dar de alta la orden y tocar el trigger de alta de
+    SLT-83.
+- **P2 — Período de los históricos: ¿con qué tipo de cobro?** Afecta a R18. La base no guarda el tipo de
+  cobro que tenía la empresa cuando se registró un cobro antiguo.
+  - **a) (recomendada)** Con el tipo de cobro que tiene la empresa al aplicar la migración (el único que se
+    conoce), y vacío si hoy no tiene plan. La fila ya sale `reconstruido`.
+  - b) Dejar el período vacío en todos los históricos, como el resto de lo que no se guardó.
+- **P3 — «Nunca se borra»: ¿también para el dueño de la base?** Afecta a R24.
+  - **a) (recomendada)** Nadie puede **cambiar** una fila (un trigger lo rechaza para todos los roles).
+    **Borrar** queda cerrado para la app (`REVOKE`, R23) y para el código (guardia, R25); el dueño solo
+    borra en cascada al borrar la orden o la empresa entera: las limpiezas de los tests y el borrado de
+    las empresas demo de QA (`scripts/demo-qa/borrar.ts`, SL-43). Es la misma regla que ya tienen los
+    movimientos.
+  - b) Un trigger que rechaza también el borrado para todos. Rompe el borrado de la demo de QA y las
+    limpiezas de los tests que borran órdenes.
+- **P4 — ¿Puede revertirse la migración con filas escritas en vivo?** Afecta a R20.
+  - **a) (recomendada)** No: el `down.sql` se niega si hay alguna fila con `reconstruido = false`, porque
+    esa copia del momento no se puede volver a sacar. Es el mismo criterio que el `down.sql` de SLT-66
+    (`20261031140100`), que se niega a bajar si hay movimientos de fuente `plan`.
+  - b) Sí: el `down.sql` borra la tabla entera, también las filas en vivo.
 
 ## Decisiones cerradas (no reabrir)
 
