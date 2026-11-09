@@ -31,10 +31,10 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 - 2026-11-09 (humano): los niveles se reordenan arrastrando (drag and drop, con ▲▼ como alternativa de teclado), en el alta y en un país ya creado. En un país ya creado solo reasigna los nombres de cada profundidad (los lugares no se mueven: el tipo sale de la profundidad, P1). Falta pasarlo al spec (R nuevo) tras aprobar la maqueta.
 - 2026-11-09 (humano): toda acción que guarda, edita o retira pide confirmación en un modal («¿Seguro?», antes → después) y valida antes de escribir. Falta pasarlo al spec tras aprobar la maqueta.
 - 2026-11-09 (humano, «aprobado»): maqueta T0.2 aprobada (lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7): reordenar solo arrastrando por ⠿ (sin flechas visibles; teclado con la manija enfocada), título «Niveles N (máximo 10)», modal de confirmación antes → después en guardar, editar, crear, agregar nivel y retirar, validando antes de escribir.
+- 2026-11-09 (humano): se retira `PaisRepository.crear` (forma vieja de seis nombres) y `pais-repositorio.test.ts` pasa a la forma nueva (historial P+1 filas, R37).
+- 2026-11-09 (humano): con la forma de entrada nueva, falta de `nombre` da el error en `fieldErrors.nombre` (como antes) y una forma vieja da un error claro de formato no válido; no `fieldErrors.entrada`.
 
 ## Preguntas abiertas
-- 2026-11-09 (implementer, tanda 2): ¿retirar `PaisRepository.crear` (seis nombres) y adaptar `pais-repositorio.test.ts` (1 rojo; su historial pasa a P+1 filas por R37)? Decide el humano.
-- 2026-11-09 (implementer, tanda 2): con `z.union`, una entrada sin `nombre` o con la forma vieja da el error en `fieldErrors.entrada` y no en `nombre`; design no lo prevé. Decide el humano.
 - 2026-11-09 (implementer, tanda 2): aserciones sin respaldo: `carga-division.test.ts` (it de `listArbolDePais` por cast, rojo a propósito hasta T5.3) y `geo-lecturas-catalogo.test.ts` (compara una proyección de UI, no el repositorio). Las revisa T5.3/reviewer.
 
 ## Tandas
