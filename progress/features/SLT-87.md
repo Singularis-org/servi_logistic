@@ -17,7 +17,7 @@ F1.4 (2026-11-09): spec de la entrega 1 aprobado por el humano («Aprobado, impl
 - 2026-11-05 · Alcance y decisiones → `specs/SLT-87-reporte-de-bugs/requirements.md`.
 - 2026-11-09 · Humano: se parte en 3 entregas. SLT-87 pasa a «Reporte de bugs: botón flotante y envío» y se crean SLT-97 (módulo del superadmin) y SLT-98 (imágenes); board actualizado. P2–P6 y Q1–Q5 → «Decisiones cerradas» del requirements: el botón no lo ve el superadmin, no se guarda versión, las imágenes van a un bucket propio con enlaces en el correo, en el mensajero el botón va encima del chat, solo se guarda la ruta, descripción de 500 como máximo, sin tope de envíos, `organization_id`. Vistas: https://claude.ai/artifact/RAaa8zU5Tbw2gyYnnMaRms
 
-<!-- tamano-pr-aceptado: 2026-11-09 · entrega 1 ~1.250–1.400 líneas (unas 550 de tests y E2E), 27 archivos; separar el correo dejaría reportes que nadie ve. Humano: «Aceptar». -->
+<!-- tamano-pr-aceptado: 2026-11-09 · entrega 1: 28 archivos y 2164 líneas reales (la estimación era ~1.400); separar el correo dejaría reportes que nadie ve. Humano: «Aceptar» y, con la cifra real, «Sí, un solo PR». -->
 
 ## Preguntas abiertas
 Ninguna.
