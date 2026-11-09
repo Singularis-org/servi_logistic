@@ -996,6 +996,9 @@ model Orden {
   // SLT-83 (design §2.2): las condiciones congeladas del cobro porcentual de ESTA orden. A lo sumo UNA
   // (PK = orden_id); la escribe solo el trigger de alta. La FK es CASCADE, como la de SL-40.
   cobroPorcentual            CobroPlataformaPorcentualOrden?
+  // SLT-85: la traza de facturación de cada movimiento de ESTA orden. La escribe solo el trigger sobre
+  // `cobro_plataforma_movimiento`; la FK es CASCADE, como la de SL-40.
+  cobrosPlataformaTraza      CobroPlataformaTraza[]
   // SLT-94: el cobro de fulfillment de ESTA orden a su tienda (cargo, reverso, cargo…). Lo escriben solo
   // los triggers de la base; la FK es RESTRICT (el dinero es evidencia).
   fulfillmentMovimientos     OrdenFulfillmentMovimiento[]
@@ -5881,6 +5884,7 @@ model Organizacion {
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
   cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
+  cobrosPlataformaTraza CobroPlataformaTraza[] // SLT-85
   ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
@@ -6267,7 +6271,8 @@ model CobroPlataformaMovimiento {
   ocurridoAt DateTime              @map("ocurrido_at")
   createdAt  DateTime              @default(now()) @map("created_at")
 
-  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  orden  Orden                  @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  trazas CobroPlataformaTraza[] // SLT-85: exactamente una, por el UNIQUE (organizacion_id, movimiento_id)
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -6342,6 +6347,62 @@ model CobroPlataformaPorcentualOrden {
   @@unique([organizacionId, ordenId])
   @@index([organizacionId])
   @@map("cobro_plataforma_porcentual_orden")
+}
+
+// SLT-85 (design §1) — la traza de facturación de cada movimiento del cobro de la plataforma: la copia
+// del momento (orden, regla, plan y período) que el movimiento no guarda. Una fila por movimiento. De
+// NEGOCIO. La escribe SOLO el trigger `AFTER INSERT` sobre `cobro_plataforma_movimiento` de
+// 20261109120000 (SECURITY DEFINER); las filas de antes de esa migración salen del relleno con
+// `reconstruido = true` y sin los datos que no se guardaron. Viven solo en el SQL de 20261109120000,
+// porque Prisma no los expresa:
+//   · los CHECK: `tipo_cobro` y `periodo_tipo` en su lista, la regla (fijo con valor fijo y sin % ni
+//     mínimo; porcentual con % y sin valor fijo), el signo (cargo >= 0, reverso <= 0), `reverso_de` solo
+//     en los reversos y el período entero o vacío;
+//   · la política `cobro_plataforma_traza_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee su traza y no la toca (R23);
+//   · el trigger `cobro_plataforma_traza_inmutable`: nadie cambia una fila, tampoco el dueño (SL085, R24);
+//   · los triggers de misma empresa de SL-17.
+// El 1 a 1 con el movimiento lo da el UNIQUE (organizacion_id, movimiento_id): por eso `trazas` es una
+// lista en Prisma, que solo admite un 1 a 1 sobre un único de una columna. Ídem `reversos`.
+// `planId` es una copia sin FK, como `PlanRastro.planId`. El `id` no tiene default: lo pone el trigger.
+model CobroPlataformaTraza {
+  id              String                @id
+  ordenId         String                @map("orden_id")
+  movimientoId    String                @map("movimiento_id")
+  tipoMovimiento  CobroPlataformaTipo   @map("tipo_movimiento")
+  reversoDeId     String?               @map("reverso_de")
+  numGuia         Int?                  @map("num_guia")
+  montoCobrar     Decimal?              @map("monto_cobrar") @db.Decimal(12, 2)
+  estadoOrden     String?               @map("estado_orden")
+  tipoCobro       String                @map("tipo_cobro") // CHECK: fijo | porcentual
+  fuente          CobroPlataformaFuente
+  planId          String?               @map("plan_id")
+  planNombre      String?               @map("plan_nombre") @db.VarChar(80)
+  porcentaje      Decimal?              @db.Decimal(5, 2)
+  minimo          Decimal?              @db.Decimal(12, 2)
+  valorFijo       Decimal?              @map("valor_fijo") @db.Decimal(12, 2)
+  valorCobrado    Decimal               @map("valor_cobrado") @db.Decimal(12, 2)
+  cobradoAt       DateTime              @map("cobrado_at")
+  periodoTipo     String?               @map("periodo_tipo") // CHECK: quincenal | mensual | bimestral | anual
+  periodoInicioAt DateTime?             @map("periodo_inicio_at")
+  periodoFinAt    DateTime?             @map("periodo_fin_at")
+  reconstruido    Boolean               @default(false)
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  orden      Orden                     @relation(fields: [ordenId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  movimiento CobroPlataformaMovimiento @relation(fields: [movimientoId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  reversoDe  CobroPlataformaTraza?     @relation("CobroPlataformaTrazaReverso", fields: [reversoDeId], references: [id], onDelete: NoAction, onUpdate: Restrict)
+  reversos   CobroPlataformaTraza[]    @relation("CobroPlataformaTrazaReverso")
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, movimientoId]) // R1: una traza por movimiento
+  @@unique([organizacionId, reversoDeId]) // un cargo lo anula como mucho un reverso
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@index([organizacionId, cobradoAt])
+  @@map("cobro_plataforma_traza")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
