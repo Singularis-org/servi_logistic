@@ -33,6 +33,7 @@ F2.1 2026-11-10: spec aprobado (F1.4, «aprobado», por escrito) y tarjeta en in
 - 2026-11-10 · Tanda 1 (T1.1–T1.6, T2.1–T2.5) hecha: `359ad4c8`..`3db049a3`. Censos +2 tablas/+2 triggers/+1 tipo de historial; resolver de tarifas 3→4 consultas por lote (decisión humana). Guardias 320 verdes salvo el rojo aceptado; contrato v1 22/22. Bitácora: `progress/impl_SLT-89.md`.
 - 2026-11-10 · Tanda 2 (T3–T6, servidor) hecha: `aeb8ecbf`..`d4dbe8e1`. Guardias verdes salvo el rojo aceptado; contrato v1 22/22. Rojos hasta T7: 28 casos del formulario de zona (falta mandar «antes», T7.2) y grupos en Tarifas sin «antes» (T7.3). Pendiente decisión humana: historial al sacar un distrito viejo de su grupo (R21 vs R38).
 - 2026-11-10 · Tanda 3 (T7.1–T7.3, T8.1, T9.1) hecha: `cf715317`..`5312a92b`. Maqueta aprobada; 28 rojos del formulario de zona resueltos; R22 padre siempre (decisión humana). E2E escrito, se corre en CI (sin psql local). Pendiente: review F2.2, T9.2, PR.
+- 2026-11-10 · Gate de CI por workflow_dispatch sobre `e1e243e4`: gate-completo verde, E2E verde (aislamiento, dinero, reparto). https://github.com/Singularis-org/servi_logistic/actions/runs/42913893905. Antes, run 42907373831 en rojo por `geo-explain-analitica` (arreglado en código, `8e95e91b`) y `slt46-nodo-copia-vieja` R44 (aserción autorizada por el humano, `c8c3d940`).
 
 ## Modelos (overrides)
 
