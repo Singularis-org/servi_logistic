@@ -206,6 +206,7 @@ export const USOS_PERMITIDOS: Readonly<Record<string, UsoPermitido>> = {
   "app/(app)/analitica/_components/entregas/analitica-productos-descarga-columnas.ts": { clase: D, motivo: "encabezados de la descarga de productos" },
   "app/(app)/ranking/_components/ranking-descarga-columnas.ts": { clase: D, motivo: "encabezado de la descarga del ranking" },
   "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts": { clase: D, motivo: "celda «Resultado» de la hoja fundida de gestiones" },
+  "components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts": { clase: D, motivo: "celda «Resultado» de «Descargar» en el detalle único del cierre (SLT-100, R82)" },
   "app/(app)/historico/acciones/_components/historial-acciones-columnas.ts": { clase: D, motivo: "DEFINE `valorLegible`, que da el nombre del resultado a la descarga del registro; en pantalla `celdaValor` pinta el resultado con `EstadoConInfo` y solo llama a `valorLegible` para las acciones que NO guardan un resultado. Lo comprueban `tests/components/HistorialAccionesValorInfo.test.tsx` (botón en pantalla, nombre en la descarga) y el caso «la excepción `descarga` del registro de acciones» de esta guardia" },
   "app/(app)/historico/acciones/_components/historial-acciones-descarga-columnas.ts": { clase: D, motivo: "celdas «Valor anterior/nuevo» de la descarga del registro (`valorLegible`)" },
   // ── Recuentos (design §5.2) ──

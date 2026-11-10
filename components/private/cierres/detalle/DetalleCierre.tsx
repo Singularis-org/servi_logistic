@@ -298,9 +298,6 @@ function Cuerpo({ props, tituloId }: Readonly<{ props: DetalleCierreProps; titul
   );
 }
 
-/**
- * @sin-superficie S1 de SLT-95 es el componente base sin montar; lo monta S2 (SLT-100) en /cierres-admin
- */
 export function DetalleCierre(props: Readonly<DetalleCierreProps>) {
   const tituloId = useId();
   if (props.marco === "modal") {

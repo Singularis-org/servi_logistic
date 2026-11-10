@@ -203,10 +203,17 @@ async function aprobarEnPantalla(browser: Browser, r: RepartoE2E, m: MensajeroE2
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
   await abrirCon(comprobante.getByRole("button", { name: "Ver / decidir" }), detalle);
   if (ingreso !== null) {
-    await expect(detalle.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen del cierre" })).toContainText(importe(ingreso));
+    // SLT-100: la tarjeta del ingreso de bodega pasó a la línea «− pago a la bodega» de la cuenta del detalle único.
+    await expect(
+      detalle
+        .getByRole("region", { name: "De lo facturado, le queda a la empresa" })
+        .locator("[data-signo]")
+        .filter({ hasText: "− Ingreso de bodega por devoluciones a origen" }),
+    ).toContainText(importe(ingreso));
   }
   const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
-  await abrirCon(detalle.getByRole("button", { name: "Aprobar", exact: true }), confirmar);
+  // SLT-100: con paquetes que vuelven, el pie del detalle único dice «Revisar paquetes y aprobar» (R12 de SLT-95).
+  await abrirCon(detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }), confirmar);
   const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
   await lector.getByLabel("Número de guía").fill(String(orden.numGuia));
   await lector.getByRole("button", { name: "Confirmar", exact: true }).click();

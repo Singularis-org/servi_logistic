@@ -491,6 +491,52 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
   });
 });
 
+// SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (T1.3, R80): el servicio solo
+// nombra al resolutor de un cierre RESUELTO. La lectura real (select y alcance) la prueba
+// `tests/integration/db/cierre-resuelto-por-sql-real.test.ts`.
+describe("SLT-100/R80 — verCierreDetalle emite `resueltoPorNombre` solo si el cierre está resuelto", () => {
+  function repoConResolutor(estado: CierreAdminResumenRow["estado"]) {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ estado }),
+        gestiones: [],
+        resueltoPorNombre: "Carla Resolutora",
+      })),
+    });
+  }
+
+  it("aprobado → «Carla Resolutora»", async () => {
+    const { service } = newService({ repo: repoConResolutor("aprobado") });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.resueltoPorNombre).toBe("Carla Resolutora");
+  });
+
+  it("rechazado → «Carla Resolutora»", async () => {
+    const { service } = newService({ repo: repoConResolutor("rechazado") });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.resueltoPorNombre).toBe("Carla Resolutora");
+  });
+
+  it("solicitado con resolutor en el doble (rechazado y vuelto a solicitar) → `null`", async () => {
+    const { service } = newService({ repo: repoConResolutor("solicitado") });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.resueltoPorNombre).toBeNull();
+  });
+
+  it("vencido con resolutor en el doble → `null`", async () => {
+    const { service } = newService({ repo: repoConResolutor("vencido") });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.resueltoPorNombre).toBeNull();
+  });
+});
+
 /**
  * 💰 FICHA 395 — LAS DOS LINEAS QUE LE FALTABAN AL DETALLE DEL CIERRE DE MENSAJERO.
  *

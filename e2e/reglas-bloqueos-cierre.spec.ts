@@ -117,7 +117,8 @@ test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencid
     await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
     await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
     const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
-    await expect(detalle.getByRole("region", { name: "Totales del cierre" })).toBeVisible();
+    // SLT-100: «Totales del cierre» pasó a las cifras de arriba del detalle único.
+    await expect(detalle.getByRole("group", { name: "Cifras del cierre" })).toBeVisible();
     await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
     await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
     expect((await cierresDe(m)).map((c) => [c.id, c.estado])).toEqual([[vencidoId, "aprobado"]]);

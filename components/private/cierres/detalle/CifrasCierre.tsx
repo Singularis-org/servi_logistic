@@ -59,9 +59,6 @@ function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales: CierreTotales }
   );
 }
 
-/**
- * @sin-superficie S1 de SLT-95 es el componente base sin montar; lo monta S2 (SLT-100) en /cierres-admin
- */
 export function CifrasCierre({ cifras, totales }: Readonly<CifrasCierreProps>) {
   return (
     <div

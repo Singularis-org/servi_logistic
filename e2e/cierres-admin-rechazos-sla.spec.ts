@@ -82,15 +82,16 @@ test.describe("Cierres del día — el ingreso por rechazos separa SLA y manual"
     await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
     const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
 
-    const ingreso = detalle.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen del cierre" });
-    await expect(ingreso).toContainText(importe(2700));
-    await expect(ingreso.getByText("Automático (por plazo vencido)", { exact: true }).locator("xpath=following-sibling::b[1]")).toHaveText(
-      importe(900),
-    );
-    await expect(ingreso.getByText("Manual (mensajero)", { exact: true }).locator("xpath=following-sibling::b[1]")).toHaveText(
-      importe(1800),
-    );
+    // SLT-100 (R81): la tarjeta pasó a la línea «− pago a la bodega» de la cuenta del detalle único, con el
+    // desglose por origen como nota debajo. Mismos importes.
+    const ingreso = detalle
+      .getByRole("region", { name: "De lo facturado, le queda a la empresa" })
+      .locator("[data-signo]")
+      .filter({ hasText: "− Ingreso de bodega por devoluciones a origen" });
+    await expect(ingreso.locator("[data-monto]")).toHaveText(importe(2700, { solo: true }));
+    await expect(ingreso).toContainText(/Automático \(por plazo vencido\) ₡900 · Manual \(mensajero\) ₡1\.800/);
 
+    await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
     await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
     const rechazadas = ordenes.getByRole("region", { name: "Devolución a origen por rechazo" });

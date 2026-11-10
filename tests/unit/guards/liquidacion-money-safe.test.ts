@@ -158,6 +158,10 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   "components/private/cierres/detalle/CifrasCierre.tsx",
   "components/private/cierres/detalle/DineroCierre.tsx",
   "components/private/cierres/detalle/Cuenta.tsx",
+  // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R71): la pestaña de rechazos
+  // (sin dinero) y las columnas de «Descargar» (importes como el string del servidor).
+  "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx",
+  "components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */

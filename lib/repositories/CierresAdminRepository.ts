@@ -1406,13 +1406,21 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     sinGestion: CierreSinGestionRow[];
     sinGestionRegistrado: boolean;
     rechazosDeTienda: CierreRechazoDeTienda[];
+    resueltoPorNombre: string | null;
   } | null> {
     const cierre = await this.prisma.cierreDia.findFirst({
       where: { id: cierreId, ...alcanceWhere(alcance) }, // R13: guardia de alcance en el WHERE
       // Feature 264 (R27/R28): la marca se pide SOLO aqui, no en `CIERRE_RESUMEN_SELECT`. Los
       // otros cinco usos de esa proyeccion son LISTADOS, que no pintan la seccion: ensancharla
       // les cobraria una columna por fila a cambio de nada.
-      select: { ...CIERRE_RESUMEN_SELECT, sinGestionRegistrado: true },
+      //
+      // SLT-100 (R80): quien resolvio el cierre, por la misma razon y en la misma sentencia acotada
+      // por el alcance: fuera de alcance no se lee ni el nombre. Solo aqui; los listados no lo pintan.
+      select: {
+        ...CIERRE_RESUMEN_SELECT,
+        sinGestionRegistrado: true,
+        resueltoPorUsuario: { select: NOMBRE_USUARIO_SELECT },
+      },
     });
     if (cierre === null) return null; // R13: no existe o de otra bodega/zona (no se distingue)
 
@@ -1470,6 +1478,9 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       sinGestionRegistrado: cierre.sinGestionRegistrado,
       // FICHA 425 (R14): `[]`, nunca `null` — ningun cierre anterior a la ficha pudo llevarse uno.
       rechazosDeTienda: rechazosDeTienda.map(toRechazoDeTienda),
+      // SLT-100 (R80): `null` sin resolutor. La regla del estado (solo aprobado/rechazado) es del servicio.
+      resueltoPorNombre:
+        cierre.resueltoPorUsuario ? nombreCompletoUsuario(cierre.resueltoPorUsuario) : null,
       // Grano: N gestiones de una orden comparten su UNICA fila congelada.
       // Sin fallback (R14/decision (a)): si falta la fila, es un error DURO, no un silencio
       // que muestre datos vivos disfrazados de congelados.

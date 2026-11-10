@@ -29,9 +29,6 @@ export interface CuentaProps {
   className?: string;
 }
 
-/**
- * @sin-superficie S1 de SLT-95 es el componente base sin montar; lo monta S2 (SLT-100) en /cierres-admin
- */
 export function Cuenta({ titulo, lineas, ariaLabel, className }: Readonly<CuentaProps>) {
   return (
     <section
