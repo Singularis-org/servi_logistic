@@ -8,7 +8,7 @@
 
 ## Estado
 F2.1 2026-11-10: spec aprobado (F1.4, «aprobado», por escrito) y tarjeta en in_progress. Spec R1–R48, T0–T9.
-Backend lanzado; la pantalla (T7) espera la maqueta T0.2 (https://claude.ai/artifact/9QG7NyNkFdDcxu5zvWu1xD), sin aprobar.
+2026-11-10: T1–T8.1 y T9.1 hechas; maqueta T0.2 aprobada. Review F2.2 vuelta 1: rechazada por proceso (B1 T9.2, B2 E2E sin correr) más menores m1–m4; correcciones en curso, luego gate y E2E en CI por workflow_dispatch.
 
 ## Evaluación
 - zone fullstack: zona y zona especial asignables a cualquier nodo con herencia, `GeografiaSelector` a N
@@ -22,8 +22,9 @@ Backend lanzado; la pantalla (T7) espera la maqueta T0.2 (https://claude.ai/arti
 
 ## Decisiones
 - 2026-11-09 (humano): «arranca 89, ignora las que están en proceso de geografía, están pausadas de
-- 2026-11-10 (humano): «aprobado» — maqueta de T0.2 aprobada: https://claude.ai/artifact/9QG7NyNkFdDcxu5zvWu1xD (copia en el scratchpad `maqueta89/project/`). Desbloquea T7.
   momento»: la rama nace sobre `feature/SLT-46-geo-jerarquica-admin`; las fichas geo en vuelo no se tocan.
+- 2026-11-10 (humano): «aprobado» — maqueta de T0.2 aprobada: https://claude.ai/artifact/9QG7NyNkFdDcxu5zvWu1xD (copia en el scratchpad `maqueta89/project/`). Desbloquea T7.
+- 2026-11-10 (humano): review D1 ratificada, D2 «cambian de zona», D3 corregir m2 ya. Detalle en requirements.md > Decisiones cerradas.
 - 2026-11-09 · Alcance y decisiones cerradas en `specs/SLT-89-geo-jerarquica-zonas/requirements.md` (`/afinar-feature`; descripción de la tarjeta actualizada, complexity:high).
 
 ## Preguntas abiertas
