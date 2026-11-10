@@ -1,0 +1,12 @@
+-- SLT-118 (design §4.1, §6.1; R25) — el trabajo que cierra las facturas de la plataforma.
+--
+-- `factura_plataforma_cerrar` es RECURRENTE (cada hora a los :10) y va SIN empresa: corre una vez, en
+-- plataforma (`RECURRENTES_DE_PLATAFORMA`), y cierra la factura vencida de cada empresa con las funciones del
+-- dueño de 20261111130100. Es de núcleo (`MODULO_POR_JOB`). Su primera fila la siembra
+-- `scripts/siembra-jobs-recurrentes.ts`.
+--
+-- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04). Nada aquí
+-- escribe filas; el primer uso ocurre en runtime.
+--
+-- Prefijo 20261111: va después de la mayor migración de `dev` al empezar (20261111120000_bug_report_status).
+ALTER TYPE "job_tipo" ADD VALUE IF NOT EXISTS 'factura_plataforma_cerrar';
