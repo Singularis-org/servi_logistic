@@ -741,7 +741,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
   test("«Mi plan» dice lo cobrado, lo que falta por llegar y el total", async () => {
     test.setTimeout(120_000);
     await page.goto("/mi-plan");
-    await expect(page.getByRole("heading", { name: nombrePlan, exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombrePlan, exact: true })).toBeVisible({ timeout: 60_000 });
     const lista = page.getByRole("list", { name: "Costo del período", exact: true });
     for (const linea of [
       "Costo base mensual: 1000.00",
