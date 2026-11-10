@@ -7,6 +7,7 @@ import type {
 } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
 import { leerNodosConMarcaDeLaEmpresa, type ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { leerAsignacionesANodos } from "@/lib/repositories/_shared/zona-nodo";
 import {
   crearAsignaciones,
   crearCatalogo,
@@ -110,15 +111,9 @@ async function leerDeLaEmpresa(tx: TxDeCarga, organizacionId: string | null): Pr
   // SLT-89 (design §4.1, R9): las asignaciones a nodos que no son distritos, en la misma foto y en
   // serie. Van DESPUES de las de `zona_distrito`: con `zona_nodo` vacia (Costa Rica el dia del
   // deploy) las asignaciones son identicas a las de antes (R38).
-  const filasDeNodo = await tx.zonaNodo.findMany({
-    select: { nodoGeograficoId: true, zona: { select: { id: true, nombre: true, esCentral: true } } },
-    orderBy: { id: "asc" },
-  });
+  const filasDeNodo = await leerAsignacionesANodos(tx);
   const asignaciones = crearAsignaciones(
-    [
-      ...filasDeZona.map((f) => ({ nodoId: f.distritoId, zona: f.zona })),
-      ...filasDeNodo.map((f) => ({ nodoId: f.nodoGeograficoId, zona: f.zona })),
-    ],
+    [...filasDeZona.map((f) => ({ nodoId: f.distritoId, zona: f.zona })), ...filasDeNodo],
     marcas,
   );
   return { catalogo, asignaciones };

@@ -253,3 +253,14 @@ respaldado por design §4.3/§9), o (b) otra forma de leer los miembros nuevos s
 esquema: lo cazó la guardia `catalogo-postgres-acota-esquema` (ficha 421). Gana `JOIN pg_namespace …
 WHERE n.nspname = 'public'`, como `454/orden-evento-migration.test.ts`. Guardia + ida y vuelta →
 `Test Files 2 passed (2) · Tests 11 passed (11)`.
+
+### Arreglos hallados por las guardias (sin tocar ninguna guardia)
+
+| Guardia | Qué cazó | Arreglo | Task |
+|---|---|---|---|
+| `geografia-lecturas-sin-nodo-fk` (SLT-44 R12) | `CatalogoGeograficoRepository` nombraba `nodoGeograficoId` al leer `zona_nodo` | la lectura pasa a `lib/repositories/_shared/zona-nodo.ts` (`leerAsignacionesANodos`). La guardia protege las tablas viejas (lugar desde `distrito_id`, sin depender del backfill); `zona_nodo` solo tiene `nodo_geografico_id` y R9 de SLT-89 manda leerla de ahí. El cargador sigue sin nombrar la columna | T2.2 |
+| `superficie-de-uso` (R-A) | `listarArbolDeZonas` sin llamador | `@sin-superficie` con su salida: la llama el selector de T7.1/T7.2 (bloqueado por la maqueta, T0.2) y se borra en ese commit | T2.4 |
+| `zona-especial-punto-unico` (SL-38 R22) | `ITarifaVigenteRepository`/`ITarifaZonaMensajeroRepository` nombraban `distritoZonaEspecial` | los dos tipos de cliente usan `ClienteDeMarcas` de `_shared/zona-especial.ts` (como `CatalogoGeograficoRepository`) | T2.5 |
+
+Las tres guardias + `catalogo-geografico-sin-instancia-de-modulo` + `zona-nodo-herencia` +
+`geo-lecturas-catalogo` → `Test Files 6 passed (6) · Tests 67 passed (67)`.
