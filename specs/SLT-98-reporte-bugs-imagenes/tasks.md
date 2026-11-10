@@ -151,7 +151,7 @@
   - **Hecho:** `tests/integration/db/bug-report.test.ts` en verde **con `DATABASE_URL`** (un verde sin
     base no vale), con los casos de R24, R26, R27 y R31 del mapa. `consultas-concurrentes-en-transaccion`
     y `sql-a-mano-por-empresa` siguen en verde.
-- [ ] **T14. Servicio y action** (dep. T13; R24, R25, R27, R28, R30).
+- [x] **T14. Servicio y action** (dep. T13; R24, R25, R27, R28, R30).
   - **Archivos:**
     - `lib/interfaces/services/IReporteBugService.ts`: la variante `{ status: "sin_cupo_imagenes" }`;
     - `lib/services/ReporteBugService.ts`: `cupo` como tercer parámetro, `ahora` al final y el

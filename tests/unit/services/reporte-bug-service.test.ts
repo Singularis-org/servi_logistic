@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ENLACE_CORREO_SEGUNDOS, IMAGEN_BYTES_MAX, tipoPorFirma } from "@/lib/config/reporte-bug";
+import { ENLACE_CORREO_SEGUNDOS, IMAGEN_BYTES_MAX, IMAGENES_POR_DIA_MAX, tipoPorFirma } from "@/lib/config/reporte-bug";
 import { contextoActual } from "@/lib/db/contexto-empresa";
 import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
 import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugReportRepository";
+import type { ICupoImagenesReporte } from "@/lib/interfaces/repositories/ICupoImagenesReporte";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { ReporteBugService } from "@/lib/services/ReporteBugService";
 import type { BugReportCreado, EnviarReporteBugDatos, NuevoBugReport } from "@/lib/types/reporte-bug";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-87 (design §5; R11, R15, R16, R17) — el servicio con dobles: un repositorio en memoria que anota
 // lo que guarda y un emisor que anota lo que manda. El SQL se prueba en
@@ -15,6 +17,9 @@ import type { BugReportCreado, EnviarReporteBugDatos, NuevoBugReport } from "@/l
 //
 // SLT-98 (design §5; R9–R11, R13, R20, R21): el almacén de imágenes es un doble en memoria que anota cada
 // llamada con el contexto de empresa en que ocurrió.
+//
+// SLT-98 (design §16.4; R24, R25, R27, R28, R30): el cupo diario es otro doble que anota cada llamada y
+// cuántas había hecho ya el almacén en ese momento. Las reglas del país son las de Costa Rica.
 
 const ACTOR: Actor = { usuarioId: "u-1", rol: "mensajero", organizacionId: "org-1" };
 const ENTRADA: EnviarReporteBugDatos = {
@@ -64,9 +69,16 @@ function almacenDoble(o: {
   return { almacen, llamadas };
 }
 
+interface CupoDoble {
+  cupo: ICupoImagenesReporte;
+  /** Cada llamada, con las del almacén que ya habían ocurrido. */
+  llamadas: { op: "consumir" | "devolver"; args: unknown[]; almacenAntes: number }[];
+}
+
 interface Doble {
   servicio: ReporteBugService;
   almacen: AlmacenDoble;
+  cupo: CupoDoble;
   guardados: NuevoBugReport[];
   enviados: EmailMessage[];
   log: ReturnType<typeof vi.fn>;
@@ -81,6 +93,10 @@ function doble(o: {
   guardarLanza?: Error;
   almacen?: AlmacenDoble;
   ids?: string[];
+  /** Lo que devuelve `consumir`; por defecto, el total como si no hubiera fila. */
+  consumirDevuelve?: number | null;
+  devolverLanza?: Error;
+  ahora?: Date;
 } = {}): Doble {
   const guardados: NuevoBugReport[] = [];
   const enviados: EmailMessage[] = [];
@@ -122,8 +138,29 @@ function doble(o: {
   const almacen = o.almacen ?? almacenDoble();
   const ids = [...(o.ids ?? [])];
   const nuevoId = () => ids.shift() ?? "sin-id";
-  const servicio = new ReporteBugService(repo, almacen.almacen, sender, () => o.destinatarios ?? [], log, nuevoId);
-  return { servicio, almacen, guardados, enviados, log, orden };
+  const llamadasCupo: CupoDoble["llamadas"] = [];
+  const cupo: ICupoImagenesReporte = {
+    consumir: async (...args) => {
+      llamadasCupo.push({ op: "consumir", args, almacenAntes: almacen.llamadas.length });
+      return o.consumirDevuelve === undefined ? args[2] : o.consumirDevuelve;
+    },
+    devolver: async (...args) => {
+      llamadasCupo.push({ op: "devolver", args, almacenAntes: almacen.llamadas.length });
+      if (o.devolverLanza) throw o.devolverLanza;
+    },
+  };
+  const servicio = new ReporteBugService(
+    repo,
+    almacen.almacen,
+    cupo,
+    sender,
+    reglasPaisFijas(),
+    () => o.destinatarios ?? [],
+    log,
+    nuevoId,
+    () => o.ahora ?? new Date("2026-11-10T18:00:00.000Z"),
+  );
+  return { servicio, almacen, cupo: { cupo, llamadas: llamadasCupo }, guardados, enviados, log, orden };
 }
 
 describe("SLT-87 · ReporteBugService.enviar", () => {
@@ -274,6 +311,8 @@ describe("SLT-98 · ReporteBugService.prepararSubidas", () => {
       const r = await d.servicio.prepararSubidas(actor, { imagenes: [{ tipo: "image/png", tamano: 10 }] });
       expect(r, JSON.stringify(actor)).toEqual({ status: "forbidden" });
       expect(d.almacen.llamadas).toEqual([]);
+      // SLT-98 (R24, P6): una petición que no pasa la puerta no cuenta.
+      expect(d.cupo.llamadas).toEqual([]);
     }
   });
 
@@ -506,5 +545,104 @@ describe("SLT-98 · ReporteBugService.enviar con imágenes", () => {
     expect(parcial.enviados[0].text).toContain(aviso(1));
     expect(parcial.enviados[0].text).not.toContain(aviso(2));
     expect(parcial.enviados[0].text).toContain("Ver imagen 2: https://firmada.test/dos");
+  });
+});
+
+describe("SLT-98 · ReporteBugService.prepararSubidas y el tope diario", () => {
+  const DOS = { imagenes: [{ tipo: "image/png" as const, tamano: 10 }, { tipo: "image/jpeg" as const, tamano: 20 }] };
+
+  it("R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén", async () => {
+    const d = doble({ ids: [ID1, ID2], ahora: new Date("2026-11-10T18:00:00.000Z") });
+
+    await d.servicio.prepararSubidas(ACTOR, DOS);
+
+    expect(IMAGENES_POR_DIA_MAX).toBe(21);
+    expect(d.cupo.llamadas).toEqual([{ op: "consumir", args: ["u-1", "2026-11-10", 2, 21], almacenAntes: 0 }]);
+    expect(d.almacen.llamadas.map((l) => l.op)).toEqual(["prepararSubida", "prepararSubida"]);
+  });
+
+  it("R24 — con consumir devolviendo 25, da listas con un permiso por imagen", async () => {
+    const d = doble({ ids: [ID1, ID2], consumirDevuelve: 25 });
+
+    const r = await d.servicio.prepararSubidas(ACTOR, DOS);
+
+    expect(r).toEqual({
+      status: "listas",
+      permisos: [
+        { imagenId: ID1, url: `https://subida.test/u-1/${ID1}.png?token=t` },
+        { imagenId: ID2, url: `https://subida.test/u-1/${ID2}.jpg?token=t` },
+      ],
+    });
+    expect(d.cupo.llamadas.map((l) => l.op)).toEqual(["consumir"]);
+  });
+
+  it("R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10", async () => {
+    const d = doble({ ids: [ID1], ahora: new Date("2026-11-11T05:30:00.000Z") });
+
+    await d.servicio.prepararSubidas(ACTOR, { imagenes: [{ tipo: "image/png", tamano: 10 }] });
+
+    expect(d.cupo.llamadas[0].args[1]).toBe("2026-11-10");
+  });
+
+  it("R25 — si consumir devuelve null, da exactamente { status: \"sin_cupo_imagenes\" } y no llama al almacén ni a devolver", async () => {
+    const d = doble({ ids: [ID1, ID2], consumirDevuelve: null });
+
+    const r = await d.servicio.prepararSubidas(ACTOR, DOS);
+
+    expect(r).toStrictEqual({ status: "sin_cupo_imagenes" });
+    expect(d.almacen.llamadas).toEqual([]);
+    expect(d.cupo.llamadas.map((l) => l.op)).toEqual(["consumir"]);
+    expect(d.log).not.toHaveBeenCalled();
+  });
+
+  it("R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original", async () => {
+    const falla = (): AlmacenDoble => {
+      const a = almacenDoble();
+      let n = 0;
+      const original = a.almacen.prepararSubida;
+      // La segunda imagen falla: la primera ya tenía permiso, y aun así se devuelven las dos.
+      a.almacen.prepararSubida = async (ruta) => {
+        n += 1;
+        if (n === 2) throw Object.assign(new Error("Storage caído"), { name: "StorageError" });
+        return original(ruta);
+      };
+      return a;
+    };
+
+    const d = doble({ ids: [ID1, ID2], almacen: falla() });
+    await expect(d.servicio.prepararSubidas(ACTOR, DOS)).rejects.toThrow("Storage caído");
+    expect(d.cupo.llamadas.map(({ op, args }) => ({ op, args }))).toEqual([
+      { op: "consumir", args: ["u-1", "2026-11-10", 2, 21] },
+      { op: "devolver", args: ["u-1", "2026-11-10", 2] },
+    ]);
+    expect(d.log).not.toHaveBeenCalled();
+
+    const roto = Object.assign(new Error("base caída"), { name: "DevolverError" });
+    const d2 = doble({ ids: [ID1, ID2], almacen: falla(), devolverLanza: roto });
+    await expect(d2.servicio.prepararSubidas(ACTOR, DOS)).rejects.toThrow("Storage caído");
+    expect(d2.cupo.llamadas.map((l) => l.op)).toEqual(["consumir", "devolver"]);
+    expect(d2.log).toHaveBeenCalledTimes(1);
+    expect(d2.log).toHaveBeenCalledWith("[reporte-bug] fallo al devolver el cupo de imagenes causa=DevolverError");
+  });
+
+  it("R28 — enviar no consume ni lee el cupo", async () => {
+    const almacen = almacenDoble({ objetos: { [`u-1/${ID1}.png`]: bytes(FIRMA_PNG) } });
+    const d = doble({ destinatarios: ["soporte@example.test"], almacen, consumirDevuelve: null });
+
+    const r = await d.servicio.enviar(ACTOR, conImagenes([{ id: ID1, tipo: "image/png" }]), ENTORNO);
+
+    expect(r).toEqual({ status: "enviado" });
+    expect(d.guardados[0].imagenes).toHaveLength(1);
+    expect(d.cupo.llamadas).toEqual([]);
+  });
+
+  it("R30 — enviar un reporte sin imágenes da enviado sin llamar al cupo, aunque el cupo doble diga que no hay", async () => {
+    const d = doble({ destinatarios: ["soporte@example.test"], consumirDevuelve: null });
+
+    const r = await d.servicio.enviar(ACTOR, ENTRADA, ENTORNO);
+
+    expect(r).toEqual({ status: "enviado" });
+    expect(d.guardados).toHaveLength(1);
+    expect(d.cupo.llamadas).toEqual([]);
   });
 });

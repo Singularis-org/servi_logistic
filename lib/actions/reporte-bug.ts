@@ -13,6 +13,7 @@ import type {
 } from "@/lib/interfaces/services/IReporteBugService";
 import { BugReportRepository } from "@/lib/repositories/BugReportRepository";
 import { crearEmailSender } from "@/lib/services/EmailProvider";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { ReporteBugService } from "@/lib/services/ReporteBugService";
 import { SupabaseAlmacenImagenesReporte } from "@/lib/storage/SupabaseAlmacenImagenesReporte";
 import { enviarReporteBugSchema, prepararSubidasImagenesSchema } from "@/lib/types/reporte-bug";
@@ -31,6 +32,8 @@ import { enviarReporteBugSchema, prepararSubidasImagenesSchema } from "@/lib/typ
 // SLT-98 (design §4.1, §5.2; R9, R11, R12, R14): `prepararSubidaImagenesReporteAction` da los permisos
 // de subida directa al bucket, con el mismo orden (sesión → zod estricto → servicio, que es la puerta).
 // La ruta de cada imagen la fija el servicio con la sesión; la entrada solo declara tipo y tamaño.
+// SLT-98 (design §16.4; R25, R31): el tope diario lo cuenta el servicio con el usuario de la sesión y la
+// hora del servidor; un campo de más en la entrada (usuario, fecha, cupo) cae en zod antes de contar.
 
 /** Dependencias inyectables: existen para probar el borde sin base ni sesión. */
 export interface EnviarReporteBugDeps {
@@ -48,6 +51,8 @@ export type EnviarReporteBugActionResult =
 /** SLT-98 (design §4.1): los permisos van en el orden de la entrada. */
 export type PrepararSubidaImagenesReporteActionResult =
   | { status: "listas"; permisos: PermisoSubidaImagen[] }
+  // SLT-98 (design §16.4; R25): sin cupo en el tope diario. No es un error: no se registra.
+  | { status: "sin_cupo_imagenes" }
   | { status: "unauthenticated" }
   | { status: "forbidden" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
@@ -60,10 +65,15 @@ export interface PrepararSubidaImagenesReporteDeps {
 }
 
 function construirServicio(): IReporteBugService {
+  const prisma = getPrismaClient();
+  // El repositorio es también el cupo diario de imágenes (design §16.4).
+  const repo = new BugReportRepository(prisma);
   return new ReporteBugService(
-    new BugReportRepository(getPrismaClient()),
+    repo,
     new SupabaseAlmacenImagenesReporte(),
+    repo,
     crearEmailSender(),
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

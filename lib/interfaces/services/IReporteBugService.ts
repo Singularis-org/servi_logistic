@@ -22,7 +22,9 @@ export interface PermisoSubidaImagen {
 
 export type PrepararSubidasServiceResult =
   | { status: "listas"; permisos: PermisoSubidaImagen[] }
-  | { status: "forbidden" };
+  | { status: "forbidden" }
+  // SLT-98 (design §16.4; R25): el tope diario está lleno. Sin el conteo, la fecha ni el usuario.
+  | { status: "sin_cupo_imagenes" };
 
 export interface IReporteBugService {
   /**
@@ -34,6 +36,8 @@ export interface IReporteBugService {
   /**
    * SLT-98 (R9): solo un usuario de empresa. La ruta la fija el servidor con la sesión. Un fallo del
    * almacén se propaga.
+   * SLT-98 (R24–R27): antes del almacén cuenta los permisos en el tope diario; sin cupo no toca el
+   * almacén, y si el almacén falla devuelve lo contado antes de propagar.
    */
   prepararSubidas(actor: Actor, entrada: PrepararSubidasImagenesInput): Promise<PrepararSubidasServiceResult>;
 }

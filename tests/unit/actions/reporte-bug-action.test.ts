@@ -206,6 +206,27 @@ describe("SLT-98 · prepararSubidaImagenesReporteAction", () => {
     expect(await prepararSubidaImagenesReporteAction({ imagenes: [PNG] }, d)).toEqual({ status: "error" });
     expect(log).toHaveBeenCalledWith("[reporte-bug] fallo al preparar la subida causa=StorageError");
   });
+
+  it("R25 — sin_cupo_imagenes pasa tal cual, sin más campos", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { d } = deps({ servicio: { prepararSubidas: vi.fn().mockResolvedValue({ status: "sin_cupo_imagenes" }) } });
+
+    const r = await prepararSubidaImagenesReporteAction({ imagenes: [PNG, PNG] }, d);
+
+    expect(r).toStrictEqual({ status: "sin_cupo_imagenes" });
+    // No es un error: no deja nada en el log.
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("R31 — pedir permisos con un campo usuarioId, fecha o cupo de más da validation_error sin llamar al servicio", async () => {
+    const extras: Record<string, unknown>[] = [{ usuarioId: "u-otro" }, { fecha: "2026-11-09" }, { cupo: 0 }];
+    for (const extra of extras) {
+      const { d, prepararSubidas } = deps();
+      const r = await prepararSubidaImagenesReporteAction({ imagenes: [PNG], ...extra }, d);
+      expect(r.status, JSON.stringify(extra)).toBe("validation_error");
+      expect(prepararSubidas, JSON.stringify(extra)).not.toHaveBeenCalled();
+    }
+  });
 });
 
 describe("SLT-98 · enviarReporteBugAction con imágenes", () => {

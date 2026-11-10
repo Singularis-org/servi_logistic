@@ -137,6 +137,62 @@ Implementer, F2.1, 2026-11-10. Worktree `.worktrees/SLT-98-reporte-bugs-imagenes
 - Pendiente (no es del implementer): T11 sin `[x]` hasta la comprobación en preview contra Supabase real
   (design §15), que hacen el humano o el leader; el grupo `aislamiento` entero y `gate-completo` de CI.
 
+### T12–T14 — backend_dev — commits 25fd2ba0 (T12), e37e146e (T13), T14 (el commit que trae esta sección)
+Enmienda del tope diario (design §16; R24–R28, R30, R31). Sin `./init.sh`, sin suite completa, sin `prisma format`.
+- **T12** `db/migrations/20261112120000_bug_report_image/{migration,down}.sql` (`bug_report_upload_quota`:
+  PK `(user_id, day)`, `CHECK permits_granted >= 0`, FK a `usuario` CASCADE, RLS, `REVOKE ALL … servi_app`;
+  el `DROP` va antes del de `bug_report_image`), `db/schema.prisma` (`BugReportUploadQuota` + inverso
+  `bugReportUploadQuotas` en `Usuario`, a mano) y `lib/db/modelos-de-negocio.ts` (`MODELOS_DE_PLATAFORMA`).
+  Sin `updated_at`: el censo de `schema-drift-saneamiento` sigue en 18 (verde).
+- **Bases con la migración ya aplicada (design §15):** las dos locales propias, `servi_logistic_slt98` y
+  `servi_logistic_slt98_e2e`, tenían `20261112120000_bug_report_image` como última, sin la tabla del cupo.
+  En cada una, ANTES de editar el `down.sql`: `pnpm run db:rollback` → «Rollback completado:
+  20261112120000_bug_report_image»; después `prisma migrate deploy` → «All migrations have been successfully
+  applied» (la e2e con `DATABASE_URL` sobreescrito en la línea de comando). Comprobado en `_prisma_migrations`
+  y con `to_regclass`: las dos tienen ahora `bug_report_upload_quota`. Ninguna base remota tocada.
+- Ida y vuelta en `servi_logistic_slt98`: deploy → `db:rollback` («Rollback completado: 20261112120000_bug_report_image»)
+  → deploy («All migrations have been successfully applied»). `prisma migrate diff --from-config-datasource
+  --to-schema db/schema.prisma --script --exit-code`: exit 0, «-- This is an empty migration.»
+  `prisma validate`: válido. `prisma generate`: ok. Typecheck tras T12 (8 GB): exit 0.
+- **T13** `lib/interfaces/repositories/ICupoImagenesReporte.ts` (nuevo), `lib/repositories/BugReportRepository.ts`
+  (`consumir` y `devolver`, una sentencia cada uno en `$transaction`, `comoPlataforma(FICHA, MOTIVO_CUPO)`),
+  `lib/config/reporte-bug.ts` (`IMAGENES_POR_DIA_MAX = 21`). Tests en `tests/integration/db/bug-report.test.ts`
+  (bloque «SLT-98 — tope diario en bug_report_upload_quota»). Esos casos COMMITEAN (la concurrencia solo
+  existe entre conexiones): cada uno con su día de 2001 y el usuario de la corrida, bajo
+  `bajoLockDeEscrituraReal`; caen por CASCADE en el `afterAll`. Los dos de R26 no dependen de la suerte:
+  una transacción del dueño retiene la fila `(user_id, day)` (un INSERT sin confirmar que luego se revierte,
+  o un `FOR UPDATE` sobre la fila con 19), y solo se suelta cuando `pg_stat_activity` muestra 10 (o 2)
+  INSERT de la carrera esperando ese cerrojo; la carrera va por un cliente propio con `max: 10`.
+- **T14** `lib/interfaces/services/IReporteBugService.ts` (variante `sin_cupo_imagenes`),
+  `lib/services/ReporteBugService.ts` (constructor `(repo, almacen, cupo, sender, reglasPais?, destinatarios,
+  log, nuevoId, ahora)`; `prepararSubidas`: puerta → zona → `consumir` → almacén en `try`, con `devolver` y
+  el log «[reporte-bug] fallo al devolver el cupo de imagenes causa=<name>»), `lib/actions/reporte-bug.ts`
+  (variante en el resultado; composition root con `repo` dos veces y `construirReglasPaisEmpresa(prisma)`).
+  Tests en `tests/unit/services/reporte-bug-service.test.ts` y `tests/unit/actions/reporte-bug-action.test.ts`.
+- **(propuesta) La zona del día del cupo.** Design §16.1/§16.4 dicen `fechaCalendarioCR(this.ahora())`, pero
+  `pais-sin-literales.guardia` (SLT-42 R29) prohíbe importar `@/lib/utils/fecha-cr` en `lib/**` y su lista de
+  excepciones solo baja: seguir el design pone la guardia en rojo. Se hizo como `asistente_uso_diario`, el
+  modelo que cita P5, que tras SLT-42 cuenta el día con la zona del país de la empresa:
+  `fechaCalendario(this.ahora(), await zonaDeLaEmpresa(this.reglasPais, …))`, leída en `conEmpresa` de la
+  empresa del actor. Para toda empresa de Costa Rica (hoy todas; `pais_id DEFAULT 'CR'`) el día es el mismo
+  que pide P5. Diferencia: una empresa de otro país contaría por su medianoche; un país sin zona da
+  `PaisSinZonaHoraria` (la action responde `error`) antes de contar. Para eso el constructor gana
+  `reglasPais?` en 5.º lugar (opcional, como pide el patrón de SLT-42; así `cupo` sigue 3.º y `ahora`
+  último), y la guardia exige `construirReglasPaisEmpresa` en el composition root. Si el humano quiere CR
+  fija para todas las empresas, hace falta subir una excepción a esa guardia: decisión suya, no tomada aquí.
+- **(propuesta)** Nombre del `CHECK`: `bug_report_upload_quota_permits_granted_no_negativo` (el design no lo fija;
+  sigue el estilo de los de `bug_report_image`).
+- **Verificación (HEAD con T14):**
+  - `NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit` (= `pnpm run typecheck`): exit 0.
+  - eslint de los 12 archivos tocados: exit 0.
+  - vitest con `DATABASE_URL` a `servi_logistic_slt98` de los 3 archivos de test tocados:
+    `Test Files 3 passed (3)` · `Tests 82 passed (82)`, 0 saltados (`bug-report.test.ts` 41/41, de ellos 8 nuevos).
+  - Guardias de esquema contra `servi_logistic_slt98` (`schema-drift-saneamiento`, `nucleo-sin-modulos`,
+    `catalogo-postgres-acota-esquema`, `consultas-concurrentes-en-transaccion`, `sql-a-mano-por-empresa`,
+    `organizacion-en-modelos`, `rls-por-empresa`, `plataforma-solo-en-lista`) más `pais-sin-literales`:
+    `Test Files 9 passed (9)` · `Tests 147 passed (147)`.
+  - No corridos: `pnpm run test:guardias` entera (la corre el leader), `./init.sh`, suite completa, E2E (T16).
+
 ## E2E — dos corridas sobre el código final
 Base `servi_logistic_slt98_e2e` recreada (DROP/CREATE, `migrate deploy`, `db:seed`) solo antes de la 1.ª.
 `next build` con 8 GB y `NEXT_PUBLIC_APP_URL=http://localhost:3044`: exit 0 en 262 s, sobre 873b4d67; después
@@ -194,6 +250,14 @@ los unit de T7).
 | R21 | `reporte-bug-service.test.ts`; `plantilla-reporte-bug.test.ts` |
 | R22 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` (×2); `tests/components/ReporteDetalle.test.tsx`; `bug-report.test.ts`; E2E pasos 4 y 5 |
 | R23 | `reportes-bug-plataforma-service.test.ts`; `ReporteDetalle.test.tsx` |
+| R24 | `bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21», «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen», «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10»; E2E de T16 pendiente |
+| R25 | `bug-report.test.ts` «R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21», «R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25»; `reporte-bug-service.test.ts` «R25 — si consumir devuelve null, da exactamente { status: "sin_cupo_imagenes" } y no llama al almacén ni a devolver»; `reporte-bug-action.test.ts` «R25 — sin_cupo_imagenes pasa tal cual, sin más campos»; E2E de T16 pendiente |
+| R26 | `bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null», «R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29» |
+| R27 | `bug-report.test.ts` «R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada»; `reporte-bug-service.test.ts` «R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original» |
+| R28 | `reporte-bug-service.test.ts` «R28 — enviar no consume ni lee el cupo»; la parte del panel es de T15 |
+| R29 | T15 y T16 (frontend_dev) |
+| R30 | `reporte-bug-service.test.ts` «R30 — enviar un reporte sin imágenes da enviado sin llamar al cupo, aunque el cupo doble diga que no hay»; E2E de T16 pendiente |
+| R31 | `bug-report.test.ts` «R31 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_upload_quota dan 42501, y la tabla tiene RLS en public»; `reporte-bug-action.test.ts` «R31 — pedir permisos con un campo usuarioId, fecha o cupo de más da validation_error sin llamar al servicio» |
 
 ## Propuestas y avisos consolidados
 - (propuesta) design §15 cita el `toHaveLength(16)` de `bug-report.test.ts` como test que cambia; no cambia

@@ -6,6 +6,7 @@ import {
   ENLACE_CORREO_SEGUNDOS,
   EXTENSION_POR_TIPO,
   IMAGEN_BYTES_MAX,
+  IMAGENES_POR_DIA_MAX,
   tipoPorFirma,
   type TipoImagenReporte,
 } from "@/lib/config/reporte-bug";
@@ -13,13 +14,16 @@ import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
 import type { IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugReportRepository";
+import type { ICupoImagenesReporte } from "@/lib/interfaces/repositories/ICupoImagenesReporte";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   EnviarReporteBugServiceResult,
   IReporteBugService,
   PrepararSubidasServiceResult,
 } from "@/lib/interfaces/services/IReporteBugService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { plantillaReporteBug, type ImagenDelCorreo } from "@/lib/services/email/plantillas/reporte-bug";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type {
   BugReportCreado,
   EntornoDelReporte,
@@ -27,6 +31,7 @@ import type {
   NuevaImagen,
   PrepararSubidasImagenesInput,
 } from "@/lib/types/reporte-bug";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 // SLT-87 (design §5; R11, R13, R15–R17) — enviar un reporte de problema.
 //
@@ -41,11 +46,18 @@ import type {
 // `imagenId` de otro, la ruta apunta a la carpeta propia, donde ese archivo no está (R10). El almacén
 // trabaja en la carpeta de la empresa del contexto; el contexto se abre aquí con la empresa del actor
 // ya resuelto, en vez de dejar que el adaptador la saque de la sesión.
+//
+// SLT-98 (design §16.4; R24–R28, R30, R31) — el tope diario de imágenes. Se cuentan los permisos
+// CONCEDIDOS, antes de pedir nada al almacén: sin cupo, la respuesta no dice cuánto se usó ni de qué día.
+// El día es el calendario de la zona del país de la empresa, con la hora del servidor (`ahora`), nunca un
+// dato del cliente. Si el almacén falla, lo contado se devuelve: el usuario no pierde cupo por un fallo
+// nuestro. `enviar` no cuenta nada: lo que llega al envío ya se contó al pedir su permiso.
 
 /** El ancho de `bug_report.user_agent`. */
 const USER_AGENT_MAX = 512;
 
 const FORBIDDEN = { status: "forbidden" } as const;
+const SIN_CUPO = { status: "sin_cupo_imagenes" } as const;
 
 function causaDe(e: unknown): string {
   return e instanceof Error ? e.name : "desconocido";
@@ -68,30 +80,54 @@ export class ReporteBugService implements IReporteBugService {
   constructor(
     private readonly repo: IBugReportRepository,
     private readonly almacen: IAlmacenImagenesReporte,
+    private readonly cupo: ICupoImagenesReporte,
     private readonly sender: IEmailSender,
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
     private readonly destinatarios: () => string[] = () => destinatariosReporteBug(),
     private readonly log: (linea: string) => void = (linea) => console.error(linea),
     private readonly nuevoId: () => string = () => randomUUID(),
+    private readonly ahora: () => Date = () => new Date(),
   ) {}
 
   async prepararSubidas(actor: Actor, entrada: PrepararSubidasImagenesInput): Promise<PrepararSubidasServiceResult> {
     const organizacionId = empresaDelActor(actor);
     if (organizacionId === null) return FORBIDDEN;
 
+    const zona = await conEmpresa(organizacionId, () => zonaDeLaEmpresa(this.reglasPais, "ReporteBugService.prepararSubidas"));
+    const fecha = fechaCalendario(this.ahora(), zona);
+    const n = entrada.imagenes.length;
+    // Tope blando (P9): si entra, se conceden las `n` aunque el total pase del tope (R24).
+    const total = await this.cupo.consumir(actor.usuarioId, fecha, n, IMAGENES_POR_DIA_MAX);
+    if (total === null) return SIN_CUPO;
+
     const piezas = entrada.imagenes.map(({ tipo }) => {
       const imagenId = this.nuevoId();
       return { imagenId, ruta: rutaDeImagen(actor.usuarioId, imagenId, tipo) };
     });
-    // En serie: si el bucket falta, solo la primera lo crea (design §3.3).
-    const permisos = await conEmpresa(organizacionId, async () => {
-      const salida: { imagenId: string; url: string }[] = [];
-      for (const p of piezas) {
-        const { url } = await this.almacen.prepararSubida(p.ruta);
-        salida.push({ imagenId: p.imagenId, url });
-      }
-      return salida;
-    });
-    return { status: "listas", permisos };
+    try {
+      // En serie: si el bucket falta, solo la primera lo crea (design §3.3).
+      const permisos = await conEmpresa(organizacionId, async () => {
+        const salida: { imagenId: string; url: string }[] = [];
+        for (const p of piezas) {
+          const { url } = await this.almacen.prepararSubida(p.ruta);
+          salida.push({ imagenId: p.imagenId, url });
+        }
+        return salida;
+      });
+      return { status: "listas", permisos };
+    } catch (error) {
+      await this.devolverCupo(actor.usuarioId, fecha, n);
+      throw error;
+    }
+  }
+
+  /** R27: si la resta también falla, se registra y gana el error del almacén, que es el que se relanza. */
+  private async devolverCupo(usuarioId: string, fecha: string, n: number): Promise<void> {
+    try {
+      await this.cupo.devolver(usuarioId, fecha, n);
+    } catch (e) {
+      this.log(`[reporte-bug] fallo al devolver el cupo de imagenes causa=${causaDe(e)}`);
+    }
   }
 
   async enviar(
