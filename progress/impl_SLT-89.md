@@ -389,8 +389,9 @@ Sobre una **copia de producción** (nunca producción ni la base compartida), co
 1. `pnpm run db:migrate` en la copia (aplica `20261110130000_slt89_zona_nodo` y
    `20261110130100_slt89_historial_zona_nodo`); comprobar que `zona_nodo` y `grupo_distritos_nodo` están vacías.
 2. `pnpm geo:equivalencia-dinero` → sin diferencias.
-3. `pnpm geo:equivalencia-consultas` → sin diferencias. Esperado: +1 consulta en la carga del catálogo
-   (`zona_nodo`) y +1 por lote en el resolver (`grupo_distritos_nodo`), las dos sobre tablas vacías.
+3. `pnpm geo:equivalencia-consultas` → sin diferencias. Esperado: +1 consulta por lote en el resolver
+   (`grupo_distritos_nodo`), sobre una tabla vacía. La carga del catálogo no suma consultas en CR: el
+   conteo de `zona_nodo` viaja en la consulta de `organizacion` y la tabla no se lee (8e95e91b).
 4. `pnpm geo:explain-consultas` → sin regresión (regla de SLT-65: más de 20 % o un Seq Scan nuevo sobre `orden`).
 5. Pegar la salida de los tres en el PR antes del merge.
 

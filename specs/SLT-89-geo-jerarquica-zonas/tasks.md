@@ -274,10 +274,10 @@ se para y se pregunta (design §8.4). (R48)
   `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` con el tipo nuevo.
   > Nota (2026-11-10): el tipo `zona_nodo_cambiado` en `historial-accion.ts` y su censo en
   > `catalogo-y-choke-point.test.ts` entraron con T1.3 (tanda 1); T9.1 cierra solo la documentación.
-- [ ] **T9.2** `./init.sh` verde; mapa `R<n> → test` (R1–R48) en `progress/impl_SLT-89.md`; revisión
+- [x] **T9.2** `./init.sh` verde; mapa `R<n> → test` (R1–R48) en `progress/impl_SLT-89.md`; revisión
   del diff contra R42 (sin cambios en filtros/exportes, FK viejas, regla de guardado, modelo viejo,
   grupo de la orden sin distrito) y de R48 (aprobación de la maqueta anterior al primer commit de T7);
-  revisión de que los archivos de T3.7 y T5.6 solo ganan el «antes» (R38).
+  revisión de que los archivos de T3.7 y T5.6 solo ganan el «antes» (R38). Cerrada el 2026-11-10: gate-completo y E2E verdes en el run https://github.com/Singularis-org/servi_logistic/actions/runs/42913893905; review F2.2 vuelta 2 OK.
 
 ## Archivos esperados
 

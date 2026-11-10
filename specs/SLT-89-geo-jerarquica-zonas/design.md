@@ -461,7 +461,8 @@ este diseño o de `requirements.md`, se para y se pregunta: no se ajusta el spec
   cobertura, cotización, plan de guardado, grupo por par, cobro y pago del resolver. Además, todos los
   tests existentes de zonas, grupos, resolver y cierres pasan sin cambiar aserciones.
 - **Sobre la copia (persona, no agente):** los tres scripts de R39 sin cambios. Se espera +1 consulta
-  en la carga del catálogo y +1 por lote en el resolver, las dos sobre índices de tablas vacías en CR.
+  por lote en el resolver, sobre índices de tablas vacías en CR. La carga del catálogo no suma
+  consultas: el conteo de `zona_nodo` viaja en la consulta de `organizacion` (8e95e91b).
 
 ## 10. Mapa de pruebas (R → test)
 
