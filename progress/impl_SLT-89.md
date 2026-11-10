@@ -29,3 +29,45 @@ mismo timestamp que la migración del spec. Las migraciones de SLT-89 pasan a
 `20261110130000_slt89_zona_nodo` y `20261110130100_slt89_historial_zona_nodo` (revisado contra `dev` y
 todas las ramas remotas: SLT-81 usa `20261109130000`, `dev` `20261110120000`, SLT-97 `20261111120000`).
 
+
+### T1.1 — migración `20261110130000_slt89_zona_nodo` (= `20261109120000_slt89_zona_nodo` del spec)
+
+Archivos: `db/migrations/20261110130000_slt89_zona_nodo/{migration.sql,down.sql}`.
+
+- Tablas `zona_nodo` y `grupo_distritos_nodo` (design §2.1, §2.2) con `organizacion_id` + DEFAULT de
+  empresa, FK, índices, RLS `<t>_por_empresa` y GRANT a `servi_app` (molde `20261103120100`). Nombres de
+  índices y FK sacados de `prisma migrate diff` contra el schema (el único de `grupo_distritos_nodo`
+  va recortado a 63 como lo recorta Prisma: `…_nodo_geografic_key`).
+- Triggers de validación, `SECURITY DEFINER` + `search_path` fijo (precedente
+  `geografia_del_pais_de_la_empresa`): `zona_nodo_valido` (SL021; profundidad 3 → 23514),
+  `grupo_distritos_nodo_valido` (SL021; distrito con fila en `zona_distrito` de esa zona → 23514) y,
+  en la tabla existente, `grupo_distritos_distrito_sin_duplicado` (23505).
+- Triggers de misma empresa: pegados tal cual de `pnpm exec tsx scripts/generar-misma-empresa.ts
+  --faltantes` (2 FK `sme_*` + 2 `*_sin_cambio_de_empresa`).
+- `CREATE OR REPLACE FUNCTION orden_nodo_geografico()` (§2.3). El `down.sql` lo devuelve al cuerpo de
+  SLT-43 copiado carácter por carácter de `20261104120400` (líneas 46-51).
+
+Decisiones a revisar (reviewer):
+1. **Rama extra en el trigger de `orden`, no escrita en el pseudocódigo de §2.3.** En un UPDATE que
+   mueve el lugar (`COALESCE(distrito_id, canton_id)` cambia) sin tocar `nodo_geografico_id`, el nodo
+   que trae NEW es el VIEJO: se pone el lugar, como SLT-43. Sin esa rama, pasar `distrito_id` a NULL
+   (lo que hace la FK de `orden.distrito_id` al borrar un distrito, cabecera de 20261104120400) dejaría
+   el distrito viejo como nodo —cuelga del cantón, «se conserva» según el pseudocódigo— y la FK
+   RESTRICT `orden_nodo_geografico_id_fkey` impediría el borrado: rompería R29. Lo cubre T1.5.
+2. `grupo_distritos_distrito_sin_duplicado` se dispara en `INSERT OR UPDATE OF zona_id, distrito_id`
+   (el design dice `BEFORE INSERT`); `grupo_distritos_nodo_valido` en `INSERT OR UPDATE OF
+   nodo_geografico_id, zona_id`. Solo cierra el hueco de un UPDATE por SQL a mano; la app no actualiza
+   esas filas.
+3. `scripts/db-rollback.ts` revierte la ÚLTIMA carpeta en disco, no la última aplicada: dos
+   `db:rollback` seguidos corren dos veces el down de `20261110130100` (no-op) y nunca el de
+   `20261110130000`. El down de `20261110130000` se corrió con `prisma db execute --file` + borrado de
+   su fila en `_prisma_migrations` (lo mismo que hace el script). Es del script, no de SLT-89.
+
+Comprobación en `logistic_slt89` (local, desechable):
+- `prisma migrate deploy` → «All migrations have been successfully applied» (las dos de SLT-89).
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` → «This is an
+  empty migration.» (sin drift, con el schema de T1.3).
+- Vuelta: down de `20261110130100` (no-op) + down de `20261110130000` → «Script executed
+  successfully»; comprobación por SQL: sin `zona_nodo`/`grupo_distritos_nodo`, sin las tres funciones,
+  `orden_nodo_geografico` sin el cuerpo nuevo. `migrate status`: las dos pendientes.
+- Reaplicadas con `migrate deploy` → aplicadas; `migrate diff` otra vez vacío.
