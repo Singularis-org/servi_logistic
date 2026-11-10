@@ -49,3 +49,31 @@ ALTER TABLE "bug_report_image" ADD CONSTRAINT "bug_report_image_bug_report_id_fk
 -- REVOKE ALL. La RLS sin ninguna política es la segunda red, como en `bug_report`.
 ALTER TABLE "bug_report_image" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON "bug_report_image" FROM servi_app;
+
+-- ─── Tope diario de imágenes (design §16.2; R24–R27, R31) ──────────────────────────────────────────
+-- `bug_report_upload_quota`: cuántos permisos de subida se le dieron a un usuario en un día. Lo cuenta
+-- `BugReportRepository.consumir` con un `INSERT … ON CONFLICT DO UPDATE … WHERE "permits_granted" < tope`:
+-- la PK compuesta es el cerrojo que hace que peticiones simultáneas concedan lo mismo que en serie (R26).
+-- El tope (21) no vive aquí: entra como parámetro, y con el tope blando el conteo puede llegar a 25.
+--
+-- De PLATAFORMA, como `bug_report_image`: el conteo es por persona, sin `organization_id`. Sin `updated_at`
+-- a propósito, para no entrar en el censo de `schema-drift-saneamiento` (sigue en 18).
+-- `day` es el día calendario del servidor, escrito siempre con `::date` sobre `YYYY-MM-DD`.
+
+CREATE TABLE "bug_report_upload_quota" (
+    "user_id"         TEXT NOT NULL,
+    "day"             DATE NOT NULL,
+    "permits_granted" INTEGER NOT NULL,
+    "created_at"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "bug_report_upload_quota_pkey" PRIMARY KEY ("user_id", "day"),
+    CONSTRAINT "bug_report_upload_quota_permits_granted_no_negativo" CHECK ("permits_granted" >= 0)
+);
+
+-- CASCADE: el conteo de alguien que ya no existe no significa nada (como `asistente_uso_diario`).
+ALTER TABLE "bug_report_upload_quota" ADD CONSTRAINT "bug_report_upload_quota_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "usuario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Acceso (R31): mismo motivo que arriba, ALTER DEFAULT PRIVILEGES le daría CRUD a `servi_app`.
+ALTER TABLE "bug_report_upload_quota" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON "bug_report_upload_quota" FROM servi_app;

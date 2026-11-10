@@ -187,6 +187,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "BugReportStatusChange", tabla: "bug_report_status_change" },
   // Imágenes de los reportes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98)
   { modelo: "BugReportImage", tabla: "bug_report_image" },
+  // Tope diario de imágenes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98, tope diario)
+  { modelo: "BugReportUploadQuota", tabla: "bug_report_upload_quota" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

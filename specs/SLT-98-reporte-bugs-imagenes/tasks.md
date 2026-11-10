@@ -125,7 +125,7 @@
 > bloquear: el spec sigue su recomendación. Reparto: `backend_dev` T12–T14; `frontend_dev` T15; el que
 > acabe cierra T16.
 
-- [ ] **T12. Tabla del cupo** (dep. —; R26, R31).
+- [x] **T12. Tabla del cupo** (dep. —; R26, R31).
   - **Archivos:**
     - `db/migrations/20261112120000_bug_report_image/migration.sql`: `bug_report_upload_quota` con su PK
       compuesta, el `CHECK`, la FK, la RLS y el `REVOKE` (design §16.2);
