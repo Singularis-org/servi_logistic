@@ -203,3 +203,70 @@ de base, guardias, typecheck y lint está en verde. Falta cerrar T9:
 - la casilla `[x]`.
 
 Para la vuelta 2, basta un rango con la salida de esas corridas y T9 marcada. m1–m4 no bloquean.
+
+## Vuelta 2 (acotada a ab0c34ba..425e19f6)
+
+Commits: `b747cc42` (docs), `7cf81994` (m1), `340efb6e` (m3), `465dae5e` (m2), `425e19f6` (B1).
+11 archivos, +122/−16.
+
+### Verificación ejecutada
+
+- Base propia `servi_logistic_slt97_rev`, nueva. Variables SUPABASE y `PRISMA_LOG_QUERIES` vacías. Se
+  borró al terminar.
+  - `migrate deploy` → `db:rollback` → `migrate deploy`: bien.
+  - `db:seed`: bien.
+  - `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --exit-code`: exit 0,
+    «empty migration».
+- Vitest de m1 y m3 contra esa base: `bug-report`, `schema-drift-saneamiento` y
+  `reportes-plataforma-page`. 3/3 archivos y 59/59, sin saltados.
+- `pnpm run test:guardias`: 340/342 archivos, 4806 ✓, 5 ✗, 1 saltado.
+  - 4 ✗ son de `dependencias-declaradas-presentes`, que está en el baseline.
+  - 1 ✗ es de `catalogo-postgres-acota-esquema`, «el barrido encuentra archivos y consultas»: «Test
+    timed out in 20000ms» (tardó 23,9 s con la máquina cargada). Corrida sola: 7/7 en verde. En la
+    vuelta 1 también pasó, y nada de este rango toca lo que barre. Es carga de la máquina, no un
+    hallazgo.
+- `pnpm run lint`: exit 0, 0 errores y 244 avisos. Son los mismos 244 del repo que anotó el implementer
+  antes de la vuelta.
+- El E2E no lo corrí yo. Me baso en la bitácora de la vuelta 2 de `impl_SLT-97.md`, con la salida
+  pegada.
+
+### Hallazgos de la vuelta 1
+
+- **B1: resuelto.**
+  - Hay dos corridas de `reporte-de-bugs` y `superadmin-arranque` sobre `465dae5e`, cuyo código es el de
+    HEAD (`425e19f6` solo trae docs): 20 passed ×2, 0 failed, 0 skipped y 0 flaky. Sobre una base
+    recreada y con un `next build` nuevo.
+  - `aislamiento` se cortó a los 590 s con 77 ✓ y 4 ✘. Los rojos son `marca` y `rastreo-publico`
+    (`goto("/")` sin `load`) y `tarifas-maqueta` («Page crashed»). Ninguno toca una ruta, tabla o texto
+    de este diff, y `dos-empresas-humo` pasó.
+  - Mi premisa de la vuelta 1 estaba mal: `.github/workflows/gate.yml` sí corre `e2e-grupo` con la
+    matriz `[aislamiento, reparto, dinero]` en los PR a `dev`. El grupo entero lo confirma CI.
+  - T9 está en `[x]` con las dos salvedades escritas (`tasks.md:83-84`). Lo acepto.
+- **m1: resuelto.**
+  - El trigger pasa a `IF NOT (…)` (`migration.sql:61-64`): `X → X` da `SL097`.
+  - Sigue siendo `BEFORE UPDATE OF "status"`, así que un `UPDATE` de `deleted_at` no lo dispara.
+  - `cambiarEstado` nunca escribe `X → X`, y `crear` no hace UPDATE: el endurecimiento no rompe ninguna
+    ruta. Los casos R4, R18, R20 y R21 de `bug-report.test.ts` siguen en verde.
+  - El test de los 16 pares (`bug-report.test.ts:740`) espera ahora `SL097` en los 4 pares `X → X`
+    (`TRANSICIONES_REPORTE[de].includes(a) ? null : "SL097"`), y pasó contra la base.
+  - Están alineados design §2.3 y `docs/architecture.md`. R18 queda cumplido a la letra.
+  - Se editó una migración aún no aplicada fuera de esta rama: es aceptable, porque no está en `dev`.
+- **m2: resuelto.** El caso del maestro está en su propio `describe`, «SLT-97 — el módulo no es de la
+  empresa», fuera del modo serie. Crea su propia empresa y comprueba que la sesión no cae en `/login`.
+- **m3: resuelto.**
+  - `aria-label` = `textoEnlaceFila(empresa, creadoEn)` → «Ver reporte de {empresa} del {fecha UTC}»
+    (`reportes-textos.ts`, `ReportesModule.tsx:221`). Es el texto que decidió el humano, y está en
+    design §9.
+  - El nombre accesible contiene el texto visible (WCAG 2.5.3).
+  - Test nuevo con `TZ=America/Costa_Rica`: comprueba el nombre exacto, el `href` y el texto visible.
+    Pasa.
+- **m4:** solo se anotó, como se decidió. Sin cambios.
+
+### Regresiones
+
+Ninguna en el rango.
+
+## Veredicto (vuelta 2)
+
+**OK**: 0 bloqueantes. B1, m1, m2 y m3 están resueltos; m4 queda anotado. El grupo `aislamiento`
+completo queda para el check `e2e` de CI en el PR a `dev`.
