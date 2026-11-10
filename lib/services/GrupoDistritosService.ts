@@ -65,6 +65,7 @@ export class GrupoDistritosService implements IGrupoDistritosService {
 
     const res = await this.repo.crear({ zonaId, nombre, distritoIds }, actor.usuarioId);
     if (res.status === "ok") return { status: "ok", id: res.id };
+    if (res.status === "no_cubierto") return this.fueraDeLaZona(res.ids);
     return res.status === "nombre_repetido" ? NOMBRE_OCUPADO : DISTRITOS_RECHAZADOS;
   }
 
@@ -110,6 +111,7 @@ export class GrupoDistritosService implements IGrupoDistritosService {
     if (distritos !== null) return distritos;
 
     const res = await this.repo.fijarDistritos(id, pedidos, parseado.data.antes, actor.usuarioId);
+    if (typeof res === "object") return this.fueraDeLaZona(res.noCubiertos);
     if (res === "distrito_rechazado") return DISTRITOS_RECHAZADOS;
     if (res === "cambio_concurrente") return CAMBIO_CONCURRENTE;
     return { status: res };
@@ -138,6 +140,15 @@ export class GrupoDistritosService implements IGrupoDistritosService {
    * juntan todos los culpables en un solo error para que el maestro los corrija de una vez. El mensaje
    * lleva el nombre que sale de la base y no la palabra del nivel geografico, que depende del pais.
    */
+  /** R11/R18 — el error de «no pertenece a la zona», nombrando cada uno; el mismo antes y dentro de la tx (m2). */
+  private async fueraDeLaZona(ajenos: readonly string[]): Promise<ValidationError> {
+    const nombres = await this.repo.nombresDeDistritos(ajenos);
+    return errorEn(
+      "distritoIds",
+      ajenos.map((d) => `${nombres.get(d) ?? d} no pertenece a la zona.`),
+    );
+  }
+
   private async distritosInvalidos(
     zonaId: string,
     distritoIds: readonly string[],
@@ -147,13 +158,7 @@ export class GrupoDistritosService implements IGrupoDistritosService {
 
     const deLaZona = new Set(await this.repo.distritosDeLaZona(zonaId, distritoIds));
     const ajenos = distritoIds.filter((d) => !deLaZona.has(d));
-    if (ajenos.length > 0) {
-      const nombres = await this.repo.nombresDeDistritos(ajenos);
-      return errorEn(
-        "distritoIds",
-        ajenos.map((d) => `${nombres.get(d) ?? d} no pertenece a la zona.`),
-      );
-    }
+    if (ajenos.length > 0) return this.fueraDeLaZona(ajenos);
 
     const enOtro = await this.repo.distritosEnOtroGrupo(zonaId, distritoIds, grupoPropio);
     if (enOtro.length > 0) {

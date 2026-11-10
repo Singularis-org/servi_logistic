@@ -26,7 +26,17 @@ export interface DistritoEnOtroGrupo {
  */
 export type RechazoDeLaBase = "nombre_repetido" | "distrito_rechazado";
 
-export type CrearGrupoResultado = { status: "ok"; id: string } | { status: RechazoDeLaBase };
+/**
+ * Review SLT-89 vuelta 1 (m2): miembros que la zona ya no cubre al comprobarlo dentro de la transaccion
+ * del grupo (una carrera con un guardado de la zona). No se escribio nada; el service los nombra con el
+ * mismo error que su propia comprobacion (R18).
+ */
+export type MiembrosNoCubiertos = { noCubiertos: string[] };
+
+export type CrearGrupoResultado =
+  | { status: "ok"; id: string }
+  | { status: RechazoDeLaBase }
+  | { status: "no_cubierto"; ids: string[] };
 
 export interface CrearGrupoDatos {
   zonaId: string;
@@ -74,7 +84,7 @@ export interface IGrupoDistritosRepository {
     distritoIds: readonly string[],
     antes: AntesDeMiembros,
     actorUsuarioId: string | null,
-  ): Promise<"ok" | "not_found" | "distrito_rechazado" | "cambio_concurrente">;
+  ): Promise<"ok" | "not_found" | "distrito_rechazado" | "cambio_concurrente" | MiembrosNoCubiertos>;
   /**
    * Borra el grupo; sus miembros y valores se van por CASCADE (R12) y el historial lo cuenta. SLT-89
    * (R45): `antes` (obligatorio) es lo que el modal mostro; si no coincide, `cambio_concurrente`.

@@ -18,6 +18,7 @@ import { mismoConjunto, zonaQueCubre } from "@/lib/services/geografia-dominio";
 import { etiquetaDeEntidad, valorDeCatalogo } from "@/lib/types/historial-accion-etiquetas";
 import type { AntesDeBorrar, AntesDeMiembros, GrupoDistritosDTO } from "@/lib/types/tarifa-flexible";
 import type {
+  MiembrosNoCubiertos,
   CrearGrupoDatos,
   CrearGrupoResultado,
   DistritoEnOtroGrupo,
@@ -100,6 +101,35 @@ async function bloquearGrupo(tx: Pick<Prisma.TransactionClient, "$queryRaw">, id
   await tx.$queryRaw`SELECT "id" FROM "grupo_distritos"
     WHERE "id" = ${id} AND "organizacion_id" = current_setting('app.organizacion_id', true)
     FOR UPDATE`;
+}
+
+/**
+ * Review SLT-89 vuelta 1 (m2) — el candado COMPARTIDO de la fila de la zona del grupo. Un guardado de la
+ * zona toma `FOR UPDATE` sobre esa fila (`ZonaRepository.update`), asi que mientras este candado dura
+ * nadie cambia las asignaciones de la zona y la cobertura que se comprueba abajo sigue valiendo al
+ * escribir. Va ANTES del candado del grupo, en el mismo orden que el guardado de la zona (zona y
+ * despues grupo), para que los dos no se esperen en cruz. SQL a mano: filtra por la empresa ademas de
+ * la RLS (SL-17 R25).
+ */
+async function bloquearZonaCompartida(tx: Pick<Prisma.TransactionClient, "$queryRaw">, zonaId: string): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "zona"
+    WHERE "id" = ${zonaId} AND "organizacion_id" = current_setting('app.organizacion_id', true)
+    FOR SHARE`;
+}
+
+/**
+ * Review SLT-89 vuelta 1 (m2) — de los miembros que van a `grupo_distritos_nodo` (los que no tienen
+ * fila propia en `zona_distrito` de la zona), los que la zona YA NO cubre, con el catalogo leido en la
+ * transaccion del grupo. Sin ninguno de esos miembros no se carga el catalogo (R38).
+ */
+async function noCubiertos(
+  tx: CatalogoPrismaClient,
+  zonaId: string,
+  heredados: readonly string[],
+): Promise<string[]> {
+  if (heredados.length === 0) return [];
+  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
+  return heredados.filter((id) => zonaQueCubre(catalogo, asignaciones, id)?.id !== zonaId);
 }
 
 /**
@@ -233,11 +263,20 @@ export class GrupoDistritosRepository implements IGrupoDistritosRepository {
     // capturarla por dentro dejaria la tx inservible (precedente `TarifaRepository.hardDelete`).
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // m2: la cobertura se vuelve a comprobar aqui, con la zona bloqueada, antes de escribir nada.
+        await bloquearZonaCompartida(tx, datos.zonaId);
+        const asignados = await asignadosALaZona(tx, datos.zonaId, datos.distritoIds);
+        const fuera = await noCubiertos(
+          tx,
+          datos.zonaId,
+          datos.distritoIds.filter((d) => !asignados.has(d)),
+        );
+        if (fuera.length > 0) return { status: "no_cubierto" as const, ids: fuera };
+
         const grupo = await tx.grupoDistritos.create({
           data: { zonaId: datos.zonaId, nombre: datos.nombre },
           select: { id: true },
         });
-        const asignados = await asignadosALaZona(tx, datos.zonaId, datos.distritoIds);
         await tx.grupoDistritosDistrito.createMany({
           data: datos.distritoIds
             .filter((d) => asignados.has(d))
@@ -328,9 +367,13 @@ export class GrupoDistritosRepository implements IGrupoDistritosRepository {
     distritoIds: readonly string[],
     antesDelModal: AntesDeMiembros,
     actorUsuarioId: string | null,
-  ): Promise<"ok" | "not_found" | "distrito_rechazado" | "cambio_concurrente"> {
+  ): Promise<"ok" | "not_found" | "distrito_rechazado" | "cambio_concurrente" | MiembrosNoCubiertos> {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // m2: zona (compartido) y despues grupo, el orden del guardado de zona. La zona de un grupo no
+        // cambia, asi que leerla antes del candado es seguro.
+        const zonaDelGrupo = await tx.grupoDistritos.findFirst({ where: { id }, select: { zonaId: true } });
+        if (zonaDelGrupo !== null) await bloquearZonaCompartida(tx, zonaDelGrupo.zonaId);
         await bloquearGrupo(tx, id);
         const grupo = await tx.grupoDistritos.findFirst({
           where: { id },
@@ -353,6 +396,13 @@ export class GrupoDistritosRepository implements IGrupoDistritosRepository {
         const actuales = new Set(actualesDeLaVieja);
         const salen = [...actuales].filter((d) => !pedidos.has(d) || !asignados.has(d));
         const entran = [...pedidos].filter((d) => asignados.has(d) && !actuales.has(d));
+        // m2: un miembro que va a `grupo_distritos_nodo` y que la zona ya no cubre no entra.
+        const fuera = await noCubiertos(
+          tx,
+          grupo.zonaId,
+          [...pedidos].filter((d) => !asignados.has(d)),
+        );
+        if (fuera.length > 0) return { noCubiertos: fuera };
         const nodos = new Set(nodosActuales);
         const salenNodos = [...nodos].filter((n) => !pedidos.has(n) || asignados.has(n));
         const entranNodos = [...pedidos].filter((n) => !asignados.has(n) && !nodos.has(n));

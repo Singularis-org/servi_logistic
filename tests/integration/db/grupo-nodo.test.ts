@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { Actor } from "@/lib/interfaces/services/IGrupoDistritosService";
 import { gruposDeDistritos } from "@/lib/repositories/_shared/resolver-tarifas";
+import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
+import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
 import { TarifasPantallaRepository } from "@/lib/repositories/TarifasPantallaRepository";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 
@@ -251,6 +253,57 @@ describeSiHayBase("SLT-89 · R17–R21, R31 — grupos de tarifas sobre el nodo"
     expect(Object.fromEntries(r.distritos.map((d) => [d.id, d.padre]))).toEqual(
       Object.fromEntries(r.padres.map((p) => [p.id, p.canton.nombre])),
     );
+  });
+
+  it("R18 (review SLT-89 vuelta 1, m2): la cobertura se vuelve a comprobar dentro de la transaccion del grupo", async () => {
+    /**
+     * La carrera: el service comprobo la cobertura (aqui, un repositorio que la da por buena, como si la
+     * hubiera leido antes de que otro guardado de la zona la quitara) y la zona deja de cubrir el
+     * miembro antes de que el grupo se escriba. El repositorio lo ve bajo sus candados y no escribe.
+     */
+    class RepoQueLaVioCubierta extends GrupoDistritosRepository {
+      override async distritosDeLaZona(_zonaId: string, ids: readonly string[]): Promise<string[]> {
+        return [...ids];
+      }
+    }
+    const r = await conEscenario(async (c) => {
+      const { geo, zonas } = c.e.emp.base;
+      await c.guardarZona(zonas.surId, [geo.distritoBajoCantonRetiradoId], [geo.cantonId]);
+      const g = await c.crearGrupo(zonas.surId, "Propio", [geo.distritoBajoCantonRetiradoId]);
+      // Otro guardado de la zona quita el canton: «sin zona» deja de estar cubierto.
+      await c.guardarZona(zonas.surId, [geo.distritoBajoCantonRetiradoId], []);
+      const historialAntes = await c.tx.historialAccion.count({ where: { entidadTipo: "grupo_distritos" } });
+      const servicio = () => new GrupoDistritosService(new RepoQueLaVioCubierta(clienteConSavepoint(c.tx)));
+      const fijar = await comoLaEmpresa(c.tx, c.e.empresaId, async () =>
+        servicio().fijarDistritos(
+          g,
+          [geo.distritoBajoCantonRetiradoId, geo.distritoSinZonaId],
+          await antesDeMiembros(c.tx, g),
+          c.actor,
+        ),
+      );
+      const crear = await comoLaEmpresa(c.tx, c.e.empresaId, () =>
+        servicio().crearGrupo({ zonaId: zonas.surId, nombre: "Tarde", distritoIds: [geo.distritoSinZonaId] }, c.actor),
+      );
+      const nombre = (await c.tx.distrito.findUniqueOrThrow({ where: { id: geo.distritoSinZonaId }, select: { nombre: true } })).nombre;
+      return {
+        fijar,
+        crear,
+        nombre,
+        miembros: await antesDeMiembros(c.tx, g),
+        tarde: await c.tx.grupoDistritos.count({ where: { nombre: "Tarde" } }),
+        historialAntes,
+        historialDespues: await c.tx.historialAccion.count({ where: { entidadTipo: "grupo_distritos" } }),
+        geo,
+      };
+    });
+    const esperado = { status: "validation_error", fieldErrors: { distritoIds: [`${r.nombre} no pertenece a la zona.`] } };
+    expect(r.fijar).toEqual(esperado);
+    expect(r.crear).toEqual(esperado);
+    // Nada escrito: los miembros de antes, ningun grupo nuevo y ninguna fila de historial.
+    expect(r.miembros).toEqual({ distritoIds: [r.geo.distritoBajoCantonRetiradoId], nodoIds: [] });
+    expect(r.tarde).toBe(0);
+    expect(r.historialDespues).toBe(r.historialAntes);
   });
 
   it("⭑ R21 (decision del 2026-11-10): con solo distritos, el que sale de la zona sale de su grupo y deja su fila de historial", async () => {
