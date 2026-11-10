@@ -89,7 +89,7 @@
 
 ## T2 — Lógica pura · `frontend_dev` (depende de T0; de T1 si PA1/PA3)
 
-- [ ] **T2.1** — `detalle-cierre-labels.ts` (textos nuevos en «tú»: columnas de «Mensajeros»,
+- [x] **T2.1** — `detalle-cierre-labels.ts` (textos nuevos en «tú»: columnas de «Mensajeros»,
   «Ver su cierre», nombre accesible «Ver el cierre de <mensajero>», «Marcó:», «Aún nadie», título
   «Conciliación», región «Mensajeros del cierre de bodega») y `detalle-cierre-vista.ts`
   (`DetalleBodegaVista.montoRecibido`, `modoBodegaDe`, `gestionesDeBodega`, `filasMensajeros`,
@@ -97,7 +97,7 @@
   y su pintado en `Cuenta.tsx`; variante con «Mensajero» en `detalle-cierre-descarga-columnas.ts`;
   (PA3) `ItemGestion.congeladoAt?` y su uso en `GestionesCierre.tsx`.
   **Hecho:** typecheck verde; ni `Number(`, ni `parseFloat`, ni `toFixed` en los archivos tocados.
-- [ ] **T2.2** — `tests/unit/utils/detalle-cierre-vista.test.ts` (ampliar) con literales:
+- [x] **T2.2** — `tests/unit/utils/detalle-cierre-vista.test.ts` (ampliar) con literales:
   `modoBodegaDe` (pendiente → decidir; recibido e incompleto → solo lectura); `gestionesDeBodega`
   (orden por resultado y dentro por `cierres[]`, con su mensajero); `filasMensajeros` (orden del
   servidor, conteo de gestiones, «2 pagos ajustados», «1 pago ajustado», «—» con 0 y sin el campo,
@@ -111,10 +111,10 @@
 
 ## T3 — Componentes · `frontend_dev` (depende de T2)
 
-- [ ] **T3.1** — `MensajerosCierreBodega.tsx` y `ConciliacionCierreBodega.tsx`
+- [x] **T3.1** — `MensajerosCierreBodega.tsx` y `ConciliacionCierreBodega.tsx`
   (`design.md > Componentes nuevos`).
   **Hecho:** typecheck y lint verdes.
-- [ ] **T3.2** — `tests/components/DetalleCierreBodega.test.tsx` con dobles y literales: el
+- [x] **T3.2** — `tests/components/DetalleCierreBodega.test.tsx` con dobles y literales: el
   `DetalleCierre` tipo bodega con los dos slots nuevos; «Mensajeros» (filas, importes con `money()`
   a la derecha, señales, nombre accesible de «Ver su cierre» y que pulsarlo llama a `onVerSuCierre`
   con el `href`); «Conciliación» sin marca («—», «Aún nadie», «Falta por recibir» = declarado) y con
@@ -123,18 +123,18 @@
 
 ## T4 — Montaje · `frontend_dev` (depende de T3)
 
-- [ ] **T4.1** — `CierresBodegaAdminModule.tsx` monta `DetalleCierre` tipo bodega
+- [x] **T4.1** — `CierresBodegaAdminModule.tsx` monta `DetalleCierre` tipo bodega
   (`design.md > Montaje`); quita el `Modal` y sus piezas; conserva `abrirDetalle`, sus avisos,
   `refrescarListas` y el visor. Anotaciones `@sin-superficie` que pida T0.1.
   **Hecho:** typecheck verde; `git diff` de `CierresBodegaResueltosLista.tsx`,
   `CierresBodegaSolicitadosLista.tsx`, `ConsolidacionBodegaModule.tsx`, `CierresTabs.tsx`,
   `cierre-factura.tsx` y `components/shared/conciliacion/` vacío.
-- [ ] **T4.2** (PA1) — `CierresAdminModule.tsx`: un cierre con `destinoTipo = "bodega_satelite"`
+- [x] **T4.2** (PA1) — `CierresAdminModule.tsx`: un cierre con `destinoTipo = "bodega_satelite"`
   abierto por la central se pinta en solo lectura, filas «solo lectura», sin «Pago al mensajero» ni
   acciones (R116). Caso en `tests/components/CierresAdminDeepLink.test.tsx`: `?cierre=<id de
   satélite>` abre el detalle sin «Aprobar», «Rechazar», «Ajustar pago» ni la pestaña de pago.
   **Hecho:** verde; la mutación «sin el forzado» lo pone rojo.
-- [ ] **T4.3** — `tests/components/CierresBodegaAdminDetalleUnico.test.tsx` (`design.md >
+- [x] **T4.3** — `tests/components/CierresBodegaAdminDetalleUnico.test.tsx` (`design.md >
   Verificación`, «Módulo»).
   **Hecho:** verde; las mutaciones «modo decidir para un recibido», «audiencia central en la fila»
   y «no cerrar tras marcar» lo ponen rojo.

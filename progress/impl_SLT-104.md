@@ -252,3 +252,103 @@ caza el ensanchamiento en el servicio (M5, M6).
 4. Guardia `dependencias-declaradas-presentes` roja en la rama, ajena a la tanda.
 
 Veredicto: T0 y T1 hechos; lectura de satélite solo para acceso total, sin ensanchar escritura ni empresa, con 7 mutaciones medidas.
+
+## Tanda 2 — T2, T3 y T4 (frontend_dev, 2026-11-10)
+
+Worktree y rama de la tanda 1. Base `slt104_t1` exportada antes de cada vitest (ningún test de esta tanda la
+usa). Grafo: no consultado (el índice de este worktree no existe); Grep/Read.
+
+### Archivos
+
+Producción (modificados): `components/private/cierres/detalle/{detalle-cierre-labels.ts, detalle-cierre-vista.ts,
+Cuenta.tsx, DetalleCierre.tsx, detalle-cierre-descarga-columnas.ts}`, `components/private/cierres/fila/{fila-gestion-vista.ts,
+GestionesCierre.tsx}`, `app/(app)/cierres-admin/_components/{CierresBodegaAdminModule.tsx, CierresAdminModule.tsx}`.
+Producción (nuevos): `components/private/cierres/detalle/{MensajerosCierreBodega.tsx, ConciliacionCierreBodega.tsx}`.
+Tests nuevos: `tests/components/DetalleCierreBodega.test.tsx`, `tests/components/CierresBodegaAdminDetalleUnico.test.tsx`.
+Tests ampliados: `tests/unit/utils/detalle-cierre-vista.test.ts`, `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts`,
+`tests/components/CierresAdminDeepLink.test.tsx`. Dobles con los dos campos nuevos (`montoRecibido`, `conteos.cierres`):
+`tests/components/{DetalleCierre,DetalleCierreDinero,DineroIdentidadesEnPantalla}.test.tsx`.
+`git diff` vacío en `db/`, `lib/`, la cola (`CierresBodegaResueltosLista`, `CierresBodegaSolicitadosLista`,
+`ConsolidacionBodegaModule`, `CierresTabs`, `cierre-factura`) y `components/shared/conciliacion/` (PA5).
+
+### Lo que se decidió aquí (sin salir del spec)
+
+- PA2: `DetalleBodegaVista.conteos.cierres` (requerido) y `DetalleCierre` lo pasa a `pestanasDe` (una línea). El
+  design ponía el conteo en `vistaBodegaDesdeAdmin`, que no arma pestañas; la cabecera sigue con `mensajeros`.
+- `montoRecibido` requerido en `DetalleBodegaVista` (como `conciliado`: una superficie nueva no nace sin él).
+- `ItemGestion.congeladoAt?`: `GestionesCierre` usa el del item si llega (también `null` = sin fecha) y si no el de la
+  lista. `gestionesDeBodega` pone el `solicitadoAt` de SU cierre del día o `null`.
+- `filaDescargaDetalleBodega(g, mensajero)` = la fila de mensajero con audiencia «solo lectura» + `mensajero`;
+  columna «Mensajero» tras «Tienda» con el `COL_MENSAJERO` de la fila. `MENSAJEROS_COLUMNAS.mensajero` va como
+  literal: `fila-gestion-labels` importa `detalle-cierre-labels` y al revés sería un ciclo de constantes.
+- Señal de «Mensajeros» = `pagosAjustados` de la cola (mismo texto); «—» con 0 o sin el campo.
+- `Cuenta`: `sinImporte` pinta «—» y marca la línea con `data-sin-importe`; el `data-monto` sigue (con «—»).
+- T4.2: `soloLecturaSatelite = audiencia === "admin" && destinoTipo === "bodega_satelite"` apaga modo decidir,
+  pago, rechazar/aprobar, destrabar, corregir y ajustar, y pone la fila en «solo lectura».
+- `@sin-superficie`: no hizo falta; `superficie-de-uso` sigue verde tras quitar el modal (18/18).
+
+### Fidelidad al canvas (`design.md > Fidelidad al canvas`)
+
+F1 igual · F2 igual · F3 igual · F4 igual · F5 igual salvo «Gestiones (n)» con paréntesis (desviación de la tabla) ·
+F6 igual · F7 igual · F8 igual · F9 igual (columnas, orden, señal ámbar, «Ver su cierre») · F10 igual salvo fecha
+«2026-11-08 09:12» (desviación de la tabla) · F11 igual · F12 PA5 (`ConciliacionAcciones` tal cual) y «Desmarcar» solo si
+`desmarcable` (desviaciones de la tabla) · F13 igual.
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R31 | `CierresBodegaAdminDetalleUnico` «la fila desplegada no ofrece corregir ni ajustar; sí «Ver evidencia» y el fulfillment», «… sin la señal que solo ve la central» |
+| R40, R119 | `CierresBodegaAdminDetalleUnico` (dialog «Detalle del cierre de bodega · Cierre de bodega · Limón»; `no_encontrada` y `forbidden`) |
+| R41 | `detalle-cierre-vista` «gestionesDeBodega … por resultado …»; `CierresBodegaAdminDetalleUnico` «columna Mensajero, filas de los dos cierres del día…» |
+| R42, R114 | `detalle-cierre-vista` «filasMensajeros …» (3 casos); `DetalleCierreBodega` «R42, R114» (3 casos) |
+| R43, R117 | `detalle-cierre-vista` «cuentaConciliacion y marcaConciliacion»; `DetalleCierreBodega` «R43, R117» (3) y «`Cuenta` con `sinImporte`» |
+| R111 | `detalle-cierre-vista` «modoBodegaDe»; `CierresBodegaAdminDetalleUnico` «Ver / decidir … modo decidir», «Ver de Resueltos … solo lectura» |
+| R112 | `CierresBodegaAdminDetalleUnico` (orden del pie, sin permiso solo «Cerrar», marcar cierra y relee las dos listas) |
+| R113 | `detalle-cierre-descarga-columnas` «SLT-104» (3); `CierresBodegaAdminDetalleUnico` («Descargar», solo lectura, fulfillment, evidencia) |
+| R115 | `DetalleCierreBodega` «R115»; `CierresBodegaAdminDetalleUnico` «R115 — navega a ?cierre=<id> sin dejar el detalle…» |
+| R116 (pantalla) | `CierresAdminDeepLink` «SLT-104 (R116)» (solicitado, aprobado y vencido de satélite + 2 controles de la central) |
+| R118 | `CierresBodegaAdminDetalleUnico` «R118: no monta el modal de antes ni sus paneles» |
+| R120 | `detalle-cierre-vista` «PA3: cada gestión lleva la fecha de SU cierre del día»; `CierresBodegaAdminDetalleUnico` «PA3: la nota de tarifas…» |
+| R121 | `detalle-cierre-vista` (3 cierres / 2 mensajeros; «PA2»); `DetalleCierreBodega` «R121 (PA2)» |
+
+### Mutaciones (aplicadas con un script, corridas y restauradas desde copia; árbol limpio tras cada una)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| M1 | Pestaña con `conteos.mensajeros` (`DetalleCierre`) | **ROJO** `DetalleCierreBodega` R121 |
+| M2 | «Recibido» sin marca como `partida(…, "0.00")` | **ROJO** unit + componente (2) |
+| M3 | `Cuenta` pinta `money(monto)` con `sinImporte` | **ROJO** «`Cuenta` con `sinImporte`» (con `monto` "" no se vería: `money("")` = «—») |
+| M4 | Modo «decidir» para un recibido | **ROJO** «Ver de Resueltos … solo lectura» |
+| M5 | Audiencia «central» en la fila de bodega | **ROJO** «… sin la señal que solo ve la central» |
+| M6 | No cerrar el detalle tras marcar | **ROJO** «marca, cierra el detalle y revalida…» |
+| M7 | Sin el forzado de solo lectura (`soloLecturaSatelite = false`) | **ROJO** `CierresAdminDeepLink` (3 casos de satélite) |
+| M8 | `congeladoAt: null` en `gestionesDeBodega` | **ROJO** unit + módulo (2) |
+| M9 | «Ver su cierre» sin cerrar el detalle de bodega | **ROJO** «R115 — navega…» |
+
+### Salidas
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: `TC_EXIT=0`.
+- `pnpm run lint`: `LINT_EXIT=0`, 0 errores, 243 warnings (las mismas de la tanda 1; ninguna en archivos tocados).
+- Tests de esta tanda (5 archivos nuevos o ampliados, más `DetalleCierre`, `DetalleCierreDinero`, `FilaGestion`,
+  `CierresAdminModule`, `CierresBodegaAdminRefresco`, `CierreEvidenciasVarias486`): verdes. Corrida conjunta de 16
+  archivos: `Tests 80 failed | 263 passed (343)`; los 80 rojos son SOLO de los cinco de T5.1 que abren el modal viejo:
+  `CierreBodegaDesglosePorTienda` (29), `CierreBodegaDetalleCascadas` (25), `CierreBodegaDetalleGestiones` (20),
+  `DineroIdentidadesEnPantalla` bloque «ficha 393 · B5 — el DETALLE del cierre de bodega» (4), `cierre-detalle-ajuste-badge` (2).
+  `CierresBodegaAdminRefresco` sigue verde sin tocarlo.
+- `pnpm run test:guardias`: `Tests 6 failed | 4820 passed | 1 skipped`. Rojos: `cierre-bodega-vocabulario` (1,
+  autocomprobación de los rótulos en el módulo: T5.2), `liquidacion-money-safe` (1, «el censo de archivos … cubre sus
+  propios árboles»: pide censar `MensajerosCierreBodega.tsx` y `ConciliacionCierreBodega.tsx`; el design decía que no
+  hacía falta tocarla: T5.2), `dependencias-declaradas-presentes` (4, previo de la rama, tanda 1).
+- `grep -E "Number\(|parseFloat|toFixed"` en los archivos tocados de `components/private/cierres/` y el módulo: solo
+  un comentario antiguo en `CierresBodegaAdminModule.tsx:126`.
+
+### ABIERTOS
+
+1. Título de «Conciliación»: el canvas lo pinta a 15 px y `Cuenta` (compartida con «Dinero») a 14 px. No se tocó.
+2. `marcaConciliacion` con marca y sin `conciliadoPorNombre`: sale «Marcó: <fecha>» (el spec no dice ese caso).
+3. `liquidacion-money-safe` sí pide censar los dos `.tsx` nuevos (contra `design.md > Tests y guardias que cambian`).
+4. «Ver su cierre» navega con `router.push` a `?cierre=`: lo abre `CierresAdminModule` (mitad Mensajero, cuyo detalle
+   es un portal). Probado con dobles; lo confirma el E2E de T6.2.
+
+Veredicto: T2-T4 hechos; detalle único de bodega montado fiel al canvas con las desviaciones de su tabla y 9 mutaciones en rojo; quedan para T5 los 5 tests del modal viejo y 2 guardias.
