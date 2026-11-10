@@ -26,10 +26,12 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 - 2026-11-10 (tras tanda 1, `progress/impl_SLT-99.md`): los 4 desvíos aceptados uno por uno (humano): `IPlanesDelMaestroRepository` aparte; `@sin-superficie` en las 2 actions hasta T7; `NOMBRES_DEL_TOPE` en `lib/planes/mensajes.ts`; empresa de la sesión inexistente → error con contexto.
 
 ## Preguntas abiertas
-Ninguna.
+- (tanda 2) R8 «Activo desde»: `PlanConConsumo` no trae la entrada (`plan_ciclo_ancla_at`); ¿se suma en backend o se acepta sin esa línea?
+- (tanda 2) Sin plan con primera asignación pendiente: ¿el maestro puede cancelarla desde «Mi plan»? Hoy no (leído como P5).
 
 ## Tandas
 - 2026-11-09 · Tanda 1 (backend_dev) · T0–T4 · typecheck, lint, guardias (solo la baseline) y `related` en verde; la integración de `mi-plan-cambiar-plan` la corre CI. Desvíos: `IPlanesDelMaestroRepository` y `@sin-superficie` en las actions hasta T7. Detalle en `progress/impl_SLT-99.md`.
+- 2026-11-10 · Tanda 2 (frontend_dev) · T5–T7 · typecheck, lint, tests de componente, `related` y guardias (solo la baseline) en verde; `@sin-superficie` retiradas. Desvíos: íconos en SVG en línea en `IconoDelModulo.tsx` (por `ORDEN_MODULOS`), «Activo desde» sin dato en «Mi plan», sin «Cancelar cambio» para la primera asignación sin plan. 2 preguntas abiertas. Detalle en `progress/impl_SLT-99.md`.
 
 ## Modelos (overrides)
 

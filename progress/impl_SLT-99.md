@@ -74,3 +74,73 @@ R3, R4, R6–R9, R20–R23 y el resto de R1, R5, R17 y R19 son de T5–T8.
 Ninguna.
 
 **Veredicto:** T0–T4 hechas; typecheck, lint, guardias (solo la baseline) y `related` en verde; la integración con base queda para CI.
+
+## Tanda 2 · T5–T7 frontend (2026-11-10, frontend_dev)
+
+### Cambios
+- **T5** (`48920a19`): `components/shared/planes/planes-vista.ts` (`TEXTOS_PLANES`, `usuariosDelPlan`, `usuariosEnUso`, `usoDeLasFilas`, `precioDeLaVista` con la insignia, `filasDePeriodos`, `filasDeComparacion`, `excedidosContra`); `tests/unit/planes/planes-vista.test.ts` ampliado. Lleva también la línea de desvíos aceptados de la tanda 1 en `progress/features/SLT-99.md`.
+- **T6** (`9d7820c8`): `components/shared/planes/{CarruselDePlanes,DetalleDePlan,IconoDelModulo}.tsx`; `tests/components/{CarruselDePlanes,DetalleDePlan}.test.tsx`; `tests/unit/guards/planes-compartidos-sin-empresa.guardia.test.ts` (verde, y rojo a propósito con un `import "@/lib/auth/resolve-actor"` de prueba en `IconoDelModulo.tsx`, revertido).
+- **T7** (`be036ab6`):
+  - `app/(app)/mi-plan/_components/{PlanActivo,CambioDePlan}.tsx` (nuevos), `MiPlanModule.tsx`, `page.tsx`.
+  - `lib/actions/mi-plan.ts`: fuera las dos `@sin-superficie` (y las temporales de los compartidos de T6).
+  - Tests: `tests/components/MiPlanModule.test.tsx` reescrito (SLT-58 R11 → R19), `tests/components/MiPlanCambioDePlan.test.tsx` (nuevo), `tests/components/_mi-plan-planes.ts` (datos de ejemplo), `tests/components/ConsumoDelPlanPeriodo.test.tsx` y `tests/integration/mi-plan-page.test.tsx` ajustados.
+
+### Desvíos del design
+1. **Íconos en SVG en línea, en un archivo aparte.** Como el diseño aprobado (pedido del leader), no `lucide-react` (`BarChart3`/`Activity`/`Trophy` de §5). Viven en `components/shared/planes/IconoDelModulo.tsx`, un archivo más que la lista de `tasks.md`. Van por el orden de `ORDEN_MODULOS` y no por clave: la guardia `tests/unit/tablero-dia/primitivas.guardia.test.ts` no deja escribir «monitoreo» en `components/shared/`. Un tipo de tupla exige un ícono por módulo. El commit de T6 aún tenía la clave literal (esa guardia en rojo en ese commit); T7 lo arregla.
+2. **El carrusel no guarda la vista.** Recibe `vista` y `onCambiarVista`, porque el detalle también la usa (§5 no las listaba).
+3. **«Activo desde» (R8) no sale en «Mi plan».** `PlanConConsumo` no trae la fecha de entrada (`plan_ciclo_ancla_at`). `DetalleDePlan` acepta `activoDesde` opcional y lo pinta si llega (probado), pero «Mi plan» no lo tiene que pasar. Ver Preguntas.
+4. **Sin plan, la primera asignación pendiente no se cancela desde «Mi plan».** «Cancelar cambio» solo sale con plan (`plan.cobro.pendiente`). Sin plan sigue «{Plan} empieza a regir el {fecha}» (SLT-86 R26), como P5 («sin plan no elige»). Ver Preguntas.
+5. **Textos que §6 no fijaba.**
+   - El cuerpo de «Plan a la medida» sale del canvas aprobado, sin «Solo lo ve tu empresa» porque SLT-116 la monta sin empresa.
+   - El primer período sin cuota dice «…, Sin cuota.».
+   - El rechazo genérico (`validation_error`, `forbidden` o la action que lanza) dice «No se pudo guardar. Inténtalo de nuevo.», el mismo de `PlanForm`.
+6. **`ConsumoDelPlanPeriodo.test.tsx` (SLT-86 R26) cambia un caso.** «sin botón para cancelarlo» pasa a «con «Cancelar cambio»» por R16/R17 (P3).
+7. **«Cambiar a {plan}» sigue habilitado con el aviso de topes.** El aviso previo de R13 sale, y el rechazo lo da el servicio (R20). El spec no pide deshabilitarlo.
+8. **Plan activo público fuera del catálogo disponible.** Si está archivado o sin costo concreto, su tarjeta no sale en el carrusel y el detalle va sin columna «Tu plan». Es un caso raro, y comparar exigiría su `PlanVista`, que `verPlanes` no devuelve.
+
+### Mapa R<n> → test (esta tanda)
+| R | Test |
+|---|---|
+| R1 (página) | `tests/integration/mi-plan-page.test.tsx` > «SLT-99 R1 — `forbidden` en cualquiera de las dos lecturas…» y los 6 roles + sin sesión (sin leer ningún repositorio) |
+| R3 | `tests/components/MiPlanModule.test.tsx` > «SLT-99 R3 — el panel del plan activo» (3 casos) |
+| R4 | `tests/unit/planes/planes-vista.test.ts` > «R4 — «Usuarios» es la suma de los topes por rol»; `MiPlanModule.test.tsx` > «con tope en los cuatro roles…» |
+| R5 | `tests/components/CarruselDePlanes.test.tsx` > «R5 — …» (orden, datos, módulos con ícono, «Activo» solo en el suyo, sin «Público» ni «Ver detalles», tarjeta clickeable con `aria-pressed`) |
+| R6 | `planes-vista.test.ts` > «R6 (P1, P10) — …» (porcentaje, monto fijo hacia abajo, hacia arriba y en ,5, 0 % sin insignia, sin cuota); `CarruselDePlanes.test.tsx` > «R6 — …» |
+| R7 | `CarruselDePlanes.test.tsx` > «R7 — «Plan a la medida»» (P7 deshabilitado con «Próximamente»; con `onContactar`; custom activo) |
+| R8 | `planes-vista.test.ts` > «R8 — …»; `tests/components/DetalleDePlan.test.tsx` > «R8 — …» (tabla resaltada, comparación, tarjeta activa, sin cuota); `MiPlanCambioDePlan.test.tsx` |
+| R9 | `tests/unit/guards/planes-compartidos-sin-empresa.guardia.test.ts`; `CarruselDePlanes.test.tsx` y `DetalleDePlan.test.tsx` > «R9 — montado sin empresa» |
+| R13 (aviso previo) | `DetalleDePlan.test.tsx` > «R13 — el aviso previo…»; `planes-vista.test.ts` > «R13 (P4) — el aviso previo mira cada rol…» |
+| R16 | `tests/components/MiPlanCambioDePlan.test.tsx` > ««Cancelar cambio» pide confirmación…», ««Volver» cierra…» |
+| R17 | `MiPlanCambioDePlan.test.tsx` > «se muestra con «Cancelar cambio»… avisa del reemplazo» (el pendiente se ve igual sea de quien sea: SLT-86 R32) |
+| R18 | `MiPlanCambioDePlan.test.tsx` > «R18 (P5) — sin plan»; `DetalleDePlan.test.tsx` > «sin «Cambiar a» si quien monta no pasa la acción»; `MiPlanModule.test.tsx` > «sin plan: …» |
+| R19 | `MiPlanCambioDePlan.test.tsx` > «R19 — la confirmación del cambio» (corte y primer período sin fecha; P6 con custom; «Listo…» y `router.refresh()`); `MiPlanModule.test.tsx` > «SLT-99 R19 (sustituye SLT-58 R11)…» |
+| R20 | `MiPlanCambioDePlan.test.tsx` > «R20 — …» (`tope_excedido`, `no_disponible`, `sin_plan`, `sin_cambio_programado`) |
+| R21 | `MiPlanModule.test.tsx` (casos de SLT-58 y SLT-86 en verde; «R21 (P8): el consumo y el costeo… debajo»); `ConsumoDelPlanPeriodo.test.tsx`; `mi-plan-solo-maestro.guardia.test.ts` sin cambios y en verde |
+
+R22 y R23 son de T8.
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: `tsc --noEmit` sin errores (tras cada task y al final).
+- `pnpm exec eslint` de lo tocado (`app/(app)/mi-plan`, `components/shared/planes`, `lib/actions/mi-plan.ts` y los 8 tests): `ESLint: No issues found`.
+- Tests propios:
+  - `planes-vista`: 25/25.
+  - `CarruselDePlanes`: 11/11.
+  - `DetalleDePlan`: 8/8.
+  - `MiPlanModule` + `ConsumoDelPlanPeriodo`: 28/28.
+  - `MiPlanCambioDePlan`: 11/11.
+  - `tests/integration/mi-plan-page.test.tsx`: 10/10 (jsdom, sin base).
+- `vitest related --run --exclude "tests/integration/**"`, 2 lotes de ≤5:
+  - lote 1, los 4 de `components/shared/planes`: 6 archivos, 83 tests en verde;
+  - lote 2, `PlanActivo`, `CambioDePlan`, `MiPlanModule`, `page` y `lib/actions/mi-plan.ts`: 3 archivos, 39 tests en verde.
+- `pnpm run test:guardias`:
+  - final: `Test Files 1 failed | 339 passed | 3 skipped (343)`, `Tests 4 failed | 4793 passed | 25 skipped`. Los 4 rojos son la baseline (`dependencias-declaradas-presentes`).
+  - Primera corrida, antes del arreglo del desvío 1: había un quinto rojo real, `tablero-dia/primitivas` («ninguna primitiva conoce el dominio del tablero del día», por `IconoDelModulo.tsx`). Arreglado y en verde, también al correrlo solo.
+  - `superficie-de-uso` está en verde sin las anotaciones `@sin-superficie`.
+- Sin dependencias nuevas.
+- MCP del grafo: no se usó; la exploración fue con Grep/Read.
+
+### Preguntas
+1. **«Activo desde» (R8).** Para mostrarlo en la tarjeta del plan activo hace falta la fecha de entrada (`plan_ciclo_ancla_at`) en `PlanConConsumo`. Es un cambio de backend en `lib/planes/consumo.ts` y `lib/types/consumo-plan.ts`. ¿Se suma (T8 o backend_dev) o se acepta sin esa línea?
+2. **Sin plan con primera asignación pendiente.** ¿El maestro debe poder cancelarla desde «Mi plan»? Hoy no puede, y se lee como P5.
+
+**Veredicto:** T5–T7 hechas. typecheck, lint, `related`, tests de componente y guardias en verde, sin rojos nuevos (solo la baseline). Quedan 2 preguntas (R8 «Activo desde» y el pendiente sin plan).

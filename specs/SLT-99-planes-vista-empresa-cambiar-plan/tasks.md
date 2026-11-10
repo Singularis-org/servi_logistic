@@ -81,7 +81,7 @@
 
 ## T5 — Lógica de vista (R4, R6, R8, R13) · frontend · [P] con T1–T4
 
-- [ ] **T5.1** `components/shared/planes/planes-vista.ts` (§5) con `TEXTOS_PLANES`, y `mensajeTopesSobran` en
+- [x] **T5.1** `components/shared/planes/planes-vista.ts` (§5) con `TEXTOS_PLANES`, y `mensajeTopesSobran` en
   `lib/planes/mensajes.ts` (lo usa también T3).
   *Hecho:* `tests/unit/planes/planes-vista.test.ts` en verde: suma de usuarios y «Sin tope» (R4); precio
   mensual y anual con descuento; insignia solo en anual y solo con descuento anual: en %, el suyo; en monto
@@ -91,20 +91,20 @@
 
 ## T6 — Componentes compartidos (R5–R9) · frontend · depende de T5
 
-- [ ] **T6.1** `CarruselDePlanes.tsx` y `DetalleDePlan.tsx` (§5), con los íconos de módulo en un
+- [x] **T6.1** `CarruselDePlanes.tsx` y `DetalleDePlan.tsx` (§5), con los íconos de módulo en un
   `Record<ModuloApagable, LucideIcon>`.
   *Hecho:* `tests/components/CarruselDePlanes.test.tsx` (R5, R6; R7: «Contáctanos» deshabilitado con
   «Próximamente» sin `onContactar`, y custom activo como tarjeta activa; modo sin empresa de R9) y
   `tests/components/DetalleDePlan.test.tsx` (R8 con «Sin cuota» en la tabla y la comparación, aviso previo de
   R13, modo sin empresa de R9) en verde.
-- [ ] **T6.2** `tests/unit/guards/planes-compartidos-sin-empresa.guardia.test.ts`: barre
+- [x] **T6.2** `tests/unit/guards/planes-compartidos-sin-empresa.guardia.test.ts`: barre
   `components/shared/planes/` y falla con un import prohibido o una prop `organizacionId`; con
   autocomprobación (encuentra los dos componentes). *Hecho:* en verde y rojo a propósito con un import de
   prueba.
 
 ## T7 — «Mi plan» (R3, R16–R21) · frontend · depende de T4 y T6
 
-- [ ] **T7.1** `PlanActivo.tsx` (R3) y `CambioDePlan.tsx` (R8, R16–R20); `MiPlanModule.tsx` los compone con
+- [x] **T7.1** `PlanActivo.tsx` (R3) y `CambioDePlan.tsx` (R8, R16–R20); `MiPlanModule.tsx` los compone con
   el pendiente y `ConsumoDelPlan` debajo, sin cambios (P8); `page.tsx` lee `verMiPlan` y `verPlanesDeMiPlan`
   en paralelo.
   *Hecho:*
