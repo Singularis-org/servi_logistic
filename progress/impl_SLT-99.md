@@ -220,3 +220,6 @@ Todos los archivos de la tabla existen. R2 y R10–R18 (integración con base) y
 
 ## 2026-11-10 · Ajuste: «Activo desde» en formato corto (frontend_dev)
 - `components/shared/planes/DetalleDePlan.tsx` muestra «Activo desde» como «1 sep 2026» con `fechaCortaEnZona` (`lib/whatsapp-envios/informes/formato.ts`, el mismo de los correos de cambio de plan); tests `DetalleDePlan.test.tsx`, `MiPlanCambioDePlan.test.tsx` (R8) y E2E `mi-plan-cambiar-plan.spec.ts` (R22) ajustados. Paso 3 (cupo) en verde; typecheck y lint en verde; `test:rapido` rojo solo por timeout de `tarifa-status-retirado.guard` bajo carga (solo: 8/8 verde); `test:guardias` solo con la baseline (`dependencias-declaradas-presentes`).
+
+## 2026-11-10 · Correcciones de la revisión (implementer)
+- M1 y m1 en `d7ae12b7`, m2 en `dd7355fd`, m3 en `fe453ac2` (detalle en `progress/review_SLT-99.md > Correcciones`); M2 lo cierra el CI del PR. typecheck y lint en verde; tests tocados y directos en verde; guardias solo con la baseline; 2 casos de integración nuevos sin correr en local (CI).

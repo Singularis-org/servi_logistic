@@ -109,3 +109,15 @@ R sin test: ninguno.
 - Mayores: 2 (M1 código; M2 proceso).
 - Menores: 3.
 - R sin test: ninguno.
+
+## Correcciones (2026-11-10, implementer, tras la decisión del humano en la ficha)
+
+| Hallazgo | Arreglo | Commit |
+|---|---|---|
+| M1 | `cancelarCambioPorLaEmpresa` devuelve `sin_plan` bajo el cerrojo si `plan_id` es `null`, sin escribir; `sin_plan` añadido a `ResultadoCancelarDelMaestro` y `CancelarCambioMiPlanResult`; `PendienteDelPlan` muestra su texto. Tests: integración «R18 (P5, decisión 2026-11-10): sin plan, el maestro no cancela la primera asignación pendiente» y servicio «R18 (P5, decisión 2026-11-10)…». | `d7ae12b7` |
+| m1 | `cambiarPlanPorLaEmpresa` mira «es su plan activo» antes de leer y validar la disponibilidad: con pendiente lo cancela por `cancelarPendienteDeEmpresaEnTx` (mismo camino que «Cancelar cambio»), también si el activo es custom o archivado. Tests: integración «m1 (decisión 2026-11-10): … su plan activo custom lo cancela» y servicio «m1 (decisión 2026-11-10)…». | `d7ae12b7` |
+| m2 | `fechaCortaEnZona` vive en `lib/utils/fecha-corta.ts`; `lib/whatsapp-envios/informes/formato.ts` lo reexporta (sin duplicar). `DetalleDePlan` y el E2E lo importan del módulo neutral. | `dd7355fd` |
+| m3 | `PrimerPeriodo` se define en `lib/types/planes.ts`; `components/shared/tipo-cobro.ts`, `MiPlanCambioService` y `CambioDePlan` lo importan de ahí. | `fe453ac2` |
+| M2 | Sin código: por decisión del humano lo cierra el CI del PR a `dev` (`gate-completo` + `e2e` en verde antes del merge). | — |
+
+Verificación: typecheck sin errores; eslint de los 12 archivos tocados sin salida; tests tocados y directos (servicio, 6 de componentes/página, cron, repositorio tipo-cobro, plantilla de correo, picking, 4 guardias de planes/historial) en lotes ≤5: 74 + 68 + 163 + 8 en verde; `pnpm test:guardias`: `1 failed | 339 passed`, 4 rojos = baseline `dependencias-declaradas-presentes`. La integración con base (2 casos nuevos) queda para el CI (M2). `vitest related` sobre estos archivos arrastra casi la suite (timeout a los 560 s), por eso se corrieron los importadores directos.
