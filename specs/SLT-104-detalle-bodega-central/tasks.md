@@ -157,17 +157,17 @@
 
 ## T6 — E2E · `frontend_dev` (depende de T4, T5)
 
-- [ ] **T6.1** — Helper `solicitarCierreBodega` en `e2e/_escenarios/cierres.ts`. Adaptar
+- [x] **T6.1** — Helper `solicitarCierreBodega` en `e2e/_escenarios/cierres.ts`. Adaptar
   `e2e/cierre-bodega-satelite.spec.ts` (pasos 2 y 3) y `e2e/ajuste-pago-mensajero-cierre.spec.ts`
   (paso satélite) al detalle único (`design.md > Tests y guardias que cambian`), con los literales
   de T0.3 escritos a mano: cuatro cifras, «Mensajeros», «Conciliación» antes y después de marcar.
   **Hecho:** verdes dos veces seguidas en base desechable nueva, con `NEXT_PUBLIC_APP_URL` como en
   `gate.yml`; la mutación «“—” → “₡0,00” sin marca» lo pone rojo.
-- [ ] **T6.2** — `describe` S6 en `e2e/cierres-rediseno.spec.ts`: cierre de bodega del modelo nuevo
+- [x] **T6.2** — `describe` S6 en `e2e/cierres-rediseno.spec.ts`: cierre de bodega del modelo nuevo
   (R77) con sus cuatro cifras, «Mensajeros» y «Conciliación» al céntimo; (PA1) «Ver su cierre»
   abre el detalle del cierre del día en solo lectura.
   **Hecho:** verde dos veces seguidas.
-- [ ] **T6.3** — `pnpm exec playwright test --project=dinero` completo, más
+- [x] **T6.3** — `pnpm exec playwright test --project=dinero` completo, más
   `cierre-bodega-satelite` y `ajuste-pago-mensajero-cierre`.
   **Hecho:** dos corridas seguidas sin rojos ni inestables, salida en `impl_SLT-104.md`.
 

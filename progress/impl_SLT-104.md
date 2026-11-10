@@ -422,3 +422,80 @@ Veredicto: T2-T4 hechos; detalle único de bodega montado fiel al canvas con las
   (descargas, paginación, `GestionesCierre`; 12 archivos): `Tests 112 passed (112)`.
 
 Veredicto: T5 hecho; los cinco tests del modal viejo leen el detalle único con las mismas cifras, y las dos guardias están verdes con contraprueba.
+
+## Tanda 4 — T6 E2E (frontend_dev, 2026-11-10)
+
+Base desechable nueva `slt104_e2e` (`migrate deploy` + `db:seed`); el humo, en otra nueva `slt104_humo` (arrastra
+`plataforma-vacia`, que exige plataforma sin superadmin, y `dinero` ya había creado el de prueba). `next build` con
+`NEXT_PUBLIC_APP_URL`/`APP_BASE_URL=http://localhost:3000` como en `gate.yml`; un solo servidor, el de Playwright.
+Grafo: no consultado (Grep/Read).
+
+### Archivos
+
+- `e2e/_escenarios/cierres.ts`: `solicitarCierreBodega(r, { quien? })` (servicio montado como `lib/actions/cierre-bodega.ts`),
+  `montoDeCuenta(detalle, cuenta, rotulo)` y `filaDeMensajeros(detalle, nombre)`.
+- `e2e/cierre-bodega-satelite.spec.ts`: pasos 2 y 3 al detalle único (cuatro cifras, «Dinero», «Mensajeros (1)»,
+  «Gestiones» con filtro y evidencia, «Conciliación» antes y después de marcar, «Marcar recibido» en el pie, pie solo
+  «Cerrar» tras la marca). El paso 1 sigue por la pantalla.
+- `e2e/ajuste-pago-mensajero-cierre.spec.ts` (paso satélite): agregado en cifras y «Lo que va a la central»; por
+  mensajero en la fila de «Mensajeros» (₡1.800 · ₡7.200 · «1 pago ajustado»); historial en «Gestiones». Fuera `lineaDe`.
+- `e2e/cierres-rediseno.spec.ts`: `describe` «SLT-104 — … (escenario B6)».
+- `specs/.../tasks.md`: T6 `[x]`.
+
+### ABIERTOS de T0.3, cerrados con datos
+
+1. **«Total facturado» / «Le queda»** (₡3.750 / ₡1.750 y ₡2.500 / ₡700): medido en `slt104_e2e` tras la corrida, para cada
+   empresa con cierre de bodega (`cierre-bodega`, `ajuste-pago-56`, `cierres-rediseno-b6`): una sola fila `tarifa` con flete
+   2500 / devuelto 1250, `fulfillment` NULL, `tarifa_especial` y `tarifa_especial_devuelta` NULL, y 0 filas en
+   `distrito_zona_especial`. La suposición se cumple; la pantalla pinta esos literales (verdes).
+2. **Escenario B en la satélite (R77)**: escenario B6 = tarifas del B digitadas y activadas en la zona SATÉLITE (flete
+   3.100 + 13 %, devolución 1.400 + 13 %, pago 2.200) más «Pago a la satélite» por entregado 120 (para que «Gana la bodega
+   satélite» no sea 0). Una entrega de 10.000. A mano: Recaudado ₡10.000 · Pago a mensajeros ₡2.200 · Gana ₡120 · Debe
+   llegar 10.000 − 2.200 − 120 = ₡7.680 · Total facturado 3.100 + 403 = ₡3.503 · IVA ₡403 · Le queda 3.503 − 403 − 2.200
+   − 120 = ₡780. Ninguno coincide con una constante vigilada (`rollup-guards` verde, 21/21).
+3. **«Ver su cierre» (PA1)**: el E2E B6 pulsa el enlace, el detalle de bodega se cierra, la URL lleva `?cierre=<id>` y se
+   abre «Detalle del cierre · Cierre de <m>» con sus cifras; el pie es solo `["Cerrar"]`, cero botones que casen
+   `/Aprobar|Rechazar|Destrabar|Corregir|Ajustar pago|Registrar pago|Marcar recibido/` (también con la fila desplegada en
+   «Gestiones»), sin pestañas «Pago al mensajero» ni «Corregir», y el cierre del día sigue `aprobado` con 2200 en la base.
+
+### Mapa R → test (esta tanda)
+
+| R | E2E |
+|---|---|
+| R40, R111, R112 | `cierre-bodega-satelite` pasos 2 y 3 (dialog del detalle único, «Marcar recibido» en el pie, cierra tras marcar, Resueltos solo «Cerrar») |
+| R41, R31 | `cierre-bodega-satelite` paso 2 (filtro, evidencia); `ajuste-pago-mensajero-cierre` satélite (sin «Ajustar pago», historial) |
+| R42, R114 | los tres specs (fila de «Mensajeros» con literales; «1 pago ajustado» y «—») |
+| R43, R117 | `cierre-bodega-satelite` pasos 2 y 3; B6 («—» sin marca, ₡0 marcada, «Marcó: …») |
+| R77 | B6 (modelo nuevo: cuatro cifras y tres cuentas) |
+| R115, R116 | B6 («Ver su cierre» → solo lectura) |
+
+### Mutaciones / literales rotos (restaurados desde copia; árbol limpio tras cada una)
+
+| # | Cambio | Resultado |
+|---|---|---|
+| E1 | Test: «Le queda» ₡1.750 → ₡1.751 (`cierre-bodega-satelite`) | **ROJO** (Received ₡1.750) |
+| E2 | Test: «A la central» de la fila ₡7.200 → ₡7.500 (valor sin ajuste; `ajuste-pago-mensajero-cierre`) | **ROJO** |
+| E3 | Test: «Le queda» B6 ₡780 → ₡900 (propuesta de T0.3 sin satélite; `cierres-rediseno`) | **ROJO** (Received ₡780) |
+| E4 | Código (T6.1): `cuentaConciliacion` sin marca → `partida(RECIBIDO_LABEL, "0.00")`, servidor `E2E_SERVIDOR=dev` | **ROJO** en `cierre-bodega-satelite` paso 2 y B6 (Expected «—», Received «₡0») |
+
+### Salidas
+
+- Specs tocados, corrida 1: `1 failed | 13 passed` (paso 2: la fila se buscaba por `hasText` con la remisión, que no es
+  texto visible; se busca por el botón que la despliega). Tras el arreglo: `3 passed`, y `5 passed` en la corrida filtrada
+  de los tres describes.
+- `pnpm exec playwright test --project=dinero` completo, corrida 1: **94 passed (4.4m), 0 failed, 0 flaky**; corrida 2:
+  **94 passed (4.7m), 0 failed, 0 flaky** (incluye `cierre-bodega-satelite`, `ajuste-pago-mensajero-cierre` y
+  `cierres-rediseno` con B6).
+- `pnpm exec playwright test --project=aislamiento e2e/dos-empresas-humo.spec.ts` (base `slt104_humo`): **18 passed**
+  (8 de `dos-empresas-humo` + 10 de `plataforma-vacia`), 0 failed.
+- `npx vitest run tests/unit/analytics/rollup-guards.test.ts`: `Tests 21 passed (21)`.
+- `pnpm typecheck` (8 GB): `TC_EXIT=0` (tras `rm -rf .next/dev`). `pnpm run lint`: `LINT_EXIT=0`, 0 errores, 243 warnings.
+- `pnpm run test:guardias`: `Tests 4 failed | 4823 passed | 1 skipped`; los 4, `dependencias-declaradas-presentes` (baseline
+  de la rama, tanda 1).
+
+### ABIERTOS
+
+1. `dependencias-declaradas-presentes` sigue roja en la rama (ajena, tanda 1).
+2. El humo corre en una base aparte (`slt104_humo`): su proyecto exige plataforma sin superadmin.
+
+Veredicto: T6 hecho; los dos E2E del modal viejo leen el detalle único y el `describe` B6 cubre el modelo nuevo y «Ver su cierre» en solo lectura, con `dinero` 94/94 dos veces y el humo verde.
