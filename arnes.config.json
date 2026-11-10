@@ -28,7 +28,7 @@
   "cupos_por_persona": {
     "frontend": 2,
     "backend": 5,
-    "fullstack": 3
+    "fullstack": 5
   },
   "perfil": {
     "max_dias_sin_revisar": 60,

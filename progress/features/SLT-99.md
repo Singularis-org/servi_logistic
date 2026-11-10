@@ -27,6 +27,9 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 
 - 2026-11-10 (tras tanda 2, `progress/impl_SLT-99.md`, humano): «Activo desde» (R8) se agrega: el backend envía la entrada del plan (`plan_ciclo_ancla_at`) a la pantalla. Primera asignación pendiente sin plan: el maestro NO puede cancelarla (sin botón, como P5). Los 4 desvíos de la tanda 2 aceptados uno por uno: íconos por `ORDEN_MODULOS`; selector Mensual/Anual controlado por quien monta; test de SLT-86 a «Cancelar cambio» por P3; los tres textos nuevos.
 
+- 2026-11-10 (tras tanda 3, humano): «Activo desde» se muestra como «1 sep 2026» (no `AAAA-MM-DD`); se aceptan los 4 E2E de «Mi plan» acotados al panel «Plan activo» y el E2E nuevo que crea y asigna los planes en la base; cupo `fullstack` sube a 5 en `arnes.config.json`.
+<!-- tamano-pr-aceptado: 2026-11-10 · 46 archivos (amplía la aceptación del 2026-11-09): «Activo desde», el E2E y 4 E2E existentes ajustados (humano) -->
+
 ## Preguntas abiertas
 Ninguna.
 
