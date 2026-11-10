@@ -154,7 +154,7 @@
 
 ## T7 — Cierre
 
-- [ ] **T7.1** — `./init.sh` verde, con `INIT_EXIT` escrito dentro del log:
+- [x] **T7.1** — `./init.sh` verde, con `INIT_EXIT` escrito dentro del log:
   - sin rojos nuevos; el aviso de tamaño, aceptado (PA4);
   - `git diff db/` vacío y ninguna Server Action de escritura tocada (R72);
   - `grep -E "Number\(|parseFloat|toFixed"` vacío en `components/private/cierres/cola/` (R71).
