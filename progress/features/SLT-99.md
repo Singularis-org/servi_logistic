@@ -37,6 +37,7 @@ Ninguna.
 - 2026-11-09 · Tanda 1 (backend_dev) · T0–T4 · typecheck, lint, guardias (solo la baseline) y `related` en verde; la integración de `mi-plan-cambiar-plan` la corre CI. Desvíos: `IPlanesDelMaestroRepository` y `@sin-superficie` en las actions hasta T7. Detalle en `progress/impl_SLT-99.md`.
 - 2026-11-10 · Tanda 2 (frontend_dev) · T5–T7 · typecheck, lint, tests de componente, `related` y guardias (solo la baseline) en verde; `@sin-superficie` retiradas. Desvíos: íconos en SVG en línea en `IconoDelModulo.tsx` (por `ORDEN_MODULOS`), «Activo desde» sin dato en «Mi plan», sin «Cancelar cambio» para la primera asignación sin plan. 2 preguntas abiertas. Detalle en `progress/impl_SLT-99.md`.
 - 2026-11-10 · Tanda 3 (implementer) · «Activo desde» (R8) + T8 · typecheck, lint, `related` y guardias (solo la baseline) en verde; E2E `mi-plan-cambiar-plan` escrito y listado en `aislamiento`, sin correr en local (CI). `./init.sh` rojo en el paso 3 por el cupo del board (5 `fullstack`, máx. 3). Desvíos: «Activo desde» en `AAAA-MM-DD`; 4 E2E de «Mi plan» acotan el título al panel «Plan activo». 3 preguntas. Detalle en `progress/impl_SLT-99.md`.
+- 2026-11-10 · Ajuste (frontend_dev) · «Activo desde» (R8) en «1 sep 2026» con `fechaCortaEnZona` · cupo (paso 3), typecheck y lint en verde; `test:rapido` rojo por timeout de una guardia bajo carga (sola en verde); guardias solo con la baseline.
 
 ## Modelos (overrides)
 

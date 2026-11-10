@@ -217,3 +217,6 @@ Todos los archivos de la tabla existen. R2 y R10–R18 (integración con base) y
 3. **Tamaño del PR.** Son 46 archivos frente a los ~31 aceptados. ¿Se amplía la línea `tamano-pr-aceptado`?
 
 **Veredicto:** «Activo desde» (R8) y el E2E (R22) hechos, y R1–R23 mapeados a tests que existen. typecheck, lint, `related` y guardias en verde (solo la baseline). `./init.sh` cae por el cupo del board.
+
+## 2026-11-10 · Ajuste: «Activo desde» en formato corto (frontend_dev)
+- `components/shared/planes/DetalleDePlan.tsx` muestra «Activo desde» como «1 sep 2026» con `fechaCortaEnZona` (`lib/whatsapp-envios/informes/formato.ts`, el mismo de los correos de cambio de plan); tests `DetalleDePlan.test.tsx`, `MiPlanCambioDePlan.test.tsx` (R8) y E2E `mi-plan-cambiar-plan.spec.ts` (R22) ajustados. Paso 3 (cupo) en verde; typecheck y lint en verde; `test:rapido` rojo solo por timeout de `tarifa-status-retirado.guard` bajo carga (solo: 8/8 verde); `test:guardias` solo con la baseline (`dependencias-declaradas-presentes`).
