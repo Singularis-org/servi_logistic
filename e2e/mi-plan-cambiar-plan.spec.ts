@@ -6,7 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { fechaDeEfectoPorDefecto, inicioDelDiaPlataforma } from "../lib/planes/ciclo";
 import { PlanesRepository } from "../lib/repositories/PlanesRepository";
 import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
-import { fechaCortaEnZona } from "../lib/whatsapp-envios/informes/formato";
+import { fechaCortaEnZona } from "../lib/utils/fecha-corta";
 import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
 import { clienteDueno } from "./_dos-empresas-fixture";

@@ -18,7 +18,7 @@ import { lineaTopeSobra } from "@/lib/planes/mensajes";
 import type { PeriodoDelCobro, UsoDelPlan } from "@/lib/types/consumo-plan";
 import type { PlanVista, TipoCobro } from "@/lib/types/planes";
 import { cn } from "@/lib/utils";
-import { fechaCortaEnZona } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaCortaEnZona } from "@/lib/utils/fecha-corta";
 
 // SLT-99 (design §5; R8, R9, R13) — el detalle de un plan: la tabla de períodos, la comparación con el plan activo, el
 // aviso previo de los topes que sobran y «Cambiar a {plan}». Compartido y sin empresa: sin `activo` ni `onCambiar`
