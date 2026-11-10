@@ -69,8 +69,9 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
    mensaje**: `SL-50 «Zonas separadas de Tarifas»`, nunca solo `SL-50` en todo el mensaje. Las
    siguientes menciones de esa key en el mismo mensaje pueden ir solas. El título sale de
    `feature_list.json` (`title`).
-   - Lo hace cumplir el hook `Stop`: si tu mensaje nombra una key que no lleva su título en ninguna
-     mención, bloquea el cierre del turno y te pide reescribirlo (`scripts/nombres-de-fichas.mjs`).
+   - Lo vigila el hook `Stop`: si tu mensaje nombra una key que no lleva su título en ninguna
+     mención, añade debajo una nota con su título (`scripts/nombres-de-fichas.mjs`). No bloquea:
+     un bloqueo le duplicaba el mensaje al humano. La nota es un fallo tuyo; no cuentes con ella.
    - No cuentan las keys en código, rutas o ramas (`specs/SL-50-zonas/`). Detalle:
      `docs/jira.md > Cómo se nombra una ficha`.
 

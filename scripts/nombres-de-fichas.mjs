@@ -3,10 +3,10 @@
  * (`docs/jira.md > Cómo se nombra una ficha`, `CLAUDE.md` regla 9).
  *
  * Lo usa el hook Stop (`.claude/hooks/fin-de-turno.mjs`) sobre el último mensaje del agente. Si
- * nombra una key sin su título, el hook bloquea el cierre del turno y le pide reescribir el mensaje,
- * dándole ya los títulos de la copia del board. Es una regla con verificador, no una nota: el
- * 2026-11-07 el humano pidió que fuera obligatoria porque «ya hice la SL-50» no le decía qué tarea
- * era.
+ * nombra una key sin su título, el hook añade debajo del mensaje una nota con los títulos de la
+ * copia del board. El 2026-11-07 el humano pidió que fuera obligatoria porque «ya hice la SL-50» no
+ * le decía qué tarea era; el 2026-11-10 pidió que dejara de bloquear porque cada bloqueo le
+ * duplicaba la respuesta.
  *
  * Qué NO cuenta como mención suelta, a propósito:
  *   - lo que va en código (bloques ``` y `inline`): rutas, comandos y ramas (`specs/PROY-14-x`);
@@ -55,11 +55,12 @@ export function keysSinTitulo(texto, { titulos = new Map(), prefijos = [] } = {}
   return sueltas.filter((k) => !conTitulo.has(k));
 }
 
-/** El motivo que lee el agente cuando el hook bloquea: con los títulos que se conocen. */
-export function motivoDeBloqueo(sueltas, titulos = new Map()) {
-  const lineas = sueltas.map((k) => (titulos.has(k) ? `${k} «${titulos.get(k)}»` : `${k} «<su title en feature_list.json>»`));
-  return (
-    `Nombraste ${sueltas.join(', ')} sin su título en ninguna mención. Regla 9 de CLAUDE.md: cada key va al menos ` +
-    `una vez por mensaje como <key> «<title>». Reescribe tu último mensaje entero usando: ${lineas.join('; ')}.`
-  );
+/**
+ * La nota que el hook deja debajo del mensaje cuando faltan títulos: el humano la lee y sabe de qué
+ * ficha se habla sin abrir el board. No bloquea (2026-11-10): el hook corre cuando el humano ya ve
+ * el mensaje y un bloqueo se lo duplicaba entero.
+ */
+export function notaDeTitulos(sueltas, titulos = new Map()) {
+  const lineas = sueltas.map((k) => (titulos.has(k) ? `${k} «${titulos.get(k)}»` : `${k} (sin título en feature_list.json)`));
+  return `Fichas nombradas sin título (regla 9): ${lineas.join('; ')}.`;
 }
