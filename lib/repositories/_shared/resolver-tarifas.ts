@@ -31,6 +31,11 @@ import type {
   ValorPago,
   ValoresTienda,
 } from "@/lib/types/tarifa-flexible";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { grupoDelLugar } from "@/lib/services/geografia-dominio";
 import { clavePar, elegirPorCascada, whereCascada, type ParTarifa } from "@/lib/utils/cascada-tarifa";
 import { fleteSinIvaDeGestion } from "@/lib/utils/ingreso-empresa";
 
@@ -108,11 +113,20 @@ function unicos<T>(xs: Iterable<T>): T[] {
  * se usan los valores de esa zona aunque el distrito tenga grupo en la zona de la orden (R21). Por
  * eso el WHERE filtra por zona y la busqueda en memoria vuelve a exigir la zona de la fila.
  *
- * Los pares sin distrito no consultan nada: una orden sin distrito salta los grupos (R18).
+ * Los pares sin distrito no consultan nada: una orden sin distrito salta los grupos (R18; SLT-89
+ * R20: tampoco si su canton es miembro de un grupo).
  * Devuelve `Map<"zona|distrito", grupoId>`; un par ausente = sin grupo.
+ *
+ * SLT-89 (design §4.3; R19, R38) — EL MIEMBRO MAS CERCANO. Un grupo tambien puede tener cantones,
+ * provincias o distritos heredados (`grupo_distritos_nodo`). Una consulta mas, siempre, a esa tabla
+ * por las zonas pedidas; si no trae filas (Costa Rica el dia del deploy) el mapa es el de antes y
+ * no se carga el catalogo. Si trae, se carga el catalogo de la empresa (en la transaccion del
+ * llamador si la hay) y cada par sin grupo en `grupo_distritos_distrito` sube por su distrito y sus
+ * ancestros: gana el primer nodo con fila para esa zona. Un distrito con fila en la tabla vieja ya es
+ * el miembro mas especifico.
  */
 export async function gruposDeDistritos(
-  db: Pick<PrismaClient, "grupoDistritosDistrito">,
+  db: Pick<PrismaClient, "grupoDistritosDistrito" | "grupoDistritosNodo"> & CatalogoPrismaClient,
   pedidos: readonly DistritoEnZona[],
 ): Promise<Map<string, string>> {
   const conDistrito = pedidos.filter(
@@ -135,6 +149,29 @@ export async function gruposDeDistritos(
   for (const f of filas) {
     const clave = claveZonaDistrito(f.zonaId, f.distritoId);
     if (pedidosSet.has(clave)) grupos.set(clave, f.grupoId);
+  }
+
+  const zonas = unicos(conDistrito.map((p) => p.zonaId));
+  const filasNodo = await db.grupoDistritosNodo.findMany({
+    where: { zonaId: { in: zonas } },
+    select: { zonaId: true, nodoGeograficoId: true, grupoId: true },
+  });
+  if (filasNodo.length === 0) return grupos;
+
+  const miembrosPorZona = new Map<string, Map<string, string>>();
+  for (const f of filasNodo) {
+    const miembros = miembrosPorZona.get(f.zonaId) ?? new Map<string, string>();
+    miembros.set(f.nodoGeograficoId, f.grupoId);
+    miembrosPorZona.set(f.zonaId, miembros);
+  }
+  const { catalogo } = await new CatalogoGeograficoRepository(db).deLaEmpresa();
+  for (const p of conDistrito) {
+    const clave = claveZonaDistrito(p.zonaId, p.distritoId);
+    if (grupos.has(clave)) continue;
+    const miembros = miembrosPorZona.get(p.zonaId);
+    if (miembros === undefined) continue;
+    const grupo = grupoDelLugar(catalogo, miembros, p.distritoId);
+    if (grupo !== null) grupos.set(clave, grupo);
   }
   return grupos;
 }

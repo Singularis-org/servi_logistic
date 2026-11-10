@@ -492,6 +492,8 @@ function prismaNuevo() {
     },
     tarifaActivacion: { findFirst: vi.fn(async () => ({ id: "activacion" })) },
     tarifaValor: { findMany: vi.fn(async () => [...TABLA_NUEVA]) },
+    // SLT-89: la tabla hermana de miembros, vacia: el resolver no carga el catalogo (R38).
+    grupoDistritosNodo: { findMany: vi.fn(async () => []) },
     grupoDistritosDistrito: {
       findMany: vi.fn(async () => [{ zonaId: ZONA, distritoId: DISTRITO, grupoId: GRUPO }]),
     },

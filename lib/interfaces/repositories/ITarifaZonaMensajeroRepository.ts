@@ -10,7 +10,19 @@ import type { ContextoPagoGestion, TarifaPago } from "@/lib/types/tarifa-flexibl
 // de una transaccion ya lo cumplen.
 export type PagoTarifaTxClient = Pick<
   PrismaClient,
-  "tarifaZonaMensajero" | "tarifaActivacion" | "tarifaValor" | "grupoDistritosDistrito"
+  | "tarifaZonaMensajero"
+  | "tarifaActivacion"
+  | "tarifaValor"
+  | "grupoDistritosDistrito"
+  // SLT-89 (design §4.3): la tabla hermana de miembros y, solo cuando tiene filas, la carga del
+  // catalogo de la empresa para subir por los ancestros del distrito (miembro mas cercano, R19).
+  | "grupoDistritosNodo"
+  | "zonaDistrito"
+  | "zonaNodo"
+  | "organizacion"
+  | "tipoNivelGeografico"
+  | "nodoGeografico"
+  | "distritoZonaEspecial"
 >;
 
 // Tarifa de pago de una zona (resuelta por vehiculo o por defecto). `cobroEntregado`

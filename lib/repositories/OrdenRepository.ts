@@ -875,6 +875,7 @@ type OrdenPrismaClient = Pick<
   | "tarifaActivacion" // SLT-54 (R1/R2): el interruptor del resolver unico del cobro
   | "tarifaValor" // SLT-52 (R38): el resolver unico del cobro lee el modelo nuevo
   | "grupoDistritosDistrito" // SLT-52 (R16): el grupo del distrito de cada orden del listado
+  | "grupoDistritosNodo" // SLT-89 (R19): miembros que no son distritos asignados (miembro mas cercano)
   | "$transaction" // feature 17: generarGuiaLote necesita transaccion (R25)
   | "$executeRaw" // feature 41/R23: anti-TOCTOU (NOT EXISTS cierre bloqueante en el lote)
   | "$queryRaw" // feature 91: lo exige `JobRepository` (encolado outbox de geocodificacion)

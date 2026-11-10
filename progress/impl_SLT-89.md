@@ -218,3 +218,31 @@ Salida: `zona-nodo-herencia` + `geo-lecturas-catalogo` + `geo-consultas-zona` +
 - Salida: `geografia-service` + `zona-nodo-herencia` + tests de acciones de geografía + guardias
   `geografia-sin-cte-recursiva`/`etiquetas-geograficas-sin-literal` → `Test Files 8 passed (8) · Tests
   277 passed (277)`; `geografia-plataforma-action` 127/127; `pnpm run typecheck` exit 0.
+
+### T2.5 — resolver: miembro más cercano (R19, R20) — BLOQUEADA por una contradicción del spec
+
+Hecho en código (commit `wip`, T2.5 sin marcar):
+- `gruposDeDistritos` (`lib/repositories/_shared/resolver-tarifas.ts`, §4.3): misma firma de salida;
+  tras la consulta de hoy, una consulta a `grupo_distritos_nodo` por las zonas pedidas; sin filas
+  devuelve el mapa de hoy sin cargar el catálogo; con filas carga `CatalogoGeograficoRepository` sobre
+  el mismo cliente (la transacción del llamador si la hay) y, para cada par sin grupo en la tabla
+  vieja, `grupoDelLugar` sobre sus miembros de esa zona. Pares sin distrito: sin consulta y sin grupo
+  (R20).
+- `ClienteCobros`/`ClientePagos` (= `TarifaTxClient`, `PagoTarifaTxClient`) ganan
+  `grupoDistritosNodo`, `zonaDistrito`, `zonaNodo`, `organizacion`, `tipoNivelGeografico`,
+  `nodoGeografico`, `distritoZonaEspecial`; `OrdenRepository` gana `grupoDistritosNodo` en su `Pick`.
+- Doble: `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts` gana
+  `grupoDistritosNodo: { findMany → [] }` (cambio de entrada; sin aserciones tocadas).
+- Verde: los 65 archivos unitarios que tocan el resolver → `Test Files 65 passed (65) · Tests 1497
+  passed (1497)`; `pnpm run typecheck` exit 0; guardias `catalogo-geografico-sin-instancia-de-modulo`,
+  `tarifas-resolver-inyectado`, `geografia-dominio-puro` verdes.
+
+**El bloqueo.** Integración del resolver y de cierres (12 archivos, `logistic_slt89`): `Tests 2 failed |
+140 passed (142)`. Los dos rojos son `tests/integration/db/tarifas-flexibles-resolver.test.ts` ›
+«numero fijo de consultas por lote (R39)», cobro y pago: `expected 4 to be 3`. Es la consulta que
+design §4.3 («+1 siempre») y §9 («+1 por lote en el resolver») piden a propósito; sigue siendo un
+número fijo por lote (1 y 50 dan lo mismo: 4). Pero R38 y el *Hecho* de T2.5 exigen que las suites
+existentes del resolver pasen **sin cambiar aserciones**, y la excepción de R38 solo cubre el «antes».
+Sin `relationJoins` no hay forma de leer las dos tablas de miembros en una consulta Prisma. No he
+tocado la aserción. Decisión del humano: (a) autorizar `3 → 4` en esos dos casos (cambio de aserción
+respaldado por design §4.3/§9), o (b) otra forma de leer los miembros nuevos sin consulta extra.
