@@ -193,6 +193,40 @@ Enmienda del tope diario (design §16; R24–R28, R30, R31). Sin `./init.sh`, si
     `Test Files 9 passed (9)` · `Tests 147 passed (147)`.
   - No corridos: `pnpm run test:guardias` entera (la corre el leader), `./init.sh`, suite completa, E2E (T16).
 
+### T15 «Panel» — frontend_dev — commit el que trae esta sección
+Enmienda del tope (design §16.5; R28, R29, R30). Sin `./init.sh`, sin suite completa.
+- **Archivos:** `components/shared/ReporteBugBoton.tsx`; `tests/components/ReporteBugBoton.test.tsx` (describe
+  «SLT-98 R28–R30 — el tope diario de imágenes», 4 tests nuevos); `specs/.../tasks.md` ([x] T15).
+- **Qué cambia:** `subirPendientes` devuelve `"sin_cupo"` ante `sin_cupo_imagenes`: sin ningún PUT, y cada
+  imagen vuelve al estado que tenía antes de «Enviar» (`pendiente` o `error_subida`; ninguna pasa a
+  `error_subida` por el tope). `enviar` sigue al paso 3 con solo las que ya tienen `imagenId`, en el orden del
+  panel. Ningún texto nuevo, ningún `role="alert"` nuevo; `IMAGENES_POR_DIA_MAX` no entra en el panel.
+  `imagenes` va en la entrada siempre que el panel tenga alguna imagen (antes: si había adjuntas), para que
+  sin cupo salga `imagenes: []`; sin imágenes en el panel la entrada sigue siendo la de SLT-87.
+- **Mapa:**
+  - R28 → «R28 — «Reintentar» tras un PUT fallido pide permiso solo para la que falló: la que ya subió no
+    vuelve a la action de permisos»
+  - R29 → «R29 — con sin_cupo_imagenes no hay PUT, se llama a enviarReporteBugAction con el texto e
+    imagenes: [], no hay ningún role="alert" y sale «Gracias, recibimos tu reporte» con 0/5 imágenes»,
+    «R29 — en un reintento sin cupo, el reporte lleva solo las imágenes ya subidas, en orden, y no la que
+    falló» y «R29 — sin cupo y con el envío respondiendo error, las imágenes siguen en pendiente y ninguna
+    pasa a error_subida»
+  - R30 → en el panel lo cubre el primer test de R29 (con el tope lleno el reporte se envía); el resto, en
+    servicio (T14) y E2E (T16).
+- **(propuesta)** Mientras espera la respuesta de permisos el panel muestra «Subiendo imágenes…» y
+  «Subiendo…» como siempre; si la respuesta es sin cupo, las imágenes vuelven a su estado y el envío sigue.
+  No es un aviso del tope (no se sabe hasta que responde), y evita un estado nuevo.
+- **(propuesta)** El test de R28 usa tres imágenes (la 1 y la 3 suben, falla la 2) para que se vea que
+  ninguna de las dos subidas vuelve a la action, no solo la anterior a la que falló.
+- **Verificación:**
+  - `pnpm exec vitest run tests/components/ReporteBugBoton.test.tsx`: `Test Files 1 passed (1)` ·
+    `Tests 31 passed (31)` (27 de antes + 4 nuevos), 9.48 s.
+  - `pnpm exec eslint components/shared/ReporteBugBoton.tsx tests/components/ReporteBugBoton.test.tsx`:
+    «No issues found», exit 0.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` (`tsc --noEmit`): exit 0.
+  - No corridos: `./init.sh`, suite completa, E2E (T16).
+- **Veredicto:** T15 hecha; R28 y R29 del panel con test en verde.
+
 ## E2E — dos corridas sobre el código final
 Base `servi_logistic_slt98_e2e` recreada (DROP/CREATE, `migrate deploy`, `db:seed`) solo antes de la 1.ª.
 `next build` con 8 GB y `NEXT_PUBLIC_APP_URL=http://localhost:3044`: exit 0 en 262 s, sobre 873b4d67; después

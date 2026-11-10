@@ -645,6 +645,121 @@ describe("SLT-98 R6, R7, R11 — el envío con imágenes", () => {
   });
 });
 
+describe("SLT-98 R28–R30 — el tope diario de imágenes", () => {
+  const SIN_CUPO = { status: "sin_cupo_imagenes" as const };
+
+  it("R28 — «Reintentar» tras un PUT fallido pide permiso solo para la que falló: la que ya subió no vuelve a la action de permisos", async () => {
+    const { user } = await abrir();
+    const a = archivo("a.png", "image/png", 3);
+    const b = archivo("b.jpg", "image/jpeg", 4);
+    const c = archivo("c.webp", "image/webp", 6);
+    elegir(a, b, c);
+    escribir("el resumen no suma");
+    permisosAction.mockResolvedValueOnce(listas([ID_1, URL_1], [ID_2, URL_2], [ID_3, URL_3]));
+    fetchMock.mockResolvedValueOnce(OK).mockResolvedValueOnce(FALLO_500).mockResolvedValueOnce(OK);
+    await user.click(botonEnviar());
+    await screen.findByText("No se pudo subir.");
+
+    permisosAction.mockResolvedValueOnce(listas(["44444444-4444-4444-8444-444444444444", URL_2]));
+    fetchMock.mockResolvedValueOnce(OK);
+    action.mockResolvedValue({ status: "enviado" });
+    await user.click(screen.getByRole("button", { name: "Reintentar imagen 2" }));
+    expect(await screen.findByText("Gracias, recibimos tu reporte")).toBeTruthy();
+
+    expect(permisosAction).toHaveBeenCalledTimes(2);
+    // El segundo pedido es solo de la que falló: ni la 1 ni la 3, que ya subieron, vuelven a contar.
+    expect(permisosAction.mock.calls[1][0]).toEqual({ imagenes: [{ tipo: "image/jpeg", tamano: 4 }] });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(cuerpoDelPut(3)).toBe(b);
+  });
+
+  it("R29 — con sin_cupo_imagenes no hay PUT, se llama a enviarReporteBugAction con el texto e imagenes: [], no hay ningún role=\"alert\" y sale «Gracias, recibimos tu reporte» con 0/5 imágenes", async () => {
+    const { user } = await abrir();
+    elegir(archivo("a.png", "image/png"), archivo("b.png", "image/png"));
+    escribir("no carga el detalle del envío");
+    permisosAction.mockResolvedValue(SIN_CUPO);
+    action.mockResolvedValue({ status: "enviado" });
+    await user.click(botonEnviar());
+
+    expect(await screen.findByText("Gracias, recibimos tu reporte")).toBeTruthy();
+    expect(permisosAction).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(action).toHaveBeenCalledTimes(1);
+    const entrada = action.mock.calls[0][0] as { descripcion: string; imagenes: unknown };
+    expect(entrada.descripcion).toBe("no carga el detalle del envío");
+    expect(entrada.imagenes).toEqual([]);
+    expect(screen.queryAllByRole("alert")).toHaveLength(0);
+    expect(screen.queryByText("No se pudo subir.")).toBeNull();
+    expect(screen.getByText("0/5 imágenes")).toBeTruthy();
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
+    expect(revocarVista).toHaveBeenCalledWith("blob:vista-1");
+    expect(revocarVista).toHaveBeenCalledWith("blob:vista-2");
+    expect(window.localStorage.getItem(CLAVE)).toBeNull();
+  });
+
+  it("R29 — en un reintento sin cupo, el reporte lleva solo las imágenes ya subidas, en orden, y no la que falló", async () => {
+    const { user } = await abrir();
+    elegir(archivo("a.png", "image/png"), archivo("b.jpg", "image/jpeg"), archivo("c.webp", "image/webp"));
+    escribir("la ruta sale duplicada");
+    permisosAction.mockResolvedValueOnce(listas([ID_1, URL_1], [ID_2, URL_2], [ID_3, URL_3]));
+    fetchMock.mockResolvedValueOnce(OK).mockResolvedValueOnce(FALLO_500).mockResolvedValueOnce(OK);
+    await user.click(botonEnviar());
+    await screen.findByText("No se pudo subir.");
+
+    permisosAction.mockResolvedValueOnce(SIN_CUPO);
+    action.mockResolvedValue({ status: "enviado" });
+    await user.click(screen.getByRole("button", { name: "Reintentar imagen 2" }));
+    expect(await screen.findByText("Gracias, recibimos tu reporte")).toBeTruthy();
+
+    expect(permisosAction).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(action).toHaveBeenCalledTimes(1);
+    expect((action.mock.calls[0][0] as { imagenes: unknown }).imagenes).toEqual([
+      { id: ID_1, tipo: "image/png" },
+      { id: ID_3, tipo: "image/webp" },
+    ]);
+    expect(screen.queryAllByRole("alert")).toHaveLength(0);
+    expect(screen.getByText("0/5 imágenes")).toBeTruthy();
+  });
+
+  it("R29 — sin cupo y con el envío respondiendo error, las imágenes siguen en pendiente y ninguna pasa a error_subida", async () => {
+    const { user } = await abrir();
+    const a = archivo("a.png", "image/png", 9);
+    const b = archivo("b.png", "image/png", 12);
+    elegir(a, b);
+    escribir("no aparece el botón de cobrar");
+    permisosAction.mockResolvedValue(SIN_CUPO);
+    action.mockResolvedValue({ status: "error" });
+    await user.click(botonEnviar());
+
+    // El fallo es el de cualquier envío (SLT-87), no uno del tope.
+    expect(await screen.findByText("No pudimos enviar tu reporte. Inténtalo de nuevo.")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((action.mock.calls[0][0] as { imagenes: unknown }).imagenes).toEqual([]);
+    // Pendientes: sin motivo, sin «Reintentar», sin el aviso de bloqueo y con «Enviar» habilitado.
+    expect(screen.queryByText("No se pudo subir.")).toBeNull();
+    expect(screen.queryByText("Subiendo…")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Reintentar imagen/ })).toBeNull();
+    expect(screen.queryByText("Quita o reintenta las imágenes marcadas para poder enviar.")).toBeNull();
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+    expect(screen.getByText("2/5 imágenes")).toBeTruthy();
+    expect((campo() as HTMLTextAreaElement).value).toBe("no aparece el botón de cobrar");
+    expect(botonEnviar().disabled).toBe(false);
+
+    // Un «Enviar» después vuelve a pedir permisos para las dos (§16.5).
+    action.mockResolvedValue({ status: "enviado" });
+    await user.click(botonEnviar());
+    expect(await screen.findByText("Gracias, recibimos tu reporte")).toBeTruthy();
+    expect(permisosAction).toHaveBeenCalledTimes(2);
+    expect(permisosAction.mock.calls[1][0]).toEqual({
+      imagenes: [
+        { tipo: "image/png", tamano: 9 },
+        { tipo: "image/png", tamano: 12 },
+      ],
+    });
+  });
+});
+
 describe("SLT-98 R8 — las imágenes no van al borrador", () => {
   it("el borrador guardado no lleva imágenes; al montar de nuevo el panel tiene el texto y 0/5 imágenes; Descartar y el envío bueno vacían las imágenes y revocan sus vistas previas", async () => {
     // Al desmontar (recargar), el texto queda y las imágenes se van; sus vistas se revocan.

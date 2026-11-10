@@ -160,7 +160,7 @@
       veces.
   - **Hecho:** `tests/unit/services/reporte-bug-service.test.ts` y `tests/unit/actions/reporte-bug-action.test.ts`
     en verde, con los casos del mapa, y `pnpm run typecheck` en verde.
-- [ ] **T15. Panel** (dep. T14; R28, R29, R30).
+- [x] **T15. Panel** (dep. T14; R28, R29, R30).
   - **Archivo:** `components/shared/ReporteBugBoton.tsx`: con `sin_cupo_imagenes`, saltar al envío del
     reporte sin las imágenes sin permiso, sin `PUT` y sin aviso (design §16.5). Ningún texto nuevo.
   - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` en verde, con los casos del mapa.

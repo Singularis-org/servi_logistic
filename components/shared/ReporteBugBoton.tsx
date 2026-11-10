@@ -320,11 +320,21 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
     setSobrantes(0);
   }
 
+  /** Devuelve cada imagen al estado que tenía antes de pulsar «Enviar» (R29: el tope no marca ninguna). */
+  function restaurarEstados(previas: readonly ImagenPanel[]) {
+    for (const estadoPrevio of new Set(previas.map((i) => i.estado))) {
+      const claves = previas.filter((i) => i.estado === estadoPrevio).map((i) => i.clave);
+      despachar({ accion: "estado", claves, estado: estadoPrevio });
+    }
+  }
+
   /**
    * Pasos 1 y 2 de §4.2 sobre las imágenes que faltan por subir. Devuelve los `imagenId` nuevos por
-   * clave, o `null` si alguna no subió (y entonces ya quedó marcada en `error_subida`).
+   * clave, `null` si alguna no subió (y entonces ya quedó marcada en `error_subida`), o `"sin_cupo"` si
+   * el tope diario no dejó pedir permisos (design §16.5): entonces no hubo ningún PUT y cada imagen
+   * vuelve al estado que tenía.
    */
-  async function subirPendientes(porSubir: ImagenPanel[]): Promise<Map<string, string> | null> {
+  async function subirPendientes(porSubir: ImagenPanel[]): Promise<Map<string, string> | null | "sin_cupo"> {
     const claves = porSubir.map((i) => i.clave);
     despachar({ accion: "estado", claves, estado: "subiendo" });
     let permisos: { imagenId: string; url: string }[] | null = null;
@@ -332,6 +342,10 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
       const r = await prepararSubidaImagenesReporteAction({
         imagenes: porSubir.map((i) => ({ tipo: i.tipo as TipoImagenReporte, tamano: i.archivo.size })),
       });
+      if (r.status === "sin_cupo_imagenes") {
+        restaurarEstados(porSubir);
+        return "sin_cupo";
+      }
       if (r.status === "listas" && r.permisos.length === porSubir.length) permisos = r.permisos;
     } catch {
       // Fallo manejado: sin permisos no se sube nada y las imágenes quedan para reintentar (§4.2 paso 1).
@@ -365,6 +379,7 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
     setEstado("enviando");
 
     let nuevos = new Map<string, string>();
+    let sinCupo = false;
     if (porSubir.length > 0) {
       setSubiendo(true);
       const subidas = await subirPendientes(porSubir);
@@ -374,17 +389,21 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
         setEstado("editando");
         return;
       }
-      nuevos = subidas;
+      if (subidas === "sin_cupo") sinCupo = true;
+      else nuevos = subidas;
     }
 
-    const adjuntas = lista.map((i) => ({ id: i.imagenId ?? nuevos.get(i.clave) ?? "", tipo: i.tipo as TipoImagenReporte }));
+    // Sin cupo (R29, P11, P13) el reporte sigue sin aviso con las que ya subieron en un intento anterior,
+    // en el orden del panel; las que no tienen permiso nunca salen del navegador.
+    const conId = sinCupo ? lista.filter((i) => i.imagenId !== undefined) : lista;
+    const adjuntas = conId.map((i) => ({ id: i.imagenId ?? nuevos.get(i.clave) ?? "", tipo: i.tipo as TipoImagenReporte }));
     let resultado: Estado = "error";
     try {
       const r = await enviarReporteBugAction({
         descripcion: texto,
         ...contextoDelNavegador(),
-        // Sin imágenes, la entrada es la de SLT-87.
-        ...(adjuntas.length > 0 ? { imagenes: adjuntas } : {}),
+        // Sin imágenes en el panel, la entrada es la de SLT-87. Con imágenes y sin cupo puede ir `[]`.
+        ...(lista.length > 0 ? { imagenes: adjuntas } : {}),
       });
       if (r.status === "enviado") resultado = "gracias";
       else if (r.status === "imagenes_invalidas") {
