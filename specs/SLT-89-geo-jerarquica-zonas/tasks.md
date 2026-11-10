@@ -41,7 +41,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   lectura congelada de `scripts/geo-equivalencia/` (SLT-44, SLT-65): no se tocan.
 - Helper `tests/unit/db/_migraciones-aditivas.ts`, `scripts/generar-misma-empresa.ts`.
 
-- [ ] **T0.1** Comprobar que la rama arranca en verde (`./init.sh`; si la base local no da, el check
+- [x] **T0.1** Comprobar que la rama arranca en verde (`./init.sh`; si la base local no da, el check
   `gate-completo` de CI) y anotar el sha de partida en `progress/impl_SLT-89.md`.
   *Hecho:* verde anotado.
 - [ ] **T0.2** Maqueta de la parte visual, **bloqueante para T7.1, T7.2 y T7.3** (R48, decisión P2
