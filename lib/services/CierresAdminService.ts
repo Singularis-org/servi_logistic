@@ -135,6 +135,12 @@ function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpre
       fulfillment: null,
       ivaFulfillment: null,
       tarifa: ingreso.tarifa === null ? null : { ...ingreso.tarifa, fulfillment: null },
+      // SLT-101 (R94): los tres campos nuevos del fulfillment («Se cobró», su % de IVA y la fecha
+      // del cargo) son el mismo dato de la central. Se anulan si vienen; si no vienen no hay nada
+      // que filtrar, y no se añade la clave (los campos son aditivos).
+      ...(ingreso.fulfillmentConIva !== undefined ? { fulfillmentConIva: null } : {}),
+      ...(ingreso.ivaPctFulfillment !== undefined ? { ivaPctFulfillment: null } : {}),
+      ...(ingreso.fulfillmentCargadoAt !== undefined ? { fulfillmentCargadoAt: null } : {}),
     },
   };
 }

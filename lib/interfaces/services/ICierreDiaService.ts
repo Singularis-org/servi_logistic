@@ -1,4 +1,10 @@
-import type { GestionResultado, MetodoPagoValue, RolValue } from "@prisma/client";
+import type {
+  GestionResultado,
+  MetodoPagoValue,
+  RolValue,
+  TarifaModo,
+  TarifaNivel,
+} from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreEstado, CierreDestinoTipo } from "@/lib/types/cierre";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
@@ -144,6 +150,51 @@ export interface CierreDetalleGestion {
    * Solo lo rellena el mapper de los detalles de admin.
    */
   ajustesPago?: AjustePagoGestionDTO[];
+  /**
+   * SLT-101 (R66, R95) — el pago «por tarifa» congelado de esta gestion para el MENSAJERO (nunca la
+   * fila de la satelite), con su origen y, si hubo ajuste, la diferencia hasta `pagoMensajero`.
+   * `null` sin fila congelada (modelo viejo). OPCIONAL: solo lo rellenan los detalles de admin; la
+   * vista del mensajero no lo lleva.
+   */
+  pagoPorTarifa?: PagoPorTarifaDTO | null;
+}
+
+/**
+ * SLT-101 (R64, R95, R97) — de que valor de tarifa salio un importe congelado: su nivel y los
+ * nombres de zona, grupo o vehiculo de ese valor. Nombres `null` si el valor se borro despues (la FK
+ * es SET NULL) o si el nivel no los tiene.
+ */
+export interface OrigenTarifaDTO {
+  nivel: TarifaNivel;
+  zonaNombre: string | null;
+  grupoNombre: string | null;
+  vehiculoNombre: string | null;
+}
+
+/**
+ * SLT-101 (R64, R97) — la tarifa congelada de UN concepto cobrado a la tienda en el modelo nuevo.
+ * `concepto` dice a que linea del cobro corresponde. `base` solo en porcentaje (el valor del pedido,
+ * `montoCobrar`); `null` en monto. Importes y porcentajes STRING escala 2.
+ */
+export interface ConceptoTarifaDTO extends OrigenTarifaDTO {
+  concepto: "flete" | "fleteDevolucion" | "comisionCod";
+  modo: TarifaModo;
+  valor: string;
+  ivaPct: string;
+  base: string | null;
+}
+
+/**
+ * SLT-101 (R66, R95) — `gestion_pago_congelado` del mensajero. `ajuste` es la diferencia en valor
+ * absoluto, con su signo, entre `pagoMensajero` y `importe` cuando hubo ajuste; `null` si no hubo o
+ * si no difieren.
+ */
+export interface PagoPorTarifaDTO extends OrigenTarifaDTO {
+  importe: string;
+  modo: TarifaModo;
+  valor: string;
+  base: string | null;
+  ajuste: { signo: "suma" | "resta"; monto: string } | null;
 }
 
 /**
@@ -240,6 +291,18 @@ export interface IngresoEmpresaDTO {
   // SLT-54 (R63): `tarifa === null` no distingue «sin tarifa» de «modelo nuevo», donde no hay fila de
   // `tarifas` que enseñar, y la tarjeta diria algo falso. `null` = sin tarifa congelada.
   tarifaModelo: "viejo" | "nuevo" | null;
+  // SLT-101 (R65, R92-R94, R64, R97) — campos ADITIVOS y opcionales: los rellena el mapper del
+  // snapshot (`toIngresoEmpresa`); un doble de hoy que no los trae sigue valiendo.
+  /** Suma de los IVA de los conceptos presentes; `null` si ninguno aplica. */
+  ivaIncluido?: string | null;
+  /** «Se cobró»: `fulfillment` + `ivaFulfillment`. `null` para quien no es la central (481). */
+  fulfillmentConIva?: string | null;
+  /** % de IVA congelado del concepto `tienda_fulfillment`; `null` en el viejo o sin concepto. */
+  ivaPctFulfillment?: string | null;
+  /** ISO del cargo de fulfillment vigente de la orden (su ultimo movimiento es un cargo). */
+  fulfillmentCargadoAt?: string | null;
+  /** Tarifa congelada de cada concepto cobrado (modelo nuevo); `[]` en el viejo. */
+  conceptosTarifa?: ConceptoTarifaDTO[];
 }
 
 /**

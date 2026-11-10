@@ -205,10 +205,15 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
     // SLT-56 (2026-10-29): el detalle gana `ajustesPagoMensajero` (la marca «Ajustado» y su
     // historial, R19/R20) y la descarga NO: el spec la pide en los detalles (design §4.5) y no en
     // la hoja fundida. El pago que la hoja ya lleva es el vigente, ajustado o no.
+    //
+    // SLT-101 (2026-11-09): el detalle gana `pagosCongelados` (el pago «por tarifa» de la fila y
+    // «Sin tarifa de pago», R66/R95/R96) y la hoja fundida NO: el spec lo pide en la fila del
+    // detalle; la «Señales» de «Descargar» (R91) sale del DTO del detalle, no de esta hoja.
     expect([...delDetalle].filter((k) => !deLaDescarga.has(k))).toEqual([
       "evidenciaStoragePath",
       "evidencias",
       "ajustesPagoMensajero",
+      "pagosCongelados",
     ]);
     // `cierreId` no es una celda (R42): es la clave del join contra `cierre_detail`, cuyo grano
     // es (cierre_id, orden_id). Al cruzar cierres, emparejar sólo por orden cogería la fila

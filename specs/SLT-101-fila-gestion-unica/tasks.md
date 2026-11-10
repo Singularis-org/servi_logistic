@@ -66,7 +66,7 @@
 
 ## T1 — Servidor · `backend_dev` (depende de T0)
 
-- [ ] **T1.1** — Campos aditivos y mapper (`design.md > Servidor`):
+- [x] **T1.1** — Campos aditivos y mapper (`design.md > Servidor`):
   - `lib/interfaces/services/ICierreDiaService.ts`: `ivaIncluido`, `fulfillmentConIva`,
     `ivaPctFulfillment`, `fulfillmentCargadoAt`, `conceptosTarifa` en `IngresoEmpresaDTO`;
     `pagoPorTarifa` en `CierreDetalleGestion`; tipos `OrigenTarifaDTO`, `ConceptoTarifaDTO`,
@@ -85,7 +85,7 @@
     `fulfillmentConIva`, `ivaPctFulfillment` y `fulfillmentCargadoAt`.
 
   **Hecho:** typecheck verde; `git diff db/` vacío; ningún campo existente cambia (R92).
-- [ ] **T1.2** — `tests/integration/db/cierre-detalle-cifras-fila-sql-real.test.ts` (SQL real, base
+- [x] **T1.2** — `tests/integration/db/cierre-detalle-cifras-fila-sql-real.test.ts` (SQL real, base
   desechable) con la siembra y los literales de `design.md > Verificación > Servidor` (R64-R66,
   R92-R96). Y `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts` ampliado: la
   satélite recibe `null` en los tres campos de fulfillment y la central los recibe (R94).

@@ -8,6 +8,7 @@ import type {
   CierreRechazoDeTienda,
   CierreTotales,
   IngresoEmpresaDTO,
+  PagoPorTarifaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type { PagosDelCierre } from "@/lib/types/tarifa-flexible";
@@ -190,6 +191,11 @@ export interface CierreGestionPendienteRow {
   // selecciona (Q2: el mensajero ve el valor nuevo, sin marca ni motivo). Ausente != lista vacia:
   // ausente es «esta vista no lo lee», `[]` es «no hay ajustes».
   ajustesPago?: AjustePagoGestionDTO[];
+  // SLT-101 (R66, R95): el pago «por tarifa» congelado del mensajero. Solo los repos de ADMIN.
+  pagoPorTarifa?: PagoPorTarifaDTO | null;
+  // SLT-101 (R96): en los repos de ADMIN, derivado de lo congelado (modelo nuevo sin fila del
+  // mensajero). Ausente en la vista en vivo, que lo calcula aparte y lo pasa a `toDetalleDTO`.
+  tarifaFaltante?: boolean;
 }
 
 /**
