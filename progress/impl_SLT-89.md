@@ -647,3 +647,30 @@ Autorizados («antes» y «cómo se llega al botón», tasks T5.6/T7.2/T7.3, des
 | R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts`; `grupo-distritos-service.test.ts`; `tests/integration/actions/tarifas-action.test.ts`; `TarifasGrupos.test.tsx` («antes» enviado) |
 | R47 | `TarifasGrupos.test.tsx` (cierra, aviso `aria-live` y recarga al renombrar, cambiar lugares y borrar) |
 | R48 | Revisión: «Maqueta aprobada por el humano el 2026-11-10» en esta bitácora (`cf715317`), anterior al primer commit de T7 (`3534e676`) |
+
+## Decisión del 2026-11-10: el padre de cada miembro (R22)
+
+Decisión humana en `requirements.md > Decisiones cerradas` (commit `2d942b5d`): el padre se muestra
+siempre, también en una zona de solo distritos.
+
+- Servidor: `DistritoDeZona` gana `padre` (opcional en el tipo, para que los dobles de hoy sigan
+  valiendo). `TarifasPantallaRepository.distritosDeZona` lo pone en los tres caminos: catálogo (zona con
+  nodos), y `zona_distrito` con y sin marca (el cantón por la FK vieja `distrito.canton`, sin cargar el
+  catálogo: R38). `cargarZona` lo reenvía en `distritos` (spread de siempre). El nivel lo pinta la
+  pantalla con la etiqueta de distrito del país.
+- Pantalla: `TarifasGrupos` usa ese `padre` cuando no hay árbol («Gama · barrio de Cerro»).
+- Tests nuevos: `tarifas-referencia.test.ts` (zona de solo distritos, con y sin marca),
+  `grupo-nodo.test.ts` (camino del catálogo, cantón asignado) y 3 casos en `TarifasGrupos.test.tsx`
+  (crear, cambiar lugares y borrar sin árbol). Ninguna aserción existente cambió.
+- El modal de borrar grupo sigue sin conteo de órdenes (decisión 2 del mismo día).
+
+Verificación (`logistic_slt89`, `--maxWorkers=1`, heap de 8 GB): `typecheck` exit 0; eslint limpio en lo
+tocado. Integración de tarifas y grupos (19 archivos: `tarifa*`, `grupo-*`, `tarifas-action`,
+`slt89-equivalencia-cr`, `zona-nodo-dos-empresas`) + contrato v1 (modo comparar) →
+`Test Files 1 failed | 19 passed (20) · Tests 266 passed | 9 skipped`: el rojo es
+`tarifa-zona-borrado-fk-real`, en `tests/baseline-rojos.json`. Unitarios y componentes de tarifas
+(7 archivos) → `162 passed`. Guardias de tarifas, zonas, grupos, geografía, SQL, etiquetas, superficie y
+catálogo (25 archivos) → `275 passed`.
+
+Mapa: R22 → `TarifasGrupos.test.tsx` (también sin árbol), `tarifas-referencia.test.ts` y `grupo-nodo.test.ts`
+(el padre que manda el servidor).

@@ -700,3 +700,27 @@ describeSiHayBase("SLT-54 — los catálogos de la pantalla", () => {
     });
   });
 });
+
+describeSiHayBase("SLT-89 R22 (decisión del 2026-11-10) — cada distrito de la zona viaja con el nombre de su padre", () => {
+  it("zona de solo distritos, sin activar (con marca): `cargarZona` manda el cantón de cada distrito", async () => {
+    await conEscenario(async (tx, e) => {
+      const { distritos } = await referenciaDe(tx, e, e.Z);
+      const cantones = await tx.distrito.findMany({
+        where: { id: { in: [e.d1, e.d2, e.d3, e.d4] } },
+        select: { id: true, canton: { select: { nombre: true } } },
+      });
+      const esperado = Object.fromEntries(cantones.map((d) => [d.id, d.canton.nombre]));
+      expect(Object.fromEntries(distritos.map((d) => [d.id, d.padre]))).toEqual(esperado);
+    });
+  });
+
+  it("zona de solo distritos, sin marca: el repositorio manda igual el padre", async () => {
+    await conEscenario(async (tx, e) => {
+      const repo = new TarifasPantallaRepository(clienteConSavepoint(tx));
+      const filas = await comoEmpresa(tx, e.A, () => repo.distritosDeZona(e.Z, { conMarca: false }));
+      const canton = await tx.distrito.findUniqueOrThrow({ where: { id: e.d1 }, select: { canton: { select: { nombre: true } } } });
+      expect(filas).toHaveLength(4);
+      expect(new Set(filas.map((d) => d.padre))).toEqual(new Set([canton.canton.nombre]));
+    });
+  });
+});

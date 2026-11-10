@@ -36,6 +36,13 @@ export interface DistritoDeZona {
   id: string;
   nombre: string;
   zonaEspecial: boolean;
+  /**
+   * SLT-89 (R22; decision humana del 2026-11-10): el nombre del padre del distrito (su canton), para
+   * pintar cada miembro de un grupo como «San Antonio · distrito de Escazu» tambien cuando la zona solo
+   * tiene distritos y la pantalla no recibe el arbol. Opcional en el tipo para que los dobles de hoy
+   * sigan valiendo; el repositorio lo pone siempre.
+   */
+  padre?: string | null;
 }
 
 export interface ITarifasPantallaRepository {

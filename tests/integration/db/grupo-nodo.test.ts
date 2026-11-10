@@ -235,6 +235,24 @@ describeSiHayBase("SLT-89 · R17–R21, R31 — grupos de tarifas sobre el nodo"
     expect(arbol.tipos.map((t) => t.profundidad)).toEqual([1, 2, 3, 4]);
   });
 
+  it("R22 (decision del 2026-11-10): con un canton asignado, cada distrito ofrecido viaja con el nombre de su padre", async () => {
+    const r = await conEscenario(async (c) => {
+      const { geo, zonas } = c.e.emp.base;
+      const repo = () => new TarifasPantallaRepository(clienteConSavepoint(c.tx));
+      await c.guardarZona(zonas.surId, [geo.distritoBajoCantonRetiradoId], [geo.cantonId]);
+      const distritos = await comoLaEmpresa(c.tx, c.e.empresaId, () => repo().distritosDeZona(zonas.surId, { conMarca: true }));
+      const padres = await c.tx.distrito.findMany({
+        where: { id: { in: distritos.map((d) => d.id) } },
+        select: { id: true, canton: { select: { nombre: true } } },
+      });
+      return { distritos, padres };
+    });
+    expect(r.distritos).toHaveLength(2);
+    expect(Object.fromEntries(r.distritos.map((d) => [d.id, d.padre]))).toEqual(
+      Object.fromEntries(r.padres.map((p) => [p.id, p.canton.nombre])),
+    );
+  });
+
   it("⭑ R21 (decision del 2026-11-10): con solo distritos, el que sale de la zona sale de su grupo y deja su fila de historial", async () => {
     const r = await conEscenario(async (c) => {
       const { geo, zonas } = c.e.emp.base;

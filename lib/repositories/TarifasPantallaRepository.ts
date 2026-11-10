@@ -162,6 +162,7 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
     // lectura de abajo es la de hoy (R38).
     if ((await leerNodosDeZona(this.prisma, zonaId)).length > 0) {
       const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(this.prisma).deLaEmpresa();
+      const nombrePorId = new Map(catalogo.nodos.map((n) => [n.id, n.nombre]));
       return catalogo.nodos
         .filter(
           (n) =>
@@ -172,22 +173,34 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
           id: n.id,
           nombre: n.nombre,
           zonaEspecial: opciones.conMarca && esZonaEspecial(catalogo, asignaciones, n.id),
+          padre: n.padreId === null ? null : (nombrePorId.get(n.padreId) ?? null),
         }))
         .sort(porNombre);
     }
+    // SLT-89 (R22, decision del 2026-11-10): el padre (canton) de cada distrito viaja tambien aqui, de su
+    // FK vieja, para que la pantalla de grupos lo pinte sin el arbol.
     if (!opciones.conMarca) {
       const filas = await this.prisma.zonaDistrito.findMany({
         where: { zonaId },
-        select: { distrito: { select: { id: true, nombre: true } } },
+        select: { distrito: { select: { id: true, nombre: true, canton: { select: { nombre: true } } } } },
       });
-      return filas.map(({ distrito }) => ({ ...distrito, zonaEspecial: false })).sort(porNombre);
+      return filas
+        .map(({ distrito: d }) => ({ id: d.id, nombre: d.nombre, zonaEspecial: false, padre: d.canton.nombre }))
+        .sort(porNombre);
     }
     const filas = await this.prisma.zonaDistrito.findMany({
       where: { zonaId },
-      select: { distrito: { select: { id: true, nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } } },
+      select: {
+        distrito: { select: { id: true, nombre: true, canton: { select: { nombre: true } }, ...SELECT_MARCA_ZONA_ESPECIAL } },
+      },
     });
     return filas
-      .map(({ distrito: d }) => ({ id: d.id, nombre: d.nombre, zonaEspecial: esZonaEspecialDeLaEmpresa(d) }))
+      .map(({ distrito: d }) => ({
+        id: d.id,
+        nombre: d.nombre,
+        zonaEspecial: esZonaEspecialDeLaEmpresa(d),
+        padre: d.canton.nombre,
+      }))
       .sort(porNombre);
   }
 

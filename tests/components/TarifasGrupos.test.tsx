@@ -476,3 +476,45 @@ describe("SLT-89 R47 — cambio concurrente: cierra, avisa con `aria-live` y rec
     expect(p.onCambio).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("SLT-89 R22 (decisión del 2026-11-10) — sin árbol, cada miembro con su nivel y el nombre de su padre", () => {
+  /** Zona de solo distritos: `cargarZona` no manda `nodos`, pero cada distrito trae su padre. */
+  const CON_PADRE = [
+    { id: "d1", nombre: "Alfa", zonaEspecial: false, grupoId: "g1", padre: "Llano" },
+    { id: "d2", nombre: "Beta", zonaEspecial: false, grupoId: "g1", padre: "Llano" },
+    { id: "d3", nombre: "Gama", zonaEspecial: false, grupoId: null, padre: "Cerro" },
+  ];
+
+  it("crear: el lugar elegido sale «Gama · barrio de Cerro»", async () => {
+    const u = userEvent.setup();
+    montar({ distritos: CON_PADRE });
+    const d = await abrirCrear(u);
+    await u.type(within(d).getByLabelText(/Nombre del grupo/), "Altos");
+    await u.click(within(d).getByRole("checkbox", { name: /Gama/ }));
+    await u.click(within(d).getByRole("button", { name: "Guardar" }));
+
+    expect(within(d).getByRole("region", { name: "Después" })).toHaveTextContent("Gama · barrio de Cerro");
+  });
+
+  it("cambiar lugares: entran y salen con su padre", async () => {
+    const u = userEvent.setup();
+    montar({ distritos: CON_PADRE });
+    await u.click(screen.getByRole("button", { name: "Editar lugares de Costa" }));
+    const d = await screen.findByRole("dialog");
+    await u.click(within(d).getByRole("checkbox", { name: /Beta/ }));
+    await u.click(within(d).getByRole("button", { name: "Guardar" }));
+
+    expect(within(d).getByRole("region", { name: "Entran" })).toHaveTextContent("Ninguno");
+    expect(within(d).getByRole("region", { name: "Salen" })).toHaveTextContent("Beta · barrio de Llano");
+  });
+
+  it("borrar: los miembros de antes, cada uno con su padre", async () => {
+    const u = userEvent.setup();
+    montar({ distritos: CON_PADRE });
+    await u.click(screen.getByRole("button", { name: "Borrar Costa" }));
+    const d = await screen.findByRole("dialog");
+    const antes = within(d).getByRole("region", { name: "Antes" });
+    expect(antes).toHaveTextContent("Alfa · barrio de Llano");
+    expect(antes).toHaveTextContent("Beta · barrio de Llano");
+  });
+});

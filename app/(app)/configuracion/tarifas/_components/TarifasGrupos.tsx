@@ -134,8 +134,12 @@ export function TarifasGrupos({
       }
     };
     recorrer(nodos?.raices ?? [], null);
+    // R22 (decisión del 2026-11-10): el servidor manda el padre de cada distrito de la zona, también
+    // sin árbol; el del árbol, si lo hay, ya está y coincide.
     for (const d of distritos) {
-      if (!m.has(d.id)) m.set(d.id, { id: d.id, nombre: d.nombre, profundidad: PROFUNDIDAD_DE_DISTRITO, padre: null });
+      if (!m.has(d.id)) {
+        m.set(d.id, { id: d.id, nombre: d.nombre, profundidad: PROFUNDIDAD_DE_DISTRITO, padre: d.padre ?? null });
+      }
     }
     for (const g of grupos) {
       for (const d of g.distritos) {
