@@ -1085,16 +1085,25 @@ export function CierresAdminModule({
   }
 
   const cierreAbierto = detalle?.cierre ?? null;
+  /**
+   * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (PA1, R116): la central abre
+   * un cierre del día de una bodega SATÉLITE (desde «Ver su cierre» del detalle de bodega) SOLO PARA
+   * MIRARLO: solo lectura, filas «solo lectura», sin pago, decisión, destrabe, corrección ni ajuste.
+   * Ocultar no es la defensa: las Server Actions de escritura siguen con su alcance `bodega_central`
+   * y responden `no_encontrada` sobre ese cierre (T1); esto solo decide qué se OFRECE.
+   */
+  const soloLecturaSatelite = audiencia === "admin" && cierreAbierto?.destinoTipo === "bodega_satelite";
   // Feature 172 (T E.2, R19/R28): la sección «Pago al mensajero» solo existe en un cierre
   // APROBADO y solo para quien puede pagar ([P3]/R6). En cualquier otro estado no se muestra
   // ni se ofrece nada relativo al pago — y, como el componente ni se monta, tampoco se pide su
   // lista de comprobantes.
-  const ofrecerPagoEnDetalle = puedeRegistrarPago && cierreAbierto?.estado === "aprobado";
+  const ofrecerPagoEnDetalle =
+    !soloLecturaSatelite && puedeRegistrarPago && cierreAbierto?.estado === "aprobado";
   // Feature 111/R15 (Q1-B): la vía NORMAL aprobar/rechazar aplica SOLO a `solicitado`.
   // Un `vencido` YA NO es resoluble por la vía normal (revierte la 41 R20): su único
   // camino normal es que el mensajero lo solicite (→ `solicitado`); la excepción es la
   // válvula de escape del admin (R16). El histórico sigue siendo solo lectura.
-  const esResoluble = cierreAbierto?.estado === "solicitado";
+  const esResoluble = !soloLecturaSatelite && cierreAbierto?.estado === "solicitado";
   /**
    * Pedido humano (2026-08-19): el desglose se corrige mientras el cierre está ABIERTO — la
    * plata todavía no está aprobada—. NO es `esResoluble`: un `vencido` es un cierre abierto que
@@ -1102,6 +1111,7 @@ export function CierresAdminModule({
    * El servidor exige lo mismo; esto solo decide si se ofrece.
    */
   const ofrecerCorreccionPagos =
+    !soloLecturaSatelite &&
     puedeCorregirPagos &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
   /**
@@ -1115,6 +1125,7 @@ export function CierresAdminModule({
    * escribe nada: esto sólo decide si se OFRECE.
    */
   const ofrecerCorreccionResultado =
+    !soloLecturaSatelite &&
     puedeCorregirResultado &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
   /**
@@ -1122,10 +1133,16 @@ export function CierresAdminModule({
    * que exige el servidor—. Aprobado, queda fijo (se usa premio o descuento en la wallet).
    */
   const ofrecerAjustePago =
+    !soloLecturaSatelite &&
     puedeAjustarPagoMensajero &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
   /** SLT-101 (R22, R90): la audiencia de la fila única; la central es el `admin` de acceso total. */
-  const audienciaFila: AudienciaFila = audiencia === "admin" ? "central" : "satelite";
+  // SLT-104 (R116): un cierre de satélite abierto por la central, filas «solo lectura».
+  const audienciaFila: AudienciaFila = soloLecturaSatelite
+    ? "solo lectura"
+    : audiencia === "admin"
+      ? "central"
+      : "satelite";
 
   /**
    * SLT-56 (R11) — aplica en la pantalla, SIN recargar, lo que devolvió el servidor: el pago nuevo
@@ -1312,7 +1329,8 @@ export function CierresAdminModule({
           marco="modal"
           detalle={vistaMensajeroDesdeAdmin(detalle)}
           audiencia={audiencia === "admin" ? "central" : "satelite"}
-          modo={modoAdminDe(cierreAbierto.estado)}
+          // SLT-104 (R116): un cierre de satélite abierto por la central, siempre en solo lectura.
+          modo={soloLecturaSatelite ? "solo lectura" : modoAdminDe(cierreAbierto.estado)}
           pestanas={{
             gestiones: (
               <div className="flex flex-col gap-4">
@@ -1382,7 +1400,9 @@ export function CierresAdminModule({
             aprobar: esResoluble ? pedirAprobacion : undefined,
             // R83 — el mismo diálogo y la misma `confirmarDestrabar` que la cola.
             destrabar:
-              cierreAbierto.estado === "vencido" ? () => setDestrabar(cierreAbierto) : undefined,
+              !soloLecturaSatelite && cierreAbierto.estado === "vencido"
+                ? () => setDestrabar(cierreAbierto)
+                : undefined,
           }}
           onCerrar={cerrarDetalle}
         />

@@ -99,6 +99,7 @@ function detalleCierreRow(
     totalPagoMensajero: "5.00", // feature 39/R20: snapshot del pago del cierre_dia
     totalIngresoBodegaRechazos: "0.00", // feature 56/R19: snapshot del ingreso del cierre_dia
     gestionesAjustadas: 0, // SLT-56 (R20): campo nuevo del contrato del repo
+    solicitadoAt: "2026-07-11T15:00:00.000Z", // SLT-104 (PA3): distinto del de la cabecera de bodega
     ...overrides,
   };
 }
@@ -1787,5 +1788,41 @@ describe("486 · CierresBodegaAdminService.verCierreBodegaDetalle — todas las 
     expect((await newService({ repo: repoNull, signedUrls }).service.verCierreBodegaDetalle("cb-x", MAESTRO)).status).toBe("no_encontrada");
     expect((await newService({ repo: repoConVariasFotos(), signedUrls }).service.verCierreBodegaDetalle("cb1", ADMIN_SATELITE)).status).toBe("forbidden");
     expect(signedUrls.createSignedUrls).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-104 (PA3, R120) — cada cierre del día del detalle de bodega lleva SU `solicitadoAt`", () => {
+  it("cd1 y cd2 traen el instante de su propio cierre_dia, no el del cierre de bodega", async () => {
+    const repo = fakeRepo({
+      findCierreBodegaConDetalle: vi.fn(async () => ({
+        // La cabecera de bodega se solicitó el 2026-07-12 10:00 Z: ningún cierre del día puede salir con esa fecha.
+        cierre: bodegaResumenRow({ solicitadoAt: "2026-07-12T10:00:00.000Z" }),
+        cierresDia: [
+          {
+            resumen: detalleCierreRow({ cierreDiaId: "cd1", solicitadoAt: "2026-07-10T21:05:00.000Z" }),
+            gestiones: [gestionRow({ gestionId: "g1" })],
+          },
+          {
+            resumen: detalleCierreRow({
+              cierreDiaId: "cd2",
+              mensajeroId: "m2",
+              mensajeroNombre: "Beto",
+              solicitadoAt: "2026-07-11T18:30:00.000Z",
+            }),
+            gestiones: [gestionRow({ gestionId: "g2" })],
+          },
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+    const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.cierres.map((c) => [c.cierreDiaId, c.solicitadoAt])).toEqual([
+      ["cd1", "2026-07-10T21:05:00.000Z"],
+      ["cd2", "2026-07-11T18:30:00.000Z"],
+    ]);
+    // Aditivo: la cabecera conserva el suyo y los campos de siempre siguen ahí.
+    expect(r.cierre.solicitadoAt).toBe("2026-07-12T10:00:00.000Z");
+    expect(r.cierres[1].mensajeroNombre).toBe("Beto");
   });
 });

@@ -54,6 +54,7 @@ function detalleCierreDbRow(overrides: Record<string, unknown> = {}) {
     totalGeneral: new Prisma.Decimal("10"),
     totalPagoMensajero: new Prisma.Decimal("5"), // feature 39/R20: snapshot del cierre_dia
     totalIngresoBodegaRechazos: new Prisma.Decimal("3"), // feature 56/R19: snapshot del cierre_dia
+    solicitadoAt: new Date("2026-07-11T15:00:00.000Z"), // SLT-104 (PA3): lo pide la proyeccion
     mensajero: { nombre: "Ana Mensajera" },
     _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
     ...overrides,
@@ -226,7 +227,12 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     prisma.cierreBodega.findUnique.mockResolvedValue(bodegaDbRow());
     prisma.cierreDia.findMany.mockResolvedValue([
       detalleCierreDbRow({ id: "cd1" }),
-      detalleCierreDbRow({ id: "cd2", mensajeroId: "m2", mensajero: { nombre: "Beto" } }),
+      detalleCierreDbRow({
+        id: "cd2",
+        mensajeroId: "m2",
+        mensajero: { nombre: "Beto" },
+        solicitadoAt: new Date("2026-07-12T09:30:00.000Z"),
+      }),
     ]);
     prisma.gestionOrden.findMany
       .mockResolvedValueOnce([gestionDbRow({ id: "g1" })])
@@ -251,6 +257,12 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     expect(prisma.cierreDetail.findMany.mock.calls[1][0].where).toEqual({ cierreId: "cd2" });
     expect(r?.cierre.cierreBodegaId).toBe("cb1");
     expect(r?.cierresDia.map((cd) => cd.resumen.cierreDiaId)).toEqual(["cd1", "cd2"]);
+    // SLT-104 (PA3, R120): la proyeccion pide `solicitadoAt` y cada cierre_dia lleva el SUYO, en ISO.
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.solicitadoAt).toBe(true);
+    expect(r?.cierresDia.map((cd) => cd.resumen.solicitadoAt)).toEqual([
+      "2026-07-11T15:00:00.000Z",
+      "2026-07-12T09:30:00.000Z",
+    ]);
     // MISMO DTO que antes de la 69: la UI no cambia.
     expect(r?.cierresDia[0].gestiones[0]).toMatchObject({
       gestionId: "g1",

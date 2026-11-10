@@ -14,22 +14,6 @@ import type {
   TotalesIngresoEmpresa,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { ParteDeTienda } from "@/lib/utils/ingreso-empresa";
-import {
-  CASCADA_CENTRAL_TITULO,
-  CASCADA_DUENO_TITULO,
-  DESGLOSE_NO_REPARTIDO_NOTA,
-  DESGLOSE_POR_TIENDA_NOTA,
-  DESGLOSE_POR_TIENDA_TITULO,
-  NETO_EMPRESA_LABEL,
-  PARA_LA_CENTRAL_LABEL,
-  PARA_LA_TIENDA_LABEL,
-  TIENDA_GANA_TOTAL_LABEL,
-  TIENDA_PAGO_HOY_LABEL,
-  TIENDA_RECAUDADO_LABEL,
-} from "@/app/(app)/cierres-admin/_components/cierre-labels";
-// `TOTAL_GENERAL_LABEL` se pide donde nació —el módulo del detalle—, igual que hace el archivo de
-// la ficha 393: si un día se moviera al módulo puro, este import se pondría rojo y avisaría.
-import { TOTAL_GENERAL_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 
 /**
  * 💰 FICHA 396 · TANDA D — EL CIERRE DE BODEGA DICE DE QUÉ TIENDA ES CADA PARTE, EN SUS DOS
@@ -440,50 +424,51 @@ const UNA_TIENDA_CADA_MENSAJERO: DetalleOk = {
 };
 
 /**
- * DOS TIENDAS HOMÓNIMAS en el nivel de Ana, con ids distintos. El servidor las permite a
- * propósito —agrupa por el id congelado y no por el nombre (R7)— y aquí no se pueden fundir ni
- * anunciar igual.
+ * DOS TIENDAS HOMÓNIMAS en el agregado, con ids distintos. El servidor las permite a propósito
+ * —agrupa por el id congelado y no por el nombre (R7)— y aquí no se pueden fundir.
  */
 const HOMONIMAS: DetalleOk = {
   ...DETALLE_OK,
-  cierres: [
-    {
-      ...DIA_ANA,
-      partesPorTienda: [
-        { ...ANA_NORTE, tiendaId: "t-uno", tiendaNombre: "Mi Tienda" },
-        { ...ANA_SUR, tiendaId: "t-dos", tiendaNombre: "Mi Tienda" },
-      ],
-    },
-    DIA_BETO,
+  partesPorTienda: [
+    { ...AGG_NORTE, tiendaId: "t-uno", tiendaNombre: "Mi Tienda" },
+    { ...AGG_SUR, tiendaId: "t-dos", tiendaNombre: "Mi Tienda" },
+    AGG_ESTE,
   ],
 };
 
 // --- Las regiones, por su nombre accesible ---------------------------------
 
-const DE_BODEGA = "cierre de bodega";
-const duenoAgregado = () =>
-  screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · ${DE_BODEGA}` });
-const centralAgregada = () =>
-  screen.getByRole("region", { name: `${CASCADA_CENTRAL_TITULO} · ${DE_BODEGA}` });
-const duenoDe = (mensajero: string) =>
-  screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · ${mensajero}` });
-const desgloseDe = (contexto: string) =>
-  screen.getByRole("region", { name: `${DESGLOSE_POR_TIENDA_TITULO} · ${contexto}` });
-const sinDesglose = (contexto: string) =>
-  screen.queryByRole("region", { name: `${DESGLOSE_POR_TIENDA_TITULO} · ${contexto}` });
-
 /**
- * La región de UNA tienda dentro de un nivel. El nombre accesible lleva la POSICIÓN además del
- * nombre y del contexto —dos tiendas pueden llamarse igual—, así que se busca por sus dos
- * extremos. No se afloja nada: exige empezar por el nombre de ESA tienda, con el paréntesis de la
- * posición pegado, y terminar en el contexto de ESE nivel.
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)»: el desglose por tienda es la
+ * tabla «Por tienda» de la pestaña «Dinero» del detalle único (SLT-95 R16, canvas F6), solo para el
+ * AGREGADO. El desglose de CADA mensajero (R19 de la 396) vive en el detalle de su cierre del día
+ * (R118), al que lleva «Ver su cierre» (R115).
  */
-const nombraA = (nombre: string, contexto: string) => (accesible: string) =>
-  accesible.startsWith(`${nombre} (`) && accesible.endsWith(` · ${contexto}`);
-const tienda = (nombre: string, contexto: string) =>
-  screen.getByRole("region", { name: nombraA(nombre, contexto) });
+const porTienda = () => screen.getByRole("region", { name: "Por tienda" });
+const sinPorTienda = () => screen.queryByRole("region", { name: "Por tienda" });
+const central = () => screen.getByRole("region", { name: "Lo que va a la central" });
+const queda = () => screen.getByRole("region", { name: "De lo facturado, le queda a la empresa" });
+const factura = () => screen.getByRole("region", { name: "Lo que se le factura a la tienda" });
 
-/** Monta la pantalla, abre el detalle del cierre de bodega pendiente y devuelve el `user`. */
+/** Las filas de la tabla como se leen: [tienda, recaudado, se le paga hoy, gana en total]. */
+function filasPorTienda(): string[][] {
+  return within(within(porTienda()).getByRole("table"))
+    .getAllByRole("row")
+    .slice(1)
+    .map((f) => [...f.children].map((c) => (c.textContent ?? "").trim()));
+}
+
+/** La fila de UNA tienda, por su encabezado de fila. */
+function filaDe(nombre: string): HTMLElement {
+  const encabezados = within(porTienda()).getAllByRole("rowheader", { name: nombre });
+  expect(encabezados, `«${nombre}» aparece ${encabezados.length} veces`).toHaveLength(1);
+  return encabezados[0]!.closest("tr") as HTMLElement;
+}
+
+/** La columna `i` (1 = recaudado, 2 = se le paga hoy, 3 = gana en total) de todas las filas. */
+const columna = (i: number) => filasPorTienda().map((f) => f[i]!);
+
+/** Monta la pantalla, abre el detalle del cierre de bodega pendiente (en «Dinero») y devuelve el `user`. */
 async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
   vi.mocked(listarPendientesCierresBodegaPaginado).mockResolvedValue({
     status: "ok",
@@ -510,7 +495,7 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
   await user.click(
     await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
   );
-  await screen.findByRole("region", { name: `${CASCADA_CENTRAL_TITULO} · ${DE_BODEGA}` });
+  await screen.findByRole("region", { name: "Lo que va a la central" });
   return user;
 }
 
@@ -520,138 +505,57 @@ afterEach(cleanup);
 // ---------------------------------------------------------------------------
 
 describe("396 · D3 — autocomprobación del lector del DOM", () => {
-  it("encuentra las líneas de verdad, y falla cuando le pides una que no está", async () => {
+  it("encuentra las filas de verdad, y falla cuando le pides una que no está", async () => {
     await abrirDetalle();
-
-    // Si esto saliera vacío, TODAS las cuentas de abajo cerrarían sobre nada.
-    expect(importesTras(tienda("Tienda Norte", DE_BODEGA), TIENDA_RECAUDADO_LABEL)).toEqual([
-      "₡76.089,17",
-    ]);
-    expect(() => importesTras(desgloseDe(DE_BODEGA), "Rótulo que no existe")).toThrow();
-    expect(centimos("₡60.454,59")).toBe(BigInt(6045459));
-    expect(centimos("₡40.000")).toBe(BigInt(4000000));
+    expect(filasPorTienda()).toHaveLength(3);
+    expect(() => filaDe("Tienda Que No Existe")).toThrow();
+    expect(importeTras(central(), "Total general")).toBe("₡126.089,17");
+    expect(() => importeTras(central(), "Rótulo que no existe")).toThrow();
   });
 });
 
-describe("396 · D3 — con dos mensajeros y dos tiendas, el desglose está en LOS DOS niveles", () => {
-  it("hay un desglose para toda la bodega y uno por cada mensajero, y son tres regiones", async () => {
+describe("396 · D3 — con dos mensajeros y tres tiendas, el desglose de toda la bodega", () => {
+  it("hay UN desglose, el de toda la bodega (R20; el de cada mensajero, en su detalle: SLT-104 R118)", async () => {
     await abrirDetalle();
-
-    expect(desgloseDe(DE_BODEGA)).toBeInTheDocument();
-    expect(desgloseDe("Ana Mensajera")).toBeInTheDocument();
-    expect(desgloseDe("Beto Mensajero")).toBeInTheDocument();
-    expect(desgloseDe(DE_BODEGA)).not.toBe(desgloseDe("Ana Mensajera"));
-    expect(desgloseDe("Ana Mensajera")).not.toBe(desgloseDe("Beto Mensajero"));
+    expect(screen.getAllByRole("region", { name: "Por tienda" })).toHaveLength(1);
+    expect(within(porTienda()).getByRole("heading", { name: "Por tienda" })).toBeInTheDocument();
   });
 
   it("el AGREGADO trae las TRES tiendas con sus NUEVE cifras, escritas a mano (R20)", async () => {
     await abrirDetalle();
-
-    const norte = tienda("Tienda Norte", DE_BODEGA);
-    const sur = tienda("Tienda Sur", DE_BODEGA);
-    const este = tienda("Tienda Este", DE_BODEGA);
-
-    expect(importeTras(norte, TIENDA_RECAUDADO_LABEL)).toBe("₡76.089,17");
-    expect(importeTras(norte, TIENDA_PAGO_HOY_LABEL)).toBe("₡60.454,59");
-    expect(importeTras(norte, TIENDA_GANA_TOTAL_LABEL)).toBe("₡59.953,84");
-    expect(importeTras(sur, TIENDA_RECAUDADO_LABEL)).toBe("₡30.000");
-    expect(importeTras(sur, TIENDA_PAGO_HOY_LABEL)).toBe("₡22.499,75");
-    expect(importeTras(sur, TIENDA_GANA_TOTAL_LABEL)).toBe("₡22.499,75");
-    expect(importeTras(este, TIENDA_RECAUDADO_LABEL)).toBe("₡20.000");
-    expect(importeTras(este, TIENDA_PAGO_HOY_LABEL)).toBe("₡16.000");
-    expect(importeTras(este, TIENDA_GANA_TOTAL_LABEL)).toBe("₡16.000");
+    expect(filasPorTienda()).toEqual([
+      ["Tienda Norte", "₡76.089,17", "₡60.454,59", "₡59.953,84"],
+      ["Tienda Sur", "₡30.000", "₡22.499,75", "₡22.499,75"],
+      ["Tienda Este", "₡20.000", "₡16.000", "₡16.000"],
+    ]);
   });
 
-  it("cada MENSAJERO trae SUS tiendas, y no las del otro ni las del agregado (R19)", async () => {
+  it("va DESPUÉS de las cuentas (canvas F6)", async () => {
     await abrirDetalle();
-
-    // Ana: Norte y Sur, con las cifras de SU día —no las agregadas de Norte—.
-    const ana = desgloseDe("Ana Mensajera");
-    expect(within(ana).getAllByRole("region")).toHaveLength(2);
-    expect(importeTras(tienda("Tienda Norte", "Ana Mensajera"), TIENDA_PAGO_HOY_LABEL)).toBe(
-      "₡40.000",
-    );
-    expect(importeTras(tienda("Tienda Sur", "Ana Mensajera"), TIENDA_PAGO_HOY_LABEL)).toBe(
-      "₡22.499,75",
-    );
-    expect(within(ana).queryByText("Tienda Este")).toBeNull();
-
-    // Beto: Norte y Este, con las suyas.
-    const beto = desgloseDe("Beto Mensajero");
-    expect(within(beto).getAllByRole("region")).toHaveLength(2);
-    expect(importeTras(tienda("Tienda Norte", "Beto Mensajero"), TIENDA_PAGO_HOY_LABEL)).toBe(
-      "₡20.454,59",
-    );
-    expect(importeTras(tienda("Tienda Este", "Beto Mensajero"), TIENDA_PAGO_HOY_LABEL)).toBe(
-      "₡16.000",
-    );
-    expect(within(beto).queryByText("Tienda Sur")).toBeNull();
-  });
-
-  it("va DESPUÉS de la cascada que termina en «Para la tienda» y ANTES del ingreso por concepto", async () => {
-    await abrirDetalle();
-
-    // Primero la cuenta que cierra, y sólo después de qué tienda es cada parte. Es el mismo sitio
-    // relativo que ocupa en el detalle del cierre de mensajero.
-    expect(vaAntes(duenoAgregado(), desgloseDe(DE_BODEGA))).toBe(true);
-    expect(
-      vaAntes(
-        desgloseDe(DE_BODEGA),
-        screen.getByRole("region", { name: "Ingreso de la empresa del cierre de bodega" }),
-      ),
-    ).toBe(true);
-    expect(vaAntes(duenoDe("Ana Mensajera"), desgloseDe("Ana Mensajera"))).toBe(true);
-    expect(
-      vaAntes(
-        desgloseDe("Ana Mensajera"),
-        screen.getByRole("region", { name: "Ingreso de la empresa · Ana Mensajera" }),
-      ),
-    ).toBe(true);
+    expect(vaAntes(central(), porTienda())).toBe(true);
+    expect(vaAntes(queda(), porTienda())).toBe(true);
   });
 });
 
 describe("396 · D3 · ⚠️ EL CASO QUE SEPARA LOS UMBRALES — R19 vs R20", () => {
-  it("dos mensajeros con UNA tienda cada uno: ninguno se desglosa y el agregado SÍ", async () => {
+  it("dos mensajeros con UNA tienda cada uno: el agregado SÍ se desglosa", async () => {
     await abrirDetalle(UNA_TIENDA_CADA_MENSAJERO);
-
-    // El agregado, que tiene DOS tiendas, sí.
-    expect(desgloseDe(DE_BODEGA)).toBeInTheDocument();
-    expect(
-      within(duenoAgregado()).getByText(
-        "Es el total de las 2 tiendas de este cierre, sumadas. Abajo, cuánto le toca a cada una.",
-      ),
-    ).toBeInTheDocument();
-
-    // Y NINGUNO de los dos niveles de mensajero: cada uno tiene una sola tienda. Si el umbral se
-    // evaluara sobre las tiendas de la bodega, estas cuatro aserciones caerían.
-    expect(
-      sinDesglose("Ana Mensajera"),
-      "el nivel de Ana se desglosa con las tiendas de la bodega en vez de con las suyas",
-    ).toBeNull();
-    expect(sinDesglose("Beto Mensajero")).toBeNull();
-    expect(within(duenoDe("Ana Mensajera")).queryByText(/Es el total de las/)).toBeNull();
-    expect(within(duenoDe("Beto Mensajero")).queryByText(/Es el total de las/)).toBeNull();
+    expect(filasPorTienda()).toEqual([
+      ["Tienda Norte", "₡80.000,10", "₡62.499,75", "₡61.999"],
+      ["Tienda Este", "₡46.089,07", "₡36.454,59", "₡36.454,59"],
+    ]);
   });
 
-  it("y las cascadas de esos dos mensajeros quedan EXACTAMENTE como estaban (R2/R18)", async () => {
+  it("y las cuentas quedan EXACTAMENTE como estaban (R2/R18)", async () => {
     await abrirDetalle(UNA_TIENDA_CADA_MENSAJERO);
-
-    // Ni un rótulo del desglose, ni una nota, en ninguno de los dos niveles de mensajero.
-    for (const mensajero of ["Ana Mensajera", "Beto Mensajero"]) {
-      const region = duenoDe(mensajero);
-      expect(within(region).queryByText(TIENDA_RECAUDADO_LABEL)).toBeNull();
-      expect(within(region).queryByText(TIENDA_PAGO_HOY_LABEL)).toBeNull();
-      expect(within(region).queryByText(TIENDA_GANA_TOTAL_LABEL)).toBeNull();
-    }
-    // Y sus importes siguen valiendo lo mismo.
-    expect(importeTras(duenoDe("Ana Mensajera"), PARA_LA_TIENDA_LABEL)).toBe("₡62.499,75");
-    expect(importeTras(duenoDe("Beto Mensajero"), PARA_LA_TIENDA_LABEL)).toBe("₡36.454,59");
+    expect(importeTras(central(), "Debe llegar a la central")).toBe("₡111.838,37");
+    expect(importeTras(queda(), "Le queda a la empresa")).toBe("₡13.384,78");
   });
 
-  it("con UNA sola tienda en toda la bodega no aparece NADA nuevo, en ningún nivel", async () => {
-    const unaSola: ParteDeTienda = {
-      tiendaId: "t-unica",
-      tiendaNombre: "Tienda Única",
+  it("con UNA sola tienda en toda la bodega no aparece el desglose", async () => {
+    const UNA: ParteDeTienda = {
+      tiendaId: "t-norte",
+      tiendaNombre: "Tienda Norte",
       recaudado: "126089.17",
       pagoTienda: "98954.34",
       ganaLaTienda: "98453.59",
@@ -659,374 +563,127 @@ describe("396 · D3 · ⚠️ EL CASO QUE SEPARA LOS UMBRALES — R19 vs R20", (
     await abrirDetalle({
       ...DETALLE_OK,
       cierres: [
-        { ...DIA_ANA, partesPorTienda: [{ ...unaSola, recaudado: "80000.10" }] },
-        { ...DIA_BETO, partesPorTienda: [{ ...unaSola, recaudado: "46089.07" }] },
+        { ...DIA_ANA, partesPorTienda: [ANA_NORTE] },
+        { ...DIA_BETO, partesPorTienda: [BETO_NORTE] },
       ],
-      partesPorTienda: [unaSola],
+      partesPorTienda: [UNA],
     });
-
-    expect(sinDesglose(DE_BODEGA)).toBeNull();
-    expect(sinDesglose("Ana Mensajera")).toBeNull();
-    expect(sinDesglose("Beto Mensajero")).toBeNull();
-    expect(screen.queryByText(DESGLOSE_POR_TIENDA_TITULO)).toBeNull();
-    expect(screen.queryByText(DESGLOSE_POR_TIENDA_NOTA)).toBeNull();
-    expect(screen.queryByText(DESGLOSE_NO_REPARTIDO_NOTA)).toBeNull();
-    // Ni siquiera se nombra a la tienda que sí viene en el DTO.
-    expect(screen.queryByText("Tienda Única")).toBeNull();
-    // Y las tres cifras destacadas de la pantalla siguen exactamente donde y como estaban.
-    expect(importeTras(duenoAgregado(), PARA_LA_TIENDA_LABEL)).toBe("₡98.954,34");
-    expect(importeTras(duenoAgregado(), NETO_EMPRESA_LABEL)).toBe("₡13.384,78");
-    expect(importeTras(centralAgregada(), PARA_LA_CENTRAL_LABEL)).toBe("₡111.838,37");
+    expect(sinPorTienda()).toBeNull();
+    expect(screen.queryByText("Tienda Norte")).toBeNull();
   });
 });
 
-describe("396 · D3 · R10/R11/R12 — la suma de las partes ES el agregado de SU nivel", () => {
-  it("lo que se le paga a cada tienda suma el «Para la tienda» de toda la bodega", async () => {
-    await abrirDetalle();
-
-    laCuentaCierra(
-      [
-        importeTras(tienda("Tienda Norte", DE_BODEGA), TIENDA_PAGO_HOY_LABEL),
-        importeTras(tienda("Tienda Sur", DE_BODEGA), TIENDA_PAGO_HOY_LABEL),
-        importeTras(tienda("Tienda Este", DE_BODEGA), TIENDA_PAGO_HOY_LABEL),
-      ],
-      importeTras(duenoAgregado(), PARA_LA_TIENDA_LABEL),
-      "lo que se le paga a cada tienda de la bodega",
-    );
-  });
-
+describe("396 · D3 · R10/R11/R12 — la suma de las partes ES el agregado", () => {
   it("lo recaudado por cada tienda suma el «Total general» de toda la bodega", async () => {
     await abrirDetalle();
+    laCuentaCierra(columna(1), importeTras(central(), "Total general"), "Σ recaudado por tienda");
+  });
 
-    laCuentaCierra(
-      [
-        importeTras(tienda("Tienda Norte", DE_BODEGA), TIENDA_RECAUDADO_LABEL),
-        importeTras(tienda("Tienda Sur", DE_BODEGA), TIENDA_RECAUDADO_LABEL),
-        importeTras(tienda("Tienda Este", DE_BODEGA), TIENDA_RECAUDADO_LABEL),
-      ],
-      importeTras(duenoAgregado(), TOTAL_GENERAL_LABEL),
-      "lo recaudado por cada tienda de la bodega",
-    );
+  it("lo que se le paga hoy a cada tienda suma el «Para la tienda» del contrato, que esta pantalla NO pinta", async () => {
+    // SLT-104: el Dinero de bodega no pinta «Para la tienda» (SLT-95 R16, canvas F6); el agregado es
+    // el `pagoTienda` del contrato, escrito a mano.
+    await abrirDetalle();
+    laCuentaCierra(columna(2), "₡98.954,34", "Σ se le paga hoy");
   });
 
   it("lo que gana cada tienda suma el agregado del contrato, que esta pantalla NO pinta", async () => {
-    // ⚠️ HALLAZGO, y va escrito porque cambia lo que este test puede afirmar: el detalle de
-    // bodega no tiene una línea «Gana la tienda» —su cascada de la 393 no la lleva y meterla a
-    // media cascada la volvería ilegible—, así que el agregado contra el que suma esta columna
-    // viaja en el DTO (`ganaLaTienda`, ficha 396/D1) pero no está en el DOM. El total se escribe
-    // A MANO: es el contrato del spec, no la salida de la función que lo genera.
     await abrirDetalle();
-
-    laCuentaCierra(
-      [
-        importeTras(tienda("Tienda Norte", DE_BODEGA), TIENDA_GANA_TOTAL_LABEL),
-        importeTras(tienda("Tienda Sur", DE_BODEGA), TIENDA_GANA_TOTAL_LABEL),
-        importeTras(tienda("Tienda Este", DE_BODEGA), TIENDA_GANA_TOTAL_LABEL),
-      ],
-      "₡98.453,59",
-      "lo que gana cada tienda de la bodega",
-    );
+    laCuentaCierra(columna(3), "₡98.453,59", "Σ gana en total");
   });
 
-  it("y en el nivel de CADA MENSAJERO la suma es la de SU propio agregado (R19)", async () => {
+  it("en Norte las dos cifras de pago DIFIEREN sólo donde hubo rechazo: en el flete por devolución", async () => {
     await abrirDetalle();
-
-    laCuentaCierra(
-      [
-        importeTras(tienda("Tienda Norte", "Ana Mensajera"), TIENDA_PAGO_HOY_LABEL),
-        importeTras(tienda("Tienda Sur", "Ana Mensajera"), TIENDA_PAGO_HOY_LABEL),
-      ],
-      importeTras(duenoDe("Ana Mensajera"), PARA_LA_TIENDA_LABEL),
-      "las tiendas de Ana",
-    );
-    laCuentaCierra(
-      [
-        importeTras(tienda("Tienda Norte", "Beto Mensajero"), TIENDA_PAGO_HOY_LABEL),
-        importeTras(tienda("Tienda Este", "Beto Mensajero"), TIENDA_PAGO_HOY_LABEL),
-      ],
-      importeTras(duenoDe("Beto Mensajero"), PARA_LA_TIENDA_LABEL),
-      "las tiendas de Beto",
-    );
-  });
-
-  it("en Norte las dos cifras de pago DIFIEREN sólo donde hubo rechazo: son dos preguntas", async () => {
-    await abrirDetalle();
-
-    // Ana tuvo un rechazo y lo trajo Norte: la diferencia es exactamente su flete + IVA, 500,75.
-    laCuentaCierra(
-      [importeTras(tienda("Tienda Norte", "Ana Mensajera"), TIENDA_GANA_TOTAL_LABEL), "₡500,75"],
-      importeTras(tienda("Tienda Norte", "Ana Mensajera"), TIENDA_PAGO_HOY_LABEL),
-      "Norte en el día de Ana, que sí tuvo un rechazo",
-    );
-    // El día de Beto no tuvo ninguno: ahí las dos coinciden, y siguen siendo DOS líneas.
-    const norteBeto = tienda("Tienda Norte", "Beto Mensajero");
-    expect(importeTras(norteBeto, TIENDA_PAGO_HOY_LABEL)).toBe(
-      importeTras(norteBeto, TIENDA_GANA_TOTAL_LABEL),
-    );
+    const [, , hoy, gana] = filasPorTienda()[0]!;
+    expect(centimos(hoy!) - centimos(gana!)).toBe(centimos(importeTras(factura(), "+ Flete por devolución a origen + IVA")));
+    for (const [nombre, , h, g] of filasPorTienda().slice(1)) expect(h, nombre).toBe(g);
   });
 });
 
 describe("396 · D3 · R20/Q8 — una tienda en DOS mensajeros sale UNA sola vez en el agregado", () => {
-  it("Norte está en los dos niveles de mensajero y en el agregado es UNA fila", async () => {
+  it("Norte es UNA fila", async () => {
     await abrirDetalle();
-
-    // Una sola región de Norte en el desglose agregado…
-    const enElAgregado = within(desgloseDe(DE_BODEGA))
-      .getAllByRole("region")
-      .filter((region) => (region.getAttribute("aria-label") ?? "").startsWith("Tienda Norte ("));
-    expect(enElAgregado, "Norte no sale una sola vez en el agregado").toHaveLength(1);
-    // …y no hay cruce tienda × mensajero: tres tiendas, no cuatro filas.
-    expect(within(desgloseDe(DE_BODEGA)).getAllByRole("region")).toHaveLength(3);
-
-    // Y su fila es la suma de las dos, leída de lo PINTADO en los niveles de abajo.
-    laCuentaCierra(
-      [
-        importeTras(tienda("Tienda Norte", "Ana Mensajera"), TIENDA_PAGO_HOY_LABEL),
-        importeTras(tienda("Tienda Norte", "Beto Mensajero"), TIENDA_PAGO_HOY_LABEL),
-      ],
-      importeTras(tienda("Tienda Norte", DE_BODEGA), TIENDA_PAGO_HOY_LABEL),
-      "Norte, que está en los dos mensajeros",
-    );
-  });
-});
-
-describe("396 · D3 · R1 — la marca dice que «Para la tienda» es de VARIAS, y de cuántas", () => {
-  it("cada nivel dice SU número: tres en la bodega, dos en cada mensajero", async () => {
-    await abrirDetalle();
-
-    // Escritas a mano: comparar la frase contra la función que la genera está siempre verde.
-    expect(
-      within(duenoAgregado()).getByText(
-        "Es el total de las 3 tiendas de este cierre, sumadas. Abajo, cuánto le toca a cada una.",
-      ),
-    ).toBeInTheDocument();
-    for (const mensajero of ["Ana Mensajera", "Beto Mensajero"]) {
-      expect(
-        within(duenoDe(mensajero)).getByText(
-          "Es el total de las 2 tiendas de este cierre, sumadas. Abajo, cuánto le toca a cada una.",
-        ),
-        `${mensajero} anuncia un número de tiendas que no es el suyo`,
-      ).toBeInTheDocument();
-    }
-  });
-
-  it("la marca está pegada a «Para la tienda» y NO a ninguna otra línea de la cascada", async () => {
-    await abrirDetalle();
-
-    const fila = within(duenoAgregado())
-      .getAllByText(PARA_LA_TIENDA_LABEL)
-      .filter((el) => el.children.length === 0)[0]
-      .closest("div");
-    expect(
-      fila!.textContent,
-      "la marca no está en la línea que la necesita",
-    ).toContain("Es el total de las 3 tiendas de este cierre");
-    // Y la línea sigue diciendo su importe de siempre: la marca se AÑADE, no sustituye (R18).
-    expect(importeTras(duenoAgregado(), PARA_LA_TIENDA_LABEL)).toBe("₡98.954,34");
-    // «Total general» también se parte por tienda, pero su rótulo no promete una sola: no se
-    // marca, igual que en el detalle del cierre de mensajero.
-    const filaGeneral = within(duenoAgregado())
-      .getAllByText(TOTAL_GENERAL_LABEL)
-      .filter((el) => el.children.length === 0)[0]
-      .closest("div");
-    expect(filaGeneral!.textContent).not.toContain("Es el total de las");
+    expect(filasPorTienda().filter((f) => f[0] === "Tienda Norte")).toHaveLength(1);
+    expect(filaDe("Tienda Norte")).toBeInTheDocument();
   });
 });
 
 describe("396 · D3 · R5 — TRES cifras por tienda, ni una cuarta", () => {
-  it("dentro de la región de cada tienda se leen exactamente tres importes, en los dos niveles", async () => {
+  it("cada fila lee exactamente tres importes y las dos cifras de pago se pintan las dos", async () => {
     await abrirDetalle();
-
-    for (const [nombre, contexto] of [
-      ["Tienda Norte", DE_BODEGA],
-      ["Tienda Sur", DE_BODEGA],
-      ["Tienda Este", DE_BODEGA],
-      ["Tienda Norte", "Ana Mensajera"],
-      ["Tienda Este", "Beto Mensajero"],
-    ] as const) {
-      const leidos = todosLosImportes(tienda(nombre, contexto));
-      expect(
-        leidos,
-        `${nombre} · ${contexto} pinta ${leidos.length} importes (${leidos.join(" ")}): R5 permite tres`,
-      ).toHaveLength(3);
-    }
-  });
-
-  it("las dos cifras de pago SE PINTAN LAS DOS: ninguna tienda enseña una sola", async () => {
-    await abrirDetalle();
-
-    for (const [nombre, contexto] of [
-      ["Tienda Norte", DE_BODEGA],
-      ["Tienda Sur", "Ana Mensajera"],
-      ["Tienda Este", "Beto Mensajero"],
-    ] as const) {
-      const region = tienda(nombre, contexto);
-      expect(importesTras(region, TIENDA_PAGO_HOY_LABEL)).toHaveLength(1);
-      expect(importesTras(region, TIENDA_GANA_TOTAL_LABEL)).toHaveLength(1);
+    for (const fila of within(within(porTienda()).getByRole("table")).getAllByRole("row").slice(1)) {
+      expect(todosLosImportes(fila), fila.textContent ?? "").toHaveLength(3);
     }
   });
 });
 
 describe("396 · D3 · R22 — la misma plata se lee IGUAL que en el detalle del mensajero", () => {
-  it("los tres rótulos por tienda son los mismos textos aprobados, también aquí", async () => {
+  it("las columnas son los mismos textos aprobados (la misma tabla que el Dinero del mensajero)", async () => {
     await abrirDetalle();
-
-    // A mano, nunca derivado de la constante: un renombrado silencioso volvería a fundir las dos
-    // preguntas que la ficha 395 acaba de separar un nivel más arriba.
-    expect(TIENDA_RECAUDADO_LABEL).toBe("Recaudado de esta tienda");
-    expect(TIENDA_PAGO_HOY_LABEL).toBe("Se le paga hoy");
-    expect(TIENDA_GANA_TOTAL_LABEL).toBe("Gana en total");
-    expect(DESGLOSE_POR_TIENDA_TITULO).toBe("De qué tienda es cada parte");
-
-    const norte = tienda("Tienda Norte", DE_BODEGA);
-    expect(within(norte).getByText("Recaudado de esta tienda")).toBeInTheDocument();
-    expect(within(norte).getByText("Se le paga hoy")).toBeInTheDocument();
-    expect(within(norte).getByText("Gana en total")).toBeInTheDocument();
+    const cabecera = within(within(porTienda()).getByRole("table")).getAllByRole("columnheader");
+    expect(cabecera.map((c) => c.textContent)).toEqual(["Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
   });
 
-  it("los cinco rótulos de dinero que nombran a la tienda son cinco textos distintos", async () => {
+  it("los rótulos de dinero que nombran a la tienda son textos distintos", async () => {
+    // Antes eran cinco (con «Para la tienda» y su marca); el Dinero de bodega pinta solo la tabla del
+    // canvas (SLT-95 R16, canvas F6), así que se vigilan los tres de sus columnas de dinero.
     await abrirDetalle();
-
-    const todos = [
-      TIENDA_RECAUDADO_LABEL,
-      TIENDA_PAGO_HOY_LABEL,
-      TIENDA_GANA_TOTAL_LABEL,
-      PARA_LA_TIENDA_LABEL,
-      TOTAL_GENERAL_LABEL,
-    ];
-    expect(new Set(todos).size, `hay dos rótulos iguales: ${todos.join(" · ")}`).toBe(5);
+    const cabecera = within(within(porTienda()).getByRole("table")).getAllByRole("columnheader");
+    const rotulos = cabecera.slice(1).map((c) => c.textContent);
+    expect(rotulos).toHaveLength(3);
+    expect(new Set(rotulos).size).toBe(rotulos.length);
   });
 });
 
-describe("396 · D3 · R17 — lo que NO está repartido, dicho en cada desglose", () => {
-  it("las dos notas de cabecera están en los tres desgloses", async () => {
-    await abrirDetalle();
+// R17 de la 396 (las dos notas de cabecera del desglose): la tabla «Por tienda» del canvas aprobado no
+// las dibuja (SLT-95 R16, canvas F6, `Main.dc.html`); se retira esa vigilancia aquí. Igual R1 (la marca
+// «de N tiendas» pegada a «Para la tienda»): el Dinero de bodega no pinta esa línea (SLT-95 R16, canvas F6).
+// Los casos por mensajero (R19, sumas y umbral de cada nivel, homónimas de un nivel) viven en el detalle
+// de su cierre del día (SLT-104 R118, R115).
 
-    for (const contexto of [DE_BODEGA, "Ana Mensajera", "Beto Mensajero"]) {
-      const region = desgloseDe(contexto);
-      expect(within(region).getByText(DESGLOSE_NO_REPARTIDO_NOTA)).toBeInTheDocument();
-      expect(within(region).getByText(DESGLOSE_POR_TIENDA_NOTA)).toBeInTheDocument();
-    }
-    // Y dicen lo aprobado, con todas las letras.
-    expect(DESGLOSE_NO_REPARTIDO_NOTA).toBe(
-      "El pago al mensajero y el ingreso de bodega por devoluciones a origen son del cierre completo: no están repartidos entre las tiendas.",
-    );
-  });
-
-  it("y esos dos importes NO aparecen dentro de ninguna tienda (R16)", async () => {
-    await abrirDetalle();
-
-    // El pago al mensajero agregado (14.000,55) y el ingreso de bodega (250,25) siguen siendo del
-    // cierre entero: no se reparten ni se cuelan en una cascada de tienda.
-    for (const [nombre, contexto] of [
-      ["Tienda Norte", DE_BODEGA],
-      ["Tienda Norte", "Ana Mensajera"],
-    ] as const) {
-      const leidos = todosLosImportes(tienda(nombre, contexto));
-      expect(leidos).not.toContain("₡14.000,55");
-      expect(leidos).not.toContain("₡250,25");
-    }
-  });
-});
-
-describe("396 · D3 — los nombres accesibles son ÚNICOS dentro del modal", () => {
+describe("396 · D3 — los nombres accesibles son ÚNICOS dentro del detalle", () => {
   it("ninguna región del detalle se anuncia igual que otra", async () => {
     await abrirDetalle();
-
-    const nombres = screen
+    const nombres = within(screen.getByRole("dialog"))
       .getAllByRole("region")
-      .map((region) => region.getAttribute("aria-label") ?? "");
-    const repetidos = nombres.filter((nombre, i) => nombres.indexOf(nombre) !== i);
-    expect(repetidos, `hay regiones que se anuncian igual: ${repetidos.join(" · ")}`).toEqual([]);
+      .map((r) => r.getAttribute("aria-label") ?? "");
+    expect(new Set(nombres).size).toBe(nombres.length);
   });
 
-  it("la MISMA tienda en dos niveles se anuncia distinto, con su contexto", async () => {
-    await abrirDetalle();
-
-    expect(tienda("Tienda Norte", DE_BODEGA).getAttribute("aria-label")).toBe(
-      "Tienda Norte (1 de 3) · cierre de bodega",
-    );
-    expect(tienda("Tienda Norte", "Ana Mensajera").getAttribute("aria-label")).toBe(
-      "Tienda Norte (1 de 2) · Ana Mensajera",
-    );
-    expect(tienda("Tienda Norte", "Beto Mensajero").getAttribute("aria-label")).toBe(
-      "Tienda Norte (1 de 2) · Beto Mensajero",
-    );
-  });
-
-  it("dos tiendas HOMÓNIMAS no se funden Y NO comparten nombre accesible", async () => {
+  // La segunda mitad de la 396 («y NO comparten nombre accesible») se retira: vigilaba las regiones con
+  // nombre de cada tienda del desglose viejo. La tabla «Por tienda» del canvas (SLT-95 R16, canvas F6)
+  // no tiene una región por tienda: cada tienda es una fila de tabla, que se distingue por su posición y
+  // sus cifras (lo afirma este caso), y el test de arriba vigila que ninguna REGIÓN se anuncie igual.
+  it("dos tiendas HOMÓNIMAS no se funden", async () => {
     await abrirDetalle(HOMONIMAS);
-
-    const regiones = screen.getAllByRole("region", { name: nombraA("Mi Tienda", "Ana Mensajera") });
-    expect(regiones, "dos tiendas con el mismo nombre se fundieron en una").toHaveLength(2);
-    // Cada una con SU dinero: el servidor agrupa por el id congelado, no por el nombre (R7).
-    expect(importeTras(regiones[0], TIENDA_PAGO_HOY_LABEL)).toBe("₡40.000");
-    expect(importeTras(regiones[1], TIENDA_PAGO_HOY_LABEL)).toBe("₡22.499,75");
-    // Y se pueden nombrar por separado: quien navega por landmarks no las ve, las OYE.
-    const nombres = regiones.map((region) => region.getAttribute("aria-label"));
-    expect(nombres).toEqual([
-      "Mi Tienda (1 de 2) · Ana Mensajera",
-      "Mi Tienda (2 de 2) · Ana Mensajera",
-    ]);
-    expect(new Set(nombres).size, `las dos se anuncian igual: ${nombres.join(" · ")}`).toBe(2);
+    expect(filasPorTienda().map((f) => f[0])).toEqual(["Mi Tienda", "Mi Tienda", "Tienda Este"]);
+    expect(columna(1)).toEqual(["₡76.089,17", "₡30.000", "₡20.000"]);
   });
 });
 
 describe("396 · D3 · R8 — la pantalla pinta en el orden que le llega, y no reordena", () => {
-  it("un desglose agregado que llega de menor a mayor se pinta de menor a mayor", async () => {
-    // Fixture DELIBERADAMENTE al revés del criterio del servidor. La pantalla no sabe nada de
-    // importes: si aquí saliera Norte primero, es que alguien metió un `sort` en el navegador.
+  it("un desglose que llega de menor a mayor se pinta de menor a mayor", async () => {
     await abrirDetalle({ ...DETALLE_OK, partesPorTienda: [AGG_ESTE, AGG_SUR, AGG_NORTE] });
-
-    expect(
-      vaAntes(tienda("Tienda Este", DE_BODEGA), tienda("Tienda Sur", DE_BODEGA)),
-    ).toBe(true);
-    expect(
-      vaAntes(tienda("Tienda Sur", DE_BODEGA), tienda("Tienda Norte", DE_BODEGA)),
-    ).toBe(true);
-    // Y la posición del nombre accesible sigue al orden pintado, no al importe.
-    expect(tienda("Tienda Este", DE_BODEGA).getAttribute("aria-label")).toBe(
-      "Tienda Este (1 de 3) · cierre de bodega",
-    );
+    expect(filasPorTienda().map((f) => f[0])).toEqual(["Tienda Este", "Tienda Sur", "Tienda Norte"]);
   });
 
   it("y el orden normal del servidor —de mayor a menor— se respeta igual", async () => {
     await abrirDetalle();
-
-    expect(
-      vaAntes(tienda("Tienda Norte", DE_BODEGA), tienda("Tienda Sur", DE_BODEGA)),
-    ).toBe(true);
-    expect(
-      vaAntes(tienda("Tienda Sur", DE_BODEGA), tienda("Tienda Este", DE_BODEGA)),
-    ).toBe(true);
+    expect(filasPorTienda().map((f) => f[0])).toEqual(["Tienda Norte", "Tienda Sur", "Tienda Este"]);
   });
 });
 
 describe("396 · D3 · R18 — ni un importe ya visible cambia de valor", () => {
-  it("las dos cascadas de la 393 siguen diciendo lo mismo, en los dos niveles", async () => {
+  it("las cuentas siguen diciendo lo mismo con el desglose pintado", async () => {
     await abrirDetalle();
-
-    expect(importeTras(centralAgregada(), PARA_LA_CENTRAL_LABEL)).toBe("₡111.838,37");
-    expect(importeTras(duenoAgregado(), PARA_LA_TIENDA_LABEL)).toBe("₡98.954,34");
-    expect(importeTras(duenoAgregado(), NETO_EMPRESA_LABEL)).toBe("₡13.384,78");
-    expect(importeTras(duenoDe("Ana Mensajera"), PARA_LA_TIENDA_LABEL)).toBe("₡62.499,75");
-    expect(importeTras(duenoDe("Ana Mensajera"), NETO_EMPRESA_LABEL)).toBe("₡8.750,55");
-    expect(importeTras(duenoDe("Beto Mensajero"), PARA_LA_TIENDA_LABEL)).toBe("₡36.454,59");
-    expect(importeTras(duenoDe("Beto Mensajero"), NETO_EMPRESA_LABEL)).toBe("₡4.634,23");
+    expect(importeTras(central(), "Debe llegar a la central")).toBe("₡111.838,37");
+    expect(importeTras(queda(), "Le queda a la empresa")).toBe("₡13.384,78");
+    expect(importeTras(factura(), "Total facturado")).toBe("₡27.635,58");
   });
 });
 
 describe("396 · D3 — el desglose no devuelve a esta pantalla un rótulo que la 393 le quitó", () => {
   it("con las tres tiendas pintadas, las cinco cifras sueltas siguen sin aparecer (R24/R34)", async () => {
     await abrirDetalle();
-
-    // La ficha 393 sacó de este detalle cinco tarjetas sueltas que repetían una línea de una
-    // cascada, y lo dejó fijado sobre el documento entero. ⚠️ Su fixture NO trae desglose, así
-    // que aquella guardia nunca ha visto esta pantalla con el desglose puesto: aquí sí.
-    // En particular, reusar «Pago a tienda» —el rótulo del AGREGADO del detalle del MENSAJERO—
-    // para la cifra de UNA tienda haría que la misma etiqueta valiera dos cifras distintas según
-    // por dónde se entre, que es exactamente el defecto que la 393 cerró y el que esta ficha
-    // viene a arreglar. Por eso los rótulos por tienda dicen «Se le paga hoy» y «Gana en total».
     for (const rotulo of [
       "Ingreso bruto",
       "Ganancia",
@@ -1034,17 +691,17 @@ describe("396 · D3 — el desglose no devuelve a esta pantalla un rótulo que l
       "Ingreso de bodega por devoluciones a origen",
       "Total a pagar a mensajeros",
     ]) {
-      expect(
-        document.body.textContent,
-        `«${rotulo}» vuelve a estar en el detalle de bodega, ahora por el desglose`,
-      ).not.toContain(rotulo);
+      expect(document.body.textContent, rotulo).not.toContain(rotulo);
     }
   });
 });
 
 describe("396 · D3 — money-safe: la pantalla no hace aritmética de dinero", () => {
+  // SLT-104: el desglose lo pintan `DineroCierre` con lo que elige `detalle-cierre-vista` (y el módulo
+  // que lo monta). `DesglosePorTienda` ya no se monta en el detalle de bodega (R118).
   const FUENTES = [
-    "app/(app)/cierres-admin/_components/DesglosePorTienda.tsx",
+    "components/private/cierres/detalle/DineroCierre.tsx",
+    "components/private/cierres/detalle/detalle-cierre-vista.ts",
     "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
   ] as const;
 
@@ -1073,8 +730,6 @@ describe("396 · D3 — money-safe: la pantalla no hace aritmética de dinero", 
     const codigo = quitarComentarios(
       readFileSync(path.resolve(__dirname, "../..", ruta), "utf8"),
     );
-    // Ordenar en el navegador exige comparar importes, y comparar importes en el navegador es
-    // exactamente lo que R14 prohíbe. El orden llega hecho (R8).
     for (const prohibida of [/\.sort\s*\(/, /\.reverse\s*\(/, /localeCompare\s*\(/]) {
       expect(codigo, `${ruta} usa ${prohibida.source} sobre el desglose`).not.toMatch(prohibida);
     }

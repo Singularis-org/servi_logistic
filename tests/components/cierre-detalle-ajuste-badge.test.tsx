@@ -525,33 +525,37 @@ async function abrirDetalleBodega() {
   await user.click(
     await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
   );
-  await screen.findByRole("region", { name: "Cierre del día · Ana Mensajera" });
-  return user;
+  return { user, dialogo: await screen.findByRole("dialog", { name: /^Detalle del cierre de bodega · / }) };
 }
 
+// SLT-104 «Detalle de cierre de bodega en el detalle único (central)» — el detalle de bodega ya no
+// pinta un bloque «Cierre del día · <X>» con la insignia «Con ajustes» (R118): cada cierre del día es
+// una fila de «Mensajeros» y su señal dice cuántos pagos se ajustaron (R42, R114, mismo texto que la
+// cola). Las gestiones van en «Gestiones», en solo lectura (R31), con la misma marca «Ajustado».
 describe("SLT-56 R20 — el detalle del cierre de bodega marca los cierres y gestiones ajustados", () => {
-  it("«Con ajustes» sólo en el cierre del día con gestiones ajustadas, con cuántas", async () => {
-    await abrirDetalleBodega();
-    const ana = screen.getByRole("region", { name: "Cierre del día · Ana Mensajera" });
-    const beto = screen.getByRole("region", { name: "Cierre del día · Beto Mensajero" });
-    expect(within(ana).getByText("Con ajustes")).toBeInTheDocument();
-    expect(ana).toHaveTextContent(
-      "Con ajustes: 1 gestión de este cierre tiene el pago al mensajero ajustado.",
-    );
-    expect(within(beto).queryByText("Con ajustes")).toBeNull();
+  it("la señal de ajustes sólo en la fila del cierre del día con gestiones ajustadas, con cuántas", async () => {
+    const { user, dialogo } = await abrirDetalleBodega();
+    await user.click(within(dialogo).getByRole("tab", { name: "Mensajeros (2)" }));
+    const filas = within(within(dialogo).getByRole("table", { name: "Mensajeros del cierre de bodega" })).getAllByRole("row");
+    const senal = (nombre: string) => {
+      const fila = filas.find((f) => within(f).queryByText(nombre) !== null)!;
+      return within(fila).getAllByRole("cell")[5]!.textContent;
+    };
+    expect(senal("Ana Mensajera")).toBe("1 pago ajustado");
+    expect(senal("Beto Mensajero")).toBe("—");
   });
 
   it("la gestión ajustada lleva «Ajustado» con el mismo historial, y sin «Ajustar pago»", async () => {
-    const user = await abrirDetalleBodega();
-    const ana = screen.getByRole("region", { name: "Cierre del día · Ana Mensajera" });
-    await user.click(within(ana).getByRole("button", { name: BOTON_FILA_RECHAZO }));
+    const { user, dialogo } = await abrirDetalleBodega();
+    await user.click(within(dialogo).getByRole("tab", { name: "Gestiones (2)" }));
+    await user.click(within(dialogo).getByRole("button", { name: BOTON_FILA_RECHAZO }));
 
-    await user.click(within(ana).getByRole("button", { name: "Pago ajustado: ver el ajuste" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Pago ajustado: ver el ajuste" }));
     const lista = await screen.findByRole("list", { name: "Ajustes del pago al mensajero" });
     expect(lista).toHaveTextContent("2026-10-29 08:30 · Marta Maestra (Maestro)");
     expect(lista).toHaveTextContent("₡0 → ₡700");
     expect(lista).toHaveTextContent("Motivo: Rechazo por dirección errónea de la tienda");
     // El detalle de bodega es de solo lectura: el ajuste se hace en el cierre del mensajero.
-    expect(within(ana).queryByRole("button", { name: BOTON_AJUSTAR })).toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: BOTON_AJUSTAR })).toBeNull();
   });
 });

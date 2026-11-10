@@ -67,6 +67,7 @@ const BODEGA: DetalleBodegaVista = {
   solicitadoAt: "2026-11-08T01:05:00.000Z",
   conciliado: false,
   faltaPorRecibir: "96500.00",
+  montoRecibido: null,
   conciliadoAt: null,
   conciliadoPorNombre: null,
   totales: MENSAJERO.totales,
@@ -81,7 +82,7 @@ const BODEGA: DetalleBodegaVista = {
   totalesIngreso: MENSAJERO.empresa!.totalesIngreso,
   partesPorTienda: [],
   modeloNuevo: false,
-  conteos: { gestiones: 31, mensajeros: 2, pagosAjustados: 2 },
+  conteos: { gestiones: 31, mensajeros: 2, cierres: 2, pagosAjustados: 2 },
 };
 
 const SLOTS_MENSAJERO = {

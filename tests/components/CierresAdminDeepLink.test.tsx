@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
+import { gestionCanvas } from "@/tests/fixtures/gestion-cierre-fila";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
   CierreGrupos,
@@ -339,5 +340,116 @@ describe("el enlace y quien lo construye hablan del MISMO parámetro", () => {
 
     await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     expect(verDetalleMock).toHaveBeenCalledWith({ cierreId: CIERRE_ENLAZADO });
+  });
+});
+
+// SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (T4.2; PA1, R116) — «Ver su
+// cierre» del detalle de bodega lleva a la central a `?cierre=<id>` de un cierre del día de una bodega
+// SATÉLITE. La central lo puede LEER (T1), pero solo para mirar: ninguna acción de escritura se ofrece
+// (aprobar, rechazar, destrabar, corregir, ajustar, pagar). El caso de control, un cierre de la
+// central con los mismos permisos, sí las ofrece: así el negativo no puede salir verde por casualidad.
+describe("SLT-104 (R116) — la central abre un cierre del día de satélite en SOLO LECTURA", () => {
+  const CIERRE_SATELITE = "dddddddd-4444-4444-8444-dddddddddddd";
+
+  function detalleDe(estado: "solicitado" | "aprobado" | "vencido", destinoTipo: "bodega_satelite" | "bodega_central") {
+    const base = detalleOk(CIERRE_SATELITE, "Ana Mensajera");
+    return {
+      ...base,
+      cierre: makeResumen({
+        cierreId: CIERRE_SATELITE,
+        mensajeroNombre: "Ana Mensajera",
+        estado,
+        destinoTipo,
+        destinoZonaNombre: destinoTipo === "bodega_satelite" ? "Limón" : "GAM",
+        pendientePagoMensajero: "1800.00",
+      }),
+      grupos: { ...emptyGrupos(), entregado: [gestionCanvas()] },
+    };
+  }
+
+  function montarCentral() {
+    const pagina = paginaInicial([]);
+    pendientesPaginadoMock.mockResolvedValue({ status: "ok", page: 1, ...pagina });
+    historicoPaginadoMock.mockResolvedValue({ status: "ok", page: 1, ...pagina });
+    parametros = new URLSearchParams({ [PARAM_CIERRE]: CIERRE_SATELITE });
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <CierresAdminModule
+          pendientes={pagina}
+          historico={pagina}
+          sinZona={false}
+          audiencia="admin"
+          puedeRegistrarPago
+          puedeCorregirPagos
+          puedeCorregirResultado
+          puedeAjustarPagoMensajero
+        />
+      </SWRConfig>,
+    );
+    return userEvent.setup();
+  }
+
+  /** Todo lo que se puede pulsar en el detalle con la fila desplegada: pie, pestañas y fila. */
+  async function lo_que_ofrece(user: ReturnType<typeof userEvent.setup>) {
+    const dialogo = await screen.findByRole("dialog", { name: "Detalle del cierre · Cierre de Ana Mensajera" });
+    await user.click(within(dialogo).getByRole("tab", { name: "Gestiones (1)" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-001 · Beto Ruiz" }));
+    return {
+      dialogo,
+      botones: within(dialogo)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? ""),
+      pestanas: within(dialogo)
+        .getAllByRole("tab")
+        .map((t) => t.textContent ?? ""),
+    };
+  }
+
+  const ESCRITURA = /Aprobar|Rechazar|Destrabar|Corregir|Ajustar pago|Registrar pago|Revisar paquetes/;
+
+  it("solicitado de satélite: sin aprobar, rechazar, corregir ni ajustar; el pie solo «Cerrar»", async () => {
+    verDetalleMock.mockResolvedValue(detalleDe("solicitado", "bodega_satelite"));
+    const user = montarCentral();
+    const { dialogo, botones } = await lo_que_ofrece(user);
+    expect(botones.filter((b) => ESCRITURA.test(b))).toEqual([]);
+    const pie = within(dialogo.querySelector("footer") as HTMLElement)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(pie).toEqual(["Cerrar"]);
+    // La fila sigue enseñando lo que la central puede mirar (filas «solo lectura» que mira la central).
+    expect(within(dialogo).getByRole("region", { name: /^Fulfillment · se cobró al crear la orden/ })).toBeTruthy();
+  });
+
+  it("aprobado de satélite: sin la pestaña «Pago al mensajero» aunque se pueda pagar", async () => {
+    verDetalleMock.mockResolvedValue(detalleDe("aprobado", "bodega_satelite"));
+    const user = montarCentral();
+    const { botones, pestanas } = await lo_que_ofrece(user);
+    expect(pestanas).not.toContain("Pago al mensajero");
+    expect(botones.filter((b) => ESCRITURA.test(b))).toEqual([]);
+  });
+
+  it("vencido de satélite: sin «Destrabar cierre vencido»", async () => {
+    verDetalleMock.mockResolvedValue(detalleDe("vencido", "bodega_satelite"));
+    const user = montarCentral();
+    const { botones } = await lo_que_ofrece(user);
+    expect(botones.filter((b) => ESCRITURA.test(b))).toEqual([]);
+  });
+
+  it("control: el mismo cierre con destino la central SÍ ofrece decidir, corregir y ajustar", async () => {
+    verDetalleMock.mockResolvedValue(detalleDe("solicitado", "bodega_central"));
+    const user = montarCentral();
+    const { botones } = await lo_que_ofrece(user);
+    const escritura = botones.filter((b) => ESCRITURA.test(b));
+    expect(escritura).toContain("Rechazar");
+    expect(escritura.some((b) => /Aprobar|Revisar paquetes y aprobar/.test(b))).toBe(true);
+    expect(escritura.some((b) => /^Corregir/.test(b))).toBe(true);
+    expect(escritura.some((b) => /^Ajustar pago/.test(b))).toBe(true);
+  });
+
+  it("control: aprobado de la central con permiso de pagar SÍ trae «Pago al mensajero»", async () => {
+    verDetalleMock.mockResolvedValue(detalleDe("aprobado", "bodega_central"));
+    const user = montarCentral();
+    const { pestanas } = await lo_que_ofrece(user);
+    expect(pestanas).toContain("Pago al mensajero");
   });
 });

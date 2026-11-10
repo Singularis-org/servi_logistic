@@ -33,7 +33,10 @@ export interface GestionesCierreProps {
   gestiones: readonly ItemGestion[];
   audiencia: AudienciaFila;
   quienMiraEsCentral: boolean;
-  /** `solicitadoAt` del cierre (nota de R97). `null` = sin fecha. */
+  /**
+   * `solicitadoAt` del cierre (nota de R97). `null` = sin fecha. SLT-104 (PA3): si el item trae su
+   * propio `congeladoAt` (bodega: el de su cierre del día), manda el del item.
+   */
   congeladoAt: string | null;
   acciones: AccionesFila;
   onVerEvidencia?: (url: string) => void;
@@ -110,7 +113,7 @@ export function GestionesCierre({
               mensajeroNombre={i.mensajeroNombre}
               audiencia={audiencia}
               quienMiraEsCentral={quienMiraEsCentral}
-              congeladoAt={congeladoAt}
+              congeladoAt={i.congeladoAt === undefined ? congeladoAt : i.congeladoAt}
               acciones={acciones}
               onVerEvidencia={onVerEvidencia}
               columnaMensajero={columnaMensajero}

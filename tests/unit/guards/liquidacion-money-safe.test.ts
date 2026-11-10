@@ -162,6 +162,10 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // (sin dinero) y las columnas de «Descargar» (importes como el string del servidor).
   "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx",
   "components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts",
+  // SLT-104 «Detalle de cierre de bodega en el detalle único (central)»: las pestañas «Mensajeros» y
+  // «Conciliación» del detalle de bodega.
+  "components/private/cierres/detalle/MensajerosCierreBodega.tsx",
+  "components/private/cierres/detalle/ConciliacionCierreBodega.tsx",
   // SLT-101 «Fila de gestión única y lista con filtros» (R71): la lista y la fila de una gestión
   // pintan las cifras del servidor tal cual; ninguna se deriva en el cliente.
   "components/private/cierres/fila/GestionesCierre.tsx",

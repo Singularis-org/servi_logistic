@@ -357,6 +357,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
             totalGeneral: new Prisma.Decimal("8000.00"),
             totalPagoMensajero: new Prisma.Decimal("5.00"),
             totalIngresoBodegaRechazos: new Prisma.Decimal("0.00"),
+            solicitadoAt: new Date("2026-07-11T15:00:00.000Z"), // SLT-104 (PA3): lo pide la proyeccion
             mensajero: { nombre: "Ana" },
             _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
           },

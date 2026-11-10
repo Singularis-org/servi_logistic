@@ -10,6 +10,7 @@ import { cierreConfig } from "@/lib/config/cierre";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type {
   Alcance,
+  AlcanceLecturaDetalle,
   CierreAdminResumenRow,
   GestionIncidenteDelCierre,
   ICierresAdminRepository,
@@ -108,6 +109,20 @@ import {
 // Roles autorizados en el modulo (R1): acceso total (maestro/admin -> bodega central) y el
 // adminSatelite (su bodega). Cualquier otro -> forbidden.
 const ROL_ADMIN_SATELITE = "adminSatelite";
+
+/**
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (PA1, R116) — el alcance con
+ * el que se LEE un detalle. Acceso total lee cualquier cierre del dia de su empresa, tambien los
+ * de una bodega satelite (el enlace «Ver su cierre» del detalle de bodega); el resto, el alcance de
+ * `resolveAlcance` sin cambios.
+ *
+ * Solo la usa `verCierreDetalle`. Las listas y las escrituras (aprobar, rechazar, destrabar,
+ * corregir, ajustar) siguen con `resolveAlcance`, que para acceso total es `bodega_central`: sobre
+ * un cierre de satelite responden `no_encontrada` como antes.
+ */
+function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle {
+  return esAccesoTotal(actor.rol) ? { lectura: "toda_la_empresa" } : alcance;
+}
 
 /**
  * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
@@ -855,7 +870,7 @@ export class CierresAdminService implements ICierresAdminService {
     // distingue "no existe" de "otra bodega/zona").
     // SLT-42 (R22): la zona fecha las gestiones del detalle y el «hoy» de su marca de retenidas.
     const zona = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.verCierreDetalle");
-    const found = await this.repo.findCierreByIdEnAlcance(cierreId, scope.alcance, zona);
+    const found = await this.repo.findCierreByIdEnAlcance(cierreId, alcanceDeLectura(actor, scope.alcance), zona);
     if (found === null) return { status: "no_encontrada" };
 
     // R7: firma en lote las evidencias (path crudo -> URL firmada de TTL acotado).

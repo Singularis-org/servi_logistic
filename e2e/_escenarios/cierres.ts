@@ -1,7 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { conEmpresa } from "../../lib/db/contexto-empresa";
+import { getPrismaClient } from "../../lib/db/prisma-client";
 import type { Actor } from "../../lib/interfaces/services/IOrdenService";
+import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
+import { OrdenRepository } from "../../lib/repositories/OrdenRepository";
+import { CierreBodegaService } from "../../lib/services/CierreBodegaService";
+import { construirReglasPaisEmpresa } from "../../lib/services/ReglasPaisEmpresaService";
 import {
   cierresAdmin,
   escenarioCierres,
@@ -154,4 +159,50 @@ export async function ajustarPagoMensajero(
     ),
   );
   if (res.status !== "ok") throw new Error(`SLT-102 E2E: ajustarPagoMensajero no fue ok: ${JSON.stringify(res)}`);
+}
+
+// ── Cierre de bodega (SLT-104 T6.1) ─────────────────────────────────────────────────
+//
+//   solicitarCierreBodega(r, { quien? }) → cierreBodegaId
+//     `CierreBodegaService.solicitarCierreBodega` con el `adminSatelite` (o `quien`), montado como en
+//     `lib/actions/cierre-bodega.ts`. Consolida los cierres del día APROBADOS de su zona. Es lo que hace
+//     el botón «Solicitar cierre de bodega»; aquí evita repetir sus clics donde lo que se prueba es lo
+//     que ve la central después (el paso 1 de `cierre-bodega-satelite` sigue recorriendo la pantalla).
+//
+//   montoDeCuenta(detalle, cuenta, rotulo) → Locator
+//     El importe (`data-monto`) de la línea de una cuenta del detalle único (`Cuenta`), por el título de
+//     la cuenta y el rótulo EXACTO que se lee, con su operador («− Recibido»).
+//
+//   filaDeMensajeros(detalle, nombre) → Locator
+//     La fila de ese mensajero en la tabla «Mensajeros del cierre de bodega» (pestaña «Mensajeros»).
+//     Sus celdas, en orden: Mensajero · Gestiones · Recaudado · Pago · A la central · Señales · enlace.
+
+export function montoDeCuenta(detalle: Locator, cuenta: string, rotulo: string): Locator {
+  const exacto = new RegExp(`^${rotulo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  return detalle
+    .getByRole("region", { name: cuenta, exact: true })
+    .locator("[data-signo]")
+    .filter({ has: detalle.page().locator("[data-rotulo]", { hasText: exacto }) })
+    .locator("[data-monto]");
+}
+
+export function filaDeMensajeros(detalle: Locator, nombre: string): Locator {
+  return detalle
+    .getByRole("table", { name: "Mensajeros del cierre de bodega" })
+    .getByRole("row")
+    .filter({ has: detalle.page().getByRole("cell", { name: nombre, exact: true }) });
+}
+
+export async function solicitarCierreBodega(r: RepartoE2E, opts: { quien?: Actor } = {}): Promise<string> {
+  const quien = opts.quien ?? r.actores.adminSatelite;
+  const prisma = getPrismaClient();
+  const res = await conEmpresa(r.empresa.organizacionId, () =>
+    new CierreBodegaService(
+      new CierreBodegaRepository(prisma),
+      new OrdenRepository(prisma),
+      construirReglasPaisEmpresa(prisma),
+    ).solicitarCierreBodega(quien),
+  );
+  if (res.status !== "ok") throw new Error(`SLT-104 E2E: solicitarCierreBodega no fue ok: ${JSON.stringify(res)}`);
+  return res.cierreBodegaId;
 }
