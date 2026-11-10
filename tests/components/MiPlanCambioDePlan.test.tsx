@@ -56,6 +56,25 @@ async function abrirConfirmacion(nombre = "Pro") {
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
+describe("R8 — «Activo desde» en el detalle del plan activo", () => {
+  it("la entrada de la empresa (`plan_ciclo_ancla_at`, 1 de septiembre a las 00:00 de la plataforma) sale como «Activo desde 2026-09-01»", async () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /^Básico/ }));
+    const detalle = screen.getByRole("region", { name: "Detalles de Básico" });
+    expect(within(detalle).getByText("Activo desde").nextSibling).toHaveTextContent("2026-09-01");
+    expect(within(detalle).getByText("Período en curso").nextSibling).toHaveTextContent("2026-11-01 – 2026-11-30");
+  });
+
+  it("en otro plan no hay «Activo desde»", async () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Pro" }));
+    const detalle = screen.getByRole("region", { name: "Detalles de Pro" });
+    expect(within(detalle).queryByText("Activo desde")).toBeNull();
+  });
+});
+
 describe("R19 — la confirmación del cambio", () => {
   it("con el corte y el primer período completo con su costo base, sin campo de fecha; con plan público, sin el aviso de P6", async () => {
     render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);

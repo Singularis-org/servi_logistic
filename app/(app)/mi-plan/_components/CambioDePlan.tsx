@@ -100,6 +100,7 @@ export function CambioDePlan({ planes, plan, pendiente }: CambioDePlanProps) {
           tipoCobro: planes.tipoCobro,
           periodo: plan.cobro.periodo,
           siguienteCobro: plan.cobro.siguienteCobro,
+          activoDesde: plan.activoDesde,
         }
       : null;
   const elegido: PlanVista | null =
