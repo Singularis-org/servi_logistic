@@ -23,10 +23,13 @@ import {
   type MiembroNodo,
 } from "@/lib/repositories/_shared/zona-nodo";
 import {
+  conAsignacionesDeZona,
+  grupoDelLugar,
   mismoConjunto,
   nodo as nodoDelCatalogo,
   nodosBajo,
   zonaQueCubre,
+  type AsignacionesDeLaEmpresa,
   type CatalogoGeografico,
 } from "@/lib/services/geografia-dominio";
 import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
@@ -37,7 +40,12 @@ import {
   etiquetaDeEntidad,
   valorDeCatalogo,
 } from "@/lib/types/historial-accion-etiquetas";
-import type { ImpactoZonaCentralDTO, TarifaZonaMensajeroDTO, ZonaDTO } from "@/lib/types/zona";
+import type {
+  ImpactoAsignacionDTO,
+  ImpactoZonaCentralDTO,
+  TarifaZonaMensajeroDTO,
+  ZonaDTO,
+} from "@/lib/types/zona";
 import type {
   CreateZonaData,
   CreateZonaResult,
@@ -519,18 +527,26 @@ function tarifaCreateRows(zonaId: string, tarifas: CreateZonaData["tarifas"]) {
  */
 function whereBaseElegible(lugares: readonly string[], zonaResueltaId: string): Prisma.OrdenWhereInput {
   return {
-    ...whereLugarEn(lugares),
-    zonaId: { not: zonaResueltaId },
-    deletedAt: null,
+    ...whereCambiariaDeZona(lugares, zonaResueltaId),
     cierreDetalles: { none: {} },
-    gestiones: {
-      none: {
-        anuladaAt: null,
-        resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] },
-      },
-    },
+    gestiones: { none: GESTION_VIGENTE_FINAL },
   };
 }
+
+/**
+ * SLT-89 (R13, design §5.3) — las ordenes vivas del lugar cuya zona cambiaria, ANTES de los cortes de
+ * cierre y de gestion. Es la mitad comun de `whereBaseElegible` y de los dos conteos del aviso de
+ * impacto («con gestion final», «ya en un cierre»): las dos salen del mismo corte por construccion.
+ */
+function whereCambiariaDeZona(lugares: readonly string[], zonaResueltaId: string): Prisma.OrdenWhereInput {
+  return { ...whereLugarEn(lugares), zonaId: { not: zonaResueltaId }, deletedAt: null };
+}
+
+/** La gestion vigente cuyo resultado ya decidio dinero (366/R8): la orden no se re-estampa. */
+const GESTION_VIGENTE_FINAL = {
+  anuladaAt: null,
+  resultado: { in: ["entregado" as const, "devolucion_a_origen_por_rechazo" as const, "incidente" as const] },
+};
 
 /**
  * ⭑ SLT-65 (design §6.1; R13–R15, R17) — QUE MOVERIA UN GUARDADO, SIN ESCRIBIR NADA.
@@ -549,30 +565,18 @@ function whereBaseElegible(lugares: readonly string[], zonaResueltaId: string): 
 export async function planificarReconciliacion(
   tx: TxDeReconciliacion,
   nodosAfectados: readonly string[],
+  foto?: { catalogo: CatalogoGeografico; asignaciones: AsignacionesDeLaEmpresa },
 ): Promise<PlanDeReconciliacion> {
   const porZona: PlanDeReconciliacion["porZona"] = new Map();
   let retenidasEnBodegaSatelite = 0;
   if (nodosAfectados.length === 0) return { porZona, retenidasEnBodegaSatelite };
 
-  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
+  // SLT-89 (R15, design §5.3): el aviso de impacto llama a ESTA misma funcion con las asignaciones
+  // PROPUESTAS (`foto`) en vez de las de la base. Las consultas de abajo son las del guardado, asi que
+  // si nada cambia entre el aviso y la confirmacion salen las mismas ordenes y las mismas retenidas.
+  const { catalogo, asignaciones } = foto ?? (await new CatalogoGeograficoRepository(tx).deLaEmpresa());
 
-  // En el orden de los nodos afectados, cada uno seguido de lo que cuelga de el, sin repetidos.
-  const lugares = new Set<string>();
-  for (const n of nodosAfectados) {
-    lugares.add(n);
-    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
-  }
-
-  const lugaresPorZona = new Map<string, string[]>();
-  for (const lugar of lugares) {
-    const zonaId = zonaQueCubre(catalogo, asignaciones, lugar)?.id;
-    if (zonaId === undefined) continue;
-    const bucket = lugaresPorZona.get(zonaId);
-    if (bucket) bucket.push(lugar);
-    else lugaresPorZona.set(zonaId, [lugar]);
-  }
-
-  for (const [zonaResueltaId, lugaresDeLaZona] of lugaresPorZona) {
+  for (const [zonaResueltaId, lugaresDeLaZona] of lugaresPorZona(catalogo, asignaciones, nodosAfectados)) {
     const base = whereBaseElegible(lugaresDeLaZona, zonaResueltaId);
     // FICHA 377 (R2/R8): en transito si, en el estante no. El porque, en `update`. El conteo va
     // SIEMPRE y en SQL, tambien cuando no hay nada que mover.
@@ -586,6 +590,187 @@ export async function planificarReconciliacion(
     if (elegibles.length > 0) porZona.set(zonaResueltaId, elegibles);
   }
   return { porZona, retenidasEnBodegaSatelite };
+}
+
+/**
+ * Los nodos afectados y todo lo que cuelga de ellos, en ese orden y sin repetidos, agrupados por la
+ * zona que los cubre (`zonaQueCubre`, colapso 1/0/>1: sin zona no entran). Lo comparten el plan y los
+ * dos conteos extra del aviso de impacto.
+ */
+function lugaresPorZona(
+  catalogo: CatalogoGeografico,
+  asignaciones: AsignacionesDeLaEmpresa,
+  nodosAfectados: readonly string[],
+): Map<string, string[]> {
+  const lugares = new Set<string>();
+  for (const n of nodosAfectados) {
+    lugares.add(n);
+    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
+  }
+
+  const porZona = new Map<string, string[]>();
+  for (const lugar of lugares) {
+    const zonaId = zonaQueCubre(catalogo, asignaciones, lugar)?.id;
+    if (zonaId === undefined) continue;
+    const bucket = porZona.get(zonaId);
+    if (bucket) bucket.push(lugar);
+    else porZona.set(zonaId, [lugar]);
+  }
+  return porZona;
+}
+
+/** SLT-89 (design §5.3): el id con el que una zona que aun no existe entra en las propuestas. */
+const ZONA_NUEVA: { id: string; nombre: string; esCentral: boolean } = {
+  id: "__zona_nueva_slt89__",
+  nombre: "",
+  esCentral: false,
+};
+
+/** Lo que el aviso de impacto lee con la `tx` de solo lectura. */
+type TxDeImpacto = Pick<
+  Prisma.TransactionClient,
+  "orden" | "zona" | "tarifaActivacion" | "grupoDistritosDistrito" | "grupoDistritosNodo"
+> &
+  CatalogoPrismaClient;
+
+/**
+ * SLT-89 (R14) — nodo -> grupo de cada zona de `zonaIds`, de las dos tablas de miembros. Con
+ * `cubre`, solo los miembros que esa zona sigue cubriendo: los que quedarian tras la normalizacion
+ * del guardado (design §5.1 paso 7), que saca al que pierde la cobertura y conserva al que pasa de
+ * asignado a heredado o al reves.
+ */
+async function miembrosPorZona(
+  tx: Pick<Prisma.TransactionClient, "grupoDistritosDistrito" | "grupoDistritosNodo">,
+  zonaIds: readonly string[],
+): Promise<{ zonaId: string; nodoId: string; grupoId: string }[]> {
+  if (zonaIds.length === 0) return [];
+  const distritos = await tx.grupoDistritosDistrito.findMany({
+    where: { zonaId: { in: [...zonaIds] } },
+    select: { zonaId: true, distritoId: true, grupoId: true },
+  });
+  const nodos = await leerMiembrosNodo(tx, { zonaIds });
+  return [
+    ...distritos.map((d) => ({ zonaId: d.zonaId, nodoId: d.distritoId, grupoId: d.grupoId })),
+    ...nodos.map((n) => ({ zonaId: n.zonaId, nodoId: n.nodoId, grupoId: n.grupoId })),
+  ];
+}
+
+function mapaDeMiembros(
+  filas: readonly { zonaId: string; nodoId: string; grupoId: string }[],
+  sigue: (f: { zonaId: string; nodoId: string }) => boolean = () => true,
+): Map<string, Map<string, string>> {
+  const porZona = new Map<string, Map<string, string>>();
+  for (const f of filas) {
+    if (!sigue(f)) continue;
+    const mapa = porZona.get(f.zonaId) ?? new Map<string, string>();
+    mapa.set(f.nodoId, f.grupoId);
+    porZona.set(f.zonaId, mapa);
+  }
+  return porZona;
+}
+
+/**
+ * ⭑ SLT-89 (R13–R15, design §5.3) — LO QUE UN GUARDADO DE NODOS HARIA, SIN ESCRIBIR.
+ *
+ * 1. Catalogo y asignaciones de la empresa; las PROPUESTAS reemplazan las de la zona por las pedidas
+ *    (`conAsignacionesDeZona`). Una zona nueva entra con `ZONA_NUEVA`.
+ * 2. Afectados = nodos de la zona antes ∪ pedidos (los del guardado); lugares = afectados + lo que
+ *    cuelga, agrupados por la zona de DESPUES.
+ * 3. `planificarReconciliacion` con las propuestas —las mismas consultas que el guardado— da «cambian de zona» y «en el estante» (R15);
+ *    dos conteos mas sobre el mismo corte sin el filtro de cierre/gestion dan «ya en un cierre» y
+ *    «con gestion final».
+ * 4. «Cambian de tarifa» (R14): sin la empresa activada (SLT-54), igual a «cambian de zona»; activada,
+ *    las pendientes de los lugares cuya zona o cuyo grupo (miembro mas cercano, `grupoDelLugar`, R20:
+ *    sin distrito no hay grupo) difieren antes y despues.
+ *
+ * `null` si la zona pedida no existe.
+ */
+async function calcularImpacto(
+  tx: TxDeImpacto,
+  zonaId: string | null,
+  pedidos: readonly string[],
+): Promise<ImpactoAsignacionDTO | null> {
+  const zona =
+    zonaId === null
+      ? ZONA_NUEVA
+      : await tx.zona.findUnique({ where: { id: zonaId }, select: { id: true, nombre: true, esCentral: true } });
+  if (zona === null) return null;
+
+  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
+  const propuestas = conAsignacionesDeZona(asignaciones, zona, pedidos);
+  const deAntes = [...asignaciones.zonasPorNodo]
+    .filter(([, zonas]) => zonas.some((z) => z.id === zona.id))
+    .map(([nodoId]) => nodoId);
+  const afectados = [...new Set([...deAntes, ...pedidos])];
+  const lugares = lugaresPorZona(catalogo, propuestas, afectados);
+
+  const plan = await planificarReconciliacion(tx, afectados, { catalogo, asignaciones: propuestas });
+  const movidas = new Map<string, string>();
+  for (const [zonaDestino, ordenes] of plan.porZona) for (const o of ordenes) movidas.set(o.id, zonaDestino);
+
+  let enCierre = 0;
+  let conGestionFinal = 0;
+  for (const [zonaResueltaId, lugaresDeLaZona] of lugares) {
+    const corte = whereCambiariaDeZona(lugaresDeLaZona, zonaResueltaId);
+    enCierre += await tx.orden.count({ where: { ...corte, cierreDetalles: { some: {} } } });
+    conGestionFinal += await tx.orden.count({
+      where: { ...corte, cierreDetalles: { none: {} }, gestiones: { some: GESTION_VIGENTE_FINAL } },
+    });
+  }
+
+  const cambianDeZona = movidas.size;
+  const activada = (await tx.tarifaActivacion.findFirst({ select: { id: true } })) !== null;
+  const cambianDeTarifa = activada
+    ? await contarCambiosDeTarifa(tx, catalogo, propuestas, afectados, movidas)
+    : cambianDeZona;
+
+  return {
+    cambianDeZona,
+    cambianDeTarifa,
+    noSeMueven: { enBodegaSatelite: plan.retenidasEnBodegaSatelite, conGestionFinal, enCierre },
+  };
+}
+
+/** SLT-89 (R14): las pendientes de los lugares afectados cuya zona o cuyo grupo cambian. */
+async function contarCambiosDeTarifa(
+  tx: TxDeImpacto,
+  catalogo: CatalogoGeografico,
+  propuestas: AsignacionesDeLaEmpresa,
+  afectados: readonly string[],
+  movidas: ReadonlyMap<string, string>,
+): Promise<number> {
+  const lugares = new Set<string>();
+  for (const n of afectados) {
+    lugares.add(n);
+    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
+  }
+  if (lugares.size === 0) return 0;
+  const pendientes = await tx.orden.findMany({
+    where: { ...whereLugarEn([...lugares]), deletedAt: null, cierreDetalles: { none: {} } },
+    select: { id: true, zonaId: true, distritoId: true },
+  });
+  const zonas = [...new Set([...pendientes.map((o) => o.zonaId), ...movidas.values()])];
+  const filas = await miembrosPorZona(tx, zonas);
+  const antes = mapaDeMiembros(filas);
+  const despues = mapaDeMiembros(filas, (f) => zonaQueCubre(catalogo, propuestas, f.nodoId)?.id === f.zonaId);
+  const grupo = (mapa: Map<string, Map<string, string>>, zonaId: string, distritoId: string | null) =>
+    grupoDelLugar(catalogo, mapa.get(zonaId) ?? new Map(), distritoId);
+
+  let cambian = 0;
+  for (const o of pendientes) {
+    const zonaDespues = movidas.get(o.id) ?? o.zonaId;
+    if (zonaDespues !== o.zonaId || grupo(antes, o.zonaId, o.distritoId) !== grupo(despues, zonaDespues, o.distritoId)) {
+      cambian += 1;
+    }
+  }
+  return cambian;
+}
+
+/** El resultado del aviso, sacado de la transaccion que se revierte siempre. */
+class ImpactoCalculado extends Error {
+  constructor(readonly impacto: ImpactoAsignacionDTO | null) {
+    super("impacto calculado");
+  }
 }
 
 export class ZonaRepository implements IZonaRepository {
@@ -686,6 +871,33 @@ export class ZonaRepository implements IZonaRepository {
       }
       translateEsCentralConflict(e);
     }
+  }
+
+  /**
+   * ⭑ SLT-89 (R13–R15, design §5.3) — EL AVISO DE IMPACTO, EN UNA TRANSACCION DE SOLO LECTURA.
+   *
+   * `SET TRANSACTION READ ONLY` primero (como los scripts de SLT-65): Postgres rechaza cualquier
+   * escritura que se colara aqui. Y la transaccion se REVIERTE SIEMPRE —el resultado sale en una
+   * excepcion propia—: asi el modo de solo lectura tampoco sobrevive cuando el cliente es una
+   * transaccion ya abierta (el `SET` dentro de un savepoint dura hasta el final de la de fuera si el
+   * savepoint se libera; revertido, se deshace).
+   */
+  async impactoDeAsignacion(entrada: {
+    zonaId: string | null;
+    distritoIds: readonly string[];
+    nodoIds: readonly string[];
+  }): Promise<ImpactoAsignacionDTO | null> {
+    const pedidos = [...new Set([...entrada.distritoIds, ...entrada.nodoIds])];
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        throw new ImpactoCalculado(await calcularImpacto(sinTransaccionAnidada(tx), entrada.zonaId, pedidos));
+      });
+    } catch (e) {
+      if (e instanceof ImpactoCalculado) return e.impacto;
+      throw e;
+    }
+    throw new Error("el aviso de impacto no devolvio resultado");
   }
 
   async findById(id: string, includeTarifas: boolean): Promise<ZonaDTO | null> {

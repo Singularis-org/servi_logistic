@@ -1,4 +1,4 @@
-import type { ImpactoZonaCentralDTO, ZonaDTO } from "@/lib/types/zona";
+import type { ImpactoAsignacionDTO, ImpactoZonaCentralDTO, ZonaDTO } from "@/lib/types/zona";
 
 /**
  * ⭑ FICHA 429 — la fila de una bodega tal como la necesita la superficie del SINPE. NO es
@@ -245,6 +245,16 @@ export interface IZonaRepository {
    * que poder decir «no afecta a ninguna» y eso no es lo mismo que «no lo sé».
    */
   contarOrdenesVivasPorZona(zonaIds: string[]): Promise<ImpactoZonaCentralDTO[]>;
+  /**
+   * SLT-89 (R13–R15, design §5.3) — lo que guardar la zona `zonaId` (o una nueva, con `null`) con
+   * esos nodos haria con las ordenes, sin escribir: transaccion de solo lectura y siempre revertida.
+   * Sale de las mismas consultas que el plan del guardado (R15). `null` si la zona no existe.
+   */
+  impactoDeAsignacion(entrada: {
+    zonaId: string | null;
+    distritoIds: readonly string[];
+    nodoIds: readonly string[];
+  }): Promise<ImpactoAsignacionDTO | null>;
 
   /* ─── FICHA 429 · el SINPE por bodega ────────────────────────────────────────────────────── */
 

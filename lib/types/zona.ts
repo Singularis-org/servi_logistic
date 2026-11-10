@@ -298,6 +298,33 @@ export type ActualizarZonaResult =
   // SLT-89 (R16): los nodos de la zona en la base no son los que el modal mostro como «antes».
   | { status: "conflict"; motivo: "cambio_concurrente" }
   | ZonaActionError;
+
+/**
+ * SLT-89 (R13–R15, design §5.3) — lo que un guardado de nodos haria con las ordenes, calculado sin
+ * escribir. `cambianDeZona` y `noSeMueven.enBodegaSatelite` salen del mismo plan que el guardado: si
+ * nada cambia entre el aviso y la confirmacion, son `ordenesReconciliadas` y
+ * `ordenesRetenidasEnBodegaSatelite` de su respuesta (R15).
+ */
+export interface ImpactoAsignacionDTO {
+  cambianDeZona: number;
+  cambianDeTarifa: number;
+  noSeMueven: { enBodegaSatelite: number; conGestionFinal: number; enCierre: number };
+}
+
+/**
+ * SLT-89 (design §5.3, §6) — la entrada del aviso. Sin `zonaId`, una zona nueva. Tope de 5 000 ids
+ * por lista: un payload inventado no se convierte en una consulta sobre el catalogo entero.
+ */
+export const impactoAsignacionZonaSchema = z
+  .object({
+    zonaId: idSchema.optional(),
+    distritoIds: z.array(idSchema).max(5000),
+    nodoIds: z.array(idSchema).max(5000),
+  })
+  .strict();
+export type ImpactoAsignacionZonaInput = z.infer<typeof impactoAsignacionZonaSchema>;
+
+export type ImpactoAsignacionZonaResult = { status: "ok"; impacto: ImpactoAsignacionDTO } | ZonaActionError;
 export type ListarZonasResult =
   | { status: "ok"; items: ZonaDTO[]; page: number; pageSize: number; total: number }
   | ZonaActionError;

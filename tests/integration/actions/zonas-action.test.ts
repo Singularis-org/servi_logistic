@@ -5,6 +5,7 @@ import {
   listarZonas,
   actualizarZona,
   borrarZona,
+  impactoAsignacionZona,
   impactoZonaCentral,
 } from "@/lib/actions/zonas";
 import { ZonaService } from "@/lib/services/ZonaService";
@@ -50,6 +51,7 @@ function fakeService(over: Partial<IZonaService> = {}): IZonaService {
     }),
     borrar: vi.fn().mockResolvedValue({ status: "ok" }),
     // FICHA 376 (Q4): la lectura de impacto que la confirmacion consulta antes de enviar.
+    impactoAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
     ...over,
   };
@@ -321,6 +323,7 @@ function repoConGuarda(): IZonaRepository {
     countExistingDistritos: vi.fn(async (ids: string[]) => ids.length),
     countExistingVehiculos: vi.fn(async (ids: string[]) => ids.length),
     findCentralZonaId: vi.fn().mockResolvedValue(ZONA_CENTRAL),
+    impactoDeAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     contarOrdenesVivasPorZona: vi.fn(async (ids: string[]) =>
       ids.map((zonaId) => ({ zonaId, ordenesVivas: zonaId === ZONA_CENTRAL ? 850 : 0 })),
     ),
@@ -605,5 +608,45 @@ describe("SLT-89 · R16 — el «antes» obligatorio en actualizarZona", () => {
     const datos = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(datos.nodoIds).toEqual(["c1", "c2"]);
     expect(datos.antes).toEqual(antes);
+  });
+});
+
+/** SLT-89 · R13 (design §5.3, §6) — el borde del aviso de impacto. */
+describe("SLT-89 — impactoAsignacionZona", () => {
+  it("sin sesion → unauthenticated sin tocar el service", async () => {
+    const service = fakeService();
+    const r = await impactoAsignacionZona({ distritoIds: [], nodoIds: [] }, { zonaService: service, getActor: noActor });
+    expect(r.status).toBe("unauthenticated");
+    expect(service.impactoAsignacion).not.toHaveBeenCalled();
+  });
+
+  it("entrada invalida (campo de mas, o mas de 5 000 ids) → validation_error sin llamar al service", async () => {
+    const service = fakeService();
+    const deps = { zonaService: service, getActor: getActor(MAESTRO) };
+    const muchos = Array.from({ length: 5001 }, (_, i) => `n${i}`);
+    expect((await impactoAsignacionZona({ distritoIds: [], nodoIds: [], hack: 1 }, deps)).status).toBe("validation_error");
+    expect((await impactoAsignacionZona({ distritoIds: muchos, nodoIds: [] }, deps)).status).toBe("validation_error");
+    expect((await impactoAsignacionZona("z1", deps)).status).toBe("validation_error");
+    expect(service.impactoAsignacion).not.toHaveBeenCalled();
+  });
+
+  it("con el service real: un rol que no es maestro → forbidden, y el repositorio no se toca", async () => {
+    const repo = repoConGuarda();
+    const r = await impactoAsignacionZona(
+      { zonaId: "z1", distritoIds: ["d1"], nodoIds: [] },
+      { zonaService: new ZonaService(repo), getActor: getActor({ usuarioId: "a1", rol: "admin" }) },
+    );
+    expect(r.status).toBe("forbidden");
+    expect(llamadasAlRepo(repo)).toBe(0);
+  });
+
+  it("maestro: la respuesta del service llega tal cual", async () => {
+    const impacto = { cambianDeZona: 1, cambianDeTarifa: 1, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } };
+    const service = fakeService({ impactoAsignacion: vi.fn().mockResolvedValue({ status: "ok", impacto }) });
+    const r = await impactoAsignacionZona({ zonaId: "z1", distritoIds: ["d1"], nodoIds: [] }, {
+      zonaService: service,
+      getActor: getActor(MAESTRO),
+    });
+    expect(r).toEqual({ status: "ok", impacto });
   });
 });

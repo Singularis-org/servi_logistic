@@ -12,6 +12,7 @@ import type {
   ActualizarZonaServiceResult,
   BorrarZonaServiceResult,
   CrearZonaServiceResult,
+  ImpactoAsignacionServiceResult,
   ImpactoZonaCentralServiceResult,
   IZonaService,
   ListarZonasServiceResult,
@@ -21,6 +22,7 @@ import {
   antesDeZonaSchema,
   type ActualizarZonaInput,
   type CrearZonaInput,
+  type ImpactoAsignacionZonaInput,
   type ListarZonasInput,
   type TarifaZonaMensajeroInput,
 } from "@/lib/types/zona";
@@ -321,6 +323,24 @@ export class ZonaService implements IZonaService {
   ): Promise<ImpactoZonaCentralServiceResult> {
     if (!esMaestro(actor)) return { status: "forbidden" };
     const impacto = await this.repo.contarOrdenesVivasPorZona(zonaIds);
+    return { status: "ok", impacto };
+  }
+
+  /**
+   * SLT-89 (R13–R15, R36; design §5.3) — el aviso de impacto del modal de guardado. Rol antes de
+   * leer nada; la zona que no existe es `not_found`.
+   */
+  async impactoAsignacion(
+    input: ImpactoAsignacionZonaInput,
+    actor: Actor,
+  ): Promise<ImpactoAsignacionServiceResult> {
+    if (!esMaestro(actor)) return { status: "forbidden" };
+    const impacto = await this.repo.impactoDeAsignacion({
+      zonaId: input.zonaId ?? null,
+      distritoIds: distinct(input.distritoIds),
+      nodoIds: distinct(input.nodoIds),
+    });
+    if (impacto === null) return { status: "not_found" };
     return { status: "ok", impacto };
   }
 }

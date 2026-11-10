@@ -51,6 +51,7 @@ function buildRepo(overrides: Partial<IZonaRepository> = {}): IZonaRepository {
     countExistingVehiculos: vi.fn(async (ids: string[]) => ids.length),
     findCentralZonaId: vi.fn().mockResolvedValue(null), // feature 54
     // FICHA 376 (Q4): por defecto, cero ordenes vivas en cada zona pedida.
+    impactoDeAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     contarOrdenesVivasPorZona: vi.fn(async (ids: string[]) =>
       ids.map((zonaId) => ({ zonaId, ordenesVivas: 0 })),
     ),
@@ -663,5 +664,40 @@ describe("SLT-89 — guardar una zona con nodos", () => {
     };
     expect(await service.actualizar("z1", actualizarInput(), MAESTRO)).toEqual(esperado);
     expect(await service.crear(crearInput(), MAESTRO)).toEqual(esperado);
+  });
+});
+
+/** SLT-89 · R13, R36 (design §5.3, §7) — el aviso de impacto del guardado de nodos. */
+describe("SLT-89 — impactoAsignacion", () => {
+  const IMPACTO = {
+    cambianDeZona: 3,
+    cambianDeTarifa: 4,
+    noSeMueven: { enBodegaSatelite: 2, conGestionFinal: 1, enCierre: 1 },
+  };
+
+  it("⭑ R36: un rol que no es maestro → `forbidden` sin tocar el repositorio", async () => {
+    const falla = vi.fn(async () => {
+      throw new Error("el repositorio no debia tocarse");
+    });
+    service = new ZonaService(buildRepo({ impactoDeAsignacion: falla }));
+    for (const actor of NO_MAESTROS) {
+      expect(await service.impactoAsignacion({ distritoIds: ["d1"], nodoIds: [] }, actor)).toEqual({ status: "forbidden" });
+    }
+    expect(falla).not.toHaveBeenCalled();
+  });
+
+  it("maestro: reenvia las cifras del repositorio tal cual, con los ids sin repetidos", async () => {
+    repo = buildRepo({ impactoDeAsignacion: vi.fn().mockResolvedValue(IMPACTO) });
+    service = new ZonaService(repo);
+    const r = await service.impactoAsignacion({ zonaId: "z1", distritoIds: ["d1", "d1"], nodoIds: ["c1"] }, MAESTRO);
+    expect(r).toEqual({ status: "ok", impacto: IMPACTO });
+    expect(repo.impactoDeAsignacion).toHaveBeenCalledWith({ zonaId: "z1", distritoIds: ["d1"], nodoIds: ["c1"] });
+  });
+
+  it("sin `zonaId` pregunta por una zona nueva (`null`); la zona que no existe es `not_found`", async () => {
+    repo = buildRepo({ impactoDeAsignacion: vi.fn().mockResolvedValue(null) });
+    service = new ZonaService(repo);
+    expect(await service.impactoAsignacion({ distritoIds: [], nodoIds: ["c1"] }, MAESTRO)).toEqual({ status: "not_found" });
+    expect(repo.impactoDeAsignacion).toHaveBeenCalledWith({ zonaId: null, distritoIds: [], nodoIds: ["c1"] });
   });
 });
