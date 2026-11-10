@@ -223,6 +223,14 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo:
       "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45); y las lecturas del catálogo, el detalle de un plan y el plan de una empresa para el superadmin (SLT-58); y la vista previa de la primera asignación (SLT-58 §11)",
   },
+  {
+    // SLT-87 (design §2.3). Lleva la ficha que separó negocio y plataforma porque `FichaJira` no admite
+    // `SLT` (deuda D29).
+    archivo: "lib/repositories/BugReportRepository.ts",
+    ficha: "SL-17",
+    motivo:
+      "SLT-87 y SLT-97: guardar un reporte de problema y, para el superadmin, leerlos y cambiar su estado con su historial, en tablas de plataforma que la empresa no puede leer ni escribir (R13, R14 de SLT-87; R3 de SLT-97)",
+  },
 ];
 
 /**

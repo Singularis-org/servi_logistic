@@ -515,6 +515,12 @@ export interface ICierresAdminRepository {
      * porque el `findFirst` de arriba ya devolvio `null` si el cierre no casa. `[]`, nunca `null`.
      */
     rechazosDeTienda: CierreRechazoDeTienda[];
+    /**
+     * SLT-100 (R80): nombre completo de quien resolvio el cierre (`cierre_dia.resuelto_por`), leido
+     * en la misma sentencia acotada por el alcance; `null` sin resolutor. Opcional: los dobles de
+     * test que no lo necesitan no cambian (contrato aditivo).
+     */
+    resueltoPorNombre?: string | null;
   } | null>;
   /**
    * Feature 158 (T1.12, R19/R21/R25): las gestiones con `resultado = incidente` vinculadas a ESE

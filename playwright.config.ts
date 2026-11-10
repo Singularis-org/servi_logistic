@@ -107,6 +107,8 @@ export default defineConfig({
         // SLT-81 R25: el superadmin da de alta un país con sus datos y un tipo; el alta de empresa
         // ofrece su prefijo y sus tipos. Deja el país dado de alta: la corrida siguiente elige otro.
         "datos-pais-superadmin",
+        // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.
+        "reporte-de-bugs",
       ),
     },
     {
@@ -151,6 +153,8 @@ export default defineConfig({
         // Tarifas activadas + valor propio + plan porcentual, en el mismo cierre aprobado. Usa el superadmin de prueba.
         "cierre-modelo-nuevo-plan-porcentual",
         "fulfillment-cobro-por-paquete",
+        // SLT-100 R77: lo que ven la central y la satélite en el detalle único, modelos viejo y nuevo.
+        "cierres-rediseno",
       ),
     },
   ],
@@ -185,6 +189,9 @@ export default defineConfig({
         INTEGRACIONES_PROBADOR_DOBLE: "1",
         INTEGRACIONES_CLAVES_CIFRADO,
         INTEGRACIONES_CLAVE_ACTIVA,
+        // SLT-87 (design §9; R15): la copia de cada reporte de problema. El dominio reservado va al
+        // emisor de consola, y con `AUTH_OTP_DEBUG_LOG=1` su cuerpo sale en el log.
+        BUG_REPORT_EMAILS: "reportes-e2e@example.test",
       },
       reuseExistingServer: !CI,
       // `next start` sube en segundos; `next dev` compila la primera ruta al pedir `url`.

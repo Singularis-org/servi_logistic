@@ -1405,13 +1405,13 @@ export interface CierreFacturaDetalleProps {
  * «corregir» y no «editar» a propósito — lo que se arregla es un dato mal registrado en la
  * calle, no una preferencia—, y nombra los MÉTODOS porque el total no se toca.
  */
-const FILA_CORREGIR_METODOS = "Corregir métodos de pago";
+export const FILA_CORREGIR_METODOS = "Corregir métodos de pago";
 
 /**
  * FICHA 398 (R16) — rótulo del acceso a la corrección del RESULTADO. Nombra el resultado y no
  * el dinero: lo que se arregla es una entrega que no ocurrió, y el dinero se va detrás.
  */
-const FILA_CORREGIR_RESULTADO = "Corregir el resultado";
+export const FILA_CORREGIR_RESULTADO = "Corregir el resultado";
 
 /**
  * Feature 263 (R7–R10, R14) — la plantilla de la rejilla de órdenes, en UN solo sitio.
@@ -1476,14 +1476,14 @@ const FILA_GUIA_CELDA = "min-w-[80px] whitespace-nowrap tabular-nums";
 const SIN_GESTION_GRID_COLS = "grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)]";
 
 // --- Rótulos de la tabla compacta del detalle (texto separado, i18n-ready) ---
-const FILA_GUIA_COL = "Guía";
-const FILA_DESTINATARIO_COL = "Destinatario";
+export const FILA_GUIA_COL = "Guía";
+export const FILA_DESTINATARIO_COL = "Destinatario";
 const FILA_COBRADO_COL = "Cobrado";
 const FILA_RECIBIDO_LABEL = "Recibido";
-const FILA_TIENDA_LABEL = "Tienda";
-const FILA_MOTIVO_LABEL = "Motivo";
+export const FILA_TIENDA_LABEL = "Tienda";
+export const FILA_MOTIVO_LABEL = "Motivo";
 const FILA_NUEVA_FECHA_LABEL = "Nueva fecha";
-const FILA_VER_EVIDENCIA = "Ver evidencia";
+export const FILA_VER_EVIDENCIA = "Ver evidencia";
 const FOOTER_RECAUDADO_LABEL = "Total recaudado";
 const FOOTER_ENTREGAS_LABEL = "entregas";
 
@@ -2164,7 +2164,7 @@ const RECHAZOS_TITULO = "Rechazados por la tienda";
  * masculino, como el título aprobado (se habla del paquete), para que no se lea como el estado
  * retirado «Rechazada»; es el rechazo de la TIENDA (425), no un estado.
  */
-const RECHAZOS_LISTA_LABEL = "Lista de paquetes rechazados por la tienda";
+export const RECHAZOS_LISTA_LABEL = "Lista de paquetes rechazados por la tienda";
 /**
  * Los DOS CONTEOS de la forma aprobada, cada uno con lo que HACE: las gestiones del mensajero
  * «paga» —entran en su liquidación— y los rechazos de la tienda «revisar» —se separan y no se
@@ -2175,7 +2175,7 @@ const RECHAZOS_GESTIONES_LABEL = "Gestiones del mensajero";
 const RECHAZOS_GESTIONES_EFECTO = "paga";
 const RECHAZOS_RECHAZOS_EFECTO = "revisar";
 /** R16 — la línea fija aprobada (Q3). Sin siglas. */
-const RECHAZOS_NOTA = "No son gestiones del mensajero y no suman a su pago.";
+export const RECHAZOS_NOTA = "No son gestiones del mensajero y no suman a su pago.";
 /**
  * D3 — un cierre SIN gestiones del mensajero (el caso de Arnel: sólo trae rechazos) nace con los
  * seis totales en cero, y eso es CORRECTO. Sin esta línea la hoja entera se lee como un cierre
@@ -2184,7 +2184,7 @@ const RECHAZOS_NOTA = "No son gestiones del mensajero y no suman a su pago.";
  */
 const RECHAZOS_SOLO_REVISION =
   "Este cierre no trae gestiones del mensajero: es un documento de revisión, y por eso sus totales están en cero.";
-const RECHAZOS_FECHA_COL = "Fecha del rechazo";
+export const RECHAZOS_FECHA_COL = "Fecha del rechazo";
 
 /**
  * FICHA 425 (R10) — lo que tiene que hacer quien aprueba, con la concordancia resuelta. En la
@@ -2194,7 +2194,7 @@ const RECHAZOS_FECHA_COL = "Fecha del rechazo";
  * «sin escanear» no es una recomendación: estos paquetes NO están en la confirmación física, que
  * se alimenta de las gestiones del cierre y no de esta lista (`design.md §5.4`).
  */
-function separarParaDevolucion(cuantas: number): string {
+export function separarParaDevolucion(cuantas: number): string {
   return cuantas === 1
     ? "Separar 1 orden para devolución, sin escanearla."
     : `Separar ${cuantas} órdenes para devolución, sin escanearlas.`;
@@ -2209,7 +2209,7 @@ function separarParaDevolucion(cuantas: number): string {
  * `cierre.destinoTipo` sería una suposición que puede fallar justo con una orden traspasada. Por
  * eso se dicen los dos destinos, con el de la central delante, que es el de la forma aprobada.
  */
-function efectoAlAprobar(cuantas: number): string {
+export function efectoAlAprobar(cuantas: number): string {
   const central = ORDER_STATUS_LABELS.por_devolver_a_tienda;
   const satelite = ORDER_STATUS_LABELS.por_devolver_a_bodega_central;
   return cuantas === 1
@@ -2476,7 +2476,7 @@ function FilaSinGestion({ o }: Readonly<{ o: CierreOrdenSinGestion }>) {
  * cierre. Si algún día se añadiera un tope, la regla ya está escrita: habría que decir cuántas
  * no se muestran, junto al conteo del encabezado.
  */
-function SeccionSinGestion({
+export function SeccionSinGestion({
   ordenes,
   registrado,
 }: Readonly<{ ordenes: readonly CierreOrdenSinGestion[]; registrado: boolean }>) {

@@ -181,6 +181,10 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)
   { modelo: "HistorialPlataforma", tabla: "historial_plataforma" },
+  // Reportes de problema (SLT-87): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-87)
+  { modelo: "BugReport", tabla: "bug_report" },
+  // Historial de estado de los reportes (SLT-97): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-97)
+  { modelo: "BugReportStatusChange", tabla: "bug_report_status_change" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

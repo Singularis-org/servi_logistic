@@ -76,6 +76,37 @@ async function abrirDetalle(page: Page, m: MensajeroE2E): Promise<Locator> {
   return detalle;
 }
 
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: la cascada «Lo que le queda a la empresa»
+ * del modal anterior es la cuenta «De lo facturado, le queda a la empresa» del detalle único, y su neto es «Le
+ * queda a la empresa». La cuenta vive en la pestaña «Dinero» y las órdenes, en «Gestiones».
+ */
+function lineaCuenta(detalle: Locator, rotulo: string): Locator {
+  return detalle
+    .getByRole("region", { name: "De lo facturado, le queda a la empresa" })
+    .locator("[data-signo]")
+    .filter({ has: detalle.page().locator("[data-rotulo]", { hasText: new RegExp(`^${rotulo}$`) }) })
+    .locator("[data-monto]");
+}
+
+async function irA(detalle: Locator, pestana: "Dinero" | "Gestiones"): Promise<void> {
+  await detalle.getByRole("tab", { name: pestana === "Dinero" ? "Dinero" : /^Gestiones \(/ }).click();
+}
+
+/**
+ * SLT-101 «Fila de gestión única y lista con filtros» (R84): las pestañas por resultado de la lista pasan a ser
+ * el filtro «Filtrar por resultado» («<resultado> <n>»), encima de «Órdenes del cierre».
+ */
+const filtro = (detalle: Locator, resultado: RegExp) =>
+  detalle.getByRole("group", { name: "Filtrar por resultado" }).getByRole("button", { name: resultado });
+
+/** SLT-101 (R98): el total «Se le paga» de la tarjeta del pago de la orden, en la fila desplegada. */
+function seLePaga(ordenes: Locator, o: OrdenE2E): Locator {
+  return ordenes
+    .getByRole("region", { name: `Se le paga al mensajero de la orden ${o.numRemision} · ${o.destinatario}` })
+    .locator("[data-tipo='total'] [data-monto]");
+}
+
 /** Despliega la fila de la orden dentro de `ordenes` (si está plegada) y la devuelve. */
 async function desplegar(ordenes: Locator, o: OrdenE2E): Promise<void> {
   const fila = ordenes.getByRole("button", { name: new RegExp(o.numRemision) }).first();
@@ -126,13 +157,13 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     const detalle = await abrirDetalle(page, m);
 
     // ANTES: 1.500 de pago al mensajero (la entrega), y lo que le queda a la empresa con él.
-    const neto = detalle.getByRole("region", { name: `Lo que le queda a la empresa · cierre de ${m.nombre}` });
-    await expect(lineaDe(neto, "Pago al mensajero")).toContainText(importe(1500));
-    const lineaNeto = lineaDe(neto, "Neto de la empresa").locator(":scope > span").last();
+    await expect(lineaCuenta(detalle, "− Pago al mensajero")).toContainText(importe(1500));
+    const lineaNeto = lineaCuenta(detalle, "Le queda a la empresa");
     const netoAntes = aCentimos(await lineaNeto.innerText());
 
+    await irA(detalle, "Gestiones");
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
     await desplegar(ordenes, rechazada);
     // El rechazo no paga (pago vigente 0) y todavía no tiene marca.
     await expect(ordenes.getByRole("button", { name: /^Pago ajustado/ })).toHaveCount(0);
@@ -147,11 +178,23 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     // R11 — sin recargar: el pago al mensajero del cierre pasa a 2.200 y lo que le queda a la
     // empresa baja exactamente los 700 del ajuste (lo demás del cierre no cambió).
     await expect(detalle).toBeVisible();
-    await expect(lineaDe(neto, "Pago al mensajero")).toContainText(importe(2200));
+    await irA(detalle, "Dinero");
+    await expect(lineaCuenta(detalle, "− Pago al mensajero")).toContainText(importe(2200));
     await expect.poll(async () => aCentimos(await lineaNeto.innerText())).toBe(netoAntes - BigInt(70000));
+    // Volver a «Gestiones» la monta de nuevo: arranca en su primera sección con órdenes.
+    await irA(detalle, "Gestiones");
+    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
 
     // R19 — la orden con su pago nuevo, marcada «Ajustado»; al pulsar, quién, de cuánto a cuánto y por qué.
     await desplegar(ordenes, rechazada);
+    // SLT-101 (R85, R98): la señal de la fila y la tarjeta del pago en cascada. Modelo viejo: sin «Por tarifa»
+    // (no hay pago congelado que leer, R95); «Se le paga» 700, el motivo y quién ajustó.
+    await expect(ordenes.getByText("Pago ajustado · Vuelve a bodega", { exact: true })).toBeVisible();
+    await expect(seLePaga(ordenes, rechazada)).toHaveText(importe(700, { solo: true }));
+    const tarjetaPago = ordenes.getByRole("region", { name: `Se le paga al mensajero de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` });
+    await expect(tarjetaPago.getByText(/^Por tarifa/)).toHaveCount(0);
+    await expect(tarjetaPago.getByText(`Motivo: «${MOTIVO_CENTRAL}»`, { exact: true })).toBeVisible();
+    await expect(tarjetaPago.getByText(new RegExp(`^Ajustó ${r.empresa.maestro.nombre} · \\d{2}/\\d{2} \\d{2}:\\d{2}$`))).toBeVisible();
     const historial = await verHistorial(page, ordenes);
     await expect(historial.getByRole("listitem")).toHaveCount(1);
     const ajuste = historial.getByRole("listitem").first();
@@ -160,8 +203,9 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await expect(ajuste).toContainText(`Motivo: ${MOTIVO_CENTRAL}`);
     await page.keyboard.press("Escape");
 
-    // R13 — aprobar (confirmando la guía del rechazo, feature 238).
-    await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
+    // R13 — aprobar (confirmando la guía del rechazo, feature 238). SLT-100: con un paquete que vuelve, el pie
+    // del detalle único dice «Revisar paquetes y aprobar».
+    await detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }).click();
     const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
     const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
     await lector.getByLabel("Número de guía").fill(String(rechazada.numGuia));
@@ -209,6 +253,7 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     // R2 — el adminSatelite ajusta la entrega de 1.500 a 1.800 y aprueba, sin pasar por la central.
     const sat = await paginaDe(browser, r.adminSatelite);
     const detalle = await abrirDetalle(sat, m);
+    await irA(detalle, "Gestiones");
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
     await desplegar(ordenes, entrega);
     const hecho = await ajustar(sat, entrega, "1800", MOTIVO_SATELITE);
@@ -217,6 +262,9 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await hecho.getByRole("button", { name: "Cerrar" }).click();
     await desplegar(ordenes, entrega);
     await expect(ordenes.getByRole("button", { name: "Pago ajustado: ver el ajuste" })).toHaveText("Ajustado");
+    // SLT-101 (R85, R98): «Pago ajustado» en la fila y «Se le paga» 1.800 en la tarjeta del pago.
+    await expect(ordenes.getByText("Pago ajustado", { exact: true })).toBeVisible();
+    await expect(seLePaga(ordenes, entrega)).toHaveText(importe(1800, { solo: true }));
 
     await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
     await expect(sat.getByText("Cierre aprobado correctamente.")).toBeVisible();

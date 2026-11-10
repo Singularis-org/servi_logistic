@@ -135,6 +135,12 @@ function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpre
       fulfillment: null,
       ivaFulfillment: null,
       tarifa: ingreso.tarifa === null ? null : { ...ingreso.tarifa, fulfillment: null },
+      // SLT-101 (R94): los tres campos nuevos del fulfillment («Se cobró», su % de IVA y la fecha
+      // del cargo) son el mismo dato de la central. Se anulan si vienen; si no vienen no hay nada
+      // que filtrar, y no se añade la clave (los campos son aditivos).
+      ...(ingreso.fulfillmentConIva !== undefined ? { fulfillmentConIva: null } : {}),
+      ...(ingreso.ivaPctFulfillment !== undefined ? { ivaPctFulfillment: null } : {}),
+      ...(ingreso.fulfillmentCargadoAt !== undefined ? { fulfillmentCargadoAt: null } : {}),
     },
   };
 }
@@ -1011,6 +1017,13 @@ export class CierresAdminService implements ICierresAdminService {
       // `grupos`, `totalesIngreso`, `ganancia`, `pagoTienda`, `partesPorTienda` ni el desglose: R6/R7
       // se cumplen aqui por AUSENCIA de codigo, porque la lista no trae nada que sumar.
       rechazosDeTienda: found.rechazosDeTienda,
+      // SLT-100 (R80): solo un cierre RESUELTO tiene a quien nombrar. Un `rechazado` que el
+      // mensajero vuelve a solicitar conserva `resuelto_por`; sin esta regla arrastraria al
+      // resolutor anterior a la cabecera de un `solicitado`.
+      resueltoPorNombre:
+        found.cierre.estado === "aprobado" || found.cierre.estado === "rechazado"
+          ? (found.resueltoPorNombre ?? null)
+          : null,
     };
   }
 

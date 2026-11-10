@@ -103,13 +103,17 @@ async function solicitarEnPantalla(page: Page, m: MensajeroE2E): Promise<string>
   return cierres[cierres.length - 1].id;
 }
 
-/** Un KPI del comprobante, ya asentado: cuenta desde 0 al montar. */
-async function kpi(detalle: Locator, rotulo: string): Promise<string> {
-  const cifra = detalle
-    .getByRole("region", { name: /^Comprobante detallado del cierre/ })
-    .locator(`xpath=.//span[normalize-space()='${rotulo}']/following-sibling::span[1]`)
-    .first();
-  return cifraAsentada(cifra);
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: el KPI «Pago al mensajero» es la cifra del
+ * mismo nombre del detalle único, y el KPI «Total de la empresa» es el «Total facturado» de la cuenta «Lo que se
+ * le factura a la tienda» (mismo importe). Se espera a que el texto se asiente, como antes.
+ */
+async function kpi(detalle: Locator, rotulo: "Pago al mensajero" | "Total de la empresa"): Promise<string> {
+  const valor =
+    rotulo === "Pago al mensajero"
+      ? detalle.locator('[data-cifra="pago"]')
+      : detalle.getByRole("region", { name: "Lo que se le factura a la tienda" }).locator('[data-tipo="total"] [data-monto]');
+  return cifraAsentada(valor);
 }
 
 /** La aprobación real: el maestro, con su sesión, por `/cierres-admin`, confirmando la guía que vuelve. */
@@ -124,7 +128,7 @@ async function aprobarEnPantalla(browser: Browser, r: RepartoE2E, m: MensajeroE2
   expect(await kpi(detalle, "Pago al mensajero")).toMatch(importe(pagoEsperado, { solo: true }));
 
   const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
-  await abrirCon(detalle.getByRole("button", { name: "Aprobar", exact: true }), confirmar);
+  await abrirCon(detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }), confirmar);
   const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
   await lector.getByLabel("Número de guía").fill(String(rechazo.numGuia));
   await lector.getByRole("button", { name: "Confirmar", exact: true }).click();

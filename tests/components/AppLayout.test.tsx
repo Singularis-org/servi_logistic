@@ -279,6 +279,22 @@ describe("Layout de la zona autenticada app/(app)/layout.tsx", () => {
     ).toBeInTheDocument();
   });
 
+  // SLT-87 (review M2) — por debajo de `lg` el final del contenido deja sitio a los botones
+  // flotantes. Lo más alto que flota es el botón de reportar en `/mis-asignaciones`, encima del
+  // chat: `bottom-24` (96px) + 48px = 144px. `pb-40` son 160px; en `lg` vuelve a `pb-12` (48px).
+  it("el contenido deja 160px al final por debajo de `lg`: más que los 144px del botón apilado sobre el chat", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    const contenido = screen.getByTestId("page-children").closest('[data-slot="sidebar-inset"]');
+    expect(contenido, "el contenido no vive dentro del SidebarInset").not.toBeNull();
+    const clases = contenido!.className.split(" ");
+    expect(clases).toContain("pb-40");
+    expect(clases).toContain("lg:pb-12");
+    expect(clases).not.toContain("pb-12");
+  });
+
   // Feature 211 — el tema lo resuelve EL SERVIDOR. Es lo que hace que el HTML llegue ya
   // con la clase puesta y no haya que corregir nada después del primer pintado: si esto
   // se rompiera, el tema seguiría cambiando al pulsar y volvería a parpadear al recargar.

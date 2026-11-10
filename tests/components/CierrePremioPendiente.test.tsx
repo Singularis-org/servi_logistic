@@ -177,6 +177,9 @@ function renderModule(historico: CierreAdminResumen[]) {
         historico={pagina}
         sinZona={false}
         puedeRegistrarPago
+        // SLT-100 (R18): el permiso de pagar solo lo tiene la central ([P3]/R6), y el detalle
+        // único pinta la pestaña «Pago al mensajero» solo con audiencia central.
+        audiencia="admin"
       />
     </SWRConfig>,
   );
@@ -195,7 +198,7 @@ async function abrirDetalle(user: ReturnType<typeof userEvent.setup>, cierre: Ci
   await user.click(
     within(region).getByRole("button", { name: /^Ver el cierre resuelto de/ }),
   );
-  return screen.findByRole("dialog", { name: "Detalle del cierre" });
+  return screen.findByRole("dialog", { name: /^Detalle del cierre · / });
 }
 
 beforeEach(() => {
@@ -289,6 +292,8 @@ describe("R27 — el diálogo de pago vuelve a ofrecer saldarlo", () => {
       makeResumen({ cierreId: "c-premio", pendientePagoMensajero: PREMIO }),
     );
 
+    // SLT-100 (R18): la sección vive en la pestaña «Pago al mensajero» del detalle único.
+    await user.click(within(dialogoDetalle).getByRole("tab", { name: "Pago al mensajero" }));
     const seccion = await within(dialogoDetalle).findByRole("region", { name: SECCION });
     expect(within(seccion).getByText("₡5.000")).toBeInTheDocument();
     // El control vuelve a existir: antes del premio este cierre estaba liquidado y no lo tenía.
@@ -323,6 +328,8 @@ describe("R27 — el diálogo de pago vuelve a ofrecer saldarlo", () => {
       user,
       makeResumen({ cierreId: "c-premio", pendientePagoMensajero: PREMIO }),
     );
+    // SLT-100 (R18): la sección vive en la pestaña «Pago al mensajero» del detalle único.
+    await user.click(within(dialogoDetalle).getByRole("tab", { name: "Pago al mensajero" }));
     const seccion = await within(dialogoDetalle).findByRole("region", { name: SECCION });
     await user.click(
       within(seccion).getByRole("button", { name: PAGO_MENSAJERO_TEXTO.registrar }),
@@ -349,6 +356,8 @@ describe("R27 — el diálogo de pago vuelve a ofrecer saldarlo", () => {
       makeResumen({ cierreId: "c-saldado", pendientePagoMensajero: "0.00" }),
     );
 
+    // SLT-100 (R18): la sección vive en la pestaña «Pago al mensajero» del detalle único.
+    await user.click(within(dialogoDetalle).getByRole("tab", { name: "Pago al mensajero" }));
     const seccion = await within(dialogoDetalle).findByRole("region", { name: SECCION });
     expect(
       within(seccion).queryByRole("button", { name: PAGO_MENSAJERO_TEXTO.registrar }),

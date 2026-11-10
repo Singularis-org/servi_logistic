@@ -202,34 +202,36 @@ test("SL-39 cierres-admin de A: la cascada del cierre A resta el IVA facturado 4
   await abrirComo("A", page, "/cierres-admin");
   const dialogo = await abrirCierre(page, cierres.mensajeroEntrega);
 
-  const cascada = dialogo.getByRole("region", {
-    name: new RegExp(`^Lo que le queda a ${EMPRESA_EN_FRASE} · cierre de ${cierres.mensajeroEntrega}`),
-  });
+  // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: la cascada del modal anterior es la
+  // cuenta «De lo facturado, le queda a la empresa» del detalle único. El operador va en el rótulo («− IVA …»)
+  // y no pegado al importe; las cifras son las mismas.
+  const cascada = dialogo.getByRole("region", { name: `De lo facturado, le queda a ${EMPRESA_EN_FRASE}` });
   await expect(cascada).toHaveCount(1);
   const l = await lineas(cascada);
   console.log(`MEDIDO cierre A: ${l.map((x) => `${x.label}=${x.monto}`).join(" | ")}`);
 
-  const i = l.findIndex((x) => x.label === `Lo que ${EMPRESA_EN_FRASE} facturó`);
-  expect(i, "«Lo que la empresa facturó» en la cascada").toBeGreaterThanOrEqual(0);
+  const i = l.findIndex((x) => x.label === "Total facturado");
+  expect(i, "«Total facturado» en la cuenta").toBeGreaterThanOrEqual(0);
   expect(l[i]?.monto).toBe("3616.00"); // 2500 + 325 + 700 + 91
-  expect(l[i + 1]?.label).toBe("IVA facturado"); // justo despues
-  expect(l[i + 1]?.monto).toBe("-416.00"); // se resta
-  const neto = l.find((x) => x.label === `Neto de ${EMPRESA_EN_FRASE}`);
+  expect(l[i + 1]?.label).toBe(`− IVA (no es de ${EMPRESA_EN_FRASE})`); // justo despues, y se resta
+  expect(l[i + 1]?.monto).toBe("416.00");
+  const neto = l.find((x) => x.label === `Le queda a ${EMPRESA_EN_FRASE}`);
   expect(neto?.monto).toBe("1700.00"); // 3616 − 416 − 1500
 });
 
-test("SL-39 cierres-admin de A: el cierre B (rechazo) «Debe» 100,00 con la nota sin IVA", async ({ page }) => {
+// SLT-100 (D3 de SLT-95, aprobada por Carlos): «Debe» y su nota desaparecen del detalle; la cifra que la
+// sustituye es «Le queda a la empresa», y el IVA sigue fuera: −100 y no +160. La aserción de «Debe» se invierte.
+test("SL-39 cierres-admin de A: el cierre B (rechazo) deja a la empresa −100,00, sin el IVA y sin «Debe»", async ({ page }) => {
   if (!cierres) throw new Error("no hay cierres sembrados");
   await abrirComo("A", page, "/cierres-admin");
   const dialogo = await abrirCierre(page, cierres.mensajeroRechazo);
 
-  const liquidacion = dialogo.getByRole("region", { name: "Liquidación", exact: true });
-  await expect(liquidacion).toHaveCount(1);
-  const l = await lineas(liquidacion);
+  const cuenta = dialogo.getByRole("region", { name: `De lo facturado, le queda a ${EMPRESA_EN_FRASE}` });
+  await expect(cuenta).toHaveCount(1);
+  const l = await lineas(cuenta);
   console.log(`MEDIDO cierre B: ${l.map((x) => `${x.label}=${x.monto} [${x.notas.join(" / ")}]`).join(" | ")}`);
 
-  const debe = l.find((x) => x.label === "Debe");
-  expect(debe, "la linea «Debe» de la liquidacion").toBeDefined();
-  expect(debe?.monto).toBe("-100.00"); // 2000 − 2100, sin los 260 de IVA (con IVA daria +160)
-  expect(debe?.notas).toEqual(["Ingreso sin IVA menos el pago al mensajero."]);
+  const neto = l.find((x) => x.label === `Le queda a ${EMPRESA_EN_FRASE}`);
+  expect(neto?.monto).toBe("-100.00"); // 2260 − 260 − 2100 − 0: sin los 260 de IVA (con IVA daria +160)
+  await expect(dialogo.getByText("Debe", { exact: true })).toHaveCount(0);
 });

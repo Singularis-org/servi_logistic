@@ -84,6 +84,7 @@ function gestionDbRow(overrides: Record<string, unknown> = {}) {
     pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("10.00") }],
     historialEstados: [], // feature 102: acotado al origen SLA (vacio = rechazo NO-SLA/otro resultado)
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...overrides,
   };
 }

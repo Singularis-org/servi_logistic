@@ -466,7 +466,7 @@ describe("CierresAdminPage — Feature 172 [P3]/R6: quién recibe la oferta de p
     );
 
     await user.click(await screen.findByRole("button", { name: "Ver / decidir" }));
-    const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
 
     // El cierre queda aprobado —y el mensajero libre, feature 111— pase lo que pase con el
@@ -479,7 +479,7 @@ describe("CierresAdminPage — Feature 172 [P3]/R6: quién recibe la oferta de p
     // El detalle se cierra en la MISMA tanda de estado en la que se plantearía la oferta:
     // cuando esto se cumple, un diálogo de pago que tocara aparecer ya está en el DOM.
     await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Detalle del cierre" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: /^Detalle del cierre · / })).toBeNull(),
     );
   }
 

@@ -43,6 +43,9 @@ import type { PagoRegistradoDTO, RegistrarPagoResult } from "@/lib/types/liquida
 
 // --- Dobles de las Server Actions ---------------------------------------
 
+/** SLT-100 (R39): el botón de aprobar del pie del detalle único, con o sin paquetes que vuelven. */
+const APROBAR_PIE = /^(Aprobar|Revisar paquetes y aprobar)$/;
+
 vi.mock("@/lib/actions/cierres-admin", () => ({
   // Feature 230 (T2.3): el borde de la descarga DETALLADA de esta pantalla. Se añade al doble
   // porque el módulo la importa; ninguna aserción de este archivo cambia.
@@ -233,6 +236,9 @@ function renderModule(props?: {
         historico={pagina}
         sinZona={false}
         puedeRegistrarPago={props?.puedeRegistrarPago ?? true}
+        // SLT-100 (R18): pagar es de la central ([P3]/R6); el detalle único pinta la pestaña
+        // «Pago al mensajero» solo con audiencia central. La satélite: `CierresAdminDetalleUnico`.
+        audiencia="admin"
       />
     </SWRConfig>,
   );
@@ -250,8 +256,10 @@ async function aprobarDesdeLaCola(
   conDetalleDe(cierre);
   renderModule({ pendientes: [cierre], ...opciones });
   await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-  const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-  await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+  const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+  // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+  // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+  await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
   await waitFor(() => expect(aprobarMock).toHaveBeenCalledTimes(1));
 }
 
@@ -273,7 +281,19 @@ async function abrirDetalleDelHistorico(
       name: /^Ver el cierre resuelto de/,
     }),
   );
-  return screen.findByRole("dialog", { name: "Detalle del cierre" });
+  const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+  await irAPago(user, detalle);
+  return detalle;
+}
+
+/**
+ * SLT-100 (R18): la sección vive en la pestaña «Pago al mensajero» del detalle único, que solo
+ * existe con el cierre aprobado y el permiso. Sin pestaña no hay sección, que es lo que afirman los
+ * casos negativos.
+ */
+async function irAPago(user: ReturnType<typeof userEvent.setup>, detalle: HTMLElement) {
+  const pestana = within(detalle).queryByRole("tab", { name: "Pago al mensajero" });
+  if (pestana) await user.click(pestana);
 }
 
 /**
@@ -681,7 +701,7 @@ describe("T E.2/R28 — los CUATRO estados del cierre", () => {
             : /^Ver el cierre resuelto de/,
     });
     await user.click(abrir);
-    await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    await irAPago(user, await screen.findByRole("dialog", { name: /^Detalle del cierre · / }));
 
     if (visible) {
       expect(await screen.findByRole("region", { name: SECCION })).toBeInTheDocument();

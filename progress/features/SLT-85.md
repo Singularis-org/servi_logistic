@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-85 | traza-facturacion-cobros | backend | medium | feature/SLT-85-traza-facturacion-cobros | Camilo | in_progress |
+| SLT-85 | traza-facturacion-cobros | backend | medium | feature/SLT-85-traza-facturacion-cobros | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer.
+done (2026-11-09): PR #103 mergeado en dev (30b40d7d), gate-completo verde.
 
 ## Evaluación
 - zone backend: tabla nueva, migración con relleno de históricos, escritura junto al movimiento de cobro. Sin pantalla.
@@ -36,3 +36,9 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-09 · PR https://github.com/Singularis-org/servi_logistic/pull/103 mergeado por el humano en dev (30b40d7d). `gate-completo` verde.
+- Resumen: tabla `cobro_plataforma_traza`, con una fila por cargo y por reverso de `cobro_plataforma_movimiento`. La escribe un trigger AFTER INSERT en la misma transacción. Guarda la copia del momento (guía, monto, estado, regla fija o porcentual, fuente, plan al cobrar, período de SLT-86) y es de solo escritura (SELECT para la app, SL085, SL017). La migración `20261109120000` rellena los históricos con `reconstruido` y su down.sql se niega si hay filas en vivo.
+- Revisión F2.2: vuelta 1 rechazada (guardia sin acotar el esquema y E2E sin correr), vuelta 2 OK.
+- Deuda y avisos que deja: ANTES del deploy a producción hay que contar los reversos sin cargo (con más de 0, la migración falla entera). Con BEGIN explícito, un fallo de `migrate deploy` muestra 25P02 en lugar del error real.
+- Baseline: nada que podar (el CI no lista entradas que ya pasen).
+- Bases locales `servi_logistic_slt85` y `servi_logistic_slt85_e2e`: pendientes de borrar con autorización.

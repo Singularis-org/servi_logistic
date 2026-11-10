@@ -170,6 +170,7 @@ describe("R41 — el camino de ADMIN deriva las DOS banderas sin una consulta de
         pagos: [],
         historialEstados: origenTipos.map((origenTipo) => ({ origenTipo })),
         ajustesPagoMensajero: [], // SLT-56: la relacion que ahora lee GESTION_ADMIN_SELECT
+        pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
       }) as unknown as Parameters<typeof toPendienteRowDesdeSnapshot>[0];
     const snapshot = {
       numGuia: 1,
