@@ -264,3 +264,5 @@ Ninguna.
 | 2026-11-09 | P8 · Costeo del período | `ConsumoDelPlan` (total estimado, órdenes del período, cobrado) se mantiene debajo del plan activo, sin cambios. |
 | 2026-11-09 | P9 · Tamaño del PR | Se acepta: un solo PR (~31 archivos, ~1 800 líneas); pantalla y cambio de plan van juntos y se prueban juntos en el E2E. Línea `tamano-pr-aceptado` en la ficha. |
 | 2026-11-09 | P10 | Sin insignia cuando el % equivalente de un descuento anual en monto fijo redondea a 0 % (humano). |
+| 2026-11-10 | Activo desde | Se agrega en backend: el dato de «Mi plan» (`PlanConConsumo.activoDesde`) trae la entrada de la empresa a su plan (`plan_ciclo_ancla_at`) en la fecha de la plataforma, y el detalle del plan activo la muestra (R8) (humano). |
+| 2026-11-10 | Primera asignación pendiente sin plan | El maestro no la cancela: sin botón, como P5; sigue «{Plan} empieza a regir el {fecha}» (SLT-86 R26) (humano). |
