@@ -54,7 +54,21 @@ export const TEXTOS_REPORTE_DETALLE = {
     "Este reporte está cerrado y ya no cambia de estado. Si el problema vuelve, entrará como un reporte nuevo.",
   sinNota: "Sin nota",
   historialVacio: "Todavía no hay cambios de estado.",
+  // SLT-98 (design §9.2, §9.3; R22, R23).
+  bloqueImagenes: "Imágenes",
+  sinImagenes: "Este reporte no trae imágenes.",
+  imagenSinEnlace: "No se pudo cargar esta imagen.",
 } as const;
+
+/** SLT-98 (R22): el `alt` de la miniatura `n` (desde 1) del detalle. */
+export function textoAltImagenReporte(n: number): string {
+  return `Imagen ${n} del reporte`;
+}
+
+/** SLT-98 (R22): el nombre accesible del enlace que abre la imagen `n` en grande. */
+export function textoAbrirImagenReporte(n: number): string {
+  return `Abrir la imagen ${n} en grande`;
+}
 
 export const ETIQUETA_ESTADO: Readonly<Record<BugReportStatus, string>> = {
   new: "Nuevo",

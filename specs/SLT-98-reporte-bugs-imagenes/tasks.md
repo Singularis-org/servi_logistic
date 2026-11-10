@@ -86,7 +86,7 @@
     design §9.1 y §9.3.
   - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` en verde. El caso de SLT-87 «no hay campo de
     archivos» se sustituye por los de R1, citando este spec.
-- [ ] **T10 [P]. Detalle, pantalla** (dep. T8; R22, R23).
+- [x] **T10 [P]. Detalle, pantalla** (dep. T8; R22, R23).
   - **Archivos:**
     - `app/(app)/plataforma/reportes/[reporteId]/_components/ReporteDetalle.tsx`;
     - `app/(app)/plataforma/reportes/_components/reportes-textos.ts` (design §9.2, §9.3).
