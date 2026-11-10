@@ -192,7 +192,9 @@
 
 ## T7 — Cierre
 
-- [ ] **T7.1** — `./init.sh` verde, con `INIT_EXIT` escrito dentro del log. **Hecho:**
+- [x] **T7.1** — `./init.sh` verde, con `INIT_EXIT` escrito dentro del log. **Hecho:**
+  (leader, 2026-11-09: `INIT_EXIT=0` sobre deea9b97 con base desechable `slt101_t1`; 245 rojos heredados del
+  baseline, que compara el CI; grep R71 y `git diff db/` vacíos según la bitácora y la review d796b1f9)
   - sin rojos; el aviso de tamaño, aceptado (S3-3);
   - `git diff db/` vacío y ninguna Server Action de escritura tocada (R72);
   - `grep -E "Number\(|parseFloat|toFixed"` vacío en `components/private/cierres/` (R71).
