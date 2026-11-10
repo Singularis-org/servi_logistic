@@ -262,7 +262,7 @@ se para y se pregunta (design §8.4). (R48)
 
 ## T8 — E2E (depende de T7)
 
-- [ ] **T8.1** `e2e/zonas-nodo-canton.spec.ts`: maestro asigna un cantón, ve el aviso con cifras,
+- [x] **T8.1** `e2e/zonas-nodo-canton.spec.ts`: maestro asigna un cantón, ve el aviso con cifras,
   confirma; una orden en un distrito de ese cantón sale con esa zona y el precio de su tarifa; una
   segunda empresa no ve la zona ni tiene cobertura en ese cantón. Correr también
   `e2e/dos-empresas-humo.spec.ts`. (R35, R41)
