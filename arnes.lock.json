@@ -24,13 +24,13 @@
     ".github/workflows/arnes-gate.yml": "ea1a7629db7c99405aa8154b70fc15e7f1e44ff1dcfc3252372d49b2de4648db",
     "AGENTS.md": "1dc0c8413765198d08b3b80df26aa82cee46fce7598ec50cf4d323e422b4a394",
     "CHECKPOINTS.md": "07c3efc78c583cfa40554a7e84a67f53b2028da46d3f126265642bc95812652e",
-    "CLAUDE.md": "a9762e1c5c57d67b465bdb6e2df937528d7235dd4fffed3062029c120c9cc90c",
+    "CLAUDE.md": "4e7da9290c0f019d3bbaa847993813fd98830b26395905feb3ffbfe011f491e2",
     "arnes.manifest": "40eb4b398e3f16a74fe28801a20a62f5f72f488f5c51068fc96077ae3f9a5a66",
     "docs/equipo.md": "6d0cd376aab0925294b1fc39ecd8a3b53181eb47dc069447a8feae596e1c45a7",
     "docs/gate.md": "368ea34aa2ecb5e1c2df5df3df69694492944a921f5f662f5722d211ea77790f",
     "docs/grafo-de-codigo.md": "92d34dbbb3eacee96c66c0d69cdb90743550bde40560fd10e501fc64159c542a",
     "docs/guia-de-uso.md": "9468eef7729332d6090a5825587994a032ac85d76edb2dc00bbc48c9f4bdf6d7",
-    "docs/jira.md": "e11d1d94fcdf2d89cf9241e8d151f1a8295afa21fb7e78e2825e81c21d29da26",
+    "docs/jira.md": "bd3b65e70dd0a69aa258b11506d8d4a46e27433f7105b3fb36b9e08d336796fa",
     "docs/lectura.md": "e981eef4e5424573e06e229b14b308cec86788c91780392f41f99b47f05254fc",
     "docs/specs.md": "1e390553950c6b9178bfbc2ea63f16ec1eded7d92560c81803ee621cf767d958",
     "docs/trello.md": "e962a8613b3043e19e90ea481ab19760460c32e13593dcb864d2bf755841573c",
@@ -47,7 +47,7 @@
     "scripts/comparar-baseline-rojos.mjs": "c311000f1830d32f5b5f7c24013bcaa0cdb4258393c76e7e4c88dfa566bce139",
     "scripts/disparadores.mjs": "30d9000650567901681474429593597197751be8af0da545ce45b39cca12c717",
     "scripts/metricas.mjs": "d9acf380d8f216330f7de20ce24c6de63cd5c596be0544045046987251ae263b",
-    "scripts/nombres-de-fichas.mjs": "ec87b6ddb8038bdb589195e29fe0b8850b49868b0cda53fb72af49d29bcad9cf",
+    "scripts/nombres-de-fichas.mjs": "3603f090bd442e1affa5acbadb0d986905a464742b1702420b3c8048f03c787e",
     "scripts/tamano-pr.mjs": "a9aef16c1a33b017e93599fee92bc4fbd96423c4efa935c568191ef7dfca2f13",
     "scripts/test-rapido.mjs": "0ea002e826d88c875a3a498f6be8358ffa52bb3f5f2e1111ad9b90867c004611",
     "scripts/tests-de-arbol.mjs": "5b05da30a39f2374a267ca12f2eacbddbae05a202fc94eaf1273608962911629",
@@ -64,7 +64,7 @@
     "tests/guards/guard-init-node-modules-enlazado.test.ts": "f087dcf5e8504b326d3965989b27027af9b25f4bd9a852e0835d03268a194bb5",
     "tests/guards/guard-metricas.test.ts": "5a1e5ee98bed748c67bf843acee5e91f5d6920d58029641916dc5a896dc8c463",
     "tests/guards/guard-modelos-de-agentes.test.ts": "f992813344b14abf8a7c4b7905a20f370f07c95a3cf85e1cb37fe250c9e21bb9",
-    "tests/guards/guard-nombres-de-fichas.test.ts": "b4fd339125ba744eb54c1d79378c7e6760a85d0fe8bb6c105fa6d4e5240bd58e",
+    "tests/guards/guard-nombres-de-fichas.test.ts": "d2719af852f2d51a17bdde6b83a8f3459e0e8ed82da546dac95ad37f05ac6121",
     "tests/guards/guard-tamano-pr.test.ts": "98add132e7891b30b2becca3f6b37ddf4ee3f32d3dd81bc6866ac88544da34cb",
     "tests/guards/guard-test-rapido-rojos-heredados.test.ts": "9b7bc186db608192ac5d9d03eb8690f2b89dbe7f638759e68b1a576b2ba3fbb6",
     "tests/guards/guard-tests-de-arbol-en-el-gate.test.ts": "ff947d5ac6ca9cf4642ed0cd0d375a1fcc7dd211e70b76f7648f0ef53cdf209e",
@@ -118,6 +118,16 @@
         "tests/guards/guard-metricas.test.ts"
       ],
       "fecha": "2026-11-08"
+    },
+    {
+      "pr": "https://github.com/singularis-co/harness_config/pull/29",
+      "archivos": [
+        "CLAUDE.md",
+        "docs/jira.md",
+        "scripts/nombres-de-fichas.mjs",
+        "tests/guards/guard-nombres-de-fichas.test.ts"
+      ],
+      "fecha": "2026-11-10"
     }
   ]
 }
