@@ -80,7 +80,10 @@ export type IconKey =
   | "layers"
   // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin. Icono propio y NO el
   // `truck` de «Entregas»: gestionar el catálogo no es repartir.
-  | "car";
+  | "car"
+  // SLT-97 (R1): «Reportes», los reportes de bugs que llegan de las empresas, del superadmin.
+  // Icono propio por el mismo criterio de unión cerrada.
+  | "bug";
 
 /** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
 export interface MenuChild {
@@ -758,6 +761,16 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     label: "Vehículos",
     href: "/plataforma/vehiculos",
     iconKey: "car",
+    roles: ROLES_PLATAFORMA,
+  },
+  {
+    // SLT-97 (design §8.1; R1, R2) — «Reportes»: los reportes de bugs de todas las empresas, solo
+    // para el superadmin. Va justo después de «Vehículos» y antes de «Mi bodega» y «Ayuda», que
+    // siguen cerrando la barra. El aterrizaje del superadmin sigue en «Empresas», que va antes. Sin
+    // subítems. `roles` ES `ROLES_PLATAFORMA` por identidad (guardia `superadmin-fuera-de-empresa`).
+    label: "Reportes",
+    href: "/plataforma/reportes",
+    iconKey: "bug",
     roles: ROLES_PLATAFORMA,
   },
   {
