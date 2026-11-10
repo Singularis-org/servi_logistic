@@ -167,7 +167,8 @@ async function enviarAlta(page: Page, d: DatosDeAlta): Promise<void> {
   await f.email.fill(d.email);
   await f.telefono.fill(d.telefono);
   await f.tipo.click();
-  await page.getByRole("option", { name: "cedula", exact: true }).click();
+  // SLT-81 (R20): el tipo se ofrece por su nombre, no por su `value` (`cedula`).
+  await page.getByRole("option", { name: "Cédula física", exact: true }).click();
   await f.documento.fill(d.documento);
   await f.boton.click();
 }

@@ -69,7 +69,7 @@ function repoDoble(objetivo: UsuarioPublico | null = SUPERADMIN): IUserRepositor
     count: vi.fn(),
     update: vi.fn().mockResolvedValue(usuario()),
     setEstado: vi.fn().mockResolvedValue(usuario()),
-    listTiposIdentificacion: vi.fn(),
+    listTiposIdentificacion: vi.fn().mockResolvedValue([]),
     listRoles: vi.fn().mockResolvedValue(ROLES),
     contarAdminSatelitesActivos: vi.fn().mockResolvedValue(0),
   };
@@ -181,6 +181,17 @@ describe("R11 — toda operación sobre el superadmin es not_found, sin escribir
     expect(r).toEqual({ status: "not_found" });
     expect(cierres.resumirConsolidablesPendientes).not.toHaveBeenCalled();
     expect(repo.contarAdminSatelitesActivos).not.toHaveBeenCalled();
+  });
+
+  it("SLT-81 R16: obtener trae el nombre de su tipo aunque esté inactivo (la lista sin país lo incluye)", async () => {
+    const repo = repoDoble(usuario());
+    const u = usuario();
+    vi.mocked(repo.listTiposIdentificacion).mockResolvedValue([
+      { id: u.tipoIdentificacionId, value: "XA_ruc", nombre: "RUC", clave: "ruc" },
+    ]);
+    const r = await servicio(repo).service.obtener("usr-1", MAESTRO);
+    expect(r.status === "ok" && r.usuario.tipoIdentificacionNombre).toBe("RUC");
+    expect(repo.listTiposIdentificacion).toHaveBeenCalledWith();
   });
 
   it("CONTROL: las mismas operaciones sobre un admin sí llegan a escribir", async () => {

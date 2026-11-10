@@ -12,7 +12,7 @@
  * SLT-42 el humano movio esa ficha de SLT-86 a SLT-90 («Planes: ciclo y cobro en la zona de cada empresa»).
  */
 
-export type FichaQueLoRetira = "SLT-81" | "SLT-90" | "SL-22";
+export type FichaQueLoRetira = "SLT-92" | "SLT-90" | "SL-22";
 
 export interface ExcepcionPaisSinLiterales {
   /** Ruta relativa a la raiz, con `/`. */
@@ -39,17 +39,17 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
   },
   {
     archivo: "lib/utils/fecha-cr.ts",
-    ficha: "SLT-81",
+    ficha: "SLT-92",
     motivo: "envoltorio de CR sobre calendario-zona.ts que solo usa la UI (fechas en pantalla y filtros)",
   },
   {
     archivo: "lib/utils/hora-cr.ts",
-    ficha: "SLT-81",
+    ficha: "SLT-92",
     motivo: "formato de hora en CR que solo usa la UI (analitica, cierres, mi wallet, planes)",
   },
   {
     archivo: "lib/utils/separador-dia-cr.ts",
-    ficha: "SLT-81",
+    ficha: "SLT-92",
     motivo: "separador de dia de los hilos de chat, solo en la UI",
   },
   {
@@ -59,7 +59,7 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
   },
   {
     archivo: "lib/utils/telefono-cr.ts",
-    ficha: "SLT-81",
+    ficha: "SLT-92",
     motivo: "envoltorio de CR sobre telefono-pais.ts para los botones de contacto y el chat de la UI",
   },
 ];

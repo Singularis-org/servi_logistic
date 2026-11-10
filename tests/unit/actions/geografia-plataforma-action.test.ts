@@ -2,14 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Prisma, RolValue } from "@prisma/client";
 
 import {
+  actualizarDatosPaisAction,
   arbolDePaisAction,
   cambiarActivacionNodoAction,
+  cambiarActivoTipoDocumentoAction,
   cambiarDisponibilidadPaisAction,
   cargarDivisionAction,
   contarOrdenesSinEntregarAction,
   crearNodoAction,
   crearPaisAction,
+  crearTipoDocumentoAction,
+  editarTipoDocumentoAction,
   listarPaisesAction,
+  listarTiposDocumentoAction,
   renombrarNodoAction,
   type GeografiaPlataformaDeps,
 } from "@/lib/actions/geografia-plataforma";
@@ -57,6 +62,14 @@ function paisDoble(o: Partial<Record<keyof IPaisService, Espia>> = {}) {
     crear: vi.fn(async () => ({ status: "conflict" as const, campo: "id" as const })),
     cambiarDisponible: vi.fn(async () => ({ status: "ok" as const, id: "CR", disponible: false })),
     etiquetasDeEmpresa: vi.fn(),
+    paisDeLaEmpresaParaUi: vi.fn(),
+    // SLT-81
+    actualizarDatos: vi.fn(async () => ({ status: "requiere_confirmacion" as const, empresas: 3 })),
+    listarTiposDocumento: vi.fn(async () => ({ status: "ok" as const, tipos: [] })),
+    crearTipoDocumento: vi.fn(async () => ({ status: "conflict" as const, campo: "nombre" as const })),
+    editarTipoDocumento: vi.fn(async () => ({ status: "not_found" as const })),
+    cambiarActivoTipoDocumento: vi.fn(async () => ({ status: "not_found" as const })),
+    listarDisponiblesParaAlta: vi.fn(async () => ({ status: "ok" as const, paises: [] })),
     ...o,
   } satisfies Record<keyof IPaisService, Espia>;
 }
@@ -97,6 +110,15 @@ const ACCIONES: [string, (deps: GeografiaPlataformaDeps) => Promise<{ status: st
   ["cambiarActivacionNodoAction", (d) => cambiarActivacionNodoAction({ basura: true }, d)],
   ["contarOrdenesSinEntregarAction", (d) => contarOrdenesSinEntregarAction({ basura: true }, d)],
   ["cargarDivisionAction", (d) => cargarDivisionAction(new FormData(), d)],
+];
+
+/** SLT-81 · R1: las actions nuevas de los datos del país, también con entrada basura. */
+const ACCIONES_SLT81: typeof ACCIONES = [
+  ["actualizarDatosPaisAction", (d) => actualizarDatosPaisAction({ basura: true }, d)],
+  ["listarTiposDocumentoAction", (d) => listarTiposDocumentoAction({ basura: true }, d)],
+  ["crearTipoDocumentoAction", (d) => crearTipoDocumentoAction({ basura: true }, d)],
+  ["editarTipoDocumentoAction", (d) => editarTipoDocumentoAction({ basura: true }, d)],
+  ["cambiarActivoTipoDocumentoAction", (d) => cambiarActivoTipoDocumentoAction({ basura: true }, d)],
 ];
 
 afterEach(() => {
@@ -396,6 +418,7 @@ describe("SL-20/R47 — disponibilidad de un país por el borde, con el servicio
       tipoDocumentoDelPais: vi.fn(),
       tieneTipoDocumentoActivo: vi.fn(),
       zonasConEmpresas: vi.fn(),
+      ...metodosSlt81(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
@@ -440,8 +463,17 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
       tipoDocumentoDelPais: vi.fn(),
       tieneTipoDocumentoActivo: vi.fn(),
       zonasConEmpresas: vi.fn(),
+      ...metodosSlt81(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
+
+  /** SLT-81 (R5, R26): lo que el alta exige además; el prefijo es el oficial de Guatemala. */
+  const DATOS_GT = {
+    prefijoTelefonico: "502",
+    telefonoDigitosNacionales: 8,
+    zonaHoraria: "America/Guatemala",
+    tiposDocumento: [{ nombre: "DPI", caracteres: "digitos", largoMin: 13, largoMax: 13 }],
+  };
 
   const NIVELES = {
     nivel1Singular: "Departamento",
@@ -455,17 +487,108 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
   it("R23: el país se crea con el nombre del catálogo", async () => {
     const repo = repoDoble();
     const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
-    const r = await crearPaisAction({ id: "GT", ...NIVELES }, deps);
+    const r = await crearPaisAction({ id: "GT", ...NIVELES, ...DATOS_GT }, deps);
     expect(r.status === "ok" && r.pais.nombre).toBe("Guatemala");
-    expect(repo.crear).toHaveBeenCalledWith({ id: "GT", nombre: "Guatemala", ...NIVELES }, { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.crear).toHaveBeenCalledWith(
+      {
+        id: "GT",
+        nombre: "Guatemala",
+        ...NIVELES,
+        ...DATOS_GT,
+        tiposDocumento: [{ ...DATOS_GT.tiposDocumento[0], clave: "dpi", value: "GT_dpi" }],
+      },
+      { usuarioId: SUPERADMIN.usuarioId },
+    );
   });
 
   it("R41: un código fuera del catálogo es `validation_error` en `id` y no toca la base", async () => {
     const repo = repoDoble();
     const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
-    const r = await crearPaisAction({ id: "XA", ...NIVELES }, deps);
+    const r = await crearPaisAction({ id: "XA", ...NIVELES, ...DATOS_GT }, deps);
     expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["id"]);
     expect(repo.listar).not.toHaveBeenCalled();
     expect(repo.crear).not.toHaveBeenCalled();
+  });
+});
+
+/** SLT-81: los métodos nuevos del puerto; los casos de arriba no los usan salvo la zona del alta. */
+function metodosSlt81() {
+  return {
+    actualizarDatos: vi.fn(),
+    contarEmpresas: vi.fn(),
+    listarTiposDocumento: vi.fn(),
+    tipoDocumentoPorId: vi.fn(),
+    crearTipoDocumento: vi.fn(),
+    editarTipoDocumento: vi.fn(),
+    cambiarActivoTipoDocumento: vi.fn(),
+    listarDisponiblesParaAlta: vi.fn(),
+    zonaConocidaPorLaBase: vi.fn(async () => true),
+  };
+}
+
+describe("SLT-81 R1 — las actions de los datos del país: puerta antes de validar, sin tocar el servicio", () => {
+  it.each(ACCIONES_SLT81)("%s sin sesión → unauthenticated", async (_nombre, accion) => {
+    const { deps, espias } = todosLosDobles(null);
+    expect(await accion(deps)).toEqual({ status: "unauthenticated" });
+    for (const e of espias) expect(e).not.toHaveBeenCalled();
+  });
+
+  it.each(ACCIONES_SLT81)("%s con un rol de empresa (maestro) → forbidden", async (_nombre, accion) => {
+    const { deps, espias } = todosLosDobles(MAESTRO);
+    expect(await accion(deps)).toEqual({ status: "forbidden" });
+    for (const e of espias) expect(e).not.toHaveBeenCalled();
+  });
+
+  it.each(Object.values(RolValue).filter((r) => !(ROLES_PLATAFORMA as readonly string[]).includes(r)))(
+    "el rol de empresa %s recibe forbidden en actualizarDatosPaisAction",
+    async (rol) => {
+      const { deps, espias } = todosLosDobles({ usuarioId: "u", rol });
+      expect(await actualizarDatosPaisAction({ id: "PA" }, deps)).toEqual({ status: "forbidden" });
+      for (const e of espias) expect(e).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("SLT-81 — el superadmin llega al servicio, dentro de comoPlataforma", () => {
+  it("cada action de escritura pasa la entrada y el actor al servicio y devuelve su resultado tal cual", async () => {
+    const contextos: unknown[] = [];
+    const conContexto = <T>(resultado: T) =>
+      vi.fn(async () => {
+        contextos.push(contextoActual()?.tipo);
+        return resultado;
+      });
+    const paisService = paisDoble({
+      actualizarDatos: conContexto({ status: "requiere_confirmacion" as const, empresas: 3 }),
+      crearTipoDocumento: conContexto({ status: "conflict" as const, campo: "nombre" as const }),
+      editarTipoDocumento: conContexto({ status: "not_found" as const }),
+      cambiarActivoTipoDocumento: conContexto({ status: "not_found" as const }),
+    });
+    const deps = { getActor: async () => SUPERADMIN, paisService: paisService as unknown as IPaisService };
+    const entrada = { cualquier: "cosa" };
+    expect(await actualizarDatosPaisAction(entrada, deps)).toEqual({ status: "requiere_confirmacion", empresas: 3 });
+    expect(await crearTipoDocumentoAction(entrada, deps)).toEqual({ status: "conflict", campo: "nombre" });
+    expect(await editarTipoDocumentoAction(entrada, deps)).toEqual({ status: "not_found" });
+    expect(await cambiarActivoTipoDocumentoAction(entrada, deps)).toEqual({ status: "not_found" });
+    expect(paisService.actualizarDatos).toHaveBeenCalledWith(entrada, SUPERADMIN);
+    expect(paisService.cambiarActivoTipoDocumento).toHaveBeenCalledWith(entrada, SUPERADMIN);
+    expect(contextos).toEqual(["plataforma", "plataforma", "plataforma", "plataforma"]);
+  });
+
+  it("listarTiposDocumentoAction valida el país antes de llamar al servicio", async () => {
+    const { deps, paisService } = todosLosDobles(SUPERADMIN);
+    expect((await listarTiposDocumentoAction({ paisId: "cr" }, deps)).status).toBe("validation_error");
+    expect(paisService.listarTiposDocumento).not.toHaveBeenCalled();
+    expect(await listarTiposDocumentoAction({ paisId: "PA" }, deps)).toEqual({ status: "ok", tipos: [] });
+    expect(paisService.listarTiposDocumento).toHaveBeenCalledWith("PA", SUPERADMIN);
+  });
+
+  it("un fallo de la base al escribir es `error` con log, sin el mensaje de la base", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const actualizarDatos = vi.fn(async () => {
+      throw new Error("conexión perdida 50688887777");
+    });
+    const deps = { getActor: async () => SUPERADMIN, paisService: paisDoble({ actualizarDatos }) as unknown as IPaisService };
+    expect(await actualizarDatosPaisAction({ id: "PA" }, deps)).toEqual({ status: "error" });
+    expect(String(log.mock.calls[0][0])).not.toContain("50688887777");
   });
 });

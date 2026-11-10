@@ -76,9 +76,8 @@ function montar(opts: {
   const fijarCobroEmpresa = opts.fijarCobroEmpresa ?? vi.fn().mockResolvedValue({ status: "ok" });
   const props = {
     empresas: opts.empresas ?? [NORTE, SUR],
-    tiposDocumento: [{ id: "t-1", value: "cedula" }],
     // SL-20 (R9): el `Select` de país no es de este test.
-    paises: [{ id: "CR", nombre: "Costa Rica" }],
+    paises: [{ id: "CR", nombre: "Costa Rica", prefijoTelefonico: null, tiposDocumento: [] }],
     altaEmpresa: vi.fn(),
     cobroGlobal: opts.cobroGlobal === undefined ? { monto: "500.00" } : opts.cobroGlobal,
     fijarCobroGlobal,

@@ -44,6 +44,12 @@ const acciones = {
   cambiarActivacionNodoAction: vi.fn(),
   contarOrdenesSinEntregarAction: vi.fn(),
   cargarDivisionAction: vi.fn(),
+  // SLT-81: la sección «Datos del país».
+  listarTiposDocumentoAction: vi.fn(),
+  actualizarDatosPaisAction: vi.fn(),
+  crearTipoDocumentoAction: vi.fn(),
+  editarTipoDocumentoAction: vi.fn(),
+  cambiarActivoTipoDocumentoAction: vi.fn(),
 };
 vi.mock("@/lib/actions/geografia-plataforma", () => ({
   listarPaisesAction: (...a: unknown[]) => acciones.listarPaisesAction(...a),
@@ -55,6 +61,11 @@ vi.mock("@/lib/actions/geografia-plataforma", () => ({
   cambiarActivacionNodoAction: (...a: unknown[]) => acciones.cambiarActivacionNodoAction(...a),
   contarOrdenesSinEntregarAction: (...a: unknown[]) => acciones.contarOrdenesSinEntregarAction(...a),
   cargarDivisionAction: (...a: unknown[]) => acciones.cargarDivisionAction(...a),
+  listarTiposDocumentoAction: (...a: unknown[]) => acciones.listarTiposDocumentoAction(...a),
+  actualizarDatosPaisAction: (...a: unknown[]) => acciones.actualizarDatosPaisAction(...a),
+  crearTipoDocumentoAction: (...a: unknown[]) => acciones.crearTipoDocumentoAction(...a),
+  editarTipoDocumentoAction: (...a: unknown[]) => acciones.editarTipoDocumentoAction(...a),
+  cambiarActivoTipoDocumentoAction: (...a: unknown[]) => acciones.cambiarActivoTipoDocumentoAction(...a),
 }));
 
 const toastMock = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), show: vi.fn(), dismiss: vi.fn() };
@@ -120,6 +131,8 @@ beforeEach(() => {
   vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("superadmin") as never);
   acciones.listarPaisesAction.mockResolvedValue({ status: "ok", paises: [HONDURAS, GUATEMALA] });
   acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", provincias: ARBOL });
+  // SLT-81: sin tipos, la sección no pinta su tabla y la del CSV sigue siendo la única.
+  acciones.listarTiposDocumentoAction.mockResolvedValue({ status: "ok", tipos: [] });
 });
 
 afterEach(() => {
@@ -255,6 +268,18 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     return { user, dialogo };
   }
 
+  // SLT-81 (R5): el alta pide además teléfono, hora y un tipo de documento. El prefijo ya viene
+  // cargado con el oficial al elegir el país (R26).
+  async function llenarDatosDelPais(user: ReturnType<typeof userEvent.setup>, dialogo: HTMLElement) {
+    await user.type(within(dialogo).getByLabelText(/^Dígitos nacionales/), "8");
+    await user.type(within(dialogo).getByRole("combobox", { name: /^Zona horaria/ }), "el salvador");
+    await user.click(await screen.findByRole("option", { name: "America/El_Salvador" }));
+    const tipo = within(dialogo).getByRole("group", { name: "Tipo de documento 1" });
+    await user.type(within(tipo).getByLabelText(/^Documento/), "DUI");
+    await user.type(within(tipo).getByLabelText(/^Largo mínimo/), "9");
+    await user.type(within(tipo).getByLabelText(/^Largo máximo/), "9");
+  }
+
   it("no hay campo para teclear el código ni el nombre; sí los seis nombres de nivel", async () => {
     const { dialogo } = await abrirAlta();
     expect(within(dialogo).queryByLabelText(/c[oó]digo/i)).toBeNull();
@@ -285,7 +310,7 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     expect(screen.queryByRole("option", { name: "Perú (PE)" })).toBeNull();
   });
 
-  it("el envío lleva el id elegido y los seis nombres, sin nombre de país", async () => {
+  it("el envío lleva el id elegido, los seis nombres y los datos del país, sin nombre de país", async () => {
     acciones.crearPaisAction.mockResolvedValue({ status: "ok", pais: pais("SV", "El Salvador") });
     const { user, dialogo } = await abrirAlta();
 
@@ -303,6 +328,7 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     for (const [etiqueta, valor] of valores) {
       await user.type(within(dialogo).getByLabelText(new RegExp(`^${etiqueta}`)), valor);
     }
+    await llenarDatosDelPais(user, dialogo);
     await user.click(within(dialogo).getByRole("button", { name: "Dar de alta" }));
 
     await waitFor(() => expect(acciones.crearPaisAction).toHaveBeenCalledTimes(1));
@@ -314,6 +340,10 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
       nivel2Plural: "Municipios",
       nivel3Singular: "Distrito",
       nivel3Plural: "Distritos",
+      prefijoTelefonico: "503",
+      telefonoDigitosNacionales: 8,
+      zonaHoraria: "America/El_Salvador",
+      tiposDocumento: [{ nombre: "DUI", caracteres: "digitos", largoMin: 9, largoMax: 9 }],
     });
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/plataforma/geografia?pais=SV"));
   });
@@ -342,6 +372,7 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     ]) {
       await user.type(within(dialogo).getByLabelText(new RegExp(`^${campo}`)), "Nombre");
     }
+    await llenarDatosDelPais(user, dialogo);
     await user.click(within(dialogo).getByRole("button", { name: "Dar de alta" }));
     expect(await within(dialogo).findByText("Ese país ya está dado de alta.")).toBeInTheDocument();
   });

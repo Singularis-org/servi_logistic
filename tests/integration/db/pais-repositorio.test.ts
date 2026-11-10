@@ -29,6 +29,8 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let base: PrismaClient;
 
+// SLT-81 (R5, R6): el alta lleva además prefijo, dígitos, zona y sus tipos; el repositorio los recibe
+// ya con clave y `value`. Sin tipos en este caso: aquí se mide el único del país.
 const DATOS_XA = {
   id: "XA",
   nombre: "País de alta XA",
@@ -38,9 +40,13 @@ const DATOS_XA = {
   nivel2Plural: "Comunas",
   nivel3Singular: "Barrio",
   nivel3Plural: "Barrios",
+  prefijoTelefonico: "999",
+  telefonoDigitosNacionales: 8,
+  zonaHoraria: "America/Panama",
+  tiposDocumento: [],
 };
 
-/** La entrada del alta por el servicio (R23, R41): el código del catálogo y los seis nombres de nivel. */
+/** Los seis nombres de nivel del alta por el servicio (R23, R41), con el código del catálogo. */
 const NIVELES_PE = {
   id: "PE",
   nivel1Singular: "Departamento",
@@ -50,6 +56,14 @@ const NIVELES_PE = {
   nivel3Singular: "Distrito",
   nivel3Plural: "Distritos",
 };
+
+/** SLT-81 (R5, R26): los datos que el alta exige, con el prefijo oficial de Perú. */
+const DATOS_PE = {
+  prefijoTelefonico: "51",
+  telefonoDigitosNacionales: 9,
+  zonaHoraria: "America/Lima",
+};
+const TIPO_PE = { nombre: "DNI", caracteres: "digitos", largoMin: 8, largoMax: 8 };
 
 /** Un usuario real para el actor: `historial_plataforma.actor_usuario_id` tiene FK a `usuario`. */
 async function actorDePrueba(tx: TxDeTest): Promise<string> {
@@ -73,11 +87,14 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const servicio = new PaisService(new PaisRepository(clienteConSavepoint(tx)));
-      const alta = await servicio.crear(NIVELES_PE, { usuarioId: actorId, rol: "superadmin" });
+      const alta = await servicio.crear(
+        { ...NIVELES_PE, ...DATOS_PE, tiposDocumento: [TIPO_PE] },
+        { usuarioId: actorId, rol: "superadmin" },
+      );
       const fila = await tx.pais.findUnique({ where: { id: "PE" } });
       const provincias = await tx.provincia.count({ where: { paisId: "PE" } });
       const historial = await tx.historialPlataforma.findMany({
-        where: { paisId: "PE" },
+        where: { paisId: "PE", accion: "pais_creado" },
         select: { accion: true, entidadTipo: true, entidadId: true, entidadEtiqueta: true, actorUsuarioId: true, actorNombre: true },
       });
       return { actorId, alta, fila, provincias, historial };
@@ -93,14 +110,13 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
         digitosCodigoNivel2: null,
         digitosCodigoNivel3: null,
         disponible: true,
-        // SLT-42 (R6): un país dado de alta por la pantalla nace sin teléfono ni zona.
-        prefijoTelefonico: null,
-        telefonoDigitosNacionales: null,
-        zonaHoraria: null,
+        // SLT-81 (R5): desde SLT-81 el alta trae teléfono y zona.
+        ...DATOS_PE,
       },
     });
     expect(r.fila).toMatchObject(esperado);
     expect(r.provincias).toBe(0);
+    // Los `tipo_documento_creado` del alta los mide `pais-datos-plataforma.test.ts` (SLT-81 R17).
     expect(r.historial).toEqual([
       {
         accion: "pais_creado",

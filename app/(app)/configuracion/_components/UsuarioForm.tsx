@@ -17,6 +17,8 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { FormField } from "@/components/shared/FormField";
 import { PasswordInput } from "@/components/shared/PasswordInput";
+import { PrefijoTelefonico } from "@/components/shared/PrefijoTelefonico";
+import { useTelefonoDelPais } from "@/hooks/use-telefono-del-pais";
 import {
   actualizarUsuarioSchema,
   crearUsuarioSchema,
@@ -41,6 +43,9 @@ import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioS
  * `rol`, no un id.
  */
 const ROL_NO_ASIGNABLE = "apiKey";
+
+/** SLT-81 (R16): marca del tipo de documento inactivo que el usuario que se edita conserva. */
+const SUFIJO_TIPO_INACTIVO = " (inactivo)";
 
 /** SL-42 (R18): marca del vehículo inactivo que el usuario que se edita conserva. */
 const SUFIJO_VEHICULO_INACTIVO = " (inactivo)";
@@ -161,10 +166,25 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
       return res.status === "ok" ? res.tipos : [];
     });
 
-    const tipoOptions: SelectOption[] = useMemo(
-      () => (tipos ?? []).map((t) => ({ value: t.id, label: t.value })),
-      [tipos],
-    );
+    // SLT-81 (R18): solo los activos del país de la empresa, por su nombre y en el orden recibido
+    // (el del catálogo). R16: si el usuario que se edita tiene un tipo que ya no está activo, se
+    // conserva como su valor actual, deshabilitado para que nadie más lo elija.
+    const tipoActual = usuario?.tipoIdentificacionId ?? "";
+    const tipoActualNombre = usuario?.tipoIdentificacionNombre ?? null;
+    const tipoOptions: SelectOption[] = useMemo(() => {
+      const activos = (tipos ?? []).map((t) => ({ value: t.id, label: t.nombre }));
+      if (!tipos || !tipoActual || activos.some((o) => o.value === tipoActual)) return activos;
+      return [
+        ...activos,
+        {
+          value: tipoActual,
+          label: `${tipoActualNombre ?? tipoActual}${SUFIJO_TIPO_INACTIVO}`,
+          disabled: true,
+        },
+      ];
+    }, [tipos, tipoActual, tipoActualNombre]);
+
+    const telefonoDelPais = useTelefonoDelPais();
 
     const { data: roles } = useSWR("usuarios:roles", async () => {
       const res = await listarRoles();
@@ -480,10 +500,15 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
         </FormField>
 
         <FormField id="telefono" label="Teléfono" error={errors.telefono}>
-          <Input
-            value={form.telefono}
-            onChange={(e) => setField("telefono", e.target.value)}
-          />
+          {(control) => (
+            <PrefijoTelefonico prefijo={telefonoDelPais?.prefijo ?? null}>
+              <Input
+                {...control}
+                value={form.telefono}
+                onChange={(e) => setField("telefono", e.target.value)}
+              />
+            </PrefijoTelefonico>
+          )}
         </FormField>
 
         <FormField

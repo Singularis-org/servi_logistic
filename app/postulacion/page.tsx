@@ -1,4 +1,7 @@
+import { contextoActual } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { UserRepository } from "@/lib/repositories/UserRepository";
 import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
 import type { SelectOption } from "@/components/ui/select";
 import { Logo } from "@/components/shared/Logo";
@@ -15,7 +18,7 @@ export const dynamic = "force-dynamic";
 // de auto-registro. Acceso sin sesion ni cookie (R22): no se verifica ni concede
 // sesion aqui, a diferencia de app/login/page.tsx. Server Component minimo: solo
 // carga los catalogos publicos (tipos de identificacion y vehiculos) para
-// poblar los selects; los datos NO son sensibles.
+// poblar los selects; los datos NO son sensibles. SLT-81: solo con empresa en el contexto.
 
 // Etiquetas de presentacion de los catalogos. Se mantienen aqui (capa de
 // presentacion) y no en la DB, listas para i18n futura. El fallback a capitalizar
@@ -28,36 +31,53 @@ const VEHICULO_LABELS: Record<string, string> = {
   camion: "Camión",
 };
 
-const TIPO_IDENTIFICACION_LABELS: Record<string, string> = {
-  cedula: "Cédula",
-  ruc: "RUC",
-  pasaporte: "Pasaporte",
-};
+/** SLT-81 (R27): lo que se pinta en lugar del formulario cuando no hay empresa en el contexto. */
+export const POSTULACION_SIN_EMPRESA = "La postulación se abre desde la página de una empresa";
 
 function capitalizar(valor: string): string {
   return valor.length > 0 ? valor[0].toUpperCase() + valor.slice(1) : valor;
 }
 
-export default async function PostulacionPage() {
-  const prisma = getPrismaClient();
-  const vehiculoRepo = new VehiculoRepository(prisma);
+interface DatosDelFormulario {
+  prefijo: string | null;
+  tipos: SelectOption[];
+  vehiculos: SelectOption[];
+}
 
-  const [vehiculos, tipos] = await Promise.all([
+/**
+ * SLT-81 (design §7.3; R19, R27) — «Preparar + aviso». La postulación es de UNA empresa: con empresa
+ * en el contexto (la pondrá SL-35), el prefijo y los tipos activos son los de SU país, por nombre y
+ * en el orden del catálogo. Sin empresa (hoy), `null`: no se consulta ni país ni tipos ni vehículos,
+ * y la página pinta el aviso. La action sigue rechazando sin empresa: es la segunda red.
+ */
+async function datosDelFormulario(): Promise<DatosDelFormulario | null> {
+  const contexto = contextoActual();
+  if (contexto?.tipo !== "empresa") return null;
+
+  const prisma = getPrismaClient();
+  const [pais, vehiculos] = await Promise.all([
+    new PaisRepository(prisma).deLaEmpresa(contexto.organizacionId),
     // SL-42 (R18): un tipo inactivo no se ofrece para una postulación nueva; el recorte vive en
     // el repositorio (`WHERE_VEHICULO_ELEGIBLE`), no aquí.
-    vehiculoRepo.findMany({ soloActivos: true }),
-    prisma.tipoIdentificacion.findMany({ orderBy: { value: "asc" } }),
+    new VehiculoRepository(prisma).findMany({ soloActivos: true }),
   ]);
+  // `organizacion.pais_id` es NOT NULL: sin país la empresa del contexto no existe. No se ofrecen
+  // los tipos de ningún otro país (R27): se pinta el aviso.
+  if (!pais) return null;
+  const tipos = await new UserRepository(prisma).listTiposIdentificacion(pais.id);
 
-  const vehiculoOptions: SelectOption[] = vehiculos.map((v) => ({
-    value: v.id,
-    label: VEHICULO_LABELS[v.name] ?? capitalizar(v.name),
-  }));
+  return {
+    prefijo: pais.prefijoTelefonico,
+    tipos: tipos.map((t) => ({ value: t.id, label: t.nombre })),
+    vehiculos: vehiculos.map((v) => ({
+      value: v.id,
+      label: VEHICULO_LABELS[v.name] ?? capitalizar(v.name),
+    })),
+  };
+}
 
-  const tipoOptions: SelectOption[] = tipos.map((t) => ({
-    value: t.id,
-    label: TIPO_IDENTIFICACION_LABELS[t.value] ?? capitalizar(t.value),
-  }));
+export default async function PostulacionPage() {
+  const datos = await datosDelFormulario();
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
@@ -106,10 +126,17 @@ export default async function PostulacionPage() {
               el panel de escritorio es `bg-navy` fijo y lleva la de fondo oscuro. */}
             <Logo fondo="claro" ancho={160} />
           </div>
-          <PostulacionForm
-            tiposIdentificacion={tipoOptions}
-            vehiculos={vehiculoOptions}
-          />
+          {datos ? (
+            <PostulacionForm
+              tiposIdentificacion={datos.tipos}
+              vehiculos={datos.vehiculos}
+              prefijo={datos.prefijo}
+            />
+          ) : (
+            <p role="note" className="max-w-sm text-center text-sm text-muted-foreground">
+              {POSTULACION_SIN_EMPRESA}
+            </p>
+          )}
         </div>
       </div>
     </div>

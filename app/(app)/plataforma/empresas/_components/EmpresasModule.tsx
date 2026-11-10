@@ -18,6 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FormField } from "@/components/shared/FormField";
+import { PrefijoTelefonico } from "@/components/shared/PrefijoTelefonico";
+import type { PaisParaAltaDTO } from "@/lib/types/pais";
 import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
@@ -42,14 +44,13 @@ import { ReenviarBienvenidaBoton } from "./ReenviarBienvenidaBoton";
 export interface EmpresasModuleProps {
   /** Las empresas, ya ordenadas por el servidor: la pantalla no reordena. */
   empresas: EmpresaListada[];
-  /** El catálogo de tipos de documento (`ListarTiposIdentificacionResult`). */
-  tiposDocumento: { id: string; value: string }[];
   /**
    * SL-20 (R9, R45): los países que ofrece el alta, solo los `disponible = true` y ya ordenados por
-   * nombre (`listarPaisesDisponibles`). `id` es el ISO alfa-2 que viaja como `paisId`. La puerta de
-   * verdad es el alta en el servidor: esta lista es comodidad.
+   * nombre. `id` es el ISO alfa-2 que viaja como `paisId`. La puerta de verdad es el alta en el
+   * servidor: esta lista es comodidad. SLT-81 (R20): cada país trae su prefijo y sus tipos de
+   * documento activos (`listarPaisesParaAlta`), que el formulario ofrece al elegirlo.
    */
-  paises: { id: string; nombre: string }[];
+  paises: PaisParaAltaDTO[];
   /**
    * La action de alta de SL-17 (`altaEmpresaAction`), inyectada para poder probarla. Su
    * `no_autorizado` cae en el genérico, como cualquier respuesta que no sea de un campo.
@@ -236,7 +237,6 @@ const FECHA_CORTA = new Intl.DateTimeFormat("es", { dateStyle: "short" });
  */
 export function EmpresasModule({
   empresas,
-  tiposDocumento,
   paises,
   altaEmpresa,
   reenviarBienvenida,
@@ -253,9 +253,11 @@ export function EmpresasModule({
   const [creada, setCreada] = useState<AvisoAlta | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  const opcionesTipo: SelectOption[] = tiposDocumento.map((t) => ({
+  // SLT-81 (R20): los tipos y el prefijo son los del país elegido; sin país no hay tipos que ofrecer.
+  const paisElegido = paises.find((p) => p.id === form.paisId) ?? null;
+  const opcionesTipo: SelectOption[] = (paisElegido?.tiposDocumento ?? []).map((t) => ({
     value: t.value,
-    label: t.value,
+    label: t.nombre,
   }));
 
   const opcionesPais: SelectOption[] = paises.map((p) => ({ value: p.id, label: p.nombre }));
@@ -263,7 +265,10 @@ export function EmpresasModule({
   const idDe = (campo: Campo) => `${base}-${campo}`;
 
   function cambiar(campo: Campo, valor: string) {
-    setForm((f) => ({ ...f, [campo]: valor }));
+    // SLT-81 (R20): el tipo elegido es de un país; al cambiar de país deja de valer.
+    setForm((f) =>
+      campo === "paisId" && valor !== f.paisId ? { ...f, paisId: valor, tipoDocumento: "" } : { ...f, [campo]: valor },
+    );
     // El aviso de la empresa anterior se cierra al empezar a escribir otra (R37).
     setCreada(null);
   }
@@ -370,7 +375,22 @@ export function EmpresasModule({
           <div className="grid gap-4 md:grid-cols-2">
             {campoTexto("maestroNombre", TEXTOS.nombre)}
             {campoTexto("email", TEXTOS.email, { type: "email" })}
-            {campoTexto("telefono", TEXTOS.telefono, { type: "tel" })}
+            {/* SLT-81 (R20, R23): el prefijo del país elegido; sin país todavía, ni prefijo ni aviso. */}
+            <FormField id={idDe("telefono")} label={TEXTOS.telefono} error={errores.telefono}>
+              {(control) => (
+                <PrefijoTelefonico
+                  prefijo={paisElegido?.prefijoTelefonico ?? null}
+                  mostrarAviso={paisElegido !== null}
+                >
+                  <Input
+                    {...control}
+                    type="tel"
+                    value={form.telefono}
+                    onChange={(e) => cambiar("telefono", e.target.value)}
+                  />
+                </PrefijoTelefonico>
+              )}
+            </FormField>
             <FormField
               id={idDe("tipoDocumento")}
               label={TEXTOS.tipoDocumento}
@@ -382,6 +402,7 @@ export function EmpresasModule({
                   aria-label={TEXTOS.tipoDocumento}
                   value={form.tipoDocumento}
                   options={opcionesTipo}
+                  disabled={!paisElegido}
                   onValueChange={(v) => cambiar("tipoDocumento", v)}
                   aria-invalid={ariaInvalid}
                   aria-describedby={ariaDescribedBy}

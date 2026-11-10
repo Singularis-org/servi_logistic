@@ -168,7 +168,24 @@ esta bien hecha, no solo si "funciona".
     parámetro (`$n`), nunca escrita ni interpolada (decisión del humano del 2026-11-06). Los jobs diarios agendan una corrida por
     zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
     el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
-    envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
+    envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-92; SINPE, SL-22).
+  - **Datos del país (SLT-81):** solo el superadmin los escribe, desde la sección «Datos del país» de
+    `/plataforma/geografia` (`DatosDelPais.tsx`) y el alta «Nuevo país», que ya exige prefijo, dígitos,
+    zona y al menos un tipo. `PaisService.actualizarDatos`, `crearTipoDocumento`, `editarTipoDocumento`
+    y `cambiarActivoTipoDocumento` (por `lib/actions/geografia-plataforma.ts`) validan todo en el
+    servidor. La zona sale de una lista cerrada, `lib/utils/zonas-iana.ts` (`zonasIana()`), que la base
+    también tiene que conocer (`pg_timezone_names`). El prefijo tiene que ser el oficial del país,
+    `lib/utils/prefijo-oficial.ts` (`libphonenumber-js/min`); un país sin prefijo oficial no se da de
+    alta. Cambiar el teléfono o la hora de un país con empresas devuelve `requiere_confirmacion` con
+    su número, y se guarda solo si se reenvía ese mismo número. Un tipo no se borra: se activa o se
+    desactiva, y nunca el último activo (`tipos-documento-sin-borrado.guardia`). Cada cambio deja su
+    fila en `historial_plataforma` (`pais_datos_cambiados`, `tipo_documento_*`).
+  - **Formularios del país (SLT-81):** el portal recibe el prefijo, los dígitos y los tipos del país
+    de la empresa por `PaisDeLaEmpresaProvider` (`providers/`), montado en `app/(app)/layout.tsx`, y
+    los lee con `useTelefonoDelPais`. `components/shared/PrefijoTelefonico.tsx` pinta `+<prefijo>` o,
+    si el país no lo tiene, un aviso. El alta de empresa los toma del país elegido
+    (`listarPaisesParaAlta`) y la postulación pública, de la empresa de su página. Ningún formulario
+    escribe a mano un prefijo, un largo ni un tipo de un país (`formularios-pais-sin-literales.guardia`).
 - **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
   solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
   para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).

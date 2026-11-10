@@ -43,7 +43,7 @@ import {
 // resolutor de sesión que devuelve `null` (el superadmin no tiene empresa): es el mismo camino que en
 // producción. Un modelo de negocio (`orden`, en el conteo) sin contexto cae en `EmpresaNoResuelta`;
 // por eso la cadena tiene que correr dentro de `comoPlataforma`, y la contraprueba lo demuestra.
-// Las actions abren sus propias transacciones, así que esta parte ESCRIBE de verdad en el país `BV`
+// Las actions abren sus propias transacciones, así que esta parte ESCRIBE de verdad en el país `TV`
 // (bajo el lock de escrituras reales) y lo borra antes y después.
 //
 // Parte 2 (R31). El conteo suma las órdenes sin entregar de DOS empresas del mismo país. Va en una
@@ -53,9 +53,17 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 // El alta de país solo acepta códigos del catálogo ISO 3166-1 (R41), así que la suite no puede usar
-// `XA`–`XZ`: usa `BV` (Isla Bouvet, deshabitada, sin cobertura posible), que ningún entorno va a dar
-// de alta de verdad. `limpiarPais` lo borra antes y después.
-const PAIS = "BV";
+// `XA`–`XZ`. Desde SLT-81 (R26) tampoco uno que libphonenumber no conozca, como la `BV` de antes:
+// usa `TV` (Tuvalu, prefijo oficial 688), que ningún entorno va a dar de alta de verdad.
+// `limpiarPais` lo borra antes y después.
+const PAIS = "TV";
+/** SLT-81 (R5, R26): lo que el alta exige además de los nombres de nivel. */
+const DATOS_DEL_PAIS = {
+  prefijoTelefonico: "688",
+  telefonoDigitosNacionales: 5,
+  zonaHoraria: "Pacific/Funafuti",
+  tiposDocumento: [{ nombre: "Documento TV", caracteres: "digitos", largoMin: 6, largoMax: 8 }],
+};
 const CSV = [
   "nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3",
   "Región Norte,N1,Comuna Alta,N1A,Barrio Uno,N1A1",
@@ -74,7 +82,7 @@ let soltarSuperadmin: () => Promise<void> = async () => {};
 /** Borra todo lo del país de esta suite, en el orden de las FK. El historial primero: apunta al país. */
 async function limpiarPais(): Promise<void> {
   await bajoLockDeEscrituraReal(async () => {
-    for (const tabla of ["historial_plataforma", "distrito", "canton", "provincia"]) {
+    for (const tabla of ["historial_plataforma", "tipo_identificacion", "distrito", "canton", "provincia"]) {
       await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "pais_id" = $1`, PAIS);
     }
     await base.$executeRawUnsafe(`DELETE FROM "pais" WHERE "id" = $1`, PAIS);
@@ -148,6 +156,7 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
           nivel2Plural: "Comunas",
           nivel3Singular: "Barrio",
           nivel3Plural: "Barrios",
+          ...DATOS_DEL_PAIS,
         },
         deps,
       );
@@ -166,7 +175,7 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
     });
 
     // R23: el nombre sale del catálogo, no de la entrada.
-    expect(r.pais).toEqual({ status: "ok", nombre: "Isla Bouvet" });
+    expect(r.pais).toEqual({ status: "ok", nombre: "Tuvalu" });
     expect(r.carga).toEqual({
       status: "ok",
       creados: { provincia: 1, canton: 1, distrito: 2 },
@@ -195,6 +204,8 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
         "nodo_geografico_renombrado",
         "pais_creado",
         "pais_disponibilidad_desactivada",
+        // SLT-81 (R17): el tipo de documento del alta.
+        "tipo_documento_creado",
       ].sort(),
     );
     expect(new Set(historial.map((h) => h.actorUsuarioId))).toEqual(new Set([superadminId]));

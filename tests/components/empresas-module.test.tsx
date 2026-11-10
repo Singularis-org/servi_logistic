@@ -4,6 +4,7 @@ import { render, screen, cleanup, within, waitFor } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
+import type { PaisParaAltaDTO } from "@/lib/types/pais";
 
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
 
@@ -16,16 +17,29 @@ import {
   type EmpresasModuleProps,
 } from "@/app/(app)/plataforma/empresas/_components/EmpresasModule";
 
-const TIPOS = [
-  { id: "tipo-1", value: "cedula" },
-  { id: "tipo-2", value: "ruc" },
-  { id: "tipo-3", value: "pasaporte" },
-];
-
-// SL-20 (R9, R45): lo que pasa `page.tsx`, solo los países disponibles y por nombre.
-const PAISES = [
-  { id: "CR", nombre: "Costa Rica" },
-  { id: "EC", nombre: "Ecuador" },
+// SL-20 (R9, R45): lo que pasa `page.tsx`, solo los países disponibles y por nombre. SLT-81 (R20):
+// cada uno con su prefijo y sus tipos activos (`listarPaisesParaAlta`). Los de CR se rotulan como su
+// `value` para no tocar los casos viejos.
+const PAISES: PaisParaAltaDTO[] = [
+  {
+    id: "CR",
+    nombre: "Costa Rica",
+    prefijoTelefonico: "506",
+    tiposDocumento: [
+      { id: "tipo-1", value: "cedula", nombre: "cedula" },
+      { id: "tipo-2", value: "ruc", nombre: "ruc" },
+      { id: "tipo-3", value: "pasaporte", nombre: "pasaporte" },
+    ],
+  },
+  {
+    id: "EC",
+    nombre: "Ecuador",
+    prefijoTelefonico: "593",
+    tiposDocumento: [
+      { id: "ec-1", value: "EC_cedula", nombre: "Cédula ecuatoriana" },
+      { id: "ec-2", value: "EC_ruc", nombre: "RUC ecuatoriano" },
+    ],
+  },
 ];
 
 const EMPRESAS: EmpresaListada[] = [
@@ -84,13 +98,17 @@ function montar(
   {
     reenviarBienvenida = vi.fn(),
     bienvenidaPendiente = null,
-  }: { reenviarBienvenida?: ReturnType<typeof vi.fn>; bienvenidaPendiente?: string[] | null } = {},
+    paises = PAISES,
+  }: {
+    reenviarBienvenida?: ReturnType<typeof vi.fn>;
+    bienvenidaPendiente?: string[] | null;
+    paises?: PaisParaAltaDTO[];
+  } = {},
 ) {
   const utils = render(
     <EmpresasModule
       empresas={empresas}
-      tiposDocumento={TIPOS}
-      paises={PAISES}
+      paises={paises}
       altaEmpresa={altaEmpresa}
       reenviarBienvenida={reenviarBienvenida as unknown as Reenviar}
       bienvenidaPendiente={bienvenidaPendiente}
@@ -558,13 +576,90 @@ describe("SL-20 — país de la empresa (R9, R45)", () => {
     await user.type(c.maestroNombre, "Marta Ruiz");
     await user.type(c.email, "marta@este.test");
     await user.type(c.telefono, "0991234567");
-    await user.click(c.tipo);
-    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "ruc" }));
+    // SLT-81 (R20): sin país no hay tipo que elegir, así que el tipo también queda marcado.
     await user.type(c.documento, "1790012345001");
     await user.click(screen.getByRole("button", { name: "Crear empresa" }));
 
     expect(altaEmpresa).not.toHaveBeenCalled();
-    soloEn("pais", "Revisa este campo.");
+    expect(c.pais).toHaveAccessibleDescription(expect.stringContaining("Revisa este campo."));
+    expect(c.pais).toHaveAttribute("aria-invalid", "true");
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-81 — prefijo y tipos del país elegido (R20, R23)", () => {
+  async function elegirPais(user: ReturnType<typeof userEvent.setup>, nombre: string) {
+    await user.click(campos().pais);
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: nombre }));
+  }
+
+  async function opcionesDeTipo(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(campos().tipo);
+    const opciones = within(await screen.findByRole("listbox"))
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+    await user.keyboard("{Escape}");
+    return opciones;
+  }
+
+  it("sin país elegido, el tipo está deshabilitado y el teléfono no lleva prefijo ni aviso", () => {
+    montar();
+    const maestro = within(screen.getByRole("group", { name: "Primer maestro" }));
+    expect(campos().tipo).toHaveAttribute("data-disabled");
+    expect(maestro.queryByTestId("prefijo-telefonico")).not.toBeInTheDocument();
+    expect(maestro.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("R20: al elegir Ecuador muestra +593 y solo sus tipos; al pasar a Costa Rica el tipo elegido se vacía", async () => {
+    const user = userEvent.setup();
+    montar();
+    const maestro = within(screen.getByRole("group", { name: "Primer maestro" }));
+
+    await elegirPais(user, "Ecuador");
+    expect(maestro.getByTestId("prefijo-telefonico")).toHaveTextContent("+593");
+    expect(await opcionesDeTipo(user)).toEqual(["Cédula ecuatoriana", "RUC ecuatoriano"]);
+
+    await user.click(campos().tipo);
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "RUC ecuatoriano" }));
+    expect(campos().tipo).toHaveTextContent("RUC ecuatoriano");
+
+    await elegirPais(user, "Costa Rica");
+    expect(maestro.getByTestId("prefijo-telefonico")).toHaveTextContent("+506");
+    expect(campos().tipo).not.toHaveTextContent("RUC ecuatoriano");
+    expect(await opcionesDeTipo(user)).toEqual(["cedula", "ruc", "pasaporte"]);
+  });
+
+  it("R20: el alta envía el `value` del tipo del país elegido", async () => {
+    const user = userEvent.setup();
+    const altaEmpresa = vi.fn().mockResolvedValue(CREADA);
+    montar(altaEmpresa);
+    const c = campos();
+    await user.type(c.nombre, "Envíos Este");
+    await user.type(c.slug, "envios-este");
+    await elegirPais(user, "Ecuador");
+    await user.type(c.maestroNombre, "Marta Ruiz");
+    await user.type(c.email, "marta@este.test");
+    await user.type(c.telefono, "991234567");
+    await user.click(c.tipo);
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "RUC ecuatoriano" }));
+    await user.type(c.documento, "1790012345001");
+    await user.click(screen.getByRole("button", { name: "Crear empresa" }));
+
+    await waitFor(() => expect(altaEmpresa).toHaveBeenCalled());
+    expect(altaEmpresa.mock.calls[0][0]).toMatchObject({
+      paisId: "EC",
+      maestro: { tipoDocumento: "EC_ruc" },
+    });
+  });
+
+  it("R23: un país sin prefijo cargado muestra el teléfono sin prefijo y el aviso", async () => {
+    const user = userEvent.setup();
+    montar(vi.fn(), EMPRESAS, {
+      paises: [{ id: "PA", nombre: "Panamá", prefijoTelefonico: null, tiposDocumento: [] }],
+    });
+    await elegirPais(user, "Panamá");
+    const maestro = within(screen.getByRole("group", { name: "Primer maestro" }));
+    expect(maestro.queryByTestId("prefijo-telefonico")).not.toBeInTheDocument();
+    expect(maestro.getByRole("note")).toHaveTextContent("no tiene prefijo telefónico cargado");
   });
 });

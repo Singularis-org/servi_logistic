@@ -5992,6 +5992,12 @@ enum HistorialPlataformaAccion {
   // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
   pais_disponibilidad_activada
   pais_disponibilidad_desactivada
+  // SLT-81 (R17; 20261111130000): el superadmin cambia los datos del país o su catálogo de documentos.
+  pais_datos_cambiados
+  tipo_documento_creado
+  tipo_documento_editado
+  tipo_documento_activado
+  tipo_documento_desactivado
 
   @@map("historial_plataforma_accion")
 }
@@ -6001,6 +6007,8 @@ enum HistorialPlataformaEntidad {
   provincia
   canton
   distrito
+  // SLT-81 (20261111130000): un tipo de `tipo_identificacion`.
+  tipo_documento
 
   @@map("historial_plataforma_entidad")
 }
@@ -6020,7 +6028,8 @@ model HistorialPlataforma {
   /// Solo en el renombre. 80 = `GEO_NOMBRE_MAX`: no hay recorte.
   valorAnterior   String? @map("valor_anterior") @db.VarChar(80)
   valorNuevo      String? @map("valor_nuevo") @db.VarChar(80)
-  /// Solo `division_cargada`, y solo cifras.
+  /// Sin PII: cifras de `division_cargada` y, desde SLT-81, el antes/después de los datos del país
+  /// y de un tipo de documento (design §2.2 de SLT-81).
   detalle         Json?
   /// Inmutable: sin `updated_at`.
   createdAt       DateTime @default(now()) @map("created_at")

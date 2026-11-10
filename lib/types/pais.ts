@@ -32,12 +32,76 @@ const nombrePaisSchema = z
 /** R41: el mensaje de un código que no está en el catálogo. */
 export const PAIS_FUERA_DEL_CATALOGO = "Elige un país de la lista (ISO 3166-1).";
 
+// SLT-81 (design §4.1; R5, R7, R8, R9) — los datos del país y sus tipos de documento. Las cotas son
+// las de los CHECK de SLT-42: el schema frena antes y con un mensaje por campo; la base sigue siendo
+// la última red.
+
+/** = CHECK `pais_prefijo_telefonico_formato`: 1 a 3 dígitos, sin `+` y sin `0` inicial (R7). */
+export const PREFIJO_TELEFONICO = /^[1-9]\d{0,2}$/;
+/** = CHECK `pais_telefono_digitos_rango` (R7). */
+export const DIGITOS_NACIONALES_MIN = 4;
+export const DIGITOS_NACIONALES_MAX = 14;
+/** = CHECK `tipo_identificacion_largos` (R9). */
+export const DOCUMENTO_LARGO_MAX = 30;
+/** Tope de entrada del alta: anti-abuso, no regla de negocio. */
+export const TIPOS_EN_ALTA_MAX = 10;
+
+export const CARACTERES_DOCUMENTO = ["digitos", "alfanumerico"] as const;
+
+const MENSAJE_PREFIJO = "El prefijo son de 1 a 3 dígitos, sin «+» y sin 0 inicial.";
+const MENSAJE_DIGITOS = `Los dígitos nacionales son un número entero de ${DIGITOS_NACIONALES_MIN} a ${DIGITOS_NACIONALES_MAX}.`;
+/** R8: también lo usa el servicio cuando la zona no está en la lista del runtime o de la base. */
+export const MENSAJE_ZONA = "Elige una zona horaria de la lista.";
+const MENSAJE_CARACTERES = "Elige «Solo dígitos» o «Letras y dígitos».";
+const MENSAJE_LARGO = `El largo es un número entero de 1 a ${DOCUMENTO_LARGO_MAX}.`;
+const MENSAJE_LARGO_ORDEN = "El largo máximo no puede ser menor que el mínimo.";
+
+const largoDocumentoSchema = z
+  .number({ error: MENSAJE_LARGO })
+  .int(MENSAJE_LARGO)
+  .min(1, MENSAJE_LARGO)
+  .max(DOCUMENTO_LARGO_MAX, MENSAJE_LARGO);
+
+/** Los campos de un tipo de documento (R9). La regla `mínimo ≤ máximo` la pone `conLargosEnOrden`. */
+const camposDeTipoDocumento = {
+  nombre: nombrePaisSchema,
+  caracteres: z.enum(CARACTERES_DOCUMENTO, { error: MENSAJE_CARACTERES }),
+  largoMin: largoDocumentoSchema,
+  largoMax: largoDocumentoSchema,
+};
+
+/**
+ * R9: `largoMin ≤ largoMax`, con el error en `largoMax`. Una función y no un `.refine` compartido:
+ * zod 4 no deja extender (`.extend`) un objeto ya refinado, y un `.and` de dos `.strict()` rechaza
+ * los campos del otro lado.
+ */
+function conLargosEnOrden<T extends z.ZodType<{ largoMin: number; largoMax: number }>>(schema: T) {
+  return schema.refine((t) => t.largoMin <= t.largoMax, { path: ["largoMax"], message: MENSAJE_LARGO_ORDEN });
+}
+
+const tipoDocumentoNuevoSchema = conLargosEnOrden(z.object(camposDeTipoDocumento).strict());
+
+export type TipoDocumentoNuevoInput = z.infer<typeof tipoDocumentoNuevoSchema>;
+
+/** Prefijo, dígitos y zona (R7, R8). El prefijo oficial (R26) y la lista de zonas los mira el servicio. */
+const datosTelefonoYZona = {
+  prefijoTelefonico: z.string({ error: MENSAJE_PREFIJO }).trim().regex(PREFIJO_TELEFONICO, MENSAJE_PREFIJO),
+  telefonoDigitosNacionales: z
+    .number({ error: MENSAJE_DIGITOS })
+    .int(MENSAJE_DIGITOS)
+    .min(DIGITOS_NACIONALES_MIN, MENSAJE_DIGITOS)
+    .max(DIGITOS_NACIONALES_MAX, MENSAJE_DIGITOS),
+  zonaHoraria: z.string({ error: MENSAJE_ZONA }).trim().min(1, MENSAJE_ZONA),
+};
+
 /**
  * El alta de un país (R23, R41; enmienda 2026-10-26, decisión 5). El país se ELIGE del catálogo
- * ISO 3166-1: la entrada trae solo su código (`id`) y los seis nombres de nivel, que sí se teclean.
+ * ISO 3166-1: la entrada trae su código (`id`) y los seis nombres de nivel, que sí se teclean.
  * El nombre no viaja: lo pone el servicio desde el catálogo (`DatosDeAltaDePais`). Sin regla de
  * código: la pantalla no la ofrece y el país nuevo acepta códigos de texto libre (R17); solo Costa
  * Rica la tiene, puesta por su migración.
+ *
+ * SLT-81 (R5): además, el prefijo, los dígitos, la zona y al menos un tipo de documento.
  */
 export const crearPaisSchema = z
   .object({
@@ -53,13 +117,77 @@ export const crearPaisSchema = z
     nivel2Plural: nombrePaisSchema,
     nivel3Singular: nombrePaisSchema,
     nivel3Plural: nombrePaisSchema,
+    ...datosTelefonoYZona,
+    tiposDocumento: z
+      .array(tipoDocumentoNuevoSchema, { error: "Agrega al menos un tipo de documento." })
+      .min(1, "Agrega al menos un tipo de documento.")
+      .max(TIPOS_EN_ALTA_MAX, `No más de ${TIPOS_EN_ALTA_MAX} tipos de documento en el alta.`),
   })
   .strict();
 
 export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
 
-/** Lo que el repositorio escribe en `pais`: la entrada validada más el nombre del catálogo (R23). */
-export type DatosDeAltaDePais = CrearPaisInput & { nombre: string };
+/**
+ * Lo que el repositorio escribe: la entrada validada más el nombre del catálogo (R23) y, en cada
+ * tipo, la clave y el `value` que deriva el servicio (design §4.2).
+ */
+export type DatosDeAltaDePais = Omit<CrearPaisInput, "tiposDocumento"> & {
+  nombre: string;
+  tiposDocumento: DatosDeTipoDocumentoNuevo[];
+};
+
+/** Un tipo listo para insertar: lo validado más su identidad (`clave`, `value`), que no cambia al renombrar. */
+export type DatosDeTipoDocumentoNuevo = TipoDocumentoNuevoInput & { clave: string; value: string };
+
+/**
+ * R10: editar prefijo, dígitos y zona de un país existente. `empresasConfirmadas` es el número de
+ * empresas que el superadmin vio y confirmó; ausente = aún no confirmó.
+ */
+export const actualizarDatosPaisSchema = z
+  .object({
+    id: z.string().regex(CODIGO_PAIS, "El país no es válido."),
+    ...datosTelefonoYZona,
+    empresasConfirmadas: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+export type ActualizarDatosPaisInput = z.infer<typeof actualizarDatosPaisSchema>;
+
+/** Los tres datos que `actualizarDatos` escribe (sin la confirmación, que es del servicio). */
+export type DatosTelefonoYZona = Pick<
+  ActualizarDatosPaisInput,
+  "prefijoTelefonico" | "telefonoDigitosNacionales" | "zonaHoraria"
+>;
+
+/** R13: un tipo nuevo en un país que ya existe. */
+export const crearTipoDocumentoSchema = conLargosEnOrden(
+  z.object({ ...camposDeTipoDocumento, paisId: z.string().regex(CODIGO_PAIS, "El país no es válido.") }).strict(),
+);
+
+export type CrearTipoDocumentoInput = z.infer<typeof crearTipoDocumentoSchema>;
+
+/** R13, R14: nombre y regla de formato. La clave y el `value` no se tocan. */
+export const editarTipoDocumentoSchema = conLargosEnOrden(
+  z.object({ ...camposDeTipoDocumento, id: z.string().uuid("El tipo de documento no es válido.") }).strict(),
+);
+
+export type EditarTipoDocumentoInput = z.infer<typeof editarTipoDocumentoSchema>;
+
+/** R13, R15: `activo` es el estado DESEADO; pedir el que ya tiene es éxito sin escribir. */
+export const cambiarActivoTipoDocumentoSchema = z
+  .object({ id: z.string().uuid("El tipo de documento no es válido."), activo: z.boolean() })
+  .strict();
+
+export type CambiarActivoTipoDocumentoInput = z.infer<typeof cambiarActivoTipoDocumentoSchema>;
+
+/** Lo que el alta de empresa necesita de cada país disponible (R20). */
+export interface PaisParaAltaDTO {
+  id: string;
+  nombre: string;
+  prefijoTelefonico: string | null;
+  /** Solo los activos, por `orden`. `value` es lo que envía el formulario. */
+  tiposDocumento: { id: string; value: string; nombre: string }[];
+}
 
 /**
  * Enmienda 2026-10-26, decisión 6 (R47): encender o apagar la cobertura de un país. `disponible` es
@@ -152,3 +280,31 @@ export const ETIQUETAS_NEUTRAS: EtiquetasGeograficas = {
   canton: { singular: "Nivel 2", plural: "Nivel 2" },
   distrito: { singular: "Nivel 3", plural: "Nivel 3" },
 };
+
+/**
+ * SLT-81 (design §7.1; R18–R23) — la regla del teléfono del país de la empresa, para pintarla junto a
+ * un teléfono. `null` si al país le falta el prefijo o los dígitos (R23): entonces no se pinta el
+ * prefijo de ningún otro país.
+ */
+export interface TelefonoDelPais {
+  paisNombre: string;
+  prefijo: string;
+  digitosNacionales: number;
+}
+
+export function telefonoDelPais(
+  pais: Pick<PaisDTO, "nombre" | "prefijoTelefonico" | "telefonoDigitosNacionales">,
+): TelefonoDelPais | null {
+  if (!pais.prefijoTelefonico || pais.telefonoDigitosNacionales === null) return null;
+  return {
+    paisNombre: pais.nombre,
+    prefijo: pais.prefijoTelefonico,
+    digitosNacionales: pais.telefonoDigitosNacionales,
+  };
+}
+
+/** SLT-81 (design §7.1): lo que el layout del portal baja del país de la empresa, en una sola lectura. */
+export interface PaisDeLaEmpresaParaUi {
+  etiquetas: EtiquetasGeograficas;
+  telefono: TelefonoDelPais | null;
+}

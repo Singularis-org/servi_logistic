@@ -7,6 +7,9 @@ import { Search, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { FieldError } from "@/components/shared/FieldError";
+import { AVISO_SIN_PREFIJO } from "@/components/shared/PrefijoTelefonico";
+import { useTelefonoDelPais } from "@/hooks/use-telefono-del-pais";
+import type { TelefonoDelPais } from "@/lib/types/pais";
 import type { RolValue } from "@prisma/client";
 import type { DestinatarioPreviewDTO, PreviewDestinatariosDTO } from "@/lib/types/envios-whatsapp";
 
@@ -14,6 +17,12 @@ import { ROLES_EN_PANTALLA, etiquetaRol } from "./envios-textos";
 
 /** Cuántas coincidencias de la búsqueda se enseñan a la vez (el resto se encuentra escribiendo más). */
 const MAX_COINCIDENCIAS = 8;
+
+/** SLT-81 (R22): la regla del país de la empresa, para que quien lee el aviso sepa qué corregir. */
+function reglaDelTelefono(telefono: TelefonoDelPais | null): string {
+  if (!telefono) return AVISO_SIN_PREFIJO;
+  return `En ${telefono.paisNombre} el número es +${telefono.prefijo} seguido de ${telefono.digitosNacionales} dígitos.`;
+}
 
 function normalizar(t: string): string {
   return t.toLocaleLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
@@ -48,6 +57,7 @@ export function DestinatariosField({
   errores,
 }: DestinatariosFieldProps) {
   const [busqueda, setBusqueda] = useState("");
+  const telefonoDelPais = useTelefonoDelPais();
   const busquedaId = useId();
   const resultadosId = useId();
 
@@ -229,6 +239,7 @@ export function DestinatariosField({
                   ? "1 persona no lo va a recibir: su teléfono no sirve para WhatsApp"
                   : `${sinTelefono.length} personas no lo van a recibir: su teléfono no sirve para WhatsApp`}
               </p>
+              <p className="mt-1 text-xs">{reglaDelTelefono(telefonoDelPais)}</p>
               <ul className="mt-1 list-disc pl-5 text-xs leading-relaxed">
                 {sinTelefono.map((d) => (
                   <li key={d.usuarioId}>

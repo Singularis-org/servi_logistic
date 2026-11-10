@@ -32,20 +32,35 @@ import { PAISES_ISO_3166_1, type PaisDelCatalogo } from "@/lib/constants/paises-
 import { COLUMNAS_DIVISION } from "@/lib/types/division-csv";
 import type { ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
 import {
+  DIGITOS_NACIONALES_MAX,
+  DIGITOS_NACIONALES_MIN,
   etiquetasDePais,
   PAIS_NOMBRE_MAX,
+  TIPOS_EN_ALTA_MAX,
   type EtiquetasGeograficas,
   type NombresDeNivelesDePais,
   type PaisDTO,
+  type TipoDocumentoDTO,
 } from "@/lib/types/pais";
 import { normalizeName } from "@/lib/utils/normalize";
 
+import {
+  BORRADOR_TIPO_VACIO,
+  CamposDeTipo,
+  DatosDelPais,
+  faltanEnTipo,
+  tipoDesdeBorrador,
+  ZonaHorariaCombobox,
+  type BorradorTipo,
+} from "./DatosDelPais";
 import { GeografiaAdminModule } from "./GeografiaAdminModule";
 
 // SL-20 (design §8; R20, R23–R28, R42, R46, R47) — la geografía del superadmin, en cliente:
 //   - el selector de país (todos los dados de alta, disponibles o no);
-//   - «Nuevo país», con el país ELEGIDO del catálogo ISO 3166-1 y los seis nombres de nivel a mano;
+//   - «Nuevo país», con el país ELEGIDO del catálogo ISO 3166-1 y los seis nombres de nivel a mano
+//     (SLT-81: y su prefijo, dígitos, zona y tipos de documento);
 //   - el interruptor «Disponible» del país elegido;
+//   - SLT-81: sus datos (prefijo, dígitos, zona y tipos de documento, `DatosDelPais`);
 //   - la carga CSV de su división, con la equivalencia de columnas y los errores por línea;
 //   - el árbol editable (`GeografiaAdminModule`).
 //
@@ -65,6 +80,14 @@ export interface GeografiaPlataformaModuleProps {
   paisesError?: boolean;
   /** No se pudo leer la división del país elegido: `provincias` llega vacío por el fallo. */
   divisionError?: boolean;
+  /** SLT-81 (R2): los tipos de documento del país elegido, activos e inactivos. */
+  tiposDocumento: TipoDocumentoDTO[];
+  /** No se pudieron leer los tipos: `tiposDocumento` llega vacío por el fallo. */
+  tiposError?: boolean;
+  /** SLT-81 (R8): las zonas IANA que acepta el servidor. */
+  zonas: readonly string[];
+  /** SLT-81 (R26): código ISO → prefijo oficial según libphonenumber, o `null` si no lo conoce. */
+  prefijosOficiales: Readonly<Record<string, string | null>>;
 }
 
 export function GeografiaPlataformaModule({
@@ -73,6 +96,10 @@ export function GeografiaPlataformaModule({
   provincias,
   paisesError = false,
   divisionError = false,
+  tiposDocumento,
+  tiposError = false,
+  zonas,
+  prefijosOficiales,
 }: Readonly<GeografiaPlataformaModuleProps>) {
   const router = useRouter();
   const [altaAbierta, setAltaAbierta] = useState(false);
@@ -129,6 +156,8 @@ export function GeografiaPlataformaModule({
 
       <NuevoPaisDialog
         idsDadosDeAlta={paises.map((p) => p.id)}
+        zonas={zonas}
+        prefijosOficiales={prefijosOficiales}
         open={altaAbierta}
         onOpenChange={setAltaAbierta}
         onCreado={(id) => router.push(`${RUTA}?pais=${encodeURIComponent(id)}`)}
@@ -136,6 +165,15 @@ export function GeografiaPlataformaModule({
 
       {paisElegido !== null && etiquetas !== null ? (
         <>
+          <DatosDelPais
+            key={`datos-${paisElegido.id}`}
+            pais={paisElegido}
+            tipos={tiposDocumento}
+            tiposError={tiposError}
+            zonas={zonas}
+            prefijoOficial={prefijosOficiales[paisElegido.id] ?? null}
+            onCambio={() => router.refresh()}
+          />
           <CargaDivisionCsv
             key={`csv-${paisElegido.id}`}
             paisId={paisElegido.id}
@@ -250,32 +288,76 @@ function etiquetaDePais(pais: PaisDelCatalogo): string {
 /**
  * Decisión 11 (tras la review 1): el catálogo sin los países ya dados de alta. Ofrecerlos solo
  * llevaría a un `conflict` del servidor al guardar.
+ *
+ * SLT-81 (R26; decisión del 2026-11-07): tampoco los que libphonenumber no conoce (`AQ`, `BV`…):
+ * no tienen prefijo oficial y el servidor los rechaza.
  */
-function paisesPorDarDeAlta(idsDadosDeAlta: readonly string[]): PaisDelCatalogo[] {
+function paisesPorDarDeAlta(
+  idsDadosDeAlta: readonly string[],
+  prefijosOficiales: Readonly<Record<string, string | null>>,
+): PaisDelCatalogo[] {
   const dados = new Set(idsDadosDeAlta);
-  return PAISES_ISO_3166_1.filter((p) => !dados.has(p.id));
+  return PAISES_ISO_3166_1.filter((p) => !dados.has(p.id) && (prefijosOficiales[p.id] ?? null) !== null);
+}
+
+/** Una fila de tipo del alta, con una clave estable para React (las filas se agregan y se quitan). */
+interface FilaDeTipo {
+  clave: number;
+  valor: BorradorTipo;
 }
 
 function NuevoPaisDialog({
   idsDadosDeAlta,
+  zonas,
+  prefijosOficiales,
   open,
   onOpenChange,
   onCreado,
 }: Readonly<{
   idsDadosDeAlta: readonly string[];
+  zonas: readonly string[];
+  prefijosOficiales: Readonly<Record<string, string | null>>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreado: (id: string) => void;
 }>) {
   const toast = useToast();
-  const opciones = paisesPorDarDeAlta(idsDadosDeAlta);
+  const opciones = paisesPorDarDeAlta(idsDadosDeAlta, prefijosOficiales);
   const [pais, setPais] = useState<PaisDelCatalogo | null>(null);
   const [niveles, setNiveles] = useState<NombresDeNivelesDePais>(NIVELES_VACIOS);
+  // SLT-81 (R5): teléfono, hora y al menos un tipo de documento.
+  const [prefijo, setPrefijo] = useState("");
+  const [digitos, setDigitos] = useState("");
+  const [zona, setZona] = useState<string | null>(null);
+  const [tipos, setTipos] = useState<FilaDeTipo[]>([{ clave: 0, valor: BORRADOR_TIPO_VACIO }]);
+  const [siguienteClave, setSiguienteClave] = useState(1);
   const [errores, setErrores] = useState<Record<string, string[]>>({});
 
   function reiniciar() {
     setPais(null);
     setNiveles(NIVELES_VACIOS);
+    setPrefijo("");
+    setDigitos("");
+    setZona(null);
+    setTipos([{ clave: 0, valor: BORRADOR_TIPO_VACIO }]);
+    setSiguienteClave(1);
+    setErrores({});
+  }
+
+  /** R26: al elegir el país, el prefijo se carga con el oficial. */
+  function elegirPais(elegido: PaisDelCatalogo | null) {
+    setPais(elegido);
+    setPrefijo(elegido === null ? "" : (prefijosOficiales[elegido.id] ?? ""));
+  }
+
+  function agregarTipo() {
+    setTipos((previos) => [...previos, { clave: siguienteClave, valor: BORRADOR_TIPO_VACIO }]);
+    setSiguienteClave((c) => c + 1);
+  }
+
+  function quitarTipo(clave: number) {
+    setTipos((previos) => previos.filter((t) => t.clave !== clave));
+    // Los errores van por posición (`tiposDocumento.<i>.…`): al moverse las filas ya no casan.
     setErrores({});
   }
 
@@ -285,14 +367,25 @@ function NuevoPaisDialog({
     for (const { campo } of CAMPOS_DE_NIVEL) {
       if (niveles[campo].trim() === "") faltan[campo] = ["Este campo es obligatorio."];
     }
-    if (pais === null || Object.keys(faltan).length > 0) {
+    if (prefijo.trim() === "") faltan.prefijoTelefonico = ["Este campo es obligatorio."];
+    if (digitos.trim() === "") faltan.telefonoDigitosNacionales = ["Este campo es obligatorio."];
+    if (zona === null) faltan.zonaHoraria = ["Elige una zona horaria de la lista."];
+    tipos.forEach((t, i) => Object.assign(faltan, faltanEnTipo(t.valor, `tiposDocumento.${i}.`)));
+    if (pais === null || zona === null || Object.keys(faltan).length > 0) {
       setErrores(faltan);
       return;
     }
 
     try {
       // El nombre NO viaja: lo pone el servidor desde el catálogo (R23). Solo el código elegido.
-      const res = await crearPaisAction({ id: pais.id, ...niveles });
+      const res = await crearPaisAction({
+        id: pais.id,
+        ...niveles,
+        prefijoTelefonico: prefijo.trim(),
+        telefonoDigitosNacionales: Number(digitos),
+        zonaHoraria: zona,
+        tiposDocumento: tipos.map((t) => tipoDesdeBorrador(t.valor)),
+      });
       if (res.status === "ok") {
         toast.success(`${res.pais.nombre} dado de alta.`);
         reiniciar();
@@ -305,7 +398,11 @@ function NuevoPaisDialog({
         return;
       }
       if (res.status === "conflict") {
-        setErrores({ id: ["Ese país ya está dado de alta."] });
+        setErrores(
+          res.campo === "tiposDocumento"
+            ? { tiposDocumento: ["Un tipo de documento choca con otro ya guardado: revisa los nombres."] }
+            : { id: ["Ese país ya está dado de alta."] },
+        );
         return;
       }
       toast.error(mensajeDeEstado(res.status, "No se pudo dar de alta el país."));
@@ -327,7 +424,7 @@ function NuevoPaisDialog({
         onOpenChange(abierta);
       }}
       title="Nuevo país"
-      description="Elige el país de la lista y escribe cómo llama a cada uno de sus tres niveles."
+      description="Elige el país de la lista, escribe cómo llama a cada uno de sus tres niveles y carga su teléfono, su hora y al menos un tipo de documento."
       confirmLabel="Dar de alta"
       cancelLabel="Cancelar"
       closeOnConfirm={false}
@@ -341,7 +438,7 @@ function NuevoPaisDialog({
               {...control}
               items={opciones}
               value={pais}
-              onValueChange={setPais}
+              onValueChange={elegirPais}
               itemToLabel={etiquetaDePais}
               itemKey={(p) => p.id}
               filter={casaPais}
@@ -373,6 +470,77 @@ function NuevoPaisDialog({
             </FormField>
           ))}
         </div>
+
+        <fieldset className="flex flex-col gap-4">
+          <legend className="mb-2 text-sm font-semibold">Teléfono y hora</legend>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              id="nuevo-pais-prefijo"
+              label="Prefijo telefónico"
+              hint={
+                pais === null
+                  ? "Sin «+». Se carga al elegir el país."
+                  : `Sin «+». El oficial de ${pais.nombre} es +${prefijosOficiales[pais.id] ?? ""}.`
+              }
+              error={errores.prefijoTelefonico}
+              required
+            >
+              <Input inputMode="numeric" value={prefijo} maxLength={3} onChange={(e) => setPrefijo(e.target.value)} />
+            </FormField>
+            <FormField
+              id="nuevo-pais-digitos"
+              label="Dígitos nacionales"
+              hint={`Cuántos dígitos tiene un número sin el prefijo (de ${DIGITOS_NACIONALES_MIN} a ${DIGITOS_NACIONALES_MAX}).`}
+              error={errores.telefonoDigitosNacionales}
+              required
+            >
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={DIGITOS_NACIONALES_MIN}
+                max={DIGITOS_NACIONALES_MAX}
+                value={digitos}
+                onChange={(e) => setDigitos(e.target.value)}
+              />
+            </FormField>
+          </div>
+          <FormField id="nuevo-pais-zona" label="Zona horaria" error={errores.zonaHoraria} required>
+            {(control) => <ZonaHorariaCombobox zonas={zonas} value={zona} onValueChange={setZona} control={control} />}
+          </FormField>
+        </fieldset>
+
+        {tipos.map((fila, i) => (
+          <fieldset key={fila.clave} className="flex flex-col gap-3 rounded-md border border-border p-3">
+            <legend className="px-1 text-sm font-semibold">{`Tipo de documento ${i + 1}`}</legend>
+            <CamposDeTipo
+              id={`nuevo-pais-tipo-${fila.clave}`}
+              valor={fila.valor}
+              onCambio={(valor) =>
+                setTipos((previos) => previos.map((t) => (t.clave === fila.clave ? { ...t, valor } : t)))
+              }
+              errores={errores}
+              prefijoError={`tiposDocumento.${i}.`}
+            />
+            {tipos.length > 1 ? (
+              <div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => quitarTipo(fila.clave)}>
+                  {`Quitar el tipo ${i + 1}`}
+                </Button>
+              </div>
+            ) : null}
+          </fieldset>
+        ))}
+        <div>
+          <Button type="button" variant="outline" onClick={agregarTipo} disabled={tipos.length >= TIPOS_EN_ALTA_MAX}>
+            <Plus aria-hidden="true" />
+            Agregar otro tipo de documento
+          </Button>
+        </div>
+        {errores.tiposDocumento?.length ? (
+          <Alert variant="destructive">
+            <AlertDescription>{errores.tiposDocumento[0]}</AlertDescription>
+          </Alert>
+        ) : null}
         {errores.entrada?.length ? (
           <Alert variant="destructive">
             <AlertDescription>{errores.entrada[0]}</AlertDescription>

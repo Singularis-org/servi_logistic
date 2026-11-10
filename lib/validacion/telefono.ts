@@ -1,6 +1,6 @@
 // SLT-42 (R14, R15, R16) — validez de un telefono de persona usuaria con las reglas de numeracion
-// del pais de la empresa. Es el UNICO modulo que importa libphonenumber-js (design §7): la decision
-// de llevarla al cliente es de SLT-81.
+// del pais de la empresa. Es el UNICO modulo que VALIDA con libphonenumber-js (design §7); SLT-81
+// solo añade `lib/utils/prefijo-oficial.ts`, que lee el prefijo de pais en el servidor.
 //
 // Variante `max`: valida por tipo de linea y rangos asignados, no solo por largo (`min`). En el
 // servidor el tamaño de los metadatos no importa.

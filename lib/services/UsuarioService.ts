@@ -357,7 +357,11 @@ export class UsuarioService implements IUsuarioService {
     if (!usuario) return { status: "not_found" };
     // SL-32 (R11): el superadmin no es de ninguna empresa; para el modulo no existe.
     if (await this.esRolDePlataforma(usuario.rolId)) return { status: "not_found" };
-    return { status: "ok", usuario };
+    // SLT-81 (R16): el nombre de su tipo aunque esté inactivo, para pintarlo como su valor actual. Sin
+    // `paisId` la lista trae también los inactivos; la RLS la acota al país de la empresa.
+    const tipos = await this.repo.listTiposIdentificacion();
+    const tipoIdentificacionNombre = tipos.find((t) => t.id === usuario.tipoIdentificacionId)?.nombre ?? null;
+    return { status: "ok", usuario: { ...usuario, tipoIdentificacionNombre } };
   }
 
   async actualizar(

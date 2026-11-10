@@ -46,8 +46,7 @@ function montar(empresas: EmpresaListada[]) {
   render(
     <EmpresasModule
       empresas={empresas}
-      tiposDocumento={[{ id: "t-1", value: "cedula" }]}
-      paises={[{ id: "CR", nombre: "Costa Rica" }]}
+      paises={[{ id: "CR", nombre: "Costa Rica", prefijoTelefonico: null, tiposDocumento: [] }]}
       altaEmpresa={vi.fn()}
       cobroGlobal={{ monto: "100.00" }}
       fijarCobroGlobal={vi.fn()}

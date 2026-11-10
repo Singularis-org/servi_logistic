@@ -239,7 +239,8 @@ export async function altaDeEmpresaPorPantalla(page: Page, d: AltaPorPantalla): 
   await maestro.getByLabel("Email", { exact: true }).fill(d.email);
   await maestro.getByLabel("Teléfono", { exact: true }).fill(d.telefono);
   await maestro.getByRole("combobox", { name: "Tipo de documento" }).click();
-  await page.getByRole("option", { name: "cedula", exact: true }).click();
+  // SLT-81 (R20): el tipo se ofrece por su nombre, no por su `value` (`cedula`).
+  await page.getByRole("option", { name: "Cédula física", exact: true }).click();
   await maestro.getByLabel("Documento", { exact: true }).fill(d.documento);
   await form.getByRole("button", { name: "Crear empresa" }).click();
   await expect(page.getByRole("alert").filter({ hasText: AVISO_EMPRESA_CREADA })).toHaveCount(1, { timeout: 60_000 });

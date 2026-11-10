@@ -52,6 +52,14 @@ import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+// SLT-81 (R21): el prefijo del país de la empresa lo da el hook; cada caso puede cambiarlo.
+const { telefonoDelPaisMock } = vi.hoisted(() => ({
+  telefonoDelPaisMock: vi.fn<() => { paisNombre: string; prefijo: string; digitosNacionales: number } | null>(
+    () => null,
+  ),
+}));
+vi.mock("@/hooks/use-telefono-del-pais", () => ({ useTelefonoDelPais: () => telefonoDelPaisMock() }));
+
 vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
@@ -878,5 +886,38 @@ describe("327/R35 — ni el panel del importe anuncia un registro que no existe"
     // CONTROL POSITIVO de que había texto que mirar, y del más comprometido: el panel del dinero.
     expect(texto).toContain(AVISO_TITULO);
     expect(texto).toContain(AVISO_YA_EN_UN_CIERRE);
+  });
+});
+
+// =================================================================================================
+// SLT-81 R21 — EL PREFIJO DEL PAÍS DE LA EMPRESA JUNTO AL TELÉFONO
+// =================================================================================================
+
+describe("SLT-81 R21 — el teléfono lleva el prefijo del país", () => {
+  afterEach(() => {
+    telefonoDelPaisMock.mockReset();
+    telefonoDelPaisMock.mockReturnValue(null);
+  });
+
+  it("R21: muestra +<prefijo> del país de la empresa junto al teléfono del destinatario", async () => {
+    telefonoDelPaisMock.mockReturnValue({ paisNombre: "Panamá", prefijo: "507", digitosNacionales: 8 });
+    await abrir();
+    const telefono = campo(/Teléfono/);
+    expect(telefono.parentElement).toHaveTextContent("+507");
+  });
+
+  it("R21: no valida el teléfono con la regla del país: uno de otro largo se envía igual", async () => {
+    telefonoDelPaisMock.mockReturnValue({ paisNombre: "Panamá", prefijo: "507", digitosNacionales: 8 });
+    const user = await abrir();
+    await user.clear(campo(/Teléfono/));
+    await user.type(campo(/Teléfono/), "12");
+    expect(campo(/Teléfono/)).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByText(/dígitos/)).toBeNull();
+  });
+
+  it("R23: sin prefijo cargado, el teléfono va solo con el aviso", async () => {
+    await abrir();
+    expect(screen.getByText(/no tiene prefijo telefónico cargado/)).toBeInTheDocument();
+    expect(campo(/Teléfono/).parentElement?.textContent ?? "").not.toMatch(/\+\d/);
   });
 });
