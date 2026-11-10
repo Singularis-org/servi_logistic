@@ -1378,6 +1378,7 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     solicitadoAt: "2026-11-08T01:05:00.000Z",
     conciliado: false,
     faltaPorRecibir: "111838.37",
+    montoRecibido: null,
     conciliadoAt: null,
     conciliadoPorNombre: null,
     totales: TOTALES,
@@ -1393,7 +1394,7 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     totalesIngreso: TOTALES_INGRESO,
     partesPorTienda: [],
     modeloNuevo: false,
-    conteos: { gestiones: 31, mensajeros: 2, pagosAjustados: 0 },
+    conteos: { gestiones: 31, mensajeros: 2, cierres: 2, pagosAjustados: 0 },
   };
 
   function verMensajero(detalle: DetalleMensajeroVista = MENSAJERO) {

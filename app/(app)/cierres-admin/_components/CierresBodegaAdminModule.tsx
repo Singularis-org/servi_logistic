@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-// SLT-56 (R20) — la marca «Con ajustes» de un cierre del día dentro del cierre de bodega.
-import { CON_AJUSTES_BADGE_LABEL, conAjustesNota } from "./cierre-labels";
-import { Modal } from "@/components/shared/Modal";
 import { Pagination } from "@/components/shared/Pagination";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
 import {
@@ -17,6 +13,7 @@ import {
   type FiltrosCierresBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
+import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import { useToast } from "@/hooks/useToast";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 // ⭑ FICHA 431 (T17, R25): las DOS acciones de la conciliacion, el MISMO componente que monta el
@@ -36,32 +33,28 @@ import {
   // `CHECK` de R15; lo que se retira aqui es la superficie, que era su unica boca.
   listarPendientesCierresBodegaPaginado,
 } from "@/lib/actions/cierre-bodega";
-import type {
-  CierreBodegaDetalleCierre,
-  CierreBodegaResumen,
-} from "@/lib/interfaces/services/ICierreBodegaService";
-import type { TotalesIngresoEmpresa } from "@/lib/interfaces/services/ICierreDiaService";
-// Ficha 396 (D2) — el tipo del desglose se pide DONDE VIVE la identidad que particiona
-// (`lib/utils/ingreso-empresa.ts`), igual que hace el contrato del servicio. Es un `import type`:
-// se borra al compilar y no arrastra ni `Prisma` ni una linea de servidor al navegador.
-import type { ParteDeTienda } from "@/lib/utils/ingreso-empresa";
+import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
+import type { CierreBodegaDetalleServiceResult } from "@/lib/interfaces/services/ICierresBodegaAdminService";
+// SLT-104 «Detalle de cierre de bodega en el detalle único (central)» — el detalle único de SLT-95
+// con `tipo` bodega sustituye al `Modal` de antes y sus paneles (R40, R118).
+import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
+import { ConciliacionCierreBodega } from "@/components/private/cierres/detalle/ConciliacionCierreBodega";
+import { MensajerosCierreBodega } from "@/components/private/cierres/detalle/MensajerosCierreBodega";
+import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
 import {
-  TotalesIngresoPanel,
-  TotalesPanel,
-  VisorEvidencia,
-  // Feature 393 (F5, design §5) — los títulos de las dos cascadas. Sus líneas viven desde SLT-95
-  // (S1, T1.3) en `cascadas-bodega.ts`, que también las lee el detalle único.
-  CASCADA_CENTRAL_TITULO,
-  CASCADA_DUENO_TITULO,
-  hayGestionEnModeloNuevo,
-} from "./cierre-detalle-shared";
-import { CascadaDinero } from "./CascadaDinero";
-import { lineasCascadaCentral, lineasCascadaDueno } from "./cascadas-bodega";
-// Ficha 396 (D2) — EL MISMO componente y EL MISMO umbral que el detalle del cierre de MENSAJERO
-// (R22). No es una copia ni un gemelo: es el archivo que la tanda de bodega sacó de aquella
-// pantalla justo para que las tres superficies no puedan decir cosas distintas de la misma plata.
-import { DesglosePorTienda, marcaDeVariasTiendas } from "./DesglosePorTienda";
-import { CierreBodegaFacturaResumen, GestionesPorResultado } from "./cierre-factura";
+  COLUMNAS_DESCARGA_DETALLE_BODEGA,
+  filaDescargaDetalleBodega,
+} from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
+import {
+  filasMensajeros,
+  folioDe,
+  gestionesDeBodega,
+  modoBodegaDe,
+  vistaBodegaDesdeAdmin,
+} from "@/components/private/cierres/detalle/detalle-cierre-vista";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
+import { VisorEvidencia } from "./cierre-detalle-shared";
+import { CierreBodegaFacturaResumen } from "./cierre-factura";
 import {
   DescargarCierresButton,
   type DescargaResumenCierres,
@@ -81,7 +74,6 @@ import {
   filaDescargaBodegaPendiente,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
-import { EMPRESA } from "@/lib/config/marca";
 
 /** Nombre visible de la cola: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PENDIENTES = "Cierres de bodega pendientes";
@@ -180,43 +172,11 @@ export interface CierresBodegaAdminModuleProps {
 }
 
 /**
- * ⭑ FICHA 431 (T17): nombre accesible de la seccion de la accion. Se llamaba «Decision del
- * cierre de bodega» y ya no hay ninguna decision que tomar: hay un hecho que registrar.
+ * Detalle abierto: el resultado `ok` de `verCierreBodegaDetalle` tal cual llega (cabecera, cierres del
+ * día y derivados del servidor). SLT-104: la vista la arma `vistaBodegaDesdeAdmin`; la pantalla no
+ * filtra, suma ni reordena nada (R71).
  */
-const CONCILIACION_SECCION_LABEL = "Conciliación del cierre de bodega";
-
-/** Detalle abierto: la cabecera del cierre de bodega + sus cierre_dia incluidos. */
-interface DetalleAbierto {
-  cierre: CierreBodegaResumen;
-  cierres: CierreBodegaDetalleCierre[];
-  /** Ingreso de la empresa agregado de toda la bodega, por concepto (derivado del snapshot). */
-  totalesIngreso: TotalesIngresoEmpresa;
-  /** Total general agregado menos flete + IVA y comisión + IVA (puede ser negativo). */
-  pagoTienda: string;
-  /**
-   * Feature 393 — los cuatro derivados AGREGADOS de las dos cascadas, tal como los emite el
-   * servidor. `ganancia` ya no se guarda: en esta superficie la absorbió `netoEmpresa`, que
-   * resta ADEMÁS lo que gana la bodega satélite (las dos sólo coinciden cuando esa cifra es 0).
-   * El servicio la sigue devolviendo —la lee el detalle del cierre de MENSAJERO (R30)—, aquí
-   * simplemente no se pinta.
-   */
-  cobradoSobreRecaudado: string;
-  /** SL-39 (R21) — el IVA facturado AGREGADO, derivado en el servidor; línea propia (R24). */
-  ivaFacturado: string;
-  netoEmpresa: string;
-  paraLaCentral: string;
-  efectivoCubreDescuentos: boolean;
-  /**
-   * 💰 Ficha 396 (R20) — DE QUE TIENDA ES CADA PARTE del «Para la tienda» AGREGADO de toda la
-   * bodega: UNA fila por tienda a traves de todos los mensajeros incluidos (Q8), ya derivada y
-   * **ya ordenada por el servidor** (R8). El desglose de CADA mensajero no viaja aqui: viaja en
-   * su propio `cierres[i].partesPorTienda`, y son listas DISTINTAS a proposito (R19 vs R20).
-   *
-   * Llega SIEMPRE, tambien con una sola tienda: el UMBRAL de ensenarlo es de presentacion y lo
-   * evalua esta pantalla, nivel por nivel.
-   */
-  partesPorTienda: ParteDeTienda[];
-}
+type DetalleAbierto = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
 
 /**
  * La configuración de descarga de la COLA de bodega, para la fila de las pestañas.
@@ -320,22 +280,7 @@ export function CierresBodegaAdminModule({
   async function abrirDetalle(cierreBodegaId: string) {
     const result = await verCierreBodegaDetalle({ cierreBodegaId });
     if (result.status === "ok") {
-      setDetalle({
-        cierre: result.cierre,
-        cierres: result.cierres,
-        totalesIngreso: result.totalesIngreso,
-        pagoTienda: result.pagoTienda,
-        // Feature 393 (R12/R20): los cuatro llegan derivados del servidor con aritmética
-        // decimal exacta. La pantalla no resta nada.
-        cobradoSobreRecaudado: result.cobradoSobreRecaudado,
-        ivaFacturado: result.ivaFacturado,
-        netoEmpresa: result.netoEmpresa,
-        paraLaCentral: result.paraLaCentral,
-        efectivoCubreDescuentos: result.efectivoCubreDescuentos,
-        // Ficha 396 (R20/R8): se guarda TAL CUAL llega. La pantalla no lo filtra, no lo suma y
-        // no lo reordena — el orden es el que emitio el servidor.
-        partesPorTienda: result.partesPorTienda,
-      });
+      setDetalle(result);
       return;
     }
     if (result.status === "no_encontrada") {
@@ -398,19 +343,8 @@ export function CierresBodegaAdminModule({
   // El refresco de las listas (`refrescarListas`) SI se conserva: la fila marcada se mueve de
   // pestaña igual que antes se movia al aprobar.
 
-  const cierreAbierto = detalle?.cierre ?? null;
-  /**
-   * 💰 Ficha 396 (R1/R2/R20) — la marca del NIVEL AGREGADO, y el interruptor de su desglose.
-   *
-   * ⚠️ Se evalua sobre las tiendas de TODA LA BODEGA, y **no es la de ningun mensajero**: la de
-   * cada `cierre_dia` se calcula abajo, con SU propia lista (R19). Una bodega con dos mensajeros
-   * que llevaron una tienda cada uno tiene marca AQUI y en ninguno de los dos niveles de
-   * mensajero — es el caso que separa los tres umbrales, y hay test de el.
-   */
-  const marcaAgregada =
-    detalle === null ? null : marcaDeVariasTiendas(detalle.partesPorTienda);
-  const modeloNuevoAgregado =
-    detalle !== null && detalle.cierres.some((c) => hayGestionEnModeloNuevo(c.grupos));
+  /** SLT-104: la vista del detalle, una vez por detalle abierto (no en cada render). */
+  const vista = useMemo(() => (detalle ? vistaBodegaDesdeAdmin(detalle) : null), [detalle]);
 
   return (
     // `gap-4`: la barra de filtros y las pestañas son una cabecera, no dos secciones.
@@ -539,250 +473,63 @@ export function CierresBodegaAdminModule({
         <CierresBodegaResueltosLista initialData={historico} onAbrir={abrirDetalle} />
       </PanelConmutado>
 
-      {/* ---------- Detalle agregado del cierre de bodega (R11-R13) ---------- */}
-      <Modal
-        open={detalle !== null}
-        onOpenChange={(next) => {
-          if (!next) cerrarDetalle();
-        }}
-        title="Detalle del cierre de bodega"
-        description={
-          cierreAbierto
-            ? `${cierreAbierto.zonaNombre} · ${cierreAbierto.solicitadoPorNombre}`
-            : undefined
-        }
-        // Sin ancho propio: el default del Modal (75% de la pantalla) es el que corresponde
-        // a un detalle con tablas anchas.
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={cerrarDetalle}
-      >
-        {detalle ? (
-          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto pr-1">
-            {/* Panel de totales AGREGADOS snapshot (R11/R13). */}
-            <TotalesPanel
-              totales={detalle.cierre.totales}
-              ariaLabel="Totales del cierre de bodega"
-              title="Totales del cierre de bodega"
-            />
-
-            {/* Feature 393 (design §7.2) — LAS DOS CASCADAS, separadas y rotuladas. Sustituyen
-                a las cinco tarjetas sueltas que estaban aquí («Ingreso bruto», «Pago a
-                mensajeros», «Ganancia», «Ingreso de bodega por rechazos» y «Pago a tienda»):
-                eran las mismas cifras, sueltas, sin cascada y con nombres que no son los que usa
-                quien las lee. Los componentes NO se borran —los monta el detalle del cierre de
-                MENSAJERO (R30)—; aquí se deja de montarlos (R34/D4).
-
-                LA CASCADA B VA PRIMERO, y no es un detalle de maquetación: es el número
-                operativo —lo que la satélite le entrega a la central— y es con el que cierra la
-                tarjeta, así que el detalle empieza por lo mismo (R23). */}
-            <CascadaDinero
-              titulo={CASCADA_CENTRAL_TITULO}
-              ariaLabel={`${CASCADA_CENTRAL_TITULO} · cierre de bodega`}
-              lineas={lineasCascadaCentral(
-                {
-                  general: detalle.cierre.totales.general,
-                  totalPagoMensajero: detalle.cierre.totalPagoMensajero,
-                  totalIngresoBodegaRechazos: detalle.cierre.totalIngresoBodegaRechazos,
-                  paraLaCentral: detalle.paraLaCentral,
-                  efectivoCubreDescuentos: detalle.efectivoCubreDescuentos,
-                },
-                modeloNuevoAgregado,
-              )}
-            />
-
-            <CascadaDinero
-              titulo={CASCADA_DUENO_TITULO}
-              ariaLabel={`${CASCADA_DUENO_TITULO} · cierre de bodega`}
-              lineas={lineasCascadaDueno(
-                {
-                  general: detalle.cierre.totales.general,
-                  totalesIngreso: detalle.totalesIngreso,
-                  totalPagoMensajero: detalle.cierre.totalPagoMensajero,
-                  totalIngresoBodegaRechazos: detalle.cierre.totalIngresoBodegaRechazos,
-                  pagoTienda: detalle.pagoTienda,
-                  cobradoSobreRecaudado: detalle.cobradoSobreRecaudado,
-                  ivaFacturado: detalle.ivaFacturado,
-                  netoEmpresa: detalle.netoEmpresa,
-                },
-                marcaAgregada,
-                modeloNuevoAgregado,
-              )}
-            />
-
-            {/* 💰 Ficha 396 (R20) — EL DESGLOSE DE TODA LA BODEGA, una fila por tienda a través de
-                todos los mensajeros (Q8). Va DESPUÉS de la cascada que termina en «Para la
-                tienda» —la cifra que parte— y ANTES del desglose por concepto, que ya no habla de
-                tiendas: primero la cuenta que cierra, y sólo después de quién es cada parte. Es
-                el mismo sitio relativo que ocupa en el detalle del cierre de mensajero. */}
-            {marcaAgregada !== null ? (
-              <DesglosePorTienda
-                partes={detalle.partesPorTienda}
-                de="cierre de bodega"
-                modeloNuevo={modeloNuevoAgregado}
-              />
-            ) : null}
-
-            {/* El desglose por concepto de la línea «Lo que la empresa facturó»: sin cambios. */}
-            <TotalesIngresoPanel
-              totales={detalle.totalesIngreso}
-              ariaLabel={`Ingreso de ${EMPRESA.enFrase} del cierre de bodega`}
-              modeloNuevo={modeloNuevoAgregado}
-            />
-
-            {/* Motivo de rechazo si el cierre de bodega del histórico fue rechazado. */}
-            {detalle.cierre.motivoRechazo ? (
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">
-                  Motivo de rechazo:{" "}
-                </span>
-                {detalle.cierre.motivoRechazo}
-              </p>
-            ) : null}
-
-            {/* Sub-detalle por cada cierre_dia incluido (R11): mensajero + totales +
-                4 secciones por resultado con evidencia firmada (R12). */}
-            {detalle.cierres.map((cierreDia) => {
-              /**
-               * 💰 Ficha 396 (R19) — la marca de ESTE mensajero, con SUS tiendas y de ninguna
-               * otra lista. ⚠️ NO es `marcaAgregada`: usar aquella evaluaría el umbral de este
-               * nivel sobre las tiendas de toda la bodega y enseñaría un desglose de una sola
-               * tienda —o diría «el total de 2 tiendas» encima del dinero de una—.
-               */
-              const marcaDelMensajero = marcaDeVariasTiendas(cierreDia.partesPorTienda);
-
-              return (
-              <section
-                key={cierreDia.cierreDiaId}
-                aria-label={`Cierre del día · ${cierreDia.mensajeroNombre}`}
-                className="flex flex-col gap-4 rounded-lg border border-border p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold">
-                    {cierreDia.mensajeroNombre}
-                  </h3>
-                  {/* SLT-56 (R20): este cierre del día tiene gestiones con el pago ajustado. La
-                      cifra llega del servidor; las gestiones llevan su marca «Ajustado» con el
-                      historial en la lista de abajo (la misma fila que el detalle del cierre). */}
-                  {(cierreDia.gestionesAjustadas ?? 0) > 0 ? (
-                    <Badge
-                      variant="warning"
-                      title={conAjustesNota(cierreDia.gestionesAjustadas ?? 0)}
-                    >
-                      {CON_AJUSTES_BADGE_LABEL}
-                      <span className="sr-only">
-                        {`: ${conAjustesNota(cierreDia.gestionesAjustadas ?? 0)}`}
-                      </span>
-                    </Badge>
-                  ) : null}
-                </div>
-                <TotalesPanel
-                  totales={cierreDia.totales}
-                  ariaLabel={`Totales · ${cierreDia.mensajeroNombre}`}
-                  title="Totales del cierre del día"
-                />
-                {/* Feature 393 (R15/R23) — las MISMAS dos cascadas, con los MISMOS rótulos,
-                    para ESTE cierre_dia. Cada una sale de los snapshots de su propio nivel: el
-                    día NO usa el pago agregado ni el agregado se corrige para cuadrar con la
-                    suma de los días (R17). */}
-                <CascadaDinero
-                  titulo={CASCADA_CENTRAL_TITULO}
-                  ariaLabel={`${CASCADA_CENTRAL_TITULO} · ${cierreDia.mensajeroNombre}`}
-                  lineas={lineasCascadaCentral(
-                    {
-                      general: cierreDia.totales.general,
-                      totalPagoMensajero: cierreDia.totalPagoMensajero,
-                      totalIngresoBodegaRechazos: cierreDia.totalIngresoBodegaRechazos,
-                      paraLaCentral: cierreDia.paraLaCentral,
-                      efectivoCubreDescuentos: cierreDia.efectivoCubreDescuentos,
-                    },
-                    hayGestionEnModeloNuevo(cierreDia.grupos),
-                  )}
-                />
-                <CascadaDinero
-                  titulo={CASCADA_DUENO_TITULO}
-                  ariaLabel={`${CASCADA_DUENO_TITULO} · ${cierreDia.mensajeroNombre}`}
-                  lineas={lineasCascadaDueno(
-                    {
-                      general: cierreDia.totales.general,
-                      totalesIngreso: cierreDia.totalesIngreso,
-                      totalPagoMensajero: cierreDia.totalPagoMensajero,
-                      totalIngresoBodegaRechazos: cierreDia.totalIngresoBodegaRechazos,
-                      pagoTienda: cierreDia.pagoTienda,
-                      cobradoSobreRecaudado: cierreDia.cobradoSobreRecaudado,
-                      ivaFacturado: cierreDia.ivaFacturado,
-                      netoEmpresa: cierreDia.netoEmpresa,
-                    },
-                    marcaDelMensajero,
-                    hayGestionEnModeloNuevo(cierreDia.grupos),
-                  )}
-                />
-                {/* 💰 Ficha 396 (R19) — EL DESGLOSE DE ESTE MENSAJERO, con SUS gestiones. Mismo
-                    componente y mismos rótulos que el agregado de arriba y que el detalle del
-                    cierre de mensajero (R22), y en el mismo sitio relativo: pegado a la cascada
-                    que termina en «Para la tienda». El nombre accesible lleva el del mensajero,
-                    que es lo que lo distingue del desglose agregado y del de los demás. */}
-                {marcaDelMensajero !== null ? (
-                  <DesglosePorTienda
-                    partes={cierreDia.partesPorTienda}
-                    de={cierreDia.mensajeroNombre}
-                    modeloNuevo={hayGestionEnModeloNuevo(cierreDia.grupos)}
+      {/* ---------- Detalle del cierre de bodega (SLT-104: R40, R111-R119) ----------
+          El detalle único de SLT-95 con `tipo` bodega, audiencia central y marco modal, en lugar del
+          `Modal` de antes con sus paneles sueltos (R118). El modo sale de la marca de conciliación
+          (`modoBodegaDe`); qué pinta el pie lo decide `accionesDe` con el nodo de la conciliación,
+          que es `ConciliacionAcciones` tal cual (ficha 431: mismo botón para la misma fila; PA5).
+          Lo de cada cierre del día (sus cascadas, su «Por tienda») vive en su propio detalle, al que
+          lleva «Ver su cierre» (R42, R115). */}
+      {detalle && vista ? (
+        <DetalleCierre
+          tipo="bodega"
+          marco="modal"
+          audiencia="central"
+          detalle={vista}
+          modo={modoBodegaDe(detalle.cierre)}
+          pestanas={{
+            // R31, R41, R113: la lista única, en «solo lectura» (sin corregir ni ajustar; evidencia
+            // y, para la central, fulfillment), con la columna Mensajero. La fecha de la nota de
+            // tarifas va por gestión, la de SU cierre del día (PA3, R120).
+            gestiones: (
+              <GestionesCierre
+                gestiones={gestionesDeBodega(detalle.cierres)}
+                audiencia="solo lectura"
+                columnaMensajero
+                // FICHA 481 — fulfillment SOLO para la central.
+                quienMiraEsCentral={audiencia === "admin"}
+                congeladoAt={null}
+                acciones={{}}
+                onVerEvidencia={setEvidencia}
+                descargar={
+                  <DescargarDatasetButton
+                    titulo={tituloDescargaGestiones(folioDe(detalle.cierre.cierreBodegaId))}
+                    columnas={COLUMNAS_DESCARGA_DETALLE_BODEGA}
+                    obtenerFilas={async () => ({
+                      status: "ok",
+                      filas: gestionesDeBodega(detalle.cierres).map((i) =>
+                        filaDescargaDetalleBodega(i.gestion, i.mensajeroNombre),
+                      ),
+                    })}
                   />
-                ) : null}
-                {/* El desglose por concepto de ESTE cierre_dia: sin cambios. */}
-                <TotalesIngresoPanel
-                  totales={cierreDia.totalesIngreso}
-                  ariaLabel={`Ingreso de ${EMPRESA.enFrase} · ${cierreDia.mensajeroNombre}`}
-                  modeloNuevo={hayGestionEnModeloNuevo(cierreDia.grupos)}
-                />
-                {/* FICHA 478 (T3) — las gestiones de ESTE mensajero en pestañas con fila
-                    desplegable: la MISMA lista que el comprobante del cierre de mensajero, con
-                    «Ver evidencia» en cualquier resultado (R10/R12). Solo lectura (P1/R14): sin
-                    callbacks de corrección, la fila no ofrece los botones. El `contexto` da a la
-                    región un nombre único por mensajero (R17). La descarga por sección de la
-                    tabla vieja se retira del modal (P3); queda la global de la pantalla. */}
-                <GestionesPorResultado
-                  grupos={cierreDia.grupos}
-                  onVerEvidencia={setEvidencia}
-                  contexto={cierreDia.mensajeroNombre}
-                />
-              </section>
-              );
-            })}
-
-            {/*
-              ⭑ FICHA 431 (T17, R16/R25/D2) — LA ACCION, Y LO QUE DEJO DE SER.
-
-              Aqui habia dos botones: «Aprobar» y «Rechazar», mas un sub-modal con motivo
-              obligatorio. Ese par ERA la puerta de nivel 2: mientras no se pulsara, la bodega
-              satelite no podia asignar ni una orden mas.
-
-              Ahora hay UNO: «Marcar recibido». No es el mismo boton con otro nombre —es otra
-              cosa—: no autoriza nada, dice que el efectivo LLEGO y cuanto se conto. Por eso
-              abre un dialogo con el declarado a la vista y un monto editable, y por eso es
-              REVERSIBLE («Desmarcar»): una marca informativa puesta por error tiene que poder
-              deshacerse, y deshacerla no mueve un colon.
-
-              «RECHAZAR» SE RETIRA SIN SUSTITUTO (R16). Rechazar una consolidacion era mandar a
-              la satelite a corregir un bulto que ya habia salido; hoy la respuesta a «llego
-              menos de lo declarado» es marcar POR LO QUE LLEGO y dejar la diferencia contando
-              en el saldo de esa bodega. Las `rechazado` historicas —cero en produccion— siguen
-              en la base y dejan de tener rotulo en pantalla.
-
-              SE MONTA PARA CUALQUIER ESTADO, no solo para `solicitado` como el par anterior: la
-              correccion y el desmarcado actuan sobre una YA marcada, y con el `esPendiente` de
-              antes no habria forma de deshacer nada. Que boton toca lo decide
-              `ConciliacionAcciones` a partir de la marca, con la MISMA funcion que pinta el
-              badge — asi el rotulo del boton y el del estado no pueden contradecirse.
-            */}
-            {/* Sin permiso NO se monta ni la sección: `ConciliacionAcciones` devuelve `null` y
-                quedaría una región con nombre accesible y nada dentro, que un lector de pantalla
-                anuncia como si hubiera algo que hacer. */}
-            {puedeConciliar ? (
-            <section
-              aria-label={CONCILIACION_SECCION_LABEL}
-              className="flex flex-wrap justify-end gap-3 border-t pt-4"
-            >
+                }
+              />
+            ),
+            mensajeros: (
+              <MensajerosCierreBodega
+                filas={filasMensajeros(detalle.cierres)}
+                // R115: se cierra el detalle de bodega y se abre el del cierre del día por su enlace.
+                onVerSuCierre={(href) => {
+                  cerrarDetalle();
+                  router.push(href);
+                }}
+              />
+            ),
+            conciliacion: <ConciliacionCierreBodega detalle={vista} />,
+          }}
+          acciones={{
+            // R112 — sin permiso no se monta: el pie queda solo con «Cerrar».
+            conciliacion: puedeConciliar ? (
               <ConciliacionAcciones
                 cierreBodegaId={detalle.cierre.cierreBodegaId}
                 bodega={detalle.cierre.zonaNombre}
@@ -796,11 +543,11 @@ export function CierresBodegaAdminModule({
                   refrescarListas();
                 }}
               />
-            </section>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+            ) : undefined,
+          }}
+          onCerrar={cerrarDetalle}
+        />
+      ) : null}
 
       {/* ---------- Visor de evidencia (URL firmada, R12) ---------- */}
       <VisorEvidencia url={evidencia} onClose={() => setEvidencia(null)} />

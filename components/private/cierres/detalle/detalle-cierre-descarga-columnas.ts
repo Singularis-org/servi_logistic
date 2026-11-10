@@ -16,7 +16,7 @@ import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import { RECIBIDO_LABEL, RESULTADO_FILA_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { RESULTADO_COL } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas";
 
-import { COL_SENALES } from "../fila/fila-gestion-labels";
+import { COL_MENSAJERO, COL_SENALES } from "../fila/fila-gestion-labels";
 import { textoSenales, type AudienciaFila } from "../fila/fila-gestion-vista";
 import { COBRO_A_LA_TIENDA_COL, PAGO_AL_MENSAJERO_COL } from "./detalle-cierre-labels";
 
@@ -31,6 +31,25 @@ export const COLUMNAS_DESCARGA_DETALLE_CIERRE: DescargaColumna[] = [
   { clave: "pagoMensajero", encabezado: PAGO_AL_MENSAJERO_COL },
   { clave: "senales", encabezado: COL_SENALES },
 ];
+
+/**
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (R113): las del detalle de
+ * bodega, con «Mensajero» tras «Tienda» (la columna que la tabla pinta en ese sitio). Las de
+ * mensajero no cambian.
+ */
+export const COLUMNAS_DESCARGA_DETALLE_BODEGA: DescargaColumna[] = [
+  ...COLUMNAS_DESCARGA_DETALLE_CIERRE.slice(0, 3),
+  { clave: "mensajero", encabezado: COL_MENSAJERO },
+  ...COLUMNAS_DESCARGA_DETALLE_CIERRE.slice(3),
+];
+
+/**
+ * R113 — una gestión del detalle de bodega a su fila: la de mensajero más su mensajero. Las señales,
+ * con el texto de la audiencia «solo lectura», que es la de la fila que se ve (R31).
+ */
+export function filaDescargaDetalleBodega(g: CierreDetalleGestion, mensajeroNombre: string | undefined): DescargaFila {
+  return { ...filaDescargaDetalleCierre(g, "solo lectura"), mensajero: mensajeroNombre ?? null };
+}
 
 /**
  * Una gestión del detalle a su fila: el resultado con su etiqueta legible, los importes crudos y

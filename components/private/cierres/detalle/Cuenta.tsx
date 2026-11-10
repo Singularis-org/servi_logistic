@@ -26,6 +26,9 @@ const OPERADOR: Record<LineaCuenta["signo"], string> = {
   resta: "− ",
 };
 
+/** SLT-104 (R43): lo que pinta una línea con `sinImporte`. */
+const SIN_IMPORTE = "—";
+
 export interface CuentaProps {
   titulo: string;
   lineas: readonly LineaCuenta[];
@@ -90,6 +93,7 @@ export function Cuenta({
               key={`${l.label}-${i}`}
               data-signo={l.signo}
               data-tipo={l.tipo}
+              data-sin-importe={l.sinImporte ? "" : undefined}
               className={cn(
                 "flex items-start justify-between gap-3",
                 l.signo === "resta" && "text-muted-foreground",
@@ -112,7 +116,8 @@ export function Cuenta({
                   l.tipo === "total" && esMontoNegativo(l.monto) && "text-danger-strong",
                 )}
               >
-                {money(l.monto)}
+                {/* SLT-104 (R43): una línea sin importe dice «—», nunca `money("")` ni ₡0. */}
+                {l.sinImporte ? SIN_IMPORTE : money(l.monto)}
               </span>
             </div>
           ))}

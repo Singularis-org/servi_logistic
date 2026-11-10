@@ -133,7 +133,8 @@ function modeloDe(props: DetalleCierreProps): Modelo {
       totales: d.totales,
       pestanas: pestanasDe("bodega", props.audiencia, props.modo, {
         gestiones: d.conteos.gestiones,
-        mensajeros: d.conteos.mensajeros,
+        // SLT-104 (PA2, R121): la pestaña cuenta sus filas (cierres del día); la cabecera, mensajeros.
+        mensajeros: d.conteos.cierres,
       }),
       slots: {
         dinero: <DineroCierre dinero={dinero} />,

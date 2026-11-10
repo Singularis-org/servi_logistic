@@ -21,8 +21,10 @@ import { esMontoCero } from "@/components/shared/monto-cliente";
 import {
   CASCADA_CENTRAL_TITULO,
   DESTINO_TIPO_LABEL,
+  FALTA_POR_RECIBIR_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_LABEL,
+  RECIBIDO_LABEL,
   estadoConciliacionDe,
   hayGestionEnModeloNuevo,
   type EstadoConciliacion,
@@ -32,13 +34,17 @@ import {
   FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
   INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL,
   INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
+  ORDEN_RESULTADOS,
   PAGO_MENSAJERO_LABEL,
   rotuloIngresoBodega,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { money } from "@/lib/config/moneda";
+import { hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
 import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
 
+import { pagosAjustados } from "../cola/cola-cierres-labels";
+import type { ItemGestion } from "../fila/fila-gestion-vista";
 import * as L from "./detalle-cierre-labels";
 
 // ═══ Props del componente (design.md > 1. Detalle del cierre) ═══════════════════════════════════
@@ -116,6 +122,8 @@ export interface DetalleBodegaVista {
   solicitadoAt: string;
   conciliado: boolean;
   faltaPorRecibir: string;
+  /** SLT-104 (R43): el monto marcado como recibido; `null` = sin marca (se pinta «—», nunca ₡0). */
+  montoRecibido: string | null;
   conciliadoAt: string | null;
   conciliadoPorNombre: string | null;
   totales: CierreTotales;
@@ -132,7 +140,11 @@ export interface DetalleBodegaVista {
   modeloNuevo: boolean;
   /** [central, mensajeros, bodega satélite] ya derivado en el servidor (S13, R70). */
   porcentajesReparto?: readonly number[] | null;
-  conteos: { gestiones: number; mensajeros: number; pagosAjustados: number };
+  /**
+   * `mensajeros` = mensajeros DISTINTOS (cabecera y contexto de «Pago a mensajeros»); `cierres` = cierres
+   * del día incluidos, que son las filas de «Mensajeros» y su conteo en la pestaña (SLT-104 PA2, R121).
+   */
+  conteos: { gestiones: number; mensajeros: number; cierres: number; pagosAjustados: number };
 }
 
 // ═══ Cabecera (R2) ════════════════════════════════════════════════════════════════════════════
@@ -497,6 +509,11 @@ export interface LineaCuenta {
   /** «subtotal»: raya punteada encima. «total»: raya continua y negrita (R15). */
   tipo: "partida" | "subtotal" | "total";
   notas?: readonly string[];
+  /**
+   * SLT-104 (R43): se pinta «—» en lugar de `money(monto)`; `monto` queda "" y la línea no es un
+   * importe (las identidades de la pantalla la saltan). Apagado por defecto: las cuentas de antes no cambian.
+   */
+  sinImporte?: boolean;
 }
 
 export interface CuentaVista {
@@ -731,6 +748,7 @@ export function vistaBodegaDesdeAdmin(r: DetalleBodegaOk): DetalleBodegaVista {
     solicitadoAt: c.solicitadoAt,
     conciliado: c.conciliado,
     faltaPorRecibir: c.faltaPorRecibir,
+    montoRecibido: c.montoRecibido,
     conciliadoAt: c.conciliadoAt,
     conciliadoPorNombre: c.conciliadoPorNombre,
     totales: c.totales,
@@ -748,7 +766,94 @@ export function vistaBodegaDesdeAdmin(r: DetalleBodegaOk): DetalleBodegaVista {
     conteos: {
       gestiones: r.cierres.reduce((n, cd) => n + Object.values(cd.grupos).flat().length, 0),
       mensajeros: new Set(r.cierres.map((cd) => cd.mensajeroId)).size,
+      cierres: r.cierres.length,
       pagosAjustados: r.cierres.reduce((n, cd) => n + (cd.gestionesAjustadas ?? 0), 0),
     },
   };
+}
+
+// ═══ Bodega · central: lo que S6 añade (SLT-104 «Detalle de cierre de bodega en el detalle único (central)») ═══
+
+type CierreDelDiaDeBodega = DetalleBodegaOk["cierres"][number];
+
+/**
+ * R111 — el modo del detalle de bodega que abre la central: sin marca de recibido se decide (marcar);
+ * con marca (recibido o recibido incompleto) es solo lectura. Sale de `conciliado`, que llega del servidor.
+ */
+export function modoBodegaDe(c: { conciliado: boolean }): "decidir" | "solo lectura" {
+  return c.conciliado ? "solo lectura" : "decidir";
+}
+
+/**
+ * R41, R113, R120 — las gestiones de todos los cierres del día, en el orden de la lista única: por
+ * resultado (`ORDEN_RESULTADOS`) y, dentro de cada uno, el de `cierres[]` del servidor y luego el de sus
+ * gestiones. Cada una con SU mensajero y la fecha en que se solicitó SU cierre del día (PA3); sin esa
+ * fecha, `null` (nota sin fecha), nunca la del cierre de bodega.
+ */
+export function gestionesDeBodega(cierres: readonly CierreDelDiaDeBodega[]): ItemGestion[] {
+  return ORDEN_RESULTADOS.flatMap((resultado) =>
+    cierres.flatMap((cd) =>
+      (cd.grupos[resultado] ?? []).map((gestion) => ({
+        gestion,
+        mensajeroNombre: cd.mensajeroNombre,
+        congeladoAt: cd.solicitadoAt ?? null,
+      })),
+    ),
+  );
+}
+
+/** R42, R114 — una fila de «Mensajeros». Los importes, STRING del servidor tal cual (R71). */
+export interface FilaMensajeroBodega {
+  cierreDiaId: string;
+  mensajero: string;
+  /** Conteo de gestiones de ese cierre del día (entero, no dinero). */
+  gestiones: number;
+  recaudado: string;
+  pago: string;
+  aLaCentral: string;
+  senal: string;
+  href: string;
+}
+
+/** R42, R114, R115 — una fila por cierre del día, en el orden de `cierres[]`, sin derivar importes. */
+export function filasMensajeros(cierres: readonly CierreDelDiaDeBodega[]): FilaMensajeroBodega[] {
+  return cierres.map((cd) => {
+    const ajustadas = cd.gestionesAjustadas ?? 0;
+    return {
+      cierreDiaId: cd.cierreDiaId,
+      mensajero: cd.mensajeroNombre,
+      gestiones: Object.values(cd.grupos).flat().length,
+      recaudado: cd.totales.general,
+      pago: cd.totalPagoMensajero,
+      aLaCentral: cd.paraLaCentral,
+      senal: ajustadas > 0 ? pagosAjustados(ajustadas) : L.SIN_SENALES,
+      href: hrefDetalleCierre(cd.cierreDiaId),
+    };
+  });
+}
+
+/**
+ * R43, R117 — la cuenta de «Conciliación»: lo que debe llegar, lo recibido («—» sin marca: la línea va
+ * con `sinImporte`, nunca con "0.00") y lo que falta, como total. Los tres STRING tal cual del servidor.
+ */
+export function cuentaConciliacion(d: DetalleBodegaVista): CuentaVista {
+  const recibido: LineaCuenta =
+    d.montoRecibido === null
+      ? { label: RECIBIDO_LABEL, monto: "", signo: "resta", tipo: "partida", sinImporte: true }
+      : partida(RECIBIDO_LABEL, d.montoRecibido, "resta");
+  return {
+    titulo: L.CONCILIACION_TITULO,
+    lineas: [
+      partida(L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL, d.paraLaCentral),
+      recibido,
+      { label: FALTA_POR_RECIBIR_LABEL, monto: d.faltaPorRecibir, signo: "neutro", tipo: "total" },
+    ],
+  };
+}
+
+/** R43, R117 — «Marcó: <nombre> · <fecha y hora>» o «Marcó: Aún nadie» sin marca. */
+export function marcaConciliacion(d: DetalleBodegaVista): string {
+  if (!d.conciliado || !d.conciliadoAt) return L.marcoQuien(L.AUN_NADIE);
+  const partes = [d.conciliadoPorNombre, fechaHora(d.conciliadoAt)].filter((p): p is string => Boolean(p));
+  return L.marcoQuien(partes.join(" · "));
 }
