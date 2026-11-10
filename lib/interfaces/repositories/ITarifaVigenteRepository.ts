@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import type { ParTarifa } from "@/lib/utils/cascada-tarifa";
 import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 
@@ -52,8 +53,8 @@ export type TarifaTxClient = Pick<
   | "organizacion"
   | "tipoNivelGeografico"
   | "nodoGeografico"
-  | "distritoZonaEspecial"
->;
+> &
+  ClienteDeMarcas;
 
 // Tarifa vigente resuelta para un par (tienda, zona). MONTOS: valorFlete[Gam],
 // valorFleteDevuelto[Gam], tarifaEspecial[Devuelta]. PORCENTAJES (0..100): comisionCod,
