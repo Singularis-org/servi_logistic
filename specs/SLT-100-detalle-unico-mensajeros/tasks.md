@@ -184,7 +184,7 @@
 
 ## T6 — Cierre
 
-- [ ] **T6.1** — `./init.sh` verde, con `INIT_EXIT` escrito dentro del log. **Hecho:**
+- [x] **T6.1** — `./init.sh` verde, con `INIT_EXIT` escrito dentro del log (2026-11-09, `INIT_EXIT=0` sobre base desechable; review OK en `progress/review_SLT-100.md`). **Hecho:**
   - sin rojos; el aviso de tamaño, aceptado;
   - revisión del diff: en `lib/` solo los 4 archivos de R80, nada en `db/` ni migraciones (R72);
   - `grep -E "Number\(|parseFloat|toFixed"` vacío en `components/private/cierres/` (R71).

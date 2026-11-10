@@ -44,8 +44,9 @@
 - El detalle de bodega, `/cierre-dia`, `/wallet/satelites` y las cifras nuevas del servidor de la
   nota p1 (SLT-104 a SLT-114). La barra de reparto sigue sin porcentajes hasta SLT-111 «Cifras del
   servidor: reparto en % y señales de la cola».
-- Borrar `CierreFacturaDetalle`, `CascadasCierreMensajero` o la hoja de impresión. Los sigue usando
-  `/cierre-dia`, y los retira SLT-115 «Retirar los componentes de cierre sustituidos».
+- Borrar `CierreFacturaDetalle`, `CascadasCierreMensajero` o la hoja de impresión. Los retira
+  SLT-115 «Retirar los componentes de cierre sustituidos» (`CascadasCierreMensajero` ya no lo monta
+  ninguna ruta tras S2: queda con `@sin-superficie`).
 - Cualquier cambio de dinero, de permisos o de esquema (R72). La única pieza de servidor es la
   lectura de R80.
 
@@ -151,7 +152,7 @@ comprueba en pantalla.
 - **R81** [S2, nuevo] — SI el cierre es del modelo viejo y el servidor envía el desglose por origen
   del ingreso de bodega (`desgloseIngresoBodegaRechazos.sla` y `.manual`), ENTONCES, en la cuenta
   «De lo facturado, le queda a la empresa», bajo la línea «− pago a la bodega», el detalle DEBE
-  mostrar la nota «Automático (por plazo vencido) <monto> · Manual <monto>», con los strings del
+  mostrar la nota «Automático (por plazo vencido) <monto> · Manual (mensajero) <monto>» (literal de la app), con los strings del
   servidor. SI el cierre es del modelo nuevo, o el desglose no llega, ENTONCES NO DEBE pintarla:
   es la misma regla con la que hoy la pinta el modal.
 
