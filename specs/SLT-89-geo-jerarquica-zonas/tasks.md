@@ -76,7 +76,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [x] **T1.5** [P] `tests/integration/db/orden-nodo-mas-profundo.test.ts`: nodo = lugar, ausente,
   descendiente de profundidad 4 (se conserva), ajeno (se pisa), y cambio de distrito que deja un
   nodo fuera de la rama. (R28, R29)
-- [ ] **T1.6** [P] `tests/integration/db/zona-nodo-dos-empresas.test.ts` (parte de base): RLS de las
+- [x] **T1.6** [P] `tests/integration/db/zona-nodo-dos-empresas.test.ts` (parte de base): RLS de las
   dos tablas, misma empresa, `SL021`, profundidad 3 rechazada en `zona_nodo`, duplicado entre tablas
   de miembros rechazado. (R34)
 
