@@ -2,7 +2,7 @@ import { expect, test, type Browser, type Locator, type Page } from "@playwright
 
 import { crearUsuarioE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
 
-import { aprobarCierre, cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { aprobarCierre, cierresDe, filaDeCola, importe, solicitarCierre } from "./_escenarios/cierres";
 import { abrirCon, navegarCon } from "./_escenarios/pulsar";
 import {
   baseReparto,
@@ -121,7 +121,7 @@ async function aprobarEnPantalla(browser: Browser, r: RepartoE2E, m: MensajeroE2
   const page = await paginaDe(browser, r.empresa.maestro);
   await page.goto("/cierres-admin");
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(pendientes, m.nombre);
   await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
   await abrirCon(comprobante.getByRole("button", { name: "Ver / decidir" }), detalle);

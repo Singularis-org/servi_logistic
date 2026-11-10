@@ -217,7 +217,7 @@ afterEach(() => {
 });
 
 describe("Filtros del listado de cierres del día", () => {
-  it("la barra ofrece los filtros del pedido: fecha, bodega, mensajero y estado", async () => {
+  it("la barra ofrece los filtros del pedido: fecha, mensajero y estado (sin bodega)", async () => {
     // Es la MISMA barra de `/ordenes`: los filtros se piden en el selector, no están puestos de
     // entrada. Lo que este caso fija es QUÉ se ofrece —los tres del pedido humano del 2026-08-16
     // más el ESTADO de la ficha 386, y solo esos—.
@@ -237,41 +237,34 @@ describe("Filtros del listado de cierres del día", () => {
     const opciones = within(screen.getByRole("listbox", { name: "Filtros" }))
       .getAllByRole("option")
       .map((o) => o.textContent);
+    //
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» — enmienda de R100 (Carlos
+    // 2026-11-10, fiel al canvas): la cola de mensajeros deja de ofrecer «Bodega». El literal se
+    // ACTUALIZA, igual que con la 386; la mitad de bodega lo conserva y lo vigila su propio test.
     expect(opciones).toEqual([
       "Fecha de solicitud",
-      "Bodega",
       "Mensajero",
       "Estado",
     ]);
   });
 
-  it("elegir una bodega recorta los mensajeros a los de esa zona (encadenado)", async () => {
-    // La tercera regla del humano: «si ahí filtro de una zona, filtra los mensajeros de dicha
-    // zona». Se apoya en el `dependsOn`/`parentValue` de `FilterComponent` —el mismo mecanismo
-    // con el que `/ordenes` encadena provincia → cantón—, así que lo que hay que comprobar aquí
-    // es el CABLEADO: que cada mensajero viaja con su zona y que el filtro declara su padre.
+  it("sin «Bodega», el filtro de mensajero ofrece a TODOS los del alcance, de cualquier zona", async () => {
+    // Antes de SLT-102 este caso vigilaba el encadenado bodega → mensajero («si filtro una zona,
+    // filtra los mensajeros de dicha zona»). Con la enmienda de R100 la cola de mensajeros ya no
+    // ofrece «Bodega», así que no hay padre que encadene: lo que se vigila ahora es la regla 2 del
+    // humano —sin bodega elegida se ofrecen TODOS— y que el mensajero no quede colgando de un
+    // filtro que no existe (ni recortado ni vacío).
     const user = userEvent.setup();
     montar();
     await screen.findByRole("region", { name: "Filtros de los cierres del día" });
 
-    await pedirFiltro(user, "Bodega");
     await pedirFiltro(user, "Mensajero");
     const barra = screen.getByRole("region", { name: "Filtros de los cierres del día" });
+    expect(within(barra).queryByRole("button", { name: /Bodega/ })).toBeNull();
 
-    // Sin bodega elegida se ofrecen TODOS los mensajeros (regla 2 del humano).
     await user.click(within(barra).getByRole("button", { name: /Mensajero/ }));
     expect(await screen.findByRole("option", { name: "Diana Mora" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Beto de Otra Zona" })).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    // Con la bodega de Diana elegida, el de la otra zona desaparece de la lista.
-    await user.click(within(barra).getByRole("button", { name: /Bodega/ }));
-    await user.click(await screen.findByRole("option", { name: "Bodega Heredia" }));
-    await user.keyboard("{Escape}");
-
-    await user.click(within(barra).getByRole("button", { name: /Mensajero/ }));
-    expect(await screen.findByRole("option", { name: "Diana Mora" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Beto de Otra Zona" })).not.toBeInTheDocument();
   });
 
   it("(1) el filtro VIAJA al servidor, en las DOS lecturas", async () => {
@@ -309,13 +302,14 @@ describe("Filtros del listado de cierres del día", () => {
       expect(pendientesMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2 })),
     );
 
-    await elegir(user, "Bodega", "Bodega Heredia");
+    // SLT-102 (enmienda de R100): sin «Bodega» en esta barra, se filtra por mensajero.
+    await elegir(user, "Mensajero", "Diana Mora");
 
     await waitFor(() => {
       // La lectura CON filtro vuelve a pedir la página 1: pedir la 2 de un conjunto recién
       // recortado devolvería vacío junto a un contador que dice que hay filas.
       expect(pendientesMock).toHaveBeenCalledWith(
-        expect.objectContaining({ page: 1, filtros: { destinoZonaIds: [ZONA_A] } }),
+        expect.objectContaining({ page: 1, filtros: { mensajeroIds: [MENSAJERO_DIANA] } }),
       );
     });
   });

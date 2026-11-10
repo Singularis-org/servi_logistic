@@ -276,7 +276,8 @@ describe("descarga detallada en cierres del día (T5.1)", () => {
     expect(await elegirNivelDetalle(user)).toBeInTheDocument();
 
     // Y también en la otra pestaña: el conjunto del detallado no depende de cuál esté abierta.
-    await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab` de la cola única.
+    await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
     expect(screen.getByRole("button", { name: BOTON_DETALLE })).toBeInTheDocument();
   });
 
@@ -409,7 +410,7 @@ describe("descarga detallada en cierres del día (T5.1)", () => {
 
     // Estado de partida: la cola pintada, con su contador y su pestaña.
     await screen.findByRole("button", { name: "Descargar Cierres pendientes de decisión" });
-    const pestanaAntes = screen.getByRole("button", { name: /^Pendientes/ }).textContent;
+    const pestanaAntes = screen.getByRole("tab", { name: /^Pendientes/ }).textContent;
     // Se deja asentar la lectura de la página antes de contar: SWR revalida al montar, y medir
     // antes de que termine haría que este caso midiera el arranque en vez de la descarga.
     await waitFor(() => expect(listarPendientesCierresAdminPaginado).toHaveBeenCalled());
@@ -428,11 +429,12 @@ describe("descarga detallada en cierres del día (T5.1)", () => {
     expect(vi.mocked(listarPendientesCierresAdminPaginado).mock.calls.length).toBe(lecturasAntes);
     expect(refreshMock).not.toHaveBeenCalled();
     // La pestaña activa y su contador siguen siendo los de antes.
-    expect(screen.getByRole("button", { name: /^Pendientes/ })).toHaveAttribute(
-      "aria-pressed",
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab`; «activa» es `aria-selected` (antes `aria-pressed`).
+    expect(screen.getByRole("tab", { name: /^Pendientes/ })).toHaveAttribute(
+      "aria-selected",
       "true",
     );
-    expect(screen.getByRole("button", { name: /^Pendientes/ }).textContent).toBe(pestanaAntes);
+    expect(screen.getByRole("tab", { name: /^Pendientes/ }).textContent).toBe(pestanaAntes);
     // Y el listado general no se ha vuelto a leer para el archivo detallado: son dos bordes.
     expect(listarPendientesCierresAdminCompleto).not.toHaveBeenCalled();
   });

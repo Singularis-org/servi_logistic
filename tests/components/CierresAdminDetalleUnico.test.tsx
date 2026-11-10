@@ -220,7 +220,8 @@ async function abrir(d: DetalleOk, opciones: Parameters<typeof montar>[1] = {}) 
   } else if (estado === "vencido") {
     await user.click(await screen.findByRole("button", { name: "Ver el cierre de Ana Mensajera" }));
   } else {
-    await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab`.
+    await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
     await user.click(await screen.findByRole("button", { name: "Ver el cierre resuelto de Ana Mensajera" }));
   }
   const dialogo = await screen.findByRole("dialog", { name: "Detalle del cierre · Cierre de Ana Mensajera" });

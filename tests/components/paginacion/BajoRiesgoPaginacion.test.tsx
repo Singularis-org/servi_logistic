@@ -24,7 +24,7 @@
 // que navegar cambia las filas; el doble del listado sin paginar devuelve las 60, que es lo que
 // la descarga debe entregar.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, within, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 import type { ReactElement } from "react";
@@ -440,6 +440,11 @@ interface Listado {
    * así que hay que dar el mismo clic que da el usuario. Los listados sin pestaña lo omiten.
    */
   abrir?: RegExp[];
+  /**
+   * SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: `true` si la pestaña es un `tab` que MONTA su panel al abrirse (`Tabs` solo monta
+   * el activo), en vez de un panel montado y escondido. Para R44 se abre con un clic SÍNCRONO.
+   */
+  panelSeMonta?: boolean;
   /** Texto visible y único de la fila `i` del conjunto (1-based). */
   textoFila: (i: number) => string;
 }
@@ -450,7 +455,9 @@ const LISTADOS: Listado[] = [
     paginacion: "Paginación del histórico de cierres del día",
     tabla: "Histórico",
     abrir: [/^Resueltos/],
-    rol: "list",
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: vuelve a ser una TABLA (la cola única), con la pestaña como `tab`.
+    rol: "table",
+    panelSeMonta: true,
     descarga: "Cierres del día resueltos",
     textoFila: (i) => `Mensajero ${etiqueta(i)}`,
     montar: () => {
@@ -702,7 +709,10 @@ async function montarYAbrir(listado: Listado): Promise<ReturnType<typeof userEve
   const user = userEvent.setup();
   listado.montar();
   for (const pestana of listado.abrir ?? []) {
-    await user.click(await screen.findByRole("button", { name: pestana }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: en la cola de mensajeros la pestaña es un `tab`; las mitades de bodega siguen con
+    // el segmentado (`button`). Se pulsa la que haya.
+    const tab = screen.queryByRole("tab", { name: pestana });
+    await user.click(tab ?? (await screen.findByRole("button", { name: pestana })));
   }
   return user;
 }
@@ -841,6 +851,15 @@ describe("Riesgo BAJO · paginación server-side de los 7 listados (T I.2)", () 
     // y vuelve al servidor por un dato que ya venía en la respuesta.
     for (const listado of LISTADOS) {
       listado.montar();
+      // SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: la cola única solo monta la pestaña activa. Se abre con un clic SÍNCRONO
+      // (`fireEvent`, sin `await`): lo que se afirma sigue siendo que la página pre-cargada se
+      // pinta sin ir al servidor — el clic cambia de panel, no pide nada.
+      if (listado.panelSeMonta) {
+        for (const pestana of listado.abrir ?? []) {
+          fireEvent.click(screen.getByRole("tab", { name: pestana }));
+        }
+      }
+      const escondido = listado.abrir !== undefined && !listado.panelSeMonta;
 
       // `hidden: true` para los que viven tras una pestaña (pedido humano del 2026-08-16), y
       // aquí ESO ES EL CASO, no un rodeo: lo que se afirma es que la página pre-cargada está en
@@ -850,12 +869,12 @@ describe("Riesgo BAJO · paginación server-side de los 7 listados (T I.2)", () 
       // principio —`PanelConmutado` no desmonta— y solo lleva `hidden`.
       const tabla = screen.getByRole(listado.rol ?? "table", {
         name: listado.tabla,
-        hidden: listado.abrir !== undefined,
+        hidden: escondido,
       });
       // Una fila de encabezado + las 25 de la página.
       // La tabla trae cabecera + `PAGE_SIZE` filas; el listado de comprobantes, `PAGE_SIZE`
       // elementos y ninguna cabecera. Es la misma afirmación: se ve una página, no el conjunto.
-      const oculto = { hidden: listado.abrir !== undefined };
+      const oculto = { hidden: escondido };
       expect(
         listado.rol === "list"
           ? within(tabla).getAllByRole("listitem", oculto)
@@ -924,10 +943,11 @@ describe("Riesgo BAJO · paginación server-side de los 7 listados (T I.2)", () 
 
     // El histórico es la pestaña «Resueltos» desde el 2026-08-16: se abre como lo haría el
     // usuario antes de mirarlo.
-    await user.click(await screen.findByRole("button", { name: /^Resueltos/ }));
-    const historico = await screen.findByRole("list", { name: "Histórico" });
-    // Hay un comprobante por cierre de la página, no por cierre del conjunto.
-    expect(within(historico).getAllByRole("listitem")).toHaveLength(PAGE_SIZE);
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: la pestaña es un `tab` y el histórico una tabla; una fila por cierre.
+    await user.click(await screen.findByRole("tab", { name: /^Resueltos/ }));
+    const historico = await screen.findByRole("table", { name: "Histórico" });
+    // Hay una fila por cierre de la página (más la cabecera), no por cierre del conjunto.
+    expect(within(historico).getAllByRole("row")).toHaveLength(1 + PAGE_SIZE);
     expect(
       within(historico).getAllByRole("button", { name: /Ver el cierre resuelto de/ }),
     ).toHaveLength(PAGE_SIZE);
@@ -942,11 +962,11 @@ describe("Riesgo BAJO · paginación server-side de los 7 listados (T I.2)", () 
 
     await waitFor(() =>
       expect(
-        within(screen.getByRole("list", { name: "Histórico" })).getByText(/Mensajero 26/),
+        within(screen.getByRole("table", { name: "Histórico" })).getByText(/Mensajero 26/),
       ).toBeInTheDocument(),
     );
     expect(
-      within(screen.getByRole("list", { name: "Histórico" })).queryByText(/Mensajero 01/),
+      within(screen.getByRole("table", { name: "Histórico" })).queryByText(/Mensajero 01/),
     ).not.toBeInTheDocument();
   });
 });

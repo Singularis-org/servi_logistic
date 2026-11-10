@@ -730,7 +730,10 @@ async function montar(
 ): Promise<void> {
   superficie.montar();
   if (superficie.pestana) {
-    await user.click(await screen.findByRole("button", { name: superficie.pestana }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): en la cola de mensajeros la pestaña es un `tab`; las mitades de bodega siguen con
+    // el segmentado (`button`). Se pulsa la que haya.
+    const tab = screen.queryByRole("tab", { name: superficie.pestana });
+    await user.click(tab ?? (await screen.findByRole("button", { name: superficie.pestana })));
   }
 }
 
@@ -931,7 +934,8 @@ describe("Cierres · elección de columnas de la descarga", () => {
     await user.keyboard("{Escape}");
 
     // Se cambia de pestaña y se descarga el histórico: su cabecera está ENTERA.
-    await user.click(await screen.findByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab` de la cola única.
+    await user.click(await screen.findByRole("tab", { name: /^Resueltos/ }));
     await user.click(botonDescargaDe(historico));
     await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
 
