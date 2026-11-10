@@ -8,6 +8,7 @@ import type {
   CrearNodoGeograficoServiceResult,
   IGeografiaService,
   ListarArbolDePaisServiceResult,
+  ListarArbolDeZonasServiceResult,
   ListarArbolGeograficoServiceResult,
   RenombrarNodoGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
@@ -61,6 +62,16 @@ export class GeografiaService implements IGeografiaService {
   async listarArbol(actor: Actor): Promise<ListarArbolGeograficoServiceResult> {
     if (!READ_ROLES.has(actor.rol)) return { status: "forbidden" };
     return { status: "ok", provincias: await this.repo.listArbol() };
+  }
+
+  /**
+   * SLT-89 (design §4.2, §7; R24, R36): el arbol de zonas de N niveles. Solo `maestro`, que es quien
+   * guarda zonas: la plataforma no tiene empresa (sin asignaciones que mostrar) y los demas roles no
+   * administran zonas. El rol se mira ANTES de leer nada.
+   */
+  async listarArbolDeZonas(actor: Actor): Promise<ListarArbolDeZonasServiceResult> {
+    if (actor.rol !== "maestro") return { status: "forbidden" };
+    return { status: "ok", arbol: await this.repo.arbolDeZonas() };
   }
 
   /**

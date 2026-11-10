@@ -4,6 +4,7 @@ import type {
   OpcionGeograficaConPadre,
 } from "@/lib/types/filtros-ordenes";
 import type {
+  ArbolDeZonasDTO,
   NodoArbolPlataformaDTO,
   ProvinciaArbolDTO,
   TipoNivelDTO,
@@ -135,6 +136,13 @@ export interface IGeoRepository {
    * reactivarlo desde la pantalla que existe para eso.
    */
   listArbol(): Promise<ProvinciaArbolDTO[]>;
+
+  /**
+   * SLT-89 (design §4.2; R24–R27): el arbol del pais de la empresa a TODAS sus profundidades, con la
+   * asignacion directa de cada nodo y la zona que hereda de un ancestro. Desde el catalogo en
+   * memoria, sin CTE. `listArbol` (3 niveles) se queda para sus consumidores de hoy.
+   */
+  arbolDeZonas(): Promise<ArbolDeZonasDTO>;
 
   // --- SLT-46 (design §4.4): la administracion sobre `nodo_geografico` ---
   //

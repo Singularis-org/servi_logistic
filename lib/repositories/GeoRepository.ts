@@ -19,9 +19,11 @@ import type {
 } from "@/lib/types/filtros-ordenes";
 import {
   GEO_NOMBRE_MAX,
+  type ArbolDeZonasDTO,
   type CantonArbolDTO,
   type DistritoArbolDTO,
   type NodoArbolPlataformaDTO,
+  type NodoDeZonasDTO,
   type ProvinciaArbolDTO,
   type TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
@@ -34,6 +36,7 @@ import type {
 import { PAIS_NIVELES_MAX } from "@/lib/types/pais";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
 import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
@@ -43,6 +46,7 @@ import {
   nodosDeProfundidad,
   zonaQueCubre,
   zonasCandidatas,
+  type AsignacionesDeLaEmpresa,
   type CatalogoGeografico,
   type NodoDelCatalogo,
   type TipoDeNivel,
@@ -193,6 +197,31 @@ function nodoDelArbol(cat: CatalogoGeografico, n: NodoDelCatalogo): NodoArbolPla
     profundidad: n.profundidad,
     tipoId: n.tipoId,
     hijos: (cat.hijos.get(n.id) ?? []).map((h) => nodoDelArbol(cat, h)),
+  };
+}
+
+/**
+ * SLT-89 (design §4.2; R24–R27): el subarbol de un nodo para el selector de zonas, a cualquier
+ * profundidad y en el orden del catalogo. `asignadaA` es la asignacion directa (colapso 1/0/>1: con
+ * el unico por empresa de R2 es como mucho una); `heredaDe`, la zona que cubre al PADRE —el nodo mas
+ * cercano con asignacion, `zonasCandidatas`, con el colapso de `zonaQueCubre`— y ese nodo.
+ */
+function nodoDeZonas(cat: CatalogoGeografico, asig: AsignacionesDeLaEmpresa, n: NodoDelCatalogo): NodoDeZonasDTO {
+  const propia = zonaUnicaDeDistrito(asig.zonasPorNodo.get(n.id) ?? []);
+  const delPadre = n.padreId === null ? null : zonasCandidatas(cat, asig, n.padreId);
+  const heredada = delPadre === null ? null : zonaUnicaDeDistrito(delPadre.zonas);
+  const nodoDelQueHereda = delPadre === null ? undefined : cat.porId.get(delPadre.nodoId);
+  return {
+    id: n.id,
+    nombre: n.nombre,
+    profundidad: n.profundidad,
+    activo: n.activo,
+    asignadaA: propia === null ? null : { id: propia.id, nombre: propia.nombre },
+    heredaDe:
+      heredada === null || nodoDelQueHereda === undefined
+        ? null
+        : { zonaId: heredada.id, zonaNombre: heredada.nombre, nodoId: nodoDelQueHereda.id, nodoNombre: nodoDelQueHereda.nombre },
+    hijos: (cat.hijos.get(n.id) ?? []).map((h) => nodoDeZonas(cat, asig, h)),
   };
 }
 
@@ -362,6 +391,23 @@ export class GeoRepository implements IGeoRepository {
         ),
       }),
     );
+  }
+
+  /**
+   * SLT-89 (design §4.2): el arbol de zonas de la empresa a todas las profundidades de su pais, con
+   * los tipos (los nombres de nivel del selector) ordenados por profundidad. Una sola carga del
+   * catalogo, en memoria (guardia `geografia-sin-cte-recursiva`).
+   */
+  async arbolDeZonas(): Promise<ArbolDeZonasDTO> {
+    const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
+    return {
+      tipos: tiposOrdenados(catalogo.tipos).map((t) => ({
+        profundidad: t.profundidad,
+        nombreSingular: t.nombreSingular,
+        nombrePlural: t.nombrePlural,
+      })),
+      raices: (catalogo.hijos.get(null) ?? []).map((n) => nodoDeZonas(catalogo, asignaciones, n)),
+    };
   }
 
   // --- SLT-46 (design §4.4): la administracion sobre el nodo ---

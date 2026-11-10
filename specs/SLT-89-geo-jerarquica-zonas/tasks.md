@@ -94,7 +94,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   v1, v2 (también lugar cantón), carga masiva, cotización, Excel de cobertura, `listArbol`,
   `listGeografiaLitePorZona`; excepción de distrito; marca heredada a profundidad 4 y cantón sin marca;
   regla de guardado de SLT-45 intacta. (R6, R7, R8, R9)
-- [ ] **T2.4** [P] `GeoRepository.arbolDeZonas`, `GeografiaService.listarArbolDeZonas` (solo
+- [x] **T2.4** [P] `GeoRepository.arbolDeZonas`, `GeografiaService.listarArbolDeZonas` (solo
   `maestro`), action `listarArbolDeZonas`, DTO en `lib/types/geografia-nodo.ts` (§4.2), con
   `tests/unit/services/geografia-service.test.ts` (rol → `forbidden` con doble que falla). (R24, R36)
 - [ ] **T2.5** Resolver: `gruposDeDistritos` con la segunda consulta y la subida por el catálogo

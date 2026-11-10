@@ -263,6 +263,32 @@ describeSiHayBase("SLT-89 · R6/R7/R8/R9 — las lecturas heredan la zona de un 
     expect(distritos.find((d) => d.id === r.e.cr.geo.distritoCentralId)).toMatchObject({ zonaId: z.centralId, zonaEspecial: true });
   });
 
+  it("árbol de zonas de N niveles (T2.4, R24): asignada, heredada con su nodo, y la excepción con las dos", async () => {
+    const r = await conEscenario(async (tx, e) => {
+      await asignar(tx, e.cr, e.cr.zonas.surId, e.cr.geo.cantonId);
+      const arbol = await comoLaEmpresa(tx, e.cr, () => new GeoRepository(clienteConSavepoint(tx)).arbolDeZonas());
+      const [canton, sur, central] = await Promise.all([
+        nombres(tx, [e.cr.geo.cantonId]),
+        tx.zona.findUniqueOrThrow({ where: { id: e.cr.zonas.surId }, select: { nombre: true } }),
+        tx.zona.findUniqueOrThrow({ where: { id: e.cr.zonas.centralId }, select: { nombre: true } }),
+      ]);
+      return { arbol, canton: canton[0], sur: sur.nombre, central: central.nombre, e };
+    });
+    const g = r.e.cr.geo;
+    const z = r.e.cr.zonas;
+    expect(r.arbol.tipos.map((t) => t.profundidad)).toEqual([1, 2, 3]);
+    const provincia = r.arbol.raices.find((p) => p.id === g.provinciaId);
+    const canton = provincia?.hijos.find((c) => c.id === g.cantonId);
+    const hijo = (id: string) => canton?.hijos.find((d) => d.id === id);
+    expect(provincia).toMatchObject({ profundidad: 1, asignadaA: null, heredaDe: null });
+    expect(canton).toMatchObject({ profundidad: 2, asignadaA: { id: z.surId, nombre: r.sur }, heredaDe: null });
+    const hereda = { zonaId: z.surId, zonaNombre: r.sur, nodoId: g.cantonId, nodoNombre: r.canton };
+    expect(hijo(g.distritoSinZonaId)).toMatchObject({ profundidad: 3, asignadaA: null, heredaDe: hereda, hijos: [] });
+    expect(hijo(g.distritoCentralId)).toMatchObject({ asignadaA: { id: z.centralId, nombre: r.central }, heredaDe: hereda });
+    // El cantón retirado no hereda de nadie: la provincia no tiene asignación.
+    expect(provincia?.hijos.find((c) => c.id === g.cantonRetiradoId)).toMatchObject({ heredaDe: null, activo: false });
+  });
+
   it("geografía de los filtros por zona: entran lo heredado y sus ancestros; una excepción que cubre otra zona, no", async () => {
     const r = await conEscenario(async (tx, e) => {
       await asignar(tx, e.cr, e.cr.zonas.surId, e.cr.geo.cantonId);

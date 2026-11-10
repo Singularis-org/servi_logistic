@@ -198,3 +198,23 @@ Tests 169 passed (169)`, sin tocar aserciones.
 
 Salida: `zona-nodo-herencia` + `geo-lecturas-catalogo` + `geo-consultas-zona` +
 `slt46-equivalencia-geografia` → `Test Files 4 passed (4) · Tests 24 passed (24)`.
+
+### T2.4 — árbol de zonas de N niveles (R24, R36)
+
+- `lib/types/geografia-nodo.ts`: `ArbolDeZonasDTO`, `NodoDeZonasDTO`, `TipoDeArbolDeZonasDTO` (§4.2).
+- `GeoRepository.arbolDeZonas()` (+ `IGeoRepository`): una carga del catálogo, en memoria; `asignadaA`
+  = asignación directa con el colapso 1/0/>1; `heredaDe` = `zonasCandidatas` sobre el padre con el
+  colapso de `zonaQueCubre`, más el nodo del que hereda; tipos ordenados por profundidad.
+- `GeografiaService.listarArbolDeZonas` (+ `IGeografiaService`, `ListarArbolDeZonasServiceResult`):
+  solo `maestro`, rol antes de leer. Action `listarArbolDeZonas` en `lib/actions/geografia.ts`
+  (`unauthenticated` sin sesión, como `listarArbolGeografico`).
+- Tests: `tests/unit/services/geografia-service.test.ts` (admin, adminTienda, adminSatelite,
+  mensajero y superadmin → `forbidden` con repositorios que LANZAN si se tocan; maestro → el árbol en
+  una lectura) y un caso de integración en `zona-nodo-herencia.test.ts` (cantón asignado, distrito
+  que hereda con su nodo, excepción con `asignadaA` y `heredaDe`, cantón retirado sin herencia).
+- Adaptación de doble: `tests/unit/actions/geografia-plataforma-action.test.ts` gana
+  `listarArbolDeZonas` en su doble exhaustivo (`satisfies Record<keyof IGeografiaService, …>`); sin
+  él no compila. Ninguna aserción tocada.
+- Salida: `geografia-service` + `zona-nodo-herencia` + tests de acciones de geografía + guardias
+  `geografia-sin-cte-recursiva`/`etiquetas-geograficas-sin-literal` → `Test Files 8 passed (8) · Tests
+  277 passed (277)`; `geografia-plataforma-action` 127/127; `pnpm run typecheck` exit 0.

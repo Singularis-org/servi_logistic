@@ -8,6 +8,7 @@ import { GeografiaService } from "@/lib/services/GeografiaService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
   IGeografiaService,
+  ListarArbolDeZonasServiceResult,
   ListarArbolGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
 
@@ -76,4 +77,20 @@ export async function listarArbolGeografico(
   if (!actor) return { status: "unauthenticated" };
   const service = deps.geografiaService ?? buildGeografiaService();
   return service.listarArbol(actor);
+}
+
+// ── SLT-89 (design §4.2, §6): el arbol de zonas de N niveles ─────────────────────────────────
+
+export type ArbolDeZonasResult = ListarArbolDeZonasServiceResult | { status: "unauthenticated" };
+
+/**
+ * El arbol del pais de la empresa a todas sus profundidades, con la zona asignada y la heredada de
+ * cada nodo: lo que pinta el selector de nodos de una zona (R24–R27). Solo `maestro` (R36); la
+ * empresa es la de la sesion (R35), nunca llega del cliente.
+ */
+export async function listarArbolDeZonas(deps: GeografiaActionDeps = {}): Promise<ArbolDeZonasResult> {
+  const actor = await (deps.getActor ?? resolveActorFromSession)();
+  if (!actor) return { status: "unauthenticated" };
+  const service = deps.geografiaService ?? buildGeografiaService();
+  return service.listarArbolDeZonas(actor);
 }

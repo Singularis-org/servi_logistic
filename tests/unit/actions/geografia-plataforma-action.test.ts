@@ -52,6 +52,8 @@ function geografiaDoble(o: Partial<Record<keyof IGeografiaService, Espia>> = {})
   return {
     listarArbol: vi.fn(async () => ({ status: "ok" as const, provincias: [] })),
     listarArbolDePais: vi.fn(async () => ({ status: "ok" as const, provincias: [] })),
+    // SLT-89: el doble es exhaustivo (`satisfies`) y la interfaz gano el arbol de zonas.
+    listarArbolDeZonas: vi.fn(async () => ({ status: "ok" as const, arbol: { tipos: [], raices: [] } })),
     crear: vi.fn(async () => ({ status: "ok" as const, id: "n1", nivel: "provincia" as const })),
     cambiarActivacion: vi.fn(async () => ({ status: "ok" as const, nivel: "distrito" as const, id: "d1", activo: false })),
     renombrar: vi.fn(async () => ({ status: "ok" as const, nivel: "distrito" as const, id: "d1", nombre: "Otro" })),
