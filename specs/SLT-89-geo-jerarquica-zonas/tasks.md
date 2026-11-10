@@ -253,7 +253,7 @@ se para y se pregunta (design §8.4). (R48)
   cifras, «Confirmar» bloqueado hasta tenerlas, cancelar no llama, `antes` siempre enviado,
   `cambio_concurrente` avisa y refresca). Los tests de componente de zonas que montan el formulario se
   adaptan a la nueva entrada sin cambiar lo que afirman. (R12, R13, R16)
-- [ ] **T7.3** `TarifasGrupos` con árbol de miembros y el modal antes → después de las cuatro
+- [x] **T7.3** `TarifasGrupos` con árbol de miembros y el modal antes → después de las cuatro
   escrituras (§8.3): validación previa con los esquemas, «antes» enviado al confirmar, borrar dentro
   del mismo modal con el texto de SLT-54 R43, aviso `aria-live` y recarga ante `cambio_concurrente`;
   textos nuevos en `tarifas-textos.ts`. Casos en `tests/components/TarifasGrupos.test.tsx` (§10, filas

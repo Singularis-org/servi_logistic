@@ -420,6 +420,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
           zona={zona}
           grupos={grupos}
           distritos={datos.distritos}
+          nodos={datos.nodos}
           valores={datos.valores}
           activada={activada}
           puedeEscribir={puedeEscribir}
