@@ -68,7 +68,7 @@ export type ArbolGeograficoResult =
  *
  * `deps` es opcional y solo sirve para probarlo sin base.
  *
- * @sin-superficie SLT-89 (deuda, no decision): Zonas la cambio por `listarArbolDeZonas` (el arbol de N niveles con la zona asignada y la heredada, T7.2) y era su unica superficie. No se retira en SLT-89 porque la cubren `tests/unit/actions/geografia-action.test.ts` y `tests/unit/actions/geografia.composition-root.test.ts`, y quitar esos casos cambia aserciones fuera de las excepciones de R38; retirarla (con `GeografiaService.listarArbol` si nadie mas lo usa) queda para SLT-48 «Geografia jerarquica: retirar modelo viejo», o antes si el humano lo decide.
+ * @sin-superficie SLT-89 (deuda, no decision): Zonas la cambio por `listarArbolDeZonas` (el arbol de N niveles con la zona asignada y la heredada, T7.2) y era su unica superficie. No se retira en SLT-89 porque la cubren `tests/unit/actions/geografia-action.test.ts` y `tests/unit/actions/geografia.composition-root.test.ts`, y quitar esos casos cambia aserciones fuera de las excepciones de R38; retirarla (con `GeografiaService.listarArbol` si nadie mas lo usa) queda para SLT-48 (deuda D47 de `progress/deudas.md`) «Geografia jerarquica: retirar modelo viejo», o antes si el humano lo decide.
  */
 export async function listarArbolGeografico(
   deps: GeografiaActionDeps = {},
