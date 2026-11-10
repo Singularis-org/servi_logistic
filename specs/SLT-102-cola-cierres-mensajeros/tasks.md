@@ -27,7 +27,7 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** — Censo, anotado en `progress/impl_SLT-102.md`:
+- [x] **T0.1** — Censo, anotado en `progress/impl_SLT-102.md`:
   - `grep -l` en `tests/` por `<CierresAdminModule` o `CierresAdminHistoricoLista` junto con
     «Comprobante del cierre de», «Ver detalles del cierre de», «Pendientes de decisión»,
     «"Histórico"», «Cierres del día por estado», `PendienteLiquidarBadge`, «Destrabar cierre
@@ -43,7 +43,7 @@
 
   **Hecho:** la lista coincide con `## Archivos esperados`; los de más se añaden y se avisa al
   leader.
-- [ ] **T0.2** [P] — Leer y anotar con archivo:línea:
+- [x] **T0.2** [P] — Leer y anotar con archivo:línea:
   - de dónde sale el nombre de zona de la central y de la satélite para R106 (PA3): `actor.zonaId`
     del maestro/admin, la consulta del catálogo que «incluye la central (la GAM)», o nada;
   - que `Tabs` de `components/ui/tabs` controlado (`value`/`onValueChange`) monta solo el
@@ -54,7 +54,7 @@
     con la que el detalle cuenta «Pago ajustado» y «Vuelve a bodega».
 
   **Hecho:** nota en `impl_SLT-102.md`. Si algo contradice el design, se para y se pregunta.
-- [ ] **T0.3** [P] — Fijar los literales del E2E y de los tests contra la siembra real de
+- [x] **T0.3** [P] — Fijar los literales del E2E y de los tests contra la siembra real de
   `e2e/_escenarios/cierres.ts` y `reparto.ts` (escenario A): Recaudado, Pago al mensajero,
   pendiente tras aprobar y lo que pinta `money()` para cada uno; (PA1) los tres conteos.
 
@@ -63,12 +63,12 @@
 
 ## T1 — Servidor (solo PA1) · `backend_dev` (depende de T0)
 
-- [ ] **T1.1** — `ICierresAdminRepository.contarSenalesPorCierre(cierreIds)` y su implementación
+- [x] **T1.1** — `ICierresAdminRepository.contarSenalesPorCierre(cierreIds)` y su implementación
   en `CierresAdminRepository` (una consulta, `WHERE` por empresa y por los ids; R109);
   `CierreAdminResumen.senalesCola?` en `ICierresAdminService`; `CierresAdminService.conPendiente`
   la llama una vez por página, también con la lista vacía.
   **Hecho:** typecheck verde; `git diff db/` vacío.
-- [ ] **T1.2** — `tests/integration/db/cierres-cola-senales-sql-real.test.ts` (base real): los
+- [x] **T1.2** — `tests/integration/db/cierres-cola-senales-sql-real.test.ts` (base real): los
   conteos de `design.md > Señales del servidor`, el cierre de otra empresa no se cuela; y
   `tests/unit/services/cierres-admin-senales-cola.test.ts`: una sola llamada por página (la
   mutación «una por fila» lo pone rojo).
