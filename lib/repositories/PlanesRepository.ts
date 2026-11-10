@@ -1632,19 +1632,21 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         // es el que se guarda. Es inicio de período de calendario: al aplicarse no abre tramo (R14).
         const tipoCobro = tipoCobroSchema.parse(empresa.plan_tipo_cobro);
         const corte = fechaDeEfectoPorDefecto(tipoCobro, ahora);
+        // R15 (decisión 2026-11-10, m1): su plan activo quita el pendiente, sea de quien sea (P3), con su fila
+        // (SLT-86 R19): el mismo camino que «Cancelar cambio». Antes de mirar la disponibilidad, para que un
+        // activo custom o archivado también lo cancele; no lee ni bloquea el plan porque no lo asigna.
+        if (empresa.plan_id === planId) {
+          if (empresa.plan_cambio_id !== null) {
+            await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
+          }
+          return { estado: "ok", vigenteDesde: null };
+        }
         await tx.$queryRaw`SELECT "id" FROM "plan" WHERE "id" = ${planId} FOR SHARE`;
         const plan = await leerPlan(tx, planId);
         if (plan === null) return { estado: "no_disponible" };
         const programado = await tx.planCambioProgramado.findUnique({ where: { planId }, select: { version: true } });
         const versionPendiente = programado === null ? null : versionPlanSchema.parse(programado.version);
         if (!esPlanDisponible(plan, versionPendiente)) return { estado: "no_disponible" };
-        // R15: su plan activo quita el pendiente, sea de quien sea (P3), con su fila (SLT-86 R19).
-        if (empresa.plan_id === plan.id) {
-          if (empresa.plan_cambio_id !== null) {
-            await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
-          }
-          return { estado: "ok", vigenteDesde: null };
-        }
         // R13 (P4): por rol y API keys, y SIN escribir aunque la fecha sea futura: aquí se separa del
         // superadmin, que guarda y avisa (SLT-86 R18).
         const excedidos = await excedidosDe(tx, [empresa], plan.topes);
@@ -1661,6 +1663,9 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
       this.prisma.$transaction(async (tx): Promise<ResultadoCancelarDelMaestro> => {
         const empresa = await bloquearEmpresa(tx, organizacionId);
         if (empresa === undefined) throw new Error(`cancelarCambioPorLaEmpresa: la empresa ${organizacionId} de la sesión no existe`);
+        // R18 (P5, decisión 2026-11-10): sin plan, el pendiente es la primera asignación de la plataforma
+        // (SLT-86, mismas columnas `plan_cambio_*`) y el maestro no la cancela. Se decide bajo el cerrojo.
+        if (empresa.plan_id === null) return { estado: "sin_plan" };
         if (empresa.plan_cambio_id === null) return { estado: "sin_cambio_programado" };
         // R16 (P3): sea de quien sea el pendiente, la fila la firma el maestro.
         await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));

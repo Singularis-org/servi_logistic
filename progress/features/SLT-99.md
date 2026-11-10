@@ -30,6 +30,8 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 - 2026-11-10 (tras tanda 3, humano): «Activo desde» se muestra como «1 sep 2026» (no `AAAA-MM-DD`); se aceptan los 4 E2E de «Mi plan» acotados al panel «Plan activo» y el E2E nuevo que crea y asigna los planes en la base; cupo `fullstack` sube a 5 en `arnes.config.json`.
 <!-- tamano-pr-aceptado: 2026-11-10 · 46 archivos (amplía la aceptación del 2026-11-09): «Activo desde», el E2E y 4 E2E existentes ajustados (humano) -->
 
+- 2026-11-10 (tras la revisión, `progress/review_SLT-99.md`, humano): M1 se arregla en código (rechazar bajo el cerrojo la cancelación de una primera asignación pendiente sin plan). M2: la constancia de integración con base y E2E la da el CI del PR a `dev` (no borrador); no se mergea sin `gate-completo` y `e2e` en verde. m1: elegir el plan activo con un pendiente cancela el pendiente. m2 y m3 se corrigen.
+
 ## Preguntas abiertas
 Ninguna.
 

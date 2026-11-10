@@ -234,7 +234,9 @@ export function PendienteDelPlan({ pendiente }: { readonly pendiente: PendienteD
         return;
       }
       setRechazo(
-        r.estado === "sin_cambio_programado" ? TEXTOS_CAMBIO.rechazos.sin_cambio_programado : TEXTOS_CAMBIO.rechazos.generico,
+        r.estado === "sin_cambio_programado" || r.estado === "sin_plan"
+          ? TEXTOS_CAMBIO.rechazos[r.estado]
+          : TEXTOS_CAMBIO.rechazos.generico,
       );
     } catch (error) {
       console.error("[PendienteDelPlan] cancelarCambioMiPlanAction lanzó", error);

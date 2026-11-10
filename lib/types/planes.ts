@@ -556,9 +556,10 @@ export type CambiarMiPlanResult =
   | { estado: "no_disponible" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string };
 
-/** R16: «Cancelar cambio» del maestro. */
+/** R16: «Cancelar cambio» del maestro. R18: sin plan no cancela la primera asignación (`sin_plan`). */
 export type CancelarCambioMiPlanResult =
   | { estado: "ok" }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "sin_plan" }
   | { estado: "sin_cambio_programado" };

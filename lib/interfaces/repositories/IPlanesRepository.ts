@@ -51,8 +51,8 @@ export type ResultadoCambioDelMaestro =
   | { estado: "no_disponible" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[] };
 
-/** SLT-99 (R16). */
-export type ResultadoCancelarDelMaestro = { estado: "ok" } | { estado: "sin_cambio_programado" };
+/** SLT-99 (R16, R18): `sin_plan` = la empresa no tiene plan y el pendiente es su primera asignación. */
+export type ResultadoCancelarDelMaestro = { estado: "ok" } | { estado: "sin_plan" } | { estado: "sin_cambio_programado" };
 
 /**
  * SLT-86 (R15, R25; review m4): un precio que puede regir a un plan desde `desde` (`null` = desde siempre).

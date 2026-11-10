@@ -266,4 +266,19 @@ describe("R12, R13, R15, R16, R18 — los rechazos del repositorio llegan tal cu
     repo.cancelarCambioPorLaEmpresa.mockResolvedValue({ estado: "sin_cambio_programado" });
     expect(await servicio(repo).cancelarCambio(MAESTRO, {})).toEqual({ estado: "sin_cambio_programado" });
   });
+
+  it("R18 (P5, decisión 2026-11-10): sin plan no cancela la primera asignación; el sin_plan del repositorio llega tal cual", async () => {
+    const repo = repoEspia({ empresa: empresa({ planId: null, hayPendiente: true }) });
+    repo.cancelarCambioPorLaEmpresa.mockResolvedValue({ estado: "sin_plan" });
+    expect(await servicio(repo).cancelarCambio(MAESTRO, {})).toEqual({ estado: "sin_plan" });
+    expect(repo.cancelarCambioPorLaEmpresa).toHaveBeenCalledWith(ORG_A, MAESTRO.usuarioId);
+  });
+
+  it("m1 (decisión 2026-11-10): con pendiente, elegir su plan activo (aunque sea custom) va al repositorio, que lo cancela: ok sin fecha", async () => {
+    const repo = repoEspia({ empresa: empresa({ planEsCustom: true, hayPendiente: true }) });
+    repo.cambiarPlanPorLaEmpresa.mockResolvedValue({ estado: "ok", vigenteDesde: null });
+    expect(await servicio(repo).cambiarPlan(MAESTRO, { planId: ID_ACTIVO })).toEqual({ estado: "ok", vigenteDesde: null });
+    expect(repo.cambiarPlanPorLaEmpresa).toHaveBeenCalledWith(ORG_A, ID_ACTIVO, MAESTRO.usuarioId, AHORA);
+    expect(repo.cancelarCambioPorLaEmpresa).not.toHaveBeenCalled();
+  });
 });

@@ -491,6 +491,50 @@ describeSiHayBase("SLT-99 — el maestro cambia el plan de su empresa (R2, R10�
     expect(r.despues).toEqual(r.antes);
   });
 
+  it("R18 (P5, decisión 2026-11-10): sin plan, el maestro no cancela la primera asignación pendiente → sin_plan sin escribir", async () => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const plan = await c.plan();
+      const e = await c.empresa();
+      const primera = await c.servicio.asignar(c.superadmin, { organizacionId: e.id, planId: plan, tipoCobro: "mensual", vigenteDesde: dia(5) });
+      if (primera.estado !== "ok" || primera.vigenteDesde === null) throw new Error(`no quedó pendiente: ${JSON.stringify(primera)}`);
+      const antes = await estado(tx, e.id);
+      const res = await planesEnTx(tx).cancelarCambioPorLaEmpresa(e.id, e.maestro);
+      return { antes, res, despues: await estado(tx, e.id), plan };
+    });
+    // La primera asignación vive en las columnas del pendiente (SLT-86), sin plan activo.
+    expect(r.antes.empresa.planId).toBeNull();
+    expect(r.antes.empresa.planCambioPlanId).toBe(r.plan);
+    expect(r.res).toEqual({ estado: "sin_plan" });
+    // Columnas, historial y trabajos intactos.
+    expect(r.despues).toEqual(r.antes);
+  });
+
+  it("m1 (decisión 2026-11-10): con un pendiente, elegir su plan activo custom lo cancela como «Cancelar cambio»", async () => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const otro = await c.plan();
+      const e = await c.empresa();
+      // Custom propio con costo, asignado: no está disponible en el carrusel, pero es su plan activo.
+      const custom = await crearPlan(tx, { custom: e.id });
+      await tx.plan.update({ where: { id: custom }, data: { precioMensual: "1000.00", costoPorOrden: "100.00" } });
+      const asignado = await planesEnTx(tx).asignar(e.id, custom, c.superadmin.usuarioId, efectoInicio("2026-11-03"), "mensual", new Date("2026-11-03T12:00:00.000Z"));
+      if (asignado.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(asignado)}`);
+      const antes = await estado(tx, e.id);
+      await planesEnTx(tx).cambiarPlanPorLaEmpresa(e.id, otro, e.maestro, MITAD_DE_NOVIEMBRE);
+      const alActivo = await planesEnTx(tx).cambiarPlanPorLaEmpresa(e.id, custom, e.maestro, MITAD_DE_NOVIEMBRE);
+      return { antes, alActivo, despues: await estado(tx, e.id), e, otro };
+    });
+    expect(r.alActivo).toEqual({ estado: "ok", vigenteDesde: null });
+    expect(r.despues.empresa).toEqual(r.antes.empresa);
+    expect(r.despues.historial).toEqual(
+      [
+        ...r.antes.historial,
+        JSON.stringify({ accion: "plan_cambio_empresa_cancelado", entidadId: r.otro, valorAnterior: null, valorNuevo: "2026-12-01 · mensual", actorUsuarioId: r.e.maestro }),
+      ].sort(),
+    );
+  });
+
   it("empresaParaElMaestro: plan, si es custom, el tipo vigente y si hay pendiente (de quien sea)", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
