@@ -36,7 +36,7 @@
     - `BUG_REPORT_BUCKET` en `.env.example`.
   - **Hecho:** `pnpm run typecheck` en verde. Los casos de `tipoPorFirma` van en el test del servicio
     (T7) y los de `bucketReporteBug` en el del adaptador (T4). Así no se abre otro archivo de test.
-- [ ] **T4. Adaptador** (dep. T3; R9, R15, R16).
+- [x] **T4. Adaptador** (dep. T3; R9, R15, R16).
   - **Archivos:**
     - `lib/interfaces/external/IAlmacenImagenesReporte.ts`;
     - `lib/storage/SupabaseAlmacenImagenesReporte.ts` (design §3.2, §3.3).
