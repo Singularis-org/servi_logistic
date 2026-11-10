@@ -144,3 +144,76 @@ R22 y R23 son de T8.
 2. **Sin plan con primera asignación pendiente.** ¿El maestro debe poder cancelarla desde «Mi plan»? Hoy no puede, y se lee como P5.
 
 **Veredicto:** T5–T7 hechas. typecheck, lint, `related`, tests de componente y guardias en verde, sin rojos nuevos (solo la baseline). Quedan 2 preguntas (R8 «Activo desde» y el pendiente sin plan).
+
+## Tanda 3 · Activo desde + E2E (2026-11-10, implementer)
+
+### Cambios
+- **Activo desde** (`dd3f1c6e`, R8):
+  - `lib/types/consumo-plan.ts`: `PlanConConsumo.activoDesde` (`AAAA-MM-DD` de la plataforma).
+  - `lib/planes/consumo.ts`: `planConConsumo` lo saca de `entrada` (`plan_ciclo_ancla_at`), que `MiPlanRepository` y `PlanesRepository.planDeEmpresa` ya leían para el tramo. Sin consulta nueva.
+  - `app/(app)/mi-plan/_components/CambioDePlan.tsx`: lo pasa al detalle del plan activo.
+  - Tests: `tests/unit/services/mi-plan-service.test.ts` y `tests/components/MiPlanCambioDePlan.test.tsx` (casos nuevos); `tests/components/ConsumoDelPlan.test.tsx` (el campo en su objeto de ejemplo).
+  - Lleva la línea de decisiones de la tanda 2 en `progress/features/SLT-99.md`.
+- **Decisiones** (`83d3afa5`): dos filas del 2026-11-10 en `requirements.md > Decisiones cerradas`.
+- **T8.1 E2E** (`c25d59fd`, R22):
+  - `e2e/mi-plan-cambiar-plan.spec.ts` y `playwright.config.ts` (grupo `aislamiento`, tras `planes-superadmin`; `aislamiento` está en la matriz de `gate.yml`).
+  - `e2e/{planes-superadmin,planes-costeo,planes-costo-porcentual,cierre-modelo-nuevo-plan-porcentual}.spec.ts`: una línea cada uno (desvío 2).
+
+### Desvíos
+1. **«Activo desde» en `AAAA-MM-DD`, no «1 sep 2026».** Todas las fechas de «Mi plan» y del detalle (período en curso, próximo cobro, corte, pendiente) van en `AAAA-MM-DD` de la plataforma (`fechaCalendarioCR`). Se sigue ese formato para que el detalle no mezcle dos. Cambiarlo a «1 sep 2026» es solo el formateo en `planConConsumo` (ver Preguntas).
+2. **Cuatro E2E ya existentes acotan el título al panel «Plan activo».** Abren `/mi-plan` y buscaban `getByRole("heading", { name: <plan>, exact: true })` en toda la página. Desde la tanda 2, el nombre sale en tres títulos: el panel, `ConsumoDelPlan` y la tarjeta del carrusel. Con el modo estricto de Playwright habrían caído en CI (R21). Se acota a `region "Plan activo"`.
+3. **El E2E crea y asigna los planes por detrás.** Usa `PlanesRepository` real con el superadmin de prueba como actor (`crearPlanPublicoConCosto` de `_planes-fixture.ts`, `asignar`). Las pantallas del superadmin ya las recorre `planes-superadmin`. Elige las tarjetas con teclado (`press("Enter")`), porque el catálogo es global y una tarjeta puede quedar fuera de la parte visible del carrusel.
+
+### Mapa R<n> → test (R1–R23, completo)
+| R | Test (archivo › caso) |
+|---|---|
+| R1 | `tests/unit/services/mi-plan-cambio-service.test.ts` › «R1 — solo el maestro…»; `tests/integration/mi-plan-page.test.tsx` › «SLT-99 R1 — `forbidden` en cualquiera de las dos lecturas…» |
+| R2 | `mi-plan-cambio-service.test.ts` › «R2 — …entrada estricta»; `tests/integration/db/mi-plan-cambiar-plan.test.ts` › «R2: … no tocan nada de B» |
+| R3 | `tests/components/MiPlanModule.test.tsx` › «SLT-99 R3 — el panel del plan activo»; `e2e/mi-plan-cambiar-plan.spec.ts` › «el maestro ve su plan activo…» |
+| R4 | `tests/unit/planes/planes-vista.test.ts` › «R4 — «Usuarios» es la suma de los topes por rol» |
+| R5 | `tests/components/CarruselDePlanes.test.tsx` › «R5 — …»; `mi-plan-cambio-service.test.ts` › «R5: solo los planes con costo concreto…» |
+| R6 | `planes-vista.test.ts` › «R6 (P1, P10) — …»; `CarruselDePlanes.test.tsx` › «R6 — …» |
+| R7 | `CarruselDePlanes.test.tsx` › «R7 — «Plan a la medida»» |
+| R8 | `tests/components/DetalleDePlan.test.tsx` › «R8 — …»; `tests/components/MiPlanCambioDePlan.test.tsx` › «R8 — «Activo desde» en el detalle del plan activo» (2 casos); `tests/unit/services/mi-plan-service.test.ts` › «SLT-99 R8 — «Activo desde» es la entrada de la empresa…»; E2E › «el maestro ve su plan activo…» |
+| R9 | `tests/unit/guards/planes-compartidos-sin-empresa.guardia.test.ts`; `CarruselDePlanes.test.tsx` y `DetalleDePlan.test.tsx` › «R9 — montado sin empresa» |
+| R10 | `tests/unit/planes/proximo-periodo-de-cobro.test.ts`; `mi-plan-cambiar-plan.test.ts` › «R10, R11, R14: por cada tipo…»; `mi-plan-cambio-service.test.ts` › «R10: el corte sale del tipo vigente» |
+| R11 | `mi-plan-cambiar-plan.test.ts` › «R10, R11, R14…»; E2E (el plan activo no cambia antes del corte) |
+| R12 | `mi-plan-cambiar-plan.test.ts` › «R12: …»; `mi-plan-cambio-service.test.ts` › «R5, R12 — esPlanDisponible» |
+| R13 | `mi-plan-cambiar-plan.test.ts` › «R13: …»; `planes-vista.test.ts` › «R13 (P4) — …»; `DetalleDePlan.test.tsx` › «R13 — el aviso previo…»; `mi-plan-cambio-service.test.ts` › «R13: tope_excedido lleva el aviso…» |
+| R14 | `mi-plan-cambiar-plan.test.ts` › «R10, R11, R14…» |
+| R15 | `mi-plan-cambiar-plan.test.ts` › «R15: …» |
+| R16 | `mi-plan-cambiar-plan.test.ts` › «R16: …»; `MiPlanCambioDePlan.test.tsx` › ««Cancelar cambio» pide confirmación…»; E2E (cancela y el pendiente desaparece) |
+| R17 | `mi-plan-cambiar-plan.test.ts` › «R17 (P3): …»; `MiPlanCambioDePlan.test.tsx` › «se muestra con «Cancelar cambio»… avisa del reemplazo» |
+| R18 | `mi-plan-cambiar-plan.test.ts` › «R18: …»; `MiPlanCambioDePlan.test.tsx` › «R18 (P5) — sin plan» |
+| R19 | `MiPlanCambioDePlan.test.tsx` › «R19 — la confirmación del cambio»; `mi-plan-cambio-service.test.ts` › «R19: el primer período…»; E2E (la confirmación con el corte, sin campo de fecha) |
+| R20 | `MiPlanCambioDePlan.test.tsx` › «R20 — …» (los cuatro rechazos) |
+| R21 | `MiPlanModule.test.tsx` › «R21 (P8): …»; `tests/components/ConsumoDelPlanPeriodo.test.tsx`; `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts`; los 4 E2E de «Mi plan» (desvío 2) y `gate-completo` en CI |
+| R22 | `e2e/mi-plan-cambiar-plan.spec.ts` › «el maestro ve su plan activo, cambia a otro plan público, ve el pendiente al corte y lo cancela (R22)» y «el admin de la misma empresa recibe «no encontrado»…» |
+| R23 | `tests/guards/guard-dependencias-aprobadas.test.ts` (existente); sin cambios en `package.json` |
+
+Todos los archivos de la tabla existen. R2 y R10–R18 (integración con base) y R22 (E2E) los corre CI.
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: `tsc --noEmit` sin errores. Cubre también el E2E, porque el `tsconfig` incluye `e2e/`.
+- `pnpm exec eslint` de lo tocado: sin salida.
+- Tests propios (`MiPlanCambioDePlan`, `mi-plan-service` y `ConsumoDelPlan`): `Test Files 3 passed`, `Tests 36 passed`.
+- `vitest related --run --exclude "tests/integration/**"` de `consumo-plan.ts`, `consumo.ts` y `CambioDePlan.tsx`: `Test Files 36 passed`, `Tests 767 passed`.
+- `pnpm exec playwright test --list`: lista los dos casos del E2E en `[aislamiento]`:
+  - `mi-plan-cambiar-plan.spec.ts:140:5 › el maestro ve su plan activo, cambia…`;
+  - `mi-plan-cambiar-plan.spec.ts:207:5 › el admin de la misma empresa…`.
+
+  `Total: 189 tests in 43 files`. **No se corrió en local**: necesita base y `.env`. Lo corre CI.
+- Guardia `e2e-sin-saltos`: `Tests 38 passed`.
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: **rojo en el paso 3, antes del typecheck**. El error es `feature_list.json invalido: zona fullstack: SLT-46, SLT-81, SLT-89, SLT-97, SLT-99 (5 in_progress, max 3)`. Es el cupo del board, no el código. Por eso se corrió a mano el paso que sigue, `pnpm run test:guardias`:
+  - `Test Files 1 failed | 339 passed | 3 skipped (343)`;
+  - `Tests 4 failed | 4793 passed | 25 skipped`;
+  - los 4 rojos son la baseline, `dependencias-declaradas-presentes`, que está en `tests/baseline-rojos.json`.
+- Tamaño: 46 archivos frente a `origin/dev`. Lo aceptado eran ~31.
+- Sin dependencias nuevas.
+
+### Preguntas
+1. **Formato de «Activo desde».** ¿Se queda `2026-09-01`, como el resto de fechas del plan, o pasa a «1 sep 2026» solo en esa línea?
+2. **Cupo del board.** `./init.sh` no pasa del paso 3 mientras Camilo tenga más de 3 features `fullstack` en vuelo en la copia local del board.
+3. **Tamaño del PR.** Son 46 archivos frente a los ~31 aceptados. ¿Se amplía la línea `tamano-pr-aceptado`?
+
+**Veredicto:** «Activo desde» (R8) y el E2E (R22) hechos, y R1–R23 mapeados a tests que existen. typecheck, lint, `related` y guardias en verde (solo la baseline). `./init.sh` cae por el cupo del board.

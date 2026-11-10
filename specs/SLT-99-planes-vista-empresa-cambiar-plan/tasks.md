@@ -126,8 +126,12 @@
   de la empresa, lo cancela y ya no lo ve; un `admin` recibe «no encontrado» en `/mi-plan`. Archiva al final
   los planes que creó (el catálogo es global). Sin `waitForTimeout`. *Hecho:* verde en local contra base
   desechable.
+  *Estado (2026-11-10):* escrito; compila (typecheck), `playwright test --list` lo lista en `aislamiento` y
+  `e2e-sin-saltos` en verde. Sin marcar: no se corrió en local (sin base ni `.env`); queda el verde de CI.
 - [ ] **T8.2** `./init.sh` en verde; E2E de planes en local (`grep -rl "mi-plan\|Mi plan" e2e/`); mapa
   `R1–R23 → test` en `progress/impl_SLT-99.md`. *Hecho:* sin rojos nuevos frente a `tests/baseline-rojos.json`.
+  *Estado (2026-11-10):* mapa R1–R23 hecho. Sin marcar: `./init.sh` cae en el paso 3 por el cupo del board
+  (5 `fullstack` en vuelo, máx. 3); las guardias, a mano, solo con la baseline.
 
 ## Archivos esperados
 
