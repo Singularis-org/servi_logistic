@@ -21,6 +21,8 @@ F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarje
 
 <!-- tamano-pr-aceptado: 2026-11-10 · 32 archivos y 3528 líneas reales (la estimación era ~2.400), casi la mitad tests y E2E; el humano eligió no partir: «Una sola, aceptar exceso» y, con la cifra real, «Sí, un solo PR». -->
 
+- 2026-11-10 · F2.2 vuelta 1 (ab0c34ba): RECHAZADO. B1: el E2E no corrió sobre HEAD (después del arreglo de `detalle()`) ni el grupo aislamiento. Humano: m1, endurecer el trigger para que rechace el cambio al mismo estado (como dice R18); m3, el enlace de la fila anuncia «Ver reporte de {empresa} del {fecha}». Leader: m2, el caso E2E del maestro sale del describe en serie; m4 solo se anota.
+
 ## Preguntas abiertas
 Ninguna.
 
