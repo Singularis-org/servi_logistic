@@ -27,6 +27,13 @@ export const BUCKETS = {
    * PRIVADO (`SupabaseAlmacenDescargas`). El nombre efectivo lo resuelve `lib/config/descarga.ts`.
    */
   DESCARGAS: "descargas",
+  /**
+   * Imagenes de los reportes de problema (SLT-98): `<organizacion_id>/<usuario_id>/<imagen_id>.<ext>`,
+   * leidas solo por URL firmada de 24 h. Se crea solo, en la primera subida, PRIVADO, con limite de
+   * 5 MB y solo PNG, JPG y WebP (`SupabaseAlmacenImagenesReporte`). El nombre efectivo lo resuelve
+   * `lib/config/reporte-bug.ts` (`bucketReporteBug`).
+   */
+  BUG_REPORTS: "bug-reports",
 } as const;
 
 /** Union de los nombres validos de bucket. */

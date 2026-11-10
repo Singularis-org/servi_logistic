@@ -27,7 +27,7 @@
 
 ## Bloque B — Almacenamiento
 
-- [ ] **T3. Configuración y catálogo** (dep. —; R10, R15, R17).
+- [x] **T3. Configuración y catálogo** (dep. —; R10, R15, R17).
   - **Archivos:**
     - en `lib/config/reporte-bug.ts`: `IMAGENES_MAX`, `IMAGEN_BYTES_MAX`, `TIPOS_IMAGEN`,
       `EXTENSION_POR_TIPO`, `ENLACE_CORREO_SEGUNDOS`, `ENLACE_DETALLE_SEGUNDOS`, `bucketReporteBug` y
