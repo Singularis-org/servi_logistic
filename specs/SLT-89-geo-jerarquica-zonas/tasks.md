@@ -71,7 +71,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   valor de enum) y `lib/db/modelos-de-negocio.ts`. (R34)
   *Hecho:* guardias `organizacion-en-modelos`, `fk-misma-empresa`, `unicos-por-empresa` y
   `rls-por-empresa` verdes.
-- [ ] **T1.4** [P] `tests/unit/db/slt89-migraciones-aditivas.test.ts` y
+- [x] **T1.4** [P] `tests/unit/db/slt89-migraciones-aditivas.test.ts` y
   `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts`. (R32, R33)
 - [ ] **T1.5** [P] `tests/integration/db/orden-nodo-mas-profundo.test.ts`: nodo = lugar, ausente,
   descendiente de profundidad 4 (se conserva), ajeno (se pisa), y cambio de distrito que deja un

@@ -51,7 +51,8 @@ import { revertida } from "./_fixtures/pais-20";
  * `organizacion.plan_tipo_cobro`), y ninguna de ellas toca lo que crean las seis. Los datos se siembran
  * con el fixture del feature (`sembrarEscenarioGeo43`) por un Prisma propio de esta base, sin SLT-43.
  * EXCEPCIÓN: las migraciones que se APOYAN en lo que crean las seis (`SOBRE_SLT43`, hoy las tres de
- * SLT-46: trigger sobre `nodo_geografico` y función sobre `tipo_nivel_geografico`) no pueden ir antes
+ * SLT-46: trigger sobre `nodo_geografico` y función sobre `tipo_nivel_geografico`; y las dos de SLT-89:
+ * tablas con FK a `nodo_geografico` y el cuerpo de `orden_nodo_geografico`) no pueden ir antes
  * de la ida (42P01), así que no se aplican en esta base. Ninguna añade columnas: el Prisma no las pide.
  */
 
@@ -71,6 +72,10 @@ const SOBRE_SLT43 = [
   "20261106120000_slt46_historial_tipos_de_nivel",
   "20261106120100_slt46_nodo_copia_a_geografia_vieja",
   "20261106120200_slt46_pais_tipos_de_nivel_opcional",
+  // SLT-89: FK a `nodo_geografico` y `CREATE OR REPLACE` de `orden_nodo_geografico`, que haría fallar
+  // el `CREATE FUNCTION` de la ida (42723). La del enum va con ella: es su pareja de ida y vuelta.
+  "20261110130000_slt89_zona_nodo",
+  "20261110130100_slt89_historial_zona_nodo",
 ];
 
 const BASE = `slt43_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
