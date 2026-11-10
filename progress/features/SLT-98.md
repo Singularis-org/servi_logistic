@@ -24,7 +24,7 @@ F1.4 (2026-11-10): spec aprobado por el humano («Aprobado, implementa»). Tarje
 - 2026-11-10 · Humano aprueba la enmienda del tope (ba2d57dc): «Aprobado, implementa». Implementer T12–T16.
 - 2026-11-10 · Humano, tras F2.1 vuelta 2: el día del cupo se corta con la zona horaria del país de la empresa, como `asistente_uso_diario`, porque la guardia `pais-sin-literales` (SLT-42) veta fijar Costa Rica en `lib/**` («Zona del país de la empresa»); país sin zona responde `error`. Tamaño real aceptado («Aceptar 4151, un PR»). E2E del tope: la máquina se quedó sin memoria en el build; el humano decide «Solo CI»: el grupo E2E de CI que incluye `reporte-de-bugs` sustituye las dos corridas locales y su verde cierra T16.
 
-<!-- tamano-pr-aceptado: 2026-11-10 · 36 archivos y 4171 líneas (cifra real tras el test de R24 «país sin zona»; los comentarios de la review m4 pueden moverla unas líneas), casi la mitad tests (incluye el doble de Storage del E2E). Humano: «Aceptar 4171». -->
+<!-- tamano-pr-aceptado: 2026-11-10 · 36 archivos y 4173 líneas (cifra real final: 4171 tras el test de R24 «país sin zona», +2 de los comentarios de la review m4, movimiento que el humano dio por aceptado), casi la mitad tests (incluye el doble de Storage del E2E). Humano: «Aceptar 4171». -->
 
 ## Preguntas abiertas
 Ninguna.
