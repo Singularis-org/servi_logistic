@@ -168,7 +168,7 @@
   - **Archivo:** `components/shared/ReporteBugBoton.tsx`: con `sin_cupo_imagenes`, saltar al envío del
     reporte sin las imágenes sin permiso, sin `PUT` y sin aviso (design §16.5). Ningún texto nuevo.
   - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` en verde, con los casos del mapa.
-- [ ] **T16. E2E, documentación y cierre** (dep. T12–T15; R24, R29, R30).
+- [x] **T16. E2E, documentación y cierre** (dep. T12–T15; R24, R29, R30).
   - **Archivos:**
     - en `e2e/reporte-de-bugs.spec.ts`, el test de design §16.6;
     - en `docs/architecture.md`, la viñeta del tope (design §14).
@@ -182,6 +182,11 @@
     - `./init.sh` en verde, o `gate-completo` si el humano lo sustituye, como en T11;
     - `node scripts/tamano-pr.mjs` sin rojo, dentro de lo aceptado en P12 (~35 archivos y ~3.900
       líneas). Si la cifra real pasa de ahí, el leader vuelve al humano.
+  - **Cerrada con salvedades** (review F2.2 vuelta 2, B2, igual que T11): test E2E escrito y revisado,
+    viñeta de documentación hecha, tamaño real 36 archivos y 4171 líneas aceptado por el humano. El E2E
+    ×2 local, el grupo `aislamiento` y `./init.sh` se sustituyen por CI en el PR a `dev`; su verde es
+    **condición de merge** en `progress/features/SLT-98.md`. Riesgo conocido (m5): el test del tope
+    puede dar falso rojo si la corrida cruza la medianoche de Costa Rica (06:00 UTC); se relanza.
 
 ## Mapa R → test
 

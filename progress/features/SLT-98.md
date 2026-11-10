@@ -24,14 +24,16 @@ F1.4 (2026-11-10): spec aprobado por el humano («Aprobado, implementa»). Tarje
 - 2026-11-10 · Humano aprueba la enmienda del tope (ba2d57dc): «Aprobado, implementa». Implementer T12–T16.
 - 2026-11-10 · Humano, tras F2.1 vuelta 2: el día del cupo se corta con la zona horaria del país de la empresa, como `asistente_uso_diario`, porque la guardia `pais-sin-literales` (SLT-42) veta fijar Costa Rica en `lib/**` («Zona del país de la empresa»); país sin zona responde `error`. Tamaño real aceptado («Aceptar 4151, un PR»). E2E del tope: la máquina se quedó sin memoria en el build; el humano decide «Solo CI»: el grupo E2E de CI que incluye `reporte-de-bugs` sustituye las dos corridas locales y su verde cierra T16.
 
-<!-- tamano-pr-aceptado: 2026-11-10 · 36 archivos y 4151 líneas (cifra real tras F2.1 vuelta 2, con el tope diario de la review m1), casi la mitad tests (incluye el doble de Storage del E2E). Humano: «Aceptar 4151, un PR». -->
+<!-- tamano-pr-aceptado: 2026-11-10 · 36 archivos y 4171 líneas (cifra real tras el test de R24 «país sin zona»; los comentarios de la review m4 pueden moverla unas líneas), casi la mitad tests (incluye el doble de Storage del E2E). Humano: «Aceptar 4171». -->
 
 ## Preguntas abiertas
 Ninguna.
 
 ## Condición de merge
 - Comprobación en el preview del PR, contra Supabase real (design §15): con un `BUG_REPORT_BUCKET` que aún no exista, enviar un reporte con una imagen crea el bucket privado con sus límites (5 MB, PNG/JPG/WebP); el `PUT` del navegador sube sin error de CORS; el enlace del correo abre la imagen. Resultado anotado en `progress/impl_SLT-98.md`.
-- `gate-completo` y grupos E2E de CI en verde.
+- `gate-completo` en verde.
+- Grupo E2E `aislamiento` de CI (incluye `e2e/reporte-de-bugs.spec.ts`) con 0 failed, 0 skipped y 0 flaky, incluido el test nuevo «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso». El enlace a esa corrida va a `progress/impl_SLT-98.md`. Si falla por cruzar la medianoche de Costa Rica (06:00 UTC, review m5), se relanza.
+- Los demás grupos E2E de CI (`reparto`, `dinero`) en verde.
 
 ## Tandas
 - 2026-11-10 · F2.1 implementer: T1–T10 hechas y la parte de código de T11 (77a2ebe1…c4aac3d8). Typecheck y lint en verde; vitest de lo tocado 197/197; guardias en verde salvo baseline; guardias de esquema 52/52; ida y vuelta de la migración limpia; E2E ×2 21/21. Pendiente: comprobación en preview contra Supabase real (design §15). Tamaño según `tamano-pr`: 34 archivos y 3374 líneas, por encima de lo aceptado (~2.200–2.500). Detalle → `progress/impl_SLT-98.md`.
