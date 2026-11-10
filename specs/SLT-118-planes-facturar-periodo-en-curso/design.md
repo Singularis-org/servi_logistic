@@ -1,8 +1,12 @@
 # SLT-118 — planes-facturar-periodo-en-curso · design.md
 
-> Requisitos: `requirements.md` (R1–R28; P1–P5 cerradas por el humano el 2026-11-10; P6–P8 abiertas).
+> Requisitos: `requirements.md` (R1–R33; P1–P8 cerradas por el humano el 2026-11-10; P9–P11 abiertas).
 > Ajustado el 2026-11-10 tras esas respuestas: sin corte ni prorrateo (P3), el plan de la factura se toma al
-> abrirla y la cuota es siempre la del período completo. Hereda el diseño de
+> abrirla y la cuota es la del período completo, salvo la primera factura con plan más corta, que prorratea
+> (P6, R29). La primera asignación corta la factura sin plan en su día (P8, R28). El servidor del superadmin
+> lleva la fecha de efecto de un cambio al inicio del próximo período del tipo vigente (P7, R30–R33, §3.1),
+> lo que modifica SLT-86 «Planes: período de facturación de calendario por empresa y sin tope de órdenes»
+> R16–R18. Hereda el diseño de
 > `specs/SL-40-cobro-plataforma-por-orden/`, SL-45 «pago a la plataforma» (`20261024140000`),
 > `specs/SLT-85-traza-facturacion-cobros/` y `specs/SLT-86-planes-periodo-facturacion/` («SLT-86 Rn»).
 > Escrito por `spec_author` el 2026-11-10. Sin dependencias nuevas: todo es Postgres, Prisma y zod, ya
@@ -30,12 +34,14 @@ No existe ninguna factura. Lo que sí existe y se reutiliza:
 |---|---|---|
 | El libro de cargos y reversos, con su índice `(organizacion_id, ocurrido_at)` | `cobro_plataforma_movimiento`, `20261023130100`, `20261104150200` | **No se toca.** Se suma por `ocurrido_at` (R5, R6) |
 | La traza por movimiento, con `cobrado_at = ocurrido_at` e índice `(organizacion_id, cobrado_at)` | `cobro_plataforma_traza`, `20261109120000` | Es el detalle por orden (R7). No se copia ni se toca |
-| El período de calendario en SQL: `plan_inicio_periodo_calendario`, `plan_fin_periodo_calendario` | `20261106120000` | Dan el fin natural (R2) y el inicio P de R28 |
+| El período de calendario en SQL: `plan_inicio_periodo_calendario`, `plan_fin_periodo_calendario` | `20261106120000` | Dan el fin natural (R2) y el período de calendario de R29 (sus días) |
 | El precio por fecha: `plan_precio_historial` (fila con el mayor `desde_at ≤` el `desde` de la factura) | `20261106120000` | El precio de la cuota (R8; SLT-86 R15) |
-| El costo del período en TS: `montoDelPeriodo` | `lib/planes/cobro.ts` | Gemela de la función SQL nueva; un test las ata (R10). `costoDelTramo` no se usa: la factura no prorratea (P3) |
+| El costo del período en TS: `montoDelPeriodo`; el del tramo: `costoDelTramo` con `diasDelTramo` y `diasDelPeriodo` (`lib/planes/ciclo.ts`), juntos en `costoDelPeriodoEnCurso` | `lib/planes/cobro.ts` | Gemelas de las funciones SQL nuevas (§2.1); un test las ata (R10). No se tocan |
 | Los casos de calendario | `tests/integration/db/_fixtures/periodo-calendario.ts` | Para los tests de períodos |
 | El único punto que aplica un cambio de empresa: `PlanesRepository.aplicarEnTx` (asignar, `crearYAsignar`, `cambiarTipoCobro`, `aplicarCambioDeEmpresa`) | `lib/repositories/PlanesRepository.ts` | Llama a la toma del cambio en su transacción (R15, R16, R28) |
-| La fecha de efecto que propone la pantalla del superadmin: `fechaDeEfectoPorDefecto` (inicio del próximo período del tipo vigente) | `lib/planes/ciclo.ts` | No se toca aquí: validarla en el servidor es P7 (ficha aparte) |
+| La fecha de efecto que propone la pantalla del superadmin: `fechaDeEfectoPorDefecto` (inicio del período siguiente al que contiene un instante, con un tipo) e `inicioDelPeriodoCalendario` | `lib/planes/ciclo.ts` | **Se reutilizan sin cambios** para R30–R31 (§3.1): sin función nueva en `ciclo.ts` |
+| El corte del cambio del maestro en SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y cambia de plan» (PR #115, sin mergear) | `specs/SLT-99-…/design.md` §3 (worktree de SLT-99) | Calcula su corte con la misma `fechaDeEfectoPorDefecto` y el tipo vigente bajo el cerrojo, y descarta una función `proximoCorte` nueva (su §9, alternativa 7). **No define otra función**: no hay duplicado. Sí hay **choque al mergear** en `lib/repositories/PlanesRepository.ts`, `lib/interfaces/repositories/IPlanesRepository.ts`, `lib/types/planes.ts` y `lib/db/excepciones-aislamiento.ts`, que tocan las dos fichas (§3.1) |
+| Las pantallas que mandan la fecha: «Asignar/Cambiar plan» y «Cambiar tipo de cobro» (`PlanEmpresa.tsx`), «Crear custom» (`PlanForm.tsx` → `PlanesModule.tsx`) | `app/(app)/plataforma/…` | El campo de fecha no cambia (ya propone `fechaDeEfectoPorDefecto`); solo las confirmaciones pintan la fecha real (R32) |
 | El tope del pago en la base: `wallet_movimiento_tope_pago_plataforma` | `20261024140000` | `CREATE OR REPLACE` con la cuota (R18, R19) |
 | Las lecturas de la deuda: `derivarDeudaPlataforma`, `CobroPlataformaMovimientoRepository.sumasPorTipo`, `EmpresasPlataformaRepository.cuentasConLaPlataforma` | `lib/utils/`, `lib/repositories/` | Suman la cuota (R18) |
 | El patrón de tabla de negocio que solo escribe la base (RLS `…_por_empresa`, `REVOKE`, inmutable con SQLSTATE propio) | `20261023130100`, `20261109120000` | Se copia (§1) |
@@ -61,7 +67,8 @@ Una fila por factura de una empresa. Columnas (`TIMESTAMP(3)` sin zona, en UTC, 
 | `plan_id`, `plan_nombre`, `tipo_cobro` | `TEXT`, `VARCHAR(80)`, `TEXT` | El plan de la factura: copia del plan de la empresa **al abrirla** (§2.2), que solo cambia R16/R28 mientras está `en_curso`. Las tres o ninguna («sin plan»), en cualquier estado. `plan_id` sin FK, como en la traza (el plan es de plataforma y la copia es del momento) |
 | `cargos`, `reversos`, `total_ordenes` | `DECIMAL(14,2)` | Al cerrar (R5). `reversos` en positivo; `total_ordenes` puede ser negativo |
 | `movimientos` | `INTEGER` | Al cerrar |
-| `precio_mensual`, `cuota` | `DECIMAL(12,2)`, `DECIMAL(12,2)` | Al cerrar, solo con plan con costo base (R8, R9). El precio deja ver de dónde sale la cuota sin recalcularla; con el tipo y el descuento del historial basta (sin días: no hay prorrateo) |
+| `precio_mensual`, `cuota` | `DECIMAL(12,2)`, `DECIMAL(12,2)` | Al cerrar, solo con plan con costo base (R8, R9). El precio deja ver de dónde sale la cuota sin recalcularla, con el tipo y el descuento del historial |
+| `dias_cobrados`, `dias_periodo` | `INTEGER`, `INTEGER` | Al cerrar, con la cuota: los días de calendario de la factura y los de su período (R29). Iguales salvo en la primera factura con plan más corta; así SLT-119 puede pintar «6 de 15 días» sin recalcular |
 | `total` | `DECIMAL(14,2)` | `total_ordenes + COALESCE(cuota, 0)` |
 | `cerrada_at`, `created_at` | `TIMESTAMP(3)` | |
 
@@ -71,7 +78,8 @@ CHECK:
   `total_ordenes`, `movimientos`, `total`, `cerrada_at` no nulos;
 - `factura_plataforma_plan`: `num_nulls(plan_id, plan_nombre, tipo_cobro) IN (0, 3)`; `tipo_cobro IN` los cuatro
   de SLT-86;
-- `factura_plataforma_cuota`: `num_nulls(precio_mensual, cuota) IN (0, 2)`, `cuota >= 0`, y sin plan, sin cuota.
+- `factura_plataforma_cuota`: `num_nulls(precio_mensual, cuota, dias_cobrados, dias_periodo) IN (0, 4)`,
+  `cuota >= 0`, `0 < dias_cobrados <= dias_periodo`, y sin plan, sin cuota.
 
 Únicos (todos empiezan por `organizacion_id`, guardia `unicos-por-empresa`):
 - `(organizacion_id, desde_at)`: un intervalo no se factura dos veces (R11);
@@ -140,7 +148,18 @@ ser dueño de la base.
   `mensual × num × (100 − pct) ÷ (den × 100)`; con monto, `round(mensual × num ÷ den, 2) − monto`, nunca bajo
   0; sin descuento, `round(…, 2)`. `round(numeric, 2)` es la mitad hacia arriba con importes `≥ 0`.
 
-Sin días ni tramo: la factura no prorratea (R8; decisiones P3 y P4). No depende de la zona horaria.
+No depende de la zona horaria.
+
+### 2.1 bis `plan_costo_del_tramo(p_costo numeric, p_dias_tramo int, p_dias_periodo int) RETURNS numeric(12,2)` y `plan_dias_de_calendario(p_desde timestamp, p_hasta timestamp) RETURNS int`
+
+`IMMUTABLE`. Gemelas de `costoDelTramo` y de `diasDeCalendario` (`lib/planes/cobro.ts`, `lib/planes/ciclo.ts`),
+solo para R29 (decisión P6):
+- `plan_costo_del_tramo` = `round(p_costo × p_dias_tramo ÷ p_dias_periodo, 2)`, con `p_costo` ya redondeado
+  (`plan_costo_del_periodo`): dos redondeos, como SLT-86 R12 y `costoDelTramo`;
+- `plan_dias_de_calendario` = días de calendario de la plataforma del día de `p_desde` al de `p_hasta`, sin
+  este: `((p_hasta − interval '6 hours')::date − (p_desde − interval '6 hours')::date)`, el mismo −06:00 fijo
+  que las funciones de SLT-86. Los días del período salen de `plan_inicio_periodo_calendario` y
+  `plan_fin_periodo_calendario` del tipo de la factura en su `desde`.
 
 ### 2.2 `factura_plataforma_avanzar(p_org text, p_hasta timestamp)` (interna)
 
@@ -158,7 +177,7 @@ factura**, no del de la empresa: así un cambio de tipo aplicado a mitad de per�
 La fecha de calendario se toma con el mismo −06:00 fijo que las funciones de SLT-86 (`interval '6 hours'`);
 SLT-90 «Planes: ciclo y cobro en la zona de cada empresa» lo cambia junto con ellas.
 
-### 2.3 `factura_plataforma_tomar_cambio(p_org text, p_efecto timestamp, p_plan_id text, p_tipo text)` — R15–R17, R28
+### 2.3 `factura_plataforma_tomar_cambio(p_org text, p_efecto timestamp, p_plan_id text, p_tipo text)` — R15–R17, R28, R33
 
 La llama `PlanesRepository.aplicarEnTx` **antes** de su `UPDATE "organizacion"`, en la misma transacción y con
 la empresa ya en `FOR UPDATE` (`bloquearEmpresa`), con el efecto del cambio y el plan y el tipo nuevos. Sea
@@ -174,9 +193,11 @@ la empresa ya en `FOR UPDATE` (`bloquearEmpresa`), con el efecto del cambio y el
    - **efecto > D y `F` con plan** (R15; un pendiente de antes de esta ficha con efecto a mitad de período):
      nada. `F` se cobra entera con el plan de antes; la siguiente se abre en su fin natural con el plan que la
      empresa tenga entonces, que ya es el nuevo;
-   - **efecto > D y `F` sin plan** (R28, primera asignación): P = `plan_inicio_periodo_calendario(p_tipo,
-     p_efecto)`. Si P ≤ D, `F` toma el plan nuevo como en R16. Si P > D, fija `F` en P (sin plan) y abre la
-     siguiente desde P con `p_plan_id`, su nombre y `p_tipo`.
+   - **efecto > D y `F` sin plan** (R28, primera asignación, con inicio pasado o futuro: P8): fija `F` en el
+     efecto (sin plan) y abre la siguiente desde el efecto con `p_plan_id`, su nombre y `p_tipo`. Su fin
+     natural es el del período del tipo nuevo que contiene el efecto (§2.2), y su cuota la prorratea R29 (§2.4).
+     El paso 1 asegura que el efecto cae dentro de `F` (`D < efecto < fin natural`), así que el CHECK
+     `hasta_at > desde_at` se cumple.
 
 Solo toca facturas `en_curso`: una `por_cerrar` o `cerrada` nunca cambia (R13, R16; el trigger de §1.2 lo
 asegura). No cierra: solo fija. El cierre, con sus cifras, lo hace el proceso pasado el margen (§4.3).
@@ -184,14 +205,24 @@ asegura). No cierra: solo fija. El cierre, con sus cifras, lo hace el proceso pa
 Un cambio pendiente o cancelado no llama a `aplicarEnTx`, y una edición de precio del plan
 (`aplicarCambioProgramado`) tampoco: no tocan facturas (R17). El precio nuevo entra por §2.4.
 
-### 2.4 `factura_plataforma_cifras(p_org, p_desde, p_hasta_ordenes, p_plan_id, p_tipo) RETURNS TABLE (...)` (interna)
+### 2.4 `factura_plataforma_cifras(p_org, p_desde, p_hasta, p_hasta_ordenes, p_plan_id, p_tipo) RETURNS TABLE (...)` (interna)
 
 `STABLE`. La única definición de las cifras de una factura, para el cierre y para la lectura en curso:
 - `cargos`, `reversos`, `movimientos`: de `cobro_plataforma_movimiento` con `organizacion_id = p_org` y
   `ocurrido_at` en `[p_desde, p_hasta_ordenes)` (R5, R6);
 - `total_ordenes = cargos − reversos`;
-- cuota (R8, R9): si hay plan, el `precio_mensual` y los `descuentos` de `plan_precio_historial` con el mayor
-  `desde_at ≤ p_desde`, y `plan_costo_del_periodo(precio, descuentos, p_tipo)`; devuelve también el precio;
+- cuota (R8, R9, R29): si hay plan, el `precio_mensual` y los `descuentos` de `plan_precio_historial` con el
+  mayor `desde_at ≤ p_desde`, y `costo = plan_costo_del_periodo(precio, descuentos, p_tipo)`. Días:
+  `dias_periodo` = `plan_dias_de_calendario` del período de calendario de `p_tipo` que contiene `p_desde`;
+  `dias_cobrados` = `plan_dias_de_calendario(p_desde, p_hasta)` con el fin de la factura (el fijado o el
+  natural previsto). Si la factura es la **primera con plan** (`NOT EXISTS` una factura de `p_org` con
+  `desde_at < p_desde` y `plan_id IS NOT NULL`) y `dias_cobrados < dias_periodo`, la cuota es
+  `plan_costo_del_tramo(costo, dias_cobrados, dias_periodo)`; si no, `costo` y `dias_cobrados = dias_periodo`
+  (R8: sin prorrateo). Devuelve también el precio y los días. La firma gana el fin de la factura
+  (`p_hasta`) además del corte de las órdenes (`p_hasta_ordenes`, que en la lectura en curso es «ahora»);
+- una factura con plan nunca se corta antes de su fin natural (§2.3), así que «más corta que su período» solo
+  pasa cuando su `desde` es posterior al inicio del período: el alta a mitad de período (R16) o la primera
+  asignación de R28;
 - `total = total_ordenes + COALESCE(cuota, 0)`.
 
 ### 2.5 `factura_plataforma_cerrar(p_org text, p_ahora timestamp) RETURNS integer` — R3, R4, R11, R14
@@ -216,7 +247,7 @@ transacción fallida no dejó nada.
 `app.organizacion_id` está vacío o es otra empresa, `42501`. No escribe (no llama a `avanzar`): devuelve las
 facturas `en_curso` y `por_cerrar` con `desde`, `hasta` (el fijado o el fin natural previsto), su plan y su
 tipo, y las cifras de `factura_plataforma_cifras` con las órdenes hasta `LEAST(now() AT TIME ZONE 'UTC', hasta)`
-y la cuota completa de su período (R8), marcada como prevista. El superadmin lee lo mismo por `FacturaPlataformaRepository`, en plataforma,
+y la cuota de su período (R8, o R29 con su fin previsto), marcada como prevista. El superadmin lee lo mismo por `FacturaPlataformaRepository`, en plataforma,
 llamando a `factura_plataforma_cifras` como dueño (§3).
 
 ### 2.7 El tope del pago (SL-45) — R18, R19
@@ -236,11 +267,54 @@ la clave de idempotencia y el rechazo no cambian. `down.sql` repone el cuerpo de
 | Trabajo | `lib/planes/jobs-factura-plataforma.ts` | Handler, recurrencia, siembra y composition root (§4) |
 | Toma del cambio | `lib/repositories/PlanesRepository.ts` | Una llamada en `aplicarEnTx`: `SELECT factura_plataforma_tomar_cambio(${empresa.id}, ${comoTimestamp(desde)}::timestamp, ${planId}, ${tipoCobro})` antes del `UPDATE`. La sirven igual los cambios del superadmin y los del maestro de SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y cambia de plan», que pasan por el mismo `aplicarEnTx` |
 | Deuda | ver §5 | |
+| Fecha de efecto del superadmin | `PlanesRepository`, `IPlanesRepository`, `PlanesService`, `lib/types/planes.ts`, `PlanEmpresa.tsx`, `PlanesModule.tsx` | §3.1 (R30–R33) |
 
-No hay action, servicio ni pantalla: la autorización por rol (maestro y superadmin) y la pantalla son de
-SLT-119 «Planes: pantallas de facturas para el superadmin y el maestro», que consumirá `deLaEmpresa` y
-`deEmpresaParaPlataforma`. Aquí el acceso lo garantizan la RLS, el `REVOKE` y el control de contexto de la
-función (R21–R24). Sin módulo: facturas y deuda son núcleo.
+Las facturas no tienen action, servicio ni pantalla: la autorización por rol (maestro y superadmin) y la
+pantalla son de SLT-119 «Planes: pantallas de facturas para el superadmin y el maestro», que consumirá
+`deLaEmpresa` y `deEmpresaParaPlataforma`. Aquí el acceso lo garantizan la RLS, el `REVOKE` y el control de
+contexto de la función (R21–R24). Sin módulo: facturas y deuda son núcleo.
+
+### 3.1 La fecha de efecto de un cambio del superadmin — R30–R33 (decisión P7)
+
+**Dónde.** En `PlanesRepository.cambiarEmpresaEnTx`, con la empresa ya bajo `FOR UPDATE` (`bloquearEmpresa`)
+y **antes** de decidir entre pendiente y aplicar. Es el único paso común a `asignar`, `crearYAsignar` y
+`cambiarTipoCobro`, y bajo el cerrojo el tipo vigente (`empresa.plan_tipo_cobro`) es el de verdad: ningún
+otro cambio puede moverlo entre la lectura y la escritura. Ni el trabajo `plan_aplicar_cambio_empresa` (llama
+a `aplicarEnTx` con la fecha ya guardada) ni el cambio del maestro de SLT-99 (su corte ya es un inicio de
+período) pasan por aquí.
+
+**Qué.** Solo si `efecto.clase === "cambio"` (la empresa tiene plan; una primera asignación, `"inicio"`, no se
+toca: R33, P8). Con `tipo = empresa.plan_tipo_cobro` y `F = efecto.fecha`:
+- si `fechaCalendarioPlataforma(inicioDelPeriodoCalendario(tipo, inicioDelDiaPlataforma(F))) === F`, `F` ya
+  es un inicio de período y se respeta (R31);
+- si no, `F' = fechaDeEfectoPorDefecto(tipo, inicioDelDiaPlataforma(F))`: el primer día del período siguiente
+  al que contiene `F` (R30). `efecto` pasa a `{ ...efecto, fecha: F', desde: inicioDelDiaPlataforma(F') }`.
+
+Con el efecto ya llevado, el resto no cambia: `desde > ahora` → pendiente con esa fecha (su trabajo en la
+cola, su historial y su correo la usan); `desde ≤ ahora` → se aplica, lo que solo pasa si «hoy» ya era un
+inicio de período (SLT-86 R18 queda limitado a ese caso). Las dos funciones de `lib/planes/ciclo.ts` se
+reutilizan tal cual: no hay función nueva (como decidió SLT-99, §9 alternativa 7 de su design).
+
+**Rango (P10, propuesta).** `fueraDeRango` (`PlanesService`, SLT-86 R16) sigue mirando la fecha **elegida**,
+antes de leer nada; la real puede pasar del tope «hoy + 12 meses» como mucho en un período.
+
+**Respuesta (R32).** El resultado `ok` de `IPlanesRepository.asignar`, `crearYAsignar` y `cambiarTipoCobro`
+gana `vigenteDesde?: string` (`AAAA-MM-DD`), presente solo cuando `pendiente` es `true`: la fecha real
+guardada. Es opcional para no tocar los dobles de los tests unitarios del servicio que devuelven `ok` sin
+pendiente. `PlanesService` responde con ella (`r.vigenteDesde ?? efecto.fecha` en `asignar` y `crear`), y
+`CambiarTipoCobroResult` (`lib/types/planes.ts`) gana `vigenteDesde: string | null` en su `ok`, como ya
+tiene `PlanResult`.
+
+**Pantallas (R32).** El campo de fecha no cambia (sigue proponiendo `fechaDeEfectoPorDefecto` y dejando
+elegir otro día). Cambian solo las confirmaciones:
+- `PlanEmpresa.tsx`, «Cambiar tipo de cobro»: con `vigenteDesde`, el aviso dice desde qué día rige (hoy
+  solo dice «cambiado»). «Asignar/Cambiar plan» ya pinta `r.vigenteDesde` (`TEXTOS.programado`): con la fecha
+  real del servidor, no cambia el código;
+- `PlanesModule.tsx`, «Crear custom» para una empresa con plan: el aviso de creado añade la fecha real del
+  cambio cuando la respuesta la trae.
+
+Residuo: la vista previa del primer período en el modal (`lineasDelPrimerPeriodo`, SLT-86 R25) se calcula
+con la fecha elegida hasta que se confirma; la confirmación ya dice la real.
 
 ## 4. El proceso de cierre
 
@@ -340,11 +414,17 @@ la 6.2, después la 6.1.
 
 | Archivo | Cubre | Cómo |
 |---|---|---|
-| `tests/integration/db/factura-plataforma-cierre.test.ts` | R1–R9, R11, R14, R26, R27 | Base real (`HAY_BASE_DE_DATOS`), reloj fijado por `p_ahora`; dos empresas (quincenal con plan y sin plan); órdenes y anulaciones con `ocurrido_at` a ambos lados de los bordes; cuota completa con entrada el 10 (R8) y precio editado con efecto dentro y fuera del `desde`; dos cierres a la vez desde dos conexiones; migración de ida y vuelta con y sin cuota cerrada |
-| `tests/integration/db/factura-plataforma-cambio-plan.test.ts` | R15–R17, R28 | `PlanesRepository` real: mensual → quincenal con efecto el 1 de diciembre (noviembre entera con mensual, del 1 al 15 de diciembre con quincenal); el mismo con efecto el 10 de noviembre por SQL de pendiente (noviembre sigue entera con mensual y su fin no se mueve); primera asignación con inicio el 1 aplicada el 10; cambio aplicado después de la corrida de las :10 y después de un cierre; primera asignación con inicio el 5 y el 18 (quincenal) y el 18 (mensual); pendiente cancelado y reemplazado; edición de precio; `UPDATE` del plan de una `por_cerrar` → `SL118` |
+| `tests/integration/db/factura-plataforma-cierre.test.ts` | R1–R9, R11, R14, R26, R27 | Base real (`HAY_BASE_DE_DATOS`), reloj fijado por `p_ahora`; dos empresas (quincenal con plan y sin plan); órdenes y anulaciones con `ocurrido_at` a ambos lados de los bordes; precio editado con efecto dentro y fuera del `desde`; dos cierres a la vez desde dos conexiones; migración de ida y vuelta con y sin cuota cerrada |
+| `tests/integration/db/factura-plataforma-cambio-plan.test.ts` | R8 (cambio de tipo), R15–R17, R28, R29, R33 | `PlanesRepository` real: mensual → quincenal con efecto el 1 de diciembre (noviembre entera con mensual, del 1 al 15 de diciembre con quincenal); el mismo con efecto el 10 de noviembre por SQL de pendiente (noviembre sigue entera con mensual y su fin no se mueve); primera asignación con inicio el 1 aplicada el 10 (15 500.00); alta el 10 con inicio el 10 (6 200.00, `dias_cobrados` 6 y `dias_periodo` 15); cambio aplicado después de la corrida de las :10 y después de un cierre; primera asignación con inicio el 5 (11 366.67) y el 18 futuro aplicado por el trabajo ese día (quincenal y mensual, 13 433.33); quincenal → mensual con efecto el 16 (segunda factura con plan, 16 al 30: mensual completa); pendiente cancelado y reemplazado; edición de precio; `UPDATE` del plan de una `por_cerrar` → `SL118` |
+| `tests/integration/db/planes-cambio-empresa.test.ts` (se amplía) | R30, R31, R33 | `PlanesService` con el repositorio real y reloj fijado: asignar a empresa con plan con fecha a mitad de período en los cuatro tipos → pendiente en el inicio del siguiente (columna del pendiente, `run_after` del trabajo, historial); fecha en un inicio → se respeta; «hoy» a mitad de período → pendiente, no se aplica; «hoy» en un inicio → se aplica; primera asignación con fecha futura a mitad de período → no se mueve. Los casos existentes que usan «hoy» u otros días a mitad de período se ajustan |
+| `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (se amplía) | R30, R31 | Lo mismo para el tipo de cobro, con el tipo **vigente** (mensual → quincenal el 10 de noviembre → 1 de diciembre, no el 16) |
+| `tests/integration/db/planes-crear-custom-asigna.test.ts` (se amplía) | R30 | Custom para una empresa con plan con fecha a mitad de período |
+| `tests/integration/db/planes-asignacion.test.ts`, `plan-de-la-empresa-periodo.test.ts`, `planes-cancelar-cambio-historial.test.ts` | — | Solo se ajustan: usan un cambio con «hoy» o una fecha a mitad de período |
+| `tests/unit/services/planes-service-periodo.test.ts`, `planes-service-tipo-cobro.test.ts` (se amplían) | R30, R32 | Con dobles: la respuesta lleva el `vigenteDesde` que devuelve el repositorio, no el elegido; `cambiarTipoCobro` devuelve `vigenteDesde` |
+| `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx` (se amplían) | R32 | La confirmación pinta la fecha de la respuesta, no la del campo |
 | `tests/integration/db/factura-plataforma-deuda.test.ts` | R18–R20 | `DeudaPlataformaService`, `TopePagoPlataformaService`, `EmpresasPlataformaRepository` y el trigger del tope con la cuota; pago igual y mayor que la deuda; `count` de los tres libros antes y después del cierre |
 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` | R13, R21–R24 | Dos empresas: lectura cruzada (Prisma y SQL a mano), `INSERT`/`UPDATE`/`DELETE` y `EXECUTE` como `servi_app` → `42501`; `UPDATE` de una cerrada como dueño → `SL118`; superadmin lee las dos; en curso con total parcial |
-| `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` | R10 | La misma tabla de casos por `plan_costo_del_periodo` y por `montoDelPeriodo` |
+| `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` | R10, R29 | La misma tabla de casos por `plan_costo_del_periodo` y `montoDelPeriodo`; y la de tramos por `plan_costo_del_tramo` + `plan_dias_de_calendario` y por `costoDelPeriodoEnCurso` (entrada en el `desde`): quincena de 13, 15 y 16 días, febrero, año de 365 y 366, tramo de 1 día, mitad exacta |
 | `tests/unit/planes/jobs-factura-plataforma.test.ts` | R3, R12, R25 | Handler con un doble del repositorio (una empresa falla); recurrencia y `dedupe_key`; registro en `buildHandlers`, `buildRecurrencias`, `RECURRENTES_DE_PLATAFORMA`, `MODULO_POR_JOB` y `SIEMBRAS_RECURRENTES` |
 | `tests/unit/utils/deuda-plataforma.test.ts` | R18 | `derivarDeudaPlataforma` con la entrada `cuota` |
 | `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` | R22 | Detectores y contraprueba para `factura_plataforma` / `facturaPlataforma` |
@@ -362,9 +442,20 @@ Antes del PR, por `docs/perfil-agentes.md`, se corren en local el grupo `dinero`
 - **Copiar el plan de la factura al fijarla, no al abrirla.** Solo era correcto si cada cambio cortaba antes
   de escribirse; sin corte, un cambio a mitad de período dejaría la factura entera con el plan nuevo. Al
   abrir, el plan de la factura es el que regía en su `desde`, y solo R16 y R28 lo cambian.
-- **Validar en el servidor del superadmin que la fecha de efecto sea el inicio del próximo período**, dentro
-  de esta ficha. Es lo que pide P3, pero suma unos 12 archivos y la ficha pasaría de 40: va a ficha aparte
-  (P7). La base de esta ficha no depende de ello: cobra la cuota sin corte pase lo que pase.
+- **R28 con P (fijar la factura sin plan en el inicio del período del tipo nuevo y cobrar la cuota
+  completa).** Era la propuesta anterior (P6). La rechazó el humano el 2026-11-10: la primera factura con plan
+  prorratea por días y la primera asignación rige su día (P6, P8).
+- **Prorratear toda factura más corta que su período** (también la que deja un cambio de tipo). El humano lo
+  limitó a la primera factura con plan (P6); la consecuencia queda en P9.
+- **P7: validar y rechazar con `validation_error` en `vigenteDesde`** una fecha que no sea inicio de período.
+  El humano eligió llevarla al inicio del próximo período y devolver la fecha real.
+- **P7: llevar la fecha en `PlanesService`**, con el tipo leído por `repo.empresa()` (añadiendo el tipo a
+  `EmpresaDePlanes`). Fuera del cerrojo: otro cambio de tipo entre la lectura y la escritura dejaría un efecto
+  que no es inicio de período del tipo de verdad, y el campo nuevo obliga a tocar los dobles de `empresa` de
+  los nueve tests unitarios del servicio. En `cambiarEmpresaEnTx`, bajo el cerrojo, ni lo uno ni lo otro.
+- **P7: una función nueva (`proximoCorte` o similar) en `lib/planes/ciclo.ts`.** `fechaDeEfectoPorDefecto` e
+  `inicioDelPeriodoCalendario` ya dan la regla; SLT-99 descartó lo mismo (su §9, alternativa 7).
+- **P7 en una ficha aparte** (la propuesta anterior). El humano la metió en esta (P7) y aceptó el tamaño.
 - **Calcular la cuota en TS y pasarla a la función de cierre.** Ahorraba la gemela SQL, pero la base escribiría
   en la deuda un importe que no puede comprobar, y habría dos sitios que deciden el dinero al escribir. Con la
   función SQL como autoridad y `cobro.ts` solo para mostrar, el test de gemelas (R10) las mantiene iguales,
@@ -382,12 +473,17 @@ Antes del PR, por `docs/perfil-agentes.md`, se corren en local el grupo `dinero`
 ## 10. Residuos y riesgos
 
 - Un plan con efecto anterior a una factura ya fijada o cerrada no cambia esa factura (R16, P4; §4.4).
-- Hasta que entre la ficha de P7, el superadmin puede guardar un cambio con efecto a mitad de período: la
-  cuota se cobra igual sin corte (R15), pero el costo por orden nuevo rige desde ese día (los cargos son de
-  SL-40, por orden y en su instante).
-- Una factura con plan más corta que su período (alta a mitad de período, R28 con P ≤ D) lleva la cuota
-  completa: P6.
+- Los pendientes guardados antes de esta ficha con efecto a mitad de período siguen así: la cuota se cobra sin
+  corte (R15), pero el costo por orden nuevo rige desde ese día (los cargos son de SL-40, por orden y en su
+  instante). Desde R30 no se pueden guardar nuevos.
+- Una factura con plan más corta que su período que no es la primera con plan (un cambio a un tipo más
+  largo) lleva la cuota completa del tipo nuevo, y «Mi plan» muestra ahí el tramo: P9.
+- Choque al mergear con SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y cambia de
+  plan» (PR #115): `PlanesRepository.ts`, `IPlanesRepository.ts`, `lib/types/planes.ts`,
+  `excepciones-aislamiento.ts`. Sin lógica duplicada: los dos usan `fechaDeEfectoPorDefecto`. Quien mergee
+  segundo rebasa. El ajuste de §3.1 es neutro con el cambio del maestro: su corte ya es un inicio de período.
+  Si SLT-99 entra antes, su método nuevo de `IPlanesRepository` obliga a añadirlo a los dobles; eso es suyo.
 - Movimientos con instante atrasado más de 5 minutos (§4.3): ninguno hoy.
 - Si la cola de trabajos se cae, las facturas se cierran tarde pero con las mismas cifras: el cierre depende de
   `hasta`, no de cuándo corre.
-- Tamaño (P5, aceptado): 29 archivos, ~1 700 líneas.
+- Tamaño: 44 archivos y ~2 100 líneas con P7 (aceptados ~41; P11).
