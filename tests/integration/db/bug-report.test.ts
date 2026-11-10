@@ -6,6 +6,7 @@ import type { BugReportStatus, PrismaClient } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
 import { llevaSqlstate } from "@/lib/db/sqlstate";
 import { BugReportRepository } from "@/lib/repositories/BugReportRepository";
 import { ReportesBugPlataformaService } from "@/lib/services/ReportesBugPlataformaService";
@@ -185,8 +186,19 @@ function repoEn(tx: TxDeTest, romperHistorial = false): BugReportRepository {
   return new BugReportRepository(proxy as PrismaClient);
 }
 
+/**
+ * SLT-98: el almacén de imágenes es un doble que lanza: aquí se prueba el SQL, y los reportes que lee el
+ * servicio no traen imágenes (la firma está en `reportes-bug-plataforma-service.test.ts`).
+ */
+const ALMACEN_SIN_USO: IAlmacenImagenesReporte = {
+  prepararSubida: () => Promise.reject(new Error("almacen no esperado")),
+  leer: () => Promise.reject(new Error("almacen no esperado")),
+  firmar: () => Promise.reject(new Error("almacen no esperado")),
+  borrar: () => Promise.reject(new Error("almacen no esperado")),
+};
+
 function servicioEn(tx: TxDeTest): ReportesBugPlataformaService {
-  return new ReportesBugPlataformaService(repoEn(tx));
+  return new ReportesBugPlataformaService(repoEn(tx), ALMACEN_SIN_USO);
 }
 
 /** `FiltrosReportes` ya parseados, con los valores por defecto del zod. */

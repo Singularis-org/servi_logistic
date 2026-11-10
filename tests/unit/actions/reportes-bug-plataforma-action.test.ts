@@ -9,6 +9,7 @@ import {
 } from "@/lib/actions/reportes-bug-plataforma";
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import { EXCEPCIONES_DE_PLATAFORMA } from "@/lib/db/excepciones-aislamiento";
+import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
 import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugReportRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IReportesBugPlataformaService } from "@/lib/interfaces/services/IReportesBugPlataformaService";
@@ -244,7 +245,9 @@ describe("SLT-97 — borde del módulo de reportes del superadmin", () => {
       detalle: vi.fn(),
       cambiarEstado: vi.fn<IBugReportRepository["cambiarEstado"]>(async () => ({ resultado: "ok" })),
     } satisfies IBugReportRepository;
-    const real = new ReportesBugPlataformaService(repo);
+    // SLT-98 (design §7): el constructor gana el almacén de imágenes; cambiar el estado no lo usa.
+    const almacen = { prepararSubida: vi.fn(), leer: vi.fn(), firmar: vi.fn(), borrar: vi.fn() } satisfies IAlmacenImagenesReporte;
+    const real = new ReportesBugPlataformaService(repo, almacen);
     expect(
       await cambiarEstadoReporteBugAction({ reporteId: REPORTE_ID, estado: "resolved", nota: "   \n " }, deps(SUPERADMIN, real)),
     ).toEqual({ status: "ok", estado: "resolved" });

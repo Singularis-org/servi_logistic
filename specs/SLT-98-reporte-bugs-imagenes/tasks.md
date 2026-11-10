@@ -71,7 +71,7 @@
     - `tests/unit/actions/reporte-bug-action.test.ts`;
     - `tests/unit/services/email/plantilla-reporte-bug.test.ts`;
     - `modulos-reparto.guardia`.
-- [ ] **T8. Detalle del superadmin, servidor** (dep. T4, T6; R22, R23).
+- [x] **T8. Detalle del superadmin, servidor** (dep. T4, T6; R22, R23).
   - **Archivos:**
     - `lib/services/ReportesBugPlataformaService.ts`: firma con `conEmpresa` y el TTL del detalle
       (design §7);
@@ -175,6 +175,11 @@
 - `tests/unit/e2e/storage-falso.test.ts`
 - `tests/components/ReporteBugBoton.test.tsx`
 - `tests/components/ReporteDetalle.test.tsx`
+
+**Añadidos en la implementación (T6, T8):** dos tests de SLT-97 cuyos dobles construyen tipos o el
+servicio que cambian aquí, ajustados solo para compilar:
+- `tests/unit/components/reportes-plataforma-page.test.tsx` (`imagenes: []` en el `ReporteDetalleDTO` de prueba);
+- `tests/unit/actions/reportes-bug-plataforma-action.test.ts` (el almacén doble en el constructor).
 
 **Total:** 32 archivos. Es justo el aviso del 80% (32 de 40), sin pasarlo; el máximo es 40. Son unas
 2100-2400 líneas frente a un máximo de 1000; el exceso está aceptado (P2). P1 no quita archivos: la

@@ -14,6 +14,7 @@ import type {
 } from "@/lib/interfaces/services/IReportesBugPlataformaService";
 import { BugReportRepository } from "@/lib/repositories/BugReportRepository";
 import { ReportesBugPlataformaService } from "@/lib/services/ReportesBugPlataformaService";
+import { SupabaseAlmacenImagenesReporte } from "@/lib/storage/SupabaseAlmacenImagenesReporte";
 import { cambiarEstadoReporteSchema, filtrosReportesSchema, verReporteSchema } from "@/lib/types/reporte-bug";
 
 // SLT-97 (design §3, §6; R2, R9, R15, R18, R20) — el borde del módulo de reportes del superadmin. Mismo
@@ -37,7 +38,8 @@ type ErrorDeValidacion = { status: "validation_error"; fieldErrors: Record<strin
 type ErrorInterno = { status: "error" };
 
 function construirServicio(): IReportesBugPlataformaService {
-  return new ReportesBugPlataformaService(new BugReportRepository(getPrismaClient()));
+  // SLT-98 (design §7): el almacén firma los enlaces de las imágenes del detalle (R22, R23).
+  return new ReportesBugPlataformaService(new BugReportRepository(getPrismaClient()), new SupabaseAlmacenImagenesReporte());
 }
 
 async function puerta(deps: ReportesBugPlataformaDeps): Promise<{ actor: Actor } | { corte: SinPermiso }> {
