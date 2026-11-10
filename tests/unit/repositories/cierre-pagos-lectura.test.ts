@@ -95,6 +95,7 @@ function filaAdmin(overrides: Record<string, unknown> = {}) {
     indemnizacion: null,
     historialEstados: [],
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...overrides,
   };
 }
@@ -269,6 +270,8 @@ describe("R21 — camino 2 (admin): `CierresAdminRepository.findCierreByIdEnAlca
       cierreSinGestion: { findMany: vi.fn().mockResolvedValue([]) },
       // FICHA 425 (B11): la cuarta consulta del detalle. Vacia: esta suite mide el desglose de pagos.
       cierreRechazoTienda: { findMany: vi.fn().mockResolvedValue([]) },
+      // SLT-101 (R94): la QUINTA consulta del detalle, el ultimo movimiento de fulfillment por orden.
+      ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn(),
     };
   }

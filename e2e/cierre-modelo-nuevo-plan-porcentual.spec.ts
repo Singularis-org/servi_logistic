@@ -273,12 +273,16 @@ async function solicitarEnPantalla(page: Page, m: MensajeroE2E): Promise<string>
   return cierres[cierres.length - 1].id;
 }
 
-/** Un KPI del comprobante, ya asentado: cuenta desde 0 al montar. */
-async function kpi(detalle: Locator, rotulo: string): Promise<string> {
-  const valor = detalle
-    .getByRole("region", { name: /^Comprobante detallado del cierre/ })
-    .locator(`xpath=.//span[normalize-space()='${rotulo}']/following-sibling::span[1]`)
-    .first();
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: el KPI «Pago al mensajero» es la cifra del
+ * mismo nombre del detalle único, y el KPI «Total de la empresa» es el «Total facturado» de la cuenta «Lo que se
+ * le factura a la tienda» (mismo importe). Se espera a que el texto se asiente, como antes.
+ */
+async function kpi(detalle: Locator, rotulo: "Pago al mensajero" | "Total de la empresa"): Promise<string> {
+  const valor =
+    rotulo === "Pago al mensajero"
+      ? detalle.locator('[data-cifra="pago"]')
+      : detalle.getByRole("region", { name: "Lo que se le factura a la tienda" }).locator('[data-tipo="total"] [data-monto]');
   return cifraAsentada(valor);
 }
 
@@ -299,7 +303,7 @@ async function aprobarEnPantalla(
   expect(await kpi(detalle, "Total de la empresa")).toMatch(cifra(esperado.empresa, true));
 
   const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
-  await abrirCon(detalle.getByRole("button", { name: "Aprobar", exact: true }), confirmar);
+  await abrirCon(detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }), confirmar);
   const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
   for (const o of vuelven) {
     await lector.getByLabel("Número de guía").fill(String(o.numGuia));
@@ -326,22 +330,57 @@ async function abrirResuelto(page: Page, m: MensajeroE2E, cierreId: string): Pro
   return detalle;
 }
 
-const renglon = (seccion: Locator, rotulo: string): Locator =>
-  seccion.getByText(rotulo, { exact: true }).locator("xpath=ancestor::div[1]");
+/** El importe de la línea de una tarjeta (`Cuenta`) cuyo rótulo casa con `rotulo`. */
+const montoDeLinea = (tarjeta: Locator, rotulo: RegExp): Locator =>
+  tarjeta
+    .locator("[data-signo]")
+    .filter({ has: tarjeta.page().locator("[data-rotulo]", { hasText: rotulo }) })
+    .locator("[data-monto]");
 
-/** Despliega la gestión de una orden en su pestaña, y comprueba sus renglones antes de plegarla. */
+/**
+ * Despliega la gestión de una orden con su filtro, y comprueba sus cifras antes de plegarla.
+ *
+ * SLT-101 «Fila de gestión única y lista con filtros» (D2, R27, R28, R97): ANTES se leían los renglones del panel
+ * «Cobros de esta gestión» de la ficha 338 («Valor flete GAM», «Flete», «IVA flete», «Total cobrado»). Ese panel
+ * no existe en la fila única: AHORA las MISMAS cifras se leen donde las pinta el canvas aprobado:
+ *   - «Total cobrado» → el total «Se le cobra» de la tarjeta «Se le cobra a la tienda»;
+ *   - «Valor flete GAM» → la línea «tarifa GAM» de la tarjeta «Flete por entregado» de «Ver cómo se calculó»;
+ *   - «Flete» → la primera línea de esa tarjeta («Monto fijo» o «<n> % de …», según el modo de la tarifa);
+ *   - «IVA flete» → su línea «+ IVA …».
+ * Los literales de las llamadas no cambian.
+ */
 async function cobrosDeLaOrden(detalle: Locator, pestana: RegExp, orden: OrdenE2E, renglones: Readonly<Record<string, string>>): Promise<void> {
+  // SLT-100: las órdenes viven en la pestaña «Gestiones» del detalle único.
+  await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
+  // SLT-101 (R84): la pestaña por resultado es ahora el filtro «Filtrar por resultado» («<resultado> <n>»).
+  await detalle
+    .getByRole("group", { name: "Filtrar por resultado" })
+    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\d+$`) })
+    .click();
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-  await ordenes.getByRole("tab", { name: pestana }).click();
   const fila = ordenes.getByRole("button", { name: new RegExp(`^Desglose de ingreso de la orden ${orden.numRemision}`) });
   await fila.click();
-  const cobros = ordenes.getByRole("region", { name: "Cobros de esta gestión" });
-  await expect(cobros).toBeVisible();
+  const deLaOrden = (titulo: string) => ordenes.getByRole("region", { name: new RegExp(`^${titulo} de la orden ${orden.numRemision} · `) });
+  const cobro = deLaOrden("Se le cobra a la tienda");
+  await expect(cobro).toBeVisible();
+  const flete = deLaOrden("Flete por entregado");
+  if ("Valor flete GAM" in renglones || "Flete" in renglones || "IVA flete" in renglones) {
+    await ordenes.getByRole("button", { name: "Ver cómo se calculó" }).click();
+    await expect(flete).toBeVisible();
+  }
   for (const [rotulo, texto] of Object.entries(renglones)) {
-    await expect(renglon(cobros, rotulo)).toContainText(cifra(texto));
+    const monto =
+      rotulo === "Total cobrado"
+        ? cobro.locator("[data-tipo='total'] [data-monto]")
+        : rotulo === "Valor flete GAM"
+          ? montoDeLinea(flete, /^tarifa GAM$/)
+          : rotulo === "IVA flete"
+            ? montoDeLinea(flete, /^\+ IVA /)
+            : flete.locator("[data-signo]").first().locator("[data-monto]");
+    await expect(monto).toHaveText(cifra(texto, true));
   }
   await fila.click();
-  await expect(cobros).toHaveCount(0);
+  await expect(cobro).toHaveCount(0);
 }
 
 test.use({ actionTimeout: 30_000 });

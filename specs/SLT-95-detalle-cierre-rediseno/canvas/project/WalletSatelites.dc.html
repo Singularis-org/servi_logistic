@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Wallet · Satélites</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width:1440px;height:900px;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
+  <div aria-hidden="true" style="width:240px;background:#1C1C1A;flex-shrink:0"></div>
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div aria-hidden="true" style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff;flex-shrink:0"></div>
+    <div style="padding:24px 32px;display:flex;flex-direction:column;gap:16px">
+      <header style="display:flex;flex-direction:column;gap:4px">
+        <h1 style="margin:0;font-size:24px;font-weight:700">Wallet · Satélites</h1>
+        <p style="margin:0;font-size:14px;color:#44403c">Dinero consolidado que todavía no ha llegado a la central.</p>
+      </header>
+
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        <div style="background:#FFF8D9;border:1px solid #FFD000;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#44403c">Pendiente de conciliar</span>
+          <span style="font-size:22px;font-weight:700">₡453.163,27</span>
+          <span style="font-size:12px;color:#44403c">en 3 consolidaciones de 2 bodegas</span>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#44403c">Recibido este mes</span>
+          <span style="font-size:22px;font-weight:700;color:#047857">₡2.871.400,10</span>
+          <span style="font-size:12px;color:#44403c">7 consolidaciones conciliadas</span>
+        </div>
+        <div style="background:#ffffff;border:1px solid #f59e0b;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#44403c">Con diferencia</span>
+          <span style="font-size:22px;font-weight:700;color:#92400e">₡15.000,00</span>
+          <span style="font-size:12px;color:#44403c">1 consolidación llegó incompleta</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div role="group" aria-label="Qué bodegas mostrar" style="display:flex;padding:4px;border-radius:10px;background:#ffffff;border:1px solid #e7e5e4">
+          <button type="button" aria-pressed="true" style="font:inherit;font-size:14px;font-weight:600;height:32px;padding:0 14px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Con pendiente (2)</button>
+          <button type="button" style="font:inherit;font-size:14px;height:32px;padding:0 14px;border-radius:8px;border:0;background:transparent;color:#44403c;cursor:pointer">Todas (4)</button>
+        </div>
+        <!-- DescargarDatasetButton existente de DataTable -->
+        <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer;display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>Descargar <span aria-hidden="true" style="color:#78716c">▾</span></button>
+      </div>
+
+      <section aria-label="Saldos de bodegas satélite" style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1.2fr 1.2fr 1.4fr 170px;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4">
+          <span>Bodega</span><span style="text-align:right">Pendiente</span><span style="text-align:right">Sin consolidar</span><span style="padding-left:16px">Más antigua sin conciliar</span><span>Última recibida</span><span></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1.2fr 1.2fr 1.4fr 170px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center">
+          <span>Limón <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:#fff7ed;color:#9a3412;margin-left:6px">Recibido incompleto</span></span>
+          <span style="text-align:right;font-weight:600">₡453.163,27</span>
+          <span style="text-align:right">₡96.300,00 <span style="font-size:12px;color:#44403c">· 1 cierre</span></span>
+          <span style="padding-left:16px"><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#fef3c7;color:#92400e">hace 3 días</span></span>
+          <span>05 nov · ₡414.980,50</span>
+          <a href="#estado" style="text-align:right;color:#1d4ed8">Ver estado de cuenta</a>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1.2fr 1.2fr 1.4fr 170px;gap:8px;font-size:14px;padding:12px 0;align-items:center">
+          <span>Turrialba</span>
+          <span style="text-align:right;font-weight:600">₡0,00</span>
+          <span style="text-align:right">—</span>
+          <span style="padding-left:16px"><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#f5f5f4;color:#44403c">hoy</span></span>
+          <span>—</span>
+          <a href="#estado" style="text-align:right;color:#1d4ed8">Ver estado de cuenta</a>
+        </div>
+      </section>
+
+      <p style="margin:0;font-size:13px;color:#44403c"><strong style="color:#111111">El saldo no es un movimiento de caja.</strong> Ese dinero ya entró a la caja de la empresa cuando se aprobó el cierre de cada mensajero. Lo que esta pantalla dice es dónde está físicamente: cuánto queda en manos de cada bodega esperando llegar a la central.</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

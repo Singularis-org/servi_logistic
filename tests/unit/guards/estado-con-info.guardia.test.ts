@@ -206,6 +206,7 @@ export const USOS_PERMITIDOS: Readonly<Record<string, UsoPermitido>> = {
   "app/(app)/analitica/_components/entregas/analitica-productos-descarga-columnas.ts": { clase: D, motivo: "encabezados de la descarga de productos" },
   "app/(app)/ranking/_components/ranking-descarga-columnas.ts": { clase: D, motivo: "encabezado de la descarga del ranking" },
   "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts": { clase: D, motivo: "celda «Resultado» de la hoja fundida de gestiones" },
+  "components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts": { clase: D, motivo: "celda «Resultado» de «Descargar» en el detalle único del cierre (SLT-100, R82)" },
   "app/(app)/historico/acciones/_components/historial-acciones-columnas.ts": { clase: D, motivo: "DEFINE `valorLegible`, que da el nombre del resultado a la descarga del registro; en pantalla `celdaValor` pinta el resultado con `EstadoConInfo` y solo llama a `valorLegible` para las acciones que NO guardan un resultado. Lo comprueban `tests/components/HistorialAccionesValorInfo.test.tsx` (botón en pantalla, nombre en la descarga) y el caso «la excepción `descarga` del registro de acciones» de esta guardia" },
   "app/(app)/historico/acciones/_components/historial-acciones-descarga-columnas.ts": { clase: D, motivo: "celdas «Valor anterior/nuevo» de la descarga del registro (`valorLegible`)" },
   // ── Recuentos (design §5.2) ──
@@ -214,6 +215,7 @@ export const USOS_PERMITIDOS: Readonly<Record<string, UsoPermitido>> = {
   "app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx": { clase: R, motivo: "RE-EXPORTA `RESULTADO_LABEL` para `cierre-factura` (pestañas con cifra del detalle). FICHA 482: ya no pinta títulos «<nombre> (N)»; eran de `DetalleSecciones`, borrado" },
   "app/(app)/cierre-dia/_components/CierreDiaModule.tsx": { clase: R, motivo: "título «<nombre> (N)» de cada sección del cierre del mensajero, su nombre accesible y el de la descarga; el botón va junto al título (`InfoEstado`)" },
   "app/(app)/mis-asignaciones/_components/KpisMensajero.tsx": { clase: R, motivo: "KPI del periodo" },
+  "components/private/cierres/fila/fila-gestion-vista.ts": { clase: R, motivo: "SLT-101 (R84): las opciones «<resultado> <n>» del filtro de la lista de gestiones del cierre, como las pestañas con cifra de hoy; cada fila pinta su resultado con `EstadoConInfo` (`FilaGestion.tsx`)" },
   "app/(app)/analitica/_components/entregas/desenlaces-de-fila.ts": { clase: R, motivo: "frase «Entregado: 4 · …» de la columna «En qué terminaron» de `ProductosTabla`: cada trozo es un nombre con la cifra de órdenes del producto que acabaron así (agrega varias órdenes). No tiene botón al lado: el `InfosEstado` de `DineroProductoDetalle` es de OTRA lista (hallazgo 3 de `progress/review_456.md`)" },
   "app/(app)/analitica/_components/entregas/KpisEfectividad.tsx": { clase: R, motivo: "KPI del periodo y su ayuda" },
   "app/(app)/analitica/_components/entregas/madurez-textos.ts": { clase: R, motivo: "KPI del periodo y sus textos" },

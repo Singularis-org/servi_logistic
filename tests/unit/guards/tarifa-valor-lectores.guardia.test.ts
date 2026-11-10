@@ -30,6 +30,10 @@ const LECTORES: Readonly<Record<string, string>> = {
   "lib/repositories/CoberturaRepository.ts": "marca de tarifa general del Excel de cobertura",
   // Mira si una cuenta tiene precios propios antes de eliminarla; no decide ningun importe.
   "lib/repositories/ApiKeyRepository.ts": "decide si una cuenta es eliminable",
+  // SLT-101 (R64, R95, R97): solo los NOMBRES de zona, grupo y vehiculo del valor del que salio un
+  // importe YA congelado (`cierre_detail_concepto`, `gestion_pago_congelado`), para «Tarifa: …» y
+  // «Por tarifa · …» de la fila. Ni `valor` ni `modo`: el importe sale de lo congelado.
+  "lib/repositories/CierresAdminRepository.ts": "nombres del origen de lo congelado en el detalle del cierre",
 };
 
 const PATRONES: readonly RegExp[] = [

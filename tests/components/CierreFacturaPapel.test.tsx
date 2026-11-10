@@ -378,8 +378,10 @@ describe("Feature 223 — ELEGIDA: la forma del DOM y a qué engancha la regla (
         <CierreFacturaResumen cierre={RESUMEN} />
         {conModal ? (
           <Modal open onOpenChange={() => {}} title="Detalle del cierre">
-            {/* Los MISMOS contenedores que monta `CierresAdminModule`: es la ruta con más
-                recortadores de las dos, así que es la que hay que medir. */}
+            {/* Los contenedores que montaba `CierresAdminModule` hasta SLT-100: la cadena con más
+                recortadores que ha tenido la hoja. SLT-100 (D12) quitó la hoja del detalle del
+                admin, pero la regla de impresión es genérica —por pertenencia, no por
+                contenedor— y este sigue siendo el peor caso contra el que medirla. */}
             <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto pr-1">
               <CierreFacturaDetalle
                 cierre={CABECERA}
@@ -575,25 +577,26 @@ describe("Feature 223 — la ruta del MENSAJERO, con la misma regla (R11)", () =
     };
   }
 
-  it("las DOS rutas montan el MISMO componente: por eso una sola regla puede cubrirlas", () => {
+  // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (D12): el detalle del admin
+  // dejó de montar la hoja imprimible (lo sustituyó el detalle único, que no imprime). Hasta
+  // entonces este caso afirmaba que las DOS rutas la montaban; ahora la del mensajero la sigue
+  // montando —y R11 sigue cubriéndola— y la del admin NO, que es lo que D12 decide.
+  it("la ruta del mensajero monta la hoja, y la del admin ya no (SLT-100, D12)", () => {
     const mensajero = codigoSinComentarios(
       path.join("app", "(app)", "cierre-dia", "_components", "CierreDiaModule.tsx"),
     );
     const admin = codigoSinComentarios(
       path.join("app", "(app)", "cierres-admin", "_components", "CierresAdminModule.tsx"),
     );
-    for (const [ruta, codigo] of [
-      ["CierreDiaModule", mensajero],
-      ["CierresAdminModule", admin],
-    ] as const) {
-      expect(
-        codigo,
-        `${ruta} dejó de montar \`CierreFacturaDetalle\`. Si una de las dos rutas pasa a montar ` +
-          "otra hoja, R11 deja de significar lo que dice y hay que releer la regla entera.",
-      ).toMatch(/<CierreFacturaDetalle\b/);
-    }
-    // Y la asimetría que obliga a que la regla sea genérica: el `max-h` es SÓLO del admin.
-    expect(admin).toContain("max-h-[70vh]");
+    expect(
+      mensajero,
+      "CierreDiaModule dejó de montar `CierreFacturaDetalle`. Si la ruta pasa a montar otra " +
+        "hoja, R11 deja de significar lo que dice y hay que releer la regla entera.",
+    ).toMatch(/<CierreFacturaDetalle\b/);
+    expect(admin, "el admin volvió a montar la hoja imprimible: D12 la quitó").not.toMatch(
+      /<CierreFacturaDetalle\b/,
+    );
+    expect(admin).not.toContain("max-h-[70vh]");
     expect(
       mensajero,
       "la ruta del mensajero estrenó el `max-h-[70vh]` del admin: si las dos cadenas se " +

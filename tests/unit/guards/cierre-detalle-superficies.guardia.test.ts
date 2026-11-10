@@ -73,14 +73,14 @@ interface Uso {
  * La etiqueta se corta en el primer `/>` o `>` de nivel superior, contando llaves para no
  * partirla dentro de una expresión con `{}` (las props de esta hoja las llevan casi todas).
  */
-function usosEnApp(): Uso[] {
+function usosEnApp(componente: string = COMPONENTE): Uso[] {
   const usos: Uso[] = [];
   for (const archivo of tsxDeApp()) {
     // El archivo que DECLARA el componente no lo renderiza: se salta por ruta, no por heurística.
     if (path.basename(archivo) === "cierre-factura.tsx") continue;
     const fuente = quitarComentarios(readFileSync(archivo, "utf8"));
 
-    let desde = fuente.indexOf(`<${COMPONENTE}`);
+    let desde = buscarEtiqueta(fuente, componente, 0);
     while (desde !== -1) {
       let llaves = 0;
       let i = desde;
@@ -94,10 +94,17 @@ function usosEnApp(): Uso[] {
         archivo: path.relative(RAIZ, archivo).replaceAll("\\", "/"),
         etiqueta: fuente.slice(desde, i + 1),
       });
-      desde = fuente.indexOf(`<${COMPONENTE}`, i);
+      desde = buscarEtiqueta(fuente, componente, i);
     }
   }
   return usos;
+}
+
+/** La próxima `<Componente` como etiqueta completa (no el prefijo de otro nombre). */
+function buscarEtiqueta(fuente: string, componente: string, desde: number): number {
+  const patron = new RegExp(`<${componente}(?![\\w$])`, "g");
+  patron.lastIndex = desde;
+  return patron.exec(fuente)?.index ?? -1;
 }
 
 const USOS = usosEnApp();
@@ -117,15 +124,14 @@ describe("features 264 y 425 — el detalle del cierre pinta sus secciones en TO
       USOS.length,
       "no se encontró ningún `<CierreFacturaDetalle>` en `app/**`. O el componente se renombró " +
         "—y esta guardia se quedó vigilando un nombre muerto— o el extractor está roto.",
-    ).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(1);
 
-    // Las dos superficies conocidas, nombradas: si mañana aparece una tercera, el caso de abajo
-    // la exige igual, pero esta lista deja constancia de cuáles se revisaron a mano.
+    // Las superficies conocidas, nombradas: si mañana aparece otra, el caso de abajo la exige
+    // igual, pero esta lista deja constancia de cuáles se revisaron a mano. SLT-100 «Detalle de
+    // cierre único en /cierres-admin (mensajeros)»: el admin ya no monta el comprobante; su
+    // superficie es el detalle único, censada en el `describe` de abajo.
     const archivos = [...new Set(USOS.map((u) => u.archivo))].sort();
-    expect(archivos).toEqual([
-      "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
-      "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
-    ]);
+    expect(archivos).toEqual(["app/(app)/cierre-dia/_components/CierreDiaModule.tsx"]);
   });
 
   it.each(USOS.map((u) => [u.archivo, u] as const))(
@@ -166,4 +172,49 @@ describe("features 264 y 425 — el detalle del cierre pinta sus secciones en TO
       }
     }
   });
+});
+
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» — la superficie NUEVA del detalle
+ * del cierre de mensajero: el detalle único, montado por quien lo abre. Sus pestañas «Gestiones» y
+ * «Rechazados por la tienda» pintan las mismas tres listas sin dinero, con piezas propias:
+ * `SeccionSinGestion` (órdenes y marca de registro, 264/R30) y `RechazosDeTiendaCierre` (425/R14).
+ * Mismo defecto que vigila el `describe` de arriba: una superficie que no se las pase compila.
+ */
+const PIEZAS_DETALLE_UNICO = [
+  { componente: "SeccionSinGestion", props: ["ordenes", "registrado"] },
+  { componente: "RechazosDeTiendaCierre", props: ["rechazos"] },
+] as const;
+
+/** Los archivos de `app/**` que montan el detalle único de un cierre de MENSAJERO. */
+const SUPERFICIES_DETALLE_UNICO = usosEnApp("DetalleCierre")
+  .filter((u) => /tipo="mensajero"/.test(u.etiqueta))
+  .map((u) => u.archivo);
+
+describe("SLT-100 — el detalle único del cierre de mensajero pinta las tres listas sin dinero (264/R30, 425/R14)", () => {
+  it("el censo encuentra la superficie del detalle único (autocomprobación)", () => {
+    expect([...new Set(SUPERFICIES_DETALLE_UNICO)].sort()).toEqual([
+      "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
+    ]);
+  });
+
+  it.each(SUPERFICIES_DETALLE_UNICO.map((archivo) => [archivo] as const))(
+    "%s monta las dos piezas y les pasa sus props desde el detalle del servidor",
+    (archivo) => {
+      for (const { componente, props } of PIEZAS_DETALLE_UNICO) {
+        const usos = usosEnApp(componente).filter((u) => u.archivo === archivo);
+        expect(usos.length, `${archivo} monta el detalle único sin \`<${componente}>\``).toBeGreaterThan(0);
+        for (const uso of usos) {
+          for (const prop of props) {
+            const valor = uso.etiqueta.match(new RegExp(`${prop}=\\{([^}]*)\\}`))?.[1];
+            expect(valor, `${archivo} monta <${componente}> sin \`${prop}\``).toBeTruthy();
+            expect(
+              (valor ?? "").trim(),
+              `${archivo} pasa \`${prop}\` con un literal en vez del dato del servidor (R28)`,
+            ).toMatch(/^[A-Za-z_$][\w$]*(?:\.[\w$]+)+$/);
+          }
+        }
+      }
+    },
+  );
 });

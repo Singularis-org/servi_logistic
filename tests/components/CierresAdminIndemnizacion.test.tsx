@@ -35,6 +35,9 @@ import type {
 //   - que un cierre SIN incidentes se apruebe exactamente como hoy (R36): mismo payload de
 //     la 38, sin campos nuevos;
 //   - que los `validation_error` del servidor se pinten POR FILA sin cerrar el sub-modal.
+/** SLT-100 (R39): el botón de aprobar del pie del detalle único, con o sin paquetes que vuelven. */
+const APROBAR_PIE = /^(Aprobar|Revisar paquetes y aprobar)$/;
+
 vi.mock("@/lib/actions/cierres-admin", () => ({
   // Feature 230 (T2.3): el borde de la descarga DETALLADA de esta pantalla. Se añade al doble
   // porque el módulo la importa; ninguna aserción de este archivo cambia.
@@ -236,8 +239,10 @@ async function pulsarAprobar(user: ReturnType<typeof userEvent.setup>) {
     </SWRConfig>,
   );
   await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-  const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-  await user.click(within(dialog).getByRole("button", { name: "Aprobar" }));
+  const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+  // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+  // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+  await user.click(within(dialog).getByRole("button", { name: APROBAR_PIE }));
 }
 
 /** Teclea el monto de una gestión en el sub-modal. */
@@ -634,15 +639,17 @@ describe("R34 — cerrar y reabrir no arrastra montos de otro cierre", () => {
       }),
     );
     await user.click(
-      within(screen.getByRole("dialog", { name: "Detalle del cierre" })).getAllByRole("button", {
+      within(screen.getByRole("dialog", { name: /^Detalle del cierre · / })).getAllByRole("button", {
         name: "Cerrar",
       })[0],
     );
 
     // Reabrir: el campo vuelve vacío y el confirmar, bloqueado.
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(dialog).getByRole("button", { name: "Aprobar" }));
+    const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(dialog).getByRole("button", { name: APROBAR_PIE }));
     const sub = await screen.findByRole("dialog", { name: SUB_MODAL });
     expect(document.getElementById("indemnizacion-gi1")).toHaveValue("");
     expect(within(sub).getByRole("button", { name: CONFIRMAR })).toBeDisabled();

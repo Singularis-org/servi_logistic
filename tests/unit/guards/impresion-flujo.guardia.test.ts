@@ -1036,14 +1036,21 @@ describe("feature 223 — la pantalla no se toca (R12)", () => {
    * descarto por escrito: quitar el `max-h`/`overflow` del modal arregla la impresion y deja el
    * detalle sin barra de desplazamiento, con el contenido saliendose de la caja.
    */
-  it("el modulo del admin conserva su `max-h-[70vh]` y su `overflow-y-auto`", () => {
+  /**
+   * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (D12, R21): el admin ya no
+   * imprime el detalle. Aquí se vigilaba el `max-h-[70vh]` del modal que montaba la hoja; ese modal
+   * se sustituyó por el detalle único (con un solo scroll propio, R11 de SLT-95), así que el caso se
+   * retira y se sustituye por el que hace cierta la decisión: el módulo del admin no monta la hoja
+   * imprimible. El flujo de impresión del mensajero y de la hoja compacta no cambia.
+   */
+  it("el modulo del admin no monta `CierreFacturaDetalle` ni `HojaFactura` (SLT-100, D12)", () => {
     const modulo = codigoSinComentarios(MODULO_ADMIN);
-    expect(modulo, "desaparecio `max-h-[70vh]` del detalle del admin").toContain("max-h-[70vh]");
     expect(
       modulo,
-      "desaparecio `overflow-y-auto`: el papel no se arregla rompiendo el desplazamiento en " +
-        "pantalla. La cadena de ancestros se neutraliza SOLO para el medio impresion.",
-    ).toContain("overflow-y-auto");
+      "el detalle del admin vuelve a montar la hoja imprimible: D12 la quitó (se descarga)",
+    ).not.toMatch(/<CierreFacturaDetalle\b/);
+    expect(modulo).not.toMatch(/<HojaFactura\b/);
+    expect(modulo, "el detalle del admin tiene que ser el detalle único").toMatch(/<DetalleCierre\b/);
   });
 
   it("el `Modal` conserva su `overflow-auto`", () => {

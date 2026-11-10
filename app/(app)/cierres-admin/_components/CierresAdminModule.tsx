@@ -70,16 +70,28 @@ import {
 } from "./cierre-confirmacion-fisica";
 // `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
 // simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
-import { hayGestionEnModeloNuevo, money, moneyTope } from "./cierre-detalle-shared";
-// FICHA 395: las tres cascadas del detalle («de quién es el dinero», lo que la empresa le factura
-// a la tienda y lo que le queda a la empresa). Viven en su propio archivo para que la pantalla de
-// dinero tenga nombre en el censo de identidades (`DineroIdentidadesEnPantalla`).
-import { CascadasCierreMensajero } from "./CascadasCierreMensajero";
+import { moneyTope } from "./cierre-detalle-shared";
+// SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R38): el detalle del cierre es
+// el componente único de SLT-95 (S1). Sustituye al modal que montaba `CascadasCierreMensajero` +
+// `CierreFacturaDetalle`; de la hoja de hoy se reutilizan tal cual la lista de gestiones y la
+// sección de órdenes sin gestionar. SLT-101: la lista de gestiones es la de `fila/` (R90).
+import { CierreFacturaResumen, SeccionSinGestion, type CierreFacturaAudiencia } from "./cierre-factura";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
+import { gestionesEnOrden } from "@/components/private/cierres/fila/fila-gestion-vista";
+import type { AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
+import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
+import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
 import {
-  CierreFacturaResumen,
-  CierreFacturaDetalle,
-  type CierreFacturaAudiencia,
-} from "./cierre-factura";
+  folioDe,
+  modoAdminDe,
+  vistaMensajeroDesdeAdmin,
+} from "@/components/private/cierres/detalle/detalle-cierre-vista";
+import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
+import {
+  COLUMNAS_DESCARGA_DETALLE_CIERRE,
+  filaDescargaDetalleCierre,
+} from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
+import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import {
   DescargarCierresButton,
   type DescargaResumenCierres,
@@ -91,7 +103,6 @@ import { PanelConmutado } from "./PanelConmutado";
 // `FiltrosCierresBarra` también los necesita —agrupa los estados del filtro por la lista en la que
 // aparecen— y las dos superficies tienen que decir LA MISMA palabra.
 import {
-  destinoCierre,
   TAB_PENDIENTES_LABEL,
   TAB_RESUELTOS_LABEL,
 } from "./cierre-labels";
@@ -408,6 +419,8 @@ interface DetalleAbierto {
    * son lo mismo, porque ningún cierre anterior a la ficha pudo llevarse uno.
    */
   rechazosDeTienda: CierreRechazoDeTienda[];
+  /** SLT-100 (R80): quién lo resolvió, para la cabecera del detalle. Solo aprobado/rechazado. */
+  resueltoPorNombre?: string | null;
 }
 
 /**
@@ -707,6 +720,7 @@ export function CierresAdminModule({
         // FICHA 425 (R14): tal cual llega, sin filtrar ni reordenar. Es la misma lista que recibe
         // el mensajero en su comprobante: las dos pantallas pintan lo mismo para el mismo cierre.
         rechazosDeTienda: result.rechazosDeTienda,
+        resueltoPorNombre: result.resueltoPorNombre ?? null,
       });
       return;
     }
@@ -1030,6 +1044,9 @@ export function CierresAdminModule({
       );
       setDestrabar(null);
       refrescarListas();
+      // SLT-100 (R83): destrabado desde el pie del detalle, el detalle se vuelve a leer del
+      // servidor y queda en modo decidir. Desde la cola (detalle cerrado) no se abre nada.
+      if (detalle?.cierre.cierreId === cierre.cierreId) await abrirDetalle(cierre.cierreId);
       return;
     }
     if (result.status === "conflict") {
@@ -1087,6 +1104,8 @@ export function CierresAdminModule({
   const ofrecerAjustePago =
     puedeAjustarPagoMensajero &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
+  /** SLT-101 (R22, R90): la audiencia de la fila única; la central es el `admin` de acceso total. */
+  const audienciaFila: AudienciaFila = audiencia === "admin" ? "central" : "satelite";
 
   /**
    * SLT-56 (R11) — aplica en la pantalla, SIN recargar, lo que devolvió el servidor: el pago nuevo
@@ -1281,146 +1300,62 @@ export function CierresAdminModule({
 
       {/* Los modales viven FUERA de los dos paneles: el detalle se abre desde cualquiera de las
           dos pestañas y no puede quedar escondido con la que no se está mirando. */}
-      {/* ---------- Detalle del cierre (R6-R8) ---------- */}
-      <Modal
-        open={detalle !== null}
-        onOpenChange={(next) => {
-          if (!next) cerrarDetalle();
-        }}
-        title="Detalle del cierre"
-        description={
-          cierreAbierto
-            ? `${cierreAbierto.mensajeroNombre} · ${destinoCierre(cierreAbierto)}`
-            : undefined
-        }
-        // Sin ancho propio: el default del Modal (75% de la pantalla) es el que corresponde
-        // a un detalle con tablas anchas.
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={cerrarDetalle}
-      >
-        {detalle ? (
-          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto pr-1">
-            {/* FICHA 395 — DE QUIÉN ES EL DINERO, ANTES QUE NADA.
-                Va ARRIBA DEL TODO, y el sitio es la mitad del arreglo: lo primero que se leía al
-                abrir este detalle era «Pago a tienda» junto a «Total de la empresa», dos cifras sueltas
-                que invitan a una resta que NO da. Ahora lo primero es la partición —recaudado
-                menos lo facturado igual a lo que gana la tienda—, que cierra siempre, y sólo
-                después el desglose de lo facturado y el pago de hoy. El comprobante entero sigue
-                justo debajo, sin tocar ni una línea.
-                Las tres cascadas no derivan nada: los cuatro campos llegan del servidor. */}
-            <CascadasCierreMensajero
-              mensajeroNombre={detalle.cierre.mensajeroNombre}
-              estado={detalle.cierre.estado}
-              general={detalle.cierre.totales.general}
-              totalesIngreso={detalle.totalesIngreso}
-              totalPagoMensajero={detalle.cierre.totalPagoMensajero}
-              totalIngresoBodegaRechazos={detalle.cierre.totalIngresoBodegaRechazos}
-              pagoTienda={detalle.pagoTienda}
-              cobradoSobreRecaudado={detalle.cobradoSobreRecaudado}
-              ivaFacturado={detalle.ivaFacturado}
-              netoEmpresa={detalle.netoEmpresa}
-              ganaLaTienda={detalle.ganaLaTienda}
-              fleteRechazoYaCobradoATienda={detalle.fleteRechazoYaCobradoATienda}
-              // FICHA 396: «Pago a tienda» y «Gana la tienda» son la SUMA de las tiendas del
-              // cierre. Con dos o más, la cascada lo dice y las desglosa; con una, nada cambia.
-              partesPorTienda={detalle.partesPorTienda}
-              modeloNuevo={hayGestionEnModeloNuevo(detalle.grupos)}
-            />
-
-            {/* El detalle es UNA sola lectura: el comprobante. Reemplazó a los paneles
-                sueltos + las 4 tablas por resultado (R6-R8) sin perder ningún dato: los
-                totales snapshot, el ingreso de la empresa, la liquidación y las gestiones
-                (ahora en pestañas, con su desglose por fila) viven todos ahí dentro. */}
-            <CierreFacturaDetalle
-              cierre={detalle.cierre}
-              grupos={detalle.grupos}
-              totalesIngreso={detalle.totalesIngreso}
-              desgloseIngresoBodegaRechazos={
-                detalle.desgloseIngresoBodegaRechazos
-              }
-              ganancia={detalle.ganancia}
-              // SL-39 (menor 1 de la revisión): el renglón del IVA en «Liquidación».
-              ivaFacturado={detalle.ivaFacturado}
-              pagoTienda={detalle.pagoTienda}
-              // FICHA 481: `satelite` no ve el fulfillment de la fila; todo lo demás, igual.
-              audiencia={audiencia}
-              // Feature 264 (R30): las MISMAS dos props que pasa el módulo del mensajero. El
-              // componente es uno; que pintara la sección en una superficie y la callara en la
-              // otra es el arreglo a medias que se corrigió en la 263.
-              ordenesSinGestion={detalle.ordenesSinGestion}
-              sinGestionRegistrado={detalle.sinGestionRegistrado}
-              // FICHA 425 (R14): la MISMA prop que pasa el módulo del mensajero, del resultado del
-              // servidor. La vigila la guardia de superficies del detalle del cierre.
-              rechazosDeTienda={detalle.rechazosDeTienda}
-              onVerEvidencia={setEvidencia}
-              // Ausente cuando no se puede corregir: la hoja vuelve a ser de solo lectura sin
-              // que la fila tenga que saber nada de roles ni de estados.
-              onCorregirPagos={ofrecerCorreccionPagos ? setCorrigiendo : undefined}
-              // FICHA 398 (R16): ausente cuando el cierre no está abierto o el rol no corrige
-              // resultados. La fila no sabe nada de estados ni de roles: recibe el callback o no.
-              onCorregirResultado={
-                ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined
-              }
-              // SLT-56 (R21): ausente en un cierre no abierto o para el rol que no ajusta.
-              onAjustarPago={ofrecerAjustePago ? setAjustandoPago : undefined}
-            />
-
-            {/* Pedido humano (2026-08-19): el editor del desglose, el MISMO que usa el
-                mensajero. Tras corregir se RELEE el detalle del servidor —los totales del
-                cierre los recalculó él en la misma transacción— y se refrescan las listas,
-                porque el total del cierre también cambia de balde en la tabla. */}
-            <CorregirPagosDialog
-              gestion={corrigiendo}
-              onOpenChange={(open) => {
-                if (!open) setCorrigiendo(null);
-              }}
-              onCorregido={async () => {
-                if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
-                refrescarListas();
-              }}
-            />
-
-            {/* FICHA 398 (T4.2, R16): la corrección del RESULTADO de una entrega que nunca
-                ocurrió. Mismo trato que su hermano de arriba: tras corregir se RELEE el detalle
-                del servidor —los seis totales del cierre los recalculó él en la misma
-                transacción— y se refrescan las listas, porque el total del cierre también cambia
-                en la tabla de la que se abrió. */}
-            <CorregirResultadoDialog
-              gestion={corrigiendoResultado}
-              onOpenChange={(open) => {
-                if (!open) setCorrigiendoResultado(null);
-              }}
-              onCorregido={async () => {
-                if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
-                refrescarListas();
-              }}
-            />
-
-            {/* SLT-56 (R11/R21): el ajuste del pago al mensajero. Al volver `ok` se pinta YA lo
-                que devolvió el servidor (pago de la gestión, su marca y el total del cierre) y
-                después se relee el detalle —lo que deriva del total lo recalcula él— y se
-                refrescan las listas, donde el total del cierre también se ve. */}
-            <AjustarPagoMensajeroDialog
-              gestion={ajustandoPago}
-              onOpenChange={(open) => {
-                if (!open) setAjustandoPago(null);
-              }}
-              onAjustado={(r) => {
-                aplicarAjusteLocal(r);
-                // Sin `await`: lo que el usuario necesita ver ya está pintado; la relectura
-                // llega detrás y no deja el botón del diálogo esperando.
-                if (cierreAbierto) void abrirDetalle(cierreAbierto.cierreId);
-                refrescarListas();
-              }}
-            />
-
-            {/* ---------- Feature 172 (T E.2, R19/R27/R28/R49): pago al mensajero ----------
-                El SEGUNDO camino del pago: un cierre aprobado se puede liquidar en cualquier
-                momento posterior desde su propio detalle. Tras registrar —o anular (T F.5)—
-                el pendiente se vuelve a LEER del servidor (`abrirDetalle`); no se recalcula
-                en el cliente. `puedeAnular` sale del MISMO permiso que pagar (R81). */}
-            {ofrecerPagoEnDetalle && cierreAbierto ? (
+      {/* ---------- Detalle del cierre (SLT-100: R38, R79) ----------
+          El detalle único de SLT-95, con `tipo` mensajero y `marco` modal. El modo sale del estado
+          (`modoAdminDe`); qué botón pinta el pie lo decide `accionesDe` con los callbacks que se
+          pasan, y estos siguen saliendo de los `ofrecer*`/`esResoluble` de hoy. La impresión
+          desaparece (D12): quien la necesite usa «Descargar» en «Gestiones» (R21). */}
+      {detalle && cierreAbierto ? (
+        <DetalleCierre
+          tipo="mensajero"
+          marco="modal"
+          detalle={vistaMensajeroDesdeAdmin(detalle)}
+          audiencia={audiencia === "admin" ? "central" : "satelite"}
+          modo={modoAdminDe(cierreAbierto.estado)}
+          pestanas={{
+            gestiones: (
+              <div className="flex flex-col gap-4">
+                {/* SLT-101 (R90): la lista y la fila únicas con la audiencia del actor; «Descargar»
+                    en la fila de los filtros. Los callbacks son los de hoy. */}
+                <GestionesCierre
+                  gestiones={gestionesEnOrden(detalle.grupos).map((gestion) => ({ gestion }))}
+                  audiencia={audienciaFila}
+                  // FICHA 481 — fulfillment SOLO para la central.
+                  quienMiraEsCentral={audiencia === "admin"}
+                  congeladoAt={cierreAbierto.solicitadoAt}
+                  onVerEvidencia={setEvidencia}
+                  // Ausentes cuando no se puede corregir o ajustar (pedido 2026-08-19, 398, SLT-56).
+                  acciones={{
+                    corregirMetodos: ofrecerCorreccionPagos ? setCorrigiendo : undefined,
+                    corregirResultado: ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined,
+                    ajustarPago: ofrecerAjustePago ? setAjustandoPago : undefined,
+                  }}
+                  descargar={
+                    // R21/R82/R91: las gestiones del detalle ya leído, todas, sea cual sea el filtro.
+                    <DescargarDatasetButton
+                      titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
+                      columnas={COLUMNAS_DESCARGA_DETALLE_CIERRE}
+                      obtenerFilas={async () => ({
+                        status: "ok",
+                        filas: Object.values(detalle.grupos)
+                          .flat()
+                          .map((g) => filaDescargaDetalleCierre(g, audienciaFila)),
+                      })}
+                    />
+                  }
+                />
+                {/* R19 — las órdenes que el corte pasó a «Novedad interna» (264), con su marca. */}
+                <SeccionSinGestion
+                  ordenes={detalle.ordenesSinGestion}
+                  registrado={detalle.sinGestionRegistrado}
+                />
+              </div>
+            ),
+            // R17 — siempre visible, también con 0 (D11, D27).
+            rechazos: <RechazosDeTiendaCierre rechazos={detalle.rechazosDeTienda} />,
+            // R18 — Feature 172 (T E.2): solo aprobado y con permiso de pagar. Tras registrar o
+            // anular, el pendiente se vuelve a LEER del servidor; no se recalcula en el cliente.
+            pago: ofrecerPagoEnDetalle ? (
               <PagoMensajeroSeccion
                 cierreId={cierreAbierto.cierreId}
                 mensajeroNombre={cierreAbierto.mensajeroNombre}
@@ -1431,34 +1366,71 @@ export function CierresAdminModule({
                   refrescarListas();
                 }}
               />
-            ) : null}
+            ) : undefined,
+          }}
+          acciones={{
+            // R39 — los flujos de hoy: el sub-modal de motivo y `pedirAprobacion`, que encadena
+            // la confirmación física y la indemnización. Solo en un `solicitado` (111/R15).
+            rechazar: esResoluble
+              ? () => {
+                  setMotivo("");
+                  setMotivoError(null);
+                  setRechazando(true);
+                }
+              : undefined,
+            aprobar: esResoluble ? pedirAprobacion : undefined,
+            // R83 — el mismo diálogo y la misma `confirmarDestrabar` que la cola.
+            destrabar:
+              cierreAbierto.estado === "vencido" ? () => setDestrabar(cierreAbierto) : undefined,
+          }}
+          onCerrar={cerrarDetalle}
+        />
+      ) : null}
 
-            {/* Acciones: solo en un cierre `solicitado` (feature 111/R15); histórico y
-                `vencido` = sin decisión aquí (el `vencido` se destraba desde la cola, R16). */}
-            {esResoluble ? (
-              <section
-                aria-label="Decisión del cierre"
-                className="flex flex-wrap justify-end gap-3 border-t pt-4"
-              >
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => {
-                    setMotivo("");
-                    setMotivoError(null);
-                    setRechazando(true);
-                  }}
-                >
-                  Rechazar
-                </Button>
-                <Button type="button" onClick={pedirAprobacion}>
-                  Aprobar
-                </Button>
-              </section>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+      {/* Pedido humano (2026-08-19): el editor del desglose, el MISMO que usa el mensajero. Tras
+          corregir se RELEE el detalle del servidor —los totales del cierre los recalculó él en la
+          misma transacción— y se refrescan las listas. SLT-100: hermano del detalle, no hijo. */}
+      <CorregirPagosDialog
+        gestion={corrigiendo}
+        onOpenChange={(open) => {
+          if (!open) setCorrigiendo(null);
+        }}
+        onCorregido={async () => {
+          if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
+          refrescarListas();
+        }}
+      />
+
+      {/* FICHA 398 (T4.2, R16): la corrección del RESULTADO de una entrega que nunca ocurrió. Mismo
+          trato que su hermano de arriba: tras corregir se RELEE el detalle y se refrescan las
+          listas. */}
+      <CorregirResultadoDialog
+        gestion={corrigiendoResultado}
+        onOpenChange={(open) => {
+          if (!open) setCorrigiendoResultado(null);
+        }}
+        onCorregido={async () => {
+          if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
+          refrescarListas();
+        }}
+      />
+
+      {/* SLT-56 (R11/R21): el ajuste del pago al mensajero. Al volver `ok` se pinta YA lo que
+          devolvió el servidor y después se relee el detalle —lo que deriva del total lo recalcula
+          él— y se refrescan las listas. */}
+      <AjustarPagoMensajeroDialog
+        gestion={ajustandoPago}
+        onOpenChange={(open) => {
+          if (!open) setAjustandoPago(null);
+        }}
+        onAjustado={(r) => {
+          aplicarAjusteLocal(r);
+          // Sin `await`: lo que el usuario necesita ver ya está pintado; la relectura llega
+          // detrás y no deja el botón del diálogo esperando.
+          if (cierreAbierto) void abrirDetalle(cierreAbierto.cierreId);
+          refrescarListas();
+        }}
+      />
 
       {/* ---------- Sub-modal de rechazo con motivo obligatorio (R11) ---------- */}
       <Modal

@@ -51,6 +51,11 @@ export interface FilterOption {
    * calendario y emite sus dos extremos. Sin el, el atajo no se ofrece.
    */
   defaultRange?: { desde: string; hasta: string };
+  /**
+   * SLT-101 (S3-4) — solo en `presentacion: "pastillas"`: la opcion se pinta con borde y texto de
+   * aviso («Con señales» de la lista de gestiones del cierre). Ausente = el aspecto normal.
+   */
+  tono?: "aviso";
 }
 
 export interface FilterDef {
@@ -80,6 +85,15 @@ export interface FilterDef {
    * texto que no lo declara emite en cuanto haya algo escrito.
    */
   minChars?: number;
+  /**
+   * SLT-101 (S3-4) — solo en `single`: COMO se ofrecen las opciones. `"desplegable"` (default) es
+   * el `Select` de siempre. `"pastillas"` las pinta TODAS a la vista, como un grupo con el nombre
+   * `label` y un boton por opcion que anuncia si esta activa (`aria-pressed`); elegir una sustituye
+   * a la anterior (R7) y, sin nada elegido, la PRIMERA se marca activa. Existe para el filtro por
+   * resultado de las gestiones de un cierre, donde el canvas pide ver los conteos de un vistazo.
+   * Ausente, el control es exactamente el de antes.
+   */
+  presentacion?: "desplegable" | "pastillas";
 }
 
 /** Salida agnostica y uniforme (R16/R18/R19/R20). */
@@ -844,6 +858,43 @@ export function FilterComponent({
               />
               {filtro.label}
             </label>
+          );
+        }
+
+        if (filtro.kind === "single" && filtro.presentacion === "pastillas") {
+          // SLT-101 (S3-4): sin seleccion, la primera opcion es la activa («Todas»).
+          const activa = valores[0] ?? visibles[0]?.value;
+          return (
+            <div
+              key={filtro.key}
+              role="group"
+              aria-label={filtro.label}
+              className="flex flex-wrap items-center gap-2"
+            >
+              {visibles.map((o) => {
+                const pulsada = o.value === activa;
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    aria-pressed={pulsada}
+                    disabled={inhabilitado}
+                    // R7: elegir una opcion SUSTITUYE a la anterior (nunca coexisten dos).
+                    onClick={() => fijar(filtro.key, [o.value])}
+                    className={cn(
+                      "h-8 rounded-full border px-3 text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      pulsada
+                        ? "border-foreground bg-foreground text-background"
+                        : o.tono === "aviso"
+                          ? "border-warning bg-card text-warning-strong hover:bg-muted"
+                          : "border-border bg-card text-foreground hover:bg-muted",
+                    )}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
           );
         }
 

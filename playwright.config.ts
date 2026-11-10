@@ -150,6 +150,8 @@ export default defineConfig({
         // Tarifas activadas + valor propio + plan porcentual, en el mismo cierre aprobado. Usa el superadmin de prueba.
         "cierre-modelo-nuevo-plan-porcentual",
         "fulfillment-cobro-por-paquete",
+        // SLT-100 R77: lo que ven la central y la satélite en el detalle único, modelos viejo y nuevo.
+        "cierres-rediseno",
       ),
     },
   ],
