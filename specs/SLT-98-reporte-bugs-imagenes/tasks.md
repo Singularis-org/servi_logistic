@@ -20,7 +20,7 @@
   - **Hecho:**
     - `prisma validate` y `pnpm run typecheck` en verde;
     - `prisma migrate deploy` y `pnpm run db:rollback` aplican y revierten sobre una base desechable.
-- [ ] **T2. Clasificación** (dep. T1; R18).
+- [x] **T2. Clasificación** (dep. T1; R18).
   - **Archivo:** `BugReportImage` en `MODELOS_DE_PLATAFORMA` (`lib/db/modelos-de-negocio.ts`).
   - **Hecho:** `pnpm run test:guardias` en verde (`organizacion-en-modelos`, `rls-por-empresa`,
     `plataforma-solo-en-lista`).
