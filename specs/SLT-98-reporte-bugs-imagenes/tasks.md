@@ -117,6 +117,61 @@
     E2E de CI en el PR a `dev`. La comprobación en preview es **condición de merge** y queda anotada en
     `progress/features/SLT-98.md`.
 
+## Bloque F — Tope diario de imágenes (enmienda del 2026-11-10, hallazgo m1; design §16)
+
+> Se arregla en este mismo PR (decisión «Tope diario»). Lo marcado *(propuesta)* en R24–R31 sigue la
+> recomendación de P5–P11. Si el humano cambia alguna, se ajusta el spec antes de T12. Reparto:
+> `backend_dev` T12–T14; `frontend_dev` T15; el que acabe cierra T16.
+
+- [ ] **T12. Tabla del cupo** (dep. —; R26, R31).
+  - **Archivos:**
+    - `db/migrations/20261112120000_bug_report_image/migration.sql`: `bug_report_upload_quota` con su PK
+      compuesta, el `CHECK`, la FK, la RLS y el `REVOKE` (design §16.2);
+    - `db/migrations/20261112120000_bug_report_image/down.sql`: su `DROP TABLE IF EXISTS`, antes del de
+      `bug_report_image`;
+    - `db/schema.prisma`: el modelo `BugReportUploadQuota` y su inverso en `Usuario`;
+    - `lib/db/modelos-de-negocio.ts`: la entrada en `MODELOS_DE_PLATAFORMA`.
+  - **Hecho:**
+    - `prisma validate` y `pnpm run typecheck` en verde;
+    - `prisma migrate deploy` y `pnpm run db:rollback` aplican y revierten sobre una base desechable;
+    - `pnpm run test:guardias` en verde, con `organizacion-en-modelos`, `rls-por-empresa`,
+      `plataforma-solo-en-lista` y `catalogo-postgres-acota-esquema`;
+    - `tests/integration/db/schema-drift-saneamiento.test.ts` en verde, con el censo de `updated_at` en 18;
+    - anotado en `progress/impl_SLT-98.md` qué bases compartidas ya tenían `20261112120000` aplicada y
+      cómo se rehicieron (design §15).
+- [ ] **T13. Repositorio del cupo** (dep. T12; R24–R27, R31).
+  - **Archivos:**
+    - `lib/interfaces/repositories/ICupoImagenesReporte.ts` (nuevo);
+    - `lib/repositories/BugReportRepository.ts`: `consumir`, `usados` y `devolver`, en `comoPlataforma`
+      con `MOTIVO_CUPO`, cada uno con una sola sentencia (design §16.3);
+    - `lib/config/reporte-bug.ts`: `IMAGENES_POR_DIA_MAX = 21`.
+  - **Hecho:** `tests/integration/db/bug-report.test.ts` en verde **con `DATABASE_URL`** (un verde sin
+    base no vale), con los casos de R24, R26, R27 y R31 del mapa. `consultas-concurrentes-en-transaccion`
+    y `sql-a-mano-por-empresa` siguen en verde.
+- [ ] **T14. Servicio y action** (dep. T13; R24, R25, R27, R28, R30).
+  - **Archivos:**
+    - `lib/interfaces/services/IReporteBugService.ts`: la variante `tope_diario_imagenes`;
+    - `lib/services/ReporteBugService.ts`: `cupo` como tercer parámetro, `ahora` al final y el
+      `prepararSubidas` de design §16.4;
+    - `lib/actions/reporte-bug.ts`: la variante en el resultado y la composition root con `repo` dos
+      veces.
+  - **Hecho:** `tests/unit/services/reporte-bug-service.test.ts` y `tests/unit/actions/reporte-bug-action.test.ts`
+    en verde, con los casos del mapa, y `pnpm run typecheck` en verde.
+- [ ] **T15. Panel** (dep. T14; R28, R29, R30).
+  - **Archivo:** `components/shared/ReporteBugBoton.tsx`: la respuesta `tope_diario_imagenes` y los dos
+    textos de design §16.5.
+  - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` en verde, con los casos del mapa.
+- [ ] **T16. E2E, documentación y cierre** (dep. T12–T15; R24, R29, R30).
+  - **Archivos:**
+    - en `e2e/reporte-de-bugs.spec.ts`, el test de design §16.6;
+    - en `docs/architecture.md`, la viñeta del tope (design §14).
+  - **Hecho:**
+    - dos corridas seguidas de `e2e/reporte-de-bugs.spec.ts` sobre una base desechable, con 0 failed, 0
+      skipped y 0 flaky, y la salida pegada en `progress/impl_SLT-98.md`;
+    - `./init.sh` en verde, o `gate-completo` si el humano lo sustituye, como en T11;
+    - `node scripts/tamano-pr.mjs` sin rojo, y la línea `tamano-pr-aceptado` renovada por el leader con la
+      cifra real (P12).
+
 ## Mapa R → test
 
 | R | Test |
@@ -144,6 +199,14 @@
 | R21 | `tests/unit/services/reporte-bug-service.test.ts` «si firmar lanza o le falta una ruta, el correo sale con «Imagen {n}: no se pudo generar el enlace…» y la respuesta es enviado»; `tests/unit/services/email/plantilla-reporte-bug.test.ts` «una imagen sin url lleva la nota en su lugar» |
 | R22 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` «detalle firma las rutas con 86400 segundos dentro de conEmpresa de la empresa del reporte, en cada llamada, y el DTO no lleva rutas ni empresa» y «sin imágenes no llama al almacén»; `tests/components/ReporteDetalle.test.tsx` «el bloque Imágenes muestra una miniatura por imagen en orden, con alt «Imagen {n} del reporte» y enlace a la URL, y sin imágenes «Este reporte no trae imágenes.»»; `tests/integration/db/bug-report.test.ts` «detalle trae las imágenes por position y la empresa»; `e2e/reporte-de-bugs.spec.ts` (pasos 4 y 5) |
 | R23 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` «si firmar lanza, todas las url son null y el detalle se devuelve igual»; `tests/components/ReporteDetalle.test.tsx` «una imagen con url null muestra «No se pudo cargar esta imagen.» y el resto del detalle» |
+| R24 | `tests/integration/db/bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21»; `tests/unit/services/reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica y el número de imágenes, antes de tocar el almacén» y «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el panel avisa, no sube nada y el reporte no se guarda» |
+| R25 | `tests/integration/db/bug-report.test.ts` «R25 — con 19 usados, consumir 3 devuelve null y el día sigue en 19»; `tests/unit/services/reporte-bug-service.test.ts` «R25 — si el cupo no alcanza, devuelve tope_diario_imagenes con las disponibles (21 − usados) y no llama al almacén»; `tests/unit/actions/reporte-bug-action.test.ts` «R25 — tope_diario_imagenes pasa tal cual, solo con disponibles» |
+| R26 | `tests/integration/db/bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario dejan exactamente 21 concedidos y 9 null» y «R26 — dos consumos simultáneos de 5 con 13 usados: entra uno solo y el día queda en 18» |
+| R27 | `tests/integration/db/bug-report.test.ts` «R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada»; `tests/unit/services/reporte-bug-service.test.ts` «R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original» |
+| R28 | `tests/unit/services/reporte-bug-service.test.ts` «R28 — enviar no consume ni lee el cupo»; `tests/components/ReporteBugBoton.test.tsx` «R28 — «Reintentar» tras un PUT fallido pide permiso solo para la que falló: la que ya subió no vuelve a la action de permisos» |
+| R29 | `tests/components/ReporteBugBoton.test.tsx` «R29 — con tope_diario_imagenes y 0 disponibles no hay PUT ni envío, sale «Llegaste al límite de 21 imágenes por día…» y el texto y las imágenes siguen en su estado» y «R29 — con 2 disponibles y 3 por subir el aviso dice «Hoy puedes subir 2 más de las 21 imágenes por día. Quita 1 para poder enviar.»»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el panel avisa, no sube nada y el reporte no se guarda» |
+| R30 | `tests/unit/services/reporte-bug-service.test.ts` «R30 — con el cupo lleno, enviar un reporte sin imágenes da enviado»; `tests/components/ReporteBugBoton.test.tsx` «R30 — tras el aviso de tope, quitar las imágenes deja «Enviar» habilitado y manda el reporte sin pedir permisos»; `e2e/reporte-de-bugs.spec.ts` (el mismo test: quitar la imagen y enviar da «Gracias, recibimos tu reporte») |
+| R31 | `tests/integration/db/bug-report.test.ts` «R31 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_upload_quota dan 42501, y la tabla tiene RLS en public»; `tests/unit/actions/reporte-bug-action.test.ts` «R31 — pedir permisos con un campo usuarioId, fecha o cupo de más da validation_error sin llamar al servicio» |
 
 ## Archivos esperados
 
@@ -179,6 +242,37 @@
 - `tests/unit/e2e/storage-falso.test.ts`
 - `tests/components/ReporteBugBoton.test.tsx`
 - `tests/components/ReporteDetalle.test.tsx`
+- `lib/interfaces/repositories/ICupoImagenesReporte.ts`
+
+**Enmienda del tope diario (T12–T16):** solo `lib/interfaces/repositories/ICupoImagenesReporte.ts` es
+nuevo en el PR. Los demás archivos que toca ya estaban en esta lista: la migración, `db/schema.prisma`,
+`lib/db/modelos-de-negocio.ts`, `lib/config/reporte-bug.ts`, `lib/repositories/BugReportRepository.ts`,
+`lib/interfaces/services/IReporteBugService.ts`, `lib/services/ReporteBugService.ts`,
+`lib/actions/reporte-bug.ts`, `components/shared/ReporteBugBoton.tsx`, `docs/architecture.md`,
+`e2e/reporte-de-bugs.spec.ts`, `tests/integration/db/bug-report.test.ts`,
+`tests/unit/services/reporte-bug-service.test.ts`, `tests/unit/actions/reporte-bug-action.test.ts` y
+`tests/components/ReporteBugBoton.test.tsx`.
+
+En total quedan **35 archivos** (34 reales tras F2.1, más 1) y unas **3950 líneas** (3374 + ~580). Están
+por encima del aviso del 80% y por debajo del máximo de 40. La línea `tamano-pr-aceptado` se renueva
+(P12).
+
+Reparto aproximado de las ~580 líneas:
+
+| Parte | Líneas |
+|---|---|
+| Migración y modelo | ~50 |
+| Repositorio, interfaz y configuración | ~80 |
+| Servicio y action | ~50 |
+| Panel | ~40 |
+| Documentación | ~5 |
+| Tests de integración | ~130 |
+| Tests de servicio y action | ~130 |
+| Tests de componente | ~60 |
+| E2E | ~40 |
+
+`lib/interfaces/repositories/IBugReportRepository.ts` y `lib/db/excepciones-aislamiento.ts` siguen sin
+cambiar (design §16.3).
 
 **Añadidos en la implementación (T6, T8):** dos tests de SLT-97 cuyos dobles construyen tipos o el
 servicio que cambian aquí, ajustados solo para compilar:

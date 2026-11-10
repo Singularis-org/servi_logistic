@@ -33,6 +33,17 @@ firmada directa en el repo:** todas las subidas de hoy pasan por el servidor (`S
 | Doble de Storage del E2E | `e2e/_storage-falso/servidor.mjs` y su test de contrato `tests/unit/e2e/storage-falso.test.ts` | Se le enseña la subida firmada y CORS (§10). |
 | `<img>` con URL firmada y `eslint-disable-next-line @next/next/no-img-element` | `app/(app)/incidentes/_components/IncidentesAdminModule.tsx` | Las miniaturas del detalle. |
 
+**Búsqueda de la enmienda del tope diario (2026-11-10, hallazgo m1).** El grafo sigue sin índice para este
+worktree (`index_status`: proyecto no encontrado), así que se buscó con Grep: «rate limit», «tope»,
+«advisory», `FOR UPDATE`, `ON CONFLICT` y «uso diario». No hay ningún tope de subidas en el repo. Hay dos
+moldes:
+
+| Pieza | Dónde | Uso aquí |
+|---|---|---|
+| Contador diario con tope atómico en una sola sentencia (`INSERT … ON CONFLICT … DO UPDATE … WHERE < tope RETURNING`) | `AsistenteUsoRepository.consumirUnaConsulta` y la migración `20260920120000_asistente_uso_diario` (ficha 436) | El molde de `bug_report_upload_quota` (§16). |
+| Día calendario de Costa Rica como texto `YYYY-MM-DD`, escrito con `::date` | `fechaCalendarioCR` (`lib/utils/fecha-cr.ts`) | La fecha del conteo *(propuesta, P5)*. |
+| `ResetRateLimiter`, una ventana deslizante en memoria del proceso | `lib/utils/reset-rate-limit.ts` (postulación, rastreo público) | **No se reutiliza:** cuenta por instancia, y en Vercel cada función tiene la suya. Los dos usos que tiene llevan escrito «riesgo aceptado: acota al torpe, no al decidido». Aquí el tope es la defensa (alternativa I, §12). |
+
 **Lo que NO se reutiliza, y por qué:**
 - **`SupabaseFileStorage` y `SupabaseSignedUrlProvider`.** Suben por el servidor o solo firman lectura.
   Ninguno pide un permiso de subida ni crea el bucket. Añadirles esos métodos los cambiaría para las
@@ -51,7 +62,9 @@ ReporteBugBoton (cliente)
   │ «Enviar» («Subiendo imágenes…», R6)
   │  1. prepararSubidaImagenesReporteAction({ imagenes: [{ tipo, tamano }] })  solo las aún no subidas (R9)
   │       sesión → zod → ReporteBugService.prepararSubidas
+  │         → cupo.consumir(usuario, día CR, n, 21)  ¿no cabe? → { status: "tope_diario_imagenes" } (R24–R26, §16)
   │         → conEmpresa(org) → almacen.prepararSubida("<usuarioId>/<imagenId>.<ext>") por imagen
+  │             si falla → cupo.devolver(usuario, día, n) y error (R27)
   │             createSignedUploadUrl; si «Bucket not found» → createBucket privado con límites → reintento (R16)
   │       ← { status: "listas", permisos: [{ imagenId, url }] }
   │  2. por cada una, en paralelo: fetch(url, { method: "PUT", body: archivo, … })  → Storage
@@ -121,6 +134,8 @@ políticas es la segunda red, como en `bug_report`.
   position)`, la FK, la RLS y el `REVOKE`.
 - **`down.sql`:** `DROP TABLE IF EXISTS "bug_report_image";` y nada más, porque no se crea ningún tipo.
   Bajarla deja en el bucket los archivos sin fila: es lo esperado de un down.
+- **Enmienda del tope (§16.2):** la misma carpeta crea también `bug_report_upload_quota`, y su `down.sql`
+  la borra primero.
 
 Dispara `gate.disparadores` (esquema y migraciones): corren en local los tests de migración y
 `verificar-rls`.
@@ -235,6 +250,7 @@ En `lib/actions/reporte-bug.ts`, junto a `enviarReporteBugAction`. Es de núcleo
   | { status: "unauthenticated" } | { status: "forbidden" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "error" }
+  | { status: "tope_diario_imagenes"; disponibles: number }   // enmienda del tope, §16.4
   ```
 
 - **Fallo:** `{ status: "error" }`, y en el log `[reporte-bug] fallo al preparar la subida
@@ -637,6 +653,27 @@ Todo se espera con `expect`, nunca con `waitForTimeout`. Las descripciones lleva
   de borrado para el navegador, con su puerta y su test, y una subida de más en cada reintento.
   Reutilizar es más simple y no deja más resto.
 
+Alternativas del tope diario (§16):
+- **I. `ResetRateLimiter` en memoria, como la postulación y el rastreo público.**
+  - Cuenta por instancia, y en Vercel cada función tiene la suya: con varias instancias, el tope real es
+    21 × instancias. Un arranque en frío lo vuelve a cero.
+  - El test afirmaría sobre un `Map`, no sobre el sistema, y R26 no se podría probar.
+  - Es la misma razón por la que la ficha 436 lo descartó para el asistente.
+- **J. Contar las filas de `bug_report_image` del usuario en el día.** No necesita tabla nueva, pero solo
+  ve lo enviado. Quien llena el bucket sin enviar, que es m1, no deja fila: no tapa nada.
+- **K. Ventana móvil de 24 horas: una fila por permiso con su hora, y sumar las últimas 24 horas.**
+  - Para que dos peticiones a la vez no se salten el tope (R26), hace falta un cerrojo por usuario
+    (`pg_advisory_xact_lock`) y una suma con su escritura en la misma transacción. El molde de la ficha 436
+    lo resuelve con una sola sentencia sin cerrojo.
+  - La tabla crece con cada permiso y pide una purga.
+  - Queda como alternativa si el humano elige «ventana móvil» en P5.
+- **L. Firmar primero y contar después, sin devolver nada.** Así no hace falta `devolver` (R27): si la
+  suma no cabe, las URL no salen del servidor. A cambio, cada petición de quien ya está en el tope llama a
+  Storage hasta 5 veces, que es el abuso al revés. Contar primero deja a Storage fuera del rechazo (R25).
+- **M. Leer el conteo y después sumar (`SELECT` y luego `UPDATE`) en el servicio.** Dos peticiones a la vez
+  leerían el mismo número y las dos pasarían: R26 fallaría, y ningún test con dobles lo vería. La suma
+  condicionada va en la base, en una sola sentencia.
+
 ## 13. Dependencias
 
 Ninguna librería nueva (decisión «¿Librería nueva? No»). `createSignedUploadUrl` y `createBucket` con
@@ -653,6 +690,9 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   por tamaño y firma de bytes.
 - Se leen solo por enlace firmado de 24 h, en el correo y en el detalle. El superadmin firma con
   `conEmpresa` de la empresa del reporte.
+- Tope de 21 permisos de subida por usuario y día (§16). El conteo vive en `bug_report_upload_quota`, de
+  plataforma, con RLS sin políticas y `REVOKE ALL`, y la suma condicionada es una sola sentencia, como en
+  `asistente_uso_diario`.
 
 ## 15. Riesgos
 
@@ -674,6 +714,20 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   «Subiendo imágenes…» (R6).
 - **Tamaño:** 32 archivos, justo en el aviso del 80%, y unas 2100-2400 líneas. El exceso de líneas está
   aceptado *(P2)*. Un archivo más de lo previsto pasa el aviso, sin llegar a rojo.
+  - **Real tras F2.1:** 34 archivos y 3374 líneas, aceptadas por el humano.
+  - **Con la enmienda del tope (§16):** 35 archivos y unas 3950 líneas. Un solo archivo nuevo
+    (`ICupoImagenesReporte.ts`); el resto ya estaba en el PR. Por debajo del máximo de 40, pero hay que
+    renovar la línea `tamano-pr-aceptado` (P12).
+- **Migración ya aplicada en alguna base compartida (tope, §16.2).** La tabla nueva entra en la carpeta
+  `20261112120000_bug_report_image`, que no está mergeada. Una base que ya la aplicó (de desarrollo
+  local o de preview) no la vuelve a correr: `migrate deploy` la da por hecha, y `bug_report_upload_quota`
+  no existiría. Antes de desplegar, se mira `_prisma_migrations` en cada base compartida que la tenga, y se
+  rehace con `db:rollback` + `migrate deploy`. Las desechables del E2E y del CI nacen limpias.
+- **Medianoche *(P5)*.** Con día calendario, alguien puede subir 21 imágenes a las 23:59 y otras 21 a las
+  00:00. Es lo aceptado en la recomendación de P5.
+- **El cupo se gasta con `PUT` fallidos *(P6)*.** Cada reintento de una imagen cuyo `PUT` falló pide un
+  permiso nuevo y cuenta. Con fallos de red repetidos, un usuario legítimo puede llegar al tope. El aviso
+  lo dice, y el reporte sin imágenes sigue saliendo *(R30, P8)*.
 - **Tests de SLT-87 y SLT-97 que cambian de sentido:**
   - `ReporteBugBoton.test.tsx` afirma que no hay campo de archivos (R4 de SLT-87, sustituido aquí);
   - en `tests/integration/db/bug-report.test.ts`, el `toEqual` del detalle de R14 de SLT-97 («R14 —
@@ -683,3 +737,208 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   - el test de R4 de SLT-97 mira el constructor.
 
   Se ajustan en esta rama, citando este spec.
+
+## 16. Tope diario de imágenes (enmienda del 2026-11-10, hallazgo m1; R24–R31)
+
+Lo decidió el humano: **21 por día por usuario**. Su texto fue «21 al dia como limite». Lo marcado
+*(P5)* a *(P12)* sigue la recomendación de la pregunta abierta del mismo nombre, en `requirements.md`.
+
+### 16.1 Qué se cuenta y dónde
+
+- **Se cuentan los permisos concedidos** por `prepararSubidas` *(P6)*. Hoy esos permisos no dejan
+  ninguna fila hasta el envío. Lo que se persiste ahora es **un contador**, no los permisos ni las rutas:
+  una fila por usuario y día con cuántos permisos se le dieron.
+- **La fecha** es `fechaCalendarioCR(this.ahora())`, del servidor *(P5)*. El cliente no la manda (R31).
+- **El tope** es `IMAGENES_POR_DIA_MAX = 21` en `lib/config/reporte-bug.ts`, con el comentario «decisión
+  del 2026-11-10, hallazgo m1». El panel lo importa para el aviso. La base no lo conoce: entra como
+  parámetro en el `WHERE`, igual que en la ficha 436.
+- **`enviar` no cuenta nada** (R28). Las imágenes que llegan al envío ya se contaron al pedir su permiso.
+- **«Reintentar» y «Enviar» otra vez no cuentan las que ya subieron** (R28). El panel solo pide permisos
+  para las imágenes en `pendiente` o en `error_subida` (§4.2, sin cambios). Una imagen que ya está en
+  `subida` no vuelve a pedir permiso, así que no suma.
+
+### 16.2 Modelo de datos: `bug_report_upload_quota` (de plataforma)
+
+Va en la **misma migración** de esta feature, `db/migrations/20261112120000_bug_report_image/`, que aún no
+está mergeada (riesgo en §15). Los identificadores van en inglés (R31).
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `user_id` | `TEXT NOT NULL` FK → `usuario(id)` `ON DELETE CASCADE ON UPDATE CASCADE` | Un contador de alguien que ya no existe no significa nada, como en `asistente_uso_diario`. |
+| `day` | `DATE NOT NULL` | Siempre `${fecha}::date` sobre el texto `YYYY-MM-DD`, nunca un `Date` de JS. Así ningún cambio de huso lo mueve, como en la ficha 436. |
+| `permits_granted` | `INTEGER NOT NULL` | `CHECK (permits_granted >= 0)`: un contador no baja de cero. El tope no va en un `CHECK`: vive en la configuración. |
+| `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` | |
+
+- **PK compuesta** `bug_report_upload_quota_pkey (user_id, day)`. **Es la atomicidad de R26**, no una
+  optimización: es la que usa el `ON CONFLICT`.
+- **Sin `id` sustituto:** la PK compuesta ya identifica la fila.
+- **Sin `updated_at`, a propósito.** Así no entra en el censo de `schema-drift-saneamiento.test.ts` («las
+  DIECIOCHO tablas cuyo CREATE TABLE le puso default a updated_at»), que sigue en 18. Si el implementer lo
+  añadiera con `DEFAULT`, tendría que sumar la tabla a esa lista, con su comentario y `@default(now())
+  @updatedAt` en el modelo.
+- **Prisma:** modelo `BugReportUploadQuota` (`@@map("bug_report_upload_quota")`, `@@id([userId, day])`,
+  `day DateTime @db.Date`). Lleva la relación `user Usuario @relation(… onDelete: Cascade)` y su inverso
+  en `Usuario`. Los nombres de la PK y la FK son los de la convención de Prisma, para que el datamodel y
+  la base no difieran.
+- **Clasificación:** `{ modelo: "BugReportUploadQuota", tabla: "bug_report_upload_quota" }` en
+  `MODELOS_DE_PLATAFORMA`, con el comentario «sin acceso para `servi_app`; lo escribe el servidor en
+  plataforma (SLT-98, tope diario)».
+- **Sin `organization_id`:** el conteo es por persona, y la tabla es de plataforma como `bug_report_image`.
+- **Acceso (R31):**
+
+  ```sql
+  ALTER TABLE "bug_report_upload_quota" ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON "bug_report_upload_quota" FROM servi_app;
+  ```
+
+  Es el mismo motivo que en §2.2: `ALTER DEFAULT PRIVILEGES` le daría CRUD a `servi_app`.
+- **`down.sql`:** `DROP TABLE IF EXISTS "bug_report_upload_quota";` antes del de `bug_report_image`.
+- **Guardias de esquema:**
+  - `organizacion-en-modelos`, `rls-por-empresa` y `plataforma-solo-en-lista` piden la clasificación de
+    arriba.
+  - Los tests de integración que miren el catálogo (`pg_class.relrowsecurity`, `has_table_privilege`)
+    acotan el esquema (`relnamespace = 'public'::regnamespace` o `schemaname = 'public'`), por
+    `catalogo-postgres-acota-esquema`.
+  - Lo dispara `gate.disparadores` (esquema y migraciones).
+
+### 16.3 Repositorio: el cupo en `BugReportRepository`
+
+La interfaz nueva es `ICupoImagenesReporte`, en `lib/interfaces/repositories/ICupoImagenesReporte.ts`. Va
+en un archivo propio, y no dentro de `IBugReportRepository`, para que los dobles de SLT-97 «Reporte de
+bugs: módulo del superadmin» que implementan `IBugReportRepository` no tengan que cambiar.
+
+```ts
+export interface ICupoImagenesReporte {
+  /** R24, R26: suma `n` si cabe hasta `tope`; devuelve el total nuevo, o null si no cabe (no escribe nada). */
+  consumir(usuarioId: string, fecha: string, n: number, tope: number): Promise<number | null>;
+  /** R25: los permisos concedidos ese día (0 si no hay fila). Solo informativo, para el aviso. */
+  usados(usuarioId: string, fecha: string): Promise<number>;
+  /** R27: resta `n` sin bajar de 0. Si no hay fila, no hace nada. */
+  devolver(usuarioId: string, fecha: string, n: number): Promise<void>;
+}
+```
+
+`BugReportRepository` la implementa. Ya está en `EXCEPCIONES_DE_PLATAFORMA` y es el dueño de las tablas
+de reportes. Así:
+- `lib/db/excepciones-aislamiento.ts` no cambia;
+- el SQL a mano solo nombra una tabla de plataforma, así que `sql-a-mano-por-empresa` no lo mira;
+- cada método corre en `comoPlataforma(FICHA, MOTIVO_CUPO, …)`, con `MOTIVO_CUPO` = «SLT-98: contar los
+  permisos de subida de imágenes de un usuario por día en `bug_report_upload_quota`, tabla de plataforma;
+  el usuario sale de la sesión (R24, R31)».
+
+Cada método es **una sola sentencia** dentro de `this.prisma.$transaction(async (tx) => tx.$queryRaw…)`:
+nunca dos consultas a la vez sobre el `tx` (`consultas-concurrentes-en-transaccion`). El
+`BugReportPrismaClient` no cambia.
+
+**`consumir`**, SQL crudo y no `upsert` de Prisma, por la misma razón que la ficha 436: el `upsert` puede
+degradar a leer y luego escribir sin avisar.
+
+```sql
+INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted", "created_at")
+VALUES (${usuarioId}, ${fecha}::date, ${n}, CURRENT_TIMESTAMP)
+ON CONFLICT ("user_id", "day") DO UPDATE
+  SET "permits_granted" = "bug_report_upload_quota"."permits_granted" + EXCLUDED."permits_granted"
+  WHERE "bug_report_upload_quota"."permits_granted" + EXCLUDED."permits_granted" <= ${tope}
+RETURNING "permits_granted"
+```
+
+- **Sin fila:** entra con `n`, que va de 1 a 5, siempre por debajo de 21.
+- **Con fila y con hueco:** suma y devuelve el total.
+- **Con fila y sin hueco:** el `WHERE` no casa, no se escribe nada y vuelven **cero filas**, que es el
+  `null`.
+- **Concurrencia (R26):** el `ON CONFLICT DO UPDATE` toma el cerrojo de la fila. La segunda petición
+  espera y evalúa el `WHERE` sobre el valor ya sumado por la primera. Si llegan dos a la vez sin fila, una
+  inserta y la otra cae en el `DO UPDATE` cuando la primera confirma. Esto no lo ve ningún doble, así que
+  se mide contra Postgres real (T13).
+
+**`usados`:** `SELECT "permits_granted" … WHERE "user_id" = ${u} AND "day" = ${fecha}::date`. Sin fila
+devuelve `0`.
+
+**`devolver`:** `UPDATE … SET "permits_granted" = GREATEST("permits_granted" - ${n}, 0) WHERE "user_id" =
+${u} AND "day" = ${fecha}::date`. Usa la misma `fecha` que `consumir`, así que una devolución pasada la
+medianoche resta del día en que se contó.
+
+### 16.4 Servicio y action
+
+**`ReporteBugService`:**
+- El constructor gana `cupo: ICupoImagenesReporte` como **tercer** parámetro, después de `almacen` y antes
+  de `sender`.
+- Gana también `ahora: () => Date = () => new Date()` al final, después de `nuevoId`.
+
+**`prepararSubidas(actor, { imagenes })`** pasa a hacer:
+1. **Puerta** (sin cambios). `forbidden` no cuenta nada.
+2. `fecha = fechaCalendarioCR(this.ahora())` y `n = imagenes.length`.
+3. `total = await cupo.consumir(actor.usuarioId, fecha, n, IMAGENES_POR_DIA_MAX)`. Si es `null`:
+   - `disponibles = Math.max(0, IMAGENES_POR_DIA_MAX - await cupo.usados(actor.usuarioId, fecha))`;
+   - devuelve `{ status: "tope_diario_imagenes", disponibles }` sin llamar al almacén (R25).
+   - `usados` es informativo: si otra petición cambia el número entre las dos llamadas, el aviso puede
+     quedar desfasado en uno, y el tope sigue intacto.
+4. **Permisos** (§5.1, sin cambios), dentro de un `try`. Si cualquier `prepararSubida` lanza:
+   - llama a `cupo.devolver(actor.usuarioId, fecha, n)` (R27);
+   - si `devolver` lanza, registra `[reporte-bug] fallo al devolver el cupo de imagenes causa=<name>`;
+   - en los dos casos, **relanza** el error original. La action responde `error`, como hoy.
+5. Devuelve `listas` (sin cambios).
+
+Validar antes de contar es cosa del orden de la action (sesión → zod → servicio): una petición con
+`validation_error` nunca llega al servicio, así que no cuenta.
+
+**`enviar`** no cambia, y no recibe ni llama a `cupo` (R28, R30).
+
+**Contratos:**
+- `PrepararSubidasServiceResult` (`IReporteBugService.ts`) gana `| { status: "tope_diario_imagenes";
+  disponibles: number }`.
+- `PrepararSubidaImagenesReporteActionResult` (`lib/actions/reporte-bug.ts`) gana la misma variante, que
+  pasa tal cual. `disponibles` es un entero de 0 a 4. No lleva la fecha, ni el total, ni el usuario.
+- **Composition root:** `const repo = new BugReportRepository(getPrismaClient()); new
+  ReporteBugService(repo, new SupabaseAlmacenImagenesReporte(), repo, crearEmailSender())`.
+
+### 16.5 Panel (`ReporteBugBoton.tsx`)
+
+Cuando la action de permisos responde `tope_diario_imagenes` (R29):
+- no hay ningún `PUT` ni se llama a `enviarReporteBugAction`;
+- las imágenes vuelven al estado que tenían antes de pulsar: `pendiente` o `error_subida`. Las `subida`
+  siguen igual. **No** pasan a `error_subida`, porque reintentar daría el mismo tope;
+- el texto se conserva;
+- sale el aviso de tope, en un `role="alert"` debajo de la sección de imágenes. Se borra al quitar o
+  agregar una imagen, o al volver a pulsar «Enviar»;
+- «Enviar» sigue habilitado salvo por las reglas de R7. Así el usuario puede quitar imágenes y enviar, o
+  quitarlas todas y enviar solo el texto *(R30, P8)*.
+
+**Textos *(propuesta, P11)*,** constantes de `TEXTOS_REPORTE_BUG`:
+
+| Dónde | Texto exacto |
+|---|---|
+| Aviso de tope con `disponibles = 0` (R29) | «Llegaste al límite de 21 imágenes por día. Quita las imágenes para enviar el reporte o vuelve a intentarlo mañana.» |
+| Aviso de tope con `disponibles` de 1 a 4 (R29) | «Hoy puedes subir {d} más de las 21 imágenes por día. Quita {k} para poder enviar.», con {d} = `disponibles` y {k} = imágenes por subir − {d} |
+
+El «21» sale de `IMAGENES_POR_DIA_MAX`, no va escrito a mano. «mañana» depende de P5.
+
+### 16.6 E2E
+
+Va en el `describe` «SLT-98 — imágenes» de `e2e/reporte-de-bugs.spec.ts`, después del de adjuntar, enviar
+y ver, con la misma empresa de la corrida. Merece un E2E: es el flujo crítico del envío con imágenes, y el
+cableado action → panel → «no se envía» no lo ve ningún test de unidad junto.
+
+- **Siembra:** con el `db` del spec (dueño), el maestro queda en el tope:
+
+  ```sql
+  INSERT … ("user_id", "day", "permits_granted")
+  VALUES (<maestro>, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Costa_Rica')::date, 21)
+  ON CONFLICT … DO UPDATE SET "permits_granted" = 21
+  ```
+
+- **Pasos:**
+  1. El maestro abre el panel, escribe una descripción única, adjunta una PNG y pulsa «Enviar».
+  2. Sale el aviso de 0 disponibles, y no hay ninguna petición `PUT` a `/storage/v1/` (`page.on("request")`).
+  3. La descripción sigue en el campo, y en la base no hay ningún `bug_report` con esa descripción.
+- **Con P8 como se recomienda:** el maestro quita la imagen, pulsa «Enviar» y sale «Gracias, recibimos tu
+  reporte».
+- **Limpieza:** el propio test borra la fila sembrada en un `try/finally`, no en un `afterAll`. Así ni el
+  test de adjuntar, si corre después, ni la segunda corrida seguida (`docs/verification.md > El E2E`)
+  heredan el tope.
+- **Orden:** el test de adjuntar consume 2 permisos del mismo maestro, y el sembrado pone 21 de forma
+  absoluta. Por eso el orden entre los dos no cambia el resultado.
+- **Los otros describes:** el maestro de SLT-87 y SLT-97 envía sin imágenes, así que el tope no le
+  afecta (R30).
+
+Todo se espera con `expect`, nunca con `waitForTimeout`.
