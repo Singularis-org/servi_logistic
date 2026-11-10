@@ -77,10 +77,10 @@ describe("R28 — modo fijo: costo base del período + órdenes del período × 
     expect(p.precioTexto).toContain("40000.00");
   });
 
-  it("R20: sin costo base, «por definir» y sin total, aunque haya órdenes", () => {
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base cuesta como base 0, con total", () => {
     const p = planConConsumo(leido({ precioDelPeriodo: { tipo: "sin_precio" } }), dia("2026-10-20"));
-    expect(p.costeo).toMatchObject({ base: { tipo: "por_definir" }, subtotalOrdenes: "300.00", total: null });
-    expect(p.cobro.costo).toBeNull();
+    expect(p.costeo).toMatchObject({ base: { tipo: "monto", periodo: "0.00" }, subtotalOrdenes: "300.00", total: "300.00" });
+    expect(p.cobro.costo).toBe("0.00");
   });
 
   it("ya no hay aviso de que el anual no aplica al costo", () => {
@@ -138,10 +138,10 @@ describe("R28 — modo porcentual: costo base del período + lo cobrado en el pe
     expect(p.costeo).toMatchObject({ base: { tipo: "monto", periodo: "6200.00" }, total: "8700.00" });
   });
 
-  it("lo cobrado negativo resta y sin costo base no hay total", () => {
+  it("lo cobrado negativo resta; sin costo base la base es 0 (SLT-99, decisión del 2026-11-10)", () => {
     const negativo = planConConsumo(conPorcentual({ cobroCiclo: { cobrado: "-500.00", pendientes: 0 } }), dia("2026-10-20"));
     expect(negativo.costeo.total).toBe("30500.00");
     const sinBase = planConConsumo(conPorcentual({ precioDelPeriodo: { tipo: "sin_precio" } }), dia("2026-10-20"));
-    expect(sinBase.costeo).toMatchObject({ base: { tipo: "por_definir" }, cobrado: "2500.00", total: null });
+    expect(sinBase.costeo).toMatchObject({ base: { tipo: "monto", periodo: "0.00" }, cobrado: "2500.00", total: "2500.00" });
   });
 });
