@@ -211,21 +211,19 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON "zona_nodo", "grupo_distritos_nodo" TO s
 --     (más que la profundidad de cualquier árbol cargado). Si no aparece, el nodo está fuera de la
 --     rama y se pone el lugar.
 -- Sin SECURITY DEFINER, como el cuerpo de SLT-43: un nodo que la RLS por país esconde a `servi_app`
--- no se encuentra al subir, y la orden se queda con su lugar.
+-- no se encuentra al subir, y la orden se queda con su lugar. Poner el lugar se escribe con la MISMA
+-- sentencia que SLT-43: es la que vigila `orden-nodo-escritura.test.ts` (SLT-45 R28).
 CREATE OR REPLACE FUNCTION orden_nodo_geografico() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE
   v_lugar text := COALESCE(NEW.distrito_id, NEW.canton_id);
   v_actual text := NEW.nodo_geografico_id;
 BEGIN
-  IF v_actual IS NULL OR v_actual = v_lugar THEN
-    NEW.nodo_geografico_id := v_lugar;
-    RETURN NEW;
-  END IF;
-  IF TG_OP = 'UPDATE'
-     AND NEW.nodo_geografico_id IS NOT DISTINCT FROM OLD.nodo_geografico_id
-     AND v_lugar IS DISTINCT FROM COALESCE(OLD.distrito_id, OLD.canton_id) THEN
-    NEW.nodo_geografico_id := v_lugar;
+  IF v_actual IS NULL OR v_actual = v_lugar
+     OR (TG_OP = 'UPDATE'
+         AND NEW.nodo_geografico_id IS NOT DISTINCT FROM OLD.nodo_geografico_id
+         AND v_lugar IS DISTINCT FROM COALESCE(OLD.distrito_id, OLD.canton_id)) THEN
+    NEW.nodo_geografico_id := COALESCE(NEW.distrito_id, NEW.canton_id);
     RETURN NEW;
   END IF;
   FOR i IN 1 .. 10 LOOP
@@ -235,7 +233,7 @@ BEGIN
       RETURN NEW;
     END IF;
   END LOOP;
-  NEW.nodo_geografico_id := v_lugar;
+  NEW.nodo_geografico_id := COALESCE(NEW.distrito_id, NEW.canton_id);
   RETURN NEW;
 END $$;
 
