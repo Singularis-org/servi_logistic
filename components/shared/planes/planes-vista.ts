@@ -37,6 +37,8 @@ export const TEXTOS_PLANES = {
   seRenuevaEl: "Se renueva el",
   usuarios: "Usuarios",
   apiKeys: "API keys",
+  /** Decisión del humano del 2026-11-10: las órdenes del período en curso en el uso del plan activo; sin tope. */
+  ordenes: "Órdenes",
   modulos: "Módulos",
   incluido: "Incluido",
   noIncluido: "No incluido",

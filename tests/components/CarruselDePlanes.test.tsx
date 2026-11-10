@@ -171,6 +171,29 @@ describe("R7 — «Plan a la medida»", () => {
   });
 });
 
+// Decisión del humano del 2026-11-10: la tarjeta del plan activo va primera; «Plan a la medida» al final si no es la activa.
+describe("Decisión del humano del 2026-11-10 — el plan activo, primera tarjeta", () => {
+  const nombres = () =>
+    within(screen.getByRole("region", { name: "Planes disponibles" }))
+      .getAllByRole("group")
+      .map((s) => s.querySelector("h3")?.textContent);
+
+  it("activo público: primero el activo, después los demás en el orden del catálogo y «Plan a la medida» al final", () => {
+    render(<Montaje planes={[BASICO, CRECE, SIN_CUOTA]} activoId="crece" />);
+    expect(nombres()).toEqual(["Crece", "Básico", "Por paquete", "Plan a la medida"]);
+  });
+
+  it("activo custom: primero su tarjeta (la de «Plan a la medida»), después los públicos en el orden del catálogo", () => {
+    render(<Montaje planes={[BASICO, CRECE]} activoId="custom-1" customActivo={CUSTOM} />);
+    expect(nombres()).toEqual(["A la medida · Logística Norte", "Básico", "Crece"]);
+  });
+
+  it("sin activo: el orden del catálogo y «Plan a la medida» al final, como antes", () => {
+    render(<Montaje planes={[BASICO, CRECE, SIN_CUOTA]} />);
+    expect(nombres()).toEqual(["Básico", "Crece", "Por paquete", "Plan a la medida"]);
+  });
+});
+
 describe("R9 — montado sin empresa (SLT-116)", () => {
   it("sin activo ni acciones: las tarjetas sin chip «Activo»", () => {
     render(<Montaje planes={[BASICO, CRECE]} />);

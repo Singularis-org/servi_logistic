@@ -228,7 +228,22 @@ describe("SLT-99 R3 — el panel del plan activo", () => {
     const panel = screen.getByRole("region", { name: "Plan activo" });
     const costeo = screen.getByRole("list", { name: "Costo del período" });
     expect(panel.compareDocumentPosition(costeo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(costeo).getByText(/^Total estimado del período: /)).toBeInTheDocument();
+    // Decisión del humano del 2026-11-10: el costeo ya no lleva «Órdenes del período: n × c = s» ni el total.
+    expect(within(costeo).getByText(/^Costo por orden: /)).toBeInTheDocument();
+    expect(screen.queryByText(/^Órdenes del período: /)).toBeNull();
+    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
+  });
+
+  it("decisión del humano del 2026-11-10: «Órdenes» debajo de «API keys», con el conteo del período y sin tope ni barra", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    const panel = screen.getByRole("region", { name: "Plan activo" });
+    const usos = within(panel).getAllByRole("listitem").filter((li) => li.querySelector("span.text-muted-foreground"));
+    const etiquetas = usos.map((li) => li.querySelector("span.text-muted-foreground")?.textContent);
+    expect(etiquetas.slice(0, 3)).toEqual(["Usuarios", "API keys", "Órdenes"]);
+    // `ordenesDelPeriodo` = 1000 (el uso de órdenes del período que ya trae `PlanConConsumo`).
+    expect(usos[2]).toHaveTextContent("Órdenes1.000 · Sin tope");
+    expect(within(panel).queryByRole("meter", { name: "Órdenes" })).toBeNull();
   });
 });
 

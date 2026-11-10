@@ -127,13 +127,14 @@ describe("SLT-86 R27 — el período en curso y el siguiente cobro", () => {
 });
 
 describe("SLT-86 R28 — el total del período", () => {
-  it("R28: modo fijo: el costo base del tramo más las órdenes del período por el costo por orden", () => {
+  // SLT-99 (decisión del humano del 2026-11-10): el modo fijo ya no pinta las órdenes ni el total estimado.
+  it("R28: modo fijo: el costo base del tramo, sin «Órdenes del período» ni «Total estimado del período»", () => {
     pintar(leido("quincenal", "2026-03-10", { uso: { ...leido("quincenal", "2026-03-10").uso, ordenes: 3 } }), mediodia("2026-03-12"));
 
     const b = costo();
     expect(within(b).getByText("Costo base quincenal: 6200.00")).toBeInTheDocument();
-    expect(within(b).getByText("Órdenes del período: 3 × 100.00 = 300.00")).toBeInTheDocument();
-    expect(within(b).getByText("Total estimado del período: 6500.00")).toBeInTheDocument();
+    expect(screen.queryByText(/^Órdenes del período: /)).toBeNull();
+    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
     expect(screen.queryByText("El pago anual no cambia el costo por orden.")).toBeNull();
   });
 

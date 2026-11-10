@@ -53,11 +53,7 @@ export function CarruselDePlanes({
   onSeleccionar,
   onContactar,
 }: CarruselDePlanesProps) {
-  // R7: con un custom activo, la tarjeta «Plan a la medida» es su plan activo.
-  const tarjetas: Tarjeta[] = [
-    ...planes.map((plan) => ({ clase: "plan" as const, plan })),
-    customActivo === null ? { clase: "medida" as const } : { clase: "plan" as const, plan: customActivo },
-  ];
+  const tarjetas = ordenDeLasTarjetas(planes, activoId, customActivo);
   const activo = customActivo?.id ?? activoId;
 
   return (
@@ -85,6 +81,19 @@ export function CarruselDePlanes({
       />
     </div>
   );
+}
+
+/**
+ * R7 y decisión del humano del 2026-11-10: la tarjeta del plan activo va primera (el público o, con un custom activo, la
+ * «Plan a la medida», que es su plan); después los públicos en el orden del catálogo; «Plan a la medida» al final cuando no
+ * es la activa. Sin activo, el orden del catálogo y «Plan a la medida» al final. No filtra: los planes llegan ya filtrados.
+ */
+function ordenDeLasTarjetas(planes: readonly PlanVista[], activoId: string | null, customActivo: PlanVista | null): Tarjeta[] {
+  const publicos: Tarjeta[] = planes.map((plan) => ({ clase: "plan", plan }));
+  if (customActivo !== null) return [{ clase: "plan", plan: customActivo }, ...publicos];
+  const iActivo = activoId === null ? -1 : planes.findIndex((p) => p.id === activoId);
+  const ordenados = iActivo <= 0 ? publicos : [publicos[iActivo], ...publicos.filter((_, i) => i !== iActivo)];
+  return [...ordenados, { clase: "medida" }];
 }
 
 /** R6: «Mensual» / «Anual» como un grupo de radio (WAI-ARIA): flechas para moverse, una sola parada de tabulación. */

@@ -227,3 +227,6 @@ Todos los archivos de la tabla existen. R2 y R10–R18 (integración con base) y
 ## 2026-11-10 · CI PR #115: rojo y arreglo (backend_dev)
 - `gate-completo` (run 42868755488) rojo fuera del baseline en `tests/integration/db/mi-plan-cambiar-plan.test.ts`, un caso: «R18 (P5, decisión 2026-11-10): sin plan, el maestro no cancela la primera asignación pendiente → sin_plan sin escribir». Error: `no quedó pendiente: {"estado":"validation_error","fieldErrors":{"vigenteDesde":[SOLO_CON_PLAN]}}`.
 - Causa: fallo del test, no del código. El fixture armaba la primera asignación futura con `vigenteDesde` (fecha de efecto, solo para empresas con plan, SLT-86 R16); la primera asignación lleva `inicioCiclo` (SLT-58 R31). Arreglo: `inicioCiclo: dia(5)`, como `planes-asignacion-inicio-ciclo.test.ts` (R39). Sin cambios en el baseline.
+
+## 2026-11-10 · Ajustes del humano (frontend_dev)
+- Costeo sin «Órdenes del período: n × c = s» ni «Total estimado del período» (`ConsumoDelPlan`, los dos montajes); «Órdenes» `N · Sin tope` bajo «API keys» en el plan activo con `PlanConConsumo.ordenesDelPeriodo` (sin cambio de servidor; `costeo.ordenes/subtotalOrdenes/total` del modo fijo quedan calculados sin uso en pantalla); carrusel con el activo primero. Tests: `MiPlanModule`, `ConsumoDelPlanCosteo`, `ConsumoDelPlanPeriodo`, `CarruselDePlanes`, E2E `planes-costeo.spec.ts`.
