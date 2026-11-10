@@ -496,10 +496,29 @@ test.describe("SLT-97 — el módulo del superadmin", () => {
     await expect(fila).toHaveCount(1);
     await expect(fila.getByText(TEXTO_MODULO.resuelto, { exact: true })).toBeVisible();
   });
+});
+
+/*
+ * R2 fuera del describe en serie: no depende de los casos del superadmin, así que no cae con ellos ni
+ * los espera. Crea su propia empresa (nombre con sufijo único de la fábrica), así que dos corridas
+ * sobre la misma base no chocan.
+ */
+test.describe("SLT-97 — el módulo no es de la empresa", () => {
+  let sesionDelMaestro: Cookie[] = [];
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(240_000);
+    const propia = await crearEmpresaE2E("reportes-sin-modulo");
+    sesionDelMaestro = await sesionDe(browser, propia.maestro);
+  });
 
   test("el maestro ve no encontrado en /plataforma/reportes", async ({ page }) => {
+    expect(sesionDelMaestro.length, "no hay sesión del maestro: falló el beforeAll").toBeGreaterThan(0);
+    await page.context().addCookies(sesionDelMaestro);
+
     // R2: su menú no tiene «Reportes» (anti-vacío: `enlacesDelMenu` espera a que el menú se pinte)…
-    await comoMaestro(page, "/dashboard");
+    await page.goto("/dashboard");
+    await expect(page).not.toHaveURL(/\/login/);
     expect(await enlacesDelMenu(page)).not.toContain(TEXTO_MODULO.menu);
 
     // …y la dirección escrita a mano le da el 404 del portal, sin nada del listado.
