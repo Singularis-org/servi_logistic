@@ -710,3 +710,37 @@ pedía retirar la excepción de m3. Tras retirarla, las guardias de SQL, RLS y a
 64 passed`. No hay guardia de `progress/deudas.md` en el repo.
 
 Mapa: R18 suma `grupo-nodo.test.ts` (m2); R24 suma el caso de m1.
+
+## Rojos del gate de CI sobre `dcbfd288` (run 42907373831)
+
+1. **`geo-explain-analitica.test.ts` (SLT-71 R19), «transito-filas: expected 2 to be 1».** Causa: T2.2
+   añadió a la carga del catálogo `zonaNodo.findMany` (SQL sobre `"zona_nodo"`). `leeElCatalogo`
+   (`scripts/geo-equivalencia/medicion.ts`, que SLT-89 no toca) no reconoce esa tabla, así que la medición
+   la contaba como consulta de la lectura: después, sin catálogo, 2 en vez de 1. Arreglo en el código
+   (commit de este apartado): `leerDeLaEmpresa` pide el conteo de `zona_nodo` de la empresa dentro de la
+   consulta de `organizacion` (`_count`, una subconsulta) y solo lee la tabla si hay filas. Una empresa de
+   solo distritos hace exactamente las consultas de antes de SLT-89 (R38). Un doble sin `_count` cae en
+   leer la tabla, como antes. Aserción sin tocar.
+2. **`slt46-nodo-copia-vieja.test.ts` › R44: SIN ARREGLAR, lo decide el humano.** Afirma tres cosas:
+   - (a) el `prosrc` de `orden_nodo_geografico` y de `zona_nodo_geografico_del_distrito` es literalmente
+     el cuerpo de su `CREATE FUNCTION` en `20261104120400_columnas_nodo_geografico` (SLT-43);
+   - (b) los tres triggers `orden_nodo_geografico`, `zona_distrito_nodo_geografico` y
+     `distrito_zona_especial_nodo_geografico` tienen la definición de siempre;
+   - (c) las FK de `zona_distrito` y `distrito_zona_especial` apuntan solo a `distrito` y a `nodo_geografico`.
+
+   Qué cambió SLT-89: solo el cuerpo de `orden_nodo_geografico`, que es el `CREATE OR REPLACE FUNCTION`
+   de `20261110130000_slt89_zona_nodo` (R28; lo pide T1.1 y lo prueba `orden-nodo-mas-profundo`). (b),
+   (c) y el cuerpo de `zona_nodo_geografico_del_distrito` no cambian. `zona_nodo` es otra tabla, fuera
+   de esas consultas. Comprobado con una copia temporal del test, ya borrada: comparando solo el cuerpo de
+   `orden_nodo_geografico` con el de la migración de SLT-89, el caso pasa entero.
+
+   Cambio mínimo de aserción: en `r.funciones`, el `prosrc` esperado de `orden_nodo_geografico` sale del
+   `CREATE OR REPLACE FUNCTION orden_nodo_geografico()` de `20261110130000_slt89_zona_nodo/migration.sql`
+   (un segundo extractor que case `CREATE OR REPLACE`). El título pasaría a «…el trigger de orden con el
+   cuerpo de SLT-89 y los de las zonas con el de SLT-43…». Nada más.
+
+Verificación (`logistic_slt89`, `--maxWorkers=1`, heap de 8 GB): `typecheck` exit 0; eslint limpio en
+`CatalogoGeograficoRepository.ts`. `geo-explain-analitica` → `11 passed`. Integración `geo-*`,
+`zona-nodo-*`, `slt89-equivalencia-cr`, `slt46-*`, `grupo-nodo`, `tarifas-flexibles-resolver` y contrato
+v1 (modo comparar), 39 archivos → `Tests 1 failed | 295 passed (296)`: el único rojo es el R44 de arriba.
+Unitarios con dobles del catálogo y guardias de catálogo, geografía y SQL (19 archivos) → `185 passed`.
