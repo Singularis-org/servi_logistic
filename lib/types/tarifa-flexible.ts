@@ -245,15 +245,51 @@ const nombreGrupoSchema = z
 
 const distritoIdsSchema = z.array(idSchema);
 
+/**
+ * SLT-89 (R17, design §6) — los miembros que no son distritos (canton, provincia, profundidad >= 4).
+ * `[]` por defecto: los llamadores que solo agrupan distritos (Costa Rica, R38) no cambian de forma.
+ */
+const nodoIdsSchema = z.array(idSchema).default([]);
+
+/**
+ * SLT-89 (R43, design §5.4, §5.5) — los miembros que el modal mostro como «antes». Las dos listas
+ * presentes; vacias valen y las juzga la comparacion del repositorio bajo el candado del grupo.
+ */
+export const antesDeMiembrosSchema = z.object({ distritoIds: distritoIdsSchema, nodoIds: z.array(idSchema) });
+export type AntesDeMiembros = z.infer<typeof antesDeMiembrosSchema>;
+
+/**
+ * SLT-89 (R45, design §5.4, §5.5) — lo que el modal de borrar mostro: nombre, miembros y el numero de
+ * valores que se borran con el grupo (el mismo que pinta SLT-54 R43).
+ */
+export const antesDeBorrarSchema = z.object({
+  nombre: z.string(),
+  distritoIds: distritoIdsSchema,
+  nodoIds: z.array(idSchema),
+  valores: z.number().int().min(0),
+});
+export type AntesDeBorrar = z.infer<typeof antesDeBorrarSchema>;
+
+// SLT-89 (R46): crear no lleva «antes» (no hay estado previo).
 export const crearGrupoSchema = z.object({
   zonaId: idSchema,
   nombre: nombreGrupoSchema,
   distritoIds: distritoIdsSchema,
+  nodoIds: nodoIdsSchema,
 });
 
-export const renombrarGrupoSchema = z.object({ nombre: nombreGrupoSchema });
+// SLT-89 (R44, design §5.5): `nombreAnterior` OBLIGATORIO, con las reglas de nombre de `nombre`.
+export const renombrarGrupoSchema = z.object({ nombre: nombreGrupoSchema, nombreAnterior: nombreGrupoSchema });
 
-export const fijarDistritosSchema = z.object({ distritoIds: distritoIdsSchema });
+// SLT-89 (R43, design §5.5): `antes` OBLIGATORIO.
+export const fijarDistritosSchema = z.object({
+  distritoIds: distritoIdsSchema,
+  nodoIds: nodoIdsSchema,
+  antes: antesDeMiembrosSchema,
+});
+
+// SLT-89 (R45, design §5.5): `antes` OBLIGATORIO.
+export const borrarGrupoSchema = z.object({ antes: antesDeBorrarSchema });
 
 export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
 
@@ -285,18 +321,38 @@ export const guardarValoresTarifaSchema = z.object({
     .max(MAX_CAMBIOS_DE_VALOR),
 });
 
-export const renombrarGrupoDistritosSchema = z.object({ id: idSchema, nombre: z.string() });
-export const cambiarDistritosDeGrupoSchema = z.object({ id: idSchema, distritoIds: z.array(z.string()) });
-export const borrarGrupoDistritosSchema = z.object({ id: idSchema });
+// SLT-89 (R43–R45, design §5.5, §6): el «antes» es OBLIGATORIO en las tres escrituras que lo llevan.
+// Sin el, la action responde `validation_error` en su campo sin llamar al service.
+export const renombrarGrupoDistritosSchema = z.object({ id: idSchema, nombre: z.string(), nombreAnterior: z.string() });
+export const cambiarDistritosDeGrupoSchema = z.object({
+  id: idSchema,
+  distritoIds: z.array(z.string()),
+  nodoIds: z.array(z.string()).default([]),
+  antes: antesDeMiembrosSchema,
+});
+export const borrarGrupoDistritosSchema = z.object({ id: idSchema, antes: antesDeBorrarSchema });
 
 export interface DistritoDelGrupo {
   id: string;
   nombre: string;
 }
 
+/** SLT-89 (design §4.4): un miembro que no es distrito, con su profundidad para pintar su nivel. */
+export interface NodoDelGrupo {
+  id: string;
+  nombre: string;
+  profundidad: number;
+}
+
 export interface GrupoDistritosDTO {
   id: string;
   zonaId: string;
   nombre: string;
+  /** Los distritos del grupo, de las dos tablas de miembros (asignados y heredados), por nombre. */
   distritos: DistritoDelGrupo[];
+  /**
+   * SLT-89 (design §4.4): los miembros que no son distritos, por nombre. Opcional en el tipo para que
+   * los DTO que hoy arman las pantallas y sus dobles sigan valiendo; el repositorio lo pone siempre.
+   */
+  nodos?: NodoDelGrupo[];
 }

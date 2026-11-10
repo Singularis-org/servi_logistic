@@ -18,6 +18,7 @@ import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository"
 import { TarifaActivacionService } from "@/lib/services/TarifaActivacionService";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { antesDeBorrar } from "./_fixtures/antes-de-grupo";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import {
@@ -194,12 +195,15 @@ describeSiHayBase("SLT-54 R3 — fijar y quitar no cambian el modelo", () => {
       const recorrer = async () => {
         const fijado = await comoEmpresa(tx, e.A, () => valores().fijar(datos, e.maestroA));
         if (fijado === "nivel_ocupado") throw new Error("el nivel estaba ocupado");
+        // SLT-89 (T5.6, R44/R45): renombrar y borrar ganan el «antes» de lo sembrado (solo entrada).
+        const nombreG = `G-${randomUUID().slice(0, 6)}`;
         const grupo = await comoEmpresa(tx, e.A, () =>
-          grupos().crear({ zonaId: e.fksA.zonaId, nombre: `G-${randomUUID().slice(0, 6)}`, distritoIds: [] }, e.maestroA),
+          grupos().crear({ zonaId: e.fksA.zonaId, nombre: nombreG, distritoIds: [] }, e.maestroA),
         );
         if (grupo.status !== "ok") throw new Error(`el grupo no se creo: ${grupo.status}`);
-        await comoEmpresa(tx, e.A, () => grupos().renombrar(grupo.id, `R-${randomUUID().slice(0, 6)}`, e.maestroA));
-        await comoEmpresa(tx, e.A, () => grupos().borrar(grupo.id, e.maestroA));
+        await comoEmpresa(tx, e.A, () => grupos().renombrar(grupo.id, `R-${randomUUID().slice(0, 6)}`, nombreG, e.maestroA));
+        const antes = await antesDeBorrar(tx, grupo.id);
+        await comoEmpresa(tx, e.A, () => grupos().borrar(grupo.id, antes, e.maestroA));
         await comoEmpresa(tx, e.A, () => valores().quitar(fijado.id, e.maestroA));
       };
 
@@ -569,7 +573,8 @@ describeSiHayBase("SLT-54 R29 — guardar no escribe en el viejo", () => {
       if (guardado.status !== "ok") throw new Error(`guardar: ${guardado.status}`);
       expect(guardado.resultados.map((r) => r.status)).toEqual(["ok", "ok", "ok"]);
 
-      const borrado = await borrarGrupoDistritos({ id: grupo.id }, grupoDeps);
+      // SLT-89 (T5.6, R45): el «antes» de lo sembrado (solo entrada).
+      const borrado = await borrarGrupoDistritos({ id: grupo.id, antes: await antesDeBorrar(tx, grupo.id) }, grupoDeps);
       expect(borrado).toEqual({ status: "ok" });
 
       const fijados = await tx.tarifaValor.findMany({

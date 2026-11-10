@@ -6,6 +6,7 @@ import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
 import { resolverCobrosCon } from "@/lib/repositories/_shared/resolver-tarifas";
 import { serviciosDeTarifas, type ServiciosDeTarifas } from "@/lib/tarifas/servicios";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { antesDeBorrar, antesDeMiembros } from "./_fixtures/antes-de-grupo";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -386,8 +387,13 @@ describeSiHayBase("SLT-52 T6.4 — escritura de valores y grupos (Postgres real,
       const d3Antes = await filaDeD3();
 
       // Mover d1 de Norte a Sur: primero sale de Norte, luego entra en Sur (R11 impide tenerlo en dos).
-      expect(await e.s.grupoDistritos.fijarDistritos(G1, [e.d2], e.maestro)).toEqual({ status: "ok" });
-      expect(await e.s.grupoDistritos.fijarDistritos(G2, [e.d3, e.d1], e.maestro)).toEqual({ status: "ok" });
+      // SLT-89 (T5.6, R43/R45): cada escritura gana el «antes» de lo sembrado (solo entrada).
+      expect(await e.s.grupoDistritos.fijarDistritos(G1, [e.d2], await antesDeMiembros(e.tx, G1), e.maestro)).toEqual({
+        status: "ok",
+      });
+      expect(
+        await e.s.grupoDistritos.fijarDistritos(G2, [e.d3, e.d1], await antesDeMiembros(e.tx, G2), e.maestro),
+      ).toEqual({ status: "ok" });
       expect(await distritosDelGrupo(e.tx, G1)).toEqual([e.d2]);
       expect(await distritosDelGrupo(e.tx, G2)).toEqual([e.d1, e.d3].sort());
       // El distrito que se queda no se toca (design §8): su fila es la misma, no una recreada.
@@ -405,7 +411,7 @@ describeSiHayBase("SLT-52 T6.4 — escritura de valores y grupos (Postgres real,
       }
       expect(await valoresDeLaZona(e.tx, e.Z)).toHaveLength(3);
 
-      expect(await e.s.grupoDistritos.borrarGrupo(G2, e.maestro)).toEqual({ status: "ok" });
+      expect(await e.s.grupoDistritos.borrarGrupo(G2, await antesDeBorrar(e.tx, G2), e.maestro)).toEqual({ status: "ok" });
 
       expect(await e.tx.grupoDistritos.count({ where: { id: G2 } })).toBe(0);
       expect(await distritosDelGrupo(e.tx, G2)).toEqual([]);
@@ -440,8 +446,10 @@ describeSiHayBase("SLT-52 T6.4 — escritura de valores y grupos (Postgres real,
       await expect(roto.tarifaValor.fijarValor(cobroDeZona(e.Z, "9999"), e.maestro)).rejects.toThrow(FalloTrasElHistorial);
       await expect(roto.tarifaValor.quitarValor(v.id, e.maestro)).rejects.toThrow(FalloTrasElHistorial);
       await expect(roto.grupoDistritos.crearGrupo({ zonaId: e.Z, nombre: "Fantasma", distritoIds: [e.d3] }, e.maestro)).rejects.toThrow(FalloTrasElHistorial);
-      await expect(roto.grupoDistritos.fijarDistritos(G, [e.d3], e.maestro)).rejects.toThrow(FalloTrasElHistorial);
-      await expect(roto.grupoDistritos.borrarGrupo(G, e.maestro)).rejects.toThrow(FalloTrasElHistorial);
+      const antesDeG = await antesDeMiembros(e.tx, G);
+      const antesDeBorrarG = await antesDeBorrar(e.tx, G);
+      await expect(roto.grupoDistritos.fijarDistritos(G, [e.d3], antesDeG, e.maestro)).rejects.toThrow(FalloTrasElHistorial);
+      await expect(roto.grupoDistritos.borrarGrupo(G, antesDeBorrarG, e.maestro)).rejects.toThrow(FalloTrasElHistorial);
 
       expect(await e.tx.historialAccion.count()).toBe(historialAntes);
       expect(await valoresDeLaZona(e.tx, e.Z)).toEqual(valoresAntes);
@@ -553,9 +561,13 @@ describeSiHayBase("SLT-52 T6.4 — escritura de valores y grupos (Postgres real,
 
       // Escrituras sobre filas de B: no existen para A.
       expect(await e.s.tarifaValor.quitarValor(e.VB, e.maestro)).toEqual({ status: "not_found" });
-      expect(await e.s.grupoDistritos.renombrarGrupo(e.GB, "Robado", e.maestro)).toEqual({ status: "not_found" });
-      expect(await e.s.grupoDistritos.fijarDistritos(e.GB, [e.d2], e.maestro)).toEqual({ status: "not_found" });
-      expect(await e.s.grupoDistritos.borrarGrupo(e.GB, e.maestro)).toEqual({ status: "not_found" });
+      // SLT-89 (T5.6): con un «antes» valido; para A el grupo de B no existe, asi que da igual cual.
+      const antesAjeno = { distritoIds: [e.d1], nodoIds: [] };
+      expect(await e.s.grupoDistritos.renombrarGrupo(e.GB, "Robado", "Ajeno", e.maestro)).toEqual({ status: "not_found" });
+      expect(await e.s.grupoDistritos.fijarDistritos(e.GB, [e.d2], antesAjeno, e.maestro)).toEqual({ status: "not_found" });
+      expect(
+        await e.s.grupoDistritos.borrarGrupo(e.GB, { nombre: "Ajeno", ...antesAjeno, valores: 1 }, e.maestro),
+      ).toEqual({ status: "not_found" });
 
       // Escrituras que apuntan a la zona de B.
       const fijarEnB = await e.s.tarifaValor.fijarValor(cobroDeZona(e.ZB, "1"), e.maestro);

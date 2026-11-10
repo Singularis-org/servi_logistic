@@ -127,3 +127,34 @@ export async function borrarMiembrosNodoDeGrupo(
   if (nodoIds.length === 0) return;
   await tx.grupoDistritosNodo.deleteMany({ where: { grupoId, nodoGeograficoId: { in: [...nodoIds] } } });
 }
+
+/**
+ * SLT-89 (R18, design §5.2) — de `nodoIds`, los que ya son miembros de `grupo_distritos_nodo` en OTRO
+ * grupo de la zona, con el nombre del nodo y el del grupo (la misma forma que la lectura de la tabla
+ * vieja, para el mismo mensaje).
+ */
+export async function leerMiembrosNodoEnOtroGrupo(
+  tx: ClienteDeGrupoNodo,
+  zonaId: string,
+  nodoIds: readonly string[],
+  exceptoGrupoId: string | null,
+): Promise<{ distritoId: string; distritoNombre: string; grupoNombre: string }[]> {
+  if (nodoIds.length === 0) return [];
+  const filas = await tx.grupoDistritosNodo.findMany({
+    where: {
+      zonaId,
+      nodoGeograficoId: { in: [...nodoIds] },
+      ...(exceptoGrupoId === null ? {} : { grupoId: { not: exceptoGrupoId } }),
+    },
+    select: {
+      nodoGeograficoId: true,
+      grupo: { select: { nombre: true } },
+      nodoGeografico: { select: { nombre: true } },
+    },
+  });
+  return filas.map((f) => ({
+    distritoId: f.nodoGeograficoId,
+    distritoNombre: f.nodoGeografico.nombre,
+    grupoNombre: f.grupo.nombre,
+  }));
+}

@@ -212,7 +212,13 @@ export async function renombrarGrupoDistritos(
     const actor = await actorDe(deps);
     const parseado = renombrarGrupoDistritosSchema.safeParse(input);
     if (!parseado.success) return invalida(parseado.error);
-    return serviciosDeGrupos(deps).renombrarGrupo(parseado.data.id, parseado.data.nombre, actor);
+    // SLT-89 (R44): el nombre que el modal mostro viaja hasta la comparacion bajo el candado.
+    return serviciosDeGrupos(deps).renombrarGrupo(
+      parseado.data.id,
+      parseado.data.nombre,
+      parseado.data.nombreAnterior,
+      actor,
+    );
   });
   return aResultado(r);
 }
@@ -228,7 +234,13 @@ export async function cambiarDistritosDeGrupo(
     const actor = await actorDe(deps);
     const parseado = cambiarDistritosDeGrupoSchema.safeParse(input);
     if (!parseado.success) return invalida(parseado.error);
-    return serviciosDeGrupos(deps).fijarDistritos(parseado.data.id, parseado.data.distritoIds, actor);
+    // SLT-89 (R17, R43): distritos y demas nodos son miembros por igual; el «antes» viaja entero.
+    return serviciosDeGrupos(deps).fijarDistritos(
+      parseado.data.id,
+      [...parseado.data.distritoIds, ...parseado.data.nodoIds],
+      parseado.data.antes,
+      actor,
+    );
   });
   return aResultado(r);
 }
@@ -244,7 +256,8 @@ export async function borrarGrupoDistritos(
     const actor = await actorDe(deps);
     const parseado = borrarGrupoDistritosSchema.safeParse(input);
     if (!parseado.success) return invalida(parseado.error);
-    return serviciosDeGrupos(deps).borrarGrupo(parseado.data.id, actor);
+    // SLT-89 (R45): nombre, miembros y numero de valores que el modal mostro.
+    return serviciosDeGrupos(deps).borrarGrupo(parseado.data.id, parseado.data.antes, actor);
   });
   return aResultado(r);
 }
