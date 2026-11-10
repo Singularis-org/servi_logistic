@@ -282,6 +282,24 @@ corrida 1: `Imágenes (2). Los enlaces vencen en 24 horas: … Ver imagen 1: htt
   Ojo: la línea aceptada habla de ~2.200–2.500 líneas; el diff real son ~3.300.
 - No corridos por regla de esta sesión: `./init.sh`, la suite completa y el grupo `aislamiento` entero (CI).
 
+## Verificación vuelta 2 (implementer, HEAD 488a2245, tope diario T12–T16)
+- vitest de los 11 archivos de test tocados por el PR (con `DATABASE_URL` a `servi_logistic_slt98`):
+  `Test Files 11 passed (11)` · `Tests 218 passed (218)`, 0 saltados (antes del fix de la guardia, que no toca esos archivos).
+- Guardias de esquema contra `servi_logistic_slt98` (`nucleo-sin-modulos`, `schema-drift-saneamiento`,
+  `catalogo-postgres-acota-esquema`, `consultas-concurrentes-en-transaccion`) + `pais-sin-literales`:
+  `Test Files 5 passed (5)` · `Tests 87 passed (87)`. Censo de `updated_at` en 18 (la tabla nueva no lo lleva).
+- `pnpm run lint`: exit 0, 0 errores; los 243 avisos son ajenos (ninguno en archivos de la vuelta 2).
+- Typecheck (8 GB): exit 0 en backend_dev (T14), frontend_dev (T15) y T16; no lo repetí tras 488a2245 (solo toca un fixture de test y esta bitácora).
+- `pnpm run test:guardias` (sobre 7318cbc6): rojos en `dependencias-declaradas-presentes` (baseline) y en
+  `api-key-dependencias-usuario` (6 tests, **nuestro**: `BugReportUploadQuota.user` sin clasificar). Arreglado en
+  488a2245 (`tests/fixtures/api-key-dependencias-usuario.ts`, `no_alcanzable`): 12/12. No volví a correr la guardia entera.
+- Base `servi_logistic_slt98_e2e` recreada (DROP/CREATE, `migrate deploy` con la migración enmendada, `db:seed`).
+- **E2E ×2 NO corrido:** el `next build` (8 GB) lo mató Claude Code por memoria baja del sistema
+  (llegó a «Compiled successfully in 44s», cayó en «Running TypeScript»). Por la regla del entorno no lo relancé
+  solo. T16 sigue en `[ ]`: faltan las dos corridas de `e2e/reporte-de-bugs.spec.ts` sobre HEAD final.
+- `node scripts/tamano-pr.mjs`: AVISO, no rojo: «36/40 archivos, 4151/1000 lineas». Pasa lo aceptado en P12
+  (~35 y ~3.900) en 1 archivo (el fixture del censo) y ~250 líneas: vuelve al humano por el leader.
+
 ## Mapa R → test
 Los nombres son los del «Mapa R → test» de `tasks.md`; todos existen con ese nombre (prefijo «Rn — » en
 los unit de T7).
@@ -311,16 +329,24 @@ los unit de T7).
 | R21 | `reporte-bug-service.test.ts`; `plantilla-reporte-bug.test.ts` |
 | R22 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` (×2); `tests/components/ReporteDetalle.test.tsx`; `bug-report.test.ts`; E2E pasos 4 y 5 |
 | R23 | `reportes-bug-plataforma-service.test.ts`; `ReporteDetalle.test.tsx` |
-| R24 | `bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21», «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen», «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10»; E2E de T16 pendiente |
-| R25 | `bug-report.test.ts` «R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21», «R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25»; `reporte-bug-service.test.ts` «R25 — si consumir devuelve null, da exactamente { status: "sin_cupo_imagenes" } y no llama al almacén ni a devolver»; `reporte-bug-action.test.ts` «R25 — sin_cupo_imagenes pasa tal cual, sin más campos»; E2E de T16 pendiente |
+| R24 | `bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21», «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen», «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) |
+| R25 | `bug-report.test.ts` «R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21», «R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25»; `reporte-bug-service.test.ts` «R25 — si consumir devuelve null, da exactamente { status: "sin_cupo_imagenes" } y no llama al almacén ni a devolver»; `reporte-bug-action.test.ts` «R25 — sin_cupo_imagenes pasa tal cual, sin más campos»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) (paso 5) |
 | R26 | `bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null», «R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29» |
 | R27 | `bug-report.test.ts` «R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada»; `reporte-bug-service.test.ts` «R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original» |
-| R28 | `reporte-bug-service.test.ts` «R28 — enviar no consume ni lee el cupo»; la parte del panel es de T15 |
-| R29 | T15 y T16 (frontend_dev) |
-| R30 | `reporte-bug-service.test.ts` «R30 — enviar un reporte sin imágenes da enviado sin llamar al cupo, aunque el cupo doble diga que no hay»; E2E de T16 pendiente |
+| R28 | `reporte-bug-service.test.ts` «R28 — enviar no consume ni lee el cupo»; `ReporteBugBoton.test.tsx` «R28 — «Reintentar» tras un PUT fallido pide permiso solo para la que falló: la que ya subió no vuelve a la action de permisos» |
+| R29 | `ReporteBugBoton.test.tsx` «R29 — con sin_cupo_imagenes no hay PUT, se llama a enviarReporteBugAction con el texto e imagenes: [], no hay ningún role="alert" y sale «Gracias, recibimos tu reporte» con 0/5 imágenes», «R29 — en un reintento sin cupo, el reporte lleva solo las imágenes ya subidas, en orden, y no la que falló», «R29 — sin cupo y con el envío respondiendo error, las imágenes siguen en pendiente y ninguna pasa a error_subida»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) |
+| R30 | `reporte-bug-service.test.ts` «R30 — enviar un reporte sin imágenes da enviado sin llamar al cupo, aunque el cupo doble diga que no hay»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) (pasos 2 y 4) |
 | R31 | `bug-report.test.ts` «R31 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_upload_quota dan 42501, y la tabla tiene RLS en public»; `reporte-bug-action.test.ts` «R31 — pedir permisos con un campo usuarioId, fecha o cupo de más da validation_error sin llamar al servicio» |
 
 ## Propuestas y avisos consolidados
+- (propuesta, **pide decisión**) día del cupo: no `fechaCalendarioCR` (design §16.1/§16.4) porque
+  `pais-sin-literales` (SLT-42 R29) prohíbe importar `@/lib/utils/fecha-cr` en `lib/**`; se usa la zona del país
+  de la empresa (como `asistente_uso_diario`). Igual para toda empresa CR; si se quiere CR fijo, hay que abrir
+  una excepción en esa guardia (decisión humana). Detalle en la sección T12–T14.
+- (propuesta) nombre del CHECK `bug_report_upload_quota_permits_granted_no_negativo`.
+- (propuesta) `tests/fixtures/api-key-dependencias-usuario.ts` fuera de «Archivos esperados»: 36 archivos.
+- (propuesta) panel: mientras responde la action de permisos se ve «Subiendo imágenes…»; sin cupo, vuelve y envía.
+- (propuesta) E2E del tope: el paso 5 compara todas las filas del maestro; falla si cruza la medianoche CR.
 - (propuesta) design §15 cita el `toHaveLength(16)` de `bug-report.test.ts` como test que cambia; no cambia
   (cuenta los 16 pares de R17 de SLT-97); el que cambia es el `toEqual` del detalle de R14 de SLT-97.
 - (propuesta) design §5.2: la línea de log dice «rechazadas», vetada por `nombres-estado-retirados`; el código
