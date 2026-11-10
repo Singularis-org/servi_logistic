@@ -18,6 +18,12 @@
 > Sembrado por `/afinar-feature` el 2026-11-10. El bloque de Alcance y la tabla de «Decisiones
 > cerradas» los fijó el humano ANTES del spec. `spec_author` los respeta, no los reabre y no los
 > reescribe: su trabajo aquí es `## Requisitos (EARS)`.
+>
+> **Cambio de fondo del humano (2026-11-10, tras aprobar el spec; fila «Periodicidad de órdenes» de
+> «Decisiones cerradas»).** El «período» del Alcance pasa a ser el **corte de órdenes**: cada plan define
+> la periodicidad de facturación de órdenes (quincenal o mensual), la empresa sin plan factura quincenal,
+> hay una factura por corte y la cuota se suma en la factura del corte en que empieza su período de cobro.
+> El Alcance no se reescribe; los requisitos de abajo ya lo aplican.
 
 ## Requisitos (EARS)
 
@@ -25,58 +31,69 @@
 > Heredan SL-40 «cobro de la plataforma por orden», SL-45 «pago a la plataforma», SLT-85 «Traza de
 > facturación de los cobros por orden» y SLT-86 «Planes: período de facturación de calendario por empresa y
 > sin tope de órdenes». Las horas son las de la plataforma (−06:00, CR) hasta SLT-90 «Planes: ciclo y cobro
-> en la zona de cada empresa». Ajustados el mismo día con las respuestas del humano a P1–P5 y a P6–P8 (filas
-> nuevas de «Decisiones cerradas»): P6 y P8 cambian R8, R10, R24 y R28 y traen R29; P7 trae R30–R33, que
-> **modifican SLT-86 «Planes: período de facturación de calendario por empresa y sin tope de órdenes» R16–R18**.
-> Ajustados otra vez el mismo día con las respuestas a P9–P11: P9 cambia R8, R30 y R31 (un cambio a un tipo
-> más largo rige al inicio de un período del tipo nuevo); P10 trae R34 (el tope de 12 meses mira la fecha
-> elegida); P11 fija las dos confirmaciones con la fecha real (R32). Ningún requisito queda en propuesta.
+> en la zona de cada empresa». Ajustados el mismo día con P1–P11 (filas de «Decisiones cerradas»).
+>
+> **Reescritos el 2026-11-10 por el cambio de fondo** (periodicidad de órdenes por plan). Cambian R2, R3, R5,
+> R8, R15, R16, R24, R26, R27, R28 y R29; R35–R38 son nuevos. Siguen igual R1, R4, R6, R7, R9–R14, R17–R23,
+> R25 y R30–R34. Quedan **en propuesta, pendientes de P12–P15** (`## Preguntas abiertas`): R26 (la cuota de la
+> siembra en un plan anual o bimestral, P15), R35 (el default, P14), R36 (P13) y R37 (P12). Lo demás no
+> depende de ellas.
 >
 > **Vocabulario.**
-> - *Factura*: el estado de cuenta interno de una empresa para un intervalo `[desde, hasta)`. Está **en
->   curso** (sin fin fijado), **por cerrar** (fin fijado, aún sin cifras) o **cerrada** (cifras guardadas).
-> - *Plan de la factura*: el plan (o «sin plan») y el tipo de cobro con los que se cobra la factura entera.
->   Es el de la empresa en el `desde` de la factura, salvo R16.
+> - *Periodicidad de órdenes*: cada cuánto se factura lo de las órdenes: **quincenal** (cortes el 1 y el 16)
+>   o **mensual** (corte el 1). La define el plan (R35); sin plan, quincenal.
+> - *Corte*: el inicio de un período de calendario de la periodicidad de órdenes (SLT-86 R4: quincenal 1–15 y
+>   16–fin; mensual, el mes).
+> - *Período de cobro*: el de la cuota, del tipo de cobro de la empresa (quincenal, mensual, bimestral o
+>   anual; SLT-86 R4). Es distinto del corte: un plan anual con órdenes quincenales tiene 24 facturas al año y
+>   una sola cuota.
+> - *Factura*: el estado de cuenta interno de una empresa para un intervalo `[desde, hasta)` de un corte de
+>   órdenes. Una por corte; un solo tipo de factura. Está **en curso** (sin fin fijado), **por cerrar** (fin
+>   fijado, aún sin cifras) o **cerrada** (cifras guardadas).
+> - *Plan de la factura*: el plan (o «sin plan»), su tipo de cobro y su periodicidad de órdenes, con los que se
+>   factura entera. Son los de la empresa en el `desde` de la factura, salvo R16.
 > - *Movimiento*: un cargo o un reverso de `cobro_plataforma_movimiento` (SL-40). Su instante es
 >   `ocurrido_at`, el mismo que `cobrado_at` de su traza (SLT-85).
-> - *Cuota*: el costo base del plan por el uso de la plataforma en el período: el del período completo de
->   su tipo, con su descuento (SLT-86 R9, R10, R15). Sin prorrateo (decisión P3), salvo la primera factura con
->   plan de una empresa cuando es más corta que su período (R29, decisión P6).
+> - *Cuota*: el costo base del plan por el uso de la plataforma en **un período de cobro completo**, con su
+>   descuento (SLT-86 R9, R10, R15). Sin prorrateo (P3), salvo la primera factura con plan (R29, P6). Va en la
+>   factura cuyo `desde` es el inicio de ese período de cobro (R8).
 > - *Primera factura con plan*: la factura con plan de una empresa sin ninguna factura anterior con plan.
 > - *Efecto*: el instante desde el que rige un cambio de plan, de tipo o una primera asignación (las 00:00
 >   de su fecha, SLT-86). En un cambio del superadmin, la fecha ya llevada al inicio de un período (R30).
 > - *Tipo vigente*: el tipo de cobro que la empresa tiene en el instante en que se guarda el cambio.
-- *Tipo nuevo*: el tipo de cobro con el que queda la empresa tras el cambio (igual al vigente si solo cambia
-  el plan).
-- *Tipo de referencia*: el más largo entre el vigente y el nuevo, en el orden quincenal < mensual <
-  bimestral < anual (decisión P9). Todo inicio de un período de un tipo más largo es también inicio de un
-  período de cada tipo más corto (1 de enero; 1 de enero, marzo, mayo, julio, septiembre y noviembre; 1 de
-  cada mes; 1 y 16 de cada mes).
+> - *Tipo nuevo*: el tipo de cobro con el que queda la empresa tras el cambio (igual al vigente si solo cambia
+>   el plan).
+> - *Tipo de referencia*: el más largo entre el vigente y el nuevo, en el orden quincenal < mensual <
+>   bimestral < anual (decisión P9). Todo inicio de un período de un tipo más largo es también inicio de un
+>   período de cada tipo más corto (1 de enero; 1 de enero, marzo, mayo, julio, septiembre y noviembre; 1 de
+>   cada mes; 1 y 16 de cada mes).
 > - *Margen de cierre*: 5 minutos después del fin de la factura (design §4.3).
 
-### Facturas y períodos
+### Facturas y cortes
 
 - **R1** — El sistema DEBE tener, para cada empresa, exactamente una factura en curso, y las facturas de una
   empresa DEBEN cubrir el tiempo sin huecos ni solapes: cada factura nueva empieza en el `hasta` de la
   anterior.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
-- **R2** — El fin natural de la factura en curso DEBE ser el fin del período de calendario que contiene su
-  `desde` (SLT-86 R4): el del tipo de cobro de su plan si lo tiene, y el del mes de calendario si es «sin
-  plan». Ejemplos: quincenal con `desde` el 1 → hasta el 16 a las 00:00; sin plan con `desde` el 1 de
-  noviembre → hasta el 1 de diciembre a las 00:00.
+- **R2** — *(cambiado)* El fin natural de la factura en curso DEBE ser el fin del período de calendario de su
+  **periodicidad de órdenes** que contiene su `desde` (SLT-86 R4): la del plan de la factura si lo tiene, y
+  quincenal si es «sin plan». NO DEBE depender del tipo de cobro. Ejemplos: quincenal con `desde` el 1 →
+  hasta el 16 a las 00:00; sin plan con `desde` el 16 de noviembre → hasta el 1 de diciembre; plan anual con
+  órdenes mensuales y `desde` el 1 de noviembre → hasta el 1 de diciembre (no el 1 de enero).
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
-- **R3** — CUANDO pasan el fin de la factura en curso y el margen de cierre, el proceso automático DEBE, en
-  su primera corrida posterior, cerrarla y dejar abierta la siguiente desde ese fin, sin que nadie lo pida.
-  Ejemplo: quincenal → la corrida de las 00:10 del 16 cierra la del 1 al 15 y abre la del 16.
+- **R3** — *(cambiado: ejemplos)* CUANDO pasan el fin de la factura en curso y el margen de cierre, el proceso
+  automático DEBE, en su primera corrida posterior, cerrarla y dejar abierta la siguiente desde ese fin, sin
+  que nadie lo pida. Ejemplos: órdenes quincenales → la corrida de las 00:10 del 16 cierra la del 1 al 15 y
+  abre la del 16; órdenes mensuales → la de las 00:10 del 1 de diciembre cierra la de noviembre.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`, `tests/unit/planes/jobs-factura-plataforma.test.ts`.
 - **R4** — MIENTRAS no haya pasado el fin de una factura más el margen de cierre, el proceso NO DEBE
   cerrarla.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts` (corrida a las 00:04 del 16: no cierra).
-- **R5** — CUANDO se cierra una factura, el sistema DEBE guardar en ella: número, `desde`, `hasta`, su plan
-  (id y nombre) y su tipo de cobro, o «sin plan»; la Σ de los cargos, la Σ de
-  los reversos (en positivo) y el número de movimientos con instante en `[desde, hasta)`; el total de
-  órdenes (cargos − reversos); la cuota (R8–R10); el total (total de órdenes + cuota) y el instante del
-  cierre.
+- **R5** — *(cambiado: la periodicidad)* CUANDO se cierra una factura, el sistema DEBE guardar en ella: número,
+  `desde`, `hasta`, su plan (id y nombre), su tipo de cobro y su periodicidad de órdenes, o «sin plan» con
+  periodicidad quincenal; la Σ de los cargos, la Σ de los reversos (en positivo) y el número de movimientos con
+  instante en `[desde, hasta)`; el total de órdenes (cargos − reversos); la cuota si la lleva (R8, R29), con su
+  precio y sus días; el total (total de órdenes + cuota) y el instante del cierre.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
 - **R6** — Cada cargo y cada reverso DEBE contar en la factura cuyo `[desde, hasta)` contiene su instante, y
   en ninguna otra. Un reverso de un cargo de un período anterior DEBE contar en la factura del período del
@@ -90,17 +107,23 @@
 
 ### Cuota
 
-- **R8** — SI la factura tiene plan con costo base y no es el caso de R29, ENTONCES su cuota DEBE ser el
-  costo del período **completo** de su tipo con el descuento de ese período (SLT-86 R9, R10) y el precio del
-  plan vigente en el `desde` de la factura (SLT-86 R15), en decimal exacto, a dos decimales y con la mitad
-  hacia arriba. NO DEBE prorratearse por días (decisiones P3, P4 y P6), aunque la factura cubra menos días que
-  su período. Ejemplos: quincenal 15 500 → 15 500.00; mensual 31 000 con 10 % de descuento mensual →
-  27 900.00; un precio editado con efecto el 5 rige desde la primera factura cuyo `desde` es el 5 o posterior.
-  Un cambio del superadmin ya no deja facturas más cortas (R30, decisión P9); si un pendiente guardado antes
-  de esta ficha o por otra vía lo hace (quincenal → mensual con efecto el 16 de noviembre), la factura del 16
-  al 30 lleva la cuota mensual completa.
-  *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`
-  (el pendiente por SQL con factura más corta).
+- **R8** — *(cambiado)* SI la factura tiene plan con costo base y su `desde` es el **inicio de un período de
+  cobro** de su tipo, ENTONCES DEBE llevar la cuota de ese período **completo**, con el descuento de ese
+  período (SLT-86 R9, R10) y el precio del plan vigente en ese `desde` (SLT-86 R15), en decimal exacto, a dos
+  decimales y con la mitad hacia arriba; NO DEBE prorratearse por días (decisiones P3 y P4). SI su `desde` no es
+  inicio de un período de cobro y no es el caso de R29, ENTONCES la factura NO DEBE llevar cuota. Cada período
+  de cobro DEBE cobrarse en una sola factura. Ejemplos, con órdenes quincenales:
+  - mensual 31 000 con 10 % de descuento mensual → la del 1 al 15 lleva 27 900.00 y la del 16 al 30, ninguna;
+  - quincenal 15 500 → cada factura lleva 15 500.00;
+  - anual → solo la del 1 de enero lleva la cuota anual; las otras 23 del año, ninguna;
+  - bimestral → la del 1 de enero, marzo, mayo, julio, septiembre y noviembre;
+  - un precio editado con efecto el 5 rige desde la primera factura con cuota cuyo `desde` es el 5 o posterior;
+  - un pendiente guardado antes de esta ficha o por SQL que deja una factura con plan empezando a mitad de su
+    período de cobro (quincenal → mensual con efecto el 16 de noviembre) → la del 16 al 30 no lleva cuota, y la
+    primera cuota mensual va en la del 1 de diciembre.
+  *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts` (mensual con órdenes quincenales; anual con
+  órdenes mensuales; precio editado), `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (el
+  pendiente por SQL a mitad de período).
 - **R9** — SI la factura no tiene plan, o su plan no tiene costo base («sin precio»), ENTONCES la factura
   DEBE cerrarse sin cuota y con los cargos de sus órdenes (decisión «Empresa sin plan»).
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
@@ -133,31 +156,33 @@
 
 ### Cambios de plan: sin corte ni prorrateo (decisiones P3 y P4)
 
-- **R15** — CUANDO se aplica un cambio de plan o de tipo de cobro a una empresa que ya tiene plan, el sistema
-  NO DEBE cortar la factura en curso ni cambiar su plan, su tipo ni su fin: DEBE cerrarse entera, con la
-  cuota completa del plan de antes (R8), y la siguiente DEBE empezar en su fin natural con el plan y el tipo
-  que la empresa tenga en ese instante. Vale también si el efecto cae a mitad del período (un pendiente
-  guardado antes de esta ficha o uno aplicado por otra vía; desde R30 el superadmin ya no puede guardarlo).
-  Ejemplos, con la factura de noviembre en curso desde el 1 y mensual 31 000:
+- **R15** — *(cambiado: ejemplos)* CUANDO se aplica un cambio de plan o de tipo de cobro a una empresa que ya
+  tiene plan, el sistema NO DEBE cortar la factura en curso ni cambiar su plan, su tipo, su periodicidad ni su
+  fin: DEBE cerrarse entera con el plan de antes, y la siguiente DEBE empezar en su fin natural con el plan, el
+  tipo y la periodicidad que la empresa tenga en ese instante. Vale también si el efecto cae a mitad de la
+  factura (un pendiente guardado antes de esta ficha o uno aplicado por otra vía; desde R30 el superadmin ya no
+  puede guardarlo). Ejemplos, con mensual 31 000 y órdenes quincenales:
   - cambio a quincenal 15 500 con efecto el 1 de diciembre (inicio del próximo período, como SLT-99 «Planes:
-    el administrador de la empresa ve su plan y los públicos y cambia de plan» R10) → noviembre cierra con
-    31 000.00 y la del 1 al 15 de diciembre, con 15 500.00;
-  - el mismo cambio con efecto el 10 de noviembre, guardado como pendiente por SQL → noviembre cierra igual,
-    entera, con 31 000.00, y la siguiente empieza el 1 de diciembre con quincenal.
+    el administrador de la empresa ve su plan y los públicos y cambia de plan» R10) → la del 1 al 15 de
+    noviembre cierra con 31 000.00, la del 16 al 30 sin cuota, y las del 1 al 15 y del 16 al 31 de diciembre con
+    15 500.00 cada una;
+  - el mismo cambio con efecto el 10 de noviembre, guardado como pendiente por SQL → la del 1 al 15 de noviembre
+    cierra igual, entera, con el plan de antes, y la del 16 empieza con quincenal y 15 500.00.
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
-- **R16** — SI el efecto de un cambio de plan, de tipo o de una primera asignación cae en o antes del `desde`
-  de la factura en curso (inicio en el pasado, o un cambio que la cola aplica tarde), ENTONCES la factura en
-  curso DEBE pasar entera al plan y tipo nuevos, con su cuota (R8, o R29 si es la primera factura con plan), y
-  su fin natural DEBE recalcularse con el tipo nuevo (R2). Las facturas por cerrar y cerradas NO DEBEN cambiar
-  nunca, ni debe crearse una factura vacía. Ejemplos: empresa sin plan con factura en curso desde el 1 de
-  noviembre y primera asignación quincenal 15 500 con inicio el 1, aplicada el 10 → la factura del 1 al 15
-  cierra con 15 500.00; empresa dada de alta el 10 (factura en curso desde el 10, R26) y primera asignación
-  quincenal 15 500 con inicio el 10 → la factura del 10 al 15 cierra con 6 200.00 (R29). Con esto, a SLT-120
-  «Planes: facturar el período en curso (1–15) tras asignar los primeros planes» le queda solo recalcular los
-  cargos de las órdenes.
+- **R16** — *(cambiado: la periodicidad)* SI el efecto de un cambio de plan, de tipo o de una primera
+  asignación cae en o antes del `desde` de la factura en curso (inicio en el pasado, o un cambio que la cola
+  aplica tarde), ENTONCES la factura en curso DEBE pasar entera al plan, el tipo y la periodicidad nuevos, con su
+  cuota (R8, o R29 si es la primera factura con plan), y su fin natural DEBE recalcularse con la periodicidad
+  nueva (R2). Las facturas por cerrar y cerradas NO DEBEN cambiar nunca, ni debe crearse una factura vacía.
+  Ejemplos: empresa sin plan con factura en curso desde el 1 de noviembre y primera asignación quincenal 15 500
+  con inicio el 1, aplicada el 10 → la factura del 1 al 15 cierra con 15 500.00; empresa dada de alta el 10
+  (factura en curso desde el 10, R26) y primera asignación quincenal 15 500 con inicio el 10 → la factura del 10
+  al 15 cierra con 6 200.00 (R29). Con esto, a SLT-120 «Planes: facturar el período en curso (1–15) tras asignar
+  los primeros planes» le queda solo recalcular los cargos de las órdenes.
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (inicio el 1 aplicado el 10; alta el 10
   con inicio el 10; cambio aplicado después de que la cola cerrara su factura: la cerrada no cambia y la en
-  curso toma el plan nuevo).
+  curso toma el plan nuevo; plan con órdenes mensuales tomado por una factura quincenal: su fin pasa al 1 del
+  mes siguiente).
 - **R17** — MIENTRAS un cambio esté pendiente, y SI se cancela o se reemplaza, el sistema NO DEBE cambiar
   ninguna factura. Un cambio de precio del plan (SL-24) NO DEBE cambiar facturas: rige por R8 desde la primera
   factura cuyo `desde` es igual o posterior a su efecto.
@@ -193,11 +218,13 @@
   `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`.
 - **R23** — El superadmin DEBE poder leer las facturas de todas las empresas (decisión «Quién ve»).
   *Test:* `tests/integration/db/factura-plataforma-aislamiento.test.ts`.
-- **R24** — MIENTRAS una factura no esté cerrada, el sistema DEBE devolverla, a la empresa dueña y al
-  superadmin, como «en curso» con su total parcial: el total de órdenes hasta ese instante y la cuota
-  de su plan (R8 o R29) como prevista, con su fin (previsto o fijado), sin número. SI la empresa del contexto pide la de otra, ENTONCES
-  la base DEBE rechazarlo con `42501`.
-  *Test:* `tests/integration/db/factura-plataforma-aislamiento.test.ts`.
+- **R24** — *(cambiado: la cuota solo si la lleva)* MIENTRAS una factura no esté cerrada, el sistema DEBE
+  devolverla, a la empresa dueña y al superadmin, como «en curso» con su total parcial: el total de órdenes
+  hasta ese instante y, si la factura lleva cuota (R8 o R29), esa cuota como prevista; con su periodicidad y su
+  fin (previsto o fijado), sin número. SI la empresa del contexto pide la de otra, ENTONCES la base DEBE
+  rechazarlo con `42501`.
+  *Test:* `tests/integration/db/factura-plataforma-aislamiento.test.ts` (una con cuota prevista y otra sin
+  cuota: la del 16 de un plan mensual).
 
 ### Proceso, arranque y vuelta atrás
 
@@ -205,41 +232,51 @@
   trabajo recurrente de núcleo de la cola; su primera corrida la DEBE sembrar el despliegue. NO DEBE enviar
   correos ni avisos al cerrar (decisión «Aviso al cerrar»).
   *Test:* `tests/unit/planes/jobs-factura-plataforma.test.ts`.
-- **R26** — CUANDO se aplica la migración, cada empresa DEBE quedar con una factura en curso desde el inicio
-  del período de calendario en curso (el de su tipo si tiene plan; el del mes si no), con el plan y el tipo
-  que tiene en ese momento. Una empresa dada de
-  alta después DEBE tener su primera factura desde las 00:00 del día de su alta.
+- **R26** — *(cambiado; la cuota de la siembra en anual y bimestral, propuesta P15)* CUANDO se aplica la
+  migración, cada empresa DEBE quedar con una factura en curso desde el inicio del **corte** en curso de su
+  periodicidad de órdenes (la de su plan; quincenal si no tiene), con el plan, el tipo y la periodicidad que
+  tiene en ese momento. Esa factura es su primera factura con plan, así que su cuota sigue R8 y R29: si su
+  `desde` es inicio de su período de cobro, la cuota completa; si no (un plan anual, o bimestral en un mes par),
+  la proporcional del tramo que queda del período. Ejemplo, desplegado el 10 de noviembre de 2026 con órdenes
+  quincenales: mensual → desde el 1 de noviembre, cuota completa; anual → desde el 1 de noviembre, cuota de 61
+  de 365 días. Una empresa dada de alta después DEBE tener su primera factura desde las 00:00 del día de su alta.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
-- **R27** — SI hay alguna factura cerrada con cuota, ENTONCES el `down.sql` DEBE negarse sin tocar nada: quitar
-  la tabla bajaría la deuda y dejaría los pagos de la cuota como sobrepago. Sin cuotas cerradas, DEBE dejar
-  la base como estaba, con el tope del pago de SL-45 igual que antes.
+- **R27** — *(cambiado: la columna del plan)* SI hay alguna factura cerrada con cuota, ENTONCES el `down.sql`
+  DEBE negarse sin tocar nada: quitar la tabla bajaría la deuda y dejaría los pagos de la cuota como sobrepago.
+  Sin cuotas cerradas, DEBE dejar la base como estaba: sin la periodicidad de órdenes en `plan` y con el tope del
+  pago de SL-45 igual que antes.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts` (ida y vuelta).
 
 ### Primera asignación con efecto dentro de la factura en curso
 
-- **R28** — SI una primera asignación tiene su efecto E después del `desde` de la factura en curso (que es
-  «sin plan»), ENTONCES la factura en curso DEBE fijarse en E sin plan y sin cuota, y la siguiente DEBE empezar
-  en E con el plan y el tipo nuevos, hasta el fin natural de su período (R2) y con la cuota de R29. E es el
-  día de inicio elegido, sin llevarlo al inicio de un período (decisión P8, R33): vale con un inicio pasado
-  aplicado en el acto y con un inicio futuro que la cola aplica ese día.
-  Ejemplos, con la factura sin plan en curso desde el 1 de noviembre, quincenal 15 500 y mensual 31 000:
-  quincenal con inicio el 5 → del 1 al 4 sin plan y del 5 al 15 con 11 366.67; quincenal con inicio el 18
-  (futuro) → del 1 al 17 sin plan y del 18 al 30 con 13 433.33; mensual con inicio el 18 → del 1 al 17 sin
-  plan y del 18 al 30 con 13 433.33.
+- **R28** — *(cambiado: ejemplos)* SI una primera asignación tiene su efecto E después del `desde` de la factura
+  en curso (que es «sin plan»), ENTONCES la factura en curso DEBE fijarse en E sin plan y sin cuota, y la
+  siguiente DEBE empezar en E con el plan, el tipo y la periodicidad nuevos, hasta el fin natural de su corte
+  (R2) y con la cuota de R29. E es el día de inicio elegido, sin llevarlo al inicio de un período (decisión P8,
+  R33): vale con un inicio pasado aplicado en el acto y con un inicio futuro que la cola aplica ese día.
+  Ejemplos, con quincenal 15 500 y mensual 31 000, los dos con órdenes quincenales, y la factura sin plan en
+  curso desde el 1 o el 16 de noviembre: quincenal con inicio el 5 → del 1 al 4 sin plan y del 5 al 15 con
+  11 366.67; quincenal con inicio el 18 (futuro) → del 16 al 17 sin plan y del 18 al 30 con 13 433.33; mensual
+  con inicio el 18 → del 16 al 17 sin plan y del 18 al 30 con 13 433.33; anual con órdenes mensuales e inicio
+  el 18 → del 16 al 17 sin plan y del 18 al 30 con la cuota de 44 de 365 días, y la siguiente anual, en la del 1
+  de enero.
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
 
 ### Cuota de la primera factura con plan (decisión P6)
 
-- **R29** — SI una factura con plan con costo base es la primera factura con plan de la empresa y su `desde`
-  es posterior al inicio del período de calendario de su tipo que contiene ese `desde`, ENTONCES su cuota
-  DEBE ser proporcional a sus días con la regla de tramos de SLT-86 R12: el costo del período completo de R8
-  (ya redondeado) × los días de calendario de la factura ÷ los días de ese período de calendario, en decimal
-  exacto, a dos decimales y con la mitad hacia arriba. Es la única excepción al «sin prorrateo»: cualquier
-  otra factura con plan DEBE llevar el período completo (R8). Ejemplos: quincenal 15 500 con primer plan
-  desde el 10 → del 10 al 15, 6 días de 15 → 6 200.00; mensual 31 000 desde el 18 de noviembre → 13 de 30
-  días → 13 433.33; quincenal 15 500 con primer plan desde el 1 → 15 500.00 (no es más corta).
+- **R29** — *(cambiado: el tramo llega al fin del período de cobro)* SI una factura con plan con costo base es
+  la primera factura con plan de la empresa y su `desde` es posterior al inicio del período de cobro de su tipo
+  que contiene ese `desde`, ENTONCES DEBE llevar la cuota proporcional del **tramo de ese período de cobro que
+  va de su `desde` al fin del período**, con la regla de tramos de SLT-86 R12: el costo del período completo de
+  R8 (ya redondeado) × los días de calendario del tramo ÷ los días del período, en decimal exacto, a dos
+  decimales y con la mitad hacia arriba. El tramo puede pasar del `hasta` de la factura (un plan anual con
+  órdenes quincenales); el resto de ese período NO DEBE cobrarse en otra factura. Es la única excepción al «sin
+  prorrateo»: cualquier otra factura con plan sigue R8. Ejemplos: quincenal 15 500 con primer plan desde el 10 →
+  del 10 al 15, 6 de 15 días → 6 200.00; mensual 31 000 desde el 18 de noviembre → 13 de 30 días → 13 433.33
+  (en la factura del 18 al 30); anual desde el 18 de noviembre → 44 de 365 días, en la factura que empieza el
+  18; quincenal 15 500 con primer plan desde el 1 → 15 500.00 (R8: es inicio de período).
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (alta el 10; inicio el 5 y el 18;
-  segunda factura con plan más corta por un pendiente de cambio de tipo guardado por SQL: período completo),
+  anual desde el 18 con órdenes quincenales: la cuota en la del 18 y ninguna en las de diciembre),
   `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` (R10).
 
 ### Fecha de efecto de los cambios del superadmin (decisiones P7, P9, P10 y P11)
@@ -248,7 +285,7 @@
 > fecha elegida ya no rige tal cual; el rango sigue mirando la elegida, R34), R17 (un cambio ya no abre un
 > tramo a mitad de período) y R18 («hoy» solo se aplica en el acto si es el primer día de un período del tipo
 > de referencia). Aplica a «Asignar otro plan» a una empresa con plan, a «Crear custom» para una empresa con
-> plan y a «Cambiar tipo de cobro».
+> plan y a «Cambiar tipo de cobro». Con R37, el efecto así llevado es además un corte de órdenes (R38).
 
 - **R30** — CUANDO el superadmin guarda un cambio de plan o de tipo de cobro de una empresa que ya tiene plan
   con una fecha de efecto que no es el primer día de un período de calendario de su **tipo de referencia** (el
@@ -269,8 +306,7 @@
   (quincenal → anual, anual → mensual, mensual → quincenal), `tests/integration/db/planes-crear-custom-asigna.test.ts`,
   `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (quincenal → anual guardado el 10 de
   noviembre: las facturas del 16 al 30 de noviembre y las dos de diciembre siguen quincenales con su cuota, y
-  la del 1 de enero es anual con la cuota completa; ninguna factura queda más corta que su período),
-  `tests/unit/services/planes-service-periodo.test.ts`.
+  la del 1 de enero lleva la cuota anual completa), `tests/unit/services/planes-service-periodo.test.ts`.
 - **R31** — SI la fecha de efecto elegida es el primer día de un período de calendario del tipo de referencia,
   ENTONCES el sistema DEBE respetarla: futura → pendiente para ese día; hoy → se aplica en el acto (SLT-86
   R18). Ejemplos: mensual, 1 de diciembre → 1 de diciembre; quincenal, 16 de noviembre → 16 de noviembre;
@@ -298,15 +334,51 @@
   *Test:* `tests/integration/db/planes-cambio-empresa.test.ts` (elegida en el tope con la real después),
   `tests/unit/services/planes-service-periodo.test.ts` (elegida fuera de rango; la respuesta trae la real).
 
+### Periodicidad de órdenes del plan (cambio de fondo del 2026-11-10)
+
+- **R35** — *(nuevo; el default, propuesta P14)* Cada plan DEBE tener una periodicidad de órdenes, quincenal o
+  mensual, que el superadmin elige en el formulario del plan al crearlo y al editarlo. La edición DEBE seguir
+  las reglas de la del resto del plan (SL-24: en el acto o programada con su fecha, con su fila de rastro). SI el
+  formulario o la petición no la traen, ENTONCES crear DEBE dejarla en quincenal y editar NO DEBE cambiarla.
+  Los planes que ya existen DEBEN quedar en quincenal al aplicar la migración. Cualquier otro valor DEBE
+  rechazarse con `validation_error` en `periodicidadOrdenes`.
+  *Test:* `tests/integration/db/planes-periodicidad-ordenes.test.ts` (crear con y sin ella; editar en el acto y
+  programado; el rastro; un plan existente queda quincenal; valor inválido),
+  `tests/components/PlanFormPeriodicidad.test.tsx` (el campo, su valor al editar y lo que manda).
+- **R36** — *(nuevo; propuesta P13)* CUANDO cambia la periodicidad de órdenes de un plan, la factura en curso de
+  cada empresa con ese plan NO DEBE cambiar: DEBE cerrarse con la periodicidad con la que se abrió, y la
+  siguiente DEBE abrirse en su fin con la periodicidad nueva. Ejemplos, editada el 10 de noviembre en el acto:
+  quincenal → mensual → la del 1 al 15 sigue quincenal, la siguiente va del 16 al 30 (fin del mes, R2) y después
+  la de diciembre entero; mensual → quincenal → la de noviembre sigue entera y la siguiente es la del 1 al 15 de
+  diciembre.
+  *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (las dos ediciones).
+- **R37** — *(nuevo; propuesta P12)* Una empresa NO DEBE quedar con tipo de cobro quincenal en un plan con
+  órdenes mensuales (la cuota empezaría a mitad de una factura). Así:
+  - SI se asigna, se crea un custom o se cambia el tipo de cobro con esa combinación, ENTONCES DEBE rechazarse con
+    `validation_error` en `tipoCobro`, sin escribir nada;
+  - SI se edita la periodicidad de un plan a mensual (en el acto o programada) y alguna empresa lo tiene, o lo
+    tiene como cambio pendiente, con tipo quincenal, ENTONCES DEBE rechazarse con `validation_error` en
+    `periodicidadOrdenes`, sin escribir nada;
+  - SI una edición programada ya no pasa esa regla al aplicarse, ENTONCES el trabajo DEBE fallar sin escribir
+    nada, como hoy con una versión que no valida.
+  *Test:* `tests/integration/db/planes-periodicidad-ordenes.test.ts` (asignar, crear custom y cambiar tipo con la
+  combinación; editar a mensual con una empresa quincenal y con un pendiente quincenal; programada que ya no pasa).
+- **R38** — *(nuevo)* CUANDO se aplica un cambio de plan o de tipo de cobro guardado por R30 o R31, su efecto
+  DEBE coincidir con el `desde` de una factura de la empresa: la factura en curso cierra entera con el plan de
+  antes y todos los cargos de cada factura salen del costo por orden de un solo plan. Ejemplo: mensual con
+  órdenes quincenales a un plan con órdenes mensuales, guardado el 10 de noviembre → efecto el 1 de diciembre;
+  las dos de noviembre con el plan de antes y la de diciembre entera con el nuevo.
+  *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | Requisitos |
 |---|---|
 | ¿Qué es la factura? | R1, R5, R7 |
-| ¿Cuándo se cierra y se cobra la cuota? | R2, R3, R4, R24, R25 |
+| ¿Cuándo se cierra y se cobra la cuota? (con el cambio de fondo: al terminar cada corte; la cuota, en la del corte en que empieza su período) | R2, R3, R4, R8, R24, R25 |
 | ¿La cuota suma a la deuda? | R18, R19, R20 |
 | Reversos | R6, R13 |
-| Empresa sin plan | R2, R9 |
+| Empresa sin plan (con el cambio de fondo: quincenal) | R2, R9 |
 | Quién ve | R21, R22, R23, R24 |
 | Aviso al cerrar | R25 |
 | Detalle por orden | R7 |
@@ -315,20 +387,49 @@
 | ¿E2E? | R11, R18, R21 (integración con base) |
 | P1 · Numeración | R14 |
 | P2 · Cuota en la fila de la factura cerrada; deuda | R5, R13, R18, R19, R20, R22 |
-| P3 · Sin prorrateo ni corte; el período en curso entero con el plan viejo | R8, R15, R17, R30 |
+| P3 · Sin prorrateo ni corte; el período en curso entero con el plan viejo | R8, R15, R17, R30, R38 |
 | P4 · Inicio en el pasado: cuota completa en la factura en curso | R8, R16, R28 |
 | P5 · Tamaño aceptado | — (proceso: línea `tamano-pr-aceptado` de la ficha; sin requisito testeable) |
-| P6 · Primera factura con plan más corta: cuota proporcional | R8, R10, R16, R24, R28, R29 |
+| P6 · Primera factura con plan más corta: cuota proporcional | R8, R10, R16, R24, R26, R28, R29 |
 | P7 · El servidor del superadmin lleva el efecto al inicio del próximo período | R15, R30, R31, R32 |
 | P8 · Primera asignación con fecha futura: rige ese día, cuota proporcional | R28, R29, R33 |
 | Tamaño ~41 archivos (P7) | — (proceso: línea `tamano-pr-aceptado` de la ficha; ampliada por P11) |
 | P9 · Cambio a un tipo más largo: rige al inicio de un período del tipo nuevo | R8, R30, R31 |
 | P10 · Tope de 12 meses sobre la fecha elegida | R34, R32 |
-| P11 · 44 archivos; fecha real en las dos confirmaciones | R32 (las dos confirmaciones); el tamaño es proceso (línea `tamano-pr-aceptado` de la ficha) |
+| P11 · 44 archivos; fecha real en las dos confirmaciones | R32 (las dos confirmaciones); el tamaño es proceso (línea `tamano-pr-aceptado` de la ficha); con el cambio de fondo son 49 (P16) |
+| Periodicidad de órdenes por plan; sin plan quincenal; una factura por corte; la cuota en la del corte en que empieza su período; un solo tipo de factura | R1, R2, R5, R8, R15, R16, R24, R26, R28, R29, R35, R36, R37, R38 |
 
 ## Preguntas abiertas
 
-Ninguna. P1–P11 las respondió el humano el 2026-11-10 y pasaron a «Decisiones cerradas».
+Del cambio de fondo del 2026-11-10. Los requisitos marcados «propuesta» están escritos con la propuesta de
+cada una; si el humano elige otra cosa, cambian esos requisitos y sus tests, no el resto.
+
+- **P12 · Cuota quincenal con órdenes mensuales.** Con tipo de cobro quincenal y un plan de órdenes mensuales,
+  la cuota del 16 empezaría a mitad de la factura del mes. Propuesta (R37): **no se permite**; se rechaza al
+  asignar, al crear el custom, al cambiar el tipo y al editar el plan. Otras dos salidas: (a) cuando el tipo es
+  quincenal, las órdenes se facturan quincenales aunque el plan diga mensual (sin rechazos, pero el plan deja de
+  mandar en ese caso); (b) la factura del mes lleva las dos cuotas quincenales (dos cuotas en una fila, y un
+  cambio de plan el 16 dejaría dos planes en la misma factura). ¿Rechazo, (a) o (b)?
+- **P13 · Cambio de la periodicidad de un plan con facturas en curso.** Propuesta (R36): la factura en curso de
+  cada empresa termina con la periodicidad con la que se abrió y la nueva rige desde el siguiente corte. Así, de
+  quincenal a mensual a mitad de mes sale una factura del 16 al fin de mes antes de la primera mensual entera.
+  ¿Vale, o la nueva periodicidad debe esperar al siguiente 1 de mes?
+- **P14 · Valor de los planes que ya existen.** Propuesta (R35): **quincenal**, el mismo de la empresa sin plan.
+  Es el único valor que admite cualquier tipo de cobro sin chocar con R37 (todo inicio de un período de cobro
+  cae el 1 o el 16), y es el corte con el que SLT-120 «Planes: facturar el período en curso (1–15) tras asignar
+  los primeros planes» corrige el 1–15. ¿Vale quincenal para todos, o hay planes que deben quedar en mensual?
+- **P15 · La primera cuota de las empresas con plan anual o bimestral al desplegar.** La factura que siembra la
+  migración es la primera con plan de cada empresa. Con la regla de la cuota (R8, R29), una empresa anual
+  desplegada el 10 de noviembre de 2026 paga en la factura del 1 al 15 de noviembre la cuota de lo que queda del
+  año (61 de 365 días) y la anual entera el 1 de enero; una bimestral en un mes par, lo que queda de su bimestre.
+  Las mensuales y quincenales, la cuota completa del 1 de noviembre. Propuesta (R26): así. La otra salida es no
+  cobrar nada hasta el próximo inicio de su período de cobro (la anual, nada hasta el 1 de enero). ¿Cuál?
+- **P16 · Tamaño.** Con la periodicidad del plan, `tasks.md > Archivos esperados` pasa de 44 a **49** archivos
+  (122 % de `max_archivos` = 40): suma `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`, `PlanForm.tsx` y dos
+  tests. Si hay que volver a 44, el corte es una ficha aparte «Planes: el superadmin edita la periodicidad de
+  órdenes del plan» (formulario, edición, rastro y R37), que se mergea sola después de esta. Aquí quedaría la
+  columna con quincenal para todos (R35 sin la edición), y R36 y R37 no harían falta hasta esa ficha. ¿Se aceptan
+  49 o se corta?
 
 ### Respondidas el 2026-11-10, segunda tanda (texto original, para el rastro)
 
@@ -409,3 +510,4 @@ Ninguna. P1–P11 las respondió el humano el 2026-11-10 y pasaron a «Decisione
 | 2026-11-10 | P9 · Cambio a un tipo de cobro más largo | Rige al inicio de un período del **tipo nuevo** (1 de enero para anual; 1 del próximo bimestre para bimestral; 1 del mes para mensual), no en el próximo inicio del tipo viejo; hasta entonces la empresa sigue con su tipo y plan actuales. Ninguna factura queda corta salvo la primera de R29. Un cambio a un tipo más corto o igual sigue R30 (inicio del próximo período del vigente). Ej.: quincenal → anual el 10 nov rige el 1 ene (humano). |
 | 2026-11-10 | P10 · Rango de la fecha elegida | El tope de 12 meses se valida sobre la fecha **elegida** por el superadmin; la real puede quedar después y la respuesta y la confirmación la muestran (humano). |
 | 2026-11-10 | P11 · Tamaño 44 | Se aceptan 44 archivos, con la fecha real en las dos confirmaciones (cambio de plan de la empresa y crear custom); línea `tamano-pr-aceptado` en la ficha (humano). |
+| 2026-11-10 | Periodicidad de órdenes (cambio de fondo, tras aprobar el spec) | Las órdenes **no** se facturan con el período de cobro de la cuota. Cada **plan** define la periodicidad de facturación de órdenes: **quincenal** (cortes 1 y 16) o **mensual** (del 1 a fin de mes); la edita el superadmin en el formulario de planes. Empresa **sin plan: quincenal** (sustituye a «mensual» de la fila «Empresa sin plan»). Hay **una factura por corte de órdenes**; la cuota del plan se suma en la factura del corte en que **empieza** su período de cobro (anual: en la del 1 de enero; mensual: en la del 1 de cada mes; quincenal: en cada una). Un solo tipo de factura y un solo plazo de pago. La cuota conserva sus reglas: período completo; P6 primera proporcional; P7, P9 y P10 fecha de efecto del superadmin; P4 inicio pasado (humano). |

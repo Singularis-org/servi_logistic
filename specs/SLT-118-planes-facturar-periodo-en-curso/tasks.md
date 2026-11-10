@@ -1,58 +1,63 @@
 # SLT-118 — planes-facturar-periodo-en-curso · tasks.md
 
-> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R34). P1–P11 cerradas (2026-11-10); sin
-> preguntas abiertas. P9 (cambio a un tipo más largo: inicio de un período del tipo nuevo) toca T11.2, T6.2,
-> T12.1 y T12.2; P10 (rango sobre la fecha elegida) trae R34 (T11.3, T12.1, T12.4); P11 acepta 44 archivos.
-> Capa: `backend_dev` (`db/`, `lib/`, `app/api/`, `scripts/`, `tests/`), salvo T11.4, que toca dos pantallas
-> del superadmin (solo el texto de una confirmación).
-> Un solo PR (P5, P7 y P11 aceptados); los bloques A, B y C solo ordenan el trabajo.
+> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R38). P1–P11 cerradas; **P12–P16 abiertas**
+> (cambio de fondo del 2026-11-10: periodicidad de órdenes por plan). El spec debe re-aprobarse antes de seguir.
+> Capa: `backend_dev` (`db/`, `lib/`, `app/api/`, `scripts/`, `tests/`), salvo T11.4 y T14.4, que tocan
+> pantallas del superadmin (dos confirmaciones y un selector del formulario del plan).
+> Un solo PR (pendiente P16); los bloques solo ordenan el trabajo.
+>
+> **Estado de la tanda 1.** T1 (`d237afe7`) y T2 (`0e58af60`) están hechas con el diseño de antes. Lo que se
+> conserva y lo que se rehace está en design §0; aquí, en T1.3 y T2.4–T2.6. Sus casillas quedan marcadas y las
+> nuevas, sin marcar. Los tres desvíos de la tanda 1 (prefijo `20261111`, `factura_plataforma_abrir`, CHECK más
+> estricto) quedan aceptados (design §0.1).
 
 ## Bloque A — Facturas, cierre y toma del cambio
 
 ### T1 — Modelo Prisma y clasificación
-- [ ] **T1.1** `db/schema.prisma`: modelo `FacturaPlataforma` (design §1.1, §1.4, con `dias_cobrados` y
-  `dias_periodo`), relación inversa en `Organizacion`, valor `factura_plataforma_cerrar` en `JobTipo`,
-  comentario de lo que vive solo en SQL.
-- [ ] **T1.2** `lib/db/modelos-de-negocio.ts`: la entrada nueva.
+- [x] **T1.1** `db/schema.prisma`: modelo `FacturaPlataforma`, relación inversa, `factura_plataforma_cerrar` en
+  `JobTipo` (`d237afe7`).
+- [x] **T1.2** `lib/db/modelos-de-negocio.ts`: la entrada nueva (`d237afe7`).
+- [ ] **T1.3** *(rehacer)* `db/schema.prisma`: `FacturaPlataforma.periodicidad` (`String`, comentario del CHECK)
+  y `Plan.periodicidadOrdenes` (`@default("quincenal") @map("periodicidad_ordenes")`, comentario del CHECK)
+  (design §1.1, §1.2, §0.3).
 - **Hecho:** `pnpm run typecheck` verde.
 - Depende de: nada.
 
 ### T2 — Migraciones (depende de T1)
-- [ ] **T2.1** `db/migrations/20261110130000_factura_plataforma_job_enum/` (design §6.1): `migration.sql` sola
-  y `down.sql` con la función de reversión `_slt118`.
-- [ ] **T2.2** `db/migrations/20261110130100_factura_plataforma/migration.sql` (design §6.2), con
-  `BEGIN`/`COMMIT`: tabla y CHECK (plan de la factura en todos los estados; cuota con su precio y sus dos
-  días, `0 < dias_cobrados <= dias_periodo`); únicos (incluido el parcial); FK `CASCADE`; RLS, política,
-  `REVOKE`; sin cambio de empresa; inmutabilidad `SL118` (cerrada entera; plan, `desde` y `hasta` de una
-  `por_cerrar`); funciones §2.1–§2.6 (`plan_costo_del_periodo`, `plan_costo_del_tramo`,
-  `plan_dias_de_calendario`, `avanzar` que copia el plan al abrir, `tomar_cambio`, `cifras` con el precio en
-  el `desde` y el tramo de R29, `cerrar`, `en_curso`) con sus `REVOKE` y el `GRANT`; tope del pago §2.7
-  copiado literal más la cuota; siembra con el plan de cada empresa.
-- [ ] **T2.3** `down.sql` (R27): precondición «ninguna cerrada con cuota», cuerpo de origen del tope, `DROP`.
+- [x] **T2.1** `db/migrations/20261111130000_factura_plataforma_job_enum/` (`0e58af60`). Sin cambios.
+- [x] **T2.2** `db/migrations/20261111130100_factura_plataforma/migration.sql` con el diseño de antes (`0e58af60`).
+- [x] **T2.3** Su `down.sql` (`0e58af60`).
+- [ ] **T2.4** *(rehacer, en `20261111130100/migration.sql`)*: `plan.periodicidad_ordenes` con su `DEFAULT
+  'quincenal'` y su CHECK (R35); `factura_plataforma.periodicidad` con su CHECK; el trigger de inmutabilidad
+  congela también `periodicidad` en una `por_cerrar`.
+- [ ] **T2.5** *(rehacer, mismo archivo)*: `abrir` copia la periodicidad (la del plan, o `quincenal`); `avanzar`
+  saca el fin natural de la periodicidad de la factura (R2); `tomar_cambio` pone también la periodicidad del plan
+  nuevo, en R16 y en la factura que abre R28; `cifras` sin `p_hasta`, con la cuota solo si el `desde` es inicio
+  del período de cobro, el tramo de R29 hasta el fin del período de cobro y sin cuota en los demás (design
+  §2.4); `cerrar` y `en_curso` con la firma nueva; `en_curso` con el fin previsto por la periodicidad y la
+  periodicidad en el JSON; la siembra desde el inicio del corte en curso de su periodicidad (R26).
+- [ ] **T2.6** *(rehacer, `down.sql`)*: `DROP FUNCTION` de `cifras` con la firma nueva y `ALTER TABLE "plan" DROP
+  COLUMN "periodicidad_ordenes"` (R27).
 - **Hecho:** `pnpm run db:migrate` y `pnpm run db:rollback` en una base desechable: la vuelta deja
-  `wallet_movimiento_tope_pago_plataforma` igual a la de `20261024140000` (`pg_get_functiondef`), y con una
-  cerrada con cuota el rollback se niega sin cambiar nada.
+  `wallet_movimiento_tope_pago_plataforma` igual a la de `20261024140000` (`pg_get_functiondef`) y `plan` sin la
+  columna; con una cerrada con cuota el rollback se niega sin cambiar nada.
 
 ### T3 — Toma del cambio de plan (depende de T2)
-- [ ] **T3.1** `lib/repositories/PlanesRepository.ts`: en `aplicarEnTx`, `factura_plataforma_tomar_cambio`
-  con el efecto, el plan y el tipo nuevos, antes del `UPDATE "organizacion"` (design §2.3). Sirve a los
-  cambios del superadmin y del maestro (los dos pasan por `aplicarEnTx`).
-- [ ] **T3.2** En `tomar_cambio` (T2.2), los tres casos de §2.3: efecto ≤ D (R16), efecto > D con plan (R15:
-  nada) y primera asignación con efecto > D (R28: corta en el efecto, sin llevarlo a un inicio de período).
+- [ ] **T3.1** `lib/repositories/PlanesRepository.ts`: en `aplicarEnTx`, `factura_plataforma_tomar_cambio` con el
+  efecto, el plan y el tipo nuevos, antes del `UPDATE "organizacion"` (design §2.3).
 - **Hecho:** los tests de planes existentes siguen verdes (`pnpm exec vitest related --run
   lib/repositories/PlanesRepository.ts`, salvo los que ajusta T12.3) y ningún cambio aplicado mueve el fin de
   una factura con plan.
 
 ### T4 — Repositorio y proceso (depende de T2) [P con T3]
-- [ ] **T4.1** `lib/types/factura-plataforma.ts` (con los días cobrados y del período) y
+- [ ] **T4.1** `lib/types/factura-plataforma.ts` (con `periodicidad` y los días de la cuota) y
   `lib/interfaces/repositories/IFacturaPlataformaRepository.ts`.
 - [ ] **T4.2** `lib/repositories/FacturaPlataformaRepository.ts`: `empresasACerrar`, `cerrar` (design §3). Su
   entrada en `lib/db/excepciones-aislamiento.ts`.
 - [ ] **T4.3** `lib/planes/jobs-factura-plataforma.ts`: handler (R12), recurrencia a los :10, siembra,
   composition root (design §4).
-- [ ] **T4.4** Registro: `app/api/cron/procesar-jobs/route.ts` (`buildHandlers`, `buildRecurrencias`,
-  `RECURRENTES_DE_PLATAFORMA`), `lib/modulos/reparto.ts` (`MODULO_POR_JOB`: núcleo),
-  `scripts/siembra-jobs-recurrentes.ts` (`SIEMBRAS_RECURRENTES`).
+- [ ] **T4.4** Registro: `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`,
+  `scripts/siembra-jobs-recurrentes.ts`.
 - **Hecho:** `pnpm run test:guardias` verde (`plataforma-solo-en-lista`, `sql-a-mano-por-empresa`,
   `modulos-reparto`); typecheck y lint verdes.
 
@@ -63,19 +68,14 @@
 - **Hecho:** `pnpm run test:guardias` verde, y la contraprueba encuentra cada patrón nuevo.
 
 ### T6 — Tests del bloque A (dependen de T2–T4) [P entre sí]
-- [ ] **T6.1** `tests/integration/db/factura-plataforma-cierre.test.ts`: R1–R9, R11, R14, R26, R27 (R8: precio
-  editado con efecto antes y después del `desde`).
-- [ ] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (pendiente de cambio de tipo
-  guardado por SQL que deja una factura más corta: período completo), R15–R17, R28, R29, R33 y R30 por P9
-  (quincenal → anual guardado por `PlanesService` el 10 de noviembre: noviembre y diciembre siguen quincenales y
-  la del 1 de enero es anual completa; ninguna factura más corta; este caso depende de T11.2), con los casos
-  de design §8 (efecto en el
-  inicio del próximo período; efecto a mitad de período sin corte; inicio el 1 aplicado el 10 → 15 500.00;
-  alta el 10 con inicio el 10 → 6 200.00; inicio el 5 → 11 366.67; inicio el 18 futuro aplicado por el
-  trabajo → 13 433.33; aplicado tarde, antes y después de un cierre; `SL118` en una `por_cerrar`).
-- [ ] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29
-  (`plan_costo_del_periodo` ↔ `montoDelPeriodo`; `plan_costo_del_tramo` + `plan_dias_de_calendario` ↔
-  `costoDelPeriodoEnCurso`, con la tabla de tramos de design §8).
+- [ ] **T6.1** `tests/integration/db/factura-plataforma-cierre.test.ts`: R1–R9, R11, R14, R26, R27, con las
+  empresas de design §8 (sin plan quincenal; mensual con órdenes quincenales: cuota en la del 1 y ninguna en la
+  del 16; anual con órdenes mensuales: cuota solo el 1 de enero; siembra: mensual completa y anual de 61 de 365).
+- [ ] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (pendiente por SQL a mitad de
+  período: sin cuota), R15–R17, R28, R29 (anual desde el 18 con órdenes quincenales: 44 de 365 en la del 18 y
+  ninguna en diciembre), R30 por P9 (depende de T11.2), R33, R36 y R38 (dependen de T14.2), con los casos de
+  design §8 y `SL118` al cambiar la periodicidad de una `por_cerrar`.
+- [ ] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29.
 - [ ] **T6.4** `tests/unit/planes/jobs-factura-plataforma.test.ts`: R3, R12, R25.
 - [ ] **T6.5** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: R13, R21–R23, con dos empresas.
 - **Hecho:** los cinco verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
@@ -88,19 +88,17 @@
 - [ ] **T7.2** `lib/repositories/CobroPlataformaMovimientoRepository.ts`: la entrada `cuota` (design §5).
 - [ ] **T7.3** `lib/utils/deuda-plataforma.ts`: resta solo `reverso`.
 - [ ] **T7.4** `lib/repositories/EmpresasPlataformaRepository.ts`: cuotas por empresa en el listado.
-- **Hecho:** `tests/unit/utils/deuda-plataforma.test.ts` y los tests de deuda existentes
-  (`deuda-plataforma-wallet`, `deuda-plataforma-plan`, `tope-pago-plataforma-service`) verdes sin cambiar.
+- **Hecho:** `tests/unit/utils/deuda-plataforma.test.ts` y los tests de deuda existentes verdes sin cambiar.
 
 ### T8 — Lectura en curso (depende de T4.2) [P con T7]
 - [ ] **T8.1** `FacturaPlataformaRepository`: `deLaEmpresa` y `deEmpresaParaPlataforma` (design §2.6, §3), con
-  la cuota prevista de R8 o R29.
+  la periodicidad y la cuota prevista solo si la factura la lleva.
 - **Hecho:** typecheck verde; cubierto por T9.2.
 
 ### T9 — Tests del bloque B (dependen de T7, T8) [P entre sí]
 - [ ] **T9.1** `tests/integration/db/factura-plataforma-deuda.test.ts`: R18–R20.
-- [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (en curso con total
-  parcial y cuota prevista, también la proporcional de R29; `42501` con otra empresa), con las dos empresas
-  de T6.5.
+- [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (en curso con cuota
+  prevista y otra sin cuota, la del 16 de un plan mensual; la proporcional de R29; `42501` con otra empresa).
 - [ ] **T9.3** `tests/unit/utils/deuda-plataforma.test.ts`: el caso `cuota` (R18).
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`.
 
@@ -108,58 +106,67 @@
 
 ### T11 — Servidor y confirmaciones (no depende de T1–T9)
 - [ ] **T11.1** `lib/interfaces/repositories/IPlanesRepository.ts`: `vigenteDesde?: string` en el `ok` de
-  `ResultadoAsignar`, de `crearYAsignar` y de `ResultadoCambiarTipoCobro`, presente solo con `pendiente`
-  (design §3.1).
-- [ ] **T11.2** `lib/repositories/PlanesRepository.ts`: en `cambiarEmpresaEnTx`, bajo el cerrojo y antes de
-  decidir pendiente o aplicar, lleva un efecto de clase `"cambio"` al inicio del período siguiente con el
-  **tipo de referencia** (el de mayor índice en `TIPOS_COBRO` entre el vigente y el nuevo, P9;
-  `fechaDeEfectoPorDefecto`) salvo que ya sea un inicio de ese tipo (`inicioDelPeriodoCalendario`); `"inicio"`
-  no se toca (R33). No revalida el rango sobre la fecha llevada (R34). Devuelve la fecha real en
-  `vigenteDesde`. Sin función nueva en `lib/planes/ciclo.ts`.
+  `ResultadoAsignar`, de `crearYAsignar` y de `ResultadoCambiarTipoCobro`, presente solo con `pendiente`.
+- [ ] **T11.2** `lib/repositories/PlanesRepository.ts`: en `cambiarEmpresaEnTx`, bajo el cerrojo, lleva un efecto
+  de clase `"cambio"` al inicio del período siguiente del **tipo de referencia** salvo que ya lo sea; `"inicio"`
+  no se toca (R33). No revalida el rango (R34). Devuelve la fecha real en `vigenteDesde`.
 - [ ] **T11.3** `lib/services/PlanesService.ts` y `lib/types/planes.ts`: `asignar` y `crear` responden con el
-  `vigenteDesde` del repositorio; `CambiarTipoCobroResult` gana `vigenteDesde: string | null` y
-  `cambiarTipoCobro` lo devuelve. `fueraDeRango` sigue sobre la fecha elegida, sin cambios (R34, P10).
-- [ ] **T11.4** `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (confirmación de
-  «Cambiar tipo de cobro» con la fecha real) y `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
-  (aviso de «Crear custom» con la fecha real del cambio). Las dos confirmaciones entran (P11). El campo de
-  fecha no cambia.
+  `vigenteDesde` del repositorio; `CambiarTipoCobroResult` gana `vigenteDesde: string | null`. `fueraDeRango`
+  sigue sobre la fecha elegida (R34).
+- [ ] **T11.4** `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` y
+  `app/(app)/plataforma/planes/_components/PlanesModule.tsx`: las dos confirmaciones con la fecha real (P11).
 - **Hecho:** typecheck y lint verdes; `pnpm exec vitest related --run lib/repositories/PlanesRepository.ts
   lib/services/PlanesService.ts` verde tras T12.
 
 ### T12 — Tests del bloque C (dependen de T11) [P entre sí]
-- [ ] **T12.1** `tests/integration/db/planes-cambio-empresa.test.ts`: R30 (asignar, mismo tipo, con fecha a
-  mitad de período en los cuatro tipos y con «hoy» → pendiente en el inicio siguiente: columna del pendiente,
-  `run_after` del trabajo, historial; asignar con cambio a un tipo más largo, quincenal → anual el 10 de
-  noviembre → 1 de enero, y a uno más corto, anual → mensual → 1 de enero), R31 (inicio del tipo de referencia
-  respetado; «hoy» en un inicio se aplica), R33 (primera asignación futura a mitad de período no se mueve),
-  R34 (quincenal → anual elegida el 10 de noviembre de 2027, en el tope → pendiente el 1 de enero de 2028).
-- [ ] **T12.2** `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (R30, R31 con el **tipo de
-  referencia**: quincenal → anual el 10 de noviembre → 1 de enero; anual → mensual → 1 de enero; mensual →
-  quincenal → 1 de diciembre; quincenal → mensual el 16 de noviembre → 1 de diciembre; quincenal → anual el 1
-  de enero, inicio común → se respeta; mensual → anual con «hoy» = 1 de enero → se aplica) y
+- [ ] **T12.1** `tests/integration/db/planes-cambio-empresa.test.ts`: R30, R31, R33, R34 (casos de design §8).
+- [ ] **T12.2** `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (R30, R31 con el tipo de referencia) y
   `tests/integration/db/planes-crear-custom-asigna.test.ts` (R30 en el custom).
 - [ ] **T12.3** Ajustar los que usan un cambio con «hoy» o a mitad de período:
   `tests/integration/db/planes-asignacion.test.ts`, `tests/integration/db/plan-de-la-empresa-periodo.test.ts`,
-  `tests/integration/db/planes-cancelar-cambio-historial.test.ts` (y los casos de T12.1/T12.2 que ya existían).
-  Si otro test de planes se pone rojo por lo mismo, se ajusta y se añade a «Archivos esperados».
+  `tests/integration/db/planes-cancelar-cambio-historial.test.ts`. Si otro test de planes se pone rojo por lo
+  mismo, se ajusta y se añade a «Archivos esperados».
 - [ ] **T12.4** `tests/unit/services/planes-service-periodo.test.ts` y
-  `tests/unit/services/planes-service-tipo-cobro.test.ts`: R30, R32 (la respuesta lleva el `vigenteDesde` del
-  repositorio, no el elegido), R34 (elegida fuera de rango → `validation_error` en `vigenteDesde` sin llamar al
-  repositorio; elegida en el tope con un `vigenteDesde` posterior → `ok` con la real).
+  `tests/unit/services/planes-service-tipo-cobro.test.ts`: R30, R32, R34.
 - [ ] **T12.5** `tests/components/PlanEmpresaTipoCobro.test.tsx` y `tests/components/PlanesModule.test.tsx`: R32.
+- **Hecho:** verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
+
+## Bloque D — Periodicidad de órdenes del plan (cambio de fondo; R35–R38) [P con B y C; T14.2 después de T11.2]
+
+### T14 — Servidor y formulario (depende de T1.3 y T2.4)
+- [ ] **T14.1** `lib/types/planes.ts`: `PERIODICIDADES_ORDENES`, su tipo y su esquema; `periodicidadOrdenes`
+  opcional en `crearPlanSchema` y `edicionDelPlan` (y así en `versionPlanSchema` y `VersionPlan`); el refine de
+  R37 en `crearPlanSchema` (`validation_error` en `tipoCobro`); `periodicidadOrdenes?` en `PlanDTO` (design §3.2).
+- [ ] **T14.2** `lib/repositories/PlanesRepository.ts` e `lib/interfaces/repositories/IPlanesRepository.ts`:
+  `crear`, `leerPlan` y `aplicarVersion` con la periodicidad; la variante `periodicidad_incompatible` y la regla
+  de R37 al editar (en el acto, programada y al aplicar la programada: lanza sin escribir) y en
+  `cambiarEmpresaEnTx` (asignar, `crearYAsignar`, `cambiarTipoCobro`). Coordinar con T11.2 (mismo método).
+- [ ] **T14.3** `lib/services/PlanesService.ts` y `lib/planes/mensajes.ts`: `periodicidad_incompatible` →
+  `validation_error` en `tipoCobro` o en `periodicidadOrdenes`, con su mensaje. `lib/planes/rastro.ts`:
+  `periodicidadOrdenes` en `CambiosDelPlan`, en la forma canónica y en `diferenciasDelPlan` (R35).
+- [ ] **T14.4** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: el selector «Facturación de órdenes»
+  (quincenal al crear, el del plan al editar), siempre en la petición, con su error de campo (R35).
+- **Hecho:** typecheck y lint verdes; `pnpm exec vitest related --run lib/types/planes.ts
+  lib/planes/rastro.ts lib/repositories/PlanesRepository.ts` verde sin tocar los tests de planes que no la
+  conocen (la periodicidad es opcional).
+
+### T15 — Tests del bloque D (dependen de T14) [P entre sí]
+- [ ] **T15.1** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R35 y R37 (casos de design §8).
+- [ ] **T15.2** `tests/components/PlanFormPeriodicidad.test.tsx`: R35.
+- [ ] **T15.3** En `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T6.2): R36 y R38.
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
 
 ## Cierre
 
 ### T10 — Documentación y gate (depende de todo)
 - [ ] **T10.1** `docs/architecture.md > Multi-empresa`: párrafo «Facturas de la plataforma (SLT-118)»: tabla,
-  quién escribe, cierre, toma del cambio sin corte, deuda. Y en «Planes y límites»: que el costo base deja de
-  ser solo informativo al cerrar (sustituye a SLT-66 R21 y a SLT-86 R14 en lo que toca a la cuota); que la
-  factura cobra el período completo salvo la primera con plan más corta, que prorratea con SLT-86 R12 (P6);
-  y que el cambio del superadmin rige al inicio del próximo período del tipo de referencia, el más largo entre
-  el vigente y el nuevo, con el tope de 12 meses sobre la fecha elegida (P7, P9, P10; modifica SLT-86
-  R16–R18).
-- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R34).
+  quién escribe, una factura por corte con la periodicidad de órdenes del plan (sin plan, quincenal), la cuota en
+  la factura que empieza su período de cobro, cierre, toma del cambio sin corte, deuda. Y en «Planes y límites»:
+  la periodicidad de órdenes del plan y la regla de R37; que el costo base deja de ser solo informativo al cerrar
+  (sustituye a SLT-66 R21 y a SLT-86 R14 en lo que toca a la cuota); el prorrateo solo en la primera con plan
+  (P6); y que el cambio del superadmin rige al inicio del próximo período del tipo de referencia (P7, P9, P10;
+  modifica SLT-86 R16–R18).
+- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R38).
 - [ ] **T10.3** `./init.sh` verde; en local, `pnpm exec playwright test --project=dinero` y
   `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` en base desechable (`docs/perfil-agentes.md`).
 - **Hecho:** los tres verdes y el mapa sin huecos.
@@ -173,7 +180,7 @@
 | R10 | `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
 | R12, R25 | `tests/unit/planes/jobs-factura-plataforma.test.ts` |
 | R13, R21, R23, R24 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` |
-| R15, R16, R17, R28 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R15, R16, R17, R28, R36, R38 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
 | R18 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` |
 | R19, R20 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
 | R22 | `tests/integration/db/factura-plataforma-aislamiento.test.ts`, `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` |
@@ -183,14 +190,16 @@
 | R32 | `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/services/planes-service-tipo-cobro.test.ts`, `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx` |
 | R33 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
 | R34 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
+| R35 | `tests/integration/db/planes-periodicidad-ordenes.test.ts`, `tests/components/PlanFormPeriodicidad.test.tsx` |
+| R37 | `tests/integration/db/planes-periodicidad-ordenes.test.ts` |
 
 ## Archivos esperados
 
 - `db/schema.prisma`
-- `db/migrations/20261110130000_factura_plataforma_job_enum/migration.sql`
-- `db/migrations/20261110130000_factura_plataforma_job_enum/down.sql`
-- `db/migrations/20261110130100_factura_plataforma/migration.sql`
-- `db/migrations/20261110130100_factura_plataforma/down.sql`
+- `db/migrations/20261111130000_factura_plataforma_job_enum/migration.sql`
+- `db/migrations/20261111130000_factura_plataforma_job_enum/down.sql`
+- `db/migrations/20261111130100_factura_plataforma/migration.sql`
+- `db/migrations/20261111130100_factura_plataforma/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`
 - `lib/types/factura-plataforma.ts`
@@ -201,10 +210,13 @@
 - `lib/repositories/PlanesRepository.ts`
 - `lib/services/PlanesService.ts`
 - `lib/planes/jobs-factura-plataforma.ts`
+- `lib/planes/rastro.ts`
+- `lib/planes/mensajes.ts`
 - `lib/modulos/reparto.ts`
 - `app/api/cron/procesar-jobs/route.ts`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
 - `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
+- `app/(app)/plataforma/planes/_components/PlanForm.tsx`
 - `scripts/siembra-jobs-recurrentes.ts`
 - `lib/interfaces/repositories/ICobroPlataformaMovimientoRepository.ts`
 - `lib/repositories/CobroPlataformaMovimientoRepository.ts`
@@ -219,6 +231,7 @@
 - `tests/unit/services/planes-service-tipo-cobro.test.ts`
 - `tests/components/PlanEmpresaTipoCobro.test.tsx`
 - `tests/components/PlanesModule.test.tsx`
+- `tests/components/PlanFormPeriodicidad.test.tsx`
 - `tests/integration/db/factura-plataforma-cierre.test.ts`
 - `tests/integration/db/factura-plataforma-cambio-plan.test.ts`
 - `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`
@@ -230,11 +243,14 @@
 - `tests/integration/db/planes-asignacion.test.ts`
 - `tests/integration/db/plan-de-la-empresa-periodo.test.ts`
 - `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
+- `tests/integration/db/planes-periodicidad-ordenes.test.ts`
 
-44 archivos (110 % de `max_archivos` = 40; aceptados por el humano con P11, línea `tamano-pr-aceptado` de
-la ficha). P9 y P10 no suman archivos. Sin P7 serían los 29 de
-antes; P7 suma 5 de producción y 10 de tests (T11, T12). Líneas estimadas ~2 100, por encima de
-`max_lineas` = 1 000 (aceptado con P5 y P7). Choque al mergear con SLT-99 «Planes: el administrador de la
-empresa ve su plan y los públicos y cambia de plan» (PR #115) en `lib/repositories/PlanesRepository.ts`,
+49 archivos (122 % de `max_archivos` = 40). Los 44 aceptados con P11 (con las migraciones ya en `20261111`)
+más 5 por la periodicidad del plan: `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`, `PlanForm.tsx`,
+`tests/components/PlanFormPeriodicidad.test.tsx` y `tests/integration/db/planes-periodicidad-ordenes.test.ts`.
+**Pendiente de aceptación (P16)**; el corte propuesto, si no se acepta, saca esos 5 (y R36–R37) a una ficha
+aparte y deja 44. Líneas estimadas ~2 400, por encima de `max_lineas` = 1 000 (aceptado con P5 y P7; el aumento
+entra en P16). Choque al mergear con SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y
+cambia de plan» (PR #115) en `lib/repositories/PlanesRepository.ts`,
 `lib/interfaces/repositories/IPlanesRepository.ts`, `lib/types/planes.ts` y `lib/db/excepciones-aislamiento.ts`
 (design §10).
