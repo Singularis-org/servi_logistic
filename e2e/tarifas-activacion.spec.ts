@@ -328,11 +328,23 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
 
     // R71 + SLT-102 (R108): antes la tarjeta del listado repetía el ingreso de bodega de su detalle; la fila de la
     // cola única ya no lo lleva y se lee en el detalle (570 y 300, arriba). Cada cierre tiene su fila en Resueltos.
+    // La tabla dice qué columnas tiene (ninguna de ingreso de bodega) y cada fila tiene una celda por columna.
     const historico = satelite.getByRole("region", { name: "Histórico" });
+    await expect(historico.getByRole("columnheader")).toHaveText([
+      "Folio",
+      "Mensajero",
+      "Resuelto",
+      "Estado",
+      "Recaudado",
+      "Pago al mensajero",
+      "Señales",
+      "Acciones",
+    ]);
     for (const c of [cierreNuevo, cierreViejo]) {
       const fila = filaDeCola(historico, c.m.nombre);
       await expect(fila).toHaveCount(1);
-      await expect(fila).not.toContainText("Ingreso de bodega");
+      await expect(fila.getByRole("cell")).toHaveCount(8);
+      await expect(fila.getByText(/ingreso/i)).toHaveCount(0);
     }
 
     // R71: la consolidación junta los dos cierres, así que el total se lee como nuevo sobre 300 + 570.

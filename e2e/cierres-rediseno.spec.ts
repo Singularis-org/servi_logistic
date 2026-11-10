@@ -689,6 +689,9 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
     // R103: el diálogo de hoy, sin «Ahora no»; registrar relee la lista y la fila queda «Liquidado».
     await resuelta.getByRole("button", { name: `Registrar pago del cierre de ${central.m.nombre}` }).click();
     const pago = page.getByRole("dialog", { name: `Registrar pago a ${central.m.nombre}` });
+    // El negativo, con el diálogo ya abierto: si no, pasaría en vacío.
+    await expect(pago).toBeVisible();
+    await expect(pago.getByRole("button", { name: "Registrar pago", exact: true })).toBeVisible();
     await expect(pago.getByRole("button", { name: "Ahora no" })).toHaveCount(0);
     await pago.getByRole("button", { name: "Registrar pago", exact: true }).click();
     await expect(pago).toHaveCount(0);

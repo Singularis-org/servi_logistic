@@ -86,6 +86,7 @@ Recorrido de `ColaCierres.dc.html` (rama `tipo` mensajero, líneas 137-162) con 
 | F11 | Sin tarjetas de cifras en la cola de mensajeros | R32 (alcance) |
 | F12 | Pastilla de estado con el color del canvas: «Solicitado» ámbar, «Aprobado» verde, «Rechazado» y «Vencido» rojo (decisión de Carlos 2026-11-10; `EstadoCierreBadge` con los tokens `warning`/`success`/`danger`, el detalle lo hereda) | R101 — igual al canvas |
 | F13 | Barra con Fecha de solicitud · Mensajero · Estado, sin «Bodega» (enmienda de R100, Carlos 2026-11-10) | R100 — igual al canvas |
+| F14 | «1 incidente sin indemnizar · 6 vuelven a bodega», «1 pago ajustado» en la celda Señales | R70, R109, R110 — igual al canvas (PA1 = sí; antes figuraba como desviación) |
 
 **Desviaciones que se conservan, con su motivo:**
 
@@ -93,7 +94,7 @@ Recorrido de `ColaCierres.dc.html` (rama `tipo` mensajero, líneas 137-162) con 
 |---|---|---|
 | «Cierres del día» dentro del componente | el título de `AppPage` | Un solo `h1` por página; el componente no repite el título (R32, alcance). |
 | Conmutador a la derecha del título | donde está hoy, encima de la cola | R37 y PA2. |
-| «1 incidente sin indemnizar · 6 vuelven a bodega», «1 pago ajustado» | solo si PA1 = sí | El servidor no emite esos conteos por fila (R70, SLT-111). |
+| Pie de Pendientes: solo «Un cierre vencido se puede destrabar como excepción.» | el texto del pie y, a su derecha, la `Pagination` de hoy de Pendientes (`PAGINACION_PENDIENTES_LABEL`) | R106 pide la paginación de hoy también en Pendientes: la cola es paginada en el servidor (ficha 170) y sin el control no se llegaría a la página 2. |
 | `aria-label="Cierres resueltos"` en la tabla de Resueltos | región «Histórico» | No se ve; es el nombre que localizan 4 E2E y los tests (R104). |
 | «Mostrando 3 de 12 · 10 por página» | `Pagination` de hoy («1-10 de 12» + tamaño de página) | Es el control paginado de la ficha 170 que vigilan `contadores-cabecera` y `paginacion-transversal`. |
 | «07/11 18:42» | «2026-11-07 18:42» (`fechaHora`) | Formateador del detalle; ningún formateador «dd/MM» existe y no se inventa uno: SLT-92 unifica fechas. |

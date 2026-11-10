@@ -495,3 +495,42 @@ y al `tab`, `dinero` 93/93 dos veces seguidas (una caída de worker aislada en o
   falló por configuración»), por la cola de jobs acumulada en `slt102_e2e` tras cuatro corridas de `dinero`.
   Recreé `slt102_e2e` (DROP + CREATE de la base desechable, `migrate deploy` + `db:seed`): `2 passed`.
 - `./init.sh` con `DATABASE_URL` de `slt102_t1`: `== init OK ==`, `INIT_EXIT=0` (escrito dentro del log).
+
+## Arreglos de la review vuelta 1 (frontend_dev, 2026-11-10)
+
+### 1. Bloqueante: `dos-empresas-humo`
+
+- Base `slt102_e2e` recreada (DROP + CREATE de la desechable, `prisma migrate deploy` + `db:seed`; sin
+  `migrate reset`). Un solo servidor (`next start` de Playwright, puerto 3102, build de esta rama).
+- Comando: `pnpm exec playwright test --project=aislamiento e2e/dos-empresas-humo.spec.ts --reporter=line`
+  (arrastra su dependencia `plataforma-vacia`: `superadmin-arranque` y `superadmin-empresas`).
+- Resultado: `18 passed (1.4m)`, **0 fallan**, `PW_EXIT=0`.
+
+### 2. Mayor: `montajesPrevistos` cerrado (`cobertura-tablas.guardia.test.ts`)
+
+- `problemasMontajesPrevistos(censo)` (pura): (a) ruta fuera de `RUTAS_CON_MONTAJES_PREVISTOS` (solo
+  `components/private/cierres/cola/ColaCierres.tsx`); (b) entrada que no cumple `/^SLT-\d+ «.+»$/` o lista
+  vacía; (c) caducada: `montajes.length > 1` con el campo presente.
+- Cuatro casos: «el censo real cumple», y (a), (b), (c) contra COPIAS mutadas del censo (`structuredClone`).
+- Mutaciones REALES de `censo-tablas.ts`, una a una, restauradas con `git checkout`:
+
+| Mutación | Resultado |
+|---|---|
+| (a) `montajesPrevistos: ["SLT-999 «Pantalla futura»"]` en la tabla «Usuarios» | ROJO: «el censo real cumple» (+3 casos de copia) |
+| (b) «SLT-105 «Cola de bodega…»» → «SLT-105 Cola de bodega de la central» | ROJO: «el censo real cumple» (+2) |
+| (c) un segundo montaje real en la cola (`OtraPantalla.tsx`) | ROJO: «el censo real cumple» y «una tabla compartida declara TODAS…» (+3) |
+
+- Sin mutación: `Tests 8 passed (8)`.
+
+### 3. Menores
+
+- `cierres-rediseno.spec.ts`: el negativo «Ahora no» va después de `expect(pago).toBeVisible()` y del
+  botón «Registrar pago» visible.
+- `tarifas-activacion.spec.ts` (R108): en vez de `not.toContainText("Ingreso de bodega")`, las columnas
+  exactas de Resueltos de la satélite (sin columna de ingreso), 8 celdas por fila y ningún texto
+  `/ingreso/i` en la fila.
+- `design.md`: la fila obsoleta de las señales pasa a «igual al canvas» (F14); nueva desviación: la
+  `Pagination` de hoy en el pie de Pendientes (R106). Sin cambios de código.
+- `playwright test --project=dinero e2e/tarifas-activacion.spec.ts e2e/cierres-rediseno.spec.ts`: `18 passed`.
+- `pnpm run typecheck`: `TSC_EXIT=0`; `eslint` de los 3 archivos: sin avisos.
+- `./init.sh` con `DATABASE_URL` de `slt102_t1`: `== init OK ==`, `INIT_EXIT=0` (escrito dentro del log).
