@@ -319,7 +319,8 @@ Decisiones a revisar (reviewer):
 2. La normalización (paso 7c) deja historial solo por las filas de `grupo_distritos_nodo` que saca. Un
    distrito de la tabla vieja que sale de la zona y no queda cubierto sale por la cascada, sin fila, como
    hoy (design §5.1: «con asignaciones solo a distritos, cero escrituras nuevas»). R21 en sentido estricto
-   pediría también esa fila, pero cambiaría el historial de Costa Rica (R38). No se tocó: a decidir.
+   pediría también esa fila, pero cambiaría el historial de Costa Rica (R38). **Resuelto: ver «Decisión
+   del 2026-11-10: historial al sacar del grupo» al final.**
 3. La foto de miembros se pide solo si la zona queda con nodos; la normalización, solo si cambia alguna
    asignación. Con solo distritos, `update` suma el `FOR UPDATE` y una lectura de `zona_nodo` de la zona.
 
@@ -435,7 +436,7 @@ rama no debe mergearse sin T7 (el spec ya lo dice: una tarjeta, un PR).
 | R10, R11 | `tests/integration/db/zona-nodo-reconciliacion.test.ts` |
 | R13, R14, R15 | `tests/integration/db/zona-nodo-impacto.test.ts`; borde en `tests/integration/actions/zonas-action.test.ts` |
 | R16 | `zona-nodo-asignacion.test.ts`; `tests/unit/types/zona-schema.test.ts`; `zona-service.test.ts`; `zonas-action.test.ts` |
-| R17, R18, R19, R20, R21, R31 | `tests/integration/db/grupo-nodo.test.ts`; `tests/unit/services/grupo-distritos-service.test.ts` |
+| R17, R18, R19, R20, R21, R31 | `tests/integration/db/grupo-nodo.test.ts` (R21 con solo distritos: caso «decisión del 2026-11-10»); `tests/unit/services/grupo-distritos-service.test.ts` |
 | R23 (servidor) | `grupo-nodo.test.ts` (distritos heredados y sub-árbol); `tests/unit/services/tarifas-pantalla-service.test.ts` |
 | R30 | `tests/integration/db/zona-nodo-rastro.test.ts` |
 | R35 | `tests/integration/db/zona-nodo-dos-empresas.test.ts` (caso T6.1) |
@@ -444,3 +445,35 @@ rama no debe mergearse sin T7 (el spec ya lo dice: una tarjeta, un PR).
 | R38 | `tests/integration/db/slt89-equivalencia-cr.test.ts` y las suites existentes de arriba |
 | R39 | Guion de arriba (persona) |
 | R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts`; `grupo-distritos-service.test.ts`; `tests/integration/actions/tarifas-action.test.ts` |
+
+### Decisión del 2026-11-10: historial al sacar del grupo (R21 frente a R38)
+
+Decisión humana en `requirements.md > Decisiones cerradas` (commit `8b59c5b7`): un distrito que sale de
+una zona, queda sin cobertura y por eso sale de su grupo de tarifas deja la fila de «salió del grupo»,
+también con distritos de la tabla vieja (empresas que solo usan distritos).
+
+- `ZonaRepository.update`: la foto de los miembros en riesgo (las filas de `grupo_distritos_distrito` de
+  los distritos que salen) se pide siempre que salgan distritos, con el número de miembros de cada grupo
+  ANTES de la cascada. En `normalizarMiembrosDeGrupo`, los de la foto que la zona sigue cubriendo vuelven
+  a su grupo (como antes); los demás cuentan como salidos y, junto con los de `grupo_distritos_nodo` que
+  pierden la cobertura, dejan una fila `grupo_distritos_cambiado` por grupo («había N, quedan M», el lote
+  propio de la normalización). Sin nodos en la zona no se carga el catálogo: el distrito no puede seguir
+  cubierto. Coste en Costa Rica: al quitar distritos, una lectura de sus filas de grupo y, si había alguna,
+  una del conteo de esos grupos.
+- Test nuevo: `tests/integration/db/grupo-nodo.test.ts` › «R21 (decisión del 2026-11-10): con solo
+  distritos, el que sale de la zona sale de su grupo y deja su fila de historial» (2 distritos → 1).
+- Tests existentes ajustados: **ninguno**. Ninguna suite existente cuenta ni lista `grupo_distritos_cambiado`
+  tras un guardado de zona (las de zonas y grupos pasan sin tocarse).
+- Verde (`logistic_slt89`, `--maxWorkers=1`, heap de 8 GB): suites de zona, grupos, equivalencia y tarifas
+  (`zona-*`, `grupo-*`, `slt89-equivalencia-cr`, `geo-consultas-zona`, `geo-lecturas-sin-backfill`,
+  `tarifa-activacion`, `tarifas-flexibles-escritura`, `tarifas-referencia`) → todas verdes;
+  `zona-repository` + `zona-service` 112/112; tarifas, actions, contrato v1 (modo comparar) y guardias de
+  historial, `zona-reconciliacion-no-retarifa`, `sql-a-mano-por-empresa` y `geografia-lecturas-sin-nodo-fk`
+  → `Test Files 23 passed (23) · Tests 562 passed (562)`; `pnpm run typecheck` exit 0; eslint sin errores.
+- Rojos del barrido con filtro `zona-` que NO son de este cambio: `costo-y-zona-api-415`,
+  `deshacer-asignacion-zona-satelite`, `historial-accion-atomicidad`, `tarifa-zona-borrado-fk-real` (en
+  `tests/baseline-rojos.json`) y tres que **no** están en el baseline:
+  `historial-accion-orden-zona-reconciliada-migration`, `historial-accion-zona-pago-mensajero-migration`,
+  `historial-accion-zona-sinpe-migration`. Comparan el catálogo de `historial_accion_tipo` con su lista
+  de «valores posteriores», que no tiene `zona_nodo_cambiado` (entró en T1.2, tanda 1). No los toqué:
+  añadirles el valor es un cambio de aserción no autorizado; queda para el leader.

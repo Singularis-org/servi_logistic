@@ -390,26 +390,35 @@ function textoMiembros(n: number): string {
  * recien escrito):
  *   (a) un distrito que salio de `zona_distrito` y la zona sigue cubriendo por herencia vuelve a su
  *       grupo, ahora en `grupo_distritos_nodo` (la cascada de la FK compuesta lo saco de la vieja);
+ *       si la zona ya no lo cubre, se queda fuera y cuenta como «salio del grupo»;
  *   (b) un miembro de `grupo_distritos_nodo` de esta zona que acaba de entrar en `zona_distrito` pasa a
  *       `grupo_distritos_distrito`, con el mismo grupo (el trigger de duplicado exige ese orden);
  *   (c) un miembro de `grupo_distritos_nodo` de CUALQUIER zona, en los lugares afectados, que su zona
- *       ya no cubre, sale de su grupo; se devuelve por grupo para su fila de historial.
+ *       ya no cubre, sale de su grupo.
+ * Devuelve, por grupo que perdio miembros por (a) o (c), cuantos tenia y cuantos le quedan: una fila
+ * de historial por grupo (R21).
  *
- * Con asignaciones solo a distritos (Costa Rica, R38) la foto de (a) no se pide y no hay filas en
- * `grupo_distritos_nodo`: sale sin cargar el catalogo y sin escribir nada.
+ * ⭑ Decision humana del 2026-11-10 (`requirements.md > Decisiones cerradas`, tercera excepcion de
+ * R38): el distrito de la tabla vieja que sale de la zona y queda sin cobertura TAMBIEN deja su fila,
+ * aunque la empresa solo use distritos. Sin nodos en la zona (Costa Rica) no puede seguir cubierto,
+ * asi que no se carga el catalogo para saberlo.
  */
 async function normalizarMiembrosDeGrupo(
   tx: TxDeNormalizacion,
   zonaId: string,
+  zonaConNodos: boolean,
   fotoEnRiesgo: readonly { grupoId: string; distritoId: string }[],
+  conteoPrevio: ReadonlyMap<string, number>,
   distritosQueEntran: readonly string[],
   nodosAfectados: readonly string[],
 ): Promise<GrupoRecortado[]> {
   const miembros = await leerMiembrosNodo(tx);
   if (fotoEnRiesgo.length === 0 && miembros.length === 0) return [];
 
-  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
-  const cubre = (nodoId: string) => zonaQueCubre(catalogo, asignaciones, nodoId)?.id ?? null;
+  const foto =
+    miembros.length > 0 || zonaConNodos ? await new CatalogoGeograficoRepository(tx).deLaEmpresa() : null;
+  const cubre = (nodoId: string) =>
+    foto === null ? null : (zonaQueCubre(foto.catalogo, foto.asignaciones, nodoId)?.id ?? null);
 
   // (b) asignado ↔ heredado conserva el grupo: de la tabla nueva a la vieja.
   const entran = new Set(distritosQueEntran);
@@ -421,29 +430,41 @@ async function normalizarMiembrosDeGrupo(
     });
   }
 
-  // (a) de la vieja a la nueva: el distrito sigue cubierto por la zona, ahora heredado.
+  // (a) de la vieja a la nueva si la zona lo sigue cubriendo; si no, ya salio del grupo (cascada).
+  const siguen = fotoEnRiesgo.filter((f) => cubre(f.distritoId) === zonaId);
   await crearMiembrosNodo(
     tx,
-    fotoEnRiesgo
-      .filter((f) => cubre(f.distritoId) === zonaId)
-      .map((f) => ({ grupoId: f.grupoId, zonaId, nodoId: f.distritoId })),
+    siguen.map((f) => ({ grupoId: f.grupoId, zonaId, nodoId: f.distritoId })),
   );
+  const perdidos = new Map<string, number>();
+  const sumar = (grupoId: string) => perdidos.set(grupoId, (perdidos.get(grupoId) ?? 0) + 1);
+  for (const f of fotoEnRiesgo) if (!siguen.includes(f)) sumar(f.grupoId);
 
   // (c) sin cobertura de su zona: fuera del grupo.
-  const lugares = new Set<string>();
-  for (const n of nodosAfectados) {
-    lugares.add(n);
-    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
-  }
   const movidos = new Set(pasanALaVieja.map((m) => m.id));
-  const salen: MiembroNodo[] = miembros.filter(
-    (m) => !movidos.has(m.id) && lugares.has(m.nodoId) && cubre(m.nodoId) !== m.zonaId,
-  );
-  if (salen.length === 0) return [];
+  let salen: MiembroNodo[] = [];
+  if (foto !== null && miembros.length > 0) {
+    const lugares = new Set<string>();
+    for (const n of nodosAfectados) {
+      lugares.add(n);
+      for (const bajo of nodosBajo(foto.catalogo, n)) lugares.add(bajo.id);
+    }
+    salen = miembros.filter((m) => !movidos.has(m.id) && lugares.has(m.nodoId) && cubre(m.nodoId) !== m.zonaId);
+  }
+  if (salen.length > 0) {
+    await tx.grupoDistritosNodo.deleteMany({ where: { id: { in: salen.map((m) => m.id) } } });
+  }
+  const salenNodo = new Map<string, number>();
+  for (const m of salen) {
+    sumar(m.grupoId);
+    salenNodo.set(m.grupoId, (salenNodo.get(m.grupoId) ?? 0) + 1);
+  }
+  if (perdidos.size === 0) return [];
 
-  const gruposIds = [...new Set(salen.map((m) => m.grupoId))];
+  // Lo que queda, leido despues de todas las salidas; lo que habia, el conteo de antes de la cascada
+  // (los grupos de la foto) o lo que queda mas lo que salio de la tabla nueva.
   const grupos = await tx.grupoDistritos.findMany({
-    where: { id: { in: gruposIds } },
+    where: { id: { in: [...perdidos.keys()] } },
     select: {
       id: true,
       nombre: true,
@@ -452,14 +473,13 @@ async function normalizarMiembrosDeGrupo(
     },
     orderBy: { id: "asc" },
   });
-  await tx.grupoDistritosNodo.deleteMany({ where: { id: { in: salen.map((m) => m.id) } } });
   return grupos.map((g) => {
-    const habia = g._count.distritos + g._count.nodos;
+    const quedan = g._count.distritos + g._count.nodos;
     return {
       id: g.id,
       etiqueta: etiquetaDeEntidad("grupo_distritos", { nombre: g.nombre, zonaNombre: g.zona.nombre }),
-      habia,
-      quedan: habia - salen.filter((m) => m.grupoId === g.id).length,
+      habia: conteoPrevio.get(g.id) ?? quedan + (salenNodo.get(g.id) ?? 0),
+      quedan,
     };
   });
 }
@@ -1114,16 +1134,25 @@ export class ZonaRepository implements IZonaRepository {
         const entran = data.distritoIds.filter((d) => !previos.has(d));
 
         // SLT-89 (R21, design §5.1 paso 6) — la foto de los miembros de grupo que la cascada va a
-        // sacar: los distritos que salen de `zona_distrito` y estaban en un grupo de esta zona. Solo
-        // pueden seguir cubiertos por herencia si la zona queda con algun nodo en `zona_nodo`; sin
-        // ninguno (Costa Rica, R38) no se pide y la cascada hace lo de siempre.
+        // sacar: los distritos que salen de `zona_distrito` y estaban en un grupo de esta zona, y
+        // cuantos miembros tenia cada uno de esos grupos ANTES (despues la cascada ya los quito). Los
+        // que la zona sigue cubriendo vuelven a su grupo; los demas dejan su fila de historial
+        // (decision humana del 2026-11-10, tambien con solo distritos).
         const fotoEnRiesgo =
-          salen.length > 0 && nodoIds.length > 0
+          salen.length > 0
             ? await tx.grupoDistritosDistrito.findMany({
                 where: { zonaId: id, distritoId: { in: salen } },
                 select: { grupoId: true, distritoId: true },
               })
             : [];
+        const conteoPrevio = new Map<string, number>();
+        if (fotoEnRiesgo.length > 0) {
+          const previos = await tx.grupoDistritos.findMany({
+            where: { id: { in: [...new Set(fotoEnRiesgo.map((f) => f.grupoId))] } },
+            select: { id: true, _count: { select: { distritos: true, nodos: true } } },
+          });
+          for (const g of previos) conteoPrevio.set(g.id, g._count.distritos + g._count.nodos);
+        }
 
         if (salen.length > 0) {
           await tx.zonaDistrito.deleteMany({ where: { zonaId: id, distritoId: { in: salen } } });
@@ -1174,7 +1203,15 @@ export class ZonaRepository implements IZonaRepository {
           cambioDeNodos.anadidos.length > 0 ||
           cambioDeNodos.quitados.length > 0;
         const gruposRecortados = cambianAsignaciones
-          ? await normalizarMiembrosDeGrupo(sinTransaccionAnidada(tx), id, fotoEnRiesgo, entran, distritosAfectados)
+          ? await normalizarMiembrosDeGrupo(
+              sinTransaccionAnidada(tx),
+              id,
+              nodoIds.length > 0,
+              fotoEnRiesgo,
+              conteoPrevio,
+              entran,
+              distritosAfectados,
+            )
           : [];
         if (gruposRecortados.length > 0) {
           const actorDeGrupos = await resolverActorCongelado(tx, actorUsuarioId);

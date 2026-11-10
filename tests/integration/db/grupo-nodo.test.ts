@@ -234,4 +234,24 @@ describeSiHayBase("SLT-89 · R17–R21, R31 — grupos de tarifas sobre el nodo"
     expect(canton?.hijos[0]?.hijos.map((h) => h.id)).toEqual([r.sector]);
     expect(arbol.tipos.map((t) => t.profundidad)).toEqual([1, 2, 3, 4]);
   });
+
+  it("⭑ R21 (decision del 2026-11-10): con solo distritos, el que sale de la zona sale de su grupo y deja su fila de historial", async () => {
+    const r = await conEscenario(async (c) => {
+      const { geo, zonas } = c.e.emp.base;
+      // Norte tiene «dos zonas» y «retirado» en `zona_distrito` y ningun nodo: la tabla vieja, como hoy.
+      const g = await c.crearGrupo(zonas.norteId, "Solo distritos", [geo.distritoDosZonasId, geo.distritoRetiradoId]);
+      const sinCambio = await c.tx.historialAccion.count({ where: { accion: "grupo_distritos_cambiado", entidadId: g } });
+      await c.guardarZona(zonas.norteId, [geo.distritoDosZonasId], []);
+      const historial = await c.tx.historialAccion.findMany({
+        where: { accion: "grupo_distritos_cambiado", entidadId: g },
+        select: { valorAnterior: true, valorNuevo: true, entidadEtiqueta: true },
+      });
+      return { sinCambio, historial, miembros: await antesDeMiembros(c.tx, g), geo };
+    });
+    expect(r.sinCambio).toBe(0);
+    expect(r.miembros).toEqual({ distritoIds: [r.geo.distritoDosZonasId], nodoIds: [] });
+    expect(r.historial).toEqual([
+      { valorAnterior: "2 distritos", valorNuevo: "1 distrito", entidadEtiqueta: expect.stringContaining("Solo distritos") },
+    ]);
+  });
 });
