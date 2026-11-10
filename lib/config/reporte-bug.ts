@@ -51,6 +51,13 @@ export function destinatariosReporteBug(valor: string | undefined = process.env.
 export const IMAGENES_MAX = 5;
 
 /**
+ * R24–R26: permisos de subida por usuario y día (decisión del 2026-11-10, hallazgo m1; tope blando, P9).
+ * Una petición entra si el conteo de antes es menor que esto, así que el día llega como mucho a 20 + 5 = 25.
+ * Solo lo usa el servidor: la base lo recibe como parámetro y el panel no lo muestra (P11).
+ */
+export const IMAGENES_POR_DIA_MAX = 21;
+
+/**
  * P4: 5 MB por imagen. El `CHECK` `bug_report_image_size_bytes_rango` de la migración `20261112120000`
  * lo escribe como 5242880, y `createBucket` lo pone de `fileSizeLimit`. Si cambia aquí, cambia allí
  * con otra migración.

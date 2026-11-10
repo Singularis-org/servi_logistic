@@ -141,7 +141,7 @@
     - `tests/integration/db/schema-drift-saneamiento.test.ts` en verde, con el censo de `updated_at` en 18;
     - anotado en `progress/impl_SLT-98.md` qué bases compartidas ya tenían `20261112120000` aplicada y
       cómo se rehicieron (design §15).
-- [ ] **T13. Repositorio del cupo** (dep. T12; R24–R27, R31).
+- [x] **T13. Repositorio del cupo** (dep. T12; R24–R27, R31).
   - **Archivos:**
     - `lib/interfaces/repositories/ICupoImagenesReporte.ts` (nuevo);
     - `lib/repositories/BugReportRepository.ts`: `consumir` (con `WHERE "permits_granted" < tope`, el

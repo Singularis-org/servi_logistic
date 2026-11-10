@@ -9,6 +9,7 @@ import type {
   PedidoDeCambioDeEstado,
   ResultadoDeCambioDeEstado,
 } from "@/lib/interfaces/repositories/IBugReportRepository";
+import type { ICupoImagenesReporte } from "@/lib/interfaces/repositories/ICupoImagenesReporte";
 import {
   resumenDeDescripcion,
   TRANSICIONES_REPORTE,
@@ -34,6 +35,10 @@ export type BugReportPrismaClient = Pick<PrismaClient, "$transaction">;
 //
 // El historial solo se crea: aquí no hay ningún `update` ni `delete` de `bugReportStatusChange`, y la
 // base los rechaza con SL097 aunque llegaran (R23).
+//
+// SLT-98 (design §16.3; R24–R27, R31) — y el tope diario de imágenes, en `bug_report_upload_quota`. Cada
+// método es UNA sentencia: el `WHERE` del `DO UPDATE` es el tope, y la fila `(user_id, day)` es el cerrojo
+// que serializa peticiones simultáneas (R26). Un `upsert` de Prisma podría degradar a leer y luego escribir.
 
 const FICHA = "SL-17";
 const MOTIVO =
@@ -42,6 +47,8 @@ const MOTIVO_LEER =
   "SLT-97/SLT-98: el superadmin lee los reportes de problema de todas las empresas en `bug_report`, su historial y sus imágenes, tablas de plataforma (R3)";
 const MOTIVO_ESTADO =
   "SLT-97: el superadmin cambia el estado de un reporte de problema y deja su entrada en `bug_report_status_change`, tablas de plataforma (R3, R21)";
+const MOTIVO_CUPO =
+  "SLT-98: contar los permisos de subida de imágenes de un usuario por día en `bug_report_upload_quota`, tabla de plataforma; el usuario sale de la sesión (R24, R31)";
 
 /** El ancho de `bug_report.reporter_name` y de `bug_report_status_change.actor_name`. */
 const NOMBRE_MAX = 120;
@@ -76,7 +83,7 @@ function permite(actual: BugReportStatus, destino: BugReportStatus): boolean {
   return TRANSICIONES_REPORTE[actual].includes(destino);
 }
 
-export class BugReportRepository implements IBugReportRepository {
+export class BugReportRepository implements IBugReportRepository, ICupoImagenesReporte {
   constructor(private readonly prisma: BugReportPrismaClient) {}
 
   crear({ imagenes, ...datos }: NuevoBugReport): Promise<BugReportCreado | null> {
@@ -251,6 +258,40 @@ export class BugReportRepository implements IBugReportRepository {
           select: { id: true },
         });
         return { resultado: "ok" };
+      }),
+    );
+  }
+
+  /**
+   * Tope blando (P9): el `WHERE` mira el conteo de ANTES (sin sumar `EXCLUDED`), así que una petición que
+   * entra con 20 deja 25. Con 21 o más no casa, no se escribe nada y vuelven cero filas: `null`.
+   * `${fecha}::date` sobre el texto: un `Date` de JS lo movería de día según el huso de la sesión.
+   */
+  consumir(usuarioId: string, fecha: string, n: number, tope: number): Promise<number | null> {
+    return comoPlataforma(FICHA, MOTIVO_CUPO, () =>
+      this.prisma.$transaction(async (tx) => {
+        const filas = await tx.$queryRaw<{ permits_granted: number }[]>`
+          INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted", "created_at")
+          VALUES (${usuarioId}, ${fecha}::date, ${n}, CURRENT_TIMESTAMP)
+          ON CONFLICT ("user_id", "day") DO UPDATE
+            SET "permits_granted" = "bug_report_upload_quota"."permits_granted" + EXCLUDED."permits_granted"
+            WHERE "bug_report_upload_quota"."permits_granted" < ${tope}
+          RETURNING "permits_granted"
+        `;
+        return filas[0]?.permits_granted ?? null;
+      }),
+    );
+  }
+
+  /** Con la misma `fecha` que `consumir`: una devolución pasada la medianoche resta del día en que se contó. */
+  devolver(usuarioId: string, fecha: string, n: number): Promise<void> {
+    return comoPlataforma(FICHA, MOTIVO_CUPO, () =>
+      this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          UPDATE "bug_report_upload_quota"
+          SET "permits_granted" = GREATEST("permits_granted" - ${n}, 0)
+          WHERE "user_id" = ${usuarioId} AND "day" = ${fecha}::date
+        `;
       }),
     );
   }

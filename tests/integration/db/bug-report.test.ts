@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { BugReportStatus, PrismaClient } from "@prisma/client";
+import { PrismaClient, type BugReportStatus } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
+import { PRISMA_OMIT } from "@/lib/db/prisma-client";
 import { llevaSqlstate } from "@/lib/db/sqlstate";
 import { BugReportRepository } from "@/lib/repositories/BugReportRepository";
 import { ReportesBugPlataformaService } from "@/lib/services/ReportesBugPlataformaService";
@@ -22,6 +24,7 @@ import {
   HAY_BASE_DE_DATOS,
   bajoLockDeEscrituraReal,
   crearPrismaDeTest,
+  urlDeBaseDeDatos,
   type TxDeTest,
 } from "./_postgres-real";
 import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
@@ -29,8 +32,11 @@ import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadm
 // SLT-87 (design §2, §6; R11, R12, R13, R14, R19) — `bug_report` contra Postgres real.
 // SLT-97 (design §2, §4, §5; R3, R4, R5, R7–R10, R13–R18, R20, R21, R23) — el estado, el historial y las
 // lecturas del superadmin, al final del archivo.
-// SLT-98 (design §2, §7; R13, R18, R19, R22) — `bug_report_image`, en el último bloque. Siembra y escribe
+// SLT-98 (design §2, §7; R13, R18, R19, R22) — `bug_report_image`, en el penúltimo bloque. Siembra y escribe
 // dentro de `revertida`, como los casos de SLT-97.
+// SLT-98 (design §16.2, §16.3; R24–R27, R31) — el tope diario, en el último bloque. Esos casos COMMITEAN:
+// la concurrencia de R26 solo existe entre conexiones distintas. Cada caso usa su propio día y el
+// usuario de esta corrida, y las filas caen con él en el `afterAll` (CASCADE).
 //
 // El repositorio va con el cliente EXTENDIDO (el de la app) y un resolutor nulo: fuera de un contexto
 // explícito toda operación de negocio fallaría, así que si escribe es porque abre su `comoPlataforma`.
@@ -1112,6 +1118,223 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
       expect(r.d?.reporte.organizacionId).toBe(A);
       expect(r.d?.reporte.imagenes).toEqual([1, 2, 3].map((p) => ({ id: r.ids[p], ruta: `u/${r.ids[p]}.png` })));
       expect(r.dSin?.reporte).toMatchObject({ organizacionId: A, imagenes: [] });
+    });
+  });
+
+  describe("SLT-98 — tope diario en bug_report_upload_quota", () => {
+    const TOPE = 21;
+    /** Varias conexiones de verdad: con el `max: 2` de `crearPrismaDeTest` la carrera de R26 no existiría. */
+    let concurrente: PrismaClient;
+    let repoConcurrente: BugReportRepository;
+
+    beforeAll(() => {
+      concurrente = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 10 }),
+        omit: PRISMA_OMIT,
+      }) as unknown as PrismaClient;
+      repoConcurrente = new BugReportRepository(conAislamientoPorEmpresa(concurrente, async () => null));
+    });
+
+    afterAll(async () => {
+      await concurrente?.$disconnect();
+    });
+
+    async function conteo(usuarioId: string, dia: string): Promise<number | null> {
+      const filas = await base.$queryRaw<{ n: number }[]>`
+        SELECT "permits_granted" AS n FROM "bug_report_upload_quota" WHERE "user_id" = ${usuarioId} AND "day" = ${dia}::date`;
+      return filas[0]?.n ?? null;
+    }
+
+    async function sembrar(usuarioId: string, dia: string, n: number): Promise<void> {
+      await base.$executeRaw`
+        INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES (${usuarioId}, ${dia}::date, ${n})`;
+    }
+
+    const ESPERANDO_CERROJO = `SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND query ILIKE '%INSERT INTO "bug_report_upload_quota"%'`;
+
+    async function esperarBloqueadas(cuantas: number): Promise<void> {
+      const limite = Date.now() + 15_000;
+      while (Date.now() < limite) {
+        const [fila] = await base.$queryRawUnsafe<{ n: number }[]>(ESPERANDO_CERROJO);
+        if (fila.n >= cuantas) return;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`no llegaron a esperar el cerrojo ${cuantas} consumos a la vez`);
+    }
+
+    /**
+     * R26 sin depender de la suerte: una transacción del dueño toma la fila `(user_id, day)`, se lanza la
+     * carrera, y solo cuando `bloqueadas` sentencias de la carrera esperan ese cerrojo a la vez se suelta.
+     * Así todas llegaron a la vez y es la base la que decide el orden.
+     */
+    async function carreraContraCerrojo<T>(
+      tomar: (tx: TxDeTest) => Promise<unknown>,
+      soltar: "commit" | "rollback",
+      bloqueadas: number,
+      carrera: () => Promise<T>,
+    ): Promise<T> {
+      let enCurso: Promise<T> | undefined;
+      try {
+        await base.$transaction(
+          async (tx) => {
+            await tomar(tx);
+            enCurso = carrera();
+            enCurso.catch(() => {});
+            await esperarBloqueadas(bloqueadas);
+            if (soltar === "rollback") throw new Revertir(null);
+          },
+          { timeout: 30_000, maxWait: 15_000 },
+        );
+      } catch (e) {
+        if (!(e instanceof Revertir)) throw e;
+      }
+      if (!enCurso) throw new Error("la carrera no arrancó");
+      return enCurso;
+    }
+
+    it("R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21", async () => {
+      const dia = "2001-05-01";
+      const totales = await bajoLockDeEscrituraReal(async () => {
+        const salida: (number | null)[] = [];
+        for (const n of [5, 5, 5, 5, 1]) salida.push(await repo.consumir(usuarioA, dia, n, TOPE));
+        return salida;
+      });
+      expect(totales).toEqual([5, 10, 15, 20, 21]);
+      expect(await conteo(usuarioA, dia)).toBe(21);
+      // El día es el texto que llegó, sin moverse por el huso de la sesión; los días vecinos no se tocan.
+      const filas = await base.$queryRaw<{ dia: string }[]>`
+        SELECT "day"::text AS dia FROM "bug_report_upload_quota"
+         WHERE "user_id" = ${usuarioA} AND "day" BETWEEN '2001-04-30'::date AND '2001-05-02'::date AND "permits_granted" = 21`;
+      expect(filas).toEqual([{ dia }]);
+    });
+
+    it("R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25", async () => {
+      const dia = "2001-05-02";
+      const total = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 20);
+        return repo.consumir(usuarioA, dia, 5, TOPE);
+      });
+      expect(total).toBe(25);
+      expect(await conteo(usuarioA, dia)).toBe(25);
+    });
+
+    it("R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21", async () => {
+      const dia = "2001-05-03";
+      const total = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 21);
+        return repo.consumir(usuarioA, dia, 1, TOPE);
+      });
+      expect(total).toBeNull();
+      expect(await conteo(usuarioA, dia)).toBe(21);
+    });
+
+    it("R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25", async () => {
+      const dia = "2001-05-04";
+      const total = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 25);
+        return repo.consumir(usuarioA, dia, 1, TOPE);
+      });
+      expect(total).toBeNull();
+      expect(await conteo(usuarioA, dia)).toBe(25);
+    });
+
+    it("R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null", async () => {
+      const dia = "2001-05-05";
+      // La fila la inserta el dueño sin confirmar: los INSERT de la carrera esperan su desenlace y, al
+      // revertirse, el día vuelve a no tener fila.
+      const totales = await bajoLockDeEscrituraReal(() =>
+        carreraContraCerrojo(
+          (tx) => tx.$executeRaw`
+            INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES (${usuarioA}, ${dia}::date, 0)`,
+          "rollback",
+          10,
+          () => Promise.all(Array.from({ length: 30 }, () => repoConcurrente.consumir(usuarioA, dia, 1, TOPE))),
+        ),
+      );
+      const concedidos = totales.filter((t): t is number => t !== null).sort((x, y) => x - y);
+      expect(concedidos).toEqual(Array.from({ length: 21 }, (_, i) => i + 1));
+      expect(totales.filter((t) => t === null)).toHaveLength(9);
+      expect(await conteo(usuarioA, dia)).toBe(21);
+    });
+
+    it("R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29", async () => {
+      const dia = "2001-05-06";
+      const totales = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 19);
+        return carreraContraCerrojo(
+          (tx) => tx.$queryRaw`
+            SELECT 1 FROM "bug_report_upload_quota" WHERE "user_id" = ${usuarioA} AND "day" = ${dia}::date FOR UPDATE`,
+          "commit",
+          2,
+          () => Promise.all([repoConcurrente.consumir(usuarioA, dia, 5, TOPE), repoConcurrente.consumir(usuarioA, dia, 5, TOPE)]),
+        );
+      });
+      expect(totales.filter((t) => t !== null)).toEqual([24]);
+      expect(totales.filter((t) => t === null)).toHaveLength(1);
+      expect(await conteo(usuarioA, dia)).toBe(24);
+    });
+
+    it("R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada", async () => {
+      const dia = "2001-05-07";
+      const sinFila = "2001-05-08";
+      const r = await bajoLockDeEscrituraReal(async () => {
+        await repo.consumir(usuarioA, dia, 5, TOPE);
+        await repo.consumir(usuarioA, dia, 3, TOPE);
+        await repo.devolver(usuarioA, dia, 3);
+        const trasDevolver = await conteo(usuarioA, dia);
+        await repo.devolver(usuarioA, dia, 9);
+        const sinBajarDeCero = await conteo(usuarioA, dia);
+        await repo.devolver(usuarioA, sinFila, 2);
+        return { trasDevolver, sinBajarDeCero, sinFila: await conteo(usuarioA, sinFila) };
+      });
+      expect(r).toEqual({ trasDevolver: 5, sinBajarDeCero: 0, sinFila: null });
+    });
+
+    it("R31 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_upload_quota dan 42501, y la tabla tiene RLS en public", async () => {
+      const r = await revertida(async (tx) => {
+        // La fila existe y es de un usuario de la propia empresa: el 42501 no es por una tabla vacía.
+        const control = await intentar(
+          tx,
+          `INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES ($1, '2001-05-09'::date, 3)`,
+          usuarioA,
+        );
+        const [{ rls }] = await tx.$queryRawUnsafe<{ rls: boolean }[]>(
+          `SELECT relrowsecurity AS rls FROM pg_class
+            WHERE relname = 'bug_report_upload_quota' AND relnamespace = 'public'::regnamespace`,
+        );
+        const columnas = await tx.$queryRawUnsafe<{ column_name: string }[]>(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'bug_report_upload_quota' ORDER BY column_name`,
+        );
+        await comoApp(tx, A);
+        return {
+          control,
+          rls,
+          columnas: columnas.map((c) => c.column_name),
+          select: await intentar(tx, `SELECT * FROM "bug_report_upload_quota"`),
+          selectPropia: await intentar(tx, `SELECT * FROM "bug_report_upload_quota" WHERE "user_id" = $1`, usuarioA),
+          insert: await intentar(
+            tx,
+            `INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES ($1, '2001-05-10'::date, 1)`,
+            usuarioA,
+          ),
+          update: await intentar(tx, `UPDATE "bug_report_upload_quota" SET "permits_granted" = 0 WHERE "user_id" = $1`, usuarioA),
+          delete: await intentar(tx, `DELETE FROM "bug_report_upload_quota" WHERE "user_id" = $1`, usuarioA),
+        };
+      });
+      expect(r).toEqual({
+        control: null,
+        rls: true,
+        // Los identificadores nuevos, en inglés (R31).
+        columnas: ["created_at", "day", "permits_granted", "user_id"],
+        select: "42501",
+        selectPropia: "42501",
+        insert: "42501",
+        update: "42501",
+        delete: "42501",
+      });
     });
   });
 });
