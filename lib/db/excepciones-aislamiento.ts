@@ -229,7 +229,7 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     archivo: "lib/repositories/BugReportRepository.ts",
     ficha: "SL-17",
     motivo:
-      "SLT-87: guardar un reporte de problema en `bug_report`, tabla de plataforma que la empresa no puede leer ni escribir; la empresa sale de la sesión, no del cliente (R13, R14)",
+      "SLT-87 y SLT-97: guardar un reporte de problema y, para el superadmin, leerlos y cambiar su estado con su historial, en tablas de plataforma que la empresa no puede leer ni escribir (R13, R14 de SLT-87; R3 de SLT-97)",
   },
 ];
 

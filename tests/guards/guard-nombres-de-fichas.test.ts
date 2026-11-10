@@ -40,6 +40,15 @@ describe('guardia: keysSinTitulo', () => {
     expect(keysSinTitulo(texto, BOARD)).toEqual(['SL-50'])
   })
 
+  it('con el título una vez, las siguientes menciones de esa key pueden ir solas', () => {
+    const texto = 'Cerré SL-50 «Zonas separadas de Tarifas». La SL-50 ya está en dev.'
+    expect(keysSinTitulo(texto, BOARD)).toEqual([])
+  })
+
+  it('el título que va en código no cuenta como mención con título', () => {
+    expect(keysSinTitulo('Mira `SL-50 «Zonas separadas de Tarifas»`; la SL-50 ya está.', BOARD)).toEqual(['SL-50'])
+  })
+
   it('en código, rutas y ramas no cuenta como mención', () => {
     const texto = [
       'Corre `./scripts/wt.sh new SL-50 zonas` y mira specs/SL-50-zonas/.',
