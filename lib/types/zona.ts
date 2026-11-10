@@ -23,9 +23,36 @@ export type TarifaZonaMensajeroInput = z.infer<typeof tarifaZonaMensajeroInputSc
 // entre las dos operaciones (ficha 376/R1-R3, ver abajo).
 const zonaFieldsComunes = {
   nombre: nombreSchema,
-  // distritoIds: conjunto de distritos que componen la zona (N:M). Al menos uno.
-  distritoIds: z.array(idSchema).min(1),
+  // distritoIds: los distritos (profundidad 3) asignados a la zona. SLT-89 (design §6): ya no lleva
+  // `.min(1)`; «al menos uno» se mide sobre `distritoIds` + `nodoIds` (`alMenosUnNodo`).
+  distritoIds: z.array(idSchema),
+  // SLT-89 (R1, design §6): los nodos que no son distritos (provincia, canton, profundidad >= 4).
+  // Opcional y no `.default([])`: ausente se lee como `[]` en el service y el repositorio, y asi los
+  // llamadores que solo asignan distritos (Costa Rica, R38) no cambian de forma.
+  nodoIds: z.array(idSchema).optional(),
 };
+
+/**
+ * SLT-89 (R5, design §6) — una zona sin ningun nodo es `validation_error` en `distritoIds`, el mismo
+ * campo de hoy, aunque ahora los nodos lleguen por dos listas.
+ */
+function alMenosUnNodo(data: { distritoIds: string[]; nodoIds?: string[] }, ctx: z.RefinementCtx): void {
+  if (data.distritoIds.length + (data.nodoIds?.length ?? 0) > 0) return;
+  ctx.addIssue({
+    code: "custom",
+    path: ["distritoIds"],
+    message: "la zona necesita al menos un lugar",
+  });
+}
+
+/**
+ * SLT-89 (R16, design §5.5) — el «antes» que el modal mostro: los nodos que la zona tenia. Las dos
+ * listas presentes; vacias valen y las juzga la comparacion del repositorio bajo el candado.
+ */
+export const antesDeZonaSchema = z
+  .object({ distritoIds: z.array(idSchema), nodoIds: z.array(idSchema) })
+  .strict();
+export type AntesDeZona = z.infer<typeof antesDeZonaSchema>;
 
 const tarifasArraySchema = z.array(tarifaZonaMensajeroInputSchema);
 
@@ -135,7 +162,10 @@ export const crearZonaSchema = z
     sinpeNombre: sinpeNombreSchema,
   })
   .strict()
-  .superRefine(applyTarifaRules);
+  .superRefine((data, ctx) => {
+    alMenosUnNodo(data, ctx);
+    applyTarifaRules(data, ctx);
+  });
 export type CrearZonaInput = z.infer<typeof crearZonaSchema>;
 
 // Actualizar: reemplazo completo de datos + N:M, con excepciones que son `optional()` y NO tienen
@@ -151,9 +181,13 @@ export const actualizarZonaSchema = z
     // 376/R1: ausente = «no lo mandé» = no se toca. `null` NO sirve y se rechaza: Prisma
     // intentaria escribir NULL en una columna NOT NULL.
     esCentral: z.boolean().optional(),
+    // SLT-89 (R16, design §5.5; decision humana del 2026-11-09): OBLIGATORIO. Sin el, el control de
+    // cambio concurrente se saltaria sin que nada lo notara. `crearZonaSchema` no lo admite (R46).
+    antes: antesDeZonaSchema,
   })
   .strict()
   .superRefine((data, ctx) => {
+    alMenosUnNodo(data, ctx);
     const { cobroVehiculo, tarifas } = data;
     // R7: ninguno de los dos = «no toques el pago al mensajero».
     if (cobroVehiculo === undefined && tarifas === undefined) return;
@@ -201,6 +235,10 @@ export interface ZonaDTO {
   nombre: string;
   cobroVehiculo: boolean;
   distritosCount: number;
+  // SLT-89 (design §5.1 paso 10): filas de `zona_nodo` (los nodos que no son distritos).
+  // `distritosCount` no cambia. Opcional en el tipo para que los DTO que hoy arman las pantallas y
+  // sus dobles sigan valiendo (R38); el repositorio lo pone siempre.
+  nodosCount?: number;
   esCentral: boolean; // feature 54: flag de zona central (antes esGam)
   // Presente en crear/actualizar/obtener; en listar solo si include incluye "tarifas".
   tarifas?: TarifaZonaMensajeroDTO[];
@@ -257,6 +295,8 @@ export type ActualizarZonaResult =
       ordenesReconciliadas: number;
       ordenesRetenidasEnBodegaSatelite: number;
     }
+  // SLT-89 (R16): los nodos de la zona en la base no son los que el modal mostro como «antes».
+  | { status: "conflict"; motivo: "cambio_concurrente" }
   | ZonaActionError;
 export type ListarZonasResult =
   | { status: "ok"; items: ZonaDTO[]; page: number; pageSize: number; total: number }

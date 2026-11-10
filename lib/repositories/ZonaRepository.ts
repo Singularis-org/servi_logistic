@@ -6,7 +6,7 @@ import {
   CatalogoGeograficoRepository,
   type CatalogoPrismaClient,
 } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { PROFUNDIDAD_DEL_NIVEL, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { cambioElPagoAlMensajero } from "@/lib/repositories/_shared/pago-mensajero-cambio";
 import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
 import {
@@ -14,7 +14,21 @@ import {
   textoConstraintP2002,
 } from "@/lib/repositories/_shared/prisma-unique";
 import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
-import { nodosBajo, zonaQueCubre } from "@/lib/services/geografia-dominio";
+import {
+  crearMiembrosNodo,
+  leerMiembrosNodo,
+  leerNodosDeZona,
+  leerNodosEnOtraZona,
+  reemplazarNodosDeZona,
+  type MiembroNodo,
+} from "@/lib/repositories/_shared/zona-nodo";
+import {
+  mismoConjunto,
+  nodo as nodoDelCatalogo,
+  nodosBajo,
+  zonaQueCubre,
+  type CatalogoGeografico,
+} from "@/lib/services/geografia-dominio";
 import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
 import { normalizeName } from "@/lib/utils/normalize";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
@@ -32,6 +46,7 @@ import type {
   IZonaRepository,
   ListZonasParams,
   ListZonasResult,
+  MotivoNodoInvalido,
   SinpeZonaRow,
   UpdateZonaData,
   UpdateZonaResult,
@@ -73,6 +88,10 @@ type ZonaPrismaClient = Pick<
   // fila por la API de modelo, y sin el dos guardados simultaneos sobre la misma bodega leerian el
   // mismo valor «anterior» y escribirian dos filas que cuentan la misma transicion dos veces.
   | "$queryRaw"
+  // SLT-89 (design §5.1 paso 7): la normalizacion de los miembros de grupo al guardar una zona.
+  | "grupoDistritos"
+  | "grupoDistritosDistrito"
+  | "grupoDistritosNodo"
 > &
   // SLT-65 (design §6.3): la reconciliacion carga el catalogo de SLT-44 dentro de la transaccion.
   // Los modelos van por el tipo del catalogo: el de las marcas solo lo nombra su punto unico.
@@ -206,12 +225,14 @@ function toDTO(
   zona: { id: string; nombre: string; cobroVehiculo: boolean; esCentral: boolean },
   distritosCount: number,
   tarifas: TarifaRow[] | undefined,
+  nodosCount: number,
 ): ZonaDTO {
   const dto: ZonaDTO = {
     id: zona.id,
     nombre: zona.nombre,
     cobroVehiculo: zona.cobroVehiculo,
     distritosCount,
+    nodosCount,
     esCentral: zona.esCentral,
   };
   if (tarifas !== undefined) dto.tarifas = tarifas.map(tarifaToDTO);
@@ -264,11 +285,175 @@ function textosDelError(e: unknown, vistos: Set<unknown>, profundidad: number): 
  * 373, el FK llego como `DriverAdapterError` sin `code`).
  */
 export function esViolacionDistritoUnico(e: unknown): boolean {
+  return esViolacionDelIndice(e, INDICE_DISTRITO_UNICO);
+}
+
+/**
+ * SLT-89 (R2, design §5.1) — el hermano de `INDICE_DISTRITO_UNICO` en `zona_nodo`: un nodo, a lo sumo
+ * una zona por empresa. Es la red de la carrera entre dos guardados que pasaron la lectura.
+ */
+const INDICE_NODO_UNICO = "zona_nodo_organizacion_id_nodo_geografico_id_key";
+
+/** SLT-89 (R2): `true` solo si es una violacion de unicidad del indice de `zona_nodo`. */
+export function esViolacionNodoUnico(e: unknown): boolean {
+  return esViolacionDelIndice(e, INDICE_NODO_UNICO);
+}
+
+function esViolacionDelIndice(e: unknown, indice: string): boolean {
   if (!esViolacionDeUnico(e)) return false;
   const texto = [textoConstraintP2002(e) ?? "", ...textosDelError(e, new Set(), 0)]
     .join(" ")
     .toLowerCase();
-  return texto.includes(INDICE_DISTRITO_UNICO);
+  return texto.includes(indice);
+}
+
+/**
+ * SLT-89 (R4, design §5.1 paso 4) — por que no se puede asignar alguno de `nodoIds`: no esta en el
+ * catalogo del pais de la empresa (que ya incluye los retirados, asi que un nodo retirado SI se
+ * asigna, como hoy un distrito retirado), o es un distrito, que va en `zona_distrito`.
+ */
+function motivosDeNodosInvalidos(cat: CatalogoGeografico, nodoIds: readonly string[]): MotivoNodoInvalido[] {
+  const motivos = new Set<MotivoNodoInvalido>();
+  for (const id of nodoIds) {
+    const n = nodoDelCatalogo(cat, id);
+    if (n === null) motivos.add("no_existe");
+    else if (n.profundidad === PROFUNDIDAD_DEL_NIVEL.distrito) motivos.add("es_distrito");
+  }
+  return [...motivos];
+}
+
+/** SLT-89 (R30): el nodo como «nombre (nombre del padre)»; una raiz, solo su nombre. */
+function textoDeNodo(cat: CatalogoGeografico, nodoId: string): string {
+  const n = nodoDelCatalogo(cat, nodoId);
+  if (n === null) return ETIQUETA_DESCONOCIDA;
+  const padre = n.padreId === null ? null : nodoDelCatalogo(cat, n.padreId);
+  return valorDeCatalogo(padre === null ? n.nombre : `${n.nombre} (${padre.nombre})`);
+}
+
+/**
+ * ⭑ SLT-89 (R30) — LAS FILAS DEL CAMBIO DE NODOS QUE NO SON DISTRITOS, UNA POR NODO. Hermana de
+ * `filasDeCambioDeDistritos`, con su propio tipo (`zona_nodo_cambiado`) para no cambiar el texto del
+ * historial de los distritos (design §11, alternativa 4). Mismo orden y misma forma.
+ */
+function filasDeCambioDeNodos(
+  zona: ZonaConNombre,
+  cambio: CambioDeDistritos,
+  cat: CatalogoGeografico,
+  actor: { actorUsuarioId: string | null; actorNombre: string | null; actorRol: RolValue | null },
+) {
+  const entradas = [
+    ...cambio.anadidos.map((n) => ({ texto: textoDeNodo(cat, n), anterior: null, nuevo: textoDeNodo(cat, n) })),
+    ...cambio.quitados.map((n) => ({ texto: textoDeNodo(cat, n), anterior: textoDeNodo(cat, n), nuevo: null })),
+  ].sort((a, b) => a.texto.localeCompare(b.texto, "es"));
+  return entradas.map((e) => ({
+    accion: "zona_nodo_cambiado" as const,
+    entidadTipo: "zona" as const,
+    entidadId: zona.id,
+    entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+    valorAnterior: e.anterior,
+    valorNuevo: e.nuevo,
+    ...actor,
+  }));
+}
+
+/** Lo que la normalizacion lee y escribe con la `tx` del guardado. */
+type TxDeNormalizacion = Pick<
+  Prisma.TransactionClient,
+  "grupoDistritos" | "grupoDistritosDistrito" | "grupoDistritosNodo"
+> &
+  CatalogoPrismaClient;
+
+/** Un grupo al que la normalizacion le quito miembros: «habia N, quedan M» (R21). */
+interface GrupoRecortado {
+  id: string;
+  etiqueta: string;
+  habia: number;
+  quedan: number;
+}
+
+function textoMiembros(n: number): string {
+  return n === 1 ? "1 distrito" : `${n} distritos`;
+}
+
+/**
+ * ⭑ SLT-89 (R21, design §5.1 paso 7) — LOS MIEMBROS DE GRUPO SIGUEN A LA COBERTURA DE SU ZONA.
+ *
+ * Corre DESPUES de escribir `zona_distrito` y `zona_nodo`, con el catalogo leido en la `tx` (ve lo
+ * recien escrito):
+ *   (a) un distrito que salio de `zona_distrito` y la zona sigue cubriendo por herencia vuelve a su
+ *       grupo, ahora en `grupo_distritos_nodo` (la cascada de la FK compuesta lo saco de la vieja);
+ *   (b) un miembro de `grupo_distritos_nodo` de esta zona que acaba de entrar en `zona_distrito` pasa a
+ *       `grupo_distritos_distrito`, con el mismo grupo (el trigger de duplicado exige ese orden);
+ *   (c) un miembro de `grupo_distritos_nodo` de CUALQUIER zona, en los lugares afectados, que su zona
+ *       ya no cubre, sale de su grupo; se devuelve por grupo para su fila de historial.
+ *
+ * Con asignaciones solo a distritos (Costa Rica, R38) la foto de (a) no se pide y no hay filas en
+ * `grupo_distritos_nodo`: sale sin cargar el catalogo y sin escribir nada.
+ */
+async function normalizarMiembrosDeGrupo(
+  tx: TxDeNormalizacion,
+  zonaId: string,
+  fotoEnRiesgo: readonly { grupoId: string; distritoId: string }[],
+  distritosQueEntran: readonly string[],
+  nodosAfectados: readonly string[],
+): Promise<GrupoRecortado[]> {
+  const miembros = await leerMiembrosNodo(tx);
+  if (fotoEnRiesgo.length === 0 && miembros.length === 0) return [];
+
+  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
+  const cubre = (nodoId: string) => zonaQueCubre(catalogo, asignaciones, nodoId)?.id ?? null;
+
+  // (b) asignado ↔ heredado conserva el grupo: de la tabla nueva a la vieja.
+  const entran = new Set(distritosQueEntran);
+  const pasanALaVieja = miembros.filter((m) => m.zonaId === zonaId && entran.has(m.nodoId));
+  if (pasanALaVieja.length > 0) {
+    await tx.grupoDistritosNodo.deleteMany({ where: { id: { in: pasanALaVieja.map((m) => m.id) } } });
+    await tx.grupoDistritosDistrito.createMany({
+      data: pasanALaVieja.map((m) => ({ grupoId: m.grupoId, zonaId, distritoId: m.nodoId })),
+    });
+  }
+
+  // (a) de la vieja a la nueva: el distrito sigue cubierto por la zona, ahora heredado.
+  await crearMiembrosNodo(
+    tx,
+    fotoEnRiesgo
+      .filter((f) => cubre(f.distritoId) === zonaId)
+      .map((f) => ({ grupoId: f.grupoId, zonaId, nodoId: f.distritoId })),
+  );
+
+  // (c) sin cobertura de su zona: fuera del grupo.
+  const lugares = new Set<string>();
+  for (const n of nodosAfectados) {
+    lugares.add(n);
+    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
+  }
+  const movidos = new Set(pasanALaVieja.map((m) => m.id));
+  const salen: MiembroNodo[] = miembros.filter(
+    (m) => !movidos.has(m.id) && lugares.has(m.nodoId) && cubre(m.nodoId) !== m.zonaId,
+  );
+  if (salen.length === 0) return [];
+
+  const gruposIds = [...new Set(salen.map((m) => m.grupoId))];
+  const grupos = await tx.grupoDistritos.findMany({
+    where: { id: { in: gruposIds } },
+    select: {
+      id: true,
+      nombre: true,
+      zona: { select: { nombre: true } },
+      _count: { select: { distritos: true, nodos: true } },
+    },
+    orderBy: { id: "asc" },
+  });
+  await tx.grupoDistritosNodo.deleteMany({ where: { id: { in: salen.map((m) => m.id) } } });
+  return grupos.map((g) => {
+    const habia = g._count.distritos + g._count.nodos;
+    return {
+      id: g.id,
+      etiqueta: etiquetaDeEntidad("grupo_distritos", { nombre: g.nombre, zonaNombre: g.zona.nombre }),
+      habia,
+      quedan: habia - salen.filter((m) => m.grupoId === g.id).length,
+    };
+  });
 }
 
 /**
@@ -419,9 +604,23 @@ export class ZonaRepository implements IZonaRepository {
       return await this.prisma.$transaction(async (tx): Promise<CreateZonaResult> => {
         // ⭑ SLT-75 (R1/R6): el rechazo sale ANTES de la primera escritura —tambien antes de
         // apagar la central previa—, asi que la transaccion confirma cero escrituras.
+        const nodoIds = [...new Set(data.nodoIds ?? [])];
         const conflictos = await leerDistritosEnOtraZona(tx, data.distritoIds, null);
-        if (conflictos.length > 0) {
-          return { estado: "distrito_en_otra_zona", conflictos };
+        // SLT-89 (R2, design §5.1 paso 3): lo mismo para los nodos que no son distritos.
+        const conflictosDeNodos = await leerNodosEnOtraZona(tx, nodoIds, null);
+        if (conflictos.length > 0 || conflictosDeNodos.length > 0) {
+          return {
+            estado: "distrito_en_otra_zona",
+            conflictos,
+            ...(conflictosDeNodos.length > 0 ? { conflictosDeNodos } : {}),
+          };
+        }
+        // SLT-89 (R4, design §5.1 paso 4): los nodos, en el catalogo del pais y sin distritos. Solo
+        // se carga el catalogo si se piden nodos: crear con distritos no cambia (R38).
+        if (nodoIds.length > 0) {
+          const { catalogo } = await new CatalogoGeograficoRepository(sinTransaccionAnidada(tx)).deLaEmpresa();
+          const motivos = motivosDeNodosInvalidos(catalogo, nodoIds);
+          if (motivos.length > 0) return { estado: "nodo_invalido", motivos };
         }
 
         // 376/R12: la central previa se lee ANTES del `updateMany` que la apaga. Despues ya no
@@ -458,6 +657,9 @@ export class ZonaRepository implements IZonaRepository {
             data: data.distritoIds.map((distritoId) => ({ zonaId: zona.id, distritoId })),
           });
         }
+        // SLT-89 (R1, design §5.1 «create»): solo el alta en `zona_nodo`; una zona nueva no tiene
+        // grupos que normalizar ni historial de nodos (R30).
+        await reemplazarNodosDeZona(tx, zona.id, [], nodoIds);
         if (data.tarifas.length > 0) {
           await tx.tarifaZonaMensajero.createMany({ data: tarifaCreateRows(zona.id, data.tarifas) });
         }
@@ -474,11 +676,14 @@ export class ZonaRepository implements IZonaRepository {
         }
 
         const tarifas = await tx.tarifaZonaMensajero.findMany({ where: { zonaId: zona.id } });
-        return { estado: "ok", zona: toDTO(zona, data.distritoIds.length, tarifas) };
+        return { estado: "ok", zona: toDTO(zona, data.distritoIds.length, tarifas, nodoIds.length) };
       });
     } catch (e) {
-      // SLT-75 (R8): la carrera que paro el indice unico. No se sabe que distrito fue.
-      if (esViolacionDistritoUnico(e)) return { estado: "distrito_en_otra_zona", conflictos: null };
+      // SLT-75 (R8): la carrera que paro el indice unico. No se sabe que distrito fue. SLT-89 (R2): ni
+      // que nodo, si fue el de `zona_nodo`.
+      if (esViolacionDistritoUnico(e) || esViolacionNodoUnico(e)) {
+        return { estado: "distrito_en_otra_zona", conflictos: null };
+      }
       translateEsCentralConflict(e);
     }
   }
@@ -486,13 +691,13 @@ export class ZonaRepository implements IZonaRepository {
   async findById(id: string, includeTarifas: boolean): Promise<ZonaDTO | null> {
     const zona = await this.prisma.zona.findUnique({
       where: { id },
-      include: { _count: { select: { distritos: true } } },
+      include: { _count: { select: { distritos: true, nodos: true } } }, // SLT-89: + `nodosCount`
     });
     if (!zona) return null;
     const tarifas = includeTarifas
       ? await this.prisma.tarifaZonaMensajero.findMany({ where: { zonaId: id } })
       : undefined;
-    return toDTO(zona, zona._count.distritos, tarifas);
+    return toDTO(zona, zona._count.distritos, tarifas, zona._count.nodos);
   }
 
   async list(params: ListZonasParams): Promise<ListZonasResult> {
@@ -501,7 +706,7 @@ export class ZonaRepository implements IZonaRepository {
         orderBy: { nombre: "asc" },
         skip: params.skip,
         take: params.take,
-        include: { _count: { select: { distritos: true } } },
+        include: { _count: { select: { distritos: true, nodos: true } } }, // SLT-89: + `nodosCount`
       }),
       this.prisma.zona.count(),
     ]);
@@ -524,6 +729,7 @@ export class ZonaRepository implements IZonaRepository {
         r,
         r._count.distritos,
         params.includeTarifas ? (tarifasByZona.get(r.id) ?? []) : undefined,
+        r._count.nodos,
       ),
     );
     return { items, total };
@@ -563,6 +769,12 @@ export class ZonaRepository implements IZonaRepository {
   ): Promise<UpdateZonaResult> {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // ⭑ SLT-89 (R16, design §5.1 paso 0) — el candado de la fila de la zona: serializa dos
+        // guardados de la misma zona, asi que el «antes» que se compara abajo sigue valiendo al
+        // escribir. Sin fila (zona inexistente) no bloquea nada y el `findUnique` da `not_found`.
+        await tx.$queryRaw`SELECT "id" FROM "zona" WHERE "id" = ${id} FOR UPDATE`;
+        const nodoIds = [...new Set(data.nodoIds ?? [])];
+
         // 376/R5: la lectura que ya existia gana UNA columna. No hace falta contar zonas: el
         // indice unico parcial `zona_es_central_unico` garantiza «a lo sumo una», asi que «esta
         // zona ES la central» equivale a «quitarle la marca deja el sistema sin ninguna».
@@ -580,11 +792,53 @@ export class ZonaRepository implements IZonaRepository {
           return { estado: "sin_zona_central" as const };
         }
 
+        // 366/R5: los distritos que la zona tenia ANTES, leidos ANTES del `deleteMany`. Sin esta
+        // lectura, un distrito que este mismo guardado ACABA DE QUITAR de la zona no se
+        // re-evaluaria: no esta en la lista final, asi que sus ordenes seguirian apuntando aqui
+        // hasta un guardado futuro que podria no llegar nunca. SLT-89: se lee aqui, antes de la
+        // primera escritura, porque tambien es la mitad del «antes» de la base (paso 2).
+        const distritosPrevios = await tx.zonaDistrito.findMany({
+          where: { zonaId: id },
+          select: { distritoId: true },
+        });
+        const nodosPrevios = await leerNodosDeZona(tx, id);
+
+        // ⭑ SLT-89 (R16, design §5.1 paso 2) — CAMBIO CONCURRENTE. Lo que la zona tiene en la base
+        // (distritos y demas nodos) tiene que ser lo que el modal mostro como «antes»; si no, otro
+        // guardado entro mientras tanto y este sale sin escribir nada.
+        if (
+          !mismoConjunto(
+            [...distritosPrevios.map((d) => d.distritoId), ...nodosPrevios],
+            [...data.antes.distritoIds, ...data.antes.nodoIds],
+          )
+        ) {
+          return { estado: "cambio_concurrente" as const };
+        }
+
         // ⭑ SLT-75 (R2/R4/R6): los distritos pedidos que ya estan en OTRA zona, leidos antes de
-        // la primera escritura. Los de esta misma zona no cuentan (R4).
+        // la primera escritura. Los de esta misma zona no cuentan (R4). SLT-89 (R2, paso 3): y los
+        // nodos que no son distritos, en `zona_nodo`.
         const conflictos = await leerDistritosEnOtraZona(tx, data.distritoIds, id);
-        if (conflictos.length > 0) {
-          return { estado: "distrito_en_otra_zona" as const, conflictos };
+        const conflictosDeNodos = await leerNodosEnOtraZona(tx, nodoIds, id);
+        if (conflictos.length > 0 || conflictosDeNodos.length > 0) {
+          return {
+            estado: "distrito_en_otra_zona" as const,
+            conflictos,
+            ...(conflictosDeNodos.length > 0 ? { conflictosDeNodos } : {}),
+          };
+        }
+
+        // ⭑ SLT-89 (R4, R30, design §5.1 paso 4) — el catalogo de ANTES de escribir: comprueba que
+        // los nodos pedidos existen en el pais y no son distritos (los retirados estan en el catalogo
+        // y se aceptan), y da el texto «nombre (padre)» del historial. Solo si la zona tiene o pide
+        // nodos: con asignaciones solo a distritos no se carga (R38).
+        const catalogoPrevio =
+          nodoIds.length > 0 || nodosPrevios.length > 0
+            ? (await new CatalogoGeograficoRepository(sinTransaccionAnidada(tx)).deLaEmpresa()).catalogo
+            : null;
+        if (catalogoPrevio !== null) {
+          const motivos = motivosDeNodosInvalidos(catalogoPrevio, nodoIds);
+          if (motivos.length > 0) return { estado: "nodo_invalido" as const, motivos };
         }
 
         // 376/R12: ¿la marca va a LLEGAR a esta zona? Entonces la central previa se lee ANTES del
@@ -617,15 +871,6 @@ export class ZonaRepository implements IZonaRepository {
           data: { nombre: data.nombre, cobroVehiculo: data.cobroVehiculo, esCentral: data.esCentral },
         });
 
-        // 366/R5: los distritos que la zona tenia ANTES, leidos ANTES del `deleteMany`. Sin esta
-        // lectura, un distrito que este mismo guardado ACABA DE QUITAR de la zona no se
-        // re-evaluaria: no esta en la lista final, asi que sus ordenes seguirian apuntando aqui
-        // hasta un guardado futuro que podria no llegar nunca.
-        const distritosPrevios = await tx.zonaDistrito.findMany({
-          where: { zonaId: id },
-          select: { distritoId: true },
-        });
-
         // ⭑ 380/R1/R3 — LOS PAGOS AL MENSAJERO QUE LA ZONA TENIA, LEIDOS ANTES DEL `deleteMany`,
         // y POR EL MISMO MOTIVO que `distritosPrevios` de aqui arriba: dos lineas mas abajo esas
         // filas ya no existen y no habria a quien preguntar. Es la unica foto del «antes» que va a
@@ -655,6 +900,19 @@ export class ZonaRepository implements IZonaRepository {
         const pedidos = new Set(data.distritoIds);
         const salen = [...previos].filter((d) => !pedidos.has(d));
         const entran = data.distritoIds.filter((d) => !previos.has(d));
+
+        // SLT-89 (R21, design §5.1 paso 6) — la foto de los miembros de grupo que la cascada va a
+        // sacar: los distritos que salen de `zona_distrito` y estaban en un grupo de esta zona. Solo
+        // pueden seguir cubiertos por herencia si la zona queda con algun nodo en `zona_nodo`; sin
+        // ninguno (Costa Rica, R38) no se pide y la cascada hace lo de siempre.
+        const fotoEnRiesgo =
+          salen.length > 0 && nodoIds.length > 0
+            ? await tx.grupoDistritosDistrito.findMany({
+                where: { zonaId: id, distritoId: { in: salen } },
+                select: { grupoId: true, distritoId: true },
+              })
+            : [];
+
         if (salen.length > 0) {
           await tx.zonaDistrito.deleteMany({ where: { zonaId: id, distritoId: { in: salen } } });
         }
@@ -663,6 +921,9 @@ export class ZonaRepository implements IZonaRepository {
             data: entran.map((distritoId) => ({ zonaId: id, distritoId })),
           });
         }
+        // SLT-89 (R1, design §5.1 paso 7): `zona_nodo` por diferencia, como `zona_distrito`.
+        const cambioDeNodos = diferenciaDeDistritos(nodosPrevios, nodoIds);
+        await reemplazarNodosDeZona(tx, id, cambioDeNodos.quitados, cambioDeNodos.anadidos);
         if (data.tarifas !== undefined) {
           await tx.tarifaZonaMensajero.deleteMany({ where: { zonaId: id } });
           if (data.tarifas.length > 0) {
@@ -681,9 +942,44 @@ export class ZonaRepository implements IZonaRepository {
 
         // 366/R5 (design §2): LA UNION de los distritos de ANTES y los de DESPUES. SLT-65 (R13): son
         // los nodos afectados; el plan añade lo que cuelga de ellos.
+        // SLT-89 (R10, design §5.1 paso 8): y los nodos que no son distritos, de antes y de despues.
+        // Con asignaciones solo a distritos la lista es la de hoy (R38).
         const distritosAfectados = [
-          ...new Set([...distritosPrevios.map((d) => d.distritoId), ...data.distritoIds]),
+          ...new Set([
+            ...distritosPrevios.map((d) => d.distritoId),
+            ...data.distritoIds,
+            ...nodosPrevios,
+            ...nodoIds,
+          ]),
         ];
+
+        // ⭑ SLT-89 (R21, design §5.1 paso 7) — los miembros de grupo siguen a la cobertura de su
+        // zona, en esta misma transaccion. Antes del plan: la reconciliacion no lee grupos. Un
+        // guardado que no cambia ninguna asignacion no puede cambiar ninguna cobertura: no se mira.
+        const cambianAsignaciones =
+          salen.length > 0 ||
+          entran.length > 0 ||
+          cambioDeNodos.anadidos.length > 0 ||
+          cambioDeNodos.quitados.length > 0;
+        const gruposRecortados = cambianAsignaciones
+          ? await normalizarMiembrosDeGrupo(sinTransaccionAnidada(tx), id, fotoEnRiesgo, entran, distritosAfectados)
+          : [];
+        if (gruposRecortados.length > 0) {
+          const actorDeGrupos = await resolverActorCongelado(tx, actorUsuarioId);
+          await appendAccion(
+            tx,
+            gruposRecortados.map((g) => ({
+              accion: "grupo_distritos_cambiado" as const,
+              entidadTipo: "grupo_distritos" as const,
+              entidadId: g.id,
+              entidadEtiqueta: g.etiqueta,
+              ...actorDeGrupos,
+              valorAnterior: valorDeCatalogo(textoMiembros(g.habia)),
+              valorNuevo: valorDeCatalogo(textoMiembros(g.quedan)),
+            })),
+            randomUUID(),
+          );
+        }
 
         // ══════════════════════════════════════════════════════════════════════════════════════
         // ⭑ FICHA 377 (R2/R8) — LO QUE SE QUEDA, Y POR QUE SE CUENTA (el corte vive en el plan)
@@ -861,9 +1157,21 @@ export class ZonaRepository implements IZonaRepository {
           );
         }
 
+        // ⭑ SLT-89 (R30, design §5.1 paso 9) — EL RASTRO DE LOS NODOS QUE NO SON DISTRITOS: un quinto
+        // lote, propio, con una fila por nodo añadido o quitado. Los distritos siguen arriba, como
+        // SLT-76. Con asignaciones solo a distritos no hay cambio de nodos y no se escribe nada.
+        if (catalogoPrevio !== null && (cambioDeNodos.anadidos.length > 0 || cambioDeNodos.quitados.length > 0)) {
+          const actorDeNodos = await resolverActorCongelado(tx, actorUsuarioId);
+          await appendAccion(
+            tx,
+            filasDeCambioDeNodos({ id, nombre: zona.nombre }, cambioDeNodos, catalogoPrevio, actorDeNodos),
+            randomUUID(),
+          );
+        }
+
         return {
           estado: "ok" as const,
-          zona: toDTO(zona, data.distritoIds.length, tarifas),
+          zona: toDTO(zona, data.distritoIds.length, tarifas, nodoIds.length),
           ordenesReconciliadas,
           // 377/R7/R8: los dos numeros viajan por separado y son DISJUNTOS. `create` no devuelve
           // ninguno de los dos (R13: crear una zona ni reconcilia ni retiene).
@@ -871,8 +1179,9 @@ export class ZonaRepository implements IZonaRepository {
         };
       });
     } catch (e) {
-      // SLT-75 (R8): la carrera que paro el indice unico. No se sabe que distrito fue.
-      if (esViolacionDistritoUnico(e)) {
+      // SLT-75 (R8): la carrera que paro el indice unico. No se sabe que distrito fue. SLT-89 (R2):
+      // ni que nodo, si fue el indice de `zona_nodo`.
+      if (esViolacionDistritoUnico(e) || esViolacionNodoUnico(e)) {
         return { estado: "distrito_en_otra_zona" as const, conflictos: null };
       }
       translateEsCentralConflict(e);

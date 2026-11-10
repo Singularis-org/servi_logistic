@@ -80,6 +80,17 @@ function crearInput(overrides: Partial<CrearZonaInput> = {}): CrearZonaInput {
   };
 }
 
+/**
+ * SLT-89 (T3.7, R16): guardar una zona existente exige el «antes» (decision del 2026-11-09). El de
+ * estos casos es el distrito de `crearInput`, lo que el doble del repositorio da por sembrado.
+ */
+const ANTES = { distritoIds: ["d1"], nodoIds: [] };
+
+/** `crearInput` con el «antes» obligatorio de actualizar. Mismos campos que antes, mas ese. */
+function actualizarInput(overrides: Partial<CrearZonaInput> = {}) {
+  return { ...crearInput(overrides), antes: ANTES };
+}
+
 let repo: IZonaRepository;
 let service: ZonaService;
 
@@ -105,7 +116,7 @@ describe("autorizacion — solo maestro (feature 24)", () => {
   it("listar/obtener/actualizar/borrar: no-maestro -> forbidden", async () => {
     expect((await service.listar({ page: 1, pageSize: 25 }, ADMIN)).status).toBe("forbidden");
     expect((await service.obtener("z1", ADMIN)).status).toBe("forbidden");
-    expect((await service.actualizar("z1", crearInput(), ADMIN)).status).toBe("forbidden");
+    expect((await service.actualizar("z1", actualizarInput(), ADMIN)).status).toBe("forbidden");
     expect((await service.borrar("z1", ADMIN)).status).toBe("forbidden");
     expect(repo.hardDelete).not.toHaveBeenCalled();
   });
@@ -164,7 +175,7 @@ describe("crear — validacion de existencia", () => {
     // numero de cobro de una bodega. Se afirma sobre el ARGUMENTO, no sobre el tipo.
     // Se le pasa un input que SI lleva los dos campos: si el servicio los reenviara, el argumento
     // del repositorio los traeria. `prepararDatos` los deja fuera por construccion (`DatosSinMarca`).
-    await service.actualizar("z1", crearInput() as unknown as ActualizarZonaInput, MAESTRO);
+    await service.actualizar("z1", actualizarInput() as unknown as ActualizarZonaInput, MAESTRO);
     const arg = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
     expect(Object.keys(arg)).not.toContain("sinpeNumero");
     expect(Object.keys(arg)).not.toContain("sinpeNombre");
@@ -220,7 +231,7 @@ describe("376 — el desenlace `sin_zona_central` del repositorio", () => {
     repo = buildRepo({ update: vi.fn().mockResolvedValue({ estado: "sin_zona_central" }) });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput({ esCentral: false }), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput({ esCentral: false }), MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
       // R6: señala EL CAMPO de la marca, para que la pantalla lo pinte junto a la casilla (R23).
@@ -242,7 +253,7 @@ describe("376 — el desenlace `sin_zona_central` del repositorio", () => {
   it("R6: `sin_zona_central` NO se confunde con `not_found`", async () => {
     repo = buildRepo({ update: vi.fn().mockResolvedValue({ estado: "sin_zona_central" }) });
     service = new ZonaService(repo);
-    expect((await service.actualizar("z1", crearInput(), MAESTRO)).status).not.toBe("not_found");
+    expect((await service.actualizar("z1", actualizarInput(), MAESTRO)).status).not.toBe("not_found");
   });
 
   it("⭑ R1: `esCentral` AUSENTE llega al repositorio como `undefined`, no como `false`", async () => {
@@ -250,7 +261,7 @@ describe("376 — el desenlace `sin_zona_central` del repositorio", () => {
     // `?? false` aqui volveria a apagar la marca por omision, y ningun test de arriba lo veria.
     const { esCentral: _omitida, ...sinMarca } = crearInput();
     void _omitida;
-    await service.actualizar("z1", sinMarca as ActualizarZonaInput, MAESTRO);
+    await service.actualizar("z1", { ...sinMarca, antes: ANTES } as ActualizarZonaInput, MAESTRO);
 
     const datos = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(datos).toHaveProperty("esCentral");
@@ -263,7 +274,7 @@ describe("376 — el desenlace `sin_zona_central` del repositorio", () => {
   it("R3: un `false` EXPLICITO llega al repositorio como `false`, no como `undefined`", async () => {
     // La otra mitad de R1/R3: «no lo mandé» y «lo mandé apagado» tienen que seguir siendo cosas
     // distintas cuando llegan al repositorio, porque una se ignora y la otra se rechaza CON MOTIVO.
-    await service.actualizar("z1", crearInput({ esCentral: false }), MAESTRO);
+    await service.actualizar("z1", actualizarInput({ esCentral: false }), MAESTRO);
     const datos = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(datos.esCentral).toBe(false);
   });
@@ -322,7 +333,7 @@ describe("actualizar", () => {
     // FICHA 376: el desenlace viaja nombrado, no como `null`. Sigue siendo el mismo caso.
     repo = buildRepo({ update: vi.fn().mockResolvedValue({ estado: "not_found" }) });
     service = new ZonaService(repo);
-    expect((await service.actualizar("zX", crearInput(), MAESTRO)).status).toBe("not_found");
+    expect((await service.actualizar("zX", actualizarInput(), MAESTRO)).status).toBe("not_found");
   });
 
   // ⭑ FICHA 366 (T6) — el service no calcula nada de esto: lo TRANSPORTA. Lo que se mide aqui es
@@ -333,13 +344,13 @@ describe("actualizar", () => {
     });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput(), MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status === "ok") expect(r.ordenesReconciliadas).toBe(5);
   });
 
   it("R14: cero se reenvia como cero (no como ausencia)", async () => {
-    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput(), MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status === "ok") expect(r.ordenesReconciliadas).toBe(0);
   });
@@ -351,7 +362,7 @@ describe("actualizar", () => {
     repo = buildRepo({ update: vi.fn().mockResolvedValue(resultadoUpdate(dto(), 5, 3)) });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput(), MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status === "ok") {
       expect(r.ordenesReconciliadas).toBe(5);
@@ -365,7 +376,7 @@ describe("actualizar", () => {
     repo = buildRepo({ update: vi.fn().mockResolvedValue(resultadoUpdate(dto(), 2, 0)) });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput(), MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status === "ok") {
       expect(r.ordenesRetenidasEnBodegaSatelite).toBe(0);
@@ -381,7 +392,7 @@ describe("actualizar", () => {
   it("⭑ R10: `actor.usuarioId` llega al repo como TERCER argumento de `update`", async () => {
     // Sin esto, cada fila del historial que produzca la reconciliacion quedaria firmada por EL
     // SISTEMA (`resolverActorCongelado(tx, null)`), y el rastro no diria quien la disparo.
-    await service.actualizar("z1", crearInput(), MAESTRO);
+    await service.actualizar("z1", actualizarInput(), MAESTRO);
     const llamada = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(llamada[0]).toBe("z1");
     expect(llamada[2]).toBe(MAESTRO.usuarioId);
@@ -394,7 +405,7 @@ describe("actualizar", () => {
  */
 describe("SLT-51 — actualizar sin cobroVehiculo ni tarifas", () => {
   it("R7: llegan al repo como `undefined` (no como `false`/`[]`) y no se consultan vehiculos", async () => {
-    await service.actualizar("z1", { nombre: "GAM", distritoIds: ["d1"] }, MAESTRO);
+    await service.actualizar("z1", { nombre: "GAM", distritoIds: ["d1"], antes: ANTES }, MAESTRO);
     const data = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(data.cobroVehiculo).toBeUndefined();
     expect(data.tarifas).toBeUndefined();
@@ -409,6 +420,7 @@ describe("SLT-51 — actualizar sin cobroVehiculo ni tarifas", () => {
         distritoIds: ["d1"],
         cobroVehiculo: true,
         tarifas: [{ cobroEntregado: 10, cobroRechazado: 5, vehiculoId: "v1" }],
+        antes: ANTES,
       },
       MAESTRO,
     );
@@ -450,7 +462,7 @@ describe("esCentral — invariante 'una central' (feature 55/R3/R4/R6)", () => {
     });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput({ esCentral: true }), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput({ esCentral: true }), MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status === "ok") expect(r.zona.esCentral).toBe(true); // R3
   });
@@ -495,7 +507,7 @@ describe("SLT-75 — ZonaService: un distrito en otra zona es un error de valida
     });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput(), MAESTRO);
 
     expect(r).toEqual({
       status: "validation_error",
@@ -528,7 +540,7 @@ describe("SLT-75 — ZonaService: un distrito en otra zona es un error de valida
     });
     service = new ZonaService(repo);
 
-    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    const r = await service.actualizar("z1", actualizarInput(), MAESTRO);
 
     // Orden del español: «Á» va con la «A», y la «Ñ» va DESPUES de la «N».
     expect(r).toEqual({
@@ -558,7 +570,98 @@ describe("SLT-75 — ZonaService: un distrito en otra zona es un error de valida
       },
     };
 
-    expect(await service.actualizar("z1", crearInput(), MAESTRO)).toEqual(esperado);
+    expect(await service.actualizar("z1", actualizarInput(), MAESTRO)).toEqual(esperado);
+    expect(await service.crear(crearInput(), MAESTRO)).toEqual(esperado);
+  });
+});
+
+/**
+ * SLT-89 · R2, R4, R16, R36 (design §5.1, §5.5) — el «antes» obligatorio, el cambio concurrente y los
+ * nodos que no son distritos, traducidos por el service.
+ */
+describe("SLT-89 — guardar una zona con nodos", () => {
+  /** Un repositorio que FALLA si se le toca: el rechazo tiene que salir antes. */
+  function repoQueFalla(): IZonaRepository {
+    const falla = vi.fn(async () => {
+      throw new Error("el repositorio no debia tocarse");
+    });
+    return buildRepo({
+      update: falla,
+      create: falla,
+      countExistingDistritos: falla,
+      countExistingVehiculos: falla,
+    });
+  }
+
+  it("⭑ R16: actualizar sin `antes` → `validation_error` en `antes` y el repositorio no se toca", async () => {
+    service = new ZonaService(repoQueFalla());
+    const { antes: _antes, ...sinAntes } = actualizarInput();
+    void _antes;
+    const r = await service.actualizar("z1", sinAntes as unknown as ActualizarZonaInput, MAESTRO);
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toEqual(["antes"]);
+  });
+
+  it("R36: un rol que no es maestro → `forbidden` antes de mirar el «antes» ni el repositorio", async () => {
+    service = new ZonaService(repoQueFalla());
+    for (const actor of NO_MAESTROS) {
+      expect(await service.actualizar("z1", {} as ActualizarZonaInput, actor)).toEqual({ status: "forbidden" });
+      expect(await service.crear(crearInput({ nodoIds: ["c1"] }), actor)).toEqual({ status: "forbidden" });
+    }
+  });
+
+  it("⭑ R16: el «antes» y los nodos llegan al repositorio tal cual (los nodos sin repetidos)", async () => {
+    const antes = { distritoIds: ["d1"], nodoIds: ["c1"] };
+    await service.actualizar("z1", { ...actualizarInput(), nodoIds: ["c1", "c2", "c1"], antes }, MAESTRO);
+    const datos = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(datos.antes).toEqual(antes);
+    expect(datos.nodoIds).toEqual(["c1", "c2"]);
+  });
+
+  it("R38: sin nodos, el repositorio no recibe `nodoIds` (lo de hoy)", async () => {
+    await service.actualizar("z1", actualizarInput(), MAESTRO);
+    await service.crear(crearInput(), MAESTRO);
+    expect((repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1]).not.toHaveProperty("nodoIds");
+    expect((repo.create as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty("nodoIds");
+  });
+
+  it("⭑ R16: `cambio_concurrente` del repositorio → `conflict` con motivo", async () => {
+    repo = buildRepo({ update: vi.fn().mockResolvedValue({ estado: "cambio_concurrente" }) });
+    service = new ZonaService(repo);
+    expect(await service.actualizar("z1", actualizarInput(), MAESTRO)).toEqual({
+      status: "conflict",
+      motivo: "cambio_concurrente",
+    });
+  });
+
+  it("⭑ R2: los nodos en otra zona se cuelgan de `nodoIds`, ordenados, con el mismo mensaje", async () => {
+    const res = {
+      estado: "distrito_en_otra_zona",
+      conflictos: [],
+      conflictosDeNodos: [
+        { distritoNombre: "Zarcero", zonaNombre: "Norte" },
+        { distritoNombre: "Alajuela", zonaNombre: "Centro" },
+      ],
+    };
+    repo = buildRepo({ update: vi.fn().mockResolvedValue(res), create: vi.fn().mockResolvedValue(res) });
+    service = new ZonaService(repo);
+    const esperado = {
+      status: "validation_error",
+      fieldErrors: { nodoIds: ["Alajuela ya está en la zona Centro.", "Zarcero ya está en la zona Norte."] },
+    };
+    expect(await service.actualizar("z1", actualizarInput(), MAESTRO)).toEqual(esperado);
+    expect(await service.crear(crearInput(), MAESTRO)).toEqual(esperado);
+  });
+
+  it("R4: un nodo que no existe o que es un distrito → `validation_error` en `nodoIds`", async () => {
+    const res = { estado: "nodo_invalido", motivos: ["no_existe", "es_distrito"] };
+    repo = buildRepo({ update: vi.fn().mockResolvedValue(res), create: vi.fn().mockResolvedValue(res) });
+    service = new ZonaService(repo);
+    const esperado = {
+      status: "validation_error",
+      fieldErrors: { nodoIds: ["uno o mas nodoIds no existen", "uno o mas nodoIds van en distritoIds"] },
+    };
+    expect(await service.actualizar("z1", actualizarInput(), MAESTRO)).toEqual(esperado);
     expect(await service.crear(crearInput(), MAESTRO)).toEqual(esperado);
   });
 });

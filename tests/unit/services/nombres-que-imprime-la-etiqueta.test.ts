@@ -209,7 +209,8 @@ function crearZona(nombre: string): CrearZonaInput {
 }
 
 function actualizarZona(nombre: string): ActualizarZonaInput {
-  return { nombre, cobroVehiculo: false, distritoIds: ["d1"], tarifas: [] };
+  // SLT-89 (T3.7): el «antes» obligatorio, igual a lo que la zona tiene (decision del 2026-11-09).
+  return { nombre, cobroVehiculo: false, distritoIds: ["d1"], tarifas: [], antes: { distritoIds: ["d1"], nodoIds: [] } };
 }
 
 describe("392 — el nombre de la ZONA, primera parte de `ubicacion` en la etiqueta", () => {

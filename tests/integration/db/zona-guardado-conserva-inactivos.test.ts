@@ -5,8 +5,6 @@ import { createElement } from "react";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
-import type { UpdateZonaData } from "@/lib/interfaces/repositories/IZonaRepository";
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
 
 import {
@@ -17,6 +15,7 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
 
 /**
  * ⭑ FICHA 374 / H4 — R48: GUARDAR UNA ZONA SIN TOCAR EL SELECTOR NO LE BORRA NINGÚN DISTRITO,
@@ -54,7 +53,7 @@ function unico(): string {
   return `${SUFIJO}-${contador.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function datosDeZona(nombre: string, distritoIds: string[]): UpdateZonaData {
+function datosDeZona(nombre: string, distritoIds: string[]): DatosSinAntes {
   return { nombre, cobroVehiculo: false, esCentral: false, distritoIds, tarifas: [] };
 }
 
@@ -171,7 +170,7 @@ describeSiHayBase("⭑ 374/R48 — guardar una zona conserva sus distritos RETIR
       );
       expect(distritoIds.sort()).toEqual([activo.id, retirado.id].sort());
 
-      const repo = new ZonaRepository(clienteConTransaccionAnidada(tx));
+      const repo = new ZonaRepositoryConAntes(tx, clienteConTransaccionAnidada(tx));
       const resultado = await repo.update(zona.id, datosDeZona(nombreZona, distritoIds), USUARIO);
       expect(resultado).not.toBeNull();
 
@@ -213,7 +212,7 @@ describeSiHayBase("⭑ 374/R48 — guardar una zona conserva sus distritos RETIR
         ],
       });
 
-      const repo = new ZonaRepository(clienteConTransaccionAnidada(tx));
+      const repo = new ZonaRepositoryConAntes(tx, clienteConTransaccionAnidada(tx));
       await repo.update(zona.id, datosDeZona(nombreZona, [activo.id]), USUARIO);
 
       const despues = await tx.zonaDistrito.findMany({

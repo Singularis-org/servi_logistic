@@ -43,7 +43,9 @@ export type ActualizarZonaServiceResult =
     }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "forbidden" }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  // SLT-89 (R16): los nodos de la zona en la base no son el «antes» que mostro el modal.
+  | { status: "conflict"; motivo: "cambio_concurrente" };
 
 export type BorrarZonaServiceResult =
   | { status: "ok" }

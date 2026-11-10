@@ -376,6 +376,20 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.zonaDistrito\.deleteMany\(/,
   },
   {
+    // ⭑ SLT-89 (R30, T3.2) — LOS NODOS QUE NO SON DISTRITOS DE UNA ZONA. Hermano de la entrada de
+    // SLT-76, en el mismo `update`. La mutacion es la escritura por diferencia de `zona_nodo`, que va
+    // por `_shared/zona-nodo.ts` porque `ZonaRepository` no nombra la columna del nodo
+    // (`geografia-lecturas-sin-nodo-fk.guardia`); se le pasa la `tx` del guardado.
+    //
+    // ⚠️ El mismo LIMITE CONOCIDO que la de SLT-76: `update` ya tiene otros `appendAccion`. Borrar el
+    // de los nodos la deja verde; lo cubre `tests/integration/db/zona-nodo-rastro.test.ts`.
+    tipos: ["zona_nodo_cambiado"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "update",
+    forma: "abre_tx",
+    mutacion: /reemplazarNodosDeZona\(tx,/,
+  },
+  {
     // ⭑ FICHA 429 — EL SINPE DE UNA BODEGA. Metodo PROPIO y no una escritura mas dentro de
     // `update`, y eso es deliberado: esta guardia mide POR METODO, no por escritura (medido dos
     // veces en este repo, fichas 376 y 380). Si el guardado del SINPE viviera dentro de `update`
@@ -781,12 +795,9 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista quedo vacia.
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
-  // SLT-89: el valor entra con la base (T1.2) y su productor con el guardado de zona (T3.2), que lo
-  // mueve al censo con la mutacion de `zona_nodo` en `ZonaRepository.update`.
-  { tipos: ["zona_nodo_cambiado"], ficha: "SLT-89", tarea: "T3.2" },
-];
+// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista quedo vacia. SLT-89 T3.2 movio
+// `zona_nodo_cambiado` al censo (`ZonaRepository.update`): vuelve a quedar vacia.
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1221,7 +1232,7 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
-    // 83 desde SLT-89 (`zona_nodo_cambiado`; pendiente de productor hasta T3.2, ver arriba).
+    // 83 desde SLT-89 (`zona_nodo_cambiado`, en `ZonaRepository.update` desde T3.2).
     expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
   });
 });

@@ -2,11 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { GestionResultado, PrismaClient } from "@prisma/client";
 
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 import type { OrderStatusValue } from "@/lib/types/order-status";
 import type {
-  UpdateZonaData,
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
 
@@ -20,6 +18,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
 
 /**
  * ⭑ FICHA 366 / T5 — EL CORTE DE ELEGIBILIDAD, MEDIDO CONTRA POSTGRES REAL.
@@ -91,7 +90,7 @@ function unico(): string {
 }
 
 /** La forma que `update` espera. El nombre se repite tal cual para no chocar con el UNIQUE. */
-function datosDeZona(nombre: string, distritoIds: string[]): UpdateZonaData {
+function datosDeZona(nombre: string, distritoIds: string[]): DatosSinAntes {
   return { nombre, cobroVehiculo: false, esCentral: false, distritoIds, tarifas: [] };
 }
 
@@ -112,7 +111,7 @@ function retenidasDe(res: UpdateZonaResult): number {
 
 interface Escenario {
   tx: TxDeTest;
-  repo: ZonaRepository;
+  repo: ZonaRepositoryConAntes;
   /** Las tres zonas del escenario, con su nombre (que `update` tiene que reenviar igual). */
   zonas: { A: { id: string; nombre: string }; B: { id: string; nombre: string }; C: { id: string; nombre: string } };
   crearDistrito: (zonaIds: string[]) => Promise<string>;
@@ -179,7 +178,7 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
         tx,
         // `update` abre su propia `$transaction`; el pass-through la resuelve SOBRE ESTA MISMA tx,
         // asi que el SQL que se mide sigue siendo el real.
-        repo: new ZonaRepository(clienteConTransaccionAnidada(tx)),
+        repo: new ZonaRepositoryConAntes(tx, clienteConTransaccionAnidada(tx)),
         zonas: {
           A: { id: a.id, nombre: nombres.A },
           B: { id: b.id, nombre: nombres.B },

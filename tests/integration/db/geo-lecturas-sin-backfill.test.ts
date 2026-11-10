@@ -24,7 +24,7 @@ import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRep
 import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { ZonaRepository, planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import { estadosIncluidos, PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { ConsultaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
@@ -36,6 +36,7 @@ import { crearEscenarioGeo65, type EmpresaGeo65, type EscenarioGeo65 } from "./_
 import { crearEscenarioGeo71, type EmpresaGeo71, type EscenarioGeo71 } from "./_fixtures/geo-71";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, type TxDeTest } from "./_postgres-real";
+import { ZonaRepositoryConAntes } from "./_fixtures/antes-de-zona";
 
 // SLT-44 (T4.6; R12; design §10) — LAS LECTURAS DE R18 Y R20 NO DEPENDEN DEL BACKFILL DE SLT-43.
 //
@@ -406,7 +407,7 @@ async function leerLas7DeUna(tx: TxDeTest, e: EmpresaGeo65) {
       retenidas: p.retenidasEnBodegaSatelite,
     };
     const zona = await yDeshacer(tx, async () => {
-      const res = await new ZonaRepository(cliente).update(
+      const res = await new ZonaRepositoryConAntes(tx, cliente).update(
         e.base.zonas.norteId,
         { nombre: "Zona norte SLT65 R19", distritoIds: [g.distritoDosZonasId, g.distritoRetiradoId, g.distritoSinZonaId] },
         null,

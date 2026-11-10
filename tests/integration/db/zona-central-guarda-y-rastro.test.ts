@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type {
   CreateZonaResult,
-  UpdateZonaData,
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
 
@@ -20,6 +18,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 376 / T11 — LA GUARDA Y EL RASTRO DE LA ZONA CENTRAL, CONTRA POSTGRES REAL.
@@ -66,7 +65,7 @@ function unico(): string {
 }
 
 /** La forma que `update` espera, SIN la marca: el caso de R1. */
-function datosSinMarca(nombre: string, distritoIds: string[]): UpdateZonaData {
+function datosSinMarca(nombre: string, distritoIds: string[]): DatosSinAntes {
   return { nombre, cobroVehiculo: false, distritoIds, tarifas: [] };
 }
 
@@ -93,7 +92,7 @@ interface FilaDeMarca {
 
 interface Escenario {
   tx: TxDeTest;
-  repo: ZonaRepository;
+  repo: ZonaRepositoryConAntes;
   zonas: {
     A: { id: string; nombre: string };
     B: { id: string; nombre: string };
@@ -181,7 +180,7 @@ describeSiHayBase("⭑ 376/T11 — la zona central: guarda, borrado y rastro (Po
         tx,
         // `update`/`create`/`hardDelete` abren su propia `$transaction`; el savepoint la traduce a
         // uno REAL, asi que el SQL medido es el de produccion y un fallo revierte de verdad.
-        repo: new ZonaRepository(clienteConSavepoint(tx)),
+        repo: new ZonaRepositoryConAntes(tx, clienteConSavepoint(tx)),
         zonas: {
           A: { id: ids.A, nombre: nombres.A },
           B: { id: ids.B, nombre: nombres.B },
@@ -813,7 +812,7 @@ describeSiHayBase("⭑ 376/T11 — la zona central: guarda, borrado y rastro (Po
     // Un pass-through no serviria: sin savepoint, este caso pasaria en verde por accidente.
     const medido = await conEscenario("A", async (e) => {
       const distrito = await e.crearDistrito([e.zonas.B.id]);
-      const repoRoto = new ZonaRepository(clienteConSavepoint(e.tx, true));
+      const repoRoto = new ZonaRepositoryConAntes(e.tx, clienteConSavepoint(e.tx, true));
 
       let error: unknown = null;
       try {

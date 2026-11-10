@@ -19,6 +19,14 @@ function filaDeZona(f: { distritoId: string; zonaId: string }) {
 // tx mock que reciben las operaciones dentro de $transaction.
 function buildTx() {
   return {
+    // SLT-89 (design §5.1 paso 0): el `SELECT ... FOR UPDATE` de la zona. No devuelve nada que se lea.
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    // SLT-89 (design §5.1 pasos 6-7): los miembros de grupo. Vacios: con asignaciones solo a
+    // distritos la normalizacion no encuentra filas. Su SQL se prueba contra Postgres
+    // (`tests/integration/db/grupo-nodo.test.ts`).
+    grupoDistritosDistrito: { findMany: vi.fn().mockResolvedValue([]), createMany: vi.fn() },
+    grupoDistritosNodo: { findMany: vi.fn().mockResolvedValue([]), createMany: vi.fn(), deleteMany: vi.fn() },
+    grupoDistritos: { findMany: vi.fn().mockResolvedValue([]) },
     // SLT-65: los delegados del catalogo. Su `zonaDistrito` lo pisa el de abajo, que ya simula
     // este doble (la carga del catalogo lee la segunda llamada a `findMany`).
     ...delegadosDelCatalogo({ nodos: NODOS_DEL_DOBLE }),
@@ -88,6 +96,14 @@ function llamadasNMDeReconciliacion(tx: ReturnType<typeof buildTx>): unknown[] {
   return tx.zonaDistrito.findMany.mock.calls
     .map((c: unknown[]) => c[0])
     .filter((a: unknown) => !esLecturaDeConflictos(a));
+}
+
+/**
+ * SLT-89 (T3.7, R16): el «antes» obligatorio de `update` (decision del 2026-11-09): los distritos que
+ * el doble da por sembrados en la primera lectura de la N:M de cada caso. Solo entrada.
+ */
+function antesDe(distritoIds: string[]) {
+  return { distritoIds, nodoIds: [] as string[] };
 }
 
 function repoOf(prisma: unknown) {
@@ -231,7 +247,7 @@ describe("ZonaRepository — invariante 'una central' (feature 55/R5/R6)", () =>
 
     const res = await repoOf(prisma).update(
       "z1",
-      { nombre: "GAM", cobroVehiculo: false, esCentral: true, distritoIds: ["d1"], tarifas: [] },
+      { nombre: "GAM", cobroVehiculo: false, esCentral: true, distritoIds: ["d1"], tarifas: [], antes: antesDe([]) },
       null,
     );
 
@@ -254,7 +270,7 @@ describe("ZonaRepository — invariante 'una central' (feature 55/R5/R6)", () =>
 
     await repoOf(prisma).update(
       "z1",
-      { nombre: "GAM", cobroVehiculo: false, esCentral: false, distritoIds: ["d1"], tarifas: [] },
+      { nombre: "GAM", cobroVehiculo: false, esCentral: false, distritoIds: ["d1"], tarifas: [], antes: antesDe([]) },
       null,
     );
 
@@ -298,7 +314,7 @@ describe("ZonaRepository — invariante 'una central' (feature 55/R5/R6)", () =>
     await expect(
       repoOf(prisma).update(
         "z1",
-        { nombre: "GAM", cobroVehiculo: false, esCentral: true, distritoIds: ["d1"], tarifas: [] },
+        { nombre: "GAM", cobroVehiculo: false, esCentral: true, distritoIds: ["d1"], tarifas: [], antes: antesDe([]) },
         null,
       ),
     ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -349,7 +365,7 @@ describe("ZonaRepository — invariante 'una central' (feature 55/R5/R6)", () =>
     await expect(
       repoOf(prisma).update(
         "z1",
-        { nombre: "GAM", cobroVehiculo: false, esCentral: true, distritoIds: ["d1"], tarifas: [] },
+        { nombre: "GAM", cobroVehiculo: false, esCentral: true, distritoIds: ["d1"], tarifas: [], antes: antesDe([]) },
         null,
       ),
     ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -568,6 +584,7 @@ const DATOS_ZONA_A = {
   esCentral: false,
   distritoIds: ["d1"],
   tarifas: [],
+  antes: antesDe(["d1"]), // SLT-89 (T3.7): lo que `txConNM(["d1"], …)` siembra
 };
 
 describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", () => {
@@ -610,7 +627,7 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 
     const res = await repoOf(prisma).update(
       "zA",
-      { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"] },
+      { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"], antes: antesDe(["d1", "d2"]) },
       "u-maestro",
     );
 
@@ -630,7 +647,7 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
       .mockResolvedValueOnce([{ id: "o2", numGuia: null, numRemision: "R-2" }]);
     const prisma = buildPrisma(tx);
 
-    await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"] }, "u-maestro");
+    await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"], antes: antesDe(["d1", "d2"]) }, "u-maestro");
 
     const filas = tx.historialAccion.createMany.mock.calls.flatMap(
       (c) => (c[0] as { data: Record<string, unknown>[] }).data,
@@ -668,7 +685,7 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 
     const res = await repoOf(prisma).update(
       "zA",
-      { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"] },
+      { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"], antes: antesDe(["d1", "d2"]) },
       "u-maestro",
     );
 
@@ -700,7 +717,7 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 
     await repoOf(prisma).update(
       "zA",
-      { ...DATOS_ZONA_A, distritoIds: ["dQueSigue", "dNuevo"] },
+      { ...DATOS_ZONA_A, distritoIds: ["dQueSigue", "dNuevo"], antes: antesDe(["dViejo", "dQueSigue"]) },
       null,
     );
 
@@ -844,7 +861,7 @@ describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
 
     const res = await repoOf(prisma).update(
       "zA",
-      { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"] },
+      { ...DATOS_ZONA_A, distritoIds: ["d1", "d2"], antes: antesDe(["d1", "d2"]) },
       "u-maestro",
     );
 
@@ -916,7 +933,8 @@ function filasDeHistorial(tx: ReturnType<typeof buildTx>, n = 0): Record<string,
   return args.data;
 }
 
-const DATOS_BASE = { nombre: "B", cobroVehiculo: false, distritoIds: ["d1"], tarifas: [] };
+// SLT-89 (T3.7): `antes` = lo que siembra `distritosSinCambio` (d1).
+const DATOS_BASE = { nombre: "B", cobroVehiculo: false, distritoIds: ["d1"], tarifas: [], antes: antesDe(["d1"]) };
 
 /**
  * SLT-76: la zona YA tenia `d1` antes del guardado, asi que `DATOS_BASE` no cambia sus distritos y
@@ -1055,7 +1073,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
 
   it("⭑ R12: un traslado escribe DOS entradas — la que PIERDE la marca y la que la gana", async () => {
     const tx = txDeTraslado();
-    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
+    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true, antes: antesDe([]) }, "u-maestro");
 
     const filas = filasDeHistorial(tx);
     expect(filas).toHaveLength(2);
@@ -1080,7 +1098,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
 
   it("⭑ R13: la fila congela al actor y NO lleva monto", async () => {
     const tx = txDeTraslado();
-    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
+    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true, antes: antesDe([]) }, "u-maestro");
 
     for (const fila of filasDeHistorial(tx)) {
       expect(fila.actorUsuarioId).toBe("u-maestro");
@@ -1092,7 +1110,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
 
   it("⭑ R15: las dos filas comparten `lote_id`", async () => {
     const tx = txDeTraslado();
-    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
+    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true, antes: antesDe([]) }, "u-maestro");
 
     const lotes = new Set(filasDeHistorial(tx).map((f) => f.loteId));
     expect(lotes.size, "un traslado es UN acto de dos efectos, no dos actos sueltos").toBe(1);
@@ -1103,7 +1121,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
     // Si se leyera despues, `findFirst` no encontraria nada y la zona que PIERDE la marca se
     // quedaria sin fila: justo el agujero que la ficha viene a tapar.
     const tx = txDeTraslado();
-    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
+    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true, antes: antesDe([]) }, "u-maestro");
 
     expect(tx.zona.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
       tx.zona.updateMany.mock.invocationCallOrder[0],
@@ -1117,7 +1135,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
   it("R8: si no habia ninguna central, se escribe UNA sola fila (la que la gana)", async () => {
     const tx = txDeTraslado();
     tx.zona.findFirst.mockResolvedValue(null); // base sin central
-    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
+    await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true, antes: antesDe([]) }, "u-maestro");
 
     const filas = filasDeHistorial(tx);
     expect(filas).toHaveLength(1);
@@ -1402,7 +1420,7 @@ describe("SLT-75 — ZonaRepository: un distrito en otra zona no se guarda", () 
     );
     const prisma = buildPrisma(tx);
 
-    const res = await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, esCentral: true }, "u-maestro");
+    const res = await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, esCentral: true, antes: antesDe([]) }, "u-maestro");
 
     expect(res).toEqual({
       estado: "distrito_en_otra_zona",
@@ -1441,7 +1459,7 @@ describe("SLT-75 — ZonaRepository: un distrito en otra zona no se guarda", () 
     tx.zonaDistrito.createMany.mockRejectedValue(p2002DistritoUnico());
     const prisma = buildPrisma(tx);
 
-    expect(await repoOf(prisma).update("zA", DATOS_ZONA_A, null)).toEqual({
+    expect(await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, antes: antesDe([]) }, null)).toEqual({
       estado: "distrito_en_otra_zona",
       conflictos: null,
     });

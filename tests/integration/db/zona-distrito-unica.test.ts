@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
-import { ZonaRepository, esViolacionDistritoUnico } from "@/lib/repositories/ZonaRepository";
+import { esViolacionDistritoUnico } from "@/lib/repositories/ZonaRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { ZonaService } from "@/lib/services/ZonaService";
 import { actualizarZonaSchema, crearZonaSchema } from "@/lib/types/zona";
@@ -17,6 +17,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, antesDeZona } from "./_fixtures/antes-de-zona";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ SLT-75 / T5 — UN DISTRITO, A LO SUMO UNA ZONA POR EMPRESA, CONTRA POSTGRES REAL.
@@ -69,7 +70,7 @@ interface Escenario {
   ordenA2: string;
   /** Pone la transaccion en el contexto de la empresa, con el rol de la app. */
   como: (empresa: "A" | "B") => Promise<void>;
-  repo: () => ZonaRepository;
+  repo: () => ZonaRepositoryConAntes;
   service: () => ZonaService;
 }
 
@@ -158,7 +159,7 @@ describeSiHayBase("SLT-75 — un distrito, a lo sumo una zona por empresa (Postg
       const [{ rol }] = await tx.$queryRawUnsafe<{ rol: string }[]>(`SELECT current_user AS rol`);
       if (rol !== "servi_app") throw new Error(`el escenario no bajo al rol de la app: ${rol}`);
 
-      const repo = () => new ZonaRepository(clienteConSavepoint(tx));
+      const repo = () => new ZonaRepositoryConAntes(tx, clienteConSavepoint(tx));
       // `enTransaccionRevertida` deja en `contextoActual` su empresa por defecto, no A: el catalogo
       // (SLT-44) pide `organizacion` por el id del contexto, y con la RLS de A no la encontraria.
       return conEmpresa(A, () => fn({
@@ -278,6 +279,7 @@ describeSiHayBase("SLT-75 — un distrito, a lo sumo una zona por empresa (Postg
           esCentral: true,
           distritoIds: [e.dPropio.id, e.dOcupado.id],
           tarifas: [],
+          antes: await antesDeZona(e.tx, e.A2.id),
         }),
         { usuarioId: e.maestroA, rol: "maestro" },
       );
@@ -469,7 +471,7 @@ describeSiHayBase("SLT-75 — un distrito, a lo sumo una zona por empresa (Postg
           return typeof valor === "function" ? valor.bind(objetivo) : valor;
         },
       }) as TxDeTest;
-      const repoCiego = new ZonaRepository(clienteConSavepoint(txCiego));
+      const repoCiego = new ZonaRepositoryConAntes(e.tx, clienteConSavepoint(txCiego));
 
       const antes = await fotoDeZona(e.tx, e.A2.id);
       const actualizado = await repoCiego.update(
