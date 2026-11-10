@@ -206,3 +206,121 @@ Todo con `DATABASE_URL` de `slt102_t1` exportada antes de cada vitest.
 **Veredicto:** T0 y T1 hechos; servidor de PA1 listo con el `WHERE` probado contra Postgres real (4
 mutaciones en rojo); quedan dos ABIERTOS de T0.3 para el E2E (pendiente del escenario A y siembra de las
 tres señales).
+
+## Tanda 2 (frontend_dev, 2026-11-10): T2 + T3 + T4
+
+Mismo worktree y rama. Grafo: no consultado (índice de este worktree inexistente); Grep/Read. Toda
+ejecución de vitest con `DATABASE_URL` de la desechable `slt102_t1` exportada antes (nunca impresa).
+
+### Archivos
+
+- creado `components/private/cierres/cola/cola-cierres-labels.ts` (descripción por rol, pie, columnas,
+  «Pendiente », nombres accesibles de R105, textos de R110)
+- creado `components/private/cierres/cola/cola-cierres-vista.ts` (`columnasCola`, `folioCola`,
+  `fechaCola`, `pagoEntregadoDe`, `senalesDe`, `accionesFilaDe`)
+- creado `components/private/cierres/cola/ColaCierres.tsx`
+- modificado `app/(app)/cierres-admin/_components/CierresAdminModule.tsx` (monta `ColaCierres`; fuera
+  `SegmentedToggle`, `PanelConmutado`, `ListaComprobantes`, `CierreFacturaResumen`,
+  `CierresAdminHistoricoLista` y `AccionesCola`; `ofertaPago` → `pagoAbierto` con `trasAprobar`; la
+  paginación de Resueltos se monta en el módulo; prop `zonaNombre`)
+- modificado `app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx` (exporta
+  `ERROR_CARGA_HISTORICO` y `VACIO_HISTORICO`; comentario de por qué no lleva `@sin-superficie`)
+- modificado `app/(app)/cierres-admin/page.tsx` (sin `description`; `zonaNombre` de PA3)
+- creado `tests/unit/utils/cola-cierres-vista.test.ts` (25 casos)
+- creado `tests/components/ColaCierres.test.tsx` (16 casos)
+- modificado `tests/components/CierresAdminModule.test.tsx` (6 casos adaptados a la fila/`tab`; 8 nuevos)
+- modificado `tests/components/CierresAdminPage.test.tsx` (**fuera del censo de T0.1**, aviso al
+  leader: su caso «maestro» pulsaba `button /^Resueltos/`; pasa a `tab`, y se añade R106 de la página)
+- `git diff` de `CierresBodegaAdminModule.tsx`, `ConsolidacionBodegaModule.tsx`, `CierresTabs.tsx` y
+  `app/(app)/cierre-dia/`: vacío. `cierre-factura.tsx`: sin cambios netos.
+
+**Decisión técnica (anotada):** el design pedía `@sin-superficie` en `CierresAdminHistoricoLista` y
+`CierreFacturaResumen`. La guardia `superficie-de-uso` decide **por módulo**: los dos archivos siguen
+alcanzables por otros exports (`descargaHistoricoCierres`/`PAGINACION_HISTORICO_LABEL`;
+`SeccionSinGestion`), así que la anotación la pone roja («la excepción caducó»). No se anota; queda un
+comentario en el componente. Con eso `superficie-de-uso` está verde (18/18).
+
+### Fidelidad al canvas (F1-F11)
+
+| # | Resultado |
+|---|---|
+| F1 | igual al canvas: `tablist` «Cierres del día por estado», `tab` «Pendientes n» / «Resueltos n», subrayado (clases de `DetalleCierre`) |
+| F2 | igual: barra entre pestañas y tabla, «Descargar» a la derecha en la misma fila, fuera de los paneles |
+| F3 | igual: Folio · Mensajero · Solicitado/Resuelto · Estado · Recaudado · Pago al mensajero · (Pago entregado) · Señales · acciones (cabecera vacía, `sr-only` «Acciones») |
+| F4 | igual en forma (folio mono 13 px, importes a la derecha, estado en pastilla); colores de la pastilla: ver ABIERTO-3 |
+| F5 | igual: `pl-4 text-xs text-warning-strong` (#92400e), unidas por « · » |
+| F6 | igual: «Ver / decidir» y «Registrar pago» `default`; «Ver» y «Destrabar» `outline`; 32 px / 13 px |
+| F7 | igual con la desviación listada «`money()` de hoy»: «Pendiente ₡47.500», «Liquidado», «—» |
+| F8 | igual: satélite sin «Pago entregado» ni «Registrar pago» |
+| F9 | igual con la desviación de PA3: central «Bodega central. …» (sin fuente de zona), satélite «Bodega satélite · <zona>. …» |
+| F10 | igual: «Un cierre vencido se puede destrabar como excepción.» + paginación de hoy (desviación listada) |
+| F11 | igual: sin tarjetas de cifras |
+
+Desviaciones usadas, todas de la tabla del design: título en `AppPage`, conmutador donde está, región
+«Histórico», `Pagination` de hoy, `fechaHora`, `money()`, «Destrabar» con nombre largo, placeholder
+«Usá los filtros…», sin destino/métodos/ingreso/«Ver detalles»/motivo.
+
+### ABIERTOS (no decididos aquí)
+
+- **ABIERTO-3 — colores de la pastilla de estado.** El canvas pinta «Solicitado» en ámbar
+  (#fef3c7/#92400e) y «Aprobado» en verde (#d1fae5/#047857); R101 pide «la pastilla de hoy»
+  (`EstadoCierreBadge`), que da `secondary` (neutra) a solicitado y `outline` a aprobado
+  (`cierre-detalle-shared.tsx:207-215`). Cambiarla tocaría también el detalle. No está en la tabla de
+  desviaciones: decide Carlos (Preview).
+- **ABIERTO-4 — filtro «Bodega» en la barra.** El canvas dibuja Fecha de solicitud · Mensajero ·
+  Estado; R100 conserva los de hoy (Fecha, Bodega, Mensajero, Estado) con `FiltrosCierresBarra` sin
+  cambios. No está en la tabla de desviaciones.
+- ABIERTO-1 y ABIERTO-2 de la tanda 1 (escenario del E2E) siguen abiertos; no son de esta tanda.
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R32/R107 (cola única montada, sin comprobantes; aviso sin zona) | `CierresAdminModule.test.tsx` «R106/R107: la central ve…», «R3: sinZona…» |
+| R33 | `cola-cierres-vista.test.ts` «columnasCola»/«accionesFilaDe»; `ColaCierres.test.tsx` «central · Pendientes: columnas y celdas» |
+| R34 | `cola-cierres-vista.test.ts` «satélite: …», «Resueltos: la satélite nunca registra pago»; `ColaCierres.test.tsx` «satélite: ni …»; `CierresAdminModule.test.tsx` «R34: la satélite…», «R34: la central sin permiso…» |
+| R35/R102 | `cola-cierres-vista.test.ts` «senalesDe»; `ColaCierres.test.tsx` «una señal con nota…», «una fila sin señales…» |
+| R36 | `CierresAdminModule.test.tsx` «R8/R9…» (Ver / decidir → detalle), «R15…» (Ver de un vencido → sin aprobar/rechazar), «R5: un cierre del histórico se abre en solo lectura» |
+| R99 | `ColaCierres.test.tsx` «un tablist…», «cambiar de pestaña…»; `CierresAdminModule.test.tsx` «R99: los conteos…», «R99/R100: cambiar de pestaña conserva…» |
+| R100 | `ColaCierres.test.tsx` «cambiar de pestaña … no desmonta la barra»; `CierresAdminModule.test.tsx` «R99/R100…» |
+| R101 | `cola-cierres-vista.test.ts` «folioCola y fechaCola»; `ColaCierres.test.tsx` «columnas y celdas», «el folio va en letra monoespaciada»; `CierresAdminModule.test.tsx` «R4», «R5» |
+| R103 | `cola-cierres-vista.test.ts` «pagoEntregadoDe»; `ColaCierres.test.tsx` «Pendiente ₡47.500…», «Registrar pago solo en…»; `CierresAdminModule.test.tsx` «R103: Registrar pago abre…», «R103: cerrar el diálogo…» |
+| R104 | `ColaCierres.test.tsx` «carga», «error», «vacío» |
+| R105 | `ColaCierres.test.tsx` «botones de la fila»; `CierresAdminModule.test.tsx` «R16: destrabar pide confirmación…» |
+| R106 | `cola-cierres-vista.test.ts` «descripcionCola»; `ColaCierres.test.tsx` «la descripción va encima…»; `CierresAdminModule.test.tsx` «R106…»; `CierresAdminPage.test.tsx` «R1: el rol maestro…» (sin la vieja) y «SLT-102 (R106, PA3)…» |
+| R108 | `CierresAdminModule.test.tsx` «R4» (sin destino), «R5» (sin motivo) |
+| R110 | `cola-cierres-vista.test.ts` «las del servidor (R110)…», «todas juntas…»; `ColaCierres.test.tsx` celda «1 incidente sin indemnizar · 6 vuelven a bodega» |
+| R71 | `grep -rnF -e "Number(" -e parseFloat -e toFixed components/private/cierres/cola/` → vacío; T5.2 lo pone en `liquidacion-money-safe` |
+
+### Mutaciones (cada una restaurada; el script compara el archivo con el original)
+
+| Mutación | Resultado |
+|---|---|
+| vista: `registrarPago` también a la satélite | ROJO: unidad «la satélite nunca registra pago» + componente «satélite: ni …» |
+| vista: «Pago entregado» también a la satélite | ROJO: 3 (unidad, componente, módulo «R34: la satélite…») |
+| módulo: conteo con `colaPendientes.items.length` | ROJO: «R99: los conteos … del `total`» |
+| módulo: «Registrar pago» a la satélite (quitar `rolCola === "central"`) | **verde sola**: la tapa la segunda guarda de `accionesFilaDe`; con las dos quitadas, ROJO «R34: la satélite…» |
+
+### Verificación (salida real)
+
+- `pnpm run typecheck` (con `NODE_OPTIONS=--max-old-space-size=8192`): `TSC_EXIT=0`.
+- `eslint` de los 8 archivos tocados: `LINT_EXIT=0`, sin avisos.
+- `vitest run` de los 4 archivos de test tocados: `Test Files 4 passed (4)`, `Tests 93 passed (93)`.
+- `vitest related --run` de los 7 fuentes tocados (antes de arreglar `CierresAdminPage`):
+  `Test Files 12 failed | 46 passed (58)`, `Tests 55 failed | 981 passed (1036)`. Los 11 que siguen
+  rojos son **todos** del censo de T0.1 que adapta T5.1 (localizan por la tarjeta, por `button
+  /^Resueltos/` o por la región vieja): `CierrePremioPendiente` (6), `CierresAdminDetalleUnico` (7),
+  `CierresAdminPagoMensajero` (14), `CorregirResultadoCierre` (2), `cierre-detalle-ajuste-badge` (2),
+  `descarga/CierresAdminDescargaDetallada` (2), `descarga/CierresDescarga` (7),
+  `descarga/CierresDescargaColumnas` (5), `descarga/CierresDescargaNiveles` (1),
+  `paginacion/BajoRiesgoPaginacion` (4), `paginacion/ColasPaginacion` (4).
+- `pnpm run test:guardias`: `Tests 7 failed | 4804 passed | 1 skipped`, 4 archivos:
+  - `dependencias-declaradas-presentes` (4): previo, del arnés (ya anotado en la tanda 1);
+  - `liquidacion-money-safe` (1): el censo no incluye `cola/` → T5.2;
+  - `cobertura-tablas` (1): `ColaCierres.tsx #1` sin registrar en `tests/unit/descarga/censo-tablas.ts`
+    → **fuera de la lista de T5.2**, aviso al leader; se registra en T5.2;
+  - `superficie-de-uso`: rojo con las anotaciones del design, **verde** sin ellas (decisión de arriba).
+
+**Veredicto:** T2-T4 hechos y en verde en lo suyo; la cola única pinta F1-F11 como el canvas salvo las
+desviaciones listadas y dos ABIERTOS (colores de la pastilla, filtro «Bodega»); quedan para T5 los 11
+tests del censo y 3 guardias.

@@ -76,11 +76,11 @@
 
 ## T2 — Lógica pura · `frontend_dev` (depende de T0; de T1 si PA1)
 
-- [ ] **T2.1** — `components/private/cierres/cola/cola-cierres-labels.ts` (descripciones,
+- [x] **T2.1** — `components/private/cierres/cola/cola-cierres-labels.ts` (descripciones,
   pie, «Pendiente », nombres accesibles de R105, textos de R110 si PA1) y `cola-cierres-vista.ts`
   (`columnasCola`, `folioCola`, `fechaCola`, `pagoEntregadoDe`, `senalesDe`, `accionesFilaDe`).
   **Hecho:** typecheck verde; ni `Number(`, ni `parseFloat`, ni `toFixed` en `cola/`.
-- [ ] **T2.2** — `tests/unit/utils/cola-cierres-vista.test.ts` con literales: columnas por
+- [x] **T2.2** — `tests/unit/utils/cola-cierres-vista.test.ts` con literales: columnas por
   rol × pestaña (satélite sin `pagoEntregado`); «Solicitado»/«Resuelto»; `pagoEntregadoDe` para
   `null`, `"0.00"`, `"45000.55"`; orden y textos de señales (bloqueo con su conteo, rechazado,
   retenidas 1 y 3, vacío, `bloqueoMensajero` ausente); acciones por estado y rol, «Registrar pago»
@@ -89,11 +89,11 @@
 
 ## T3 — Componente · `frontend_dev` (depende de T2)
 
-- [ ] **T3.1** — `components/private/cierres/cola/ColaCierres.tsx` (`design.md > ColaCierres`):
+- [x] **T3.1** — `components/private/cierres/cola/ColaCierres.tsx` (`design.md > ColaCierres`):
   descripción, `Tabs` con conteo, barra + descargar fuera de los paneles, `DataTable` en una región
   con nombre, pie y paginación.
   **Hecho:** typecheck y lint verdes.
-- [ ] **T3.2** — `tests/components/ColaCierres.test.tsx` con dobles y literales: `tablist` «Cierres
+- [x] **T3.2** — `tests/components/ColaCierres.test.tsx` con dobles y literales: `tablist` «Cierres
   del día por estado» con «Pendientes 37» / «Resueltos 12»; cambiar de pestaña llama a `onPestana`
   y no desmonta la barra (un doble con estado propio lo conserva); columnas y celdas de una fila
   central (folio «#…», importes con `money()`, estado); señales con su nota accesible; «Pago
@@ -104,14 +104,14 @@
 
 ## T4 — Montaje en `/cierres-admin` · `frontend_dev` (depende de T3)
 
-- [ ] **T4.1** — `CierresAdminModule.tsx` monta `ColaCierres` (`design.md > Montaje`); deja de
+- [x] **T4.1** — `CierresAdminModule.tsx` monta `ColaCierres` (`design.md > Montaje`); deja de
   montar `ListaComprobantes`, `CierreFacturaResumen`, `CierresAdminHistoricoLista`,
   `SegmentedToggle` y `PanelConmutado` en la cola; `pagoAbierto` generaliza `ofertaPago`; la
   paginación de Resueltos se monta en el módulo. `page.tsx`: sin `description`, con `zonaNombre`
   (PA3). Anotaciones `@sin-superficie` que pida T0.1.
   **Hecho:** typecheck verde; `git diff` de `CierresBodegaAdminModule.tsx`,
   `ConsolidacionBodegaModule.tsx`, `CierresTabs.tsx` y `cierre-dia/` vacío.
-- [ ] **T4.2** — `tests/components/CierresAdminModule.test.tsx` (ampliar): conteos desde `total`
+- [x] **T4.2** — `tests/components/CierresAdminModule.test.tsx` (ampliar): conteos desde `total`
   (página de 10, `total` 37); filtrar y cambiar de pestaña conserva el filtro y la página;
   «Ver / decidir» abre el detalle en modo decidir y «Ver» de un vencido en modo vencido;
   «Destrabar» abre la confirmación de hoy; «Registrar pago» abre el diálogo sin «Ahora no» y tras
