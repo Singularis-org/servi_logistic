@@ -33,6 +33,22 @@ export interface Alcance {
   destinoZonaId: string | null;
 }
 
+/**
+ * SLT-104 (PA1, R116) — alcance de SOLO LECTURA del detalle de un cierre del dia para acceso total:
+ * cualquier destino (bodega central o satelite) de la empresa de la sesion. Lo construye solo
+ * `CierresAdminService.verCierreDetalle`.
+ *
+ * No es un `Alcance` a proposito: las listas y los metodos de escritura tipan su parametro como
+ * `Alcance`, asi que el compilador impide pasarles esta lectura ancha. La empresa no viaja aqui: la
+ * pone la extension del cliente en el `where` y la RLS de `cierre_dia` la vuelve a exigir.
+ */
+export interface AlcanceLecturaEmpresa {
+  lectura: "toda_la_empresa";
+}
+
+/** Lo que acepta la lectura del detalle: el alcance de siempre o la lectura ancha de SLT-104. */
+export type AlcanceLecturaDetalle = Alcance | AlcanceLecturaEmpresa;
+
 // Fila cruda de un cierre dentro del alcance (cabecera). Totales ya como STRING
 // (money-safe); `resueltoAt`/`motivoRechazo` null mientras `solicitado`.
 export interface CierreAdminResumenRow {
@@ -499,11 +515,12 @@ export interface ICierresAdminRepository {
   /**
    * R6/R7/R9/R13: un cierre SOLO si su destino casa el alcance en el WHERE (guardia
    * R13) + sus gestiones (WITH_DETALLE, reuso 37, WHERE cierre_id = X). Fuera de
-   * alcance / inexistente -> null (no se distingue).
+   * alcance / inexistente -> null (no se distingue). SLT-104 (R116): tambien acepta la lectura
+   * ancha de acceso total (`AlcanceLecturaEmpresa`), que no acota el destino.
    */
   findCierreByIdEnAlcance(
     cierreId: string,
-    alcance: Alcance,
+    alcance: AlcanceLecturaDetalle,
     /**
      * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.

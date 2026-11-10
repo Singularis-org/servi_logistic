@@ -172,6 +172,7 @@ const DETALLE_CIERRE_SELECT = {
   totalGeneral: true,
   totalPagoMensajero: true, // feature 39/R20: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R19: snapshot del ingreso de bodega por rechazos del cierre_dia
+  solicitadoAt: true, // SLT-104 (PA3): fecha la nota de tarifas congeladas de las gestiones de ESTE cierre_dia
   mensajero: { select: NOMBRE_USUARIO_SELECT },
   // SLT-56 (R20): cuantas gestiones de ESTE cierre tienen al menos un ajuste del pago, para marcar
   // el cierre en la lista del cierre de bodega. Se cuentan GESTIONES (`some`) y no filas de ajuste:
@@ -196,6 +197,7 @@ function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R20: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R19: snapshot money-safe STRING
     gestionesAjustadas: r._count.gestiones, // SLT-56 (R20)
+    solicitadoAt: r.solicitadoAt.toISOString(), // SLT-104 (PA3)
   };
 }
 

@@ -23,6 +23,8 @@ export interface CierreBodegaDetalleCierreRow {
   totalPagoMensajero: string; // feature 39/R20: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R19: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
   gestionesAjustadas: number; // SLT-56 (R20): gestiones de este cierre_dia con al menos un ajuste del pago
+  /** SLT-104 (PA3, R120): ISO del `solicitado_at` de ESTE cierre_dia, no el del cierre de bodega. */
+  solicitadoAt: string;
 }
 
 // Datos de la transicion guardada (aprobar/rechazar) de un cierre de bodega.
