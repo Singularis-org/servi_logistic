@@ -87,6 +87,8 @@ export type ArbolDeZonasResult = ListarArbolDeZonasServiceResult | { status: "un
  * El arbol del pais de la empresa a todas sus profundidades, con la zona asignada y la heredada de
  * cada nodo: lo que pinta el selector de nodos de una zona (R24–R27). Solo `maestro` (R36); la
  * empresa es la de la sesion (R35), nunca llega del cliente.
+ *
+ * @sin-superficie SLT-89 (deuda con fecha de salida, no decision): la consume el selector de N niveles de `CrearZonaForm` (T7.1/T7.2, design §8.1), que no empieza hasta que el humano apruebe la maqueta (T0.2, R48). La cubren `tests/unit/services/geografia-service.test.ts` (rol) y `tests/integration/db/zona-nodo-herencia.test.ts` (el arbol contra Postgres). Esta anotacion se borra en el commit de T7 que la llama.
  */
 export async function listarArbolDeZonas(deps: GeografiaActionDeps = {}): Promise<ArbolDeZonasResult> {
   const actor = await (deps.getActor ?? resolveActorFromSession)();
