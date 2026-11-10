@@ -128,8 +128,8 @@ de enum (como en SLT-76): deja el valor y lo dice en un comentario.
 
 | Migración | Contenido | down.sql |
 |---|---|---|
-| `20261109120000_slt89_zona_nodo` | 2.1, 2.2 (tablas, índices, FK, RLS, grants, triggers de validación y de misma empresa, trigger nuevo en `grupo_distritos_distrito`) y 2.3 | `DROP` de lo creado, en orden inverso, y `CREATE OR REPLACE` de `orden_nodo_geografico` con el cuerpo de SLT-43 |
-| `20261109120100_slt89_historial_zona_nodo` | 2.4 | comentario: el valor de enum se queda |
+| `20261110130000_slt89_zona_nodo` | 2.1, 2.2 (tablas, índices, FK, RLS, grants, triggers de validación y de misma empresa, trigger nuevo en `grupo_distritos_distrito`) y 2.3 | `DROP` de lo creado, en orden inverso, y `CREATE OR REPLACE` de `orden_nodo_geografico` con el cuerpo de SLT-43 |
+| `20261110130100_slt89_historial_zona_nodo` | 2.4 | comentario: el valor de enum se queda |
 
 Una fila de `tests/unit/db/slt89-migraciones-aditivas.test.ts` con el helper
 `_migraciones-aditivas.ts` hace cumplir R32; `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts`,
