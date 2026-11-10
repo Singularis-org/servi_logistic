@@ -119,9 +119,11 @@
 
 ## Bloque F — Tope diario de imágenes (enmienda del 2026-11-10, hallazgo m1; design §16)
 
-> Se arregla en este mismo PR (decisión «Tope diario»). Lo marcado *(propuesta)* en R24–R31 sigue la
-> recomendación de P5–P11. Si el humano cambia alguna, se ajusta el spec antes de T12. Reparto:
-> `backend_dev` T12–T14; `frontend_dev` T15; el que acabe cierra T16.
+> Se arregla en este mismo PR (decisión «Tope diario»). P5–P12 están cerradas: día calendario de Costa
+> Rica, cuentan los permisos concedidos, tope blando (con el conteo por debajo de 21 se concede todo lo
+> pedido; desde 21, nada) y, sin cupo, el panel envía solo el texto y sin aviso. P13 está abierta sin
+> bloquear: el spec sigue su recomendación. Reparto: `backend_dev` T12–T14; `frontend_dev` T15; el que
+> acabe cierra T16.
 
 - [ ] **T12. Tabla del cupo** (dep. —; R26, R31).
   - **Archivos:**
@@ -142,15 +144,16 @@
 - [ ] **T13. Repositorio del cupo** (dep. T12; R24–R27, R31).
   - **Archivos:**
     - `lib/interfaces/repositories/ICupoImagenesReporte.ts` (nuevo);
-    - `lib/repositories/BugReportRepository.ts`: `consumir`, `usados` y `devolver`, en `comoPlataforma`
-      con `MOTIVO_CUPO`, cada uno con una sola sentencia (design §16.3);
+    - `lib/repositories/BugReportRepository.ts`: `consumir` (con `WHERE "permits_granted" < tope`, el
+      tope blando) y `devolver`, en `comoPlataforma` con `MOTIVO_CUPO`, cada uno con una sola sentencia
+      (design §16.3);
     - `lib/config/reporte-bug.ts`: `IMAGENES_POR_DIA_MAX = 21`.
   - **Hecho:** `tests/integration/db/bug-report.test.ts` en verde **con `DATABASE_URL`** (un verde sin
     base no vale), con los casos de R24, R26, R27 y R31 del mapa. `consultas-concurrentes-en-transaccion`
     y `sql-a-mano-por-empresa` siguen en verde.
 - [ ] **T14. Servicio y action** (dep. T13; R24, R25, R27, R28, R30).
   - **Archivos:**
-    - `lib/interfaces/services/IReporteBugService.ts`: la variante `tope_diario_imagenes`;
+    - `lib/interfaces/services/IReporteBugService.ts`: la variante `{ status: "sin_cupo_imagenes" }`;
     - `lib/services/ReporteBugService.ts`: `cupo` como tercer parámetro, `ahora` al final y el
       `prepararSubidas` de design §16.4;
     - `lib/actions/reporte-bug.ts`: la variante en el resultado y la composition root con `repo` dos
@@ -158,8 +161,8 @@
   - **Hecho:** `tests/unit/services/reporte-bug-service.test.ts` y `tests/unit/actions/reporte-bug-action.test.ts`
     en verde, con los casos del mapa, y `pnpm run typecheck` en verde.
 - [ ] **T15. Panel** (dep. T14; R28, R29, R30).
-  - **Archivo:** `components/shared/ReporteBugBoton.tsx`: la respuesta `tope_diario_imagenes` y los dos
-    textos de design §16.5.
+  - **Archivo:** `components/shared/ReporteBugBoton.tsx`: con `sin_cupo_imagenes`, saltar al envío del
+    reporte sin las imágenes sin permiso, sin `PUT` y sin aviso (design §16.5). Ningún texto nuevo.
   - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` en verde, con los casos del mapa.
 - [ ] **T16. E2E, documentación y cierre** (dep. T12–T15; R24, R29, R30).
   - **Archivos:**
@@ -169,8 +172,8 @@
     - dos corridas seguidas de `e2e/reporte-de-bugs.spec.ts` sobre una base desechable, con 0 failed, 0
       skipped y 0 flaky, y la salida pegada en `progress/impl_SLT-98.md`;
     - `./init.sh` en verde, o `gate-completo` si el humano lo sustituye, como en T11;
-    - `node scripts/tamano-pr.mjs` sin rojo, y la línea `tamano-pr-aceptado` renovada por el leader con la
-      cifra real (P12).
+    - `node scripts/tamano-pr.mjs` sin rojo, dentro de lo aceptado en P12 (~35 archivos y ~3.900
+      líneas). Si la cifra real pasa de ahí, el leader vuelve al humano.
 
 ## Mapa R → test
 
@@ -199,13 +202,13 @@
 | R21 | `tests/unit/services/reporte-bug-service.test.ts` «si firmar lanza o le falta una ruta, el correo sale con «Imagen {n}: no se pudo generar el enlace…» y la respuesta es enviado»; `tests/unit/services/email/plantilla-reporte-bug.test.ts` «una imagen sin url lleva la nota en su lugar» |
 | R22 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` «detalle firma las rutas con 86400 segundos dentro de conEmpresa de la empresa del reporte, en cada llamada, y el DTO no lleva rutas ni empresa» y «sin imágenes no llama al almacén»; `tests/components/ReporteDetalle.test.tsx` «el bloque Imágenes muestra una miniatura por imagen en orden, con alt «Imagen {n} del reporte» y enlace a la URL, y sin imágenes «Este reporte no trae imágenes.»»; `tests/integration/db/bug-report.test.ts` «detalle trae las imágenes por position y la empresa»; `e2e/reporte-de-bugs.spec.ts` (pasos 4 y 5) |
 | R23 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` «si firmar lanza, todas las url son null y el detalle se devuelve igual»; `tests/components/ReporteDetalle.test.tsx` «una imagen con url null muestra «No se pudo cargar esta imagen.» y el resto del detalle» |
-| R24 | `tests/integration/db/bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21»; `tests/unit/services/reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica y el número de imágenes, antes de tocar el almacén» y «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el panel avisa, no sube nada y el reporte no se guarda» |
-| R25 | `tests/integration/db/bug-report.test.ts` «R25 — con 19 usados, consumir 3 devuelve null y el día sigue en 19»; `tests/unit/services/reporte-bug-service.test.ts` «R25 — si el cupo no alcanza, devuelve tope_diario_imagenes con las disponibles (21 − usados) y no llama al almacén»; `tests/unit/actions/reporte-bug-action.test.ts` «R25 — tope_diario_imagenes pasa tal cual, solo con disponibles» |
-| R26 | `tests/integration/db/bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario dejan exactamente 21 concedidos y 9 null» y «R26 — dos consumos simultáneos de 5 con 13 usados: entra uno solo y el día queda en 18» |
+| R24 | `tests/integration/db/bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21» y «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `tests/unit/services/reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen» y «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10» |
+| R25 | `tests/integration/db/bug-report.test.ts` «R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21» y «R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25»; `tests/unit/services/reporte-bug-service.test.ts` «R25 — si consumir devuelve null, da exactamente { status: "sin_cupo_imagenes" } y no llama al almacén ni a devolver»; `tests/unit/actions/reporte-bug-action.test.ts` «R25 — sin_cupo_imagenes pasa tal cual, sin más campos»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (paso 5: el conteo sigue en 21) |
+| R26 | `tests/integration/db/bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null» y «R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29» |
 | R27 | `tests/integration/db/bug-report.test.ts` «R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada»; `tests/unit/services/reporte-bug-service.test.ts` «R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original» |
 | R28 | `tests/unit/services/reporte-bug-service.test.ts` «R28 — enviar no consume ni lee el cupo»; `tests/components/ReporteBugBoton.test.tsx` «R28 — «Reintentar» tras un PUT fallido pide permiso solo para la que falló: la que ya subió no vuelve a la action de permisos» |
-| R29 | `tests/components/ReporteBugBoton.test.tsx` «R29 — con tope_diario_imagenes y 0 disponibles no hay PUT ni envío, sale «Llegaste al límite de 21 imágenes por día…» y el texto y las imágenes siguen en su estado» y «R29 — con 2 disponibles y 3 por subir el aviso dice «Hoy puedes subir 2 más de las 21 imágenes por día. Quita 1 para poder enviar.»»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el panel avisa, no sube nada y el reporte no se guarda» |
-| R30 | `tests/unit/services/reporte-bug-service.test.ts` «R30 — con el cupo lleno, enviar un reporte sin imágenes da enviado»; `tests/components/ReporteBugBoton.test.tsx` «R30 — tras el aviso de tope, quitar las imágenes deja «Enviar» habilitado y manda el reporte sin pedir permisos»; `e2e/reporte-de-bugs.spec.ts` (el mismo test: quitar la imagen y enviar da «Gracias, recibimos tu reporte») |
+| R29 | `tests/components/ReporteBugBoton.test.tsx` «R29 — con sin_cupo_imagenes no hay PUT, se llama a enviarReporteBugAction con el texto e imagenes: [], no hay ningún role="alert" y sale «Gracias, recibimos tu reporte» con 0/5 imágenes», «R29 — en un reintento sin cupo, el reporte lleva solo las imágenes ya subidas, en orden, y no la que falló» y «R29 — sin cupo y con el envío respondiendo error, las imágenes siguen en pendiente y ninguna pasa a error_subida»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» |
+| R30 | `tests/unit/services/reporte-bug-service.test.ts` «R30 — enviar un reporte sin imágenes da enviado sin llamar al cupo, aunque el cupo doble diga que no hay»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (pasos 2 y 4) |
 | R31 | `tests/integration/db/bug-report.test.ts` «R31 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_upload_quota dan 42501, y la tabla tiene RLS en public»; `tests/unit/actions/reporte-bug-action.test.ts` «R31 — pedir permisos con un campo usuarioId, fecha o cupo de más da validation_error sin llamar al servicio» |
 
 ## Archivos esperados
@@ -253,18 +256,19 @@ nuevo en el PR. Los demás archivos que toca ya estaban en esta lista: la migrac
 `tests/unit/services/reporte-bug-service.test.ts`, `tests/unit/actions/reporte-bug-action.test.ts` y
 `tests/components/ReporteBugBoton.test.tsx`.
 
-En total quedan **35 archivos** (34 reales tras F2.1, más 1) y unas **3950 líneas** (3374 + ~580). Están
-por encima del aviso del 80% y por debajo del máximo de 40. La línea `tamano-pr-aceptado` se renueva
-(P12).
+En total quedan **35 archivos** (34 reales tras F2.1, más 1) y unas **3.900 líneas** (3374 + ~530). Están
+por encima del aviso del 80% y por debajo del máximo de 40, y el humano los aceptó (P12: «Aceptar ~3.900,
+un PR»).
 
-Reparto aproximado de las ~580 líneas:
+Reparto aproximado de las ~530 líneas (el tope blando y el envío sin aviso quitan `usados` y los textos
+del aviso):
 
 | Parte | Líneas |
 |---|---|
 | Migración y modelo | ~50 |
-| Repositorio, interfaz y configuración | ~80 |
-| Servicio y action | ~50 |
-| Panel | ~40 |
+| Repositorio, interfaz y configuración | ~65 |
+| Servicio y action | ~40 |
+| Panel | ~25 |
 | Documentación | ~5 |
 | Tests de integración | ~130 |
 | Tests de servicio y action | ~130 |

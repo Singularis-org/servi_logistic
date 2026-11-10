@@ -131,34 +131,41 @@
 
 **El tope diario de imágenes (hallazgo m1 de la review; decisión «Tope diario» del 2026-11-10)**
 
-> «Permiso concedido» es cada permiso de subida que R9 entrega al panel. «Día» es, *(propuesta, P5)*, el
-> día calendario de Costa Rica: el conteo vuelve a cero a las 00:00 `America/Costa_Rica`. Lo marcado
-> *(propuesta)* depende de una pregunta abierta y puede cambiar sin tocar el tope de 21.
+> «Permiso concedido» es cada permiso de subida que R9 entrega al panel. «Conteo del día» es el número de
+> permisos concedidos a un usuario en un día. «Día» es el día calendario de Costa Rica: el conteo vuelve a
+> cero a las 00:00 `America/Costa_Rica` (decisión P5). El tope es **blando** (decisión P9): decide si una
+> petición entra mirando el conteo de ANTES de ella, no el de después. Por eso el conteo de un día puede
+> llegar a 25 (20 + 5) y nunca pasa de ahí.
 
-- **R24.** CUANDO un usuario de empresa pide permisos de subida, el sistema DEBE sumar al conteo de ese
-  usuario en el día los permisos que le concede. El sistema NO DEBE conceder ningún permiso de una
-  petición si, con ellos, ese usuario pasaría de 21 permisos concedidos en el día. Cuentan los permisos
-  concedidos, se llegue o no a enviar el reporte *(propuesta, P6 y P7)*.
-- **R25.** SI una petición de permisos pasaría el tope de R24, ENTONCES el sistema DEBE rechazarla
-  entera con el error de tope diario, que dice cuántos permisos le quedan hoy a ese usuario (de 0 a 4),
-  y DEBE hacerlo sin pedir nada al almacenamiento y sin sumar nada al conteo *(todo o nada: propuesta,
-  P9)*.
-- **R26.** MIENTRAS lleguen a la vez varias peticiones de permisos del mismo usuario, el sistema NO DEBE
-  conceder entre todas más permisos de los que caben hasta 21 en el día. Esto DEBE cumplirse en la base,
-  no solo en el código.
+- **R24.** CUANDO un usuario de empresa pide permisos de subida y su conteo del día es menor que 21, el
+  sistema DEBE concederle todos los que pide (de 1 a 5, R9), aunque con ellos pase de 21, y sumarlos a
+  su conteo del día. Cuentan los permisos concedidos, se llegue o no a enviar el reporte (decisiones P6 y
+  P7).
+- **R25.** SI un usuario de empresa pide permisos de subida y su conteo del día es 21 o más, ENTONCES el
+  sistema NO DEBE concederle ninguno: DEBE responder que no hay cupo, sin pedir nada al almacenamiento y
+  sin sumar nada al conteo. La respuesta NO DEBE llevar el conteo, la fecha ni el usuario.
+- **R26.** MIENTRAS lleguen a la vez varias peticiones de permisos del mismo usuario, el sistema DEBE
+  conceder lo mismo que concedería atendiéndolas de una en una, en algún orden, con R24 y R25: ninguna
+  entra si el conteo que la precede ya es 21 o más, y el conteo del día nunca pasa de 25. Esto DEBE
+  cumplirse en la base, no solo en el código.
 - **R27.** SI el almacenamiento falla al preparar los permisos de una petición ya contada, ENTONCES el
   sistema DEBE restar del conteo los permisos de esa petición y responder el error de siempre (R9)
-  *(propuesta, P10)*. SI la resta también falla, ENTONCES el sistema DEBE registrarlo en el log y
-  responder igual.
+  (decisión P10). SI la resta también falla, ENTONCES el sistema DEBE registrarlo en el log y responder
+  igual.
 - **R28.** CUANDO el usuario repite un envío («Reintentar» o «Enviar» otra vez), las imágenes que ya
   subieron NO DEBEN sumar de nuevo al conteo: el panel solo pide permisos para las que aún no subieron
   (R7). El envío del reporte (R10–R13) NO DEBE sumar nada al conteo.
-- **R29.** CUANDO la petición de permisos responde el error de tope diario, el panel DEBE:
-  - no subir ninguna imagen ni mandar el reporte;
-  - conservar el texto y todas las imágenes, cada una en el estado que tenía;
-  - mostrar el aviso de tope con el texto exacto de design §16.5 *(texto: propuesta, P11)*.
-- **R30.** El tope NO DEBE impedir enviar un reporte sin imágenes, aunque el usuario ya esté en 21 ese
-  día *(propuesta, P8)*.
+- **R29.** CUANDO la petición de permisos responde que no hay cupo (R25), el panel DEBE (decisión P11):
+  - no subir ninguna imagen;
+  - mandar el reporte con el texto y solo con las imágenes que ya subieron en un intento anterior de ese
+    mismo envío, que en el primer intento son ninguna (P13);
+  - no mostrar ningún aviso del tope ni marcar ninguna imagen;
+  - comportarse como un envío correcto: «Gracias, recibimos tu reporte» y el panel sin imágenes (R8).
+
+  SI ese envío del reporte falla, ENTONCES el panel DEBE quedar como ante cualquier fallo del envío de
+  SLT-87: con el texto y las imágenes en el estado que tenían antes de pulsar «Enviar».
+- **R30.** El tope NO DEBE impedir enviar un reporte (decisión P8): un reporte sin imágenes se envía como
+  siempre aunque el conteo del día sea 21 o más, y el envío (R10–R13) no consulta el conteo.
 - **R31.** El conteo lo DEBE fijar el servidor con el usuario de la sesión y la hora del servidor: la
   entrada no trae ni el usuario, ni la fecha, ni el conteo. El sistema NO DEBE permitir que una empresa
   lea, modifique ni borre el conteo, tampoco con SQL a mano bajo el rol de la app: la base responde
@@ -186,59 +193,29 @@
 | ¿Hace falta E2E? | El E2E de `tasks.md` (T11): adjuntar, enviar y verlas en el detalle |
 | ¿Librería nueva? No | Sin requisito: lo hace cumplir `guard-dependencias-aprobadas` |
 | Ruta | El proceso: tres archivos y aprobación |
-| Tope diario (m1): 21 imágenes por día por usuario | R24 (el tope), R25 (el error), R26 (concurrencia), R27, R28 (reintentar no cuenta de nuevo), R29 (el panel avisa y no envía), R30, R31 (acceso); E2E de T16 |
+| Tope diario (m1): 21 imágenes por día por usuario | R24 (concede), R25 (sin cupo), R26 (concurrencia), R27, R28 (reintentar no cuenta de nuevo), R29 (el panel envía solo el texto), R30, R31 (acceso); E2E de T16 |
+| P5 (día calendario de Costa Rica) | R24 (definición de «Día»), R31 (la hora es del servidor) |
+| P6 (cuentan los permisos concedidos) | R24, R25 (lo rechazado no cuenta), R27 |
+| P7 (cuenta aunque no envíe) | R24 |
+| P8 (con el tope lleno se envía el texto) | R29, R30 |
+| P9 (tope blando: se conceden todas mientras el conteo sea menor que 21) | R24, R25, R26 |
+| P10 (se devuelve el cupo si Storage falla) | R27 |
+| P11 (sin aviso: envía solo el texto) | R29 |
+| P12 (tamaño aceptado) | Sin requisito: proceso; la línea `tamano-pr-aceptado` ya está en `progress/features/SLT-98.md` |
 
 ## Preguntas abiertas
 
-Enmienda del 2026-11-10 (tope diario, hallazgo m1). Lo que sigue es de negocio y no está decidido; los
-requisitos marcados *(propuesta)* siguen la recomendación de cada una hasta que el humano diga otra cosa.
-
-- **P5. ¿Qué es «día»?** ¿Ventana móvil de 24 horas o día calendario? Y si es calendario, ¿en qué zona
-  horaria?
-  - *Recomendación:* día calendario de Costa Rica (00:00 `America/Costa_Rica`), como el tope del asistente
-    de ayuda (ficha 436, `asistente_uso_diario` y `fechaCalendarioCR`).
-  - *Motivo:* el conteo cabe en una fila por usuario y día, y la suma con el tope va en una sola sentencia
-    atómica, ya probada en el repo. Además, el aviso puede decir «mañana».
-  - *Lo que cuesta:* cerca de la medianoche, alguien puede subir 21 antes y 21 después. Para frenar el
-    abuso de m1 da igual.
-  - *Alternativas:*
-    - La ventana móvil exige una fila por permiso y un cerrojo por usuario, y no hay precedente en el repo.
-    - La zona del país de la empresa (`pais.zona_horaria`) no sirve: puede ser `NULL`.
-- **P6. ¿Qué cuenta: los permisos pedidos o las imágenes que de verdad subieron o se enviaron?**
-  - *Recomendación:* los permisos **concedidos**, que no es lo mismo que los pedidos: una petición
-    rechazada por validación, puerta o tope no cuenta.
-  - *Motivo:* el servidor no se entera de qué `PUT` llegó al bucket hasta el envío (R10). Si contaran solo
-    las imágenes enviadas, m1 seguiría abierto: quien llena el bucket nunca envía.
-  - *Lo que cuesta:* una imagen cuyo `PUT` falló pide un permiso nuevo al reintentar y cuenta otra vez. Es
-    correcto para el bucket, porque cada permiso puede dejar un objeto de hasta 5 MB. Las que ya subieron
-    no cuentan de nuevo (R28).
-- **P7. ¿El tope aplica también a quien no llega a enviar?**
-  - *Recomendación:* sí. Es justo la vía de abuso de m1, y con P6 sale solo.
-- **P8. Con el tope lleno, ¿se puede enviar el reporte sin imágenes?**
-  - *Recomendación:* sí (R30). El tope protege el bucket, no el canal de aviso. Un reporte sin imágenes no
-    pide permisos, así que no hay nada que contar.
-  - Si el humano quiere bloquear todo el envío, R30 se invierte y hace falta leer el conteo también en
-    `enviar`.
-- **P9. Si una petición pide más de lo que queda (por ejemplo 3, y quedan 2), ¿se rechaza entera o se
-  conceden las que caben?**
-  - *Recomendación:* se rechaza entera (R25), y el aviso dice cuántas quedan para que el usuario quite las
-    que sobran.
-  - *Motivo:* el panel ya trata cada envío como «todas o ninguna» (R6, R7). Una concesión parcial obliga a
-    decidir qué imágenes quedan fuera.
-- **P10. Si Storage falla después de contar, ¿se devuelve el cupo?**
-  - *Recomendación:* sí, con una resta de mejor esfuerzo (R27).
-  - *Motivo:* sin ella, tres o cuatro fallos de Storage ajenos al usuario le gastan el día entero.
-  - *Lo que cuesta:* un método más en el repositorio y su test.
-- **P11. Texto del aviso.** Propuesta en design §16.5:
-  - con 0 disponibles: «Llegaste al límite de 21 imágenes por día. Quita las imágenes para enviar el
-    reporte o vuelve a intentarlo mañana.»;
-  - con 1 a 4: «Hoy puedes subir {d} más de las 21 imágenes por día. Quita {k} para poder enviar.».
-
-  «mañana» depende de P5. Con ventana móvil, sería «más tarde».
-- **P12. Tamaño del PR.** La enmienda suma 1 archivo nuevo (35 en total, por encima del aviso del 80%,
-  pero por debajo del máximo de 40) y unas 600 líneas (~3 950). La línea `tamano-pr-aceptado` de
-  `progress/features/SLT-98.md` dice 34 archivos y 3374 líneas: hay que renovarla. El humano ya decidió
-  arreglar m1 en este PR; falta que acepte la cifra nueva.
+- **P13. Sin cupo en un reintento: ¿qué pasa con las imágenes que ya subieron?** No bloquea: el spec
+  sigue la recomendación hasta que el humano diga otra cosa. Caso raro: en un primer intento, algunas
+  imágenes subieron y el `PUT` de otra falló; al pulsar «Reintentar», el conteo ya es 21 o más y no hay
+  cupo para la que falló. P11 dice «Envía solo el texto», pensado para el caso normal, en el que ninguna
+  imagen ha subido todavía.
+  - *Recomendación:* el reporte va con el texto y con las imágenes que ya subieron; la que no tuvo cupo
+    se cae sin aviso (R29, design §16.5). En el caso normal, el del E2E, eso es solo el texto.
+  - *Motivo:* esas imágenes ya están en el bucket y ya cuentan en el conteo. Si no van en el reporte,
+    quedan sin fila y nadie las ve: el mismo resto que §15 acepta solo para un envío abandonado.
+  - *Alternativa:* mandar siempre `imagenes: []`. Cumple la letra de P11, pero deja esas imágenes sueltas
+    en el bucket.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -263,3 +240,15 @@ requisitos marcados *(propuesta)* siguen la recomendación de cada una hasta que
 | 2026-11-10 | P3 — Duración del enlace del detalle | 24 horas, igual que la del correo. |
 | 2026-11-10 | P4 — Qué es «5 MB» | 5 × 1024 × 1024 bytes (5 242 880). |
 | 2026-11-10 | Tope diario (hallazgo m1 de la review: nadie limita los permisos de subida) | Se arregla en este mismo PR. Tope de **21 imágenes por día por usuario**. Texto del humano: «21 al dia como limite». Al pasar el tope, el panel avisa y el reporte no se envía. Qué es «día», qué cuenta y el texto del aviso quedan en P5–P11. |
+| 2026-11-10 | P5 — ¿Qué es «día»? | Día calendario de Costa Rica: el conteo vuelve a cero a las 00:00 `America/Costa_Rica`, como `asistente_uso_diario` (`fechaCalendarioCR`). Aceptada la recomendación. |
+| 2026-11-10 | P6 — ¿Qué cuenta? | Los permisos **concedidos**. Una petición rechazada por validación, puerta o tope no cuenta. Aceptada la recomendación. |
+| 2026-11-10 | P7 — ¿Aplica a quien no envía? | Sí: se deduce de P6. |
+| 2026-11-10 | P8 — Con el tope lleno, ¿se envía el reporte? | Sí, solo con el texto. Aceptada la recomendación. |
+| 2026-11-10 | P9 — Petición que pide más de lo que queda | Tope blando. Texto del humano: «subelas todas, pero el siguiente ya no puede enviar mas imagenes». Si al pedir el conteo del día es menor que 21, se conceden TODAS las que pide (hasta 5 por envío), aunque el total pase de 21; el máximo efectivo es 25. Desde 21, ninguna. La condición `< 21` va en el `WHERE` de una sola sentencia atómica, y las peticiones simultáneas no conceden más que en serie. |
+| 2026-11-10 | P10 — Si Storage falla después de contar | Se devuelve lo contado. Aceptada la recomendación. |
+| 2026-11-10 | P11 — Aviso del tope | Sin aviso. Texto del humano: «sin aviso», aclarado con «Envía solo el texto». Con el tope lleno, si el usuario adjuntó imágenes y pulsa «Enviar», el reporte se envía sin ellas y sin mensaje: el panel se comporta como un envío correcto. |
+| 2026-11-10 | P12 — Tamaño del PR | Aceptado: ~35 archivos y ~3.900 líneas en un PR. Texto del humano: «Aceptar ~3.900, un PR». |
+
+> La fila «Tope diario» dice «el panel avisa y el reporte no se envía». Las filas P8, P9 y P11, del mismo
+> humano y posteriores, la precisan: con el tope lleno no hay aviso y el reporte se envía con el texto.
+> Los requisitos siguen a P8, P9 y P11.
