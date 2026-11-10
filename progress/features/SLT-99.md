@@ -23,6 +23,8 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 
 - 2026-11-09 (humano): P10 → sin insignia cuando el % equivalente de un descuento anual en monto fijo redondea a 0 %. La implementación mueve P10 a «Decisiones cerradas» del requirements (T0).
 
+- 2026-11-10 (tras tanda 1, `progress/impl_SLT-99.md`): los 4 desvíos aceptados uno por uno (humano): `IPlanesDelMaestroRepository` aparte; `@sin-superficie` en las 2 actions hasta T7; `NOMBRES_DEL_TOPE` en `lib/planes/mensajes.ts`; empresa de la sesión inexistente → error con contexto.
+
 ## Preguntas abiertas
 Ninguna.
 
