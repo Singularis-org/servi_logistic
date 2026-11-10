@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-97 | reporte-bugs-modulo-superadmin | fullstack | medium | feature/SLT-97-reporte-bugs-modulo-superadmin | Camilo | in_progress |
+| SLT-97 | reporte-bugs-modulo-superadmin | fullstack | medium | feature/SLT-97-reporte-bugs-modulo-superadmin | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer.
+done (2026-11-10): PR #112 mergeado en dev (1bc9eb84), gate-completo verde. Entrega 2 de 3; sigue SLT-98.
 
 ## Evaluación
 - zone fullstack: estado e historial sobre `bug_report` (migración) y pantallas en /plataforma.
@@ -34,3 +34,8 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-10 · PR https://github.com/Singularis-org/servi_logistic/pull/112 mergeado por el humano en dev (1bc9eb84). `gate-completo` verde, E2E de CI incluido.
+- Resumen: menú «Reportes» solo para el superadmin; listado con filtros (por defecto «Pendientes»), 25 por página y fechas en UTC; detalle con contexto, cambio de estado solo hacia adelante (SL097, que también rechaza el mismo estado), nota de 500 como máximo y un historial inmutable en una tabla propia.
+- Revisión F2.2: la vuelta 1 se rechazó (faltaba el E2E sobre HEAD) y la vuelta 2 salió OK.
+- Deuda: m4 (un `?estado=` desconocido deja el filtro en blanco y muestra el aviso de fechas), solo anotada.
+- Bases locales `servi_logistic_slt97` y `servi_logistic_slt97_e2e`: pendientes de borrar con autorización.

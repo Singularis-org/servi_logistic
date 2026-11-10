@@ -1,7 +1,7 @@
 import { diasDelPeriodo, inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { cobroDelPlan } from "@/lib/planes/cobro";
 import type { PendienteDeEmpresa, PeriodoDelCobro } from "@/lib/types/consumo-plan";
-import type { PrecioPlan, TipoCobro } from "@/lib/types/planes";
+import type { PrecioPlan, PrimerPeriodo, TipoCobro } from "@/lib/types/planes";
 
 /** SLT-86 (R1): las cuatro etiquetas, aparte para que `pendiente` las lea dentro del mismo objeto. */
 const ETIQUETAS = {
@@ -52,13 +52,6 @@ export function textoDelPeriodo(tipo: TipoCobro, periodo: PeriodoDelCobro): stri
   if (!periodo.esTramo) return base;
   const total = diasDelPeriodo(tipo, inicioDelDiaPlataforma(periodo.hasta));
   return `${base} ${TEXTOS_TIPO_COBRO.tramo(diasEntre(periodo.desde, periodo.hasta), total)}`;
-}
-
-/** El primer período (o tramo) que abriría un cambio y su costo base. */
-export interface PrimerPeriodo {
-  periodo: PeriodoDelCobro;
-  /** `null` = sin costo base: por definir. */
-  costo: string | null;
 }
 
 /**

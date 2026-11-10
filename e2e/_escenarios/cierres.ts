@@ -1,5 +1,12 @@
+import type { Locator, Page } from "@playwright/test";
+
+import { conEmpresa } from "../../lib/db/contexto-empresa";
 import type { Actor } from "../../lib/interfaces/services/IOrdenService";
-import { escenarioCierres, solicitarCierre as solicitarCierreNucleo } from "../../tests/fabricas/escenarios/cierres";
+import {
+  cierresAdmin,
+  escenarioCierres,
+  solicitarCierre as solicitarCierreNucleo,
+} from "../../tests/fabricas/escenarios/cierres";
 import { fijarEmpresa } from "../../tests/fabricas/organizaciones";
 
 import { baseReparto, type MensajeroE2E, type RepartoE2E } from "./reparto";
@@ -107,4 +114,44 @@ export function importe(n: number, opts: { solo?: boolean } = {}): RegExp {
   // `solo`: el texto ENTERO del elemento es el importe (con su símbolo). Sirve donde el importe va
   // pegado a otros números en el texto del contenedor (p. ej. «₡9.0001-1 de 1» de la paginación).
   return opts.solo ? new RegExp(`^\\s*[^\\d\\s]{0,3}\\s?${cifra}\\s*$`) : new RegExp(`(?<![\\d.,])${cifra}(?!\\d)`);
+}
+
+// ── Cola única de cierres de mensajeros (SLT-102 T6.1) ──────────────────────────────────────────
+//
+//   filaDeCola(region, nombre) → Locator
+//     La FILA de la cola (`ColaCierres`) del cierre de ese mensajero, dentro de la región de la
+//     pestaña: «Pendientes de decisión» o «Histórico». Antes era el comprobante
+//     (`region` «Comprobante del cierre de <m>»); la cola pinta una tabla con una fila por cierre.
+//
+//   pestanaDeCola(page, "Pendientes" | "Resueltos") → Locator
+//     La pestaña (`tab`) del `tablist` «Cierres del día por estado». Su nombre lleva el conteo
+//     («Resueltos 12»), así que se busca por el comienzo.
+//
+//   ajustarPagoMensajero(r, gestionId, { anterior, nuevo, motivo }) → void
+//     `CierresAdminService.ajustarPagoMensajeroGestion` con el maestro, sobre un cierre abierto
+//     (SLT-56). Es lo que hace el diálogo «Ajustar pago» del detalle; aquí siembra la señal
+//     «pago ajustado» de la cola.
+
+export function filaDeCola(region: Locator, nombre: string): Locator {
+  return region.getByRole("row").filter({ hasText: nombre });
+}
+
+export function pestanaDeCola(page: Page, nombre: "Pendientes" | "Resueltos"): Locator {
+  return page
+    .getByRole("tablist", { name: "Cierres del día por estado" })
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+}
+
+export async function ajustarPagoMensajero(
+  r: RepartoE2E,
+  gestionId: string,
+  a: { anterior: string; nuevo: string; motivo: string },
+): Promise<void> {
+  const res = await conEmpresa(r.empresa.organizacionId, () =>
+    cierresAdmin().ajustarPagoMensajeroGestion(
+      { gestionId, pagoAnterior: a.anterior, pagoNuevo: a.nuevo, motivo: a.motivo },
+      r.actores.maestro,
+    ),
+  );
+  if (res.status !== "ok") throw new Error(`SLT-102 E2E: ajustarPagoMensajero no fue ok: ${JSON.stringify(res)}`);
 }

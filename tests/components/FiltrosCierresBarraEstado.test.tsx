@@ -62,7 +62,9 @@ const CATALOGO: CatalogoFiltrosCierresDTO = {
   mensajerosFiltro: [{ id: MENSAJERO_DIANA, nombre: "Diana Mora", zonaId: ZONA_A }],
 };
 
-function montar(props: { conEstado?: boolean; sinMensajero?: boolean } = {}) {
+function montar(
+  props: { conEstado?: boolean; sinMensajero?: boolean; sinBodega?: boolean } = {},
+) {
   const onChange = vi.fn<(f: FiltrosCierres) => void>();
   render(
     <FiltrosCierresBarra catalogo={CATALOGO} onChange={onChange} {...props} />,
@@ -256,5 +258,28 @@ describe("Ficha 386 · el control de ESTADO de la barra de cierres", () => {
       expect(ultimoEmitido(onChange).destinoZonaIds).toEqual([ZONA_A]),
     );
     expect("estados" in ultimoEmitido(onChange)).toBe(false);
+  });
+
+  it("SLT-102 (R100 enmendado): `sinBodega` retira «Bodega» y el mensajero no queda colgando de ella", async () => {
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» — enmienda de Carlos
+    // 2026-11-10, fiel al canvas: la cola de mensajeros no ofrece «Bodega». Va apagado por
+    // defecto (el caso de arriba fija que las mitades de bodega lo conservan).
+    const user = userEvent.setup();
+    const onChange = montar({ conEstado: true, sinBodega: true });
+
+    const barra = await screen.findByRole("region", { name: BARRA });
+    await user.click(within(barra).getByRole("button", { name: /^Filtros/ }));
+    const ofrecidos = within(screen.getByRole("listbox", { name: "Filtros" }))
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+    expect(ofrecidos).toEqual(["Fecha de solicitud", "Mensajero", "Estado"]);
+    await user.keyboard("{Escape}");
+
+    // Lo emitido nunca lleva la clave de la bodega.
+    await pedirFiltro(user, "Estado");
+    await user.click(within(barra).getByRole("button", { name: /^Estado/ }));
+    await user.click(await screen.findByRole("option", { name: "Aprobado" }));
+    await waitFor(() => expect(ultimoEmitido(onChange).estados).toEqual(["aprobado"]));
+    expect(ultimoEmitido(onChange).destinoZonaIds).toBeUndefined();
   });
 });

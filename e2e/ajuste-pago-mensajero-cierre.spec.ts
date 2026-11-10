@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { cierresDe, filaDeCola, importe, solicitarCierre } from "./_escenarios/cierres";
 import { navegarCon } from "./_escenarios/pulsar";
 import {
   baseReparto,
@@ -68,7 +68,7 @@ function lineaDe(cascada: Locator, rotulo: string): Locator {
 async function abrirDetalle(page: Page, m: MensajeroE2E): Promise<Locator> {
   await page.goto("/cierres-admin");
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(pendientes, m.nombre);
   await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
   await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });

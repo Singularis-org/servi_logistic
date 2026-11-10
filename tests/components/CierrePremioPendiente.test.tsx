@@ -185,10 +185,20 @@ function renderModule(historico: CierreAdminResumen[]) {
   );
 }
 
-/** El histórico vive en la pestaña «Resueltos» desde el pedido humano del 2026-08-16. */
+/**
+ * El histórico vive en la pestaña «Resueltos» desde el pedido humano del 2026-08-16. SLT-102 «Cola de
+ * cierres única: mensajeros (central y satélite)»: la pestaña es un `tab` y cada cierre una fila.
+ */
 async function verHistorico(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+  await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
   return screen.getByRole("region", { name: "Histórico" });
+}
+
+/** Las filas de datos de la tabla (sin la cabecera). */
+function filasDe(region: HTMLElement): HTMLElement[] {
+  return within(region)
+    .getAllByRole("row")
+    .filter((r) => within(r).queryAllByRole("cell").length > 0);
 }
 
 async function abrirDetalle(user: ReturnType<typeof userEvent.setup>, cierre: CierreAdminResumen) {
@@ -231,7 +241,7 @@ describe("R27 — la insignia del cierre cuenta el premio", () => {
 });
 
 describe("R27 — el LISTADO de cierres lo enseña sin abrir nada", () => {
-  it("el comprobante del cierre saldado vuelve a mostrar pendiente por el importe del premio", async () => {
+  it("la fila del cierre saldado vuelve a mostrar pendiente por el importe del premio", async () => {
     const user = userEvent.setup();
     renderModule([
       makeResumen({ cierreId: "c-premio", pendientePagoMensajero: PREMIO }),
@@ -239,7 +249,8 @@ describe("R27 — el LISTADO de cierres lo enseña sin abrir nada", () => {
 
     const region = await verHistorico(user);
     // La deuda nueva se ve en el listado, sin abrir el detalle: es donde el maestro se entera.
-    expect(within(region).getByText("₡5.000")).toBeInTheDocument();
+    // SLT-102 (R103): en la celda «Pago entregado», como «Pendiente <monto>».
+    expect(within(region).getByText("Pendiente ₡5.000")).toBeInTheDocument();
     expect(within(region).queryByText(PAGO_MENSAJERO_TEXTO.sinPendiente)).toBeNull();
   });
 
@@ -250,22 +261,22 @@ describe("R27 — el LISTADO de cierres lo enseña sin abrir nada", () => {
     ]);
 
     const region = await verHistorico(user);
-    const comprobante = within(region).getAllByRole("listitem")[0];
-    // Se despliega el comprobante para que el total congelado del cierre esté TAMBIÉN en el
-    // documento. Sin este clic la comprobación de abajo sería vacua: ₡10.000 no estaría en
-    // ninguna parte y «no aparece donde no debe» no diría nada.
-    await user.click(
-      within(comprobante).getByRole("button", {
-        name: `Ver detalles del cierre de ${MENSAJERO}`,
-      }),
-    );
+    // SLT-102: la fila enseña los dos sin desplegar nada — «Pago al mensajero» (el snapshot) y
+    // «Pago entregado» (la deuda derivada), cada uno en su columna.
+    const cabeceras = within(region).getAllByRole("columnheader").map((h) => h.textContent);
+    const celdas = within(filasDe(region)[0])
+      .getAllByRole("cell")
+      .map((c) => c.textContent);
+    const comprobante = filasDe(region)[0];
 
     // El snapshot sigue diciendo ₡10.000 —lo que este cierre movió el día que se aprobó, y que
     // ya se pagó entero (R13)—, y la deuda dice ₡5.000, que es sólo el premio. Que los dos
     // números estén a la vez y sean distintos es la prueba de que la insignia no reusa el
     // snapshot: si lo reusara, el maestro pagaría el cierre por segunda vez.
     expect(within(comprobante).getByText("₡10.000")).toBeInTheDocument();
-    expect(within(comprobante).getByText("₡5.000")).toBeInTheDocument();
+    expect(within(comprobante).getByText("Pendiente ₡5.000")).toBeInTheDocument();
+    expect(celdas[cabeceras.indexOf("Pago al mensajero")]).toBe("₡10.000");
+    expect(celdas[cabeceras.indexOf("Pago entregado")]).toBe("Pendiente ₡5.000");
   });
 
   it("y los dos casos se distinguen entre sí en el mismo listado", async () => {
@@ -276,7 +287,7 @@ describe("R27 — el LISTADO de cierres lo enseña sin abrir nada", () => {
     ]);
 
     const region = await verHistorico(user);
-    const comprobantes = within(region).getAllByRole("listitem");
+    const comprobantes = filasDe(region);
     expect(comprobantes).toHaveLength(2);
     expect(comprobantes[0].textContent).toContain("₡5.000");
     expect(comprobantes[0].textContent).not.toContain(PAGO_MENSAJERO_TEXTO.sinPendiente);

@@ -1,6 +1,8 @@
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
-import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import type { PendienteDeEmpresa, PlanConConsumo } from "@/lib/types/consumo-plan";
+
+import { CambioDePlan, PendienteDelPlan, type PlanesDeMiPlan } from "./CambioDePlan";
+import { PlanActivo } from "./PlanActivo";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n (design §6.5). */
 export const MI_PLAN_TEXTOS = {
@@ -15,19 +17,23 @@ export interface MiPlanModuleProps {
    * Con plan, el pendiente viene en `plan.cobro.pendiente`.
    */
   readonly pendienteSinPlan?: PendienteDeEmpresa | null;
+  /** SLT-99 (R5–R10, R16–R19): los planes disponibles, el corte y lo que la confirmación necesita. */
+  readonly planes: PlanesDeMiPlan;
 }
 
 /**
- * SLT-58 (design §6.4; R1–R7, R11) — lo que la empresa ve de su plan. Solo información: sin botones
- * ni formularios, porque pedir o cambiar de plan no es cosa de la empresa (R11; SL-25 fuera de alcance).
- * SLT-86 (R26): el cambio pendiente se ve, pero cancelarlo es cosa del superadmin.
+ * SLT-58 (design §6.4; R1–R7) — lo que la empresa ve de su plan. SLT-99 sustituye SLT-58 R11 («solo información»):
+ * el maestro ve su plan activo (R3), el pendiente con «Cancelar cambio» (R16, R17), el consumo y el costeo del
+ * período debajo, sin cambios (R21, P8), y los planes disponibles para cambiar de plan (R5–R8, R18–R20).
  */
-export function MiPlanModule({ plan, pendienteSinPlan = null }: MiPlanModuleProps) {
+export function MiPlanModule({ plan, pendienteSinPlan = null, planes }: MiPlanModuleProps) {
   const pendiente = plan?.cobro.pendiente ?? null;
   return (
-    <div className="flex flex-col gap-4">
-      {pendiente !== null && <p className="text-sm font-medium">{TEXTOS_TIPO_COBRO.pendiente(pendiente)}</p>}
+    <div className="flex flex-col gap-6">
+      {pendiente !== null && <PendienteDelPlan pendiente={pendiente} />}
+      {plan !== null && <PlanActivo plan={plan} />}
       <ConsumoDelPlan plan={plan} textoSinPlan={MI_PLAN_TEXTOS.sinPlan} pendienteSinPlan={pendienteSinPlan} />
+      <CambioDePlan planes={planes} plan={plan} pendiente={pendiente} />
     </div>
   );
 }

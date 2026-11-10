@@ -92,6 +92,14 @@ export interface TablaCensada {
    * no exista.
    */
   montajes?: string[];
+  /**
+   * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» — las fichas que montarán esta
+   * tabla compartida en otras pantallas y aún no lo hacen. Solo para una tabla de `components/`
+   * que hoy tiene UN montaje porque nació para varias (la cola única de SLT-95): sin este campo,
+   * un solo montaje exige que la tabla viva en la pantalla que la usa. No sustituye a
+   * `montajes`, que sigue contrastándose contra el árbol.
+   */
+  montajesPrevistos?: string[];
 }
 
 export interface ArchivoCensado {
@@ -668,6 +676,30 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
         montajes: [
           "app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx",
           "app/(app)/wallet/tiendas/_components/PagosTiendaEstadoCuenta.tsx",
+        ],
+      },
+    ],
+  },
+  {
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» — la cola única de cierres de
+    // SLT-95. Sustituye, en `/cierres-admin` › Mensajero, a las dos tiras de comprobantes que el
+    // pedido humano del 2026-08-16 había sacado de este censo (cabecera de arriba): vuelve a ser UNA
+    // `<DataTable>`, que pinta la pestaña activa (Pendientes o Resueltos).
+    ruta: "components/private/cierres/cola/ColaCierres.tsx",
+    tablas: [
+      {
+        nombre: "Cola de cierres del día (Pendientes / Resueltos)",
+        estado: "fuera",
+        nota:
+          "La descarga NO falta: va fuera de la tabla, en la fila de la barra («Descargar» de la " +
+          "pestaña activa, `DescargarCierresButton` con Resumen y Detalle), para que cambiar de " +
+          "pestaña no la desmonte (R100). Es el mismo conjunto del servidor que antes, y lo vigila " +
+          "`paginacion-transversal` (R52). Por eso el `<DataTable>` no declara `descarga=`.",
+        montajes: ["app/(app)/cierres-admin/_components/CierresAdminModule.tsx"],
+        montajesPrevistos: [
+          "SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados»",
+          "SLT-106 «Bodega satélite: A consolidar con la cola única»",
+          "SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero»",
         ],
       },
     ],

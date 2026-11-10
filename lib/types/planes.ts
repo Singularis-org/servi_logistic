@@ -4,7 +4,7 @@ import { z } from "zod";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
-import type { CambioPendienteVista, PendienteDeEmpresa, PlanConConsumo } from "@/lib/types/consumo-plan";
+import type { CambioPendienteVista, PendienteDeEmpresa, PeriodoDelCobro, PlanConConsumo } from "@/lib/types/consumo-plan";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 
 // SL-24 (design §5.1; R1–R3, R25, R37) — el borde de la gestión de planes por el superadmin. Todo
@@ -511,3 +511,60 @@ export type VistaPreviaAsignacionResult =
   | { estado: "custom_de_otra_empresa" }
   // SLT-66 R28: la pantalla no deja confirmar lo que `asignar` rechazaría.
   | { estado: "plan_sin_costo" };
+
+/* -------------------------------------------------------------------------- */
+/* SLT-99 (design §4) — «Mi plan»: el maestro ve los planes y cambia el suyo    */
+/* -------------------------------------------------------------------------- */
+// Serializables: cruzan de Server Component a cliente. Sin `organizacionId`: la empresa es la de la sesión (R2).
+
+/** Lo que el carrusel y el detalle necesitan de un plan (R5, R8). */
+export type PlanVista = Pick<PlanDTO, "id" | "nombre" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual" | "topes" | "modulos">;
+
+/** SLT-86 (R25): el primer período (o tramo) que abriría un cambio y su costo base (lo calcula `primerPeriodoDelCambio`). */
+export interface PrimerPeriodo {
+  periodo: PeriodoDelCobro;
+  /** `null` = sin costo base: por definir. */
+  costo: string | null;
+}
+
+/** R5, R7, R8, R10, R16–R19: lo que «Mi plan» necesita para el carrusel, el detalle y la confirmación. */
+export type PlanesDeMiPlanResult =
+  | {
+      estado: "ok";
+      /** R5: los planes disponibles, en el orden del catálogo. */
+      planes: PlanVista[];
+      /** R5: la tarjeta con «Activo»; `null` sin plan. */
+      activoId: string | null;
+      /** R7: el custom activo, que ocupa la tarjeta «Plan a la medida»; `null` si el activo es público o no hay plan. */
+      customActivo: PlanVista | null;
+      /** R8: la fila resaltada de la tabla de períodos; `null` sin plan. */
+      tipoCobro: TipoCobro | null;
+      /** R10: el corte (`AAAA-MM-DD`); `null` sin plan. */
+      corte: string | null;
+      /** R19: por id de plan, el primer período que abriría el cambio, con el precio que rige en el corte. */
+      primerPeriodo: Record<string, PrimerPeriodo>;
+      /** R18 (P5): `false` sin plan. */
+      puedeCambiar: boolean;
+      /** R16, R17 (P3): hay un pendiente, sea de quien sea. */
+      hayPendiente: boolean;
+      /** R19 (P6): el aviso de dejar el plan a la medida. */
+      activoEsCustom: boolean;
+    }
+  | { estado: "forbidden" };
+
+/** R11–R15, R18: el cambio de plan del maestro. `vigenteDesde: null` = pidió su plan activo y no queda pendiente. */
+export type CambiarMiPlanResult =
+  | { estado: "ok"; vigenteDesde: string | null }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "sin_plan" }
+  | { estado: "no_disponible" }
+  | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string };
+
+/** R16: «Cancelar cambio» del maestro. R18: sin plan no cancela la primera asignación (`sin_plan`). */
+export type CancelarCambioMiPlanResult =
+  | { estado: "ok" }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "sin_plan" }
+  | { estado: "sin_cambio_programado" };

@@ -194,6 +194,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "order-status": "nucleo",
   organizaciones: "nucleo",
   "password-reset": "nucleo",
+  // SLT-99: el cambio de plan del maestro en «Mi plan», que es núcleo como su ruta.
+  "mi-plan": "nucleo",
   // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
   planes: "nucleo",
   "postulacion-mensajero": "nucleo",

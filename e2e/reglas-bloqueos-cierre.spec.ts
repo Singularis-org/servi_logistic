@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { marcarCasilla } from "./_escenarios/casillas";
-import { cierresDe } from "./_escenarios/cierres";
+import { cierresDe, filaDeCola } from "./_escenarios/cierres";
 import { correrCron, drenarGeocodificacion } from "./_escenarios/crons";
 import {
   crearEscenarioReparto,
@@ -101,9 +101,7 @@ test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencid
   test("paso 4 — válvula: destrabar el `vencido` y aprobarlo ya como `solicitado`", async ({ browser }) => {
     const page = await paginaDe(browser, r.adminSatelite);
     await page.goto("/cierres-admin");
-    const comprobante = page
-      .getByRole("region", { name: "Pendientes de decisión" })
-      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    const comprobante = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
     await expect(comprobante.getByText("Vencido", { exact: true })).toBeVisible();
     // 111/R15: un `vencido` no se decide por la vía normal.
     await expect(comprobante.getByRole("button", { name: "Ver / decidir" })).toHaveCount(0);

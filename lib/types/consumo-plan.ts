@@ -110,6 +110,11 @@ export type CobroDelPlan = {
 
 export type PlanConConsumo = {
   nombre: string;
+  /**
+   * SLT-99 (R8): «Activo desde», la entrada de la empresa a su plan (`organizacion.plan_ciclo_ancla_at`) como
+   * `AAAA-MM-DD` de la plataforma, igual que el resto de fechas del plan.
+   */
+  activoDesde: string;
   /** `textoDelPrecio`: sin moneda (D26). */
   precioTexto: string;
   modulos: { clave: ModuloApagable; nombre: string }[];

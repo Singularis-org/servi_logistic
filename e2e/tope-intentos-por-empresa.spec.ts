@@ -4,7 +4,7 @@ import { crearUsuarioE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
 import { marcarCasilla } from "./_escenarios/casillas";
-import { aprobarCierre, cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { aprobarCierre, cierresDe, filaDeCola, importe, solicitarCierre } from "./_escenarios/cierres";
 import { correrCron } from "./_escenarios/crons";
 import { abrirCon } from "./_escenarios/pulsar";
 import {
@@ -197,9 +197,7 @@ async function enviarVencidoEnPantalla(browser: Browser, m: MensajeroE2E): Promi
 async function aprobarEnPantalla(browser: Browser, r: RepartoE2E, m: MensajeroE2E, orden: OrdenE2E, ingreso: number | null): Promise<void> {
   const page = await paginaDe(browser, r.empresa.maestro);
   await page.goto("/cierres-admin");
-  const comprobante = page
-    .getByRole("region", { name: "Pendientes de decisión" })
-    .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
   await abrirCon(comprobante.getByRole("button", { name: "Ver / decidir" }), detalle);
   if (ingreso !== null) {

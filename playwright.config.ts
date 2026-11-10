@@ -100,6 +100,8 @@ export default defineConfig({
         "integraciones-por-empresa",
         // SLT-58 R28: el superadmin crea y asigna un plan custom; «Mi plan» por empresa y por rol.
         "planes-superadmin",
+        // SLT-99 R22: el maestro cambia de plan y cancela el cambio; archiva al final los planes públicos que crea.
+        "mi-plan-cambiar-plan",
         // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
         "planes-costeo",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.

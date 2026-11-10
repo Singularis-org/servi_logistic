@@ -8,6 +8,7 @@ import {
   type TarifaNivel,
 } from "@prisma/client";
 import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
+import { contarSenalesPorCierreCon } from "@/lib/repositories/_shared/senales-cola-cierre";
 import type { JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { encolarWebhookEvento } from "@/lib/services/jobs/webhook-evento-encolado";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
@@ -58,7 +59,10 @@ import type {
   PagoPorTarifaDTO,
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  SenalesColaCierre,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
   CatalogoFiltrosCierresDTO,
@@ -1241,6 +1245,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
 
   leerTopeIntentos(): Promise<number> {
     return leerTopeIntentosDeLaEmpresa(this.prisma);
+  }
+
+  /** SLT-102 (R109): una consulta por página; el SQL y su `WHERE` viven en `_shared/senales-cola-cierre.ts`. */
+  contarSenalesPorCierre(cierreIds: readonly string[]): Promise<Map<string, SenalesColaCierre>> {
+    return contarSenalesPorCierreCon(this.prisma, cierreIds);
   }
 
   /**

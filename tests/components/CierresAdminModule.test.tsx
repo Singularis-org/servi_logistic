@@ -13,8 +13,13 @@ import {
   listarHistoricoCierresAdminPaginado,
   listarPendientesCierresAdminPaginado,
 } from "@/lib/actions/cierres-admin";
+import {
+  listarPagosDeCierreAction,
+  registrarPagoMensajeroAction,
+} from "@/lib/actions/liquidacion";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
+import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
 import type {
   CierreDetalleGestion,
   CierreGrupos,
@@ -40,6 +45,13 @@ vi.mock("@/lib/actions/cierres-admin", () => ({
   listarHistoricoCierresAdminPaginado: vi.fn(),
   // Feature 170 — FASE 2 (T J.2): la COLA de pendientes también.
   listarPendientesCierresAdminPaginado: vi.fn(),
+}));
+
+// SLT-102 (R103): «Registrar pago» abre el diálogo de hoy, que registra por esta acción.
+vi.mock("@/lib/actions/liquidacion", () => ({
+  registrarPagoMensajeroAction: vi.fn(),
+  listarPagosDeCierreAction: vi.fn(),
+  anularPagoAction: vi.fn(),
 }));
 
 const { successMock, errorMock, refreshMock } = vi.hoisted(() => ({
@@ -74,6 +86,8 @@ const rechazarMock = vi.mocked(rechazarCierre);
 const forzarMock = vi.mocked(forzarSolicitudVencido);
 const historicoPaginadoMock = vi.mocked(listarHistoricoCierresAdminPaginado);
 const pendientesPaginadoMock = vi.mocked(listarPendientesCierresAdminPaginado);
+const registrarPagoMock = vi.mocked(registrarPagoMensajeroAction);
+const listarPagosMock = vi.mocked(listarPagosDeCierreAction);
 
 const ZERO_TOTALES: CierreTotales = {
   efectivo: "0.00",
@@ -229,9 +243,23 @@ function renderModule(props?: {
   pendientes?: CierreAdminResumen[];
   historico?: CierreAdminResumen[];
   sinZona?: boolean;
+  /** SLT-102: el `total` del servidor, distinto del número de filas de la página. */
+  totalPendientes?: number;
+  totalHistorico?: number;
+  pageSize?: number;
+  puedeRegistrarPago?: boolean;
+  audiencia?: "admin" | "satelite";
+  zonaNombre?: string | null;
+  catalogoFiltros?: CatalogoFiltrosCierresDTO;
 }) {
-  const cola = paginaInicial(props?.pendientes ?? []);
-  const pagina = paginaInicial(props?.historico ?? []);
+  const cola = paginaInicial(props?.pendientes ?? [], {
+    total: props?.totalPendientes,
+    pageSize: props?.pageSize,
+  });
+  const pagina = paginaInicial(props?.historico ?? [], {
+    total: props?.totalHistorico,
+    pageSize: props?.pageSize,
+  });
   pendientesPaginadoMock.mockResolvedValue({ status: "ok", page: 1, ...cola });
   historicoPaginadoMock.mockResolvedValue({ status: "ok", page: 1, ...pagina });
   render(
@@ -240,6 +268,10 @@ function renderModule(props?: {
         pendientes={cola}
         historico={pagina}
         sinZona={props?.sinZona ?? false}
+        puedeRegistrarPago={props?.puedeRegistrarPago}
+        audiencia={props?.audiencia}
+        zonaNombre={props?.zonaNombre}
+        catalogoFiltros={props?.catalogoFiltros}
       />
     </SWRConfig>,
   );
@@ -253,12 +285,26 @@ function renderModule(props?: {
  * paginación) pero está fuera del árbol de accesibilidad—.
  */
 async function irAResueltos(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+  // SLT-102 (R99): la pestaña es un `tab` del `tablist` «Cierres del día por estado».
+  await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
   return screen.getByRole("region", { name: "Histórico" });
+}
+
+/**
+ * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R101): cada cierre es una fila
+ * de la tabla. Devuelve la fila del mensajero dentro de una región.
+ */
+function filaDe(region: HTMLElement, mensajero: string): HTMLElement {
+  const fila = within(region)
+    .getAllByRole("row")
+    .find((r) => within(r).queryByText(mensajero) !== null);
+  if (!fila) throw new Error(`sin fila de ${mensajero}`);
+  return fila;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listarPagosMock.mockResolvedValue({ status: "ok", pagos: [] });
 });
 
 afterEach(() => {
@@ -289,16 +335,13 @@ describe("CierresAdminModule", () => {
       ],
     });
 
+    // SLT-102 (R101, R108): una fila de la tabla. El destino deja la fila (sigue en el detalle).
     const region = screen.getByRole("region", { name: "Pendientes de decisión" });
-    expect(within(region).getByText("Carlos Vega")).toBeInTheDocument();
-    expect(within(region).getByText("2026-07-11")).toBeInTheDocument();
-    expect(
-      within(region).getByText("Bodega central · GAM"),
-    ).toBeInTheDocument();
-    expect(within(region).getByText("₡500")).toBeInTheDocument();
-    expect(
-      within(region).getByRole("button", { name: "Ver / decidir" }),
-    ).toBeInTheDocument();
+    const fila = filaDe(region, "Carlos Vega");
+    expect(within(fila).getByText("2026-07-11 04:00")).toBeInTheDocument();
+    expect(within(fila).getByText("₡500")).toBeInTheDocument();
+    expect(within(fila).queryByText("Bodega central · GAM")).toBeNull();
+    expect(within(fila).getByRole("button", { name: "Ver / decidir" })).toBeInTheDocument();
   });
 
   it("R5: el histórico lista cierres resueltos con estado, fecha resuelta y motivo (solo lectura)", async () => {
@@ -318,20 +361,18 @@ describe("CierresAdminModule", () => {
       ],
     });
 
+    // SLT-102 (R101, R108): una fila con estado y fecha resuelta a la vista; el motivo del rechazo
+    // deja la fila (PA5) y sigue en el detalle.
     const region = await irAResueltos(user);
-    expect(within(region).getByText("Rechazado")).toBeInTheDocument();
-    expect(within(region).getByText("Diana Mora")).toBeInTheDocument();
-    expect(within(region).getByText("Faltan evidencias")).toBeInTheDocument();
+    const fila = filaDe(region, "Diana Mora");
+    expect(within(fila).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(fila).getByText("2026-07-12 02:00")).toBeInTheDocument();
+    expect(within(fila).queryByText("Faltan evidencias")).toBeNull();
     // Solo lectura: la única acción del histórico es «Ver», sin decisión. Su nombre accesible
-    // nombra al mensajero porque la pantalla monta una tarjeta por cierre.
-    expect(
-      within(region).getByRole("button", { name: "Ver el cierre resuelto de Diana Mora" }),
-    ).toBeInTheDocument();
-
-    await user.click(
-      within(region).getByRole("button", { name: /^Ver detalles del cierre de Diana Mora/ }),
-    );
-    expect(within(region).getByText("2026-07-12")).toBeInTheDocument();
+    // nombra al mensajero porque la pantalla monta una fila por cierre.
+    expect(within(fila).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Ver el cierre resuelto de Diana Mora",
+    ]);
   });
 
   it("R8/R9: al abrir el detalle muestra los totales snapshot como string (sin reparsear)", async () => {
@@ -1412,10 +1453,10 @@ describe("CierresAdminModule", () => {
     });
 
     const region = screen.getByRole("region", { name: "Pendientes de decisión" });
-    // Ambos estados quedan visibles y diferenciados en la misma cola.
-    expect(within(region).getByText("Vencido")).toBeInTheDocument();
-    expect(within(region).getByText("Solicitado")).toBeInTheDocument();
-    expect(within(region).getByText("Eva Vencida")).toBeInTheDocument();
+    // Ambos estados quedan visibles y diferenciados en la misma cola. SLT-102: se leen en su
+    // fila, porque «Solicitado» es también el rótulo de la columna de la fecha.
+    expect(within(filaDe(region, "Eva Vencida")).getByText("Vencido")).toBeInTheDocument();
+    expect(within(filaDe(region, "Sol Solicita")).getByText("Solicitado")).toBeInTheDocument();
   });
 
   it("R16: la acción DIFERENCIADA 'Destrabar cierre vencido' aparece SOLO en las filas 'vencido'", () => {
@@ -1608,5 +1649,229 @@ describe("CierresAdminModule", () => {
     expect(
       within(region).queryByText("Bloqueante hasta re-solicitud"),
     ).toBeNull();
+  });
+});
+
+// =================================================================================================
+// SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (T4.2) — el montaje de la cola
+// única en `/cierres-admin`. Literales escritos a mano (canvas `ColaCierres.dc.html` + `money()`).
+// =================================================================================================
+
+const ZONA_HEREDIA = "11111111-1111-4111-8111-111111111111";
+const DIANA = "22222222-2222-4222-8222-222222222222";
+const CATALOGO_COLA: CatalogoFiltrosCierresDTO = {
+  zonas: [{ id: ZONA_HEREDIA, nombre: "Bodega Heredia" }],
+  mensajeros: [{ id: DIANA, nombre: "Diana Mora", zonaId: ZONA_HEREDIA }],
+  mensajerosFiltro: [{ id: DIANA, nombre: "Diana Mora", zonaId: ZONA_HEREDIA }],
+};
+
+/** Un aprobado con pendiente de pago (R103): «Pendiente ₡47.500» y «Registrar pago». */
+const APROBADO_CON_PENDIENTE = makeResumen({
+  cierreId: "c-pago",
+  estado: "aprobado",
+  mensajeroNombre: "Diego Mensajero",
+  resueltoAt: "2026-11-07T01:30:00.000Z",
+  pendientePagoMensajero: "47500.00",
+});
+
+describe("SLT-102 — la cola única en /cierres-admin (R99, R103, R106, R107)", () => {
+  it("R99: los conteos de las pestañas salen del `total` del servidor, no de las filas", () => {
+    renderModule({
+      pendientes: [makeResumen({ cierreId: "p1" })],
+      historico: [makeResumen({ cierreId: "h1", estado: "aprobado" })],
+      totalPendientes: 37,
+      totalHistorico: 12,
+      pageSize: 10,
+    });
+    const lista = screen.getByRole("tablist", { name: "Cierres del día por estado" });
+    expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Pendientes 37",
+      "Resueltos 12",
+    ]);
+    // Arranca en Pendientes (R99).
+    expect(within(lista).getByRole("tab", { name: "Pendientes 37" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("R106/R107: la central ve la descripción de su rol y la cola, sin comprobantes", () => {
+    renderModule({ pendientes: [makeResumen({ cierreId: "p1" })], audiencia: "admin" });
+    expect(
+      screen.getByText("Bodega central. Revisa el cierre de cada mensajero y apruébalo o recházalo."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Pendientes de decisión" })).toBeInTheDocument();
+    expect(screen.queryByText(/^Comprobante del cierre de/)).toBeNull();
+    expect(
+      screen.getByText("Un cierre vencido se puede destrabar como excepción."),
+    ).toBeInTheDocument();
+  });
+
+  it("R106: la satélite ve la de su bodega con el nombre de su zona", () => {
+    renderModule({ audiencia: "satelite", zonaNombre: "Limón" });
+    expect(
+      screen.getByText(
+        "Bodega satélite · Limón. Revisa el cierre de cada mensajero de tu bodega y apruébalo o recházalo.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("R99/R100: cambiar de pestaña conserva el filtro puesto y la página de cada lista", async () => {
+    const user = userEvent.setup();
+    renderModule({
+      pendientes: [makeResumen({ cierreId: "p1", mensajeroNombre: "Diana Mora" })],
+      totalPendientes: 60,
+      catalogoFiltros: CATALOGO_COLA,
+    });
+
+    // Un filtro por mensajero: la barra es una sola para las dos pestañas.
+    const barra = screen.getByRole("region", { name: "Filtros de los cierres del día" });
+    await user.click(within(barra).getByRole("button", { name: /^Filtros/ }));
+    await user.click(
+      within(await screen.findByRole("listbox", { name: "Filtros" })).getByRole("option", {
+        name: "Mensajero",
+      }),
+    );
+    await user.keyboard("{Escape}");
+    await user.click(within(barra).getByRole("button", { name: /Mensajero/ }));
+    await user.click(await screen.findByRole("option", { name: "Diana Mora" }));
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() =>
+      expect(historicoPaginadoMock).toHaveBeenCalledWith(
+        expect.objectContaining({ filtros: { mensajeroIds: [DIANA] } }),
+      ),
+    );
+
+    // A la página 2 de Pendientes, ya filtrada.
+    await user.click(
+      within(
+        screen.getByRole("navigation", { name: "Paginación de los cierres del día pendientes" }),
+      ).getByRole("button", { name: "Página siguiente" }),
+    );
+    await vi.waitFor(() =>
+      expect(pendientesPaginadoMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2, filtros: { mensajeroIds: [DIANA] } }),
+      ),
+    );
+
+    await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
+    expect(screen.getByRole("region", { name: "Histórico" })).toBeInTheDocument();
+    // La barra sigue montada y con su filtro.
+    expect(
+      within(screen.getByRole("region", { name: "Filtros de los cierres del día" })).getByRole(
+        "button",
+        { name: "Mensajero: Diana Mora" },
+      ),
+    ).toBeInTheDocument();
+    expect(historicoPaginadoMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filtros: { mensajeroIds: [DIANA] } }),
+    );
+
+    await user.click(screen.getByRole("tab", { name: /^Pendientes/ }));
+    const navDeVuelta = screen.getByRole("navigation", {
+      name: "Paginación de los cierres del día pendientes",
+    });
+    expect(within(navDeVuelta).getByRole("button", { current: "page" })).toHaveTextContent("2");
+    expect(pendientesPaginadoMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, filtros: { mensajeroIds: [DIANA] } }),
+    );
+  });
+
+  it("R103: «Registrar pago» abre el diálogo de hoy sin «Ahora no» y tras registrar relee las listas", async () => {
+    const user = userEvent.setup();
+    registrarPagoMock.mockResolvedValue({
+      status: "ok",
+      pago: {
+        id: "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c",
+        monto: "47500.00",
+        metodo: "SINPE",
+        referencia: "SINPE-99887766",
+        nota: "Liquidación",
+        fechaPago: "2026-11-07",
+        registradoPorNombre: "Ana Maestra",
+        registradoAt: "2026-11-07T15:04:05.000Z",
+        esDeReparto: false,
+        anulacion: null,
+      },
+      restante: "0.00",
+    });
+    renderModule({
+      historico: [APROBADO_CON_PENDIENTE],
+      audiencia: "admin",
+      puedeRegistrarPago: true,
+    });
+
+    const region = await irAResueltos(user);
+    const fila = filaDe(region, "Diego Mensajero");
+    expect(within(fila).getByText("Pendiente ₡47.500")).toBeInTheDocument();
+
+    await user.click(
+      within(fila).getByRole("button", { name: "Registrar pago del cierre de Diego Mensajero" }),
+    );
+    const dialogo = await screen.findByRole("dialog", { name: "Registrar pago a Diego Mensajero" });
+    expect(within(dialogo).getByLabelText(/^Monto/)).toHaveValue("47500.00");
+    expect(within(dialogo).queryByRole("button", { name: "Ahora no" })).toBeNull();
+
+    const lecturasAntes = historicoPaginadoMock.mock.calls.length;
+    await user.click(within(dialogo).getByRole("button", { name: "Registrar pago" }));
+
+    await vi.waitFor(() =>
+      expect(registrarPagoMock).toHaveBeenCalledWith(
+        expect.objectContaining({ cierreId: "c-pago", monto: "47500.00" }),
+      ),
+    );
+    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(historicoPaginadoMock.mock.calls.length).toBeGreaterThan(lecturasAntes),
+    );
+  });
+
+  it("R103: cerrar el diálogo sin registrar no cambia nada", async () => {
+    const user = userEvent.setup();
+    renderModule({
+      historico: [APROBADO_CON_PENDIENTE],
+      audiencia: "admin",
+      puedeRegistrarPago: true,
+    });
+    const region = await irAResueltos(user);
+    await user.click(
+      within(filaDe(region, "Diego Mensajero")).getByRole("button", {
+        name: "Registrar pago del cierre de Diego Mensajero",
+      }),
+    );
+    await screen.findByRole("dialog", { name: "Registrar pago a Diego Mensajero" });
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Registrar pago a Diego Mensajero" })).toBeNull(),
+    );
+    expect(registrarPagoMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R34: la satélite no ve «Pago entregado» ni «Registrar pago», aunque le llegara el permiso", async () => {
+    const user = userEvent.setup();
+    renderModule({
+      historico: [APROBADO_CON_PENDIENTE],
+      audiencia: "satelite",
+      puedeRegistrarPago: true,
+    });
+    const region = await irAResueltos(user);
+    expect(within(region).queryByRole("columnheader", { name: "Pago entregado" })).toBeNull();
+    expect(within(region).queryByText("Pendiente ₡47.500")).toBeNull();
+    expect(within(region).queryByRole("button", { name: /^Registrar pago/ })).toBeNull();
+  });
+
+  it("R34: la central sin permiso de pagar ve «Pago entregado» pero no «Registrar pago»", async () => {
+    const user = userEvent.setup();
+    renderModule({
+      historico: [APROBADO_CON_PENDIENTE],
+      audiencia: "admin",
+      puedeRegistrarPago: false,
+    });
+    const region = await irAResueltos(user);
+    expect(
+      within(filaDe(region, "Diego Mensajero")).getByText("Pendiente ₡47.500"),
+    ).toBeInTheDocument();
+    expect(within(region).queryByRole("button", { name: /^Registrar pago/ })).toBeNull();
   });
 });

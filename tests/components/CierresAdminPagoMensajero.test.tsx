@@ -275,7 +275,7 @@ async function abrirDetalleDelHistorico(
   // parte del gesto. Es lo que hace el usuario, y por eso el helper lo hace en vez de buscar el
   // panel escondido (que sigue montado, para no perder su paginación, pero fuera del árbol de
   // accesibilidad mientras no es el visible).
-  await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+  await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
   await user.click(
     within(screen.getByRole("region", { name: "Histórico" })).getByRole("button", {
       name: /^Ver el cierre resuelto de/,
@@ -302,7 +302,7 @@ async function irAPago(user: ReturnType<typeof userEvent.setup>, detalle: HTMLEl
  * el gesto real del usuario.
  */
 async function verHistorico(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+  await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
   return screen.getByRole("region", { name: "Histórico" });
 }
 
@@ -685,7 +685,7 @@ describe("T E.2/R28 — los CUATRO estados del cierre", () => {
     const enCola = estado === "solicitado" || estado === "vencido";
     renderModule(enCola ? { pendientes: [cierre] } : { historico: [cierre] });
 
-    if (!enCola) await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+    if (!enCola) await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
     const region = screen.getByRole("region", {
       name: enCola ? "Pendientes de decisión" : "Histórico",
     });
@@ -810,7 +810,9 @@ describe("T E.3/R26 — columna «pendiente de liquidar» en el listado", () => 
     // El importe se PINTA, no se calcula: sale del STRING del servidor. FICHA 359: el `,50`
     // se pinta, así que la deuda se lee tal cual la mandó el servidor. Con la 230 esta misma
     // fila decía `₡1.235`, medio colón por encima de lo que de verdad se debe.
-    expect(within(region).getByText("₡1.234,50")).toBeInTheDocument();
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R103): en la celda «Pago
+    // entregado», como «Pendiente <monto>».
+    expect(within(region).getByText("Pendiente ₡1.234,50")).toBeInTheDocument();
   });
 
   it("los TRES casos se distinguen entre sí (no es una etiqueta fija)", async () => {
@@ -839,13 +841,21 @@ describe("T E.3/R26 — columna «pendiente de liquidar» en el listado", () => 
       ],
     });
 
-    // Un comprobante por cierre, en el orden que devolvió el servidor. Los tres se distinguen
-    // por lo que su cabecera dice del pago, sin abrir ninguno.
+    // Una fila por cierre, en el orden que devolvió el servidor. Los tres se distinguen por lo que
+    // su celda «Pago entregado» dice del pago, sin abrir ninguno. SLT-102: filas de la tabla
+    // «Histórico» (antes, `listitem` de la tira de comprobantes).
     await verHistorico(user);
-    const filas = within(
-      screen.getByRole("list", { name: "Histórico" }),
-    ).getAllByRole("listitem");
+    const tabla = screen.getByRole("table", { name: "Histórico" });
+    const filas = within(tabla)
+      .getAllByRole("row")
+      .filter((r) => within(r).queryAllByRole("cell").length > 0);
     expect(filas).toHaveLength(3);
+    const columna = within(tabla)
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent)
+      .indexOf("Pago entregado");
+    const pagoEntregado = (fila: HTMLElement) =>
+      within(fila).getAllByRole("cell")[columna].textContent;
 
     // ⚠️ Feature 230 de `dev`, consecuencia A2 en su forma más incómoda: una deuda REAL de
     // diez céntimos se pinta `₡0`. El comprobante sigue distinguiéndose del liquidado —uno
@@ -873,6 +883,10 @@ describe("T E.3/R26 — columna «pendiente de liquidar» en el listado", () => 
     // la etiqueta de «al día».
     expect(filas[2].textContent).not.toContain(PAGO_MENSAJERO_TEXTO.sinPendiente);
     expect(filas[2].textContent).not.toContain(PAGO_MENSAJERO_TEXTO.pendiente);
+    // SLT-102 (R103): en la tabla, la celda existe y su «nada» vuelve a ser el guion.
+    expect(pagoEntregado(filas[0])).toMatch(/^Pendiente ₡0/);
+    expect(pagoEntregado(filas[1])).toBe(PAGO_MENSAJERO_TEXTO.sinPendiente);
+    expect(pagoEntregado(filas[2])).toBe("—");
   });
 
   it("R28 — la COLA no muestra pendiente: sus cierres no están aprobados", () => {
@@ -900,6 +914,9 @@ describe("R14 — ni un `Number(` ni un `parseFloat` sobre montos en esta tanda"
     "app/(app)/cierres-admin/_components/pago-mensajero-labels.ts",
     "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
     "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx",
+    // SLT-102: la cola única pinta el pendiente y el pago desde la fila.
+    "components/private/cierres/cola/ColaCierres.tsx",
+    "components/private/cierres/cola/cola-cierres-vista.ts",
   ])("%s no convierte dinero a número", (ruta) => {
     const codigo = codigoSinComentarios(ruta);
     for (const prohibida of LLAMADAS_PROHIBIDAS_EN_DINERO) {
