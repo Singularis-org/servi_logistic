@@ -1,15 +1,16 @@
 # SLT-118 — planes-facturar-periodo-en-curso · tasks.md
 
-> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R38). P1–P11 cerradas; **P12–P16 abiertas**
-> (cambio de fondo del 2026-11-10: periodicidad de órdenes por plan). El spec debe re-aprobarse antes de seguir.
+> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R40). P1–P16 cerradas; **P17 y P18 abiertas**
+> (cuota por adelantado del 2026-11-10; tocan solo R28 y el corte al aplicar de R16, en T2.5 y T6.2). El spec
+> debe re-aprobarse antes de seguir.
 > Capa: `backend_dev` (`db/`, `lib/`, `app/api/`, `scripts/`, `tests/`), salvo T11.4 y T14.4, que tocan
 > pantallas del superadmin (dos confirmaciones y un selector del formulario del plan).
-> Un solo PR (pendiente P16); los bloques solo ordenan el trabajo.
+> Un solo PR (49 archivos, P16); los bloques solo ordenan el trabajo.
 >
-> **Estado de la tanda 1.** T1 (`d237afe7`) y T2 (`0e58af60`) están hechas con el diseño de antes. Lo que se
-> conserva y lo que se rehace está en design §0; aquí, en T1.3 y T2.4–T2.6. Sus casillas quedan marcadas y las
-> nuevas, sin marcar. Los tres desvíos de la tanda 1 (prefijo `20261111`, `factura_plataforma_abrir`, CHECK más
-> estricto) quedan aceptados (design §0.1).
+> **Estado de la tanda 1.** T1 (`d237afe7`) y T2 (`0e58af60`) están hechas con el diseño de antes (cuota a
+> período vencido, factura por período de cobro). Lo que se conserva y lo que se rehace está en design §0; aquí,
+> en T1.3 y T2.4–T2.6. Sus casillas quedan marcadas y las nuevas, sin marcar. Los tres desvíos de la tanda 1
+> (prefijo `20261111`, `factura_plataforma_abrir`, CHECK más estricto) quedan aceptados (design §0.1).
 
 ## Bloque A — Facturas, cierre y toma del cambio
 
@@ -17,9 +18,10 @@
 - [x] **T1.1** `db/schema.prisma`: modelo `FacturaPlataforma`, relación inversa, `factura_plataforma_cerrar` en
   `JobTipo` (`d237afe7`).
 - [x] **T1.2** `lib/db/modelos-de-negocio.ts`: la entrada nueva (`d237afe7`).
-- [ ] **T1.3** *(rehacer)* `db/schema.prisma`: `FacturaPlataforma.periodicidad` (`String`, comentario del CHECK)
-  y `Plan.periodicidadOrdenes` (`@default("quincenal") @map("periodicidad_ordenes")`, comentario del CHECK)
-  (design §1.1, §1.2, §0.3).
+- [ ] **T1.3** *(rehacer)* `db/schema.prisma`: `FacturaPlataforma.periodicidad` (`String`, comentario del CHECK),
+  las cinco columnas del plan y el tramo de la cuota (`cuotaPlanId`, `cuotaPlanNombre`, `cuotaTipoCobro`,
+  `cuotaDesdeAt`, `cuotaHastaAt`) y la marca `primeraCuotaDesdeAt`; y `Plan.periodicidadOrdenes`
+  (`@default("quincenal") @map("periodicidad_ordenes")`, comentario del CHECK) (design §1.1, §1.2, §0.3).
 - **Hecho:** `pnpm run typecheck` verde.
 - Depende de: nada.
 
@@ -28,23 +30,28 @@
 - [x] **T2.2** `db/migrations/20261111130100_factura_plataforma/migration.sql` con el diseño de antes (`0e58af60`).
 - [x] **T2.3** Su `down.sql` (`0e58af60`).
 - [ ] **T2.4** *(rehacer, en `20261111130100/migration.sql`)*: `plan.periodicidad_ordenes` con su `DEFAULT
-  'quincenal'` y su CHECK (R35); `factura_plataforma.periodicidad` con su CHECK; el trigger de inmutabilidad
-  congela también `periodicidad` en una `por_cerrar`.
+  'quincenal'` y su CHECK (R35); `factura_plataforma.periodicidad`, las cinco columnas de la cuota y la marca
+  `primera_cuota_desde_at`; los CHECK de design §1.1 (el grupo de la cuota de 9 columnas, **sin** «sin plan, sin
+  cuota»; las columnas nuevas de la cuota solo en la cerrada); el trigger de inmutabilidad congela también
+  `periodicidad` en una `por_cerrar` y deja la marca solo de nula a un valor.
 - [ ] **T2.5** *(rehacer, mismo archivo)*: `abrir` copia la periodicidad (la del plan, o `quincenal`); `avanzar`
-  saca el fin natural de la periodicidad de la factura (R2); `tomar_cambio` pone también la periodicidad del plan
-  nuevo, en R16 y en la factura que abre R28; `cifras` sin `p_hasta`, con la cuota solo si el `desde` es inicio
-  del período de cobro, el tramo de R29 hasta el fin del período de cobro y sin cuota en los demás (design
-  §2.4); `cerrar` y `en_curso` con la firma nueva; `en_curso` con el fin previsto por la periodicidad y la
-  periodicidad en el JSON; la siembra desde el inicio del corte en curso de su periodicidad (R26).
-- [ ] **T2.6** *(rehacer, `down.sql`)*: `DROP FUNCTION` de `cifras` con la firma nueva y `ALTER TABLE "plan" DROP
-  COLUMN "periodicidad_ordenes"` (R27).
+  saca el fin natural de la periodicidad de la factura (R2); `tomar_cambio` con `p_ahora`: pone la periodicidad
+  del plan nuevo en R16 y en la factura que abre R28, y en una primera asignación la marca de la primera cuota (en
+  la emitida en D si no está cerrada; si no, corte al aplicar, propuesta P18; en R28, en la sin plan fijada en E,
+  propuesta P17) (design §2.3); `cifras` se sustituye por `ordenes` y `cuota` (design §2.4: cuota de la emisión
+  con el plan de la factura siguiente, primera cuota con la marca, un período una sola vez); `cerrar` con la
+  espera de R39 y la regla de §2.4; `en_curso` con el fin previsto por la periodicidad, la periodicidad en el JSON
+  y la cuota prevista de la emisión con el cambio pendiente (R24); la siembra desde el inicio del corte en curso,
+  sin marca (R26, P15).
+- [ ] **T2.6** *(rehacer, `down.sql`)*: `DROP FUNCTION` con las firmas nuevas (`tomar_cambio` con `p_ahora`,
+  `ordenes`, `cuota`; sin `cifras`) y `ALTER TABLE "plan" DROP COLUMN "periodicidad_ordenes"` (R27).
 - **Hecho:** `pnpm run db:migrate` y `pnpm run db:rollback` en una base desechable: la vuelta deja
   `wallet_movimiento_tope_pago_plataforma` igual a la de `20261024140000` (`pg_get_functiondef`) y `plan` sin la
   columna; con una cerrada con cuota el rollback se niega sin cambiar nada.
 
 ### T3 — Toma del cambio de plan (depende de T2)
 - [ ] **T3.1** `lib/repositories/PlanesRepository.ts`: en `aplicarEnTx`, `factura_plataforma_tomar_cambio` con el
-  efecto, el plan y el tipo nuevos, antes del `UPDATE "organizacion"` (design §2.3).
+  efecto, el plan y el tipo nuevos y `now()`, antes del `UPDATE "organizacion"` (design §2.3).
 - **Hecho:** los tests de planes existentes siguen verdes (`pnpm exec vitest related --run
   lib/repositories/PlanesRepository.ts`, salvo los que ajusta T12.3) y ningún cambio aplicado mueve el fin de
   una factura con plan.
@@ -69,12 +76,14 @@
 
 ### T6 — Tests del bloque A (dependen de T2–T4) [P entre sí]
 - [ ] **T6.1** `tests/integration/db/factura-plataforma-cierre.test.ts`: R1–R9, R11, R14, R26, R27, con las
-  empresas de design §8 (sin plan quincenal; mensual con órdenes quincenales: cuota en la del 1 y ninguna en la
-  del 16; anual con órdenes mensuales: cuota solo el 1 de enero; siembra: mensual completa y anual de 61 de 365).
+  empresas de design §8 (sin plan quincenal; mensual con órdenes quincenales: la cuota del mes en la emitida el 1
+  y ninguna en la emitida el 16; anual con órdenes mensuales: la cuota solo en la emitida el 1 de enero; siembra
+  P15: ninguna cuota del período en curso, la primera en el próximo inicio de cada tipo).
 - [ ] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (pendiente por SQL a mitad de
-  período: sin cuota), R15–R17, R28, R29 (anual desde el 18 con órdenes quincenales: 44 de 365 en la del 18 y
-  ninguna en diciembre), R30 por P9 (depende de T11.2), R33, R36 y R38 (dependen de T14.2), con los casos de
-  design §8 y `SL118` al cambiar la periodicidad de una `por_cerrar`.
+  período), R15–R17, R28 (P17), R29 (anual desde el 18 con órdenes quincenales: 44 de 365 en la emitida el 18 y
+  ninguna en diciembre), R16 (corte al aplicar, P18; alta con órdenes 0; marca en la emitida el 16 por la cola),
+  R39 (espera del cierre), R30 por P9 (depende de T11.2), R33, R36 y R38 (dependen de T14.2), con los casos de
+  design §8 y `SL118` al cambiar la periodicidad o una marca ya puesta de una `por_cerrar`.
 - [ ] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29.
 - [ ] **T6.4** `tests/unit/planes/jobs-factura-plataforma.test.ts`: R3, R12, R25.
 - [ ] **T6.5** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: R13, R21–R23, con dos empresas.
@@ -96,9 +105,11 @@
 - **Hecho:** typecheck verde; cubierto por T9.2.
 
 ### T9 — Tests del bloque B (dependen de T7, T8) [P entre sí]
-- [ ] **T9.1** `tests/integration/db/factura-plataforma-deuda.test.ts`: R18–R20.
-- [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (en curso con cuota
-  prevista y otra sin cuota, la del 16 de un plan mensual; la proporcional de R29; `42501` con otra empresa).
+- [ ] **T9.1** `tests/integration/db/factura-plataforma-deuda.test.ts`: R18–R20 y R40 (un cambio aplicado tras
+  emitir una cuota no la devuelve ni baja la deuda).
+- [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (plan mensual: la del 16
+  al 30 con la cuota de diciembre prevista y la del 1 al 15 sin cuota; la prevista con el plan de un cambio
+  pendiente; la primera cuota de una marca; `42501` con otra empresa).
 - [ ] **T9.3** `tests/unit/utils/deuda-plataforma.test.ts`: el caso `cuota` (R18).
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`.
 
@@ -160,13 +171,14 @@
 
 ### T10 — Documentación y gate (depende de todo)
 - [ ] **T10.1** `docs/architecture.md > Multi-empresa`: párrafo «Facturas de la plataforma (SLT-118)»: tabla,
-  quién escribe, una factura por corte con la periodicidad de órdenes del plan (sin plan, quincenal), la cuota en
-  la factura que empieza su período de cobro, cierre, toma del cambio sin corte, deuda. Y en «Planes y límites»:
+  quién escribe, una factura por corte con la periodicidad de órdenes del plan (sin plan, quincenal), la cuota
+  por adelantado en la factura emitida al empezar su período (con el plan de la siguiente), la primera cuota, la
+  espera del cierre al cambio pendiente, sin devoluciones, toma del cambio sin corte, deuda. Y en «Planes y límites»:
   la periodicidad de órdenes del plan y la regla de R37; que el costo base deja de ser solo informativo al cerrar
   (sustituye a SLT-66 R21 y a SLT-86 R14 en lo que toca a la cuota); el prorrateo solo en la primera con plan
   (P6); y que el cambio del superadmin rige al inicio del próximo período del tipo de referencia (P7, P9, P10;
   modifica SLT-86 R16–R18).
-- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R38).
+- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R40).
 - [ ] **T10.3** `./init.sh` verde; en local, `pnpm exec playwright test --project=dinero` y
   `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` en base desechable (`docs/perfil-agentes.md`).
 - **Hecho:** los tres verdes y el mapa sin huecos.
@@ -180,9 +192,9 @@
 | R10 | `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
 | R12, R25 | `tests/unit/planes/jobs-factura-plataforma.test.ts` |
 | R13, R21, R23, R24 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` |
-| R15, R16, R17, R28, R36, R38 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R15, R16, R17, R28, R36, R38, R39 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
 | R18 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` |
-| R19, R20 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
+| R19, R20, R40 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
 | R22 | `tests/integration/db/factura-plataforma-aislamiento.test.ts`, `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` |
 | R29 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
 | R30 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
@@ -248,9 +260,8 @@
 49 archivos (122 % de `max_archivos` = 40). Los 44 aceptados con P11 (con las migraciones ya en `20261111`)
 más 5 por la periodicidad del plan: `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`, `PlanForm.tsx`,
 `tests/components/PlanFormPeriodicidad.test.tsx` y `tests/integration/db/planes-periodicidad-ordenes.test.ts`.
-**Pendiente de aceptación (P16)**; el corte propuesto, si no se acepta, saca esos 5 (y R36–R37) a una ficha
-aparte y deja 44. Líneas estimadas ~2 400, por encima de `max_lineas` = 1 000 (aceptado con P5 y P7; el aumento
-entra en P16). Choque al mergear con SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y
+**Aceptados con P16.** La cuota por adelantado no suma archivos (todo cae en la migración, el esquema, los tipos y
+los tests ya listados). Líneas estimadas ~2 600, por encima de `max_lineas` = 1 000 (aceptado con P5, P7 y P16). Choque al mergear con SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y
 cambia de plan» (PR #115) en `lib/repositories/PlanesRepository.ts`,
 `lib/interfaces/repositories/IPlanesRepository.ts`, `lib/types/planes.ts` y `lib/db/excepciones-aislamiento.ts`
 (design §10).
