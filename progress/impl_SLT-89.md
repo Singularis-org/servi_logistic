@@ -744,3 +744,13 @@ Verificación (`logistic_slt89`, `--maxWorkers=1`, heap de 8 GB): `typecheck` ex
 `zona-nodo-*`, `slt89-equivalencia-cr`, `slt46-*`, `grupo-nodo`, `tarifas-flexibles-resolver` y contrato
 v1 (modo comparar), 39 archivos → `Tests 1 failed | 295 passed (296)`: el único rojo es el R44 de arriba.
 Unitarios con dobles del catálogo y guardias de catálogo, geografía y SQL (19 archivos) → `185 passed`.
+
+### R44 de SLT-46, aplicado tras la decisión del 2026-11-10 (`25baf6ec`)
+
+Cambio mínimo autorizado en `slt46-nodo-copia-vieja.test.ts`:
+- un segundo extractor (`cuerpoReemplazado`) que reconoce `CREATE OR REPLACE FUNCTION`;
+- el `prosrc` esperado de `orden_nodo_geografico` sale de `20261110130000_slt89_zona_nodo/migration.sql`;
+- título nuevo y un comentario que cita la decisión.
+
+Lo demás del caso no se tocó. Ese archivo + `geo-explain-analitica` (`logistic_slt89`, `--maxWorkers=1`) →
+`Test Files 2 passed (2) · Tests 20 passed (20)`; eslint limpio.
