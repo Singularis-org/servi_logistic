@@ -59,7 +59,7 @@
       §2.4, §7).
   - **Hecho:** `tests/integration/db/bug-report.test.ts` en verde con `DATABASE_URL` (un verde sin base
     no vale, `docs/verification.md`). Incluye el ajuste del `Object.keys(r)` de SLT-97.
-- [ ] **T7. Subida, envío y correo** (dep. T4, T6; R9–R14, R20, R21).
+- [x] **T7. Subida, envío y correo** (dep. T4, T6; R9–R14, R20, R21).
   - **Archivos:**
     - `lib/interfaces/services/IReporteBugService.ts`: `prepararSubidas` e `imagenes_invalidas`;
     - `lib/services/ReporteBugService.ts`: `prepararSubidas` y `enviar` (design §5);
