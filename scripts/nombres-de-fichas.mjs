@@ -28,7 +28,9 @@ export function sinCodigo(texto) {
 }
 
 /**
- * Keys de este board nombradas sin su título en `texto`.
+ * Keys de este board que no llevan su título en NINGUNA mención de `texto`. Basta con una mención
+ * `<key> «<title>»` por mensaje: las siguientes de esa key pueden ir solas (decisión del humano,
+ * 2026-11-10: el hook corre cuando el humano ya ve el mensaje y cada bloqueo se lo duplicaba).
  * @param {string} texto el mensaje del agente
  * @param {{ titulos?: Map<string, string>, prefijos?: string[] }} board
  *   `titulos`: key -> title de la copia del board; `prefijos`: los del tracker (`tracker.prefijo`,
@@ -39,6 +41,7 @@ export function keysSinTitulo(texto, { titulos = new Map(), prefijos = [] } = {}
   const prosa = sinCodigo(texto);
   const esDelBoard = (k) => titulos.has(k) || prefijos.includes(k.slice(0, k.lastIndexOf('-')));
   const sueltas = [];
+  const conTitulo = new Set();
   for (const m of prosa.matchAll(KEY)) {
     const key = m[0];
     const antes = prosa[m.index - 1] ?? '';
@@ -46,17 +49,17 @@ export function keysSinTitulo(texto, { titulos = new Map(), prefijos = [] } = {}
     if (/[A-Za-z0-9/_.-]/.test(antes)) continue; // parte de una palabra, ruta o rama
     if (/^-[A-Za-z]/.test(despues) || /^[A-Za-z0-9]/.test(despues)) continue; // rama o carpeta
     if (!esDelBoard(key)) continue;
-    if (/^\s*«/.test(despues)) continue; // ya va como `<key> «<title>»`
-    if (!sueltas.includes(key)) sueltas.push(key);
+    if (/^\s*«/.test(despues)) conTitulo.add(key); // va como `<key> «<title>»`
+    else if (!sueltas.includes(key)) sueltas.push(key);
   }
-  return sueltas;
+  return sueltas.filter((k) => !conTitulo.has(k));
 }
 
 /** El motivo que lee el agente cuando el hook bloquea: con los títulos que se conocen. */
 export function motivoDeBloqueo(sueltas, titulos = new Map()) {
   const lineas = sueltas.map((k) => (titulos.has(k) ? `${k} «${titulos.get(k)}»` : `${k} «<su title en feature_list.json>»`));
   return (
-    `Nombraste ${sueltas.join(', ')} sin su título. Regla 9 de CLAUDE.md: una key nunca va sola en lo que lee ` +
-    `el humano, va como <key> «<title>». Reescribe tu último mensaje entero usando: ${lineas.join('; ')}.`
+    `Nombraste ${sueltas.join(', ')} sin su título en ninguna mención. Regla 9 de CLAUDE.md: cada key va al menos ` +
+    `una vez por mensaje como <key> «<title>». Reescribe tu último mensaje entero usando: ${lineas.join('; ')}.`
   );
 }
