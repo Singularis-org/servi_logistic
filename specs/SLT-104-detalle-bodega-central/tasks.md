@@ -141,13 +141,13 @@
 
 ## T5 — Tests y guardias que cambian · `frontend_dev` (depende de T4.1)
 
-- [ ] **T5.1** — Adaptar, sin quitar lo que vigilan, los tests de componentes de T0.1 (lista en
+- [x] **T5.1** — Adaptar, sin quitar lo que vigilan, los tests de componentes de T0.1 (lista en
   `## Archivos esperados`), con los **mismos importes**: agregado → «Dinero»/cifras; cada cierre del
   día → su fila de «Mensajeros»; gestiones → «Gestiones». Lo que vigilaban de cada cierre del día y
   el detalle de bodega ya no pinta se lleva al detalle de mensajero (PA1 = a) o se anota como
   vigilancia retirada con su motivo.
   **Hecho:** verdes; en `impl_SLT-104.md`, una línea por archivo «antes leía X, ahora lee Y».
-- [ ] **T5.2** [P] — Guardias: `cierre-bodega-vocabulario` (censo ampliado a los dos `.tsx` nuevos;
+- [x] **T5.2** [P] — Guardias: `cierre-bodega-vocabulario` (censo ampliado a los dos `.tsx` nuevos;
   autocomprobación apuntada a ellos; los cuatro censos sin aflojar), `cascada-central-en-las-dos-
   pantallas` (verde sin cambios o ajustada según T0.1), `superficie-de-uso`, y
   `liquidacion-money-safe` (sin cambios: el censo ya cubre `components/private/cierres/`).

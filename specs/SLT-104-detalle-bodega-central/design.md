@@ -322,8 +322,9 @@ esperados` y se avisa):
   `CierreBodegaFacturaResumen` de la cola, que S6 no toca. T0.1 confirma que sigue verde sin
   cambios; si mira el cuerpo del modal (p. ej. cuenta usos de `lineasCascadaCentral`), se ajusta
   para que mire `detalle-cierre-vista.ts` (`cuentaCentral`).
-- `liquidacion-money-safe`: su censo ya cubre `components/private/cierres/` (S1); los dos `.tsx`
-  nuevos caen dentro sin tocarla. Contraprueba en T5.
+- `liquidacion-money-safe`: su barrido recorre `components/private/cierres/` (S1) y exige que todo
+  archivo de ese árbol esté en `ARCHIVOS_DE_LA_FEATURE`, así que los dos `.tsx` nuevos se censan ahí
+  (corregido en T5: no caían dentro sin tocarla). Contraprueba en T5.
 - `superficie-de-uso`: anotaciones `@sin-superficie` que pida T0.1.
 - E2E:
   - `e2e/cierre-bodega-satelite.spec.ts` (paso 2 y 3, modelo viejo): del modal a la región del

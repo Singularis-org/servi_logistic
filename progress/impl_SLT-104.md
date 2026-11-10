@@ -352,3 +352,73 @@ F6 igual · F7 igual · F8 igual · F9 igual (columnas, orden, señal ámbar, «
    es un portal). Probado con dobles; lo confirma el E2E de T6.2.
 
 Veredicto: T2-T4 hechos; detalle único de bodega montado fiel al canvas con las desviaciones de su tabla y 9 mutaciones en rojo; quedan para T5 los 5 tests del modal viejo y 2 guardias.
+
+## Tanda 3 — T5 y ABIERTOS de la tanda 2 (frontend_dev, 2026-11-10)
+
+### ABIERTOS de la tanda 2, resueltos por el leader
+
+1. **Título de las cuentas a 15 px.** El canvas usa 15 px en TODOS los títulos de cuenta y de tarjeta:
+   `Main.dc.html` (`{{c.titulo}}` de las cuentas de «Dinero», «Conciliación», «¿A dónde va lo recaudado?», «Por
+   tienda», «Cómo corregir», «Órdenes por volver a gestionar») y `Fila2.dc.html` (las tarjetas de la fila, 6 usos).
+   Ninguno a 14 px. Así que `Cuenta` pasa a `text-[15px]` para todos (sin prop nueva), y también los dos `h3` de
+   `DineroCierre` («¿A dónde va lo recaudado?» y «Por tienda»), que estaban a 14 px contra 15 px del canvas.
+   Ningún test afirmaba el tamaño: no se rompió ninguno.
+2. «Marcó: <fecha>» sin nombre: queda como fallback; anotado en `progress/features/SLT-104.md > Preguntas para Preview`.
+3. `liquidacion-money-safe`: censados `MensajerosCierreBodega.tsx` y `ConciliacionCierreBodega.tsx`; corregida la
+   frase de `design.md > Tests y guardias que cambian`.
+4. «Ver su cierre» en E2E: para T6.2.
+
+### T5.1 — tests adaptados (antes leía X, ahora lee Y)
+
+- `cierre-detalle-ajuste-badge.test.tsx` (SLT-56 R20): antes, la insignia «Con ajustes» en el bloque «Cierre del día ·
+  Ana»; ahora, la señal «1 pago ajustado» en la fila de Ana de «Mensajeros» y «—» en la de Beto (R42, R114). La marca
+  «Ajustado» con su historial y sin «Ajustar pago»: igual, en la pestaña «Gestiones».
+- `CierreBodegaDetalleGestiones.test.tsx` (478): antes, cinco pestañas por mensajero en regiones «Órdenes del cierre ·
+  <X>»; ahora, los filtros por resultado con conteo de todos los cierres del día («Todas 7»… «Con señales 4»), el orden
+  de «Todas» con la columna Mensajero, filtrar, la fila compacta (guía, destinatario · tienda, mensajero, resultado,
+  importes), las tarjetas de la fila desplegada con literales, la marca «Rechazo automático», evidencia (R10-R12), solo
+  lectura (R14-R15) y UNA región de gestiones (R41, R113). R9 compara las tarjetas de la misma gestión en bodega y en
+  la lista del detalle de mensajero (`GestionesCierre` con audiencia central). Retirado: pestañas independientes por
+  mensajero (R41, R113: una lista), la línea de ubicación y «Ingreso de bodega por devoluciones a origen» por gestión
+  (la fila única de SLT-101 en «solo lectura»: R31, R113, canvas `FilaSoloLectura.dc.html`).
+- `CierreBodegaDetalleCascadas.test.tsx` (393): antes, las dos cascadas del modal (agregado y por día) y los paneles
+  «Totales» e «Ingreso de la empresa»; ahora, las tres cuentas de «Dinero» con literales y su cierre al céntimo por
+  `data-signo`, la línea puente (también con 0), las notas (R26, R27, R36, R37, R71), la cifra «Debe llegar a la
+  central», los métodos bajo «Recaudado», las cifras por cierre del día en «Mensajeros» y su suma = agregado (R16),
+  el IVA del agregado (SL-39), el nombre de la empresa (SL-15) y el rótulo del flete del modelo nuevo (SLT-54).
+  Retirado: «Para la tienda» (SLT-95 R16, canvas F6), las cascadas, notas, IVA y rótulos POR cierre del día y su
+  panel de ingreso (R118; viven en el detalle de cada cierre del día, R115), «Transferencia» en cero (SLT-95 R7, D4),
+  la nota de la 393 junto al IVA (la línea se llama «IVA (no es de la empresa)», SLT-95 R16), la nota de «Gana la
+  bodega satélite» en «De lo facturado…» (canvas F6) y el panel de ingreso por concepto (requirements > Lo que NO entra).
+- `CierreBodegaDesglosePorTienda.test.tsx` (396): antes, desglose agregado y por mensajero con marca y notas; ahora,
+  la tabla «Por tienda» del agregado con sus nueve cifras, umbral (2 tiendas sí, 1 no), Q8 (Norte una fila), orden del
+  servidor, homónimas sin fundir, tres cifras por fila, columnas, sumas (recaudado = «Total general»; pago y gana =
+  agregado del contrato escrito a mano), la diferencia de Norte = flete por devolución, cuentas sin cambio y money-safe
+  sobre `DineroCierre`, `detalle-cierre-vista` y el módulo. Retirado: desglose por mensajero (R19, R118, R115), la
+  marca de varias tiendas sobre «Para la tienda» (R1; SLT-95 R16, canvas F6) y las dos notas de cabecera (R17; canvas F6).
+- `DineroIdentidadesEnPantalla.test.tsx` bloque «ficha 393 · B5»: antes, cascadas «de quién»/«central» del modal;
+  ahora, las tres cuentas del Dinero del detalle de bodega (flete + comisión = sale de lo recaudado; + flete por
+  devolución = facturado, y su hueco = 500,75; facturado − IVA − mensajeros − bodega = le queda; recaudado − mensajeros
+  − bodega = debe llegar = tarjeta). Retirado «Para la tienda» (SLT-95 R16, canvas F6).
+
+### T5.2 — guardias
+
+- `cierre-bodega-vocabulario`: censo ampliado a `MensajerosCierreBodega.tsx` y `ConciliacionCierreBodega.tsx` (enteros)
+  y a dos trozos de `detalle-cierre-vista.ts` (`cuentaCentral` y la sección de S6), con su autocomprobación (los trozos se
+  cortan, son de bodega y no arrastran el detalle de mensajero). Los rótulos de la cascada se buscan en
+  `cuentaCentral`; el vocabulario de la conciliación, en el módulo y en la sección de S6. Los cuatro censos, sin aflojar.
+  Contraprueba: un literal «Aprobado» en `ConciliacionCierreBodega.tsx` la pone ROJA (1 fallo).
+- `liquidacion-money-safe`: los dos `.tsx` censados. Contraprueba: `Number(f.recaudado)` en `MensajerosCierreBodega.tsx`
+  la pone ROJA (1 fallo).
+- `cascada-central-en-las-dos-pantallas` y `superficie-de-uso`: verdes sin cambios.
+
+### Salidas
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: `TC_EXIT=0`.
+- `pnpm run lint`: `LINT_EXIT=0`, 0 errores; quitados 5 imports sin uso que dejó la adaptación de B5.
+- `pnpm run test:guardias`: `Tests 4 failed | 4823 passed | 1 skipped`; los 4 son `dependencias-declaradas-presentes`
+  (baseline de la rama, no se toca).
+- Tests tocados y vecinos (16 archivos): `Tests 336 passed (336)`. Los que montan el módulo sin abrir el detalle
+  (descargas, paginación, `GestionesCierre`; 12 archivos): `Tests 112 passed (112)`.
+
+Veredicto: T5 hecho; los cinco tests del modal viejo leen el detalle único con las mismas cifras, y las dos guardias están verdes con contraprueba.
