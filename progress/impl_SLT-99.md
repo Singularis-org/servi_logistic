@@ -223,3 +223,7 @@ Todos los archivos de la tabla existen. R2 y R10–R18 (integración con base) y
 
 ## 2026-11-10 · Correcciones de la revisión (implementer)
 - M1 y m1 en `d7ae12b7`, m2 en `dd7355fd`, m3 en `fe453ac2` (detalle en `progress/review_SLT-99.md > Correcciones`); M2 lo cierra el CI del PR. typecheck y lint en verde; tests tocados y directos en verde; guardias solo con la baseline; 2 casos de integración nuevos sin correr en local (CI).
+
+## 2026-11-10 · CI PR #115: rojo y arreglo (backend_dev)
+- `gate-completo` (run 42868755488) rojo fuera del baseline en `tests/integration/db/mi-plan-cambiar-plan.test.ts`, un caso: «R18 (P5, decisión 2026-11-10): sin plan, el maestro no cancela la primera asignación pendiente → sin_plan sin escribir». Error: `no quedó pendiente: {"estado":"validation_error","fieldErrors":{"vigenteDesde":[SOLO_CON_PLAN]}}`.
+- Causa: fallo del test, no del código. El fixture armaba la primera asignación futura con `vigenteDesde` (fecha de efecto, solo para empresas con plan, SLT-86 R16); la primera asignación lleva `inicioCiclo` (SLT-58 R31). Arreglo: `inicioCiclo: dia(5)`, como `planes-asignacion-inicio-ciclo.test.ts` (R39). Sin cambios en el baseline.

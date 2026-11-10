@@ -496,7 +496,7 @@ describeSiHayBase("SLT-99 — el maestro cambia el plan de su empresa (R2, R10�
       const c = await caso(tx);
       const plan = await c.plan();
       const e = await c.empresa();
-      const primera = await c.servicio.asignar(c.superadmin, { organizacionId: e.id, planId: plan, tipoCobro: "mensual", vigenteDesde: dia(5) });
+      const primera = await c.servicio.asignar(c.superadmin, { organizacionId: e.id, planId: plan, tipoCobro: "mensual", inicioCiclo: dia(5) });
       if (primera.estado !== "ok" || primera.vigenteDesde === null) throw new Error(`no quedó pendiente: ${JSON.stringify(primera)}`);
       const antes = await estado(tx, e.id);
       const res = await planesEnTx(tx).cancelarCambioPorLaEmpresa(e.id, e.maestro);
