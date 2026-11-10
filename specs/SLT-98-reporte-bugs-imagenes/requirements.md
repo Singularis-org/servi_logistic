@@ -28,33 +28,41 @@
   - la acción «Agregar imágenes»;
   - el contador con el texto exacto «{n}/5 imágenes», donde {n} es el número de imágenes del panel (por
     ejemplo, «2/5 imágenes»), seguido de «PNG, JPG o WebP · hasta 5 MB cada una».
-- **R2.** CUANDO el usuario elige imágenes con «Agregar imágenes», el sistema DEBE:
-  - añadir cada una al panel con su miniatura y su acción «Quitar»;
-  - empezar a subir cada una en ese momento, sin esperar a «Enviar», y marcarla «Subiendo…» hasta que
-    termine.
+- **R2.** CUANDO el usuario elige imágenes con «Agregar imágenes», el sistema DEBE añadir cada una al
+  panel con su miniatura y su acción «Quitar». El sistema NO DEBE subir nada al almacenamiento hasta que
+  el usuario pulse «Enviar» (decisión P1).
 - **R3.** MIENTRAS el panel tenga 5 imágenes, el sistema DEBE mantener «Agregar imágenes» deshabilitado.
   SI el usuario elige más imágenes de las que caben, ENTONCES el sistema DEBE añadir las primeras hasta
   llegar a 5 y avisar en el panel cuántas no se añadieron.
 - **R4.** CUANDO el usuario pulsa «Quitar» en una imagen, el sistema DEBE sacarla del panel y del
   reporte, y bajar el contador en uno.
 - **R5.** SI una imagen elegida no es PNG, JPG ni WebP, está vacía o pesa más de 5 MB, ENTONCES el
-  sistema DEBE marcarla en el panel con su motivo, no subirla y ofrecer solo «Quitar».
-- **R6.** SI la subida de una imagen falla, ENTONCES el sistema DEBE marcarla con el aviso de fallo,
-  ofrecer «Reintentar» y «Quitar», y conservar el texto. CUANDO el usuario pulsa «Reintentar», el
-  sistema DEBE volver a subirla.
-- **R7.** MIENTRAS alguna imagen del panel esté subiendo o marcada con un error, el sistema DEBE mantener
-  «Enviar» deshabilitado. MIENTRAS alguna esté marcada con un error, DEBE mostrar el aviso de que hay que
-  quitarla o reintentarla para poder enviar.
+  sistema DEBE marcarla en el panel con su motivo y ofrecer solo «Quitar». Esa imagen nunca se sube.
+- **R6.** CUANDO el usuario pulsa «Enviar» con imágenes, el sistema DEBE subir primero cada imagen al
+  almacenamiento y, solo si todas subieron, mandar el reporte. Mientras sube, «Enviar» DEBE mostrar
+  «Subiendo imágenes…».
+- **R7.** SI la subida de una imagen falla durante el envío, ENTONCES el sistema DEBE:
+  - no mandar el reporte, así que nada se guarda y no sale correo;
+  - marcar esa imagen con el aviso de fallo y las acciones «Reintentar» y «Quitar»;
+  - conservar el texto y las demás imágenes.
+
+  CUANDO el usuario pulsa «Reintentar», el sistema DEBE repetir el envío. Las imágenes que ya subieron
+  en el intento anterior no se suben otra vez: se reutilizan (decisión P1; design §4.2).
+
+  MIENTRAS alguna imagen esté marcada con un error (de R5, de este requisito o de R11), el sistema DEBE
+  mantener «Enviar» deshabilitado y mostrar el aviso de que hay que quitarla o reintentarla para poder
+  enviar.
 - **R8.** El sistema NO DEBE guardar las imágenes en el borrador: al recargar la página o al cerrar la
   pestaña y volver, el panel DEBE mostrar el texto del borrador y ninguna imagen. CUANDO el usuario
   pulsa «Descartar» o el reporte se guarda, el panel DEBE quedar sin imágenes.
 
 **La subida**
 
-- **R9.** CUANDO el panel pide subir una imagen, el sistema DEBE dar un permiso de subida directa al
-  almacenamiento solo si:
+- **R9.** CUANDO el panel pide permiso para subir las imágenes de un envío, el sistema DEBE dar un
+  permiso de subida directa al almacenamiento por imagen, solo si:
   - la petición es de un usuario de empresa;
-  - el tipo declarado es PNG, JPG o WebP y el tamaño declarado va de 1 byte a 5 MB;
+  - pide entre 1 y 5 permisos;
+  - el tipo declarado de cada imagen es PNG, JPG o WebP y su tamaño declarado va de 1 byte a 5 MB;
   - la entrada no trae campos fuera del contrato.
 
   La ubicación del archivo la DEBE fijar el servidor con la empresa y el usuario de la sesión, nunca la
@@ -130,42 +138,23 @@
 | ¿Dónde se guardan? | R9 (ubicación), R15 |
 | Correo | R20, R21 |
 | Contador | R1, R3 |
-| Cómo sube | R2, R9, R10, R11 |
+| Cómo sube | R6, R9, R10, R11 |
 | Nombre y creación del bucket | R15, R16, R17 |
 | Duración del enlace del correo | R20 (24 horas), R22 (enlaces nuevos en cada carga) |
-| Si una imagen no sube | R6, R7, R11 |
+| Si una imagen no sube | R7, R11 |
+| P1 (se suben al enviar) | R2, R6, R7, R8 |
+| P2 (exceso de líneas aceptado) | Sin requisito: proceso; la línea `tamano-pr-aceptado` la deja el leader en `progress/features/SLT-98.md` |
+| P3 (24 h en el detalle) | R22 |
+| P4 (5 MB = 5 × 1024 × 1024 bytes) | R5, R9, R10, R16, R19 |
 | Visibilidad | R14, R18, R22 (el detalle ya es solo del superadmin por R2 de SLT-97 «Reporte de bugs: módulo del superadmin») |
 | Vista de referencia | R1, R2, R4, R6 (los textos van en design §9) |
-| ¿Hace falta E2E? | El E2E de `tasks.md` (T9): adjuntar, enviar y verlas en el detalle |
+| ¿Hace falta E2E? | El E2E de `tasks.md` (T11): adjuntar, enviar y verlas en el detalle |
 | ¿Librería nueva? No | Sin requisito: lo hace cumplir `guard-dependencias-aprobadas` |
 | Ruta | El proceso: tres archivos y aprobación |
 
 ## Preguntas abiertas
 
-Para el humano, de una en una. Cada una lleva la recomendación de `spec_author`; el design ya está
-escrito con ella, y si el humano decide otra cosa, se corrige el spec.
-
-- **P1. Las imágenes huérfanas.** Una imagen subida cuyo reporte nunca se envía (se quitó, se cerró la
-  pestaña o falló el envío) queda en el bucket sin fila que la nombre. Una purga programada (un cron
-  que borre lo de más de 24 horas sin fila) cuesta unos 6-7 archivos más: la ruta del cron, su entrada
-  en `vercel.json`, su listado en el adaptador, la lectura de rutas en el repositorio, sus tests y la
-  guardia de crons. Esos archivos pasan del tope de tamaño.
-  **Recomendación:** que esta entrega no purgue y que se abra una ficha aparte para la purga. Mientras
-  tanto, el servidor borra lo que rechaza en el envío (R11) y nada más. El riesgo es que un usuario con
-  sesión llene el bucket a propósito; lo acotan la sesión y el límite de 5 MB del bucket.
-- **P2. Tamaño del PR.** Son 32 archivos, justo el aviso del 80% de 40, y unas 2200-2500 líneas frente a
-  1000.
-  **Recomendación:** aceptar el exceso de líneas en un solo PR, como en SLT-87 «Reporte de bugs: botón
-  flotante y envío» y SLT-97 «Reporte de bugs: módulo del superadmin». Si no se acepta, el corte natural
-  es sacar el detalle del superadmin (R22, R23) a una entrega 4: unos 7 archivos.
-- **P3. Duración del enlace del detalle.** La decisión fija 24 horas para el correo y «enlaces nuevos
-  cada vez que se abre» para el detalle, pero no cuánto dura cada uno.
-  **Recomendación:** 1 hora (`ENLACE_DETALLE_SEGUNDOS`, design §6). Alcanza para mirar el reporte, y al
-  recargar la página salen enlaces nuevos.
-- **P4. Qué es «5 MB».** El límite puede ser de 5 × 1024 × 1024 bytes (5 242 880) o de 5 000 000.
-  **Recomendación:** 5 × 1024 × 1024, el mismo criterio que `LIMITE_ADJUNTO_BYTES` del chat
-  (`lib/config/chat-media-envio.ts`). Así, una foto que el sistema operativo muestra como «5 MB» no se
-  rechaza.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -185,3 +174,7 @@ escrito con ella, y si el humano decide otra cosa, se corrige el spec.
 | 2026-11-10 | ¿Hace falta E2E? | Sí: adjuntar, enviar y verlas en el detalle del superadmin. |
 | 2026-11-10 | ¿Librería nueva? | No. |
 | 2026-11-10 | Ruta | Completa: almacenamiento, permisos y migración. |
+| 2026-11-10 | P1 — ¿Cuándo se suben las imágenes? (y qué pasa con las huérfanas) | Al pulsar «Enviar», no al elegirlas. Al elegirlas, el panel solo las muestra con una miniatura local, con «Quitar» y con la validación de tipo y tamaño en el cliente. Al pulsar «Enviar», el panel pide los permisos, sube cada imagen por PUT directo (porque el límite de ~4,5 MB por cuerpo sigue) y después manda el reporte; mientras tanto, «Enviar» muestra el progreso («Subiendo imágenes…»). Si una subida falla, el reporte no se guarda: esa imagen queda marcada con «Reintentar» y «Quitar», y el texto se conserva. Así no quedan huérfanas por cerrar o descartar: sin purga y sin ficha aparte. Lo que pasa con las imágenes que sí subieron en un intento fallido lo elige el spec, lo más simple (design §4.2). |
+| 2026-11-10 | P2 — Tamaño del PR | Se acepta el exceso de líneas en un solo PR. La línea `tamano-pr-aceptado` la deja el leader. |
+| 2026-11-10 | P3 — Duración del enlace del detalle | 24 horas, igual que la del correo. |
+| 2026-11-10 | P4 — Qué es «5 MB» | 5 × 1024 × 1024 bytes (5 242 880). |

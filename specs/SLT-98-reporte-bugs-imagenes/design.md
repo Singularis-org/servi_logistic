@@ -2,8 +2,9 @@
 
 > Entrega 3 de 3. Construye sobre `bug_report`, `BugReportRepository`, `ReporteBugService` y el panel de
 > SLT-87 «Reporte de bugs: botón flotante y envío», y sobre el detalle de SLT-97 «Reporte de bugs: módulo
-> del superadmin». Lo marcado *(P1)*, *(P3)* o *(P4)* sigue la recomendación de la pregunta abierta del
-> mismo nombre en `requirements.md`.
+> del superadmin». Lo marcado *(P1)* a *(P4)* sigue la decisión cerrada del mismo nombre en
+> `requirements.md` (2026-11-10). La de más peso es P1: **las imágenes se suben al pulsar «Enviar», no al
+> elegirlas.**
 
 ## Lo que ya existe
 
@@ -45,16 +46,18 @@ firmada directa en el repo:** todas las subidas de hoy pasan por el servidor (`S
 
 ```
 ReporteBugBoton (cliente)
-  │ elige archivos → por cada uno: ¿PNG/JPG/WebP y 1 B–5 MB? (cortesía, R5)
-  │ prepararSubidaImagenReporteAction({ tipo, tamano })                         (R9)
-  │     sesión → zod → ReporteBugService.prepararSubida
-  │       → conEmpresa(org) → almacen.prepararSubida("<usuarioId>/<imagenId>.<ext>")
-  │           createSignedUploadUrl; si «Bucket not found» → createBucket privado con límites → reintento (R16)
-  │     ← { status: "lista", imagenId, url }
-  │ fetch(url, { method: "PUT", body: archivo, headers: { content-type, x-upsert: "false" } })  → Storage
+  │ elige archivos → miniatura local y «Quitar»; ¿PNG/JPG/WebP y 1 B–5 MB? (cortesía, R2, R5). No sube nada.
   │
-  │ «Enviar» → enviarReporteBugAction({ descripcion, pagina, ventana, appInstalada,
-  │                                       imagenes: [{ id, tipo }] })
+  │ «Enviar» («Subiendo imágenes…», R6)
+  │  1. prepararSubidaImagenesReporteAction({ imagenes: [{ tipo, tamano }] })  solo las aún no subidas (R9)
+  │       sesión → zod → ReporteBugService.prepararSubidas
+  │         → conEmpresa(org) → almacen.prepararSubida("<usuarioId>/<imagenId>.<ext>") por imagen
+  │             createSignedUploadUrl; si «Bucket not found» → createBucket privado con límites → reintento (R16)
+  │       ← { status: "listas", permisos: [{ imagenId, url }] }
+  │  2. por cada una, en paralelo: fetch(url, { method: "PUT", body: archivo, … })  → Storage
+  │       alguna falla → se marca «No se pudo subir.» y NO se manda el reporte (R7)
+  │  3. todas subidas → enviarReporteBugAction({ descripcion, pagina, ventana, appInstalada,
+  │                                               imagenes: [{ id, tipo }] })
   ▼
 ReporteBugService.enviar
   ├─ puerta de empresa (SLT-87 R11)
@@ -67,7 +70,7 @@ ReporteBugService.enviar
 { status: "enviado" }  (R14: sin enlaces)
 
 /plataforma/reportes/[reporteId] → ReportesBugPlataformaService.detalle
-  └─ conEmpresa(reporte.organizacionId) → almacen.firmar(rutas, 1 h) en cada carga (R22, R23)
+  └─ conEmpresa(reporte.organizacionId) → almacen.firmar(rutas, 24 h) en cada carga (R22, R23)
 ```
 
 ## 2. Modelo de datos
@@ -202,25 +205,33 @@ servidor valida igual (R10).
 
 ## 4. La subida
 
-### 4.1 Action `prepararSubidaImagenReporteAction` (R9)
+La subida ocurre **dentro del envío**, al pulsar «Enviar», y nunca al elegir la imagen *(P1)*. Una sola
+llamada pide los permisos de todas las imágenes que faltan por subir.
+
+### 4.1 Action `prepararSubidaImagenesReporteAction` (R9)
 
 En `lib/actions/reporte-bug.ts`, junto a `enviarReporteBugAction`. Es de núcleo por el archivo
 (`"reporte-bug": "nucleo"` en `lib/modulos/reparto.ts`), así que `reparto.ts` no cambia.
 
-- **Orden:** sesión (sin ella → `unauthenticated`) → zod → `servicio.prepararSubida(actor, entrada)`. El
+- **Orden:** sesión (sin ella → `unauthenticated`) → zod → `servicio.prepararSubidas(actor, entrada)`. El
   servicio es la puerta (§5.1).
-- **Entrada** (`prepararSubidaImagenSchema`, `strict`):
+- **Entrada** (`prepararSubidasImagenesSchema`, `strict` en los dos niveles):
 
   ```ts
-  { tipo: z.enum(TIPOS_IMAGEN), tamano: z.number().int().min(1).max(IMAGEN_BYTES_MAX) }
+  {
+    imagenes: z
+      .array(z.object({ tipo: z.enum(TIPOS_IMAGEN), tamano: z.number().int().min(1).max(IMAGEN_BYTES_MAX) }).strict())
+      .min(1)
+      .max(IMAGENES_MAX),
+  }
   ```
 
   El tamaño declarado sirve para cortar pronto. La red de verdad es el bucket (`fileSizeLimit`) y la
   lectura del envío (R10).
-- **Salida:**
+- **Salida:** los permisos van en el mismo orden que la entrada.
 
   ```ts
-  | { status: "lista"; imagenId: string; url: string }
+  | { status: "listas"; permisos: { imagenId: string; url: string }[] }
   | { status: "unauthenticated" } | { status: "forbidden" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "error" }
@@ -229,30 +240,52 @@ En `lib/actions/reporte-bug.ts`, junto a `enviarReporteBugAction`. Es de núcleo
 - **Fallo:** `{ status: "error" }`, y en el log `[reporte-bug] fallo al preparar la subida
   causa=<error.name>`.
 
-### 4.2 El navegador
+### 4.2 El navegador: el envío en tres pasos (R6, R7)
 
-```ts
-await fetch(url, { method: "PUT", body: archivo, headers: { "content-type": tipo, "x-upsert": "false" } });
-```
+Al pulsar «Enviar», el panel pasa a `enviando`. El botón muestra «Subiendo imágenes…» mientras hay
+imágenes por subir y «Enviar» con su `loading` durante el paso 3.
+1. **Permisos.** Si hay imágenes en estado `pendiente` o `error_subida`, llama a
+   `prepararSubidaImagenesReporteAction` con ellas, en el orden del panel.
+   - Si no responde `listas`, no se sube nada: esas imágenes pasan a `error_subida` y el reporte no se
+     manda.
+2. **Subidas,** en paralelo, una por imagen:
 
-- **El cuerpo es el `File` crudo, no `FormData`:** es lo que hace `uploadToSignedUrl` de storage-js con
-  un cuerpo que no es `Blob`, y lo que acepta el doble (que rechaza el multipart a propósito).
-- **Lo bueno es un 2xx.** Cualquier otra respuesta, o un fallo de red, marca la imagen con el aviso de
-  subida (R6). La respuesta no se lee.
-- **No hay cliente de Supabase en el navegador ni clave anónima:** la URL lleva su token.
-- **«Reintentar»** pide una URL nueva, con otro `imagenId`, y sube otra vez. Si el `PUT` anterior llegó
-  a escribir, ese objeto queda huérfano *(P1)*.
+   ```ts
+   await fetch(url, { method: "PUT", body: archivo, headers: { "content-type": tipo, "x-upsert": "false" } });
+   ```
+
+   - **El cuerpo es el `File` crudo, no `FormData`:** es lo que hace `uploadToSignedUrl` de storage-js
+     con un cuerpo que no es `Blob`, y lo que acepta el doble (que rechaza el multipart a propósito).
+   - **Lo bueno es un 2xx.** La imagen pasa a `subida` y guarda su `imagenId`. Cualquier otra
+     respuesta, o un fallo de red, la deja en `error_subida`. La respuesta no se lee.
+   - **No hay cliente de Supabase en el navegador ni clave anónima:** la URL lleva su token.
+   - Si alguna queda en `error_subida`, el envío para aquí: **el reporte no se manda** (R7), y el panel
+     vuelve a `editando` con el texto intacto.
+3. **Reporte.** Con todas en `subida`, llama a `enviarReporteBugAction` con `imagenes: [{ id: imagenId,
+   tipo }]`, en el orden del panel.
+
+**Las que ya subieron se reutilizan, no se borran.** Es lo más simple que pidió el humano en P1.
+- Una imagen en `subida` conserva su `imagenId`. «Reintentar», que repite el envío entero, solo pide
+  permiso para las que fallaron, y el reporte usa las ya subidas.
+- No hace falta ninguna action de borrado ni ningún permiso de borrar para el navegador.
+- Lo mismo vale si falla el paso 3 (`error`): «Enviar» otra vez reutiliza las subidas.
+- **El único resto posible:** que el usuario quite una imagen ya subida, descarte o cierre la pestaña
+  **después** de un envío que falló a medias. Esos objetos quedan en el bucket sin fila. Es un caso raro
+  (hace falta un fallo de red), y por P1 no hay purga. Queda escrito en §15.
 
 ## 5. Servicio `ReporteBugService`
 
-### 5.1 `prepararSubida(actor, { tipo })` (R9)
+### 5.1 `prepararSubidas(actor, { imagenes })` (R9)
 
 1. **Puerta**, la misma de `enviar`: rol de plataforma o sin `organizacionId` → `forbidden`.
-2. `imagenId = nuevoId()`, con `randomUUID` inyectable; `ruta = <actor.usuarioId>/<imagenId>.<ext>`.
-3. `conEmpresa(organizacionId, () => almacen.prepararSubida(ruta))`. El contexto se abre aquí,
-   explícito, en vez de dejar que `empresaDelAlmacen` lo saque de la sesión: así la empresa es la del
-   actor ya resuelto, y el test no depende de `next/headers`.
-4. Devuelve `{ status: "lista", imagenId, url }`.
+2. Para cada imagen, en orden: `imagenId = nuevoId()`, con `randomUUID` inyectable, y `ruta =
+   <actor.usuarioId>/<imagenId>.<ext>`.
+3. Dentro de un solo `conEmpresa(organizacionId, …)`, `almacen.prepararSubida(ruta)` para cada ruta.
+   - El contexto se abre aquí, explícito, en vez de dejar que `empresaDelAlmacen` lo saque de la sesión:
+     así la empresa es la del actor ya resuelto, y el test no depende de `next/headers`.
+   - Van en serie, para que la creación del bucket (§3.3) la haga como mucho la primera.
+   - Si una falla, falla la llamada entera.
+4. Devuelve `{ status: "listas", permisos: [{ imagenId, url }] }`.
 
 ### 5.2 `enviar(actor, entrada, entorno)` (cambia)
 
@@ -301,7 +334,7 @@ imagenes: z
 Cumple R12. Sin el campo, es un reporte sin imágenes, igual que en SLT-87.
 
 **Salida de la action:** `EnviarReporteBugServiceResult` (`lib/interfaces/services/IReporteBugService.ts`)
-gana `| { status: "imagenes_invalidas"; imagenes: string[] }`. La interfaz gana `prepararSubida`.
+gana `| { status: "imagenes_invalidas"; imagenes: string[] }`. La interfaz gana `prepararSubidas`.
 
 **Composition root** (`construirServicio` en `lib/actions/reporte-bug.ts`): `new ReporteBugService(new
 BugReportRepository(getPrismaClient()), new SupabaseAlmacenImagenesReporte(), crearEmailSender())`.
@@ -318,7 +351,7 @@ export const TIPOS_IMAGEN = ["image/png", "image/jpeg", "image/webp"] as const;
 export type TipoImagenReporte = (typeof TIPOS_IMAGEN)[number];
 export const EXTENSION_POR_TIPO: Record<TipoImagenReporte, "png" | "jpg" | "webp">;
 export const ENLACE_CORREO_SEGUNDOS = 24 * 60 * 60;   // decisión del 2026-11-10
-export const ENLACE_DETALLE_SEGUNDOS = 60 * 60;       // P3
+export const ENLACE_DETALLE_SEGUNDOS = 24 * 60 * 60;  // P3: igual que el del correo
 export function bucketReporteBug(valor = process.env.BUG_REPORT_BUCKET): string;
 /** R10: el tipo que dicen los primeros bytes, o null. Pura. */
 export function tipoPorFirma(bytes: Uint8Array): TipoImagenReporte | null;
@@ -332,7 +365,7 @@ export function tipoPorFirma(bytes: Uint8Array): TipoImagenReporte | null;
 Con menos bytes de los que mira, `null`.
 
 **`lib/types/reporte-bug.ts`:**
-- `prepararSubidaImagenSchema` y el campo `imagenes` de `enviarReporteBugSchema` (§4.1, §5.2).
+- `prepararSubidasImagenesSchema` y el campo `imagenes` de `enviarReporteBugSchema` (§4.1, §5.2).
 - `NuevoBugReport` gana `imagenes: NuevaImagen[]`, con `{ id, position, storagePath, contentType,
   sizeBytes }`. `BugReportCreado` no cambia: las URL las pone el servicio.
 - `ReporteDetalleDatos`, que lee el repositorio, gana:
@@ -350,7 +383,7 @@ Así `IBugReportRepository.ts` no cambia: sus firmas usan esos tipos.
 # SLT-98 — bucket PRIVADO de Supabase Storage para las imagenes de los reportes de problema.
 # Vacio o ausente: "bug-reports". La app lo crea sola en la primera subida, privado, con un
 # limite de 5 MB por archivo y solo PNG, JPG y WebP. Las imagenes solo se leen por enlace
-# firmado: 24 h en el correo, 1 h en el detalle del superadmin.
+# firmado de 24 h, en el correo y en el detalle del superadmin.
 BUG_REPORT_BUCKET=
 ```
 
@@ -418,8 +451,9 @@ defecto.
 - `clave` es local (`crypto.randomUUID()`) y sirve para React y para quitar.
 - `vistaPrevia` es `URL.createObjectURL(archivo)`. Se revoca al quitar, al vaciar y al desmontar.
 - `estado`:
-  - `subiendo`;
-  - `lista`;
+  - `pendiente`: elegida y válida en el cliente, todavía sin subir;
+  - `subiendo`: solo durante el envío;
+  - `subida`: con su `imagenId`; se reutiliza en un reintento (§4.2);
   - `error_tipo`, `error_vacia` y `error_tamano`, que solo admiten «Quitar»;
   - `error_subida`, que admite «Reintentar» y «Quitar»;
   - `rechazada`, la que el servidor no aceptó y solo admite «Quitar».
@@ -436,19 +470,27 @@ defecto.
 
 **Al elegir archivos:**
 - Se toman los primeros `5 - n`. Si sobran, sale el aviso de sobrantes (R3).
-- Cada archivo se clasifica por `file.type` y `file.size`. Si no vale, queda con su error y no se sube
-  (R5). Si vale, queda `subiendo` y arranca la subida de §4 (R2). Las subidas van en paralelo.
+- Cada archivo se clasifica por `file.type` y `file.size`. Si no vale, queda con su error (R5). Si vale,
+  queda `pendiente`. **No se llama al servidor ni a Storage** (R2, P1).
 - Se vacía `input.value`, para poder volver a elegir el mismo archivo.
 
-**«Enviar»:**
-- Deshabilitado si la descripción está vacía (SLT-87 R5) o si alguna imagen no está `lista` (R7).
-- Manda `imagenes: listas.map(({ imagenId, tipo }) => ({ id: imagenId, tipo }))`, en el orden del panel.
+**«Enviar»** (R6, R7):
+- Deshabilitado si la descripción está vacía (SLT-87 R5), si alguna imagen está en un estado de error
+  o mientras se envía.
+- Corre los tres pasos de §4.2. En el paso de las subidas, el botón dice «Subiendo imágenes…» y cada
+  imagen que sube, «Subiendo…».
+
+**«Reintentar»** (en una imagen en `error_subida`) repite el envío entero, igual que «Enviar»: sube las
+que quedan en `pendiente` o en `error_subida`, reutiliza las que están en `subida` y manda el reporte.
+Mientras alguna imagen tenga error, «Enviar» queda deshabilitado, y «Reintentar» es la forma de volver a
+probar sin quitarla.
 
 **Respuestas del envío:**
 - `enviado`: «Gracias» y se vacían el texto y las imágenes (R8).
 - `imagenes_invalidas`: las imágenes con esos ids pasan a `rechazada`; el texto queda (R11). No sale el
   aviso general de fallo, sino el de bloqueo (R7).
-- Cualquier otra: el aviso de SLT-87 R10, sin tocar texto ni imágenes.
+- Cualquier otra: el aviso de SLT-87 R10, sin tocar texto ni imágenes. Las ya `subida` se reutilizan en
+  el próximo «Enviar».
 
 **«Descartar»** vacía el texto y las imágenes (R8). **Cerrar el panel** no toca las imágenes: siguen
 mientras el layout siga montado. Al recargar, se pierden (R8).
@@ -476,12 +518,13 @@ literalmente.
 | Ayuda junto al contador (R1) | «PNG, JPG o WebP · hasta 5 MB cada una», separada del contador por « · » |
 | Miniatura del panel | `alt` «Imagen {n}» |
 | Quitar (R4) | «Quitar», con `aria-label` «Quitar imagen {n}» |
-| Reintentar (R6) | «Reintentar», con `aria-label` «Reintentar imagen {n}» |
-| Subiendo (R2) | «Subiendo…» |
+| Reintentar (R7) | «Reintentar», con `aria-label` «Reintentar imagen {n}» |
+| Botón «Enviar» mientras suben las imágenes (R6) | «Subiendo imágenes…» |
+| Imagen mientras sube, solo durante el envío (R6) | «Subiendo…» |
 | Tipo no admitido (R5) | «Solo PNG, JPG o WebP.» |
 | Archivo vacío (R5) | «El archivo está vacío.» |
 | Demasiado grande (R5) | «Pesa más de 5 MB.» |
-| Fallo de subida (R6) | «No se pudo subir.» |
+| Fallo de subida (R7) | «No se pudo subir.» |
 | Rechazada por el servidor (R11) | «No pudimos aceptar esta imagen. Quítala para enviar.» |
 | Sobrantes (R3) | «Solo caben 5 imágenes: {m} no se agregaron.» |
 | Bloqueo del envío (R7) | «Quita o reintenta las imágenes marcadas para poder enviar.» |
@@ -543,10 +586,11 @@ archivo en disco.
 1. **Adjuntar** (R1, R2, R5, R7): el maestro abre `/ordenes` y el panel, y escribe una descripción única.
    Adjunta las dos PNG y el GIF.
    - El GIF muestra «Solo PNG, JPG o WebP.» y el aviso de bloqueo, y «Enviar» queda deshabilitado.
-   - Las PNG pasan de «Subiendo…» a listas.
+   - Hasta aquí no ha habido ninguna petición a Storage: se comprueba con `page.on("request")` filtrando
+     por `/storage/v1/` (R2).
    - «Quitar imagen 3» deja «2/5 imágenes» y habilita «Enviar».
-2. **Enviar** (R13, R14): «Gracias, recibimos tu reporte», y el panel queda sin imágenes y en «0/5
-   imágenes».
+2. **Enviar** (R6, R13, R14): «Enviar» pasa por «Subiendo imágenes…», sale «Gracias, recibimos tu
+   reporte» y el panel queda sin imágenes y en «0/5 imágenes».
 3. **Correo** (R20): en el log del servidor, el correo a `reportes-e2e@example.test` con la descripción
    lleva «Ver imagen 1: <url>» y «Ver imagen 2: <url>». Un `page.request.get(url)` de la primera da 200
    con `image/png`.
@@ -584,10 +628,14 @@ Todo se espera con `expect`, nunca con `waitForTimeout`. Las descripciones lleva
   («la empresa sale del contexto, nunca de la ruta ni del llamador») en el único adaptador que la
   incumpliría. `conEmpresa` con la empresa del reporte, leída de la base, da lo mismo sin abrir esa
   puerta.
-- **F. Subir a `pendientes/` y mover a `reportes/<id>/` al enviar.** Haría trivial una purga futura
-  *(P1)*. A cambio, añade un `move` al doble y al adaptador, y un estado intermedio: movido pero sin fila
-  si falla la transacción. No compensa sin la purga.
-- **G. Purga programada de huérfanas en esta entrega.** Ver P1: 6-7 archivos más, por encima del tope.
+- **F. Subir cada imagen al elegirla.** Era la primera versión de este spec. El humano la descartó en P1:
+  deja una huérfana por cada imagen que se quita, se descarta o se abandona al cerrar la pestaña.
+  Subiendo al enviar, solo puede quedar resto tras un envío que falló a medias (§4.2).
+- **G. Purga programada de huérfanas.** Descartada en P1: con la subida al enviar casi no hay huérfanas,
+  y la purga costaba 6-7 archivos más (cron, `vercel.json`, listado, guardia de crons y tests).
+- **H. Borrar en el reintento las imágenes que ya subieron, en vez de reutilizarlas.** Exige una action
+  de borrado para el navegador, con su puerta y su test, y una subida de más en cada reintento.
+  Reutilizar es más simple y no deja más resto.
 
 ## 13. Dependencias
 
@@ -601,9 +649,9 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
 - `bug_report_image` es de plataforma, con RLS sin políticas y `REVOKE ALL`.
 - Las imágenes viven en el bucket privado `BUG_REPORT_BUCKET` (`bug-reports`), en
   `<organizacion_id>/<usuario_id>/<imagen_id>.<ext>`.
-- Se suben directo con una URL firmada que pide el servidor, y el envío las valida por tamaño y firma de
-  bytes.
-- Se leen solo por enlace firmado: 24 h en el correo y 1 h en el detalle. El superadmin firma con
+- Se suben al pulsar «Enviar», directo con una URL firmada que pide el servidor, y el envío las valida
+  por tamaño y firma de bytes.
+- Se leen solo por enlace firmado de 24 h, en el correo y en el detalle. El superadmin firma con
   `conEmpresa` de la empresa del reporte.
 
 ## 15. Riesgos
@@ -617,12 +665,15 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
 - **El error de «bucket no existe» en `createSignedUploadUrl`.** Se asume que sale con el mismo mensaje o
   `statusCode` 404 que en `upload`. El test de unidad lo fija con un doble, y T11 lo mira en preview con
   un bucket que aún no existe.
-- **Huérfanas** *(P1)*: se acumulan hasta que exista la purga.
+- **Resto tras un envío fallido a medias** *(P1)*. Si el usuario quita, descarta o cierra después de un
+  envío en el que algunas imágenes subieron y otras no, las que subieron quedan sin fila. Sin purga, por
+  decisión. También quedan las que el servidor rechaza y no pudo borrar (R11, mejor esfuerzo).
 - **Borrado de empresas demo.** `bug_report_image` cae en cascada, pero sus archivos quedan en el bucket:
-  `scripts/demo-qa/borrar.ts` no conoce este bucket. Las empresas demo casi nunca reportan. Entra en la
-  misma ficha de la purga *(P1)*.
-- **Tamaño:** 32 archivos, justo en el aviso del 80%, y unas 2200-2500 líneas *(P2)*. Un archivo más de
-  lo previsto pasa el aviso, sin llegar a rojo.
+  `scripts/demo-qa/borrar.ts` no conoce este bucket. Las empresas demo casi nunca reportan.
+- **Tiempo del envío.** El usuario espera a que suban hasta 25 MB antes del «Gracias». Lo hace visible el
+  «Subiendo imágenes…» (R6).
+- **Tamaño:** 32 archivos, justo en el aviso del 80%, y unas 2100-2400 líneas. El exceso de líneas está
+  aceptado *(P2)*. Un archivo más de lo previsto pasa el aviso, sin llegar a rojo.
 - **Tests de SLT-87 y SLT-97 que cambian de sentido:**
   - `ReporteBugBoton.test.tsx` afirma que no hay campo de archivos (R4 de SLT-87, sustituido aquí);
   - `bug-report.test.ts` cuenta las claves del detalle (`toHaveLength(16)`);
