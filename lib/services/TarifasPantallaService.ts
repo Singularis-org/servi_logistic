@@ -61,10 +61,14 @@ export class TarifasPantallaService implements ITarifasPantallaService, IFaltant
     const activada = (await this.repo.leerActivacion()) !== null;
     const grupos = await this.repo.gruposConDistritos(zona.id);
     const distritos = conGrupo(await this.repo.distritosDeZona(zona.id, { conMarca: !activada }), grupos);
+    // SLT-89 (R23, design §4.4): el sub-arbol cubierto, para elegir miembros a cualquier profundidad.
+    // Sin el (zona con solo distritos asignados), la respuesta es la de hoy (R38).
+    const nodos = await this.repo.nodosDeZona(zona.id);
     return {
       status: "ok",
       grupos,
       distritos,
+      ...(nodos === null ? {} : { nodos }),
       valores: await this.repo.valoresDeZona(zona.id),
       referencia: activada ? null : await this.referencia(zona, grupos, distritos, input.tiendaId ?? null),
     };

@@ -314,3 +314,23 @@ export interface ArbolDeZonasDTO {
   tipos: TipoDeArbolDeZonasDTO[];
   raices: NodoDeZonasDTO[];
 }
+
+/**
+ * SLT-89 (R23, design §4.4) — un nodo que la zona cubre (asignado o heredado), para elegir miembros de
+ * un grupo en Tarifas. Sus `hijos` son los que la zona tambien cubre: una excepcion de otra zona no
+ * aparece.
+ */
+export interface NodoCubiertoDTO {
+  id: string;
+  nombre: string;
+  profundidad: number;
+  /** El flag PROPIO, como el arbol de zonas. */
+  activo: boolean;
+  hijos: NodoCubiertoDTO[];
+}
+
+/** SLT-89 (R23): el sub-arbol cubierto por una zona, con los nombres de nivel del pais. */
+export interface ArbolCubiertoDTO {
+  tipos: TipoDeArbolDeZonasDTO[];
+  raices: NodoCubiertoDTO[];
+}

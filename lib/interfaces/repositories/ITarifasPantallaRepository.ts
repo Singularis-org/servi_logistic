@@ -1,5 +1,6 @@
 import type { LecturaModeloViejo, PedidoModeloViejo } from "@/lib/repositories/_shared/resolver-tarifas";
 import type { ValorDeNivel } from "@/lib/tarifas/faltantes";
+import type { ArbolCubiertoDTO } from "@/lib/types/geografia-nodo";
 import type { GrupoDistritosDTO, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
 /**
@@ -51,7 +52,17 @@ export interface ITarifasPantallaRepository {
   listarVehiculos(): Promise<VehiculoDePantalla[]>;
   /** Las cuentas de rol `adminTienda` o `apiKey`. */
   listarTiendas(): Promise<TiendaDePantalla[]>;
-  /** `conMarca: false` no lee la marca: tras activar no decide nada y no se muestra (R45). */
+  /**
+   * `conMarca: false` no lee la marca: tras activar no decide nada y no se muestra (R45). SLT-89 (R23,
+   * design §4.4): los distritos que la zona CUBRE, tambien los heredados de un canton o una provincia
+   * asignados; con asignaciones solo a distritos, los de `zona_distrito`, como hoy.
+   */
   distritosDeZona(zonaId: string, opciones: { conMarca: boolean }): Promise<DistritoDeZona[]>;
+  /**
+   * SLT-89 (R23, design §4.4): el sub-arbol que la zona cubre, a todas sus profundidades. `null` si la
+   * zona solo tiene distritos asignados y nada cuelga de ellos: los posibles miembros son entonces
+   * exactamente `distritosDeZona`, y no se carga el catalogo (R38).
+   */
+  nodosDeZona(zonaId: string): Promise<ArbolCubiertoDTO | null>;
   leerModeloViejo(pedido: PedidoModeloViejo): Promise<LecturaModeloViejo>;
 }
