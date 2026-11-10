@@ -64,7 +64,8 @@ export function Cuenta({
   subtitulo,
   pie,
 }: Readonly<CuentaProps>) {
-  const titular = <h3 className="text-sm font-semibold">{titulo}</h3>;
+  // SLT-104: 15 px, como todos los títulos de cuenta del canvas (`Main.dc.html`, `Fila2.dc.html`).
+  const titular = <h3 className="text-[15px] font-semibold">{titulo}</h3>;
   return (
     <section
       aria-label={ariaLabel ?? titulo}

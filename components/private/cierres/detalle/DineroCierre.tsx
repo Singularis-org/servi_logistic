@@ -31,7 +31,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
         aria-label={REPARTO_REGION_LABEL}
         className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-4"
       >
-        <h3 className="text-sm font-semibold">{REPARTO_TITULO}</h3>
+        <h3 className="text-[15px] font-semibold">{REPARTO_TITULO}</h3>
         {conBarra ? (
           <div aria-hidden="true" className="flex h-3 overflow-hidden rounded-full bg-muted">
             {dinero.reparto.map((p, i) => (
@@ -66,7 +66,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
           aria-label={POR_TIENDA_TITULO}
           className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4"
         >
-          <h3 className="text-sm font-semibold">{POR_TIENDA_TITULO}</h3>
+          <h3 className="text-[15px] font-semibold">{POR_TIENDA_TITULO}</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs text-muted-foreground">
