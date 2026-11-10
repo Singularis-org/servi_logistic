@@ -192,3 +192,36 @@ El código, la trazabilidad, el aislamiento del SQL y el cableado del compositio
 único bloqueante es de evidencia: correr `dos-empresas-humo` y anotarlo. Recomiendo resolver en la
 misma vuelta el mayor (cerrar `montajesPrevistos`) y los menores 3, 4, 6 y 9, que son de una línea
 cada uno.
+
+## Vuelta 2 (acotada a 31ffb651..a7c546c5)
+
+Diff revisado: 6 archivos (`fdc0c9eb` arreglos y `a7c546c5` marca de tamaño). Cada hallazgo se
+comprobó en el código, no en la bitácora.
+
+| Comando | Resultado |
+|---|---|
+| `vitest run` de `cobertura-tablas`, `contadores-cabecera` y `rollup-guards` (base `slt102_t1`) | 3 archivos, 34 passed |
+| `pnpm run typecheck` | `TSC_EXIT=0` |
+| `eslint` de los 3 archivos de test y E2E tocados | `LINT_EXIT=0` |
+
+No corrí los E2E: siguen la instrucción del leader y los repite el CI.
+
+| # | Hallazgo de la vuelta 1 | Estado |
+|---|---|---|
+| 1 | BLOQUEANTE: falta `dos-empresas-humo` | **Cerrado.** `impl_SLT-102.md:501-507` registra la corrida: base desechable `slt102_e2e` recreada, `--project=aislamiento`, `18 passed`, `PW_EXIT=0`. La constancia es la que pide la regla. |
+| 2 | Mayor: `montajesPrevistos` sin control | **Cerrado.** `problemasMontajesPrevistos` (en `cobertura-tablas.guardia.test.ts`) se aplica al censo real («el censo real cumple»). Cubre lista cerrada de rutas (`RUTAS_CON_MONTAJES_PREVISTOS`, solo `ColaCierres.tsx`), formato `/^SLT-\d+ «.+»$/`, lista vacía y caducidad (más de 1 montaje real es rojo). Las tres mutaciones (a), (b) y (c) prueban la función sobre copias del censo y cada una espera exactamente 1 problema con su texto: falsables. |
+| 3 | Menor: negativo «Ahora no» antes del diálogo | **Cerrado.** `e2e/cierres-rediseno.spec.ts`: ahora espera `pago` visible y su botón «Registrar pago» antes del negativo. |
+| 4 | Menor: paginación del pie de Pendientes fuera de la tabla de desviaciones | **Cerrado.** Fila añadida a `design.md > Desviaciones`, con su motivo (R106). |
+| 5 | Menor: «vuelven a bodega» con dos cifras (cola y franja) | **Abierto, para Preview.** No cambia en este rango; sigue en «A Preview» de la ficha. Si Carlos lo acepta, va a la tabla de desviaciones. No bloquea. |
+| 6 | Menor: T7.1 y T7.2 sin marcar | **Fuera de alcance por decisión del leader:** T7.1 la cierra él al abrir el PR y T7.2 es el Preview. |
+| 7 | Menor: tamaño real por encima del aceptado | **Cerrado.** Nueva marca en `progress/features/SLT-102.md` con ~3 327 líneas, aceptada por Carlos. |
+| 8 | Menor: negativo de R108 contra un texto exacto | **Abierto, menor.** `CierresAdminModule.test.tsx:343` no cambió. En su lugar se reforzó el E2E `tarifas-activacion`: cabeceras exactas, 8 celdas por fila y `getByText(/ingreso/i)` con conteo 0. Con eso y las celdas exactas de `ColaCierres.test.tsx:197`, R108 queda bien cubierto. No bloquea. |
+| 9 | Menor: fila obsoleta en `design.md:96` | **Cerrado.** Pasa a «Lo que se pinta como el canvas» como F14, y sale de las desviaciones. |
+
+Regresiones: ninguna. El cambio en `tarifas-activacion` sustituye un negativo por afirmaciones
+positivas más fuertes.
+
+### Veredicto vuelta 2
+
+**OK con menores.** 0 bloqueantes y 0 mayores. Siguen abiertos dos menores: el 5, que espera la
+decisión de Carlos en Preview, y el 8, que es opcional.
