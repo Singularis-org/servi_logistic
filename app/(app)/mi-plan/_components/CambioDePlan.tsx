@@ -8,12 +8,12 @@ import { Modal } from "@/components/shared/Modal";
 import { CarruselDePlanes } from "@/components/shared/planes/CarruselDePlanes";
 import { DetalleDePlan, type ActivoDelDetalle } from "@/components/shared/planes/DetalleDePlan";
 import { usoDeLasFilas, type VistaDePrecio } from "@/components/shared/planes/planes-vista";
-import { TEXTOS_TIPO_COBRO, type PrimerPeriodo } from "@/components/shared/tipo-cobro";
+import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cambiarMiPlanAction, cancelarCambioMiPlanAction } from "@/lib/actions/mi-plan";
 import type { PendienteDeEmpresa, PlanConConsumo } from "@/lib/types/consumo-plan";
-import type { CambiarMiPlanResult, PlanesDeMiPlanResult, PlanVista } from "@/lib/types/planes";
+import type { CambiarMiPlanResult, PlanesDeMiPlanResult, PlanVista, PrimerPeriodo } from "@/lib/types/planes";
 
 // SLT-99 (design §4, §5, §6; R8, R16–R20) — el cambio de plan del maestro en «Mi plan»: el carrusel y el detalle
 // compartidos, la confirmación (sin elegir fecha: rige en el corte) y «Cancelar cambio» del pendiente, sea de quien

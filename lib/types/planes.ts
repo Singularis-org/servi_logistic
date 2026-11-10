@@ -1,12 +1,10 @@
 import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { z } from "zod";
 
-import type { PrimerPeriodo } from "@/components/shared/tipo-cobro";
-
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
-import type { CambioPendienteVista, PendienteDeEmpresa, PlanConConsumo } from "@/lib/types/consumo-plan";
+import type { CambioPendienteVista, PendienteDeEmpresa, PeriodoDelCobro, PlanConConsumo } from "@/lib/types/consumo-plan";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 
 // SL-24 (design §5.1; R1–R3, R25, R37) — el borde de la gestión de planes por el superadmin. Todo
@@ -521,6 +519,13 @@ export type VistaPreviaAsignacionResult =
 
 /** Lo que el carrusel y el detalle necesitan de un plan (R5, R8). */
 export type PlanVista = Pick<PlanDTO, "id" | "nombre" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual" | "topes" | "modulos">;
+
+/** SLT-86 (R25): el primer período (o tramo) que abriría un cambio y su costo base (lo calcula `primerPeriodoDelCambio`). */
+export interface PrimerPeriodo {
+  periodo: PeriodoDelCobro;
+  /** `null` = sin costo base: por definir. */
+  costo: string | null;
+}
 
 /** R5, R7, R8, R10, R16–R19: lo que «Mi plan» necesita para el carrusel, el detalle y la confirmación. */
 export type PlanesDeMiPlanResult =

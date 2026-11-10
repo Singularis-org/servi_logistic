@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { primerPeriodoDelCambio, type PrimerPeriodo } from "@/components/shared/tipo-cobro";
+import { primerPeriodoDelCambio } from "@/components/shared/tipo-cobro";
 import { ROLES_MI_PLAN } from "@/lib/auth/menu-visibility";
 import type { IPlanesDelMaestroRepository, PrecioDesdeLeido } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { IMiPlanCambioService } from "@/lib/interfaces/services/IMiPlanCambioService";
@@ -17,6 +17,7 @@ import {
   type PlanVista,
   type PlanesDeMiPlanResult,
   type PrecioDesde,
+  type PrimerPeriodo,
   type TipoCobro,
 } from "@/lib/types/planes";
 
