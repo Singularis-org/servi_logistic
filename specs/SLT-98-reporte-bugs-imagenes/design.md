@@ -41,7 +41,7 @@ moldes:
 | Pieza | Dónde | Uso aquí |
 |---|---|---|
 | Contador diario con tope atómico en una sola sentencia (`INSERT … ON CONFLICT … DO UPDATE … WHERE < tope RETURNING`) | `AsistenteUsoRepository.consumirUnaConsulta` y la migración `20260920120000_asistente_uso_diario` (ficha 436) | El molde de `bug_report_upload_quota` (§16). |
-| Día calendario de Costa Rica como texto `YYYY-MM-DD`, escrito con `::date` | `fechaCalendarioCR` (`lib/utils/fecha-cr.ts`) | La fecha del conteo (decisión P5). |
+| Día calendario de la zona del país de la empresa como texto `YYYY-MM-DD`, escrito con `::date` | `zonaDeLaEmpresa` (`lib/services/zona-de-la-empresa.ts`, SLT-42) con `IReglasPaisEmpresa.zonaHoraria` + `fechaCalendario(now, zona)` (`lib/utils/calendario-zona.ts`) | La fecha del conteo (decisión P5 y su nota del 2026-11-10 «Zona del país de la empresa»). **No** `fechaCalendarioCR` (`lib/utils/fecha-cr.ts`): la guardia `pais-sin-literales` (SLT-42 «Teléfono, documento y hora por país», R29) veta importarla en `lib/**`. |
 | `ResetRateLimiter`, una ventana deslizante en memoria del proceso | `lib/utils/reset-rate-limit.ts` (postulación, rastreo público) | **No se reutiliza:** cuenta por instancia, y en Vercel cada función tiene la suya. Los dos usos que tiene llevan escrito «riesgo aceptado: acota al torpe, no al decidido». Aquí el tope es la defensa (alternativa I, §12). |
 
 **Lo que NO se reutiliza, y por qué:**
@@ -703,7 +703,7 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   por tamaño y firma de bytes.
 - Se leen solo por enlace firmado de 24 h, en el correo y en el detalle. El superadmin firma con
   `conEmpresa` de la empresa del reporte.
-- Tope blando de 21 permisos de subida por usuario y día de Costa Rica (§16): con el conteo por debajo de
+- Tope blando de 21 permisos de subida por usuario y día calendario de la zona del país de su empresa (§16): con el conteo por debajo de
   21 se concede todo lo pedido (hasta 25 en el día); desde 21, nada, y el panel envía el reporte solo con
   el texto, sin aviso. El conteo vive en `bug_report_upload_quota`, de plataforma, con RLS sin políticas y
   `REVOKE ALL`, y la suma condicionada es una sola sentencia, como en `asistente_uso_diario`.
@@ -738,7 +738,11 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   no existiría. Antes de desplegar, se mira `_prisma_migrations` en cada base compartida que la tenga, y se
   rehace con `db:rollback` + `migrate deploy`. Las desechables del E2E y del CI nacen limpias.
 - **Medianoche (P5).** Con día calendario, alguien puede subir 25 imágenes a las 23:59 y otras 25 a las
-  00:00. Lo aceptó el humano en P5.
+  00:00 de la zona de su país. Lo aceptó el humano en P5.
+- **País sin zona horaria (nota del 2026-11-10 a P5).** Si el país de la empresa no tiene zona,
+  `zonaHoraria()` lanza `PaisSinZonaHoraria` (SLT-42 «Teléfono, documento y hora por país», R28) antes de
+  contar: no se concede nada, no se suma nada y la action responde `error`. El usuario no puede adjuntar
+  imágenes hasta que el país tenga zona.
 - **Hasta 25 por día, no 21 (P9).** Con el tope blando, quien llega con 20 sube 5 más. Es lo que pidió el
   humano: 125 MB por usuario y día como mucho.
 - **El cupo se gasta con `PUT` fallidos (P6).** Cada reintento de una imagen cuyo `PUT` falló pide un
@@ -765,7 +769,13 @@ cerradas en `requirements.md > Decisiones cerradas`; P13 queda abierta, sin bloq
 - **Se cuentan los permisos concedidos** por `prepararSubidas` (P6). Hoy esos permisos no dejan
   ninguna fila hasta el envío. Lo que se persiste ahora es **un contador**, no los permisos ni las rutas:
   una fila por usuario y día con cuántos permisos se le dieron.
-- **La fecha** es `fechaCalendarioCR(this.ahora())`, del servidor (P5). El cliente no la manda (R31).
+- **La fecha** es `fechaCalendario(this.ahora(), zona)`, con la hora del servidor y la zona horaria del
+  país de la empresa del actor (P5 y su nota del 2026-11-10 «Zona del país de la empresa»). La zona sale
+  de `zonaDeLaEmpresa(this.reglasPais, "ReporteBugService.prepararSubidas")`, leída una vez por petición
+  dentro de `conEmpresa(organizacionId, …)`, igual que `asistente_uso_diario`. No se usa
+  `fechaCalendarioCR`: la guardia `pais-sin-literales` (SLT-42 «Teléfono, documento y hora por país»,
+  R29) veta importar `@/lib/utils/fecha-cr` en `lib/**`. Un país sin zona lanza `PaisSinZonaHoraria` y la
+  action responde `error`, sin contar nada (R24). El cliente no manda la fecha (R31).
 - **El tope** es `IMAGENES_POR_DIA_MAX = 21` en `lib/config/reporte-bug.ts`, con el comentario «decisión
   del 2026-11-10, hallazgo m1; tope blando, P9». Solo lo usa el servidor: el panel no lo importa, porque
   no hay aviso (P11). La base no lo conoce: entra como parámetro en el `WHERE`, igual que en la ficha 436.
@@ -786,7 +796,7 @@ está mergeada (riesgo en §15). Los identificadores van en inglés (R31).
 |---|---|---|
 | `user_id` | `TEXT NOT NULL` FK → `usuario(id)` `ON DELETE CASCADE ON UPDATE CASCADE` | Un contador de alguien que ya no existe no significa nada, como en `asistente_uso_diario`. |
 | `day` | `DATE NOT NULL` | Siempre `${fecha}::date` sobre el texto `YYYY-MM-DD`, nunca un `Date` de JS. Así ningún cambio de huso lo mueve, como en la ficha 436. |
-| `permits_granted` | `INTEGER NOT NULL` | `CHECK (permits_granted >= 0)`: un contador no baja de cero. El tope no va en un `CHECK`: vive en la configuración, y con el tope blando el conteo puede pasar de 21. |
+| `permits_granted` | `INTEGER NOT NULL` | `CONSTRAINT "bug_report_upload_quota_permits_granted_no_negativo" CHECK ("permits_granted" >= 0)`: un contador no baja de cero. El tope no va en un `CHECK`: vive en la configuración, y con el tope blando el conteo puede pasar de 21. |
 | `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` | |
 
 - **PK compuesta** `bug_report_upload_quota_pkey (user_id, day)`. **Es la atomicidad de R26**, no una
@@ -890,11 +900,19 @@ medianoche resta del día en que se contó.
 **`ReporteBugService`:**
 - El constructor gana `cupo: ICupoImagenesReporte` como **tercer** parámetro, después de `almacen` y antes
   de `sender`.
+- Gana `reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">` como **quinto** parámetro, después de
+  `sender` y antes de `destinatarios` (nota del 2026-11-10 a P5). Opcional, como en los demás servicios
+  de SLT-42: si un composition root lo olvida, `zonaDeLaEmpresa` falla con un mensaje que lo nombra, en
+  vez de calcular con una zona inventada.
 - Gana también `ahora: () => Date = () => new Date()` al final, después de `nuevoId`.
+- Orden completo: `(repo, almacen, cupo, sender, reglasPais?, destinatarios, log, nuevoId, ahora)`.
 
 **`prepararSubidas(actor, { imagenes })`** pasa a hacer:
 1. **Puerta** (sin cambios). `forbidden` no cuenta nada.
-2. `fecha = fechaCalendarioCR(this.ahora())` y `n = imagenes.length`.
+2. `zona = await conEmpresa(organizacionId, () => zonaDeLaEmpresa(this.reglasPais,
+   "ReporteBugService.prepararSubidas"))`, `fecha = fechaCalendario(this.ahora(), zona)` y
+   `n = imagenes.length`. Si el país no tiene zona, `PaisSinZonaHoraria` sale de aquí, antes de contar:
+   la action lo captura y responde `error` (R24).
 3. `total = await cupo.consumir(actor.usuarioId, fecha, n, IMAGENES_POR_DIA_MAX)`. Si es `null`, devuelve
    `{ status: "sin_cupo_imagenes" }` sin llamar al almacén ni a nada más (R25). Si no, sigue: se conceden
    las `n`, aunque `total` pase de 21 (R24).
@@ -914,8 +932,9 @@ Validar antes de contar es cosa del orden de la action (sesión → zod → serv
 - `PrepararSubidaImagenesReporteActionResult` (`lib/actions/reporte-bug.ts`) gana la misma variante, que
   pasa tal cual: exactamente `{ status: "sin_cupo_imagenes" }`, sin el conteo, la fecha ni el usuario
   (R25). No es un error: la action no escribe nada en el log por ella.
-- **Composition root:** `const repo = new BugReportRepository(getPrismaClient()); new
-  ReporteBugService(repo, new SupabaseAlmacenImagenesReporte(), repo, crearEmailSender())`.
+- **Composition root** (`construirServicio` en `lib/actions/reporte-bug.ts`): `const prisma =
+  getPrismaClient(); const repo = new BugReportRepository(prisma); new ReporteBugService(repo, new
+  SupabaseAlmacenImagenesReporte(), repo, crearEmailSender(), construirReglasPaisEmpresa(prisma))`.
 
 ### 16.5 Panel (`ReporteBugBoton.tsx`)
 
@@ -962,6 +981,10 @@ nada y sin aviso».
   VALUES (<maestro>, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Costa_Rica')::date, 21)
   ON CONFLICT … DO UPDATE SET "permits_granted" = 21
   ```
+
+  `America/Costa_Rica` aquí es un dato de la siembra, no la regla: la empresa del E2E es de Costa Rica,
+  y el servicio corta el día con la zona de su país (§16.1). La guardia `pais-sin-literales` mira
+  `lib/**`, no `e2e/`.
 
 - **Pasos:**
   1. El maestro abre el panel, escribe una descripción única, adjunta una PNG y pulsa «Enviar».

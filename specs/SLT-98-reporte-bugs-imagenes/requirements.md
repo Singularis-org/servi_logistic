@@ -132,15 +132,18 @@
 **El tope diario de imágenes (hallazgo m1 de la review; decisión «Tope diario» del 2026-11-10)**
 
 > «Permiso concedido» es cada permiso de subida que R9 entrega al panel. «Conteo del día» es el número de
-> permisos concedidos a un usuario en un día. «Día» es el día calendario de Costa Rica: el conteo vuelve a
-> cero a las 00:00 `America/Costa_Rica` (decisión P5). El tope es **blando** (decisión P9): decide si una
+> permisos concedidos a un usuario en un día. «Día» es el día calendario en la zona horaria del país de la
+> empresa del usuario: el conteo vuelve a cero a las 00:00 de esa zona (decisión P5, con su nota del
+> 2026-11-10 «Zona del país de la empresa»). El tope es **blando** (decisión P9): decide si una
 > petición entra mirando el conteo de ANTES de ella, no el de después. Por eso el conteo de un día puede
 > llegar a 25 (20 + 5) y nunca pasa de ahí.
 
 - **R24.** CUANDO un usuario de empresa pide permisos de subida y su conteo del día es menor que 21, el
   sistema DEBE concederle todos los que pide (de 1 a 5, R9), aunque con ellos pase de 21, y sumarlos a
   su conteo del día. Cuentan los permisos concedidos, se llegue o no a enviar el reporte (decisiones P6 y
-  P7).
+  P7). El día del conteo DEBE ser el día calendario en la zona horaria del país de la empresa del usuario,
+  a la hora del servidor. SI el país de la empresa no tiene zona horaria, ENTONCES el sistema NO DEBE
+  conceder ningún permiso ni sumar nada al conteo y DEBE responder `error` (nota del 2026-11-10 a P5).
 - **R25.** SI un usuario de empresa pide permisos de subida y su conteo del día es 21 o más, ENTONCES el
   sistema NO DEBE concederle ninguno: DEBE responder que no hay cupo, sin pedir nada al almacenamiento y
   sin sumar nada al conteo. La respuesta NO DEBE llevar el conteo, la fecha ni el usuario.
@@ -194,7 +197,7 @@
 | ¿Librería nueva? No | Sin requisito: lo hace cumplir `guard-dependencias-aprobadas` |
 | Ruta | El proceso: tres archivos y aprobación |
 | Tope diario (m1): 21 imágenes por día por usuario | R24 (concede), R25 (sin cupo), R26 (concurrencia), R27, R28 (reintentar no cuenta de nuevo), R29 (el panel envía solo el texto), R30, R31 (acceso); E2E de T16 |
-| P5 (día calendario de Costa Rica) | R24 (definición de «Día»), R31 (la hora es del servidor) |
+| P5 (día calendario; nota del 2026-11-10: en la zona del país de la empresa) | R24 (definición de «Día» y país sin zona → `error`), R31 (la hora es del servidor) |
 | P6 (cuentan los permisos concedidos) | R24, R25 (lo rechazado no cuenta), R27 |
 | P7 (cuenta aunque no envíe) | R24 |
 | P8 (con el tope lleno se envía el texto) | R29, R30 |
@@ -240,7 +243,7 @@
 | 2026-11-10 | P3 — Duración del enlace del detalle | 24 horas, igual que la del correo. |
 | 2026-11-10 | P4 — Qué es «5 MB» | 5 × 1024 × 1024 bytes (5 242 880). |
 | 2026-11-10 | Tope diario (hallazgo m1 de la review: nadie limita los permisos de subida) | Se arregla en este mismo PR. Tope de **21 imágenes por día por usuario**. Texto del humano: «21 al dia como limite». Al pasar el tope, el panel avisa y el reporte no se envía. Qué es «día», qué cuenta y el texto del aviso quedan en P5–P11. |
-| 2026-11-10 | P5 — ¿Qué es «día»? | Día calendario de Costa Rica: el conteo vuelve a cero a las 00:00 `America/Costa_Rica`, como `asistente_uso_diario` (`fechaCalendarioCR`). Aceptada la recomendación. |
+| 2026-11-10 | P5 — ¿Qué es «día»? | Día calendario de Costa Rica: el conteo vuelve a cero a las 00:00 `America/Costa_Rica`, como `asistente_uso_diario` (`fechaCalendarioCR`). Aceptada la recomendación. **Nota del 2026-11-10 (humano, tras F2.1 vuelta 2): «Zona del país de la empresa».** El día se corta con la zona horaria del país de la empresa (`reglasPais`), como hace hoy `asistente_uso_diario`, y no con `America/Costa_Rica` fija: la guardia `pais-sin-literales` (SLT-42 «Teléfono, documento y hora por país», R29) veta importar `@/lib/utils/fecha-cr` en `lib/**`. Un país sin zona responde `error`. |
 | 2026-11-10 | P6 — ¿Qué cuenta? | Los permisos **concedidos**. Una petición rechazada por validación, puerta o tope no cuenta. Aceptada la recomendación. |
 | 2026-11-10 | P7 — ¿Aplica a quien no envía? | Sí: se deduce de P6. |
 | 2026-11-10 | P8 — Con el tope lleno, ¿se envía el reporte? | Sí, solo con el texto. Aceptada la recomendación. |

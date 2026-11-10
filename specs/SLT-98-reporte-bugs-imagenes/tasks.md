@@ -119,8 +119,8 @@
 
 ## Bloque F — Tope diario de imágenes (enmienda del 2026-11-10, hallazgo m1; design §16)
 
-> Se arregla en este mismo PR (decisión «Tope diario»). P5–P12 están cerradas: día calendario de Costa
-> Rica, cuentan los permisos concedidos, tope blando (con el conteo por debajo de 21 se concede todo lo
+> Se arregla en este mismo PR (decisión «Tope diario»). P5–P12 están cerradas: día calendario de la zona
+> del país de la empresa (P5 con su nota del 2026-11-10, «Zona del país de la empresa»), cuentan los permisos concedidos, tope blando (con el conteo por debajo de 21 se concede todo lo
 > pedido; desde 21, nada) y, sin cupo, el panel envía solo el texto y sin aviso. P13 está abierta sin
 > bloquear: el spec sigue su recomendación. Reparto: `backend_dev` T12–T14; `frontend_dev` T15; el que
 > acabe cierra T16.
@@ -132,7 +132,10 @@
     - `db/migrations/20261112120000_bug_report_image/down.sql`: su `DROP TABLE IF EXISTS`, antes del de
       `bug_report_image`;
     - `db/schema.prisma`: el modelo `BugReportUploadQuota` y su inverso en `Usuario`;
-    - `lib/db/modelos-de-negocio.ts`: la entrada en `MODELOS_DE_PLATAFORMA`.
+    - `lib/db/modelos-de-negocio.ts`: la entrada en `MODELOS_DE_PLATAFORMA`;
+    - `tests/fixtures/api-key-dependencias-usuario.ts` (archivo extra, no previsto en el spec original):
+      clasifica la relación `BugReportUploadQuota.user` como `no_alcanzable` en el censo de dependencias de
+      usuario.
   - **Hecho:**
     - `prisma validate` y `pnpm run typecheck` en verde;
     - `prisma migrate deploy` y `pnpm run db:rollback` aplican y revierten sobre una base desechable;
@@ -154,10 +157,11 @@
 - [x] **T14. Servicio y action** (dep. T13; R24, R25, R27, R28, R30).
   - **Archivos:**
     - `lib/interfaces/services/IReporteBugService.ts`: la variante `{ status: "sin_cupo_imagenes" }`;
-    - `lib/services/ReporteBugService.ts`: `cupo` como tercer parámetro, `ahora` al final y el
-      `prepararSubidas` de design §16.4;
+    - `lib/services/ReporteBugService.ts`: `cupo` como tercer parámetro, `reglasPais` como quinto
+      (zona del país de la empresa, nota del 2026-11-10 a P5), `ahora` al final y el `prepararSubidas` de
+      design §16.4;
     - `lib/actions/reporte-bug.ts`: la variante en el resultado y la composition root con `repo` dos
-      veces.
+      veces y `construirReglasPaisEmpresa(prisma)`.
   - **Hecho:** `tests/unit/services/reporte-bug-service.test.ts` y `tests/unit/actions/reporte-bug-action.test.ts`
     en verde, con los casos del mapa, y `pnpm run typecheck` en verde.
 - [x] **T15. Panel** (dep. T14; R28, R29, R30).
@@ -171,6 +175,10 @@
   - **Hecho:**
     - dos corridas seguidas de `e2e/reporte-de-bugs.spec.ts` sobre una base desechable, con 0 failed, 0
       skipped y 0 flaky, y la salida pegada en `progress/impl_SLT-98.md`;
+      - **Salvedad (humano, 2026-11-10, «Solo CI»):** en local la máquina se quedó sin memoria en el
+        build. Las dos corridas locales se sustituyen por el grupo E2E de CI que incluye
+        `reporte-de-bugs` (el proyecto `aislamiento` de `playwright.config.ts`). Su verde en el PR, con
+        0 failed, 0 skipped y 0 flaky, cierra T16; el enlace a esa corrida va en `progress/impl_SLT-98.md`;
     - `./init.sh` en verde, o `gate-completo` si el humano lo sustituye, como en T11;
     - `node scripts/tamano-pr.mjs` sin rojo, dentro de lo aceptado en P12 (~35 archivos y ~3.900
       líneas). Si la cifra real pasa de ahí, el leader vuelve al humano.
@@ -202,7 +210,7 @@
 | R21 | `tests/unit/services/reporte-bug-service.test.ts` «si firmar lanza o le falta una ruta, el correo sale con «Imagen {n}: no se pudo generar el enlace…» y la respuesta es enviado»; `tests/unit/services/email/plantilla-reporte-bug.test.ts` «una imagen sin url lleva la nota en su lugar» |
 | R22 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` «detalle firma las rutas con 86400 segundos dentro de conEmpresa de la empresa del reporte, en cada llamada, y el DTO no lleva rutas ni empresa» y «sin imágenes no llama al almacén»; `tests/components/ReporteDetalle.test.tsx` «el bloque Imágenes muestra una miniatura por imagen en orden, con alt «Imagen {n} del reporte» y enlace a la URL, y sin imágenes «Este reporte no trae imágenes.»»; `tests/integration/db/bug-report.test.ts` «detalle trae las imágenes por position y la empresa»; `e2e/reporte-de-bugs.spec.ts` (pasos 4 y 5) |
 | R23 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` «si firmar lanza, todas las url son null y el detalle se devuelve igual»; `tests/components/ReporteDetalle.test.tsx` «una imagen con url null muestra «No se pudo cargar esta imagen.» y el resto del detalle» |
-| R24 | `tests/integration/db/bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21» y «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `tests/unit/services/reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen» y «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10» |
+| R24 | `tests/integration/db/bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21» y «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `tests/unit/services/reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen» y «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10» (en esos tests, «Costa Rica» es la zona que dan las reglas del país dobles, no una zona fija del servicio). **Sin test todavía:** la cláusula de R24 «país sin zona horaria → `error` sin contar» (nota del 2026-11-10 a P5) |
 | R25 | `tests/integration/db/bug-report.test.ts` «R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21» y «R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25»; `tests/unit/services/reporte-bug-service.test.ts` «R25 — si consumir devuelve null, da exactamente { status: "sin_cupo_imagenes" } y no llama al almacén ni a devolver»; `tests/unit/actions/reporte-bug-action.test.ts` «R25 — sin_cupo_imagenes pasa tal cual, sin más campos»; `e2e/reporte-de-bugs.spec.ts` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (paso 5: el conteo sigue en 21) |
 | R26 | `tests/integration/db/bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null» y «R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29» |
 | R27 | `tests/integration/db/bug-report.test.ts` «R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada»; `tests/unit/services/reporte-bug-service.test.ts` «R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original» |
@@ -246,6 +254,7 @@
 - `tests/components/ReporteBugBoton.test.tsx`
 - `tests/components/ReporteDetalle.test.tsx`
 - `lib/interfaces/repositories/ICupoImagenesReporte.ts`
+- `tests/fixtures/api-key-dependencias-usuario.ts`
 
 **Enmienda del tope diario (T12–T16):** solo `lib/interfaces/repositories/ICupoImagenesReporte.ts` es
 nuevo en el PR. Los demás archivos que toca ya estaban en esta lista: la migración, `db/schema.prisma`,
@@ -259,6 +268,9 @@ nuevo en el PR. Los demás archivos que toca ya estaban en esta lista: la migrac
 En total quedan **35 archivos** (34 reales tras F2.1, más 1) y unas **3.900 líneas** (3374 + ~530). Están
 por encima del aviso del 80% y por debajo del máximo de 40, y el humano los aceptó (P12: «Aceptar ~3.900,
 un PR»).
+
+Tras F2.1 vuelta 2 entró un archivo más, `tests/fixtures/api-key-dependencias-usuario.ts` (T12): la cifra
+real es **36 archivos y 4151 líneas**, aceptada por el humano («Aceptar 4151, un PR»).
 
 Reparto aproximado de las ~530 líneas (el tope blando y el envío sin aviso quitan `usados` y los textos
 del aviso):

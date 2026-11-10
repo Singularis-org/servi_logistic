@@ -22,8 +22,9 @@ F1.4 (2026-11-10): spec aprobado por el humano («Aprobado, implementa»). Tarje
 - 2026-11-10 · Humano, tras la review (m1): arreglar en este PR el tope de subida, «21 al dia como limite». Sobre la enmienda (7fb00846): P5 día calendario de Costa Rica; P6 cuentan los permisos concedidos; P8 con el tope lleno se puede enviar texto; P9 «subelas todas, pero el siguiente ya no puede enviar mas imagenes» (tope blando: si al pedir quedan menos de 21 usadas se conceden todas, hasta 5, aunque pase de 21; desde 21 no se concede ninguna); P10 devolver el cupo si Storage falla; P11 «sin aviso» y aclarado «Envía solo el texto» (con el tope lleno el reporte se envía sin las imágenes y sin mensaje); P12 tamaño aceptado.
 - 2026-11-10 · Humano, P13 (ba2d57dc): sin cupo al «Reintentar», el reporte lleva las imágenes ya subidas en el intento anterior («Sí, van las ya subidas»); coincide con R29 y design §16.5 tal como están.
 - 2026-11-10 · Humano aprueba la enmienda del tope (ba2d57dc): «Aprobado, implementa». Implementer T12–T16.
+- 2026-11-10 · Humano, tras F2.1 vuelta 2: el día del cupo se corta con la zona horaria del país de la empresa, como `asistente_uso_diario`, porque la guardia `pais-sin-literales` (SLT-42) veta fijar Costa Rica en `lib/**` («Zona del país de la empresa»); país sin zona responde `error`. Tamaño real aceptado («Aceptar 4151, un PR»). E2E del tope: la máquina se quedó sin memoria en el build; el humano decide «Solo CI»: el grupo E2E de CI que incluye `reporte-de-bugs` sustituye las dos corridas locales y su verde cierra T16.
 
-<!-- tamano-pr-aceptado: 2026-11-10 · ~35 archivos y ~3.900 líneas (34 y 3374 reales tras F2.1, más el tope diario de la review m1), casi la mitad tests (incluye el doble de Storage del E2E). Humano: «Aceptar ~3.900, un PR». -->
+<!-- tamano-pr-aceptado: 2026-11-10 · 36 archivos y 4151 líneas (cifra real tras F2.1 vuelta 2, con el tope diario de la review m1), casi la mitad tests (incluye el doble de Storage del E2E). Humano: «Aceptar 4151, un PR». -->
 
 ## Preguntas abiertas
 Ninguna.
