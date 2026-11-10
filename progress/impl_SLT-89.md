@@ -495,3 +495,14 @@ T1.2», y nada más:
   `historial-accion-zona-distrito-migration`, `historial-accion-zona-central-migration`,
   `catalogo-y-choke-point`, guardia `historial-accion-escrituras-cubiertas`) → `Test Files 7 passed (7) ·
   Tests 191 passed (191)`, sin tocarlos.
+
+## Tanda 3 (2026-11-10): T7, T8.1, T9.1 (pantallas, E2E y docs)
+
+### T0.2 — maqueta (R48)
+
+Lienzo: https://claude.ai/artifact/9QG7NyNkFdDcxu5zvWu1xD (copia de solo lectura en el scratchpad del
+leader, `maqueta89/project/`: `Main.dc.html` editar zona con árbol de N niveles, herencia y excepciones;
+`Impacto.dc.html` modal de guardado con entran/salen y órdenes; `Grupos.dc.html` grupos de Tarifas con
+cualquier lugar y su modal de confirmación). Registro del leader en `progress/features/SLT-89.md`.
+
+Maqueta aprobada por el humano el 2026-11-10.
