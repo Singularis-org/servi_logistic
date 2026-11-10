@@ -10,7 +10,10 @@ import type {
   CierreGestionPendienteRow,
   CierreSinGestionRow,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  SenalesColaCierre,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
@@ -484,6 +487,15 @@ export interface ICierresAdminRepository {
    * de sus cierres pasados.
    */
   findCatalogoFiltros(alcance: Alcance): Promise<CatalogoFiltrosCierresDTO>;
+  /**
+   * SLT-102 (R109) — las señales de la cola de los cierres `cierreIds`, con UNA consulta. El `WHERE`
+   * va por esos ids y por la empresa de la transacción; los ids ya vienen acotados al alcance por el
+   * listado que los leyó. Un cierre sin gestiones no viene en el mapa.
+   *
+   * Opcional en la interfaz para que los dobles de hoy sigan compilando; el repositorio real la
+   * implementa y el servicio la pide una vez por página. Ausente, la cola no pinta esas señales.
+   */
+  contarSenalesPorCierre?(cierreIds: readonly string[]): Promise<Map<string, SenalesColaCierre>>;
   /**
    * R6/R7/R9/R13: un cierre SOLO si su destino casa el alcance en el WHERE (guardia
    * R13) + sus gestiones (WITH_DETALLE, reuso 37, WHERE cierre_id = X). Fuera de

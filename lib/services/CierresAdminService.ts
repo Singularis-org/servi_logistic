@@ -49,6 +49,7 @@ import type {
   ListarPendientesCierresAdminCompletoServiceResult,
   ListarPendientesCierresAdminServiceResult,
   RechazarCierreServiceResult,
+  SenalesColaCierre,
 } from "@/lib/interfaces/services/ICierresAdminService";
 import { descargaConfig } from "@/lib/config/descarga";
 import { esColaCierreDia } from "@/lib/utils/colas-cierre";
@@ -291,6 +292,13 @@ type AlcanceResult =
   | { status: "ok"; alcance: Alcance }
   | { status: "sinZona" } // adminSatelite sin zona (R3)
   | { status: "forbidden" }; // rol invalido (R1)
+
+/** SLT-102 (R109): el cierre cuyas gestiones no llevan ninguna de las tres señales. */
+const SIN_SENALES_COLA: SenalesColaCierre = Object.freeze({
+  incidentesSinIndemnizar: 0,
+  pagosAjustados: 0,
+  vuelvenABodega: 0,
+});
 
 /**
  * Feature 38 — logica de negocio de "Cierres del dia" del admin (maestro /
@@ -1283,6 +1291,13 @@ export class CierresAdminService implements ICierresAdminService {
       resumenes.map((r) => r.cierreId),
     );
 
+    // SLT-102 (R109): las tres señales de la cola, UNA llamada para toda la pagina (tambien vacia),
+    // como `retenidas`. `null` si el repositorio no la implementa (dobles de otras suites): entonces
+    // la fila no lleva `senalesCola` y la cola no afirma «0».
+    const senales = this.repo.contarSenalesPorCierre
+      ? await this.repo.contarSenalesPorCierre(resumenes.map((r) => r.cierreId))
+      : null;
+
     // UNA sola llamada, siempre: tambien con la lista vacia, para que el conteo de consultas de
     // este listado sea el mismo se pinte lo que se pinte.
     const pagados = await this.liquidacionRepo.sumarVigentesPorCierre(idsAprobados);
@@ -1313,9 +1328,13 @@ export class CierresAdminService implements ICierresAdminService {
       };
       // FICHA 462 (R27/R28): el aprobado retiene 0 por construccion; los demas, lo que diga el conteo.
       const reprogramadasRetenidasHoy = retenidas.get(r.cierreId) ?? 0;
+      // SLT-102 (R109): un cierre que no sale en el mapa no tiene gestiones con señal: los tres a 0.
+      const conSenales =
+        senales === null ? {} : { senalesCola: senales.get(r.cierreId) ?? SIN_SENALES_COLA };
       return r.estado === "aprobado"
         ? {
             ...r,
+            ...conSenales,
             bloqueoMensajero,
             reprogramadasRetenidasHoy,
             pendientePagoMensajero: derivarPendienteCierre({
@@ -1325,7 +1344,7 @@ export class CierresAdminService implements ICierresAdminService {
               pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
             }),
           }
-        : { ...r, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
+        : { ...r, ...conSenales, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
     });
   }
 
