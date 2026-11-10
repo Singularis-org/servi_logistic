@@ -183,3 +183,42 @@ Casos extra: R6 (integración, resumen con «…»), R2/R10/R15 (acciones), log 
 
 Veredicto: T1–T8 hechas y en verde; T9 escrita y E2E ×2 verde sobre `c9a109a5`, pendiente repetirlo sobre
 el código final.
+
+## Vuelta 2 (2026-11-10) — tras el RECHAZO de `progress/review_SLT-97.md`
+- **m1** `7cf81994`: el trigger `bug_report_status_solo_adelante` rechaza también el paso al mismo estado
+  (`IF NOT (…)`, SL097), tal como decidió el humano. Ajustados `bug-report.test.ts` (16 pares: 12 según
+  `TRANSICIONES_REPORTE`, los 4 X→X dan SL097), design §2.3 y `docs/architecture.md`. Base
+  `servi_logistic_slt97` recreada: deploy → `db:rollback` → deploy bien, y `migrate diff --exit-code` da
+  «empty migration». `bug-report` + `schema-drift-saneamiento`: 44/44, 0 saltados.
+  (propuesta) `SET status = status, deleted_at = …` a mano también da SL097; queda dicho en §2.3.
+- **m3** `340efb6e`: el `aria-label` «Ver reporte de {empresa} del {fecha}» (`textoEnlaceFila` en
+  `reportes-textos.ts`) y la fila en design §9. Test nuevo con `TZ=America/Costa_Rica`.
+  `reportes-plataforma-page` + `e2e-sin-saltos`: 53/53. eslint sin avisos.
+- **m2** `465dae5e`: «el maestro ve no encontrado en /plataforma/reportes» va en su propio describe,
+  «SLT-97 — el módulo no es de la empresa», con su empresa.
+
+### B1 — E2E sobre HEAD `465dae5e`
+`servi_logistic_slt97_e2e` recreada (DROP/CREATE, deploy y seed). `.env` con las SUPABASE y
+`PRISMA_LOG_QUERIES` vacías. `next build` con 8 GB y `NEXT_PUBLIC_APP_URL=http://localhost:3044`: verde,
+6 min 38 s. `E2E_PUERTO=3044`.
+
+| Corrida | Comando | Resultado |
+|---|---|---|
+| 1 | `playwright test e2e/reporte-de-bugs.spec.ts e2e/superadmin-arranque.spec.ts` | 20 passed (1.6m) · 0 failed · 0 skipped · 0 flaky |
+| 2 | el mismo, sobre la misma base | 20 passed (1.3m) · 0 failed · 0 skipped · 0 flaky |
+| 3 | `playwright test --project=aislamiento` (arrastra `plataforma-vacia`) | cortado a los 590 s (exit 124): 77 ✓, 4 ✘, sin terminar |
+
+Los 4 ✘ de la corrida 3 son ajenos al diff, que no toca ninguna de esas páginas:
+- `marca.spec.ts:294` «landing a 1280 px…», `rastreo-publico.spec.ts:86` y `:115`: `page.goto("/")` no
+  llega a `load` en 30 s;
+- `tarifas-maqueta.spec.ts:156`: `page.goto("/configuracion/tarifas")` da «Page crashed».
+En la misma corrida pasaron `dos-empresas-humo`, los tres casos de SLT-97 y los de SLT-87. La máquina iba
+justa de memoria: tenía 6,7 GB libres y procesos de otras sesiones vivos, que no se tocaron. El grupo
+completo lo da el check `e2e` de CI.
+
+### Verificación de la vuelta 2
+- Typecheck (8 GB): exit 0.
+- `pnpm run lint`, vitest conjunto y `test:guardias`: **no corridos**. El sistema cortó la tanda por falta
+  de memoria y, por regla, no se relanzó. Lo que sí se corrió, por archivo: eslint de los archivos tocados
+  y los vitest de m1 (44/44) y m3 (53/53).
+- T9 marcada: `./init.sh` lo sustituye el `gate-completo` de CI, por decisión del humano.

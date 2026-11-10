@@ -72,7 +72,7 @@
 
 ## Bloque D — De punta a punta y cierre
 
-- [ ] **T9. E2E y documentación** (dep. T6, T7, T8; R1, R2, R5–R7, R14, R17, R19–R22).
+- [x] **T9. E2E y documentación** (dep. T6, T7, T8; R1, R2, R5–R7, R14, R17, R19–R22).
   - **Archivos:**
     - el `describe` «SLT-97 — el módulo del superadmin» en `e2e/reporte-de-bugs.spec.ts` (design §10);
     - la lista del menú en `e2e/superadmin-arranque.spec.ts`;
@@ -80,8 +80,8 @@
   - **Hecho:**
     - dos corridas seguidas de los dos E2E sobre una base desechable, con 0 failed, 0 skipped y 0 flaky
       (`docs/verification.md > El E2E`), y la salida pegada en `progress/impl_SLT-97.md`;
-    - el grupo `aislamiento` entero, que incluye `dos-empresas-humo`, porque el diff toca `db/`;
-    - `./init.sh` verde;
+    - el grupo `aislamiento` entero, que incluye `dos-empresas-humo`, porque el diff toca `db/` — corrido una vez: 77 ✓ y 4 ✘ ajenos al diff, cortado a los 10 min (ver `progress/impl_SLT-97.md > Vuelta 2`);
+    - `./init.sh` verde — sustituido por el check `gate-completo` de CI, por decisión del humano (2026-11-10);
     - `node scripts/tamano-pr.mjs` en aviso, no en rojo, por la línea `tamano-pr-aceptado`.
 
 ## Mapa R → test
