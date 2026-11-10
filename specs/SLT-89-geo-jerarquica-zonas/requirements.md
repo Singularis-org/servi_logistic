@@ -197,6 +197,7 @@ están en «Decisiones cerradas».
 | 2026-11-10 | Review D1: tres tests reescritos por el design (`geografia-selector-zona-ocupada`, `geografia-selector-inactivos`, `ZonaDistritoEspecial`) | Ratificados: marcar un cantón asigna el cantón, el selector no ofrece la marca de zona especial (R8) y las etiquetas pasan a «Seleccionar <nivel> X». Cuarta excepción de R38. |
 | 2026-11-10 | Review D2: rótulo de la cifra de órdenes en el aviso de guardado de zona | «cambian de zona» (texto de R13), no «cambian a <zona>» de la maqueta: la cifra incluye las que salen hacia otra zona. |
 | 2026-11-10 | Review D3 (m2): cobertura de un miembro de grupo frente a un guardado de zona simultáneo | Se corrige ya: la cobertura se vuelve a comprobar dentro de la transacción del grupo. |
+| 2026-11-10 | Test `slt46-nodo-copia-vieja` R44 frente a R28 (gate de CI) | Autorizado: el cuerpo esperado de `orden_nodo_geografico` sale de la migración `20261110130000_slt89_zona_nodo`; los de las zonas, los triggers y las FK siguen comprobándose contra SLT-43. Quinta excepción de R38. |
 | heredada SLT-44 | Herencia | Gana la asignación más cercana subiendo; colapso 1/0/>1 (`_shared/zona-colapso.ts`). |
 | heredada SLT-46 | Confirmación | Toda escritura pasa por modal antes → después con control de cambio concurrente. |
 | heredada | Permisos | Zonas: solo `maestro`; grupos: lectura maestro+admin, escritura maestro. |
