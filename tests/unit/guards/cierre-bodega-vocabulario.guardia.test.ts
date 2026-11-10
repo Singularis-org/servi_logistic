@@ -119,6 +119,17 @@ const SUPERFICIES_ENTERAS = [
   "CascadaDinero.tsx",
 ] as const;
 
+/**
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» — el detalle de bodega ya no
+ * vive en el módulo: es el detalle único de SLT-95 (`components/private/cierres/detalle/`). Sus dos
+ * pestañas nuevas son ENTERAS de bodega y se censan enteras. `detalle-cierre-vista.ts` NO entra entero
+ * (trae «Aprobado» / «Rechazado» del detalle de MENSAJERO, D3 de la 431): se cortan sus dos trozos de
+ * bodega (`trozosDeBodegaEnLaVista`).
+ */
+const DETALLE = path.join(RAIZ, "components", "private", "cierres", "detalle");
+const SUPERFICIES_DETALLE = ["MensajerosCierreBodega.tsx", "ConciliacionCierreBodega.tsx"] as const;
+const VISTA = path.join(DETALLE, "detalle-cierre-vista.ts");
+
 /** Un trozo de código censado, con el nombre por el que se reporta un hallazgo. */
 interface Superficie {
   nombre: string;
@@ -183,6 +194,28 @@ function trozosDeBodegaEnLaHoja(fuente: string): Superficie[] {
   return trozos;
 }
 
+/**
+ * SLT-104 — los dos trozos de bodega de `detalle-cierre-vista.ts`: la cuenta «Lo que va a la central»
+ * (`cuentaCentral`, donde viven los rótulos de la cascada de la 393) y la sección de S6 (Mensajeros y
+ * Conciliación), que va del marcador hasta el final del archivo.
+ */
+function trozosDeBodegaEnLaVista(fuente: string): Superficie[] {
+  const trozos: Superficie[] = [];
+  const inicioCuenta = fuente.indexOf("function cuentaCentral(");
+  if (inicioCuenta !== -1) {
+    const fin = fuente.indexOf("\nexport function lineasDinero", inicioCuenta);
+    trozos.push({
+      nombre: "detalle-cierre-vista.ts › cuentaCentral",
+      codigo: fuente.slice(inicioCuenta, fin === -1 ? inicioCuenta : fin),
+    });
+  }
+  const inicioS6 = fuente.indexOf("type CierreDelDiaDeBodega");
+  if (inicioS6 !== -1) {
+    trozos.push({ nombre: "detalle-cierre-vista.ts › Mensajeros y Conciliación", codigo: fuente.slice(inicioS6) });
+  }
+  return trozos;
+}
+
 /** El código de un componente de `cierres-admin`, ya sin comentarios. */
 function leer(archivo: string): string {
   return quitarComentarios(readFileSync(path.join(COMPONENTES, archivo), "utf8"));
@@ -190,12 +223,23 @@ function leer(archivo: string): string {
 
 /** Los cuatro archivos que son ENTEROS del cierre de bodega, ya leídos. */
 function superficiesEnteras(): Superficie[] {
-  return SUPERFICIES_ENTERAS.map((archivo) => ({ nombre: archivo, codigo: leer(archivo) }));
+  return [
+    ...SUPERFICIES_ENTERAS.map((archivo) => ({ nombre: archivo, codigo: leer(archivo) })),
+    // SLT-104: las dos pestañas del detalle único que son enteras de bodega.
+    ...SUPERFICIES_DETALLE.map((archivo) => ({
+      nombre: archivo,
+      codigo: quitarComentarios(readFileSync(path.join(DETALLE, archivo), "utf8")),
+    })),
+  ];
 }
 
 /** El censo del VOCABULARIO: los cuatro archivos completos + los dos trozos del comprobante. */
 function superficies(): Superficie[] {
-  return [...superficiesEnteras(), ...trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8")))];
+  return [
+    ...superficiesEnteras(),
+    ...trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8"))),
+    ...trozosDeBodegaEnLaVista(quitarComentarios(readFileSync(VISTA, "utf8"))),
+  ];
 }
 
 /**
@@ -304,6 +348,11 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
       ).toBe(true);
     }
     expect(existsSync(HOJA)).toBe(true);
+    // SLT-104: las dos pestañas del detalle único y la vista de la que se cortan los trozos.
+    for (const archivo of SUPERFICIES_DETALLE) {
+      expect(existsSync(path.join(DETALLE, archivo)), `${archivo} no existe`).toBe(true);
+    }
+    expect(existsSync(VISTA)).toBe(true);
     // El 2026-09-08 había 31 fuentes en `cierres-admin`. El umbral es holgado a propósito: mide
     // que el recorrido FUNCIONA, no cuántos componentes tiene la pantalla.
     expect(fuentesDeCierresAdmin().length).toBeGreaterThan(15);
@@ -348,6 +397,21 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
     expect(hoja?.codigo.length ?? 0).toBeGreaterThan(recortado * 2);
   });
 
+  it("SLT-104: los dos trozos de bodega de la vista se cortaron de verdad, y son de bodega", () => {
+    const trozos = trozosDeBodegaEnLaVista(quitarComentarios(readFileSync(VISTA, "utf8")));
+    expect(trozos.map((t) => t.nombre)).toEqual([
+      "detalle-cierre-vista.ts › cuentaCentral",
+      "detalle-cierre-vista.ts › Mensajeros y Conciliación",
+    ]);
+    for (const trozo of trozos) expect(trozo.codigo.length, `${trozo.nombre} salió cortado a nada`).toBeGreaterThan(200);
+    expect(trozos[0]!.codigo).toMatch(/lineasCascadaCentral/);
+    expect(trozos[0]!.codigo).not.toMatch(/export function lineasDinero/);
+    expect(trozos[1]!.codigo).toMatch(/export function filasMensajeros/);
+    expect(trozos[1]!.codigo).toMatch(/export function cuentaConciliacion/);
+    // Y ninguno arrastra el detalle de MENSAJERO, que sí dice «Aprobado» (D3 de la 431).
+    for (const trozo of trozos) expect(trozo.codigo).not.toMatch(/FECHA_APROBADO|ACCION_APROBAR/);
+  });
+
   it("el MISMO extractor encuentra los rótulos NUEVOS: sí lee código, y el cambio está puesto", () => {
     // Si esto sale vacío, el censo de abajo no prueba nada: o el barrido no lee, o las cascadas
     // no están montadas. En cualquiera de los dos casos, el verde de abajo es falso.
@@ -355,9 +419,10 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
     expect(nuevos.length, "los rótulos de las cascadas no aparecen en ninguna superficie").toBeGreaterThan(
       4,
     );
-    // Y aparecen en el comprobante Y en el detalle: las dos superficies, no una.
+    // Y aparecen en el comprobante Y en el detalle: las dos superficies, no una. SLT-104: el detalle
+    // pinta la cascada de la central con `cuentaCentral` de la vista, no en el módulo.
     const donde = new Set(nuevos.map((h) => h.split(":")[0]));
-    expect([...donde]).toContain("CierresBodegaAdminModule.tsx");
+    expect([...donde]).toContain("detalle-cierre-vista.ts › cuentaCentral");
     expect([...donde].some((n) => n.startsWith("cierre-factura.tsx"))).toBe(true);
   });
 
@@ -383,8 +448,10 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
         "partes. Con una sola, este caso pasaría leyendo un archivo y dando los otros cinco por " +
         "buenos.",
     ).toBeGreaterThan(1);
-    // Y son EXACTAMENTE esas dos, nombradas: la cola del maestro y el comprobante de bodega.
+    // Y son EXACTAMENTE esas, nombradas: la cola del maestro (el pie del detalle monta
+    // `ConciliacionAcciones`), el comprobante de bodega y, desde SLT-104, la cuenta de «Conciliación».
     expect([...donde]).toContain("CierresBodegaAdminModule.tsx");
+    expect([...donde]).toContain("detalle-cierre-vista.ts › Mensajeros y Conciliación");
     expect([...donde].some((n) => n.startsWith("cierre-factura.tsx"))).toBe(true);
   });
 
