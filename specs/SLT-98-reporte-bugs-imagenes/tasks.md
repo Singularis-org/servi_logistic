@@ -94,7 +94,7 @@
 
 ## Bloque E — De punta a punta y cierre
 
-- [ ] **T11. E2E, documentación y comprobación en preview** (dep. T5, T9, T10; R1, R2, R5, R6, R7, R8,
+- [x] **T11. E2E, documentación y comprobación en preview** (dep. T5, T9, T10; R1, R2, R5, R6, R7, R8,
   R13, R14, R16, R20, R22).
   - **Archivos:**
     - el `describe` «SLT-98 — imágenes» y la aserción de «Este reporte no trae imágenes.» en
@@ -112,6 +112,10 @@
       navegador sube sin `apikey` y sin error de CORS, y el enlace del correo abre la imagen. Lo hace el
       humano o el leader, y queda anotado en `progress/impl_SLT-98.md`. Si algo falla, se para y el spec
       vuelve al humano.
+  - **Cerrada con salvedades** (review F2.2, igual que SLT-97): E2E ×2 21/21, documentación y tamaño hechos
+    por el implementer. El grupo `aislamiento` y `./init.sh` se sustituyen por `gate-completo` y los grupos
+    E2E de CI en el PR a `dev`. La comprobación en preview es **condición de merge** y queda anotada en
+    `progress/features/SLT-98.md`.
 
 ## Mapa R → test
 
