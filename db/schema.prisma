@@ -5992,7 +5992,7 @@ enum HistorialPlataformaAccion {
   // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
   pais_disponibilidad_activada
   pais_disponibilidad_desactivada
-  // SLT-81 (R17; 20261109130000): el superadmin cambia los datos del país o su catálogo de documentos.
+  // SLT-81 (R17; 20261111130000): el superadmin cambia los datos del país o su catálogo de documentos.
   pais_datos_cambiados
   tipo_documento_creado
   tipo_documento_editado
@@ -6007,7 +6007,7 @@ enum HistorialPlataformaEntidad {
   provincia
   canton
   distrito
-  // SLT-81 (20261109130000): un tipo de `tipo_identificacion`.
+  // SLT-81 (20261111130000): un tipo de `tipo_identificacion`.
   tipo_documento
 
   @@map("historial_plataforma_entidad")

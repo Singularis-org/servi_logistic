@@ -12,7 +12,7 @@ El MCP del grafo no se usó: el índice del worktree no está (design, «Lo que 
 |---|---|
 | `3f3b5a75` | T0.0: la pregunta del país sin prefijo oficial pasa a «Decisiones cerradas» (+ línea de Decisiones de `progress/features/SLT-81.md`) |
 | `002d1f22` | T0.1: excepciones de `pais-sin-literales` a SLT-92 (R28) |
-| `6cf38e05` | T1.1: migración `20261109130000_slt81_historial_datos_pais` + `down.sql` + schema |
+| `6cf38e05` | T1.1: migración `20261111130000_slt81_historial_datos_pais` + `down.sql` + schema |
 | `6e55196a` | T1.2: schemas, `zonas-iana.ts`, `prefijo-oficial.ts` |
 | `8453083e` | T1.3: `IPaisRepository` / `PaisRepository` + integración |
 | `403a6417` | T1.4: `IPaisService` / `PaisService` + unit |
@@ -23,7 +23,7 @@ El MCP del grafo no se usó: el índice del worktree no está (design, «Lo que 
 
 ### Archivos
 - Spec: `specs/SLT-81-*/requirements.md` (pregunta cerrada), `design.md` §5 (la frase que remitía a ella), `tasks.md` (T0.0–T1.6 marcadas).
-- `db/migrations/20261109130000_slt81_historial_datos_pais/{migration,down}.sql`, `db/schema.prisma`.
+- `db/migrations/20261111130000_slt81_historial_datos_pais/{migration,down}.sql`, `db/schema.prisma`.
 - `lib/types/pais.ts`, `lib/utils/zonas-iana.ts` (nuevo), `lib/utils/prefijo-oficial.ts` (nuevo), `lib/validacion/telefono.ts` (solo el comentario de «único módulo»).
 - `lib/interfaces/repositories/IPaisRepository.ts`, `lib/repositories/PaisRepository.ts`.
 - `lib/interfaces/services/IPaisService.ts`, `lib/services/PaisService.ts`.
@@ -386,6 +386,13 @@ corre CI; R25 lo corre el check `e2e` de CI.
   `vitest related` de los archivos con conflicto → 1 archivo, 36 tests verdes.
 - `./init.sh` → rojo en el paso del validador: `specs/SLT-96-consolidacion-cero-recibida/` (llega con `dev`)
   no tiene ficha en `feature_list.json`. Ajeno a SLT-81: lo resuelve el leader reimportando el board (F0).
+- Segunda integración: `775d5229` Merge `origin/dev`. Conflicto solo en `playwright.config.ts` (lista de specs
+  del proyecto serial): quedan las dos, `datos-pais-superadmin` (SLT-81) y `reporte-de-bugs` (SLT-87). Migración
+  renombrada con `git mv` a `20261111130000_slt81_historial_datos_pais`, detrás de `20261111120000_bug_report_status`
+  (`M_ANTERIOR` en el test de ida y vuelta). SQL sin cambios: las de `bug_report` no tocan `historial_plataforma_*`.
+- Verificación: `prisma generate` (URL ficticia) ok; `pnpm typecheck` exit 0; eslint de `playwright.config.ts` y del test
+  de ida y vuelta exit 0; `pnpm test:guardias` → 340 pasan, 1 falla (`dependencias-declaradas-presentes`, 4 tests,
+  baseline); `vitest related playwright.config.ts` → sin tests relacionados.
 
 ## CI PR #105: rojo y arreglo
 

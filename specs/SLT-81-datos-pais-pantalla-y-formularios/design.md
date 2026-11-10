@@ -49,7 +49,7 @@ Las columnas de `pais` siguen `NULL`-ables a propósito: los países dados de al
 pueden estar incompletos (R3) y la pantalla es la que los completa. La obligatoriedad del alta
 nueva (R5) vive en el servicio.
 
-### 2.1 Migración `20261109130000_slt81_historial_datos_pais`
+### 2.1 Migración `20261111130000_slt81_historial_datos_pais`
 
 ```sql
 ALTER TYPE "historial_plataforma_accion" ADD VALUE IF NOT EXISTS 'pais_datos_cambiados';
