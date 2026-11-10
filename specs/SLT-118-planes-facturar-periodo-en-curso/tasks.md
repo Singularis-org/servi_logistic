@@ -1,8 +1,8 @@
 # SLT-118 — planes-facturar-periodo-en-curso · tasks.md
 
-> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R40). P1–P18 cerradas; **P19 abierta** (alta con
-> plan desde ese mismo día; toca solo un caso de `tomar_cambio` en T2.5 y uno de T6.2). El spec debe re-aprobarse
-> antes de seguir.
+> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R40). P1–P19 cerradas (P19: alta con plan desde
+> ese mismo día, sin excepción ni corte al aplicar; es el caso «inexistente» de `tomar_cambio` en T2.5 y un caso de
+> T6.2). El spec debe re-aprobarse antes de seguir.
 > Capa: `backend_dev` (`db/`, `lib/`, `app/api/`, `scripts/`, `tests/`), salvo T11.4 y T14.4, que tocan
 > pantallas del superadmin (dos confirmaciones y un selector del formulario del plan).
 > Un solo PR (49 archivos, P16); los bloques solo ordenan el trabajo.
@@ -91,8 +91,9 @@
   desde el 18 con órdenes quincenales: 44 de 365 en la emitida el 18 y ninguna en diciembre; mensual desde el 1
   aplicado el 12: 31 000.00 en la emitida el 16), R16 y R5 (P18: quincenal desde el 1 aplicado el 12 → ninguna
   factura nueva al aplicar y la emitida el 16 con las órdenes del 1 al 15 y las dos cuotas; desde el 1 aplicado el
-  20 → las dos quincenas en la emitida el 1 de diciembre; alta el 10 con inicio el 10 → la emitida el 16 con
-  órdenes, 6 200.00 y 15 500.00, P19; marca en la emitida el 16 por la cola),
+  20 → las dos quincenas en la emitida el 1 de diciembre; alta el 10 con inicio el 10 → ninguna factura al
+  aplicar ni con `hasta` el 10, la emitida el 16 con las órdenes del 10 al 15, 6 200.00 (tramo del 10 al 15) y
+  15 500.00 (del 16 al 30), y la emitida el 1 de diciembre con 15 500.00, P19; marca en la emitida el 16 por la cola),
   R39 (espera del cierre), R30 por P9 (depende de T11.2), R33, R36 y R38 (dependen de T14.2), con los casos de
   design §8 y `SL118` al cambiar la periodicidad o una marca ya puesta de una `por_cerrar`.
 - [ ] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29.

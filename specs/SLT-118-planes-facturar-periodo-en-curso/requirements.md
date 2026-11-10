@@ -45,8 +45,10 @@
 > **Ajustados el 2026-11-10 con P17 y P18.** R28 pasa de propuesta a cerrado (P17: una sola factura). R16 pierde
 > el corte al aplicar (P18: la primera cuota de un inicio pasado cuya factura ya salió espera al próximo corte,
 > junto con las órdenes, y esa factura puede llevar dos cuotas). Por eso cambian también R5 (la primera cuota se
-> guarda aparte), R8, R18, R24 y R29 (ejemplos y tests). Queda abierta **P19** (alta con plan desde ese mismo
-> día), escrita en R16 con su propuesta; solo cambia un ejemplo y un test.
+> guarda aparte), R8, R18, R24 y R29 (ejemplos y tests).
+>
+> **Ajustados el 2026-11-10 con P19** (alta con plan desde ese mismo día: sin excepción ni corte al aplicar). R16,
+> R28 y R29 la citan en su texto, su ejemplo y su test; el comportamiento es el que ya estaba escrito como propuesta.
 >
 > **Vocabulario.**
 > - *Periodicidad de órdenes*: cada cuánto se factura lo de las órdenes: **quincenal** (cortes el 1 y el 16)
@@ -203,11 +205,12 @@
     se emite entera con el plan de antes y lleva 15 500.00 (la quincena del 16, plan nuevo), y la del 16 empieza
     con quincenal. Sin devolución de la mensual de noviembre (R40).
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
-- **R16** — *(cambiado con P18: sin corte al aplicar)* SI el efecto E de un cambio de plan, de tipo o de una
-  primera asignación cae en o antes del `desde` D de la factura en curso (inicio en el pasado, o un cambio que la
-  cola aplica tarde), ENTONCES la factura en curso DEBE pasar entera al plan, el tipo y la periodicidad nuevos
-  para sus órdenes, y su fin natural DEBE recalcularse con la periodicidad nueva (R2). Aplicarlo NO DEBE cortar
-  la factura en curso ni emitir ninguna factura en ese instante (decisión P18). Su cuota:
+- **R16** — *(cambiado con P18 y P19: sin corte al aplicar)* SI el efecto E de un cambio de plan, de tipo o de una
+  primera asignación cae en o antes del `desde` D de la factura en curso (inicio en el pasado, un cambio que la
+  cola aplica tarde, o el alta de una empresa con plan desde ese mismo día), ENTONCES la factura en curso DEBE
+  pasar entera al plan, el tipo y la periodicidad nuevos para sus órdenes, y su fin natural DEBE recalcularse con
+  la periodicidad nueva (R2). Aplicarlo NO DEBE cortar la factura en curso ni emitir ninguna factura en ese
+  instante, tampoco en el alta (decisiones P18 y P19). Su cuota:
   - en un cambio, la del período que empieza en D, en la factura emitida en D si aún no está cerrada (R8, R39);
   - en una primera asignación, la primera cuota (R29) del tramo que empieza en D: en la factura emitida en D si
     aún no está cerrada (por adelantado); si ya está cerrada o no existe, en la factura en curso, que la DEBE
@@ -226,9 +229,12 @@
   - quincenal 15 500 con inicio el 1 aplicada el 20 (la factura en curso empieza el 16) → la emitida el 1 de
     diciembre lleva las órdenes del 16 al 30, la quincena del 16 y la del 1 de diciembre (15 500.00 cada una); la
     quincena del 1 al 15 no se cobra: su factura ya está cerrada (P4);
-  - empresa dada de alta el 10 con quincenal 15 500 desde el 10, aplicada a las 09:00 (no hay factura emitida el
-    10) → el 10 no se emite nada; la emitida el 16 lleva las órdenes del 10 al 15, la primera cuota del 10 al 15
-    (6 200.00, R29) y la quincena del 16 (15 500.00) (propuesta P19);
+  - empresa dada de alta el 10 de noviembre con quincenal 15 500 y órdenes quincenales desde el 10, aplicada a
+    las 09:00 (su factura en curso empieza a las 00:00 del 10, R26, y no hay factura emitida el 10) → el 10 no se
+    emite nada; la primera factura es la emitida el 16 (corrida de las 00:10) y lleva las órdenes del 10 al 15, la
+    primera cuota del 10 al 15 (6 de 15 días → 6 200.00, R29) y la cuota del 16 al 30 por adelantado (15 500.00,
+    R8): total de cuotas 21 700.00. Desde ahí, la regla normal: la emitida el 1 de diciembre lleva las órdenes del
+    16 al 30 y 15 500.00 (decisión P19);
   - primera asignación con inicio el 16 que la cola aplica a las 00:00:30 del 16 → la emitida el 16 (órdenes sin
     plan del 1 al 15) aún no está cerrada (R39) y lleva 15 500.00, por adelantado.
 
@@ -236,7 +242,8 @@
   recalcular los cargos de las órdenes.
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (inicio el 1 aplicado el 12, quincenal y
   mensual: ninguna factura nueva al aplicar y las cuotas en la emitida el 16; inicio el 1 aplicado el 20; alta el
-  10 con inicio el 10; inicio el 16 aplicado por la cola; cambio aplicado después de que la cola cerrara su
+  10 con inicio el 10 (P19: ninguna factura al aplicar; la emitida el 16 con las órdenes del 10 al 15, 6 200.00 y
+  15 500.00, cada cuota con su tramo; la emitida el 1 de diciembre con 15 500.00); inicio el 16 aplicado por la cola; cambio aplicado después de que la cola cerrara su
   factura: la cerrada no cambia y la en curso toma el plan nuevo; plan con órdenes mensuales tomado por una
   factura quincenal: su fin pasa al 1 del mes siguiente).
 - **R17** — MIENTRAS un cambio esté pendiente, y SI se cancela o se reemplaza, el sistema NO DEBE cambiar
@@ -328,9 +335,12 @@
   con el plan; quincenal con inicio el 18 (futuro) → la del 16 al 17 sin plan con 13 433.33; mensual con inicio
   el 18 → la del 16 al 17 con 13 433.33, y la emitida el 1 de diciembre con la mensual de diciembre; anual con
   órdenes mensuales e inicio el 18 → la del 16 al 17 con la cuota de 44 de 365 días, la del 18 al 30 sin cuota,
-  y la anual siguiente en la emitida el 1 de enero. En todos, una sola factura emitida en E.
+  y la anual siguiente en la emitida el 1 de enero. En todos, una sola factura emitida en E. Una empresa dada de
+  alta con plan desde ese mismo día NO DEBE caer aquí: su factura en curso empieza a las 00:00 de su alta (R26), E
+  es su `desde` y aplica R16, sin fijar ni emitir factura en E (decisión P19).
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (inicio el 5 y el 18: una sola factura
-  con `hasta` = E, con órdenes y cuota, y ninguna otra emitida en E).
+  con `hasta` = E, con órdenes y cuota, y ninguna otra emitida en E; alta el 10 con inicio el 10: ninguna factura
+  con `hasta` el 10).
 
 ### Primera cuota de un plan (decisión P6)
 
@@ -341,12 +351,14 @@
   del tramo ÷ los días del período, en decimal exacto, a dos decimales y con la mitad hacia arriba. El tramo
   puede pasar del `hasta` de las facturas siguientes (un plan anual con órdenes quincenales); el resto de ese
   período NO DEBE cobrarse en otra factura. Es la única excepción al «sin prorrateo»: cualquier otra cuota sigue
-  R8. El tramo se calcula igual aunque la factura lo emita después, a período vencido (R16, P18). Ejemplos:
-  quincenal 15 500 con primer plan desde el 10 → 6 de 15 días → 6 200.00; mensual 31 000 desde el 18 de noviembre
+  R8. El tramo se calcula igual aunque la factura lo emita después, a período vencido (R16, P18, P19). Ejemplos:
+  quincenal 15 500 con primer plan desde el 10 (alta ese día) → 6 de 15 días → 6 200.00, en la emitida el 16 junto
+  con la cuota del 16 al 30 (15 500.00; R16, P19); mensual 31 000 desde el 18 de noviembre
   → 13 de 30 días → 13 433.33; anual desde el 18 de noviembre → 44 de 365 días, y ninguna cuota en diciembre;
   quincenal 15 500 desde el 1 → 15 500.00 (R8: es inicio de período); mensual 31 000 desde el 1 de noviembre
   aplicado el 12 → 31 000.00, en la emitida el 16 (R16).
-  *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (alta el 10; inicio el 5 y el 18;
+  *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (alta el 10: tramo del 10 al 15, 6 días,
+  6 200.00, en la emitida el 16; inicio el 5 y el 18;
   anual desde el 18 con órdenes quincenales: la cuota en la emitida el 18 y ninguna en las de diciembre; mensual
   desde el 1 aplicado el 12: la cuota completa de noviembre en la emitida el 16),
   `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` (R10).
@@ -481,8 +493,13 @@
 | P16 · 49 archivos | — (proceso: línea `tamano-pr-aceptado` de la ficha) |
 | P17 · Una sola factura con las órdenes sin plan y la primera cuota | R28 |
 | P18 · Inicio pasado con la factura de la cuota ya emitida: la cuota espera al próximo corte, sin corte al aplicar | R5, R8, R16, R18, R24, R29 |
+| P19 · Alta con plan desde ese mismo día: sin excepción ni corte; la primera factura en el próximo corte con las órdenes, la cuota proporcional y la del período siguiente | R16, R28, R29 |
 
 ## Preguntas abiertas
+
+Ninguna.
+
+### Respondidas el 2026-11-10, quinta tanda (texto original, para el rastro)
 
 - **P19 · Alta con plan desde ese mismo día.** La decisión «Cuota por adelantado» dice que la primera factura de
   un plan lleva solo la cuota (órdenes en 0). Con P18 (al aplicar no se corta ni se emite nada), una empresa dada
@@ -635,3 +652,4 @@ quedan contradichas. P4 sí, en un punto: P18.
 | 2026-11-10 | P16 · Tamaño 49 | Se aceptan 49 archivos; línea `tamano-pr-aceptado` en la ficha (humano). |
 | 2026-11-10 | P17 · Primera cuota de una empresa que ya operaba sin plan | **Una sola factura**: la que se emite al empezar el plan lleva las órdenes sin plan pendientes y la primera cuota por adelantado (R28, como propuso el spec) (humano). |
 | 2026-11-10 | P18 · Plan con inicio en el pasado cuya factura de la cuota ya salió | La cuota **espera a la factura del próximo corte**, junto con las órdenes; en ese caso queda a período vencido. **No** se corta la factura en curso ni se emite una factura extra al aplicar el plan (distinto de la propuesta del spec). Ej.: asignado el 12 de noviembre con inicio el 1 y órdenes quincenales → la cuota entra en la factura emitida al cierre del corte 1–15 (humano). |
+| 2026-11-10 | P19 · Alta con plan desde ese mismo día | **Sin excepción ni corte al aplicar** (como propuso el spec). La primera factura sale en el **próximo corte** y lleva las órdenes desde el alta + la cuota proporcional desde el alta hasta el corte + la cuota del período siguiente por adelantado. Ej.: alta el 10 de noviembre, órdenes quincenales, cuota quincenal 15 500 → la emitida el 16 lleva las órdenes del 10 al 15 + 6 200.00 (6 de 15 días) + 15 500.00 (16 al 30). Desde ahí, la regla normal (humano). |

@@ -1,6 +1,6 @@
 # SLT-118 — planes-facturar-periodo-en-curso · design.md
 
-> Requisitos: `requirements.md` (R1–R40; P1–P18 cerradas por el humano el 2026-11-10; **P19 abierta**).
+> Requisitos: `requirements.md` (R1–R40; P1–P19 cerradas por el humano el 2026-11-10; sin preguntas abiertas).
 >
 > **Dos cambios de fondo del humano (2026-11-10, tras aprobar el spec).**
 > 1. *Periodicidad de órdenes:* cada plan define si sus órdenes se facturan quincenal o mensual; sin plan,
@@ -12,8 +12,9 @@
 > Este design los aplica y dice qué se conserva y qué se rehace del código de la tanda 1 (§0). Con P17 (una sola
 > factura con las órdenes sin plan y la primera cuota) y P18 (sin corte al aplicar: la primera cuota de un inicio
 > pasado cuya factura ya salió espera al próximo corte) la primera cuota se guarda en su propio grupo de columnas,
-> porque una factura puede llevar dos cuotas (§1.1, §2.4). P19 (alta con plan desde ese día) está escrita con su
-> propuesta, marcada en §2.3.
+> porque una factura puede llevar dos cuotas (§1.1, §2.4). P19 (alta con plan desde ese día: sin excepción ni corte
+> al aplicar; la primera factura sale en el próximo corte con las órdenes y las dos cuotas) cae en el caso
+> «inexistente» de §2.3, sin código propio.
 >
 > Antes: sin corte ni prorrateo (P3); la cuota es la del período completo, salvo la primera cuota de un plan,
 > que prorratea (P6, R29); la primera asignación corta la factura sin plan en su día (P8, R28); el servidor del
@@ -228,9 +229,11 @@ su `UPDATE "organizacion"`, con la empresa ya en `FOR UPDATE`, así que sabe si 
      efecto` (P17: una sola factura con sus órdenes sin plan y la primera cuota) y abre la siguiente desde el
      efecto con el plan, el tipo y la periodicidad nuevos.
 
-Solo toca facturas no cerradas. No cierra: solo fija y marca. **P19 (abierta):** si el humano elige la excepción del
-alta, en el caso «inexistente» `tomar_cambio` vuelve a recibir el «ahora», fija `F` en él con la marca D y abre la
-siguiente desde ahí; nada más cambia. Un cambio pendiente, cancelado, una edición de
+Solo toca facturas no cerradas. No cierra: solo fija y marca. **P19 (cerrada: sin excepción):** el alta con plan
+desde ese mismo día es el caso «inexistente»: la factura en curso empieza a las 00:00 del alta (= D = efecto), no
+hay factura con `hasta_at = D`, la marca D va en `F` y `tomar_cambio` no recibe el «ahora» ni fija nada. En su fin
+natural (quincenal, el 16) `F` se emite con las órdenes desde D, la primera cuota del tramo `[D, 16)` y, por R8, la
+cuota del período que empieza el 16, en sus dos grupos de columnas (§1.1). Un cambio pendiente, cancelado, una edición de
 precio o de periodicidad del plan no llaman a `aplicarEnTx`: no tocan facturas (R17, R36).
 
 **Por qué el efecto de R30 es siempre un corte (R38).** El efecto es el inicio de un período del tipo de
@@ -432,7 +435,7 @@ Con `BEGIN`/`COMMIT`. Pasos:
 | Archivo | Cubre | Cómo |
 |---|---|---|
 | `tests/integration/db/factura-plataforma-cierre.test.ts` | R1–R9, R11, R14, R26, R27 | Base real, reloj por `p_ahora`; empresas: sin plan (quincenal), mensual con órdenes quincenales (cuota de diciembre en la emitida el 1 de diciembre, ninguna en la emitida el 16), anual con órdenes mensuales (cuota solo en la emitida el 1 de enero), quincenal (cuota de la quincena que empieza en cada una); bordes de `ocurrido_at`; precio editado; dos cierres a la vez; siembra (P15: quincenal → primera cuota el 16 de noviembre, mensual → el 1 de diciembre, anual → el 1 de enero; ninguna cuota del período en curso); ida y vuelta con y sin cuota cerrada |
-| `tests/integration/db/factura-plataforma-cambio-plan.test.ts` | R5 (las dos cuotas), R8 (pendiente por SQL a mitad de período), R15–R17, R28, R29, R30 (P9), R33, R36, R38, R39 | `PlanesRepository` real: mensual → quincenal con efecto el 1 de diciembre (la emitida el 1 de diciembre con la cuota quincenal del plan nuevo); el mismo por SQL el 10; inicio el 1 aplicado el 12 en el acto (P18: ninguna factura nueva al aplicar; la emitida el 16 con las órdenes del 1 al 15, la primera cuota del 1 al 15 y la de la quincena del 16, 15 500.00 cada una; con mensual, solo la de noviembre, 31 000.00, y la de diciembre en la emitida el 1 de diciembre); inicio el 1 aplicado el 20 (las dos quincenas en la emitida el 1 de diciembre; la cerrada del 1 al 15 igual); alta el 10 con inicio el 10 (P19: la emitida el 16 con órdenes del 10 al 15, 6 200.00 y 15 500.00); inicio el 16 aplicado por la cola (marca en la emitida el 16, sin corte); inicio el 5 (11 366.67 en la del 1 al 4) y el 18 futuro (13 433.33 en la del 16 al 17; P17: una sola factura emitida en E); anual desde el 18 con órdenes quincenales (44 de 365; ninguna en diciembre; la anual en la emitida el 1 de enero); quincenal → anual guardado por `PlanesService` el 10 de noviembre; cambio a un plan con órdenes mensuales (R38); periodicidad editada en los dos sentidos (R36); espera del cierre con un cambio pendiente sin aplicar a las 00:10 y cierre tras aplicarlo (R39); aplicado tarde, antes y después de un cierre; `UPDATE` de la periodicidad de una `por_cerrar` o de una marca ya puesta → `SL118` |
+| `tests/integration/db/factura-plataforma-cambio-plan.test.ts` | R5 (las dos cuotas), R8 (pendiente por SQL a mitad de período), R15–R17, R28, R29, R30 (P9), R33, R36, R38, R39 | `PlanesRepository` real: mensual → quincenal con efecto el 1 de diciembre (la emitida el 1 de diciembre con la cuota quincenal del plan nuevo); el mismo por SQL el 10; inicio el 1 aplicado el 12 en el acto (P18: ninguna factura nueva al aplicar; la emitida el 16 con las órdenes del 1 al 15, la primera cuota del 1 al 15 y la de la quincena del 16, 15 500.00 cada una; con mensual, solo la de noviembre, 31 000.00, y la de diciembre en la emitida el 1 de diciembre); inicio el 1 aplicado el 20 (las dos quincenas en la emitida el 1 de diciembre; la cerrada del 1 al 15 igual); alta el 10 con inicio el 10 (P19: ninguna factura con `hasta` el 10; la emitida el 16 con órdenes del 10 al 15, la primera cuota del 10 al 15, 6 200.00, y la del 16 al 30, 15 500.00; la emitida el 1 de diciembre con 15 500.00); inicio el 16 aplicado por la cola (marca en la emitida el 16, sin corte); inicio el 5 (11 366.67 en la del 1 al 4) y el 18 futuro (13 433.33 en la del 16 al 17; P17: una sola factura emitida en E); anual desde el 18 con órdenes quincenales (44 de 365; ninguna en diciembre; la anual en la emitida el 1 de enero); quincenal → anual guardado por `PlanesService` el 10 de noviembre; cambio a un plan con órdenes mensuales (R38); periodicidad editada en los dos sentidos (R36); espera del cierre con un cambio pendiente sin aplicar a las 00:10 y cierre tras aplicarlo (R39); aplicado tarde, antes y después de un cierre; `UPDATE` de la periodicidad de una `por_cerrar` o de una marca ya puesta → `SL118` |
 | `tests/integration/db/planes-periodicidad-ordenes.test.ts` (**nuevo**) | R35, R37 | `PlanesService` con el repositorio real: crear con y sin periodicidad; editar en el acto y programada (rastro, `aplicarCambioProgramado`); un plan creado sin ella queda quincenal; valor inválido; R37 al asignar, crear custom y público, cambiar tipo, editar a mensual con una empresa quincenal y con un pendiente quincenal, y una programada que deja de pasar |
 | `tests/components/PlanFormPeriodicidad.test.tsx` (**nuevo**) | R35 | El selector con `quincenal` al crear y el del plan al editar; lo manda; pinta el error de campo |
 | `tests/integration/db/planes-cambio-empresa.test.ts` (se amplía) | R30, R31, R33, R34 | Como antes |
@@ -495,9 +498,10 @@ E2E: diferido a SLT-119 (decisión «¿E2E?»). Antes del PR se corren en local 
 
 ## 10. Residuos y riesgos
 
-- **P19 abierta** (alta con plan desde ese mismo día). Escrita con la propuesta: sin excepción, la primera cuota
-  sale en la emitida en el próximo corte con las órdenes. Si se elige la excepción, cambia el caso «inexistente»
-  de `tomar_cambio` (§2.3) y un test; nada más.
+- **P19 cerrada** (alta con plan desde ese mismo día): sin excepción. La primera factura de la empresa sale en el
+  próximo corte con sus órdenes y dos cuotas (quincenal 15 500 con alta el 10: 6 200.00 + 15 500.00 el 16). Se
+  descartó cortar la factura al aplicar y emitirla con órdenes en 0 y la cuota: era la factura extra que P18 ya
+  descarta, y una excepción solo para el alta en `tomar_cambio`.
 - **A período vencido en P18.** La primera cuota de un inicio pasado cuya factura ya salió se cobra al final del
   corte, junto con la del período siguiente si ese corte es inicio de período: esa factura puede llevar dos
   cuotas (quincenal: 31 000.00 en una sola emisión). Es la decisión del humano.
