@@ -103,22 +103,22 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T3 — Guardado de zona (depende de T2)
 
-- [ ] **T3.1** Esquemas `crearZonaSchema`/`actualizarZonaSchema` (`nodoIds`, `antes` **obligatorio**
+- [x] **T3.1** Esquemas `crearZonaSchema`/`actualizarZonaSchema` (`nodoIds`, `antes` **obligatorio**
   solo en `actualizarZonaSchema` —design §5.5—, «al menos uno» en `distritoIds`),
   `ActualizarZonaResult` con `cambio_concurrente`, `ZonaDTO.nodosCount`; casos en
   `tests/unit/types/zona-schemas.test.ts` (R5) y en `tests/unit/types/zona-schema.test.ts` (sin
   `antes` → error en `antes`; crear sin él → válido). (R5, R16, R46)
-- [ ] **T3.2** `ZonaRepository.create`/`update` con los pasos de §5.1 (candado, «antes», otra zona,
+- [x] **T3.2** `ZonaRepository.create`/`update` con los pasos de §5.1 (candado, «antes», otra zona,
   existencia, escrituras por diferencia en las dos tablas, normalización de miembros, plan con todos
   los afectados, quinto lote de historial, `esViolacionNodoUnico`); `IZonaRepository`. (R1–R4, R10,
   R11, R16, R21, R30)
-- [ ] **T3.3** `ZonaService`: traducción de los desenlaces nuevos (`nodoIds`, `cambio_concurrente`),
+- [x] **T3.3** `ZonaService`: traducción de los desenlaces nuevos (`nodoIds`, `cambio_concurrente`),
   rol, y el rechazo de la falta de `antes` (`safeParse` después del rol, antes de llamar al
   repositorio; design §5.5); `IZonaService`; casos en `tests/unit/services/zona-service.test.ts`
   (sin `antes` → `validation_error` en `antes` y el doble de repositorio no se llama) y en
   `tests/integration/actions/zonas-action.test.ts` (sin `antes` → `validation_error`, base sin
   cambios). (R2, R16, R36)
-- [ ] **T3.7** Adaptar al «antes» obligatorio los tests existentes que guardan una zona sin él
+- [x] **T3.7** Adaptar al «antes» obligatorio los tests existentes que guardan una zona sin él
   (cambio de entrada AUTORIZADO por el humano el 2026-11-09; design §5.5). Va en el mismo commit que
   T3.1–T3.3: con el campo requerido, el typecheck no cierra sin esto. Cada llamada gana el «antes»
   que corresponde a lo sembrado (los distritos que la zona tiene en ese momento; `nodoIds: []`), sin
@@ -145,37 +145,42 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   otros `update`/`actualizar` (usuario, `DistritoZonaEspecialService`, `tx.zona.update`).
   *Hecho:* typecheck verde y esos archivos verdes con un diff que solo añade el «antes» a la entrada
   y a las aserciones de llamada sobre dobles (el reviewer lo comprueba contra R38).
-- [ ] **T3.4** [P] `tests/integration/db/zona-nodo-asignacion.test.ts`: crear/guardar con cantón,
+  > Nota (2026-11-10): el typecheck encontró dos llamadores más fuera de la lista —
+  > `geo-consultas-zona.test.ts` y `geo-lecturas-sin-backfill.test.ts`—; ganan el «antes» igual
+  > (decisión del 2026-11-09). Los tests de integración lo ganan por `ZonaRepositoryConAntes`
+  > (`_fixtures/antes-de-zona.ts`), que lo lee de la base justo antes de cada `update`. Los tests de
+  > componente del formulario quedan rojos hasta T7.2 (el formulario no manda «antes»): ver bitácora.
+- [x] **T3.4** [P] `tests/integration/db/zona-nodo-asignacion.test.ts`: crear/guardar con cantón,
   provincia y profundidad 4; conflicto con otra zona y carrera por el índice; excepción en los dos
   órdenes; nodo inexistente o de otro país; retirados; vacío; cambio concurrente. (R1–R5, R16)
-- [ ] **T3.5** [P] `tests/integration/db/zona-nodo-reconciliacion.test.ts`: órdenes bajo el cantón
+- [x] **T3.5** [P] `tests/integration/db/zona-nodo-reconciliacion.test.ts`: órdenes bajo el cantón
   asignado se mueven; las de la excepción no; estante retenidas; cierre y gestión final fuera; un
   lote; misma respuesta. (R10, R11)
-- [ ] **T3.6** [P] `tests/integration/db/zona-nodo-rastro.test.ts`: `zona_nodo_cambiado` por nodo con
+- [x] **T3.6** [P] `tests/integration/db/zona-nodo-rastro.test.ts`: `zona_nodo_cambiado` por nodo con
   su texto, lote propio; distritos con `zona_distrito_cambiado` como SLT-76; crear sin filas. (R30)
 
 ## T4 — Impacto (depende de T3.2)
 
-- [ ] **T4.1** `contarPlan` común a `planificarReconciliacion` y al impacto; `impactoDeAsignacion` en
+- [x] **T4.1** `contarPlan` común a `planificarReconciliacion` y al impacto; `impactoDeAsignacion` en
   una transacción de solo lectura (§5.3); `ZonaService.impactoAsignacion`; action
   `impactoAsignacionZona` (zod, tope de ids). (R13–R15, R36)
-- [ ] **T4.2** `tests/integration/db/zona-nodo-impacto.test.ts`: cifras por categoría; aviso =
+- [x] **T4.2** `tests/integration/db/zona-nodo-impacto.test.ts`: cifras por categoría; aviso =
   guardado (`ordenesReconciliadas`, retenidas); ninguna escritura (conteo de filas antes/después);
   «cambian de tarifa» con y sin activación, incluido el miembro que pierde su grupo. (R13–R15)
 
 ## T5 — Grupos sobre el nodo (depende de T2.5 y T3.2)
 
-- [ ] **T5.1** Esquemas de grupo en `lib/types/tarifa-flexible.ts` (§6): `nodoIds`; `antes`
+- [x] **T5.1** Esquemas de grupo en `lib/types/tarifa-flexible.ts` (§6): `nodoIds`; `antes`
   **obligatorio** en cambiar miembros; `nombreAnterior` **obligatorio** en renombrar; `antes: {
   nombre, distritoIds, nodoIds, valores }` **obligatorio** en borrar (design §5.5); crear sin «antes»;
   `GrupoDistritosDTO.nodos`. `CambiarGrupoResult` y `BorrarGrupoResult` con
   `conflict`/`cambio_concurrente` en `IGrupoDistritosService.ts`. (R17, R43–R46)
   *Hecho:* typecheck verde con los esquemas; los llamadores de hoy se adaptan en T5.6, que cierra en
   el mismo commit que T5.2b (cuando cambian las firmas de service y repositorio).
-- [ ] **T5.2** `GrupoDistritosRepository` (`nodosCubiertos`, `distritosEnOtroGrupo` sobre las dos
+- [x] **T5.2** `GrupoDistritosRepository` (`nodosCubiertos`, `distritosEnOtroGrupo` sobre las dos
   tablas, reparto por tabla, historial con el recuento de las dos) y `GrupoDistritosService`
   (cobertura, rol); interfaces; `lib/actions/tarifas.ts`. (R17, R18, R31, R37)
-- [ ] **T5.2b** Cambio concurrente en las cuatro escrituras de grupos (§5.4): candado `FOR UPDATE`
+- [x] **T5.2b** Cambio concurrente en las cuatro escrituras de grupos (§5.4): candado `FOR UPDATE`
   del grupo, `mismoConjunto`, comparación del «antes» en `renombrar`, `fijarDistritos` y `borrar`
   (después de `not_found`, antes de escribir), desenlace `cambio_concurrente` en repositorio y
   `conflict` en service; el «antes» pasa a ser parámetro **obligatorio** de repositorio y service
@@ -187,19 +192,19 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   sin cambios»). Depende de T5.1 y T5.2. (R43–R46)
   *Hecho:* esos dos archivos y los casos nuevos de `grupo-distritos-service.test.ts` (T5.5) en verde,
   y los tests existentes de SLT-52/54 sobre grupos verdes con solo la adaptación de T5.6.
-- [ ] **T5.3** `TarifasPantallaRepository.distritosDeZona` desde el catálogo y `nodosDeZona` nuevo;
+- [x] **T5.3** `TarifasPantallaRepository.distritosDeZona` desde el catálogo y `nodosDeZona` nuevo;
   `TarifasPantallaService.cargarZona` con `nodos`; interfaces. (R23, R38)
-- [ ] **T5.4** `tests/integration/db/grupo-nodo.test.ts`: miembro cantón y distrito heredado;
+- [x] **T5.4** `tests/integration/db/grupo-nodo.test.ts`: miembro cantón y distrito heredado;
   precedencia distrito > cantón > provincia en cobro y pago (zona del mensajero); orden sin distrito
   sin grupo; normalización al guardar zona (asignado ↔ heredado conserva grupo, sale de la zona lo
   saca con historial); fuera de cobertura y en otro grupo rechazados. (R17–R21, R31)
-- [ ] **T5.5** [P] `tests/unit/services/grupo-distritos-service.test.ts` y
+- [x] **T5.5** [P] `tests/unit/services/grupo-distritos-service.test.ts` y
   `tests/unit/services/tarifas-pantalla-service.test.ts`: roles en las cuatro escrituras y en la
   lectura (`admin` lee, no escribe; otros `forbidden` con doble que falla); `cambio_concurrente` →
   `conflict` con motivo; sin «antes» en renombrar, cambiar miembros y borrar → `validation_error` en
   su campo con doble que falla (también con grupo inexistente y con renombrar al nombre actual);
   crear sin «antes» → `ok`. (R37, R43–R46)
-- [ ] **T5.6** Adaptar al «antes» obligatorio los tests existentes que renombran, cambian miembros
+- [x] **T5.6** Adaptar al «antes» obligatorio los tests existentes que renombran, cambian miembros
   o borran un grupo sin él (cambio de entrada y, donde se dice, de aserción, AUTORIZADO por el humano
   el 2026-11-09; design §5.5). Va en el mismo commit que T5.2b. Cada llamada gana el «antes» de lo
   sembrado (nombre actual, miembros actuales con `nodoIds: []`, número de valores del grupo).
@@ -225,11 +230,11 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T6 — Aislamiento y equivalencia (depende de T3, T4, T5)
 
-- [ ] **T6.1** Completar `tests/integration/db/zona-nodo-dos-empresas.test.ts`: el mismo cantón en
+- [x] **T6.1** Completar `tests/integration/db/zona-nodo-dos-empresas.test.ts`: el mismo cantón en
   zonas de dos empresas; cobertura, impacto, grupo y precio de cada una sin ver a la otra. (R35)
-- [ ] **T6.2** `tests/integration/db/slt89-equivalencia-cr.test.ts` contra la lectura congelada de
+- [x] **T6.2** `tests/integration/db/slt89-equivalencia-cr.test.ts` contra la lectura congelada de
   `scripts/geo-equivalencia/` (§9). (R38)
-- [ ] **T6.3** Dejar en `progress/impl_SLT-89.md` el guion para la persona que corre los tres scripts
+- [x] **T6.3** Dejar en `progress/impl_SLT-89.md` el guion para la persona que corre los tres scripts
   de R39 sobre la copia (ningún agente lo ejecuta). (R39)
 
 ## T7 — Pantallas (depende de T0.2 —maqueta aprobada—, T2.4, T3.1, T4.1, T5.1 y T5.2b)

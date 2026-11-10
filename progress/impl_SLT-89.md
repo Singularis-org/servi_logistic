@@ -282,3 +282,165 @@ Verificación en `logistic_slt89`, `--maxWorkers=1`:
 - Guardias, lote 03 (80 archivos) → `Test Files 80 passed (80) · Tests 1115 passed | 1 skipped (1116)`.
   Con los lotes 00 (84/84) y 01 (solo `dependencias-declaradas-presentes`, rojo aceptado) de la pasada
   anterior, las 320 guardias quedan verdes salvo esa.
+
+## Tanda 2 (2026-11-10): T3, T4, T5, T6 (solo servidor)
+
+Sha de partida: `5246ef5a`. Sin sub-agentes (instrucción del leader). T7 (pantallas) y T8 (E2E) fuera: la
+maqueta (T0.2) no está aprobada. Base: `logistic_slt89`, `--maxWorkers=1`, heap de 8 GB.
+
+Commits: `aeb8ecbf` (T3.1–T3.3 + T3.7), `1b307a7a` (T3.4), `859114cf` (T3.5), `f7889926` (T3.6),
+`e1a37752` (T4.1 + T4.2), `aeeb4778` (T5.1, T5.2, T5.2b, T5.5 de grupos, T5.6), `1a14cd9e` (T5.3 + T5.5
+de pantalla), `7e2dd736` (T5.4), `2cfc2002` (T6.1 + T6.2), y el de docs (T6.3, tasks y bitácora).
+
+### T3 — guardado de zona (R1–R5, R10, R11, R16, R21, R30, R36)
+
+- `lib/types/zona.ts`: `nodoIds`; «al menos un lugar» (`superRefine`, error en `distritoIds`, R5);
+  `antes` obligatorio solo en `actualizarZonaSchema` (`antesDeZonaSchema`, `.strict()`);
+  `ActualizarZonaResult` + `conflict/cambio_concurrente`; `ZonaDTO.nodosCount`.
+- `ZonaRepository.update` (design §5.1): `FOR UPDATE` de la zona; distritos y nodos previos comparados con
+  `antes` (`mismoConjunto`) → `cambio_concurrente`; conflictos de distritos y de nodos; existencia en el
+  catálogo (`nodo_invalido`: `no_existe` / `es_distrito`; el catálogo solo se carga si la zona tiene o pide
+  nodos); foto de miembros en riesgo; `zona_nodo` por diferencia; normalización de miembros (a, b, c) con
+  un lote propio de `grupo_distritos_cambiado`; plan con distritos y nodos; quinto lote
+  `zona_nodo_cambiado` («nombre (padre)»); `esViolacionNodoUnico`. `create`: conflictos, existencia y alta
+  en `zona_nodo`, sin historial de nodos.
+- `_shared/zona-nodo.ts`: lecturas y escrituras de `zona_nodo` y `grupo_distritos_nodo` (la guardia
+  `geografia-lecturas-sin-nodo-fk` barre `ZonaRepository` entero: ahí no se nombra la columna del nodo).
+- `ZonaService`: `safeParse` del `antes` tras el rol; `nodo_invalido` → `nodoIds`; conflictos de nodos →
+  `nodoIds` (mismo mensaje de SLT-75); `cambio_concurrente` → `conflict`.
+- Guardia de historial: `zona_nodo_cambiado` sale de `ESCRITOR_PENDIENTE_EN_CURSO` (queda vacía) y entra al
+  censo (`ZonaRepository.update`, mutación `reemplazarNodosDeZona(tx,`). Es el uso previsto de la lista
+  (T1.3); ninguna regla de la guardia cambió.
+
+Decisiones a revisar (reviewer):
+1. `nodoIds` de zona es `.optional()` (design §6 dice `.default([])`) y `ZonaDTO.nodosCount` es opcional en
+   el tipo: así inputs y DTO que ya construyen pantallas, fábricas y dobles siguen valiendo sin tocarlos
+   (R38). El service solo reenvía `nodoIds` si hay alguno; el repositorio pone `nodosCount` siempre.
+2. La normalización (paso 7c) deja historial solo por las filas de `grupo_distritos_nodo` que saca. Un
+   distrito de la tabla vieja que sale de la zona y no queda cubierto sale por la cascada, sin fila, como
+   hoy (design §5.1: «con asignaciones solo a distritos, cero escrituras nuevas»). R21 en sentido estricto
+   pediría también esa fila, pero cambiaría el historial de Costa Rica (R38). No se tocó: a decidir.
+3. La foto de miembros se pide solo si la zona queda con nodos; la normalización, solo si cambia alguna
+   asignación. Con solo distritos, `update` suma el `FOR UPDATE` y una lectura de `zona_nodo` de la zona.
+
+T3.7 (entrada autorizada): los 14 archivos de la lista y dos que el typecheck encontró fuera de ella
+(`geo-consultas-zona.test.ts`, `geo-lecturas-sin-backfill.test.ts`). Los de integración usan
+`ZonaRepositoryConAntes` (`tests/integration/db/_fixtures/antes-de-zona.ts`): subclase que, si la llamada no
+trae «antes», lo lee de la base justo antes del `update` (lo sembrado). `zona-guardado-conserva-costos` y
+`zona-distrito-unica` (por action o service) ganan `antes: await antesDeZona(…)`. Dobles unitarios:
+`$queryRaw` y delegados de grupos vacíos en `zona-repository.test.ts`; el `antes` de lo que cada caso
+siembra. Ninguna aserción sobre el resultado cambió.
+
+### T4 — aviso de impacto (R13–R15, R36)
+
+- `ZonaRepository.impactoDeAsignacion`: transacción con `SET TRANSACTION READ ONLY` que **se revierte
+  siempre** (el resultado sale en una excepción propia), así el modo de solo lectura tampoco sobrevive si el
+  cliente es una transacción ya abierta. Propuestas con `conAsignacionesDeZona`; afectados = nodos de la
+  zona antes ∪ pedidos; el plan es **`planificarReconciliacion` con las propuestas** (parámetro opcional
+  `foto`): las mismas consultas que el guardado (R15). `enCierre` y `conGestionFinal` sobre
+  `whereCambiariaDeZona` (la mitad común de `whereBaseElegible`). «Cambian de tarifa»: sin activar =
+  «cambian de zona»; activada, pendientes de los lugares con zona o grupo (`grupoDelLugar`) distintos antes
+  y después de la normalización simulada.
+- Desvío del design: §5.3 pide extraer `contarPlan`. Extraerla sacaba las consultas de
+  `planificarReconciliacion` y rompía `zona-reconciliacion-no-retarifa.guardia` (mide ese cuerpo). En vez de
+  tocar la guardia, la función común es `planificarReconciliacion`, con la foto opcional.
+- `ZonaService.impactoAsignacion` (solo `maestro`), action `impactoAsignacionZona` (zod, tope 5 000 ids,
+  `@sin-superficie` hasta T7.2). Los dobles exhaustivos de `IZonaRepository`/`IZonaService` (8 archivos,
+  uno en `379-maestro-sin-bloqueo.guardia`, solo su doble) ganan el método.
+
+### T5 — grupos sobre el nodo (R17–R21, R23, R31, R37, R43–R46)
+
+- Esquemas (`tarifa-flexible.ts`): `nodoIds` (default `[]`); `nombreAnterior` obligatorio al renombrar;
+  `antes` obligatorio al cambiar miembros y al borrar (`nombre`, miembros, `valores`).
+  `GrupoDistritosDTO.nodos` opcional (solo viaja si hay alguno: con solo distritos, el DTO de hoy).
+- `GrupoDistritosRepository`: reparto por tabla (distrito con `zona_distrito` en la zona → vieja; resto →
+  `grupo_distritos_nodo`); `distritosDeLaZona` mira primero `zona_distrito` y solo carga el catálogo si
+  queda algún id sin asignación propia; `distritosEnOtroGrupo` en las dos tablas; nombres de nodos en los
+  errores; historial con el recuento de las dos tablas; `FOR UPDATE` del grupo y comparación del «antes» en
+  renombrar, fijar y borrar.
+- Desvío de nombre: design §4.4 renombra `distritosDeLaZona` → `nodosCubiertos`. Se conservó el nombre (la
+  semántica nueva está en la interfaz) para no tocar los dobles más allá del «antes».
+- Service: `fijarDistritos(id, miembroIds, antes, actor)` con distritos y demás nodos juntos (la action los
+  concatena); `renombrarGrupo(id, nombre, nombreAnterior, actor)`; `borrarGrupo(id, antes, actor)`.
+- T5.3: `distritosDeZona` desde el catálogo solo si la zona tiene `zona_nodo`; `nodosDeZona` → `null` si la
+  zona solo tiene distritos sin nada debajo (sin cargar el catálogo); `cargarZona` incluye `nodos` solo si
+  no es `null`. Sin esto, `tarifas-referencia.test.ts` caía (17 casos, `EmpresaNoResuelta` al cargar el
+  catálogo sin empresa en contexto). La respuesta de Costa Rica queda idéntica.
+- T5.6 (entrada y aserciones de llamada autorizadas): `grupo-distritos-service.test.ts` (además, su doble de
+  Prisma gana `$queryRaw`, `grupoDistritosNodo`, `zonaDistrito` en la tx y `_count.nodos: 0`),
+  `tarifas-action.test.ts` (llamadas y las aserciones de las líneas ~273-277), `tarifa-activacion.test.ts`,
+  `tarifas-flexibles-escritura.test.ts` (con `_fixtures/antes-de-grupo.ts`). `TarifasGrupos.test.tsx` no se
+  tocó (T7.3): mockea las actions y sigue verde.
+
+### T6 — aislamiento y equivalencia (R35, R38, R39)
+
+- T6.1: caso nuevo en `zona-nodo-dos-empresas.test.ts`: el mismo cantón en zonas de A y B (mismo país) se
+  guarda en las dos; cobertura, aviso de impacto y grupo de cada una sin ver a la otra. El precio por
+  empresa queda para el E2E (T8.1); la zona y el grupo que lo deciden se prueban aquí.
+- T6.2: `slt89-equivalencia-cr.test.ts` contra `scripts/geo-equivalencia/` (zona por distrito, cobertura,
+  árbol, plan del guardado), grupo por par contra la tabla vieja, y un guardado con solo distritos que no
+  escribe en las tablas nuevas ni deja `zona_nodo_cambiado`.
+
+### T6.3 — guion de R39 para la persona que corre los scripts (ningún agente lo ejecuta)
+
+Sobre una **copia de producción** (nunca producción ni la base compartida), con SLT-89 aplicada:
+
+1. `pnpm run db:migrate` en la copia (aplica `20261110130000_slt89_zona_nodo` y
+   `20261110130100_slt89_historial_zona_nodo`); comprobar que `zona_nodo` y `grupo_distritos_nodo` están vacías.
+2. `pnpm geo:equivalencia-dinero` → sin diferencias.
+3. `pnpm geo:equivalencia-consultas` → sin diferencias. Esperado: +1 consulta en la carga del catálogo
+   (`zona_nodo`) y +1 por lote en el resolver (`grupo_distritos_nodo`), las dos sobre tablas vacías.
+4. `pnpm geo:explain-consultas` → sin regresión (regla de SLT-65: más de 20 % o un Seq Scan nuevo sobre `orden`).
+5. Pegar la salida de los tres en el PR antes del merge.
+
+### Verificación (logistic_slt89, `--maxWorkers=1`)
+
+- `pnpm run typecheck` con heap de 8 GB: exit 0 (sin el heap, `tsc` muere por memoria a 4 GB).
+- eslint en lo tocado: 0 errores; 1 aviso previo (`normalizeName` sin usar en `ZonaRepository`, ya en `5246ef5a`).
+- Unitarios y actions (16 archivos) → `Test Files 16 passed (16) · Tests 442 passed (442)`.
+- Integración (25 archivos: los nuevos de SLT-89 y las suites de zonas, grupos, resolver, referencia y
+  equivalencia de SLT-44/65) → `Test Files 25 passed (25) · Tests 246 passed (246)`.
+- Grupos y tarifas existentes (10 archivos) → `Test Files 10 passed (10) · Tests 114 passed (114)`.
+- Contrato v1 (modo comparar) → `Test Files 1 passed (1) · Tests 22 passed (22)`.
+- Guardias (337 archivos con «guard», en 4 lotes):
+  - lote 00 → `Test Files 88 passed (88) · Tests 1092 passed (1092)`;
+  - lote 01 → `Test Files 1 failed | 81 passed (82)`: solo `dependencias-declaradas-presentes` (4 casos), el
+    rojo ya aceptado en la tanda 1 y listado en `tests/baseline-rojos.json`;
+  - lote 02 → `Test Files 83 passed (83) · Tests 1375 passed (1375)`;
+  - lote 03 → primero `sql-a-mano-por-empresa` en rojo: el `FOR UPDATE` de `grupo_distritos` (T5.2b) no
+    filtraba por empresa. Arreglado en el código (filtra por `current_setting('app.organizacion_id', true)`
+    además de la RLS), sin tocar la lista de excepciones; la guardia y las suites de grupos →
+    `Test Files 7 passed (7) · Tests 189 passed (189)`. El resto del lote, verde (83/84 antes del arreglo).
+- Tras el arreglo: `pnpm run typecheck` exit 0; eslint de `GrupoDistritosRepository.ts` limpio.
+- `costo-y-zona-api-415.test.ts`: rojo por `orden` vacía en la base de la feature (sin `db:seed`); está en
+  `tests/baseline-rojos.json`. No es de SLT-89.
+
+### Rojos conocidos: el formulario de zona hasta T7.2
+
+Con `antes` obligatorio en `actualizarZonaSchema`, `CrearZonaForm` (valida en cliente con ese esquema y no
+manda `antes`) no puede guardar una zona existente hasta T7.2. Tests de componente rojos por eso (no se
+tocaron: son de T7.2, que espera la maqueta): `CrearZonaFormReconciliacion` (9), `ZonaCentralConfirmacion`
+(14), `ZonaDistritoEnOtraZona` (3), `ZonaFormSinCostos` (1), `ZonaNombreNoImprimible` (1): 28 casos en 5
+archivos. Lo mismo en producción con renombrar, cambiar miembros y borrar grupos desde `TarifasGrupos` (las
+actions piden el «antes» que la pantalla aún no manda); sus tests mockean las actions y siguen verdes. La
+rama no debe mergearse sin T7 (el spec ya lo dice: una tarjeta, un PR).
+
+### Mapa R → test (T3–T6)
+
+| R | Test |
+|---|---|
+| R1, R3, R4 | `tests/integration/db/zona-nodo-asignacion.test.ts` |
+| R2 | `zona-nodo-asignacion.test.ts` (conflicto con nombre y carrera por el índice); `tests/unit/services/zona-service.test.ts` (mensajes en `nodoIds`) |
+| R5 | `tests/unit/types/zona-schemas.test.ts`; `zona-nodo-asignacion.test.ts` (por la action, sin escribir) |
+| R10, R11 | `tests/integration/db/zona-nodo-reconciliacion.test.ts` |
+| R13, R14, R15 | `tests/integration/db/zona-nodo-impacto.test.ts`; borde en `tests/integration/actions/zonas-action.test.ts` |
+| R16 | `zona-nodo-asignacion.test.ts`; `tests/unit/types/zona-schema.test.ts`; `zona-service.test.ts`; `zonas-action.test.ts` |
+| R17, R18, R19, R20, R21, R31 | `tests/integration/db/grupo-nodo.test.ts`; `tests/unit/services/grupo-distritos-service.test.ts` |
+| R23 (servidor) | `grupo-nodo.test.ts` (distritos heredados y sub-árbol); `tests/unit/services/tarifas-pantalla-service.test.ts` |
+| R30 | `tests/integration/db/zona-nodo-rastro.test.ts` |
+| R35 | `tests/integration/db/zona-nodo-dos-empresas.test.ts` (caso T6.1) |
+| R36 | `zona-service.test.ts` (guardar e impacto con repositorio que falla) |
+| R37 | `grupo-distritos-service.test.ts`, `tarifas-pantalla-service.test.ts` |
+| R38 | `tests/integration/db/slt89-equivalencia-cr.test.ts` y las suites existentes de arriba |
+| R39 | Guion de arriba (persona) |
+| R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts`; `grupo-distritos-service.test.ts`; `tests/integration/actions/tarifas-action.test.ts` |
