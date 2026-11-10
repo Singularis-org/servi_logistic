@@ -300,6 +300,33 @@ corrida 1: `Imágenes (2). Los enlaces vencen en 24 horas: … Ver imagen 1: htt
 - `node scripts/tamano-pr.mjs`: AVISO, no rojo: «36/40 archivos, 4151/1000 lineas». Pasa lo aceptado en P12
   (~35 y ~3.900) en 1 archivo (el fixture del censo) y ~250 líneas: vuelve al humano por el leader.
 
+## Verificación R24 «país sin zona» (implementer, sobre HEAD 648406dc)
+
+Faltaba el test de la cláusula de R24 «país sin zona horaria → `error` sin conceder ni contar» (design §16.1).
+Añadidos (solo tests; el código ya cumplía, no hubo bug):
+
+- `tests/unit/services/reporte-bug-service.test.ts` «R24 — país sin zona horaria: prepararSubidas lanza PaisSinZonaHoraria sin llamar a consumir ni al almacén»: el doble gana `reglasPais` (por defecto CR); con
+  `reglasPaisFijas({ paisId: "XX", zonaHoraria: null })` rechaza con `PaisSinZonaHoraria`, el cupo sin llamadas
+  (ni `consumir` ni `devolver`) y el almacén sin llamadas.
+- `tests/unit/actions/reporte-bug-action.test.ts` «R24 — si el país de la empresa no tiene zona horaria responde error y el log lleva solo PaisSinZonaHoraria»: el servicio rechaza con `PaisSinZonaHoraria("XX")`; la
+  action responde exactamente `{ status: "error" }` y el log es `[reporte-bug] fallo al preparar la subida causa=PaisSinZonaHoraria`.
+- Fila R24 del mapa en `specs/SLT-98-reporte-bugs-imagenes/tasks.md` actualizada (quitado «Sin test todavía»).
+
+Salida real:
+
+```
+vitest run tests/unit/services/reporte-bug-service.test.ts tests/unit/actions/reporte-bug-action.test.ts
+ Test Files  2 passed (2)
+      Tests  43 passed (43)
+(filtro -t de los dos nuevos: 2 passed | 41 skipped)
+NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit  -> exit 0
+eslint <los dos archivos>                            -> No issues found
+pnpm run test:guardias (entero, tras 488a2245 y este cambio)
+ Test Files  1 failed | 341 passed (342)
+      Tests  4 failed | 4808 passed | 1 skipped (4813)
+ Rojo único: tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts (4 tests; está en tests/baseline-rojos.json)
+```
+
 ## Mapa R → test
 Los nombres son los del «Mapa R → test» de `tasks.md`; todos existen con ese nombre (prefijo «Rn — » en
 los unit de T7).
@@ -329,7 +356,7 @@ los unit de T7).
 | R21 | `reporte-bug-service.test.ts`; `plantilla-reporte-bug.test.ts` |
 | R22 | `tests/unit/services/reportes-bug-plataforma-service.test.ts` (×2); `tests/components/ReporteDetalle.test.tsx`; `bug-report.test.ts`; E2E pasos 4 y 5 |
 | R23 | `reportes-bug-plataforma-service.test.ts`; `ReporteDetalle.test.tsx` |
-| R24 | `bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21», «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen», «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) |
+| R24 | `bug-report.test.ts` «R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21», «R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25»; `reporte-bug-service.test.ts` «R24 — prepararSubidas consume el cupo con el usuario de la sesión, la fecha de Costa Rica, el número de imágenes y el tope 21, antes de tocar el almacén», «R24 — con consumir devolviendo 25, da listas con un permiso por imagen», «R24 — la fecha del cupo es el día de Costa Rica: a las 05:30 UTC del 11 cuenta en 2026-11-10», «R24 — país sin zona horaria: prepararSubidas lanza PaisSinZonaHoraria sin llamar a consumir ni al almacén»; `reporte-bug-action.test.ts` «R24 — si el país de la empresa no tiene zona horaria responde error y el log lleva solo PaisSinZonaHoraria»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) |
 | R25 | `bug-report.test.ts` «R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21», «R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25»; `reporte-bug-service.test.ts` «R25 — si consumir devuelve null, da exactamente { status: "sin_cupo_imagenes" } y no llama al almacén ni a devolver»; `reporte-bug-action.test.ts` «R25 — sin_cupo_imagenes pasa tal cual, sin más campos»; `e2e/reporte-de-bugs.spec.ts:740` «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso» (escrito; corrida pendiente) (paso 5) |
 | R26 | `bug-report.test.ts` «R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null», «R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29» |
 | R27 | `bug-report.test.ts` «R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada»; `reporte-bug-service.test.ts` «R27 — si el almacén falla, devuelve el cupo de la petición y relanza; si devolver también falla, registra «fallo al devolver el cupo de imagenes» y relanza el error original» |

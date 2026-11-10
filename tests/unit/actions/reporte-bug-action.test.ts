@@ -6,6 +6,7 @@ import {
   type EnviarReporteBugDeps,
 } from "@/lib/actions/reporte-bug";
 import { DESCRIPCION_MAX, IMAGEN_BYTES_MAX } from "@/lib/config/reporte-bug";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IReporteBugService } from "@/lib/interfaces/services/IReporteBugService";
 import { MODULO_POR_ACTION } from "@/lib/modulos/reparto";
@@ -216,6 +217,14 @@ describe("SLT-98 · prepararSubidaImagenesReporteAction", () => {
     expect(r).toStrictEqual({ status: "sin_cupo_imagenes" });
     // No es un error: no deja nada en el log.
     expect(log).not.toHaveBeenCalled();
+  });
+
+  it("R24 — si el país de la empresa no tiene zona horaria responde error y el log lleva solo PaisSinZonaHoraria", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { d } = deps({ servicio: { prepararSubidas: vi.fn().mockRejectedValue(new PaisSinZonaHoraria("XX")) } });
+
+    expect(await prepararSubidaImagenesReporteAction({ imagenes: [PNG] }, d)).toStrictEqual({ status: "error" });
+    expect(log).toHaveBeenCalledWith("[reporte-bug] fallo al preparar la subida causa=PaisSinZonaHoraria");
   });
 
   it("R31 — pedir permisos con un campo usuarioId, fecha o cupo de más da validation_error sin llamar al servicio", async () => {

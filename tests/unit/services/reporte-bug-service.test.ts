@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ENLACE_CORREO_SEGUNDOS, IMAGEN_BYTES_MAX, IMAGENES_POR_DIA_MAX, tipoPorFirma } from "@/lib/config/reporte-bug";
 import { contextoActual } from "@/lib/db/contexto-empresa";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
 import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugReportRepository";
@@ -97,6 +98,8 @@ function doble(o: {
   consumirDevuelve?: number | null;
   devolverLanza?: Error;
   ahora?: Date;
+  /** Las reglas del país; por defecto, Costa Rica. */
+  reglasPais?: ReturnType<typeof reglasPaisFijas>;
 } = {}): Doble {
   const guardados: NuevoBugReport[] = [];
   const enviados: EmailMessage[] = [];
@@ -154,7 +157,7 @@ function doble(o: {
     almacen.almacen,
     cupo,
     sender,
-    reglasPaisFijas(),
+    o.reglasPais ?? reglasPaisFijas(),
     () => o.destinatarios ?? [],
     log,
     nuevoId,
@@ -582,6 +585,14 @@ describe("SLT-98 · ReporteBugService.prepararSubidas y el tope diario", () => {
     await d.servicio.prepararSubidas(ACTOR, { imagenes: [{ tipo: "image/png", tamano: 10 }] });
 
     expect(d.cupo.llamadas[0].args[1]).toBe("2026-11-10");
+  });
+
+  it("R24 — país sin zona horaria: prepararSubidas lanza PaisSinZonaHoraria sin llamar a consumir ni al almacén", async () => {
+    const d = doble({ ids: [ID1, ID2], reglasPais: reglasPaisFijas({ paisId: "XX", zonaHoraria: null }) });
+
+    await expect(d.servicio.prepararSubidas(ACTOR, DOS)).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+    expect(d.cupo.llamadas).toEqual([]);
+    expect(d.almacen.llamadas).toEqual([]);
   });
 
   it("R25 — si consumir devuelve null, da exactamente { status: \"sin_cupo_imagenes\" } y no llama al almacén ni a devolver", async () => {
