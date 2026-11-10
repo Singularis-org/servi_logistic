@@ -1004,7 +1004,11 @@ export class ZonaRepository implements IZonaRepository {
         // ⭑ SLT-89 (R16, design §5.1 paso 0) — el candado de la fila de la zona: serializa dos
         // guardados de la misma zona, asi que el «antes» que se compara abajo sigue valiendo al
         // escribir. Sin fila (zona inexistente) no bloquea nada y el `findUnique` da `not_found`.
-        await tx.$queryRaw`SELECT "id" FROM "zona" WHERE "id" = ${id} FOR UPDATE`;
+        // SQL a mano: la extension no lo ve, asi que filtra por la empresa de la transaccion ademas de
+        // la RLS (SL-17 R25), como `bloquearGrupo` (review SLT-89 vuelta 1, m3).
+        await tx.$queryRaw`SELECT "id" FROM "zona"
+          WHERE "id" = ${id} AND "organizacion_id" = current_setting('app.organizacion_id', true)
+          FOR UPDATE`;
         const nodoIds = [...new Set(data.nodoIds ?? [])];
 
         // 376/R5: la lectura que ya existia gana UNA columna. No hace falta contar zonas: el

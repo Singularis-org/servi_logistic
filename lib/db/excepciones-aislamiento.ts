@@ -60,7 +60,6 @@ export const EXCEPCIONES_SQL_A_MANO: readonly ExcepcionDeAislamiento[] = [
   porRls("lib/repositories/WalletMovimientoRepository.ts"),
   porRls("lib/repositories/WhatsappEjecucionRepository.ts"),
   porRls("lib/repositories/WhatsappEnvioRepository.ts"),
-  porRls("lib/repositories/ZonaRepository.ts"),
   porRls("lib/repositories/ayuda-abierta.ts"),
   porRls("lib/repositories/correccion-cierre.ts"),
   porRls("lib/repositories/gestion-pendiente.ts"),
