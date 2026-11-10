@@ -88,6 +88,14 @@ export function textoTransicion(desde: BugReportStatus, hacia: BugReportStatus):
   return `${ETIQUETA_ESTADO[desde]} → ${ETIQUETA_ESTADO[hacia]}`;
 }
 
+/**
+ * R6: el nombre accesible del enlace de cada fila. La fecha visible va dentro tal cual, así que quien
+ * dicta «2026-11-09 14:05 UTC» sigue dando con el enlace (WCAG 2.5.3).
+ */
+export function textoEnlaceFila(empresa: string, creadoEn: string): string {
+  return `Ver reporte de ${empresa} del ${fechaUtc(creadoEn)}`;
+}
+
 /** R22: quién y cuándo. */
 export function textoAutoria(actor: string, creadoEn: string): string {
   return `${actor} · ${fechaUtc(creadoEn)}`;

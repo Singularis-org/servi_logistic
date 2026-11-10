@@ -437,6 +437,7 @@ pantallas los importan), y los tests los comparan literalmente.
 | Columnas | «Fecha», «Empresa», «Usuario», «Rol», «Descripción», «Estado» |
 | Resumen de la descripción | Las primeras 120 letras; si se cortó, termina en «…» |
 | Fecha (lista, contexto e historial) | «AAAA-MM-DD HH:mm UTC», p. ej. «2026-11-09 14:05 UTC» |
+| Nombre accesible del enlace de cada fila (decisión del humano del 2026-11-10, m3 de la revisión) | «Ver reporte de {empresa} del {fecha}», con la fecha en «AAAA-MM-DD HH:mm UTC», p. ej. «Ver reporte de Envíos Rápidos del 2026-11-09 14:05 UTC» |
 | Paginación | La de `Pagination`: «1-25 de 60»; `ariaLabel` «Paginación de reportes» |
 | Vacío con los filtros por defecto (R12) | «No hay reportes pendientes.» |
 | Vacío con otros filtros (R12) | «Ningún reporte coincide con los filtros.» |

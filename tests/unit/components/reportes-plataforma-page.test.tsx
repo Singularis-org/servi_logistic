@@ -217,11 +217,38 @@ describe("R6 — las filas", () => {
     const celdas = (f: HTMLElement) => within(f).getAllByRole("cell").map((c) => c.textContent);
     expect(celdas(primera)).toEqual(["2026-11-09 14:05 UTC", "Acme", "Usuario 1", "Administrador", `${LARGA}…`, "En revisión"]);
     expect(celdas(segunda)).toEqual(["2026-01-02 03:04 UTC", "Zeta Envíos", "Usuario 2", "Mensajero", "Algo falla", "Nuevo"]);
-    expect(within(primera).getByRole("link", { name: "2026-11-09 14:05 UTC" })).toHaveAttribute(
+    expect(within(primera).getByRole("link", { name: "Ver reporte de Acme del 2026-11-09 14:05 UTC" })).toHaveAttribute(
       "href",
       "/plataforma/reportes/r-1",
     );
     expect(within(segunda).getByRole("link")).toHaveAttribute("href", "/plataforma/reportes/r-2");
+  });
+
+  it("el enlace de cada fila anuncia «Ver reporte de {empresa} del {fecha}» con la fecha en UTC", async () => {
+    // 02:05 UTC del 9 es 20:05 del 8 en Costa Rica (UTC-6): si la fecha saliera en hora local, cambiarían
+    // el día y la hora.
+    const creadoEn = "2026-11-09T02:05:00.000Z";
+    const tzOriginal = process.env.TZ;
+    process.env.TZ = "America/Costa_Rica";
+    try {
+      expect(new Date(creadoEn).getHours()).not.toBe(new Date(creadoEn).getUTCHours());
+      deps.listar.mockResolvedValue({
+        status: "ok",
+        items: [fila(1, { empresa: "Envíos Rápidos", creadoEn })],
+        total: 1,
+        pagina: 1,
+      });
+      await montarListado();
+
+      const [, primera] = screen.getAllByRole("row");
+      expect(within(primera).getByRole("link")).toHaveAccessibleName("Ver reporte de Envíos Rápidos del 2026-11-09 02:05 UTC");
+      expect(within(primera).getByRole("link")).toHaveAttribute("href", "/plataforma/reportes/r-1");
+      // El texto visible sigue siendo la fecha, y va dentro del nombre (WCAG 2.5.3).
+      expect(within(primera).getByRole("link")).toHaveTextContent("2026-11-09 02:05 UTC");
+    } finally {
+      if (tzOriginal === undefined) delete process.env.TZ;
+      else process.env.TZ = tzOriginal;
+    }
   });
 });
 

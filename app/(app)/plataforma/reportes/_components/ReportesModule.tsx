@@ -17,7 +17,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { REPORTES_POR_PAGINA, type ReporteFilaDTO } from "@/lib/types/reporte-bug";
 
-import { ETIQUETA_ESTADO, fechaUtc, OPCIONES_FILTRO_ESTADO, TEXTOS_REPORTES } from "./reportes-textos";
+import {
+  ETIQUETA_ESTADO,
+  fechaUtc,
+  OPCIONES_FILTRO_ESTADO,
+  TEXTOS_REPORTES,
+  textoEnlaceFila,
+} from "./reportes-textos";
 
 const RUTA = "/plataforma/reportes";
 const ESTADO_POR_DEFECTO = "pendientes";
@@ -212,6 +218,7 @@ function Listado({
               <TableCell className="whitespace-nowrap tabular-nums">
                 <Link
                   href={`${RUTA}/${r.id}`}
+                  aria-label={textoEnlaceFila(r.empresa, r.creadoEn)}
                   className="rounded-sm text-primary-strong underline-offset-4 after:absolute after:inset-0 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
                 >
                   {fechaUtc(r.creadoEn)}
