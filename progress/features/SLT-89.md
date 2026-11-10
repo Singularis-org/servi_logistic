@@ -2,13 +2,13 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-89 | geo-jerarquica-zonas | fullstack | high | feature/SLT-89-geo-jerarquica-zonas | Camilo (6ace53aa94bfd46ee6a600a5) | pending (tomada) |
+| SLT-89 | geo-jerarquica-zonas | fullstack | high | feature/SLT-89-geo-jerarquica-zonas | Camilo (6ace53aa94bfd46ee6a600a5) | in_progress (tomada) |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 2026-11-09: tomada y worktree montado. Rama sobre SLT-46 «Geografía jerárquica: administración de
-países» (PR #107), que trae 43, 44, 45, 65 y 71. Siguiente: acotar (`/afinar-feature`) y spec (F1.2).
+F2.1 2026-11-10: spec aprobado (F1.4, «aprobado», por escrito) y tarjeta en in_progress. Spec R1–R48, T0–T9.
+Backend lanzado; la pantalla (T7) espera la maqueta T0.2 (https://claude.ai/artifact/9QG7NyNkFdDcxu5zvWu1xD), sin aprobar.
 
 ## Evaluación
 - zone fullstack: zona y zona especial asignables a cualquier nodo con herencia, `GeografiaSelector` a N
@@ -18,7 +18,7 @@ países» (PR #107), que trae 43, 44, 45, 65 y 71. Siguiente: acotar (`/afinar-f
   aditivas hasta SLT-48; equivalencia para CR (zonas, cobertura, cotizaciones y cierres).
 - Cupo fullstack: 2 de 3 (SLT-46, SLT-89).
 - Dependencias: SLT-46 sin mergear (PR #107); las geo en proceso están pausadas por decisión del humano.
-- Cruce de archivos: pendiente hasta tener `tasks.md` (F2.0).
+- Cruce de archivos (F2.0, 2026-11-10): choques propios con la pila geo. Con otra persona: SLT-77 «Tope de intentos de entrega configurable por empresa» (14 archivos de Tarifas, historial, schema) y SLT-55 «Valor propio del mensajero» (9 de Tarifas), de Carlos Restrepo: **choque aceptado por el humano** y avisado en ambas tarjetas. SLT-97 «Reporte de bugs: módulo del superadmin» (sin assignee): schema, modelos-de-negocio, architecture. SLT-88 sin rama publicada.
 
 ## Decisiones
 - 2026-11-09 (humano): «arranca 89, ignora las que están en proceso de geografía, están pausadas de
