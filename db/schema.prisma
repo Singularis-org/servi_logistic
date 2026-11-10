@@ -3765,6 +3765,8 @@ enum JobTipo {
   plan_cambios_vencidos
   /// SLT-86 (design §5.2): aplica UN cambio de empresa pendiente a sus 00:00; CON empresa, payload { cambioId }. Núcleo
   plan_aplicar_cambio_empresa
+  /// SLT-118 (design §4): RECURRENTE cada hora a los :10, sin empresa; cierra las facturas de la plataforma vencidas. Núcleo
+  factura_plataforma_cerrar
 
   @@map("job_tipo")
 }
@@ -5886,6 +5888,7 @@ model Organizacion {
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
   cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
   cobrosPlataformaTraza CobroPlataformaTraza[] // SLT-85
+  facturasPlataforma FacturaPlataforma[] // SLT-118
   ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
@@ -6405,6 +6408,51 @@ model CobroPlataformaTraza {
   @@index([ordenId])
   @@index([organizacionId, cobradoAt])
   @@map("cobro_plataforma_traza")
+}
+
+// SLT-118 (design §1) — la factura de la plataforma: el estado de cuenta interno de una empresa por período
+// de cobro, con la cuota del plan y las cifras de sus órdenes. De NEGOCIO. La escriben SOLO las funciones del
+// dueño de 20261111130100 (`factura_plataforma_avanzar`, `_tomar_cambio`, `_cerrar`); `servi_app` solo la
+// lee. Viven solo en el SQL de esa migración, porque Prisma no los expresa:
+//   · los CHECK: `estado` y `tipo_cobro` en su lista; fin nulo solo en curso y posterior al inicio; número y
+//     cifras solo en la cerrada; el plan (id, nombre, tipo) entero o vacío; la cuota con su precio y sus
+//     dos días, `0 < dias_cobrados <= dias_periodo`, y sin plan, sin cuota;
+//   · el único parcial `(organizacion_id) WHERE estado = 'en_curso'`: una sola en curso (R1);
+//   · la política `factura_plataforma_por_empresa` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R22);
+//   · el trigger `factura_plataforma_inmutable`: una cerrada no cambia, tampoco para el dueño, y una por
+//     cerrar no cambia su plan ni sus fechas (SL118, R13, R16);
+//   · el trigger de «sin cambio de empresa» de SL-17.
+// `planId` es una copia sin FK, como en la traza (el plan es de plataforma y la copia es del momento). La
+// FK a la empresa es CASCADE (design §1.1): las limpiezas de los tests y el borrado de la demo borran
+// empresas que ya tienen factura.
+model FacturaPlataforma {
+  id            String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  estado        String // CHECK: en_curso | por_cerrar | cerrada
+  numero        Int? // R14: solo en la cerrada, correlativo por empresa desde 1
+  desdeAt       DateTime  @map("desde_at")
+  hastaAt       DateTime? @map("hasta_at") // excluido; NULL solo en curso
+  planId        String?   @map("plan_id")
+  planNombre    String?   @map("plan_nombre") @db.VarChar(80)
+  tipoCobro     String?   @map("tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  cargos        Decimal?  @db.Decimal(14, 2)
+  reversos      Decimal?  @db.Decimal(14, 2) // en positivo
+  totalOrdenes  Decimal?  @map("total_ordenes") @db.Decimal(14, 2)
+  movimientos   Int?
+  precioMensual Decimal?  @map("precio_mensual") @db.Decimal(12, 2)
+  cuota         Decimal?  @db.Decimal(12, 2)
+  diasCobrados  Int?      @map("dias_cobrados")
+  diasPeriodo   Int?      @map("dias_periodo")
+  total         Decimal?  @db.Decimal(14, 2)
+  cerradaAt     DateTime? @map("cerrada_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, desdeAt]) // R11: un intervalo no se factura dos veces
+  @@unique([organizacionId, numero]) // R14: sin repetidos
+  @@index([organizacionId, estado])
+  @@map("factura_plataforma")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
