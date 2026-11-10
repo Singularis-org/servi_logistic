@@ -458,7 +458,7 @@ test("«Mi plan» muestra el costo por orden, la orden del período y el total e
   const page = maestroA();
   const r = await page.goto("/mi-plan", { waitUntil: "load", timeout: 180_000 });
   expect(r?.status()).toBeLessThan(400);
-  await expect(page.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
   for (const linea of [TEXTO.costoBase, TEXTO.costoPorOrden, TEXTO.ordenesDelPeriodo, TEXTO.total]) {
     await expect(page.getByText(linea, { exact: true })).toBeVisible();
   }
