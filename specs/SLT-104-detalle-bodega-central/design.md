@@ -161,9 +161,11 @@ export interface LineaCuenta {
 }
 ```
 
-Opcional y apagado por defecto: el DOM de todas las cuentas de hoy no cambia. `Cuenta` pinta `—`
-con `data-monto=""` (las identidades de `DineroIdentidadesEnPantalla` saltan esa línea, que no es un
-importe).
+Opcional y apagado por defecto: el DOM de todas las cuentas de hoy no cambia. `Cuenta` pinta `—` en
+la columna del importe, como el canvas («− Recibido» … «—»): el `—` va dentro del `data-monto` de la
+línea, y la línea lleva `data-sin-importe`. Un barrido de identidades que recorra `[data-monto]` debe
+saltar las líneas con `data-sin-importe`, que no son un importe (hoy ninguno recorre «Conciliación»).
+(Corregido en la review: el design decía `data-monto=""`; el código y el canvas pintan «—».)
 
 ## Componentes nuevos
 

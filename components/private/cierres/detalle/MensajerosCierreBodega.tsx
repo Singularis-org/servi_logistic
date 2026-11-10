@@ -51,7 +51,7 @@ export function MensajerosCierreBodega({ filas, onVerSuCierre }: Readonly<Mensaj
         <div
           key={f.cierreDiaId}
           role="row"
-          className="grid items-center border-b border-border/50 py-3 text-sm last:border-b-0"
+          className="grid items-center border-b border-border/50 py-3 text-sm"
           style={PLANTILLA}
         >
           <span role="cell" className="min-w-0 truncate">

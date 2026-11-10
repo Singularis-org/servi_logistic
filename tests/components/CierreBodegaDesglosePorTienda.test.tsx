@@ -622,6 +622,16 @@ describe("396 · D3 · R22 — la misma plata se lee IGUAL que en el detalle del
     const cabecera = within(within(porTienda()).getByRole("table")).getAllByRole("columnheader");
     expect(cabecera.map((c) => c.textContent)).toEqual(["Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
   });
+
+  it("los rótulos de dinero que nombran a la tienda son textos distintos", async () => {
+    // Antes eran cinco (con «Para la tienda» y su marca); el Dinero de bodega pinta solo la tabla del
+    // canvas (SLT-95 R16, canvas F6), así que se vigilan los tres de sus columnas de dinero.
+    await abrirDetalle();
+    const cabecera = within(within(porTienda()).getByRole("table")).getAllByRole("columnheader");
+    const rotulos = cabecera.slice(1).map((c) => c.textContent);
+    expect(rotulos).toHaveLength(3);
+    expect(new Set(rotulos).size).toBe(rotulos.length);
+  });
 });
 
 // R17 de la 396 (las dos notas de cabecera del desglose): la tabla «Por tienda» del canvas aprobado no
@@ -639,6 +649,10 @@ describe("396 · D3 — los nombres accesibles son ÚNICOS dentro del detalle", 
     expect(new Set(nombres).size).toBe(nombres.length);
   });
 
+  // La segunda mitad de la 396 («y NO comparten nombre accesible») se retira: vigilaba las regiones con
+  // nombre de cada tienda del desglose viejo. La tabla «Por tienda» del canvas (SLT-95 R16, canvas F6)
+  // no tiene una región por tienda: cada tienda es una fila de tabla, que se distingue por su posición y
+  // sus cifras (lo afirma este caso), y el test de arriba vigila que ninguna REGIÓN se anuncie igual.
   it("dos tiendas HOMÓNIMAS no se funden", async () => {
     await abrirDetalle(HOMONIMAS);
     expect(filasPorTienda().map((f) => f[0])).toEqual(["Mi Tienda", "Mi Tienda", "Tienda Este"]);

@@ -70,7 +70,8 @@ export function Cuenta({
     <section
       aria-label={ariaLabel ?? titulo}
       className={cn(
-        "flex flex-col gap-2.5 rounded-xl border border-border bg-card p-4",
+        // SLT-104: 16 px arriba y abajo, 18 px a los lados, como todas las tarjetas del canvas (`Main.dc.html`, `Fila2.dc.html`).
+        "flex flex-col gap-2.5 rounded-xl border border-border bg-card px-[18px] py-4",
         tono === "aviso" && "border-warning",
         tono === "aparte" && "border-dashed bg-muted/40",
         className,

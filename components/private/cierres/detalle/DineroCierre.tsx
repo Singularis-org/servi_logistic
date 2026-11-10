@@ -29,7 +29,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
     <div className="flex flex-col gap-4">
       <section
         aria-label={REPARTO_REGION_LABEL}
-        className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-4"
+        className="flex flex-col gap-2.5 rounded-xl border border-border bg-card px-[18px] py-4"
       >
         <h3 className="text-[15px] font-semibold">{REPARTO_TITULO}</h3>
         {conBarra ? (
@@ -64,7 +64,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
       {dinero.porTienda ? (
         <section
           aria-label={POR_TIENDA_TITULO}
-          className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4"
+          className="flex flex-col gap-2 rounded-xl border border-border bg-card px-[18px] py-4"
         >
           <h3 className="text-[15px] font-semibold">{POR_TIENDA_TITULO}</h3>
           <div className="overflow-x-auto">
