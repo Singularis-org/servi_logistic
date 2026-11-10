@@ -73,7 +73,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   `rls-por-empresa` verdes.
 - [x] **T1.4** [P] `tests/unit/db/slt89-migraciones-aditivas.test.ts` y
   `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts`. (R32, R33)
-- [ ] **T1.5** [P] `tests/integration/db/orden-nodo-mas-profundo.test.ts`: nodo = lugar, ausente,
+- [x] **T1.5** [P] `tests/integration/db/orden-nodo-mas-profundo.test.ts`: nodo = lugar, ausente,
   descendiente de profundidad 4 (se conserva), ajeno (se pisa), y cambio de distrito que deja un
   nodo fuera de la rama. (R28, R29)
 - [ ] **T1.6** [P] `tests/integration/db/zona-nodo-dos-empresas.test.ts` (parte de base): RLS de las
