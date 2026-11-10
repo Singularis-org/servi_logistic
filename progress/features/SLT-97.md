@@ -19,12 +19,13 @@ F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarje
 
 - 2026-11-09 · Humano: P1 = C, un solo PR con el exceso aceptado (~2.300–2.450 líneas). P2 = se puede saltar hacia adelante (desde Nuevo a cualquiera de los otros; desde En revisión a Resuelto o Descartado; volver atrás, nunca). P3 = nota de 500 como máximo, con contador «{n}/500»; vacía o solo espacios = sin nota. P4 = el listado abre en «Pendientes» (Nuevo y En revisión), del más reciente al más antiguo, en páginas de 25.
 
-<!-- tamano-pr-aceptado: 2026-11-09 · ~29 archivos y ~2.300–2.450 líneas (unas 2,3 veces el máximo), la mitad tests; el humano eligió no partir: «Una sola, aceptar exceso». -->
+<!-- tamano-pr-aceptado: 2026-11-10 · 32 archivos y 3528 líneas reales (la estimación era ~2.400), casi la mitad tests y E2E; el humano eligió no partir: «Una sola, aceptar exceso» y, con la cifra real, «Sí, un solo PR». -->
 
 ## Preguntas abiertas
 Ninguna.
 
 ## Tandas
+- 2026-11-09/10 · T1–T9 · 1e38e817…4d7eb9fb · R1–R23 con test; typecheck 0; vitest de lo tocado 237/237 (después del arreglo, 81/81), integración de bug-report 28/28; test:guardias solo con el rojo del baseline; guardias de esquema contra la base 29/29; ida y vuelta de la migración OK y `migrate diff` vacío; E2E 20/20 ×2 sobre c9a109a5 (el arreglo ccaeac92 de consultas en serie en `detalle()` no se volvió a correr en el E2E: lo cubre CI). Leader acepta las propuestas 1–9 del implementer, que son de forma y no cambian ningún R; la 8 (caso del maestro fuera del describe en serie) se deja al reviewer.
 
 ## Modelos (overrides)
 
