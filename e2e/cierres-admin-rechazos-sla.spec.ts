@@ -92,24 +92,26 @@ test.describe("Cierres del día — el ingreso por rechazos separa SLA y manual"
     await expect(ingreso).toContainText(/Automático \(por plazo vencido\) ₡900 · Manual \(mensajero\) ₡1\.800/);
 
     await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
-    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
-    const rechazadas = ordenes.getByRole("region", { name: "Devolución a origen por rechazo" });
-    // La marca de origen vive en el bloque desplegado de cada fila (la fila es su botón + ese bloque).
-    const fila = async (o: OrdenE2E) => {
-      const boton = rechazadas.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${o.numRemision} · `) });
-      await boton.click();
-      await expect(boton).toHaveAttribute("aria-expanded", "true");
-      return boton.locator("..");
-    };
-    await expect(rechazadas.getByRole("button", { expanded: false })).toHaveCount(3);
-    const delCron = await fila(sla);
-    await expect(delCron.getByText("Automático", { exact: true })).toBeVisible();
-    await expect(delCron.getByText("Manual", { exact: true })).toHaveCount(0);
+    // SLT-101 «Fila de gestión única y lista con filtros» (R84): la pestaña por resultado pasa a ser el filtro
+    // «Filtrar por resultado», y la región por resultado, la lista «Órdenes del cierre».
+    await detalle
+      .getByRole("group", { name: "Filtrar por resultado" })
+      .getByRole("button", { name: /^Devolución a origen por rechazo \d+$/ })
+      .click();
+    const rechazadas = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    // El `has` se busca DENTRO de cada fila: va desde `page`, no desde la región.
+    const boton = (o: OrdenE2E) =>
+      page.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${o.numRemision} · `) });
+    // La fila entera (cerrada y, si se despliega, su bloque) es el contenedor `data-gestion` de su botón.
+    const fila = (o: OrdenE2E) => rechazadas.locator("[data-gestion]").filter({ has: boton(o) });
+    await expect(rechazadas.locator("[data-gestion]")).toHaveCount(3);
+    // SLT-101 (R24, R85): ANTES cada fila desplegada traía el badge «Automático» o «Manual»; AHORA el origen es
+    // la SEÑAL de la fila cerrada, como dibuja el canvas: «Rechazo automático» en la del cron y ninguna marca de
+    // origen en las del mensajero (las tres vuelven a bodega).
+    await expect(fila(sla).getByText("Vuelve a bodega · Rechazo automático", { exact: true })).toBeVisible();
     for (const o of manuales) {
-      const delMensajero = await fila(o);
-      await expect(delMensajero.getByText("Manual", { exact: true })).toBeVisible();
-      await expect(delMensajero.getByText("Automático", { exact: true })).toHaveCount(0);
+      await expect(fila(o).getByText("Vuelve a bodega", { exact: true })).toBeVisible();
+      await expect(fila(o).getByText(/Rechazo automático/)).toHaveCount(0);
     }
   });
 });
