@@ -279,6 +279,12 @@ esta bien hecha, no solo si "funciona".
   - **Quién lo ve (SLT-97).** El módulo `/plataforma/reportes` (listado y detalle) es solo del
     superadmin; a cualquier otro le responde «no encontrado». Un cambio de estado no avisa a nadie: ni
     correo, ni cola, ni `historial_accion`.
+  - **Imágenes (SLT-98, migración `20261112120000`).** `bug_report_image` es de plataforma, con RLS
+    sin políticas y `REVOKE ALL … FROM servi_app`. Las imágenes viven en el bucket privado
+    `BUG_REPORT_BUCKET` (`bug-reports`), en `<organizacion_id>/<usuario_id>/<imagen_id>.<ext>`. Se
+    suben al pulsar «Enviar», directo desde el navegador con una URL firmada que pide el servidor, y
+    el envío las valida por tamaño y por firma de bytes. Se leen solo por enlace firmado de 24 h, en
+    el correo y en el detalle; el superadmin firma con `conEmpresa` de la empresa del reporte.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por

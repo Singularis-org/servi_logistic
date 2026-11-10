@@ -344,6 +344,24 @@ function bloque(page: Page, nombre: string): Locator {
   return page.getByRole("region", { name: nombre, exact: true });
 }
 
+/** SLT-98: los textos del panel (`TEXTOS_REPORTE_BUG`) y del detalle (`TEXTOS_REPORTE_DETALLE`), literales. */
+const TEXTO_IMAGENES = {
+  seccion: "Imágenes (opcional, máximo 5)",
+  input: "Elegir imágenes del reporte",
+  agregar: "Agregar imágenes",
+  contador: (n: number) => `${n}/5 imágenes`,
+  ayuda: "PNG, JPG o WebP · hasta 5 MB cada una",
+  quitar: (n: number) => `Quitar imagen ${n}`,
+  altPanel: (n: number) => `Imagen ${n}`,
+  errorTipo: "Solo PNG, JPG o WebP.",
+  bloqueo: "Quita o reintenta las imágenes marcadas para poder enviar.",
+  subiendo: "Subiendo imágenes…",
+  bloqueDetalle: "Imágenes",
+  altDetalle: (n: number) => `Imagen ${n} del reporte`,
+  abrir: (n: number) => `Abrir la imagen ${n} en grande`,
+  sinImagenes: "Este reporte no trae imágenes.",
+} as const;
+
 test.describe("SLT-97 — el módulo del superadmin", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -429,6 +447,10 @@ test.describe("SLT-97 — el módulo del superadmin", () => {
       await expect(contexto).toContainText(empresa.maestro.nombre);
       await expect(contexto).toContainText(empresa.maestro.email);
       await expect(contexto.getByText("/ordenes", { exact: true })).toBeVisible();
+      // SLT-98 (design §11 paso 5; R22): un reporte enviado sin imágenes lo dice en su bloque.
+      await expect(
+        bloque(sa, TEXTO_IMAGENES.bloqueDetalle).getByText(TEXTO_IMAGENES.sinImagenes, { exact: true }),
+      ).toBeVisible();
       const historial = bloque(sa, TEXTO_MODULO.bloqueHistorial);
       await expect(historial.getByText(TEXTO_MODULO.historialVacio, { exact: true })).toBeVisible();
       const entradas = historial.getByRole("listitem");
@@ -528,3 +550,193 @@ test.describe("SLT-97 — el módulo no es de la empresa", () => {
     await expect(page.getByRole("combobox", { name: TEXTO_MODULO.filtroEstado, exact: true })).toHaveCount(0);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* SLT-98 «Reporte de bugs: imágenes» (T11; design §11)                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Las imágenes del reporte de punta a punta: elegirlas no habla con Storage, un tipo no admitido bloquea
+ * «Enviar», enviar sube directo al doble de Storage con la URL firmada, el correo lleva un enlace por
+ * imagen y el superadmin las ve en el detalle con un enlace nuevo en cada carga. Lo fino del panel
+ * (sobrantes, vacía, tamaño, reintento, rechazo del servidor) lo prueba
+ * `tests/components/ReporteBugBoton.test.tsx`; la validación por firma de bytes, el servicio.
+ *
+ * DATOS. Las imágenes se generan aquí como `Buffer` (sin archivos en disco): dos PNG válidas de 1×1, para
+ * que el navegador las pinte en el detalle, y un GIF de 1×1. El reporte se localiza por su descripción,
+ * con el UUID de la corrida, y el listado se filtra por la empresa del `beforeAll`, nueva en cada
+ * corrida. Las filas de `bug_report_image` se buscan por su reporte, nunca por recuento total.
+ */
+
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+const GIF_1X1 = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+
+/** La ruta del API de Storage en la URL: la del doble del E2E y la de Supabase real. */
+const RUTA_STORAGE = "/storage/v1/";
+const SUBIDA_FIRMADA = `**${RUTA_STORAGE}object/upload/sign/**`;
+
+test.describe("SLT-98 — imágenes", () => {
+  test("adjuntar, bloquear con un GIF, enviar, el correo con los enlaces y el detalle del superadmin", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(300_000);
+    const descripcion = `E2E SLT-98 imágenes ${randomUUID()}`;
+
+    // Toda petición del navegador al API de Storage, desde que abre la página (R2, R6).
+    const peticionesStorage: { metodo: string; url: string }[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes(RUTA_STORAGE)) peticionesStorage.push({ metodo: r.method(), url: r.url() });
+    });
+
+    // Paso 1 — adjuntar (R1, R2, R5, R7).
+    await comoMaestro(page, "/ordenes");
+    await abrirPanel(page);
+    await campo(page).fill(descripcion);
+    const seccion = panel(page).getByRole("region", { name: TEXTO_IMAGENES.seccion, exact: true });
+    await expect(seccion.getByRole("button", { name: TEXTO_IMAGENES.agregar })).toBeEnabled();
+    await expect(seccion.getByText(TEXTO_IMAGENES.contador(0), { exact: true })).toBeVisible();
+    await expect(seccion).toContainText(TEXTO_IMAGENES.ayuda);
+
+    await seccion.getByLabel(TEXTO_IMAGENES.input, { exact: true }).setInputFiles([
+      { name: "captura-1.png", mimeType: "image/png", buffer: PNG_1X1 },
+      { name: "captura-2.png", mimeType: "image/png", buffer: PNG_1X1 },
+      { name: "animada.gif", mimeType: "image/gif", buffer: GIF_1X1 },
+    ]);
+    await expect(seccion.getByText(TEXTO_IMAGENES.contador(3), { exact: true })).toBeVisible();
+    await expect(seccion.getByRole("img", { name: TEXTO_IMAGENES.altPanel(1), exact: true })).toBeVisible();
+    await expect(seccion.getByRole("img", { name: TEXTO_IMAGENES.altPanel(2), exact: true })).toBeVisible();
+    await expect(seccion.getByText(TEXTO_IMAGENES.errorTipo, { exact: true })).toBeVisible();
+    await expect(seccion.getByRole("alert")).toHaveText(TEXTO_IMAGENES.bloqueo);
+    const enviar = panel(page).getByRole("button", { name: TEXTO.enviar, exact: true });
+    await expect(enviar).toBeDisabled();
+
+    await seccion.getByRole("button", { name: TEXTO_IMAGENES.quitar(3), exact: true }).click();
+    await expect(seccion.getByText(TEXTO_IMAGENES.contador(2), { exact: true })).toBeVisible();
+    await expect(seccion.getByText(TEXTO_IMAGENES.errorTipo, { exact: true })).toHaveCount(0);
+    await expect(seccion.getByRole("alert")).toHaveCount(0);
+    await expect(enviar).toBeEnabled();
+    // R2: elegir y quitar no habló con Storage.
+    expect(peticionesStorage, "ninguna petición a Storage antes de «Enviar»").toEqual([]);
+
+    // Paso 2 — enviar (R6, R13, R14). Los PUT se retienen hasta ver «Subiendo imágenes…»: sin eso, el
+    // estado intermedio dura lo que tarda el doble local y la aserción dependería del reloj.
+    let soltarSubidas: () => void = () => {};
+    const subidasSueltas = new Promise<void>((resolver) => {
+      soltarSubidas = resolver;
+    });
+    await page.route(SUBIDA_FIRMADA, async (route) => {
+      if (route.request().method() === "PUT") await subidasSueltas;
+      await route.continue();
+    });
+    const log = LogDelServidor.desdeEntorno();
+    await enviar.click();
+    await expect(panel(page).getByRole("button", { name: TEXTO_IMAGENES.subiendo })).toBeVisible({
+      timeout: 30_000,
+    });
+    soltarSubidas();
+    await expect(panel(page).getByText(TEXTO.gracias)).toBeVisible({ timeout: 30_000 });
+    await page.unroute(SUBIDA_FIRMADA);
+    await expect(campo(page)).toHaveValue("");
+    await expect(seccion.getByText(TEXTO_IMAGENES.contador(0), { exact: true })).toBeVisible();
+    await expect(seccion.getByRole("img")).toHaveCount(0);
+    // Las dos subieron directo a su URL firmada, una por imagen.
+    const subidas = peticionesStorage.filter((p) => p.metodo === "PUT" && p.url.includes("/object/upload/sign/"));
+    expect(subidas).toHaveLength(2);
+
+    const db = abrirBaseE2E();
+    try {
+      // Lectura como dueño: `bug_report_image` es de plataforma (R18).
+      const reporte = await db.bugReport.findFirstOrThrow({
+        where: { description: descripcion },
+        include: { images: { orderBy: { position: "asc" } } },
+      });
+      expect(reporte.organizationId).toBe(empresa.organizacionId);
+      expect(reporte.images.map((i) => i.position)).toEqual([1, 2]);
+      for (const img of reporte.images) {
+        expect(img.contentType).toBe("image/png");
+        expect(img.sizeBytes).toBe(PNG_1X1.length);
+        expect(img.storagePath).toBe(`${empresa.maestro.id}/${img.id}.png`);
+      }
+    } finally {
+      await db.$disconnect();
+    }
+
+    // Paso 3 — correo (R20): la copia en el log lleva un enlace por imagen, y el primero sirve la PNG.
+    let leido = "";
+    const correosDelReporte = async (): Promise<string[]> => {
+      leido += log.nuevo();
+      return leido.split(/\r?\n/).filter((l) => l.includes("[email][debug]") && l.includes(descripcion));
+    };
+    await expect.poll(correosDelReporte, { timeout: 30_000 }).toHaveLength(1);
+    const [correo] = await correosDelReporte();
+    expect(correo).toContain(`to=${DESTINATARIO} `);
+    const enlaces = [...correo.matchAll(/Ver imagen (\d): (https?:\/\/[^\s"\\]+)/g)].map((m) => ({
+      n: Number(m[1]),
+      url: m[2],
+    }));
+    expect(enlaces.map((e) => e.n)).toEqual([1, 2]);
+    for (const e of enlaces) expect(e.url).toContain(RUTA_STORAGE);
+    const imagen1 = await page.request.get(enlaces[0].url);
+    expect(imagen1.status()).toBe(200);
+    expect(imagen1.headers()["content-type"]).toBe("image/png");
+    expect((await imagen1.body()).equals(PNG_1X1)).toBe(true);
+
+    // Paso 4 — detalle (R22): el superadmin abre el reporte de la empresa de la corrida.
+    const ctx = await browser.newContext();
+    try {
+      const sa = await ctx.newPage();
+      const dbSa = abrirBaseE2E();
+      try {
+        await conCandadoDelSuperadmin(() => asegurarSuperadmin(dbSa));
+        await conCandadoDelSuperadmin(async () => {
+          await olvidarDispositivos(dbSa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
+          await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+        });
+      } finally {
+        await dbSa.$disconnect();
+      }
+      await sa.goto(`/plataforma/reportes?empresa=${empresa.organizacionId}`);
+      await expect(sa.getByRole("heading", { level: 1, name: TEXTO_MODULO.tituloListado })).toBeVisible();
+      const fila = sa.getByRole("row").filter({ hasText: descripcion });
+      await expect(fila).toHaveCount(1);
+      await fila.getByRole("link").click();
+      await expect(sa).toHaveURL(/\/plataforma\/reportes\/[0-9a-f-]{36}$/);
+      await expect(bloque(sa, TEXTO_MODULO.bloqueDescripcion)).toContainText(descripcion);
+
+      const imagenes = bloque(sa, TEXTO_IMAGENES.bloqueDetalle);
+      await expect(imagenes.getByText(TEXTO_IMAGENES.sinImagenes)).toHaveCount(0);
+      await expect(imagenes.getByRole("img")).toHaveCount(2);
+      for (const n of [1, 2]) {
+        await expect(imagenes.getByRole("link", { name: TEXTO_IMAGENES.abrir(n), exact: true })).toBeVisible();
+        await expect(imagenes.getByRole("img", { name: TEXTO_IMAGENES.altDetalle(n), exact: true })).toBeVisible();
+        await cargaLaImagen(imagenes.getByRole("img", { name: TEXTO_IMAGENES.altDetalle(n), exact: true }));
+      }
+
+      // Cada carga firma de nuevo: tras recargar, la primera imagen trae otro enlace y también carga.
+      const primera = () =>
+        bloque(sa, TEXTO_IMAGENES.bloqueDetalle).getByRole("img", { name: TEXTO_IMAGENES.altDetalle(1), exact: true });
+      const srcAntes = await primera().getAttribute("src");
+      expect(srcAntes).toContain(RUTA_STORAGE);
+      await sa.reload();
+      await expect(primera()).toBeVisible();
+      const srcDespues = await primera().getAttribute("src");
+      expect(srcDespues).toContain(RUTA_STORAGE);
+      expect(srcDespues).not.toBe(srcAntes);
+      await cargaLaImagen(primera());
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+/** `loading="lazy"`: se trae a la vista para que el navegador la pida, y se espera a que la pinte. */
+async function cargaLaImagen(img: Locator): Promise<void> {
+  await img.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 30_000 })
+    .toBeGreaterThan(0);
+}
