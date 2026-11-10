@@ -105,8 +105,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // `grupo_distritos` (29).
     // 81 desde el ajuste planes-custom D16: `plan_tipo_cobro_cambiado` (entidad `plan`, sin entidad nueva).
     // 82 desde SLT-54: `tarifas_activadas` (entidad `tarifa_activacion`, 30 entidades).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(82);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(82);
+    // 83 desde SLT-89: `zona_nodo_cambiado` (el rastro de los nodos que no son distritos; sin entidad nueva).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(83);
     // 31 con SLT-43 y SLT-54: `nodo_geografico` y `tarifa_activacion`, cada una sin categoria nueva.
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31);
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
@@ -488,7 +489,8 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // zona su flete y su pago al mensajero.
     // 49 desde SLT-52: fijar o quitar un valor de tarifa, y crear o cambiar un grupo de distritos.
     // 50 desde SLT-54: activar cambia el modelo con el que se cobra y se paga.
-    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(50);
+    // 51 desde SLT-89: `zona_nodo_cambiado`, por lo mismo que `zona_distrito_cambiado`.
+    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(51);
     expect(CATEGORIA_POR_ACCION.cierre_dia_pago_mensajero_ajustado).toBe("mueve_dinero");
     // 11 desde SLT-52: borrar un grupo de distritos se lleva sus valores por cascada.
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(11);

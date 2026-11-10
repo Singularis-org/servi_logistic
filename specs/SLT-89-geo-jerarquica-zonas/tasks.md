@@ -67,7 +67,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [x] **T1.2** Migración `20261110130100_slt89_historial_zona_nodo` (solo el `ADD VALUE`) con
   `down.sql` comentado (§2.4). (R30, R32)
   > Nota (2026-11-10): movida con T1.1 a `db/migrations/20261110130100_slt89_historial_zona_nodo/`.
-- [ ] **T1.3** `db/schema.prisma` (modelos `ZonaNodo` y `GrupoDistritosNodo`, relaciones inversas,
+- [x] **T1.3** `db/schema.prisma` (modelos `ZonaNodo` y `GrupoDistritosNodo`, relaciones inversas,
   valor de enum) y `lib/db/modelos-de-negocio.ts`. (R34)
   *Hecho:* guardias `organizacion-en-modelos`, `fk-misma-empresa`, `unicos-por-empresa` y
   `rls-por-empresa` verdes.

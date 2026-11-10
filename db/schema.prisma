@@ -622,6 +622,8 @@ model Zona {
   gruposDistritos         GrupoDistritos[] // SLT-52 R10: grupos de distritos de esta zona
   grupoDistritosDistritos GrupoDistritosDistrito[] // SLT-52: distritos de los grupos de esta zona (FK simple, la del trigger de misma empresa)
   tarifaValores           TarifaValor[] // SLT-52: valores del modelo nuevo acotados a esta zona
+  nodos                   ZonaNodo[] // SLT-89: nodos que no son distritos asignados a esta zona
+  grupoDistritosNodos     GrupoDistritosNodo[] // SLT-89: miembros de grupo fuera de `zona_distrito` (FK simple, la del trigger de misma empresa)
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -1960,6 +1962,7 @@ model GrupoDistritos {
 
   zona      Zona                     @relation(fields: [zonaId], references: [id], onDelete: Cascade)
   distritos GrupoDistritosDistrito[]
+  nodos     GrupoDistritosNodo[] // SLT-89: miembros que no son distritos asignados a la zona
   valores   TarifaValor[]
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
@@ -1998,6 +2001,59 @@ model GrupoDistritosDistrito {
   @@index([organizacionId])
   @@index([zonaId, distritoId])
   @@map("grupo_distritos_distrito")
+}
+
+/// SLT-89 (design §2.1): una zona asignada a un nodo que NO es distrito (provincia, cantón o un nodo
+/// de profundidad >= 4). Los distritos siguen en `zona_distrito`, con su único de SLT-75 y su FK
+/// compuesta hacia los grupos; esta tabla hermana es lo que el cargador del catálogo une a ellas.
+/// Viven solo en el SQL (20261110130000): el trigger `zona_nodo_valido` (país de la empresa, SL021;
+/// profundidad 3 rechazada, 23514) y los de misma empresa.
+model ZonaNodo {
+  id               String   @id @default(uuid())
+  zonaId           String   @map("zona_id")
+  nodoGeograficoId String   @map("nodo_geografico_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  zona           Zona           @relation(fields: [zonaId], references: [id], onDelete: Cascade)
+  nodoGeografico NodoGeografico @relation(fields: [nodoGeograficoId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, nodoGeograficoId]) // R2: un nodo, a lo sumo una zona por empresa (SLT-75 llevado al nodo)
+  @@index([zonaId])
+  @@index([organizacionId])
+  @@map("zona_nodo")
+}
+
+/// SLT-89 (design §2.2): los miembros de un grupo que NO son «distrito con fila propia en
+/// `zona_distrito` de la misma zona»: cantones, provincias, nodos de profundidad >= 4 y distritos que
+/// la zona cubre por herencia. Sin FK hacia la asignación (una cobertura heredada no es una fila): la
+/// coherencia «el miembro está cubierto por la zona del grupo» la mantiene la aplicación en una
+/// transacción. Viven solo en el SQL (20261110130000): `grupo_distritos_nodo_valido` (SL021; 23514
+/// si el nodo es un distrito con fila en `zona_distrito` de esa zona) y, en la tabla vieja,
+/// `grupo_distritos_distrito_sin_duplicado` (23505): un nodo, a lo sumo un grupo por zona entre las dos.
+model GrupoDistritosNodo {
+  id               String   @id @default(uuid())
+  grupoId          String   @map("grupo_id")
+  // Redundante con el grupo A PROPOSITO, como en `GrupoDistritosDistrito`: la FK compuesta obliga a
+  // que el grupo sea de esta zona, y la simple lleva el trigger de misma empresa.
+  zonaId           String   @map("zona_id")
+  nodoGeograficoId String   @map("nodo_geografico_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  zona           Zona           @relation(fields: [zonaId], references: [id], onDelete: Cascade)
+  grupo          GrupoDistritos @relation(fields: [grupoId, zonaId], references: [id, zonaId], onDelete: Cascade)
+  nodoGeografico NodoGeografico @relation(fields: [nodoGeograficoId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, zonaId, nodoGeograficoId]) // un nodo, a lo sumo un grupo por zona
+  @@index([grupoId])
+  @@index([organizacionId])
+  @@index([zonaId, nodoGeograficoId])
+  @@map("grupo_distritos_nodo")
 }
 
 /// SLT-52 R3-R9: el valor de un concepto en un nivel. El nivel lo dicen las columnas que van NULL;
@@ -4905,6 +4961,10 @@ enum HistorialAccionTipo {
   /// la zona de cada orden, y la zona su flete y el pago al mensajero. `valor_anterior`/`valor_nuevo`
   /// llevan «distrito (canton)» recortado a 60; solo al editar, ni al crear ni al borrar la zona.
   zona_distrito_cambiado
+  /// SLT-89 (R30): un maestro cambio los NODOS que no son distritos (provincia, canton, profundidad
+  /// >= 4) de una zona al editarla. Una fila por nodo añadido o quitado, con un lote propio del
+  /// guardado; los distritos siguen dejando `zona_distrito_cambiado`. Solo al editar.
+  zona_nodo_cambiado
 
   // --- hace desaparecer algo (10) ---
   /// FICHA 371: corregir la fecha de una reprogramacion ya registrada. ENTRA POR «hace desaparecer
@@ -5788,6 +5848,8 @@ model Organizacion {
   gestionPagoMensajeroAjustes GestionPagoMensajeroAjuste[]
   grupoDistritos GrupoDistritos[] // SLT-52
   grupoDistritosDistritos GrupoDistritosDistrito[] // SLT-52
+  zonaNodos ZonaNodo[] // SLT-89
+  grupoDistritosNodos GrupoDistritosNodo[] // SLT-89
   tarifaValores TarifaValor[] // SLT-52
   tarifaActivacion TarifaActivacion? // SLT-54: con fila, la empresa calcula con el modelo nuevo
   cierreDetailConceptos CierreDetailConcepto[] // SLT-52
@@ -5977,6 +6039,9 @@ model NodoGeografico {
   ordenes         Orden[]
   zonasDistrito   ZonaDistrito[]
   zonasEspeciales DistritoZonaEspecial[]
+  // SLT-89 (design §2.1, §2.2): asignaciones y miembros de grupo sobre nodos que no son distritos.
+  zonasNodo           ZonaNodo[]
+  gruposDistritosNodo GrupoDistritosNodo[]
 
   /// Destino de las FK compuestas de los hijos.
   @@unique([id, paisId])

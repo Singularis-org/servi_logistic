@@ -55,6 +55,9 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // SLT-52: el modelo nuevo de tarifas (valores por concepto y nivel, y grupos de distritos)
   { modelo: "GrupoDistritos", tabla: "grupo_distritos" },
   { modelo: "GrupoDistritosDistrito", tabla: "grupo_distritos_distrito" },
+  // SLT-89: las tablas hermanas de `zona_distrito` y `grupo_distritos_distrito` para nodos que no son distritos
+  { modelo: "ZonaNodo", tabla: "zona_nodo" },
+  { modelo: "GrupoDistritosNodo", tabla: "grupo_distritos_nodo" },
   { modelo: "TarifaValor", tabla: "tarifa_valor" },
   // SLT-54: que empresa calcula ya con el modelo nuevo
   { modelo: "TarifaActivacion", tabla: "tarifa_activacion" },

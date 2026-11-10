@@ -158,8 +158,9 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
     // + `grupo_distritos`, `grupo_distritos_distrito`, `tarifa_valor`, `cierre_detail_concepto` y
     //   `gestion_pago_congelado` (SLT-52, 20261103120100)
     // + `tarifa_activacion` (SLT-54, 20261104140100)
-    // + `cobro_plataforma_porcentual_orden` (SLT-83, 20261104150100).
-    expect(tablas.length).toBe(87);
+    // + `cobro_plataforma_porcentual_orden` (SLT-83, 20261104150100)
+    // + `zona_nodo` y `grupo_distritos_nodo` (SLT-89, 20261110130000).
+    expect(tablas.length).toBe(89);
   });
 
   it("cada tabla de negocio tiene su política vigente", () => {

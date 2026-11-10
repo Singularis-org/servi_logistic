@@ -81,3 +81,61 @@ Archivos: `db/migrations/20261110130100_slt89_historial_zona_nodo/{migration.sql
   'zona_nodo_cambiado';`.
 - `down.sql` = `SELECT 1;` con el comentario de por qué el valor se queda (molde SLT-46
   `20261106120000`). Aplicada, revertida (no-op) y reaplicada en `logistic_slt89` junto con T1.1.
+
+### Revisión del diff sin commitear del backend_dev anterior (2026-11-10)
+
+El backend_dev anterior terminó sin informe y dejó T1.3/T1.4 en el árbol. Revisado línea a línea antes
+de commitear. Todos los cambios en tests/guardias existentes son censos o la lista `SOBRE_SLT43`;
+cada número se comprobó contra `db/migrations/20261110130000_slt89_zona_nodo/migration.sql`
+(2 `CREATE TABLE`, 2 `CREATE POLICY … _por_empresa`, 2 `sme_*` —`zona_id` de cada tabla—, 2
+`*_sin_cambio_de_empresa`) y `20261110130100` (1 valor de enum). Ninguna aserción cambiada sin respaldo.
+
+| Archivo | Qué cambió | Por qué (respaldo) |
+|---|---|---|
+| `scripts/verificar-rls-despliegue.ts` | `TRIGGERS_MISMA_EMPRESA` 169 → 171 | 2 `sme_*` nuevos (`sme_zona_nodo_zona_id_…`, `sme_grupo_distritos_nodo_zona_id_…`); las FK a `nodo_geografico` van a plataforma y la compuesta al grupo comparte columna |
+| `tests/unit/scripts/verificar-rls-despliegue.test.ts` | modelos 87 → 89; contrato `{88,169,87}` → `{90,171,89}`; `sme` 169 → 171 en los casos inventados | +2 tablas de negocio → +2 políticas, +2 sin-cambio; +2 `sme_*` (el número es global, no depende de la lista inventada) |
+| `tests/unit/guards/rls-por-empresa.guardia.test.ts` | tablas 87 → 89 | `zona_nodo`, `grupo_distritos_nodo` |
+| `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` | tipos 82 → 83 (largo y `Set`); `mueve_dinero` 50 → 51 | `zona_nodo_cambiado` (design §2.4: categoría `mueve_dinero`); entidades siguen en 31 |
+| `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts` | tipos 82 → 83; `ESCRITOR_PENDIENTE_EN_CURSO` gana `{ zona_nodo_cambiado, SLT-89, T3.2 }` | el valor entra con la base (T1.2) y su productor (`ZonaRepository.update`) llega en T3.2. Anotarlo como pendiente es el uso previsto de esa lista (molde SLT-52 T6.2); T3.2 debe vaciarla y sumar el censo |
+| `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` | `SOBRE_SLT43` gana las dos de SLT-89 + comentario | patrón de SLT-46: FK a `nodo_geografico` (42P01 antes de la ida) y `CREATE OR REPLACE orden_nodo_geografico` (42723 contra el `CREATE FUNCTION` de la ida). Sin cambio de aserciones |
+| `db/schema.prisma`, `lib/db/modelos-de-negocio.ts`, `lib/types/historial-accion.ts` | modelos `ZonaNodo`/`GrupoDistritosNodo`, inversas, valor de enum; 2 modelos de negocio; tipo + categoría + etiqueta «Cambió los lugares de una zona» | T1.3 y design §2.1, §2.2, §2.4 |
+
+Verificación (logistic_slt89, `--maxWorkers=1`): los 4 archivos nuevos + los 4 de censo →
+`Test Files 8 passed (8) · Tests 197 passed (197)`; `migracion-slt43-ida-y-vuelta` →
+`Test Files 1 passed (1) · Tests 8 passed (8)`. `prisma migrate status`: «Database schema is up to date!».
+
+Spec: `tasks.md` y `design.md` (§2.6) con los nombres de migración nuevos (`20261110130000_…`,
+`20261110130100_…`).
+
+### T1.3 — schema y modelos de negocio
+
+Archivos: `db/schema.prisma` (modelos `ZonaNodo`, `GrupoDistritosNodo`, inversas en `Zona`,
+`GrupoDistritos`, `Organizacion`, `NodoGeografico`; valor `zona_nodo_cambiado`),
+`lib/db/modelos-de-negocio.ts`, `lib/types/historial-accion.ts`, `scripts/verificar-rls-despliegue.ts`
+y los censos de la tabla de arriba (salvo `migracion-slt43-ida-y-vuelta`, que va con T1.4).
+- Guardias `organizacion-en-modelos`, `fk-misma-empresa`, `unicos-por-empresa`, `rls-por-empresa` →
+  `Test Files 4 passed (4) · Tests 58 passed (58)`.
+- `prisma migrate diff` contra la base: vacío (anotado en T1.1). `pnpm run typecheck`: exit 0.
+
+### T1.4 — migraciones aditivas e ida y vuelta (R32, R33)
+
+`tests/unit/db/slt89-migraciones-aditivas.test.ts` (helper `_migraciones-aditivas.ts`: solo las dos
+carpetas de SLT-89, con down; nada sobre `orden`; contrapruebas con texto inventado) y
+`tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts` (base propia: ida, los dos down en orden
+inverso, reaplicadas). Más `SOBRE_SLT43` en `migracion-slt43-ida-y-vuelta.test.ts` (tabla de arriba).
+Salida en `logistic_slt89`: incluida en las 8/8 (197 tests) de arriba; SLT-43 ida y vuelta 8/8.
+
+### T1.5 — el nodo de la orden (R28, R29)
+
+`tests/integration/db/orden-nodo-mas-profundo.test.ts`: sin nodo → el lugar (distrito o cantón); nodo
+= lugar; profundidad 4 bajo el distrito se conserva (insert y update); bajo el cantón a dos saltos se
+conserva; nodo ajeno se pisa; cambiar el distrito deja el sector fuera → distrito nuevo; mover el lugar
+sin tocar el nodo (incluido vaciar el distrito) → el lugar nuevo (la rama extra de T1.1, decisión 1).
+7 casos, verdes (dentro de las 8/8 de arriba).
+
+### T1.6 — zona_nodo y grupo_distritos_nodo en la base (R34)
+
+`tests/integration/db/zona-nodo-dos-empresas.test.ts`: RLS en las dos tablas (lectura y 42501 al
+escribir en otra empresa), misma empresa (SL017), país (SL021 en las dos), `zona_nodo` acepta
+provincia/cantón/profundidad 4 y rechaza distrito (23514), único por empresa (23505 en la misma, nada
+en otra), miembro duplicado entre tablas (23514 / 23505). 6 casos, verdes.
