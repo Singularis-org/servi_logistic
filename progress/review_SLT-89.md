@@ -259,3 +259,73 @@ grande (144 archivos), pero «¿Partir la tarjeta? No, una sola» es una decisi�
    salida en la bitácora.
 2. B1: `./init.sh` rápido, o `gate-completo` de esa misma corrida, en verde, y T9.2 marcada.
 3. Si la corrida queda verde y no cambia código, la vuelta 2 se limita a comprobar esas dos cosas.
+
+## Vuelta 2 (acotada a c93db97c..20714c9f)
+
+Fecha: 2026-11-10. La revisión se limita a los hallazgos de la vuelta 1, los dos arreglos de CI y lo que
+quedaba de T9.2.
+
+### Verificación de esta vuelta
+- **CI** [run 42913893905](https://github.com/Singularis-org/servi_logistic/actions/runs/42913893905),
+  lanzado con `workflow_dispatch` sobre `feature/SLT-89-geo-jerarquica-zonas` @ `e1e243e4`: todos los
+  jobs en `success`. Lo comprobé con `gh run view`:
+  - `estatico`, los 3 shards de vitest y `gate-completo`, que da «sin rojos nuevos (239 rojos, todos en
+    el baseline de 245)»;
+  - `e2e (aislamiento)`: 89 passed, entre ellos `zonas-nodo-canton` (1)(2)(3), `dos-empresas-humo`,
+    `zona-especial-dos-empresas` y `zonas-crear-sin-costos`;
+  - `e2e (dinero)`: 49 passed, con `tarifas-activacion`; `e2e (reparto)`: 16 passed; `e2e`.
+- **Después de `e1e243e4`** solo cambia `progress/features/SLT-89.md`, así que la corrida vale para HEAD.
+- **Local** (`logistic_slt89`, `--maxWorkers=1`): 16 archivos, 252/252 en verde:
+  - integración: `grupo-nodo`, `slt46-nodo-copia-vieja`, `geo-explain-analitica`, `grupo-cambio-concurrente`, `zona-nodo-herencia`, `zona-nodo-asignacion`, `slt89-equivalencia-cr`, `tarifas-flexibles-escritura`, `tarifas-flexibles-resolver`, `geo-equivalencia-consultas`;
+  - actions: `tarifas-action`;
+  - unitarios: `geografia-selector-n-niveles`, `grupo-distritos-service`;
+  - guardias: `sql-a-mano-por-empresa`, `superficie-de-uso`, `geografia-lecturas-sin-nodo-fk`.
+- **eslint** sobre lo tocado en la vuelta: 0 errores, 1 aviso que ya estaba en la base.
+
+### Hallazgos de la vuelta 1
+| Hallazgo | Estado | Comprobación |
+|---|---|---|
+| B2 E2E sin corrida | **Cerrado** | El run de arriba: el E2E nuevo, los tres adaptados y `dos-empresas-humo` en verde |
+| B1 T9.2 | **Cerrado en el fondo; falta la marca** | El gate está verde (run de arriba). R42: el diff de la vuelta no toca filtros, exportes, FK viejas, la regla de SLT-45 ni el modelo viejo. T3.7/T5.6 solo ganan el «antes», como se comprobó en la vuelta 1, y la vuelta no los toca. La casilla de `tasks.md` queda sin marcar: ese archivo está fuera de mi alcance de escritura (solo `progress/review_<key>.md`). La marca el leader citando el run 42913893905 |
+| m1 accesibilidad | **Cerrado** | `aria-describedby` hacia el texto de estado, con `useId`. El test nuevo `toHaveAccessibleDescription` cubre hereda, excepción y otra zona; lo elegido queda sin descripción |
+| m2 cobertura en la transacción | **Cerrado** (D3) | Detalle debajo de la tabla |
+| m3 `FOR UPDATE` por empresa | **Cerrado** | Filtro `organizacion_id = current_setting(...)`. Quitar `ZonaRepository.ts` de `EXCEPCIONES_SQL_A_MANO` lo exige la guardia, cuya lista solo baja; la guardia pasa |
+| m4 deuda | **Cerrado** | D47 en `progress/deudas.md`, citada en el `@sin-superficie` |
+| m5 registro | **Cerrado** | Estado y decisiones al día en `progress/features/SLT-89.md` |
+| D1–D3 | Decididos | Están en `requirements.md > Decisiones cerradas`; D1 es la cuarta excepción de R38 |
+
+Detalle de m2:
+- La cobertura se vuelve a comprobar dentro de la transacción de `crear` y de `fijarDistritos`.
+- Antes se toma `FOR SHARE` sobre la zona, filtrado por empresa, y después `FOR UPDATE` sobre el grupo.
+  Es el mismo orden que el guardado de zona (zona y luego grupo), así que las dos no se esperan en cruz.
+- Un miembro que ya no está cubierto responde el mismo error de R18 sin escribir nada.
+- Sin miembros heredados no se carga el catálogo (R38).
+- El test nuevo de `grupo-nodo` reproduce la carrera y no deja grupo, miembros ni historial.
+
+### Arreglos de la corrida de CI anterior (42907373831)
+- **`geo-explain-analitica` (8e95e91b): correcto.**
+  - El conteo de `zona_nodo` viaja en la misma consulta de `organizacion` (`_count`, una subconsulta),
+    con la RLS de `zona_nodo`.
+  - Con 0 filas no se lee la tabla, así que una empresa de solo distritos hace las mismas consultas que
+    antes de SLT-89 (R38) y no se tocó ninguna aserción. Un doble sin `_count` cae en leer la tabla.
+- **`slt46-nodo-copia-vieja` R44 (c8c3d940): limitado a lo autorizado.**
+  - Cambia el extractor del cuerpo esperado de `orden_nodo_geografico`, que pasa a leerse de
+    `20261110130000_slt89_zona_nodo`, y el título del caso.
+  - El cuerpo de `zona_nodo_geografico_del_distrito`, los triggers y las FK se siguen comprobando contra
+    SLT-43, como dice la decisión (quinta excepción de R38).
+
+### Menores nuevos
+- **n1 — menor (docs): el guion de R39 quedó desfasado.** Con 8e95e91b la carga del catálogo ya no suma
+  ninguna consulta para una empresa de solo distritos. Pero el guion de T6.3 en `progress/impl_SLT-89.md`
+  («Esperado: +1 consulta en la carga del catálogo») y `design.md` §9 siguen esperando +1. Solo queda el
+  +1 por lote del resolver. Conviene corregirlo antes de que la persona corra
+  `pnpm geo:equivalencia-consultas`, para que no lo lea como diferencia.
+- **n2 — nota (sin acción en SLT-89):** al salir `ZonaRepository.ts` de `EXCEPCIONES_SQL_A_MANO`, la
+  guardia, que mide por archivo, deja de ver el `FOR UPDATE` de `guardarSinpe` (línea ~1617, ficha 429),
+  que no filtra por empresa. Ese bloqueo es anterior a SLT-89 y la RLS lo acota. Si se quiere, otra ficha
+  puede filtrarlo como el resto.
+
+### Veredicto de la vuelta 2: OK
+No queda ningún bloqueante de código, tests ni CI. Queda una condición de proceso: el leader marca T9.2
+en `tasks.md` citando el run 42913893905, porque el reviewer no escribe fuera de este archivo. n1 se
+puede corregir en el mismo commit.
