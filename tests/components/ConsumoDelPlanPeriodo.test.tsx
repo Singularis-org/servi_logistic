@@ -4,10 +4,16 @@
 // El plan se arma con `planConConsumo` real, así que el período, el costo y el siguiente cobro que se leen
 // son los que calcula el servidor. Se mide `ConsumoDelPlan` (lo comparten «Mi plan» y el detalle de
 // empresa) y `MiPlanModule` con el cambio pendiente de la empresa, con y sin plan.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 
 import { MiPlanModule } from "@/app/(app)/mi-plan/_components/MiPlanModule";
+
+import { planesDeMiPlan, planesSinPlan } from "./_mi-plan-planes";
+
+// SLT-99: «Mi plan» monta el cambio de plan, que usa el router y las actions del maestro.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+vi.mock("@/lib/actions/mi-plan", () => ({ cambiarMiPlanAction: vi.fn(), cancelarCambioMiPlanAction: vi.fn() }));
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
 import { planConConsumo, type PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
@@ -169,30 +175,37 @@ describe("SLT-86 R28 — el total del período", () => {
 describe("SLT-86 R26 — el cambio pendiente de la empresa en «Mi plan»", () => {
   const PENDIENTE: PendienteDeEmpresa = { planNombre: "Pro", tipo: "anual", desde: "2026-04-01" };
 
-  it("R26: con plan, «Desde el {fecha}: {plan} · {Tipo}», sin botón para cancelarlo", () => {
-    render(<MiPlanModule plan={planConConsumo(leido("mensual", "2026-01-15", { pendiente: PENDIENTE }), mediodia("2026-03-10"))} />);
+  // SLT-99 (R16, R17, P3) sustituye «sin botón para cancelarlo»: el maestro cancela el pendiente, sea de quien sea.
+  it("R26: con plan, «Desde el {fecha}: {plan} · {Tipo}», con «Cancelar cambio» (SLT-99 R17)", () => {
+    render(
+      <MiPlanModule
+        plan={planConConsumo(leido("mensual", "2026-01-15", { pendiente: PENDIENTE }), mediodia("2026-03-10"))}
+        planes={planesDeMiPlan({ hayPendiente: true })}
+      />,
+    );
 
     expect(screen.getByText("Desde el 2026-04-01: Pro · Anual")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancelar cambio" })).toBeInTheDocument();
   });
 
   it("R26: sin pendiente no hay línea «Desde el …»", () => {
-    render(<MiPlanModule plan={planConConsumo(leido("mensual", "2026-01-15"), mediodia("2026-03-10"))} />);
+    render(<MiPlanModule plan={planConConsumo(leido("mensual", "2026-01-15"), mediodia("2026-03-10"))} planes={planesDeMiPlan()} />);
     expect(screen.queryByText(/^Desde el /)).toBeNull();
   });
 
   it("R26: sin plan y con una primera asignación pendiente, «Sin límites» y debajo «{Plan} empieza a regir el {fecha}»", () => {
-    render(<MiPlanModule plan={null} pendienteSinPlan={PENDIENTE} />);
+    render(<MiPlanModule plan={null} pendienteSinPlan={PENDIENTE} planes={planesSinPlan()} />);
 
     const titulo = screen.getByText("Sin límites");
     expect(titulo).toHaveClass("text-foreground");
     expect(screen.getByText("Pro empieza a regir el 2026-04-01")).toBeInTheDocument();
     expect(screen.queryByText("Tu empresa no tiene plan asignado: sin límites")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    // La primera asignación es del superadmin: el maestro sin plan no la cancela (SLT-99 R18, P5).
+    expect(screen.queryByRole("button", { name: "Cancelar cambio" })).toBeNull();
   });
 
   it("R26: sin plan y sin pendiente, el aviso de siempre (SLT-58 R6)", () => {
-    render(<MiPlanModule plan={null} pendienteSinPlan={null} />);
+    render(<MiPlanModule plan={null} pendienteSinPlan={null} planes={planesSinPlan()} />);
     expect(screen.getByText("Tu empresa no tiene plan asignado: sin límites")).toBeInTheDocument();
     expect(screen.queryByText("Sin límites")).toBeNull();
   });

@@ -45,7 +45,6 @@ export interface DetalleDePlanProps {
   readonly onCambiar?: () => void;
 }
 
-// @sin-superficie la monta CambioDePlan de «Mi plan» en la task T7 de SLT-99, que quita esta línea.
 export function DetalleDePlan({ plan, vista, activo = null, onCambiar }: DetalleDePlanProps) {
   const esElActivo = activo?.plan?.id === plan.id;
   const comparaCon = activo?.plan && !esElActivo ? activo.plan : null;

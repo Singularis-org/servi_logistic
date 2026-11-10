@@ -43,7 +43,6 @@ type Tarjeta = { clase: "plan"; plan: PlanVista } | { clase: "medida" };
 
 const VISTAS: readonly VistaDePrecio[] = ["mensual", "anual"];
 
-// @sin-superficie la monta CambioDePlan de «Mi plan» en la task T7 de SLT-99, que quita esta línea.
 export function CarruselDePlanes({
   planes,
   vista,

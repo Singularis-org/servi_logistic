@@ -24,7 +24,6 @@ async function conServicio<T>(deps: MiPlanDeps, fn: (s: IMiPlanCambioService, ac
 
 /**
  * R11–R15, R18: el maestro pide `{ planId }`; queda pendiente para el corte de su empresa.
- * @sin-superficie la monta CambioDePlan de «Mi plan» en la tanda de frontend de SLT-99 (T7), que quita esta línea.
  */
 export async function cambiarMiPlanAction(input: unknown, deps: MiPlanDeps = {}): Promise<CambiarMiPlanResult> {
   return conServicio(deps, (s, actor) => s.cambiarPlan(actor, input));
@@ -32,7 +31,6 @@ export async function cambiarMiPlanAction(input: unknown, deps: MiPlanDeps = {})
 
 /**
  * R16: «Cancelar cambio» del pendiente de su empresa, sea de quien sea (P3). `input` es `{}`.
- * @sin-superficie la monta CambioDePlan de «Mi plan» en la tanda de frontend de SLT-99 (T7), que quita esta línea.
  */
 export async function cancelarCambioMiPlanAction(input: unknown, deps: MiPlanDeps = {}): Promise<CancelarCambioMiPlanResult> {
   return conServicio(deps, (s, actor) => s.cancelarCambio(actor, input));
