@@ -1,6 +1,6 @@
 # SLT-118 — planes-facturar-periodo-en-curso · design.md
 
-> Requisitos: `requirements.md` (R1–R40; P1–P16 cerradas por el humano el 2026-11-10; **P17 y P18 abiertas**).
+> Requisitos: `requirements.md` (R1–R40; P1–P18 cerradas por el humano el 2026-11-10; **P19 abierta**).
 >
 > **Dos cambios de fondo del humano (2026-11-10, tras aprobar el spec).**
 > 1. *Periodicidad de órdenes:* cada plan define si sus órdenes se facturan quincenal o mensual; sin plan,
@@ -9,8 +9,11 @@
 >    órdenes de su intervalo y la cuota del período de cobro que **empieza** en ese instante. La primera cuota
 >    de un plan sale al empezar el plan. Sin devoluciones. Al desplegar, el período en curso cuenta como pagado.
 >
-> Este design los aplica y dice qué se conserva y qué se rehace del código de la tanda 1 (§0). Lo pendiente de
-> P17–P18 está escrito con la propuesta de cada una y marcado.
+> Este design los aplica y dice qué se conserva y qué se rehace del código de la tanda 1 (§0). Con P17 (una sola
+> factura con las órdenes sin plan y la primera cuota) y P18 (sin corte al aplicar: la primera cuota de un inicio
+> pasado cuya factura ya salió espera al próximo corte) la primera cuota se guarda en su propio grupo de columnas,
+> porque una factura puede llevar dos cuotas (§1.1, §2.4). P19 (alta con plan desde ese día) está escrita con su
+> propuesta, marcada en §2.3.
 >
 > Antes: sin corte ni prorrateo (P3); la cuota es la del período completo, salvo la primera cuota de un plan,
 > que prorratea (P6, R29); la primera asignación corta la factura sin plan en su día (P8, R28); el servidor del
@@ -81,7 +84,8 @@ Lo que existe y se reutiliza:
 - `plan_costo_del_periodo`, `plan_costo_del_tramo` y `plan_dias_de_calendario` (la cuota y su prorrateo, R8, R10, R29).
 - De `factura_plataforma_cerrar`: el cerrojo de la empresa, el margen de 5 minutos, el número correlativo y la
   idempotencia (R3, R4, R11, R14).
-- El tope del pago con la cuota (R18, R19) y la negativa del `down.sql` (R27).
+- La negativa del `down.sql` (R27), que además mira la primera cuota. El tope del pago con la cuota (R18, R19)
+  se conserva salvo la suma, que pasa a incluir la primera cuota (§0.3, §2.7).
 - La migración del valor de `job_tipo` (`20261111130000`), entera.
 - En Prisma, el modelo `FacturaPlataforma` y su entrada en `MODELOS_DE_NEGOCIO`.
 
@@ -92,18 +96,19 @@ Lo que existe y se reutiliza:
 | Columna `plan.periodicidad_ordenes` | no existe | Nueva, `NOT NULL DEFAULT 'quincenal'`, `CHECK IN ('quincenal', 'mensual')` (§1.2, R35, P14) |
 | Columna `factura_plataforma.periodicidad` | no existe | Nueva, `NOT NULL`, la periodicidad de órdenes de la factura (§1.1) |
 | Columnas de la cuota | `precio_mensual`, `cuota`, `dias_cobrados`, `dias_periodo` | además `cuota_plan_id`, `cuota_plan_nombre`, `cuota_tipo_cobro`, `cuota_desde_at`, `cuota_hasta_at`: la cuota es de **otro** plan que el de las órdenes cuando la emisión es el efecto de un cambio (§1.1, R5) |
-| Marca de la primera cuota | no existe | `primera_cuota_desde_at`: la pone la toma de una primera asignación (R16, R28) |
-| CHECK `factura_plataforma_cuota` | «sin plan, sin cuota» | **se quita esa parte**: una factura sin plan puede llevar la primera cuota del plan siguiente (R28); el grupo de la cuota va entero o no va (§1.1) |
+| Marca y grupo de la primera cuota | no existe | la marca `primera_cuota_desde_at` la pone la toma de una primera asignación (R16, R28); al cerrar se llena el grupo `primera_cuota_*` (plan, tramo, precio, importe y días), aparte de la cuota de R8 (P18: una factura puede llevar las dos) |
+| CHECK `factura_plataforma_cuota` | «sin plan, sin cuota» | **se quita esa parte**: una factura sin plan puede llevar la primera cuota del plan siguiente (R28); cada grupo de cuota va entero o no va, y hay uno nuevo para la primera cuota (§1.1) |
 | `factura_plataforma_abrir` | copia plan, nombre y tipo | copia además `periodicidad` (la del plan, o `quincenal` sin plan) |
 | `factura_plataforma_avanzar` | fin natural con `COALESCE(tipo_cobro, 'mensual')` | fin natural con la `periodicidad` de la factura (R2) |
-| `factura_plataforma_tomar_cambio` | toma plan, nombre y tipo; R28 corta la sin plan | toma también la periodicidad; en una primera asignación pone la marca de la primera cuota y, si hace falta, corta al aplicar (§2.3, R16, R28; recibe `p_ahora`) |
+| `factura_plataforma_tomar_cambio` | toma plan, nombre y tipo; R28 corta la sin plan | toma también la periodicidad; en una primera asignación pone la marca de la primera cuota (§2.3, R16, R28). Sin corte al aplicar (P18): la firma sigue sin `p_ahora` |
 | `factura_plataforma_cifras` | órdenes + cuota del período que **contiene** el `desde` | se parte en dos: `factura_plataforma_ordenes` (las sumas) y `factura_plataforma_cuota` (la cuota de un tramo con un plan), y la regla de qué cuota lleva cada factura va en `cerrar` y `en_curso` (§2.4) |
-| `factura_plataforma_cerrar` | cierra todas las vencidas | además **espera** al cambio pendiente (R39) y saca la cuota de la emisión con el plan de la factura siguiente (§2.5) |
-| `factura_plataforma_en_curso` | cuota prevista del período del `desde` | cuota prevista de la emisión, con el cambio pendiente (R24); fin y `periodicidad` en el JSON |
+| `factura_plataforma_cerrar` | cierra todas las vencidas | además **espera** al cambio pendiente (R39), saca la cuota de la emisión con el plan de la factura siguiente y la primera cuota de la marca (§2.5) |
+| `factura_plataforma_en_curso` | cuota prevista del período del `desde` | las cuotas previstas (la primera y la de la emisión), con el cambio pendiente (R24); fin y `periodicidad` en el JSON |
+| Tope del pago | suma `cuota` de las cerradas | suma `cuota + primera_cuota` de las cerradas (§2.7, R18) |
 | Trigger de inmutabilidad | una por cerrar no cambia plan, tipo ni fechas | tampoco su periodicidad; la marca solo pasa de nula a un valor |
 | Siembra | `desde` = inicio del período de cobro (o del mes sin plan) | `desde` = inicio del corte en curso; sin marca: el período en curso cuenta como pagado (R26, P15) |
 | `down.sql` | deja la base como estaba | `DROP` con las firmas nuevas y quita `plan.periodicidad_ordenes` |
-| `db/schema.prisma` | — | `Plan.periodicidadOrdenes`, `FacturaPlataforma.periodicidad`, las cinco columnas de la cuota y la marca |
+| `db/schema.prisma` | — | `Plan.periodicidadOrdenes`, `FacturaPlataforma.periodicidad`, las cinco columnas de la cuota, la marca y las ocho de la primera cuota |
 
 ## 1. Modelo de datos
 
@@ -118,28 +123,35 @@ Columnas (`TIMESTAMP(3)` sin zona, en UTC):
 | `organizacion_id` | `TEXT NOT NULL` | `DEFAULT NULLIF(current_setting('app.organizacion_id', true), '')`; FK a `organizacion` |
 | `estado` | `TEXT NOT NULL` | `CHECK IN ('en_curso', 'por_cerrar', 'cerrada')` |
 | `numero` | `INTEGER` | Solo en `cerrada` (R14) |
-| `desde_at` | `TIMESTAMP(3) NOT NULL` | Inicio, incluido: un corte, salvo el alta (R26), la primera asignación (R28) y el corte al aplicar (R16) |
+| `desde_at` | `TIMESTAMP(3) NOT NULL` | Inicio, incluido: un corte, salvo el alta (R26) y la primera asignación (R28) |
 | `hasta_at` | `TIMESTAMP(3)` | Fin, excluido, y emisión. `NULL` solo en `en_curso` |
 | `periodicidad` | `TEXT NOT NULL` | `CHECK IN ('quincenal', 'mensual')`. La de órdenes de la factura: la del plan al abrirla, o `quincenal` sin plan (R2) |
 | `plan_id`, `plan_nombre`, `tipo_cobro` | `TEXT`, `VARCHAR(80)`, `TEXT` | El plan de las **órdenes**: copia del plan de la empresa al abrirla, que solo cambia R16 mientras está `en_curso`. Las tres o ninguna. `plan_id` sin FK, como en la traza |
-| `primera_cuota_desde_at` | `TIMESTAMP(3)` | **Marca.** Inicio del tramo de la primera cuota de un plan que esta factura emitirá (R16, R28). Solo la escribe `tomar_cambio`, de nula a un valor, en una `en_curso` o `por_cerrar` |
+| `primera_cuota_desde_at` | `TIMESTAMP(3)` | **Marca.** Inicio del tramo de la primera cuota de un plan que esta factura emitirá (R16, R28). Solo la escribe `tomar_cambio`, de nula a un valor, en una `en_curso` o `por_cerrar`. Vale su `hasta_at` (por adelantado: R28, y R16 con la emitida en D abierta) o su `desde_at` (a período vencido: R16 con la emitida en D cerrada o inexistente, P18) |
+| `primera_cuota_hasta_at`, `primera_cuota_plan_id`, `primera_cuota_plan_nombre`, `primera_cuota_tipo_cobro` | `TIMESTAMP(3)`, `TEXT`, `VARCHAR(80)`, `TEXT` | Al cerrar, solo con marca y si el plan tiene costo base: fin del tramo y el plan de la primera cuota (el de la factura con `desde_at` = la marca) |
+| `primera_cuota_precio_mensual`, `primera_cuota` | `DECIMAL(12,2)` | Al cerrar, igual que arriba |
+| `primera_cuota_dias_cobrados`, `primera_cuota_dias_periodo` | `INTEGER` | Al cerrar, igual que arriba (R29) |
 | `cargos`, `reversos`, `total_ordenes` | `DECIMAL(14,2)` | Al cerrar (R5) |
 | `movimientos` | `INTEGER` | Al cerrar |
 | `cuota_plan_id`, `cuota_plan_nombre`, `cuota_tipo_cobro` | `TEXT`, `VARCHAR(80)`, `TEXT` | Al cerrar, solo con cuota: el plan de la cuota (el de la factura siguiente) |
-| `cuota_desde_at`, `cuota_hasta_at` | `TIMESTAMP(3)` | Al cerrar, solo con cuota: el tramo del período de cobro cobrado. `cuota_desde_at` = la emisión (R8) o la marca (R29); `cuota_hasta_at` = fin del período de cobro |
+| `cuota_desde_at`, `cuota_hasta_at` | `TIMESTAMP(3)` | Al cerrar, solo con cuota: el período de cobro completo que empieza en la emisión (R8). `cuota_desde_at` = la emisión |
 | `precio_mensual`, `cuota` | `DECIMAL(12,2)` | Al cerrar, solo con cuota |
-| `dias_cobrados`, `dias_periodo` | `INTEGER` | Con la cuota: días del tramo y del período. Iguales salvo en R29 |
-| `total` | `DECIMAL(14,2)` | `total_ordenes + COALESCE(cuota, 0)` |
+| `dias_cobrados`, `dias_periodo` | `INTEGER` | Con la cuota: días del período (iguales: la cuota de R8 no prorratea) |
+| `total` | `DECIMAL(14,2)` | `total_ordenes + COALESCE(cuota, 0) + COALESCE(primera_cuota, 0)` |
 | `cerrada_at`, `created_at` | `TIMESTAMP(3)` | |
 
 CHECK:
 - `factura_plataforma_estado_fin`: `(estado = 'en_curso') = (hasta_at IS NULL)` y `hasta_at > desde_at`;
-- `factura_plataforma_cerrada`: el de T2, con las cinco columnas nuevas de la cuota dentro del grupo «solo en
-  la cerrada»;
+- `factura_plataforma_cerrada`: el de T2, con las cinco columnas nuevas de la cuota y las ocho de la primera cuota
+  (no la marca) dentro del grupo «solo en la cerrada»;
 - `factura_plataforma_plan`: `num_nulls(plan_id, plan_nombre, tipo_cobro) IN (0, 3)`; `tipo_cobro IN` los cuatro;
 - `factura_plataforma_cuota`: `num_nulls` de las nueve columnas de la cuota `IN (0, 9)`, `cuota >= 0`,
   `0 < dias_cobrados <= dias_periodo`, `cuota_hasta_at > cuota_desde_at`, `cuota_tipo_cobro IN` los cuatro.
   **Sin** «sin plan, sin cuota» (R28);
+- `factura_plataforma_primera_cuota`: `num_nulls` de las ocho columnas de la primera cuota `IN (0, 8)`; si están,
+  la marca no es nula; `primera_cuota >= 0`, `0 < primera_cuota_dias_cobrados <= primera_cuota_dias_periodo`,
+  `primera_cuota_hasta_at > primera_cuota_desde_at`, `primera_cuota_tipo_cobro IN` los cuatro; la marca, si
+  está, es `desde_at` o `hasta_at` de la fila (cuando hay `hasta_at`);
 - `factura_plataforma_periodicidad_check`: `periodicidad IN ('quincenal', 'mensual')`.
 
 Únicos e índice: los de T2 (§0.2). FK `ON DELETE CASCADE`: la app nunca borra una empresa; el dueño sí, en las
@@ -195,9 +207,10 @@ primeros nulos y `periodicidad = 'quincenal'` sin plan.
 El fin sale de la periodicidad **de la factura**: un cambio de plan o de su periodicidad no mueve el fin de la
 factura en curso (R15, R36). La siguiente se abre con lo que la empresa y su plan tengan en ese instante (R36).
 
-### 2.3 `factura_plataforma_tomar_cambio(p_org, p_efecto, p_plan_id, p_tipo, p_ahora)` — R15–R17, R28, R33, R38
+### 2.3 `factura_plataforma_tomar_cambio(p_org, p_efecto, p_plan_id, p_tipo)` — R15–R17, R28, R33, R38
 
-**Firma nueva: suma `p_ahora`** (el corte al aplicar de R16). La llama `PlanesRepository.aplicarEnTx` **antes** de
+**Firma de T2, sin `p_ahora`**: con P18 no hay corte al aplicar, así que no depende del reloj. La llama
+`PlanesRepository.aplicarEnTx` **antes** de
 su `UPDATE "organizacion"`, con la empresa ya en `FOR UPDATE`, así que sabe si es una primera asignación
 (`organizacion.plan_id IS NULL`). Lee del plan nuevo su nombre y su periodicidad.
 1. `factura_plataforma_avanzar(p_org, p_efecto)`: con el plan de antes, las facturas cuyo fin natural llega al
@@ -207,14 +220,17 @@ su `UPDATE "organizacion"`, con la empresa ya en `FOR UPDATE`, así que sabe si 
    - **efecto ≤ D** (R16; el caso normal de R38 y de un cambio de la cola: el paso 1 deja D = efecto): `F` toma
      `p_plan_id`, su nombre, `p_tipo` y la periodicidad del plan nuevo; su fin natural se recalcula solo. Si es
      una **primera asignación**, la marca `primera_cuota_desde_at = D` va en la factura con `hasta_at = D` si
-     existe y no está cerrada; si no (cerrada o inexistente) y `p_ahora > D`, `F` se fija en `p_ahora` con la
-     marca D y se abre la siguiente desde `p_ahora` con el plan nuevo (propuesta P18); si `p_ahora = D`, la marca
-     va en `F`;
+     existe y no está cerrada (por adelantado); si no (cerrada o inexistente, como el alta del mismo día, P19), la
+     marca D va en `F`, que la emitirá en su fin natural con sus órdenes (a período vencido, P18). No se fija ni se
+     abre ninguna factura;
    - **efecto > D y `F` con plan** (R15; un pendiente de antes de esta ficha con efecto a mitad de factura): nada;
    - **efecto > D y `F` sin plan** (R28, P8): fija `F` en el efecto con la marca `primera_cuota_desde_at =
-     efecto` (propuesta P17) y abre la siguiente desde el efecto con el plan, el tipo y la periodicidad nuevos.
+     efecto` (P17: una sola factura con sus órdenes sin plan y la primera cuota) y abre la siguiente desde el
+     efecto con el plan, el tipo y la periodicidad nuevos.
 
-Solo toca facturas no cerradas. No cierra: solo fija y marca. Un cambio pendiente, cancelado, una edición de
+Solo toca facturas no cerradas. No cierra: solo fija y marca. **P19 (abierta):** si el humano elige la excepción del
+alta, en el caso «inexistente» `tomar_cambio` vuelve a recibir el «ahora», fija `F` en él con la marca D y abre la
+siguiente desde ahí; nada más cambia. Un cambio pendiente, cancelado, una edición de
 precio o de periodicidad del plan no llaman a `aplicarEnTx`: no tocan facturas (R17, R36).
 
 **Por qué el efecto de R30 es siempre un corte (R38).** El efecto es el inicio de un período del tipo de
@@ -236,14 +252,23 @@ Sustituyen a `factura_plataforma_cifras`.
   - si no y `p_primera` (R29): `dias_cobrados = plan_dias_de_calendario(p_tramo_desde, E)`, `cuota =
     plan_costo_del_tramo(costo, dias_cobrados, dias_periodo)`;
   - si no: nada (R8, segundo caso);
-  - y además **nada si el período `[S, E)` ya tiene cuota** en otra factura de la empresa (cerrada con
-    `cuota_desde_at` en `[S, E)`, o con marca en `[S, E)`): cada período se cobra una sola vez (R8, R29).
+  - y además **nada si el período `[S, E)` ya tiene cuota** en una factura de la empresa (cerrada con
+    `cuota_desde_at` o `primera_cuota_desde_at` en `[S, E)`, o no cerrada con marca en `[S, E)`, salvo la marca
+    que se está calculando): cada período se cobra una sola vez (R8, R29).
   Devuelve también el plan (id, nombre, tipo) y el tramo `[p_tramo_desde, E)`.
 
-**Qué cuota lleva una factura que se emite en X** (la regla, en `cerrar` y en `en_curso`). Sea `N` la factura con
-`desde_at = X` (la siguiente): el plan de la cuota es el de `N`.
-- con marca: `cuota(p_org, marca, N.plan_id, N.tipo_cobro, true)` (R16, R28, R29);
-- sin marca: `cuota(p_org, X, N.plan_id, N.tipo_cobro, false)` (R8, R9).
+**Qué cuotas lleva una factura que se emite en X** (la regla, en `cerrar` y en `en_curso`). Sea `N` la factura con
+`desde_at = X` (la siguiente). En este orden:
+1. **primera cuota**, solo con marca M: `cuota(p_org, M, P.plan_id, P.tipo_cobro, true)`, donde `P` es la factura
+   con `desde_at = M`: `N` si M = X (por adelantado: R28, R16 con la emitida en D abierta) o la propia factura si
+   M = su `desde_at` (a período vencido: R16, P18). Va al grupo `primera_cuota_*` (R16, R28, R29);
+2. **cuota de la emisión**: `cuota(p_org, X, N.plan_id, N.tipo_cobro, false)`, que ya ve la marca del paso 1 en la
+   comprobación de «una sola vez» (con M = X y X inicio de período, no se cobra dos veces). Va al grupo `cuota_*`
+   (R8, R9).
+
+Así una factura de R16 con P18 cuya emisión es inicio de un período lleva las dos (quincenal desde el 1 aplicado el
+12: la primera del 1 al 16 y la de la quincena del 16). Con un plan mensual desde el 1, la emitida el 16 solo lleva
+la primera (el 16 no es inicio de un mes).
 
 La factura sembrada no tiene marca (R26): el período en curso al desplegar no empieza en ninguna emisión, así
 que nunca se cobra (P15).
@@ -255,31 +280,32 @@ orden de `desde_at`:
 - **espera (R39):** si la empresa tiene `plan_cambio_desde_at ≤ hasta_at` (un cambio o una primera asignación que
   la cola aún no aplicó), se detiene ahí y no cierra esa ni las siguientes; las cierra la primera corrida tras
   aplicarse el cambio;
-- si no, se cierra con `ordenes(desde, hasta)`, la cuota de §2.4 (con `N`, que siempre existe porque `avanzar` ya
-  la abrió), su número y `cerrada_at`.
+- si no, se cierra con `ordenes(desde, hasta)`, las cuotas de §2.4 (con `N`, que siempre existe porque `avanzar`
+  ya la abrió), su número y `cerrada_at`.
 Idempotente por el cerrojo y el estado.
 
 ### 2.6 `factura_plataforma_en_curso(p_org)` — R24
 
 La de T2, con el fin previsto `plan_fin_periodo_calendario(periodicidad, desde)`, la `periodicidad` en el JSON, las
-órdenes con `ordenes(desde, now())` y la cuota prevista de la emisión en ese fin: con marca, la primera cuota; si
-no, `cuota(p_org, fin, plan, tipo, false)` con el plan del cambio pendiente si `plan_cambio_desde_at ≤ fin`, y si
-no con el vigente de la empresa. Nula cuando no la llevará.
+órdenes con `ordenes(desde, now())` y las dos cuotas previstas, cada una nula cuando no la llevará: con marca (en
+la en curso solo puede ser su `desde`, P18), la primera cuota con el plan de la propia factura; y la de la emisión
+en ese fin, `cuota(p_org, fin, plan, tipo, false)` con el plan del cambio pendiente si `plan_cambio_desde_at ≤
+fin`, y si no con el vigente de la empresa.
 
 ### 2.7 El tope del pago (SL-45) — R18, R19
 
-El de T2, sin cambios.
+El de T2, con una sola diferencia: suma `COALESCE(cuota, 0) + COALESCE(primera_cuota, 0)` de las cerradas.
 
 ## 3. Capa de la app
 
 | Pieza | Archivo | Qué hace |
 |---|---|---|
-| Tipos | `lib/types/factura-plataforma.ts` | `FacturaPlataformaDTO` (cerrada o en curso, importes como texto, con `periodicidad` y la cuota con su plan y su tramo), `EstadoFactura` |
+| Tipos | `lib/types/factura-plataforma.ts` | `FacturaPlataformaDTO` (cerrada o en curso, importes como texto, con `periodicidad`, la cuota y la primera cuota, cada una con su plan y su tramo, o `null`), `EstadoFactura` |
 | Contrato | `lib/interfaces/repositories/IFacturaPlataformaRepository.ts` | `empresasACerrar`, `cerrar`, `deLaEmpresa`, `deEmpresaParaPlataforma` |
 | Repositorio | `lib/repositories/FacturaPlataformaRepository.ts` | Los cuatro métodos; ninguno escribe la tabla |
 | Excepción | `lib/db/excepciones-aislamiento.ts` | Entrada en `EXCEPCIONES_DE_PLATAFORMA`, ficha `"SL-24"` (deuda D29) |
 | Trabajo | `lib/planes/jobs-factura-plataforma.ts` | Handler, recurrencia, siembra y composition root (§4) |
-| Toma del cambio | `lib/repositories/PlanesRepository.ts` | `SELECT factura_plataforma_tomar_cambio(…, now())` en `aplicarEnTx`, antes del `UPDATE` |
+| Toma del cambio | `lib/repositories/PlanesRepository.ts` | `SELECT factura_plataforma_tomar_cambio(…)` en `aplicarEnTx`, antes del `UPDATE` |
 | Deuda | ver §5 | |
 | Fecha de efecto del superadmin | `PlanesRepository`, `IPlanesRepository`, `PlanesService`, `lib/types/planes.ts`, `PlanEmpresa.tsx`, `PlanesModule.tsx` | §3.1 (R30–R34) |
 | Periodicidad del plan | `lib/types/planes.ts`, `PlanesRepository`, `IPlanesRepository`, `PlanesService`, `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`, `PlanForm.tsx` | §3.2 (R35–R37) |
@@ -362,12 +388,13 @@ adelantado, si el cierre se adelantara al cambio, la factura emitida en el efect
 antes. La espera de R39 lo evita: mientras `plan_cambio_desde_at ≤ hasta_at`, esa factura no se cierra. Si la cola
 estuvo caída, la emisión se retrasa pero sale con la cuota correcta.
 
-## 5. La deuda con la plataforma — R18–R20, R40 (sin cambios)
+## 5. La deuda con la plataforma — R18–R20, R40
 
-Σ cargos − Σ reversos + Σ `cuota` de facturas `cerrada` − pagos vigentes. Base: el tope del pago (§2.7). App:
-`SumaCobroPlataformaPorTipo.tipo` con `"cuota"`; `CobroPlataformaMovimientoRepository.sumasPorTipo` añade la
-cuota por `facturaPlataforma.aggregate`; `derivarDeudaPlataforma` resta solo `reverso`;
-`EmpresasPlataformaRepository.cuentasConLaPlataforma` añade el `groupBy` de cuotas. El cierre no escribe en
+Σ cargos − Σ reversos + Σ (`cuota` + `primera_cuota`) de facturas `cerrada` − pagos vigentes (P18: una factura
+puede llevar las dos). Base: el tope del pago (§2.7). App: `SumaCobroPlataformaPorTipo.tipo` con `"cuota"`;
+`CobroPlataformaMovimientoRepository.sumasPorTipo` añade las dos columnas por `facturaPlataforma.aggregate` (`_sum`
+de las dos, sumadas en decimal); `derivarDeudaPlataforma` resta solo `reverso`;
+`EmpresasPlataformaRepository.cuentasConLaPlataforma` añade el `groupBy` de las dos columnas de cuota. El cierre no escribe en
 `cobro_plataforma_movimiento`, `cobro_plataforma_traza` ni `wallet_movimiento` (R20). Sin devoluciones (R40):
 ninguna función resta cuotas; la cerrada no cambia (R13).
 
@@ -381,16 +408,16 @@ ninguna función resta cuotas; la cerrada no cambia (R13).
 ### 6.2 `20261111130100_factura_plataforma` (se rehace en parte, §0.3)
 Con `BEGIN`/`COMMIT`. Pasos:
 1. `ALTER TABLE "plan" ADD COLUMN "periodicidad_ordenes" TEXT NOT NULL DEFAULT 'quincenal'` con su CHECK (R35);
-2. tabla con `periodicidad`, las columnas de la cuota y la marca, y los CHECK de §1.1; únicos, índice, FK, RLS,
-   política, `REVOKE`, sin cambio de empresa e inmutabilidad (§1.3);
-3. funciones de §2 (`abrir`, `avanzar`, `tomar_cambio` con `p_ahora`, `ordenes`, `cuota`, `cerrar` con la espera,
-   `en_curso`);
-4. tope del pago (sin cambios);
+2. tabla con `periodicidad`, las columnas de la cuota, la marca y el grupo de la primera cuota, y los CHECK de
+   §1.1; únicos, índice, FK, RLS, política, `REVOKE`, sin cambio de empresa e inmutabilidad (§1.3);
+3. funciones de §2 (`abrir`, `avanzar`, `tomar_cambio` con la firma de T2, `ordenes`, `cuota`, `cerrar` con la
+   espera, `en_curso`);
+4. tope del pago, sumando también `primera_cuota` (§2.7);
 5. **siembra (R26, P15):** una `en_curso` por empresa con `desde = plan_inicio_periodo_calendario(periodicidad,
    now() AT TIME ZONE 'UTC')`, con la periodicidad del plan de la empresa o `quincenal` sin plan, el plan y el
    tipo copiados y **sin marca**.
 
-`down.sql` (R27): la negativa de T2; después el tope de origen, los `DROP` (con las firmas nuevas) y `ALTER TABLE
+`down.sql` (R27): la negativa de T2, que mira `cuota` o `primera_cuota` no nulas; después el tope de origen, los `DROP` (con las firmas nuevas) y `ALTER TABLE
 "plan" DROP COLUMN "periodicidad_ordenes"`. Orden de bajada: la 6.2 y después la 6.1.
 
 ## 7. Datos que dependen del país
@@ -405,7 +432,7 @@ Con `BEGIN`/`COMMIT`. Pasos:
 | Archivo | Cubre | Cómo |
 |---|---|---|
 | `tests/integration/db/factura-plataforma-cierre.test.ts` | R1–R9, R11, R14, R26, R27 | Base real, reloj por `p_ahora`; empresas: sin plan (quincenal), mensual con órdenes quincenales (cuota de diciembre en la emitida el 1 de diciembre, ninguna en la emitida el 16), anual con órdenes mensuales (cuota solo en la emitida el 1 de enero), quincenal (cuota de la quincena que empieza en cada una); bordes de `ocurrido_at`; precio editado; dos cierres a la vez; siembra (P15: quincenal → primera cuota el 16 de noviembre, mensual → el 1 de diciembre, anual → el 1 de enero; ninguna cuota del período en curso); ida y vuelta con y sin cuota cerrada |
-| `tests/integration/db/factura-plataforma-cambio-plan.test.ts` | R8 (pendiente por SQL a mitad de período), R15–R17, R28, R29, R30 (P9), R33, R36, R38, R39 | `PlanesRepository` real: mensual → quincenal con efecto el 1 de diciembre (la emitida el 1 de diciembre con la cuota quincenal del plan nuevo); el mismo por SQL el 10; inicio el 1 aplicado el 10 en el acto (corte al aplicar, 15 500.00, P18); alta el 10 con inicio el 10 (órdenes 0 y 6 200.00); inicio el 16 aplicado por la cola (marca en la emitida el 16, sin corte); inicio el 5 (11 366.67 en la del 1 al 4) y el 18 futuro (13 433.33 en la del 16 al 17, P17); anual desde el 18 con órdenes quincenales (44 de 365; ninguna en diciembre; la anual en la emitida el 1 de enero); quincenal → anual guardado por `PlanesService` el 10 de noviembre; cambio a un plan con órdenes mensuales (R38); periodicidad editada en los dos sentidos (R36); espera del cierre con un cambio pendiente sin aplicar a las 00:10 y cierre tras aplicarlo (R39); aplicado tarde, antes y después de un cierre; `UPDATE` de la periodicidad de una `por_cerrar` o de una marca ya puesta → `SL118` |
+| `tests/integration/db/factura-plataforma-cambio-plan.test.ts` | R5 (las dos cuotas), R8 (pendiente por SQL a mitad de período), R15–R17, R28, R29, R30 (P9), R33, R36, R38, R39 | `PlanesRepository` real: mensual → quincenal con efecto el 1 de diciembre (la emitida el 1 de diciembre con la cuota quincenal del plan nuevo); el mismo por SQL el 10; inicio el 1 aplicado el 12 en el acto (P18: ninguna factura nueva al aplicar; la emitida el 16 con las órdenes del 1 al 15, la primera cuota del 1 al 15 y la de la quincena del 16, 15 500.00 cada una; con mensual, solo la de noviembre, 31 000.00, y la de diciembre en la emitida el 1 de diciembre); inicio el 1 aplicado el 20 (las dos quincenas en la emitida el 1 de diciembre; la cerrada del 1 al 15 igual); alta el 10 con inicio el 10 (P19: la emitida el 16 con órdenes del 10 al 15, 6 200.00 y 15 500.00); inicio el 16 aplicado por la cola (marca en la emitida el 16, sin corte); inicio el 5 (11 366.67 en la del 1 al 4) y el 18 futuro (13 433.33 en la del 16 al 17; P17: una sola factura emitida en E); anual desde el 18 con órdenes quincenales (44 de 365; ninguna en diciembre; la anual en la emitida el 1 de enero); quincenal → anual guardado por `PlanesService` el 10 de noviembre; cambio a un plan con órdenes mensuales (R38); periodicidad editada en los dos sentidos (R36); espera del cierre con un cambio pendiente sin aplicar a las 00:10 y cierre tras aplicarlo (R39); aplicado tarde, antes y después de un cierre; `UPDATE` de la periodicidad de una `por_cerrar` o de una marca ya puesta → `SL118` |
 | `tests/integration/db/planes-periodicidad-ordenes.test.ts` (**nuevo**) | R35, R37 | `PlanesService` con el repositorio real: crear con y sin periodicidad; editar en el acto y programada (rastro, `aplicarCambioProgramado`); un plan creado sin ella queda quincenal; valor inválido; R37 al asignar, crear custom y público, cambiar tipo, editar a mensual con una empresa quincenal y con un pendiente quincenal, y una programada que deja de pasar |
 | `tests/components/PlanFormPeriodicidad.test.tsx` (**nuevo**) | R35 | El selector con `quincenal` al crear y el del plan al editar; lo manda; pinta el error de campo |
 | `tests/integration/db/planes-cambio-empresa.test.ts` (se amplía) | R30, R31, R33, R34 | Como antes |
@@ -414,8 +441,8 @@ Con `BEGIN`/`COMMIT`. Pasos:
 | `tests/integration/db/planes-asignacion.test.ts`, `plan-de-la-empresa-periodo.test.ts`, `planes-cancelar-cambio-historial.test.ts` | — | Solo se ajustan (fechas a mitad de período o «hoy») |
 | `tests/unit/services/planes-service-periodo.test.ts`, `planes-service-tipo-cobro.test.ts` (se amplían) | R30, R32, R34 | Como antes |
 | `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx` (se amplían) | R32 | Como antes |
-| `tests/integration/db/factura-plataforma-deuda.test.ts` | R18–R20, R40 | Como antes; R40: un cambio aplicado tras emitir una cuota no la devuelve ni baja la deuda |
-| `tests/integration/db/factura-plataforma-aislamiento.test.ts` | R13, R21–R24 | Como antes; R24 con la cuota prevista de la emisión (plan mensual: la del 16 al 30 con la de diciembre, la del 1 al 15 sin) y con el plan de un cambio pendiente |
+| `tests/integration/db/factura-plataforma-deuda.test.ts` | R18–R20, R40 | Como antes; R18 con una factura de dos cuotas (la deuda y el tope suben en las dos); R40: un cambio aplicado tras emitir una cuota no la devuelve ni baja la deuda |
+| `tests/integration/db/factura-plataforma-aislamiento.test.ts` | R13, R21–R24 | Como antes; R24 con la cuota prevista de la emisión (plan mensual: la del 16 al 30 con la de diciembre, la del 1 al 15 sin), con el plan de un cambio pendiente y con las dos previstas (quincenal desde el 1 aplicado el 12) |
 | `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` | R10, R29 | Como antes |
 | `tests/unit/planes/jobs-factura-plataforma.test.ts` | R3, R12, R25 | Como antes |
 | `tests/unit/utils/deuda-plataforma.test.ts` | R18 | Como antes |
@@ -433,16 +460,21 @@ E2E: diferido a SLT-119 (decisión «¿E2E?»). Antes del PR se corren en local 
   sus órdenes: R1, R6, R7 y la lectura en curso (R24) se complican, y la tanda 1 se rehace entera. Elegida: la
   fila sigue siendo el intervalo de órdenes y la cuota es la de su emisión, con el plan de la factura siguiente.
 - **Una factura aparte solo de cuota en cada inicio de período.** Dos facturas en el mismo instante en cada
-  inicio, contra «un solo tipo de factura» y «una factura por corte». Solo queda abierta para la primera cuota de
-  una empresa que ya operaba sin plan (P17).
+  inicio, contra «un solo tipo de factura» y «una factura por corte». Descartada también para la primera cuota de
+  una empresa que ya operaba sin plan (P17: una sola factura).
 - **Calcular la cuota al fijar la factura, no al cerrarla.** Un cambio aplicado por la cola segundos después del
   corte quedaría fuera. Elegido: se calcula al cerrar, con la espera de R39.
 - **Cerrar igual sin esperar al cambio pendiente** y que el plan nuevo empiece a cobrar en el período siguiente.
   Con la cola en hora casi nunca pasa, pero cuando pasa la empresa paga un período con el plan equivocado y sin
   devoluciones (R40) no hay arreglo. La espera cuesta una columna ya existente y un `if`.
-- **P4 a la letra: la cuota de un inicio en el pasado en la factura en curso, emitida al fin del corte.** Es la
-  otra salida de P18: a período vencido en ese caso, y con dos cuotas en una fila si esa emisión es inicio de
-  otro período.
+- **Cortar la factura en curso al aplicar un inicio pasado y emitirla ya con la cuota** (propuesta de P18):
+  cobraba por adelantado, pero dejaba una factura que no termina en un corte. La descartó el humano (P18): la
+  cuota espera al próximo corte.
+- **Las dos cuotas de P18 en una sola columna `cuota`** (sumadas, con un solo tramo `[D, fin del período
+  siguiente)`). Se pierde qué período cubre cada una, su precio y sus días, y la comprobación de «una sola vez»
+  por período (§2.4) deja de poder mirar los tramos. Elegido: un grupo de columnas aparte para la primera cuota.
+- **Una tabla hija de cuotas (`factura_plataforma_cuota`, N por factura).** Más general, pero suma una tabla con
+  su RLS, `REVOKE`, inmutabilidad, guardia y su entrada en la deuda, para un máximo de dos cuotas por factura.
 - **La factura atada al período de cobro de la cuota** (una factura por período de cobro; un plan anual daba una
   factura al año): descartada con la periodicidad de órdenes.
 - **Dos tipos de factura (una de cuota y una de órdenes), con plazos distintos.** El humano pidió un solo tipo y
@@ -463,9 +495,12 @@ E2E: diferido a SLT-119 (decisión «¿E2E?»). Antes del PR se corren en local 
 
 ## 10. Residuos y riesgos
 
-- **P17 y P18 abiertas.** Si P17 elige dos facturas, `tomar_cambio` (R28) tiene que crear una factura solo de
-  cuota junto a la sin plan y el único `(organizacion_id, desde_at)` se revisa. Si P18 elige la letra de P4, se
-  quita el corte al aplicar (R16) y la cuota de §2.4 admite dos tramos por fila.
+- **P19 abierta** (alta con plan desde ese mismo día). Escrita con la propuesta: sin excepción, la primera cuota
+  sale en la emitida en el próximo corte con las órdenes. Si se elige la excepción, cambia el caso «inexistente»
+  de `tomar_cambio` (§2.3) y un test; nada más.
+- **A período vencido en P18.** La primera cuota de un inicio pasado cuya factura ya salió se cobra al final del
+  corte, junto con la del período siguiente si ese corte es inicio de período: esa factura puede llevar dos
+  cuotas (quincenal: 31 000.00 en una sola emisión). Es la decisión del humano.
 - Un plan con efecto anterior a una factura ya cerrada no cambia esa factura (R16, P4). En un **cambio** aplicado
   así (solo por SQL o un pendiente de antes de esta ficha; la cola espera, R39), la cuota del plan nuevo de ese
   período no se cobra.
