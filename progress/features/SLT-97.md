@@ -23,6 +23,8 @@ F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarje
 
 - 2026-11-10 · F2.2 vuelta 1 (ab0c34ba): RECHAZADO. B1: el E2E no corrió sobre HEAD (después del arreglo de `detalle()`) ni el grupo aislamiento. Humano: m1, endurecer el trigger para que rechace el cambio al mismo estado (como dice R18); m3, el enlace de la fila anuncia «Ver reporte de {empresa} del {fecha}». Leader: m2, el caso E2E del maestro sale del describe en serie; m4 solo se anota.
 
+- 2026-11-10 · F2.2 vuelta 2 (e1ddf603): OK, 0 bloqueantes. Arreglos 7cf81994 (m1), 340efb6e (m3), 465dae5e (m2) y 425e19f6 (B1, E2E 20/20 ×2 sobre HEAD). test:guardias y lint los corrió el reviewer: solo el rojo del baseline. Se integró origin/dev (41 commits, sin migraciones nuevas ni conflictos). PR a dev.
+
 ## Preguntas abiertas
 Ninguna.
 
