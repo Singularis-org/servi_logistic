@@ -54,10 +54,11 @@ ALTER TABLE "bug_report_status_change" ADD CONSTRAINT "bug_report_status_change_
 
 -- ─── 4. Las dos redes (§2.3; R18, R23) ───────────────────────────────────────────────────────────
 -- El estado solo avanza: new → in_review | resolved | dismissed; in_review → resolved | dismissed.
--- Un UPDATE que deja el mismo estado no es un cambio y pasa (el servicio nunca lo manda).
+-- Un UPDATE que deja el mismo estado tampoco pasa: no es un paso de TRANSICIONES_REPORTE. El trigger solo
+-- salta si el UPDATE nombra `status` (`UPDATE OF`): uno de otra columna, como `deleted_at`, no lo dispara.
 CREATE FUNCTION bug_report_status_solo_adelante() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW."status" IS DISTINCT FROM OLD."status" AND NOT (
+  IF NOT (
        (OLD."status" = 'new'       AND NEW."status" IN ('in_review', 'resolved', 'dismissed'))
     OR (OLD."status" = 'in_review' AND NEW."status" IN ('resolved', 'dismissed'))
   ) THEN

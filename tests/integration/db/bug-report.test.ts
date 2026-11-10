@@ -737,7 +737,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
       });
     });
 
-    it("R17 — los 16 pares origen × destino: la base acepta exactamente los de TRANSICIONES_REPORTE", async () => {
+    it("R17 — los 16 pares origen × destino: la base acepta exactamente los de TRANSICIONES_REPORTE y rechaza los 4 al mismo estado", async () => {
       const r = await revertida(async (tx) => {
         const salida: Record<string, string | null> = {};
         for (const de of ESTADOS) {
@@ -757,8 +757,8 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
       const esperado: Record<string, string | null> = {};
       for (const de of ESTADOS) {
         for (const a of ESTADOS) {
-          // Al mismo estado no es un cambio: el trigger lo deja pasar y el servicio nunca lo manda (design §2.3).
-          esperado[`${de}->${a}`] = de === a || TRANSICIONES_REPORTE[de].includes(a) ? null : "SL097";
+          // Al mismo estado tampoco: no es un paso de TRANSICIONES_REPORTE y la base lo rechaza (design §2.3).
+          esperado[`${de}->${a}`] = TRANSICIONES_REPORTE[de].includes(a) ? null : "SL097";
         }
       }
       expect(r).toEqual(esperado);

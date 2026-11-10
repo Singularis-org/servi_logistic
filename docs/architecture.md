@@ -270,8 +270,8 @@ esta bien hecha, no solo si "funciona".
   tumba (`lib/services/ReporteBugService.ts`).
   - **Estado (SLT-97, migración `20261111120000`).** `bug_report.status` (`new`, `in_review`,
     `resolved`, `dismissed`) solo avanza: el trigger `bug_report_status_solo_adelante` rechaza con
-    `SL097` cualquier paso fuera de `TRANSICIONES_REPORTE` (`lib/types/reporte-bug.ts`), también al
-    dueño.
+    `SL097` cualquier paso fuera de `TRANSICIONES_REPORTE` (`lib/types/reporte-bug.ts`), también el que
+    deja el mismo estado, y también al dueño.
   - **Historial (SLT-97).** `bug_report_status_change` es de plataforma e inmutable: el trigger
     `bug_report_status_change_inmutable` rechaza con `SL097` todo `UPDATE` y `DELETE`, salvo la cascada
     del borrado de su reporte. Tiene RLS sin políticas y `REVOKE ALL … FROM servi_app`. La escribe

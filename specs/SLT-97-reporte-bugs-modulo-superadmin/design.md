@@ -116,7 +116,7 @@ Las dos lanzan `SQLSTATE 'SL097'` y valen para cualquier rol, también para el d
 ```sql
 CREATE FUNCTION bug_report_status_solo_adelante() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW."status" IS DISTINCT FROM OLD."status" AND NOT (
+  IF NOT (
        (OLD."status" = 'new'       AND NEW."status" IN ('in_review', 'resolved', 'dismissed'))
     OR (OLD."status" = 'in_review' AND NEW."status" IN ('resolved', 'dismissed'))
   ) THEN
@@ -127,8 +127,10 @@ BEGIN
 END $$;
 ```
 
-Un `UPDATE` que deja el mismo estado no es un cambio y pasa sin historial. El servicio nunca lo manda: lo
-rechaza antes como `transicion_invalida` (§4).
+Un `UPDATE` que deja el mismo estado también se rechaza con `SL097` (decisión del humano del 2026-11-10,
+m1 de la revisión: R18 pide que la base rechace «al mismo estado»). El trigger solo salta si el `UPDATE`
+nombra `status`: un `UPDATE` de `deleted_at` o `description` no lo dispara, pero `SET status = status, …`
+sí. El servicio nunca manda un paso al mismo estado: lo rechaza antes como `transicion_invalida` (§4).
 
 **2. `bug_report_status_change_inmutable`, `BEFORE UPDATE OR DELETE ON "bug_report_status_change"`:**
 
