@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4 (2026-11-10): spec aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer.
+F2.3 (2026-11-10): review vuelta 3 OK (3d3aee6a). PR a `dev` abierto; espera CI, la comprobación en preview y el merge humano.
 
 ## Evaluación
 - zone fullstack: bucket nuevo, subida firmada, validación en el servidor, enlaces en el correo y en el detalle, y el panel.
