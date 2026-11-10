@@ -9,11 +9,12 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal } from "@/components/shared/Modal";
 import { useToast } from "@/hooks/useToast";
 import { listarZonas, obtenerZona, borrarZona } from "@/lib/actions/zonas";
-import { listarArbolGeografico } from "@/lib/actions/geografia";
+import { listarArbolDeZonas } from "@/lib/actions/geografia";
 import type { ZonaDTO } from "@/lib/types/zona";
-import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+import type { ArbolDeZonasDTO } from "@/lib/types/geografia-nodo";
 
-import { CrearZonaForm, type ZonaFormInitial } from "./CrearZonaForm";
+import { AVISO_CAMBIO_CONCURRENTE, CrearZonaForm, type ZonaFormInitial } from "./CrearZonaForm";
+import { indexarArbol, nodosAsignadosA, repartirPorProfundidad } from "./seleccion-de-zona";
 
 const PAGE_SIZE = 100;
 
@@ -26,17 +27,19 @@ const PAGE_SIZE = 100;
  */
 export function ZonasModule({
   initialZonas,
-  provincias: initialProvincias,
+  arbol: initialArbol,
 }: {
   initialZonas: ZonaDTO[];
-  provincias: ProvinciaArbolDTO[];
+  /** SLT-89 (design §4.2): el árbol de zonas de N niveles de la empresa. */
+  arbol: ArbolDeZonasDTO;
 }) {
   const toast = useToast();
   const [zonas, setZonas] = useState<ZonaDTO[]>(initialZonas);
   // El árbol también es estado: es lo que recibe el formulario. Se reemplaza
   // con el que se lee al abrir crear/editar (SLT-75 R20, ver `leerArbol`).
-  const [provincias, setProvincias] =
-    useState<ProvinciaArbolDTO[]>(initialProvincias);
+  const [arbol, setArbol] = useState<ArbolDeZonasDTO>(initialArbol);
+  // SLT-89 (R16): el aviso de cambio concurrente sobrevive a la recarga del formulario.
+  const [aviso, setAviso] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "form">("list");
   const [formMode, setFormMode] = useState<"crear" | "editar">("crear");
   const [formInitial, setFormInitial] = useState<ZonaFormInitial | undefined>();
@@ -47,10 +50,10 @@ export function ZonasModule({
   async function refetch() {
     const [zonasRes, arbolRes] = await Promise.all([
       listarZonas({ page: 1, pageSize: PAGE_SIZE }),
-      listarArbolGeografico(),
+      listarArbolDeZonas(),
     ]);
     if (zonasRes.status === "ok") setZonas(zonasRes.items);
-    if (arbolRes.status === "ok") setProvincias(arbolRes.provincias);
+    if (arbolRes.status === "ok") setArbol(arbolRes.arbol);
   }
 
   /**
@@ -59,50 +62,53 @@ export function ZonasModule({
    * que un distrito está libre: el selector lo ofrecería y la edición lo preseleccionaría mal (R19).
    * `null` si la lectura falla; quien llama no abre el formulario.
    */
-  async function leerArbol(): Promise<ProvinciaArbolDTO[] | null> {
+  async function leerArbol(): Promise<ArbolDeZonasDTO | null> {
     try {
-      const res = await listarArbolGeografico();
-      return res.status === "ok" ? res.provincias : null;
+      const res = await listarArbolDeZonas();
+      return res.status === "ok" ? res.arbol : null;
     } catch {
       return null;
     }
   }
 
   async function abrirCrear() {
-    const arbol = await leerArbol();
-    if (!arbol) {
+    setAviso(null);
+    const leido = await leerArbol();
+    if (!leido) {
       toast.error("No se pudo cargar el catálogo geográfico.");
       return;
     }
-    setProvincias(arbol);
+    setArbol(leido);
     setFormMode("crear");
     setFormInitial(undefined);
     setFormKey((k) => k + 1);
     setView("form");
   }
 
-  async function abrirEditar(zona: ZonaDTO) {
-    // Zona completa + distritos derivados del árbol geográfico, que se lee al abrir (SLT-75 R20).
-    const [res, arbol] = await Promise.all([obtenerZona(zona.id), leerArbol()]);
-    if (res.status !== "ok" || !arbol) {
+  async function abrirEditar(zona: Pick<ZonaDTO, "id">, conservarAviso = false) {
+    if (!conservarAviso) setAviso(null);
+    // Zona completa + lugares derivados del árbol de zonas, que se lee al abrir (SLT-75 R20).
+    const [res, leido] = await Promise.all([obtenerZona(zona.id), leerArbol()]);
+    if (res.status !== "ok" || !leido) {
       toast.error("No se pudo cargar la zona.");
       return;
     }
     const full = res.zona;
-    // SLT-75 (R19): de `zonas` y no de `zonaId`. `zonaId` se colapsa a null cuando el distrito está
-    // en dos zonas, y entonces salía desmarcado en las dos y el siguiente guardado lo borraba.
-    const distritoIds: string[] = [];
-    for (const p of arbol)
-      for (const c of p.cantones)
-        for (const d of c.distritos)
-          if (d.zonas.some((z) => z.id === full.id)) distritoIds.push(d.id);
+    // SLT-89 (R27): exactamente los nodos asignados a la zona, a cualquier profundidad y retirados
+    // incluidos, repartidos por profundidad. SLT-75 (R19): de la asignación directa y no de la zona
+    // colapsada, que un distrito en dos zonas dejaba en null y el siguiente guardado lo borraba.
+    const { distritoIds, nodoIds } = repartirPorProfundidad(
+      nodosAsignadosA(leido, full.id),
+      indexarArbol(leido),
+    );
 
-    setProvincias(arbol);
+    setArbol(leido);
     setFormMode("editar");
     setFormInitial({
       zonaId: full.id,
       nombre: full.nombre,
       distritoIds,
+      nodoIds,
       esCentral: full.esCentral,
     });
     setFormKey((k) => k + 1);
@@ -110,7 +116,19 @@ export function ZonasModule({
   }
 
   function onSaved() {
+    setAviso(null);
     setView("list");
+    void refetch();
+  }
+
+  /**
+   * SLT-89 (R16): el guardado no escribió nada porque los lugares de la zona cambiaron mientras el
+   * modal estaba abierto. Se avisa y se vuelve a abrir la zona con lo que hay ahora en la base.
+   */
+  function onCambioConcurrente() {
+    setAviso(AVISO_CAMBIO_CONCURRENTE);
+    const id = formInitial?.zonaId;
+    if (id) void abrirEditar({ id }, true);
     void refetch();
   }
 
@@ -120,7 +138,7 @@ export function ZonasModule({
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold">Zonas de reparto</h2>
           <p className="max-w-prose text-sm text-muted-foreground">
-            Cada zona agrupa los distritos donde se reparte.
+            Cada zona agrupa los lugares donde se reparte, de cualquier nivel.
           </p>
         </div>
         {view === "list" ? (
@@ -130,15 +148,24 @@ export function ZonasModule({
         ) : null}
       </div>
 
+      {/* R16: el aviso queda fuera del formulario, que se remonta con lo que hay en la base. */}
+      <p role="status" aria-live="polite" className="text-sm font-medium text-warning-strong empty:hidden">
+        {aviso ?? ""}
+      </p>
+
       {view === "form" ? (
         <CrearZonaForm
           key={formKey}
           mode={formMode}
-          provincias={provincias}
+          arbol={arbol}
           zonas={zonas}
           initial={formInitial}
           onSaved={onSaved}
-          onCancel={() => setView("list")}
+          onCancel={() => {
+            setAviso(null);
+            setView("list");
+          }}
+          onCambioConcurrente={onCambioConcurrente}
         />
       ) : (
         <ZonasList
@@ -249,6 +276,12 @@ function ZonasList({
             <span className="text-xs text-muted-foreground">
               {z.distritosCount} distrito{z.distritosCount === 1 ? "" : "s"}
             </span>
+            {/* SLT-89: los lugares de otro nivel (provincias, cantones…) asignados a la zona. */}
+            {z.nodosCount ? (
+              <span className="text-xs text-muted-foreground">
+                {`+ ${z.nodosCount} ${z.nodosCount === 1 ? "lugar de otro nivel" : "lugares de otro nivel"}`}
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <Button

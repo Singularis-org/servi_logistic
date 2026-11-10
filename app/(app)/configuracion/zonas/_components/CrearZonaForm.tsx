@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,26 +13,40 @@ import { useToast } from "@/hooks/useToast";
 import {
   actualizarZonaSchema,
   crearZonaSchema,
+  type ImpactoAsignacionDTO,
   type ZonaActionError,
   type ZonaDTO,
 } from "@/lib/types/zona";
 import {
   crearZona,
   actualizarZona,
+  impactoAsignacionZona,
   impactoZonaCentral,
 } from "@/lib/actions/zonas";
-import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+import type { ArbolDeZonasDTO } from "@/lib/types/geografia-nodo";
 
 import { GeografiaSelector } from "./GeografiaSelector";
+import {
+  diferencia,
+  distritosBajo,
+  indexarArbol,
+  PROFUNDIDAD_DE_DISTRITO,
+  repartirPorProfundidad,
+  type NodoIndexado,
+  type NodosRepartidos,
+} from "./seleccion-de-zona";
 
 type FieldErrors = Record<string, string[]>;
 
 /**
  * ⭑ FICHA 376 (R20/R21) — LA CONFIRMACIÓN PENDIENTE DE MOVER LA MARCA DE ZONA CENTRAL.
  *
- * Dos direcciones, un solo modal. `marcar` es la que ya existía: esta zona GANA la marca y otra
- * la pierde sin aparecer en ningún payload (R21). `desmarcar` es la que faltaba: la zona que HOY
- * es la central se queda sin ella y el sistema se quedaría sin ninguna (R20).
+ * Dos direcciones. `marcar` es la que ya existía: esta zona GANA la marca y otra la pierde sin
+ * aparecer en ningún payload (R21). `desmarcar` es la que faltaba: la zona que HOY es la central se
+ * queda sin ella y el sistema se quedaría sin ninguna (R20).
+ *
+ * SLT-89 (design §8.2): ya no es un modal propio sino un BLOQUE del modal único de guardado, con su
+ * texto y su impacto sin cambios.
  *
  * ⚠️ El formulario NO decide: AVISA. Confirmar en `desmarcar` ENVÍA el guardado y el servidor lo
  * rechaza (R5), y ese rechazo se pinta junto a la casilla (R23). La regla vive en UN solo sitio
@@ -54,50 +68,94 @@ type ImpactoCentral =
   | { fase: "listo"; ordenes: number }
   | { fase: "sin_dato" };
 
+/**
+ * SLT-89 (R13) — el aviso de impacto de cambiar los lugares. A diferencia del de la marca, un fallo
+ * NO desbloquea «Confirmar»: R13 pide no confirmar sin las cifras. Se ofrece reintentar.
+ */
+type ImpactoNodos =
+  | { fase: "sin_cambio" }
+  | { fase: "cargando" }
+  | { fase: "listo"; impacto: ImpactoAsignacionDTO }
+  | { fase: "error" };
+
+/** Lo que el modal único muestra y lo que viaja al confirmar (design §8.2). */
+interface Confirmacion {
+  central: ConfirmacionCentral | null;
+  entran: string[];
+  salen: string[];
+}
+
+/** El aviso de R16 (texto de SLT-46 §4.7). */
+export const AVISO_CAMBIO_CONCURRENTE = "Este dato cambió mientras tanto; revisa el valor actual";
+
 /** Valores pre-cargados para editar (o vacíos al crear). */
 export interface ZonaFormInitial {
   /** Presente sólo en edición. */
   zonaId?: string;
   nombre: string;
+  /** Distritos (profundidad de distrito) asignados a la zona. */
   distritoIds: string[];
+  /** SLT-89: los demás nodos asignados (provincia, cantón, profundidad ≥ 4). */
+  nodoIds?: string[];
   /** Marca de zona de bodega principal (a lo sumo una en true). */
   esCentral?: boolean;
 }
 
 /**
- * Formulario de crear/editar zona. Compone nombre + selección de distritos
- * (GeografiaSelector) + marca de bodega principal (+ SINPE al crear). Al guardar
- * arma el payload, lo valida contra el schema de la action y llama a `crearZona`
- * o `actualizarZona` según el modo. Notifica con toast el éxito/error y avisa al
- * padre con `onSaved` para refrescar la lista.
+ * Formulario de crear/editar zona (SLT-89, maqueta aprobada el 2026-11-10). Compone nombre + lugares
+ * de cualquier nivel (`GeografiaSelector`) + marca de bodega principal (+ SINPE al crear).
  *
- * SLT-51: sin costos. El payload no lleva `cobroVehiculo` ni `tarifas`, y en el
- * backend «ausente» significa «no se toca» (design §5): un guardado de geografía
- * no puede pisar los pagos que se configuran desde Tarifas.
+ * Guardar valida con el MISMO esquema que la action y, si es válido, abre UN modal con el antes →
+ * después (nombre, marca y lugares que entran y salen, con su nivel y su padre), el bloque de la marca
+ * central de la ficha 376 si aplica y el aviso de impacto en órdenes (R12, R13). Nada se envía hasta
+ * «Sí, guardar»; «Volver» no escribe nada. Al guardar una zona existente viaja el «antes»: los lugares
+ * que el modal mostró (R16).
+ *
+ * SLT-51: sin costos. El payload no lleva `cobroVehiculo` ni `tarifas`, y en el backend «ausente»
+ * significa «no se toca» (design §5): un guardado de geografía no puede pisar los pagos que se
+ * configuran desde Tarifas.
  */
 export function CrearZonaForm({
   mode,
-  provincias,
+  arbol,
   zonas,
   initial,
   onSaved,
   onCancel,
+  onCambioConcurrente,
 }: {
   mode: "crear" | "editar";
-  provincias: ProvinciaArbolDTO[];
+  /** El árbol de zonas de N niveles de la empresa (design §4.2). */
+  arbol: ArbolDeZonasDTO;
   /** Zonas existentes, para verificar si ya hay una marcada como central. */
   zonas: ZonaDTO[];
   initial?: ZonaFormInitial;
   /** Se invoca tras crear/actualizar con éxito (el padre refresca y cierra). */
   onSaved: () => void;
   onCancel: () => void;
+  /** R16: el servidor dijo que los lugares cambiaron mientras tanto; el padre recarga la zona. */
+  onCambioConcurrente?: () => void;
 }) {
   const toast = useToast();
   const esEditar = mode === "editar";
+  const indice = useMemo(() => indexarArbol(arbol), [arbol]);
 
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
-  const [distritoIds, setDistritoIds] = useState<string[]>(
-    initial?.distritoIds ?? [],
+  const iniciales = useMemo(
+    () => [...(initial?.distritoIds ?? []), ...(initial?.nodoIds ?? [])],
+    // Se lee al montar: el padre remonta el formulario para editar otra zona.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [seleccion, setSeleccion] = useState<NodosRepartidos>(() =>
+    repartirPorProfundidad(iniciales, indice),
+  );
+  // R16: el «antes» es lo que la base tenía al abrir (lo que el modal pinta a la izquierda). Al crear
+  // no hay estado previo: todo lo elegido «entra». Tras un guardado con éxito pasa a ser lo guardado.
+  const antesRef = useRef<NodosRepartidos>(
+    initial?.zonaId
+      ? { distritoIds: [...initial.distritoIds], nodoIds: [...(initial.nodoIds ?? [])] }
+      : { distritoIds: [], nodoIds: [] },
   );
   const [esCentral, setEsCentral] = useState<boolean>(initial?.esCentral ?? false);
   /**
@@ -112,19 +170,22 @@ export function CrearZonaForm({
   const [sinpeNumero, setSinpeNumero] = useState("");
   const [sinpeNombre, setSinpeNombre] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [guardando, setGuardando] = useState(false);
   // Id de la zona ya persistida en ESTA sesión del formulario: a partir del
   // primer éxito, un reintento es actualización y no crea una zona duplicada.
   const [zonaIdGuardada, setZonaIdGuardada] = useState<string | undefined>(
     initial?.zonaId,
   );
-  // FICHA 376 (R20/R21): confirmación pendiente de mover la marca de zona central. Si !== null,
-  // el modal está abierto y NADA se ha enviado todavía (R22: cancelar cierra y no envía).
-  const [confirmacion, setConfirmacion] = useState<ConfirmacionCentral | null>(
-    null,
-  );
-  // FICHA 376 (Q4): cuántas órdenes re-tarifaría ese movimiento. Se pide al abrir el modal.
+  // SLT-89 (R12): el modal único. Si !== null, está abierto y NADA se ha enviado todavía.
+  const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null);
+  // FICHA 376 (Q4): cuántas órdenes re-tarifaría mover la marca. Se pide al abrir el modal.
   const [impacto, setImpacto] = useState<ImpactoCentral>({ fase: "cargando" });
+  const [impactoNodos, setImpactoNodos] = useState<ImpactoNodos>({ fase: "sin_cambio" });
+  // R16: el aviso del cambio concurrente, fuera del modal (que se cierra).
+  const [aviso, setAviso] = useState<string | null>(null);
+  // Una respuesta del aviso que llega tarde (el modal ya se cerró o se reabrió) no pisa la vigente.
+  const peticionNodos = useRef(0);
+
+  const seleccionadas = [...seleccion.distritoIds, ...seleccion.nodoIds];
 
   /**
    * Arma el candidato y lo valida contra el MISMO schema que la acción que se va a llamar.
@@ -135,15 +196,9 @@ export function CrearZonaForm({
    * —que arrastra distritos y tarifas— dejaría que un guardado de geografía pisara en silencio
    * la corrección que un `adminSatelite` acaba de hacer sobre su bodega.
    *
-   * Los dos esquemas son `.strict()`, así que seguir validando SIEMPRE contra el de crear rompía
-   * las dos ramas a la vez: al crear no se recogían los campos —y el formulario no llegaba ni a
-   * llamar a la acción, que es el rojo medido de 32 casos—, y al editar los habría mandado a un
-   * esquema que los rechaza.
-   *
    * Se elige por `zonaIdGuardada` y NO por `mode`: tras crear con éxito, un reintento pasa a ser
    * una actualización aunque el modo siga siendo «crear», y es la misma condición que ya decide
-   * a qué acción se llama en `enviar()`. Dos condiciones distintas para la misma bifurcación
-   * divergirían sin que nada se pusiera rojo.
+   * a qué acción se llama en `enviar()`.
    */
   function validar() {
     const candidate = payload();
@@ -154,51 +209,56 @@ export function CrearZonaForm({
   /**
    * SLT-51 (R5) — lo que viaja es ESTO y no `parsed.data`. `crearZonaSchema` materializa
    * `cobroVehiculo: false` y `tarifas: []` por default, y reenviar la salida del parse haría que
-   * el formulario mandase costos que nunca pidió: si un default cambiara, Zonas escribiría pagos
-   * sin que nadie lo viera. La acción vuelve a validar con el mismo esquema en el servidor.
+   * el formulario mandase costos que nunca pidió.
+   *
+   * SLT-89: `nodoIds` solo viaja si hay alguno (ausente se lee como `[]`, design §6), así una zona de
+   * solo distritos manda lo de siempre (R38). `antes` viaja SIEMPRE al actualizar (R16).
    */
   function payload() {
-    const base = { nombre, esCentral, distritoIds };
-    return zonaIdGuardada ? base : { ...base, sinpeNumero, sinpeNombre };
+    const base = {
+      nombre,
+      esCentral,
+      distritoIds: seleccion.distritoIds,
+      ...(seleccion.nodoIds.length > 0 ? { nodoIds: seleccion.nodoIds } : {}),
+    };
+    if (zonaIdGuardada) {
+      const antes = antesRef.current;
+      return { ...base, antes: { distritoIds: antes.distritoIds, nodoIds: antes.nodoIds } };
+    }
+    return { ...base, sinpeNumero, sinpeNombre };
   }
 
   /** Envía el payload (crear/actualizar) y maneja resultado/errores. */
   async function enviar() {
     const parsed = validar();
     if (!parsed.success) {
+      setConfirmacion(null);
       setErrors(parsed.error.flatten().fieldErrors as FieldErrors);
       return;
     }
     setErrors({});
-    setGuardando(true);
+    const enviado = payload();
     try {
-      // Ramas separadas (en vez de un `zonaIdGuardada ? A : B` con `res` único):
-      // `ActualizarZonaResult["ok"]` trae `ordenesReconciliadas` y
-      // `CrearZonaResult["ok"]` no (T6/R13); estructuralmente uno es asignable
-      // al otro (tener una propiedad de más no rompe la asignación), así que
-      // anotar `res` con la unión explícita le impide a `tsc` angostarlo por
-      // asignación: `res.status === "ok"` cae en la unión de LOS DOS "ok",
-      // no en el de la rama que de verdad corrió. Sin anotar el tipo, `tsc`
-      // sigue el tipo "evolutivo" de cada asignación y sí distingue las ramas.
+      // Ramas separadas: `ActualizarZonaResult["ok"]` trae `ordenesReconciliadas` y
+      // `CrearZonaResult["ok"]` no (T6/R13); sin anotar el tipo, `tsc` distingue las ramas.
       let ordenesReconciliadas = 0;
-      // FICHA 377 (R8): el segundo conteo. Las que NO se movieron porque su
-      // paquete ya está recibido en una bodega; el servidor las deja con su zona
-      // anterior a propósito (R2) y la pantalla tiene que decirlo — informar y no
-      // pintarlo sería el mismo fallo mudo que el conteo de arriba vino a cerrar.
+      // FICHA 377 (R8): las que NO se movieron porque su paquete ya está recibido en una bodega.
       let ordenesRetenidas = 0;
       let res;
       if (zonaIdGuardada) {
-        res = await actualizarZona(zonaIdGuardada, payload());
+        res = await actualizarZona(zonaIdGuardada, enviado);
         if (res.status === "ok") {
           ordenesReconciliadas = res.ordenesReconciliadas;
           ordenesRetenidas = res.ordenesRetenidasEnBodegaSatelite;
         }
       } else {
-        res = await crearZona(payload());
+        res = await crearZona(enviado);
       }
 
       if (res.status === "ok") {
         setZonaIdGuardada(res.zona.id);
+        antesRef.current = { distritoIds: enviado.distritoIds, nodoIds: enviado.nodoIds ?? [] };
+        setConfirmacion(null);
         toast.success(
           mensajeGuardado(esEditar, ordenesReconciliadas, ordenesRetenidas),
         );
@@ -206,35 +266,33 @@ export function CrearZonaForm({
         return;
       }
 
+      setConfirmacion(null);
+      // R16: los lugares de la zona cambiaron entre abrir el modal y confirmar. No se escribió nada:
+      // se avisa (fuera del modal, `aria-live`) y el padre recarga la zona.
+      if (res.status === "conflict" && "motivo" in res && res.motivo === "cambio_concurrente") {
+        setAviso(AVISO_CAMBIO_CONCURRENTE);
+        onCambioConcurrente?.();
+        return;
+      }
       // Error: validación por campo inline; el resto como toast.
       if (res.status === "validation_error") {
         setErrors(res.fieldErrors);
       }
       toast.error(mensajeDeError(res));
     } catch {
+      setConfirmacion(null);
       toast.error("Ocurrió un error inesperado.");
-    } finally {
-      setGuardando(false);
     }
   }
 
   /**
-   * ⭑ FICHA 376 (Q4) — abre la confirmación y va a buscar el impacto EN ÓRDENES.
-   *
-   * El modal se abre YA (no se espera a la consulta) y el número aparece cuando llega: la
-   * confirmación es el sitio donde se dice qué cuesta el movimiento, no una pantalla de carga.
-   * Mientras tanto el botón de confirmar está bloqueado, para que nadie confirme un impacto que
-   * todavía no ha visto. Si la consulta falla, se desbloquea diciendo que no se pudo contar: un
-   * fallo de lectura no puede dejar el guardado atrapado.
-   *
-   * Se pregunta por LAS DOS zonas del traslado —la que pierde la marca y la que la gana—: las dos
-   * cambian de columna de flete (`resolverFlete`), y el borde devuelve una entrada por zona
-   * pedida, con cero si no tiene ninguna.
+   * ⭑ FICHA 376 (Q4) — va a buscar el impacto EN ÓRDENES de mover la marca. El modal se abre YA y el
+   * número aparece cuando llega; mientras tanto «Sí, guardar» está bloqueado. Si la consulta falla,
+   * se desbloquea diciendo que no se pudo contar: un fallo de lectura no puede dejar el guardado
+   * atrapado. Se pregunta por LAS DOS zonas del traslado.
    */
-  async function pedirConfirmacion(pendiente: ConfirmacionCentral) {
-    setConfirmacion(pendiente);
+  async function pedirImpactoCentral(pendiente: ConfirmacionCentral) {
     setImpacto({ fase: "cargando" });
-
     const ids = [
       ...(pendiente.tipo === "marcar" ? [pendiente.pierde.id] : []),
       ...(zonaIdGuardada ? [zonaIdGuardada] : []),
@@ -259,175 +317,421 @@ export function CrearZonaForm({
     }
   }
 
+  /** SLT-89 (R13): las cifras del servidor con los lugares PEDIDOS (sin escribir nada). */
+  async function pedirImpactoNodos() {
+    const peticion = ++peticionNodos.current;
+    setImpactoNodos({ fase: "cargando" });
+    try {
+      const res = await impactoAsignacionZona({
+        ...(zonaIdGuardada ? { zonaId: zonaIdGuardada } : {}),
+        distritoIds: seleccion.distritoIds,
+        nodoIds: seleccion.nodoIds,
+      });
+      if (peticion !== peticionNodos.current) return;
+      setImpactoNodos(res.status === "ok" ? { fase: "listo", impacto: res.impacto } : { fase: "error" });
+    } catch {
+      if (peticion === peticionNodos.current) setImpactoNodos({ fase: "error" });
+    }
+  }
+
   async function guardar() {
+    setAviso(null);
     const parsed = validar();
     if (!parsed.success) {
+      // R12: inválido → error en su campo, sin modal y sin llamar a nada.
       setErrors(parsed.error.flatten().fieldErrors as FieldErrors);
       return;
     }
     setErrors({});
 
-    // Si se marca como central, verifica que ninguna otra zona ya lo esté. Si la hay,
-    // se pide confirmación (reestablecerá la marca a esta zona).
+    // FICHA 376 (R20/R21): ¿el guardado mueve la marca de zona central?
+    let central: ConfirmacionCentral | null = null;
     if (esCentral) {
-      const conflicto = zonas.find(
-        (z) => z.esCentral && z.id !== zonaIdGuardada,
-      );
-      if (conflicto) {
-        await pedirConfirmacion({ tipo: "marcar", pierde: conflicto });
-        return;
-      }
+      const conflicto = zonas.find((z) => z.esCentral && z.id !== zonaIdGuardada);
+      if (conflicto) central = { tipo: "marcar", pierde: conflicto };
     } else if (initial?.esCentral === true) {
-      // FICHA 376 (R20): la rama SIMÉTRICA que faltaba. La zona que se edita es hoy la central y
-      // la casilla queda apagada: se pregunta antes de enviar nada, nombrando la zona.
-      await pedirConfirmacion({
-        tipo: "desmarcar",
-        nombreZona: initial.nombre,
-      });
-      return;
+      central = { tipo: "desmarcar", nombreZona: initial.nombre };
     }
 
-    await enviar();
+    const antes = antesRef.current;
+    const { entran, salen } = diferencia([...antes.distritoIds, ...antes.nodoIds], seleccionadas);
+    setConfirmacion({ central, entran, salen });
+
+    const pendientes: Promise<void>[] = [];
+    if (central) pendientes.push(pedirImpactoCentral(central));
+    if (entran.length > 0 || salen.length > 0) pendientes.push(pedirImpactoNodos());
+    else {
+      peticionNodos.current++;
+      setImpactoNodos({ fase: "sin_cambio" });
+    }
+    await Promise.all(pendientes);
   }
 
+  // R13: «Sí, guardar» no se habilita hasta tener las cifras; la marca central (Q4) tampoco mientras
+  // se cuenta.
+  const confirmarBloqueado =
+    (confirmacion?.central != null && impacto.fase === "cargando") ||
+    impactoNodos.fase === "cargando" ||
+    impactoNodos.fase === "error";
+
+  const nombreAntes = initial?.nombre ?? "";
+  const centralAntes = initial?.esCentral === true;
+
   return (
-    <div className="flex flex-col gap-6 rounded-md border border-border p-4">
-      <h3 className="text-sm font-semibold">
-        {esEditar ? "Editar zona" : "Nueva zona"}
-      </h3>
-
-      <FormField id="nombre-zona" label="Nombre de la zona" error={errors.nombre}>
-        <Input
-          value={nombre}
-          placeholder="Ej: San José centro"
-          onChange={(e) => setNombre(e.target.value)}
-        />
-      </FormField>
-
-      {/* ⭑ FICHA 429 (R11) — EL SINPE DE LA BODEGA, EN EL MISMO ACTO DE CREARLA.
-          Solo al CREAR: en edición el par se cambia desde «SINPE por bodega», que es la
-          superficie que lleva el rastro de quién lo tocó. Los dos errores se pintan JUNTO A SU
-          CAMPO —`FormField` cablea `aria-invalid` y `aria-describedby`— y no como un toast
-          genérico: un «revisá los datos» no dice cuál de los dos números está mal. */}
-      {!zonaIdGuardada ? (
-        <fieldset className="flex flex-col gap-4 rounded-md border border-border p-4">
-          <legend className="px-1 text-sm font-semibold">
-            SINPE de la bodega
-          </legend>
-          <p className="max-w-prose text-xs text-muted-foreground">
-            Es el número al que los clientes de esta bodega transfieren cuando
-            pagan por SINPE. Lo usan todos los mensajeros de la bodega.
-          </p>
-
-          <FormField
-            id="sinpe-numero-zona"
-            label="Número SINPE"
-            required
-            hint="8 dígitos, empieza por 6, 7 u 8."
-            error={errors.sinpeNumero}
-          >
-            <Input
-              inputMode="numeric"
-              autoComplete="off"
-              value={sinpeNumero}
-              placeholder="Ej: 88881111"
-              onChange={(e) => setSinpeNumero(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            id="sinpe-nombre-zona"
-            label="A nombre de"
-            required
-            hint="Tal como aparece en SINPE Móvil al teclear el número."
-            error={errors.sinpeNombre}
-          >
-            <Input
-              autoComplete="off"
-              value={sinpeNombre}
-              placeholder="Ej: Mensajería Ejemplo CR S.A."
-              onChange={(e) => setSinpeNombre(e.target.value)}
-            />
-          </FormField>
-        </fieldset>
-      ) : null}
-
-      {/* FICHA 376 (R23): el rechazo del servidor por «tiene que haber una zona central» llega
-          como `fieldErrors.esCentral` y hasta hoy no se pintaba en ningún sitio. Va JUNTO a la
-          casilla, y enlazado por `aria-describedby` para que un lector de pantalla lo anuncie
-          como el error de ESTE control y no como un texto suelto. */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="es-central-zona"
-            checked={esCentral}
-            aria-invalid={errors.esCentral ? true : undefined}
-            aria-describedby={
-              errors.esCentral ? "es-central-zona-error" : undefined
-            }
-            onCheckedChange={(checked) => setEsCentral(checked === true)}
-          />
-          <Label htmlFor="es-central-zona" className="cursor-pointer">
-            Zona de bodega principal
-          </Label>
+    <div className="flex flex-col gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <h3 className="text-xl font-bold">{esEditar ? "Editar zona" : "Nueva zona"}</h3>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className="min-h-10" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button type="button" className="min-h-10 font-semibold" onClick={guardar}>
+            Guardar zona…
+          </Button>
         </div>
-        <FieldError id="es-central-zona-error" messages={errors.esCentral} />
-      </div>
+      </header>
 
-      <GeografiaSelector
-        provincias={provincias}
-        initialSelected={initial?.distritoIds}
-        zonaEnEdicionId={zonaIdGuardada}
-        onSelectedChange={setDistritoIds}
-      />
-      {/* Error del GRUPO de distritos (selector geográfico): FieldError suelto. */}
-      <FieldError messages={errors.distritoIds} />
+      {/* R16: el aviso vive fuera del modal, que se cierra; `aria-live` lo anuncia. */}
+      <p role="status" aria-live="polite" className="text-sm font-medium text-warning-strong empty:hidden">
+        {aviso ?? ""}
+      </p>
 
-      <div className="flex items-center gap-2">
-        <Button type="button" onClick={guardar} loading={guardando}>
-          {guardando ? "Guardando…" : "Guardar"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={guardando}
+      <div className="flex flex-wrap items-start gap-5">
+        <section
+          aria-labelledby="zona-datos-titulo"
+          className="flex min-w-0 flex-[1_1_280px] flex-col gap-4 rounded-xl border border-border bg-card p-4 lg:max-w-sm"
         >
-          Cancelar
-        </Button>
+          <h4 id="zona-datos-titulo" className="text-base font-semibold">
+            Datos de la zona
+          </h4>
+
+          <FormField id="nombre-zona" label="Nombre de la zona" error={errors.nombre}>
+            <Input
+              value={nombre}
+              placeholder="Ej: San José centro"
+              onChange={(e) => setNombre(e.target.value)}
+            />
+          </FormField>
+
+          {/* ⭑ FICHA 429 (R11) — EL SINPE DE LA BODEGA, EN EL MISMO ACTO DE CREARLA. Solo al CREAR.
+              Los dos errores se pintan JUNTO A SU CAMPO —`FormField` cablea `aria-invalid` y
+              `aria-describedby`— y no como un toast genérico. */}
+          {!zonaIdGuardada ? (
+            <fieldset className="flex flex-col gap-4 rounded-md border border-border p-4">
+              <legend className="px-1 text-sm font-semibold">
+                SINPE de la bodega
+              </legend>
+              <p className="max-w-prose text-xs text-muted-foreground">
+                Es el número al que los clientes de esta bodega transfieren cuando
+                pagan por SINPE. Lo usan todos los mensajeros de la bodega.
+              </p>
+
+              <FormField
+                id="sinpe-numero-zona"
+                label="Número SINPE"
+                required
+                hint="8 dígitos, empieza por 6, 7 u 8."
+                error={errors.sinpeNumero}
+              >
+                <Input
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={sinpeNumero}
+                  placeholder="Ej: 88881111"
+                  onChange={(e) => setSinpeNumero(e.target.value)}
+                />
+              </FormField>
+
+              <FormField
+                id="sinpe-nombre-zona"
+                label="A nombre de"
+                required
+                hint="Tal como aparece en SINPE Móvil al teclear el número."
+                error={errors.sinpeNombre}
+              >
+                <Input
+                  autoComplete="off"
+                  value={sinpeNombre}
+                  placeholder="Ej: Mensajería Ejemplo CR S.A."
+                  onChange={(e) => setSinpeNombre(e.target.value)}
+                />
+              </FormField>
+            </fieldset>
+          ) : null}
+
+          {/* FICHA 376 (R23): el rechazo del servidor por «tiene que haber una zona central» va JUNTO
+              a la casilla, enlazado por `aria-describedby`. */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="es-central-zona"
+                checked={esCentral}
+                aria-invalid={errors.esCentral ? true : undefined}
+                aria-describedby={
+                  errors.esCentral ? "es-central-zona-error" : undefined
+                }
+                onCheckedChange={(checked) => setEsCentral(checked === true)}
+              />
+              <Label htmlFor="es-central-zona" className="cursor-pointer">
+                Zona de bodega principal
+              </Label>
+            </div>
+            <FieldError id="es-central-zona-error" messages={errors.esCentral} />
+          </div>
+
+          <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+            <p className="font-semibold text-foreground">Cómo leer el árbol</p>
+            <p>Casilla marcada: elegido para esta zona.</p>
+            <p>«hereda de…»: lo cubre un lugar de arriba.</p>
+            <p>«Excepción»: va a otra zona aunque su padre esté aquí.</p>
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="zona-lugares-titulo"
+          className="flex min-w-0 flex-[999_1_320px] flex-col gap-3 rounded-xl border border-border bg-card p-4"
+        >
+          <h4 id="zona-lugares-titulo" className="text-base font-semibold">
+            Lugares de la zona
+          </h4>
+          <GeografiaSelector
+            arbol={arbol}
+            initialSelected={iniciales}
+            zonaEnEdicionId={zonaIdGuardada}
+            nombreZona={nombre}
+            onSelectedChange={setSeleccion}
+          />
+          {/* Error del GRUPO de lugares: FieldError suelto (distritos y demás nodos, SLT-75 R21). */}
+          <FieldError messages={[...(errors.distritoIds ?? []), ...(errors.nodoIds ?? [])]} />
+        </section>
       </div>
 
       <Modal
         open={confirmacion !== null}
         onOpenChange={(o) => {
-          // R22: cancelar (o cerrar) NO envía nada y ninguna zona cambia.
-          if (!o) setConfirmacion(null);
+          // R12: «Volver» (o cerrar) NO envía nada y ninguna zona cambia.
+          if (!o) {
+            peticionNodos.current++;
+            setConfirmacion(null);
+          }
         }}
-        title={
-          confirmacion?.tipo === "desmarcar"
-            ? "Quitar la marca de zona de bodega principal"
-            : "Zona de bodega principal ya asignada"
-        }
-        description={confirmacion ? descripcionConfirmacion(confirmacion) : ""}
-        confirmLabel="Continuar"
-        cancelLabel="Cancelar"
-        // Q4: no se confirma un impacto que todavía no se ha visto.
-        confirmDisabled={impacto.fase === "cargando"}
-        onConfirm={async () => {
-          setConfirmacion(null);
-          await enviar();
-        }}
+        title={zonaIdGuardada ? `¿Guardar los cambios de ${nombre}?` : `¿Crear la zona ${nombre}?`}
+        description="Revisa qué lugares entran y salen, y qué pasa con las órdenes pendientes."
+        confirmLabel="Sí, guardar"
+        cancelLabel="Volver"
+        size="760px"
+        closeOnConfirm={false}
+        confirmDisabled={confirmarBloqueado}
+        onConfirm={enviar}
       >
-        {/* Q4: el número vive en el modal, no en el borde. `aria-live` lo anuncia cuando llega,
-            porque el modal se abre antes de que la consulta termine. */}
-        <p
-          aria-live="polite"
-          data-testid="impacto-zona-central"
-          className="text-sm text-muted-foreground"
-        >
-          {textoImpacto(impacto)}
-        </p>
+        {confirmacion ? (
+          <div className="flex flex-col gap-4">
+            <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="font-semibold">Nombre</dt>
+                <dd className="text-muted-foreground">
+                  {zonaIdGuardada && nombreAntes !== nombre ? `${nombreAntes} → ${nombre}` : nombre}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Zona de bodega principal</dt>
+                <dd className="text-muted-foreground">
+                  {zonaIdGuardada && centralAntes !== esCentral
+                    ? `${centralAntes ? "Sí" : "No"} → ${esCentral ? "Sí" : "No"}`
+                    : esCentral
+                      ? "Sí"
+                      : "No"}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <ListaDeLugares
+                titulo="Entran"
+                ids={confirmacion.entran}
+                indice={indice}
+                arbol={arbol}
+                pie="Incluye"
+                zonaEnEdicionId={zonaIdGuardada}
+              />
+              <ListaDeLugares
+                titulo="Salen"
+                ids={confirmacion.salen}
+                indice={indice}
+                arbol={arbol}
+                pie="Queda sin zona si nadie más lo cubre."
+                zonaEnEdicionId={zonaIdGuardada}
+              />
+            </div>
+
+            {confirmacion.central ? (
+              <div className="flex flex-col gap-1 rounded-lg border border-border p-3">
+                <p className="text-sm font-semibold">
+                  {confirmacion.central.tipo === "desmarcar"
+                    ? "Quitar la marca de zona de bodega principal"
+                    : "Zona de bodega principal ya asignada"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {descripcionConfirmacion(confirmacion.central)}
+                </p>
+                {/* Q4: `aria-live` lo anuncia cuando llega, porque el modal se abre antes. */}
+                <p
+                  aria-live="polite"
+                  data-testid="impacto-zona-central"
+                  className="text-sm text-muted-foreground"
+                >
+                  {textoImpacto(impacto)}
+                </p>
+              </div>
+            ) : null}
+
+            <ImpactoEnOrdenes estado={impactoNodos} onReintentar={pedirImpactoNodos} />
+          </div>
+        ) : null}
       </Modal>
+    </div>
+  );
+}
+
+/** «Santa Ana · cantón de San José» (R12: cada lugar con su nivel y el nombre de su padre). */
+function lineaDeLugar(
+  id: string,
+  indice: ReadonlyMap<string, NodoIndexado>,
+  arbol: ArbolDeZonasDTO,
+): { nombre: string; detalle: string } {
+  const entrada = indice.get(id);
+  if (entrada === undefined) return { nombre: id, detalle: "" };
+  const tipo =
+    arbol.tipos.find((t) => t.profundidad === entrada.nodo.profundidad)?.nombreSingular.toLowerCase() ?? "";
+  const padre = entrada.ancestros.at(-1);
+  return { nombre: entrada.nodo.nombre, detalle: padre ? `${tipo} de ${padre.nombre}` : tipo };
+}
+
+function ListaDeLugares({
+  titulo,
+  ids,
+  indice,
+  arbol,
+  pie,
+  zonaEnEdicionId,
+}: Readonly<{
+  titulo: string;
+  ids: readonly string[];
+  indice: ReadonlyMap<string, NodoIndexado>;
+  arbol: ArbolDeZonasDTO;
+  pie: string;
+  zonaEnEdicionId: string | undefined;
+}>) {
+  const distrito = arbol.tipos.find((t) => t.profundidad === PROFUNDIDAD_DE_DISTRITO);
+  return (
+    <section aria-label={titulo} className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+      <p className="text-sm font-semibold">{titulo}</p>
+      {ids.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Ninguno</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {ids.map((id) => {
+            const { nombre, detalle } = lineaDeLugar(id, indice, arbol);
+            const nodo = indice.get(id)?.nodo;
+            const k = nodo ? distritosBajo(nodo, { zonaEnEdicionId }) : 0;
+            const excepciones = titulo === "Entran" && nodo ? excepcionesBajo(nodo, zonaEnEdicionId) : [];
+            return (
+              <li key={id} className="flex flex-col text-sm">
+                <span>
+                  {nombre}
+                  {detalle ? <span className="text-muted-foreground">{` · ${detalle}`}</span> : null}
+                </span>
+                {pie === "Incluye" ? (
+                  k > 0 && distrito ? (
+                    <span className="text-xs text-muted-foreground">
+                      {`Incluye ${k === 1 ? "su" : "sus"} ${k} ${(k === 1 ? distrito.nombreSingular : distrito.nombrePlural).toLowerCase()}.`}
+                    </span>
+                  ) : null
+                ) : (
+                  <span className="text-xs text-muted-foreground">{pie}</span>
+                )}
+                {excepciones.map((e) => (
+                  <span key={e.id} className="text-xs text-muted-foreground">
+                    {`${e.nombre} sigue en ${e.zona} (excepción).`}
+                  </span>
+                ))}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Los descendientes asignados a otra zona: siguen allí (R11). */
+function excepcionesBajo(
+  nodo: ArbolDeZonasDTO["raices"][number],
+  zonaEnEdicionId: string | undefined,
+): { id: string; nombre: string; zona: string }[] {
+  const salida: { id: string; nombre: string; zona: string }[] = [];
+  const recorrer = (hijos: typeof nodo.hijos) => {
+    for (const h of hijos) {
+      if (h.asignadaA !== null && h.asignadaA.id !== zonaEnEdicionId) {
+        salida.push({ id: h.id, nombre: h.nombre, zona: h.asignadaA.nombre });
+        continue;
+      }
+      recorrer(h.hijos);
+    }
+  };
+  recorrer(nodo.hijos);
+  return salida;
+}
+
+/** SLT-89 (R13) — las cifras del aviso, tal como las devuelve el servidor. */
+function ImpactoEnOrdenes({
+  estado,
+  onReintentar,
+}: Readonly<{ estado: ImpactoNodos; onReintentar: () => void }>) {
+  if (estado.fase === "sin_cambio") return null;
+  return (
+    <section aria-label="Órdenes pendientes" aria-live="polite" className="flex flex-col gap-2">
+      <p className="text-sm font-semibold">Órdenes pendientes</p>
+      {estado.fase === "cargando" ? (
+        <p className="text-sm text-muted-foreground">Calculando qué pasa con las órdenes pendientes…</p>
+      ) : estado.fase === "error" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-danger-strong">
+            No se pudo calcular el impacto en las órdenes. Sin esas cifras no se puede guardar.
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={onReintentar}>
+            Reintentar
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="rounded-lg bg-muted px-3 py-2">
+              <p className="text-xl font-bold">{estado.impacto.cambianDeZona}</p>
+              <p className="text-sm text-muted-foreground">cambian de zona</p>
+            </div>
+            <div className="rounded-lg bg-muted px-3 py-2">
+              <p className="text-xl font-bold">{estado.impacto.cambianDeTarifa}</p>
+              <p className="text-sm text-muted-foreground">cambian de tarifa</p>
+            </div>
+          </div>
+          <NoSeMueven noSeMueven={estado.impacto.noSeMueven} />
+        </>
+      )}
+    </section>
+  );
+}
+
+function NoSeMueven({ noSeMueven }: Readonly<{ noSeMueven: ImpactoAsignacionDTO["noSeMueven"] }>) {
+  const total = noSeMueven.enBodegaSatelite + noSeMueven.conGestionFinal + noSeMueven.enCierre;
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2">
+      <p className="text-sm font-semibold">{`${total} no se mueven aunque su zona cambiaría`}</p>
+      <ul className="list-disc pl-5 text-sm text-muted-foreground">
+        <li>{`${noSeMueven.enBodegaSatelite} en el estante de una bodega satélite`}</li>
+        <li>{`${noSeMueven.conGestionFinal} con gestión final`}</li>
+        <li>{`${noSeMueven.enCierre} ya en un cierre`}</li>
+      </ul>
     </div>
   );
 }
@@ -553,6 +857,8 @@ function mensajeDeError(err: ZonaActionError): string {
         err.fieldErrors.nombre?.[0] ??
         err.fieldErrors.esCentral?.[0] ??
         primeroYCuantosMas(err.fieldErrors.distritoIds) ??
+        // SLT-89 (R2, R4): el mismo trato para los lugares que no son distritos.
+        primeroYCuantosMas(err.fieldErrors.nodoIds) ??
         "Revisa los campos: el formulario está incompleto."
       );
     case "conflict":

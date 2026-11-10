@@ -4,6 +4,8 @@ import { render, screen, cleanup, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+// SLT-89 (T7.2): el módulo recibe y lee el árbol de zonas de N niveles (`listarArbolDeZonas`).
+import { arbolDeZonas } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * ⭑ FICHA 376 / T12 — R24: EL BORRADO RECHAZADO DICE CUÁL DE LOS DOS RECHAZOS FUE.
@@ -20,6 +22,8 @@ import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 
 const borrarZonaMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   listarZonas: vi.fn().mockResolvedValue({
     status: "ok",
     items: [],
@@ -40,7 +44,7 @@ vi.mock("@/lib/actions/usuarios-por-rol", () => ({
 }));
 
 vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: vi.fn().mockResolvedValue({ status: "ok", provincias: [] }),
+  listarArbolDeZonas: vi.fn().mockResolvedValue({ status: "ok", arbol: { tipos: [], raices: [] } }),
 }));
 
 const { successMock, errorMock } = vi.hoisted(() => ({
@@ -82,7 +86,7 @@ function renderModulo() {
           esCentral: true,
         },
       ]}
-      provincias={provincias()}
+      arbol={arbolDeZonas(provincias())}
     />,
   );
 }

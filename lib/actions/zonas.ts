@@ -228,7 +228,6 @@ export async function impactoZonaCentral(
  * cuantas ordenes pendientes cambian de zona y de tarifa y cuantas no se mueven, sin escribir nada.
  * `maestro`-only. Zod en el borde con tope de ids (`impactoAsignacionZonaSchema`).
  *
- * @sin-superficie SLT-89 (deuda con fecha de salida, no decision): la consume el modal unico de guardado de `CrearZonaForm` (T7.2, design §8.2), que no empieza hasta que el humano apruebe la maqueta (T0.2, R48). La cubren `tests/unit/services/zona-service.test.ts` (rol) y `tests/integration/db/zona-nodo-impacto.test.ts` (las cifras contra Postgres). Esta anotacion se borra en el commit de T7 que la llama.
  */
 export async function impactoAsignacionZona(
   input: unknown,

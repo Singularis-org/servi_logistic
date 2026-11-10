@@ -6,17 +6,21 @@ import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/providers/ToastProvider";
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import { tecleaSinpeDeLaZona } from "../fixtures/sinpe-en-formulario-zona";
+// SLT-89 (T7.2): la entrada nueva del formulario (árbol de N niveles) y el modal único de guardado.
+import { arbolDeZonas, guardarYConfirmar } from "../fixtures/arbol-de-zonas-en-formulario";
 
 // SLT-51 (R4) — la marca de distrito especial es un costo de la EMPRESA y se configura desde
 // Tarifas (SL-38), no desde Zonas. El formulario de zona no pinta el botón «Especial» ni el
-// conteo: SLT-54 (R28) retiró además la action que escribía la marca. El selector conserva la
-// capacidad detrás de `permitirEspecial` para que SLT-54 la reutilice; eso también se prueba.
+// conteo: SLT-54 (R28) retiró además la action que escribía la marca. SLT-89 (R8) retiró también
+// la capacidad reservada `permitirEspecial` del selector.
 vi.mock("@/lib/actions/geografia", () => ({
   listarArbolGeografico: vi.fn(),
 }));
 
 const crearZonaMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   crearZona: (...a: unknown[]) => crearZonaMock(...a),
   actualizarZona: vi.fn(),
   impactoZonaCentral: vi.fn(),
@@ -72,7 +76,7 @@ function renderForm() {
     <ToastProvider>
       <CrearZonaForm
         mode="crear"
-        provincias={arbol()}
+        arbol={arbolDeZonas(arbol())}
         zonas={[]}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -125,46 +129,23 @@ describe("SLT-51/R4 — Zonas no marca distritos especiales", () => {
     await user.type(screen.getByPlaceholderText("Ej: San José centro"), "Zona 3");
     await user.click(screen.getByRole("checkbox", { name: /^Seleccionar distrito Test\b/ }));
     await tecleaSinpeDeLaZona(user);
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(crearZonaMock).toHaveBeenCalledTimes(1));
   });
 });
 
-describe("GeografiaSelector con permitirEspecial (reservado para Tarifas)", () => {
-  it("por defecto no reporta especiales al padre", async () => {
-    const onEspecialesChange = vi.fn();
-    render(
-      <GeografiaSelector provincias={arbol()} onEspecialesChange={onEspecialesChange} />,
-    );
-    await waitFor(() => expect(screen.getByText("San José")).toBeInTheDocument());
-    expect(onEspecialesChange).not.toHaveBeenCalled();
-  });
-
-  it("con permitirEspecial pinta el botón, lo alterna y reporta la marca", async () => {
+// SLT-89 (design §8.1, R8): el selector de N niveles ya no tiene `permitirEspecial` ni
+// `onEspecialesChange` — nadie los usaba desde SLT-51 y R8 prohíbe ofrecer marcar la zona especial.
+// Los dos casos que probaban esa capacidad reservada se sustituyen por el que afirma que no existe.
+describe("GeografiaSelector sin marca de zona especial (SLT-89, R8)", () => {
+  it("el selector no ofrece marcar ni desmarcar la zona especial, aunque el distrito ya lo sea", async () => {
     const user = userEvent.setup();
-    const onEspecialesChange = vi.fn();
-    render(
-      <GeografiaSelector
-        provincias={arbol()}
-        permitirEspecial
-        onEspecialesChange={onEspecialesChange}
-      />,
-    );
+    render(<GeografiaSelector arbol={arbolDeZonas(arbol())} />);
     await abrirArbol(user);
 
-    expect(
-      screen.getByRole("button", { name: "Quitar la marca de zona especial a Carmen" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/2 distritos, Zonas especiales: 1/)).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "Marcar Test como zona especial" }),
-    );
-    await waitFor(() =>
-      expect(onEspecialesChange).toHaveBeenLastCalledWith(
-        expect.arrayContaining(["d1", "d2"]),
-      ),
-    );
+    expect(screen.getByText("Carmen")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /zona especial/i })).toBeNull();
+    expect(screen.queryByText(/Zonas especiales/)).toBeNull();
   });
 });

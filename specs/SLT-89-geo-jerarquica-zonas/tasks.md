@@ -248,7 +248,7 @@ se para y se pregunta (design §8.4). (R48)
   quita descendientes propios, preselección con retirados, búsqueda a cualquier profundidad, etiquetas
   del tipo). Se adaptan `geografia-selector-zona-ocupada.test.tsx` y `geografia-selector-inactivos.test.tsx`
   a la nueva entrada. (R24–R27)
-- [ ] **T7.2** `CrearZonaForm` con el modal único (§8.2), `ZonasModule` y `page.tsx` con
+- [x] **T7.2** `CrearZonaForm` con el modal único (§8.2), `ZonasModule` y `page.tsx` con
   `listarArbolDeZonas`; `tests/components/ZonaGuardadoConfirmacion.test.tsx` (antes → después,
   cifras, «Confirmar» bloqueado hasta tenerlas, cancelar no llama, `antes` siempre enviado,
   `cambio_concurrente` avisa y refresca). Los tests de componente de zonas que montan el formulario se

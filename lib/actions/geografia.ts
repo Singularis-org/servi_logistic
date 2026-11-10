@@ -66,9 +66,9 @@ export type ArbolGeograficoResult =
  * Devuelve el arbol geografico COMPLETO —activos e inactivos— ordenado alfabeticamente en cada
  * nivel. Lo leen la plataforma y el `maestro`, que lo usa en Zonas (R25 de SL-32; SLT-51 la sacó de Tarifas).
  *
- * CONSERVA SU FIRMA: lo llaman `app/(app)/configuracion/zonas/page.tsx` y
- * `ZonasModule.tsx` sin argumentos, y siguen compilando. `deps` es opcional y solo sirve
- * para probarlo sin base.
+ * `deps` es opcional y solo sirve para probarlo sin base.
+ *
+ * @sin-superficie SLT-89 (deuda, no decision): Zonas la cambio por `listarArbolDeZonas` (el arbol de N niveles con la zona asignada y la heredada, T7.2) y era su unica superficie. No se retira en SLT-89 porque la cubren `tests/unit/actions/geografia-action.test.ts` y `tests/unit/actions/geografia.composition-root.test.ts`, y quitar esos casos cambia aserciones fuera de las excepciones de R38; retirarla (con `GeografiaService.listarArbol` si nadie mas lo usa) queda para SLT-48 «Geografia jerarquica: retirar modelo viejo», o antes si el humano lo decide.
  */
 export async function listarArbolGeografico(
   deps: GeografiaActionDeps = {},
@@ -88,7 +88,6 @@ export type ArbolDeZonasResult = ListarArbolDeZonasServiceResult | { status: "un
  * cada nodo: lo que pinta el selector de nodos de una zona (R24–R27). Solo `maestro` (R36); la
  * empresa es la de la sesion (R35), nunca llega del cliente.
  *
- * @sin-superficie SLT-89 (deuda con fecha de salida, no decision): la consume el selector de N niveles de `CrearZonaForm` (T7.1/T7.2, design §8.1), que no empieza hasta que el humano apruebe la maqueta (T0.2, R48). La cubren `tests/unit/services/geografia-service.test.ts` (rol) y `tests/integration/db/zona-nodo-herencia.test.ts` (el arbol contra Postgres). Esta anotacion se borra en el commit de T7 que la llama.
  */
 export async function listarArbolDeZonas(deps: GeografiaActionDeps = {}): Promise<ArbolDeZonasResult> {
   const actor = await (deps.getActor ?? resolveActorFromSession)();

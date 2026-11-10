@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import { tecleaSinpeDeLaZona } from "../fixtures/sinpe-en-formulario-zona";
+// SLT-89 (T7.2): la entrada nueva del formulario (árbol de N niveles) y el modal único de guardado.
+import { arbolDeZonas, guardarYConfirmar } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * Ficha 366 (T7) — al guardar una zona editada, la respuesta del servidor
@@ -21,6 +23,8 @@ import { tecleaSinpeDeLaZona } from "../fixtures/sinpe-en-formulario-zona";
 const crearZonaMock = vi.fn();
 const actualizarZonaMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   crearZona: (...a: unknown[]) => crearZonaMock(...a),
   actualizarZona: (...a: unknown[]) => actualizarZonaMock(...a),
 }));
@@ -103,7 +107,7 @@ function renderForm(
   return render(
     <CrearZonaForm
       mode={mode}
-      provincias={arbol()}
+      arbol={arbolDeZonas(arbol())}
       zonas={[]}
       initial={{
         zonaId,
@@ -132,7 +136,7 @@ describe("Toast de guardar zona — conteo de órdenes reubicadas (366/T7)", () 
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith(
@@ -150,7 +154,7 @@ describe("Toast de guardar zona — conteo de órdenes reubicadas (366/T7)", () 
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith(
@@ -168,7 +172,7 @@ describe("Toast de guardar zona — conteo de órdenes reubicadas (366/T7)", () 
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith("Zona actualizada"),
@@ -186,7 +190,7 @@ describe("Toast de guardar zona — conteo de órdenes reubicadas (366/T7)", () 
     // siquiera llama a la accion y este caso mediria el silencio en vez del toast.
     await tecleaSinpeDeLaZona(user);
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith("Zona creada"),
@@ -228,7 +232,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith(
@@ -247,7 +251,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith(
@@ -266,7 +270,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith(
@@ -285,7 +289,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     // Ni «0 órdenes», ni «ninguna», ni un punto de más: el caso normal —que es
     // la enorme mayoría de los guardados— no se ensucia con el conteo nuevo.
@@ -306,7 +310,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     const user = userEvent.setup();
     renderForm("editar", "z1");
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith("Zona actualizada"),
@@ -324,7 +328,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     const user = userEvent.setup();
     renderForm("editar", "z1", onSaved);
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     // Un solo clic basta: si el aviso se hubiera implementado como una
     // confirmación previa, el padre no se enteraría hasta un segundo clic.
@@ -350,7 +354,7 @@ describe("Toast de guardar zona — órdenes que se quedaron en su bodega (377/T
     // siquiera llama a la accion y este caso mediria el silencio en vez del toast.
     await tecleaSinpeDeLaZona(user);
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith("Zona creada"),
