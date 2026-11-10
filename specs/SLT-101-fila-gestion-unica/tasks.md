@@ -25,7 +25,7 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** — Censo de lo que hoy lee la fila del detalle del admin, anotado en
+- [x] **T0.1** — Censo de lo que hoy lee la fila del detalle del admin, anotado en
   `progress/impl_SLT-101.md`:
   - `grep -l` en `tests/components/` por `<CierresAdminModule` junto con «Órdenes del cierre»,
     «Desglose de ingreso de la orden», «Corregir métodos de pago», «Ajustar pago al mensajero»,
@@ -39,7 +39,7 @@
 
   **Hecho:** la lista coincide con `## Archivos esperados`. Si aparece uno más, se añade y se avisa
   al leader.
-- [ ] **T0.2** [P] — Leer y anotar con archivo:línea:
+- [x] **T0.2** [P] — Leer y anotar con archivo:línea:
   - servidor: los nombres reales `Zona.nombre`, `GrupoDistritos.nombre`, `Vehiculo.name`; que el
     concepto `tienda_fulfillment` congela `ivaPct` y cómo se serializa (`"13.00"` o `"13"`); qué
     `TarifaConcepto` de cobro corresponde a cada resultado (`tienda_flete_*`); que
@@ -53,7 +53,7 @@
     llama a `borrarParams` y que `FilterComponent` con `leerDeUrl={false}` arranca en `{}`.
 
   **Hecho:** nota en `impl_SLT-101.md`. Si algo contradice el design, se para y se pregunta.
-- [ ] **T0.3** [P] — Fijar los literales del E2E (`design.md > Verificación`) contra la siembra
+- [x] **T0.3** [P] — Fijar los literales del E2E (`design.md > Verificación`) contra la siembra
   real de `e2e/_escenarios/cierres.ts`, `reparto.ts` y `_tarifas-activacion-fixture.ts`:
   - escenario A (viejo): cifras de cada tarjeta, «de eso, IVA» y cálculo de la entrega de 70 000 y
     de la devolución; GAM o no GAM; si hay fulfillment;
@@ -95,7 +95,7 @@
 
 ## T2 — Lógica pura · `frontend_dev` (depende de T1.1)
 
-- [ ] **T2.1** — `components/private/cierres/fila/fila-gestion-vista.ts` y
+- [x] **T2.1** — `components/private/cierres/fila/fila-gestion-vista.ts` y
   `fila-gestion-labels.ts` (`design.md > fila-gestion-vista.ts`).
 
   **Hecho:** `tests/unit/utils/fila-gestion-vista.test.ts` verde, con literales escritos a mano:
@@ -114,14 +114,14 @@
 
   Mutaciones muertas anotadas: «Con señales» contando todas; fulfillment a la satélite; quitar
   `esMontoCero`.
-- [ ] **T2.2** [P] — `detalle-cierre-descarga-columnas.ts`: columna «Señales» al final (R91).
+- [x] **T2.2** [P] — `detalle-cierre-descarga-columnas.ts`: columna «Señales» al final (R91).
   **Hecho:** `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts` afirma las 8 cabeceras
   como literal, «Vuelve a bodega» en una devolución y `null` sin señales;
   `columnas-sensibles.guardia` verde.
 
 ## T3 — Componentes · `frontend_dev` (depende de T2)
 
-- [ ] **T3.1** — Props aditivas de la barra de filtros (`design.md > Props aditivas de la barra de
+- [x] **T3.1** — Props aditivas de la barra de filtros (`design.md > Props aditivas de la barra de
   filtros`): `buscador` en `components/shared/BuscadorFiltros.tsx`; `presentacion` y `tono` en
   `components/shared/FilterComponent.tsx`.
   **Hecho:** `tests/unit/components/buscador-filtros-sin-buscador.test.tsx` y
@@ -129,9 +129,9 @@
   `BuscadorFiltros`/`FilterComponent` (`buscador-filtros-*`, `filter-component*`) y las guardias
   `filtros-url-r25`, `wallet-barra-unica-467`, `analitica-barra-filtros-sin-solape`,
   `vistas-superficies-declaradas` verdes **sin tocarlos**.
-- [ ] **T3.2** [P] — `Cuenta.tsx`: props aditivas `insignia`, `tono`, `vacio`, `aparte`, `notas`,
+- [x] **T3.2** [P] — `Cuenta.tsx`: props aditivas `insignia`, `tono`, `vacio`, `aparte`, `notas`,
   `pie`. **Hecho:** `DineroIdentidadesEnPantalla.test.tsx` y los tests de S1 verdes sin tocarlos.
-- [ ] **T3.3** — `CalculoCobro.tsx` y `FilaGestion.tsx` (depende de T3.2).
+- [x] **T3.3** — `CalculoCobro.tsx` y `FilaGestion.tsx` (depende de T3.2).
   **Hecho:** `tests/components/FilaGestion.test.tsx` verde, con los dobles y literales del design:
   - fila cerrada por audiencia, «—» en nulos, resultado con su botón de información (R86);
   - desplegar: solo Orden, Producto, Dirección (R25; ningún «Indemnización», «Ingreso de bodega»,
@@ -144,7 +144,7 @@
   - acciones y sus callbacks (R26); nombres accesibles de R89;
   - paridad con la fila vieja: pacto especial, sin pacto, sin comisión, sin tarifa congelada,
     varias evidencias.
-- [ ] **T3.4** — `GestionesCierre.tsx` (depende de T3.1, T3.3). **Hecho:**
+- [x] **T3.4** — `GestionesCierre.tsx` (depende de T3.1, T3.3). **Hecho:**
   `tests/components/DetalleCierreGestiones.test.tsx` verde:
   - sin campo de búsqueda; grupo «Filtrar por resultado» con «Todas <n>» activo al abrir; elegir
     «Entregado <n>» y «Con señales <n>» filtra; estado vacío con texto (R84, R89);
@@ -153,12 +153,12 @@
 
 ## T4 — Montaje en `/cierres-admin` · `frontend_dev` (depende de T3)
 
-- [ ] **T4.1** — `CierresAdminModule.tsx` monta `GestionesCierre` (`design.md > Montaje`); deja de
+- [x] **T4.1** — `CierresAdminModule.tsx` monta `GestionesCierre` (`design.md > Montaje`); deja de
   importar `GestionesPorResultado`; `SeccionSinGestion` debajo. Exportar de `cierre-factura.tsx` lo
   anotado en T0.2, sin cambiar su cuerpo.
   **Hecho:** typecheck verde; `git diff` de `cierre-factura.tsx` = solo `export`;
   `CierresBodegaAdminModule.tsx` y `CierreDiaModule.tsx` sin cambios.
-- [ ] **T4.2** — Ampliar `tests/components/CierresAdminDetalleUnico.test.tsx` (central y satélite):
+- [x] **T4.2** — Ampliar `tests/components/CierresAdminDetalleUnico.test.tsx` (central y satélite):
   lista nueva con filtros; la satélite no ve Fulfillment ni «Corregir métodos de pago» ni «Corregir
   el resultado» (R90, R26, R30); «Ajustar pago» / «Corregir el resultado» abren el diálogo de hoy
   con esa gestión; «Descargar» y «Pasaron a Novedad interna» (R19, R90).
@@ -166,27 +166,27 @@
 
 ## T5 — Tests y guardias que cambian · `frontend_dev` (depende de T4.1)
 
-- [ ] **T5.1** — Adaptar, sin quitar lo que vigilan (`design.md > Tests y guardias que cambian`):
+- [x] **T5.1** — Adaptar, sin quitar lo que vigilan (`design.md > Tests y guardias que cambian`):
   `CierresAdminModule`, `cierre-detalle-ajuste-badge`, `CorregirResultadoCierre` y los que añada
   T0.1. **Hecho:** verdes; en `impl_SLT-101.md`, una línea por archivo «antes leía X, ahora lee Y».
-- [ ] **T5.2** [P] — Guardias: `estado-con-info` (excepción `recuento` con motivo),
+- [x] **T5.2** [P] — Guardias: `estado-con-info` (excepción `recuento` con motivo),
   `liquidacion-money-safe` (censo con `fila/`), `factura-contraste` (anclas, si T0.1 lo pidió).
   **Hecho:** `pnpm run test:guardias` verde; contraprueba: pintar `{RESULTADO_LABEL[r]}` en la
   celda de la fila pone rojo `estado-con-info`.
 
 ## T6 — E2E · `frontend_dev` (depende de T4, T5)
 
-- [ ] **T6.1** — `e2e/cierres-rediseno.spec.ts`: `describe` de S3 con central A, satélite A y
+- [x] **T6.1** — `e2e/cierres-rediseno.spec.ts`: `describe` de S3 con central A, satélite A y
   central B (con las cifras de R64-R66), la descarga con «Señales» y la URL intacta tras filtrar,
   con los literales de T0.3 escritos a mano (R77).
   **Hecho:** verde dos veces seguidas en base desechable nueva, con `NEXT_PUBLIC_APP_URL` como en
   `gate.yml`; la mutación «Fulfillment a la satélite» lo pone rojo.
-- [ ] **T6.2** — Adaptar a la fila nueva, mismos literales: `cierres-admin`,
+- [x] **T6.2** — Adaptar a la fila nueva, mismos literales: `cierres-admin`,
   `ajuste-pago-mensajero-cierre` (la parte del detalle de mensajero), `cierres-admin-rechazos-sla`,
   `cierre-modelo-nuevo-plan-porcentual`, `tarifas-activacion` («Total cobrado» → «Se le cobra»;
   retirar las dos aserciones de «Ingreso de bodega:» por fila, S3-2, con la línea de motivo).
   **Hecho:** verdes; una línea por archivo en `impl_SLT-101.md`.
-- [ ] **T6.3** — `pnpm exec playwright test --project=dinero` completo, más `cierre-bodega-satelite`
+- [x] **T6.3** — `pnpm exec playwright test --project=dinero` completo, más `cierre-bodega-satelite`
   (no cambia). **Hecho:** dos corridas seguidas sin rojos ni inestables, salida en
   `impl_SLT-101.md`.
 
