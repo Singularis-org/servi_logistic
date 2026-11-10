@@ -6148,6 +6148,9 @@ model Plan {
   // solo con porcentaje) y `plan_costo_por_orden_un_modo` (nunca fijo y porcentual a la vez).
   costoPorOrdenPct        Decimal?        @map("costo_por_orden_pct") @db.Decimal(5, 2)
   costoPorOrdenMinimo     Decimal?        @map("costo_por_orden_minimo") @db.Decimal(12, 2)
+  // SLT-118 (R35, P14): cada cuánto se facturan las órdenes de las empresas con este plan. El CHECK
+  // `plan_periodicidad_ordenes_check` (`quincenal` | `mensual`) vive solo en el SQL de 20261111130100.
+  periodicidadOrdenes     String          @default("quincenal") @map("periodicidad_ordenes")
   archivadoAt           DateTime?       @map("archivado_at")
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
@@ -6410,39 +6413,64 @@ model CobroPlataformaTraza {
   @@map("cobro_plataforma_traza")
 }
 
-// SLT-118 (design §1) — la factura de la plataforma: el estado de cuenta interno de una empresa por período
-// de cobro, con la cuota del plan y las cifras de sus órdenes. De NEGOCIO. La escriben SOLO las funciones del
-// dueño de 20261111130100 (`factura_plataforma_avanzar`, `_tomar_cambio`, `_cerrar`); `servi_app` solo la
-// lee. Viven solo en el SQL de esa migración, porque Prisma no los expresa:
-//   · los CHECK: `estado` y `tipo_cobro` en su lista; fin nulo solo en curso y posterior al inicio; número y
-//     cifras solo en la cerrada; el plan (id, nombre, tipo) entero o vacío; la cuota con su precio y sus
-//     dos días, `0 < dias_cobrados <= dias_periodo`, y sin plan, sin cuota;
+// SLT-118 (design §1.1) — la factura de la plataforma: el estado de cuenta interno de una empresa por corte
+// de su periodicidad de órdenes. Lleva las órdenes de `[desde, hasta)` y se EMITE en `hasta` con la cuota del
+// período de cobro que empieza ahí (por adelantado, R8) y, aparte, la primera cuota de un plan (R16, R28,
+// R29). De NEGOCIO. La escriben SOLO las funciones del dueño de 20261111130100 (`factura_plataforma_avanzar`,
+// `_tomar_cambio`, `_cerrar`); `servi_app` solo la lee. Viven solo en el SQL de esa migración, porque Prisma no
+// los expresa:
+//   · los CHECK: `estado`, `periodicidad` y los tipos de cobro en su lista; fin nulo solo en curso y posterior
+//     al inicio; número, cifras y las dos cuotas solo en la cerrada (la marca `primeraCuotaDesdeAt`, no); el
+//     plan (id, nombre, tipo) entero o vacío; la cuota (9 columnas) entera o vacía; la primera cuota (8
+//     columnas) entera o vacía y solo con marca; la marca igual a `desde` o a `hasta`; `0 < días cobrados <=
+//     días del período` y el tramo con fin posterior al inicio en las dos;
 //   · el único parcial `(organizacion_id) WHERE estado = 'en_curso'`: una sola en curso (R1);
 //   · la política `factura_plataforma_por_empresa` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R22);
-//   · el trigger `factura_plataforma_inmutable`: una cerrada no cambia, tampoco para el dueño, y una por
-//     cerrar no cambia su plan ni sus fechas (SL118, R13, R16);
+//   · el trigger `factura_plataforma_inmutable`: una cerrada no cambia, tampoco para el dueño; una por cerrar
+//     no cambia su plan, su periodicidad ni sus fechas, y la marca solo pasa de nula a un valor (SL118, R13, R16);
 //   · el trigger de «sin cambio de empresa» de SL-17.
-// `planId` es una copia sin FK, como en la traza (el plan es de plataforma y la copia es del momento). La
-// FK a la empresa es CASCADE (design §1.1): las limpiezas de los tests y el borrado de la demo borran
-// empresas que ya tienen factura.
+// `planId`, `cuotaPlanId` y `primeraCuotaPlanId` son copias sin FK, como en la traza (el plan es de plataforma y
+// la copia es del momento). La FK a la empresa es CASCADE (design §1.1): las limpiezas de los tests y el
+// borrado de la demo borran empresas que ya tienen factura.
 model FacturaPlataforma {
   id            String    @id @default(dbgenerated("(gen_random_uuid())::text"))
   estado        String // CHECK: en_curso | por_cerrar | cerrada
   numero        Int? // R14: solo en la cerrada, correlativo por empresa desde 1
   desdeAt       DateTime  @map("desde_at")
-  hastaAt       DateTime? @map("hasta_at") // excluido; NULL solo en curso
+  hastaAt       DateTime? @map("hasta_at") // excluido, y la emisión; NULL solo en curso
+  periodicidad  String // CHECK: quincenal | mensual. La de órdenes: la del plan al abrirla, o quincenal (R2)
+  // El plan de las ÓRDENES (R5): el de la empresa al abrirla; solo R16 lo cambia mientras está en curso.
   planId        String?   @map("plan_id")
   planNombre    String?   @map("plan_nombre") @db.VarChar(80)
   tipoCobro     String?   @map("tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  // Marca (R16, R28): inicio del tramo de la primera cuota que esta factura emitirá; su `desde` o su `hasta`.
+  primeraCuotaDesdeAt       DateTime? @map("primera_cuota_desde_at")
+  // La primera cuota (R29, P18), al cerrar: su plan, el fin de su tramo (que empieza en la marca), su precio,
+  // su importe y sus días. Las ocho o ninguna.
+  primeraCuotaHastaAt       DateTime? @map("primera_cuota_hasta_at")
+  primeraCuotaPlanId        String?   @map("primera_cuota_plan_id")
+  primeraCuotaPlanNombre    String?   @map("primera_cuota_plan_nombre") @db.VarChar(80)
+  primeraCuotaTipoCobro     String?   @map("primera_cuota_tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  primeraCuotaPrecioMensual Decimal?  @map("primera_cuota_precio_mensual") @db.Decimal(12, 2)
+  primeraCuota              Decimal?  @map("primera_cuota") @db.Decimal(12, 2)
+  primeraCuotaDiasCobrados  Int?      @map("primera_cuota_dias_cobrados")
+  primeraCuotaDiasPeriodo   Int?      @map("primera_cuota_dias_periodo")
   cargos        Decimal?  @db.Decimal(14, 2)
   reversos      Decimal?  @db.Decimal(14, 2) // en positivo
   totalOrdenes  Decimal?  @map("total_ordenes") @db.Decimal(14, 2)
   movimientos   Int?
+  // La cuota de la emisión (R8), al cerrar: su plan (el de la factura siguiente), el período completo que
+  // empieza en la emisión, su precio, su importe y sus días (iguales). Las nueve o ninguna.
+  cuotaPlanId     String?   @map("cuota_plan_id")
+  cuotaPlanNombre String?   @map("cuota_plan_nombre") @db.VarChar(80)
+  cuotaTipoCobro  String?   @map("cuota_tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  cuotaDesdeAt    DateTime? @map("cuota_desde_at")
+  cuotaHastaAt    DateTime? @map("cuota_hasta_at")
   precioMensual Decimal?  @map("precio_mensual") @db.Decimal(12, 2)
   cuota         Decimal?  @db.Decimal(12, 2)
   diasCobrados  Int?      @map("dias_cobrados")
   diasPeriodo   Int?      @map("dias_periodo")
-  total         Decimal?  @db.Decimal(14, 2)
+  total         Decimal?  @db.Decimal(14, 2) // total de órdenes + cuota + primera cuota
   cerradaAt     DateTime? @map("cerrada_at")
   createdAt     DateTime  @default(now()) @map("created_at")
 

@@ -1,9 +1,10 @@
--- DOWN de SLT-118 (design §6.2; R27) — quita la factura de la plataforma, sus funciones y la cuota del tope
--- del pago.
+-- DOWN de SLT-118 (design §6.2; R27) — quita la factura de la plataforma, sus funciones, las cuotas del tope
+-- del pago y la periodicidad de órdenes del plan.
 --
--- SE NIEGA A BAJAR, sin tocar nada, si hay alguna factura cerrada con cuota: quitar la tabla bajaría la
--- deuda de esa empresa y dejaría los pagos de la cuota como sobrepago. Sin cuotas cerradas, deja la base
--- como estaba, con el tope del pago de SL-45 igual que antes (cuerpo LITERAL de 20261024140000).
+-- SE NIEGA A BAJAR, sin tocar nada, si hay alguna factura cerrada con cuota o con primera cuota: quitar la
+-- tabla bajaría la deuda de esa empresa y dejaría los pagos de la cuota como sobrepago. Sin cuotas cerradas,
+-- deja la base como estaba: sin la tabla, sin `plan.periodicidad_ordenes` y con el tope del pago de SL-45 igual
+-- que antes (cuerpo LITERAL de 20261024140000).
 --
 -- ORDEN: es el primer down de SLT-118; después va el de 20261111130000 (el valor de `job_tipo`).
 
@@ -14,8 +15,9 @@ LOCK TABLE "factura_plataforma" IN ACCESS EXCLUSIVE MODE;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM "factura_plataforma" WHERE "estado" = 'cerrada' AND "cuota" > 0) THEN
-    RAISE EXCEPTION 'SLT-118 down: hay facturas cerradas con cuota; bajar quitaría la cuota de la deuda y dejaría sus pagos como sobrepago';
+  IF EXISTS (SELECT 1 FROM "factura_plataforma"
+              WHERE "estado" = 'cerrada' AND ("cuota" IS NOT NULL OR "primera_cuota" IS NOT NULL)) THEN
+    RAISE EXCEPTION 'SLT-118 down: hay facturas cerradas con cuota o primera cuota; bajar quitaría la cuota de la deuda y dejaría sus pagos como sobrepago';
   END IF;
 END $$;
 
@@ -74,7 +76,8 @@ END $$;
 
 DROP FUNCTION factura_plataforma_en_curso(text);
 DROP FUNCTION factura_plataforma_cerrar(text, timestamp);
-DROP FUNCTION factura_plataforma_cifras(text, timestamp, timestamp, timestamp, text, text);
+DROP FUNCTION factura_plataforma_cuota(text, timestamp, text, text, boolean);
+DROP FUNCTION factura_plataforma_ordenes(text, timestamp, timestamp);
 DROP FUNCTION factura_plataforma_tomar_cambio(text, timestamp, text, text);
 DROP FUNCTION factura_plataforma_avanzar(text, timestamp);
 
@@ -89,5 +92,8 @@ DROP FUNCTION plan_dias_de_calendario(timestamp, timestamp);
 DROP FUNCTION plan_costo_del_periodo(numeric, jsonb, text);
 
 DROP TABLE "factura_plataforma";
+
+-- R27, R35: el plan vuelve sin periodicidad de órdenes (su CHECK cae con la columna).
+ALTER TABLE "plan" DROP COLUMN "periodicidad_ordenes";
 
 COMMIT;
