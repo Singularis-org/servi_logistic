@@ -5,7 +5,7 @@ import { createElement } from "react";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
-import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
+import type { ArbolDeZonasDTO } from "@/lib/types/geografia-nodo";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -62,17 +62,19 @@ function datosDeZona(nombre: string, distritoIds: string[]): DatosSinAntes {
  * Es el `distritoIds` que `CrearZonaForm` mandaría si nadie tocase nada.
  */
 function loQueElFormularioMandaria(
-  arbol: ProvinciaArbolDTO[],
+  arbol: ArbolDeZonasDTO,
   initialSelected: string[],
 ): string[] {
+  // SLT-89 (T7.1): el selector recibe el árbol de N niveles y reporta `{ distritoIds, nodoIds }`; lo
+  // que el formulario manda como distritos es `distritoIds`.
   const reportado: string[][] = [];
   const espia = vi.spyOn(console, "log").mockImplementation(() => {});
   try {
     render(
       createElement(GeografiaSelector, {
-        provincias: arbol,
+        arbol,
         initialSelected,
-        onSelectedChange: (ids: string[]) => reportado.push(ids),
+        onSelectedChange: (s: { distritoIds: string[] }) => reportado.push(s.distritoIds),
       }),
     );
   } finally {
@@ -139,29 +141,39 @@ describeSiHayBase("⭑ 374/R48 — guardar una zona conserva sus distritos RETIR
         where: { id: FKS.cantonId },
         select: { id: true, nombre: true, activo: true, provincia: { select: { id: true, nombre: true, activo: true } } },
       });
-      const arbol: ProvinciaArbolDTO[] = [
-        {
-          id: canton.provincia.id,
-          nombre: canton.provincia.nombre,
-          activo: canton.provincia.activo,
-          cantones: [
-            {
-              id: canton.id,
-              nombre: canton.nombre,
-              activo: canton.activo,
-              distritos: [activo, retirado].map((d) => ({
-                id: d.id,
-                nombre: d.nombre,
-                zonaId: zona.id,
-                zonaNombre: nombreZona,
-                zonas: [{ id: zona.id, nombre: nombreZona }],
-                zonaEspecial: false,
-                activo: d.activo,
-              })),
-            },
-          ],
-        },
-      ];
+      // SLT-89 (T7.1): el mismo árbol, en la forma de N niveles que recibe el selector.
+      const arbol: ArbolDeZonasDTO = {
+        tipos: [],
+        raices: [
+          {
+            id: canton.provincia.id,
+            nombre: canton.provincia.nombre,
+            profundidad: 1,
+            activo: canton.provincia.activo,
+            asignadaA: null,
+            heredaDe: null,
+            hijos: [
+              {
+                id: canton.id,
+                nombre: canton.nombre,
+                profundidad: 2,
+                activo: canton.activo,
+                asignadaA: null,
+                heredaDe: null,
+                hijos: [activo, retirado].map((d) => ({
+                  id: d.id,
+                  nombre: d.nombre,
+                  profundidad: 3,
+                  activo: d.activo,
+                  asignadaA: { id: zona.id, nombre: nombreZona },
+                  heredaDe: null,
+                  hijos: [],
+                })),
+              },
+            ],
+          },
+        ],
+      };
 
       // ⭑ Aquí es donde este test deja de ser un test de repositorio: la lista sale del SELECTOR.
       const distritoIds = loQueElFormularioMandaria(

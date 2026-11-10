@@ -1,162 +1,88 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Star } from "lucide-react";
+import { ChevronRight, CornerDownRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
-import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
-import type { DistritoArbolDTO } from "@/lib/types/geografia-nodo";
-import { filtrarArbolGeografico } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
+import type { ArbolDeZonasDTO, NodoDeZonasDTO } from "@/lib/types/geografia-nodo";
+import { filtrarArbolDeNodos } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
+import { ESTADO_GEOGRAFICO_TEXTO } from "@/app/(app)/configuracion/_shared/geografia-estado-label";
+
 import {
-  estadoGeografico,
-  etiquetaEstadoGeografico,
-} from "@/app/(app)/configuracion/_shared/geografia-estado-label";
+  alternarNodo,
+  distritosBajo,
+  estadoDeNodo,
+  indexarArbol,
+  PROFUNDIDAD_DE_DISTRITO,
+  repartirPorProfundidad,
+  type EstadoDeNodo,
+  type Herencia,
+  type NodosRepartidos,
+} from "./seleccion-de-zona";
 
-// ⚠️ FICHA 374 — AQUI VIVIA UN `norm()` PROPIO (minusculas + NFD, SIN colapsar espacios) que era la
-// TERCERA copia de una normalizacion que ya existia dos veces, y que por no colapsar los espacios
-// internos hacia que «san  jose» no encontrase «San José». Se fue con su `useMemo` de filtrado al
-// modulo compartido `_shared/filtrar-arbol-geografico.ts`, que usa `normalizeName` — la MISMA
-// funcion con la que `resolveGeo` indexa el catalogo.
+// ⭑ SLT-89 (R24–R27, design §8.1; maqueta aprobada el 2026-11-10) — EL SELECTOR DE N NIVELES.
+//
+// Fuente de verdad: el conjunto de nodos MARCADOS para esta zona, a cualquier profundidad. Marcar un
+// cantón asigna el cantón (no sus distritos uno a uno, design §11.3): sus distritos lo heredan y los que
+// están en otra zona quedan a la vista como excepciones. Lo que cada fila dice (heredado, excepción, en
+// otra zona) se calcula con la selección EN CURSO, no con la de la base: es lo que va a quedar.
+//
+// La marca de zona especial ya no se ofrece aquí (R8; nadie la usaba desde SLT-51).
+//
+// FICHA 374 (R47) sigue valiendo: los nodos retirados se PINTAN, con su distintivo, y su casilla sigue
+// operable. Esconderlos haría que el siguiente guardado los quitara de la zona sin que nadie lo viera.
 
-// Estado derivado de un grupo (provincia/canton) a partir de sus distritos hoja.
-interface TriState {
-  checked: boolean;
-  indeterminate: boolean;
-}
-
-/**
- * SLT-75 (R15, R18): un distrito solo puede estar en una zona por empresa (la base lo impide con un
- * índice único). Ofrecer uno que ya está en otra zona solo serviría para que el servidor rechace el
- * guardado. Se mira `zonas` (todas, sin el colapso de `zonaId`), porque con dos zonas el colapso da
- * null y el distrito parecería libre.
- */
-function estaBloqueado(d: DistritoArbolDTO, zonaEnEdicionId: string | undefined): boolean {
-  return d.zonas.some((z) => z.id !== zonaEnEdicionId);
+export interface GeografiaSelectorProps {
+  arbol: ArbolDeZonasDTO;
+  /** Reporta la selección en cada cambio, repartida por profundidad (design §8.1). */
+  onSelectedChange?: (seleccion: NodosRepartidos) => void;
+  /** Nodos pre-marcados (edición): los asignados a la zona, retirados incluidos (R27). Se lee al montar. */
+  initialSelected?: readonly string[];
+  /**
+   * SLT-75 (R15, R18): la zona que se edita. Sus nodos siguen marcables; los de cualquier otra zona
+   * quedan bloqueados. Se omite al crear, y entonces todo nodo con zona queda bloqueado.
+   */
+  zonaEnEdicionId?: string;
+  /** Nombre con el que se dice «hereda de <zona>» para la zona que se edita. */
+  nombreZona?: string;
 }
 
 export function GeografiaSelector({
-  provincias,
+  arbol,
   onSelectedChange,
-  onEspecialesChange,
   initialSelected,
-  permitirEspecial = false,
   zonaEnEdicionId,
-}: Readonly<{
-  provincias: ProvinciaArbolDTO[];
-  /** Reporta al padre los distritos (hojas) seleccionados en cada cambio. */
-  onSelectedChange?: (distritoIds: string[]) => void;
-  /**
-   * Reporta al padre los distritos marcados como zona especial. Va aparte de
-   * `onSelectedChange` a propósito: la marca es de la EMPRESA sobre el distrito
-   * (no de la zona), así que es independiente de que el distrito pertenezca o
-   * no a la zona que se está editando.
-   */
-  onEspecialesChange?: (distritoIds: string[]) => void;
-  /** Distritos pre-seleccionados (edición de zona). Se lee al montar. */
-  initialSelected?: string[];
-  /**
-   * SLT-51 (R4): la marca de distrito especial es un costo, y Zonas ya no edita costos. Con
-   * `false` no se pinta «Especial» ni el conteo y no se reporta nada. Queda la prop para que
-   * Tarifas (SLT-54) pueda reutilizar el selector si lo decide.
-   */
-  permitirEspecial?: boolean;
-  /**
-   * SLT-75 (R15, R18): la zona que se edita. Sus distritos siguen marcables; los de cualquier otra
-   * zona quedan bloqueados. Se omite al crear, y entonces todo distrito con zona queda bloqueado.
-   */
-  zonaEnEdicionId?: string;
-}>) {
+  nombreZona = "",
+}: Readonly<GeografiaSelectorProps>) {
   const [query, setQuery] = useState("");
-  // SL-20 (design §7; R19): los niveles se nombran con los nombres del país de la empresa.
-  const etiquetas = useEtiquetasGeograficas();
-  // Fuente de verdad UNICA: distritos (hojas) seleccionados. Provincia y canton
-  // derivan su estado (marcado / indeterminado / vacio) de estos.
-  const [selDist, setSelDist] = useState<Set<string>>(
-    () => new Set(initialSelected ?? []),
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set(initialSelected ?? []));
+  const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set());
+
+  const indice = useMemo(() => indexarArbol(arbol), [arbol]);
+  const tipoDe = useMemo(() => {
+    const porProfundidad = new Map(arbol.tipos.map((t) => [t.profundidad, t]));
+    return (profundidad: number) => porProfundidad.get(profundidad);
+  }, [arbol.tipos]);
+
+  // R27: la búsqueda a cualquier profundidad, con `normalizeName` (el filtro N-niveles de SLT-46). Sin
+  // filtro de estado a propósito (FICHA 374): esconder un retirado lo quitaría de la zona al guardar.
+  const filtradas = useMemo(
+    () => filtrarArbolDeNodos(arbol.raices, { texto: query, estado: "todos" }),
+    [arbol.raices, query],
   );
-  // Distritos marcados como zona especial. Se siembra del árbol, que ya trae
-  // solo las marcas de la empresa de la sesión (la RLS filtra
-  // `distrito_zona_especial`), y NO se re-siembra: mientras el formulario
-  // esté abierto manda lo que el usuario tocó, hasta que Guardar lo persista.
-  const [especiales, setEspeciales] = useState<Set<string>>(() => {
-    const ids = new Set<string>();
-    for (const p of provincias)
-      for (const c of p.cantones)
-        for (const d of c.distritos) if (d.zonaEspecial) ids.add(d.id);
-    return ids;
-  });
+  const buscando = query.trim().length > 0;
 
-  // Mapas id -> distritos hoja SELECCIONABLES de cada grupo (sobre el arbol COMPLETO, no el
-  // filtrado, para que la cascada abarque también lo oculto por la búsqueda). SLT-75 (R16, R17):
-  // los bloqueados quedan fuera, y así la cascada no los marca y el estado del grupo no los cuenta.
-  const { provDistIds, cantDistIds } = useMemo(() => {
-    const prov = new Map<string, string[]>();
-    const cant = new Map<string, string[]>();
-    for (const p of provincias) {
-      const pIds: string[] = [];
-      for (const c of p.cantones) {
-        const cIds = c.distritos
-          .filter((d) => !estaBloqueado(d, zonaEnEdicionId))
-          .map((d) => d.id);
-        cant.set(c.id, cIds);
-        pIds.push(...cIds);
-      }
-      prov.set(p.id, pIds);
-    }
-    return { provDistIds: prov, cantDistIds: cant };
-  }, [provincias, zonaEnEdicionId]);
+  useEffect(() => {
+    onSelectedChange?.(repartirPorProfundidad(marcados, indice));
+    // onSelectedChange se toma fresco en cada corrida; dep solo en la selección.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marcados]);
 
-  function stateFor(ids: string[]): TriState {
-    if (ids.length === 0) return { checked: false, indeterminate: false };
-    let n = 0;
-    for (const id of ids) if (selDist.has(id)) n++;
-    return { checked: n === ids.length, indeterminate: n > 0 && n < ids.length };
-  }
-
-  // Marca/desmarca un conjunto de distritos hoja de una vez (cascada).
-  function setMany(ids: string[], on: boolean) {
-    setSelDist((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (on) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  }
-
-  // Click en provincia/canton: si estaba completo lo vacia; si estaba vacio o
-  // parcial (indeterminado), lo completa.
-  function toggleGrupo(ids: string[]) {
-    const { checked } = stateFor(ids);
-    setMany(ids, !checked);
-  }
-
-  function toggleDistrito(id: string) {
-    setMany([id], !selDist.has(id));
-  }
-
-  /** Cuántos de esos distritos están marcados como zona especial. */
-  function especialesEn(distritos: { id: string }[]): number {
-    let n = 0;
-    for (const d of distritos) if (especiales.has(d.id)) n++;
-    return n;
-  }
-
-  // Marca/desmarca la zona especial de un distrito. Independiente del checkbox:
-  // se puede marcar un distrito como especial sin meterlo en esta zona.
-  function toggleEspecial(id: string) {
-    setEspeciales((prev) => {
+  function alternarAbierto(id: string) {
+    setAbiertos((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -164,234 +90,182 @@ export function GeografiaSelector({
     });
   }
 
-  // Arbol filtrado por texto (una rama sobrevive si provincia, algun canton o
-  // algun distrito coincide). No afecta la selección ni la cascada.
-  //
-  // ⚠️ FICHA 374 — AQUI NO SE FILTRA POR ESTADO, y no es un olvido. `estado: "todos"` es el unico
-  // valor admisible en esta pantalla: `ZonaRepository.update` REEMPLAZA entera la N:M
-  // `zona_distrito` con lo que mande el formulario (`:230-235`), asi que esconder los distritos
-  // retirados le haria perder sus filas al siguiente guardado de la zona — y a partir de ahi ese
-  // distrito resolveria 0 zonas y toda alta futura moriria con «no tiene zona asignada», SIN
-  // ponerse rojo nada (la reconciliacion hace `continue`, `:266-267`). Ver R47/R48.
-  const filtradas = useMemo(
-    () => filtrarArbolGeografico(provincias, { texto: query, estado: "todos" }),
-    [provincias, query],
-  );
+  const nivel = (profundidad: number) => tipoDe(profundidad)?.nombreSingular.toLowerCase() ?? "";
+  const placeholder = arbol.tipos
+    .slice(0, 3)
+    .map((t) => t.nombreSingular.toLowerCase())
+    .join(", ");
 
-  // Reporta la selección de distritos al formulario contenedor (crear zona).
-  useEffect(() => {
-    onSelectedChange?.([...selDist]);
-    // onSelectedChange se toma fresco en cada corrida; dep solo en selDist.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selDist]);
+  function fila(
+    nodo: NodoDeZonasDTO,
+    herencia: Herencia | null,
+    inactivoArriba: NodoDeZonasDTO | null,
+  ) {
+    const { estado, paraHijos } = estadoDeNodo(nodo, herencia, marcados, zonaEnEdicionId, nombreZona);
+    const tieneHijos = nodo.hijos.length > 0;
+    const abierto = buscando || abiertos.has(nodo.id);
+    const bloqueado = estado.tipo === "otra_zona" || estado.tipo === "hereda_esta";
+    const marcado = estado.tipo === "elegido" || estado.tipo === "hereda_esta";
+    const etiquetaNivel = nivel(nodo.profundidad);
+    const ariaLabel =
+      estado.tipo === "otra_zona"
+        ? `Seleccionar ${etiquetaNivel} ${nodo.nombre} (zona: ${estado.zona})`
+        : `Seleccionar ${etiquetaNivel} ${nodo.nombre}`;
+    const retiro = !nodo.activo
+      ? ESTADO_GEOGRAFICO_TEXTO.inactivoPropio
+      : inactivoArriba !== null
+        ? `Inactivo por su ${nivel(inactivoArriba.profundidad)}`
+        : null;
+    const hijosVisibles = tieneHijos ? contarHijos(nodo, tipoDe) : null;
 
-  // Reporta la marca de especial al formulario contenedor (que calcula el delta
-  // contra el árbol al guardar).
-  useEffect(() => {
-    if (!permitirEspecial) return;
-    onEspecialesChange?.([...especiales]);
-    // onEspecialesChange se toma fresco en cada corrida; dep solo en especiales.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [especiales]);
+    return (
+      <li key={nodo.id} className="flex flex-col">
+        <div
+          className="flex min-h-11 items-center gap-1.5 rounded px-1 py-1 hover:bg-accent"
+          style={{ paddingLeft: `${(nodo.profundidad - 1) * 16}px` }}
+        >
+          {tieneHijos ? (
+            <button
+              type="button"
+              aria-expanded={abierto}
+              aria-label={`${abierto ? "Cerrar" : "Abrir"} ${nodo.nombre}`}
+              onClick={() => alternarAbierto(nodo.id)}
+              className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring"
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className={cn("size-4 transition-transform duration-200", abierto && "rotate-90")}
+              />
+            </button>
+          ) : (
+            <span className="size-7 shrink-0" aria-hidden="true" />
+          )}
+          <label
+            className={cn(
+              "flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm",
+              bloqueado ? "cursor-not-allowed" : "cursor-pointer",
+            )}
+          >
+            <Checkbox
+              checked={marcado}
+              disabled={bloqueado}
+              onCheckedChange={() => setMarcados((prev) => alternarNodo(prev, nodo.id, indice))}
+              aria-label={ariaLabel}
+            />
+            <span className={cn("font-medium", bloqueado && estado.tipo === "otra_zona" && "opacity-70")}>
+              {nodo.nombre}
+            </span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {tipoDe(nodo.profundidad)?.nombreSingular ?? ""}
+              {hijosVisibles ? ` · ${hijosVisibles}` : ""}
+            </span>
+            <TextoDeEstado estado={estado} />
+          </label>
+          {retiro !== null ? (
+            <Badge variant={!nodo.activo ? "secondary" : "outline"}>{retiro}</Badge>
+          ) : null}
+        </div>
+        {tieneHijos && abierto ? (
+          <ul className="flex flex-col">
+            {nodo.hijos.map((hijo) =>
+              fila(hijo, paraHijos, inactivoArriba ?? (nodo.activo ? null : nodo)),
+            )}
+          </ul>
+        ) : null}
+      </li>
+    );
+  }
+
+  // La búsqueda conserva la cadena desde la raíz (un padre sobrevive si un descendiente casa), así que
+  // recorrer `filtradas` desde arriba da la misma herencia que el árbol entero.
+  const resumen = resumenDeSeleccion(marcados, indice, tipoDe);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <Input
         type="search"
-        placeholder={`Buscar ${etiquetas.provincia.singular.toLowerCase()}, ${etiquetas.canton.singular.toLowerCase()} o ${etiquetas.distrito.singular.toLowerCase()}…`}
+        placeholder={placeholder ? `Buscar ${placeholder}…` : "Buscar…"}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Buscar en el catálogo geográfico"
       />
 
-      <p className="text-sm text-muted-foreground">
-        {selDist.size > 0
-          ? `${etiquetas.distrito.plural} seleccionados: ${selDist.size}.`
-          : "Selecciona una provincia o cantón para marcar todos sus distritos, o marca distritos sueltos."}
+      <p aria-live="polite" className="text-sm text-muted-foreground">
+        {resumen}
       </p>
 
-      <div className="flex flex-col gap-1 rounded-md border border-border p-2">
+      <div className="rounded-md border border-border p-1">
         {filtradas.length === 0 ? (
           <p className="p-2 text-sm text-muted-foreground">Sin resultados.</p>
         ) : (
-          filtradas.map((p) => {
-            const pIds = provDistIds.get(p.id) ?? [];
-            const pState = stateFor(pIds);
-            return (
-              <Collapsible
-                key={`${p.id}:${query.trim().length > 0}`}
-                defaultOpen={query.trim().length > 0}
-                className="group/prov"
-              >
-                <div className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent">
-                  <Checkbox
-                    checked={pState.checked}
-                    indeterminate={pState.indeterminate}
-                    disabled={pIds.length === 0}
-                    onCheckedChange={() => toggleGrupo(pIds)}
-                    aria-label={`Seleccionar todos los distritos de ${p.nombre}`}
-                  />
-                  <CollapsibleTrigger className="flex flex-1 items-center gap-1.5 text-left text-sm font-medium">
-                    <ChevronRight className="size-4 shrink-0 transition-transform duration-200 group-data-[open]/prov:rotate-90" />
-                    <span>{p.nombre}</span>
-                    <span className="text-xs font-normal text-muted-foreground">
-                      ({p.cantones.length} cantón{p.cantones.length === 1 ? "" : "es"})
-                    </span>
-                    <MarcaRetirado estado={estadoGeografico({ provincia: p.activo })} />
-                  </CollapsibleTrigger>
-                </div>
-
-                <CollapsibleContent className="ml-5 border-l border-border pl-2">
-                  {p.cantones.map((c) => {
-                    const cIds = cantDistIds.get(c.id) ?? [];
-                    const cState = stateFor(cIds);
-                    return (
-                      <Collapsible
-                        key={`${c.id}:${query.trim().length > 0}`}
-                        defaultOpen={query.trim().length > 0}
-                        className="group/cant"
-                      >
-                        <div className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent">
-                          <Checkbox
-                            checked={cState.checked}
-                            indeterminate={cState.indeterminate}
-                            disabled={cIds.length === 0}
-                            onCheckedChange={() => toggleGrupo(cIds)}
-                            aria-label={`Seleccionar todos los distritos de ${c.nombre}`}
-                          />
-                          <CollapsibleTrigger className="flex flex-1 items-center gap-1.5 text-left text-sm">
-                            <ChevronRight className="size-4 shrink-0 transition-transform duration-200 group-data-[open]/cant:rotate-90" />
-                            <span>{c.nombre}</span>
-                            <span className="text-xs text-muted-foreground">
-                              ({c.distritos.length} distrito{c.distritos.length === 1 ? "" : "s"}
-                              {/* El conteo de especiales sólo aparece si hay alguno:
-                                  un "Zonas especiales: 0" colgado de cada cantón sería
-                                  ruido en un árbol de cientos de filas. */}
-                              {permitirEspecial && especialesEn(c.distritos) > 0
-                                ? `, Zonas especiales: ${especialesEn(c.distritos)}`
-                                : ""}
-                              )
-                            </span>
-                            <MarcaRetirado
-                              estado={estadoGeografico({
-                                provincia: p.activo,
-                                canton: c.activo,
-                              })}
-                            />
-                          </CollapsibleTrigger>
-                        </div>
-
-                        <CollapsibleContent className="ml-5 border-l border-border pl-2">
-                          {c.distritos.map((d) => {
-                            const esEspecial = especiales.has(d.id);
-                            const esBloqueado = estaBloqueado(d, zonaEnEdicionId);
-                            const zonasDelDistrito = d.zonas.map((z) => z.nombre).join(", ");
-                            return (
-                              <div
-                                key={d.id}
-                                className={cn(
-                                  "flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent",
-                                )}
-                              >
-                                {/* El label envuelve SOLO el checkbox y el nombre:
-                                    el botón de especial es una acción distinta y
-                                    dentro del label cada click también marcaría
-                                    el distrito para la zona. */}
-                                <label
-                                  className={cn(
-                                    "flex flex-1 items-center gap-2",
-                                    esBloqueado ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-                                  )}
-                                >
-                                  <Checkbox
-                                    checked={selDist.has(d.id)}
-                                    disabled={esBloqueado}
-                                    onCheckedChange={() => toggleDistrito(d.id)}
-                                    aria-label={
-                                      esBloqueado
-                                        ? `Seleccionar distrito ${d.nombre} (zona: ${zonasDelDistrito})`
-                                        : `Seleccionar distrito ${d.nombre}`
-                                    }
-                                  />
-                                  <span>{d.nombre}</span>
-                                  {/* SLT-75 (R18): sale de `zonas` y no de `zonaNombre`, que se
-                                      colapsa a null con más de una zona y dejaba el conflicto
-                                      sin nombre. */}
-                                  {d.zonas.length > 0 ? (
-                                    <span className="text-xs text-muted-foreground">
-                                      (zona: {zonasDelDistrito})
-                                    </span>
-                                  ) : null}
-                                </label>
-
-                                {/* FICHA 374 (R47) — el distintivo va FUERA del `label`: marcar
-                                    que un distrito esta retirado no debe poder cambiar su casilla
-                                    de un clic accidental. Y la casilla sigue operable a proposito:
-                                    ver el comentario del `useMemo` de filtrado. */}
-                                <MarcaRetirado
-                                  estado={estadoGeografico({
-                                    provincia: p.activo,
-                                    canton: c.activo,
-                                    distrito: d.activo,
-                                  })}
-                                />
-
-                                {permitirEspecial ? (
-                                  <Button
-                                    type="button"
-                                    size="xs"
-                                    variant={esEspecial ? "default" : "outline"}
-                                    aria-pressed={esEspecial}
-                                    aria-label={
-                                      esEspecial
-                                        ? `Quitar la marca de zona especial a ${d.nombre}`
-                                        : `Marcar ${d.nombre} como zona especial`
-                                    }
-                                    onClick={() => toggleEspecial(d.id)}
-                                  >
-                                    <Star
-                                      aria-hidden="true"
-                                      className={cn(esEspecial && "fill-current")}
-                                    />
-                                    Especial
-                                  </Button>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </CollapsibleContent>
-                      </Collapsible>
-                    );
-                  })}
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })
+          <ul className="flex flex-col">{filtradas.map((raiz) => fila(raiz, null, null))}</ul>
         )}
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Elegir un lugar incluye todo lo que cuelga de él. Un lugar que ya está en otra zona queda como
+        excepción: gana lo más específico.
+      </p>
     </div>
   );
 }
 
-/**
- * FICHA 374 (R47) — el distintivo de un nodo retirado dentro del selector de Tarifas.
- *
- * ⚠️ ES SOLO UNA MARCA VISUAL: no oculta la fila, no desmarca nada y no deshabilita la casilla.
- * Ese es EXACTAMENTE el punto. `ZonaRepository.update` reemplaza entera la N:M `zona_distrito` con
- * lo que el formulario mande, asi que un distrito retirado que dejara de renderizarse —o de venir
- * marcado desde `initialSelected`— perderia su fila en el siguiente guardado de la zona, y a
- * partir de ahi toda alta que lo nombre moriria con «no tiene zona asignada» sin poner rojo nada.
- *
- * Quien administra el catalogo es el superadmin, en /plataforma/geografia (SL-20 R21), no aqui.
- */
-function MarcaRetirado({
-  estado,
-}: Readonly<{ estado: ReturnType<typeof estadoGeografico> }>) {
-  const etiqueta = etiquetaEstadoGeografico(estado);
-  if (etiqueta === null) return null;
-  return (
-    <Badge variant={estado.tipo === "inactivo_propio" ? "secondary" : "outline"}>
-      {etiqueta}
-    </Badge>
-  );
+/** «N <hijos>»: cuántos hijos directos tiene, con el nombre de su nivel (singular o plural). */
+function contarHijos(
+  nodo: NodoDeZonasDTO,
+  tipoDe: (profundidad: number) => { nombreSingular: string; nombrePlural: string } | undefined,
+): string | null {
+  const tipo = tipoDe(nodo.profundidad + 1);
+  if (tipo === undefined) return null;
+  const n = nodo.hijos.length;
+  return `${n} ${(n === 1 ? tipo.nombreSingular : tipo.nombrePlural).toLowerCase()}`;
+}
+
+/** El texto de la fila según cómo queda el nodo con la selección en curso (maqueta, R24). */
+function TextoDeEstado({ estado }: Readonly<{ estado: EstadoDeNodo }>) {
+  switch (estado.tipo) {
+    case "hereda_esta":
+    case "hereda_otra":
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <CornerDownRight aria-hidden="true" className="size-3" />
+          {estado.tipo === "hereda_esta" && estado.zona === ""
+            ? `hereda de ${estado.nodo}`
+            : `hereda de ${estado.zona} por ${estado.nodo}`}
+        </span>
+      );
+    case "otra_zona":
+      return estado.excepcionDe !== null ? (
+        <Badge variant="warning">{`Excepción · va a ${estado.zona}`}</Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">{`En ${estado.zona}`}</span>
+      );
+    default:
+      return null;
+  }
+}
+
+/** El resumen de la maqueta: cuántos lugares van marcados y cuáles. */
+function resumenDeSeleccion(
+  marcados: ReadonlySet<string>,
+  indice: ReturnType<typeof indexarArbol>,
+  tipoDe: (profundidad: number) => { nombreSingular: string; nombrePlural: string } | undefined,
+): string {
+  const distrito = tipoDe(PROFUNDIDAD_DE_DISTRITO);
+  if (marcados.size === 0) {
+    return "Ningún lugar elegido. Marca un lugar de cualquier nivel: lo que cuelga de él lo hereda.";
+  }
+  const nombres = [...marcados].map((id) => {
+    const n = indice.get(id)?.nodo;
+    if (n === undefined) return id;
+    const tipo = tipoDe(n.profundidad)?.nombreSingular.toLowerCase();
+    const k = distritosBajo(n);
+    const extra =
+      n.hijos.length > 0 && distrito !== undefined && k > 0
+        ? `, ${k} ${(k === 1 ? distrito.nombreSingular : distrito.nombrePlural).toLowerCase()}`
+        : "";
+    return tipo ? `${n.nombre} (${tipo}${extra})` : n.nombre;
+  });
+  const cuantos = marcados.size === 1 ? "1 lugar elegido" : `${marcados.size} lugares elegidos`;
+  return `${cuantos}: ${nombres.join(", ")}.`;
 }

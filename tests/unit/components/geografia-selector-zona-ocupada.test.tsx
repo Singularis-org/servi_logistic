@@ -3,7 +3,12 @@
 //
 // La base impide que un distrito quede en dos zonas de la misma empresa, y el servidor rechaza el
 // guardado que lo intente. El selector no debe ofrecerlo: la casilla del distrito se deshabilita y
-// dice en qué zona está, y las casillas de cantón y provincia trabajan solo con los seleccionables.
+// dice en qué zona está.
+//
+// SLT-89 (T7.1, design §8.1 y §11.3): la entrada pasa a ser el árbol de N niveles y la cascada del
+// cantón (R16/R17 de SLT-75) se retira: marcar el cantón asigna EL CANTÓN y sus distritos lo heredan;
+// el de otra zona queda como excepción, sin marcarse. Lo que R16 protegía —que el bloqueado no entre
+// en la zona— sigue afirmado.
 //
 // Datos sintéticos: ningún nombre sale de producción.
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -11,81 +16,70 @@ import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
-import type { DistritoArbolDTO, ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
+import type { ArbolDeZonasDTO, NodoDeZonasDTO } from "@/lib/types/geografia-nodo";
 
 const Z_EDITADA = { id: "z-editada", nombre: "Zona Editada" };
 const Z_OTRA = { id: "z-otra", nombre: "Zona Otra" };
 
-function distrito(
-  id: string,
-  nombre: string,
-  zonas: { id: string; nombre: string }[],
-): DistritoArbolDTO {
-  const unica = zonas.length === 1 ? zonas[0] : null;
-  return {
-    id,
-    nombre,
-    zonaId: unica?.id ?? null,
-    zonaNombre: unica?.nombre ?? null,
-    zonas,
-    zonaEspecial: false,
-    activo: true,
-  };
+function distrito(id: string, nombre: string, zona: { id: string; nombre: string } | null): NodoDeZonasDTO {
+  return { id, nombre, profundidad: 3, activo: true, asignadaA: zona, heredaDe: null, hijos: [] };
+}
+
+function grupo(id: string, nombre: string, profundidad: number, hijos: NodoDeZonasDTO[]): NodoDeZonasDTO {
+  return { id, nombre, profundidad, activo: true, asignadaA: null, heredaDe: null, hijos };
 }
 
 //  Provincia Prueba
 //    Alfa → Libre Uno (sin zona) · Propio Uno (Zona Editada) · Ocupado Uno (Zona Otra)
-//    Beta → Ocupado Dos (Zona Otra)   ← sin ningún seleccionable
-const ARBOL: ProvinciaArbolDTO[] = [
-  {
-    id: "p1",
-    nombre: "Provincia Prueba",
-    activo: true,
-    cantones: [
-      {
-        id: "c-alfa",
-        nombre: "Alfa",
-        activo: true,
-        distritos: [
-          distrito("d-libre", "Libre Uno", []),
-          distrito("d-propio", "Propio Uno", [Z_EDITADA]),
-          distrito("d-ocupado", "Ocupado Uno", [Z_OTRA]),
-        ],
-      },
-      {
-        id: "c-beta",
-        nombre: "Beta",
-        activo: true,
-        distritos: [distrito("d-ocupado-2", "Ocupado Dos", [Z_OTRA])],
-      },
-    ],
-  },
-];
+//    Beta → Ocupado Dos (Zona Otra)
+const ARBOL: ArbolDeZonasDTO = {
+  tipos: [
+    { profundidad: 1, nombreSingular: "Provincia", nombrePlural: "Provincias" },
+    { profundidad: 2, nombreSingular: "Cantón", nombrePlural: "Cantones" },
+    { profundidad: 3, nombreSingular: "Distrito", nombrePlural: "Distritos" },
+  ],
+  raices: [
+    grupo("p1", "Provincia Prueba", 1, [
+      grupo("c-alfa", "Alfa", 2, [
+        distrito("d-libre", "Libre Uno", null),
+        distrito("d-propio", "Propio Uno", Z_EDITADA),
+        distrito("d-ocupado", "Ocupado Uno", Z_OTRA),
+      ]),
+      grupo("c-beta", "Beta", 2, [distrito("d-ocupado-2", "Ocupado Dos", Z_OTRA)]),
+    ]),
+  ],
+};
+
+const NADA = { distritoIds: [], nodoIds: [] };
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-/** La casilla de un distrito, por prefijo del nombre accesible (el `label` añade el texto de la fila). */
+/** La casilla de un distrito, por prefijo del nombre accesible. */
 function casillaDistrito(nombre: string): Promise<HTMLElement> {
   return screen.findByRole("checkbox", {
     name: new RegExp(String.raw`^Seleccionar distrito ${nombre}\b`),
   });
 }
 
-function casillaGrupo(nombre: string): HTMLElement {
-  return screen.getByRole("checkbox", { name: `Seleccionar todos los distritos de ${nombre}` });
+/**
+ * SLT-89 (R25): el cantón y la provincia tienen su propia casilla; ya no son una cascada. Por prefijo,
+ * como la del distrito: ahora también la envuelve el `label` de su fila.
+ */
+function casillaGrupo(nivel: "cantón" | "provincia", nombre: string): HTMLElement {
+  return screen.getByRole("checkbox", { name: new RegExp(`^Seleccionar ${nivel} ${nombre} `) });
 }
 
 /** Monta el selector y despliega el árbol: todos los distritos llevan una «o». */
 async function montar(props: {
   zonaEnEdicionId?: string;
   initialSelected?: string[];
-  onSelectedChange?: (ids: string[]) => void;
+  onSelectedChange?: (s: { distritoIds: string[]; nodoIds: string[] }) => void;
 }) {
   const user = userEvent.setup();
-  render(<GeografiaSelector provincias={ARBOL} {...props} />);
+  render(<GeografiaSelector arbol={ARBOL} {...props} />);
   await user.type(
     screen.getByRole("searchbox", { name: "Buscar en el catálogo geográfico" }),
     "o",
@@ -93,7 +87,7 @@ async function montar(props: {
   return user;
 }
 
-describe("R15 — distrito con otra zona: casilla deshabilitada y «(zona: X)»", () => {
+describe("R15 — distrito con otra zona: casilla deshabilitada y su zona a la vista", () => {
   it("al editar, el de otra zona sale deshabilitado, con su zona en la fila y en el aria-label", async () => {
     await montar({ zonaEnEdicionId: Z_EDITADA.id });
 
@@ -103,7 +97,8 @@ describe("R15 — distrito con otra zona: casilla deshabilitada y «(zona: X)»"
       "aria-label",
       "Seleccionar distrito Ocupado Uno (zona: Zona Otra)",
     );
-    expect(screen.getAllByText("(zona: Zona Otra)").length).toBeGreaterThan(0);
+    // SLT-89 (maqueta aprobada): la fila dice «En <zona>»; el aria-label conserva «(zona: X)».
+    expect(screen.getAllByText("En Zona Otra").length).toBeGreaterThan(0);
     // Control: el libre sigue operable.
     expect(await casillaDistrito("Libre Uno")).not.toHaveAttribute("aria-disabled", "true");
   });
@@ -123,66 +118,69 @@ describe("R15 — distrito con otra zona: casilla deshabilitada y «(zona: X)»"
     await user.click(await casillaDistrito("Ocupado Uno"));
 
     expect(await casillaDistrito("Ocupado Uno")).not.toBeChecked();
-    expect(onSelectedChange).toHaveBeenLastCalledWith([]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith(NADA);
   });
 });
 
-describe("R16 — la cascada del cantón solo toca los seleccionables", () => {
-  it("marcar el cantón no marca el bloqueado; desmarcar tampoco lo toca", async () => {
+describe("R16 — marcar el cantón no mete en la zona al distrito de otra zona", () => {
+  it("marcar el cantón emite el cantón; el bloqueado queda sin marcar, como excepción", async () => {
     const onSelectedChange = vi.fn();
     const user = await montar({ zonaEnEdicionId: Z_EDITADA.id, onSelectedChange });
 
-    await user.click(casillaGrupo("Alfa"));
-    expect([...onSelectedChange.mock.lastCall![0]].sort()).toEqual(["d-libre", "d-propio"]);
+    await user.click(casillaGrupo("cantón", "Alfa"));
+    expect(onSelectedChange).toHaveBeenLastCalledWith({ distritoIds: [], nodoIds: ["c-alfa"] });
     expect(await casillaDistrito("Ocupado Uno")).not.toBeChecked();
+    expect(screen.getByText("Excepción · va a Zona Otra")).toBeInTheDocument();
 
-    await user.click(casillaGrupo("Alfa"));
-    expect(onSelectedChange).toHaveBeenLastCalledWith([]);
+    await user.click(casillaGrupo("cantón", "Alfa"));
+    expect(onSelectedChange).toHaveBeenLastCalledWith(NADA);
   });
 
-  it("desmarcar el cantón deja intacto un bloqueado que venía marcado", async () => {
+  it("marcar el cantón quita los distritos propios marcados (pasan a heredarlo)", async () => {
     const onSelectedChange = vi.fn();
     const user = await montar({
       zonaEnEdicionId: Z_EDITADA.id,
-      initialSelected: ["d-libre", "d-propio", "d-ocupado"],
+      initialSelected: ["d-libre", "d-propio"],
       onSelectedChange,
     });
 
-    await user.click(casillaGrupo("Alfa"));
+    await user.click(casillaGrupo("cantón", "Alfa"));
 
-    expect(onSelectedChange).toHaveBeenLastCalledWith(["d-ocupado"]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith({ distritoIds: [], nodoIds: ["c-alfa"] });
   });
 
   it("marcar la provincia tampoco marca los bloqueados", async () => {
     const onSelectedChange = vi.fn();
     const user = await montar({ zonaEnEdicionId: Z_EDITADA.id, onSelectedChange });
 
-    await user.click(casillaGrupo("Provincia Prueba"));
+    await user.click(casillaGrupo("provincia", "Provincia Prueba"));
 
-    expect([...onSelectedChange.mock.lastCall![0]].sort()).toEqual(["d-libre", "d-propio"]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith({ distritoIds: [], nodoIds: ["p1"] });
+    expect(await casillaDistrito("Ocupado Uno")).not.toBeChecked();
+    expect(await casillaDistrito("Ocupado Dos")).not.toBeChecked();
   });
 });
 
-describe("R17 — el estado del grupo se calcula sobre los seleccionables", () => {
-  it("cantón con todos sus seleccionables marcados sale `checked`, no indeterminado", async () => {
-    await montar({ zonaEnEdicionId: Z_EDITADA.id, initialSelected: ["d-libre", "d-propio"] });
+describe("R17 — bajo un ancestro marcado, lo heredado no se marca suelto", () => {
+  it("con el cantón marcado, sus distritos libres salen marcados y deshabilitados", async () => {
+    await montar({ zonaEnEdicionId: Z_EDITADA.id, initialSelected: ["c-alfa"] });
 
-    const alfa = casillaGrupo("Alfa");
-    expect(alfa).toBeChecked();
-    expect(alfa).not.toBePartiallyChecked();
+    const libre = await casillaDistrito("Libre Uno");
+    expect(libre).toBeChecked();
+    expect(libre).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("cantón sin seleccionables: deshabilitado (y su provincia, que sí tiene, no)", async () => {
+  it("un cantón cuyos distritos son todos de otra zona sigue siendo marcable", async () => {
     await montar({ zonaEnEdicionId: Z_EDITADA.id });
 
-    expect(casillaGrupo("Beta")).toHaveAttribute("aria-disabled", "true");
-    expect(casillaGrupo("Alfa")).not.toHaveAttribute("aria-disabled", "true");
-    expect(casillaGrupo("Provincia Prueba")).not.toHaveAttribute("aria-disabled", "true");
+    expect(casillaGrupo("cantón", "Beta")).not.toHaveAttribute("aria-disabled", "true");
+    expect(casillaGrupo("cantón", "Alfa")).not.toHaveAttribute("aria-disabled", "true");
+    expect(casillaGrupo("provincia", "Provincia Prueba")).not.toHaveAttribute("aria-disabled", "true");
   });
 });
 
 describe("R18 — la zona que se edita conserva sus distritos operables", () => {
-  it("con `zonaEnEdicionId`, el distrito de esa zona es marcable y desmarcable y dice su zona", async () => {
+  it("con `zonaEnEdicionId`, el distrito de esa zona es marcable y desmarcable", async () => {
     const onSelectedChange = vi.fn();
     const user = await montar({
       zonaEnEdicionId: Z_EDITADA.id,
@@ -193,12 +191,13 @@ describe("R18 — la zona que se edita conserva sus distritos operables", () => 
     const propio = await casillaDistrito("Propio Uno");
     expect(propio).not.toHaveAttribute("aria-disabled", "true");
     expect(propio).toBeChecked();
-    expect(screen.getByText("(zona: Zona Editada)")).toBeInTheDocument();
+    // SLT-89: el de la zona que se edita es «elegido»; no se rotula con su propia zona.
+    expect(propio).toHaveAttribute("aria-label", "Seleccionar distrito Propio Uno");
 
     await user.click(propio);
-    expect(onSelectedChange).toHaveBeenLastCalledWith([]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith(NADA);
 
     await user.click(propio);
-    expect(onSelectedChange).toHaveBeenLastCalledWith(["d-propio"]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith({ distritoIds: ["d-propio"], nodoIds: [] });
   });
 });

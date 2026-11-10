@@ -242,7 +242,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 Cada task de este bloque sigue la maqueta aprobada en T0.2; si la maqueta pide algo que el spec no da,
 se para y se pregunta (design §8.4). (R48)
 
-- [ ] **T7.1** `GeografiaSelector` de N niveles (§8.1) y búsqueda N niveles en
+- [x] **T7.1** `GeografiaSelector` de N niveles (§8.1) y búsqueda N niveles en
   `_shared/filtrar-arbol-geografico.ts`; `tests/unit/components/geografia-selector-n-niveles.test.tsx`
   (herencia nombrada, excepciones, bloqueo de otra zona, deshabilitado bajo ancestro marcado, marcar
   quita descendientes propios, preselección con retirados, búsqueda a cualquier profundidad, etiquetas

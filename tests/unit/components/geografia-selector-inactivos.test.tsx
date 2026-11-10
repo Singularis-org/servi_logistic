@@ -21,48 +21,47 @@ import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
-import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
+import type { ArbolDeZonasDTO, NodoDeZonasDTO } from "@/lib/types/geografia-nodo";
 
-function distrito(
+// SLT-89 (T7.1): la entrada del selector pasa a ser el árbol de N niveles (`ArbolDeZonasDTO`, design
+// §8.1). Mismo árbol de antes; los nombres de nivel vienen en `tipos`.
+const ZONA_SUR = { id: "z-sur", nombre: "Zona Sur" };
+
+function nodo(
   id: string,
   nombre: string,
+  profundidad: number,
   activo: boolean,
-): ProvinciaArbolDTO["cantones"][number]["distritos"][number] {
+  hijos: NodoDeZonasDTO[] = [],
+): NodoDeZonasDTO {
   return {
     id,
     nombre,
-    zonaId: "z-sur",
-    zonaNombre: "Zona Sur",
-    zonas: [{ id: "z-sur", nombre: "Zona Sur" }],
-    zonaEspecial: false,
+    profundidad,
     activo,
+    asignadaA: profundidad === 3 ? ZONA_SUR : null,
+    heredaDe: null,
+    hijos,
   };
 }
 
-//  Puntarenas (activa)
-//    Buenos Aires (activo) → Cabagra (activo)  ·  Volcán (RETIRADO por su cuenta)
-//    Osa (RETIRADO)        → Puerto Cortés (flag propio encendido ⇒ retirado por herencia)
-const ARBOL: ProvinciaArbolDTO[] = [
-  {
-    id: "p-pu",
-    nombre: "Puntarenas",
-    activo: true,
-    cantones: [
-      {
-        id: "c-ba",
-        nombre: "Buenos Aires",
-        activo: true,
-        distritos: [distrito("d-cab", "Cabagra", true), distrito("d-vol", "Volcán", false)],
-      },
-      {
-        id: "c-osa",
-        nombre: "Osa",
-        activo: false,
-        distritos: [distrito("d-cortes", "Puerto Cortés", true)],
-      },
-    ],
-  },
-];
+function distrito(id: string, nombre: string, activo: boolean): NodoDeZonasDTO {
+  return nodo(id, nombre, 3, activo);
+}
+
+const ARBOL: ArbolDeZonasDTO = {
+  tipos: [
+    { profundidad: 1, nombreSingular: "Provincia", nombrePlural: "Provincias" },
+    { profundidad: 2, nombreSingular: "Cantón", nombrePlural: "Cantones" },
+    { profundidad: 3, nombreSingular: "Distrito", nombrePlural: "Distritos" },
+  ],
+  raices: [
+    nodo("p-pu", "Puntarenas", 1, true, [
+      nodo("c-ba", "Buenos Aires", 2, true, [distrito("d-cab", "Cabagra", true), distrito("d-vol", "Volcán", false)]),
+      nodo("c-osa", "Osa", 2, false, [distrito("d-cortes", "Puerto Cortés", true)]),
+    ]),
+  ],
+};
 
 /** Los tres distritos de la zona que se está editando, incluidos los DOS retirados. */
 const INICIALES = ["d-cab", "d-vol", "d-cortes"];
@@ -98,11 +97,13 @@ function casillaDeDistrito(nombre: string): Promise<HTMLElement> {
 }
 
 /** Monta el selector y despliega el árbol escribiendo en su buscador (`defaultOpen` con texto). */
-async function montarYDesplegar(onSelectedChange?: (ids: string[]) => void) {
+async function montarYDesplegar(
+  onSelectedChange?: (s: { distritoIds: string[]; nodoIds: string[] }) => void,
+) {
   const user = userEvent.setup();
   render(
     <GeografiaSelector
-      provincias={ARBOL}
+      arbol={ARBOL}
       initialSelected={INICIALES}
       zonaEnEdicionId={ZONA_EDITADA}
       onSelectedChange={onSelectedChange}
@@ -144,11 +145,11 @@ describe("374/R47 — el selector de Tarifas SIGUE ofreciendo los nodos retirado
     const casilla = await casillaDeDistrito("Volcán");
     await user.click(casilla);
     expect(casilla).not.toBeChecked();
-    expect(onSelectedChange).toHaveBeenLastCalledWith(["d-cab", "d-cortes"]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith({ distritoIds: ["d-cab", "d-cortes"], nodoIds: [] });
 
     await user.click(casilla);
     expect(casilla).toBeChecked();
-    expect(onSelectedChange).toHaveBeenLastCalledWith(["d-cab", "d-cortes", "d-vol"]);
+    expect(onSelectedChange).toHaveBeenLastCalledWith({ distritoIds: ["d-cab", "d-cortes", "d-vol"], nodoIds: [] });
   });
 
   it("⭑ LO QUE SE MANDA AL GUARDAR conserva los retirados que llegaron en `initialSelected`", async () => {
@@ -158,7 +159,7 @@ describe("374/R47 — el selector de Tarifas SIGUE ofreciendo los nodos retirado
     const onSelectedChange = vi.fn();
     render(
       <GeografiaSelector
-        provincias={ARBOL}
+        arbol={ARBOL}
         initialSelected={INICIALES}
         zonaEnEdicionId={ZONA_EDITADA}
         onSelectedChange={onSelectedChange}
@@ -166,7 +167,7 @@ describe("374/R47 — el selector de Tarifas SIGUE ofreciendo los nodos retirado
     );
 
     expect(onSelectedChange).toHaveBeenCalledTimes(1);
-    expect(onSelectedChange).toHaveBeenCalledWith(["d-cab", "d-vol", "d-cortes"]);
+    expect(onSelectedChange).toHaveBeenCalledWith({ distritoIds: ["d-cab", "d-vol", "d-cortes"], nodoIds: [] });
   });
 
   it("⭑ y el árbol RENDERIZADO contiene los tres, sin filtro por disponibilidad", async () => {
@@ -175,11 +176,12 @@ describe("374/R47 — el selector de Tarifas SIGUE ofreciendo los nodos retirado
     const casillas = await screen.findAllByRole("checkbox");
     const nombres = casillas.map((c) => c.getAttribute("aria-label"));
     expect(nombres).toEqual([
-      "Seleccionar todos los distritos de Puntarenas",
-      "Seleccionar todos los distritos de Buenos Aires",
+      // SLT-89 (R25, design §11.3): cada nivel tiene su propia casilla; ya no hay cascada de grupo.
+      "Seleccionar provincia Puntarenas",
+      "Seleccionar cantón Buenos Aires",
       "Seleccionar distrito Cabagra",
       "Seleccionar distrito Volcán",
-      "Seleccionar todos los distritos de Osa",
+      "Seleccionar cantón Osa",
       "Seleccionar distrito Puerto Cortés",
     ]);
   });
@@ -188,7 +190,7 @@ describe("374/R47 — el selector de Tarifas SIGUE ofreciendo los nodos retirado
 describe("374/R39 — el filtro extraído colapsa los espacios, que el `norm()` viejo no hacía", () => {
   it("«puerto  cortes» con dos espacios y sin acentos encuentra «Puerto Cortés»", async () => {
     const user = userEvent.setup();
-    render(<GeografiaSelector provincias={ARBOL} />);
+    render(<GeografiaSelector arbol={ARBOL} />);
     await user.type(
       screen.getByRole("searchbox", { name: "Buscar en el catálogo geográfico" }),
       "puerto  cortes",
