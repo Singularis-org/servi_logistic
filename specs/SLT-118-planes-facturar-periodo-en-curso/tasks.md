@@ -76,9 +76,9 @@
   `modulos-reparto`); typecheck y lint verdes.
 
 ### T5 — Guardias (depende de T2) [P]
-- [ ] **T5.1** `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`: detectores y contraprueba
+- [x] **T5.1** `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`: detectores y contraprueba
   de `factura_plataforma` / `facturaPlataforma` (R22).
-- [ ] **T5.2** `tests/unit/guards/rls-por-empresa.guardia.test.ts`: 89 → 90 con su línea de comentario.
+- [x] **T5.2** `tests/unit/guards/rls-por-empresa.guardia.test.ts`: 89 → 90 con su línea de comentario.
 - **Hecho:** `pnpm run test:guardias` verde, y la contraprueba encuentra cada patrón nuevo.
 
 ### T6 — Tests del bloque A (dependen de T2–T4) [P entre sí]

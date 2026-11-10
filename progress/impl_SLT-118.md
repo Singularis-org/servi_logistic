@@ -38,3 +38,29 @@ Verificación:
 - `pnpm test:guardias`: 336 archivos verdes; 6 tests rojos = 4 baseline (`dependencias-declaradas-presentes`) +
   `jobs-handler-por-tipo` (T4.4) + `rls-por-empresa` 89→90 (T5.2). Los dos últimos vienen de `0e58af60`.
 - `db:migrate`/`db:rollback`: sin base desechable en esta máquina (sin Docker ni psql); quedan para el CI.
+
+## Tanda 3 — toma del cambio, repositorio, proceso y guardias (T3.1, T4.1–T4.4, T5.1–T5.2) · sin commit
+Subagente: `backend_dev`.
+
+Archivos:
+- `lib/repositories/PlanesRepository.ts`: `aplicarEnTx` llama a `factura_plataforma_tomar_cambio(empresa, desde, plan, tipo)` antes del `UPDATE "organizacion"`.
+- `lib/types/factura-plataforma.ts` (nuevo): `EstadoFactura`, `PeriodicidadFactura`, `PlanDeLaFactura`, `CuotaDeLaFactura` (forma de `cuota_*`/`primera_cuota_*` y de las previstas de `en_curso`) y `FacturaPlataformaDTO`.
+- `lib/interfaces/repositories/IFacturaPlataformaRepository.ts` (nuevo): `empresasACerrar()`, `cerrar(org, ahora)`. Las lecturas quedan para T8.1.
+- `lib/repositories/FacturaPlataformaRepository.ts` (nuevo): las dos, en `comoPlataforma("SL-24", …)`; `cerrar` = `SELECT factura_plataforma_cerrar(…)`.
+- `lib/db/excepciones-aislamiento.ts`: su entrada en `EXCEPCIONES_DE_PLATAFORMA`.
+- `lib/planes/jobs-factura-plataforma.ts` (nuevo): composition root, recurrencia HH:10 (`factura_plataforma_cerrar:<AAAA-MM-DDTHH>`), siembra y handler (R12).
+- `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`, `scripts/siembra-jobs-recurrentes.ts`: registro.
+- `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`: detectores, contraprueba y barrido de `factura_plataforma` (R22).
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts`: 89 → 90.
+
+Decisiones: `empresasACerrar` devuelve todas las empresas (por `createdAt`): `cerrar` también abre la primera factura de
+una empresa nueva y avanza la en curso, así que filtrar por «tiene por cerrar» dejaría fuera esos casos.
+
+Bloqueo: el registro del tipo nuevo pone rojos tests que enumeran handlers/recurrencias, fuera de los archivos
+permitidos: `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`, `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
+(lista, ventana horaria a los :10 y la prueba de idempotencia contra Postgres de `sembrarCierreFacturas`, que pide un test de
+integración), `tests/unit/api/procesar-jobs-registro.test.ts`, `tests/unit/services/jobs-registro.test.ts`,
+`tests/integration/api/procesar-jobs-geocodificacion.test.ts`, `tests/integration/api/procesar-jobs-webhook-estado.test.ts`;
+y T3.1 pone rojo `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (cuenta 1 `$executeRaw`, ahora 2).
+
+Verificación: typecheck verde; eslint de los 11 archivos verde; `test:guardias` 8 rojos = 4 baseline + 4 del bloqueo.

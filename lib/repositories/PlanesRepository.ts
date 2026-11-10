@@ -1004,6 +1004,11 @@ export class PlanesRepository implements IPlanesRepository {
     desde: Date,
     actor: ActorCongelado,
   ): Promise<void> {
+    // SLT-118 (design §2.3; R15–R17, R28): las facturas de la plataforma toman el cambio ANTES del UPDATE,
+    // con la empresa ya en FOR UPDATE: la función sabe si es una primera asignación por `plan_id IS NULL`.
+    // Solo fija y marca facturas no cerradas; no cierra ni depende del reloj.
+    await tx.$executeRaw`
+      SELECT factura_plataforma_tomar_cambio(${empresa.id}, ${comoTimestamp(desde)}::timestamp, ${plan.id}, ${tipoCobro})`;
     await tx.$executeRaw`
       UPDATE "organizacion"
          SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
