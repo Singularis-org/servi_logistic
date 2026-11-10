@@ -139,8 +139,9 @@ previsto de cada R está en `tasks.md > Trazabilidad`.
   pantalla, la pestaña activa DEBE ser «Pendientes». CUANDO el usuario cambia de pestaña, los
   filtros puestos y la página y el tamaño de página de cada pestaña DEBEN conservarse.
 - **R100** [S4, nuevo] — Entre las pestañas y la tabla, la cola DEBE pintar UNA barra para las dos
-  pestañas: la de hoy (`FiltrosCierresBarra`, con los filtros Fecha de solicitud, Bodega,
-  Mensajero y Estado que hoy ofrece a cada rol) y, en la misma fila y a la derecha, «Descargar» de
+  pestañas: la de hoy (`FiltrosCierresBarra`, con los filtros Fecha de solicitud, Mensajero y
+  Estado — (enmienda Carlos 2026-11-10: sin filtro Bodega, fiel al canvas); la mitad de bodega lo
+  conserva) y, en la misma fila y a la derecha, «Descargar» de
   la pestaña activa (el `DescargarCierresButton` de hoy, con sus niveles Resumen y Detalle). Filtrar
   DEBE acotar las dos listas y sus conteos exactamente como hoy y NO DEBE tocar el parámetro
   `?cierre=` de la URL.

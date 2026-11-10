@@ -324,3 +324,70 @@ Desviaciones usadas, todas de la tabla del design: título en `AppPage`, conmuta
 **Veredicto:** T2-T4 hechos y en verde en lo suyo; la cola única pinta F1-F11 como el canvas salvo las
 desviaciones listadas y dos ABIERTOS (colores de la pastilla, filtro «Bodega»); quedan para T5 los 11
 tests del censo y 3 guardias.
+
+## Tanda 3 (frontend_dev, 2026-11-10): decisiones de Carlos + T5
+
+### Decisiones de Carlos aplicadas
+
+- **ABIERTO-3 → cerrado.** `ESTADO_BADGE_VARIANT` (`cierre-detalle-shared.tsx`) toma los colores del
+  canvas con los tokens que ya existen: `solicitado` → `warning` (#fef3c7 / #92400e), `aprobado` →
+  `success` (#d1fae5 / #047857), `rechazado` y `vencido` → `destructive` (= par `danger`, #fee2e2 /
+  #b91c1c). Los cuatro estados de `CIERRE_ESTADO_SEED` los pinta el canvas: ninguno queda neutro, sin
+  ABIERTO. Un solo componente: el detalle los hereda. Test: `ColaCierres.test.tsx` «color de la
+  pastilla de estado» (4 casos). Mutación «solicitado/aprobado a los colores viejos» → ROJO (2).
+- **ABIERTO-4 → cerrado.** `FiltrosCierresBarra` gana `sinBodega` (apagado por defecto: las mitades de
+  bodega lo conservan); sin bodega el mensajero deja de declarar `dependsOn`/`parentValue`.
+  `CierresAdminModule` lo pasa. R100 enmendado en `requirements.md`; filas F12 (pastilla) y F13
+  (barra) en `design.md > Fidelidad al canvas` como «igual al canvas». Tests:
+  `FiltrosCierresBarraEstado.test.tsx` (nuevo caso `sinBodega`; el de bodega sigue fijando
+  «Fecha de solicitud, Bodega») y `CierresAdminFiltros.test.tsx`. Mutación «quitar `sinBodega` del
+  módulo» → ROJO.
+
+### T5.1 — tests adaptados («antes leía X, ahora lee Y»)
+
+| Archivo | Antes | Ahora |
+|---|---|---|
+| `CierrePremioPendiente` | `button` Resueltos; `listitem` del comprobante, «₡5.000» y desplegar «Ver detalles» para ver ₡10.000 | `tab` Resueltos; filas de la tabla; «Pendiente ₡5.000» en «Pago entregado» y ₡10.000 en «Pago al mensajero», por columna. Misma vigilancia: snapshot ≠ deuda |
+| `CierresAdminDetalleUnico` | `button` Resueltos | `tab` Resueltos |
+| `CierresAdminPagoMensajero` | `button` Resueltos; «₡1.234,50»; `list`/`listitem` «Histórico» | `tab`; «Pendiente ₡1.234,50»; filas de la tabla «Histórico», con la celda «Pago entregado» de los tres casos («Pendiente ₡0…», «Liquidado», «—»); el barrido money-safe suma `ColaCierres.tsx` y `cola-cierres-vista.ts` |
+| `CorregirResultadoCierre`, `cierre-detalle-ajuste-badge` | `button` Resueltos | `tab` Resueltos |
+| `descarga/CierresDescarga`, `CierresDescargaColumnas` | helper de pestaña por `button` | `tab` si existe (cola de mensajeros) y `button` si no (mitades de bodega) |
+| `descarga/CierresDescargaNiveles` | `button` Resueltos | `tab` Resueltos |
+| `descarga/CierresAdminDescargaDetallada` | `button` Pendientes/Resueltos y `aria-pressed` | `tab` y `aria-selected` |
+| `paginacion/ColasPaginacion` | cola de cierres del día como `list` y contador «(60)» en el `group` | `table`, contador «Pendientes 60» en el `tablist` (campos `contadorRol` y `textoContador`); la comprobación «no dice el tamaño de la página» sigue |
+| `paginacion/BajoRiesgoPaginacion` | histórico como `list` escondida, `button` Resueltos; Q-I3 con `listitem` | `table`; `tab` o `button` según haya; R44 abre la pestaña con un `fireEvent.click` SÍNCRONO (la cola única solo monta la pestaña activa) y sigue afirmando el primer pintado sin ir al servidor; Q-I3 con filas |
+| `CierresAdminFiltros` | 4 filtros con «Bodega»; encadenado bodega → mensajero; caso (2) filtra por bodega | 3 filtros (enmienda R100); «sin Bodega, el mensajero ofrece a TODOS» (el encadenado no tiene padre en esta barra); el caso (2) filtra por mensajero |
+| `CierresAdminRetieneReprogramadas` | superficies cola e histórico = `CierreFacturaResumen` / `CierresAdminHistoricoLista` | la celda «Señales» de `ColaCierres` en Pendientes y en Resueltos; mutación «pintar con 0» (`retenidas >= 0`) → ROJO (3) |
+| `ColaCierres`, `FiltrosCierresBarraEstado` | — | casos nuevos de color y de `sinBodega` |
+
+### T5.2 — guardias
+
+- `liquidacion-money-safe`: los tres archivos de `cola/` en el censo → verde.
+- `cobertura-tablas`: `ColaCierres.tsx` registrado en `censo-tablas.ts` como `fuera` (su `<DataTable>`
+  no declara `descarga=`; la descarga va en la barra, `DescargarCierresButton`). Totales 37→38 archivos
+  e instancias, exclusiones 15→16, `fuera` 16→17, censo 38→39. **Decisión técnica a confirmar por el
+  leader:** la guardia exige que una tabla de `components/` tenga más de un montaje. `ColaCierres` hoy
+  tiene uno (`CierresAdminModule`). Añadí el campo `montajesPrevistos` (SLT-105, SLT-106, SLT-108): la
+  regla pasa a «montajes + previstos > 1», y `montajes` se sigue contrastando contra el árbol.
+- `superficie-de-uso`, `contadores-cabecera`, `paginacion-dominios`, `factura-contraste`: verdes sin cambios.
+- `dependencias-declaradas-presentes`: **roja, sin tocar**. Línea exacta:
+  `Error: init.sh ya no tiene el marcador ">>> FIN PASO 2: DEPENDENCIAS (ficha 420) <<<": la guardia no
+  puede ejecutar el paso 2.` (`dependencias-declaradas-presentes.guardia.test.ts:267`), más
+  `expected '#!/usr/bin/env bash…' to contain 'scripts/verificar-dependencias.mjs'`. `git diff HEAD
+  origin/dev -- init.sh` está vacío y la merge-base es la punta de `origin/dev` local (742989932bc6):
+  el `origin/dev` de este clon no tiene el cambio de la ficha 420 (¿sin `fetch`?).
+
+### Verificación (salida real)
+
+- `pnpm run typecheck`: `TSC_EXIT=0`.
+- `eslint` de los 21 `.ts/.tsx` tocados: `LINT_EXIT=0`, sin avisos.
+- `vitest run` de los 20 archivos de test tocados en las tandas 2 y 3: `Test Files 20 passed (20)`,
+  `Tests 324 passed (324)`.
+- `vitest related --run` de `cierre-detalle-shared.tsx`, `FiltrosCierresBarra.tsx`,
+  `CierresAdminModule.tsx` y `ColaCierres.tsx`: `Test Files 84 passed (84)`, `Tests 1516 passed (1516)`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 341 passed (342)`, `Tests 4 failed | 4807 passed |
+  1 skipped`; los 4 son `dependencias-declaradas-presentes` (arriba).
+
+**Veredicto:** decisiones de Carlos aplicadas y T5 hecho; todo verde salvo
+`dependencias-declaradas-presentes`, que es del arnés y no se tocó. Pendiente de confirmar:
+`montajesPrevistos` en la guardia de cobertura.

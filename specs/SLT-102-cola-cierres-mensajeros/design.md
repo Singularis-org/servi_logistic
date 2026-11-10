@@ -84,6 +84,8 @@ Recorrido de `ColaCierres.dc.html` (rama `tipo` mensajero, líneas 137-162) con 
 | F9 | Descripción por rol en «tú» | R106 (zona: PA3) |
 | F10 | Pie de Pendientes «Un cierre vencido se puede destrabar como excepción.» | R106 |
 | F11 | Sin tarjetas de cifras en la cola de mensajeros | R32 (alcance) |
+| F12 | Pastilla de estado con el color del canvas: «Solicitado» ámbar, «Aprobado» verde, «Rechazado» y «Vencido» rojo (decisión de Carlos 2026-11-10; `EstadoCierreBadge` con los tokens `warning`/`success`/`danger`, el detalle lo hereda) | R101 — igual al canvas |
+| F13 | Barra con Fecha de solicitud · Mensajero · Estado, sin «Bodega» (enmienda de R100, Carlos 2026-11-10) | R100 — igual al canvas |
 
 **Desviaciones que se conservan, con su motivo:**
 

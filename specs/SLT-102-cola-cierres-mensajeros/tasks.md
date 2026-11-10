@@ -122,12 +122,12 @@
 
 ## T5 — Tests y guardias que cambian · `frontend_dev` (depende de T4.1)
 
-- [ ] **T5.1** — Adaptar, sin quitar lo que vigilan, los tests de componentes de T0.1 (lista en
+- [x] **T5.1** — Adaptar, sin quitar lo que vigilan, los tests de componentes de T0.1 (lista en
   `## Archivos esperados`): de la tarjeta a la fila (`row` filtrada por mensajero), del `group` +
   `button` al `tab`. `CierresAdminRetieneReprogramadas`: la superficie «cola» pasa a la celda
   Señales y conserva su mutación «pintar con 0».
   **Hecho:** verdes; en `impl_SLT-102.md`, una línea por archivo «antes leía X, ahora lee Y».
-- [ ] **T5.2** [P] — Guardias: `liquidacion-money-safe` (censo con `cola/`), y las que T0.1 haya
+- [x] **T5.2** [P] — Guardias: `liquidacion-money-safe` (censo con `cola/`), y las que T0.1 haya
   señalado (`contadores-cabecera`, `paginacion-dominios`, `paginacion-transversal`,
   `superficie-de-uso`, `factura-contraste`).
   **Hecho:** `pnpm run test:guardias` verde; contraprueba: un `Number(c.totales.general)` en
