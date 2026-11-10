@@ -42,6 +42,7 @@ import {
   nodosBajo,
   nodosDeProfundidad,
   zonaQueCubre,
+  zonasCandidatas,
   type CatalogoGeografico,
   type NodoDelCatalogo,
   type TipoDeNivel,
@@ -277,8 +278,8 @@ export class GeoRepository implements IGeoRepository {
 
   /**
    * La cadena geografica de UNA zona (contrato en `IGeoRepository`), desde el catalogo (SLT-44,
-   * R15): los nodos asignados a la zona por la empresa, todo lo que cuelga de ellos y los ancestros
-   * de unos y otros. Mientras las asignaciones sean solo a distritos, son los distritos de la zona,
+   * R15): los nodos asignados a la zona por la empresa, lo que cuelga de ellos y esta zona cubre
+   * (SLT-89 R6: sin las excepciones de otra zona) y los ancestros de unos y otros. Mientras las asignaciones sean solo a distritos, son los distritos de la zona,
    * sus cantones y sus provincias, como hoy.
    *
    * Un distrito en dos zonas cuenta en las dos, sin colapso: son filtros, no tarifa. Una zona de
@@ -293,7 +294,13 @@ export class GeoRepository implements IGeoRepository {
     for (const [nodoId, zonas] of asignaciones.zonasPorNodo) {
       if (!catalogo.porId.has(nodoId) || !zonas.some((z) => z.id === zonaId)) continue;
       deLaZona.add(nodoId);
-      for (const n of nodosBajo(catalogo, nodoId)) deLaZona.add(n.id);
+      // SLT-89 (R6): lo que cuelga del nodo entra solo si es ESTA zona la que lo cubre (la asignacion
+      // mas cercana). Un distrito con fila propia de otra zona bajo un canton asignado es una
+      // excepcion: es de la otra. Con asignaciones solo a distritos, lo que cuelga de un distrito no
+      // tiene asignacion propia y entra como siempre (R38).
+      for (const n of nodosBajo(catalogo, nodoId)) {
+        if (zonasCandidatas(catalogo, asignaciones, n.id)?.zonas.some((z) => z.id === zonaId)) deLaZona.add(n.id);
+      }
     }
     const conAncestros = new Set(deLaZona);
     for (const id of deLaZona) for (const a of ancestros(catalogo, id)) conAncestros.add(a.id);

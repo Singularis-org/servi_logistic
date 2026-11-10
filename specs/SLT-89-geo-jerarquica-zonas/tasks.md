@@ -90,7 +90,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
   `CoberturaRepository`, `ZonaRepository`). (R6, R9)
   *Hecho:* `tests/integration/db/geo-lecturas-catalogo.test.ts` y las suites de SLT-44/65 sin cambiar
   aserciones.
-- [ ] **T2.3** `tests/integration/db/zona-nodo-herencia.test.ts`: cantón y provincia asignados →
+- [x] **T2.3** `tests/integration/db/zona-nodo-herencia.test.ts`: cantón y provincia asignados →
   v1, v2 (también lugar cantón), carga masiva, cotización, Excel de cobertura, `listArbol`,
   `listGeografiaLitePorZona`; excepción de distrito; marca heredada a profundidad 4 y cantón sin marca;
   regla de guardado de SLT-45 intacta. (R6, R7, R8, R9)

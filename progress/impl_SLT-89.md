@@ -174,3 +174,27 @@ Integración en `logistic_slt89` sin cambiar aserciones:
 - Resultado: todo verde salvo `cobertura-repository` › «la marca sigue en el Excel tras activar»: está
   en `tests/baseline-rojos.json` y da el MISMO rojo con el cargador de `HEAD` (comprobado volviendo el
   archivo a `HEAD`): deuda heredada, no de SLT-89.
+
+### T2.3 — herencia en las lecturas (R6, R7, R8, R9)
+
+`tests/integration/db/zona-nodo-herencia.test.ts` (8 casos, escenario `geo-44`, lectura como
+`servi_app`, todo revertido): v1 (`findDistritosByCantonIds` + `resolveGeo`, el camino de carga y
+cotización v1) con cantón asignado y con provincia asignada (dos saltos; el cantón más cercano gana);
+excepciones de distrito conservan su zona; v2 `resolverUbicacion` con distrito y con cantón como lugar
+(fks), error «sin zona» de siempre antes de asignar, provincia cubierta sigue con
+`MSG_PAIS_NO_HABILITADO` (regla de guardado de SLT-45); `BulkOrdenService.cargarMasiva` crea la orden
+del distrito heredado con la zona del cantón; `CotizacionOrdenService.cotizar` y `cotizarV2` cotizan el
+distrito heredado (antes, 0 cotizadas); Excel de cobertura (`CoberturaRepository.listDistritos`) y
+`listArbol` (zona heredada, sin marca; `zonas` directas vacías); `listGeografiaLitePorZona`; R8 con un
+nodo de profundidad 4 bajo el distrito marcado (marca heredada) y bajo «sin zona» (sin marca, zona del
+cantón), sin escribir marcas.
+
+**Cambio de código hallado por el test (R6):** `GeoRepository.listGeografiaLitePorZona` metía en la
+zona TODO lo que cuelga del nodo asignado, también los distritos que son excepción de otra zona. Ahora
+lo que cuelga entra solo si `zonasCandidatas` (la asignación más cercana, sin colapso, como antes) es
+de esta zona. Con asignaciones solo a distritos no cambia nada (lo que cuelga de un distrito no tiene
+asignación propia): las 6 suites que usan `listGeografiaLitePorZona` → `Test Files 6 passed (6) ·
+Tests 169 passed (169)`, sin tocar aserciones.
+
+Salida: `zona-nodo-herencia` + `geo-lecturas-catalogo` + `geo-consultas-zona` +
+`slt46-equivalencia-geografia` → `Test Files 4 passed (4) · Tests 24 passed (24)`.
