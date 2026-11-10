@@ -42,7 +42,7 @@
     - `lib/storage/SupabaseAlmacenImagenesReporte.ts` (design §3.2, §3.3).
   - **Hecho:** `tests/unit/storage/supabase-almacen-imagenes-reporte.test.ts` en verde, con un doble del
     cliente y sin red. `storage-solo-por-adaptador.guardia` sigue en verde.
-- [ ] **T5 [P]. Doble de Storage** (dep. —; da soporte a R2, R9, R16 y R22 en el E2E).
+- [x] **T5 [P]. Doble de Storage** (dep. —; da soporte a R2, R9, R16 y R22 en el E2E).
   - **Archivo:** `e2e/_storage-falso/servidor.mjs`: la subida firmada, CORS y los límites del bucket
     (design §10).
   - **Hecho:** `tests/unit/e2e/storage-falso.test.ts` en verde, con sus casos nuevos y los de siempre.
