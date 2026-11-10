@@ -29,6 +29,7 @@ Backend lanzado; la pantalla (T7) espera la maqueta T0.2 (https://claude.ai/arti
 
 ## Tandas
 - 2026-11-10 · Tanda 1 (T1.1–T1.6, T2.1–T2.5) hecha: `359ad4c8`..`3db049a3`. Censos +2 tablas/+2 triggers/+1 tipo de historial; resolver de tarifas 3→4 consultas por lote (decisión humana). Guardias 320 verdes salvo el rojo aceptado; contrato v1 22/22. Bitácora: `progress/impl_SLT-89.md`.
+- 2026-11-10 · Tanda 2 (T3–T6, servidor) hecha: `aeb8ecbf`..`d4dbe8e1`. Guardias verdes salvo el rojo aceptado; contrato v1 22/22. Rojos hasta T7: 28 casos del formulario de zona (falta mandar «antes», T7.2) y grupos en Tarifas sin «antes» (T7.3). Pendiente decisión humana: historial al sacar un distrito viejo de su grupo (R21 vs R38).
 
 ## Modelos (overrides)
 
