@@ -388,3 +388,68 @@ que B1.
 - El E2E nuevo se ve correcto y determinista salvo el borde de m5, pero no se ha ejecutado: su verde en
   CI es condición de merge.
 - m4–m6 no bloquean. Si se quiere, m4 y m6 van en el mismo commit que B2.
+
+## Vuelta 3 (acotada a 4c66f7a9..10fda5e2)
+
+Reviewer, F2.2 vuelta 3, 2026-11-10. HEAD `10fda5e2`. Alcance: el cierre de B2, m4, m5 y m6
+(`517f164b`, `07321ba4`, `9d3ad8e7`) y que el merge de `origin/dev` (`10fda5e2`, con SLT-99, SLT-102 y el
+hook de títulos) no rompa nada.
+
+### Verificación ejecutada (por mí, sobre HEAD)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .`: exit 0.
+- `pnpm run test:guardias` entero: 342/343 archivos y 4822 tests en verde, 1 saltado. El único rojo es
+  `dependencias-declaradas-presentes.guardia.test.ts` (4 tests), que está en `tests/baseline-rojos.json`:
+  no es hallazgo.
+- Guardias de esquema contra `servi_logistic_slt98` (`schema-drift-saneamiento`, `nucleo-sin-modulos`,
+  `catalogo-postgres-acota-esquema`, `consultas-concurrentes-en-transaccion`,
+  `api-key-dependencias-usuario`, `plataforma-solo-en-lista`): 6/6 archivos y 71/71 tests.
+- vitest de los 11 archivos de test del PR (incluida la integración `bug-report.test.ts` contra
+  `servi_logistic_slt98`): 11/11 archivos y 220/220 tests.
+- Migraciones: el merge no trae ninguna (ni `db/migrations/**` ni `db/schema.prisma` en
+  `9d3ad8e7..10fda5e2`). `prisma migrate status` contra `servi_logistic_slt98`: «Database schema is up to
+  date!». No hizo falta `migrate deploy`.
+- `node scripts/tamano-pr.mjs`: AVISO, no rojo. 36/40 archivos y **4173**/1000 líneas, igual a la cifra de
+  la línea `tamano-pr-aceptado`.
+- No corrí `./init.sh`, build ni E2E (regla de la sesión).
+
+### Checklist
+
+- [x] **B2.** T16 está en `[x]` con la nota «Cerrada con salvedades». `progress/features/SLT-98.md >
+  Condición de merge` pide de forma explícita el grupo `aislamiento` con 0 failed, 0 skipped y 0 flaky,
+  nombra el test nuevo «con el cupo del día lleno…» y dice que el enlace a esa corrida va a
+  `impl_SLT-98.md`. Comprobé que `reporte-de-bugs` está en el proyecto `aislamiento` de
+  `playwright.config.ts` y que ese grupo existe en la matriz de `.github/workflows/gate.yml`.
+- [x] **m4.** Los cuatro textos dicen ahora «el día calendario en la zona horaria del país de la empresa
+  (la fecha la calcula el servidor)»: `docs/architecture.md`, el comentario de la migración, el `///` de
+  `day` en `db/schema.prisma` y la cabecera de `ICupoImagenesReporte.ts`. No queda «Costa Rica» ni «del
+  servidor» referido al día del cupo. Solo cambian comentarios: ninguna sentencia SQL.
+- [x] **m5.** El riesgo de la medianoche de CR (06:00 UTC) está anotado en T16 y en la condición de merge,
+  con la acción («se relanza»).
+- [x] **m6.** La línea de aceptación dice 4173, la cifra real que da el script. El leader indica que el
+  humano aceptó el +2.
+- [x] **Merge de `origin/dev`.** Typecheck, guardias, guardias de esquema y tests del PR siguen en verde
+  después del merge.
+
+### Hallazgos
+
+Ninguno bloqueante.
+
+#### n1: nota, no hallazgo. Checksum de la migración en las bases locales
+
+`07321ba4` cambia un comentario de `20261112120000_bug_report_image/migration.sql` después de aplicarla en
+`servi_logistic_slt98` y `servi_logistic_slt98_e2e`. `migrate deploy` y CI (base nueva) no lo notan, y la
+migración no está en `dev`, así que no se edita una migración ya publicada. Un `migrate dev` local sí avisaría
+del checksum. El implementer ya lo anotó. Sin acción.
+
+#### n2: nota, no hallazgo. Línea larga en `docs/architecture.md`
+
+La viñeta «Tope diario» quedó con una línea mucho más larga que las demás. Es cosmético y lo deja pasar el
+lint de docs. Sin acción.
+
+### Veredicto de la vuelta 3
+
+**OK.** B2 está resuelto, y m4, m5 y m6 también. El merge con `origin/dev` no rompe typecheck, guardias,
+guardias de esquema ni los tests del PR. Siguen pendientes las condiciones de merge de
+`progress/features/SLT-98.md`: el preview contra Supabase real, `gate-completo` y los grupos E2E de CI
+(`aislamiento` con el test nuevo, `reparto` y `dinero`) en verde.
