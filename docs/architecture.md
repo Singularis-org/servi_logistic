@@ -285,9 +285,9 @@ esta bien hecha, no solo si "funciona".
     suben al pulsar «Enviar», directo desde el navegador con una URL firmada que pide el servidor, y
     el envío las valida por tamaño y por firma de bytes. Se leen solo por enlace firmado de 24 h, en
     el correo y en el detalle; el superadmin firma con `conEmpresa` de la empresa del reporte.
-    - **Tope diario.** Tope blando de 21 permisos de subida por usuario y día calendario de Costa
-      Rica: con el conteo por debajo de 21 se concede todo lo pedido (hasta 25 en el día); desde 21,
-      nada, y el panel envía el reporte solo con el texto, sin aviso. El conteo vive en
+    - **Tope diario.** Tope blando de 21 permisos de subida por usuario y día calendario en la zona
+      horaria del país de la empresa (la fecha la calcula el servidor): con el conteo por debajo
+      de 21 se concede todo lo pedido (hasta 25 en el día); desde 21, nada, y el panel envía el reporte solo con el texto, sin aviso. El conteo vive en
       `bug_report_upload_quota`, de plataforma, con RLS sin políticas y `REVOKE ALL … FROM servi_app`,
       y la suma condicionada es una sola sentencia (`INSERT … ON CONFLICT DO UPDATE … WHERE`), como en
       `asistente_uso_diario`.

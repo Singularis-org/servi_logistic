@@ -1,8 +1,9 @@
 // SLT-98 (design §16.3; R24–R27, R31) — el tope diario de imágenes de los reportes de problema.
 //
 // En un archivo propio, y no dentro de `IBugReportRepository`, para que los dobles de SLT-97 que
-// implementan esa interfaz no tengan que cambiar. `fecha` es siempre `YYYY-MM-DD`, la del día del
-// servidor; el usuario sale de la sesión (R31).
+// implementan esa interfaz no tengan que cambiar. `fecha` es siempre `YYYY-MM-DD`, la del día
+// calendario en la zona horaria del país de la empresa (la fecha la calcula el servidor); el usuario
+// sale de la sesión (R31).
 
 export interface ICupoImagenesReporte {
   /**

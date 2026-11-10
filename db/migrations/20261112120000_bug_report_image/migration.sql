@@ -58,7 +58,7 @@ REVOKE ALL ON "bug_report_image" FROM servi_app;
 --
 -- De PLATAFORMA, como `bug_report_image`: el conteo es por persona, sin `organization_id`. Sin `updated_at`
 -- a propósito, para no entrar en el censo de `schema-drift-saneamiento` (sigue en 18).
--- `day` es el día calendario del servidor, escrito siempre con `::date` sobre `YYYY-MM-DD`.
+-- `day` es el día calendario en la zona horaria del país de la empresa (la fecha la calcula el servidor), escrito siempre con `::date` sobre `YYYY-MM-DD`.
 
 CREATE TABLE "bug_report_upload_quota" (
     "user_id"         TEXT NOT NULL,

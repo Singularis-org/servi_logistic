@@ -6584,7 +6584,8 @@ model BugReportImage {
 // `ON CONFLICT` de `BugReportRepository.consumir`: es la atomicidad de R26. Sin `updated_at` a propósito.
 model BugReportUploadQuota {
   userId         String   @map("user_id")
-  /// El día calendario del servidor; se escribe y se lee con `::date` sobre `YYYY-MM-DD`, nunca con un `Date` de JS.
+  /// El día calendario en la zona horaria del país de la empresa (la fecha la calcula el servidor);
+  /// se escribe y se lee con `::date` sobre `YYYY-MM-DD`, nunca con un `Date` de JS.
   day            DateTime @db.Date
   /// Permisos concedidos ese día. Con el tope blando llega como mucho a 25 (20 + 5).
   permitsGranted Int      @map("permits_granted")

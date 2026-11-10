@@ -382,3 +382,23 @@ los unit de T7).
 - Dos archivos fuera de «Archivos esperados» (solo para compilar), anotados en tasks.md: 34 archivos.
 - Tamaño real ~3.374 líneas frente a las ~2.200–2.500 aceptadas: el leader decide si se reconfirma con el humano.
 - Las propuestas menores de T5, T9 y T10 están en sus secciones.
+
+## Review vuelta 2, m4: textos del «día» del tope (2026-11-10)
+
+Solo comentarios y docs; ninguna sentencia SQL ni código cambia. Texto nuevo en los cuatro: «el día calendario
+en la zona horaria del país de la empresa (la fecha la calcula el servidor)» (design §16.1).
+- `docs/architecture.md` (viñeta «Tope diario»): antes «día calendario de Costa Rica».
+- `db/migrations/20261112120000_bug_report_image/migration.sql` l. 61 (comentario `--`): antes «del servidor».
+- `db/schema.prisma` l. 6587 (comentario `///` de `day`, partido en dos líneas): antes «del servidor».
+- `lib/interfaces/repositories/ICupoImagenesReporte.ts` (cabecera): antes «la del día del servidor».
+
+Verificación:
+- `pnpm exec prisma validate`: «The schema at db\schema.prisma is valid».
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script --exit-code` contra
+  `servi_logistic_slt98`: exit 0, «-- This is an empty migration.».
+- `prisma migrate status` contra `servi_logistic_slt98`: «Database schema is up to date!», sin aviso de
+  checksum, así que no se hizo rollback + deploy. El checksum guardado de la migración en las dos bases locales
+  es el del archivo anterior: `migrate deploy` no lo mira; un `migrate dev` sí avisaría.
+- `eslint lib/interfaces/repositories/ICupoImagenesReporte.ts`: exit 0.
+- `node scripts/tamano-pr.mjs`: 36/40 archivos, 4173 líneas (antes 4171; +2 por partir dos comentarios).
+- Sin typecheck (solo comentarios), sin `./init.sh`, sin build, sin E2E, por indicación del leader.
