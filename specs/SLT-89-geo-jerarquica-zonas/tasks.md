@@ -44,7 +44,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [x] **T0.1** Comprobar que la rama arranca en verde (`./init.sh`; si la base local no da, el check
   `gate-completo` de CI) y anotar el sha de partida en `progress/impl_SLT-89.md`.
   *Hecho:* verde anotado.
-- [ ] **T0.2** Maqueta de la parte visual, **bloqueante para T7.1, T7.2 y T7.3** (R48, decisión P2
+- [x] **T0.2** Maqueta de la parte visual, **bloqueante para T7.1, T7.2 y T7.3** (R48, decisión P2
   del 2026-11-09). La arma el leader en un lienzo y la aprueba el humano; el implementer no la hace.
   Cubre: el selector de N niveles (herencia, excepciones, bloqueos, búsqueda), el modal único de
   guardado de zona con el aviso de impacto y la marca central, y en Tarifas el árbol de miembros y el

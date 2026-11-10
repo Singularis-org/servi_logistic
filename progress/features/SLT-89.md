@@ -22,6 +22,7 @@ Backend lanzado; la pantalla (T7) espera la maqueta T0.2 (https://claude.ai/arti
 
 ## Decisiones
 - 2026-11-09 (humano): «arranca 89, ignora las que están en proceso de geografía, están pausadas de
+- 2026-11-10 (humano): «aprobado» — maqueta de T0.2 aprobada: https://claude.ai/artifact/9QG7NyNkFdDcxu5zvWu1xD (copia en el scratchpad `maqueta89/project/`). Desbloquea T7.
   momento»: la rama nace sobre `feature/SLT-46-geo-jerarquica-admin`; las fichas geo en vuelo no se tocan.
 - 2026-11-09 · Alcance y decisiones cerradas en `specs/SLT-89-geo-jerarquica-zonas/requirements.md` (`/afinar-feature`; descripción de la tarjeta actualizada, complexity:high).
 
