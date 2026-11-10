@@ -93,6 +93,7 @@ export const TEXTOS_PLANES = {
 /* -------------------------------------------------------------------------- */
 
 /** R4: la suma de los topes de los cuatro roles con tope; `null` («Sin tope») si alguno no lo tiene. */
+// @sin-superficie la monta CambioDePlan de «Mi plan» en la task T7 de SLT-99, que quita esta línea.
 export function usuariosDelPlan(topes: TopesPlan): number | null {
   let suma = 0;
   for (const rol of ROLES_CON_TOPE) {
