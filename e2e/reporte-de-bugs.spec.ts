@@ -731,6 +731,82 @@ test.describe("SLT-98 — imágenes", () => {
       await ctx.close();
     }
   });
+
+  /**
+   * Tope diario (T16; design §16.6; R25, R29, R30). El maestro queda en 21 de forma absoluta, así que da
+   * igual que el test de arriba haya corrido antes (suma 2) o no. La fila sembrada se borra en el
+   * `finally` del propio test: ni el de arriba ni la segunda corrida heredan el tope.
+   */
+  test("con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const descripcion = `E2E SLT-98 sin cupo ${randomUUID()}`;
+    const maestroId = empresa.maestro.id;
+
+    // Paso 3 se mira al final: toda petición del navegador al API de Storage durante el test.
+    const peticionesStorage: { metodo: string; url: string }[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes(RUTA_STORAGE)) peticionesStorage.push({ metodo: r.method(), url: r.url() });
+    });
+
+    const db = abrirBaseE2E();
+    try {
+      // Siembra: como dueño (la tabla es de plataforma), el día de Costa Rica que usa el servidor.
+      const [{ dia }] = await db.$queryRaw<{ dia: string }[]>`
+        INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted")
+        VALUES (${maestroId}, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Costa_Rica')::date, 21)
+        ON CONFLICT ("user_id", "day") DO UPDATE SET "permits_granted" = 21
+        RETURNING "day"::text AS "dia"
+      `;
+
+      // Paso 1 — el maestro escribe, adjunta una PNG y envía.
+      await comoMaestro(page, "/ordenes");
+      await abrirPanel(page);
+      await campo(page).fill(descripcion);
+      const seccion = panel(page).getByRole("region", { name: TEXTO_IMAGENES.seccion, exact: true });
+      await seccion.getByLabel(TEXTO_IMAGENES.input, { exact: true }).setInputFiles([
+        { name: "captura.png", mimeType: "image/png", buffer: PNG_1X1 },
+      ]);
+      await expect(seccion.getByText(TEXTO_IMAGENES.contador(1), { exact: true })).toBeVisible();
+      const enviar = panel(page).getByRole("button", { name: TEXTO.enviar, exact: true });
+      await expect(enviar).toBeEnabled();
+      await enviar.click();
+
+      // Paso 2 — el mismo éxito de un envío normal (R29, R30), sin ningún aviso en el panel.
+      await expect(panel(page).getByText(TEXTO.gracias)).toBeVisible({ timeout: 30_000 });
+      await expect(panel(page).getByRole("alert")).toHaveCount(0);
+      await expect(campo(page)).toHaveValue("");
+      await expect(seccion.getByText(TEXTO_IMAGENES.contador(0), { exact: true })).toBeVisible();
+      await expect(seccion.getByRole("img")).toHaveCount(0);
+
+      // Paso 3 — no subió nada: ningún PUT al API de Storage (R29).
+      expect(
+        peticionesStorage.filter((p) => p.metodo === "PUT"),
+        "ningún PUT a Storage con el cupo lleno",
+      ).toEqual([]);
+
+      // Paso 4 — un solo reporte con esa descripción y sin imágenes (R30).
+      const reportes = await db.bugReport.findMany({
+        where: { description: descripcion },
+        include: { images: true },
+      });
+      expect(reportes).toHaveLength(1);
+      expect(reportes[0].reporterUserId).toBe(maestroId);
+      expect(reportes[0].images).toEqual([]);
+
+      // Paso 5 — la petición sin cupo no sumó: el conteo del día sigue en 21 (R25).
+      const conteo = await db.$queryRaw<{ dia: string; permits_granted: number }[]>`
+        SELECT "day"::text AS "dia", "permits_granted"
+        FROM "bug_report_upload_quota"
+        WHERE "user_id" = ${maestroId}
+      `;
+      expect(conteo).toEqual([{ dia, permits_granted: 21 }]);
+    } finally {
+      await db.$executeRaw`DELETE FROM "bug_report_upload_quota" WHERE "user_id" = ${maestroId}`;
+      await db.$disconnect();
+    }
+  });
 });
 
 /** `loading="lazy"`: se trae a la vista para que el navegador la pida, y se espera a que la pinte. */

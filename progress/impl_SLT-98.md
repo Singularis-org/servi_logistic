@@ -227,6 +227,32 @@ Enmienda del tope (design §16.5; R28, R29, R30). Sin `./init.sh`, sin suite com
   - No corridos: `./init.sh`, suite completa, E2E (T16).
 - **Veredicto:** T15 hecha; R28 y R29 del panel con test en verde.
 
+### T16 «E2E y documentación» — frontend_dev — commit el que trae esta sección
+Design §16.6 y §14. Solo escrito: la corrida doble del E2E, `./init.sh` y `tamano-pr` quedan para el leader;
+T16 sigue sin [x].
+- **Archivos:** `e2e/reporte-de-bugs.spec.ts` (test nuevo en el describe «SLT-98 — imágenes», línea 740);
+  `docs/architecture.md` (subviñeta «Tope diario» bajo «Imágenes (SLT-98 …)»).
+- **Test:** «con el cupo del día lleno, el reporte se envía solo con el texto, sin subir nada y sin aviso».
+  Siembra 21 absoluto con el SQL de §16.6, pasos 1–5, y en `finally` borra las filas del maestro en
+  `bug_report_upload_quota`. Solo `expect`, sin `waitForTimeout` ni `skip`.
+- **Mapa:** R25 → paso 5; R29 → pasos 2 y 3; R30 → pasos 2 y 4.
+- **(propuesta)** El paso 5 compara todas las filas del maestro con `[{ dia, permits_granted: 21 }]`, con
+  `dia` el que devolvió el `RETURNING` de la siembra: así también ve una fila de otro día creada de más.
+  Si la corrida cruza la medianoche de Costa Rica entre siembra y envío fallaría; se acepta (riesgo mínimo).
+- **(propuesta)** El paso 2 mira también lo de R8: campo vacío, «0/5 imágenes» y ninguna miniatura.
+- **(propuesta)** El paso 4 comprueba además que el reporte es del maestro (`reporterUserId`).
+- **(propuesta)** El `finally` borra todas las filas del maestro, no solo la del día: el usuario es de la
+  corrida y así no queda ningún resto.
+- **Verificación:**
+  - `pnpm exec eslint e2e/reporte-de-bugs.spec.ts`: sin salida, exit 0.
+  - `pnpm exec vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: `Test Files 1 passed (1)` ·
+    `Tests 38 passed (38)`.
+  - `pnpm exec playwright test e2e/reporte-de-bugs.spec.ts --list`: lista
+    `reporte-de-bugs.spec.ts:740:7 › SLT-98 — imágenes › con el cupo del día lleno, …`.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+  - No corridos: E2E, `./init.sh`, suite completa.
+- **Veredicto:** test de §16.6 y viñeta de §14 escritos; falta la corrida doble del E2E.
+
 ## E2E — dos corridas sobre el código final
 Base `servi_logistic_slt98_e2e` recreada (DROP/CREATE, `migrate deploy`, `db:seed`) solo antes de la 1.ª.
 `next build` con 8 GB y `NEXT_PUBLIC_APP_URL=http://localhost:3044`: exit 0 en 262 s, sobre 873b4d67; después
