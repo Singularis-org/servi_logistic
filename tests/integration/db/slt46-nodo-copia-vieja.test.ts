@@ -289,11 +289,20 @@ describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44
     expect(r).toEqual({ distrito: [1, 0], canton: [1, 0], provincia: [1, 0] });
   });
 
-  it("R44: el trigger de orden y los de las zonas siguen con el cuerpo de SLT-43, y las zonas siguen apuntando solo a distrito", async () => {
+  it("R44: el trigger de orden con el cuerpo de SLT-89 y los de las zonas con el de SLT-43, y las zonas siguen apuntando solo a distrito", async () => {
     const sql = readFileSync(path.join(MIGRACIONES, "20261104120400_columnas_nodo_geografico", "migration.sql"), "utf8");
     const cuerpo = (funcion: string) => {
       const m = new RegExp(String.raw`CREATE FUNCTION ${funcion}\(\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;`).exec(sql);
       if (m === null) throw new Error(`no encuentro ${funcion} en la migración de SLT-43`);
+      return m[1];
+    };
+    // SLT-89 (decision humana del 2026-11-10, requirements.md > Decisiones cerradas): SLT-89 redefine
+    // `orden_nodo_geografico` con `CREATE OR REPLACE FUNCTION` (R28, T1.1), asi que su cuerpo esperado
+    // sale de esa migracion. El resto de lo que afirma este caso no cambia.
+    const sql89 = readFileSync(path.join(MIGRACIONES, "20261110130000_slt89_zona_nodo", "migration.sql"), "utf8");
+    const cuerpoReemplazado = (funcion: string) => {
+      const m = new RegExp(String.raw`CREATE OR REPLACE FUNCTION ${funcion}\(\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;`).exec(sql89);
+      if (m === null) throw new Error(`no encuentro ${funcion} en la migración de SLT-89`);
       return m[1];
     };
     const r = await revertida(base, async (tx) => {
@@ -318,7 +327,7 @@ describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44
       return { funciones, triggers: triggers.map((t) => t.d), fks: fks.map((f) => f.l) };
     });
     expect(r.funciones).toEqual([
-      { proname: "orden_nodo_geografico", prosrc: cuerpo("orden_nodo_geografico") },
+      { proname: "orden_nodo_geografico", prosrc: cuerpoReemplazado("orden_nodo_geografico") },
       { proname: "zona_nodo_geografico_del_distrito", prosrc: cuerpo("zona_nodo_geografico_del_distrito") },
     ]);
     expect(r.triggers).toEqual([
