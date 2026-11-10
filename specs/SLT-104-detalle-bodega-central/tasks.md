@@ -27,7 +27,7 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** — Censo, anotado en `progress/impl_SLT-104.md`:
+- [x] **T0.1** — Censo, anotado en `progress/impl_SLT-104.md`:
   - `grep -l` en `tests/` por `<CierresBodegaAdminModule` junto con «Detalle del cierre de bodega»,
     «Totales del cierre de bodega», «Cierre del día · », «Órdenes del cierre · »,
     «Lo que va a la central · », «Con ajustes», «Conciliación del cierre de bodega»,
@@ -44,7 +44,7 @@
 
   **Hecho:** la lista coincide con `## Archivos esperados`; los de más se añaden y se avisa al
   leader.
-- [ ] **T0.2** [P] — Leer y anotar con archivo:línea:
+- [x] **T0.2** [P] — Leer y anotar con archivo:línea:
   - que `DetalleCierre` con `tipo="bodega"` y `acciones.conciliacion` pinta el nodo en el pie en el
     orden de `accionesDe` (decidir: «Cerrar» + conciliación; solo lectura: conciliación + «Cerrar»);
   - que `GestionesCierre` con `audiencia="solo lectura"`, `columnaMensajero` y `acciones={}` no
@@ -57,7 +57,7 @@
     `solicitadoAt` del cierre del día o hay que pedirlo en `CierreBodegaRepository`.
 
   **Hecho:** nota en `impl_SLT-104.md`. Si algo contradice el design, se para y se pregunta.
-- [ ] **T0.3** [P] — Fijar los literales del E2E y de los tests contra la siembra real de
+- [x] **T0.3** [P] — Fijar los literales del E2E y de los tests contra la siembra real de
   `e2e/cierre-bodega-satelite.spec.ts` (modelo viejo: recaudado 9.000, pago 1.500, gana la bodega
   satélite 500, debe llegar a la central 7.000; Le queda a la empresa y «Total facturado» por
   calcular a mano con la tarifa del escenario), de `ajuste-pago-mensajero-cierre.spec.ts` (pago
@@ -69,19 +69,19 @@
 
 ## T1 — Servidor (solo PA1 y PA3) · `backend_dev` (depende de T0)
 
-- [ ] **T1.1** (PA1) — Alcance de **lectura** del detalle para acceso total en
+- [x] **T1.1** (PA1) — Alcance de **lectura** del detalle para acceso total en
   `CierresAdminService.verCierreDetalle` y `CierresAdminRepository.findCierreByIdEnAlcance`
   (`design.md > Lectura de un cierre del día de la satélite`), sin tocar `alcanceWhere` ni ningún
   otro método.
   **Hecho:** typecheck verde; `git diff db/` vacío; ningún método de escritura cambiado.
-- [ ] **T1.2** (PA1) — `tests/integration/db/cierre-detalle-central-lee-satelite-sql-real.test.ts`
+- [x] **T1.2** (PA1) — `tests/integration/db/cierre-detalle-central-lee-satelite-sql-real.test.ts`
   (base real): la central lee un cierre del día de satélite de su empresa; no lee uno de otra
   empresa; el adminSatelite de otra zona sigue sin leerlo. Y
   `tests/unit/services/cierres-admin-detalle-lectura.test.ts`: las listas y una Server Action de
   escritura (p. ej. aprobar) siguen con el alcance `bodega_central`.
   **Hecho:** verdes; la mutación «quitar el filtro de empresa» pone rojo el de integración y
   «ensanchar `alcanceWhere`» pone rojo el de servicio.
-- [ ] **T1.3** (PA3) [P] — `solicitadoAt` aditivo en `CierreBodegaDetalleCierre`, poblado en
+- [x] **T1.3** (PA3) [P] — `solicitadoAt` aditivo en `CierreBodegaDetalleCierre`, poblado en
   `CierresBodegaAdminService` (y `CierreBodegaRepository` si T0.2 lo pide). Caso en
   `tests/unit/services/cierres-bodega-admin-service.test.ts`: cada cierre lleva SU `solicitadoAt`,
   no el del cierre de bodega.
