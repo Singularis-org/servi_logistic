@@ -82,7 +82,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T2 — Dominio y lecturas (depende de T1)
 
-- [ ] **T2.1** `geografia-dominio.ts`: `conAsignacionesDeZona` (asignaciones propuestas),
+- [x] **T2.1** `geografia-dominio.ts`: `conAsignacionesDeZona` (asignaciones propuestas),
   `grupoDelLugar` (miembro más cercano) y `mismoConjunto` (comparación del «antes», design §5.4), puros, con casos en
   `tests/unit/services/geografia-dominio.test.ts`. (R14, R19)
 - [ ] **T2.2** `CatalogoGeograficoRepository`: la consulta a `zona_nodo` en la misma foto (§4.1);

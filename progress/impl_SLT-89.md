@@ -139,3 +139,12 @@ sin tocar el nodo (incluido vaciar el distrito) → el lugar nuevo (la rama extr
 escribir en otra empresa), misma empresa (SL017), país (SL021 en las dos), `zona_nodo` acepta
 provincia/cantón/profundidad 4 y rechaza distrito (23514), único por empresa (23505 en la misma, nada
 en otra), miembro duplicado entre tablas (23514 / 23505). 6 casos, verdes.
+
+### T2.1 — dominio puro (R14, R19)
+
+`lib/services/geografia-dominio.ts`: `conAsignacionesDeZona(asig, zona, nodoIds)` (la zona sale de
+todo nodo y entra en los pedidos; resto y marcas intactos; entrada sin mutar), `grupoDelLugar(cat,
+miembros, lugarId)` (miembro más cercano: el lugar y sus ancestros; `null` sin lugar, R20) y
+`mismoConjunto(a, b)` (sin orden ni repetidos). Casos en `tests/unit/services/geografia-dominio.test.ts`
+(11 nuevos). `geografia-dominio.test.ts` + guardia `geografia-dominio-puro` → `Test Files 2 passed (2)
+· Tests 47 passed (47)`.

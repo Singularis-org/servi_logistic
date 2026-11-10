@@ -211,3 +211,62 @@ export function esZonaEspecial(cat: CatalogoGeografico, asig: AsignacionesDeLaEm
   if (!n) return false;
   return [n, ...ancestros(cat, id)].some((eslabon) => asig.nodosConMarca.has(eslabon.id));
 }
+
+/**
+ * SLT-89 (design §5.3) — las asignaciones de la empresa si la zona pasara a tener exactamente los
+ * nodos pedidos: se quita la zona de todo nodo donde estaba y se pone en cada uno de `nodoIds`. El
+ * resto de zonas y las marcas no cambian. Es la entrada «propuesta» del aviso de impacto, para que
+ * `zonaQueCubre` responda «la zona de despues» sin escribir nada. Una zona nueva entra con un id
+ * cualquiera que no choque con las existentes.
+ */
+export function conAsignacionesDeZona(
+  asig: AsignacionesDeLaEmpresa,
+  zona: ZonaAsignada,
+  nodoIds: readonly string[],
+): AsignacionesDeLaEmpresa {
+  const zonasPorNodo = new Map<string, ZonaAsignada[]>();
+  for (const [nodoId, zonas] of asig.zonasPorNodo) {
+    const otras = zonas.filter((z) => z.id !== zona.id);
+    if (otras.length > 0) zonasPorNodo.set(nodoId, otras);
+  }
+  for (const nodoId of new Set(nodoIds)) {
+    const zonas = zonasPorNodo.get(nodoId);
+    if (zonas) zonas.push(zona);
+    else zonasPorNodo.set(nodoId, [zona]);
+  }
+  return { zonasPorNodo, nodosConMarca: asig.nodosConMarca };
+}
+
+/**
+ * SLT-89 (R19, design §4.3) — el grupo de un lugar dentro de UNA zona: el del miembro mas cercano,
+ * el propio lugar y luego sus ancestros de padre a raiz. `miembros` es nodo -> grupo de esa zona (las
+ * dos tablas de miembros juntas). `null` si ningun eslabon es miembro, si el lugar no esta en el
+ * catalogo o si no hay lugar (R20: una orden sin distrito no tiene grupo en SLT-89).
+ */
+export function grupoDelLugar(
+  cat: CatalogoGeografico,
+  miembros: ReadonlyMap<string, string>,
+  lugarId: string | null,
+): string | null {
+  if (lugarId === null) return null;
+  const n = cat.porId.get(lugarId);
+  if (!n) return null;
+  for (const eslabon of [n, ...ancestros(cat, lugarId)]) {
+    const grupo = miembros.get(eslabon.id);
+    if (grupo !== undefined) return grupo;
+  }
+  return null;
+}
+
+/**
+ * SLT-89 (R16, R43, R45; design §5.4) — `true` si las dos listas tienen los mismos elementos, sin
+ * importar el orden ni los repetidos. Compara el «antes» que mostro la pantalla con lo que hay en la
+ * base, bajo el candado de la fila.
+ */
+export function mismoConjunto(a: readonly string[], b: readonly string[]): boolean {
+  const sa = new Set(a);
+  const sb = new Set(b);
+  if (sa.size !== sb.size) return false;
+  for (const x of sa) if (!sb.has(x)) return false;
+  return true;
+}
