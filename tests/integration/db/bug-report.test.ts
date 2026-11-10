@@ -9,7 +9,12 @@ import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { llevaSqlstate } from "@/lib/db/sqlstate";
 import { BugReportRepository } from "@/lib/repositories/BugReportRepository";
 import { ReportesBugPlataformaService } from "@/lib/services/ReportesBugPlataformaService";
-import { TRANSICIONES_REPORTE, type FiltrosReportes, type NuevoBugReport } from "@/lib/types/reporte-bug";
+import {
+  TRANSICIONES_REPORTE,
+  type FiltrosReportes,
+  type NuevaImagen,
+  type NuevoBugReport,
+} from "@/lib/types/reporte-bug";
 import { comoApp, datosDeOrganizacionDePrueba } from "@/tests/fabricas/organizaciones";
 import {
   CLAVE_LOCK_ESCRITURA_REAL,
@@ -23,6 +28,8 @@ import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadm
 // SLT-87 (design §2, §6; R11, R12, R13, R14, R19) — `bug_report` contra Postgres real.
 // SLT-97 (design §2, §4, §5; R3, R4, R5, R7–R10, R13–R18, R20, R21, R23) — el estado, el historial y las
 // lecturas del superadmin, al final del archivo.
+// SLT-98 (design §2, §7; R13, R18, R19, R22) — `bug_report_image`, en el último bloque. Siembra y escribe
+// dentro de `revertida`, como los casos de SLT-97.
 //
 // El repositorio va con el cliente EXTENDIDO (el de la app) y un resolutor nulo: fuera de un contexto
 // explícito toda operación de negocio fallaría, así que si escribe es porque abre su `comoPlataforma`.
@@ -108,6 +115,7 @@ const datosDe = (organizationId: string, reporterUserId: string, extra: Partial<
   viewportWidth: 390,
   viewportHeight: 844,
   isStandalone: true,
+  imagenes: [],
   ...extra,
 });
 
@@ -703,6 +711,9 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
           creadoEn: "2001-10-01T14:05:00.000Z",
           estado: "resolved",
           destinosPermitidos: [],
+          // SLT-98 (design §6 y §15 «Tests de SLT-87 y SLT-97 que cambian de sentido»): el DTO gana
+          // `imagenes` y no lleva la empresa ni las rutas; este reporte no trae imágenes.
+          imagenes: [],
         },
         historial: [
           { id: r.nuevo, desde: "in_review", hacia: "resolved", nota: null, actor: "Quien Sea", creadoEn: "2001-10-03T00:00:00.000Z" },
@@ -902,6 +913,193 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
         return { update, borrar, intacta, cascada, despues: await cambiosDe(tx, id) };
       });
       expect(r).toEqual({ update: "SL097", borrar: "SL097", intacta: 1, cascada: null, despues: 0 });
+    });
+  });
+
+  describe("SLT-98 — bug_report_image", () => {
+    const PNG = "image/png";
+    /** P4: 5 MB, el tope del `CHECK` `bug_report_image_size_bytes_rango`. */
+    const MAX = 5 * 1024 * 1024;
+
+    /** Una imagen válida de `usuarioA` para `crear`, con la extensión de su tipo. */
+    const imagen = (position: number, contentType: NuevaImagen["contentType"] = PNG, sizeBytes = 1000): NuevaImagen => {
+      const id = randomUUID();
+      const ext = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }[contentType];
+      return { id, position, storagePath: `${usuarioA}/${id}.${ext}`, contentType, sizeBytes };
+    };
+
+    /** INSERT a mano en `bug_report_image`; `campos` pisa las columnas que el caso quiere romper. */
+    function insertImagenSql(
+      reporteId: string,
+      campos: { id?: string; position?: number; contentType?: string; sizeBytes?: number; ext?: string } = {},
+    ): [string, ...unknown[]] {
+      const id = campos.id ?? randomUUID();
+      return [
+        `INSERT INTO "bug_report_image" ("id", "bug_report_id", "position", "storage_path", "content_type", "size_bytes")
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        id,
+        reporteId,
+        campos.position ?? 1,
+        `u/${id}.${campos.ext ?? "png"}`,
+        campos.contentType ?? PNG,
+        campos.sizeBytes ?? 10,
+      ];
+    }
+
+    async function imagenesEnBase(tx: TxDeTest, reporteId: string) {
+      return tx.$queryRawUnsafe<
+        { id: string; position: number; storage_path: string; content_type: string; size_bytes: number }[]
+      >(
+        `SELECT "id", "position", "storage_path", "content_type", "size_bytes"
+           FROM "bug_report_image" WHERE "bug_report_id" = $1 ORDER BY "position"`,
+        reporteId,
+      );
+    }
+
+    async function contar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<number> {
+      return (await tx.$queryRawUnsafe<{ n: number }[]>(sql, ...args))[0].n;
+    }
+
+    it("R13 — crear con 3 imágenes guarda bug_report y bug_report_image con position 1..3, tipo y tamaño", async () => {
+      const imagenes = [imagen(1), imagen(2, "image/jpeg", MAX), imagen(3, "image/webp", 1)];
+      const r = await revertida(async (tx) => {
+        const creado = await repoEn(tx).crear(datosDe(A, usuarioA, { imagenes }));
+        return {
+          creado,
+          reportes: await contar(
+            tx,
+            `SELECT count(*)::int AS n FROM "bug_report" WHERE "id" = $1 AND "organization_id" = $2`,
+            creado!.id,
+            A,
+          ),
+          filas: await imagenesEnBase(tx, creado!.id),
+        };
+      });
+      expect(r.creado).not.toBeNull();
+      // `BugReportCreado` no cambia: ni rutas ni datos de las imágenes (design §6).
+      expect(r.creado).not.toHaveProperty("imagenes");
+      expect(r.reportes).toBe(1);
+      expect(r.filas).toEqual(
+        imagenes.map((i) => ({
+          id: i.id,
+          position: i.position,
+          storage_path: i.storagePath,
+          content_type: i.contentType,
+          size_bytes: i.sizeBytes,
+        })),
+      );
+    });
+
+    it("R13 — si una imagen viola un CHECK, no queda ni el reporte", async () => {
+      const descripcion = `Con imagen rota ${RUN}`;
+      const buena = imagen(1);
+      const rota = imagen(2, PNG, 0);
+      const r = await revertida(async (tx) => {
+        const error = await repoEn(tx)
+          .crear(datosDe(A, usuarioA, { description: descripcion, imagenes: [buena, rota] }))
+          .then(
+            () => null,
+            (e: unknown) => llevaSqlstate(e, "23514"),
+          );
+        return {
+          error,
+          reportes: await contar(tx, `SELECT count(*)::int AS n FROM "bug_report" WHERE "description" = $1`, descripcion),
+          imagenes: await contar(
+            tx,
+            `SELECT count(*)::int AS n FROM "bug_report_image" WHERE "id" IN ($1, $2)`,
+            buena.id,
+            rota.id,
+          ),
+        };
+      });
+      expect(r).toEqual({ error: true, reportes: 0, imagenes: 0 });
+    });
+
+    it("R18 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_image dan 42501", async () => {
+      const r = await revertida(async (tx) => {
+        // La fila existe y es de un reporte de la propia empresa: el 42501 no es por una tabla vacía.
+        const id = randomUUID();
+        const control = await intentar(tx, ...insertImagenSql(reporteA, { id }));
+        await comoApp(tx, A);
+        return {
+          control,
+          select: await intentar(tx, `SELECT * FROM "bug_report_image"`),
+          selectPropia: await intentar(tx, `SELECT * FROM "bug_report_image" WHERE "bug_report_id" = $1`, reporteA),
+          insert: await intentar(tx, ...insertImagenSql(reporteA, { position: 2 })),
+          update: await intentar(tx, `UPDATE "bug_report_image" SET "size_bytes" = 20 WHERE "id" = $1`, id),
+          delete: await intentar(tx, `DELETE FROM "bug_report_image" WHERE "id" = $1`, id),
+        };
+      });
+      expect(r).toEqual({
+        control: null,
+        select: "42501",
+        selectPropia: "42501",
+        insert: "42501",
+        update: "42501",
+        delete: "42501",
+      });
+    });
+
+    it("R19 — la base rechaza position 6, content_type image/gif, size_bytes 0 y 5242881, también como dueño, y borrar el bug_report se lleva sus imágenes", async () => {
+      const r = await revertida(async (tx) => {
+        const dueno = (await tx.$queryRawUnsafe<{ u: string }[]>(`SELECT current_user AS u`))[0].u;
+        const id = await sembrarReporte(tx);
+        const cinco: (string | null)[] = [];
+        for (let p = 1; p <= 5; p++) {
+          cinco.push(await intentar(tx, ...insertImagenSql(id, { position: p, sizeBytes: p === 5 ? MAX : 1 })));
+        }
+        const otro = await sembrarReporte(tx);
+        const salida = {
+          dueno,
+          cinco,
+          sexta: await intentar(tx, ...insertImagenSql(id, { position: 6 })),
+          positionRepetida: await intentar(tx, ...insertImagenSql(id, { position: 1 })),
+          gif: await intentar(tx, ...insertImagenSql(otro, { contentType: "image/gif" })),
+          extensionGif: await intentar(tx, ...insertImagenSql(otro, { ext: "gif" })),
+          tamanoCero: await intentar(tx, ...insertImagenSql(otro, { sizeBytes: 0 })),
+          tamanoDeMas: await intentar(tx, ...insertImagenSql(otro, { sizeBytes: MAX + 1 })),
+          antes: (await imagenesEnBase(tx, id)).length,
+        };
+        const cascada = await intentar(tx, `DELETE FROM "bug_report" WHERE "id" = $1`, id);
+        const columnas = await tx.$queryRawUnsafe<{ column_name: string }[]>(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'bug_report_image' ORDER BY column_name`,
+        );
+        return { ...salida, cascada, despues: (await imagenesEnBase(tx, id)).length, columnas: columnas.map((c) => c.column_name) };
+      });
+      expect(r.dueno).not.toBe("servi_app");
+      expect(r).toMatchObject({
+        cinco: [null, null, null, null, null],
+        sexta: "23514",
+        positionRepetida: "23505",
+        gif: "23514",
+        extensionGif: "23514",
+        tamanoCero: "23514",
+        tamanoDeMas: "23514",
+        antes: 5,
+        cascada: null,
+        despues: 0,
+        // Los identificadores nuevos, en inglés (R19).
+        columnas: ["bug_report_id", "content_type", "created_at", "id", "position", "size_bytes", "storage_path"],
+      });
+    });
+
+    it("R22 — detalle trae las imágenes por position y la empresa", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx);
+        const sinImagenes = await sembrarReporte(tx);
+        const ids: Record<number, string> = {};
+        // Se insertan fuera de orden: el orden lo da `position`, no la inserción.
+        for (const p of [3, 1, 2]) {
+          ids[p] = randomUUID();
+          await tx.$executeRawUnsafe(...insertImagenSql(id, { id: ids[p], position: p }));
+        }
+        const repo = repoEn(tx);
+        return { ids, d: await repo.detalle(id), dSin: await repo.detalle(sinImagenes) };
+      });
+      expect(r.d?.reporte.organizacionId).toBe(A);
+      expect(r.d?.reporte.imagenes).toEqual([1, 2, 3].map((p) => ({ id: r.ids[p], ruta: `u/${r.ids[p]}.png` })));
+      expect(r.dSin?.reporte).toMatchObject({ organizacionId: A, imagenes: [] });
     });
   });
 });

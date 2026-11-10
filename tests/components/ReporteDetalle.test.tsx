@@ -38,6 +38,7 @@ function reporte(extra: Partial<ReporteDetalleDTO> = {}): ReporteDetalleDTO {
     appInstalada: true,
     creadoEn: "2026-11-09T14:05:33.000Z",
     estado: "new",
+    imagenes: [],
     destinosPermitidos: ["in_review", "resolved", "dismissed"],
     ...extra,
   };

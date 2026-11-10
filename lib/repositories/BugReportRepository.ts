@@ -21,6 +21,8 @@ export type BugReportPrismaClient = Pick<PrismaClient, "$transaction">;
 
 // SLT-87 (design §2.3, §6; R11, R13, R14) — el único punto que escribe `bug_report`.
 // SLT-97 (design §5; R13–R15, R17, R18, R21, R23) — y el único que lo lee y escribe su historial.
+// SLT-98 (design §2.4, §7; R13, R18, R22) — y el único que escribe y lee `bug_report_image`: solo la
+// crea con su reporte, en la misma transacción; aquí no hay ningún `update` ni `delete` de imágenes.
 //
 // Corre en `comoPlataforma`, como dueño: `servi_app` no tiene ningún privilegio sobre las dos tablas, y
 // en contexto de empresa la extensión envolvería también estos modelos de plataforma y los bajaría a
@@ -35,9 +37,9 @@ export type BugReportPrismaClient = Pick<PrismaClient, "$transaction">;
 
 const FICHA = "SL-17";
 const MOTIVO =
-  "SLT-87: guardar un reporte de problema en `bug_report`, tabla de plataforma que la empresa no puede leer ni escribir; la empresa sale de la sesión, no del cliente (R13, R14)";
+  "SLT-87/SLT-98: guardar un reporte de problema y sus imágenes en `bug_report` y `bug_report_image`, tablas de plataforma que la empresa no puede leer ni escribir; la empresa sale de la sesión, no del cliente (R13, R14)";
 const MOTIVO_LEER =
-  "SLT-97: el superadmin lee los reportes de problema de todas las empresas en `bug_report` y su historial, tablas de plataforma (R3)";
+  "SLT-97/SLT-98: el superadmin lee los reportes de problema de todas las empresas en `bug_report`, su historial y sus imágenes, tablas de plataforma (R3)";
 const MOTIVO_ESTADO =
   "SLT-97: el superadmin cambia el estado de un reporte de problema y deja su entrada en `bug_report_status_change`, tablas de plataforma (R3, R21)";
 
@@ -77,7 +79,7 @@ function permite(actual: BugReportStatus, destino: BugReportStatus): boolean {
 export class BugReportRepository implements IBugReportRepository {
   constructor(private readonly prisma: BugReportPrismaClient) {}
 
-  crear(datos: NuevoBugReport): Promise<BugReportCreado | null> {
+  crear({ imagenes, ...datos }: NuevoBugReport): Promise<BugReportCreado | null> {
     return comoPlataforma(FICHA, MOTIVO, () =>
       this.prisma.$transaction(async (tx) => {
         const usuario = await tx.usuario.findFirst({
@@ -95,6 +97,10 @@ export class BugReportRepository implements IBugReportRepository {
           data: { ...datos, reporterName: nombreCompletoUsuario(usuario).slice(0, NOMBRE_MAX) },
           select: { id: true, createdAt: true, reporterName: true },
         });
+        // SLT-98 (R13): en la misma transacción; un CHECK o un UNIQUE que falle deshace también el reporte.
+        if (imagenes.length > 0) {
+          await tx.bugReportImage.createMany({ data: imagenes.map((i) => ({ ...i, bugReportId: fila.id })) });
+        }
         return {
           id: fila.id,
           createdAt: fila.createdAt,
@@ -170,6 +176,12 @@ export class BugReportRepository implements IBugReportRepository {
           where: { bugReportId: r.id },
           orderBy: ORDEN_HISTORIAL,
         });
+        // SLT-98 (R22): en orden de adjunto. El `UNIQUE (bug_report_id, position)` es el índice.
+        const imagenes = await tx.bugReportImage.findMany({
+          where: { bugReportId: r.id },
+          orderBy: { position: "asc" },
+          select: { id: true, storagePath: true },
+        });
         return {
           reporte: {
             id: r.id,
@@ -187,6 +199,8 @@ export class BugReportRepository implements IBugReportRepository {
             appInstalada: r.isStandalone,
             creadoEn: r.createdAt.toISOString(),
             estado: r.status,
+            organizacionId: r.organizationId,
+            imagenes: imagenes.map((i) => ({ id: i.id, ruta: i.storagePath })),
           },
           historial: historial.map((h) => ({
             id: h.id,

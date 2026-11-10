@@ -5,7 +5,7 @@ import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugRep
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { EnviarReporteBugServiceResult, IReporteBugService } from "@/lib/interfaces/services/IReporteBugService";
 import { plantillaReporteBug } from "@/lib/services/email/plantillas/reporte-bug";
-import type { EntornoDelReporte, EnviarReporteBugInput } from "@/lib/types/reporte-bug";
+import type { EntornoDelReporte, EnviarReporteBugDatos } from "@/lib/types/reporte-bug";
 
 // SLT-87 (design §5; R11, R13, R15–R17) — enviar un reporte de problema.
 //
@@ -30,7 +30,7 @@ export class ReporteBugService implements IReporteBugService {
 
   async enviar(
     actor: Actor,
-    entrada: EnviarReporteBugInput,
+    entrada: EnviarReporteBugDatos,
     entorno: EntornoDelReporte,
   ): Promise<EnviarReporteBugServiceResult> {
     const organizacionId = actor.organizacionId ?? null;
@@ -46,6 +46,8 @@ export class ReporteBugService implements IReporteBugService {
       viewportWidth: entrada.ventana?.ancho ?? null,
       viewportHeight: entrada.ventana?.alto ?? null,
       isStandalone: entrada.appInstalada ?? null,
+      // SLT-98: las imágenes las valida y las pasa T7 (design §5.2); hasta entonces, ninguna.
+      imagenes: [],
     });
     if (creado === null) return FORBIDDEN;
 

@@ -4,18 +4,19 @@ import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmai
 import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugReportRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { ReporteBugService } from "@/lib/services/ReporteBugService";
-import type { BugReportCreado, EnviarReporteBugInput, NuevoBugReport } from "@/lib/types/reporte-bug";
+import type { BugReportCreado, EnviarReporteBugDatos, NuevoBugReport } from "@/lib/types/reporte-bug";
 
 // SLT-87 (design §5; R11, R15, R16, R17) — el servicio con dobles: un repositorio en memoria que anota
 // lo que guarda y un emisor que anota lo que manda. El SQL se prueba en
 // `tests/integration/db/bug-report.test.ts`.
 
 const ACTOR: Actor = { usuarioId: "u-1", rol: "mensajero", organizacionId: "org-1" };
-const ENTRADA: EnviarReporteBugInput = {
+const ENTRADA: EnviarReporteBugDatos = {
   descripcion: "No carga el mapa",
   pagina: "/mis-asignaciones",
   ventana: { ancho: 390, alto: 844 },
   appInstalada: true,
+  imagenes: [],
 };
 const ENTORNO = { userAgent: "Mozilla/5.0 (Android)" };
 
@@ -113,13 +114,15 @@ describe("SLT-87 · ReporteBugService.enviar", () => {
         viewportWidth: 390,
         viewportHeight: 844,
         isStandalone: true,
+        // SLT-98 (R13): sin imágenes en la entrada, ninguna fila de imagen.
+        imagenes: [],
       },
     ]);
   });
 
   it("R13 — sin ventana ni modo, guarda nulos", async () => {
     const d = doble();
-    await d.servicio.enviar(ACTOR, { descripcion: "x", pagina: "/" }, ENTORNO);
+    await d.servicio.enviar(ACTOR, { descripcion: "x", pagina: "/", imagenes: [] }, ENTORNO);
     expect(d.guardados[0]).toMatchObject({ viewportWidth: null, viewportHeight: null, isStandalone: null });
   });
 

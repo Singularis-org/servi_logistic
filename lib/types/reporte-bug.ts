@@ -1,7 +1,13 @@
 import type { BugReportStatus, RolValue } from "@prisma/client";
 import { z } from "zod";
 
-import { DESCRIPCION_MAX } from "@/lib/config/reporte-bug";
+import {
+  DESCRIPCION_MAX,
+  IMAGEN_BYTES_MAX,
+  IMAGENES_MAX,
+  TIPOS_IMAGEN,
+  type TipoImagenReporte,
+} from "@/lib/config/reporte-bug";
 
 // SLT-87 (design §4) — el contrato del envío de un reporte de problema y los datos que cruzan las capas.
 
@@ -15,6 +21,17 @@ export const PAGINA_MAX = 2048;
 export const VENTANA_LADO_MAX = 20 * 1000;
 
 const ladoDeVentana = z.number().int().min(1).max(VENTANA_LADO_MAX);
+
+/**
+ * SLT-98 (design §5.2; R12). Las imágenes ya subidas que acompañan el envío, en el orden en que se
+ * adjuntaron. El id es el `imagenId` que dio el servidor al preparar la subida; la ruta la reconstruye el
+ * servidor con la sesión, nunca la manda el cliente. Sin el campo, es un reporte sin imágenes (SLT-87).
+ */
+const imagenesDelEnvio = z
+  .array(z.object({ id: z.string().uuid(), tipo: z.enum(TIPOS_IMAGEN) }).strict())
+  .max(IMAGENES_MAX)
+  .default([])
+  .refine((xs) => new Set(xs.map((x) => x.id)).size === xs.length, "Imagen repetida.");
 
 /**
  * R12. `strict` en los dos niveles: un campo de más (`usuarioId`, `organizacionId`, `rol`…) es un
@@ -38,10 +55,35 @@ export const enviarReporteBugSchema = z
       .refine((p) => !p.includes("?") && !p.includes("#"), "La página no puede llevar query ni fragmento."),
     ventana: z.object({ ancho: ladoDeVentana, alto: ladoDeVentana }).strict().optional(),
     appInstalada: z.boolean().optional(),
+    imagenes: imagenesDelEnvio,
   })
   .strict();
 
-export type EnviarReporteBugInput = z.infer<typeof enviarReporteBugSchema>;
+/**
+ * SLT-98: lo que manda el cliente (`imagenes` puede faltar) y lo que recibe el servicio tras el zod
+ * (`imagenes` ya es `[]` si faltaba). Hasta SLT-97 eran el mismo tipo; el `.default([])` los separa.
+ */
+export type EnviarReporteBugInput = z.input<typeof enviarReporteBugSchema>;
+export type EnviarReporteBugDatos = z.output<typeof enviarReporteBugSchema>;
+
+/**
+ * SLT-98 (design §4.1; R9). Pedir los permisos de subida de un envío. El tamaño declarado sirve para
+ * cortar pronto; la red de verdad es el `fileSizeLimit` del bucket y la lectura del envío (R10).
+ */
+export const prepararSubidasImagenesSchema = z
+  .object({
+    imagenes: z
+      .array(
+        z
+          .object({ tipo: z.enum(TIPOS_IMAGEN), tamano: z.number().int().min(1).max(IMAGEN_BYTES_MAX) })
+          .strict(),
+      )
+      .min(1)
+      .max(IMAGENES_MAX),
+  })
+  .strict();
+
+export type PrepararSubidasImagenesInput = z.infer<typeof prepararSubidasImagenesSchema>;
 
 /** Lo que el servidor añade a la entrada, de la petición y no del cliente (R13). */
 export interface EntornoDelReporte {
@@ -59,6 +101,19 @@ export interface NuevoBugReport {
   viewportWidth: number | null;
   viewportHeight: number | null;
   isStandalone: boolean | null;
+  /** SLT-98 (R13): en el orden en que se adjuntaron; `[]` si no trae. Se guardan con el reporte o nada. */
+  imagenes: NuevaImagen[];
+}
+
+/** SLT-98 (design §6; R13): una fila de `bug_report_image`. El tamaño es el que midió el servidor. */
+export interface NuevaImagen {
+  id: string;
+  /** 1..`IMAGENES_MAX`. */
+  position: number;
+  /** `<usuario_id>/<imagen_id>.<ext>`, relativa a la carpeta de la empresa en el bucket. */
+  storagePath: string;
+  contentType: TipoImagenReporte;
+  sizeBytes: number;
 }
 
 /** El reporte recién guardado, plano, con lo que pinta el correo (design §6). */
@@ -193,11 +248,25 @@ export interface ReporteDetalleDatos {
   appInstalada: boolean | null;
   creadoEn: string;
   estado: BugReportStatus;
+  /** SLT-98 (design §7): la empresa del reporte, para firmar sus imágenes. No cruza al navegador. */
+  organizacionId: string;
+  /** SLT-98 (R22): en orden de `position`; la ruta es relativa a la carpeta de la empresa. */
+  imagenes: { id: string; ruta: string }[];
 }
 
-/** R14, R17: `destinosPermitidos` es `TRANSICIONES_REPORTE[estado]`, calculado en el servidor. */
-export interface ReporteDetalleDTO extends ReporteDetalleDatos {
+/** SLT-98 (R22, R23): `url` es un enlace firmado temporal, o `null` si no se pudo generar. */
+export interface ImagenDelReporteDTO {
+  id: string;
+  url: string | null;
+}
+
+/**
+ * R14, R17: `destinosPermitidos` es `TRANSICIONES_REPORTE[estado]`, calculado en el servidor.
+ * SLT-98 (design §6): la ruta de cada imagen y el id de la empresa no cruzan al navegador.
+ */
+export interface ReporteDetalleDTO extends Omit<ReporteDetalleDatos, "organizacionId" | "imagenes"> {
   destinosPermitidos: BugReportStatus[];
+  imagenes: ImagenDelReporteDTO[];
 }
 
 /** R21, R22. Una entrada del historial; `nota` `null` es «sin nota». */

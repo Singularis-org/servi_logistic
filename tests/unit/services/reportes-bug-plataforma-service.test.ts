@@ -49,6 +49,8 @@ function detalleEn(estado: BugReportStatus): DetalleDeReporte {
       appInstalada: true,
       creadoEn: "2026-11-09T14:05:00.000Z",
       estado,
+      organizacionId: "org-1",
+      imagenes: [],
     },
     historial: [],
   };

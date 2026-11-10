@@ -49,7 +49,7 @@
 
 ## Bloque C — Servidor
 
-- [ ] **T6. Contratos y repositorio** (dep. T2, T3; R12, R13, R19, R22).
+- [x] **T6. Contratos y repositorio** (dep. T2, T3; R12, R13, R19, R22).
   - **Archivos:**
     - en `lib/types/reporte-bug.ts`: `prepararSubidasImagenesSchema`, el campo `imagenes` de
       `enviarReporteBugSchema`, `NuevaImagen` y los cambios de `NuevoBugReport`, `ReporteDetalleDatos` y

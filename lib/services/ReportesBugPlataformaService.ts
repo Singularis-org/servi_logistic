@@ -69,9 +69,15 @@ export class ReportesBugPlataformaService implements IReportesBugPlataformaServi
     if (!esPlataforma(actor.rol)) return FORBIDDEN;
     const d = await this.repo.detalle(reporteId);
     if (d === null) return { status: "not_found" };
+    // SLT-98: la ruta y la empresa no cruzan al navegador. La firma de las imágenes llega con T8.
+    const { organizacionId: _empresa, imagenes, ...reporte } = d.reporte;
     return {
       status: "ok",
-      reporte: { ...d.reporte, destinosPermitidos: [...TRANSICIONES_REPORTE[d.reporte.estado]] },
+      reporte: {
+        ...reporte,
+        destinosPermitidos: [...TRANSICIONES_REPORTE[reporte.estado]],
+        imagenes: imagenes.map((i) => ({ id: i.id, url: null })),
+      },
       historial: d.historial,
     };
   }
