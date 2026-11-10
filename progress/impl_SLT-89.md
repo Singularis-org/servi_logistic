@@ -674,3 +674,39 @@ catálogo (25 archivos) → `275 passed`.
 
 Mapa: R22 → `TarifasGrupos.test.tsx` (también sin árbol), `tarifas-referencia.test.ts` y `grupo-nodo.test.ts`
 (el padre que manda el servidor).
+
+## Review vuelta 1: m1–m4 (2026-11-10)
+
+`progress/review_SLT-89.md`; decisiones del humano D1–D3 en `requirements.md` (commit `b5daf355`). T9.2 sin
+marcar: la cierra el gate de CI.
+
+- **m1** (`d0c7cb63`): en el selector, la casilla lleva `aria-describedby` hacia el texto de estado de su
+  fila: «hereda de…», «Excepción · va a…» o «En <zona>». Lo elegido y lo libre no llevan descripción.
+  Caso nuevo en `geografia-selector-n-niveles.test.tsx`.
+- **m2** (`e11c3728`): `GrupoDistritosRepository.crear` y `fijarDistritos` toman la fila de la zona en
+  `FOR SHARE` (antes del `FOR UPDATE` del grupo: el mismo orden zona → grupo que el guardado de zona, para
+  que no se esperen en cruz). Después vuelven a mirar, con el catálogo leído en la transacción, los
+  miembros que van a `grupo_distritos_nodo`. Si alguno ya no está cubierto, no escriben nada
+  (`{ status: "no_cubierto", ids }` / `{ noCubiertos }`), y el service responde el `validation_error` de
+  hoy («X no pertenece a la zona.»). Sin miembros heredados no se carga el catálogo (R38). Test nuevo en
+  `grupo-nodo.test.ts`: un repositorio que «vio» la cobertura antes de que otro guardado la quitara; crear
+  y fijar dan el error, sin grupo nuevo, sin cambio de miembros y sin historial.
+- **m3** (`e1269be9`): el `FOR UPDATE` de `ZonaRepository.update` filtra por
+  `organizacion_id = current_setting('app.organizacion_id', true)`. Con eso la guardia
+  `sql-a-mano-por-empresa` pidió quitar `ZonaRepository.ts` de `EXCEPCIONES_SQL_A_MANO` («la lista solo
+  baja»): se quitó la entrada y la guardia no se tocó.
+- **m4** (`1d669894`): deuda D47 en `progress/deudas.md`; el `@sin-superficie` la cita.
+- Aserciones existentes cambiadas: ninguna.
+
+Verificación (`logistic_slt89`, `--maxWorkers=1`, heap de 8 GB): `typecheck` exit 0; eslint en lo tocado
+sin errores (1 aviso previo: `normalizeName` sin usar en `ZonaRepository`). Integración `zona-*`,
+`grupo-*`, `tarifa*`, `slt89-equivalencia-cr`, `zonas-action`, `tarifas-action` y contrato v1 (modo
+comparar), 40 archivos → `Test Files 1 failed | 39 passed (40) · Tests 504 passed | 9 skipped`; el rojo es
+`tarifa-zona-borrado-fk-real`, de `tests/baseline-rojos.json`. Selector (3 archivos) → `30 passed`.
+`grupo-nodo` + `grupo-distritos-service` + `zona-repository` → `111 passed`. Guardias de SQL, superficie,
+zonas, grupos, geografía, historial, catálogo, tarifas y etiquetas, más `zona-service`, `TarifasGrupos` y
+`ZonaGuardadoConfirmacion` (36 archivos): `581 passed`; el único rojo fue `sql-a-mano-por-empresa`, que
+pedía retirar la excepción de m3. Tras retirarla, las guardias de SQL, RLS y aislamiento → `3 passed (3) ·
+64 passed`. No hay guardia de `progress/deudas.md` en el repo.
+
+Mapa: R18 suma `grupo-nodo.test.ts` (m2); R24 suma el caso de m1.
