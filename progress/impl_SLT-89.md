@@ -264,3 +264,21 @@ WHERE n.nspname = 'public'`, como `454/orden-evento-migration.test.ts`. Guardia 
 
 Las tres guardias + `catalogo-geografico-sin-instancia-de-modulo` + `zona-nodo-herencia` +
 `geo-lecturas-catalogo` → `Test Files 6 passed (6) · Tests 67 passed (67)`.
+
+### T2.5 — cerrada tras la decisión humana del 2026-11-10 («Aceptar 4»)
+
+Decisión en `requirements.md > Decisiones cerradas` (commit `2caf5ee9`). Único cambio de aserción:
+`tests/integration/db/tarifas-flexibles-resolver.test.ts`, los dos casos «numero fijo de consultas por
+lote (R39)» (cobro y pago): `3 → 4` en `uno` y `cincuenta`, con un comentario que cita la decisión, y el
+«(3)» de sus dos títulos pasa a «(4)» para que el nombre no contradiga lo que afirma. Nada más del
+archivo.
+
+Verificación en `logistic_slt89`, `--maxWorkers=1`:
+- Resolver y cierres (12 archivos de integración, `tarifas-flexibles-resolver` incluido) →
+  `Test Files 12 passed (12) · Tests 142 passed (142)`.
+- Unitarios del resolver (65 archivos) → `Test Files 65 passed (65) · Tests 1497 passed (1497)`.
+- Contrato v1 (modo comparar) → `Test Files 1 passed (1) · Tests 22 passed (22)`.
+- Guardias, lote 02 (79 archivos) → `Test Files 79 passed (79) · Tests 1335 passed (1335)`.
+- Guardias, lote 03 (80 archivos) → `Test Files 80 passed (80) · Tests 1115 passed | 1 skipped (1116)`.
+  Con los lotes 00 (84/84) y 01 (solo `dependencias-declaradas-presentes`, rojo aceptado) de la pasada
+  anterior, las 320 guardias quedan verdes salvo esa.

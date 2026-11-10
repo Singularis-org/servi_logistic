@@ -700,7 +700,7 @@ describeSiHayBase("SLT-52 resolver · numero fijo de consultas por lote (R39)", 
     return eventos.length - antes;
   }
 
-  it("cobro: un lote de 1 y uno de 50 ordenes cuestan las mismas consultas (3)", async () => {
+  it("cobro: un lote de 1 y uno de 50 ordenes cuestan las mismas consultas (4)", async () => {
     await conEscenario(async (tx, e) => {
       const distritos = [e.d1, e.d2, e.d3, null];
       const pares50: ParTarifa[] = Array.from({ length: 50 }, (_, i) => ({
@@ -714,13 +714,15 @@ describeSiHayBase("SLT-52 resolver · numero fijo de consultas por lote (R39)", 
       const cincuenta = await comoEmpresa(tx, e.A, () =>
         contarConsultas(() => resolverCobrosCon(tx, pares50)),
       );
-      // interruptor + grupos + valores
-      expect(uno).toBe(3);
-      expect(cincuenta).toBe(3);
+      // interruptor + grupos + miembros sobre el nodo + valores
+      // SLT-89 (decision humana del 2026-11-10, requirements.md > Decisiones cerradas): 3 -> 4, la
+      // consulta a `grupo_distritos_nodo` (design §4.3). Sigue fijo: no crece con el lote.
+      expect(uno).toBe(4);
+      expect(cincuenta).toBe(4);
     });
   });
 
-  it("pago: un lote de 1 y uno de 50 gestiones cuestan las mismas consultas (3)", async () => {
+  it("pago: un lote de 1 y uno de 50 gestiones cuestan las mismas consultas (4)", async () => {
     await conEscenario(async (tx, e) => {
       const resultados: GestionResultado[] = ["entregado", "reprogramado", "novedad", "incidente"];
       const ctxs = Array.from({ length: 50 }, (_, i) =>
@@ -738,8 +740,10 @@ describeSiHayBase("SLT-52 resolver · numero fijo de consultas por lote (R39)", 
       const cincuenta = await comoEmpresa(tx, e.A, () =>
         contarConsultas(() => resolverPagosCon(tx, ctxs)),
       );
-      expect(uno).toBe(3);
-      expect(cincuenta).toBe(3);
+      // SLT-89 (decision humana del 2026-11-10, requirements.md > Decisiones cerradas): 3 -> 4, la
+      // consulta a `grupo_distritos_nodo` (design §4.3). Sigue fijo: no crece con el lote.
+      expect(uno).toBe(4);
+      expect(cincuenta).toBe(4);
     });
   });
 });

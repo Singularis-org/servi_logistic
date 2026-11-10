@@ -97,7 +97,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [x] **T2.4** [P] `GeoRepository.arbolDeZonas`, `GeografiaService.listarArbolDeZonas` (solo
   `maestro`), action `listarArbolDeZonas`, DTO en `lib/types/geografia-nodo.ts` (§4.2), con
   `tests/unit/services/geografia-service.test.ts` (rol → `forbidden` con doble que falla). (R24, R36)
-- [ ] **T2.5** Resolver: `gruposDeDistritos` con la segunda consulta y la subida por el catálogo
+- [x] **T2.5** Resolver: `gruposDeDistritos` con la segunda consulta y la subida por el catálogo
   solo cuando hay miembros nuevos (§4.3); delegados de `ClienteCobros`/`ClientePagos`. (R19, R20)
   *Hecho:* suites existentes del resolver y de cierres sin cambiar aserciones.
 
