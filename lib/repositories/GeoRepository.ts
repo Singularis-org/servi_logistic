@@ -72,6 +72,7 @@ type GeoPrismaClient = Pick<
   | "nodoGeografico"
   | "tipoNivelGeografico"
   | "zonaDistrito"
+  | "zonaNodo" // SLT-89: el cargador del catalogo lee tambien `zona_nodo`
   | "organizacion"
 > &
   ClienteDeMarcas;

@@ -25,6 +25,7 @@ vi.mock("@/lib/db/prisma-client", async (original) => {
     activo: true,
   });
   const prisma = {
+    zonaNodo: { findMany: async () => [] }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: { findMany: async () => [] },
     organizacion: { findFirst: async () => ({ paisId: "CR" }) },
     tipoNivelGeografico: { findMany: async () => [] },

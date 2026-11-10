@@ -39,6 +39,7 @@ function prismaConDistrito(zonas: { id: string; nombre: string }[]) {
         nodo("d1", "Distrito Sintetico", 3, "c1"),
       ]),
     },
+    zonaNodo: { findMany: vi.fn().mockResolvedValue([]) }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: {
       findMany: vi
         .fn()

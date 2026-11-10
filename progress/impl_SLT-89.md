@@ -148,3 +148,29 @@ miembros, lugarId)` (miembro más cercano: el lugar y sus ancestros; `null` sin 
 `mismoConjunto(a, b)` (sin orden ni repetidos). Casos en `tests/unit/services/geografia-dominio.test.ts`
 (11 nuevos). `geografia-dominio.test.ts` + guardia `geografia-dominio-puro` → `Test Files 2 passed (2)
 · Tests 47 passed (47)`.
+
+### T2.2 — el cargador del catálogo lee `zona_nodo` (R6, R9)
+
+`CatalogoGeograficoRepository.leerDeLaEmpresa`: una consulta más en la misma foto y en serie
+(`tx.zonaNodo.findMany`, `orderBy id`), concatenada DESPUÉS de las de `zona_distrito` (§4.1).
+`TxDeCarga` gana `"zonaNodo"`; `GeoRepository`, `OrdenRepository`, `CoberturaRepository` y
+`ZonaRepository` ganan el delegado en su `Pick` (el resto usa `CatalogoPrismaClient` y lo hereda).
+
+Dobles de Prisma que simulan la carga del catálogo: ganan `zonaNodo: { findMany → [] }` junto a su
+`zonaDistrito` (cambio de ENTRADA, ninguna aserción tocada; sin él la carga lanza `TypeError` sobre
+`undefined.findMany`). Archivos: `tests/fixtures/doble-catalogo-geografico.ts`,
+`tests/unit/analytics/_catalogo-facetas.ts`, `tests/unit/whatsapp-envios/informe-transito-composicion.test.ts`,
+`tests/unit/actions/{corregir-datos-cliente,cobertura,geografia}.composition-root.test.ts`,
+`tests/unit/repositories/{orden-repository.bulk,catalogo-filtros-ordenes,geo-repository-arbol-zonas}.test.ts`.
+Comprobado: sin el cambio del cargador esos 18 archivos daban 319/319; con el cargador y sin el
+delegado, 50 rojos (todos `zonaNodo` undefined); con los dos, los 42 archivos que usan dobles del
+catálogo → `Test Files 42 passed (42) · Tests 865 passed (865)`.
+
+Integración en `logistic_slt89` sin cambiar aserciones:
+- `geo-lecturas-catalogo`, `geo-catalogo-repository`, `geo-consultas-{zona,ordenes,cierre,conteo}`,
+  `geo-equivalencia{,-consultas,-dinero,-analitica,-geografia}`, `geo-lecturas-sin-backfill`,
+  `geo-65-fixture`, `geo-71-fixture`, `slt46-equivalencia-geografia`, `geo-sincronia-orden-zonas`,
+  `zona-reconciliacion-ordenes`, `contrato-v1.route` (modo comparar), `cobertura-repository`.
+- Resultado: todo verde salvo `cobertura-repository` › «la marca sigue en el Excel tras activar»: está
+  en `tests/baseline-rojos.json` y da el MISMO rojo con el cargador de `HEAD` (comprobado volviendo el
+  archivo a `HEAD`): deuda heredada, no de SLT-89.

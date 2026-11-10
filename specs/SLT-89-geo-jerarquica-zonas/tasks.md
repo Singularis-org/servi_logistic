@@ -85,7 +85,7 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [x] **T2.1** `geografia-dominio.ts`: `conAsignacionesDeZona` (asignaciones propuestas),
   `grupoDelLugar` (miembro más cercano) y `mismoConjunto` (comparación del «antes», design §5.4), puros, con casos en
   `tests/unit/services/geografia-dominio.test.ts`. (R14, R19)
-- [ ] **T2.2** `CatalogoGeograficoRepository`: la consulta a `zona_nodo` en la misma foto (§4.1);
+- [x] **T2.2** `CatalogoGeograficoRepository`: la consulta a `zona_nodo` en la misma foto (§4.1);
   `Pick` de los repositorios que construyen el cargador (`GeoRepository`, `OrdenRepository`,
   `CoberturaRepository`, `ZonaRepository`). (R6, R9)
   *Hecho:* `tests/integration/db/geo-lecturas-catalogo.test.ts` y las suites de SLT-44/65 sin cambiar

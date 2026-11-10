@@ -59,6 +59,7 @@ type ZonaPrismaClient = Pick<
   PrismaClient,
   | "zona"
   | "zonaDistrito"
+  | "zonaNodo" // SLT-89: el cargador del catalogo lee tambien `zona_nodo`
   | "tarifaZonaMensajero"
   | "distrito"
   | "vehiculo"

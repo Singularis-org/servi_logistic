@@ -30,7 +30,10 @@ import {
 const CLAVE_SESION = "sesion";
 
 /** Lo que la transaccion de la carga usa del cliente. Las marcas, por su tipo del punto unico. */
-type TxDeCarga = Pick<PrismaClient, "zonaDistrito" | "organizacion" | "tipoNivelGeografico" | "nodoGeografico"> &
+type TxDeCarga = Pick<
+  PrismaClient,
+  "zonaDistrito" | "zonaNodo" | "organizacion" | "tipoNivelGeografico" | "nodoGeografico"
+> &
   ClienteDeMarcas;
 
 /**
@@ -104,8 +107,18 @@ async function leerDeLaEmpresa(tx: TxDeCarga, organizacionId: string | null): Pr
   if (organizacion === null) throw new EmpresaNoResuelta("Organizacion", "findFirst");
   const catalogo = await leerCatalogo(tx, organizacion.paisId);
   const marcas = await leerNodosConMarcaDeLaEmpresa(tx);
+  // SLT-89 (design §4.1, R9): las asignaciones a nodos que no son distritos, en la misma foto y en
+  // serie. Van DESPUES de las de `zona_distrito`: con `zona_nodo` vacia (Costa Rica el dia del
+  // deploy) las asignaciones son identicas a las de antes (R38).
+  const filasDeNodo = await tx.zonaNodo.findMany({
+    select: { nodoGeograficoId: true, zona: { select: { id: true, nombre: true, esCentral: true } } },
+    orderBy: { id: "asc" },
+  });
   const asignaciones = crearAsignaciones(
-    filasDeZona.map((f) => ({ nodoId: f.distritoId, zona: f.zona })),
+    [
+      ...filasDeZona.map((f) => ({ nodoId: f.distritoId, zona: f.zona })),
+      ...filasDeNodo.map((f) => ({ nodoId: f.nodoGeograficoId, zona: f.zona })),
+    ],
     marcas,
   );
   return { catalogo, asignaciones };
