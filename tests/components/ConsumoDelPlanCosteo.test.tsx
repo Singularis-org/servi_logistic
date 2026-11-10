@@ -98,13 +98,13 @@ describe("SLT-66 R20 — las situaciones de la base", () => {
   });
 
   // Ajuste planes-custom (D1): «negociable» ya no es una forma del costo base.
-  it.each([["sin precio", { tipo: "sin_precio" } as PrecioPlan]])("base %s: «Costo base mensual: por definir», costo, y ni subtotal ni total", (_caso, precio) => {
+  // SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base se trata como costo base 0.
+  it.each([["sin precio", { tipo: "sin_precio" } as PrecioPlan]])("base %s: cuesta como base 0 («Costo base mensual: 0.00»), ya no «por definir»", (_caso, precio) => {
     pintar(leido(version(precio, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
     const b = bloque();
-    expect(within(b).getByText("Costo base mensual: por definir")).toBeInTheDocument();
+    expect(within(b).getByText("Costo base mensual: 0.00")).toBeInTheDocument();
     expect(within(b).getByText("Costo por orden: 100.00")).toBeInTheDocument();
-    expect(screen.queryByText(/^Órdenes del período: /)).toBeNull();
-    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
+    expect(screen.queryByText(/por definir/)).toBeNull();
   });
 });
 

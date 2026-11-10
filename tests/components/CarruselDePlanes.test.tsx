@@ -100,6 +100,24 @@ describe("R5 — una tarjeta por plan disponible y al final «Plan a la medida»
   });
 });
 
+describe("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29) — un plan sin costos en el carrusel", () => {
+  it("sin costo base ni costo por orden: «Sin cuota» y «Costo por orden: Tarifa global»", () => {
+    const sinCostos: PlanVista = { ...BASICO, id: "sin-costos", nombre: "Sin costos", precio: { tipo: "sin_precio" }, costoPorOrden: null };
+    render(<Montaje planes={[BASICO, sinCostos]} />);
+
+    const card = within(tarjeta("Sin costos"));
+    expect(card.getByText("Uso de la plataforma").nextSibling).toHaveTextContent("Sin cuota");
+    expect(card.getByText("Costo por orden").nextSibling).toHaveTextContent("Tarifa global");
+    expect(card.getByText("Sin cuota · solo pagas el costo por orden")).toBeInTheDocument();
+  });
+
+  it("con costo base y sin costo por orden: el monto y «Tarifa global»", () => {
+    render(<Montaje planes={[{ ...BASICO, costoPorOrden: null }]} />);
+    expect(within(tarjeta("Básico")).getByText("Costo por orden").nextSibling).toHaveTextContent("Tarifa global");
+    expect(within(tarjeta("Básico")).getByText("Uso de la plataforma").nextSibling).toHaveTextContent("12000.00 / mes");
+  });
+});
+
 describe("R6 — «Mensual» / «Anual» y la insignia", () => {
   it("entra en «Mensual»: el costo mensual y ninguna insignia", () => {
     render(<Montaje planes={[BASICO, CRECE]} />);

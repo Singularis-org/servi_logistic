@@ -277,9 +277,10 @@ describe("Ajuste planes-custom D9, SLT-86 R27 — «Mi plan» muestra el tipo, e
     expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base anual: 519287.67");
   });
 
-  it("sin costo base: «Costo base mensual: por definir» en el costo del período", () => {
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base cuesta como base 0, ya no «por definir»", () => {
     const sinPrecio = { ...VIGENTE, precio: { tipo: "sin_precio" } as const };
     render(<MiPlanModule plan={plan({ vigente: sinPrecio, precioDelPeriodo: sinPrecio.precio })} planes={planesDeMiPlan()} />);
-    expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base mensual: por definir");
+    expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base mensual: 0.00");
+    expect(screen.queryByText(/por definir/)).toBeNull();
   });
 });

@@ -153,15 +153,15 @@ describe("SLT-86 R28 — el total del período", () => {
     expect(within(b).getByText("Total del período hasta hoy: 6200.00 + 800.00 = 7000.00")).toBeInTheDocument();
   });
 
-  it("R28: sin costo base, «por definir» y ningún total", () => {
+  it("R28 y SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base cuesta como base 0, ya no «por definir»", () => {
     const sinPrecio: PrecioPlan = { tipo: "sin_precio" };
     pintar(
       leido("mensual", "2026-01-15", { vigente: { ...VIGENTE, precio: sinPrecio }, precioDelPeriodo: sinPrecio }),
       mediodia("2026-03-10"),
     );
 
-    expect(within(costo()).getByText("Costo base mensual: por definir")).toBeInTheDocument();
-    expect(screen.queryByText(/^Total /)).toBeNull();
+    expect(within(costo()).getByText("Costo base mensual: 0.00")).toBeInTheDocument();
+    expect(screen.queryByText(/por definir/)).toBeNull();
   });
 
   it("R15, R28: el costo sale del precio de cuando empezó el período, no del vigente", () => {

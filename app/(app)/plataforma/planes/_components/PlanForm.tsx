@@ -117,9 +117,6 @@ const RECHAZOS = {
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
-  plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
-  /** Ajuste planes-custom (D3): al crear un custom, el rechazo `plan_sin_costo` va junto a su campo. */
-  custom_sin_costo: "Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden.",
   /** Ajuste planes-custom (D3): al crear un custom, el `not_found` es la empresa elegida. */
   empresa_no_existe: "Esa empresa ya no existe.",
   generico: "No se pudo guardar. Inténtalo de nuevo.",
@@ -1081,22 +1078,13 @@ function CampoDescuento({ tipo, valor, onCambio, idDe, errorDe }: CampoDescuento
 
 /**
  * Ajuste planes-custom (D3) — al crear un custom, los rechazos de la asignación que tienen un campo
- * natural se pintan junto a él: `plan_sin_costo` en el costo que falta, `not_found` en la empresa. Sin
+ * natural se pintan junto a él: `not_found` en la empresa (SLT-99, decisión del 2026-11-10: ya no hay
+ * `plan_sin_costo`, que iba en el costo que faltaba). Sin
  * campo (`tope_excedido`, `forbidden`…), `null`: van al aviso general.
  */
 function rechazoConCampo(r: PlanResult, f: Formulario): Errores | null {
   if (f.visibilidad !== "custom") return null;
   if (r.estado === "not_found") return { organizacionId: [RECHAZOS.empresa_no_existe] };
-  if (r.estado === "plan_sin_costo") {
-    // SLT-83: en modo porcentual el porcentaje es obligatorio, así que lo que falta es la base.
-    const clave =
-      f.precio !== "monto"
-        ? "precio"
-        : f.modoCosto === "fijo" && f.costoPorOrden.trim() === ""
-          ? "costoPorOrden"
-          : null;
-    return clave === null ? null : { [clave]: [RECHAZOS.custom_sin_costo] };
-  }
   return null;
 }
 

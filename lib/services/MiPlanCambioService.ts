@@ -6,7 +6,6 @@ import type { IPlanesDelMaestroRepository, PrecioDesdeLeido } from "@/lib/interf
 import type { IMiPlanCambioService } from "@/lib/interfaces/services/IMiPlanCambioService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fechaDeEfectoPorDefecto, inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
-import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import { mensajeTopesSobran } from "@/lib/planes/mensajes";
 import { precioQueRigeEn } from "@/lib/planes/precio-que-rige";
 import {
@@ -77,9 +76,8 @@ export class MiPlanCambioService implements IMiPlanCambioService {
     if (!esMaestroConEmpresa(actor)) return FORBIDDEN;
     const empresa = await this.planes.empresaParaElMaestro(actor.organizacionId);
     if (empresa === null) throw new Error(`verPlanes: la empresa ${actor.organizacionId} de la sesión no existe`);
-    // R5: la versión programada de cada plan se mira al escribir (§3 paso 3); un plan cuya versión pierde el
-    // costo se ve aquí y se rechaza con `no_disponible` (design §4, caso raro documentado).
-    const planes = (await this.planes.publicos()).filter(tieneCostoConcreto);
+    // R5 (decisión del 2026-11-10, modifica SLT-66 R29): también los públicos sin costo concreto.
+    const planes = await this.planes.publicos();
     const custom = empresa.planEsCustom && empresa.planId !== null ? await this.planes.plan(empresa.planId) : null;
     const tipoCobro = empresa.planId === null ? null : empresa.tipoCobro;
     // R10: la misma función que usa el repositorio al escribir, con el tipo vigente.

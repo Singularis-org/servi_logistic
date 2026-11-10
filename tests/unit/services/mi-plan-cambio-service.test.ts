@@ -7,7 +7,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { esPlanDisponible } from "@/lib/planes/costo-concreto";
 import { mensajeTopesSobran } from "@/lib/planes/mensajes";
 import { MiPlanCambioService } from "@/lib/services/MiPlanCambioService";
-import type { PlanDTO, PrecioPlan, VersionPlan } from "@/lib/types/planes";
+import type { PlanDTO, PrecioPlan } from "@/lib/types/planes";
 
 // SLT-99 (design §3 paso 3, §4; R1, R2, R5, R12, R13, R16, R18) — el servicio del cambio de plan del maestro
 // con un repositorio espía, y la regla de «plan disponible» que comparten el carrusel y la escritura.
@@ -28,37 +28,27 @@ function planDTO(p: Partial<PlanDTO> = {}): PlanDTO {
   };
 }
 
-function version(p: Partial<VersionPlan> = {}): VersionPlan {
-  const { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual } = planDTO();
-  return { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual, ...p };
-}
-
-describe("R5, R12 — esPlanDisponible: público, no archivado y con costo concreto, también en su versión programada", () => {
-  it("un público con costo concreto (fijo, porcentual o «0.00») y sin versión programada está disponible", () => {
-    expect(esPlanDisponible(planDTO(), null)).toBe(true);
-    expect(esPlanDisponible(planDTO({ precio: { tipo: "monto", mensual: "0.00", descuentos: {} } }), null)).toBe(true);
-    expect(
-      esPlanDisponible(planDTO({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "2.00", minimo: null } }), null),
-    ).toBe(true);
+describe("R5, R12 — esPlanDisponible: público y no archivado (decisión del 2026-11-10, modifica SLT-66 R28–R29)", () => {
+  it("un público está disponible con costo concreto (fijo, porcentual o «0.00»)", () => {
+    expect(esPlanDisponible(planDTO())).toBe(true);
+    expect(esPlanDisponible(planDTO({ precio: { tipo: "monto", mensual: "0.00", descuentos: {} } }))).toBe(true);
+    expect(esPlanDisponible(planDTO({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "2.00", minimo: null } }))).toBe(
+      true,
+    );
   });
 
   it("archivado no está disponible", () => {
-    expect(esPlanDisponible(planDTO({ archivado: true }), null)).toBe(false);
+    expect(esPlanDisponible(planDTO({ archivado: true }))).toBe(false);
   });
 
   it("custom no está disponible, sea de la empresa o de otra", () => {
-    expect(esPlanDisponible(planDTO({ visibilidad: "custom", organizacionId: "org-a" }), null)).toBe(false);
+    expect(esPlanDisponible(planDTO({ visibilidad: "custom", organizacionId: "org-a" }))).toBe(false);
   });
 
-  it("sin precio o sin costo por orden no está disponible", () => {
-    expect(esPlanDisponible(planDTO({ precio: { tipo: "sin_precio" } }), null)).toBe(false);
-    expect(esPlanDisponible(planDTO({ costoPorOrden: null }), null)).toBe(false);
-  });
-
-  it("con una versión programada sin costo concreto no está disponible; con una concreta, sí", () => {
-    expect(esPlanDisponible(planDTO(), version({ precio: { tipo: "sin_precio" } }))).toBe(false);
-    expect(esPlanDisponible(planDTO(), version({ costoPorOrden: null }))).toBe(false);
-    expect(esPlanDisponible(planDTO(), version({ precio: { tipo: "monto", mensual: "2000.00", descuentos: {} } }))).toBe(true);
+  it("sin precio o sin costo por orden también está disponible (cuota 0 y tarifa global)", () => {
+    expect(esPlanDisponible(planDTO({ precio: { tipo: "sin_precio" } }))).toBe(true);
+    expect(esPlanDisponible(planDTO({ costoPorOrden: null }))).toBe(true);
+    expect(esPlanDisponible(planDTO({ precio: { tipo: "sin_precio" }, costoPorOrden: null }))).toBe(true);
   });
 });
 
@@ -163,7 +153,7 @@ describe("R2 — la empresa es la de la sesión y la entrada es estricta", () =>
 });
 
 describe("R5, R10, R19 — verPlanes", () => {
-  it("R5: solo los planes con costo concreto, en el orden del catálogo, sin `organizacionId` ni visibilidad", async () => {
+  it("R5: todos los públicos, también sin costo concreto (decisión del 2026-11-10), en el orden del catálogo, sin `organizacionId` ni visibilidad", async () => {
     const publicos = [
       planDTO({ id: "p1", nombre: "Uno" }),
       planDTO({ id: "p2", nombre: "Sin precio", precio: { tipo: "sin_precio" } }),
@@ -172,7 +162,7 @@ describe("R5, R10, R19 — verPlanes", () => {
     ];
     const r = await servicio(repoEspia({ publicos, empresa: empresa({ planId: "p1" }) })).verPlanes(MAESTRO);
     if (r.estado !== "ok") throw new Error(r.estado);
-    expect(r.planes.map((p) => p.id)).toEqual(["p1", "p4"]);
+    expect(r.planes.map((p) => p.id)).toEqual(["p1", "p2", "p3", "p4"]);
     expect(Object.keys(r.planes[0]).sort()).toEqual(
       ["costoPorOrden", "costoPorOrdenPorcentual", "id", "modulos", "nombre", "precio", "topes"].sort(),
     );

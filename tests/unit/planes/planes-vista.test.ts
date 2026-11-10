@@ -6,6 +6,7 @@ import {
   filasDeComparacion,
   filasDePeriodos,
   precioDeLaVista,
+  textoDelCostoPorOrdenDelPlan,
   textoDelTope,
   usoDeLasFilas,
   usuariosDelPlan,
@@ -132,6 +133,21 @@ describe("R6 (P1, P10) — el precio de la vista y la insignia", () => {
     expect(esSinCuota(precio)).toBe(true);
     expect(precioDeLaVista(precio, "mensual")).toEqual({ tipo: "sin_cuota" });
     expect(precioDeLaVista(precio, "anual")).toEqual({ tipo: "sin_cuota" });
+  });
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base se trata como 0 → «sin cuota»", () => {
+    const precio = { tipo: "sin_precio" } as const;
+    expect(esSinCuota(precio)).toBe(true);
+    expect(precioDeLaVista(precio, "mensual")).toEqual({ tipo: "sin_cuota" });
+    expect(precioDeLaVista(precio, "anual")).toEqual({ tipo: "sin_cuota" });
+    expect(filasDePeriodos(precio).map((f) => f.porPeriodo)).toEqual(["Sin cuota", "Sin cuota", "Sin cuota", "Sin cuota"]);
+  });
+
+  it("SLT-99 (decisión del 2026-11-10): sin costo por orden → «Tarifa global»; con él o porcentual, como siempre", () => {
+    expect(textoDelCostoPorOrdenDelPlan({ costoPorOrden: null, costoPorOrdenPorcentual: null })).toBe("Tarifa global");
+    expect(textoDelCostoPorOrdenDelPlan({ costoPorOrden: "100.00", costoPorOrdenPorcentual: null })).toBe("100.00 por orden");
+    expect(textoDelCostoPorOrdenDelPlan({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "3.00", minimo: null } })).toBe(
+      "3.00 % del valor del paquete",
+    );
   });
 });
 

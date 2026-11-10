@@ -33,6 +33,8 @@ export const TEXTOS_PLANES = {
   activo: "Activo",
   usoDeLaPlataforma: "Uso de la plataforma",
   costoPorOrden: "Costo por orden",
+  /** Decisión del humano del 2026-11-10: un plan sin costo por orden cobra sus órdenes con la tarifa global. */
+  tarifaGlobal: "Tarifa global",
   periodoActual: "Período actual",
   seRenuevaEl: "Se renueva el",
   usuarios: "Usuarios",
@@ -144,14 +146,16 @@ function porcentajeLegible(p: string): string {
   return p.includes(".") ? p.replace(/0+$/, "").replace(/\.$/, "") : p;
 }
 
-/** P1: un plan con costo base mensual `0.00` es «sin cuota». */
+/**
+ * P1: un plan con costo base mensual `0.00` es «sin cuota». Decisión del humano del 2026-11-10 (modifica SLT-66
+ * R28–R29): uno sin costo base («sin precio») se trata como costo base 0, así que también.
+ */
 export function esSinCuota(precio: PrecioPlan): boolean {
-  return precio.tipo === "monto" && aCentimos(precio.mensual) === CERO;
+  return precio.tipo !== "monto" || aCentimos(precio.mensual) === CERO;
 }
 
 export type PrecioDeLaVista =
   | { tipo: "sin_cuota" }
-  | { tipo: "por_definir" }
   /** `insignia`: el porcentaje de la insignia circular, solo en anual y con descuento anual. */
   | { tipo: "monto"; monto: string; insignia: string | null };
 
@@ -161,8 +165,7 @@ export type PrecioDeLaVista =
  * redondea a 0 % (P10).
  */
 export function precioDeLaVista(precio: PrecioPlan, vista: VistaDePrecio): PrecioDeLaVista {
-  if (precio.tipo !== "monto") return { tipo: "por_definir" };
-  if (esSinCuota(precio)) return { tipo: "sin_cuota" };
+  if (precio.tipo !== "monto" || esSinCuota(precio)) return { tipo: "sin_cuota" };
   const monto = montoDelPeriodo(precio, vista) ?? "0.00";
   return { tipo: "monto", monto, insignia: vista === "anual" ? insigniaAnual(precio, monto) : null };
 }
@@ -210,8 +213,7 @@ export function filasDePeriodos(precio: PrecioPlan): FilaDePeriodo[] {
   return TIPOS_COBRO.map((tipo) => {
     const periodo = TEXTOS_TIPO_COBRO.tipo[tipo];
     if (precio.tipo !== "monto" || esSinCuota(precio)) {
-      const texto = precio.tipo === "monto" ? TEXTOS_PLANES.sinCuota : TEXTOS_PLANES.sinDato;
-      return { tipo, periodo, descuento: TEXTOS_PLANES.sinDato, porPeriodo: texto, porMes: TEXTOS_PLANES.sinDato };
+      return { tipo, periodo, descuento: TEXTOS_PLANES.sinDato, porPeriodo: TEXTOS_PLANES.sinCuota, porMes: TEXTOS_PLANES.sinDato };
     }
     const porPeriodo = montoDelPeriodo(precio, tipo) ?? "0.00";
     const { num, den } = MESES[tipo];
@@ -222,16 +224,17 @@ export function filasDePeriodos(precio: PrecioPlan): FilaDePeriodo[] {
 
 /** El costo base de un período como lo pinta la comparación: «Sin cuota» con `0.00` (P1). */
 export function textoDelUsoDeLaPlataforma(precio: PrecioPlan, tipo: TipoCobro): string {
-  if (precio.tipo !== "monto") return TEXTOS_PLANES.sinDato;
-  if (esSinCuota(precio)) return TEXTOS_PLANES.sinCuota;
+  if (precio.tipo !== "monto" || esSinCuota(precio)) return TEXTOS_PLANES.sinCuota;
   return montoDelPeriodo(precio, tipo) ?? TEXTOS_PLANES.sinDato;
 }
 
-/** El costo por orden del plan: el porcentual (SLT-83) o el fijo (vacío = el global, SLT-66 R12). */
+/**
+ * El costo por orden del plan: el porcentual (SLT-83) o el fijo. Vacío, «Tarifa global» (decisión del humano del
+ * 2026-11-10): sus órdenes se cobran con la tarifa global (SLT-66 R12, fuente `global`), cuyo valor no llega aquí.
+ */
 export function textoDelCostoPorOrdenDelPlan(plan: Pick<PlanVista, "costoPorOrden" | "costoPorOrdenPorcentual">): string {
-  return plan.costoPorOrdenPorcentual === null
-    ? textoDelCostoPorOrden(plan.costoPorOrden)
-    : textoDelCostoPorOrdenPorcentual(plan.costoPorOrdenPorcentual);
+  if (plan.costoPorOrdenPorcentual !== null) return textoDelCostoPorOrdenPorcentual(plan.costoPorOrdenPorcentual);
+  return plan.costoPorOrden === null ? TEXTOS_PLANES.tarifaGlobal : textoDelCostoPorOrden(plan.costoPorOrden);
 }
 
 export interface FilaDeComparacion {

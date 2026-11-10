@@ -15,7 +15,6 @@ import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import { formatearConteo } from "@/lib/planes/consumo";
 import {
   lineasDeCambioDelPlan,
@@ -112,7 +111,6 @@ const TEXTOS = {
   empresaAsignar: "Empresa",
   empresaPlaceholder: TEXTOS_PLAN_FORM.empresaPlaceholder,
   asignarAEmpresa: "Asignar a una empresa",
-  sinCostoParaAsignar: "Para asignarlo, dale costo base mensual y costo por orden.",
   /** El mismo texto que el formulario cuando no se pudieron leer las empresas. */
   sinEmpresasCandidatas: TEXTOS_PLAN_FORM.sinEmpresas,
   // SLT-66 (design §2.3 bis; R34): la fila `desasignado` que escribe la migración.
@@ -354,11 +352,7 @@ export function PlanDetalle({
             ))}
           </ul>
         )}
-        {plan.archivado ? null : tieneCostoConcreto(plan) ? (
-          <AsignarAEmpresa planId={plan.id} empresas={empresasCandidatas} />
-        ) : (
-          <p className="text-sm text-muted-foreground">{TEXTOS.sinCostoParaAsignar}</p>
-        )}
+        {plan.archivado ? null : <AsignarAEmpresa planId={plan.id} empresas={empresasCandidatas} />}
       </Seccion>
 
       <Seccion titulo={TEXTOS.rastro}>

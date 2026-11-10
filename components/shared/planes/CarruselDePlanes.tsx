@@ -150,11 +150,7 @@ interface TarjetaDePlanProps {
 function TarjetaDePlan({ plan, vista, esActivo, seleccionado, onSeleccionar }: TarjetaDePlanProps) {
   const precio = precioDeLaVista(plan.precio, vista);
   const usoDeLaPlataforma =
-    precio.tipo === "monto"
-      ? `${precio.monto} ${TEXTOS_PLANES.sufijoVista[vista]}`
-      : precio.tipo === "sin_cuota"
-        ? TEXTOS_PLANES.sinCuota
-        : TEXTOS_PLANES.sinDato;
+    precio.tipo === "monto" ? `${precio.monto} ${TEXTOS_PLANES.sufijoVista[vista]}` : TEXTOS_PLANES.sinCuota;
   return (
     <article
       data-plan={plan.id}
@@ -183,12 +179,12 @@ function TarjetaDePlan({ plan, vista, esActivo, seleccionado, onSeleccionar }: T
 
       {precio.tipo === "sin_cuota" ? (
         <p className="text-sm font-medium">{TEXTOS_PLANES.sinCuotaTarjeta}</p>
-      ) : precio.tipo === "monto" ? (
+      ) : (
         <p className="flex items-baseline gap-1.5">
           <span className="text-2xl font-semibold tabular-nums">{precio.monto}</span>
           <span className="text-sm text-muted-foreground">{TEXTOS_PLANES.porVista[vista]}</span>
         </p>
-      ) : null}
+      )}
 
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
         <Dato termino={TEXTOS_PLANES.usoDeLaPlataforma} valor={usoDeLaPlataforma} />

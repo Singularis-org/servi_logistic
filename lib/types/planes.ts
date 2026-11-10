@@ -328,9 +328,7 @@ export type PlanResult =
   | { estado: "archivado" }
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
-  | { estado: "sin_cambio_programado" }
-  // SLT-66 R28: el plan (o su versión pendiente) no tiene costo base y costo por orden concretos.
-  | { estado: "plan_sin_costo" };
+  | { estado: "sin_cambio_programado" };
 
 /**
  * SL-24 (design §6.3, §6.5): el rechazo de un alta por el tope del plan, en el resultado de las
@@ -508,9 +506,7 @@ export type VistaPreviaAsignacionResult =
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" }
   | { estado: "archivado" }
-  | { estado: "custom_de_otra_empresa" }
-  // SLT-66 R28: la pantalla no deja confirmar lo que `asignar` rechazaría.
-  | { estado: "plan_sin_costo" };
+  | { estado: "custom_de_otra_empresa" };
 
 /* -------------------------------------------------------------------------- */
 /* SLT-99 (design §4) — «Mi plan»: el maestro ve los planes y cambia el suyo    */
