@@ -506,3 +506,144 @@ leader, `maqueta89/project/`: `Main.dc.html` editar zona con árbol de N niveles
 cualquier lugar y su modal de confirmación). Registro del leader en `progress/features/SLT-89.md`.
 
 Maqueta aprobada por el humano el 2026-11-10.
+
+Commits de la tanda: `cf715317` (T0.2 en la bitácora, antes del primer commit de T7), `3534e676` (T7.1),
+`f53bd750` (T7.2), `ec27fc72` (T7.3), `0b1a7c1d` (T8.1), `bf96765e` (T9.1) y el de esta bitácora. Sin
+sub-agentes. `3534e676` solo no compila `CrearZonaForm` (cambia la entrada del selector); compila con
+`f53bd750`.
+
+### T7.1 — selector de N niveles (R24–R27)
+
+- `GeografiaSelector` recibe `ArbolDeZonasDTO` y emite `{ distritoIds, nodoIds }` (profundidad 3 al
+  primero). Lógica pura en `zonas/_components/seleccion-de-zona.ts` (índice, reparto, `alternarNodo`
+  con R25, estado de cada nodo con la selección EN CURSO). Búsqueda con `filtrarArbolDeNodos` (ya
+  existía de SLT-46 en `_shared/filtrar-arbol-geografico.ts`: no hizo falta una función nueva).
+  Etiquetas de nivel desde `tipos`; insignia de retirado a N niveles («Inactivo por su <nivel>»).
+  Sin `permitirEspecial` (design §8.1, R8).
+- Textos de la maqueta: «hereda de <zona> por <nodo>», «Excepción · va a <zona>», «En <zona>».
+
+### T7.2 — modal único de guardado de zona (R12, R13, R16)
+
+- `CrearZonaForm`: maqueta en dos columnas (datos / lugares), «Guardar zona…» → valida con el esquema
+  → modal con nombre, marca, «Entran»/«Salen» (nivel y padre; «Incluye sus N distritos» sin contar
+  excepciones; excepciones que siguen en otra zona), bloque de la marca central (texto e impacto de la
+  376 sin cambios) y las cifras de `impactoAsignacionZona`. «Sí, guardar» bloqueado mientras se
+  cuentan; si el aviso falla, sigue bloqueado y se ofrece «Reintentar» (R13; la marca central conserva
+  su desbloqueo de la 376). `antes` siempre al actualizar; `nodoIds` solo si hay alguno.
+  `cambio_concurrente` → cierra, aviso `aria-live` y `ZonasModule` reabre la zona leída de nuevo.
+- `ZonasModule`/`page.tsx` con `listarArbolDeZonas`; preselección = `asignadaA` de la zona a todas las
+  profundidades. Se borran los `@sin-superficie` de `listarArbolDeZonas` e `impactoAsignacionZona`.
+  `listarArbolGeografico` se queda sin llamador: gana su `@sin-superficie` (deuda) en vez de borrarla,
+  porque la cubren dos suites de actions y retirarla quitaría aserciones.
+
+### T7.3 — grupos en Tarifas (R22, R23, R47)
+
+- `TarifasGrupos`: un solo `Modal` con dos fases (edición → antes → después). Validación con
+  `crearGrupoSchema`/`renombrarGrupoSchema`/`fijarDistritosSchema`; confirmación con «Sí, guardar» o
+  «Sí, borrar» (destructivo); «Volver» regresa a la edición (en borrar, cierra). Miembros en árbol
+  (`CargarZonaResult.nodos`) o, si la zona solo cubre sus distritos, la lista de siempre; un lugar de
+  otro grupo sale bloqueado con su nombre. `TarifasModule` pasa `nodos`. Textos en `tarifas-textos.ts`
+  (`borrarGrupoTitulo` pasa a «¿Borrar el grupo X?», de la maqueta).
+
+### T8.1 — E2E (R41, R35)
+
+- `e2e/zonas-nodo-canton.spec.ts` en el proyecto «aislamiento» (A asigna un cantón entero por la
+  pantalla, ve las cifras y confirma; la orden de su tienda en un distrito del cantón sale con su zona
+  y la cotización da el flete de su tarifa; B no ve la zona ni tiene cobertura).
+- Adaptados en cómo llegan al botón (modal nuevo): `zonas-crear-sin-costos`,
+  `zona-especial-dos-empresas`, `tarifas-activacion`.
+- **No se corrió en local.** No hay `psql` en la máquina para crear `logistic_slt89_e2e`, y el E2E pide
+  `next build` (o `next dev`) más los proyectos de dependencia (`plataforma-vacia`); con `tsc` ya
+  necesitando 8 GB, el build pone en riesgo la máquina. Lo corre CI en el PR a producción (con
+  `dos-empresas-humo`). Verificado: `typecheck` exit 0, eslint limpio y las 14 guardias que leen `e2e/`
+  (`e2e-sin-saltos` incluida) → `Test Files 14 passed (14) · Tests 220 passed (220)`.
+
+### T9.1 — docs
+
+`docs/architecture.md`: tabla hermana `zona_nodo`, herencia, guardado con «antes», trigger de `orden`
+y la regla de miembros de grupo. El tipo de historial y su censo ya estaban (T1.3).
+
+### Cambios de aserción de esta tanda (para el reviewer, R38)
+
+Autorizados («antes» y «cómo se llega al botón», tasks T5.6/T7.2/T7.3, design §8.2):
+- `TarifasGrupos.test.tsx`: `toHaveBeenCalledWith` de renombrar (gana `nombreAnterior`), cambiar
+  miembros (gana `antes`) y borrar (gana `antes`).
+- Los 9 archivos de componente de zonas y `ZonasPage.test.tsx`: solo entrada (`arbolDeZonas(...)`,
+  mock de `impactoAsignacionZona` / `listarArbolDeZonas`) y botones de la maqueta («Guardar zona…»,
+  «Sí, guardar», «Volver»). Ninguna aserción sobre toasts, payloads de crear ni textos de la 376.
+- `zona-guardado-conserva-inactivos.test.ts`: solo la forma del árbol y del callback del selector.
+
+**Fuera de la lista del leader, mandados por el spec (a ratificar por el humano):**
+1. `geografia-selector-zona-ocupada.test.tsx`: los casos de la cascada de SLT-75 R16/R17 («marcar el
+   cantón marca sus distritos seleccionables», tri-estado del grupo) se reescriben a la semántica de
+   design §8.1/§11.3 (marcar el cantón asigna el cantón; el bloqueado queda como excepción). El texto
+   visible «(zona: X)» pasa a «En X» (maqueta); el `aria-label` conserva «(zona: X)».
+2. `geografia-selector-inactivos.test.tsx`: la lista de `aria-label` pasa de «Seleccionar todos los
+   distritos de X» a «Seleccionar <nivel> X» (ya no hay cascada), y el callback a `{ distritoIds, nodoIds }`.
+3. `ZonaDistritoEspecial.test.tsx`: los dos casos de `permitirEspecial` (capacidad que design §8.1 y R8
+   retiran) se sustituyen por uno que afirma que el selector no ofrece la marca.
+
+### Maqueta frente al spec (design §8.4) — para el humano
+
+- **Grupos, «[9] órdenes pendientes cambian de tarifa» en el modal de borrar:** el spec no da ese
+  cálculo para escrituras de grupos (R22 pide el aviso de valores de SLT-54 R43; no hay action de
+  impacto de grupos). No se pinta. Si se quiere, es una action nueva y un requisito nuevo.
+- **Grupos, insignia «Precio de pacto especial» en un grupo llamado «Zona especial»:** contradice SLT-54
+  R44 (un grupo llamado así se pinta como cualquier otro; hay test). No se pinta.
+- **Zona, «[24] cambian a Zona Oeste»:** se rotula «cambian de zona» (R13): `cambianDeZona` incluye las
+  que salen hacia otra zona, así que «a Zona Oeste» sería falso en ese caso.
+- **R22 «cada miembro con su nivel y el nombre de su padre»:** cuando la zona solo cubre sus distritos
+  asignados, `cargarZona` no manda el árbol (`nodos` ausente, decisión de T5.3 por R38) y la pantalla no
+  conoce el padre de esos distritos: se pinta su nivel («Alfa · barrio») sin padre. Con árbol, nivel y
+  padre. Cerrarlo pide que `cargarZona` mande siempre el padre de cada distrito.
+
+### Verificación (logistic_slt89, `--maxWorkers=1`, heap de 8 GB)
+
+- `pnpm run typecheck`: exit 0. eslint en lo tocado (zonas, tarifas, tests, e2e, `playwright.config.ts`):
+  sin errores ni avisos.
+- Componentes y unitarios de T7 (20 archivos: los 9 de zonas, `ZonaGuardadoConfirmacion`,
+  `TarifasGrupos`, `TarifasModulo`, `TarifasDisposicion`, `ZonasPage`, los 3 del selector,
+  `filtrar-arbol-geografico`, `geografia-action`, `geografia.composition-root`) →
+  `Test Files 20 passed (20) · Tests 206 passed (206)`. Incluye los 28 casos rojos desde T3.7.
+- Integración: contrato v1 (modo comparar), `zona-guardado-conserva-inactivos`, `zonas-action`,
+  `tarifas-action` → `Test Files 4 passed (4) · Tests 106 passed (106)`.
+- Guardias (320 archivos con «guard», en 4 lotes): 00 → `84 passed (84) · 1050 passed`; 01 →
+  `1 failed | 76 passed (77)`: solo `dependencias-declaradas-presentes` (4 casos), en
+  `tests/baseline-rojos.json`; 02 → `79 passed (79) · 1336 passed`; 03 → `80 passed (80) · 1115 passed |
+  1 skipped`.
+
+## Mapa R → test (R1–R48)
+
+| R | Test |
+|---|---|
+| R1, R3, R4 | `tests/integration/db/zona-nodo-asignacion.test.ts` |
+| R2 | `zona-nodo-asignacion.test.ts` (conflicto y carrera); `tests/unit/services/zona-service.test.ts` (mensajes) |
+| R5 | `tests/unit/types/zona-schemas.test.ts`; `zona-nodo-asignacion.test.ts` |
+| R6, R7, R9 | `tests/integration/db/zona-nodo-herencia.test.ts` |
+| R8 | `zona-nodo-herencia.test.ts` (marca heredada a profundidad 4); guardia `tarifas-sin-escritura-vieja`; `tests/components/ZonaDistritoEspecial.test.tsx` (el selector no ofrece la marca) |
+| R10, R11 | `tests/integration/db/zona-nodo-reconciliacion.test.ts` |
+| R12 | `tests/components/ZonaGuardadoConfirmacion.test.tsx` (inválido sin modal; entran/salen con nivel y padre; «Volver» no escribe); `ZonaCentralConfirmacion.test.tsx` (bloque de la 376) |
+| R13 | `ZonaGuardadoConfirmacion.test.tsx` (cifras; bloqueado hasta tenerlas; un fallo no desbloquea); `tests/integration/db/zona-nodo-impacto.test.ts` |
+| R14, R15 | `zona-nodo-impacto.test.ts` |
+| R16 | `ZonaGuardadoConfirmacion.test.tsx` («antes» enviado; crear sin él; `cambio_concurrente` avisa y recarga); `zona-nodo-asignacion.test.ts`; `tests/unit/types/zona-schema.test.ts`; `zona-service.test.ts`; `tests/integration/actions/zonas-action.test.ts` |
+| R17, R18, R19, R20, R21 | `tests/integration/db/grupo-nodo.test.ts`; `tests/unit/services/grupo-distritos-service.test.ts` |
+| R22 | `tests/components/TarifasGrupos.test.tsx` (validación previa y antes → después de las cuatro escrituras; «Volver» no llama; «antes» en la llamada) |
+| R23 | `TarifasGrupos.test.tsx` (árbol a todas las profundidades con su nivel; bloqueado en otro grupo; marca de solo lectura); `grupo-nodo.test.ts`; `tests/unit/services/tarifas-pantalla-service.test.ts` |
+| R24, R25, R26, R27 | `tests/unit/components/geografia-selector-n-niveles.test.tsx`; `geografia-selector-zona-ocupada.test.tsx`; `geografia-selector-inactivos.test.tsx` |
+| R28, R29 | `tests/integration/db/orden-nodo-mas-profundo.test.ts` |
+| R30 | `tests/integration/db/zona-nodo-rastro.test.ts` |
+| R31 | `zona-nodo-rastro.test.ts`; `grupo-nodo.test.ts` |
+| R32 | `tests/unit/db/slt89-migraciones-aditivas.test.ts` |
+| R33 | `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts` |
+| R34 | `tests/integration/db/zona-nodo-dos-empresas.test.ts` (RLS, misma empresa, SL021) |
+| R35 | `zona-nodo-dos-empresas.test.ts` (caso T6.1); `e2e/zonas-nodo-canton.spec.ts` (caso 3) |
+| R36 | `zona-service.test.ts`; `tests/unit/services/geografia-service.test.ts` |
+| R37 | `grupo-distritos-service.test.ts`; `tarifas-pantalla-service.test.ts` |
+| R38 | `tests/integration/db/slt89-equivalencia-cr.test.ts` + suites existentes (excepciones anotadas arriba y en las tandas 1–2) |
+| R39 | Guion de T6.3 (persona, sobre una copia) |
+| R40 | `tests/integration/api/contrato-v1.route.test.ts` (modo comparar) |
+| R41 | `e2e/zonas-nodo-canton.spec.ts`; `e2e/dos-empresas-humo.spec.ts` (CI) |
+| R42 | Revisión del diff (T9.2) |
+| R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts`; `grupo-distritos-service.test.ts`; `tests/integration/actions/tarifas-action.test.ts`; `TarifasGrupos.test.tsx` («antes» enviado) |
+| R47 | `TarifasGrupos.test.tsx` (cierra, aviso `aria-live` y recarga al renombrar, cambiar lugares y borrar) |
+| R48 | Revisión: «Maqueta aprobada por el humano el 2026-11-10» en esta bitácora (`cf715317`), anterior al primer commit de T7 (`3534e676`) |
