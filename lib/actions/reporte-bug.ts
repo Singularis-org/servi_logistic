@@ -98,9 +98,7 @@ export async function enviarReporteBugAction(
   }
 }
 
-/**
- * @sin-superficie FICHA SLT-98 (deuda de una tanda): la importa el panel `components/shared/ReporteBugBoton.tsx` en T9 de `specs/SLT-98-reporte-bugs-imagenes/tasks.md`, que sigue al servidor (T7); T9 borra esta anotación al importarla.
- */
+/** SLT-98 (design §4.2): la llama el panel `components/shared/ReporteBugBoton.tsx` al pulsar «Enviar». */
 export async function prepararSubidaImagenesReporteAction(
   input: unknown,
   deps: PrepararSubidaImagenesReporteDeps = {},

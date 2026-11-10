@@ -81,7 +81,7 @@
 
 ## Bloque D — Interfaz
 
-- [ ] **T9. Panel** (dep. T7; R1–R8, R11).
+- [x] **T9. Panel** (dep. T7; R1–R8, R11).
   - **Archivo:** `components/shared/ReporteBugBoton.tsx`: el envío en tres pasos de design §4.2, y
     design §9.1 y §9.3.
   - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` en verde. El caso de SLT-87 «no hay campo de
