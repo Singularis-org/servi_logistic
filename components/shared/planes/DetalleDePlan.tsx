@@ -18,6 +18,7 @@ import { lineaTopeSobra } from "@/lib/planes/mensajes";
 import type { PeriodoDelCobro, UsoDelPlan } from "@/lib/types/consumo-plan";
 import type { PlanVista, TipoCobro } from "@/lib/types/planes";
 import { cn } from "@/lib/utils";
+import { fechaCortaEnZona } from "@/lib/whatsapp-envios/informes/formato";
 
 // SLT-99 (design §5; R8, R9, R13) — el detalle de un plan: la tabla de períodos, la comparación con el plan activo, el
 // aviso previo de los topes que sobran y «Cambiar a {plan}». Compartido y sin empresa: sin `activo` ni `onCambiar`
@@ -33,7 +34,7 @@ export interface ActivoDelDetalle {
   /** R8: en la tarjeta del plan activo, el período en curso y el próximo cobro. */
   readonly periodo?: PeriodoDelCobro;
   readonly siguienteCobro?: string;
-  /** R8: «Activo desde» (`AAAA-MM-DD`); sin él, la línea no sale. */
+  /** R8: «Activo desde» (`AAAA-MM-DD`, se muestra «1 sep 2026»); sin él, la línea no sale. */
   readonly activoDesde?: string | null;
 }
 
@@ -95,7 +96,8 @@ function DatosDelActivo({ activo }: { activo: ActivoDelDetalle }) {
       {activo.activoDesde && (
         <>
           <dt className="text-muted-foreground">{TEXTOS_PLANES.activoDesde}</dt>
-          <dd>{activo.activoDesde}</dd>
+          {/* «1 sep 2026»: la fecha calendario va a medianoche UTC y se lee en UTC, sin cambio de día. */}
+          <dd>{fechaCortaEnZona(new Date(`${activo.activoDesde}T00:00:00.000Z`), "UTC")}</dd>
         </>
       )}
       {activo.periodo && (

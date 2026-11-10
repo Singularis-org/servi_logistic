@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { fechaDeEfectoPorDefecto, inicioDelDiaPlataforma } from "../lib/planes/ciclo";
 import { PlanesRepository } from "../lib/repositories/PlanesRepository";
 import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
+import { fechaCortaEnZona } from "../lib/whatsapp-envios/informes/formato";
 import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
 import { clienteDueno } from "./_dos-empresas-fixture";
@@ -156,7 +157,7 @@ test("el maestro ve su plan activo, cambia a otro plan público, ve el pendiente
     await elegirTarjeta(page, nombreActivo);
     const detalleActivo = page.getByRole("region", { name: `Detalles de ${nombreActivo}`, exact: true });
     const activoDesde = detalleActivo.locator("dt", { hasText: "Activo desde" }).locator("xpath=following-sibling::dd[1]");
-    await expect(activoDesde).toHaveText(hoy);
+    await expect(activoDesde).toHaveText(fechaCortaEnZona(new Date(`${hoy}T00:00:00.000Z`), "UTC"));
     await expect(detalleActivo.getByRole("button", { name: /^Cambiar a/ })).toHaveCount(0);
 
     // R19: la confirmación con el corte, sin elegir fecha.

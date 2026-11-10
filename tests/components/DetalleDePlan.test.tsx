@@ -85,7 +85,7 @@ describe("R8 — el detalle de otro plan, con el plan activo", () => {
 
     const detalle = screen.getByRole("region", { name: "Detalles de Emprende" });
     expect(within(detalle).getByText("Activo")).toBeInTheDocument();
-    expect(within(detalle).getByText("Activo desde").nextSibling).toHaveTextContent("2026-09-01");
+    expect(within(detalle).getByText("Activo desde").nextSibling).toHaveTextContent("1 sep 2026");
     expect(within(detalle).getByText("Período en curso").nextSibling).toHaveTextContent("2026-11-01 – 2026-11-30");
     expect(within(detalle).getByText("Próximo cobro").nextSibling).toHaveTextContent("2026-12-01");
     expect(screen.queryByRole("button", { name: /Cambiar a/ })).toBeNull();
