@@ -91,9 +91,15 @@ async function miembrosDelGrupo(
   return { distritos: distritos.map((d) => d.distritoId), nodos: nodos.map((n) => n.nodoId) };
 }
 
-/** SLT-89 (design §5.4): el candado de la fila del grupo, antes de comparar el «antes». */
+/**
+ * SLT-89 (design §5.4): el candado de la fila del grupo, antes de comparar el «antes». SQL a mano: la
+ * extension no lo ve, asi que filtra por la empresa de la transaccion ademas de la RLS (SL-17 R25). Un
+ * grupo de otra empresa no se bloquea y el `findFirst` que sigue lo da por inexistente.
+ */
 async function bloquearGrupo(tx: Pick<Prisma.TransactionClient, "$queryRaw">, id: string): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "grupo_distritos" WHERE "id" = ${id} FOR UPDATE`;
+  await tx.$queryRaw`SELECT "id" FROM "grupo_distritos"
+    WHERE "id" = ${id} AND "organizacion_id" = current_setting('app.organizacion_id', true)
+    FOR UPDATE`;
 }
 
 /**
