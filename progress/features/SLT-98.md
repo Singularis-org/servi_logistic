@@ -25,6 +25,7 @@ F1.4 (2026-11-10): spec aprobado por el humano («Aprobado, implementa»). Tarje
 Ninguna.
 
 ## Tandas
+- 2026-11-10 · F2.1 implementer: T1–T10 hechas y la parte de código de T11 (77a2ebe1…c4aac3d8). Typecheck y lint en verde; vitest de lo tocado 197/197; guardias en verde salvo baseline; guardias de esquema 52/52; ida y vuelta de la migración limpia; E2E ×2 21/21. Pendiente: comprobación en preview contra Supabase real (design §15). Tamaño según `tamano-pr`: 34 archivos y 3374 líneas, por encima de lo aceptado (~2.200–2.500). Detalle → `progress/impl_SLT-98.md`.
 
 ## Modelos (overrides)
 
