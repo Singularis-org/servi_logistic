@@ -71,3 +71,13 @@ Comprobación en `logistic_slt89` (local, desechable):
   successfully»; comprobación por SQL: sin `zona_nodo`/`grupo_distritos_nodo`, sin las tres funciones,
   `orden_nodo_geografico` sin el cuerpo nuevo. `migrate status`: las dos pendientes.
 - Reaplicadas con `migrate deploy` → aplicadas; `migrate diff` otra vez vacío.
+
+### T1.2 — migración `20261110130100_slt89_historial_zona_nodo` (= `20261109120100_…` del spec)
+
+Archivos: `db/migrations/20261110130100_slt89_historial_zona_nodo/{migration.sql,down.sql}`;
+`specs/SLT-89-geo-jerarquica-zonas/tasks.md` (T1.1 y T1.2 marcadas, con la nota del timestamp).
+
+- Sola en su migración (55P04): `ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS
+  'zona_nodo_cambiado';`.
+- `down.sql` = `SELECT 1;` con el comentario de por qué el valor se queda (molde SLT-46
+  `20261106120000`). Aplicada, revertida (no-op) y reaplicada en `logistic_slt89` junto con T1.1.

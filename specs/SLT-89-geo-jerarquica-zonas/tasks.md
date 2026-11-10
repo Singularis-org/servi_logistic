@@ -56,14 +56,17 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T1 — La base (depende de T0.1)
 
-- [ ] **T1.1** Migración `20261109120000_slt89_zona_nodo` con su `down.sql` (§2.1, §2.2, §2.3, §2.5):
+- [x] **T1.1** Migración `20261109120000_slt89_zona_nodo` con su `down.sql` (§2.1, §2.2, §2.3, §2.5):
   tablas `zona_nodo` y `grupo_distritos_nodo`, índices, FK, RLS, grants, triggers de validación
   (país `SL021`, profundidad 3, duplicado entre las dos tablas de miembros), triggers de misma empresa
   generados con el script, y `CREATE OR REPLACE FUNCTION orden_nodo_geografico`. Antes del commit,
   comprobar que el timestamp no choca con `dev` ni con las ramas en vuelo. (R28, R29, R32, R34)
   *Hecho:* `pnpm run db:migrate` y `db:rollback` limpios en local; `prisma` sin drift.
-- [ ] **T1.2** Migración `20261109120100_slt89_historial_zona_nodo` (solo el `ADD VALUE`) con
+  > Nota (2026-11-10): el timestamp chocaba con `20261109120000_cobro_plataforma_traza` de `dev`; la
+  > migración vive en `db/migrations/20261110130000_slt89_zona_nodo/` (`progress/impl_SLT-89.md`).
+- [x] **T1.2** Migración `20261109120100_slt89_historial_zona_nodo` (solo el `ADD VALUE`) con
   `down.sql` comentado (§2.4). (R30, R32)
+  > Nota (2026-11-10): movida con T1.1 a `db/migrations/20261110130100_slt89_historial_zona_nodo/`.
 - [ ] **T1.3** `db/schema.prisma` (modelos `ZonaNodo` y `GrupoDistritosNodo`, relaciones inversas,
   valor de enum) y `lib/db/modelos-de-negocio.ts`. (R34)
   *Hecho:* guardias `organizacion-en-modelos`, `fk-misma-empresa`, `unicos-por-empresa` y

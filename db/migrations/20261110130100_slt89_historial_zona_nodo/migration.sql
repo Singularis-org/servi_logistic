@@ -1,0 +1,13 @@
+-- SLT-89 (design §2.4, R30) — el rastro de los nodos que no son distritos de una zona.
+--
+-- (En el spec, `20261109120100_slt89_historial_zona_nodo`: se movió junto con 20261110130000; ver
+-- progress/impl_SLT-89.md.)
+--
+-- Un tipo nuevo, `zona_nodo_cambiado`: una fila por nodo añadido o quitado al EDITAR una zona, con un
+-- lote propio del guardado. Los distritos siguen dejando `zona_distrito_cambiado` (SLT-76). La entidad
+-- es `zona`, que ya existe: no se toca.
+--
+-- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04). Nada
+-- aquí escribe filas; el primer uso ocurre en runtime. Mismo patrón que
+-- `20261102090000_slt76_historial_zona_distrito`. ADITIVA (R32).
+ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'zona_nodo_cambiado';
