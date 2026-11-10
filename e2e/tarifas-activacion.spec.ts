@@ -95,14 +95,23 @@ async function ajustesDeLaTarjeta(comprobante: Locator, m: MensajeroE2E): Promis
   return ajustes;
 }
 
-/** Despliega la única gestión de esa pestaña y devuelve su sección de cobros. */
+/**
+ * Despliega la única gestión de ese resultado y devuelve su tarjeta de cobro.
+ *
+ * SLT-101 «Fila de gestión única y lista con filtros» (R27, R84): ANTES la pestaña por resultado y el panel
+ * «Cobros de esta gestión» (ficha 338) con su «Total cobrado»; AHORA el filtro «Filtrar por resultado» y la
+ * tarjeta «Se le cobra a la tienda», cuyo total se llama «Se le cobra» (D20). Mismos importes.
+ */
 async function cobrosDeLaGestion(detalle: Locator, pestana: RegExp): Promise<Locator> {
   // SLT-100: las órdenes viven en la pestaña «Gestiones» del detalle único.
   await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
+  await detalle
+    .getByRole("group", { name: "Filtrar por resultado" })
+    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\d+$`) })
+    .click();
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-  await ordenes.getByRole("tab", { name: pestana }).click();
-  await ordenes.getByRole("button", { expanded: false }).first().click();
-  const cobros = ordenes.getByRole("region", { name: "Cobros de esta gestión" });
+  await ordenes.getByRole("button", { name: /^(Desglose de ingreso|Detalle) de la orden /, expanded: false }).first().click();
+  const cobros = ordenes.getByRole("region", { name: /^Se le cobra a la tienda de la orden / });
   await expect(cobros).toBeVisible();
   return cobros;
 }
@@ -228,7 +237,7 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     expect(await kpi(detalle, "Total de la empresa")).toMatch(/^\D*4\.237,50$/);
     await expect(lineaBodega(detalle, "− Ingreso de bodega por devoluciones a origen")).toContainText(importe(300));
     const entrega = await cobrosDeLaGestion(detalle, /Entregado/);
-    await expect(renglon(entrega, "Total cobrado")).toContainText(importe(2825));
+    await expect(renglon(entrega, "Se le cobra")).toContainText(importe(2825));
     await satelite.context().close();
   });
 
@@ -292,12 +301,15 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     await expect(detalleNuevo.getByText(/Automático \(por plazo vencido\)/)).toHaveCount(0);
     await expect(detalleNuevo.getByText(/Manual \(mensajero\)/)).toHaveCount(0);
     const entregaNueva = await cobrosDeLaGestion(detalleNuevo, /Entregado/);
-    await expect(renglon(entregaNueva, "Total cobrado")).toContainText(importe(3503));
+    await expect(renglon(entregaNueva, "Se le cobra")).toContainText(importe(3503));
     await expect(entregaNueva).not.toContainText("no tenía tarifa");
-    const ingresoDeFila = detalleNuevo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true }).locator("..");
-    await expect(ingresoDeFila).toContainText(importe(120));
-    await cobrosDeLaGestion(detalleNuevo, /Devoluci/);
-    await expect(ingresoDeFila).toContainText(importe(450));
+    // SLT-101 (S3-2, «sé fiel al diseño»): aquí se afirmaban las DOS líneas «Ingreso de bodega:» por fila (120 en la
+    // entrega y 450 en la devolución, SLT-54 R71). El canvas aprobado no dibuja el ingreso de bodega en la fila y ya
+    // no se pinta: se RETIRAN. Lo que vigilaban sigue cubierto: en la base, `congeladoDelCierre` de arriba
+    // (["entregado","2200","120"], ["devolucion…","0","450"]) y en «Dinero», la línea «− Ingreso de bodega» 570.
+    const entregaDevuelta = await cobrosDeLaGestion(detalleNuevo, /Devoluci/);
+    await expect(entregaDevuelta).toBeVisible();
+    await expect(detalleNuevo.getByRole("region", { name: "Órdenes del cierre" }).getByText(/^Ingreso de bodega/)).toHaveCount(0);
     await detalleNuevo.getByRole("button", { name: "Cerrar", exact: true }).last().click();
     await expect(detalleNuevo).toHaveCount(0);
 
@@ -309,7 +321,7 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     await expect(lineaBodega(detalleViejo, "− Ingreso de bodega")).toHaveCount(0);
     await expect(lineaBodega(detalleViejo, "− Ingreso de bodega por devoluciones a origen")).toContainText(/Manual \(mensajero\)/);
     const entregaVieja = await cobrosDeLaGestion(detalleViejo, /Entregado/);
-    await expect(renglon(entregaVieja, "Total cobrado")).toContainText(importe(2825));
+    await expect(renglon(entregaVieja, "Se le cobra")).toContainText(importe(2825));
     await expect(detalleViejo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true })).toHaveCount(0);
     await detalleViejo.getByRole("button", { name: "Cerrar", exact: true }).last().click();
     await expect(detalleViejo).toHaveCount(0);

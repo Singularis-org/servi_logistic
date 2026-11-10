@@ -93,6 +93,20 @@ async function irA(detalle: Locator, pestana: "Dinero" | "Gestiones"): Promise<v
   await detalle.getByRole("tab", { name: pestana === "Dinero" ? "Dinero" : /^Gestiones \(/ }).click();
 }
 
+/**
+ * SLT-101 «Fila de gestión única y lista con filtros» (R84): las pestañas por resultado de la lista pasan a ser
+ * el filtro «Filtrar por resultado» («<resultado> <n>»), encima de «Órdenes del cierre».
+ */
+const filtro = (detalle: Locator, resultado: RegExp) =>
+  detalle.getByRole("group", { name: "Filtrar por resultado" }).getByRole("button", { name: resultado });
+
+/** SLT-101 (R98): el total «Se le paga» de la tarjeta del pago de la orden, en la fila desplegada. */
+function seLePaga(ordenes: Locator, o: OrdenE2E): Locator {
+  return ordenes
+    .getByRole("region", { name: `Se le paga al mensajero de la orden ${o.numRemision} · ${o.destinatario}` })
+    .locator("[data-tipo='total'] [data-monto]");
+}
+
 /** Despliega la fila de la orden dentro de `ordenes` (si está plegada) y la devuelve. */
 async function desplegar(ordenes: Locator, o: OrdenE2E): Promise<void> {
   const fila = ordenes.getByRole("button", { name: new RegExp(o.numRemision) }).first();
@@ -149,7 +163,7 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
 
     await irA(detalle, "Gestiones");
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
     await desplegar(ordenes, rechazada);
     // El rechazo no paga (pago vigente 0) y todavía no tiene marca.
     await expect(ordenes.getByRole("button", { name: /^Pago ajustado/ })).toHaveCount(0);
@@ -169,10 +183,18 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await expect.poll(async () => aCentimos(await lineaNeto.innerText())).toBe(netoAntes - BigInt(70000));
     // Volver a «Gestiones» la monta de nuevo: arranca en su primera sección con órdenes.
     await irA(detalle, "Gestiones");
-    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
 
     // R19 — la orden con su pago nuevo, marcada «Ajustado»; al pulsar, quién, de cuánto a cuánto y por qué.
     await desplegar(ordenes, rechazada);
+    // SLT-101 (R85, R98): la señal de la fila y la tarjeta del pago en cascada. Modelo viejo: sin «Por tarifa»
+    // (no hay pago congelado que leer, R95); «Se le paga» 700, el motivo y quién ajustó.
+    await expect(ordenes.getByText("Pago ajustado · Vuelve a bodega", { exact: true })).toBeVisible();
+    await expect(seLePaga(ordenes, rechazada)).toHaveText(importe(700, { solo: true }));
+    const tarjetaPago = ordenes.getByRole("region", { name: `Se le paga al mensajero de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` });
+    await expect(tarjetaPago.getByText(/^Por tarifa/)).toHaveCount(0);
+    await expect(tarjetaPago.getByText(`Motivo: «${MOTIVO_CENTRAL}»`, { exact: true })).toBeVisible();
+    await expect(tarjetaPago.getByText(new RegExp(`^Ajustó ${r.empresa.maestro.nombre} · \\d{2}/\\d{2} \\d{2}:\\d{2}$`))).toBeVisible();
     const historial = await verHistorial(page, ordenes);
     await expect(historial.getByRole("listitem")).toHaveCount(1);
     const ajuste = historial.getByRole("listitem").first();
@@ -240,6 +262,9 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await hecho.getByRole("button", { name: "Cerrar" }).click();
     await desplegar(ordenes, entrega);
     await expect(ordenes.getByRole("button", { name: "Pago ajustado: ver el ajuste" })).toHaveText("Ajustado");
+    // SLT-101 (R85, R98): «Pago ajustado» en la fila y «Se le paga» 1.800 en la tarjeta del pago.
+    await expect(ordenes.getByText("Pago ajustado", { exact: true })).toBeVisible();
+    await expect(seLePaga(ordenes, entrega)).toHaveText(importe(1800, { solo: true }));
 
     await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
     await expect(sat.getByText("Cierre aprobado correctamente.")).toBeVisible();

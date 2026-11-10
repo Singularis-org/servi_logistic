@@ -1018,7 +1018,9 @@ export function toDetalleDTO(
   urlByPath: Record<string, string>,
   pagoMensajero?: string | null,
   ingresoBodegaRechazo?: string | null,
-  tarifaFaltante = false,
+  // SLT-101 (R96): sin parametro se usa el de la fila (detalles de admin, derivado de lo congelado)
+  // y, si la fila no lo trae, `false` como hasta ahora.
+  tarifaFaltante?: boolean,
 ): CierreDetalleGestion {
   const evidenciaUrls = urlsEvidenciaFirmadas(g.evidenciaStoragePaths, urlByPath);
   return {
@@ -1054,7 +1056,7 @@ export function toDetalleDTO(
     pagoMensajero: pagoMensajero !== undefined ? pagoMensajero : g.pagoMensajero,
     ingresoBodegaRechazo:
       ingresoBodegaRechazo !== undefined ? ingresoBodegaRechazo : g.ingresoBodegaRechazo,
-    tarifaFaltante,
+    tarifaFaltante: tarifaFaltante ?? g.tarifaFaltante ?? false,
     // Feature 102/R9/R11: passthrough del flag ya derivado en el repo (admin: del historial;
     // vista en vivo del mensajero: `false`). El service no re-deriva la clasificacion.
     esRechazoSla: g.esRechazoSla,
@@ -1079,6 +1081,8 @@ export function toDetalleDTO(
     // SLT-56 (R19/R20, Q2): la clave solo existe si el repo la leyo. Asi la vista del mensajero,
     // cuyo repo no la selecciona, no lleva ni siquiera un `ajustesPago: undefined` en su DTO.
     ...(g.ajustesPago !== undefined ? { ajustesPago: g.ajustesPago } : {}),
+    // SLT-101 (R66, R95): mismo patron; solo los repos de admin lo leen.
+    ...(g.pagoPorTarifa !== undefined ? { pagoPorTarifa: g.pagoPorTarifa } : {}),
   };
 }
 

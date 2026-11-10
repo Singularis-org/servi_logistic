@@ -162,6 +162,13 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // (sin dinero) y las columnas de «Descargar» (importes como el string del servidor).
   "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx",
   "components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts",
+  // SLT-101 «Fila de gestión única y lista con filtros» (R71): la lista y la fila de una gestión
+  // pintan las cifras del servidor tal cual; ninguna se deriva en el cliente.
+  "components/private/cierres/fila/GestionesCierre.tsx",
+  "components/private/cierres/fila/FilaGestion.tsx",
+  "components/private/cierres/fila/CalculoCobro.tsx",
+  "components/private/cierres/fila/fila-gestion-vista.ts",
+  "components/private/cierres/fila/fila-gestion-labels.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */

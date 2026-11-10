@@ -1,6 +1,12 @@
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad, etiquetaDePersona } from "@/lib/types/historial-accion-etiquetas";
-import { Prisma, type EstadoUsuario, type PrismaClient, type RolValue } from "@prisma/client";
+import {
+  Prisma,
+  type EstadoUsuario,
+  type PrismaClient,
+  type RolValue,
+  type TarifaNivel,
+} from "@prisma/client";
 import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import type { JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { encolarWebhookEvento } from "@/lib/services/jobs/webhook-evento-encolado";
@@ -46,7 +52,10 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 import type {
   AjustePagoGestionDTO,
   CierreRechazoDeTienda,
+  ConceptoTarifaDTO,
   IngresoEmpresaDTO,
+  OrigenTarifaDTO,
+  PagoPorTarifaDTO,
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
@@ -74,6 +83,7 @@ import {
 } from "@/lib/utils/cierre-detalle";
 import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import { derivarIngresoOrden, resolverFlete } from "@/lib/utils/ingreso-empresa";
+import { CATALOGO_CONCEPTOS, CONCEPTOS_PAGO, conceptoPorResultado } from "@/lib/tarifas/catalogo";
 import { esRechazoSla, ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
 import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
 import {
@@ -215,6 +225,9 @@ type CierresAdminPrismaClient = Pick<
   // el detalle. La escritura vive en la tx de `CierreDiaRepository.crearCierre`, y la aprobacion NO
   // la toca: la salida de `rechazada` la hace el bloque 139, por `mensajero_asignado_id`.
   | "cierreRechazoTienda"
+  // SLT-101 (R94): SOLO LECTURA de los cargos de fulfillment de las ordenes del cierre, para la fecha
+  // «Se cargó al saldo de la tienda el …». La app no puede escribir esa tabla (REVOKE, SLT-94).
+  | "ordenFulfillmentMovimiento"
   | "zona"
   | "usuario"
   | "$transaction"
@@ -269,7 +282,17 @@ export const DETALLE_ADMIN_SELECT = {
   tarifaEspecialDevuelta: true,
   // SLT-52 (R41, R42, R46): el modelo con que se congelo y, en el nuevo, el cobro por concepto.
   tarifaModelo: true,
-  conceptos: { select: CONCEPTO_CONGELADO_SELECT },
+  // SLT-101 (R64, R97): + los nombres de zona y grupo del valor de tarifa de cada concepto, para
+  // «Tarifa: …» de «Ver cómo se calculó». Local a esta proyeccion: `CONCEPTO_CONGELADO_SELECT` lo
+  // usan otras lecturas que no pintan el origen. Una consulta mas por nivel, no por fila.
+  conceptos: {
+    select: {
+      ...CONCEPTO_CONGELADO_SELECT,
+      tarifaValor: {
+        select: { zona: { select: { nombre: true } }, grupo: { select: { nombre: true } } },
+      },
+    },
+  },
 } as const;
 
 // Feature 69/T18 — lo que aporta la GESTION (que NO se congela: es suyo, no de la orden).
@@ -352,6 +375,27 @@ export const GESTION_ADMIN_SELECT = {
     },
     orderBy: { createdAt: "asc" },
   },
+  // SLT-101 (R66, R95, R96): el pago congelado de la gestion, SOLO el del mensajero. El filtro va en
+  // el `where` de la relacion y no en memoria: sin el, la fila de la satelite (mismo `gestion_orden`)
+  // se pintaria como pago al mensajero. `@@unique([gestionOrdenId, actor])`: a lo sumo una fila.
+  // Lo mide `tests/integration/db/cierre-detalle-cifras-fila-sql-real.test.ts`.
+  pagosCongelados: {
+    where: { actor: "mensajero" },
+    select: {
+      modo: true,
+      valor: true,
+      base: true,
+      importe: true,
+      nivel: true,
+      tarifaValor: {
+        select: {
+          zona: { select: { nombre: true } },
+          grupo: { select: { nombre: true } },
+          vehiculo: { select: { name: true } },
+        },
+      },
+    },
+  },
 } as const;
 
 type DetalleAdminRow = Prisma.CierreDetailGetPayload<{ select: typeof DETALLE_ADMIN_SELECT }>;
@@ -422,6 +466,11 @@ function toTarifaSnapshot(d: DetalleAdminRow): TarifaSnapshotDTO | null {
 function toIngresoEmpresa(
   g: Pick<GestionAdminRow, "resultado">,
   d: DetalleAdminRow,
+  /**
+   * SLT-101 (R94): `ocurrido_at` del cargo de fulfillment vigente de la orden. Solo lo pasa el
+   * detalle de mensajero de `/cierres-admin`; las demas lecturas emiten `null`.
+   */
+  cargoFulfillmentAt: Date | null = null,
 ): IngresoEmpresaDTO {
   const tarifa = tarifaDe(d, d.conceptos);
   const montoCobrar = decimalToString(d.montoCobrar);
@@ -489,7 +538,145 @@ function toIngresoEmpresa(
     ivaFulfillment,
     tarifa: toTarifaSnapshot(d),
     tarifaModelo: tarifa?.modelo ?? null,
+    // SLT-101 (R65, R93): el IVA de los conceptos PRESENTES del mismo `derivado` que da `total`.
+    ivaIncluido: sumaPresentes([
+      derivado.ingreso_iva_flete,
+      derivado.ingreso_iva_comision_cod,
+      derivado.ingreso_iva_flete_devolucion,
+    ]),
+    // SLT-101 (R65, R94): «Se cobró» = fulfillment + su IVA, los dos ya congelados arriba.
+    fulfillmentConIva: new Prisma.Decimal(fulfillment).plus(ivaFulfillment).toFixed(2),
+    ivaPctFulfillment:
+      tarifa?.modelo === "nuevo"
+        ? (d.conceptos.find((c) => c.concepto === "tienda_fulfillment")?.ivaPct.toFixed(2) ?? null)
+        : null,
+    fulfillmentCargadoAt: cargoFulfillmentAt === null ? null : cargoFulfillmentAt.toISOString(),
+    conceptosTarifa:
+      tarifa?.modelo === "nuevo" ? conceptosTarifaDe(g.resultado, d, derivado, montoCobrar) : [],
   };
+}
+
+/** SLT-101 (R93): suma de los importes presentes; `null` si ninguno lo esta (no aplica != 0). */
+function sumaPresentes(montos: Array<Prisma.Decimal | undefined>): string | null {
+  let suma: Prisma.Decimal | null = null;
+  for (const m of montos) {
+    if (m !== undefined) suma = (suma ?? new Prisma.Decimal(0)).plus(m);
+  }
+  return suma === null ? null : suma.toFixed(2);
+}
+
+/** SLT-101 (R64, R95, R97): el nivel y los nombres del valor de tarifa de origen. */
+function origenTarifaDe(
+  nivel: TarifaNivel,
+  tv: {
+    zona: { nombre: string } | null;
+    grupo: { nombre: string } | null;
+    vehiculo?: { name: string } | null;
+  } | null,
+): OrigenTarifaDTO {
+  return {
+    nivel,
+    zonaNombre: tv?.zona?.nombre ?? null,
+    grupoNombre: tv?.grupo?.nombre ?? null,
+    vehiculoNombre: tv?.vehiculo?.name ?? null,
+  };
+}
+
+/**
+ * SLT-101 (R64, R97) — la tarifa congelada de cada concepto que SI se cobro en esta gestion (los
+ * presentes en el `derivado`), sin el fulfillment, que va en su tarjeta. El flete es el concepto
+ * `tienda_flete_<resultado>` del catalogo; va a «flete» en una entrega y a «fleteDevolucion» en lo
+ * demas, como lo reparte `derivarIngresoOrden`. `base` = el valor del pedido en porcentaje (R27).
+ */
+function conceptosTarifaDe(
+  resultado: GestionAdminRow["resultado"],
+  d: DetalleAdminRow,
+  derivado: ReturnType<typeof derivarIngresoOrden>,
+  montoCobrar: string | null,
+): ConceptoTarifaDTO[] {
+  const porConcepto = new Map(d.conceptos.map((c) => [c.concepto, c]));
+  const fila = (
+    concepto: ConceptoTarifaDTO["concepto"],
+    c: DetalleAdminRow["conceptos"][number] | undefined,
+  ): ConceptoTarifaDTO[] =>
+    c === undefined
+      ? []
+      : [
+          {
+            concepto,
+            modo: c.modo,
+            valor: c.valor.toFixed(2),
+            ivaPct: c.ivaPct.toFixed(2),
+            base: c.modo === "porcentaje" ? montoCobrar : null,
+            ...origenTarifaDe(c.nivel, c.tarifaValor),
+          },
+        ];
+  const flete =
+    derivado.ingreso_flete !== undefined
+      ? ("flete" as const)
+      : derivado.ingreso_flete_devolucion !== undefined
+        ? ("fleteDevolucion" as const)
+        : null;
+  return [
+    ...(flete === null ? [] : fila(flete, porConcepto.get(conceptoPorResultado("tienda", resultado)))),
+    ...(derivado.ingreso_comision_cod === undefined
+      ? []
+      : fila("comisionCod", porConcepto.get("tienda_comision_cod"))),
+  ];
+}
+
+/** SLT-101 (R96): ¿el catalogo tiene concepto de pago al mensajero para este resultado? */
+function hayPagoMensajeroEnCatalogo(resultado: GestionAdminRow["resultado"]): boolean {
+  return CONCEPTOS_PAGO.some(
+    (c) => CATALOGO_CONCEPTOS[c].actor === "mensajero" && CATALOGO_CONCEPTOS[c].resultado === resultado,
+  );
+}
+
+/**
+ * SLT-101 (R66, R95) — el pago «por tarifa» del mensajero (la relacion ya viene filtrada por
+ * `actor = 'mensajero'` en el `where`) y, si hubo ajuste, la diferencia hasta `pagoMensajero`.
+ */
+function toPagoPorTarifa(g: GestionAdminRow): PagoPorTarifaDTO | null {
+  const p = g.pagosCongelados[0];
+  if (p === undefined) return null;
+  let ajuste: PagoPorTarifaDTO["ajuste"] = null;
+  if (g.ajustesPagoMensajero.length > 0 && g.pagoMensajero !== null) {
+    const diferencia = g.pagoMensajero.minus(p.importe);
+    if (!diferencia.isZero()) {
+      ajuste = { signo: diferencia.gt(0) ? "suma" : "resta", monto: diferencia.abs().toFixed(2) };
+    }
+  }
+  return {
+    importe: p.importe.toFixed(2),
+    modo: p.modo,
+    valor: p.valor.toFixed(2),
+    base: decimalToString(p.base),
+    ajuste,
+    ...origenTarifaDe(p.nivel, p.tarifaValor),
+  };
+}
+
+/**
+ * SLT-101 (R66, R96) — «Sin tarifa de pago» desde lo congelado: modelo nuevo, resultado con concepto
+ * de pago al mensajero y sin fila congelada del mensajero. En el viejo, `false`: lo congelado no
+ * guarda si la zona tenia tarifa de pago (PA9).
+ */
+function tarifaFaltanteDe(g: GestionAdminRow, d: DetalleAdminRow): boolean {
+  return (
+    d.tarifaModelo === "nuevo" &&
+    hayPagoMensajeroEnCatalogo(g.resultado) &&
+    g.pagosCongelados.length === 0
+  );
+}
+
+/**
+ * SLT-101 — lo que solo el detalle de mensajero de `/cierres-admin` le pasa al mapper. Sin esto (el
+ * detalle de bodega y la descarga), `fulfillmentCargadoAt` sale `null` y `tarifaFaltante` no se
+ * emite (la fila de bodega sigue con el `false` de siempre: esa pantalla no cambia, R90).
+ */
+export interface LecturaDetalleMensajero {
+  /** `ocurrido_at` del cargo vigente de fulfillment de la orden; `null` si no hay o se revirtio. */
+  cargoFulfillmentAt: Date | null;
 }
 
 /**
@@ -502,6 +689,8 @@ export function toPendienteRowDesdeSnapshot(
   d: DetalleAdminRow,
   /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `created_at`. */
   zona: string,
+  /** SLT-101: solo el detalle de mensajero de `/cierres-admin` (ver `LecturaDetalleMensajero`). */
+  detalleMensajero?: LecturaDetalleMensajero,
 ): CierreGestionPendienteRow {
   return {
     gestionId: g.id,
@@ -556,8 +745,12 @@ export function toPendienteRowDesdeSnapshot(
     // «monto cero». A diferencia de la vista del mensajero, el detalle de ADMIN SI lo lleva —
     // es quien lo captura y quien tiene que poder auditarlo despues.
     indemnizacion: decimalToString(g.indemnizacion),
-    ingresoEmpresa: toIngresoEmpresa(g, d),
+    ingresoEmpresa: toIngresoEmpresa(g, d, detalleMensajero?.cargoFulfillmentAt ?? null),
     ajustesPago: toAjustesPago(g.ajustesPagoMensajero), // SLT-56 (R19/R20)
+    pagoPorTarifa: toPagoPorTarifa(g), // SLT-101 (R66, R95)
+    // SLT-101 (R96): solo con el detalle de mensajero; en bodega la clave no existe y `toDetalleDTO`
+    // sigue dando `false`.
+    ...(detalleMensajero !== undefined ? { tarifaFaltante: tarifaFaltanteDe(g, d) } : {}),
   };
 }
 
@@ -1429,7 +1622,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     // admin veia los valores de HOY, no los del cierre que esta revisando.
     // R19 sale de aqui gratis: una orden con `deleted_at` sigue mostrandose, y ahora por
     // diseño y no por el accidente de que `WITH_DETALLE` no filtraba `deletedAt`.
-    const [gestiones, detalle, sinGestion, rechazosDeTienda] = await Promise.all([
+    const [gestiones, detalle, sinGestion, rechazosDeTienda, ultimosMovimientos] = await Promise.all([
       this.prisma.gestionOrden.findMany({
         where: { cierreId }, // R6: gestiones vinculadas a ESTE cierre
         orderBy: { createdAt: "desc" },
@@ -1467,8 +1660,23 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         orderBy: ORDEN_RECHAZOS_DE_TIENDA, // del mas viejo al mas reciente, orden total
         select: RECHAZO_DE_TIENDA_SELECT,
       }),
+      // SLT-101 (R94) — EL ULTIMO MOVIMIENTO DE FULFILLMENT DE CADA ORDEN DE ESTE CIERRE. Quinta
+      // consulta del mismo `Promise.all` (una por detalle, no una por gestion). Las ordenes salen de
+      // `cierre_detail` de ESTE cierre, en el `where`: un cargo de una orden ajena no puede entrar.
+      // `distinct` + `secuencia desc` = el ultimo evento por orden; si es un reverso, no hay cargo
+      // vigente. El alcance no se repite, por la misma razon que en las de arriba.
+      this.prisma.ordenFulfillmentMovimiento.findMany({
+        where: { orden: { cierreDetalles: { some: { cierreId } } } },
+        orderBy: [{ ordenId: "asc" }, { secuencia: "desc" }],
+        distinct: ["ordenId"],
+        select: { ordenId: true, tipo: true, ocurridoAt: true },
+      }),
     ]);
     const byOrden = new Map(detalle.map((d) => [d.ordenId, d]));
+    // Un valor por orden: el ultimo movimiento, si es un cargo; `null` si es un reverso.
+    const cargoPorOrden = new Map(
+      ultimosMovimientos.map((m) => [m.ordenId, m.tipo === "cargo" ? m.ocurridoAt : null]),
+    );
     return {
       cierre: toResumenRow(cierre),
       // R11: lo congelado, tal cual. Ni un `JOIN` con la orden VIVA, que es el error que la
@@ -1487,7 +1695,9 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       gestiones: gestiones.map((g) => {
         const d = byOrden.get(g.ordenId);
         if (d === undefined) throw new CierreDetalleFaltanteError(cierreId, g.ordenId);
-        return toPendienteRowDesdeSnapshot(g, d, zona);
+        return toPendienteRowDesdeSnapshot(g, d, zona, {
+          cargoFulfillmentAt: cargoPorOrden.get(g.ordenId) ?? null,
+        });
       }),
     };
   }

@@ -363,8 +363,24 @@ function consultaDeLaTienda(tiendaId: string) {
 const txt = (d: Prisma.Decimal | null) => (d === null ? null : d.toFixed(2));
 
 /** La lectura sin la traza del valor de origen, que es lo unico que un borrado puede cambiar (SET NULL). */
+// SLT-101 (R95, R97): los nombres de zona, grupo y vehiculo del valor de origen que el detalle emite
+// en `conceptosTarifa` / `pagoPorTarifa` son la MISMA traza que `tarifaValorId`: con el valor borrado
+// (FK SET NULL) pasan a `null`. Se quitan solo ahi; el `zonaNombre` congelado de la fila no se toca.
+const NOMBRES_DE_ORIGEN = new Set(["zonaNombre", "grupoNombre", "vehiculoNombre"]);
+const sinNombresDeOrigen = (o: unknown): unknown =>
+  o === null || typeof o !== "object"
+    ? o
+    : Object.fromEntries(Object.entries(o).filter(([k]) => !NOMBRES_DE_ORIGEN.has(k)));
+
 function sinTraza<T>(x: T): unknown {
-  return JSON.parse(JSON.stringify(x, (k, v: unknown) => (k === "tarifaValorId" ? undefined : v)));
+  return JSON.parse(
+    JSON.stringify(x, (k, v: unknown) => {
+      if (k === "tarifaValorId") return undefined;
+      if (k === "conceptosTarifa" && Array.isArray(v)) return v.map(sinNombresDeOrigen);
+      if (k === "pagoPorTarifa") return sinNombresDeOrigen(v);
+      return v;
+    }),
+  );
 }
 
 async function conceptosCongelados(tx: TxDeTest, cierreId: string) {
@@ -629,6 +645,16 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
     // Tras BORRAR, lo unico que cambia es la traza (`tarifaValorId` -> null, FK SET NULL): ni un importe.
     expect(sinTraza(r.despues)).toEqual(sinTraza(r.antes));
     expect(JSON.stringify(r.despues)).not.toContain(e.v.FE_G1); // la traza si se fue: el borrado ocurrio
+    // SLT-101 (R97): los nombres del origen tambien se van con el valor borrado; el nivel queda.
+    expect(r.antes.ingresoPorGestion[e.o1.gestionId]?.conceptosTarifa?.[0]).toMatchObject({
+      nivel: "grupo",
+      grupoNombre: "G1",
+    });
+    expect(r.despues.ingresoPorGestion[e.o1.gestionId]?.conceptosTarifa?.[0]).toMatchObject({
+      nivel: "grupo",
+      grupoNombre: null,
+      zonaNombre: null,
+    });
     // Lo congelado conserva los importes; la traza de los valores borrados queda en NULL (SET NULL).
     // FF_T no se borro (es de la tienda, no del grupo G1): su traza sigue; su importe congelado es el de antes del cambio.
     expect(r.conceptos).toEqual(conceptosEsperados(e, { fe1: null, fe2: null }));

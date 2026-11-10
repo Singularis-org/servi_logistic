@@ -1,7 +1,9 @@
 /**
  * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R21, R82, D26) — las columnas de
  * «Descargar» en la pestaña «Gestiones» del detalle único: una fila por gestión del cierre ya leído,
- * las mismas siete para la central y para la satélite. «Señales» la añade SLT-101.
+ * las mismas siete para la central y para la satélite. SLT-101 «Fila de gestión única y lista con
+ * filtros» (R91) añade «Señales» al final, con el MISMO texto que la celda de la tabla para la
+ * audiencia que descarga (`textoSenales`).
  *
  * Módulo PURO: sin React ni DOM. MONEY-SAFE (R71): cada importe es el STRING del servidor tal cual,
  * sin `money()` (rompería la celda como número) y sin convertirlo. Un importe ausente sale `null`
@@ -14,9 +16,11 @@ import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import { RECIBIDO_LABEL, RESULTADO_FILA_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { RESULTADO_COL } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas";
 
+import { COL_SENALES } from "../fila/fila-gestion-labels";
+import { textoSenales, type AudienciaFila } from "../fila/fila-gestion-vista";
 import { COBRO_A_LA_TIENDA_COL, PAGO_AL_MENSAJERO_COL } from "./detalle-cierre-labels";
 
-/** Las siete columnas de R82, en su orden. */
+/** Las siete columnas de R82 y «Señales» (R91), en su orden. */
 export const COLUMNAS_DESCARGA_DETALLE_CIERRE: DescargaColumna[] = [
   { clave: "numGuia", encabezado: "Nº Guía" },
   { clave: "destinatario", encabezado: "Destinatario" },
@@ -25,10 +29,14 @@ export const COLUMNAS_DESCARGA_DETALLE_CIERRE: DescargaColumna[] = [
   { clave: "recibido", encabezado: RECIBIDO_LABEL },
   { clave: "cobroTienda", encabezado: COBRO_A_LA_TIENDA_COL },
   { clave: "pagoMensajero", encabezado: PAGO_AL_MENSAJERO_COL },
+  { clave: "senales", encabezado: COL_SENALES },
 ];
 
-/** Una gestión del detalle a su fila: el resultado con su etiqueta legible, los importes crudos. */
-export function filaDescargaDetalleCierre(g: CierreDetalleGestion): DescargaFila {
+/**
+ * Una gestión del detalle a su fila: el resultado con su etiqueta legible, los importes crudos y
+ * las señales de esa audiencia (`null` sin señales: celda vacía, R91).
+ */
+export function filaDescargaDetalleCierre(g: CierreDetalleGestion, audiencia: AudienciaFila): DescargaFila {
   return {
     numGuia: g.numGuia,
     destinatario: g.destinatario,
@@ -37,5 +45,6 @@ export function filaDescargaDetalleCierre(g: CierreDetalleGestion): DescargaFila
     recibido: g.montoRecibido,
     cobroTienda: g.ingresoEmpresa?.total ?? null,
     pagoMensajero: g.pagoMensajero,
+    senales: textoSenales(g, audiencia) || null,
   };
 }

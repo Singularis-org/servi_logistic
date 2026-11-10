@@ -1405,13 +1405,13 @@ export interface CierreFacturaDetalleProps {
  * «corregir» y no «editar» a propósito — lo que se arregla es un dato mal registrado en la
  * calle, no una preferencia—, y nombra los MÉTODOS porque el total no se toca.
  */
-const FILA_CORREGIR_METODOS = "Corregir métodos de pago";
+export const FILA_CORREGIR_METODOS = "Corregir métodos de pago";
 
 /**
  * FICHA 398 (R16) — rótulo del acceso a la corrección del RESULTADO. Nombra el resultado y no
  * el dinero: lo que se arregla es una entrega que no ocurrió, y el dinero se va detrás.
  */
-const FILA_CORREGIR_RESULTADO = "Corregir el resultado";
+export const FILA_CORREGIR_RESULTADO = "Corregir el resultado";
 
 /**
  * Feature 263 (R7–R10, R14) — la plantilla de la rejilla de órdenes, en UN solo sitio.
@@ -1483,7 +1483,7 @@ const FILA_RECIBIDO_LABEL = "Recibido";
 export const FILA_TIENDA_LABEL = "Tienda";
 export const FILA_MOTIVO_LABEL = "Motivo";
 const FILA_NUEVA_FECHA_LABEL = "Nueva fecha";
-const FILA_VER_EVIDENCIA = "Ver evidencia";
+export const FILA_VER_EVIDENCIA = "Ver evidencia";
 const FOOTER_RECAUDADO_LABEL = "Total recaudado";
 const FOOTER_ENTREGAS_LABEL = "entregas";
 

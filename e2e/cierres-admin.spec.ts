@@ -74,6 +74,13 @@ async function ordenesDe(detalle: Locator): Promise<Locator> {
   return detalle.getByRole("region", { name: "Órdenes del cierre" });
 }
 
+/**
+ * SLT-101 «Fila de gestión única y lista con filtros» (R84, R89): las pestañas por resultado de la lista pasan
+ * a ser el filtro «Filtrar por resultado» («<resultado> <n>»), encima de «Órdenes del cierre».
+ */
+const filtro = (detalle: Locator, resultado: RegExp) =>
+  detalle.getByRole("group", { name: "Filtrar por resultado" }).getByRole("button", { name: resultado });
+
 async function verResueltos(page: Page, m: MensajeroE2E) {
   await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
   return page.getByRole("region", { name: "Histórico" }).getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
@@ -94,9 +101,9 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     await expect(recaudado(detalle)).toHaveText(importe(6000, { solo: true }));
 
     // R7 de la 38: la evidencia de la rechazada abre por URL firmada y la imagen CARGA (bytes del doble).
-    // Las gestiones van en pestañas por resultado, con la fila desplegable (fichas 456 y 478).
+    // SLT-101: las gestiones van en la lista única con su filtro por resultado; la fila se despliega.
     const ordenes = await ordenesDe(detalle);
-    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
     await ordenes.getByRole("button", { name: new RegExp(rechazada.numRemision), expanded: false }).click();
     await detalle.getByRole("button", { name: `Ver evidencia de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` }).click();
     const visor = page.getByRole("dialog", { name: "Evidencia de la gestión" });
@@ -186,7 +193,7 @@ test.describe("Cierres del día — corregir el resultado mueve Analítica en la
     const detalle = await abrirDetalle(page, m);
     await expect(recaudado(detalle)).toHaveText(importe(8500, { solo: true }));
     const ordenes = await ordenesDe(detalle);
-    await ordenes.getByRole("tab", { name: /Entregado/ }).click();
+    await filtro(detalle, /^Entregado \d+$/).click();
     await ordenes.getByRole("button", { name: new RegExp(corregida.numRemision), expanded: false }).click();
     await detalle.getByRole("button", { name: `Corregir el resultado de la orden ${corregida.numRemision} · ${corregida.destinatario}` }).click();
 
@@ -204,7 +211,7 @@ test.describe("Cierres del día — corregir el resultado mueve Analítica en la
     // Y el detalle de detrás sigue abierto, releído del servidor.
     await expect(detalle).toBeVisible();
     await expect(recaudado(detalle)).toHaveText(importe(6000, { solo: true }));
-    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
     await expect(ordenes.getByRole("button", { name: new RegExp(corregida.numRemision) })).toBeVisible();
 
     // R13: la primera lectura tras responder trae la cifra nueva. R8: sigue cerrada, así que el rótulo no baja.

@@ -97,6 +97,9 @@ const INGRESO_SATELITE: IngresoEmpresaDTO = {
   tarifa: { ...TARIFA, fulfillment: null },
 };
 
+/** SLT-101: campos de la fila (no del ingreso) que solo pone el bloque de las cifras nuevas. */
+let extraDeLaFila: Partial<CierreGestionPendienteRow> = {};
+
 function gestionRow(): CierreGestionPendienteRow {
   return conPagos(
     {
@@ -127,10 +130,12 @@ function gestionRow(): CierreGestionPendienteRow {
       causaIncidente: null,
       indemnizacion: null,
       ingresoEmpresa: ingreso(),
+      ...extraDeLaFila,
     },
     undefined,
   );
 }
+
 
 function filaDescarga(): CierreGestionDescargaDTO {
   return {
@@ -289,5 +294,100 @@ describe("SLT-52 R46 — el fulfillment del modelo nuevo y su IVA tambien son so
   ])("%s: recibe 450.00 y su IVA 58.50 tal cual", async (_n, actor) => {
     expect(await ingresoDelDetalle(actor)).toEqual(INGRESO_NUEVO);
     expect(await ingresoDeLaDescarga(actor)).toEqual(INGRESO_NUEVO);
+  });
+});
+
+/**
+ * SLT-101 «Fila de gestión única y lista con filtros» (R94; R66, R95, R96 de paso) — los tres campos
+ * nuevos del fulfillment («Se cobró», su % de IVA y la fecha del cargo) son dato de la central: la
+ * satelite los recibe `null`. Lo demas de las cifras nuevas (IVA incluido, tarifa de cada concepto,
+ * pago por tarifa, «Sin tarifa de pago») no es fulfillment y le llega igual que a la central (R25).
+ * Literales escritos a mano: 450,00 + 58,50 = 508,50.
+ */
+describe("SLT-101 R94 — «Se cobró», su % de IVA y la fecha del cargo solo llegan a la central", () => {
+  const INGRESO_CIFRAS: IngresoEmpresaDTO = {
+    ...INGRESO_NUEVO,
+    ivaIncluido: "520.00",
+    fulfillmentConIva: "508.50",
+    ivaPctFulfillment: "13.00",
+    fulfillmentCargadoAt: "2026-11-06T15:00:00.000Z",
+    conceptosTarifa: [
+      {
+        concepto: "flete",
+        modo: "monto",
+        valor: "3500.00",
+        ivaPct: "13.00",
+        base: null,
+        nivel: "grupo",
+        zonaNombre: "GAM",
+        grupoNombre: "San José centro",
+        vehiculoNombre: null,
+      },
+    ],
+  };
+  const PAGO_POR_TARIFA = {
+    importe: "2500.00",
+    modo: "monto" as const,
+    valor: "2500.00",
+    base: null,
+    nivel: "mensajero" as const,
+    zonaNombre: null,
+    grupoNombre: null,
+    vehiculoNombre: null,
+    ajuste: { signo: "resta" as const, monto: "700.00" },
+  };
+
+  beforeEach(() => {
+    filaDelRepo = INGRESO_CIFRAS;
+    extraDeLaFila = { pagoPorTarifa: PAGO_POR_TARIFA, tarifaFaltante: true };
+  });
+  afterEach(() => {
+    filaDelRepo = INGRESO;
+    extraDeLaFila = {};
+  });
+
+  async function gestionDelDetalle(actor: Actor) {
+    const r = await newService().verCierreDetalle("c1", actor);
+    if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
+    return r.grupos.entregado[0];
+  }
+
+  it("adminSatelite: los tres campos del fulfillment llegan null; el resto de las cifras, intacto", async () => {
+    const g = await gestionDelDetalle(SATELITE);
+    expect(g.ingresoEmpresa).toEqual({
+      ...INGRESO_CIFRAS,
+      fulfillment: null,
+      ivaFulfillment: null,
+      fulfillmentConIva: null,
+      ivaPctFulfillment: null,
+      fulfillmentCargadoAt: null,
+    });
+    expect(g.pagoPorTarifa).toEqual(PAGO_POR_TARIFA);
+    expect(g.tarifaFaltante).toBe(true);
+  });
+
+  it.each([
+    ["maestro", MAESTRO],
+    ["admin", ADMIN],
+  ])("%s: recibe «Se cobró» 508.50, 13.00 y la fecha del cargo tal cual", async (_n, actor) => {
+    const g = await gestionDelDetalle(actor);
+    expect(g.ingresoEmpresa?.fulfillmentConIva).toBe("508.50");
+    expect(g.ingresoEmpresa?.ivaPctFulfillment).toBe("13.00");
+    expect(g.ingresoEmpresa?.fulfillmentCargadoAt).toBe("2026-11-06T15:00:00.000Z");
+    expect(g.ingresoEmpresa).toEqual(INGRESO_CIFRAS);
+    // R66/R96: `toDetalleDTO` pasa el pago por tarifa y la señal de la fila sin re-derivarlos.
+    expect(g.pagoPorTarifa).toEqual(PAGO_POR_TARIFA);
+    expect(g.tarifaFaltante).toBe(true);
+  });
+
+  it("hoja «Detalle» del Excel: la satelite tampoco recibe los tres campos", async () => {
+    expect(await ingresoDeLaDescarga(SATELITE)).toEqual({
+      ...INGRESO_CIFRAS,
+      fulfillment: null,
+      ivaFulfillment: null,
+      fulfillmentConIva: null,
+      ivaPctFulfillment: null,
+      fulfillmentCargadoAt: null,
+    });
   });
 });

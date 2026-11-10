@@ -181,7 +181,12 @@ function detalle(estado: Estado, extra: Partial<DetalleOk> = {}, cierreExtra: Pa
 
 function montar(
   d: DetalleOk,
-  opciones: { audiencia?: "admin" | "satelite"; puedeRegistrarPago?: boolean } = {},
+  opciones: {
+    audiencia?: "admin" | "satelite";
+    puedeRegistrarPago?: boolean;
+    // SLT-101: los tres permisos de las acciones de la fila, como los pasa la página.
+    permisosFila?: boolean;
+  } = {},
 ) {
   const enCola = d.cierre.estado === "solicitado" || d.cierre.estado === "vencido";
   const cola = paginaInicial(enCola ? [d.cierre] : []);
@@ -197,6 +202,9 @@ function montar(
         sinZona={false}
         audiencia={opciones.audiencia ?? "admin"}
         puedeRegistrarPago={opciones.puedeRegistrarPago ?? false}
+        puedeCorregirPagos={opciones.permisosFila ?? false}
+        puedeCorregirResultado={opciones.permisosFila ?? false}
+        puedeAjustarPagoMensajero={opciones.permisosFila ?? false}
       />
     </SWRConfig>,
   );
@@ -455,5 +463,143 @@ describe("SLT-100 R81 — la nota del origen del ingreso de bodega", () => {
     expect(
       within(linea).getByText("Automático (por plazo vencido) ₡0 · Manual (mensajero) ₡500"),
     ).toBeInTheDocument();
+  });
+});
+
+// ─── SLT-101 «Fila de gestión única y lista con filtros» (T4.2; R19, R26, R30, R90) ────────────────
+// «Gestiones» monta la lista y la fila únicas con la audiencia del actor. Las gestiones llevan
+// fulfillment en el doble A PROPÓSITO: el servidor ya lo anula a la satélite (481), y aquí se mira
+// que la pantalla tampoco lo pinte aunque llegara (R30).
+
+function conCobro(d: DetalleOk): DetalleOk {
+  const ingreso = {
+    montoCobrar: "70000.00",
+    cobraComision: true,
+    esCentral: true,
+    esZonaEspecial: false,
+    fleteOrigen: "normal" as const,
+    fleteDevolucionOrigen: "normal" as const,
+    flete: "2000.00",
+    ivaFlete: "260.00",
+    fleteDevolucion: null,
+    ivaFleteDevolucion: null,
+    comisionCod: "700.00",
+    ivaComisionCod: "91.00",
+    fleteConIva: "2260.00",
+    fleteDevolucionConIva: null,
+    comisionConIva: "791.00",
+    total: "3051.00",
+    fulfillment: "300.00",
+    ivaFulfillment: "0.00",
+    tarifa: null,
+    tarifaModelo: "viejo" as const,
+    ivaIncluido: "351.00",
+    fulfillmentConIva: "300.00",
+    ivaPctFulfillment: null,
+    fulfillmentCargadoAt: null,
+    conceptosTarifa: [],
+  };
+  return {
+    ...d,
+    grupos: {
+      ...d.grupos,
+      entregado: d.grupos.entregado.map((g) => ({
+        ...g,
+        ingresoEmpresa: { ...ingreso, tarifa: { tarifaId: "t", valorFlete: "1500.00", valorFleteGam: "2000.00", valorFleteDevuelto: "1000.00", valorFleteDevueltoGam: "2000.00", comisionCod: "1.00", ivaFlete: "13.00", ivaComisionCod: "13.00", fulfillment: "300.00", tarifaEspecial: null, tarifaEspecialDevuelta: null } },
+      })),
+    },
+  };
+}
+
+async function abrirGestiones(d: DetalleOk, opciones: Parameters<typeof montar>[1] = {}) {
+  const { user, dialogo } = await abrir(d, opciones);
+  await user.click(within(dialogo).getByRole("tab", { name: "Gestiones (2)" }));
+  return { user, dialogo };
+}
+
+describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () => {
+  it.each(["admin", "satelite"] as const)("%s: filtros con conteo, sin buscador, «Descargar» en la misma fila", async (audiencia) => {
+    const { dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), { audiencia });
+    const grupo = within(dialogo).getByRole("group", { name: "Filtrar por resultado" });
+    expect(within(grupo).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Todas 2",
+      "Entregado 2",
+      "Reprogramado 0",
+      "Novedad 0",
+      "Devolución a origen por rechazo 0",
+      "Incidente 0",
+      "Con señales 0",
+    ]);
+    expect(within(dialogo).queryByRole("searchbox")).toBeNull();
+    const descargar = within(dialogo).getByRole("button", { name: "Descargar Gestiones del cierre C0FFEE01" });
+    expect((descargar.closest(".flex-wrap") as HTMLElement).contains(grupo)).toBe(true);
+    // Sin la región por resultado de las pestañas de antes: la lista es «Órdenes del cierre».
+    expect(within(dialogo).getByRole("region", { name: "Órdenes del cierre" })).toBeInTheDocument();
+    expect(within(dialogo).queryByRole("region", { name: "Entregado" })).toBeNull();
+  });
+
+  it("central: Fulfillment y las tres acciones de la fila", async () => {
+    const { user, dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), { permisosFila: true });
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-001 · Beto Ruiz" }));
+    expect(
+      within(dialogo).getByRole("region", { name: "Fulfillment · se cobró al crear la orden de la orden REM-001 · Beto Ruiz" }),
+    ).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Corregir métodos de pago de la orden REM-001 · Beto Ruiz" })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Corregir el resultado de la orden REM-001 · Beto Ruiz" })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Ajustar pago al mensajero de la orden REM-001 · Beto Ruiz" })).toBeInTheDocument();
+  });
+
+  it("satélite: sin Fulfillment ni «Corregir métodos de pago» ni «Corregir el resultado», aunque llegaran; sí «Ajustar pago»", async () => {
+    const { user, dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), {
+      audiencia: "satelite",
+      permisosFila: true,
+    });
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-001 · Beto Ruiz" }));
+    expect(within(dialogo).queryByText("Fulfillment · se cobró al crear la orden")).toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: /Corregir métodos de pago/ })).toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: /Corregir el resultado/ })).toBeNull();
+    expect(within(dialogo).getByRole("button", { name: "Ajustar pago al mensajero de la orden REM-001 · Beto Ruiz" })).toBeInTheDocument();
+    // Lo que sí ve: el cobro a la tienda con su IVA incluido (R25, R93).
+    const cobro = within(dialogo).getByRole("region", { name: "Se le cobra a la tienda de la orden REM-001 · Beto Ruiz" });
+    expect(cobro).toHaveTextContent("Se le cobra₡3.051");
+    expect(cobro).toHaveTextContent("de eso, IVA (no es de la empresa)₡351");
+  });
+
+  it("«Ajustar pago» abre el diálogo de hoy con esa gestión", async () => {
+    const { user, dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), { permisosFila: true });
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-001 · Beto Ruiz" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Ajustar pago al mensajero de la orden REM-001 · Beto Ruiz" }));
+    const ajuste = await screen.findByRole("dialog", { name: "Ajustar el pago al mensajero" });
+    expect(ajuste).toHaveTextContent("REM-001");
+  });
+
+  it("«Corregir el resultado» abre el diálogo de hoy con esa gestión", async () => {
+    const { user, dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), { permisosFila: true });
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-001 · Beto Ruiz" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Corregir el resultado de la orden REM-001 · Beto Ruiz" }));
+    const correccion = await screen.findByRole("dialog", { name: "Corregir el resultado de la entrega" });
+    expect(correccion).toHaveTextContent("Orden REM-001 · Beto Ruiz");
+  });
+
+  it("R19: «Pasaron a Novedad interna» sigue debajo de la lista", async () => {
+    const d = conCobro(
+      detalle("solicitado", {
+        ordenesSinGestion: [
+          {
+            ordenId: "os1",
+            numGuia: 2001,
+            numRemision: "REM-S1",
+            destinatario: "Eva Sin",
+            producto: "Caja",
+            tiendaNombre: "Tienda Norte",
+            estatusOrigen: null,
+          } as DetalleOk["ordenesSinGestion"][number],
+        ],
+      }),
+    );
+    const { dialogo } = await abrirGestiones(d);
+    const lista = within(dialogo).getByRole("region", { name: "Órdenes del cierre" });
+    const novedad = within(dialogo).getByRole("region", { name: "Pasaron a Novedad interna" });
+    expect(lista.compareDocumentPosition(novedad) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
