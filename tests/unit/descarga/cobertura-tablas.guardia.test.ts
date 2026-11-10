@@ -230,8 +230,13 @@ const ARBOLES_UI = ["app", "components"] as const;
 // SLT-55 (R27): 36 -> 37 archivos y 36 -> 37 instancias. Entra `TarifasMensajeros.tsx` («Mensajeros con
 // valor propio»), `fuera`. Exclusiones 14 -> 15; dentro de alcance intacto. Esta guardia se vio fallar PRIMERO
 // con «expected 37 to be 36» y «expected 15 to be 14» antes de tocar estos numeros.
-const TOTAL_ARCHIVOS_CON_DATATABLE = 37;
-const TOTAL_INSTANCIAS_DATATABLE = 37;
+//
+// SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: 37 -> 38 archivos y 37 -> 38
+// instancias. Entra `ColaCierres.tsx` («Cola de cierres del día»), `fuera` (su descarga va en la
+// barra, fuera de la tabla). Exclusiones 15 -> 16. Esta guardia se vio fallar PRIMERO con «hay tablas
+// sin registrar: components/private/cierres/cola/ColaCierres.tsx #1» antes de tocar estos números.
+const TOTAL_ARCHIVOS_CON_DATATABLE = 38;
+const TOTAL_INSTANCIAS_DATATABLE = 38;
 
 function listarTsx(dir: string, acc: string[] = []): string[] {
   for (const entrada of readdirSync(dir, { withFileTypes: true })) {
@@ -385,7 +390,8 @@ describe("guardia de cobertura del censo de tablas", () => {
     // y porque exportar las ocho cuentas de cobro a un archivo no le da a quien administra nada
     // que no vea en pantalla.
     // SLT-55 (R27): 14 -> 15. La de mas es «Mensajeros con valor propio», con el motivo de las tiendas.
-    expect(excluidas.length).toBe(15);
+    // SLT-102: 15 -> 16, por la cola única de cierres (descarga en la barra, fuera de la tabla).
+    expect(excluidas.length).toBe(16);
     for (const inst of excluidas) {
       const tabla = registro.get(inst.ruta)!.tablas[inst.indice];
       expect(inst.declaraDescarga, `${inst.ruta} :: ${tabla.nombre}`).toBe(false);
@@ -440,7 +446,8 @@ describe("guardia de cobertura del censo de tablas", () => {
     // ⭑ FICHA 482: 37 → 36. Salen las tablas del detalle de un cierre (`DetalleSecciones`), que la
     // 478 sustituyó por la lista en pestañas. Las 14 exclusiones NO se mueven.
     // SLT-55 (R27): 37 → 38, por «Mensajeros con valor propio». Las 22 con descarga NO se mueven.
-    expect(totalCensado).toBe(38);
+    // SLT-102: 38 → 39, por la cola única de cierres. Las 22 con descarga NO se mueven.
+    expect(totalCensado).toBe(39);
   });
 
   it("la FASE 1 del export queda cerrada: ninguna tabla del censo sigue pendiente", () => {
@@ -556,7 +563,8 @@ describe("guardia de cobertura del censo de tablas", () => {
     // `con_descarga`; la 478 retiró su descarga por sección (P3) y la 482 las borró—.
     expect(censadas.filter((t) => t.estado === "con_descarga")).toHaveLength(22);
     // SLT-55 (R27): 15 → 16, por «Mensajeros con valor propio».
-    expect(censadas.filter((t) => t.estado === "fuera")).toHaveLength(16);
+    // SLT-102: 16 → 17, por la cola única de cierres.
+    expect(censadas.filter((t) => t.estado === "fuera")).toHaveLength(17);
   });
 
   it("una tabla compartida declara TODAS las pantallas que la montan", () => {
@@ -575,7 +583,15 @@ describe("guardia de cobertura del censo de tablas", () => {
       const donde = `${ruta} :: ${tabla.nombre}`;
       // Compartida quiere decir compartida: con un solo montaje, la tabla debería vivir en
       // la pantalla que la usa y no en el árbol común.
-      expect(tabla.montajes!.length, `${donde}: un solo montaje`).toBeGreaterThan(1);
+      // SLT-102: o la montan ya dos pantallas, o la que hoy tiene una nombra las fichas que la
+      // montarán (`montajesPrevistos`, la cola única de SLT-95).
+      for (const ficha of tabla.montajesPrevistos ?? []) {
+        expect(ficha.trim(), `${donde}: montaje previsto vacío`).not.toBe("");
+      }
+      expect(
+        tabla.montajes!.length + (tabla.montajesPrevistos?.length ?? 0),
+        `${donde}: un solo montaje`,
+      ).toBeGreaterThan(1);
       expect([...tabla.montajes!].sort(), `${donde}: montajes declarados`).toEqual(
         montajesEnElArbol(ruta),
       );

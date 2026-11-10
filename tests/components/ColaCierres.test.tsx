@@ -339,3 +339,37 @@ describe("ColaCierres — carga, error, vacío, descripción y pie (R104, R106)"
     expect(tabla.compareDocumentPosition(pie) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe("ColaCierres — color de la pastilla de estado (R101, decisión de Carlos 2026-11-10)", () => {
+  // SLT-102: fiel al canvas, «Solicitado» ámbar (#fef3c7 / #92400e = tokens `warning`), «Aprobado»
+  // verde (#d1fae5 / #047857 = `success`), «Rechazado» y «Vencido» rojo (#fee2e2 / #b91c1c =
+  // `danger`). Las clases son el contrato: cada token vale el hex del canvas en `globals.css`.
+  const PASTILLA: [string, string, string][] = [
+    ["Solicitado", "bg-warning-soft", "text-warning-strong"],
+    ["Vencido", "bg-danger-soft", "text-danger-strong"],
+  ];
+  const PASTILLA_RESUELTOS: [string, string, string][] = [
+    ["Aprobado", "bg-success-soft", "text-success-strong"],
+    ["Rechazado", "bg-danger-soft", "text-danger-strong"],
+  ];
+
+  it.each(PASTILLA)("Pendientes: «%s» lleva %s y %s", (estado, fondo, texto) => {
+    render(<ColaCierres {...props()} />);
+    const region = screen.getByRole("region", { name: "Pendientes de decisión" });
+    const pastilla = within(region)
+      .getAllByText(estado)
+      .find((el) => el.getAttribute("data-slot") === "badge");
+    expect(pastilla).toBeDefined();
+    expect(pastilla).toHaveClass(fondo, texto);
+  });
+
+  it.each(PASTILLA_RESUELTOS)("Resueltos: «%s» lleva %s y %s", (estado, fondo, texto) => {
+    render(<ColaCierres {...props({ pestanaActiva: "resueltos" })} />);
+    const region = screen.getByRole("region", { name: "Histórico" });
+    const pastilla = within(region)
+      .getAllByText(estado)
+      .find((el) => el.getAttribute("data-slot") === "badge");
+    expect(pastilla).toBeDefined();
+    expect(pastilla).toHaveClass(fondo, texto);
+  });
+});

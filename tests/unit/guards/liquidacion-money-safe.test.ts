@@ -169,6 +169,11 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   "components/private/cierres/fila/CalculoCobro.tsx",
   "components/private/cierres/fila/fila-gestion-vista.ts",
   "components/private/cierres/fila/fila-gestion-labels.ts",
+  // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R71): la cola pinta los
+  // importes del servidor con `money()` y compara el pendiente como TEXTO.
+  "components/private/cierres/cola/ColaCierres.tsx",
+  "components/private/cierres/cola/cola-cierres-vista.ts",
+  "components/private/cierres/cola/cola-cierres-labels.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */

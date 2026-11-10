@@ -4,10 +4,10 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 
 import {
   CierreFacturaDetalle,
-  CierreFacturaResumen,
   type CierreFacturaCabecera,
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
-import { CierresAdminHistoricoLista } from "@/app/(app)/cierres-admin/_components/CierresAdminHistoricoLista";
+import { ColaCierres } from "@/components/private/cierres/cola/ColaCierres";
+import type { PestanaCola } from "@/components/private/cierres/cola/cola-cierres-vista";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type { CierreGrupos } from "@/lib/interfaces/services/ICierreDiaService";
 
@@ -18,8 +18,8 @@ vi.mock("@/lib/actions/cierres-admin", () => ({
 
 /**
  * FICHA 462 (T3.3, S3, R27/R28/R29/R30) — LA MARCA «Retiene N paquetes reprogramados para hoy» EN LAS
- * TRES SUPERFICIES DE `/cierres-admin`: la COLA y el HISTÓRICO (las dos usan el comprobante compacto
- * `CierreFacturaResumen`) y la cabecera del DETALLE (`CierreFacturaDetalle`).
+ * TRES SUPERFICIES DE `/cierres-admin`: la COLA y el HISTÓRICO (desde SLT-102, la celda «Señales» de
+ * las dos pestañas de `ColaCierres`) y la cabecera del DETALLE (`CierreFacturaDetalle`).
  *
  * ── LO QUE PROTEGE
  *  - con `reprogramadasRetenidasHoy: N > 0` la marca se lee, literal a mano;
@@ -60,96 +60,119 @@ const MARCA_1 = "Retiene 1 paquete reprogramado para hoy";
 
 afterEach(cleanup);
 
-describe("462/R27 — la COLA: el comprobante compacto con la cifra del servidor", () => {
-  it("con `reprogramadasRetenidasHoy: 2` pinta la marca y conserva la botonera (R29)", () => {
-    render(
-      <CierreFacturaResumen
-        cierre={resumen({ cierreId: "c1", reprogramadasRetenidasHoy: 2 })}
-        acciones={<button type="button">Aprobar</button>}
-      />,
-    );
-    const hoja = screen.getByRole("region", { name: "Comprobante del cierre de Ana Pérez" });
-    expect(within(hoja).getByText(MARCA_2)).toBeInTheDocument();
-    expect(within(hoja).getByRole("button", { name: "Aprobar" })).toBeInTheDocument();
-    // El estado sigue siendo el badge de la hoja: la marca no lo sustituye.
-    expect(within(hoja).getByText("Solicitado")).toBeInTheDocument();
+/**
+ * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R102): la COLA y el HISTÓRICO dejan
+ * de ser comprobantes y pasan a ser las dos pestañas de la cola única (`ColaCierres`). La superficie
+ * de la marca en las dos es ahora la celda «Señales» de la fila; se vigila lo mismo que antes, una
+ * mutación por superficie: «pintar con 0» la pone roja aquí.
+ */
+function montarCola(filas: CierreAdminResumen[], pestana: PestanaCola) {
+  render(
+    <ColaCierres
+      tipo="mensajero"
+      rol="central"
+      descripcion="Bodega central. Revisa el cierre de cada mensajero y apruébalo o recházalo."
+      pestanas={[
+        { id: "pendientes", label: "Pendientes", conteo: 0 },
+        { id: "resueltos", label: "Resueltos", conteo: 0 },
+      ]}
+      pestanaActiva={pestana}
+      onPestana={() => {}}
+      barra={null}
+      descargar={null}
+      filas={filas}
+      cargando={false}
+      error={null}
+      vacio="Sin cierres."
+      region={pestana === "pendientes" ? "Pendientes de decisión" : "Histórico"}
+      acciones={{ abrir: () => {}, destrabar: () => {} }}
+      paginacion={null}
+    />,
+  );
+}
+
+/** La fila de un mensajero en la tabla de la pestaña. */
+function filaDe(mensajero: string): HTMLElement {
+  const fila = screen.getAllByRole("row").find((r) => within(r).queryByText(mensajero) !== null);
+  if (!fila) throw new Error(`sin fila de ${mensajero}`);
+  return fila;
+}
+
+describe("462/R27 — la COLA: la celda Señales con la cifra del servidor", () => {
+  it("con `reprogramadasRetenidasHoy: 2` pinta la marca y conserva los botones (R29)", () => {
+    montarCola([resumen({ cierreId: "c1", reprogramadasRetenidasHoy: 2 })], "pendientes");
+    const fila = filaDe("Ana Pérez");
+    expect(within(fila).getByText(MARCA_2)).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: "Ver / decidir" })).toBeInTheDocument();
+    // El estado sigue siendo la pastilla de la fila: la marca no la sustituye.
+    expect(within(fila).getByText("Solicitado")).toBeInTheDocument();
   });
 
   it("con 1 el singular; con 0 o SIN el campo no aparece nada de esta ficha (R27)", () => {
-    render(<CierreFacturaResumen cierre={resumen({ cierreId: "c1", reprogramadasRetenidasHoy: 1 })} />);
+    montarCola([resumen({ cierreId: "c1", reprogramadasRetenidasHoy: 1 })], "pendientes");
     expect(screen.getByText(MARCA_1)).toBeInTheDocument();
     cleanup();
 
-    render(<CierreFacturaResumen cierre={resumen({ cierreId: "c2", reprogramadasRetenidasHoy: 0 })} />);
+    montarCola([resumen({ cierreId: "c2", reprogramadasRetenidasHoy: 0 })], "pendientes");
     expect(screen.queryByText(/Retiene/)).toBeNull();
     cleanup();
 
-    render(<CierreFacturaResumen cierre={resumen({ cierreId: "c3" })} />);
+    montarCola([resumen({ cierreId: "c3" })], "pendientes");
     expect(screen.queryByText(/Retiene/)).toBeNull();
   });
 
   it("un `vencido` que retiene la lleva igual que un `solicitado` (R28/R42)", () => {
-    render(
-      <CierreFacturaResumen
-        cierre={resumen({ cierreId: "c4", estado: "vencido", reprogramadasRetenidasHoy: 2 })}
-      />,
+    montarCola(
+      [resumen({ cierreId: "c4", estado: "vencido", reprogramadasRetenidasHoy: 2 })],
+      "pendientes",
     );
-    expect(screen.getByText(MARCA_2)).toBeInTheDocument();
-    expect(screen.getByText("Vencido")).toBeInTheDocument();
+    const fila = filaDe("Ana Pérez");
+    expect(within(fila).getByText(MARCA_2)).toBeInTheDocument();
+    expect(within(fila).getByText("Vencido")).toBeInTheDocument();
   });
 });
 
 describe("462/R27/R28 — el HISTÓRICO: el `rechazado` que retiene la lleva; el `aprobado` no", () => {
-  function renderHistorico(items: CierreAdminResumen[]) {
-    render(
-      <CierresAdminHistoricoLista
-        pagina={{ items, total: items.length, pageSize: 10 }}
-        page={1}
-        isLoading={false}
-        hayError={false}
-        onPageChange={() => {}}
-        onPageSizeChange={() => {}}
-        onAbrir={() => {}}
-      />,
-    );
-  }
-
   it("⭑ exactamente UNA marca: en el `rechazado` con 2, ninguna en el `aprobado` con 0; «Ver» y «Bloqueante» intactos", () => {
-    renderHistorico([
-      resumen({
-        cierreId: "r1",
-        mensajeroNombre: "Beto Mora",
-        estado: "rechazado",
-        motivoRechazo: "Falta efectivo",
-        resueltoAt: "2026-09-24T12:00:00.000Z",
-        reprogramadasRetenidasHoy: 2,
-      }),
-      resumen({
-        cierreId: "a1",
-        mensajeroNombre: "Carla Vega",
-        estado: "aprobado",
-        pendientePagoMensajero: "0.00",
-        resueltoAt: "2026-09-24T12:00:00.000Z",
-        reprogramadasRetenidasHoy: 0,
-      }),
-    ]);
+    montarCola(
+      [
+        resumen({
+          cierreId: "r1",
+          mensajeroNombre: "Beto Mora",
+          estado: "rechazado",
+          motivoRechazo: "Falta efectivo",
+          resueltoAt: "2026-09-24T12:00:00.000Z",
+          reprogramadasRetenidasHoy: 2,
+        }),
+        resumen({
+          cierreId: "a1",
+          mensajeroNombre: "Carla Vega",
+          estado: "aprobado",
+          pendientePagoMensajero: "0.00",
+          resueltoAt: "2026-09-24T12:00:00.000Z",
+          reprogramadasRetenidasHoy: 0,
+        }),
+      ],
+      "resueltos",
+    );
 
     expect(screen.getAllByText(/Retiene \d+ paquetes? reprogramados? para hoy/)).toHaveLength(1);
-    const rechazado = screen.getByRole("region", { name: "Comprobante del cierre de Beto Mora" });
+    const rechazado = filaDe("Beto Mora");
     expect(within(rechazado).getByText(MARCA_2)).toBeInTheDocument();
     // R29: las marcas y acciones previas de la fila siguen ahí.
     expect(within(rechazado).getByText("Bloqueante hasta re-solicitud")).toBeInTheDocument();
     expect(within(rechazado).getByRole("button", { name: "Ver el cierre resuelto de Beto Mora" })).toBeInTheDocument();
 
-    const aprobado = screen.getByRole("region", { name: "Comprobante del cierre de Carla Vega" });
+    const aprobado = filaDe("Carla Vega");
     expect(within(aprobado).queryByText(/Retiene/)).toBeNull();
     expect(within(aprobado).getByRole("button", { name: "Ver el cierre resuelto de Carla Vega" })).toBeInTheDocument();
   });
 
   it("sin el campo en ninguna fila, el histórico no pinta nada de esta ficha", () => {
-    renderHistorico([
-      resumen({ cierreId: "a2", estado: "aprobado", pendientePagoMensajero: "0.00", resueltoAt: "2026-09-24T12:00:00.000Z" }),
-    ]);
+    montarCola(
+      [resumen({ cierreId: "a2", estado: "aprobado", pendientePagoMensajero: "0.00", resueltoAt: "2026-09-24T12:00:00.000Z" })],
+      "resueltos",
+    );
     expect(screen.queryByText(/Retiene/)).toBeNull();
   });
 });

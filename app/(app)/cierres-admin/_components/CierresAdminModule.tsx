@@ -1201,6 +1201,8 @@ export function CierresAdminModule({
             // `filtrosCierresSchema` (los cierres del DÍA). Las dos de bodega usan
             // `filtrosCierresBodegaSchema`, que no lo declara y es `.strict()`.
             conEstado
+            // SLT-102 (R100, enmienda de Carlos 2026-11-10): sin «Bodega», como el canvas.
+            sinBodega
           />
         }
         descargar={

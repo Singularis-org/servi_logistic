@@ -659,7 +659,10 @@ async function abrirPestana(
   user: ReturnType<typeof userEvent.setup>,
   pestana: RegExp,
 ): Promise<void> {
-  await user.click(await screen.findByRole("button", { name: pestana }));
+  // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): en la cola de mensajeros la pestaña es un `tab`; las mitades de bodega siguen con el
+  // segmentado (`button`). Se pulsa la que haya.
+  const tab = screen.queryByRole("tab", { name: pestana });
+  await user.click(tab ?? (await screen.findByRole("button", { name: pestana })));
 }
 
 describe("Cierres · descarga", () => {
