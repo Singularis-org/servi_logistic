@@ -1,13 +1,14 @@
 // Guardia: una key de ficha nunca va sola en lo que lee el humano (`CLAUDE.md` regla 9,
 // `docs/jira.md > Cómo se nombra una ficha`). El hook Stop (`.claude/hooks/fin-de-turno.mjs`)
-// bloquea el cierre del turno si el último mensaje nombra una key sin su título.
+// anota debajo del último mensaje el título de cada key que nombra sin él. NO bloquea.
 //
-// Existe porque el 2026-11-07 el humano recibió «ya hice la tarea SL-50» sin saber qué tarea era,
-// y pidió que la regla fuera obligatoria y no una nota.
+// Existe porque el 2026-11-07 el humano recibió «ya hice la tarea SL-50» sin saber qué tarea era.
+// El 2026-11-10 pidió que dejara de bloquear: el hook corre cuando ya ve el mensaje, y el bloqueo
+// se lo duplicaba entero.
 //
-// Un caso por desenlace (`docs/gate.md > Probar que muerde, no que pasa`): la key suelta bloquea;
-// con título, en código, en una ruta o rama, o ajena al board, no; y el hook no bloquea dos veces
-// seguidas (`stop_hook_active`), que es lo que evita un bucle.
+// Un caso por desenlace (`docs/gate.md > Probar que muerde, no que pasa`): la key suelta deja la
+// nota con su título; con título, en código, en una ruta o rama, o ajena al board, no; y el hook
+// nunca devuelve `decision: block`.
 
 import { spawnSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -17,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { keysSinTitulo, motivoDeBloqueo, sinCodigo } from '../../scripts/nombres-de-fichas.mjs'
+import { keysSinTitulo, notaDeTitulos, sinCodigo } from '../../scripts/nombres-de-fichas.mjs'
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const TITULOS = new Map([
@@ -68,10 +69,11 @@ describe('guardia: keysSinTitulo', () => {
     expect(keysSinTitulo('La SL-77 es nueva.', { prefijos: ['SL'] })).toEqual(['SL-77'])
   })
 
-  it('el motivo trae el título de la copia del board, o pide buscarlo', () => {
-    const motivo = motivoDeBloqueo(['SL-50', 'SL-77'], TITULOS)
-    expect(motivo).toContain('SL-50 «Zonas separadas de Tarifas»')
-    expect(motivo).toContain('SL-77 «<su title en feature_list.json>»')
+  it('la nota trae el título de la copia del board, o dice que no lo hay', () => {
+    const nota = notaDeTitulos(['SL-50', 'SL-77'], TITULOS)
+    expect(nota).toBe(
+      'Fichas nombradas sin título (regla 9): SL-50 «Zonas separadas de Tarifas»; SL-77 (sin título en feature_list.json).',
+    )
   })
 
   it('sinCodigo quita bloques y código en línea', () => {
@@ -108,21 +110,18 @@ function hook(raiz: string, entrada: Record<string, unknown>) {
 }
 
 describe('guardia: el hook Stop hace cumplir la regla', { timeout: 30_000 }, () => {
-  it('bloquea el cierre si el mensaje nombra una key suelta, y da su título', () => {
+  it('con una key suelta NO bloquea: deja la nota con su título debajo del mensaje', () => {
     const r = hook(repo(), { last_assistant_message: 'Listo, ya hice la SL-50.', stop_hook_active: false })
     expect(r.status).toBe(0)
-    expect(r.salida.decision).toBe('block')
-    expect(r.salida.reason).toContain('SL-50 «Zonas separadas de Tarifas»')
+    expect(r.salida.decision).toBeUndefined()
+    expect(r.salida.reason).toBeUndefined()
+    expect(r.salida.systemMessage).toContain('SL-50 «Zonas separadas de Tarifas»')
   })
 
-  it('no bloquea si la key va con su título', () => {
+  it('si la key va con su título no deja nota', () => {
     const r = hook(repo(), { last_assistant_message: 'Listo SL-50 «Zonas separadas de Tarifas».', stop_hook_active: false })
     expect(r.salida.decision).toBeUndefined()
-  })
-
-  it('no bloquea dos veces seguidas (stop_hook_active): sin bucles', () => {
-    const r = hook(repo(), { last_assistant_message: 'Listo, ya hice la SL-50.', stop_hook_active: true })
-    expect(r.salida.decision).toBeUndefined()
+    expect(r.salida.systemMessage ?? '').not.toContain('regla 9')
   })
 
   it('sin entrada (stdin vacío) no bloquea ni falla', () => {
