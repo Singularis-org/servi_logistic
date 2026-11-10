@@ -169,7 +169,7 @@ export interface IAlmacenImagenesReporte {
   leer(ruta: string): Promise<Uint8Array | null>;
   /** R20–R23: URL firmada de lectura por ruta. Parcial: omite la que no pudo firmar. */
   firmar(rutas: string[], ttlSegundos: number): Promise<Record<string, string>>;
-  /** R11: borra lo que el envío rechazó. Propaga el error; el servicio lo trata como mejor esfuerzo. */
+  /** R11: borra las imágenes que el envío no aceptó. Propaga el error; el servicio lo trata como mejor esfuerzo. */
   borrar(rutas: string[]): Promise<void>;
 }
 ```
@@ -302,9 +302,9 @@ resto de parámetros no cambia; `nuevoId` va al final, con su valor por defecto.
 
    Si `leer` lanza un error que no es «no existe», se propaga: la action responde `error` y el panel
    avisa con el texto de SLT-87 R10.
-3. **Rechazo (R11).** Si alguna no vale:
+3. **Imágenes no aceptadas (R11).** Si alguna no vale:
    - borra con `almacen.borrar` las rutas de las que existían y no valen, como mejor esfuerzo: un fallo se
-     registra como `[reporte-bug] fallo al borrar imagenes rechazadas causa=<name>` y no cambia la
+     registra como `[reporte-bug] fallo al borrar imagenes no aceptadas causa=<name>` y no cambia la
      respuesta;
    - devuelve `{ status: "imagenes_invalidas", imagenes: [ids] }`, sin llamar al repositorio ni al
      emisor.
@@ -456,7 +456,7 @@ defecto.
   - `subida`: con su `imagenId`; se reutiliza en un reintento (§4.2);
   - `error_tipo`, `error_vacia` y `error_tamano`, que solo admiten «Quitar»;
   - `error_subida`, que admite «Reintentar» y «Quitar»;
-  - `rechazada`, la que el servidor no aceptó y solo admite «Quitar».
+  - `no_aceptada`, la que el servidor no aceptó y solo admite «Quitar».
 
 **Sección «Imágenes»**, debajo del contador de caracteres:
 - **Rótulo** (R1).
@@ -487,7 +487,7 @@ probar sin quitarla.
 
 **Respuestas del envío:**
 - `enviado`: «Gracias» y se vacían el texto y las imágenes (R8).
-- `imagenes_invalidas`: las imágenes con esos ids pasan a `rechazada`; el texto queda (R11). No sale el
+- `imagenes_invalidas`: las imágenes con esos ids pasan a `no_aceptada`; el texto queda (R11). No sale el
   aviso general de fallo, sino el de bloqueo (R7).
 - Cualquier otra: el aviso de SLT-87 R10, sin tocar texto ni imágenes. Las ya `subida` se reutilizan en
   el próximo «Enviar».
@@ -525,7 +525,7 @@ literalmente.
 | Archivo vacío (R5) | «El archivo está vacío.» |
 | Demasiado grande (R5) | «Pesa más de 5 MB.» |
 | Fallo de subida (R7) | «No se pudo subir.» |
-| Rechazada por el servidor (R11) | «No pudimos aceptar esta imagen. Quítala para enviar.» |
+| No aceptada por el servidor (R11) | «No pudimos aceptar esta imagen. Quítala para enviar.» |
 | Sobrantes (R3) | «Solo caben 5 imágenes: {m} no se agregaron.» |
 | Bloqueo del envío (R7) | «Quita o reintenta las imágenes marcadas para poder enviar.» |
 | Correo: encabezado (R20) | «Imágenes ({k}). Los enlaces vencen en 24 horas:» |
@@ -667,7 +667,7 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   un bucket que aún no existe.
 - **Resto tras un envío fallido a medias** *(P1)*. Si el usuario quita, descarta o cierra después de un
   envío en el que algunas imágenes subieron y otras no, las que subieron quedan sin fila. Sin purga, por
-  decisión. También quedan las que el servidor rechaza y no pudo borrar (R11, mejor esfuerzo).
+  decisión. También quedan las que el servidor no acepta y no pudo borrar (R11, mejor esfuerzo).
 - **Borrado de empresas demo.** `bug_report_image` cae en cascada, pero sus archivos quedan en el bucket:
   `scripts/demo-qa/borrar.ts` no conoce este bucket. Las empresas demo casi nunca reportan.
 - **Tiempo del envío.** El usuario espera a que suban hasta 25 MB antes del «Gracias». Lo hace visible el
@@ -676,7 +676,10 @@ límites son de `@supabase/storage-js`, ya instalada (la versión que cita el do
   aceptado *(P2)*. Un archivo más de lo previsto pasa el aviso, sin llegar a rojo.
 - **Tests de SLT-87 y SLT-97 que cambian de sentido:**
   - `ReporteBugBoton.test.tsx` afirma que no hay campo de archivos (R4 de SLT-87, sustituido aquí);
-  - `bug-report.test.ts` cuenta las claves del detalle (`toHaveLength(16)`);
+  - en `tests/integration/db/bug-report.test.ts`, el `toEqual` del detalle de R14 de SLT-97 («R14 —
+    detalle trae la empresa, el correo de quien reportó y el historial», que pasa por el servicio de
+    `ReportesBugPlataformaService`) ahora incluye `imagenes: []`. El `toHaveLength(16)` del mismo
+    archivo no cambia: cuenta los 16 pares de estados de R17 de SLT-97, no las claves del detalle;
   - el test de R4 de SLT-97 mira el constructor.
 
   Se ajustan en esta rama, citando este spec.
