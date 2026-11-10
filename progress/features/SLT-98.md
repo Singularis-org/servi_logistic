@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-98 | reporte-bugs-imagenes | fullstack | medium | feature/SLT-98-reporte-bugs-imagenes | Camilo | pending |
+| SLT-98 | reporte-bugs-imagenes | fullstack | medium | feature/SLT-98-reporte-bugs-imagenes | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 (2026-11-10): tomada, worktree montado y afinada. Sigue F1.2 (spec_author).
+F1.4 (2026-11-10): spec aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer.
 
 ## Evaluación
 - zone fullstack: bucket nuevo, subida firmada, validación en el servidor, enlaces en el correo y en el detalle, y el panel.
