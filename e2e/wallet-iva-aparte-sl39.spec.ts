@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
+import { filaDeCola } from "./_escenarios/cierres";
 import { altaDeEmpresa, clienteDueno, prepararAcceso, type Empresa, type Letra } from "./_dos-empresas-fixture";
 import { CAJA_A, CAJA_B, importeDeTexto, sembrarCaja, sembrarCierres, type CierresSembrados } from "./_wallet-iva-sl39-siembra";
 
@@ -189,7 +190,7 @@ test("SL-39 /wallet de B: IVA cobrado 6,50 y ganancia 40,00, sin un centimo de A
 
 async function abrirCierre(page: Page, mensajero: string): Promise<Locator> {
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const fila = pendientes.locator("li").filter({ hasText: mensajero });
+  const fila = filaDeCola(pendientes, mensajero);
   await expect(fila, `el cierre de ${mensajero} en la cola`).toHaveCount(1, { timeout: 60_000 });
   await fila.getByRole("button", { name: "Ver / decidir" }).click();
   const dialogo = page.getByRole("dialog", { name: "Detalle del cierre" });

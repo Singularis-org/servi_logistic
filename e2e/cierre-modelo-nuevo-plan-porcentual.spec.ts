@@ -16,7 +16,7 @@ import { crearUsuarioE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
 import { actorDe, exigirOk, servicios } from "../tests/fabricas/escenarios/reparto";
 
 import { marcarCasilla } from "./_escenarios/casillas";
-import { aprobarCierre, cierresDe, solicitarCierre } from "./_escenarios/cierres";
+import { aprobarCierre, cierresDe, filaDeCola, pestanaDeCola, solicitarCierre } from "./_escenarios/cierres";
 import { abrirCon } from "./_escenarios/pulsar";
 import {
   baseReparto,
@@ -295,7 +295,7 @@ async function aprobarEnPantalla(
 ): Promise<void> {
   await page.goto("/cierres-admin");
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(pendientes, m.nombre);
   await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
   await abrirCon(comprobante.getByRole("button", { name: "Ver / decidir" }), detalle);
@@ -319,10 +319,8 @@ async function aprobarEnPantalla(
 /** Abre un cierre ya resuelto por su folio: un mensajero tiene varios en el histórico. */
 async function abrirResuelto(page: Page, m: MensajeroE2E, cierreId: string): Promise<Locator> {
   await page.goto("/cierres-admin");
-  await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
-  const comprobante = page
-    .getByRole("region", { name: "Histórico" })
-    .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` })
+  await pestanaDeCola(page, "Resueltos").click();
+  const comprobante = filaDeCola(page.getByRole("region", { name: "Histórico" }), m.nombre)
     .filter({ hasText: cierreId.slice(-8).toUpperCase() });
   await comprobante.getByRole("button", { name: `Ver el cierre resuelto de ${m.nombre}` }).click();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });

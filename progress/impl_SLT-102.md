@@ -391,3 +391,96 @@ tests del censo y 3 guardias.
 **Veredicto:** decisiones de Carlos aplicadas y T5 hecho; todo verde salvo
 `dependencias-declaradas-presentes`, que es del arnés y no se tocó. Pendiente de confirmar:
 `montajesPrevistos` en la guardia de cobertura.
+
+## Tanda 4 (frontend_dev, 2026-11-10): T6 (E2E)
+
+Base desechable NUEVA `slt102_e2e` (creada con `pg`, `prisma migrate deploy` + `db:seed`), su
+`DATABASE_URL` exportada antes de cada comando. App con `next build` + `next start` (como `gate.yml`),
+`NEXT_PUBLIC_APP_URL`/`APP_BASE_URL` = `http://localhost:3102`, `E2E_PUERTO=3102`. Un solo servidor
+(el de Playwright); las mutaciones, con `E2E_SERVIDOR=dev` y ningún otro servidor vivo.
+
+### ABIERTO-1 y ABIERTO-2 de T0.3 → cerrados (decisión del leader)
+
+Escenario S4 propio en `cierres-rediseno.spec.ts` (sembrado con los servicios de `_escenarios/`):
+
+- **Central** (tarifa y pago del escenario A: 1.500 por entrega; incidente y rechazo no pagan,
+  `pago-mensajero.ts` feature 39 R5-R7): entregas de 20.000 y 10.000 por SINPE, un incidente
+  («perdido», orden de 8.000), un rechazo, y el pago de la primera entrega ajustado 1.500 → 2.000
+  (SLT-56; el total del cierre = suma de los pagos congelados).
+  - Recaudado 20.000 + 10.000 = 30.000 → «₡30.000»; Pago al mensajero 2.000 + 1.500 + 0 + 0 = 3.500 → «₡3.500».
+  - Señales (R110, orden del contrato): «1 incidente sin indemnizar · 1 pago ajustado · 1 vuelve a bodega».
+  - Se aprueba por la pantalla (confirmación física del rechazo + indemnización 5.000): P 3.500, E 0 →
+    3.500 − min(3.500, 0) + 0 − 0 = 3.500 → «Pendiente ₡3.500» y «Registrar pago»; el incidente ya
+    tiene indemnización → señales «1 pago ajustado · 1 vuelve a bodega».
+  - «Registrar pago» de la fila (diálogo sin «Ahora no», monto por defecto = disponible) → «Liquidado».
+- **Satélite**: una entrega de 30.000 por SINPE y un rechazo → «₡30.000», «₡1.500», «1 vuelve a
+  bodega». Aprobado, le queda 1.500 pendiente y aun así no hay «Pago entregado» ni «Registrar pago»
+  (sin pendiente la ausencia del botón no probaría nada).
+
+Literales escritos a mano en el spec (columnas, celdas en orden con `toHaveText([...])`, folio
+`#` + 8 hex, fecha `AAAA-MM-DD HH:MM`).
+
+### Archivos
+
+- modificado `e2e/_escenarios/cierres.ts`: `filaDeCola(region, nombre)`, `pestanaDeCola(page, …)`,
+  `ajustarPagoMensajero(r, gestionId, …)` (servicio `ajustarPagoMensajeroGestion` con el maestro).
+- modificado `tests/fabricas/escenarios/reparto.ts`: `GestionEscenario` gana `incidente` (mismo
+  `gestionar` del portal; causa por defecto «perdido»). Aditivo.
+- modificado `e2e/cierres-rediseno.spec.ts`: `describe` «SLT-102 — la fila de la cola única (escenario
+  S4)» (2 casos) y `abrirPendiente` / el paso a Resueltos de SLT-100 adaptados a la fila y al `tab`.
+- T6.2, una línea por archivo (antes → ahora; mismos literales):
+  - `cierres-admin`: comprobante en «Pendientes de decisión» / `group`+`button` Resueltos → `filaDeCola` / `pestanaDeCola`.
+  - `ajuste-pago-mensajero-cierre`: comprobante de Pendientes → fila.
+  - `cierre-vencido-modelo`: comprobante de Pendientes → fila.
+  - `cierre-modelo-nuevo-plan-porcentual`: comprobante de Pendientes → fila; Resueltos por `tab` y fila filtrada por folio (mismo `slice(-8)`).
+  - `cierres-admin-rechazos-sla`: comprobante de Pendientes → fila.
+  - `reglas-bloqueos-cierre`: comprobante de Pendientes → fila («Vencido», «Destrabar…», «Ver / decidir» iguales).
+  - `tarifas-activacion`: `abrirResuelto` por `tab` y fila; el bloque «la tarjeta del listado dice lo mismo
+    que su detalle» pasa a: el ingreso se lee en el detalle (570 y 300, ya afirmados arriba) y la fila de
+    cada cierre NO contiene «Ingreso de bodega» (R108). La parte de Bodega (consolidación) no cambia.
+  - `tarifas-valor-propio-mensajero`: comprobante de Pendientes → fila.
+  - `tope-intentos-por-empresa`: comprobante de Pendientes → fila.
+  - `wallet-iva-aparte-sl39` (proyecto `aislamiento`): `li` de Pendientes → fila.
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R33 | E2E S4 central: columnas de Pendientes y de Resueltos, celdas en orden |
+| R34 | E2E S4 satélite: columnas sin «Pago entregado», sin «Registrar pago» con pendiente 1.500 |
+| R36 | E2E S4 central: «Ver / decidir» de la fila → detalle → aprobar; adaptados de T6.2 |
+| R101 | E2E S4: folio, fecha, «₡30.000», «₡3.500», «₡1.500», pastilla «Solicitado»/«Aprobado» |
+| R103 | E2E S4 central: «Pendiente ₡3.500» → «Registrar pago» (sin «Ahora no») → «Liquidado» |
+| R108 | E2E `tarifas-activacion`: la fila no lleva «Ingreso de bodega»; se lee en el detalle |
+| R70, R110 (PA1) | E2E S4 central: las tres señales con su conteo, y «sin indemnizar» desaparece al indemnizar |
+
+### Mutaciones (cada una restaurada con `git checkout`; `git status` limpio en `app/` y `components/`)
+
+| Mutación | Resultado |
+|---|---|
+| «1 incidente sin indemnizar» → «…indemnizarMUT» en `cola-cierres-labels.ts` | ROJO: S4 central (`toHaveText`, la celda Señales) |
+| «Registrar pago a la satélite» (quitar `rolCola === "central"` en el módulo y `rol === "central"` en `accionesFilaDe`) | ROJO: S4 satélite (celda de acciones «VerRegistrar pago») |
+
+### Verificación (salida real)
+
+- `pnpm run typecheck`: `TSC_EXIT=0`.
+- `eslint` de los 13 archivos tocados: `LINT_EXIT=0`.
+- `vitest related --run tests/fabricas/escenarios/reparto.ts`: `Test Files 4 passed (4)`, `Tests 95 passed (95)`.
+- S4 sola: `2 passed`.
+- `playwright test --project=dinero` (incluye `cierre-bodega-satelite`, 3 casos), 4 corridas:
+  - 1: `93 passed`.
+  - 2: `1 failed | 8 did not run | 84 passed`: `cierre-modelo-nuevo-plan-porcentual.spec.ts:479` con
+    `Error: worker process exited unexpectedly (code=3221226505)` (0xC0000409, el proceso del worker
+    murió; no es una aserción). Los 8 «did not run» son los siguientes del mismo `describe.serial`.
+  - 3: `93 passed`. 4: `93 passed` (dos seguidas sin rojos ni inestables).
+- `playwright test --project=aislamiento --no-deps e2e/wallet-iva-aparte-sl39.spec.ts`: `4 passed`.
+
+### ABIERTOS
+
+- **ABIERTO-5 — caída del worker en la corrida 2.** `cierre-modelo-nuevo-plan-porcentual:479` (el maestro
+  digita tarifas; esta tanda solo tocó los helpers de las líneas 297 y 322 de ese spec, que ese caso no
+  usa). No se reprodujo en 3 corridas. No está demostrado que salga en `origin/dev`: no lo corrí allí;
+  queda como inestabilidad local sin atribuir.
+
+**Veredicto:** T6 hecho; S4 cierra ABIERTO-1 y ABIERTO-2 con escenario propio, 10 E2E adaptados a la fila
+y al `tab`, `dinero` 93/93 dos veces seguidas (una caída de worker aislada en otra corrida).

@@ -135,20 +135,20 @@
 
 ## T6 — E2E · `frontend_dev` (depende de T4, T5)
 
-- [ ] **T6.1** — Helper `filaDeCola(region, nombre)` en `e2e/_escenarios/cierres.ts`, y `describe`
+- [x] **T6.1** — Helper `filaDeCola(region, nombre)` en `e2e/_escenarios/cierres.ts`, y `describe`
   de S4 en `e2e/cierres-rediseno.spec.ts` (`design.md > Verificación`), con los literales de T0.3
   escritos a mano: central (fila de Pendientes, aprobar, Resueltos con «Pendiente …» y «Registrar
   pago», registrar → «Liquidado»), satélite (sin «Pago entregado» ni «Registrar pago»); (PA1) las
   tres señales con su conteo.
   **Hecho:** verde dos veces seguidas en base desechable nueva, con `NEXT_PUBLIC_APP_URL` como en
   `gate.yml`; la mutación «Registrar pago a la satélite» lo pone rojo.
-- [ ] **T6.2** — Adaptar a la fila y a las pestañas, mismos literales: `cierres-admin`,
+- [x] **T6.2** — Adaptar a la fila y a las pestañas, mismos literales: `cierres-admin`,
   `ajuste-pago-mensajero-cierre`, `cierre-vencido-modelo`, `cierre-modelo-nuevo-plan-porcentual`,
   `cierres-admin-rechazos-sla`, `reglas-bloqueos-cierre`, `tarifas-activacion` («Ingreso de bodega»
   de Resueltos de la satélite se lee en el detalle, 570 y 300), `tarifas-valor-propio-mensajero`,
   `tope-intentos-por-empresa`, `wallet-iva-aparte-sl39`.
   **Hecho:** verdes; una línea por archivo en `impl_SLT-102.md`.
-- [ ] **T6.3** — `pnpm exec playwright test --project=dinero` completo, más `cierre-bodega-satelite`
+- [x] **T6.3** — `pnpm exec playwright test --project=dinero` completo, más `cierre-bodega-satelite`
   (no cambia). **Hecho:** dos corridas seguidas sin rojos ni inestables, salida en
   `impl_SLT-102.md`.
 
