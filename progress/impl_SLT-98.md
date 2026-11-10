@@ -182,6 +182,7 @@ Enmienda del tope diario (design §16; R24–R28, R30, R31). Sin `./init.sh`, si
   fija para todas las empresas, hace falta subir una excepción a esa guardia: decisión suya, no tomada aquí.
 - **(propuesta)** Nombre del `CHECK`: `bug_report_upload_quota_permits_granted_no_negativo` (el design no lo fija;
   sigue el estilo de los de `bug_report_image`).
+- **(propuesta)** `tests/fixtures/api-key-dependencias-usuario.ts` (fuera de la lista de archivos del spec): `BugReportUploadQuota.user` clasificada `no_alcanzable` (solo la escribe `prepararSubidaImagenesReporteAction` con el actor de sesión; FK CASCADE, design §16.2), para que `api-key-dependencias-usuario.guardia` (373/R17) vuelva a verde.
 - **Verificación (HEAD con T14):**
   - `NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit` (= `pnpm run typecheck`): exit 0.
   - eslint de los 12 archivos tocados: exit 0.

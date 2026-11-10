@@ -408,4 +408,15 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
       "PANTALLA, y la cuenta dedicada no entra por el formulario de login: su contrasena es aleatoria " +
       "y no se le revela a nadie.",
   },
+  // ── SLT-98 (2026-11-10): el tope diario de imágenes del reporte (design §16.2) ─────────────────
+  // CASCADE: el cupo es un contador efímero del usuario; no debe bloquear el borrado de una cuenta.
+  "BugReportUploadQuota.user": {
+    categoria: "no_alcanzable",
+    motivo:
+      "La UNICA escritura es `ReporteBugService.prepararSubidas` (consumir) y su devolucion, que se " +
+      "llega solo por `prepararSubidaImagenesReporteAction` (`lib/actions/reporte-bug.ts`) con el " +
+      "`usuarioId` del actor de la SESION: no hay ruta de API, ni webhook, ni cron que toque el cupo. " +
+      "Mismo gesto de PANTALLA que `BugReport.reporter`, y la cuenta dedicada no entra por el " +
+      "formulario de login: su contrasena es aleatoria y no se le revela a nadie.",
+  },
 };
