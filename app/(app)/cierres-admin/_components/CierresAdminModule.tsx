@@ -74,13 +74,11 @@ import { moneyTope } from "./cierre-detalle-shared";
 // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R38): el detalle del cierre es
 // el componente único de SLT-95 (S1). Sustituye al modal que montaba `CascadasCierreMensajero` +
 // `CierreFacturaDetalle`; de la hoja de hoy se reutilizan tal cual la lista de gestiones y la
-// sección de órdenes sin gestionar, que pasan a ser el cuerpo de la pestaña «Gestiones».
-import {
-  CierreFacturaResumen,
-  GestionesPorResultado,
-  SeccionSinGestion,
-  type CierreFacturaAudiencia,
-} from "./cierre-factura";
+// sección de órdenes sin gestionar. SLT-101: la lista de gestiones es la de `fila/` (R90).
+import { CierreFacturaResumen, SeccionSinGestion, type CierreFacturaAudiencia } from "./cierre-factura";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
+import { gestionesEnOrden } from "@/components/private/cierres/fila/fila-gestion-vista";
+import type { AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
 import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
 import {
@@ -1106,6 +1104,8 @@ export function CierresAdminModule({
   const ofrecerAjustePago =
     puedeAjustarPagoMensajero &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
+  /** SLT-101 (R22, R90): la audiencia de la fila única; la central es el `admin` de acceso total. */
+  const audienciaFila: AudienciaFila = audiencia === "admin" ? "central" : "satelite";
 
   /**
    * SLT-56 (R11) — aplica en la pantalla, SIN recargar, lo que devolvió el servidor: el pago nuevo
@@ -1315,28 +1315,34 @@ export function CierresAdminModule({
           pestanas={{
             gestiones: (
               <div className="flex flex-col gap-4">
-                <div className="flex justify-end">
-                  {/* R21/R82: las gestiones del detalle ya leído; sin Server Action nueva. */}
-                  <DescargarDatasetButton
-                    titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
-                    columnas={COLUMNAS_DESCARGA_DETALLE_CIERRE}
-                    obtenerFilas={async () => ({
-                      status: "ok",
-                      filas: Object.values(detalle.grupos).flat().map(filaDescargaDetalleCierre),
-                    })}
-                  />
-                </div>
-                <GestionesPorResultado
-                  grupos={detalle.grupos}
+                {/* SLT-101 (R90): la lista y la fila únicas con la audiencia del actor; «Descargar»
+                    en la fila de los filtros. Los callbacks son los de hoy. */}
+                <GestionesCierre
+                  gestiones={gestionesEnOrden(detalle.grupos).map((gestion) => ({ gestion }))}
+                  audiencia={audienciaFila}
                   // FICHA 481 — fulfillment SOLO para la central.
-                  verFulfillment={audiencia === "admin"}
+                  quienMiraEsCentral={audiencia === "admin"}
+                  congeladoAt={cierreAbierto.solicitadoAt}
                   onVerEvidencia={setEvidencia}
                   // Ausentes cuando no se puede corregir o ajustar (pedido 2026-08-19, 398, SLT-56).
-                  onCorregirPagos={ofrecerCorreccionPagos ? setCorrigiendo : undefined}
-                  onCorregirResultado={
-                    ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined
+                  acciones={{
+                    corregirMetodos: ofrecerCorreccionPagos ? setCorrigiendo : undefined,
+                    corregirResultado: ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined,
+                    ajustarPago: ofrecerAjustePago ? setAjustandoPago : undefined,
+                  }}
+                  descargar={
+                    // R21/R82/R91: las gestiones del detalle ya leído, todas, sea cual sea el filtro.
+                    <DescargarDatasetButton
+                      titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
+                      columnas={COLUMNAS_DESCARGA_DETALLE_CIERRE}
+                      obtenerFilas={async () => ({
+                        status: "ok",
+                        filas: Object.values(detalle.grupos)
+                          .flat()
+                          .map((g) => filaDescargaDetalleCierre(g, audienciaFila)),
+                      })}
+                    />
                   }
-                  onAjustarPago={ofrecerAjustePago ? setAjustandoPago : undefined}
                 />
                 {/* R19 — las órdenes que el corte pasó a «Novedad interna» (264), con su marca. */}
                 <SeccionSinGestion

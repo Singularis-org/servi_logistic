@@ -313,6 +313,7 @@ async function abrirDetalleDelModulo(opciones: {
   estado: CierreEstado;
   puedeCorregirResultado?: boolean;
   g?: CierreDetalleGestion;
+  audiencia?: "admin" | "satelite";
 }) {
   const user = userEvent.setup();
   const resuelto = opciones.estado === "aprobado" || opciones.estado === "rechazado";
@@ -357,6 +358,11 @@ async function abrirDetalleDelModulo(opciones: {
         historico={historico}
         sinZona={false}
         puedeCorregirResultado={opciones.puedeCorregirResultado ?? true}
+        // SLT-101 (R26): la corrección del resultado es de la CENTRAL. Antes el módulo se montaba
+        // sin `audiencia` (satélite por defecto) y la fila ofrecía el botón con solo el permiso;
+        // ahora la fila única también mira la audiencia, como hace la página en producción
+        // (`puedeCorregirResultado = esAccesoTotal`, la misma condición que `audiencia="admin"`).
+        audiencia={opciones.audiencia ?? "admin"}
       />
     </SWRConfig>,
   );
@@ -424,6 +430,11 @@ describe("R16 — la corrección se ofrece únicamente desde el detalle de un ci
     expect(within(dialogo).queryByRole("button", { name: BOTON_CORREGIR })).toBeNull();
   });
 
+  it("SLT-101 (R26): la satélite no lo ve, aunque le llegara el permiso", async () => {
+    const { dialogo } = await abrirDetalleDelModulo({ estado: "solicitado", audiencia: "satelite" });
+    expect(within(dialogo).queryByRole("button", { name: BOTON_CORREGIR })).toBeNull();
+  });
+
   it("un montaje que se OLVIDE de pasar el permiso tampoco lo ofrece", async () => {
     // El default de la prop es `false`: la pantalla no se lo ofrece a nadie en vez de
     // ofrecérselo a todos.
@@ -454,7 +465,8 @@ describe("R16 — la corrección se ofrece únicamente desde el detalle de un ci
 
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        <CierresAdminModule pendientes={cola} historico={historico} sinZona={false} />
+        {/* SLT-101: con la audiencia de la central, para que lo que falte sea SOLO el permiso. */}
+        <CierresAdminModule pendientes={cola} historico={historico} sinZona={false} audiencia="admin" />
       </SWRConfig>,
     );
 

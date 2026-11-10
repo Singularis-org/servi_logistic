@@ -147,6 +147,13 @@ export interface BuscadorFiltrosProps {
    * `children`, y una pantalla solo puede inyectar `children`, que se pintan después.
    */
   vistas?: VistasFiltroBarra;
+  /**
+   * SLT-101 (S3-4) — `false` no monta el campo de búsqueda ni su línea de aviso: la barra queda
+   * con sus `children` (los controles puestos) y, si aplica, el selector y «Limpiar todo», que
+   * entonces solo depende de `hayFiltrosAplicados`. Existe para la lista de gestiones de un
+   * cierre, cuyo canvas no dibuja buscador. Default `true`: los demás consumidores no cambian.
+   */
+  buscador?: boolean;
   className?: string;
 }
 
@@ -222,6 +229,7 @@ export function BuscadorFiltros({
   terminoKey = PARAM_TERMINO_DEFAULT,
   siembra,
   vistas,
+  buscador = true,
   className,
 }: BuscadorFiltrosProps) {
   const idBase = useId();
@@ -488,6 +496,7 @@ export function BuscadorFiltros({
             250px: por debajo de eso una guía deja de verse entera mientras se teclea.
             `min-w-0` en el contenedor flexible no aplica aquí a propósito — el mínimo
             es justamente lo que no queremos que el flex ignore. */}
+        {buscador ? (
         <div
           className={cn(
             "relative flex min-w-[250px] flex-1 items-center",
@@ -532,6 +541,7 @@ export function BuscadorFiltros({
             </Button>
           ) : null}
         </div>
+        ) : null}
 
         {/* El selector va AL FINAL de la barra. `listbox` multiseleccionable con el
             mismo ARIA que `MultiSelectFilter`: marcar una opción PONE su filtro y no
@@ -630,13 +640,15 @@ export function BuscadorFiltros({
           ya dentro no se anuncia— y solo cambia su contenido. Su alto está RESERVADO
           (`h-4`, vacía incluida): el aviso aparece y desaparece sin empujar ni un
           píxel de lo que hay debajo, que en esta barra es la tabla entera. */}
-      <p
-        id={idAviso}
-        role="status"
-        className="mt-1 h-4 text-xs text-muted-foreground"
-      >
-        {faltanCaracteres ? avisoMinimoCaracteres(minChars) : ""}
-      </p>
+      {buscador ? (
+        <p
+          id={idAviso}
+          role="status"
+          className="mt-1 h-4 text-xs text-muted-foreground"
+        >
+          {faltanCaracteres ? avisoMinimoCaracteres(minChars) : ""}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -195,6 +195,30 @@ async function abrirFila(
 }
 
 /**
+ * SLT-101 «Fila de gestión única y lista con filtros» (R84, R89): las pestañas por resultado de
+ * `GestionesPorResultado` pasan a ser el filtro «Filtrar por resultado» de la lista única, y la
+ * región por resultado («Entregado», «Devolución a origen por rechazo») pasa a ser «Órdenes del
+ * cierre». Pulsa el filtro de ese resultado («<nombre> <n>») y devuelve la región de la lista.
+ */
+async function filtrarPor(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+  resultado: string,
+): Promise<HTMLElement> {
+  const grupo = within(dialog).getByRole("group", { name: "Filtrar por resultado" });
+  await user.click(within(grupo).getByRole("button", { name: new RegExp(`^${resultado} \\d+$`) }));
+  return within(dialog).getByRole("region", { name: "Órdenes del cierre" });
+}
+
+/** [rótulo, importe] de las líneas de una tarjeta de la fila desplegada. */
+function lineasDe(region: HTMLElement): string[][] {
+  return Array.from(region.querySelectorAll("[data-tipo]")).map((l) => [
+    l.querySelector("[data-rotulo]")?.textContent ?? "",
+    l.querySelector("[data-monto]")?.textContent ?? "",
+  ]);
+}
+
+/**
  * Feature 170 — FASE 2 (T I.2 el histórico, T J.2 la cola): las DOS tablas dejan de recibir un
  * array y reciben la PÁGINA que pre-carga el Server Component. El helper sigue recibiendo los
  * arrays para no reescribir cada caso, y ADEMÁS programa las dos Server Actions paginadas con
@@ -601,7 +625,8 @@ describe("CierresAdminModule", () => {
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Entregado" });
+    // SLT-101: antes la región «Entregado» de la pestaña; ahora el filtro y «Órdenes del cierre».
+    const region = await filtrarPor(user, dialog, "Entregado");
 
     // El botón identifica SU orden, no un genérico repetido por fila.
     const toggle = within(region).getByRole("button", {
@@ -610,6 +635,8 @@ describe("CierresAdminModule", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // SLT-101 (R28): la fórmula vive ahora en «Ver cómo se calculó», que se abre aparte.
+    await user.click(within(region).getByRole("button", { name: "Ver cómo se calculó" }));
 
     // Lo que el panel desplegado enseña de esta orden.
     //
@@ -636,15 +663,33 @@ describe("CierresAdminModule", () => {
     // Se sustituye por lo que el panel SI afirma ahora, que es mas fuerte: el flete se cobro en
     // la columna GAM (₡2.500) y la columna normal quedo en cero. El precio ₡2.000 ya no se pinta.
     expect(within(region).queryByText("₡2.000")).toBeNull();
-    const cobros = within(region).getByRole("region", { name: "Cobros de esta gestión" });
-    const filaDe = (label: string) =>
-      (within(cobros).getByText(label).closest("div")?.lastElementChild?.textContent ?? "").trim();
-    expect(filaDe("Valor flete GAM")).toBe("₡2.500");
-    expect(filaDe("Valor flete")).toBe("₡0");
-    expect(filaDe("Flete por devolución a origen GAM")).toBe("₡0");
-    expect(filaDe("Total cobrado")).toBe("₡3.672,50"); // el `total` del DTO, tal cual
-    // El porcentaje NO se pierde: sigue explicando el cobro real en el desglose de al lado.
-    expect(within(region).getAllByText("13.00 % de ₡2.500").length).toBeGreaterThan(0);
+    // SLT-101 (D2, R28, R29) — ANTES se leía el panel «Cobros de esta gestión» de la 338 (nueve
+    // conceptos con su importe y cero donde no se cobró: «Valor flete GAM» ₡2.500, «Valor flete»
+    // ₡0, «Flete por devolución a origen GAM» ₡0, «Total cobrado» ₡3.672,50) y el hint
+    // «13.00 % de ₡2.500». AHORA «Ver cómo se calculó» pinta una tarjeta por concepto COBRADO (D2,
+    // aprobado en el canvas; la tabla de nueve deja de verse, avisado para el Preview): el flete
+    // sale de la columna GAM (₡2.500, no ₡2.000), con su IVA del 13 % sobre ₡2.500, y el total
+    // «Se le cobra» es el `total` del DTO, tal cual.
+    const flete = within(region).getByRole("region", {
+      name: "Flete por entregado de la orden REM-123 · Ana Pérez",
+    });
+    expect(lineasDe(flete)).toEqual([
+      ["tarifa GAM", "₡2.500"],
+      ["+ IVA flete (13 % de ₡2.500)", "₡325"],
+      ["Flete por entregado", "₡2.825"],
+    ]);
+    const comision = within(region).getByRole("region", {
+      name: "Comisión COD de la orden REM-123 · Ana Pérez",
+    });
+    expect(lineasDe(comision)).toEqual([
+      ["Comisión COD (3 % de ₡25.000)", "₡750"],
+      ["+ IVA comisión (13 % de ₡750)", "₡97,50"],
+      ["Comisión COD", "₡847,50"],
+    ]);
+    const cobro = within(region).getByRole("region", {
+      name: "Se le cobra a la tienda de la orden REM-123 · Ana Pérez",
+    });
+    expect(lineasDe(cobro).at(-1)).toEqual(["Se le cobra", "₡3.672,50"]); // el `total` del DTO
   });
 
   it("sin ingresoEmpresa (cierre sin snapshot) no se pinta el botón de desglose", async () => {
@@ -677,10 +722,14 @@ describe("CierresAdminModule", () => {
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Entregado" });
+    const region = await filtrarPor(user, dialog, "Entregado");
     expect(
       within(region).queryByRole("button", { name: /Desglose de ingreso/ }),
     ).not.toBeInTheDocument();
+    // La fila sigue desplegable, con el nombre de «sin snapshot» (R89).
+    expect(
+      within(region).getByRole("button", { name: "Detalle de la orden REM-9 · Beto Ruiz" }),
+    ).toBeInTheDocument();
   });
 
   it("R6/R9: una entrega expone su monto (string) y método en el detalle", async () => {
@@ -724,12 +773,17 @@ describe("CierresAdminModule", () => {
     });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Entregado" });
+    const region = await filtrarPor(user, dialog, "Entregado");
     await abrirFila(user, region, "REM-001");
-    // Monto recibido y método van juntos en el desplegable de la orden.
-    expect(
-      within(region).getByText("₡1.250,50 · SINPE"),
-    ).toBeInTheDocument();
+    // SLT-101 (R27): antes «₡1.250,50 · SINPE» en una línea del desplegable; ahora la tarjeta
+    // «Recibió el mensajero» en cascada, con el mismo método y el mismo string del servidor.
+    const recibio = within(region).getByRole("region", {
+      name: "Recibió el mensajero de la orden REM-001 · Beto Ruiz",
+    });
+    expect(lineasDe(recibio)).toEqual([
+      ["SINPE", "₡1.250,50"],
+      ["Recibió", "₡1.250,50"],
+    ]);
   });
 
   it("feature 56/R23 (Q6): el badge 'Sin tarifa' se muestra por el flag tarifaFaltante en ENTREGAS", async () => {
@@ -773,9 +827,13 @@ describe("CierresAdminModule", () => {
     });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Entregado" });
+    const region = await filtrarPor(user, dialog, "Entregado");
+    // SLT-101 (R24, R85, R96): antes el badge «Sin tarifa» junto al pago, dentro de la fila
+    // desplegada; ahora la señal «Sin tarifa de pago» de la fila cerrada (canvas, F10), leída del
+    // mismo flag `tarifaFaltante`.
+    expect(within(region).getByText("Sin tarifa de pago")).toBeInTheDocument();
     await abrirFila(user, region, "REM-SINTARIFA");
-    expect(within(region).getByText("Sin tarifa")).toBeInTheDocument();
+    expect(within(region).getByText("Sin tarifa de pago")).toBeInTheDocument();
   });
 
   it("feature 56/R23 (Q6): SIN flag tarifaFaltante NO se muestra el badge, aun con pago 0.00 (entrega y rechazo)", async () => {
@@ -830,15 +888,15 @@ describe("CierresAdminModule", () => {
     // Entrega con pago 0.00 pero SIN el flag: nada de badge, ni desplegada.
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const entregadas = within(dialog).getByRole("region", { name: "Entregado" });
+    // SLT-101: «Sin tarifa» → la señal «Sin tarifa de pago»; se niega cualquier «Sin tarifa…».
+    const entregadas = await filtrarPor(user, dialog, "Entregado");
     await abrirFila(user, entregadas, "REM-ENT");
-    expect(within(entregadas).queryByText("Sin tarifa")).not.toBeInTheDocument();
+    expect(within(entregadas).queryByText(/Sin tarifa/)).not.toBeInTheDocument();
 
-    // Mismo caso en el rechazo: hay que pasar a su pestaña para verlo.
-    await user.click(within(dialog).getByRole("tab", { name: /Devolución a origen por rechazo/ }));
-    const rechazadas = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
+    // Mismo caso en el rechazo: hay que pasar a su filtro para verlo.
+    const rechazadas = await filtrarPor(user, dialog, "Devolución a origen por rechazo");
     await abrirFila(user, rechazadas, "REM-REC");
-    expect(within(rechazadas).queryByText("Sin tarifa")).not.toBeInTheDocument();
+    expect(within(rechazadas).queryByText(/Sin tarifa/)).not.toBeInTheDocument();
   });
 
   it("feature 56/R23 (Q6): el badge 'Sin tarifa' se muestra por el flag tarifaFaltante también en RECHAZOS", async () => {
@@ -879,9 +937,9 @@ describe("CierresAdminModule", () => {
     });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
-    await abrirFila(user, region, "REM-REC");
-    expect(within(region).getByText("Sin tarifa")).toBeInTheDocument();
+    const region = await filtrarPor(user, dialog, "Devolución a origen por rechazo");
+    // SLT-101: antes el badge «Sin tarifa» en la fila desplegada; ahora la señal de la fila.
+    expect(within(region).getByText("Vuelve a bodega · Sin tarifa de pago")).toBeInTheDocument();
   });
 
   it("feature 56/R12: una gestión rechazada expone su ingreso de bodega por devoluciones a origen (string, money-safe)", async () => {
@@ -922,9 +980,15 @@ describe("CierresAdminModule", () => {
     });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
+    const region = await filtrarPor(user, dialog, "Devolución a origen por rechazo");
     await abrirFila(user, region, "REM-REC");
-    expect(within(region).getByText("₡3.500")).toBeInTheDocument();
+    // SLT-101 (S3-2, decisión de Carlos «sé fiel al diseño»): ANTES la fila desplegada enseñaba el
+    // ingreso de bodega de la gestión («Ingreso de bodega por devoluciones a origen: ₡3.500»).
+    // AHORA el canvas aprobado no lo dibuja en la fila y no se pinta: la aserción se INVIERTE
+    // (convención del repo). El ingreso de bodega sigue en «Dinero» («− Ingreso de bodega…», que
+    // vigila el caso «feature 102/R8» de abajo) y en el snapshot.
+    expect(within(region).queryByText("₡3.500")).not.toBeInTheDocument();
+    expect(within(region).queryByText(/Ingreso de bodega/)).not.toBeInTheDocument();
   });
 
 
@@ -1033,14 +1097,17 @@ describe("CierresAdminModule", () => {
     });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
-    // Cada fila trae su marca de origen: SLA para el escalado, Manual para el del mensajero.
-    await abrirFila(user, region, "REM-SLA", "Cliente SLA");
-    expect(within(region).getByText("Automático")).toBeInTheDocument();
-    expect(within(region).queryByText("Manual")).not.toBeInTheDocument();
-
-    await abrirFila(user, region, "REM-MAN", "Cliente Manual");
-    expect(within(region).getByText("Manual")).toBeInTheDocument();
+    const region = await filtrarPor(user, dialog, "Devolución a origen por rechazo");
+    // SLT-101 (R24, R85): ANTES cada fila desplegada traía un badge «Automático» (SLA) o «Manual»
+    // (mensajero). AHORA el origen se lee en la SEÑAL de la fila cerrada, como dibuja el canvas:
+    // «Rechazo automático» en la escalada por el cron y nada de origen en la del mensajero.
+    const filaDe = (remision: string, destinatario: string) =>
+      within(region)
+        .getByRole("button", { name: `Detalle de la orden ${remision} · ${destinatario}` })
+        .closest("[data-gestion]") as HTMLElement;
+    expect(within(filaDe("REM-SLA", "Cliente SLA")).getByText("Vuelve a bodega · Rechazo automático")).toBeInTheDocument();
+    expect(within(filaDe("REM-MAN", "Cliente Manual")).getByText("Vuelve a bodega")).toBeInTheDocument();
+    expect(within(filaDe("REM-MAN", "Cliente Manual")).queryByText(/Rechazo automático/)).not.toBeInTheDocument();
   });
 
   it("R7: la evidencia se muestra vía URL firmada en el visor (nunca el path crudo)", async () => {
@@ -1080,7 +1147,7 @@ describe("CierresAdminModule", () => {
     });
     // SLT-100: las gestiones viven en la pestaña «Gestiones» del detalle único.
     await user.click(within(dialog).getByRole("tab", { name: /^Gestiones \(/ }));
-    const region = within(dialog).getByRole("region", { name: "Devolución a origen por rechazo" });
+    const region = await filtrarPor(user, dialog, "Devolución a origen por rechazo");
     await abrirFila(user, region, "REM-001");
     await user.click(
       within(region).getByRole("button", {

@@ -10,6 +10,10 @@ import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaS
 // de «Descargar» en la pestaña «Gestiones» del detalle único. Los esperados van ESCRITOS A MANO: el
 // orden y el texto de las cabeceras son lo que llega al archivo del usuario, y compararlos contra la
 // propia constante sería una tautología siempre verde.
+//
+// SLT-101 «Fila de gestión única y lista con filtros» (T2.2, R91): «Señales» al final, con el texto
+// de la celda de la tabla para la audiencia que descarga. `filaDescargaDetalleCierre` recibe ahora la
+// audiencia (antes solo la gestión).
 
 function gestion(extra: Partial<CierreDetalleGestion> = {}): CierreDetalleGestion {
   return {
@@ -26,8 +30,8 @@ function gestion(extra: Partial<CierreDetalleGestion> = {}): CierreDetalleGestio
   } as CierreDetalleGestion;
 }
 
-describe("SLT-100 — columnas de «Descargar» del detalle del cierre (R82)", () => {
-  it("son siete, en este orden, con estas cabeceras", () => {
+describe("SLT-100 — columnas de «Descargar» del detalle del cierre (R82; SLT-101 R91)", () => {
+  it("son ocho, en este orden, con estas cabeceras («Señales» al final, R91)", () => {
     expect(COLUMNAS_DESCARGA_DETALLE_CIERRE.map((c) => c.clave)).toEqual([
       "numGuia",
       "destinatario",
@@ -36,6 +40,7 @@ describe("SLT-100 — columnas de «Descargar» del detalle del cierre (R82)", (
       "recibido",
       "cobroTienda",
       "pagoMensajero",
+      "senales",
     ]);
     expect(COLUMNAS_DESCARGA_DETALLE_CIERRE.map((c) => c.encabezado)).toEqual([
       "Nº Guía",
@@ -45,11 +50,12 @@ describe("SLT-100 — columnas de «Descargar» del detalle del cierre (R82)", (
       "Recibido",
       "Cobro a la tienda",
       "Pago al mensajero",
+      "Señales",
     ]);
   });
 
   it("una fila lleva los strings del servidor tal cual y el resultado legible", () => {
-    expect(filaDescargaDetalleCierre(gestion())).toEqual({
+    expect(filaDescargaDetalleCierre(gestion(), "central")).toEqual({
       numGuia: 1044,
       destinatario: "Laura Vega",
       tienda: "Tienda Norte",
@@ -57,12 +63,14 @@ describe("SLT-100 — columnas de «Descargar» del detalle del cierre (R82)", (
       recibido: "70000.00",
       cobroTienda: "3165.00",
       pagoMensajero: "1500.00",
+      senales: null,
     });
   });
 
   it("un importe ausente sale como celda vacía (null), nunca «0»", () => {
     const fila = filaDescargaDetalleCierre(
       gestion({ resultado: "reprogramado", montoRecibido: null, pagoMensajero: null, ingresoEmpresa: null }),
+      "central",
     );
     expect(fila.recibido).toBeNull();
     expect(fila.cobroTienda).toBeNull();
@@ -74,6 +82,41 @@ describe("SLT-100 — columnas de «Descargar» del detalle del cierre (R82)", (
   it("sin `ingresoEmpresa` en el doble (campo opcional) también sale vacía", () => {
     const sinCampo = gestion();
     delete (sinCampo as Partial<CierreDetalleGestion>).ingresoEmpresa;
-    expect(filaDescargaDetalleCierre(sinCampo).cobroTienda).toBeNull();
+    expect(filaDescargaDetalleCierre(sinCampo, "central").cobroTienda).toBeNull();
+  });
+});
+
+describe("SLT-101 R91 — la columna «Señales»", () => {
+  it("una devolución a origen dice «Vuelve a bodega»", () => {
+    expect(
+      filaDescargaDetalleCierre(gestion({ resultado: "devolucion_a_origen_por_rechazo" }), "central").senales,
+    ).toBe("Vuelve a bodega");
+  });
+
+  it("varias señales van en el orden de R85, separadas por « · », para la central y la satélite", () => {
+    const g = gestion({
+      resultado: "devolucion_a_origen_por_rechazo",
+      esRechazoSla: true,
+      ajustesPago: [
+        {
+          creadoAt: "2026-11-07T19:02:00.000Z",
+          actorNombre: "Carlos R.",
+          actorRol: "admin",
+          pagoAnterior: "1500.00",
+          pagoNuevo: "2200.00",
+          motivo: "Entrega compartida",
+        },
+      ],
+    });
+    expect(filaDescargaDetalleCierre(g, "central").senales).toBe(
+      "Pago ajustado · Vuelve a bodega · Rechazo automático",
+    );
+    expect(filaDescargaDetalleCierre(g, "satelite").senales).toBe(
+      "Pago ajustado · Vuelve a bodega · Rechazo automático",
+    );
+  });
+
+  it("una entrega sin señales deja la celda vacía (null)", () => {
+    expect(filaDescargaDetalleCierre(gestion(), "satelite").senales).toBeNull();
   });
 });

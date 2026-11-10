@@ -384,12 +384,19 @@ describe("SLT-56 R11 — tras el ajuste, la pantalla cambia sin recargar", () =>
     await user.click(within(ajuste).getByRole("button", { name: "Guardar ajuste" }));
 
     await waitFor(() => expect(dialogo).toHaveTextContent("₡2.200"));
-    expect(dialogo).toHaveTextContent("Pago al mensajero: ₡700");
     // Se cierra el diálogo del ajuste (mientras está abierto, el detalle de atrás es inerte).
     await user.click(within(ajuste).getByRole("button", { name: "Cerrar" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Ajustar el pago al mensajero" })).toBeNull(),
     );
+    // SLT-101 (R27, R98): antes la línea «Pago al mensajero: ₡700» del desplegable; ahora el total
+    // «Se le paga» de la tarjeta del pago en cascada, con el mismo importe del servidor. Y la fila
+    // cerrada gana la señal «Pago ajustado» (R85).
+    const tarjeta = within(dialogo).getByRole("region", { name: /^Se le paga al mensajero de la orden / });
+    const total = tarjeta.querySelector("[data-tipo='total']") as HTMLElement;
+    expect(total.querySelector("[data-rotulo]")?.textContent).toBe("Se le paga");
+    expect(total.querySelector("[data-monto]")?.textContent).toBe("₡700");
+    expect(within(dialogo).getByText("Pago ajustado · Vuelve a bodega")).toBeInTheDocument();
     expect(
       within(dialogo).getByRole("button", { name: "Pago ajustado: ver el ajuste" }),
     ).toBeInTheDocument();
