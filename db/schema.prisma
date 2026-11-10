@@ -6508,6 +6508,7 @@ model BugReport {
   organization  Organizacion            @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   reporter      Usuario                 @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   statusChanges BugReportStatusChange[] // SLT-97: su historial de cambios de estado; CASCADE
+  images        BugReportImage[]        // SLT-98: sus imágenes, por `position`; CASCADE
 
   @@index([createdAt(sort: Desc), id])
   @@index([organizationId, createdAt(sort: Desc)])
@@ -6549,4 +6550,29 @@ model BugReportStatusChange {
 
   @@index([bugReportId, createdAt(sort: Desc), id])
   @@map("bug_report_status_change")
+}
+
+// SLT-98 (design §2.1-§2.3; R13, R18, R19) — las imágenes de un reporte de problema, una fila por imagen.
+// De PLATAFORMA, como `bug_report`: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en
+// el SQL de 20261112120000, igual que los `CHECK` (position 1-5, los tres tipos, 1 B-5 MB, la forma de la
+// ruta). Sin `organization_id`: la empresa es la del reporte padre. Sin `updated_at` ni `deleted_at` a
+// propósito: muere con su reporte. La escribe solo `lib/repositories/BugReportRepository.ts`, en
+// `comoPlataforma`.
+model BugReportImage {
+  /// El `imagenId` (uuid) que dio el servidor al preparar la subida; también es el nombre del archivo.
+  id          String   @id
+  bugReportId String   @map("bug_report_id")
+  /// El orden en que se adjuntó, 1-5 (`IMAGENES_MAX`, `lib/config/reporte-bug.ts`).
+  position    Int      @db.SmallInt
+  /// `<usuario_id>/<imagen_id>.<ext>`, relativa a la carpeta de la empresa en el bucket.
+  storagePath String   @unique @map("storage_path") @db.VarChar(255)
+  contentType String   @map("content_type") @db.VarChar(20)
+  /// El tamaño medido por el servidor, 1-5242880 (`IMAGEN_BYTES_MAX`, `lib/config/reporte-bug.ts`).
+  sizeBytes   Int      @map("size_bytes")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  bugReport BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([bugReportId, position])
+  @@map("bug_report_image")
 }

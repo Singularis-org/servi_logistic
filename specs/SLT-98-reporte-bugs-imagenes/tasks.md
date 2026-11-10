@@ -12,7 +12,7 @@
 
 ## Bloque A — Datos
 
-- [ ] **T1. Tabla y migración** (R13, R18, R19).
+- [x] **T1. Tabla y migración** (R13, R18, R19).
   - **Archivos:**
     - `db/schema.prisma`: el modelo `BugReportImage` y el inverso `images` en `BugReport`;
     - `db/migrations/20261112120000_bug_report_image/{migration,down}.sql` (design §2.1–§2.3), con un
