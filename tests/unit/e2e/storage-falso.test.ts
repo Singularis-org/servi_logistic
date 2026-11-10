@@ -217,7 +217,7 @@ describe("doble de Storage: subida firmada y limites del bucket (SLT-98)", () =>
 
   /** El PUT del navegador: solo el token de la URL, sin `apikey` ni `authorization`. */
   async function putNavegador(url: string, bytes: Uint8Array, tipo: string) {
-    const r = await fetch(url, { method: "PUT", body: bytes, headers: { "content-type": tipo, origin: ORIGEN } });
+    const r = await fetch(url, { method: "PUT", body: new Uint8Array(bytes), headers: { "content-type": tipo, origin: ORIGEN } });
     return { status: r.status, cors: r.headers.get("access-control-allow-origin"), cuerpo: await r.json() };
   }
 
