@@ -477,3 +477,21 @@ también con distritos de la tabla vieja (empresas que solo usan distritos).
   `historial-accion-zona-sinpe-migration`. Comparan el catálogo de `historial_accion_tipo` con su lista
   de «valores posteriores», que no tiene `zona_nodo_cambiado` (entró en T1.2, tanda 1). No los toqué:
   añadirles el valor es un cambio de aserción no autorizado; queda para el leader.
+
+### Censos del enum de historial (autorizado por el leader el 2026-11-10)
+
+Son censos del enum `historial_accion_tipo` (como el 82 → 83 de la tanda 1), no flujos de R38. Cada uno
+gana `zona_nodo_cambiado` en su lista de «posteriores», con el comentario «censo: tipo nuevo de SLT-89
+T1.2», y nada más:
+- los tres autorizados por nombre: `historial-accion-orden-zona-reconciliada-migration`,
+  `historial-accion-zona-pago-mensajero-migration`, `historial-accion-zona-sinpe-migration`;
+- cinco más que el grep de `grupo_distritos_cambiado` encontró y que fallaban exactamente por lo mismo:
+  `correccion-resultado-gestion-migration`, `historial-accion-cobro-tienda-migration`,
+  `historial-accion-conciliacion-bodega-migration`, `historial-accion-pago-mensajero-ajustado-migration`
+  (lista de posteriores) y `caja-459-migration` (el último tipo del enum pasa a ser `zona_nodo_cambiado`,
+  `tarifas_activadas` el penúltimo, y los cortes se miden sin los dos).
+- Salida: los 8 → `Test Files 8 passed (8) · Tests 102 passed (102)`. Los demás tests que nombran tipos
+  recientes del enum (`migracion-d16-…`, `planes-cambiar-tipo-cobro`, `tarifa-activacion-migration`,
+  `historial-accion-zona-distrito-migration`, `historial-accion-zona-central-migration`,
+  `catalogo-y-choke-point`, guardia `historial-accion-escrituras-cubiertas`) → `Test Files 7 passed (7) ·
+  Tests 191 passed (191)`, sin tocarlos.

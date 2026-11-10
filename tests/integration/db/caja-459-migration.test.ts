@@ -121,9 +121,12 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // tipos se corren una posicion mas; los de entidades no.
     // SLT-54: UN tipo y UNA entidad detras de todo lo anterior (20261104140000). Los cortes de abajo se
     // miden sin ellos, para no correrlos otra vez.
-    expect(tipos.at(-1)).toBe("tarifas_activadas");
+    // censo: tipo nuevo de SLT-89 T1.2 (`zona_nodo_cambiado`, de `20261110130100_slt89_historial_zona_nodo`):
+    // UN tipo detras del de SLT-54, ninguna entidad. Los cortes de abajo se miden sin los dos.
+    expect(tipos.at(-1)).toBe("zona_nodo_cambiado");
+    expect(tipos.at(-2)).toBe("tarifas_activadas");
     expect(entidades.at(-1)).toBe("tarifa_activacion");
-    const tiposPrevios = tipos.slice(0, -1);
+    const tiposPrevios = tipos.slice(0, -2);
     const entidadesPrevias = entidades.slice(0, -1);
     expect(tiposPrevios.slice(-26, -22)).toEqual([
       "pago_por_cuenta_tienda_registrado",
