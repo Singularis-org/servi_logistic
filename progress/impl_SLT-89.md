@@ -246,3 +246,10 @@ existentes del resolver pasen **sin cambiar aserciones**, y la excepción de R38
 Sin `relationJoins` no hay forma de leer las dos tablas de miembros en una consulta Prisma. No he
 tocado la aserción. Decisión del humano: (a) autorizar `3 → 4` en esos dos casos (cambio de aserción
 respaldado por design §4.3/§9), o (b) otra forma de leer los miembros nuevos sin consulta extra.
+
+### Arreglo de T1.4 hallado al correr las guardias
+
+`tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts:228` leía `pg_enum`/`pg_type` sin acotar el
+esquema: lo cazó la guardia `catalogo-postgres-acota-esquema` (ficha 421). Gana `JOIN pg_namespace …
+WHERE n.nspname = 'public'`, como `454/orden-evento-migration.test.ts`. Guardia + ida y vuelta →
+`Test Files 2 passed (2) · Tests 11 passed (11)`.

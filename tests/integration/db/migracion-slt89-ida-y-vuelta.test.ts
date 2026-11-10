@@ -226,7 +226,8 @@ describeSiHayBase("SLT-89 — zonas sobre el nodo, de ida y vuelta (R33)", () =>
     expect(await nodoQueQuedaConElSector()).toBe(sectorId);
     expect(
       await uno(`SELECT count(*)::int FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
-          WHERE t.typname = $1 AND e.enumlabel = 'zona_nodo_cambiado'`, [ENUM_QUE_SE_QUEDA]),
+          JOIN pg_namespace n ON n.oid = t.typnamespace
+          WHERE n.nspname = 'public' AND t.typname = $1 AND e.enumlabel = 'zona_nodo_cambiado'`, [ENUM_QUE_SE_QUEDA]),
     ).toBe(1);
   }, 300_000);
 
