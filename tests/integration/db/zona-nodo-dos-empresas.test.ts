@@ -6,9 +6,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { comoApp, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearOrganizacionEnPais } from "@/tests/fabricas/paises";
 
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { gruposDeDistritos } from "@/lib/repositories/_shared/resolver-tarifas";
+import { zonaQueCubre } from "@/lib/services/geografia-dominio";
+import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
+
 import { crearEscenarioGeo43, insertarNodo, type EscenarioGeo43 } from "./_fixtures/geo-43";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { comoDueno, intentar, revertida } from "./_fixtures/pais-20";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { comoLaEmpresa, guardado, nodosDeZona, repoDeZonas } from "./_fixtures/slt89-zonas";
+import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 /**
  * SLT-89 · R34 (T1.6, parte de base; design §2.1, §2.2) — LAS DOS TABLAS NUEVAS SON DE LA EMPRESA Y
@@ -27,7 +34,8 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
  *     `grupo_distritos_distrito` (23505).
  * Cada rechazo se comprueba además «sin escribir»: la cuenta de filas no cambia.
  *
- * La parte de cobertura y precio por empresa (R35) va con las lecturas (T2/T6).
+ * R35 (T6.1): el mismo canton asignado en zonas de las dos empresas se guarda en las dos; cobertura,
+ * aviso de impacto y grupo de tarifas se resuelven para cada una con lo suyo, sin ver a la otra.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -251,5 +259,83 @@ describeSiHayBase("SLT-89 · R34 — zona_nodo y grupo_distritos_nodo, por empre
     expect(r.duplicado).toBe("23505");
     expect(r.deSiempre).toBeNull();
     expect(r.despues).toBe(r.antes + 1);
+  });
+
+  it("⭑ R35: el mismo canton en zonas de dos empresas: cada una lo guarda, lo cubre, avisa y agrupa con lo suyo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await escenario(tx);
+      // A: el canton a su otra zona (el distrito sembrado sigue en su zona: excepcion). B: a su zona.
+      const impactoA = await comoLaEmpresa(tx, e.empresaId, () =>
+        repoDeZonas(tx).impactoDeAsignacion({ zonaId: e.otraZonaA, distritoIds: [], nodoIds: [e.geo.cantonId] }),
+      );
+      const impactoB = await comoLaEmpresa(tx, e.empresaB, () =>
+        repoDeZonas(tx).impactoDeAsignacion({ zonaId: e.zonaB, distritoIds: [], nodoIds: [e.geo.cantonId] }),
+      );
+      const datosA = await guardado(tx, e.otraZonaA, { distritoIds: [], nodoIds: [e.geo.cantonId] });
+      const guardaA = await comoLaEmpresa(tx, e.empresaId, () => repoDeZonas(tx).update(e.otraZonaA, datosA, null));
+      const datosB = await guardado(tx, e.zonaB, { distritoIds: [], nodoIds: [e.geo.cantonId] });
+      const guardaB = await comoLaEmpresa(tx, e.empresaB, () => repoDeZonas(tx).update(e.zonaB, datosB, null));
+
+      const cubre = (empresa: string) =>
+        comoLaEmpresa(tx, empresa, async () => {
+          const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(clienteConSavepoint(tx)).deLaEmpresa();
+          return {
+            otroDistrito: zonaQueCubre(catalogo, asignaciones, e.geo.otroDistritoId)?.id ?? null,
+            distrito: zonaQueCubre(catalogo, asignaciones, e.geo.distritoId)?.id ?? null,
+          };
+        });
+      const cubreA = await cubre(e.empresaId);
+      const cubreB = await cubre(e.empresaB);
+
+      // Un grupo de A con el canton como miembro: B no lo ve al resolver el mismo distrito.
+      await comoDueno(tx);
+      await fijarEmpresa(tx, e.empresaId);
+      const maestroA = await crearUsuarioDePrueba(tx, "maestro");
+      await comoDueno(tx);
+      const grupo = await comoLaEmpresa(tx, e.empresaId, () =>
+        serviciosDeTarifas(clienteConSavepoint(tx)).grupoDistritos.crearGrupo(
+          { zonaId: e.otraZonaA, nombre: "Canton A", distritoIds: [], nodoIds: [e.geo.cantonId] },
+          { usuarioId: maestroA.id, rol: "maestro" },
+        ),
+      );
+      const grupoDe = (empresa: string, zonaId: string) =>
+        comoLaEmpresa(tx, empresa, async () =>
+          (await gruposDeDistritos(clienteConSavepoint(tx), [{ zonaId, distritoId: e.geo.otroDistritoId }])).get(
+            `${zonaId}|${e.geo.otroDistritoId}`,
+          ) ?? null,
+        );
+      return {
+        e,
+        impactoA,
+        impactoB,
+        guardaA: guardaA.estado,
+        guardaB: guardaB.estado,
+        nodosA: await nodosDeZona(tx, e.otraZonaA),
+        nodosB: await nodosDeZona(tx, e.zonaB),
+        cubreA,
+        cubreB,
+        grupo,
+        grupoDeA: await grupoDe(e.empresaId, e.otraZonaA),
+        grupoDeB: await grupoDe(e.empresaB, e.zonaB),
+      };
+    });
+    // Los dos guardados pasan: el unico de `zona_nodo` empieza por la empresa.
+    expect([r.guardaA, r.guardaB]).toEqual(["ok", "ok"]);
+    expect(r.nodosA).toEqual([r.e.geo.cantonId]);
+    expect(r.nodosB).toEqual([r.e.geo.cantonId]);
+    // Cobertura: cada una su zona; la excepcion de A (su distrito sembrado) no existe para B.
+    expect(r.cubreA).toEqual({ otroDistrito: r.e.otraZonaA, distrito: r.e.zonaId });
+    expect(r.cubreB).toEqual({ otroDistrito: r.e.zonaB, distrito: r.e.zonaB });
+    // Impacto: A ve su orden del canton (ya en un cierre); B, con el mismo canton, no ve nada de A.
+    expect(r.impactoA?.noSeMueven.enCierre).toBe(1);
+    expect(r.impactoB).toEqual({
+      cambianDeZona: 0,
+      cambianDeTarifa: 0,
+      noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 },
+    });
+    // Grupo: el de A resuelve en A; en B el mismo distrito no tiene grupo.
+    expect(r.grupo.status).toBe("ok");
+    expect(r.grupoDeA).toBe(r.grupo.status === "ok" ? r.grupo.id : "sin grupo");
+    expect(r.grupoDeB).toBeNull();
   });
 });
