@@ -269,9 +269,11 @@ se para y se pregunta (design §8.4). (R48)
 
 ## T9 — Cierre
 
-- [ ] **T9.1** `docs/architecture.md` (Multi-empresa > Geografía jerárquica y Tarifas flexibles): la
+- [x] **T9.1** `docs/architecture.md` (Multi-empresa > Geografía jerárquica y Tarifas flexibles): la
   tabla hermana, la regla de miembros y el trigger de `orden`; `lib/types/historial-accion.ts` y
   `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` con el tipo nuevo.
+  > Nota (2026-11-10): el tipo `zona_nodo_cambiado` en `historial-accion.ts` y su censo en
+  > `catalogo-y-choke-point.test.ts` entraron con T1.3 (tanda 1); T9.1 cierra solo la documentación.
 - [ ] **T9.2** `./init.sh` verde; mapa `R<n> → test` (R1–R48) en `progress/impl_SLT-89.md`; revisión
   del diff contra R42 (sin cambios en filtros/exportes, FK viejas, regla de guardado, modelo viejo,
   grupo de la orden sin distrito) y de R48 (aprobación de la maqueta anterior al primer commit de T7);

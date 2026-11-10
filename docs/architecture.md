@@ -197,6 +197,26 @@ esta bien hecha, no solo si "funciona".
       `--empresa`). Sale con 0 si todo coincide, 1 si algo difiere y 2 si una empresa falló al leer.
       Lo corre una persona sobre una copia de producción con SLT-43 aplicada, antes del merge, y pega
       la salida en el PR; ningún agente.
+  - **Zonas sobre cualquier nodo (SLT-89).** Una zona de la empresa se asigna a nodos de cualquier
+    profundidad, no solo a distritos.
+    - **Tabla hermana.** El distrito sigue en `zona_distrito`, con su único `(organizacion_id,
+      distrito_id)` y su FK compuesta hacia los grupos; cualquier otro nodo va a `zona_nodo`
+      (`organizacion_id`, RLS y único `(organizacion_id, nodo_geografico_id)`: un nodo, a lo sumo una
+      zona por empresa). El trigger `zona_nodo_valido` rechaza un nodo de otro país (`SL021`) y un
+      distrito (`23514`): un distrito nunca vive en las dos tablas. El catálogo une las dos al cargar
+      (`zona_nodo` se lee por `lib/repositories/_shared/zona-nodo.ts`, de su propia columna de nodo).
+      Con `zona_nodo` vacía, toda lectura da lo de antes (R38 de SLT-89).
+    - **Herencia.** La zona de un nodo es la de la asignación más cercana subiendo (SLT-44 R6, colapso
+      1/0/>1): un distrito puede ir a otra zona que su cantón (excepción) y gana lo más específico.
+    - **Guardar una zona** compara lo que hay con el «antes» que el modal mostró (bajo `FOR UPDATE` de
+      la zona; si difiere, `conflict`/`cambio_concurrente` sin escribir), escribe las dos tablas por
+      diferencia, normaliza los miembros de grupo y reconcilia las órdenes pendientes con el mismo plan
+      que el aviso de impacto (`impactoAsignacionZona`, transacción de solo lectura). El historial deja
+      `zona_distrito_cambiado` por distrito, como SLT-76, y `zona_nodo_cambiado` por el resto.
+    - **Trigger de `orden`.** `orden_nodo_geografico` conserva un `nodo_geografico_id` que cuelga del
+      lugar de la orden (`COALESCE(distrito_id, canton_id)`) y pone el lugar en cualquier otro caso;
+      con las escrituras de hoy (sin nodo o igual al lugar) da lo mismo que SLT-43. Ninguna escritura
+      de la app manda todavía un nodo más profundo (regla de guardado de SLT-45).
 - **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
   solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
   para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
@@ -320,6 +340,21 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   (`tarifas-sin-escritura-vieja.guardia`): el modelo viejo solo se lee, hasta que lo retire SLT-57. Lo
   congelado lo escribe solo el cierre (`CierreDiaRepository`) y nadie lo recalcula al leer
   (`tarifaDe` en `lib/utils/cierre-detalle.ts`).
+- **Miembros de grupo sobre el nodo (SLT-89).** Un miembro es cualquier nodo que la zona del grupo
+  cubre (asignado o heredado), a cualquier profundidad. Regla de miembros:
+  - el distrito con fila propia en `zona_distrito` de esa zona va a `grupo_distritos_distrito`, con su
+    FK compuesta, como antes; cualquier otro miembro va a `grupo_distritos_nodo`;
+  - un nodo, a lo sumo un grupo por zona, en las dos tablas a la vez: lo garantizan los triggers
+    `grupo_distritos_nodo_valido` y `grupo_distritos_distrito_sin_duplicado`;
+  - `grupo_distritos_nodo` no tiene FK a la asignación (la cobertura heredada no es una fila): la
+    coherencia la mantiene la aplicación al escribir el grupo y al guardar la zona, que saca del grupo
+    lo que deja de estar cubierto, con su fila de historial.
+  - El grupo de una orden con distrito es el del miembro más cercano subiendo desde su distrito; una
+    orden sin distrito sigue sin grupo (hasta SLT-48). El resolver suma una consulta fija por lote
+    (`grupo_distritos_nodo`) y solo carga el catálogo si la empresa tiene miembros en esa tabla.
+  - Renombrar, cambiar miembros y borrar un grupo exigen el «antes» que el modal mostró
+    (`nombreAnterior` / `antes`) y responden `conflict`/`cambio_concurrente` si la base ya no lo es,
+    bajo `FOR UPDATE` del grupo. Crear (grupo o zona) no lleva «antes».
 
 ## Patron de capas: Controller → Service → Repository
 
