@@ -1,12 +1,11 @@
 # SLT-118 — planes-facturar-periodo-en-curso · tasks.md
 
-> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R33). P1–P8 cerradas (2026-11-10). Abiertas:
-> P9 (cuota completa en la factura más corta que deja un cambio de tipo; si cambia, se rehacen R8/R29/R30,
-> T3.2 y T6.2), P10 (rango sobre la fecha elegida; si cambia, T11.2 y T12.1) y P11 (tamaño 44 frente a ~41).
-> Ninguna bloquea el arranque del bloque A.
+> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R34). P1–P11 cerradas (2026-11-10); sin
+> preguntas abiertas. P9 (cambio a un tipo más largo: inicio de un período del tipo nuevo) toca T11.2, T6.2,
+> T12.1 y T12.2; P10 (rango sobre la fecha elegida) trae R34 (T11.3, T12.1, T12.4); P11 acepta 44 archivos.
 > Capa: `backend_dev` (`db/`, `lib/`, `app/api/`, `scripts/`, `tests/`), salvo T11.4, que toca dos pantallas
 > del superadmin (solo el texto de una confirmación).
-> Un solo PR (P5 y P7 aceptados); los bloques A, B y C solo ordenan el trabajo.
+> Un solo PR (P5, P7 y P11 aceptados); los bloques A, B y C solo ordenan el trabajo.
 
 ## Bloque A — Facturas, cierre y toma del cambio
 
@@ -66,8 +65,11 @@
 ### T6 — Tests del bloque A (dependen de T2–T4) [P entre sí]
 - [ ] **T6.1** `tests/integration/db/factura-plataforma-cierre.test.ts`: R1–R9, R11, R14, R26, R27 (R8: precio
   editado con efecto antes y después del `desde`).
-- [ ] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (cambio de tipo que deja una
-  factura más corta: período completo), R15–R17, R28, R29 y R33, con los casos de design §8 (efecto en el
+- [ ] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (pendiente de cambio de tipo
+  guardado por SQL que deja una factura más corta: período completo), R15–R17, R28, R29, R33 y R30 por P9
+  (quincenal → anual guardado por `PlanesService` el 10 de noviembre: noviembre y diciembre siguen quincenales y
+  la del 1 de enero es anual completa; ninguna factura más corta; este caso depende de T11.2), con los casos
+  de design §8 (efecto en el
   inicio del próximo período; efecto a mitad de período sin corte; inicio el 1 aplicado el 10 → 15 500.00;
   alta el 10 con inicio el 10 → 6 200.00; inicio el 5 → 11 366.67; inicio el 18 futuro aplicado por el
   trabajo → 13 433.33; aplicado tarde, antes y después de un cierre; `SL118` en una `por_cerrar`).
@@ -102,31 +104,39 @@
 - [ ] **T9.3** `tests/unit/utils/deuda-plataforma.test.ts`: el caso `cuota` (R18).
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`.
 
-## Bloque C — Fecha de efecto del superadmin (P7; R30–R33) [P con los bloques A y B]
+## Bloque C — Fecha de efecto del superadmin (P7, P9, P10, P11; R30–R34) [P con los bloques A y B]
 
 ### T11 — Servidor y confirmaciones (no depende de T1–T9)
 - [ ] **T11.1** `lib/interfaces/repositories/IPlanesRepository.ts`: `vigenteDesde?: string` en el `ok` de
   `ResultadoAsignar`, de `crearYAsignar` y de `ResultadoCambiarTipoCobro`, presente solo con `pendiente`
   (design §3.1).
 - [ ] **T11.2** `lib/repositories/PlanesRepository.ts`: en `cambiarEmpresaEnTx`, bajo el cerrojo y antes de
-  decidir pendiente o aplicar, lleva un efecto de clase `"cambio"` al inicio del período siguiente con el tipo
-  vigente (`fechaDeEfectoPorDefecto`) salvo que ya sea un inicio (`inicioDelPeriodoCalendario`); `"inicio"`
-  no se toca (R33). Devuelve la fecha real en `vigenteDesde`. Sin función nueva en `lib/planes/ciclo.ts`.
+  decidir pendiente o aplicar, lleva un efecto de clase `"cambio"` al inicio del período siguiente con el
+  **tipo de referencia** (el de mayor índice en `TIPOS_COBRO` entre el vigente y el nuevo, P9;
+  `fechaDeEfectoPorDefecto`) salvo que ya sea un inicio de ese tipo (`inicioDelPeriodoCalendario`); `"inicio"`
+  no se toca (R33). No revalida el rango sobre la fecha llevada (R34). Devuelve la fecha real en
+  `vigenteDesde`. Sin función nueva en `lib/planes/ciclo.ts`.
 - [ ] **T11.3** `lib/services/PlanesService.ts` y `lib/types/planes.ts`: `asignar` y `crear` responden con el
   `vigenteDesde` del repositorio; `CambiarTipoCobroResult` gana `vigenteDesde: string | null` y
-  `cambiarTipoCobro` lo devuelve. `fueraDeRango` sigue sobre la fecha elegida (P10).
+  `cambiarTipoCobro` lo devuelve. `fueraDeRango` sigue sobre la fecha elegida, sin cambios (R34, P10).
 - [ ] **T11.4** `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (confirmación de
   «Cambiar tipo de cobro» con la fecha real) y `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
-  (aviso de «Crear custom» con la fecha real del cambio). El campo de fecha no cambia.
+  (aviso de «Crear custom» con la fecha real del cambio). Las dos confirmaciones entran (P11). El campo de
+  fecha no cambia.
 - **Hecho:** typecheck y lint verdes; `pnpm exec vitest related --run lib/repositories/PlanesRepository.ts
   lib/services/PlanesService.ts` verde tras T12.
 
 ### T12 — Tests del bloque C (dependen de T11) [P entre sí]
-- [ ] **T12.1** `tests/integration/db/planes-cambio-empresa.test.ts`: R30 (asignar con fecha a mitad de
-  período en los cuatro tipos y con «hoy» → pendiente en el inicio siguiente: columna del pendiente,
-  `run_after` del trabajo, historial), R31 (inicio de período respetado; «hoy» en un inicio se aplica), R33
-  (primera asignación futura a mitad de período no se mueve).
-- [ ] **T12.2** `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (R30, R31 con el tipo **vigente**) y
+- [ ] **T12.1** `tests/integration/db/planes-cambio-empresa.test.ts`: R30 (asignar, mismo tipo, con fecha a
+  mitad de período en los cuatro tipos y con «hoy» → pendiente en el inicio siguiente: columna del pendiente,
+  `run_after` del trabajo, historial; asignar con cambio a un tipo más largo, quincenal → anual el 10 de
+  noviembre → 1 de enero, y a uno más corto, anual → mensual → 1 de enero), R31 (inicio del tipo de referencia
+  respetado; «hoy» en un inicio se aplica), R33 (primera asignación futura a mitad de período no se mueve),
+  R34 (quincenal → anual elegida el 10 de noviembre de 2027, en el tope → pendiente el 1 de enero de 2028).
+- [ ] **T12.2** `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (R30, R31 con el **tipo de
+  referencia**: quincenal → anual el 10 de noviembre → 1 de enero; anual → mensual → 1 de enero; mensual →
+  quincenal → 1 de diciembre; quincenal → mensual el 16 de noviembre → 1 de diciembre; quincenal → anual el 1
+  de enero, inicio común → se respeta; mensual → anual con «hoy» = 1 de enero → se aplica) y
   `tests/integration/db/planes-crear-custom-asigna.test.ts` (R30 en el custom).
 - [ ] **T12.3** Ajustar los que usan un cambio con «hoy» o a mitad de período:
   `tests/integration/db/planes-asignacion.test.ts`, `tests/integration/db/plan-de-la-empresa-periodo.test.ts`,
@@ -134,7 +144,8 @@
   Si otro test de planes se pone rojo por lo mismo, se ajusta y se añade a «Archivos esperados».
 - [ ] **T12.4** `tests/unit/services/planes-service-periodo.test.ts` y
   `tests/unit/services/planes-service-tipo-cobro.test.ts`: R30, R32 (la respuesta lleva el `vigenteDesde` del
-  repositorio, no el elegido).
+  repositorio, no el elegido), R34 (elegida fuera de rango → `validation_error` en `vigenteDesde` sin llamar al
+  repositorio; elegida en el tope con un `vigenteDesde` posterior → `ok` con la real).
 - [ ] **T12.5** `tests/components/PlanEmpresaTipoCobro.test.tsx` y `tests/components/PlanesModule.test.tsx`: R32.
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
 
@@ -145,9 +156,10 @@
   quién escribe, cierre, toma del cambio sin corte, deuda. Y en «Planes y límites»: que el costo base deja de
   ser solo informativo al cerrar (sustituye a SLT-66 R21 y a SLT-86 R14 en lo que toca a la cuota); que la
   factura cobra el período completo salvo la primera con plan más corta, que prorratea con SLT-86 R12 (P6);
-  y que el cambio del superadmin rige al inicio del próximo período del tipo vigente (P7; modifica SLT-86
+  y que el cambio del superadmin rige al inicio del próximo período del tipo de referencia, el más largo entre
+  el vigente y el nuevo, con el tope de 12 meses sobre la fecha elegida (P7, P9, P10; modifica SLT-86
   R16–R18).
-- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R33).
+- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R34).
 - [ ] **T10.3** `./init.sh` verde; en local, `pnpm exec playwright test --project=dinero` y
   `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` en base desechable (`docs/perfil-agentes.md`).
 - **Hecho:** los tres verdes y el mapa sin huecos.
@@ -166,10 +178,11 @@
 | R19, R20 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
 | R22 | `tests/integration/db/factura-plataforma-aislamiento.test.ts`, `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` |
 | R29 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
-| R30 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
+| R30 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
 | R31 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` |
 | R32 | `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/services/planes-service-tipo-cobro.test.ts`, `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx` |
 | R33 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R34 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
 
 ## Archivos esperados
 
@@ -218,7 +231,8 @@
 - `tests/integration/db/plan-de-la-empresa-periodo.test.ts`
 - `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
 
-44 archivos (110 % de `max_archivos` = 40; el humano aceptó ~41 con P7, ver P11). Sin P7 serían los 29 de
+44 archivos (110 % de `max_archivos` = 40; aceptados por el humano con P11, línea `tamano-pr-aceptado` de
+la ficha). P9 y P10 no suman archivos. Sin P7 serían los 29 de
 antes; P7 suma 5 de producción y 10 de tests (T11, T12). Líneas estimadas ~2 100, por encima de
 `max_lineas` = 1 000 (aceptado con P5 y P7). Choque al mergear con SLT-99 «Planes: el administrador de la
 empresa ve su plan y los públicos y cambia de plan» (PR #115) en `lib/repositories/PlanesRepository.ts`,

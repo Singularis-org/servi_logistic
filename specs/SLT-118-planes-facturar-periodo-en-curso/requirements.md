@@ -28,7 +28,9 @@
 > en la zona de cada empresa». Ajustados el mismo día con las respuestas del humano a P1–P5 y a P6–P8 (filas
 > nuevas de «Decisiones cerradas»): P6 y P8 cambian R8, R10, R24 y R28 y traen R29; P7 trae R30–R33, que
 > **modifican SLT-86 «Planes: período de facturación de calendario por empresa y sin tope de órdenes» R16–R18**.
-> Los marcados **(propuesta)** dependen de una pregunta abierta de abajo.
+> Ajustados otra vez el mismo día con las respuestas a P9–P11: P9 cambia R8, R30 y R31 (un cambio a un tipo
+> más largo rige al inicio de un período del tipo nuevo); P10 trae R34 (el tope de 12 meses mira la fecha
+> elegida); P11 fija las dos confirmaciones con la fecha real (R32). Ningún requisito queda en propuesta.
 >
 > **Vocabulario.**
 > - *Factura*: el estado de cuenta interno de una empresa para un intervalo `[desde, hasta)`. Está **en
@@ -44,6 +46,12 @@
 > - *Efecto*: el instante desde el que rige un cambio de plan, de tipo o una primera asignación (las 00:00
 >   de su fecha, SLT-86). En un cambio del superadmin, la fecha ya llevada al inicio de un período (R30).
 > - *Tipo vigente*: el tipo de cobro que la empresa tiene en el instante en que se guarda el cambio.
+- *Tipo nuevo*: el tipo de cobro con el que queda la empresa tras el cambio (igual al vigente si solo cambia
+  el plan).
+- *Tipo de referencia*: el más largo entre el vigente y el nuevo, en el orden quincenal < mensual <
+  bimestral < anual (decisión P9). Todo inicio de un período de un tipo más largo es también inicio de un
+  período de cada tipo más corto (1 de enero; 1 de enero, marzo, mayo, julio, septiembre y noviembre; 1 de
+  cada mes; 1 y 16 de cada mes).
 > - *Margen de cierre*: 5 minutos después del fin de la factura (design §4.3).
 
 ### Facturas y períodos
@@ -87,11 +95,12 @@
   plan vigente en el `desde` de la factura (SLT-86 R15), en decimal exacto, a dos decimales y con la mitad
   hacia arriba. NO DEBE prorratearse por días (decisiones P3, P4 y P6), aunque la factura cubra menos días que
   su período. Ejemplos: quincenal 15 500 → 15 500.00; mensual 31 000 con 10 % de descuento mensual →
-  27 900.00; un precio editado con efecto el 5 rige desde la primera factura cuyo `desde` es el 5 o posterior;
-  una empresa que ya tenía plan y pasa de quincenal a mensual con efecto el 16 de noviembre → la factura del
-  16 al 30 lleva la cuota mensual completa (consecuencia que confirma P9).
+  27 900.00; un precio editado con efecto el 5 rige desde la primera factura cuyo `desde` es el 5 o posterior.
+  Un cambio del superadmin ya no deja facturas más cortas (R30, decisión P9); si un pendiente guardado antes
+  de esta ficha o por otra vía lo hace (quincenal → mensual con efecto el 16 de noviembre), la factura del 16
+  al 30 lleva la cuota mensual completa.
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`
-  (el cambio de tipo con factura más corta).
+  (el pendiente por SQL con factura más corta).
 - **R9** — SI la factura no tiene plan, o su plan no tiene costo base («sin precio»), ENTONCES la factura
   DEBE cerrarse sin cuota y con los cargos de sus órdenes (decisión «Empresa sin plan»).
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
@@ -230,41 +239,64 @@
   desde el 10 → del 10 al 15, 6 días de 15 → 6 200.00; mensual 31 000 desde el 18 de noviembre → 13 de 30
   días → 13 433.33; quincenal 15 500 con primer plan desde el 1 → 15 500.00 (no es más corta).
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (alta el 10; inicio el 5 y el 18;
-  segunda factura con plan más corta por un cambio de tipo: período completo),
+  segunda factura con plan más corta por un pendiente de cambio de tipo guardado por SQL: período completo),
   `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` (R10).
 
-### Fecha de efecto de los cambios del superadmin (decisión P7)
+### Fecha de efecto de los cambios del superadmin (decisiones P7, P9, P10 y P11)
 
 > Modifican SLT-86 «Planes: período de facturación de calendario por empresa y sin tope de órdenes»: R16 (la
-> fecha elegida ya no rige tal cual), R17 (un cambio ya no abre un tramo a mitad del período del tipo vigente)
-> y R18 («hoy» solo se aplica en el acto si es el primer día de un período). Aplica a «Asignar otro plan» a
-> una empresa con plan, a «Crear custom» para una empresa con plan y a «Cambiar tipo de cobro».
+> fecha elegida ya no rige tal cual; el rango sigue mirando la elegida, R34), R17 (un cambio ya no abre un
+> tramo a mitad de período) y R18 («hoy» solo se aplica en el acto si es el primer día de un período del tipo
+> de referencia). Aplica a «Asignar otro plan» a una empresa con plan, a «Crear custom» para una empresa con
+> plan y a «Cambiar tipo de cobro».
 
 - **R30** — CUANDO el superadmin guarda un cambio de plan o de tipo de cobro de una empresa que ya tiene plan
-  con una fecha de efecto que no es el primer día de un período de calendario de su tipo vigente, el sistema
-  DEBE llevar el efecto al primer día del período siguiente al que contiene esa fecha, con ese tipo vigente,
-  en la hora de la plataforma, y guardar el pendiente, su trabajo en la cola y su historial con esa fecha.
-  Ejemplos, con fecha elegida el 10 de noviembre: mensual → 1 de diciembre; quincenal → 16 de noviembre (y el
-  20 → 1 de diciembre); bimestral → 1 de enero; anual → 1 de enero; mensual con «hoy» = 10 de noviembre → 1
-  de diciembre, pendiente y sin aplicarse en el acto.
-  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts` (asignar, los cuatro tipos y «hoy»),
-  `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`,
+  con una fecha de efecto que no es el primer día de un período de calendario de su **tipo de referencia** (el
+  más largo entre el vigente y el nuevo), el sistema DEBE llevar el efecto al primer día del período de ese
+  tipo de referencia siguiente al que contiene esa fecha, en la hora de la plataforma, y guardar el pendiente,
+  su trabajo en la cola y su historial con esa fecha. Hasta entonces la empresa DEBE seguir con su plan y su
+  tipo actuales (R15, R17). Así, un cambio a un tipo más largo rige al inicio de un período del tipo nuevo y
+  no en el próximo inicio del vigente (decisión P9), y uno a un tipo más corto o igual, al inicio del próximo
+  período del vigente. Ejemplos, con fecha elegida el 10 de noviembre de 2026:
+  - mismo tipo: mensual → 1 de diciembre; quincenal → 16 de noviembre (y el 20 → 1 de diciembre); bimestral →
+    1 de enero; anual → 1 de enero de 2027;
+  - a un tipo más largo: quincenal → anual → 1 de enero de 2027 (no el 16 de noviembre); quincenal → mensual →
+    1 de diciembre; mensual → bimestral → 1 de enero;
+  - a un tipo más corto: anual → mensual → 1 de enero de 2027; mensual → quincenal → 1 de diciembre (no el 16);
+  - «hoy» = 10 de noviembre, mensual → 1 de diciembre, pendiente y sin aplicarse en el acto.
+  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts` (asignar: mismo tipo en los cuatro tipos, a
+  uno más largo, a uno más corto y «hoy»), `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`
+  (quincenal → anual, anual → mensual, mensual → quincenal), `tests/integration/db/planes-crear-custom-asigna.test.ts`,
+  `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (quincenal → anual guardado el 10 de
+  noviembre: las facturas del 16 al 30 de noviembre y las dos de diciembre siguen quincenales con su cuota, y
+  la del 1 de enero es anual con la cuota completa; ninguna factura queda más corta que su período),
   `tests/unit/services/planes-service-periodo.test.ts`.
-- **R31** — SI la fecha de efecto elegida es el primer día de un período de calendario del tipo vigente,
+- **R31** — SI la fecha de efecto elegida es el primer día de un período de calendario del tipo de referencia,
   ENTONCES el sistema DEBE respetarla: futura → pendiente para ese día; hoy → se aplica en el acto (SLT-86
   R18). Ejemplos: mensual, 1 de diciembre → 1 de diciembre; quincenal, 16 de noviembre → 16 de noviembre;
-  anual, 1 de enero → 1 de enero.
-  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  anual, 1 de enero → 1 de enero; quincenal → anual el 1 de enero de 2027 (inicio común) → 1 de enero; mensual
+  → anual con «hoy» = 1 de enero → se aplica en el acto. Una fecha que es inicio del vigente pero no del tipo de
+  referencia NO DEBE respetarse: quincenal → mensual el 16 de noviembre → 1 de diciembre (R30).
+  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`
+  (inicio común futuro y «hoy»; 16 de noviembre de quincenal → mensual).
 - **R32** — CUANDO un cambio de R30 o R31 queda pendiente, la respuesta de asignar, de crear custom y de
-  cambiar tipo de cobro DEBE devolver la fecha real (`vigenteDesde`, `AAAA-MM-DD`), y la confirmación en
-  pantalla (detalle de empresa al asignar o cambiar el tipo; catálogo al crear el custom) DEBE mostrar esa
-  fecha y no la elegida.
+  cambiar tipo de cobro DEBE devolver la fecha real (`vigenteDesde`, `AAAA-MM-DD`), y las dos confirmaciones en
+  pantalla, la del detalle de empresa al asignar o cambiar el plan o el tipo y la del catálogo al crear el custom
+  (decisión P11), DEBEN mostrar esa fecha y no la elegida.
   *Test:* `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/services/planes-service-tipo-cobro.test.ts`,
   `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx`.
 - **R33** — SI la empresa no tiene plan (primera asignación), ENTONCES la fecha de inicio NO DEBE llevarse al
   inicio de un período: rige ese día, también si es futura (decisión P8), y su primera factura con plan sigue
   R28 y R29.
   *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
+- **R34** — El tope de «hoy + 12 meses» de la fecha de efecto (SLT-86 R16) DEBE validarse sobre la fecha
+  **elegida** por el superadmin, antes de llevarla (decisión P10): una fecha elegida dentro del rango DEBE
+  aceptarse aunque la real quede después del tope, y la respuesta y la confirmación DEBEN mostrar la real
+  (R32); una fecha elegida fuera del rango DEBE rechazarse con `validation_error` en `vigenteDesde`, como hoy.
+  Ejemplos, con hoy el 10 de noviembre de 2026: quincenal → anual elegida el 10 de noviembre de 2027 → pendiente
+  para el 1 de enero de 2028; elegida el 11 de noviembre de 2027 → `validation_error`.
+  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts` (elegida en el tope con la real después),
+  `tests/unit/services/planes-service-periodo.test.ts` (elegida fuera de rango; la respuesta trae la real).
 
 ### Cobertura de las decisiones cerradas
 
@@ -289,13 +321,18 @@
 | P6 · Primera factura con plan más corta: cuota proporcional | R8, R10, R16, R24, R28, R29 |
 | P7 · El servidor del superadmin lleva el efecto al inicio del próximo período | R15, R30, R31, R32 |
 | P8 · Primera asignación con fecha futura: rige ese día, cuota proporcional | R28, R29, R33 |
-| Tamaño ~41 archivos (P7) | — (proceso: línea `tamano-pr-aceptado` de la ficha; ver P11) |
+| Tamaño ~41 archivos (P7) | — (proceso: línea `tamano-pr-aceptado` de la ficha; ampliada por P11) |
+| P9 · Cambio a un tipo más largo: rige al inicio de un período del tipo nuevo | R8, R30, R31 |
+| P10 · Tope de 12 meses sobre la fecha elegida | R34, R32 |
+| P11 · 44 archivos; fecha real en las dos confirmaciones | R32 (las dos confirmaciones); el tamaño es proceso (línea `tamano-pr-aceptado` de la ficha) |
 
 ## Preguntas abiertas
 
-P1–P8 las respondió el humano el 2026-11-10 y pasaron a «Decisiones cerradas». Quedan:
+Ninguna. P1–P11 las respondió el humano el 2026-11-10 y pasaron a «Decisiones cerradas».
 
-- **P9 (nueva) · Un cambio de tipo deja una factura más corta con la cuota completa del tipo nuevo.** Con
+### Respondidas el 2026-11-10, segunda tanda (texto original, para el rastro)
+
+- **P9 · Un cambio de tipo deja una factura más corta con la cuota completa del tipo nuevo.** Con
   P6 («cualquier otra factura cobra el período completo») y P7 (el efecto va al inicio del próximo período
   del tipo **vigente**), un cambio a un tipo más largo empieza a mitad del período del tipo nuevo: quincenal →
   mensual con efecto el 16 de noviembre deja la factura del 16 al 30 con la cuota mensual completa; quincenal
@@ -305,15 +342,15 @@ P1–P8 las respondió el humano el 2026-11-10 y pasaron a «Decisiones cerradas
   prefiere (a) prorratear también esa factura, o (b) llevar el efecto de un cambio de tipo al inicio del
   próximo período común a los dos tipos (quincenal → anual: 1 de enero)? Las dos alternativas cambian R8,
   R29 o R30 y sus tests; no bloquean el resto.
-- **P10 (nueva) · Rango de la fecha elegida.** SLT-86 R16 deja elegir de hoy a hoy + 12 meses. Propuesta del
+- **P10 · Rango de la fecha elegida.** SLT-86 R16 deja elegir de hoy a hoy + 12 meses. Propuesta del
   spec (R30, design §3.1): el rango se sigue mirando sobre la fecha **elegida**; la real puede caer hasta un
   período después del tope (anual: elegida el 10 de noviembre de 2027, real el 1 de enero de 2028). ¿Vale?
-- **P11 (nueva) · Tamaño.** Con P7 dentro, `tasks.md > Archivos esperados` suma 44 archivos (el humano aceptó
+- **P11 · Tamaño.** Con P7 dentro, `tasks.md > Archivos esperados` suma 44 archivos (el humano aceptó
   ~41): el ajuste en el servidor toca 5 de producción y 10 tests que hoy usan fechas a mitad de período o
   «hoy». Si hay que bajar a ~42, la propuesta es dejar fuera la confirmación con fecha del «Crear custom» del
   catálogo (`PlanesModule.tsx` y su test): la respuesta ya trae la fecha real, solo no se pinta. ¿Se acepta 44?
 
-### Respondidas el 2026-11-10 (texto original, para el rastro)
+### Respondidas el 2026-11-10, primera tanda (texto original, para el rastro)
 
 - **P6 · Factura más corta que su período de calendario.** Sin prorrateo (P3, P4), una factura con
   plan lleva siempre la cuota completa de su período (R8), aunque cubra menos días: una empresa dada de alta
@@ -369,3 +406,6 @@ P1–P8 las respondió el humano el 2026-11-10 y pasaron a «Decisiones cerradas
 | 2026-11-10 | P7 · Fecha de efecto del superadmin a mitad de período | Entra **en SLT-118**. Si el superadmin programa un cambio de plan o de tipo de cobro con fecha de efecto a mitad del período de la empresa, el sistema la **lleva al inicio del próximo período** de esa empresa (10 nov en mensual → 1 dic; quincenal → 16 o 1; bimestral y anual según SLT-86) y la respuesta y la confirmación devuelven la fecha real. Una fecha exactamente en un inicio de período se respeta. Modifica SLT-86 «Planes: período de facturación de calendario por empresa y sin tope de órdenes» R16–R18 (humano). |
 | 2026-11-10 | P8 · Primera asignación con fecha futura | Rige ese día (no se lleva al inicio de período), con cuota proporcional como en P6 (humano). |
 | 2026-11-10 | Tamaño con P7 | Se acepta ~41 archivos; línea `tamano-pr-aceptado` en la ficha (humano). |
+| 2026-11-10 | P9 · Cambio a un tipo de cobro más largo | Rige al inicio de un período del **tipo nuevo** (1 de enero para anual; 1 del próximo bimestre para bimestral; 1 del mes para mensual), no en el próximo inicio del tipo viejo; hasta entonces la empresa sigue con su tipo y plan actuales. Ninguna factura queda corta salvo la primera de R29. Un cambio a un tipo más corto o igual sigue R30 (inicio del próximo período del vigente). Ej.: quincenal → anual el 10 nov rige el 1 ene (humano). |
+| 2026-11-10 | P10 · Rango de la fecha elegida | El tope de 12 meses se valida sobre la fecha **elegida** por el superadmin; la real puede quedar después y la respuesta y la confirmación la muestran (humano). |
+| 2026-11-10 | P11 · Tamaño 44 | Se aceptan 44 archivos, con la fecha real en las dos confirmaciones (cambio de plan de la empresa y crear custom); línea `tamano-pr-aceptado` en la ficha (humano). |
