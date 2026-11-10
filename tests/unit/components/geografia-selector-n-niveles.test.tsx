@@ -241,3 +241,16 @@ describe("al crear (sin zona en edición), todo nodo con zona queda bloqueado", 
     expect(await casilla("barrio Centro")).not.toHaveAttribute("aria-disabled", "true");
   });
 });
+
+describe("R24 (review SLT-89 vuelta 1, m1) — el porqué del estado llega al lector de pantalla", () => {
+  it("la casilla describe la herencia y la excepción con el texto de su fila", async () => {
+    const user = await montar({});
+    await user.click(await casilla("comuna Escazú"));
+
+    expect(await casilla("barrio Centro")).toHaveAccessibleDescription("hereda de Zona Oeste por Escazú");
+    expect(await casilla("barrio San Rafael")).toHaveAccessibleDescription("Excepción · va a Zona Sur");
+    expect(await casilla("barrio Colón")).toHaveAccessibleDescription("hereda de Zona Sur por Mora");
+    // Lo elegido no lleva descripción: no hay nada que explicar.
+    expect(await casilla("comuna Escazú")).not.toHaveAttribute("aria-describedby");
+  });
+});

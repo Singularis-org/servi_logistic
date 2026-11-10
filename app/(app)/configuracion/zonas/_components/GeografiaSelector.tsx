@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, CornerDownRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,7 @@ export function GeografiaSelector({
   nombreZona = "",
 }: Readonly<GeografiaSelectorProps>) {
   const [query, setQuery] = useState("");
+  const idBase = useId();
   const [marcados, setMarcados] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set());
 
@@ -151,6 +152,9 @@ export function GeografiaSelector({
               disabled={bloqueado}
               onCheckedChange={() => setMarcados((prev) => alternarNodo(prev, nodo.id, indice))}
               aria-label={ariaLabel}
+              // Review SLT-89 vuelta 1 (m1): el porqué del estado (hereda, excepción, otra zona) llega al
+              // lector de pantalla como descripción de la casilla, no solo como texto de la fila.
+              aria-describedby={tieneTextoDeEstado(estado) ? `${idBase}-${nodo.id}-estado` : undefined}
             />
             <span className={cn("font-medium", bloqueado && estado.tipo === "otra_zona" && "opacity-70")}>
               {nodo.nombre}
@@ -159,7 +163,7 @@ export function GeografiaSelector({
               {tipoDe(nodo.profundidad)?.nombreSingular ?? ""}
               {hijosVisibles ? ` · ${hijosVisibles}` : ""}
             </span>
-            <TextoDeEstado estado={estado} />
+            <TextoDeEstado estado={estado} id={`${idBase}-${nodo.id}-estado`} />
           </label>
           {retiro !== null ? (
             <Badge variant={!nodo.activo ? "secondary" : "outline"}>{retiro}</Badge>
@@ -222,12 +226,17 @@ function contarHijos(
 }
 
 /** El texto de la fila según cómo queda el nodo con la selección en curso (maqueta, R24). */
-function TextoDeEstado({ estado }: Readonly<{ estado: EstadoDeNodo }>) {
+/** Si la fila pinta un texto de estado que describa la casilla. */
+function tieneTextoDeEstado(estado: EstadoDeNodo): boolean {
+  return estado.tipo !== "elegido" && estado.tipo !== "libre";
+}
+
+function TextoDeEstado({ estado, id }: Readonly<{ estado: EstadoDeNodo; id: string }>) {
   switch (estado.tipo) {
     case "hereda_esta":
     case "hereda_otra":
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <span id={id} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
           <CornerDownRight aria-hidden="true" className="size-3" />
           {estado.tipo === "hereda_esta" && estado.zona === ""
             ? `hereda de ${estado.nodo}`
@@ -236,9 +245,9 @@ function TextoDeEstado({ estado }: Readonly<{ estado: EstadoDeNodo }>) {
       );
     case "otra_zona":
       return estado.excepcionDe !== null ? (
-        <Badge variant="warning">{`Excepción · va a ${estado.zona}`}</Badge>
+        <Badge id={id} variant="warning">{`Excepción · va a ${estado.zona}`}</Badge>
       ) : (
-        <span className="text-xs text-muted-foreground">{`En ${estado.zona}`}</span>
+        <span id={id} className="text-xs text-muted-foreground">{`En ${estado.zona}`}</span>
       );
     default:
       return null;
