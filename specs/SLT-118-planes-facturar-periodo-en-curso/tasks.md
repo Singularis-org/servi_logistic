@@ -18,7 +18,7 @@
 - [x] **T1.1** `db/schema.prisma`: modelo `FacturaPlataforma`, relación inversa, `factura_plataforma_cerrar` en
   `JobTipo` (`d237afe7`).
 - [x] **T1.2** `lib/db/modelos-de-negocio.ts`: la entrada nueva (`d237afe7`).
-- [ ] **T1.3** *(rehacer)* `db/schema.prisma`: `FacturaPlataforma.periodicidad` (`String`, comentario del CHECK),
+- [x] **T1.3** *(rehacer)* `db/schema.prisma`: `FacturaPlataforma.periodicidad` (`String`, comentario del CHECK),
   las cinco columnas del plan y el tramo de la cuota (`cuotaPlanId`, `cuotaPlanNombre`, `cuotaTipoCobro`,
   `cuotaDesdeAt`, `cuotaHastaAt`), la marca `primeraCuotaDesdeAt` y las ocho de la primera cuota
   (`primeraCuotaHastaAt`, `primeraCuotaPlanId`, `primeraCuotaPlanNombre`, `primeraCuotaTipoCobro`,
@@ -32,13 +32,13 @@
 - [x] **T2.1** `db/migrations/20261111130000_factura_plataforma_job_enum/` (`0e58af60`). Sin cambios.
 - [x] **T2.2** `db/migrations/20261111130100_factura_plataforma/migration.sql` con el diseño de antes (`0e58af60`).
 - [x] **T2.3** Su `down.sql` (`0e58af60`).
-- [ ] **T2.4** *(rehacer, en `20261111130100/migration.sql`)*: `plan.periodicidad_ordenes` con su `DEFAULT
+- [x] **T2.4** *(rehacer, en `20261111130100/migration.sql`)*: `plan.periodicidad_ordenes` con su `DEFAULT
   'quincenal'` y su CHECK (R35); `factura_plataforma.periodicidad`, las cinco columnas de la cuota y la marca
   `primera_cuota_desde_at` y las ocho columnas de la primera cuota (P18); los CHECK de design §1.1 (el grupo de la
   cuota de 9 columnas, **sin** «sin plan, sin cuota»; el grupo de la primera cuota de 8 con su marca; las columnas
   nuevas de las dos cuotas solo en la cerrada); el tope del pago suma también `primera_cuota` (§2.7); el trigger de inmutabilidad congela también
   `periodicidad` en una `por_cerrar` y deja la marca solo de nula a un valor.
-- [ ] **T2.5** *(rehacer, mismo archivo)*: `abrir` copia la periodicidad (la del plan, o `quincenal`); `avanzar`
+- [x] **T2.5** *(rehacer, mismo archivo)*: `abrir` copia la periodicidad (la del plan, o `quincenal`); `avanzar`
   saca el fin natural de la periodicidad de la factura (R2); `tomar_cambio` con la firma de T2 (sin `p_ahora`):
   pone la periodicidad del plan nuevo en R16 y en la factura que abre R28, y en una primera asignación la marca de
   la primera cuota (en la emitida en D si no está cerrada; si no, en la factura en curso, sin corte, P18; en R28,
@@ -48,7 +48,7 @@
   R39 y las dos cuotas de §2.4; `en_curso` con el fin previsto por la periodicidad, la periodicidad en el JSON y
   las dos cuotas previstas con el cambio pendiente (R24); la siembra desde el inicio del corte en curso, sin marca
   (R26, P15).
-- [ ] **T2.6** *(rehacer, `down.sql`)*: la negativa mira `cuota` o `primera_cuota`; `DROP FUNCTION` con las firmas
+- [x] **T2.6** *(rehacer, `down.sql`)*: la negativa mira `cuota` o `primera_cuota`; `DROP FUNCTION` con las firmas
   nuevas (`ordenes`, `cuota`; sin `cifras`; `tomar_cambio` con la de T2) y `ALTER TABLE "plan" DROP COLUMN
   "periodicidad_ordenes"` (R27).
 - **Hecho:** `pnpm run db:migrate` y `pnpm run db:rollback` en una base desechable: la vuelta deja
