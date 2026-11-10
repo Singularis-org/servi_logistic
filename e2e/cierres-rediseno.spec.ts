@@ -571,9 +571,9 @@ test.describe.serial("SLT-100 — destrabar un vencido desde el pie del detalle 
  *
  * ESCENARIO S4 (decisión del leader sobre ABIERTO-1 y ABIERTO-2 de T0.3). Tarifa y pago del escenario A
  * (mensajero 1.500 por entrega; incidente y rechazo no pagan, feature 39 R5-R7).
- *   Central: entregas de 20.000 y 10.000 por SINPE (efectivo 0), un incidente (orden de 8.000, no recauda),
+ *   Central: entregas de 21.000 y 10.000 por SINPE (efectivo 0), un incidente (orden de 8.000, no recauda),
  *   un rechazo (vuelve a bodega) y el pago de la primera entrega ajustado de 1.500 a 2.000 (SLT-56).
- *     Recaudado 20.000 + 10.000 = 30.000 → «₡30.000» · Pago al mensajero 2.000 + 1.500 + 0 + 0 = 3.500 → «₡3.500»
+ *     Recaudado 21.000 + 10.000 = 31.000 → «₡31.000» · Pago al mensajero 2.000 + 1.500 + 0 + 0 = 3.500 → «₡3.500»
  *     Señales (R110, en este orden): «1 incidente sin indemnizar · 1 pago ajustado · 1 vuelve a bodega»
  *     Aprobado (con indemnización: el incidente deja de estar «sin indemnizar»): P 3.500, E 0 →
  *     3.500 − min(3.500, 0) = 3.500 → «Pendiente ₡3.500» y «Registrar pago»; registrado → «Liquidado».
@@ -610,8 +610,8 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
     r = await crearEscenarioReparto("cierres-cola-s4", { tarifa: TARIFA_A, tarifaMensajero: PAGO_A });
 
     const m = await crearMensajero(r, "central");
-    const e1 = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 20000 }), "en_reparto", { mensajero: m });
-    const g1 = await gestionar(r, e1, m, { resultado: "entregado", pagos: [{ metodo: "SINPE", monto: 20000 }] });
+    const e1 = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 21000 }), "en_reparto", { mensajero: m });
+    const g1 = await gestionar(r, e1, m, { resultado: "entregado", pagos: [{ metodo: "SINPE", monto: 21000 }] });
     const e2 = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 10000 }), "en_reparto", { mensajero: m });
     await gestionar(r, e2, m, { resultado: "entregado", pagos: [{ metodo: "SINPE", monto: 10000 }] });
     const inc = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 8000 }), "en_reparto", { mensajero: m });
@@ -646,7 +646,7 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
       central.m.nombre,
       FECHA,
       "Solicitado",
-      "₡30.000",
+      "₡31.000",
       "₡3.500",
       "1 incidente sin indemnizar · 1 pago ajustado · 1 vuelve a bodega",
       "Ver / decidir",
@@ -679,7 +679,7 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
       central.m.nombre,
       FECHA,
       "Aprobado",
-      "₡30.000",
+      "₡31.000",
       "₡3.500",
       "Pendiente ₡3.500",
       "1 pago ajustado · 1 vuelve a bodega",

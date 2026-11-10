@@ -404,10 +404,10 @@ Base desechable NUEVA `slt102_e2e` (creada con `pg`, `prisma migrate deploy` + `
 Escenario S4 propio en `cierres-rediseno.spec.ts` (sembrado con los servicios de `_escenarios/`):
 
 - **Central** (tarifa y pago del escenario A: 1.500 por entrega; incidente y rechazo no pagan,
-  `pago-mensajero.ts` feature 39 R5-R7): entregas de 20.000 y 10.000 por SINPE, un incidente
+  `pago-mensajero.ts` feature 39 R5-R7): entregas de 21.000 y 10.000 por SINPE, un incidente
   («perdido», orden de 8.000), un rechazo, y el pago de la primera entrega ajustado 1.500 → 2.000
   (SLT-56; el total del cierre = suma de los pagos congelados).
-  - Recaudado 20.000 + 10.000 = 30.000 → «₡30.000»; Pago al mensajero 2.000 + 1.500 + 0 + 0 = 3.500 → «₡3.500».
+  - Recaudado 21.000 + 10.000 = 31.000 → «₡31.000»; Pago al mensajero 2.000 + 1.500 + 0 + 0 = 3.500 → «₡3.500».
   - Señales (R110, orden del contrato): «1 incidente sin indemnizar · 1 pago ajustado · 1 vuelve a bodega».
   - Se aprueba por la pantalla (confirmación física del rechazo + indemnización 5.000): P 3.500, E 0 →
     3.500 − min(3.500, 0) + 0 − 0 = 3.500 → «Pendiente ₡3.500» y «Registrar pago»; el incidente ya
@@ -449,7 +449,7 @@ Literales escritos a mano en el spec (columnas, celdas en orden con `toHaveText(
 | R33 | E2E S4 central: columnas de Pendientes y de Resueltos, celdas en orden |
 | R34 | E2E S4 satélite: columnas sin «Pago entregado», sin «Registrar pago» con pendiente 1.500 |
 | R36 | E2E S4 central: «Ver / decidir» de la fila → detalle → aprobar; adaptados de T6.2 |
-| R101 | E2E S4: folio, fecha, «₡30.000», «₡3.500», «₡1.500», pastilla «Solicitado»/«Aprobado» |
+| R101 | E2E S4: folio, fecha, «₡31.000», «₡30.000», «₡3.500», «₡1.500», pastilla «Solicitado»/«Aprobado» |
 | R103 | E2E S4 central: «Pendiente ₡3.500» → «Registrar pago» (sin «Ahora no») → «Liquidado» |
 | R108 | E2E `tarifas-activacion`: la fila no lleva «Ingreso de bodega»; se lee en el detalle |
 | R70, R110 (PA1) | E2E S4 central: las tres señales con su conteo, y «sin indemnizar» desaparece al indemnizar |
@@ -484,3 +484,14 @@ Literales escritos a mano en el spec (columnas, celdas en orden con `toHaveText(
 
 **Veredicto:** T6 hecho; S4 cierra ABIERTO-1 y ABIERTO-2 con escenario propio, 10 E2E adaptados a la fila
 y al `tab`, `dinero` 93/93 dos veces seguidas (una caída de worker aislada en otra corrida).
+
+### Corrección del gate (R47 de `rollup-guards`)
+
+- `rollup-guards.test.ts > R47 (b)` estaba en rojo con «Copias: e2e/cierres-rediseno.spec.ts (2x)»: el monto
+  20000 de S4 coincidía con `UMBRAL_AVISO_FILAS_CORRIDA`. La entrega pasa a 21.000: Recaudado central
+  21.000 + 10.000 = 31.000 → «₡31.000» (comentario y las dos filas). La guardia no se tocó.
+- `vitest run tests/unit/analytics/rollup-guards.test.ts`: `Tests 21 passed (21)`.
+- S4: la primera corrida falló en la siembra («tras 15 pasadas de procesar-jobs, la geocodificación … no
+  falló por configuración»), por la cola de jobs acumulada en `slt102_e2e` tras cuatro corridas de `dinero`.
+  Recreé `slt102_e2e` (DROP + CREATE de la base desechable, `migrate deploy` + `db:seed`): `2 passed`.
+- `./init.sh` con `DATABASE_URL` de `slt102_t1`: `== init OK ==`, `INIT_EXIT=0` (escrito dentro del log).
