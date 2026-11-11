@@ -88,7 +88,7 @@
   de 100,00 `plan` por orden). *Depende de:* T1, T3.
   *Hecho:* el test en verde; la demo corrida dos veces seguidas (la segunda borra la primera, SL-43 R28)
   sin errores; los módulos de la empresa demo son los mismos antes y después de asignar el plan.
-- [ ] **T9 — E2E del cobro.** `e2e/cobro-plataforma-sl40.spec.ts` (design §5.2).
+- [x] **T9 — E2E del cobro.** `e2e/cobro-plataforma-sl40.spec.ts` (design §5.2).
   *Cubre y prueba:* R1, R3, R4 en el navegador (T8 del spec). *Depende de:* T6.
   *Hecho:* en una base desechable nueva, con `NEXT_PUBLIC_APP_URL` como en `.github/workflows/gate.yml`:
   `e2e/cobro-plataforma-sl40.spec.ts`, `e2e/planes-costo-porcentual.spec.ts`, los que salgan de
