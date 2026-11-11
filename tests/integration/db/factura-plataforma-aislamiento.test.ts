@@ -490,6 +490,80 @@ describeSiHayBase("SLT-118 — quién lee y quién escribe las facturas de la pl
     ]);
   });
 
+  it("R24, R28: una primera asignación pendiente con inicio el 18 se ve desde que se guarda: la en curso hasta el 18 con la primera cuota prevista, la misma que pone la cola y la que se emite", async () => {
+    const r = await revertida(base, async (tx) => {
+      const quincenal = await planConPrecio(tx, "31000.00");
+      const mensual = await planConPrecio(tx, "31000.00");
+      const casos = [];
+      for (const [plan, tipo] of [[quincenal, "quincenal"], [mensual, "mensual"]] as const) {
+        const e = await empresaDesde(tx, cero("2026-11-01"));
+        await cerrarEn(tx, e, corrida("2026-11-16"));
+        const sinAsignar = await leerComoEmpresa(tx, e);
+        await fijarEmpresa(tx, "");
+        const efecto: EfectoElegido = { clase: "inicio", fecha: "2026-11-18", desde: inicioDelDiaPlataforma("2026-11-18"), elegida: true };
+        const asignado = await planesEnTx(tx).asignar(e, plan.id, ACTOR, efecto, tipo, new Date("2026-11-10T15:00:00.000Z"));
+        // Guardada y sin aplicar: la marca aún no está en la tabla.
+        const pendiente = await leerComoEmpresa(tx, e);
+        const [{ cambio }] = await tx.$queryRawUnsafe<{ cambio: string }[]>(
+          `SELECT "plan_cambio_id" AS cambio FROM "organizacion" WHERE "id" = $1`,
+          e,
+        );
+        await fijarEmpresa(tx, "");
+        const aplicado = await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: e, cambioId: cambio }, new Date(new Date(cero("2026-11-18")).getTime() + 30_000));
+        const trasLaCola = await leerComoEmpresa(tx, e);
+        await cerrarEn(tx, e, corrida("2026-11-18"));
+        const trasCerrar = await leerComoEmpresa(tx, e);
+        casos.push({
+          plan,
+          tipo,
+          asignado,
+          aplicado,
+          sinAsignar: sinAsignar.map(vista),
+          pendiente: pendiente.map(vista),
+          trasLaCola: trasLaCola.map(vista),
+          trasCerrar: trasCerrar.map(vista),
+        });
+      }
+      return casos;
+    });
+    for (const c of r) {
+      expect(c.asignado).toMatchObject({ estado: "ok", pendiente: true });
+      expect(c.aplicado).toMatchObject({ estado: "aplicado" });
+      // Sin asignación: la en curso del 16 al 30, sin plan y sin cuotas.
+      expect(c.sinAsignar[1]).toMatchObject({ estado: "en_curso", hasta: cero("2026-12-01"), primeraCuota: null, cuota: null });
+      const primera = {
+        planId: c.plan.id,
+        planNombre: c.plan.nombre,
+        tipoCobro: c.tipo,
+        desde: cero("2026-11-18"),
+        hasta: cero("2026-12-01"),
+        precioMensual: "31000.00",
+        cuota: "13433.33",
+        diasCobrados: 13,
+        diasPeriodo: c.tipo === "quincenal" ? 15 : 30,
+      };
+      // m3: con la asignación solo guardada, la en curso se ve como la dejará la cola (R28): fin el 18, la primera
+      // cuota del plan nuevo y ninguna otra cuota (la del período que empieza el 18 es esa primera).
+      expect(c.pendiente[1]).toEqual({
+        estado: "en_curso",
+        numero: null,
+        desde: cero("2026-11-16"),
+        hasta: cero("2026-11-18"),
+        hastaPrevisto: true,
+        periodicidad: "quincenal",
+        planId: null,
+        totalOrdenes: "0.00",
+        cuota: null,
+        primeraCuota: primera,
+        total: "13433.33",
+      });
+      // La cola pone la marca: la misma primera cuota, ahora en la por cerrar fijada el 18.
+      expect(c.trasLaCola[1]).toMatchObject({ estado: "por_cerrar", hasta: cero("2026-11-18"), hastaPrevisto: false, cuota: null, primeraCuota: primera, total: "13433.33" });
+      // Y la emitida el 18 lleva esa misma cifra: la prevista no cambió la cerrada.
+      expect(c.trasCerrar[1]).toMatchObject({ estado: "cerrada", hasta: cero("2026-11-18"), cuota: null, primeraCuota: primera, total: "13433.33" });
+    }
+  });
+
   it("R24, R21: la empresa A lee las suyas, cerradas con su número y sus cuotas emitidas; la de otra empresa o sin empresa, 42501", async () => {
     const r = await revertida(base, async (tx) => {
       const { a, b } = await sembrar(tx);

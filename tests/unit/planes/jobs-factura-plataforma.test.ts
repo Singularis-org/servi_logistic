@@ -119,6 +119,21 @@ describe("SLT-118 — el handler del cierre de facturas (R3, R12)", () => {
     expect(r.cerrar.mock.calls.map((c) => c[0])).toEqual(["org-a", "org-b", "org-c", "org-d"]);
   });
 
+  it("R12: el error final conserva la causa de CADA empresa que falló, no solo su id", async () => {
+    const r = repo(["org-a", "org-b", "org-c"], async (organizacionId) => {
+      if (organizacionId === "org-a") throw new Error("deadlock detectado");
+      if (organizacionId === "org-c") throw "sin Error";
+      return 1;
+    });
+    const error = await crearCierreFacturasHandler(r, () => AHORA)(job()).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error?.message).toContain("org-a: deadlock detectado");
+    expect(error?.message).toContain("org-c: sin Error");
+    expect(error?.message).not.toContain("org-b");
+  });
+
   it("R12: un fallo al listar las empresas falla la corrida sin cerrar ninguna", async () => {
     const r = repo([]);
     r.empresasACerrar = vi.fn(async () => {

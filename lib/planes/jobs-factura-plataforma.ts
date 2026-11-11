@@ -81,18 +81,20 @@ export function crearCierreFacturasHandler(
 ): JobHandler {
   return async () => {
     const ahora = now();
-    const fallidas: string[] = [];
+    // Cada fallo conserva su causa: en un job de dinero, el `last_error` de la cola debe decir por qué no
+    // cerró cada empresa, no solo cuál (review m2).
+    const fallidas: { organizacionId: string; causa: string }[] = [];
     for (const organizacionId of await repo.empresasACerrar()) {
       try {
         await repo.cerrar(organizacionId, ahora);
-      } catch {
-        fallidas.push(organizacionId);
+      } catch (err) {
+        fallidas.push({ organizacionId, causa: err instanceof Error ? err.message : String(err) });
       }
     }
     if (fallidas.length > 0) {
-      throw new Error(
-        `factura_plataforma_cerrar: fallo al cerrar ${fallidas.length} empresa(s): ${fallidas.join(", ")}`,
-      );
+      const ids = fallidas.map((f) => f.organizacionId).join(", ");
+      const causas = fallidas.map((f) => `${f.organizacionId}: ${f.causa}`).join("; ");
+      throw new Error(`factura_plataforma_cerrar: fallo al cerrar ${fallidas.length} empresa(s): ${ids} — ${causas}`);
     }
   };
 }

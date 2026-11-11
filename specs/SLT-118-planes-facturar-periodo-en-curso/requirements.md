@@ -186,6 +186,7 @@
   Ejemplo: cambio pendiente con efecto el 1 de diciembre que la cola aún no aplicó a las 00:10 → la factura
   del 16 al 30 de noviembre no se cierra; aplicado a las 00:40, la corrida de la 01:10 la cierra con la cuota
   del plan nuevo.
+  Igual con una edición programada de la periodicidad de órdenes del plan de la empresa que la cola aún no aplicó, con efecto en o antes de ese fin: esa factura sigue en curso y la siguiente se abre tras aplicarla, con la periodicidad nueva (humano, 2026-11-11, review m4).
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
 
 ### Cambios de plan: sin corte ni prorrateo (decisiones P3 y P4)

@@ -282,7 +282,10 @@ Cerrojo de la empresa, `avanzar(p_org, p_ahora)`, y cada `por_cerrar` con `hasta
 orden de `desde_at`:
 - **espera (R39):** si la empresa tiene `plan_cambio_desde_at ≤ hasta_at` (un cambio o una primera asignación que
   la cola aún no aplicó), se detiene ahí y no cierra esa ni las siguientes; las cierra la primera corrida tras
-  aplicarse el cambio;
+  aplicarse el cambio. Igual con una edición programada de la periodicidad de órdenes del plan de la empresa
+  (`plan_cambio_programado` que cambia `periodicidadOrdenes`) sin aplicar: `avanzar` llega solo hasta justo antes
+  de su efecto, así la factura cuyo fin la alcanza sigue en curso y la siguiente no se abre con la periodicidad
+  vieja (R36, R39; humano 2026-11-11, review m4);
 - si no, se cierra con `ordenes(desde, hasta)`, las cuotas de §2.4 (con `N`, que siempre existe porque `avanzar`
   ya la abrió), su número y `cerrada_at`.
 Idempotente por el cerrojo y el estado.

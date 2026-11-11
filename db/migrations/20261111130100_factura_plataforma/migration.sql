@@ -439,10 +439,14 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_cuota(text, timestamp, text, text,
 -- ─── 7. El cierre (§2.4, §2.5; R3–R5, R8, R11, R14, R16, R28, R29, R39) ──────────────────────────────
 -- 1. La empresa en FOR UPDATE: el mismo cerrojo y en el mismo orden que `aplicarEnTx`, así un cierre y un
 --    cambio de plan de la misma empresa se serializan sin interbloqueo (la empresa primero).
--- 2. Avanza hasta `p_ahora`.
+-- 2. Avanza hasta `p_ahora`, salvo si el plan de la empresa tiene una edición programada de su periodicidad de
+--    órdenes que la cola aún no aplicó (`plan_cambio_programado` vencido): entonces avanza solo hasta justo antes
+--    de su efecto. Así no fija la factura cuyo fin llega a ese efecto ni abre la siguiente con la periodicidad
+--    vieja (R36): la abre la primera corrida tras aplicarse la edición (R39, humano 2026-11-11, review m4).
 -- 3. Cierra cada por cerrar con fin ≤ `p_ahora` − 5 minutos (el margen de §4.3: una transacción de órdenes
 --    en vuelo en el borde ya confirmó), en orden de `desde`, salvo la ESPERA (R39): si la empresa tiene un
---    cambio pendiente con efecto en o antes de su fin, se detiene ahí y no cierra esa ni las siguientes.
+--    cambio pendiente, o su plan esa edición de la periodicidad, con efecto en o antes de su fin, se detiene
+--    ahí y no cierra esa ni las siguientes.
 --    Cada una con sus órdenes y sus cuotas, emitida en X = su fin, siendo N la factura con `desde` = X (la
 --    siguiente, que `avanzar` ya abrió), en este orden:
 --      a. la primera cuota, solo con marca M, con el plan de la factura con `desde` = M (N si M = X, por
@@ -456,6 +460,8 @@ CREATE FUNCTION factura_plataforma_cerrar(p_org text, p_ahora timestamp) RETURNS
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_espera timestamp;
+  v_plan_id text;
+  v_periodicidad timestamp;
   v_f "factura_plataforma";
   v_n "factura_plataforma";
   v_p "factura_plataforma";
@@ -465,11 +471,22 @@ DECLARE
   v_numero integer;
   v_cerradas integer := 0;
 BEGIN
-  SELECT o."plan_cambio_desde_at" INTO v_espera FROM "organizacion" o WHERE o."id" = p_org FOR UPDATE;
+  SELECT o."plan_cambio_desde_at", o."plan_id" INTO v_espera, v_plan_id
+    FROM "organizacion" o WHERE o."id" = p_org FOR UPDATE;
   IF NOT FOUND THEN
     RETURN 0;
   END IF;
-  PERFORM factura_plataforma_avanzar(p_org, p_ahora);
+  -- La edición programada de la periodicidad del plan, si cambia la vigente (`version` es la de
+  -- `VersionPlan`, en camelCase). Un plan tiene a lo sumo una (`plan_id` único).
+  SELECT c."vigente_desde" INTO v_periodicidad
+    FROM "plan_cambio_programado" c JOIN "plan" p ON p."id" = c."plan_id"
+   WHERE c."plan_id" = v_plan_id
+     AND c."version" ->> 'periodicidadOrdenes' IS NOT NULL
+     AND c."version" ->> 'periodicidadOrdenes' IS DISTINCT FROM p."periodicidad_ordenes";
+  v_espera := LEAST(v_espera, v_periodicidad);
+  -- LEAST ignora los nulos: sin edición, avanza hasta `p_ahora`; con ella, la factura cuyo fin llega a su efecto
+  -- queda en curso.
+  PERFORM factura_plataforma_avanzar(p_org, LEAST(p_ahora, v_periodicidad - interval '1 microsecond'));
   FOR v_f IN
     SELECT * FROM "factura_plataforma"
      WHERE "organizacion_id" = p_org AND "estado" = 'por_cerrar' AND "hasta_at" <= p_ahora - interval '5 minutes'
@@ -518,6 +535,12 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_cerrar(text, timestamp) FROM PUBLI
 --     efecto es ese fin o antes; si no, con el MISMO plan que usará `cerrar` (humano, 2026-11-11): el de la
 --     factura siguiente N (`desde` = ese fin, la misma consulta que `cerrar`). Si N aún no existe (la factura
 --     es la en curso), el que `abrir` le copiará al abrirla: el vigente de la empresa.
+-- Una PRIMERA asignación pendiente (la empresa sin plan con `plan_cambio_*`) se muestra desde que se guarda,
+-- como la dejará la toma de §5 (R24, R28; humano 2026-11-11, review m3), sin escribir la marca:
+--   · efecto E después del `desde` D de la en curso y hasta su fin natural: la en curso se mostrará fijada en E,
+--     con la primera cuota del plan nuevo desde E (R28; si E es su fin natural, es lo mismo por §5.2);
+--   · E ≤ D (la cola va tarde): la marca en D, en la por cerrar que acaba en D o, sin ella, en la en curso (§5.2).
+--   La marca prevista también descarta, como la real, la cuota de la emisión cuyo período la contiene.
 -- Sin número (R24).
 CREATE FUNCTION factura_plataforma_en_curso(p_org text) RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -535,6 +558,12 @@ DECLARE
   v_c        record;
   v_pc       record;
   v_lista    jsonb := '[]'::jsonb;
+  -- La primera asignación pendiente: la marca que pondrá la toma, en qué factura y, en R28, el fin que le fijará.
+  v_ec          "factura_plataforma";
+  v_fin_natural timestamp;
+  v_marca       timestamp;
+  v_marca_id    text;
+  v_marca_hasta timestamp;
 BEGIN
   IF v_contexto IS NULL OR v_contexto = '' OR p_org IS DISTINCT FROM v_contexto THEN
     RAISE EXCEPTION USING ERRCODE = '42501',
@@ -543,17 +572,45 @@ BEGIN
   SELECT o."plan_id", o."plan_tipo_cobro", o."plan_cambio_plan_id", o."plan_cambio_tipo_cobro",
          o."plan_cambio_desde_at"
     INTO v_org FROM "organizacion" o WHERE o."id" = p_org;
+  IF v_org."plan_id" IS NULL AND v_org."plan_cambio_desde_at" IS NOT NULL THEN
+    SELECT * INTO v_ec FROM "factura_plataforma" f WHERE f."organizacion_id" = p_org AND f."estado" = 'en_curso';
+    IF v_ec."id" IS NOT NULL THEN
+      v_fin_natural := plan_fin_periodo_calendario(v_ec."periodicidad", v_ec."desde_at");
+      IF v_org."plan_cambio_desde_at" > v_ec."desde_at" THEN
+        -- §5.4 (R28) con la en curso sin plan; §5.2 si E es su fin natural. Más allá de su fin: nada aún.
+        IF (v_org."plan_cambio_desde_at" < v_fin_natural AND v_ec."plan_id" IS NULL)
+           OR v_org."plan_cambio_desde_at" = v_fin_natural THEN
+          v_marca := v_org."plan_cambio_desde_at";
+          v_marca_id := v_ec."id";
+          v_marca_hasta := v_marca;
+        END IF;
+      ELSE
+        v_marca := v_ec."desde_at";
+        SELECT f."id" INTO v_marca_id FROM "factura_plataforma" f
+         WHERE f."organizacion_id" = p_org AND f."estado" = 'por_cerrar' AND f."hasta_at" = v_ec."desde_at";
+        v_marca_id := COALESCE(v_marca_id, v_ec."id");
+      END IF;
+    END IF;
+  END IF;
   FOR v_f IN
     SELECT * FROM "factura_plataforma" f
      WHERE f."organizacion_id" = p_org AND f."estado" IN ('en_curso', 'por_cerrar')
      ORDER BY f."desde_at"
   LOOP
     v_hasta := COALESCE(v_f."hasta_at", plan_fin_periodo_calendario(v_f."periodicidad", v_f."desde_at"));
+    IF v_f."id" = v_marca_id AND v_f."primera_cuota_desde_at" IS NULL THEN
+      -- La primera cuota prevista de la asignación pendiente, con el plan nuevo (el de la factura que empezará
+      -- en la marca, como en `cerrar`).
+      v_hasta := COALESCE(v_marca_hasta, v_hasta);
+      SELECT * INTO v_pc
+        FROM factura_plataforma_cuota(p_org, v_marca, v_org."plan_cambio_plan_id", v_org."plan_cambio_tipo_cobro", true);
+    ELSE
+      SELECT * INTO v_p FROM "factura_plataforma" f
+       WHERE f."organizacion_id" = p_org AND f."desde_at" = v_f."primera_cuota_desde_at";
+      SELECT * INTO v_pc
+        FROM factura_plataforma_cuota(p_org, v_f."primera_cuota_desde_at", v_p."plan_id", v_p."tipo_cobro", true);
+    END IF;
     SELECT * INTO v_o FROM factura_plataforma_ordenes(p_org, v_f."desde_at", LEAST(v_ahora, v_hasta));
-    SELECT * INTO v_p FROM "factura_plataforma" f
-     WHERE f."organizacion_id" = p_org AND f."desde_at" = v_f."primera_cuota_desde_at";
-    SELECT * INTO v_pc
-      FROM factura_plataforma_cuota(p_org, v_f."primera_cuota_desde_at", v_p."plan_id", v_p."tipo_cobro", true);
     IF v_org."plan_cambio_desde_at" IS NOT NULL AND v_org."plan_cambio_desde_at" <= v_hasta THEN
       v_plan_id := v_org."plan_cambio_plan_id";
       v_tipo := v_org."plan_cambio_tipo_cobro";
@@ -569,7 +626,9 @@ BEGIN
         v_tipo := CASE WHEN v_org."plan_id" IS NOT NULL THEN v_org."plan_tipo_cobro" END;
       END IF;
     END IF;
-    SELECT * INTO v_c FROM factura_plataforma_cuota(p_org, v_hasta, v_plan_id, v_tipo, false);
+    -- Sin fila si la marca prevista cae en su período: la cuota de ese período es la primera (R8, R29).
+    SELECT * INTO v_c FROM factura_plataforma_cuota(p_org, v_hasta, v_plan_id, v_tipo, false) c
+     WHERE v_marca IS NULL OR NOT (v_marca >= c.desde_at AND v_marca < c.hasta_at);
     v_lista := v_lista || jsonb_build_array(jsonb_build_object(
       'id', v_f."id",
       'estado', v_f."estado",

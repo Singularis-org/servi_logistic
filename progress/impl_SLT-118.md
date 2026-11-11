@@ -517,3 +517,11 @@ Veredicto: T8.1 y la línea de periodicidad hechos con sus tests; falta pasar `p
 - `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: corta en el paso del board, ajeno a la feature: `feature_list.json invalido: zona backend 6 in_progress (max 5), zona fullstack 4 (max 3)` (cupo del equipo; lo resuelve el leader).
 - Por separado: typecheck verde; eslint de lo tocado verde; `test:guardias` 4 rojos, todos de `dependencias-declaradas-presentes` (baseline), 4808 pasan.
 - Integración contra Postgres y E2E (`--project=dinero`, `e2e/dos-empresas-humo.spec.ts`): los corre el CI (sin base local; decisión del coordinador 2026-11-11).
+
+## Menores m2–m4 de la revisión · backend_dev · sin commit (2026-11-11)
+- Archivos: `lib/planes/jobs-factura-plataforma.ts` (m2), `db/migrations/20261111130100_factura_plataforma/migration.sql` (m3: `factura_plataforma_en_curso`; m4: `factura_plataforma_cerrar`), `tests/unit/planes/jobs-factura-plataforma.test.ts`, `tests/integration/db/factura-plataforma-aislamiento.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `specs/.../requirements.md` (R39, una línea), `specs/.../design.md` (§2.5). `down.sql` sin cambios: hace DROP de las dos funciones. La migración no está en `origin/dev`.
+- m2 → `jobs-factura-plataforma.test.ts` «R12: el error final conserva la causa de CADA empresa que falló, no solo su id».
+- m3 → `factura-plataforma-aislamiento.test.ts` «R24, R28: una primera asignación pendiente con inicio el 18 se ve desde que se guarda…» (quincenal y mensual: pendiente = tras la cola = cerrada).
+- m4 → `factura-plataforma-cambio-plan.test.ts` «R39, R36: una edición programada de la periodicidad al 16 que la cola aún no aplicó a las 00:10…» (con control: edición programada solo de nombre no hace esperar).
+- typecheck verde; eslint de lo tocado verde; unit 16/16; `test:guardias` 4 rojos, todos de `dependencias-declaradas-presentes` (baseline), 4822 pasan. Integración: CI.
+- Veredicto: m2–m4 hechos; los dos casos de integración nuevos solo los valida el CI.
