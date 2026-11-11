@@ -62,6 +62,7 @@ function txDeCambio(tipoActual: string) {
       costoPorOrden: null,
       costoPorOrdenPct: null,
       costoPorOrdenMinimo: null,
+      periodicidadOrdenes: "quincenal", // SLT-118 R35: la columna NOT NULL
       archivadoAt: null,
       topesPorRol: [],
       modulos: [],

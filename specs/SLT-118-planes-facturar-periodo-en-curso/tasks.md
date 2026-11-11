@@ -119,7 +119,7 @@
 - **Hecho:** typecheck verde; cubierto por T9.2.
 
 ### T9 — Tests del bloque B (dependen de T7, T8) [P entre sí]
-- [ ] **T9.1** `tests/integration/db/factura-plataforma-deuda.test.ts`: R18–R20 (con una factura de dos cuotas:
+- [x] **T9.1** `tests/integration/db/factura-plataforma-deuda.test.ts`: R18–R20 (con una factura de dos cuotas:
   la deuda y el tope suben en las dos) y R40 (un cambio aplicado tras emitir una cuota no la devuelve ni baja la
   deuda).
 - [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (plan mensual: la del 16
@@ -160,14 +160,14 @@
 ## Bloque D — Periodicidad de órdenes del plan (cambio de fondo; R35–R38) [P con B y C; T14.2 después de T11.2]
 
 ### T14 — Servidor y formulario (depende de T1.3 y T2.4)
-- [ ] **T14.1** `lib/types/planes.ts`: `PERIODICIDADES_ORDENES`, su tipo y su esquema; `periodicidadOrdenes`
+- [x] **T14.1** `lib/types/planes.ts`: `PERIODICIDADES_ORDENES`, su tipo y su esquema; `periodicidadOrdenes`
   opcional en `crearPlanSchema` y `edicionDelPlan` (y así en `versionPlanSchema` y `VersionPlan`); el refine de
   R37 en `crearPlanSchema` (`validation_error` en `tipoCobro`); `periodicidadOrdenes?` en `PlanDTO` (design §3.2).
-- [ ] **T14.2** `lib/repositories/PlanesRepository.ts` e `lib/interfaces/repositories/IPlanesRepository.ts`:
+- [x] **T14.2** `lib/repositories/PlanesRepository.ts` e `lib/interfaces/repositories/IPlanesRepository.ts`:
   `crear`, `leerPlan` y `aplicarVersion` con la periodicidad; la variante `periodicidad_incompatible` y la regla
   de R37 al editar (en el acto, programada y al aplicar la programada: lanza sin escribir) y en
   `cambiarEmpresaEnTx` (asignar, `crearYAsignar`, `cambiarTipoCobro`). Coordinar con T11.2 (mismo método).
-- [ ] **T14.3** `lib/services/PlanesService.ts` y `lib/planes/mensajes.ts`: `periodicidad_incompatible` →
+- [x] **T14.3** `lib/services/PlanesService.ts` y `lib/planes/mensajes.ts`: `periodicidad_incompatible` →
   `validation_error` en `tipoCobro` o en `periodicidadOrdenes`, con su mensaje. `lib/planes/rastro.ts`:
   `periodicidadOrdenes` en `CambiosDelPlan`, en la forma canónica y en `diferenciasDelPlan` (R35).
 - [ ] **T14.4** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: el selector «Facturación de órdenes»
@@ -177,9 +177,9 @@
   conocen (la periodicidad es opcional).
 
 ### T15 — Tests del bloque D (dependen de T14) [P entre sí]
-- [ ] **T15.1** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R35 y R37 (casos de design §8).
+- [x] **T15.1** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R35 y R37 (casos de design §8).
 - [ ] **T15.2** `tests/components/PlanFormPeriodicidad.test.tsx`: R35.
-- [ ] **T15.3** En `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T6.2): R36 y R38.
+- [x] **T15.3** En `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T6.2): R36 y R38.
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
 
 ## Cierre

@@ -27,7 +27,9 @@ import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes
 // `organizacion.plan_cambio_*` y los aplica la cola real.
 //
 // R30 por P9 (T11.2): un cambio a un tipo más largo guardado por `PlanesService` con su reloj fijo.
-// Fuera de esta tanda (los añade T14 aquí mismo): R33, R36 y R38.
+// T15.3: R36 (la periodicidad de órdenes del plan editada en los dos sentidos, por `PlanesService`) y R38 (un
+// cambio a un plan de órdenes mensuales con efecto en un corte; el caso «R16: un plan con órdenes mensuales
+// tomado por una factura quincenal…» es el mismo con tipo quincenal → mensual). R33 queda fuera de este archivo.
 //
 // Precios: quincenal 15 500 = 31 000 al mes con tipo quincenal; mensual 31 000; anual 372 000. Las horas son
 // las de la plataforma (−06:00): las 00:00 del día D son `cero(D)`.
@@ -185,6 +187,28 @@ async function asignar(
   return { pendiente: r.pendiente };
 }
 
+/**
+ * R36: el superadmin edita en el acto la periodicidad de órdenes del plan el 10 de noviembre por `PlanesService`
+ * (con el repositorio real), mandando el resto del plan tal cual.
+ */
+async function editarPeriodicidad(tx: TxDeTest, planId: string, periodicidadOrdenes: "quincenal" | "mensual") {
+  const plan = await planesEnTx(tx).plan(planId);
+  if (plan === null) throw new Error(`no existe el plan ${planId}`);
+  await fijarEmpresa(tx, "");
+  const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-11-10T15:00:00.000Z"));
+  return servicio.editar(SUPERADMIN, {
+    planId,
+    nombre: plan.nombre,
+    topes: plan.topes,
+    modulos: plan.modulos,
+    precio: plan.precio,
+    costoPorOrden: plan.costoPorOrden,
+    costoPorOrdenPorcentual: plan.costoPorOrdenPorcentual,
+    periodicidadOrdenes,
+    vigenteDesde: null,
+  });
+}
+
 /** Un pendiente guardado por otra vía (antes de esta ficha o por SQL), con su efecto a las 00:00 de `fecha`. */
 async function pendientePorSql(tx: TxDeTest, organizacionId: string, plan: string, tipo: TipoCobro, fecha: string): Promise<void> {
   await tx.$executeRawUnsafe(
@@ -225,7 +249,7 @@ async function intentar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<
   }
 }
 
-describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el plan (R5, R8, R15–R17, R28–R30, R39)", () => {
+describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el plan (R5, R8, R15–R17, R28–R30, R36, R38, R39)", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
   });
@@ -449,6 +473,99 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
     // Ninguna factura corta: ni un corte el 10 ni una primera cuota proporcional; la anual cobra el año entero.
     expect(r.lista.filter((f) => f.hasta === cero("2026-11-10"))).toHaveLength(0);
     expect(r.lista[3]).toMatchObject({ dias_cobrados: 365, dias_periodo: 365 });
+  });
+
+  it("R38: mensual con órdenes quincenales a un plan mensual con órdenes mensuales, guardado el 10 de noviembre: efecto el 1 de diciembre; las dos de noviembre con el plan de antes, la emitida el 1 de diciembre con la cuota de diciembre del nuevo y la de diciembre entera con el nuevo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const antes = await planConPrecio(tx, "31000.00");
+      const nuevo = await planConPrecio(tx, "62000.00", "mensual");
+      const e = await empresa(tx, cero("2026-11-01"), { id: antes, tipo: "mensual" });
+      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      // Guardado el 10 con la fecha del 10: el repositorio lo lleva al 1 de diciembre (R30).
+      const guardado = await asignar(tx, e.id, nuevo, "cambio", "2026-11-10", "mensual", "2026-11-10T15:00:00.000Z");
+      const [{ efecto }] = await tx.$queryRawUnsafe<{ efecto: string | null }[]>(
+        `SELECT to_char("plan_cambio_desde_at", ${ISO}) AS efecto FROM "organizacion" WHERE "id" = $1`,
+        e.id,
+      );
+      await cargo(tx, e, "100.00", "2026-11-20T15:00:00.000Z");
+      await cargo(tx, e, "200.00", "2026-12-10T15:00:00.000Z");
+      const emitidas = [await cerrar(tx, e.id, corrida("2026-11-16"))];
+      await aplicarPendiente(tx, e.id, cola("2026-12-01"));
+      emitidas.push(await cerrar(tx, e.id, corrida("2026-12-01")));
+      emitidas.push(await cerrar(tx, e.id, corrida("2026-12-16")));
+      emitidas.push(await cerrar(tx, e.id, corrida("2027-01-01")));
+      return { antes, nuevo, guardado, efecto, emitidas, lista: await facturas(tx, e.id) };
+    });
+    expect(r.guardado.pendiente).toBe(true);
+    expect(r.efecto).toBe(cero("2026-12-01"));
+    // Con órdenes mensuales, el 16 de diciembre no hay corte.
+    expect(r.emitidas).toEqual([1, 1, 0, 1]);
+    expect(
+      r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad, f.plan_id, f.cargos, f.cuota_plan_id, f.cuota, f.cuota_desde]),
+    ).toEqual([
+      // Las dos de noviembre: órdenes del plan de antes (quincenales). La del 16 no lleva cuota: el mensual empieza el 1.
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal", r.antes, "0.00", null, null, null],
+      // La emitida el 1 de diciembre: el cargo del 20 con el plan de antes y la cuota de diciembre del nuevo.
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "quincenal", r.antes, "100.00", r.nuevo, "62000.00", cero("2026-12-01")],
+      // Diciembre entero con el nuevo: el cargo del 10 y la cuota de enero.
+      ["cerrada", cero("2026-12-01"), cero("2027-01-01"), "mensual", r.nuevo, "200.00", r.nuevo, "62000.00", cero("2027-01-01")],
+      ["en_curso", cero("2027-01-01"), null, "mensual", r.nuevo, null, null, null, null],
+    ]);
+  });
+
+  it("R36: la periodicidad del plan editada de quincenal a mensual el 10 de noviembre: la del 1 al 15 sigue quincenal, la siguiente va del 16 al 30 y después diciembre entero", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
+      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const antesDeEditar = await fotoDeFilas(tx, e.id);
+      const editado = await editarPeriodicidad(tx, plan, "mensual");
+      const trasEditar = await fotoDeFilas(tx, e.id);
+      const emitidas = [
+        await cerrar(tx, e.id, corrida("2026-11-16")),
+        await cerrar(tx, e.id, corrida("2026-12-01")),
+        await cerrar(tx, e.id, corrida("2026-12-16")),
+        await cerrar(tx, e.id, corrida("2027-01-01")),
+      ];
+      return { plan, editado, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
+    });
+    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
+    // Editar no toca la factura en curso: sigue quincenal desde el 1.
+    expect(r.trasEditar).toEqual(r.antesDeEditar);
+    expect(r.emitidas).toEqual([1, 1, 0, 1]);
+    expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad, f.plan_id])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal", r.plan],
+      // La siguiente se abre en su fin con la nueva: del 16 al fin del mes (R2).
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "mensual", r.plan],
+      ["cerrada", cero("2026-12-01"), cero("2027-01-01"), "mensual", r.plan],
+      ["en_curso", cero("2027-01-01"), null, "mensual", r.plan],
+    ]);
+  });
+
+  it("R36: la periodicidad del plan editada de mensual a quincenal el 10 de noviembre: la de noviembre sigue entera y la siguiente es la del 1 al 15 de diciembre", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00", "mensual");
+      const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
+      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const antesDeEditar = await fotoDeFilas(tx, e.id);
+      const editado = await editarPeriodicidad(tx, plan, "quincenal");
+      const trasEditar = await fotoDeFilas(tx, e.id);
+      const emitidas = [
+        await cerrar(tx, e.id, corrida("2026-11-16")),
+        await cerrar(tx, e.id, corrida("2026-12-01")),
+        await cerrar(tx, e.id, corrida("2026-12-16")),
+      ];
+      return { plan, editado, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
+    });
+    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.trasEditar).toEqual(r.antesDeEditar);
+    // El 16 de noviembre no hay corte: la de noviembre se abrió mensual.
+    expect(r.emitidas).toEqual([0, 1, 1]);
+    expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad, f.plan_id])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-12-01"), "mensual", r.plan],
+      ["cerrada", cero("2026-12-01"), cero("2026-12-16"), "quincenal", r.plan],
+      ["en_curso", cero("2026-12-16"), null, "quincenal", r.plan],
+    ]);
   });
 
   /* ------------------------- Primera asignación ------------------------- */

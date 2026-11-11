@@ -2,7 +2,10 @@
 // escribe la tabla: la escriben solo las funciones del dueño en la base (R22), y esto solo las llama.
 // Lo vigila `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`.
 //
-// Las lecturas (`deLaEmpresa`, `deEmpresaParaPlataforma`) llegan con T8.1.
+// La lectura del superadmin (`deEmpresaParaPlataforma`, T8.1) espera a que se decida cómo fija la empresa:
+// `factura_plataforma_en_curso` exige que sea la del contexto.
+
+import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
 export interface IFacturaPlataformaRepository {
   /**
@@ -18,4 +21,12 @@ export interface IFacturaPlataformaRepository {
    * de R39. Idempotente (R11). Devuelve cuántas cerró; una en espera no es un fallo.
    */
   cerrar(organizacionId: string, ahora: Date): Promise<number>;
+
+  /**
+   * R21, R24: las facturas de la empresa de la sesión, en el orden de sus intervalos: las cerradas, con sus
+   * cuotas emitidas, y las no cerradas (`factura_plataforma_en_curso`) con su total parcial, su fin (previsto o
+   * fijado) y las cuotas previstas, cada una `null` si no la llevará. Corre como `servi_app`: sin empresa en el
+   * contexto, la base la rechaza con 42501.
+   */
+  deLaEmpresa(): Promise<FacturaPlataformaDTO[]>;
 }

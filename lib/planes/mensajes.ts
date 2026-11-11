@@ -95,6 +95,16 @@ export const FECHA_DE_EFECTO_PASADA = "La fecha de efecto no puede ser anterior 
 /** SLT-86 (R2, R16): error del campo `vigenteDesde` en una empresa sin plan, que lleva fecha de inicio. */
 export const SOLO_CON_PLAN = "La fecha de efecto es de un cambio a una empresa con plan; la primera asignación lleva fecha de inicio.";
 
+/**
+ * SLT-118 (R37, P12): error del campo `periodicidadOrdenes` al pasar un plan a órdenes mensuales con `empresas`
+ * empresas que lo tienen, o lo tienen como cambio pendiente, con tipo de cobro quincenal. El de `tipoCobro` es
+ * `TIPO_QUINCENAL_CON_ORDENES_MENSUALES` de `lib/types/planes.ts` (lo usa el esquema, que este módulo importa).
+ */
+export function periodicidadIncompatible(empresas: number): string {
+  const quien = empresas === 1 ? "1 empresa tiene" : `${empresas} empresas tienen`;
+  return `${quien} este plan, o lo tiene${empresas === 1 ? "" : "n"} como cambio pendiente, con tipo de cobro quincenal: con facturación de órdenes mensual su cuota del 16 no tendría factura. Cámbiales antes el tipo de cobro.`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Correos del cambio de plan (T12; design §16.4; R41, R42, R45)               */
 /* -------------------------------------------------------------------------- */

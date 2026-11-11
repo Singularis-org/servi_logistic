@@ -288,3 +288,107 @@ Veredicto: tests rotos por T7/T11 en verde sin cambiar lo que aseveran y R30 (P9
 
 ## Cierre de tandas 6–7 (implementer)
 typecheck verde; eslint de los archivos sin commit verde; `test:guardias` ver la línea de `progress/features/SLT-118.md > Tandas`.
+
+## Tanda 9 — bloque B (T8.1 empresa, T9.1, T9.2) · backend_dev · sin commit
+Archivos:
+- `lib/repositories/FacturaPlataformaRepository.ts`: `deLaEmpresa()` (design §2.6, §3). Una sola sentencia como `servi_app` en la empresa de la sesión: `factura_plataforma_en_curso(current_setting('app.organizacion_id'))` y las cerradas en `jsonb` (filtro por `organizacion_id` + RLS), validadas con zod. Una sola foto: en dos lecturas, un cierre entre ambas duplicaría o perdería una factura. Importes normalizados a dos decimales con `Prisma.Decimal`; cerradas primero, por `desde`. Sin `comoPlataforma`.
+- `lib/interfaces/repositories/IFacturaPlataformaRepository.ts`: `deLaEmpresa(): Promise<FacturaPlataformaDTO[]>`. `deEmpresaParaPlataforma` NO se declara (pregunta abierta: cómo fija la empresa el superadmin).
+- `lib/types/factura-plataforma.ts`: sin cambios (el DTO ya cubría la lectura).
+- `tests/integration/db/factura-plataforma-deuda.test.ts` (nuevo, T9.1).
+- `tests/integration/db/factura-plataforma-aislamiento.test.ts` (T9.2): 4 casos R24 por el lado de la empresa.
+
+Mapa R → test:
+- R18 → deuda: «R18, R19: una factura con las dos cuotas sube la deuda en las dos…» (wallet, tope app, tope base 23514, listado del superadmin; la en curso con marca no suma).
+- R19 → deuda: el mismo caso (pago previo intacto; tope con la cuota incluida en app y base; saldada, ni 0.01).
+- R20 → deuda: «R20: aplicar una primera asignación (R16) y cerrar … no escriben cargos, trazas ni movimientos de la wallet».
+- R40 → deuda: «R40: un cambio de plan y de tipo de cobro aplicado tras emitir dos cuotas no las devuelve…».
+- R24 → aislamiento: plan mensual (1–15 sin cuota; 16–30 con diciembre prevista, la 1–15 por cerrar sin cuota); cambio pendiente al fin (prevista del plan nuevo); quincenal desde el 1 aplicado el 12 (las dos previstas); «R24, R21» (A lee las suyas con número y cuotas emitidas; otra empresa o sin empresa → 42501).
+
+Verificación:
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: verde (sin salida de errores).
+- `eslint` de los 4 archivos: limpio.
+- `vitest run` de los 2 tests de integración `--pool=threads`: 2 archivos / 13 casos skipped (sin base local) → al CI.
+- `vitest related --run --pool=threads` de los 2 archivos de `lib/`: 14 passed | 7 skipped (21 archivos); 202 passed | 62 skipped.
+- Guardias no corridas (por instrucción). `deLaEmpresa` solo lee; ninguna escritura de `factura_plataforma`.
+
+Veredicto: `deLaEmpresa` y los tests de R18–R20, R24 (empresa) y R40 escritos; typecheck, eslint y related verdes; la integración se prueba en CI. T8.1 queda a medias hasta que se decida `deEmpresaParaPlataforma` (lectura del superadmin, R23/R24).
+
+## Tanda 8 — bloque D, servidor (T14.1–T14.3, T15.1, T15.3) · backend_dev · sin commit
+Subagente: `backend_dev`. Sin dependencias ni migraciones (la columna y el SQL ya estaban en `20261111130100`). No se
+tocó T14.4 ni T15.2 (formulario, frontend_dev), ni los archivos de la deuda/aislamiento del otro backend_dev.
+
+Archivos (lib):
+- `lib/types/planes.ts` — T14.1: `PERIODICIDADES_ORDENES`, `PeriodicidadOrdenes`, `periodicidadOrdenesSchema`;
+  `periodicidadOrdenes` opcional en `crearPlanSchema` y `edicionDelPlan` (la heredan `editarPlanSchema`,
+  `versionPlanSchema` y `VersionPlan`); refine de R37 en `crearPlanSchema` (`tipoCobro`); `periodicidadOrdenes?` en
+  `PlanDTO`. El texto `TIPO_QUINCENAL_CON_ORDENES_MENSUALES` vive aquí y no en `mensajes.ts` porque `mensajes.ts` importa
+  valores de este módulo (ciclo).
+- `lib/interfaces/repositories/IPlanesRepository.ts` — T14.2: `PeriodicidadIncompatibleAlEditar` (`{ estado:
+  "periodicidad_incompatible"; empresas }`) en `ResultadoEdicion` y `ResultadoProgramar`; `{ estado:
+  "periodicidad_incompatible" }` en `ResultadoAsignar` (y así en `ResultadoCrearYAsignar`) y `ResultadoCambiarTipoCobro`;
+  `aplicarCambioProgramado` documenta que lanza.
+- `lib/repositories/PlanesRepository.ts` — T14.2: `aDTO` la lee (`periodicidadOrdenesSchema.parse`); `crearEnTx` y
+  `aplicarVersion` la escriben si viene (ausente = DEFAULT al crear, sin cambio al editar); `empresasQuincenalesSiPasaAMensual`
+  (con el plan en FOR UPDATE: empresas con el plan y tipo quincenal + pendientes hacia el plan con tipo quincenal; 0 si la
+  versión no pasa de quincenal a mensual) en `editar`, `programarCambio` (devuelven la variante sin escribir) y
+  `aplicarCambioProgramado` (lanza `Error` con «R37» antes de escribir). `cambiarEmpresaEnTx`: paso 1 nuevo = R37 (tipo
+  quincenal con plan mensual → `periodicidad_incompatible`), y los de la tanda 6 pasan a 2 (R19), 3 (fecha real, R30) y 4
+  (pendiente o en el acto). `cambiarTipoCobro` devuelve la variante en vez de lanzar.
+- `lib/services/PlanesService.ts` — T14.3: `periodicidad_incompatible` → `validation_error` en `tipoCobro` (asignar,
+  crear custom, cambiar tipo) o en `periodicidadOrdenes` con el número de empresas (editar en el acto y programar).
+- `lib/planes/mensajes.ts` — T14.3: `periodicidadIncompatible(empresas)`.
+- `lib/planes/rastro.ts` — T14.3: `periodicidadOrdenes` en `CampoDelPlan`, `CAMPOS` y `planCanonico` (un DTO sin ella =
+  `quincenal`, el DEFAULT), así que entra en `diferenciasDelPlan`.
+
+Archivos (tests):
+- `tests/integration/db/planes-periodicidad-ordenes.test.ts` (nuevo, T15.1): 11 casos, R35 ×5 y R37 ×6.
+- `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T15.3): helper nuevo
+  `editarPeriodicidad` (por `PlanesService`, reloj del 10 de noviembre); 3 casos nuevos (R38, R36 ×2); cabecera y
+  `describe` con R36 y R38. El caso existente «R16: un plan con órdenes mensuales tomado por una factura quincenal…» se
+  referencia en la cabecera (mismo corte con tipo quincenal → mensual); no se tocó.
+- Tests existentes rotos por el cambio, arreglados con lo mínimo (sin cambiar lo que aseveran):
+  - `tests/unit/planes/rastro.test.ts` («al crear salen todos los campos…»): el alta trae ahora
+    `periodicidadOrdenes: { antes: null, despues: "quincenal" }` (una línea).
+  - `tests/integration/db/planes-historial.test.ts` (el rastro `creado` exacto): la misma línea (por lectura; se salta sin base).
+  - `tests/unit/actions/planes.composition-root.test.ts`: la fila Prisma doble gana `periodicidadOrdenes: "quincenal"`
+    (la columna es NOT NULL y `aDTO` la valida) y el DTO esperado de `asignables` la trae.
+  - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: la fila Prisma doble gana `periodicidadOrdenes`.
+
+Mapa R → test:
+- R35 · `planes-periodicidad-ordenes.test.ts` · «R35: crear sin ella la deja quincenal y con ella la guarda…», «R35: editar
+  en el acto la cambia con su fila de rastro; una edición que no la trae no la cambia», «R35: programada, no cambia hasta su
+  fecha; el aplicador de la cola la escribe con su rastro», «R35, P14: un plan que ya existía… queda quincenal», «R35: un
+  valor que no es quincenal ni mensual es validation_error…». (El formulario, T15.2, es de frontend_dev.)
+- R36 · `factura-plataforma-cambio-plan.test.ts` · «R36: … de quincenal a mensual el 10 de noviembre…», «R36: … de mensual
+  a quincenal el 10 de noviembre…».
+- R37 · `planes-periodicidad-ordenes.test.ts` · «R37: asignar con tipo quincenal…», «R37: crear el custom con tipo quincenal
+  y órdenes mensuales… (esquema y repositorio)…», «R37: cambiar el tipo a quincenal…», «R37: editar a mensual con una
+  empresa quincenal… en el acto y programada…», «R37: editar a mensual un plan que una empresa tiene como cambio pendiente
+  con tipo quincenal…», «R37: una programada a mensual que ya no pasa al aplicarse… hace fallar el trabajo…».
+- R38 · `factura-plataforma-cambio-plan.test.ts` · «R38: mensual con órdenes quincenales a un plan mensual con órdenes
+  mensuales, guardado el 10 de noviembre…» (y el R16 existente del mismo corte).
+
+Verificación (2026-11-11, sin base local; la integración corre en CI):
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → verde (`tsc --noEmit` sin errores).
+- `pnpm exec eslint` de los 6 de `lib/` y los 6 tests tocados → exit 0.
+- `pnpm exec vitest run <los 6 tests tocados> --pool=threads` → 3 archivos verdes (22 tests), 3 skipped (37 casos de
+  integración sin `DATABASE_URL`). Tras un último retoque del servicio se repitió con `tests/unit/services/` entero
+  (por la ruta de carpeta entraron 388 archivos): 388 verdes, 7860 tests, 3 skipped.
+- `vitest related --run --pool=threads lib/planes/rastro.ts` (timeout 420) → cortado (exit 124) sin resumen, como
+  `lib/types/planes.ts` en la tanda 7. Sustituido por los 112 tests unit/componente/integración-no-db que importan uno de
+  los 6 módulos cambiados o un módulo de `lib/`, `components/`, `app/` o `hooks/` que los importa, en 4 lotes:
+  30/30/30/22 archivos, todos verdes (407 + 421 + 572 + 673 tests).
+
+Hallazgos y preguntas:
+- **Pregunta (sin resolver, no inventado):** `lineasDeCambioDelPlan` (`lib/planes/mensajes.ts`), que pintan el correo del
+  cambio de plan, el detalle del plan (`PlanDetalle.tsx`) y `PlanEmpresa.tsx`, no tiene línea para `periodicidadOrdenes`. El
+  spec no la pide (R35 solo nombra el rastro). Hoy una edición que solo cambia la periodicidad escribe su fila de rastro y
+  su correo de «guardado», pero ese correo y el detalle dicen «El plan queda igual que el actual». ¿Se añade una línea
+  («Facturación de órdenes: quincenal → mensual») y con qué texto?
+- **A confirmar por el humano:** los dos textos nuevos (`TIPO_QUINCENAL_CON_ORDENES_MENSUALES` y
+  `periodicidadIncompatible(n)`); el spec pide «su mensaje» sin literal.
+- R37 al editar cuenta, como dice design §3.2, las empresas con el plan y tipo quincenal y las que lo tienen como pendiente
+  con tipo quincenal. Una empresa con el plan quincenal y un pendiente a otro plan cuenta igual (todavía lo tiene).
+- Un plan público se puede crear mensual sin rechazo (no lleva tipo); el rechazo llega al asignarlo con quincenal.
+
+Veredicto: T14.1–T14.3, T15.1 y T15.3 hechos; typecheck, eslint y los 112 tests relacionados verdes; 14 casos de integración nuevos (R35–R38) van a CI; una pregunta abierta sobre la línea de la periodicidad en «qué cambia».

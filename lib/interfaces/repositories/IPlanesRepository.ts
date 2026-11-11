@@ -26,10 +26,17 @@ export interface EmpresaDePlanes {
   planId: string | null;
 }
 
+/**
+ * SLT-118 (design §3.2; R37, P12): la edición pasa la periodicidad de órdenes a `mensual` y `empresas` empresas
+ * tienen el plan, o lo tienen como cambio pendiente, con tipo de cobro quincenal. Nada se escribió.
+ */
+export type PeriodicidadIncompatibleAlEditar = { estado: "periodicidad_incompatible"; empresas: number };
+
 export type ResultadoEdicion =
   | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[] }
   | { estado: "not_found" }
-  | { estado: "archivado" };
+  | { estado: "archivado" }
+  | PeriodicidadIncompatibleAlEditar;
 
 export type ResultadoArchivar = { estado: "ok"; cambio: boolean } | { estado: "not_found" };
 
@@ -75,7 +82,9 @@ export type ResultadoAsignar =
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[] }
   /** R31 (carrera) y R16: la clase de fecha no casa con la empresa bajo el cerrojo. Nada se escribió. */
-  | { estado: "validation_error"; fieldErrors: Record<string, string[]> };
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  /** SLT-118 (R37, P12): tipo quincenal con un plan de órdenes mensuales, bajo el cerrojo. Nada se escribió. */
+  | { estado: "periodicidad_incompatible" };
 
 /**
  * Ajuste planes-custom (D2, D4, D6) — la asignación que acompaña a un custom al crearlo: su fecha (de
@@ -115,7 +124,8 @@ export type ResultadoCancelarCambio =
 export type ResultadoProgramar =
   | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[]; cambioId: string | null }
   | { estado: "not_found" }
-  | { estado: "archivado" };
+  | { estado: "archivado" }
+  | PeriodicidadIncompatibleAlEditar;
 
 /**
  * Aplicar un cambio programado (§16.3). `sin_pendiente`: reemplazado, cancelado o ya aplicado;
@@ -224,7 +234,9 @@ export interface AsignacionLeida {
 export type ResultadoCambiarTipoCobro =
   | { estado: "ok"; cambio: boolean; pendiente: boolean; vigenteDesde?: string }
   | { estado: "not_found" }
-  | { estado: "sin_plan" };
+  | { estado: "sin_plan" }
+  /** SLT-118 (R37, P12): tipo quincenal con el plan de órdenes mensuales de la empresa. Nada se escribió. */
+  | { estado: "periodicidad_incompatible" };
 
 /** R19, R21: el plan de una empresa con su uso, o `plan: null` si no tiene. */
 export interface PlanDeEmpresaLeida {
@@ -352,7 +364,9 @@ export interface IPlanesRepository {
   destinatariosDelAviso(organizacionId: string, cambioPendiente: string | null): Promise<DestinatariosDelAviso | null>;
   /**
    * Aplica ESA programación si sigue pendiente y ya rige en `ahora` (R38, §16.3). Idempotente: si fue
-   * reemplazada, cancelada o ya aplicada, no hace nada (R39).
+   * reemplazada, cancelada o ya aplicada, no hace nada (R39). SLT-118 (R37): si la versión pasa la periodicidad
+   * a `mensual` y alguna empresa la tiene con tipo quincenal, LANZA sin escribir: el trabajo falla, como con una
+   * versión que no valida.
    */
   aplicarCambioProgramado(cambio: CambioPendiente, ahora: Date): Promise<ResultadoAplicar>;
   /** Las programaciones con `vigente_desde <= ahora` que siguen pendientes (barrido de §16.3). */

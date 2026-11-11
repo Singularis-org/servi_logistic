@@ -4,11 +4,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { SQLSTATE_EMPRESA_CRUZADA } from "@/lib/db/contexto-empresa";
+import type { EfectoElegido } from "@/lib/interfaces/repositories/IPlanesRepository";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
+import { FacturaPlataformaRepository } from "@/lib/repositories/FacturaPlataformaRepository";
+import type { CuotaDeLaFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
+import type { TipoCobro } from "@/lib/types/planes";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { cero } from "./_fixtures/periodo-calendario";
-import { crearPlan, revertida, sqlstateDe } from "./_fixtures/planes";
+import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
 
 // SLT-118 · T6.5 (design §1.1, §1.3, §2; R13, R21–R23) — quién lee y quién escribe las facturas de la
 // plataforma. La garantía es de la BASE: todo va por SQL a mano, con dos empresas.
@@ -20,9 +25,14 @@ import { crearPlan, revertida, sqlstateDe } from "./_fixtures/planes";
 //     cambia una cerrada (SL118, R13) ni la empresa de ninguna (SL017).
 //
 // Cada empresa: alta el 1 de noviembre con un plan quincenal de 15 500 y el cierre corrido hasta las 00:10
-// del 1 de diciembre: dos cerradas con cuota y una en curso. La lectura en curso para la empresa
-// (`factura_plataforma_en_curso`, R24) la añade T9.2. Cada caso en una transacción revertida; los rechazos
-// van en SAVEPOINT para no abortarla.
+// del 1 de diciembre: dos cerradas con cuota y una en curso. Cada caso en una transacción revertida; los
+// rechazos van en SAVEPOINT para no abortarla.
+//
+// T9.2 (design §2.6, §3; R24): la lectura de la empresa por `FacturaPlataformaRepository.deLaEmpresa`, como
+// `servi_app` con la empresa en el contexto: las cerradas y las no cerradas (`factura_plataforma_en_curso`),
+// con su fin y sus cuotas previstas. La función no recibe el reloj: sus cuotas no dependen de él y las
+// órdenes de estos casos no tienen cargos, así que nada de lo que se mira cambia con la fecha del CI. La
+// lectura del superadmin queda fuera hasta que se decida cómo fija la empresa.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -84,6 +94,93 @@ async function foto(tx: TxDeTest, empresas: string[]): Promise<string[]> {
   );
   return filas.map((f) => f.l);
 }
+
+/* -------------------------------------------------------------------------- */
+/* R24: la lectura de la empresa                                               */
+/* -------------------------------------------------------------------------- */
+
+const ACTOR = randomUUID();
+/** La corrida de las 00:10 de la plataforma del día `fecha`. */
+const corrida = (fecha: string) => new Date(new Date(cero(fecha)).getTime() + 10 * 60_000).toISOString();
+
+/** Un plan con costo base `mensual` en el historial «desde siempre». */
+async function planConPrecio(tx: TxDeTest, mensual: string): Promise<{ id: string; nombre: string }> {
+  const id = await crearPlan(tx);
+  await tx.$executeRawUnsafe(`UPDATE "plan" SET "precio_mensual" = $2::numeric WHERE "id" = $1`, id, mensual);
+  await tx.$executeRawUnsafe(`UPDATE "plan_precio_historial" SET "precio_mensual" = $2::numeric WHERE "plan_id" = $1`, id, mensual);
+  const [{ nombre }] = await tx.$queryRawUnsafe<{ nombre: string }[]>(`SELECT "nombre" FROM "plan" WHERE "id" = $1`, id);
+  return { id, nombre };
+}
+
+/** Una empresa con su alta en `alta`; con plan, como si lo tuviera desde el alta (sin marca de primera cuota). */
+async function empresaDesde(tx: TxDeTest, alta: string, plan?: { id: string; tipo: TipoCobro }): Promise<string> {
+  const { id } = await crearOrganizacion(tx);
+  await tx.$executeRawUnsafe(`UPDATE "organizacion" SET "created_at" = $2::timestamp WHERE "id" = $1`, id, alta);
+  if (plan) {
+    await tx.$executeRawUnsafe(
+      `UPDATE "organizacion" SET "plan_id" = $2, "plan_tipo_cobro" = $3, "plan_ciclo_ancla_at" = $4::timestamp WHERE "id" = $1`,
+      id,
+      plan.id,
+      plan.tipo,
+      alta,
+    );
+  }
+  return id;
+}
+
+function cerrarEn(tx: TxDeTest, organizacionId: string, ahora: string): Promise<number> {
+  return new FacturaPlataformaRepository(tx).cerrar(organizacionId, new Date(ahora));
+}
+
+/** `deLaEmpresa` como la app: `servi_app` con la empresa en el contexto. Vuelve al dueño al terminar. */
+async function leerComoEmpresa(tx: TxDeTest, organizacionId: string): Promise<FacturaPlataformaDTO[]> {
+  await comoApp(tx, organizacionId);
+  try {
+    return await new FacturaPlataformaRepository(tx).deLaEmpresa();
+  } finally {
+    await tx.$executeRawUnsafe(`RESET ROLE`);
+  }
+}
+
+/** Una cuota con sus instantes en ISO, para compararla entera. */
+const cuotaVista = (c: CuotaDeLaFactura | null) =>
+  c === null ? null : { ...c, desde: c.desde.toISOString(), hasta: c.hasta.toISOString() };
+
+/** Lo que R24 pide de cada factura, con los instantes en ISO. */
+const vista = (f: FacturaPlataformaDTO) => ({
+  estado: f.estado,
+  numero: f.numero,
+  desde: f.desde.toISOString(),
+  hasta: f.hasta.toISOString(),
+  hastaPrevisto: f.hastaPrevisto,
+  periodicidad: f.periodicidad,
+  planId: f.plan?.planId ?? null,
+  totalOrdenes: f.totalOrdenes,
+  cuota: cuotaVista(f.cuota),
+  primeraCuota: cuotaVista(f.primeraCuota),
+  total: f.total,
+});
+
+/** Una cuota completa (sin prorrateo) de un período de calendario `[desde, hasta)`. */
+const cuotaCompleta = (
+  plan: { id: string; nombre: string },
+  tipoCobro: TipoCobro,
+  desde: string,
+  hasta: string,
+  precioMensual: string,
+  cuota: string,
+  dias: number,
+) => ({
+  planId: plan.id,
+  planNombre: plan.nombre,
+  tipoCobro,
+  desde: cero(desde),
+  hasta: cero(hasta),
+  precioMensual,
+  cuota,
+  diasCobrados: dias,
+  diasPeriodo: dias,
+});
 
 describeSiHayBase("SLT-118 — quién lee y quién escribe las facturas de la plataforma (R13, R21–R23)", () => {
   beforeAll(() => {
@@ -265,5 +362,151 @@ describeSiHayBase("SLT-118 — quién lee y quién escribe las facturas de la pl
     expect(r.app).toBe("42501");
     expect(r.antes).toHaveLength(6);
     expect(r.despues).toEqual(r.antes);
+  });
+
+  /* ---------------------- R24: la lectura de la empresa ---------------------- */
+
+  it("R24: plan mensual: la del 1 al 15 sin cuota prevista; con la del 16 al 30 abierta, esa lleva la cuota de diciembre prevista y la del 1 al 15, por cerrar, ninguna", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      const e = await empresaDesde(tx, cero("2026-11-01"), { id: plan.id, tipo: "mensual" });
+      await cerrarEn(tx, e, "2026-11-10T14:00:00.000Z");
+      const el10 = await leerComoEmpresa(tx, e);
+      // A las 00:01 del 16: la del 1 al 15 queda fijada (por cerrar, dentro del margen) y se abre la del 16.
+      await cerrarEn(tx, e, "2026-11-16T06:01:00.000Z");
+      const el16 = await leerComoEmpresa(tx, e);
+      return { plan, el10: el10.map(vista), el16: el16.map(vista) };
+    });
+    const primera = {
+      numero: null,
+      desde: cero("2026-11-01"),
+      hasta: cero("2026-11-16"),
+      periodicidad: "quincenal",
+      planId: r.plan.id,
+      totalOrdenes: "0.00",
+      cuota: null,
+      primeraCuota: null,
+      total: "0.00",
+    };
+    // El 16 no es inicio de un mes: la emitida ese día no lleva cuota.
+    expect(r.el10).toEqual([{ ...primera, estado: "en_curso", hastaPrevisto: true }]);
+    expect(r.el16).toEqual([
+      { ...primera, estado: "por_cerrar", hastaPrevisto: false },
+      {
+        estado: "en_curso",
+        numero: null,
+        desde: cero("2026-11-16"),
+        hasta: cero("2026-12-01"),
+        hastaPrevisto: true,
+        periodicidad: "quincenal",
+        planId: r.plan.id,
+        totalOrdenes: "0.00",
+        cuota: cuotaCompleta(r.plan, "mensual", "2026-12-01", "2027-01-01", "31000.00", "31000.00", 31),
+        primeraCuota: null,
+        total: "31000.00",
+      },
+    ]);
+  });
+
+  it("R24: con un cambio pendiente cuyo efecto es el fin de la en curso, la cuota prevista es la del plan nuevo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actual = await planConPrecio(tx, "31000.00");
+      const nuevo = await planConPrecio(tx, "40000.00");
+      const e = await empresaDesde(tx, cero("2026-11-01"), { id: actual.id, tipo: "quincenal" });
+      await cerrarEn(tx, e, "2026-11-10T14:00:00.000Z");
+      const sinCambio = await leerComoEmpresa(tx, e);
+      // Un pendiente al 16 (el fin previsto de la en curso), escrito como lo deja guardado el superadmin.
+      await tx.$executeRawUnsafe(
+        `UPDATE "organizacion" SET "plan_cambio_id" = $2, "plan_cambio_plan_id" = $3, "plan_cambio_tipo_cobro" = 'quincenal',
+                "plan_cambio_desde_at" = $4::timestamp, "plan_cambio_actor_id" = $5 WHERE "id" = $1`,
+        e,
+        randomUUID(),
+        nuevo.id,
+        cero("2026-11-16"),
+        ACTOR,
+      );
+      const conCambio = await leerComoEmpresa(tx, e);
+      return { actual, nuevo, sinCambio: sinCambio.map(vista), conCambio: conCambio.map(vista) };
+    });
+    expect(r.sinCambio.map((f) => f.cuota)).toEqual([
+      cuotaCompleta(r.actual, "quincenal", "2026-11-16", "2026-12-01", "31000.00", "15500.00", 15),
+    ]);
+    // Las órdenes siguen con el plan de antes; solo la cuota que se emitirá el 16 es la del plan nuevo.
+    expect(r.conCambio).toEqual([
+      {
+        ...r.sinCambio[0],
+        cuota: cuotaCompleta(r.nuevo, "quincenal", "2026-11-16", "2026-12-01", "40000.00", "20000.00", 15),
+        total: "20000.00",
+      },
+    ]);
+    expect(r.conCambio[0].planId).toBe(r.actual.id);
+  });
+
+  it("R24: quincenal con inicio el 1 aplicado el 12: la en curso lleva las dos previstas, la primera del 1 al 15 y la de la quincena del 16", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      const e = await empresaDesde(tx, cero("2026-10-16"));
+      await cerrarEn(tx, e, corrida("2026-11-01"));
+      await fijarEmpresa(tx, "");
+      const efecto: EfectoElegido = { clase: "inicio", fecha: "2026-11-01", desde: inicioDelDiaPlataforma("2026-11-01"), elegida: true };
+      const asignado = await planesEnTx(tx).asignar(e, plan.id, ACTOR, efecto, "quincenal", new Date("2026-11-12T15:00:00.000Z"));
+      const lectura = await leerComoEmpresa(tx, e);
+      return { plan, asignado, lectura: lectura.map(vista) };
+    });
+    expect(r.asignado).toMatchObject({ estado: "ok", pendiente: false });
+    // La emitida el 1 (sin plan) sigue cerrada y sin cuotas; la en curso, del 1 al 15, con las dos previstas.
+    expect(r.lectura).toEqual([
+      {
+        estado: "cerrada",
+        numero: 1,
+        desde: cero("2026-10-16"),
+        hasta: cero("2026-11-01"),
+        hastaPrevisto: false,
+        periodicidad: "quincenal",
+        planId: null,
+        totalOrdenes: "0.00",
+        cuota: null,
+        primeraCuota: null,
+        total: "0.00",
+      },
+      {
+        estado: "en_curso",
+        numero: null,
+        desde: cero("2026-11-01"),
+        hasta: cero("2026-11-16"),
+        hastaPrevisto: true,
+        periodicidad: "quincenal",
+        planId: r.plan.id,
+        totalOrdenes: "0.00",
+        cuota: cuotaCompleta(r.plan, "quincenal", "2026-11-16", "2026-12-01", "31000.00", "15500.00", 15),
+        primeraCuota: cuotaCompleta(r.plan, "quincenal", "2026-11-01", "2026-11-16", "31000.00", "15500.00", 15),
+        total: "31000.00",
+      },
+    ]);
+  });
+
+  it("R24, R21: la empresa A lee las suyas, cerradas con su número y sus cuotas emitidas; la de otra empresa o sin empresa, 42501", async () => {
+    const r = await revertida(base, async (tx) => {
+      const { a, b } = await sembrar(tx);
+      const deA = await leerComoEmpresa(tx, a.id);
+      await comoApp(tx, a.id);
+      const deB = await intentar(tx, `SELECT factura_plataforma_en_curso($1)`, b.id);
+      await comoApp(tx, "");
+      const sinEmpresa = await intentar(tx, `SELECT factura_plataforma_en_curso($1)`, a.id);
+      await tx.$executeRawUnsafe(`RESET ROLE`);
+      return { a, deA, deB, sinEmpresa };
+    });
+    expect(r.deB).toBe("42501");
+    expect(r.sinEmpresa).toBe("42501");
+    expect(r.deA.map((f) => f.id)).toEqual([...r.a.cerradas, r.a.enCurso]);
+    expect(r.deA.map((f) => [f.estado, f.numero, f.cuota?.cuota ?? null, f.cuota?.desde.toISOString() ?? null, f.total])).toEqual([
+      ["cerrada", 1, "15500.00", cero("2026-11-16"), "15500.00"],
+      ["cerrada", 2, "15500.00", cero("2026-12-01"), "15500.00"],
+      // La del 1 al 15 de diciembre: la cuota de la segunda quincena (16 días), prevista.
+      ["en_curso", null, "15500.00", cero("2026-12-16"), "15500.00"],
+    ]);
+    expect(r.deA[2]).toMatchObject({ hastaPrevisto: true, cerradaAt: null, primeraCuota: null });
+    expect(r.deA[2].cuota).toMatchObject({ diasCobrados: 16, diasPeriodo: 16 });
+    expect(r.deA[0].cerradaAt?.toISOString()).toBe("2026-12-01T06:10:00.000Z");
   });
 });
