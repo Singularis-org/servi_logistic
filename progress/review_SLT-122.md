@@ -138,3 +138,8 @@ porque el literal es el contrato, pero el caso es barato de añadir.
 suelo «nunca». Carlos lo decidió por escrito («Ligera, como excepción»), así que no lo bloqueo, y la revisión se
 hizo a profundidad de completa. Si estas excepciones van a repetirse, que `docs/specs.md` les dé un sitio con
 `/afinar-regla`. Hoy el doc y la práctica se contradicen.
+
+## Cierre del bloqueante (leader, 2026-11-10)
+
+- B1 levantado sin otra vuelta, como indica el veredicto: E2E `dinero` 94/94 (base `slt122_e2e`) y `dos-empresas-humo` + `plataforma-vacia` 18/18 (base `slt122_humo2`), sin adaptar ningún spec. Detalle en `progress/impl_SLT-122.md > E2E` (97852c1c). T7 marcada.
+- Veredicto final: **OK con menores** (0 bloqueantes, 0 mayores, 5 menores). El menor de los incentivos del caso mixto queda para Carlos junto con SLT-124 «Ranking de la central sin mensajeros de satélite».

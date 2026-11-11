@@ -205,7 +205,7 @@ Dependencias: T0 → T1 → T2 → T3 → (T4 [según PA2]) → T5 [P] T6 → T7
   método de T2 (y del de T4) pone en rojo R1 y R9; anotar en `progress/impl_SLT-122.md` el rojo
   observado y revertir la mutación. *Hecho:* verde con la base desechable exportada antes de
   cualquier `vitest`, y la mutación registrada.
-- [ ] **T7 — Lectura sin cambios y E2E de dinero (backend_dev).** *(2026-11-10: la parte de vitest, hecha y verde; el E2E `dinero` queda ABIERTO para el leader: necesita servidor y al backend_dev se le pidio no levantarlo. Ver `progress/impl_SLT-122.md`.)* R7: correr
+- [x] **T7 — Lectura sin cambios y E2E de dinero (backend_dev).** *(2026-11-10: la parte de vitest, hecha y verde; el E2E `dinero` queda ABIERTO para el leader: necesita servidor y al backend_dev se le pidio no levantarlo. Ver `progress/impl_SLT-122.md`.)* R7: correr
   `pnpm exec vitest related --run` sobre los archivos tocados y `tests/components/CierresAdminDeepLink.test.tsx`;
   y, como toca dinero (`docs/perfil-agentes.md > Todos los agentes`), `pnpm exec playwright test
   --project=dinero` en base desechable. *Hecho:* verdes, con el resultado en `progress/impl_SLT-122.md`.
