@@ -14,20 +14,20 @@
 
 ## Tanda 1 — Base y servidor
 
-- [ ] **T1 — Migración y Prisma.** `db/migrations/20261113120000_cobro_plataforma_sin_valor_empresa/`
+- [x] **T1 — Migración y Prisma.** `db/migrations/20261113120000_cobro_plataforma_sin_valor_empresa/`
   (`migration.sql` y `down.sql`, design §1.1–§1.2) y `db/schema.prisma` (§1.3). El nombre va detrás de la
   última migración del repo al implementar.
   *Cubre:* R5, R6, R7, R10, R12. *Depende de:* nada.
   *Hecho:* `pnpm exec prisma validate` y `prisma generate` en verde; el cuerpo de la función en `down.sql`
   es idéntico byte a byte al de 20261104150200; la migración aplica sobre una base desechable.
-- [ ] **T2 — Tests de la migración y de la regla.** Nuevos
+- [x] **T2 — Tests de la migración y de la regla.** Nuevos
   `tests/integration/db/migracion-slt126-ida-y-vuelta.test.ts` y
   `tests/integration/db/cobro-plataforma-sin-valor-empresa.test.ts` (design §5.1).
   *Cubre y prueba:* R5 y R11 (`cobro-plataforma-sin-valor-empresa`); R6, R7, R8, R9, R10, R12
   (`migracion-slt126-ida-y-vuelta`). *Depende de:* T1.
   *Hecho:* los dos en verde; cada caso nombra su `R<n>`; con la rama de la excepción repuesta a mano en la
   función, R6/R7 caen (mutación anotada en `progress/impl_SLT-126.md`).
-- [ ] **T3 [P] — Quitar la escritura del valor propio (servidor).** `lib/actions/cobro-plataforma.ts`,
+- [x] **T3 [P] — Quitar la escritura del valor propio (servidor).** `lib/actions/cobro-plataforma.ts`,
   `ICobroPlataformaService`, `CobroPlataformaService`, `ICobroPlataformaTarifaRepository`,
   `CobroPlataformaTarifaRepository`, `lib/types/cobro-plataforma.ts` (design §2). Ajusta
   `tests/unit/services/cobro-plataforma-service.test.ts`, `tests/unit/types/cobro-plataforma-schema.test.ts`
@@ -36,7 +36,7 @@
   *Cubre y prueba:* R2 (`cobro-plataforma.composition-root.test.ts` y `cobro-plataforma-service.test.ts`).
   *Depende de:* nada (puede ir a la vez que T1).
   *Hecho:* `grep -rn "fijarDeEmpresa\|fijarCobroEmpresa\|existeEmpresa" lib app` sin resultados.
-- [ ] **T4 [P] — Lecturas sin la fuente `empresa`.** `lib/types/empresas-plataforma.ts`,
+- [x] **T4 [P] — Lecturas sin la fuente `empresa`.** `lib/types/empresas-plataforma.ts`,
   `lib/repositories/EmpresasPlataformaRepository.ts`, `lib/types/consumo-plan.ts`,
   `lib/repositories/MiPlanRepository.ts`, `lib/planes/costeo.ts` (design §2). Ajusta
   `tests/unit/actions/empresas-plataforma.composition-root.test.ts`,
