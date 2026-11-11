@@ -107,7 +107,3 @@ export function nombreAccionBodega(accion: AccionBodega, bodega: string): string
   if (accion === "verCorregir") return `${ACCION_VER_CORREGIR} el cierre de bodega de ${bodega}`;
   return `${ACCION_VER} el cierre de bodega de ${bodega}`;
 }
-
-/** PA-P: el nombre de cada paginación dice lo mismo que su pestaña y su región. */
-export const PAGINACION_POR_CONCILIAR_LABEL = "Paginación de los cierres de bodega por conciliar";
-export const PAGINACION_CONCILIADOS_LABEL = "Paginación de los cierres de bodega conciliados";
