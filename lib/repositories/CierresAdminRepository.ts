@@ -7,6 +7,7 @@ import {
   type RolValue,
   type TarifaNivel,
 } from "@prisma/client";
+import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where"; // SLT-122: compartido con el pago
 import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import { contarSenalesPorCierreCon } from "@/lib/repositories/_shared/senales-cola-cierre";
 import type { JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
@@ -846,15 +847,6 @@ export class ConfirmacionFisicaNoAplicableError extends Error {
     super(`confirmacion fisica no aplicable a una gestion del cierre ${cierreId}`);
     this.name = "ConfirmacionFisicaNoAplicableError";
   }
-}
-
-// WHERE del alcance: siempre por destino_tipo; por destino_zona_id SOLO si el alcance
-// lo acota (adminSatelite). El maestro (destinoZonaId null) ve todos los central.
-function alcanceWhere(alcance: Alcance): { destinoTipo: Alcance["destinoTipo"]; destinoZonaId?: string } {
-  return {
-    destinoTipo: alcance.destinoTipo,
-    ...(alcance.destinoZonaId !== null ? { destinoZonaId: alcance.destinoZonaId } : {}),
-  };
 }
 
 /**
