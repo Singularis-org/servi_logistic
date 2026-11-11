@@ -78,3 +78,16 @@ export function facetasDe(raw: FacetasDeHoy): FacetasDeHoy {
     ...(distrito_id ? { distrito_id } : {}),
   };
 }
+
+/**
+ * El `where` de Prisma de HOY para las tres facetas: la copia congelada de lo que hacia
+ * `OrdenRepository.list` con `criterioColumna("provinciaId" | "cantonId" | "distritoId", ...)` antes de
+ * SLT-47 (y `condicionesSatelite` en SQL crudo): cada faceta pedida, un `IN` sobre su columna, en AND.
+ */
+export function whereDeHoy(f: FacetasDeHoy): { provinciaId?: { in: string[] }; cantonId?: { in: string[] }; distritoId?: { in: string[] } } {
+  return {
+    ...(f.provincia_id?.length ? { provinciaId: { in: [...f.provincia_id] } } : {}),
+    ...(f.canton_id?.length ? { cantonId: { in: [...f.canton_id] } } : {}),
+    ...(f.distrito_id?.length ? { distritoId: { in: [...f.distrito_id] } } : {}),
+  };
+}

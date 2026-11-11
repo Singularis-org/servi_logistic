@@ -110,3 +110,135 @@ Cambian solo la clave de transporte o el SQL de la faceta, en esas líneas:
 
 - `lib/interfaces/services/IRecepcionSateliteService.ts`.
 - Los tests de §12.1 listados arriba que `tasks.md` no nombraba.
+
+## Tanda 1 — servidor (implementer, 2026-11-11)
+
+Sin subagentes (pedido del leader). Sin dependencias nuevas, sin migraciones (R31 no aplica: el
+`EXPLAIN` no se midió aún, ver «Pendiente»).
+
+### Commits
+
+| Commit | Tarea |
+|---|---|
+| `03f92d6a` | T0: maqueta aprobada anotada (R33) |
+| `abfb8ef7` | T1.1 inventario |
+| `effe3718` | T1.2 fixture `geo-47` |
+| `f74bf288` | T2.1 `resolverLugar`/`condicionesDeLugar`/`lugaresDelFiltro` de una faceta y `ruta-del-lugar.ts` |
+| `78fb5bea` | T2.2 `lugar_id` en `ordenFilterBase`, satélite y analítica; clave de caché `l=` |
+| `82a8e53b` | T2.3 (parte 1) `/ordenes` (`whereLugarEn` en `AND`) y satélite (`condicionesDeLugar`) |
+| `c6ccb38d` | T2.5 (parte 1) scripts de SLT-71: lado «hoy» congelado, «nuevo» en `lugar_id`; `filtros-de-hoy.ts` |
+| `bffbed41` | T2.3 (parte 2) `geo-filtros-lugar.test.ts` y guardia R15 ampliada |
+| `94716117` | T2.4 `PaisService.nivelesDeEmpresa` |
+| (este cierre) | T2.5 (parte 2) `geo-equivalencia-filtros.ts`, su test y `package.json`; dobles de `IPaisRepository`/`IPaisService` |
+
+### Archivos
+
+- Creados: `lib/repositories/_shared/ruta-del-lugar.ts`, `scripts/geo-equivalencia/filtros-de-hoy.ts`,
+  `scripts/geo-equivalencia-filtros.ts`, `tests/integration/db/_fixtures/geo-47.ts`,
+  `tests/integration/db/{geo-47-fixture, geo-filtros-lugar, geo-equivalencia-filtros}.test.ts`,
+  `tests/unit/types/filtro-lugar-schemas.test.ts`, `tests/unit/services/ruta-del-lugar.test.ts`.
+- Modificados (código): `lib/repositories/_shared/lugares-del-filtro.ts`, `lib/types/orden.ts`,
+  `lib/types/recepcion-satelite.ts`, `lib/analytics/entregas-conteo.ts`,
+  `lib/interfaces/repositories/IOrdenRepository.ts`, `lib/interfaces/services/IRecepcionSateliteService.ts`,
+  `lib/services/OrdenService.ts`, `lib/services/RecepcionSateliteService.ts`,
+  `lib/repositories/OrdenRepository.ts`, `lib/types/filtros-ordenes.ts` (`NivelDeFiltroDTO`),
+  `lib/{interfaces/repositories/IPaisRepository, repositories/PaisRepository, interfaces/services/IPaisService, services/PaisService}.ts`,
+  `scripts/geo-equivalencia-analitica.ts`, `scripts/geo-equivalencia/analitica-de-hoy.ts`,
+  `scripts/geo-explain-analitica.ts`, `package.json`.
+- Modificados (tests, solo entrada según §12.1): los de la sección T1.1 de servidor y analítica, más
+  `tests/fixtures/satelite-bodega-almacen.ts`, `tests/integration/db/geografia-historico-intacto.test.ts`,
+  `tests/unit/services/pais-service.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts`
+  (dobles con el método nuevo) y `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
+  (bloque SLT-47 nuevo, R15).
+
+### Mapa `R<n> → test` (lo cubierto en esta tanda)
+
+| R | Test |
+|---|---|
+| R10 | `tests/unit/types/filtro-lugar-schemas.test.ts` |
+| R11, R12 | `tests/unit/repositories/lugares-del-filtro.test.ts`; `tests/integration/db/geo-filtros-lugar.test.ts` |
+| R13 | `geo-filtros-lugar.test.ts` (dos «San Rafael», dos «Central» y una provincia «Central», CR y XA) |
+| R14 | `geo-filtros-lugar.test.ts` (lugar AND zona/tienda; satélite dentro de su zona) |
+| R15 | `geo-filtros-lugar.test.ts` (`nodo_geografico_id` en NULL); guardias `geografia-lecturas-sin-nodo-fk` (bloque SLT-47) y `geografia-sin-cte-recursiva` |
+| R16 | `tests/unit/services/ruta-del-lugar.test.ts` (solo la función; ver «Bloqueos») |
+| R27 | `geo-filtros-lugar.test.ts` (cada lugar = su columna de hoy); `tests/integration/db/geo-equivalencia-filtros.test.ts`; `geo-analitica-lugar.test.ts` de SLT-71 |
+| R28, R30 | `tests/integration/db/geo-equivalencia-filtros.test.ts` |
+| R37 | `geo-filtros-lugar.test.ts` (id de XA en CR → 0; plataforma → `EmpresaNoResuelta`); `lugares-del-filtro.test.ts` |
+| R1, R2 (servidor) | `tests/unit/services/pais-service.test.ts` (`nivelesDeEmpresa`, 2 y 4 niveles) |
+
+### Decisiones de esta tanda
+
+- `OrdenRepository.list`: el lugar va en `AND: [whereLugarEn(ids)]`, no como `OR` suelto, porque el
+  `OR` del buscador (`criterioBusqueda`) ocupa la misma clave. Lista presente y vacía → `id IN ()`
+  (falla cerrado, R35 de la 144).
+- Equivalencia con enlaces viejos en scripts y tests de SLT-71: `filtros-de-hoy.ts > lugarDeFacetas`
+  traduce las facetas como la barra (ids válidos de su nivel, podados por el de arriba). Un id de otro
+  nivel, o una combinación incoherente, es `LUGAR_INEXISTENTE` (cero, como hoy). Así los tests de
+  SLT-71 conservan sus aserciones.
+- `geo-equivalencia-filtros.ts`: «hoy» del satélite = conjunto de la bodega sin lugar ∩ órdenes por
+  columna (es el AND de hoy); analítica = total de `contarPorStatus`, y una diferencia solo se
+  disculpa si es exactamente la de las incoherentes que entran por un solo lado.
+
+### Salida de los tests (2026-11-11, base `logistic_slt47`, `--maxWorkers=1`)
+
+- Unit: `lugares-del-filtro` + `ruta-del-lugar` 21/21; `filtro-lugar-schemas` 35/35;
+  `orden-service-filtros` + `orden-filter-144` + `satelite-paginado-where` 69/69 y 44/44 con
+  `orden-repository-filtros`; satélite (acción, paginado, completo, vigencia, salida a reparto) 77/77;
+  `pais-service` 102/102; `tests/unit/analytics` 2301/2303 (los 2 rojos: abajo).
+- Integración: `geo-47-fixture` 1/1; `geo-filtros-lugar` 7/7; `geo-equivalencia-filtros` 7/7;
+  `geo-analitica-lugar` + `geografia-historico-intacto` 14/14; `satelite-conjunto-sql-real` 4/4;
+  `geo-equivalencia-analitica`, `geo-explain-analitica`, `geo-consultas-conteo`,
+  `geo-equivalencia-geografia`, `geo-transito-nombres` 40/40.
+- Guardias de geografía: `geografia-lecturas-sin-nodo-fk` + `geografia-sin-cte-recursiva` 23/23.
+
+### Rojos conocidos al cerrar la tanda
+
+- `tests/unit/analytics/entregas-filtro-analitica.test.ts` («las siete facetas viajan con las claves
+  del esquema, y pasan la validación»): es del CLIENTE (T4.2). El servidor ya rechaza `provincia_id`…
+  y la barra todavía las manda. Se arregla en T4.2 cambiando solo la clave de transporte.
+- Por la misma razón, mientras no lleguen T4 y T5 la app manda claves viejas: `/ordenes`, satélite y
+  analítica responden `validation_error` si se filtra por lugar. Estado intermedio de la rama, no se
+  despliega así.
+
+### Pendiente de esta tanda
+
+- **T2.3 (resto, bloqueado, ver abajo)**: `niveles`/`lugares` en `GeoRepository` y
+  `FiltrosOrdenesService`; `lugarRuta` en `GestionOrdenRepository`, `findNovedadesByTienda` y los DTO;
+  el tamaño del JSON del catálogo de CR.
+- **T2.5 (resto)**: `scripts/geo-explain-filtros.ts` y `geo-explain-filtros.test.ts` (R29) no están
+  hechos. El «antes» del listado y de la página satélite ya no existe en el código (se retiró el filtro
+  por columna) y hay que congelar una copia de las dos consultas en `filtros-de-hoy.ts`; no me cupo con
+  garantías en esta tanda.
+- T3.1 no se empezó.
+
+### Bloqueos (para el leader)
+
+1. **`niveles` y `lugares` en el catálogo de filtros (R36, design §3.3) cambian aserciones exactas**
+   que §12.1 no nombra: `tests/unit/services/filtros-ordenes-service.test.ts` compara el catálogo
+   entero con `toEqual` y el orden de las lecturas en paralelo, y
+   `tests/integration/db/geo-lecturas-catalogo.test.ts` compara `listGeografiaLitePorZona` con
+   `toEqual(vacio)` de tres listas. Añadir dos campos rompe esas aserciones. Hace falta decidir si
+   entran en §12.1.
+2. **`lugarRuta` en novedades (R16) cambia una aserción exacta**: `tests/unit/repositories/orden-repository.novedades.test.ts`
+   fija con `toEqual` el `select` de `findNovedadesByTienda` («Este `toEqual` ES el contrato del
+   select»). Para calcular la ruta hacen falta `cantonId` y `distritoId` en ese `select`. En
+   `GestionOrdenRepository` el `select` no se fija entero, pero los dobles de
+   `gestion-orden-repository.test.ts` no traen el catálogo (cambio de entrada, sí permitido).
+3. **Semántica que cambia por diseño** (aviso, no bloqueo): con `lugar_id` sin nivel, un id de cantón
+   pedido «como distrito» ya no da cero (design §3.1, `resolverLugar` acepta cualquier profundidad).
+   En `lugares-del-filtro.test.ts` (que `tasks.md` marca como «ajustado») los casos de SLT-71 R3 «id
+   de otro nivel no aporta» se sustituyeron por los de R11/R12. En los tests de integración y scripts
+   de SLT-71 se conservó la aserción traduciendo la entrada como la barra (`LUGAR_INEXISTENTE`).
+
+### Cierre de la tanda 1 (verificación)
+
+- `pnpm run typecheck`: verde (0 errores).
+- `eslint` sobre los archivos tocados: 0 errores (18 avisos `no-unused-vars` de variables con `_`,
+  la mayoría ya existentes en los tests de analítica).
+- Contrato v1 en modo comparar (`contrato-v1.route.test.ts` sin `CONTRATO_V1_GRABAR`) y
+  `openapi-v1-congelado`: 26 verdes, 1 saltado (el de grabar).
+- Guardias de geografía, SQL y catálogo (`geografia-*`, `nodo-geografico-escritor-unico`,
+  `catalogo-geografico-sin-instancia-de-modulo`, `catalogo-postgres-acota-esquema`,
+  `sql-a-mano-por-empresa`, `etiquetas-geograficas-sin-literal`, `vista-filtro-formato-propio`,
+  `criterio-unico`, `alcance-obligatorio`) más `geografia-plataforma-action`: 17 archivos, 356 verdes.
+- No se corrió `./init.sh` completo ni la suite completa (pedido del leader).
