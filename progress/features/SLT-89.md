@@ -38,3 +38,5 @@ F2.1 2026-11-10: spec aprobado (F1.4, «aprobado», por escrito) y tarjeta en in
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-10 · Review F2.2 vuelta 2 OK (`progress/review_SLT-89.md`); T0–T9 marcadas. Gate de CI y E2E verdes (run 42913893905).
+<!-- tamano-pr-aceptado: 2026-11-11 · humano: «Un PR, aceptando el tamaño»; 148 archivos / ~11.400 líneas sobre SLT-46, cerca de la mitad tests; feature implementada y revisada junta -->
