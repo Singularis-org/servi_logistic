@@ -10,10 +10,10 @@
 ## Tasks
 
 ### T0 — Medición en producción (leader; antes de abrir el PR) · PA1
-- [ ] Correr el script de solo lectura
+- [x] Correr el script de solo lectura
   `C:/Users/ArqDev/AppData/Local/Temp/claude/aab05f6b97f87a08/233157d8-8861-4bd3-9a61-ee726d076981/scratchpad/conteo-cierres-bodega.mjs`
   (lee `DATABASE_URL` de `.env.prod` sin imprimirla, `BEGIN READ ONLY`, `ROLLBACK`).
-- [ ] Anotar en `progress/features/SLT-105.md` solo los conteos por empresa (id): por `estado`, por
+- [x] Anotar en `progress/features/SLT-105.md` solo los conteos por empresa (id): por `estado`, por
   lista vieja (`pendientes`/`resueltos`) y nueva (`por_conciliar`/`conciliados`) y
   `cambian_de_lista`.
 - **Hecho:** conteos anotados con fecha. SI hay algún `rechazado` o algún cierre que cambie de lista,
