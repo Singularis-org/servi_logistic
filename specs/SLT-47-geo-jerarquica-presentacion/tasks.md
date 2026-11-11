@@ -26,7 +26,7 @@
 
 ## T1 — Preparación (backend_dev) · sin dependencias
 
-- [ ] **T1.1** Inventario antes de tocar código. Anotar en `progress/impl_SLT-47.md`:
+- [x] **T1.1** Inventario antes de tocar código. Anotar en `progress/impl_SLT-47.md`:
   - todas las lecturas que producen `NovedadDTO` y `MiAsignacionDTO` (design §3.4);
   - todos los consumidores de `provincia_id`, `canton_id` y `distrito_id` como clave de transporte
     en `lib/`, `app/` y `scripts/`;
@@ -163,6 +163,7 @@ Servidor:
 - `lib/repositories/_shared/ruta-del-lugar.ts` (~40, nuevo)
 - `lib/types/orden.ts` (~15)
 - `lib/types/recepcion-satelite.ts` (~5)
+- `lib/interfaces/services/IRecepcionSateliteService.ts` (~5, T1.1)
 - `lib/analytics/entregas-conteo.ts` (~15)
 - `lib/services/OrdenService.ts` (~20)
 - `lib/interfaces/repositories/IOrdenRepository.ts` (~15)
