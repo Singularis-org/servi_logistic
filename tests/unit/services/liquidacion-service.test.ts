@@ -5,6 +5,7 @@ import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedServ
 import { LiquidacionService } from "@/lib/services/LiquidacionService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
+import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type {
   CierreParaPagoDTO,
   ILiquidacionPagoRepository,
@@ -161,6 +162,12 @@ function buildDobles(opciones: {
   pagos?: LiquidacionPagoDTO[];
   /** Feature 293 (T2.3, §6/4): Σ de PREMIOS VIVOS del cierre. Ausente = "0.00". */
   premiosVivos?: string;
+  /**
+   * SLT-122: el DESTINO del cierre sembrado. El doble de `obtenerCierreParaPagoEnAlcance` hace lo
+   * que el WHERE hace en la base —un cierre fuera del alcance pedido sale `null`—; que la base
+   * lo haga de verdad lo mide `pago-mensajero-bodega-duena.test.ts` (integracion). Ausente = central.
+   */
+  destinoCierre?: Alcance["destinoTipo"];
 }) {
   const log: Registro[] = [];
   const tx = buildTx(log);
@@ -201,6 +208,13 @@ function buildDobles(opciones: {
       log.push(t === undefined ? "leer:cierre:fuera-de-tx" : "leer:cierre");
       return cierre;
     }),
+    // SLT-122 (R6): la guardia del REGISTRO, con el alcance en el WHERE. Escribe en el log lo mismo
+    // que la lectura de arriba dentro de la tx: el orden candado → lectura de R83 no cambia.
+    obtenerCierreParaPagoEnAlcance: vi.fn(async (_id: string, alcance: Alcance, t) => {
+      txsVistos.push(t);
+      log.push("leer:cierre");
+      return alcance.destinoTipo === (opciones.destinoCierre ?? "bodega_central") ? cierre : null;
+    }),
     obtenerPorClave: vi.fn(async () => {
       log.push("obtener:por-clave");
       return null;
@@ -223,6 +237,10 @@ function buildDobles(opciones: {
     // usa —son del reparto—, pero el doble las expone para poder afirmar que los caminos de la
     // 172 NO las llaman.
     listarCierresImputables: vi.fn(async () => {
+      log.push("listar:cierres-imputables");
+      return [];
+    }),
+    listarCierresImputablesEnAlcance: vi.fn(async () => {
       log.push("listar:cierres-imputables");
       return [];
     }),
@@ -888,6 +906,7 @@ describe("R1/R6 — quien puede pagar a un mensajero (el segundo camino tiene su
       expect(d.log).toEqual([]); // R5: ni el cierre se llega a leer
       expect(d.llamadasTx.n).toBe(0);
       expect(d.pagoRepo.obtenerCierreParaPago).not.toHaveBeenCalled();
+      expect(d.pagoRepo.obtenerCierreParaPagoEnAlcance).not.toHaveBeenCalled(); // SLT-122 (R5)
     });
   }
 
@@ -963,6 +982,106 @@ describe("R20 — el cierre debe existir y estar APROBADO, leido dentro de la tr
     expect(r).toEqual({ status: "no_encontrado" });
     expect(d.pagoRepo.crear).not.toHaveBeenCalled();
     expect(d.mensajeroRepo.crearMovimientos).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// SLT-122 «Pago al mensajero: solo la bodega duena del cierre» — R1, R2, R3, R5 y R6 (servicio).
+// Que el WHERE de la base filtre de verdad lo mide `tests/integration/db/pago-mensajero-bodega-duena`.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe("SLT-122 — la central solo paga los cierres de la bodega central", () => {
+  const ALCANCE_CENTRAL = { destinoTipo: "bodega_central", destinoZonaId: null };
+
+  for (const actor of [ACTOR_ADMIN, ACTOR_MAESTRO]) {
+    it(`R1: ${actor.rol} contra un cierre de satelite -> no_encontrado, sin escribir nada`, async () => {
+      const d = buildDobles({ creditos: "0.00", debitos: "0.00", destinoCierre: "bodega_satelite" });
+
+      const r = await d.service.registrarPagoMensajero(INPUT_MENSAJERO, actor);
+
+      expect(r).toEqual({ status: "no_encontrado" });
+      expect(d.pagoRepo.crear).not.toHaveBeenCalled();
+      expect(d.mensajeroRepo.crearMovimientos).not.toHaveBeenCalled();
+      expect(d.tiendaRepo.crearMovimientos).not.toHaveBeenCalled();
+      // Ni el pendiente se deriva: el alcance se resuelve antes que el estado y el monto (R2).
+      expect(d.pagoRepo.sumarVigentesPorCierre).not.toHaveBeenCalled();
+      expect(d.log).not.toContain("crear:documento");
+      expect(d.log).not.toContain("crear:movimiento");
+    });
+  }
+
+  const estados: CierreEstado[] = [
+    CierreEstado.solicitado,
+    CierreEstado.aprobado,
+    CierreEstado.rechazado,
+    CierreEstado.vencido,
+  ];
+  for (const estado of estados) {
+    it(`R2: un cierre de satelite ${estado} con un monto mayor que su pendiente -> no_encontrado (nunca cierre_no_aprobado, sin_saldo ni excede)`, async () => {
+      const d = buildDobles({
+        creditos: "0.00",
+        debitos: "0.00",
+        destinoCierre: "bodega_satelite",
+        cierre: cierreDTO({ estado }),
+      });
+
+      const r = await d.service.registrarPagoMensajero(
+        { ...INPUT_MENSAJERO, monto: "987654321.00" },
+        ACTOR_ADMIN,
+      );
+
+      expect(r).toEqual({ status: "no_encontrado" });
+      expect(d.pagoRepo.crear).not.toHaveBeenCalled();
+      expect(d.mensajeroRepo.crearMovimientos).not.toHaveBeenCalled();
+    });
+  }
+
+  it("R2 (contraprueba): el mismo cierre aprobado pero CENTRAL y con monto de mas -> excede (el doble distingue)", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", destinoCierre: "bodega_central" });
+    const r = await d.service.registrarPagoMensajero(
+      { ...INPUT_MENSAJERO, monto: "987654321.00" },
+      ACTOR_ADMIN,
+    );
+    expect(r.status).toBe("excede");
+  });
+
+  it("R6: la guardia lee el cierre con el alcance del acceso total, en la tx del candado, y no con la lectura sin alcance", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00" });
+
+    await d.service.registrarPagoMensajero(INPUT_MENSAJERO, ACTOR_MAESTRO);
+
+    expect(d.pagoRepo.obtenerCierreParaPagoEnAlcance).toHaveBeenCalledTimes(1);
+    const [cierreId, alcance, tx] = vi.mocked(d.pagoRepo.obtenerCierreParaPagoEnAlcance).mock.calls[0];
+    expect(cierreId).toBe(INPUT_MENSAJERO.cierreId);
+    expect(alcance).toEqual(ALCANCE_CENTRAL);
+    expect(tx).toBe(d.txsVistos[0]); // el mismo `tx` que tomo el candado
+    expect(d.pagoRepo.obtenerCierreParaPago).not.toHaveBeenCalled();
+  });
+
+  it("R3: contra un cierre aprobado de la central se registra como siempre (ok, documento y movimiento)", async () => {
+    for (const actor of [ACTOR_ADMIN, ACTOR_MAESTRO]) {
+      const d = buildDobles({ creditos: "0.00", debitos: "0.00", destinoCierre: "bodega_central" });
+      const r = await d.service.registrarPagoMensajero(INPUT_MENSAJERO, actor);
+      expect(r.status).toBe("ok");
+      expect(d.pagoRepo.crear).toHaveBeenCalledTimes(1);
+      expect(d.mensajeroRepo.crearMovimientos).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("R5: el adminSatelite pidiendo un cierre de SU zona -> forbidden, y el cierre ni se lee", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", destinoCierre: "bodega_satelite" });
+
+    const r = await d.service.registrarPagoMensajero(INPUT_MENSAJERO, {
+      usuarioId: "u-sat",
+      rol: RolValue.adminSatelite,
+      zonaId: "zona-satelite-1",
+    });
+
+    expect(r).toEqual({ status: "forbidden" });
+    expect(d.llamadasTx.n).toBe(0);
+    expect(d.pagoRepo.obtenerCierreParaPagoEnAlcance).not.toHaveBeenCalled();
+    expect(d.pagoRepo.obtenerCierreParaPago).not.toHaveBeenCalled();
+    expect(d.pagoRepo.bloquearBeneficiario).not.toHaveBeenCalled();
   });
 });
 
@@ -1274,8 +1393,10 @@ describe("R39/R40/R41/R42 — atomicidad, y donde NO se escribe (camino del mens
     for (const [metodo, espia] of Object.entries(d.tx.cierreDia)) {
       expect(espia, `cierreDia.${metodo} fue llamado`).not.toHaveBeenCalled();
     }
-    // (b) sobre el doble del REPOSITORIO: lo unico que se le pidio del cierre fue leerlo.
-    expect(d.pagoRepo.obtenerCierreParaPago).toHaveBeenCalledTimes(1);
+    // (b) sobre el doble del REPOSITORIO: lo unico que se le pidio del cierre fue leerlo (SLT-122:
+    // con su alcance; la lectura sin alcance ya no la usa el registro).
+    expect(d.pagoRepo.obtenerCierreParaPagoEnAlcance).toHaveBeenCalledTimes(1);
+    expect(d.pagoRepo.obtenerCierreParaPago).not.toHaveBeenCalled();
   });
 
   it("R42: ni el repositorio tiene por donde escribir el cierre (contraprueba estructural)", async () => {

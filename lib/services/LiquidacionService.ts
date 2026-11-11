@@ -37,6 +37,7 @@ import type {
   RegistrarRepartoMensajeroInput,
 } from "@/lib/types/liquidacion-reparto";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 import type { ComprobanteGuardado } from "@/lib/interfaces/repositories/IWalletComprobanteRepository";
 import type { ComprobanteRecibido, IWalletComprobanteService } from "@/lib/interfaces/services/IWalletComprobanteService";
 import { registrarConComprobante, type FalloDeComprobante } from "@/lib/services/registro-con-comprobante";
@@ -330,7 +331,14 @@ export class LiquidacionService implements ILiquidacionService {
 
         // R20: la guardia se lee EN LA TRANSACCION. Fuera de ella, el cierre podria cambiar de
         // estado entre la comprobacion y la escritura del pago.
-        const cierre = await this.pagoRepo.obtenerCierreParaPago(input.cierreId, tx);
+        // SLT-122 (R1/R2/R4/R6): con el alcance del acceso total en el WHERE. Un cierre de satelite
+        // (o de otra empresa) sale `null` y se responde como uno que no existe, ANTES de mirar su
+        // estado o su monto: solo la bodega duena paga el cierre, y la satelite lo paga fuera.
+        const cierre = await this.pagoRepo.obtenerCierreParaPagoEnAlcance(
+          input.cierreId,
+          ALCANCE_ACCESO_TOTAL,
+          tx,
+        );
         if (cierre === null) return { status: "no_encontrado" };
         if (cierre.estado !== "aprobado") return { status: "cierre_no_aprobado" };
 
@@ -431,7 +439,10 @@ export class LiquidacionService implements ILiquidacionService {
     // conteo agregado en la base, no la lista de cierres: el aviso dice «hay dinero que no estas
     // pagando aqui, y por que», no inventaria (el inventario esta en `/cierres-admin`). Asi la
     // respuesta queda acotada por el numero de estados, no por el de cierres. Ver el DTO.
-    const excluidos = await this.pagoRepo.contarCierresNoAprobadosPorEstado(input.mensajeroId);
+    const excluidos = await this.pagoRepo.contarCierresNoAprobadosPorEstado(
+      input.mensajeroId,
+      ALCANCE_ACCESO_TOTAL, // SLT-122 (R9): el mismo alcance que los imputables
+    );
 
     const antiguedadPorCierre = new Map(imputables.map((c) => [c.cierreId, c.solicitadoAt]));
 
@@ -1081,7 +1092,13 @@ export class LiquidacionService implements ILiquidacionService {
    * (bajo candado) nadie mas puede confirmar un pago contra esos cierres.
    */
   private async imputablesDe(mensajeroId: string, tx?: LiquidacionTx): Promise<CierreImputable[]> {
-    const cierres = await this.pagoRepo.listarCierresImputables(mensajeroId, tx);
+    // SLT-122 (R9/R10): solo los cierres de la bodega central; uno de satelite no entra en la
+    // ventana, no se bloquea y no recibe imputacion (lo paga la satelite fuera del sistema).
+    const cierres = await this.pagoRepo.listarCierresImputablesEnAlcance(
+      mensajeroId,
+      ALCANCE_ACCESO_TOTAL,
+      tx,
+    );
     if (cierres.length === 0) return [];
 
     const ids = cierres.map((c) => c.id);

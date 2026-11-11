@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 import type {
   CatalogoFiltrosCierresDTO,
   FiltrosCierres,
@@ -526,7 +527,7 @@ export class CierresAdminService implements ICierresAdminService {
   // todos los `bodega_central` (sin filtro de zona); el adminSatelite solo su zona satelite.
   private async resolveAlcance(actor: Actor): Promise<AlcanceResult> {
     if (esAccesoTotal(actor.rol)) {
-      return { status: "ok", alcance: { destinoTipo: "bodega_central", destinoZonaId: null } };
+      return { status: "ok", alcance: ALCANCE_ACCESO_TOTAL }; // SLT-122: compartido con el pago
     }
     if (actor.rol === ROL_ADMIN_SATELITE) {
       const zonaId = await this.ordenRepo.findUsuarioZonaId(actor.usuarioId);

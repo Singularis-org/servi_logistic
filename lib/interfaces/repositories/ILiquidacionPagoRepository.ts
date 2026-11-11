@@ -1,5 +1,6 @@
 import type { CierreEstado, PrismaClient } from "@prisma/client";
 import type { AnulacionDTO, MetodoLiquidacion } from "@/lib/types/liquidacion";
+import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 
 // Feature 172 (design §3.1) — contrato del repositorio del DOCUMENTO del pago. Solo queries
 // Prisma; sin logica de negocio, sin guardias de rol y sin decidir cuanto se puede pagar.
@@ -252,6 +253,21 @@ export interface ILiquidacionPagoRepository {
     tx?: LiquidacionCierreTxClient,
   ): Promise<CierreParaPagoDTO | null>;
   /**
+   * SLT-122 (R1/R2/R4/R6) — el cierre contra el que se REGISTRA un pago, leido con el alcance del
+   * actor en el WHERE (`{ id, ...alcanceWhere(alcance) }`). Un cierre fuera del alcance —de
+   * satelite para el acceso total— sale `null`, igual que uno que no existe: el servicio no llega
+   * a ver su estado ni su monto.
+   *
+   * `alcance` y `tx` son OBLIGATORIOS: es la lectura de la guardia, dentro de la transaccion y bajo
+   * el candado. `obtenerCierreParaPago` sigue sin alcance para los caminos que no registran un
+   * pago al mensajero (relectura idempotente, anulacion, `/cierres-admin`, incentivos).
+   */
+  obtenerCierreParaPagoEnAlcance(
+    cierreId: string,
+    alcance: Alcance,
+    tx: LiquidacionCierreTxClient,
+  ): Promise<CierreParaPagoDTO | null>;
+  /**
    * Feature 205 (T2.2, R5/R6/R8) — los cierres `aprobado` de UN mensajero, ordenados
    * `solicitado_at ASC, id ASC`.
    *
@@ -282,6 +298,17 @@ export interface ILiquidacionPagoRepository {
     tx?: LiquidacionCierreTxClient,
   ): Promise<CierreImputableDTO[]>;
   /**
+   * SLT-122 (R9/R10, PA2) — `listarCierresImputables` con el alcance del actor en el WHERE: el
+   * reparto de `/wallet/mensajeros` solo imputa a cierres de los que el actor es dueno. Mismo
+   * `select`, mismo orden y el mismo `tx` opcional (previsualizacion fuera, relectura dentro).
+   * `IncentivoMensajeroService` sigue con el de arriba: no registra pagos.
+   */
+  listarCierresImputablesEnAlcance(
+    mensajeroId: string,
+    alcance: Alcance,
+    tx?: LiquidacionCierreTxClient,
+  ): Promise<CierreImputableDTO[]>;
+  /**
    * Feature 205 (T3.1, R36 — enmienda de negocio) — CUANTOS cierres del mensajero NO estan
    * `aprobado`, agrupados por estado. Solo salen los estados que tienen al menos un cierre, y el
    * orden es por `estado` para que dos llamadas iguales pinten igual.
@@ -303,6 +330,8 @@ export interface ILiquidacionPagoRepository {
    */
   contarCierresNoAprobadosPorEstado(
     mensajeroId: string,
+    /** SLT-122 (R9): el complemento se cuenta en el MISMO alcance que los imputables. */
+    alcance: Alcance,
   ): Promise<CierresNoAprobadosPorEstadoDTO[]>;
   /**
    * Feature 205 (T2.2, R28) — los pagos de UN reparto, que es como se reconstruye el resultado
