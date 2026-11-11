@@ -156,8 +156,10 @@ mismo sentido. El test previsto de cada R está en `tasks.md > Trazabilidad`.
 - **R133** — `CierresBodegaAdminModule` DEBE montar `ColaCierres` y NO DEBE montar `ListaComprobantes`,
   `CierreBodegaFacturaResumen`, `CierresBodegaResueltosLista`, `SegmentedToggle` ni `PanelConmutado`.
   La mitad de Mensajero, la pantalla de la satélite y el detalle NO DEBEN cambiar. El censo de tablas
-  (`tests/unit/descarga/censo-tablas.ts`) DEBE dejar de listar SLT-105 en `montajesPrevistos` de
-  `ColaCierres` y DEBE listar `CierresBodegaAdminModule.tsx` entre sus `montajes`.
+  (`tests/unit/descarga/censo-tablas.ts`) DEBE quitar el campo `montajesPrevistos` de `ColaCierres`
+  (con dos montajes reales la guardia de cobertura lo exige; SLT-106 y SLT-108 se registrarán como
+  `montajes` al montar la cola) y DEBE listar `CierresBodegaAdminModule.tsx` entre sus `montajes`.
+  Lo ejercen `censo-tablas.ts` y `cobertura-tablas.guardia.test.ts`.
 - **R134** — La fila NO DEBE pintar lo que el canvas no dibuja: recaudado y métodos de pago, pago a
   mensajeros, lo que gana la bodega, quién marcó y su nota, la marca de modelo nuevo ni «Ver detalles».
   Esos datos DEBEN seguir en el detalle de bodega (PA5: se valida en Preview).
