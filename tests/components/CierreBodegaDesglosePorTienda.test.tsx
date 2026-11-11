@@ -493,7 +493,7 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
 
   const user = userEvent.setup();
   await user.click(
-    await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+    await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
   );
   await screen.findByRole("region", { name: "Lo que va a la central" });
   return user;

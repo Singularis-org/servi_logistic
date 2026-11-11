@@ -464,10 +464,14 @@ const COLAS: Cola[] = [
   },
   {
     nombre: "Cierres de bodega pendientes",
-    paginacion: "Paginación de los cierres de bodega pendientes",
-    seccion: "Cierres de bodega pendientes",
-    rol: "list",
+    // SLT-127 «Cola de bodega de la central con la cola única»: la cola única (tabla), con el
+    // contador en el `tablist` y los nombres de «Por conciliar».
+    paginacion: "Paginación de los cierres de bodega por conciliar",
+    seccion: "Cierres de bodega por conciliar",
+    rol: "table",
     contadorEn: "Cierres de bodega por estado",
+    contadorRol: "tablist",
+    textoContador: (n) => `Por conciliar ${n}`,
     descarga: "Cierres de bodega pendientes",
     textoFila: (i) => `Satélite ${etiqueta(i)}`,
     montar: () => {

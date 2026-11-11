@@ -618,10 +618,23 @@ describe("guardia de cobertura del censo de tablas", () => {
       if (!entrada) throw new Error(`el censo ya no tiene ${COLA}`);
       return entrada.tablas[0];
     };
+    // SLT-127 «Cola de bodega de la central con la cola única»: la cola ya tiene DOS montajes reales
+    // y su `montajesPrevistos` caducó. Los casos de abajo la devuelven en la copia al estado de
+    // SLT-102 (un montaje y fichas previstas) para seguir probando la excepción.
+    const conUnMontaje = (censo: ArchivoCensado[]) => {
+      const cola = tablaDeLaCola(censo);
+      cola.montajes = cola.montajes!.slice(0, 1);
+      cola.montajesPrevistos = ["SLT-106 «Bodega satélite: A consolidar con la cola única»"];
+      return cola;
+    };
 
-    it("el censo real cumple (y la cola declara sus montajes previstos)", () => {
-      expect(tablaDeLaCola(copia()).montajesPrevistos?.length ?? 0).toBeGreaterThan(0);
+    it("el censo real cumple (y la cola, con dos montajes, ya no declara previstos)", () => {
+      expect(tablaDeLaCola(copia()).montajes).toHaveLength(2);
+      expect(tablaDeLaCola(copia()).montajesPrevistos).toBeUndefined();
       expect(problemasMontajesPrevistos(CENSO_DATATABLE)).toEqual([]);
+      const unMontaje = copia();
+      conUnMontaje(unMontaje);
+      expect(problemasMontajesPrevistos(unMontaje)).toEqual([]);
     });
 
     it("(a) lista cerrada: otra ruta que lo declare es ROJO", () => {
@@ -639,19 +652,19 @@ describe("guardia de cobertura del censo de tablas", () => {
     it("(b) formato: una entrada que no es «SLT-n «título»» es ROJO", () => {
       for (const mala of ["SLT-105", "SLT-105 Cola de bodega", "slt-105 «Cola»", "SLT-x «Cola»", ""]) {
         const censo = copia();
-        tablaDeLaCola(censo).montajesPrevistos = [mala];
+        conUnMontaje(censo).montajesPrevistos = [mala];
         const problemas = problemasMontajesPrevistos(censo);
         expect(problemas, `«${mala}» debía ser ROJO`).toHaveLength(1);
         expect(problemas[0]).toContain("no cumple");
       }
       const vacia = copia();
-      tablaDeLaCola(vacia).montajesPrevistos = [];
+      conUnMontaje(vacia).montajesPrevistos = [];
       expect(problemasMontajesPrevistos(vacia)[0]).toContain("vacío");
     });
 
     it("(c) caducidad: con más de un montaje real, el campo sobra y es ROJO", () => {
       const censo = copia();
-      const cola = tablaDeLaCola(censo);
+      const cola = conUnMontaje(censo);
       cola.montajes = [...(cola.montajes ?? []), "app/(app)/bodega/_components/OtraPantalla.tsx"];
       const problemas = problemasMontajesPrevistos(censo);
       expect(problemas).toHaveLength(1);

@@ -621,7 +621,7 @@ const TABLAS = [
     control: "Cierres de bodega resueltos",
     montar: renderCierresBodega,
     filas: 1,
-    pestana: /^Resueltos/,
+    pestana: /^Conciliados/,
   },
   { control: "Cierres del día a consolidar", montar: renderConsolidacion, filas: 2 },
   {
@@ -1581,7 +1581,7 @@ describe("Cierres · descarga", () => {
     expect(listarHistoricoCierresBodegaCompleto).not.toHaveBeenCalled();
     expect(listarCierresBodegaAdmin).not.toHaveBeenCalled();
 
-    await abrirPestana(user, /^Resueltos/);
+    await abrirPestana(user, /^Conciliados/);
     await user.click(
       screen.getByRole("button", { name: "Descargar Cierres de bodega resueltos" }),
     );
@@ -1604,7 +1604,7 @@ describe("Cierres · descarga", () => {
     const user = userEvent.setup();
     renderCierresBodega();
 
-    await abrirPestana(user, /^Resueltos/);
+    await abrirPestana(user, /^Conciliados/);
     await user.click(
       screen.getByRole("button", { name: "Descargar Cierres de bodega resueltos" }),
     );
@@ -1646,7 +1646,7 @@ describe("Cierres · descarga", () => {
       total: 30,
     });
 
-    await abrirPestana(user, /^Resueltos/);
+    await abrirPestana(user, /^Conciliados/);
     await user.click(
       screen.getByRole("button", { name: "Descargar Cierres de bodega resueltos" }),
     );
@@ -1668,7 +1668,7 @@ describe("Cierres · descarga", () => {
       status: "forbidden",
     });
 
-    await abrirPestana(user, /^Resueltos/);
+    await abrirPestana(user, /^Conciliados/);
     await user.click(
       screen.getByRole("button", { name: "Descargar Cierres de bodega resueltos" }),
     );

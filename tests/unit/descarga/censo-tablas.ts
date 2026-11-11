@@ -688,18 +688,21 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
     ruta: "components/private/cierres/cola/ColaCierres.tsx",
     tablas: [
       {
-        nombre: "Cola de cierres del día (Pendientes / Resueltos)",
+        nombre:
+          "Cola de cierres: del día (Pendientes / Resueltos) y de bodega de la central " +
+          "(Por conciliar / Conciliados)",
         estado: "fuera",
         nota:
           "La descarga NO falta: va fuera de la tabla, en la fila de la barra («Descargar» de la " +
           "pestaña activa, `DescargarCierresButton` con Resumen y Detalle), para que cambiar de " +
           "pestaña no la desmonte (R100). Es el mismo conjunto del servidor que antes, y lo vigila " +
-          "`paginacion-transversal` (R52). Por eso el `<DataTable>` no declara `descarga=`.",
-        montajes: ["app/(app)/cierres-admin/_components/CierresAdminModule.tsx"],
-        montajesPrevistos: [
-          "SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados»",
-          "SLT-106 «Bodega satélite: A consolidar con la cola única»",
-          "SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero»",
+          "`paginacion-transversal` (R52). Por eso el `<DataTable>` no declara `descarga=`. " +
+          "SLT-127: la de bodega igual, con «Cierres de bodega pendientes/resueltos».",
+        // SLT-127 «Cola de bodega de la central con la cola única»: segundo montaje real, así que
+        // `montajesPrevistos` caduca (`cobertura-tablas.guardia`); SLT-106 y SLT-108 la añadirán aquí.
+        montajes: [
+          "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
+          "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
         ],
       },
     ],

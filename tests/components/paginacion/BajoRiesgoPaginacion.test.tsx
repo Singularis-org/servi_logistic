@@ -487,10 +487,13 @@ const LISTADOS: Listado[] = [
   },
   {
     nombre: "Cierres de bodega resueltos",
-    paginacion: "Paginación de los cierres de bodega resueltos",
-    tabla: "Cierres de bodega resueltos",
-    abrir: [/^Resueltos/],
-    rol: "list",
+    // SLT-127 «Cola de bodega de la central con la cola única»: la pestaña «Conciliados» de la cola
+    // única (tabla, `tab` que monta su panel).
+    paginacion: "Paginación de los cierres de bodega conciliados",
+    tabla: "Cierres de bodega conciliados",
+    abrir: [/^Conciliados/],
+    rol: "table",
+    panelSeMonta: true,
     descarga: "Cierres de bodega resueltos",
     textoFila: (i) => `Satélite ${etiqueta(i)}`,
     montar: () => {

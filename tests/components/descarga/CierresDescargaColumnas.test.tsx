@@ -637,7 +637,7 @@ const SUPERFICIES: readonly Superficie[] = [
     disparador: SELECTOR_DISPARADOR,
     columnas: COLUMNAS_DESCARGA_BODEGA_RESUELTOS,
     montar: renderCierresBodega,
-    pestana: /^Resueltos/,
+    pestana: /^Conciliados/,
   },
   {
     control: "Cierres del día a consolidar",

@@ -206,14 +206,14 @@ function montar(puedeConciliar = true) {
 
 async function abrirPendiente(user: ReturnType<typeof userEvent.setup>) {
   vi.mocked(verCierreBodegaDetalle).mockResolvedValue(detalle(PENDIENTE));
-  await user.click(await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }));
+  await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
   return screen.findByRole("dialog", { name: NOMBRE_DIALOGO });
 }
 
 async function abrirResuelto(user: ReturnType<typeof userEvent.setup>) {
   vi.mocked(verCierreBodegaDetalle).mockResolvedValue(detalle(RECIBIDO));
-  await user.click(within(screen.getByRole("group", { name: "Cierres de bodega por estado" })).getByRole("button", { name: /^Resueltos/ }));
-  await user.click(await screen.findByRole("button", { name: "Ver el cierre de bodega resuelto de Limón" }));
+  await user.click(screen.getByRole("tab", { name: /^Conciliados/ }));
+  await user.click(await screen.findByRole("button", { name: "Ver el cierre de bodega de Limón" }));
   return screen.findByRole("dialog", { name: NOMBRE_DIALOGO });
 }
 
@@ -306,7 +306,7 @@ describe("R119 — si la lectura falla no se abre el detalle", () => {
     await waitFor(() => expect(listarPendientesCierresBodegaPaginado).toHaveBeenCalled());
     const lecturas = vi.mocked(listarPendientesCierresBodegaPaginado).mock.calls.length;
     vi.mocked(verCierreBodegaDetalle).mockResolvedValue({ status: "no_encontrada" });
-    await user.click(await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }));
+    await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("El cierre de bodega ya no está disponible. Actualizando la lista."));
     await waitFor(() =>
       expect(vi.mocked(listarPendientesCierresBodegaPaginado).mock.calls.length).toBeGreaterThan(lecturas),
@@ -317,7 +317,7 @@ describe("R119 — si la lectura falla no se abre el detalle", () => {
   it("forbidden: aviso y sin detalle", async () => {
     const user = montar();
     vi.mocked(verCierreBodegaDetalle).mockResolvedValue({ status: "forbidden" });
-    await user.click(await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }));
+    await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No tenés permiso para ver este cierre de bodega."));
     expect(screen.queryByRole("dialog")).toBeNull();
   });

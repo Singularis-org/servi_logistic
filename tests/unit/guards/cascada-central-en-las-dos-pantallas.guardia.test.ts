@@ -143,16 +143,16 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
     ).toBeGreaterThan(50);
   });
 
-  it("las TRES superficies que montan la tarjeta de bodega están, y son éstas", () => {
+  it("las DOS superficies que montan la tarjeta de bodega están, y son éstas", () => {
     const archivos = [...new Set(USOS_BODEGA.map((u) => u.archivo))].sort();
     expect(
       archivos,
       "o apareció una superficie nueva —y entonces hay que revisarla a mano y añadirla aquí— o " +
-        "una de las tres desapareció y esta guardia se quedó vigilando un nombre muerto.",
+        "una de las dos desapareció y esta guardia se quedó vigilando un nombre muerto.",
     ).toEqual([
-      // El maestro: la COLA de decisión.
-      "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
-      // El maestro: el HISTÓRICO de resueltos.
+      // SLT-127 «Cola de bodega de la central con la cola única»: la cola del maestro ya no monta
+      // la tarjeta (la sustituye `ColaCierres`). El HISTÓRICO de resueltos sigue en el árbol sin
+      // montar hasta que lo retire SLT-115.
       "app/(app)/cierres-admin/_components/CierresBodegaResueltosLista.tsx",
       // El `adminSatelite`: su única superficie, y la que motivó la ficha.
       "app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx",
