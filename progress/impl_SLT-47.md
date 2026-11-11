@@ -904,3 +904,12 @@ Inventario por el grafo de imports estático (`import`, `export … from`, `vi.m
 </details>
 
 Veredicto: A y C hechos y en verde; B hecho, pero rompe 7 aserciones (más una acción) de dos tests de SLT-47 no autorizados: parado a la espera del humano.
+
+### Estado de commit de A, B y C (implementer)
+
+- A (R1, sin respaldo de rótulos): `f79eeb21`. C («Todos los / Todas las» por el singular): `4d6e6bdb`.
+- **B (homónimos) NO está commiteado**: rompe 7 aserciones de dos tests de esta feature
+  (`FiltroUbicacionBarra.test.tsx:150,151,160,161,164,175,230,304` y
+  `novedades-filtros-lugar.test.ts:107-113,117-118,213`), fuera de lo autorizado (solo
+  `ordenes-filtros-def.test.ts:165`). Se revirtió del árbol; el parche está en el scratchpad de la
+  sesión (`slt47-B-homonimos.patch`) a la espera de la decisión del humano.
