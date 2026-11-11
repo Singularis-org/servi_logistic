@@ -271,6 +271,15 @@
 - `tests/integration/db/plan-de-la-empresa-periodo.test.ts`
 - `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
 - `tests/integration/db/planes-periodicidad-ordenes.test.ts`
+- `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`
+- `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
+- `tests/unit/api/procesar-jobs-registro.test.ts`
+- `tests/unit/services/jobs-registro.test.ts`
+- `tests/integration/api/procesar-jobs-geocodificacion.test.ts`
+- `tests/integration/api/procesar-jobs-webhook-estado.test.ts`
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`
+
+> 2026-11-11 (humano): +7 por el registro del job nuevo y T3.1; 56 archivos aceptados.
 
 49 archivos (122 % de `max_archivos` = 40). Los 44 aceptados con P11 (con las migraciones ya en `20261111`)
 más 5 por la periodicidad del plan: `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`, `PlanForm.tsx`,

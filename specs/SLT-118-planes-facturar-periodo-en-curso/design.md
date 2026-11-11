@@ -293,7 +293,8 @@ La de T2, con el fin previsto `plan_fin_periodo_calendario(periodicidad, desde)`
 órdenes con `ordenes(desde, now())` y las dos cuotas previstas, cada una nula cuando no la llevará: con marca (en
 la en curso solo puede ser su `desde`, P18), la primera cuota con el plan de la propia factura; y la de la emisión
 en ese fin, `cuota(p_org, fin, plan, tipo, false)` con el plan del cambio pendiente si `plan_cambio_desde_at ≤
-fin`, y si no con el vigente de la empresa.
+fin`, y si no con el mismo plan que usará `cerrar` (el de la factura siguiente; humano, 2026-11-11: `en_curso` se
+iguala a `cerrar`).
 
 ### 2.7 El tope del pago (SL-45) — R18, R19
 
