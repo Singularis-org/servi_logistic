@@ -146,3 +146,4 @@ Ninguna. P1–P6 las cerró el humano el 2026-11-11 (filas de abajo).
 | 2026-11-11 | P6. Tamaño del PR (81 archivos, ~4.100 líneas) | Un solo PR, aceptando el tamaño. |
 | 2026-11-11 | R36. Catálogo con `niveles` y `lugares` cambia aserciones exactas | Autorizado por el humano (R38): `filtros-ordenes-service.test.ts` y `geo-lecturas-catalogo.test.ts` suman solo los dos campos nuevos a lo esperado; el resto de lo que comparan no cambia. Se mide y anota el tamaño del catálogo de CR. |
 | 2026-11-11 | R16. `findNovedadesByTienda` lee `cantonId` y `distritoId` | Autorizado por el humano (R38): `orden-repository.novedades.test.ts` suma solo esas dos columnas al `select` esperado. |
+| 2026-11-11 | R22–R24. Vistas v2 cambian aserciones con `v: 1` | Autorizado por el humano (R38): en los tests de vistas solo cambian el número de versión esperado y las claves de lugar viejas traducidas a `lugar_id`; nada más. Cada test tocado se anota en `progress/impl_SLT-47.md`. |
