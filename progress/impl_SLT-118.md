@@ -397,3 +397,62 @@ Veredicto: T14.1–T14.3, T15.1 y T15.3 hechos; typecheck, eslint y los 112 test
 - `PlanForm.tsx`: selector «Facturación de órdenes» (`RadioGroup`, «Quincenal»/«Mensual» de `TEXTOS_TIPO_COBRO.tipo`), quincenal al crear o si el DTO no la trae, siempre en la petición; error de campo `periodicidadOrdenes` con `aria-invalid`/`aria-describedby` y foco.
 - `tests/components/PlanFormPeriodicidad.test.tsx` (nuevo, 5 casos R35). Ajustados: `PlanForm.test.tsx` (3 peticiones exactas con `periodicidadOrdenes: "quincenal"`), `PlanFormDescuentos.test.tsx` (el radio «Quincenal» buscado dentro del grupo «Tipo de cobro»).
 - Verificación: typecheck verde; eslint limpio; los 7 tests que importan `PlanForm` 93/93.
+
+## Mapa R → test (R1–R40)
+T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `R<n>` en los tests del diff con
+`origin/dev`) y de las tandas 5–10 de este archivo. Abreviaturas: `cierre`, `cambio-plan`, `gemelas`, `deuda` y
+`aislamiento` = `tests/integration/db/factura-plataforma-<nombre>.test.ts` (`gemelas` = `…-cuota-gemelas…`);
+`jobs` = `tests/unit/planes/jobs-factura-plataforma.test.ts`; `cambio-empresa`, `tipo-cobro-int`, `custom-asigna`,
+`periodicidad` = `tests/integration/db/planes-cambio-empresa.test.ts`, `…/planes-cambiar-tipo-cobro.test.ts`,
+`…/planes-crear-custom-asigna.test.ts`, `…/planes-periodicidad-ordenes.test.ts`; `svc-periodo`, `svc-tipo-cobro` =
+`tests/unit/services/planes-service-periodo.test.ts`, `…/planes-service-tipo-cobro.test.ts`.
+
+| R | Archivo | `it` / `describe` |
+|---|---|---|
+| R1 | cierre | «R1, R2, R3, R5, R9: sin plan factura quincenal, sin cuota, y cada corrida emite la vencida y abre la siguiente» |
+| R2 | cierre | el mismo; «R2, R3, R8: mensual 31 000 con 10 % y órdenes quincenales…»; «R2, R3, R8: anual con órdenes mensuales…» |
+| R3 | cierre; jobs | los tres de arriba; «R3: sin que nadie lo pida, cierra CADA empresa con el mismo «ahora» del reloj de la cola», «R3: sin empresas, la corrida termina bien sin cerrar nada», «R3: una empresa sin nada vencido (o en espera de un cambio, R39) devuelve 0…» |
+| R4 | cierre | «R4: a las 00:04:59.999 del 16 la factura del 1 al 15 queda fijada pero sin cerrar; a las 00:10, se cierra» |
+| R5 | cierre; cambio-plan | «R1, R2, R3, R5, R9…»; «R5, R6, R7: cifras de las órdenes por instante…»; «R16, R5: quincenal con inicio el 1 aplicado el 12…» (las dos cuotas) |
+| R6 | cierre | «R5, R6, R7: cifras de las órdenes por instante, bordes al milisegundo, un reverso en la factura del reverso…» |
+| R7 | cierre | el mismo («…y la traza que suma igual») |
+| R8 | cierre; cambio-plan | «R2, R3, R8» ×2; «R8: bimestral con órdenes quincenales…»; «R8: quincenal 15 500…»; «R8: un precio editado con efecto el 20…»; «R8: un pendiente por SQL quincenal → mensual con efecto el 16…» |
+| R9 | cierre | «R1, R2, R3, R5, R9…»; «R9: un plan sin costo base emite sus facturas sin cuota y con los cargos de sus órdenes» |
+| R10 | gemelas | «R10: el costo de un período completo de la base es igual a montoDelPeriodo…», «R10: sin precio…», «R10: el costo de un tramo y sus días…», «R10: el redondeo del tramo es el mismo en los bordes…» |
+| R11 | cierre | «R11: cerrar otra vez, o tras un cierre que falló a medias…»; «R26 (P15), R11: … dos cierres a la vez desde dos conexiones facturan una sola vez» |
+| R12 | jobs | «R12: si una empresa falla, cierra las demás y DESPUÉS falla nombrándola…», «R12: un fallo al listar las empresas falla la corrida sin cerrar ninguna» |
+| R13 | aislamiento | «R13: nadie cambia una factura cerrada, tampoco el dueño: SL118 sin cambiar nada» |
+| R14 | cierre | «R14: el número es correlativo por empresa desde 1, en el orden de los períodos, y la en curso no tiene» |
+| R15 | cambio-plan | «R15, R39: mensual → quincenal al 1 de diciembre…»; «R15: un pendiente por SQL con efecto el 10 (a mitad de factura)…» |
+| R16 | cambio-plan | «R16: un cambio aplicado después del cierre de su factura…»; «R16: un plan con órdenes mensuales tomado por una factura quincenal…»; «R16, R5…»; «R16, R29: mensual con inicio el 1 aplicado el 12…»; «R16: quincenal con inicio el 1 aplicado el 20…»; «R16, R28, R29: alta el 10…»; «R16, R39: inicio el 16 que aplica la cola…»; «R16: una por cerrar no cambia su plan ni su periodicidad…: SL118…» |
+| R17 | cambio-plan | «R17: guardar, reemplazar y cancelar un pendiente, o editar el precio del plan, no cambia ninguna factura» |
+| R18 | deuda; `tests/unit/utils/deuda-plataforma.test.ts` | «R18, R19: una factura con las dos cuotas sube la deuda en las dos…»; `describe` «SLT-118 — derivarDeudaPlataforma con cuotas (R18)» (5 `it`); cableado con cuotas en cero en los tres `tests/unit/actions/*.composition-root.test.ts` de deuda, empresas y wallet |
+| R19 | deuda; unit deuda | «R18, R19…» (pago previo intacto, tope en app y base); «pagar la cuota exacta deja la empresa al día (R19)» |
+| R20 | deuda | «R20: aplicar una primera asignación (R16) y cerrar una factura con dos cuotas no escriben cargos, trazas ni movimientos de la wallet» |
+| R21 | aislamiento | «R21: la app en la empresa A solo lee las facturas de A…»; «R21: una factura no cambia de empresa…: SL017»; «R24, R21: la empresa A lee las suyas…; la de otra empresa o sin empresa, 42501» |
+| R22 | aislamiento; `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` | «R22: la app no inserta, no cambia y no borra facturas, ni las suyas: 42501 sin cambios»; «R22: la app no ejecuta el cierre, la toma de un cambio ni ninguna función que escribe facturas: 42501»; «ningún archivo de lib/ ni de app/ escribe en factura_plataforma (SLT-118, R22)» |
+| R23 | aislamiento | **Hueco parcial.** Solo la base: «R23: la plataforma (el dueño, como el superadmin) lee las facturas de las dos empresas» (SQL como dueño). La lectura del superadmin por la app (`deEmpresaParaPlataforma`, T8.1) no existe: pregunta abierta en `progress/features/SLT-118.md` |
+| R24 | aislamiento | Empresa: «R24: plan mensual: la del 1 al 15 sin cuota prevista…», «R24: con un cambio pendiente cuyo efecto es el fin de la en curso…», «R24: quincenal con inicio el 1 aplicado el 12…», «R24, R21…». **Hueco:** la parte del superadmin (T8.1, T9.2), por la misma pregunta abierta |
+| R25 | jobs; cierre | `describe` «SLT-118 — registro y recurrencia del cierre de facturas (R25)» (6 `it` + `it.each` «R25: cada hora a los 10 minutos — $caso» ×4); «R25: la siembra del cierre (sembrarCierreFacturas) y su re-agendado dejan UNA fila por corrida (contarJobs)» |
+| R26 | cierre | «R26: una empresa dada de alta después…»; «R26: la migración deja a cada empresa UNA factura en curso…»; «R26 (P15), R11: el período de cobro en curso cuenta como pagado…» |
+| R27 | cierre | «R27: con una factura cerrada con cuota, el down se niega sin tocar nada»; «R27: con solo una primera cuota cerrada…»; «R27: sin cuotas cerradas, el down deja la base como estaba…» |
+| R28 | cambio-plan | «R16, R28, R29: alta el 10…»; «R28, R29: quincenal con inicio el 5 aplicado en el acto…»; «R28, R29: inicio el 18 (futuro, lo aplica la cola)…» |
+| R29 | cambio-plan; gemelas | los tres de R28; «R16, R29…»; «R29: anual desde el 18 con órdenes quincenales: 44 de 365…»; «R29: la primera cuota que guarda la base es la de costoDelPeriodoEnCurso…»; «R29: sin el permiso de primera cuota, un tramo que no empieza en el período no tiene cuota (R8)» |
+| R30 | cambio-empresa; tipo-cobro-int; custom-asigna; cambio-plan; svc-periodo | `it.each` «R30, R32: asignar otro plan, %s → %s elegido el %s → pendiente para el %s…», «R30: «hoy» = 10 de noviembre, mensual → 1 de diciembre…», «R17, R20, R30…», «R16, R20, R30…», «R18, R30, R31…»; casos «R30: a uno más largo / más corto…» del `describe` «SLT-118 — cambiar el tipo de cobro con el tipo de referencia (R30, R31)»; «R30, R32 (SLT-118): un custom para una empresa con plan mensual…»; «R30 (P9): quincenal → anual guardado por `PlanesService`…»; `it.each` «R30, R31: %s → %s elegido el %s → %s…» |
+| R31 | cambio-empresa; tipo-cobro-int; svc-periodo; `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` | `it.each` «R31: asignar otro plan, %s → %s elegido el %s (inicio de un período del tipo de referencia) → se respeta», «R31, R30: quincenal → mensual el 16…», «R18, R31: con «hoy» en el inicio de un bimestre…»; casos «R31: inicio común futuro», «R31, R30: inicio del vigente pero no del de referencia» y «R31: mensual → anual con «hoy» = 1 de enero…»; «R30, R31: %s → %s…»; `describe` «D16 — cambiarTipoCobro deja su acción propia en el historial» (con «hoy» = 1 de enero) |
+| R32 | svc-periodo; svc-tipo-cobro; componentes | «R32: asignar pasa la elegida…», «R32: crear un custom…», «R32: cambiar el tipo responde con la fecha real…», «R32: asignar aplicado en el acto responde `vigenteDesde: null`»; «SLT-118 R32: el repositorio llevó la elegida al 1 de enero…»; `tests/components/PlanEmpresaTipoCobro.test.tsx` «SLT-118 R32: con el cambio pendiente…»; `tests/components/PlanEmpresaPeriodo.test.tsx` «SLT-118 R32: al cambiar el plan…»; `tests/components/PlanesModule.test.tsx` «SLT-118 R32: crear un custom…», «SLT-118 R32: un plan que rige ya…» |
+| R33 | cambio-empresa; svc-periodo | «R33: la primera asignación no se lleva: inicio el 10 (a mitad de período)…»; «R33: una primera asignación (`inicio`) no se lleva, aunque caiga a mitad de período» |
+| R34 | cambio-empresa; svc-periodo | «R34, R32: con hoy el 10 de noviembre, quincenal → anual elegido el 10 de noviembre de 2027 (el tope)…»; «R34: elegida el 10 de noviembre de 2027 (el tope) entra…», «R34: elegida el 11 de noviembre de 2027 → validation_error…» |
+| R35 | periodicidad; `tests/components/PlanFormPeriodicidad.test.tsx` | «R35: crear sin ella la deja quincenal…», «R35: editar en el acto la cambia…», «R35: programada, no cambia hasta su fecha…», «R35, P14: un plan que ya existía…», «R35: un valor que no es quincenal ni mensual…»; `describe` «SLT-118 R35 — «Facturación de órdenes» en el formulario del plan» (5 `it`) |
+| R36 | cambio-plan | «R36: la periodicidad del plan editada de quincenal a mensual el 10 de noviembre…», «R36: … de mensual a quincenal el 10 de noviembre…» |
+| R37 | periodicidad | «R37: asignar con tipo quincenal…», «R37: crear el custom con tipo quincenal y órdenes mensuales…», «R37: cambiar el tipo a quincenal…», «R37: editar a mensual con una empresa quincenal…», «R37: editar a mensual un plan que una empresa tiene como cambio pendiente…», «R37: una programada a mensual que ya no pasa al aplicarse…» |
+| R38 | cambio-plan | «R38: mensual con órdenes quincenales a un plan mensual con órdenes mensuales, guardado el 10 de noviembre…» |
+| R39 | cambio-plan; jobs | «R15, R39…»; «R16, R39: … si el cierre llega antes que la cola, espera»; «R3: una empresa sin nada vencido (o en espera de un cambio, R39)…» |
+| R40 | deuda | «R40: un cambio de plan y de tipo de cobro aplicado tras emitir dos cuotas no las devuelve…» |
+
+Huecos: R23 (lectura del superadmin por la app) y la parte del superadmin de R24. Los dos esperan a T8.1
+`deEmpresaParaPlataforma` y a la pregunta abierta de `progress/features/SLT-118.md`. No queda ningún otro R sin test.
+Corrección al mapa de `tasks.md`: R33 no está en `cambio-plan` (su cabecera dice «R33 queda fuera de este archivo»),
+sino en `cambio-empresa` y `svc-periodo`.
+
+Veredicto: mapa R1–R40 completo, salvo R23 y R24 del superadmin, que esperan a T8.1.

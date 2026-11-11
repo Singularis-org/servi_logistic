@@ -255,11 +255,91 @@ esta bien hecha, no solo si "funciona".
     - **Quién escribe:** las pantallas solo llaman a las actions de SL-24 (`lib/actions/planes`).
       Las lecturas nuevas del superadmin están en `PlanesRepository`, en `comoPlataforma`, y no
       escriben. Llevan la ficha `"SL-24"` porque `FichaJira` no admite `SLT` (deuda D29).
+  - **Periodicidad de órdenes (SLT-118):** cada plan factura sus órdenes `quincenal` (cortes el 1 y
+    el 16) o `mensual` (corte el 1), en `plan.periodicidad_ordenes` (migración
+    `20261111130100_factura_plataforma`: `NOT NULL DEFAULT 'quincenal'` y un CHECK con los dos valores;
+    los planes que ya existían quedan quincenales). Se elige al crear y al editar, también en una edición
+    programada, y deja su fila en `plan_rastro` (`lib/planes/rastro.ts`). Es independiente del tipo de
+    cobro de la cuota, con una regla (R37): una empresa no queda con tipo `quincenal` en un plan de órdenes
+    `mensual`, porque la cuota del 16 no tendría factura que la emitiera. `PlanesRepository` la aplica
+    sin escribir nada: al asignar, crear un custom o cambiar el tipo (`cambiarEmpresaEnTx`, variante
+    `periodicidad_incompatible` → `validation_error` en `tipoCobro`); al editar a `mensual` un plan
+    con empresas quincenales o con un pendiente quincenal hacia él (`validation_error` en
+    `periodicidadOrdenes`); y al aplicar una edición programada que ya no la cumple (el trabajo falla).
+  - **El costo base se cobra (SLT-118):** deja de ser solo informativo. Ya no rige SLT-66 R21 ni la
+    parte de la cuota de SLT-86 R14. La cuota es el costo base de un período de cobro completo, con su
+    descuento, y la lleva la factura de la plataforma que se emite al empezar ese período (ver
+    «Facturas de la plataforma»). No hay prorrateo, salvo en la primera cuota de la primera asignación
+    de un plan (P6): esa cobra los días del tramo con `plan_costo_del_tramo`.
+  - **Fecha de efecto del superadmin (SLT-118, P7, P9, P10):** modifica SLT-86 R16–R18. Un cambio de
+    plan o de tipo de una empresa que ya tiene plan rige al inicio del próximo período del **tipo de
+    referencia**, el más largo entre el vigente y el nuevo (orden de `TIPOS_COBRO`). Si la fecha elegida
+    ya es el inicio de un período de ese tipo, se respeta. Lo calcula `efectoAlInicioDelPeriodo`, que
+    `PlanesRepository.cambiarEmpresaEnTx` llama bajo el cerrojo. Desde ahí, el pendiente, su trabajo y
+    el historial usan la fecha real. Una primera asignación (`"inicio"`) rige el día elegido (P8). El
+    tope de «hoy + 12 meses» se valida sobre la fecha elegida (P10). La respuesta de asignar, de crear un
+    custom y de cambiar el tipo trae la fecha real en `vigenteDesde`, y las confirmaciones la muestran.
 - **Traza de facturación (SLT-85, 2026-11-09).** `cobro_plataforma_traza` (negocio, RLS por empresa)
   guarda una copia del momento por cada movimiento de `cobro_plataforma_movimiento`. Solo la escribe
   el trigger `AFTER INSERT` `cobro_plataforma_traza_al_registrar` sobre esa tabla, en la misma
   transacción; `servi_app` no la escribe (`REVOKE`) y nadie la cambia (`SL085`, también el dueño). Las
   filas que rellenó la migración `20261109120000` salen con `reconstruido = true`.
+- **Facturas de la plataforma (SLT-118, 2026-11-11).** `factura_plataforma` (migración
+  `20261111130100_factura_plataforma`) es de negocio, con RLS por empresa: la empresa solo **lee** sus
+  facturas. Es un estado de cuenta interno, sin Hacienda. Cada fila es un intervalo de órdenes
+  `[desde, hasta)` en uno de tres estados: `en_curso` (una por empresa y sin fin), `por_cerrar` (fin
+  fijado) o `cerrada` (cifras guardadas y número correlativo por empresa desde 1).
+  - **Quién escribe:** solo las funciones del dueño en la base (`SECURITY DEFINER`, con `EXECUTE`
+    revocado a `PUBLIC`). `servi_app` tiene `REVOKE INSERT, UPDATE, DELETE` y solo puede llamar a
+    `factura_plataforma_en_curso`. El trigger `factura_plataforma_inmutable` (`SL118`, también para el
+    dueño) impide cambiar una factura cerrada. En una por cerrar impide mover el plan, la periodicidad o
+    las fechas, y la marca de la primera cuota solo pasa de nula a un valor. La guardia
+    `cobro-plataforma-solo-por-trigger` prohíbe escribir la tabla desde `lib/` o `app/`. La app llama a
+    dos funciones. `FacturaPlataformaRepository.cerrar` llama a `factura_plataforma_cerrar` en
+    `comoPlataforma`, con su entrada en `EXCEPCIONES_DE_PLATAFORMA`. `PlanesRepository.aplicarEnTx`
+    llama a `factura_plataforma_tomar_cambio`.
+  - **Una factura por corte:** el fin de la factura sale de la periodicidad de órdenes de **su**
+    plan (sin plan, quincenal), no del tipo de cobro. Un cambio de plan o de periodicidad no mueve el
+    fin de la factura en curso. Al llegar el fin, la factura se fija (`por_cerrar`) y se abre la
+    siguiente con el plan que la empresa tiene en ese momento (`factura_plataforma_avanzar`).
+  - **Cierre:** el trabajo recurrente `factura_plataforma_cerrar` corre cada hora a los :10, una vez
+    para todas las empresas (`lib/planes/jobs-factura-plataforma.ts`, de núcleo, sembrado por
+    `scripts/siembra-jobs-recurrentes.ts`). Cierra cada empresa en su transacción y cierra las demás
+    aunque una falle; después falla nombrando las que fallaron, para que la cola reintente. La función
+    toma la empresa en `FOR UPDATE` y cierra las facturas por cerrar cuyo fin pasó hace al menos 5
+    minutos. Guarda las cifras de las órdenes del intervalo (cargos, reversos y total, por
+    `ocurrido_at`) y es idempotente.
+  - **Cuota por adelantado:** cada factura, al emitirse en su fin, lleva la cuota del período de cobro
+    que **empieza** ahí, con el plan de la factura siguiente (columnas `cuota_*`). Si en su emisión no
+    empieza ningún período de cobro, no lleva cuota. Sin plan o sin costo base, tampoco. Cada período se
+    cobra una sola vez (`factura_plataforma_cuota`). Las gemelas en TS son `montoDelPeriodo` y
+    `costoDelTramo`.
+  - **Primera cuota:** en una primera asignación, `factura_plataforma_tomar_cambio` pone la marca
+    `primera_cuota_desde_at`. Al cerrar, se cobra aparte, en el grupo `primera_cuota_*`, con los días
+    del tramo hasta el fin de su período. Una factura puede llevar las dos cuotas. La factura sembrada
+    al desplegar no lleva marca: el período de cobro en curso cuenta como pagado.
+  - **Toma del cambio sin corte:** `factura_plataforma_tomar_cambio` corre antes del `UPDATE` de
+    `organizacion`, con la empresa ya en `FOR UPDATE`, y no fija ni abre facturas al aplicar. Hay una
+    excepción: una factura en curso sin plan con efecto a mitad de factura se fija en el efecto, en una
+    sola factura con la primera cuota. Si el efecto es su `desde` o anterior, la factura en curso pasa
+    entera al plan nuevo.
+  - **Espera del cierre:** con un cambio pendiente cuyo efecto es el fin de una factura por cerrar, o
+    anterior, el cierre se detiene ahí, sin cerrar esa factura ni las siguientes, hasta que la cola
+    aplica el cambio. No es un fallo.
+  - **Sin devoluciones:** un cambio de plan o de tipo aplicado después de emitir una cuota no la
+    devuelve ni baja la deuda. Las facturas cerradas no cambian.
+  - **Deuda:** cargos − reversos + (`cuota` + `primera_cuota` de las facturas **cerradas**) − pagos.
+    `CobroPlataformaMovimientoRepository.sumasPorTipo` las suma como el tipo `cuota` y
+    `derivarDeudaPlataforma` las suma como un cargo. `EmpresasPlataformaRepository` las suma por
+    empresa en el listado del superadmin. El trigger `wallet_movimiento_tope_pago_plataforma` las
+    incluye en el tope del pago. El cierre no escribe en `cobro_plataforma_movimiento`,
+    `cobro_plataforma_traza` ni `wallet_movimiento`.
+  - **Lectura:** la empresa lee sus facturas con `FacturaPlataformaRepository.deLaEmpresa`. Es una
+    sola sentencia que trae las cerradas y `factura_plataforma_en_curso` (`42501` con otra empresa o
+    sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. La
+    lectura del superadmin de una empresa (`deEmpresaParaPlataforma`) **aún no existe**: está abierta
+    la pregunta de cómo fija el contexto de empresa (`progress/features/SLT-118.md > Preguntas
+    abiertas`).
 - **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
   plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
   empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo

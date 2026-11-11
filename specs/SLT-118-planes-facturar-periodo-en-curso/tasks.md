@@ -185,7 +185,7 @@
 ## Cierre
 
 ### T10 — Documentación y gate (depende de todo)
-- [ ] **T10.1** `docs/architecture.md > Multi-empresa`: párrafo «Facturas de la plataforma (SLT-118)»: tabla,
+- [x] **T10.1** `docs/architecture.md > Multi-empresa`: párrafo «Facturas de la plataforma (SLT-118)»: tabla,
   quién escribe, una factura por corte con la periodicidad de órdenes del plan (sin plan, quincenal), la cuota
   por adelantado en la factura emitida al empezar su período (con el plan de la siguiente), la primera cuota, la
   espera del cierre al cambio pendiente, sin devoluciones, toma del cambio sin corte, deuda. Y en «Planes y límites»:
@@ -202,90 +202,111 @@
 
 | Requisito | Test |
 |---|---|
-| R1–R7, R9, R11, R14, R26, R27 | `tests/integration/db/factura-plataforma-cierre.test.ts` (R3 también `tests/unit/planes/jobs-factura-plataforma.test.ts`; R5 también `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, la factura con las dos cuotas) |
-| R8 | `tests/integration/db/factura-plataforma-cierre.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R1, R2, R4, R6, R7, R9, R11, R14, R26, R27 | `tests/integration/db/factura-plataforma-cierre.test.ts` |
+| R3 | `tests/integration/db/factura-plataforma-cierre.test.ts`, `tests/unit/planes/jobs-factura-plataforma.test.ts` |
+| R5, R8 | `tests/integration/db/factura-plataforma-cierre.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
 | R10 | `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
-| R12, R25 | `tests/unit/planes/jobs-factura-plataforma.test.ts` |
-| R13, R21, R23, R24 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` |
-| R15, R16, R17, R28, R36, R38, R39 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
-| R18 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` |
-| R19, R20, R40 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
+| R12 | `tests/unit/planes/jobs-factura-plataforma.test.ts` |
+| R13, R21 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` |
+| R15, R16, R17, R28, R36, R38 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R18 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` (y en cero en los tres `tests/unit/actions/*.composition-root.test.ts` de deuda, empresas y wallet) |
+| R19 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` |
+| R20, R40 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
 | R22 | `tests/integration/db/factura-plataforma-aislamiento.test.ts`, `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` |
+| R23 | **Hueco parcial:** `tests/integration/db/factura-plataforma-aislamiento.test.ts` solo prueba la base (SQL como dueño). Falta la lectura del superadmin por la app (`deEmpresaParaPlataforma`, T8.1), que espera la pregunta abierta de `progress/features/SLT-118.md` |
+| R24 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` (lado de la empresa). **Hueco:** la parte del superadmin (T8.1, T9.2), por la misma pregunta |
+| R25 | `tests/unit/planes/jobs-factura-plataforma.test.ts`, `tests/integration/db/factura-plataforma-cierre.test.ts` (la siembra) |
 | R29 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
 | R30 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
-| R31 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` |
-| R32 | `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/services/planes-service-tipo-cobro.test.ts`, `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx` |
-| R33 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R31 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` |
+| R32 | `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/services/planes-service-tipo-cobro.test.ts`, `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanEmpresaPeriodo.test.tsx`, `tests/components/PlanesModule.test.tsx` |
+| R33 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
 | R34 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
 | R35 | `tests/integration/db/planes-periodicidad-ordenes.test.ts`, `tests/components/PlanFormPeriodicidad.test.tsx` |
 | R37 | `tests/integration/db/planes-periodicidad-ordenes.test.ts` |
+| R39 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/unit/planes/jobs-factura-plataforma.test.ts` |
+
+Con el nombre de cada `it`: `progress/impl_SLT-118.md > Mapa R → test (R1–R40)`.
 
 ## Archivos esperados
 
-- `db/schema.prisma`
-- `db/migrations/20261111130000_factura_plataforma_job_enum/migration.sql`
-- `db/migrations/20261111130000_factura_plataforma_job_enum/down.sql`
-- `db/migrations/20261111130100_factura_plataforma/migration.sql`
-- `db/migrations/20261111130100_factura_plataforma/down.sql`
-- `lib/db/modelos-de-negocio.ts`
-- `lib/db/excepciones-aislamiento.ts`
-- `lib/types/factura-plataforma.ts`
-- `lib/types/planes.ts`
-- `lib/interfaces/repositories/IFacturaPlataformaRepository.ts`
-- `lib/interfaces/repositories/IPlanesRepository.ts`
-- `lib/repositories/FacturaPlataformaRepository.ts`
-- `lib/repositories/PlanesRepository.ts`
-- `lib/services/PlanesService.ts`
-- `lib/planes/jobs-factura-plataforma.ts`
-- `lib/planes/rastro.ts`
-- `lib/planes/mensajes.ts`
-- `lib/modulos/reparto.ts`
-- `app/api/cron/procesar-jobs/route.ts`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
 - `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
 - `app/(app)/plataforma/planes/_components/PlanForm.tsx`
-- `scripts/siembra-jobs-recurrentes.ts`
-- `lib/interfaces/repositories/ICobroPlataformaMovimientoRepository.ts`
-- `lib/repositories/CobroPlataformaMovimientoRepository.ts`
-- `lib/utils/deuda-plataforma.ts`
-- `lib/repositories/EmpresasPlataformaRepository.ts`
+- `app/api/cron/procesar-jobs/route.ts`
+- `db/migrations/20261111130000_factura_plataforma_job_enum/down.sql`
+- `db/migrations/20261111130000_factura_plataforma_job_enum/migration.sql`
+- `db/migrations/20261111130100_factura_plataforma/down.sql`
+- `db/migrations/20261111130100_factura_plataforma/migration.sql`
+- `db/schema.prisma`
 - `docs/architecture.md`
-- `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`
-- `tests/unit/guards/rls-por-empresa.guardia.test.ts`
-- `tests/unit/planes/jobs-factura-plataforma.test.ts`
-- `tests/unit/utils/deuda-plataforma.test.ts`
-- `tests/unit/services/planes-service-periodo.test.ts`
-- `tests/unit/services/planes-service-tipo-cobro.test.ts`
+- `lib/db/excepciones-aislamiento.ts`
+- `lib/db/modelos-de-negocio.ts`
+- `lib/interfaces/repositories/ICobroPlataformaMovimientoRepository.ts`
+- `lib/interfaces/repositories/IFacturaPlataformaRepository.ts`
+- `lib/interfaces/repositories/IPlanesRepository.ts`
+- `lib/interfaces/services/ITopePagoPlataformaService.ts`
+- `lib/modulos/reparto.ts`
+- `lib/planes/jobs-factura-plataforma.ts`
+- `lib/planes/mensajes.ts`
+- `lib/planes/rastro.ts`
+- `lib/repositories/CobroPlataformaMovimientoRepository.ts`
+- `lib/repositories/EmpresasPlataformaRepository.ts`
+- `lib/repositories/FacturaPlataformaRepository.ts`
+- `lib/repositories/PlanesRepository.ts`
+- `lib/services/PlanesService.ts`
+- `lib/types/factura-plataforma.ts`
+- `lib/types/planes.ts`
+- `lib/utils/deuda-plataforma.ts`
+- `scripts/siembra-jobs-recurrentes.ts`
+- `tests/components/PlanEmpresaPeriodo.test.tsx`
 - `tests/components/PlanEmpresaTipoCobro.test.tsx`
 - `tests/components/PlanesModule.test.tsx`
+- `tests/components/PlanForm.test.tsx`
+- `tests/components/PlanFormDescuentos.test.tsx`
 - `tests/components/PlanFormPeriodicidad.test.tsx`
-- `tests/integration/db/factura-plataforma-cierre.test.ts`
-- `tests/integration/db/factura-plataforma-cambio-plan.test.ts`
-- `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`
-- `tests/integration/db/factura-plataforma-deuda.test.ts`
-- `tests/integration/db/factura-plataforma-aislamiento.test.ts`
-- `tests/integration/db/planes-cambio-empresa.test.ts`
-- `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`
-- `tests/integration/db/planes-crear-custom-asigna.test.ts`
-- `tests/integration/db/planes-asignacion.test.ts`
-- `tests/integration/db/plan-de-la-empresa-periodo.test.ts`
-- `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
-- `tests/integration/db/planes-periodicidad-ordenes.test.ts`
-- `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`
-- `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
-- `tests/unit/api/procesar-jobs-registro.test.ts`
-- `tests/unit/services/jobs-registro.test.ts`
 - `tests/integration/api/procesar-jobs-geocodificacion.test.ts`
 - `tests/integration/api/procesar-jobs-webhook-estado.test.ts`
+- `tests/integration/db/factura-plataforma-aislamiento.test.ts`
+- `tests/integration/db/factura-plataforma-cambio-plan.test.ts`
+- `tests/integration/db/factura-plataforma-cierre.test.ts`
+- `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`
+- `tests/integration/db/factura-plataforma-deuda.test.ts`
+- `tests/integration/db/plan-de-la-empresa-periodo.test.ts`
+- `tests/integration/db/planes-asignacion.test.ts`
+- `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts`
+- `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`
+- `tests/integration/db/planes-cambio-empresa.test.ts`
+- `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
+- `tests/integration/db/planes-crear-custom-asigna.test.ts`
+- `tests/integration/db/planes-historial.test.ts`
+- `tests/integration/db/planes-periodicidad-ordenes.test.ts`
+- `tests/unit/actions/deuda-plataforma.composition-root.test.ts`
+- `tests/unit/actions/empresas-plataforma.composition-root.test.ts`
+- `tests/unit/actions/planes.composition-root.test.ts`
+- `tests/unit/actions/wallet-egresos.composition-root.test.ts`
+- `tests/unit/api/procesar-jobs-registro.test.ts`
+- `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`
+- `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`
+- `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts`
+- `tests/unit/planes/jobs-factura-plataforma.test.ts`
+- `tests/unit/planes/rastro.test.ts`
 - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`
+- `tests/unit/services/jobs-registro.test.ts`
+- `tests/unit/services/planes-service-crear-custom.test.ts`
+- `tests/unit/services/planes-service-inicio-ciclo.test.ts`
+- `tests/unit/services/planes-service-periodo.test.ts`
+- `tests/unit/services/planes-service-tipo-cobro.test.ts`
+- `tests/unit/utils/deuda-plataforma.test.ts`
 
-> 2026-11-11 (humano): +7 por el registro del job nuevo y T3.1; 56 archivos aceptados.
+69 archivos, +6 200 / −164 líneas, sin `progress/` ni `specs/`. Son `git diff --shortstat origin/dev...HEAD` en
+`250282df` sin esas carpetas (68 archivos, +6 120 / −164) más las 80 líneas de `docs/architecture.md` (T10.1). Con
+`progress/` y `specs/`, `git diff --shortstat origin/dev...HEAD` da 73 archivos, +8 072 / −164 en `250282df`, sin
+contar T10.
 
-49 archivos (122 % de `max_archivos` = 40). Los 44 aceptados con P11 (con las migraciones ya en `20261111`)
-más 5 por la periodicidad del plan: `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`, `PlanForm.tsx`,
-`tests/components/PlanFormPeriodicidad.test.tsx` y `tests/integration/db/planes-periodicidad-ordenes.test.ts`.
-**Aceptados con P16.** La cuota por adelantado y P17–P18 no suman archivos (todo cae en la migración, el esquema, los tipos y
-los tests ya listados). Líneas estimadas ~2 600, por encima de `max_lineas` = 1 000 (aceptado con P5, P7 y P16). Choque al mergear con SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y
-cambia de plan» (PR #115) en `lib/repositories/PlanesRepository.ts`,
-`lib/interfaces/repositories/IPlanesRepository.ts`, `lib/types/planes.ts` y `lib/db/excepciones-aislamiento.ts`
-(design §10).
+> 2026-11-11 (humano): se acepta todo en un solo PR, con el tamaño que resulte.
+
+Choque al mergear con SLT-99 «Planes: el administrador de la empresa ve su plan y los públicos y cambia de plan»
+(PR #115) en `lib/repositories/PlanesRepository.ts`, `lib/interfaces/repositories/IPlanesRepository.ts`,
+`lib/types/planes.ts` y `lib/db/excepciones-aislamiento.ts` (design §10).
