@@ -774,8 +774,8 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
     await page.goto("/cierres-admin");
     await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
     await page
-      .getByRole("region", { name: "Cierres de bodega pendientes" })
-      .getByRole("button", { name: `Ver / decidir el cierre de bodega de ${r.zonaSatelite.nombre}` })
+      .getByRole("region", { name: "Cierres de bodega por conciliar" })
+      .getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${r.zonaSatelite.nombre}` })
       .click();
     const detalle = page.getByRole("dialog", { name: `Detalle del cierre de bodega · Cierre de bodega · ${r.zonaSatelite.nombre}` });
     await expect(detalle).toBeVisible();
