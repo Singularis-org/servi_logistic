@@ -1,7 +1,14 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { movimientosCajaDe } from "./_escenarios/caja";
-import { aprobarCierre, filaDeMensajeros, importe, montoDeCuenta, solicitarCierre } from "./_escenarios/cierres";
+import {
+  aprobarCierre,
+  filaDeMensajeros,
+  importe,
+  montoDeCuenta,
+  solicitarCierre,
+  solicitarCierreBodega,
+} from "./_escenarios/cierres";
 import {
   baseReparto,
   crearEscenarioReparto,
@@ -256,5 +263,82 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     await expect(
       modulo.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}` }),
     ).toBeVisible();
+  });
+});
+
+/**
+ * SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados» (T4; R126, R136) — la pantalla
+ * intermedia de C1: un recibido INCOMPLETO se queda en «Pendientes» (con su pastilla y lo que falta)
+ * y no en «Resueltos»; al corregirlo hasta lo esperado pasa a «Resueltos» sin recargar.
+ *
+ * Mismos datos que el escenario de arriba, en otra empresa: Debe llegar a la central
+ * 9.000 − 1.500 − 500 = 7.000. Se marca 6.000 → falta 7.000 − 6.000 = 1.000 (escrito a mano).
+ */
+test.describe.serial("SLT-105 — un recibido incompleto se queda en «Pendientes» hasta que se corrige", () => {
+  let ri: RepartoE2E;
+
+  test.beforeAll(async () => {
+    ri = await crearEscenarioReparto("cierre-bodega-incompleto", {
+      tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 },
+    });
+    const mi = await crearMensajero(ri, "satelite");
+    const entrega = await llevarA(ri, await crearOrden(ri, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: mi });
+    await gestionar(ri, entrega, mi, { resultado: "entregado" });
+    const rech = await llevarA(ri, await crearOrden(ri, { zona: "satelite" }), "en_reparto", { mensajero: mi });
+    await gestionar(ri, rech, mi, { resultado: "devolucion_a_origen_por_rechazo" });
+    await aprobarCierre(ri, await solicitarCierre(ri, mi));
+    await solicitarCierreBodega(ri);
+  });
+
+  test("marcar 6.000 de 7.000: sigue en «Pendientes» como «Recibido incompleto»; corregir a 7.000 la pasa a «Resueltos»", async ({ browser }) => {
+    const page = await paginaDe(browser, ri.empresa.maestro);
+    await pestanaBodega(page);
+    const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
+    const tabs = modulo.getByRole("group", { name: "Cierres de bodega por estado" });
+    const pestanaPendientes = tabs.getByRole("button", { name: /^Pendientes/ });
+    const pendientes = modulo.getByRole("region", { name: "Cierres de bodega pendientes" });
+    const resueltos = modulo.getByRole("region", { name: "Cierres de bodega resueltos" });
+    const verDecidir = pendientes.getByRole("button", { name: `Ver / decidir el cierre de bodega de ${ri.zonaSatelite.nombre}` });
+    const verResuelto = resueltos.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${ri.zonaSatelite.nombre}` });
+
+    await expect(pestanaPendientes).toHaveAccessibleName(/^Pendientes\s*\(1\)$/);
+    await verDecidir.click();
+    const detalle = detalleDeBodega(page);
+    await detalle.locator("footer").getByRole("button", { name: /^Marcar recibido la consolidación de / }).click();
+    const marcar = page.getByRole("dialog", { name: "Marcar recibido" });
+    await marcar.getByLabel("Monto recibido").fill("6000");
+    await marcar.getByRole("button", { name: "Marcar recibido" }).click();
+    await expect(page.getByText(/^Marcada como recibida por /)).toContainText(importe(6000));
+    await expect(detalle).toHaveCount(0);
+
+    // R136/R126 — sin recargar: sigue en «Pendientes», que la sigue contando, con su pastilla y su falta.
+    await expect(pestanaPendientes).toHaveAccessibleName(/^Pendientes\s*\(1\)$/);
+    await expect(verDecidir).toBeVisible();
+    await expect(pendientes.getByText("Recibido incompleto", { exact: true })).toBeVisible();
+    // La columna de la marca va en el desglose de la tarjeta, que se abre con «Ver detalles».
+    await pendientes.getByRole("button", { name: `Ver detalles del cierre de bodega de ${ri.zonaSatelite.nombre}` }).click();
+    const conciliacion = pendientes.getByRole("region", { name: "Conciliación", exact: true });
+    await expect(
+      conciliacion.getByText("Falta por recibir", { exact: true }).locator("xpath=following-sibling::span[1]"),
+    ).toHaveText(importe(1000, { solo: true }));
+    // Y NO está en «Resueltos». Control: la lista de resueltos está cargada y es la vacía (empresa nueva).
+    await tabs.getByRole("button", { name: /^Resueltos/ }).click();
+    await expect(modulo.getByText("Aún no hay cierres de bodega resueltos.", { exact: true })).toBeVisible();
+    await expect(verResuelto).toHaveCount(0);
+
+    // «Corregir» hasta lo esperado → pasa a «Resueltos» sin recargar.
+    await tabs.getByRole("button", { name: /^Pendientes/ }).click();
+    await verDecidir.click();
+    await detalle.locator("footer").getByRole("button", { name: /^Corregir el monto recibido de / }).click();
+    const corregir = page.getByRole("dialog", { name: "Corregir el monto recibido" });
+    await corregir.getByLabel("Monto recibido").fill("7000");
+    await corregir.getByRole("button", { name: "Corregir" }).click();
+    await expect(page.getByText(/^Monto recibido corregido a /)).toContainText(importe(7000));
+    await expect(detalle).toHaveCount(0);
+
+    await expect(pestanaPendientes).toHaveAccessibleName(/^Pendientes\s*\(0\)$/);
+    await expect(verDecidir).toHaveCount(0);
+    await tabs.getByRole("button", { name: /^Resueltos/ }).click();
+    await expect(verResuelto).toBeVisible();
   });
 });

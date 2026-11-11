@@ -44,6 +44,23 @@ function delegado(filas: unknown[] = []) {
   };
 }
 
+/**
+ * SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados» — el cliente del repositorio
+ * de bodega del maestro: el delegado `cierreBodega` y un `$queryRaw` doble que devuelve los ids de
+ * los recibidos incompletos. Que el SQL elija bien esos ids lo prueba
+ * `tests/integration/db/slt105-particion-conciliacion-sql-real.test.ts`; aqui solo se mira como el
+ * `where` de Prisma usa el conjunto.
+ */
+function clienteBodega(
+  cierreBodega: ReturnType<typeof delegado>,
+  incompletos: readonly string[] = ["i-1"],
+): PrismaClient {
+  return {
+    cierreBodega,
+    $queryRaw: vi.fn(async () => incompletos.map((id) => ({ id }))),
+  } as unknown as PrismaClient;
+}
+
 /** Las tres afirmaciones comunes a todos los listados que cortan en la base. */
 function verificar(
   d: ReturnType<typeof delegado>,
@@ -120,16 +137,16 @@ describe("WHERE de los listados paginados de la tanda I (T I.1)", () => {
     });
   });
 
-  it("cierres de bodega — resueltos: estados fuera de la cola (los RECHAZADOS siguen dentro)", async () => {
+  it("cierres de bodega — resueltos (SLT-105, R122/R123): con marca y fuera de los recibidos incompletos", async () => {
     const cierreBodega = delegado();
-    const repo = new CierresBodegaAdminRepository({ cierreBodega } as unknown as PrismaClient);
+    const repo = new CierresBodegaAdminRepository(clienteBodega(cierreBodega, ["i-1"]));
 
     await repo.findHistoricoPaginado(RANGO);
 
     verificar(cierreBodega, {
-      // `notIn: ["solicitado"]`, no `in: ["aprobado"]`: un cierre de bodega RECHAZADO es
-      // historico y tiene que seguir viendose.
-      where: { estado: { notIn: ["solicitado"] } },
+      // «Conciliados» en positivo (PA1): con la marca de recibido y sin nada por llegar. Ya no
+      // parte por `estado`: un `aprobado` incompleto se queda en la cola.
+      where: { conciliadoAt: { not: null }, id: { notIn: ["i-1"] } },
       orderBy: { solicitadoAt: "desc" },
     });
   });
@@ -240,10 +257,9 @@ describe("WHERE de los listados paginados de la tanda I (T I.1)", () => {
     casos.push([
       "cierres de bodega resueltos",
       d2,
-      () =>
-        new CierresBodegaAdminRepository({
-          cierreBodega: d2,
-        } as unknown as PrismaClient).findHistoricoPaginado(RANGO),
+      // SLT-105: ademas lee los ids de los recibidos incompletos con UN `$queryRaw` (fuera de
+      // este delegado); en el delegado siguen siendo la pagina y el conteo.
+      () => new CierresBodegaAdminRepository(clienteBodega(d2)).findHistoricoPaginado(RANGO),
     ]);
 
     const d3 = delegado();
@@ -616,7 +632,7 @@ describe("el conjunto del HISTÓRICO de cierres del admin (feature 184, tanda D)
 // repositorio y NO ve esta traducción a SQL. Por eso estas propiedades se afirman aquí.
 describe("el conjunto del HISTÓRICO de cierres de bodega (feature 184, tanda E)", () => {
   function repoBodegaAdmin(cierreBodega: ReturnType<typeof delegado>) {
-    return new CierresBodegaAdminRepository({ cierreBodega } as unknown as PrismaClient);
+    return new CierresBodegaAdminRepository(clienteBodega(cierreBodega, ["i-1"]));
   }
 
   it("cierres de bodega — resueltos: el conjunto y la página emiten las MISMAS condiciones y el MISMO orden (R16/R5)", async () => {
@@ -629,9 +645,9 @@ describe("el conjunto del HISTÓRICO de cierres de bodega (feature 184, tanda E)
     const argsEntero = entero.findMany.mock.calls[0]![0]!;
     const argsPagina = pagina.findMany.mock.calls[0]![0]!;
 
-    // En valores ABSOLUTOS: compartir la declaración no la vuelve invisible. `notIn`, no
-    // `in: ["aprobado"]` — un cierre de bodega RECHAZADO es histórico y va en este archivo.
-    expect(argsEntero.where).toEqual({ estado: { notIn: ["solicitado"] } });
+    // En valores ABSOLUTOS: compartir la declaración no la vuelve invisible. SLT-105 (R123): con
+    // marca y fuera de los recibidos incompletos, igual en el archivo que en la tabla.
+    expect(argsEntero.where).toEqual({ conciliadoAt: { not: null }, id: { notIn: ["i-1"] } });
     expect(argsPagina.where).toEqual(argsEntero.where);
     // El orden también: la página N tiene que ser el segmento N de este conjunto (R5).
     expect(argsEntero.orderBy).toEqual({ solicitadoAt: "desc" });
@@ -695,15 +711,13 @@ describe("el conjunto del HISTÓRICO de cierres de bodega (feature 184, tanda E)
     const argsHistorico = historico.findMany.mock.calls[0]![0]! as ArgsConWhere;
     const argsCola = cola.findMany.mock.calls[0]![0]! as ArgsConWhere;
 
-    // El listado compuesto no corta por estado —ni siquiera lleva `where`—: por eso descargar una
-    // mitad traía las dos.
+    // El listado compuesto no corta —ni siquiera lleva `where`—: por eso descargar una mitad traía
+    // las dos.
     expect(argsCompuesto.where).toBeUndefined();
-    expect(argsHistorico.where?.estado).toEqual({ notIn: ["solicitado"] });
-    expect(argsCola.where?.estado).toEqual({ in: ["solicitado"] });
-    // Y el corte por estado es LO ÚNICO que cada conjunto añade: este listado no se acota por
-    // zona (es acceso total, ve toda la operación), así que el `where` no tiene nada más.
-    expect(Object.keys(argsHistorico.where ?? {})).toEqual(["estado"]);
-    expect(Object.keys(argsCola.where ?? {})).toEqual(["estado"]);
+    // SLT-105 (R122): cada mitad corta por conciliación, y ese corte es LO ÚNICO que añade: este
+    // listado no se acota por zona (es acceso total, ve toda la operación).
+    expect(argsHistorico.where).toEqual({ conciliadoAt: { not: null }, id: { notIn: ["i-1"] } });
+    expect(argsCola.where).toEqual({ OR: [{ conciliadoAt: null }, { id: { in: ["i-1"] } }] });
     // Mismo orden en los tres: el archivo no cambia de criterio al dejar de releer el compuesto.
     expect(argsHistorico.orderBy).toEqual(argsCompuesto.orderBy);
     expect(argsCola.orderBy).toEqual(argsCompuesto.orderBy);
