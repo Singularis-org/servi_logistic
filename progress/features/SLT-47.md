@@ -24,3 +24,4 @@ F1.1 2026-11-11: tomada y acotada con `/afinar-feature`. Rama sobre `feature/SLT
 ## Modelos (overrides)
 
 ## Cierre
+<!-- tamano-pr-aceptado: 2026-11-11 · humano: «Un PR, aceptando el tamaño»; 81 archivos / ~4.100 líneas estimados en el spec -->

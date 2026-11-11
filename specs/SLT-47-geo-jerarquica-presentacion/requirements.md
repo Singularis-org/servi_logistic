@@ -124,39 +124,7 @@
 
 ## Preguntas abiertas
 
-> Escritas por `spec_author` el 2026-11-11. Ninguna reabre la tabla de decisiones. Cada una trae una
-> propuesta, que el spec ya aplica. Si el humano decide otra cosa, cambian el requisito citado y su
-> test.
-
-- **P1. Órdenes con cadena incoherente.** En SLT-65 y SLT-71 se decidió que el script de
-  equivalencia las cuente aparte y que no bloqueen el merge si son la única diferencia. La fila
-  «Heredadas» de esta ficha no lo nombra.
-  **Propuesta:** la misma regla (R28).
-- **P2. Mis-asignaciones con N niveles.** Hoy el mensajero ve dos listas, cantón «(provincia)» y
-  distrito, sin lista de provincia. La decisión pide «una lista por nivel», pero también que CR se
-  vea igual.
-  **Propuesta:** conservar la forma de hoy y generalizarla: primero el nivel 2 con su nivel 1 entre
-  paréntesis, luego una lista por cada nivel de 3 a P (R7). La maqueta de T0 lo enseña.
-- **P3. Umbrales de rendimiento con 10 niveles.** No hay en docs ni en código un tamaño de país de
-  10 niveles ni un tiempo objetivo.
-  **Propuesta:** un catálogo sintético de 10 niveles con 20.000 nodos, y 200 ms por operación
-  (mediana de 5) para resolver en el servidor y para declarar la barra y traducir la URL (R32).
-- **P4. Lista sin elección en el nivel de arriba.** La decisión dice que cada lista «se llena con
-  los hijos del lugar elegido en la anterior». Hoy, sin elección arriba, la lista ofrece todos los
-  lugares de su nivel, y CR debe verse igual.
-  **Propuesta:** conservar lo de hoy (R3). Con 10 niveles, eso puede dar listas muy largas en los
-  niveles hondos; la maqueta de T0 decide si esos niveles quedan deshabilitados hasta elegir arriba.
-- **P5. ¿Una o varias elecciones por lista?** Hoy cada lista permite elegir varios lugares. La
-  decisión habla de «el lugar elegido» en singular.
-  **Propuesta:** seguir con varias elecciones, como hoy (R6). `lugar_id` lleva los ids del nivel más
-  profundo con elección.
-- **P6. Tamaño del PR.** `## Archivos esperados` de `tasks.md` lista 81 archivos (55 de código,
-  scripts y config, y 26 de tests) y unas 4.100 líneas, por encima de los 40 archivos por defecto
-  de un PR. La decisión «¿Partir
-  la ficha?» ya fijó el corte en SLT-47 y SLT-125, y este dato no se conocía al tomarla.
-  **Propuesta:** un solo PR, como SLT-89. Si el humano prefiere partirlo, el corte limpio es:
-  - rebanada A: servidor, URL, vistas y las barras de `/ordenes`, satélite y analítica (T1–T4);
-  - rebanada B: novedades y mis-asignaciones (T5), que solo depende de la A.
+Ninguna. P1–P6 las cerró el humano el 2026-11-11 (filas de abajo).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -170,3 +138,9 @@
 | 2026-11-11 | País de 2 niveles | Se oculta el filtro del nivel que hoy repite al nivel 2 (encargo de SLT-46 «Geografía jerárquica: administración de países», P10). |
 | 2026-11-11 | Vistas guardadas | Pasan a la versión 2 del formato; las de la versión 1 se traducen al leerlas, en `leerPayloadGuardado`. Una persona las prueba con vistas reales sobre la copia de producción; ningún agente toca producción. |
 | 2026-11-11 | Heredadas | Las pantallas esperan una maqueta aprobada por el humano (SLT-46 P9, SLT-89 P2). Toda escritura nueva pasa por el modal antes → después (SLT-46, SLT-89). Migraciones solo aditivas y con `down.sql` hasta SLT-48. El `EXPLAIN` no puede empeorar más de un 20 % ni añadir un Seq Scan nuevo sobre `orden` (SLT-65). Ningún repositorio con catálogo se instancia a nivel de módulo (SLT-65). Cada pantalla conserva sus permisos de hoy. |
+| 2026-11-11 | P1. Órdenes con cadena incoherente | Heredada de SLT-65 y SLT-71: el script de equivalencia las cuenta aparte y no bloquean si son la única diferencia (R28). |
+| 2026-11-11 | P2. Mis-asignaciones con N niveles | Como hoy, generalizado: primera lista del nivel 2 con su nivel 1 entre paréntesis, luego una lista por cada nivel de 3 a P. CR igual que hoy (R7). |
+| 2026-11-11 | P3. Umbrales con 10 niveles | Catálogo sintético de 10 niveles y 20.000 nodos; 200 ms por operación (mediana de 5) (R32). |
+| 2026-11-11 | P4. Lista sin elección arriba | Como hoy: ofrece todo su nivel y se busca escribiendo en ella; no se bloquea. La maqueta lo muestra con 10 niveles (R3). |
+| 2026-11-11 | P5. Una o varias elecciones por lista | Varias, como hoy. `lugar_id` lleva los ids de la lista más profunda con elección (R6). |
+| 2026-11-11 | P6. Tamaño del PR (81 archivos, ~4.100 líneas) | Un solo PR, aceptando el tamaño. |
