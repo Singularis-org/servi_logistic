@@ -73,7 +73,7 @@
 
 ## T3 — FiltroUbicacion (frontend_dev) · T3.1 depende de T2.2; T3.2 de T0.2
 
-- [ ] **T3.1** `lib/utils/filtro-ubicacion.ts`: `declararNiveles`, `lugarElegido`, `traductorPorId`,
+- [x] **T3.1** `lib/utils/filtro-ubicacion.ts`: `declararNiveles`, `lugarElegido`, `traductorPorId`,
   `traductorPorNombre` y `deV1` en `vista-filtro.ts` (v2, v1 legible). Tests:
   `filtro-ubicacion.test.ts`, `vista-filtro-v2.test.ts` y `filtro-ubicacion-rendimiento.test.ts`.
   **Hecho:** R1, R2, R4, R6, R17, R21–R24 y R32 en verde. Las mediciones de R32 se anotan.

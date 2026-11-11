@@ -55,7 +55,7 @@ const COLOR: FilterDef = {
  * ya no declara (`mensajero`, con un identificador dentro que NO puede acabar en pantalla).
  */
 const GUARDADO: VistaFiltroPayload = {
-  v: 1,
+  v: 2,
   termino: "guia123",
   activos: ["color", "mensajero"],
   seleccion: { color: ["rojo", "morado"], mensajero: ["8f1c2d34-aaaa-bbbb-cccc-000000000001"] },
@@ -63,7 +63,7 @@ const GUARDADO: VistaFiltroPayload = {
 
 /** Lo unico que se puede reponer de esa vista. */
 const APLICABLE: VistaFiltroPayload = {
-  v: 1,
+  v: 2,
   termino: "guia123",
   activos: ["color"],
   seleccion: { color: ["rojo"] },
@@ -96,7 +96,7 @@ function montar() {
         activos={[]}
         vistas={{
           superficie: "ordenes",
-          filtroActual: { v: 1, termino: "", activos: [], seleccion: {} },
+          filtroActual: { v: 2, termino: "", activos: [], seleccion: {} },
           catalogo: catalogoCargado([COLOR]),
           vistaPuestaId: null,
           onAplicar,

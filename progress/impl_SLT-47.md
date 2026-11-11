@@ -348,3 +348,23 @@ fallan; habría que cambiar `2` → `3`, que no es `v: 1` → `v: 2`:
 | `tests/unit/services/vista-filtro-service.test.ts:235` | fila «futura» `{ ...PAYLOAD, v: 2 }, version: 2` → `filtro: null` | `v: 3`, `version: 3` |
 
 Estado: T3.1 (vistas) parada a la espera de esa autorización. No se tocó código ni tests de vistas.
+
+## T3.1 — Vistas v2 hechas (2026-11-11, autorizaciones `af8ede2a` y `c9079068`)
+
+- `lib/types/vista-filtro.ts`: `VISTA_FILTRO_VERSION = 2`, `VERSIONES_LEGIBLES = [1, 2]`,
+  `vistaFiltroPayloadV1Schema` (solo lectura) y `deV1` (renombra `provincia_id`/`canton_id`/`distrito_id`
+  a `nivel_1..3` en `seleccion` y `activos`; el resto igual). `leerPayloadGuardado` valida la v1 con su
+  esquema y la traduce; nada se escribe.
+- Tests cambiados, exactamente los del inventario: los seis `v: 1 → v: 2` de los tests de componentes
+  y los tres `v: 2 → v: 3` de «versión desconocida» (`vista-filtro-payload.test.ts:124, 148`,
+  `vista-filtro-service.test.ts:235`). Nada más.
+- Nuevo: `tests/unit/types/vista-filtro-v2.test.ts` (R22, R23, R24).
+- Suites de vistas: unitarias y de componentes verdes, `vista-filtro-formato-propio` (R25) verde.
+  `vista-filtro.test.ts`, `vista-filtro-migration.test.ts` y `455/.../filtro-ordenes-por-estado.test.ts`
+  dan rojo por la base local vacía (`usuario`/`orden` vacías) y deriva de `down.sql`; los tres están en
+  `tests/baseline-rojos.json`.
+
+| R | Test |
+|---|---|
+| R22, R23, R24 | `tests/unit/types/vista-filtro-v2.test.ts`; `vista-filtro-service.test.ts` |
+| R25 | `tests/unit/guards/vista-filtro-formato-propio.guardia.test.ts` sin cambios |
