@@ -4,8 +4,10 @@ import { z } from "zod";
 import {
   actualizarZonaSchema,
   crearZonaSchema,
+  impactoAsignacionZonaSchema,
   listarZonasSchema,
   type ActualizarZonaResult,
+  type ImpactoAsignacionZonaResult,
   type BorrarZonaResult,
   type CrearZonaResult,
   type ImpactoZonaCentralResult,
@@ -217,6 +219,31 @@ export async function impactoZonaCentral(
     }
     const service = deps.zonaService ?? buildZonaService();
     return service.impactoZonaCentral(parsed.data, actor);
+  });
+  return isAppErrorShape(r) ? toZonaActionError(r) : r;
+}
+
+/**
+ * ⭑ SLT-89 (R13–R15, R36; design §5.3) — el aviso de impacto de guardar una zona con esos nodos:
+ * cuantas ordenes pendientes cambian de zona y de tarifa y cuantas no se mueven, sin escribir nada.
+ * `maestro`-only. Zod en el borde con tope de ids (`impactoAsignacionZonaSchema`).
+ *
+ */
+export async function impactoAsignacionZona(
+  input: unknown,
+  deps: ZonaActionDeps = {},
+): Promise<ImpactoAsignacionZonaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const parsed = impactoAsignacionZonaSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, {
+        fieldErrors: z.flattenError(parsed.error).fieldErrors,
+      });
+    }
+    const service = deps.zonaService ?? buildZonaService();
+    return service.impactoAsignacion(parsed.data, actor);
   });
   return isAppErrorShape(r) ? toZonaActionError(r) : r;
 }

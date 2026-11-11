@@ -3,12 +3,13 @@ import type { PrismaClient } from "@prisma/client";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
-import { ZonaRepository, planificarReconciliacion, type PlanDeReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { planificarReconciliacion, type PlanDeReconciliacion } from "@/lib/repositories/ZonaRepository";
 import { planDeHoy, type PlanDeHoy } from "@/scripts/geo-equivalencia/consultas-de-hoy";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo65, type EmpresaGeo65, type EscenarioGeo65 } from "./_fixtures/geo-65";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { ZonaRepositoryConAntes } from "./_fixtures/antes-de-zona";
 
 // SLT-65 (T4.2; R13–R15, R17; design §6, §14) — LA ZONA DE LAS ORDENES AL GUARDAR UNA ZONA, DEL
 // CATALOGO, contra la copia congelada de hoy (`planDeHoy`) y sobre Postgres real.
@@ -145,7 +146,7 @@ describeSiHayBase("SLT-65 T4.2 — la reconciliacion al guardar una zona usa el 
     const r = await conEscenario(async (tx, e) => {
       const { base: b, ordenes } = e.xa;
       const res = await comoLaEmpresa(tx, e.xa, () =>
-        new ZonaRepository(clienteConSavepoint(tx)).update(
+        new ZonaRepositoryConAntes(tx, clienteConSavepoint(tx)).update(
           b.zonas.centralId,
           { nombre: "Zona central SLT65", distritoIds: [b.geo.distritoCentralId] },
           null,
@@ -190,7 +191,7 @@ describeSiHayBase("SLT-65 T4.2 — la reconciliacion al guardar una zona usa el 
       const antes = await zonaDe(tx, ordenes.enDistritoSinZonaId);
       // La zona norte gana el distrito «sin zona»: hasta este guardado no tenia ninguna asignacion.
       const res = await comoLaEmpresa(tx, e.xa, () =>
-        new ZonaRepository(cliente).update(
+        new ZonaRepositoryConAntes(tx, cliente).update(
           b.zonas.norteId,
           {
             nombre: "Zona norte SLT65",

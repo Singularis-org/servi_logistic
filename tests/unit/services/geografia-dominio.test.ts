@@ -5,10 +5,13 @@ import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import {
   CatalogoGeograficoInconsistente,
   ancestros,
+  conAsignacionesDeZona,
   crearAsignaciones,
   crearCatalogo,
   esZonaEspecial,
   estaActivo,
+  grupoDelLugar,
+  mismoConjunto,
   nodo,
   nodosBajo,
   nodosDeProfundidad,
@@ -294,5 +297,93 @@ describe("SLT-44 R8 — con asignaciones solo a distritos, el dominio da lo de h
       expect(zonaQueCubre(TRES_NIVELES, asig, x.id), x.id).toBeNull();
       expect(esZonaEspecial(TRES_NIVELES, asig, x.id), x.id).toBe(false);
     }
+  });
+});
+
+// --- SLT-89 (T2.1; design §4.3, §5.3, §5.4) ---
+
+describe("SLT-89 R14 — conAsignacionesDeZona: las asignaciones propuestas", () => {
+  const asig = crearAsignaciones(
+    [
+      { nodoId: "D1", zona: Z.norte },
+      { nodoId: "D2", zona: Z.norte },
+      { nodoId: "C2", zona: Z.sur },
+    ],
+    ["D4"],
+  );
+
+  it("la zona deja sus nodos de antes y pasa a los pedidos, a cualquier profundidad", () => {
+    const propuesta = conAsignacionesDeZona(asig, Z.norte, ["C1"]);
+    expect(propuesta.zonasPorNodo.has("D1")).toBe(false);
+    expect(propuesta.zonasPorNodo.has("D2")).toBe(false);
+    expect(propuesta.zonasPorNodo.get("C1")).toEqual([Z.norte]);
+    // Con el canton asignado, sus distritos y el nodo de profundidad 4 heredan.
+    for (const id of ["D1", "D2", "D3", "B1"]) expect(zonaQueCubre(cat, propuesta, id), id).toEqual(Z.norte);
+  });
+
+  it("las demas zonas y las marcas no cambian, y la entrada no se toca", () => {
+    const propuesta = conAsignacionesDeZona(asig, Z.norte, ["C1"]);
+    expect(propuesta.zonasPorNodo.get("C2")).toEqual([Z.sur]);
+    expect(zonaQueCubre(cat, propuesta, "D4")).toEqual(Z.sur);
+    expect(propuesta.nodosConMarca).toBe(asig.nodosConMarca);
+    expect(asig.zonasPorNodo.get("D1")).toEqual([Z.norte]);
+    expect(asig.zonasPorNodo.has("C1")).toBe(false);
+  });
+
+  it("una zona nueva se suma sin quitar nada; pedir el mismo nodo dos veces lo asigna una", () => {
+    const nueva: ZonaAsignada = { id: "z-nueva", nombre: "Nueva", esCentral: false };
+    const propuesta = conAsignacionesDeZona(asig, nueva, ["P2", "P2"]);
+    expect(propuesta.zonasPorNodo.get("P2")).toEqual([nueva]);
+    expect(zonaQueCubre(cat, propuesta, "D5")).toEqual(nueva);
+    expect(zonaQueCubre(cat, propuesta, "D1")).toEqual(Z.norte);
+  });
+
+  it("si el nodo ya tiene otra zona quedan las dos y el colapso da null", () => {
+    const propuesta = conAsignacionesDeZona(asig, Z.norte, ["C2"]);
+    expect(propuesta.zonasPorNodo.get("C2")).toEqual([Z.sur, Z.norte]);
+    expect(zonaQueCubre(cat, propuesta, "D4")).toBeNull();
+  });
+
+  it("sin nodos pedidos la zona desaparece de las asignaciones", () => {
+    const propuesta = conAsignacionesDeZona(asig, Z.norte, []);
+    expect(zonaQueCubre(cat, propuesta, "D1")).toBeNull();
+    expect([...propuesta.zonasPorNodo.keys()]).toEqual(["C2"]);
+  });
+});
+
+describe("SLT-89 R19/R20 — grupoDelLugar: el miembro mas cercano", () => {
+  const miembros = new Map([
+    ["D1", "g-distrito"],
+    ["C1", "g-canton"],
+    ["P1", "g-provincia"],
+  ]);
+
+  it("gana el miembro mas especifico: distrito > canton > provincia", () => {
+    expect(grupoDelLugar(cat, miembros, "D1")).toBe("g-distrito");
+    expect(grupoDelLugar(cat, miembros, "D2")).toBe("g-canton");
+    expect(grupoDelLugar(cat, miembros, "D4")).toBe("g-provincia");
+    expect(grupoDelLugar(cat, miembros, "B1")).toBe("g-distrito");
+  });
+
+  it("sin miembro en la rama, sin lugar o con un lugar ajeno al catalogo: sin grupo", () => {
+    expect(grupoDelLugar(cat, miembros, "D5")).toBeNull();
+    expect(grupoDelLugar(cat, miembros, null)).toBeNull();
+    expect(grupoDelLugar(cat, miembros, "ajeno")).toBeNull();
+    expect(grupoDelLugar(cat, new Map(), "D1")).toBeNull();
+  });
+});
+
+describe("SLT-89 R16/R43/R45 — mismoConjunto: el «antes» contra la base", () => {
+  it("el orden y los repetidos no cuentan", () => {
+    expect(mismoConjunto(["a", "b"], ["b", "a"])).toBe(true);
+    expect(mismoConjunto(["a", "a", "b"], ["b", "a"])).toBe(true);
+    expect(mismoConjunto([], [])).toBe(true);
+  });
+
+  it("un elemento de mas, de menos o distinto lo hace distinto", () => {
+    expect(mismoConjunto(["a"], ["a", "b"])).toBe(false);
+    expect(mismoConjunto(["a", "b"], ["a"])).toBe(false);
+    expect(mismoConjunto(["a", "b"], ["a", "c"])).toBe(false);
+    expect(mismoConjunto([], ["a"])).toBe(false);
   });
 });

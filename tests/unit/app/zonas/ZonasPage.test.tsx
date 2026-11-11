@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vite
 import { render, screen, cleanup, within } from "@testing-library/react";
 import type { RolValue } from "@prisma/client";
 
-import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+import type { ArbolDeZonasDTO } from "@/lib/types/geografia-nodo";
 import type { ZonaDTO } from "@/lib/types/zona";
 
 vi.mock("@/app/_components/LogoutButton", () => ({
@@ -35,7 +35,7 @@ vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: () => resolveActorMock(),
 }));
 vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
+  listarArbolDeZonas: (...a: unknown[]) => listarArbolMock(...a),
 }));
 vi.mock("@/lib/actions/zonas", () => ({
   listarZonas: (...a: unknown[]) => listarZonasMock(...a),
@@ -44,7 +44,7 @@ vi.mock("@/lib/actions/cobertura", () => ({
   listarCoberturaDistritos: (...a: unknown[]) => listarCoberturaMock(...a),
 }));
 vi.mock("@/app/(app)/configuracion/zonas/_components/ZonasModule", () => ({
-  ZonasModule: (props: { initialZonas: ZonaDTO[]; provincias: ProvinciaArbolDTO[] }) => {
+  ZonasModule: (props: { initialZonas: ZonaDTO[]; arbol: ArbolDeZonasDTO }) => {
     zonasModuleMock(props);
     return <div data-testid="zonas-module-stub" />;
   },
@@ -60,31 +60,42 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-const ARBOL: ProvinciaArbolDTO[] = [
-  {
-    id: "p1",
-    nombre: "Provincia Uno",
-    activo: true,
-    cantones: [
-      {
-        id: "c1",
-        nombre: "Cantón Uno",
-        activo: true,
-        distritos: [
-          {
-            id: "d1",
-            nombre: "Distrito Uno",
-            zonaId: null,
-            zonaNombre: null,
-            zonas: [],
-            zonaEspecial: false,
-            activo: true,
-          },
-        ],
-      },
-    ],
-  },
-];
+// SLT-89 (T7.2): la página pasa el árbol de zonas de N niveles (`listarArbolDeZonas`); el mismo
+// árbol de antes, en esa forma.
+const ARBOL: ArbolDeZonasDTO = {
+  tipos: [],
+  raices: [
+    {
+      id: "p1",
+      nombre: "Provincia Uno",
+      profundidad: 1,
+      activo: true,
+      asignadaA: null,
+      heredaDe: null,
+      hijos: [
+        {
+          id: "c1",
+          nombre: "Cantón Uno",
+          profundidad: 2,
+          activo: true,
+          asignadaA: null,
+          heredaDe: null,
+          hijos: [
+            {
+              id: "d1",
+              nombre: "Distrito Uno",
+              profundidad: 3,
+              activo: true,
+              asignadaA: null,
+              heredaDe: null,
+              hijos: [],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 const ZONAS: ZonaDTO[] = [
   { id: "z1", nombre: "Norte", cobroVehiculo: false, distritosCount: 1, esCentral: true },
@@ -103,7 +114,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listarArbolMock.mockResolvedValue({ status: "ok", provincias: ARBOL });
+  listarArbolMock.mockResolvedValue({ status: "ok", arbol: ARBOL });
   listarZonasMock.mockResolvedValue({ status: "ok", items: ZONAS, total: 1 });
 });
 
@@ -175,9 +186,9 @@ describe("SLT-51 — el maestro ve Cobertura y el listado", () => {
     expect(zonasModuleMock).toHaveBeenCalledTimes(1);
     const props = zonasModuleMock.mock.calls[0][0] as {
       initialZonas: ZonaDTO[];
-      provincias: ProvinciaArbolDTO[];
+      arbol: ArbolDeZonasDTO;
     };
-    expect(props.provincias).toBe(ARBOL);
+    expect(props.arbol).toBe(ARBOL);
     expect(props.initialZonas).toBe(ZONAS);
     // Sin costos: el módulo ya no recibe vehículos.
     expect(props).not.toHaveProperty("vehiculos");
@@ -190,7 +201,7 @@ describe("SLT-51 — el maestro ve Cobertura y el listado", () => {
     render(await ZonasPage());
 
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el catálogo geográfico.");
-    const props = zonasModuleMock.mock.calls[0][0] as { provincias: ProvinciaArbolDTO[] };
-    expect(props.provincias).toEqual([]);
+    const props = zonasModuleMock.mock.calls[0][0] as { arbol: ArbolDeZonasDTO };
+    expect(props.arbol).toEqual({ tipos: [], raices: [] });
   });
 });

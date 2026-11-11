@@ -3,6 +3,7 @@
 // lib/utils/pago-mensajero.ts). Money-safe: los Decimal se devuelven ya serializados
 // a STRING escala 2.
 import type { PrismaClient } from "@prisma/client";
+import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import type { ContextoPagoGestion, TarifaPago } from "@/lib/types/tarifa-flexible";
 
 // SLT-52 (design §5): delegados que lee el resolver del pago, viejo y nuevo. Es el tipo del
@@ -10,8 +11,20 @@ import type { ContextoPagoGestion, TarifaPago } from "@/lib/types/tarifa-flexibl
 // de una transaccion ya lo cumplen.
 export type PagoTarifaTxClient = Pick<
   PrismaClient,
-  "tarifaZonaMensajero" | "tarifaActivacion" | "tarifaValor" | "grupoDistritosDistrito"
->;
+  | "tarifaZonaMensajero"
+  | "tarifaActivacion"
+  | "tarifaValor"
+  | "grupoDistritosDistrito"
+  // SLT-89 (design §4.3): la tabla hermana de miembros y, solo cuando tiene filas, la carga del
+  // catalogo de la empresa para subir por los ancestros del distrito (miembro mas cercano, R19).
+  | "grupoDistritosNodo"
+  | "zonaDistrito"
+  | "zonaNodo"
+  | "organizacion"
+  | "tipoNivelGeografico"
+  | "nodoGeografico"
+> &
+  ClienteDeMarcas;
 
 // Tarifa de pago de una zona (resuelta por vehiculo o por defecto). `cobroEntregado`
 // es el UNICO campo que la 39 paga al mensajero (solo por `entregada`). `cobroRechazado`

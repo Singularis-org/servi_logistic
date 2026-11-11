@@ -52,6 +52,7 @@ function buildRepo(overrides: Partial<IZonaRepository> = {}): IZonaRepository {
     countExistingDistritos: vi.fn(),
     countExistingVehiculos: vi.fn(),
     findCentralZonaId: vi.fn().mockResolvedValue("z-0"),
+    impactoDeAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     contarOrdenesVivasPorZona: vi.fn().mockResolvedValue([]),
     listarSinpe: vi.fn().mockResolvedValue(BODEGAS),
     findSinpeByZona: vi

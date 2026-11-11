@@ -448,6 +448,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "plan_tipo_cobro_cambiado",
       // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
       "tarifas_activadas",
+      // censo: tipo nuevo de SLT-89 T1.2 (`zona_nodo_cambiado`, de `20261110130100_slt89_historial_zona_nodo`).
+      "zona_nodo_cambiado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]

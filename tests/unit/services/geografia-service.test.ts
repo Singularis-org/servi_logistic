@@ -7,7 +7,7 @@ import type {
   IGeoRepository,
 } from "@/lib/interfaces/repositories/IGeoRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
-import type { ProvinciaArbolDTO, TipoNivelDTO } from "@/lib/types/geografia-nodo";
+import type { ArbolDeZonasDTO, ProvinciaArbolDTO, TipoNivelDTO } from "@/lib/types/geografia-nodo";
 
 // FICHA 374 (R14/R17/R21/R22/R24) — la regla del servicio, con dobles.
 // SLT-46 (T4.1; R12, R14–R21, R39): la misma regla por NODO. Los casos de SL-20 conservan su desenlace
@@ -129,10 +129,48 @@ function repoDoble(overrides: Partial<IGeoRepository> = {}) {
     hermanosDeNodo: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
     renombrar: vi.fn(async () => "renombrado" as const),
     profundidadDeNodo: vi.fn(async () => 3 as number | null),
+    // SLT-89: el arbol de zonas de N niveles
+    arbolDeZonas: vi.fn(async () => ARBOL_DE_ZONAS),
     ...overrides,
   };
   return repo as unknown as IGeoRepository & typeof repo;
 }
+
+// SLT-89 (design §4.2): un cantón asignado a «Sur» y un distrito que lo hereda.
+const ARBOL_DE_ZONAS: ArbolDeZonasDTO = {
+  tipos: [1, 2, 3].map((k) => ({ profundidad: k, nombreSingular: tipoDe(k).nombreSingular, nombrePlural: tipoDe(k).nombrePlural })),
+  raices: [
+    {
+      id: "p1",
+      nombre: "Puntarenas",
+      profundidad: 1,
+      activo: true,
+      asignadaA: null,
+      heredaDe: null,
+      hijos: [
+        {
+          id: "c1",
+          nombre: "Buenos Aires",
+          profundidad: 2,
+          activo: true,
+          asignadaA: { id: "z-sur", nombre: "Sur" },
+          heredaDe: null,
+          hijos: [
+            {
+              id: "d1",
+              nombre: "Cabagra",
+              profundidad: 3,
+              activo: true,
+              asignadaA: null,
+              heredaDe: { zonaId: "z-sur", zonaNombre: "Sur", nodoId: "c1", nodoNombre: "Buenos Aires" },
+              hijos: [],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 function ordenesDoble(n = 0) {
   return { contarSinEntregarPorNodoGeografico: vi.fn(async () => n) };
@@ -850,5 +888,23 @@ describe("SLT-46 R61 — renombrar: el cambio concurrente es un `conflict` con m
     expect(r).toEqual({ status: "conflict" });
     expect(r).not.toHaveProperty("motivo");
     expect(repo.renombrar).not.toHaveBeenCalled();
+  });
+});
+
+// =================================================================================================
+// SLT-89 R24/R36 — el arbol de zonas de N niveles, solo `maestro`
+// =================================================================================================
+
+describe("SLT-89 R36 — listarArbolDeZonas: solo el maestro, y el rol antes de leer", () => {
+  it.each([...OTROS_ROLES, SUPERADMIN])("rol $rol -> forbidden sin tocar ningun repositorio", async (actor) => {
+    expect(await servicioQueFalla().listarArbolDeZonas(actor)).toEqual({ status: "forbidden" });
+  });
+
+  it("el maestro recibe el arbol del repositorio tal cual, en una sola lectura (R24)", async () => {
+    const { service, repo, ordenes } = build();
+    expect(await service.listarArbolDeZonas(MAESTRO)).toEqual({ status: "ok", arbol: ARBOL_DE_ZONAS });
+    expect(repo.arbolDeZonas).toHaveBeenCalledTimes(1);
+    expect(repo.listArbol).not.toHaveBeenCalled();
+    expect(ordenes.contarSinEntregarPorNodoGeografico).not.toHaveBeenCalled();
   });
 });

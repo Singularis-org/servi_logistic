@@ -285,3 +285,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-71 (2026-11-05, review F2.2 vuelta 1, menor 4). Las cinco suites de integración `informe-transito-*` están en `tests/baseline-rojos.json` porque la base de test no tiene usuarios (ficha 475). Leen como dueño de la tabla y sin contexto de empresa. Con SLT-71, tránsito carga el catálogo del país de la empresa: cuando esas suites tengan datos, la carga puede tomar una empresa de otro país y R12 las haría fallar.
 - **Qué falta:** al retirarlas del baseline, correrlas dentro de `conEmpresa`/`comoLaEmpresa` con la empresa de su fixture.
 - **Dueño:** quien retire esas suites del baseline (ficha 475).
+
+### D47 — `listarArbolGeografico` sin superficie
+- **Origen:** SLT-89 (2026-11-10, review F2.2 vuelta 1, menor 4). Zonas cambió la action por `listarArbolDeZonas` (T7.2) y era su única superficie. Lleva `@sin-superficie` (deuda) en `lib/actions/geografia.ts`. No se retiró en SLT-89 porque la cubren `tests/unit/actions/geografia-action.test.ts` y `tests/unit/actions/geografia.composition-root.test.ts`, y quitar esos casos cambia aserciones fuera de las excepciones de R38.
+- **Qué falta:** retirar la action, sus casos de test y, si nadie más lo usa, `GeografiaService.listarArbol`.
+- **Dueño:** SLT-48 «Geografía jerárquica: retirar modelo viejo», o antes si el humano lo decide.

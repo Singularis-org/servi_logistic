@@ -4,6 +4,8 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+// SLT-89 (T7.2): la entrada nueva del formulario (árbol de N niveles) y el modal único de guardado.
+import { arbolDeZonas, guardarYConfirmar } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * SLT-75 (R21, R22) — EL RECHAZO POR UN DISTRITO QUE YA ESTÁ EN OTRA ZONA SE LEE ENTERO.
@@ -20,6 +22,8 @@ import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 const crearZonaMock = vi.fn();
 const actualizarZonaMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   crearZona: (...a: unknown[]) => crearZonaMock(...a),
   actualizarZona: (...a: unknown[]) => actualizarZonaMock(...a),
   impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
@@ -86,7 +90,7 @@ function renderEditar() {
   return render(
     <CrearZonaForm
       mode="editar"
-      provincias={arbol()}
+      arbol={arbolDeZonas(arbol())}
       zonas={[]}
       initial={{
         zonaId: "z-1",
@@ -99,7 +103,6 @@ function renderEditar() {
   );
 }
 
-const botonGuardar = () => screen.getByRole("button", { name: "Guardar" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -116,7 +119,7 @@ describe("R21 — validation_error en distritoIds", () => {
     const user = userEvent.setup();
     renderEditar();
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(errorMock).toHaveBeenCalledWith(
@@ -137,7 +140,7 @@ describe("R21 — validation_error en distritoIds", () => {
     const user = userEvent.setup();
     renderEditar();
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(errorMock).toHaveBeenCalledWith(MSG_UNO));
     expect(await screen.findByText(MSG_UNO)).toBeInTheDocument();
@@ -150,7 +153,7 @@ describe("R22 — el texto del conflict no menciona distritos", () => {
     const user = userEvent.setup();
     renderEditar();
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(errorMock).toHaveBeenCalledWith(TEXTO_CONFLICT));
     const texto = errorMock.mock.calls.at(-1)?.[0] as string;

@@ -42,6 +42,7 @@ function prismaConCatalogo(nodos: unknown[], zonas: { distritoId: string; zonaId
     organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: "CR" }) },
     tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([]) },
     nodoGeografico: { findMany: vi.fn().mockResolvedValue(nodos) },
+    zonaNodo: { findMany: vi.fn().mockResolvedValue([]) }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: {
       findMany: vi.fn().mockResolvedValue(
         zonas.map((z) => ({ distritoId: z.distritoId, zona: { id: z.zonaId, nombre: z.zonaId, esCentral: false } })),

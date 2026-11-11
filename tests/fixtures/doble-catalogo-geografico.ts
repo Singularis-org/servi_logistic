@@ -56,6 +56,7 @@ export function delegadosDelCatalogo(o: OpcionesDelCatalogo = {}) {
     organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: PAIS_DEL_DOBLE }) },
     tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([]) },
     nodoGeografico: { findMany: vi.fn().mockResolvedValue([...porId.values()].map(nodoDelDoble)) },
+    zonaNodo: { findMany: vi.fn().mockResolvedValue([]) }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: { findMany: vi.fn().mockResolvedValue([]) },
     distritoZonaEspecial: {
       findMany: vi.fn().mockResolvedValue((o.marcas ?? []).map((distritoId) => ({ distritoId }))),

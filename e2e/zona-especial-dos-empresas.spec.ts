@@ -123,7 +123,10 @@ async function crearGrupo(page: Page, d: DistritoElegido): Promise<void> {
   await dialogo.getByRole("textbox").fill(GRUPO);
   await filaDistrito(dialogo, d).getByRole("checkbox").click();
   await dialogo.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(dialogo).toHaveCount(0);
+  // SLT-89 (R22): toda escritura de grupos pasa por el antes → después del mismo modal.
+  const confirmacion = page.getByRole("dialog", { name: `¿Crear el grupo ${GRUPO}?` });
+  await confirmacion.getByRole("button", { name: "Sí, guardar", exact: true }).click();
+  await expect(confirmacion).toHaveCount(0);
   await expect(seccionGrupos(page)).toContainText(GRUPO);
 }
 

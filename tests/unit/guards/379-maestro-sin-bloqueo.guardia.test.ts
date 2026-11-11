@@ -218,6 +218,7 @@ function elPeorEscenario() {
     countExistingDistritos: vi.fn(),
     countExistingVehiculos: vi.fn(),
     findCentralZonaId: vi.fn().mockResolvedValue(null),
+    impactoDeAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     contarOrdenesVivasPorZona: vi.fn().mockResolvedValue([]),
     // FICHA 429: los metodos de la superficie del SINPE por bodega. El doble los declara
     // para seguir cumpliendo `IZonaRepository`; esta suite no los ejercita.

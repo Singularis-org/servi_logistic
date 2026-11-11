@@ -35,6 +35,8 @@ function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
     listarVehiculos: vi.fn().mockResolvedValue([]),
     listarTiendas: vi.fn().mockResolvedValue([]),
     distritosDeZona: vi.fn().mockResolvedValue([]),
+    // SLT-89 (T5.3): el doble declara la lectura nueva del sub-arbol cubierto.
+    nodosDeZona: vi.fn().mockResolvedValue(null),
     leerModeloViejo: vi.fn().mockResolvedValue({ cobros: new Map(), pagos: new Map() }),
     ...overrides,
   };
@@ -257,5 +259,47 @@ describe("SLT-54 R6, R14 — los faltantes de la empresa", () => {
     expect(repo.valoresDeZonaOGrupo).toHaveBeenCalledTimes(1);
     expect(repo.listarGruposDeEmpresa).toHaveBeenCalledTimes(1);
     expect(repo.listarVehiculos).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** SLT-89 · R23, R37 (design §4.4, §7) — el sub-arbol cubierto de una zona, para elegir miembros. */
+describe("SLT-89 — cargarZona con los nodos cubiertos", () => {
+  const ARBOL = {
+    tipos: [{ profundidad: 2, nombreSingular: "Canton", nombrePlural: "Cantones" }],
+    raices: [{ id: "c1", nombre: "Canton", profundidad: 2, activo: true, hijos: [] }],
+  };
+
+  it.each([MAESTRO, ADMIN])("$rol recibe el arbol de la zona tal cual lo da el repositorio", async (actor) => {
+    const repo = repoDoble({ nodosDeZona: vi.fn().mockResolvedValue(ARBOL) });
+    const res = await servicio(repo).cargarZona({ zonaId: "z1" }, actor);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.nodos).toEqual(ARBOL);
+    expect(repo.nodosDeZona).toHaveBeenCalledWith("z1");
+  });
+
+  it("R37: un rol que no lee no llega a pedir el arbol", async () => {
+    const repo = repoDoble({ nodosDeZona: vi.fn().mockRejectedValue(new Error("no debia leerse")) });
+    for (const actor of NO_LEEN) {
+      expect(await servicio(repo).cargarZona({ zonaId: "z1" }, actor)).toEqual({ status: "forbidden" });
+    }
+    expect(repo.nodosDeZona).not.toHaveBeenCalled();
+  });
+
+  it("R38: una zona con solo distritos (el repositorio da `null`) responde sin `nodos`, como hoy", async () => {
+    const res = await servicio(repoDoble()).cargarZona({ zonaId: "z1" }, MAESTRO);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res).not.toHaveProperty("nodos");
+  });
+
+  it("un distrito heredado que es miembro de un grupo sale con su grupo", async () => {
+    const repo = repoDoble({
+      gruposConDistritos: vi.fn().mockResolvedValue([
+        { id: "g1", zonaId: "z1", nombre: "Heredados", distritos: [{ id: "dh", nombre: "Heredado" }], nodos: [] },
+      ]),
+      distritosDeZona: vi.fn().mockResolvedValue([{ id: "dh", nombre: "Heredado", zonaEspecial: false }]),
+    });
+    const res = await servicio(repo).cargarZona({ zonaId: "z1" }, MAESTRO);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.distritos).toEqual([{ id: "dh", nombre: "Heredado", zonaEspecial: false, grupoId: "g1" }]);
   });
 });

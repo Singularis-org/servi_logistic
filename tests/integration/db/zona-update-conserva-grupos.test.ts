@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -11,6 +10,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZonaRepositoryConAntes } from "./_fixtures/antes-de-zona";
 
 // SLT-52 T6.5 (R12) — GUARDAR UNA ZONA NO VACIA SUS GRUPOS DE DISTRITOS (Postgres real).
 //
@@ -27,7 +27,7 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 interface Escenario {
   tx: TxDeTest;
-  repo: ZonaRepository;
+  repo: ZonaRepositoryConAntes;
   usuarioId: string;
   zonaId: string;
   nombre: string;
@@ -115,7 +115,7 @@ describeSiHayBase("SLT-52 T6.5 — ZonaRepository.update conserva los grupos de 
 
       await fn({
         tx,
-        repo: new ZonaRepository(clienteConSavepoint(tx)),
+        repo: new ZonaRepositoryConAntes(tx, clienteConSavepoint(tx)),
         usuarioId: maestro.id,
         zonaId,
         nombre,

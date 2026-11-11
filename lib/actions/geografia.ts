@@ -8,6 +8,7 @@ import { GeografiaService } from "@/lib/services/GeografiaService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
   IGeografiaService,
+  ListarArbolDeZonasServiceResult,
   ListarArbolGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
 
@@ -65,9 +66,9 @@ export type ArbolGeograficoResult =
  * Devuelve el arbol geografico COMPLETO —activos e inactivos— ordenado alfabeticamente en cada
  * nivel. Lo leen la plataforma y el `maestro`, que lo usa en Zonas (R25 de SL-32; SLT-51 la sacó de Tarifas).
  *
- * CONSERVA SU FIRMA: lo llaman `app/(app)/configuracion/zonas/page.tsx` y
- * `ZonasModule.tsx` sin argumentos, y siguen compilando. `deps` es opcional y solo sirve
- * para probarlo sin base.
+ * `deps` es opcional y solo sirve para probarlo sin base.
+ *
+ * @sin-superficie SLT-89 (deuda, no decision): Zonas la cambio por `listarArbolDeZonas` (el arbol de N niveles con la zona asignada y la heredada, T7.2) y era su unica superficie. No se retira en SLT-89 porque la cubren `tests/unit/actions/geografia-action.test.ts` y `tests/unit/actions/geografia.composition-root.test.ts`, y quitar esos casos cambia aserciones fuera de las excepciones de R38; retirarla (con `GeografiaService.listarArbol` si nadie mas lo usa) queda para SLT-48 (deuda D47 de `progress/deudas.md`) «Geografia jerarquica: retirar modelo viejo», o antes si el humano lo decide.
  */
 export async function listarArbolGeografico(
   deps: GeografiaActionDeps = {},
@@ -76,4 +77,21 @@ export async function listarArbolGeografico(
   if (!actor) return { status: "unauthenticated" };
   const service = deps.geografiaService ?? buildGeografiaService();
   return service.listarArbol(actor);
+}
+
+// ── SLT-89 (design §4.2, §6): el arbol de zonas de N niveles ─────────────────────────────────
+
+export type ArbolDeZonasResult = ListarArbolDeZonasServiceResult | { status: "unauthenticated" };
+
+/**
+ * El arbol del pais de la empresa a todas sus profundidades, con la zona asignada y la heredada de
+ * cada nodo: lo que pinta el selector de nodos de una zona (R24–R27). Solo `maestro` (R36); la
+ * empresa es la de la sesion (R35), nunca llega del cliente.
+ *
+ */
+export async function listarArbolDeZonas(deps: GeografiaActionDeps = {}): Promise<ArbolDeZonasResult> {
+  const actor = await (deps.getActor ?? resolveActorFromSession)();
+  if (!actor) return { status: "unauthenticated" };
+  const service = deps.geografiaService ?? buildGeografiaService();
+  return service.listarArbolDeZonas(actor);
 }

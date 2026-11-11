@@ -1,4 +1,4 @@
-import type { ImpactoZonaCentralDTO, ZonaDTO } from "@/lib/types/zona";
+import type { ImpactoAsignacionDTO, ImpactoZonaCentralDTO, ZonaDTO } from "@/lib/types/zona";
 
 /**
  * ⭑ FICHA 429 — la fila de una bodega tal como la necesita la superficie del SINPE. NO es
@@ -33,6 +33,11 @@ export interface CreateZonaData {
   cobroVehiculo: boolean;
   esCentral: boolean; // feature 54: flag de zona central (antes esGam)
   distritoIds: string[];
+  /**
+   * SLT-89 (R1, design §5.1): los nodos que no son distritos (provincia, canton, profundidad >= 4),
+   * que van a `zona_nodo`. Ausente = ninguno: los llamadores que solo asignan distritos no cambian.
+   */
+  nodoIds?: string[];
   tarifas: TarifaZonaMensajeroData[];
   /**
    * ⭑ FICHA 429 (R11) — OBLIGATORIOS AL CREAR, sin `?` y sin default. Una bodega nueva no puede
@@ -73,7 +78,19 @@ export type UpdateZonaData = Omit<
   esCentral?: boolean;
   cobroVehiculo?: boolean;
   tarifas?: TarifaZonaMensajeroData[];
+  /**
+   * SLT-89 (R16, design §5.1 paso 2, §5.5) — los nodos que el modal mostro como «antes». REQUERIDO
+   * en el tipo (decision humana del 2026-11-09): el esquema y el service rechazan su falta antes de
+   * llegar aqui. Si no coincide con lo que la zona tiene en la base, `cambio_concurrente`.
+   */
+  antes: { distritoIds: string[]; nodoIds: string[] };
 };
+
+/**
+ * SLT-89 (R4, design §5.1 paso 4) — un `nodoIds` que no se puede asignar: no esta en el catalogo del
+ * pais de la empresa, o es un distrito (esos van en `distritoIds`). No se escribio nada.
+ */
+export type MotivoNodoInvalido = "no_existe" | "es_distrito";
 
 export interface ListZonasParams {
   skip: number;
@@ -129,8 +146,19 @@ export type UpdateZonaResult =
   | { estado: "not_found" }
   /** 376/R5: se pidio EXPLICITAMENTE quitar la marca a la zona que hoy es la central. */
   | { estado: "sin_zona_central" }
-  /** SLT-75 R2/R8: algun distrito pedido ya esta en OTRA zona de la empresa. No se escribio nada. */
-  | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null };
+  /**
+   * SLT-75 R2/R8: algun distrito pedido ya esta en OTRA zona de la empresa. No se escribio nada.
+   * SLT-89 (R2): `conflictosDeNodos`, los de `nodoIds` (el service los cuelga de ese campo).
+   */
+  | {
+      estado: "distrito_en_otra_zona";
+      conflictos: DistritoEnOtraZona[] | null;
+      conflictosDeNodos?: DistritoEnOtraZona[];
+    }
+  /** SLT-89 (R4): algun `nodoIds` no se puede asignar. No se escribio nada. */
+  | { estado: "nodo_invalido"; motivos: MotivoNodoInvalido[] }
+  /** SLT-89 (R16): los nodos de la zona en la base no son el «antes». No se escribio nada. */
+  | { estado: "cambio_concurrente" };
 
 /**
  * SLT-75 (R1-R3) — un distrito pedido que ya pertenece a OTRA zona de la empresa. Los nombres salen
@@ -147,7 +175,13 @@ export interface DistritoEnOtraZona {
  */
 export type CreateZonaResult =
   | { estado: "ok"; zona: ZonaDTO }
-  | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null };
+  | {
+      estado: "distrito_en_otra_zona";
+      conflictos: DistritoEnOtraZona[] | null;
+      conflictosDeNodos?: DistritoEnOtraZona[];
+    }
+  /** SLT-89 (R4): algun `nodoIds` no se puede asignar. No se escribio nada. */
+  | { estado: "nodo_invalido"; motivos: MotivoNodoInvalido[] };
 
 export interface IZonaRepository {
   /**
@@ -211,6 +245,16 @@ export interface IZonaRepository {
    * que poder decir «no afecta a ninguna» y eso no es lo mismo que «no lo sé».
    */
   contarOrdenesVivasPorZona(zonaIds: string[]): Promise<ImpactoZonaCentralDTO[]>;
+  /**
+   * SLT-89 (R13–R15, design §5.3) — lo que guardar la zona `zonaId` (o una nueva, con `null`) con
+   * esos nodos haria con las ordenes, sin escribir: transaccion de solo lectura y siempre revertida.
+   * Sale de las mismas consultas que el plan del guardado (R15). `null` si la zona no existe.
+   */
+  impactoDeAsignacion(entrada: {
+    zonaId: string | null;
+    distritoIds: readonly string[];
+    nodoIds: readonly string[];
+  }): Promise<ImpactoAsignacionDTO | null>;
 
   /* ─── FICHA 429 · el SINPE por bodega ────────────────────────────────────────────────────── */
 

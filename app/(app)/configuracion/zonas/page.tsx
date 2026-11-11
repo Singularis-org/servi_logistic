@@ -1,6 +1,6 @@
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { listarArbolGeografico } from "@/lib/actions/geografia";
+import { listarArbolDeZonas } from "@/lib/actions/geografia";
 import { listarZonas } from "@/lib/actions/zonas";
 
 import { DescargarCoberturaButton } from "./_components/DescargarCoberturaButton";
@@ -11,7 +11,7 @@ import { ZonasModule } from "./_components/ZonasModule";
  * sin costos. Autoriza server-side con el mismo gate que Tarifas: SOLO el rol `maestro` (R2); las
  * acciones vuelven a autorizar por su cuenta en `ZonaService` y `lib/actions/cobertura.ts`.
  *
- * Pre-carga el catálogo geográfico global del país (SL-20, R16) y el listado de zonas. Ya no
+ * Pre-carga el árbol de zonas de N niveles del país de la empresa (SLT-89, design §4.2) y el listado de zonas. Ya no
  * carga vehículos: el formulario no pide pagos.
  *
  * Ficha 465 (R1) — el bloque «Cobertura» vive aquí, antes del listado (SLT-51 R12).
@@ -30,11 +30,11 @@ export default async function ZonasPage() {
   }
 
   const [arbolRes, zonasRes] = await Promise.all([
-    listarArbolGeografico(),
+    listarArbolDeZonas(),
     listarZonas({ page: 1, pageSize: 100 }),
   ]);
 
-  const provincias = arbolRes.status === "ok" ? arbolRes.provincias : [];
+  const arbol = arbolRes.status === "ok" ? arbolRes.arbol : { tipos: [], raices: [] };
   const zonas = zonasRes.status === "ok" ? zonasRes.items : [];
 
   return (
@@ -55,7 +55,7 @@ export default async function ZonasPage() {
         <DescargarCoberturaButton />
       </section>
 
-      <ZonasModule initialZonas={zonas} provincias={provincias} />
+      <ZonasModule initialZonas={zonas} arbol={arbol} />
     </AppPage>
   );
 }

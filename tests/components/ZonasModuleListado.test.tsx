@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import type { ZonaDTO } from "@/lib/types/zona";
+// SLT-89 (T7.2): el módulo recibe y lee el árbol de zonas de N niveles (`listarArbolDeZonas`).
+import { arbolDeZonas } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * SLT-51 — el listado de «Zonas» y sus rótulos.
@@ -18,6 +20,8 @@ import type { ZonaDTO } from "@/lib/types/zona";
 const impactoZonaCentralMock = vi.fn();
 const listarArbolMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   listarZonas: vi.fn(),
   obtenerZona: vi.fn(),
   borrarZona: vi.fn(),
@@ -26,7 +30,7 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: (...a: unknown[]) => impactoZonaCentralMock(...a),
 }));
 vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
+  listarArbolDeZonas: (...a: unknown[]) => listarArbolMock(...a),
 }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
@@ -87,7 +91,7 @@ function arbol(): ProvinciaArbolDTO[] {
 }
 
 function renderModulo(zonas: ZonaDTO[] = ZONAS) {
-  return render(<ZonasModule initialZonas={zonas} provincias={arbol()} />);
+  return render(<ZonasModule initialZonas={zonas} arbol={arbolDeZonas(arbol())} />);
 }
 
 /** Lo que se ve: el texto de todo el documento (los modales van en un portal bajo `body`). */
@@ -103,7 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   impactoZonaCentralMock.mockResolvedValue({ status: "ok", impacto: [] });
   // SLT-75 (R20): Crear/Editar leen el árbol al abrir; sin él, el formulario no se abre.
-  listarArbolMock.mockResolvedValue({ status: "ok", provincias: arbol() });
+  listarArbolMock.mockResolvedValue({ status: "ok", arbol: arbolDeZonas(arbol()) });
 });
 
 afterEach(cleanup);
@@ -169,7 +173,8 @@ describe("SLT-51/R10 — ningún texto visible de «Zonas» dice «central»", (
       await screen.findByRole("checkbox", { name: /^Seleccionar distrito Distrito Dos\b/ }),
     );
     await user.click(screen.getByRole("checkbox", { name: "Zona de bodega principal" }));
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    // SLT-89 (T7.2): el botón de la maqueta abre el modal único, con el bloque de la marca.
+    await user.click(screen.getByRole("button", { name: "Guardar zona…" }));
 
     await screen.findByText("Zona de bodega principal ya asignada");
     expect(textoVisible()).not.toMatch(/central/i);

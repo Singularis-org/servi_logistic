@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import { tecleaSinpeDeLaZona } from "../fixtures/sinpe-en-formulario-zona";
+// SLT-89 (T7.2): la entrada nueva del formulario (árbol de N niveles) y el modal único de guardado.
+import { arbolDeZonas, guardarYConfirmar } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * ⭑ FICHA 376 / T12 — LA PANTALLA AVISA ANTES Y EXPLICA DESPUÉS (R20-R23).
@@ -33,6 +35,8 @@ const crearZonaMock = vi.fn();
 const actualizarZonaMock = vi.fn();
 const impactoZonaCentralMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   crearZona: (...a: unknown[]) => crearZonaMock(...a),
   actualizarZona: (...a: unknown[]) => actualizarZonaMock(...a),
   impactoZonaCentral: (...a: unknown[]) => impactoZonaCentralMock(...a),
@@ -113,7 +117,7 @@ function renderForm(opts: {
   return render(
     <CrearZonaForm
       mode={opts.mode}
-      provincias={arbol()}
+      arbol={arbolDeZonas(arbol())}
       zonas={opts.zonas ?? []}
       initial={{
         zonaId: opts.zonaId,
@@ -128,8 +132,10 @@ function renderForm(opts: {
 }
 
 const casilla = () => screen.getByRole("checkbox", { name: "Zona de bodega principal" });
-const botonGuardar = () => screen.getByRole("button", { name: "Guardar" });
-const botonContinuar = () => screen.getByRole("button", { name: "Continuar" });
+// SLT-89 (T7.2, design §8.2): la marca central es un bloque del modal único de guardado; sus botones
+// son los de la maqueta («Guardar zona…», «Sí, guardar», «Volver»).
+const botonGuardar = () => screen.getByRole("button", { name: "Guardar zona…" });
+const botonContinuar = () => screen.getByRole("button", { name: "Sí, guardar" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -194,7 +200,7 @@ describe("R20 — desmarcar la zona central pregunta antes de enviar nada", () =
       zonas: [zonaDTO("z-otra", "Cartago")],
     });
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(actualizarZonaMock).toHaveBeenCalledTimes(1));
     expect(
@@ -263,7 +269,7 @@ describe("R22 — cancelar la confirmación no envía nada", () => {
     await user.click(casilla());
     await user.click(botonGuardar());
     await screen.findByText("Quitar la marca de zona de bodega principal");
-    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    await user.click(screen.getByRole("button", { name: "Volver" }));
 
     await waitFor(() =>
       expect(
@@ -288,7 +294,7 @@ describe("R22 — cancelar la confirmación no envía nada", () => {
     await user.click(casilla());
     await user.click(botonGuardar());
     await screen.findByText("Zona de bodega principal ya asignada");
-    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    await user.click(screen.getByRole("button", { name: "Volver" }));
 
     await waitFor(() =>
       expect(
@@ -369,7 +375,7 @@ describe("R23 — el rechazo del servidor se pinta JUNTO a la casilla", () => {
       zonas: [zonaDTO("z-otra", "Cartago")],
     });
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() =>
       expect(errorMock).toHaveBeenCalledWith(

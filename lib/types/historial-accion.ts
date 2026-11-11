@@ -263,6 +263,11 @@ export const HISTORIAL_ACCION_TIPOS = [
   // distrito añadido o quitado, todas con el lote del guardado. DINERO: el distrito decide la zona
   // de cada orden, y la zona su flete y el pago al mensajero. Solo al editar (Q1-e).
   "zona_distrito_cambiado", // zonas.actualizarZona -> ZonaRepository.update (SOLO update)
+  // ⭑ SLT-89 (R30) — lo mismo para los nodos que NO son distritos (provincia, canton, profundidad
+  // >= 4). Tipo propio y no un valor mas de `zona_distrito_cambiado`: los distritos deben seguir
+  // dejando exactamente lo de SLT-76. DINERO por el mismo motivo: el nodo decide la zona de las
+  // ordenes que cuelgan de el.
+  "zona_nodo_cambiado", // zonas.actualizarZona -> ZonaRepository.update (SOLO update; productor en T3.2)
   // ⭑ SLT-52 (R14, design §3) — el modelo nuevo de tarifas. DINERO: fijar o quitar un valor cambia
   // lo que se cobra a la tienda o se paga al mensajero y a la satelite; crear un grupo o mover sus
   // distritos cambia que valor se resuelve para las ordenes de esos distritos. Los escriben los
@@ -558,6 +563,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   cierre_dia_pago_mensajero_ajustado: "mueve_dinero",
   // SLT-76 (Q1-d): el distrito decide la zona de la orden, y la zona su flete y su pago.
   zona_distrito_cambiado: "mueve_dinero",
+  // SLT-89 (design §2.4): un nodo asignado decide la zona de todas las ordenes que cuelgan de el.
+  zona_nodo_cambiado: "mueve_dinero",
   // SLT-52 (design §3): cambian lo que se cobra o se paga, o que valor se resuelve para un distrito.
   tarifa_valor_fijado: "mueve_dinero",
   tarifa_valor_quitado: "mueve_dinero",
@@ -655,6 +662,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   cierre_bodega_conciliacion_revertida: "Revirtió la conciliación de una consolidación de bodega",
   cierre_dia_pago_mensajero_ajustado: "Ajustó el pago al mensajero de una gestión",
   zona_distrito_cambiado: "Cambió los distritos de una zona",
+  zona_nodo_cambiado: "Cambió los lugares de una zona",
   tarifa_valor_fijado: "Fijó un valor de tarifa",
   tarifa_valor_quitado: "Quitó un valor de tarifa",
   grupo_distritos_creado: "Creó un grupo de distritos",

@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import { tecleaSinpeDeLaZona } from "../fixtures/sinpe-en-formulario-zona";
+// SLT-89 (T7.2): la entrada nueva del formulario (árbol de N niveles) y el modal único de guardado.
+import { arbolDeZonas, guardarYConfirmar } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * ⭑ FICHA 392 — EL FORMULARIO DE ZONAS AVISA DE UN NOMBRE QUE LA ETIQUETA NO PUEDE IMPRIMIR.
@@ -31,6 +33,8 @@ const crearZonaMock = vi.fn();
 const actualizarZonaMock = vi.fn();
 const impactoZonaCentralMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   crearZona: (...a: unknown[]) => crearZonaMock(...a),
   actualizarZona: (...a: unknown[]) => actualizarZonaMock(...a),
   impactoZonaCentral: (...a: unknown[]) => impactoZonaCentralMock(...a),
@@ -113,7 +117,7 @@ function renderForm(opts: { mode: "crear" | "editar"; zonaId?: string }) {
   return render(
     <CrearZonaForm
       mode={opts.mode}
-      provincias={arbol()}
+      arbol={arbolDeZonas(arbol())}
       zonas={[]}
       initial={{
         zonaId: opts.zonaId,
@@ -126,7 +130,6 @@ function renderForm(opts: { mode: "crear" | "editar"; zonaId?: string }) {
   );
 }
 
-const botonGuardar = () => screen.getByRole("button", { name: "Guardar" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -148,7 +151,7 @@ describe("392 — el aviso del nombre que la etiqueta no puede imprimir", () => 
     // y lo que este caso mide es el error que DEVUELVE la accion.
     await tecleaSinpeDeLaZona(user);
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(errorMock).toHaveBeenCalledWith(MOTIVO_CON_SUGERENCIA));
     expect(errorMock).not.toHaveBeenCalledWith(GENERICO);
@@ -167,7 +170,7 @@ describe("392 — el aviso del nombre que la etiqueta no puede imprimir", () => 
     // y lo que este caso mide es el error que DEVUELVE la accion.
     await tecleaSinpeDeLaZona(user);
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     expect(await screen.findByText(MOTIVO_CON_SUGERENCIA)).toBeInTheDocument();
   });
@@ -180,7 +183,7 @@ describe("392 — el aviso del nombre que la etiqueta no puede imprimir", () => 
     const user = userEvent.setup();
     renderForm({ mode: "editar", zonaId: "z-1" });
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     // Igualdad EXACTA contra el literal: cualquier recorte, cualquier «…» y cualquier reescritura
     // de la explicación rompen aquí.
@@ -203,7 +206,7 @@ describe("392 — el aviso del nombre que la etiqueta no puede imprimir", () => 
     // y lo que este caso mide es el error que DEVUELVE la accion.
     await tecleaSinpeDeLaZona(user);
 
-    await user.click(botonGuardar());
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(errorMock).toHaveBeenCalledWith(GENERICO));
   });

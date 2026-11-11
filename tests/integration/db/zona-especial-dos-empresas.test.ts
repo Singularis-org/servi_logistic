@@ -15,7 +15,6 @@ import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaE
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecialService";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
@@ -27,6 +26,7 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZonaRepositoryConAntes } from "./_fixtures/antes-de-zona";
 
 // SL-38 / T8 (design §6) — DOS EMPRESAS DE PUNTA A PUNTA, contra Postgres real.
 //
@@ -510,7 +510,7 @@ describeSiHayBase("SL-38 T8 — dos empresas de punta a punta: cada una solo ve 
     //
     // La zona de A gana D3, que no tiene ordenes (el plan carga el catalogo y no mueve nada); el
     // segundo guardado se la quita y deja la zona como estaba.
-    const zonaRepo = new ZonaRepository(app);
+    const zonaRepo = new ZonaRepositoryConAntes(base, app);
     const { nombre } = await base.zona.findUniqueOrThrow({ where: { id: s.fksA.zonaId }, select: { nombre: true } });
     const asignadas = () =>
       base.zonaDistrito.findMany({ where: { zonaId: s.fksA.zonaId }, select: { distritoId: true } });

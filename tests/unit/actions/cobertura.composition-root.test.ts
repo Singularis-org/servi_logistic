@@ -41,6 +41,7 @@ vi.mock("@/lib/db/prisma-client", () => ({
     organizacion: { findFirst: vi.fn(async () => ({ paisId: "CR" })) },
     tipoNivelGeografico: { findMany: vi.fn(async () => []) },
     nodoGeografico: { findMany: nodoGeograficoFindMany },
+    zonaNodo: { findMany: vi.fn(async () => []) }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: { findMany: zonaDistritoFindMany },
     distritoZonaEspecial: { findMany: vi.fn(async () => []) },
     // SLT-54 (R30): empresa sin activar, asi que la tarifa general sale de `tarifas`.

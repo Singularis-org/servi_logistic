@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crearZonaSchema, listarZonasSchema } from "@/lib/types/zona";
+import { actualizarZonaSchema, crearZonaSchema, listarZonasSchema } from "@/lib/types/zona";
 
 function base(overrides: Record<string, unknown> = {}) {
   return {
@@ -96,5 +96,37 @@ describe("listarZonasSchema — include", () => {
 
   it("rechaza include con valores fuera del catalogo", () => {
     expect(listarZonasSchema.safeParse({ include: ["distritos"] }).success).toBe(false);
+  });
+});
+
+/**
+ * SLT-89 · R5 (design §6) — «al menos uno» se mide entre `distritoIds` y `nodoIds`, y el error sigue
+ * en `distritoIds`, el campo de hoy.
+ */
+describe("SLT-89 · R5 — una zona necesita al menos un lugar, distrito u otro nodo", () => {
+  it("crear solo con un nodo que no es distrito es valido", () => {
+    const r = crearZonaSchema.safeParse(base({ distritoIds: [], nodoIds: ["canton-1"] }));
+    expect(r.success).toBe(true);
+  });
+
+  it("crear sin distritos ni nodos → error en `distritoIds`", () => {
+    const r = crearZonaSchema.safeParse(base({ distritoIds: [], nodoIds: [] }));
+    expect(r.success).toBe(false);
+    if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toEqual(["distritoIds"]);
+  });
+
+  it("actualizar sin distritos ni nodos → error en `distritoIds`", () => {
+    const r = actualizarZonaSchema.safeParse({
+      nombre: "GAM",
+      distritoIds: [],
+      antes: { distritoIds: ["d1"], nodoIds: [] },
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toEqual(["distritoIds"]);
+  });
+
+  it("`nodoIds` ausente sigue siendo valido y no se materializa", () => {
+    const r = crearZonaSchema.parse(base());
+    expect(r.nodoIds).toBeUndefined();
   });
 });

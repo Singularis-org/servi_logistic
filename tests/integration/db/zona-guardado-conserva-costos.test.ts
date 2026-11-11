@@ -4,7 +4,6 @@ import type { PrismaClient } from "@prisma/client";
 
 import { actualizarZona, crearZona } from "@/lib/actions/zonas";
 import type { Actor } from "@/lib/interfaces/services/IZonaService";
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { ZonaService } from "@/lib/services/ZonaService";
 import { actualizarZonaSchema } from "@/lib/types/zona";
 
@@ -17,6 +16,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, antesDeZona } from "./_fixtures/antes-de-zona";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SLT-51 / T3 — GUARDAR UNA ZONA DESDE «ZONAS» NO TOCA SUS COSTOS (Postgres real).
@@ -104,7 +104,7 @@ async function foto(tx: TxDeTest, zonaId: string): Promise<Foto> {
 interface Escenario {
   tx: TxDeTest;
   deps: { zonaService: ZonaService; getActor: () => Promise<Actor | null> };
-  repo: ZonaRepository;
+  repo: ZonaRepositoryConAntes;
   usuarioId: string;
   crearDistrito: () => Promise<string>;
 }
@@ -125,7 +125,7 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
       await serializarEscriturasReales(tx);
       const FKS = await crearFksDeOrden(tx);
       const maestro = await crearUsuarioDePrueba(tx, "maestro");
-      const repo = new ZonaRepository(clienteConSavepoint(tx));
+      const repo = new ZonaRepositoryConAntes(tx, clienteConSavepoint(tx));
       const actor: Actor = { usuarioId: maestro.id, rol: "maestro" };
       await fn({
         tx,
@@ -237,7 +237,7 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
       const nuevoNombre = `SLT51 renombrada ${unico()}`;
       const r = await actualizarZona(
         z.zonaId,
-        { nombre: nuevoNombre, distritoIds: [z.d1, z.d3] },
+        { nombre: nuevoNombre, distritoIds: [z.d1, z.d3], antes: await antesDeZona(e.tx, z.zonaId) },
         e.deps,
       );
       expect(r.status).toBe("ok");
@@ -267,6 +267,7 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
           nombre: `SLT51 no debe quedar ${unico()}`,
           distritoIds: [z.d3],
           tarifas: [{ cobroEntregado: 1, cobroRechazado: 1 }],
+          antes: await antesDeZona(e.tx, z.zonaId),
         },
         e.deps,
       );
@@ -290,6 +291,7 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
           distritoIds: [z.d3],
           cobroVehiculo: false,
           tarifas: [{ cobroEntregado: 1000, cobroRechazado: 500 }],
+          antes: await antesDeZona(e.tx, z.zonaId),
         },
         e.deps,
       );
@@ -314,6 +316,7 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
           distritoIds: [z.d1, z.d2],
           cobroVehiculo: false,
           tarifas: [{ cobroEntregado: 1000, cobroRechazado: 500 }],
+          antes: await antesDeZona(e.tx, z.zonaId),
         }),
         actor,
       );

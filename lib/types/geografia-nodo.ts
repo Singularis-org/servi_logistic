@@ -283,3 +283,54 @@ export interface NodoArbolPlataformaDTO {
   tipoId: string;
   hijos: NodoArbolPlataformaDTO[];
 }
+
+// ── SLT-89 (design §4.2): el arbol de zonas de N niveles (R24–R27) ───────────────────────────
+
+/** Un tipo de nivel del pais tal como lo pinta el selector: los nombres salen de aqui, nunca de literales. */
+export interface TipoDeArbolDeZonasDTO {
+  profundidad: number;
+  nombreSingular: string;
+  nombrePlural: string;
+}
+
+/**
+ * Un nodo del arbol de zonas de la empresa, a cualquier profundidad. `asignadaA` es la asignacion
+ * DIRECTA del nodo (como mucho una, R2); `heredaDe`, la zona que lo cubriria por un ancestro (el mas
+ * cercano con asignacion, con el colapso de `zonaQueCubre`), con el nodo del que la hereda. Un nodo
+ * con asignacion propia distinta de la que hereda es una excepcion: lleva los dos.
+ */
+export interface NodoDeZonasDTO {
+  id: string;
+  nombre: string;
+  profundidad: number;
+  /** El flag PROPIO, como el arbol de hoy. */
+  activo: boolean;
+  asignadaA: { id: string; nombre: string } | null;
+  heredaDe: { zonaId: string; zonaNombre: string; nodoId: string; nodoNombre: string } | null;
+  hijos: NodoDeZonasDTO[];
+}
+
+export interface ArbolDeZonasDTO {
+  tipos: TipoDeArbolDeZonasDTO[];
+  raices: NodoDeZonasDTO[];
+}
+
+/**
+ * SLT-89 (R23, design §4.4) — un nodo que la zona cubre (asignado o heredado), para elegir miembros de
+ * un grupo en Tarifas. Sus `hijos` son los que la zona tambien cubre: una excepcion de otra zona no
+ * aparece.
+ */
+export interface NodoCubiertoDTO {
+  id: string;
+  nombre: string;
+  profundidad: number;
+  /** El flag PROPIO, como el arbol de zonas. */
+  activo: boolean;
+  hijos: NodoCubiertoDTO[];
+}
+
+/** SLT-89 (R23): el sub-arbol cubierto por una zona, con los nombres de nivel del pais. */
+export interface ArbolCubiertoDTO {
+  tipos: TipoDeArbolDeZonasDTO[];
+  raices: NodoCubiertoDTO[];
+}

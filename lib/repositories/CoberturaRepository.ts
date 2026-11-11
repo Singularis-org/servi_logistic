@@ -26,7 +26,7 @@ import { usaModeloNuevo } from "@/lib/repositories/_shared/resolver-tarifas";
 
 type CoberturaPrismaClient = Pick<
   PrismaClient,
-  "tarifa" | "tarifaActivacion" | "tarifaValor" | "nodoGeografico" | "tipoNivelGeografico" | "zonaDistrito" | "organizacion"
+  "tarifa" | "tarifaActivacion" | "tarifaValor" | "nodoGeografico" | "tipoNivelGeografico" | "zonaDistrito" | "zonaNodo" | "organizacion"
 > &
   ClienteDeMarcas;
 

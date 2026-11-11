@@ -3,8 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
-import type { UpdateZonaData, UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
+import type { UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import {
   HAY_BASE_DE_DATOS,
@@ -15,6 +14,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ SLT-76 / T6 (R8, R9, R10) — EL RASTRO DE LOS DISTRITOS DE UNA ZONA, CONTRA POSTGRES REAL.
@@ -61,12 +61,12 @@ function soloOk(res: UpdateZonaResult): Extract<UpdateZonaResult, { estado: "ok"
 
 interface Escenario {
   tx: TxDeTest;
-  repo: ZonaRepository;
+  repo: ZonaRepositoryConAntes;
   maestro: string;
   zona: { id: string; nombre: string };
   otraZona: { id: string; nombre: string };
   d: { d1: string; d2: string; d3: string; dOtra: string; dLargo: string };
-  datos: (distritoIds: string[], nombre?: string) => UpdateZonaData;
+  datos: (distritoIds: string[], nombre?: string) => DatosSinAntes;
   filas: () => Promise<
     {
       entidadTipo: string;
@@ -137,7 +137,7 @@ describeSiHayBase("SLT-76 — rastro de los distritos de una zona (Postgres real
       // catalogo (SLT-44/SLT-65) pide `organizacion` por el id del contexto y con la RLS no la hallaria.
       return conEmpresa(empresa, () => fn({
         tx,
-        repo: new ZonaRepository(clienteSoloTransaccion(tx)),
+        repo: new ZonaRepositoryConAntes(tx, clienteSoloTransaccion(tx)),
         maestro,
         zona,
         otraZona,

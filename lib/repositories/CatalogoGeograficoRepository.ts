@@ -7,6 +7,7 @@ import type {
 } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
 import { leerNodosConMarcaDeLaEmpresa, type ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { leerAsignacionesANodos } from "@/lib/repositories/_shared/zona-nodo";
 import {
   crearAsignaciones,
   crearCatalogo,
@@ -30,7 +31,10 @@ import {
 const CLAVE_SESION = "sesion";
 
 /** Lo que la transaccion de la carga usa del cliente. Las marcas, por su tipo del punto unico. */
-type TxDeCarga = Pick<PrismaClient, "zonaDistrito" | "organizacion" | "tipoNivelGeografico" | "nodoGeografico"> &
+type TxDeCarga = Pick<
+  PrismaClient,
+  "zonaDistrito" | "zonaNodo" | "organizacion" | "tipoNivelGeografico" | "nodoGeografico"
+> &
   ClienteDeMarcas;
 
 /**
@@ -97,15 +101,24 @@ async function leerDeLaEmpresa(tx: TxDeCarga, organizacionId: string | null): Pr
   // La politica `organizacion_propia` solo deja ver la empresa del contexto. Con `conEmpresa` se
   // pide ademas por id: con un cliente sin RLS (el dueño de un test) `findFirst` sin `where`
   // devolveria una empresa cualquiera, y con ella el pais de otra.
+  //
+  // SLT-89 (R38; CI de dcbfd288, `geo-explain-analitica`): cuantas filas tiene la empresa en
+  // `zona_nodo` viaja DENTRO de esta misma consulta (`_count`, una subconsulta), asi que una empresa de
+  // solo distritos no paga ninguna consulta mas que antes de SLT-89.
   const organizacion = await tx.organizacion.findFirst({
     where: organizacionId === null ? {} : { id: organizacionId },
-    select: { paisId: true },
+    select: { paisId: true, _count: { select: { zonaNodos: true } } },
   });
   if (organizacion === null) throw new EmpresaNoResuelta("Organizacion", "findFirst");
   const catalogo = await leerCatalogo(tx, organizacion.paisId);
   const marcas = await leerNodosConMarcaDeLaEmpresa(tx);
+  // SLT-89 (design §4.1, R9): las asignaciones a nodos que no son distritos, en la misma foto y en
+  // serie, y solo si hay alguna. Van DESPUES de las de `zona_distrito`: con `zona_nodo` vacia (Costa
+  // Rica el dia del deploy) las asignaciones son identicas a las de antes (R38). Un doble de test que
+  // no trae el conteo cae en leer la tabla, como antes de este arreglo.
+  const filasDeNodo = organizacion._count?.zonaNodos === 0 ? [] : await leerAsignacionesANodos(tx);
   const asignaciones = crearAsignaciones(
-    filasDeZona.map((f) => ({ nodoId: f.distritoId, zona: f.zona })),
+    [...filasDeZona.map((f) => ({ nodoId: f.distritoId, zona: f.zona })), ...filasDeNodo],
     marcas,
   );
   return { catalogo, asignaciones };

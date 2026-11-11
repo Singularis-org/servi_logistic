@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import type { ParTarifa } from "@/lib/utils/cascada-tarifa";
 import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 
@@ -40,8 +41,20 @@ import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 // unico decide con ellos que modelo usa la empresa. El `prisma` de las raices ya los tiene.
 export type TarifaTxClient = Pick<
   PrismaClient,
-  "tarifa" | "tarifaActivacion" | "tarifaValor" | "grupoDistritosDistrito"
->;
+  | "tarifa"
+  | "tarifaActivacion"
+  | "tarifaValor"
+  | "grupoDistritosDistrito"
+  // SLT-89 (design §4.3): la tabla hermana de miembros y, solo cuando tiene filas, la carga del
+  // catalogo de la empresa para subir por los ancestros del distrito (miembro mas cercano, R19).
+  | "grupoDistritosNodo"
+  | "zonaDistrito"
+  | "zonaNodo"
+  | "organizacion"
+  | "tipoNivelGeografico"
+  | "nodoGeografico"
+> &
+  ClienteDeMarcas;
 
 // Tarifa vigente resuelta para un par (tienda, zona). MONTOS: valorFlete[Gam],
 // valorFleteDevuelto[Gam], tarifaEspecial[Devuelta]. PORCENTAJES (0..100): comisionCod,

@@ -253,6 +253,14 @@ function repoGrupos(overrides: Partial<Record<keyof IGrupoDistritosRepository, M
   };
 }
 
+/**
+ * SLT-89 (T5.6, R43–R45; decision del 2026-11-09): el «antes» obligatorio de renombrar, cambiar
+ * miembros y borrar, igual a lo que el doble da por sembrado (el grupo «Sur» con «d1»). Solo entrada, y
+ * las aserciones de llamada sobre el doble del repositorio, que lo ganan en su posicion.
+ */
+const ANTES_MIEMBROS = { distritoIds: ["d1"], nodoIds: [] as string[] };
+const ANTES_BORRAR = { nombre: "Sur", distritoIds: ["d1"], nodoIds: [] as string[], valores: 0 };
+
 function depsDeGrupos(repo: ReturnType<typeof repoGrupos>, actor: Actor | null = MAESTRO) {
   return {
     getActor: async () => actor,
@@ -269,19 +277,26 @@ describe("SLT-54 R42 — las cuatro actions de grupos", () => {
       id: "g1",
     });
     expect(repo.crear).toHaveBeenCalledWith({ zonaId: "z1", nombre: "Sur", distritoIds: ["d1"] }, "u-m");
-    expect(await renombrarGrupoDistritos({ id: "g1", nombre: "Norte" }, deps)).toEqual({ status: "ok" });
-    expect(repo.renombrar).toHaveBeenCalledWith("g1", "Norte", "u-m");
-    expect(await cambiarDistritosDeGrupo({ id: "g1", distritoIds: ["d1"] }, deps)).toEqual({ status: "ok" });
-    expect(repo.fijarDistritos).toHaveBeenCalledWith("g1", ["d1"], "u-m");
-    expect(await borrarGrupoDistritos({ id: "g1" }, deps)).toEqual({ status: "ok" });
-    expect(repo.borrar).toHaveBeenCalledWith("g1", "u-m");
+    expect(await renombrarGrupoDistritos({ id: "g1", nombre: "Norte", nombreAnterior: "Sur" }, deps)).toEqual({
+      status: "ok",
+    });
+    expect(repo.renombrar).toHaveBeenCalledWith("g1", "Norte", "Sur", "u-m");
+    expect(
+      await cambiarDistritosDeGrupo({ id: "g1", distritoIds: ["d1"], antes: ANTES_MIEMBROS }, deps),
+    ).toEqual({ status: "ok" });
+    expect(repo.fijarDistritos).toHaveBeenCalledWith("g1", ["d1"], ANTES_MIEMBROS, "u-m");
+    expect(await borrarGrupoDistritos({ id: "g1", antes: ANTES_BORRAR }, deps)).toEqual({ status: "ok" });
+    expect(repo.borrar).toHaveBeenCalledWith("g1", ANTES_BORRAR, "u-m");
   });
 
   it("un rechazo de SLT-52 R11 nombra el distrito sin la palabra del nivel, que depende del país", async () => {
     const repo = repoGrupos({
       distritosEnOtroGrupo: vi.fn().mockResolvedValue([{ distritoNombre: "Hatillo", grupoNombre: "Sur" }]),
     });
-    const res = await cambiarDistritosDeGrupo({ id: "g1", distritoIds: ["d1"] }, depsDeGrupos(repo));
+    const res = await cambiarDistritosDeGrupo(
+      { id: "g1", distritoIds: ["d1"], antes: ANTES_MIEMBROS },
+      depsDeGrupos(repo),
+    );
     expect(res).toEqual({
       status: "validation_error",
       fieldErrors: { distritoIds: ["Hatillo ya está en el grupo Sur."] },
@@ -309,9 +324,9 @@ describe("SLT-54 R42 — las cuatro actions de grupos", () => {
     const deps = depsDeGrupos(repo, ADMIN);
     const forbidden = { status: "forbidden" };
     expect(await crearGrupoDistritos({ zonaId: "z1", nombre: "Sur", distritoIds: [] }, deps)).toEqual(forbidden);
-    expect(await renombrarGrupoDistritos({ id: "g1", nombre: "Norte" }, deps)).toEqual(forbidden);
-    expect(await cambiarDistritosDeGrupo({ id: "g1", distritoIds: [] }, deps)).toEqual(forbidden);
-    expect(await borrarGrupoDistritos({ id: "g1" }, deps)).toEqual(forbidden);
+    expect(await renombrarGrupoDistritos({ id: "g1", nombre: "Norte", nombreAnterior: "Sur" }, deps)).toEqual(forbidden);
+    expect(await cambiarDistritosDeGrupo({ id: "g1", distritoIds: [], antes: ANTES_MIEMBROS }, deps)).toEqual(forbidden);
+    expect(await borrarGrupoDistritos({ id: "g1", antes: ANTES_BORRAR }, deps)).toEqual(forbidden);
     for (const metodo of [repo.crear, repo.renombrar, repo.fijarDistritos, repo.borrar]) {
       expect(metodo).not.toHaveBeenCalled();
     }
@@ -329,6 +344,53 @@ describe("SLT-54 R42 — las cuatro actions de grupos", () => {
 
   it("un fallo inesperado es `error`", async () => {
     const repo = repoGrupos({ borrar: vi.fn().mockRejectedValue(new Error("base caida")) });
-    expect(await borrarGrupoDistritos({ id: "g1" }, depsDeGrupos(repo))).toEqual({ status: "error" });
+    expect(await borrarGrupoDistritos({ id: "g1", antes: ANTES_BORRAR }, depsDeGrupos(repo))).toEqual({
+      status: "error",
+    });
+  });
+});
+
+/**
+ * SLT-89 · R43–R45 (design §5.4, §5.5) — las actions exigen el «antes» y entregan el cambio
+ * concurrente. Con el service real: sin «antes» ningun metodo del repositorio se ejecuta, asi que la
+ * base no cambia.
+ */
+describe("SLT-89 — el «antes» en las escrituras de grupos", () => {
+  let repoActual = repoGrupos();
+
+  function llamadas(repo: ReturnType<typeof repoGrupos>): number {
+    return Object.values(repo).reduce((n, fn) => n + (fn as Mock).mock.calls.length, 0);
+  }
+
+  it.each([
+    ["renombrar sin nombreAnterior", () => renombrarGrupoDistritos({ id: "g1", nombre: "Norte" }, depsDeGrupos(repoActual)), "nombreAnterior"],
+    ["cambiar miembros sin antes", () => cambiarDistritosDeGrupo({ id: "g1", distritoIds: ["d1"] }, depsDeGrupos(repoActual)), "antes"],
+    ["borrar sin antes", () => borrarGrupoDistritos({ id: "g1" }, depsDeGrupos(repoActual)), "antes"],
+  ] as const)("⭑ %s → validation_error en su campo, sin tocar el repositorio", async (_caso, llamar, campo) => {
+    repoActual = repoGrupos();
+    const res = await llamar();
+    expect(res.status).toBe("validation_error");
+    if (res.status === "validation_error") expect(Object.keys(res.fieldErrors)).toContain(campo);
+    expect(llamadas(repoActual)).toBe(0);
+  });
+
+  it("⭑ el `cambio_concurrente` del repositorio llega como `conflict` con motivo en las tres", async () => {
+    const repo = repoGrupos({
+      renombrar: vi.fn().mockResolvedValue("cambio_concurrente"),
+      fijarDistritos: vi.fn().mockResolvedValue("cambio_concurrente"),
+      borrar: vi.fn().mockResolvedValue("cambio_concurrente"),
+    });
+    const deps = depsDeGrupos(repo);
+    const conflicto = { status: "conflict", motivo: "cambio_concurrente" };
+    expect(await renombrarGrupoDistritos({ id: "g1", nombre: "Norte", nombreAnterior: "Sur" }, deps)).toEqual(conflicto);
+    expect(await cambiarDistritosDeGrupo({ id: "g1", distritoIds: ["d1"], antes: ANTES_MIEMBROS }, deps)).toEqual(conflicto);
+    expect(await borrarGrupoDistritos({ id: "g1", antes: ANTES_BORRAR }, deps)).toEqual(conflicto);
+  });
+
+  it("los nodos que no son distritos viajan como miembros junto a los distritos", async () => {
+    const repo = repoGrupos({ distritosDeLaZona: vi.fn(async (_z: string, ids: string[]) => ids) });
+    const antes = { distritoIds: ["d1"], nodoIds: ["c1"] };
+    await cambiarDistritosDeGrupo({ id: "g1", distritoIds: ["d1"], nodoIds: ["c1"], antes }, depsDeGrupos(repo));
+    expect(repo.fijarDistritos).toHaveBeenCalledWith("g1", ["d1", "c1"], antes, "u-m");
   });
 });

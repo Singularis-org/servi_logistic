@@ -8,7 +8,18 @@ import type {
   VehiculoDePantalla,
   ZonaDePantalla,
 } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
+import { PROFUNDIDAD_DEL_NIVEL } from "@/lib/repositories/_shared/lugar-orden";
+import { leerNodosDeZona } from "@/lib/repositories/_shared/zona-nodo";
+import {
+  esZonaEspecial,
+  zonaQueCubre,
+  type AsignacionesDeLaEmpresa,
+  type CatalogoGeografico,
+  type NodoDelCatalogo,
+} from "@/lib/services/geografia-dominio";
+import type { ArbolCubiertoDTO, NodoCubiertoDTO } from "@/lib/types/geografia-nodo";
 import {
   leerModeloViejoCon,
   type LecturaModeloViejo,
@@ -39,6 +50,43 @@ type TarifasPantallaPrismaClient = ConstructorParameters<typeof GrupoDistritosRe
   >;
 
 const SELECT_ZONA = { id: true, nombre: true, esCentral: true } as const;
+
+/** `nivel_<k>` → k (P1 de SLT-46: el tipo de la profundidad k es el de clave `nivel_<k>`, como en `GeoRepository`). */
+function profundidadDeClave(clave: string): number {
+  const m = /^nivel_(\d+)$/.exec(clave);
+  if (m === null) throw new Error(`tipo de nivel con clave inesperada: ${clave}`);
+  return Number(m[1]);
+}
+
+/** SLT-89 (R23): un nodo cubierto por la zona y, debajo, lo que la zona tambien cubre. */
+function nodoCubierto(
+  catalogo: CatalogoGeografico,
+  cubre: (n: NodoDelCatalogo) => boolean,
+  n: NodoDelCatalogo,
+): NodoCubiertoDTO {
+  return {
+    id: n.id,
+    nombre: n.nombre,
+    profundidad: n.profundidad,
+    activo: n.activo,
+    hijos: (catalogo.hijos.get(n.id) ?? []).filter(cubre).map((h) => nodoCubierto(catalogo, cubre, h)),
+  };
+}
+
+/** Los nodos que la zona cubre cuyo padre no cubre: las raices del sub-arbol (design §4.4). */
+function raicesCubiertas(
+  catalogo: CatalogoGeografico,
+  asignaciones: AsignacionesDeLaEmpresa,
+  zonaId: string,
+): { cubre: (n: NodoDelCatalogo) => boolean; raices: NodoDelCatalogo[] } {
+  const cubre = (n: NodoDelCatalogo) => zonaQueCubre(catalogo, asignaciones, n.id)?.id === zonaId;
+  const raices = catalogo.nodos.filter((n) => {
+    if (!cubre(n)) return false;
+    const padre = n.padreId === null ? undefined : catalogo.porId.get(n.padreId);
+    return padre === undefined || !cubre(padre);
+  });
+  return { cubre, raices };
+}
 
 export class TarifasPantallaRepository implements ITarifasPantallaRepository {
   constructor(private readonly prisma: TarifasPantallaPrismaClient) {}
@@ -109,20 +157,80 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
 
   async distritosDeZona(zonaId: string, opciones: { conMarca: boolean }): Promise<DistritoDeZona[]> {
     const porNombre = (a: DistritoDeZona, b: DistritoDeZona) => a.nombre.localeCompare(b.nombre);
+    // SLT-89 (R23, design §4.4): una zona con nodos que no son distritos cubre ademas los distritos que
+    // cuelgan de ellos (salvo las excepciones de otra zona). Sin ninguno, ni el catalogo se carga: la
+    // lectura de abajo es la de hoy (R38).
+    if ((await leerNodosDeZona(this.prisma, zonaId)).length > 0) {
+      const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(this.prisma).deLaEmpresa();
+      const nombrePorId = new Map(catalogo.nodos.map((n) => [n.id, n.nombre]));
+      return catalogo.nodos
+        .filter(
+          (n) =>
+            n.profundidad === PROFUNDIDAD_DEL_NIVEL.distrito &&
+            zonaQueCubre(catalogo, asignaciones, n.id)?.id === zonaId,
+        )
+        .map((n) => ({
+          id: n.id,
+          nombre: n.nombre,
+          zonaEspecial: opciones.conMarca && esZonaEspecial(catalogo, asignaciones, n.id),
+          padre: n.padreId === null ? null : (nombrePorId.get(n.padreId) ?? null),
+        }))
+        .sort(porNombre);
+    }
+    // SLT-89 (R22, decision del 2026-11-10): el padre (canton) de cada distrito viaja tambien aqui, de su
+    // FK vieja, para que la pantalla de grupos lo pinte sin el arbol.
     if (!opciones.conMarca) {
       const filas = await this.prisma.zonaDistrito.findMany({
         where: { zonaId },
-        select: { distrito: { select: { id: true, nombre: true } } },
+        select: { distrito: { select: { id: true, nombre: true, canton: { select: { nombre: true } } } } },
       });
-      return filas.map(({ distrito }) => ({ ...distrito, zonaEspecial: false })).sort(porNombre);
+      return filas
+        .map(({ distrito: d }) => ({ id: d.id, nombre: d.nombre, zonaEspecial: false, padre: d.canton.nombre }))
+        .sort(porNombre);
     }
     const filas = await this.prisma.zonaDistrito.findMany({
       where: { zonaId },
-      select: { distrito: { select: { id: true, nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } } },
+      select: {
+        distrito: { select: { id: true, nombre: true, canton: { select: { nombre: true } }, ...SELECT_MARCA_ZONA_ESPECIAL } },
+      },
     });
     return filas
-      .map(({ distrito: d }) => ({ id: d.id, nombre: d.nombre, zonaEspecial: esZonaEspecialDeLaEmpresa(d) }))
+      .map(({ distrito: d }) => ({
+        id: d.id,
+        nombre: d.nombre,
+        zonaEspecial: esZonaEspecialDeLaEmpresa(d),
+        padre: d.canton.nombre,
+      }))
       .sort(porNombre);
+  }
+
+  /**
+   * SLT-89 (R23, design §4.4) — el sub-arbol que la zona cubre (asignado y heredado, sin las
+   * excepciones de otra zona), con los nombres de nivel del pais. Una carga del catalogo, en memoria.
+   */
+  async nodosDeZona(zonaId: string): Promise<ArbolCubiertoDTO | null> {
+    // Una zona sin nodos que no son distritos, y sin nada debajo de sus distritos, no tiene mas
+    // posibles miembros que sus distritos asignados: `null`, sin cargar el catalogo (R38).
+    if ((await leerNodosDeZona(this.prisma, zonaId)).length === 0) {
+      const distritos = await this.prisma.zonaDistrito.findMany({ where: { zonaId }, select: { distritoId: true } });
+      const debajo =
+        distritos.length === 0
+          ? 0
+          : await this.prisma.nodoGeografico.count({ where: { padreId: { in: distritos.map((d) => d.distritoId) } } });
+      if (debajo === 0) return null;
+    }
+    const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(this.prisma).deLaEmpresa();
+    const { cubre, raices } = raicesCubiertas(catalogo, asignaciones, zonaId);
+    return {
+      tipos: [...catalogo.tipos]
+        .map((t) => ({
+          profundidad: profundidadDeClave(t.clave),
+          nombreSingular: t.nombreSingular,
+          nombrePlural: t.nombrePlural,
+        }))
+        .sort((a, b) => a.profundidad - b.profundidad),
+      raices: raices.map((n) => nodoCubierto(catalogo, cubre, n)),
+    };
   }
 
   async leerModeloViejo(pedido: PedidoModeloViejo): Promise<LecturaModeloViejo> {

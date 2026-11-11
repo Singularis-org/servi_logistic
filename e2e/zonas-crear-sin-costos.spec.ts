@@ -117,7 +117,12 @@ test("el maestro crea una zona sin costos y la ve en el listado", async ({ brows
   await casilla.click();
   await page.getByRole("textbox", { name: "Número SINPE" }).fill(SINPE_NUMERO);
   await page.getByRole("textbox", { name: "A nombre de" }).fill(SINPE_NOMBRE);
-  await page.getByRole("button", { name: "Guardar" }).click();
+  // SLT-89 (R12, T7.2): guardar abre el modal único antes → después; «Sí, guardar» escribe cuando
+  // llegan las cifras del aviso de impacto.
+  await page.getByRole("button", { name: "Guardar zona…" }).click();
+  const confirmar = page.getByRole("dialog").getByRole("button", { name: "Sí, guardar", exact: true });
+  await expect(confirmar).toBeEnabled({ timeout: 30_000 });
+  await confirmar.click();
 
   await expect(page.getByText("Zona creada", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Nueva zona" })).toHaveCount(0);

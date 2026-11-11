@@ -9,6 +9,8 @@ import {
   SINPE_DE_PRUEBA,
   tecleaSinpeDeLaZona,
 } from "../fixtures/sinpe-en-formulario-zona";
+// SLT-89 (T7.2): la entrada nueva del formulario (árbol de N niveles) y el modal único de guardado.
+import { arbolDeZonas, guardarYConfirmar } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * SLT-51 — el formulario de zona ya no pide ni guarda costos.
@@ -23,6 +25,8 @@ import {
 const crearZonaMock = vi.fn();
 const actualizarZonaMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   crearZona: (...a: unknown[]) => crearZonaMock(...a),
   actualizarZona: (...a: unknown[]) => actualizarZonaMock(...a),
   impactoZonaCentral: vi.fn(),
@@ -79,7 +83,7 @@ function renderForm(mode: "crear" | "editar") {
     <ToastProvider>
       <CrearZonaForm
         mode={mode}
-        provincias={arbol()}
+        arbol={arbolDeZonas(arbol())}
         zonas={[]}
         initial={
           mode === "editar"
@@ -166,7 +170,7 @@ describe("SLT-51/R5 — guardar no manda ni escribe costos", () => {
     await user.type(screen.getByRole("textbox", { name: "Nombre de la zona" }), "Sur");
     await user.click(screen.getByRole("checkbox", { name: /^Seleccionar distrito Test\b/ }));
     await tecleaSinpeDeLaZona(user);
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(crearZonaMock).toHaveBeenCalledTimes(1));
     const payload = crearZonaMock.mock.calls[0][0] as Record<string, unknown>;
@@ -188,7 +192,7 @@ describe("SLT-51/R5 — guardar no manda ni escribe costos", () => {
     await abrirArbol(user);
 
     await user.click(screen.getByRole("checkbox", { name: /^Seleccionar distrito Test\b/ }));
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await guardarYConfirmar(user);
 
     await waitFor(() => expect(actualizarZonaMock).toHaveBeenCalledTimes(1));
     const [id, payload] = actualizarZonaMock.mock.calls[0] as [string, Record<string, unknown>];

@@ -428,7 +428,10 @@ test.describe.serial("Tarifas — dos empresas y permisos (R68, R55)", () => {
     await dialogo.getByRole("textbox").fill(GRUPO_DE_A);
     await dialogo.getByRole("checkbox", { name: a.zonaSatelite.geo.distrito }).click();
     await dialogo.getByRole("button", { name: "Guardar", exact: true }).click();
-    await expect(dialogo).toHaveCount(0);
+    // SLT-89 (R22): toda escritura de grupos pasa por el antes → después del mismo modal.
+    const confirmacion = page.getByRole("dialog", { name: `¿Crear el grupo ${GRUPO_DE_A}?` });
+    await confirmacion.getByRole("button", { name: "Sí, guardar", exact: true }).click();
+    await expect(confirmacion).toHaveCount(0);
     await expect(grupos).toContainText(GRUPO_DE_A);
     await page.context().close();
 

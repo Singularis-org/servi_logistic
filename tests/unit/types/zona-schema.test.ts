@@ -32,6 +32,8 @@ const validActualizar = {
   cobroVehiculo: false,
   distritoIds: ["d1", "d2"],
   tarifas: [],
+  // SLT-89 (T3.7, R16): el «antes» obligatorio al actualizar (decision del 2026-11-09).
+  antes: { distritoIds: ["d1", "d2"], nodoIds: [] },
 };
 
 describe("crearZonaSchema (R19)", () => {
@@ -185,7 +187,8 @@ const sinCostosCrear = {
   sinpeNumero: "80000000",
   sinpeNombre: "Titular de Prueba",
 };
-const sinCostosActualizar = { nombre: "Zona Sur", distritoIds: ["d1"] };
+// SLT-89 (T3.7, R16): con el «antes» obligatorio al actualizar.
+const sinCostosActualizar = { nombre: "Zona Sur", distritoIds: ["d1"], antes: { distritoIds: ["d1"], nodoIds: [] } };
 
 describe("SLT-51 — cobroVehiculo y tarifas opcionales", () => {
   it("R5: crear SIN los dos sale con cobroVehiculo=false y tarifas=[]", () => {
@@ -252,5 +255,38 @@ describe("listarZonasSchema — clamp de pageSize (R24)", () => {
   it("acota pageSize a MAX_PAGE_SIZE", () => {
     const r = listarZonasSchema.parse({ page: 1, pageSize: 100000 });
     expect(r.pageSize).toBeLessThanOrEqual(100);
+  });
+});
+
+/**
+ * SLT-89 · R16, R46 (design §5.5) — el «antes» es obligatorio al guardar una zona existente y no
+ * existe al crearla.
+ */
+describe("SLT-89 · R16/R46 — el «antes» de guardar una zona", () => {
+  const { antes: _antes, ...sinAntes } = validActualizar;
+  void _antes;
+
+  it("actualizar sin `antes` → error en `antes` (y solo ahi)", () => {
+    const r = actualizarZonaSchema.safeParse(sinAntes);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toEqual(["antes"]);
+  });
+
+  it("actualizar con un `antes` incompleto (sin `nodoIds`) → error en `antes`", () => {
+    const r = actualizarZonaSchema.safeParse({ ...sinAntes, antes: { distritoIds: ["d1"] } });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(Object.keys(r.error.flatten().fieldErrors)).toEqual(["antes"]);
+  });
+
+  it("actualizar con listas vacias en `antes` es valido: las juzga el repositorio", () => {
+    expect(actualizarZonaSchema.safeParse({ ...sinAntes, antes: { distritoIds: [], nodoIds: [] } }).success).toBe(true);
+  });
+
+  it("crear sin `antes` es valido (R46)", () => {
+    expect(crearZonaSchema.safeParse(validCrear).success).toBe(true);
+  });
+
+  it("crear con `antes` se rechaza: el esquema de crear no lo admite (strict)", () => {
+    expect(crearZonaSchema.safeParse({ ...validCrear, antes: { distritoIds: [], nodoIds: [] } }).success).toBe(false);
   });
 });

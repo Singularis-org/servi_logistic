@@ -2,12 +2,10 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
-import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 import type {
   CreateZonaResult,
   TarifaZonaMensajeroData,
-  UpdateZonaData,
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
 
@@ -22,6 +20,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 380 / T8 — EL RASTRO DE LA REESCRITURA DEL PAGO AL MENSAJERO, CONTRA POSTGRES REAL.
@@ -77,7 +76,7 @@ function datos(
   nombre: string,
   distritoIds: string[],
   tarifas: TarifaZonaMensajeroData[],
-): UpdateZonaData {
+): DatosSinAntes {
   return { nombre, cobroVehiculo: tarifas.some((t) => t.vehiculoId !== null), distritoIds, tarifas };
 }
 
@@ -111,7 +110,7 @@ interface PagoEnTabla {
 
 interface Escenario {
   tx: TxDeTest;
-  repo: ZonaRepository;
+  repo: ZonaRepositoryConAntes;
   zonas: {
     A: { id: string; nombre: string };
     B: { id: string; nombre: string };
@@ -169,7 +168,7 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
         tx,
         // `update`/`create`/`hardDelete` abren su propia `$transaction`; el savepoint la traduce a
         // uno REAL, asi que el SQL medido es el de produccion y un fallo revierte de verdad.
-        repo: new ZonaRepository(clienteConSavepoint(tx)),
+        repo: new ZonaRepositoryConAntes(tx, clienteConSavepoint(tx)),
         zonas: { A: { id: a.id, nombre: nombres.A }, B: { id: b.id, nombre: nombres.B } },
         vehiculos: { moto: moto.id, carro: carro.id },
 
@@ -639,7 +638,7 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
       await e.repo.update(e.zonas.A.id, datos(e.zonas.A.nombre, [d], [pago(1500, 700)]), USUARIO);
       const antes = await e.pagosDe(e.zonas.A.id);
 
-      const repoRoto = new ZonaRepository(clienteConSavepoint(e.tx, true));
+      const repoRoto = new ZonaRepositoryConAntes(e.tx, clienteConSavepoint(e.tx, true));
       let error: unknown = null;
       try {
         await repoRoto.update(

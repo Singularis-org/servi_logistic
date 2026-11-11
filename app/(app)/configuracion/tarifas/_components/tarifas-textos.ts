@@ -268,7 +268,29 @@ export const TEXTOS = {
   marcaEspecial: "Zona especial hoy",
   marcaEspecialNota:
     "«Zona especial hoy» es lo que rige ahora y es de solo lectura: aquí no cambia. Si quieres repetir ese conjunto, elígelo en un grupo; empezará a contar al activar.",
-  borrarGrupoTitulo: (nombre: string) => `Borrar el grupo ${nombre}`,
+  borrarGrupoTitulo: (nombre: string) => `¿Borrar el grupo ${nombre}?`,
+  // SLT-89 (R22, R47; design §8.3; maqueta aprobada el 2026-11-10): el modal antes → después de las
+  // cuatro escrituras de grupos y el aviso de cambio concurrente.
+  editarLugares: "Editar lugares…",
+  editarLugaresDe: (grupo: string) => `Editar lugares de ${grupo}`,
+  tituloEditarLugares: "Editar lugares",
+  lugares: "Lugares",
+  otrosLugares: "Otros lugares",
+  crearGrupoConfirmar: (nombre: string) => `¿Crear el grupo ${nombre}?`,
+  renombrarGrupoConfirmar: (nombre: string) => `¿Renombrar el grupo ${nombre}?`,
+  lugaresGrupoConfirmar: (nombre: string) => `¿Cambiar los lugares del grupo ${nombre}?`,
+  antes: "Antes",
+  despues: "Después",
+  sinGrupo: "Sin grupo",
+  entran: "Entran",
+  salen: "Salen",
+  ninguno: "Ninguno",
+  cuantosLugares: (n: number) => (n === 1 ? "1 lugar" : `${n} lugares`),
+  siGuardar: "Sí, guardar",
+  siBorrar: "Sí, borrar",
+  volver: "Volver",
+  avisoAntesDeConfirmar: "Si alguien cambió el grupo mientras tanto, se avisa y no se guarda.",
+  cambioConcurrente: "Este dato cambió mientras tanto; revisa el valor actual",
   borrarGrupoDetalle: (n: number) =>
     n === 0
       ? "El grupo no tiene valores propios."

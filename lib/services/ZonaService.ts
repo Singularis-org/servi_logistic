@@ -1,6 +1,9 @@
+import { z } from "zod";
+
 import type {
   DistritoEnOtraZona,
   IZonaRepository,
+  MotivoNodoInvalido,
   TarifaZonaMensajeroData,
   UpdateZonaData,
 } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -9,16 +12,19 @@ import type {
   ActualizarZonaServiceResult,
   BorrarZonaServiceResult,
   CrearZonaServiceResult,
+  ImpactoAsignacionServiceResult,
   ImpactoZonaCentralServiceResult,
   IZonaService,
   ListarZonasServiceResult,
   ObtenerZonaServiceResult,
 } from "@/lib/interfaces/services/IZonaService";
-import type {
-  ActualizarZonaInput,
-  CrearZonaInput,
-  ListarZonasInput,
-  TarifaZonaMensajeroInput,
+import {
+  antesDeZonaSchema,
+  type ActualizarZonaInput,
+  type CrearZonaInput,
+  type ImpactoAsignacionZonaInput,
+  type ListarZonasInput,
+  type TarifaZonaMensajeroInput,
 } from "@/lib/types/zona";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 
@@ -49,16 +55,43 @@ function mensajeDistritoEnOtraZona(c: DistritoEnOtraZona): string {
   return `${c.distritoNombre} ya está en la zona ${c.zonaNombre}.`;
 }
 
-/** SLT-75 (R1-R3, R8): el rechazo del repositorio, colgado del campo `distritoIds`. */
+function mensajesOrdenados(conflictos: readonly DistritoEnOtraZona[]): string[] {
+  return [...conflictos]
+    .sort((a, b) => a.distritoNombre.localeCompare(b.distritoNombre, "es"))
+    .map(mensajeDistritoEnOtraZona);
+}
+
+/**
+ * SLT-75 (R1-R3, R8): el rechazo del repositorio, colgado del campo `distritoIds`. SLT-89 (R2): los
+ * nodos que no son distritos, con el mismo mensaje, colgados de `nodoIds` (solo si los hay: con
+ * asignaciones solo a distritos la respuesta es la de hoy).
+ */
 function erroresDistritoEnOtraZona(
   conflictos: DistritoEnOtraZona[] | null,
+  conflictosDeNodos: DistritoEnOtraZona[] = [],
 ): Record<string, string[]> {
   if (conflictos === null) return { distritoIds: [MSG_DISTRITO_RECIEN_ASIGNADO] };
-  const ordenados = [...conflictos].sort((a, b) =>
-    a.distritoNombre.localeCompare(b.distritoNombre, "es"),
-  );
-  return { distritoIds: ordenados.map(mensajeDistritoEnOtraZona) };
+  return {
+    ...(conflictos.length > 0 ? { distritoIds: mensajesOrdenados(conflictos) } : {}),
+    ...(conflictosDeNodos.length > 0 ? { nodoIds: mensajesOrdenados(conflictosDeNodos) } : {}),
+  };
 }
+
+/** SLT-89 (R4): por que un `nodoIds` no se puede asignar, colgado de ese campo. */
+const MSG_NODO_INVALIDO: Record<MotivoNodoInvalido, string> = {
+  no_existe: "uno o mas nodoIds no existen",
+  es_distrito: "uno o mas nodoIds van en distritoIds",
+};
+
+function erroresNodoInvalido(motivos: readonly MotivoNodoInvalido[]): Record<string, string[]> {
+  return { nodoIds: motivos.map((m) => MSG_NODO_INVALIDO[m]) };
+}
+
+/**
+ * SLT-89 (R16, design §5.5) — el «antes» se vuelve a validar aqui, despues del rol y antes de llamar
+ * al repositorio: un llamador que salta la action con un cast tampoco escribe sin el.
+ */
+const conAntesSchema = z.object({ antes: antesDeZonaSchema });
 
 // Feature 24: el CRUD de zonas es EXCLUSIVO del rol maestro.
 function esMaestro(actor: Actor): boolean {
@@ -84,7 +117,7 @@ function distinct(values: string[]): string[] {
  * SLT-51: la forma es la de ACTUALIZAR (`cobroVehiculo`/`tarifas` opcionales) porque es la mas
  * debil de las dos; `crear` sobreescribe esos dos campos con los suyos, que el zod ya completo.
  */
-type DatosSinMarca = Omit<UpdateZonaData, "esCentral">;
+type DatosSinMarca = Omit<UpdateZonaData, "esCentral" | "antes">;
 
 function aFilasDeTarifa(tarifas: TarifaZonaMensajeroInput[]): TarifaZonaMensajeroData[] {
   return tarifas.map((t) => ({
@@ -150,6 +183,9 @@ export class ZonaService implements IZonaService {
         // «no toques el pago al mensajero». Un `?? []` aqui borraria los pagos de la zona.
         cobroVehiculo: input.cobroVehiculo,
         distritoIds,
+        // SLT-89 (R1): los nodos que no son distritos. Solo viajan si hay alguno: ausente = ninguno,
+        // y asi lo que recibe el repositorio con asignaciones solo a distritos es lo de hoy (R38).
+        ...(input.nodoIds !== undefined && input.nodoIds.length > 0 ? { nodoIds: distinct(input.nodoIds) } : {}),
         tarifas: input.tarifas === undefined ? undefined : aFilasDeTarifa(input.tarifas),
       },
     };
@@ -180,8 +216,12 @@ export class ZonaService implements IZonaService {
     if (res.estado === "distrito_en_otra_zona") {
       return {
         status: "validation_error",
-        fieldErrors: erroresDistritoEnOtraZona(res.conflictos),
+        fieldErrors: erroresDistritoEnOtraZona(res.conflictos, res.conflictosDeNodos),
       };
+    }
+    // SLT-89 (R4): un nodo que no existe en el pais o que es un distrito.
+    if (res.estado === "nodo_invalido") {
+      return { status: "validation_error", fieldErrors: erroresNodoInvalido(res.motivos) };
     }
     return { status: "ok", zona: res.zona };
   }
@@ -211,6 +251,11 @@ export class ZonaService implements IZonaService {
     actor: Actor,
   ): Promise<ActualizarZonaServiceResult> {
     if (!esMaestro(actor)) return { status: "forbidden" };
+    // SLT-89 (R16, design §5.5): sin «antes», `validation_error` en `antes` antes de leer nada.
+    const conAntes = conAntesSchema.safeParse({ antes: input.antes });
+    if (!conAntes.success) {
+      return { status: "validation_error", fieldErrors: z.flattenError(conAntes.error).fieldErrors };
+    }
     const prep = await this.prepararDatos(input);
     if (!prep.ok) return { status: "validation_error", fieldErrors: prep.fieldErrors };
     // 362/R4/R9 + 366/R10: QUIEN guarda la zona ESTA, y es quien firma cada fila de historial que
@@ -221,7 +266,7 @@ export class ZonaService implements IZonaService {
     // `?? false` seria reintroducir el defecto que esta ficha arregla.
     const res = await this.repo.update(
       id,
-      { ...prep.data, esCentral: input.esCentral },
+      { ...prep.data, esCentral: input.esCentral, antes: conAntes.data.antes },
       actor.usuarioId,
     );
     if (res.estado === "not_found") return { status: "not_found" };
@@ -234,8 +279,16 @@ export class ZonaService implements IZonaService {
     if (res.estado === "distrito_en_otra_zona") {
       return {
         status: "validation_error",
-        fieldErrors: erroresDistritoEnOtraZona(res.conflictos),
+        fieldErrors: erroresDistritoEnOtraZona(res.conflictos, res.conflictosDeNodos),
       };
+    }
+    // SLT-89 (R4): un nodo que no existe en el pais o que es un distrito.
+    if (res.estado === "nodo_invalido") {
+      return { status: "validation_error", fieldErrors: erroresNodoInvalido(res.motivos) };
+    }
+    // SLT-89 (R16): otro guardado cambio los nodos de la zona mientras el modal estaba abierto.
+    if (res.estado === "cambio_concurrente") {
+      return { status: "conflict", motivo: "cambio_concurrente" };
     }
     // 366/R12 + 377/R7/R8: LOS DOS conteos se reenvian TAL CUAL. El service no los interpreta, no
     // los suma y no los redondea: quien guardo la zona tiene que ver cuantas ordenes se movieron
@@ -270,6 +323,24 @@ export class ZonaService implements IZonaService {
   ): Promise<ImpactoZonaCentralServiceResult> {
     if (!esMaestro(actor)) return { status: "forbidden" };
     const impacto = await this.repo.contarOrdenesVivasPorZona(zonaIds);
+    return { status: "ok", impacto };
+  }
+
+  /**
+   * SLT-89 (R13–R15, R36; design §5.3) — el aviso de impacto del modal de guardado. Rol antes de
+   * leer nada; la zona que no existe es `not_found`.
+   */
+  async impactoAsignacion(
+    input: ImpactoAsignacionZonaInput,
+    actor: Actor,
+  ): Promise<ImpactoAsignacionServiceResult> {
+    if (!esMaestro(actor)) return { status: "forbidden" };
+    const impacto = await this.repo.impactoDeAsignacion({
+      zonaId: input.zonaId ?? null,
+      distritoIds: distinct(input.distritoIds),
+      nodoIds: distinct(input.nodoIds),
+    });
+    if (impacto === null) return { status: "not_found" };
     return { status: "ok", impacto };
   }
 }

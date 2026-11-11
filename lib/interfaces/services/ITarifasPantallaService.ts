@@ -7,6 +7,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/ITarifaService";
 import type { EstadoZona } from "@/lib/tarifas/faltantes";
 import type { ReferenciaDeZona } from "@/lib/tarifas/referencia-vigente";
+import type { ArbolCubiertoDTO } from "@/lib/types/geografia-nodo";
 import type { GrupoDistritosDTO, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
 export type { Actor } from "@/lib/interfaces/services/ITarifaService";
@@ -44,6 +45,11 @@ export type CargarZonaResult =
       status: "ok";
       grupos: GrupoDistritosDTO[];
       distritos: DistritoDeSelector[];
+      /**
+       * SLT-89 (R23): los nodos que la zona cubre, en arbol, para elegir miembros de un grupo. Ausente
+       * si la zona solo cubre sus distritos asignados: los posibles miembros son `distritos`, como hoy.
+       */
+      nodos?: ArbolCubiertoDTO;
       valores: TarifaValorDTO[];
       /** `null` tras activar: no se lee el modelo viejo (R24). */
       referencia: ReferenciaDeZona | null;

@@ -4,6 +4,8 @@ import { render, screen, cleanup, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+// SLT-89 (T7.2): el módulo recibe y lee el árbol de zonas de N niveles (`listarArbolDeZonas`).
+import { arbolDeZonas } from "../fixtures/arbol-de-zonas-en-formulario";
 
 /**
  * SLT-75 (R19, R20) — CREAR Y EDITAR ABREN CON EL ÁRBOL LEÍDO AL ABRIR.
@@ -19,6 +21,8 @@ import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 
 const obtenerZonaMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
+  // SLT-89 (R13): el aviso de impacto del modal único; aquí no se miden sus cifras.
+  impactoAsignacionZona: vi.fn().mockResolvedValue({ status: "ok", impacto: { cambianDeZona: 0, cambianDeTarifa: 0, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } } }),
   listarZonas: vi.fn().mockResolvedValue({
     status: "ok",
     items: [],
@@ -35,7 +39,7 @@ vi.mock("@/lib/actions/zonas", () => ({
 
 const listarArbolMock = vi.fn();
 vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
+  listarArbolDeZonas: (...a: unknown[]) => listarArbolMock(...a),
 }));
 
 const { successMock, errorMock } = vi.hoisted(() => ({
@@ -96,7 +100,7 @@ function renderModulo() {
       initialZonas={[
         { id: ZONA_Z.id, nombre: ZONA_Z.nombre, cobroVehiculo: false, distritosCount: 1, esCentral: false },
       ]}
-      provincias={arbolCon([])}
+      arbol={arbolDeZonas(arbolCon([]))}
     />,
   );
 }
@@ -134,7 +138,7 @@ afterEach(cleanup);
 
 describe("R19 — Editar preselecciona los distritos del árbol leído al abrir", () => {
   it("el árbol inicial dice libre y el leído al abrir dice zona Z → Editar Z preselecciona el distrito", async () => {
-    listarArbolMock.mockResolvedValue({ status: "ok", provincias: arbolCon([ZONA_Z]) });
+    listarArbolMock.mockResolvedValue({ status: "ok", arbol: arbolDeZonas(arbolCon([ZONA_Z])) });
     const user = userEvent.setup();
     renderModulo();
 
@@ -150,7 +154,7 @@ describe("R19 — Editar preselecciona los distritos del árbol leído al abrir"
 
 describe("R20 — el formulario pinta el árbol leído al abrir, y no abre si la lectura falla", () => {
   it("Crear zona: el distrito que el árbol leído pone en otra zona sale bloqueado", async () => {
-    listarArbolMock.mockResolvedValue({ status: "ok", provincias: arbolCon([ZONA_Z]) });
+    listarArbolMock.mockResolvedValue({ status: "ok", arbol: arbolDeZonas(arbolCon([ZONA_Z])) });
     const user = userEvent.setup();
     renderModulo();
 

@@ -1,6 +1,7 @@
 import type { CambioConcurrenteResult } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
+  ArbolDeZonasDTO,
   CambiarActivacionGeograficaInput,
   CrearNodoGeograficoInput,
   NodoArbolPlataformaDTO,
@@ -27,6 +28,9 @@ import type {
 export type ListarArbolGeograficoServiceResult =
   | { status: "ok"; provincias: ProvinciaArbolDTO[] }
   | { status: "forbidden" };
+
+/** SLT-89 (design §4.2, §6): el arbol de zonas de N niveles. Solo `maestro` (R36). */
+export type ListarArbolDeZonasServiceResult = { status: "ok"; arbol: ArbolDeZonasDTO } | { status: "forbidden" };
 
 /**
  * SL-20 — el arbol de un pais para el superadmin: sin zonas, con el codigo. SLT-46 (R21): a cualquier
@@ -94,6 +98,12 @@ export type ContarOrdenesSinEntregarServiceResult =
 export interface IGeografiaService {
   /** El arbol COMPLETO, activos e inactivos (R26). Solo `maestro`. */
   listarArbol(actor: Actor): Promise<ListarArbolGeograficoServiceResult>;
+
+  /**
+   * SLT-89 (R24, R36): el arbol de zonas de N niveles de la empresa. Solo `maestro`: cualquier otro
+   * rol recibe `forbidden` sin leer la base.
+   */
+  listarArbolDeZonas(actor: Actor): Promise<ListarArbolDeZonasServiceResult>;
 
   /**
    * SL-20 (R20, R29, R30) — el arbol de UN pais, activos e inactivos, sin zonas. Solo plataforma.

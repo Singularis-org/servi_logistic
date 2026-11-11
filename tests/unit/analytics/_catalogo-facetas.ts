@@ -45,6 +45,7 @@ export function lugaresDe(filtro: FacetasGeograficas): LugaresDelFiltro {
 /** Los delegados que lee la carga del catalogo de la empresa, con `CATALOGO_FACETAS`. */
 export function delegadosDelCatalogo() {
   return {
+    zonaNodo: { findMany: async () => [] }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: { findMany: async () => [] },
     organizacion: { findFirst: async () => ({ paisId: "XA" }) },
     tipoNivelGeografico: { findMany: async () => TIPOS },

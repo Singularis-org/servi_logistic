@@ -2,6 +2,8 @@ import type { RolValue } from "@prisma/client";
 import type {
   ActualizarZonaInput,
   CrearZonaInput,
+  ImpactoAsignacionDTO,
+  ImpactoAsignacionZonaInput,
   ImpactoZonaCentralDTO,
   ListarZonasInput,
   MotivoConflictoBorrado,
@@ -43,7 +45,9 @@ export type ActualizarZonaServiceResult =
     }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "forbidden" }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  // SLT-89 (R16): los nodos de la zona en la base no son el «antes» que mostro el modal.
+  | { status: "conflict"; motivo: "cambio_concurrente" };
 
 export type BorrarZonaServiceResult =
   | { status: "ok" }
@@ -64,6 +68,12 @@ export type ImpactoZonaCentralServiceResult =
   | { status: "ok"; impacto: ImpactoZonaCentralDTO[] }
   | { status: "forbidden" };
 
+/** SLT-89 (R13–R15, R36): el aviso de impacto de un guardado de nodos. Solo lectura, `maestro`-only. */
+export type ImpactoAsignacionServiceResult =
+  | { status: "ok"; impacto: ImpactoAsignacionDTO }
+  | { status: "forbidden" }
+  | { status: "not_found" };
+
 export interface IZonaService {
   crear(input: CrearZonaInput, actor: Actor): Promise<CrearZonaServiceResult>;
   obtener(id: string, actor: Actor): Promise<ObtenerZonaServiceResult>;
@@ -79,4 +89,6 @@ export interface IZonaService {
     zonaIds: string[],
     actor: Actor,
   ): Promise<ImpactoZonaCentralServiceResult>;
+  /** SLT-89 (R13–R15): lo que el guardado de esos nodos haria con las ordenes, sin escribir. */
+  impactoAsignacion(input: ImpactoAsignacionZonaInput, actor: Actor): Promise<ImpactoAsignacionServiceResult>;
 }

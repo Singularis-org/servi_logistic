@@ -5,6 +5,7 @@ import {
   listarZonas,
   actualizarZona,
   borrarZona,
+  impactoAsignacionZona,
   impactoZonaCentral,
 } from "@/lib/actions/zonas";
 import { ZonaService } from "@/lib/services/ZonaService";
@@ -50,6 +51,7 @@ function fakeService(over: Partial<IZonaService> = {}): IZonaService {
     }),
     borrar: vi.fn().mockResolvedValue({ status: "ok" }),
     // FICHA 376 (Q4): la lectura de impacto que la confirmacion consulta antes de enviar.
+    impactoAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
     ...over,
   };
@@ -75,10 +77,17 @@ const validCrear = {
  * y como los dos esquemas son `.strict()`, mandarlo aqui es un rechazo explicito —no un descarte
  * mudo—. Por eso este payload existe en vez de reusar `validCrear`.
  */
+/**
+ * SLT-89 (T3.7, R16): guardar una zona existente exige el «antes» que mostro el modal (decision del
+ * 2026-11-09). El de estos casos es el distrito que el payload ya trae: solo entrada.
+ */
+const ANTES = { distritoIds: ["d1"], nodoIds: [] };
+
 const validActualizar = {
   nombre: "Zona Sur",
   esCentral: false,
   distritoIds: ["d1"],
+  antes: ANTES,
 };
 
 describe("sin sesion -> unauthenticated sin tocar el service", () => {
@@ -314,6 +323,7 @@ function repoConGuarda(): IZonaRepository {
     countExistingDistritos: vi.fn(async (ids: string[]) => ids.length),
     countExistingVehiculos: vi.fn(async (ids: string[]) => ids.length),
     findCentralZonaId: vi.fn().mockResolvedValue(ZONA_CENTRAL),
+    impactoDeAsignacion: vi.fn(), // SLT-89 (T4.1): el doble declara el metodo nuevo; aqui no se ejercita
     contarOrdenesVivasPorZona: vi.fn(async (ids: string[]) =>
       ids.map((zonaId) => ({ zonaId, ordenesVivas: zonaId === ZONA_CENTRAL ? 850 : 0 })),
     ),
@@ -328,7 +338,7 @@ function repoConGuarda(): IZonaRepository {
 }
 
 describe("376/R7 — la Server Action rechaza sola, sin formulario de por medio", () => {
-  const sinMarca = { nombre: "GAM", distritoIds: ["d1"] };
+  const sinMarca = { nombre: "GAM", distritoIds: ["d1"], antes: ANTES };
 
   it("⭑ R5/R6/R7: `esCentral: false` sobre la zona central -> validation_error en `esCentral`", async () => {
     const repo = repoConGuarda();
@@ -451,7 +461,7 @@ describe("SLT-51/R2 — un rol distinto de `maestro` recibe forbidden y no se es
       expect((await crearZona(validCrear, deps)).status).toBe("forbidden");
       expect((await obtenerZona("z1", deps)).status).toBe("forbidden");
       expect(
-        (await actualizarZona("z1", { nombre: "Zona Sur", distritoIds: ["d1"] }, deps)).status,
+        (await actualizarZona("z1", { nombre: "Zona Sur", distritoIds: ["d1"], antes: ANTES }, deps)).status,
       ).toBe("forbidden");
       expect((await borrarZona("z1", deps)).status).toBe("forbidden");
       expect(llamadasAlRepo(repo)).toBe(0);
@@ -464,7 +474,7 @@ describe("SLT-51/R7/R8 — actualizar sin costos, o con solo uno de los dos", ()
     const repo = repoConGuarda();
     const r = await actualizarZona(
       "z1",
-      { nombre: "Zona Sur", distritoIds: ["d1"] },
+      { nombre: "Zona Sur", distritoIds: ["d1"], antes: ANTES },
       { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
     );
     expect(r.status).toBe("ok");
@@ -477,7 +487,7 @@ describe("SLT-51/R7/R8 — actualizar sin costos, o con solo uno de los dos", ()
     const repo = repoConGuarda();
     const r = await actualizarZona(
       "z1",
-      { nombre: "Zona Sur", distritoIds: ["d1"], tarifas: [{ cobroEntregado: 1, cobroRechazado: 1 }] },
+      { nombre: "Zona Sur", distritoIds: ["d1"], tarifas: [{ cobroEntregado: 1, cobroRechazado: 1 }], antes: ANTES },
       { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
     );
     expect(r.status).toBe("validation_error");
@@ -489,7 +499,7 @@ describe("SLT-51/R7/R8 — actualizar sin costos, o con solo uno de los dos", ()
     const repo = repoConGuarda();
     const r = await actualizarZona(
       "z1",
-      { nombre: "Zona Sur", distritoIds: ["d1"], cobroVehiculo: true },
+      { nombre: "Zona Sur", distritoIds: ["d1"], cobroVehiculo: true, antes: ANTES },
       { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
     );
     expect(r.status).toBe("validation_error");
@@ -503,7 +513,7 @@ describe("SLT-51/R7/R8 — actualizar sin costos, o con solo uno de los dos", ()
 // repositorio, que es quien escribe `tarifa_zona_mensajero` y `zona.cobro_vehiculo`, no llega a llamarse.
 describe("SLT-54 R27 — la action rechaza costos", () => {
   const TARIFA = { cobroEntregado: 900, cobroRechazado: 450 };
-  const zonaSinCostos = { nombre: "Zona Sur", distritoIds: ["d1"] };
+  const zonaSinCostos = { nombre: "Zona Sur", distritoIds: ["d1"], antes: ANTES };
   const MENSAJE = ["Los costos de la zona ya no se editan aquí: se configuran en Tarifas."];
 
   async function rechazo(
@@ -549,5 +559,94 @@ describe("SLT-54 R27 — la action rechaza costos", () => {
       status: "validation_error",
       fieldErrors: { cobroVehiculo: MENSAJE, tarifas: MENSAJE },
     });
+  });
+});
+
+/**
+ * SLT-89 · R16 (design §5.5) — la action exige el «antes» al guardar una zona existente, y entrega el
+ * cambio concurrente con su motivo. Con el ZonaService REAL: sin «antes» ningun metodo del
+ * repositorio se ejecuta, asi que la base no cambia.
+ */
+describe("SLT-89 · R16 — el «antes» obligatorio en actualizarZona", () => {
+  it("⭑ sin `antes` -> validation_error en `antes` y el repositorio no se toca", async () => {
+    const repo = repoConGuarda();
+    const { antes: _antes, ...sinAntes } = validActualizar;
+    void _antes;
+    const r = await actualizarZona("z1", sinAntes, {
+      zonaService: new ZonaService(repo),
+      getActor: getActor(MAESTRO),
+    });
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toContain("antes");
+    expect(llamadasAlRepo(repo)).toBe(0);
+  });
+
+  it("crear sin `antes` sigue creando (R46)", async () => {
+    const repo = repoConGuarda();
+    const r = await crearZona(validCrear, { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) });
+    expect(r.status).toBe("ok");
+  });
+
+  it("⭑ `cambio_concurrente` del repositorio llega a la pantalla como `conflict` con motivo", async () => {
+    const repo = repoConGuarda();
+    (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue({ estado: "cambio_concurrente" });
+    const r = await actualizarZona("z1", validActualizar, {
+      zonaService: new ZonaService(repo),
+      getActor: getActor(MAESTRO),
+    });
+    expect(r).toEqual({ status: "conflict", motivo: "cambio_concurrente" });
+  });
+
+  it("los nodos y el «antes» viajan hasta el repositorio", async () => {
+    const repo = repoConGuarda();
+    const antes = { distritoIds: ["d1"], nodoIds: ["c1"] };
+    await actualizarZona(
+      "z1",
+      { ...validActualizar, nodoIds: ["c1", "c2"], antes },
+      { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
+    );
+    const datos = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(datos.nodoIds).toEqual(["c1", "c2"]);
+    expect(datos.antes).toEqual(antes);
+  });
+});
+
+/** SLT-89 · R13 (design §5.3, §6) — el borde del aviso de impacto. */
+describe("SLT-89 — impactoAsignacionZona", () => {
+  it("sin sesion → unauthenticated sin tocar el service", async () => {
+    const service = fakeService();
+    const r = await impactoAsignacionZona({ distritoIds: [], nodoIds: [] }, { zonaService: service, getActor: noActor });
+    expect(r.status).toBe("unauthenticated");
+    expect(service.impactoAsignacion).not.toHaveBeenCalled();
+  });
+
+  it("entrada invalida (campo de mas, o mas de 5 000 ids) → validation_error sin llamar al service", async () => {
+    const service = fakeService();
+    const deps = { zonaService: service, getActor: getActor(MAESTRO) };
+    const muchos = Array.from({ length: 5001 }, (_, i) => `n${i}`);
+    expect((await impactoAsignacionZona({ distritoIds: [], nodoIds: [], hack: 1 }, deps)).status).toBe("validation_error");
+    expect((await impactoAsignacionZona({ distritoIds: muchos, nodoIds: [] }, deps)).status).toBe("validation_error");
+    expect((await impactoAsignacionZona("z1", deps)).status).toBe("validation_error");
+    expect(service.impactoAsignacion).not.toHaveBeenCalled();
+  });
+
+  it("con el service real: un rol que no es maestro → forbidden, y el repositorio no se toca", async () => {
+    const repo = repoConGuarda();
+    const r = await impactoAsignacionZona(
+      { zonaId: "z1", distritoIds: ["d1"], nodoIds: [] },
+      { zonaService: new ZonaService(repo), getActor: getActor({ usuarioId: "a1", rol: "admin" }) },
+    );
+    expect(r.status).toBe("forbidden");
+    expect(llamadasAlRepo(repo)).toBe(0);
+  });
+
+  it("maestro: la respuesta del service llega tal cual", async () => {
+    const impacto = { cambianDeZona: 1, cambianDeTarifa: 1, noSeMueven: { enBodegaSatelite: 0, conGestionFinal: 0, enCierre: 0 } };
+    const service = fakeService({ impactoAsignacion: vi.fn().mockResolvedValue({ status: "ok", impacto }) });
+    const r = await impactoAsignacionZona({ zonaId: "z1", distritoIds: ["d1"], nodoIds: [] }, {
+      zonaService: service,
+      getActor: getActor(MAESTRO),
+    });
+    expect(r).toEqual({ status: "ok", impacto });
   });
 });

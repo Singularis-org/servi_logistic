@@ -89,6 +89,8 @@ export default defineConfig({
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
         "zonas-crear-sin-costos",
+        // SLT-89 R41: una zona sobre un cantón entero, con su aviso de impacto, y el aislamiento con B.
+        "zonas-nodo-canton",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",
