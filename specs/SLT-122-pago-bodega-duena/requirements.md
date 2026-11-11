@@ -248,3 +248,9 @@ Tamaño estimado: 16 archivos (40% de `gate.tamano_pr`), ~450-650 líneas, la ma
 | R8 | `tests/integration/db/pago-mensajero-bodega-duena.test.ts` (anular un pago sembrado contra un cierre satélite → ok) |
 | R9 | `tests/unit/services/liquidacion-reparto-service.test.ts` + `tests/integration/db/pago-mensajero-bodega-duena.test.ts` (mutación del WHERE) |
 | R10 | `tests/unit/services/liquidacion-reparto-service.test.ts` (`sin_saldo`, imputable `0.00`) |
+
+## Decisiones de Carlos (2026-11-10, tras `progress/investigacion_SLT-122.md`)
+
+- **PA1 = A.** Nadie registra en el sistema el pago de un cierre de satélite: la satélite paga a sus mensajeros el pago completo, independiente del efectivo. **Sin excepción de premios ni incentivos**: el ranking de la satélite es otro y no se combina con el de la central (el cruce actual va en SLT-124 «Ranking de la central sin mensajeros de satélite»).
+- **PA2 = cerrar aquí.** El reparto «Pagar» de `/wallet/mensajeros` ignora los cierres de satélite (R9-R10).
+- Fuera de alcance: el modelo «pago = mín(P, efectivo)» está mal en toda la app; va en SLT-123 «Pago al mensajero independiente del efectivo», junto con el rótulo «Central debe».
