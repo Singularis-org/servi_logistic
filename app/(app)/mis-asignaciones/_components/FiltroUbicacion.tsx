@@ -4,7 +4,7 @@ import { useId } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Select, type SelectOption } from "@/components/ui/select";
-import type { OpcionFiltro } from "@/lib/utils/filtro-ubicacion-asignaciones";
+import { todosLosDelNivel, type OpcionFiltro } from "@/lib/utils/filtro-ubicacion-asignaciones";
 
 import type { ListaDelFiltro } from "./useFiltroUbicacion";
 
@@ -23,16 +23,6 @@ const TODOS = "__todos__";
 const PREFIJO_FILTRAR = "Filtrar por";
 const CONJUNCION = "y";
 const LIMPIAR = "Limpiar filtros";
-
-/**
- * «Todos los cantones» / «Todas las comunas». El tipo de nivel no trae género: se toma del plural
- * (terminado en «as», femenino). Es una aproximación; un plural femenino sin esa terminación
- * («regiones») sale con «Todos los».
- */
-function todosLos(plural: string): string {
-  const p = plural.toLowerCase();
-  return p.endsWith("as") ? `Todas las ${p}` : `Todos los ${p}`;
-}
 
 /** «cantón y distrito», «provincia, comuna y barrio». */
 function enumerar(nombres: readonly string[]): string {
@@ -63,7 +53,7 @@ export function FiltroUbicacion({ listas, hayFiltro, onElegir, onLimpiar }: Filt
     <section aria-label={regionLabel} className="flex flex-wrap items-end gap-3">
       {listas.map((lista, i) => {
         const id = `${idBase}-nivel-${lista.profundidad}`;
-        const todos = todosLos(lista.plural);
+        const todos = todosLosDelNivel(lista.singular, lista.plural);
         return (
           <div key={lista.profundidad} className="flex w-full flex-col gap-1 sm:w-auto sm:min-w-52">
             <label htmlFor={id} className="text-sm font-medium">

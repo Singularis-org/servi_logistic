@@ -115,3 +115,23 @@ export function filtrarAsignaciones<T extends LugarDeOrden>(ordenes: T[], lugarI
   if (lugarId === "") return ordenes;
   return ordenes.filter((orden) => (orden.lugarRuta ?? []).some((paso) => paso.id === lugarId));
 }
+
+// Femenino por la terminacion del SINGULAR (sin mayusculas ni tildes): «-a» (Provincia, Comuna),
+// «-ión» (Región; «Cantón» acaba en «-ón» y queda masculino), «-dad» (Ciudad) y «-tad».
+const TERMINACIONES_FEMENINAS = ["a", "ion", "dad", "tad"] as const;
+
+function sinTildes(texto: string): string {
+  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+/**
+ * «Todos los cantones» / «Todas las regiones»: la opción «todos» de una lista de lugar. El tipo de
+ * nivel no trae género: se deduce del singular (`TERMINACIONES_FEMENINAS`); si no, masculino. Es una
+ * aproximación del español («Mano», «Día» fallarían), suficiente para los tipos de nivel geográficos.
+ */
+export function todosLosDelNivel(singular: string, plural: string): string {
+  const s = sinTildes(singular.trim());
+  const femenino = TERMINACIONES_FEMENINAS.some((t) => s.endsWith(t));
+  const p = plural.toLowerCase();
+  return femenino ? `Todas las ${p}` : `Todos los ${p}`;
+}
