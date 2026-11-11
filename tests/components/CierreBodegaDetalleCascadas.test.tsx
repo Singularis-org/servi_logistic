@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
-import { EMPRESA } from "@/lib/config/marca";
 import { gestion478, grupos478, ingreso478 } from "@/tests/fixtures/gestion-detalle-478";
-import { FLETE_NO_ENTREGADAS_CON_IVA_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
-import { money, monedaConfig } from "@/lib/config/moneda";
+import { monedaConfig } from "@/lib/config/moneda";
 import type {
   CierreBodegaDetalleCierre,
   CierreBodegaResumen,
@@ -16,47 +14,30 @@ import type {
   CierreGrupos,
   TotalesIngresoEmpresa,
 } from "@/lib/interfaces/services/ICierreDiaService";
-import {
-  CASCADA_CENTRAL_TITULO,
-  CASCADA_DUENO_TITULO,
-  COBRADO_SOBRE_RECAUDADO_LABEL,
-  EFECTIVO_NO_CUBRE_NOTA,
-  FACTURADO_EMPRESA_LABEL,
-  GANA_BODEGA_SATELITE_LABEL,
-  GANA_BODEGA_SATELITE_NOTA,
-  IVA_FACTURADO_LABEL,
-  NETO_EMPRESA_LABEL,
-  PARA_LA_CENTRAL_LABEL,
-  PARA_LA_CENTRAL_NEGATIVO_NOTA,
-  PARA_LA_CENTRAL_NOTA,
-  PARA_LA_TIENDA_LABEL,
-} from "@/app/(app)/cierres-admin/_components/cierre-labels";
-import {
-  COMISION_CON_IVA_LABEL,
-  FLETE_CON_IVA_LABEL,
-  FLETE_DEV_CON_IVA_LABEL,
-  PAGO_MENSAJERO_LABEL,
-  TOTAL_GENERAL_LABEL,
-} from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 
 /**
- * Feature 393 (F6) — EL DETALLE DEL CIERRE DE BODEGA: las dos cascadas, separadas y rotuladas.
+ * Feature 393 (F6) — EL DETALLE DEL CIERRE DE BODEGA: las cuentas, separadas y rotuladas.
  *
  * ── LAS DOS PREGUNTAS, Y POR QUÉ SON DOS
- * Una cascada dice **de quién es el dinero** (lo recaudado se reparte entre la tienda y la empresa);
- * la otra dice **qué efectivo sale** (de lo recaudado, cuánto le entrega la satélite a la
- * central). Las dos terminan en cifras distintas y las dos son verdad. Mezcladas —que es como
- * estaban— no se lee ninguna.
+ * Una cuenta dice **de quién es el dinero** (lo facturado y lo que le queda a la empresa); la otra
+ * dice **qué efectivo sale** (de lo recaudado, cuánto le entrega la satélite a la central). Las dos
+ * terminan en cifras distintas y las dos son verdad. Mezcladas —que es como estaban— no se lee
+ * ninguna.
  *
- * ── LA TRAMPA QUE ESTE ARCHIVO VIGILA
- * `recaudado − lo facturado ≠ para la tienda` en cuanto hay un rechazo: el flete por devolución a origen se
- * le factura a la tienda pero NO sale de lo recaudado. Por eso existe la línea puente, y por eso
- * el fixture de aquí tiene un `cierre_dia` CON rechazo y otro SIN él.
+ * ── SLT-104 «Detalle de cierre de bodega en el detalle único (central)»
+ * El detalle es ahora el detalle único de SLT-95 (R40): las cascadas de la 393 son las cuentas de la
+ * pestaña «Dinero» (SLT-95 R14-R16, canvas F6): «Lo que va a la central», «Lo que se le factura a la
+ * tienda» y «De lo facturado, le queda a la empresa», con los rótulos de una cifra, un nombre
+ * («Debe llegar a la central», «Pago a mensajeros», «Le queda a la empresa»). Lo que se vigilaba de
+ * CADA cierre del día (sus dos cascadas, sus notas, su panel de ingreso) ya no se pinta en el
+ * detalle de bodega (R118): vive en el detalle de ese cierre del día, al que lleva «Ver su cierre»
+ * (R115); aquí cada cierre del día es su fila de «Mensajeros» (R42, R114), y sobre ella se siguen
+ * vigilando sus cifras y que sumen el agregado (R16 de la 393).
  *
  * ── LOS IMPORTES
- * Todos con céntimos, y la suma de los dos días es EXACTAMENTE el agregado (así se puede afirmar
- * R16 sin que el fixture lo regale). Con cifras redondas, estas identidades cerrarían igual sin
- * el arreglo y el archivo no probaría nada.
+ * Todos con céntimos, y la suma de los dos días es EXACTAMENTE el agregado. Con cifras redondas,
+ * estas identidades cerrarían igual sin el arreglo y el archivo no probaría nada. Los esperados van
+ * escritos a mano (`money()` sin cola con céntimos cero).
  */
 
 vi.mock("@/lib/actions/cierre-bodega", () => ({
@@ -300,7 +281,7 @@ const DETALLE_OK = {
 
 type DetalleOk = typeof DETALLE_OK;
 
-/** Monta la pantalla, abre el detalle del cierre pendiente y devuelve el `user`. */
+/** Monta la pantalla, abre el detalle del cierre pendiente (abre en «Dinero») y devuelve el `user`. */
 async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
   vi.mocked(listarPendientesCierresBodegaPaginado).mockResolvedValue({
     status: "ok",
@@ -325,219 +306,180 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
 
   const user = userEvent.setup();
   await user.click(
-    await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+    await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
   );
-  await screen.findByRole("region", { name: `${CASCADA_CENTRAL_TITULO} · cierre de bodega` });
+  await screen.findByRole("region", { name: "Lo que va a la central" });
   return user;
 }
 
-const central = () =>
-  screen.getByRole("region", { name: `${CASCADA_CENTRAL_TITULO} · cierre de bodega` });
-const dueno = () =>
-  screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · cierre de bodega` });
+const central = () => screen.getByRole("region", { name: "Lo que va a la central" });
+const factura = () => screen.getByRole("region", { name: "Lo que se le factura a la tienda" });
+const queda = () => screen.getByRole("region", { name: "De lo facturado, le queda a la empresa" });
+
+/** Las líneas de una cuenta como se leen: [rótulo, importe, signo, tipo]. */
+function lineas(region: HTMLElement): string[][] {
+  return [...region.querySelectorAll("[data-signo]")].map((l) => [
+    l.querySelector("[data-rotulo]")?.textContent ?? "",
+    l.querySelector("[data-monto]")?.textContent ?? "",
+    l.getAttribute("data-signo") ?? "",
+    l.getAttribute("data-tipo") ?? "",
+  ]);
+}
+
+/** La cuenta cierra con lo que se LEE: partidas con su signo (el «−» vive en el rótulo) = total. */
+function laCuentaCierraConSigno(region: HTMLElement, quien: string): void {
+  const ls = lineas(region);
+  const total = ls.find((l) => l[3] === "total")!;
+  const partidas = ls.filter((l) => l[3] === "partida");
+  const suma = partidas.reduce(
+    (acc, [, monto, signo]) => acc + (signo === "resta" ? -centimos(monto!) : centimos(monto!)),
+    BigInt(0),
+  );
+  expect(suma, `${quien}: las partidas no dan el total`).toBe(centimos(total[1]!));
+}
+
+/** Las filas de «Mensajeros»: [mensajero, gestiones, recaudado, pago, a la central, señales]. */
+async function filasMensajeros(user: ReturnType<typeof userEvent.setup>): Promise<string[][]> {
+  const dialogo = screen.getByRole("dialog");
+  await user.click(within(dialogo).getByRole("tab", { name: /^Mensajeros \(/ }));
+  const [, ...filas] = within(within(dialogo).getByRole("table", { name: "Mensajeros del cierre de bodega" })).getAllByRole("row");
+  return filas.map((f) => within(f).getAllByRole("cell").slice(0, 6).map((c) => c.textContent ?? ""));
+}
+
+const NOTA_CENTRAL_VIEJA =
+  "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.";
+const NOTA_GANA_VIEJA =
+  "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-describe("393 · F6 — las dos cascadas del detalle", () => {
-  it("son DOS regiones distintas, con nombres accesibles distintos (R1/R32)", async () => {
+describe("393 · F6 — las cuentas del detalle (SLT-104: pestaña «Dinero»)", () => {
+  it("son regiones distintas, con nombres accesibles distintos y su título visible (R1/R32)", async () => {
     await abrirDetalle();
-
-    expect(central()).toBeInTheDocument();
-    expect(dueno()).toBeInTheDocument();
-    expect(central()).not.toBe(dueno());
-    // Y cada una enseña su rótulo visible, no sólo su nombre accesible.
-    expect(within(central()).getByRole("heading", { name: CASCADA_CENTRAL_TITULO })).toBeInTheDocument();
-    expect(within(dueno()).getByRole("heading", { name: CASCADA_DUENO_TITULO })).toBeInTheDocument();
+    const regiones = [central(), factura(), queda()];
+    expect(new Set(regiones).size).toBe(3);
+    expect(within(central()).getByRole("heading", { name: "Lo que va a la central" })).toBeInTheDocument();
+    expect(within(factura()).getByRole("heading", { name: "Lo que se le factura a la tienda" })).toBeInTheDocument();
+    expect(within(queda()).getByRole("heading", { name: "De lo facturado, le queda a la empresa" })).toBeInTheDocument();
   });
 
   it("ninguna región mezcla el resultado de la otra: son subárboles disjuntos (R2)", async () => {
     await abrirDetalle();
-
-    // ⚠️ R2 prohíbe MEZCLAR las dos cascadas en una misma región, no que una magnitud aparezca en
-    // las dos: «Pago al mensajero» y «Gana la bodega satélite» son sustraendos de LAS DOS
-    // cascadas a propósito (design §3 y §4) —el mismo dinero contestando dos preguntas
-    // distintas—. Lo que no puede pasar es que un RESULTADO se cuele en la cascada que no es.
-    expect(central().contains(dueno())).toBe(false);
-    expect(dueno().contains(central())).toBe(false);
-
-    expect(within(central()).queryByText(PARA_LA_TIENDA_LABEL)).toBeNull();
-    expect(within(central()).queryByText(NETO_EMPRESA_LABEL)).toBeNull();
-    expect(within(central()).queryByText(COBRADO_SOBRE_RECAUDADO_LABEL)).toBeNull();
-    expect(within(dueno()).queryByText(PARA_LA_CENTRAL_LABEL)).toBeNull();
-  });
-
-  it("«Para la tienda» y «Neto de la empresa» están, y están DESTACADOS (R3)", async () => {
-    await abrirDetalle();
-
-    for (const rotulo of [PARA_LA_TIENDA_LABEL, NETO_EMPRESA_LABEL]) {
-      const linea = within(dueno()).getByText(rotulo).closest("div");
-      expect(linea?.className, `«${rotulo}» no se destaca de las líneas que lo componen`).toContain(
-        "border-t",
-      );
+    for (const a of [central(), factura(), queda()]) {
+      for (const b of [central(), factura(), queda()]) if (a !== b) expect(a.contains(b)).toBe(false);
     }
-    expect(importeTras(dueno(), PARA_LA_TIENDA_LABEL)).toBe(money("98954.34"));
-    expect(importeTras(dueno(), NETO_EMPRESA_LABEL)).toBe(money("13384.78"));
+    expect(within(central()).queryByText("Le queda a la empresa")).toBeNull();
+    expect(within(central()).queryByText("Total facturado")).toBeNull();
+    expect(within(queda()).queryByText("Debe llegar a la central")).toBeNull();
   });
 
-  it("«Para la central» está, DESTACADO y con la misma cifra que la tarjeta (R4/R23)", async () => {
+  it("«Total facturado» y «Le queda a la empresa» son los totales, DESTACADOS (R3)", async () => {
+    // SLT-104: «Para la tienda» no es una línea del Dinero de bodega (SLT-95 R16, canvas F6: las tres
+    // cuentas de bodega no la dibujan); su vigilancia queda en el detalle de cada cierre del día (R115).
     await abrirDetalle();
-
-    const linea = within(central()).getByText(PARA_LA_CENTRAL_LABEL).closest("div");
-    expect(linea?.className).toContain("border-t");
-    // La tarjeta de la cola pinta el mismo `paraLaCentral` de la misma cabecera: el detalle
-    // empieza por lo mismo con lo que la tarjeta cierra.
-    expect(importeTras(central(), PARA_LA_CENTRAL_LABEL)).toBe(money(CABECERA.paraLaCentral));
+    expect(lineas(factura()).at(-1)).toEqual(["Total facturado", "₡27.635,58", "neutro", "total"]);
+    expect(lineas(queda()).at(-1)).toEqual(["Le queda a la empresa", "₡13.384,78", "neutro", "total"]);
   });
 
-  it("«Para la central» lleva su NOTA FIJA también aquí, y en cada día (R26)", async () => {
-    // R26 pide la nota en las DOS superficies. Estaba afirmada solo en la tarjeta: medido el
-    // 2026-09-08 por el reviewer (MR3), quitar `PARA_LA_CENTRAL_NOTA` de `lineasCascadaCentral`
-    // dejaba todo en verde. El número sin la resta de la que sale vuelve a ser un número solo,
-    // que es con lo que empezó la ficha.
+  it("«Debe llegar a la central» es el total, DESTACADO y con la misma cifra que la tarjeta y la cifra (R4/R23)", async () => {
     await abrirDetalle();
-
-    expect(within(central()).getByText(PARA_LA_CENTRAL_NOTA)).toBeInTheDocument();
-    // Y NO es un accidente del agregado: cada `cierre_dia` monta la misma cascada, así que la
-    // nota va con ella. Sin esto, la mitad de las cascadas de la pantalla quedaría sin cubrir.
-    for (const dia of [DIA_ANA, DIA_BETO]) {
-      const suCentral = screen.getByRole("region", {
-        name: `${CASCADA_CENTRAL_TITULO} · ${dia.mensajeroNombre}`,
-      });
-      expect(within(suCentral).getByText(PARA_LA_CENTRAL_NOTA)).toBeInTheDocument();
-    }
-  });
-
-  it("las TRES restas dan, leyendo las cadenas pintadas (R6/R8/R9)", async () => {
-    await abrirDetalle();
-
-    // R6 — lo recaudado − flete − comisión = para la tienda.
-    laCuentaCierra(
-      [
-        importeTras(dueno(), TOTAL_GENERAL_LABEL),
-        importeTras(dueno(), FLETE_CON_IVA_LABEL),
-        importeTras(dueno(), COMISION_CON_IVA_LABEL),
-      ],
-      importeTras(dueno(), PARA_LA_TIENDA_LABEL),
-      "cascada A · para la tienda",
-    );
-
-    // R8 — lo facturado − IVA (SL-39) − mensajeros − bodega = neto de la empresa.
-    laCuentaCierra(
-      [
-        importeTras(dueno(), FACTURADO_EMPRESA_LABEL),
-        importeTras(dueno(), IVA_FACTURADO_LABEL),
-        importeTras(dueno(), PAGO_MENSAJERO_LABEL),
-        importeTras(dueno(), GANA_BODEGA_SATELITE_LABEL),
-      ],
-      importeTras(dueno(), NETO_EMPRESA_LABEL),
-      "cascada A · neto de la empresa",
-    );
-
-    // R9 — lo recaudado − mensajeros − bodega = para la central.
-    laCuentaCierra(
-      [
-        importeTras(central(), TOTAL_GENERAL_LABEL),
-        importeTras(central(), PAGO_MENSAJERO_LABEL),
-        importeTras(central(), GANA_BODEGA_SATELITE_LABEL),
-      ],
-      importeTras(central(), PARA_LA_CENTRAL_LABEL),
-      "cascada B · para la central",
+    expect(lineas(central()).at(-1)).toEqual(["Debe llegar a la central", "₡111.838,37", "neutro", "total"]);
+    expect(importeTras(screen.getByRole("group", { name: "Debe llegar a la central" }), "Debe llegar a la central")).toBe(
+      "₡111.838,37",
     );
   });
 
-  it("la LÍNEA PUENTE explica la diferencia exacta que el flete por devolución a origen abre (R7/R10)", async () => {
+  it("«Debe llegar a la central» lleva su NOTA FIJA (R26)", async () => {
+    // Las de CADA cierre del día van con su cuenta, en el detalle de ese cierre (R118, R115).
     await abrirDetalle();
+    expect(within(central()).getByText(NOTA_CENTRAL_VIEJA)).toBeInTheDocument();
+  });
 
-    // Sin la línea puente, la pantalla enseñaría «recaudado − facturado = para la tienda», que
-    // NO da: se queda corta por el flete por devolución a origen, que se factura pero no sale de lo
-    // recaudado. Se mide, en vez de razonarse.
-    const recaudado = centimos(importeTras(dueno(), TOTAL_GENERAL_LABEL));
-    const facturado = centimos(importeTras(dueno(), FACTURADO_EMPRESA_LABEL));
-    const tienda = centimos(importeTras(dueno(), PARA_LA_TIENDA_LABEL));
-    const fleteRechazo = centimos(importeTras(dueno(), FLETE_DEV_CON_IVA_LABEL));
-    expect(recaudado - facturado).not.toBe(tienda);
-    expect(tienda - (recaudado - facturado)).toBe(fleteRechazo);
-
-    // Y con la línea puente sí cierra: cobrado + flete por devolución a origen = lo facturado (R7).
+  it("las TRES cuentas cierran, leyendo lo pintado (R6/R8/R9)", async () => {
+    await abrirDetalle();
+    expect(lineas(central())).toEqual([
+      ["Total general", "₡126.089,17", "neutro", "partida"],
+      ["− Pago a mensajeros", "₡14.000,55", "resta", "partida"],
+      ["− Gana la bodega satélite", "₡250,25", "resta", "partida"],
+      ["Debe llegar a la central", "₡111.838,37", "neutro", "total"],
+    ]);
+    laCuentaCierraConSigno(central(), "lo que va a la central");
+    expect(lineas(queda())).toEqual([
+      ["Total facturado", "₡27.635,58", "neutro", "partida"],
+      ["− IVA (no es de la empresa)", "₡0", "resta", "partida"],
+      ["− Pago a mensajeros", "₡14.000,55", "resta", "partida"],
+      ["− Gana la bodega satélite", "₡250,25", "resta", "partida"],
+      ["Le queda a la empresa", "₡13.384,78", "neutro", "total"],
+    ]);
+    laCuentaCierraConSigno(queda(), "le queda a la empresa");
+    // R6 — lo que sale de lo recaudado es el flete + la comisión.
     laCuentaCierra(
-      [
-        importeTras(dueno(), COBRADO_SOBRE_RECAUDADO_LABEL),
-        importeTras(dueno(), FLETE_DEV_CON_IVA_LABEL),
-      ],
-      importeTras(dueno(), FACTURADO_EMPRESA_LABEL),
-      "cascada A · línea puente",
+      [importeTras(factura(), "Flete por entregado + IVA"), importeTras(factura(), "Comisión COD + IVA")],
+      importeTras(factura(), "Sale de lo recaudado"),
+      "sale de lo recaudado",
     );
+  });
+
+  it("la LÍNEA PUENTE explica la diferencia que el flete por devolución a origen abre (R7/R10)", async () => {
+    await abrirDetalle();
+    expect(lineas(factura())).toEqual([
+      ["Flete por entregado + IVA", "₡23.000,33", "neutro", "partida"],
+      ["Comisión COD + IVA", "₡4.134,50", "neutro", "partida"],
+      ["Sale de lo recaudado", "₡27.134,83", "neutro", "subtotal"],
+      ["+ Flete por devolución a origen + IVA", "₡500,75", "suma", "partida"],
+      ["Total facturado", "₡27.635,58", "neutro", "total"],
+    ]);
+    // Lo facturado NO es lo que sale de lo recaudado: la diferencia es el flete por devolución.
+    const sale = centimos(importeTras(factura(), "Sale de lo recaudado"));
+    const facturado = centimos(importeTras(factura(), "Total facturado"));
+    expect(facturado - sale).toBe(centimos(importeTras(factura(), "Flete por devolución a origen + IVA")));
+    expect(facturado).not.toBe(sale);
   });
 
   it("la línea puente sale TAMBIÉN con el flete por devolución a origen en cero (R10)", async () => {
-    await abrirDetalle();
-
-    // El día de Beto no tuvo ni un rechazo. Un cero explícito dice «aquí no hubo rechazos»; su
-    // ausencia dejaría al lector deduciéndolo de un hueco.
-    const duenoBeto = screen.getByRole("region", {
-      name: `${CASCADA_DUENO_TITULO} · Beto Mensajero`,
+    // Antes se medía en la cascada del día sin rechazos; el Dinero de bodega es el agregado (R118), así
+    // que el caso se mide con un agregado sin rechazos.
+    await abrirDetalle({
+      ...DETALLE_OK,
+      totalesIngreso: totalesIngreso({
+        fleteConIva: "8000.13",
+        comisionConIva: "1634.35",
+        fleteDevolucionConIva: "0.00",
+        total: "9634.48",
+      }),
+      cobradoSobreRecaudado: "9634.48",
     });
-    expect(within(duenoBeto).getByText(COBRADO_SOBRE_RECAUDADO_LABEL)).toBeInTheDocument();
-    expect(within(duenoBeto).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(importeTras(duenoBeto, FLETE_DEV_CON_IVA_LABEL)).toBe(`+${money("0.00")}`);
-    // Y con cero, la línea puente y lo facturado coinciden: la cascada sigue cerrando.
-    expect(importeTras(duenoBeto, COBRADO_SOBRE_RECAUDADO_LABEL)).toBe(money("9634.48"));
-    expect(importeTras(duenoBeto, FACTURADO_EMPRESA_LABEL)).toBe(money("9634.48"));
+    expect(lineas(factura()).slice(2)).toEqual([
+      ["Sale de lo recaudado", "₡9.634,48", "neutro", "subtotal"],
+      ["+ Flete por devolución a origen + IVA", "₡0", "suma", "partida"],
+      ["Total facturado", "₡9.634,48", "neutro", "total"],
+    ]);
   });
 
   it("la nota de «Gana la bodega satélite» dice que NO es un movimiento de caja (R27)", async () => {
+    // SLT-104: va en «Lo que va a la central»; «De lo facturado…» la pinta sin nota (canvas F6, SLT-95 R16).
     await abrirDetalle();
-    expect(within(central()).getByText(GANA_BODEGA_SATELITE_NOTA)).toBeInTheDocument();
-    expect(within(dueno()).getByText(GANA_BODEGA_SATELITE_NOTA)).toBeInTheDocument();
+    expect(within(central()).getByText(NOTA_GANA_VIEJA)).toBeInTheDocument();
   });
 
-  it("cada `cierre_dia` trae SUS dos cascadas, con los MISMOS rótulos (R15/R23)", async () => {
-    await abrirDetalle();
-
-    for (const dia of [DIA_ANA, DIA_BETO]) {
-      const suCentral = screen.getByRole("region", {
-        name: `${CASCADA_CENTRAL_TITULO} · ${dia.mensajeroNombre}`,
-      });
-      const suDueno = screen.getByRole("region", {
-        name: `${CASCADA_DUENO_TITULO} · ${dia.mensajeroNombre}`,
-      });
-      // Mismos rótulos que el agregado…
-      expect(within(suCentral).getByText(PARA_LA_CENTRAL_LABEL)).toBeInTheDocument();
-      expect(within(suDueno).getByText(PARA_LA_TIENDA_LABEL)).toBeInTheDocument();
-      expect(within(suDueno).getByText(NETO_EMPRESA_LABEL)).toBeInTheDocument();
-      // …y las cifras de SU propio nivel, no las del agregado (R15).
-      expect(importeTras(suCentral, PARA_LA_CENTRAL_LABEL)).toBe(money(dia.paraLaCentral));
-      expect(importeTras(suDueno, NETO_EMPRESA_LABEL)).toBe(money(dia.netoEmpresa));
-      laCuentaCierra(
-        [
-          importeTras(suCentral, TOTAL_GENERAL_LABEL),
-          importeTras(suCentral, PAGO_MENSAJERO_LABEL),
-          importeTras(suCentral, GANA_BODEGA_SATELITE_LABEL),
-        ],
-        importeTras(suCentral, PARA_LA_CENTRAL_LABEL),
-        `cascada B · ${dia.mensajeroNombre}`,
-      );
-    }
+  it("cada cierre del día es SU fila de «Mensajeros», con las cifras de SU nivel (R15/R23 → SLT-104 R42, R114)", async () => {
+    const user = await abrirDetalle();
+    expect(await filasMensajeros(user)).toEqual([
+      ["Ana Mensajera", "0", "₡80.000,10", "₡9.000,30", "₡70.749,55", "—"],
+      ["Beto Mensajero", "0", "₡46.089,07", "₡5.000,25", "₡41.088,82", "—"],
+    ]);
   });
 
   it("y la suma de los días da el agregado, AL CÉNTIMO, sin que nadie corrija nada (R16)", async () => {
-    await abrirDetalle();
-
-    const porDia = [DIA_ANA, DIA_BETO].map((dia) =>
-      importeTras(
-        screen.getByRole("region", { name: `${CASCADA_CENTRAL_TITULO} · ${dia.mensajeroNombre}` }),
-        PARA_LA_CENTRAL_LABEL,
-      ),
-    );
-    laCuentaCierra(porDia, importeTras(central(), PARA_LA_CENTRAL_LABEL), "Σ días = agregado");
+    const user = await abrirDetalle();
+    const agregado = importeTras(central(), "Debe llegar a la central");
+    const porDia = (await filasMensajeros(user)).map((f) => f[4]!);
+    laCuentaCierra(porDia, agregado, "Σ días = agregado");
   });
 
-  it("NO queda ninguna tarjeta suelta repitiendo una cifra de una cascada (R24/R34)", async () => {
+  it("NO queda ninguna tarjeta suelta repitiendo una cifra de una cuenta (R24/R34)", async () => {
     await abrirDetalle();
-
-    // Las cinco que estaban aquí antes de esta ficha. Sus componentes siguen existiendo —los
-    // monta el detalle del cierre de MENSAJERO— pero esta superficie deja de montarlos.
     for (const rotulo of [
       "Ingreso bruto",
       "Ganancia",
@@ -547,10 +489,9 @@ describe("393 · F6 — las dos cascadas del detalle", () => {
     ]) {
       expect(
         document.body.textContent,
-        `«${rotulo}» sigue suelto en el detalle: es una cifra que ya es línea de una cascada`,
+        `«${rotulo}» sigue suelto en el detalle: es una cifra que ya es línea de una cuenta`,
       ).not.toContain(rotulo);
     }
-    // Y ninguna de sus regiones se quedó montada.
     for (const nombre of [
       "Ingreso bruto del cierre de bodega",
       "Pago a mensajeros del cierre de bodega",
@@ -562,29 +503,27 @@ describe("393 · F6 — las dos cascadas del detalle", () => {
     }
   });
 
-  it("el panel de totales por método sigue EXACTAMENTE igual (R29)", async () => {
+  it("lo recaudado se lee por método bajo la cifra «Recaudado» (R29 → SLT-95 R7)", async () => {
+    // SLT-104: el panel «Totales del cierre de bodega» lo sustituye la cifra «Recaudado» con sus
+    // métodos (SLT-95 R6-R7); los que valen cero no se pintan (SLT-95 D4), por eso no hay «Transferencia».
     await abrirDetalle();
-
-    const totales = screen.getByRole("region", { name: "Totales del cierre de bodega" });
-    expect(within(totales).getByText("Efectivo")).toBeInTheDocument();
-    expect(within(totales).getByText("SINPE")).toBeInTheDocument();
-    expect(within(totales).getByText("Transferencia")).toBeInTheDocument();
-    expect(totales.textContent).toContain(money("100000.17"));
-    expect(totales.textContent).toContain(money("26089.00"));
-    expect(totales.textContent).toContain(money("126089.17"));
-    // efectivo + SINPE + transferencia = general, con las cadenas pintadas.
-    laCuentaCierra(
-      [money("100000.17"), money("26089.00"), money("0.00")],
-      money("126089.17"),
-      "totales por método",
-    );
+    const recaudado = screen.getByRole("group", { name: "Recaudado" });
+    expect(recaudado.textContent).toContain("₡126.089,17");
+    const metodos = within(recaudado).getByLabelText("Métodos de pago de lo recaudado");
+    expect(metodos.textContent).toContain("Efectivo");
+    expect(metodos.textContent).toContain("₡100.000,17");
+    expect(metodos.textContent).toContain("SINPE");
+    expect(metodos.textContent).toContain("₡26.089");
+    expect(metodos.textContent).not.toContain("Transferencia");
+    laCuentaCierra(["₡100.000,17", "₡26.089"], "₡126.089,17", "métodos = recaudado");
   });
 
-  it("el desglose por concepto del ingreso de la empresa sigue en su sitio", async () => {
+  it("el desglose por concepto lo da «Lo que se le factura a la tienda»", async () => {
+    // SLT-104 (requirements > Lo que NO entra): el panel «Ingreso de la empresa» por concepto deja de
+    // verse en bodega; sus conceptos agrupados son las líneas de esta cuenta.
     await abrirDetalle();
-    const panel = screen.getByRole("region", { name: "Ingreso de la empresa del cierre de bodega" });
-    expect(within(panel).getByText(FLETE_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(panel.textContent).toContain(money("27635.58"));
+    expect(importeTras(factura(), "Flete por entregado + IVA")).toBe("₡23.000,33");
+    expect(importeTras(factura(), "Total facturado")).toBe("₡27.635,58");
   });
 });
 
@@ -604,7 +543,6 @@ describe("393 · F6 — el caso raro, dicho en la pantalla", () => {
       totalIngresoBodegaRechazos: "0.00",
       paraLaCentral: "-1000.05",
       efectivoCubreDescuentos: false,
-      // FICHA 431: la marca de conciliacion, CUADRADA con el efectivo de este doble.
       ...marcaSinConciliar("500.00"),
     },
     cierres: [],
@@ -620,82 +558,53 @@ describe("393 · F6 — el caso raro, dicho en la pantalla", () => {
     netoEmpresa: "-1699.95",
     paraLaCentral: "-1000.05",
     efectivoCubreDescuentos: false,
-    // FICHA 431: la marca de conciliacion, CUADRADA con el efectivo de este doble.
     ...marcaSinConciliar("500.00"),
   };
 
-  it("un «Para la central» NEGATIVO lleva su signo, su tono y SU NOTA (R36)", async () => {
+  it("un «Debe llegar a la central» NEGATIVO lleva su signo, su tono y SU NOTA (R36)", async () => {
     await abrirDetalle(EN_DEUDA);
-
-    const pintado = importeTras(central(), PARA_LA_CENTRAL_LABEL);
+    const pintado = importeTras(central(), "Debe llegar a la central");
     expect(pintado).toBe("-₡1.000,05");
     expect(centimos(pintado)).toBe(BigInt(-100005));
-    // Ni cero, ni valor absoluto, ni ausente.
-    expect(pintado).not.toBe(money("0"));
-    expect(pintado).not.toBe(money("1000.05"));
     expect(within(central()).getByText(pintado).className).toContain("text-danger-strong");
-    expect(within(central()).getByText(PARA_LA_CENTRAL_NEGATIVO_NOTA)).toBeInTheDocument();
+    expect(
+      within(central()).getByText(
+        "Los descuentos superan lo recaudado en este cierre: la satélite no entrega nada y la central pone la diferencia.",
+      ),
+    ).toBeInTheDocument();
     // El rótulo NO cambia con el signo: una cifra, un nombre (D6).
-    expect(within(central()).getByText(PARA_LA_CENTRAL_LABEL)).toBeInTheDocument();
+    expect(within(central()).getByText("Debe llegar a la central")).toBeInTheDocument();
   });
 
-  it("un «Neto de la empresa» NEGATIVO se pinta con signo y marcado como deuda (R11)", async () => {
+  it("un «Le queda a la empresa» NEGATIVO se pinta con signo y marcado como deuda (R11)", async () => {
     await abrirDetalle(EN_DEUDA);
-
-    const pintado = importeTras(dueno(), NETO_EMPRESA_LABEL);
+    const pintado = importeTras(queda(), "Le queda a la empresa");
     expect(pintado).toBe("-₡1.699,95");
-    expect(within(dueno()).getByText(pintado).className).toContain("text-danger-strong");
+    expect(within(queda()).getByText(pintado).className).toContain("text-danger-strong");
   });
 
   it("la nota del EFECTIVO aparece sólo cuando el efectivo no cubre los descuentos (R37)", async () => {
+    const NOTA = "El efectivo recaudado no cubre los descuentos: parte de lo recaudado entró por SINPE o transferencia.";
     await abrirDetalle(EN_DEUDA);
-    expect(within(central()).getByText(EFECTIVO_NO_CUBRE_NOTA)).toBeInTheDocument();
+    expect(within(central()).getByText(NOTA)).toBeInTheDocument();
 
     cleanup();
     vi.clearAllMocks();
     await abrirDetalle();
-    expect(within(central()).queryByText(EFECTIVO_NO_CUBRE_NOTA)).toBeNull();
+    expect(within(central()).queryByText(NOTA)).toBeNull();
   });
 });
 
 /**
- * SL-39 (R24) — EL IVA FACTURADO TIENE SU LÍNEA en la cascada «de quién es el dinero», en el
- * agregado y en cada `cierre_dia`, justo después de «Lo que la empresa facturó».
+ * SL-39 (R24) — EL IVA FACTURADO TIENE SU LÍNEA en la cuenta «de quién es el dinero», justo después de
+ * lo facturado. SLT-104: en el detalle de bodega se lee el AGREGADO (el de cada cierre del día, en su
+ * detalle: R118, R115), y la línea se llama «IVA (no es de la empresa)» (SLT-95 R16: el rótulo dice lo
+ * que la nota de la 393 explicaba).
  *
- * Los dos días son los cierres A y B de `design.md > 12.4`:
- *   - A (Ana): 3.616,00 facturados con 416,00 de IVA, 1.500,00 al mensajero → 1.700,00;
- *   - B (Beto): un rechazo, 2.260,00 facturados con 260,00 de IVA, 2.100,00 al mensajero → −100,00.
- * El agregado es su suma: 5.876,00 − 676,00 − 3.600,00 − 0,00 = 1.600,00. Que cada nivel enseñe
- * SU IVA —y no el del agregado— es lo que obliga a cablear `ivaFacturado` por día. El recaudado de
- * A (20.000,00) es de la fixtura: el diseño no lo fija.
+ * Los dos días son los cierres A y B de `design.md > 12.4` de SL-39; el agregado es su suma:
+ * 5.876,00 − 676,00 − 3.600,00 − 0,00 = 1.600,00.
  */
 describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R26)", () => {
-  const INGRESO_A: TotalesIngresoEmpresa = {
-    montoCobrar: "20000.00",
-    flete: "3200.00",
-    ivaFlete: "416.00",
-    fleteDevolucion: "0.00",
-    ivaFleteDevolucion: "0.00",
-    comisionCod: "0.00",
-    ivaComisionCod: "0.00",
-    fleteConIva: "3616.00",
-    comisionConIva: "0.00",
-    fleteDevolucionConIva: "0.00",
-    total: "3616.00",
-  };
-  const INGRESO_B: TotalesIngresoEmpresa = {
-    montoCobrar: "0.00",
-    flete: "0.00",
-    ivaFlete: "0.00",
-    fleteDevolucion: "2000.00",
-    ivaFleteDevolucion: "260.00",
-    comisionCod: "0.00",
-    ivaComisionCod: "0.00",
-    fleteConIva: "0.00",
-    comisionConIva: "0.00",
-    fleteDevolucionConIva: "2260.00",
-    total: "2260.00",
-  };
   const INGRESO_AGREGADO: TotalesIngresoEmpresa = {
     montoCobrar: "20000.00",
     flete: "3200.00",
@@ -709,42 +618,21 @@ describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R2
     fleteDevolucionConIva: "2260.00",
     total: "5876.00",
   };
-  const TOTALES_A = {
-    efectivo: "20000.00",
-    simpe: "0.00",
-    transferencia: "0.00",
-    general: "20000.00",
-  };
+  const TOTALES_A = { efectivo: "20000.00", simpe: "0.00", transferencia: "0.00", general: "20000.00" };
   const DIA_A: CierreBodegaDetalleCierre = {
     ...DIA_ANA,
     totales: TOTALES_A,
     totalPagoMensajero: "1500.00",
     totalIngresoBodegaRechazos: "0.00",
-    totalesIngreso: INGRESO_A,
-    ivaFacturado: "416.00",
-    ganancia: "1700.00",
-    pagoTienda: "16384.00",
-    cobradoSobreRecaudado: "3616.00",
-    netoEmpresa: "1700.00",
-    ganaLaTienda: "16384.00",
     paraLaCentral: "18500.00",
-    ...marcaSinConciliar("20000.00"),
   };
   const DIA_B: CierreBodegaDetalleCierre = {
     ...DIA_BETO,
     totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
     totalPagoMensajero: "2100.00",
     totalIngresoBodegaRechazos: "0.00",
-    totalesIngreso: INGRESO_B,
-    ivaFacturado: "260.00",
-    ganancia: "-100.00",
-    pagoTienda: "0.00",
-    cobradoSobreRecaudado: "0.00",
-    netoEmpresa: "-100.00",
-    ganaLaTienda: "-2260.00",
     paraLaCentral: "-2100.00",
     efectivoCubreDescuentos: false,
-    ...marcaSinConciliar("0.00"),
   };
   const DETALLE_AB: DetalleOk = {
     ...DETALLE_OK,
@@ -769,93 +657,25 @@ describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R2
     ...marcaSinConciliar("20000.00"),
   };
 
-  /** La LÍNEA de cascada de un rótulo: su hoja, el envoltorio (rótulo + notas) y la línea. */
-  function filaDe(region: HTMLElement, rotulo: string): HTMLElement {
-    const hojas = within(region)
-      .getAllByText(rotulo)
-      .filter((el) => el.children.length === 0);
-    expect(hojas.length, `«${rotulo}» aparece ${hojas.length} veces en esta región`).toBe(1);
-    const fila = hojas[0].parentElement?.parentElement ?? null;
-    expect(fila, `«${rotulo}» no está dentro de una línea de cascada`).not.toBeNull();
-    return fila!;
-  }
-
-  const duenoDe = (mensajero: string) =>
-    screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · ${mensajero}` });
-
-  /** Cada nivel con lo que se LEE en su cascada, escrito a mano (design §12.4). */
-  const NIVELES = [
-    {
-      nivel: "agregado",
-      region: () => dueno(),
-      lineas: ["₡5.876", "-₡676", "-₡3.600", "-₡0", "₡1.600"],
-      tienda: "₡16.384",
-      cobrado: "₡3.616",
-    },
-    {
-      nivel: "cierre A (Ana)",
-      region: () => duenoDe("Ana Mensajera"),
-      lineas: ["₡3.616", "-₡416", "-₡1.500", "-₡0", "₡1.700"],
-      tienda: "₡16.384",
-      cobrado: "₡3.616",
-    },
-    {
-      nivel: "cierre B (Beto)",
-      region: () => duenoDe("Beto Mensajero"),
-      lineas: ["₡2.260", "-₡260", "-₡2.100", "-₡0", "-₡100"],
-      tienda: "₡0",
-      cobrado: "₡0",
-    },
-  ] as const;
-
-  it("en el agregado y en cada día, la línea va JUSTO después de lo facturado, resta y lleva su nota", async () => {
+  it("la línea va JUSTO después de lo facturado, resta y tiene su importe", async () => {
     await abrirDetalle(DETALLE_AB);
-
-    for (const { nivel, region: deNivel, lineas } of NIVELES) {
-      const region = deNivel();
-      const filaIva = filaDe(region, IVA_FACTURADO_LABEL);
-      expect(
-        filaIva.previousElementSibling,
-        `${nivel}: «IVA facturado» no va justo después de «Lo que la empresa facturó»`,
-      ).toBe(filaDe(region, FACTURADO_EMPRESA_LABEL));
-      expect(filaIva.nextElementSibling, `${nivel}: tras el IVA va el pago`).toBe(
-        filaDe(region, PAGO_MENSAJERO_LABEL),
-      );
-      expect(importeTras(region, IVA_FACTURADO_LABEL), nivel).toBe(lineas[1]);
-      // La nota, A MANO: compararla con su constante estaría siempre verde.
-      expect(
-        within(filaIva).getByText(
-          "El IVA que se le cobró a la tienda en este cierre. No es de la empresa.",
-        ),
-      ).toBeInTheDocument();
-    }
+    const rotulos = lineas(queda()).map((l) => l[0]);
+    expect(rotulos.indexOf("− IVA (no es de la empresa)")).toBe(rotulos.indexOf("Total facturado") + 1);
+    expect(rotulos.indexOf("− Pago a mensajeros")).toBe(rotulos.indexOf("− IVA (no es de la empresa)") + 1);
+    expect(lineas(queda())[1]).toEqual(["− IVA (no es de la empresa)", "₡676", "resta", "partida"]);
   });
 
-  it("facturado − IVA − mensajeros − bodega = neto se lee y cuadra en cada nivel (design §12.4)", async () => {
+  it("facturado − IVA − mensajeros − bodega = le queda, se lee y cuadra (design §12.4)", async () => {
     await abrirDetalle(DETALLE_AB);
-
-    for (const { nivel, region: deNivel, lineas } of NIVELES) {
-      const region = deNivel();
-      const facturado = importeTras(region, FACTURADO_EMPRESA_LABEL);
-      const iva = importeTras(region, IVA_FACTURADO_LABEL);
-      const mensajero = importeTras(region, PAGO_MENSAJERO_LABEL);
-      const bodega = importeTras(region, GANA_BODEGA_SATELITE_LABEL);
-      const resultado = importeTras(region, NETO_EMPRESA_LABEL);
-      expect([facturado, iva, mensajero, bodega, resultado], nivel).toEqual([...lineas]);
-      laCuentaCierra([facturado, iva, mensajero, bodega], resultado, `neto · ${nivel}`);
-    }
+    expect(lineas(queda()).map((l) => l[1])).toEqual(["₡5.876", "₡676", "₡3.600", "₡0", "₡1.600"]);
+    laCuentaCierraConSigno(queda(), "le queda · agregado");
   });
 
-  it("R26: lo de la tienda y lo de la central no cambian, y el IVA no entra en la cascada de la central", async () => {
+  it("R26: lo que sale de lo recaudado y lo de la central no cambian, y el IVA no entra en la cuenta de la central", async () => {
     await abrirDetalle(DETALLE_AB);
-
-    for (const { nivel, region: deNivel, tienda, cobrado } of NIVELES) {
-      const region = deNivel();
-      expect(importeTras(region, PARA_LA_TIENDA_LABEL), nivel).toBe(tienda);
-      expect(importeTras(region, COBRADO_SOBRE_RECAUDADO_LABEL), nivel).toBe(cobrado);
-    }
-    expect(importeTras(central(), PARA_LA_CENTRAL_LABEL)).toBe("₡16.400");
-    expect(within(central()).queryByText(IVA_FACTURADO_LABEL)).toBeNull();
+    expect(importeTras(factura(), "Sale de lo recaudado")).toBe("₡3.616");
+    expect(importeTras(central(), "Debe llegar a la central")).toBe("₡16.400");
+    expect(within(central()).queryByText(/IVA/)).toBeNull();
   });
 });
 
@@ -863,10 +683,6 @@ describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R2
  * SL-15 R4 — los rótulos del detalle nombran a la empresa leyendo `EMPRESA` de
  * `lib/config/marca.ts`, no escribiéndola a mano. Con otro nombre en el módulo, la pantalla lo
  * dice en cada rótulo y no queda ni un «la empresa» escrito a mano.
- *
- * `vi.doMock` + `vi.resetModules` + `import()` dinámico, SOLO dentro de este `describe`: el resto
- * del archivo sigue afirmando el literal de hoy («Neto de la empresa», R19). Tras `resetModules`
- * los `vi.mock` de arriba se vuelven a evaluar, así que las acciones también se importan de nuevo.
  */
 describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () => {
   afterEach(() => {
@@ -874,7 +690,7 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     vi.resetModules();
   });
 
-  it("con «Acme Envíos» en el módulo, las cascadas y los paneles lo dicen; «la empresa», nunca", async () => {
+  it("con «Acme Envíos» en el módulo, las cuentas y las cifras lo dicen; «la empresa», nunca", async () => {
     vi.resetModules();
     vi.doMock("@/lib/config/marca", async (importOriginal) => ({
       ...(await importOriginal<typeof import("@/lib/config/marca")>()),
@@ -905,27 +721,14 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     );
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+      await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
     );
-    await screen.findByRole("region", { name: `${CASCADA_CENTRAL_TITULO} · cierre de bodega` });
+    const cuenta = await screen.findByRole("region", { name: "De lo facturado, le queda a Acme Envíos" });
 
-    // Los rótulos de la cascada «de quién es el dinero», escritos a mano (R19).
-    expect(within(dueno()).getByText("Neto de Acme Envíos")).toBeInTheDocument();
-    expect(within(dueno()).getByText("Lo que Acme Envíos facturó")).toBeInTheDocument();
-    expect(importeTras(dueno(), "Neto de Acme Envíos")).toBe(money("13384.78"));
-    // SL-39: la nota del IVA también nombra a la empresa por el módulo de marca.
-    expect(
-      within(dueno()).getByText(
-        "El IVA que se le cobró a la tienda en este cierre. No es de Acme Envíos.",
-      ),
-    ).toBeInTheDocument();
-    // Los nombres accesibles de los paneles del ingreso: el agregado y el de cada día.
-    expect(
-      screen.getByRole("region", { name: "Ingreso de Acme Envíos del cierre de bodega" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("region", { name: "Ingreso de Acme Envíos · Ana Mensajera" }),
-    ).toBeInTheDocument();
+    expect(within(cuenta).getByText("Le queda a Acme Envíos")).toBeInTheDocument();
+    expect(within(cuenta).getByText("− IVA (no es de Acme Envíos)")).toBeInTheDocument();
+    expect(importeTras(cuenta, "Le queda a Acme Envíos")).toBe("₡13.384,78");
+    expect(screen.getByRole("group", { name: "Le queda a Acme Envíos" })).toBeInTheDocument();
     // Ni un «la empresa» escrito a mano en lo que se lee, ni en los nombres accesibles.
     const accesibles = Array.from(document.querySelectorAll("[aria-label]"))
       .map((el) => el.getAttribute("aria-label") ?? "")
@@ -935,59 +738,51 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
   });
 });
 
-describe("SLT-54 R65 — el rótulo del flete que no es de entrega, por nivel", () => {
+describe("SLT-54 R65 — el rótulo del flete que no es de entrega", () => {
   const conNuevo = {
     grupos: grupos478({
       novedad: [gestion478({ gestionId: "g-slt54", resultado: "novedad", ingresoEmpresa: ingreso478({ tarifaModelo: "nuevo", tarifa: null }) })],
     }),
   };
+  const FLETE_NO_ENTREGADAS = "+ Flete de gestiones no entregadas + IVA";
+  const FLETE_DEVOLUCION = "+ Flete por devolución a origen + IVA";
 
-  it("un mensajero del nuevo: su cascada, su panel y el agregado lo dicen; el otro mensajero, no", async () => {
+  it("con un mensajero del nuevo, la cuenta del agregado lo dice", async () => {
+    // SLT-104: el rótulo POR mensajero vive en el detalle de su cierre del día (R118, R115).
     const [ana, beto] = DETALLE_OK.cierres;
-    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
-    expect(within(dueno()).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(within(dueno()).queryByText(FLETE_DEV_CON_IVA_LABEL)).toBeNull();
-    const deAna = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Ana Mensajera` });
-    const deBeto = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Beto Mensajero` });
-    expect(within(deAna).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(within(deBeto).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(within(deBeto).queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
-    const panelDeAna = screen.getByRole("region", { name: `Ingreso de ${EMPRESA.enFrase} · Ana Mensajera` });
-    expect(within(panelDeAna).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
-    const panelAgregado = screen.getByRole("region", { name: `Ingreso de ${EMPRESA.enFrase} del cierre de bodega` });
-    expect(within(panelAgregado).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana!, ...conNuevo }, beto!] });
+    const rotulos = lineas(factura()).map((l) => l[0]);
+    expect(rotulos).toContain(FLETE_NO_ENTREGADAS);
+    expect(rotulos).not.toContain(FLETE_DEVOLUCION);
   });
 
   it("todo viejo: nada cambia", async () => {
     await abrirDetalle();
-    expect(screen.queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
-    expect(within(dueno()).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
+    const rotulos = lineas(factura()).map((l) => l[0]);
+    expect(rotulos).toContain(FLETE_DEVOLUCION);
+    expect(rotulos).not.toContain(FLETE_NO_ENTREGADAS);
   });
 
   it("R71: la nota de lo que gana la satélite no habla de devoluciones en el nuevo; en el viejo, literal", async () => {
     const [ana, beto] = DETALLE_OK.cierres;
-    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana!, ...conNuevo }, beto!] });
     const NOTA_NUEVA = "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
-    const NOTA_VIEJA = "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.";
-    const deAna = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Ana Mensajera` });
-    const deBeto = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Beto Mensajero` });
-    expect(within(dueno()).getByText(NOTA_NUEVA)).toBeInTheDocument();
     expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
-    expect(within(deAna).getByText(NOTA_NUEVA)).toBeInTheDocument();
-    expect(within(deBeto).getByText(NOTA_VIEJA)).toBeInTheDocument();
-  });
-
-  it("R71 (menor 5): la nota de «Para la central» sigue al cierre: nuevo sin devoluciones; viejo, literal", async () => {
-    const [ana, beto] = DETALLE_OK.cierres;
-    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
-    const NOTA_NUEVA = "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.";
-    const NOTA_VIEJA =
-      "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.";
-    expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
-    expect(within(central()).queryByText(NOTA_VIEJA)).toBeNull();
+    expect(within(central()).queryByText(NOTA_GANA_VIEJA)).toBeNull();
     cleanup();
     await abrirDetalle();
-    expect(within(central()).getByText(NOTA_VIEJA)).toBeInTheDocument();
+    expect(within(central()).getByText(NOTA_GANA_VIEJA)).toBeInTheDocument();
+  });
+
+  it("R71 (menor 5): la nota de «Debe llegar a la central» sigue al cierre: nuevo sin devoluciones; viejo, literal", async () => {
+    const [ana, beto] = DETALLE_OK.cierres;
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana!, ...conNuevo }, beto!] });
+    const NOTA_NUEVA = "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.";
+    expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(central()).queryByText(NOTA_CENTRAL_VIEJA)).toBeNull();
+    cleanup();
+    await abrirDetalle();
+    expect(within(central()).getByText(NOTA_CENTRAL_VIEJA)).toBeInTheDocument();
     expect(within(central()).queryByText(NOTA_NUEVA)).toBeNull();
   });
 });

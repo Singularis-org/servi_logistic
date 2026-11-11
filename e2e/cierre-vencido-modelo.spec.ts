@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { cierresDe } from "./_escenarios/cierres";
+import { cierresDe, filaDeCola } from "./_escenarios/cierres";
 import { correrCron } from "./_escenarios/crons";
 import {
   crearEscenarioReparto,
@@ -85,9 +85,7 @@ test.describe.serial("Cierre vencido — el mensajero lo envía y la bodega lo a
   test("paso 4 — el adminSatelite ve «Solicitado» y lo aprueba por la vía normal", async ({ browser }) => {
     const page = await paginaDe(browser, r.adminSatelite);
     await page.goto("/cierres-admin");
-    const comprobante = page
-      .getByRole("region", { name: "Pendientes de decisión" })
-      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    const comprobante = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
     await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
     await expect(comprobante.getByText("Vencido", { exact: true })).toHaveCount(0);
     await comprobante.getByRole("button", { name: "Ver / decidir" }).click();

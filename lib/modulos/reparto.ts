@@ -51,6 +51,9 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/plataforma/geografia": "nucleo",
   // SL-42: el catálogo de vehículos lo gestiona la plataforma (superadmin); `/configuracion/vehiculos` se retiró.
   "/plataforma/vehiculos": "nucleo",
+  // SLT-97: los reportes de problema los ve solo la plataforma (superadmin).
+  "/plataforma/reportes": "nucleo",
+  "/plataforma/reportes/[reporteId]": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "/recoleccion": "nucleo",
   "/recepcion-satelite": "nucleo",
@@ -191,6 +194,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "order-status": "nucleo",
   organizaciones: "nucleo",
   "password-reset": "nucleo",
+  // SLT-99: el cambio de plan del maestro en «Mi plan», que es núcleo como su ruta.
+  "mi-plan": "nucleo",
   // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
   planes: "nucleo",
   "postulacion-mensajero": "nucleo",
@@ -205,6 +210,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "recuperar-orden": "nucleo",
   // SLT-87: avisar de un fallo no depende de ningún módulo.
   "reporte-bug": "nucleo",
+  // SLT-97: el módulo de reportes del superadmin, de plataforma.
+  "reportes-bug-plataforma": "nucleo",
   "reprogramadas-retenidas": "nucleo",
   "resolver-novedad": "nucleo",
   "ruta-mensajero": "nucleo",

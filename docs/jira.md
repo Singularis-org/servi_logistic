@@ -278,7 +278,8 @@ Decisiones que conviene entender antes de cambiarlas:
 ## Cómo se nombra una ficha
 
 Nombra siempre una ficha como `<key> «<title>»`: `SL-10 «Gate en verde: CRLF y guardias rojas
-heredadas»`, nunca `SL-10` solo. Va así en:
+heredadas»`, nunca `SL-10` solo. Basta con una vez por mensaje: las siguientes menciones de esa
+key en el mismo mensaje pueden ir solas, porque el lector ya sabe de qué ficha se habla. Va así en:
 
 - todo lo que lee el humano: los mensajes del leader y los informes de los subagentes;
 - la salida del hook de arranque (`.claude/hooks/arranque.mjs`);
@@ -291,9 +292,10 @@ primera línea. El `title` sale de F0 y `scripts/validate-features.mjs` falla si
 no falla, como la copia sin `assignee`, y la siguiente F0 lo arregla.
 
 **Quién lo hace cumplir (regla 9 de `CLAUDE.md`):** el hook `Stop`
-(`.claude/hooks/fin-de-turno.mjs`) revisa el último mensaje de cada turno. Si nombra una key sin
-`«<title>»` detrás, bloquea el cierre y le pasa al agente los títulos de `feature_list.json` para
-que lo reescriba. Bloquea una vez por turno (con `stop_hook_active` no repite, así no hay bucles).
+(`.claude/hooks/fin-de-turno.mjs`) revisa el último mensaje de cada turno. Si nombra una key que
+no lleva `«<title>»` detrás en ninguna de sus menciones, añade debajo del mensaje una nota
+(`systemMessage`) con `<key> «<title>»` de `feature_list.json`. No bloquea el cierre: el hook
+corre cuando el humano ya ve el mensaje, y pedir la reescritura se lo mostraba dos veces.
 
 - **Cuenta como key** la que está en la copia del board o lleva un prefijo del tracker
   (`tracker.prefijo`, `prefijos_historicos` o `jira.project`). `UTF-8` o `SHA-256` no cuentan.
@@ -310,6 +312,11 @@ que lo reescriba. Bloquea una vez por turno (con `stop_hook_active` no repite, a
 - **2026-11-07.** Con el `title` ya importado, el leader seguía escribiendo «ya hice la SL-50».
   La regla existía como texto y nada la hacía cumplir; el humano pidió que fuera obligatoria. Por
   eso pasó a regla 9 con un hook que bloquea.
+- **2026-11-10.** El hook corre cuando el humano ya ve el mensaje: cada bloqueo le duplicaba la
+  respuesta. Los dos bloqueos de ese día fueron segundas menciones de keys que ya llevaban su
+  título en el mismo mensaje. El humano decidió que basta con el título una vez por mensaje.
+  Ese mismo día volvió a duplicarse un mensaje con cuatro keys sin título; el humano decidió que
+  el hook dejara de bloquear y anotara los títulos debajo del mensaje.
 
 ## El assignee: el candado visible del equipo
 

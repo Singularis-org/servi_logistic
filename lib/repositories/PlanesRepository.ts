@@ -13,6 +13,8 @@ import type {
   DetallePlanLeido,
   EfectoElegido,
   EmpresaDePlanes,
+  EmpresaParaElMaestro,
+  IPlanesDelMaestroRepository,
   IPlanesRepository,
   PlanDeEmpresaLeida,
   PrecioDesdeLeido,
@@ -22,7 +24,9 @@ import type {
   ResultadoArchivar,
   ResultadoAsignar,
   ResultadoCambiarTipoCobro,
+  ResultadoCambioDelMaestro,
   ResultadoCancelarCambio,
+  ResultadoCancelarDelMaestro,
   ResultadoCrearYAsignar,
   ResultadoEdicion,
   ResultadoProgramar,
@@ -32,6 +36,7 @@ import type {
 import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
+import { esPlanDisponible } from "@/lib/planes/costo-concreto";
 import { FECHA_DE_EFECTO_OBLIGATORIA, SOLO_CON_PLAN, SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan, hayCambios, importeCanonico, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
@@ -788,7 +793,7 @@ class AsignacionRechazada extends Error {
 /* El repositorio                                                              */
 /* -------------------------------------------------------------------------- */
 
-export class PlanesRepository implements IPlanesRepository {
+export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRepository {
   constructor(private readonly prisma: PlanesPrismaClient) {}
 
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null> {
@@ -1666,5 +1671,82 @@ export class PlanesRepository implements IPlanesRepository {
       });
       return filas.map(aDTO);
     });
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* SLT-99 (design §3) — el maestro cambia el plan de SU empresa. La empresa  */
+  /* la pone el servicio desde la sesión; el pendiente es el de SLT-86.        */
+  /* ------------------------------------------------------------------------ */
+
+  empresaParaElMaestro(organizacionId: string): Promise<EmpresaParaElMaestro | null> {
+    return comoPlataforma("SL-24", "leer el plan y el pendiente de la empresa del maestro (SLT-99)", async () => {
+      const fila = await this.prisma.organizacion.findUnique({
+        where: { id: organizacionId },
+        select: { planId: true, planTipoCobro: true, planCambioId: true, plan: { select: { visibilidad: true } } },
+      });
+      if (fila === null) return null;
+      return {
+        planId: fila.planId,
+        planEsCustom: fila.plan?.visibilidad === "custom",
+        tipoCobro: tipoCobroSchema.parse(fila.planTipoCobro),
+        hayPendiente: fila.planCambioId !== null,
+      };
+    });
+  }
+
+  cambiarPlanPorLaEmpresa(
+    organizacionId: string,
+    planId: string,
+    actorUsuarioId: string,
+    ahora: Date,
+  ): Promise<ResultadoCambioDelMaestro> {
+    return comoPlataforma("SL-24", "cambiar el plan de su empresa (maestro, SLT-99)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoCambioDelMaestro> => {
+        // Empresa FOR UPDATE → plan FOR SHARE, el orden de `asignar` (§4.4).
+        const empresa = await bloquearEmpresa(tx, organizacionId);
+        if (empresa === undefined) throw new Error(`cambiarPlanPorLaEmpresa: la empresa ${organizacionId} de la sesión no existe`);
+        if (empresa.plan_id === null) return { estado: "sin_plan" };
+        // R10: con el tipo VIGENTE leído bajo el cerrojo, no el de un pendiente; así el tipo que fija la fecha
+        // es el que se guarda. Es inicio de período de calendario: al aplicarse no abre tramo (R14).
+        const tipoCobro = tipoCobroSchema.parse(empresa.plan_tipo_cobro);
+        const corte = fechaDeEfectoPorDefecto(tipoCobro, ahora);
+        // R15 (decisión 2026-11-10, m1): su plan activo quita el pendiente, sea de quien sea (P3), con su fila
+        // (SLT-86 R19): el mismo camino que «Cancelar cambio». Antes de mirar la disponibilidad, para que un
+        // activo custom o archivado también lo cancele; no lee ni bloquea el plan porque no lo asigna.
+        if (empresa.plan_id === planId) {
+          if (empresa.plan_cambio_id !== null) {
+            await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
+          }
+          return { estado: "ok", vigenteDesde: null };
+        }
+        await tx.$queryRaw`SELECT "id" FROM "plan" WHERE "id" = ${planId} FOR SHARE`;
+        const plan = await leerPlan(tx, planId);
+        if (plan === null) return { estado: "no_disponible" };
+        if (!esPlanDisponible(plan)) return { estado: "no_disponible" };
+        // R13 (P4): por rol y API keys, y SIN escribir aunque la fecha sea futura: aquí se separa del
+        // superadmin, que guarda y avisa (SLT-86 R18).
+        const excedidos = await excedidosDe(tx, [empresa], plan.topes);
+        if (excedidos.length > 0) return { estado: "tope_excedido", excedidos };
+        // R11, R15: reemplaza el que hubiera (también uno del superadmin con otro tipo, P3), sin historial.
+        await escribirPendiente(tx, empresa.id, plan.id, tipoCobro, inicioDelDiaPlataforma(corte), actorUsuarioId);
+        return { estado: "ok", vigenteDesde: corte };
+      }),
+    );
+  }
+
+  cancelarCambioPorLaEmpresa(organizacionId: string, actorUsuarioId: string): Promise<ResultadoCancelarDelMaestro> {
+    return comoPlataforma("SL-24", "cancelar el cambio pendiente de su empresa (maestro, SLT-99)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoCancelarDelMaestro> => {
+        const empresa = await bloquearEmpresa(tx, organizacionId);
+        if (empresa === undefined) throw new Error(`cancelarCambioPorLaEmpresa: la empresa ${organizacionId} de la sesión no existe`);
+        // R18 (P5, decisión 2026-11-10): sin plan, el pendiente es la primera asignación de la plataforma
+        // (SLT-86, mismas columnas `plan_cambio_*`) y el maestro no la cancela. Se decide bajo el cerrojo.
+        if (empresa.plan_id === null) return { estado: "sin_plan" };
+        if (empresa.plan_cambio_id === null) return { estado: "sin_cambio_programado" };
+        // R16 (P3): sea de quien sea el pendiente, la fila la firma el maestro.
+        await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
+        return { estado: "ok" };
+      }),
+    );
   }
 }

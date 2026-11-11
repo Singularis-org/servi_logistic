@@ -165,3 +165,28 @@ export const tituloDescargaGestiones = (folio: string): string => `Gestiones del
 export const COBRO_A_LA_TIENDA_COL = "Cobro a la tienda";
 /** R82 — se llama como su cifra y su pestaña en el detalle (D20: una cifra, un nombre). */
 export const PAGO_AL_MENSAJERO_COL = PESTANA_PAGO;
+
+// --- Pestañas que rellena S6 (SLT-104 «Detalle de cierre de bodega en el detalle único (central)») ---
+// Los textos del canvas (`Main.dc.html`, rama bodega): columnas de «Mensajeros», «Ver su cierre» y la
+// cuenta de «Conciliación». Los nombres de cifra que ya existían se reutilizan (D20).
+/** R42 — nombre accesible de la tabla de «Mensajeros». */
+export const MENSAJEROS_REGION_LABEL = "Mensajeros del cierre de bodega";
+/** R42, R114 — las columnas de «Mensajeros», en el orden del canvas. */
+export const MENSAJEROS_COLUMNAS = {
+  mensajero: "Mensajero",
+  gestiones: GESTIONES_LABEL,
+  recaudado: RECAUDADO_LABEL,
+  pago: "Pago",
+  aLaCentral: "A la central",
+  senales: "Señales",
+} as const;
+/** R114 — Señales sin gestiones ajustadas. */
+export const SIN_SENALES = "—";
+/** R42, R115 — el enlace de cada fila y su nombre accesible (único por mensajero). */
+export const VER_SU_CIERRE = "Ver su cierre";
+export const verElCierreDe = (mensajero: string): string => `Ver el cierre de ${mensajero}`;
+/** R117 — la cuenta de «Conciliación» se titula como su pestaña. */
+export const CONCILIACION_TITULO = PESTANA_CONCILIACION;
+/** R117 — quién marcó el dinero recibido, bajo la cuenta. */
+export const AUN_NADIE = "Aún nadie";
+export const marcoQuien = (quien: string): string => `Marcó: ${quien}`;

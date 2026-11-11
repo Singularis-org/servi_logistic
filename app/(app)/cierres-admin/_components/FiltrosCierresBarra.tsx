@@ -194,6 +194,13 @@ export interface FiltrosCierresBarraProps {
    * arranca sin él y quien lo quiera tiene que comprobar que su schema lo admite.
    */
   conEstado?: boolean;
+  /**
+   * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R100, enmienda de Carlos
+   * 2026-11-10, fiel al canvas): la cola de MENSAJEROS no ofrece el filtro «Bodega». Las dos mitades
+   * de bodega lo conservan (por eso va apagado por defecto). Sin bodega, el mensajero deja de
+   * depender de ella y se ofrecen todos.
+   */
+  sinBodega?: boolean;
 }
 
 /** Ids no vacíos, o `undefined`: una lista vacía NO es un filtro, es la ausencia de filtro. */
@@ -258,6 +265,7 @@ export function FiltrosCierresBarra({
   disabled = false,
   sinMensajero = false,
   conEstado = false,
+  sinBodega = false,
 }: Readonly<FiltrosCierresBarraProps>) {
   /** Claves de los filtros PEDIDOS en el selector, en el orden en que se declaran. */
   const [activos, setActivos] = useState<string[]>([]);
@@ -309,7 +317,7 @@ export function FiltrosCierresBarra({
         kind: "multi",
         // La regla 3 del humano, hecha declaración: con una bodega elegida solo se ofrecen sus
         // mensajeros. Sin bodega elegida se ofrecen todos, que es lo que pidió.
-        dependsOn: CLAVE_ZONA,
+        ...(sinBodega ? {} : { dependsOn: CLAVE_ZONA }),
         placeholder: "Todos",
         searchPlaceholder: "Filtrar mensajeros…",
         emptyMessage: "Ningún mensajero coincide",
@@ -322,7 +330,7 @@ export function FiltrosCierresBarra({
           // Un mensajero SIN zona no cuelga de ninguna bodega: al elegir una, desaparece de la
           // lista. Es correcto —sus cierres no son de esa bodega— y sigue disponible mientras
           // no se filtre por bodega.
-          ...(m.zonaId === null ? {} : { parentValue: m.zonaId }),
+          ...(sinBodega || m.zonaId === null ? {} : { parentValue: m.zonaId }),
         })),
       },
       // FICHA 386 — el estado. También al final, y por el mismo motivo que el mensajero: se
@@ -343,9 +351,10 @@ export function FiltrosCierresBarra({
       ] as FilterDef[]).filter(
         (f) =>
           !(sinMensajero && f.key === CLAVE_MENSAJERO) &&
+          !(sinBodega && f.key === CLAVE_ZONA) &&
           !(!conEstado && f.key === CLAVE_ESTADO),
       ),
-    [catalogo, sinMensajero, conEstado],
+    [catalogo, sinMensajero, conEstado, sinBodega],
   );
 
   const ofrecidos = useMemo(

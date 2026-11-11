@@ -46,6 +46,23 @@ function delegado(filas: unknown[] = []) {
   };
 }
 
+/**
+ * SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados» — el cliente del repositorio
+ * de bodega del maestro: el delegado `cierreBodega` y un `$queryRaw` doble que devuelve los ids de
+ * los recibidos incompletos (`idsRecibidosIncompletos`). Que el SQL de verdad elija bien esos ids
+ * lo prueba `tests/integration/db/slt105-particion-conciliacion-sql-real.test.ts`; aqui solo se
+ * mira como el `where` de Prisma usa el conjunto.
+ */
+function clienteBodega(
+  cierreBodega: ReturnType<typeof delegado>,
+  incompletos: readonly string[] = ["i-1"],
+): PrismaClient {
+  return {
+    cierreBodega,
+    $queryRaw: vi.fn(async () => incompletos.map((id) => ({ id }))),
+  } as unknown as PrismaClient;
+}
+
 /** Las tres afirmaciones comunes a toda cola que corta en la base. */
 function verificar(
   d: ReturnType<typeof delegado>,
@@ -132,14 +149,16 @@ describe("WHERE de las colas paginadas de la tanda J (T J.1)", () => {
     });
   });
 
-  it("cierres de bodega — cola: solo `solicitado`, y los RECHAZADOS quedan fuera", async () => {
+  it("cierres de bodega — cola (SLT-105, R122/R123): sin marca o recibido incompleto, mismo where en pagina y conteo", async () => {
     const cierreBodega = delegado();
-    const repo = new CierresBodegaAdminRepository({ cierreBodega } as unknown as PrismaClient);
+    const repo = new CierresBodegaAdminRepository(clienteBodega(cierreBodega, ["i-1"]));
 
     await repo.findColaPaginada(RANGO);
 
+    // Valor ABSOLUTO: ya no parte por `estado`. Un `rechazado` heredado (sin marca) entra por
+    // `conciliadoAt: null`; un `aprobado` con dinero por llegar, por su id.
     verificar(cierreBodega, {
-      where: { estado: { in: ["solicitado"] } },
+      where: { OR: [{ conciliadoAt: null }, { id: { in: ["i-1"] } }] },
       orderBy: { solicitadoAt: "desc" },
     });
   });
@@ -220,23 +239,6 @@ describe("WHERE de las colas paginadas de la tanda J (T J.1)", () => {
         ),
     });
 
-    const dc2 = delegado();
-    const dh2 = delegado();
-    casos.push({
-      nombre: "cierres de bodega",
-      delegadoCola: dc2,
-      delegadoHistorico: dh2,
-      estados: ESTADOS_COLA_SOLICITADO,
-      cola: () =>
-        new CierresBodegaAdminRepository({
-          cierreBodega: dc2,
-        } as unknown as PrismaClient).findColaPaginada(RANGO),
-      historico: () =>
-        new CierresBodegaAdminRepository({
-          cierreBodega: dh2,
-        } as unknown as PrismaClient).findHistoricoPaginado(RANGO),
-    });
-
     const dc3 = delegado();
     const dh3 = delegado();
     casos.push({
@@ -248,9 +250,10 @@ describe("WHERE de las colas paginadas de la tanda J (T J.1)", () => {
       historico: () => repoIncidentes(dh3).findHistoricoPaginado({ zonaId: null }, RANGO),
     });
 
-    // Anti-vacuidad: son los TRES listados que se parten en cola + historico. El cuarto de la
+    // Anti-vacuidad: son los DOS listados que se parten en cola + historico POR ESTADO. Los
+    // cierres de bodega se parten por conciliacion desde SLT-105 (test siguiente); el cuarto de la
     // tanda J (consolidables) no se parte: es un conjunto propio con sus cuatro predicados.
-    expect(casos).toHaveLength(3);
+    expect(casos).toHaveLength(2);
 
     for (const caso of casos) {
       await caso.cola();
@@ -280,6 +283,33 @@ describe("WHERE de las colas paginadas de la tanda J (T J.1)", () => {
     }
   });
 
+  it("cierres de bodega (SLT-105, R122): cola e historico PARTICIONAN con el MISMO conjunto de incompletos y la marca opuesta", async () => {
+    const cola = delegado();
+    const historico = delegado();
+    await new CierresBodegaAdminRepository(clienteBodega(cola, ["i-1", "i-2"])).findColaPaginada(RANGO);
+    await new CierresBodegaAdminRepository(clienteBodega(historico, ["i-1", "i-2"])).findHistoricoPaginado(
+      RANGO,
+    );
+
+    const whereCola = cola.findMany.mock.calls[0]![0]!.where as {
+      OR: [{ conciliadoAt: null }, { id: { in: string[] } }];
+    };
+    const whereHistorico = historico.findMany.mock.calls[0]![0]!.where as {
+      conciliadoAt: { not: null };
+      id: { notIn: string[] };
+    };
+
+    // El MISMO conjunto: `in` en la cola, `notIn` en el historico.
+    expect(whereCola.OR[1].id.in).toEqual(["i-1", "i-2"]);
+    expect(whereHistorico.id.notIn).toEqual(["i-1", "i-2"]);
+    // La marca opuesta: sin marca en la cola, con marca en el historico.
+    expect(whereCola.OR[0]).toEqual({ conciliadoAt: null });
+    expect(whereHistorico.conciliadoAt).toEqual({ not: null });
+    // Y nada de `estado`: el corte viejo no sobrevive en ninguna mitad.
+    expect(whereCola).not.toHaveProperty("estado");
+    expect(whereHistorico).not.toHaveProperty("estado");
+  });
+
   it("ninguna de las cuatro colas pide mas de dos consultas: la pagina y el conteo (R54)", async () => {
     // Anti-vacuidad de este archivo: la cuenta de colas cubiertas. Si manana alguien anade un
     // `findFirst` dentro de uno de estos metodos, la suma deja de dar 8 y este test lo dice.
@@ -300,10 +330,9 @@ describe("WHERE de las colas paginadas de la tanda J (T J.1)", () => {
     casos.push([
       "cierres de bodega pendientes",
       d2,
-      () =>
-        new CierresBodegaAdminRepository({
-          cierreBodega: d2,
-        } as unknown as PrismaClient).findColaPaginada(RANGO),
+      // SLT-105: ademas lee los ids de los recibidos incompletos con UN `$queryRaw` (fuera de
+      // este delegado); en el delegado siguen siendo la pagina y el conteo.
+      () => new CierresBodegaAdminRepository(clienteBodega(d2)).findColaPaginada(RANGO),
     ]);
 
     const d3 = delegado();
@@ -460,13 +489,13 @@ describe("el conjunto de la COLA de cierres del admin (feature 184, tanda D)", (
 //
 // Mitad de cola de lo que `historicos-paginados-where.test.ts` afirma para el listado 5. Lo que
 // se prueba AQUÍ y no allí es la propiedad que sólo se ve mirando las dos mitades a la vez: que
-// la cola y el histórico siguen PARTICIONANDO la tabla también en los caminos del archivo, y con
-// la MISMA constante (`ESTADOS_COLA_SOLICITADO`) que las dos páginas. Con listas distintas, un
+// la cola y el histórico siguen PARTICIONANDO la tabla también en los caminos del archivo, con el
+// MISMO conjunto de recibidos incompletos que las dos páginas (SLT-105). Con conjuntos distintos, un
 // cierre de bodega puede quedar en los dos archivos o —lo grave— en ninguno, y el dinero agregado
-// de una zona entera se queda sin nadie que lo apruebe hasta que alguien lo note.
+// de una zona entera se queda sin nadie que lo concilie hasta que alguien lo note.
 describe("el conjunto de la COLA de cierres de bodega (feature 184, tanda E)", () => {
   function repoBodegaAdmin(cierreBodega: ReturnType<typeof delegado>) {
-    return new CierresBodegaAdminRepository({ cierreBodega } as unknown as PrismaClient);
+    return new CierresBodegaAdminRepository(clienteBodega(cierreBodega, ["i-1"]));
   }
 
   it("cierres de bodega — pendientes: el conjunto y la página emiten las MISMAS condiciones y el MISMO orden (R16/R5)", async () => {
@@ -479,9 +508,9 @@ describe("el conjunto de la COLA de cierres de bodega (feature 184, tanda E)", (
     const argsEntero = entero.findMany.mock.calls[0]![0]!;
     const argsPagina = pagina.findMany.mock.calls[0]![0]!;
 
-    // `in: ["solicitado"]` en valor ABSOLUTO: los RECHAZADOS quedan fuera de este archivo igual
-    // que quedan fuera de esta tabla.
-    expect(argsEntero.where).toEqual({ estado: { in: ["solicitado"] } });
+    // En valor ABSOLUTO (SLT-105, R123): sin marca o recibido incompleto, igual en el archivo que
+    // en la tabla.
+    expect(argsEntero.where).toEqual({ OR: [{ conciliadoAt: null }, { id: { in: ["i-1"] } }] });
     expect(argsPagina.where).toEqual(argsEntero.where);
     expect(argsEntero.orderBy).toEqual({ solicitadoAt: "desc" });
     expect(argsPagina.orderBy).toEqual(argsEntero.orderBy);
@@ -492,30 +521,20 @@ describe("el conjunto de la COLA de cierres de bodega (feature 184, tanda E)", (
     expect(argsPagina.take).toBe(RANGO.take);
   });
 
-  it("los CONJUNTOS de cola e histórico de bodega particionan la tabla con la MISMA constante (R16)", async () => {
-    // La afirmación que sostiene R44 de la 170 en los dos caminos NUEVOS. Se comprueba emitiendo
-    // los dos `where` y exigiendo que el `in` de la cola y el `notIn` del histórico lleven la
-    // misma lista de estados, que es la constante compartida — no una copia que hoy coincide.
+  it("los CONJUNTOS de cola e histórico de bodega particionan la tabla con el MISMO conjunto de incompletos (R16; SLT-105 R122)", async () => {
+    // La afirmación que sostiene R44 de la 170 en los dos caminos del archivo: el `in` de la cola y
+    // el `notIn` del histórico llevan los MISMOS ids, con la condición de marca opuesta.
     const cola = delegado();
     await repoBodegaAdmin(cola).findColaCompleta();
 
     const historico = delegado();
     await repoBodegaAdmin(historico).findHistoricoCompleto();
 
-    const whereCola = (cola.findMany.mock.calls[0]![0] as { where: { estado: { in: string[] } } })
-      .where;
-    const whereHistorico = (
-      historico.findMany.mock.calls[0]![0] as { where: { estado: { notIn: string[] } } }
-    ).where;
+    const whereCola = cola.findMany.mock.calls[0]![0]!.where;
+    const whereHistorico = historico.findMany.mock.calls[0]![0]!.where;
 
-    expect(whereCola.estado.in).toEqual([...ESTADOS_COLA_SOLICITADO]);
-    expect(whereHistorico.estado.notIn).toEqual([...ESTADOS_COLA_SOLICITADO]);
-    // La partición, dicha sin rodeos: la lista es LA MISMA en las dos mitades.
-    expect(whereCola.estado.in).toEqual(whereHistorico.estado.notIn);
-    // Y no hay nada más en ninguno de los dos `where`: este listado es de acceso total y no se
-    // acota por zona, así que lo único que separa las dos mitades es el corte por estado.
-    expect(sinEstado(whereCola)).toEqual({});
-    expect(sinEstado(whereCola)).toEqual(sinEstado(whereHistorico));
+    expect(whereCola).toEqual({ OR: [{ conciliadoAt: null }, { id: { in: ["i-1"] } }] });
+    expect(whereHistorico).toEqual({ conciliadoAt: { not: null }, id: { notIn: ["i-1"] } });
     // Y las CUATRO consultas de este listado —dos páginas y dos conjuntos— ordenan igual: si no,
     // el archivo de una mitad no casaría con su pantalla.
     expect(cola.findMany.mock.calls[0]![0]!.orderBy).toEqual(

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { cierresDe, filaDeCola, importe, pestanaDeCola, solicitarCierre } from "./_escenarios/cierres";
 import {
   crearEscenarioReparto,
   crearMensajero,
@@ -54,7 +54,7 @@ async function conCierreSolicitado(
 async function abrirDetalle(page: Page, m: MensajeroE2E) {
   await page.goto("/cierres-admin");
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(pendientes, m.nombre);
   await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
   await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
@@ -82,8 +82,8 @@ const filtro = (detalle: Locator, resultado: RegExp) =>
   detalle.getByRole("group", { name: "Filtrar por resultado" }).getByRole("button", { name: resultado });
 
 async function verResueltos(page: Page, m: MensajeroE2E) {
-  await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
-  return page.getByRole("region", { name: "Histórico" }).getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  await pestanaDeCola(page, "Resueltos").click();
+  return filaDeCola(page.getByRole("region", { name: "Histórico" }), m.nombre);
 }
 
 test.describe("Cierres del día — el admin aprueba o rechaza", () => {

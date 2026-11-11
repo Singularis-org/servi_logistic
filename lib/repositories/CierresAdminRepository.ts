@@ -7,7 +7,9 @@ import {
   type RolValue,
   type TarifaNivel,
 } from "@prisma/client";
+import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where"; // SLT-122: compartido con el pago
 import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
+import { contarSenalesPorCierreCon } from "@/lib/repositories/_shared/senales-cola-cierre";
 import type { JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { encolarWebhookEvento } from "@/lib/services/jobs/webhook-evento-encolado";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
@@ -17,6 +19,7 @@ import type {
   AjustarPagoMensajeroInput,
   AjustarPagoMensajeroResult,
   Alcance,
+  AlcanceLecturaDetalle,
   CierreAdminResumenRow,
   CorregirResultadoGestionInput,
   CorregirResultadoGestionResult,
@@ -58,7 +61,10 @@ import type {
   PagoPorTarifaDTO,
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  SenalesColaCierre,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
   CatalogoFiltrosCierresDTO,
@@ -843,13 +849,16 @@ export class ConfirmacionFisicaNoAplicableError extends Error {
   }
 }
 
-// WHERE del alcance: siempre por destino_tipo; por destino_zona_id SOLO si el alcance
-// lo acota (adminSatelite). El maestro (destinoZonaId null) ve todos los central.
-function alcanceWhere(alcance: Alcance): { destinoTipo: Alcance["destinoTipo"]; destinoZonaId?: string } {
-  return {
-    destinoTipo: alcance.destinoTipo,
-    ...(alcance.destinoZonaId !== null ? { destinoZonaId: alcance.destinoZonaId } : {}),
-  };
+/**
+ * SLT-104 (PA1, R116) — el WHERE de la LECTURA del detalle. Con la lectura ancha de acceso total no
+ * acota el destino (central o satelite); con un `Alcance` es `alcanceWhere` tal cual. Solo lo usa
+ * `findCierreByIdEnAlcance`: `alcanceWhere`, que comparten las listas y las escrituras, no cambia.
+ * La empresa la sigue poniendo la extension del cliente (`lib/db/extension-empresa.ts`) y la RLS.
+ */
+function alcanceLecturaWhere(
+  alcance: AlcanceLecturaDetalle,
+): { destinoTipo?: Alcance["destinoTipo"]; destinoZonaId?: string } {
+  return "lectura" in alcance ? {} : alcanceWhere(alcance);
 }
 
 /**
@@ -1243,6 +1252,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     return leerTopeIntentosDeLaEmpresa(this.prisma);
   }
 
+  /** SLT-102 (R109): una consulta por página; el SQL y su `WHERE` viven en `_shared/senales-cola-cierre.ts`. */
+  contarSenalesPorCierre(cierreIds: readonly string[]): Promise<Map<string, SenalesColaCierre>> {
+    return contarSenalesPorCierreCon(this.prisma, cierreIds);
+  }
+
   /**
    * SLT-73 (T2, design §2.2): las dependencias que este repositorio YA recibe por constructor, mas
    * `CAJA_COD_FEED`, en la forma que pide `asentarCierreDia`. Se pasan en vez de caer en el default
@@ -1587,7 +1601,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
    */
   async findCierreByIdEnAlcance(
     cierreId: string,
-    alcance: Alcance,
+    alcance: AlcanceLecturaDetalle,
     /**
      * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
@@ -1602,7 +1616,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     resueltoPorNombre: string | null;
   } | null> {
     const cierre = await this.prisma.cierreDia.findFirst({
-      where: { id: cierreId, ...alcanceWhere(alcance) }, // R13: guardia de alcance en el WHERE
+      where: { id: cierreId, ...alcanceLecturaWhere(alcance) }, // R13 / SLT-104 R116: alcance en el WHERE
       // Feature 264 (R27/R28): la marca se pide SOLO aqui, no en `CIERRE_RESUMEN_SELECT`. Los
       // otros cinco usos de esa proyeccion son LISTADOS, que no pintan la seccion: ensancharla
       // les cobraria una columna por fila a cambio de nada.

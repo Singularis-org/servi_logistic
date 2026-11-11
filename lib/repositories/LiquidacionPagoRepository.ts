@@ -18,6 +18,8 @@ import type {
   LiquidacionPagoTxClient,
 } from "@/lib/interfaces/repositories/ILiquidacionPagoRepository";
 import { esP2002, textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
+import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where";
 
 // Cliente Prisma acotado a lo que este repo necesita (patron WalletTiendaMovimientoRepository).
 // `cierreDia` entra SOLO para leer (R42): ningun metodo de esta clase lo escribe.
@@ -296,6 +298,36 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
   }
 
   /**
+   * SLT-122 (R6) — la guardia del REGISTRO de un pago al mensajero: el mismo `select` que
+   * `obtenerCierreParaPago`, con el alcance del actor en el WHERE. Quitar el `alcanceWhere` es la
+   * mutacion que `pago-mensajero-bodega-duena.test.ts` (integracion) pone en rojo.
+   */
+  async obtenerCierreParaPagoEnAlcance(
+    cierreId: string,
+    alcance: Alcance,
+    tx: LiquidacionCierreTxClient,
+  ): Promise<CierreParaPagoDTO | null> {
+    const row = await tx.cierreDia.findUnique({
+      where: { id: cierreId, ...alcanceWhere(alcance) },
+      select: {
+        id: true,
+        mensajeroId: true,
+        estado: true,
+        totalPagoMensajero: true,
+        totalEfectivo: true,
+      },
+    });
+    if (row === null) return null;
+    return {
+      id: row.id,
+      mensajeroId: row.mensajeroId,
+      estado: row.estado,
+      totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
+      totalEfectivo: row.totalEfectivo.toFixed(2),
+    };
+  }
+
+  /**
    * Feature 205 (T2.2, R5/R6/R8) — los cierres `aprobado` de UN mensajero, con sus dos snapshots
    * y su ANTIGUEDAD, ordenados `solicitado_at ASC, id ASC`.
    *
@@ -339,6 +371,39 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
   }
 
   /**
+   * SLT-122 (R9/R10) — `listarCierresImputables` con el alcance del actor en el WHERE: el reparto
+   * solo imputa a cierres de su bodega. Mismo `select` y mismo orden; quitar el `alcanceWhere` es
+   * la mutacion que la integracion pone en rojo.
+   */
+  async listarCierresImputablesEnAlcance(
+    mensajeroId: string,
+    alcance: Alcance,
+    tx?: LiquidacionCierreTxClient,
+  ): Promise<CierreImputableDTO[]> {
+    const cliente = tx ?? this.prisma;
+    const rows = await cliente.cierreDia.findMany({
+      where: { mensajeroId, estado: "aprobado", ...alcanceWhere(alcance) },
+      select: {
+        id: true,
+        mensajeroId: true,
+        estado: true,
+        totalPagoMensajero: true,
+        totalEfectivo: true,
+        solicitadoAt: true,
+      },
+      orderBy: [{ solicitadoAt: "asc" }, { id: "asc" }],
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      mensajeroId: row.mensajeroId,
+      estado: row.estado,
+      totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
+      totalEfectivo: row.totalEfectivo.toFixed(2),
+      solicitadoAt: row.solicitadoAt.toISOString(),
+    }));
+  }
+
+  /**
    * Feature 205 (T3.1, R36 — enmienda de negocio) — CUANTOS cierres del mensajero NO estan
    * `aprobado`, por estado. Es el complemento exacto del metodo de arriba, contado.
    *
@@ -361,10 +426,12 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
    */
   async contarCierresNoAprobadosPorEstado(
     mensajeroId: string,
+    alcance: Alcance,
   ): Promise<CierresNoAprobadosPorEstadoDTO[]> {
     const grupos = await this.prisma.cierreDia.groupBy({
       by: ["estado"],
-      where: { mensajeroId, estado: { not: "aprobado" } },
+      // SLT-122 (R9): el complemento de los imputables, en el MISMO alcance.
+      where: { mensajeroId, estado: { not: "aprobado" }, ...alcanceWhere(alcance) },
       _count: { _all: true },
       orderBy: { estado: "asc" },
     });

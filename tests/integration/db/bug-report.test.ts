@@ -1,23 +1,42 @@
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { PrismaClient } from "@prisma/client";
+import { PrismaClient, type BugReportStatus } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
+import { PRISMA_OMIT } from "@/lib/db/prisma-client";
 import { llevaSqlstate } from "@/lib/db/sqlstate";
 import { BugReportRepository } from "@/lib/repositories/BugReportRepository";
-import type { NuevoBugReport } from "@/lib/types/reporte-bug";
+import { ReportesBugPlataformaService } from "@/lib/services/ReportesBugPlataformaService";
+import {
+  TRANSICIONES_REPORTE,
+  type FiltrosReportes,
+  type NuevaImagen,
+  type NuevoBugReport,
+} from "@/lib/types/reporte-bug";
 import { comoApp, datosDeOrganizacionDePrueba } from "@/tests/fabricas/organizaciones";
 import {
   CLAVE_LOCK_ESCRITURA_REAL,
   HAY_BASE_DE_DATOS,
   bajoLockDeEscrituraReal,
   crearPrismaDeTest,
+  urlDeBaseDeDatos,
   type TxDeTest,
 } from "./_postgres-real";
+import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SLT-87 (design §2, §6; R11, R12, R13, R14, R19) — `bug_report` contra Postgres real.
+// SLT-97 (design §2, §4, §5; R3, R4, R5, R7–R10, R13–R18, R20, R21, R23) — el estado, el historial y las
+// lecturas del superadmin, al final del archivo.
+// SLT-98 (design §2, §7; R13, R18, R19, R22) — `bug_report_image`, en el penúltimo bloque. Siembra y escribe
+// dentro de `revertida`, como los casos de SLT-97.
+// SLT-98 (design §16.2, §16.3; R24–R27, R31) — el tope diario, en el último bloque. Esos casos COMMITEAN:
+// la concurrencia de R26 solo existe entre conexiones distintas. Cada caso usa su propio día y el
+// usuario de esta corrida, y las filas caen con él en el `afterAll` (CASCADE).
 //
 // El repositorio va con el cliente EXTENDIDO (el de la app) y un resolutor nulo: fuera de un contexto
 // explícito toda operación de negocio fallaría, así que si escribe es porque abre su `comoPlataforma`.
@@ -25,11 +44,17 @@ import {
 //
 // SIEMBRA OBLIGATORIA. Dos empresas, un usuario en cada una y un reporte de A, commiteados en
 // `beforeAll` y COMPROBADOS: «servi_app no lee la fila de su propia empresa» necesita que la fila exista.
+//
+// Los casos de SLT-97 siembran dentro de una transacción del dueño que se revierte, con el repositorio
+// sobre un cliente que abre SAVEPOINT reales (`repoEn`): así «si falla el historial, el estado no cambia»
+// mide un rollback de verdad. Sus reportes llevan fechas de 2001, que ningún otro test usa, y cada caso
+// filtra por su ventana: lo que hay commiteado en la base no se cuela en los totales.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
 
+let soltarSuperadmin: () => Promise<void> = async () => {};
 let base: PrismaClient;
 let repo: BugReportRepository;
 let A: string;
@@ -97,6 +122,7 @@ const datosDe = (organizationId: string, reporterUserId: string, extra: Partial<
   viewportWidth: 390,
   viewportHeight: 844,
   isStandalone: true,
+  imagenes: [],
   ...extra,
 });
 
@@ -114,10 +140,180 @@ function insertSql(campos: { description?: string; pagePath?: string } = {}): [s
   ];
 }
 
+/* -------------------------------------------------------------------------- */
+/* SLT-97                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const ESTADOS: readonly BugReportStatus[] = ["new", "in_review", "resolved", "dismissed"];
+const SUPERADMIN: Actor = { usuarioId: "se-fija-en-cada-caso", rol: "superadmin" };
+const NOMBRE_DEL_SUPERADMIN = "Prueba SL-32";
+
+class HistorialCaido extends Error {
+  constructor() {
+    super("escritura del historial rota a propósito por el test");
+    this.name = "HistorialCaido";
+  }
+}
+
+/**
+ * El cliente de la tx del caso con un `$transaction` que abre un SAVEPOINT real y hace `ROLLBACK TO` al
+ * fallar, como `clienteConSavepoint` de `_postgres-real.ts`. Con `romperHistorial`, el
+ * `bugReportStatusChange.create` del repositorio lanza: el resto (lectura, UPDATE condicionado, nombre
+ * del actor) es el real (R21).
+ */
+function repoEn(tx: TxDeTest, romperHistorial = false): BugReportRepository {
+  const proxy: unknown = new Proxy(tx as object, {
+    get(objetivo, prop) {
+      if (romperHistorial && prop === "bugReportStatusChange") {
+        return {
+          create: () => {
+            throw new HistorialCaido();
+          },
+        };
+      }
+      if (prop === "$transaction") {
+        return async (fn: (t: unknown) => unknown) => {
+          const punto = `sp_${randomUUID().replace(/-/g, "")}`;
+          await tx.$executeRawUnsafe(`SAVEPOINT ${punto}`);
+          try {
+            const salida = await fn(proxy);
+            await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${punto}`);
+            return salida;
+          } catch (error) {
+            await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${punto}`);
+            throw error;
+          }
+        };
+      }
+      const valor = Reflect.get(objetivo, prop) as unknown;
+      return typeof valor === "function" ? valor.bind(objetivo) : valor;
+    },
+  });
+  return new BugReportRepository(proxy as PrismaClient);
+}
+
+/**
+ * SLT-98: el almacén de imágenes es un doble que lanza: aquí se prueba el SQL, y los reportes que lee el
+ * servicio no traen imágenes (la firma está en `reportes-bug-plataforma-service.test.ts`).
+ */
+const ALMACEN_SIN_USO: IAlmacenImagenesReporte = {
+  prepararSubida: () => Promise.reject(new Error("almacen no esperado")),
+  leer: () => Promise.reject(new Error("almacen no esperado")),
+  firmar: () => Promise.reject(new Error("almacen no esperado")),
+  borrar: () => Promise.reject(new Error("almacen no esperado")),
+};
+
+function servicioEn(tx: TxDeTest): ReportesBugPlataformaService {
+  return new ReportesBugPlataformaService(repoEn(tx), ALMACEN_SIN_USO);
+}
+
+/** `FiltrosReportes` ya parseados, con los valores por defecto del zod. */
+const filtrosDe = (f: Partial<FiltrosReportes>): FiltrosReportes => ({ estado: "todos", pagina: 1, ...f });
+
+/**
+ * Un reporte sembrado a mano dentro de la tx del caso. Las fechas van como texto ISO con `Z` y el cast a
+ * `timestamp` descarta la zona: queda la hora UTC, que es como Prisma lee `TIMESTAMP(3)`.
+ */
+async function sembrarReporte(
+  tx: TxDeTest,
+  o: {
+    org?: string;
+    usuario?: string;
+    status?: BugReportStatus;
+    creado?: string;
+    borrado?: string | null;
+    descripcion?: string;
+    sinVentana?: boolean;
+  } = {},
+): Promise<string> {
+  const id = randomUUID();
+  await tx.$executeRawUnsafe(
+    `INSERT INTO "bug_report" ("id", "organization_id", "reporter_user_id", "reporter_name", "reporter_role",
+       "description", "page_path", "user_agent", "viewport_width", "viewport_height", "is_standalone",
+       "status", "created_at", "updated_at", "deleted_at")
+     VALUES ($1, $2, $3, 'Ana Pérez a', 'mensajero', $4, '/ordenes', 'Mozilla/5.0 (Android 14)', $5, $6, $7,
+       $8::"bug_report_status", $9::timestamp, $9::timestamp, $10::timestamp)`,
+    id,
+    o.org ?? A,
+    o.usuario ?? usuarioA,
+    o.descripcion ?? `Reporte ${RUN}`,
+    o.sinVentana ? null : 390,
+    o.sinVentana ? null : 844,
+    o.sinVentana ? null : true,
+    o.status ?? "new",
+    o.creado ?? "2001-01-01T12:00:00.000Z",
+    o.borrado ?? null,
+  );
+  return id;
+}
+
+/** Una entrada del historial escrita a mano por el dueño (los triggers solo miran UPDATE y DELETE). */
+async function sembrarCambio(
+  tx: TxDeTest,
+  reporteId: string,
+  o: { de: BugReportStatus; a: BugReportStatus; nota?: string | null; creado: string },
+): Promise<string> {
+  const id = randomUUID();
+  await tx.$executeRawUnsafe(
+    `INSERT INTO "bug_report_status_change" ("id", "bug_report_id", "from_status", "to_status", "note",
+       "actor_user_id", "actor_name", "created_at")
+     VALUES ($1, $2, $3::"bug_report_status", $4::"bug_report_status", $5, 'actor-opaco', 'Quien Sea', $6::timestamp)`,
+    id,
+    reporteId,
+    o.de,
+    o.a,
+    o.nota ?? null,
+    o.creado,
+  );
+  return id;
+}
+
+async function estadoDe(tx: TxDeTest, id: string): Promise<BugReportStatus> {
+  const f = await tx.$queryRawUnsafe<{ status: BugReportStatus }[]>(
+    `SELECT "status" FROM "bug_report" WHERE "id" = $1`,
+    id,
+  );
+  return f[0].status;
+}
+
+async function cambiosDe(tx: TxDeTest, id: string): Promise<number> {
+  const f = await tx.$queryRawUnsafe<{ n: number }[]>(
+    `SELECT count(*)::int AS n FROM "bug_report_status_change" WHERE "bug_report_id" = $1`,
+    id,
+  );
+  return f[0].n;
+}
+
+/**
+ * El superadmin sin empresa del caso, DENTRO de la tx revertida (mismo criterio que
+ * `vehiculos-plataforma.test.ts`): si la base no tiene ninguno se siembra; si ya tiene uno, se usa ese
+ * con el nombre fijado solo en esta tx, para que el congelado sea determinista.
+ */
+async function superadminSinEmpresa(tx: TxDeTest): Promise<string> {
+  const rolSuperadmin = await idDeRol(tx, "superadmin");
+  const existente = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" WHERE "rol_id" = $1`, rolSuperadmin);
+  if (existente.length === 0) {
+    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
+    const u = await insertarUsuario(tx, rolSuperadmin, null);
+    if (!u.desenlace.ok) throw new Error(`no se sembro el superadmin: ${JSON.stringify(u.desenlace)}`);
+    return u.id;
+  }
+  const id = existente[0].id;
+  await tx.$executeRawUnsafe(
+    `UPDATE "usuario" SET "nombre" = $1, "primer_apellido" = NULL, "segundo_apellido" = NULL WHERE "id" = $2`,
+    NOMBRE_DEL_SUPERADMIN,
+    id,
+  );
+  return id;
+}
+
 describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
   beforeAll(async () => {
     base = crearPrismaDeTest();
     repo = new BugReportRepository(conAislamientoPorEmpresa(base, async () => null));
+    // SLT-97: los casos del historial usan el superadmin como actor (R21). Este lock va antes que el de
+    // la 227 (orden de `superadmin-32.ts`).
+    soltarSuperadmin = await tomarLockDeSuperadmin();
 
     await bajoLockDeEscrituraReal(async () => {
       A = (await base.organizacion.create({ data: datosDeOrganizacionDePrueba(`BR A ${RUN}`), select: { id: true } })).id;
@@ -152,14 +348,18 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
   }, 120_000);
 
   afterAll(async () => {
-    if (!base) return;
-    await bajoLockDeEscrituraReal(async () => {
-      // Los reportes caen con su usuario (CASCADE); el usuario, antes que su empresa (RESTRICT).
-      const orgs = [A, B].filter(Boolean);
-      await base.usuario.deleteMany({ where: { organizacionId: { in: orgs } } });
-      await base.organizacion.deleteMany({ where: { id: { in: orgs } } });
-    });
-    await base.$disconnect();
+    try {
+      if (!base) return;
+      await bajoLockDeEscrituraReal(async () => {
+        // Los reportes caen con su usuario (CASCADE); el usuario, antes que su empresa (RESTRICT).
+        const orgs = [A, B].filter(Boolean);
+        await base.usuario.deleteMany({ where: { organizacionId: { in: orgs } } });
+        await base.organizacion.deleteMany({ where: { id: { in: orgs } } });
+      });
+      await base.$disconnect();
+    } finally {
+      await soltarSuperadmin();
+    }
   }, 120_000);
 
   it("R13 — crear guarda la empresa, el usuario, el rol y el nombre del actor, la ruta sin query, el agente y la ventana", async () => {
@@ -232,6 +432,8 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
         "reporter_name",
         "reporter_role",
         "reporter_user_id",
+        // SLT-97 (design §2.1).
+        "status",
         "updated_at",
         "user_agent",
         "viewport_height",
@@ -312,5 +514,827 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
       );
     expect(await es42501(conEmpresa(A, () => app.bugReport.findMany({ where: { organizationId: A } })))).toBe(true);
     expect(await es42501(conEmpresa(A, () => app.bugReport.count()))).toBe(true);
+  });
+
+  describe("SLT-97 — estado, historial y lecturas del superadmin", () => {
+    it("R16 — crear deja el reporte en new, y la migración deja en new los que ya existían", async () => {
+      expect((await base.bugReport.findUniqueOrThrow({ where: { id: reporteA } })).status).toBe("new");
+      // La columna llegó con `NOT NULL DEFAULT 'new'`: es lo que puso en «Nuevo» las filas de antes.
+      const col = await base.$queryRawUnsafe<{ is_nullable: string; column_default: string | null }[]>(
+        `SELECT is_nullable, column_default FROM information_schema.columns
+          WHERE table_schema = current_schema() AND table_name = 'bug_report' AND column_name = 'status'`,
+      );
+      expect(col).toEqual([{ is_nullable: "NO", column_default: "'new'::bug_report_status" }]);
+      expect(await base.bugReport.count({ where: { organizationId: { in: [A, B] }, status: { not: "new" } } })).toBe(0);
+    });
+
+    it("R3 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_status_change y UPDATE de bug_report.status dan 42501", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx);
+        const cambio = await sembrarCambio(tx, id, { de: "new", a: "in_review", creado: "2001-01-02T00:00:00.000Z" });
+        await comoApp(tx, A);
+        return {
+          select: await intentar(tx, `SELECT * FROM "bug_report_status_change"`),
+          insert: await intentar(
+            tx,
+            `INSERT INTO "bug_report_status_change" ("id", "bug_report_id", "from_status", "to_status", "actor_user_id", "actor_name")
+             VALUES ($1, $2, 'new', 'resolved', 'x', 'x')`,
+            randomUUID(),
+            id,
+          ),
+          update: await intentar(tx, `UPDATE "bug_report_status_change" SET "note" = 'x' WHERE "id" = $1`, cambio),
+          delete: await intentar(tx, `DELETE FROM "bug_report_status_change" WHERE "id" = $1`, cambio),
+          updateEstado: await intentar(tx, `UPDATE "bug_report" SET "status" = 'resolved' WHERE "id" = $1`, id),
+        };
+      });
+      expect(r).toEqual({ select: "42501", insert: "42501", update: "42501", delete: "42501", updateEstado: "42501" });
+    });
+
+    it("R4 — cambiar el estado no deja filas en historial_accion ni en jobs", async () => {
+      const r = await revertida(async (tx) => {
+        const contar = async () =>
+          (
+            await tx.$queryRawUnsafe<{ h: number; j: number }[]>(
+              `SELECT (SELECT count(*)::int FROM "historial_accion" WHERE "organizacion_id" = $1) AS h,
+                      (SELECT count(*)::int FROM "jobs" WHERE "organizacion_id" = $1) AS j`,
+              A,
+            )
+          )[0];
+        const id = await sembrarReporte(tx);
+        const actorId = await superadminSinEmpresa(tx);
+        const antes = await contar();
+        const s = servicioEn(tx);
+        const actor = { ...SUPERADMIN, usuarioId: actorId };
+        const a = await s.cambiarEstado(actor, { reporteId: id, estado: "in_review", nota: "x" });
+        const b = await s.cambiarEstado(actor, { reporteId: id, estado: "resolved", nota: "" });
+        return { a, b, antes, despues: await contar(), cambios: await cambiosDe(tx, id) };
+      });
+      expect(r.a).toEqual({ status: "ok", estado: "in_review" });
+      expect(r.b).toEqual({ status: "ok", estado: "resolved" });
+      expect(r.cambios).toBe(2);
+      expect(r.despues).toEqual(r.antes);
+    });
+
+    it("R5 — listar ordena del más reciente al más antiguo y devuelve 25 por página", async () => {
+      const r = await revertida(async (tx) => {
+        const ids: string[] = [];
+        // 27 reportes en enero de 2001; los dos últimos con la misma hora: desempata el id.
+        for (let d = 1; d <= 26; d++) {
+          ids.push(await sembrarReporte(tx, { creado: `2001-01-${String(d).padStart(2, "0")}T08:00:00.000Z` }));
+        }
+        ids.push(await sembrarReporte(tx, { creado: "2001-01-26T08:00:00.000Z" }));
+        const consulta = {
+          estados: null,
+          organizationId: null,
+          desde: new Date("2001-01-01T00:00:00.000Z"),
+          hastaExclusivo: new Date("2001-02-01T00:00:00.000Z"),
+          tamano: 25,
+        };
+        const repo = repoEn(tx);
+        return { ids, p1: await repo.listar({ ...consulta, pagina: 1 }), p2: await repo.listar({ ...consulta, pagina: 2 }) };
+      });
+      expect(r.p1.total).toBe(27);
+      expect(r.p1.filas).toHaveLength(25);
+      expect(r.p2.filas).toHaveLength(2);
+      const fechas = [...r.p1.filas, ...r.p2.filas].map((f) => f.creadoEn);
+      expect(fechas).toEqual([...fechas].sort().reverse());
+      const empatados = [...r.ids.slice(25, 27)].sort();
+      expect(r.p1.filas.slice(0, 2).map((f) => f.id)).toEqual(empatados);
+      expect(new Set([...r.p1.filas, ...r.p2.filas].map((f) => f.id))).toEqual(new Set(r.ids));
+      expect(r.p1.filas[0]).toMatchObject({ empresa: `BR A ${RUN}`, usuario: "Ana Pérez a", rol: "mensajero", estado: "new" });
+    });
+
+    it("R6 — la fila lleva el resumen de 120 letras con «…» y no la descripción entera", async () => {
+      const larga = "a".repeat(119) + "bcdef";
+      const r = await revertida(async (tx) => {
+        await sembrarReporte(tx, { descripcion: larga, creado: "2001-02-01T00:00:00.000Z" });
+        return servicioEn(tx).listar(SUPERADMIN, filtrosDe({ desde: "2001-02-01", hasta: "2001-02-01" }));
+      });
+      expect(r).toMatchObject({ status: "ok", total: 1 });
+      if (r.status !== "ok") throw new Error("inalcanzable");
+      expect(r.items[0].resumen).toBe(`${"a".repeat(119)}b…`);
+    });
+
+    it("R7 — el filtro de estado devuelve solo los estados pedidos: pendientes, todos y cada uno", async () => {
+      const r = await revertida(async (tx) => {
+        for (const status of ESTADOS) await sembrarReporte(tx, { status, creado: "2001-03-05T10:00:00.000Z" });
+        const s = servicioEn(tx);
+        const salida: Record<string, string[]> = {};
+        for (const estado of ["pendientes", "todos", ...ESTADOS] as const) {
+          const l = await s.listar(SUPERADMIN, filtrosDe({ estado, desde: "2001-03-01", hasta: "2001-03-31" }));
+          salida[estado] = l.status === "ok" ? l.items.map((i) => i.estado).sort() : [l.status];
+        }
+        return salida;
+      });
+      expect(r).toEqual({
+        pendientes: ["in_review", "new"],
+        todos: ["dismissed", "in_review", "new", "resolved"],
+        new: ["new"],
+        in_review: ["in_review"],
+        resolved: ["resolved"],
+        dismissed: ["dismissed"],
+      });
+    });
+
+    it("R8 — con dos empresas, el filtro de empresa devuelve solo los de la elegida", async () => {
+      const r = await revertida(async (tx) => {
+        const deA = await sembrarReporte(tx, { creado: "2001-04-05T10:00:00.000Z" });
+        const deB = await sembrarReporte(tx, { org: B, usuario: usuarioB, creado: "2001-04-06T10:00:00.000Z" });
+        const s = servicioEn(tx);
+        const ventana = { desde: "2001-04-01", hasta: "2001-04-30" };
+        const ids = async (empresa?: string) => {
+          const l = await s.listar(SUPERADMIN, filtrosDe({ ...ventana, empresa }));
+          return l.status === "ok" ? l.items.map((i) => i.id) : [l.status];
+        };
+        return { deA, deB, todas: await ids(), soloA: await ids(A), soloB: await ids(B) };
+      });
+      expect(r.todas).toEqual([r.deB, r.deA]);
+      expect(r.soloA).toEqual([r.deA]);
+      expect(r.soloB).toEqual([r.deB]);
+    });
+
+    it("R9 — desde y hasta son inclusivos por día UTC: 23:59:59.999Z de hasta entra y 00:00Z del día siguiente no", async () => {
+      const r = await revertida(async (tx) => {
+        await sembrarReporte(tx, { creado: "2001-07-09T23:59:59.999Z" });
+        const primero = await sembrarReporte(tx, { creado: "2001-07-10T00:00:00.000Z" });
+        const ultimo = await sembrarReporte(tx, { creado: "2001-07-12T23:59:59.999Z" });
+        const despues = await sembrarReporte(tx, { creado: "2001-07-13T00:00:00.000Z" });
+        const s = servicioEn(tx);
+        const l = await s.listar(SUPERADMIN, filtrosDe({ desde: "2001-07-10", hasta: "2001-07-12" }));
+        const siguiente = await s.listar(SUPERADMIN, filtrosDe({ desde: "2001-07-13", hasta: "2001-07-31" }));
+        return { primero, ultimo, despues, l, siguiente };
+      });
+      expect(r.l).toMatchObject({ status: "ok", total: 2 });
+      if (r.l.status !== "ok" || r.siguiente.status !== "ok") throw new Error("inalcanzable");
+      expect(r.l.items.map((i) => i.id)).toEqual([r.ultimo, r.primero]);
+      expect(r.siguiente.items.map((i) => i.id)).toEqual([r.despues]);
+    });
+
+    it("R10 — empresa, estado y fechas se combinan", async () => {
+      const r = await revertida(async (tx) => {
+        const cumple = await sembrarReporte(tx, { status: "in_review", creado: "2001-05-10T10:00:00.000Z" });
+        // Cada uno falla un solo filtro: el estado, la empresa y la fecha.
+        await sembrarReporte(tx, { status: "new", creado: "2001-05-10T11:00:00.000Z" });
+        await sembrarReporte(tx, { org: B, usuario: usuarioB, status: "in_review", creado: "2001-05-10T12:00:00.000Z" });
+        await sembrarReporte(tx, { status: "in_review", creado: "2001-05-20T10:00:00.000Z" });
+        const l = await servicioEn(tx).listar(
+          SUPERADMIN,
+          filtrosDe({ estado: "in_review", empresa: A, desde: "2001-05-01", hasta: "2001-05-15" }),
+        );
+        return { cumple, l };
+      });
+      expect(r.l).toMatchObject({ status: "ok", total: 1 });
+      if (r.l.status !== "ok") throw new Error("inalcanzable");
+      expect(r.l.items.map((i) => i.id)).toEqual([r.cumple]);
+    });
+
+    it("R13 — un reporte con deleted_at no sale en el listado ni cuenta en el total", async () => {
+      const r = await revertida(async (tx) => {
+        const vivo = await sembrarReporte(tx, { creado: "2001-09-01T10:00:00.000Z" });
+        await sembrarReporte(tx, { creado: "2001-09-02T10:00:00.000Z", borrado: "2001-09-03T00:00:00.000Z" });
+        const l = await servicioEn(tx).listar(SUPERADMIN, filtrosDe({ desde: "2001-09-01", hasta: "2001-09-30" }));
+        return { vivo, l };
+      });
+      expect(r.l).toMatchObject({ status: "ok", total: 1 });
+      if (r.l.status !== "ok") throw new Error("inalcanzable");
+      expect(r.l.items.map((i) => i.id)).toEqual([r.vivo]);
+    });
+
+    it("R14 — detalle trae la empresa, el correo de quien reportó y el historial", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx, {
+          descripcion: "Línea 1\nLínea 2",
+          status: "resolved",
+          creado: "2001-10-01T14:05:00.000Z",
+        });
+        const viejo = await sembrarCambio(tx, id, { de: "new", a: "in_review", nota: "Lo miro", creado: "2001-10-02T00:00:00.000Z" });
+        const nuevo = await sembrarCambio(tx, id, { de: "in_review", a: "resolved", creado: "2001-10-03T00:00:00.000Z" });
+        const sinVentana = await sembrarReporte(tx, { sinVentana: true });
+        const s = servicioEn(tx);
+        return { id, viejo, nuevo, d: await s.detalle(SUPERADMIN, id), dSin: await s.detalle(SUPERADMIN, sinVentana) };
+      });
+      expect(r.d).toEqual({
+        status: "ok",
+        reporte: {
+          id: r.id,
+          descripcion: "Línea 1\nLínea 2",
+          empresa: `BR A ${RUN}`,
+          usuario: "Ana Pérez a",
+          correo: `br-a-${RUN}@ejemplo.test`,
+          rol: "mensajero",
+          pagina: "/ordenes",
+          navegador: "Mozilla/5.0 (Android 14)",
+          ventana: { ancho: 390, alto: 844 },
+          appInstalada: true,
+          creadoEn: "2001-10-01T14:05:00.000Z",
+          estado: "resolved",
+          destinosPermitidos: [],
+          // SLT-98 (design §6 y §15 «Tests de SLT-87 y SLT-97 que cambian de sentido»): el DTO gana
+          // `imagenes` y no lleva la empresa ni las rutas; este reporte no trae imágenes.
+          imagenes: [],
+        },
+        historial: [
+          { id: r.nuevo, desde: "in_review", hacia: "resolved", nota: null, actor: "Quien Sea", creadoEn: "2001-10-03T00:00:00.000Z" },
+          { id: r.viejo, desde: "new", hacia: "in_review", nota: "Lo miro", actor: "Quien Sea", creadoEn: "2001-10-02T00:00:00.000Z" },
+        ],
+      });
+      expect(r.dSin).toMatchObject({
+        status: "ok",
+        reporte: { ventana: null, appInstalada: null, destinosPermitidos: ["in_review", "resolved", "dismissed"] },
+        historial: [],
+      });
+    });
+
+    it("R15 — detalle de un reporte con deleted_at devuelve null", async () => {
+      const r = await revertida(async (tx) => {
+        const borrado = await sembrarReporte(tx, { borrado: "2001-01-02T00:00:00.000Z" });
+        const repo = repoEn(tx);
+        return {
+          borrado: await repo.detalle(borrado),
+          inexistente: await repo.detalle(randomUUID()),
+          servicio: await servicioEn(tx).detalle(SUPERADMIN, borrado),
+          cambio: await repo.cambiarEstado({ reporteId: borrado, destino: "resolved", nota: null, actorUsuarioId: "x" }),
+          estado: await estadoDe(tx, borrado),
+        };
+      });
+      expect(r).toEqual({
+        borrado: null,
+        inexistente: null,
+        servicio: { status: "not_found" },
+        cambio: { resultado: "not_found" },
+        estado: "new",
+      });
+    });
+
+    it("R17 — los 16 pares origen × destino: la base acepta exactamente los de TRANSICIONES_REPORTE y rechaza los 4 al mismo estado", async () => {
+      const r = await revertida(async (tx) => {
+        const salida: Record<string, string | null> = {};
+        for (const de of ESTADOS) {
+          for (const a of ESTADOS) {
+            const id = await sembrarReporte(tx, { status: de });
+            salida[`${de}->${a}`] = await intentar(
+              tx,
+              `UPDATE "bug_report" SET "status" = $2::"bug_report_status" WHERE "id" = $1`,
+              id,
+              a,
+            );
+          }
+        }
+        return salida;
+      });
+      expect(Object.keys(r)).toHaveLength(16);
+      const esperado: Record<string, string | null> = {};
+      for (const de of ESTADOS) {
+        for (const a of ESTADOS) {
+          // Al mismo estado tampoco: no es un paso de TRANSICIONES_REPORTE y la base lo rechaza (design §2.3).
+          esperado[`${de}->${a}`] = TRANSICIONES_REPORTE[de].includes(a) ? null : "SL097";
+        }
+      }
+      expect(r).toEqual(esperado);
+    });
+
+    it("R18 — cambiarEstado hacia atrás, al mismo estado o desde un cerrado devuelve transicion_invalida con el actual, sin cambiar nada ni escribir historial", async () => {
+      const casos: [BugReportStatus, BugReportStatus][] = [
+        ["in_review", "new"],
+        ["in_review", "in_review"],
+        ["new", "new"],
+        ["resolved", "dismissed"],
+        ["resolved", "new"],
+        ["dismissed", "in_review"],
+      ];
+      const r = await revertida(async (tx) => {
+        const repo = repoEn(tx);
+        const salida: unknown[] = [];
+        for (const [de, a] of casos) {
+          const id = await sembrarReporte(tx, { status: de });
+          const res = await repo.cambiarEstado({ reporteId: id, destino: a, nota: "no debe quedar", actorUsuarioId: "x" });
+          salida.push({ res, estado: await estadoDe(tx, id), cambios: await cambiosDe(tx, id) });
+        }
+        return salida;
+      });
+      expect(r).toEqual(
+        casos.map(([de]) => ({ res: { resultado: "transicion_invalida", actual: de }, estado: de, cambios: 0 })),
+      );
+    });
+
+    it("R18 — un UPDATE a mano de resolved a new da SL097, también como dueño", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx, { status: "resolved" });
+        const dueno = (await tx.$queryRawUnsafe<{ u: string }[]>(`SELECT current_user AS u`))[0].u;
+        return {
+          dueno,
+          error: await intentar(tx, `UPDATE "bug_report" SET "status" = 'new' WHERE "id" = $1`, id),
+          estado: await estadoDe(tx, id),
+        };
+      });
+      expect(r.dueno).not.toBe("servi_app");
+      expect(r.error).toBe("SL097");
+      expect(r.estado).toBe("resolved");
+    });
+
+    it("R20 — una nota vacía se guarda como NULL y el CHECK rechaza una de 501", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx);
+        const actorId = await superadminSinEmpresa(tx);
+        const res = await servicioEn(tx).cambiarEstado(
+          { ...SUPERADMIN, usuarioId: actorId },
+          { reporteId: id, estado: "in_review", nota: "" },
+        );
+        const notas = await tx.$queryRawUnsafe<{ note: string | null }[]>(
+          `SELECT "note" FROM "bug_report_status_change" WHERE "bug_report_id" = $1`,
+          id,
+        );
+        const otro = await sembrarReporte(tx);
+        const insertar = (n: string) =>
+          intentar(
+            tx,
+            `INSERT INTO "bug_report_status_change" ("id", "bug_report_id", "from_status", "to_status", "note", "actor_user_id", "actor_name")
+             VALUES ($1, $2, 'new', 'resolved', $3, 'x', 'x')`,
+            randomUUID(),
+            otro,
+            n,
+          );
+        return {
+          res,
+          notas: notas.map((f) => f.note),
+          quinientos: await insertar("x".repeat(500)),
+          quinientosConEspacios: await insertar(`  ${"x".repeat(500)}  `),
+          quinientosUno: await insertar("x".repeat(501)),
+          vacia: await insertar(""),
+          soloEspacios: await insertar("   "),
+        };
+      });
+      expect(r).toEqual({
+        res: { status: "ok", estado: "in_review" },
+        notas: [null],
+        quinientos: null,
+        quinientosConEspacios: null,
+        quinientosUno: "23514",
+        vacia: "23514",
+        soloEspacios: "23514",
+      });
+    });
+
+    it("R21 — cambiarEstado deja una entrada con from, to, nota, actor_name del superadmin y created_at", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx);
+        const actorId = await superadminSinEmpresa(tx);
+        const res = await repoEn(tx).cambiarEstado({
+          reporteId: id,
+          destino: "in_review",
+          nota: "Lo miro",
+          actorUsuarioId: actorId,
+        });
+        const filas = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
+          `SELECT "from_status"::text AS de, "to_status"::text AS a, "note", "actor_user_id", "actor_name", "created_at"
+             FROM "bug_report_status_change" WHERE "bug_report_id" = $1`,
+          id,
+        );
+        return { res, actorId, filas, estado: await estadoDe(tx, id) };
+      });
+      expect(r.res).toEqual({ resultado: "ok" });
+      expect(r.estado).toBe("in_review");
+      expect(r.filas).toHaveLength(1);
+      expect(r.filas[0]).toMatchObject({
+        de: "new",
+        a: "in_review",
+        note: "Lo miro",
+        actor_user_id: r.actorId,
+        actor_name: NOMBRE_DEL_SUPERADMIN,
+      });
+      expect(r.filas[0].created_at).toBeInstanceOf(Date);
+    });
+
+    it("R21 — si falla la escritura del historial, el estado no cambia", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx);
+        const actorId = await superadminSinEmpresa(tx);
+        const error = await repoEn(tx, true)
+          .cambiarEstado({ reporteId: id, destino: "resolved", nota: null, actorUsuarioId: actorId })
+          .then(
+            () => null,
+            (e: unknown) => (e instanceof Error ? e.name : String(e)),
+          );
+        return { error, estado: await estadoDe(tx, id), cambios: await cambiosDe(tx, id) };
+      });
+      expect(r).toEqual({ error: "HistorialCaido", estado: "new", cambios: 0 });
+    });
+
+    it("R23 — UPDATE y DELETE directos de bug_report_status_change dan SL097, también como dueño, y borrar el bug_report se lleva su historial", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx, { status: "in_review" });
+        const cambio = await sembrarCambio(tx, id, { de: "new", a: "in_review", nota: "nota", creado: "2001-01-02T00:00:00.000Z" });
+        const update = await intentar(tx, `UPDATE "bug_report_status_change" SET "note" = 'otra' WHERE "id" = $1`, cambio);
+        const borrar = await intentar(tx, `DELETE FROM "bug_report_status_change" WHERE "id" = $1`, cambio);
+        const intacta = await cambiosDe(tx, id);
+        const cascada = await intentar(tx, `DELETE FROM "bug_report" WHERE "id" = $1`, id);
+        return { update, borrar, intacta, cascada, despues: await cambiosDe(tx, id) };
+      });
+      expect(r).toEqual({ update: "SL097", borrar: "SL097", intacta: 1, cascada: null, despues: 0 });
+    });
+  });
+
+  describe("SLT-98 — bug_report_image", () => {
+    const PNG = "image/png";
+    /** P4: 5 MB, el tope del `CHECK` `bug_report_image_size_bytes_rango`. */
+    const MAX = 5 * 1024 * 1024;
+
+    /** Una imagen válida de `usuarioA` para `crear`, con la extensión de su tipo. */
+    const imagen = (position: number, contentType: NuevaImagen["contentType"] = PNG, sizeBytes = 1000): NuevaImagen => {
+      const id = randomUUID();
+      const ext = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }[contentType];
+      return { id, position, storagePath: `${usuarioA}/${id}.${ext}`, contentType, sizeBytes };
+    };
+
+    /** INSERT a mano en `bug_report_image`; `campos` pisa las columnas que el caso quiere romper. */
+    function insertImagenSql(
+      reporteId: string,
+      campos: { id?: string; position?: number; contentType?: string; sizeBytes?: number; ext?: string } = {},
+    ): [string, ...unknown[]] {
+      const id = campos.id ?? randomUUID();
+      return [
+        `INSERT INTO "bug_report_image" ("id", "bug_report_id", "position", "storage_path", "content_type", "size_bytes")
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        id,
+        reporteId,
+        campos.position ?? 1,
+        `u/${id}.${campos.ext ?? "png"}`,
+        campos.contentType ?? PNG,
+        campos.sizeBytes ?? 10,
+      ];
+    }
+
+    async function imagenesEnBase(tx: TxDeTest, reporteId: string) {
+      return tx.$queryRawUnsafe<
+        { id: string; position: number; storage_path: string; content_type: string; size_bytes: number }[]
+      >(
+        `SELECT "id", "position", "storage_path", "content_type", "size_bytes"
+           FROM "bug_report_image" WHERE "bug_report_id" = $1 ORDER BY "position"`,
+        reporteId,
+      );
+    }
+
+    async function contar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<number> {
+      return (await tx.$queryRawUnsafe<{ n: number }[]>(sql, ...args))[0].n;
+    }
+
+    it("R13 — crear con 3 imágenes guarda bug_report y bug_report_image con position 1..3, tipo y tamaño", async () => {
+      const imagenes = [imagen(1), imagen(2, "image/jpeg", MAX), imagen(3, "image/webp", 1)];
+      const r = await revertida(async (tx) => {
+        const creado = await repoEn(tx).crear(datosDe(A, usuarioA, { imagenes }));
+        return {
+          creado,
+          reportes: await contar(
+            tx,
+            `SELECT count(*)::int AS n FROM "bug_report" WHERE "id" = $1 AND "organization_id" = $2`,
+            creado!.id,
+            A,
+          ),
+          filas: await imagenesEnBase(tx, creado!.id),
+        };
+      });
+      expect(r.creado).not.toBeNull();
+      // `BugReportCreado` no cambia: ni rutas ni datos de las imágenes (design §6).
+      expect(r.creado).not.toHaveProperty("imagenes");
+      expect(r.reportes).toBe(1);
+      expect(r.filas).toEqual(
+        imagenes.map((i) => ({
+          id: i.id,
+          position: i.position,
+          storage_path: i.storagePath,
+          content_type: i.contentType,
+          size_bytes: i.sizeBytes,
+        })),
+      );
+    });
+
+    it("R13 — si una imagen viola un CHECK, no queda ni el reporte", async () => {
+      const descripcion = `Con imagen rota ${RUN}`;
+      const buena = imagen(1);
+      const rota = imagen(2, PNG, 0);
+      const r = await revertida(async (tx) => {
+        const error = await repoEn(tx)
+          .crear(datosDe(A, usuarioA, { description: descripcion, imagenes: [buena, rota] }))
+          .then(
+            () => null,
+            (e: unknown) => llevaSqlstate(e, "23514"),
+          );
+        return {
+          error,
+          reportes: await contar(tx, `SELECT count(*)::int AS n FROM "bug_report" WHERE "description" = $1`, descripcion),
+          imagenes: await contar(
+            tx,
+            `SELECT count(*)::int AS n FROM "bug_report_image" WHERE "id" IN ($1, $2)`,
+            buena.id,
+            rota.id,
+          ),
+        };
+      });
+      expect(r).toEqual({ error: true, reportes: 0, imagenes: 0 });
+    });
+
+    it("R18 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_image dan 42501", async () => {
+      const r = await revertida(async (tx) => {
+        // La fila existe y es de un reporte de la propia empresa: el 42501 no es por una tabla vacía.
+        const id = randomUUID();
+        const control = await intentar(tx, ...insertImagenSql(reporteA, { id }));
+        await comoApp(tx, A);
+        return {
+          control,
+          select: await intentar(tx, `SELECT * FROM "bug_report_image"`),
+          selectPropia: await intentar(tx, `SELECT * FROM "bug_report_image" WHERE "bug_report_id" = $1`, reporteA),
+          insert: await intentar(tx, ...insertImagenSql(reporteA, { position: 2 })),
+          update: await intentar(tx, `UPDATE "bug_report_image" SET "size_bytes" = 20 WHERE "id" = $1`, id),
+          delete: await intentar(tx, `DELETE FROM "bug_report_image" WHERE "id" = $1`, id),
+        };
+      });
+      expect(r).toEqual({
+        control: null,
+        select: "42501",
+        selectPropia: "42501",
+        insert: "42501",
+        update: "42501",
+        delete: "42501",
+      });
+    });
+
+    it("R19 — la base rechaza position 6, content_type image/gif, size_bytes 0 y 5242881, también como dueño, y borrar el bug_report se lleva sus imágenes", async () => {
+      const r = await revertida(async (tx) => {
+        const dueno = (await tx.$queryRawUnsafe<{ u: string }[]>(`SELECT current_user AS u`))[0].u;
+        const id = await sembrarReporte(tx);
+        const cinco: (string | null)[] = [];
+        for (let p = 1; p <= 5; p++) {
+          cinco.push(await intentar(tx, ...insertImagenSql(id, { position: p, sizeBytes: p === 5 ? MAX : 1 })));
+        }
+        const otro = await sembrarReporte(tx);
+        const salida = {
+          dueno,
+          cinco,
+          sexta: await intentar(tx, ...insertImagenSql(id, { position: 6 })),
+          positionRepetida: await intentar(tx, ...insertImagenSql(id, { position: 1 })),
+          gif: await intentar(tx, ...insertImagenSql(otro, { contentType: "image/gif" })),
+          extensionGif: await intentar(tx, ...insertImagenSql(otro, { ext: "gif" })),
+          tamanoCero: await intentar(tx, ...insertImagenSql(otro, { sizeBytes: 0 })),
+          tamanoDeMas: await intentar(tx, ...insertImagenSql(otro, { sizeBytes: MAX + 1 })),
+          antes: (await imagenesEnBase(tx, id)).length,
+        };
+        const cascada = await intentar(tx, `DELETE FROM "bug_report" WHERE "id" = $1`, id);
+        const columnas = await tx.$queryRawUnsafe<{ column_name: string }[]>(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'bug_report_image' ORDER BY column_name`,
+        );
+        return { ...salida, cascada, despues: (await imagenesEnBase(tx, id)).length, columnas: columnas.map((c) => c.column_name) };
+      });
+      expect(r.dueno).not.toBe("servi_app");
+      expect(r).toMatchObject({
+        cinco: [null, null, null, null, null],
+        sexta: "23514",
+        positionRepetida: "23505",
+        gif: "23514",
+        extensionGif: "23514",
+        tamanoCero: "23514",
+        tamanoDeMas: "23514",
+        antes: 5,
+        cascada: null,
+        despues: 0,
+        // Los identificadores nuevos, en inglés (R19).
+        columnas: ["bug_report_id", "content_type", "created_at", "id", "position", "size_bytes", "storage_path"],
+      });
+    });
+
+    it("R22 — detalle trae las imágenes por position y la empresa", async () => {
+      const r = await revertida(async (tx) => {
+        const id = await sembrarReporte(tx);
+        const sinImagenes = await sembrarReporte(tx);
+        const ids: Record<number, string> = {};
+        // Se insertan fuera de orden: el orden lo da `position`, no la inserción.
+        for (const p of [3, 1, 2]) {
+          ids[p] = randomUUID();
+          await tx.$executeRawUnsafe(...insertImagenSql(id, { id: ids[p], position: p }));
+        }
+        const repo = repoEn(tx);
+        return { ids, d: await repo.detalle(id), dSin: await repo.detalle(sinImagenes) };
+      });
+      expect(r.d?.reporte.organizacionId).toBe(A);
+      expect(r.d?.reporte.imagenes).toEqual([1, 2, 3].map((p) => ({ id: r.ids[p], ruta: `u/${r.ids[p]}.png` })));
+      expect(r.dSin?.reporte).toMatchObject({ organizacionId: A, imagenes: [] });
+    });
+  });
+
+  describe("SLT-98 — tope diario en bug_report_upload_quota", () => {
+    const TOPE = 21;
+    /** Varias conexiones de verdad: con el `max: 2` de `crearPrismaDeTest` la carrera de R26 no existiría. */
+    let concurrente: PrismaClient;
+    let repoConcurrente: BugReportRepository;
+
+    beforeAll(() => {
+      concurrente = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 10 }),
+        omit: PRISMA_OMIT,
+      }) as unknown as PrismaClient;
+      repoConcurrente = new BugReportRepository(conAislamientoPorEmpresa(concurrente, async () => null));
+    });
+
+    afterAll(async () => {
+      await concurrente?.$disconnect();
+    });
+
+    async function conteo(usuarioId: string, dia: string): Promise<number | null> {
+      const filas = await base.$queryRaw<{ n: number }[]>`
+        SELECT "permits_granted" AS n FROM "bug_report_upload_quota" WHERE "user_id" = ${usuarioId} AND "day" = ${dia}::date`;
+      return filas[0]?.n ?? null;
+    }
+
+    async function sembrar(usuarioId: string, dia: string, n: number): Promise<void> {
+      await base.$executeRaw`
+        INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES (${usuarioId}, ${dia}::date, ${n})`;
+    }
+
+    const ESPERANDO_CERROJO = `SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND query ILIKE '%INSERT INTO "bug_report_upload_quota"%'`;
+
+    async function esperarBloqueadas(cuantas: number): Promise<void> {
+      const limite = Date.now() + 15_000;
+      while (Date.now() < limite) {
+        const [fila] = await base.$queryRawUnsafe<{ n: number }[]>(ESPERANDO_CERROJO);
+        if (fila.n >= cuantas) return;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`no llegaron a esperar el cerrojo ${cuantas} consumos a la vez`);
+    }
+
+    /**
+     * R26 sin depender de la suerte: una transacción del dueño toma la fila `(user_id, day)`, se lanza la
+     * carrera, y solo cuando `bloqueadas` sentencias de la carrera esperan ese cerrojo a la vez se suelta.
+     * Así todas llegaron a la vez y es la base la que decide el orden.
+     */
+    async function carreraContraCerrojo<T>(
+      tomar: (tx: TxDeTest) => Promise<unknown>,
+      soltar: "commit" | "rollback",
+      bloqueadas: number,
+      carrera: () => Promise<T>,
+    ): Promise<T> {
+      let enCurso: Promise<T> | undefined;
+      try {
+        await base.$transaction(
+          async (tx) => {
+            await tomar(tx);
+            enCurso = carrera();
+            enCurso.catch(() => {});
+            await esperarBloqueadas(bloqueadas);
+            if (soltar === "rollback") throw new Revertir(null);
+          },
+          { timeout: 30_000, maxWait: 15_000 },
+        );
+      } catch (e) {
+        if (!(e instanceof Revertir)) throw e;
+      }
+      if (!enCurso) throw new Error("la carrera no arrancó");
+      return enCurso;
+    }
+
+    it("R24 — consumir suma los permisos del día: 5 + 5 + 5 + 5 da 20 y 1 más da 21", async () => {
+      const dia = "2001-05-01";
+      const totales = await bajoLockDeEscrituraReal(async () => {
+        const salida: (number | null)[] = [];
+        for (const n of [5, 5, 5, 5, 1]) salida.push(await repo.consumir(usuarioA, dia, n, TOPE));
+        return salida;
+      });
+      expect(totales).toEqual([5, 10, 15, 20, 21]);
+      expect(await conteo(usuarioA, dia)).toBe(21);
+      // El día es el texto que llegó, sin moverse por el huso de la sesión; los días vecinos no se tocan.
+      const filas = await base.$queryRaw<{ dia: string }[]>`
+        SELECT "day"::text AS dia FROM "bug_report_upload_quota"
+         WHERE "user_id" = ${usuarioA} AND "day" BETWEEN '2001-04-30'::date AND '2001-05-02'::date AND "permits_granted" = 21`;
+      expect(filas).toEqual([{ dia }]);
+    });
+
+    it("R24 — tope blando: con 20 concedidos, consumir 5 devuelve 25 y el día queda en 25", async () => {
+      const dia = "2001-05-02";
+      const total = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 20);
+        return repo.consumir(usuarioA, dia, 5, TOPE);
+      });
+      expect(total).toBe(25);
+      expect(await conteo(usuarioA, dia)).toBe(25);
+    });
+
+    it("R25 — con 21 concedidos, consumir 1 devuelve null y el día sigue en 21", async () => {
+      const dia = "2001-05-03";
+      const total = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 21);
+        return repo.consumir(usuarioA, dia, 1, TOPE);
+      });
+      expect(total).toBeNull();
+      expect(await conteo(usuarioA, dia)).toBe(21);
+    });
+
+    it("R25 — con 25 concedidos, consumir 1 devuelve null y el día sigue en 25", async () => {
+      const dia = "2001-05-04";
+      const total = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 25);
+        return repo.consumir(usuarioA, dia, 1, TOPE);
+      });
+      expect(total).toBeNull();
+      expect(await conteo(usuarioA, dia)).toBe(25);
+    });
+
+    it("R26 — 30 consumos simultáneos de 1 del mismo usuario sin fila dejan exactamente 21 concedidos y 9 null", async () => {
+      const dia = "2001-05-05";
+      // La fila la inserta el dueño sin confirmar: los INSERT de la carrera esperan su desenlace y, al
+      // revertirse, el día vuelve a no tener fila.
+      const totales = await bajoLockDeEscrituraReal(() =>
+        carreraContraCerrojo(
+          (tx) => tx.$executeRaw`
+            INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES (${usuarioA}, ${dia}::date, 0)`,
+          "rollback",
+          10,
+          () => Promise.all(Array.from({ length: 30 }, () => repoConcurrente.consumir(usuarioA, dia, 1, TOPE))),
+        ),
+      );
+      const concedidos = totales.filter((t): t is number => t !== null).sort((x, y) => x - y);
+      expect(concedidos).toEqual(Array.from({ length: 21 }, (_, i) => i + 1));
+      expect(totales.filter((t) => t === null)).toHaveLength(9);
+      expect(await conteo(usuarioA, dia)).toBe(21);
+    });
+
+    it("R26 — dos consumos simultáneos de 5 con 19 concedidos: entra uno solo y el día queda en 24, no en 29", async () => {
+      const dia = "2001-05-06";
+      const totales = await bajoLockDeEscrituraReal(async () => {
+        await sembrar(usuarioA, dia, 19);
+        return carreraContraCerrojo(
+          (tx) => tx.$queryRaw`
+            SELECT 1 FROM "bug_report_upload_quota" WHERE "user_id" = ${usuarioA} AND "day" = ${dia}::date FOR UPDATE`,
+          "commit",
+          2,
+          () => Promise.all([repoConcurrente.consumir(usuarioA, dia, 5, TOPE), repoConcurrente.consumir(usuarioA, dia, 5, TOPE)]),
+        );
+      });
+      expect(totales.filter((t) => t !== null)).toEqual([24]);
+      expect(totales.filter((t) => t === null)).toHaveLength(1);
+      expect(await conteo(usuarioA, dia)).toBe(24);
+    });
+
+    it("R27 — devolver resta los permisos sin bajar de 0 y sin fila no hace nada", async () => {
+      const dia = "2001-05-07";
+      const sinFila = "2001-05-08";
+      const r = await bajoLockDeEscrituraReal(async () => {
+        await repo.consumir(usuarioA, dia, 5, TOPE);
+        await repo.consumir(usuarioA, dia, 3, TOPE);
+        await repo.devolver(usuarioA, dia, 3);
+        const trasDevolver = await conteo(usuarioA, dia);
+        await repo.devolver(usuarioA, dia, 9);
+        const sinBajarDeCero = await conteo(usuarioA, dia);
+        await repo.devolver(usuarioA, sinFila, 2);
+        return { trasDevolver, sinBajarDeCero, sinFila: await conteo(usuarioA, sinFila) };
+      });
+      expect(r).toEqual({ trasDevolver: 5, sinBajarDeCero: 0, sinFila: null });
+    });
+
+    it("R31 — con servi_app, SELECT, INSERT, UPDATE y DELETE de bug_report_upload_quota dan 42501, y la tabla tiene RLS en public", async () => {
+      const r = await revertida(async (tx) => {
+        // La fila existe y es de un usuario de la propia empresa: el 42501 no es por una tabla vacía.
+        const control = await intentar(
+          tx,
+          `INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES ($1, '2001-05-09'::date, 3)`,
+          usuarioA,
+        );
+        const [{ rls }] = await tx.$queryRawUnsafe<{ rls: boolean }[]>(
+          `SELECT relrowsecurity AS rls FROM pg_class
+            WHERE relname = 'bug_report_upload_quota' AND relnamespace = 'public'::regnamespace`,
+        );
+        const columnas = await tx.$queryRawUnsafe<{ column_name: string }[]>(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'bug_report_upload_quota' ORDER BY column_name`,
+        );
+        await comoApp(tx, A);
+        return {
+          control,
+          rls,
+          columnas: columnas.map((c) => c.column_name),
+          select: await intentar(tx, `SELECT * FROM "bug_report_upload_quota"`),
+          selectPropia: await intentar(tx, `SELECT * FROM "bug_report_upload_quota" WHERE "user_id" = $1`, usuarioA),
+          insert: await intentar(
+            tx,
+            `INSERT INTO "bug_report_upload_quota" ("user_id", "day", "permits_granted") VALUES ($1, '2001-05-10'::date, 1)`,
+            usuarioA,
+          ),
+          update: await intentar(tx, `UPDATE "bug_report_upload_quota" SET "permits_granted" = 0 WHERE "user_id" = $1`, usuarioA),
+          delete: await intentar(tx, `DELETE FROM "bug_report_upload_quota" WHERE "user_id" = $1`, usuarioA),
+        };
+      });
+      expect(r).toEqual({
+        control: null,
+        rls: true,
+        // Los identificadores nuevos, en inglés (R31).
+        columnas: ["created_at", "day", "permits_granted", "user_id"],
+        select: "42501",
+        selectPropia: "42501",
+        insert: "42501",
+        update: "42501",
+        delete: "42501",
+      });
+    });
   });
 });

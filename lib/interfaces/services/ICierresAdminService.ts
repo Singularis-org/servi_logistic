@@ -61,6 +61,21 @@ export interface BloqueoMensajeroEnFila {
   cierresPorReenviar: number;
 }
 
+/**
+ * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R70, R109) — tres conteos de
+ * gestiones de UN cierre, para la celda Señales de la cola. Enteros, no dinero.
+ *
+ * Cada conteo es el número de filas de la lista «Gestiones» del detalle de ese cierre que llevan la
+ * señal: `incidentesSinIndemnizar` (resultado `incidente` con `indemnizacion` nula),
+ * `pagosAjustados` (al menos un ajuste de pago, SLT-56) y `vuelvenABodega`
+ * (`RESULTADOS_QUE_VUELVEN`). Las barridas del corte no son gestiones y no cuentan aquí.
+ */
+export interface SenalesColaCierre {
+  incidentesSinIndemnizar: number;
+  pagosAjustados: number;
+  vuelvenABodega: number;
+}
+
 export interface CierreAdminResumen {
   cierreId: string;
   mensajeroId: string;
@@ -113,6 +128,12 @@ export interface CierreAdminResumen {
    * NO entra en las descargas (R31): `cierres-admin-descarga-columnas.ts` no lo nombra.
    */
   reprogramadasRetenidasHoy?: number;
+  /**
+   * SLT-102 (R109) — las tres señales de la cola, contadas en el servidor con UNA consulta por
+   * página (`contarSenalesPorCierre`). Opcional (aditivo): ausente, la fila no pinta esas señales y
+   * no afirma «0». Un cierre sin gestiones con señal llega con los tres a `0`.
+   */
+  senalesCola?: SenalesColaCierre;
   solicitadoAt: string; // ISO
   resueltoAt: string | null; // ISO; null si solicitado (F1.4-e)
   motivoRechazo: string | null; // solo rechazado (F1.4-e)

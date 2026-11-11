@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COLUMNAS_DESCARGA_DETALLE_BODEGA,
   COLUMNAS_DESCARGA_DETALLE_CIERRE,
+  filaDescargaDetalleBodega,
   filaDescargaDetalleCierre,
 } from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
@@ -118,5 +120,53 @@ describe("SLT-101 R91 — la columna «Señales»", () => {
 
   it("una entrega sin señales deja la celda vacía (null)", () => {
     expect(filaDescargaDetalleCierre(gestion(), "satelite").senales).toBeNull();
+  });
+});
+
+// SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (T2.2, R113): la descarga del
+// detalle de bodega lleva «Mensajero» tras «Tienda», como la columna que pinta la tabla. Literales a mano.
+describe("SLT-104 — columnas de «Descargar» del detalle de bodega (R113)", () => {
+  it("son nueve: las de mensajero con «Mensajero» tras «Tienda»", () => {
+    expect(COLUMNAS_DESCARGA_DETALLE_BODEGA.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "destinatario",
+      "tienda",
+      "mensajero",
+      "resultado",
+      "recibido",
+      "cobroTienda",
+      "pagoMensajero",
+      "senales",
+    ]);
+    expect(COLUMNAS_DESCARGA_DETALLE_BODEGA.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Cobro a la tienda",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("las de mensajero no cambian: siguen siendo ocho, sin «Mensajero»", () => {
+    expect(COLUMNAS_DESCARGA_DETALLE_CIERRE).toHaveLength(8);
+    expect(COLUMNAS_DESCARGA_DETALLE_CIERRE.map((c) => c.encabezado)).not.toContain("Mensajero");
+  });
+
+  it("una fila lleva su mensajero y los strings del servidor tal cual", () => {
+    expect(filaDescargaDetalleBodega(gestion(), "Beto Mensajero")).toEqual({
+      numGuia: 1044,
+      destinatario: "Laura Vega",
+      tienda: "Tienda Norte",
+      mensajero: "Beto Mensajero",
+      resultado: "Entregado",
+      recibido: "70000.00",
+      cobroTienda: "3165.00",
+      pagoMensajero: "1500.00",
+      senales: null,
+    });
   });
 });

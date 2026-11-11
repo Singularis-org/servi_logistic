@@ -145,7 +145,12 @@ function montar(
       };
       return { status: "creado" as const, pago };
     }),
+    // SLT-122: el reparto lee los imputables CON alcance; la lectura sin alcance ya no la usa.
     listarCierresImputables: vi.fn(async () => {
+      log.push("leer:imputables:SIN-ALCANCE");
+      return opciones.cierres ?? cincoDesordenados();
+    }),
+    listarCierresImputablesEnAlcance: vi.fn(async () => {
       log.push("leer:imputables");
       return opciones.cierres ?? cincoDesordenados();
     }),
@@ -159,6 +164,7 @@ function montar(
       return opciones.pagosDelReparto ?? [];
     }),
     obtenerCierreParaPago: vi.fn(async () => null),
+    obtenerCierreParaPagoEnAlcance: vi.fn(async () => null),
     // Feature 206: `anularReparto` empieza leyendo EL PAGO para derivar su reparto. El doble
     // devuelve el primero de la lista, que es el que los casos piden por id.
     obtenerPorId: vi.fn(async () => {

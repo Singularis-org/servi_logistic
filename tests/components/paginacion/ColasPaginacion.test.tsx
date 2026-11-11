@@ -409,6 +409,13 @@ interface Cola {
    * saliendo del `total` del servidor, que es lo que R42 exige; lo que cambió es dónde mirarlo.
    */
   contadorEn?: string;
+  /** SLT-102: rol del conmutador del contador. Por defecto `group` (el segmentado de hoy). */
+  contadorRol?: "group" | "tablist";
+  /**
+   * SLT-102: cómo se lee el contador. Por defecto «(n)»; la cola única lo pinta como el canvas,
+   * detrás del nombre de la pestaña («Pendientes 60»).
+   */
+  textoContador?: (n: number) => string;
   /** Nombre del control de descarga («Descargar …», R13). */
   descarga: string;
   /** Monta la pantalla con sus 60 filas repartidas en 3 páginas. */
@@ -423,8 +430,12 @@ const COLAS: Cola[] = [
     paginacion: "Paginación de los cierres del día pendientes",
     seccion: "Pendientes de decisión",
     descarga: "Cierres pendientes de decisión",
-    rol: "list",
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: vuelve a ser una TABLA (la
+    // cola única) y el contador vive en el `tablist` «Cierres del día por estado».
+    rol: "table",
     contadorEn: "Cierres del día por estado",
+    contadorRol: "tablist",
+    textoContador: (n) => `Pendientes ${n}`,
     textoFila: (i) => `Mensajero ${etiqueta(i)}`,
     montar: () => {
       const todos = conjunto(cierreAdmin);
@@ -453,10 +464,14 @@ const COLAS: Cola[] = [
   },
   {
     nombre: "Cierres de bodega pendientes",
-    paginacion: "Paginación de los cierres de bodega pendientes",
-    seccion: "Cierres de bodega pendientes",
-    rol: "list",
+    // SLT-127 «Cola de bodega de la central con la cola única»: la cola única (tabla), con el
+    // contador en el `tablist` y los nombres de «Por conciliar».
+    paginacion: "Paginación de los cierres de bodega por conciliar",
+    seccion: "Cierres de bodega por conciliar",
+    rol: "table",
     contadorEn: "Cierres de bodega por estado",
+    contadorRol: "tablist",
+    textoContador: (n) => `Por conciliar ${n}`,
     descarga: "Cierres de bodega pendientes",
     textoFila: (i) => `Satélite ${etiqueta(i)}`,
     montar: () => {
@@ -600,10 +615,15 @@ function tablaDe(cola: Cola, trasModal = false): HTMLElement {
  * retiró por redundante, dentro de su conmutador de pestañas. Lo que se afirma sobre él no
  * cambia en un caso ni en el otro.
  */
+/** El texto del contador de una cola para `n` (SLT-102: el de la cola única es «Pendientes n»). */
+function contador(cola: Cola, n: number): string {
+  return cola.textoContador ? cola.textoContador(n) : `(${n})`;
+}
+
 function contadorDe(cola: Cola): HTMLElement {
   return cola.contadorEn === undefined
     ? screen.getByRole("region", { name: cola.seccion })
-    : screen.getByRole("group", { name: cola.contadorEn });
+    : screen.getByRole(cola.contadorRol ?? "group", { name: cola.contadorEn });
 }
 
 /**
@@ -651,9 +671,9 @@ describe("Riesgo MEDIO · paginación de las 4 colas con contador de cabecera (T
       cola.montar();
 
       const seccion = contadorDe(cola);
-      expect(within(seccion).getByText(`(${TOTAL})`), cola.nombre).toBeInTheDocument();
+      expect(within(seccion).getByText(contador(cola, TOTAL)), cola.nombre).toBeInTheDocument();
       expect(
-        within(seccion).queryByText(`(${PAGE_SIZE})`),
+        within(seccion).queryByText(contador(cola, PAGE_SIZE)),
         `${cola.nombre}: el contador muestra el tamaño de la página`,
       ).not.toBeInTheDocument();
       // Y el listado sí pinta una página: el contador no es el número de filas visibles.
@@ -677,11 +697,11 @@ describe("Riesgo MEDIO · paginación de las 4 colas con contador de cabecera (T
 
       const ultima = contadorDe(cola);
       expect(
-        within(ultima).getByText(`(${TOTAL})`),
+        within(ultima).getByText(contador(cola, TOTAL)),
         `${cola.nombre}: el contador cambió al pasar de página`,
       ).toBeInTheDocument();
       expect(
-        within(ultima).queryByText(`(${ULTIMA_PAGINA})`),
+        within(ultima).queryByText(contador(cola, ULTIMA_PAGINA)),
         `${cola.nombre}: el contador cuenta las filas de la última página`,
       ).not.toBeInTheDocument();
 

@@ -368,7 +368,8 @@ async function abrirDetalleDelModulo(opciones: {
   );
 
   if (resuelto) {
-    await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): `tab` de la cola única.
+    await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
     await user.click(
       screen.getByRole("button", { name: "Ver el cierre resuelto de Ana Mensajera" }),
     );

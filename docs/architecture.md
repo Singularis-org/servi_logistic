@@ -348,6 +348,29 @@ esta bien hecha, no solo si "funciona".
   va en inglés (decisión Q5 del 2026-11-09) y es un atributo, quién reportó: no reparte la tabla.
   La copia por correo a `BUG_REPORT_EMAILS` es síncrona, va después del guardado y su fallo no lo
   tumba (`lib/services/ReporteBugService.ts`).
+  - **Estado (SLT-97, migración `20261111120000`).** `bug_report.status` (`new`, `in_review`,
+    `resolved`, `dismissed`) solo avanza: el trigger `bug_report_status_solo_adelante` rechaza con
+    `SL097` cualquier paso fuera de `TRANSICIONES_REPORTE` (`lib/types/reporte-bug.ts`), también el que
+    deja el mismo estado, y también al dueño.
+  - **Historial (SLT-97).** `bug_report_status_change` es de plataforma e inmutable: el trigger
+    `bug_report_status_change_inmutable` rechaza con `SL097` todo `UPDATE` y `DELETE`, salvo la cascada
+    del borrado de su reporte. Tiene RLS sin políticas y `REVOKE ALL … FROM servi_app`. La escribe
+    `BugReportRepository.cambiarEstado` en la misma transacción que el cambio de estado.
+  - **Quién lo ve (SLT-97).** El módulo `/plataforma/reportes` (listado y detalle) es solo del
+    superadmin; a cualquier otro le responde «no encontrado». Un cambio de estado no avisa a nadie: ni
+    correo, ni cola, ni `historial_accion`.
+  - **Imágenes (SLT-98, migración `20261112120000`).** `bug_report_image` es de plataforma, con RLS
+    sin políticas y `REVOKE ALL … FROM servi_app`. Las imágenes viven en el bucket privado
+    `BUG_REPORT_BUCKET` (`bug-reports`), en `<organizacion_id>/<usuario_id>/<imagen_id>.<ext>`. Se
+    suben al pulsar «Enviar», directo desde el navegador con una URL firmada que pide el servidor, y
+    el envío las valida por tamaño y por firma de bytes. Se leen solo por enlace firmado de 24 h, en
+    el correo y en el detalle; el superadmin firma con `conEmpresa` de la empresa del reporte.
+    - **Tope diario.** Tope blando de 21 permisos de subida por usuario y día calendario en la zona
+      horaria del país de la empresa (la fecha la calcula el servidor): con el conteo por debajo
+      de 21 se concede todo lo pedido (hasta 25 en el día); desde 21, nada, y el panel envía el reporte solo con el texto, sin aviso. El conteo vive en
+      `bug_report_upload_quota`, de plataforma, con RLS sin políticas y `REVOKE ALL … FROM servi_app`,
+      y la suma condicionada es una sola sentencia (`INSERT … ON CONFLICT DO UPDATE … WHERE`), como en
+      `asistente_uso_diario`.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por

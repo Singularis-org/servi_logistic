@@ -204,12 +204,18 @@ export {
 // `vencido` (generado por el corte diario: dinero sin conciliar mas alla del plazo)
 // del `solicitado` en la misma cola de pendientes. `vencido` -> destructive (rojo,
 // atencion); `solicitado` -> secondary (neutro). Los resueltos conservan su color.
+//
+// SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (decisión de Carlos 2026-11-10,
+// fiel al canvas `ColaCierres.dc.html`): las pastillas toman los colores del canvas — «Solicitado»
+// ámbar (`warning`: #fef3c7 / #92400e), «Aprobado» verde (`success`: #d1fae5 / #047857),
+// «Rechazado» y «Vencido» rojo (`destructive` = par `danger`: #fee2e2 / #b91c1c). Un solo
+// componente: el detalle hereda los mismos colores.
 export const ESTADO_BADGE_VARIANT: Record<
   CierreEstado,
-  "default" | "secondary" | "destructive" | "outline"
+  "warning" | "success" | "destructive"
 > = {
-  solicitado: "secondary",
-  aprobado: "outline",
+  solicitado: "warning",
+  aprobado: "success",
   rechazado: "destructive",
   vencido: "destructive",
 };

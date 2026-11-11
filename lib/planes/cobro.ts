@@ -73,10 +73,12 @@ export function costoDelTramo(costoPeriodo: string, diasTramo: number, diasPerio
 /**
  * R12, R15 — el costo base del período en curso de una empresa. `precio` es el vigente al EMPEZAR ese
  * período o tramo (`precio_del_periodo` de `plan_de_la_empresa`): lo elige quien lee, no esta función.
+ *
+ * SLT-99 (decisión del humano del 2026-11-10, modifica SLT-66 R28–R29): un plan sin costo base («sin precio»)
+ * se asigna y cuesta como costo base 0: cuota `0.00` («Sin cuota»), ya no «por definir».
  */
-export function costoDelPeriodoEnCurso(precio: PrecioPlan, tipo: TipoCobro, entrada: Date, ahora: Date): string | null {
-  const costo = montoDelPeriodo(precio, tipo);
-  if (costo === null) return null;
+export function costoDelPeriodoEnCurso(precio: PrecioPlan, tipo: TipoCobro, entrada: Date, ahora: Date): string {
+  const costo = montoDelPeriodo(precio, tipo) ?? "0.00";
   const periodo = periodoEnCurso(entrada, tipo, ahora);
   if (!periodo.esTramo) return costo;
   return costoDelTramo(costo, diasDelTramo(periodo), diasDelPeriodo(tipo, ahora));

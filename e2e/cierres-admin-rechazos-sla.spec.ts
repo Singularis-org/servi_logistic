@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-import { anclarDevolucionHaceDias, aprobarCierre, cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import {
+  anclarDevolucionHaceDias,
+  aprobarCierre,
+  cierresDe,
+  filaDeCola,
+  importe,
+  solicitarCierre,
+} from "./_escenarios/cierres";
 import { correrCron } from "./_escenarios/crons";
 import {
   crearEscenarioReparto,
@@ -76,9 +83,7 @@ test.describe("Cierres del día — el ingreso por rechazos separa SLA y manual"
 
     const page = await paginaDe(browser, r.empresa.maestro);
     await page.goto("/cierres-admin");
-    const comprobante = page
-      .getByRole("region", { name: "Pendientes de decisión" })
-      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    const comprobante = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
     await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
     const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
 

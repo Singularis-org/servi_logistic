@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 import type {
   CatalogoFiltrosCierresDTO,
   FiltrosCierres,
@@ -10,6 +11,7 @@ import { cierreConfig } from "@/lib/config/cierre";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type {
   Alcance,
+  AlcanceLecturaDetalle,
   CierreAdminResumenRow,
   GestionIncidenteDelCierre,
   ICierresAdminRepository,
@@ -49,6 +51,7 @@ import type {
   ListarPendientesCierresAdminCompletoServiceResult,
   ListarPendientesCierresAdminServiceResult,
   RechazarCierreServiceResult,
+  SenalesColaCierre,
 } from "@/lib/interfaces/services/ICierresAdminService";
 import { descargaConfig } from "@/lib/config/descarga";
 import { esColaCierreDia } from "@/lib/utils/colas-cierre";
@@ -107,6 +110,20 @@ import {
 // Roles autorizados en el modulo (R1): acceso total (maestro/admin -> bodega central) y el
 // adminSatelite (su bodega). Cualquier otro -> forbidden.
 const ROL_ADMIN_SATELITE = "adminSatelite";
+
+/**
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (PA1, R116) — el alcance con
+ * el que se LEE un detalle. Acceso total lee cualquier cierre del dia de su empresa, tambien los
+ * de una bodega satelite (el enlace «Ver su cierre» del detalle de bodega); el resto, el alcance de
+ * `resolveAlcance` sin cambios.
+ *
+ * Solo la usa `verCierreDetalle`. Las listas y las escrituras (aprobar, rechazar, destrabar,
+ * corregir, ajustar) siguen con `resolveAlcance`, que para acceso total es `bodega_central`: sobre
+ * un cierre de satelite responden `no_encontrada` como antes.
+ */
+function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle {
+  return esAccesoTotal(actor.rol) ? { lectura: "toda_la_empresa" } : alcance;
+}
 
 /**
  * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
@@ -291,6 +308,13 @@ type AlcanceResult =
   | { status: "ok"; alcance: Alcance }
   | { status: "sinZona" } // adminSatelite sin zona (R3)
   | { status: "forbidden" }; // rol invalido (R1)
+
+/** SLT-102 (R109): el cierre cuyas gestiones no llevan ninguna de las tres señales. */
+const SIN_SENALES_COLA: SenalesColaCierre = Object.freeze({
+  incidentesSinIndemnizar: 0,
+  pagosAjustados: 0,
+  vuelvenABodega: 0,
+});
 
 /**
  * Feature 38 — logica de negocio de "Cierres del dia" del admin (maestro /
@@ -503,7 +527,7 @@ export class CierresAdminService implements ICierresAdminService {
   // todos los `bodega_central` (sin filtro de zona); el adminSatelite solo su zona satelite.
   private async resolveAlcance(actor: Actor): Promise<AlcanceResult> {
     if (esAccesoTotal(actor.rol)) {
-      return { status: "ok", alcance: { destinoTipo: "bodega_central", destinoZonaId: null } };
+      return { status: "ok", alcance: ALCANCE_ACCESO_TOTAL }; // SLT-122: compartido con el pago
     }
     if (actor.rol === ROL_ADMIN_SATELITE) {
       const zonaId = await this.ordenRepo.findUsuarioZonaId(actor.usuarioId);
@@ -847,7 +871,7 @@ export class CierresAdminService implements ICierresAdminService {
     // distingue "no existe" de "otra bodega/zona").
     // SLT-42 (R22): la zona fecha las gestiones del detalle y el «hoy» de su marca de retenidas.
     const zona = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.verCierreDetalle");
-    const found = await this.repo.findCierreByIdEnAlcance(cierreId, scope.alcance, zona);
+    const found = await this.repo.findCierreByIdEnAlcance(cierreId, alcanceDeLectura(actor, scope.alcance), zona);
     if (found === null) return { status: "no_encontrada" };
 
     // R7: firma en lote las evidencias (path crudo -> URL firmada de TTL acotado).
@@ -1283,6 +1307,13 @@ export class CierresAdminService implements ICierresAdminService {
       resumenes.map((r) => r.cierreId),
     );
 
+    // SLT-102 (R109): las tres señales de la cola, UNA llamada para toda la pagina (tambien vacia),
+    // como `retenidas`. `null` si el repositorio no la implementa (dobles de otras suites): entonces
+    // la fila no lleva `senalesCola` y la cola no afirma «0».
+    const senales = this.repo.contarSenalesPorCierre
+      ? await this.repo.contarSenalesPorCierre(resumenes.map((r) => r.cierreId))
+      : null;
+
     // UNA sola llamada, siempre: tambien con la lista vacia, para que el conteo de consultas de
     // este listado sea el mismo se pinte lo que se pinte.
     const pagados = await this.liquidacionRepo.sumarVigentesPorCierre(idsAprobados);
@@ -1313,9 +1344,13 @@ export class CierresAdminService implements ICierresAdminService {
       };
       // FICHA 462 (R27/R28): el aprobado retiene 0 por construccion; los demas, lo que diga el conteo.
       const reprogramadasRetenidasHoy = retenidas.get(r.cierreId) ?? 0;
+      // SLT-102 (R109): un cierre que no sale en el mapa no tiene gestiones con señal: los tres a 0.
+      const conSenales =
+        senales === null ? {} : { senalesCola: senales.get(r.cierreId) ?? SIN_SENALES_COLA };
       return r.estado === "aprobado"
         ? {
             ...r,
+            ...conSenales,
             bloqueoMensajero,
             reprogramadasRetenidasHoy,
             pendientePagoMensajero: derivarPendienteCierre({
@@ -1325,7 +1360,7 @@ export class CierresAdminService implements ICierresAdminService {
               pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
             }),
           }
-        : { ...r, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
+        : { ...r, ...conSenales, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
     });
   }
 

@@ -58,6 +58,11 @@ export type FiltroGestiones = typeof FILTRO_TODAS | CierreResultado | typeof FIL
 export interface ItemGestion {
   gestion: CierreDetalleGestion;
   mensajeroNombre?: string;
+  /**
+   * SLT-104 (PA3, R120): en bodega, el `solicitadoAt` del cierre del día de ESTA gestión (nota de R97).
+   * Ausente = el `congeladoAt` de la lista; `null` = sin fecha.
+   */
+  congeladoAt?: string | null;
 }
 
 /** «Todas» = por resultado (S3-5) y, dentro de cada uno, el orden del servidor. */

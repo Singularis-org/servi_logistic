@@ -224,6 +224,7 @@ model Usuario {
   devolucionesTiendaComoTienda        DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteTienda")
   devolucionesTiendaSubidas           DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteSubidoPor")
   bugReports                          BugReport[] // SLT-87: reportes de problema que ESTA persona envió; CASCADE (la tabla es de plataforma y no bloquea el borrado)
+  bugReportUploadQuotas               BugReportUploadQuota[] // SLT-98: su conteo diario de permisos de subida de imágenes (tope diario); CASCADE, es un contador y no historia
 
   organizacionId String? @default(dbgenerated()) @map("organizacion_id") // SL-17/R2/R3: NULL = superadmin
   organizacion   Organizacion? @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -6577,11 +6578,97 @@ model BugReport {
   updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at")
   /// Borrado lógico (R19). En SLT-87 nada lo escribe.
   deletedAt      DateTime?    @map("deleted_at")
+  /// SLT-97 (design §2.1; R16): nace «Nuevo»; el trigger `bug_report_status_solo_adelante`
+  /// (20261111120000) solo lo deja avanzar.
+  status         BugReportStatus @default(new)
 
-  organization Organizacion @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  reporter     Usuario      @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization  Organizacion            @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  reporter      Usuario                 @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  statusChanges BugReportStatusChange[] // SLT-97: su historial de cambios de estado; CASCADE
+  images        BugReportImage[]        // SLT-98: sus imágenes, por `position`; CASCADE
 
   @@index([createdAt(sort: Desc), id])
   @@index([organizationId, createdAt(sort: Desc)])
+  // SLT-97 (design §2.1): el filtro por estado del listado del superadmin.
+  @@index([status, createdAt(sort: Desc), id])
   @@map("bug_report")
+}
+
+// SLT-97 (design §2.1) — el estado de un reporte de problema. Solo avanza: new → in_review → resolved o
+// dismissed, o new → resolved o dismissed (trigger `bug_report_status_solo_adelante`, SL097).
+enum BugReportStatus {
+  new
+  in_review
+  resolved
+  dismissed
+
+  @@map("bug_report_status")
+}
+
+// SLT-97 (design §2.2-§2.4; R21, R23) — historial de cambios de estado de un reporte. De PLATAFORMA, como
+// `bug_report`: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261111120000, igual que los `CHECK` y el trigger de inmutabilidad (SL097). Sin `updated_at` ni
+// `deleted_at` a propósito: la fila no se cambia ni se borra, salvo en cascada con su reporte.
+// `actorUserId` es opaco y sin FK, como en `plan_rastro` y `vehiculo_rastro`: la autoría sobrevive a la
+// cuenta. La escribe solo `lib/repositories/BugReportRepository.ts`, en `comoPlataforma`.
+model BugReportStatusChange {
+  id          String          @id @default(uuid())
+  bugReportId String          @map("bug_report_id")
+  fromStatus  BugReportStatus @map("from_status")
+  toStatus    BugReportStatus @map("to_status")
+  /// `null` = sin nota; si hay, 1-500 tras recortar (`NOTA_MAX`, `lib/types/reporte-bug.ts`).
+  note        String?
+  actorUserId String          @map("actor_user_id")
+  /// Nombre del superadmin en el momento del cambio.
+  actorName   String          @map("actor_name") @db.VarChar(120)
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  bugReport BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([bugReportId, createdAt(sort: Desc), id])
+  @@map("bug_report_status_change")
+}
+
+// SLT-98 (design §2.1-§2.3; R13, R18, R19) — las imágenes de un reporte de problema, una fila por imagen.
+// De PLATAFORMA, como `bug_report`: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en
+// el SQL de 20261112120000, igual que los `CHECK` (position 1-5, los tres tipos, 1 B-5 MB, la forma de la
+// ruta). Sin `organization_id`: la empresa es la del reporte padre. Sin `updated_at` ni `deleted_at` a
+// propósito: muere con su reporte. La escribe solo `lib/repositories/BugReportRepository.ts`, en
+// `comoPlataforma`.
+model BugReportImage {
+  /// El `imagenId` (uuid) que dio el servidor al preparar la subida; también es el nombre del archivo.
+  id          String   @id
+  bugReportId String   @map("bug_report_id")
+  /// El orden en que se adjuntó, 1-5 (`IMAGENES_MAX`, `lib/config/reporte-bug.ts`).
+  position    Int      @db.SmallInt
+  /// `<usuario_id>/<imagen_id>.<ext>`, relativa a la carpeta de la empresa en el bucket.
+  storagePath String   @unique @map("storage_path") @db.VarChar(255)
+  contentType String   @map("content_type") @db.VarChar(20)
+  /// El tamaño medido por el servidor, 1-5242880 (`IMAGEN_BYTES_MAX`, `lib/config/reporte-bug.ts`).
+  sizeBytes   Int      @map("size_bytes")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  bugReport BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([bugReportId, position])
+  @@map("bug_report_image")
+}
+
+// SLT-98 (design §16.2; R24–R27, R31) — el tope diario de imágenes: cuántos permisos de subida se le dieron
+// a un usuario en un día. De PLATAFORMA: la RLS sin políticas, el `REVOKE ALL … FROM servi_app` y el
+// `CHECK (permits_granted >= 0)` viven solo en el SQL de 20261112120000. La PK compuesta es la que usa el
+// `ON CONFLICT` de `BugReportRepository.consumir`: es la atomicidad de R26. Sin `updated_at` a propósito.
+model BugReportUploadQuota {
+  userId         String   @map("user_id")
+  /// El día calendario en la zona horaria del país de la empresa (la fecha la calcula el servidor);
+  /// se escribe y se lee con `::date` sobre `YYYY-MM-DD`, nunca con un `Date` de JS.
+  day            DateTime @db.Date
+  /// Permisos concedidos ese día. Con el tope blando llega como mucho a 25 (20 + 5).
+  permitsGranted Int      @map("permits_granted")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user Usuario @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, day])
+  @@map("bug_report_upload_quota")
 }

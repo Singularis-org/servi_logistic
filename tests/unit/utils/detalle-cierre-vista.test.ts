@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   accionesDe,
+  cuentaConciliacion,
+  filasMensajeros,
+  gestionesDeBodega,
+  marcaConciliacion,
+  modoBodegaDe,
   avisosDe,
   cifrasDe,
   lineasDinero,
@@ -78,6 +83,7 @@ const BODEGA: DetalleBodegaVista = {
   solicitadoAt: "2026-11-08T01:05:00.000Z",
   conciliado: false,
   faltaPorRecibir: "96500.00",
+  montoRecibido: null,
   conciliadoAt: null,
   conciliadoPorNombre: null,
   totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
@@ -92,7 +98,7 @@ const BODEGA: DetalleBodegaVista = {
   totalesIngreso: { fleteConIva: "4520.00", comisionConIva: "1130.00", fleteDevolucionConIva: "2260.00", total: "7910.00" },
   partesPorTienda: [],
   modeloNuevo: false,
-  conteos: { gestiones: 31, mensajeros: 2, pagosAjustados: 2 },
+  conteos: { gestiones: 31, mensajeros: 2, cierres: 2, pagosAjustados: 2 },
 };
 
 const valores = (c: { label: string; valor: string | null }[]) => c.map((x) => [x.label, x.valor]);
@@ -488,7 +494,8 @@ describe("de los resultados del servidor a la vista (T0.2)", () => {
       paraLaCentral: "96500.00",
       efectivoCubreDescuentos: true,
     } as unknown as Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
-    expect(vistaBodegaDesdeAdmin(r).conteos).toEqual({ gestiones: 19, mensajeros: 2, pagosAjustados: 3 });
+    // SLT-104 (PA2, R121): 3 cierres del día de 2 mensajeros distintos: la cabecera cuenta 2, la pestaña 3.
+    expect(vistaBodegaDesdeAdmin(r).conteos).toEqual({ gestiones: 19, mensajeros: 2, cierres: 3, pagosAjustados: 3 });
     expect(vistaBodegaDesdeAdmin(r).folio).toBe("ABCDEF12");
   });
 });
@@ -581,5 +588,169 @@ describe("SLT-100 — vistaMensajeroDesdeAdmin pasa lo nuevo del servidor (R80, 
       entregado: [{ resultado: "entregado", ajustesPago: [], ingresoEmpresa: { tarifaModelo: "nuevo" } }],
     };
     expect(vista({ grupos }).desgloseIngresoBodega).toBeNull();
+  });
+});
+
+// ═══ SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (T2.2) ══════════════════
+// Lo que S6 añade a la lógica pura. Los importes son los del canvas («Central 8», `Main.dc.html`:
+// Ana 80.000,10 / 9.000,30 / 70.749,55; Beto 46.089,07 / 5.000,25 / 41.088,82) y todos los esperados
+// van escritos aquí a mano.
+
+type CierreDiaBodega = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>["cierres"][number];
+
+function gestionB(id: string, resultado: CierreDetalleGestion["resultado"]): CierreDetalleGestion {
+  return { gestionId: id, resultado, indemnizacion: null, ajustesPago: [], ingresoEmpresa: null } as unknown as CierreDetalleGestion;
+}
+
+const VACIOS = { entregado: [], reprogramado: [], novedad: [], devolucion_a_origen_por_rechazo: [], incidente: [] };
+
+const ANA = {
+  cierreDiaId: "cd-ana",
+  mensajeroId: "m-ana",
+  mensajeroNombre: "Ana Mensajera",
+  totales: { efectivo: "80000.10", simpe: "0.00", transferencia: "0.00", general: "80000.10" },
+  totalPagoMensajero: "9000.30",
+  paraLaCentral: "70749.55",
+  gestionesAjustadas: 2,
+  solicitadoAt: "2026-11-07T23:10:00.000Z",
+  grupos: {
+    ...VACIOS,
+    entregado: [gestionB("a-e1", "entregado"), gestionB("a-e2", "entregado")],
+    incidente: [gestionB("a-i1", "incidente")],
+  },
+} as unknown as CierreDiaBodega;
+
+const BETO = {
+  cierreDiaId: "cd-beto",
+  mensajeroId: "m-beto",
+  mensajeroNombre: "Beto Mensajero",
+  totales: { efectivo: "46089.07", simpe: "0.00", transferencia: "0.00", general: "46089.07" },
+  totalPagoMensajero: "5000.25",
+  paraLaCentral: "41088.82",
+  solicitadoAt: "2026-11-08T00:20:00.000Z",
+  grupos: {
+    ...VACIOS,
+    entregado: [gestionB("b-e1", "entregado")],
+    reprogramado: [gestionB("b-r1", "reprogramado")],
+  },
+} as unknown as CierreDiaBodega;
+
+describe("SLT-104 — modoBodegaDe (R111)", () => {
+  it("sin marca de recibido se decide; con marca (recibido o incompleto) es solo lectura", () => {
+    expect(modoBodegaDe({ conciliado: false })).toBe("decidir");
+    expect(modoBodegaDe({ conciliado: true })).toBe("solo lectura");
+  });
+});
+
+describe("SLT-104 — gestionesDeBodega (R41, R113, R120)", () => {
+  it("por resultado y, dentro, en el orden de `cierres[]` y de sus gestiones, cada una con su mensajero", () => {
+    const items = gestionesDeBodega([ANA, BETO]);
+    expect(items.map((i) => [i.gestion.gestionId, i.mensajeroNombre])).toEqual([
+      ["a-e1", "Ana Mensajera"],
+      ["a-e2", "Ana Mensajera"],
+      ["b-e1", "Beto Mensajero"],
+      ["b-r1", "Beto Mensajero"],
+      ["a-i1", "Ana Mensajera"],
+    ]);
+  });
+
+  it("PA3: cada gestión lleva la fecha de SU cierre del día; sin ella, null (nunca la del cierre de bodega)", () => {
+    const sinFecha = { ...BETO, solicitadoAt: undefined } as CierreDiaBodega;
+    const items = gestionesDeBodega([ANA, sinFecha]);
+    expect(items.map((i) => [i.gestion.gestionId, i.congeladoAt])).toEqual([
+      ["a-e1", "2026-11-07T23:10:00.000Z"],
+      ["a-e2", "2026-11-07T23:10:00.000Z"],
+      ["b-e1", null],
+      ["b-r1", null],
+      ["a-i1", "2026-11-07T23:10:00.000Z"],
+    ]);
+  });
+});
+
+describe("SLT-104 — filasMensajeros (R42, R114, R115)", () => {
+  it("una fila por cierre del día, en el orden del servidor, con los strings tal cual y su enlace", () => {
+    expect(filasMensajeros([ANA, BETO])).toEqual([
+      {
+        cierreDiaId: "cd-ana",
+        mensajero: "Ana Mensajera",
+        gestiones: 3,
+        recaudado: "80000.10",
+        pago: "9000.30",
+        aLaCentral: "70749.55",
+        senal: "2 pagos ajustados",
+        href: "/cierres-admin?cierre=cd-ana",
+      },
+      {
+        cierreDiaId: "cd-beto",
+        mensajero: "Beto Mensajero",
+        gestiones: 2,
+        recaudado: "46089.07",
+        pago: "5000.25",
+        aLaCentral: "41088.82",
+        senal: "—",
+        href: "/cierres-admin?cierre=cd-beto",
+      },
+    ]);
+  });
+
+  it("señal en singular con 1, «—» con 0 y sin el campo; el orden lo pone el servidor", () => {
+    const filas = filasMensajeros([
+      { ...BETO, gestionesAjustadas: 0 } as CierreDiaBodega,
+      { ...ANA, gestionesAjustadas: 1 } as CierreDiaBodega,
+    ]);
+    expect(filas.map((f) => [f.mensajero, f.senal])).toEqual([
+      ["Beto Mensajero", "—"],
+      ["Ana Mensajera", "1 pago ajustado"],
+    ]);
+  });
+
+  it("A la central negativo sale con su signo, sin tocar", () => {
+    expect(filasMensajeros([{ ...BETO, paraLaCentral: "-1250.40" } as CierreDiaBodega])[0]?.aLaCentral).toBe("-1250.40");
+  });
+});
+
+describe("SLT-104 — cuentaConciliacion y marcaConciliacion (R43, R117)", () => {
+  it("sin marca: «Recibido» va sin importe (nunca \"0.00\") y lo que falta es lo declarado", () => {
+    expect(cuentaConciliacion(BODEGA)).toEqual({
+      titulo: "Conciliación",
+      lineas: [
+        { label: "Debe llegar a la central", monto: "96500.00", signo: "neutro", tipo: "partida" },
+        { label: "Recibido", monto: "", signo: "resta", tipo: "partida", sinImporte: true },
+        { label: "Falta por recibir", monto: "96500.00", signo: "neutro", tipo: "total" },
+      ],
+    });
+    expect(marcaConciliacion(BODEGA)).toBe("Marcó: Aún nadie");
+  });
+
+  it("con marca: los tres strings tal cual, también un faltante negativo (llegó de más)", () => {
+    const marcada: DetalleBodegaVista = {
+      ...BODEGA,
+      conciliado: true,
+      montoRecibido: "97000.25",
+      faltaPorRecibir: "-500.25",
+      conciliadoAt: "2026-11-08T15:12:00.000Z",
+      conciliadoPorNombre: "Carlos R.",
+    };
+    expect(cuentaConciliacion(marcada).lineas).toEqual([
+      { label: "Debe llegar a la central", monto: "96500.00", signo: "neutro", tipo: "partida" },
+      { label: "Recibido", monto: "97000.25", signo: "resta", tipo: "partida" },
+      { label: "Falta por recibir", monto: "-500.25", signo: "neutro", tipo: "total" },
+    ]);
+    expect(marcaConciliacion(marcada)).toBe("Marcó: Carlos R. · 2026-11-08 09:12");
+  });
+});
+
+describe("SLT-104 — pestaña «Mensajeros (n)» cuenta filas (PA2, R121)", () => {
+  it("dos cierres del día del MISMO mensajero: dos filas, la cabecera sigue contando un mensajero", () => {
+    const r = {
+      status: "ok",
+      cierre: { ...BODEGA, cierreBodegaId: "11111111-2222-4333-8444-0000abcdef12", conciliado: false },
+      cierres: [ANA, { ...ANA, cierreDiaId: "cd-ana-2" }],
+      partesPorTienda: [],
+    } as unknown as Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
+    const vista = vistaBodegaDesdeAdmin(r);
+    expect(vista.conteos.mensajeros).toBe(1);
+    expect(vista.conteos.cierres).toBe(2);
+    expect(filasMensajeros(r.cierres)).toHaveLength(2);
   });
 });

@@ -41,6 +41,27 @@ export type ResultadoEdicion =
 export type ResultadoArchivar = { estado: "ok"; cambio: boolean } | { estado: "not_found" };
 
 /**
+ * SLT-99 (design §3) — la empresa del maestro, para «Mi plan». `hayPendiente` es de quien sea (P3); el actor
+ * del pendiente no sale de la base (SLT-86 R32).
+ */
+export interface EmpresaParaElMaestro {
+  planId: string | null;
+  planEsCustom: boolean;
+  tipoCobro: TipoCobro;
+  hayPendiente: boolean;
+}
+
+/** SLT-99 (R11–R15, R18): `vigenteDesde` es el corte (`AAAA-MM-DD`); `null` = pidió su plan activo (R15). */
+export type ResultadoCambioDelMaestro =
+  | { estado: "ok"; vigenteDesde: string | null }
+  | { estado: "sin_plan" }
+  | { estado: "no_disponible" }
+  | { estado: "tope_excedido"; excedidos: TopeExcedido[] };
+
+/** SLT-99 (R16, R18): `sin_plan` = la empresa no tiene plan y el pendiente es su primera asignación. */
+export type ResultadoCancelarDelMaestro = { estado: "ok" } | { estado: "sin_plan" } | { estado: "sin_cambio_programado" };
+
+/**
  * SLT-86 (R15, R25; review m4): un precio que puede regir a un plan desde `desde` (`null` = desde siempre).
  * `programado` = el precio de su cambio programado, que aún no está en el historial.
  */
@@ -381,4 +402,27 @@ export interface IPlanesRepository {
   preciosQueRigenDesde(planIds: readonly string[], desde: Date): Promise<PrecioDesdeLeido[]>;
   /** Solo públicos no archivados (R7; la lectura de SL-25). */
   publicos(): Promise<PlanDTO[]>;
+}
+
+/**
+ * SLT-99 (design §3) — lo que usa `MiPlanCambioService`: tres lecturas del catálogo y los tres métodos del
+ * maestro. Aparte de `IPlanesRepository` para que los dobles de `PlanesService`, que no los usan, no cambien
+ * (design §9, alternativa 5); `PlanesRepository` implementa las dos.
+ */
+export interface IPlanesDelMaestroRepository extends Pick<IPlanesRepository, "publicos" | "plan" | "preciosQueRigenDesde"> {
+  /** SLT-99 (design §3): la empresa del maestro, sin cerrojo. `null` si no existe. */
+  empresaParaElMaestro(organizacionId: string): Promise<EmpresaParaElMaestro | null>;
+  /**
+   * SLT-99 (design §3; R10–R15, R18): el maestro pide `planId` para su empresa. Bajo el cerrojo de la empresa:
+   * el corte con el tipo vigente, la regla de plan disponible, el mismo plan (cancela el pendiente), los topes
+   * por rol y API keys (rechaza sin escribir) y, si pasa, el pendiente de SLT-86 con el maestro como actor.
+   */
+  cambiarPlanPorLaEmpresa(
+    organizacionId: string,
+    planId: string,
+    actorUsuarioId: string,
+    ahora: Date,
+  ): Promise<ResultadoCambioDelMaestro>;
+  /** SLT-99 (R16): cancela el pendiente de la empresa, sea de quien sea (P3), con el maestro como actor. */
+  cancelarCambioPorLaEmpresa(organizacionId: string, actorUsuarioId: string): Promise<ResultadoCancelarDelMaestro>;
 }

@@ -64,7 +64,7 @@ import {
   verCierreBodegaDetalle,
 } from "@/lib/actions/cierre-bodega";
 import { CierresBodegaAdminModule } from "@/app/(app)/cierres-admin/_components/CierresBodegaAdminModule";
-import { CierreFacturaDetalle } from "@/app/(app)/cierres-admin/_components/cierre-factura";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
 import { marcaSinConciliar } from "@/tests/fixtures/marca-conciliacion";
 
@@ -251,41 +251,54 @@ async function abrirDetalle(gruposAna?: CierreGrupos) {
       <CierresBodegaAdminModule
         pendientes={paginaInicial([CABECERA])}
         historico={paginaInicial([])}
+        // Quien abre este detalle es la central (acceso total): ve el fulfillment (ficha 481).
+        audiencia="admin"
       />
     </SWRConfig>,
   );
 
   const user = userEvent.setup();
   await user.click(
-    await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+    await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
   );
-  await screen.findByRole("region", { name: "Órdenes del cierre · Ana Mensajera" });
+  const dialogo = await screen.findByRole("dialog", { name: /^Detalle del cierre de bodega · / });
+  // SLT-104: las gestiones viven en la pestaña «Gestiones» del detalle único.
+  await user.click(within(dialogo).getByRole("tab", { name: /^Gestiones \(/ }));
   return user;
 }
 
-const gestionesDe = (mensajero: string) =>
-  screen.getByRole("region", { name: `Órdenes del cierre · ${mensajero}` });
+/** SLT-104 (R41, R113): UNA lista con las gestiones de todos los cierres del día. */
+const lista = () => screen.getByRole("region", { name: "Órdenes del cierre" });
 
-/** Las pestañas de un mensajero, como se leen: rótulo + conteo pegados. */
-function pestanas(mensajero: string): string[] {
-  return within(gestionesDe(mensajero))
-    .getAllByRole("tab")
-    .map((t) => t.textContent ?? "");
+const FILTRO = /^(Todas|Entregado|Reprogramado|Novedad|Devolución a origen por rechazo|Incidente|Con señales) \d+$/;
+
+/** Los filtros por resultado, como se leen: rótulo y conteo. */
+function filtros(): string[] {
+  return within(screen.getByRole("dialog"))
+    .getAllByRole("button")
+    .map((b) => b.textContent ?? "")
+    .filter((t) => FILTRO.test(t));
 }
 
-function pestanaActiva(mensajero: string): string {
-  const activa = within(gestionesDe(mensajero))
-    .getAllByRole("tab")
-    .find((t) => t.getAttribute("aria-selected") === "true");
-  return activa?.textContent ?? "";
+async function filtrar(user: ReturnType<typeof userEvent.setup>, rotulo: string) {
+  const boton = within(screen.getByRole("dialog"))
+    .getAllByRole("button")
+    .find((b) => FILTRO.test(b.textContent ?? "") && (b.textContent ?? "").startsWith(`${rotulo} `));
+  if (!boton) throw new Error(`sin filtro «${rotulo}»`);
+  await user.click(boton);
 }
 
-async function irA(user: ReturnType<typeof userEvent.setup>, mensajero: string, rotulo: string) {
-  const tab = within(gestionesDe(mensajero))
-    .getAllByRole("tab")
-    .find((t) => (t.textContent ?? "").startsWith(rotulo));
-  if (!tab) throw new Error(`sin pestaña «${rotulo}» en ${mensajero}`);
-  await user.click(tab);
+/** Las celdas de una fila (guía, destinatario · tienda, mensajero, resultado, importes, señales). */
+function celdasDe(fila: Element): string[] {
+  return [...fila.firstElementChild!.children].map((c) => c.textContent ?? "");
+}
+
+/** [guía, mensajero] de cada fila visible, en orden. */
+function filas(): string[][] {
+  return [...lista().querySelectorAll("[data-gestion]")].map((f) => {
+    const c = celdasDe(f);
+    return [c[0]!, c[2]!];
+  });
 }
 
 /** Despliega la fila por su botón y devuelve el contenedor completo de la fila. */
@@ -297,27 +310,38 @@ async function desplegar(
   const boton = within(ambito).getByRole("button", { name: nombreBoton });
   await user.click(boton);
   expect(boton).toHaveAttribute("aria-expanded", "true");
-  return boton.parentElement as HTMLElement;
+  return boton.closest("[data-gestion]") as HTMLElement;
 }
 
 const BOTON_ENTREGA = "Desglose de ingreso de la orden REM-E1 · Carla Entregada";
 const BOTON_RECHAZO = "Desglose de ingreso de la orden REM-D1 · Diana Devuelta";
 
+/** Las tarjetas de la fila desplegada: [nombre accesible, texto], para comparar dos pantallas. */
+function tarjetas(fila: HTMLElement): string[][] {
+  return [...fila.querySelectorAll("section[aria-label]")].map((s) => [
+    s.getAttribute("aria-label") ?? "",
+    s.textContent ?? "",
+  ]);
+}
+
 /**
- * Lo que la fila desplegada de la ENTREGA tiene que decir, en literal. Lo usan R6 y R9: el
- * mismo texto en el detalle de bodega y en el comprobante del cierre de mensajero.
+ * Lo que la fila desplegada de la ENTREGA tiene que decir, en literal (importes del fixture pasados
+ * por `money()` a mano). SLT-104: ya no es el texto de la fila de la 478 sino el de la fila única de
+ * SLT-101 en «solo lectura» (R31, R113; canvas `FilaSoloLectura.dc.html`): tarjetas en cascada en
+ * lugar de «Flete + IVA: …» y sin la línea de ubicación (PA6 de SLT-101: solo datos de la orden).
  */
 const TEXTOS_ENTREGA_DESPLEGADA = [
+  "REM-E1",
+  "Caja mediana",
   "Calle Sol 12",
-  "GAM · San José · Central · Carmen",
-  "Recibido: ₡8.000,50 · Efectivo ₡5.000,25 + SINPE ₡3.000,25",
-  "Tienda: Tienda Norte",
-  "Flete + IVA: ₡2.260",
-  "Comisión + IVA: ₡800",
-  "Pago al mensajero: ₡1.200,40",
-  "Fulfillment: ₡350,50",
-  "Desglose de ingreso",
-  "Cobros de esta gestión",
+  "Efectivo₡5.000,25",
+  "+ SINPE₡3.000,25",
+  "Recibió₡8.000,50",
+  "Flete por entregado + IVA₡2.260",
+  "+ Comisión COD + IVA₡800",
+  "Se le cobra₡3.060",
+  "Se le paga₡1.200,40",
+  "Fulfillment₡350,50",
 ];
 
 afterEach(() => {
@@ -325,147 +349,127 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("478 · gestiones en pestañas, por mensajero (R1-R5)", () => {
-  it("R1: pinta las cinco pestañas con su conteo dentro del bloque de cada mensajero", async () => {
+// SLT-104 «Detalle de cierre de bodega en el detalle único (central)»: las cinco pestañas por
+// mensajero de la 478 pasan a ser los filtros por resultado, con su conteo, de UNA lista con la
+// columna Mensajero (R41, R113). Lo que vigilaban se sigue vigilando sobre esa lista.
+describe("478 · gestiones por resultado, con su mensajero (R1-R5 → SLT-104 R41, R113)", () => {
+  it("R1: los filtros por resultado llevan el conteo de TODOS los cierres del día", async () => {
     await abrirDetalle();
-    expect(pestanas("Ana Mensajera")).toEqual([
-      "Entregado1",
-      "Reprogramado1",
-      "Novedad1",
-      "Devolución a origen por rechazo1",
-      "Incidente1",
-    ]);
-    expect(pestanas("Beto Mensajero")).toEqual([
-      "Entregado2",
-      "Reprogramado0",
-      "Novedad0",
-      "Devolución a origen por rechazo0",
-      "Incidente0",
+    expect(filtros()).toEqual([
+      "Todas 7",
+      "Entregado 3",
+      "Reprogramado 1",
+      "Novedad 1",
+      "Devolución a origen por rechazo 1",
+      "Incidente 1",
+      // Vuelven a bodega la reprogramada, la novedad y la devolución; el incidente lleva su causa.
+      "Con señales 4",
     ]);
   });
 
-  it("R2: abre en la primera pestaña con gestiones", async () => {
-    // Ana SIN entregas ni reprogramadas: la primera con gestiones es «Novedad».
-    await abrirDetalle(
-      grupos478({ novedad: [NOVEDAD], incidente: [INCIDENTE] }),
-    );
-    expect(pestanaActiva("Ana Mensajera")).toBe("Novedad1");
-    expect(pestanaActiva("Beto Mensajero")).toBe("Entregado2");
-  });
-
-  it("R3: una pestaña vacía muestra el texto de sección vacía del resultado", async () => {
-    const user = await abrirDetalle();
-    await irA(user, "Beto Mensajero", "Novedad");
-    expect(
-      within(gestionesDe("Beto Mensajero")).getByText(
-        "No hay gestiones con resultado «Novedad».",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("R4: cambiar de pestaña en un mensajero no cambia la del otro", async () => {
-    const user = await abrirDetalle();
-    await irA(user, "Ana Mensajera", "Reprogramado");
-    expect(pestanaActiva("Ana Mensajera")).toBe("Reprogramado1");
-    expect(pestanaActiva("Beto Mensajero")).toBe("Entregado2");
-    expect(
-      within(gestionesDe("Beto Mensajero")).getByRole("button", {
-        name: "Detalle de la orden REM-B1 · Bea Sin Foto",
-      }),
-    ).toBeInTheDocument();
-  });
-
-  it("R5: la fila compacta enseña guía, destinatario, remisión·producto, cobrado e ingreso total", async () => {
+  it("R2: abre en «Todas», por resultado y, dentro, en el orden de los cierres del día, cada una con su mensajero", async () => {
     await abrirDetalle();
-    const boton = within(gestionesDe("Ana Mensajera")).getByRole("button", {
-      name: BOTON_ENTREGA,
-    });
-    expect(boton).toHaveTextContent("5001");
-    expect(boton).toHaveTextContent("Carla Entregada");
-    expect(boton).toHaveTextContent("REM-E1 · Caja mediana");
-    expect(boton).toHaveTextContent("₡8.000,50");
-    expect(boton).toHaveTextContent("₡3.060");
-    // La cabecera de columnas es la de la vista de admin.
-    const region = gestionesDe("Ana Mensajera");
-    expect(region).toHaveTextContent("Cobrado");
-    expect(region).toHaveTextContent("Total de la empresa");
+    expect(filas()).toEqual([
+      ["5001", "Ana Mensajera"],
+      ["6001", "Beto Mensajero"],
+      ["6002", "Beto Mensajero"],
+      ["5002", "Ana Mensajera"],
+      ["5003", "Ana Mensajera"],
+      ["5004", "Ana Mensajera"],
+      ["5005", "Ana Mensajera"],
+    ]);
+  });
+
+  it("R3: un resultado sin gestiones muestra el texto de sección vacía del resultado", async () => {
+    const user = await abrirDetalle(grupos478({ entregado: [ENTREGA_478] }));
+    await filtrar(user, "Novedad");
+    expect(within(lista()).getByText("No hay gestiones con resultado «Novedad».")).toBeInTheDocument();
+  });
+
+  it("R4: filtrar un resultado deja las de los dos mensajeros y solo ese resultado", async () => {
+    const user = await abrirDetalle();
+    await filtrar(user, "Entregado");
+    expect(filas()).toEqual([
+      ["5001", "Ana Mensajera"],
+      ["6001", "Beto Mensajero"],
+      ["6002", "Beto Mensajero"],
+    ]);
+  });
+
+  it("R5: la fila compacta enseña guía, destinatario · tienda, mensajero, resultado, recibido, cobro y pago", async () => {
+    await abrirDetalle();
+    const fila = within(lista()).getByRole("button", { name: BOTON_ENTREGA }).closest("[data-gestion]")!;
+    expect(celdasDe(fila).slice(0, 7)).toEqual([
+      "5001",
+      "Carla Entregada · Tienda Norte",
+      "Ana Mensajera",
+      "Entregado",
+      "₡8.000,50",
+      "₡3.060",
+      "₡1.200,40",
+    ]);
+    expect(lista()).toHaveTextContent("Mensajero");
+    expect(lista()).toHaveTextContent("Cobro a la tienda");
   });
 });
 
 describe("478 · lo que enseña la fila desplegada (R6-R9)", () => {
-  it("R6: al desplegar una entregada enseña dirección, ubicación, recibido con método, tienda, flete+IVA, comisión+IVA y pago al mensajero", async () => {
+  it("R6: al desplegar una entregada enseña la orden, lo recibido por método, el cobro, el pago y el fulfillment", async () => {
     const user = await abrirDetalle();
-    const fila = await desplegar(user, gestionesDe("Ana Mensajera"), BOTON_ENTREGA);
+    const fila = await desplegar(user, lista(), BOTON_ENTREGA);
     for (const texto of TEXTOS_ENTREGA_DESPLEGADA) {
       expect(fila, `falta «${texto}»`).toHaveTextContent(texto);
     }
   });
 
-  it("R6: al desplegar una reprogramada enseña la nueva fecha", async () => {
+  it("R6: una reprogramada se lee como tal en su fila", async () => {
     const user = await abrirDetalle();
-    await irA(user, "Ana Mensajera", "Reprogramado");
-    const fila = await desplegar(
-      user,
-      gestionesDe("Ana Mensajera"),
-      "Detalle de la orden REM-R1 · Raúl Reprogramado",
-    );
-    expect(fila).toHaveTextContent("Nueva fecha: 2026-09-03");
+    await filtrar(user, "Reprogramado");
+    expect(filas()).toEqual([["5002", "Ana Mensajera"]]);
+    expect(within(lista()).getByText("Raúl Reprogramado")).toBeInTheDocument();
   });
 
-  it("R7: al desplegar una devolución por rechazo enseña ingreso de bodega y la marca automático/manual", async () => {
+  it("R7: una devolución por rechazo enseña el flete por devolución, su pago y la marca de rechazo automático", async () => {
     const user = await abrirDetalle();
-    await irA(user, "Ana Mensajera", "Devolución a origen por rechazo");
-    const fila = await desplegar(user, gestionesDe("Ana Mensajera"), BOTON_RECHAZO);
-    expect(fila).toHaveTextContent("Ingreso de bodega por devoluciones a origen: ₡250,25");
-    expect(fila).toHaveTextContent("Flete por devolución a origen + IVA: ₡1.356");
-    expect(within(fila).getByText("Automático")).toBeInTheDocument();
-    expect(within(fila).queryByText("Manual")).not.toBeInTheDocument();
+    await filtrar(user, "Devolución a origen por rechazo");
+    const fila = await desplegar(user, lista(), BOTON_RECHAZO);
+    expect(fila).toHaveTextContent("Flete por devolución a origen + IVA₡1.356");
+    expect(fila).toHaveTextContent("Se le paga₡600,10");
+    expect(fila).toHaveTextContent("Rechazo automático");
+    expect(fila).not.toHaveTextContent("Manual");
   });
 
-  it("R8: al desplegar una gestión con snapshot enseña Desglose de ingreso y Cobros de esta gestión", async () => {
+  it("R8: al desplegar una gestión con snapshot enseña de qué se compone el cobro a la tienda", async () => {
     const user = await abrirDetalle();
-    const fila = await desplegar(user, gestionesDe("Ana Mensajera"), BOTON_ENTREGA);
-    expect(fila).toHaveTextContent("Desglose de ingreso");
-    expect(fila).toHaveTextContent("Cobros de esta gestión");
+    const fila = await desplegar(user, lista(), BOTON_ENTREGA);
+    expect(
+      within(fila).getByRole("region", { name: "Se le cobra a la tienda de la orden REM-E1 · Carla Entregada" }),
+    ).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: "Ver cómo se calculó" })).toBeInTheDocument();
   });
 
-  it("R9: la misma gestión, desplegada en el detalle de bodega y en el comprobante de mensajero, enseña el mismo texto", async () => {
+  it("R9: la misma gestión enseña las mismas tarjetas en el detalle de bodega y en el del cierre de mensajero", async () => {
     // (1) Detalle de bodega.
     const user = await abrirDetalle();
-    const enBodega = await desplegar(user, gestionesDe("Ana Mensajera"), BOTON_ENTREGA);
-    for (const texto of TEXTOS_ENTREGA_DESPLEGADA) {
-      expect(enBodega, `bodega: falta «${texto}»`).toHaveTextContent(texto);
-    }
+    const enBodega = tarjetas(await desplegar(user, lista(), BOTON_ENTREGA));
+    expect(enBodega).toHaveLength(4);
     cleanup();
 
-    // (2) Comprobante del cierre de mensajero con la MISMA gestión: el mismo literal.
+    // (2) La lista del detalle del cierre de mensajero, como la monta la central (`CierresAdminModule`).
     render(
-      <CierreFacturaDetalle
-        cierre={{
-          cierreId: "c4780001",
-          estado: "solicitado",
-          destinoTipo: "bodega_central",
-          destinoZonaNombre: "GAM",
-          mensajeroNombre: "Ana Mensajera",
-          totales: { efectivo: "5000.25", simpe: "3000.25", transferencia: "0.00", general: "8000.50" },
-          totalPagoMensajero: "1200.40",
-          totalIngresoBodegaRechazos: "0.00",
-          solicitadoAt: "2026-09-01T10:00:00.000Z",
-          resueltoAt: null,
-          motivoRechazo: null,
-        }}
-        grupos={grupos478({ entregado: [ENTREGA_478] })}
+      <GestionesCierre
+        gestiones={[{ gestion: ENTREGA_478 }]}
+        audiencia="central"
+        quienMiraEsCentral
+        congeladoAt={null}
+        acciones={{}}
       />,
     );
     const user2 = userEvent.setup();
-    const enComprobante = await desplegar(
-      user2,
-      screen.getByRole("region", { name: "Órdenes del cierre" }),
-      BOTON_ENTREGA,
+    const enMensajero = tarjetas(
+      await desplegar(user2, screen.getByRole("region", { name: "Órdenes del cierre" }), BOTON_ENTREGA),
     );
-    for (const texto of TEXTOS_ENTREGA_DESPLEGADA) {
-      expect(enComprobante, `comprobante: falta «${texto}»`).toHaveTextContent(texto);
-    }
+    expect(enMensajero).toEqual(enBodega);
   });
 });
 
@@ -478,11 +482,11 @@ describe("478 · evidencia (R10-R12)", () => {
     ["Incidente", "Detalle de la orden REM-I1 · Iván Incidente", INCIDENTE],
   ];
 
-  for (const [pestana, boton, g] of CASOS) {
-    it(`R10: ofrece Ver evidencia en una gestión «${pestana}» con evidencia`, async () => {
+  for (const [resultado, boton, g] of CASOS) {
+    it(`R10: ofrece Ver evidencia en una gestión «${resultado}» con evidencia`, async () => {
       const user = await abrirDetalle();
-      await irA(user, "Ana Mensajera", pestana);
-      const fila = await desplegar(user, gestionesDe("Ana Mensajera"), boton);
+      await filtrar(user, resultado);
+      const fila = await desplegar(user, lista(), boton);
       expect(
         within(fila).getByRole("button", {
           name: `Ver evidencia de la orden ${g.numRemision} · ${g.destinatario}`,
@@ -493,24 +497,19 @@ describe("478 · evidencia (R10-R12)", () => {
 
   it("R11: sin evidencia no hay botón Ver evidencia", async () => {
     const user = await abrirDetalle();
-    const region = gestionesDe("Beto Mensajero");
     for (const nombre of [
       "Detalle de la orden REM-B1 · Bea Sin Foto",
       "Detalle de la orden REM-B2 · Bruno Sin Foto",
     ]) {
-      const fila = await desplegar(user, region, nombre);
+      const fila = await desplegar(user, lista(), nombre);
       expect(within(fila).queryByRole("button", { name: /Ver evidencia/ })).toBeNull();
     }
   });
 
   it("R12: Ver evidencia abre el visor con la URL firmada de esa gestión", async () => {
     const user = await abrirDetalle();
-    await irA(user, "Ana Mensajera", "Novedad");
-    const fila = await desplegar(
-      user,
-      gestionesDe("Ana Mensajera"),
-      "Detalle de la orden REM-N1 · Nora Novedad",
-    );
+    await filtrar(user, "Novedad");
+    const fila = await desplegar(user, lista(), "Detalle de la orden REM-N1 · Nora Novedad");
     await user.click(
       within(fila).getByRole("button", {
         name: "Ver evidencia de la orden REM-N1 · Nora Novedad",
@@ -523,49 +522,33 @@ describe("478 · evidencia (R10-R12)", () => {
   });
 });
 
-describe("478 · solo lectura (R14-R15)", () => {
+describe("478 · solo lectura (R14-R15; SLT-104 R31)", () => {
   it("R14: sin Corregir métodos de pago ni Corregir el resultado, aunque la gestión sea una entregada con pagos", async () => {
     const user = await abrirDetalle();
-    const fila = await desplegar(user, gestionesDe("Ana Mensajera"), BOTON_ENTREGA);
+    const fila = await desplegar(user, lista(), BOTON_ENTREGA);
     expect(within(fila).queryByRole("button", { name: /Corregir métodos de pago/ })).toBeNull();
     expect(within(fila).queryByRole("button", { name: /Corregir el resultado/ })).toBeNull();
-    // Y en ninguna parte del modal.
+    // Y en ninguna parte del detalle.
     expect(screen.queryByText("Corregir métodos de pago")).toBeNull();
     expect(screen.queryByText("Corregir el resultado")).toBeNull();
   });
 
-  it("R15: ningún bloque de mensajero ofrece Aprobar ni Rechazar", async () => {
+  it("R15: el detalle de bodega no ofrece Aprobar ni Rechazar en ninguna parte", async () => {
     await abrirDetalle();
-    for (const mensajero of ["Ana Mensajera", "Beto Mensajero"]) {
-      const bloque = screen.getByRole("region", { name: `Cierre del día · ${mensajero}` });
-      expect(within(bloque).queryByRole("button", { name: /Aprobar|Rechazar/ })).toBeNull();
-    }
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: /Aprobar|Rechazar/ })).toBeNull();
   });
 });
 
-describe("478 · accesibilidad (R17)", () => {
-  it("cada bloque tiene una región de gestiones con el nombre de su mensajero, y no se repite", async () => {
+// SLT-104: la 478 daba a cada mensajero su región «Órdenes del cierre · <X>» porque el modal montaba N
+// listas. El detalle único monta UNA (R41, R113) y el mensajero va en su columna.
+describe("478 · accesibilidad (R17 → SLT-104 R41, R113)", () => {
+  it("una sola región de gestiones en el detalle, con nombre, y el mensajero en cada fila", async () => {
     await abrirDetalle();
-    const ana = gestionesDe("Ana Mensajera");
-    const beto = gestionesDe("Beto Mensajero");
-    expect(ana).not.toBe(beto);
-    // Cada una dentro de SU bloque.
-    expect(
-      within(screen.getByRole("region", { name: "Cierre del día · Ana Mensajera" })).getByRole(
-        "region",
-        { name: "Órdenes del cierre · Ana Mensajera" },
-      ),
-    ).toBe(ana);
     const nombres = screen
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label") ?? "")
       .filter((n) => n.startsWith("Órdenes del cierre"));
-    expect(nombres).toEqual([
-      "Órdenes del cierre · Ana Mensajera",
-      "Órdenes del cierre · Beto Mensajero",
-    ]);
-    // Y la sección activa interna también lleva el mensajero (no N «Entregado» iguales).
-    expect(within(ana).getByRole("region", { name: "Entregado · Ana Mensajera" })).toBeInTheDocument();
-    expect(within(beto).getByRole("region", { name: "Entregado · Beto Mensajero" })).toBeInTheDocument();
+    expect(nombres).toEqual(["Órdenes del cierre"]);
+    expect(new Set(filas().map(([, m]) => m))).toEqual(new Set(["Ana Mensajera", "Beto Mensajero"]));
   });
 });

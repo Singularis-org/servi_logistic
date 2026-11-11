@@ -238,6 +238,13 @@ function buildDobles(opciones: {
     listarPorReparto: vi.fn(async () => []),
     // Feature 205 (T3.1): la tercera lectura del reparto (el CONTEO por estado de R36).
     contarCierresNoAprobadosPorEstado: vi.fn(async () => []),
+    // SLT-122: las lecturas CON alcance del registro. Anular no las usa (R8: anular no cambia de
+    // alcance); si las usara, el log lo diria.
+    obtenerCierreParaPagoEnAlcance: vi.fn(async () => {
+      log.push("leer:cierre:en-alcance");
+      return null;
+    }),
+    listarCierresImputablesEnAlcance: vi.fn(async () => []),
   };
 
   /**
@@ -1309,6 +1316,16 @@ describe("R24-R27 [173] — la caja al anular: la TIENDA recupera su dinero, el 
       expect(espia, `cierreDia.${metodo} fue llamado`).not.toHaveBeenCalled();
     }
     expect(d.pagoRepo.obtenerCierreParaPago).toHaveBeenCalledTimes(1);
+  });
+
+  it("SLT-122 (R8): anular un pago a mensajero lee el cierre SIN alcance — la central deshace lo que ya pago", async () => {
+    const d = buildDobles({ pago: pagoAMensajero(), pagadoVigente: "15000.00" });
+
+    const r = await d.service.anularPago(anular(), ACTOR_ADMIN);
+
+    expect(r.status).toBe("ok");
+    expect(d.pagoRepo.obtenerCierreParaPagoEnAlcance).not.toHaveBeenCalled();
+    expect(d.log).not.toContain("leer:cierre:en-alcance");
   });
 });
 

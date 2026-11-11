@@ -26,6 +26,9 @@ const OPERADOR: Record<LineaCuenta["signo"], string> = {
   resta: "− ",
 };
 
+/** SLT-104 (R43): lo que pinta una línea con `sinImporte`. */
+const SIN_IMPORTE = "—";
+
 export interface CuentaProps {
   titulo: string;
   lineas: readonly LineaCuenta[];
@@ -61,12 +64,14 @@ export function Cuenta({
   subtitulo,
   pie,
 }: Readonly<CuentaProps>) {
-  const titular = <h3 className="text-sm font-semibold">{titulo}</h3>;
+  // SLT-104: 15 px, como todos los títulos de cuenta del canvas (`Main.dc.html`, `Fila2.dc.html`).
+  const titular = <h3 className="text-[15px] font-semibold">{titulo}</h3>;
   return (
     <section
       aria-label={ariaLabel ?? titulo}
       className={cn(
-        "flex flex-col gap-2.5 rounded-xl border border-border bg-card p-4",
+        // SLT-104: 16 px arriba y abajo, 18 px a los lados, como todas las tarjetas del canvas (`Main.dc.html`, `Fila2.dc.html`).
+        "flex flex-col gap-2.5 rounded-xl border border-border bg-card px-[18px] py-4",
         tono === "aviso" && "border-warning",
         tono === "aparte" && "border-dashed bg-muted/40",
         className,
@@ -90,6 +95,7 @@ export function Cuenta({
               key={`${l.label}-${i}`}
               data-signo={l.signo}
               data-tipo={l.tipo}
+              data-sin-importe={l.sinImporte ? "" : undefined}
               className={cn(
                 "flex items-start justify-between gap-3",
                 l.signo === "resta" && "text-muted-foreground",
@@ -112,7 +118,8 @@ export function Cuenta({
                   l.tipo === "total" && esMontoNegativo(l.monto) && "text-danger-strong",
                 )}
               >
-                {money(l.monto)}
+                {/* SLT-104 (R43): una línea sin importe dice «—», nunca `money("")` ni ₡0. */}
+                {l.sinImporte ? SIN_IMPORTE : money(l.monto)}
               </span>
             </div>
           ))}

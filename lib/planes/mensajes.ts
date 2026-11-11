@@ -62,6 +62,41 @@ export function mensajeTopesPasados(topes: readonly TopePasado[]): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* SLT-99 (design §6; R13, R20, P4) — el maestro baja a un plan con menos topes  */
+/* -------------------------------------------------------------------------- */
+// Lo usan el rechazo del servicio (`mensaje` de `tope_excedido`) y el aviso previo del detalle del plan, así que
+// los dos dicen lo mismo. Nombres propios, no `ROL_LABELS`: el texto los lleva en singular y plural.
+
+/** Cómo se nombra cada tope en «sobra(n) N {rol}». */
+export const NOMBRES_DEL_TOPE: Readonly<Record<"api_keys" | RolConTope, { singular: string; plural: string }>> = {
+  admin: { singular: "administrador", plural: "administradores" },
+  mensajero: { singular: "mensajero", plural: "mensajeros" },
+  adminTienda: { singular: "admin de tienda", plural: "admins de tienda" },
+  adminSatelite: { singular: "admin satélite", plural: "admins satélite" },
+  api_keys: { singular: "API key", plural: "API keys" },
+};
+
+/** Lo que el texto mira de un tope pasado. */
+export interface TopeQueSobra {
+  tope: "api_keys" | RolConTope;
+  usados: number;
+  maximo: number;
+}
+
+/** Una línea por tope pasado: «{plan} permite {máximo} y tienes {usados}: sobra 1 {rol}.» o «… sobran {n} {roles}.» */
+export function lineaTopeSobra(planNombre: string, t: TopeQueSobra): string {
+  const sobran = t.usados - t.maximo;
+  const nombre = NOMBRES_DEL_TOPE[t.tope];
+  const cola = sobran === 1 ? `sobra 1 ${nombre.singular}` : `sobran ${sobran} ${nombre.plural}`;
+  return `${planNombre} permite ${t.maximo} y tienes ${t.usados}: ${cola}.`;
+}
+
+/** R13, R20: «No puedes cambiar a {plan}:» y una línea por tope pasado. */
+export function mensajeTopesSobran(planNombre: string, topes: readonly TopeQueSobra[]): string {
+  return [`No puedes cambiar a ${planNombre}:`, ...topes.map((t) => lineaTopeSobra(planNombre, t))].join("\n");
+}
+
+/* -------------------------------------------------------------------------- */
 /* SLT-58 (design §6.5, §11.4) — primera asignación con fecha de inicio        */
 /* -------------------------------------------------------------------------- */
 // Textos aprobados (P13, P15). Los conteos llegan YA pintados (`formatearConteo` de

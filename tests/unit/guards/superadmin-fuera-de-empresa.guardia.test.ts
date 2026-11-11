@@ -103,11 +103,13 @@ const HREF_ITEM_PLATAFORMA = "/plataforma/empresas";
  */
 // SLT-58 R23: «Planes» entra como tercer ítem de plataforma, con la misma regla (identidad, sin subítems).
 // SL-42 R1: «Vehículos» entra como ítem de plataforma, con la misma regla (identidad, sin subítems).
+// SLT-97 R1, R2: «Reportes» entra como ítem de plataforma, con la misma regla (identidad, sin subítems).
 const HREFS_ITEMS_PLATAFORMA = new Set<string>([
   HREF_ITEM_PLATAFORMA,
   "/plataforma/geografia",
   "/plataforma/planes",
   "/plataforma/vehiculos",
+  "/plataforma/reportes",
 ]);
 
 /**

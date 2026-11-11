@@ -72,7 +72,9 @@ export interface CierresAdminHistoricoListaProps {
 const TITULO_DESCARGA = "Cierres del día resueltos";
 /** Nombre accesible del control (R43). Propio: la pantalla monta varios listados paginados. */
 export const PAGINACION_HISTORICO_LABEL = "Paginación del histórico de cierres del día";
-const ERROR_CARGA = "No se pudo cargar el histórico de cierres.";
+/** Textos de hoy del error y del vacío del histórico; SLT-102 los pasa a la cola única (R104). */
+export const ERROR_CARGA_HISTORICO = "No se pudo cargar el histórico de cierres.";
+export const VACIO_HISTORICO = "Aún no hay cierres resueltos.";
 
 // R40: el tamaño sale de la config del dominio (T H.1), nunca de un literal de pantalla, y
 // las opciones nunca superan el máximo que el borde acepta.
@@ -115,6 +117,10 @@ export function descargaHistoricoCierres(
   };
 }
 
+// SLT-102 «Cola de cierres única: mensajeros (central y satélite)»: `CierresAdminModule` ya no monta
+// este componente (lo sustituye `ColaCierres`); el archivo sigue alcanzable por sus otros exports
+// (`descargaHistoricoCierres`, `PAGINACION_HISTORICO_LABEL`), y por eso no lleva `@sin-superficie`:
+// la guardia `superficie-de-uso` decide por módulo. Lo retira SLT-115.
 export function CierresAdminHistoricoLista({
   pagina,
   page,
@@ -134,8 +140,8 @@ export function CierresAdminHistoricoLista({
         items={pagina.items}
         clave={(c) => c.cierreId}
         isLoading={isLoading}
-        error={hayError ? ERROR_CARGA : null}
-        emptyMessage="Aún no hay cierres resueltos."
+        error={hayError ? ERROR_CARGA_HISTORICO : null}
+        emptyMessage={VACIO_HISTORICO}
         render={(c) => (
           <CierreFacturaResumen
             cierre={c}

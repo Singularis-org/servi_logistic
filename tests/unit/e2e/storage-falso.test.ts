@@ -199,3 +199,138 @@ describe("doble de Storage del E2E (SL-44 D2)", () => {
     await expect(firmador.createSignedUrl(p, 60)).rejects.toThrow();
   }));
 });
+
+// SLT-98 design §10: la subida firmada que usa el panel de reporte de bugs. La URL la pide el
+// servidor (service role) y el navegador sube con un PUT sin `apikey`, desde otro origen.
+describe("doble de Storage: subida firmada y limites del bucket (SLT-98)", () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+  const ORIGEN = "http://127.0.0.1:3999";
+  let m = 0;
+  const nuevaRuta = (ext = "jpg") => `org-x/usuario-x/imagen-${++m}.${ext}`;
+  const codigo = (e: unknown) => (e as { statusCode?: string } | null)?.statusCode;
+
+  /** Crea el bucket si falta: los casos no dependen del orden. */
+  async function asegurarBucket(nombre: string) {
+    const { error } = await cliente.storage.createBucket(nombre, { public: false });
+    if (error && !/already exists/i.test(error.message)) throw error;
+  }
+
+  /** El PUT del navegador: solo el token de la URL, sin `apikey` ni `authorization`. */
+  async function putNavegador(url: string, bytes: Uint8Array, tipo: string) {
+    const r = await fetch(url, { method: "PUT", body: new Uint8Array(bytes), headers: { "content-type": tipo, origin: ORIGEN } });
+    return { status: r.status, cors: r.headers.get("access-control-allow-origin"), cuerpo: await r.json() };
+  }
+
+  it("createSignedUploadUrl + PUT del navegador sin apikey (y uploadToSignedUrl) + download devuelven los bytes", async () => {
+    const BUCKET_SUBIDAS = "subidas-firmadas";
+    await asegurarBucket(BUCKET_SUBIDAS);
+    const p = nuevaRuta();
+    const firma = await cliente.storage.from(BUCKET_SUBIDAS).createSignedUploadUrl(p);
+    expect(firma.error).toBeNull();
+    // Absoluta, como la de Storage real: el navegador la usa tal cual.
+    expect(firma.data?.signedUrl.startsWith(`${doble.url}/storage/v1/object/upload/sign/${BUCKET_SUBIDAS}/${p}?token=`)).toBe(true);
+
+    const put = await putNavegador(firma.data!.signedUrl, JPEG, "image/jpeg");
+    expect(put.status).toBe(200);
+    expect(put.cors).toBe("*");
+    expect(put.cuerpo).toEqual({ Key: `${BUCKET_SUBIDAS}/${p}` });
+    const bajado = await cliente.storage.from(BUCKET_SUBIDAS).download(p);
+    expect(new Uint8Array(await bajado.data!.arrayBuffer())).toEqual(JPEG);
+
+    // El mismo camino con el cliente real.
+    const q = nuevaRuta("png");
+    const otra = await cliente.storage.from(BUCKET_SUBIDAS).createSignedUploadUrl(q);
+    const subida = await cliente.storage.from(BUCKET_SUBIDAS).uploadToSignedUrl(q, otra.data!.token, PNG, { contentType: "image/png" });
+    expect(subida.error).toBeNull();
+    expect(subida.data?.path).toBe(q);
+    expect(new Uint8Array(await (await cliente.storage.from(BUCKET_SUBIDAS).download(q)).data!.arrayBuffer())).toEqual(PNG);
+  });
+
+  it("R9: un token de otra ruta no sube y sin upsert no pisa un objeto existente", async () => {
+    const BUCKET_R9 = "reportes-r9";
+    await asegurarBucket(BUCKET_R9);
+    const mia = nuevaRuta();
+    const ajena = nuevaRuta();
+    const firmaMia = await cliente.storage.from(BUCKET_R9).createSignedUploadUrl(mia);
+    const token = firmaMia.data!.token;
+
+    // El token de `mia` no sirve para `ajena`, ni con el cliente ni con el PUT del navegador.
+    const conCliente = await cliente.storage.from(BUCKET_R9).uploadToSignedUrl(ajena, token, PNG, { contentType: "image/png" });
+    expect(conCliente.data).toBeNull();
+    expect(conCliente.error).not.toBeNull();
+    const urlAjena = `${doble.url}/storage/v1/object/upload/sign/${BUCKET_R9}/${ajena}?token=${token}`;
+    expect((await putNavegador(urlAjena, PNG, "image/png")).status).toBe(400);
+    // Un token de LECTURA tampoco sube.
+    await cliente.storage.from(BUCKET_R9).upload(ajena + ".leida", JPEG, { contentType: "image/jpeg" });
+    const lectura = await cliente.storage.from(BUCKET_R9).createSignedUrl(ajena + ".leida", 60);
+    const tokenLectura = new URL(lectura.data!.signedUrl).searchParams.get("token");
+    const urlMiaConLectura = `${doble.url}/storage/v1/object/upload/sign/${BUCKET_R9}/${mia}?token=${tokenLectura}`;
+    expect((await putNavegador(urlMiaConLectura, PNG, "image/png")).status).toBe(400);
+    expect((await cliente.storage.from(BUCKET_R9).download(ajena)).error).not.toBeNull();
+
+    // Con su token sube; repetir el PUT o pedir otra URL sin upsert no pisa lo subido.
+    expect((await putNavegador(firmaMia.data!.signedUrl, JPEG, "image/jpeg")).status).toBe(200);
+    const repetido = await putNavegador(firmaMia.data!.signedUrl, PNG, "image/png");
+    expect(repetido.status).toBe(400);
+    expect(repetido.cuerpo.statusCode).toBe("409");
+    const otraFirma = await cliente.storage.from(BUCKET_R9).createSignedUploadUrl(mia);
+    expect(otraFirma.data).toBeNull();
+    expect(otraFirma.error?.message).toMatch(/already exists/i);
+    expect(codigo(otraFirma.error)).toBe("409");
+    const bajado = await cliente.storage.from(BUCKET_R9).download(mia);
+    expect(new Uint8Array(await bajado.data!.arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("R16: sin bucket, Bucket not found; con límites, 413 y 415", async () => {
+    const BUCKET_R16 = "bug-reports";
+    const sin = await cliente.storage.from(BUCKET_R16).createSignedUploadUrl(nuevaRuta("png"));
+    expect(sin.data).toBeNull();
+    // La forma que mira el adaptador para crear el bucket (design §3.3).
+    expect(sin.error?.message).toMatch(/bucket not found/i);
+    expect(codigo(sin.error)).toBe("404");
+
+    const creado = await cliente.storage.createBucket(BUCKET_R16, {
+      public: false,
+      fileSizeLimit: PNG.length,
+      allowedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
+    });
+    expect(creado.error).toBeNull();
+    expect(codigo((await cliente.storage.createBucket(BUCKET_R16, { public: false })).error)).toBe("409");
+
+    const subirCon = async (bytes: Uint8Array, tipo: string) => {
+      const ruta = nuevaRuta();
+      const firma = await cliente.storage.from(BUCKET_R16).createSignedUploadUrl(ruta);
+      expect(firma.error).toBeNull();
+      const r = await cliente.storage.from(BUCKET_R16).uploadToSignedUrl(ruta, firma.data!.token, bytes, { contentType: tipo });
+      return { ...r, ruta };
+    };
+
+    // Un byte de mas que el limite: 413, y no queda nada guardado.
+    const grande = await subirCon(new Uint8Array(PNG.length + 1), "image/png");
+    expect(codigo(grande.error)).toBe("413");
+    expect((await cliente.storage.from(BUCKET_R16).download(grande.ruta)).error).not.toBeNull();
+    // Un tipo fuera de la lista: 415. Tambien por el PUT del navegador, con CORS en el error.
+    const gif = await subirCon(new Uint8Array([0x47, 0x49, 0x46]), "image/gif");
+    expect(codigo(gif.error)).toBe("415");
+    const ruta = nuevaRuta();
+    const firma = await cliente.storage.from(BUCKET_R16).createSignedUploadUrl(ruta);
+    const put = await putNavegador(firma.data!.signedUrl, new Uint8Array([1]), "text/plain");
+    expect(put.status).toBe(400);
+    expect(put.cuerpo.statusCode).toBe("415");
+    expect(put.cors).toBe("*");
+    // Justo en el limite y con un tipo permitido, sube.
+    expect((await subirCon(PNG, "image/png")).error).toBeNull();
+  });
+
+  it("CORS: OPTIONS responde 204 con los metodos y encabezados del PUT del navegador", async () => {
+    const r = await fetch(`${doble.url}/storage/v1/object/upload/sign/bug-reports/x/y.png?token=t`, {
+      method: "OPTIONS",
+      headers: { origin: ORIGEN, "access-control-request-method": "PUT", "access-control-request-headers": "content-type" },
+    });
+    expect(r.status).toBe(204);
+    expect(r.headers.get("access-control-allow-origin")).toBe("*");
+    expect(r.headers.get("access-control-allow-methods")).toMatch(/\bPUT\b/);
+    expect(r.headers.get("access-control-allow-headers")).toMatch(/content-type/);
+    expect(r.headers.get("access-control-allow-headers")).toMatch(/x-upsert/);
+  });
+});

@@ -127,6 +127,12 @@ export interface CierreBodegaDetalleCierre {
   // SLT-56 (R20): gestiones de este cierre_dia con al menos un ajuste del pago. Opcional porque el
   // tipo lo comparte la consolidacion; solo lo rellena el detalle de admin del cierre de bodega.
   gestionesAjustadas?: number;
+  /**
+   * SLT-104 (PA3, R120): ISO del instante en que se solicito ESTE cierre_dia (no el cierre de
+   * bodega). Fecha «Tarifas tal como estaban al crear el cierre (…)» en la fila de bodega. Opcional
+   * por la misma razon que `gestionesAjustadas`: solo lo rellena el detalle de admin.
+   */
+  solicitadoAt?: string;
   grupos: CierreGrupos; // por resultado (reuso CierreDetalleGestion de la 37, R11)
   // Totales por concepto del ingreso de la empresa de ESTE cierre_dia (derivados del snapshot).
   totalesIngreso: TotalesIngresoEmpresa;

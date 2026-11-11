@@ -228,7 +228,8 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
    * **Excepcion declarada a R29 de la 170, la mas benigna de las dos de este archivo.** Igual
    * que arriba: transporte cumplido, materializacion no —`findColaCompleta` tampoco lleva cota,
    * y la cola entra entera antes de medirse—. La diferencia es el conjunto: estos son los
-   * cierres de bodega SIN resolver, y su tamaño lo marca el retraso del maestro en decidir, no
+   * cierres de bodega POR CONCILIAR (SLT-105: sin marca, mas los recibidos incompletos), y su
+   * tamaño lo marca el retraso del maestro en conciliar y lo que sigue faltando por recibir, no
    * los dias operados; el historico de arriba se queda con todo lo que esta cola va soltando.
    * Misma decision del 2026-08-05 y mismo motivo de coste: acotar en base pide el `count` extra
    * que R15 de esta feature prohibe (design §3.1).
@@ -337,6 +338,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         totalPagoMensajero: cd.resumen.totalPagoMensajero, // R20: snapshot por cierre_dia, sin recomputar
         totalIngresoBodegaRechazos: cd.resumen.totalIngresoBodegaRechazos, // feature 56/R19: snapshot por cierre_dia, sin recomputar
         gestionesAjustadas: cd.resumen.gestionesAjustadas, // SLT-56 (R20): marca «Con ajustes»
+        solicitadoAt: cd.resumen.solicitadoAt, // SLT-104 (PA3, R120): el de ESTE cierre_dia
         grupos,
         // Totales por concepto de ESTE cierre_dia, sumados desde el desglose por orden.
         totalesIngreso,

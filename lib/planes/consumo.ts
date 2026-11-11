@@ -123,6 +123,8 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
   const cobro = cobroDelPlan(leido.precioDelPeriodo, leido.tipoCobro, leido.entrada, ahora, leido.pendiente);
   return {
     nombre: vigente.nombre,
+    // SLT-99 (R8): la entrada ya leída para el tramo, en la fecha de la plataforma.
+    activoDesde: fechaCalendarioCR(leido.entrada),
     precioTexto: textoDelPrecio(vigente.precio),
     modulos: ORDEN_MODULOS.filter((m) => vigente.modulos.includes(m)).map((clave) => ({
       clave,

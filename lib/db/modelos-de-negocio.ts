@@ -185,6 +185,12 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "HistorialPlataforma", tabla: "historial_plataforma" },
   // Reportes de problema (SLT-87): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-87)
   { modelo: "BugReport", tabla: "bug_report" },
+  // Historial de estado de los reportes (SLT-97): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-97)
+  { modelo: "BugReportStatusChange", tabla: "bug_report_status_change" },
+  // Imágenes de los reportes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98)
+  { modelo: "BugReportImage", tabla: "bug_report_image" },
+  // Tope diario de imágenes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98, tope diario)
+  { modelo: "BugReportUploadQuota", tabla: "bug_report_upload_quota" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

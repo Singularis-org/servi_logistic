@@ -1,7 +1,18 @@
 import ExcelJS from "exceljs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import {
+  ajustarPagoMensajero,
+  aprobarCierre,
+  cierresDe,
+  filaDeCola,
+  filaDeMensajeros,
+  importe,
+  montoDeCuenta,
+  pestanaDeCola,
+  solicitarCierre,
+  solicitarCierreBodega,
+} from "./_escenarios/cierres";
 import { correrCron } from "./_escenarios/crons";
 import {
   crearEscenarioReparto,
@@ -80,10 +91,9 @@ const detalleDe = (page: Page, m: MensajeroE2E): Locator =>
 
 async function abrirPendiente(page: Page, m: MensajeroE2E, boton: string): Promise<Locator> {
   await page.goto("/cierres-admin");
-  const comprobante = page
-    .getByRole("region", { name: "Pendientes de decisión" })
-    .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
-  await comprobante.getByRole("button", { name: boton }).click();
+  // SLT-102: la fila de la cola única (antes, el comprobante del cierre).
+  const fila = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
+  await fila.getByRole("button", { name: boton }).click();
   const detalle = detalleDe(page, m);
   await expect(detalle).toBeVisible();
   return detalle;
@@ -200,10 +210,8 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     expect((await cierresDe(central.m)).map((c) => [c.id, c.estado])).toEqual([[central.cierreId, "aprobado"]]);
 
     // Reabierto: solo lectura, quién lo aprobó (R80) y la pestaña de pago (R18).
-    await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
-    await page
-      .getByRole("region", { name: "Histórico" })
-      .getByRole("region", { name: `Comprobante del cierre de ${central.m.nombre}` })
+    await pestanaDeCola(page, "Resueltos").click();
+    await filaDeCola(page.getByRole("region", { name: "Histórico" }), central.m.nombre)
       .getByRole("button", { name: `Ver el cierre resuelto de ${central.m.nombre}` })
       .click();
     const resuelto = detalleDe(page, central.m);
@@ -557,5 +565,273 @@ test.describe.serial("SLT-100 — destrabar un vencido desde el pie del detalle 
 
     await expect(detalle).toBeVisible();
     await expect.poll(() => pie(detalle)).toEqual(["Rechazar", "Aprobar"]);
+  });
+});
+
+/**
+ * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (T6.1; R33, R34, R36, R101, R103, R110) —
+ * la FILA de la cola, con los literales ESCRITOS A MANO (derivación en `progress/impl_SLT-102.md > T6.1`).
+ *
+ * ESCENARIO S4 (decisión del leader sobre ABIERTO-1 y ABIERTO-2 de T0.3). Tarifa y pago del escenario A
+ * (mensajero 1.500 por entrega; incidente y rechazo no pagan, feature 39 R5-R7).
+ *   Central: entregas de 21.000 y 10.000 por SINPE (efectivo 0), un incidente (orden de 8.000, no recauda),
+ *   un rechazo (vuelve a bodega) y el pago de la primera entrega ajustado de 1.500 a 2.000 (SLT-56).
+ *     Recaudado 21.000 + 10.000 = 31.000 → «₡31.000» · Pago al mensajero 2.000 + 1.500 + 0 + 0 = 3.500 → «₡3.500»
+ *     Señales (R110, en este orden): «1 incidente sin indemnizar · 1 pago ajustado · 1 vuelve a bodega»
+ *     Aprobado (con indemnización: el incidente deja de estar «sin indemnizar»): P 3.500, E 0 →
+ *     3.500 − min(3.500, 0) = 3.500 → «Pendiente ₡3.500» y «Registrar pago»; registrado → «Liquidado».
+ *   Satélite: una entrega de 30.000 por SINPE y un rechazo.
+ *     Recaudado «₡30.000» · Pago al mensajero «₡1.500» · «1 vuelve a bodega». Aprobado, su pendiente es
+ *     1.500 > 0, y aun así la satélite no ve «Pago entregado» ni «Registrar pago» (R34).
+ */
+const FOLIO = /^#[0-9A-F]{8}$/;
+const FECHA = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
+const COLUMNAS_PENDIENTES = ["Folio", "Mensajero", "Solicitado", "Estado", "Recaudado", "Pago al mensajero", "Señales", "Acciones"];
+const COLUMNAS_RESUELTOS_CENTRAL = [
+  "Folio",
+  "Mensajero",
+  "Resuelto",
+  "Estado",
+  "Recaudado",
+  "Pago al mensajero",
+  "Pago entregado",
+  "Señales",
+  "Acciones",
+];
+const COLUMNAS_RESUELTOS_SATELITE = ["Folio", "Mensajero", "Resuelto", "Estado", "Recaudado", "Pago al mensajero", "Señales", "Acciones"];
+
+const pendientes = (page: Page): Locator => page.getByRole("region", { name: "Pendientes de decisión" });
+const historico = (page: Page): Locator => page.getByRole("region", { name: "Histórico" });
+
+test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () => {
+  let r: RepartoE2E;
+  let central: { m: MensajeroE2E; rechazo: OrdenE2E; cierreId: string };
+  let satelite: { m: MensajeroE2E; cierreId: string };
+
+  test.beforeAll(async () => {
+    test.setTimeout(300_000);
+    r = await crearEscenarioReparto("cierres-cola-s4", { tarifa: TARIFA_A, tarifaMensajero: PAGO_A });
+
+    const m = await crearMensajero(r, "central");
+    const e1 = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 21000 }), "en_reparto", { mensajero: m });
+    const g1 = await gestionar(r, e1, m, { resultado: "entregado", pagos: [{ metodo: "SINPE", monto: 21000 }] });
+    const e2 = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 10000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, e2, m, { resultado: "entregado", pagos: [{ metodo: "SINPE", monto: 10000 }] });
+    const inc = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 8000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, inc, m, { resultado: "incidente", causa: "perdido" });
+    const rechazo = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 15000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, rechazo, m, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
+    const cierreId = await solicitarCierre(r, m);
+    await ajustarPagoMensajero(r, g1, { anterior: "1500.00", nuevo: "2000.00", motivo: "Ruta larga, SLT-102 S4" });
+    central = { m, rechazo, cierreId };
+
+    const ms = await crearMensajero(r, "satelite");
+    const es = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 30000 }), "en_reparto", { mensajero: ms });
+    await gestionar(r, es, ms, { resultado: "entregado", pagos: [{ metodo: "SINPE", monto: 30000 }] });
+    const rs = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 15000 }), "en_reparto", { mensajero: ms });
+    await gestionar(r, rs, ms, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
+    satelite = { m: ms, cierreId: await solicitarCierre(r, ms) };
+  });
+
+  test("central: la fila con las tres señales, aprueba, «Pendiente ₡3.500» y «Registrar pago» → «Liquidado»", async ({
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto("/cierres-admin");
+
+    // R33: las columnas de Pendientes, y la fila con los literales (F3, F4, F5).
+    await expect(pestanaDeCola(page, "Pendientes")).toHaveAttribute("aria-selected", "true");
+    await expect(pendientes(page).getByRole("columnheader")).toHaveText(COLUMNAS_PENDIENTES);
+    const fila = filaDeCola(pendientes(page), central.m.nombre);
+    await expect(fila.getByRole("cell")).toHaveText([
+      FOLIO,
+      central.m.nombre,
+      FECHA,
+      "Solicitado",
+      "₡31.000",
+      "₡3.500",
+      "1 incidente sin indemnizar · 1 pago ajustado · 1 vuelve a bodega",
+      "Ver / decidir",
+    ]);
+
+    // R36: «Ver / decidir» abre el detalle en modo decidir; se aprueba con la confirmación física y la
+    // indemnización de hoy.
+    await fila.getByRole("button", { name: "Ver / decidir" }).click();
+    const detalle = detalleDe(page, central.m);
+    await detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }).click();
+    const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
+    const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
+    await lector.getByLabel("Número de guía").fill(String(central.rechazo.numGuia));
+    await lector.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await confirmar.getByRole("button", { name: "Continuar", exact: true }).click();
+    const indemnizar = page.getByRole("dialog", { name: "Indemnizar los incidentes del cierre" });
+    await indemnizar.getByLabel("Monto de la indemnización").fill("5000");
+    await indemnizar.getByRole("button", { name: "Aprobar e indemnizar" }).click();
+    await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
+    await page.getByRole("dialog", { name: `Registrar pago a ${central.m.nombre}` }).getByRole("button", { name: "Ahora no" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect((await cierresDe(central.m)).map((c) => [c.id, c.estado])).toEqual([[central.cierreId, "aprobado"]]);
+
+    // R103: en Resueltos, «Pago entregado» y «Registrar pago»; el incidente ya está indemnizado.
+    await pestanaDeCola(page, "Resueltos").click();
+    await expect(historico(page).getByRole("columnheader")).toHaveText(COLUMNAS_RESUELTOS_CENTRAL);
+    const resuelta = filaDeCola(historico(page), central.m.nombre);
+    await expect(resuelta.getByRole("cell")).toHaveText([
+      FOLIO,
+      central.m.nombre,
+      FECHA,
+      "Aprobado",
+      "₡31.000",
+      "₡3.500",
+      "Pendiente ₡3.500",
+      "1 pago ajustado · 1 vuelve a bodega",
+      "VerRegistrar pago",
+    ]);
+
+    // R103: el diálogo de hoy, sin «Ahora no»; registrar relee la lista y la fila queda «Liquidado».
+    await resuelta.getByRole("button", { name: `Registrar pago del cierre de ${central.m.nombre}` }).click();
+    const pago = page.getByRole("dialog", { name: `Registrar pago a ${central.m.nombre}` });
+    // El negativo, con el diálogo ya abierto: si no, pasaría en vacío.
+    await expect(pago).toBeVisible();
+    await expect(pago.getByRole("button", { name: "Registrar pago", exact: true })).toBeVisible();
+    await expect(pago.getByRole("button", { name: "Ahora no" })).toHaveCount(0);
+    await pago.getByRole("button", { name: "Registrar pago", exact: true }).click();
+    await expect(pago).toHaveCount(0);
+    await expect(resuelta.getByRole("cell").nth(6)).toHaveText("Liquidado");
+    await expect(resuelta.getByRole("button", { name: `Registrar pago del cierre de ${central.m.nombre}` })).toHaveCount(0);
+  });
+
+  test("satélite: su fila sin «Pago entregado» ni «Registrar pago», aunque le quede pendiente", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, r.adminSatelite);
+    await page.goto("/cierres-admin");
+
+    await expect(pendientes(page).getByRole("columnheader")).toHaveText(COLUMNAS_PENDIENTES);
+    await expect(filaDeCola(pendientes(page), satelite.m.nombre).getByRole("cell")).toHaveText([
+      FOLIO,
+      satelite.m.nombre,
+      FECHA,
+      "Solicitado",
+      "₡30.000",
+      "₡1.500",
+      "1 vuelve a bodega",
+      "Ver / decidir",
+    ]);
+
+    await aprobarCierre(r, satelite.cierreId);
+    await page.reload();
+    await pestanaDeCola(page, "Resueltos").click();
+    await expect(historico(page).getByRole("columnheader")).toHaveText(COLUMNAS_RESUELTOS_SATELITE);
+    const resuelta = filaDeCola(historico(page), satelite.m.nombre);
+    await expect(resuelta.getByRole("cell")).toHaveText([FOLIO, satelite.m.nombre, FECHA, "Aprobado", "₡30.000", "₡1.500", "1 vuelve a bodega", "Ver"]);
+    await expect(resuelta.getByRole("button", { name: `Registrar pago del cierre de ${satelite.m.nombre}` })).toHaveCount(0);
+    await expect(page.getByText(/^Pendiente ₡/)).toHaveCount(0);
+  });
+});
+
+// SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (T6.2; R77, R40-R43, R114, R115, R116) — un
+// cierre de bodega del MODELO NUEVO, como lo ve la central. Escenario B6: las tarifas del escenario B digitadas y
+// activadas en la zona SATÉLITE (un cierre de central no se consolida), más «Pago a la satélite» por entregado 120
+// para que «Gana la bodega satélite» no sea cero. Una entrega de 10.000 en efectivo, aprobada por la satélite y
+// consolidada por su adminSatelite (`solicitarCierreBodega`, servicio). Cifras, a mano:
+//   Recaudado ₡10.000 · Pago a mensajeros ₡2.200 · Gana la bodega satélite ₡120
+//   Debe llegar a la central 10.000 − 2.200 − 120 = ₡7.680
+//   Total facturado 3.100 + 13 % (403) = ₡3.503 · IVA ₡403 · Le queda 3.503 − 403 − 2.200 − 120 = ₡780
+//   Mensajeros: una fila (1 gestión · ₡10.000 · ₡2.200 · ₡7.680 · «—»)
+//   Conciliación sin marca: ₡7.680 · «—» · ₡7.680, «Marcó: Aún nadie».
+const PAGO_SATELITE_B6: readonly Digitado[] = [{ concepto: "Por entregado", valor: "120" }];
+
+test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo nuevo (escenario B6)", () => {
+  let r: RepartoE2E;
+  let m: MensajeroE2E;
+  let cierreDiaId: string;
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(300_000);
+    r = await crearEscenarioReparto("cierres-rediseno-b6");
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await abrirTarifas(page);
+    await irAZona(page, r.zonaSatelite.nombre);
+    await digitarYGuardar(page, "Cobro a la tienda", COBRO_B);
+    await digitarYGuardar(page, "Pago al mensajero", PAGO_B);
+    await digitarYGuardar(page, "Pago a la satélite", PAGO_SATELITE_B6);
+    await activarConFaltantes(page);
+    await page.context().close();
+
+    m = await crearMensajero(r, "satelite");
+    const entrega = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 10000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, entrega, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 10000 }] });
+    cierreDiaId = await solicitarCierre(r, m);
+    await aprobarCierre(r, cierreDiaId);
+    await solicitarCierreBodega(r);
+  });
+
+  test("central, B6: cuatro cifras, «Dinero», «Mensajeros» y «Conciliación» al céntimo; «Ver su cierre» en solo lectura", async ({
+    browser,
+  }) => {
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto("/cierres-admin");
+    await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
+    await page
+      .getByRole("region", { name: "Cierres de bodega por conciliar" })
+      .getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${r.zonaSatelite.nombre}` })
+      .click();
+    const detalle = page.getByRole("dialog", { name: `Detalle del cierre de bodega · Cierre de bodega · ${r.zonaSatelite.nombre}` });
+    await expect(detalle).toBeVisible();
+
+    // R77: las cuatro cifras de bodega.
+    await expect(cifra(detalle, "recaudado")).toHaveText("₡10.000");
+    await expect(cifra(detalle, "paraCentral")).toHaveText("₡7.680");
+    await expect(cifra(detalle, "pago")).toHaveText("₡2.200");
+    await expect(cifra(detalle, "leQueda")).toHaveText("₡780");
+
+    // «Dinero»: las tres cuentas.
+    const CENTRAL = "Lo que va a la central";
+    await expect(montoDeCuenta(detalle, CENTRAL, "Total general")).toHaveText("₡10.000");
+    await expect(montoDeCuenta(detalle, CENTRAL, "− Pago a mensajeros")).toHaveText("₡2.200");
+    await expect(montoDeCuenta(detalle, CENTRAL, "− Gana la bodega satélite")).toHaveText("₡120");
+    await expect(montoDeCuenta(detalle, CENTRAL, "Debe llegar a la central")).toHaveText("₡7.680");
+    await expect(montoDeCuenta(detalle, FACTURA, "Total facturado")).toHaveText("₡3.503");
+    await expect(montoDeCuenta(detalle, QUEDA, "− IVA (no es de la empresa)")).toHaveText("₡403");
+    await expect(montoDeCuenta(detalle, QUEDA, "− Pago a mensajeros")).toHaveText("₡2.200");
+    await expect(montoDeCuenta(detalle, QUEDA, "− Gana la bodega satélite")).toHaveText("₡120");
+    await expect(montoDeCuenta(detalle, QUEDA, "Le queda a la empresa")).toHaveText("₡780");
+
+    // R42, R114, R121: una fila por cierre del día.
+    await detalle.getByRole("tab", { name: "Mensajeros (1)" }).click();
+    const fila = filaDeMensajeros(detalle, m.nombre);
+    await expect(fila.getByRole("cell")).toHaveText([m.nombre, "1", "₡10.000", "₡2.200", "₡7.680", "—", "Ver su cierre"]);
+
+    // R43, R117: sin marca, «− Recibido» dice «—».
+    await detalle.getByRole("tab", { name: "Conciliación" }).click();
+    await expect(montoDeCuenta(detalle, "Conciliación", "Debe llegar a la central")).toHaveText("₡7.680");
+    await expect(montoDeCuenta(detalle, "Conciliación", "− Recibido")).toHaveText("—");
+    await expect(montoDeCuenta(detalle, "Conciliación", "Falta por recibir")).toHaveText("₡7.680");
+    await expect(detalle.getByRole("region", { name: "Conciliación", exact: true })).toContainText("Marcó: Aún nadie");
+
+    // R115, R116 (PA1): «Ver su cierre» cierra el detalle de bodega y abre el del cierre del día en SOLO LECTURA.
+    await detalle.getByRole("tab", { name: "Mensajeros (1)" }).click();
+    await fila.getByRole("link", { name: `Ver el cierre de ${m.nombre}` }).click();
+    await expect(detalle).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`[?&]cierre=${cierreDiaId}(&|$)`));
+    const suCierre = detalleDe(page, m);
+    await expect(suCierre).toBeVisible();
+    // Control: el detalle está cargado (con sus cifras) antes de afirmar ausencias.
+    await expect(cifra(suCierre, "recaudado")).toHaveText("₡10.000");
+    await expect(cifra(suCierre, "pago")).toHaveText("₡2.200");
+    // Ninguna escritura: ni aprobar, rechazar, destrabar, corregir, ajustar ni pagar. Solo «Cerrar» en el pie.
+    expect(await pie(suCierre)).toEqual(["Cerrar"]);
+    const escrituras = /Aprobar|Rechazar|Destrabar|Corregir|Ajustar pago|Registrar pago|Marcar recibido/;
+    await expect(suCierre.getByRole("button", { name: escrituras })).toHaveCount(0);
+    await expect(suCierre.getByRole("tab", { name: /^(Pago al mensajero|Corregir)$/ })).toHaveCount(0);
+    await suCierre.getByRole("tab", { name: /^Gestiones \(/ }).click();
+    const ordenes = ordenesDe(suCierre);
+    const desplegar = ordenes.getByRole("button", { name: /^(Desglose de ingreso|Detalle) de la orden / }).first();
+    await desplegar.click();
+    await expect(desplegar).toHaveAttribute("aria-expanded", "true");
+    await expect(suCierre.getByRole("button", { name: escrituras })).toHaveCount(0);
+    // Y la base no cambió: el cierre del día sigue aprobado tal cual.
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado, String(c.totalPagoMensajero)])).toEqual([[cierreDiaId, "aprobado", "2200"]]);
   });
 });

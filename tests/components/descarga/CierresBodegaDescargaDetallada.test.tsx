@@ -297,7 +297,7 @@ describe("descarga detallada en cierres de bodega (T7.4)", () => {
     expect(
       await screen.findByRole("button", { name: "Descargar Cierres de bodega pendientes" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+    await user.click(screen.getByRole("tab", { name: /^Conciliados/ }));
     expect(
       screen.getByRole("button", { name: "Descargar Cierres de bodega resueltos" }),
     ).toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { cierresDe, filaDeCola, filaDeMensajeros, importe, montoDeCuenta, solicitarCierre } from "./_escenarios/cierres";
 import { navegarCon } from "./_escenarios/pulsar";
 import {
   baseReparto,
@@ -26,8 +26,9 @@ import {
  *     estado de cuenta del mensajero y el cierre en base salen del total AJUSTADO (R13).
  *  2. SATÉLITE. El adminSatelite ajusta la entrega de un cierre de su bodega de 1.500 a 1.800 y lo
  *     aprueba él solo (sin la central, R2); solicita el cierre de bodega; el maestro abre la
- *     consolidación y ve el cierre del día «Con ajustes», la orden «Ajustado» con su historial y el
- *     pago a mensajeros y «Para la central» sobre el total ajustado (R14, R20).
+ *     consolidación (detalle único desde SLT-104) y ve la fila del mensajero en «Mensajeros» con
+ *     «1 pago ajustado», la orden «Ajustado» con su historial en «Gestiones», y el pago a mensajeros y
+ *     «Debe llegar a la central» sobre el total ajustado (R14, R20).
  *
  * DATOS (R7, R8 de SL-44): empresa nueva, tarifa por defecto del escenario (1.500 la entrega; un
  * rechazo no paga al mensajero). Gestiones por `MisAsignacionesService`, cierres por
@@ -60,15 +61,10 @@ function deA(anterior: number, nuevo: number): RegExp {
   return new RegExp(`${importe(anterior).source}\\s*→\\s*[^\\d\\s]{0,3}${importe(nuevo).source}`);
 }
 
-/** La línea `rotulo` de una cascada de dinero (rótulo + importe). */
-function lineaDe(cascada: Locator, rotulo: string): Locator {
-  return cascada.getByText(rotulo, { exact: true }).locator("xpath=ancestor::div[1]");
-}
-
 async function abrirDetalle(page: Page, m: MensajeroE2E): Promise<Locator> {
   await page.goto("/cierres-admin");
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(pendientes, m.nombre);
   await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
   await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
@@ -241,7 +237,7 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await expect(tarjeta.getByText("La empresa le debe")).toContainText(importe(200));
   });
 
-  test("satélite — el adminSatelite ajusta y aprueba solo; la central ve la consolidación «Con ajustes» y el total ajustado", async ({
+  test("satélite — el adminSatelite ajusta y aprueba solo; la central ve «1 pago ajustado» en «Mensajeros» y el total ajustado", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -295,27 +291,43 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
     await page
       .getByRole("region", { name: "Cierres de bodega satélite" })
-      .getByRole("region", { name: "Cierres de bodega pendientes" })
-      .getByRole("button", { name: `Ver / decidir el cierre de bodega de ${r.zonaSatelite.nombre}` })
+      .getByRole("region", { name: "Cierres de bodega por conciliar" })
+      .getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${r.zonaSatelite.nombre}` })
       .click();
     const det = page.getByRole("dialog", { name: "Detalle del cierre de bodega" });
     await expect(det).toBeVisible();
 
-    // Agregado y por mensajero: pago 1.800 y para la central 9.000 − 1.800 = 7.200.
-    for (const nivel of ["cierre de bodega", m.nombre]) {
-      const central = det.getByRole("region", { name: `Lo que va a la central · ${nivel}` });
-      await expect(lineaDe(central, "Total general")).toContainText(importe(9000));
-      await expect(lineaDe(central, "Pago al mensajero")).toContainText(importe(1800));
-      await expect(lineaDe(central, "Para la central")).toContainText(importe(7200));
-    }
+    // SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (T6.1; R31, R42, R114): el detalle
+    // único. AGREGADO en «Dinero» («Lo que va a la central») y en las cifras; POR MENSAJERO, la fila de
+    // «Mensajeros». Literales a mano (`impl_SLT-104.md > T0.3`): pago 1.800; a la central 9.000 − 1.800 − 0
+    // = 7.200; total facturado 2.500 (flete de la entrega; sin fulfillment ni zona especial, comprobado en la
+    // base de la corrida); le queda 2.500 − 0 − 1.800 − 0 = 700.
+    await expect(det.locator('[data-cifra="recaudado"]')).toHaveText("₡9.000");
+    await expect(det.locator('[data-cifra="paraCentral"]')).toHaveText("₡7.200");
+    await expect(det.locator('[data-cifra="pago"]')).toHaveText("₡1.800");
+    await expect(det.locator('[data-cifra="leQueda"]')).toHaveText("₡700");
+    const CENTRAL = "Lo que va a la central";
+    await expect(montoDeCuenta(det, CENTRAL, "Total general")).toHaveText("₡9.000");
+    await expect(montoDeCuenta(det, CENTRAL, "− Pago a mensajeros")).toHaveText("₡1.800");
+    await expect(montoDeCuenta(det, CENTRAL, "Debe llegar a la central")).toHaveText("₡7.200");
+    await expect(montoDeCuenta(det, "Lo que se le factura a la tienda", "Total facturado")).toHaveText("₡2.500");
+    await expect(montoDeCuenta(det, "De lo facturado, le queda a la empresa", "Le queda a la empresa")).toHaveText("₡700");
 
-    const delDia = det.getByRole("region", { name: `Cierre del día · ${m.nombre}` });
-    await expect(delDia.getByText(/^Con ajustes/)).toContainText(
-      "Con ajustes: 1 gestión de este cierre tiene el pago al mensajero ajustado.",
-    );
-    const ordenesBodega = delDia.getByRole("region", { name: `Órdenes del cierre · ${m.nombre}` });
+    await det.getByRole("tab", { name: "Mensajeros (1)" }).click();
+    await expect(filaDeMensajeros(det, m.nombre).getByRole("cell")).toHaveText([
+      m.nombre,
+      "1",
+      "₡9.000",
+      "₡1.800",
+      "₡7.200",
+      "1 pago ajustado",
+      "Ver su cierre",
+    ]);
+
+    // La gestión, en «Gestiones»: «Ajustado» con su historial, y solo lectura (R31: sin «Ajustar pago»).
+    await irA(det, "Gestiones");
+    const ordenesBodega = det.getByRole("region", { name: "Órdenes del cierre" });
     await desplegar(ordenesBodega, entrega);
-    // Solo lectura: el detalle de bodega no ofrece ajustar.
     await expect(ordenesBodega.getByRole("button", { name: /^Ajustar pago/ })).toHaveCount(0);
     const historial = await verHistorial(page, ordenesBodega);
     await expect(historial.getByRole("listitem")).toHaveCount(1);

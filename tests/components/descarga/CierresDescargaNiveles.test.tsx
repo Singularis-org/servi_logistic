@@ -772,7 +772,8 @@ describe("Cierres · un solo botón de descarga con nivel de detalle", () => {
     montarCierresAdmin();
     await screen.findByRole("button", { name: "Descargar Cierres pendientes de decisión" });
 
-    await user.click(await screen.findByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab` de la cola única.
+    await user.click(await screen.findByRole("tab", { name: /^Resueltos/ }));
     await screen.findByRole("button", { name: "Descargar Cierres del día resueltos" });
     expect(screen.queryByRole("button", { name: BOTON_DETALLE })).toBeNull();
 
