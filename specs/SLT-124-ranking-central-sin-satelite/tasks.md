@@ -110,9 +110,9 @@
 - `tests/unit/repositories/criterio-unico.guardia.test.ts`
 - `tests/integration/db/premio-ranking-idempotencia.test.ts`
 - `tests/integration/db/central-sin-satelite-premio-incentivo.test.ts`
-- `specs/SLT-124-ranking-sin-satelite/requirements.md`
-- `specs/SLT-124-ranking-sin-satelite/design.md`
-- `specs/SLT-124-ranking-sin-satelite/tasks.md`
+- `specs/SLT-124-ranking-central-sin-satelite/requirements.md`
+- `specs/SLT-124-ranking-central-sin-satelite/design.md`
+- `specs/SLT-124-ranking-central-sin-satelite/tasks.md`
 - `progress/features/SLT-124.md`
 - `progress/impl_SLT-124.md`
 

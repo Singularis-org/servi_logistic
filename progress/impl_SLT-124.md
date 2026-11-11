@@ -1,7 +1,7 @@
 # impl — SLT-124 «Ranking de la central sin mensajeros de satélite»
 
 > backend_dev, 2026-11-11. Worktree `.worktrees/SLT-124-ranking-sin-satelite`, rama
-> `feature/SLT-124-ranking-sin-satelite` (desde a3ec42eb). Spec: `specs/SLT-124-ranking-sin-satelite/`
+> `feature/SLT-124-ranking-sin-satelite` (desde a3ec42eb). Spec: `specs/SLT-124-ranking-central-sin-satelite/`
 > (ruta completa, PA1 = B). Base desechable `slt124_u1` exportada antes de cada vitest; `slt124_e1` y
 > `slt124_e2` para los E2E (una por corrida); `slt124_g1` para el gate. `DATABASE_URL` nunca impreso.
 > MCP del grafo no usado: el spec trae cada cita archivo:línea; Grep/Read.
@@ -135,7 +135,7 @@ la local por defecto. Logs en el scratchpad de la sesión; aquí, sus líneas fi
   - Ningún fixture E2E necesitó cambio.
 - **Gate** (`./init.sh`, base `slt124_g1`):
   - `./init.sh` tal cual: **`INIT_EXIT=1`** en el paso 3+4, antes de typecheck:
-    `✗ feature_list.json invalido: specs/SLT-124-ranking-sin-satelite/ no cuadra con …/feature_list.json:
+    `✗ feature_list.json invalido: specs/SLT-124-ranking-central-sin-satelite/ no cuadra con …/feature_list.json:
     SLT-124 se llama "ranking-central-sin-satelite".` La copia local del board (fuera del worktree,
     del leader) tiene `name`/`branch` `ranking-central-sin-satelite` y `status: pending`; la rama y el
     spec son `ranking-sin-satelite`. No es del código; lo corrige el leader en el board / `feature_list.json`.
