@@ -223,3 +223,68 @@ Rojos por T11.2/T11.3 fuera de la lista (NO tocados, para el humano):
 - `tests/components/PlanEmpresaPeriodo.test.tsx` (tipo): fuera de T12.5.
 
 Veredicto: T11.1–T11.3 y T12.1–T12.4 hechos; lint y unit propios verdes; typecheck rojo solo en tests de componentes (frontend) y 4 tests fuera de la lista rojos por el mismo cambio, pendientes de decisión.
+
+## Tanda 7 — tests rotos y R30 por P9 · sin commit
+Subagente: `backend_dev`. Sin cambios en `lib/` ni dependencias; no se tocó `tests/components/*`.
+
+Archivos (solo tests):
+- `tests/unit/actions/deuda-plataforma.composition-root.test.ts`, `empresas-plataforma.composition-root.test.ts`,
+  `wallet-egresos.composition-root.test.ts`: el doble de Prisma gana `facturaPlataforma` (`aggregate` /
+  `groupBy`) sin cuotas (`_sum: { cuota: null, primeraCuota: null }` / `[]`), lo que piden T7 (R18). Ninguna
+  aserción cambia: el orden `candado, clave, sumas, pagos` de wallet-egresos sigue igual, porque el `aggregate` no
+  apunta en `orden`.
+- `tests/unit/services/planes-service-crear-custom.test.ts` y `planes-service-inicio-ciclo.test.ts`: el doble con
+  `pendiente: true` trae `vigenteDesde` (la fecha que se asevera), porque desde T11.3 el servicio no la deduce (R32).
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: los dos casos D16 (mensual ↔ anual) usan «hoy» =
+  1 de enero de 2027 (`HOY_1_ENERO`), inicio del anual, para que se apliquen en el acto (R31); las fechas que se
+  aseveran (`valoresDeToma`, `valorNuevo`) pasan del 3 de noviembre al 1 de enero. El caso «mismo tipo» sigue con el 3.
+- `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts`: `caso(tx, ahora?)` admite un reloj fijo; «R39,
+  SLT-86 R16/R17» y «P14, R42» usan `AHORA_FIJO` (1 de noviembre de 2026, 12:00 de la plataforma) con `HOY_FIJO`
+  y `diaFijo(-10)`, en lugar de `dia(0)` / `dia(-10)` del reloj real.
+- `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T6.2): `it` nuevo «R30 (P9): quincenal → anual
+  guardado por `PlanesService` el 10 de noviembre rige el 1 de enero…». Es `cambiarTipoCobro` del servicio con reloj
+  fijo el 10 de noviembre y la fecha elegida el 10. Asevera: respuesta `vigenteDesde: "2027-01-01"`; el pendiente
+  queda con el 1 de enero y el tipo vigente quincenal; guardar no toca ninguna factura (R17); las emitidas el 16 de
+  noviembre y el 1 y el 16 de diciembre llevan 15 500.00 de la quincena que empieza; la del 1 de enero lleva
+  372 000.00 anual (365/365, hasta el 1 de enero de 2028); la del 16 de enero no lleva cuota. Ninguna factura con
+  `hasta` el 10 y ninguna primera cuota. Se actualizan la cabecera y el `describe` (R28–R30).
+
+Mapa R → test (esta tanda):
+- R30 (P9) · `factura-plataforma-cambio-plan.test.ts` · «R30 (P9): quincenal → anual guardado por `PlanesService`…»
+- R18 · los tres `*.composition-root.test.ts` (cableado con la cuota de las facturas, en cero)
+- R31 · `planes-repository-tipo-cobro.test.ts` (D16 con «hoy» = 1 de enero, en el acto)
+- R32 · `planes-service-crear-custom.test.ts` («SLT-86 R17…»), `planes-service-inicio-ciclo.test.ts` («con fecha futura…»)
+
+Verificación (2026-11-11, sin base local; la integración corre en CI):
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → verde (`tsc --noEmit` sin errores, también en los tests
+  de componentes).
+- `pnpm exec eslint <los 8 archivos>` → exit 0.
+- `pnpm exec vitest run <los 8 archivos> --pool=threads` → 6 archivos verdes (86 tests), 2 skipped (24 tests de
+  integración sin `DATABASE_URL`).
+- `vitest related --run --pool=threads` (timeout 420):
+  - lote T7 (los 5 de deuda) → 41 verdes / 17 skipped. Hubo 1 rojo, `tests/components/WalletCaja463.test.tsx` «A:
+    periodo en vuelo + «Sale»…» (9,2 s, por carga): corrido solo, 25/25 verdes.
+  - `IPlanesRepository.ts` + `PlanesRepository.ts` → 20 verdes / 41 skipped (355 tests).
+  - `PlanesService.ts` → 12 verdes / 16 skipped (448 tests).
+  - `lib/types/planes.ts` → cortado a los 420 s (exit 124). Se sustituyó por los 108 tests unit/componente que
+    importan `@/lib/types/planes` o un módulo de `lib/`, `components/`, `app/` o `hooks/` que lo importa. Corrieron en
+    4 lotes: 29/26/28/25 archivos, todos verdes (413 + 330 + 473 + 754 tests). La integración queda fuera porque se
+    salta sin base.
+
+Hallazgos:
+- No hay fallo de producción. Los rojos eran los que anticipaba la tanda 6, más los tres composition-root que rompió T7.
+- R30 por P9 se mide con `cambiarTipoCobro` (mismo plan, cambia el tipo). Un `asignar` de otro plan quincenal → anual
+  pasa por el mismo `cambiarEmpresaEnTx` (cubierto en `planes-cambio-empresa`); no se duplicó aquí.
+- Los dos casos de `planes-asignacion-inicio-ciclo` y el R30 nuevo solo se pueden comprobar en CI (sin base local).
+- `WalletCaja463` es lento con carga, igual que en tandas anteriores; no es de esta ficha.
+
+Veredicto: tests rotos por T7/T11 en verde sin cambiar lo que aseveran y R30 (P9) añadido; typecheck, eslint y unit verdes; la integración (24 casos) va a CI.
+
+## Tanda 7b — confirmaciones con la fecha real (T11.4, T12.5) · frontend_dev
+- `PlanEmpresa.tsx`: el cambio de tipo de cobro pendiente avisa «Cambio programado desde {fecha real}» (`TEXTOS.programado`); el cambio de plan ya pintaba `vigenteDesde`.
+- `PlanesModule.tsx`: el custom pendiente avisa «Plan «X» creado. Cambio programado desde {fecha}.» (`textoCambioProgramado`, textos existentes juntados; a confirmar por el humano).
+- Tests R32: `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanEmpresaPeriodo.test.tsx` (fuera de la lista del spec; tenía montado el flujo), `tests/components/PlanesModule.test.tsx` (2). Dobles con `vigenteDesde: null`.
+- Verificación: typecheck verde; eslint limpio; los 3 archivos 54/54.
+
+## Cierre de tandas 6–7 (implementer)
+typecheck verde; eslint de los archivos sin commit verde; `test:guardias` ver la línea de `progress/features/SLT-118.md > Tandas`.

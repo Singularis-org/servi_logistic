@@ -441,10 +441,11 @@ export type AsignacionDePlan = {
 
 /**
  * Ajuste planes-custom (D10): cambiar solo el tipo de cobro. `cambio: false` = ya tenía ese tipo; no se
- * escribió nada. `sin_plan`: la empresa no tiene plan (el tipo se elige al asignarle uno).
+ * escribió nada. `sin_plan`: la empresa no tiene plan (el tipo se elige al asignarle uno). SLT-118 (R32):
+ * `vigenteDesde`, la fecha real (`AAAA-MM-DD`) del cambio que quedó pendiente; `null` si se aplicó o no cambió.
  */
 export type CambiarTipoCobroResult =
-  | { estado: "ok"; cambio: boolean }
+  | { estado: "ok"; cambio: boolean; vigenteDesde: string | null }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" }

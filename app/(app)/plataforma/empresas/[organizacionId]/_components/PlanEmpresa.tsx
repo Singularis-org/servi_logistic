@@ -489,7 +489,8 @@ export function PlanEmpresa({
       const r = await cambiarTipoCobro({ organizacionId, tipoCobro: nuevoTipoCobro, vigenteDesde });
       if (r.estado === "ok") {
         if (r.cambio) {
-          toast.success(TEXTOS.tipoCobroCambiado);
+          // SLT-118 (R32, P11): si quedó pendiente, la fecha real que devuelve el servidor, no la elegida.
+          toast.success(r.vigenteDesde === null ? TEXTOS.tipoCobroCambiado : TEXTOS.programado(r.vigenteDesde));
           router.refresh();
         } else {
           toast.info(TEXTOS.tipoCobroSinCambio);
@@ -582,7 +583,8 @@ export function PlanEmpresa({
         setPlanId("");
         // §11.5 y SLT-86 (R18): los topes ya pasados que no rechazaron, con el texto del modal.
         setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a)));
-        // SLT-86 (R17): con fecha futura el cambio queda pendiente hasta su fecha.
+        // SLT-86 (R17): con fecha futura el cambio queda pendiente hasta su fecha. SLT-118 (R32): la fecha
+        // real del servidor (llevada al inicio del próximo período), no la elegida.
         toast.success(r.vigenteDesde === null ? TEXTOS.asignado : TEXTOS.programado(r.vigenteDesde));
         router.refresh();
       } else if (primera && r.estado === "validation_error" && r.fieldErrors.inicioCiclo) {

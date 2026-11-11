@@ -104,12 +104,12 @@
 ## Bloque B — Cuota en la deuda y lectura en curso
 
 ### T7 — Deuda (depende de T2)
-- [ ] **T7.1** `lib/interfaces/repositories/ICobroPlataformaMovimientoRepository.ts`: `tipo` con `"cuota"` y
+- [x] **T7.1** `lib/interfaces/repositories/ICobroPlataformaMovimientoRepository.ts`: `tipo` con `"cuota"` y
   `facturaPlataforma` en el `Pick`.
-- [ ] **T7.2** `lib/repositories/CobroPlataformaMovimientoRepository.ts`: la entrada `cuota`, con `cuota` +
+- [x] **T7.2** `lib/repositories/CobroPlataformaMovimientoRepository.ts`: la entrada `cuota`, con `cuota` +
   `primera_cuota` de las cerradas (design §5).
-- [ ] **T7.3** `lib/utils/deuda-plataforma.ts`: resta solo `reverso`.
-- [ ] **T7.4** `lib/repositories/EmpresasPlataformaRepository.ts`: cuotas por empresa en el listado (las dos
+- [x] **T7.3** `lib/utils/deuda-plataforma.ts`: resta solo `reverso`.
+- [x] **T7.4** `lib/repositories/EmpresasPlataformaRepository.ts`: cuotas por empresa en el listado (las dos
   columnas).
 - **Hecho:** `tests/unit/utils/deuda-plataforma.test.ts` y los tests de deuda existentes verdes sin cambiar.
 
@@ -125,36 +125,36 @@
 - [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (plan mensual: la del 16
   al 30 con la cuota de diciembre prevista y la del 1 al 15 sin cuota; la prevista con el plan de un cambio
   pendiente; las dos previstas de quincenal desde el 1 aplicado el 12; `42501` con otra empresa).
-- [ ] **T9.3** `tests/unit/utils/deuda-plataforma.test.ts`: el caso `cuota` (R18).
+- [x] **T9.3** `tests/unit/utils/deuda-plataforma.test.ts`: el caso `cuota` (R18).
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`.
 
 ## Bloque C — Fecha de efecto del superadmin (P7, P9, P10, P11; R30–R34) [P con los bloques A y B]
 
 ### T11 — Servidor y confirmaciones (no depende de T1–T9)
-- [ ] **T11.1** `lib/interfaces/repositories/IPlanesRepository.ts`: `vigenteDesde?: string` en el `ok` de
+- [x] **T11.1** `lib/interfaces/repositories/IPlanesRepository.ts`: `vigenteDesde?: string` en el `ok` de
   `ResultadoAsignar`, de `crearYAsignar` y de `ResultadoCambiarTipoCobro`, presente solo con `pendiente`.
-- [ ] **T11.2** `lib/repositories/PlanesRepository.ts`: en `cambiarEmpresaEnTx`, bajo el cerrojo, lleva un efecto
+- [x] **T11.2** `lib/repositories/PlanesRepository.ts`: en `cambiarEmpresaEnTx`, bajo el cerrojo, lleva un efecto
   de clase `"cambio"` al inicio del período siguiente del **tipo de referencia** salvo que ya lo sea; `"inicio"`
   no se toca (R33). No revalida el rango (R34). Devuelve la fecha real en `vigenteDesde`.
-- [ ] **T11.3** `lib/services/PlanesService.ts` y `lib/types/planes.ts`: `asignar` y `crear` responden con el
+- [x] **T11.3** `lib/services/PlanesService.ts` y `lib/types/planes.ts`: `asignar` y `crear` responden con el
   `vigenteDesde` del repositorio; `CambiarTipoCobroResult` gana `vigenteDesde: string | null`. `fueraDeRango`
   sigue sobre la fecha elegida (R34).
-- [ ] **T11.4** `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` y
+- [x] **T11.4** `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` y
   `app/(app)/plataforma/planes/_components/PlanesModule.tsx`: las dos confirmaciones con la fecha real (P11).
 - **Hecho:** typecheck y lint verdes; `pnpm exec vitest related --run lib/repositories/PlanesRepository.ts
   lib/services/PlanesService.ts` verde tras T12.
 
 ### T12 — Tests del bloque C (dependen de T11) [P entre sí]
-- [ ] **T12.1** `tests/integration/db/planes-cambio-empresa.test.ts`: R30, R31, R33, R34 (casos de design §8).
-- [ ] **T12.2** `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (R30, R31 con el tipo de referencia) y
+- [x] **T12.1** `tests/integration/db/planes-cambio-empresa.test.ts`: R30, R31, R33, R34 (casos de design §8).
+- [x] **T12.2** `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (R30, R31 con el tipo de referencia) y
   `tests/integration/db/planes-crear-custom-asigna.test.ts` (R30 en el custom).
-- [ ] **T12.3** Ajustar los que usan un cambio con «hoy» o a mitad de período:
+- [x] **T12.3** Ajustar los que usan un cambio con «hoy» o a mitad de período:
   `tests/integration/db/planes-asignacion.test.ts`, `tests/integration/db/plan-de-la-empresa-periodo.test.ts`,
   `tests/integration/db/planes-cancelar-cambio-historial.test.ts`. Si otro test de planes se pone rojo por lo
   mismo, se ajusta y se añade a «Archivos esperados».
-- [ ] **T12.4** `tests/unit/services/planes-service-periodo.test.ts` y
+- [x] **T12.4** `tests/unit/services/planes-service-periodo.test.ts` y
   `tests/unit/services/planes-service-tipo-cobro.test.ts`: R30, R32, R34.
-- [ ] **T12.5** `tests/components/PlanEmpresaTipoCobro.test.tsx` y `tests/components/PlanesModule.test.tsx`: R32.
+- [x] **T12.5** `tests/components/PlanEmpresaTipoCobro.test.tsx` y `tests/components/PlanesModule.test.tsx`: R32.
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
 
 ## Bloque D — Periodicidad de órdenes del plan (cambio de fondo; R35–R38) [P con B y C; T14.2 después de T11.2]

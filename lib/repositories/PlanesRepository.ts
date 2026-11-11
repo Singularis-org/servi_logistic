@@ -58,7 +58,12 @@ import {
   type VersionPlan,
   versionPlanSchema,
 } from "@/lib/types/planes";
-import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
+import {
+  fechaCalendarioPlataforma,
+  fechaDeEfectoPorDefecto,
+  inicioDelDiaPlataforma,
+  inicioDelPeriodoCalendario,
+} from "@/lib/planes/ciclo";
 
 // SL-24 (design §2, §4.4, §5, §7, §9, §16.3) — el catálogo de planes y su asignación. Lo escribe solo
 // el superadmin, que no tiene empresa: todo corre en `comoPlataforma` (como dueño, sin el filtro de la
@@ -729,6 +734,22 @@ function claseQueNoCasa(efecto: EfectoElegido, planActual: string | null): Extra
 
 type ResultadoDelCambio = Extract<ResultadoAsignar, { estado: "ok" | "tope_excedido" }>;
 
+/**
+ * SLT-118 (design §3.1; R30, R31, R33; decisiones P7 y P9): la fecha de efecto real de un cambio del
+ * superadmin. Solo un `"cambio"` se lleva; un `"inicio"` (primera asignación) rige el día elegido (R33, P8).
+ * El tipo de referencia es el más largo entre el vigente y el nuevo (orden de `TIPOS_COBRO`): así un cambio a
+ * un tipo más largo rige al inicio de un período del tipo nuevo (P9). Si la fecha ya es el primer día de un
+ * período de ese tipo, se respeta (R31); si no, va al primer día del período siguiente (R30). El rango de
+ * SLT-86 R16 no se vuelve a mirar: vale sobre la elegida (R34, P10).
+ */
+export function efectoAlInicioDelPeriodo(efecto: EfectoElegido, tipoVigente: TipoCobro, tipoNuevo: TipoCobro): EfectoElegido {
+  if (efecto.clase !== "cambio") return efecto;
+  const referencia = TIPOS_COBRO.indexOf(tipoNuevo) > TIPOS_COBRO.indexOf(tipoVigente) ? tipoNuevo : tipoVigente;
+  if (inicioDelPeriodoCalendario(referencia, efecto.desde).getTime() === efecto.desde.getTime()) return efecto;
+  const fecha = fechaDeEfectoPorDefecto(referencia, efecto.desde);
+  return { ...efecto, fecha, desde: inicioDelDiaPlataforma(fecha) };
+}
+
 
 /** Ajuste planes-custom (D2): revierte la transacción de `crearYAsignar` llevando el rechazo afuera. */
 class AsignacionRechazada extends Error {
@@ -873,7 +894,7 @@ export class PlanesRepository implements IPlanesRepository {
             ahora,
           );
           if (r.estado !== "ok") throw new AsignacionRechazada(r);
-          return { estado: "ok", planId, avisos: r.avisos, pendiente: r.pendiente };
+          return { estado: "ok", planId, avisos: r.avisos, pendiente: r.pendiente, vigenteDesde: r.vigenteDesde };
         });
       } catch (e) {
         if (e instanceof AsignacionRechazada) return e.resultado;
@@ -951,7 +972,7 @@ export class PlanesRepository implements IPlanesRepository {
         const r = await this.cambiarEmpresaEnTx(tx, empresa, plan, tipoCobro, efecto, actorUsuarioId, ahora);
         // Con el mismo plan no se miran topes, así que no puede rechazarse por uno.
         if (r.estado !== "ok") throw new Error(`cambiarTipoCobro: rechazo imposible (${r.estado}) para ${organizacionId}`);
-        return { estado: "ok", cambio: r.cambio, pendiente: r.pendiente };
+        return { estado: "ok", cambio: r.cambio, pendiente: r.pendiente, vigenteDesde: r.vigenteDesde };
       }),
     );
   }
@@ -960,7 +981,10 @@ export class PlanesRepository implements IPlanesRepository {
    * §5.1, pasos 2–4, con la empresa ya bajo el cerrojo y el plan revalidado.
    *   · R19: mismo plan y mismo tipo que rigen → cancela el pendiente, con su fila de cancelación
    *     (decisión del 2026-11-05), o no hace nada si no lo hay.
-   *   · Fecha futura → pendiente y avisos, sin rechazar (R18).
+   *   · SLT-118 (R30, R31): un `"cambio"` se lleva al inicio de un período del tipo de referencia
+   *     (`efectoAlInicioDelPeriodo`); desde aquí todo usa la fecha real, también el pendiente, su trabajo y
+   *     el historial. La primera asignación no se toca (R33).
+   *   · Fecha futura → pendiente y avisos, sin rechazar (R18); `vigenteDesde` es la fecha real (R32).
    *   · Fecha de hoy o pasada → se aplica. Un tope ya pasado rechaza un cambio de plan (R18, SL-24 R12) y
    *     la primera asignación sin fecha (SLT-58 P14); la primera asignación con fecha se asigna y avisa
    *     (SLT-58 R36, R42). Cambiar solo el tipo no mira topes: el plan es el mismo.
@@ -970,19 +994,23 @@ export class PlanesRepository implements IPlanesRepository {
     empresa: EmpresaBloqueada,
     plan: PlanDTO,
     tipoCobro: TipoCobro,
-    efecto: EfectoElegido,
+    elegido: EfectoElegido,
     actorUsuarioId: string,
     ahora: Date,
   ): Promise<ResultadoDelCambio> {
+    // 1. R19: lo pedido ya es lo que rige.
     if (empresa.plan_id === plan.id && empresa.plan_tipo_cobro === tipoCobro) {
       if (empresa.plan_cambio_id === null) return { estado: "ok", cambio: false, avisos: [], pendiente: false };
       await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
       return { estado: "ok", cambio: true, avisos: [], pendiente: false };
     }
+    // 2. SLT-118 (R30, R31, R33): la fecha real, bajo el cerrojo (el tipo vigente es el de la empresa ahora).
+    const efecto = efectoAlInicioDelPeriodo(elegido, tipoCobroSchema.parse(empresa.plan_tipo_cobro), tipoCobro);
+    // 3. Pendiente o en el acto, con la fecha real.
     const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], plan.topes);
     if (efecto.desde.getTime() > ahora.getTime()) {
       await escribirPendiente(tx, empresa.id, plan.id, tipoCobro, efecto.desde, actorUsuarioId);
-      return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true };
+      return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true, vigenteDesde: fechaCalendarioPlataforma(efecto.desde) };
     }
     const avisa = efecto.clase === "inicio" && efecto.elegida;
     if (!avisa && excedidos.length > 0) return { estado: "tope_excedido", excedidos };

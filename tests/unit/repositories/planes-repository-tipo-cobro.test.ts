@@ -23,6 +23,13 @@ type Repo = ConstructorParameters<typeof PlanesRepository>[0];
 const AHORA = new Date("2026-11-03T15:00:00.000Z");
 const HOY = { clase: "cambio", fecha: "2026-11-03", desde: new Date("2026-11-03T06:00:00.000Z"), elegida: true } as const;
 
+/**
+ * SLT-118 (R30, R31): mensual ↔ anual solo se aplica en el acto en un inicio del tipo de referencia (el
+ * anual): «hoy» = 1 de enero. Con el 3 de noviembre quedaría pendiente hasta el próximo 1 de enero.
+ */
+const AHORA_1_ENERO = new Date("2027-01-01T15:00:00.000Z");
+const HOY_1_ENERO = { clase: "cambio", fecha: "2027-01-01", desde: new Date("2027-01-01T06:00:00.000Z"), elegida: true } as const;
+
 /** Una `tx` que contesta a `cambiarTipoCobro`: la empresa bajo cerrojo, su plan y el actor. */
 function txDeCambio(tipoActual: string) {
   const queryRaw = vi
@@ -97,7 +104,7 @@ describe("D16 — cambiarTipoCobro deja su acción propia en el historial", () =
   it("escribe `plan_tipo_cobro_cambiado` con el tipo de antes y el nuevo, sobre el plan de la empresa", async () => {
     const { prisma, executeRaw, createMany } = txDeCambio("mensual");
 
-    const r = await new PlanesRepository(prisma).cambiarTipoCobro(ORG, "anual", HOY, ACTOR, AHORA);
+    const r = await new PlanesRepository(prisma).cambiarTipoCobro(ORG, "anual", HOY_1_ENERO, ACTOR, AHORA_1_ENERO);
 
     expect(r).toEqual({ estado: "ok", cambio: true, pendiente: false });
     // SLT-118 (design §2.3; R15–R17, R28): dos escrituras, en este orden. Primero las facturas de la plataforma
@@ -107,7 +114,7 @@ describe("D16 — cambiarTipoCobro deja su acción propia en el historial", () =
     const llamadas = executeRaw.mock.calls as unknown as [TemplateStringsArray, ...unknown[]][];
     const [toma, ...valoresDeToma] = llamadas[0];
     expect(toma.join("?")).toContain("factura_plataforma_tomar_cambio(");
-    expect(valoresDeToma).toEqual([ORG, "2026-11-03 06:00:00.000", PLAN, "anual"]);
+    expect(valoresDeToma).toEqual([ORG, "2027-01-01 06:00:00.000", PLAN, "anual"]);
     expect(llamadas[1][0].join("?")).toContain('UPDATE "organizacion"');
     expect(createMany).toHaveBeenCalledTimes(1);
     const { data } = (createMany.mock.calls[0] as unknown as [{ data: Record<string, unknown>[] }])[0];
@@ -119,7 +126,7 @@ describe("D16 — cambiarTipoCobro deja su acción propia en el historial", () =
       entidadEtiqueta: "Plan «Norte»",
       valorAnterior: "mensual",
       // SLT-86 (R30): la fecha de efecto delante del tipo.
-      valorNuevo: "2026-11-03 · anual",
+      valorNuevo: "2027-01-01 · anual",
       organizacionId: ORG,
     });
     expect(data[0].accion).not.toBe("plan_asignado");
@@ -128,10 +135,10 @@ describe("D16 — cambiarTipoCobro deja su acción propia en el historial", () =
   it("de anual a mensual, lo mismo al revés", async () => {
     const { prisma, createMany } = txDeCambio("anual");
 
-    await new PlanesRepository(prisma).cambiarTipoCobro(ORG, "mensual", HOY, ACTOR, AHORA);
+    await new PlanesRepository(prisma).cambiarTipoCobro(ORG, "mensual", HOY_1_ENERO, ACTOR, AHORA_1_ENERO);
 
     const { data } = (createMany.mock.calls[0] as unknown as [{ data: Record<string, unknown>[] }])[0];
-    expect(data[0]).toMatchObject({ accion: "plan_tipo_cobro_cambiado", valorAnterior: "anual", valorNuevo: "2026-11-03 · mensual" });
+    expect(data[0]).toMatchObject({ accion: "plan_tipo_cobro_cambiado", valorAnterior: "anual", valorNuevo: "2027-01-01 · mensual" });
   });
 
   it("el mismo tipo sin pendiente no escribe nada (D10, SLT-86 R19), tampoco historial", async () => {

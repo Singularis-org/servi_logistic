@@ -4,8 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { EfectoElegido } from "@/lib/interfaces/repositories/IPlanesRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { FacturaPlataformaRepository } from "@/lib/repositories/FacturaPlataformaRepository";
+import { PlanesService } from "@/lib/services/PlanesService";
 import type { TipoCobro } from "@/lib/types/planes";
 import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
@@ -24,7 +26,8 @@ import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes
 // cambios pendientes de antes de esta ficha o hechos por otra vía se escriben por SQL a mano en
 // `organizacion.plan_cambio_*` y los aplica la cola real.
 //
-// Fuera de esta tanda (los añaden T11/T14 aquí mismo): R30 por P9, R33, R36 y R38.
+// R30 por P9 (T11.2): un cambio a un tipo más largo guardado por `PlanesService` con su reloj fijo.
+// Fuera de esta tanda (los añade T14 aquí mismo): R33, R36 y R38.
 //
 // Precios: quincenal 15 500 = 31 000 al mes con tipo quincenal; mensual 31 000; anual 372 000. Las horas son
 // las de la plataforma (−06:00): las 00:00 del día D son `cero(D)`.
@@ -34,6 +37,7 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 const MINUTO_MS = 60_000;
 const ACTOR = randomUUID();
+const SUPERADMIN: Actor = { usuarioId: ACTOR, rol: "superadmin", organizacionId: null };
 
 const mas = (iso: string, minutos: number) => new Date(new Date(iso).getTime() + minutos * MINUTO_MS).toISOString();
 /** La corrida de las 00:10 de la plataforma del día `fecha`. */
@@ -221,7 +225,7 @@ async function intentar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<
   }
 }
 
-describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el plan (R5, R8, R15–R17, R28, R29, R39)", () => {
+describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el plan (R5, R8, R15–R17, R28–R30, R39)", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
   });
@@ -393,6 +397,58 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
     for (const f of r.fotos) expect(f).toEqual(r.fotos[0]);
     // El precio rige por R8 desde la primera cuota cuyo período empieza en su efecto o después.
     expect(r.lista.map((f) => f.cuota)).toEqual(["15500.00", "15500.00", "20000.00", null]);
+  });
+
+  it("R30 (P9): quincenal → anual guardado por `PlanesService` el 10 de noviembre rige el 1 de enero; las emitidas el 16 de noviembre y el 1 y el 16 de diciembre llevan la quincena que empieza, la del 1 de enero la anual completa y ninguna queda corta", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "quincenal" });
+      // Una corrida del 10 abre la factura en curso del 1, para que el pendiente tenga qué no tocar.
+      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const antesDelCambio = await fotoDeFilas(tx, e.id);
+      await fijarEmpresa(tx, "");
+      // «Hoy» = 10 de noviembre y la fecha elegida, la de hoy: el tipo de referencia es el anual (P9).
+      const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-11-10T15:00:00.000Z"));
+      const guardado = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: e.id, tipoCobro: "anual", vigenteDesde: "2026-11-10" });
+      const [pendiente] = await tx.$queryRawUnsafe<{ tipo: string; cambioTipo: string | null; cambioDesde: string | null }[]>(
+        `SELECT "plan_tipo_cobro" AS tipo, "plan_cambio_tipo_cobro" AS "cambioTipo", to_char("plan_cambio_desde_at", ${ISO}) AS "cambioDesde"
+           FROM "organizacion" WHERE "id" = $1`,
+        e.id,
+      );
+      const trasGuardar = await fotoDeFilas(tx, e.id);
+      const emitidas = [
+        await cerrar(tx, e.id, corrida("2026-11-16")),
+        await cerrar(tx, e.id, corrida("2026-12-01")),
+        await cerrar(tx, e.id, corrida("2026-12-16")),
+      ];
+      // El 1 de enero, en el orden normal: la cola a las 00:00:30 y el cierre a las 00:10.
+      await aplicarPendiente(tx, e.id, cola("2027-01-01"));
+      emitidas.push(await cerrar(tx, e.id, corrida("2027-01-01")));
+      emitidas.push(await cerrar(tx, e.id, corrida("2027-01-16")));
+      return { plan, guardado, pendiente, antesDelCambio, trasGuardar, emitidas, lista: await facturas(tx, e.id) };
+    });
+    // R30, P9: el efecto va al 1 de enero (el próximo inicio del anual), no al 16 de noviembre (el del quincenal).
+    expect(r.guardado).toEqual({ estado: "ok", cambio: true, vigenteDesde: "2027-01-01" });
+    expect(r.pendiente).toEqual({ tipo: "quincenal", cambioTipo: "anual", cambioDesde: cero("2027-01-01") });
+    // R17: guardar el pendiente no toca ninguna factura.
+    expect(r.trasGuardar).toEqual(r.antesDelCambio);
+    expect(r.emitidas).toEqual([1, 1, 1, 1, 1]);
+    expect(
+      r.lista.map((f) => [f.estado, f.desde, f.hasta, f.plan_id, f.tipo_cobro, f.cuota_tipo_cobro, f.cuota, f.cuota_desde, f.cuota_hasta, f.primera_cuota, f.marca]),
+    ).toEqual([
+      // Hasta el 1 de enero la empresa sigue quincenal: cada emisión lleva la cuota de la quincena que empieza.
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), r.plan, "quincenal", "quincenal", "15500.00", cero("2026-11-16"), cero("2026-12-01"), null, null],
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), r.plan, "quincenal", "quincenal", "15500.00", cero("2026-12-01"), cero("2026-12-16"), null, null],
+      ["cerrada", cero("2026-12-01"), cero("2026-12-16"), r.plan, "quincenal", "quincenal", "15500.00", cero("2026-12-16"), cero("2027-01-01"), null, null],
+      // La emitida el 1 de enero: las órdenes del 16 al 31 con el tipo de antes y la cuota anual completa.
+      ["cerrada", cero("2026-12-16"), cero("2027-01-01"), r.plan, "quincenal", "anual", "372000.00", cero("2027-01-01"), cero("2028-01-01"), null, null],
+      // Ya anual: la emitida el 16 de enero no lleva cuota (el próximo año empieza el 1 de enero de 2028).
+      ["cerrada", cero("2027-01-01"), cero("2027-01-16"), r.plan, "anual", null, null, null, null, null, null],
+      ["en_curso", cero("2027-01-16"), null, r.plan, "anual", null, null, null, null, null, null],
+    ]);
+    // Ninguna factura corta: ni un corte el 10 ni una primera cuota proporcional; la anual cobra el año entero.
+    expect(r.lista.filter((f) => f.hasta === cero("2026-11-10"))).toHaveLength(0);
+    expect(r.lista[3]).toMatchObject({ dias_cobrados: 365, dias_periodo: 365 });
   });
 
   /* ------------------------- Primera asignación ------------------------- */

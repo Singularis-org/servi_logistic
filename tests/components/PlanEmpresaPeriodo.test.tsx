@@ -110,7 +110,7 @@ function sinPlan(pendienteSinPlan: PendienteDeEmpresa | null = null): PlanDeEmpr
 function montar({
   v = conPlan(),
   asignar = vi.fn<Asignar>().mockResolvedValue({ estado: "ok", planId: PRO.id, cambio: true, avisos: [], vigenteDesde: null }),
-  cambiar = vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: true }),
+  cambiar = vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: true, vigenteDesde: null }),
   cancelar = vi.fn<Cancelar>().mockResolvedValue({ estado: "ok" }),
   precios,
 }: {
@@ -237,6 +237,22 @@ describe("SLT-86 R24, R25 — «Cambiar plan» con fecha de efecto y costo del p
       screen.getByText("La empresa ya tiene 12 de 10 Mensajero: no podrá activar ni crear más hasta bajar del tope."),
     ).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("SLT-118 R32: al cambiar el plan, la confirmación dice la fecha real del servidor y no la elegida", async () => {
+    const user = userEvent.setup();
+    const { asignar } = montar({
+      asignar: vi
+        .fn<Asignar>()
+        .mockResolvedValue({ estado: "ok", planId: PRO.id, cambio: true, avisos: [], vigenteDesde: "2026-05-01" }),
+    });
+    const modal = await abrirCambioDePlan(user);
+    fireEvent.change(within(modal).getByLabelText("Rige desde"), { target: { value: "2026-04-10" } });
+    await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
+
+    await waitFor(() => expect(asignar).toHaveBeenCalledWith(expect.objectContaining({ vigenteDesde: "2026-04-10" })));
+    expect(await screen.findByText("Cambio programado desde 2026-05-01.")).toBeInTheDocument();
+    expect(screen.queryByText("Cambio programado desde 2026-04-10.")).toBeNull();
   });
 
   it("R16: un `validation_error` de `vigenteDesde` va junto a «Rige desde» con el modal abierto", async () => {

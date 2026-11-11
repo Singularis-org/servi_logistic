@@ -66,8 +66,10 @@ export type ResultadoAsignar =
   /**
    * `avisos`: los topes que la empresa ya pasa y que no rechazaron (primera asignación con fecha, o un
    * cambio con fecha futura; R18). `pendiente`: se guardó como cambio pendiente y aún no rige (R17, R20).
+   * `vigenteDesde`: SLT-118 (R30–R32): la fecha real del pendiente (`AAAA-MM-DD`), que puede ser posterior
+   * a la elegida; solo viene con `pendiente: true`.
    */
-  | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[]; pendiente: boolean }
+  | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[]; pendiente: boolean; vigenteDesde?: string }
   | { estado: "not_found" }
   | { estado: "archivado" }
   | { estado: "custom_de_otra_empresa" }
@@ -90,7 +92,7 @@ export interface AsignacionAlCrear {
  * `asignar`.
  */
 export type ResultadoCrearYAsignar =
-  | { estado: "ok"; planId: string; avisos: TopeExcedido[]; pendiente: boolean }
+  | { estado: "ok"; planId: string; avisos: TopeExcedido[]; pendiente: boolean; vigenteDesde?: string }
   | Exclude<ResultadoAsignar, { estado: "ok" }>;
 
 /**
@@ -216,10 +218,11 @@ export interface AsignacionLeida {
 /**
  * Ajuste planes-custom (D10): cambiar solo el tipo de cobro. `cambio: false` = ya tenía ese tipo, sin
  * pendiente, y no se escribió nada (SLT-86 R19). `pendiente`: se guardó para su fecha de efecto (R17).
- * `sin_plan`: la empresa no tiene plan bajo el cerrojo.
+ * `sin_plan`: la empresa no tiene plan bajo el cerrojo. `vigenteDesde`: SLT-118 (R32), la fecha real del
+ * pendiente (`AAAA-MM-DD`); solo viene con `pendiente: true`.
  */
 export type ResultadoCambiarTipoCobro =
-  | { estado: "ok"; cambio: boolean; pendiente: boolean }
+  | { estado: "ok"; cambio: boolean; pendiente: boolean; vigenteDesde?: string }
   | { estado: "not_found" }
   | { estado: "sin_plan" };
 

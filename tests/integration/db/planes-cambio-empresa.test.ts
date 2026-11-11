@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { EfectoElegido } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
-import { cobroDelPlan, costoDelTramo, montoDelPeriodo } from "@/lib/planes/cobro";
+import { cobroDelPlan, montoDelPeriodo } from "@/lib/planes/cobro";
 import { dedupeCambioEmpresa } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { CrearPlanInput, PrecioPlan, TipoCobro, TopesPlan } from "@/lib/types/planes";
@@ -26,6 +26,11 @@ import { tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 //   · los que necesitan un día concreto (R17: «el 10») llaman al repositorio con un `ahora` explícito y
 //     fechas fijas. El repositorio no lee el reloj de la base para decidir si la fecha ya rige: lo decide
 //     el `ahora` que recibe, el mismo que el trabajo le pasa al aplicar.
+//
+// SLT-118 (R30–R34; P7, P9, P10): la fecha de efecto de un `"cambio"` se lleva al inicio del período siguiente
+// del tipo de referencia (el más largo entre el vigente y el nuevo), salvo que ya lo sea; la primera asignación
+// no se lleva. Los casos que dependen de «hoy» usan un servicio con reloj fijo (`servicioEn`): con el reloj
+// real, «hoy» solo se aplica en el acto si cae en un inicio de período.
 //
 // LOCKS: el de superadmin (SL-32) desde el `beforeAll`, para que el historial lleve un actor que resuelve
 // (R20: «con el actor que lo programó»); el de la 227 lo toma cada `revertida`.
@@ -51,6 +56,8 @@ interface Caso {
   tx: TxDeTest;
   actor: Actor;
   servicio: PlanesService;
+  /** SLT-118: un servicio con el reloj fijo en `ahora`. */
+  servicioEn: (ahora: Date) => PlanesService;
   plan: (p?: { topes?: Partial<TopesPlan>; modulos?: CrearPlanInput["modulos"]; precio?: PrecioPlan }) => Promise<string>;
   empresa: () => Promise<string>;
 }
@@ -63,6 +70,7 @@ async function caso(tx: TxDeTest): Promise<Caso> {
     tx,
     actor,
     servicio,
+    servicioEn: (ahora) => new PlanesService(planesEnTx(tx), () => ahora),
     plan: async (p = {}) => {
       const r = await servicio.crear(
         actor,
@@ -258,7 +266,7 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
     expect(sqlstateDe(r.conTope)).toBe("SL024");
   });
 
-  it("R17, R20: mensual → quincenal con plan nuevo y fecha el 10: antes rige lo viejo; al aplicar, tramo del 10 al 15 con 6/15 del costo quincenal, y luego quincenas de calendario", async () => {
+  it("R17, R20, R30: mensual → quincenal elegido el 10 de octubre → rige el 1 de noviembre (tipo de referencia mensual); antes rige lo viejo; al aplicar, quincenas de calendario sin tramo", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const viejo = await c.plan({ modulos: ["analitica"] });
@@ -275,42 +283,49 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
         new Date("2026-10-05T12:00:00.000Z"),
       );
       const pendiente = await estado(tx, org);
-      const temprano = await aplicar(tx, org, new Date("2026-10-10T05:59:59.999Z"));
+      const jobs = await trabajos(tx, org);
+      // SLT-118 (R30): el 10 ya no rige; el pendiente espera al 1 de noviembre.
+      const el10 = await aplicar(tx, org, new Date("2026-10-10T07:00:00.000Z"));
+      const temprano = await aplicar(tx, org, new Date("2026-11-01T05:59:59.999Z"));
       const trasTemprano = await estado(tx, org);
-      const aplicado = await aplicar(tx, org, new Date("2026-10-10T07:00:00.000Z"));
+      const aplicado = await aplicar(tx, org, new Date("2026-11-01T07:00:00.000Z"));
       const despues = await estado(tx, org);
       const segunda = await planesEnTx(tx).aplicarCambioDeEmpresa(
         { organizacionId: org, cambioId: pendiente.empresa.planCambioId as string },
-        new Date("2026-10-10T08:00:00.000Z"),
+        new Date("2026-11-01T08:00:00.000Z"),
       );
       const base10 = await tx.$queryRawUnsafe<{ inicio: Date; fin: Date }[]>(
-        `SELECT plan_inicio_ciclo_de("plan_ciclo_ancla_at", "plan_tipo_cobro", '2026-10-10 18:00'::timestamp) AS "inicio",
-                plan_fin_periodo_calendario("plan_tipo_cobro", '2026-10-10 18:00'::timestamp) AS "fin"
+        `SELECT plan_inicio_ciclo_de("plan_ciclo_ancla_at", "plan_tipo_cobro", '2026-11-10 18:00'::timestamp) AS "inicio",
+                plan_fin_periodo_calendario("plan_tipo_cobro", '2026-11-10 18:00'::timestamp) AS "fin"
            FROM "organizacion" WHERE "id" = $1`,
         org,
       );
       const base20 = await tx.$queryRawUnsafe<{ inicio: Date; fin: Date }[]>(
-        `SELECT plan_inicio_ciclo_de("plan_ciclo_ancla_at", "plan_tipo_cobro", '2026-10-20 18:00'::timestamp) AS "inicio",
-                plan_fin_periodo_calendario("plan_tipo_cobro", '2026-10-20 18:00'::timestamp) AS "fin"
+        `SELECT plan_inicio_ciclo_de("plan_ciclo_ancla_at", "plan_tipo_cobro", '2026-11-20 18:00'::timestamp) AS "inicio",
+                plan_fin_periodo_calendario("plan_tipo_cobro", '2026-11-20 18:00'::timestamp) AS "fin"
            FROM "organizacion" WHERE "id" = $1`,
         org,
       );
-      return { viejo, nuevo, antes, res, pendiente, temprano, trasTemprano, aplicado, despues, segunda, base10, base20, actor: c.actor };
+      return { viejo, nuevo, antes, res, pendiente, jobs, el10, temprano, trasTemprano, aplicado, despues, segunda, base10, base20, actor: c.actor };
     });
-    expect(r.res).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: true });
-    // R17: hasta las 00:00 del 10 rige exactamente lo de antes.
+    expect(r.res).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: "2026-11-01" });
+    // R30: el pendiente y su trabajo, con la fecha real.
+    expect(r.pendiente.empresa.planCambioDesdeAt?.toISOString()).toBe("2026-11-01T06:00:00.000Z");
+    expect(r.jobs.map((j) => j.run_after.toISOString())).toEqual(["2026-11-01T06:00:00.000Z"]);
+    // R17: hasta las 00:00 del 1 de noviembre rige exactamente lo de antes.
     expect({ ...r.pendiente.empresa, planCambioId: null, planCambioPlanId: null, planCambioTipoCobro: null, planCambioDesdeAt: null, planCambioActorId: null }).toEqual(r.antes.empresa);
     expect(r.pendiente.modulos).toEqual(["analitica"]);
     expect(r.pendiente.historial).toEqual(r.antes.historial);
+    expect(r.el10).toEqual({ estado: "aun_no_rige" });
     expect(r.temprano).toEqual({ estado: "aun_no_rige" });
     expect(r.trasTemprano).toEqual(r.pendiente);
-    // R17, R20: desde las 00:00 del 10, plan, tipo, módulos y entrada nuevos, y la fila con quien lo programó.
+    // R17, R20: desde las 00:00 del 1, plan, tipo, módulos y entrada nuevos, y la fila con quien lo programó.
     expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.segunda).toEqual({ estado: "sin_pendiente" });
     expect(r.despues.empresa).toEqual({
       planId: r.nuevo,
       planTipoCobro: "quincenal",
-      planCicloAnclaAt: new Date("2026-10-10T06:00:00.000Z"),
+      planCicloAnclaAt: new Date("2026-11-01T06:00:00.000Z"),
       planCambioId: null,
       planCambioPlanId: null,
       planCambioTipoCobro: null,
@@ -321,69 +336,78 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
     expect(r.despues.historial).toEqual(
       [
         ...r.antes.historial,
-        JSON.stringify({ accion: "plan_asignado", entidadId: r.nuevo, valorAnterior: null, valorNuevo: "2026-10-10 · quincenal", actorUsuarioId: r.actor.usuarioId }),
+        JSON.stringify({ accion: "plan_asignado", entidadId: r.nuevo, valorAnterior: null, valorNuevo: "2026-11-01 · quincenal", actorUsuarioId: r.actor.usuarioId }),
       ].sort(),
     );
-    // El tramo del 10 al 15 en la base y en TS, con 6/15 del costo quincenal (R12: 15 500 → 6 200.00).
+    // Sin tramo a mitad de período (SLT-118 modifica SLT-86 R17): quincenas de calendario completas desde el 1.
     const entrada = r.despues.empresa.planCicloAnclaAt as Date;
-    expect(r.base10[0]).toEqual({ inicio: new Date("2026-10-10T06:00:00.000Z"), fin: new Date("2026-10-16T06:00:00.000Z") });
-    const tramo = cobroDelPlan(MENSUAL_31000, "quincenal", entrada, new Date("2026-10-10T18:00:00.000Z"), null);
-    expect(tramo.periodo).toEqual({ desde: "2026-10-10", hasta: "2026-10-15", esTramo: true });
-    expect(tramo.costo).toBe(costoDelTramo(montoDelPeriodo(MENSUAL_31000, "quincenal") as string, 6, 15));
-    expect(tramo.costo).toBe("6200.00");
-    // Luego, quincenas de calendario completas.
-    expect(r.base20[0]).toEqual({ inicio: new Date("2026-10-16T06:00:00.000Z"), fin: new Date("2026-11-01T06:00:00.000Z") });
-    const quincena = cobroDelPlan(MENSUAL_31000, "quincenal", entrada, new Date("2026-10-20T18:00:00.000Z"), null);
-    expect(quincena.periodo).toEqual({ desde: "2026-10-16", hasta: "2026-10-31", esTramo: false });
+    expect(r.base10[0]).toEqual({ inicio: new Date("2026-11-01T06:00:00.000Z"), fin: new Date("2026-11-16T06:00:00.000Z") });
+    const primera = cobroDelPlan(MENSUAL_31000, "quincenal", entrada, new Date("2026-11-10T18:00:00.000Z"), null);
+    expect(primera.periodo).toEqual({ desde: "2026-11-01", hasta: "2026-11-15", esTramo: false });
+    expect(primera.costo).toBe(montoDelPeriodo(MENSUAL_31000, "quincenal"));
+    expect(primera.costo).toBe("15500.00");
+    expect(r.base20[0]).toEqual({ inicio: new Date("2026-11-16T06:00:00.000Z"), fin: new Date("2026-12-01T06:00:00.000Z") });
+    const quincena = cobroDelPlan(MENSUAL_31000, "quincenal", entrada, new Date("2026-11-20T18:00:00.000Z"), null);
+    expect(quincena.periodo).toEqual({ desde: "2026-11-16", hasta: "2026-11-30", esTramo: false });
     expect(quincena.costo).toBe("15500.00");
   });
 
-  it("R18: con fecha de hoy un tope pasado rechaza (tope_excedido); con fecha futura se guarda con aviso y al aplicarse rige SLT-58 R36", async () => {
-    const futura = dia(4);
+  it("R18, R30, R31: con «hoy» = 1 de diciembre (inicio de mes) un tope pasado rechaza; con el 5 se guarda para el 1 de enero con aviso y al aplicarse rige SLT-58 R36", async () => {
+    // Reloj fijo: «hoy» solo se aplica en el acto si es el primer día de un período (R31).
+    const hoy = "2026-12-01";
+    const futura = "2026-12-05";
+    const real = "2027-01-01";
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
+      const servicio = c.servicioEn(new Date(`${hoy}T18:00:00.000Z`));
       const grande = await c.plan({ topes: { porRol: { adminTienda: 10 } } });
       const chico = await c.plan({ topes: { porRol: { adminTienda: 2 } } });
       const org = await c.empresa();
-      await c.servicio.asignar(c.actor, { organizacionId: org, planId: grande, tipoCobro: "mensual", inicioCiclo: dia(0) });
+      await servicio.asignar(c.actor, { organizacionId: org, planId: grande, tipoCobro: "mensual", inicioCiclo: hoy });
       await tiendas(tx, org, 3);
       const antes = await estado(tx, org);
-      const hoy = await c.servicio.asignar(c.actor, { organizacionId: org, planId: chico, tipoCobro: "mensual", vigenteDesde: dia(0) });
+      const enHoy = await servicio.asignar(c.actor, { organizacionId: org, planId: chico, tipoCobro: "mensual", vigenteDesde: hoy });
       const trasHoy = await estado(tx, org);
-      const conFecha = await c.servicio.asignar(c.actor, { organizacionId: org, planId: chico, tipoCobro: "mensual", vigenteDesde: futura });
+      const conFecha = await servicio.asignar(c.actor, { organizacionId: org, planId: chico, tipoCobro: "mensual", vigenteDesde: futura });
       const pendiente = await estado(tx, org);
-      const aplicado = await aplicar(tx, org, new Date(inicioDelDiaPlataforma(futura).getTime() + UNA_HORA_MS));
+      const temprano = await aplicar(tx, org, new Date(inicioDelDiaPlataforma(futura).getTime() + UNA_HORA_MS));
+      const aplicado = await aplicar(tx, org, new Date(inicioDelDiaPlataforma(real).getTime() + UNA_HORA_MS));
       const despues = await estado(tx, org);
       const otra = await tiendas(tx, org, 1);
-      return { grande, chico, org, antes, hoy, trasHoy, conFecha, pendiente, aplicado, despues, otra };
+      return { grande, chico, org, antes, enHoy, trasHoy, conFecha, pendiente, temprano, aplicado, despues, otra };
     });
-    expect(r.hoy).toMatchObject({ estado: "tope_excedido", excedidos: [{ tope: "adminTienda", usados: 3, maximo: 2 }] });
+    expect(r.enHoy).toMatchObject({ estado: "tope_excedido", excedidos: [{ tope: "adminTienda", usados: 3, maximo: 2 }] });
     expect(r.trasHoy).toEqual(r.antes);
     expect(r.conFecha).toEqual({
       estado: "ok",
       planId: r.chico,
       cambio: true,
       avisos: [{ organizacionId: r.org, empresa: expect.any(String), tope: "adminTienda", usados: 3, maximo: 2 }],
-      vigenteDesde: futura,
+      vigenteDesde: real,
     });
     expect(r.pendiente.empresa).toMatchObject({ planId: r.grande, planCambioPlanId: r.chico });
+    expect(r.pendiente.empresa.planCambioDesdeAt?.toISOString()).toBe(inicioDelDiaPlataforma(real).toISOString());
+    expect(r.temprano).toEqual({ estado: "aun_no_rige" });
     expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.despues.empresa.planId).toBe(r.chico);
     expect(sqlstateDe(r.otra)).toBe("SL024");
   });
 
-  it("R18: con fecha de hoy y sin topes pasados se aplica en la misma transacción: entrada a las 00:00 de hoy, sin pendiente ni trabajo", async () => {
+  it("R18, R31: con «hoy» en el inicio de un bimestre y sin topes pasados se aplica en la misma transacción: entrada a las 00:00 de hoy, sin pendiente ni trabajo", async () => {
+    // Reloj fijo el 1 de enero: inicio de un período bimestral, el tipo de referencia de mensual → bimestral.
+    const hoy = "2027-01-01";
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
+      const servicio = c.servicioEn(new Date(`${hoy}T18:00:00.000Z`));
       const [uno, dos] = [await c.plan(), await c.plan({ modulos: ["ranking"] })];
       const org = await c.empresa();
-      await c.servicio.asignar(c.actor, { organizacionId: org, planId: uno, tipoCobro: "mensual", inicioCiclo: dia(-20) });
-      const res = await c.servicio.asignar(c.actor, { organizacionId: org, planId: dos, tipoCobro: "bimestral", vigenteDesde: dia(0) });
+      await servicio.asignar(c.actor, { organizacionId: org, planId: uno, tipoCobro: "mensual", inicioCiclo: "2026-12-12" });
+      const res = await servicio.asignar(c.actor, { organizacionId: org, planId: dos, tipoCobro: "bimestral", vigenteDesde: hoy });
       return { dos, res, despues: await estado(tx, org), jobs: await trabajos(tx, org) };
     });
     expect(r.res).toEqual({ estado: "ok", planId: r.dos, cambio: true, avisos: [], vigenteDesde: null });
     expect(r.despues.empresa).toMatchObject({ planId: r.dos, planTipoCobro: "bimestral", planCambioId: null });
-    expect(r.despues.empresa.planCicloAnclaAt?.toISOString()).toBe(inicioDelDiaPlataforma(dia(0)).toISOString());
+    expect(r.despues.empresa.planCicloAnclaAt?.toISOString()).toBe(inicioDelDiaPlataforma(hoy).toISOString());
     expect(r.despues.modulos).toEqual(["ranking"]);
     expect(r.jobs).toEqual([]);
   });
@@ -423,11 +447,11 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
     expect(r.identico).toEqual({ estado: "ok", planId: r.uno, cambio: true, avisos: [], vigenteDesde: null });
     expect(r.cancelado).toEqual(r.vigente);
     expect(r.otraVez).toEqual({ estado: "ok", planId: r.uno, cambio: false, avisos: [], vigenteDesde: null });
-    expect(r.tipoIgual).toEqual({ estado: "ok", cambio: false });
+    expect(r.tipoIgual).toEqual({ estado: "ok", cambio: false, vigenteDesde: null });
     expect(r.final).toEqual(r.vigente);
   });
 
-  it("R16, R20: cambiar solo el tipo con fecha futura → al aplicarse, `plan_tipo_cobro_cambiado` (antes → fecha · tipo) con quien lo programó, sin tocar plan ni módulos; el barrido lo ve solo desde su fecha", async () => {
+  it("R16, R20, R30: cambiar solo el tipo (mensual → anual) elegido el 20 de octubre → rige el 1 de enero; al aplicarse, `plan_tipo_cobro_cambiado` (antes → fecha · tipo) con quien lo programó, sin tocar plan ni módulos; el barrido lo ve solo desde su fecha", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const plan = await c.plan({ modulos: ["analitica"] });
@@ -436,24 +460,27 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
       const antes = await estado(tx, org);
       const res = await planesEnTx(tx).cambiarTipoCobro(org, "anual", efecto("cambio", "2026-10-20"), c.actor.usuarioId, new Date("2026-10-02T12:00:00.000Z"));
       const repo = planesEnTx(tx);
-      const vencidosAntes = (await repo.cambiosDeEmpresaVencidos(new Date("2026-10-20T05:59:59.999Z"))).filter((v) => v.organizacionId === org);
-      const vencidos = (await repo.cambiosDeEmpresaVencidos(new Date("2026-10-20T06:00:00.000Z"))).filter((v) => v.organizacionId === org);
-      const aplicado = await repo.aplicarCambioDeEmpresa(vencidos[0], new Date("2026-10-20T06:00:00.000Z"));
-      const vencidosDespues = (await repo.cambiosDeEmpresaVencidos(new Date("2026-10-21T00:00:00.000Z"))).filter((v) => v.organizacionId === org);
-      return { plan, antes, res, vencidosAntes, vencidos, aplicado, vencidosDespues, despues: await estado(tx, org), actor: c.actor };
+      const el20 = (await repo.cambiosDeEmpresaVencidos(new Date("2026-10-20T06:00:00.000Z"))).filter((v) => v.organizacionId === org);
+      const vencidosAntes = (await repo.cambiosDeEmpresaVencidos(new Date("2027-01-01T05:59:59.999Z"))).filter((v) => v.organizacionId === org);
+      const vencidos = (await repo.cambiosDeEmpresaVencidos(new Date("2027-01-01T06:00:00.000Z"))).filter((v) => v.organizacionId === org);
+      const aplicado = await repo.aplicarCambioDeEmpresa(vencidos[0], new Date("2027-01-01T06:00:00.000Z"));
+      const vencidosDespues = (await repo.cambiosDeEmpresaVencidos(new Date("2027-01-02T00:00:00.000Z"))).filter((v) => v.organizacionId === org);
+      return { plan, antes, res, el20, vencidosAntes, vencidos, aplicado, vencidosDespues, despues: await estado(tx, org), actor: c.actor };
     });
-    expect(r.res).toEqual({ estado: "ok", cambio: true, pendiente: true });
+    // R30: el tipo de referencia es el anual (el más largo); el 20 de octubre no es inicio de un año.
+    expect(r.res).toEqual({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: "2027-01-01" });
+    expect(r.el20).toEqual([]);
     expect(r.vencidosAntes).toEqual([]);
     expect(r.vencidos).toHaveLength(1);
     expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.vencidosDespues).toEqual([]);
     expect(r.despues.empresa).toMatchObject({ planId: r.plan, planTipoCobro: "anual", planCambioId: null });
-    expect(r.despues.empresa.planCicloAnclaAt?.toISOString()).toBe("2026-10-20T06:00:00.000Z");
+    expect(r.despues.empresa.planCicloAnclaAt?.toISOString()).toBe("2027-01-01T06:00:00.000Z");
     expect(r.despues.modulos).toEqual(r.antes.modulos);
     expect(r.despues.historial).toEqual(
       [
         ...r.antes.historial,
-        JSON.stringify({ accion: "plan_tipo_cobro_cambiado", entidadId: r.plan, valorAnterior: "mensual", valorNuevo: "2026-10-20 · anual", actorUsuarioId: r.actor.usuarioId }),
+        JSON.stringify({ accion: "plan_tipo_cobro_cambiado", entidadId: r.plan, valorAnterior: "mensual", valorNuevo: "2027-01-01 · anual", actorUsuarioId: r.actor.usuarioId }),
       ].sort(),
     );
   });
@@ -549,10 +576,185 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
       const antes = await contar();
       await c.servicio.asignar(c.actor, { organizacionId: org, planId: uno, tipoCobro: "anual", inicioCiclo: dia(-3) });
       await c.servicio.asignar(c.actor, { organizacionId: org, planId: dos, tipoCobro: "quincenal", vigenteDesde: dia(2) });
-      const aplicado = await aplicar(tx, org, new Date(inicioDelDiaPlataforma(dia(2)).getTime() + UNA_HORA_MS));
+      // SLT-118 (R30): se aplica en la fecha real que guardó el pendiente (anual → quincenal: el 1 de enero siguiente).
+      const { planCambioDesdeAt } = await tx.organizacion.findUniqueOrThrow({ where: { id: org }, select: { planCambioDesdeAt: true } });
+      const aplicado = await aplicar(tx, org, new Date((planCambioDesdeAt as Date).getTime() + UNA_HORA_MS));
       return { antes, aplicado, despues: await contar() };
     });
     expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.despues).toEqual(r.antes);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SLT-118 (design §3.1; R30, R31, R33, R34) — la fecha de efecto real          */
+/* -------------------------------------------------------------------------- */
+
+/** Una empresa con `planId` en `tipo` desde el 1 de noviembre de 2026 (primera asignación, sin llevar). */
+async function conPlanDesdeEl1(tx: TxDeTest, actor: Actor, planId: string, tipo: TipoCobro): Promise<string> {
+  const org = (await crearOrganizacion(tx)).id;
+  await primerPlan(tx, actor, org, planId, "2026-11-01", tipo);
+  return org;
+}
+
+/** El pendiente de la empresa como `AAAA-MM-DD` de la plataforma (o `null`), y si ya rige el tipo nuevo. */
+async function pendienteDe(tx: TxDeTest, organizacionId: string) {
+  const e = await tx.organizacion.findUniqueOrThrow({
+    where: { id: organizacionId },
+    select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true, planCambioDesdeAt: true },
+  });
+  return { ...e, pendiente: e.planCambioDesdeAt === null ? null : fechaCalendarioCR(e.planCambioDesdeAt) };
+}
+
+/** 10 de noviembre de 2026, 12:00 en la plataforma: el «hoy» de los ejemplos de R30. */
+const EL_10 = new Date("2026-11-10T18:00:00.000Z");
+
+describeSiHayBase("SLT-118 — la fecha de efecto de un cambio del superadmin (R30, R31, R33, R34)", () => {
+  beforeAll(async () => {
+    base = crearPrismaDeTest();
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+  });
+
+  afterAll(async () => {
+    try {
+      await soltarSuperadmin();
+    } finally {
+      await base?.$disconnect();
+    }
+  });
+
+  // [vigente, nuevo, elegida, real]. El tipo de referencia es el más largo de los dos (P9).
+  const CASOS_R30: [TipoCobro, TipoCobro, string, string][] = [
+    // mismo tipo
+    ["mensual", "mensual", "2026-11-10", "2026-12-01"],
+    ["quincenal", "quincenal", "2026-11-10", "2026-11-16"],
+    ["quincenal", "quincenal", "2026-11-20", "2026-12-01"],
+    ["bimestral", "bimestral", "2026-11-10", "2027-01-01"],
+    ["anual", "anual", "2026-11-10", "2027-01-01"],
+    // a un tipo más largo
+    ["quincenal", "anual", "2026-11-10", "2027-01-01"],
+    ["quincenal", "mensual", "2026-11-10", "2026-12-01"],
+    ["mensual", "bimestral", "2026-11-10", "2027-01-01"],
+    // a un tipo más corto
+    ["anual", "mensual", "2026-11-10", "2027-01-01"],
+    ["mensual", "quincenal", "2026-11-10", "2026-12-01"],
+  ];
+
+  it.each(CASOS_R30)(
+    "R30, R32: asignar otro plan, %s → %s elegido el %s → pendiente para el %s, con su trabajo a esa hora; sigue el plan y el tipo de antes",
+    async (vigente, nuevo, elegida, real) => {
+      const r = await revertida(base, async (tx) => {
+        const c = await caso(tx);
+        const [viejo, otro] = [await c.plan(), await c.plan()];
+        const org = await conPlanDesdeEl1(tx, c.actor, viejo, vigente);
+        const res = await planesEnTx(tx).asignar(org, otro, c.actor.usuarioId, efecto("cambio", elegida), nuevo, EL_10);
+        return { viejo, res, empresa: await pendienteDe(tx, org), jobs: await trabajos(tx, org) };
+      });
+      expect(r.res).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: real });
+      expect(r.empresa).toMatchObject({ planId: r.viejo, planTipoCobro: vigente, pendiente: real });
+      expect(r.empresa.planCambioDesdeAt?.toISOString()).toBe(inicioDelDiaPlataforma(real).toISOString());
+      expect(r.jobs.map((j) => j.run_after.toISOString())).toEqual([inicioDelDiaPlataforma(real).toISOString()]);
+    },
+  );
+
+  it("R30: «hoy» = 10 de noviembre, mensual → 1 de diciembre: pendiente, sin aplicarse en el acto; al aplicarse, la entrada y el historial llevan el 1 de diciembre", async () => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const [viejo, nuevo] = [await c.plan(), await c.plan()];
+      const org = await conPlanDesdeEl1(tx, c.actor, viejo, "mensual");
+      const antes = await estado(tx, org);
+      const res = await c.servicioEn(EL_10).asignar(c.actor, { organizacionId: org, planId: nuevo, tipoCobro: "mensual", vigenteDesde: "2026-11-10" });
+      const pendiente = await estado(tx, org);
+      const aplicado = await aplicar(tx, org, new Date("2026-12-01T07:00:00.000Z"));
+      return { nuevo, antes, res, pendiente, aplicado, despues: await estado(tx, org), actor: c.actor };
+    });
+    expect(r.res).toEqual({ estado: "ok", planId: r.nuevo, cambio: true, avisos: [], vigenteDesde: "2026-12-01" });
+    expect(r.pendiente.empresa.planId).toBe(r.antes.empresa.planId);
+    expect(r.pendiente.empresa.planCicloAnclaAt).toEqual(r.antes.empresa.planCicloAnclaAt);
+    expect(r.pendiente.historial).toEqual(r.antes.historial);
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
+    expect(r.despues.empresa).toMatchObject({ planId: r.nuevo, planCicloAnclaAt: new Date("2026-12-01T06:00:00.000Z") });
+    expect(r.despues.historial).toEqual(
+      [
+        ...r.antes.historial,
+        JSON.stringify({ accion: "plan_asignado", entidadId: r.nuevo, valorAnterior: null, valorNuevo: "2026-12-01 · mensual", actorUsuarioId: r.actor.usuarioId }),
+      ].sort(),
+    );
+  });
+
+  // [vigente, nuevo, elegida]: la elegida ya es el primer día de un período del tipo de referencia.
+  const CASOS_R31: [TipoCobro, TipoCobro, string][] = [
+    ["mensual", "mensual", "2026-12-01"],
+    ["quincenal", "quincenal", "2026-11-16"],
+    ["anual", "anual", "2027-01-01"],
+    ["quincenal", "anual", "2027-01-01"],
+  ];
+
+  it.each(CASOS_R31)("R31: asignar otro plan, %s → %s elegido el %s (inicio de un período del tipo de referencia) → se respeta", async (vigente, nuevo, elegida) => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const [viejo, otro] = [await c.plan(), await c.plan()];
+      const org = await conPlanDesdeEl1(tx, c.actor, viejo, vigente);
+      const res = await planesEnTx(tx).asignar(org, otro, c.actor.usuarioId, efecto("cambio", elegida), nuevo, EL_10);
+      return { res, empresa: await pendienteDe(tx, org) };
+    });
+    expect(r.res).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: elegida });
+    expect(r.empresa.pendiente).toBe(elegida);
+  });
+
+  it("R31, R30: quincenal → mensual el 16 de noviembre (inicio del vigente, no del de referencia) → 1 de diciembre", async () => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const [viejo, otro] = [await c.plan(), await c.plan()];
+      const org = await conPlanDesdeEl1(tx, c.actor, viejo, "quincenal");
+      const res = await planesEnTx(tx).asignar(org, otro, c.actor.usuarioId, efecto("cambio", "2026-11-16"), "mensual", EL_10);
+      return { res, empresa: await pendienteDe(tx, org) };
+    });
+    expect(r.res).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: "2026-12-01" });
+    expect(r.empresa.pendiente).toBe("2026-12-01");
+  });
+
+  it("R33: la primera asignación no se lleva: inicio el 10 (a mitad de período) futuro → pendiente para el 10; de hoy → rige el 10 en el acto", async () => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const plan = await c.plan();
+      const [futura, hoy] = [await c.empresa(), await c.empresa()];
+      const repo = planesEnTx(tx);
+      const enFutura = await repo.asignar(futura, plan, c.actor.usuarioId, efecto("inicio", "2026-11-10"), "mensual", new Date("2026-11-05T18:00:00.000Z"));
+      const enHoy = await repo.asignar(hoy, plan, c.actor.usuarioId, efecto("inicio", "2026-11-10"), "quincenal", EL_10);
+      return { enFutura, enHoy, futura: await pendienteDe(tx, futura), hoy: await pendienteDe(tx, hoy), plan };
+    });
+    expect(r.enFutura).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: "2026-11-10" });
+    expect(r.futura).toMatchObject({ planId: null, pendiente: "2026-11-10" });
+    expect(r.enHoy).toEqual({ estado: "ok", cambio: true, avisos: [], pendiente: false });
+    expect(r.hoy).toMatchObject({ planId: r.plan, planTipoCobro: "quincenal", pendiente: null });
+    expect(r.hoy.planCicloAnclaAt?.toISOString()).toBe(inicioDelDiaPlataforma("2026-11-10").toISOString());
+  });
+
+  it("R34, R32: con hoy el 10 de noviembre, quincenal → anual elegido el 10 de noviembre de 2027 (el tope) → pendiente para el 1 de enero de 2028; el 11 → validation_error sin escribir", async () => {
+    const r = await revertida(base, async (tx) => {
+      const c = await caso(tx);
+      const [viejo, nuevo] = [await c.plan(), await c.plan()];
+      const [enTope, fuera] = [await conPlanDesdeEl1(tx, c.actor, viejo, "quincenal"), await conPlanDesdeEl1(tx, c.actor, viejo, "quincenal")];
+      const servicio = c.servicioEn(EL_10);
+      const antesFuera = await estado(tx, fuera);
+      const dentro = await servicio.asignar(c.actor, { organizacionId: enTope, planId: nuevo, tipoCobro: "anual", vigenteDesde: "2027-11-10" });
+      const rechazo = await servicio.asignar(c.actor, { organizacionId: fuera, planId: nuevo, tipoCobro: "anual", vigenteDesde: "2027-11-11" });
+      return {
+        nuevo,
+        dentro,
+        rechazo,
+        enTope: await pendienteDe(tx, enTope),
+        jobs: await trabajos(tx, enTope),
+        antesFuera,
+        despuesFuera: await estado(tx, fuera),
+      };
+    });
+    expect(r.dentro).toEqual({ estado: "ok", planId: r.nuevo, cambio: true, avisos: [], vigenteDesde: "2028-01-01" });
+    expect(r.enTope.pendiente).toBe("2028-01-01");
+    expect(r.jobs.map((j) => j.run_after.toISOString())).toEqual([inicioDelDiaPlataforma("2028-01-01").toISOString()]);
+    expect(r.rechazo.estado).toBe("validation_error");
+    if (r.rechazo.estado === "validation_error") expect(Object.keys(r.rechazo.fieldErrors)).toEqual(["vigenteDesde"]);
+    expect(r.despuesFuera).toEqual(r.antesFuera);
   });
 });
