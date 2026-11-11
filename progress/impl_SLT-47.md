@@ -634,3 +634,20 @@ collator. **No medido:** el coste en el servidor de calcular `lugarRuta` (tanda 
 
 Veredicto: T5.1 y T5.2 hechas; R7, R8, R9, R13 y R19 en verde y el E2E en verde dos veces. Bloqueo:
 `NovedadesBuscador.test.tsx:360-366` necesita añadir `"Distrito"` por R8 (no cambiado, pide autorización).
+
+## Arreglos tras T3–T5 (frontend_dev, 2026-11-11)
+
+### Archivos
+- `providers/EtiquetasGeograficasProvider.tsx`: `EtiquetasGeograficasProvider` vuelve a recibir solo `etiquetas`; nuevo `NivelesGeograficosProvider` (mismo archivo) para `NivelesGeograficosContexto`. `useNivelesGeograficos` sin cambios.
+- `app/(app)/layout.tsx`: `<NivelesGeograficosProvider niveles={niveles}>` envuelve por fuera; dentro vuelve el texto exacto `<EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>`, todo dentro de `AyudaProvider`.
+- Fixtures (sin tocar aserciones): `tests/components/AppLayout.test.tsx` (doble con `nivelesDeEmpresa: async () => []` y `NivelesGeograficosProvider` en el mock del módulo), `tests/components/mis-asignaciones/FiltroUbicacion.test.tsx` y `tests/components/NovedadesFiltroLugarUrl.test.tsx` (montan `NivelesGeograficosProvider`).
+- `tests/unit/utils/filtro-ubicacion.test.ts` (R6): `deHoy` es ahora una copia congelada de las tres FilterDef de lugar de `construirFiltrosOrdenes` antes de T4.1 (`git show 1806e3a1:…/ordenes-filtros-def.ts` ~357–387); la traducción del encadenado es `provincia_id→nivel_1`, `canton_id→nivel_2`, `distrito_id→nivel_3`. Contraprueba a mano: rótulo `${nivel.singular}!` en `declararNiveles` → el caso R6 rojo; revertido.
+
+### Tercer escalón de `opcionesDeLugarDelCatalogo` (R1): NO quitado
+Se quitó a modo de prueba (niveles = catálogo → layout → `[]`) y se revirtió. En una muestra de 18 archivos: 35 tests rojos en 8 archivos (`ordenes-filtros-def` 12, `ordenes-listado-filtros` 8, `filtros-acotados-por-rol` 5, `FiltrosEntregas` 4, `SateliteDescarga` 3, `OrdenesPageFiltros` 1, `SatelitePaginacion` 1, `ordenes-listado-buscador` 1), con 167 archivos candidatos más sin correr. Supera el umbral de ~10 archivos de fixtures: queda para que decida el leader.
+
+### Salida
+- `vitest run` de las guardias asistente-panel-hermano, etiquetas-geograficas-sin-literal, superficie-de-uso y vistas-superficies-declaradas, y de AppLayout, FiltroUbicacionBarra, etiquetas-geograficas, RepartoModule, NovedadesBuscador, mis-asignaciones/FiltroUbicacion, NovedadesFiltroLugarUrl y filtro-ubicacion: `Test Files 1 failed | 11 passed (12)`, `Tests 1 failed | 244 passed (245)`. El único rojo es el ya conocido de `NovedadesBuscador.test.tsx` (it en :347, aserción en :360-366). El `console.error` de AppLayout ha desaparecido.
+- `pnpm run typecheck`: limpio. `eslint` sobre los archivos tocados: 0 errores y 2 warnings anteriores (`_k`/`_d` en `sinClaves`, `filtro-ubicacion.test.ts`).
+
+Veredicto: arreglos 1 y 2 hechos y en verde; el 3 no se ha aplicado porque supera el umbral de fixtures y queda pendiente de decisión.

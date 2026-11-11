@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { construirFiltrosOrdenes } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import type { FilterDef } from "@/components/shared/FilterComponent";
 import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import {
@@ -92,9 +91,36 @@ describe("R6 — en Costa Rica, los mismos controles de lugar que hoy, campo a c
     canton: { singular: "Cantón", plural: "Cantones" },
     distrito: { singular: "Distrito", plural: "Distritos" },
   };
-  const deHoy = construirFiltrosOrdenes(cat, { incluirTienda: false, incluirZona: false, etiquetas, ahora: new Date("2026-11-11T12:00:00Z") }).filter(
-    (d) => ["nivel_1", "nivel_2", "nivel_3"].includes(d.key),
-  );
+  // Copia CONGELADA de las tres listas de lugar que declaraba `construirFiltrosOrdenes` ANTES de
+  // SLT-47 / T4.1: `git show 1806e3a1:"app/(app)/ordenes/_components/ordenes-filtros-def.ts"`, lineas
+  // ~357-387 (`provincia_id` / `canton_id` / `distrito_id`), con los datos `cat` y `etiquetas` de
+  // arriba. No se calcula con el codigo de hoy a proposito: `construirFiltrosOrdenes` ya usa
+  // `declararNiveles`, y compararlo consigo mismo no probaria R6.
+  const deHoy: FilterDef[] = [
+    {
+      key: "provincia_id",
+      label: etiquetas.provincia.singular,
+      kind: "multi",
+      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
+      options: cat.provincias.map((p) => ({ value: p.id, label: p.nombre })),
+    },
+    {
+      key: "canton_id",
+      label: etiquetas.canton.singular,
+      kind: "multi",
+      dependsOn: "provincia_id",
+      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
+      options: cat.cantones.map((c) => ({ value: c.id, label: c.nombre, parentValue: c.padreId })),
+    },
+    {
+      key: "distrito_id",
+      label: etiquetas.distrito.singular,
+      kind: "multi",
+      dependsOn: "canton_id",
+      searchPlaceholder: `Buscar ${etiquetas.distrito.singular.toLowerCase()}…`,
+      options: cat.distritos.map((d) => ({ value: d.id, label: d.nombre, parentValue: d.padreId })),
+    },
+  ];
   const nuevos = declararNiveles({
     niveles: [1, 2, 3].map((k) => ({ profundidad: k, singular: [etiquetas.provincia, etiquetas.canton, etiquetas.distrito][k - 1].singular, plural: "" })),
     lugares: [
@@ -114,7 +140,8 @@ describe("R6 — en Costa Rica, los mismos controles de lugar que hoy, campo a c
   });
 
   it("el mismo encadenado: cada lista depende de la del nivel de arriba", () => {
-    const traduccion: Record<string, string> = { nivel_1: "nivel_1", nivel_2: "nivel_2", nivel_3: "nivel_3" };
+    // Las claves viejas de la copia congelada, en las de hoy.
+    const traduccion: Record<string, string> = { provincia_id: "nivel_1", canton_id: "nivel_2", distrito_id: "nivel_3" };
     expect(nuevos.map((d) => d.dependsOn)).toEqual(deHoy.map((d) => (d.dependsOn === undefined ? undefined : traduccion[d.dependsOn])));
   });
 });

@@ -12,7 +12,7 @@ import {
   listasDeLugar,
   opcionesOfrecidas,
 } from "@/lib/utils/filtro-ubicacion-asignaciones";
-import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
+import { EtiquetasGeograficasProvider, NivelesGeograficosProvider } from "@/providers/EtiquetasGeograficasProvider";
 import { ETIQUETAS_CR, NIVELES_CR, NIVELES_XA } from "../../fabricas/etiquetas-geograficas";
 
 // SLT-47 / T5.1 (design §5.4; R7, R9, R13) — el filtro de lugar del mensajero. Sustituye a
@@ -229,9 +229,11 @@ function Pantalla({ ordenes }: { ordenes: MiAsignacionDTO[] }) {
 
 function montar(ordenes: MiAsignacionDTO[], niveles: NivelDeFiltroDTO[]) {
   return render(
-    <EtiquetasGeograficasProvider etiquetas={ETIQUETAS_CR} niveles={niveles}>
-      <Pantalla ordenes={ordenes} />
-    </EtiquetasGeograficasProvider>,
+    <NivelesGeograficosProvider niveles={niveles}>
+      <EtiquetasGeograficasProvider etiquetas={ETIQUETAS_CR}>
+        <Pantalla ordenes={ordenes} />
+      </EtiquetasGeograficasProvider>
+    </NivelesGeograficosProvider>,
   );
 }
 

@@ -24,12 +24,19 @@ export const NivelesGeograficosContexto = createContext<readonly NivelDeFiltroDT
 
 export function EtiquetasGeograficasProvider({
   etiquetas,
+  children,
+}: Readonly<{ etiquetas: EtiquetasGeograficas; children: ReactNode }>) {
+  return <EtiquetasGeograficasContexto.Provider value={etiquetas}>{children}</EtiquetasGeograficasContexto.Provider>;
+}
+
+/**
+ * SLT-47 (design §5.4) — baja los niveles del país por `NivelesGeograficosContexto`. Es un proveedor
+ * aparte del de etiquetas (y no una prop más de aquel) para que el layout siga montando
+ * `EtiquetasGeograficasProvider` tal cual y cada contexto tenga un único dueño. No pinta ninguna caja.
+ */
+export function NivelesGeograficosProvider({
   niveles,
   children,
-}: Readonly<{ etiquetas: EtiquetasGeograficas; niveles?: readonly NivelDeFiltroDTO[]; children: ReactNode }>) {
-  return (
-    <EtiquetasGeograficasContexto.Provider value={etiquetas}>
-      <NivelesGeograficosContexto.Provider value={niveles ?? null}>{children}</NivelesGeograficosContexto.Provider>
-    </EtiquetasGeograficasContexto.Provider>
-  );
+}: Readonly<{ niveles: readonly NivelDeFiltroDTO[]; children: ReactNode }>) {
+  return <NivelesGeograficosContexto.Provider value={niveles}>{children}</NivelesGeograficosContexto.Provider>;
 }

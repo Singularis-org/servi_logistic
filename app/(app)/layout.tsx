@@ -8,7 +8,7 @@ import { PushReactivacion } from "@/components/shared/PushReactivacion";
 import { RevisionSinpeBodega } from "@/components/shared/RevisionSinpeBodega";
 import { TemaProvider } from "@/providers/TemaProvider";
 import { AyudaProvider } from "@/providers/AyudaProvider";
-import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
+import { EtiquetasGeograficasProvider, NivelesGeograficosProvider } from "@/providers/EtiquetasGeograficasProvider";
 import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
@@ -175,9 +175,11 @@ export default async function AppLayout({
                   SÓLO a `{children}`, como el mapa de la ayuda: es ahí donde viven las pantallas
                   que los pintan. No pinta ninguna caja. */}
               <AyudaProvider mapa={mapaAyuda}>
-                <EtiquetasGeograficasProvider etiquetas={etiquetas} niveles={niveles}>
-                  {children}
-                </EtiquetasGeograficasProvider>
+                {/* SLT-47 (design §5.4) — los N niveles del país, en su propio proveedor: envuelve
+                    por fuera al de etiquetas, que sigue tal cual. Tampoco pinta caja. */}
+                <NivelesGeograficosProvider niveles={niveles}>
+                  <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+                </NivelesGeograficosProvider>
               </AyudaProvider>
             </SidebarInset>
           </SidebarProvider>

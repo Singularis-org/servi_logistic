@@ -21,7 +21,7 @@ import { useNovedadesFiltro } from "@/app/(app)/novedades/_components/useNovedad
 import { olvidarParamsBorrados } from "@/hooks/useFiltrosUrl";
 import type { ListarNovedadesCompletoActionResult } from "@/lib/actions/novedades";
 import type { NovedadDTO } from "@/lib/types/novedad";
-import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
+import { EtiquetasGeograficasProvider, NivelesGeograficosProvider } from "@/providers/EtiquetasGeograficasProvider";
 import { ETIQUETAS_CR, NIVELES_CR } from "../fabricas/etiquetas-geograficas";
 
 const base: NovedadDTO = {
@@ -109,9 +109,11 @@ function Pantalla({ listarCompleto }: { listarCompleto: () => Promise<ListarNove
 
 function montar(listarCompleto: () => Promise<ListarNovedadesCompletoActionResult>) {
   return render(
-    <EtiquetasGeograficasProvider etiquetas={ETIQUETAS_CR} niveles={NIVELES_CR}>
-      <Pantalla listarCompleto={listarCompleto} />
-    </EtiquetasGeograficasProvider>,
+    <NivelesGeograficosProvider niveles={NIVELES_CR}>
+      <EtiquetasGeograficasProvider etiquetas={ETIQUETAS_CR}>
+        <Pantalla listarCompleto={listarCompleto} />
+      </EtiquetasGeograficasProvider>
+    </NivelesGeograficosProvider>,
   );
 }
 
