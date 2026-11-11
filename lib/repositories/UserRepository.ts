@@ -320,10 +320,15 @@ export class UserRepository implements IUserRepository {
    * Feature 16/R1/R2/R3: solo mensajeros activos, proyectados a id/nombre (sin
    * PII) mas su zona (feature 24/R6, nullable) para que el select del resumen de
    * carga masiva pueda filtrar por la zona de la orden.
+   *
+   * SLT-124 (R12, R14): solo los de la ZONA CENTRAL (`zona.es_central`), la misma regla con la que
+   * nacen sus cierres (`resolverDestinoCierre`). La consumen solo el ranking en vivo y el congelado,
+   * que asi parten del mismo universo. Sin zona, o de satelite, no entran; sin zona central marcada
+   * la lista sale vacia.
    */
   async listMensajeros(): Promise<MensajeroDTO[]> {
     const rows = await this.prisma.usuario.findMany({
-      where: { rol: { value: "mensajero" }, estado: "activo" },
+      where: { rol: { value: "mensajero" }, estado: "activo", zona: { esCentral: true } },
       select: {
         id: true,
         ...NOMBRE_USUARIO_SELECT,
