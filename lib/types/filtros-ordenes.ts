@@ -113,6 +113,18 @@ export interface MensajeroFiltroDTO extends OpcionCatalogo {
   estado: EstadoUsuario;
 }
 
+/**
+ * SLT-47 (design §3.3, §5.4; R1) — un nivel del pais de la empresa, para rotular su lista del filtro
+ * de lugar. Sale de los tipos `nivel_<k>` del pais (`tipo_nivel_geografico`), nunca de un literal
+ * ni de `pais.nivel_N_*`.
+ */
+export interface NivelDeFiltroDTO {
+  /** k de la clave `nivel_<k>`: 1 a P. */
+  profundidad: number;
+  singular: string;
+  plural: string;
+}
+
 /** Las colecciones del catalogo, cada una en orden determinista (`nombre asc`, R49). */
 export interface CatalogoFiltrosOrdenesDTO {
   zonas: OpcionCatalogo[];

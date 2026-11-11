@@ -14,6 +14,7 @@ import type {
   ReordenarTiposServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import {
   agregarNivelPaisSchema,
   crearPaisSchema,
@@ -176,5 +177,12 @@ export class PaisService implements IPaisService {
     // Inventar unas etiquetas aquí escondería ese fallo.
     if (!pais) throw new Error(`etiquetas de nivel: no se encontró el país de la empresa ${organizacionId}`);
     return etiquetasDePais(pais);
+  }
+
+  async nivelesDeEmpresa(organizacionId: string): Promise<NivelDeFiltroDTO[]> {
+    const tipos = await this.repo.tiposDeLaEmpresa(organizacionId);
+    // Mismo criterio que `etiquetasDeEmpresa`: sin país, la empresa no es la del contexto.
+    if (!tipos) throw new Error(`niveles: no se encontró el país de la empresa ${organizacionId}`);
+    return tipos.map((t) => ({ profundidad: t.profundidad, singular: t.nombreSingular, plural: t.nombrePlural }));
   }
 }

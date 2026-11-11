@@ -101,6 +101,8 @@ function repoDoble(
     renombrarTipo?: Awaited<ReturnType<IPaisRepository["renombrarTipo"]>>;
     agregarNivel?: Awaited<ReturnType<IPaisRepository["agregarNivel"]>>;
     reordenarTipos?: Awaited<ReturnType<IPaisRepository["reordenarTipos"]>>;
+    /** SLT-47: los tipos del pais de la empresa. */
+    tiposDeLaEmpresa?: TipoNivelDTO[] | null;
   } = {},
 ) {
   const paises = o.paises ?? [COSTA_RICA];
@@ -133,6 +135,9 @@ function repoDoble(
     renombrarTipo: vi.fn<IPaisRepository["renombrarTipo"]>(async () => o.renombrarTipo ?? "renombrado"),
     agregarNivel: vi.fn<IPaisRepository["agregarNivel"]>(async () => o.agregarNivel ?? TIPO_4),
     reordenarTipos: vi.fn<IPaisRepository["reordenarTipos"]>(async () => o.reordenarTipos ?? "reordenado"),
+    tiposDeLaEmpresa: vi.fn<IPaisRepository["tiposDeLaEmpresa"]>(async () =>
+      o.tiposDeLaEmpresa === undefined ? [] : o.tiposDeLaEmpresa,
+    ),
   } satisfies IPaisRepository;
   return repo;
 }
@@ -667,5 +672,42 @@ describe("T2.3 — etiquetas de nivel de la empresa (R19)", () => {
     });
     expect(ETIQUETAS_NEUTRAS).not.toEqual(etiquetasDePais(COSTA_RICA));
     expect(ETIQUETAS_NEUTRAS).not.toEqual(etiquetasDePais(PAIS_XA));
+  });
+});
+
+// SLT-47 (T2.4; design §5.4; R1, R2) — los niveles del pais de la empresa, para rotular las listas del
+// filtro de lugar en novedades y mis-asignaciones.
+describe("SLT-47 — nivelesDeEmpresa", () => {
+  const tipo = (k: number, singular: string, plural: string): TipoNivelDTO => ({
+    id: `t-${k}`,
+    clave: `nivel_${k}`,
+    profundidad: k,
+    nombreSingular: singular,
+    nombrePlural: plural,
+    digitosCodigo: null,
+    codigoHeredaPrefijo: false,
+  });
+
+  it("R2: un pais de 2 niveles da 2 niveles, sin un tercero que repita el 2", async () => {
+    const repo = repoDoble({ tiposDeLaEmpresa: [tipo(1, "Region", "Regiones"), tipo(2, "Comuna", "Comunas")] });
+    expect(await new PaisService(repo).nivelesDeEmpresa("org-2")).toEqual([
+      { profundidad: 1, singular: "Region", plural: "Regiones" },
+      { profundidad: 2, singular: "Comuna", plural: "Comunas" },
+    ]);
+    expect(repo.tiposDeLaEmpresa).toHaveBeenCalledWith("org-2");
+  });
+
+  it("R1: un pais de 4 niveles da los 4, de 1 a 4, con los nombres de sus tipos", async () => {
+    const tipos = [tipo(1, "Departamento", "Departamentos"), tipo(2, "Municipio", "Municipios"), tipo(3, "Barrio", "Barrios"), TIPO_4];
+    const repo = repoDoble({ tiposDeLaEmpresa: tipos });
+    const niveles = await new PaisService(repo).nivelesDeEmpresa("org-4");
+    expect(niveles.map((n) => n.profundidad)).toEqual([1, 2, 3, 4]);
+    expect(niveles.map((n) => n.singular)).toEqual(["Departamento", "Municipio", "Barrio", "Sector"]);
+    expect(niveles[3]).toEqual({ profundidad: 4, singular: "Sector", plural: "Sectores" });
+  });
+
+  it("sin pais (empresa ajena o inexistente) lanza, como etiquetasDeEmpresa", async () => {
+    const repo = repoDoble({ tiposDeLaEmpresa: null });
+    await expect(new PaisService(repo).nivelesDeEmpresa("org-x")).rejects.toThrow(/no se encontró el país/);
   });
 });

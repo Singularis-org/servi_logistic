@@ -59,7 +59,7 @@
   - R11–R16, R27, R36 y R37 en verde en integración;
   - las suites existentes sin cambiar aserciones, salvo las líneas de §12.1;
   - el tamaño del JSON del catálogo de CR antes y después, anotado.
-- [ ] **T2.4** [P] `PaisService.nivelesDeEmpresa` y su repositorio (design §5.4).
+- [x] **T2.4** [P] `PaisService.nivelesDeEmpresa` y su repositorio (design §5.4).
   **Hecho:** test unitario del servicio con un país de 2 y de 4 niveles.
 - [ ] **T2.5** [P] Scripts:
   - `geo-equivalencia-filtros.ts` con `filtros-de-hoy.ts`;
