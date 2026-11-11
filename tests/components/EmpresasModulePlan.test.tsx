@@ -5,7 +5,6 @@
 // (999) para que derivar el importe en la pantalla, como hacía SL-40, no pueda pasar en verde.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
 import { money } from "@/lib/config/moneda";
@@ -19,7 +18,7 @@ import { EmpresasModule } from "@/app/(app)/plataforma/empresas/_components/Empr
 function empresa(
   id: string,
   nombre: string,
-  extra: Pick<EmpresaListada, "cobroPorOrden" | "cobroVigente" | "plan">,
+  extra: Pick<EmpresaListada, "cobroVigente" | "plan">,
 ): EmpresaListada {
   return {
     id,
@@ -34,28 +33,25 @@ function empresa(
   };
 }
 
-const PROPIA = empresa("org-1", "Envíos Norte", {
-  cobroPorOrden: "80.00",
-  cobroVigente: { modo: "fijo", monto: "80.00", fuente: "empresa" },
+// SLT-126 (R3): ya no hay fila con fuente «propio»; esta empresa cobra lo de su plan.
+const CRECER = empresa("org-1", "Envíos Norte", {
+  cobroVigente: { modo: "fijo", monto: "80.00", fuente: "plan" },
   plan: { id: "plan-1", nombre: "Plan Crecer", tipoCobro: "mensual" },
 });
 const DEL_PLAN = empresa("org-2", "Reparto Sur", {
-  cobroPorOrden: null,
   cobroVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
   plan: { id: "plan-2", nombre: "Plan Custom Sur", tipoCobro: "anual" },
 });
 const GLOBAL = empresa("org-3", "Mensajería Este", {
-  cobroPorOrden: null,
   cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
   plan: null,
 });
 const SIN_CONFIGURAR = empresa("org-4", "Correos Oeste", {
-  cobroPorOrden: null,
   cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
   plan: null,
 });
 
-function montar(empresas: EmpresaListada[] = [PROPIA, DEL_PLAN, GLOBAL, SIN_CONFIGURAR]) {
+function montar(empresas: EmpresaListada[] = [CRECER, DEL_PLAN, GLOBAL, SIN_CONFIGURAR]) {
   return render(
     <EmpresasModule
       empresas={empresas}
@@ -64,7 +60,6 @@ function montar(empresas: EmpresaListada[] = [PROPIA, DEL_PLAN, GLOBAL, SIN_CONF
       altaEmpresa={vi.fn()}
       cobroGlobal={{ monto: "999.00" }}
       fijarCobroGlobal={vi.fn()}
-      fijarCobroEmpresa={vi.fn()}
       reenviarBienvenida={vi.fn()}
       bienvenidaPendiente={[]}
     />,
@@ -85,7 +80,7 @@ afterEach(() => cleanup());
 
 describe("SLT-66 R31 — «Cobro por orden» pinta lo que se cobraría hoy y su fuente", () => {
   it.each([
-    ["Envíos Norte", "80.00", "propio"],
+    ["Envíos Norte", "80.00", "del plan"],
     ["Reparto Sur", "100.00", "del plan"],
     ["Mensajería Este", "500.00", "global"],
     ["Correos Oeste", "0.00", "global"],
@@ -105,13 +100,11 @@ describe("SLT-66 R31 — «Cobro por orden» pinta lo que se cobraría hoy y su 
     expect(c.queryByText("global")).toBeNull();
   });
 
-  it("«Cambiar» sigue editando la excepción: la fila «del plan» no ofrece «Usar el global»", async () => {
-    const user = userEvent.setup();
+  it("SLT-126 (R1): la fila «del plan» no ofrece «Cambiar» ni un campo para el cobro", () => {
     montar();
-    await user.click(screen.getByRole("button", { name: "Cambiar · Reparto Sur" }));
     const c = within(celda("Cobro por orden", "Reparto Sur"));
-    expect((c.getByRole("textbox") as HTMLInputElement).value).toBe("");
-    expect(c.queryByRole("button", { name: "Usar el global" })).toBeNull();
+    expect(c.queryByRole("button")).toBeNull();
+    expect(c.queryByRole("textbox")).toBeNull();
   });
 });
 

@@ -7,6 +7,7 @@ import { Prisma, type PrismaClient, type RolValue } from "@prisma/client";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
 import { altaDeEmpresa, clienteDueno, prepararAcceso, SINPE_DE_PRUEBA, type Empresa } from "./_dos-empresas-fixture";
+import { asignarPlanCustom } from "./_planes-fixture";
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
@@ -18,12 +19,15 @@ import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 
 // SL-40 (T10: la comprobación en el navegador de T7 y T8) — el cobro de la plataforma por orden.
 //
-// 1. (T8, R9–R11) El superadmin abre «Empresas», fija el valor global en 500,00, fija la excepción
-//    de la empresa A, la quita con «Usar el global» y ve cada valor nuevo sin recargar: la página
-//    lleva una marca en `window` que una recarga borraría.
+// 1. (T8, R9–R11) El superadmin abre «Empresas», fija el valor global en 500,00 y ve el valor nuevo
+//    sin recargar: la página lleva una marca en `window` que una recarga borraría. SLT-126 quitó la
+//    excepción por empresa: la fila de A no tiene editor (R1), su fuente es «global» y nunca
+//    «propio» (R3), y la ayuda del global es la de R4.
 // 2. (T7, R21, R22) A crea dos órdenes con el global en 500,00 y elimina una. En `/wallet`, la
 //    región «Lo que la empresa debe a la plataforma» pasa de «₡0» a «₡500», y las cifras de la caja
 //    son las mismas antes y después.
+// 3. (SLT-126 R3) Con un plan custom que fija 300,00 por orden, la fila de A dice «₡300» y «del
+//    plan». Va al final: desde ahí las órdenes de A se cobrarían con el plan, no con el global.
 //
 // Las órdenes se crean y se eliminan con el cliente dueño, con la empresa fijada: el INSERT y el
 // UPDATE de `deleted_at` pasan por los triggers de 20261023130200, que son los que escriben los
@@ -52,6 +56,13 @@ const TEXTO = {
   valorGlobal: "Valor global",
   sinConfigurar: "Valor global: Sin configurar (0,00)",
   guardado: "Cobro guardado.",
+  /** SLT-126 R4: la ayuda del valor global, exacta. */
+  ayudaGlobal:
+    "Se aplica a cada orden de las empresas cuyo plan no fija un cobro por orden. Las órdenes ya creadas conservan su importe.",
+  /** SLT-126 R3: las dos fuentes que quedan; «propio» no sale nunca. */
+  fuenteGlobal: "global",
+  fuenteDelPlan: "del plan",
+  fuentePropia: "propio",
   regionDeuda: `Lo que ${EMPRESA_EN_FRASE} debe a la plataforma`,
   pistaDeuda:
     "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
@@ -59,12 +70,14 @@ const TEXTO = {
   pistaAlDia: "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.",
 } as const;
 
-/** Lo que la tarifa vale en pantalla: `money("500.00")` y `money("750.00")`, escritos a mano. */
-const PINTADO = { global: "₡500", excepcion: "₡750", deudaCero: "₡0", deudaDos: "₡1.000", deudaUna: "₡500" } as const;
+/** Lo que la tarifa vale en pantalla: `money("500.00")` y `money("300.00")`, escritos a mano. */
+const PINTADO = { global: "₡500", delPlan: "₡300", deudaCero: "₡0", deudaDos: "₡1.000", deudaUna: "₡500" } as const;
+
+/** SLT-126 R3: el costo por orden del plan custom de A en el paso 3, distinto del global. */
+const COSTO_DEL_PLAN = "300.00";
 
 let dueno: PrismaClient | undefined;
 let empresaA: Empresa | undefined;
-let nombreA = "";
 let contextoSa: BrowserContext | undefined;
 let sa: Page | undefined;
 let contextoA: BrowserContext | undefined;
@@ -206,9 +219,6 @@ test.beforeAll(async ({ browser }) => {
   const email = `sl40-maestro-a-${randomUUID().slice(0, 8)}@example.test`;
   empresaA = (await altaDeEmpresa("A", email)).empresa;
   await prepararAcceso(base(), empresa(), userAgent);
-  nombreA = (
-    await base().organizacion.findUniqueOrThrow({ where: { id: empresa().organizacionId }, select: { nombre: true } })
-  ).nombre;
   await sembrarCaja(base(), empresa().organizacionId, CAJA_A);
   await sembrarSaldoInicial(base(), empresa(), "10000.00");
 
@@ -258,16 +268,36 @@ async function sinRecarga(page: Page): Promise<string | undefined> {
   return page.evaluate(() => (window as unknown as { __sl40?: string }).__sl40);
 }
 
-test("T8: el superadmin fija el global, fija y quita la excepción de A, y ve cada valor sin recargar (R9–R11)", async ({}, info) => {
+/**
+ * SLT-126 R1: ninguna fila ofrece fijar, cambiar ni quitar el cobro por orden de su empresa. Se mira la
+ * tabla entera, no solo la fila de A: el bloque del global (con su campo) queda fuera de la tabla.
+ */
+async function sinEditorPorFila(page: Page): Promise<void> {
+  const tabla = page.getByRole("table");
+  await expect(tabla.getByRole("button", { name: /^Cambiar( · .*)?$/ })).toHaveCount(0);
+  await expect(tabla.getByRole("button", { name: "Usar el global", exact: true })).toHaveCount(0);
+  await expect(tabla.getByRole("textbox")).toHaveCount(0);
+  await expect(tabla.getByRole("form", { name: new RegExp(`^${TEXTO.regionCobro} · `) })).toHaveCount(0);
+}
+
+test("T8: el superadmin fija el global y lo ve sin recargar; la fila no tiene editor (R9–R11; SLT-126 R1, R3, R4)", async ({}, info) => {
   test.setTimeout(180_000);
   const page = sa!;
   await page.goto("/plataforma/empresas");
   const bloque = page.getByRole("region", { name: TEXTO.regionCobro, exact: true });
   await expect(bloque).toContainText(TEXTO.sinConfigurar);
+  // SLT-126 R4: la ayuda del valor global, exacta, y como descripción accesible de su campo.
+  const campoGlobal = bloque.getByRole("textbox", { name: TEXTO.valorGlobal, exact: true });
+  await expect(bloque.getByText(TEXTO.ayudaGlobal, { exact: true })).toBeVisible();
+  await expect(campoGlobal).toHaveAccessibleDescription(TEXTO.ayudaGlobal);
   const fila = filaDeA(page);
   await expect(fila).toHaveCount(1);
   await expect(fila).toContainText(PINTADO.deudaCero);
-  await expect(fila.getByText("global", { exact: true })).toBeVisible();
+  // SLT-126 R3: el global sin configurar se rotula «global»; «propio» no sale en ninguna fila.
+  await expect(fila.getByText(TEXTO.fuenteGlobal, { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText(TEXTO.fuentePropia, { exact: true })).toHaveCount(0);
+  // SLT-126 R1.
+  await sinEditorPorFila(page);
 
   // Una recarga borraría esta marca: si sigue al final, cada valor llegó sin recargar a mano.
   await page.evaluate(() => {
@@ -275,41 +305,18 @@ test("T8: el superadmin fija el global, fija y quita la excepción de A, y ve ca
   });
 
   // El global en 500,00.
-  await bloque.getByRole("textbox", { name: TEXTO.valorGlobal, exact: true }).fill("500.00");
+  await campoGlobal.fill("500.00");
   await bloque.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(bloque.getByRole("status")).toHaveText(TEXTO.guardado);
   await expect(bloque).toContainText(`${TEXTO.valorGlobal}: ${PINTADO.global}`);
   await expect(fila).toContainText(PINTADO.global);
-  await expect(fila.getByText("global", { exact: true })).toBeVisible();
+  await expect(fila.getByText(TEXTO.fuenteGlobal, { exact: true })).toBeVisible();
   expect((await base().cobroPlataformaTarifa.findUnique({ where: { id: true } }))?.monto.toFixed(2)).toBe("500.00");
 
-  // La excepción de A en 750,00.
-  await fila.getByRole("button", { name: `Cambiar · ${nombreA}`, exact: true }).click();
-  const editor = fila.getByRole("form", { name: `${TEXTO.regionCobro} · ${nombreA}`, exact: true });
-  await editor.getByRole("textbox").fill("750.00");
-  await editor.getByRole("button", { name: "Guardar", exact: true }).click();
-  // El aviso del cobro, no la región `role="status"` de «Reenviar bienvenida» (SL-41) de la misma fila.
-  await expect(fila.locator('[data-slot="alert"][role="status"]')).toHaveText(TEXTO.guardado);
-  await expect(fila).toContainText(PINTADO.excepcion);
-  await expect(fila.getByText("propio", { exact: true })).toBeVisible();
-  const conExcepcion = await base().organizacion.findUniqueOrThrow({
-    where: { id: empresa().organizacionId },
-    select: { cobroPlataformaPorOrden: true },
-  });
-  expect(conExcepcion.cobroPlataformaPorOrden?.toFixed(2)).toBe("750.00");
-
-  // «Usar el global» la quita: A vuelve a 500,00 y «global».
-  await fila.getByRole("button", { name: `Cambiar · ${nombreA}`, exact: true }).click();
-  await fila.getByRole("button", { name: "Usar el global", exact: true }).click();
-  await expect(fila.getByText("global", { exact: true })).toBeVisible();
-  await expect(fila).toContainText(PINTADO.global);
-  await expect(fila).not.toContainText(PINTADO.excepcion);
-  const sinExcepcion = await base().organizacion.findUniqueOrThrow({
-    where: { id: empresa().organizacionId },
-    select: { cobroPlataformaPorOrden: true },
-  });
-  expect(sinExcepcion.cobroPlataformaPorOrden).toBeNull();
-  await expect(bloque).toContainText(`${TEXTO.valorGlobal}: ${PINTADO.global}`);
+  // SLT-126 R1, R3, R4: tras guardar el global, la fila sigue sin editor y la ayuda no cambia.
+  await sinEditorPorFila(page);
+  await expect(page.getByRole("table").getByText(TEXTO.fuentePropia, { exact: true })).toHaveCount(0);
+  await expect(campoGlobal).toHaveAccessibleDescription(TEXTO.ayudaGlobal);
 
   expect(await sinRecarga(page)).toBe("sin-recarga");
   await page.screenshot({ path: capturaEn(info, "sl40-empresas.png"), fullPage: true });
@@ -441,4 +448,28 @@ test("T7: A crea dos órdenes y elimina una; la deuda dice ₡500 y la caja no c
   // Sin insignia de signo: una deuda no es «Positivo» ni «Negativo» para la caja.
   await expect(regionDeuda(page).getByText(/^(Positivo|Negativo|En cero)$/)).toHaveCount(0);
   await page.screenshot({ path: capturaEn(info, "sl40-wallet.png"), fullPage: true });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 3. La fuente «del plan» (SLT-126)                                           */
+/* -------------------------------------------------------------------------- */
+
+test("SLT-126 R3: con un plan que fija el cobro por orden, la fila de A dice su importe y «del plan»; R1 sigue sin editor", async ({}, info) => {
+  test.setTimeout(180_000);
+  // El plan se asigna con `PlanesRepository` real, como lo hace el superadmin (`_planes-fixture`).
+  await asignarPlanCustom(base(), empresa().organizacionId, COSTO_DEL_PLAN);
+  const page = sa!;
+  await page.goto("/plataforma/empresas");
+  const fila = filaDeA(page);
+  await expect(fila).toHaveCount(1);
+  await expect(fila).toContainText(PINTADO.delPlan);
+  await expect(fila.getByText(TEXTO.fuenteDelPlan, { exact: true })).toBeVisible();
+  await expect(fila.getByText(TEXTO.fuenteGlobal, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("table").getByText(TEXTO.fuentePropia, { exact: true })).toHaveCount(0);
+  await sinEditorPorFila(page);
+  // SLT-126 R4: el bloque del global no cambia con el plan de una empresa.
+  await expect(
+    page.getByRole("region", { name: TEXTO.regionCobro, exact: true }).getByText(TEXTO.ayudaGlobal, { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: capturaEn(info, "slt126-empresas-del-plan.png"), fullPage: true });
 });

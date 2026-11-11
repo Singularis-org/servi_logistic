@@ -17,11 +17,6 @@ export type EmpresaListada = {
   /** Los usuarios de rol `maestro` de la empresa, por orden de alta. Puede venir vacio. */
   maestros: { nombre: string; email: string }[];
   /**
-   * SL-40 (R10): la excepción del cobro por orden, con dos decimales, o `null` si la empresa usa el
-   * valor global. SLT-66: la sigue usando la edición de la celda; lo que se cobra hoy es `cobroVigente`.
-   */
-  cobroPorOrden: string | null;
-  /**
    * SLT-66 (R31, design §6.4): lo que se cobraría hoy por una orden nueva y de dónde sale, con la misma
    * `cobro_plataforma_tarifa_de` que usa el trigger del cargo (§3.2). Dos decimales. SLT-83 (R22): fijo
    * o porcentual (porcentaje y mínimo, solo del plan).

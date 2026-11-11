@@ -14,17 +14,15 @@ import {
   MENSAJE_MONTO_COBRO_INVALIDO,
   montoCobroSchema,
   type CobroGlobalDTO,
-  type FijarCobroEmpresaInput,
   type FijarCobroGlobalInput,
   type FijarCobroResult,
 } from "@/lib/types/cobro-plataforma";
 
 // SL-40 (design §9.1, R9–R11) — el cobro por orden en «Empresas»: el bloque del valor global y la
-// celda de cada fila. Los importes llegan como TEXTO con dos decimales y se pintan con `money`, sin
-// pasar nunca por `Number` (R26 de la ficha: perderían céntimos).
+// celda de cada fila (solo lectura desde SLT-126). Los importes llegan como TEXTO con dos decimales y
+// se pintan con `money`, sin pasar nunca por `Number` (R26 de la ficha: perderían céntimos).
 
 export type FijarCobroGlobal = (input: FijarCobroGlobalInput) => Promise<FijarCobroResult>;
-export type FijarCobroEmpresa = (input: FijarCobroEmpresaInput) => Promise<FijarCobroResult>;
 
 /** Textos del cobro, en un solo sitio para cuando llegue la i18n. */
 export const TEXTOS_COBRO = {
@@ -33,17 +31,12 @@ export const TEXTOS_COBRO = {
   sinConfigurar: "Sin configurar (0,00)",
   noSeLeyo: "No se pudo leer el valor global.",
   ayudaGlobal:
-    "Se aplica a cada orden que creen las empresas sin valor propio. Las órdenes ya creadas conservan su importe.",
+    "Se aplica a cada orden de las empresas cuyo plan no fija un cobro por orden. Las órdenes ya creadas conservan su importe.",
   guardar: "Guardar",
   guardado: "Cobro guardado.",
-  propio: "propio",
   delPlan: "del plan",
   global: "global",
-  cambiar: "Cambiar",
-  cancelar: "Cancelar",
-  usarGlobal: "Usar el global",
   errorMonto: MENSAJE_MONTO_COBRO_INVALIDO,
-  errorNoExiste: "Esa empresa ya no existe.",
   errorGenerico: "No se pudo guardar el cobro. Inténtalo de nuevo.",
 } as const;
 
@@ -60,7 +53,6 @@ function falloDe(respuesta: unknown): Fallo | null {
       : undefined;
   if (estado === "ok") return null;
   if (estado === "validation_error") return { tipo: "campo" };
-  if (estado === "not_found") return { tipo: "mensaje", mensaje: TEXTOS_COBRO.errorNoExiste };
   return { tipo: "mensaje", mensaje: TEXTOS_COBRO.errorGenerico };
 }
 
@@ -69,10 +61,10 @@ function falloDe(respuesta: unknown): Fallo | null {
  * del servidor se marca sin ida y vuelta; el servidor sigue siendo la autoridad (R4).
  */
 async function guardarCobro(
-  monto: string | null,
-  llamar: (monto: string | null) => Promise<FijarCobroResult>,
+  monto: string,
+  llamar: (monto: string) => Promise<FijarCobroResult>,
 ): Promise<Fallo | null> {
-  if (monto !== null && !montoCobroSchema.safeParse(monto).success) return { tipo: "campo" };
+  if (!montoCobroSchema.safeParse(monto).success) return { tipo: "campo" };
   try {
     return falloDe(await llamar(monto));
   } catch {
@@ -116,9 +108,7 @@ export function BloqueCobroGlobal({ cobroGlobal, fijarCobroGlobal }: BloqueCobro
     setEnviando(true);
     setFallo(null);
     setGuardado(false);
-    const resultado = await guardarCobro(texto.trim(), (monto) =>
-      fijarCobroGlobal({ monto: monto ?? "" }),
-    );
+    const resultado = await guardarCobro(texto.trim(), (monto) => fijarCobroGlobal({ monto }));
     if (resultado === null) {
       setTexto("");
       setGuardado(true);
@@ -178,144 +168,32 @@ export function BloqueCobroGlobal({ cobroGlobal, fijarCobroGlobal }: BloqueCobro
 }
 
 export interface CeldaCobroEmpresaProps {
-  organizacionId: string;
-  /** Para los nombres accesibles: en una tabla hay un «Cambiar» por fila. */
-  nombreEmpresa: string;
-  /** La excepción de la empresa, o `null` si no tiene. Solo la usa el editor. */
-  cobroPorOrden: string | null;
-  /** SLT-66 (R31): lo que se cobraría hoy por una orden nueva, y de dónde sale. SLT-83: fijo o porcentual. */
+  /** SLT-66 (R31), SLT-83 (R22): lo que se cobraría hoy por una orden nueva, y de dónde sale. */
   cobroVigente: CostoVigente;
-  fijarCobroEmpresa: FijarCobroEmpresa;
 }
 
 /**
  * SLT-66 (R31): la etiqueta de cada fuente. `Record` total: una fuente nueva no compila sin la suya.
- * «Sin configurar» se rotula «global» porque es el global vacío, que cobra 0,00.
+ * «Sin configurar» se rotula «global» porque es el global vacío, que cobra 0,00. SLT-126 (R3): sin
+ * fuente «propio»; el cobro sale solo del plan o del global.
  */
 const ORIGEN: Record<FuenteDelCosto, string> = {
-  empresa: TEXTOS_COBRO.propio,
   plan: TEXTOS_COBRO.delPlan,
   global: TEXTOS_COBRO.global,
   sin_configurar: TEXTOS_COBRO.global,
 };
 
 /**
- * La tarifa vigente de una empresa y de dónde sale (R10), con su editor en la misma fila. SLT-66
- * (R31): el importe y la fuente llegan del servidor, que usa la misma función que el cargo; derivarlos
- * aquí desde la excepción y el global se saltaría el costo del plan.
+ * La tarifa vigente de una empresa y de dónde sale (R10). Solo lectura: SLT-126 (R1) quitó el editor
+ * de la fila. SLT-66 (R31): el importe y la fuente llegan del servidor, que usa la misma función que
+ * el cargo; derivarlos aquí desde el global se saltaría el costo del plan.
  */
-export function CeldaCobroEmpresa({
-  organizacionId,
-  nombreEmpresa,
-  cobroPorOrden,
-  cobroVigente,
-  fijarCobroEmpresa,
-}: CeldaCobroEmpresaProps) {
-  const router = useRouter();
-  const base = useId();
-  const [abierto, setAbierto] = useState(false);
-  const [texto, setTexto] = useState("");
-  const [fallo, setFallo] = useState<Fallo | null>(null);
-  const [guardado, setGuardado] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-
-  function abrir() {
-    setTexto(cobroPorOrden ?? "");
-    setFallo(null);
-    setGuardado(false);
-    setAbierto(true);
-  }
-
-  async function guardar(monto: string | null) {
-    setEnviando(true);
-    setFallo(null);
-    const resultado = await guardarCobro(monto, (m) => fijarCobroEmpresa({ organizacionId, monto: m }));
-    if (resultado === null) {
-      setAbierto(false);
-      setGuardado(true);
-      router.refresh();
-    } else {
-      setFallo(resultado);
-    }
-    setEnviando(false);
-  }
-
-  function enviar(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    void guardar(texto.trim());
-  }
-
+export function CeldaCobroEmpresa({ cobroVigente }: CeldaCobroEmpresaProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <div>
-        {/* SLT-83 (R22): el fijo con `money`, como desde SL-40; el porcentual, «{p} % (mín. {m})» o «{p} %». */}
-        <span className="tabular-nums">{textoDelCobroVigente(cobroVigente)}</span>
-        <span className="block text-xs text-muted-foreground">{ORIGEN[cobroVigente.fuente]}</span>
-      </div>
-
-      {guardado ? <Aviso texto={TEXTOS_COBRO.guardado} /> : null}
-
-      {abierto ? (
-        <form
-          noValidate
-          aria-label={`${TEXTOS_COBRO.titulo} · ${nombreEmpresa}`}
-          onSubmit={enviar}
-          className="flex flex-col gap-2"
-        >
-          <FormField
-            id={`${base}-monto`}
-            label={`${TEXTOS_COBRO.titulo} · ${nombreEmpresa}`}
-            labelClassName="sr-only"
-            error={fallo?.tipo === "campo" ? TEXTOS_COBRO.errorMonto : undefined}
-          >
-            <Input
-              inputMode="decimal"
-              autoComplete="off"
-              className="min-w-28"
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-            />
-          </FormField>
-          {fallo?.tipo === "mensaje" ? <AvisoError texto={fallo.mensaje} /> : null}
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" loading={enviando}>
-              {TEXTOS_COBRO.guardar}
-            </Button>
-            {cobroPorOrden !== null ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={enviando}
-                onClick={() => void guardar(null)}
-              >
-                {TEXTOS_COBRO.usarGlobal}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={enviando}
-              onClick={() => setAbierto(false)}
-            >
-              {TEXTOS_COBRO.cancelar}
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            aria-label={`${TEXTOS_COBRO.cambiar} · ${nombreEmpresa}`}
-            onClick={abrir}
-          >
-            {TEXTOS_COBRO.cambiar}
-          </Button>
-        </div>
-      )}
+    <div>
+      {/* SLT-83 (R22): el fijo con `money`, como desde SL-40; el porcentual, «{p} % (mín. {m})» o «{p} %». */}
+      <span className="tabular-nums">{textoDelCobroVigente(cobroVigente)}</span>
+      <span className="block text-xs text-muted-foreground">{ORIGEN[cobroVigente.fuente]}</span>
     </div>
   );
 }

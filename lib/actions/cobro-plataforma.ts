@@ -10,7 +10,8 @@ import type { FijarCobroResult, VerCobroGlobalResult } from "@/lib/types/cobro-p
 
 // SL-40 (design §5, §9.1) — el borde de la configuración del cobro por orden. Lo usa la pantalla
 // «Empresas» del superadmin. El actor sale de la sesión y la autorización la decide el servicio
-// (R6), antes de tocar la base.
+// (R6), antes de tocar la base. SLT-126 (R2): solo el valor global; no hay operación que fije o
+// quite el cobro por orden de una empresa.
 
 /** Inyección para los tests del borde. */
 export interface CobroPlataformaDeps {
@@ -36,9 +37,4 @@ export async function verCobroGlobalAction(deps: CobroPlataformaDeps = {}): Prom
 /** Guarda el valor global: el bloque «Cobro por orden» de «Empresas» (R9, R11). */
 export async function fijarCobroGlobalAction(input: unknown, deps: CobroPlataformaDeps = {}): Promise<FijarCobroResult> {
   return conServicio(deps, (s, actor) => s.fijarGlobal(actor, input));
-}
-
-/** Fija o quita (`monto: null`) la excepción: la columna «Cobro por orden» de «Empresas» (R10, R11). */
-export async function fijarCobroEmpresaAction(input: unknown, deps: CobroPlataformaDeps = {}): Promise<FijarCobroResult> {
-  return conServicio(deps, (s, actor) => s.fijarDeEmpresa(actor, input));
 }

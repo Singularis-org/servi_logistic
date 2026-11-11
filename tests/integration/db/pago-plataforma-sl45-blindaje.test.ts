@@ -10,7 +10,6 @@ import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egreso
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { CobroPlataformaTarifaRepository } from "@/lib/repositories/CobroPlataformaTarifaRepository";
 import { ConciliacionCierresAnaliticaRepository } from "@/lib/repositories/ConciliacionCierresAnaliticaRepository";
 import { CuentasPorPagarAnaliticaRepository } from "@/lib/repositories/CuentasPorPagarAnaliticaRepository";
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
@@ -24,6 +23,7 @@ import { comoApp } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, urlDeBaseDeDatos } from "./_postgres-real";
 import { conectar, type Conexion } from "./_fixtures/ida-y-vuelta-32";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { asignarPlan, crearPlan } from "./_fixtures/planes";
 
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
@@ -252,10 +252,12 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
 
     A = await sembrarEmpresa();
     B = await sembrarEmpresa();
-    // La excepción por empresa: el cargo no depende del valor global, que comparten otros archivos.
-    const tarifas = new CobroPlataformaTarifaRepository(base);
+    // Un plan custom fijo por empresa (SLT-126: antes, una excepción del mismo importe): el cargo no
+    // depende del valor global, que comparten otros archivos. El custom se va con su empresa.
     for (const e of [A, B]) {
-      if (!(await tarifas.fijarDeEmpresa(org(e), "500.00"))) throw new Error("siembra: la excepción no se fijó");
+      const plan = await crearPlan(base, { custom: org(e) });
+      await base.$executeRawUnsafe(`UPDATE "plan" SET "costo_por_orden" = 500.00 WHERE "id" = $1`, plan);
+      await asignarPlan(base, org(e), plan);
       const r = await conEmpresa(org(e), () =>
         registrarMovimientoManualAction(
           { claveIdempotencia: randomUUID(), tipo: "ingreso", categoria: "ingreso_ajuste", monto: "5000.00", descripcion: `Ajuste SL45-B ${RUN}` },

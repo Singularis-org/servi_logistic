@@ -21,6 +21,7 @@ import { RecuperarOrdenService } from "@/lib/services/RecuperarOrdenService";
 
 import { comoApp, crearOrganizacion } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
+import { asignarPlan, crearPlan } from "./_fixtures/planes";
 import { deudaDe, movimientosDe, tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 
 // SL-40 (design §11.1) — los cargos y reversos del cobro de la plataforma, contra Postgres.
@@ -40,7 +41,7 @@ import { deudaDe, movimientosDe, tomarTarifaGlobal, type TarifaGlobalBajoLock } 
 // `RecuperarOrdenService` (`lib/actions/recuperar-orden.ts`), cableados como en sus composition roots
 // sobre el cliente EXTENDIDO y con la empresa fijada por `conEmpresa`, como haría la sesión.
 //
-// El valor global y la excepción se fijan con el repositorio REAL del superadmin
+// El valor global se fija con el repositorio REAL del superadmin
 // (`CobroPlataformaTarifaRepository`, T5), bajo el lock de `_fixtures/cobro-plataforma-40`. Solo
 // «sin configurar» se fija con el fixture: el superadmin no tiene cómo borrar el global, y el fixture
 // es también quien deja la fila como la encontró.
@@ -48,6 +49,10 @@ import { deudaDe, movimientosDe, tomarTarifaGlobal, type TarifaGlobalBajoLock } 
 // Lo que se mide se mide con el cliente BASE (dueño, sin extensión ni RLS). Las órdenes se commitean
 // (los repositorios abren su propia transacción) y se limpian en el `afterAll`, acotado a las dos
 // empresas de esta ejecución.
+//
+// SLT-126: ya no hay valor propio de la empresa. B se cobra con un plan custom fijo de 300,00 (mismo
+// importe que la antigua excepción, fuente «plan»); el custom se va con B en el `afterAll` (CASCADE de
+// `plan_organizacion_exclusiva_id_fkey`).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -83,6 +88,8 @@ interface Empresa {
 let A: Empresa;
 let B: Empresa;
 let estatus: { porRecolectar: string; enBodegaCentral: string; devolviendo: string };
+/** El plan custom de B con costo fijo por orden de 300,00 (SLT-126: sustituye la excepción). */
+let planDeB: string;
 /** id de cada orden por su nombre en design §2.5. */
 const orden: Record<string, string> = {};
 
@@ -387,7 +394,7 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
 
   /* ------------------------------ R3 / D11 -------------------------------- */
 
-  it("R3/D11: sin valor global ni excepción, la orden se carga con 0.00 y fuente «sin_configurar»", async () => {
+  it("R3/D11: sin valor global ni plan, la orden se carga con 0.00 y fuente «sin_configurar»", async () => {
     await tarifaGlobal!.fijar(null);
     orden.o0 = await crearPorPantalla(A, "o0");
     expect(await movimientosDe(base, orden.o0)).toEqual([cargo("0.00", "sin_configurar", 1)]);
@@ -398,7 +405,9 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
 
   it("R12/R19: A crea o1 y o2 por pantalla y o3 por carga masiva con el global en 500.00 → tres cargos de 500.00", async () => {
     await tarifas().fijarGlobal("500.00");
-    expect(await tarifas().fijarDeEmpresa(B.id, "300.00")).toBe(true);
+    planDeB = await crearPlan(base, { custom: B.id });
+    await base.$executeRawUnsafe(`UPDATE "plan" SET "costo_por_orden" = 300.00 WHERE "id" = $1`, planDeB);
+    await asignarPlan(base, B.id, planDeB);
 
     orden.o1 = await crearPorPantalla(A, "o1");
     orden.o2 = await crearPorPantalla(A, "o2");
@@ -414,9 +423,9 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
     expect(await deudaDe(base, B.id)).toBe("0.00");
   });
 
-  it("R3/R20: B crea p1 con su excepción de 300.00 → cargo de 300.00 con fuente «empresa», sin tocar a A", async () => {
+  it("R3/R20: B crea p1 con su plan de 300.00 → cargo de 300.00 con fuente «plan», sin tocar a A", async () => {
     orden.p1 = await crearPorPantalla(B, "p1");
-    expect(await movimientosDe(base, orden.p1)).toEqual([cargo("300.00", "empresa", 1)]);
+    expect(await movimientosDe(base, orden.p1)).toEqual([cargo("300.00", "plan", 1)]);
     expect(await deudaDe(base, A.id)).toBe("1500.00");
     expect(await deudaDe(base, B.id)).toBe("300.00");
   });
@@ -502,11 +511,11 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
     expect(await deudaDe(base, A.id)).toBe("1600.00");
   });
 
-  it("R3/R5: quitada la excepción de B, su orden siguiente usa el global (600.00)", async () => {
-    expect(await tarifas().fijarDeEmpresa(B.id, null)).toBe(true);
+  it("R3/R5: si el plan de B deja de fijar costo por orden, su orden siguiente usa el global (600.00)", async () => {
+    await base.$executeRawUnsafe(`UPDATE "plan" SET "costo_por_orden" = NULL WHERE "id" = $1`, planDeB);
     orden.p2 = await crearPorPantalla(B, "p2");
     expect(await movimientosDe(base, orden.p2)).toEqual([cargo("600.00", "global", 1)]);
-    expect(await movimientosDe(base, orden.p1)).toEqual([cargo("300.00", "empresa", 1)]);
+    expect(await movimientosDe(base, orden.p1)).toEqual([cargo("300.00", "plan", 1)]);
     expect(await deudaDe(base, B.id)).toBe("900.00");
   });
 
@@ -586,7 +595,7 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
 
   /* ---------------------------------- R8 ---------------------------------- */
 
-  it("R8: la empresa (servi_app) no puede escribir cargos, ni el valor global, ni su excepción → 42501", async () => {
+  it("R8: la empresa (servi_app) no puede escribir cargos, ni el valor global → 42501", async () => {
     const r = {
       insertarMovimiento: await intentarComoEmpresa(
         A.id,
@@ -606,11 +615,6 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
         `INSERT INTO "cobro_plataforma_tarifa" ("id", "monto") VALUES (true, 0) ON CONFLICT ("id") DO UPDATE SET "monto" = 0`,
       ),
       actualizarTarifa: await intentarComoEmpresa(A.id, `UPDATE "cobro_plataforma_tarifa" SET "monto" = 0`),
-      actualizarExcepcion: await intentarComoEmpresa(
-        A.id,
-        `UPDATE "organizacion" SET "cobro_plataforma_por_orden" = 0 WHERE "id" = $1`,
-        A.id,
-      ),
     };
     expect(r).toEqual({
       insertarMovimiento: "42501",
@@ -618,7 +622,6 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
       borrarMovimiento: "42501",
       insertarTarifa: "42501",
       actualizarTarifa: "42501",
-      actualizarExcepcion: "42501",
     });
     // Control: la empresa SÍ lee sus cargos (la política la deja). Si no pudiera ni leer, el 42501 de
     // arriba podría venir de otro sitio.

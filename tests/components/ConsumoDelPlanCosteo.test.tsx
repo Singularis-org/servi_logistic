@@ -48,10 +48,8 @@ function leido(
 
 const MONTO_50000: PrecioPlan = { tipo: "monto", mensual: "50000.00", descuentos: {} };
 
-function pintar(l: PlanConUsoLeido, textoExcepcion?: string) {
-  return render(
-    <ConsumoDelPlan plan={planConConsumo(l, AHORA)} textoSinPlan="sin plan" textoExcepcion={textoExcepcion} />,
-  );
+function pintar(l: PlanConUsoLeido) {
+  return render(<ConsumoDelPlan plan={planConConsumo(l, AHORA)} textoSinPlan="sin plan" />);
 }
 
 function bloque(): HTMLElement {
@@ -88,7 +86,7 @@ describe("SLT-66 R20 — las situaciones de la base", () => {
     expect(screen.queryByText(/Total estimado del período/)).toBeNull();
   });
 
-  it("plan sin costo por orden y empresa sin excepción: el global, sin nota", () => {
+  it("plan sin costo por orden: el global, sin nota", () => {
     pintar(leido(version(MONTO_50000, null), { modo: "fijo", monto: "500.00", fuente: "global" }));
     const b = bloque();
     expect(within(b).getByText("Costo por orden: 500.00")).toBeInTheDocument();
@@ -108,28 +106,23 @@ describe("SLT-66 R20 — las situaciones de la base", () => {
   });
 });
 
-describe("SLT-66 R18 (P1) — la nota de fuente del costo por orden", () => {
-  it("excepción de la empresa: «Mi plan» dice «precio acordado para tu empresa» con lo que paga", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "80.00", fuente: "empresa" }));
-    const b = bloque();
-    expect(within(b).getByText("Costo por orden: 80.00")).toBeInTheDocument();
-    expect(within(b).getByText("precio acordado para tu empresa")).toBeInTheDocument();
-    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
-  });
-
-  it("el detalle del superadmin pasa su propio texto («excepción de la empresa») y no sale el de la empresa", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "80.00", fuente: "empresa" }), "excepción de la empresa");
-    expect(within(bloque()).getByText("excepción de la empresa")).toBeInTheDocument();
-    expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
-  });
-
-  it.each<FuenteDelCosto>(["plan", "global", "sin_configurar"])("fuente %s: el importe sin ninguna nota", (fuente) => {
-    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: fuente === "sin_configurar" ? "0.00" : "100.00", fuente }));
-    expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
-    // El costo por orden es una línea sola: ningún texto colgando de ella.
-    const linea = within(bloque()).getByText(/^Costo por orden: /);
-    expect(linea.parentElement?.children).toHaveLength(1);
-  });
+// SLT-126 (R11): la excepción de la empresa ya no existe; «Mi plan» no tiene nota de fuente.
+describe("SLT-126 R11 — «Mi plan» pinta el costo por orden sin nota, venga del plan o del global", () => {
+  it.each<FuenteDelCosto>(["plan", "global", "sin_configurar"])(
+    "R11: fuente %s → el importe sin «precio acordado para tu empresa» ni otra nota",
+    (fuente) => {
+      const monto = fuente === "plan" ? "100.00" : fuente === "global" ? "500.00" : "0.00";
+      pintar(leido(version(MONTO_50000, fuente === "plan" ? "100.00" : null), { modo: "fijo", monto, fuente }));
+      const b = bloque();
+      expect(within(b).getByText(`Costo por orden: ${monto}`)).toBeInTheDocument();
+      expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
+      expect(screen.queryByText("excepción de la empresa")).toBeNull();
+      // El costo por orden es una línea sola: ningún texto colgando de ella.
+      const linea = within(b).getByText(/^Costo por orden: /);
+      expect(linea.tagName).toBe("LI");
+      expect(linea.children).toHaveLength(0);
+    },
+  );
 });
 
 describe("SLT-86 R13, R28 — un descuento de período no toca el costo por orden y el aviso del anual se va", () => {

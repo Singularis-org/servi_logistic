@@ -18,8 +18,6 @@ const findMany = vi.fn(async () => {
       nombre: "Empresa Ficticia",
       slug: "empresa-ficticia",
       createdAt: new Date("2026-10-23T10:00:00Z"),
-      // SL-40 (R10): la excepción del cobro por orden sale de la base como Decimal y llega como texto.
-      cobroPlataformaPorOrden: new Prisma.Decimal("300"),
       usuarios: [{ nombre: "Maestro Ficticio", email: "maestro@example.test" }],
     },
   ];
@@ -40,10 +38,11 @@ vi.mock("@/lib/db/prisma-client", () => ({
     walletMovimiento: { findMany: findManyLibro },
     // SLT-118 (design §5; R18): las cuotas de las facturas cerradas; aquí, ninguna.
     facturaPlataforma: { groupBy: async () => [] },
-    // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, la excepción y sin plan.
-    // SLT-83 (R22): la fila de `cobro_plataforma_tarifa_de` gana `porcentaje` y `minimo`; la excepción es fija (null).
+    // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, el global y sin plan.
+    // SLT-83 (R22): la fila de `cobro_plataforma_tarifa_de` gana `porcentaje` y `minimo`; el global es fijo (null).
+    // SLT-126 (R11): la regla ya no da la fuente `empresa`.
     $queryRaw: async () => [
-      { id: "org-1", monto: "300.00", fuente: "empresa", porcentaje: null, minimo: null, plan_id: null, plan_nombre: null },
+      { id: "org-1", monto: "300.00", fuente: "global", porcentaje: null, minimo: null, plan_id: null, plan_nombre: null },
     ],
   }),
   PRISMA_OMIT: {},
@@ -71,15 +70,18 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
           slug: "empresa-ficticia",
           creadaEn: new Date("2026-10-23T10:00:00Z"),
           maestros: [{ nombre: "Maestro Ficticio", email: "maestro@example.test" }],
-          cobroPorOrden: "300.00",
           deudaPlataforma: { deuda: "300.00", estado: "debe", importe: "300.00" },
           pagadoPlataforma: "200.00",
-          cobroVigente: { modo: "fijo", monto: "300.00", fuente: "empresa" }, // SLT-66 R31; SLT-83 R22: con su modo
+          cobroVigente: { modo: "fijo", monto: "300.00", fuente: "global" }, // SLT-66 R31; SLT-83 R22: con su modo
           plan: null, // SLT-66 R32
         },
       ],
     });
     expect(findMany).toHaveBeenCalledTimes(1);
+    // SLT-126 (R11): el listado ya no lee un cobro por orden de la empresa (la columna no existe).
+    expect(findMany.mock.calls[0]).toEqual([
+      expect.objectContaining({ select: expect.not.objectContaining({ cobroPlataformaPorOrden: expect.anything() }) }),
+    ]);
     expect(contextos).toEqual([
       { tipo: "plataforma", ficha: "SL-32", motivo: "listado de empresas del superadmin" },
     ]);
