@@ -7,7 +7,7 @@
 
 ## Tanda 0 — Antes de nada (leader / humano, sin código)
 
-- [ ] **T0 — D1 preparado.** El leader deja escrita en `progress/features/SLT-126.md > Deudas` la consulta
+- [x] **T0 — D1 preparado.** El leader deja escrita en `progress/features/SLT-126.md > Deudas` la consulta
   de solo lectura de D1 y quién la corre en producción **antes** del deploy de T1.
   *Cubre:* D1 (sin `R<n>`). *Hecho:* la consulta y el responsable están escritos; el informe se adjunta
   antes del merge a `prod`.
@@ -97,7 +97,7 @@
 
 ## Tanda 5 — Cierre
 
-- [ ] **T10 — Gate y trazabilidad.** `./init.sh` en verde; `progress/impl_SLT-126.md` con el mapa
+- [x] **T10 — Gate y trazabilidad.** (2026-11-11: `./init.sh` corta solo en el validador del cupo backend, exceso aceptado por geo; resto del gate en verde por etapas, ver `progress/features/SLT-126.md > Deudas`) `./init.sh` en verde; `progress/impl_SLT-126.md` con el mapa
   `R<n> → test` de abajo y las mutaciones de T2.
   *Cubre:* todos. *Depende de:* T1–T9.
   *Hecho:* el mapa completo; ningún `R<n>` sin test.
