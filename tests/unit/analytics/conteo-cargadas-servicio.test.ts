@@ -197,9 +197,7 @@ describe("Las seis facetas y el soft delete, idénticos a las otras dos lecturas
   it("cada faceta se traduce a un `IN` parametrizado sobre su columna de `orden`", () => {
     const consulta = consultaDe({
       zona_id: ["z1"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"], // SLT-47: un solo lugar (antes p1, c1 y d1 en AND)
       tienda_id: ["t1"],
     });
     const sql = sqlDe(consulta);
@@ -207,9 +205,9 @@ describe("Las seis facetas y el soft delete, idénticos a las otras dos lecturas
     // SLT-71 (design §11.1): zona y tienda con `IN`; cada faceta geografica, una condicion de lugar
     // con `= ANY` cuyo parametro es el array de ids resueltos (decision del humano, 2026-11-04).
     for (const columna of ["zona_id", "tienda_id"]) expect(sql).toContain(`o."${columna}" IN (`);
-    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(3);
+    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
     expect(parametrosDe(consulta)).toEqual(
-      expect.arrayContaining(["z1", ["c1", "d1", "p1"], ["c1", "d1"], ["d1"], "t1"]),
+      expect.arrayContaining(["z1", ["d1"], "t1"]), // SLT-47: un solo lugar, sus ids resueltos
     );
   });
 

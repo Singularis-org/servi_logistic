@@ -77,7 +77,7 @@ function diasInclusive(desde: string, hasta: string): number {
  * Los `desde`/`hasta` sueltos siguen PROHIBIDOS sin `rango: "personalizado"` (refine 2): sin
  * rango no hay ventana que describir, y media terna no es una.
  *
- * La cadena geografica (provincia/canton/distrito) SI viaja aqui —al reves que en
+ * El lugar (`lugar_id`, SLT-47; antes la cadena provincia/canton/distrito) SI viaja aqui —al reves que en
  * `analiticaFiltroSchema`— porque el universo es `orden`, que tiene esas tres columnas
  * NOT NULL / NULL declaradas (`db/schema.prisma`), no el rollup, que no las tiene.
  *
@@ -91,9 +91,8 @@ export const conteoEntregasFiltroSchema = z
     desde: fechaCalendario.optional(),
     hasta: fechaCalendario.optional(),
     zona_id: idList.optional(),
-    provincia_id: idList.optional(),
-    canton_id: idList.optional(),
-    distrito_id: idList.optional(),
+    // SLT-47 (R10): el lugar elegido, en cualquier nivel del pais (antes, tres facetas por nivel).
+    lugar_id: idList.optional(),
     tienda_id: idList.optional(),
     mensajero_id: idList.optional(),
   })
@@ -478,9 +477,9 @@ export function claveConPrefijo(prefijo: string, consulta: RecorteDeOrdenes): st
     `h=${rango === null ? "*" : rango.hastaFecha}`,
     `a=${claveDeAlcance(alcance)}`,
     `z=${idsNormalizados(filtro.zona_id)}`,
-    `p=${idsNormalizados(filtro.provincia_id)}`,
-    `c=${idsNormalizados(filtro.canton_id)}`,
-    `s=${idsNormalizados(filtro.distrito_id)}`,
+    // SLT-47 (R10): una sola dimension de lugar. `idsNormalizados` ordena y quita repetidos: los
+    // mismos ids en otro orden dan la misma clave.
+    `l=${idsNormalizados(filtro.lugar_id)}`,
     `t=${idsNormalizados(filtro.tienda_id)}`,
     `x=${idsNormalizados(filtro.mensajero_id)}`,
   ].join(SEP);

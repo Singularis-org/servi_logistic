@@ -56,9 +56,7 @@ describe("R38 · la cohorte se resuelve en UNA consulta, no una por dia", () => 
         desde: "2026-08-10",
         hasta: "2026-08-16",
         zona_id: ["z1", "z2"],
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
-        distrito_id: ["d1"],
+        lugar_id: ["d1"], // SLT-47: un solo lugar (antes p1, c1 y d1 en AND)
         tienda_id: ["t1"],
         mensajero_id: ["m1"],
       },

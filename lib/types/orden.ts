@@ -99,9 +99,10 @@ export const ORDEN_FILTER_FIELDS = [
   "status_id",
   "zona_id",
   "tienda_id",
-  "provincia_id",
-  "canton_id",
-  "distrito_id",
+  // SLT-47 (R9, R10): el filtro de lugar viaja en UNA clave, con los ids del lugar elegido en
+  // cualquier nivel del pais. Sustituye a `provincia_id`, `canton_id` y `distrito_id`, que desde
+  // aqui son `validation_error` (`.strict()`).
+  "lugar_id",
   "mensajero_id",
   "created_preset",
   "created_desde",
@@ -200,9 +201,10 @@ export const ordenFilterBase = z
     // (valor CONGELADO de la orden), no se deriva del distrito.
     zona_id: idList.optional(),
     tienda_id: idList.optional(),
-    provincia_id: idList.optional(),
-    canton_id: idList.optional(),
-    distrito_id: idList.optional(),
+    // SLT-47 (R10): el lugar elegido, en cualquier nivel del pais. El servidor lo resuelve con el
+    // catalogo a «esos nodos y los de debajo» (`resolverLugar`). Las tres claves viejas salen: un
+    // enlace viejo lo traduce el cliente al entrar (design §4.2), nunca el servidor.
+    lugar_id: idList.optional(),
     // Pedido humano (2026-08-25): filtro por MENSAJERO ASIGNADO. Misma forma que el resto
     // de catalogos (lista NO vacia de ids -> `IN (...)`), y por eso hereda R32 y R35 sin
     // ninguna regla propia. La clave publica es `mensajero_id`; la columna

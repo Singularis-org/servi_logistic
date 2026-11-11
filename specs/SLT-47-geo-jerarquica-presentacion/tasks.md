@@ -44,7 +44,7 @@
   `lugaresDelFiltro` de una faceta) y `ruta-del-lugar.ts`. Tests: `lugares-del-filtro.test.ts`
   (ajustado) y `ruta-del-lugar.test.ts`.
   **Hecho:** R11, R12 y R16 en verde en unit.
-- [ ] **T2.2** Entradas: `lugar_id` en `ordenFilterBase`, `FILTROS_COMPARTIDOS` de satélite y
+- [x] **T2.2** Entradas: `lugar_id` en `ordenFilterBase`, `FILTROS_COMPARTIDOS` de satélite y
   `conteoEntregasFiltroSchema`, y la clave de caché de analítica. Test: `filtro-lugar-schemas.test.ts`.
   **Hecho:** R10 en verde; las claves viejas dan `validation_error`.
 - [ ] **T2.3** Lecturas:

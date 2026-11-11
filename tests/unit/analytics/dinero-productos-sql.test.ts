@@ -57,9 +57,9 @@ describe("R75 · el `where` del dinero es EL MISMO del volumen, fragmento a frag
   const CASOS: [string, object, string][] = [
     ["sin filtro, maestro", {}, "maestro"],
     ["zona", { zona_id: ["z1", "z2"] }, "maestro"],
-    ["provincia", { provincia_id: ["p1"] }, "maestro"],
-    ["canton", { canton_id: ["c1"] }, "maestro"],
-    ["distrito", { distrito_id: ["d1"] }, "maestro"],
+    ["provincia", { lugar_id: ["p1"] }, "maestro"], // SLT-47: el lugar elegido en cada nivel
+    ["canton", { lugar_id: ["c1"] }, "maestro"],
+    ["distrito", { lugar_id: ["d1"] }, "maestro"],
     ["tienda", { tienda_id: ["u1"] }, "maestro"],
     ["mensajero", { mensajero_id: ["m1", "m2"] }, "maestro"],
     ["rango", { rango: "semana" }, "maestro"],
