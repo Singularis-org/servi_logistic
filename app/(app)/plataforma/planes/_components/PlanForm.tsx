@@ -23,6 +23,7 @@ import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
   editarPlanSchema,
+  PERIODICIDADES_ORDENES,
   precioPlanSchema,
   previsualizarCustomSchema,
   ROLES_CON_TOPE,
@@ -30,6 +31,7 @@ import {
   type CrearPlanInput,
   type DescuentoPeriodo,
   type EditarPlanInput,
+  type PeriodicidadOrdenes,
   type PlanDTO,
   type PlanResult,
   type PrecioPlan,
@@ -77,6 +79,8 @@ export const TEXTOS_PLAN_FORM = {
   porcentajePorOrden: "Porcentaje",
   sufijoPorcentaje: "%",
   minimoPorOrden: "Mínimo",
+  /** SLT-118 (R35): la periodicidad de las facturas de órdenes del plan; las opciones, las del tipo de cobro. */
+  periodicidadOrdenes: "Facturación de órdenes",
   aplicar: "Aplicar",
   inmediato: "De inmediato",
   programado: "A partir de",
@@ -175,6 +179,8 @@ type Formulario = {
   porcentajePorOrden: string;
   /** SLT-83 (R20): vacío = sin mínimo. */
   minimoPorOrden: string;
+  /** SLT-118 (R35): quincenal al crear (P14); al editar, la del plan. Viaja siempre. */
+  periodicidadOrdenes: PeriodicidadOrdenes;
   aplicar: Accion;
   /**
    * Al editar, la fecha de «A partir de» (SLT-58). Al crear un custom para una empresa que ya tiene plan,
@@ -225,6 +231,8 @@ function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: string)
     porcentajePorOrden: plan?.costoPorOrdenPorcentual?.porcentaje ?? "",
     minimoPorOrden:
       plan?.costoPorOrdenPorcentual?.minimo == null ? "" : montoParaCampo(plan.costoPorOrdenPorcentual.minimo),
+    // SLT-118 (R35): un DTO sin ella es un plan quincenal, el DEFAULT de la columna (P14).
+    periodicidadOrdenes: plan?.periodicidadOrdenes ?? "quincenal",
     aplicar: "inmediato",
     vigenteDesde: "",
     precioDesde,
@@ -272,6 +280,8 @@ function versionDe(f: Formulario) {
             minimo: f.minimoPorOrden.trim() === "" ? null : f.minimoPorOrden.trim(),
           }
         : null,
+    // SLT-118 (R35): siempre en la petición, al crear y al editar.
+    periodicidadOrdenes: f.periodicidadOrdenes,
   };
 }
 
@@ -850,6 +860,30 @@ export function PlanForm(props: PlanFormProps) {
         )}
       </fieldset>
 
+      {/* SLT-118 (R35): la periodicidad de las facturas de órdenes, al crear y al editar. */}
+      <FormField
+        id={idDe("periodicidadOrdenes")}
+        label={TEXTOS_PLAN_FORM.periodicidadOrdenes}
+        error={errorDe("periodicidadOrdenes")}
+      >
+        {(control) => (
+          // El `id` va en el contenedor para poder llevar el foco al grupo si tiene error.
+          <div id={control.id}>
+            <RadioGroup
+              aria-label={TEXTOS_PLAN_FORM.periodicidadOrdenes}
+              aria-invalid={control["aria-invalid"]}
+              aria-describedby={control["aria-describedby"]}
+              value={form.periodicidadOrdenes}
+              onValueChange={(v) => {
+                const periodicidad = PERIODICIDADES_ORDENES.find((p) => p === v);
+                if (periodicidad !== undefined) cambiar("periodicidadOrdenes", periodicidad);
+              }}
+              options={PERIODICIDADES_ORDENES.map((p) => ({ value: p, label: TEXTOS_TIPO_COBRO.tipo[p] }))}
+            />
+          </div>
+        )}
+      </FormField>
+
       {/* Ajuste planes-custom (D2, D4–D6): el custom se asigna a su empresa al crearlo. */}
       {props.modo === "crear" && form.visibilidad === "custom" ? (
         <div className="flex flex-col gap-4">
@@ -1010,6 +1044,7 @@ function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario, v: CamposVisi
   }
   if (f.modoCosto === "fijo") claves.push("costoPorOrden");
   else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
+  claves.push("periodicidadOrdenes");
   if (modo === "crear" && f.visibilidad === "custom") claves.push("tipoCobro");
   if (modo === "crear" && v.pideInicioCiclo) claves.push("inicioCiclo");
   if (modo === "crear" && v.pideFechaDeEfecto) claves.push("vigenteDesde");

@@ -170,7 +170,7 @@
 - [x] **T14.3** `lib/services/PlanesService.ts` y `lib/planes/mensajes.ts`: `periodicidad_incompatible` →
   `validation_error` en `tipoCobro` o en `periodicidadOrdenes`, con su mensaje. `lib/planes/rastro.ts`:
   `periodicidadOrdenes` en `CambiosDelPlan`, en la forma canónica y en `diferenciasDelPlan` (R35).
-- [ ] **T14.4** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: el selector «Facturación de órdenes»
+- [x] **T14.4** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: el selector «Facturación de órdenes»
   (quincenal al crear, el del plan al editar), siempre en la petición, con su error de campo (R35).
 - **Hecho:** typecheck y lint verdes; `pnpm exec vitest related --run lib/types/planes.ts
   lib/planes/rastro.ts lib/repositories/PlanesRepository.ts` verde sin tocar los tests de planes que no la
@@ -178,7 +178,7 @@
 
 ### T15 — Tests del bloque D (dependen de T14) [P entre sí]
 - [x] **T15.1** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R35 y R37 (casos de design §8).
-- [ ] **T15.2** `tests/components/PlanFormPeriodicidad.test.tsx`: R35.
+- [x] **T15.2** `tests/components/PlanFormPeriodicidad.test.tsx`: R35.
 - [x] **T15.3** En `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T6.2): R36 y R38.
 - **Hecho:** verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
 

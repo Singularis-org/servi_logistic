@@ -392,3 +392,8 @@ Hallazgos y preguntas:
 - Un plan público se puede crear mensual sin rechazo (no lleva tipo); el rechazo llega al asignarlo con quincenal.
 
 Veredicto: T14.1–T14.3, T15.1 y T15.3 hechos; typecheck, eslint y los 112 tests relacionados verdes; 14 casos de integración nuevos (R35–R38) van a CI; una pregunta abierta sobre la línea de la periodicidad en «qué cambia».
+
+## Tanda 10 — formulario de la periodicidad (T14.4, T15.2) · frontend_dev
+- `PlanForm.tsx`: selector «Facturación de órdenes» (`RadioGroup`, «Quincenal»/«Mensual» de `TEXTOS_TIPO_COBRO.tipo`), quincenal al crear o si el DTO no la trae, siempre en la petición; error de campo `periodicidadOrdenes` con `aria-invalid`/`aria-describedby` y foco.
+- `tests/components/PlanFormPeriodicidad.test.tsx` (nuevo, 5 casos R35). Ajustados: `PlanForm.test.tsx` (3 peticiones exactas con `periodicidadOrdenes: "quincenal"`), `PlanFormDescuentos.test.tsx` (el radio «Quincenal» buscado dentro del grupo «Tipo de cobro»).
+- Verificación: typecheck verde; eslint limpio; los 7 tests que importan `PlanForm` 93/93.
