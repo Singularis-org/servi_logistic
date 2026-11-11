@@ -114,7 +114,7 @@
 - **Hecho:** `tests/unit/utils/deuda-plataforma.test.ts` y los tests de deuda existentes verdes sin cambiar.
 
 ### T8 — Lectura en curso (depende de T4.2) [P con T7]
-- [ ] **T8.1** `FacturaPlataformaRepository`: `deLaEmpresa` y `deEmpresaParaPlataforma` (design §2.6, §3), con
+- [x] **T8.1** `FacturaPlataformaRepository`: `deLaEmpresa` y `deEmpresaParaPlataforma` (design §2.6, §3), con
   la periodicidad y la cuota prevista solo si la factura la lleva.
 - **Hecho:** typecheck verde; cubierto por T9.2.
 
@@ -122,7 +122,7 @@
 - [x] **T9.1** `tests/integration/db/factura-plataforma-deuda.test.ts`: R18–R20 (con una factura de dos cuotas:
   la deuda y el tope suben en las dos) y R40 (un cambio aplicado tras emitir una cuota no la devuelve ni baja la
   deuda).
-- [ ] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (plan mensual: la del 16
+- [x] **T9.2** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: añade R24 (plan mensual: la del 16
   al 30 con la cuota de diciembre prevista y la del 1 al 15 sin cuota; la prevista con el plan de un cambio
   pendiente; las dos previstas de quincenal desde el 1 aplicado el 12; `42501` con otra empresa).
 - [x] **T9.3** `tests/unit/utils/deuda-plataforma.test.ts`: el caso `cuota` (R18).
@@ -193,8 +193,8 @@
   (sustituye a SLT-66 R21 y a SLT-86 R14 en lo que toca a la cuota); el prorrateo solo en la primera con plan
   (P6); y que el cambio del superadmin rige al inicio del próximo período del tipo de referencia (P7, P9, P10;
   modifica SLT-86 R16–R18).
-- [ ] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R40).
-- [ ] **T10.3** `./init.sh` verde; en local, `pnpm exec playwright test --project=dinero` y
+- [x] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R40).
+- [x] **T10.3** `./init.sh` verde; en local, `pnpm exec playwright test --project=dinero` y
   `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` en base desechable (`docs/perfil-agentes.md`).
 - **Hecho:** los tres verdes y el mapa sin huecos.
 
@@ -213,8 +213,8 @@
 | R19 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` |
 | R20, R40 | `tests/integration/db/factura-plataforma-deuda.test.ts` |
 | R22 | `tests/integration/db/factura-plataforma-aislamiento.test.ts`, `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` |
-| R23 | **Hueco parcial:** `tests/integration/db/factura-plataforma-aislamiento.test.ts` solo prueba la base (SQL como dueño). Falta la lectura del superadmin por la app (`deEmpresaParaPlataforma`, T8.1), que espera la pregunta abierta de `progress/features/SLT-118.md` |
-| R24 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` (lado de la empresa). **Hueco:** la parte del superadmin (T8.1, T9.2), por la misma pregunta |
+| R23 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` (la base, como dueño, y la app: `deEmpresaParaPlataforma` con `conEmpresa`, A y B cada una con las suyas) |
+| R24 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` (la empresa por `deLaEmpresa` y el superadmin por `deEmpresaParaPlataforma`) |
 | R25 | `tests/unit/planes/jobs-factura-plataforma.test.ts`, `tests/integration/db/factura-plataforma-cierre.test.ts` (la siembra) |
 | R29 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
 | R30 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
@@ -222,7 +222,7 @@
 | R32 | `tests/unit/services/planes-service-periodo.test.ts`, `tests/unit/services/planes-service-tipo-cobro.test.ts`, `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanEmpresaPeriodo.test.tsx`, `tests/components/PlanesModule.test.tsx` |
 | R33 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
 | R34 | `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` |
-| R35 | `tests/integration/db/planes-periodicidad-ordenes.test.ts`, `tests/components/PlanFormPeriodicidad.test.tsx` |
+| R35 | `tests/integration/db/planes-periodicidad-ordenes.test.ts`, `tests/components/PlanFormPeriodicidad.test.tsx`, `tests/unit/planes/rastro-periodo.test.ts` y `tests/unit/services/email/plantilla-cambio-plan.test.ts` (la línea «Facturación de órdenes: quincenal → mensual») |
 | R37 | `tests/integration/db/planes-periodicidad-ordenes.test.ts` |
 | R39 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/unit/planes/jobs-factura-plataforma.test.ts` |
 
@@ -231,8 +231,9 @@ Con el nombre de cada `it`: `progress/impl_SLT-118.md > Mapa R → test (R1–R4
 ## Archivos esperados
 
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
-- `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
+- `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/planes/_components/PlanForm.tsx`
+- `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
 - `app/api/cron/procesar-jobs/route.ts`
 - `db/migrations/20261111130000_factura_plataforma_job_enum/down.sql`
 - `db/migrations/20261111130000_factura_plataforma_job_enum/migration.sql`
@@ -259,12 +260,13 @@ Con el nombre de cada `it`: `progress/impl_SLT-118.md > Mapa R → test (R1–R4
 - `lib/types/planes.ts`
 - `lib/utils/deuda-plataforma.ts`
 - `scripts/siembra-jobs-recurrentes.ts`
+- `tests/components/PlanDetalle.test.tsx`
 - `tests/components/PlanEmpresaPeriodo.test.tsx`
 - `tests/components/PlanEmpresaTipoCobro.test.tsx`
-- `tests/components/PlanesModule.test.tsx`
 - `tests/components/PlanForm.test.tsx`
 - `tests/components/PlanFormDescuentos.test.tsx`
 - `tests/components/PlanFormPeriodicidad.test.tsx`
+- `tests/components/PlanesModule.test.tsx`
 - `tests/integration/api/procesar-jobs-geocodificacion.test.ts`
 - `tests/integration/api/procesar-jobs-webhook-estado.test.ts`
 - `tests/integration/db/factura-plataforma-aislamiento.test.ts`
@@ -273,8 +275,8 @@ Con el nombre de cada `it`: `progress/impl_SLT-118.md > Mapa R → test (R1–R4
 - `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`
 - `tests/integration/db/factura-plataforma-deuda.test.ts`
 - `tests/integration/db/plan-de-la-empresa-periodo.test.ts`
-- `tests/integration/db/planes-asignacion.test.ts`
 - `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts`
+- `tests/integration/db/planes-asignacion.test.ts`
 - `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`
 - `tests/integration/db/planes-cambio-empresa.test.ts`
 - `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
@@ -291,8 +293,10 @@ Con el nombre de cada `it`: `progress/impl_SLT-118.md > Mapa R → test (R1–R4
 - `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
 - `tests/unit/guards/rls-por-empresa.guardia.test.ts`
 - `tests/unit/planes/jobs-factura-plataforma.test.ts`
+- `tests/unit/planes/rastro-periodo.test.ts`
 - `tests/unit/planes/rastro.test.ts`
 - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`
+- `tests/unit/services/email/plantilla-cambio-plan.test.ts`
 - `tests/unit/services/jobs-registro.test.ts`
 - `tests/unit/services/planes-service-crear-custom.test.ts`
 - `tests/unit/services/planes-service-inicio-ciclo.test.ts`
@@ -300,10 +304,7 @@ Con el nombre de cada `it`: `progress/impl_SLT-118.md > Mapa R → test (R1–R4
 - `tests/unit/services/planes-service-tipo-cobro.test.ts`
 - `tests/unit/utils/deuda-plataforma.test.ts`
 
-69 archivos, +6 200 / −164 líneas, sin `progress/` ni `specs/`. Son `git diff --shortstat origin/dev...HEAD` en
-`250282df` sin esas carpetas (68 archivos, +6 120 / −164) más las 80 líneas de `docs/architecture.md` (T10.1). Con
-`progress/` y `specs/`, `git diff --shortstat origin/dev...HEAD` da 73 archivos, +8 072 / −164 en `250282df`, sin
-contar T10.
+73 archivos, +6 420 / −164 líneas, sin `progress/` ni `specs/` (`git diff --shortstat` contra la base con `origin/dev`, con la tanda 12).
 
 > 2026-11-11 (humano): se acepta todo en un solo PR, con el tamaño que resulte.
 

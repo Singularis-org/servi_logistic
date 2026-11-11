@@ -10,6 +10,7 @@ import {
   TIPOS_COBRO,
   type CostoPorOrdenPorcentual,
   type DescuentoPeriodo,
+  type PeriodicidadOrdenes,
   type PrecioPlan,
   type RolConTope,
   type TipoCobro,
@@ -202,6 +203,11 @@ export interface CambioDelPlanParaCorreo {
   costoPorOrden?: { antes: string | null; despues: string | null };
   /** SLT-83 (R4): un rastro anterior a la ficha no la trae y no pinta esa línea. */
   costoPorOrdenPorcentual?: { antes: CostoPorOrdenPorcentual | null; despues: CostoPorOrdenPorcentual | null };
+  /**
+   * SLT-118 (R35): la periodicidad de órdenes del plan. Un rastro anterior a la ficha no la trae; el alta
+   * la trae con `antes: null`: no es un cambio y no pinta línea.
+   */
+  periodicidadOrdenes?: { antes: PeriodicidadOrdenes | null; despues: PeriodicidadOrdenes | null };
 }
 
 type CambioDeDescuento = { antes: DescuentoPeriodo | null; despues: DescuentoPeriodo | null };
@@ -422,6 +428,11 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   if (c.costoPorOrdenPorcentual) {
     const { antes, despues } = c.costoPorOrdenPorcentual;
     lineas.push(`Costo por orden porcentual: ${textoDelPorcentualOVacio(antes)} → ${textoDelPorcentualOVacio(despues)}`);
+  }
+  // SLT-118 (R35; texto del humano, 2026-11-11): «Facturación de órdenes: quincenal → mensual», el valor tal
+  // cual, en minúscula.
+  if (c.periodicidadOrdenes?.antes && c.periodicidadOrdenes.despues) {
+    lineas.push(`Facturación de órdenes: ${c.periodicidadOrdenes.antes} → ${c.periodicidadOrdenes.despues}`);
   }
   return lineas;
 }

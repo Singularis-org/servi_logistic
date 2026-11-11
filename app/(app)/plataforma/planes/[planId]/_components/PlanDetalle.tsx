@@ -604,6 +604,8 @@ function lineasDelRastro(fila: FilaRastro): string[] {
   const topes = deEdicion(c.topes);
   const modulos = deEdicion(c.modulos);
   const precio = deEdicion(c.precio);
+  // SLT-118 (R35): la periodicidad de órdenes; el alta la trae con `antes: null` y no pinta línea.
+  const periodicidadOrdenes = deEdicion(c.periodicidadOrdenes);
   lineas.push(
     ...lineasDeCambioDelPlan({
       nombre: nombre ? { antes: String(nombre.antes), despues: String(nombre.despues) } : undefined,
@@ -626,6 +628,9 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       // SLT-86 (R30, R31): cada descuento en su línea, y la fila de la migración que retiró el tope de órdenes.
       ...(esAlta ? {} : descuentosDeLaEdicion(c)),
       tope_ordenes_ciclo: c.tope_ordenes_ciclo as CambioDelPlanParaCorreo["tope_ordenes_ciclo"],
+      periodicidadOrdenes: periodicidadOrdenes
+        ? (periodicidadOrdenes as NonNullable<CambioDelPlanParaCorreo["periodicidadOrdenes"]>)
+        : undefined,
     }),
   );
 

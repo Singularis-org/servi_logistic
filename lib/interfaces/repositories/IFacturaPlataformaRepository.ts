@@ -1,9 +1,6 @@
 // SLT-118 (design §3, §4) — contrato del repositorio de las facturas de la plataforma. Ningún método
 // escribe la tabla: la escriben solo las funciones del dueño en la base (R22), y esto solo las llama.
 // Lo vigila `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`.
-//
-// La lectura del superadmin (`deEmpresaParaPlataforma`, T8.1) espera a que se decida cómo fija la empresa:
-// `factura_plataforma_en_curso` exige que sea la del contexto.
 
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
@@ -29,4 +26,11 @@ export interface IFacturaPlataformaRepository {
    * contexto, la base la rechaza con 42501.
    */
   deLaEmpresa(): Promise<FacturaPlataformaDTO[]>;
+
+  /**
+   * R23, R24: lo mismo que `deLaEmpresa`, para el superadmin, de la empresa `organizacionId`. La fija con
+   * `conEmpresa`: corre como `servi_app` con esa empresa en el contexto, así que solo salen las suyas.
+   * Necesita el cliente con la extensión de empresa (`getPrismaClient()`).
+   */
+  deEmpresaParaPlataforma(organizacionId: string): Promise<FacturaPlataformaDTO[]>;
 }

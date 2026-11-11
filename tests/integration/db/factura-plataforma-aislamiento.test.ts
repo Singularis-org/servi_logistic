@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
-import { SQLSTATE_EMPRESA_CRUZADA } from "@/lib/db/contexto-empresa";
+import { EmpresaNoResuelta, SQLSTATE_EMPRESA_CRUZADA, comoPlataforma } from "@/lib/db/contexto-empresa";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import type { EfectoElegido } from "@/lib/interfaces/repositories/IPlanesRepository";
 import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { FacturaPlataformaRepository } from "@/lib/repositories/FacturaPlataformaRepository";
@@ -11,7 +12,7 @@ import type { CuotaDeLaFactura, FacturaPlataformaDTO } from "@/lib/types/factura
 import type { TipoCobro } from "@/lib/types/planes";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { cero } from "./_fixtures/periodo-calendario";
 import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
 
@@ -31,8 +32,12 @@ import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes
 // T9.2 (design §2.6, §3; R24): la lectura de la empresa por `FacturaPlataformaRepository.deLaEmpresa`, como
 // `servi_app` con la empresa en el contexto: las cerradas y las no cerradas (`factura_plataforma_en_curso`),
 // con su fin y sus cuotas previstas. La función no recibe el reloj: sus cuotas no dependen de él y las
-// órdenes de estos casos no tienen cargos, así que nada de lo que se mira cambia con la fecha del CI. La
-// lectura del superadmin queda fuera hasta que se decida cómo fija la empresa.
+// órdenes de estos casos no tienen cargos, así que nada de lo que se mira cambia con la fecha del CI.
+//
+// T8.1, T9.2 (R23, R24 del superadmin): `deEmpresaParaPlataforma` fija la empresa con `conEmpresa`, y eso solo
+// lo lee la extensión del cliente (`conAislamientoPorEmpresa`), que abre su propia transacción en otra
+// conexión: no ve lo de una transacción revertida. Por eso ese bloque, el último, commitea su siembra bajo el
+// lock de escritura real y la borra en su `afterAll` (las facturas se van con la empresa, ON DELETE CASCADE).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -508,5 +513,109 @@ describeSiHayBase("SLT-118 — quién lee y quién escribe las facturas de la pl
     expect(r.deA[2]).toMatchObject({ hastaPrevisto: true, cerradaAt: null, primeraCuota: null });
     expect(r.deA[2].cuota).toMatchObject({ diasCobrados: 16, diasPeriodo: 16 });
     expect(r.deA[0].cerradaAt?.toISOString()).toBe("2026-12-01T06:10:00.000Z");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* R23, R24: la lectura del superadmin por la app (T8.1)                       */
+/* -------------------------------------------------------------------------- */
+
+describeSiHayBase("SLT-118 — el superadmin lee las facturas de una empresa por la app (R23, R24; T8.1)", () => {
+  let dueno: PrismaClient;
+  /** El cliente de la app: la extensión de empresa sin sesión, así la empresa solo sale de `conEmpresa`. */
+  let repo: FacturaPlataformaRepository;
+  let plan: { id: string; nombre: string } | undefined;
+  let mensual: { id: string; nombre: string } | undefined;
+  const empresas: string[] = [];
+  let a: Lado;
+  let b: Lado;
+  /** La del plan mensual, cerrada hasta las 00:01 del 16: la del 1 al 15 por cerrar y la del 16 en curso. */
+  let c: string;
+
+  beforeAll(async () => {
+    dueno = crearPrismaDeTest();
+    repo = new FacturaPlataformaRepository(conAislamientoPorEmpresa(dueno, async () => null));
+    await bajoLockDeEscrituraReal(async () => {
+      plan = await planConPrecio(dueno as unknown as TxDeTest, "31000.00");
+      mensual = await planConPrecio(dueno as unknown as TxDeTest, "31000.00");
+      a = await lado(dueno as unknown as TxDeTest, plan.id);
+      empresas.push(a.id);
+      b = await lado(dueno as unknown as TxDeTest, plan.id);
+      empresas.push(b.id);
+      c = await empresaDesde(dueno as unknown as TxDeTest, cero("2026-11-01"), { id: mensual.id, tipo: "mensual" });
+      empresas.push(c);
+      await new FacturaPlataformaRepository(dueno).cerrar(c, new Date("2026-11-16T06:01:00.000Z"));
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    if (dueno === undefined) return;
+    try {
+      await bajoLockDeEscrituraReal(async () => {
+        if (empresas.length > 0) await dueno.organizacion.deleteMany({ where: { id: { in: empresas } } });
+        const planes = [plan?.id, mensual?.id].filter((x): x is string => typeof x === "string");
+        // El historial de precio se va con su plan (ON DELETE CASCADE).
+        if (planes.length > 0) await dueno.$executeRawUnsafe(`DELETE FROM "plan" WHERE "id" = ANY($1::text[])`, planes);
+      });
+    } finally {
+      await dueno.$disconnect();
+    }
+  }, 120_000);
+
+  it("control: sin `conEmpresa`, la lectura de la empresa por el cliente de la app no corre (EmpresaNoResuelta)", async () => {
+    await expect(repo.deLaEmpresa()).rejects.toBeInstanceOf(EmpresaNoResuelta);
+  });
+
+  it("R23: el superadmin lee las de A y las de B, cada una solo con las suyas, también desde un contexto de plataforma", async () => {
+    const deA = await repo.deEmpresaParaPlataforma(a.id);
+    const deB = await repo.deEmpresaParaPlataforma(b.id);
+    // Desde `comoPlataforma` (lo que abre una action del superadmin): manda el `conEmpresa` de dentro.
+    const deAEnPlataforma = await comoPlataforma("SL-24", "SLT-118 test: el superadmin lee las facturas de A", () =>
+      repo.deEmpresaParaPlataforma(a.id),
+    );
+    expect(deA.map((f) => f.id)).toEqual([...a.cerradas, a.enCurso]);
+    expect(deB.map((f) => f.id)).toEqual([...b.cerradas, b.enCurso]);
+    expect(deAEnPlataforma.map((f) => f.id)).toEqual([...a.cerradas, a.enCurso]);
+    expect(deA.map((f) => [f.estado, f.numero])).toEqual([
+      ["cerrada", 1],
+      ["cerrada", 2],
+      ["en_curso", null],
+    ]);
+  });
+
+  it("R24: el superadmin ve la en curso con su total parcial y la cuota prevista, igual que la empresa; sin número", async () => {
+    const lectura = (await repo.deEmpresaParaPlataforma(c)).map(vista);
+    const m = mensual as { id: string; nombre: string };
+    const primera = {
+      numero: null,
+      desde: cero("2026-11-01"),
+      hasta: cero("2026-11-16"),
+      periodicidad: "quincenal",
+      planId: m.id,
+      totalOrdenes: "0.00",
+      cuota: null,
+      primeraCuota: null,
+      total: "0.00",
+    };
+    expect(lectura).toEqual([
+      { ...primera, estado: "por_cerrar", hastaPrevisto: false },
+      {
+        estado: "en_curso",
+        numero: null,
+        desde: cero("2026-11-16"),
+        hasta: cero("2026-12-01"),
+        hastaPrevisto: true,
+        periodicidad: "quincenal",
+        planId: m.id,
+        totalOrdenes: "0.00",
+        cuota: cuotaCompleta(m, "mensual", "2026-12-01", "2027-01-01", "31000.00", "31000.00", 31),
+        primeraCuota: null,
+        total: "31000.00",
+      },
+    ]);
+    // La en curso de A, del 1 al 15 de diciembre, con la cuota de la segunda quincena prevista.
+    const deA = await repo.deEmpresaParaPlataforma(a.id);
+    expect(deA[2]).toMatchObject({ estado: "en_curso", numero: null, hastaPrevisto: true, cerradaAt: null, total: "15500.00" });
+    expect(cuotaVista(deA[2].cuota)).toMatchObject({ desde: cero("2026-12-16"), cuota: "15500.00", diasCobrados: 16 });
   });
 });

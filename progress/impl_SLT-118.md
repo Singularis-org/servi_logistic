@@ -431,8 +431,8 @@ T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `
 | R20 | deuda | «R20: aplicar una primera asignación (R16) y cerrar una factura con dos cuotas no escriben cargos, trazas ni movimientos de la wallet» |
 | R21 | aislamiento | «R21: la app en la empresa A solo lee las facturas de A…»; «R21: una factura no cambia de empresa…: SL017»; «R24, R21: la empresa A lee las suyas…; la de otra empresa o sin empresa, 42501» |
 | R22 | aislamiento; `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` | «R22: la app no inserta, no cambia y no borra facturas, ni las suyas: 42501 sin cambios»; «R22: la app no ejecuta el cierre, la toma de un cambio ni ninguna función que escribe facturas: 42501»; «ningún archivo de lib/ ni de app/ escribe en factura_plataforma (SLT-118, R22)» |
-| R23 | aislamiento | **Hueco parcial.** Solo la base: «R23: la plataforma (el dueño, como el superadmin) lee las facturas de las dos empresas» (SQL como dueño). La lectura del superadmin por la app (`deEmpresaParaPlataforma`, T8.1) no existe: pregunta abierta en `progress/features/SLT-118.md` |
-| R24 | aislamiento | Empresa: «R24: plan mensual: la del 1 al 15 sin cuota prevista…», «R24: con un cambio pendiente cuyo efecto es el fin de la en curso…», «R24: quincenal con inicio el 1 aplicado el 12…», «R24, R21…». **Hueco:** la parte del superadmin (T8.1, T9.2), por la misma pregunta abierta |
+| R23 | aislamiento | Base: «R23: la plataforma (el dueño, como el superadmin) lee las facturas de las dos empresas». App (T8.1, tanda 12): «R23: el superadmin lee las de A y las de B, cada una solo con las suyas, también desde un contexto de plataforma» (`deEmpresaParaPlataforma` por el cliente con la extensión), con el control «control: sin `conEmpresa`, la lectura de la empresa por el cliente de la app no corre (EmpresaNoResuelta)» |
+| R24 | aislamiento | Empresa: «R24: plan mensual: la del 1 al 15 sin cuota prevista…», «R24: con un cambio pendiente cuyo efecto es el fin de la en curso…», «R24: quincenal con inicio el 1 aplicado el 12…», «R24, R21…». Superadmin (tanda 12): «R24: el superadmin ve la en curso con su total parcial y la cuota prevista, igual que la empresa; sin número» |
 | R25 | jobs; cierre | `describe` «SLT-118 — registro y recurrencia del cierre de facturas (R25)» (6 `it` + `it.each` «R25: cada hora a los 10 minutos — $caso» ×4); «R25: la siembra del cierre (sembrarCierreFacturas) y su re-agendado dejan UNA fila por corrida (contarJobs)» |
 | R26 | cierre | «R26: una empresa dada de alta después…»; «R26: la migración deja a cada empresa UNA factura en curso…»; «R26 (P15), R11: el período de cobro en curso cuenta como pagado…» |
 | R27 | cierre | «R27: con una factura cerrada con cuota, el down se niega sin tocar nada»; «R27: con solo una primera cuota cerrada…»; «R27: sin cuotas cerradas, el down deja la base como estaba…» |
@@ -443,16 +443,77 @@ T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `
 | R32 | svc-periodo; svc-tipo-cobro; componentes | «R32: asignar pasa la elegida…», «R32: crear un custom…», «R32: cambiar el tipo responde con la fecha real…», «R32: asignar aplicado en el acto responde `vigenteDesde: null`»; «SLT-118 R32: el repositorio llevó la elegida al 1 de enero…»; `tests/components/PlanEmpresaTipoCobro.test.tsx` «SLT-118 R32: con el cambio pendiente…»; `tests/components/PlanEmpresaPeriodo.test.tsx` «SLT-118 R32: al cambiar el plan…»; `tests/components/PlanesModule.test.tsx` «SLT-118 R32: crear un custom…», «SLT-118 R32: un plan que rige ya…» |
 | R33 | cambio-empresa; svc-periodo | «R33: la primera asignación no se lleva: inicio el 10 (a mitad de período)…»; «R33: una primera asignación (`inicio`) no se lleva, aunque caiga a mitad de período» |
 | R34 | cambio-empresa; svc-periodo | «R34, R32: con hoy el 10 de noviembre, quincenal → anual elegido el 10 de noviembre de 2027 (el tope)…»; «R34: elegida el 10 de noviembre de 2027 (el tope) entra…», «R34: elegida el 11 de noviembre de 2027 → validation_error…» |
-| R35 | periodicidad; `tests/components/PlanFormPeriodicidad.test.tsx` | «R35: crear sin ella la deja quincenal…», «R35: editar en el acto la cambia…», «R35: programada, no cambia hasta su fecha…», «R35, P14: un plan que ya existía…», «R35: un valor que no es quincenal ni mensual…»; `describe` «SLT-118 R35 — «Facturación de órdenes» en el formulario del plan» (5 `it`) |
+| R35 | periodicidad; `tests/components/PlanFormPeriodicidad.test.tsx`; `tests/unit/planes/rastro-periodo.test.ts`; `tests/unit/services/email/plantilla-cambio-plan.test.ts` | «R35: crear sin ella la deja quincenal…», «R35: editar en el acto la cambia…», «R35: programada, no cambia hasta su fecha…», «R35, P14: un plan que ya existía…», «R35: un valor que no es quincenal ni mensual…»; `describe` «SLT-118 R35 — «Facturación de órdenes» en el formulario del plan» (5 `it`); `describe` «SLT-118 R35 — «Facturación de órdenes: <antes> → <después>»» (5 `it`, «qué cambia» y el cambio pendiente); «SLT-118 R35: el cambio de la periodicidad de órdenes del plan sale como «Facturación de órdenes: quincenal → mensual»» (correo) |
 | R36 | cambio-plan | «R36: la periodicidad del plan editada de quincenal a mensual el 10 de noviembre…», «R36: … de mensual a quincenal el 10 de noviembre…» |
 | R37 | periodicidad | «R37: asignar con tipo quincenal…», «R37: crear el custom con tipo quincenal y órdenes mensuales…», «R37: cambiar el tipo a quincenal…», «R37: editar a mensual con una empresa quincenal…», «R37: editar a mensual un plan que una empresa tiene como cambio pendiente…», «R37: una programada a mensual que ya no pasa al aplicarse…» |
 | R38 | cambio-plan | «R38: mensual con órdenes quincenales a un plan mensual con órdenes mensuales, guardado el 10 de noviembre…» |
 | R39 | cambio-plan; jobs | «R15, R39…»; «R16, R39: … si el cierre llega antes que la cola, espera»; «R3: una empresa sin nada vencido (o en espera de un cambio, R39)…» |
 | R40 | deuda | «R40: un cambio de plan y de tipo de cobro aplicado tras emitir dos cuotas no las devuelve…» |
 
-Huecos: R23 (lectura del superadmin por la app) y la parte del superadmin de R24. Los dos esperan a T8.1
-`deEmpresaParaPlataforma` y a la pregunta abierta de `progress/features/SLT-118.md`. No queda ningún otro R sin test.
+Huecos: ninguno desde la tanda 12 (R23 desde la app y R24 del superadmin cubiertos con `deEmpresaParaPlataforma`).
 Corrección al mapa de `tasks.md`: R33 no está en `cambio-plan` (su cabecera dice «R33 queda fuera de este archivo»),
 sino en `cambio-empresa` y `svc-periodo`.
 
-Veredicto: mapa R1–R40 completo, salvo R23 y R24 del superadmin, que esperan a T8.1.
+Veredicto: mapa R1–R40 completo, sin huecos (tanda 12).
+
+## Tanda 12 — superadmin y línea de periodicidad (T8.1, T9.2, T10.2) · backend_dev · sin commit
+
+Decisión aplicada (humano y leader, 2026-11-11): el superadmin fija la empresa con `conEmpresa(id, …)` (opción A).
+
+Archivos:
+- `lib/repositories/FacturaPlataformaRepository.ts`: `deEmpresaParaPlataforma(organizacionId)` =
+  `conEmpresa(organizacionId, () => this.deLaEmpresa())`. Sin SQL nuevo. Dentro de un `comoPlataforma` también vale:
+  el `conEmpresa` de dentro manda mientras dura la lectura.
+- `lib/interfaces/repositories/IFacturaPlataformaRepository.ts`: el método en el contrato (necesita el cliente con
+  la extensión, `getPrismaClient()`); fuera la nota de «espera a que se decida».
+- `lib/planes/mensajes.ts`: `CambioDelPlanParaCorreo.periodicidadOrdenes` y, en `lineasDeCambioDelPlan`, la línea
+  «Facturación de órdenes: <antes> → <después>» con los valores tal cual (minúscula). Sin `antes` (alta) no pinta.
+- `tests/integration/db/factura-plataforma-aislamiento.test.ts`: `describe` nuevo «SLT-118 — el superadmin lee las
+  facturas de una empresa por la app (R23, R24; T8.1)». Commitea su siembra bajo `bajoLockDeEscrituraReal` (la
+  extensión abre su propia transacción en otra conexión y no ve una revertida) y la borra en su `afterAll`
+  (empresas → facturas por CASCADE; planes → historial por CASCADE). Cliente: `conAislamientoPorEmpresa(base,
+  async () => null)`, como `cobro-plataforma-plan`.
+- `tests/unit/planes/rastro-periodo.test.ts`: `describe` «SLT-118 R35 — «Facturación de órdenes: <antes> → <después>»» (5 `it`).
+- `tests/unit/services/email/plantilla-cambio-plan.test.ts`: «SLT-118 R35: el cambio de la periodicidad…».
+
+Guardias de aislamiento: sin entrada nueva. `conEmpresa` no es `comoPlataforma` (`plataforma-solo-en-lista` no lo
+mira) y el archivo ya filtra por `organizacion_id` en su SQL (`sql-a-mano-por-empresa` no lo lista).
+
+Quién consume la línea (comprobado):
+- correo: `lib/planes/jobs-cambio-plan.ts` pasa `aviso.cambios` entero (el `diferenciasDelPlan`) → sale.
+- `PlanEmpresa.tsx`: `lineasDeCambioDelPlan(diferenciasDelPlan(actual, elegido))` → sale; también el cambio pendiente
+  (`cambioPendienteDelPlan`, `lib/planes/consumo.ts`).
+- `PlanDetalle.tsx` (`lineasDelRastro`): **NO sale**. Arma el objeto campo a campo (`nombre`, `topes`, `modulos`,
+  `precio`, `costoPorOrden`, …) y no pasa `periodicidadOrdenes`. Falta una línea de UI (frontend_dev):
+  `periodicidadOrdenes: deEdicion(c.periodicidadOrdenes) as CambioDelPlanParaCorreo["periodicidadOrdenes"] ?? undefined`
+  o equivalente, y su test de componente. No lo toqué: fuera de mi capa.
+
+Mapa: R23, R24 y R35 actualizados arriba y en `tasks.md`; sin huecos. T8.1, T9.2 y T10.2 marcadas.
+T9.1 no pide caso del superadmin (tasks.md): `factura-plataforma-deuda.test.ts` sin cambios.
+Fuera de «Archivos esperados»: `tests/unit/planes/rastro-periodo.test.ts`, `tests/unit/services/email/plantilla-cambio-plan.test.ts`.
+
+Verificación:
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → `tsc --noEmit` sin errores.
+- `eslint` de los 7 archivos → sin salida (verde).
+- `vitest run` rastro-periodo, plantilla-cambio-plan, factura-plataforma-aislamiento `--pool=threads` →
+  `Test Files 2 passed | 1 skipped (3)`, `Tests 33 passed | 13 skipped (46)` (integración sin base: al CI).
+- `vitest related --run` de `FacturaPlataformaRepository.ts` + `IFacturaPlataformaRepository.ts` →
+  `Test Files 14 passed | 7 skipped (21)`, `Tests 202 passed | 68 skipped (270)`.
+- `vitest related --run` de `lib/planes/mensajes.ts` → no terminó en 420 s (cortado por `timeout`, sin salida).
+  Sustituido por los tests que lo importan y los de sus consumidores, en lotes de 5 (`vitest run --pool=threads`):
+  tope-error, rastro-costo-porcentual, rastro-costeo, mensajes-periodo, mensajes-costo-porcentual → `5 passed`, `60 passed`;
+  planes-service-inicio-ciclo, consumo, MiPlanModule, PlanDetalle, PlanEmpresa → `5 passed`, `142 passed`;
+  jobs-cambio-empresa, procesar-jobs-plan-cambio, PlanEmpresaPeriodo, PlanEmpresaTipoCobro, PlanDetalleAsignar →
+  `5 passed`, `90 passed`. `planes-periodicidad-ordenes` (integración) al CI; la guardia `mi-plan-solo-maestro`, al leader.
+
+Veredicto: T8.1 y la línea de periodicidad hechos con sus tests; falta pasar `periodicidadOrdenes` en `PlanDetalle.tsx` (UI).
+
+## Tanda 12b — la línea en el detalle del plan · frontend_dev
+- `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`: `lineasDelRastro` pasa `periodicidadOrdenes` a `lineasDeCambioDelPlan`.
+- `tests/components/PlanDetalle.test.tsx`: «SLT-118 R35: el historial dice «Facturación de órdenes: quincenal → mensual»; el alta no pinta la periodicidad». 20/20.
+- `PlanEmpresa.tsx` sin cambios: la muestra por `cambioPendienteDelPlan` y el resumen al elegir otro plan (leído en el código).
+
+## T10.3 — gate local (implementer, 2026-11-11)
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: corta en el paso del board, ajeno a la feature: `feature_list.json invalido: zona backend 6 in_progress (max 5), zona fullstack 4 (max 3)` (cupo del equipo; lo resuelve el leader).
+- Por separado: typecheck verde; eslint de lo tocado verde; `test:guardias` 4 rojos, todos de `dependencias-declaradas-presentes` (baseline), 4808 pasan.
+- Integración contra Postgres y E2E (`--project=dinero`, `e2e/dos-empresas-humo.spec.ts`): los corre el CI (sin base local; decisión del coordinador 2026-11-11).

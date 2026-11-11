@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
-import { comoPlataforma } from "@/lib/db/contexto-empresa";
+import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories/IFacturaPlataformaRepository";
 import type { CuotaDeLaFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 import { ESTADOS_FACTURA, PERIODICIDADES_FACTURA } from "@/lib/types/factura-plataforma";
@@ -15,6 +15,10 @@ import { tipoCobroSchema } from "@/lib/types/planes";
 // `deLaEmpresa` (design §2.6; R21, R24) es lo contrario: corre en la empresa de la sesión, como `servi_app`,
 // sin `comoPlataforma`. Las cerradas las filtra la RLS además del `WHERE`; las no cerradas solo salen por
 // `factura_plataforma_en_curso`, que rechaza otra empresa con 42501.
+//
+// `deEmpresaParaPlataforma` (T8.1; R23, R24) es la misma lectura para el superadmin, que no tiene empresa: fija
+// la de la factura con `conEmpresa`, el camino de los jobs por empresa (decisión del 2026-11-11). Así la
+// extensión baja a `servi_app` con esa empresa y la base la acota igual que a la empresa misma.
 
 type FacturaPlataformaPrismaClient = Pick<PrismaClient, "$queryRaw" | "organizacion">;
 
@@ -207,5 +211,10 @@ export class FacturaPlataformaRepository implements IFacturaPlataformaRepository
     }));
     // Las cerradas siempre van antes (R1: sin huecos ni solapes); las dos listas ya vienen por `desde`.
     return [...cerradas, ...noCerradas];
+  }
+
+  deEmpresaParaPlataforma(organizacionId: string): Promise<FacturaPlataformaDTO[]> {
+    // Dentro de `comoPlataforma` también: el `conEmpresa` de dentro manda mientras dura la lectura.
+    return conEmpresa(organizacionId, () => this.deLaEmpresa());
   }
 }
