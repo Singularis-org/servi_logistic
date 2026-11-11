@@ -35,7 +35,7 @@
   - si `FilterComponent` ya envuelve las listas.
   **Hecho:** la lista está anotada, y cada archivo nuevo que aparezca se añade a «Archivos
   esperados».
-- [ ] **T1.2** [P] Fixture `tests/integration/db/_fixtures/geo-47.ts` (design §12).
+- [x] **T1.2** [P] Fixture `tests/integration/db/_fixtures/geo-47.ts` (design §12).
   **Hecho:** lo importa un test vacío que pasa con `HAY_BASE_DE_DATOS`.
 
 ## T2 — Servidor (backend_dev) · depende de T1
