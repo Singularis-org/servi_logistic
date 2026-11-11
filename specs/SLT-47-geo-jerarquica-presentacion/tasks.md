@@ -40,7 +40,7 @@
 
 ## T2 — Servidor (backend_dev) · depende de T1
 
-- [ ] **T2.1** `lugares-del-filtro.ts` generalizado (`resolverLugar`, `condicionesDeLugar` y
+- [x] **T2.1** `lugares-del-filtro.ts` generalizado (`resolverLugar`, `condicionesDeLugar` y
   `lugaresDelFiltro` de una faceta) y `ruta-del-lugar.ts`. Tests: `lugares-del-filtro.test.ts`
   (ajustado) y `ruta-del-lugar.test.ts`.
   **Hecho:** R11, R12 y R16 en verde en unit.
