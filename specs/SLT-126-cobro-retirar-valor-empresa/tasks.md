@@ -65,14 +65,14 @@
 
 ## Tanda 3 — Pantallas
 
-- [ ] **T6 — Plataforma > Empresas.** `CobroPorOrden.tsx`, `EmpresasModule.tsx`, `page.tsx` (design §3).
+- [x] **T6 — Plataforma > Empresas.** `CobroPorOrden.tsx`, `EmpresasModule.tsx`, `page.tsx` (design §3).
   Ajusta `tests/components/EmpresasModuleCobro.test.tsx` (nuevos casos R1, R3, R4),
   `EmpresasModuleCobroPorcentual.test.tsx`, `EmpresasModulePlan.test.tsx`, `EmpresasModulePeriodo.test.tsx`,
   `empresas-module.test.tsx`, `tests/integration/empresas-page.test.tsx`.
   *Cubre y prueba:* R1, R3, R4 (`tests/components/EmpresasModuleCobro.test.tsx`). *Depende de:* T3, T4.
   *Hecho:* en ninguna fila hay «Cambiar», «Usar el global» ni un campo; la fuente es «del plan» o
   «global»; la ayuda es el texto exacto de R4; `pnpm run test:guardias` en verde.
-- [ ] **T7 [P] — «Mi plan» y detalle de empresa sin la nota de la excepción.** `ConsumoDelPlan.tsx`,
+- [x] **T7 [P] — «Mi plan» y detalle de empresa sin la nota de la excepción.** `ConsumoDelPlan.tsx`,
   `PlanEmpresa.tsx` (design §3). Ajusta `tests/components/ConsumoDelPlanCosteo.test.tsx` y
   `tests/components/PlanEmpresaSinCosto.test.tsx`.
   *Cubre y prueba:* R11 (pantallas) en `ConsumoDelPlanCosteo.test.tsx` y `PlanEmpresaSinCosto.test.tsx`.

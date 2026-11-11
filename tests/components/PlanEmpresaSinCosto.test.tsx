@@ -44,13 +44,10 @@ function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): Plan
 const CONCRETO = planDTO({ id: "22222222-2222-4222-8222-222222222222", nombre: "Concreto" });
 
 /**
- * La vista con un plan actual de esa base y ese costo por orden; `null` = sin plan. `excepcion` hace que
- * el costo vigente salga de la excepción de la empresa (fuente `empresa`) con ese importe.
+ * La vista con un plan actual de esa base y ese costo por orden; `null` = sin plan. El costo vigente sale
+ * del plan si fija costo por orden y, si no, del global (SLT-126 R11: no hay excepción de la empresa).
  */
-function vista(
-  actual: { precio: PrecioPlan; costoPorOrden: string | null } | null,
-  excepcion?: string,
-): PlanDeEmpresaVista {
+function vista(actual: { precio: PrecioPlan; costoPorOrden: string | null } | null): PlanDeEmpresaVista {
   if (actual === null) return { organizacionId: ORG, plan: null, pendienteSinPlan: null, asignaciones: [] };
   const consumo = planConConsumo(
     {
@@ -62,10 +59,7 @@ function vista(
       uso: { ordenes: 3, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
       cambio: null,
       tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura.
-      costoVigente:
-        excepcion === undefined
-          ? { modo: "fijo", monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" }
-          : { modo: "fijo", monto: excepcion, fuente: "empresa" },
+      costoVigente: { modo: "fijo", monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" },
       cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     },
     new Date("2026-10-10T06:00:00.000Z"),
@@ -205,20 +199,19 @@ describe("SLT-66 R20 — aviso del plan actual sin costo concreto", () => {
   });
 });
 
-describe("SLT-66 §6.3 (P1) — la nota de la excepción en el detalle del superadmin", () => {
-  it("fuente empresa → «excepción de la empresa», nunca «precio acordado para tu empresa»", () => {
-    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: "100.00" }, "80.00") });
-    expect(screen.getByText("excepción de la empresa")).toBeInTheDocument();
+describe("SLT-126 R11 — el detalle del superadmin sin la nota de la excepción", () => {
+  it.each<[string, { precio: PrecioPlan; costoPorOrden: string | null }, string]>([
+    ["fuente plan", { precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: "100.00" }, "100.00"],
+    ["fuente global", { precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: null }, "500.00"],
+  ])("R11: %s → el costo por orden sin «excepción de la empresa» ni «precio acordado para tu empresa»", (_caso, actual, monto) => {
+    montar({ v: vista(actual) });
+    expect(screen.getByText(`Costo por orden: ${monto}`)).toBeInTheDocument();
+    expect(screen.queryByText("excepción de la empresa")).toBeNull();
     expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
   });
 
-  it("fuente plan → sin nota de excepción", () => {
-    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: "100.00" }) });
-    expect(screen.queryByText("excepción de la empresa")).toBeNull();
-  });
-
   it("R20: el aviso del plan sin costo concreto sale una sola vez (ConsumoDelPlan no lo repite)", () => {
-    montar({ v: vista({ precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }, "80.00") });
+    montar({ v: vista({ precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }) });
     expect(screen.getAllByText(AVISO_R20)).toHaveLength(1);
     expect(screen.getAllByText(/sin costo concreto/i)).toHaveLength(1);
   });

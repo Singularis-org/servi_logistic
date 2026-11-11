@@ -36,7 +36,6 @@ const TEXTOS = {
   costoBase: (tipo: TipoCobro, base: CosteoDelCiclo["base"]) =>
     TEXTOS_TIPO_COBRO.costoBase(tipo, base.tipo === "monto" ? base.periodo : null),
   costoPorOrden: (c: string) => `Costo por orden: ${c}`,
-  excepcion: "precio acordado para tu empresa",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
   /** SLT-83 (texto aprobado 2026-11-04): la nota de la rama porcentual, donde la fija pinta `estimado`. */
   notaPorcentual:
@@ -75,11 +74,6 @@ export interface ConsumoDelPlanProps {
   readonly pendienteSinPlan?: PendienteDeEmpresa | null;
   /** Nivel del título de cada bloque, para encajar bajo el encabezado de quien lo monta. */
   readonly nivelDeTitulo?: 2 | 3;
-  /**
-   * SLT-66 (P1): la nota del costo por orden cuando sale de la excepción de la empresa. La empresa lee
-   * «precio acordado para tu empresa» (el valor por defecto); el superadmin, «excepción de la empresa».
-   */
-  readonly textoExcepcion?: string;
 }
 
 /**
@@ -110,7 +104,6 @@ export function ConsumoDelPlan({
   textoSinPlan,
   pendienteSinPlan = null,
   nivelDeTitulo = 2,
-  textoExcepcion = TEXTOS.excepcion,
 }: ConsumoDelPlanProps) {
   // R6: sin plan no hay precio, módulos, filas ni ciclo que mostrar; solo el aviso, como estado vacío.
   if (plan === null) {
@@ -137,7 +130,7 @@ export function ConsumoDelPlan({
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {plan.costeo.modo === "fijo" ? (
-            <CostoDelCiclo tipo={plan.cobro.tipo} costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+            <CostoDelCiclo tipo={plan.cobro.tipo} costeo={plan.costeo} />
           ) : (
             <CostoDelCicloPorcentual tipo={plan.cobro.tipo} costeo={plan.costeo} />
           )}
@@ -206,18 +199,14 @@ export function ConsumoDelPlan({
  * (`costeoDelCiclo`, en el servidor): aquí no se suma ni se convierte nada, para no perder exactitud.
  * La aritmética no se importa en este componente porque lo monta también una pantalla de cliente.
  */
-function CostoDelCiclo({ tipo, costeo, textoExcepcion }: { tipo: TipoCobro; costeo: CosteoFijo; textoExcepcion: string }) {
-  // P1: solo la excepción lleva nota; el plan y el global se pintan con su importe y nada más.
-  const nota = costeo.fuente === "empresa" ? textoExcepcion : null;
+function CostoDelCiclo({ tipo, costeo }: { tipo: TipoCobro; costeo: CosteoFijo }) {
+  // SLT-126 (R11): el costo por orden sale del plan o del global y se pinta sin nota en los dos casos.
   return (
     <div className="flex flex-col gap-2 pb-2">
       <p className="text-sm font-medium">{TEXTOS.costoDelCiclo}</p>
       <ul aria-label={TEXTOS.costoDelCiclo} className="flex flex-col gap-1 text-sm">
         <li>{TEXTOS.costoBase(tipo, costeo.base)}</li>
-        <li className="flex flex-col">
-          <span>{TEXTOS.costoPorOrden(costeo.costoPorOrden)}</span>
-          {nota && <span className="text-xs text-muted-foreground">{nota}</span>}
-        </li>
+        <li>{TEXTOS.costoPorOrden(costeo.costoPorOrden)}</li>
         {/* SLT-99 (decisión del humano del 2026-11-10): sin «Órdenes del período: n × c = s» ni «Total
             estimado del período». `costeo.ordenes`, `subtotalOrdenes` y `total` siguen llegando del servidor. */}
       </ul>

@@ -34,7 +34,6 @@ import {
   BloqueCobroGlobal,
   CeldaCobroEmpresa,
   TEXTOS_COBRO,
-  type FijarCobroEmpresa,
   type FijarCobroGlobal,
 } from "./CobroPorOrden";
 import { ReenviarBienvenidaBoton } from "./ReenviarBienvenidaBoton";
@@ -66,8 +65,6 @@ export interface EmpresasModuleProps {
   cobroGlobal: CobroGlobalDTO | null;
   /** SL-40 (R9, R11): `fijarCobroGlobalAction`, inyectada para poder probarla. */
   fijarCobroGlobal: FijarCobroGlobal;
-  /** SL-40 (R10, R11): `fijarCobroEmpresaAction`; `monto: null` quita la excepción. */
-  fijarCobroEmpresa: FijarCobroEmpresa;
 }
 
 type Campo =
@@ -243,7 +240,6 @@ export function EmpresasModule({
   bienvenidaPendiente,
   cobroGlobal,
   fijarCobroGlobal,
-  fijarCobroEmpresa,
 }: EmpresasModuleProps) {
   const router = useRouter();
   const base = useId();
@@ -409,7 +405,6 @@ export function EmpresasModule({
         empresas={empresas}
         reenviarBienvenida={reenviarBienvenida}
         bienvenidaPendiente={bienvenidaPendiente}
-        fijarCobroEmpresa={fijarCobroEmpresa}
       />
     </div>
   );
@@ -451,12 +446,10 @@ function ListadoEmpresas({
   empresas,
   reenviarBienvenida,
   bienvenidaPendiente,
-  fijarCobroEmpresa,
 }: {
   empresas: EmpresaListada[];
   reenviarBienvenida: EmpresasModuleProps["reenviarBienvenida"];
   bienvenidaPendiente: string[] | null;
-  fijarCobroEmpresa: FijarCobroEmpresa;
 }) {
   if (empresas.length === 0) {
     return (
@@ -504,13 +497,8 @@ function ListadoEmpresas({
             <TableCell>{empresa.pais.nombre}</TableCell>
             <TableCell>{FECHA_CORTA.format(empresa.creadaEn)}</TableCell>
             <TableCell>
-              <CeldaCobroEmpresa
-                organizacionId={empresa.id}
-                nombreEmpresa={empresa.nombre}
-                cobroPorOrden={empresa.cobroPorOrden}
-                cobroVigente={empresa.cobroVigente}
-                fijarCobroEmpresa={fijarCobroEmpresa}
-              />
+              {/* SLT-126 (R1, R3): solo lectura; el cobro sale del plan o del global. */}
+              <CeldaCobroEmpresa cobroVigente={empresa.cobroVigente} />
             </TableCell>
             <TableCell>
               <CeldaPlataforma empresa={empresa} />
