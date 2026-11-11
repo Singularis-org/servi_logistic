@@ -14,6 +14,7 @@ F1.1 2026-11-11: tomada y acotada con `/afinar-feature`. Rama sobre `feature/SLT
 - Partida en 2 por el humano: la presentación, los exportes, los cierres y la geocodificación van a SLT-125 «Geografía jerárquica: presentación, exportes, cierres y geocodificación».
 
 ## Decisiones
+- 2026-11-11 (humano): «continua, estan en pausa las demas, la idea es sacar todo lo de geografia antes de mergear con dev»: el exceso de cupo (backend 6/5, fullstack 4/3) lo causan las geo en pausa y se acepta; la pila geo se mergea entera al final.
 - 2026-11-11 · Alcance y decisiones cerradas en `specs/SLT-47-geo-jerarquica-presentacion/requirements.md` (`/afinar-feature`; tarjeta renombrada a «filtros de N niveles», zone fullstack, SLT-125 creada y añadida a las dependencias de SLT-48).
 
 ## Preguntas abiertas
