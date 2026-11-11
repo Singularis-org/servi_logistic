@@ -144,6 +144,27 @@ Todo con `DATABASE_URL` de `slt122_t1` exportada antes (sin imprimirla).
    acto nace antes de leer la ventana y la tx confirma al devolver). No lo introduce SLT-122 y no es un pago
    ni un movimiento del libro (R10 se cumple); se anota por si se quiere revisar.
 
+## E2E
+
+Corrido el 2026-11-10 sobre HEAD 888e4071 (sin cambios de código), un solo servidor (`webServer` de
+Playwright, `next start`, `E2E_PUERTO=3044`), bases desechables nuevas (`migrate deploy` + `db:seed`, sin
+`migrate reset`). Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec next build` (con 4 GB por
+defecto revienta por heap, exit 134).
+
+- **`dinero` completo** (base `slt122_e2e`):
+  `pnpm exec playwright test --project=dinero` → `94 passed (5.0m)`, `PW_EXIT=0`. Ningún spec tuvo que
+  adaptarse: confirma la lectura estática del ABIERTO 1 (nadie pagaba un cierre de satélite).
+- **`dos-empresas-humo`** (con su dependencia `plataforma-vacia`):
+  `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --project=aislamiento`.
+  - 1.ª corrida (base `slt122_humo`): `1 failed, 4 passed, 13 did not run`. Cae
+    `superadmin-empresas` caso 2 (falta «El correo no está configurado en este entorno.»): build hecho sin
+    `NEXT_PUBLIC_APP_URL`, causa ya documentada en `progress/impl_SL-24.md:870`. Ajeno a SLT-122.
+  - 2.ª corrida, build con `NEXT_PUBLIC_APP_URL=http://localhost:3044` (como `gate.yml`) y base nueva
+    `slt122_humo2` (la anterior ya tenía superadmin): `18 passed (1.4m)`, `PW_EXIT=0`.
+- `pnpm typecheck` después: `TC_EXIT=0` (no hizo falta borrar `.next/dev`).
+
+Con esto el ABIERTO 1 queda cerrado.
+
 ## Veredicto
 
 Hecho: ni el pago directo ni el reparto aceptan un cierre de satélite (WHERE con `alcanceWhere`, mutación roja
