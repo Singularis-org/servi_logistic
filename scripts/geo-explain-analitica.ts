@@ -137,8 +137,9 @@ export async function provinciaConMasOrdenes(cliente: PrismaClient, organizacion
   });
 }
 
+/** SLT-47: el lado nuevo filtra por `lugar_id` (la provincia es el lugar elegido). */
 function consultaDeAnalitica(provinciaId: string): ConsultaConteoEntregas {
-  const p = prepararConteoEntregas({ provincia_id: [provinciaId] }, ACTOR_MAESTRO);
+  const p = prepararConteoEntregas({ lugar_id: [provinciaId] }, ACTOR_MAESTRO);
   // Solo el estado: el detalle de la preparacion podria repetir la entrada.
   if (p.status !== "ok") throw new Error(`geo:explain-analitica: consulta no concedida (${p.status})`);
   return p.consulta;
@@ -188,30 +189,32 @@ export async function medirLecturas(
       return resultados;
     }
     const q = consultaDeAnalitica(provinciaId);
+    // SLT-47: el lado de hoy, por la columna de la provincia (las facetas congeladas).
+    const qHoy = hoy.conFacetasDeHoy(q, { provincia_id: [provinciaId] });
     resultados.push(
       await medir(
         "conteo-entregas",
-        async () => hoy.plegarEnDesenlaces(await hoy.contarPorStatusDeHoy(cliente, q)),
+        async () => hoy.plegarEnDesenlaces(await hoy.contarPorStatusDeHoy(cliente, qHoy)),
         () => new ConteoEntregasRepository(new ConteoPorStatusRepository(cliente)).contar(q),
       ),
       await medir(
         "conteo-por-status",
-        () => hoy.contarPorStatusDeHoy(cliente, q),
+        () => hoy.contarPorStatusDeHoy(cliente, qHoy),
         () => new ConteoPorStatusRepository(cliente).contarPorStatus(q),
       ),
       await medir(
         "conteo-cargadas-por-dia",
-        () => hoy.contarCargadasPorDiaDeHoy(cliente, q),
+        () => hoy.contarCargadasPorDiaDeHoy(cliente, qHoy),
         () => new ConteoCargadasPorDiaRepository(cliente).contarCargadasPorDia(q),
       ),
       await medir(
         "conteo-devoluciones",
-        () => hoy.contarDevolucionesPorCausaDeHoy(cliente, q),
+        () => hoy.contarDevolucionesPorCausaDeHoy(cliente, qHoy),
         () => new ConteoDevolucionesRepository(cliente).contarDevolucionesPorCausa(q),
       ),
       await medir(
         "ciclo-vida",
-        () => hoy.acumularCiclosDeHoy(cliente, q),
+        () => hoy.acumularCiclosDeHoy(cliente, qHoy),
         () => new CicloVidaRepository(cliente).acumularCiclos(q),
       ),
     );

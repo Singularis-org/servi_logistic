@@ -18,11 +18,7 @@ import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRep
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
 import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 import { PROFUNDIDAD_DEL_NIVEL } from "@/lib/repositories/_shared/lugar-orden";
-import {
-  resolverLugaresDelFiltro,
-  type FacetasGeograficas,
-  type LugaresDelFiltro,
-} from "@/lib/repositories/_shared/lugares-del-filtro";
+import { resolverLugar } from "@/lib/repositories/_shared/lugares-del-filtro";
 import { nodo, nodosDeProfundidad, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import { cortesPorZona } from "@/lib/whatsapp-envios/informes/transito/calculo";
@@ -30,6 +26,9 @@ import { estadosIncluidos, PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/
 import type { ConsultaTransito, FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
 import * as hoy from "./geo-equivalencia/analitica-de-hoy";
+import type { FacetasDeHoy } from "./geo-equivalencia/analitica-de-hoy";
+// SLT-47: el lado «nuevo» filtra por `lugar_id`; el de «hoy», por las tres facetas congeladas.
+import { facetasDe, lugarDeFacetas, rawConLugar } from "./geo-equivalencia/filtros-de-hoy";
 import { compararPorId, type Cifras, type Diferencia } from "./geo-equivalencia/comparacion";
 import { nombreDeError } from "./geo-equivalencia/medicion";
 import { crearClienteDeSoloLectura, leerArgumentos as leerArgumentosDeSlt44 } from "./geo-equivalencia-dinero";
@@ -115,12 +114,12 @@ export interface OpcionesDeComparacion {
 export interface FiltroDeComparacion {
   /** Tipo e id de cada faceta (`provincia=<id>`), mas `mes` si lleva rango. Solo ids. */
   etiqueta: string;
-  raw: FacetasGeograficas & { rango?: "mes" };
+  raw: FacetasDeHoy & { rango?: "mes" };
   /** El id de canton pedido como distrito: los dos lados tienen que dar cero (R3). */
   nivelEquivocado: boolean;
 }
 
-const CLAVE_DEL_NIVEL: Record<NivelGeografico, keyof FacetasGeograficas> = {
+const CLAVE_DEL_NIVEL: Record<NivelGeografico, keyof FacetasDeHoy> = {
   provincia: "provincia_id",
   canton: "canton_id",
   distrito: "distrito_id",
@@ -228,7 +227,7 @@ async function ordenesIncoherentes(cliente: PrismaClient): Promise<OrdenIncohere
 const NIVELES: readonly NivelGeografico[] = ["provincia", "canton", "distrito"];
 
 /** Si la orden entra en el filtro por las columnas (hoy). Solo las facetas geograficas. */
-function entraHoy(o: OrdenIncoherente, filtro: FacetasGeograficas): boolean {
+function entraHoy(o: OrdenIncoherente, filtro: FacetasDeHoy): boolean {
   const columna: Record<NivelGeografico, string | null> = {
     provincia: o.provinciaId,
     canton: o.cantonId,
@@ -242,13 +241,9 @@ function entraHoy(o: OrdenIncoherente, filtro: FacetasGeograficas): boolean {
   });
 }
 
-/** Si la orden entra en el filtro por su lugar (nuevo), con los ids ya resueltos. */
-function entraPorLugar(o: OrdenIncoherente, lugares: LugaresDelFiltro): boolean {
-  const lugar = o.distritoId ?? o.cantonId;
-  return NIVELES.every((nivel) => {
-    const ids = lugares[nivel];
-    return ids === undefined || ids.includes(lugar);
-  });
+/** Si la orden entra en el filtro por su lugar (nuevo), con los ids ya resueltos. SLT-47: un solo lugar. */
+function entraPorLugar(o: OrdenIncoherente, lugar: readonly string[] | undefined): boolean {
+  return lugar === undefined || lugar.includes(o.distritoId ?? o.cantonId);
 }
 
 /**
@@ -264,9 +259,11 @@ export interface IncoherentesDelFiltro {
 export function incoherentesAfectadas(
   incoherentes: readonly OrdenIncoherente[],
   catalogo: CatalogoGeografico,
-  filtro: FacetasGeograficas,
+  filtro: FacetasDeHoy,
 ): IncoherentesDelFiltro {
-  const lugares = resolverLugaresDelFiltro(catalogo, filtro);
+  // SLT-47: el lado nuevo es el lugar elegido (`lugarDeFacetas`) resuelto con el catalogo.
+  const elegido = lugarDeFacetas(catalogo, filtro);
+  const lugares = elegido === undefined ? undefined : resolverLugar(catalogo, elegido);
   let soloHoy = 0;
   let soloLugar = 0;
   for (const o of incoherentes) {
@@ -463,12 +460,36 @@ function consultaProductos(raw: object): ConsultaProductos {
   return p.consulta;
 }
 
-function consultasDelFiltro(raw: FiltroDeComparacion["raw"]): ConsultasDelFiltro {
+function consultasDeUnRaw(raw: { rango?: "mes" }): ConsultasDelFiltro {
   return {
     entregas: consultaEntregas(raw),
     productos: consultaProductos(raw),
     cohorte: raw.rango === undefined ? null : consultaEntregas(raw),
     dia: consultaEntregas({ rango: "dia" }).rango,
+  };
+}
+
+/** Las consultas de los dos lados: hoy, por las tres facetas; nuevo, por `lugar_id` (SLT-47). */
+interface ConsultasDeLosDosLados<Q> {
+  hoy: Q;
+  nueva: Q;
+}
+
+function consultasDelFiltro(
+  raw: FiltroDeComparacion["raw"],
+  catalogo: CatalogoGeografico,
+): ConsultasDeLosDosLados<ConsultasDelFiltro> {
+  const { provincia_id: _p, canton_id: _c, distrito_id: _d, ...sinLugar } = raw;
+  const deHoy = consultasDeUnRaw(sinLugar);
+  const facetas = facetasDe(raw);
+  return {
+    hoy: {
+      entregas: hoy.conFacetasDeHoy(deHoy.entregas, facetas),
+      productos: hoy.conFacetasDeHoy(deHoy.productos, facetas),
+      cohorte: deHoy.cohorte === null ? null : hoy.conFacetasDeHoy(deHoy.cohorte, facetas),
+      dia: deHoy.dia,
+    },
+    nueva: consultasDeUnRaw(rawConLugar(catalogo, raw)),
   };
 }
 
@@ -491,14 +512,14 @@ async function compararLectura<Q>(
   bloque: string,
   lectura: Lectura<Q>,
   filtro: FiltroDeComparacion,
-  q: Q,
+  q: ConsultasDeLosDosLados<Q>,
   clientes: { hoy: PrismaClient; nuevo: PrismaClient },
   inc: IncoherentesDelFiltro,
   salida: { diferencias: Diferencia[]; disculpadas: Diferencia[] },
 ): Promise<boolean> {
   // En serie: dentro de la transaccion del test las lecturas comparten conexion.
-  const a = await lectura.hoy(clientes.hoy, q);
-  const b = await lectura.nueva(clientes.nuevo, q);
+  const a = await lectura.hoy(clientes.hoy, q.hoy);
+  const b = await lectura.nueva(clientes.nuevo, q.nueva);
   const nivelMalo = filtro.nivelEquivocado && (a.ordenes !== 0 || b.ordenes !== 0);
   if (a.clave === b.clave && !nivelMalo) return false;
   if (!nivelMalo && disculpable(a, b, inc)) {
@@ -603,10 +624,10 @@ export async function compararEmpresaAnalitica(
     const compartenRecorte: Cifras = { comparados: 0, distintos: 0 };
     for (const filtro of filtros) {
       const inc = incoherentesAfectadas(incoherentes, catalogo, filtro.raw);
-      const q = consultasDelFiltro(filtro.raw);
+      const q = consultasDelFiltro(filtro.raw, catalogo);
       for (const lectura of ANALITICA) {
         analitica.comparados++;
-        if (await compararLectura("analitica", lectura, filtro, q.entregas, clientes, inc, salida)) analitica.distintos++;
+        if (await compararLectura("analitica", lectura, filtro, { hoy: q.hoy.entregas, nueva: q.nueva.entregas }, clientes, inc, salida)) analitica.distintos++;
       }
       for (const lectura of COMPARTEN) {
         compartenRecorte.comparados++;
