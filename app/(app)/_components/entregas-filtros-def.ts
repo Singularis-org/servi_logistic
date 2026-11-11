@@ -1,6 +1,7 @@
 import type { Faceta } from "@/lib/analytics/presentacion";
 import type { FilterDef } from "@/components/shared/FilterComponent";
-import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
+import { declararNiveles } from "@/lib/utils/filtro-ubicacion";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
 
@@ -18,6 +19,7 @@ import {
   CLAVE_CREACION,
   GRUPO_CUENTAS_TIENDA,
   GRUPO_INTEGRACIONES,
+  opcionesDeLugarDelCatalogo,
 } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 
 export { ATAJOS_CREACION, CLAVE_CREACION };
@@ -25,14 +27,9 @@ export { ATAJOS_CREACION, CLAVE_CREACION };
 /** Clave del filtro de zona en la seleccion agregada. */
 export const CLAVE_ZONA = "zona_id";
 
-/** Clave del filtro de provincia en la seleccion agregada. */
-export const CLAVE_PROVINCIA = "provincia_id";
-
-/** Clave del filtro de canton en la seleccion agregada. */
-export const CLAVE_CANTON = "canton_id";
-
-/** Clave del filtro de distrito en la seleccion agregada. */
-export const CLAVE_DISTRITO = "distrito_id";
+// SLT-47 (design §5.2): aqui estaban `CLAVE_PROVINCIA`, `CLAVE_CANTON` y `CLAVE_DISTRITO`. Las listas
+// de lugar son ahora `nivel_<k>` (`declararNiveles`) y viajan como `lugar_id`; esas claves solo las
+// conoce `lib/utils/filtro-ubicacion.ts`.
 
 /** Clave del filtro de tienda en la seleccion agregada. */
 export const CLAVE_TIENDA = "tienda_id";
@@ -99,6 +96,8 @@ export function construirFiltrosEntregas(
     facetas?: readonly Faceta[];
     /** SL-20 (design §7; R19): los nombres de nivel del país de la empresa (`useEtiquetasGeograficas`). */
     etiquetas: EtiquetasGeograficas;
+    /** SLT-47: los niveles del país que da el layout, por si el catálogo no trae los suyos. */
+    niveles?: readonly NivelDeFiltroDTO[];
   },
 ): FilterDef[] {
   const { etiquetas } = opts;
@@ -135,37 +134,9 @@ export function construirFiltrosEntregas(
       searchPlaceholder: "Buscar zona…",
       options: cat.zonas.map((z) => ({ value: z.id, label: z.nombre })),
     },
-    {
-      key: CLAVE_PROVINCIA,
-      label: etiquetas.provincia.singular,
-      kind: "multi",
-      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
-      options: cat.provincias.map((p) => ({ value: p.id, label: p.nombre })),
-    },
-    {
-      key: CLAVE_CANTON,
-      label: etiquetas.canton.singular,
-      kind: "multi",
-      dependsOn: CLAVE_PROVINCIA, // la cadena se declara, no se programa (R56 de la 144)
-      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
-      options: cat.cantones.map((c) => ({
-        value: c.id,
-        label: c.nombre,
-        parentValue: c.padreId,
-      })),
-    },
-    {
-      key: CLAVE_DISTRITO,
-      label: etiquetas.distrito.singular,
-      kind: "multi",
-      dependsOn: CLAVE_CANTON,
-      searchPlaceholder: `Buscar ${etiquetas.distrito.singular.toLowerCase()}…`,
-      options: cat.distritos.map((d) => ({
-        value: d.id,
-        label: d.nombre,
-        parentValue: d.padreId,
-      })),
-    },
+    // SLT-47 (design §5.2; R1, R6): una lista por nivel del pais, en el sitio de provincia, canton
+    // y distrito. En Costa Rica son esas tres, iguales que hoy salvo la clave interna (`nivel_<k>`).
+    ...declararNiveles(opcionesDeLugarDelCatalogo(cat, { etiquetas, niveles: opts.niveles })),
     {
       key: CLAVE_TIENDA,
       label: "Tienda",

@@ -11,7 +11,7 @@
 //    eso esta funcion no reenvia la seleccion tal cual como hace `seleccionAFilter` en
 //    ordenes, sino que construye el objeto entero clave por clave. Una faceta que aparezca
 //    manana en la barra no se cuela aqui por accidente: hay que escribirla.
-//  - **La cadena geografica SI viaja** (2026-08-17). Antes no lo hacia, y estaba bien: la
+//  - **La cadena geografica SI viaja** (2026-08-17; desde SLT-47, como un solo `lugar_id`). Antes no lo hacia, y estaba bien: la
 //    cifra salia de `analytics_daily`, que no tiene provincia/canton/distrito en su grano.
 //    Ahora sale de la tabla `orden`, que si los tiene como columnas. Cambio la fuente, no el
 //    criterio.
@@ -26,12 +26,11 @@
 import type { FilterSelection } from "@/components/shared/FilterComponent";
 import type { RangoPreset } from "@/lib/analytics/types";
 
+import { nivelDeClave, seleccionALugar } from "@/lib/utils/filtro-ubicacion";
+
 import {
-  CLAVE_CANTON,
   CLAVE_CREACION,
-  CLAVE_DISTRITO,
   CLAVE_MENSAJERO,
-  CLAVE_PROVINCIA,
   CLAVE_TIENDA,
   CLAVE_ZONA,
 } from "./entregas-filtros-def";
@@ -49,9 +48,8 @@ export interface RawFiltroConteoEntregas {
   desde?: string;
   hasta?: string;
   zona_id?: string[];
-  provincia_id?: string[];
-  canton_id?: string[];
-  distrito_id?: string[];
+  /** SLT-47 (R9): los ids de la lista de nivel más honda con elección. */
+  lugar_id?: string[];
   tienda_id?: string[];
   mensajero_id?: string[];
 }
@@ -99,12 +97,15 @@ export function seleccionAFiltroAnalitica(seleccion: FilterSelection): RawFiltro
 
   const zona = idsOOmitidos(seleccion[CLAVE_ZONA]);
   if (zona) raw.zona_id = zona;
-  const provincia = idsOOmitidos(seleccion[CLAVE_PROVINCIA]);
-  if (provincia) raw.provincia_id = provincia;
-  const canton = idsOOmitidos(seleccion[CLAVE_CANTON]);
-  if (canton) raw.canton_id = canton;
-  const distrito = idsOOmitidos(seleccion[CLAVE_DISTRITO]);
-  if (distrito) raw.distrito_id = distrito;
+  // SLT-47 (R9): el lugar, como UN solo `lugar_id` (la lista de nivel más honda con elección). Los
+  // vacíos se quitan antes de elegir, para que una lista con solo `""` no tape a la de arriba.
+  const niveles = Object.fromEntries(
+    Object.entries(seleccion)
+      .filter(([clave]) => nivelDeClave(clave) !== null)
+      .map(([clave, valores]) => [clave, idsOOmitidos(valores) ?? []]),
+  );
+  const { lugar_id: lugar } = seleccionALugar(niveles);
+  if (lugar) raw.lugar_id = lugar;
   const tienda = idsOOmitidos(seleccion[CLAVE_TIENDA]);
   if (tienda) raw.tienda_id = tienda;
   const mensajero = idsOOmitidos(seleccion[CLAVE_MENSAJERO]);

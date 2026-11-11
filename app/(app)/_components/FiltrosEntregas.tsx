@@ -19,8 +19,13 @@ import {
 } from "./entregas-filtro-analitica";
 import { construirFiltrosEntregas } from "./entregas-filtros-def";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { nivelDeClave, traductorPorId } from "@/lib/utils/filtro-ubicacion";
 import { useFiltroEntregas } from "./filtro-entregas";
 import { coincideSeccion, useFiltroSecciones } from "./filtro-secciones";
+
+/** SLT-47 (design §5.2): `lugar_id` y los enlaces viejos a las listas de nivel. Estable: de módulo. */
+const TRADUCTOR_LUGAR = traductorPorId();
 
 /** Catalogo vacio: la barra se monta igual, sin opciones, si el catalogo no cargo. */
 const CATALOGO_VACIO: CatalogoFiltrosOrdenesDTO = {
@@ -137,6 +142,8 @@ export interface FiltrosEntregasProps {
 export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}) {
   // SL-20 (R19): los filtros geográficos con los nombres de nivel del país de la empresa.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-47: los niveles del país, para declarar sus listas aunque el catálogo no haya llegado.
+  const nivelesGeograficos = useNivelesGeograficos();
   // UNA sola lectura desde la ficha 351. Antes eran dos en la misma oleada —el catalogo y un
   // directorio de mensajeros aparte—; la segunda desaparecio con `mensajerosFetcher` (ver la
   // nota de arriba), y con ella el `ofreceMensajeros` que decidia si valia la pena pedirla: el
@@ -218,17 +225,27 @@ export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}
   const [reset, setReset] = useState(0);
 
   const filtros = useMemo<FilterDef[]>(() => {
-    const declarados = construirFiltrosEntregas(catalogo ?? CATALOGO_VACIO, { facetas, etiquetas });
+    const declarados = construirFiltrosEntregas(catalogo ?? CATALOGO_VACIO, {
+      facetas,
+      etiquetas,
+      niveles: nivelesGeograficos,
+    });
     // Sin catalogo, los filtros que dependen de el se deshabilitan en vez de
     // desaparecer: un filtro ausente parece que no existe, uno deshabilitado dice que
     // ahora mismo no hay opciones. El de fecha no depende del catalogo y sigue operativo.
     return catalogo === null
       ? declarados.map((f) => (f.kind === "dateRange" ? f : { ...f, disabled: true }))
       : declarados;
-  }, [catalogo, facetas, etiquetas]);
+  }, [catalogo, facetas, etiquetas, nivelesGeograficos]);
 
   const ofrecidos = useMemo(
-    () => filtros.map((f) => ({ key: f.key, label: f.label })),
+    () =>
+      filtros.map((f) =>
+        // SLT-47: las listas de lugar llevan sus opciones para el traductor de la URL.
+        nivelDeClave(f.key) === null
+          ? { key: f.key, label: f.label }
+          : { key: f.key, label: f.label, options: f.options },
+      ),
     [filtros],
   );
 
@@ -274,9 +291,15 @@ export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}
       hayFiltrosAplicados={
         activos.length > 0 || Object.keys(seleccion).length > 0 || termino !== ""
       }
+      traductorUrl={TRADUCTOR_LUGAR}
     >
       {montados.length > 0 ? (
-        <FilterComponent key={reset} filters={montados} onChange={alCambiarSeleccion} />
+        <FilterComponent
+          key={reset}
+          filters={montados}
+          onChange={alCambiarSeleccion}
+          traductorUrl={TRADUCTOR_LUGAR}
+        />
       ) : null}
     </BuscadorFiltros>
     {/* El aviso va JUNTO AL CAMPO, que es donde mira quien acaba de teclear. Sin el, una

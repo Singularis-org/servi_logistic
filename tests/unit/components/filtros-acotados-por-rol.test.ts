@@ -47,9 +47,9 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     expect(claves()).toEqual([
       "created",
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "tienda_id",
       "mensajero_id",
     ]);
@@ -63,9 +63,9 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     expect(declaradas).toEqual([
       "created",
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
     ]);
   });
 
@@ -76,7 +76,7 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     expect(declaradas).not.toContain("mensajero_id");
     // La geografía NO es una faceta del recorte: se ofrece siempre, y lo que la acota es el
     // catálogo (el servidor le entrega la de su zona).
-    expect(declaradas).toEqual(["created", "provincia_id", "canton_id", "distrito_id"]);
+    expect(declaradas).toEqual(["created", "nivel_1", "nivel_2", "nivel_3"]);
   });
 
   it("un filtro que no se declara tampoco se ofrece en el selector", () => {
@@ -113,9 +113,9 @@ describe("barra de órdenes — el rol acotado no elige la coordenada que ya tie
       "zona_id",
       "mensajero_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
       "salio_a_reparto",
@@ -144,9 +144,9 @@ describe("barra de órdenes — el rol acotado no elige la coordenada que ya tie
     expect(declaradas).toEqual([
       "q",
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
     ]);
   });

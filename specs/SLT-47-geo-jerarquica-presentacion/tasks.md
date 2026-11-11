@@ -92,7 +92,7 @@
 
   Test: `seleccion-a-filter-lugar.test.ts`, más los existentes ajustados según §12.1.
   **Hecho:** R6 y R9 en verde; en Costa Rica, la barra igual a la maqueta aprobada.
-- [ ] **T4.2** [P] Analítica: `entregas-filtros-def.ts`, `entregas-filtro-analitica.ts` y
+- [x] **T4.2** [P] Analítica: `entregas-filtros-def.ts`, `entregas-filtro-analitica.ts` y
   `FiltrosEntregas.tsx`. Se buscan y ajustan los consumidores de `CLAVE_PROVINCIA`, `CLAVE_CANTON` y
   `CLAVE_DISTRITO`.
   **Hecho:** `entregas-filtro-analitica.test.ts` en verde, cambiando solo la clave de transporte.

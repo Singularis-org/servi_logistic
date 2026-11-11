@@ -86,9 +86,9 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
     expect(defs.map((f) => f.key)).toEqual([
       CLAVE_CREACION,
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       CLAVE_TIENDA,
       CLAVE_MENSAJERO,
     ]);
@@ -113,9 +113,9 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
     const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
     const claves = defs.map((f) => f.key);
 
-    expect(claves).toContain("provincia_id");
-    expect(claves).toContain("canton_id");
-    expect(claves).toContain("distrito_id");
+    expect(claves).toContain("nivel_1");
+    expect(claves).toContain("nivel_2");
+    expect(claves).toContain("nivel_3");
   });
 
   // La cadena se DECLARA, no se programa: cantón cuelga de provincia y distrito de cantón,
@@ -123,11 +123,11 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
   // de todo el país aunque el usuario ya hubiera elegido un cantón.
   it("encadena provincia -> cantón -> distrito con `dependsOn` y `parentValue`", () => {
     const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
-    const canton = defs.find((f) => f.key === "canton_id");
-    const distrito = defs.find((f) => f.key === "distrito_id");
+    const canton = defs.find((f) => f.key === "nivel_2");
+    const distrito = defs.find((f) => f.key === "nivel_3");
 
-    expect(canton?.dependsOn).toBe("provincia_id");
-    expect(distrito?.dependsOn).toBe("canton_id");
+    expect(canton?.dependsOn).toBe("nivel_1");
+    expect(distrito?.dependsOn).toBe("nivel_2");
     expect(canton?.options).toEqual([{ value: "c1", label: "Escazú", parentValue: "p1" }]);
     expect(distrito?.options).toEqual([{ value: "d1", label: "San Rafael", parentValue: "c1" }]);
   });
@@ -398,7 +398,7 @@ describe("Quitar un filtro del selector lo quita también de la cifra", () => {
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS_DEFAULT + 1);
     });
-    expect(filtroPublicado()).toMatchObject({ zona_id: ["z1"], provincia_id: ["p1"] });
+    expect(filtroPublicado()).toMatchObject({ zona_id: ["z1"], lugar_id: ["p1"] });
 
     await alternarEnSelector("Zona");
     await act(async () => {
@@ -407,7 +407,7 @@ describe("Quitar un filtro del selector lo quita también de la cifra", () => {
 
     // La mutación que este caso mata: podar de más (vaciar la selección entera al retirar
     // uno). Quitar un filtro no puede llevarse por delante los demás.
-    expect(filtroPublicado()).toEqual({ provincia_id: ["p1"] });
+    expect(filtroPublicado()).toEqual({ lugar_id: ["p1"] });
     vi.useRealTimers();
   });
 });
