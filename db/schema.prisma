@@ -5895,11 +5895,6 @@ model Organizacion {
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
   modulos OrganizacionModulo[] // SL-23
 
-  // SL-40 (design §3.2): excepción de la empresa al valor global del cobro por orden. NULL = usa el
-  // global. Solo la escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
-  // `CHECK (… IS NULL OR … >= 0)` vive solo en el SQL de 20261023130000 (Prisma no expresa CHECK).
-  cobroPlataformaPorOrden Decimal? @map("cobro_plataforma_por_orden") @db.Decimal(12, 2)
-
   // SL-43 (design §3.1): la creó la demo de QA, que borra solo estas. Por la marca y no por el slug,
   // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
   esDemo Boolean @default(false) @map("es_demo")
