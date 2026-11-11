@@ -318,3 +318,33 @@ El humano autorizó los dos bloqueos (`requirements.md` > «Decisiones cerradas�
   `lib/types/geografia-nodo.ts` y la guardia vuelve a verde.
 - El otro rojo, `dependencias-declaradas-presentes.guardia`, está en `tests/baseline-rojos.json`
   (heredado, marcador de `init.sh`).
+
+## T3.1 — Vistas v2: tests cuyas aserciones o fixtures cambian (inventario previo, 2026-11-11)
+
+Autorización: `af8ede2a` (solo `v: 1` → `v: 2` y claves de lugar viejas → `lugar_id`). Ningún test de
+vistas usa `provincia_id`/`canton_id`/`distrito_id`. Inventario hecho ANTES de editar:
+
+Dentro del alcance (`v: 1` → `v: 2`):
+| Archivo:línea | Antes | Después | Tipo |
+|---|---|---|---|
+| `tests/unit/components/ordenes-listado-vistas.test.tsx:74` | `v: 1,` (fixture `GUARDADO`) | `v: 2,` | entrada |
+| `tests/unit/components/ordenes-listado-vistas.test.tsx:341` | `filtro: { v: 1, termino: "guia999", … }` | `filtro: { v: 2, … }` | aserción |
+| `tests/unit/components/buscador-filtros-vistas.test.tsx:63` | `return { v: 1, … }` | `return { v: 2, … }` | entrada |
+| `tests/unit/components/vistas-filtro-aviso-incompleta.test.tsx:58, 66, 99` | `v: 1` | `v: 2` | entrada |
+
+Sin cambio (usan `VISTA_FILTRO_VERSION`, o insertan JSON v1 por SQL sin leerlo de vuelta):
+`vista-filtro.test.ts`, `vistas-filtro-action.test.ts`, `vista-filtro-aplicabilidad.test.ts`,
+`455/caracterizacion/filtro-ordenes-por-estado.test.ts`, `vista-filtro-migration.test.ts:328, 588`,
+`vista-filtro-payload.test.ts:136, 159` (`{ v: 1 }` roto sigue siendo `null`),
+`vista-filtro-service.test.ts:253` (`{ v: 1, termino: 5 }` sigue siendo `null`).
+
+**FUERA del alcance (bloquean; no se editó nada):** los casos de «versión del futuro» usan hoy
+`v: 2` como versión desconocida. Con v2 vigente, `v: 2` pasa a ser legible y estas aserciones
+fallan; habría que cambiar `2` → `3`, que no es `v: 1` → `v: 2`:
+| Archivo:línea | Hoy | Haría falta |
+|---|---|---|
+| `tests/unit/utils/vista-filtro-payload.test.ts:124` | `safeParse({ ...PAYLOAD, v: 2 })` → `false` | `v: 3` |
+| `tests/unit/utils/vista-filtro-payload.test.ts:148` | `delFuturo = { v: 2, … }` → `null` | `v: 3` |
+| `tests/unit/services/vista-filtro-service.test.ts:235` | fila «futura» `{ ...PAYLOAD, v: 2 }, version: 2` → `filtro: null` | `v: 3`, `version: 3` |
+
+Estado: T3.1 (vistas) parada a la espera de esa autorización. No se tocó código ni tests de vistas.
