@@ -125,6 +125,23 @@ export interface NivelDeFiltroDTO {
   plural: string;
 }
 
+/**
+ * SLT-47 (design §3.3; R1, R11, R36) — un lugar del catalogo del pais, a CUALQUIER profundidad, para el
+ * filtro de N niveles. `padreId` es el `parentValue` de la lista del nivel siguiente.
+ */
+export interface LugarDeFiltroDTO extends OpcionGeografica {
+  padreId: string | null;
+  profundidad: number;
+}
+
+/** SLT-47 — los niveles del pais y los lugares que ofrece el filtro de lugar. */
+export interface LugaresDeFiltroDTO {
+  /** De `tiposDelPais`, por profundidad. */
+  niveles: NivelDeFiltroDTO[];
+  /** Todo el catalogo; en el rol de zona, los de su zona a cualquier profundidad y sus ancestros. */
+  lugares: LugarDeFiltroDTO[];
+}
+
 /** Las colecciones del catalogo, cada una en orden determinista (`nombre asc`, R49). */
 export interface CatalogoFiltrosOrdenesDTO {
   zonas: OpcionCatalogo[];
@@ -137,6 +154,12 @@ export interface CatalogoFiltrosOrdenesDTO {
   cantones: OpcionGeograficaConPadre[];
   /** `padreId` = cantonId. */
   distritos: OpcionGeograficaConPadre[];
+  /**
+   * SLT-47 (design §3.3): los niveles del pais y los lugares a cualquier profundidad, para el filtro de
+   * N niveles. `provincias`, `cantones` y `distritos` se quedan hasta SLT-48 (los lee la correccion).
+   */
+  niveles: NivelDeFiltroDTO[];
+  lugares: LugarDeFiltroDTO[];
 }
 
 /** R52/R53: sin sesion -> `unauthenticated`; rol ajeno al listado -> `forbidden`, sin datos. */

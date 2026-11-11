@@ -5,6 +5,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IFiltrosOrdenesService } from "@/lib/interfaces/services/IFiltrosOrdenesService";
 import type {
   GeografiaFiltrosDTO,
+  LugaresDeFiltroDTO,
   MensajeroFiltroDTO,
   ObtenerCatalogoFiltrosOrdenesResult,
 } from "@/lib/types/filtros-ordenes";
@@ -24,6 +25,7 @@ type GeoRepo = Pick<
   | "listCantonesLite"
   | "listDistritosLite"
   | "listGeografiaLitePorZona"
+  | "listLugaresDeFiltro"
 >;
 
 /**
@@ -85,18 +87,20 @@ export class FiltrosOrdenesService implements IFiltrosOrdenesService {
 
     // R47: las lecturas en PARALELO. Secuenciarlas sumaria seis latencias al TTFB de
     // `/ordenes` sin ganar nada: son independientes entre si.
-    const [zonas, tiendas, mensajeros, provincias, cantones, distritos] = await Promise.all([
+    const [zonas, tiendas, mensajeros, provincias, cantones, distritos, lugares] = await Promise.all([
       this.zonaRepo.listLite(),
       conTiendas ? this.userRepo.listCuentasTienda() : Promise.resolve([]),
       conMensajeros ? this.userRepo.listMensajerosParaFiltro() : Promise.resolve([]),
       this.geoRepo.listProvinciasLite(),
       this.geoRepo.listCantonesLite(),
       this.geoRepo.listDistritosLite(),
+      // SLT-47 (design §3.3): los niveles del pais y el catalogo a cualquier profundidad.
+      this.geoRepo.listLugaresDeFiltro(),
     ]);
 
     return {
       status: "ok",
-      catalogo: { zonas, tiendas, mensajeros, provincias, cantones, distritos },
+      catalogo: { zonas, tiendas, mensajeros, provincias, cantones, distritos, ...lugares },
     };
   }
 
@@ -117,7 +121,7 @@ export class FiltrosOrdenesService implements IFiltrosOrdenesService {
     // este rol opera UNA zona, asi que ofrecerle mensajeros de otra seria ofrecerle un filtro
     // que no puede devolver ni una fila. Sin zona asignada no hay alcance sobre nada y la
     // lista va vacia, igual que la geografia.
-    const [geografia, mensajeros] = await Promise.all([
+    const [geografia, mensajeros, lugares] = await Promise.all([
       zonaId === null
         ? Promise.resolve<GeografiaFiltrosDTO>({
             provincias: [],
@@ -128,11 +132,15 @@ export class FiltrosOrdenesService implements IFiltrosOrdenesService {
       zonaId === null
         ? Promise.resolve<MensajeroFiltroDTO[]>([])
         : this.userRepo.listMensajerosParaFiltro(zonaId),
+      // SLT-47 (R36): los lugares de SU zona a cualquier profundidad; sin zona, nada.
+      zonaId === null
+        ? Promise.resolve<LugaresDeFiltroDTO>({ niveles: [], lugares: [] })
+        : this.geoRepo.listLugaresDeFiltro(zonaId),
     ]);
 
     return {
       status: "ok",
-      catalogo: { zonas: [], tiendas: [], mensajeros, ...geografia },
+      catalogo: { zonas: [], tiendas: [], mensajeros, ...geografia, ...lugares },
     };
   }
 }

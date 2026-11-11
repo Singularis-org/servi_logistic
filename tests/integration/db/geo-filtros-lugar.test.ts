@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import type { ListOrdenesWhere } from "@/lib/interfaces/repositories/IOrdenRepository";
+import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 import { comoApp } from "@/tests/fabricas/organizaciones";
@@ -230,5 +231,55 @@ describeSiHayBase("SLT-47 — filtro de lugar en /ordenes y en la bodega satelit
       );
     });
     expect(r).toBeInstanceOf(EmpresaNoResuelta);
+  }, 120_000);
+
+  it("R36: el rol de zona recibe los lugares de su zona a cualquier profundidad, sin los de asignacion propia de otra", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await crearEscenarioGeo47(tx);
+      const b = e.xa.base.base;
+      return comoLaEmpresa(tx, b.empresaId, async () => {
+        const geo = new GeoRepository(tx as unknown as PrismaClient);
+        return {
+          c: e.xa.cuarto,
+          provinciaId: b.geo.provinciaId,
+          norte: await geo.listLugaresDeFiltro(b.zonas.norteId),
+          sur: await geo.listLugaresDeFiltro(b.zonas.surId),
+          todo: await geo.listLugaresDeFiltro(),
+        };
+      });
+    });
+    const ids = (l: { lugares: { id: string }[] }) => new Set(l.lugares.map((x) => x.id));
+    // Cuatro niveles en XA, rotulados con los tipos del pais.
+    expect(r.todo.niveles.map((n) => n.profundidad)).toEqual([1, 2, 3, 4]);
+    expect(r.todo.niveles[3].singular).toBe("Sector");
+    expect(ids(r.todo).has(r.c.sectorPropioId)).toBe(true);
+    // Norte cubre el distrito «Con sector» y el sector que hereda; el de asignacion propia es de sur.
+    expect(ids(r.norte).has(r.c.distritoConSectorId)).toBe(true);
+    expect(ids(r.norte).has(r.c.sectorHeredaId)).toBe(true);
+    expect(ids(r.norte).has(r.c.sectorPropioId)).toBe(false);
+    // Sur recibe su sector (profundidad 4) con sus ancestros hasta la provincia.
+    expect(ids(r.sur).has(r.c.sectorPropioId)).toBe(true);
+    expect(ids(r.sur).has(r.c.distritoConSectorId)).toBe(true);
+    expect(ids(r.sur).has(r.provinciaId)).toBe(true);
+    expect(r.sur.lugares.find((l) => l.id === r.c.sectorPropioId)).toMatchObject({ profundidad: 4, padreId: r.c.distritoConSectorId });
+  }, 120_000);
+
+  it("R36 (medida): tamaño del JSON del catalogo de filtros de Costa Rica antes y despues", async () => {
+    const r = await revertida(base, async (tx) => {
+      const org = await tx.organizacion.create({ data: { nombre: `CR SLT47 ${Date.now()}`, slug: `cr-slt47-${Date.now()}` }, select: { id: true } });
+      return comoLaEmpresa(tx, org.id, async () => {
+        const geo = new GeoRepository(tx as unknown as PrismaClient);
+        const antes = {
+          provincias: await geo.listProvinciasLite(),
+          cantones: await geo.listCantonesLite(),
+          distritos: await geo.listDistritosLite(),
+        };
+        const despues = { ...antes, ...(await geo.listLugaresDeFiltro()) };
+        return { antes: JSON.stringify(antes).length, despues: JSON.stringify(despues).length, nodos: despues.lugares.length };
+      });
+    });
+    console.log(`SLT-47 catalogo CR: antes=${r.antes} bytes despues=${r.despues} bytes lugares=${r.nodos}`);
+    expect(r.nodos).toBeGreaterThan(0);
+    expect(r.despues).toBeGreaterThan(r.antes);
   }, 120_000);
 });

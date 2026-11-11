@@ -13,6 +13,8 @@ import type {
 } from "@/lib/interfaces/repositories/IGeoRepository";
 import type {
   GeografiaFiltrosDTO,
+  LugarDeFiltroDTO,
+  LugaresDeFiltroDTO,
   OpcionCatalogo,
   OpcionGeografica,
   OpcionGeograficaConPadre,
@@ -44,6 +46,7 @@ import {
   estaActivo,
   nodosBajo,
   nodosDeProfundidad,
+  tiposDelPais,
   zonaQueCubre,
   zonasCandidatas,
   type AsignacionesDeLaEmpresa,
@@ -100,6 +103,33 @@ const SELECT_HERMANO = { id: true, nombre: true } as const;
 const TIMEOUT_IMPORTACION_MS = 120_000;
 
 // --- Tipos de nivel ---
+
+/**
+ * SLT-89 (R6) / SLT-47 (R36) — los nodos que la zona cubre (los asignados a ella y lo que cuelga de
+ * ellos si es ESTA zona la que lo cubre) y, ademas, sus ancestros. Lo comparten las listas planas de
+ * tres niveles y los lugares de N niveles de la misma zona.
+ */
+function nodosDeLaZona(
+  catalogo: CatalogoGeografico,
+  asignaciones: AsignacionesDeLaEmpresa,
+  zonaId: string,
+): { deLaZona: Set<string>; conAncestros: Set<string> } {
+  const deLaZona = new Set<string>();
+  for (const [nodoId, zonas] of asignaciones.zonasPorNodo) {
+    if (!catalogo.porId.has(nodoId) || !zonas.some((z) => z.id === zonaId)) continue;
+    deLaZona.add(nodoId);
+    // SLT-89 (R6): lo que cuelga del nodo entra solo si es ESTA zona la que lo cubre (la asignacion
+    // mas cercana). Un distrito con fila propia de otra zona bajo un canton asignado es una
+    // excepcion: es de la otra. Con asignaciones solo a distritos, lo que cuelga de un distrito no
+    // tiene asignacion propia y entra como siempre (R38).
+    for (const n of nodosBajo(catalogo, nodoId)) {
+      if (zonasCandidatas(catalogo, asignaciones, n.id)?.zonas.some((z) => z.id === zonaId)) deLaZona.add(n.id);
+    }
+  }
+  const conAncestros = new Set(deLaZona);
+  for (const id of deLaZona) for (const a of ancestros(catalogo, id)) conAncestros.add(a.id);
+  return { deLaZona, conAncestros };
+}
 
 /** `nivel_<k>` → k (P1: el tipo de la profundidad k es el de clave `nivel_<k>`). */
 function profundidadDeClave(clave: string): number {
@@ -318,21 +348,7 @@ export class GeoRepository implements IGeoRepository {
    */
   async listGeografiaLitePorZona(zonaId: string): Promise<GeografiaFiltrosDTO> {
     const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
-
-    const deLaZona = new Set<string>();
-    for (const [nodoId, zonas] of asignaciones.zonasPorNodo) {
-      if (!catalogo.porId.has(nodoId) || !zonas.some((z) => z.id === zonaId)) continue;
-      deLaZona.add(nodoId);
-      // SLT-89 (R6): lo que cuelga del nodo entra solo si es ESTA zona la que lo cubre (la asignacion
-      // mas cercana). Un distrito con fila propia de otra zona bajo un canton asignado es una
-      // excepcion: es de la otra. Con asignaciones solo a distritos, lo que cuelga de un distrito no
-      // tiene asignacion propia y entra como siempre (R38).
-      for (const n of nodosBajo(catalogo, nodoId)) {
-        if (zonasCandidatas(catalogo, asignaciones, n.id)?.zonas.some((z) => z.id === zonaId)) deLaZona.add(n.id);
-      }
-    }
-    const conAncestros = new Set(deLaZona);
-    for (const id of deLaZona) for (const a of ancestros(catalogo, id)) conAncestros.add(a.id);
+    const { deLaZona, conAncestros } = nodosDeLaZona(catalogo, asignaciones, zonaId);
 
     const porNombre = (a: OpcionCatalogo, b: OpcionCatalogo) =>
       a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
@@ -344,6 +360,20 @@ export class GeoRepository implements IGeoRepository {
       cantones: de(conAncestros, 2).map((n) => opcionConPadre(catalogo, n)).sort(porNombre),
       distritos: de(deLaZona, 3).map((n) => opcionConPadre(catalogo, n)).sort(porNombre),
     };
+  }
+
+  async listLugaresDeFiltro(zonaId?: string): Promise<LugaresDeFiltroDTO> {
+    const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
+    // SLT-47 (R36): el rol de zona recibe los lugares de su zona a CUALQUIER profundidad, con el mismo
+    // conjunto que las listas de tres niveles (sin las excepciones de otra zona).
+    const incluidos = zonaId === undefined ? null : nodosDeLaZona(catalogo, asignaciones, zonaId).conAncestros;
+    const niveles = tiposDelPais(catalogo)
+      .map((t) => ({ profundidad: profundidadDeClave(t.clave), singular: t.nombreSingular, plural: t.nombrePlural }))
+      .sort((a, b) => a.profundidad - b.profundidad);
+    const lugares: LugarDeFiltroDTO[] = catalogo.nodos
+      .filter((n) => incluidos === null || incluidos.has(n.id))
+      .map((n) => ({ ...opcion(catalogo, n), padreId: n.padreId, profundidad: n.profundidad }));
+    return { niveles, lugares };
   }
 
   /**
