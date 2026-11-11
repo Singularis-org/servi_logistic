@@ -100,6 +100,24 @@ describe("R5 — una tarjeta por plan disponible y al final «Plan a la medida»
   });
 });
 
+describe("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29) — un plan sin costos en el carrusel", () => {
+  it("sin costo base ni costo por orden: «Sin cuota» y «Costo por orden: Tarifa global»", () => {
+    const sinCostos: PlanVista = { ...BASICO, id: "sin-costos", nombre: "Sin costos", precio: { tipo: "sin_precio" }, costoPorOrden: null };
+    render(<Montaje planes={[BASICO, sinCostos]} />);
+
+    const card = within(tarjeta("Sin costos"));
+    expect(card.getByText("Uso de la plataforma").nextSibling).toHaveTextContent("Sin cuota");
+    expect(card.getByText("Costo por orden").nextSibling).toHaveTextContent("Tarifa global");
+    expect(card.getByText("Sin cuota · solo pagas el costo por orden")).toBeInTheDocument();
+  });
+
+  it("con costo base y sin costo por orden: el monto y «Tarifa global»", () => {
+    render(<Montaje planes={[{ ...BASICO, costoPorOrden: null }]} />);
+    expect(within(tarjeta("Básico")).getByText("Costo por orden").nextSibling).toHaveTextContent("Tarifa global");
+    expect(within(tarjeta("Básico")).getByText("Uso de la plataforma").nextSibling).toHaveTextContent("12000.00 / mes");
+  });
+});
+
 describe("R6 — «Mensual» / «Anual» y la insignia", () => {
   it("entra en «Mensual»: el costo mensual y ninguna insignia", () => {
     render(<Montaje planes={[BASICO, CRECE]} />);
@@ -168,6 +186,29 @@ describe("R7 — «Plan a la medida»", () => {
     expect(custom.getByText("Costo por orden").nextSibling).toHaveTextContent("200.00 por orden");
     expect(screen.queryByText("Plan a la medida")).toBeNull();
     expect(screen.queryByRole("button", { name: "Contáctanos" })).toBeNull();
+  });
+});
+
+// Decisión del humano del 2026-11-10: la tarjeta del plan activo va primera; «Plan a la medida» al final si no es la activa.
+describe("Decisión del humano del 2026-11-10 — el plan activo, primera tarjeta", () => {
+  const nombres = () =>
+    within(screen.getByRole("region", { name: "Planes disponibles" }))
+      .getAllByRole("group")
+      .map((s) => s.querySelector("h3")?.textContent);
+
+  it("activo público: primero el activo, después los demás en el orden del catálogo y «Plan a la medida» al final", () => {
+    render(<Montaje planes={[BASICO, CRECE, SIN_CUOTA]} activoId="crece" />);
+    expect(nombres()).toEqual(["Crece", "Básico", "Por paquete", "Plan a la medida"]);
+  });
+
+  it("activo custom: primero su tarjeta (la de «Plan a la medida»), después los públicos en el orden del catálogo", () => {
+    render(<Montaje planes={[BASICO, CRECE]} activoId="custom-1" customActivo={CUSTOM} />);
+    expect(nombres()).toEqual(["A la medida · Logística Norte", "Básico", "Crece"]);
+  });
+
+  it("sin activo: el orden del catálogo y «Plan a la medida» al final, como antes", () => {
+    render(<Montaje planes={[BASICO, CRECE, SIN_CUOTA]} />);
+    expect(nombres()).toEqual(["Básico", "Crece", "Por paquete", "Plan a la medida"]);
   });
 });
 

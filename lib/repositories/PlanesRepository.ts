@@ -1644,9 +1644,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         await tx.$queryRaw`SELECT "id" FROM "plan" WHERE "id" = ${planId} FOR SHARE`;
         const plan = await leerPlan(tx, planId);
         if (plan === null) return { estado: "no_disponible" };
-        const programado = await tx.planCambioProgramado.findUnique({ where: { planId }, select: { version: true } });
-        const versionPendiente = programado === null ? null : versionPlanSchema.parse(programado.version);
-        if (!esPlanDisponible(plan, versionPendiente)) return { estado: "no_disponible" };
+        if (!esPlanDisponible(plan)) return { estado: "no_disponible" };
         // R13 (P4): por rol y API keys, y SIN escribir aunque la fecha sea futura: aquí se separa del
         // superadmin, que guarda y avisa (SLT-86 R18).
         const excedidos = await excedidosDe(tx, [empresa], plan.topes);

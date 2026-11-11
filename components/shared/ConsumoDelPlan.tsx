@@ -36,9 +36,6 @@ const TEXTOS = {
   costoBase: (tipo: TipoCobro, base: CosteoDelCiclo["base"]) =>
     TEXTOS_TIPO_COBRO.costoBase(tipo, base.tipo === "monto" ? base.periodo : null),
   costoPorOrden: (c: string) => `Costo por orden: ${c}`,
-  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoFijo) =>
-    `Órdenes del período: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
-  total: (t: string) => `Total estimado del período: ${t}`,
   excepcion: "precio acordado para tu empresa",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
   /** SLT-83 (texto aprobado 2026-11-04): la nota de la rama porcentual, donde la fija pinta `estimado`. */
@@ -221,13 +218,8 @@ function CostoDelCiclo({ tipo, costeo, textoExcepcion }: { tipo: TipoCobro; cost
           <span>{TEXTOS.costoPorOrden(costeo.costoPorOrden)}</span>
           {nota && <span className="text-xs text-muted-foreground">{nota}</span>}
         </li>
-        <li>{TEXTOS.ordenesDelCiclo(costeo)}</li>
-        {/* R20: con la base por definir no hay total; sumar solo las órdenes daría una cifra engañosa. */}
-        {costeo.total !== null && (
-          <li>
-            <strong className="font-semibold">{TEXTOS.total(costeo.total)}</strong>
-          </li>
-        )}
+        {/* SLT-99 (decisión del humano del 2026-11-10): sin «Órdenes del período: n × c = s» ni «Total
+            estimado del período». `costeo.ordenes`, `subtotalOrdenes` y `total` siguen llegando del servidor. */}
       </ul>
       <p className="text-xs text-muted-foreground">{TEXTOS.estimado}</p>
     </div>

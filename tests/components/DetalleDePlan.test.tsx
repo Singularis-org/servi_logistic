@@ -109,6 +109,22 @@ describe("R8 — el detalle de otro plan, con el plan activo", () => {
     ]);
     expect(filasDe("Comparación con tu plan")[0]).toEqual(["Uso de la plataforma", "Sin cuota", "25000.00"]);
   });
+
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base ni costo por orden → «Sin cuota» y «Tarifa global»", () => {
+    const sinCostos: PlanVista = { ...BASICO, id: "sin-costos", nombre: "Sin costos", precio: { tipo: "sin_precio" }, costoPorOrden: null };
+    render(<DetalleDePlan plan={sinCostos} vista="mensual" activo={ACTIVO} />);
+
+    expect(filasDe("Uso de la plataforma según el período de cobro").map((f) => f[2])).toEqual([
+      "Sin cuota",
+      "Sin cuota",
+      "Sin cuota",
+      "Sin cuota",
+    ]);
+    const comparacion = filasDe("Comparación con tu plan");
+    expect(comparacion[0]).toEqual(["Uso de la plataforma", "Sin cuota", "25000.00"]);
+    expect(comparacion[1]?.[0]).toBe("Costo por orden");
+    expect(comparacion[1]?.[1]).toBe("Tarifa global");
+  });
 });
 
 describe("R13 — el aviso previo de los topes que sobran", () => {

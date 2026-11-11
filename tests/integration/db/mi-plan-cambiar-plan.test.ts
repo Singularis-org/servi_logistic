@@ -279,7 +279,7 @@ describeSiHayBase("SLT-99 — el maestro cambia el plan de su empresa (R2, R10�
     }
   });
 
-  it("R12: archivado, custom propio, custom ajeno, sin costo, versión programada sin costo y uno que no existe → no_disponible sin escribir", async () => {
+  it("R12: archivado, custom propio, custom ajeno y uno que no existe → no_disponible sin escribir; sin costo y versión programada sin costo → ok (decisión del 2026-11-10, modifica SLT-66 R28–R29)", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const actual = await c.plan();
@@ -315,14 +315,23 @@ describeSiHayBase("SLT-99 — el maestro cambia el plan de su empresa (R2, R10�
       });
       const antes = await estado(tx, e.id);
       const res: Record<string, unknown> = {};
-      const pedidos = { archivado, customPropio, customAjeno, sinCosto, conVersionSinCosto, inexistente: randomUUID() };
+      const pedidos = { archivado, customPropio, customAjeno, inexistente: randomUUID() };
       for (const [nombre, planId] of Object.entries(pedidos)) {
         res[nombre] = await planesEnTx(tx).cambiarPlanPorLaEmpresa(e.id, planId, e.maestro, MITAD_DE_NOVIEMBRE);
       }
-      return { res, antes, despues: await estado(tx, e.id) };
+      const despues = await estado(tx, e.id);
+      // Decisión del 2026-11-10: sin costo concreto el plan sigue disponible (cuota 0 y tarifa global).
+      const disponibles: Record<string, unknown> = {};
+      for (const [nombre, planId] of Object.entries({ sinCosto, conVersionSinCosto })) {
+        disponibles[nombre] = await planesEnTx(tx).cambiarPlanPorLaEmpresa(e.id, planId, e.maestro, MITAD_DE_NOVIEMBRE);
+      }
+      return { res, antes, despues, disponibles, final: await estado(tx, e.id), conVersionSinCosto };
     });
     for (const [nombre, x] of Object.entries(r.res)) expect(x, nombre).toEqual({ estado: "no_disponible" });
     expect(r.despues).toEqual(r.antes);
+    for (const [nombre, x] of Object.entries(r.disponibles)) expect(x, nombre).toEqual({ estado: "ok", vigenteDesde: "2026-12-01" });
+    // El último pedido reemplaza al anterior: queda pendiente el de la versión programada sin costo.
+    expect(r.final.empresa.planCambioPlanId).toBe(r.conVersionSinCosto);
   });
 
   it("R13: un solo rol pasado rechaza aunque la suma de «Usuarios» quepa, y también las API keys; con fecha futura y sin escribir", async () => {

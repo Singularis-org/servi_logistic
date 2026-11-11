@@ -31,6 +31,9 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 <!-- tamano-pr-aceptado: 2026-11-10 · 46 archivos (amplía la aceptación del 2026-11-09): «Activo desde», el E2E y 4 E2E existentes ajustados (humano) -->
 
 - 2026-11-10 (tras la revisión, `progress/review_SLT-99.md`, humano): M1 se arregla en código (rechazar bajo el cerrojo la cancelación de una primera asignación pendiente sin plan). M2: la constancia de integración con base y E2E la da el CI del PR a `dev` (no borrador); no se mergea sin `gate-completo` y `e2e` en verde. m1: elegir el plan activo con un pendiente cancela el pendiente. m2 y m3 se corrigen.
+- 2026-11-10, humano: se quitan "Órdenes del período" y "Total estimado del período" del costeo en Mi plan y en el detalle de empresa; barra "Órdenes" sin tope debajo de API keys; en el carrusel de «Mi plan» la tarjeta del plan activo va primera (público o «Plan a la medida» si es custom), después los públicos en el orden del catálogo y «Plan a la medida» al final si no es la activa.
+
+- 2026-11-10 (humano; modifica SLT-66 «Planes: sin tope para el maestro y costeo base + por orden» R28–R29): un plan **ya no necesita costo concreto** para asignarse ni para salir en las listas (asignables del superadmin y disponibles de «Mi plan»). Sin costo por orden → sus órdenes se cobran con la **tarifa global** (el trigger ya lo hace, fuente `global`); la tarjeta y el detalle muestran «Tarifa global». Sin costo base → **costo base 0** (cuota 0, «Sin cuota»). Se quita el rechazo `plan_sin_costo`.
 
 ## Preguntas abiertas
 Ninguna.

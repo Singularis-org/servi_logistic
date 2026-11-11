@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// SLT-66 (design §6.5, §6.4; R28, R29, R20) — el bloque «Plan» del detalle de empresa con la regla de
-// costo concreto: el rechazo `plan_sin_costo`, la lista vacía de asignables, el aviso del plan actual sin
-// costo concreto y el ancla `#plan` del listado de «Empresas».
+// SLT-66 (design §6.5, §6.4; R20) — el bloque «Plan» del detalle de empresa: el aviso del plan actual sin costo
+// concreto y el ancla `#plan` del listado de «Empresas». SLT-99 (decisión del 2026-11-10) quita R28–R29: un plan
+// sin costos se ofrece y se asigna.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -22,6 +22,7 @@ import type {
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ACTUAL = "11111111-1111-4111-8111-111111111111";
+/** El texto del rechazo que quitó SLT-99: no debe salir. */
 const TEXTO_R28 = "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.";
 const AVISO_R20 = "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.";
 const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [] };
@@ -128,62 +129,56 @@ describe("SLT-66 §6.4 — el ancla del bloque «Plan»", () => {
   });
 });
 
-describe("SLT-66 R28 — rechazo plan_sin_costo", () => {
-  it("R28: al cambiar de plan, el rechazo muestra su texto y no relee", async () => {
+// SLT-99 (decisión del humano del 2026-11-10, modifica SLT-66 R28–R29): ya no hay rechazo `plan_sin_costo` ni
+// filtro de costo concreto: un plan sin costos se ofrece y se asigna (cuota 0 y tarifa global).
+const SIN_COSTOS = planDTO({
+  id: "44444444-4444-4444-8444-444444444444",
+  nombre: "Sin costos",
+  precio: { tipo: "sin_precio" },
+  costoPorOrden: null,
+});
+
+describe("SLT-99 (modifica SLT-66 R28) — un plan sin costos se asigna", () => {
+  it("al cambiar de plan, uno sin costos se ofrece, se confirma y relee; no hay texto de rechazo", async () => {
     const user = userEvent.setup();
-    const asignar = vi.fn<(i: unknown) => Promise<PlanResult>>().mockResolvedValue({ estado: "plan_sin_costo" });
+    const asignar = vi
+      .fn<(i: unknown) => Promise<PlanResult>>()
+      .mockResolvedValue({ estado: "ok", planId: SIN_COSTOS.id, cambio: true, avisos: [], vigenteDesde: null } as PlanResult);
     montar({
       v: vista({ precio: { tipo: "monto", mensual: "1.00", descuentos: {} }, costoPorOrden: "1.00" }),
-      // El plan actual entre los asignables: contra él se resume «qué cambia».
-      asignables: [planDTO({ id: PLAN_ACTUAL, nombre: "Actual" }), CONCRETO],
+      asignables: [planDTO({ id: PLAN_ACTUAL, nombre: "Actual" }), CONCRETO, SIN_COSTOS],
       asignar,
     });
 
-    await elegir(user, "Concreto (Público)");
+    await elegir(user, "Sin costos (Público)");
     await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
     const modal = await screen.findByRole("dialog");
     await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
 
-    expect(await screen.findByText(TEXTO_R28)).toBeInTheDocument();
-    expect(asignar).toHaveBeenCalledTimes(1);
-    expect(refreshMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(asignar).toHaveBeenCalledTimes(1));
+    expect(asignar.mock.calls[0][0]).toMatchObject({ organizacionId: ORG, planId: SIN_COSTOS.id });
+    expect(screen.queryByText(TEXTO_R28)).toBeNull();
   });
 
-  it("R28: en la primera asignación, la vista previa con plan_sin_costo no deja confirmar y lo explica", async () => {
+  it("en la primera asignación, la vista previa de uno sin costos deja confirmar", async () => {
     const user = userEvent.setup();
-    const { asignar } = montar({
-      previsualizar: vi.fn<(i: unknown) => Promise<VistaPreviaAsignacionResult>>().mockResolvedValue({
-        estado: "plan_sin_costo",
-      }),
-    });
+    montar({ asignables: [SIN_COSTOS] });
 
-    await elegir(user, "Concreto (Público)");
+    await elegir(user, "Sin costos (Público)");
     await user.click(screen.getByRole("button", { name: "Asignar plan" }));
     const modal = await screen.findByRole("dialog");
 
-    await waitFor(() => expect(modal).toHaveTextContent(TEXTO_R28));
-    expect(within(modal).queryByRole("button", { name: "Asignar plan" })).toBeNull();
-    expect(asignar).not.toHaveBeenCalled();
+    expect(await within(modal).findByRole("button", { name: "Asignar plan" })).toBeInTheDocument();
+    expect(modal).not.toHaveTextContent(TEXTO_R28);
   });
 });
 
-describe("SLT-66 R29 — sin planes con costo concreto", () => {
-  it("R29: lista vacía → el texto con enlace a «Planes», sin selector ni botón", () => {
+describe("SLT-99 (modifica SLT-66 R29) — sin asignables", () => {
+  it("lista vacía → «No hay otros planes que asignar a esta empresa.», sin el texto de costo concreto", () => {
     montar({ asignables: [] });
-
-    const parrafo = screen.getByText(/^No hay planes con costo concreto para esta empresa\./);
-    expect(parrafo).toHaveTextContent(
-      "No hay planes con costo concreto para esta empresa. Crea un custom con sus precios en «Planes».",
-    );
-    expect(within(parrafo).getByRole("link", { name: "Planes" })).toHaveAttribute("href", "/plataforma/planes");
-    expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Asignar plan|Cambiar plan/ })).toBeNull();
-  });
-
-  it("R29: con asignables, no sale ese texto", () => {
-    montar();
+    expect(screen.getByText("No hay otros planes que asignar a esta empresa.")).toBeInTheDocument();
     expect(screen.queryByText(/No hay planes con costo concreto/)).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Plan a asignar" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).toBeNull();
   });
 });
 

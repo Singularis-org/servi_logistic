@@ -197,7 +197,8 @@ export const COSTO_CONCRETO = {
 
 /**
  * Como `entradaDePlan`, pero con costo concreto de partida, para los casos que asignan el plan por
- * `PlanesService`: desde SLT-66 R28 un plan sin costo concreto responde `plan_sin_costo` al asignarlo.
+ * `PlanesService`. Lo exigía SLT-66 R28; desde la decisión del 2026-11-10 (SLT-99) ya no hace falta, pero
+ * los casos que lo usan siguen midiendo un plan con costo.
  * Lo que el caso pida pisa ese costo.
  */
 export function entradaAsignable(p: Partial<CrearPlanInput> = {}): CrearPlanInput {

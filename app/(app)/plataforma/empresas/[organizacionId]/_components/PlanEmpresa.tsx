@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 
@@ -62,16 +61,6 @@ const TEXTOS = {
   elegirPlan: "Plan a asignar",
   placeholder: "Elige un plan",
   sinAsignables: "No hay otros planes que asignar a esta empresa.",
-  /**
-   * SLT-66 (design §6.5, R29): el servicio ya no trae ningún plan con costo concreto. Va en piezas para
-   * enlazar «Planes»: «No hay planes con costo concreto para esta empresa. Crea un custom con sus precios
-   * en «Planes».».
-   */
-  sinPlanesConCosto: {
-    antes: "No hay planes con costo concreto para esta empresa. Crea un custom con sus precios en «",
-    enlace: "Planes",
-    despues: "».",
-  },
   /** SLT-66 (design §6.5, R20): el plan actual no tiene costo base «monto» o le falta el costo por orden. */
   planSinCosto:
     "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.",
@@ -198,7 +187,6 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
-  plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
 };
 
 export interface PlanEmpresaProps {
@@ -678,17 +666,6 @@ export function PlanEmpresa({
 
           {asignables === null ? (
             <AvisoDeError>{TEXTOS.asignablesNoCargaron}</AvisoDeError>
-          ) : asignables.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {TEXTOS.sinPlanesConCosto.antes}
-              <Link
-                href="/plataforma/planes"
-                className="rounded-sm text-primary-strong underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
-              >
-                {TEXTOS.sinPlanesConCosto.enlace}
-              </Link>
-              {TEXTOS.sinPlanesConCosto.despues}
-            </p>
           ) : opciones.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinAsignables}</p>
           ) : (

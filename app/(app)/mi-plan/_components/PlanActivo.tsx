@@ -10,7 +10,7 @@ import type { TopesPlan } from "@/lib/types/planes";
 
 // SLT-99 (design §5; R3, R4) — el panel del plan activo en «Mi plan», sobre lo que ya arma `verMiPlan`
 // (`PlanConConsumo`): el costo del período en curso, el costo por orden vigente, el período, la renovación, el uso de
-// «Usuarios» y «API keys» y los módulos. Server Component: todo llega calculado del servidor.
+// «Usuarios», «API keys» y «Órdenes» (esta sin tope) y los módulos. Server Component: todo llega calculado del servidor.
 
 const TEXTOS = {
   planActivo: "Plan activo",
@@ -59,6 +59,9 @@ export function PlanActivo({ plan }: { readonly plan: PlanConConsumo }) {
         <ul className="flex flex-col gap-4">
           <BarraDeUso etiqueta={TEXTOS_PLANES.usuarios} usados={usuarios.usados} maximo={usuarios.maximo} />
           <BarraDeUso etiqueta={TEXTOS_PLANES.apiKeys} usados={apiKeys?.usados ?? 0} maximo={apiKeys?.maximo ?? null} />
+          {/* Decisión del humano del 2026-11-10: las órdenes del período en curso (`ordenesDelPeriodo`, ya en
+              `PlanConConsumo`), sin tope (SLT-86 R8). */}
+          <BarraDeUso etiqueta={TEXTOS_PLANES.ordenes} usados={plan.ordenesDelPeriodo} maximo={null} />
         </ul>
         <ListaDeModulos incluidos={plan.modulos.map((m) => m.clave)} />
       </CardContent>

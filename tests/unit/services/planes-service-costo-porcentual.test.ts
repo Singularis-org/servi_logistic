@@ -185,19 +185,17 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
     expect(repo.asignar).toHaveBeenCalledTimes(2);
   });
 
-  it("base «sin precio» y porcentaje → plan_sin_costo, sin asignar ni vista previa", async () => {
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28): base «sin precio» y porcentaje → ok, asigna y previsualiza", async () => {
     repo.plan.mockResolvedValue(plan({ precio: { tipo: "sin_precio" } }));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
-      estado: "plan_sin_costo",
-    });
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
     expect(
-      await servicio.previsualizarAsignacion(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY }),
-    ).toEqual({ estado: "plan_sin_costo" });
-    expect(repo.asignar).not.toHaveBeenCalled();
-    expect(repo.vistaPreviaAsignacion).not.toHaveBeenCalled();
+      (await servicio.previsualizarAsignacion(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY })).estado,
+    ).toBe("ok");
+    expect(repo.asignar).toHaveBeenCalledTimes(1);
+    expect(repo.vistaPreviaAsignacion).toHaveBeenCalledTimes(1);
   });
 
-  it("un pendiente que pasa a porcentual con base monto sigue siendo concreto; a «sin precio», no", async () => {
+  it("SLT-99 (modifica SLT-66 R28): un pendiente que pasa a porcentual, con base monto o «sin precio», no frena la asignación", async () => {
     repo.plan.mockResolvedValue(plan({ costoPorOrden: "100.00", costoPorOrdenPorcentual: null }));
     repo.detalle.mockResolvedValue({
       plan: plan(),
@@ -217,30 +215,23 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
       empresas: [],
       rastro: [],
     });
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
-      estado: "plan_sin_costo",
-    });
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
   });
 
-  it("asignables conserva los porcentuales de base monto y quita los de base «sin precio»", async () => {
-    const conMinimo = plan({ id: "con-minimo" });
-    const sinMinimo = plan({ id: "sin-minimo", costoPorOrdenPorcentual: SIN_MINIMO });
-    repo.asignables.mockResolvedValueOnce([
-      conMinimo,
+  it("SLT-99 (modifica SLT-66 R29): asignables conserva todos los porcentuales, también los de base «sin precio»", async () => {
+    const lista = [
+      plan({ id: "con-minimo" }),
       plan({ id: "sin-precio", precio: { tipo: "sin_precio" } }),
-      sinMinimo,
+      plan({ id: "sin-minimo", costoPorOrdenPorcentual: SIN_MINIMO }),
       plan({ id: "vacio", costoPorOrdenPorcentual: null }),
-    ]);
-    expect(await servicio.asignables(SUPERADMIN, { organizacionId: EMPRESA })).toEqual({
-      estado: "ok",
-      planes: [conMinimo, sinMinimo],
-    });
+    ];
+    repo.asignables.mockResolvedValueOnce(lista);
+    expect(await servicio.asignables(SUPERADMIN, { organizacionId: EMPRESA })).toEqual({ estado: "ok", planes: lista });
   });
 
-  it("crear un custom porcentual: base monto → se crea y asigna; base «sin precio» → plan_sin_costo sin escribir", async () => {
+  it("crear un custom porcentual: base monto o «sin precio» (SLT-99, modifica SLT-66 R28) → se crea y asigna", async () => {
     expect((await servicio.crear(SUPERADMIN, CUSTOM)).estado).toBe("ok");
-    expect(repo.crearYAsignar).toHaveBeenCalledTimes(1);
-    expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, precio: { tipo: "sin_precio" } })).toEqual({ estado: "plan_sin_costo" });
-    expect(repo.crearYAsignar).toHaveBeenCalledTimes(1);
+    expect((await servicio.crear(SUPERADMIN, { ...CUSTOM, precio: { tipo: "sin_precio" } })).estado).toBe("ok");
+    expect(repo.crearYAsignar).toHaveBeenCalledTimes(2);
   });
 });

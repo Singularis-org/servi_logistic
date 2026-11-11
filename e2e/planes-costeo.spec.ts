@@ -72,8 +72,11 @@ const TEXTO = {
   // y «período» en lugar de «ciclo». El período es el mes de calendario completo (ver `primerDiaDelMes`).
   costoBase: "Costo base mensual: 50000.00",
   costoPorOrden: "Costo por orden: 100.00",
-  ordenesDelPeriodo: "Órdenes del período: 1 × 100.00 = 100.00",
-  total: "Total estimado del período: 50100.00",
+  // SLT-99 (decisión del humano del 2026-11-10): el costeo ya no lleva «Órdenes del período: n × c = s» ni
+  // «Total estimado del período»; la orden del período se lee en «Órdenes» del plan activo, sin tope.
+  ordenesDelPeriodo: /^Órdenes del período: /,
+  total: /Total estimado del período/,
+  usoOrdenes: "1 · Sin tope",
 } as const;
 
 /**
@@ -452,15 +455,22 @@ test("A crea una orden y la wallet pasa de «₡0» a «₡100», el costo del p
   await page.screenshot({ path: info.outputPath("slt66-wallet.png"), fullPage: true });
 });
 
-test("«Mi plan» muestra el costo por orden, la orden del período y el total estimado (R26; SLT-86 R28)", async ({}, info) => {
+test("«Mi plan» muestra el costo por orden, la orden del período en «Órdenes» del plan activo y ya no el total (R26; SLT-86 R28; SLT-99 2026-11-10)", async ({}, info) => {
   test.setTimeout(240_000);
   expect(ordenId, "no hay orden: falló el caso anterior").not.toBe("");
   const page = maestroA();
   const r = await page.goto("/mi-plan", { waitUntil: "load", timeout: 180_000 });
   expect(r?.status()).toBeLessThan(400);
   await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
-  for (const linea of [TEXTO.costoBase, TEXTO.costoPorOrden, TEXTO.ordenesDelPeriodo, TEXTO.total]) {
+  for (const linea of [TEXTO.costoBase, TEXTO.costoPorOrden]) {
     await expect(page.getByText(linea, { exact: true })).toBeVisible();
   }
+  const ordenes = page
+    .getByRole("region", { name: "Plan activo", exact: true })
+    .getByRole("listitem")
+    .filter({ has: page.getByText("Órdenes", { exact: true }) });
+  await expect(ordenes.getByText(TEXTO.usoOrdenes, { exact: true })).toBeVisible();
+  await expect(page.getByText(TEXTO.ordenesDelPeriodo)).toHaveCount(0);
+  await expect(page.getByText(TEXTO.total)).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("slt66-mi-plan.png"), fullPage: true });
 });

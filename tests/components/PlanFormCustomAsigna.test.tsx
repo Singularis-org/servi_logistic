@@ -195,44 +195,18 @@ describe("D6 — el tipo de cobro en el custom", () => {
 });
 
 describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
-  it("D3: `plan_sin_costo` con base «Sin precio» → junto a «Costo base», sin cerrar y con lo escrito", async () => {
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28): un custom sin costo base ni costo por orden se envía y, con `ok`, se guarda sin errores de costo", async () => {
     const user = userEvent.setup();
-    const { enviar, onGuardado } = montar(vi.fn<Enviar>().mockResolvedValue({ estado: "plan_sin_costo" }));
+    const { enviar, onGuardado } = montar();
     await custom(user, "Envíos Norte");
-    await user.click(screen.getByRole("radio", { name: "Anual" }));
-    await user.type(screen.getByLabelText("Costo por orden"), "100");
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
-    const grupo = screen.getByRole("radiogroup", { name: "Costo base" });
-    await waitFor(() => expect(grupo).toHaveAttribute("aria-invalid", "true"));
-    expect(grupo).toHaveAccessibleDescription(
-      "Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden.",
-    );
-    expect(onGuardado).not.toHaveBeenCalled();
-    // Lo escrito sigue ahí para corregirlo.
-    expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Norte a medida");
-    expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveTextContent("Envíos Norte");
-    expect(screen.getByRole("radio", { name: "Anual" })).toBeChecked();
-    expect(screen.getByLabelText("Costo por orden")).toHaveValue("100");
-    expect(campoInicio()).toHaveValue(MANANA);
-  });
-
-  it("D3: `plan_sin_costo` sin costo por orden → junto a «Costo por orden»", async () => {
-    const user = userEvent.setup();
-    const { onGuardado } = montar(vi.fn<Enviar>().mockResolvedValue({ estado: "plan_sin_costo" }));
-    await custom(user, "Envíos Norte");
-    await user.click(screen.getByRole("radio", { name: "Con monto" }));
-    await user.type(screen.getByLabelText("Costo base mensual"), "50000");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
-
-    const campo = screen.getByLabelText("Costo por orden");
-    await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
-    expect(campo).toHaveAccessibleDescription(
-      expect.stringContaining("Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden."),
-    );
-    expect(onGuardado).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Costo base mensual")).toHaveValue("50000");
+    expect(enviar.mock.calls[0]![0]).toMatchObject({ precio: { tipo: "sin_precio" }, costoPorOrden: null });
+    await waitFor(() => expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida"));
+    expect(
+      screen.queryByText("Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden."),
+    ).toBeNull();
   });
 
   it("D3: `not_found` → junto a «Empresa»", async () => {

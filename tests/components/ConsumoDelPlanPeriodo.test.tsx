@@ -127,13 +127,14 @@ describe("SLT-86 R27 — el período en curso y el siguiente cobro", () => {
 });
 
 describe("SLT-86 R28 — el total del período", () => {
-  it("R28: modo fijo: el costo base del tramo más las órdenes del período por el costo por orden", () => {
+  // SLT-99 (decisión del humano del 2026-11-10): el modo fijo ya no pinta las órdenes ni el total estimado.
+  it("R28: modo fijo: el costo base del tramo, sin «Órdenes del período» ni «Total estimado del período»", () => {
     pintar(leido("quincenal", "2026-03-10", { uso: { ...leido("quincenal", "2026-03-10").uso, ordenes: 3 } }), mediodia("2026-03-12"));
 
     const b = costo();
     expect(within(b).getByText("Costo base quincenal: 6200.00")).toBeInTheDocument();
-    expect(within(b).getByText("Órdenes del período: 3 × 100.00 = 300.00")).toBeInTheDocument();
-    expect(within(b).getByText("Total estimado del período: 6500.00")).toBeInTheDocument();
+    expect(screen.queryByText(/^Órdenes del período: /)).toBeNull();
+    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
     expect(screen.queryByText("El pago anual no cambia el costo por orden.")).toBeNull();
   });
 
@@ -152,15 +153,15 @@ describe("SLT-86 R28 — el total del período", () => {
     expect(within(b).getByText("Total del período hasta hoy: 6200.00 + 800.00 = 7000.00")).toBeInTheDocument();
   });
 
-  it("R28: sin costo base, «por definir» y ningún total", () => {
+  it("R28 y SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base cuesta como base 0, ya no «por definir»", () => {
     const sinPrecio: PrecioPlan = { tipo: "sin_precio" };
     pintar(
       leido("mensual", "2026-01-15", { vigente: { ...VIGENTE, precio: sinPrecio }, precioDelPeriodo: sinPrecio }),
       mediodia("2026-03-10"),
     );
 
-    expect(within(costo()).getByText("Costo base mensual: por definir")).toBeInTheDocument();
-    expect(screen.queryByText(/^Total /)).toBeNull();
+    expect(within(costo()).getByText("Costo base mensual: 0.00")).toBeInTheDocument();
+    expect(screen.queryByText(/por definir/)).toBeNull();
   });
 
   it("R15, R28: el costo sale del precio de cuando empezó el período, no del vigente", () => {

@@ -17,7 +17,6 @@ import {
 } from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
 import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
-import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
@@ -174,13 +173,15 @@ export class PlanesService implements IPlanesService {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = crearPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
-    const { organizacionId, tipoCobro, inicioCiclo, vigenteDesde, ...plan } = parsed.data;
+    const { organizacionId, tipoCobro, inicioCiclo, vigenteDesde } = parsed.data;
     if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId), true);
 
     // Ajuste planes-custom (D2): un custom se asigna a su empresa al crearlo, en UNA operación. Las
     // mismas reglas que `asignar`, en su orden: el rango de la fecha (SLT-58 R30, SLT-86 R16), la empresa
-    // existe (R2), qué fecha toca según tenga plan (R31, R16) y el costo concreto (SLT-66 R28). «Mismo
-    // plan», «archivado» y «custom de otra empresa» no pueden darse con un plan que aún no existe.
+    // existe (R2) y qué fecha toca según tenga plan (R31, R16). «Mismo plan», «archivado» y «custom de
+    // otra empresa» no pueden darse con un plan que aún no existe. SLT-99 (decisión del 2026-11-10, modifica
+    // SLT-66 R28): ya no se exige costo concreto; sin costo por orden rige la tarifa global y sin costo base,
+    // cuota 0.
     const ahora = this.ahora();
     const fechas = { inicioCiclo, vigenteDesde };
     const fuera = fueraDeRango(fechas, ahora);
@@ -189,7 +190,6 @@ export class PlanesService implements IPlanesService {
     if (empresa === null) return { estado: "not_found" };
     const noCasa = fechaQueNoCasa(empresa.planId, fechas);
     if (noCasa !== null) return noCasa;
-    if (!tieneCostoConcreto(plan)) return { estado: "plan_sin_costo" };
 
     const efecto = efectoElegido(empresa.planId, fechas, ahora);
     const r = await this.repo.crearYAsignar(
@@ -274,8 +274,6 @@ export class PlanesService implements IPlanesService {
     if (fuera !== null) return fuera;
     const reglas = await this.reglasDeAsignar(organizacionId, planId, fechas);
     if ("estado" in reglas) return reglas;
-    // SLT-66 R28: el plan que la empresa ya tiene no se vuelve a mirar (cambiar solo el tipo, o R19).
-    if (reglas.empresa.planId !== planId && (await this.sinCostoConcreto(reglas.plan))) return { estado: "plan_sin_costo" };
 
     const efecto = efectoElegido(reglas.empresa.planId, fechas, ahora);
     const r = await this.repo.asignar(organizacionId, planId, actor.usuarioId, efecto, tipoCobro, ahora);
@@ -299,8 +297,6 @@ export class PlanesService implements IPlanesService {
     if (fuera !== null) return fuera;
     const reglas = await this.reglasDeAsignar(organizacionId, planId, { inicioCiclo });
     if ("estado" in reglas) return reglas;
-    // SLT-66 R28: la vista previa no deja confirmar lo que `asignar` rechazaría.
-    if (await this.sinCostoConcreto(reglas.plan)) return { estado: "plan_sin_costo" };
 
     // SLT-86 (R8): los topes que quedan no dependen de la fecha; ya no hay siguiente ciclo que avisar.
     const leida = await this.repo.vistaPreviaAsignacion(organizacionId, planId);
@@ -376,17 +372,6 @@ export class PlanesService implements IPlanesService {
     return fechaQueNoCasa(empresa.planId, fechas) ?? { empresa, plan };
   }
 
-  /**
-   * SLT-66 (design §4.2.1; R28): el plan, o la versión de su cambio programado pendiente, no tiene costo
-   * concreto. Mirar el pendiente aquí evita tener que comprobar nada al aplicar el cambio. El pendiente
-   * solo se lee si el vigente ya es concreto.
-   */
-  private async sinCostoConcreto(plan: PlanDTO): Promise<boolean> {
-    if (!tieneCostoConcreto(plan)) return true;
-    const pendiente = (await this.repo.detalle(plan.id))?.pendiente ?? null;
-    return pendiente !== null && !tieneCostoConcreto(pendiente.version);
-  }
-
   async cancelarCambio(actor: Actor | null, input: unknown): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = cancelarCambioPlanSchema.safeParse(input);
@@ -402,9 +387,8 @@ export class PlanesService implements IPlanesService {
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { organizacionId } = parsed.data;
     if ((await this.repo.empresa(organizacionId)) === null) return { estado: "not_found" };
-    // SLT-66 R29: solo los planes con costo concreto; la regla es de la asignación, no del dato (§4.2.1).
-    const planes = await this.repo.asignables(organizacionId);
-    return { estado: "ok", planes: planes.filter(tieneCostoConcreto) };
+    // SLT-99 (decisión del 2026-11-10, modifica SLT-66 R29): también los planes sin costo concreto.
+    return { estado: "ok", planes: await this.repo.asignables(organizacionId) };
   }
 
   /**

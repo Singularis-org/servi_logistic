@@ -105,12 +105,13 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
     expect(bloque().textContent).not.toContain("+ -");
   });
 
-  it("R23: con la base por definir dice «Costo base mensual: por definir» y no hay total", () => {
+  it("R23 y SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base cuesta como base 0 y el total es lo cobrado", () => {
     pintar(leido(version({ tipo: "sin_precio" }, CON_MINIMO), { cobrado: "1000.00", pendientes: 2 }));
 
-    expect(within(bloque()).getByText("Costo base mensual: por definir")).toBeInTheDocument();
+    expect(within(bloque()).getByText("Costo base mensual: 0.00")).toBeInTheDocument();
     expect(within(bloque()).getByText("Cobrado en el período: 1000.00")).toBeInTheDocument();
-    expect(screen.queryByText(/Total del período hasta hoy/)).toBeNull();
+    expect(bloque().textContent).toContain("0.00 + 1000.00 = 1000.00");
+    expect(screen.queryByText(/por definir/)).toBeNull();
   });
 
   it("SLT-86 R28: con un descuento anual ya no sale la nota del anual: ningún descuento toca el costo por orden", () => {
@@ -178,10 +179,10 @@ describe("SLT-83 R23 — detalle de empresa del superadmin", () => {
     expect(screen.queryByText(AVISO_R20)).toBeNull();
   });
 
-  it("R23: con la base por definir, el aviso «Plan sin costo concreto» igual que hoy", () => {
+  it("R23: sin costo base, el aviso «Plan sin costo concreto» igual que hoy; la base cuesta 0 (SLT-99, decisión del 2026-11-10)", () => {
     montarDetalle(leido(version({ tipo: "sin_precio" }, CON_MINIMO), { cobrado: "0.00", pendientes: 1 }));
     expect(screen.getByText(AVISO_R20)).toBeInTheDocument();
-    expect(within(bloque()).getByText("Costo base mensual: por definir")).toBeInTheDocument();
-    expect(screen.queryByText(/Total del período hasta hoy/)).toBeNull();
+    expect(within(bloque()).getByText("Costo base mensual: 0.00")).toBeInTheDocument();
+    expect(screen.queryByText(/por definir/)).toBeNull();
   });
 });
