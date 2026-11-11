@@ -5,6 +5,8 @@ import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-esta
 // Feature 239 (2026-08-19): el destino de una gestion sale del MAPA, no del nombre del
 // resultado. Estas suites pasan `nuevoEstatusId` a mano, asi que lo derivan de la misma fuente
 // que el servicio real: si el mapa cambia, cambian con el en vez de fijar un destino caducado.
+// SLT-47 (R16): la ruta del lugar sale del catalogo de la empresa (doble de entrada).
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { estatusDestinoDeResultado } from "@/lib/types/gestion-destino";
 
 // Feature 36 — repositorio con Prisma mockeado (sin DB). Cubre el filtrado por
@@ -46,7 +48,7 @@ beforeEach(async () => {
 describe("GestionOrdenRepository.findMisAsignaciones (R9/R13)", () => {
   it("R13: filtra por mensajero_asignado_id + no borradas + estados, en el WHERE", async () => {
     const findMany = vi.fn(async () => [fakeAsignacionRow()]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
 
     const rows = await repo.findMisAsignaciones("m1", ["mensajero_recogiendo_en_bodega", "en_reparto"]);
 
@@ -65,7 +67,7 @@ describe("GestionOrdenRepository.findMisAsignaciones (R9/R13)", () => {
   // consulta nueva: seria un N+1 sobre la pantalla mas caliente del portal del mensajero.
   it("246/R35: pide `fechaReparto` en el select y la emite CRUDA, sin interpretarla", async () => {
     const findMany = vi.fn(async () => [fakeAsignacionRow()]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
 
     const rows = await repo.findMisAsignaciones("m1", ["mensajero_recogiendo_en_bodega"]);
 
@@ -83,7 +85,7 @@ describe("GestionOrdenRepository.findMisAsignaciones (R9/R13)", () => {
 
   it("246/R35: una orden sin reserva emite `null`, no `undefined`", async () => {
     const findMany = vi.fn(async () => [fakeAsignacionRow({ fechaReparto: null })]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
 
     const rows = await repo.findMisAsignaciones("m1", ["mensajero_recogiendo_en_bodega"]);
 
@@ -92,7 +94,7 @@ describe("GestionOrdenRepository.findMisAsignaciones (R9/R13)", () => {
 
   it("R9: estados vacios -> no consulta y devuelve []", async () => {
     const findMany = vi.fn();
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
     expect(await repo.findMisAsignaciones("m1", [])).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });
@@ -101,7 +103,7 @@ describe("GestionOrdenRepository.findMisAsignaciones (R9/R13)", () => {
   // (select) y las SERIALIZA Decimal -> number (mismo patron que montoCobrar).
   it("F97: proyecta latitud/longitud en el select y las serializa Decimal -> number", async () => {
     const findMany = vi.fn(async () => [fakeAsignacionRow()]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
 
     const rows = await repo.findMisAsignaciones("m1", ["en_reparto"]);
 
@@ -120,7 +122,7 @@ describe("GestionOrdenRepository.findMisAsignaciones (R9/R13)", () => {
     const findMany = vi.fn(async () => [
       fakeAsignacionRow({ latitud: null, longitud: null }),
     ]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
 
     const rows = await repo.findMisAsignaciones("m1", ["en_reparto"]);
 
@@ -260,7 +262,7 @@ describe("GestionOrdenRepository.findByIdsParaGestion (feature 47/R5 · zonaId)"
         estatus: { value: "en_reparto" },
       },
     ]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
 
     const rows = await repo.findByIdsParaGestion(["o1"]);
 
@@ -284,14 +286,14 @@ describe("GestionOrdenRepository.findByIdsParaGestion (feature 47/R5 · zonaId)"
         estatus: { value: "en_reparto" },
       },
     ]);
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
     const rows = await repo.findByIdsParaGestion(["o1"]);
     expect(rows[0].zonaId).toBeNull();
   });
 
   it("ids vacios -> no consulta y devuelve []", async () => {
     const findMany = vi.fn();
-    const repo = new GestionOrdenRepository({ orden: { findMany } } as never);
+    const repo = new GestionOrdenRepository({ orden: { findMany }, ...delegadosDelCatalogo() } as never);
     expect(await repo.findByIdsParaGestion([])).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });

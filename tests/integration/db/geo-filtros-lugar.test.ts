@@ -4,8 +4,10 @@ import type { PrismaClient } from "@prisma/client";
 import { comoPlataforma, conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import type { ListOrdenesWhere } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
+import { ESTATUS_POR_GRUPO } from "@/lib/types/novedad-grupo";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo47, type EmpresaGeo47 } from "./_fixtures/geo-47";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
@@ -281,5 +283,43 @@ describeSiHayBase("SLT-47 — filtro de lugar en /ordenes y en la bodega satelit
     console.log(`SLT-47 catalogo CR: antes=${r.antes} bytes despues=${r.despues} bytes lugares=${r.nodos}`);
     expect(r.nodos).toBeGreaterThan(0);
     expect(r.despues).toBeGreaterThan(r.antes);
+  }, 120_000);
+
+  it("R16, R13: asignaciones y novedades traen la ruta de su lugar por id; dos «San Rafael» no se confunden", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await crearEscenarioGeo47(tx);
+      const emp = e.cr;
+      const b = emp.base.base;
+      const o = emp.ordenes;
+      const ids = [o.enSanRafael1Id, o.enSanRafael2Id, o.sinDistritoCentral1Id];
+      // Como dueño: las tres del mensajero de `geo-65`, y dos de ellas devueltas (novedades).
+      await tx.orden.updateMany({ where: { id: { in: ids } }, data: { mensajeroAsignadoId: emp.base.mensajeroId } });
+      const devuelta = await tx.orderStatus.findUniqueOrThrow({ where: { value: ESTATUS_POR_GRUPO.devolucion }, select: { id: true } });
+      await tx.orden.updateMany({ where: { id: { in: [o.enSanRafael1Id, o.enSanRafael2Id] } }, data: { estatusId: devuelta.id } });
+      return comoLaEmpresa(tx, b.empresaId, async () => {
+        const gestion = new GestionOrdenRepository(tx as unknown as PrismaClient);
+        const asignadas = await gestion.findMisAsignaciones(emp.base.mensajeroId, ["en_preparacion", ESTATUS_POR_GRUPO.devolucion]);
+        const novedades = await new OrdenRepository(tx as unknown as PrismaClient).findNovedadesByTienda(b.tiendaId, "devolucion", {
+          skip: 0,
+          take: 50,
+        });
+        return { emp, asignadas, novedades };
+      });
+    });
+    const { emp } = r;
+    const h = emp.homonimos;
+    const p1 = emp.base.base.geo.provinciaId;
+    const rutaDe = (filas: { id: string; lugarRuta?: { id: string; nombre: string }[] }[], id: string) =>
+      filas.find((f) => f.id === id)?.lugarRuta?.map((p) => p.id);
+    expect(rutaDe(r.asignadas, emp.ordenes.enSanRafael1Id)).toEqual([p1, h.cantonCentral1Id, h.sanRafael1Id]);
+    expect(rutaDe(r.asignadas, emp.ordenes.enSanRafael2Id)).toEqual([h.provinciaCentralId, h.cantonCentral2Id, h.sanRafael2Id]);
+    expect(rutaDe(r.asignadas, emp.ordenes.sinDistritoCentral1Id)).toEqual([p1, h.cantonCentral1Id]);
+    expect(rutaDe(r.novedades, emp.ordenes.enSanRafael1Id)).toEqual([p1, h.cantonCentral1Id, h.sanRafael1Id]);
+    expect(rutaDe(r.novedades, emp.ordenes.enSanRafael2Id)).toEqual([h.provinciaCentralId, h.cantonCentral2Id, h.sanRafael2Id]);
+    // Mismos nombres, ids distintos (R13); y solo id y nombre por paso (sin dato personal nuevo).
+    const n1 = r.novedades.find((f) => f.id === emp.ordenes.enSanRafael1Id)!.lugarRuta!;
+    const n2 = r.novedades.find((f) => f.id === emp.ordenes.enSanRafael2Id)!.lugarRuta!;
+    expect(n1.at(-1)!.nombre).toBe(n2.at(-1)!.nombre);
+    for (const paso of n1) expect(Object.keys(paso).sort()).toEqual(["id", "nombre"]);
   }, 120_000);
 });

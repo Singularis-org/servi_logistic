@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import type { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { sqlLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { sqlLugarEn, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { nodo, nodosBajo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
 
 // SLT-71 (design §3.2) — EL FILTRO DE LUGAR, RESUELTO AL LUGAR DE LA ORDEN. SLT-47 (design §3.1) lo
@@ -68,6 +68,19 @@ export function condicionesDeLugar(lugares: LugaresDelFiltro): Prisma.Sql[] {
   const ids = lugares.lugar;
   if (ids === undefined) return [];
   return [ids.length === 0 ? Prisma.sql`FALSE` : sqlLugarEn(ids)];
+}
+
+/**
+ * Puro. Lo mismo que `condicionesDeLugar`, como `where` de Prisma (el listado de `/ordenes`):
+ *  - con ids → `AND: [whereLugarEn(ids)]` (en `AND` y no como `OR` suelto: el `OR` del buscador
+ *    ocupa la misma clave);
+ *  - con `[]` → `id IN ()` (cero filas, R12);
+ *  - ausente → nada.
+ */
+export function whereDeLugares(lugares: LugaresDelFiltro): Prisma.OrdenWhereInput {
+  const ids = lugares.lugar;
+  if (ids === undefined) return {};
+  return ids.length === 0 ? { id: { in: [] } } : { AND: [whereLugarEn(ids)] };
 }
 
 /**

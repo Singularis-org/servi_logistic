@@ -1,3 +1,4 @@
+import type { PasoDeRuta } from "@/lib/repositories/_shared/ruta-del-lugar";
 import type {
   GestionCausaDevolucion,
   GestionCausaIncidente,
@@ -68,6 +69,13 @@ export interface MiAsignacionRow {
    * construyen `MiAsignacionRow` sin el; el repo SIEMPRE lo emite.
    */
   tiendaTelefono?: string | null;
+  /**
+   * SLT-47 (R16; design §3.4) — la ruta del lugar de la orden, del nivel 1 al lugar (ids y nombres),
+   * calculada con el catalogo y `lugarDeLaOrden`. La usa el filtro de lugar por id en el cliente.
+   * Opcional (`?`) por el patron aditivo de este tipo: no rompe los fixtures que lo construyen sin
+   * ella; el repositorio SIEMPRE la emite.
+   */
+  lugarRuta?: PasoDeRuta[];
   zonaNombre: string;
   provinciaNombre: string;
   cantonNombre: string;

@@ -37,6 +37,10 @@ import type { NotificacionTxClient } from "@/lib/interfaces/repositories/INotifi
 // SLT-59 (R59) / SLT-79: `fechaCalendarioCR` solo fija el dia contra el que se mira si la primera ruta esta pendiente.
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+// SLT-47 (R16): la ruta del lugar de cada asignacion, del catalogo de la empresa.
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
+import type { CatalogoGeografico } from "@/lib/services/geografia-dominio";
 
 // Feature 61: estado terminal de entrega para el KPI "entregadas" del portal.
 const ESTATUS_ENTREGADA = "entregado";
@@ -304,6 +308,9 @@ const WITH_ASIGNACION = {
     provincia: { select: { nombre: true } },
     canton: { select: { nombre: true } },
     distrito: { select: { nombre: true } },
+    // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`).
+    cantonId: true,
+    distritoId: true,
   },
 } as const;
 
@@ -328,7 +335,7 @@ function sinpeDeLaFila(row: AsignacionRow): { sinpeNumero: string; sinpeNombre: 
   return { sinpeNumero: par.numero, sinpeNombre: par.nombre };
 }
 
-function toMiAsignacionRow(row: AsignacionRow): MiAsignacionRow {
+function toMiAsignacionRow(row: AsignacionRow, catalogo: CatalogoGeografico): MiAsignacionRow {
   return {
     id: row.id,
     numGuia: row.numGuia,
@@ -351,6 +358,8 @@ function toMiAsignacionRow(row: AsignacionRow): MiAsignacionRow {
     provinciaNombre: row.provincia.nombre,
     cantonNombre: row.canton.nombre,
     distritoNombre: row.distrito?.nombre ?? null,
+    // SLT-47 (R16): la ruta del lugar, del catalogo de la empresa.
+    lugarRuta: rutaDelLugar(catalogo, row),
     // FICHA 429 (R13/R15/R16): la MISMA funcion pura que usa el envio por servidor. Que sea una
     // sola es lo que impide que las dos superficies rindan numeros distintos para la misma orden.
     ...sinpeDeLaFila(row),
@@ -496,6 +505,23 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  // SLT-47 (R16, R35): el catalogo de la empresa, uno por instancia, creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    this.catalogoRepo ??= new CatalogoGeograficoRepository(
+      this.prisma as unknown as ConstructorParameters<typeof CatalogoGeograficoRepository>[0],
+    );
+    return this.catalogoRepo;
+  }
+
+  /** Las filas con la ruta de su lugar. Sin filas, no carga el catalogo. */
+  private async conRuta(rows: AsignacionRow[]): Promise<MiAsignacionRow[]> {
+    if (rows.length === 0) return [];
+    const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
+    return rows.map((row) => toMiAsignacionRow(row, catalogo));
+  }
+
   /** R9/R13: filtrado por mensajero + estado en el WHERE, no borradas. */
   async findMisAsignaciones(mensajeroId: string, estados: string[]): Promise<MiAsignacionRow[]> {
     if (estados.length === 0) return [];
@@ -508,7 +534,7 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       orderBy: { createdAt: "desc" },
       ...WITH_ASIGNACION,
     });
-    return rows.map(toMiAsignacionRow);
+    return this.conRuta(rows);
   }
 
   /**
@@ -551,7 +577,7 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       },
       ...WITH_ASIGNACION,
     });
-    return rows.map(toMiAsignacionRow);
+    return this.conRuta(rows);
   }
 
   /** Feature 61: conteo de entregadas del mensajero (KPI del portal), no borradas. */

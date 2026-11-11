@@ -8,8 +8,9 @@ import {
   resolverLugar,
   SIN_LUGAR,
   tieneLugar,
+  whereDeLugares,
 } from "@/lib/repositories/_shared/lugares-del-filtro";
-import { sqlLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { sqlLugarEn, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import {
   crearAsignaciones,
@@ -158,5 +159,13 @@ describe("SLT-47 — lugaresDelFiltro (R37)", () => {
     expect(tieneLugar({})).toBe(false);
     expect(tieneLugar({ lugar_id: [] })).toBe(false);
     expect(tieneLugar({ lugar_id: ["x"] })).toBe(true);
+  });
+});
+
+describe("SLT-47 — whereDeLugares (R11, R12)", () => {
+  it("con ids, `AND` de `whereLugarEn`; con `[]`, cero filas; sin lugar, nada", () => {
+    expect(whereDeLugares({ lugar: ["C1", "D1"] })).toEqual({ AND: [whereLugarEn(["C1", "D1"])] });
+    expect(whereDeLugares({ lugar: [] })).toEqual({ id: { in: [] } });
+    expect(whereDeLugares(SIN_LUGAR)).toEqual({});
   });
 });

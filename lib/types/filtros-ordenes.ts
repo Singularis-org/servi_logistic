@@ -157,9 +157,12 @@ export interface CatalogoFiltrosOrdenesDTO {
   /**
    * SLT-47 (design §3.3): los niveles del pais y los lugares a cualquier profundidad, para el filtro de
    * N niveles. `provincias`, `cantones` y `distritos` se quedan hasta SLT-48 (los lee la correccion).
+   *
+   * Opcionales (`?`) por el patron aditivo: no rompen los catalogos vacios que arman las pantallas y
+   * sus fixtures (los adapta T4); `FiltrosOrdenesService` los emite SIEMPRE.
    */
-  niveles: NivelDeFiltroDTO[];
-  lugares: LugarDeFiltroDTO[];
+  niveles?: NivelDeFiltroDTO[];
+  lugares?: LugarDeFiltroDTO[];
 }
 
 /** R52/R53: sin sesion -> `unauthenticated`; rol ajeno al listado -> `forbidden`, sin datos. */

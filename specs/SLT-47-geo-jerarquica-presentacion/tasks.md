@@ -47,7 +47,7 @@
 - [x] **T2.2** Entradas: `lugar_id` en `ordenFilterBase`, `FILTROS_COMPARTIDOS` de satélite y
   `conteoEntregasFiltroSchema`, y la clave de caché de analítica. Test: `filtro-lugar-schemas.test.ts`.
   **Hecho:** R10 en verde; las claves viejas dan `validation_error`.
-- [ ] **T2.3** Lecturas:
+- [x] **T2.3** Lecturas:
   - `OrdenService.construirWhere` y `OrdenRepository.list` con `whereLugarEn`;
   - `RecepcionSateliteService.filtroDeRepo` y `condicionesSatelite` con `condicionesDeLugar`;
   - `GeoRepository` (`niveles` y `lugares` en los dos catálogos) y `FiltrosOrdenesService`;

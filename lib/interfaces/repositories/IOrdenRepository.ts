@@ -1,3 +1,4 @@
+import type { PasoDeRuta } from "@/lib/repositories/_shared/ruta-del-lugar";
 import type { GestionCausaDevolucion, GestionResultado, RolValue } from "@prisma/client";
 import type {
   FilaBodegaSatelite,
@@ -1012,6 +1013,13 @@ export interface NovedadOrdenRow {
   cantonNombre: string;
   /** `distrito_id` es el UNICO FK geografico nullable -> `null` cuando la orden no lo tiene. */
   distritoNombre: string | null;
+  /**
+   * SLT-47 (R16; design §3.4) — la ruta del lugar de la orden, del nivel 1 al lugar (ids y nombres),
+   * calculada con el catalogo y `lugarDeLaOrden`. La usa el filtro de lugar por id en el cliente.
+   * Opcional (`?`) por el patron aditivo de este tipo: no rompe los fixtures que lo construyen sin
+   * ella; el repositorio SIEMPRE la emite.
+   */
+  lugarRuta?: PasoDeRuta[];
   /**
    * ⭑ FICHA 429 (R13/R15) — el SINPE de la bodega que cobra esta orden, YA RESUELTO por el
    * repositorio con `resolverSinpeBodega` (la del mensajero asignado; si no tiene, la de la orden).

@@ -197,6 +197,8 @@ export class NovedadesService implements INovedadesService {
       provinciaNombre: row.provinciaNombre,
       cantonNombre: row.cantonNombre,
       distritoNombre: row.distritoNombre,
+      // SLT-47 (R16): la ruta viaja si la fila la trae (el repositorio siempre la emite).
+      ...(row.lugarRuta ? { lugarRuta: row.lugarRuta } : {}),
       // SIEMPRE `null`: una novedad no es parada de ninguna ruta optimizada (feature 92/R28).
       secuenciaRuta: null,
       // Feature 235 (T6.1, R40): aqui se emitia `ayuda: row.ayuda`. Se retira con la columna, y el

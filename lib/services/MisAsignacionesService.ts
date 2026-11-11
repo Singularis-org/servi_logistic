@@ -874,6 +874,8 @@ export function toDTO(row: MiAsignacionRow): MiAsignacionDTO {
     provinciaNombre: row.provinciaNombre,
     cantonNombre: row.cantonNombre,
     distritoNombre: row.distritoNombre,
+    // SLT-47 (R16): la ruta viaja si la fila la trae (el repositorio siempre la emite).
+    ...(row.lugarRuta ? { lugarRuta: row.lugarRuta } : {}),
     // FICHA 429 (R13/R14): el par viaja TAL CUAL desde la fila; el repositorio ya aplico la regla
     // de `resolverSinpeBodega`. Aqui no hay `?? ""` ni default posible: los dos campos son
     // REQUERIDOS en las dos puntas, asi que este `toDTO` no puede emitir un mensaje mudo.

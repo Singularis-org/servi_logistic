@@ -81,8 +81,10 @@ import {
   condicionesDeLugar,
   lugaresDelFiltro,
   type LugaresDelFiltro,
+  whereDeLugares,
 } from "@/lib/repositories/_shared/lugares-del-filtro";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import {
   ancestros,
   esZonaEspecial,
@@ -1934,9 +1936,7 @@ export class OrdenRepository implements IOrdenRepository {
     // Falla cerrado (R35 de la 144): una lista presente pero vacia —el schema la hace inalcanzable—
     // es cero filas, nunca «sin filtro».
     if (ids !== undefined && ids.length === 0) return { id: { in: [] } };
-    const { lugar } = await lugaresDelFiltro(() => this.catalogoGeografico(), { lugar_id: ids });
-    if (lugar === undefined) return {};
-    return lugar.length === 0 ? { id: { in: [] } } : { AND: [whereLugarEn(lugar)] };
+    return whereDeLugares(await lugaresDelFiltro(() => this.catalogoGeografico(), { lugar_id: ids }));
   }
 
   /** SLT-47 (R11): el lugar del filtro de la bodega satelite, resuelto antes de armar el SQL. */
@@ -5928,6 +5928,9 @@ export class OrdenRepository implements IOrdenRepository {
         provincia: { select: { nombre: true } },
         canton: { select: { nombre: true } },
         distrito: { select: { nombre: true } },
+        // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`).
+        cantonId: true,
+        distritoId: true,
         // FICHA 296: el MENSAJERO, por nombre y en la MISMA consulta. `mensajero_asignado_id` es
         // NULLABLE, asi que la relacion es opcional -> `?.nombre ?? null`, igual que `distrito`.
         // El `select` acotado a la IDENTIDAD (nombre y apellidos) NO es cosmetico: la fila de
@@ -5946,6 +5949,8 @@ export class OrdenRepository implements IOrdenRepository {
         },
       },
     });
+    // SLT-47 (R16): una carga del catalogo por instancia, y solo si hay filas.
+    const catalogo = rows.length === 0 ? null : (await this.catalogoGeografico().deLaEmpresa()).catalogo;
     return rows.map((row) => ({
       id: row.id,
       numGuia: row.numGuia,
@@ -5979,6 +5984,8 @@ export class OrdenRepository implements IOrdenRepository {
         row.mensajeroAsignado?.zona ?? null,
         { numero: row.zona.sinpeNumero, nombre: row.zona.sinpeNombre },
       ),
+      // SLT-47 (R16): la ruta del lugar, del catalogo de la empresa (`null` solo si no hay filas).
+      lugarRuta: catalogo === null ? [] : rutaDelLugar(catalogo, row),
       createdAt: row.createdAt,
     }));
   }
