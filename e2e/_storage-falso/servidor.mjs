@@ -33,10 +33,33 @@ const NO_EXISTE = { statusCode: "404", error: "not_found", message: "Object not 
 const TOKEN_INVALIDO = { statusCode: "400", error: "InvalidJWT", message: "invalid signature" };
 // Texto que Storage pone en la entrada de `createSignedUrls` que no pudo firmar.
 const NO_FIRMABLE = "Either the object does not exist or you do not have access to it";
+// SLT-98 (design §10): pedir una subida firmada a un bucket que no existe. HTTP 400 con "404" en
+// `statusCode`, que es lo que `SupabaseAlmacenImagenesReporte` mira para crear el bucket (R16).
+const BUCKET_NO_EXISTE = { statusCode: "404", error: "Bucket not found", message: "Bucket not found" };
+const DEMASIADO_GRANDE = {
+  statusCode: "413",
+  error: "Payload too large",
+  message: "The object exceeded the maximum allowed size",
+};
+/** @param {string} tipo */
+const tipoNoPermitido = (tipo) => ({
+  statusCode: "415",
+  error: "invalid_mime_type",
+  message: `mime type ${tipo} is not supported`,
+});
+// Storage deja valer 2 horas la URL de subida firmada y el SDK no permite cambiarlo.
+const SUBIDA_FIRMADA_MS = 2 * 60 * 60 * 1000;
+
+// SLT-98: el navegador del E2E sube con PUT a este doble, que es otro origen. Storage real responde
+// CORS a los navegadores; sin esto el PUT moriria en el preflight.
+const CORS_METODOS = "GET, POST, PUT, DELETE, OPTIONS";
+const CORS_ENCABEZADOS = "authorization, apikey, content-type, x-upsert, cache-control, x-client-info";
 
 /**
  * @typedef {{ bytes: Buffer, contentType: string, id: string, creado: string }} Objeto
  * @typedef {{ clave: string, expira: number }} Firma
+ * @typedef {{ clave: string, expira: number, upsert: boolean }} FirmaSubida
+ * @typedef {{ publico: boolean, limiteBytes: number | null, tiposPermitidos: string[] | null }} Bucket
  * @typedef {{ url: string, puerto: number, cerrar: () => Promise<void> }} StorageFalso
  */
 
@@ -45,10 +68,13 @@ function crearEstado() {
   return {
     /** @type {Map<string, Objeto>} clave `bucket/path` */
     objetos: new Map(),
-    /** @type {Set<string>} */
-    buckets: new Set(),
+    /** @type {Map<string, Bucket>} id -> opciones (los creados al subir no tienen limites) */
+    buckets: new Map(),
     /** @type {Map<string, Firma>} token -> objeto firmado */
     firmas: new Map(),
+    /** @type {Map<string, FirmaSubida>} token -> clave que puede subir. Aparte de `firmas`: un
+     * token de lectura no sirve para subir, ni al reves. */
+    subidas: new Map(),
   };
 }
 
@@ -127,18 +153,40 @@ function crearManejador(estado) {
     if (url.pathname === "/salud") return responderJson(res, 200, { ok: true });
 
     if (!url.pathname.startsWith(`${PREFIJO}/`)) return noAtendida(res, metodo, url.pathname);
+    // Preflight CORS del PUT del navegador (SLT-98).
+    if (metodo === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-methods": CORS_METODOS,
+        "access-control-allow-headers": CORS_ENCABEZADOS,
+        "access-control-max-age": "600",
+      });
+      return res.end();
+    }
     // fetch codifica el path (espacios, tildes); el almacen guarda la clave tal cual la paso la app.
     const ruta = decodeURIComponent(url.pathname.slice(PREFIJO.length));
     const cuerpo = await leerCuerpo(req);
 
-    // createBucket — POST `${url}/bucket` con `{ id }` (StorageBucketApi.ts:215-227). Los buckets
-    // del doble existen implicitamente al subir (la creacion perezosa de `SupabaseAlmacen*` ya
-    // tiene sus tests de unidad); esto solo responde lo que espera el SDK si alguien la llama.
+    // createBucket — POST `${url}/bucket` con `{ id, public, file_size_limit, allowed_mime_types }`
+    // (StorageBucketApi.ts:194-227). Las subidas normales siguen creando el bucket implicito y sin
+    // limites; la subida firmada exige que exista (SLT-98, R16) y aplica los limites guardados aqui.
     if (metodo === "POST" && ruta === "/bucket") {
-      const id = String(comoJson(cuerpo).id ?? "");
+      const json = comoJson(cuerpo);
+      const id = String(json.id ?? "");
       if (estado.buckets.has(id)) return responderJson(res, 400, DUPLICADO);
-      estado.buckets.add(id);
+      estado.buckets.set(id, opcionesDeBucket(json));
       return responderJson(res, 200, { name: id });
+    }
+
+    if (ruta.startsWith("/object/upload/sign/")) {
+      const { bucket, path } = partir(ruta.slice("/object/upload/sign/".length));
+      if (path === "") return noAtendida(res, metodo, ruta);
+      // createSignedUploadUrl — POST con `x-upsert` opcional (StorageFileApi.ts:381-420).
+      if (metodo === "POST") return firmarSubida(estado, req, res, bucket, path);
+      // uploadToSignedUrl / PUT del navegador, sin `apikey` (StorageFileApi.ts:275-342).
+      if (metodo === "PUT") {
+        return subirFirmado(estado, req, res, { bucket, path, cuerpo, token: url.searchParams.get("token") });
+      }
+      return noAtendida(res, metodo, ruta);
     }
 
     if (ruta.startsWith("/object/sign/")) {
@@ -222,16 +270,7 @@ function crearManejador(estado) {
  */
 function subir(estado, req, res, { metodo, bucket, path, cuerpo }) {
   const contentType = String(req.headers["content-type"] ?? "application/octet-stream");
-  // Con un `Blob` storage-js manda multipart (StorageFileApi.ts:98-104). La app sube `Uint8Array`
-  // (cuerpo crudo + content-type, :114-117). Guardar el multipart como si fueran los bytes daria
-  // un verde falso en R5, asi que se rechaza a voz en grito.
-  if (contentType.startsWith("multipart/form-data")) {
-    return responderJson(res, 400, {
-      statusCode: "400",
-      error: "no_implementado",
-      message: "el doble de Storage no acepta multipart: sube Uint8Array/Buffer",
-    });
-  }
+  if (esMultipart(contentType)) return rechazarMultipart(res);
   const clave = `${bucket}/${path}`;
   const existe = estado.objetos.has(clave);
   // POST con `x-upsert: false` (lo que pide toda la app) no pisa: 400/409 como Storage real.
@@ -239,9 +278,99 @@ function subir(estado, req, res, { metodo, bucket, path, cuerpo }) {
   // PUT (update) sobre un objeto que no existe: Storage real responde not found.
   if (metodo === "PUT" && !existe) return responderJson(res, 400, NO_EXISTE);
   const id = randomUUID();
-  estado.buckets.add(bucket);
+  if (!estado.buckets.has(bucket)) estado.buckets.set(bucket, { publico: false, limiteBytes: null, tiposPermitidos: null });
   estado.objetos.set(clave, { bytes: Buffer.from(cuerpo), contentType, id, creado: new Date().toISOString() });
   return responderJson(res, 200, { Id: id, Key: clave });
+}
+
+// Con un `Blob` storage-js manda multipart (StorageFileApi.ts:98-104 y :297-303). La app sube el
+// cuerpo crudo + content-type (:114-117 y :311-313). Guardar el multipart como si fueran los bytes
+// daria un verde falso, asi que se rechaza a voz en grito.
+/** @param {string} contentType */
+const esMultipart = (contentType) => contentType.startsWith("multipart/form-data");
+/** @param {http.ServerResponse} res */
+function rechazarMultipart(res) {
+  return responderJson(res, 400, {
+    statusCode: "400",
+    error: "no_implementado",
+    message: "el doble de Storage no acepta multipart: sube el cuerpo crudo con su content-type",
+  });
+}
+
+/**
+ * Opciones de `createBucket`. `file_size_limit` solo en bytes (numero o texto numerico), que es como
+ * lo pasa la app (design §3.3); otro formato ("5MB") rompe a voz en grito en vez de ignorarse.
+ * @param {Record<string, unknown>} json @returns {Bucket}
+ */
+function opcionesDeBucket(json) {
+  const crudo = json.file_size_limit;
+  let limiteBytes = null;
+  if (crudo !== undefined && crudo !== null) {
+    limiteBytes = Number(crudo);
+    if (!Number.isFinite(limiteBytes) || limiteBytes < 0) {
+      throw new Error(`el doble de Storage solo entiende file_size_limit en bytes: ${String(crudo)}`);
+    }
+  }
+  const tipos = json.allowed_mime_types;
+  return {
+    publico: json.public === true,
+    limiteBytes,
+    tiposPermitidos: Array.isArray(tipos) && tipos.length > 0 ? tipos.map(String) : null,
+  };
+}
+
+/**
+ * `image/png` casa con `image/png` y con `image/*`; el `; charset=...` no cuenta.
+ * @param {string} tipo @param {string[]} permitidos
+ */
+function tipoPermitido(tipo, permitidos) {
+  const base = tipo.split(";")[0].trim().toLowerCase();
+  return permitidos.some((p) => {
+    const patron = p.trim().toLowerCase();
+    return patron.endsWith("/*") ? base.startsWith(patron.slice(0, -1)) : base === patron;
+  });
+}
+
+/**
+ * createSignedUploadUrl: responde `{ url }` RELATIVA a `/storage/v1` (storage-js le antepone su URL,
+ * StorageFileApi.ts:410) y guarda el token con su clave, su upsert y 2 horas de vida.
+ * @param {ReturnType<typeof crearEstado>} estado @param {http.IncomingMessage} req
+ * @param {http.ServerResponse} res @param {string} bucket @param {string} path
+ */
+function firmarSubida(estado, req, res, bucket, path) {
+  if (!estado.buckets.has(bucket)) return responderJson(res, 400, BUCKET_NO_EXISTE);
+  const clave = `${bucket}/${path}`;
+  const upsert = req.headers["x-upsert"] === "true";
+  if (estado.objetos.has(clave) && !upsert) return responderJson(res, 400, DUPLICADO);
+  const token = randomBytes(18).toString("base64url");
+  estado.subidas.set(token, { clave, expira: Date.now() + SUBIDA_FIRMADA_MS, upsert });
+  return responderJson(res, 200, { url: `/object/upload/sign/${clave}?token=${token}` });
+}
+
+/**
+ * PUT a la URL de subida firmada. El permiso es el token, no la `apikey` (el navegador no la manda),
+ * y vale solo para su clave. Manda el upsert del token: el `x-upsert` del PUT no lo amplia.
+ * @param {ReturnType<typeof crearEstado>} estado @param {http.IncomingMessage} req
+ * @param {http.ServerResponse} res
+ * @param {{ bucket: string, path: string, cuerpo: Buffer, token: string | null }} p
+ */
+function subirFirmado(estado, req, res, { bucket, path, cuerpo, token }) {
+  const clave = `${bucket}/${path}`;
+  const firma = token ? estado.subidas.get(token) : undefined;
+  if (!firma || firma.clave !== clave || firma.expira < Date.now()) return responderJson(res, 400, TOKEN_INVALIDO);
+  const contentType = String(req.headers["content-type"] ?? "application/octet-stream");
+  if (esMultipart(contentType)) return rechazarMultipart(res);
+  // El bucket existe: se comprobo al firmar y el doble no tiene deleteBucket.
+  const opciones = /** @type {Bucket} */ (estado.buckets.get(bucket));
+  if (opciones.limiteBytes !== null && cuerpo.length > opciones.limiteBytes) {
+    return responderJson(res, 400, DEMASIADO_GRANDE);
+  }
+  if (opciones.tiposPermitidos && !tipoPermitido(contentType, opciones.tiposPermitidos)) {
+    return responderJson(res, 400, tipoNoPermitido(contentType));
+  }
+  if (estado.objetos.has(clave) && !firma.upsert) return responderJson(res, 400, DUPLICADO);
+  estado.objetos.set(clave, { bytes: Buffer.from(cuerpo), contentType, id: randomUUID(), creado: new Date().toISOString() });
+  return responderJson(res, 200, { Key: clave });
 }
 
 /**
@@ -311,6 +440,9 @@ export function arrancarStorageFalso({ puerto = PUERTO_POR_DEFECTO } = {}) {
   const estado = crearEstado();
   const manejar = crearManejador(estado);
   const servidor = http.createServer((req, res) => {
+    // CORS en TODAS las respuestas, errores incluidos: si no, el navegador esconde un 413/415 detras
+    // de un error de red y el E2E no ve por que fallo (SLT-98).
+    res.setHeader("access-control-allow-origin", "*");
     manejar(req, res).catch((e) => {
       // Un fallo del propio doble (JSON roto, etc.) se ve en el log y llega al SDK como 500.
       console.error(`[storage-falso] error atendiendo ${req.method} ${req.url}:`, e);

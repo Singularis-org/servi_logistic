@@ -1,6 +1,9 @@
 import type { BugReportStatus } from "@prisma/client";
 
 import { esPlataforma } from "@/lib/auth/plataforma";
+import { ENLACE_DETALLE_SEGUNDOS } from "@/lib/config/reporte-bug";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import type { IAlmacenImagenesReporte } from "@/lib/interfaces/external/IAlmacenImagenesReporte";
 import type { IBugReportRepository } from "@/lib/interfaces/repositories/IBugReportRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
@@ -16,6 +19,8 @@ import {
   type CambiarEstadoReporteInput,
   type FiltroEstadoReporte,
   type FiltrosReportes,
+  type ImagenDelReporteDTO,
+  type ReporteDetalleDatos,
 } from "@/lib/types/reporte-bug";
 
 // SLT-97 (design §3, §4; R2, R4, R5, R7–R11, R17, R18, R20) — el módulo de reportes del superadmin.
@@ -23,6 +28,8 @@ import {
 // La puerta de la action es la primera, no la única: aquí se vuelve a mirar que el actor sea de la
 // plataforma (R2). El constructor solo recibe el repositorio: no hay emisor de correo ni cola, así que
 // un cambio de estado no puede avisar a nadie (R4).
+// SLT-98 (design §7; R22, R23): y el almacén de imágenes, solo para firmar los enlaces del detalle.
+// Sigue sin emisor ni cola.
 //
 // La transición se comprueba DENTRO de la transacción del repositorio, no aquí con una lectura previa:
 // esa ventana dejaría pasar dos cambios a la vez desde dos pestañas (design §4).
@@ -44,7 +51,11 @@ function inicioDelDiaUtc(dia: string): Date {
 }
 
 export class ReportesBugPlataformaService implements IReportesBugPlataformaService {
-  constructor(private readonly repo: IBugReportRepository) {}
+  constructor(
+    private readonly repo: IBugReportRepository,
+    private readonly almacen: IAlmacenImagenesReporte,
+    private readonly log: (linea: string) => void = (linea) => console.error(linea),
+  ) {}
 
   async listar(actor: Actor, filtros: FiltrosReportes): Promise<ListarReportesServiceResult> {
     if (!esPlataforma(actor.rol)) return FORBIDDEN;
@@ -69,11 +80,44 @@ export class ReportesBugPlataformaService implements IReportesBugPlataformaServi
     if (!esPlataforma(actor.rol)) return FORBIDDEN;
     const d = await this.repo.detalle(reporteId);
     if (d === null) return { status: "not_found" };
+    // SLT-98 (design §6): la ruta y la empresa no cruzan al navegador.
+    const { organizacionId, imagenes, ...reporte } = d.reporte;
     return {
       status: "ok",
-      reporte: { ...d.reporte, destinosPermitidos: [...TRANSICIONES_REPORTE[d.reporte.estado]] },
+      reporte: {
+        ...reporte,
+        destinosPermitidos: [...TRANSICIONES_REPORTE[reporte.estado]],
+        imagenes: await this.enlacesDe(reporte.id, organizacionId, imagenes),
+      },
       historial: d.historial,
     };
+  }
+
+  /**
+   * R22, R23. Enlaces nuevos en cada llamada, que vencen en `ENLACE_DETALLE_SEGUNDOS` (P3). El superadmin
+   * no tiene empresa y el adaptador trabaja en la carpeta de la del contexto: se abre con la del reporte,
+   * que sale de la base y no de la entrada (design §7). Un fallo al firmar deja todas las `url` en `null`
+   * y el detalle se pinta igual; una ruta que el almacén no firmó, solo esa.
+   */
+  private async enlacesDe(
+    reporteId: string,
+    organizacionId: string,
+    imagenes: ReporteDetalleDatos["imagenes"],
+  ): Promise<ImagenDelReporteDTO[]> {
+    if (imagenes.length === 0) return [];
+    let firmadas: Record<string, string> = {};
+    try {
+      firmadas = await conEmpresa(organizacionId, () =>
+        this.almacen.firmar(
+          imagenes.map((i) => i.ruta),
+          ENLACE_DETALLE_SEGUNDOS,
+        ),
+      );
+    } catch (e) {
+      const causa = e instanceof Error ? e.name : "desconocido";
+      this.log(`[reportes-bug-plataforma] fallo al firmar imagenes reporte=${reporteId} causa=${causa}`);
+    }
+    return imagenes.map((i) => ({ id: i.id, url: firmadas[i.ruta] ?? null }));
   }
 
   async cambiarEstado(actor: Actor, entrada: CambiarEstadoReporteInput): Promise<CambiarEstadoReporteServiceResult> {

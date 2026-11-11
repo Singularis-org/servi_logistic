@@ -38,6 +38,7 @@ function reporte(extra: Partial<ReporteDetalleDTO> = {}): ReporteDetalleDTO {
     appInstalada: true,
     creadoEn: "2026-11-09T14:05:33.000Z",
     estado: "new",
+    imagenes: [],
     destinosPermitidos: ["in_review", "resolved", "dismissed"],
     ...extra,
   };
@@ -242,5 +243,79 @@ describe("accesibilidad del formulario", () => {
     expect(contador).toHaveAttribute("aria-live", "polite");
     expect(nota).toHaveAttribute("aria-describedby", contador.id);
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Nuevo estado" })).toBeInTheDocument());
+  });
+});
+
+// SLT-98 (T10; design §9.2, §9.3) — el bloque «Imágenes» del detalle.
+describe("SLT-98 R22, R23 — el bloque Imágenes", () => {
+  it("el bloque Imágenes muestra una miniatura por imagen en orden, con alt «Imagen {n} del reporte» y enlace a la URL, y sin imágenes «Este reporte no trae imágenes.»", () => {
+    const urls = ["https://storage.test/a.png?token=1", "https://storage.test/b.jpg?token=2", "https://storage.test/c.webp?token=3"];
+    montar({ reporte: reporte({ imagenes: urls.map((url, i) => ({ id: `img-${i}`, url })) }) });
+    const region = screen.getByRole("region", { name: "Imágenes" });
+
+    const miniaturas = within(region).getAllByRole("img");
+    expect(miniaturas.map((m) => m.getAttribute("alt"))).toEqual([
+      "Imagen 1 del reporte",
+      "Imagen 2 del reporte",
+      "Imagen 3 del reporte",
+    ]);
+    expect(miniaturas.map((m) => m.getAttribute("src"))).toEqual(urls);
+    miniaturas.forEach((m) => expect(m).toHaveAttribute("loading", "lazy"));
+
+    const enlaces = within(region).getAllByRole("link");
+    expect(enlaces.map((a) => a.getAttribute("aria-label"))).toEqual([
+      "Abrir la imagen 1 en grande",
+      "Abrir la imagen 2 en grande",
+      "Abrir la imagen 3 en grande",
+    ]);
+    enlaces.forEach((a, i) => {
+      expect(a).toHaveAttribute("href", urls[i]);
+      expect(a).toHaveAttribute("target", "_blank");
+      expect(a).toHaveAttribute("rel", "noopener noreferrer");
+      expect(a).toContainElement(miniaturas[i]);
+    });
+    expect(within(region).queryByText("Este reporte no trae imágenes.")).not.toBeInTheDocument();
+    cleanup();
+
+    montar({ reporte: reporte({ imagenes: [] }) });
+    const vacia = screen.getByRole("region", { name: "Imágenes" });
+    expect(within(vacia).getByText("Este reporte no trae imágenes.")).toBeInTheDocument();
+    expect(within(vacia).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(vacia).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("una imagen con url null muestra «No se pudo cargar esta imagen.» y el resto del detalle", () => {
+    montar({
+      reporte: reporte({
+        imagenes: [
+          { id: "img-0", url: "https://storage.test/a.png?token=1" },
+          { id: "img-1", url: null },
+          { id: "img-2", url: "https://storage.test/c.webp?token=3" },
+        ],
+      }),
+    });
+    const region = screen.getByRole("region", { name: "Imágenes" });
+    const items = within(region).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(within(items[0]).getByRole("img")).toHaveAttribute("alt", "Imagen 1 del reporte");
+    expect(within(items[1]).getByText("No se pudo cargar esta imagen.")).toBeInTheDocument();
+    expect(within(items[1]).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(items[1]).queryByRole("link")).not.toBeInTheDocument();
+    // La numeración sigue la posición: la tercera es la 3 aunque la 2 falle.
+    expect(within(items[2]).getByRole("img")).toHaveAttribute("alt", "Imagen 3 del reporte");
+    expect(within(items[2]).getByRole("link")).toHaveAttribute("aria-label", "Abrir la imagen 3 en grande");
+
+    // El resto del detalle se pinta igual.
+    expect(screen.getByRole("region", { name: "Descripción" })).toBeInTheDocument();
+    expect(dato("Empresa")).toBe("Acme");
+    expect(screen.getByRole("region", { name: "Estado" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Historial" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Nuevo estado" })).toBeInTheDocument();
+  });
+
+  it("el bloque Imágenes va entre Contexto y Estado", () => {
+    montar();
+    const nombres = screen.getAllByRole("region").map((r) => r.querySelector("h2")?.textContent);
+    expect(nombres).toEqual(["Descripción", "Contexto", "Imágenes", "Estado", "Historial"]);
   });
 });

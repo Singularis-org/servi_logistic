@@ -17,6 +17,8 @@ import { EstadoBadge } from "../../_components/ReportesModule";
 import {
   ETIQUETA_ESTADO,
   fechaUtc,
+  textoAbrirImagenReporte,
+  textoAltImagenReporte,
   textoAutoria,
   textoContadorNota,
   textoDispositivo,
@@ -70,6 +72,10 @@ export function ReporteDetalle({ reporte, historial, cambiarEstado }: ReporteDet
             </div>
           ))}
         </dl>
+      </Bloque>
+
+      <Bloque titulo={T.bloqueImagenes}>
+        <Imagenes imagenes={reporte.imagenes} />
       </Bloque>
 
       <Bloque titulo={T.bloqueEstado}>
@@ -204,6 +210,44 @@ function FormularioEstado({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * SLT-98 (design §9.2; R22, R23): las imágenes en el orden en que llegan (el servidor las manda por
+ * `position`). Cada una abre su enlace firmado en otra pestaña; si no se pudo firmar, su lugar dice que
+ * no se pudo cargar y el resto del detalle se pinta igual. `<img>` y no `next/image`: el enlace es de
+ * Supabase Storage y `next/image` exigiría declarar el dominio en `next.config`.
+ */
+function Imagenes({ imagenes }: { imagenes: ReporteDetalleDTO["imagenes"] }) {
+  if (imagenes.length === 0) return <p className="text-muted-foreground">{T.sinImagenes}</p>;
+
+  return (
+    <ul className="flex flex-wrap gap-3">
+      {imagenes.map((img, i) => {
+        const n = i + 1;
+        return (
+          <li key={img.id} className="size-32">
+            {img.url === null ? (
+              <p className="flex size-full items-center justify-center rounded-md border border-dashed border-border p-2 text-center text-xs text-muted-foreground">
+                {T.imagenSinEnlace}
+              </p>
+            ) : (
+              <a
+                href={img.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={textoAbrirImagenReporte(n)}
+                className="block size-full overflow-hidden rounded-md border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- enlace firmado de Storage, ver arriba */}
+                <img src={img.url} alt={textoAltImagenReporte(n)} loading="lazy" className="size-full object-cover" />
+              </a>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

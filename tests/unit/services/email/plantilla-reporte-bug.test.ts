@@ -97,3 +97,56 @@ describe("SLT-87 · plantilla del correo del reporte (R15, R18)", () => {
     expect(m.text).toContain(`desc ${ataque}`);
   });
 });
+
+// SLT-98 (design §8; R20, R21) — los enlaces de las imágenes.
+describe("SLT-98 · imágenes en el correo del reporte (R20, R21)", () => {
+  const URL1 = "https://storage.test/object/sign/bug-reports/org-1/u-1/a.png?token=uno&x=1";
+  const URL2 = "https://storage.test/object/sign/bug-reports/org-1/u-1/b.jpg?token=dos";
+  const conImagenes = (imagenes: { posicion: number; url: string | null }[]) =>
+    plantillaReporteBug({ to: "soporte@example.test", reporte: BASE, imagenes });
+
+  it("R20 — con dos imágenes, el texto plano lleva «Imágenes (2). Los enlaces vencen en 24 horas:», «Ver imagen 1: <url1>» y «Ver imagen 2: <url2>» en orden, sin adjuntos", () => {
+    const m = conImagenes([
+      { posicion: 1, url: URL1 },
+      { posicion: 2, url: URL2 },
+    ]);
+    const t = m.text;
+    const cabecera = t.indexOf("Imágenes (2). Los enlaces vencen en 24 horas:");
+    const uno = t.indexOf(`Ver imagen 1: ${URL1}`);
+    const dos = t.indexOf(`Ver imagen 2: ${URL2}`);
+    // Detrás de la descripción y antes del contexto.
+    expect(t.indexOf("Pasa desde ayer.")).toBeLessThan(cabecera);
+    expect(cabecera).toBeLessThan(uno);
+    expect(uno).toBeLessThan(dos);
+    expect(dos).toBeLessThan(t.indexOf("Empresa: Envíos Rápidos"));
+    // En HTML: el botón y la URL visible, escapada.
+    const html = m.html ?? "";
+    expect(html).toContain(">Ver imagen 1</a>");
+    expect(html).toContain(">Ver imagen 2</a>");
+    expect(html).toContain(URL1.replace("&", "&amp;"));
+    // Sin adjuntos: solo el logo en línea, y ningún campo de adjuntos.
+    expect(m.imagenesEnLinea?.map((i) => i.cid)).toEqual([CID_LOGO]);
+    expect(m).not.toHaveProperty("attachments");
+  });
+
+  it("R20 — sin imágenes, el correo es idéntico al de SLT-87", () => {
+    const sinCampo = plantillaReporteBug({ to: "soporte@example.test", reporte: BASE });
+    expect(conImagenes([])).toEqual(sinCampo);
+    expect(sinCampo.text).not.toContain("Imágenes");
+    expect(sinCampo.text).not.toContain("Ver imagen");
+    expect(sinCampo.html).not.toContain("Imágenes");
+  });
+
+  it("R21 — una imagen sin url lleva la nota en su lugar", () => {
+    const m = conImagenes([
+      { posicion: 1, url: null },
+      { posicion: 2, url: URL2 },
+    ]);
+    const nota = "Imagen 1: no se pudo generar el enlace. Mírala en el detalle del reporte.";
+    expect(m.text).toContain("Imágenes (2). Los enlaces vencen en 24 horas:");
+    expect(m.text).toContain(nota);
+    expect(m.text).not.toContain("Ver imagen 1");
+    expect(m.text.indexOf(nota)).toBeLessThan(m.text.indexOf(`Ver imagen 2: ${URL2}`));
+    expect(m.html).toContain("Mírala en el detalle del reporte.");
+  });
+});

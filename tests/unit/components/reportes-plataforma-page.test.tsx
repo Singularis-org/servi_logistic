@@ -73,6 +73,7 @@ const DETALLE: ReporteDetalleDTO = {
   creadoEn: "2026-11-09T14:05:00.000Z",
   estado: "new",
   destinosPermitidos: ["in_review", "resolved", "dismissed"],
+  imagenes: [],
 };
 
 const deps = {

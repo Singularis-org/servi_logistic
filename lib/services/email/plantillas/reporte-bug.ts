@@ -13,6 +13,9 @@ import type { BugReportCreado } from "@/lib/types/reporte-bug";
 //
 // La fecha va en UTC y no en la zona de un país: el correo lo lee la plataforma, no una empresa, y
 // `pais-sin-literales` impide fijar una zona en el servidor.
+//
+// SLT-98 (design §8; R20, R21): las imágenes van como enlaces firmados, nunca como adjuntos, detrás de
+// la descripción y antes del contexto. Sin imágenes, ningún bloque nuevo: el correo es el de SLT-87.
 
 const ASUNTO_MAX = 150;
 const PREHEADER_MAX = 90;
@@ -21,6 +24,26 @@ export interface ReporteBugCorreoParams {
   /** Un destinatario de `BUG_REPORT_EMAILS`: un mensaje por dirección. */
   to: string;
   reporte: BugReportCreado;
+  /** SLT-98: en orden; `[]` (o ausente) es un reporte sin imágenes. */
+  imagenes?: ImagenDelCorreo[];
+}
+
+/** SLT-98 (R20, R21): `url` `null` es un enlace que no se pudo generar; lleva un aviso en su lugar. */
+export interface ImagenDelCorreo {
+  posicion: number;
+  url: string | null;
+}
+
+function bloquesDeImagenes(imagenes: ImagenDelCorreo[]): Bloque[] {
+  if (imagenes.length === 0) return [];
+  return [
+    { tipo: "parrafo", texto: `Imágenes (${imagenes.length}). Los enlaces vencen en 24 horas:` },
+    ...imagenes.map(({ posicion, url }): Bloque =>
+      url === null
+        ? { tipo: "nota", texto: `Imagen ${posicion}: no se pudo generar el enlace. Mírala en el detalle del reporte.` }
+        : { tipo: "boton", texto: `Ver imagen ${posicion}`, url },
+    ),
+  ];
 }
 
 /** `AAAA-MM-DD HH:mm UTC`. */
@@ -35,7 +58,7 @@ function dispositivo(r: BugReportCreado): string {
   return partes.length > 0 ? partes.join(" · ") : "Sin datos";
 }
 
-export function plantillaReporteBug({ to, reporte: r }: ReporteBugCorreoParams): EmailMessage {
+export function plantillaReporteBug({ to, reporte: r, imagenes = [] }: ReporteBugCorreoParams): EmailMessage {
   const asunto = `Reporte de un problema · ${r.organizationName} · ${ROL_LABELS[r.reporterRole]}`.slice(0, ASUNTO_MAX);
   const lineasDescripcion: Bloque[] = r.description
     .split(/\r?\n/)
@@ -56,7 +79,12 @@ export function plantillaReporteBug({ to, reporte: r }: ReporteBugCorreoParams):
     to,
     asunto,
     preheader: r.description.slice(0, PREHEADER_MAX),
-    bloques: [{ tipo: "parrafo", texto: `Nuevo reporte de un problema en ${MARCA.nombre}.` }, ...lineasDescripcion, ...contexto],
+    bloques: [
+      { tipo: "parrafo", texto: `Nuevo reporte de un problema en ${MARCA.nombre}.` },
+      ...lineasDescripcion,
+      ...bloquesDeImagenes(imagenes),
+      ...contexto,
+    ],
     contacto: null,
   });
 }
