@@ -56,21 +56,21 @@
   columna; con una cerrada con cuota, o solo con primera cuota, el rollback se niega sin cambiar nada.
 
 ### T3 — Toma del cambio de plan (depende de T2)
-- [ ] **T3.1** `lib/repositories/PlanesRepository.ts`: en `aplicarEnTx`, `factura_plataforma_tomar_cambio` con el
+- [x] **T3.1** `lib/repositories/PlanesRepository.ts`: en `aplicarEnTx`, `factura_plataforma_tomar_cambio` con el
   efecto, el plan y el tipo nuevos, antes del `UPDATE "organizacion"` (design §2.3).
 - **Hecho:** los tests de planes existentes siguen verdes (`pnpm exec vitest related --run
   lib/repositories/PlanesRepository.ts`, salvo los que ajusta T12.3) y ningún cambio aplicado mueve el fin de
   una factura con plan.
 
 ### T4 — Repositorio y proceso (depende de T2) [P con T3]
-- [ ] **T4.1** `lib/types/factura-plataforma.ts` (con `periodicidad`, la cuota y la primera cuota, cada una con su
+- [x] **T4.1** `lib/types/factura-plataforma.ts` (con `periodicidad`, la cuota y la primera cuota, cada una con su
   plan, su tramo y sus días, o `null`) y
   `lib/interfaces/repositories/IFacturaPlataformaRepository.ts`.
-- [ ] **T4.2** `lib/repositories/FacturaPlataformaRepository.ts`: `empresasACerrar`, `cerrar` (design §3). Su
+- [x] **T4.2** `lib/repositories/FacturaPlataformaRepository.ts`: `empresasACerrar`, `cerrar` (design §3). Su
   entrada en `lib/db/excepciones-aislamiento.ts`.
-- [ ] **T4.3** `lib/planes/jobs-factura-plataforma.ts`: handler (R12), recurrencia a los :10, siembra,
+- [x] **T4.3** `lib/planes/jobs-factura-plataforma.ts`: handler (R12), recurrencia a los :10, siembra,
   composition root (design §4).
-- [ ] **T4.4** Registro: `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`,
+- [x] **T4.4** Registro: `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`,
   `scripts/siembra-jobs-recurrentes.ts`.
 - **Hecho:** `pnpm run test:guardias` verde (`plataforma-solo-en-lista`, `sql-a-mano-por-empresa`,
   `modulos-reparto`); typecheck y lint verdes.

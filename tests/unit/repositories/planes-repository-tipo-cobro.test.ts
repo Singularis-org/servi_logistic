@@ -100,7 +100,15 @@ describe("D16 — cambiarTipoCobro deja su acción propia en el historial", () =
     const r = await new PlanesRepository(prisma).cambiarTipoCobro(ORG, "anual", HOY, ACTOR, AHORA);
 
     expect(r).toEqual({ estado: "ok", cambio: true, pendiente: false });
-    expect(executeRaw).toHaveBeenCalledTimes(1);
+    // SLT-118 (design §2.3; R15–R17, R28): dos escrituras, en este orden. Primero las facturas de la plataforma
+    // toman el cambio (empresa, desde, plan, tipo) y DESPUÉS se actualiza la empresa: la función distingue una
+    // primera asignación por `plan_id IS NULL`, que el UPDATE ya no dejaría ver.
+    expect(executeRaw).toHaveBeenCalledTimes(2);
+    const llamadas = executeRaw.mock.calls as unknown as [TemplateStringsArray, ...unknown[]][];
+    const [toma, ...valoresDeToma] = llamadas[0];
+    expect(toma.join("?")).toContain("factura_plataforma_tomar_cambio(");
+    expect(valoresDeToma).toEqual([ORG, "2026-11-03 06:00:00.000", PLAN, "anual"]);
+    expect(llamadas[1][0].join("?")).toContain('UPDATE "organizacion"');
     expect(createMany).toHaveBeenCalledTimes(1);
     const { data } = (createMany.mock.calls[0] as unknown as [{ data: Record<string, unknown>[] }])[0];
     expect(data).toHaveLength(1);

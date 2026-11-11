@@ -64,3 +64,31 @@ integración), `tests/unit/api/procesar-jobs-registro.test.ts`, `tests/unit/serv
 y T3.1 pone rojo `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (cuenta 1 `$executeRaw`, ahora 2).
 
 Verificación: typecheck verde; eslint de los 11 archivos verde; `test:guardias` 8 rojos = 4 baseline + 4 del bloqueo.
+
+## Tanda 4 — rama verde y cuota prevista igual a `cerrar`
+Subagente: `backend_dev`.
+
+Archivos:
+- `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`, `tests/unit/api/procesar-jobs-registro.test.ts`,
+  `tests/unit/services/jobs-registro.test.ts`, `tests/integration/api/procesar-jobs-geocodificacion.test.ts`
+  (size 4 → 5 y `has`), `tests/integration/api/procesar-jobs-webhook-estado.test.ts` (lista en orden de inserción):
+  `factura_plataforma_cerrar` en los censos EXACTOS de handlers y recurrencias.
+- `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`: el tipo en el censo; `MAS_TARDE_POR_TIPO` =
+  16:09:59.999 (desde 16:00 la ventana es la corrida de las 16:10); la prueba de idempotencia contra Postgres
+  (`factura-plataforma-cierre.test.ts`, `sembrarCierreFacturas`) en el frente 4.
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: 2 `$executeRaw`, en orden: primero
+  `factura_plataforma_tomar_cambio(` con `[empresa, desde, plan, tipo]` y después `UPDATE "organizacion"`.
+- `tests/integration/db/factura-plataforma-cierre.test.ts` (nuevo, solo un `it`; T6.1 lo completa): sembrar dos
+  veces en la misma ventana (10:01 y 10:09) y re-agendar dejan UNA fila (`contarJobs`); clave `…:2026-11-01T10`.
+- `db/migrations/20261111130100_factura_plataforma/migration.sql` (decisión 2026-11-11, design §2.6): en
+  `factura_plataforma_en_curso`, sin pendiente con efecto ≤ fin, la cuota prevista usa el plan de la factura
+  siguiente N (`desde` = fin, la misma consulta que `cerrar`); si N no existe (la en curso), el que `abrir` le
+  copiará: el vigente de la empresa. Inline, sin función nueva (una función obligaría a tocar `down.sql`).
+
+Verificación (2026-11-11, implementer): typecheck verde; eslint de los 8 tests verde; `test:guardias` 4 rojos, todos
+de `dependencias-declaradas-presentes` (baseline), 4808 pasan; los 5 tests de registro/repositorio tocados 25/25
+verdes; `vitest related` lote 1 (5 archivos de `lib/` de facturas y planes) 18 archivos verdes, 38 skipped; lote 2
+(`route.ts`, `excepciones-aislamiento`, `modelos-de-negocio`, `reparto`): rojos solo en 4 archivos del baseline
+(`habilitacion-api-migration`, `vista-filtro-migration`, `premio-ranking-devengo-migration`,
+`orden-traspaso-migration`) y 2 timeouts de 20 s por carga en `CierresDescargaColumnas` y `SatelitePaginacion`
+(componentes, ajenos al diff). La integración contra Postgres corre en CI.

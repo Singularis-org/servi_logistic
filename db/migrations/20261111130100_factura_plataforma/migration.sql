@@ -515,7 +515,9 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_cerrar(text, timestamp) FROM PUBLI
 -- las órdenes hasta ahora y las dos cuotas previstas, cada una nula si no la llevará:
 --   · `primera_cuota_prevista`: con marca, con el plan de la factura con `desde` = la marca (como el cierre);
 --   · `cuota_prevista`: la de la emisión en su fin, con el plan del cambio pendiente de la empresa si su
---     efecto es ese fin o antes; si no, con el vigente de la empresa.
+--     efecto es ese fin o antes; si no, con el MISMO plan que usará `cerrar` (humano, 2026-11-11): el de la
+--     factura siguiente N (`desde` = ese fin, la misma consulta que `cerrar`). Si N aún no existe (la factura
+--     es la en curso), el que `abrir` le copiará al abrirla: el vigente de la empresa.
 -- Sin número (R24).
 CREATE FUNCTION factura_plataforma_en_curso(p_org text) RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -525,6 +527,7 @@ DECLARE
   v_org      record;
   v_f        "factura_plataforma";
   v_p        "factura_plataforma";
+  v_n        "factura_plataforma";
   v_hasta    timestamp;
   v_plan_id  text;
   v_tipo     text;
@@ -555,8 +558,16 @@ BEGIN
       v_plan_id := v_org."plan_cambio_plan_id";
       v_tipo := v_org."plan_cambio_tipo_cobro";
     ELSE
-      v_plan_id := v_org."plan_id";
-      v_tipo := CASE WHEN v_org."plan_id" IS NOT NULL THEN v_org."plan_tipo_cobro" END;
+      -- Como `cerrar`: el plan de N. Sin fila, `v_n` queda en nulos y se usa lo que `abrir` copiaría.
+      SELECT * INTO v_n FROM "factura_plataforma" f
+       WHERE f."organizacion_id" = p_org AND f."desde_at" = v_hasta;
+      IF v_n."id" IS NOT NULL THEN
+        v_plan_id := v_n."plan_id";
+        v_tipo := v_n."tipo_cobro";
+      ELSE
+        v_plan_id := v_org."plan_id";
+        v_tipo := CASE WHEN v_org."plan_id" IS NOT NULL THEN v_org."plan_tipo_cobro" END;
+      END IF;
     END IF;
     SELECT * INTO v_c FROM factura_plataforma_cuota(p_org, v_hasta, v_plan_id, v_tipo, false);
     v_lista := v_lista || jsonb_build_array(jsonb_build_object(
