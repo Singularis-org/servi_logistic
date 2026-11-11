@@ -49,6 +49,8 @@ import { puedeReportarIncidenteSatelite } from "./incidente-satelite";
 import { recibidasColumns } from "./recibidas-columns";
 import { columnasDescargaSatelite } from "./satelite-descarga-columnas";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { nivelDeClave, traductorPorId } from "@/lib/utils/filtro-ubicacion";
 import {
   CLAVE_ESTADO,
   construirFiltrosSatelite,
@@ -87,6 +89,9 @@ import {
 export const TITULO_BODEGA = "Órdenes de la bodega";
 
 /** Estados sobre los que cada acción de lote es válida. */
+/** SLT-47 (design §5.1): `lugar_id` y los enlaces viejos a las listas de nivel. Estable: de módulo. */
+const TRADUCTOR_LUGAR = traductorPorId();
+
 const ESTADO_ASIGNABLE = "en_bodega_satelite";
 /** Feature 149 (R35): asignada a un mensajero que aún NO la recogió; la asignación se deshace. */
 const ESTADO_POR_RECOGER = "mensajero_recogiendo_en_bodega";
@@ -260,6 +265,8 @@ export function SateliteOrdenesListado({
 }: Readonly<SateliteOrdenesListadoProps>) {
   // SL-20 (R19): columnas, filtros y descarga con los nombres de nivel del país de la empresa.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-47: los niveles del país, para declarar sus listas aunque el catálogo no haya llegado.
+  const nivelesGeograficos = useNivelesGeograficos();
   const [seleccion, setSeleccion] = useState<FilterSelection>({});
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
 
@@ -299,15 +306,22 @@ export function SateliteOrdenesListado({
       construirFiltrosSatelite(catalogo ?? CATALOGO_FILTROS_VACIO, {
         estatus,
         etiquetas,
+        niveles: nivelesGeograficos,
       }).map((f) =>
         catalogo === null && f.key !== CLAVE_ESTADO ? { ...f, disabled: true } : f,
       ),
-    [catalogo, estatus, etiquetas],
+    [catalogo, estatus, etiquetas, nivelesGeograficos],
   );
 
   /** Lo que ofrece el selector de la barra: cada filtro declarado, por su clave y su etiqueta. */
   const filtrosOfrecidos = useMemo(
-    () => filtros.map((f) => ({ key: f.key, label: f.label })),
+    () =>
+      filtros.map((f) =>
+        // SLT-47: las listas de lugar llevan sus opciones para el traductor de la URL.
+        nivelDeClave(f.key) === null
+          ? { key: f.key, label: f.label }
+          : { key: f.key, label: f.label, options: f.options },
+      ),
     [filtros],
   );
 
@@ -722,6 +736,7 @@ export function SateliteOrdenesListado({
             // "Limpiar todo" lo pone la barra al final de la fila, igual que en `/ordenes`.
             onLimpiarTodo={limpiarFiltros}
             hayFiltrosAplicados={filtrosActivos.length > 0 || hayFiltros}
+            traductorUrl={TRADUCTOR_LUGAR}
           >
             {filtrosMontados.length > 0 ? (
               <FilterComponent
@@ -729,6 +744,7 @@ export function SateliteOrdenesListado({
                 filters={filtrosMontados}
                 onChange={cambiarFiltros}
                 debounceMs={0}
+                traductorUrl={TRADUCTOR_LUGAR}
               />
             ) : null}
           </BuscadorFiltros>

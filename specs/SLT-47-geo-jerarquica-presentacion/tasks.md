@@ -86,7 +86,7 @@
 
 ## T4 — `/ordenes`, recepción satélite y analítica (frontend_dev) · depende de T2.3, T3
 
-- [ ] **T4.1** [P] `/ordenes` y satélite:
+- [x] **T4.1** [P] `/ordenes` y satélite:
   - `ordenes-filtros-def.ts`, `seleccion-a-filter.ts` y `satelite-ordenes-filtros.ts`;
   - el traductor en `OrdenesListado.tsx` y `SateliteOrdenesListado.tsx`.
 

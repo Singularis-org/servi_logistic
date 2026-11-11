@@ -168,17 +168,15 @@ const ORDENES: RecepcionSateliteDTO[] = [
  */
 function filtrarComoElServidor(
   ordenes: RecepcionSateliteDTO[],
-  input: { estados?: string[]; canton_id?: string[]; distrito_id?: string[] } = {},
+  input: { estados?: string[]; lugar_id?: string[] } = {},
 ): RecepcionSateliteDTO[] {
   return ordenes.filter((orden) => {
     if (input.estados?.length && !input.estados.includes(orden.estatusValue)) return false;
     // Pedido humano (2026-08-19): la geografia viaja por ID; en este andamiaje el id de un
     // canton es su nombre (ver `catalogoSatelite`).
-    if (input.canton_id?.length && !input.canton_id.includes(orden.cantonNombre)) return false;
-    if (input.distrito_id?.length) {
-      if (orden.distritoNombre === null) return false;
-      if (!input.distrito_id.includes(orden.distritoNombre)) return false;
-    }
+    // SLT-47: el lugar viaja como `lugar_id` (el nivel mas hondo elegido): la orden entra si su
+    // provincia, su canton o su distrito es uno de esos ids.
+    if (input.lugar_id?.length && ![orden.provinciaNombre, orden.cantonNombre, orden.distritoNombre].some((id) => id !== null && input.lugar_id?.includes(id))) return false;
     return true;
   });
 }
@@ -409,7 +407,7 @@ describe("Órdenes de la bodega satélite · descarga", () => {
     const [entrada] = completoMock.mock.calls[0] as [Record<string, unknown>];
     expect(entrada).toEqual({
       estados: ["en_bodega_satelite"],
-      canton_id: ["Pococí"],
+      lugar_id: ["Pococí"],
     });
     // Y el recorte de página NO contamina la lectura del conjunto: pedir `page`/`pageSize`
     // aquí sería descargar una página con otro nombre (y el borde lo rechazaría, R17).

@@ -24,17 +24,15 @@ describe("seleccionAFilter — filtros de catalogo (R58)", () => {
       // publica se eligio IGUAL a la del borde, asi que aqui tambien es la identidad.
       mensajero_id: ["m1"],
       tienda_id: ["t1"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      nivel_1: ["p1"],
+      nivel_2: ["c1"],
+      nivel_3: ["d1"],
     });
     expect(filter).toEqual({
       zona_id: ["z1", "z2"],
       mensajero_id: ["m1"],
       tienda_id: ["t1"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"],
     });
     expect(aceptadoPorElBorde(filter)).toBe(true);
   });

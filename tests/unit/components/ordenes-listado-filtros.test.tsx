@@ -576,15 +576,14 @@ describe("OrdenesListado — cadena geográfica en el cliente (R57)", () => {
     await marcar(user, "Cantón", "Escazú");
     await waitFor(() =>
       expect(ultimoFilter()).toEqual({
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
+        lugar_id: ["c1"],
       }),
     );
 
     await marcar(user, "Provincia", "Alajuela");
     await marcar(user, "Provincia", "San José");
 
-    await waitFor(() => expect(ultimoFilter()).toEqual({ provincia_id: ["p2"] }));
+    await waitFor(() => expect(ultimoFilter()).toEqual({ lugar_id: ["p2"] }));
   });
 });
 

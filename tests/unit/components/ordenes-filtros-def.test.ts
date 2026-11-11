@@ -67,9 +67,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
       "zona_id",
       "mensajero_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
     ]);
@@ -80,9 +80,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
       "q",
       "zona_id",
       "mensajero_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
     ]);
@@ -102,9 +102,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
       "zona_id",
       "mensajero_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
     ]) {
       expect(porClave(clave).kind).toBe("multi");
     }
@@ -113,9 +113,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
   it("R55: cada filtro lleva su etiqueta visible", () => {
     expect(porClave("zona_id").label).toBe("Zona");
     expect(porClave("tienda_id").label).toBe("Tienda");
-    expect(porClave("provincia_id").label).toBe("Provincia");
-    expect(porClave("canton_id").label).toBe("Cantón");
-    expect(porClave("distrito_id").label).toBe("Distrito");
+    expect(porClave("nivel_1").label).toBe("Provincia");
+    expect(porClave("nivel_2").label).toBe("Cantón");
+    expect(porClave("nivel_3").label).toBe("Distrito");
     expect(porClave("created").label).toBe("Fecha de creación");
     expect(porClave("mensajero_id").label).toBe("Mensajero");
   });
@@ -130,8 +130,8 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
 
 describe("construirFiltrosOrdenes — cadena geografica declarada (R56)", () => {
   it("R56: canton depende de provincia y distrito depende de canton", () => {
-    expect(porClave("canton_id").dependsOn).toBe("provincia_id");
-    expect(porClave("distrito_id").dependsOn).toBe("canton_id");
+    expect(porClave("nivel_2").dependsOn).toBe("nivel_1");
+    expect(porClave("nivel_3").dependsOn).toBe("nivel_2");
   });
 
   it("el filtro de MENSAJERO depende de la ZONA, como el canton de la provincia", () => {
@@ -150,11 +150,11 @@ describe("construirFiltrosOrdenes — cadena geografica declarada (R56)", () => 
   it("R56: zona, tienda y provincia NO dependen de nadie", () => {
     expect(porClave("zona_id").dependsOn).toBeUndefined();
     expect(porClave("tienda_id").dependsOn).toBeUndefined();
-    expect(porClave("provincia_id").dependsOn).toBeUndefined();
+    expect(porClave("nivel_1").dependsOn).toBeUndefined();
   });
 
   it("R56: cada canton lleva su provincia como `parentValue`", () => {
-    expect(porClave("canton_id").options).toEqual([
+    expect(porClave("nivel_2").options).toEqual([
       { value: "c1", label: "Central", parentValue: "p1" },
       { value: "c2", label: "Escazú", parentValue: "p1" },
       { value: "c3", label: "Alajuela Central", parentValue: "p2" },
@@ -162,7 +162,7 @@ describe("construirFiltrosOrdenes — cadena geografica declarada (R56)", () => 
   });
 
   it("R56: cada distrito lleva su canton como `parentValue`", () => {
-    expect(porClave("distrito_id").options).toEqual([
+    expect(porClave("nivel_3").options).toEqual([
       { value: "d1", label: "Carmen", parentValue: "c1" },
       { value: "d2", label: "San Rafael", parentValue: "c2" },
     ]);
@@ -282,9 +282,9 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
       "q",
       "zona_id",
       "mensajero_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
     ]);
   });
@@ -309,9 +309,9 @@ describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
       "q",
       "zona_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
     ]);
@@ -327,7 +327,7 @@ describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
 describe("SL-20/R19 — los filtros geográficos llevan los nombres de nivel del país de la empresa", () => {
   it("con un país de prueba, «Departamento», «Municipio» y «Aldea», con su buscador", () => {
     const defs = construirFiltrosOrdenes(CATALOGO, { incluirTienda: true, etiquetas: ETIQUETAS_XA });
-    const geo = ["provincia_id", "canton_id", "distrito_id"].map((k) => defs.find((f) => f.key === k));
+    const geo = ["nivel_1", "nivel_2", "nivel_3"].map((k) => defs.find((f) => f.key === k));
     expect(geo.map((f) => f?.label)).toEqual(["Departamento", "Municipio", "Aldea"]);
     expect(geo.map((f) => f?.searchPlaceholder)).toEqual([
       "Buscar departamento…",

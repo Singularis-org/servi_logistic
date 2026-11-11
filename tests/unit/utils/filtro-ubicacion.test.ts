@@ -93,7 +93,7 @@ describe("R6 — en Costa Rica, los mismos controles de lugar que hoy, campo a c
     distrito: { singular: "Distrito", plural: "Distritos" },
   };
   const deHoy = construirFiltrosOrdenes(cat, { incluirTienda: false, incluirZona: false, etiquetas, ahora: new Date("2026-11-11T12:00:00Z") }).filter(
-    (d) => ["provincia_id", "canton_id", "distrito_id"].includes(d.key),
+    (d) => ["nivel_1", "nivel_2", "nivel_3"].includes(d.key),
   );
   const nuevos = declararNiveles({
     niveles: [1, 2, 3].map((k) => ({ profundidad: k, singular: [etiquetas.provincia, etiquetas.canton, etiquetas.distrito][k - 1].singular, plural: "" })),
@@ -114,7 +114,7 @@ describe("R6 — en Costa Rica, los mismos controles de lugar que hoy, campo a c
   });
 
   it("el mismo encadenado: cada lista depende de la del nivel de arriba", () => {
-    const traduccion: Record<string, string> = { provincia_id: "nivel_1", canton_id: "nivel_2", distrito_id: "nivel_3" };
+    const traduccion: Record<string, string> = { nivel_1: "nivel_1", nivel_2: "nivel_2", nivel_3: "nivel_3" };
     expect(nuevos.map((d) => d.dependsOn)).toEqual(deHoy.map((d) => (d.dependsOn === undefined ? undefined : traduccion[d.dependsOn])));
   });
 });

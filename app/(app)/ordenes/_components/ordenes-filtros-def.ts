@@ -1,6 +1,7 @@
 import type { FilterDef } from "@/components/shared/FilterComponent";
-import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
+import { declararNiveles, type OpcionesDeLugar } from "@/lib/utils/filtro-ubicacion";
 import {
   BUSQUEDA_MIN_CHARS,
   SALIO_A_REPARTO_VALORES,
@@ -210,6 +211,12 @@ export function construirFiltrosOrdenes(
      * geográfico sin nombre de su país no se puede declarar.
      */
     etiquetas: EtiquetasGeograficas;
+    /**
+     * SLT-47 (design §5.4): los niveles del pais de la empresa que da el layout
+     * (`useNivelesGeograficos`). Solo se usan si el catalogo no trae los suyos (catalogo caido o en
+     * vuelo): asi la barra sigue mostrando las listas de su pais, deshabilitadas, como hoy (R64).
+     */
+    niveles?: readonly NivelDeFiltroDTO[];
     ahora?: Date;
   },
 ): FilterDef[] {
@@ -354,37 +361,10 @@ export function construirFiltrosOrdenes(
     ...zona,
     ...mensajero,
     ...tienda,
-    {
-      key: "provincia_id",
-      label: etiquetas.provincia.singular,
-      kind: "multi",
-      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
-      options: cat.provincias.map((p) => ({ value: p.id, label: p.nombre })),
-    },
-    {
-      key: "canton_id",
-      label: etiquetas.canton.singular,
-      kind: "multi",
-      dependsOn: "provincia_id", // R56: la cadena se declara, no se programa
-      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
-      options: cat.cantones.map((c) => ({
-        value: c.id,
-        label: c.nombre,
-        parentValue: c.padreId,
-      })),
-    },
-    {
-      key: "distrito_id",
-      label: etiquetas.distrito.singular,
-      kind: "multi",
-      dependsOn: "canton_id",
-      searchPlaceholder: `Buscar ${etiquetas.distrito.singular.toLowerCase()}…`,
-      options: cat.distritos.map((d) => ({
-        value: d.id,
-        label: d.nombre,
-        parentValue: d.padreId,
-      })),
-    },
+    // SLT-47 (design §5.1; R1, R6): una lista por nivel del pais, en el MISMO sitio de la barra donde
+    // estaban provincia, canton y distrito. En Costa Rica son esas tres, con los mismos rotulos,
+    // textos de busqueda, opciones y encadenado; solo cambia la clave interna (`nivel_<k>`).
+    ...declararNiveles(opcionesDeLugarDelCatalogo(cat, { etiquetas, niveles: opts.niveles })),
     {
       // UN solo filtro de tiempo (decision (p)): los atajos son ajustes rapidos del
       // rango, dentro del propio calendario.
@@ -409,6 +389,43 @@ export function construirFiltrosOrdenes(
     // distraido mientras se afina una busqueda.
     ...eliminados,
   ];
+}
+
+/**
+ * SLT-47 (design §4.1, §5.1) — los niveles y lugares del filtro de lugar a partir del catalogo.
+ *
+ * Los niveles salen, por este orden, de:
+ *   1. el catalogo (`niveles`, de los tipos del pais; `FiltrosOrdenesService` los emite siempre);
+ *   2. los del layout (`opts.niveles`), si el catalogo no los trae: catalogo caido, en vuelo, o el
+ *      rol de zona sin zona asignada (que recibe `niveles: []`);
+ *   3. las etiquetas de tres niveles, si tampoco hay esos: es lo que la barra rotulaba hasta hoy, y
+ *      lo que ven las superficies montadas sin proveedor (tests, sesion sin empresa).
+ * Asi, en cualquiera de esos casos la barra declara las mismas listas, sin opciones, que hoy (R64).
+ *
+ * Los lugares: `cat.lugares` o, si no llegan, las tres listas planas (`provincias`, `cantones`,
+ * `distritos`) como niveles 1, 2 y 3, en su orden.
+ */
+export function opcionesDeLugarDelCatalogo(
+  cat: CatalogoFiltrosOrdenesDTO,
+  opts: { etiquetas: EtiquetasGeograficas; niveles?: readonly NivelDeFiltroDTO[] },
+): OpcionesDeLugar {
+  const { etiquetas } = opts;
+  const niveles: readonly NivelDeFiltroDTO[] =
+    cat.niveles !== undefined && cat.niveles.length > 0
+      ? cat.niveles
+      : opts.niveles !== undefined && opts.niveles.length > 0
+        ? opts.niveles
+        : [etiquetas.provincia, etiquetas.canton, etiquetas.distrito].map((e, i) => ({
+            profundidad: i + 1,
+            singular: e.singular,
+            plural: e.plural,
+          }));
+  const lugares: OpcionesDeLugar["lugares"] = cat.lugares ?? [
+    ...cat.provincias.map((p) => ({ id: p.id, nombre: p.nombre, padreId: null, profundidad: 1 })),
+    ...cat.cantones.map((c) => ({ id: c.id, nombre: c.nombre, padreId: c.padreId, profundidad: 2 })),
+    ...cat.distritos.map((d) => ({ id: d.id, nombre: d.nombre, padreId: d.padreId, profundidad: 3 })),
+  ];
+  return { niveles, lugares };
 }
 
 /** Catalogo vacio: barra montada pero sin opciones cuando el catalogo no cargo (R64). */

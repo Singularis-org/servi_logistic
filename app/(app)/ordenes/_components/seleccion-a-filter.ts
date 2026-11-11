@@ -3,6 +3,7 @@ import type { OrdenFilterInput } from "@/lib/types/orden";
 
 import { BOOLEAN_MARCADO } from "@/components/shared/FilterComponent";
 import { SALIO_A_REPARTO_VALORES } from "@/lib/types/orden";
+import { nivelDeClave, seleccionALugar } from "@/lib/utils/filtro-ubicacion";
 
 import {
   CLAVE_BUSQUEDA,
@@ -32,13 +33,16 @@ import {
  *   manda `[]`;
  * - **preset + rango juntos es `validation_error`** (R40): el atajo gana la terna
  *   por construccion (el control ya los hace excluyentes, R10);
- * - las fechas viajan como `YYYY-MM-DD`, sin hora: los instantes se rechazan (R43).
+ * - las fechas viajan como `YYYY-MM-DD`, sin hora: los instantes se rechazan (R43);
+ * - SLT-47 (R9): el lugar viaja como UN solo `lugar_id`, con los ids de la lista de nivel mas honda
+ *   con eleccion (`seleccionALugar`). Las claves `nivel_<k>` son internas de la barra y no viajan.
  */
 export function seleccionAFilter(sel: FilterSelection): Partial<OrdenFilterInput> {
-  const out: Record<string, unknown> = {};
+  const out: Record<string, unknown> = { ...seleccionALugar(sel) };
 
   for (const [key, values] of Object.entries(sel)) {
     if (!values || values.length === 0) continue; // R32: jamas una lista vacia
+    if (nivelDeClave(key) !== null) continue; // SLT-47: ya van en `lugar_id`
 
     if (key === CLAVE_CREACION) {
       const [atajo = "", desde = "", hasta = ""] = values;
