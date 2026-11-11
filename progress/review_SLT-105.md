@@ -122,3 +122,10 @@ El código y los tests de C1 están bien: partición por conciliación correcta 
 filtro de empresa escrito y probado con dos empresas, mutaciones reaplicadas por el reviewer en ROJO
 (`<` → `<=` y quitar `organizacion_id`), pantalla intermedia coherente (R136). B1 se levanta sin otra
 vuelta si los E2E salen verdes sin tocar ningún spec.
+
+## Cierre (leader, 2026-11-11)
+
+- B1 levantado: E2E `dinero` 95 passed / 0 failed (`E2E_EXIT_DINERO=0`) y `dos-empresas-humo` 18 passed (`E2E_EXIT_HUMO=0`), sin tocar ningún spec (c5b36997, `progress/impl_SLT-105.md` «Tanda 2»). Criterio de la propia review: se levanta sin otra vuelta.
+- m1 hecho (solo comentarios). m2 aplicado al exportar.
+
+**Veredicto final: OK.**
