@@ -110,7 +110,7 @@
   - R7 y R13 en verde;
   - `e2e/mis-asignaciones.spec.ts` en verde;
   - la latencia de la lista del mensajero antes y después, anotada.
-- [ ] **T5.2** [P] Novedades: `novedades-filtros.ts`, `NovedadesFiltrosBarra.tsx` y
+- [x] **T5.2** [P] Novedades: `novedades-filtros.ts`, `NovedadesFiltrosBarra.tsx` y
   `useNovedadesFiltro.ts`. Test: `novedades-filtros-lugar.test.ts`; `novedades-filtros.test.ts`
   ajustado.
   **Hecho:** R8, R13 y R19 en verde.

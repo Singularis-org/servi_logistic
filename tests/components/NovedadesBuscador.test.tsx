@@ -362,6 +362,7 @@ describe("los filtros de /novedades", () => {
       "Zona",
       "Provincia",
       "Cantón",
+      "Distrito",
       "Causa de devolución",
     ]);
   });

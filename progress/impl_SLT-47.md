@@ -651,3 +651,7 @@ Se quitó a modo de prueba (niveles = catálogo → layout → `[]`) y se revirt
 - `pnpm run typecheck`: limpio. `eslint` sobre los archivos tocados: 0 errores y 2 warnings anteriores (`_k`/`_d` en `sinClaves`, `filtro-ubicacion.test.ts`).
 
 Veredicto: arreglos 1 y 2 hechos y en verde; el 3 no se ha aplicado porque supera el umbral de fixtures y queda pendiente de decisión.
+
+## T5.2 cierre (2026-11-11, autorización `96a1dfe7`)
+
+- `tests/components/NovedadesBuscador.test.tsx:364-365`: se inserta solo `"Distrito",` entre `"Cantón",` y `"Causa de devolución",` (R8). Resultado: 11/11 en verde.
