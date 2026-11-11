@@ -102,3 +102,24 @@ la partición. Fuera de baseline: 0 rojos. (En la primera corrida, antes de T3, 
 - T0 (medición en prod) y T6 (restricción de promoción: C1 y C2 a `prod` juntas).
 
 **Veredicto:** T1-T5 hechas; partición por conciliación probada contra Postgres real con 6/6 mutaciones rojas, E2E y gate en verde.
+
+## Tanda 2 — levantar la review (B1, m1, m2) (backend_dev, 2026-11-11)
+
+**m1 (solo comentarios):** la cabecera de `findHistoricoCompleto` ya no dice «UNA consulta»: dice que el
+`count` no viaja y que antes del `findMany` se lee el conjunto de incompletos (son dos sentencias). La de
+`listarPendientesCierresBodegaCompleto` (servicio) cuenta los recibidos incompletos en el tamaño de la cola.
+
+**m2:** el `DATABASE_URL` se exporta sin las comillas del `.env`: se parsea con `new URL` dentro de un
+script que no imprime nada y se cambia solo el nombre de la base.
+
+**B1 — E2E en local.** `next build` (`BUILD_EXIT=0`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`) y Playwright,
+que levanta `next start`. No había ningún otro servidor en 3000. Cada corrida usó una base desechable NUEVA
+(`migrate deploy` + `db:seed`): `slt105_b1_dinero` para el grupo `dinero` y `slt105_b1_humo` para la de humo.
+`E2E_EXIT` va escrito dentro del log.
+
+| Corrida | Spec (passed / failed) | Total | E2E_EXIT |
+|---|---|---|---|
+| `--project=dinero` (grupo entero) | ajuste-pago-mensajero-cierre 2/0 · cierre-bodega-satelite 4/0 · cierre-dia 2/0 · cierre-modelo-nuevo-plan-porcentual 9/0 · cierre-vencido-modelo 5/0 · cierres-admin 3/0 · cierres-admin-rechazos-sla 1/0 · cierres-rediseno 10/0 · fulfillment-cobro-por-paquete 3/0 · incentivo-mensajero-slt68 4/0 · mi-wallet 3/0 · planes-costo-porcentual 5/0 · reglas-bloqueos-cierre 5/0 · tarifas-activacion 9/0 · tarifas-valor-propio-mensajero 11/0 · tope-intentos-por-empresa 12/0 · wallet 4/0 · wallet-mensajeros 3/0 | 95 passed, 0 failed, 0 flaky | `E2E_EXIT_DINERO=0` |
+| `e2e/dos-empresas-humo.spec.ts --project=aislamiento` (con su dependencia `plataforma-vacia`) | dos-empresas-humo 8/0 · superadmin-arranque 3/0 · superadmin-empresas 7/0 | 18 passed, 0 failed | `E2E_EXIT_HUMO=0` |
+
+No se tocó ningún spec.

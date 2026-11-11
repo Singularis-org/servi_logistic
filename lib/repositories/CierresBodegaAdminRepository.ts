@@ -342,8 +342,10 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    *
    * Es `findHistoricoPaginado` sin `skip`/`take` y sin el `count`: MISMO `historicoBodegaWhere` y
    * MISMO `ORDEN_CIERRES_BODEGA_ADMIN` (R16), de una sola declaracion cada uno, para que la
-   * pagina N sea el segmento N de este conjunto (R5). UNA consulta y ninguna mas (R15): el
-   * `count` de la pagina no viaja aqui, porque el total de un conjunto sin recorte es su longitud.
+   * pagina N sea el segmento N de este conjunto (R5). Sin el `count` de la pagina (R15): el total
+   * de un conjunto sin recorte es su longitud. Desde SLT-105 son DOS sentencias: antes del
+   * `findMany` se lee el conjunto de recibidos incompletos (`idsRecibidosIncompletos`), que es
+   * lo que decide el corte.
    */
   async findHistoricoCompleto(
     filtros?: FiltrosCierresBodegaRepo,
