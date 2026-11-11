@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accionBodegaDe,
   accionesFilaDe,
   columnasCola,
+  faltaResaltada,
   fechaCola,
+  folioBodegaCola,
   folioCola,
   pagoEntregadoDe,
+  recibidoCola,
   senalesDe,
+  tablistCola,
 } from "@/components/private/cierres/cola/cola-cierres-vista";
 import { descripcionCola } from "@/components/private/cierres/cola/cola-cierres-labels";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
@@ -271,5 +276,80 @@ describe("descripcionCola (R106)", () => {
     expect(descripcionCola("satelite", null)).toBe(
       "Bodega satélite. Revisa el cierre de cada mensajero de tu bodega y apruébalo o recházalo.",
     );
+  });
+});
+
+// ═══ SLT-127 «Cola de bodega de la central con la cola única» (T1.3) ════════════════════════════
+// Esperados escritos a mano (canvas, rama bodega · central); ninguno sale de la función probada.
+
+describe("columnasCola · bodega central (R44, R129)", () => {
+  const BODEGA = [
+    "Folio",
+    "Bodega",
+    "Solicitó",
+    "Solicitado",
+    "Cierres",
+    "Debe llegar",
+    "Recibido",
+    "Falta",
+    "Estado",
+    "Acciones",
+  ];
+
+  it.each(["pendientes", "resueltos"] as const)("las 9 columnas + acciones, en orden (%s)", (p) => {
+    const cols = columnasCola("bodega", "central", p);
+    expect(rotulos(cols)).toEqual(BODEGA);
+    expect(cols.filter((c) => c.align === "right").map((c) => c.label)).toEqual([
+      "Cierres",
+      "Debe llegar",
+      "Recibido",
+      "Falta",
+    ]);
+    expect(cols.at(-1)).toMatchObject({ id: "acciones", soloLector: true });
+  });
+
+  it("la rama mensajero no gana columnas de bodega (R135)", () => {
+    expect(ids(columnasCola("mensajero", "central", "pendientes"))).not.toContain("debeLlegar");
+  });
+});
+
+describe("celdas de bodega (R127, R129, R130)", () => {
+  it("tablist por tipo", () => {
+    expect(tablistCola("mensajero")).toBe("Cierres del día por estado");
+    expect(tablistCola("bodega")).toBe("Cierres de bodega por estado");
+  });
+
+  it("folio: «#» + los 8 últimos del id, en mayúsculas", () => {
+    expect(folioBodegaCola({ cierreBodegaId: "0f3c9a2e-1b44-4d0a-9e77-5b2c8f2a7d3e" })).toBe(
+      "#8F2A7D3E",
+    );
+  });
+
+  it("Recibido: «nulo» sin marca, y el string del servidor tal cual con ella (R71)", () => {
+    expect(recibidoCola({ montoRecibido: null })).toEqual({ tipo: "nulo" });
+    expect(recibidoCola({ montoRecibido: "334100.00" })).toEqual({
+      tipo: "monto",
+      monto: "334100.00",
+    });
+    expect(recibidoCola({ montoRecibido: "0.00" })).toEqual({ tipo: "monto", monto: "0.00" });
+  });
+
+  it.each([
+    ["15000.00", true],
+    ["0.00", false],
+    ["-500.00", false],
+  ])("Falta %s resaltada: %s", (falta, esperado) => {
+    expect(faltaResaltada({ faltaPorRecibir: falta })).toBe(esperado);
+  });
+
+  it.each([
+    ["pendiente (sin marca)", { conciliado: false, faltaPorRecibir: "349100.00" }, "verConciliar"],
+    ["incompleto", { conciliado: true, faltaPorRecibir: "15000.00" }, "verCorregir"],
+    ["recibido", { conciliado: true, faltaPorRecibir: "0.00" }, "ver"],
+    ["llegó de más", { conciliado: true, faltaPorRecibir: "-500.00" }, "ver"],
+    // Un `rechazado` heredado llega sin marca: está en «Por conciliar» y se concilia.
+    ["rechazado sin marca", { conciliado: false, faltaPorRecibir: "7000.00" }, "verConciliar"],
+  ])("accionBodegaDe: %s", (_caso, marca, esperado) => {
+    expect(accionBodegaDe(marca)).toBe(esperado);
   });
 });

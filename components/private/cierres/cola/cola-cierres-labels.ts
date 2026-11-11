@@ -4,7 +4,7 @@
 // las señales, «Liquidado», «Registrar pago») se importan de donde viven; aquí solo va lo que la cola
 // estrena. Módulo puro: ni React ni importes.
 
-import type { RolCola } from "./cola-cierres-vista";
+import type { AccionBodega, RolCola } from "./cola-cierres-vista";
 
 // ═══ Descripción por rol (R106) ═════════════════════════════════════════════════════════════════
 
@@ -67,3 +67,47 @@ export const pagosAjustados = (n: number) =>
   n === 1 ? "1 pago ajustado" : `${n} pagos ajustados`;
 export const vuelvenABodega = (n: number) =>
   n === 1 ? "1 vuelve a bodega" : `${n} vuelven a bodega`;
+
+// ═══ Pestañas (R99, R127) ═══════════════════════════════════════════════════════════════════════
+
+/** El nombre del `tablist` de la cola de mensajeros (el de hoy); lo localizan tests y E2E. */
+export const TABS_COLA_MENSAJERO_LABEL = "Cierres del día por estado";
+
+// ═══ Bodega · central (SLT-127), textos nuevos en trato «tú» ════════════════════════════════════
+
+export const DESCRIPCION_BODEGA_CENTRAL =
+  "Los cierres que mandan las bodegas satélite. Márcalos recibidos cuando llegue el dinero.";
+export const PIE_POR_CONCILIAR =
+  "Un cierre «Recibido incompleto» se queda aquí hasta que la diferencia se reciba o se corrija.";
+
+export const TABS_COLA_BODEGA_LABEL = "Cierres de bodega por estado";
+export const PESTANA_POR_CONCILIAR = "Por conciliar";
+export const PESTANA_CONCILIADOS = "Conciliados";
+
+export const REGION_POR_CONCILIAR = "Cierres de bodega por conciliar";
+export const REGION_CONCILIADOS = "Cierres de bodega conciliados";
+export const VACIO_POR_CONCILIAR = "No hay cierres de bodega por conciliar.";
+export const VACIO_CONCILIADOS = "Aún no hay cierres de bodega conciliados.";
+export const ERROR_POR_CONCILIAR = "No se pudieron cargar los cierres de bodega por conciliar.";
+export const ERROR_CONCILIADOS = "No se pudieron cargar los cierres de bodega conciliados.";
+
+export const COLUMNA_BODEGA = "Bodega";
+export const COLUMNA_SOLICITO = "Solicitó";
+export const COLUMNA_CIERRES = "Cierres";
+export const COLUMNA_DEBE_LLEGAR = "Debe llegar";
+export const COLUMNA_RECIBIDO = "Recibido";
+export const COLUMNA_FALTA = "Falta";
+
+export const ACCION_VER_CONCILIAR = "Ver / conciliar";
+export const ACCION_VER_CORREGIR = "Ver / corregir";
+
+/** Nombres accesibles de las tres acciones de la fila de bodega (R130). */
+export function nombreAccionBodega(accion: AccionBodega, bodega: string): string {
+  if (accion === "verConciliar") return `${ACCION_VER_CONCILIAR} el cierre de bodega de ${bodega}`;
+  if (accion === "verCorregir") return `${ACCION_VER_CORREGIR} el cierre de bodega de ${bodega}`;
+  return `${ACCION_VER} el cierre de bodega de ${bodega}`;
+}
+
+/** PA-P: el nombre de cada paginación dice lo mismo que su pestaña y su región. */
+export const PAGINACION_POR_CONCILIAR_LABEL = "Paginación de los cierres de bodega por conciliar";
+export const PAGINACION_CONCILIADOS_LABEL = "Paginación de los cierres de bodega conciliados";

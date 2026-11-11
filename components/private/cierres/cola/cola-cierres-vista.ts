@@ -4,6 +4,7 @@
 // (`tests/unit/utils/cola-cierres-vista.test.ts`).
 
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
+import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
 import { fechaHora, folioDe } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import {
   MENSAJERO_BLOQUEADO_LABEL,
@@ -12,6 +13,8 @@ import {
   notaMensajeroBloqueado,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import {
+  estadoConciliacionDe,
+  hayFaltantePorRecibir,
   notaRetieneReprogramadas,
   retieneReprogramadas,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
@@ -21,8 +24,8 @@ import * as L from "./cola-cierres-labels";
 
 // ═══ Props del componente (design.md > ColaCierres) ═════════════════════════════════════════════
 
-/** «bodega» lo añaden SLT-105 y SLT-106. */
-export type TipoCola = "mensajero";
+/** «bodega»: SLT-127 (central); el rol satélite de bodega lo añade SLT-106. */
+export type TipoCola = "mensajero" | "bodega";
 /** «mensajero» lo añade SLT-108. */
 export type RolCola = "central" | "satelite";
 export type PestanaCola = "pendientes" | "resueltos";
@@ -38,7 +41,15 @@ export type ColumnaColaId =
   | "pago"
   | "pagoEntregado"
   | "senales"
-  | "acciones";
+  | "acciones"
+  // SLT-127 (R44): las de la cola de bodega.
+  | "bodega"
+  | "solicito"
+  | "cierres"
+  | "debeLlegar"
+  | "recibido"
+  | "falta"
+  | "conciliacion";
 
 export interface ColumnaCola {
   id: ColumnaColaId;
@@ -53,10 +64,11 @@ export interface ColumnaCola {
  * Pago al mensajero · (Pago entregado: solo central en Resueltos) · Señales · acciones.
  */
 export function columnasCola(
-  _tipo: TipoCola,
+  tipo: TipoCola,
   rol: RolCola,
   pestana: PestanaCola,
 ): ColumnaCola[] {
+  if (tipo === "bodega") return COLUMNAS_BODEGA.map((c) => ({ ...c }));
   const resueltos = pestana === "resueltos";
   return [
     { id: "folio", label: L.COLUMNA_FOLIO },
@@ -173,4 +185,59 @@ export function accionesFilaDe(
     c.estado === "aprobado" &&
     hayPendienteDeLiquidar(c.pendientePagoMensajero);
   return pagable ? ["ver", "registrarPago"] : ["ver"];
+}
+
+// ═══ Bodega · central (SLT-127: R44, R127, R129, R130) ══════════════════════════════════════════
+
+/**
+ * Folio · Bodega · Solicitó · Solicitado · Cierres · Debe llegar · Recibido · Falta · Estado ·
+ * acciones, igual en «Por conciliar» y en «Conciliados» (canvas, rama bodega · central).
+ */
+const COLUMNAS_BODEGA: readonly ColumnaCola[] = [
+  { id: "folio", label: L.COLUMNA_FOLIO },
+  { id: "bodega", label: L.COLUMNA_BODEGA },
+  { id: "solicito", label: L.COLUMNA_SOLICITO },
+  { id: "fecha", label: L.COLUMNA_SOLICITADO },
+  { id: "cierres", label: L.COLUMNA_CIERRES, align: "right" },
+  { id: "debeLlegar", label: L.COLUMNA_DEBE_LLEGAR, align: "right" },
+  { id: "recibido", label: L.COLUMNA_RECIBIDO, align: "right" },
+  { id: "falta", label: L.COLUMNA_FALTA, align: "right" },
+  { id: "conciliacion", label: L.COLUMNA_ESTADO },
+  { id: "acciones", label: L.COLUMNA_ACCIONES, soloLector: true },
+];
+
+/** El nombre del `tablist` de cada tipo de cola (R99, R127). */
+export function tablistCola(tipo: TipoCola): string {
+  return tipo === "bodega" ? L.TABS_COLA_BODEGA_LABEL : L.TABS_COLA_MENSAJERO_LABEL;
+}
+
+export function folioBodegaCola(c: Pick<CierreBodegaResumen, "cierreBodegaId">): string {
+  return `#${folioDe(c.cierreBodegaId)}`;
+}
+
+export type RecibidoCola = { tipo: "nulo" } | { tipo: "monto"; monto: string };
+
+/** Sin marca → «—», NUNCA ₡0 (R129). El importe es el string del servidor, tal cual (R71). */
+export function recibidoCola(c: Pick<CierreBodegaResumen, "montoRecibido">): RecibidoCola {
+  return c.montoRecibido === null ? { tipo: "nulo" } : { tipo: "monto", monto: c.montoRecibido };
+}
+
+/** La Falta va resaltada solo si queda algo por llegar; un negativo (llegó de más) no (R129). */
+export function faltaResaltada(c: Pick<CierreBodegaResumen, "faltaPorRecibir">): boolean {
+  return hayFaltantePorRecibir(c.faltaPorRecibir);
+}
+
+export type AccionBodega = "verConciliar" | "verCorregir" | "ver";
+
+/**
+ * R130: pendiente → «Ver / conciliar»; incompleto → «Ver / corregir»; recibido → «Ver». Un
+ * `rechazado` heredado llega sin marca: es «pendiente» y se ofrece «Ver / conciliar» (C1).
+ */
+export function accionBodegaDe(
+  c: Pick<CierreBodegaResumen, "conciliado" | "faltaPorRecibir">,
+): AccionBodega {
+  const estado = estadoConciliacionDe(c);
+  if (estado === "pendiente") return "verConciliar";
+  if (estado === "incompleto") return "verCorregir";
+  return "ver";
 }
