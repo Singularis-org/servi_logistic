@@ -597,8 +597,8 @@ export type FilaBodegaSatelite = OrdenListItemDTO & {
   montoCobrar: number | null;
   zonaNombre: string;
   /**
-   * Nombres de geografia en la RAIZ, que es donde los leen el filtro de canton/distrito
-   * (`lib/utils/filtro-canton-distrito.ts`) y el buscador del modulo. Los mismos valores viajan
+   * Nombres de geografia en la RAIZ, que es donde los lee el buscador del modulo (el filtro de
+   * canton/distrito por nombre se retiro en SLT-47). Los mismos valores viajan
    * ademas dentro de `relaciones`, que es de donde los lee `ordenesColumns`.
    */
   provinciaNombre: string;

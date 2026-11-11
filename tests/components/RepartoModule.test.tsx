@@ -35,6 +35,12 @@ vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
 });
+// SLT-47 (design §5.4): el filtro de lugar lee los niveles del país (layout) y filtra por id sobre la
+// `lugarRuta` de cada orden. Costa Rica, como las etiquetas de arriba.
+vi.mock("@/hooks/use-niveles-geograficos", async () => {
+  const { NIVELES_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useNivelesGeograficos: () => NIVELES_CR };
+});
 
 // Feature 36 (T15-T17) / rediseño 63 (pedido humano) — pantalla de REPARTO del mensajero.
 // Se mockean las Server Actions (escoger / gestionar / liberar), el toast y el router
@@ -170,7 +176,7 @@ function ordenCardsEnReparto(): string[] {
 function makeAsignacion(
   over: Partial<MiAsignacionDTO> & { id: string },
 ): MiAsignacionDTO {
-  return {
+  const base: MiAsignacionDTO = {
     numGuia: 1001,
     numRemision: "REM-001",
     estatusValue: "mensajero_recogiendo_en_bodega",
@@ -194,6 +200,18 @@ function makeAsignacion(
     // Feature 92/R28: sin posicion en la ruta salvo que el test la fije.
     secuenciaRuta: null,
     ...over,
+  };
+  // SLT-47 (R16): la ruta del lugar que el servidor emite siempre, armada con los nombres de la orden.
+  // Ids por camino (como en el catálogo, un mismo nombre bajo otro padre es otro lugar).
+  const p = `p:${base.provinciaNombre}`;
+  const c = `${p}/c:${base.cantonNombre}`;
+  return {
+    ...base,
+    lugarRuta: over.lugarRuta ?? [
+      { id: p, nombre: base.provinciaNombre },
+      { id: c, nombre: base.cantonNombre },
+      ...(base.distritoNombre === null ? [] : [{ id: `${c}/d:${base.distritoNombre}`, nombre: base.distritoNombre }]),
+    ],
   };
 }
 

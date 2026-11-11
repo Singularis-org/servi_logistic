@@ -31,8 +31,8 @@ import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { normalizeName } from "@/lib/utils/normalize";
 
 import { coincideBusqueda } from "./mis-asignaciones-buscador";
-import { FiltroCantonDistrito } from "./FiltroCantonDistrito";
-import { useFiltroCantonDistrito } from "./useFiltroCantonDistrito";
+import { FiltroUbicacion } from "./FiltroUbicacion";
+import { useFiltroUbicacion } from "./useFiltroUbicacion";
 import { MarcarLuegoToggle } from "./MarcarLuegoToggle";
 import { GestionarOrdenPanel } from "./GestionarOrdenPanel";
 import { GestionarOrdenCardButton } from "./GestionarOrdenCardButton";
@@ -239,14 +239,14 @@ export function RepartoModule({
   const buscarId = useId();
   const buscando = query.trim() !== "";
 
-  // Feature 117: filtro por cantón/distrito (100% cliente, R12). Las OPCIONES se derivan
+  // Feature 117 (SLT-47: por lugar, de N niveles y por id): filtro de lugar (100% cliente, R12). Las OPCIONES se derivan
   // del grupo SIN filtrar (R13: el conjunto COMPLETO cargado, para que la selección actual
   // no borre otras opciones de cantón disponibles). Tras el corte de 2026-07-31 ese
   // conjunto es SOLO `porGestionar`: las órdenes por recoger ya no están en esta pantalla,
   // así que ofrecer sus cantones aquí daría opciones que no filtran nada. Se compone en AND
   // con el buscador (114) sobre la MISMA lista visible; la orden en gestión nunca se oculta
   // (salvaguarda R10/R14).
-  const filtro = useFiltroCantonDistrito(porGestionar);
+  const filtro = useFiltroUbicacion(porGestionar);
   const aplicarFiltroZona = filtro.aplicar;
 
   // Feature 114/R8+R9 + 117/R6/R14: "En reparto" filtrado, ÚNICA fuente para grilla, mapa
@@ -679,20 +679,16 @@ export function RepartoModule({
       ) : (
         /* ---------- VISTA COMPLETA (fuera de foco) ---------- */
         <>
-          {/* ---------- Feature 117: filtro por cantón y distrito (solo vista de lista) ----------
+          {/* ---------- Feature 117 / SLT-47: filtro de lugar (solo vista de lista) ----------
               Se compone en AND con el buscador. Las opciones se derivan del conjunto completo
               cargado (R13); elegir cantón resetea el distrito (R5) y el distrito va
               deshabilitado sin cantón (R3). En modo foco no se renderiza (no hay cards que
               filtrar). Puro filtro de cliente, así que permanece aunque el mensajero esté
               bloqueado (la lista sigue como solo-visualización). */}
-          <FiltroCantonDistrito
-            canton={filtro.canton}
-            distrito={filtro.distrito}
-            cantones={filtro.cantones}
-            distritos={filtro.distritos}
+          <FiltroUbicacion
+            listas={filtro.listas}
             hayFiltro={filtro.hayFiltro}
-            onCantonChange={filtro.setCantonYReset}
-            onDistritoChange={filtro.setDistrito}
+            onElegir={filtro.elegir}
             onLimpiar={filtro.limpiar}
           />
 

@@ -99,7 +99,7 @@
 
 ## T5 — Novedades y mis-asignaciones (frontend_dev) · depende de T2.3, T3
 
-- [ ] **T5.1** [P] Mis-asignaciones:
+- [x] **T5.1** [P] Mis-asignaciones:
   - `FiltroUbicacion.tsx` y `useFiltroUbicacion.ts` sustituyen a `FiltroCantonDistrito` y
     `useFiltroCantonDistrito`;
   - `filtro-canton-distrito.ts` pasa a `filtro-ubicacion-asignaciones.ts`, por id sobre `lugarRuta`;
