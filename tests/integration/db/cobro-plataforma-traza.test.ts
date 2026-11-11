@@ -12,7 +12,6 @@ import {
   crearOrden,
   crearPlanConCosto,
   deuda,
-  fijarExcepcion,
   movimientos,
   type EmpresaPorcentual,
   type MovimientoPorcentual,
@@ -446,14 +445,12 @@ describeSiHayBase("SLT-85 — la traza de facturación de los cobros por orden (
     ]);
   });
 
-  it("R9 — la fuente es la del movimiento: empresa, plan, global y sin_configurar (con 0,00)", async () => {
+  // SLT-126: sin valor propio, ninguna orden nueva lleva fuente `empresa`; las históricas, en migracion-slt126-ida-y-vuelta.
+  it("R9 — la fuente es la del movimiento: plan, global y sin_configurar (con 0,00)", async () => {
     const r = await revertida(base, async (tx) => {
-      const { e: conExcepcion } = await empresaFija(tx, "100");
-      await fijarExcepcion(tx, conExcepcion, "80.00");
       const { e: conPlan } = await empresaFija(tx, "100");
       const sinPlanGlobal = await crearEmpresa(tx);
       const sinPlanSinGlobal = await crearEmpresa(tx);
-      const empresa = await trazas(tx, await crearOrden(tx, conExcepcion));
       const plan = await trazas(tx, await crearOrden(tx, conPlan));
       const global = await trazas(tx, await crearOrden(tx, sinPlanGlobal));
       let sinConfigurar: Fila[];
@@ -463,10 +460,9 @@ describeSiHayBase("SLT-85 — la traza de facturación de los cobros por orden (
       } finally {
         await tarifaGlobal!.fijar(GLOBAL);
       }
-      return { empresa, plan, global, sinConfigurar };
+      return { plan, global, sinConfigurar };
     });
     const regla = (f: Fila) => [f.mov_fuente, f.fuente, f.tipo_cobro, f.valor_fijo, f.valor_cobrado];
-    expect(r.empresa.map(regla)).toEqual([["empresa", "empresa", "fijo", "80.00", "80.00"]]);
     expect(r.plan.map(regla)).toEqual([["plan", "plan", "fijo", "100.00", "100.00"]]);
     expect(r.global.map(regla)).toEqual([["global", "global", "fijo", "500.00", "500.00"]]);
     expect(r.sinConfigurar.map(regla)).toEqual([["sin_configurar", "sin_configurar", "fijo", "0.00", "0.00"]]);
@@ -474,17 +470,14 @@ describeSiHayBase("SLT-85 — la traza de facturación de los cobros por orden (
 
   /* --------------------------------- R10 --------------------------------- */
 
-  it("R10 — copia el plan del instante, también con fuente empresa; sin plan, vacío", async () => {
+  it("R10 — copia el plan del instante; sin plan, vacío", async () => {
     const r = await revertida(base, async (tx) => {
       const { e, plan } = await empresaFija(tx);
       const conPlan = await trazas(tx, await crearOrden(tx, e));
-      await fijarExcepcion(tx, e, "80.00");
-      const conExcepcion = await trazas(tx, await crearOrden(tx, e));
       const sinPlan = await trazas(tx, await crearOrden(tx, await crearEmpresa(tx)));
-      return { plan, nombre: await nombreDelPlan(tx, plan), conPlan, conExcepcion, sinPlan };
+      return { plan, nombre: await nombreDelPlan(tx, plan), conPlan, sinPlan };
     });
     expect(r.conPlan.map((f) => [f.fuente, f.plan_id, f.plan_nombre])).toEqual([["plan", r.plan, r.nombre]]);
-    expect(r.conExcepcion.map((f) => [f.fuente, f.plan_id, f.plan_nombre])).toEqual([["empresa", r.plan, r.nombre]]);
     expect(r.sinPlan.map((f) => [f.fuente, f.plan_id, f.plan_nombre])).toEqual([["global", null, null]]);
   });
 
@@ -516,8 +509,7 @@ describeSiHayBase("SLT-85 — la traza de facturación de los cobros por orden (
 
   it("R11 — cargo positivo, reverso negativo, mismo valor absoluto exacto que el movimiento", async () => {
     const filas = await revertida(base, async (tx) => {
-      const { e } = await empresaFija(tx);
-      await fijarExcepcion(tx, e, "80.55");
+      const { e } = await empresaFija(tx, "80.55");
       const o = await crearOrden(tx, e);
       await anular(tx, o, true);
       await anular(tx, o, false);

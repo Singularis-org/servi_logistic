@@ -21,7 +21,10 @@ import { asignarPlan, capturar, crearPlan, planesEnTx, revertida, sqlstateDe } f
 // `cobro_plataforma_tarifa_de`. Aquí se afirma por su efecto: para cada fuente, el `costo_vigente` que
 // lee la empresa (como `servi_app`), el de `MiPlanRepository` y el del superadmin son el monto y la fuente
 // del cargo de una orden creada justo después, en la misma transacción. Una regla propia en
-// `plan_de_la_empresa` (mutación 6 de §9.4) se ve en el caso con excepción.
+// `plan_de_la_empresa` (mutación 6 de §9.4) se ve en el caso con plan, cuyo importe no es el global
+// (SLT-126: ya no hay caso con excepción de la empresa).
+//
+// SLT-126 R11: la lectura nunca devuelve la fuente `empresa`.
 //
 // R22: la empresa solo lee su costeo por `plan_de_la_empresa`; la de otra da 42501, y la función de la
 // tarifa, la tabla `plan` y el valor global siguen cerrados a `servi_app`.
@@ -65,18 +68,15 @@ async function crearOrden(tx: TxDeTest, fks: FksDeOrden): Promise<string> {
 }
 
 /**
- * La empresa A con un plan de base «monto» y el `costoPorOrden` pedido, y su excepción si la hay. Lee
- * su costeo por las tres vías y, de vuelta como dueño, crea una orden y lee su cargo.
+ * La empresa A con un plan de base «monto» y el `costoPorOrden` pedido. Lee su costeo por las tres vías
+ * y, de vuelta como dueño, crea una orden y lee su cargo.
  */
-async function leerYCargar(tx: TxDeTest, costoDelPlan: string | null, excepcion: string | null): Promise<Lectura> {
+async function leerYCargar(tx: TxDeTest, costoDelPlan: string | null): Promise<Lectura> {
   const { id: A } = await crearOrganizacion(tx);
   await fijarEmpresa(tx, A);
   const plan = await crearPlan(tx, { custom: A });
   await tx.plan.update({ where: { id: plan }, data: { precioMensual: "1000.00", costoPorOrden: costoDelPlan } });
   await asignarPlan(tx, A, plan);
-  if (excepcion !== null) {
-    await tx.organizacion.update({ where: { id: A }, data: { cobroPlataformaPorOrden: excepcion } });
-  }
   const fks = await crearFksDeOrden(tx);
 
   const superadmin = await planesEnTx(tx).planDeEmpresa(A);
@@ -122,22 +122,21 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
     await base?.$disconnect();
   });
 
-  // §3.2: lectura = cargo, por fuente. El caso con excepción es el que mata la mutación 6.
+  // §3.2: lectura = cargo, por fuente. El caso con plan es el que mata la mutación 6.
   it.each([
-    { fuente: "empresa", plan: "100.00", excepcion: "80.00", monto: "80.00" },
-    { fuente: "plan", plan: "100.00", excepcion: null, monto: "100.00" },
-    { fuente: "global", plan: null, excepcion: null, monto: GLOBAL },
+    { fuente: "plan", plan: "100.00", monto: "100.00" },
+    { fuente: "global", plan: null, monto: GLOBAL },
   ] as const)(
     "R18, §3.2: fuente $fuente — el costo vigente de la lectura es el cargo de la orden creada justo después",
-    async ({ fuente, plan, excepcion, monto }) => {
-      const r = await revertida(base, (tx) => leerYCargar(tx, plan, excepcion));
+    async ({ fuente, plan, monto }) => {
+      const r = await revertida(base, (tx) => leerYCargar(tx, plan));
       const esperado = { monto, fuente };
       expect(r.cargo).toEqual([esperado]);
       // SLT-83 (design §2.3, §9.3): el `costo_vigente` crudo gana `porcentaje` y `minimo`, null fuera del modo porcentual.
       expect(r.empresa).toEqual({ ...esperado, porcentaje: null, minimo: null });
       expect(r.repositorio).toEqual({ modo: "fijo", ...esperado }); // SLT-83: el costo vigente lleva su modo
       expect(r.superadmin).toEqual({ modo: "fijo", ...esperado });
-      // El costo del plan sale aparte, tal cual (con excepción también: es el del plan, no el vigente).
+      // El costo del plan sale aparte, tal cual.
       expect(r.costoDelPlan).toBe(plan);
     },
   );
@@ -145,7 +144,7 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
   it("R18, §3.2: fuente sin_configurar — sin global ni costo del plan, la lectura dice 0.00 y el cargo también", async () => {
     await tarifaGlobal?.fijar(null);
     try {
-      const r = await revertida(base, (tx) => leerYCargar(tx, null, null));
+      const r = await revertida(base, (tx) => leerYCargar(tx, null));
       const esperado = { monto: "0.00", fuente: "sin_configurar" };
       expect(r.cargo).toEqual([esperado]);
       // SLT-83 (design §2.3, §9.3): el `costo_vigente` crudo gana `porcentaje` y `minimo`, null fuera del modo porcentual.
@@ -157,8 +156,30 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
     }
   });
 
+  it("SLT-126 R11: plan_de_la_empresa nunca devuelve la fuente empresa (plan fijo, plan sin costo, sin global)", async () => {
+    const plan = await revertida(base, (tx) => leerYCargar(tx, "80.00"));
+    const global = await revertida(base, (tx) => leerYCargar(tx, null));
+    let sinConfigurar: Lectura;
+    await tarifaGlobal?.fijar(null);
+    try {
+      sinConfigurar = await revertida(base, (tx) => leerYCargar(tx, null));
+    } finally {
+      await tarifaGlobal?.fijar(GLOBAL);
+    }
+    const lecturas = [plan, global, sinConfigurar];
+    const fuentes = lecturas.flatMap((r) => [r.empresa.fuente, r.repositorio.fuente, r.superadmin?.fuente]);
+    // Control de no vacuidad: cada vía leyó algo, y la fuente de cada lectura es la de su cargo.
+    expect(fuentes).toEqual([
+      "plan", "plan", "plan",
+      "global", "global", "global",
+      "sin_configurar", "sin_configurar", "sin_configurar",
+    ]);
+    expect(lecturas.map((r) => r.cargo.map((c) => c.fuente))).toEqual([["plan"], ["global"], ["sin_configurar"]]);
+    expect(fuentes).not.toContain("empresa");
+  });
+
   it("R18 (R5): el uso que lee la empresa ya no trae al maestro", async () => {
-    const r = await revertida(base, (tx) => leerYCargar(tx, "100.00", null));
+    const r = await revertida(base, (tx) => leerYCargar(tx, "100.00"));
     expect(r.usoKeys).toEqual(["admin", "admin_satelite", "admin_tienda", "api_keys", "mensajero", "ordenes"]);
   });
 

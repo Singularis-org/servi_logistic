@@ -17,7 +17,7 @@ export type TarifaLeida = { monto: string | null; fuente: FuenteDelCosto; porcen
 
 /**
  * SLT-83 (R22, R23): la regla vigente con su modo. «Porcentual» es `porcentaje` no nulo, como en la
- * función. Un porcentaje solo sale del plan (la excepción y el global son fijos, R7) y el modo fijo
+ * función. Un porcentaje solo sale del plan (el global es fijo, R7) y el modo fijo
  * siempre trae importe: otra forma es una función rota, y se dice en vez de pintar una cifra falsa.
  */
 export function costoVigenteDeLaTarifa(t: TarifaLeida): CostoVigente {
@@ -43,8 +43,8 @@ type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
  * en modo fijo nunca queda «por definir» porque cae al global o a `0.00` (R20). El total usa lo que la
  * empresa paga.
  *
- * `sinCostoConcreto` mira el PLAN vigente, no lo que se cobra (R28 de SLT-66): con una excepción en la
- * empresa y un plan sin costo por orden, el aviso sale igual.
+ * `sinCostoConcreto` mira el PLAN vigente, no lo que se cobra (R28 de SLT-66): con un plan sin costo por
+ * orden el aviso sale aunque se cobre el global.
  *
  * SLT-83: `cobroCiclo` es el de `plan_cobro_del_ciclo` (R24) y solo lo usa el modo porcentual: en el
  * fijo es opcional y no cambia nada. SLT-86 (R28): lo cuenta desde el inicio del período en curso.

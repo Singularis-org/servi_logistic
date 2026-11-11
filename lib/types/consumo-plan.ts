@@ -26,12 +26,15 @@ export type CambioPendienteVista = { vigenteDesde: string; lineas: string[] };
 
 export type ReinicioDelCiclo = { dias: number; fecha: string };
 
-/** SLT-66 (R12): de dónde sale el costo por orden vigente; los mismos valores que `cobro_plataforma_fuente`. */
-export type FuenteDelCosto = "empresa" | "plan" | "global" | "sin_configurar";
+/**
+ * SLT-66 (R12): de dónde sale el costo por orden vigente. SLT-126 (R11): sin `empresa`; ese valor sigue en
+ * `cobro_plataforma_fuente` solo para los movimientos y trazas históricos, y la regla vigente ya no lo da.
+ */
+export type FuenteDelCosto = "plan" | "global" | "sin_configurar";
 
 /**
  * SLT-83 (design §4.3; R22, R23): la regla vigente de la empresa, la de `cobro_plataforma_tarifa_de`.
- * El modo porcentual solo sale del plan: el global y la excepción son siempre fijos (R7).
+ * El modo porcentual solo sale del plan: el global es siempre fijo (R7).
  */
 export type CostoVigente =
   | { modo: "fijo"; monto: string; fuente: FuenteDelCosto }
@@ -62,7 +65,7 @@ type CosteoComun = {
 export type CosteoDelCiclo =
   | (CosteoComun & {
       modo: "fijo";
-      /** Siempre el vigente (R12, P1): excepción > plan > global > 0. */
+      /** Siempre el vigente (R12, P1): plan > global > 0 (SLT-126 R5). */
       costoPorOrden: string;
       fuente: FuenteDelCosto;
       /** SLT-86 (R7): las órdenes del período en curso, el mismo `uso.ordenes` de `plan_de_la_empresa`. */

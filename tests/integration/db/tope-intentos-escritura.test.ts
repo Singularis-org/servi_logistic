@@ -262,7 +262,7 @@ describeSiHayBase("SLT-77 R7 — la app no escribe otra fila ni otra columna, ni
     ["es_demo", `"es_demo" = true`],
     ["plan_id", `"plan_id" = NULL`],
     ["slug", `"slug" = 'otro-slug'`],
-    ["cobro_plataforma_por_orden", `"cobro_plataforma_por_orden" = 1`],
+    // SLT-126: se quitó la fila del cobro por orden propio de la empresa; la columna ya no existe.
   ])("%s de A, desde A: 42501", async (_columna, set) => {
     await conEscenario(async (tx, e) => {
       const res = await intentarComoApp(tx, e.A, `UPDATE "organizacion" SET ${set} WHERE "id" = $1`, [e.A]);

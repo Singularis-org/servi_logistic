@@ -47,7 +47,8 @@ describe("SLT-83 R22 — textoDelCobroVigente (columna «Cobro por orden» de «
     expect(textoDelCobroVigente({ modo: "porcentual", porcentaje: "2.35", minimo: null, fuente: "plan" })).toBe("2.35 %");
   });
 
-  it.each(["empresa", "plan", "global", "sin_configurar"] as const)("fijo (%s): el importe de hoy, con money", (fuente) => {
+  // SLT-126 (R11): la regla vigente ya no da la fuente `empresa`.
+  it.each(["plan", "global", "sin_configurar"] as const)("fijo (%s): el importe de hoy, con money", (fuente) => {
     expect(textoDelCobroVigente({ modo: "fijo", monto: "80.00", fuente })).toBe(money("80.00"));
   });
 });

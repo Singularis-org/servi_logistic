@@ -3,11 +3,7 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
 import { listarPaisesDisponibles } from "@/lib/actions/_shared/paises-plataforma";
-import {
-  fijarCobroEmpresaAction,
-  fijarCobroGlobalAction,
-  verCobroGlobalAction,
-} from "@/lib/actions/cobro-plataforma";
+import { fijarCobroGlobalAction, verCobroGlobalAction } from "@/lib/actions/cobro-plataforma";
 import {
   altaEmpresaAction,
   bienvenidasPendientesAction,
@@ -33,7 +29,7 @@ import { EmpresasModule } from "./_components/EmpresasModule";
  * action solo responde al `maestro`. `tipo_identificacion` es de plataforma y se lee sin empresa.
  *
  * SL-40 (R9–R11, design §9.1): el valor global del cobro por orden se lee en el mismo `Promise.all`,
- * y las dos actions de guardado bajan por props. Si no se pudo leer, el módulo lo dice en su bloque.
+ * y la action de guardado baja por props (SLT-126: la del valor propio ya no existe). Si no se pudo leer, el módulo lo dice en su bloque.
  *
  * SL-20 (R9, R45, design §8): los países del `Select` del alta, solo los disponibles, en el mismo
  * `Promise.all`. Un `forbidden` deja la lista vacía: el alta no sale sin país, y el servidor manda.
@@ -71,7 +67,6 @@ export default async function EmpresasPage() {
         bienvenidaPendiente={bienvenidaPendiente}
         cobroGlobal={cobro.status === "ok" ? cobro.cobroGlobal : null}
         fijarCobroGlobal={fijarCobroGlobalAction}
-        fijarCobroEmpresa={fijarCobroEmpresaAction}
       />
     </AppPage>
   );

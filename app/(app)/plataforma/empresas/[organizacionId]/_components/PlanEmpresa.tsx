@@ -64,8 +64,6 @@ const TEXTOS = {
   /** SLT-66 (design §6.5, R20): el plan actual no tiene costo base «monto» o le falta el costo por orden. */
   planSinCosto:
     "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.",
-  /** SLT-66 (design §6.3, P1): la nota del costo por orden cuando sale de la excepción de la empresa. */
-  excepcion: "excepción de la empresa",
   asignablesNoCargaron: "No se pudieron cargar los planes que se pueden asignar.",
   asignar: "Asignar plan",
   cambiar: "Cambiar plan",
@@ -627,7 +625,6 @@ export function PlanEmpresa({
             textoSinPlan={TEXTOS.sinPlan}
             pendienteSinPlan={vista.pendienteSinPlan}
             nivelDeTitulo={3}
-            textoExcepcion={TEXTOS.excepcion}
           />
           {pendiente !== null && (
             // SLT-86 (R19, R26): el pendiente con plan dice qué entra y desde cuándo (sin plan ya lo dice

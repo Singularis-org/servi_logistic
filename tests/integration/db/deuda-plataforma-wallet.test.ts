@@ -20,6 +20,7 @@ import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from ".
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 import { menos } from "./_fixtures/caja-459";
+import { asignarPlan, crearPlan } from "./_fixtures/planes";
 
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
 // de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
@@ -53,8 +54,9 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // no está vacía: un ajuste real la deja con dinero, y un control lo comprueba, porque dos resúmenes
 // en cero son iguales aunque la deuda se hubiera sumado a una cifra que no se mira.
 //
-// B tiene su propia excepción (300.00) y su propia orden: ve lo suyo (no un cero, que pasaría por
-// aislamiento aunque no lo hubiera) y nada de A (R24).
+// B tiene su propio plan custom con costo fijo por orden de 300.00 (SLT-126: antes, una excepción del
+// mismo importe) y su propia orden: ve lo suyo (no un cero, que pasaría por aislamiento aunque no lo
+// hubiera) y nada de A (R24). El custom se va con B (CASCADE de `plan_organizacion_exclusiva_id_fkey`).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -171,10 +173,9 @@ describeSiHayBase("SL-40 — la deuda con la plataforma en la wallet (Postgres, 
     await tarifaGlobal.fijar("500.00");
     A = await sembrarEmpresa();
     B = await sembrarEmpresa();
-    await base.$executeRawUnsafe(
-      `UPDATE "organizacion" SET "cobro_plataforma_por_orden" = 300.00 WHERE "id" = $1`,
-      B.p.organizacionId,
-    );
+    const planDeB = await crearPlan(base, { custom: B.p.organizacionId });
+    await base.$executeRawUnsafe(`UPDATE "plan" SET "costo_por_orden" = 300.00 WHERE "id" = $1`, planDeB);
+    await asignarPlan(base, B.p.organizacionId, planDeB);
 
     // El dinero de la caja de A, escrito por su action real: un ajuste que suma.
     const ajuste = await conEmpresa(A.p.organizacionId, () =>
@@ -263,7 +264,7 @@ describeSiHayBase("SL-40 — la deuda con la plataforma en la wallet (Postgres, 
     expect(await leerDeuda(A, A.p.admin)).toBe("500.00");
   });
 
-  it("R24: B ve solo su deuda (300.00, su excepción) y nada de la de A", async () => {
+  it("R24: B ve solo su deuda (300.00, su plan) y nada de la de A", async () => {
     await crearOrden(B, "p1");
     expect(await movimientosDe(B)).toEqual([{ tipo: "cargo", monto: "300.00" }]);
 

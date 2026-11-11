@@ -51,7 +51,6 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
           nombre: true,
           slug: true,
           createdAt: true,
-          cobroPlataformaPorOrden: true,
           // SL-20 (R9): el país, solo código y nombre.
           pais: { select: { id: true, nombre: true } },
           // Solo nombre y email: ni `password_hash`, ni telefono, ni documento salen de la base.
@@ -72,7 +71,6 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         slug: f.slug,
         creadaEn: f.createdAt,
         maestros: f.usuarios,
-        cobroPorOrden: f.cobroPlataformaPorOrden === null ? null : f.cobroPlataformaPorOrden.toFixed(2),
         ...planYCobroDe(f.id),
         deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
         pagadoPlataforma: pagadoDe(f.id),
@@ -118,7 +116,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
    *
    * Parte de la lista de ids (`unnest`) y no de `organizacion`: cada id pedido tiene su fila aunque la
    * empresa ya no esté (p. ej. borrada entre las dos lecturas); la función le da entonces la regla de
-   * una empresa sin excepción ni plan. Los enums van como texto: el driver no conoce el tipo de Postgres.
+   * una empresa sin plan. Los enums van como texto: el driver no conoce el tipo de Postgres.
    */
   private async planYCobroVigente(organizacionIds: string[]) {
     const filas = await this.prisma.$queryRaw<PlanYCobroLeido[]>`

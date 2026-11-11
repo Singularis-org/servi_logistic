@@ -38,7 +38,6 @@ const EMPRESAS: EmpresaListada[] = [
       { nombre: "Ana Pérez", email: "ana@norte.test" },
       { nombre: "Luis Gómez", email: "luis@norte.test" },
     ],
-    cobroPorOrden: null,
     // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
     cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
     plan: null,
@@ -53,7 +52,6 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "reparto-sur",
     creadaEn: new Date("2026-09-05T12:00:00Z"),
     maestros: [],
-    cobroPorOrden: null,
     // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
     cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
     plan: null,
@@ -96,7 +94,6 @@ function montar(
       bienvenidaPendiente={bienvenidaPendiente}
       cobroGlobal={{ monto: null }}
       fijarCobroGlobal={vi.fn()}
-      fijarCobroEmpresa={vi.fn()}
     />,
   );
   return { ...utils, altaEmpresa, reenviarBienvenida };

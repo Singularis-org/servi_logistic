@@ -16,6 +16,8 @@ const MAESTRO: Actor = { usuarioId: "u-m", rol: "maestro", organizacionId: "org-
 
 const tarifaFindUnique = vi.fn<(args: unknown) => Promise<{ monto: Prisma.Decimal }>>(async () => ({ monto: new Prisma.Decimal("500") }));
 const tarifaUpsert = vi.fn<(args: unknown) => Promise<object>>(async () => ({}));
+// SLT-126 R2: el cliente falso sigue ofreciendo `organizacion`; si alguna action volviera a escribir
+// en la empresa, estos espías lo verían.
 const organizacionFindUnique = vi.fn<(args: unknown) => Promise<{ id: string }>>(async () => ({ id: "org-b" }));
 const organizacionUpdateMany = vi.fn<(args: unknown) => Promise<{ count: number }>>(async () => ({ count: 1 }));
 
@@ -27,9 +29,8 @@ vi.mock("@/lib/db/prisma-client", () => ({
   PRISMA_OMIT: {},
 }));
 
-const { verCobroGlobalAction, fijarCobroGlobalAction, fijarCobroEmpresaAction } = await import(
-  "@/lib/actions/cobro-plataforma"
-);
+const modulo = await import("@/lib/actions/cobro-plataforma");
+const { verCobroGlobalAction, fijarCobroGlobalAction } = modulo;
 
 const comoSuperadmin = { getActor: async () => SUPERADMIN };
 
@@ -51,22 +52,24 @@ describe("SL-40 — el composition root de cobro-plataforma pasa CobroPlataforma
     });
   });
 
-  it("fijarCobroEmpresaAction comprueba la empresa y escribe SOLO su fila", async () => {
-    expect(await fijarCobroEmpresaAction({ organizacionId: "org-b", monto: null }, comoSuperadmin)).toEqual({ status: "ok" });
-    expect(organizacionFindUnique).toHaveBeenCalledTimes(1);
-    expect(organizacionUpdateMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: "org-b" },
-      data: { cobroPlataformaPorOrden: null },
-    });
-  });
-
   it("un maestro recibe forbidden y el cliente no se toca", async () => {
     const deps = { getActor: async () => MAESTRO };
     expect(await verCobroGlobalAction(deps)).toEqual({ status: "forbidden" });
     expect(await fijarCobroGlobalAction({ monto: "1.00" }, deps)).toEqual({ status: "forbidden" });
-    expect(await fijarCobroEmpresaAction({ organizacionId: "org-b", monto: "1.00" }, deps)).toEqual({ status: "forbidden" });
     expect(tarifaFindUnique).not.toHaveBeenCalled();
     expect(tarifaUpsert).not.toHaveBeenCalled();
+    expect(organizacionFindUnique).not.toHaveBeenCalled();
+    expect(organizacionUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-126 R2 — el módulo exporta solo las dos actions del valor global", () => {
+  it("no hay action que fije o quite el cobro por orden de una empresa", () => {
+    expect(Object.keys(modulo).sort()).toEqual(["fijarCobroGlobalAction", "verCobroGlobalAction"]);
+  });
+
+  it("fijar el global como superadmin no toca ninguna fila de empresa", async () => {
+    expect(await fijarCobroGlobalAction({ monto: "600.00" }, comoSuperadmin)).toEqual({ status: "ok" });
     expect(organizacionFindUnique).not.toHaveBeenCalled();
     expect(organizacionUpdateMany).not.toHaveBeenCalled();
   });
