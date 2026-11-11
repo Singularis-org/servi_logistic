@@ -14,26 +14,26 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** Repite el censo de `design.md > Tests y guardias que cambian` con `grep -rl` en `tests/`
+- [x] **T0.1** Repite el censo de `design.md > Tests y guardias que cambian` con `grep -rl` en `tests/`
   y `e2e/` por: «Ver / decidir el cierre de bodega», «cierre de bodega resuelto de», «Cierres de bodega
   por estado», `"Cierres de bodega (pendientes|resueltos)"` como región o `seccion`/`tabla`,
   «pendientes de decisión.» y «Aún no hay cierres de bodega resueltos», `PAGINACION_BODEGA_`.
   **Hecho:** la lista coincide con `## Archivos esperados`, o el leader tiene el archivo de más.
-- [ ] **T0.2** Escribe a mano, en el test, el literal que `money()` da hoy para `"349100.00"`,
+- [x] **T0.2** Escribe a mano, en el test, el literal que `money()` da hoy para `"349100.00"`,
   `"334100.00"`, `"15000.00"`, `"0.00"` y `"-500.00"` (ejecútalo una vez y cópialo; no lo importes).
   **Hecho:** literales en `ColaCierresBodega.test.tsx` con el comentario de dónde salen.
-- [ ] **T0.3** Corre `pnpm run test:guardias` en limpio y anota las verdes de partida
+- [x] **T0.3** Corre `pnpm run test:guardias` en limpio y anota las verdes de partida
   (`cierre-bodega-vocabulario`, `cascada-central-en-las-dos-pantallas`, `contadores-cabecera`,
   `superficie-de-uso`, `cobertura-tablas`, `liquidacion-money-safe`). **Hecho:** línea en
   `progress/features/SLT-127.md > Tandas`.
 
 ## T1 — Lógica pura · `frontend_dev` (depende de T0)
 
-- [ ] **T1.1** `cola-cierres-vista.ts`: `TipoCola` += `"bodega"`; rama bodega de `columnasCola`;
+- [x] **T1.1** `cola-cierres-vista.ts`: `TipoCola` += `"bodega"`; rama bodega de `columnasCola`;
   `tablistCola`, `folioBodegaCola`, `recibidoCola`, `faltaResaltada`, `accionBodegaDe`
   (`design.md > cola-cierres-vista.ts`). La rama mensajero no cambia.
-- [ ] **T1.2** `cola-cierres-labels.ts`: los textos de `design.md > cola-cierres-labels.ts`, en «tú».
-- [ ] **T1.3** `tests/unit/utils/cola-cierres-vista.test.ts`: casos de bodega (columnas en orden, igual
+- [x] **T1.2** `cola-cierres-labels.ts`: los textos de `design.md > cola-cierres-labels.ts`, en «tú».
+- [x] **T1.3** `tests/unit/utils/cola-cierres-vista.test.ts`: casos de bodega (columnas en orden, igual
   en las dos pestañas; folio; «—» con `montoRecibido` null; `faltaResaltada` con `"15000.00"`,
   `"0.00"`, `"-500.00"`; las tres acciones por estado, incluido un `rechazado` sin marca → «Ver /
   conciliar»); el caso de columnas de mensajero de hoy sigue igual.
@@ -42,10 +42,10 @@
 
 ## T2 — Componente · `frontend_dev` (depende de T1)
 
-- [ ] **T2.1** `ColaCierres.tsx`: props en unión discriminada (`design.md > ColaCierres con tipo
+- [x] **T2.1** `ColaCierres.tsx`: props en unión discriminada (`design.md > ColaCierres con tipo
   bodega`); `TablaColaMensajero` (código de hoy, movido) y `TablaColaBodega`; `tablist` por
   `tablistCola(tipo)`.
-- [ ] **T2.2** `tests/components/ColaCierresBodega.test.tsx` (nuevo): lo de `design.md > Verificación >
+- [x] **T2.2** `tests/components/ColaCierresBodega.test.tsx` (nuevo): lo de `design.md > Verificación >
   Componente`, con literales escritos a mano. Los negativos de R134 buscan valores que no pueden salir
   por casualidad (p. ej. una nota «NOTA-SLT127-ZQ» y un recaudado `"987654.32"`), no textos cortos.
   **Hecho:** verde; `tests/components/ColaCierres.test.tsx` sigue verde **sin tocarlo** (R135); las
@@ -53,30 +53,30 @@
 
 ## T3 — Montaje en `/cierres-admin` › Bodega · `frontend_dev` (depende de T2)
 
-- [ ] **T3.1** `CierresBodegaAdminModule.tsx`: página de Conciliados en el módulo con
+- [x] **T3.1** `CierresBodegaAdminModule.tsx`: página de Conciliados en el módulo con
   `["cierres-bodega:resueltos", page, pageSize, filtros]` y `fallbackData` como la cola; `aplicarFiltros`
   devuelve las dos listas a la página 1; monta `ColaCierres` (`design.md > Montaje`); quita los imports
   y el JSX de `ListaComprobantes`, `CierreBodegaFacturaResumen`, `CierresBodegaResueltosLista`,
   `SegmentedToggle` y `PanelConmutado`; paginaciones con `PAGINACION_POR_CONCILIAR_LABEL` y
   `PAGINACION_CONCILIADOS_LABEL` (PA-P).
-- [ ] **T3.2** `CierresBodegaResueltosLista.tsx`: solo el comentario de «sin montar; lo retira SLT-115»
+- [x] **T3.2** `CierresBodegaResueltosLista.tsx`: solo el comentario de «sin montar; lo retira SLT-115»
   (`design.md > Montaje`). Sin cambios de comportamiento.
-- [ ] **T3.3** `tests/components/CierresBodegaAdminCola.test.tsx` (nuevo): lo de `design.md >
+- [x] **T3.3** `tests/components/CierresBodegaAdminCola.test.tsx` (nuevo): lo de `design.md >
   Verificación > Módulo`. **Hecho:** verde; las mutaciones «conteo con `items.length`», «Conciliados
   sin `filtros`» y «filtrar solo reinicia la cola» lo ponen rojo; `CierresBodegaAdminRefresco.test.tsx`
   sigue revalidando las dos claves.
 
 ## T4 — Tests y guardias que cambian · `frontend_dev` (depende de T3) [P con T5]
 
-- [ ] **T4.1** [P] Los 7 tests que abren el detalle: «Ver / decidir el cierre de bodega de Limón» →
+- [x] **T4.1** [P] Los 7 tests que abren el detalle: «Ver / decidir el cierre de bodega de Limón» →
   «Ver / conciliar el cierre de bodega de Limón»; en `CierresBodegaAdminDetalleUnico`, además la pestaña
   `tab /^Conciliados/` y «Ver el cierre de bodega de Limón». Mismo comportamiento vigilado.
-- [ ] **T4.2** [P] Descarga: `CierresDescarga`, `CierresDescargaColumnas`,
+- [x] **T4.2** [P] Descarga: `CierresDescarga`, `CierresDescargaColumnas`,
   `CierresBodegaDescargaDetallada` (pestaña de bodega `/^Conciliados/` como `tab`). Los nombres de los
   botones de descarga no cambian.
-- [ ] **T4.3** [P] Paginación: `ColasPaginacion`, `BajoRiesgoPaginacion`, `paginacion-transversal`
+- [x] **T4.3** [P] Paginación: `ColasPaginacion`, `BajoRiesgoPaginacion`, `paginacion-transversal`
   (región, `table`, `tablist`, pestaña, etiqueta y `ruta` de la paginación de Conciliados).
-- [ ] **T4.4** [P] `censo-tablas.ts`: `ColaCierres` con `CierresBodegaAdminModule.tsx` en `montajes` y
+- [x] **T4.4** [P] `censo-tablas.ts`: `ColaCierres` con `CierresBodegaAdminModule.tsx` en `montajes` y
   sin SLT-105 en `montajesPrevistos`; el `nombre` y la `razon` de la tabla mencionan bodega.
   `cascada-central-en-las-dos-pantallas`: dos superficies. `cierre-bodega-vocabulario`: solo si está
   roja (T0.3).
@@ -85,12 +85,12 @@
 
 ## T5 — E2E · `frontend_dev` (depende de T3) [P con T4]
 
-- [ ] **T5.1** `e2e/_escenarios/cierres.ts`: `pestanaDeColaBodega(page, "Por conciliar" | "Conciliados")`
+- [x] **T5.1** `e2e/_escenarios/cierres.ts`: `pestanaDeColaBodega(page, "Por conciliar" | "Conciliados")`
   (`tablist` «Cierres de bodega por estado», `tab` `^<nombre> \d+$`) y `regionColaBodega(page, …)`.
-- [ ] **T5.2** `e2e/cierre-bodega-satelite.spec.ts`: selectores a los helpers + `filaDeCola`; el describe
+- [x] **T5.2** `e2e/cierre-bodega-satelite.spec.ts`: selectores a los helpers + `filaDeCola`; el describe
   de C1 se reescribe como en `design.md > Verificación > E2E` (conteos `Por conciliar 1` → `0`,
   `Conciliados 1`, «Ver / corregir», pastilla y Falta en la fila).
-- [ ] **T5.3** `cierres-rediseno.spec.ts:777-778` y `ajuste-pago-mensajero-cierre.spec.ts:294-295`:
+- [x] **T5.3** `cierres-rediseno.spec.ts:777-778` y `ajuste-pago-mensajero-cierre.spec.ts:294-295`:
   región «Cierres de bodega por conciliar» y «Ver / conciliar el cierre de bodega de …».
   **Hecho de T5:** los tres specs verdes en local con base desechable nueva y `NEXT_PUBLIC_APP_URL` como
   en `gate.yml`, y el grupo `dinero` entero (`pnpm exec playwright test --project=dinero`): la pantalla
