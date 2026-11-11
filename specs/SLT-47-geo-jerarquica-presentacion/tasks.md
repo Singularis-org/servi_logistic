@@ -11,7 +11,7 @@
 
 ## T0 — Maqueta del filtro de N niveles (leader + humano) · bloquea T3.2, T4 y T5
 
-- [ ] **T0.1** El leader arma la maqueta (`/design`) del filtro de lugar en un país de 2, 3 (Costa
+- [x] **T0.1** El leader arma la maqueta (`/design`) del filtro de lugar en un país de 2, 3 (Costa
   Rica), 4 y 10 niveles. Cubre:
   - la barra de `/ordenes` (que satélite y analítica heredan);
   - `/novedades`, con la lista del nivel 3 nueva (R8);
@@ -20,7 +20,7 @@
   - las respuestas a P2 y P4: la forma de mis-asignaciones y si las listas hondas quedan
     deshabilitadas hasta elegir arriba.
   **Hecho:** la maqueta está en el repo o enlazada desde `progress/impl_SLT-47.md`.
-- [ ] **T0.2** El humano aprueba la maqueta.
+- [x] **T0.2** El humano aprueba la maqueta.
   **Hecho:** fecha, referencia y quién aprobó, anotados en `progress/impl_SLT-47.md` (R33). Si cambia
   P2 o P4, el `spec_author` ajusta R3 y R7 antes de T4.
 
