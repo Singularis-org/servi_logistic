@@ -131,3 +131,4 @@ E2E: `e2e/_escenarios/cierres.ts`, `e2e/cierre-bodega-satelite.spec.ts`, `e2e/ci
 
 Hecho T0-T5 con todo verde salvo `./init.sh`, que corta en el validador de `feature_list.json` (ruta
 "sdd" de SLT-105 y SLT-127 en la copia local del leader); al corregirla, el leader repite el gate.
+- Gate leader 2026-11-11 (base slt127_a, tras corregir ruta:sdd -> completa en el board): INIT_EXIT=0
