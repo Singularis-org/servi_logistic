@@ -521,6 +521,8 @@ describe("R16 — el criterio de cada par esta declarado UNA sola vez", () => {
     for (const consumidor of [
       "lib/repositories/CierresAdminRepository.ts",
       "lib/repositories/LiquidacionPagoRepository.ts",
+      // SLT-124 (R5): el cierre del dia del premio filtra el destino con el MISMO WHERE.
+      "lib/repositories/CierreDelDiaRepository.ts",
     ]) {
       const codigo = leer(consumidor);
       expect(ocurrencias(codigo, /\bfunction\s+alcanceWhere\b/), `${consumidor} redeclara alcanceWhere`).toBe(0);
@@ -533,6 +535,8 @@ describe("R16 — el criterio de cada par esta declarado UNA sola vez", () => {
     expect(ocurrencias(leer("lib/repositories/CierresAdminRepository.ts"), /\balcanceWhere\(/)).toBeGreaterThanOrEqual(5);
     // SLT-122 (R6/R9): el pago directo, los imputables del reparto y su conteo.
     expect(ocurrencias(leer("lib/repositories/LiquidacionPagoRepository.ts"), /\balcanceWhere\(/)).toBe(3);
+    // SLT-124 (R1-R5): la resolucion del cierre del dia del premio, una sola llamada.
+    expect(ocurrencias(leer("lib/repositories/CierreDelDiaRepository.ts"), /\balcanceWhere\(/)).toBe(1);
   });
 });
 

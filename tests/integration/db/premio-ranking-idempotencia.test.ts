@@ -12,6 +12,7 @@ import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedServ
 import { CajaPremioRankingFeedService } from "@/lib/services/CajaPremioRankingFeedService";
 import { LiquidacionService } from "@/lib/services/LiquidacionService";
 import { PremioRankingDevengoService } from "@/lib/services/PremioRankingDevengoService";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { PremioTx } from "@/lib/interfaces/services/IPremioRankingDevengoService";
 import type { LiquidacionTx } from "@/lib/interfaces/services/ILiquidacionService";
@@ -958,7 +959,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
       const repo = new CierreDelDiaRepository(tx as unknown as PrismaClient);
       const resoluciones = [];
       for (let i = 0; i < 3; i += 1) {
-        resoluciones.push(await repo.resolverCierreDelDia(s.mensajeroId, ventanaDe(DIA)));
+        resoluciones.push(await repo.resolverCierreDelDia(s.mensajeroId, ventanaDe(DIA), ALCANCE_ACCESO_TOTAL));
       }
       return { resoluciones, esperado: s.cierre.id, segundo: segundo.id };
     });
@@ -1030,11 +1031,11 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
       await gestion(dentroDelDia(DIA_ANTERIOR), false);
 
       const repo = new CierreDelDiaRepository(tx as unknown as PrismaClient);
-      const soloEsas = await repo.resolverCierreDelDia(mensajeroId, ventanaDe(DIA));
+      const soloEsas = await repo.resolverCierreDelDia(mensajeroId, ventanaDe(DIA), ALCANCE_ACCESO_TOTAL);
       // CONTROL DE NO-VACUIDAD: con una gestion VIGENTE del dia, el MISMO cierre SI aparece. Sin
       // esto, un `where` roto que no devolviera nunca nada pasaria el caso de arriba en verde.
       await gestion(dentroDelDia(DIA), false);
-      const conVigente = await repo.resolverCierreDelDia(mensajeroId, ventanaDe(DIA));
+      const conVigente = await repo.resolverCierreDelDia(mensajeroId, ventanaDe(DIA), ALCANCE_ACCESO_TOTAL);
       return { soloEsas, conVigente, cierreId: cierre.id };
     });
 

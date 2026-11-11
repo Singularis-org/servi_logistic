@@ -52,14 +52,14 @@ function montaje(opciones: {
   const TX = { marca: "tx-slt68" };
   const orden: string[] = [];
   const cierres = {
-    listarCierresImputables: vi.fn(async () => {
+    listarCierresImputablesEnAlcance: vi.fn(async () => {
       orden.push("listarCierres");
       return opciones.cierres ?? [cierre("c-viejo", "2026-10-01T23:00:00.000Z"), cierre("c-nuevo", "2026-10-20T23:00:00.000Z")];
     }),
     bloquearBeneficiario: vi.fn(async () => {
       orden.push("bloquear");
     }),
-    obtenerCierreParaPago: vi.fn(async (id: string) => {
+    obtenerCierreParaPagoEnAlcance: vi.fn(async (id: string) => {
       orden.push("releer");
       return { id, mensajeroId: MENSAJERO, estado: "aprobado" as const, totalPagoMensajero: "0.00", totalEfectivo: "0.00" };
     }),
@@ -130,7 +130,7 @@ describe("SLT-68 R4/R5/R6 — registrar: que lee, que escribe y en que orden", (
   it("R4: mensajero inexistente (en la empresa) → `no_encontrado` sin buscar cierres ni abrir transaccion", async () => {
     const m = montaje({ nombre: null });
     expect(await m.servicio.registrar(REGISTRO, MAESTRO)).toEqual({ status: "no_encontrado" });
-    expect(m.cierres.listarCierresImputables).not.toHaveBeenCalled();
+    expect(m.cierres.listarCierresImputablesEnAlcance).not.toHaveBeenCalled();
     expect(m.runTransaction).not.toHaveBeenCalled();
   });
 
@@ -189,7 +189,7 @@ describe("SLT-68 R4/R5/R6 — registrar: que lee, que escribe y en que orden", (
 
   it("el cierre dejo de estar aprobado bajo el candado → `sin_cierre_aprobado` sin escribir", async () => {
     const m = montaje();
-    m.cierres.obtenerCierreParaPago.mockResolvedValueOnce({
+    m.cierres.obtenerCierreParaPagoEnAlcance.mockResolvedValueOnce({
       id: "c-nuevo", mensajeroId: MENSAJERO, estado: "rechazado" as never, totalPagoMensajero: "0.00", totalEfectivo: "0.00",
     });
     expect(await m.servicio.registrar(REGISTRO, MAESTRO)).toEqual({ status: "sin_cierre_aprobado" });
@@ -257,5 +257,41 @@ describe("SLT-68 Q1 — cierreMasReciente", () => {
     expect(cierreMasReciente([])).toBeNull();
     expect(cierreMasReciente([cierre("b", "2026-10-02T00:00:00.000Z"), cierre("a", "2026-10-05T00:00:00.000Z")])?.id).toBe("a");
     expect(cierreMasReciente([cierre("a", "2026-10-05T00:00:00.000Z"), cierre("b", "2026-10-05T00:00:00.000Z")])?.id).toBe("b");
+  });
+});
+
+// ── SLT-124 — el incentivo solo se imputa a cierres de la central ───────────────────────────────
+//
+// El doble no ve el WHERE: aqui se afirma que el servicio PIDE el alcance de la central en las dos
+// lecturas, y que la relectura fuera de alcance (`null`) no escribe. Que la base deje fuera un cierre
+// de satelite lo prueba `tests/integration/db/central-sin-satelite-premio-incentivo.test.ts`.
+describe("SLT-124 (R8, R9, R10) — el alcance de la central en la eleccion y en la relectura", () => {
+  // Literal escrito a mano: es el contrato (acceso total = cierres `bodega_central`, sin zona).
+  const ALCANCE_CENTRAL = { destinoTipo: "bodega_central", destinoZonaId: null };
+
+  it("R8: la eleccion y la relectura bajo el candado van con el alcance de la central", async () => {
+    const m = montaje();
+    const r = await m.servicio.registrar(REGISTRO, ADMIN);
+    expect(r).toMatchObject({ status: "ok", incentivo: { cierreId: "c-nuevo" } });
+    expect(m.cierres.listarCierresImputablesEnAlcance).toHaveBeenCalledTimes(1);
+    expect(m.cierres.listarCierresImputablesEnAlcance.mock.calls[0]).toEqual([MENSAJERO, ALCANCE_CENTRAL]);
+    expect(m.cierres.obtenerCierreParaPagoEnAlcance).toHaveBeenCalledTimes(1);
+    expect(m.cierres.obtenerCierreParaPagoEnAlcance.mock.calls[0]).toEqual(["c-nuevo", ALCANCE_CENTRAL, m.TX]);
+  });
+
+  it("R9: sin ningun cierre aprobado de la central → `sin_cierre_aprobado`, sin transaccion ni escrituras", async () => {
+    const m = montaje({ cierres: [] });
+    expect(await m.servicio.registrar(REGISTRO, MAESTRO)).toEqual({ status: "sin_cierre_aprobado" });
+    expect(m.runTransaction).not.toHaveBeenCalled();
+    expect(m.caja.emitirEgreso).not.toHaveBeenCalled();
+    expect(m.libro.crearMovimientos).not.toHaveBeenCalled();
+  });
+
+  it("R10: la relectura no lo encuentra en el alcance (`null`) → `sin_cierre_aprobado` sin escribir", async () => {
+    const m = montaje();
+    m.cierres.obtenerCierreParaPagoEnAlcance.mockResolvedValueOnce(null as never);
+    expect(await m.servicio.registrar(REGISTRO, MAESTRO)).toEqual({ status: "sin_cierre_aprobado" });
+    expect(m.caja.emitirEgreso).not.toHaveBeenCalled();
+    expect(m.libro.crearMovimientos).not.toHaveBeenCalled();
   });
 });
