@@ -82,7 +82,7 @@
 
 ## Tanda 4 — Demo y E2E
 
-- [ ] **T8 — Demo de QA con plan custom.** `scripts/demo-qa/receta.ts` (design §4) y
+- [x] **T8 — Demo de QA con plan custom.** `scripts/demo-qa/receta.ts` (design §4) y
   `tests/integration/db/demo-qa.test.ts`.
   *Cubre y prueba:* R13 (`demo-qa.test.ts`: plan custom asignado con `costo_por_orden = 100.00` y un cargo
   de 100,00 `plan` por orden). *Depende de:* T1, T3.

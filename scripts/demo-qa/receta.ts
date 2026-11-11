@@ -16,6 +16,7 @@ import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { EvidenciaArchivo } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { notificarCierreDiaVencidoReal } from "@/lib/notificaciones/notificadores";
 import { AbonoTiendaRepository } from "@/lib/repositories/AbonoTiendaRepository";
 import { AporteCapitalRepository } from "@/lib/repositories/AporteCapitalRepository";
@@ -24,7 +25,6 @@ import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepositor
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
-import { CobroPlataformaTarifaRepository } from "@/lib/repositories/CobroPlataformaTarifaRepository";
 import { CorteDiarioRepository } from "@/lib/repositories/CorteDiarioRepository";
 import { DevolucionTiendaRepository } from "@/lib/repositories/DevolucionTiendaRepository";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
@@ -37,6 +37,7 @@ import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepos
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { PagoPlataformaRepository } from "@/lib/repositories/PagoPlataformaRepository";
+import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { RechazoTiendaCobroRepository } from "@/lib/repositories/RechazoTiendaCobroRepository";
 import { SaldosSatelitesRepository } from "@/lib/repositories/SaldosSatelitesRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
@@ -53,7 +54,6 @@ import { CajaAbonoTiendaFeedService } from "@/lib/services/CajaAbonoTiendaFeedSe
 import { CajaAporteCapitalFeedService } from "@/lib/services/CajaAporteCapitalFeedService";
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
-import { CobroPlataformaService } from "@/lib/services/CobroPlataformaService";
 import { ConciliacionSatelitesService } from "@/lib/services/ConciliacionSatelitesService";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import { DevolucionOrigenService } from "@/lib/services/DevolucionOrigenService";
@@ -62,6 +62,7 @@ import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecial
 import { EnvioDevolucionCentralService } from "@/lib/services/EnvioDevolucionCentralService";
 import { IncidenteAdminService } from "@/lib/services/IncidenteAdminService";
 import { LiquidacionService } from "@/lib/services/LiquidacionService";
+import { PlanesService } from "@/lib/services/PlanesService";
 import { RechazoTiendaService } from "@/lib/services/RechazoTiendaService";
 import { RecepcionBodegaCentralService } from "@/lib/services/RecepcionBodegaCentralService";
 import { RecepcionOrigenService } from "@/lib/services/RecepcionOrigenService";
@@ -74,7 +75,6 @@ import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvid
 import { registrarAbonoTiendaSchema } from "@/lib/types/abono-tienda";
 import { generarApiKeySchema } from "@/lib/types/api-key";
 import { registrarAporteCapitalSchema } from "@/lib/types/aporte-capital";
-import { fijarCobroEmpresaSchema } from "@/lib/types/cobro-plataforma";
 import { marcarConsolidacionRecibidaSchema } from "@/lib/types/conciliacion-satelites";
 import { distritosEspecialesSchema } from "@/lib/types/distrito-zona-especial";
 import { aprobarIncidenteSchema, reportarIncidenteSchema } from "@/lib/types/incidente";
@@ -200,7 +200,8 @@ const EFECTIVO_DEL_PAGO_MIXTO = 1000;
 const MONTO_ENTREGA_SATELITE = 1000;
 /** Con B recortada: con 4 entregas sin cobro, los fletes superan lo cobrado más el abono (medido en local). */
 const ENTREGAS_SIN_COBRO_CON_RECORTE = 4;
-const COBRO_PLATAFORMA_POR_ORDEN = "100";
+/** SLT-126 R13: el costo por orden fijo del plan de la demo. */
+const COBRO_PLATAFORMA_POR_ORDEN = "100.00";
 const TARIFA_TIENDA = { valorFlete: 2500, valorFleteDevuelto: 1250 } as const;
 const PAGO_MENSAJERO = { cobroEntregado: 1500, cobroRechazado: 164 } as const;
 const INDEMNIZACION = "5000";
@@ -315,8 +316,9 @@ async function geoDe(dueno: PrismaClient, distrito: DistritoDemo): Promise<Geo> 
 }
 
 /**
- * El cobro de la plataforma lo fija el superadmin, que no tiene empresa (SL-40). Aquí lo fija la
- * demo, no una persona: `CobroPlataformaService` solo mira el rol y no escribe el `usuarioId`.
+ * El plan de la empresa lo crea y asigna el superadmin, que no tiene empresa (SL-24). Aquí lo hace la
+ * demo, no una persona: `PlanesService` solo mira el rol, y `resolverActorCongelado` registra el
+ * historial con actor de sistema (`"demo-qa"` no es un usuario; `plan_rastro` no tiene FK al usuario).
  */
 const ACTOR_PLATAFORMA: Actor = { usuarioId: "demo-qa", rol: "superadmin", zonaId: null, organizacionId: null };
 
@@ -448,21 +450,47 @@ export async function crearEmpresaDemo(
   const { maestro, tienda: tiendaBodega, adminSatelite } = escenario.actores;
   const s = servicios();
 
-  // R12: los demás perfiles, por tandas a la vez (`enTandas`), los primeros con la excepción de
+  // R12: los demás perfiles, por tandas a la vez (`enTandas`), los primeros con el plan de
   // cobro. Mensajeros de más por las reglas de T1 §2: recolector (R-c), corte (R-b), un cierre
   // rechazado, un cierre pendiente y las órdenes en reposo (R-a). Y por tiempo: las gestiones de la
   // central y de la satélite se reparten entre varios (novedades, rechazos, satélite 2), porque las
   // de un mismo mensajero van de una en una (ver «Los tramos»).
   const mensajero = (zona: ZonaTipo, perfil: string): Promise<MensajeroEscenario> =>
     enPaso(`alta de ${perfil}`, () => nucleo.crearMensajero(escenario, zona, { perfil }));
+  // SLT-126 (design §4): el camino de la pantalla de Planes, que crea el custom y lo asigna en una sola
+  // transacción. Lleva los tres módulos apagables porque la asignación deja encendidos exactamente los
+  // del plan, y la empresa demo nace con todos (`crearEmpresa`, por defecto): así no cambia ninguno. Sin
+  // topes (la demo no debe chocar con ninguno) y sin precio (el costo base no entra en la demo).
+  // Con el reloj real y no con `ahora` de la receta: el plan rige desde hoy de la base, que es el reloj con
+  // que el trigger calcula el cargo de cada orden; y el primer paso con el reloj de la receta sigue siendo
+  // ubicar la primera orden (el corte simulado de R28 en `demo-qa.test.ts` cuenta con ello).
+  const asignarPlanDemo = (organizacionId: string) =>
+    enPaso("PlanesService.crear", async () => {
+      const r = await new PlanesService(new PlanesRepository(app)).crear(ACTOR_PLATAFORMA, {
+        nombre: `Demo QA ${clave}`,
+        visibilidad: "custom",
+        organizacionId,
+        topes: { porRol: {}, apiKeys: null },
+        modulos: [...ORDEN_MODULOS],
+        precio: { tipo: "sin_precio" },
+        costoPorOrden: COBRO_PLATAFORMA_POR_ORDEN,
+        costoPorOrdenPorcentual: null,
+        tipoCobro: "mensual",
+      });
+      // `PlanResult` dice `estado`, no `status`: por eso no pasa por `exigir`. Mismo mensaje.
+      if (r.estado !== "ok") {
+        const campos = r.estado === "validation_error" ? Object.keys(r.fieldErrors) : [];
+        throw new Error(
+          `[demo-qa] «PlanesService.crear» no fue ok: ${r.estado}${campos.length > 0 ? ` (${campos.join(", ")})` : ""}`,
+        );
+      }
+      return r;
+    });
   const [, admin, tiendaSinBodegaUsuario] = await enParalelo([
-    // R19: la excepción de cobro va ANTES de la primera orden, porque el cargo se calcula al nacer.
-    llamar("CobroPlataformaService.fijarDeEmpresa", () =>
-      new CobroPlataformaService(new CobroPlataformaTarifaRepository(app)).fijarDeEmpresa(
-        ACTOR_PLATAFORMA,
-        fijarCobroEmpresaSchema.parse({ organizacionId: org, monto: COBRO_PLATAFORMA_POR_ORDEN }),
-      ),
-    ),
+    // SLT-126 R13 (SL-43 R19): el plan con costo por orden va ANTES de la primera orden, porque el
+    // cargo se calcula al nacer. Custom de la empresa demo: el borrado de la demo (SL-43 R28) se lo
+    // lleva por `ON DELETE CASCADE`, así que cada corrida crea el suyo.
+    asignarPlanDemo(org),
     enPaso("alta de admin", () => altaUsuario(escenario.empresa, "admin", "admin")),
     enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { seRecogeEnTienda: true })),
   ]);
