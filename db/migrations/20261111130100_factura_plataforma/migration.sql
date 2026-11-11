@@ -540,6 +540,8 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_cerrar(text, timestamp) FROM PUBLI
 --   · efecto E después del `desde` D de la en curso y hasta su fin natural: la en curso se mostrará fijada en E,
 --     con la primera cuota del plan nuevo desde E (R28; si E es su fin natural, es lo mismo por §5.2);
 --   · E ≤ D (la cola va tarde): la marca en D, en la por cerrar que acaba en D o, sin ella, en la en curso (§5.2).
+--     Y la en curso ya con la periodicidad de órdenes del plan nuevo y su fin natural recalculado con ella, como la
+--     dejará la toma; su cuota prevista, en ese fin (review m7).
 --   La marca prevista también descarta, como la real, la cuota de la emisión cuyo período la contiene.
 -- Sin número (R24).
 CREATE FUNCTION factura_plataforma_en_curso(p_org text) RETURNS jsonb
@@ -564,6 +566,9 @@ DECLARE
   v_marca       timestamp;
   v_marca_id    text;
   v_marca_hasta timestamp;
+  -- En §5.2 (E ≤ D), la periodicidad que la toma le pondrá a la en curso; nula si no hay que mostrarla.
+  v_ec_periodicidad text;
+  v_periodicidad    text;
 BEGIN
   IF v_contexto IS NULL OR v_contexto = '' OR p_org IS DISTINCT FROM v_contexto THEN
     RAISE EXCEPTION USING ERRCODE = '42501',
@@ -589,6 +594,8 @@ BEGIN
         SELECT f."id" INTO v_marca_id FROM "factura_plataforma" f
          WHERE f."organizacion_id" = p_org AND f."estado" = 'por_cerrar' AND f."hasta_at" = v_ec."desde_at";
         v_marca_id := COALESCE(v_marca_id, v_ec."id");
+        -- Como `tomar_cambio` §5.2: la en curso pasa a la periodicidad del plan nuevo y su fin se recalcula solo.
+        SELECT p."periodicidad_ordenes" INTO v_ec_periodicidad FROM "plan" p WHERE p."id" = v_org."plan_cambio_plan_id";
       END IF;
     END IF;
   END IF;
@@ -597,7 +604,11 @@ BEGIN
      WHERE f."organizacion_id" = p_org AND f."estado" IN ('en_curso', 'por_cerrar')
      ORDER BY f."desde_at"
   LOOP
-    v_hasta := COALESCE(v_f."hasta_at", plan_fin_periodo_calendario(v_f."periodicidad", v_f."desde_at"));
+    v_periodicidad := v_f."periodicidad";
+    IF v_f."id" = v_ec."id" AND v_ec_periodicidad IS NOT NULL THEN
+      v_periodicidad := v_ec_periodicidad;
+    END IF;
+    v_hasta := COALESCE(v_f."hasta_at", plan_fin_periodo_calendario(v_periodicidad, v_f."desde_at"));
     IF v_f."id" = v_marca_id AND v_f."primera_cuota_desde_at" IS NULL THEN
       -- La primera cuota prevista de la asignación pendiente, con el plan nuevo (el de la factura que empezará
       -- en la marca, como en `cerrar`).
@@ -635,7 +646,7 @@ BEGIN
       'desde', v_f."desde_at",
       'hasta', v_hasta,
       'hasta_previsto', v_f."hasta_at" IS NULL,
-      'periodicidad', v_f."periodicidad",
+      'periodicidad', v_periodicidad,
       'plan_id', v_f."plan_id",
       'plan_nombre', v_f."plan_nombre",
       'tipo_cobro', v_f."tipo_cobro",

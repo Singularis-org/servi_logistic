@@ -293,11 +293,33 @@ Idempotente por el cerrojo y el estado.
 ### 2.6 `factura_plataforma_en_curso(p_org)` — R24
 
 La de T2, con el fin previsto `plan_fin_periodo_calendario(periodicidad, desde)`, la `periodicidad` en el JSON, las
-órdenes con `ordenes(desde, now())` y las dos cuotas previstas, cada una nula cuando no la llevará: con marca (en
-la en curso solo puede ser su `desde`, P18), la primera cuota con el plan de la propia factura; y la de la emisión
-en ese fin, `cuota(p_org, fin, plan, tipo, false)` con el plan del cambio pendiente si `plan_cambio_desde_at ≤
-fin`, y si no con el mismo plan que usará `cerrar` (el de la factura siguiente; humano, 2026-11-11: `en_curso` se
-iguala a `cerrar`).
+órdenes con `ordenes(desde, LEAST(now(), fin))` y las dos cuotas previstas, cada una nula cuando no la llevará:
+con marca M ya escrita, la primera cuota `cuota(p_org, M, plan, tipo, true)` con el plan de la factura con `desde`
+= M, como `cerrar` (en la en curso, una marca escrita solo puede ser su `desde`, P18); y la de la emisión en ese
+fin, `cuota(p_org, fin, plan, tipo, false)` con el plan del cambio pendiente si `plan_cambio_desde_at ≤ fin`, y si
+no con el mismo plan que usará `cerrar` (el de la factura siguiente; humano, 2026-11-11: `en_curso` se iguala a
+`cerrar`).
+
+**Una primera asignación pendiente** (la empresa sin plan, con `plan_cambio_*`; humano 2026-11-11, review m3 y m7)
+se muestra desde que se guarda como la dejará la toma de §2.3, sin escribir nada. Sea E su efecto y D el `desde`
+de la en curso:
+- **E > D y E < su fin natural, con la en curso sin plan (R28):** la en curso se muestra fijada en E (`hasta` = E,
+  órdenes hasta `LEAST(now(), E)`) con la marca prevista en E: la primera cuota es `cuota(p_org, E, plan nuevo,
+  tipo nuevo, true)`;
+- **E = su fin natural:** lo mismo, con la marca prevista en E en la en curso (es lo que deja §2.3 vía `avanzar`);
+  su fin no cambia;
+- **E ≤ D (la cola va tarde):** la marca prevista va en D, en la por cerrar que acaba en D o, si no la hay, en la
+  en curso; la primera cuota es `cuota(p_org, D, plan nuevo, tipo nuevo, true)`. Además la en curso se muestra ya
+  con la **periodicidad de órdenes del plan nuevo** y su fin natural recalculado con ella
+  (`plan_fin_periodo_calendario(periodicidad nueva, D)`, la misma que usa la toma), y su cuota prevista se calcula
+  en ese fin. Ejemplo: plan de órdenes mensuales con inicio el 1 y la en curso del 1 sin plan (quincenal): se ve
+  mensual, hasta el 1 del mes siguiente y con la cuota de ese mes, no hasta el 16;
+- **E más allá del fin natural, o E > D y antes del fin con la en curso con plan (R15):** nada previsto (la toma
+  lo resolverá tras `avanzar`, o no hace nada).
+
+En los tres primeros casos, la marca prevista descarta, como la real, la cuota de la emisión cuyo período la
+contiene (§2.4): el período que empieza en la marca se cobra una sola vez, con la primera cuota. El plan de la
+factura (`plan_id`, `plan_nombre`, `tipo_cobro`) no se adelanta: sigue sin plan hasta que la cola aplica la toma.
 
 ### 2.7 El tope del pago (SL-45) — R18, R19
 

@@ -298,7 +298,9 @@
   *Test:* `tests/integration/db/factura-plataforma-aislamiento.test.ts` (plan mensual: la del 16 al 30 con la
   cuota de diciembre prevista y la del 1 al 15 sin cuota; un cambio pendiente al 1 de diciembre: la prevista es
   la del plan nuevo; quincenal con inicio el 1 aplicado el 12: las dos previstas, la primera del 1 al 15 y la de
-  la quincena del 16).
+  la quincena del 16; una primera asignación pendiente, `it("R24, R28: una primera asignación pendiente con inicio
+  el 18 se ve desde que se guarda: …")`, review m3; y la misma con la cola tarde y órdenes mensuales, `it("R24:
+  una primera asignación pendiente al 1 de un plan de órdenes mensuales que la cola aplica tarde: …")`, review m7).
 
 ### Proceso, arranque y vuelta atrás
 

@@ -564,6 +564,63 @@ describeSiHayBase("SLT-118 — quién lee y quién escribe las facturas de la pl
     }
   });
 
+  it("R24: una primera asignación pendiente al 1 de un plan de órdenes mensuales que la cola aplica tarde: la en curso del 1 ya se ve mensual, hasta el 1 de diciembre y con la cuota de diciembre, como la deja la cola", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      await tx.$executeRawUnsafe(`UPDATE "plan" SET "periodicidad_ordenes" = 'mensual' WHERE "id" = $1`, plan.id);
+      // Sin plan desde el 16 de octubre (facturas quincenales). Asignado el 20 de octubre con inicio el 1.
+      const e = await empresaDesde(tx, cero("2026-10-16"));
+      const efecto: EfectoElegido = { clase: "inicio", fecha: "2026-11-01", desde: inicioDelDiaPlataforma("2026-11-01"), elegida: true };
+      const asignado = await planesEnTx(tx).asignar(e, plan.id, ACTOR, efecto, "mensual", new Date("2026-10-20T15:00:00.000Z"));
+      // La corrida de las 00:10 del 1 llega antes que la cola: la del 16 al 31 queda por cerrar (espera, R39) y la del
+      // 1 se abre sin plan y quincenal. E = D = el 1.
+      await cerrarEn(tx, e, corrida("2026-11-01"));
+      const pendiente = await leerComoEmpresa(tx, e);
+      const [{ cambio }] = await tx.$queryRawUnsafe<{ cambio: string }[]>(
+        `SELECT "plan_cambio_id" AS cambio FROM "organizacion" WHERE "id" = $1`,
+        e,
+      );
+      await fijarEmpresa(tx, "");
+      const aplicado = await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: e, cambioId: cambio }, new Date(new Date(cero("2026-11-01")).getTime() + 30 * 60_000));
+      const trasLaCola = await leerComoEmpresa(tx, e);
+      return { plan, asignado, aplicado, pendiente: pendiente.map(vista), trasLaCola: trasLaCola.map(vista) };
+    });
+    expect(r.asignado).toMatchObject({ estado: "ok", pendiente: true });
+    expect(r.aplicado).toMatchObject({ estado: "aplicado" });
+    // La por cerrar del 16 al 31 lleva la primera cuota prevista: noviembre entero del plan nuevo (§5.2, por adelantado).
+    const porCerrar = {
+      estado: "por_cerrar",
+      numero: null,
+      desde: cero("2026-10-16"),
+      hasta: cero("2026-11-01"),
+      hastaPrevisto: false,
+      periodicidad: "quincenal",
+      planId: null,
+      totalOrdenes: "0.00",
+      cuota: null,
+      primeraCuota: cuotaCompleta(r.plan, "mensual", "2026-11-01", "2026-12-01", "31000.00", "31000.00", 30),
+      total: "31000.00",
+    };
+    // m7: la en curso del 1, con la asignación solo guardada, ya con la periodicidad mensual del plan nuevo, su fin
+    // recalculado el 1 de diciembre (no el 16) y la cuota de diciembre prevista en ese fin.
+    const enCurso = {
+      estado: "en_curso",
+      numero: null,
+      desde: cero("2026-11-01"),
+      hasta: cero("2026-12-01"),
+      hastaPrevisto: true,
+      periodicidad: "mensual",
+      planId: null,
+      totalOrdenes: "0.00",
+      cuota: cuotaCompleta(r.plan, "mensual", "2026-12-01", "2027-01-01", "31000.00", "31000.00", 31),
+      primeraCuota: null,
+      total: "31000.00",
+    };
+    expect(r.pendiente).toEqual([porCerrar, enCurso]);
+    // La cola aplica la toma: las mismas dos, y la en curso ya con el plan (lo único que no se adelanta).
+    expect(r.trasLaCola).toEqual([porCerrar, { ...enCurso, planId: r.plan.id }]);
+  });
+
   it("R24, R21: la empresa A lee las suyas, cerradas con su número y sus cuotas emitidas; la de otra empresa o sin empresa, 42501", async () => {
     const r = await revertida(base, async (tx) => {
       const { a, b } = await sembrar(tx);
