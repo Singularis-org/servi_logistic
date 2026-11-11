@@ -138,6 +138,29 @@ interface TablaComun {
   vacio: string;
 }
 
+/** La ÚNICA tabla de la cola (una sola en el censo), genérica en el tipo de fila. */
+function TablaCola<T>({
+  region,
+  cargando,
+  error,
+  vacio,
+  columns,
+  filas,
+  rowKey,
+}: Readonly<TablaComun & { columns: Column<T>[]; filas: readonly T[]; rowKey: keyof T }>) {
+  return (
+    <DataTable
+      ariaLabel={region}
+      columns={columns}
+      data={[...filas]}
+      rowKey={rowKey}
+      isLoading={cargando}
+      error={error}
+      emptyMessage={vacio}
+    />
+  );
+}
+
 export function ColaCierres(props: Readonly<ColaCierresProps | ColaCierresBodegaProps>) {
   const { descripcion, pestanas, pestanaActiva, onPestana, barra, descargar, pie, paginacion } =
     props;
@@ -242,14 +265,10 @@ function TablaColaMensajero({
   }
 
   return (
-    <DataTable
-      ariaLabel={region}
+    <TablaCola
+      {...{ region, cargando, error, vacio, filas }}
       columns={columnasTabla(columnasCola("mensajero", rol, pestanaActiva), celda)}
-      data={[...filas]}
       rowKey="cierreId"
-      isLoading={cargando}
-      error={error}
-      emptyMessage={vacio}
     />
   );
 }
@@ -318,14 +337,10 @@ function TablaColaBodega({
   }
 
   return (
-    <DataTable
-      ariaLabel={region}
+    <TablaCola
+      {...{ region, cargando, error, vacio, filas }}
       columns={columnasTabla(columnasCola("bodega", "central", "pendientes"), celda)}
-      data={[...filas]}
       rowKey="cierreBodegaId"
-      isLoading={cargando}
-      error={error}
-      emptyMessage={vacio}
     />
   );
 }
