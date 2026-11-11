@@ -165,7 +165,7 @@ Dependencias: T0 → T1 → T2 → T3 → (T4 [según PA2]) → T5 [P] T6 → T7
   `obtenerCierreParaPago`/`listarCierresImputables` (`CierresAdminService.ts:1378`,
   `IncentivoMensajeroService.ts:62` y `:80`, `LiquidacionService.ts:1229` y `:1400`), que **no** se
   tocan. *Hecho:* tabla en `progress/impl_SLT-122.md` con cada cita y si sigue igual.
-- [ ] **T0.2 — Medida (leader, solo lectura en prod).** Contar pagos vigentes (`liquidacion_pago`
+- [x] **T0.2 — Medida (leader, solo lectura en prod).** Contar pagos vigentes (`liquidacion_pago`
   sin anulación) contra cierres con `destino_tipo = 'bodega_satelite'`, por empresa. Sin imprimir
   datos personales. *Hecho:* el número en `progress/features/SLT-122.md`; si es > 0, se avisa a
   Carlos (posible doble pago, SLT-73 D4) y no bloquea esta ficha.
