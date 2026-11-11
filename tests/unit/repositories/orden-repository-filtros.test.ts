@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type { ListOrdenesWhere } from "@/lib/interfaces/repositories/IOrdenRepository";
+import { whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+// SLT-47: el lugar elegido se resuelve con el catalogo p1 → c1 → d1.
+import { delegadosDelCatalogo } from "@/tests/unit/analytics/_catalogo-facetas";
 
 // Feature 144/B1 (R33-R35, R44) — traduccion del `where` del service al `where` Prisma.
 //
@@ -16,6 +19,7 @@ function buildPrisma() {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
     },
+    ...delegadosDelCatalogo(),
   };
 }
 
@@ -33,16 +37,13 @@ describe("filtros de catalogo -> IN (...) (R34)", () => {
   it("R34: cada lista se traduce a `{ in: [...] }` en SU columna", async () => {
     const { findMany } = await whereDe({
       zonaId: ["z1", "z2"],
-      provinciaId: ["p1"],
-      cantonId: ["c1", "c2"],
-      distritoId: ["d1"],
+      lugarIds: ["c1"],
     });
+    // SLT-47 (R11): el lugar no es una columna; va en `AND`, resuelto a c1 y lo que cuelga (d1).
     expect(findMany).toEqual({
       deletedAt: null,
       zonaId: { in: ["z1", "z2"] },
-      provinciaId: { in: ["p1"] },
-      cantonId: { in: ["c1", "c2"] },
-      distritoId: { in: ["d1"] },
+      AND: [whereLugarEn(["c1", "d1"])],
     });
   });
 
@@ -90,17 +91,20 @@ describe("falla cerrado: un filtro nunca degrada a 'sin filtro' (R35)", () => {
     expect("zonaId" in findMany).toBe(true);
   });
 
-  it("R35: lo mismo para tienda, provincia, canton y distrito", async () => {
+  it("R35: lo mismo para tienda y lugar", async () => {
     const { findMany } = await whereDe({
       tiendaId: [],
-      provinciaId: [],
-      cantonId: [],
-      distritoId: [],
+      lugarIds: [],
     });
     expect(findMany.tiendaId).toEqual({ in: [] });
-    expect(findMany.provinciaId).toEqual({ in: [] });
-    expect(findMany.cantonId).toEqual({ in: [] });
-    expect(findMany.distritoId).toEqual({ in: [] });
+    // SLT-47: el lugar vacio es cero filas por id, no ausencia de clave.
+    expect(findMany.id).toEqual({ in: [] });
+  });
+
+  it("SLT-47 (R12): un lugar que no esta en el catalogo es cero filas, no todas", async () => {
+    const { findMany, count } = await whereDe({ lugarIds: ["lugar-inexistente"] });
+    expect(findMany.id).toEqual({ in: [] });
+    expect(count).toEqual(findMany);
   });
 
   it("sin regresion (R45): la lista vacia de ESTADOS conserva su semantica previa (sin filtro)", async () => {
@@ -110,13 +114,16 @@ describe("falla cerrado: un filtro nunca degrada a 'sin filtro' (R35)", () => {
 });
 
 describe("orden con distrito NULL bajo el filtro de distrito (decision (f))", () => {
-  it("`distritoId IN (...)` no puede seleccionar una fila con distrito NULL", async () => {
-    // La semantica SQL de `IN` excluye NULL: no hay clausula `OR distrito_id IS NULL`,
-    // y no se ofrece opcion "sin distrito". Se afirma sobre el `where` emitido.
-    const { findMany } = await whereDe({ distritoId: ["d1", "d2"] });
-    expect(findMany.distritoId).toEqual({ in: ["d1", "d2"] });
-    // Ni `null` entre los valores del IN, ni una clausula alternativa que lo cuele.
-    expect(JSON.stringify(findMany.distritoId)).not.toContain("null");
+  it("un lugar de distrito no puede seleccionar una fila con distrito NULL", async () => {
+    // SLT-47 (R27): el lugar de la orden es `COALESCE(distrito_id, canton_id)`. Una orden sin
+    // distrito solo entra si su CANTON es uno de los ids elegidos; con un distrito elegido (d1, una
+    // hoja), la rama `distritoId: null` exige `cantonId IN [d1]`, que ningun canton cumple.
+    const { findMany } = await whereDe({ lugarIds: ["d1"] });
+    expect(findMany.AND).toEqual([
+      { OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }] },
+    ]);
+    // Ni una clausula suelta que lo cuele fuera del `AND`.
+    expect(findMany.distritoId).toBeUndefined();
     expect(findMany.OR).toBeUndefined();
   });
 });

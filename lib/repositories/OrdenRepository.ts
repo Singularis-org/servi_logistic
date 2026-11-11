@@ -77,6 +77,11 @@ import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 // (`marcasDeOrdenes`); de aqui solo queda el tipo del cliente de las marcas.
 import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import { lugarDeLaOrden, PROFUNDIDAD_DEL_NIVEL, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import {
+  condicionesDeLugar,
+  lugaresDelFiltro,
+  type LugaresDelFiltro,
+} from "@/lib/repositories/_shared/lugares-del-filtro";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
@@ -1677,21 +1682,17 @@ function condicionSalidaAReparto(modo: SalioAReparto): Prisma.Sql {
  * MI bodega». Va aqui, junto a la zona, y no como un parametro del filtro, a proposito: el
  * alcance no puede apagarse desde fuera. Ver `condicionPasoPorBodegaSatelite`.
  */
-function condicionesSatelite(filtro: RecepcionSateliteFiltro): Prisma.Sql[] {
+function condicionesSatelite(filtro: RecepcionSateliteFiltro, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const condiciones: Prisma.Sql[] = [
     Prisma.sql`o."zona_id" = ${filtro.zonaId}`,
     Prisma.sql`o."deleted_at" IS NULL`,
     condicionPasoPorBodegaSatelite(),
     Prisma.sql`os."value" IN (${Prisma.join([...filtro.estatusValues])})`,
   ];
-  // Pedido humano (2026-08-19): la geografia se compara por ID —las columnas de `orden`, sin
-  // pasar por los JOIN de nombre— porque las opciones ya vienen de la geografia de la ZONA del
-  // actor, que es lo que ofrece el catalogo de `/ordenes`. Antes eran nombres derivados de las
-  // ordenes cargadas, y «Central» existe en cuatro provincias.
-  const provinciaIds = [...(filtro.provinciaIds ?? [])];
-  if (provinciaIds.length > 0) {
-    condiciones.push(Prisma.sql`o."provincia_id" IN (${Prisma.join(provinciaIds)})`);
-  }
+  // Pedido humano (2026-08-19): la geografia se compara por ID, no por nombre («Central» existe en
+  // cuatro provincias). SLT-47 (R11, R12): una sola condicion, «el lugar de la orden es uno de los
+  // ids resueltos o esta debajo», que el metodo resolvio con el catalogo antes de llamar aqui.
+  condiciones.push(...condicionesDeLugar(lugares));
   // Pedido humano (2026-08-25) — mensajero ASIGNADO, por ID y en el mismo AND. La columna es
   // NULLABLE: una orden todavia sin mensajero queda fuera bajo este filtro, que es lo que pide
   // quien lo usa («las de Ana»), y el mismo trato que ya recibe el distrito.
@@ -1700,16 +1701,6 @@ function condicionesSatelite(filtro: RecepcionSateliteFiltro): Prisma.Sql[] {
     condiciones.push(
       Prisma.sql`o."mensajero_asignado_id" IN (${Prisma.join(mensajeroIds)})`,
     );
-  }
-  const cantonIds = [...(filtro.cantonIds ?? [])];
-  if (cantonIds.length > 0) {
-    condiciones.push(Prisma.sql`o."canton_id" IN (${Prisma.join(cantonIds)})`);
-  }
-  const distritoIds = [...(filtro.distritoIds ?? [])];
-  if (distritoIds.length > 0) {
-    // `distrito_id` es NULLABLE y `NULL IN (...)` no es cierto: una orden SIN distrito queda
-    // fuera bajo un filtro de distrito. Mismo trato que en `/ordenes`.
-    condiciones.push(Prisma.sql`o."distrito_id" IN (${Prisma.join(distritoIds)})`);
   }
   // FICHA 370 — SALIDA A REPARTO. Va aqui, en el AND de las condiciones opcionales, y por eso
   // llega A LAS TRES consultas del dominio (pagina, conjunto de la descarga y vigencia de la
@@ -1934,6 +1925,25 @@ export class OrdenRepository implements IOrdenRepository {
   // carga del catalogo, y nunca entre peticiones (R11).
   private catalogoRepo: CatalogoGeograficoRepository | null = null;
 
+  /**
+   * SLT-47 (R11, R12, R15) — el `where` de Prisma del lugar elegido: los ids que estan en el catalogo
+   * del pais de la empresa, mas los nodos bajo ellos, sobre el lugar de la orden (`whereLugarEn`).
+   * Sin ids, nada (no carga el catalogo); si ninguno esta en el catalogo, cero filas.
+   */
+  private async criterioLugar(ids: readonly string[] | undefined): Promise<Prisma.OrdenWhereInput> {
+    // Falla cerrado (R35 de la 144): una lista presente pero vacia —el schema la hace inalcanzable—
+    // es cero filas, nunca «sin filtro».
+    if (ids !== undefined && ids.length === 0) return { id: { in: [] } };
+    const { lugar } = await lugaresDelFiltro(() => this.catalogoGeografico(), { lugar_id: ids });
+    if (lugar === undefined) return {};
+    return lugar.length === 0 ? { id: { in: [] } } : { AND: [whereLugarEn(lugar)] };
+  }
+
+  /** SLT-47 (R11): el lugar del filtro de la bodega satelite, resuelto antes de armar el SQL. */
+  private lugaresSatelite(filtro: RecepcionSateliteFiltro): Promise<LugaresDelFiltro> {
+    return lugaresDelFiltro(() => this.catalogoGeografico(), { lugar_id: filtro.lugarIds });
+  }
+
   private catalogoGeografico(): CatalogoGeograficoRepository {
     this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma);
     return this.catalogoRepo;
@@ -2065,10 +2075,9 @@ export class OrdenRepository implements IOrdenRepository {
       // lista -> `IN (...)` (OR interno), escalar -> igualdad, ausente -> sin clave.
       // Claves hermanas del mismo objeto = AND entre filtros distintos.
       ...criterioColumna("zonaId", params.where.zonaId),
-      ...criterioColumna("provinciaId", params.where.provinciaId),
-      ...criterioColumna("cantonId", params.where.cantonId),
-      // `distrito_id` es NULLABLE: `IN (...)` deja fuera las ordenes sin distrito.
-      ...criterioColumna("distritoId", params.where.distritoId),
+      // SLT-47 (R11, R12): el lugar elegido, resuelto con el catalogo. Va en `AND` y no como `OR`
+      // suelto: el `OR` de `whereLugarEn` pisaria el del buscador (`criterioBusqueda`).
+      ...(await this.criterioLugar(params.where.lugarIds)),
       // Feature 144 (R41/R42): rango temporal ya resuelto a instantes UTC por el service.
       ...(params.where.createdAt ? { createdAt: params.where.createdAt } : {}),
       // Filtro REASIGNABLES: las ordenes que ESPERAN que alguien decida su siguiente paso
@@ -4313,7 +4322,7 @@ export class OrdenRepository implements IOrdenRepository {
 
     // Feature 184 (T A.1): el criterio y el orden salen de los helpers compartidos; el `LIMIT`
     // y el `COUNT(*) OVER ()` son lo UNICO propio de la pagina.
-    const desde = desdeSatelite(condicionesSatelite(filtro));
+    const desde = desdeSatelite(condicionesSatelite(filtro, await this.lugaresSatelite(filtro)));
 
     const pagina = await this.prisma.$queryRaw<PaginaSateliteIdRow[]>(Prisma.sql`
       SELECT o."id", (COUNT(*) OVER ())::int AS "total"
@@ -4363,7 +4372,7 @@ export class OrdenRepository implements IOrdenRepository {
 
     const conjunto = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT o."id"
-      ${desdeSatelite(condicionesSatelite(filtro))}
+      ${desdeSatelite(condicionesSatelite(filtro, await this.lugaresSatelite(filtro)))}
       ${ordenBodegaSatelite()}
     `);
     if (conjunto.length === 0) return [];
@@ -4397,7 +4406,7 @@ export class OrdenRepository implements IOrdenRepository {
     if (ids.length === 0) return [];
     if (filtro.estatusValues.length === 0) return [];
 
-    const condiciones = condicionesSatelite(filtro);
+    const condiciones = condicionesSatelite(filtro, await this.lugaresSatelite(filtro));
     condiciones.push(Prisma.sql`o."id" IN (${Prisma.join([...ids])})`);
 
     const filas = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
