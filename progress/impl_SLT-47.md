@@ -413,3 +413,224 @@ Estado: T3.1 (vistas) parada a la espera de esa autorización. No se tocó códi
   San José»); `declararNiveles` (T3.1) rotula solo con el nombre. Queda para T4 o para quien decida R6.
 
 Veredicto: T3.2 hecha; R3, R5, R17, R18, R20 en verde y las suites sin la prop sin cambios.
+
+## T4.1 y T4.2 — `/ordenes`, satélite y analítica con `lugar_id` (frontend_dev, 2026-11-11)
+
+### Archivos T4.1 (`/ordenes` y satélite)
+- `app/(app)/ordenes/_components/ordenes-filtros-def.ts`: las tres `FilterDef` de lugar pasan a
+  `...declararNiveles(opcionesDeLugarDelCatalogo(cat, …))` en el mismo sitio. Nueva
+  `opcionesDeLugarDelCatalogo` (exportada; la usa también T4.2) y opción `niveles?`.
+- `app/(app)/ordenes/_components/seleccion-a-filter.ts`: `nivel_<k>` → `lugar_id` (`seleccionALugar`).
+- `app/(app)/recepcion-satelite/_components/satelite-ordenes-filtros.ts`: `FiltroBodegaSatelite.lugar_id`
+  (fuera `provincia_id/canton_id/distrito_id`); `construirFiltrosSatelite` acepta `niveles?`.
+- `OrdenesListado.tsx`, `SateliteOrdenesListado.tsx`: `traductorUrl={TRADUCTOR_LUGAR}` (constante de
+  módulo `traductorPorId()`) en `BuscadorFiltros` y `FilterComponent`; las listas de nivel pasan sus
+  `options` en los filtros ofrecidos; `useNivelesGeograficos()` como fuente de niveles de reserva.
+- Nuevo: `tests/unit/ordenes/seleccion-a-filter-lugar.test.ts`.
+
+### Archivos T4.2 (analítica)
+- `app/(app)/_components/entregas-filtros-def.ts`: `declararNiveles`; `CLAVE_PROVINCIA/CANTON/DISTRITO`
+  retiradas (grep en todo el repo: solo las usaban `entregas-filtro-analitica.ts` y dos tests; las
+  `CLAVE_PROVINCIA/CANTON` de novedades son otras constantes, de T5). Opción `niveles?`.
+- `app/(app)/_components/entregas-filtro-analitica.ts`: emite `lugar_id` (vacíos fuera antes de elegir).
+- `app/(app)/_components/FiltrosEntregas.tsx`: traductor, opciones de nivel en `ofrecidos`, niveles del layout.
+
+### Decisión: de dónde salen los niveles (para no cambiar aserciones)
+`opcionesDeLugarDelCatalogo`: niveles = `cat.niveles` si no vacío → si no, los del layout
+(`useNivelesGeograficos`) → si no, las etiquetas de 3 niveles (lo que se rotulaba hasta hoy). Lugares =
+`cat.lugares` o, si no llegan, las tres listas planas como niveles 1–3. Cubre catálogo caído/en vuelo
+(R64: mismas listas deshabilitadas), el rol de zona sin zona (`niveles: []`) y los fixtures sin
+`niveles`. El tercer escalón usa `pais.nivel_N_*` (vía etiquetas): solo se alcanza sin catálogo NI
+proveedor (tests, sesión sin empresa). Si el leader lo considera contrario a R1, se quita y hay que
+añadir `niveles`/`lugares` a los fixtures (cambio de entrada).
+
+### Líneas de test tocadas (R38: solo clave de transporte / clave de la lista)
+T4.1:
+- `tests/unit/components/ordenes-filtros-def.test.ts:70-72, 83-85, 105-107, 116-118, 133-134, 153, 157, 165, 285-287, 312-314, 330`: `"provincia_id"/"canton_id"/"distrito_id"` → `"nivel_1"/"nivel_2"/"nivel_3"`; nada más en esas líneas.
+- `tests/unit/components/seleccion-a-filter.test.ts:27-29`: entrada `provincia_id/canton_id/distrito_id:` → `nivel_1/2/3:`; `:35-37` salida `provincia_id: ["p1"], canton_id: ["c1"], distrito_id: ["d1"]` → `lugar_id: ["d1"]` (35 y 36 borradas).
+- `tests/unit/components/ordenes-listado-filtros.test.tsx:579-580`: `{ provincia_id: ["p1"], canton_id: ["c1"] }` → `{ lugar_id: ["c1"] }` (579 borrada); `:587`: `{ provincia_id: ["p2"] }` → `{ lugar_id: ["p2"] }`.
+- `tests/components/descarga/SateliteDescarga.test.tsx:412`: `canton_id: ["Pococí"]` → `lugar_id: ["Pococí"]`. Doble del servidor (`filtrarComoElServidor`, :171 y :177-181): tipo `lugar_id?`; la orden entra si su provincia/cantón/distrito está en `lugar_id`.
+- `tests/components/paginacion/SatelitePaginacion.test.tsx:248-249` (tipo del doble) → `lugar_id?`; `:260-264` doble como el anterior. Ninguna aserción tocada.
+- `tests/unit/utils/filtro-ubicacion.test.ts:96`: `["provincia_id", "canton_id", "distrito_id"]` → `["nivel_1", "nivel_2", "nivel_3"]`; `:117`: el mapa `{ provincia_id: "nivel_1", canton_id: "nivel_2", distrito_id: "nivel_3" }` → `{ nivel_1: "nivel_1", nivel_2: "nivel_2", nivel_3: "nivel_3" }`. **Para el leader:** el caso R6 de T3.1 tomaba la declaración de hoy por su clave; con la barra ya en `nivel_<k>`, compara `construirFiltrosOrdenes` (catálogo CR sin `niveles`) con `declararNiveles` directo. La prueba «igual que hoy» campo a campo la sigue dando `ordenes-filtros-def.test.ts` (rótulos, búsqueda XA, opciones, `dependsOn`, orden), sin más cambio que la clave.
+- `ordenes-module-filter-key.test.tsx`: sin cambios (compila y pasa; ahí `provincia_id` es solo una clave de objeto para `serializarFiltro`).
+
+T4.2:
+- `tests/unit/components/filtros-acotados-por-rol.test.ts:50-52, 66-68, 79, 116-118, 147-149`: claves → `nivel_1..3`.
+- `tests/components/FiltrosEntregas.test.tsx:89-91, 116-118, 126-127, 129-130`: claves → `nivel_1..3`; `:401` `provincia_id: ["p1"]` → `lugar_id: ["p1"]`; `:410` igual.
+- `tests/unit/analytics/entregas-filtro-analitica.test.ts:8, 10, 12`: imports de `CLAVE_*` borrados; `:50-52` `[CLAVE_PROVINCIA]/[CLAVE_CANTON]/[CLAVE_DISTRITO]:` → `nivel_1/2/3:`; `:62-64` → `lugar_id: ["d1"]` (62-63 borradas); `:89` `[CLAVE_DISTRITO]` → `nivel_3`; `:94` `"distrito_id"` → `"lugar_id"`.
+- `tests/components/EntregasFiltroConectado.test.tsx:12, 13, 15`: imports borrados; `:31-33` → `nivel_1/2/3:`; `:93-95` → `lugar_id: ["d1"]` (93-94 borradas).
+
+### Mapa `R<n> → test`
+| R | Test |
+|---|---|
+| R9 | `tests/unit/ordenes/seleccion-a-filter-lugar.test.ts` (8 casos: solo `lugar_id`, nunca claves viejas ni `nivel_<k>`; satélite incluido); `entregas-filtro-analitica.test.ts`; `EntregasFiltroConectado.test.tsx` |
+| R6 | `ordenes-filtros-def.test.ts`, `filtros-acotados-por-rol.test.ts`, `FiltrosEntregas.test.tsx` (rótulos, orden, búsqueda, opciones y encadenado de CR iguales); `filtro-ubicacion.test.ts` (R6) |
+| R18 | `FiltroUbicacionBarra.test.tsx` (T3.2), con el traductor ya cableado en las tres pantallas |
+
+### Homónimos (nota abierta de la maqueta)
+Hoy, en CR, la lista de distrito sin cantón elegido muestra cada «San Rafael» solo con su nombre, sin
+ancestros (`label: d.nombre`; lo fijan `ordenes-filtros-def.test.ts:165` y el R6 de
+`filtro-ubicacion.test.ts`). Añadir «· Escazú, San José» cambia esas aserciones y R6: **no se hizo;
+decisión pendiente del humano.**
+
+### Salida (`NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run <archivos> --maxWorkers=1`)
+- `seleccion-a-filter-lugar`, `seleccion-a-filter`, `ordenes-filtros-def`, `filtros-acotados-por-rol`,
+  `ordenes-module-filter-key`, `entregas-filtro-analitica`, `filtro-ubicacion`: 1 failed | 6 passed;
+  2 rojos en el R6 de `filtro-ubicacion.test.ts` (antes de tocar :96 y :117), 92 passed.
+- `filtro-ubicacion`, `ordenes-listado-filtros`, `FiltrosEntregas`, `EntregasFiltroConectado`: 4 passed, 63 tests.
+- `SateliteDescarga`, `SatelitePaginacion`: antes de ajustar el doble, 4 rojos; después 2 passed, 19 tests.
+- Relacionados, sin cambios: `ordenes-buscador-declaracion`, `salida-a-reparto-filtro`,
+  `satelite-filtro-estado`, `analitica-barra-sticky`, `historico-filtros-def`, `historial-acciones-filtros-def`,
+  `historico-seleccion-a-filtro`, `ordenes-listado-vistas`, `ordenes-listado-buscador`, `ordenes-listado`,
+  guardias `analitica-barra-filtros-sin-solape`, `vistas-superficies-declaradas`, `superficie-de-uso`,
+  `FiltroUbicacionBarra`, `SateliteFiltroEstadoAlcance`, `RecepcionSateliteModule`, `AnaliticaPage`:
+  17 passed (271 tests, 17 skipped). `OrdenesPage`, `OrdenesPagination`, `OrdenesDescarga`,
+  `OrdenesDescargaColumnas`, `paginacion-transversal`, `SateliteSeleccionOtrasPaginas`,
+  `ControlDescargaTransversal`, `OrdenesExcludePorRol`, `SateliteOrdenesListado.gestion-pendiente`,
+  `RecepcionSateliteIncidente`, `ordenes-listado-orden`, `HomePageMaestro`: 12 passed (146 tests).
+- `pnpm run typecheck`: con el código de T4.1/T4.2 y los tests de ordenes/analítica ya ajustados, los
+  únicos errores eran de T5 (`mis-asignaciones/FiltroCantonDistrito.tsx`, `useFiltroCantonDistrito.ts`,
+  `tests/unit/filtro-canton-distrito.test.ts`: módulo renombrado por el otro frontend_dev). La última
+  corrida (tras ajustar los dobles de satélite y `filtro-ubicacion.test.ts`) murió por memoria (exit 134,
+  V8 OOM) con el otro agente en paralelo; no se reintentó.
+- `pnpm exec eslint <19 archivos tocados>`: 0 errores; 2 warnings previos en
+  `filtro-ubicacion.test.ts:107` (`_k`, `_d`; línea de T3.1 no tocada).
+
+Veredicto: T4.1 y T4.2 hechas; R6 y R9 en verde y CR igual que hoy. Pendientes: homónimos, y el visto
+bueno al caso R6 (`filtro-ubicacion.test.ts:96, 117`) y al escalón de etiquetas.
+
+## T5.1 y T5.2 — mis-asignaciones y novedades por id (frontend_dev, 2026-11-11)
+
+Siguen la maqueta aprobada (`Mensajero.dc.html`, `Novedades.dc.html`). Sin dependencias nuevas, sin
+backend. Grafo no usado (Grep/Read).
+
+### Archivos — T5.1 (mis-asignaciones)
+- Renombrado (`git mv`): `lib/utils/filtro-canton-distrito.ts` → `lib/utils/filtro-ubicacion-asignaciones.ts`,
+  reescrito: `lugaresDeLasOrdenes`, `listasDeLugar` (sobre `declararNiveles` con `desde: 2` y
+  `etiquetaConPadre`), `opcionesOfrecidas`, `filtrarAsignaciones` por id sobre `lugarRuta`.
+- Creados: `app/(app)/mis-asignaciones/_components/FiltroUbicacion.tsx`, `useFiltroUbicacion.ts`,
+  `tests/components/mis-asignaciones/FiltroUbicacion.test.tsx`.
+- Borrados (deshechos del índice con `git rm`): `FiltroCantonDistrito.tsx`, `useFiltroCantonDistrito.ts`,
+  `tests/unit/filtro-canton-distrito.test.ts`.
+- **Ojo al commitear:** el índice es compartido y el commit de T4.1 (`97cdb8a4`) ya se llevó el renombre
+  (sin contenido: 0 líneas) y el borrado de `tests/unit/filtro-canton-distrito.test.ts`. Le falta a T5.1
+  el contenido nuevo de `filtro-ubicacion-asignaciones.ts` (sin preparar) y los dos borrados de
+  componentes (ya preparados).
+- Modificados: `RepartoModule.tsx` (usa el hook y el componente nuevos), `lib/types/orden.ts` (solo un
+  comentario que citaba el archivo borrado), `docs/ayuda/mensajero/reparto.md` (la fuente renombrada),
+  `tests/components/RepartoModule.test.tsx` (fixture, abajo), `tests/fabricas/etiquetas-geograficas.tsx`
+  (+ `NIVELES_CR`, `NIVELES_XA`; compartido con T5.2).
+
+### Archivos — T5.2 (novedades)
+- Modificados: `app/(app)/novedades/_components/novedades-filtros.ts` (`provincia`/`canton` fuera de
+  `ClaveFiltroNovedad`; listas `nivel_<k>` con `declararNiveles` sobre la `lugarRuta` del conjunto;
+  predicado por id de la lista más honda; `construirFiltrosNovedades(grupo, conjunto, niveles)`;
+  `ROTULOS_FILTRO_NOVEDADES` en lugar de `etiquetasFiltroNovedades(etiquetas)`; `TRADUCTOR_URL_NOVEDADES`),
+  `NovedadesFiltrosBarra.tsx` (pasa el traductor a `BuscadorFiltros` y a `FilterComponent`),
+  `useNovedadesFiltro.ts` (`useNivelesGeograficos`; `ofrecidos` con sus `options`),
+  `tests/unit/components/novedades-filtros.test.ts` (abajo), `tests/components/NovedadesBuscador.test.tsx`
+  (solo un `vi.mock`, abajo).
+- Creados: `tests/unit/novedades/novedades-filtros-lugar.test.ts`,
+  `tests/components/NovedadesFiltroLugarUrl.test.tsx`.
+
+### Decisiones y desvíos (para el reviewer)
+- **Novedades: `TRADUCTOR_URL_NOVEDADES` envuelve a `traductorPorNombre()`.** El conjunto se pide perezoso
+  al montar un control; al entrar por `?provincia=`/`?canton=`/`?lugar_id=` las listas no tienen opciones,
+  `traductorPorNombre` no activa nada y el conjunto no se pedía nunca (el enlace dejaba de acotar). El
+  envoltorio, solo mientras ninguna lista de lugar tiene opciones, activa las listas que la URL pide con
+  los valores tal cual; `FilterComponent` los descarta, deja la clave pendiente y la re-siembra con
+  opciones aplica la traducción buena. Lo prueba `NovedadesFiltroLugarUrl.test.tsx`. Sin tocar
+  `FilterComponent` ni `BuscadorFiltros`.
+- **Mis-asignaciones conserva el deshabilitado de hoy:** una lista sin elección en la de arriba va
+  deshabilitada (el distrito sin cantón), porque R7 pide CR igual que hoy y `RepartoModule.test.tsx`
+  («117/R3») lo afirma. Es distinto de P4 (que es de la barra).
+- **«Todos los …» / «Todas las …»:** el tipo de nivel no trae género; se toma del plural (termina en «as»
+  → femenino). Un plural femenino sin esa terminación («Regiones») sale «Todos los regiones». Abierto.
+- Teléfono primero: cada select ocupa la fila en un teléfono (`w-full`), en línea desde `sm` (`sm:min-w-52`,
+  la de hoy), como la maqueta.
+
+### Líneas de test tocadas (R38) — ninguna expectativa cambiada
+- `tests/unit/components/novedades-filtros.test.ts` (HEAD → ahora):
+  - `:4` `CLAVE_CANTON,` y `:7` `CLAVE_PROVINCIA,` → fuera del import; `:21` import de `ETIQUETAS_CR` →
+    `:19-24` import de `claveDeNivel` y `NIVELES_CR` + `const CLAVE_PROVINCIA = claveDeNivel(1)` y
+    `const CLAVE_CANTON = claveDeNivel(2)` (la clave geográfica).
+  - `:55` `const novedad = (over) => ({ ...base, ...over })` → `:58-69` `conRuta(...)`: el fixture suma la
+    `lugarRuta` armada con los nombres (provincia y cantón con su nombre como id; distrito con su cantón
+    delante). Es entrada, no salida.
+  - `:236, :259, :265, :272, :277, :285, :290, :300, :311, :348` → `:250, :273, :279, :286, :291, :299,
+    :304, :314, :325, :362`: el tercer argumento `ETIQUETAS_CR` → `NIVELES_CR` (la firma pasa de etiquetas a
+    niveles). Los `expect` siguen con los mismos valores esperados.
+- `tests/components/RepartoModule.test.tsx`: `+:38-43` `vi.mock` de `use-niveles-geograficos` con
+  `NIVELES_CR`; `:173` `return {` → `:179` `const base: MiAsignacionDTO = {`; `+:204-215` devuelve `base` con
+  su `lugarRuta` armada con los nombres (ids por camino). Ninguna aserción tocada; 108 passed.
+- `tests/components/NovedadesBuscador.test.tsx`: `+:26-30` `vi.mock` de `use-niveles-geograficos` con
+  `NIVELES_CR`. **ROJO NO RESUELTO (para y se reporta):** `:360-366` (HEAD `:355-361`) espera
+  `["Mensajero","Zona","Provincia","Cantón","Causa de devolución"]`; con R8 en CR sale además `"Distrito"`
+  tras `"Cantón"`. Cambio necesario: insertar `"Distrito",` entre `:364` y `:365`. No se cambió.
+- `tests/unit/filtro-canton-distrito.test.ts`: borrado; sus casos, en `FiltroUbicacion.test.tsx`:
+
+| Caso viejo (`filtro-canton-distrito.test.ts`) | Caso nuevo (`mis-asignaciones/FiltroUbicacion.test.tsx`) | Misma expectativa |
+|---|---|---|
+| R2: una opción por cantón único, «Cantón (Provincia)», ordenadas | «una opción por lugar, deduplicada y ordenada por su rótulo» | «Alajuela (Alajuela)», «Escazú (San José)» (valor: id) |
+| R2: dedup insensible a mayúsculas/acentos/espacios | «el mismo lugar es una sola opción aunque el nombre de la orden venga escrito distinto» | una opción «Pérez Zeledón (San José)» |
+| R2: cantones HOMÓNIMOS son DOS opciones | «R13 — dos «Central» de provincias distintas son dos opciones…» | «Central (Alajuela)», «Central (San José)»; ahora con ids distintos |
+| R4: distritos del cantón dado, sin nulos, ordenados | «solo los hijos del lugar elegido…» | Carmen, Merced |
+| R4: cantón comparado normalizado | «el lugar de arriba se reconoce por su id…» | San Isidro |
+| R7: sin cantón, la MISMA lista | «sin lugar elegido devuelve la MISMA lista» | `toBe(ordenes)` |
+| R6: solo cantón, incluidas las de distrito nulo | «eligiendo el nivel 2, todas las de ese lugar…» | a, b, c |
+| R6: cantón+distrito excluye distrito nulo | «eligiendo el nivel 3, solo las de ese lugar…» | a |
+| R6: comparación insensible a acentos/caso | «el nombre escrito en la orden no interviene: decide el id» | b |
+| R6: distrito inexistente → vacía | «un lugar que ninguna orden tiene produce lista vacía» | `[]` |
+| R13: opciones del conjunto COMPLETO | «las opciones salen del conjunto COMPLETO, no del ya filtrado» | Central + Escazú frente a solo Central (se comparan rótulos: el valor ya es un id) |
+
+### Mapa `R<n> → test`
+| R | Test |
+|---|---|
+| R7 | `tests/components/mis-asignaciones/FiltroUbicacion.test.tsx` («R7 — …» pura y de componente: CR igual que hoy, país de 4 niveles, país de 2 niveles); `RepartoModule.test.tsx` 117/* sin cambiar aserciones |
+| R8 | `tests/unit/novedades/novedades-filtros-lugar.test.ts` («R8 — …»: CR con Distrito, opciones del conjunto por id, 4 niveles, sin conjunto) |
+| R9 | `FiltroUbicacion.test.tsx` («R9 — filtrarAsignaciones por id»); `novedades-filtros-lugar.test.ts` («R9, R13 — …») |
+| R13 | `FiltroUbicacion.test.tsx` (dos cantones «Central», pura y de componente); `novedades-filtros-lugar.test.ts` (dos «Central», dos «San Rafael») |
+| R19 | `novedades-filtros-lugar.test.ts` («R19 — …», frente a `comoHoy`, por nombre); `NovedadesFiltroLugarUrl.test.tsx` (pantalla real, conjunto tardío) |
+| R20 (novedades) | `novedades-filtros-lugar.test.ts` (`claves`) |
+
+### Latencia de la lista del mensajero (T5.1)
+Cómo: `tsx` en node 22, mismo proceso y mismos datos sintéticos (7 provincias, 40 cantones, 160 distritos,
+1 de cada 9 órdenes sin distrito). «Antes» es `filtro-canton-distrito.ts` de HEAD copiado aparte; «después»,
+`filtro-ubicacion-asignaciones.ts`. Mediana de 21 corridas tras 5 de calentamiento, dos pasadas. «Carga»:
+derivar opciones al llegar las órdenes (memo de `porGestionar`). «Gesto»: elegir cantón y distrito
+(opciones de abajo + filtrar dos veces).
+
+| Órdenes | Carga antes | Carga después | Gesto antes | Gesto después |
+|---|---|---|---|---|
+| 50 | 1,57 / 1,54 ms | 0,10 / 0,08 ms | 0,10 / 0,08 ms | 0,012 / 0,011 ms |
+| 200 | 8,94 / 8,52 ms | 0,34 / 0,32 ms | 0,34 / 0,42 ms | 0,030 / 0,022 ms |
+| 1000 | 12,47 / 13,99 ms | 0,86 / 1,03 ms | 1,45 / 1,90 ms | 0,041 / 0,054 ms |
+
+Antes pesaba `localeCompare` con opciones (un collator por comparación); ahora un `Intl.Collator` y
+comparación de ids. La primera versión (con `localeCompare`) daba 5,4 ms a 100 órdenes: por eso el
+collator. **No medido:** el coste en el servidor de calcular `lugarRuta` (tanda 1, backend).
+
+### Salida real
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run <11 archivos> --maxWorkers=1`:
+  `FiltroUbicacion.test.tsx` 18 passed; `RepartoModule.test.tsx` 108; `novedades-filtros-lugar.test.ts` 18;
+  `novedades-filtros.test.ts` 32; `NovedadesFiltroLugarUrl.test.tsx` 2; `NovedadesModule.test.tsx` 74;
+  `filtros-url-herencia.test.tsx` 3; `vistas-superficies-declaradas.guardia` 8;
+  `etiquetas-geograficas-sin-literal.guardia` 6; `catalogo-postgres-acota-esquema.guardia` 7;
+  `NovedadesBuscador.test.tsx` 10 passed, **1 failed** (el de R8 de arriba).
+- Otras de Reparto sin cambios: `RepartoModule477Correccion`, `RepartoAyuda`, `RepartoAyudaResueltaPorLaTienda`,
+  `markdown`, `superficie-de-uso.guardia`: passed (69 tests en 6 archivos con `etiquetas-…`).
+- Guardias (`vitest run guard --maxWorkers=1`): 3 archivos rojos. `dependencias-declaradas-presentes` está en
+  `baseline-rojos.json`. `catalogo-postgres-acota-esquema` caía por `git ls-files` con los dos componentes
+  borrados aún en el índice: tras `git rm --cached`, 7 passed. `asistente-panel-hermano` (contraprueba
+  «no encuentra el nodo a mutar en el layout»): lo rompe el `niveles={niveles}` de `app/(app)/layout.tsx`
+  (T3.2, `1806e3a1`), no esta tarea.
+- `pnpm run typecheck`: exit 0. `pnpm exec eslint <15 archivos>`: 0 errores; 1 warning previo
+  (`RepartoModule.test.tsx:167` `ordenCardsEnReparto`, línea no tocada).
+- E2E `e2e/mis-asignaciones.spec.ts`, contra `logistic_slt47` (`env47.sh`), `E2E_PUERTO=3047`,
+  `E2E_STORAGE_PUERTO=54347`, `SESSION_SECRET` aleatorio, tras `next build` con
+  `NEXT_PUBLIC_APP_URL=http://localhost:3047`: corrida 1 «4 passed (29.4s)», corrida 2 «4 passed (27.1s)».
+  Una corrida previa con `E2E_SERVIDOR=dev` dio 1 passed / 3 failed por compilación en caliente
+  (`Unable to start a transaction in the given time`, timeouts de 30 s); con `next start`, verde.
+
+Veredicto: T5.1 y T5.2 hechas; R7, R8, R9, R13 y R19 en verde y el E2E en verde dos veces. Bloqueo:
+`NovedadesBuscador.test.tsx:360-366` necesita añadir `"Distrito"` por R8 (no cambiado, pide autorización).

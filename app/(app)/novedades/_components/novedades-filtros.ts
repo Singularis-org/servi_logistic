@@ -1,10 +1,20 @@
 import { CAUSA_DEVOLUCION_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-devolucion-options";
 import type { FilterDef, FilterSelection } from "@/components/shared/FilterComponent";
 import { stripDiacritics } from "@/lib/geo/normalize";
+import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import type { NovedadDTO } from "@/lib/types/novedad";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 import { soloDigitosSiPareceNumero } from "@/lib/utils/busqueda-orden";
+import {
+  PARAM_LUGAR,
+  declararNiveles,
+  lugarElegido,
+  nivelDeClave,
+  traductorPorNombre,
+  type OpcionesDeLugar,
+  type TraductorDeUrl,
+} from "@/lib/utils/filtro-ubicacion";
+import { valoresDeParam } from "@/lib/utils/filtros-url";
 
 // FICHA 325 — LO ESPECIFICO DE `/novedades` EN LA BARRA DE BUSQUEDA Y FILTROS.
 //
@@ -33,19 +43,16 @@ import { soloDigitosSiPareceNumero } from "@/lib/utils/busqueda-orden";
 // nombres salen de las propias novedades de SU tienda y la card ya los pinta uno por uno desde la
 // ficha 296. No se expone ni un nombre que la pantalla no estuviera mostrando ya.
 
-/** Claves de los filtros de esta pantalla. Union cerrada: es lo que hace exhaustiva la tabla. */
-export type ClaveFiltroNovedad =
-  | "mensajero"
-  | "zona"
-  | "provincia"
-  | "canton"
-  | "causa"
-  | "sin_contacto";
+/**
+ * Claves de los filtros de esta pantalla. Union cerrada: es lo que hace exhaustiva la tabla.
+ *
+ * SLT-47 (design §5.3; R8): el lugar NO esta aqui. Sus listas son las `nivel_<k>` de
+ * `declararNiveles` (una por nivel del pais) y se aplican aparte, por id, con `lugarElegido`.
+ */
+export type ClaveFiltroNovedad = "mensajero" | "zona" | "causa" | "sin_contacto";
 
 export const CLAVE_MENSAJERO = "mensajero" satisfies ClaveFiltroNovedad;
 export const CLAVE_ZONA = "zona" satisfies ClaveFiltroNovedad;
-export const CLAVE_PROVINCIA = "provincia" satisfies ClaveFiltroNovedad;
-export const CLAVE_CANTON = "canton" satisfies ClaveFiltroNovedad;
 export const CLAVE_CAUSA = "causa" satisfies ClaveFiltroNovedad;
 export const CLAVE_SIN_CONTACTO = "sin_contacto" satisfies ClaveFiltroNovedad;
 
@@ -90,21 +97,15 @@ export const PLACEHOLDER_BUSQUEDA_NOVEDADES =
 export const BUSQUEDA_MIN_CHARS_NOVEDADES = 0;
 
 /**
- * Rotulos de los controles. Aparte del JSX para que un dia se puedan traducir en un solo sitio.
- * SL-20 (design §7; R19): provincia y cantón con los nombres de nivel del país de la empresa.
+ * Rotulos de los controles. Aparte del JSX para que un dia se puedan traducir en un solo sitio. Los
+ * de las listas de lugar no estan: son el nombre singular de cada nivel del pais (R1, R8).
  */
-export function etiquetasFiltroNovedades(
-  etiquetas: EtiquetasGeograficas,
-): Record<ClaveFiltroNovedad, string> {
-  return {
-    mensajero: "Mensajero",
-    zona: "Zona",
-    provincia: etiquetas.provincia.singular,
-    canton: etiquetas.canton.singular,
-    causa: "Causa de devolución",
-    sin_contacto: "Sin intentos de contacto",
-  };
-}
+export const ROTULOS_FILTRO_NOVEDADES: Record<ClaveFiltroNovedad, string> = {
+  mensajero: "Mensajero",
+  zona: "Zona",
+  causa: "Causa de devolución",
+  sin_contacto: "Sin intentos de contacto",
+};
 
 /** Normalizacion de comparacion: sin acentos y en minusculas. */
 function normalizar(texto: string): string {
@@ -168,8 +169,6 @@ const PREDICADOS: Record<
 > = {
   mensajero: (n, v) => v.includes(n.mensajeroNombre ?? SIN_MENSAJERO),
   zona: (n, v) => v.includes(n.zonaNombre),
-  provincia: (n, v) => v.includes(n.provinciaNombre),
-  canton: (n, v) => v.includes(n.cantonNombre),
   causa: (n, v) => v.includes(n.causa ?? SIN_CAUSA),
   sin_contacto: (n) => n.intentosContacto === 0,
 };
@@ -183,7 +182,18 @@ const CLAVES = Object.keys(PREDICADOS) as ClaveFiltroNovedad[];
  * pidiera «Mensajero» desde el selector sin llegar a elegir a nadie.
  */
 export function hayValoresSeleccionados(seleccion: FilterSelection): boolean {
-  return CLAVES.some((clave) => (seleccion[clave] ?? []).length > 0);
+  return (
+    CLAVES.some((clave) => (seleccion[clave] ?? []).length > 0) || lugarElegido(seleccion).length > 0
+  );
+}
+
+/**
+ * SLT-47 (design §5.3; R8, R9, R13) — el predicado del lugar: la novedad pasa si ALGUN paso de su
+ * `lugarRuta` es uno de los ids elegidos en la lista mas honda con eleccion. Por id, nunca por nombre:
+ * dos cantones «Central» no se confunden.
+ */
+function enElLugar(novedad: NovedadDTO, lugar: readonly string[]): boolean {
+  return (novedad.lugarRuta ?? []).some((paso) => lugar.includes(paso.id));
 }
 
 /**
@@ -200,10 +210,12 @@ export function filtrarNovedades(
   seleccion: FilterSelection,
 ): NovedadDTO[] {
   const activos = CLAVES.filter((clave) => (seleccion[clave] ?? []).length > 0);
+  const lugar = lugarElegido(seleccion);
   return items.filter(
     (novedad) =>
       coincideBusqueda(novedad, termino) &&
-      activos.every((clave) => PREDICADOS[clave](novedad, seleccion[clave] ?? [])),
+      activos.every((clave) => PREDICADOS[clave](novedad, seleccion[clave] ?? [])) &&
+      (lugar.length === 0 || enElLugar(novedad, lugar)),
   );
 }
 
@@ -241,19 +253,41 @@ function opcionesMensajero(items: readonly NovedadDTO[]): Opcion[] {
     : opciones;
 }
 
-/** Cantones ofrecidos, cada uno colgado de su provincia (`parentValue`) para el encadenado. */
-function opcionesCanton(items: readonly NovedadDTO[]): Opcion[] {
-  const porCanton = new Map<string, string>();
+/**
+ * SLT-47 (design §5.3; R8) — los lugares del CONJUNTO, sacados de la `lugarRuta` de cada novedad: el
+ * paso i es un lugar de profundidad i + 1 cuyo padre es el paso anterior. Una vez cada id. Asi solo
+ * se ofrece lo que de verdad hay en la lista de esta tienda, como el resto de filtros de aqui.
+ */
+function lugaresDelConjunto(items: readonly NovedadDTO[]): OpcionesDeLugar["lugares"] {
+  const vistos = new Map<string, OpcionesDeLugar["lugares"][number]>();
   for (const item of items) {
-    if (item.cantonNombre !== "") porCanton.set(item.cantonNombre, item.provinciaNombre);
+    const ruta = item.lugarRuta ?? [];
+    ruta.forEach((paso, i) => {
+      if (!vistos.has(paso.id)) {
+        vistos.set(paso.id, {
+          id: paso.id,
+          nombre: paso.nombre,
+          padreId: i === 0 ? null : ruta[i - 1].id,
+          profundidad: i + 1,
+        });
+      }
+    });
   }
-  return [...porCanton.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, "es"))
-    .map(([canton, provincia]) => ({
-      value: canton,
-      label: canton,
-      parentValue: provincia,
-    }));
+  return [...vistos.values()];
+}
+
+/**
+ * Las listas de lugar: una por nivel del pais (`declararNiveles`, encadenadas por `parentValue`), con
+ * las opciones del conjunto ordenadas por su etiqueta en español, como las demas de esta pantalla.
+ */
+function listasDeLugar(
+  items: readonly NovedadDTO[],
+  niveles: readonly NivelDeFiltroDTO[],
+): FilterDef[] {
+  return declararNiveles({ niveles, lugares: lugaresDelConjunto(items) }).map((def) => ({
+    ...def,
+    options: [...(def.options ?? [])].sort((a, b) => a.label.localeCompare(b.label, "es")),
+  }));
 }
 
 /**
@@ -283,8 +317,8 @@ function opcionesCausa(items: readonly NovedadDTO[]): Opcion[] {
  *
  * ⚠️ **QUE ES COMPARTIDO Y QUE ES DE CADA PESTAÑA**, que es la decision de fondo de esta ficha.
  *
- * Compartidos (mensajero + las tres capas de ubicacion) porque los DOS grupos los traen en el DTO y
- * las DOS cards los pintan: en `ayuda` el mensajero es quien pidio la ayuda, en `devolucion` quien
+ * Compartidos (mensajero, zona y una lista por nivel del pais) porque los DOS grupos los traen en el
+ * DTO y las DOS cards los pintan: en `ayuda` el mensajero es quien pidio la ayuda, en `devolucion` quien
  * trae el paquete de vuelta (ficha 296, en el JSX comun a proposito).
  *
  * `causa` SOLO en `devolucion`: sobre una orden en ayuda la causa es SIEMPRE `null` por contrato
@@ -296,9 +330,9 @@ function opcionesCausa(items: readonly NovedadDTO[]): Opcion[] {
  * `ACCIONES_POR_GRUPO.ayuda`. La pestaña de devolucion ni lo pinta ni lo publica, asi que filtrar
  * ahi por un dato invisible dejaria al usuario sin forma de entender el resultado.
  *
- * NO se declara DISTRITO, y `/ordenes` si lo tiene: `distritoNombre` es nullable en el DTO y estas
- * dos listas son colas de excepcion de UNA tienda — provincia y canton ya localizan de sobra, y una
- * tercera capa encadenada sobre un campo que puede faltar añade un modo de fallo por nada.
+ * SLT-47 (R8): el lugar va como en `/ordenes`, una lista por nivel del pais y por id. En Costa Rica
+ * eso suma la lista del nivel 3, que antes no se declaraba. Una novedad sin ese nivel no sale al
+ * elegir un lugar de ese nivel (no esta bajo el), y si al elegir el de arriba.
  *
  * NO hay filtro de FECHA, y por eso `DateRangeFilter` no aparece: `NovedadDTO` (y el
  * `MiAsignacionDTO` que extiende) no traen NI UNA fecha. No es que el control no encaje con una
@@ -312,9 +346,9 @@ function opcionesCausa(items: readonly NovedadDTO[]): Opcion[] {
 export function construirFiltrosNovedades(
   grupo: GrupoNovedad,
   conjunto: readonly NovedadDTO[] | null,
-  etiquetas: EtiquetasGeograficas,
+  niveles: readonly NivelDeFiltroDTO[],
 ): FilterDef[] {
-  const rotulos = etiquetasFiltroNovedades(etiquetas);
+  const rotulos = ROTULOS_FILTRO_NOVEDADES;
   const items = conjunto ?? [];
   const cargando = conjunto === null;
 
@@ -358,29 +392,51 @@ export function construirFiltrosNovedades(
       emptyMessage: "Ninguna zona coincide",
       options: opcionesDe(items, (n) => n.zonaNombre),
     },
-    {
-      key: CLAVE_PROVINCIA,
-      label: rotulos.provincia,
-      kind: "multi",
-      placeholder: "Todas",
-      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
-      emptyMessage: "Ninguna provincia coincide",
-      options: opcionesDe(items, (n) => n.provinciaNombre),
-    },
-    {
-      key: CLAVE_CANTON,
-      label: rotulos.canton,
-      kind: "multi",
-      // La cadena se DECLARA, no se programa: elegida una provincia, el control solo ofrece sus
-      // cantones. Mismo encadenado que la barra de `/ordenes`.
-      dependsOn: CLAVE_PROVINCIA,
-      placeholder: "Todos",
-      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
-      emptyMessage: "Ningún cantón coincide",
-      options: opcionesCanton(items),
-    },
+    ...listasDeLugar(items, niveles),
     ...propios,
   ];
 
   return cargando ? filtros.map((filtro) => ({ ...filtro, disabled: true })) : filtros;
 }
+
+/**
+ * SLT-47 (design §4.2; R19) — el traductor de la URL de `/novedades`: el de nombres
+ * (`traductorPorNombre`) mas el arranque PEREZOSO de esta pantalla.
+ *
+ * Aqui las opciones de lugar salen del conjunto, y el conjunto solo se pide cuando se monta algun
+ * control (`useNovedadesFiltro`). Al entrar por `?provincia=…`, `?canton=…` o `?lugar_id=…` las listas
+ * aun no tienen opciones: el traductor de nombres no encuentra nada, ninguna lista se activa y el
+ * conjunto no se pide nunca, asi que el enlace no acotaria nada (hoy si acota). Por eso, mientras
+ * NINGUNA lista de lugar tiene opciones, se activan las que la URL pide (nivel 1 por `provincia`,
+ * nivel 2 por `canton`; todas por `lugar_id`, que aun no sabe de que nivel es) con los valores tal
+ * cual. `FilterComponent` los descarta por no ofrecidos y deja la clave PENDIENTE; al llegar el
+ * conjunto, la re-siembra vuelve a traducir la foto de entrada, ya con opciones, y entonces manda
+ * `traductorPorNombre`. Una sola instancia: es puro y sin estado, asi que su identidad es estable.
+ */
+const TRADUCTOR_POR_NOMBRE = traductorPorNombre();
+
+export const TRADUCTOR_URL_NOVEDADES: TraductorDeUrl = {
+  claves: TRADUCTOR_POR_NOMBRE.claves,
+  traducir(params, filtros) {
+    const vista = TRADUCTOR_POR_NOMBRE.traducir(params, filtros);
+    const listas = filtros.filter((f) => nivelDeClave(f.key) !== null);
+    const pendiente = listas.length > 0 && listas.every((f) => (f.options ?? []).length === 0);
+    if (!pendiente) return vista;
+    const salida = new URLSearchParams([...vista.entries()]);
+    const poner = (k: number, valores: readonly string[]) => {
+      const lista = listas.find((f) => nivelDeClave(f.key) === k);
+      if (lista !== undefined && valores.length > 0) salida.set(lista.key, valores.join(","));
+    };
+    const lugar = valoresDeParam(params, PARAM_LUGAR);
+    if (lugar.length > 0) {
+      for (const f of listas) poner(nivelDeClave(f.key) ?? 0, lugar);
+    } else {
+      // Las claves viejas de `traductorPorNombre` van tras `lugar_id` y en orden de nivel (1, 2…):
+      // asi esta pantalla no repite sus nombres, que solo conoce `filtro-ubicacion`.
+      TRADUCTOR_POR_NOMBRE.claves
+        .filter((c) => c !== PARAM_LUGAR)
+        .forEach((vieja, i) => poner(i + 1, valoresDeParam(params, vieja)));
+    }
+    return salida;
+  },
+};
