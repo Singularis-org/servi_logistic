@@ -211,6 +211,9 @@ function makeStore(saldoTienda: string) {
     listarPorReparto: vi.fn(async () => []),
     // Feature 205 (T3.1): la tercera lectura del reparto (el CONTEO por estado de R36).
     contarCierresNoAprobadosPorEstado: vi.fn(async () => []),
+    // SLT-122: las lecturas con alcance del registro al mensajero; este archivo no las usa.
+    obtenerCierreParaPagoEnAlcance: vi.fn(async () => null),
+    listarCierresImputablesEnAlcance: vi.fn(async () => []),
   };
 
   /**
