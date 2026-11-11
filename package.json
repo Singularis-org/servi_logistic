@@ -33,6 +33,7 @@
     "geo:equivalencia-analitica": "tsx scripts/geo-equivalencia-analitica.ts",
     "geo:explain-analitica": "tsx scripts/geo-explain-analitica.ts",
     "geo:equivalencia-filtros": "tsx scripts/geo-equivalencia-filtros.ts",
+    "geo:explain-filtros": "tsx scripts/geo-explain-filtros.ts",
     "geo:payloads-contrato": "tsx scripts/geo-payloads-contrato-v1.ts"
   },
   "dependencies": {

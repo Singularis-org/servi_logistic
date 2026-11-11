@@ -61,7 +61,7 @@
   - el tamaño del JSON del catálogo de CR antes y después, anotado.
 - [x] **T2.4** [P] `PaisService.nivelesDeEmpresa` y su repositorio (design §5.4).
   **Hecho:** test unitario del servicio con un país de 2 y de 4 niveles.
-- [ ] **T2.5** [P] Scripts:
+- [x] **T2.5** [P] Scripts:
   - `geo-equivalencia-filtros.ts` con `filtros-de-hoy.ts`;
   - `geo-explain-filtros.ts`;
   - los ajustes de tipo en los scripts de SLT-71;

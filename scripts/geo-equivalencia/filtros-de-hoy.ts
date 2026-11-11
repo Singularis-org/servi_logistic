@@ -1,6 +1,9 @@
+import { Prisma, type PrismaClient } from "@prisma/client";
+
 import { PROFUNDIDAD_DEL_NIVEL } from "@/lib/repositories/_shared/lugar-orden";
 import { ancestros, nodo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
+import { ESTADOS_BODEGA_SATELITE, ESTADOS_CUSTODIA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 
 import type { FacetasDeHoy } from "./analitica-de-hoy";
 
@@ -90,4 +93,88 @@ export function whereDeHoy(f: FacetasDeHoy): { provinciaId?: { in: string[] }; c
     ...(f.canton_id?.length ? { cantonId: { in: [...f.canton_id] } } : {}),
     ...(f.distrito_id?.length ? { distritoId: { in: [...f.distrito_id] } } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// SLT-47 (design §9; R29) — las dos consultas que mide `geo:explain-filtros`, CONGELADAS aqui.
+//
+// El listado de `/ordenes` y la pagina de la bodega satelite ya no filtran por columna: el «antes»
+// no existe en `lib/`. Se copia la parte de cada consulta que depende del filtro (el `where` y el
+// orden de la pagina) con un hueco para la geografia: el «antes» lo llena con las columnas de hoy y el
+// «despues» con las condiciones de lugar de `lib/` (`whereDeLugares`, `condicionesDeLugar`). La
+// hidratacion de las filas (tarifas, marcas, señales) no depende del filtro y no se mide.
+// ---------------------------------------------------------------------------------------------
+
+/** Las condiciones de HOY de la bodega satelite: un `IN` por faceta pedida, sobre su columna, en AND. */
+export function condicionesSateliteDeHoy(f: FacetasDeHoy): Prisma.Sql[] {
+  const condiciones: Prisma.Sql[] = [];
+  const columnas: [Prisma.Sql, readonly string[] | undefined][] = [
+    [Prisma.sql`o."provincia_id"`, f.provincia_id],
+    [Prisma.sql`o."canton_id"`, f.canton_id],
+    [Prisma.sql`o."distrito_id"`, f.distrito_id],
+  ];
+  for (const [columna, ids] of columnas) {
+    if (ids !== undefined && ids.length > 0) condiciones.push(Prisma.sql`${columna} IN (${Prisma.join([...ids])})`);
+  }
+  return condiciones;
+}
+
+/**
+ * La pagina de la bodega satelite (copia de `OrdenRepository.findRecepcionSatelitePaginada`,
+ * `condicionesSatelite`, `desdeSatelite` y `ordenBodegaSatelite` en `c541602a`), con los cinco
+ * estados del listado y la geografia que se le pase.
+ */
+export function paginaSateliteSql(zonaId: string, geografia: readonly Prisma.Sql[], take: number): Prisma.Sql {
+  const custodia = Prisma.join([...ESTADOS_CUSTODIA_SATELITE]);
+  const condiciones: Prisma.Sql[] = [
+    Prisma.sql`o."zona_id" = ${zonaId}`,
+    Prisma.sql`o."deleted_at" IS NULL`,
+    Prisma.sql`(
+        os."value" IN (${custodia})
+        OR EXISTS (
+          SELECT 1
+          FROM "orden_historial_estado" h
+          JOIN "order_status" hos ON hos."id" = h."estatus_destino_id"
+          WHERE h."orden_id" = o."id" AND hos."value" IN (${custodia})
+        )
+      )`,
+    Prisma.sql`os."value" IN (${Prisma.join([...ESTADOS_BODEGA_SATELITE])})`,
+    ...geografia,
+  ];
+  return Prisma.sql`
+      SELECT o."id", (COUNT(*) OVER ())::int AS "total"
+      FROM "orden" o
+      JOIN "order_status" os ON os."id" = o."estatus_id"
+      WHERE ${Prisma.join(condiciones, " AND ")}
+      ORDER BY
+        array_position(ARRAY[${Prisma.join([...ESTADOS_BODEGA_SATELITE])}]::text[], os."value") ASC,
+        o."prioridad" DESC,
+        o."created_at" DESC,
+        o."id" ASC
+      LIMIT ${take} OFFSET ${0}
+    `;
+}
+
+/**
+ * La pagina del listado de `/ordenes` (copia del `findMany` + `count` de `OrdenRepository.list` en
+ * `c541602a`: no borradas, el orden de la pagina y su desempate), con el `where` de geografia que se
+ * le pase. Solo los ids: la proyeccion no depende del filtro.
+ */
+export async function paginaListadoOrdenes(
+  cliente: PrismaClient,
+  geografia: Prisma.OrdenWhereInput,
+  take: number,
+): Promise<{ ids: string[]; total: number }> {
+  const where: Prisma.OrdenWhereInput = { deletedAt: null, ...geografia };
+  const [filas, total] = await Promise.all([
+    cliente.orden.findMany({
+      where,
+      orderBy: [{ prioridad: "desc" }, { createdAt: "desc" }, { id: "asc" }],
+      skip: 0,
+      take,
+      select: { id: true },
+    }),
+    cliente.orden.count({ where }),
+  ]);
+  return { ids: filas.map((f) => f.id), total };
 }
