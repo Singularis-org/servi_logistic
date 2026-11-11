@@ -408,7 +408,7 @@
   `tests/components/PlanEmpresaTipoCobro.test.tsx`, `tests/components/PlanesModule.test.tsx`.
 - **R33** — SI la empresa no tiene plan (primera asignación), ENTONCES la fecha de inicio NO DEBE llevarse al
   inicio de un período: rige ese día, también si es futura (decisión P8), y su primera cuota sigue R16, R28 y R29.
-  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
+  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`.
 - **R34** — El tope de «hoy + 12 meses» de la fecha de efecto (SLT-86 R16) DEBE validarse sobre la fecha
   **elegida** por el superadmin, antes de llevarla (decisión P10): una fecha elegida dentro del rango DEBE
   aceptarse aunque la real quede después del tope, y la respuesta y la confirmación DEBEN mostrar la real

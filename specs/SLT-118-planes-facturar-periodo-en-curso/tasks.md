@@ -86,7 +86,7 @@
   empresas de design §8 (sin plan quincenal; mensual con órdenes quincenales: la cuota del mes en la emitida el 1
   y ninguna en la emitida el 16; anual con órdenes mensuales: la cuota solo en la emitida el 1 de enero; siembra
   P15: ninguna cuota del período en curso, la primera en el próximo inicio de cada tipo).
-- [ ] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (pendiente por SQL a mitad de
+- [x] **T6.2** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R8 (pendiente por SQL a mitad de
   período), R15–R17, R28 (P17: una sola factura emitida en E con órdenes sin plan y la primera cuota), R29 (anual
   desde el 18 con órdenes quincenales: 44 de 365 en la emitida el 18 y ninguna en diciembre; mensual desde el 1
   aplicado el 12: 31 000.00 en la emitida el 16), R16 y R5 (P18: quincenal desde el 1 aplicado el 12 → ninguna
@@ -94,8 +94,9 @@
   20 → las dos quincenas en la emitida el 1 de diciembre; alta el 10 con inicio el 10 → ninguna factura al
   aplicar ni con `hasta` el 10, la emitida el 16 con las órdenes del 10 al 15, 6 200.00 (tramo del 10 al 15) y
   15 500.00 (del 16 al 30), y la emitida el 1 de diciembre con 15 500.00, P19; marca en la emitida el 16 por la cola),
-  R39 (espera del cierre), R30 por P9 (depende de T11.2), R33, R36 y R38 (dependen de T14.2), con los casos de
+  R39 (espera del cierre), R30 por P9 (depende de T11.2), R36 y R38 (dependen de T14.2), con los casos de
   design §8 y `SL118` al cambiar la periodicidad o una marca ya puesta de una `por_cerrar`.
+  R33 no va aquí: su test es `tests/integration/db/planes-cambio-empresa.test.ts` (review m1).
 - [x] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29.
 - [x] **T6.4** `tests/unit/planes/jobs-factura-plataforma.test.ts`: R3, R12, R25.
 - [x] **T6.5** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: R13, R21–R23, con dos empresas.
@@ -196,6 +197,8 @@
 - [x] **T10.2** `progress/impl_SLT-118.md`: mapa `R<n> → test` (R1–R40).
 - [x] **T10.3** `./init.sh` verde; en local, `pnpm exec playwright test --project=dinero` y
   `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` en base desechable (`docs/perfil-agentes.md`).
+  Constancia: por decisión del humano (2026-11-11, `progress/features/SLT-118.md`), `./init.sh`, la integración y
+  esos E2E los da el CI del PR a `dev`; no se mergea sin `gate-completo` y `e2e` en verde.
 - **Hecho:** los tres verdes y el mapa sin huecos.
 
 ## Mapa R → test
