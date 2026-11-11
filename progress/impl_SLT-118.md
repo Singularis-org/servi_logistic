@@ -154,3 +154,72 @@ Hallazgos (sin tocar producción):
   `asignar` del repositorio con un efecto pasado (clase `cambio`); si T11.2 lo prohíbe en el repositorio, ese `it` se ajusta.
 
 Veredicto: T6.1–T6.5 escritos; typecheck y eslint verdes, unit 15/15; la integración (45 casos) queda para CI.
+
+## Tanda 6 — bloque C, servidor (T11.1–T11.3, T12.1–T12.4) · sin commit
+
+Archivos (lib):
+- `lib/interfaces/repositories/IPlanesRepository.ts` — T11.1: `vigenteDesde?: string` en el `ok` de `ResultadoAsignar`,
+  `ResultadoCrearYAsignar` y `ResultadoCambiarTipoCobro` (solo con `pendiente: true`).
+- `lib/repositories/PlanesRepository.ts` — T11.2: `efectoAlInicioDelPeriodo(efecto, tipoVigente, tipoNuevo)` (exportada,
+  pura) y su uso en `cambiarEmpresaEnTx` bajo el cerrojo, después de R19 y antes de decidir pendiente/en el acto. Tipo de
+  referencia = el de mayor índice en `TIPOS_COBRO`; inicio → se respeta (R31); si no, `fechaDeEfectoPorDefecto` (R30);
+  `"inicio"` no se toca (R33); sin revalidar el rango (R34). Devuelve `vigenteDesde` real con el pendiente; `asignar`,
+  `crearYAsignar` y `cambiarTipoCobro` lo propagan. El método queda en pasos numerados (1. R19, 2. fecha real, 3. pendiente
+  o en el acto) para que T14.2 añada la regla de R37 sin mezclarla.
+- `lib/services/PlanesService.ts` y `lib/types/planes.ts` — T11.3: `asignar` y `crear` responden con el `vigenteDesde` del
+  repositorio; `CambiarTipoCobroResult` gana `vigenteDesde: string | null`; `fueraDeRango` sigue sobre la elegida (R34).
+
+Archivos (tests):
+- `tests/integration/db/planes-cambio-empresa.test.ts` — T12.1: bloque nuevo «SLT-118» (R30 ×10 casos, «hoy», R31 ×4,
+  quincenal → mensual el 16, R33, R34). Ajustados los casos que T11.2 rompe: R17/R20 (el 10 de octubre ahora rige el 1 de
+  noviembre; sin tramo), los dos R18 (reloj fijo `servicioEn`, «hoy» = inicio de período), R16/R20 del tipo (1 de enero),
+  R19 (`vigenteDesde: null` en `cambiarTipoCobro`) y R14 (aplica en la fecha real del pendiente).
+- `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` — T12.2: «hoy» fijo el 1 de enero de 2027 en D10/D14; bloque
+  nuevo con R30 (quincenal → anual, anual → mensual, mensual → quincenal), R31 (inicio común futuro, «hoy» = 1 de enero en
+  el acto, el 16 de quincenal → mensual).
+- `tests/integration/db/planes-crear-custom-asigna.test.ts` — T12.2: R30/R32 en el custom (mensual → 1 dic, anual → 1 ene);
+  los casos con «hoy» y plan previo con reloj fijo el 1 de enero.
+- T12.3: `tests/integration/db/planes-asignacion.test.ts` (reloj fijo el 1 de noviembre),
+  `tests/integration/db/plan-de-la-empresa-periodo.test.ts` (el pendiente mensual → bimestral en el próximo inicio de
+  bimestre), `tests/integration/db/planes-cancelar-cambio-historial.test.ts` (pendientes en el próximo 1 de mes / 1 de
+  enero, que se respetan).
+- `tests/unit/services/planes-service-periodo.test.ts` y `tests/unit/services/planes-service-tipo-cobro.test.ts` — T12.4:
+  tabla de R30/R31 sobre `efectoAlInicioDelPeriodo`, R33, R32 (la respuesta trae la real, el repositorio recibe la
+  elegida; `null` en el acto o sin cambio) y R34 (en el tope entra con la real 2028-01-01; el 11 → `validation_error`).
+
+`factura-plataforma-cambio-plan.test.ts` no se tocó: sus efectos de clase `cambio` (1 dic, 16 dic, 1 ene) ya son inicios del
+tipo de referencia, y el «aplicado después del cierre» (1 dic, guardado el 3) se respeta y se aplica en el acto.
+
+Mapa R → test:
+- R30: `planes-cambio-empresa` («R30, R32: asignar otro plan…» ×10, «R30: «hoy» = 10 de noviembre…», «R17, R20, R30…»,
+  «R16, R20, R30…»); `planes-cambiar-tipo-cobro` («R30: a uno más largo / más corto…»); `planes-crear-custom-asigna`
+  («R30, R32 (SLT-118)…»); `planes-service-periodo` («R30, R31: %s → %s…»).
+- R31: `planes-cambio-empresa` («R31: asignar otro plan…» ×4, «R31, R30: quincenal → mensual el 16…», «R18, R31…»);
+  `planes-cambiar-tipo-cobro` («R31: inicio común futuro», «R31: mensual → anual con «hoy» = 1 de enero…»);
+  `planes-service-periodo` (tabla).
+- R32: `planes-service-periodo` («R32: …» ×4), `planes-service-tipo-cobro` («SLT-118 R32…»), integración en las tres de
+  arriba (`vigenteDesde` real). Las confirmaciones en pantalla son T12.5 (frontend).
+- R33: `planes-cambio-empresa` («R33: la primera asignación no se lleva…»), `planes-service-periodo` («R33: …»).
+- R34: `planes-cambio-empresa` («R34, R32: …»), `planes-service-periodo` («R34: …» ×2).
+
+Verificación:
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: rojo SOLO por 3 errores en tests de componentes (frontend):
+  `tests/components/PlanEmpresaPeriodo.test.tsx(113)` y `tests/components/PlanEmpresaTipoCobro.test.tsx(65, 138)`, dobles de
+  `cambiarTipoCobro` sin `vigenteDesde` (ahora obligatorio en `CambiarTipoCobroResult`, design §3.1).
+- `pnpm exec eslint` sobre los 4 de `lib/` y los 8 tests: sin problemas.
+- `vitest run` unit propios: 2 archivos, 123/123 verdes. Integración propia: 6 archivos, 79 casos `skipped` (sin base).
+- `vitest related --run` de los 4 de `lib/`: cortado a los 8 min (exit 124) sin resumen. Sustituido por lotes de ≤5
+  archivos con los tests que importan el servicio, el repositorio o el tipo: 17 archivos; 14 verdes (en ejecución los
+  componentes pasan) y 3 rojos fuera de la lista, por lo mismo (ver abajo).
+
+Rojos por T11.2/T11.3 fuera de la lista (NO tocados, para el humano):
+- `tests/unit/services/planes-service-crear-custom.test.ts` («SLT-86 R17: si el repositorio lo deja pendiente…»): el doble
+  devuelve `pendiente: true` sin `vigenteDesde`; el servicio ya no lo inventa.
+- `tests/unit/services/planes-service-inicio-ciclo.test.ts` («con fecha futura, el repositorio lo deja pendiente…»): igual.
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (2 casos D16): «hoy» = 3 de noviembre ya no se aplica en el
+  acto (mensual ↔ anual), así que va por `escribirPendiente` y el doble de Prisma no lo soporta.
+- `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (por lectura, sin base): dos casos con `vigenteDesde: dia(0)`
+  mensual → mensual esperan aplicarse en el acto o `tope_excedido`; salvo el día 1 quedan pendientes.
+- `tests/components/PlanEmpresaPeriodo.test.tsx` (tipo): fuera de T12.5.
+
+Veredicto: T11.1–T11.3 y T12.1–T12.4 hechos; lint y unit propios verdes; typecheck rojo solo en tests de componentes (frontend) y 4 tests fuera de la lista rojos por el mismo cambio, pendientes de decisión.
