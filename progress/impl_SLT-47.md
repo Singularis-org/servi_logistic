@@ -913,3 +913,54 @@ Veredicto: A y C hechos y en verde; B hecho, pero rompe 7 aserciones (más una a
   `novedades-filtros-lugar.test.ts:107-113,117-118,213`), fuera de lo autorizado (solo
   `ordenes-filtros-def.test.ts:165`). Se revirtió del árbol; el parche está en el scratchpad de la
   sesión (`slt47-B-homonimos.patch`) a la espera de la decisión del humano.
+
+## T6.1 — E2E `geo-filtro-lugar` (frontend_dev, 2026-11-11)
+
+### Archivos
+- `e2e/geo-filtro-lugar.spec.ts` (nuevo).
+- `playwright.config.ts`: `geo-filtro-lugar` en el proyecto `reparto` (guardia `e2e-sin-saltos`: cada spec en un proyecto).
+
+### Qué hace
+Empresa nueva de Costa Rica por corrida (`crearEscenarioReparto`, sufijo aleatorio: repetible sin limpiar). Dos
+órdenes en el cantón de la zona central y una en el de la satélite (cantones distintos, comprobado), llevadas a
+`en_bodega_central` por los servicios reales para que tengan guía. Una vista `version = 1` del maestro escrita en
+`vista_filtro` (`{ v: 1, termino: "", activos: ["canton_id"], seleccion: { canton_id: [<id>] } }`): ningún servicio
+guarda ya la v1. Con el maestro:
+- sin filtro salen las tres guías;
+- (1) «Filtros» ofrece Provincia, Cantón y Distrito; se monta «Cantón» y se elige el cantón;
+- (2) `/ordenes?canton_id=<id>` monta «Cantón: <nombre>»;
+- (3) «Vistas guardadas» → «Aplicar «…»» monta «Cantón: <nombre>»; la fila sigue `version = 1`;
+- cada vez: ninguna fila del otro cantón, las del cantón visibles y las guías de la tabla = las dos esperadas;
+  un último caso compara las tres listas entre sí.
+
+### R → test
+| R | Test |
+|---|---|
+| R39 | `e2e/geo-filtro-lugar.spec.ts` (1) y «las tres veces, las mismas guías» |
+| R18 | `e2e/geo-filtro-lugar.spec.ts` (2) |
+| R23 | `e2e/geo-filtro-lugar.spec.ts` (3) |
+
+### Cómo se corrió
+Contra `logistic_slt47` (`source …/scratchpad/env47.sh`, que aborta si la URL no es `localhost:5432/logistic_slt47`;
+el worktree no tiene `.env`, así que Playwright no carga otro). `SESSION_SECRET` aleatorio,
+`NEXT_PUBLIC_APP_URL=http://localhost:3047`, `NODE_OPTIONS=--max-old-space-size=8192`:
+1. `pnpm exec next build` (exit 0; el `.next` anterior era de antes de HEAD).
+2. `E2E_PUERTO=3047 E2E_STORAGE_PUERTO=54347 pnpm exec playwright test e2e/geo-filtro-lugar.spec.ts` (`next start`).
+
+### Salida
+Corrida 1:
+```
+  ✓  1 [reparto] › e2e\geo-filtro-lugar.spec.ts:97:7 › … › sin filtro, la tabla enseña las órdenes de los dos cantones (8.2s)
+  ✓  2 [reparto] › e2e\geo-filtro-lugar.spec.ts:103:7 › … › (1) R39 — filtrar por el cantón desde la barra, con las listas de los niveles del país (11.6s)
+  ✓  3 [reparto] › e2e\geo-filtro-lugar.spec.ts:128:7 › … › (2) R18 — el enlace viejo `?canton_id=` da las mismas guías (7.0s)
+  ✓  4 [reparto] › e2e\geo-filtro-lugar.spec.ts:138:7 › … › (3) R23 — aplicar la vista guardada de la versión 1 da las mismas guías (6.2s)
+  ✓  5 [reparto] › e2e\geo-filtro-lugar.spec.ts:161:7 › … › R39 — las tres veces, las mismas guías (13ms)
+  5 passed (1.0m)
+```
+Corrida 2: `5 passed (26.9s)` (los mismos 5 casos).
+
+- `pnpm exec eslint e2e/geo-filtro-lugar.spec.ts playwright.config.ts`: «No issues found».
+- `pnpm run typecheck`: exit 0.
+- `vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 38 passed.
+
+Veredicto: T6.1 hecha; R18, R23 y R39 en verde en local, dos corridas seguidas. Sin cambios en código de producción.

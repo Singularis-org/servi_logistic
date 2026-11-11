@@ -117,7 +117,7 @@
 
 ## T6 — E2E nuevo (frontend_dev) · depende de T4.1
 
-- [ ] **T6.1** `e2e/geo-filtro-lugar.spec.ts`. En una empresa de Costa Rica:
+- [x] **T6.1** `e2e/geo-filtro-lugar.spec.ts`. En una empresa de Costa Rica:
   - siembra órdenes en dos cantones;
   - siembra una vista de la versión 1 con `canton_id`;
   - filtra `/ordenes` por un cantón desde la barra;
