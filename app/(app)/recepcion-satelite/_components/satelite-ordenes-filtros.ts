@@ -5,7 +5,6 @@ import {
 } from "@/lib/utils/estados-bodega-satelite";
 import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import type { SalioARepartoValor } from "@/lib/types/orden";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import {
   CLAVE_BUSQUEDA,
@@ -138,8 +137,6 @@ export function construirFiltrosSatelite(
   opts: {
     /** Catálogo `order_status` para el desplegable de estado (`listarOrderStatus`). */
     estatus?: readonly OrderStatusLiteRow[] | null;
-    /** SL-20 (R19): los nombres de nivel del país de la empresa (`useEtiquetasGeograficas`). */
-    etiquetas: EtiquetasGeograficas;
     /** SLT-47: los niveles del país que da el layout, por si el catálogo no trae los suyos. */
     niveles?: readonly NivelDeFiltroDTO[];
     ahora?: Date;
@@ -155,7 +152,6 @@ export function construirFiltrosSatelite(
     // que el adminSatelite ya puede ver —su bodega—, no lo ensancha, y el servicio la atiende
     // en los tres caminos del listado (página, descarga y vigencia de la selección).
     incluirSalioAReparto: true,
-    etiquetas: opts.etiquetas,
     niveles: opts.niveles,
     ahora: opts.ahora,
   }).filter((f) => f.key !== CLAVE_BUSQUEDA);

@@ -1094,7 +1094,6 @@ export function OrdenesListado({
         // «Reasignables»), y aquí sólo se reenvía. Va también en las dependencias del memo:
         // sin eso el control quedaría congelado en lo que valiera la prop al primer render.
         incluirSalioAReparto: incluirFiltroSalioAReparto,
-        etiquetas,
         niveles: nivelesGeograficos,
       },
     );
@@ -1122,7 +1121,6 @@ export function OrdenesListado({
     incluirFiltroSalioAReparto,
     puedeVerEliminadas,
     declaracionEstado,
-    etiquetas,
     nivelesGeograficos,
   ]);
 

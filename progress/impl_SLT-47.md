@@ -655,3 +655,252 @@ Veredicto: arreglos 1 y 2 hechos y en verde; el 3 no se ha aplicado porque super
 ## T5.2 cierre (2026-11-11, autorización `96a1dfe7`)
 
 - `tests/components/NovedadesBuscador.test.tsx:364-365`: se inserta solo `"Distrito",` entre `"Cantón",` y `"Causa de devolución",` (R8). Resultado: 11/11 en verde.
+
+## Decisiones de la tanda 2 aplicadas (frontend_dev, 2026-11-11, autorización `96a1dfe7`)
+
+Sin dependencias, sin backend. Grafo no usado (Grep/Read y un inventario de imports propio). Los tres
+cambios quedan separables por archivo:
+
+- **A** (R1): `app/(app)/ordenes/_components/ordenes-filtros-def.ts`, `app/(app)/_components/entregas-filtros-def.ts`,
+  `app/(app)/recepcion-satelite/_components/satelite-ordenes-filtros.ts`, `app/(app)/ordenes/_components/OrdenesListado.tsx`,
+  `app/(app)/recepcion-satelite/_components/SateliteOrdenesListado.tsx`, `app/(app)/_components/FiltrosEntregas.tsx`,
+  `tests/fabricas/etiquetas-geograficas.tsx` y los 12 tests de entrada de abajo.
+- **B** (homónimos): `lib/utils/filtro-ubicacion.ts`, `tests/unit/utils/filtro-ubicacion.test.ts`.
+- **C** («Todos los / Todas las»): `lib/utils/filtro-ubicacion-asignaciones.ts`,
+  `app/(app)/mis-asignaciones/_components/FiltroUbicacion.tsx`, `tests/unit/utils/todos-los-del-nivel.test.ts` (nuevo).
+
+### A. Sin tercer escalón en `opcionesDeLugarDelCatalogo`
+- Niveles = `cat.niveles` si no vacío → si no, `opts.niveles` (layout, `useNivelesGeograficos`) → si no, `[]`.
+  **Sin niveles no hay listas de lugar** (no se sabe qué tipos tiene el país; ningún rótulo puede salir de un
+  literal ni de `pais.nivel_N_*`). Documentado en el JSDoc de la función.
+- `etiquetas` deja de hacer falta: fuera de la firma de `opcionesDeLugarDelCatalogo`, `construirFiltrosOrdenes`,
+  `construirFiltrosEntregas` y `construirFiltrosSatelite`, y de sus llamadas en `OrdenesListado`,
+  `SateliteOrdenesListado` y `FiltrosEntregas` (y de las dependencias de sus `useMemo`). `OrdenesListado` y
+  `SateliteOrdenesListado` siguen usando `useEtiquetasGeograficas` para columnas y descarga; `FiltrosEntregas`
+  ya no lo importa.
+- Fixture nuevo: `NIVELES_XA_3` (Departamento/Municipio/Aldea, los nombres de `ETIQUETAS_XA`).
+- **Líneas de test tocadas — solo ENTRADA, ninguna aserción** (antes → después):
+  - `etiquetas: ETIQUETAS_CR` → `niveles: NIVELES_CR` (y el import `ETIQUETAS_CR` → `NIVELES_CR`):
+    `AsignacionBloqueoPorCierre.test.tsx:13, 311`; `FiltrosEntregas.test.tsx:26, 84, 113, 125, 148, 163, 179, 181, 516`
+    (números de HEAD); `filtros-acotados-por-rol.test.ts:6, 42, 86, 102`; `ordenes-buscador-declaracion.test.ts:11, 30, 80`;
+    `ordenes-filtros-def.test.ts:10, 47, 51, 248, 277, 293, 303`; `salida-a-reparto-filtro.test.ts:22, 37, 47, 95`;
+    `satelite-filtro-estado.test.ts:26, 59, 165`.
+  - `ordenes-filtros-def.test.ts:329`: `etiquetas: ETIQUETAS_XA` → `niveles: NIVELES_XA_3`.
+  - Doble `vi.mock("@/hooks/use-niveles-geograficos")` con `NIVELES_CR` (bloque nuevo de 6 líneas justo tras el
+    mock de `use-etiquetas-geograficas`): `FiltrosEntregas.test.tsx`, `descarga/SateliteDescarga.test.tsx`,
+    `paginacion/SatelitePaginacion.test.tsx`, `unit/components/ordenes-listado-buscador.test.tsx`,
+    `unit/components/ordenes-listado-filtros.test.tsx`.
+  - `OrdenesPageFiltros.test.tsx`: import de `NivelesGeograficosProvider` y `NIVELES_CR`; `renderPage` envuelto en
+    `<NivelesGeograficosProvider niveles={NIVELES_CR}>` (y su reindentado).
+- `ordenes-filtros-def.test.ts:165` **no se tocó** (con la regla «solo homónimos» su fixture no tiene homónimos).
+
+### B. Homónimos con sus ancestros
+- `declararNiveles`: en cada lista de nivel, los nombres repetidos se rotulan `nombre · padre, abuelo, …` hasta el
+  nivel 1 (`SEPARADOR_ANCESTROS = " · "`, luego `", "`); los únicos, con su nombre (R6). Homónimos del nivel 1
+  (sin ancestros) quedan con su nombre. El buscador de la lista busca por `label`, es decir, por lo mostrado.
+- Mis-asignaciones: su primera lista (`etiquetaConPadre`) sigue «lugar (padre)» sin cambios; **las listas de
+  nivel 3 a P sí heredan los ancestros si hay homónimos** entre las órdenes cargadas (lo arrastra la lógica
+  común; lo fija un caso nuevo). `RepartoModule*.test.tsx` y `mis-asignaciones/FiltroUbicacion.test.tsx` en verde.
+- `traductorPorNombre` comparaba `o.label`: ahora casa por `label` o por el nombre puro (el rótulo sin
+  `" · …"`), así `?canton=Central` sigue traduciendo con cantones homónimos. Protegido por test.
+- Tests nuevos (`filtro-ubicacion.test.ts`, describe «Homonimos», al final): dos «San Rafael» en cantones
+  distintos; nombre único sin ancestros; homónimos de nivel 1; mis-asignaciones; `traductorPorNombre` por nombre puro.
+- **PARADO — aserciones que B rompe y no se han cambiado** (tests creados en SLT-47; no autorizados):
+  - `tests/components/FiltroUbicacionBarra.test.tsx` (5 rojos; fixture con dos «Central» y dos «San Rafael»):
+    - `:150` `["Escazú", "Central", "Central"]` → `["Escazú", "Central · San José", "Central · Alajuela"]`
+    - `:151` `["San Rafael", "San Antonio", "San Rafael", "Carmen"]` → `["San Rafael · Escazú, San José", "San Antonio", "San Rafael · Central, Alajuela", "Carmen"]`
+    - `:160` `["Escazú", "Central"]` → `["Escazú", "Central · San José"]`
+    - `:161` `["San Rafael", "San Antonio", "Carmen"]` → `["San Rafael · Escazú, San José", "San Antonio", "Carmen"]`
+    - `:164` `["San Rafael", "San Antonio"]` → `["San Rafael · Escazú, San José", "San Antonio"]`
+    - `:175` (acción) `marcar(user, "Distrito", "San Rafael")` → `"San Rafael · Escazú, San José"`
+    - `:230` y `:304` `"Distrito: San Rafael"` → `"Distrito: San Rafael · Escazú, San José"`
+  - `tests/unit/novedades/novedades-filtros-lugar.test.ts` (2 rojos; novedades ordena las opciones por `label`):
+    - `:107-113` cantones `[c-cen-sj Central, c-cen-ala Central, c-cen-her Central, c-esc, c-ore]` →
+      `[c-cen-ala "Central · Alajuela", c-cen-her "Central · Heredia", c-cen-sj "Central · San José", c-esc "Escazú", c-ore "Oreamuno"]`
+    - `:117-118` `"San Rafael"` → `"San Rafael · Escazú, San José"` y `"San Rafael · Oreamuno, Cartago"` (mismo orden)
+    - `:213` `["c-cen-sj", "c-cen-ala", "c-cen-her"]` → `["c-cen-ala", "c-cen-her", "c-cen-sj"]` (mismo conjunto; cambia
+      el orden porque las opciones se ordenan por el rótulo nuevo). Alternativa que no toca `:213`: que novedades
+      ordene por el nombre puro (orden estable entre homónimos); decide el humano.
+
+### C. Género de «Todos los / Todas las» por el singular
+- `todosLosDelNivel(singular, plural)` en `filtro-ubicacion-asignaciones.ts`: femenino si el singular (sin
+  mayúsculas ni tildes) termina en `a`, `ion`, `dad` o `tad`; si no, masculino. «Cantón» (-ón) masculino,
+  «Región» femenino. `FiltroUbicacion.tsx` la usa en lugar de `todosLos(plural)`. CR igual que hoy.
+- Test nuevo `tests/unit/utils/todos-los-del-nivel.test.ts`: Provincia, Cantón, Distrito, Región, Comuna, Barrio,
+  Ciudad, Municipio, más mayúsculas/sin tilde y `-tad`.
+
+### Mapa `R<n> → test`
+| R | Test |
+|---|---|
+| R1 (sin respaldo de etiquetas) | `ordenes-filtros-def.test.ts` (rótulos con `NIVELES_CR`/`NIVELES_XA_3`), `filtros-acotados-por-rol.test.ts`, `FiltrosEntregas.test.tsx`, `OrdenesPageFiltros.test.tsx` |
+| R6 (no homónimos, igual que hoy) | `filtro-ubicacion.test.ts` (R6 congelado y «un nombre unico…»), `ordenes-filtros-def.test.ts:165` |
+| Homónimos / R19 | `filtro-ubicacion.test.ts`, describe «Homonimos» |
+| R7 («Todos los») | `todos-los-del-nivel.test.ts`, `RepartoModule.test.tsx`, `mis-asignaciones/FiltroUbicacion.test.tsx` |
+
+### Inventario y salida (`NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run <lote> --maxWorkers=1`)
+Inventario por el grafo de imports estático (`import`, `export … from`, `vi.mock`, `import()`; sin `import type`):
+- **A**: tests que alcanzan `ordenes-filtros-def`, `entregas-filtros-def`, `satelite-ordenes-filtros`,
+  `FiltrosEntregas`, `OrdenesListado` o `SateliteOrdenesListado`: **113 archivos**, en 15 lotes de 8.
+  Primera pasada: 11 lotes verdes; rojos (todos por falta de niveles; arreglados por entrada y re-corridos):
+  `FiltrosEntregas` 1, `OrdenesPageFiltros` 1, `SateliteDescarga` 3, `SatelitePaginacion` 1,
+  `ordenes-listado-buscador` 1, `ordenes-listado-filtros` 8. Re-corrida: `FiltrosEntregas` `Tests 20 passed (20)`;
+  `OrdenesPageFiltros` `Tests 8 passed (8)`; los otros 4: `Test Files 4 passed (4)`, `Tests 47 passed (47)`.
+  (2 archivos `skipped` en el lote 11: de BD, se saltan sin base.)
+- **B/C** (los que además alcanzan `filtro-ubicacion` o `filtro-ubicacion-asignaciones`): **27 archivos más**,
+  en 4 lotes de 7: 25 verdes; rojos solo `FiltroUbicacionBarra.test.tsx` (5) y `novedades-filtros-lugar.test.ts` (2),
+  los de arriba (PARADO).
+- Total corrido: 140 archivos de test.
+- Guardias `etiquetas-geograficas-sin-literal`, `asistente-panel-hermano`, `superficie-de-uso`,
+  `vistas-superficies-declaradas` + `filtro-ubicacion` + `todos-los-del-nivel`: `Test Files 6 passed (6)`, `Tests 81 passed (81)`.
+- `pnpm run typecheck`: limpio. `eslint` sobre los 24 archivos tocados: 0 errores, 2 warnings anteriores
+  (`_k`/`_d` en `filtro-ubicacion.test.ts:133`).
+
+<details><summary>Inventario A (113)</summary>
+
+- `tests/components/ActualizarAnalitica.test.tsx`
+- `tests/components/AnaliticaPage.test.tsx`
+- `tests/components/AsignacionBloqueoPorCierre.test.tsx`
+- `tests/components/AvisoPeriodoEnCurso.test.tsx`
+- `tests/components/CambiarDiaRepartoListados.test.tsx`
+- `tests/components/CargadasPorDiaBarras.test.tsx`
+- `tests/components/CicloVidaKpi.test.tsx`
+- `tests/components/CierreBodegaDesglosePorTienda.test.tsx`
+- `tests/components/CierreBodegaDetalleCascadas.test.tsx`
+- `tests/components/CierreBodegaDetalleGestiones.test.tsx`
+- `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx`
+- `tests/components/CierreMensajeroDesglosePorTienda.test.tsx`
+- `tests/components/CierreMensajeroDetalleCascadas.test.tsx`
+- `tests/components/CierrePremioPendiente.test.tsx`
+- `tests/components/CierresAdminConfirmacionFisica.test.tsx`
+- `tests/components/CierresAdminDeepLink.test.tsx`
+- `tests/components/CierresAdminFiltros.test.tsx`
+- `tests/components/CierresAdminIndemnizacion.test.tsx`
+- `tests/components/CierresAdminModule.test.tsx`
+- `tests/components/CierresAdminPage.test.tsx`
+- `tests/components/CierresAdminPagoMensajero.test.tsx`
+- `tests/components/CierresBodegaAdminRefresco.test.tsx`
+- `tests/components/CohorteCargaTabla.test.tsx`
+- `tests/components/ConsolidacionBodegaRefresco.test.tsx`
+- `tests/components/ConteoEntregasAnillo.test.tsx`
+- `tests/components/ConteoPorStatusDona.test.tsx`
+- `tests/components/ConteoPorStatusDonaInfo.test.tsx`
+- `tests/components/CorregirFechaReprogramacionListado.test.tsx`
+- `tests/components/CorregirResultadoCierre.test.tsx`
+- `tests/components/DevolucionesPorCausaAnillo.test.tsx`
+- `tests/components/DineroIdentidadesEnPantalla.test.tsx`
+- `tests/components/EntregasFiltroConectado.test.tsx`
+- `tests/components/FilaKpisVocabulario.test.tsx`
+- `tests/components/FiltrosCierresBarraEstado.test.tsx`
+- `tests/components/FiltrosEntregas.test.tsx`
+- `tests/components/HistorialAccionesAbonoTienda457.test.tsx`
+- `tests/components/HistorialAccionesCobroTienda461.test.tsx`
+- `tests/components/HistorialAccionesModule.test.tsx`
+- `tests/components/HistorialAccionesPage.test.tsx`
+- `tests/components/HistoricoConversacionesPage.test.tsx`
+- `tests/components/HistoricoFechaDiferenciada.test.tsx`
+- `tests/components/HistoricoFiltros.test.tsx`
+- `tests/components/HistoricoHilo.test.tsx`
+- `tests/components/HistoricoHilosLista.test.tsx`
+- `tests/components/HistoricoMediaExpirada.test.tsx`
+- `tests/components/HistoricoMovil.test.tsx`
+- `tests/components/HistoricoSoloLectura.test.tsx`
+- `tests/components/HoyGestionBarras.test.tsx`
+- `tests/components/KpisEfectividad.test.tsx`
+- `tests/components/ManifiestoFlujos.test.tsx`
+- `tests/components/OrdenesCargaColumnasGeoCableado.test.tsx`
+- `tests/components/OrdenesDescarga.test.tsx`
+- `tests/components/OrdenesListado.confirmar-entrega-419.test.tsx`
+- `tests/components/OrdenesListado.etiquetas-tienda.test.tsx`
+- `tests/components/OrdenesListado.gestion-pendiente.test.tsx`
+- `tests/components/OrdenesListadoBloqueoCierre.test.tsx`
+- `tests/components/OrdenesListadoDevolucion.test.tsx`
+- `tests/components/OrdenesListadoEtiquetasChain.test.tsx`
+- `tests/components/OrdenesModuleReuse.test.tsx`
+- `tests/components/OrdenesPage.test.tsx`
+- `tests/components/OrdenesPageFiltros.test.tsx`
+- `tests/components/OrdenesPageFranjaRetenidas.test.tsx`
+- `tests/components/OrdenesPagination.test.tsx`
+- `tests/components/OrdenesRutearSatelite.test.tsx`
+- `tests/components/ProductosTabla.test.tsx`
+- `tests/components/ProductosTablaDinero.test.tsx`
+- `tests/components/RecepcionSateliteIncidente.test.tsx`
+- `tests/components/RecepcionSateliteModule.test.tsx`
+- `tests/components/RecepcionSatelitePage.test.tsx`
+- `tests/components/SateliteFiltroEstadoAlcance.test.tsx`
+- `tests/components/SateliteOrdenesListado.gestion-pendiente.test.tsx`
+- `tests/components/TraspasarMensajeroListado.test.tsx`
+- `tests/components/cierre-detalle-ajuste-badge.test.tsx`
+- `tests/components/descarga/CierresAdminDescargaDetallada.test.tsx`
+- `tests/components/descarga/CierresBodegaDescargaDetallada.test.tsx`
+- `tests/components/descarga/CierresDescarga.test.tsx`
+- `tests/components/descarga/CierresDescargaColumnas.test.tsx`
+- `tests/components/descarga/CierresDescargaNiveles.test.tsx`
+- `tests/components/descarga/ProductosDescarga.test.tsx`
+- `tests/components/descarga/ProductosDescargaColumnas.test.tsx`
+- `tests/components/descarga/SateliteDescarga.test.tsx`
+- `tests/components/paginacion/BajoRiesgoPaginacion.test.tsx`
+- `tests/components/paginacion/ColasPaginacion.test.tsx`
+- `tests/components/paginacion/SatelitePaginacion.test.tsx`
+- `tests/components/paginacion/SateliteSeleccionOtrasPaginas.test.tsx`
+- `tests/components/paginacion/paginacion-transversal.test.tsx`
+- `tests/integration/db/455/caracterizacion/filtro-ordenes-por-estado.test.ts`
+- `tests/integration/db/455/caracterizacion/filtro-satelite-por-codigo.test.ts`
+- `tests/unit/analytics/conteo-entregas-pliegue.test.ts`
+- `tests/unit/analytics/dinero-producto-no-sumable.guardia.test.ts`
+- `tests/unit/analytics/entregas-filtro-analitica.test.ts`
+- `tests/unit/components/deshacer-asignacion.ui.test.tsx`
+- `tests/unit/components/eliminar-orden.ui.test.tsx`
+- `tests/unit/components/filtros-acotados-por-rol.test.ts`
+- `tests/unit/components/historial-acciones-filtros-def.test.ts`
+- `tests/unit/components/historial-acciones-seleccion-a-filtro.test.ts`
+- `tests/unit/components/historico-filtros-def.test.ts`
+- `tests/unit/components/historico-seleccion-a-filtro.test.ts`
+- `tests/unit/components/ordenes-buscador-declaracion.test.ts`
+- `tests/unit/components/ordenes-filtros-def.test.ts`
+- `tests/unit/components/ordenes-listado-buscador.test.tsx`
+- `tests/unit/components/ordenes-listado-filtros.test.tsx`
+- `tests/unit/components/ordenes-listado-orden.test.tsx`
+- `tests/unit/components/ordenes-listado-vistas.test.tsx`
+- `tests/unit/components/ordenes-listado.test.tsx`
+- `tests/unit/components/rechazo-nombre-466-app.test.ts`
+- `tests/unit/components/recuperar-orden.ui.test.tsx`
+- `tests/unit/components/salida-a-reparto-filtro.test.ts`
+- `tests/unit/components/satelite-filtro-estado.test.ts`
+- `tests/unit/components/seleccion-a-filter.test.ts`
+- `tests/unit/components/textos-455-recorrido.test.ts`
+- `tests/unit/ordenes/seleccion-a-filter-lugar.test.ts`
+- `tests/unit/types/historial-accion-entidades.test.ts`
+</details>
+
+<details><summary>Inventario B/C adicional (27)</summary>
+
+- `tests/components/ChatContactoAntesDeRecoger.test.tsx`
+- `tests/components/CorregirDatosCliente.novedades.test.tsx`
+- `tests/components/descarga/NovedadesDescarga.test.tsx`
+- `tests/components/FiltroUbicacionBarra.test.tsx`
+- `tests/components/GestionarOrdenPanelHilo.test.tsx`
+- `tests/components/MarcarLuegoToggle.test.tsx`
+- `tests/components/mis-asignaciones/FiltroUbicacion.test.tsx`
+- `tests/components/MisAsignacionesPage.test.tsx`
+- `tests/components/NovedadesBuscador.test.tsx`
+- `tests/components/NovedadesFiltroLugarUrl.test.tsx`
+- `tests/components/NovedadesHilo.test.tsx`
+- `tests/components/NovedadesModule.test.tsx`
+- `tests/components/NovedadesPage.test.tsx`
+- `tests/components/NovedadesTabs.test.tsx`
+- `tests/components/RechazarNovedad.test.tsx`
+- `tests/components/RepartoAyuda.test.tsx`
+- `tests/components/RepartoAyudaResueltaPorLaTienda.test.tsx`
+- `tests/components/RepartoModule.test.tsx`
+- `tests/components/RepartoModule477Correccion.test.tsx`
+- `tests/integration/actions/novedades-pestana-por-url.test.ts`
+- `tests/unit/components/filtros-url-herencia.test.tsx`
+- `tests/unit/components/novedades-filtros.test.ts`
+- `tests/unit/guards/vistas-superficies-declaradas.guardia.test.tsx`
+- `tests/unit/novedades/novedades-filtros-lugar.test.ts`
+- `tests/unit/utils/filtro-ubicacion.test.ts`
+- `tests/unit/utils/filtro-ubicacion-rendimiento.test.ts`
+- `tests/unit/utils/todos-los-del-nivel.test.ts`
+</details>
+
+Veredicto: A y C hechos y en verde; B hecho, pero rompe 7 aserciones (más una acción) de dos tests de SLT-47 no autorizados: parado a la espera del humano.

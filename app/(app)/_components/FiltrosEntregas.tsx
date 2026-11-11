@@ -18,7 +18,6 @@ import {
   seleccionAFiltroAnalitica,
 } from "./entregas-filtro-analitica";
 import { construirFiltrosEntregas } from "./entregas-filtros-def";
-import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import { nivelDeClave, traductorPorId } from "@/lib/utils/filtro-ubicacion";
 import { useFiltroEntregas } from "./filtro-entregas";
@@ -140,9 +139,8 @@ export interface FiltrosEntregasProps {
 }
 
 export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}) {
-  // SL-20 (R19): los filtros geográficos con los nombres de nivel del país de la empresa.
-  const etiquetas = useEtiquetasGeograficas();
-  // SLT-47: los niveles del país, para declarar sus listas aunque el catálogo no haya llegado.
+  // SLT-47 (R1): los niveles del país rotulan las listas de lugar y las declaran aunque el catálogo
+  // no haya llegado.
   const nivelesGeograficos = useNivelesGeograficos();
   // UNA sola lectura desde la ficha 351. Antes eran dos en la misma oleada —el catalogo y un
   // directorio de mensajeros aparte—; la segunda desaparecio con `mensajerosFetcher` (ver la
@@ -227,7 +225,6 @@ export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}
   const filtros = useMemo<FilterDef[]>(() => {
     const declarados = construirFiltrosEntregas(catalogo ?? CATALOGO_VACIO, {
       facetas,
-      etiquetas,
       niveles: nivelesGeograficos,
     });
     // Sin catalogo, los filtros que dependen de el se deshabilitan en vez de
@@ -236,7 +233,7 @@ export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}
     return catalogo === null
       ? declarados.map((f) => (f.kind === "dateRange" ? f : { ...f, disabled: true }))
       : declarados;
-  }, [catalogo, facetas, etiquetas, nivelesGeograficos]);
+  }, [catalogo, facetas, nivelesGeograficos]);
 
   const ofrecidos = useMemo(
     () =>

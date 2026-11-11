@@ -55,3 +55,13 @@ export const NIVELES_XA: NivelDeFiltroDTO[] = [
   { profundidad: 3, singular: "Comuna", plural: "Comunas" },
   { profundidad: 4, singular: "Barrio", plural: "Barrios" },
 ];
+
+/**
+ * SLT-47 (tanda 2; R1) — los niveles del país de prueba de `ETIQUETAS_XA`, con sus mismos nombres: las
+ * barras rotulan sus listas de lugar solo con los niveles del país, no con las etiquetas.
+ */
+export const NIVELES_XA_3: NivelDeFiltroDTO[] = [
+  { profundidad: 1, singular: "Departamento", plural: "Departamentos" },
+  { profundidad: 2, singular: "Municipio", plural: "Municipios" },
+  { profundidad: 3, singular: "Aldea", plural: "Aldeas" },
+];

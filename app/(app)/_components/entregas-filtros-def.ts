@@ -2,7 +2,6 @@ import type { Faceta } from "@/lib/analytics/presentacion";
 import type { FilterDef } from "@/components/shared/FilterComponent";
 import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import { declararNiveles } from "@/lib/utils/filtro-ubicacion";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Los filtros de la barra de ENTREGAS del panel maestro, declarados sobre el mismo
@@ -94,13 +93,10 @@ export function construirFiltrosEntregas(
   opts: {
     ahora?: Date;
     facetas?: readonly Faceta[];
-    /** SL-20 (design §7; R19): los nombres de nivel del país de la empresa (`useEtiquetasGeograficas`). */
-    etiquetas: EtiquetasGeograficas;
     /** SLT-47: los niveles del país que da el layout, por si el catálogo no trae los suyos. */
     niveles?: readonly NivelDeFiltroDTO[];
   },
 ): FilterDef[] {
-  const { etiquetas } = opts;
   // `ahora` inyectable para poder fijar los rangos de los atajos en los tests, igual
   // que hace `construirFiltrosOrdenes`.
   const ahora = opts.ahora ?? new Date();
@@ -136,7 +132,7 @@ export function construirFiltrosEntregas(
     },
     // SLT-47 (design §5.2; R1, R6): una lista por nivel del pais, en el sitio de provincia, canton
     // y distrito. En Costa Rica son esas tres, iguales que hoy salvo la clave interna (`nivel_<k>`).
-    ...declararNiveles(opcionesDeLugarDelCatalogo(cat, { etiquetas, niveles: opts.niveles })),
+    ...declararNiveles(opcionesDeLugarDelCatalogo(cat, { niveles: opts.niveles })),
     {
       key: CLAVE_TIENDA,
       label: "Tienda",

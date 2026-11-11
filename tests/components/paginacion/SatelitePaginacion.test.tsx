@@ -130,6 +130,12 @@ vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
 });
+// SLT-47 (tanda 2; R1): las listas de lugar se rotulan solo con los niveles del país; el catálogo de
+// estos casos no los trae, así que los da el layout (aquí, el hook) con los de Costa Rica.
+vi.mock("@/hooks/use-niveles-geograficos", async () => {
+  const { NIVELES_CR } = await import("../../fabricas/etiquetas-geograficas");
+  return { useNivelesGeograficos: () => NIVELES_CR };
+});
 
 const enviarACentralMock = vi.mocked(enviarACentral);
 const recuperarABodegaMock = vi.mocked(recuperarABodega);

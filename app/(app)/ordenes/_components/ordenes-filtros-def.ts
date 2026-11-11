@@ -1,6 +1,5 @@
 import type { FilterDef } from "@/components/shared/FilterComponent";
 import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { declararNiveles, type OpcionesDeLugar } from "@/lib/utils/filtro-ubicacion";
 import {
   BUSQUEDA_MIN_CHARS,
@@ -206,21 +205,15 @@ export function construirFiltrosOrdenes(
      */
     incluirSalioAReparto?: boolean;
     /**
-     * SL-20 (design §7; R19): los nombres de nivel del país de la empresa, que rotulan los filtros
-     * de provincia, cantón y distrito. Los da `useEtiquetasGeograficas`. Obligatorio: un filtro
-     * geográfico sin nombre de su país no se puede declarar.
-     */
-    etiquetas: EtiquetasGeograficas;
-    /**
      * SLT-47 (design §5.4): los niveles del pais de la empresa que da el layout
      * (`useNivelesGeograficos`). Solo se usan si el catalogo no trae los suyos (catalogo caido o en
      * vuelo): asi la barra sigue mostrando las listas de su pais, deshabilitadas, como hoy (R64).
+     * Los rotulos de lugar salen solo de los niveles (R1); ya no hay `etiquetas` (tanda 2).
      */
     niveles?: readonly NivelDeFiltroDTO[];
     ahora?: Date;
   },
 ): FilterDef[] {
-  const { etiquetas } = opts;
   // `ahora` inyectable para poder fijar los rangos de los atajos en los tests.
   const ahora = opts.ahora ?? new Date();
 
@@ -364,7 +357,7 @@ export function construirFiltrosOrdenes(
     // SLT-47 (design §5.1; R1, R6): una lista por nivel del pais, en el MISMO sitio de la barra donde
     // estaban provincia, canton y distrito. En Costa Rica son esas tres, con los mismos rotulos,
     // textos de busqueda, opciones y encadenado; solo cambia la clave interna (`nivel_<k>`).
-    ...declararNiveles(opcionesDeLugarDelCatalogo(cat, { etiquetas, niveles: opts.niveles })),
+    ...declararNiveles(opcionesDeLugarDelCatalogo(cat, { niveles: opts.niveles })),
     {
       // UN solo filtro de tiempo (decision (p)): los atajos son ajustes rapidos del
       // rango, dentro del propio calendario.
@@ -394,32 +387,24 @@ export function construirFiltrosOrdenes(
 /**
  * SLT-47 (design §4.1, §5.1) — los niveles y lugares del filtro de lugar a partir del catalogo.
  *
- * Los niveles salen, por este orden, de:
+ * Los niveles salen SIEMPRE de los niveles del pais (R1), por este orden:
  *   1. el catalogo (`niveles`, de los tipos del pais; `FiltrosOrdenesService` los emite siempre);
- *   2. los del layout (`opts.niveles`), si el catalogo no los trae: catalogo caido, en vuelo, o el
- *      rol de zona sin zona asignada (que recibe `niveles: []`);
- *   3. las etiquetas de tres niveles, si tampoco hay esos: es lo que la barra rotulaba hasta hoy, y
- *      lo que ven las superficies montadas sin proveedor (tests, sesion sin empresa).
- * Asi, en cualquiera de esos casos la barra declara las mismas listas, sin opciones, que hoy (R64).
+ *   2. los del layout (`opts.niveles`, `useNivelesGeograficos`), si el catalogo no los trae:
+ *      catalogo caido, en vuelo, o el rol de zona sin zona asignada (que recibe `niveles: []`).
+ *      Asi la barra declara las mismas listas de su pais, sin opciones, que hoy (R64).
+ * Sin niveles en ninguno de los dos (una superficie montada sin proveedor ni catalogo) NO hay listas
+ * de lugar: no se sabe que tipos tiene el pais, y ningun rotulo puede salir de un literal ni de
+ * `pais.nivel_N_*` (decision de la tanda 2: se quito el respaldo de las etiquetas de tres niveles).
  *
  * Los lugares: `cat.lugares` o, si no llegan, las tres listas planas (`provincias`, `cantones`,
  * `distritos`) como niveles 1, 2 y 3, en su orden.
  */
 export function opcionesDeLugarDelCatalogo(
   cat: CatalogoFiltrosOrdenesDTO,
-  opts: { etiquetas: EtiquetasGeograficas; niveles?: readonly NivelDeFiltroDTO[] },
+  opts: { niveles?: readonly NivelDeFiltroDTO[] } = {},
 ): OpcionesDeLugar {
-  const { etiquetas } = opts;
   const niveles: readonly NivelDeFiltroDTO[] =
-    cat.niveles !== undefined && cat.niveles.length > 0
-      ? cat.niveles
-      : opts.niveles !== undefined && opts.niveles.length > 0
-        ? opts.niveles
-        : [etiquetas.provincia, etiquetas.canton, etiquetas.distrito].map((e, i) => ({
-            profundidad: i + 1,
-            singular: e.singular,
-            plural: e.plural,
-          }));
+    cat.niveles !== undefined && cat.niveles.length > 0 ? cat.niveles : (opts.niveles ?? []);
   const lugares: OpcionesDeLugar["lugares"] = cat.lugares ?? [
     ...cat.provincias.map((p) => ({ id: p.id, nombre: p.nombre, padreId: null, profundidad: 1 })),
     ...cat.cantones.map((c) => ({ id: c.id, nombre: c.nombre, padreId: c.padreId, profundidad: 2 })),

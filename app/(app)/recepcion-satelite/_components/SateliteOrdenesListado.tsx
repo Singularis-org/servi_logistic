@@ -305,12 +305,11 @@ export function SateliteOrdenesListado({
     () =>
       construirFiltrosSatelite(catalogo ?? CATALOGO_FILTROS_VACIO, {
         estatus,
-        etiquetas,
         niveles: nivelesGeograficos,
       }).map((f) =>
         catalogo === null && f.key !== CLAVE_ESTADO ? { ...f, disabled: true } : f,
       ),
-    [catalogo, estatus, etiquetas, nivelesGeograficos],
+    [catalogo, estatus, nivelesGeograficos],
   );
 
   /** Lo que ofrece el selector de la barra: cada filtro declarado, por su clave y su etiqueta. */

@@ -7,7 +7,7 @@ import {
 } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import { CREATED_PRESETS } from "@/lib/types/orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
-import { ETIQUETAS_CR, ETIQUETAS_XA } from "../../fabricas/etiquetas-geograficas";
+import { NIVELES_CR, NIVELES_XA_3 } from "../../fabricas/etiquetas-geograficas";
 
 // Feature 144 / TB3.1 (R51, R55, R56, R62) — declaracion de la barra de ordenes.
 
@@ -44,11 +44,11 @@ const CATALOGO: CatalogoFiltrosOrdenesDTO = {
 };
 
 function claves(incluirTienda: boolean): string[] {
-  return construirFiltrosOrdenes(CATALOGO, { etiquetas: ETIQUETAS_CR, incluirTienda }).map((f) => f.key);
+  return construirFiltrosOrdenes(CATALOGO, { niveles: NIVELES_CR, incluirTienda }).map((f) => f.key);
 }
 
 function porClave(clave: string, incluirTienda = true) {
-  const def = construirFiltrosOrdenes(CATALOGO, { etiquetas: ETIQUETAS_CR, incluirTienda }).find(
+  const def = construirFiltrosOrdenes(CATALOGO, { niveles: NIVELES_CR, incluirTienda }).find(
     (f) => f.key === clave,
   );
   if (!def) throw new Error(`no se declaro el filtro ${clave}`);
@@ -245,7 +245,7 @@ describe("construirFiltrosOrdenes — catalogo vacio (R64)", () => {
       // TODOS quiere decir todos: las dos claves que solo se declaran a peticion
       // —«Eliminadas» y, desde la ficha 370, «Salida a reparto»— se piden aqui, porque si
       // no el censo diria "todos" contando nueve de once.
-      { incluirTienda: true, incluirEliminados: true, incluirSalioAReparto: true, etiquetas: ETIQUETAS_CR },
+      { incluirTienda: true, incluirEliminados: true, incluirSalioAReparto: true, niveles: NIVELES_CR },
     );
     expect(defs).toHaveLength(11);
     for (const def of defs.filter((d) => d.kind === "multi")) {
@@ -274,7 +274,7 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
 
   it("`incluirReasignables: false` (adminTienda) cae SOLO esa clave", () => {
     const claves = construirFiltrosOrdenes(CATALOGO, {
-      etiquetas: ETIQUETAS_CR,
+      niveles: NIVELES_CR,
       incluirTienda: false,
       incluirReasignables: false,
     }).map((f) => f.key);
@@ -290,7 +290,7 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
   });
 
   it("se declara por omision (no hay que pedirlo para maestro/admin)", () => {
-    const claves = construirFiltrosOrdenes(CATALOGO, { etiquetas: ETIQUETAS_CR, incluirTienda: true }).map(
+    const claves = construirFiltrosOrdenes(CATALOGO, { niveles: NIVELES_CR, incluirTienda: true }).map(
       (f) => f.key,
     );
     expect(claves).toContain("reasignables");
@@ -300,7 +300,7 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
 describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
   it("cae SOLO esa clave cuando el rol no lo recibe (`incluirMensajero: false`)", () => {
     const claves = construirFiltrosOrdenes(CATALOGO, {
-      etiquetas: ETIQUETAS_CR,
+      niveles: NIVELES_CR,
       incluirTienda: true,
       incluirMensajero: false,
     }).map((f) => f.key);
@@ -326,7 +326,7 @@ describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
 
 describe("SL-20/R19 — los filtros geográficos llevan los nombres de nivel del país de la empresa", () => {
   it("con un país de prueba, «Departamento», «Municipio» y «Aldea», con su buscador", () => {
-    const defs = construirFiltrosOrdenes(CATALOGO, { incluirTienda: true, etiquetas: ETIQUETAS_XA });
+    const defs = construirFiltrosOrdenes(CATALOGO, { incluirTienda: true, niveles: NIVELES_XA_3 });
     const geo = ["nivel_1", "nivel_2", "nivel_3"].map((k) => defs.find((f) => f.key === k));
     expect(geo.map((f) => f?.label)).toEqual(["Departamento", "Municipio", "Aldea"]);
     expect(geo.map((f) => f?.searchPlaceholder)).toEqual([
