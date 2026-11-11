@@ -50,6 +50,10 @@
 > **Ajustados el 2026-11-10 con P19** (alta con plan desde ese mismo día: sin excepción ni corte al aplicar). R16,
 > R28 y R29 la citan en su texto, su ejemplo y su test; el comportamiento es el que ya estaba escrito como propuesta.
 >
+> **Ajustado el 2026-11-11 con la factura histórica** (con el PR #130 abierto). Cambia R26: la factura sembrada de
+> las empresas que existen al migrar empieza en el inicio de la empresa, no en el del corte en curso. Con P20
+> (cerrada el mismo día: cada factura guarda su fin natural) cambian también R2 y R36 en una frase cada uno.
+>
 > **Vocabulario.**
 > - *Periodicidad de órdenes*: cada cuánto se factura lo de las órdenes: **quincenal** (cortes el 1 y el 16)
 >   o **mensual** (corte el 1). La define el plan (R35); sin plan, quincenal.
@@ -96,7 +100,9 @@
   **periodicidad de órdenes** que contiene su `desde` (SLT-86 R4): la del plan de la factura si lo tiene, y
   quincenal si es «sin plan». NO DEBE depender del tipo de cobro. Ejemplos: quincenal con `desde` el 1 →
   hasta el 16 a las 00:00; sin plan con `desde` el 16 de noviembre → hasta el 1 de diciembre; plan anual con
-  órdenes mensuales y `desde` el 1 de noviembre → hasta el 1 de diciembre (no el 1 de enero).
+  órdenes mensuales y `desde` el 1 de noviembre → hasta el 1 de diciembre (no el 1 de enero). El fin natural
+  DEBE quedar fijado al abrir la factura (P20) y solo DEBE recalcularse cuando R16 le cambia la periodicidad; la
+  única factura cuyo fin natural no es el del período que contiene su `desde` es la sembrada histórica (R26).
   *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
 - **R3** — *(cambiado: emitir)* CUANDO pasan el fin de la factura en curso y el margen de cierre, el proceso
   automático DEBE, en su primera corrida posterior (salvo R39), emitirla y cerrarla con sus cifras y dejar
@@ -310,17 +316,28 @@
   trabajo recurrente de núcleo de la cola; su primera corrida la DEBE sembrar el despliegue. NO DEBE enviar
   correos ni avisos al cerrar (decisión «Aviso al cerrar»).
   *Test:* `tests/unit/planes/jobs-factura-plataforma.test.ts`.
-- **R26** — *(cambiado: P15)* CUANDO se aplica la migración, cada empresa DEBE quedar con una factura en curso
-  desde el inicio del **corte** en curso de su periodicidad de órdenes (la de su plan; quincenal si no tiene),
-  con el plan, el tipo y la periodicidad que tiene en ese momento. El período de cobro en curso de cada empresa
-  con plan DEBE contar como pagado: NO DEBE cobrarse, y su primera cuota DEBE ser la del primer período de cobro
-  que empiece después, en la factura emitida en ese inicio (R8). La factura sembrada NO DEBE llevar primera
-  cuota (no es una primera asignación). Ejemplos, desplegado el 10 de noviembre de 2026 con órdenes quincenales:
-  quincenal → la primera cuota en la emitida el 16 de noviembre; mensual → en la emitida el 1 de diciembre;
-  bimestral y anual → en la emitida el 1 de enero de 2027; sin plan → ninguna. Hasta entonces sus facturas
-  llevan solo órdenes. Una empresa dada de alta después DEBE tener su primera factura desde las 00:00 del día de
-  su alta.
-  *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts`.
+- **R26** — *(cambiado: P15 y factura histórica, 2026-11-11)* CUANDO se aplica la migración, cada empresa que
+  existe en ese momento DEBE quedar con una factura en curso (la **sembrada**) desde el **inicio de la empresa**:
+  las 00:00 de la plataforma del día de su alta (el día de su `created_at`), la misma regla que una empresa dada
+  de alta después. La sembrada DEBE llevar el plan, el tipo y la periodicidad de órdenes que la empresa tiene en
+  ese momento (quincenal si no tiene plan) y DEBE emitirse en el **primer corte de esa periodicidad posterior al
+  instante de la migración**, con **todos** los cargos y reversos de la empresa desde su inicio hasta esa
+  emisión; desde ahí, el ciclo normal (R1, R2). El período de cobro en curso de cada empresa con plan DEBE contar
+  como pagado: NO DEBE cobrarse ninguna cuota de un período que empiece antes de la emisión de la sembrada, y su
+  primera cuota DEBE ser la del primer período de cobro que empiece en o después de esa emisión, en la factura
+  emitida en ese inicio (R8). La sembrada NO DEBE llevar primera cuota (no es una primera asignación). NO DEBE
+  descontar pagos: hoy no hay pagos a la plataforma. Ejemplo, desplegado el 10 de noviembre de 2026, empresa dada
+  de alta el 3 de septiembre con órdenes quincenales: la sembrada va del 3 de septiembre al 15 de noviembre
+  (`[3 sep 00:00, 16 nov 00:00)`) y se emite el 16 de noviembre con todas sus órdenes de ese intervalo; con
+  órdenes mensuales iría del 3 de septiembre al 30 de noviembre y se emitiría el 1 de diciembre. Su primera
+  cuota, con órdenes quincenales: quincenal → en la emitida el 16 de noviembre (la sembrada misma); mensual → en
+  la emitida el 1 de diciembre; bimestral y anual → en la emitida el 1 de enero de 2027; sin plan → ninguna.
+  Hasta entonces sus facturas llevan solo órdenes. Una empresa dada de alta después de la migración NO cambia:
+  DEBE tener su primera factura desde las 00:00 del día de su alta, con su fin natural (R2).
+  *Test:* `tests/integration/db/factura-plataforma-cierre.test.ts` (siembra: alta el 3 de septiembre migrada el
+  10 de noviembre → una sola factura `[3 sep, 16 nov)`, ninguna cerrada antes del 16, la emitida el 16 con los
+  cargos y reversos de septiembre a noviembre y número 1; la `en_curso` antes del 16 con ese `desde` y fin el 16;
+  ninguna cuota de un período anterior; una empresa creada tras la migración, desde las 00:00 de su alta).
 - **R27** — *(cambiado: las columnas de la cuota)* SI hay alguna factura cerrada con cuota, ENTONCES el
   `down.sql` DEBE negarse sin tocar nada: quitar la tabla bajaría la deuda y dejaría los pagos de la cuota como
   sobrepago. Sin cuotas cerradas, DEBE dejar la base como estaba: sin la tabla, sin la periodicidad de órdenes
@@ -435,8 +452,8 @@
   programado; el rastro; un plan existente queda quincenal; valor inválido),
   `tests/components/PlanFormPeriodicidad.test.tsx` (el campo, su valor al editar y lo que manda).
 - **R36** — *(cerrado con P13)* CUANDO cambia la periodicidad de órdenes de un plan, la factura en curso de cada
-  empresa con ese plan NO DEBE cambiar: DEBE cerrarse con la periodicidad con la que se abrió, y la siguiente
-  DEBE abrirse en su fin con la periodicidad nueva. Ejemplos, editada el 10 de noviembre en el acto: quincenal →
+  empresa con ese plan NO DEBE cambiar: DEBE cerrarse con la periodicidad y el fin natural con los que se abrió
+  (el fin guardado, P20), y la siguiente DEBE abrirse en ese fin con la periodicidad nueva. Ejemplos, editada el 10 de noviembre en el acto: quincenal →
   mensual → la del 1 al 15 sigue quincenal, la siguiente va del 16 al 30 (fin del mes, R2) y después la de
   diciembre entero; mensual → quincenal → la de noviembre sigue entera y la siguiente es la del 1 al 15 de
   diciembre.
@@ -499,10 +516,28 @@
 | P17 · Una sola factura con las órdenes sin plan y la primera cuota | R28 |
 | P18 · Inicio pasado con la factura de la cuota ya emitida: la cuota espera al próximo corte, sin corte al aplicar | R5, R8, R16, R18, R24, R29 |
 | P19 · Alta con plan desde ese mismo día: sin excepción ni corte; la primera factura en el próximo corte con las órdenes, la cuota proporcional y la del período siguiente | R16, R28, R29 |
+| Factura histórica de las empresas existentes al migrar | R26 |
+| P20 · Cada factura guarda su fin natural | R2, R26, R36 |
 
 ## Preguntas abiertas
 
 Ninguna.
+
+### Respondida el 2026-11-11 (texto original, para el rastro)
+
+- **P20 · Cómo sabe la base el fin de la factura sembrada (factura histórica, 2026-11-11).** Hoy el fin natural de
+  una factura sale de su `desde` (`plan_fin_periodo_calendario(periodicidad, desde)`, design §2.2): con la sembrada
+  desde el 3 de septiembre daría el 16 de septiembre, y la primera corrida del cierre partiría la histórica en
+  cinco facturas (3–15 sep, 16–30 sep, …) y las emitiría todas de golpe, en vez de una sola emitida el 16 de
+  noviembre. Lo mismo pasa en `tomar_cambio` y en la lectura `en_curso` (design §2.8). Hace falta que la base
+  sepa que el fin de la sembrada es el primer corte tras la migración. Salidas, sin elegir: (a) una columna nueva
+  `fin_natural_at` (nula salvo en la sembrada) que `avanzar`, `tomar_cambio` y `en_curso` usan cuando no es nula:
+  cambia el esquema (`db/schema.prisma`, un CHECK más, el trigger la congela); (b) la siembra fija la sembrada
+  ya como `por_cerrar` con `hasta_at` = ese corte y abre la siguiente: sin columna, pero entonces la sembrada no se
+  lee como «en curso» hasta el 16 (R24 no la muestra) y una primera asignación o un cambio antes del 16 la ven
+  como `por_cerrar` (R16 con marca por adelantado, R28 no aplica); (c) otra que diga el humano. Propuesta del spec:
+  (a), porque deja R24, R16 y R28 iguales que con cualquier otra factura en curso. Sin esta respuesta T16 no
+  empieza.
 
 ### Respondidas el 2026-11-10, quinta tanda (texto original, para el rastro)
 
@@ -658,3 +693,5 @@ quedan contradichas. P4 sí, en un punto: P18.
 | 2026-11-10 | P17 · Primera cuota de una empresa que ya operaba sin plan | **Una sola factura**: la que se emite al empezar el plan lleva las órdenes sin plan pendientes y la primera cuota por adelantado (R28, como propuso el spec) (humano). |
 | 2026-11-10 | P18 · Plan con inicio en el pasado cuya factura de la cuota ya salió | La cuota **espera a la factura del próximo corte**, junto con las órdenes; en ese caso queda a período vencido. **No** se corta la factura en curso ni se emite una factura extra al aplicar el plan (distinto de la propuesta del spec). Ej.: asignado el 12 de noviembre con inicio el 1 y órdenes quincenales → la cuota entra en la factura emitida al cierre del corte 1–15 (humano). |
 | 2026-11-10 | P19 · Alta con plan desde ese mismo día | **Sin excepción ni corte al aplicar** (como propuso el spec). La primera factura sale en el **próximo corte** y lleva las órdenes desde el alta + la cuota proporcional desde el alta hasta el corte + la cuota del período siguiente por adelantado. Ej.: alta el 10 de noviembre, órdenes quincenales, cuota quincenal 15 500 → la emitida el 16 lleva las órdenes del 10 al 15 + 6 200.00 (6 de 15 días) + 15 500.00 (16 al 30). Desde ahí, la regla normal (humano). |
+| 2026-11-11 | Factura histórica (modifica R26, con el PR #130 abierto) | Solo para las empresas que **existen al aplicar la migración**: la factura sembrada empieza en el **inicio de la empresa** (su alta), no en el inicio del corte en curso; la emitida en el próximo corte lleva **todo su histórico** de órdenes (cargos y reversos), y desde ahí sigue el ciclo normal. Las dadas de alta después **no cambian**. La cuota no cambia (P15; la sembrada no lleva primera cuota). No se descuentan pagos: hoy no hay pagos a la plataforma. Ej.: desplegado el 10 de noviembre, alta el 3 de septiembre, órdenes quincenales → la sembrada va del 3 de septiembre al 15 de noviembre y se emite el 16 con todas sus órdenes (humano). |
+| 2026-11-11 | P20 · Cómo sabe la base el fin de la factura sembrada | **Opción (a)**: cada factura guarda su fecha de fin natural en una columna nueva (`fin_natural_at`), que ya no se calcula desde su inicio. La factura histórica se ve como factura en curso del 3 de septiembre al 15 de noviembre y se emite **una sola**, el 16 (humano). |
