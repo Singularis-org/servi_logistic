@@ -543,6 +543,9 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_cerrar(text, timestamp) FROM PUBLI
 --     Y la en curso ya con la periodicidad de órdenes del plan nuevo y su fin natural recalculado con ella, como la
 --     dejará la toma; su cuota prevista, en ese fin (review m7).
 --   La marca prevista también descarta, como la real, la cuota de la emisión cuyo período la contiene.
+-- El mismo §5.2 con un CAMBIO de plan pendiente (la empresa ya con plan) y la cola tarde (E ≤ D): la en curso se
+-- muestra ya con la periodicidad de órdenes del plan nuevo y su fin natural recalculado con ella, y su cuota
+-- prevista en ese fin; sin marca (no es primera asignación) y sin adelantar el plan de la factura (review, gemelo m7).
 -- Sin número (R24).
 CREATE FUNCTION factura_plataforma_en_curso(p_org text) RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -566,7 +569,8 @@ DECLARE
   v_marca       timestamp;
   v_marca_id    text;
   v_marca_hasta timestamp;
-  -- En §5.2 (E ≤ D), la periodicidad que la toma le pondrá a la en curso; nula si no hay que mostrarla.
+  -- En §5.2 (E ≤ D), la periodicidad que la toma le pondrá a la en curso, sea primera asignación o cambio; nula si
+  -- no hay que mostrarla.
   v_ec_periodicidad text;
   v_periodicidad    text;
 BEGIN
@@ -577,8 +581,14 @@ BEGIN
   SELECT o."plan_id", o."plan_tipo_cobro", o."plan_cambio_plan_id", o."plan_cambio_tipo_cobro",
          o."plan_cambio_desde_at"
     INTO v_org FROM "organizacion" o WHERE o."id" = p_org;
-  IF v_org."plan_id" IS NULL AND v_org."plan_cambio_desde_at" IS NOT NULL THEN
+  IF v_org."plan_cambio_desde_at" IS NOT NULL THEN
     SELECT * INTO v_ec FROM "factura_plataforma" f WHERE f."organizacion_id" = p_org AND f."estado" = 'en_curso';
+    IF v_ec."id" IS NOT NULL AND v_org."plan_cambio_desde_at" <= v_ec."desde_at" THEN
+      -- Como `tomar_cambio` §5.2: la en curso pasa a la periodicidad del plan nuevo y su fin se recalcula solo.
+      SELECT p."periodicidad_ordenes" INTO v_ec_periodicidad FROM "plan" p WHERE p."id" = v_org."plan_cambio_plan_id";
+    END IF;
+  END IF;
+  IF v_org."plan_id" IS NULL AND v_org."plan_cambio_desde_at" IS NOT NULL THEN
     IF v_ec."id" IS NOT NULL THEN
       v_fin_natural := plan_fin_periodo_calendario(v_ec."periodicidad", v_ec."desde_at");
       IF v_org."plan_cambio_desde_at" > v_ec."desde_at" THEN
@@ -594,8 +604,6 @@ BEGIN
         SELECT f."id" INTO v_marca_id FROM "factura_plataforma" f
          WHERE f."organizacion_id" = p_org AND f."estado" = 'por_cerrar' AND f."hasta_at" = v_ec."desde_at";
         v_marca_id := COALESCE(v_marca_id, v_ec."id");
-        -- Como `tomar_cambio` §5.2: la en curso pasa a la periodicidad del plan nuevo y su fin se recalcula solo.
-        SELECT p."periodicidad_ordenes" INTO v_ec_periodicidad FROM "plan" p WHERE p."id" = v_org."plan_cambio_plan_id";
       END IF;
     END IF;
   END IF;

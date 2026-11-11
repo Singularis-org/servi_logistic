@@ -321,6 +321,15 @@ En los tres primeros casos, la marca prevista descarta, como la real, la cuota d
 contiene (§2.4): el período que empieza en la marca se cobra una sola vez, con la primera cuota. El plan de la
 factura (`plan_id`, `plan_nombre`, `tipo_cobro`) no se adelanta: sigue sin plan hasta que la cola aplica la toma.
 
+**Un cambio de plan pendiente con la cola tarde** (la empresa ya con plan, `plan_cambio_desde_at` = E ≤ D; humano
+2026-11-11, gemelo de m7): la en curso se muestra ya con la **periodicidad de órdenes del plan nuevo** y su fin
+natural recalculado con ella (`plan_fin_periodo_calendario(periodicidad nueva, D)`, como la deja §2.3 paso 2), y su
+cuota prevista se calcula en ese fin con el plan del cambio pendiente (E ≤ fin). No hay marca (no es primera
+asignación) y el plan de la factura no se adelanta: sigue el de antes hasta que la cola aplica la toma. Ejemplo: plan
+de órdenes quincenales y cambio al 1 a uno de órdenes mensuales que la cola aún no aplicó a las 00:10: la en curso
+del 1 se ve mensual, hasta el 1 del mes siguiente y con la cuota de ese mes del plan nuevo, no hasta el 16. Con E > D
+no se recalcula nada (§2.3 paso 3: la toma no toca la en curso con plan).
+
 ### 2.7 El tope del pago (SL-45) — R18, R19
 
 El de T2, con una sola diferencia: suma `COALESCE(cuota, 0) + COALESCE(primera_cuota, 0)` de las cerradas.

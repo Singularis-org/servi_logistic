@@ -621,6 +621,65 @@ describeSiHayBase("SLT-118 — quién lee y quién escribe las facturas de la pl
     expect(r.trasLaCola).toEqual([porCerrar, { ...enCurso, planId: r.plan.id }]);
   });
 
+  it("R24: un cambio pendiente al 1 de un plan de órdenes quincenales a uno de órdenes mensuales que la cola aplica tarde: la en curso del 1 ya se ve mensual, hasta el 1 de diciembre y con la cuota de diciembre del plan nuevo, igual que tras la cola salvo el plan", async () => {
+    const r = await revertida(base, async (tx) => {
+      const quincenal = await planConPrecio(tx, "31000.00");
+      const mensual = await planConPrecio(tx, "40000.00");
+      await tx.$executeRawUnsafe(`UPDATE "plan" SET "periodicidad_ordenes" = 'mensual' WHERE "id" = $1`, mensual.id);
+      // Con el plan de órdenes quincenales (cobro mensual) desde el 16 de octubre. El 20, un cambio al 1 de noviembre.
+      const e = await empresaDesde(tx, cero("2026-10-16"), { id: quincenal.id, tipo: "mensual" });
+      const efecto: EfectoElegido = { clase: "cambio", fecha: "2026-11-01", desde: inicioDelDiaPlataforma("2026-11-01"), elegida: true };
+      const asignado = await planesEnTx(tx).asignar(e, mensual.id, ACTOR, efecto, "mensual", new Date("2026-10-20T15:00:00.000Z"));
+      // La corrida de las 00:10 del 1 llega antes que la cola: la del 16 al 31 queda por cerrar (espera, R39) y la del
+      // 1 se abre con el plan de antes y quincenal. E = D = el 1.
+      await cerrarEn(tx, e, corrida("2026-11-01"));
+      const pendiente = await leerComoEmpresa(tx, e);
+      const [{ cambio }] = await tx.$queryRawUnsafe<{ cambio: string }[]>(
+        `SELECT "plan_cambio_id" AS cambio FROM "organizacion" WHERE "id" = $1`,
+        e,
+      );
+      await fijarEmpresa(tx, "");
+      const aplicado = await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: e, cambioId: cambio }, new Date(new Date(cero("2026-11-01")).getTime() + 30 * 60_000));
+      const trasLaCola = await leerComoEmpresa(tx, e);
+      return { quincenal, mensual, asignado, aplicado, pendiente: pendiente.map(vista), trasLaCola: trasLaCola.map(vista) };
+    });
+    expect(r.asignado).toMatchObject({ estado: "ok", pendiente: true });
+    expect(r.aplicado).toMatchObject({ estado: "aplicado" });
+    // La por cerrar del 16 al 31 lleva la cuota de noviembre del plan nuevo (el efecto es su fin).
+    const porCerrar = {
+      estado: "por_cerrar",
+      numero: null,
+      desde: cero("2026-10-16"),
+      hasta: cero("2026-11-01"),
+      hastaPrevisto: false,
+      periodicidad: "quincenal",
+      planId: r.quincenal.id,
+      totalOrdenes: "0.00",
+      cuota: cuotaCompleta(r.mensual, "mensual", "2026-11-01", "2026-12-01", "40000.00", "40000.00", 30),
+      primeraCuota: null,
+      total: "40000.00",
+    };
+    // Gemelo de m7: la en curso del 1, con el cambio solo guardado, ya con la periodicidad mensual del plan nuevo, su
+    // fin recalculado el 1 de diciembre (no el 16) y la cuota de diciembre del plan nuevo prevista en ese fin. El plan
+    // de la factura no se adelanta: sigue el de antes hasta que la cola aplica la toma.
+    const enCurso = {
+      estado: "en_curso",
+      numero: null,
+      desde: cero("2026-11-01"),
+      hasta: cero("2026-12-01"),
+      hastaPrevisto: true,
+      periodicidad: "mensual",
+      planId: r.quincenal.id,
+      totalOrdenes: "0.00",
+      cuota: cuotaCompleta(r.mensual, "mensual", "2026-12-01", "2027-01-01", "40000.00", "40000.00", 31),
+      primeraCuota: null,
+      total: "40000.00",
+    };
+    expect(r.pendiente).toEqual([porCerrar, enCurso]);
+    // La cola aplica la toma: las mismas dos, y la en curso ya con el plan nuevo (lo único que no se adelanta).
+    expect(r.trasLaCola).toEqual([porCerrar, { ...enCurso, planId: r.mensual.id }]);
+  });
+
   it("R24, R21: la empresa A lee las suyas, cerradas con su número y sus cuotas emitidas; la de otra empresa o sin empresa, 42501", async () => {
     const r = await revertida(base, async (tx) => {
       const { a, b } = await sembrar(tx);
