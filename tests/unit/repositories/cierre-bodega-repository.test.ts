@@ -392,6 +392,8 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       usuario: { findUnique: vi.fn() },
       walletMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
       conciliacionBodegaAjuste: { findMany: vi.fn().mockResolvedValue([]) },
+      // SLT-105: las cuatro lecturas de la central leen antes los ids de los recibidos incompletos.
+      $queryRaw: vi.fn().mockResolvedValue([]),
     };
   }
 
