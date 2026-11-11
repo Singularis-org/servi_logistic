@@ -357,3 +357,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-91 (2026-11-06, P1 en `specs/SLT-91-mi-plan-solo-maestro/requirements.md`). Al aprobar una postulación con el tope de `mensajero` lleno, `mensajeDelTope` (`lib/planes/mensajes.ts`) le dice al `admin` «Inactiva alguno o pide un cambio de plan.». Usuarios es solo del `maestro` (`UsuarioService.ts:52`), así que el `admin` no puede inactivar a nadie. Carlos decidió dejar el texto igual (R11): sin él no sabría por qué falla la aprobación.
 - **Qué falta:** un texto para quien no puede inactivar usuarios, que le diga a quién acudir. Toca los límites, por eso no entró en SLT-91, y hay que cambiar el literal de R11 en `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts`.
 - **Dueño:** Carlos (decidir si va a ficha).
+
+### D62 — Un `BUG_REPORT_BUCKET` que ya existe no se revisa
+- **Origen:** SLT-98 (2026-11-10, review F2.2 m2 en `progress/review_SLT-98.md`). La app solo crea el bucket si falta, con sus límites y privado. Si `BUG_REPORT_BUCKET` apunta a un bucket que ya existía, no se comprueba que sea privado ni sus límites (5 MB, PNG/JPG/WebP). Además el servidor no comprueba el `content-type` guardado: en un bucket sin tipos permitidos podría servirse un archivo que empieza como PNG con `text/html`, desde el origen de Storage y no el de la app.
+- **Qué falta:** al arrancar o al pedir permisos, leer la configuración del bucket y negarse (o avisar) si es público o no tiene los límites; o comprobar el `content-type` en el envío.
+- **Dueño:** Cristian (decidir si va a ficha). Mientras tanto, revisar el bucket a mano al configurarlo en cada entorno.

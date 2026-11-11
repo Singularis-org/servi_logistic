@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-98 | reporte-bugs-imagenes | fullstack | medium | feature/SLT-98-reporte-bugs-imagenes | Camilo | in_progress |
+| SLT-98 | reporte-bugs-imagenes | fullstack | medium | feature/SLT-98-reporte-bugs-imagenes | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.3 (2026-11-10): review vuelta 3 OK (3d3aee6a). PR a `dev` abierto; espera CI, la comprobación en preview y el merge humano.
+done (2026-11-11): PR #119 mergeado en dev (f92803e4), gate-completo verde. Entrega 3 de 3 del reporte de bugs.
 
 ## Evaluación
 - zone fullstack: bucket nuevo, subida firmada, validación en el servidor, enlaces en el correo y en el detalle, y el panel.
@@ -41,3 +41,10 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-11 · PR https://github.com/Singularis-org/servi_logistic/pull/119 mergeado por el humano en dev (f92803e4). En verde: `gate-completo`, los tres shards de vitest y los grupos E2E `aislamiento` (incluye el test del tope; https://github.com/Singularis-org/servi_logistic/actions/runs/42915074720/job/130175339466), `reparto` y `dinero`.
+- Comprobación en preview contra Supabase real (condición de merge): el humano mergeó sin dejar el resultado por escrito; no consta en `impl_SLT-98.md`.
+- Resumen: hasta 5 imágenes por reporte, de hasta 5 MB y en PNG/JPG/WebP. Suben al pulsar «Enviar» con un `PUT` firmado al bucket privado `bug-reports`, que la app crea sola. El servidor valida tamaño y firma de bytes. Enlaces firmados de 24 h en el correo y en el detalle del superadmin. Tope blando de 21 imágenes por usuario y día, en la zona del país de la empresa; sin cupo, el reporte se envía solo con el texto.
+- Review F2.2: vuelta 1 rechazada (T11 sin cerrar); vuelta 2 rechazada (T16 sin cerrar); vuelta 3 OK.
+- Deuda: m2 (si `BUG_REPORT_BUCKET` apunta a un bucket que ya existía, no se revisan sus límites ni si es público).
+- Despliegue: la migración `20261112120000` se editó antes de llegar a dev. Si se aplicó en alguna base compartida o de preview, hay que rehacerla con `db:rollback` y `migrate deploy`.
+- Bases locales `servi_logistic_slt98` y `servi_logistic_slt98_e2e`: pendientes de borrar con autorización.
