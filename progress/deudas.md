@@ -362,3 +362,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-98 (2026-11-10, review F2.2 m2 en `progress/review_SLT-98.md`). La app solo crea el bucket si falta, con sus límites y privado. Si `BUG_REPORT_BUCKET` apunta a un bucket que ya existía, no se comprueba que sea privado ni sus límites (5 MB, PNG/JPG/WebP). Además el servidor no comprueba el `content-type` guardado: en un bucket sin tipos permitidos podría servirse un archivo que empieza como PNG con `text/html`, desde el origen de Storage y no el de la app.
 - **Qué falta:** al arrancar o al pedir permisos, leer la configuración del bucket y negarse (o avisar) si es público o no tiene los límites; o comprobar el `content-type` en el envío.
 - **Dueño:** Cristian (decidir si va a ficha). Mientras tanto, revisar el bucket a mano al configurarlo en cada entorno.
+
+### D63 — `listarCierresImputables` sin alcance se queda sin consumidores
+- **Origen:** SLT-124 (2026-11-11, review m1 en `progress/review_SLT-124.md`). El incentivo pasó a las lecturas `…EnAlcance` de SLT-122; la versión sin alcance ya no la llama nadie en `lib/`, pero la usan 7 tests.
+- **Qué falta:** borrarla con sus tests, o una guardia que prohíba llamarla desde `lib/`. Mientras exista, un consumidor nuevo podría volver a mezclar cierres de satélite con dinero de la central.
+- **Dueño:** ArqDev (se revisa con las deudas al cerrar la épica de cierres).
+
+### D64 — Fixture `caja-459`: premio movido a cierre central sin medir
+- **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
+- **Qué falta:** cuando SL-31 saque esos tests del baseline, comprobar que pasan y que R6 sigue vigilado; ajustar la zona del mensajero si choca con R12.
+- **Dueño:** ArqDev / quien cierre SL-31.
