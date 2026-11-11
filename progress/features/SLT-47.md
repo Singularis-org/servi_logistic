@@ -25,3 +25,4 @@ F1.1 2026-11-11: tomada y acotada con `/afinar-feature`. Rama sobre `feature/SLT
 
 ## Cierre
 <!-- tamano-pr-aceptado: 2026-11-11 · humano: «Un PR, aceptando el tamaño»; 81 archivos / ~4.100 líneas estimados en el spec -->
+- 2026-11-11 tanda 1 servidor (T0–T2.4, T2.5 parcial) hecha hasta 214f8934; R36/R16 autorizados (ddd7acad). Falta T2.3 cierre, T2.5 R29, T3.1.
