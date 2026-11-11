@@ -152,3 +152,4 @@ la local por defecto. Logs en el scratchpad de la sesión; aquí, sus líneas fi
 
 **Veredicto:** hecho T1-T10; código, tests y E2E en verde; el único rojo del gate es el nombre de
 SLT-124 en la copia local del board, que corrige el leader.
+- Gate leader 2026-11-11 (base slt124_g1, tras renombrar la carpeta del spec al nombre de la ficha): INIT_EXIT=0
