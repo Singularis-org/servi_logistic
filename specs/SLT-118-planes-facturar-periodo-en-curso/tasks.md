@@ -82,7 +82,7 @@
 - **Hecho:** `pnpm run test:guardias` verde, y la contraprueba encuentra cada patrón nuevo.
 
 ### T6 — Tests del bloque A (dependen de T2–T4) [P entre sí]
-- [ ] **T6.1** `tests/integration/db/factura-plataforma-cierre.test.ts`: R1–R9, R11, R14, R26, R27, con las
+- [x] **T6.1** `tests/integration/db/factura-plataforma-cierre.test.ts`: R1–R9, R11, R14, R26, R27, con las
   empresas de design §8 (sin plan quincenal; mensual con órdenes quincenales: la cuota del mes en la emitida el 1
   y ninguna en la emitida el 16; anual con órdenes mensuales: la cuota solo en la emitida el 1 de enero; siembra
   P15: ninguna cuota del período en curso, la primera en el próximo inicio de cada tipo).
@@ -96,9 +96,9 @@
   15 500.00 (del 16 al 30), y la emitida el 1 de diciembre con 15 500.00, P19; marca en la emitida el 16 por la cola),
   R39 (espera del cierre), R30 por P9 (depende de T11.2), R33, R36 y R38 (dependen de T14.2), con los casos de
   design §8 y `SL118` al cambiar la periodicidad o una marca ya puesta de una `por_cerrar`.
-- [ ] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29.
-- [ ] **T6.4** `tests/unit/planes/jobs-factura-plataforma.test.ts`: R3, R12, R25.
-- [ ] **T6.5** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: R13, R21–R23, con dos empresas.
+- [x] **T6.3** `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts`: R10 y R29.
+- [x] **T6.4** `tests/unit/planes/jobs-factura-plataforma.test.ts`: R3, R12, R25.
+- [x] **T6.5** `tests/integration/db/factura-plataforma-aislamiento.test.ts`: R13, R21–R23, con dos empresas.
 - **Hecho:** los cinco verdes con `HAY_BASE_DE_DATOS`; cada `it` nombra su `R<n>`.
 
 ## Bloque B — Cuota en la deuda y lectura en curso
