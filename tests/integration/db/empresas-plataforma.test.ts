@@ -142,14 +142,13 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     // (aquí el global no está fijado); este caso sigue midiendo lo de SL-32.
     const nuevosSlt66 = { cobroVigente: expect.anything(), plan: null };
     expect(mias).toEqual([
-      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null, deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA, ...nuevosSlt66 },
+      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA, ...nuevosSlt66 },
       {
         id: r.s.a.id,
         nombre: r.s.a.nombre,
         slug: r.s.a.slug,
         creadaEn: ALTA_A,
         maestros: [r.s.maestroA1, r.s.maestroA2],
-        cobroPorOrden: null,
         deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00",
         pais: COSTA_RICA,
         ...nuevosSlt66,
@@ -174,8 +173,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     expect(mias).toHaveLength(2);
     for (const e of mias) {
       expect(Object.keys(e).sort()).toEqual([
-        "cobroPorOrden",
-        "cobroVigente", // SLT-66 R31
+        "cobroVigente", // SLT-66 R31 (SLT-126: sin cobroPorOrden)
         "creadaEn",
         "deudaPlataforma",
         "id",

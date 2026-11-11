@@ -48,7 +48,7 @@
 
 ## Tanda 2 — Tests de base que sembraban o esperaban el valor propio
 
-- [ ] **T5 — Ajustar los tests de integración** (design §5.2): `_fixtures/cobro-porcentual.ts` (fuera
+- [x] **T5 — Ajustar los tests de integración** (design §5.2): `_fixtures/cobro-porcentual.ts` (fuera
   `fijarExcepcion`), `empresas-plataforma-cobro.test.ts` (se borra), `empresas-plataforma.test.ts`,
   `empresas-plataforma-plan.test.ts`, `empresas-plataforma-cobro-porcentual.test.ts`,
   `cobro-plataforma-plan.test.ts`, `cobro-plataforma-cargos.test.ts`, `cobro-plataforma-porcentual.test.ts`,
