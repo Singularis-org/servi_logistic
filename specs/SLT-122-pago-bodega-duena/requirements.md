@@ -157,7 +157,7 @@ movimiento en el libro, y la previsualización DEBE mostrar imputable `0.00`.
 
 Dependencias: T0 → T1 → T2 → T3 → (T4 [según PA2]) → T5 [P] T6 → T7 → T8.
 
-- [ ] **T0.1 — Lectura (backend_dev, sin código).** Confirmar con archivo:línea, contra la rama, cada
+- [x] **T0.1 — Lectura (backend_dev, sin código).** Confirmar con archivo:línea, contra la rama, cada
   cita del Alcance: `LiquidacionService.ts:315-382` (`:319` rol, `:333-335` lectura y estado),
   `:401-481`, `:511-637`, `:1083-1114`; `LiquidacionPagoRepository.ts:273-296` y `:311-339` y el
   conteo de excluidos que le sigue; `ILiquidacionPagoRepository.ts:250-283`;
@@ -169,32 +169,32 @@ Dependencias: T0 → T1 → T2 → T3 → (T4 [según PA2]) → T5 [P] T6 → T7
   sin anulación) contra cierres con `destino_tipo = 'bodega_satelite'`, por empresa. Sin imprimir
   datos personales. *Hecho:* el número en `progress/features/SLT-122.md`; si es > 0, se avisa a
   Carlos (posible doble pago, SLT-73 D4) y no bloquea esta ficha.
-- [ ] **T1 — Un solo alcance (backend_dev).** Sacar `alcanceWhere` de `CierresAdminRepository.ts` a
+- [x] **T1 — Un solo alcance (backend_dev).** Sacar `alcanceWhere` de `CierresAdminRepository.ts` a
   un módulo compartido de repositorios y el alcance de acceso total (`bodega_central`, zona `null`)
   a un módulo compartido de servicios; `CierresAdminRepository` y `CierresAdminService.resolveAlcance`
   pasan a importarlos sin cambiar su comportamiento. *Hecho:* el literal del alcance de acceso total
   y el cuerpo de `alcanceWhere` aparecen una sola vez en `lib/`; los tests existentes de
   `/cierres-admin` siguen verdes sin tocarlos.
-- [ ] **T2 — Repositorio (backend_dev).** Método nuevo en `ILiquidacionPagoRepository` /
+- [x] **T2 — Repositorio (backend_dev).** Método nuevo en `ILiquidacionPagoRepository` /
   `LiquidacionPagoRepository` que lee el cierre para pago con `{ id, ...alcanceWhere(alcance) }`,
   con `tx` y el mismo `select` que `obtenerCierreParaPago`. El `alcance` es obligatorio (sin valor
   por defecto). `obtenerCierreParaPago` no cambia (lo usan otros cuatro caminos). *Hecho:* typecheck
   verde; test unitario del repositorio que fija el `where` exacto.
-- [ ] **T3 — Servicio (backend_dev).** `registrarPagoMensajero` usa el método de T2 con el alcance de
+- [x] **T3 — Servicio (backend_dev).** `registrarPagoMensajero` usa el método de T2 con el alcance de
   acceso total de T1, dentro de la transacción y después del candado, en lugar de
   `obtenerCierreParaPago`. `null` → `no_encontrado` antes de mirar estado y monto (R1, R2). El guard
   de rol (`:319`) no cambia (R5). *Hecho:* tests de `tests/unit/services/liquidacion-service.test.ts`
   para R1, R2 (los cuatro estados), R3, R5 (`adminSatelite` con un cierre de su zona → `forbidden` y
   el repositorio no se llama).
-- [ ] **T4 — Reparto [según PA2] (backend_dev).** Lo mismo para la lista de imputables y el conteo de
+- [x] **T4 — Reparto [según PA2] (backend_dev).** Lo mismo para la lista de imputables y el conteo de
   excluidos del reparto: método o parámetro con alcance obligatorio solo para `LiquidacionService`;
   `IncentivoMensajeroService` sigue con `listarCierresImputables` sin cambios. *Hecho:* tests de
   `tests/unit/services/liquidacion-reparto-service.test.ts` para R9 y R10.
-- [ ] **T5 [P] — Dobles de los tests (backend_dev).** Añadir el método nuevo a los dobles tipados de
+- [x] **T5 [P] — Dobles de los tests (backend_dev).** Añadir el método nuevo a los dobles tipados de
   `ILiquidacionPagoRepository` que lo necesiten (`liquidacion-anulacion.test.ts`,
   `caja-cadena-pago-anulacion.test.ts` y los de T3/T4), sin cambiar lo que afirman. *Hecho:*
   `pnpm run typecheck` verde y esos archivos verdes.
-- [ ] **T6 [P] — Integración contra la base (backend_dev).** Test nuevo
+- [x] **T6 [P] — Integración contra la base (backend_dev).** Test nuevo
   `tests/integration/db/pago-mensajero-bodega-duena.test.ts` con el servicio y los repositorios
   reales, en una base desechable: dos empresas; en la empresa A un cierre `aprobado` central y uno
   `aprobado` de satélite del mismo mensajero; en la B, uno central. Afirma R1 (satélite →
@@ -205,11 +205,11 @@ Dependencias: T0 → T1 → T2 → T3 → (T4 [según PA2]) → T5 [P] T6 → T7
   método de T2 (y del de T4) pone en rojo R1 y R9; anotar en `progress/impl_SLT-122.md` el rojo
   observado y revertir la mutación. *Hecho:* verde con la base desechable exportada antes de
   cualquier `vitest`, y la mutación registrada.
-- [ ] **T7 — Lectura sin cambios y E2E de dinero (backend_dev).** R7: correr
+- [ ] **T7 — Lectura sin cambios y E2E de dinero (backend_dev).** *(2026-11-10: la parte de vitest, hecha y verde; el E2E `dinero` queda ABIERTO para el leader: necesita servidor y al backend_dev se le pidio no levantarlo. Ver `progress/impl_SLT-122.md`.)* R7: correr
   `pnpm exec vitest related --run` sobre los archivos tocados y `tests/components/CierresAdminDeepLink.test.tsx`;
   y, como toca dinero (`docs/perfil-agentes.md > Todos los agentes`), `pnpm exec playwright test
   --project=dinero` en base desechable. *Hecho:* verdes, con el resultado en `progress/impl_SLT-122.md`.
-- [ ] **T8 — Cierre (backend_dev).** `./init.sh` en verde con `.env` copiado al worktree y la
+- [x] **T8 — Cierre (backend_dev).** `./init.sh` en verde con `.env` copiado al worktree y la
   salida escrita a archivo con `INIT_EXIT=$?` dentro del log; mapa `R<n> -> test` en
   `progress/impl_SLT-122.md`. *Hecho:* `INIT_EXIT=0` y todos los R con su test.
 
