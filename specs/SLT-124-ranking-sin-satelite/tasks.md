@@ -11,34 +11,34 @@
   - 0 mensajeros y 0 días con cierres de los dos destinos.
 
   *Hecho:* D5 de `requirements.md`. No hay nada que anular ni migrar.
-- [ ] **T1 — Lectura (sin código).** Confirmar contra la rama cada cita archivo:línea de
+- [x] **T1 — Lectura (sin código).** Confirmar contra la rama cada cita archivo:línea de
   `requirements.md > Alcance` y de `design.md`. *Hecho:* tabla en `progress/impl_SLT-124.md` con cada
   cita y si sigue igual.
-- [ ] **T2 — Repositorio del cierre del día [T1].** En `resolverCierreDelDia`, añadir el parámetro
+- [x] **T2 — Repositorio del cierre del día [T1].** En `resolverCierreDelDia`, añadir el parámetro
   `alcance: Alcance` (obligatorio) y `...alcanceWhere(alcance)` en el `where`. Reescribir la cabecera
   de `ICierreDelDiaRepository`. *Hecho:* typecheck verde y `premio-ranking-lecturas.test.ts` fija el
   `where` literal con `destinoTipo: "bodega_central"`. El literal no se importa de `alcanceWhere`: es
   el contrato.
-- [ ] **T3 — Servicio del premio [T2].** `PremioRankingDevengoService` pasa `ALCANCE_ACCESO_TOTAL` al
+- [x] **T3 — Servicio del premio [T2].** `PremioRankingDevengoService` pasa `ALCANCE_ACCESO_TOTAL` al
   listar y al registrar. *Hecho:*
   - `premio-ranking-devengo-service.test.ts` afirma el alcance pasado en las dos rutas (R4, R5);
   - los tests existentes siguen verdes sin cambiar lo que afirman (R6).
-- [ ] **T4 — Servicio del incentivo [T1] [P con T2].** `registrar` usa
+- [x] **T4 — Servicio del incentivo [T1] [P con T2].** `registrar` usa
   `listarCierresImputablesEnAlcance` y `obtenerCierreParaPagoEnAlcance` con `ALCANCE_ACCESO_TOTAL`;
   ajustar el `Pick`; `anular` no se toca. Comprobar que el composition root pasa el repositorio.
   *Hecho:* `incentivo-mensajero-service.test.ts` cubre R8, R9 y R10 (alcance pasado; la relectura
   fuera de alcance da `sin_cierre_aprobado` sin escribir) y los tests existentes siguen verdes.
-- [ ] **T5 — Universo del ranking [T1] [P con T2].** `UserRepository.listMensajeros` añade
+- [x] **T5 — Universo del ranking [T1] [P con T2].** `UserRepository.listMensajeros` añade
   `zona: { esCentral: true }` al `where`; actualizar la cabecera de `IUserRepository.listMensajeros`.
   Los servicios del ranking no cambian. *Hecho:* `user-repository.mensajeros.test.ts` fija el `where`
   literal, y los tests `ranking-service` y `ranking-snapshot-service` siguen verdes sin tocarlos.
-- [ ] **T6 — Guardia de criterio único [T2] [P].** Añadir `CierreDelDiaRepository` a los
+- [x] **T6 — Guardia de criterio único [T2] [P].** Añadir `CierreDelDiaRepository` a los
   consumidores de `alcanceWhere` en `criterio-unico.guardia.test.ts`, con el import exacto y 1 uso.
   *Hecho:* la guardia sale verde y se pone roja si se redeclara el filtro a mano.
-- [ ] **T7 — Llamadores existentes [T2] [P].** `premio-ranking-idempotencia.test.ts` pasa el alcance
+- [x] **T7 — Llamadores existentes [T2] [P].** `premio-ranking-idempotencia.test.ts` pasa el alcance
   a `resolverCierreDelDia`, sin cambiar lo que afirma (sus fixtures ya son `bodega_central`).
   *Hecho:* verde.
-- [ ] **T8 — Integración contra Postgres real [T3, T4, T5].** Test nuevo
+- [x] **T8 — Integración contra Postgres real [T3, T4, T5].** Test nuevo
   `tests/integration/db/central-sin-satelite-premio-incentivo.test.ts`, con servicios y repositorios
   reales, modelado sobre `pago-mensajero-bodega-duena.test.ts`. Cada `it` comprueba primero que lo
   sembrado existe (nada de `if (!x) return`). Escenarios:
@@ -64,14 +64,14 @@
   3. quitar `zona: { esCentral: true }` de `listMensajeros` → rojos h y j.
 
   *Hecho:* verde y las tres mutaciones registradas en `progress/impl_SLT-124.md`.
-- [ ] **T9 — E2E [T8].** En base desechable nueva y con `NEXT_PUBLIC_APP_URL` como en el CI, correr:
+- [x] **T9 — E2E [T8].** En base desechable nueva y con `NEXT_PUBLIC_APP_URL` como en el CI, correr:
   - `pnpm exec playwright test --project=dinero`;
   - `e2e/incentivo-mensajero-slt68.spec.ts`;
   - `e2e/dos-empresas-humo.spec.ts`.
 
   Si un fixture siembra mensajeros sin zona central, se corrige el fixture y se anota.
   *Hecho:* verdes, con comandos y resultados en `progress/impl_SLT-124.md`.
-- [ ] **T10 — Cierre [T9].** Correr `./init.sh` y escribir la salida a archivo con `INIT_EXIT=$?`
+- [x] **T10 — Cierre [T9].** Correr `./init.sh` y escribir la salida a archivo con `INIT_EXIT=$?`
   dentro del log. Escribir el mapa `R<n> -> test` en `progress/impl_SLT-124.md`. Anotar las deudas:
   `listarCierresImputables` sin alcance se queda sin consumidores en `lib/`, y R14 queda marcado para
   Preview. *Hecho:* `INIT_EXIT=0` y todos los R con su test.
