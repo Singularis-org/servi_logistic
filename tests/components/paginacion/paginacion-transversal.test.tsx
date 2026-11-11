@@ -262,16 +262,19 @@ const ANEXO_III: ListadoPaginado[] = [
     ruta: "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
     tanda: "J",
     adaptador: "completo",
-    etiquetaPaginacion: "PAGINACION_BODEGA_PENDIENTES_LABEL",
+    // SLT-127: la pestaña «Por conciliar» de la cola única (PA-P).
+    etiquetaPaginacion: "PAGINACION_POR_CONCILIAR_LABEL",
   },
   {
     // Feature 184 — Tanda E (T E.3/T E.4): el gemelo del anterior, y la otra mitad del mismo
     // listado compuesto. Aquí lo que se arrastraba era la cola; allí, el histórico.
     listado: "Cierres de bodega resueltos",
-    ruta: "app/(app)/cierres-admin/_components/CierresBodegaResueltosLista.tsx",
+    // SLT-127 «Cola de bodega de la central con la cola única»: la pestaña «Conciliados»; su
+    // página y su control se mudan al módulo (la lista de antes queda sin montar).
+    ruta: "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
     tanda: "I",
     adaptador: "completo",
-    etiquetaPaginacion: "PAGINACION_BODEGA_RESUELTOS_LABEL",
+    etiquetaPaginacion: "PAGINACION_CONCILIADOS_LABEL",
   },
   {
     // Feature 184 — Tanda B (T B.2/T B.3): su relectura era la más cara del inventario —cuatro

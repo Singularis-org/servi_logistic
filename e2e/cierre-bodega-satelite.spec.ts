@@ -3,9 +3,12 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { movimientosCajaDe } from "./_escenarios/caja";
 import {
   aprobarCierre,
+  filaDeCola,
   filaDeMensajeros,
   importe,
   montoDeCuenta,
+  pestanaDeColaBodega,
+  regionColaBodega,
   solicitarCierre,
   solicitarCierreBodega,
 } from "./_escenarios/cierres";
@@ -148,10 +151,9 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
   test("2 — el maestro abre el detalle único, ve las cifras, los mensajeros, la evidencia y marca recibido", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await pestanaBodega(page);
-    const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
-    await modulo
-      .getByRole("region", { name: "Cierres de bodega pendientes" })
-      .getByRole("button", { name: `Ver / decidir el cierre de bodega de ${r.zonaSatelite.nombre}` })
+    // SLT-127: la cola única de bodega (R130).
+    await regionColaBodega(page, "Por conciliar")
+      .getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${r.zonaSatelite.nombre}` })
       .click();
     const detalle = detalleDeBodega(page);
     await expect(detalle).toBeVisible();
@@ -218,10 +220,10 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     // SLT-73 (R10): la marca asentó en la caja el dinero del cierre del día de la satélite.
     expect((await delCierre()).length).toBeGreaterThan(0);
 
-    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
+    await pestanaDeColaBodega(page, "Conciliados").click();
     await expect(
-      modulo.getByRole("region", { name: "Cierres de bodega resueltos" }).getByRole("button", {
-        name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}`,
+      regionColaBodega(page, "Conciliados").getByRole("button", {
+        name: `Ver el cierre de bodega de ${r.zonaSatelite.nombre}`,
       }),
     ).toBeVisible();
   });
@@ -229,9 +231,11 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
   test("3 — ya marcada: «Conciliación» con lo recibido, sin «Desmarcar» y sigue en resueltos", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await pestanaBodega(page);
-    const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
-    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
-    await modulo.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}` }).click();
+    const verRecibido = regionColaBodega(page, "Conciliados").getByRole("button", {
+      name: `Ver el cierre de bodega de ${r.zonaSatelite.nombre}`,
+    });
+    await pestanaDeColaBodega(page, "Conciliados").click();
+    await verRecibido.click();
     const detalle = detalleDeBodega(page);
     // Control: el detalle está cargado (con sus cifras) antes de afirmar una ausencia. Las cifras no cambian al marcar.
     await cifrasYDinero(detalle);
@@ -259,22 +263,21 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     expect(c.conciliadoAt).not.toBeNull();
     expect(await movimientosCajaDe(r)).toEqual(antes);
     await page.keyboard.press("Escape");
-    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
-    await expect(
-      modulo.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}` }),
-    ).toBeVisible();
+    await pestanaDeColaBodega(page, "Conciliados").click();
+    await expect(verRecibido).toBeVisible();
   });
 });
 
 /**
- * SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados» (T4; R126, R136) — la pantalla
- * intermedia de C1: un recibido INCOMPLETO se queda en «Pendientes» (con su pastilla y lo que falta)
- * y no en «Resueltos»; al corregirlo hasta lo esperado pasa a «Resueltos» sin recargar.
+ * SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados» (T4; R126) y SLT-127 «Cola de
+ * bodega de la central con la cola única» (T5.2; R44, R127, R129, R130) — un recibido INCOMPLETO se
+ * queda en «Por conciliar» (con su pastilla, lo que falta y «Ver / corregir») y no en «Conciliados»;
+ * al corregirlo hasta lo esperado pasa a «Conciliados» sin recargar.
  *
  * Mismos datos que el escenario de arriba, en otra empresa: Debe llegar a la central
  * 9.000 − 1.500 − 500 = 7.000. Se marca 6.000 → falta 7.000 − 6.000 = 1.000 (escrito a mano).
  */
-test.describe.serial("SLT-105 — un recibido incompleto se queda en «Pendientes» hasta que se corrige", () => {
+test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conciliar» hasta que se corrige", () => {
   let ri: RepartoE2E;
 
   test.beforeAll(async () => {
@@ -290,19 +293,18 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Pendiente
     await solicitarCierreBodega(ri);
   });
 
-  test("marcar 6.000 de 7.000: sigue en «Pendientes» como «Recibido incompleto»; corregir a 7.000 la pasa a «Resueltos»", async ({ browser }) => {
+  test("marcar 6.000 de 7.000: sigue en «Por conciliar» como «Recibido incompleto»; corregir a 7.000 la pasa a «Conciliados»", async ({ browser }) => {
     const page = await paginaDe(browser, ri.empresa.maestro);
     await pestanaBodega(page);
-    const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
-    const tabs = modulo.getByRole("group", { name: "Cierres de bodega por estado" });
-    const pestanaPendientes = tabs.getByRole("button", { name: /^Pendientes/ });
-    const pendientes = modulo.getByRole("region", { name: "Cierres de bodega pendientes" });
-    const resueltos = modulo.getByRole("region", { name: "Cierres de bodega resueltos" });
-    const verDecidir = pendientes.getByRole("button", { name: `Ver / decidir el cierre de bodega de ${ri.zonaSatelite.nombre}` });
-    const verResuelto = resueltos.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${ri.zonaSatelite.nombre}` });
+    const bodega = ri.zonaSatelite.nombre;
+    const pestanaPorConciliar = pestanaDeColaBodega(page, "Por conciliar");
+    const pestanaConciliados = pestanaDeColaBodega(page, "Conciliados");
+    const fila = filaDeCola(regionColaBodega(page, "Por conciliar"), bodega);
+    const verCorregir = fila.getByRole("button", { name: `Ver / corregir el cierre de bodega de ${bodega}` });
 
-    await expect(pestanaPendientes).toHaveAccessibleName(/^Pendientes\s*\(1\)$/);
-    await verDecidir.click();
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 1");
+    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados 0");
+    await fila.getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${bodega}` }).click();
     const detalle = detalleDeBodega(page);
     await detalle.locator("footer").getByRole("button", { name: /^Marcar recibido la consolidación de / }).click();
     const marcar = page.getByRole("dialog", { name: "Marcar recibido" });
@@ -311,24 +313,20 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Pendiente
     await expect(page.getByText(/^Marcada como recibida por /)).toContainText(importe(6000));
     await expect(detalle).toHaveCount(0);
 
-    // R136/R126 — sin recargar: sigue en «Pendientes», que la sigue contando, con su pastilla y su falta.
-    await expect(pestanaPendientes).toHaveAccessibleName(/^Pendientes\s*\(1\)$/);
-    await expect(verDecidir).toBeVisible();
-    await expect(pendientes.getByText("Recibido incompleto", { exact: true })).toBeVisible();
-    // La columna de la marca va en el desglose de la tarjeta, que se abre con «Ver detalles».
-    await pendientes.getByRole("button", { name: `Ver detalles del cierre de bodega de ${ri.zonaSatelite.nombre}` }).click();
-    const conciliacion = pendientes.getByRole("region", { name: "Conciliación", exact: true });
-    await expect(
-      conciliacion.getByText("Falta por recibir", { exact: true }).locator("xpath=following-sibling::span[1]"),
-    ).toHaveText(importe(1000, { solo: true }));
-    // Y NO está en «Resueltos». Control: la lista de resueltos está cargada y es la vacía (empresa nueva).
-    await tabs.getByRole("button", { name: /^Resueltos/ }).click();
-    await expect(modulo.getByText("Aún no hay cierres de bodega resueltos.", { exact: true })).toBeVisible();
-    await expect(verResuelto).toHaveCount(0);
+    // R126 (C1), R44, R129, R130 — sin recargar: sigue en «Por conciliar», que la sigue contando,
+    // con su pastilla, lo recibido, lo que falta (8.ª celda) y «Ver / corregir».
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 1");
+    await expect(fila.getByText("Recibido incompleto", { exact: true })).toBeVisible();
+    await expect(fila.getByRole("cell").nth(6)).toHaveText(importe(6000, { solo: true }));
+    await expect(fila.getByRole("cell").nth(7)).toHaveText(importe(1000, { solo: true }));
+    await expect(verCorregir).toBeVisible();
+    // Y NO está en «Conciliados». Control: la lista está cargada y es la vacía (empresa nueva).
+    await pestanaConciliados.click();
+    await expect(page.getByText("Aún no hay cierres de bodega conciliados.", { exact: true })).toBeVisible();
 
-    // «Corregir» hasta lo esperado → pasa a «Resueltos» sin recargar.
-    await tabs.getByRole("button", { name: /^Pendientes/ }).click();
-    await verDecidir.click();
+    // «Ver / corregir» hasta lo esperado → pasa a «Conciliados» sin recargar.
+    await pestanaPorConciliar.click();
+    await verCorregir.click();
     await detalle.locator("footer").getByRole("button", { name: /^Corregir el monto recibido de / }).click();
     const corregir = page.getByRole("dialog", { name: "Corregir el monto recibido" });
     await corregir.getByLabel("Monto recibido").fill("7000");
@@ -336,9 +334,11 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Pendiente
     await expect(page.getByText(/^Monto recibido corregido a /)).toContainText(importe(7000));
     await expect(detalle).toHaveCount(0);
 
-    await expect(pestanaPendientes).toHaveAccessibleName(/^Pendientes\s*\(0\)$/);
-    await expect(verDecidir).toHaveCount(0);
-    await tabs.getByRole("button", { name: /^Resueltos/ }).click();
-    await expect(verResuelto).toBeVisible();
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 0");
+    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados 1");
+    await pestanaConciliados.click();
+    const recibida = filaDeCola(regionColaBodega(page, "Conciliados"), bodega);
+    await expect(recibida.getByText("Recibido", { exact: true })).toBeVisible();
+    await expect(recibida.getByRole("button", { name: `Ver el cierre de bodega de ${bodega}` })).toBeVisible();
   });
 });

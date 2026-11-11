@@ -259,7 +259,7 @@ async function abrirDetalle(gruposAna?: CierreGrupos) {
 
   const user = userEvent.setup();
   await user.click(
-    await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+    await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
   );
   const dialogo = await screen.findByRole("dialog", { name: /^Detalle del cierre de bodega · / });
   // SLT-104: las gestiones viven en la pestaña «Gestiones» del detalle único.

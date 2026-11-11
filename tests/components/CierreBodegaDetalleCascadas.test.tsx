@@ -306,7 +306,7 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
 
   const user = userEvent.setup();
   await user.click(
-    await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+    await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
   );
   await screen.findByRole("region", { name: "Lo que va a la central" });
   return user;
@@ -721,7 +721,7 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     );
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }),
+      await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }),
     );
     const cuenta = await screen.findByRole("region", { name: "De lo facturado, le queda a Acme Envíos" });
 

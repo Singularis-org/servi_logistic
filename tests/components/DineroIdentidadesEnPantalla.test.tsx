@@ -948,7 +948,7 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
     const user = userEvent.setup();
     await user.click(
       await screen.findByRole("button", {
-        name: "Ver / decidir el cierre de bodega de Limón",
+        name: "Ver / conciliar el cierre de bodega de Limón",
       }),
     );
     // SLT-104 «Detalle de cierre de bodega en el detalle único (central)»: el detalle es el único de

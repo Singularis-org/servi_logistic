@@ -132,6 +132,11 @@ export function importe(n: number, opts: { solo?: boolean } = {}): RegExp {
 //     La pestaña (`tab`) del `tablist` «Cierres del día por estado». Su nombre lleva el conteo
 //     («Resueltos 12»), así que se busca por el comienzo.
 //
+//   pestanaDeColaBodega(page, "Por conciliar" | "Conciliados") → Locator
+//   regionColaBodega(page, "Por conciliar" | "Conciliados") → Locator
+//     SLT-127: lo mismo para la cola de bodega de la central (`tablist` «Cierres de bodega por
+//     estado»; regiones «Cierres de bodega por conciliar» / «… conciliados»). La fila, con filaDeCola.
+//
 //   ajustarPagoMensajero(r, gestionId, { anterior, nuevo, motivo }) → void
 //     `CierresAdminService.ajustarPagoMensajeroGestion` con el maestro, sobre un cierre abierto
 //     (SLT-56). Es lo que hace el diálogo «Ajustar pago» del detalle; aquí siembra la señal
@@ -145,6 +150,20 @@ export function pestanaDeCola(page: Page, nombre: "Pendientes" | "Resueltos"): L
   return page
     .getByRole("tablist", { name: "Cierres del día por estado" })
     .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+}
+
+/** SLT-127: la pestaña de la cola de bodega de la central («Por conciliar 3», «Conciliados 21»). */
+export function pestanaDeColaBodega(page: Page, nombre: "Por conciliar" | "Conciliados"): Locator {
+  return page
+    .getByRole("tablist", { name: "Cierres de bodega por estado" })
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+}
+
+/** SLT-127: la región (y la tabla) de la pestaña activa de la cola de bodega. */
+export function regionColaBodega(page: Page, nombre: "Por conciliar" | "Conciliados"): Locator {
+  return page.getByRole("region", {
+    name: nombre === "Por conciliar" ? "Cierres de bodega por conciliar" : "Cierres de bodega conciliados",
+  });
 }
 
 export async function ajustarPagoMensajero(

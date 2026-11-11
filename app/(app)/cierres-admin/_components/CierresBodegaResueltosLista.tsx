@@ -55,7 +55,8 @@ export interface CierresBodegaResueltosListaProps {
 /** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA = "Cierres de bodega resueltos";
 /** Nombre accesible del control (R43). Propio: la pantalla monta varios listados paginados. */
-export const PAGINACION_BODEGA_RESUELTOS_LABEL =
+// SLT-127: sin `export`; el control vivo es `PAGINACION_CONCILIADOS_LABEL` del módulo.
+const PAGINACION_BODEGA_RESUELTOS_LABEL =
   "Paginación de los cierres de bodega resueltos";
 const ERROR_CARGA = "No se pudieron cargar los cierres de bodega resueltos.";
 
@@ -101,6 +102,10 @@ export function descargaBodegaResueltos(
   };
 }
 
+// SLT-127 «Cola de bodega de la central con la cola única»: `CierresBodegaAdminModule` ya no monta
+// este componente (lo sustituye `ColaCierres`); el archivo sigue alcanzable por sus otros exports
+// (`descargaBodegaResueltos`, `CierresBodegaResueltosPagina`), y por eso no lleva `@sin-superficie`:
+// la guardia `superficie-de-uso` decide por módulo. Lo retira SLT-115.
 export function CierresBodegaResueltosLista({
   initialData,
   onAbrir,
