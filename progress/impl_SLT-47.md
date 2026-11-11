@@ -309,3 +309,12 @@ El humano autorizó los dos bloqueos (`requirements.md` > «Decisiones cerradas�
   fixtures `v: 1` (`vistas-filtro-aviso-incompleta`, `buscador-filtros-vistas`, `vista-filtro.test`
   de integración) pueden cambiar de salida; no lo verifiqué uno por uno. Necesita la misma autorización que R36/R16 antes de tocarlo. `deV1` y
   `vista-filtro-v2.test.ts` quedan pendientes con eso.
+
+### Guardias al cierre
+
+- `tests/unit/guards` entero más `criterio-unico` y `alcance-obligatorio`: 244 archivos. Un rojo propio,
+  ya arreglado: `pagos-captura.guardia` (R19 de su ficha) veía `@prisma/client` en el árbol del panel
+  del mensajero porque `PasoDeRuta` se importaba desde `ruta-del-lugar.ts`. El tipo pasa a
+  `lib/types/geografia-nodo.ts` y la guardia vuelve a verde.
+- El otro rojo, `dependencias-declaradas-presentes.guardia`, está en `tests/baseline-rojos.json`
+  (heredado, marcador de `init.sh`).

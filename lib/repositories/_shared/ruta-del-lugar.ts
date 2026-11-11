@@ -1,5 +1,6 @@
 import { lugarDeLaOrden } from "@/lib/repositories/_shared/lugar-orden";
 import { ancestros, nodo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
 
 // SLT-47 (design §3.4; R16) — LA RUTA DEL LUGAR DE UNA ORDEN, del nivel 1 al lugar.
 //
@@ -10,10 +11,7 @@ import { ancestros, nodo, type CatalogoGeografico } from "@/lib/services/geograf
 //
 // No es dato personal: son ids y nombres de lugar que la tarjeta ya pinta.
 
-export interface PasoDeRuta {
-  id: string;
-  nombre: string;
-}
+export type { PasoDeRuta };
 
 /** Del nivel 1 al lugar de la orden. Un lugar que no esta en el catalogo da `[]`. */
 export function rutaDelLugar(

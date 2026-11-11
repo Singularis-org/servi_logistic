@@ -334,3 +334,13 @@ export interface ArbolCubiertoDTO {
   tipos: TipoDeArbolDeZonasDTO[];
   raices: NodoCubiertoDTO[];
 }
+
+/**
+ * SLT-47 (R16; design §3.4) — un paso de la ruta del lugar de una orden (del nivel 1 al lugar). Vive
+ * aqui, en un modulo de tipos sin runtime de servidor, porque lo transportan los DTO que llegan al
+ * navegador (mis-asignaciones, novedades). Lo calcula `rutaDelLugar`.
+ */
+export interface PasoDeRuta {
+  id: string;
+  nombre: string;
+}

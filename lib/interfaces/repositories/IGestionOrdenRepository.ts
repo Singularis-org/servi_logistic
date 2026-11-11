@@ -1,4 +1,4 @@
-import type { PasoDeRuta } from "@/lib/repositories/_shared/ruta-del-lugar";
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
 import type {
   GestionCausaDevolucion,
   GestionCausaIncidente,

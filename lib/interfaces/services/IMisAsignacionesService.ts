@@ -1,4 +1,4 @@
-import type { PasoDeRuta } from "@/lib/repositories/_shared/ruta-del-lugar";
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { MetodoPago } from "@/lib/types/metodo-pago";
 import type { CausaDevolucion } from "@/lib/types/causa-devolucion";
