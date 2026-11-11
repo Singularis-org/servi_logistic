@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import {
   avisoMinimoCaracteres,
   DEBOUNCE_MS_DEFAULT,
+  type FilterDef,
+  type FilterOption,
 } from "@/components/shared/FilterComponent";
 import {
   VistasFiltro,
@@ -25,7 +27,9 @@ import {
   activosDesdeUrl,
   PARAM_TERMINO_DEFAULT,
   terminoDesdeUrl,
+  type LectorParams,
 } from "@/lib/utils/filtros-url";
+import type { TraductorDeUrl } from "@/lib/utils/filtro-ubicacion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -43,6 +47,12 @@ const ALTO_CONTROL = "h-8";
 export interface FiltroDisponible {
   key: string;
   label: string;
+  /**
+   * SLT-47 (design §4.2) — las opciones del filtro, si las tiene. Solo las mira el `traductorUrl`:
+   * un `lugar_id` solo sabe a qué lista pertenece mirando las opciones de cada una. Sin traductor
+   * no se leen.
+   */
+  options?: FilterOption[];
 }
 
 export interface BuscadorFiltrosProps {
@@ -147,8 +157,25 @@ export interface BuscadorFiltrosProps {
    * `children`, y una pantalla solo puede inyectar `children`, que se pintan después.
    */
   vistas?: VistasFiltroBarra;
+  /**
+   * SLT-47 (design §4.2; R17, R18, R20) — traduce la URL de entrada antes de decidir qué filtros
+   * montar (`lugar_id` y los enlaces viejos pasan a las claves de las listas de nivel), y sus
+   * `claves` se suman a lo que retiran «Limpiar todo» y aplicar una vista. Si el catálogo llega
+   * tarde, las claves que la traducción no pudo resolver al entrar se activan cuando aparecen sus
+   * opciones, contra la misma foto de entrada y mientras el usuario no haya tocado los filtros.
+   * **Ausente, la barra se comporta exactamente como antes.**
+   */
+  traductorUrl?: TraductorDeUrl;
   className?: string;
 }
+
+/** Lo que el traductor necesita de cada filtro ofrecido: su clave y sus opciones. */
+function comoDefiniciones(filtros: readonly FiltroDisponible[]): FilterDef[] {
+  return filtros.map((f) => ({ key: f.key, label: f.label, kind: "multi", options: f.options }));
+}
+
+/** Separador de la firma del catálogo ofrecido (el mismo byte NUL que usa `FilterComponent`). */
+const SEPARADOR_FIRMA = "\u0000";
 
 /**
  * # `BuscadorFiltros` — contenedor principal de la zona de filtros
@@ -222,6 +249,7 @@ export function BuscadorFiltros({
   terminoKey = PARAM_TERMINO_DEFAULT,
   siembra,
   vistas,
+  traductorUrl,
   className,
 }: BuscadorFiltrosProps) {
   const idBase = useId();
@@ -244,10 +272,19 @@ export function BuscadorFiltros({
    * de él: al ser un valor de estado su identidad es estable, y así el efecto puede
    * declararlo como dependencia y satisfacer `exhaustive-deps` sin mentirle.
    */
-  const [precarga] = useState(() => ({
-    termino: leerDeUrl ? terminoDesdeUrl(params, terminoKey) : "",
-    activos: leerDeUrl ? activosDesdeUrl(params, filtros) : [],
-  }));
+  const [precarga] = useState(() => {
+    // SLT-47 — con traductor, la foto de entrada se guarda para la activación tardía y las claves a
+    // montar salen de su vista traducida. Sin traductor, `fotoTraducible` es `null` y nada cambia.
+    const foto: LectorParams | null =
+      leerDeUrl && traductorUrl ? new URLSearchParams([...params.entries()]) : null;
+    const vista =
+      foto !== null && traductorUrl ? traductorUrl.traducir(foto, comoDefiniciones(filtros)) : params;
+    return {
+      termino: leerDeUrl ? terminoDesdeUrl(params, terminoKey) : "",
+      activos: leerDeUrl ? activosDesdeUrl(vista, filtros) : [],
+      fotoTraducible: foto,
+    };
+  });
 
   const [texto, setTexto] = useState(precarga.termino);
   const [abierto, setAbierto] = useState(false);
@@ -280,11 +317,23 @@ export function BuscadorFiltros({
   // llegar desde un temporizador programado varios renders antes, y la versión congelada
   // en aquel closure llevaría una foto vieja de los params.
   const borrarParamsRef = useRef(borrarParams);
+  // SLT-47 — lo que lee la activación tardía, por ref por el mismo motivo.
+  const activosRef = useRef(activos);
+  const filtrosRef = useRef(filtros);
   useEffect(() => {
     onChangeRef.current = onChange;
     onActivosChangeRef.current = onActivosChange;
     borrarParamsRef.current = borrarParams;
+    activosRef.current = activos;
+    filtrosRef.current = filtros;
   });
+
+  /**
+   * SLT-47 — memoria de la activación tardía: las claves ya activadas desde la URL (arranca con las
+   * del montaje) y si el usuario ya cerró la siembra.
+   */
+  const activadas = useRef<Set<string>>(new Set(precarga.activos));
+  const activacionCerrada = useRef(false);
 
   // Último término EMITIDO. Es lo que hace fiable la guarda de "sin cambio": el texto
   // en pantalla y lo aplicado no coinciden mientras el debounce está en vuelo, así
@@ -353,7 +402,37 @@ export function BuscadorFiltros({
       temporizador.current = null;
     }
     sembrado.current = true;
+    activacionCerrada.current = true;
   });
+
+  /**
+   * SLT-47 (design §4.2) — LA ACTIVACIÓN TARDÍA. Si el catálogo llega después del montaje, un
+   * `lugar_id` no sabía todavía de qué nivel era y su lista no se montó. Cuando cambia el catálogo
+   * ofrecido (claves u opciones de cada una), se vuelve a traducir la FOTO DE ENTRADA —no la URL de
+   * ahora: eso sería releerla— y se activan las claves que salen y aún no se activaron. Mismo
+   * criterio que la re-siembra de `FilterComponent`: cada clave se activa como mucho una vez, y el
+   * primer gesto del usuario sobre los filtros (o una vista, o «Limpiar todo») lo cierra. Sin
+   * traductor no hace nada.
+   */
+  const firmaOfrecidos = filtros
+    .map((f) => `${f.key}:${(f.options ?? []).length}`)
+    .join(SEPARADOR_FIRMA);
+  useEffect(() => {
+    const foto = precarga.fotoTraducible;
+    if (!traductorUrl || foto === null || activacionCerrada.current) return;
+    const ofrecidos = filtrosRef.current;
+    const desdeUrl = activosDesdeUrl(
+      traductorUrl.traducir(foto, comoDefiniciones(ofrecidos)),
+      ofrecidos,
+    );
+    const nuevas = desdeUrl.filter((k) => !activadas.current.has(k));
+    if (nuevas.length === 0) return;
+    for (const k of nuevas) activadas.current.add(k);
+    const puestas = new Set([...activosRef.current, ...nuevas]);
+    onActivosChangeRef.current?.(ofrecidos.filter((f) => puestas.has(f.key)).map((f) => f.key));
+    // Solo la firma del catálogo debe dispararlo; lo demás se lee por ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firmaOfrecidos]);
 
   /**
    * La EMISIÓN del término, con lo único que la barra escribe en la URL colgado de ella.
@@ -408,6 +487,7 @@ export function BuscadorFiltros({
    * marcaron, que es lo que convierte una barra en un rompecabezas.
    */
   function alternarFiltro(key: string) {
+    activacionCerrada.current = true;
     const siguiente = puestos.has(key)
       ? activos.filter((k) => k !== key)
       : filtros.filter((f) => puestos.has(f.key) || f.key === key).map((f) => f.key);
@@ -432,6 +512,7 @@ export function BuscadorFiltros({
     // término queda apuntada en la memoria del hook y la de R26 se topa con la guarda de
     // "sin cambio" — o sea, UNA sola navegación en vez de dos (una sin `q` y otra sin los
     // filtros) cuando `debounceMs` es 0.
+    activacionCerrada.current = true;
     borrarParams(paramsPropios);
     escribir("");
     onLimpiarTodo?.();
@@ -444,7 +525,13 @@ export function BuscadorFiltros({
    * todo» y «aplicar una vista» no puedan divergir. Los ajenos (`?cierre=`, `?mensajero=`)
    * no entran y sobreviven.
    */
-  const paramsPropios = [terminoKey, ...filtros.map((f) => f.key)];
+  // SLT-47 (R20) — con traductor, también `lugar_id` y las claves de los enlaces viejos: no son
+  // claves ofrecidas, pero son de esta barra. Los ajenos siguen sin entrar.
+  const paramsPropios = [
+    terminoKey,
+    ...filtros.map((f) => f.key),
+    ...(traductorUrl?.claves ?? []),
+  ];
 
   const resumen = activos.length > 0 ? `${filtrosLabel} (${activos.length})` : filtrosLabel;
 
@@ -475,6 +562,7 @@ export function BuscadorFiltros({
               // Lo hace la barra y no la pantalla porque esta lista es SUYA —la misma que
               // usa `limpiarTodo`— y porque `borrarParams` solo RESTA: la barra sigue sin
               // escribir la query nunca.
+              activacionCerrada.current = true;
               borrarParams(paramsPropios);
               vistas.onAplicar(vistaId, filtro);
             }}

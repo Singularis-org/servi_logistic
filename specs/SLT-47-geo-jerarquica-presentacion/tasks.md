@@ -77,7 +77,7 @@
   `traductorPorNombre` y `deV1` en `vista-filtro.ts` (v2, v1 legible). Tests:
   `filtro-ubicacion.test.ts`, `vista-filtro-v2.test.ts` y `filtro-ubicacion-rendimiento.test.ts`.
   **Hecho:** R1, R2, R4, R6, R17, R21–R24 y R32 en verde. Las mediciones de R32 se anotan.
-- [ ] **T3.2** Prop `traductorUrl` en `FilterComponent` y `BuscadorFiltros`, con la activación
+- [x] **T3.2** Prop `traductorUrl` en `FilterComponent` y `BuscadorFiltros`, con la activación
   tardía de §4.2. `niveles` en `EtiquetasGeograficasProvider`, `useNivelesGeograficos` y
   `app/(app)/layout.tsx`. Test: `FiltroUbicacionBarra.test.tsx`.
   **Hecho:**

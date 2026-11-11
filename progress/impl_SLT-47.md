@@ -368,3 +368,48 @@ Estado: T3.1 (vistas) parada a la espera de esa autorización. No se tocó códi
 |---|---|
 | R22, R23, R24 | `tests/unit/types/vista-filtro-v2.test.ts`; `vista-filtro-service.test.ts` |
 | R25 | `tests/unit/guards/vista-filtro-formato-propio.guardia.test.ts` sin cambios |
+
+## T3.2 — Barra con traductor, niveles en el layout (frontend_dev, 2026-11-11)
+
+### Archivos
+- Modificados: `components/shared/FilterComponent.tsx` (prop `traductorUrl?`: la foto de entrada se
+  traduce contra los montados en sus cuatro lecturas, re-siembra tardía incluida),
+  `components/shared/BuscadorFiltros.tsx` (prop `traductorUrl?`; `FiltroDisponible.options?` para que el
+  traductor sepa de qué nivel es un `lugar_id`; `activosDesdeUrl` sobre la vista traducida; activación
+  tardía por firma del catálogo ofrecido, cerrada por el primer gesto, una vista, una siembra o «Limpiar
+  todo»; `traductor.claves` en `paramsPropios`, que usan «Limpiar todo» y aplicar una vista),
+  `providers/EtiquetasGeograficasProvider.tsx` (prop `niveles?` en un contexto aparte,
+  `NivelesGeograficosContexto`, para no cambiar el de etiquetas), `app/(app)/layout.tsx` (quinta lectura
+  `nivelesDelActor` en la misma `Promise.all`; sin empresa o si falla, `[]` y `console.error`).
+- Creados: `hooks/use-niveles-geograficos.ts`, `tests/components/FiltroUbicacionBarra.test.tsx`.
+- Ninguna aserción de tests existentes cambiada. Sin dependencias nuevas.
+
+### Mapa `R<n> → test`
+| R | Test (`tests/components/FiltroUbicacionBarra.test.tsx`) |
+|---|---|
+| R3 | `R3 — listas encadenadas por nivel` (3 casos: todo el nivel sin elección; hijos de lo elegido; poda al cambiar k) |
+| R5 | `R5 — las listas pasan a la línea siguiente` (10 niveles en un contenedor `flex-wrap`) |
+| R17 | `R17 — ?lugar_id= rearma…` (cadena completa; id no ofrecido descartado) |
+| R18, R21 | `R18 — los enlaces viejos…` (comas = repetido; incoherente/no ofrecido podado; `nivel_1` en la URL ignorado) |
+| R20 | `R20 — «Limpiar todo»…` (`replace("/ordenes?cierre=abc")`) |
+| §4.2 tardía | `Activación tardía` (barra completa; cerrada por gesto; `FilterComponent` solo) |
+
+### Salida (`NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run <archivos> --maxWorkers=1`)
+- `FiltroUbicacionBarra.test.tsx`: 13 passed.
+- Sin la prop, sin cambios: `filter-component.test.tsx` 47, `filter-component-siembra` 9,
+  `filter-component-texto` 26, `filter-component-url` 19, `buscador-filtros-siembra` 11,
+  `buscador-filtros-url` 22, `buscador-filtros-url-sin-router` 1, `buscador-filtros-vistas` 17,
+  `AppLayout.test.tsx` 23, `etiquetas-geograficas.test.tsx` 4, `TarifasGrupos.test.tsx` 32,
+  `filtros-url-r25` 3, `filtros-url-r25-propiedad` 1. Todos passed (13 archivos, 215 tests).
+- `pnpm run typecheck`: exit 0. `pnpm exec eslint <6 archivos tocados>`: «No issues found».
+
+### Notas
+- `AppLayout.test.tsx` dobla `construirPaisService` solo con `etiquetasDeEmpresa`: la quinta lectura cae
+  en su `catch` y deja un `console.error` en esa suite; ninguna aserción lo mira. Si se quiere silencio,
+  añadir `nivelesDeEmpresa` al doble es un cambio de fixture (no de aserción).
+- `FilterComponent` toma su foto de la URL al montarse; en `/ordenes` se monta cuando la barra activa
+  claves, igual que hoy. No cambia con esta tarea.
+- La maqueta muestra homónimos con sus ancestros en la lista sin elección arriba («San Rafael · Escazú,
+  San José»); `declararNiveles` (T3.1) rotula solo con el nombre. Queda para T4 o para quien decida R6.
+
+Veredicto: T3.2 hecha; R3, R5, R17, R18, R20 en verde y las suites sin la prop sin cambios.
