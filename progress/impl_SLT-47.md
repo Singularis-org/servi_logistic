@@ -242,3 +242,70 @@ Sin subagentes (pedido del leader). Sin dependencias nuevas, sin migraciones (R3
   `sql-a-mano-por-empresa`, `etiquetas-geograficas-sin-literal`, `vista-filtro-formato-propio`,
   `criterio-unico`, `alcance-obligatorio`) más `geografia-plataforma-action`: 17 archivos, 356 verdes.
 - No se corrió `./init.sh` completo ni la suite completa (pedido del leader).
+
+## Tanda 1, cierre tras la autorización de R36 y R16 (2026-11-11)
+
+El humano autorizó los dos bloqueos (`requirements.md` > «Decisiones cerradas», `ddd7acad`, `bc0f2e94`).
+
+### Commits
+
+| Commit | Tarea |
+|---|---|
+| `373446c5` | T2.3 R36: `GeoRepository.listLugaresDeFiltro` (niveles + lugares a cualquier profundidad; en zona, el conjunto de la zona sin cortar en 3) y `FiltrosOrdenesService` |
+| `e399f36f` | T2.3 R16: `lugarRuta` en `findMisAsignaciones(ByIds)` y `findNovedadesByTienda`, y en los DTO; cierra T2.3 |
+| `1c9c971e` | T2.5 R29: `geo:explain-filtros` con el «antes» congelado en `filtros-de-hoy.ts`; cierra T2.5 |
+| (siguiente) | T3.1, parte: `lib/utils/filtro-ubicacion.ts` y sus dos tests |
+
+### Cambios de aserciones (solo los autorizados)
+
+- `filtros-ordenes-service.test.ts`: se suman `niveles` y `lugares` a los tres catálogos esperados. El
+  doble nuevo (`listLugaresDeFiltro`) no se apunta en `orden`, así que la lista de lecturas en paralelo
+  de R47 no cambia.
+- `geo-lecturas-catalogo.test.ts`: no hizo falta tocarlo. `listGeografiaLitePorZona` no cambia; los
+  lugares de N niveles salen de un método nuevo (así tampoco cambia `catalogo-filtros-ordenes.test.ts`,
+  que fija `listGeografiaLitePorZona` con `toEqual` de tres listas y no estaba autorizado).
+- `orden-repository.novedades.test.ts`: el `select` esperado suma solo `cantonId` y `distritoId`.
+- Entrada (sin tocar aserciones): dobles del catálogo en `gestion-orden-repository.test.ts` y
+  `orden-repository.novedades.test.ts`.
+
+### Decisiones
+
+- `niveles`/`lugares` en `CatalogoFiltrosOrdenesDTO` y `lugarRuta` en `MiAsignacionRow`/`MiAsignacionDTO`/
+  `NovedadOrdenRow` son opcionales (`?`), con el patrón aditivo del repo: las pantallas y sus fixtures
+  arman catálogos vacíos y filas sin esos campos (los adapta T4/T5). El servicio y los repositorios los
+  emiten siempre. `toDTO` y `NovedadesService` copian `lugarRuta` solo si la fila la trae: con
+  `?? []` cambiaba el `toEqual` de `recoleccion-tienda-service.test.ts` (no autorizado).
+- `whereDeLugares` se mueve a `lugares-del-filtro.ts`: lo usan `OrdenRepository.list` y el «después»
+  del script de explain, así miden el mismo `where`.
+- `geo-explain-filtros` mide solo la parte que depende del filtro (página de ids + total del listado; la
+  consulta de ids de la página satélite). La carga del catálogo queda fuera de la medición (una por
+  instancia; la mide `geo:explain-analitica`). El test comprueba que el «después» congelado es el SQL
+  que emite `lib/`, texto y parámetros.
+
+### Medidas
+
+- **Catálogo de filtros de Costa Rica** (base `logistic_slt47`, empresa nueva de CR, 585 nodos):
+  **antes 78.109 bytes** (`provincias` + `cantones` + `distritos`), **después 165.846 bytes** (más
+  `niveles` y `lugares`). `lugares` repite los nodos de 1 a 3 hasta SLT-48 (design §11).
+- **R32** (catálogo sintético de 10 niveles y 20.017 nodos, mediana de 5): `resolverLugar(raíz)`
+  65,8 ms, `declararNiveles` 114,4 ms, `traducir(lugar_id de nivel 10)` 86,9 ms. Umbral: 200 ms.
+- `EXPLAIN` sobre la copia de producción: pendiente de una persona (T7.1).
+
+### Mapa `R<n> → test` (añadido)
+
+| R | Test |
+|---|---|
+| R16 | `tests/unit/services/ruta-del-lugar.test.ts`; `tests/integration/db/geo-filtros-lugar.test.ts` (asignaciones y novedades, dos «San Rafael») |
+| R29 | `tests/integration/db/geo-explain-filtros.test.ts` (+19 %, +21 %, Seq Scan nuevo; «después» = SQL de `lib/`; 6 medidas con 5 corridas) |
+| R36 | `geo-filtros-lugar.test.ts` (zona de 4 niveles: el sector de otra zona no entra; el propio entra con sus ancestros); `filtros-ordenes-service.test.ts` |
+| R1, R2, R4, R6, R9, R17, R18 (traducción), R19, R20 (claves), R21 | `tests/unit/utils/filtro-ubicacion.test.ts` |
+| R32 | `tests/unit/utils/filtro-ubicacion-rendimiento.test.ts` |
+
+### T3.1: lo que queda parado
+
+- **Vistas v2 (R22–R24) no se hicieron.** Pasar `VISTA_FILTRO_VERSION` a 2 cambia una aserción no
+  autorizada: `tests/unit/components/ordenes-listado-vistas.test.tsx:341` espera que se guarde
+  `{ v: 1, ... }`. Además, `leerPayloadGuardado` devolvería `v: 2` al leer una v1: las suites con
+  fixtures `v: 1` (`vistas-filtro-aviso-incompleta`, `buscador-filtros-vistas`, `vista-filtro.test`
+  de integración) pueden cambiar de salida; no lo verifiqué uno por uno. Necesita la misma autorización que R36/R16 antes de tocarlo. `deV1` y
+  `vista-filtro-v2.test.ts` quedan pendientes con eso.
