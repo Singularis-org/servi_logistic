@@ -20,8 +20,9 @@ import { crearPlan, entradaAsignable, entradaDePlan, planesEnTx, revertida, sqls
 //
 // R35: crear con y sin ella, editar en el acto y programada (con su rastro y el aplicador de la cola), un plan
 // existente queda quincenal, valor inválido. R37: asignar, crear el custom y cambiar el tipo con quincenal en un
-// plan de órdenes mensuales; editar a mensual con una empresa quincenal y con un pendiente quincenal; una
-// programada que deja de pasar al aplicarse. Cada rechazo se mide «sin escribir nada».
+// plan de órdenes mensuales; editar a mensual con una empresa quincenal y con un pendiente quincenal. Cada
+// rechazo se mide «sin escribir nada».
+// SLT-128 (R8): la programada que deja de pasar falla en la recepción de ESA empresa, no en el plan.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -329,27 +330,52 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
     expect(r.despues).toEqual(r.antes);
   });
 
-  it("R37: una programada a mensual que ya no pasa al aplicarse (una empresa quincenal asignada después) hace fallar el trabajo sin escribir nada", async () => {
+  it("SLT-128 R8: una programada a mensual que una empresa quincenal (asignada después) recibe hace fallar SU recepción sin escribir nada; el plan espera", async () => {
     const r = await revertida(base, async (tx) => {
       const planId = await crear(tx, entradaAsignable());
       const programada = await editar(tx, planId, { periodicidadOrdenes: "mensual" }, PROGRAMADA);
-      // Hasta su fecha el plan sigue quincenal: una empresa quincenal se le puede asignar.
-      await empresaCon(tx, planId, "quincenal");
-      const antes = await fotoDelPlan(tx, planId);
-      const cambioId = antes.programado?.id ?? "";
+      // Hasta su fecha el plan sigue quincenal: una empresa quincenal se le puede asignar. Entra antes de F, así
+      // que recibe la versión programada en su recepción (el 1 de diciembre, la quincena que empieza en F o después).
+      const org = await empresaCon(tx, planId, "quincenal");
+      const cambioId = (await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } })).id;
+      const recepcion = await tx.planCambioRecepcion.findUniqueOrThrow({
+        where: { cambioId_empresaId: { cambioId, empresaId: org } },
+        select: { recibeAt: true },
+      });
+      const antes = { plan: await fotoDelPlan(tx, planId), empresa: await fotoDeEmpresa(tx, org) };
+      const repo = planesEnTx(tx);
+      // El sin empresa, en F: no promueve (la quincenal aún no lo recibió) y no escribe.
+      const enF = await repo.aplicarCambioProgramado({ planId, cambioId }, new Date(inicioDelDiaPlataforma(PROGRAMADA).getTime() + 60_000));
       let error: unknown = null;
       try {
-        await planesEnTx(tx).aplicarCambioProgramado({ planId, cambioId }, new Date(inicioDelDiaPlataforma(PROGRAMADA).getTime() + 60_000));
+        await repo.recibirCambio({ planId, cambioId }, org, new Date(recepcion.recibeAt.getTime() + 60_000));
       } catch (e) {
         error = e;
       }
-      return { programada, antes, error, despues: await fotoDelPlan(tx, planId) };
+      return {
+        programada,
+        recibeAt: recepcion.recibeAt,
+        enF,
+        antes,
+        error,
+        despues: { plan: await fotoDelPlan(tx, planId), empresa: await fotoDeEmpresa(tx, org) },
+        recibida: await tx.planCambioRecepcion.findUniqueOrThrow({
+          where: { cambioId_empresaId: { cambioId, empresaId: org } },
+          select: { recibidoAt: true },
+        }),
+        version: await tx.planVersionEmpresa.count({ where: { empresaId: org } }),
+      };
     });
     expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.recibeAt.toISOString()).toBe("2026-12-01T06:00:00.000Z");
+    expect(r.enF).toEqual({ estado: "espera" });
     expect(r.error).toBeInstanceOf(Error);
-    expect(String((r.error as Error).message)).toContain("R37");
-    // Ni la columna, ni el rastro, ni el programado (sigue pendiente: el trabajo se reintenta y queda `failed`).
+    expect(String((r.error as Error).message)).toContain("R8");
+    // Ni el plan (columna, rastro, programado), ni la empresa (fila, historial, trabajos), ni su versión ni su
+    // recepción: el trabajo se reintenta y queda `failed`.
     expect(r.despues).toEqual(r.antes);
-    expect(r.despues.programado).not.toBeNull();
+    expect(r.despues.plan.programado).not.toBeNull();
+    expect(r.recibida.recibidoAt).toBeNull();
+    expect(r.version).toBe(0);
   });
 });

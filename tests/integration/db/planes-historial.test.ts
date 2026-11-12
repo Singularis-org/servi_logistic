@@ -23,6 +23,8 @@ import { tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 // T11 (§16.2, §16.3; R43): las cuatro filas del cambio programado (programar, reemplazar, cancelar y
 // aplicar), con quién, qué plan y qué cambia; la de aplicar la firma el sistema en nombre de quien lo
 // programó.
+// SLT-128 (design §3.2; R10): con empresas, la fila `cambio_aplicado` sale una sola vez, al promover el plan con
+// la última recepción; las recepciones no escriben en el rastro.
 //
 // LOCKS: el de superadmin (SL-32) desde el `beforeAll`; el de la 227 lo toma cada `revertida`, por
 // dentro. Todo se revierte: el superadmin del caso también.
@@ -398,6 +400,58 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       cambios: {
         nombre: { antes: "Rastro programado", despues: "Rastro C" },
         topes: { antes: topes(100), despues: topes(50) },
+      },
+    });
+  });
+
+  it("SLT-128 R10: con empresas, recibirlo no deja rastro; la última recepción promueve el plan y deja UNA fila cambio_aplicado del sistema", async () => {
+    const r = await revertida(base, async (tx) => {
+      const { actor, nombre } = await conSuperadmin(tx);
+      const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-10-28T12:00:00.000Z"));
+      const creado = await servicio.crear(actor, entradaAsignable({ nombre: "Rastro por empresa", topes: { porRol: {}, apiKeys: 100 } }));
+      if (creado.estado !== "ok") throw new Error(creado.estado);
+      const planId = creado.planId;
+      const orgs: string[] = [];
+      for (const tipoCobro of ["quincenal", "mensual"] as const) {
+        const { id } = await crearOrganizacion(tx);
+        const asignado = await servicio.asignar(actor, { organizacionId: id, planId, tipoCobro });
+        if (asignado.estado !== "ok") throw new Error(asignado.estado);
+        orgs.push(id);
+      }
+      const [quincenal, mensual] = orgs;
+      await servicio.editar(actor, {
+        planId,
+        nombre: "Rastro por empresa 2",
+        topes: { porRol: {}, apiKeys: 60 },
+        modulos: [],
+        precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
+        costoPorOrden: "100.00",
+        costoPorOrdenPorcentual: null,
+        vigenteDesde: "2026-11-16",
+      });
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+      const cambio = { planId, cambioId };
+      const repo = planesEnTx(tx);
+      // La quincenal lo recibe el 16 y la mensual el 1 de diciembre.
+      const primera = await repo.recibirCambio(cambio, quincenal, new Date("2026-11-16T06:01:00.000Z"));
+      const trasPrimera = (await rastroDe(tx, planId)).map((f) => f.accion);
+      const segunda = await repo.recibirCambio(cambio, mensual, new Date("2026-12-01T06:01:00.000Z"));
+      return { planId, actor, nombre, primera, segunda, trasPrimera, rastro: await rastroDe(tx, planId) };
+    });
+    expect([r.primera, r.segunda]).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }]);
+    // La recepción de una empresa no escribe en el rastro del plan (design §13).
+    expect(r.trasPrimera).toEqual(["creado", "cambio_programado"]);
+    expect(r.rastro.map((f) => f.accion)).toEqual(["creado", "cambio_programado", "cambio_aplicado"]);
+    // Promover: el sistema, en nombre de quien lo programó; el diff contra la versión del plan de antes.
+    expect(r.rastro.at(-1)).toEqual({
+      planId: r.planId,
+      planNombre: "Rastro por empresa 2",
+      accion: "cambio_aplicado",
+      actorUsuarioId: r.actor.usuarioId,
+      actorNombre: `Sistema (programado por ${r.nombre})`,
+      cambios: {
+        nombre: { antes: "Rastro por empresa", despues: "Rastro por empresa 2" },
+        topes: { antes: { porRol: {}, apiKeys: 100 }, despues: { porRol: {}, apiKeys: 60 } },
       },
     });
   });
