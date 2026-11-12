@@ -275,7 +275,11 @@ describe("R19 — el bundle del panel no arrastra runtime de servidor", () => {
  * basta con que no lean el escalar, tienen que leer el desglose.
  */
 const SITIOS_DE_PRESENTACION: { ruta: string; ancla: string }[] = [
-  { ruta: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx", ancla: "desglosePantalla" },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242): el cierre del
+  // día del mensajero ya no pinta la columna «Método» (`desglosePantalla` en `CierreDiaModule.tsx`);
+  // su lista es la fila única, que pinta el desglose en la tarjeta «Recibió el mensajero» desde
+  // `g.pagos`. Se sigue al sitio de presentación a su archivo.
+  { ruta: "components/private/cierres/fila/fila-gestion-vista.ts", ancla: "g.pagos" },
   // FICHA 482 (2026-10-15): aquí estaba `cierre-detalle-shared.tsx` (ancla `montoPorMetodo`),
   // por las tablas del detalle con una columna por medio de pago. Esas tablas (`DetalleSecciones`)
   // se borraron: el archivo ya no pinta ningún pago y el detalle de admin lo pinta

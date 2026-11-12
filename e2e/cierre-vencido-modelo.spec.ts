@@ -37,6 +37,7 @@ import {
 
 const AVISO_SIN_ENVIAR = "Tienes un cierre sin enviar a aprobación.";
 const NO_PUEDES = "Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo.";
+const DETALLE = "Detalle del cierre · Tu cierre del día";
 
 let r: RepartoE2E;
 let m: MensajeroE2E;
@@ -61,9 +62,17 @@ test.describe.serial("Cierre vencido — el mensajero lo envía y la bodega lo a
   test("paso 2 — bloqueo total: el aviso en «Cierre del día» y en «Entregas»", async ({ browser }) => {
     const page = await paginaDe(browser, m);
     await page.goto("/cierre-dia");
-    const aviso = page.getByRole("alert").filter({ hasText: AVISO_SIN_ENVIAR });
+    // SLT-109 (R63, R246, R249): la página pinta el vencido con el detalle único; el aviso es su franja.
+    const detalle = page.getByRole("region", { name: DETALLE });
+    const aviso = detalle.getByRole("status").filter({ hasText: AVISO_SIN_ENVIAR });
     await expect(aviso).toBeVisible();
     await expect(aviso).toContainText(NO_PUEDES);
+    await expect(detalle.getByText("Vencido", { exact: true })).toBeVisible();
+    await expect(detalle).toContainText("venció sin solicitarse");
+    // R249: sus gestiones, sin «Devolver a gestión»; y no se pinta el cierre de hoy (R240).
+    await expect(detalle.getByRole("tab", { name: "Gestiones (1)" })).toBeVisible();
+    await expect(detalle.getByRole("button", { name: /^Devolver a gestión/ })).toHaveCount(0);
+    await expect(page.getByText("Sin solicitar", { exact: true })).toHaveCount(0);
 
     await page.goto("/mis-asignaciones/reparto");
     await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toBeVisible();
@@ -72,11 +81,14 @@ test.describe.serial("Cierre vencido — el mensajero lo envía y la bodega lo a
   test("paso 3 — «Solicitar aprobación del cierre vencido» → el mismo cierre queda `solicitado`", async ({ browser }) => {
     const page = await paginaDe(browser, m);
     await page.goto("/cierre-dia");
-    await page.getByRole("region", { name: "Cierre vencido" }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }).click();
+    // R251: el envío es el pie del detalle.
+    await page.getByRole("region", { name: DETALLE }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }).click();
     const confirmar = page.getByRole("dialog", { name: "Solicitar aprobación del cierre vencido" });
     await confirmar.getByRole("button", { name: "Solicitar aprobación" }).click();
     await expect(page.getByText("Cierre vencido enviado a aprobación.")).toBeVisible();
-    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toHaveCount(0);
+    await expect(page.getByText(NO_PUEDES)).toHaveCount(0);
+    // Tras reenviar, nada que reenviar: la página pinta el cierre de hoy (R240).
+    await expect(page.getByRole("region", { name: DETALLE }).getByText("Sin solicitar", { exact: true })).toBeVisible();
 
     // R10 de la 111: no nace un segundo cierre; los montos no se recalculan.
     expect((await cierresDe(m)).map((c) => [c.id, c.estado, String(c.totalEfectivo)])).toEqual([[vencidoId, "solicitado", "4000"]]);
@@ -98,8 +110,8 @@ test.describe.serial("Cierre vencido — el mensajero lo envía y la bodega lo a
   test("paso 5 — resuelto el cierre, el mensajero no tiene bloqueo", async ({ browser }) => {
     const page = await paginaDe(browser, m);
     await page.goto("/cierre-dia");
-    await expect(page.getByRole("region", { name: "Totales del día" })).toBeVisible();
-    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: DETALLE }).getByText("Sin solicitar", { exact: true })).toBeVisible();
+    await expect(page.getByText(NO_PUEDES)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Cierre vencido" })).toHaveCount(0);
   });
 });

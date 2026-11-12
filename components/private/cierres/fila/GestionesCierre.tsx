@@ -45,6 +45,8 @@ export interface GestionesCierreProps {
   descargar?: ReactNode;
   /** R23 bodega: la columna «Mensajero» (la monta SLT-104). */
   columnaMensajero?: boolean;
+  /** SLT-109 (R244): el `gestionId` cuyo «Devolver a gestión» está en vuelo. */
+  enVuelo?: string | null;
 }
 
 /** La barra no tiene buscador: su `onChange` de término no se emite nunca. */
@@ -59,6 +61,7 @@ export function GestionesCierre({
   onVerEvidencia,
   descargar,
   columnaMensajero = false,
+  enVuelo = null,
 }: Readonly<GestionesCierreProps>) {
   const [filtro, setFiltro] = useState<FiltroGestiones>(FILTRO_TODAS);
   const opciones = filtrosDe(
@@ -118,6 +121,7 @@ export function GestionesCierre({
               acciones={acciones}
               onVerEvidencia={onVerEvidencia}
               columnaMensajero={columnaMensajero}
+              enVuelo={enVuelo}
             />
           ))
         )}

@@ -373,6 +373,44 @@ describe("R12 — el pie fijo y sus acciones", () => {
     await user.click(screen.getByRole("button", { name: "Solicitar aprobación del cierre vencido" }));
     expect(solicitarVencido).toHaveBeenCalledTimes(1);
   });
+
+  it("SLT-109 (R245): «Solicitar cierre» deshabilitado, con el motivo en `title` y como descripción accesible", async () => {
+    const solicitar = vi.fn();
+    const motivo = "Tienes 2 paquetes en reparto sin gestionar.";
+    mensajero("mensajero", "en curso", {
+      marco: "pagina",
+      onCerrar: undefined,
+      acciones: { solicitar },
+      deshabilitadas: { solicitar: motivo },
+      detalle: { ...MENSAJERO, estado: null, folio: null, empresa: null },
+    });
+    const boton = screen.getByRole("button", { name: "Solicitar cierre" });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute("title", motivo);
+    expect(boton).toHaveAccessibleDescription(motivo);
+    await userEvent.setup().click(boton);
+    expect(solicitar).not.toHaveBeenCalled();
+  });
+
+  it("SLT-109 (R252): un rechazado en modal sin `solicitarRechazado` ofrece solo «Cerrar» y dice dónde se envía", async () => {
+    mensajero("mensajero", "rechazado", { detalle: { ...MENSAJERO, estado: "rechazado", empresa: null } });
+    await screen.findByRole("dialog");
+    const pie = screen.getByText("Lo envías desde esta página cuando sea el siguiente por enviar.").parentElement!;
+    expect(within(pie).getAllByRole("button").map((b) => b.textContent)).toEqual(["Cerrar"]);
+  });
+});
+
+describe("SLT-109 (R241) — la cabecera del cierre de hoy", () => {
+  it("sin destino no queda un « · » suelto: «Solicitud nueva · Hoy · sin solicitar»", () => {
+    mensajero("mensajero", "en curso", {
+      marco: "pagina",
+      onCerrar: undefined,
+      detalle: { ...MENSAJERO, destino: "", estado: null, folio: null, empresa: null, solicitadoAt: null },
+    });
+    const region = screen.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
+    const linea = within(region).getByText("Solicitud nueva").parentElement!;
+    expect(linea.textContent).toBe("Solicitud nueva · Hoy · sin solicitar");
+  });
 });
 
 describe("R1 — un componente para todo", () => {

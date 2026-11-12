@@ -169,17 +169,7 @@ import {
 } from "@/app/(app)/cierres-admin/_components/cierres-bodega-descarga-columnas";
 import {
   AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
-  AMBITO_DESCARGA_DIA_DEVUELTAS,
-  AMBITO_DESCARGA_DIA_ENTREGADAS,
-  AMBITO_DESCARGA_DIA_INCIDENTES,
-  AMBITO_DESCARGA_DIA_RECHAZADAS,
-  AMBITO_DESCARGA_DIA_REPROGRAMADAS,
   COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
-  COLUMNAS_DESCARGA_DIA_DEVUELTAS,
-  COLUMNAS_DESCARGA_DIA_ENTREGADAS,
-  COLUMNAS_DESCARGA_DIA_INCIDENTES,
-  COLUMNAS_DESCARGA_DIA_RECHAZADAS,
-  COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
 } from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
 
 // --- Datos ---------------------------------------------------------------
@@ -678,44 +668,13 @@ const SUPERFICIES: readonly Superficie[] = [
     montar: renderCierreDia,
     seccion: "Cierres solicitados",
   },
-  // Las CINCO secciones de `/cierre-dia`. Mismo resultado, OTRO catálogo (el mensajero ve
-  // menos), y por eso otro ámbito.
-  {
-    control: "Entregado",
-    ambito: AMBITO_DESCARGA_DIA_ENTREGADAS,
-    columnas: COLUMNAS_DESCARGA_DIA_ENTREGADAS,
-    montar: renderCierreDia,
-    region: "Entregado",
-  },
-  {
-    control: "Reprogramado",
-    ambito: AMBITO_DESCARGA_DIA_REPROGRAMADAS,
-    columnas: COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
-    montar: renderCierreDia,
-    region: "Reprogramado",
-  },
-  {
-    control: "Novedad",
-    ambito: AMBITO_DESCARGA_DIA_DEVUELTAS,
-    columnas: COLUMNAS_DESCARGA_DIA_DEVUELTAS,
-    montar: renderCierreDia,
-    region: "Novedad",
-  },
-  {
-    control: "Devolución a origen por rechazo",
-    ambito: AMBITO_DESCARGA_DIA_RECHAZADAS,
-    columnas: COLUMNAS_DESCARGA_DIA_RECHAZADAS,
-    montar: renderCierreDia,
-    region: "Devolución a origen por rechazo",
-  },
-  {
-    control: "Incidente",
-    ambito: AMBITO_DESCARGA_DIA_INCIDENTES,
-    columnas: COLUMNAS_DESCARGA_DIA_INCIDENTES,
-    montar: renderCierreDia,
-    region: "Incidente",
-  },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R256, PA4): aquí vivían
+  // las CINCO secciones de `/cierre-dia`, cada una con su catálogo y su ámbito. Pasan a UNA descarga,
+  // la de «Gestiones» del detalle único, con las columnas del mensajero (R152) y SIN ámbito de
+  // columnas —como la del detalle de un cierre pasado (SLT-108)—, así que no tienen selector que
+  // probar aquí. Sus catálogos siguen en `cierre-dia-descarga-columnas.ts` hasta SLT-115 (D13).
 ];
+
 
 // --- Utilidades de los casos ---------------------------------------------
 
@@ -780,7 +739,7 @@ function encabezadosDe(superficie: Superficie): string[] {
 
 /**
  * La columna que cada caso oculta: la ÚLTIMA del catálogo. Se elige por posición y no por
- * nombre para que valga igual en las doce superficies, y la última porque ninguna de
+ * nombre para que valga igual en las siete superficies, y la última porque ninguna de
  * ellas la comparte con la primera —que es la que se afirma que SIGUE saliendo—.
  */
 function columnaAOcultar(superficie: Superficie): DescargaColumna {
@@ -806,7 +765,7 @@ afterEach(() => {
 });
 
 describe("Cierres · elección de columnas de la descarga", () => {
-  it("el registro cubre las doce superficies y ninguna repite ámbito", () => {
+  it("el registro cubre las siete superficies y ninguna repite ámbito", () => {
     // Anti-vacuidad del propio archivo: si una superficie se cayera del registro, los casos de
     // abajo —que iteran sobre él— pasarían verdes sin haberla mirado. Y los ámbitos se
     // comparan aquí además de en la guardia porque aquí se sabe QUÉ superficie es cada uno.
@@ -814,7 +773,8 @@ describe("Cierres · elección de columnas de la descarga", () => {
     expect(new Set(ambitos).size).toBe(ambitos.length);
     // FICHA 482: 17 -> 12. Salen las cinco secciones del detalle del admin (`DetalleSecciones`,
     // borrado); sus ámbitos `cierre-gestiones-*` ya no existen en el árbol.
-    expect(ambitos).toHaveLength(12);
+    // SLT-109 (R256, PA4): 12 -> 7. Salen las cinco secciones del cierre del día de `/cierre-dia`.
+    expect(ambitos).toHaveLength(7);
     for (const superficie of SUPERFICIES) {
       expect(
         superficie.ambito,
