@@ -69,6 +69,7 @@
 | D-H110 | 2026-11-12 · leader (`specs/SLT-110-cifras-servidor-fila-bodega/design.md > Lo que hereda SLT-107`) | Al abrir el detalle de bodega a la satélite, `fulfillmentCargadoAt` se anula junto con los demás campos de fulfillment, como `ocultarFulfillmentSiNoCentral`. |
 | D-H111 | 2026-11-12 · leader y Carlos (`progress/features/SLT-111.md` en la rama de SLT-111, T7.3) | Si la satélite abre por `verCierreBodegaDetalle` y se mapea con `vistaBodegaDesdeAdmin`, recibe `porcentajesReparto` sin más código: no lo recalcula ni lo deriva en el cliente, no añade lecturas para el reparto ni escribe. |
 | D-PA2-106 | 2026-11-12 · Carlos (SLT-106 PA2) | El conteo de «Solicitados» fue sin filtros **hasta SLT-107**; esta ficha lo pasa a «con los filtros puestos» (R290). |
+| D-T03 | 2026-11-12 · Carlos (T0.3, opción a) | «Corregir recibido» reescribe `cierre_bodega.conciliado_at` (`CierresBodegaAdminRepository.corregirConciliacion`), y se acepta: el ancla de «Recibido por la central (30 días)» es el `conciliado_at` **vigente**. Un cierre recibido hace 45 días y corregido hoy cuenta en los 30 días (R287). |
 
 Cobertura de las decisiones:
 
@@ -85,6 +86,7 @@ Cobertura de las decisiones:
 | D-H110 | R283 |
 | D-H111 | R284 |
 | D-PA2-106 | R290 |
+| D-T03 | R287 |
 
 ## Requisitos (EARS)
 
@@ -245,7 +247,7 @@ previsto de cada R está en `tasks.md > Trazabilidad`.
   `cierre_bodega.conciliado_at`. No consta si «Corregir recibido» reescribe esa fecha. **Recomendación:**
   contar por el `conciliadoAt` vigente (la última marca); T0.3 mide si la corrección lo reescribe y lo
   anota. Si lo reescribe, un cierre corregido «rejuvenece» en la tarjeta; se acepta salvo que Carlos
-  diga lo contrario.
+  diga lo contrario. **Cerrada (D-T03, 2026-11-12):** lo reescribe y Carlos lo acepta (opción a).
 - **PA4 — Orden con SLT-111 (PR #139).** Las dos tocan `CierresBodegaAdminService` y la suite del
   detalle de bodega. **Recomendación:** mergear SLT-111 antes de empezar T1 y partir de `origin/dev`;
   si no, R284 se prueba sin `porcentajesReparto` y se re-ejecuta al integrar.

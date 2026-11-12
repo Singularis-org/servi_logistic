@@ -132,7 +132,9 @@ export interface ResumenSolicitados {
 - Sin zona: `{ monto: "0.00", cierres: 0 }` en los tres, sin leer la zona horaria.
 - Coste: una lectura de la zona horaria de la empresa por render de la satélite (las reglas del país);
   ninguna consulta nueva a `cierre_bodega`.
-- **PA3**: el ancla es el `conciliadoAt` vigente.
+- **PA3**: el ancla es el `conciliadoAt` vigente. Cerrada en D-T03 (Carlos, T0.3 opción a): «Corregir
+  recibido» lo reescribe y un cierre corregido hoy cuenta como recibido hoy; lo fija el caso «T0.3 (a)»
+  de la integración (corrección real sobre CB4, recibido hace 45 días).
 
 La pantalla recibe `solicitadosResumen` por props desde `page.tsx` (Server Component) y no recalcula
 nada (R71).

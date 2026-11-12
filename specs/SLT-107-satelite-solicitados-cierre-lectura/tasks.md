@@ -47,12 +47,12 @@ avisa.
 
 ## T1 — Servidor (`backend_dev`)
 
-- [ ] **T1.1** — `ICierresBodegaAdminRepository` / `CierresBodegaAdminRepository`:
+- [x] **T1.1** — `ICierresBodegaAdminRepository` / `CierresBodegaAdminRepository`:
   `AlcanceLecturaBodega` y `findCierreBodegaConDetalle(id, zona, alcance)` con `findFirst` y `zonaId`
   en el `where` cuando el alcance es de zona; `null` antes de leer cierres del día, gestiones, detalle y
   cargos (R280, R281). **Hecho:** `tests/unit/repositories/cierres-bodega-admin-repository.test.ts`
   afirma el `where` exacto de los dos alcances y que con cabecera `null` no hay más llamadas.
-- [ ] **T1.2** — `CierresAdminService.ts`: `export` de `ocultarFulfillmentSiNoCentral` (sin cambiar su
+- [x] **T1.2** — `CierresAdminService.ts`: `export` de `ocultarFulfillmentSiNoCentral` (sin cambiar su
   cuerpo). `CierresBodegaAdminService`: cuarto parámetro `zonaDelUsuario`; guardia de R280-R282; `null`
   → `no_encontrada` (toda la empresa) o `forbidden` (zona); `ocultarFulfillmentSiNoCentral` en cada
   gestión y `desmarcable: false` para quien no es acceso total (R283). **Hecho:**
@@ -61,7 +61,7 @@ avisa.
   central y satélite → resultados iguales salvo R283 (R284) y mismas llamadas al repositorio; satélite
   sin zona, de otra zona y sin `zonaDelUsuario` → `forbidden` sin firmar evidencias; mensajero →
   `forbidden` sin llamar al repo; aprobar y rechazar con satélite → `forbidden` (R285).
-- [ ] **T1.3** — `ICierreBodegaService`: `CifraConConteo`, `ResumenSolicitados` y
+- [x] **T1.3** — `ICierreBodegaService`: `CifraConConteo`, `ResumenSolicitados` y
   `solicitadosResumen` en el `ok` de `ListarConsolidacionServiceResult`. `CierreBodegaService`:
   parámetro `ahora`, `resumenSolicitados(cierres, desde)` exportada y su uso en `listarConsolidacion`
   (sin zona: ceros sin leer la zona horaria) (R287). **Hecho:**
@@ -69,9 +69,9 @@ avisa.
   (−1 200,00) + 0,00 = 436 963,27 (signo), recibido a las 00:00 del día 30 hacia atrás entra y a las
   23:59 del día 31 no, `faltaPorRecibir` 15 000,00 entra y 0,00 / −500,00 no; conteos; sin zona →
   `"0.00"` y 0.
-- [ ] **T1.4** — `lib/actions/cierre-bodega.ts`: `buildCierresBodegaAdminService` inyecta
+- [x] **T1.4** — `lib/actions/cierre-bodega.ts`: `buildCierresBodegaAdminService` inyecta
   `new OrdenRepository(prisma)`. **Hecho:** T1.5 (caso por la Server Action sin `deps` de servicio).
-- [ ] **T1.5** — `tests/integration/db/satelite-cierre-bodega-lectura.int.test.ts` contra Postgres
+- [x] **T1.5** — `tests/integration/db/satelite-cierre-bodega-lectura.int.test.ts` contra Postgres
   real, con la siembra de `design.md > Verificación` (dos empresas, dos zonas en A, CB1-CB7, gestiones
   de los dos modelos, fulfillment cargado). Antes de afirmar, cuenta lo sembrado y falla si falta.
   Casos: R280, R281 (otra zona, sin zona, inexistente), R283 sobre la base, R284 (central vs
@@ -80,7 +80,7 @@ avisa.
   `getActor` (composition root). **Hecho:** verde con la base desechable, y las seis mutaciones de
   `design.md > Verificación` ejecutadas de una en una, cada una con su test en rojo, anotadas en
   `progress/impl_SLT-107.md` (con la salida que lo demuestra: el arnés de mutaciones se autocomprueba).
-- [ ] **T1.6** [P] — `tests/unit/services/cierre-bodega-service.test.ts`: adaptar los dobles y las
+- [x] **T1.6** [P] — `tests/unit/services/cierre-bodega-service.test.ts`: adaptar los dobles y las
   aserciones de `listarConsolidacion` al campo nuevo, sin cambiar ningún otro literal (R72). **Hecho:**
   verde; el diff solo añade `solicitadosResumen`.
 
@@ -222,6 +222,9 @@ avisa.
   - `tests/integration/db/slt76-desmarcable.int.test.ts`
   - `tests/unit/repositories/cierre-bodega-repository.test.ts`
   - `tests/unit/repositories/cierre-pagos-lectura.test.ts`
+- T1.3 (2026-11-12): doble tipado de `listarConsolidacion` que rompe el typecheck con el campo nuevo
+  obligatorio `solicitadosResumen` (una línea, como `CierresDescargaColumnas.test.tsx`):
+  - `tests/components/descarga/CierresDescarga.test.tsx`
 - `e2e/cierre-bodega-satelite.spec.ts`
 - `e2e/cierres-rediseno.spec.ts`
 - `progress/impl_SLT-107.md`
