@@ -149,5 +149,8 @@ Tests (19):
 - `tests/unit/services/planes-service-lecturas.test.ts` (2026-11-12: ídem)
 - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (2026-11-12, aceptado por el humano: el doble de `tx` sin `planCambioProgramado`, D16)
 - `tests/unit/planes/jobs-cambio-empresa.test.ts` (2026-11-12, aceptado por el humano: los dobles del barrido sin `recepcionesVencidas` ni `recibirCambio`)
+- `tests/integration/db/mi-plan-repository.test.ts` (2026-11-12, aceptado por el humano: la recepción de la empresa en el setup, R12, R24)
+- `tests/integration/db/plan-de-la-empresa.test.ts` (2026-11-12, aceptado por el humano: ídem)
+- `tests/integration/db/planes-lecturas-plataforma.test.ts` (2026-11-12, aceptado por el humano: ídem, y el detalle con `recibidas` y `total`, R11)
 
-Total: 35 archivos (29 del plan + 6 aceptados por el humano el 2026-11-12).
+Total: 38 archivos (29 del plan + 9 aceptados por el humano el 2026-11-12).
