@@ -235,25 +235,7 @@
 
 ## Preguntas abiertas
 
-Cada una tiene su propuesta ya escrita en el requisito que cita. Si el humano elige otra cosa, cambian ese requisito
-y su test, no el resto.
-
-- **P7 · «De inmediato» con el plan partido (R16).** Una edición inmediata mientras alguna empresa ya recibió el
-  pendiente dejaría tres versiones sin un pendiente que las junte. Propuesta: **rechazarla** y pedir que se programe.
-  La otra salida es aplicarla a todas en el acto y borrar las versiones propias (todas vuelven a la del plan, también
-  la que ya había recibido el pendiente). ¿Rechazo o «a todas»?
-- **P8 · Cancelar con el plan partido por un cambio anterior (R14).** P1 bloquea cancelar si alguna empresa ya
-  recibió **este** pendiente. Si el pendiente reemplazó a otro que alguna ya recibió (R13), cancelarlo también deja el
-  plan partido. Propuesta: bloquearlo igual. ¿Vale?
-- **P9 · Qué queda de «hoy» en esta rebanada (R23).** La decisión «Fecha mínima» (`≥ hoy`) y que «hoy» siga la regla
-  por empresa se dejan para SLT-135 «Planes: sin «De inmediato» al editar un plan», como dice P3 («De inmediato» sigue
-  como hoy). Así no se reescriben aquí los tests de «hoy» del precio. Propuesta: así. ¿O «hoy» debe ir por empresa ya
-  en esta rebanada? Si sí, suman unos 3 archivos de test (siguen siendo menos de 32).
-- **P10 · Pendientes guardados antes del despliegue y empresas que entran (R17, R24).** Propuesta: (a) un pendiente
-  previo se recibe en su fecha F tal cual, la que ya se anunció por correo, aunque caiga a mitad del período de una
-  empresa; (b) una empresa que entra antes de F recibe solo los recordatorios, sin el correo «guardado» (no estaba
-  cuando se guardó). La otra salida para (a) es llevar cada pendiente previo a la recepción de cada empresa (R1) y
-  avisar con un correo nuevo. ¿Vale (a) y (b)?
+Ninguna. P7–P10 cerradas por el humano el 2026-11-11 (filas de «Decisiones cerradas»).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -275,3 +257,7 @@ y su test, no el resto.
 | 2026-11-11 | P2 · Tope por debajo del uso | Como hoy (SL-24 R16, SLT-58 R36): se guarda, la respuesta y los correos avisan por empresa; al recibirlo no se bloquea la aplicación y desde ahí se rechazan las altas que pasen el tope hasta que el uso baje; lo creado no se toca (humano). |
 | 2026-11-11 | P4 · Empresa que entra al plan durante la ventana | Según la fecha: si entra en la fecha «A partir de» o después, con la versión nueva; si antes, con la vigente y recibe la nueva en su primer período que empiece en esa fecha o después. Si cambia de tipo de cobro, su fecha se recalcula con los períodos del tipo nuevo (humano). |
 | 2026-11-11 | P5 · Cuándo la versión nueva es «el plan» | **Cuando la recibe la última empresa**; sin empresas, a las 00:00 de la fecha elegida. Mientras tanto el detalle muestra «Cambio programado» y cuántas empresas ya lo recibieron. La lista de fechas por empresa va con SLT-130 (humano). |
+| 2026-11-11 | P7 · «De inmediato» con el plan partido (R16) | **Se rechaza** y se pide programar el cambio con fecha (humano; propuesta del spec). |
+| 2026-11-11 | P8 · Cancelar un pendiente que reemplazó a otro ya recibido (R14) | **Se bloquea** igual que P1: cancelarlo dejaría el plan partido (humano; propuesta del spec). |
+| 2026-11-11 | P9 · «Hoy» en esta rebanada (R23) | Se queda como está (a todas en el acto);  por empresa entra en SLT-135 (humano; propuesta del spec). |
+| 2026-11-11 | P10 · Pendientes previos al despliegue y empresas que entran (R17, R24) | (a) un pendiente guardado antes del despliegue llega a todas en la fecha anunciada, aunque caiga a mitad de período; (b) una empresa que entra antes de la fecha recibe solo los recordatorios, sin el correo de guardado (humano; propuesta del spec). |
