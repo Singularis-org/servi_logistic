@@ -122,3 +122,18 @@ Decisión menor: el título del archivo de «Descargar» reutiliza `tituloDescar
 
 SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero», S10a: hecho, gate y E2E en verde, al
 95 % del tope de tamaño.
+
+## Rojo de CI en el PR #134 (2026-11-11)
+
+- `CierreFacturaPapel.test.tsx`: afirmaba que `CierreDiaModule.tsx` seguía montando `CierreFacturaDetalle`
+  (feature 223 / SLT-100). SLT-108 lo quita a propósito (D12, R161): el caso pasa a afirmar que ninguna
+  ruta monta la hoja y que el mensajero monta `DetalleCierre`.
+- `descarga/ControlDescargaTransversal.test.tsx`: el «Descargar» del detalle armaba
+  `{ status: "ok", filas }` a mano y se saltaba el tope de filas. Ahora pasa por `filasLocales`.
+  Mutación: volver a armarlo a mano lo pone en rojo (1 failed).
+- No salieron en local porque los dos leen el fuente como texto (`readFileSync`), sin importar nada:
+  `vitest related` no los relaciona. Disparador propuesto al leader (no aplicado).
+- Tras `git merge origin/dev` (#133, sin conflictos): los 2 archivos + `CierreDiaDetalleUnico` → 53 passed.
+  `./init.sh` → INIT_EXIT=0 (389 archivos seleccionados; 17/40 archivos, 963/1000 líneas). Una corrida
+  anterior dio INIT_EXIT=1 por un timeout de 20 s de `dominio-ordenex-fuera.guardia.test.ts` bajo carga;
+  solo pasa en 1,5 s y la repetición del gate salió verde.

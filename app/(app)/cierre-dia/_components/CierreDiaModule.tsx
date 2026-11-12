@@ -1084,10 +1084,10 @@ export function CierreDiaModule({
                     <DescargarDatasetButton
                       titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
                       columnas={COLUMNAS_DESCARGA_DETALLE_MENSAJERO}
-                      obtenerFilas={async () => ({
-                        status: "ok",
-                        filas: gestionesEnOrden(detallePasado.grupos).map(filaDescargaDetalleMensajero),
-                      })}
+                      // El adaptador común aplica el tope de filas (`ControlDescargaTransversal`).
+                      obtenerFilas={() =>
+                        filasLocales(gestionesEnOrden(detallePasado.grupos), filaDescargaDetalleMensajero)
+                      }
                     />
                   }
                 />
