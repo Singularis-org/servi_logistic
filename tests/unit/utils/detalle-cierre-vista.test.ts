@@ -829,8 +829,10 @@ describe("SLT-108 — vistaMensajeroDesdeCierreDia (R150)", () => {
   });
 
   it("sin resolución ni motivo en el DTO (campos opcionales) salen null", () => {
-    const { resueltoAt: _r, motivoRechazo: _m, ...sinOpcionales } = cierre;
-    const v = vistaMensajeroDesdeCierreDia({ ...sinOpcionales, estado: "solicitado" }, detalle);
+    const sinOpcionales: CierrePasadoDTO = { ...cierre, estado: "solicitado" };
+    delete sinOpcionales.resueltoAt;
+    delete sinOpcionales.motivoRechazo;
+    const v = vistaMensajeroDesdeCierreDia(sinOpcionales, detalle);
     expect(v.resueltoAt).toBeNull();
     expect(v.motivoRechazo).toBeNull();
   });
