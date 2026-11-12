@@ -105,3 +105,41 @@ cuentan para el tamaño). PR #143. Grafo MCP no consultado: todo con Grep/Read.
 
 **OK.** Sin bloqueantes: R167-R180 trazados a tests que fallan con su mutación, el SQL del folio
 parametrizado y acotado por mensajero y por la RLS (caso 13), la barra del admin intacta y CI verde.
+
+## Vuelta 2 (merge con SLT-109)
+
+Acotada al merge `b3d2479e` (padres `1690171d` = SLT-138 y `ac975a8f` = dev con SLT-109
+«/cierre-dia: el cierre de hoy como página»). Se amplía a `CierreDiaModule.tsx` porque es pieza
+compartida.
+
+### Checklist
+
+- [x] **Nada de SLT-109 se pierde.** `git diff b3d2479e^2 b3d2479e -- CierreDiaModule.tsx` solo
+      AÑADE lo de SLT-138 (imports, `descargaCierresPasados(filtros)`, `filtros` en
+      `leerCierresPasados`, estado `filtrosPropios` + reset, clave SWR, `fallbackData`, barra,
+      descarga, vacío). La única línea que quita de dev es el marcador `barra={null}`.
+      `DetalleCierre` en página, `cierreDeLaPagina`/`aReenviarPrimero`, la fila única y el pie
+      siguen como en dev.
+- [x] **Tests de SLT-109 sin editar en el merge:** `CierreDiaPagina.test.tsx` y
+      `CierreDiaModule.test.tsx` idénticos a `b3d2479e^2` (diff vacío).
+- [x] **Lo de SLT-138 entero.** El delta de SLT-138 sobre la base (`merge-base..^1`) y el delta
+      del merge sobre dev (`^2..b3d2479e`) coinciden línea a línea; solo difieren dos comentarios
+      reescritos (el bloque «Sin tarjetas de cifras (R158)» ya no existe en dev).
+- [x] **Import de `BotonesEvidencia`:** dev (`ac975a8f`) ya no lo tiene ni lo usa; el árbol
+      fusionado tampoco (0 apariciones). Quitarlo es correcto.
+- [x] **Ejecutable:** `CierreDiaPagina`, `CierreDiaModule`, `CierreDiaColaFiltros`: 3 archivos,
+      97/97 verdes. `tsc --noEmit` verde (con `--max-old-space-size=8192`; sin él, la máquina se
+      queda sin heap, sin errores de tipos). `eslint` del módulo, limpio.
+- [x] **Mutación SLT-109:** pasar a `cierreDeLaPagina` `bloqueo` con `aReenviarPrimero: null` →
+      20 tests rojos en `CierreDiaModule.test.tsx` (CTA del vencido o rechazado, caso 6...).
+- [x] **Mutación SLT-138:** `leerCierresPasados` sin `filtros` → 6/7 rojos en
+      `CierreDiaColaFiltros.test.tsx` (R174-R178).
+- [x] Las dos mutaciones revertidas; `git status` limpio.
+
+### Hallazgos
+
+Ninguno.
+
+### Veredicto
+
+**OK.** La resolución conserva SLT-109 entero y SLT-138 entero; las dos mutaciones caen.
