@@ -27,3 +27,4 @@ F1.1 2026-11-11: tomada y acotada con `/afinar-feature`. Rama sobre `feature/SLT
 <!-- tamano-pr-aceptado: 2026-11-12 · 141 archivos / +8.065 −1.355 líneas · aceptado por el humano -->
 - 2026-11-11 tanda 1 servidor (T0–T2.4, T2.5 parcial) hecha hasta 214f8934; R36/R16 autorizados (ddd7acad). Falta T2.3 cierre, T2.5 R29, T3.1.
 - 2026-11-11 tanda 1 cerrada en 6081f9f1 (T0–T3.1). Aserciones cambiadas solo las autorizadas (R36, R16, vistas v2, ejemplo v3). Sigue tanda 2: T3.2, T4, T5, T6.
+- 2026-11-12 CI 43247876714 verde (9/9). PR #135 abierto contra feature/SLT-89-geo-jerarquica-zonas; espera merge humano en orden del stack. Pendiente de persona: T7.1, T7.2.
