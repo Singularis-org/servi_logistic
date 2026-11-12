@@ -17,6 +17,11 @@ import { FORMA_UUID, UUID_BODEGA, UUID_MOV, estado, fila } from "@/tests/fixture
 //    sobre `ConciliacionSatelite`). Su «Pendiente de llegar» es el saldo actual del estado de cuenta.
 //  - R30: tras marcar se relee el estado de cuenta de ESTA bodega.
 //  - R81: la página, solo acceso total.
+//
+// SLT-114 «Estado de cuenta de la satélite: conciliación en pestaña» (R230-R233, R239): la conciliación y
+// el libro pasan a dos pestañas bajo las tarjetas; «Conciliación» abre seleccionada y cuenta las que
+// quedan sin conciliar. Los tests que leen el libro pulsan antes «Movimientos». PA1: sin la tarjeta
+// «Pendiente de llegar»; PA2: columnas «Debe llegar» y «Falta».
 // =================================================================================================
 
 const verEstadoCuentaMock = vi.fn();
@@ -98,6 +103,12 @@ const CONSOLIDACION = {
   cantidadCierres: 1,
 };
 
+/** El libro vive en «Movimientos» (R231): se abre esa pestaña antes de leerlo. */
+async function abrirMovimientos(user = userEvent.setup()) {
+  await user.click(screen.getByRole("tab", { name: "Movimientos" }));
+  return user;
+}
+
 function montar(puedeConciliar = true) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
@@ -117,8 +128,9 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("el extracto de la bodega: Declarado / Recibido / Por entregar", () => {
-  it("columnas y fila en el vocabulario de la bodega; sin «Ver» (no hay fila de libro) y sin uuid", () => {
+  it("columnas y fila en el vocabulario de la bodega; sin «Ver» (no hay fila de libro) y sin uuid", async () => {
     const { container } = montar();
+    await abrirMovimientos();
     const tabla = screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" });
     const cabeceras = within(tabla).getAllByRole("columnheader").map((c) => c.textContent);
     expect(cabeceras).toEqual(["Fecha", "Movimiento", "Declarado", "Recibido", "Por entregar", "Ver"]);
@@ -157,7 +169,7 @@ const INICIAL_SIN_CONSOLIDAR = estado({
 });
 
 describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => {
-  it("se rotula «Cierre aprobado sin consolidar» (no «Consolidación declarada») y pinta su importe negativo", () => {
+  it("se rotula «Cierre aprobado sin consolidar» (no «Consolidación declarada») y pinta su importe negativo", async () => {
     verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: INICIAL_SIN_CONSOLIDAR });
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
@@ -166,6 +178,7 @@ describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => 
         </ToastProvider>
       </SWRConfig>,
     );
+    await abrirMovimientos();
     const tabla = screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" });
     const filas = within(tabla).getAllByRole("row");
     // «Más recientes»: la fila del 18 va primero, la consolidación del 16 después.
@@ -188,14 +201,30 @@ describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => 
   });
 });
 
-describe("R31 — la conciliación de hoy, debajo del extracto, con su «Pendiente de llegar»", () => {
-  it("la sección de conciliación está y su pendiente es el saldo actual del estado de cuenta", async () => {
+describe("R31, R239 — la conciliación de hoy, en su pestaña", () => {
+  it("la sección de conciliación está, con sus acciones", async () => {
     montar();
     const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
-    expect(within(region).getByText("Pendiente de llegar").nextSibling?.textContent).toBe("₡115.000");
     expect(
       await within(region).findByRole("button", { name: /Marcar recibido la consolidación de FGAM Puntarenas/ }),
     ).toBeInTheDocument();
+  });
+
+  it("R239 — sin «Pendiente de llegar» y columnas «Debe llegar» y «Falta» (PA1, PA2)", async () => {
+    montar();
+    const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    const tabla = await within(region).findByRole("table", { name: "Consolidaciones de FGAM Puntarenas" });
+    await within(tabla).findByRole("button", { name: /Marcar recibido la consolidación/ });
+    expect(within(region).queryByText("Pendiente de llegar")).toBeNull();
+    const cabeceras = within(tabla)
+      .getAllByRole("columnheader")
+      .map((c) => c.textContent ?? "");
+    expect(cabeceras).toContain("Debe llegar");
+    expect(cabeceras).toContain("Falta");
+    expect(cabeceras).not.toContain("Para la central");
+    expect(cabeceras).not.toContain("Falta por recibir");
+    expect(cabeceras.indexOf("Debe llegar")).toBeLessThan(cabeceras.indexOf("Recibido"));
+    expect(cabeceras.indexOf("Recibido")).toBeLessThan(cabeceras.indexOf("Falta"));
   });
 
   it("R30: marcar recibido relee el estado de cuenta de ESTA bodega", async () => {
@@ -218,6 +247,85 @@ describe("R31 — la conciliación de hoy, debajo del extracto, con su «Pendien
     const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
     await waitFor(() => expect(listarConsolidacionesMock).toHaveBeenCalled());
     expect(within(region).queryByRole("button", { name: /Marcar recibido/ })).toBeNull();
+  });
+});
+
+describe("R230-R233 — «Conciliación» y «Movimientos» bajo las tarjetas", () => {
+  it("R230 — pestañas Conciliación y Movimientos, abre en Conciliación", async () => {
+    montar();
+    const lista = screen.getByRole("tablist", { name: "Pestañas del estado de cuenta de FGAM Puntarenas" });
+    const pestanas = within(lista).getAllByRole("tab");
+    expect(pestanas).toHaveLength(2);
+    expect(pestanas[0].textContent).toMatch(/^Conciliación/);
+    expect(pestanas[1].textContent).toBe("Movimientos");
+    expect(pestanas[0].getAttribute("aria-selected")).toBe("true");
+    expect(pestanas[1].getAttribute("aria-selected")).toBe("false");
+    // Las pestañas van DEBAJO de las tarjetas del estado de cuenta.
+    const tarjetas = screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar");
+    expect(tarjetas.compareDocumentPosition(lista) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("R231 — cada pestaña muestra lo suyo y las tarjetas siguen", async () => {
+    montar();
+    expect(await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" })).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" })).toBeNull();
+    expect(screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar")).toBeTruthy();
+
+    await abrirMovimientos();
+    expect(screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Conciliación de FGAM Puntarenas" })).toBeNull();
+    expect(screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar")).toBeTruthy();
+  });
+
+  it("R232 — volver a una pestaña conserva filtro y página", async () => {
+    // Dos páginas: 26 en «Todas», con 25 por página (`cierreBodegaConfig.DEFAULT_PAGE_SIZE`).
+    listarConsolidacionesMock.mockImplementation(async (input: { page: number; soloSinConciliar?: boolean }) => ({
+      status: "ok",
+      items: [CONSOLIDACION],
+      total: input.soloSinConciliar ? 1 : 26,
+      page: input.page,
+      pageSize: 25,
+    }));
+    const user = userEvent.setup();
+    montar();
+    const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    await user.click(within(region).getByRole("button", { name: "Todas" }));
+    const paginacion = await within(region).findByRole("navigation", {
+      name: "Paginación de las consolidaciones de FGAM Puntarenas",
+    });
+    await user.click(await within(paginacion).findByRole("button", { name: "Página siguiente" }));
+    await waitFor(() =>
+      expect(listarConsolidacionesMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2 })),
+    );
+
+    await abrirMovimientos(user);
+    await user.click(screen.getByRole("tab", { name: /^Conciliación/ }));
+
+    const otra = screen.getByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    expect(within(otra).getByRole("button", { name: "Todas" }).getAttribute("aria-pressed")).toBe("true");
+    const pag = within(otra).getByRole("navigation", { name: "Paginación de las consolidaciones de FGAM Puntarenas" });
+    expect(within(pag).getByText("26-26 de 26")).toBeTruthy();
+  });
+
+  it("R233 — la pestaña dice \"2 sin conciliar\" con total 2 y solo \"Conciliación\" con 0", async () => {
+    listarConsolidacionesMock.mockResolvedValue({ status: "ok", items: [CONSOLIDACION], total: 2, page: 1, pageSize: 25 });
+    montar();
+    expect(await screen.findByRole("tab", { name: "Conciliación 2 sin conciliar" })).toBeTruthy();
+    cleanup();
+
+    listarConsolidacionesMock.mockResolvedValue({ status: "ok", items: [], total: 0, page: 1, pageSize: 25 });
+    montar();
+    await waitFor(() => expect(listarConsolidacionesMock).toHaveBeenCalled());
+    await screen.findByText("Esta bodega no tiene consolidaciones que mostrar.");
+    expect(screen.getByRole("tab", { name: "Conciliación" })).toBeTruthy();
+    expect(screen.queryByText(/sin conciliar$/)).toBeNull();
+  });
+
+  it("R233 — si la lectura falla, la pestaña dice solo \"Conciliación\"", async () => {
+    listarConsolidacionesMock.mockResolvedValue({ status: "error" });
+    montar();
+    await screen.findByText("No se pudo cargar el desglose de esta bodega.");
+    expect(screen.getByRole("tab", { name: "Conciliación" })).toBeTruthy();
   });
 });
 

@@ -890,8 +890,12 @@ export function filasMensajeros(cierres: readonly CierreDelDiaDeBodega[]): FilaM
 /**
  * R43, R117 — la cuenta de «Conciliación»: lo que debe llegar, lo recibido («—» sin marca: la línea va
  * con `sinImporte`, nunca con "0.00") y lo que falta, como total. Los tres STRING tal cual del servidor.
+ * SLT-114 (R236): pide solo esos tres campos, para que la fila de la conciliación de `/wallet/satelites`
+ * pinte las MISMAS líneas desde su consolidación, sin una copia.
  */
-export function cuentaConciliacion(d: DetalleBodegaVista): CuentaVista {
+export function cuentaConciliacion(
+  d: Pick<DetalleBodegaVista, "paraLaCentral" | "montoRecibido" | "faltaPorRecibir">,
+): CuentaVista {
   const recibido: LineaCuenta =
     d.montoRecibido === null
       ? { label: RECIBIDO_LABEL, monto: "", signo: "resta", tipo: "partida", sinImporte: true }

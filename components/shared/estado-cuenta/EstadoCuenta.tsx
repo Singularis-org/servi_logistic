@@ -6,6 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import { FilterComponent, type FilterDef, type FilterSelection } from "@/components/shared/FilterComponent";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
@@ -196,6 +197,27 @@ export interface AccionDeFila {
   render: (fila: FilaEstadoCuentaDTO) => ReactNode;
 }
 
+/**
+ * SLT-114 (R230-R234) — una pestaña que va ANTES del libro (la conciliación de la bodega satélite). Con
+ * ella, bajo las tarjetas y las acciones hay dos pestañas: ésta, que abre seleccionada, y el libro.
+ * Recibe lo mismo que `pie`: el estado VIGENTE y la función que relee esta cuenta.
+ */
+export interface PestanaPreviaAlLibro {
+  /** Lo que dice su pestaña (el rótulo y, si hay, su conteo). */
+  rotulo: ReactNode;
+  /** El rótulo de la pestaña del libro. */
+  rotuloLibro: string;
+  /** Nombre accesible de la lista de pestañas. */
+  ariaLabel: string;
+  contenido: (vigente: EstadoCuentaDTO, refrescarCuenta: () => Promise<void>) => ReactNode;
+}
+
+/** Las mismas pestañas subrayadas del detalle único (`DetalleCierre`, D15). */
+const PESTANA_SUBRAYADA =
+  "rounded-none border-0 border-b-2 border-transparent bg-transparent px-0.5 py-2.5 text-muted-foreground shadow-none hover:bg-transparent aria-selected:border-foreground aria-selected:bg-transparent aria-selected:text-foreground aria-selected:shadow-none aria-selected:hover:bg-transparent";
+const PESTANA_PREVIA = "previa";
+const PESTANA_LIBRO = "libro";
+
 export interface EstadoCuentaProps {
   /** La primera página, resuelta en el servidor (sin periodo ni chip). */
   inicial: EstadoCuentaDTO;
@@ -234,6 +256,10 @@ export interface EstadoCuentaProps {
    * de `/mi-wallet`, 172 R55): se relee con cada lectura, así que nunca queda distinto de la tarjeta.
    */
   encabezado?: (vigente: EstadoCuentaDTO) => ReactNode;
+  /**
+   * SLT-114 — sin ella (tienda, `/mi-wallet`, mensajero) no hay pestañas y el DOM es el de siempre (R234).
+   */
+  pestanaPrevia?: PestanaPreviaAlLibro;
 }
 
 type Periodo = { desde: string; hasta: string };
@@ -520,6 +546,7 @@ export function EstadoCuenta({
   acciones,
   pie,
   encabezado,
+  pestanaPrevia,
 }: Readonly<EstadoCuentaProps>) {
   const { tipo, id, nombre } = inicial.cuenta;
   const lector = lectorDado ?? lectorDeLaCuenta(inicial.cuenta);
@@ -704,6 +731,122 @@ export function EstadoCuenta({
       ? null
       : posicionSaldoInicial(data.seleccion.sortDir, data.seleccion.page, data.seleccion.pageSize, data.estado.total);
 
+  // El libro (aviso de fallo, barra, tabla y paginación). Sin `pestanaPrevia` va suelto en la columna,
+  // como siempre; con ella, dentro de su pestaña.
+  const libro = (
+    <>
+        {/* R49 — el fallo se dice JUNTO al libro; el libro de la última lectura buena sigue debajo. */}
+        {hayFallo ? (
+          <p role="alert" className="text-sm text-destructive">
+            {ESTADO_CUENTA_TEXTO.error} {ESTADO_CUENTA_TEXTO.errorConservado}
+          </p>
+        ) : null}
+
+        {/* FICHA 469 (R21/R23) — la búsqueda es por guía: se dice junto a la barra, con el término pintado. */}
+        {terminoGuia !== null ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {BUSQUEDA_POR_GUIA_TEXTO.aviso(terminoGuia)}
+          </p>
+        ) : null}
+
+        <TablaEstadoCuenta
+          estado={data?.estado}
+          rotulos={rotulos}
+          desde={data?.seleccion.periodo.desde ?? periodo.desde}
+          posicionSaldoInicial={posicion}
+          // FICHA 467 (R1/R2/R4/R7/R9/R23/R24/R32) — la BARRA ÚNICA, encima de la tabla y en la fila de
+          // «Descargar», igual que `/ordenes`: [orden] [casillas marcadas…] [buscador] [Filtros] [Limpiar
+          // todo]. Periodo y Tipo de movimiento son el orquestador; el Cierre, el selector de la superficie.
+          filtros={
+            <BuscadorFiltros
+              label={ZONA_LIBRO_TEXTO.buscar}
+              // FICHA 469 (R24/R36) — la satélite tiene su texto propio: no nombra la guía.
+              placeholder={ESTADO_CUENTA_TEXTO.buscarPlaceholder[tipo === "bodega" ? "bodega" : vista]}
+              minChars={BUSQUEDA_LIBRO_MIN_CHARS}
+              leerDeUrl={false}
+              siembra={siembraTermino}
+              onChange={cambiarTermino}
+              filtros={casillasEstadoCuenta(selectorCierre !== undefined)}
+              activos={activos}
+              onActivosChange={cambiarActivos}
+              onLimpiarTodo={limpiarTodo}
+              // R26 — con texto escrito (lo mira la barra) o con alguna casilla marcada.
+              hayFiltrosAplicados={activos.length > 0}
+            >
+              <SegmentedToggle<DireccionOrden>
+                options={ORDEN_LIBRO.opciones}
+                valor={sortDir}
+                onChange={cambiarOrden}
+                ariaLabel={ORDEN_LIBRO.nombre}
+                soloIcono
+              />
+              {montadas.length > 0 ? (
+                <FilterComponent
+                  filters={montadas}
+                  onChange={cambiarSeleccion}
+                  leerDeUrl={false}
+                  // R28 — lo vigente (lo que dice la clave SWR); al subir la señal, se repone sin emitir.
+                  siembra={{ senal: senalSiembra, seleccion: seleccionDe(periodo, chip) }}
+                />
+              ) : null}
+              {selectorCierre && marcadas.has(CASILLA.cierre)
+                ? selectorCierre(cierreId, (c) => {
+                    setCierreId(c);
+                    setPage(1);
+                  })
+                : null}
+            </BuscadorFiltros>
+          }
+          isLoading={data === undefined && isLoading}
+          // Solo sin ninguna lectura buena que enseñar; con una, el aviso va arriba y el libro se queda (R49).
+          error={error !== undefined && data === undefined}
+          onVer={panel === undefined ? undefined : (f) => (seAbre(f) ? setAbierta(f) : undefined)}
+          conRegistro={vista === "oficina"}
+          detalleDeFila={detalleDeFila}
+          resaltar={terminoGuia ?? undefined}
+          accionDeFila={accionDeFila}
+          descarga={{
+            ...ambitoDeLaSuperficie,
+            titulo: ESTADO_CUENTA_TEXTO.tabla(nombre),
+            columnas: vista === "oficina" ? COLUMNAS_DESCARGA_ESTADO_CUENTA : COLUMNAS_DESCARGA_MI_ESTADO_CUENTA,
+            // FICHA 468 (R51) — Concepto, Entra, Sale y Saldo no se pueden desmarcar.
+            columnasFijas: FIJAS_DESCARGA_ESTADO_CUENTA,
+            // FICHA 468 (R7/R53/R57): una petición por opción, siempre en orden cronológico ascendente.
+            obtenerFilas: (opciones) =>
+              filasDelPeriodo(
+                lector,
+                filtros,
+                rotulos,
+                opciones?.conDetalle && detalleDescarga !== null ? detalleDescarga : undefined,
+              ),
+            detalle: detalleDescarga?.hoja,
+          }}
+        />
+        {data !== undefined && data.estado.filas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {/* FICHA 469 (R22) — con búsqueda por guía, el vacío lo dice en esos términos. */}
+            {terminoGuia !== null ? BUSQUEDA_POR_GUIA_TEXTO.vacio : ESTADO_CUENTA_TEXTO.vacio}
+          </p>
+        ) : null}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={data?.estado.total ?? 0}
+          // Solo sin nada que pintar: con la página del servidor en mano se puede paginar mientras SWR
+          // revalida (su `isLoading` sigue en `true` con `fallbackData`).
+          disabled={data === undefined}
+          ariaLabel={ESTADO_CUENTA_TEXTO.paginacion(nombre)}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => {
+            setPageSize(s);
+            setPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50, 100].filter((s) => s <= estadoCuentaConfig.MAX_PAGE_SIZE)}
+        />
+    </>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       {/* FICHA 467 (R1) — la sección de periodo de la 463 ya no está aquí: el Periodo es una casilla de la
@@ -717,115 +860,31 @@ export function EstadoCuenta({
         </section>
       ) : null}
 
-      {/* R49 — el fallo se dice JUNTO al libro; el libro de la última lectura buena sigue debajo. */}
-      {hayFallo ? (
-        <p role="alert" className="text-sm text-destructive">
-          {ESTADO_CUENTA_TEXTO.error} {ESTADO_CUENTA_TEXTO.errorConservado}
-        </p>
-      ) : null}
-
-      {/* FICHA 469 (R21/R23) — la búsqueda es por guía: se dice junto a la barra, con el término pintado. */}
-      {terminoGuia !== null ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          {BUSQUEDA_POR_GUIA_TEXTO.aviso(terminoGuia)}
-        </p>
-      ) : null}
-
-      <TablaEstadoCuenta
-        estado={data?.estado}
-        rotulos={rotulos}
-        desde={data?.seleccion.periodo.desde ?? periodo.desde}
-        posicionSaldoInicial={posicion}
-        // FICHA 467 (R1/R2/R4/R7/R9/R23/R24/R32) — la BARRA ÚNICA, encima de la tabla y en la fila de
-        // «Descargar», igual que `/ordenes`: [orden] [casillas marcadas…] [buscador] [Filtros] [Limpiar
-        // todo]. Periodo y Tipo de movimiento son el orquestador; el Cierre, el selector de la superficie.
-        filtros={
-          <BuscadorFiltros
-            label={ZONA_LIBRO_TEXTO.buscar}
-            // FICHA 469 (R24/R36) — la satélite tiene su texto propio: no nombra la guía.
-            placeholder={ESTADO_CUENTA_TEXTO.buscarPlaceholder[tipo === "bodega" ? "bodega" : vista]}
-            minChars={BUSQUEDA_LIBRO_MIN_CHARS}
-            leerDeUrl={false}
-            siembra={siembraTermino}
-            onChange={cambiarTermino}
-            filtros={casillasEstadoCuenta(selectorCierre !== undefined)}
-            activos={activos}
-            onActivosChange={cambiarActivos}
-            onLimpiarTodo={limpiarTodo}
-            // R26 — con texto escrito (lo mira la barra) o con alguna casilla marcada.
-            hayFiltrosAplicados={activos.length > 0}
+      {pestanaPrevia ? (
+        // SLT-114 (R232): las dos pestañas siguen montadas (`keepMounted`) para que cada una conserve su
+        // estado al alternar; el del libro vive además aquí arriba, en este componente.
+        <Tabs defaultValue={PESTANA_PREVIA} className="flex flex-col">
+          <TabsList
+            aria-label={pestanaPrevia.ariaLabel}
+            className="justify-start gap-6 rounded-none border-b border-border p-0"
           >
-            <SegmentedToggle<DireccionOrden>
-              options={ORDEN_LIBRO.opciones}
-              valor={sortDir}
-              onChange={cambiarOrden}
-              ariaLabel={ORDEN_LIBRO.nombre}
-              soloIcono
-            />
-            {montadas.length > 0 ? (
-              <FilterComponent
-                filters={montadas}
-                onChange={cambiarSeleccion}
-                leerDeUrl={false}
-                // R28 — lo vigente (lo que dice la clave SWR); al subir la señal, se repone sin emitir.
-                siembra={{ senal: senalSiembra, seleccion: seleccionDe(periodo, chip) }}
-              />
-            ) : null}
-            {selectorCierre && marcadas.has(CASILLA.cierre)
-              ? selectorCierre(cierreId, (c) => {
-                  setCierreId(c);
-                  setPage(1);
-                })
-              : null}
-          </BuscadorFiltros>
-        }
-        isLoading={data === undefined && isLoading}
-        // Solo sin ninguna lectura buena que enseñar; con una, el aviso va arriba y el libro se queda (R49).
-        error={error !== undefined && data === undefined}
-        onVer={panel === undefined ? undefined : (f) => (seAbre(f) ? setAbierta(f) : undefined)}
-        conRegistro={vista === "oficina"}
-        detalleDeFila={detalleDeFila}
-        resaltar={terminoGuia ?? undefined}
-        accionDeFila={accionDeFila}
-        descarga={{
-          ...ambitoDeLaSuperficie,
-          titulo: ESTADO_CUENTA_TEXTO.tabla(nombre),
-          columnas: vista === "oficina" ? COLUMNAS_DESCARGA_ESTADO_CUENTA : COLUMNAS_DESCARGA_MI_ESTADO_CUENTA,
-          // FICHA 468 (R51) — Concepto, Entra, Sale y Saldo no se pueden desmarcar.
-          columnasFijas: FIJAS_DESCARGA_ESTADO_CUENTA,
-          // FICHA 468 (R7/R53/R57): una petición por opción, siempre en orden cronológico ascendente.
-          obtenerFilas: (opciones) =>
-            filasDelPeriodo(
-              lector,
-              filtros,
-              rotulos,
-              opciones?.conDetalle && detalleDescarga !== null ? detalleDescarga : undefined,
-            ),
-          detalle: detalleDescarga?.hoja,
-        }}
-      />
-      {data !== undefined && data.estado.filas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {/* FICHA 469 (R22) — con búsqueda por guía, el vacío lo dice en esos términos. */}
-          {terminoGuia !== null ? BUSQUEDA_POR_GUIA_TEXTO.vacio : ESTADO_CUENTA_TEXTO.vacio}
-        </p>
-      ) : null}
-
-      <Pagination
-        page={page}
-        pageSize={pageSize}
-        total={data?.estado.total ?? 0}
-        // Solo sin nada que pintar: con la página del servidor en mano se puede paginar mientras SWR
-        // revalida (su `isLoading` sigue en `true` con `fallbackData`).
-        disabled={data === undefined}
-        ariaLabel={ESTADO_CUENTA_TEXTO.paginacion(nombre)}
-        onPageChange={setPage}
-        onPageSizeChange={(s) => {
-          setPageSize(s);
-          setPage(1);
-        }}
-        pageSizeOptions={[10, 20, 50, 100].filter((s) => s <= estadoCuentaConfig.MAX_PAGE_SIZE)}
-      />
+            <TabsTrigger value={PESTANA_PREVIA} className={PESTANA_SUBRAYADA}>
+              {pestanaPrevia.rotulo}
+            </TabsTrigger>
+            <TabsTrigger value={PESTANA_LIBRO} className={PESTANA_SUBRAYADA}>
+              {pestanaPrevia.rotuloLibro}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value={PESTANA_PREVIA} keepMounted className="mt-0 pt-4">
+            {pestanaPrevia.contenido(vigente, refrescarCuenta)}
+          </TabsContent>
+          <TabsContent value={PESTANA_LIBRO} keepMounted className="mt-0 flex flex-col gap-6 pt-4">
+            {libro}
+          </TabsContent>
+        </Tabs>
+      ) : (
+        libro
+      )}
 
       {pie ? pie(vigente, refrescarCuenta) : null}
 

@@ -155,14 +155,14 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
   `CierresBodegaAdminModule` abre el detalle con `AbrirCierreDeLaUrl` (o su equivalente) y limpia el
   parámetro al cerrar. Depende de T1. **Hecho:** `CierresBodegaAdminDeepLink.test.tsx` verde (R238) y
   `CierresBodegaAdminDetalleUnico`/`CierresBodegaAdminCola` siguen verdes.
-- [ ] **T3** [P] `EstadoCuenta`: prop opcional para una pestaña previa al libro (rótulo + render con
+- [x] **T3** [P] `EstadoCuenta`: prop opcional para una pestaña previa al libro (rótulo + render con
   `vigente` y `refrescarCuenta`); con ella, `Tabs` bajo tarjetas y acciones; sin ella, DOM de hoy.
   Las dos pestañas conservan estado al alternar. **Hecho:** R234 en `EstadoCuenta.test.tsx`;
   `EstadoCuenta468`, `EstadoCuentaBarra467` y los de tienda/mi-wallet sin tocar y verdes.
-- [ ] **T4** `EstadoCuentaSatelite` pasa la conciliación como esa pestaña (abre seleccionada) con el
+- [x] **T4** `EstadoCuentaSatelite` pasa la conciliación como esa pestaña (abre seleccionada) con el
   conteo «<n> sin conciliar» del listado «Sin conciliar». Depende de T3. **Hecho:** R230-R233 y R239
   en `EstadoCuentaSatelite.test.tsx`; los tests existentes que leen el libro pulsan «Movimientos».
-- [ ] **T5** `ConciliacionSatelite`: `renderExpanded` con dos `Cuenta` (R235, R236) en rejilla de dos
+- [x] **T5** `ConciliacionSatelite`: `renderExpanded` con dos `Cuenta` (R235, R236) en rejilla de dos
   columnas y el enlace de T1 al pie (R237); deja de importar `CascadaDinero`. `cuentaConciliacion` se
   reutiliza aceptando el subconjunto de campos que usa (sin duplicar líneas). Depende de T1.
   **Hecho:** `ConciliacionSateliteCascada.test.tsx` reescrito con literales a mano y canario;
