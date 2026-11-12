@@ -129,7 +129,7 @@ Producción (16):
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (2026-11-12, aceptado por el humano: el tipo `pendiente` del detalle gana `recibidas` y `total`)
 
-Tests (18):
+Tests (19):
 - `tests/unit/planes/recepcion.test.ts`
 - `tests/integration/db/planes-cambio-por-empresa.test.ts`
 - `tests/integration/db/planes-version-por-empresa.test.ts`
@@ -148,5 +148,6 @@ Tests (18):
 - `tests/unit/services/planes-service-costo-porcentual.test.ts` (2026-11-12: ídem)
 - `tests/unit/services/planes-service-lecturas.test.ts` (2026-11-12: ídem)
 - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (2026-11-12, aceptado por el humano: el doble de `tx` sin `planCambioProgramado`, D16)
+- `tests/unit/planes/jobs-cambio-empresa.test.ts` (2026-11-12, aceptado por el humano: los dobles del barrido sin `recepcionesVencidas` ni `recibirCambio`)
 
-Total: 34 archivos (29 del plan + 5 aceptados por el humano el 2026-11-12).
+Total: 35 archivos (29 del plan + 6 aceptados por el humano el 2026-11-12).
