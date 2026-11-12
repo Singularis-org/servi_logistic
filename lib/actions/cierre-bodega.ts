@@ -84,6 +84,8 @@ function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
     new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
     // SLT-42 (R22): la zona horaria del pais de la empresa.
     construirReglasPaisEmpresa(prisma),
+    // SLT-107 (R280): la zona del adminSatelite, de su usuario en la base.
+    new OrdenRepository(prisma),
   );
 }
 

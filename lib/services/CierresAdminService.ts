@@ -137,7 +137,7 @@ function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle
  * un dia llegue aqui sin estar previsto tampoco lo recibe. Solo toca la tarifa: ningun total se
  * recalcula (el fulfillment no entra en `ingresoEmpresa.total`, ver `TarifaSnapshotDTO`).
  */
-function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
+export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
   fila: T,
   actor: Actor,
 ): T {

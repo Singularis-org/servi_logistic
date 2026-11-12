@@ -2,13 +2,18 @@ import { Prisma } from "@prisma/client";
 import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
-import { filtrosParaRepo, zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
+import { filtrosParaRepo, zonaDeLaEmpresa, zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
+import { inicioDeUltimosNDiasEnUtc } from "@/lib/utils/calendario-zona";
+import { sumarMontos } from "@/lib/utils/kpis-financieros";
 import type { RangoDeFechasCierres } from "@/lib/types/filtros-cierres";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import type {
+  CierreBodegaResumen,
+  CifraConConteo,
   ICierreBodegaService,
+  ResumenSolicitados,
   ListarCierresBodegaSolicitadosCompletoServiceResult,
   ListarCierresBodegaSolicitadosServiceResult,
   ListarConsolidablesCompletoServiceResult,
@@ -163,6 +168,59 @@ function netoDe(general: string, pagado: string): string {
   return new Prisma.Decimal(general).minus(pagado).toFixed(2);
 }
 
+// SLT-107 (R287): sin zona, las tres cifras de «Solicitados» en cero.
+const CIFRA_CERO: CifraConConteo = { monto: "0.00", cierres: 0 };
+const RESUMEN_SOLICITADOS_VACIO: ResumenSolicitados = {
+  porLlegar: CIFRA_CERO,
+  recibido30Dias: CIFRA_CERO,
+  faltaPorRecibir: CIFRA_CERO,
+};
+
+// SLT-107 (R287, PA3): «Recibido por la central» cuenta los ultimos 30 dias calendario, hoy incluido.
+const DIAS_RECIBIDO = 30;
+
+type CierreParaResumen = Pick<
+  CierreBodegaResumen,
+  "paraLaCentral" | "montoRecibido" | "faltaPorRecibir" | "conciliadoAt"
+>;
+
+function cifraDe(montos: string[]): CifraConConteo {
+  return { monto: sumarMontos(montos), cierres: montos.length };
+}
+
+/**
+ * SLT-107 (R68, R287) — las tres cifras de «Solicitados» sobre los cierres de bodega de la zona,
+ * con aritmetica decimal y sobre los campos que YA emite el mapper de la cabecera (ninguna formula
+ * nueva de dinero). `desde` = las 00:00 locales de hace 29 dias (lo calcula el llamador con la zona
+ * horaria de la empresa).
+ *
+ * El ancla de «30 dias» es el `conciliadoAt` VIGENTE (PA3; T0.3 opcion a): «Corregir recibido» lo
+ * reescribe, asi que un cierre corregido hoy cuenta como recibido hoy.
+ */
+export function resumenSolicitados(
+  cierres: readonly CierreParaResumen[],
+  desde: Date,
+): ResumenSolicitados {
+  const desdeMs = desde.getTime();
+  const conMarca = cierres.filter((c) => c.conciliadoAt !== null);
+  return {
+    porLlegar: cifraDe(cierres.filter((c) => c.conciliadoAt === null).map((c) => c.paraLaCentral)),
+    recibido30Dias: cifraDe(
+      conMarca
+        .filter((c) => new Date(c.conciliadoAt as string).getTime() >= desdeMs)
+        // Con marca siempre hay monto; el `?? "0.00"` solo cubre una marca sin monto (no la suma).
+        .map((c) => c.montoRecibido ?? "0.00"),
+    ),
+    // «> 0» con Decimal, la misma regla que `hayFaltantePorRecibir`: cero o negativo (llego de
+    // mas) no falta.
+    faltaPorRecibir: cifraDe(
+      conMarca
+        .filter((c) => new Prisma.Decimal(c.faltaPorRecibir).gt(0))
+        .map((c) => c.faltaPorRecibir),
+    ),
+  };
+}
+
 /**
  * Feature 40 — logica de negocio del "Cierre de bodega" (lado adminSatelite: consolidar
  * + solicitar). Espejo de CierreDiaService (37), un nivel arriba: agrega los cierre_dia
@@ -176,6 +234,8 @@ export class CierreBodegaService implements ICierreBodegaService {
     private readonly ordenRepo: OrdenRepo,
     /** SLT-42 (R22): la zona del pais de la empresa, con la que se resuelven los filtros de fecha. */
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+    /** SLT-107 (R287): el reloj, para que el corte de «30 dias» se pruebe con un «hoy» fijo. */
+    private readonly ahora: () => Date = () => new Date(),
   ) {}
 
   /**
@@ -210,16 +270,19 @@ export class CierreBodegaService implements ICierreBodegaService {
         cierresAConsolidar: 0, // R195
         mensajerosAConsolidar: 0, // R195
         bloqueo: "sin_zona", // R195
+        solicitadosResumen: RESUMEN_SOLICITADOS_VACIO, // SLT-107 (R287): sin leer la zona horaria
       };
     }
 
     // R5/R6 + F1.4-h: SOLO lectura (R23). El filtro por zona/estado vive en el repo.
     // SLT-106 (R199): los NOMBRES de los cierres sin resolver, en vez de su conteo. Mismo `where`
     // en el repositorio que el conteo de la puerta de `solicitarCierreBodega`.
-    const [consolidables, sinResolver, cierresBodegaPasados] = await Promise.all([
+    // SLT-107 (R287): la zona horaria de la empresa, para el corte de «30 dias» de «Solicitados».
+    const [consolidables, sinResolver, cierresBodegaPasados, zonaHoraria] = await Promise.all([
       this.repo.findCierresDiaConsolidables(zonaId),
       this.repo.findMensajerosConCierreSinResolver(zonaId),
       this.repo.findCierresBodegaByZona(zonaId),
+      zonaDeLaEmpresa(this.reglasPais, "CierreBodegaService.listarConsolidacion"),
     ]);
 
     // R10: totales agregados exactos (suma con Prisma.Decimal de los snapshots).
@@ -285,6 +348,12 @@ export class CierreBodegaService implements ICierreBodegaService {
       cierresAConsolidar: consolidables.length, // R195: el conjunto COMPLETO, no la pagina
       mensajerosAConsolidar: new Set(consolidables.map((c) => c.mensajeroId)).size, // R195
       bloqueo, // R195
+      // SLT-107 (R68, R287): las cifras de «Solicitados» sobre el MISMO conjunto de la zona que ya
+      // se leyo (cero consultas nuevas a `cierre_bodega`), sin filtros ni pagina.
+      solicitadosResumen: resumenSolicitados(
+        cierresBodegaPasados,
+        inicioDeUltimosNDiasEnUtc(DIAS_RECIBIDO, this.ahora(), zonaHoraria),
+      ),
     };
   }
 
