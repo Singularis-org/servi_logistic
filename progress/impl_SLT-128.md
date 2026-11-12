@@ -171,3 +171,63 @@ La sesión anterior dejó T6 escrita sin commit; revisada contra T6.1–T6.4 y d
   y `recibirCambio` en sus dobles (total 35 archivos). Pendiente de decisión humana.
 
 Veredicto: T6 completa y sus tests verdes; queda rojo `jobs-cambio-empresa.test.ts`, fuera de la lista, a la espera del humano.
+
+## Tanda 4 (backend_dev, 2026-11-12): T7 (T7.1–T7.9)
+
+La sesión anterior dejó los nueve archivos escritos en el WIP `ce21d4f4`. Revisados uno por uno contra su T7.x, la
+migración y `PlanesRepository`; sin cambios de producción (ningún caso reveló un bug).
+
+### Archivos (un commit por archivo, con su `[x]` en `tasks.md`)
+- T7.1 `tests/integration/db/planes-cambio-por-empresa.test.ts`: los historiales de módulos se separan por id y no
+  por `created_at` + `skip` (dentro de la transacción `now()` no avanza: el orden no separaba el antes).
+- T7.2 `tests/integration/db/planes-version-por-empresa.test.ts`: sin cambios.
+- T7.3 `tests/integration/db/planes-cambio-correos.test.ts`: caso nuevo de R21 «3 días o menos → solo el de 1 día»
+  (guardado el 13, quincenal el 16 y mensual el 1 de diciembre en el mismo plan).
+- T7.4 `tests/integration/db/planes-cambio-programado.test.ts`: el mismo arreglo del historial por id que T7.1.
+- T7.5 `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: el caso de R9 lleva una segunda empresa
+  (mensual) para que el plan no se promueva y el nombre de la cuota salga de la versión propia (R2), no del plan.
+- T7.6 `planes-periodicidad-ordenes`, T7.7 `plan-precio-historial`, T7.8 `planes-historial`: sin cambios.
+- T7.9 `tests/unit/services/planes-service.test.ts`: sin cambios.
+
+### Mapa R → test (toda la feature)
+- R1 → `tests/unit/planes/recepcion.test.ts`; `planes-cambio-por-empresa.test.ts` («R1: al guardar, cada empresa…»).
+- R2 → `planes-version-por-empresa.test.ts` («R2: … triggers de topes y la tarifa»); `factura-plataforma-cambio-plan.test.ts`
+  («SLT-128 R9: … nombre nuevo en la cuota», el nombre de la factura que se abre).
+- R3 → `plan-precio-historial.test.ts` («SLT-128 R3: con F futura aplicada por la cola…»); `planes-cambio-por-empresa.test.ts` (R13).
+- R4 → `planes-cambio-por-empresa.test.ts` («R4, R10: … sus excepciones»); `planes-cambio-programado.test.ts` («R38/R17, SLT-128 R2, R4, R10»).
+- R5 → `planes-cambio-por-empresa.test.ts` («R5, R10, R11: el barrido…»); `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`.
+- R6 → `planes-cambio-por-empresa.test.ts` («R6: …»).
+- R7 → `factura-plataforma-cambio-plan.test.ts` («SLT-128 R7, R9 (m4)…»).
+- R8 → `planes-periodicidad-ordenes.test.ts` («SLT-128 R8: …»).
+- R9 → `factura-plataforma-cambio-plan.test.ts` (los dos casos SLT-128).
+- R10 → `planes-cambio-por-empresa.test.ts` (R5/R10/R11, R4/R10, R18); `planes-historial.test.ts` («SLT-128 R10: …»);
+  `planes-cambio-programado.test.ts` (R38, R39 sin empresas).
+- R11 → `planes-cambio-por-empresa.test.ts` (lectura «N de M»); `tests/unit/services/planes-service-lecturas.test.ts`;
+  pantalla: `tests/components/PlanDetalle.test.tsx` es de T8.3 (frontend_dev, pendiente).
+- R12 → `planes-version-por-empresa.test.ts` («R12: …»).
+- R13 → `planes-cambio-por-empresa.test.ts` («R13 (P6)…»); `planes-cambio-programado.test.ts` («SLT-128 R13 (P6)…»).
+- R14 → `planes-cambio-por-empresa.test.ts` («R14 (P1, P8)…»); `tests/unit/services/planes-service.test.ts`.
+- R15 → `planes-cambio-programado.test.ts` («SLT-128 R15…», «R40 (plan sin empresas)»); `planes-cambio-por-empresa.test.ts`;
+  `planes-cambio-correos.test.ts`; `planes-service.test.ts`. El mensaje en pantalla: T8.3 (pendiente).
+- R16 → `planes-cambio-por-empresa.test.ts` («R16 (P7)…»); `planes-service.test.ts`.
+- R17 → `planes-cambio-por-empresa.test.ts` («R17 (P4, P10 b)…»); `planes-cambio-correos.test.ts` («SLT-128 R22, R17»).
+- R18 → `planes-cambio-por-empresa.test.ts` («R18: …»); `planes-cambio-correos.test.ts` (no sale el recordatorio).
+- R19 → `planes-cambio-por-empresa.test.ts` («R19, R22: mensual → bimestral…»).
+- R20 → `planes-cambio-correos.test.ts` («SLT-128 R20, R21», «SLT-128 R20: un reemplazo…», «R45, SLT-128 R20», «R41/R45: un fallo…»).
+- R21 → `tests/unit/planes/recepcion.test.ts`; `planes-cambio-correos.test.ts` (7 y 1; 3 y 1; solo 1); `planes-cambio-por-empresa.test.ts` (R17, R19).
+- R22 → `planes-cambio-correos.test.ts` (3 días, una vez, solo su empresa, no sale si recibido/se fue/movida, reemplazo/cancelado);
+  `tests/unit/services/email/plantilla-cambio-plan.test.ts`; `procesar-jobs-plan-cambio.test.ts`.
+- R23 → `tests/unit/services/planes-service-periodo.test.ts` (existente, sin cambios).
+- R24, R25 → `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`.
+- R26 → `planes-version-por-empresa.test.ts` («R26: servi_app … 42501»).
+- R27 → `procesar-jobs-plan-cambio.test.ts` («SLT-128 R5, R27…»).
+
+### Verificación
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: 0 errores.
+- `pnpm exec eslint` sobre los nueve archivos: limpio.
+- `pnpm exec vitest run`, uno a la vez: `planes-service.test.ts` 89 verdes. Integración, todos saltados sin
+  `HAY_BASE_DE_DATOS` (los corre el CI): `planes-cambio-por-empresa` 11, `planes-version-por-empresa` 3,
+  `planes-cambio-correos` 13, `planes-cambio-programado` 12, `factura-plataforma-cambio-plan` 21,
+  `planes-periodicidad-ordenes` 11, `plan-precio-historial` 9, `planes-historial` 8.
+
+Veredicto: T7 completa; los casos de integración se revisaron contra la migración y el repositorio, pero solo el CI los corre.
