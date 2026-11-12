@@ -87,7 +87,8 @@
   existentes NO cambian. **Hecho:** verde.
 - [x] **T5.4** `tests/components/CierresAdminDetalleUnico.test.tsx` y
   `tests/components/CierresBodegaAdminDetalleUnico.test.tsx`: la acción doble devuelve
-  `porcentajesReparto` y el módulo montado pinta «(94 %)» / «(97 %)» en «Dinero». **Hecho:** verde;
+  `porcentajesReparto` y el módulo montado pinta «(94 %)» / «(90 %)» en «Dinero» (el doble de bodega es `[90, 10, 0]`: ₡30.700 / ₡3.300 / ₡0
+  de ₡34.000). **Hecho:** verde;
   rojo si se quita la copia de `abrirDetalle` o del mapeador (mutación temporal anotada).
 
 ## T6 — E2E (frontend_dev) · depende de T2 y T5
@@ -102,16 +103,16 @@
 
 ## T7 — Cierre (implementer)
 
-- [ ] **T7.1** Ponerse al día con `dev` (SLT-106 «Bodega satélite: A consolidar con la cola única» y
+- [x] **T7.1** Ponerse al día con `dev` (SLT-106 «Bodega satélite: A consolidar con la cola única» y
   SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» tocan `detalle-cierre-vista.ts` y
   `e2e/cierres-rediseno.spec.ts`; `design.md > Orden de merge`). **Hecho:** sin conflictos pendientes.
-- [ ] **T7.2** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` y grupo `dinero`
+- [x] **T7.2** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` y grupo `dinero`
   (`pnpm exec playwright test --project=dinero`) verdes en local. **Hecho:** salida con `INIT_EXIT`
   anotada en `progress/impl_SLT-111.md`.
-- [ ] **T7.3** Anotar en `progress/features/SLT-111.md` la herencia para SLT-107 «Bodega satélite:
+- [x] **T7.3** Anotar en `progress/features/SLT-111.md` la herencia para SLT-107 «Bodega satélite:
   Solicitados y su cierre de bodega en lectura» (`design.md > Lo que hereda SLT-107`) y las respuestas
   a PA1/PA2. **Hecho:** líneas escritas.
-- [ ] **T7.4** Mapa `R → test` en `progress/impl_SLT-111.md`, igual a `## Trazabilidad`. **Hecho:**
+- [x] **T7.4** Mapa `R → test` en `progress/impl_SLT-111.md`, igual a `## Trazabilidad`. **Hecho:**
   todos los R con un test que existe y está verde.
 
 ## Trazabilidad
@@ -119,11 +120,11 @@
 | R | Test |
 |---|---|
 | R70 | Reparto: `tests/unit/utils/porcentajes-reparto.test.ts` · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` · `tests/components/DetalleCierreDinero.test.tsx` · `e2e/cierres-rediseno.spec.ts` (A y B6). Señales de la cola (SLT-102, sin cambios): `tests/integration/db/cierres-cola-senales-sql-real.test.ts` · `tests/unit/utils/cola-cierres-vista.test.ts` |
-| R71 | `tests/unit/guards/liquidacion-money-safe.test.ts` (existente, sin cambios) · `tests/components/DetalleCierreDinero.test.tsx` (el cliente pinta el entero recibido, sin derivarlo) |
+| R71 | `tests/unit/guards/liquidacion-money-safe.test.ts` (censa además `lib/utils/porcentajes-reparto.ts` desde la review vuelta 1) · `tests/components/DetalleCierreDinero.test.tsx` (el cliente pinta el entero recibido, sin derivarlo) |
 | R72 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (sin escrituras) · tests existentes de los dos servicios verdes sin cambiar aserciones (T2.2) |
 | R260 | `tests/unit/utils/porcentajes-reparto.test.ts` ([94, 6], [97, 3, 0], [77, 22, 1], [89, 11], [34, 33, 33], [100, 0]) · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MA, MB, BX) |
 | R261 | `tests/unit/utils/porcentajes-reparto.test.ts` (total 0, parte negativa, no suman) · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MC, BY) |
-| R262 | `tests/unit/utils/porcentajes-reparto.test.ts` (mutación 3 de T4.1: `Math.round` cae) · revisión de `lib/utils/porcentajes-reparto.ts` sin `Number(`/`parseFloat(` |
+| R262 | `tests/unit/utils/porcentajes-reparto.test.ts` › «aritmetica exacta (R262)»: «0,10 / 0,20 de 0,30 → [33, 67]» y «48 250,10 / 1 750,20 de 50 000,30 → [96, 4]» (una versión con `parseFloat`/`Number` da `null` y cae) · `tests/unit/guards/liquidacion-money-safe.test.ts` (censa `lib/utils/porcentajes-reparto.ts`: un `Number(` la pone roja) |
 | R263 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MA central; MB central y adminSatelite) · `e2e/cierres-rediseno.spec.ts` (escenario A) |
 | R264 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (BX, BY) · `e2e/cierres-rediseno.spec.ts` (B6) |
 | R265 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (sin escrituras; mensajero: mismas sentencias MA = MB; bodega: servicio = repositorio en BX y BY) |

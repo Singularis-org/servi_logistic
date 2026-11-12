@@ -52,17 +52,7 @@ leído para derivar la URL (validada en booleano: local y con la base `slt111_re
 
 ### R → test (tanda backend)
 
-| R | Test |
-|---|---|
-| R70 (reparto) | `tests/unit/utils/porcentajes-reparto.test.ts` · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (señales: SLT-102, sin cambios) |
-| R72 | integración «R265/R72: sin escrituras…» (huella de `cierre_dia`, `cierre_bodega`, `cierre_detail`, `gestion_orden` igual antes y después) · tests de servicio existentes verdes sin cambiar aserciones |
-| R260 | unit «mayor resto…» (6 literales + orden + suma 100 + 7 partes) · integración MA, MB, BX |
-| R261 | unit «los casos null» (total 0, prepagada, total negativo, parte negativa, no suman, sin partes, no-céntimos) · integración MC, BY |
-| R262 | unit «aritmética exacta» · mutación 3 (`Math.round`) cae · sin `Number(`/`parseFloat(` en la regla |
-| R263 | integración MA (central), MB (central y adminSatelite) |
-| R264 | integración BX, BY |
-| R265 | integración «R265/R72» (mensajero MA = MB; bodega servicio = repositorio). Ver ABIERTO de T0.3 |
-| R266, R267, R71 | frontend_dev (T5-T6) |
+Unido en el mapa único de «Vuelta 1 de review» (T7.4).
 
 ### Salidas
 
@@ -120,11 +110,7 @@ como en `gate.yml`, puerto 3000, candado `e2e.lock` tomado y liberado. Sin `migr
 
 ### R → test (tanda frontend)
 
-| R | Test |
-|---|---|
-| R71 | `DetalleCierreDinero.test.tsx` «el cliente pinta el entero recibido, sin derivarlo» ([61, 39], que no sale de los importes) |
-| R266 | `DetalleCierreDinero.test.tsx` «SLT-111 — la barra del reparto…» (franjas 94%/6% y 97%/3%/0%, «(0 %)» de PA1, `null` y ausente sin barra ni «%») |
-| R267 | `detalle-cierre-vista.test.ts` «SLT-111 — el reparto en % llega tal cual» (mensajero, bodega, `null`, ausente, `/cierre-dia` sin el campo) · `CierresAdminDetalleUnico.test.tsx` «SLT-111 R267» (admin y satélite) · `CierresBodegaAdminDetalleUnico.test.tsx` «SLT-111 R267» · `e2e/cierres-rediseno.spec.ts` (A central [94, 6]; B6 [77, 22, 1]) |
+Unido en el mapa único de «Vuelta 1 de review» (T7.4).
 
 Literales a mano: A 94.350/100.000 → 94 r.35, 5 r.65 → [94, 6]; B6 7.680/2.200/120 de 10.000 → 76 r.8,
 22, 1 r.2 → [77, 22, 1]; doble de Limón 30.700/3.300/0 de 34.000 → 90 r.29, 9 r.70, 0 → [90, 10, 0].
@@ -148,3 +134,67 @@ Literales a mano: A 94.350/100.000 → 94 r.35, 5 r.65 → [94, 6]; B6 7.680/2.2
 Tras F4 se volvió a hacer `next build` con el código original (no queda `.next` mutado).
 
 Veredicto: R265 reescrito y T5-T6 hechas; mapeo verde en unit, componente y E2E, 4/4 mutaciones matadas.
+
+## Vuelta 1 de review (backend_dev) — 2026-11-12
+
+Arreglos de `progress/review_SLT-111.md` (commit ddc498e8). Primer plano, sin subagentes; vitest contra
+`slt111_reparto`. Sin `migrate reset`, `prisma generate` ni `git stash`.
+
+### Archivos
+
+- `tests/unit/utils/porcentajes-reparto.test.ts` (B1): +2 casos en «aritmetica exacta (R262)», a mano:
+  «0,10 / 0,20 de 0,30 → [33, 67]» (céntimos 10/20 de 30: pisos 33/66, restos 10/20) y
+  «48 250,10 / 1 750,20 de 50 000,30 → [96, 4]» (restos 0,4996 / 0,5004). En float las dos sumas no
+  cuadran (`0.1 + 0.2 !== 0.3`, `48250.1 + 1750.2 !== 50000.3`) y saldría `null`.
+- `tests/unit/guards/liquidacion-money-safe.test.ts` (B1): `lib/utils/porcentajes-reparto.ts` al final del censo.
+- `specs/SLT-111-cifras-reparto-senales-cola/tasks.md`: m1 (T5.4 «(90 %)», doble `[90, 10, 0]` =
+  ₡30.700 / ₡3.300 / ₡0 de ₡34.000); filas R262 y R71 de la trazabilidad; T7.1-T7.4 `[x]`.
+- `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (m2): el comentario ya no da R265
+  por abierto; el N+1 previo de bodega queda como deuda de la épica.
+- `progress/features/SLT-111.md` (T7.3): herencia para SLT-107.
+
+### Mutaciones (revertidas; `git diff lib/` vacío después)
+
+| # | Mutación | Resultado | Qué cae |
+|---|---|---|---|
+| V1 | `porcentajesReparto` entera en float (`parseFloat`/`Number`, suma `!==`, `Math.floor`, restos float) | matada | los 2 casos nuevos (`expected null to deeply equal [ 33, 67 ]` / `[ 96, 4 ]`); 20 verdes |
+| V2 | `const _t = Number(total);` en `lib/utils/porcentajes-reparto.ts` | matada | guardia «ningún archivo de la feature convierte un monto a número» |
+
+### T7 — cierre
+
+- **T7.1**: `git fetch` + `git rev-list --count HEAD..origin/dev` → **0** (origin/dev en c451f6bb). Sin merge.
+- **T7.2**: gate del leader `./init.sh` **`INIT_EXIT=0`** (2026-11-12, base `slt111_reparto`, log
+  `C:UsersArqDevAppDataLocalTempclaudeaab05f6b97f87a08ea1d74f-bdf8-43cf-8e34-62eab06db841scratchpadgate-111.log`).
+  E2E `e2e/cierres-rediseno.spec.ts --project=dinero`: **13/13** en local (tanda frontend). El grupo
+  `dinero` entero lo corre el job `e2e-grupo` en CI del PR #139.
+- **T7.3**: herencia para SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» en
+  `progress/features/SLT-111.md`; PA1/PA2 ya estaban.
+- **T7.4**: mapa único abajo, igual a `tasks.md > Trazabilidad`.
+
+### Mapa R → test (único)
+
+| R | Test |
+|---|---|
+| R70 | Reparto: `tests/unit/utils/porcentajes-reparto.test.ts` · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` · `tests/components/DetalleCierreDinero.test.tsx` · `e2e/cierres-rediseno.spec.ts` (A y B6). Señales de la cola (SLT-102, sin cambios): `tests/integration/db/cierres-cola-senales-sql-real.test.ts` · `tests/unit/utils/cola-cierres-vista.test.ts` |
+| R71 | `tests/unit/guards/liquidacion-money-safe.test.ts` (censa además `lib/utils/porcentajes-reparto.ts` desde la review vuelta 1) · `tests/components/DetalleCierreDinero.test.tsx` (el cliente pinta el entero recibido, sin derivarlo) |
+| R72 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (sin escrituras) · tests existentes de los dos servicios verdes sin cambiar aserciones (T2.2) |
+| R260 | `tests/unit/utils/porcentajes-reparto.test.ts` ([94, 6], [97, 3, 0], [77, 22, 1], [89, 11], [34, 33, 33], [100, 0]) · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MA, MB, BX) |
+| R261 | `tests/unit/utils/porcentajes-reparto.test.ts` (total 0, parte negativa, no suman) · `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MC, BY) |
+| R262 | `tests/unit/utils/porcentajes-reparto.test.ts` › «aritmetica exacta (R262)»: «0,10 / 0,20 de 0,30 → [33, 67]» y «48 250,10 / 1 750,20 de 50 000,30 → [96, 4]» (una versión con `parseFloat`/`Number` da `null` y cae) · `tests/unit/guards/liquidacion-money-safe.test.ts` (censa `lib/utils/porcentajes-reparto.ts`: un `Number(` la pone roja) |
+| R263 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MA central; MB central y adminSatelite) · `e2e/cierres-rediseno.spec.ts` (escenario A) |
+| R264 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (BX, BY) · `e2e/cierres-rediseno.spec.ts` (B6) |
+| R265 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (sin escrituras; mensajero: mismas sentencias MA = MB; bodega: servicio = repositorio en BX y BY) |
+| R266 | `tests/components/DetalleCierreDinero.test.tsx` (franjas, «(n %)», `null` sin barra) |
+| R267 | `tests/unit/utils/detalle-cierre-vista.test.ts` (mapeadores; `/cierre-dia` con `empresa: null`) · `tests/components/CierresAdminDetalleUnico.test.tsx` · `tests/components/CierresBodegaAdminDetalleUnico.test.tsx` · `e2e/cierres-rediseno.spec.ts` |
+
+### Salidas
+
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): `TC_EXIT=0`.
+- eslint sobre los 3 tests tocados: `LINT_EXIT=0`.
+- vitest (`slt111_reparto`): porcentajes-reparto (unit) + liquidacion-money-safe (guardia) +
+  cierre-reparto-porcentajes-sql-real (integración, ninguna `skipped`): **3 archivos, 36/36 passed**.
+- `pnpm run test:guardias`: 343/344 archivos, 4852 passed, 1 skipped, 4 rojos en
+  `dependencias-declaradas-presentes.guardia.test.ts`: el mismo previo y ajeno de la tanda backend
+  (este diff no toca `init.sh` ni esa guardia).
+
+Veredicto: B1, B2, m1 y m2 arreglados; R262 con un test que distingue Decimal de float y guardia money-safe sobre la regla.
