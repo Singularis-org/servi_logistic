@@ -81,7 +81,7 @@
   plan partido; entrar antes y después de F; salir la última; cambio de tipo mensual → bimestral.
 - [x] **T7.2** `tests/integration/db/planes-version-por-empresa.test.ts` (nuevo): R2, R12, R26 (triggers con SQL a
   mano, tarifa, `plan_de_la_empresa`, `planDeEmpresa`, `servi_app` → `42501` en las dos tablas).
-- [ ] **T7.3** `tests/integration/db/planes-cambio-correos.test.ts`: R20–R22; ajustar sus casos de R42 por plan.
+- [x] **T7.3** `tests/integration/db/planes-cambio-correos.test.ts`: R20–R22; ajustar sus casos de R42 por plan.
 - [ ] **T7.4** `tests/integration/db/planes-cambio-programado.test.ts`: R13, R15; ajustar los casos de aplicar
   entero (SL-24 R38) y de archivar con pendiente (SL-24 R40).
 - [ ] **T7.5** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R7 y R9; el caso m4 de SLT-118 R39 se

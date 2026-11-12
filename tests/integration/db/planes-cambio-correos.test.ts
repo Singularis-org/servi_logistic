@@ -307,6 +307,23 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45; S
     }
   });
 
+  it("SLT-128 R21: con 3 días o menos hasta SU recepción, solo el de 1 día; con más de 3 la otra empresa del mismo plan lleva los suyos", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["quincenal", "mensual"]);
+      // Guardado el 13 a las 09:00 de la plataforma: la quincenal lo recibe el 16 (3 días), la mensual el 1 (18).
+      await p.editar("2026-11-16", { nombre: "Plan cercano" }, new Date("2026-11-13T15:00:00.000Z"));
+      return { p, recordatorios: await trabajos(tx, "plan_recordatorio_cambio", p.planId) };
+    });
+    const [quincenal, mensual] = r.p.orgs;
+    expect(r.recordatorios.map((j) => [j.organizacionId, j.payload.dias, j.runAfter.toISOString()]).sort()).toEqual(
+      [
+        [quincenal.id, 1, cero("2026-11-15")],
+        [mensual.id, 7, cero("2026-11-24")],
+        [mensual.id, 1, cero("2026-11-30")],
+      ].sort(),
+    );
+  });
+
   it("SLT-128 R22, R17: el recordatorio avisa solo a SU empresa, con sus topes de ese momento, una vez aunque corra dos veces; la que entra antes de F tiene los suyos y no el de guardado", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, { topes: { porRol: { admin: 5 }, apiKeys: null } }, 1);
