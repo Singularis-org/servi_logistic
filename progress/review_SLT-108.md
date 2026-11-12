@@ -140,3 +140,52 @@ Ningún BLOQUEANTE.
 ## Veredicto
 
 **OK**: 0 bloqueantes, 4 menores.
+
+## Vuelta 2 (acotada a c2012fec..83740dd6, sin el merge de dev f3ea07da)
+
+Diff revisado: `git diff f3ea07da 83740dd6`. Tres archivos: `CierreDiaModule.tsx`,
+`tests/components/CierreFacturaPapel.test.tsx` y la bitácora. El commit arregla los 2 rojos de CI del
+PR #134.
+
+### Checklist
+
+- [x] **Producción.** El «Descargar» del detalle pasa de `async () => ({ status: "ok", filas: …map(…) })`
+  a `() => filasLocales(gestionesEnOrden(detallePasado.grupos), filaDescargaDetalleMensajero)`.
+  - Las columnas no cambian: siguen siendo `COLUMNAS_DESCARGA_DETALLE_MENSAJERO`.
+  - El contenido tampoco. Por debajo del tope, `filasLocales` (`components/shared/descarga-resultado.ts:112-121`)
+    devuelve exactamente `{ status: "ok", filas: filas.map(proyectar) }`, con el mismo proyector y el
+    mismo orden.
+  - Lo único nuevo es el tope común `descargaConfig.MAX_FILAS`: por encima no genera archivo y da el
+    mensaje accionable, nunca trunca.
+  - `filasLocales` ya estaba importado (`:102`). Es el mismo patrón que la línea 886 del módulo y que
+    `PagosRegistradosTabla`.
+  - `CierreDiaDetalleUnico.test.tsx` sigue afirmando las 7 columnas y la fila exacta, y sigue verde.
+- [x] **Test `CierreFacturaPapel.test.tsx`.** El caso pasa de «el mensajero monta la hoja» a «ni el
+  mensajero ni el admin la montan» y añade «el mensajero monta `<DetalleCierre>`».
+  - No se afloja: invierte la aserción por la decisión D12 y R161 de esta ficha, y sigue vigilando las
+    dos rutas.
+  - Gana una aserción positiva, `<DetalleCierre>`, que impide que el negativo pase en verde en un
+    archivo vacío o renombrado.
+  - La regla R11 de la feature 223 sigue cubierta sobre el componente suelto hasta SLT-115 «Retirar
+    los componentes de cierre sustituidos».
+- [x] **Mutación.** Volví a armar a mano `({ status: "ok", filas: …map(filaDescargaDetalleMensajero) })`:
+  ROJO en `ControlDescargaTransversal.test.tsx`, 1 de 16, con el mensaje «CierreDiaModule.tsx arma un
+  DescargaFilasResult a mano». Revertida con `git checkout --`; `git status` quedó limpio.
+- [x] **Comandos**, con la base `slt108_t0`:
+  - `vitest run` de `CierreFacturaPapel`, `ControlDescargaTransversal` y `CierreDiaDetalleUnico`:
+    53/53;
+  - ESLint de los 2 archivos: exit 0;
+  - `pnpm run typecheck`: exit 0.
+
+### Hallazgos
+
+- **m5 — menor (para el leader, no para el implementer).** Los dos rojos solo salieron en CI porque
+  los dos tests leen el fuente como texto y `vitest related` no los relaciona. La bitácora propone
+  un disparador (`docs/gate.md > Disparadores`) y no lo aplica. Queda en manos del leader.
+
+Sin regresiones sobre los hallazgos de la vuelta 1: m1-m4 siguen igual y m2 ya está anotado como
+deuda D66.
+
+### Veredicto vuelta 2
+
+**OK**: 0 bloqueantes, 1 menor nuevo.
