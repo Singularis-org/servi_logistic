@@ -279,3 +279,6 @@ Salida real:
   La integracion sola: 15/15.
 
 Veredicto: los cuatro arreglos de la review 1 aplicados; el hallazgo bloqueante queda cubierto por tipo y por test.
+
+## Gate del leader (2026-11-12)
+- Tras `npx prisma generate` desde este worktree, `./init.sh` con la base slt123_pago: `INIT_EXIT=0` (log `C:\Users\ArqDev\AppData\Local\Temp\claudeab05f6b97f87a08ea1d74f-bdf8-43cf-8e34-62eab06db841\scratchpad\gate-123.log`).

@@ -123,7 +123,7 @@
 
 ## T8 — Cierre
 
-- [ ] **T8.1** `./init.sh` en verde en el worktree. `INIT_EXIT=$?` escrito dentro del log.
+- [x] **T8.1** `./init.sh` en verde en el worktree. `INIT_EXIT=$?` escrito dentro del log.
 - [x] **T8.2** `progress/impl_SLT-123.md` con el mapa R → test (abajo), las mutaciones y el tamaño
   medido por `scripts/tamano-pr.mjs`.
 
