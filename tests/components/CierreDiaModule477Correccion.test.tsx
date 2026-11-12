@@ -21,6 +21,7 @@ import type {
 import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConRechazado } from "@/tests/fixtures/bloqueo-cierre";
+import type { CierreReenviable } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 
 // FICHA 477 (T5.4) — R25, R26 y R28 en la pantalla «Cierre del día». Los literales de las
 // aserciones están ESCRITOS aquí a propósito y no importados del módulo: comparar un texto contra
@@ -115,9 +116,39 @@ function emptyGrupos(): CierreGrupos {
   };
 }
 
+/** El cierre rechazado de `bloqueoConRechazado()` se llama `c-viejo` en la fixture. */
+const CIERRE = "c-viejo";
+
+/**
+ * SLT-109 (R240): la lectura `ok` del rechazado por reenviar que haría `page.tsx` con
+ * `verCierrePasado`: sus gestiones vigentes, su motivo y sus importes congelados.
+ */
+function leido(p: { motivo?: string | null; grupos?: CierreGrupos } = {}): CierreReenviable {
+  return {
+    estado: "ok",
+    cierre: {
+      cierreId: CIERRE,
+      estado: "rechazado",
+      destinoTipo: "bodega_satelite",
+      destinoZonaId: "z1",
+      totales: { efectivo: "15000.00", simpe: "0.00", transferencia: "0.00", general: "15000.00" },
+      totalPagoMensajero: "1500.00",
+      totalIngresoBodegaRechazos: "0.00",
+      solicitadoAt: "2026-10-14T23:00:00.000Z",
+      resueltoAt: "2026-10-15T14:00:00.000Z",
+      motivoRechazo: p.motivo ?? null,
+    },
+    grupos: p.grupos ?? emptyGrupos(),
+    ordenesSinGestion: [],
+    sinGestionRegistrado: true,
+    rechazosDeTienda: [],
+  };
+}
+
 function renderModule(props: {
   correcciones?: CorreccionCierreDTO[];
   bloqueo?: BloqueoDetalle;
+  reenviable?: CierreReenviable;
 }) {
   const pagina = paginaInicial([]);
   vi.mocked(listarCierresPasadosPaginado).mockResolvedValue({
@@ -136,13 +167,16 @@ function renderModule(props: {
         cierresPasados={pagina}
         bloqueo={props.bloqueo ?? SIN_BLOQUEO}
         correcciones={props.correcciones}
+        reenviable={props.reenviable ?? (props.bloqueo?.aReenviarPrimero ? leido() : undefined)}
       />
     </SWRConfig>,
   );
 }
 
-/** El cierre rechazado de `bloqueoConRechazado()` se llama `c-viejo` en la fixture. */
-const CIERRE = "c-viejo";
+/** El detalle de la página (SLT-109: «Tu cierre del día» en marco página). */
+function detalle(): HTMLElement {
+  return screen.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -158,111 +192,89 @@ afterEach(() => {
   cleanup();
 });
 
-describe("477 — panel «Corregir el cierre rechazado» (R25/R26)", () => {
-  it("sin correcciones no pinta ningún panel", () => {
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R62, R247, R248): el
+// panel suelto «Corregir el cierre rechazado» de la 477 pasa a ser el detalle único del rechazado en
+// marco página. El motivo va en la franja; la explicación y las órdenes en corrección, en la pestaña
+// «Corregir»; el «Devolver a gestión», en la fila de «Gestiones» (canvas). Las gestiones del cierre
+// salen de su lectura (`verCierrePasado`), no de `correcciones`.
+describe("477 → SLT-109 — el rechazado como página, con «Corregir» (R62, R247, R248)", () => {
+  it("sin nada que reenviar no hay «Corregir» ni la región vieja", () => {
     renderModule({ correcciones: [] });
     expect(screen.queryByRole("region", { name: REGION })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Corregir" })).toBeNull();
   });
 
-  it("R25: muestra el motivo del rechazo y cada gestión vigente con su «Devolver a gestión»", () => {
+  it("R247: la franja dice el motivo entre comillas y el detalle abre en «Corregir», con sus tres pestañas", () => {
+    const grupos = emptyGrupos();
+    grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado", numRemision: "REM-A", destinatario: "Ana" })];
+    grupos.reprogramado = [makeGestion({ gestionId: "g2", resultado: "reprogramado", numRemision: "REM-B", destinatario: "Beto" })];
     renderModule({
       bloqueo: bloqueoConRechazado(),
-      correcciones: [
-        {
-          cierreId: CIERRE,
-          motivoRechazo: "Falta el efectivo de la REM-A",
-          gestiones: [
-            makeGestion({
-              gestionId: "g1",
-              resultado: "entregado",
-              numRemision: "REM-A",
-              destinatario: "Ana",
-              montoRecibido: "15000.00",
-              pagoMensajero: "1500.00",
-            }),
-            makeGestion({
-              gestionId: "g2",
-              resultado: "reprogramado",
-              numRemision: "REM-B",
-              destinatario: "Beto",
-            }),
-          ],
-          ordenesEnCorreccion: [],
-        },
-      ],
+      reenviable: leido({ motivo: "Falta el efectivo de la REM-A", grupos }),
+      correcciones: [{ cierreId: CIERRE, motivoRechazo: "Falta el efectivo de la REM-A", gestiones: [], ordenesEnCorreccion: [] }],
     });
 
-    const panel = screen.getByRole("region", { name: REGION });
-    expect(panel).toHaveTextContent("Motivo del rechazo: Falta el efectivo de la REM-A");
-    const lista = within(panel).getByRole("list", { name: "Gestiones del cierre" });
-    expect(within(lista).getAllByRole("listitem")).toHaveLength(2);
-    expect(
-      within(panel).getByRole("button", { name: "Devolver a gestión la orden REM-A · Ana" }),
-    ).toBeEnabled();
-    expect(
-      within(panel).getByRole("button", { name: "Devolver a gestión la orden REM-B · Beto" }),
-    ).toBeEnabled();
-    // El aviso del corte nocturno (Pregunta abierta 1, por defecto) y sin la sigla prohibida.
+    expect(screen.queryByRole("region", { name: REGION })).toBeNull();
+    const franja = within(detalle()).getByText("Motivo del rechazo:").closest('[role="status"]');
+    expect(franja).toHaveTextContent("«Falta el efectivo de la REM-A»");
+    expect(within(detalle()).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(detalle()).getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Corregir",
+      "Gestiones (2)",
+      "Rechazados por la tienda (0)",
+    ]);
+    expect(screen.getByRole("tab", { name: "Corregir" })).toHaveAttribute("aria-selected", "true");
+    // Importes congelados de ESE cierre (15.000 / 1.500), no los de hoy (0).
+    expect(within(screen.getByRole("group", { name: "Recaudado" })).getAllByText("₡15.000").length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("group", { name: "Tu ganancia" })).getByText("₡1.500")).toBeInTheDocument();
+  });
+
+  it("R248: «Corregir» explica cómo y avisa del corte, sin la sigla prohibida", () => {
+    renderModule({ bloqueo: bloqueoConRechazado(), correcciones: [] });
+
+    const panel = screen.getByRole("tabpanel", { name: "Corregir" });
+    expect(within(panel).getByRole("region", { name: "Cómo corregir" })).toHaveTextContent(
+      "Si una gestión quedó mal, devuélvela a gestión: sale de este cierre, sus totales se recalculan y la orden vuelve a Entregas para que la gestiones de nuevo. Cuando termines, vuelve a enviar el cierre a aprobación.",
+    );
     expect(panel).toHaveTextContent(
       "Envíalo hoy: si el corte de la noche llega antes, lo que corregiste pasa a un cierre nuevo.",
     );
     expect(panel.textContent ?? "").not.toMatch(/\bSLA\b/);
   });
 
-  it("R25: «Devolver a gestión» usa el mismo modal y la misma action, con el id de la gestión", async () => {
-    const user = userEvent.setup();
-    renderModule({
-      bloqueo: bloqueoConRechazado(),
-      correcciones: [
-        {
-          cierreId: CIERRE,
-          motivoRechazo: null,
-          gestiones: [
-            makeGestion({ gestionId: "g1", resultado: "entregado", numRemision: "REM-A", destinatario: "Ana" }),
-          ],
-          ordenesEnCorreccion: [],
-        },
-      ],
-    });
+  it("R247: sin motivo, la franja no deja un hueco: lo dice", () => {
+    renderModule({ bloqueo: bloqueoConRechazado(), reenviable: leido({ motivo: null }) });
+    const franja = within(detalle()).getByText("Motivo del rechazo:").closest('[role="status"]');
+    expect(franja).toHaveTextContent("La bodega no indicó un motivo.");
+  });
 
-    const panel = screen.getByRole("region", { name: REGION });
-    // Sin motivo, el panel no deja un hueco: lo dice.
-    expect(panel).toHaveTextContent("Motivo del rechazo: La bodega no indicó un motivo.");
-    await user.click(
-      within(panel).getByRole("button", { name: "Devolver a gestión la orden REM-A · Ana" }),
-    );
-    const dialogo = await screen.findByRole("dialog");
+  it("R243, R247: «Devolver a gestión» va en la fila de «Gestiones» y usa el mismo modal y la misma action", async () => {
+    const user = userEvent.setup();
+    const grupos = emptyGrupos();
+    grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado", numRemision: "REM-A", destinatario: "Ana" })];
+    renderModule({ bloqueo: bloqueoConRechazado(), reenviable: leido({ grupos }) });
+
+    await user.click(screen.getByRole("tab", { name: "Gestiones (1)" }));
+    await user.click(screen.getByRole("button", { name: "Devolver a gestión la orden REM-A · Ana" }));
+    const dialogo = await screen.findByRole("dialog", { name: "Devolver la orden a gestión" });
     await user.click(within(dialogo).getByRole("button", { name: "Devolver a gestión" }));
 
+    await vi.waitFor(() => expect(deshacerMock).toHaveBeenCalledWith({ gestionId: "g1" }));
     expect(deshacerMock).toHaveBeenCalledTimes(1);
-    expect(deshacerMock).toHaveBeenCalledWith({ gestionId: "g1" });
+    await vi.waitFor(() => expect(successMock).toHaveBeenCalledWith("Gestión deshecha; la orden volvió a tu lista para gestionar."));
     expect(refreshMock).toHaveBeenCalled();
   });
 
-  it("R25: la gestión que registró la tienda sale deshabilitada y dice por qué", () => {
-    renderModule({
-      bloqueo: bloqueoConRechazado(),
-      correcciones: [
-        {
-          cierreId: CIERRE,
-          motivoRechazo: "x",
-          gestiones: [
-            makeGestion({
-              gestionId: "g9",
-              resultado: "entregado",
-              numRemision: "REM-T",
-              destinatario: "Tina",
-              desdeAyudaTienda: true,
-            }),
-          ],
-          ordenesEnCorreccion: [],
-        },
-      ],
-    });
+  it("R244: la gestión que registró la tienda sale deshabilitada y dice por qué", async () => {
+    const user = userEvent.setup();
+    const grupos = emptyGrupos();
+    grupos.entregado = [
+      makeGestion({ gestionId: "g9", resultado: "entregado", numRemision: "REM-T", destinatario: "Tina", desdeAyudaTienda: true }),
+    ];
+    renderModule({ bloqueo: bloqueoConRechazado(), reenviable: leido({ grupos }) });
 
-    const boton = within(screen.getByRole("region", { name: REGION })).getByRole("button", {
-      name: /^Devolver a gestión la orden REM-T · Tina — no disponible: /,
-    });
+    await user.click(screen.getByRole("tab", { name: "Gestiones (1)" }));
+    const boton = screen.getByRole("button", { name: /^Devolver a gestión la orden REM-T · Tina — no disponible: / });
     expect(boton).toBeDisabled();
     expect(boton).toHaveAttribute(
       "title",
@@ -270,7 +282,7 @@ describe("477 — panel «Corregir el cierre rechazado» (R25/R26)", () => {
     );
   });
 
-  it("R26: lista las órdenes en corrección con su estado y el enlace a Entregas", () => {
+  it("R248: lista las órdenes en corrección con su estado, y «Ir a Entregas» solo en la que falta", () => {
     renderModule({
       bloqueo: bloqueoConRechazado(),
       correcciones: [
@@ -279,46 +291,51 @@ describe("477 — panel «Corregir el cierre rechazado» (R25/R26)", () => {
           motivoRechazo: "x",
           gestiones: [],
           ordenesEnCorreccion: [
-            orden({ ordenId: "o1", numRemision: "REM-HECHA", regestionada: true }),
-            orden({ ordenId: "o2", numRemision: "REM-FALTA", regestionada: false }),
+            orden({ ordenId: "o1", numRemision: "REM-HECHA", destinatario: "Ana", regestionada: true }),
+            orden({ ordenId: "o2", numRemision: "REM-FALTA", destinatario: "Beto", regestionada: false }),
           ],
         },
       ],
     });
 
-    const panel = screen.getByRole("region", { name: REGION });
-    const lista = within(panel).getByRole("list", { name: "Órdenes por volver a gestionar" });
-    const filas = within(lista).getAllByRole("listitem");
+    const seccion = screen.getByRole("region", { name: "Órdenes por volver a gestionar" });
+    const filas = within(seccion).getAllByRole("listitem");
     expect(filas).toHaveLength(2);
-    const hecha = filas.find((f) => f.textContent?.includes("REM-HECHA"));
-    const falta = filas.find((f) => f.textContent?.includes("REM-FALTA"));
+    const hecha = filas.find((f) => f.textContent?.includes("REM-HECHA")) as HTMLElement;
+    const falta = filas.find((f) => f.textContent?.includes("REM-FALTA")) as HTMLElement;
     expect(hecha).toHaveTextContent("Ya la volviste a gestionar");
+    expect(hecha).toHaveTextContent("Ana");
     expect(hecha).not.toHaveTextContent("Falta volver a gestionarla");
+    expect(within(hecha).queryByRole("link")).toBeNull();
     expect(falta).toHaveTextContent("Falta volver a gestionarla");
-    expect(within(panel).getByRole("link", { name: "Ir a Entregas" })).toHaveAttribute(
-      "href",
-      "/mis-asignaciones/reparto",
-    );
+    expect(falta).toHaveTextContent("Beto");
+    expect(within(falta).getByRole("link", { name: "Ir a Entregas" })).toHaveAttribute("href", "/mis-asignaciones/reparto");
   });
 
-  it("R25: un panel por cada cierre rechazado", () => {
+  it("R248: sin órdenes en corrección, esa sección no se pinta", () => {
+    renderModule({
+      bloqueo: bloqueoConRechazado(),
+      correcciones: [{ cierreId: CIERRE, motivoRechazo: "x", gestiones: [], ordenesEnCorreccion: [] }],
+    });
+    expect(screen.getByRole("region", { name: "Cómo corregir" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Órdenes por volver a gestionar" })).toBeNull();
+  });
+
+  it("R240 (PA1): «Corregir» es la del cierre que se pinta; las órdenes de otro rechazado no salen", () => {
     renderModule({
       bloqueo: bloqueoConRechazado(),
       correcciones: [
-        { cierreId: "c1", motivoRechazo: "uno", gestiones: [], ordenesEnCorreccion: [] },
-        { cierreId: "c2", motivoRechazo: "dos", gestiones: [], ordenesEnCorreccion: [] },
+        { cierreId: "otro-rechazado", motivoRechazo: "dos", gestiones: [], ordenesEnCorreccion: [orden({ ordenId: "o9", numRemision: "REM-OTRO" })] },
+        { cierreId: CIERRE, motivoRechazo: "uno", gestiones: [], ordenesEnCorreccion: [orden({ ordenId: "o1", numRemision: "REM-ESTE" })] },
       ],
     });
-    expect(screen.getByRole("region", { name: `${REGION} (1 de 2)` })).toHaveTextContent(
-      "Motivo del rechazo: uno",
-    );
-    expect(screen.getByRole("region", { name: `${REGION} (2 de 2)` })).toHaveTextContent(
-      "Motivo del rechazo: dos",
-    );
+    const seccion = screen.getByRole("region", { name: "Órdenes por volver a gestionar" });
+    expect(seccion).toHaveTextContent("REM-ESTE");
+    expect(seccion).not.toHaveTextContent("REM-OTRO");
   });
 });
 
-describe("477 — confirmación de re-solicitud del rechazado (R28)", () => {
+describe("477 — confirmación de re-solicitud del rechazado (R28; SLT-109 R250: desde el pie del detalle)", () => {
   async function abrirConfirmacion(correcciones: CorreccionCierreDTO[]) {
     const user = userEvent.setup();
     renderModule({ bloqueo: bloqueoConRechazado(), correcciones });

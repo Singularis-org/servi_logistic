@@ -370,25 +370,25 @@ describe("486 · R16 · S3 vistas del mensajero", () => {
     expect(srcDe(dialogo)).toBe(URL_2);
   });
 
-  it("en vivo, tabla de rechazos: 3 fotos → «Ver evidencia (3)», 1 → «Ver evidencia», 0 → «—»", async () => {
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242): las tablas en
+  // vivo por resultado se fueron; el cierre de hoy usa la fila única, y su evidencia está en la fila
+  // desplegada, con el mismo botón con contador y el mismo visor.
+  /** Despliega la fila única de esa gestión del cierre de hoy y la devuelve. */
+  async function filaDeHoy(user: Usuario, gestionId: string, remision: string, destinatario: string) {
+    const lista = screen.getByRole("region", { name: "Órdenes del cierre" });
+    await desplegar(user, lista, `Detalle de la orden ${remision} · ${destinatario}`);
+    return lista.querySelector(`[data-gestion="${gestionId}"]`) as HTMLElement;
+  }
+
+  it("en vivo → SLT-109, lista única: 3 fotos → «Ver evidencia (3)», 1 → «Ver evidencia», 0 → ninguno", async () => {
     const user = montarCierreDia(gruposMixtos());
-    const tabla = screen.getByRole("region", { name: "Devolución a origen por rechazo" });
 
-    const filaDe = (remision: string) =>
-      within(tabla).getByText(remision).closest("tr") as HTMLElement;
+    expect(rotulosEvidencia(await filaDeHoy(user, "g1", "REM-TRES", "Tere Tres"))).toEqual(["Ver evidencia (3)"]);
+    expect(rotulosEvidencia(await filaDeHoy(user, "g2", "REM-UNA", "Úrsula Una"))).toEqual(["Ver evidencia"]);
+    expect(rotulosEvidencia(await filaDeHoy(user, "g3", "REM-NADA", "Nico Nada"))).toEqual([]);
 
-    expect(rotulosEvidencia(filaDe("REM-TRES"))).toEqual(["Ver evidencia (3)"]);
-    expect(rotulosEvidencia(filaDe("REM-UNA"))).toEqual(["Ver evidencia"]);
-    expect(rotulosEvidencia(filaDe("REM-NADA"))).toEqual([]);
-    // La celda de la columna «Evidencia» de esa fila dice «—», como hoy.
-    const encabezados = within(tabla)
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent?.trim() ?? "");
-    const col = encabezados.indexOf("Evidencia");
-    expect(col).toBeGreaterThanOrEqual(0);
-    expect(within(filaDe("REM-NADA")).getAllByRole("cell")[col]).toHaveTextContent(/^—$/);
-
-    await user.click(within(filaDe("REM-TRES")).getByRole("button", { name: "Ver evidencia (3)" }));
+    const tres = screen.getByRole("region", { name: "Órdenes del cierre" }).querySelector('[data-gestion="g1"]') as HTMLElement;
+    await user.click(within(tres).getByRole("button", { name: "Ver evidencia (3) de la orden REM-TRES · Tere Tres" }));
     const dialogo = await visor();
     // R137 en /cierre-dia: el contexto de la fila llega al visor.
     expect(dialogo).toHaveAccessibleDescription("Orden REM-TRES · Tere Tres · foto 1 de 3");
@@ -397,15 +397,14 @@ describe("486 · R16 · S3 vistas del mensajero", () => {
     expect(srcDe(dialogo)).toBe(URL_3);
   });
 
-  it("en vivo, tabla de incidentes: un botón con contador y el visor llega a la 2", async () => {
+  it("en vivo → SLT-109, un incidente: un botón con contador y el visor llega a la 2", async () => {
     const user = montarCierreDia(
       grupos478({ incidente: [incidente("g7", "REM-INC", "Iván Incidente", TRES)] }),
     );
-    const tabla = screen.getByRole("region", { name: "Incidente" });
-    const fila = within(tabla).getByText("REM-INC").closest("tr") as HTMLElement;
+    const fila = await filaDeHoy(user, "g7", "REM-INC", "Iván Incidente");
     expect(rotulosEvidencia(fila)).toEqual(["Ver evidencia (3)"]);
 
-    await user.click(within(fila).getByRole("button", { name: "Ver evidencia (3)" }));
+    await user.click(within(fila).getByRole("button", { name: "Ver evidencia (3) de la orden REM-INC · Iván Incidente" }));
     const dialogo = await visor();
     await user.click(within(dialogo).getByRole("button", { name: "Siguiente" }));
     expect(srcDe(dialogo)).toBe(URL_2);

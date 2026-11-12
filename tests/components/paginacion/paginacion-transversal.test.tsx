@@ -847,12 +847,15 @@ describe("T M.1 · R53 — los 3 listados del Anexo IV siguen completos, sin con
       />,
     );
 
-    // La sección de «Entregadas» es la del Anexo IV; la OTRA tabla de este módulo («Cierres
-    // solicitados») sí pagina, y por eso la comprobación se acota a la región del grupo.
-    const seccion = screen.getByRole("region", { name: "Entregado" });
-    expect(within(seccion).getAllByRole("row")).toHaveLength(FILAS_ANEXO_IV + 1);
-    // El contador por grupo, que es lo que paginar volvería mentira: diría «(25)» de 30.
-    expect(seccion).toHaveTextContent(`(${FILAS_ANEXO_IV})`);
+    // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242): la vista
+    // agrupada es ahora la lista única de «Gestiones» del detalle, con su filtro por resultado; la
+    // OTRA lista de este módulo («Cierres solicitados») sí pagina, y por eso la comprobación se acota
+    // a la región de la lista.
+    const seccion = screen.getByRole("region", { name: "Órdenes del cierre" });
+    expect(seccion.querySelectorAll("[data-gestion]")).toHaveLength(FILAS_ANEXO_IV);
+    // Los contadores, que es lo que paginar volvería mentira: dirían 25 de 30.
+    expect(screen.getByRole("tab", { name: `Gestiones (${FILAS_ANEXO_IV})` })).toBeInTheDocument();
+    expect(screen.getByText(`Entregado ${FILAS_ANEXO_IV}`)).toBeInTheDocument();
     expect(within(seccion).queryAllByRole("navigation")).toHaveLength(0);
 
     // Contraprueba de que la pantalla SÍ sabe paginar cuando toca: su otra tabla lleva control.
