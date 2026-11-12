@@ -6,34 +6,37 @@
 
 ## T0 — Comprobaciones previas (backend_dev)
 
-- [ ] **T0.1** Confirmar en `origin/dev` (`git fetch` + `git grep`) que nadie emite ya
+- [x] **T0.1** Confirmar en `origin/dev` (`git fetch` + `git grep`) que nadie emite ya
   `porcentajesReparto` en `lib/` ni existe `lib/utils/porcentajes-reparto.ts`, y que las señales de la
   cola (SLT-102) siguen como dice `design.md > Lo que ya existe`. **Hecho:** resultado anotado en
   `progress/impl_SLT-111.md`; si ya está, PARA y avisa al leader.
-- [ ] **T0.2** Recalcular a mano los literales de `design.md > Servidor 1` y del corpus de
+- [x] **T0.2** Recalcular a mano los literales de `design.md > Servidor 1` y del corpus de
   integración (con `pagoTiendaEmpresa`, `cobradoSobreRecaudado` y `paraLaCentral` leídas, no
   ejecutadas) y fijar la siembra exacta de MA, MB y MC (tarifa congelada que da esos importes).
   **Hecho:** anotados en `progress/impl_SLT-111.md`; si alguno no casa,
   PARA y reporta (no se cambia el literal para que pase).
-- [ ] **T0.3** Medir en `dev`, antes de tocar nada, el número de sentencias SQL de `verCierreDetalle`
+- [x] **T0.3** Medir en `dev`, antes de tocar nada, el número de sentencias SQL de `verCierreDetalle`
   con 1 y con 3 gestiones y de `verCierreBodegaDetalle` con 1 y con 2 cierres del día (espía de
   `_postgres-real`). **Hecho:** anotado; si ya difieren por tamaño (N+1 previo), PARA y avisa: R265 se
   reescribe, no se arregla aquí.
+  > 2026-11-12 backend_dev: mensajero sin N+1 (MA = MB). Bodega con N+1 PREVIO en
+  > `findCierreBodegaConDetalle` (BX 40, BY 24 sentencias): ABIERTO para el leader en
+  > `progress/impl_SLT-111.md > T0.3`; el test afirma servicio = repositorio (el reparto no añade lecturas).
 
 ## T1 — La regla (backend_dev) · depende de T0
 
-- [ ] **T1.1** Crear `lib/utils/porcentajes-reparto.ts` con la firma y el algoritmo de
+- [x] **T1.1** Crear `lib/utils/porcentajes-reparto.ts` con la firma y el algoritmo de
   `design.md > Servidor 1` (`Prisma.Decimal`, céntimos, `divToInt`/`mod`; sin `Number(`,
   `parseFloat(`, `Math.round` ni división decimal). **Hecho:** typecheck y lint verdes.
-- [ ] **T1.2** `tests/unit/utils/porcentajes-reparto.test.ts` con todas las filas de la tabla de
+- [x] **T1.2** `tests/unit/utils/porcentajes-reparto.test.ts` con todas las filas de la tabla de
   literales (escritas a mano), suma 100 en los no nulos y orden de salida = orden de entrada.
   **Hecho:** verde; y rojo con cada mutación de T4.1 (1-4).
 
 ## T2 — Emitirlo en los dos detalles (backend_dev) · depende de T1
 
-- [ ] **T2.1** `ICierresAdminService.ts` y `ICierresBodegaAdminService.ts`: `porcentajesReparto?:
+- [x] **T2.1** `ICierresAdminService.ts` y `ICierresBodegaAdminService.ts`: `porcentajesReparto?:
   number[] | null` en la rama `ok` del detalle, con su doc (`design.md > Contratos I/O`).
-- [ ] **T2.2** `CierresAdminService.verCierreDetalle` emite
+- [x] **T2.2** `CierresAdminService.verCierreDetalle` emite
   `porcentajesReparto([pagoTienda, cobradoSobreLoRecaudado], resumen.totales.general)`;
   `CierresBodegaAdminService.verCierreBodegaDetalle` emite
   `porcentajesReparto([resumen.paraLaCentral, resumen.totalPagoMensajero,
@@ -45,7 +48,7 @@
 
 ## T3 — Integración contra Postgres real (backend_dev) · depende de T2
 
-- [ ] **T3.1** Nuevo `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` con el corpus
+- [x] **T3.1** Nuevo `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` con el corpus
   y las aserciones de `design.md > Verificación > Integración` (MA [94, 6]; MB [89, 11] para la central
   y para el adminSatelite de su zona; MC `null`; BX [97, 3, 0]; BY `null`; sin escrituras; mismas
   sentencias SQL para MA y MB, y para BX y BY). Servicios reales sobre repositorios reales (patrón
@@ -55,7 +58,7 @@
 
 ## T4 — Mutaciones (backend_dev) · depende de T3
 
-- [ ] **T4.1** Aplicar una a una, correr T1.2 y T3.1, revertir:
+- [x] **T4.1** Aplicar una a una, correr T1.2 y T3.1, revertir:
   1. empate: gana la **última** parte (orden por índice descendente) → BX da [96, 3, 1];
   2. los puntos que faltan van siempre a la primera parte, sin mirar el resto → MA da [95, 5];
   3. `Math.round` por parte en vez de mayor resto (con su conversión) → BX suma 101;
