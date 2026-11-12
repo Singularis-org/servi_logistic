@@ -202,7 +202,17 @@ export function modoAdminDe(estado: CierreEstado): Modo {
 
 // ═══ Cifras (R6, R7, R8) ═══════════════════════════════════════════════════════════════════════
 
-export type CifraId = "recaudado" | "paraTienda" | "paraCentral" | "pago" | "leQueda" | "gestiones" | "tuGanancia";
+export type CifraId =
+  | "recaudado"
+  | "paraTienda"
+  | "paraCentral"
+  | "pago"
+  | "leQueda"
+  | "gestiones"
+  | "tuGanancia"
+  // SLT-106 (R196): las tarjetas de «A consolidar» de la satélite.
+  | "ganaBodega"
+  | "centralDebe";
 
 export interface Cifra {
   id: CifraId;
@@ -214,6 +224,8 @@ export interface Cifra {
   /** Bajo «Recaudado» van los métodos de pago que no valen cero (R7). */
   conMetodos: boolean;
   destacada: boolean;
+  /** SLT-106 (R196): caja en tono de aviso («La central debe»). Ausente = tono normal. */
+  aviso?: boolean;
 }
 
 function cifra(
