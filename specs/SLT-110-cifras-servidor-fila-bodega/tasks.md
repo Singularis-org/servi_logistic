@@ -6,16 +6,16 @@
 
 ## T0 — Comprobaciones previas (backend_dev)
 
-- [ ] **T0.1** Confirmar en `origin/dev` que nadie emitió ya `fulfillmentCargadoAt` ni
+- [x] **T0.1** Confirmar en `origin/dev` que nadie emitió ya `fulfillmentCargadoAt` ni
   `tarifaFaltante` en `findCierreBodegaConDetalle` (`git fetch` + `git grep` sobre `origin/dev`).
   **Hecho:** resultado anotado en `progress/impl_SLT-110.md`; si ya está, PARA y avisa al leader.
-- [ ] **T0.2** Calcular a mano los literales del corpus de `design.md > Verificación` con
+- [x] **T0.2** Calcular a mano los literales del corpus de `design.md > Verificación` con
   `derivarIngresoOrden` leída (no ejecutada) y anotarlos. **Hecho:** los literales casan con los del
   design; si alguno no casa, PARA y reporta (no se cambia el literal para que pase).
 
 ## T1 — Helper de la consulta (backend_dev) · depende de T0
 
-- [ ] **T1.1** Extraer `cargosFulfillmentVigentes(prisma, cierreIds)` en
+- [x] **T1.1** Extraer `cargosFulfillmentVigentes(prisma, cierreIds)` en
   `lib/repositories/CierresAdminRepository.ts` (forma y `where` de `design.md > Servidor 1`);
   `findCierreByIdEnAlcance` lo usa con `[cierreId]`. Renombrar `LecturaDetalleMensajero` →
   `LecturaDetalleFila` con su comentario. **Hecho:** typecheck verde y
@@ -24,25 +24,25 @@
 
 ## T2 — Detalle de bodega (backend_dev) · depende de T1
 
-- [ ] **T2.1** En `lib/repositories/CierresBodegaAdminRepository.ts`: añadir
+- [x] **T2.1** En `lib/repositories/CierresBodegaAdminRepository.ts`: añadir
   `"ordenFulfillmentMovimiento"` al `Pick`; una llamada a `cargosFulfillmentVigentes` con los ids de
   `cierresDiaRows`; pasar `{ cargoFulfillmentAt }` a `toPendienteRowDesdeSnapshot`. **Hecho:**
   typecheck verde; los dobles de Prisma de los tests unitarios que llaman a
   `findCierreBodegaConDetalle` reciben `ordenFulfillmentMovimiento.findMany` (devolviendo `[]`) y
   siguen verdes con sus mismas aserciones.
-- [ ] **T2.2** Test unitario del repositorio con dobles: un detalle con dos cierres del día hace
+- [x] **T2.2** Test unitario del repositorio con dobles: un detalle con dos cierres del día hace
   **una** llamada a `ordenFulfillmentMovimiento.findMany` con los dos ids en el `where`, y la gestión
   cuyo último movimiento es cargo lleva su fecha. **Hecho:** test verde; rojo con la llamada movida
   dentro del bucle por cierre del día.
 
 ## T3 — Integración contra Postgres real (backend_dev) · depende de T2
 
-- [ ] **T3.1** Nuevo `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` con el corpus
+- [x] **T3.1** Nuevo `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` con el corpus
   y las aserciones de `design.md > Verificación` (A, B, C, señuelo D, igualdad con el detalle de
   `/cierres-admin`, una consulta, ninguna escritura). Patrón de SLT-101: `describeSiHayBase`, fallo
   ruidoso sin catálogos, nada de `return` temprano. **Hecho:** verde contra la base desechable y
   visible como `passed` (no `skipped`) en la salida.
-- [ ] **T3.2** Mutaciones de la consulta y del mapper, una a una, con el test de T3.1:
+- [x] **T3.2** Mutaciones de la consulta y del mapper, una a una, con el test de T3.1:
   1. quitar `in: cierreIds` del `where` del helper;
   2. `secuencia: "desc"` → `"asc"`;
   3. `tipo === "cargo"` → `true`;
