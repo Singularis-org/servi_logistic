@@ -247,3 +247,7 @@ satélite rechazada → «Motivo: «Faltan paquetes»»).
 
 T2.2-T2.6 y T3 hechos y verdes (unit/componentes 759/759, guardias solo con el rojo del baseline,
 `./init.sh` OK, E2E 105/105); tamaño 22/40 archivos y 1 465 líneas, por encima de ~1 400.
+
+## Cierre del leader (2026-11-12)
+- Review vuelta 1 OK (b6b36de0). Menores a deuda: `ERROR_PROPIA` sin uso en pantalla; regex de voseo con `` no ve tildes finales; R164 dice «min(P,E)» y el código usa P − min(P,E) (corregir redacción en SLT-138).
+- Tamaño real 1 465 líneas (427 producción, 1 038 tests).

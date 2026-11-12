@@ -83,7 +83,7 @@ tabla) pasa de 1 000, **para** y avisa al leader: decide Carlos entre el corte e
   test en rojo.
   **Hecho:** verde con base desechable, y las cinco mutaciones en rojo, con la aserción que cae
   anotada en `progress/impl_SLT-137.md`. Si alguna sobrevive, el test no está terminado.
-- [ ] **T1.4** `./init.sh` verde. **Hecho:** tamaño medido y anotado; aplica el disparo de `## Tamaño`.
+- [x] **T1.4** `./init.sh` verde. **Hecho:** tamaño medido y anotado; aplica el disparo de `## Tamaño`.
 
 ## T2 — Pantalla: la cola con rol mensajero (frontend_dev)
 
