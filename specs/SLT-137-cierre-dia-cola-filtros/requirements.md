@@ -209,7 +209,11 @@ Requisitos en alcance: R60, R71, R72, R155-R160, R163-R166, R180 y R181. Su test
   cierre, `pendientePagoMensajero`:
   - en un `aprobado`: lo que queda por pagarle de ese cierre, con la regla y la función de la cola
     del admin (`derivarPendienteCierre`):
-    - `min(P, E)`: `P` es el pago al mensajero congelado del cierre y `E` el efectivo congelado;
+    - `P − min(P, E)` (la parte del pago que el efectivo del día no cubrió): `P` es el pago al
+      mensajero congelado del cierre y `E` el efectivo congelado;
+      <!-- Corrección de redacción 2026-11-12 (spec de SLT-138, deuda de la review de SLT-137): decía
+      «`min(P, E)`», pero el código (`calcularSplitPago(P, E).pendiente`) y la tabla de la prueba
+      de integración (C1: 4 500 − 1 000 = 3 500) usan `P − min(P, E)`. El comportamiento no cambia. -->
     - se suman los premios vivos del cierre;
     - se restan los pagos **vigentes** registrados contra ese cierre (un pago anulado no resta);
     - el resultado es un string de escala 2, nunca negativo;
