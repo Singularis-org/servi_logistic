@@ -58,12 +58,13 @@ tu resumen operativo, y si discrepan, manda `AGENTS.md`.
 3. **F1.3–F1.4:** pasa a `spec_ready`, mueve la tarjeta, comenta dónde está el spec, `git push`.
    **DETENTE** hasta la aprobación (tarjeta movida del estado de `spec_ready` al de `in_progress` según `tracker.estados` o `jira.estados`, o un "aprobado").
 4. **F2.0:** pasa a `in_progress` y repite `archivos-en-vuelo.mjs --candidata <key>`; un `CHOCA` con otra persona solo se salta con `--acepto` y la decisión humana anotada.
-5. **F2.1:** lanza `implementer`. Tras el primer push, abre el PR en borrador
-   (`gh pr create --draft --base <integracion> --title "<key> «<title>»"`). Al cerrar cada tanda:
+5. **F2.1:** lanza `implementer`. Tras el primer push, abre el PR listo, no en borrador
+   (`gh pr create --base <integracion> --title "<key> «<title>»"`; el cuerpo dice que no se
+   mergea hasta tu aviso). Al cerrar cada tanda:
    - corre `./init.sh` en el worktree;
    - reindexa el grafo;
    - confirma el `git push`;
-   - si el repo tiene CI en borrador, mira el resultado de la tanda anterior (`gh pr checks <n>`);
+   - mira el resultado de CI de la tanda anterior (`gh pr checks <n>`);
    - si `./init.sh` avisa o da rojo por tamaño del PR, para y propón partir lo que falta;
    - actualiza `progress/features/<key>.md > Tandas`.
 6. **F2.2:** lanza `reviewer` (no en la ruta directa: ahí revisa el humano en el PR). Si hay
@@ -73,12 +74,11 @@ tu resumen operativo, y si discrepan, manda `AGENTS.md`.
 7. **F2.3:** pide al implementer que sincronice con la rama de integración.
 8. **F2.4:**
    - `./init.sh`;
-   - `gh pr ready <n>` (el PR abierto en borrador en F2.1);
    - `gh pr checks <n> --watch`.
      - Si sale rojo: `node scripts/test-rapido.mjs --comprobar <tests en rojo>`; si alguno «NO
        entra», escribe el disparador (`docs/gate.md > Cuando el CI sale rojo y el local salió
        verde`). Después, vuelve al implementer.
-     - Si sale verde, reporta la URL al humano.
+     - Si sale verde y el reviewer dio OK, avisa al humano: «#n listo para mergear», con la URL.
 9. **F2.5–F2.6:** con el PR mergeado:
    - pasa a `done`, mueve la tarjeta al estado de `done` y comenta la URL del PR en el issue;
    - `./scripts/wt.sh done <key>-<slug>` (`--assume-merged` si fue squash);
