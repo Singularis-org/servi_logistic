@@ -32,7 +32,7 @@ import {
  *  (b) recoger → Rechazar + foto + motivo → gestión `devolucion_a_origen_por_rechazo`;
  *  (c) recoger → Reprogramar (mañana) + motivo → gestión `reprogramado`;
  *  (d) recoger → Entregar MIXTO, 8.000 = 5.000 efectivo + 3.000 transferencia → en `/cierre-dia`
- *      «Totales del día» dice Efectivo 5.000 y Transferencia 3.000 (feature 213/R35: lo capturado
+ *      «Recaudado» dice Efectivo 5.000 y Transferencia 3.000 (feature 213/R35: lo capturado
  *      aquí ES la `E` del `min(P, E)` con que se paga al mensajero).
  *
  * Desde la ficha 454 la gestión NO cambia el estado de la orden (lo cambia la aprobación del
@@ -185,9 +185,11 @@ test.describe("Mis asignaciones — recoger y gestionar", () => {
 
     // R35: los totales del día no se recalculan aquí, los ALIMENTA lo capturado arriba.
     await page.goto("/cierre-dia");
-    const totales = page.getByRole("region", { name: "Totales del día" });
+    // SLT-109 (R241): «Totales del día» pasó a la cifra «Recaudado» del detalle, con los métodos que no
+    // valen cero debajo.
+    const totales = page.getByRole("group", { name: "Recaudado", exact: true });
     await expect(totales).toBeVisible();
-    // Cada total es una pareja rótulo/importe (`TotalItem`): el contenedor del rótulo exacto.
+    // Cada método es una pareja rótulo/importe (`dt`/`dd`): el contenedor del rótulo exacto.
     const efectivo = totales.getByText("Efectivo", { exact: true }).locator("..");
     const transferencia = totales.getByText("Transferencia", { exact: true }).locator("..");
     await expect(efectivo).toContainText(monto(5));
