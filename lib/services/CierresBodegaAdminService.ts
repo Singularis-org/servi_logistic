@@ -43,6 +43,7 @@ import {
   partesPorTienda,
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
+import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
 import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 
 // Roles autorizados (R2): acceso total (maestro/admin, bodega central). El alcance es
@@ -480,6 +481,12 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       partesPorTienda: partesDeLasTiendas,
       paraLaCentral: resumen.paraLaCentral,
       efectivoCubreDescuentos: resumen.efectivoCubreDescuentos,
+      // SLT-111 (R264, R265): el reparto en % de lo recaudado AGREGADO, de los snapshots que ya
+      // estan en `resumen`. Orden fijo: central, mensajeros, bodega satelite; base, el `general`.
+      porcentajesReparto: porcentajesReparto(
+        [resumen.paraLaCentral, resumen.totalPagoMensajero, resumen.totalIngresoBodegaRechazos],
+        resumen.totales.general,
+      ),
     };
   }
 

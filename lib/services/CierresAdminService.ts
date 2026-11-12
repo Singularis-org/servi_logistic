@@ -81,6 +81,7 @@ import {
   partesPorTienda,
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
+import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
 import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 import { desglosarIngresoBodegaPorOrigen } from "@/lib/utils/desglose-rechazos-sla";
 // FICHA 398: el destino de la orden corregida sale del PUNTO UNICO de la regla `resultado ->
@@ -1048,6 +1049,12 @@ export class CierresAdminService implements ICierresAdminService {
         found.cierre.estado === "aprobado" || found.cierre.estado === "rechazado"
           ? (found.resueltoPorNombre ?? null)
           : null,
+      // SLT-111 (R263, R265): el reparto en % de lo recaudado, de los importes de arriba y sin
+      // ninguna lectura mas. Orden fijo: tienda y luego empresa; base, el `general` del snapshot.
+      porcentajesReparto: porcentajesReparto(
+        [pagoTienda, cobradoSobreLoRecaudado],
+        resumen.totales.general,
+      ),
     };
   }
 
