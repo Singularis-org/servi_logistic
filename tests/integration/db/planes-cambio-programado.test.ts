@@ -308,7 +308,10 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         precio: { tipo: "monto", mensual: "30000", descuentos: {} },
       });
       const trabajos = await trabajosDeAplicar(tx, p.planId);
-      const historialAntes = await tx.historialAccion.count({ where: { organizacionId: { in: p.orgs } } });
+      // Por id y no por `created_at`: dentro de una transacción `now()` no avanza y el orden no separa el antes.
+      const historialAntes = (
+        await tx.historialAccion.findMany({ where: { organizacionId: { in: p.orgs } }, select: { id: true } })
+      ).map((f) => f.id);
 
       // El sin empresa: un minuto antes de F no se adelanta; en F espera a las recepciones (las dos mensuales, el 1).
       await correrAplicar(tx, delPlan(trabajos), despuesDe(rige("2026-11-15"), -1));
@@ -331,9 +334,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       // Idempotente: ninguno de los tres encuentra ya nada que hacer.
       for (const t of trabajos) await correrAplicar(tx, t, despuesDe(rige("2026-12-01"), 5));
       const filasDeModulos = await tx.historialAccion.findMany({
-        where: { organizacionId: { in: p.orgs } },
-        orderBy: { createdAt: "asc" },
-        skip: historialAntes,
+        where: { organizacionId: { in: p.orgs }, id: { notIn: historialAntes } },
         select: { organizacionId: true, accion: true, valorNuevo: true, actorUsuarioId: true, actorNombre: true },
       });
       // Desde ahora lo ya usado cuenta contra el tope nuevo: 2 tiendas activas y tope 1.
