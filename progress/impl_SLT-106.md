@@ -133,3 +133,110 @@ otro worktree y se re-corrió `vitest related` con salida en un subdirectorio pr
 ### Veredicto
 
 T0 y T1 hechos: servidor de «A consolidar» listo (R47, R67, R194, R195, R199, R200 con test; 6 mutaciones matadas); T0.2 positivo, sin bloqueos para T2.
+
+## Tanda 2 — frontend_dev (T2, T3, T4, T5.2), 2026-11-12
+
+En primer plano y sin subagentes. Para vitest, la base desechable `slt106_consolidar`. Para el E2E, una
+base NUEVA `slt106_e2e` (creada, con `prisma migrate deploy` y `db:seed`), `next build` y
+`NEXT_PUBLIC_APP_URL=http://localhost:3000`, como en `gate.yml`. Sin `prisma generate` ni `migrate reset`.
+
+### Archivos
+
+Producción:
+- `components/private/cierres/cola/cola-cierres-vista.ts`: `PestanaConsolidar`, columnas de bodega ·
+  satélite, `tablistCola(tipo, rol)`, `folioConsolidable`, `aprobadoCola`, `senalesConsolidable`,
+  `tarjetasAConsolidar`, `piePorConsolidar`.
+- `components/private/cierres/cola/cola-cierres-labels.ts`: los textos nuevos («tú») de `design.md`.
+- `components/private/cierres/cola/ColaCierres.tsx`: variante `tipo` bodega + `rol` satélite
+  (`PanelAConsolidar`, `PieConsolidar`, `TablaColaConsolidar`); `ColaCierresBodegaProps.rol: "central"`.
+- `components/private/cierres/detalle/CifrasCierre.tsx` (`ariaLabel?`, rejilla de 5, tono de aviso) y
+  `detalle-cierre-vista.ts` (`CifraId` + `aviso?`).
+- `components/private/cierres/dialogos/dialogos-labels.ts`: `RESUMEN_SOLICITUD_BODEGA_TEXTO`.
+- `app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx` y `page.tsx`.
+- **Fuera de `## Archivos esperados`:** `lib/types/cierre-bodega.ts`. `ListarConsolidablesResult` pasa a
+  `ListarPaginadoResult<CierreConsolidableCola>` (una línea de tipo). La acción ya devolvía la fila completa
+  del servicio, pero el alias la tipaba como Lite y la pantalla no compilaba con los `items` de la cola.
+  Sin cambios en `lib/actions/` ni en tiempo de ejecución.
+
+Tests:
+- Nuevo: `tests/components/ColaCierresConsolidar.test.tsx`.
+- Adaptados: `cola-cierres-vista.test.ts`, `ConsolidacionBodegaRefresco.test.tsx`, `ColasPaginacion.test.tsx`,
+  `BajoRiesgoPaginacion.test.tsx`, `CierreIngresoBodegaTarjetaListado.test.tsx`,
+  `descarga/CierresDescarga.test.tsx`, `descarga/CierresDescargaColumnas.test.tsx`, `censo-tablas.ts`,
+  `liquidacion-money-safe.test.ts`.
+- **Fuera de la lista:**
+  - `ColaCierres.test.tsx`: se anotó el tipo del parámetro de `onPestana`, que con tres variantes la unión
+    ya no infiere.
+  - `cobertura-tablas.guardia.test.ts`: fijaba 2 montajes de la cola; ahora son 3.
+
+E2E:
+- `cierre-bodega-satelite.spec.ts`: el paso 1 recorre la cola (aviso con el nombre → aprobar → tarjetas,
+  fila, «Ver su cierre», resumen del diálogo).
+- `ajuste-pago-mensajero-cierre.spec.ts` y `tarifas-activacion.spec.ts`: leen la fila y la tarjeta en vez
+  del comprobante.
+
+### Decisiones de implementación
+
+- `PestanaCola` NO se ensancha (difiere de `design.md`). `PestanaConsolidar = "aConsolidar" | "solicitados"`
+  va aparte y `ColaComun<P>` es genérica. Ensancharla obligaba a `CierresAdminModule` y
+  `CierresBodegaAdminModule` a aceptar ids que nunca reciben.
+- «Solicitados» es un `TabsContent keepMounted`: la lista de hoy sigue montada (oculta), como con el
+  `PanelConmutado` de antes. Así no pierde su página y se revalida tras solicitar (SL-44).
+- Se quita del módulo la prop `totalNetoAgregado`: ya no se pinta (R204), aunque sigue en el contrato del servicio.
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R32 | `ColaCierresConsolidar.test.tsx` («Solicitados» sin tarjetas, aviso ni botón) |
+| R37 | `e2e/cierre-bodega-satelite.spec.ts` (paso 1, conmutador «Tipo de cierre») |
+| R45 | `ColaCierresConsolidar.test.tsx` (tarjetas, fila); `e2e/cierre-bodega-satelite.spec.ts` |
+| R46 / R47 | `ColaCierresConsolidar.test.tsx` (bloqueada); `ConsolidacionBodegaRefresco.test.tsx`; E2E (aviso con el nombre, botón deshabilitado) |
+| R48 / R207 | `ConsolidacionBodegaRefresco.test.tsx` (`<dl>` con los 4 pares, literales); E2E (los cuatro `dd`) |
+| R67 | `ColaCierresConsolidar.test.tsx` (celda = `paraLaCentral`, con contraprueba); E2E (₡7.000) |
+| R71 | `ColaCierresConsolidar.test.tsx` (strings sin tocar, signo); `liquidacion-money-safe.test.ts` (con contraprueba) |
+| R190 | `ColaCierresConsolidar.test.tsx`; `cola-cierres-vista.test.ts`; `ColasPaginacion.test.tsx`; E2E (`role="tab"`) |
+| R191 | `ColaCierresConsolidar.test.tsx` (misma fila, fuera del panel); `CierresDescarga.test.tsx` |
+| R192 | `cola-cierres-vista.test.ts`; `ColaCierresConsolidar.test.tsx`; `e2e/ajuste-pago-mensajero-cierre.spec.ts` («1 pago ajustado», ₡1.800) |
+| R193 | `ColaCierresConsolidar.test.tsx`; `ConsolidacionBodegaRefresco.test.tsx` (`push` del enlace); E2E (abre «Detalle del cierre · Cierre de <m>») |
+| R196 | `cola-cierres-vista.test.ts`; `ColaCierresConsolidar.test.tsx`; `CierreIngresoBodegaTarjetaListado.test.tsx`; `e2e/tarifas-activacion.spec.ts` (870 sin nota; filas con 300 y 570) |
+| R197 | `cola-cierres-vista.test.ts`; `ColaCierresConsolidar.test.tsx` |
+| R198 | `ColaCierresConsolidar.test.tsx` (`aria-describedby`; el aviso entre la barra y las tarjetas) |
+| R201 | `ColaCierresConsolidar.test.tsx`; `ConsolidacionBodegaRefresco.test.tsx` |
+| R202 / R204 / R205 | `ConsolidacionBodegaRefresco.test.tsx`; R204 además `censo-tablas.ts` + `cobertura-tablas.guardia` |
+| R203 | `ColaCierresConsolidar.test.tsx`; `ColasPaginacion.test.tsx` (nombre de la paginación) |
+| R206 | `cola-cierres-vista.test.ts` (columnas y tablists de hoy); `ColaCierres.test.tsx` y `ColaCierresBodega.test.tsx` sin cambios en sus aserciones; E2E `cierres-rediseno.spec.ts` |
+
+### Contrapruebas
+
+- money-safe: se puso `money(String(Number(paraLaCentralAgregado)))` en el módulo y la guardia se puso roja
+  («ningún archivo de la feature convierte un monto a número»). Restaurado (`cmp` igual): 15/15 en verde.
+- `ColaCierresConsolidar.test.tsx`: con otro `paraLaCentral` en el doble (41234.00), la celda pasa a ₡41.234.
+
+### Salidas
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0 (también tras `next build`).
+- `pnpm exec eslint` sobre los 21 archivos de código y tests y sobre los 3 E2E → exit 0, sin salida.
+- `vitest run` de los tests tocados:
+  - vista + cola (4 archivos): 112 passed;
+  - `ColaCierresConsolidar`: 21 passed;
+  - `ConsolidacionBodegaRefresco`: 9 passed;
+  - `ColasPaginacion`: 6;
+  - `BajoRiesgoPaginacion`: 5;
+  - `CierreIngresoBodegaTarjetaListado`: 11;
+  - `CierresDescarga` + `CierresDescargaColumnas`: 43;
+  - guardias (`cobertura-tablas`, `liquidacion-money-safe`, `contadores-cabecera`, `cierre-bodega-vocabulario`,
+    `paginacion-transversal`, `paginacion-dominios`): 78 passed;
+  - `e2e-sin-saltos`: 38 passed.
+- `pnpm exec vitest related --run <los 9 archivos de producción>` → 214 archivos: 213 passed, 1 failed.
+  - El rojo es `tests/integration/wallet-page.test.tsx`: un *timeout* de 20 s con la máquina cargada, que
+    arrastró una segunda aserción. Corrido solo: 19/19 en verde.
+- E2E (`dinero`, base nueva `slt106_e2e`, puerto 3000):
+  - corrida 1: `cierre-bodega-satelite`, `ajuste-pago-mensajero-cierre` y `tarifas-activacion` → **15 passed**;
+  - corrida 2, sobre la misma base, más `cierres-rediseno` (abre «Bodega» como central) → **27 passed**;
+  - las dos con 0 failed, 0 flaky y 0 skipped.
+- T5.2 (R72): `git diff --name-only origin/dev...HEAD` → ningún archivo en `db/` ni en `lib/actions/`.
+
+### Veredicto (tanda 2)
+
+T2, T3, T4 y T5.2 hechos: la satélite consolida desde la cola única, cada R de pantalla tiene test y los E2E pasan en verde dos veces seguidas. T5.1 queda para el leader.

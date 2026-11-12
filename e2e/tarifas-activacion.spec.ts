@@ -87,14 +87,6 @@ async function abrirResuelto(page: Page, m: MensajeroE2E): Promise<Locator> {
   return detalle;
 }
 
-/** La columna de una tarjeta de cierre, que vive detrás de su desplegable. */
-async function ajustesDeLaTarjeta(comprobante: Locator, m: MensajeroE2E): Promise<Locator> {
-  await comprobante.getByRole("button", { name: `Ver detalles del cierre de ${m.nombre}` }).click();
-  const ajustes = comprobante.getByRole("region", { name: "Ajustes" });
-  await expect(ajustes).toBeVisible();
-  return ajustes;
-}
-
 /**
  * Despliega la única gestión de ese resultado y devuelve su tarjeta de cobro.
  *
@@ -348,16 +340,25 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     }
 
     // R71: la consolidación junta los dos cierres, así que el total se lee como nuevo sobre 300 + 570.
+    // SLT-106 «Bodega satélite: A consolidar con la cola única» (R196, D19): el total es la tarjeta «Gana la
+    // bodega satélite» = 870, SIN la nota «por devoluciones a origen» (hay modelo nuevo en el conjunto); el
+    // comprobante de cada consolidable salió de la pantalla y cada fila pinta su «Gana bodega»: 300 y 570.
     await satelite.goto("/cierres-admin");
     await satelite.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
     const bodega = satelite.getByRole("region", { name: "Cierre de bodega" });
-    await expect(bodega.getByRole("region", { name: "Ingreso de bodega a consolidar", exact: true })).toContainText(importe(870));
-    await expect(bodega.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen a consolidar" })).toHaveCount(0);
+    const ganaBodega = bodega
+      .getByRole("group", { name: "Cifras a consolidar" })
+      .getByRole("group", { name: "Gana la bodega satélite", exact: true });
+    await expect(ganaBodega.locator('[data-cifra="ganaBodega"]')).toHaveText(importe(870, { solo: true }));
+    await expect(ganaBodega.getByText("por devoluciones a origen")).toHaveCount(0);
     const aConsolidar = bodega.getByRole("region", { name: "Cierres del día a consolidar" });
-    const consolidableNuevo = await ajustesDeLaTarjeta(aConsolidar.getByRole("region", { name: `Comprobante del cierre de ${cierreNuevo.m.nombre}` }), cierreNuevo.m);
-    await expect(consolidableNuevo.getByText("Ingreso de bodega", { exact: true })).toBeVisible();
-    const consolidableViejo = await ajustesDeLaTarjeta(aConsolidar.getByRole("region", { name: `Comprobante del cierre de ${cierreViejo.m.nombre}` }), cierreViejo.m);
-    await expect(consolidableViejo.getByText("Ingreso de bodega por devoluciones a origen", { exact: true })).toBeVisible();
+    // «Gana bodega» es la 6.ª columna (Folio · Mensajero · Aprobado · Recaudado · Pago · Gana bodega).
+    await expect(filaDeCola(aConsolidar, cierreViejo.m.nombre).getByRole("cell").nth(5)).toHaveText(
+      importe(300, { solo: true }),
+    );
+    await expect(filaDeCola(aConsolidar, cierreNuevo.m.nombre).getByRole("cell").nth(5)).toHaveText(
+      importe(570, { solo: true }),
+    );
     await satelite.context().close();
   });
 

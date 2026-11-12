@@ -81,7 +81,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
 
 ## T2 — Lógica pura de la cola (`frontend_dev`, depende de T1.2)
 
-- [ ] **T2.1** — `cola-cierres-vista.ts` y `cola-cierres-labels.ts`: `PestanaCola` con `aConsolidar` /
+- [x] **T2.1** — `cola-cierres-vista.ts` y `cola-cierres-labels.ts`: `PestanaCola` con `aConsolidar` /
   `solicitados`; columnas de bodega · satélite; `tablistCola(tipo, rol)`; `folioConsolidable`,
   `aprobadoCola`, `senalesConsolidable`, `tarjetasAConsolidar`, `piePorConsolidar`; textos de
   `design.md > Textos nuevos`. `detalle-cierre-vista.ts`: `CifraId` + `aviso?`. **Hecho:**
@@ -96,14 +96,14 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
     con nuevo; «1 mensajero · …» / «3 mensajeros · …»; «Debe llegar» destacada; los valores son los
     strings de entrada sin tocar (R196, R71);
   - `piePorConsolidar`: los tres textos de R197 y `undefined` con `"vacio"`.
-- [ ] **T2.2** [P] — `CifrasCierre.tsx`: `ariaLabel?`, rejilla de 5, caja en tono de aviso.
+- [x] **T2.2** [P] — `CifrasCierre.tsx`: `ariaLabel?`, rejilla de 5, caja en tono de aviso.
   **Hecho:** `tests/components/DetalleCierreDinero.test.tsx` y los demás del detalle verdes sin tocar
   (con 3 y 4 cajas no cambia nada); el tono lo cubre T3.1.
-- [ ] **T2.3** [P] — `dialogos-labels.ts`: `RESUMEN_SOLICITUD_BODEGA_TEXTO`. **Hecho:** typecheck.
+- [x] **T2.3** [P] — `dialogos-labels.ts`: `RESUMEN_SOLICITUD_BODEGA_TEXTO`. **Hecho:** typecheck.
 
 ## T3 — Componentes (`frontend_dev`, depende de T2)
 
-- [ ] **T3.1** — `ColaCierres.tsx`: variante bodega · satélite (`TablaColaConsolidar`, aviso,
+- [x] **T3.1** — `ColaCierres.tsx`: variante bodega · satélite (`TablaColaConsolidar`, aviso,
   tarjetas, pie con botón, panel `solicitados`); `ColaCierresBodegaProps.rol: "central"`. **Hecho:**
   nuevo `tests/components/ColaCierresConsolidar.test.tsx` lee del DOM con literales:
   - `tablist` «Cierre de bodega por etapa» con «A consolidar 3» y «Solicitados 8» (R190);
@@ -120,7 +120,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
   - región «Cierres del día a consolidar», carga, error y vacío con los textos de R203; descripción
     con y sin zona (R203);
   - contraprueba: con el `paraLaCentral` de la fila cambiado en el doble, la celda cambia.
-- [ ] **T3.2** — `ConsolidacionBodegaModule.tsx` y `page.tsx` (`design.md > ConsolidacionBodegaModule`).
+- [x] **T3.2** — `ConsolidacionBodegaModule.tsx` y `page.tsx` (`design.md > ConsolidacionBodegaModule`).
   **Hecho:** `tests/components/ConsolidacionBodegaRefresco.test.tsx` adaptado y verde con:
   - tras `ok`: toast, diálogo cerrado, `mutate` de las dos claves y `refresh` (R205);
   - el diálogo con `<dl>` «Resumen del cierre de bodega a solicitar»: Recaudado, Pago a mensajeros,
@@ -128,7 +128,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
     (literales) y título/descripción/botón de hoy (R48, R207);
   - sin zona: aviso de hoy + lista de solicitados, sin `tablist`, tarjetas ni botón (R202);
   - no hay región «Totales a consolidar», «Central debe» ni «Comprobante del cierre de …» (R204).
-- [ ] **T3.3** [P] — Censos: `tests/unit/descarga/censo-tablas.ts` (montajes de `ColaCierres` +
+- [x] **T3.3** [P] — Censos: `tests/unit/descarga/censo-tablas.ts` (montajes de `ColaCierres` +
   `ConsolidacionBodegaModule.tsx`; ajustar la entrada de «Cierres del día a consolidar» de la
   cabecera si la guardia la exige) y `tests/unit/guards/liquidacion-money-safe.test.ts` (añadir
   `ConsolidacionBodegaModule.tsx`). **Hecho:** `cobertura-tablas.guardia` y
@@ -137,13 +137,13 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
 
 ## T4 — Tests y E2E existentes (`frontend_dev`, depende de T3)
 
-- [ ] **T4.1** — Adaptar, **sin quitar lo que vigilan**: `tests/components/paginacion/ColasPaginacion.test.tsx`
+- [x] **T4.1** — Adaptar, **sin quitar lo que vigilan**: `tests/components/paginacion/ColasPaginacion.test.tsx`
   (las tarjetas «Cifras a consolidar» no cambian al pasar de página; botón en el pie),
   `tests/components/paginacion/BajoRiesgoPaginacion.test.tsx`,
   `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx` (el rótulo por modelo pasa a la nota
   de la tarjeta: R196) y `tests/components/descarga/CierresDescarga.test.tsx` (el «Descargar» de cada
   pestaña, R191). **Hecho:** verdes; cada aserción que cambió de localizador conserva el mismo número.
-- [ ] **T4.2** — E2E (base desechable nueva, `NEXT_PUBLIC_APP_URL` como en `gate.yml`):
+- [x] **T4.2** — E2E (base desechable nueva, `NEXT_PUBLIC_APP_URL` como en `gate.yml`):
   - `e2e/cierre-bodega-satelite.spec.ts`: con un mensajero con cierre `solicitado`, el aviso nombra a
     ese mensajero y el botón está deshabilitado (R46, R47); tras aprobarlo, las tarjetas y la fila con
     importes escritos a mano (recaudado, pago, bodega y «A la central» = la resta a mano) (R45, R67);
@@ -160,7 +160,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
 
 - [ ] **T5.1** — `./init.sh` verde (con `.env` y la base desechable). **Hecho:** `INIT_EXIT=0` escrito
   dentro del log; tamaño leído (si > 1 000 líneas, PA-T).
-- [ ] **T5.2** — R72: `git diff --stat origin/dev` sin `db/` ni `lib/actions/`. **Hecho:** nota en
+- [x] **T5.2** — R72: `git diff --stat origin/dev` sin `db/` ni `lib/actions/`. **Hecho:** nota en
   `progress/impl_SLT-106.md`.
 
 ## T6 — Antes de promover (leader)
