@@ -803,6 +803,7 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
   let r: RepartoE2E;
   let m: MensajeroE2E;
   let cierreDiaId: string;
+  let entregaB6: OrdenE2E;
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(300_000);
@@ -818,6 +819,7 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
 
     m = await crearMensajero(r, "satelite");
     const entrega = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 10000 }), "en_reparto", { mensajero: m });
+    entregaB6 = entrega;
     await gestionar(r, entrega, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 10000 }] });
     cierreDiaId = await solicitarCierre(r, m);
     await aprobarCierre(r, cierreDiaId);
@@ -890,5 +892,42 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
     await expect(suCierre.getByRole("button", { name: escrituras })).toHaveCount(0);
     // Y la base no cambió: el cierre del día sigue aprobado tal cual.
     expect((await cierresDe(m)).map((c) => [c.id, c.estado, String(c.totalPagoMensajero)])).toEqual([[cierreDiaId, "aprobado", "2200"]]);
+  });
+
+  // SLT-110 «Cifras del servidor en la fila: tarifas, IVA, pago y fulfillment» (T5.1; R64-R66) — la fila de la
+  // entrega en «Gestiones» del detalle de bodega lleva las cifras del servidor por el mismo mapper que el detalle
+  // de mensajeros. A mano: flete por entregado 3.100 (monto fijo, valor base de la zona satélite) + IVA 13 % 403;
+  // de eso, IVA ₡403. Pago congelado del mensajero 2.200 sin ajuste: «Por tarifa» ₡2.200 y «Se le paga» ₡2.200.
+  test("central, B6: la fila de bodega con el IVA incluido, la tarjeta del flete y «Por tarifa»", async ({ browser }) => {
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto("/cierres-admin");
+    await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
+    await page
+      .getByRole("region", { name: "Cierres de bodega por conciliar" })
+      .getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${r.zonaSatelite.nombre}` })
+      .click();
+    const detalle = page.getByRole("dialog", { name: `Detalle del cierre de bodega · Cierre de bodega · ${r.zonaSatelite.nombre}` });
+    await expect(detalle).toBeVisible();
+    await detalle.getByRole("tab", { name: "Gestiones (1)" }).click();
+
+    const fila = await desplegarFila(detalle, entregaB6);
+    const cobro = tarjeta(fila, "Se le cobra a la tienda", entregaB6);
+    await expect(cobro.locator("[data-aparte]")).toHaveText("de eso, IVA (no es de la empresa)₡403");
+    // R66: «Por tarifa» y «Se le paga», sin línea de ajuste entre medias.
+    const zona = r.zonaSatelite.nombre;
+    expect(await lineasDe(tarjeta(fila, "Se le paga al mensajero", entregaB6))).toEqual([
+      [`Por tarifa · valor base de la zona ${zona}`, "₡2.200"],
+      ["Se le paga", "₡2.200"],
+    ]);
+    // R64: la tarjeta del flete en «Ver cómo se calculó», con su rótulo vigente.
+    await cobro.getByRole("button", { name: "Ver cómo se calculó" }).click();
+    const calculo = fila.getByRole("region", { name: "Cómo se calculó el cobro a la tienda" });
+    const flete = tarjeta(calculo, "Flete por entregado", entregaB6);
+    await expect(flete.getByText(`Tarifa: valor base de la zona ${zona}`, { exact: true })).toBeVisible();
+    expect(await lineasDe(flete)).toEqual([
+      ["Monto fijo", "₡3.100"],
+      ["+ IVA 13 %", "₡403"],
+      ["Flete por entregado", "₡3.503"],
+    ]);
   });
 });

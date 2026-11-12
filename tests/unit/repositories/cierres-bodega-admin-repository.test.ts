@@ -149,6 +149,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     gestionOrden: { findMany: vi.fn() },
     // Feature 69/T23 (R15): el detalle de un cierre YA CREADO sale del SNAPSHOT.
     cierreDetail: { findMany: vi.fn().mockResolvedValue([]) },
+    // SLT-110 (R210): el cargo vigente de fulfillment de las ordenes del detalle (vacio = ninguno).
+    ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     // Dobles de las tablas VIVAS que esta vista NO debe volver a mirar. No estan en el tipo
     // del cliente del repo: existen solo para que un `expect(...).not.toHaveBeenCalled()`
     // pueda MORDER si alguien reintroduce la lectura viva.
@@ -346,6 +348,40 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
     await expect(repo.findCierreBodegaConDetalle("cb1", ZONA_CR)).rejects.toThrow(CierreDetalleFaltanteError);
+  });
+
+  it("SLT-110 R210/R216: UNA lectura de movimientos con los dos cierres del dia; el cargo vigente llega a su gestion", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreBodega.findUnique.mockResolvedValue(bodegaDbRow());
+    prisma.cierreDia.findMany.mockResolvedValue([
+      detalleCierreDbRow({ id: "cd1" }),
+      detalleCierreDbRow({ id: "cd2", mensajeroId: "m2", mensajero: { nombre: "Beto" } }),
+    ]);
+    prisma.gestionOrden.findMany
+      .mockResolvedValueOnce([gestionDbRow({ id: "g1", ordenId: "o1" })])
+      .mockResolvedValueOnce([gestionDbRow({ id: "g2", ordenId: "o2" })]);
+    prisma.cierreDetail.findMany
+      .mockResolvedValueOnce([detalleDbRow({ ordenId: "o1" })])
+      .mockResolvedValueOnce([detalleDbRow({ ordenId: "o2" })]);
+    // o1: su ultimo movimiento es un cargo; o2: un reverso (sin cargo vigente).
+    prisma.ordenFulfillmentMovimiento.findMany.mockResolvedValue([
+      { ordenId: "o1", tipo: "cargo", ocurridoAt: new Date("2026-11-06T15:00:00.000Z") },
+      { ordenId: "o2", tipo: "reverso", ocurridoAt: new Date("2026-11-07T16:00:00.000Z") },
+    ]);
+    const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
+
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR);
+
+    expect(prisma.ordenFulfillmentMovimiento.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.ordenFulfillmentMovimiento.findMany.mock.calls[0][0].where).toEqual({
+      orden: { cierreDetalles: { some: { cierreId: { in: ["cd1", "cd2"] } } } },
+    });
+    expect(r?.cierresDia[0].gestiones[0].ingresoEmpresa?.fulfillmentCargadoAt).toBe(
+      "2026-11-06T15:00:00.000Z",
+    );
+    expect(r?.cierresDia[1].gestiones[0].ingresoEmpresa?.fulfillmentCargadoAt).toBeNull();
+    // Con la lectura pasada, la clave `tarifaFaltante` existe (aqui modelo viejo: false).
+    expect(r?.cierresDia[0].gestiones[0]).toHaveProperty("tarifaFaltante", false);
   });
 });
 
