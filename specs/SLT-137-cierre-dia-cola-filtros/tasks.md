@@ -42,20 +42,20 @@ tabla) pasa de 1 000, **para** y avisa al leader: decide Carlos entre el corte e
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** Actualiza la rama desde `origin/dev` (`git fetch` + merge; comprueba el `merge-base`).
+- [x] **T0.1** Actualiza la rama desde `origin/dev` (`git fetch` + merge; comprueba el `merge-base`).
   Mira si SLT-106 ya está mergeado (`git log origin/dev --oneline | grep SLT-106`).
   **Hecho:** SHA de `origin/dev` y estado de SLT-106 (mergeado o no) anotados en
   `progress/features/SLT-137.md`.
-- [ ] **T0.2** Repite el censo de `design.md > Tests y guardias que cambian` con `grep -rl` en `tests/`
+- [x] **T0.2** Repite el censo de `design.md > Tests y guardias que cambian` con `grep -rl` en `tests/`
   y `e2e/`: «Cierres solicitados», `ListaComprobantes`, `CierreFacturaResumenPropio`,
   «Ver del cierre», `PAGINACION_PASADOS_LABEL`. En `ColasPaginacion.test.tsx`, mira si la mención de
   `ListaComprobantes` es de `/cierre-dia`; si no lo es, sale de `## Archivos esperados`.
   **Hecho:** la lista coincide con `## Archivos esperados`, o el leader tiene el archivo de más.
-- [ ] **T0.3** `pnpm run test:guardias` en limpio. **Hecho:** guardias verdes de partida, anotadas.
+- [x] **T0.3** `pnpm run test:guardias` en limpio. **Hecho:** guardias verdes de partida, anotadas.
 
 ## T1 — Servidor: pendiente de pago (backend_dev; depende de T0) [P con T2.1]
 
-- [ ] **T1.1** `ICierreDiaService.ts`: `CierrePasadoDTO.pendientePagoMensajero?: string | null` y la
+- [x] **T1.1** `ICierreDiaService.ts`: `CierrePasadoDTO.pendientePagoMensajero?: string | null` y la
   interfaz `LecturasPendienteCierre` (`design.md > 1. Contrato`). `CierreDiaService.ts`: parámetro
   opcional `pendientes` al final del constructor y helper privado `conPendientePago` llamado desde
   `listarCierresPasadosPaginado`. Test nuevo `tests/unit/services/cierre-dia-pendiente-pago.test.ts`
@@ -69,14 +69,14 @@ tabla) pasa de 1 000, **para** y avisa al leader: decide Carlos entre el corte e
 
   **Hecho:** el test verde; `vitest related` de `CierreDiaService.ts` verde (las 30+ construcciones
   de hoy compilan sin tocarlas).
-- [ ] **T1.2** `lib/actions/cierre-dia.ts > buildService()`: inyecta
+- [x] **T1.2** `lib/actions/cierre-dia.ts > buildService()`: inyecta
   `{ liquidaciones: new LiquidacionPagoRepository(prisma), premios: new PagoMensajeroMovimientoRepository(prisma) }`.
   Test nuevo `tests/integration/actions/cierre-dia-pendiente-cableado.test.ts`, patrón de
   `gestion-desde-ayuda-cableado.test.ts`: se ejecuta `listarCierresPasadosPaginado` **sin** servicio
   inyectado, con la clase del servicio mockeada, y se comprueba que el último argumento del
   constructor trae los dos repositorios reales (`toBeInstanceOf`).
   **Hecho:** verde; y en rojo si se borra la inyección (comprobado a mano una vez, anotado).
-- [ ] **T1.3** `tests/integration/db/cierre-dia-pendiente-pago.test.ts` contra Postgres real, con la
+- [x] **T1.3** `tests/integration/db/cierre-dia-pendiente-pago.test.ts` contra Postgres real, con la
   tabla C1-C4 + M2 y las cinco aserciones de `design.md > Prueba de integración`. Datos sembrados por
   el propio test; falla si el catálogo no está.
   **Mutaciones** (una a una, a mano, se revierten): las cinco de `design.md`. Cada una debe poner el
@@ -87,7 +87,7 @@ tabla) pasa de 1 000, **para** y avisa al leader: decide Carlos entre el corte e
 
 ## T2 — Pantalla: la cola con rol mensajero (frontend_dev)
 
-- [ ] **T2.1** [P con T1] `components/private/cierres/cola/cola-propia-vista.ts`: textos,
+- [x] **T2.1** [P con T1] `components/private/cierres/cola/cola-propia-vista.ts`: textos,
   `columnasColaPropia`, `destinoPropio`, `pagoPropioDe`, `textoPagoPropio` (`design.md > Lógica
   pura`). Test nuevo `tests/unit/utils/cola-propia-vista.test.ts`:
   - `pagoPropioDe`: rechazado con motivo, rechazado sin motivo (y con `""`), aprobado `"12.50"` →
