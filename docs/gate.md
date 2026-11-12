@@ -187,23 +187,29 @@ pnpm exec vitest related --run $(git diff --name-only origin/dev...HEAD)   # tre
 
 ### CI en cada tanda (opcional)
 
-El PR se abre **en borrador** tras el primer push de la feature (`AGENTS.md > F2.1`). Dos
-variables del repo en GitHub (*Settings → Secrets and variables → Actions → Variables*) deciden
-cuánto CI cuesta:
+El PR se abre **listo** tras el primer push de la feature (`AGENTS.md > F2.1`), así que el gate
+completo corre en cada push: un rojo llega en la tanda que lo causó, no al final. Nadie lo mergea
+antes del aviso «#n listo para mergear» del leader (review OK + `gate-completo` verde). Dos
+variables del repo en GitHub (*Settings → Secrets and variables → Actions → Variables*) ajustan
+dónde y cuándo corre:
 
 | Variable | Efecto |
 | --- | --- |
-| `GATE_EN_BORRADOR=true` | el gate completo corre en cada push al PR en borrador: un rojo llega en la tanda que lo causó, no al final |
 | `GATE_RUNNER=<label>` | los jobs corren en ese runner (p. ej. `self-hosted`) en vez de `ubuntu-latest` |
+| `GATE_EN_BORRADOR=true` | el gate corre también en PRs en borrador (solo exploratorios: el flujo normal ya no usa borrador) |
 
-- **Coste:** en el plan Free de GitHub, una corrida en shards factura ~30 min y hay 2000 al mes.
-  Con `GATE_EN_BORRADOR` sin runner propio se agotan rápido.
+- **Coste:** cada push factura ~30 min de CI. En un repo público es gratis; en uno privado del
+  plan Free hay 2000 min al mes y, con muchas tandas, conviene un runner propio.
+- **Check obligatorio.** Si el repo lo permite (público o plan de pago), marca `gate-completo`
+  como check requerido en la rama de integración, sin pedir aprobaciones. GitHub bloquea el botón
+  de merge hasta el verde:
+  `gh api -X PUT repos/<org>/<repo>/branches/<integracion>/protection --input proteccion.json`,
+  con `{"required_status_checks":{"strict":false,"contexts":["gate-completo"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}`.
 - **Runner propio (self-hosted):** no gasta minutos, conserva la caché entre corridas y permite
   más shards. Necesita una máquina Linux con Docker (los jobs levantan Postgres como servicio).
   Se instala desde *Settings → Actions → Runners → New self-hosted runner*. Después,
   `GATE_RUNNER=self-hosted`.
-- Sin ninguna de las dos, el comportamiento es el de siempre: el gate corre al sacar el PR de
-  borrador (`gh pr ready`).
+- Sin ninguna de las dos, el gate corre en `ubuntu-latest` en cada push al PR (listo).
 
 **Activarlo, paso a paso** (lo hace una persona con permisos de admin en el repo):
 
@@ -215,13 +221,12 @@ cuánto CI cuesta:
      (`sudo ./svc.sh install && sudo ./svc.sh start`);
    - comprueba que aparece *Idle* en esa pantalla;
    - `gh variable set GATE_RUNNER --body self-hosted`.
-3. `gh variable set GATE_EN_BORRADOR --body true`.
-4. Comprueba que funciona: haz push a una rama con PR en borrador y mira
-   `gh run list --branch <rama> --limit 1`; tiene que aparecer el workflow `gate`.
-5. Al cabo de una semana, repite el informe y compara los minutos y la tasa de rojo.
+3. Comprueba que funciona: haz push a una rama con PR abierto y mira
+   `gh run list --branch <rama> --limit 1`; tiene que aparecer el workflow `gate` en ese runner.
+4. Al cabo de una semana, repite el informe y compara los minutos y la tasa de rojo.
 
-Para desactivarlo: `gh variable delete GATE_EN_BORRADOR` (y `GATE_RUNNER`, si el runner deja de
-existir: sin runner disponible, los jobs se quedan en cola).
+Para desactivarlo: `gh variable delete GATE_RUNNER` (si el runner deja de existir: sin runner
+disponible, los jobs se quedan en cola).
 
 ### Acelerar la suite (perfil)
 
