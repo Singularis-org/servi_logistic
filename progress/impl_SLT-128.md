@@ -243,3 +243,44 @@ Veredicto: T7 completa; los casos de integración se revisaron contra la migraci
 - Integración (8 archivos de T7, T2.3) y E2E de planes y grupo `dinero`: NO corridos en local (no hay base desechable).
   Quedan para el CI; ninguna migración de SLT-128 se ha ejecutado aún contra Postgres.
 - Archivos: 35 de «Archivos esperados» (29 del plan + 6 aceptados por el humano el 2026-11-12).
+
+## Sync con SLT-118 y vuelta 1 del review (backend_dev, 2026-11-12)
+
+CI (run 43255958513) dio 6 archivos rojos. Arreglos aprobados por el humano, en dos commits.
+
+### A. Merge de `origin/feature/SLT-118-planes-facturar-periodo-en-curso` (23ddc17a)
+- Sin conflictos de git: `db/schema.prisma` (gana `finNaturalAt` en `FacturaPlataforma`) y
+  `tests/integration/db/factura-plataforma-cambio-plan.test.ts` se unieron solos, con los dos lados.
+  Entran también los arreglos de SLT-118 a `empresas-plataforma`, `mi-plan-cambiar-plan` y
+  `verificar-rls-despliegue` (90 tablas), tres de los seis rojos.
+- `db/migrations/20261114120000_plan_cambio_por_empresa/migration.sql`:
+  - `factura_plataforma_abrir`: rehecha sobre la de SLT-118 (subconsulta `e` y `fin_natural_at` con
+    `plan_fin_periodo_calendario`); el único cambio de SLT-128 es `LEFT JOIN LATERAL plan_version_de(...)`
+    en vez de `LEFT JOIN "plan"`.
+  - `factura_plataforma_tomar_cambio`: rehecha sobre la de SLT-118 (recálculo de `fin_natural_at` solo si
+    cambia la periodicidad, P20, y el INSERT con `fin_natural_at`); el único cambio de SLT-128 es leer
+    nombre y periodicidad de `plan_version_de`.
+  - `factura_plataforma_cuota` y `factura_plataforma_cerrar`: SLT-118 no las tocó; sin cambios.
+  - El resto de redefinidas (`plan_tope_usuario`, `plan_tope_api_key`, `cobro_plataforma_tarifa_de`,
+    `plan_de_la_empresa`) no viven en la migración de SLT-118: sin cambios.
+- `down.sql`: `abrir` y `tomar_cambio` copiadas literalmente de la versión nueva de SLT-118.
+- `prisma generate` regenerado. T2.3 no necesitó ajustes (compara con el texto del origen en disco).
+
+### B. Recepción en el setup (3e25a516)
+- `mi-plan-repository`, `plan-de-la-empresa`: `planCambioRecepcion.create` de la empresa A en F junto al
+  `planCambioProgramado.create` (R12, R24).
+- `planes-lecturas-plataforma`: `programar(tx, planId, empresas)` crea la recepción en RIGE de cada empresa;
+  R16 espera `recibidas: 0, total: 2` (R11) y R21 pasa `[a]`.
+- «expected 1 to be +0»: según el informe del CI no es de estos archivos; sale en
+  `postulacion-recurso-migration` y `vista-filtro-migration`, que están en la baseline (no son de los 6).
+  Los dos fallos de `plan-de-la-empresa` eran `cambio` nulo (línea 205) y `Object.keys(null)` (línea 241).
+- `tasks.md > Archivos esperados`: +3, total 38.
+
+### Verificación
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: 0 errores.
+- `pnpm exec eslint` de los 5 tests tocados: limpio.
+- `pnpm exec vitest run` de los 3 de B, `factura-plataforma-cambio-plan`, `migracion-slt128-ida-y-vuelta` y
+  `tests/unit/scripts/verificar-rls-despliegue.test.ts`: 2 archivos verdes (14 tests: los 10 estáticos de
+  T2.3, con los 8 «down.sql repone LITERALMENTE», y el unit de RLS), 4 saltados sin base (los corre el CI).
+
+Veredicto: sync con SLT-118 hecho y los 6 rojos del CI atendidos; falta que el CI lo confirme.
