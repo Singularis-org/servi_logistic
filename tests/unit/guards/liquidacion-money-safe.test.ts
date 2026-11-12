@@ -182,6 +182,9 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // los textos de los diálogos (el resumen pinta las cifras del servidor con `money()`).
   "components/private/cierres/dialogos/VisorEvidencia.tsx",
   "components/private/cierres/dialogos/dialogos-labels.ts",
+  // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R71): la lógica de la cola con
+  // rol mensajero compara el pendiente como TEXTO (`hayPendienteDeLiquidar`).
+  "components/private/cierres/cola/cola-propia-vista.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */
