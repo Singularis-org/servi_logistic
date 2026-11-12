@@ -9,6 +9,8 @@ import { money } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
 import type { CierreDetalleGestion, CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
+import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { MarcaAjustado } from "@/app/(app)/cierres-admin/_components/MarcaAjustado";
 import { desgloseAriaLabel } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { FILA_AJUSTAR_PAGO, ajustarPagoAriaLabel } from "@/app/(app)/cierres-admin/_components/cierre-labels";
@@ -52,7 +54,8 @@ export interface FilaGestionProps {
   /** `solicitadoAt` del cierre: la nota de R97. */
   congeladoAt: string | null;
   acciones: AccionesFila;
-  onVerEvidencia?: (url: string) => void;
+  /** Abre el visor único con TODAS las URL firmadas de la gestión y su contexto (SLT-103 R54). */
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /** Mismo `columnaMensajero` que la cabecera de la lista (R23). */
   columnaMensajero?: boolean;
 }
@@ -251,7 +254,9 @@ export function FilaGestion({
               {onVerEvidencia ? (
                 <BotonesEvidencia
                   urls={g.evidenciaUrls}
-                  onVer={onVerEvidencia}
+                  onVer={(urls) =>
+                    onVerEvidencia({ urls, contexto: contextoEvidencia(g.numRemision, g.destinatario) })
+                  }
                   etiqueta={FILA_VER_EVIDENCIA}
                   ariaSufijo={delaOrden}
                 />

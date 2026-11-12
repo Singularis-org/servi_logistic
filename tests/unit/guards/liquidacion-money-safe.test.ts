@@ -178,6 +178,10 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   "components/private/cierres/cola/ColaCierres.tsx",
   "components/private/cierres/cola/cola-cierres-vista.ts",
   "components/private/cierres/cola/cola-cierres-labels.ts",
+  // SLT-103 «Diálogos del módulo de cierres y trato tú» (R137-R140): el visor único de evidencia y
+  // los textos de los diálogos (el resumen pinta las cifras del servidor con `money()`).
+  "components/private/cierres/dialogos/VisorEvidencia.tsx",
+  "components/private/cierres/dialogos/dialogos-labels.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */

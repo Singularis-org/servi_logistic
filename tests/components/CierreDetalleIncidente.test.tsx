@@ -13,6 +13,7 @@ import {
   INGRESO_BODEGA_RECHAZOS_LABEL,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { GestionesPorResultado } from "@/app/(app)/cierres-admin/_components/cierre-factura";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import type {
   CierreDetalleGestion,
@@ -126,7 +127,7 @@ function unIncidente(over: Partial<CierreDetalleGestion> = {}): CierreDetalleGes
 }
 
 /** Monta la lista en pestañas del detalle de ADMIN (sin `esMensajero`). */
-function montar(grupos: CierreGrupos, onVerEvidencia: (url: string) => void = () => {}) {
+function montar(grupos: CierreGrupos, onVerEvidencia: (evidencia: EvidenciaAbierta) => void = () => {}) {
   return render(<GestionesPorResultado grupos={grupos} onVerEvidencia={onVerEvidencia} />);
 }
 
@@ -197,10 +198,10 @@ describe("R18 — `incidente` es un grupo propio del detalle de admin", () => {
 
   it("la evidencia se abre con la URL FIRMADA que llega del servidor", async () => {
     const user = userEvent.setup();
-    let abierta: string | null = null;
+    let abierta: EvidenciaAbierta | null = null;
     const g = unIncidente();
-    montar({ ...emptyGrupos(), incidente: [g] }, (url) => {
-      abierta = url;
+    montar({ ...emptyGrupos(), incidente: [g] }, (evidencia) => {
+      abierta = evidencia;
     });
 
     const fila = await desplegar(g);
@@ -208,7 +209,11 @@ describe("R18 — `incidente` es un grupo propio del detalle de admin", () => {
       within(fila).getByRole("button", { name: "Ver evidencia de la orden REM-INC · Beto Ruiz" }),
     );
 
-    expect(abierta).toBe("https://signed.example/inc.jpg?token=abc");
+    // SLT-103 (R137): el visor recibe las URL firmadas y el contexto de la gestión.
+    expect(abierta).toEqual({
+      urls: ["https://signed.example/inc.jpg?token=abc"],
+      contexto: "Orden REM-INC · Beto Ruiz",
+    });
   });
 });
 
