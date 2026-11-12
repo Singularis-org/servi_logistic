@@ -171,4 +171,12 @@ describe("SL-24 — marca, país y escapado", () => {
   it("lineasDeCambioDelPlan sin diferencias no da ninguna línea", () => {
     expect(lineasDeCambioDelPlan({})).toEqual([]);
   });
+
+  it("SLT-118 R35: el cambio de la periodicidad de órdenes del plan sale como «Facturación de órdenes: quincenal → mensual»", () => {
+    const m = correo({ cambios: { periodicidadOrdenes: { antes: "quincenal", despues: "mensual" } } });
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Facturación de órdenes: quincenal → mensual");
+    expect(m.html).toContain("Facturación de órdenes: quincenal → mensual");
+    expect(correo().text).not.toContain("Facturación de órdenes");
+  });
 });

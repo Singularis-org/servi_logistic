@@ -165,6 +165,34 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
     expect(celdas[3]).toHaveTextContent("Sin cambios");
     expect(celdas[3]).not.toHaveTextContent("—");
   });
+
+  it("SLT-118 R35: el historial dice «Facturación de órdenes: quincenal → mensual»; el alta no pinta la periodicidad", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        {
+          id: "r-4",
+          accion: "editado",
+          cambios: { periodicidadOrdenes: { antes: "quincenal", despues: "mensual" } },
+          actorNombre: "Sofía Admin",
+          creadoAt: "2026-11-11T15:00:00.000Z",
+        },
+        {
+          id: "r-1",
+          accion: "creado",
+          cambios: {
+            nombre: { antes: null, despues: "Básico" },
+            periodicidadOrdenes: { antes: null, despues: "quincenal" },
+          },
+          actorNombre: "Sofía Admin",
+          creadoAt: "2026-10-01T15:00:00.000Z",
+        },
+      ],
+    });
+    const filas = within(seccion("Historial del plan")).getAllByRole("row").slice(1);
+    expect(within(filas[0]).getAllByRole("cell")[3]).toHaveTextContent("Facturación de órdenes: quincenal → mensual");
+    expect(within(filas[1]).getAllByRole("cell")[3]).not.toHaveTextContent("Facturación de órdenes");
+  });
 });
 
 describe("SLT-58 R17 — confirmaciones y archivado", () => {
