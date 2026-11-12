@@ -79,7 +79,7 @@
   de diciembre; la promoción al recibir la mensual; módulos con una excepción que sobrevive; tope pasado; reemplazo
   del 21 de noviembre (P6); cancelar con y sin recepciones; archivar a medias y sin empresas; «De inmediato» con el
   plan partido; entrar antes y después de F; salir la última; cambio de tipo mensual → bimestral.
-- [ ] **T7.2** `tests/integration/db/planes-version-por-empresa.test.ts` (nuevo): R2, R12, R26 (triggers con SQL a
+- [x] **T7.2** `tests/integration/db/planes-version-por-empresa.test.ts` (nuevo): R2, R12, R26 (triggers con SQL a
   mano, tarifa, `plan_de_la_empresa`, `planDeEmpresa`, `servi_app` → `42501` en las dos tablas).
 - [ ] **T7.3** `tests/integration/db/planes-cambio-correos.test.ts`: R20–R22; ajustar sus casos de R42 por plan.
 - [ ] **T7.4** `tests/integration/db/planes-cambio-programado.test.ts`: R13, R15; ajustar los casos de aplicar
