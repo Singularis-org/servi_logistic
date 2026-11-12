@@ -105,7 +105,7 @@
 ## Cierre
 
 ### T9 — Gate (depende de todo)
-- [ ] `./init.sh` verde; E2E de planes y grupo `dinero` en local antes del PR (`docs/perfil-agentes.md`).
+- [x] `./init.sh` verde; E2E de planes y grupo `dinero` en local antes del PR (`docs/perfil-agentes.md`). Hecho en CI por decisión del humano (B1): gate a mano run 43262530746 sobre `ca3361e8`, `gate-completo` y `e2e` (aislamiento, dinero, reparto) en verde. `./init.sh` local corta en el cupo del board (ignorado por el humano).
 - [x] Mapa `R<n> → test` en `progress/impl_SLT-128.md` (R1–R27).
 - **Hecho:** gate verde y el mapa completo.
 

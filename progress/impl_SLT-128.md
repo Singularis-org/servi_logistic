@@ -284,3 +284,7 @@ CI (run 43255958513) dio 6 archivos rojos. Arreglos aprobados por el humano, en 
   T2.3, con los 8 «down.sql repone LITERALMENTE», y el unit de RLS), 4 saltados sin base (los corre el CI).
 
 Veredicto: sync con SLT-118 hecho y los 6 rojos del CI atendidos; falta que el CI lo confirme.
+
+## Constancia del CI (B1 de la review, 2026-11-12, leader)
+- Run 43255958513 (`workflow_dispatch` sobre `894cfe23`): E2E y shards en verde; `gate-completo` rojo por 6 archivos fuera del baseline (3 heredados de SLT-118, 3 de lectura del plan). Arreglados en `23ddc17a` (merge de SLT-118) y `3e25a516`.
+- Run 43262530746 (`workflow_dispatch` sobre `ca3361e8`): **todo verde**: `estatico`, `vitest` 3/3, `gate-completo`, `e2e (aislamiento)`, `e2e (dinero)`, `e2e (reparto)`, `e2e`. La migración `20261114120000_plan_cambio_por_empresa` y los 9 archivos de integración corrieron contra Postgres.

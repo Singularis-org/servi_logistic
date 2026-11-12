@@ -71,3 +71,6 @@
 **RECHAZADO** — un solo bloqueante (B1): falta la constancia de integración, migración y E2E ejecutados; el CI de
 #132 no los corre. No hay hallazgos de código bloqueantes en la lectura; si la corrida sale verde y se registra,
 esta revisión pasa a OK sin otra vuelta de código.
+
+## Cierre de B1 (2026-11-12, leader)
+Condición de la vuelta 1 cumplida sin vuelta de código: gate a mano run 43262530746 sobre `ca3361e8` en verde (`gate-completo` y `e2e` con sus tres grupos). Por la regla de esta revisión («si todo sale verde, la revisión pasa a OK»), **veredicto: OK**. Quedan los menores m1–m3 para decisión del humano.
