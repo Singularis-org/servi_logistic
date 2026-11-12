@@ -91,3 +91,37 @@ al adaptar los tests de «Pendiente de llegar» (PA1). El resto está bien y ver
 5. `CierresBodegaAdminModule.tsx:350-357` — si la lectura por `?cierreBodega=` falla (`no_encontrada`), el
    parámetro se queda en la dirección y recargar repite el aviso. R238 no lo pide; anotarlo como deuda
    o limpiar también en el fallo.
+
+## Vuelta 2 (acotada a 40d2db0d..5381bfa9)
+
+Checklist de hallazgos de la vuelta 1:
+- [x] **BLOQUEANTE R239 (aviso con dos incompletas)** — cerrado. Test «R239 — con dos incompletas, el aviso
+  dice el `saldoActual` del estado de cuenta». Literal a mano, no contra `DESGLOSE_SATELITE`. Cálculo:
+  `saldoActual "48250.75"` → `₡48.250,75`; las faltas de las filas son 20000.00 y 12000.00 (suma 32000.00),
+  así que el literal solo cuadra con el `saldoActual`, que es lo que pide R239. Mutación reproducida por el
+  reviewer: `money(pendiente)` → `money("32000.00")` en `ConciliacionSatelite.tsx:400` → el test cae
+  (Received «₡32.000»). Revertida con `git checkout`; árbol limpio.
+- [x] menor 2 (cabeceras) — `toEqual` literal en orden: `["Desglose","Consolidada","Debe llegar","Recibido",
+  "Falta","Estado","Conciliado por",""]`.
+- [x] menor 3 (R232 del libro) — test nuevo: término, casilla, página «21-40 de 45» y sin lectura nueva al
+  ir y volver.
+- [x] menor 4 — sin tocar a propósito (cubierto en `ConciliacionSateliteCascada`); aceptado.
+- [x] menor 5 (`?cierreBodega=` en fallo) — `abrirDetalleDeLaUrl` limpia con `replace` si la lectura falla;
+  2 casos (`no_encontrada`, `forbidden`). Mutación reproducida: quitar la limpieza → caen los 2. Revertida.
+- [x] T6 marcada `[x]` con evidencia.
+
+Componente compartido `CierresBodegaAdminModule.tsx` (SLT-106/SLT-110):
+- Éxito: `abrirDetalle` hace lo mismo (`setDetalle`) y devuelve `true`; `abrirDetalleDeLaUrl` no limpia.
+- Cola (`acciones={{ abrir: abrirDetalle }}`): ignora el booleano; mismos toasts y `refrescarListas()`.
+- `onAbrir` como arrow inline: ya antes `abrirDetalle` era una función nueva en cada render; el `ref` de
+  `AbrirCierreBodegaDeLaUrl` evita que se abra de nuevo. `CierresAdminModule` no se tocó.
+
+Verificación (DATABASE_URL → slt114_conciliacion): `pnpm run typecheck` 0; eslint de los 3 archivos 0;
+vitest `EstadoCuentaSatelite`, `CierresBodegaAdminDeepLink`, `CierresBodegaAdminCola`,
+`CierresBodegaAdminDetalleUnico`, `CierresBodegaAdminRefresco`, `CierresAdminDeepLink`: 6 archivos, 62/62.
+
+Hallazgos nuevos:
+- menor — `unauthenticated` y `validation_error` también limpian `?cierreBodega=` (ahora devuelven `false`)
+  sin un test propio. Es coherente con R238; no bloquea.
+
+**Veredicto vuelta 2: OK.**
