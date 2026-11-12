@@ -93,3 +93,58 @@ leído para derivar la URL (validada en booleano: local y con la base `slt111_re
 
 Veredicto: T0-T4 hechas; regla y emisión verdes contra Postgres real, 8/8 mutaciones matadas;
 abierto R265 (N+1 previo en bodega) para el leader.
+
+## Tanda frontend_dev (spec R265 + T5-T6) — 2026-11-12
+
+Primer plano, sin subagentes. Vitest contra `slt111_reparto`; E2E contra base desechable nueva
+`slt111_e2e_1` (`migrate deploy` + `db:seed`), `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000`
+como en `gate.yml`, puerto 3000, candado `e2e.lock` tomado y liberado. Sin `migrate reset` ni `prisma generate`.
+
+### Spec
+
+- `requirements.md` R265: en mensajero, consultas independientes del número de gestiones; en bodega, el
+  reparto no añade lecturas (servicio = sentencias de su repositorio). N+1 previo de bodega → deuda de la
+  épica (decisión del leader en `progress/features/SLT-111.md`). Fila R265 de `tasks.md > Trazabilidad`
+  ajustada. Ningún otro R tocado.
+
+### Archivos
+
+- `components/private/cierres/detalle/detalle-cierre-vista.ts`: `vistaMensajeroDesdeAdmin` copia
+  `r.porcentajesReparto ?? null` a `empresa.porcentajesReparto`; `vistaBodegaDesdeAdmin` a `porcentajesReparto`.
+- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`: el estado del detalle gana
+  `porcentajesReparto` y `abrirDetalle` lo copia tal cual. `CierresBodegaAdminModule` guarda el resultado
+  entero, no necesita cambio. `DineroCierre.tsx` no se toca.
+- Tests: `tests/unit/utils/detalle-cierre-vista.test.ts` (+5), `tests/components/DetalleCierreDinero.test.tsx`
+  (+4), `tests/components/CierresAdminDetalleUnico.test.tsx` (+3), `tests/components/CierresBodegaAdminDetalleUnico.test.tsx`
+  (+2), `e2e/cierres-rediseno.spec.ts` (aserciones en escenario A central y B6).
+
+### R → test (tanda frontend)
+
+| R | Test |
+|---|---|
+| R71 | `DetalleCierreDinero.test.tsx` «el cliente pinta el entero recibido, sin derivarlo» ([61, 39], que no sale de los importes) |
+| R266 | `DetalleCierreDinero.test.tsx` «SLT-111 — la barra del reparto…» (franjas 94%/6% y 97%/3%/0%, «(0 %)» de PA1, `null` y ausente sin barra ni «%») |
+| R267 | `detalle-cierre-vista.test.ts` «SLT-111 — el reparto en % llega tal cual» (mensajero, bodega, `null`, ausente, `/cierre-dia` sin el campo) · `CierresAdminDetalleUnico.test.tsx` «SLT-111 R267» (admin y satélite) · `CierresBodegaAdminDetalleUnico.test.tsx` «SLT-111 R267» · `e2e/cierres-rediseno.spec.ts` (A central [94, 6]; B6 [77, 22, 1]) |
+
+Literales a mano: A 94.350/100.000 → 94 r.35, 5 r.65 → [94, 6]; B6 7.680/2.200/120 de 10.000 → 76 r.8,
+22, 1 r.2 → [77, 22, 1]; doble de Limón 30.700/3.300/0 de 34.000 → 90 r.29, 9 r.70, 0 → [90, 10, 0].
+
+### Salidas
+
+- typecheck: `TC_EXIT=0` (antes y después del `next build`).
+- eslint sobre los 7 archivos tocados: `LINT_EXIT=0`.
+- vitest (4 archivos tocados): **4 archivos, 119 tests passed**.
+- E2E `pnpm exec playwright test e2e/cierres-rediseno.spec.ts --project=dinero`: **13 passed (60.0s)**, `E2E_EXIT=0`.
+
+### Mutaciones (una a una, revertidas con `cmp` contra copia)
+
+| # | Mutación | Resultado | Qué cae |
+|---|---|---|---|
+| F1 | `vistaMensajeroDesdeAdmin` no pasa el campo (`null`) | matada | unit mensajero [94, 6]; módulo admin y satélite «(94 %)» |
+| F2 | `vistaBodegaDesdeAdmin` no pasa el campo | matada | unit bodega [97, 3, 0]; módulo bodega «(90 %)» |
+| F3 | `abrirDetalle` no copia el campo | matada | módulo admin y satélite «(94 %)» |
+| F4 | (E2E) F2 con `next build` | matada | B6: recibido sin «(77 %)», «(22 %)», «(1 %)» |
+
+Tras F4 se volvió a hacer `next build` con el código original (no queda `.next` mutado).
+
+Veredicto: R265 reescrito y T5-T6 hechas; mapeo verde en unit, componente y E2E, 4/4 mutaciones matadas.

@@ -186,6 +186,14 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await cifrasA(detalle);
     await cuentasA(detalle);
 
+    // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T6.1, R263, R266, R267): el reparto
+    // del servidor, a mano: 94.350 / 100.000 = 94,35 y 5.650 / 100.000 = 5,65 → 94 + 5 = 99; el punto que
+    // falta va al mayor resto (0,65) → [94, 6].
+    await expect(detalle.getByRole("region", { name: "Reparto de lo recaudado" }).getByRole("listitem")).toHaveText([
+      "Se le paga hoy a la tienda ₡94.350 (94 %)",
+      "Sale de lo recaudado ₡5.650 (6 %)",
+    ]);
+
     // El pie se alcanza desplazando el panel: un solo scroll, y el pie fuera de él (R11 de SLT-95).
     const aprobar = detalle.locator("footer").getByRole("button", { name: "Revisar paquetes y aprobar" });
     await aprobar.scrollIntoViewIfNeeded();
@@ -856,6 +864,15 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
     await expect(montoDeCuenta(detalle, QUEDA, "− Pago a mensajeros")).toHaveText("₡2.200");
     await expect(montoDeCuenta(detalle, QUEDA, "− Gana la bodega satélite")).toHaveText("₡120");
     await expect(montoDeCuenta(detalle, QUEDA, "Le queda a la empresa")).toHaveText("₡780");
+
+    // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T6.1, R264, R266, R267): a mano,
+    // 7.680 / 10.000 = 76,8 · 2.200 / 10.000 = 22 · 120 / 10.000 = 1,2 → 76 + 22 + 1 = 99; el punto que
+    // falta va al mayor resto (0,8) → [77, 22, 1].
+    await expect(detalle.getByRole("region", { name: "Reparto de lo recaudado" }).getByRole("listitem")).toHaveText([
+      "Debe llegar a la central ₡7.680 (77 %)",
+      "Pago a mensajeros ₡2.200 (22 %)",
+      "Gana la bodega satélite ₡120 (1 %)",
+    ]);
 
     // R42, R114, R121: una fila por cierre del día.
     await detalle.getByRole("tab", { name: "Mensajeros (1)" }).click();

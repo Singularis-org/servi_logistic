@@ -73,26 +73,26 @@
 
 ## T5 — Llevarlo a la vista (frontend_dev) · [P] con T3-T4, depende de T2
 
-- [ ] **T5.1** `detalle-cierre-vista.ts`: `vistaMensajeroDesdeAdmin` copia `r.porcentajesReparto ??
+- [x] **T5.1** `detalle-cierre-vista.ts`: `vistaMensajeroDesdeAdmin` copia `r.porcentajesReparto ??
   null` a `empresa.porcentajesReparto`; `vistaBodegaDesdeAdmin` copia `r.porcentajesReparto ?? null`.
   `CierresAdminModule.tsx`: el estado del detalle gana el campo y `abrirDetalle` lo copia tal cual.
   `DineroCierre.tsx` no se toca; si hiciera falta, PARA y avisa. **Hecho:** typecheck verde.
-- [ ] **T5.2** `tests/unit/utils/detalle-cierre-vista.test.ts`: los dos mapeadores copian `[94, 6]`,
+- [x] **T5.2** `tests/unit/utils/detalle-cierre-vista.test.ts`: los dos mapeadores copian `[94, 6]`,
   `[97, 3, 0]` y `null`; `vistaMensajeroDesdeCierreDia` sigue con `empresa: null`. **Hecho:** verde;
   rojo si un mapeador no copia.
-- [ ] **T5.3** `tests/components/DetalleCierreDinero.test.tsx`, describe nuevo: con `[94, 6]` la barra
+- [x] **T5.3** `tests/components/DetalleCierreDinero.test.tsx`, describe nuevo: con `[94, 6]` la barra
   tiene dos franjas con `width` «94%» y «6%» y la leyenda «Se le paga hoy a la tienda ₡94.350 (94 %)»,
   «Sale de lo recaudado ₡5.650 (6 %)»; con `[97, 3, 0]` en bodega, tres franjas y «(0 %)» en «Gana la
   bodega satélite ₡500»; con `null`, ninguna franja y ningún «%». Los dobles de los describe
   existentes NO cambian. **Hecho:** verde.
-- [ ] **T5.4** `tests/components/CierresAdminDetalleUnico.test.tsx` y
+- [x] **T5.4** `tests/components/CierresAdminDetalleUnico.test.tsx` y
   `tests/components/CierresBodegaAdminDetalleUnico.test.tsx`: la acción doble devuelve
   `porcentajesReparto` y el módulo montado pinta «(94 %)» / «(97 %)» en «Dinero». **Hecho:** verde;
   rojo si se quita la copia de `abrirDetalle` o del mapeador (mutación temporal anotada).
 
 ## T6 — E2E (frontend_dev) · depende de T2 y T5
 
-- [ ] **T6.1** `e2e/cierres-rediseno.spec.ts`: en el test del escenario A que abre la central, la
+- [x] **T6.1** `e2e/cierres-rediseno.spec.ts`: en el test del escenario A que abre la central, la
   región «Reparto de lo recaudado» contiene «Se le paga hoy a la tienda ₡94.350 (94 %)» y «Sale de lo
   recaudado ₡5.650 (6 %)»; en el test de SLT-104 (B6), «Debe llegar a la central ₡7.680 (77 %)», «Pago
   a mensajeros ₡2.200 (22 %)» y «Gana la bodega satélite ₡120 (1 %)». Sin tocar los literales que ya
