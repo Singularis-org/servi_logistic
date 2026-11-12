@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { SWRConfig } from "swr";
@@ -65,7 +65,10 @@ vi.mock("@/lib/actions/wallet-anulacion", () => ({ anularMovimientoAction: vi.fn
 vi.mock("@/app/(app)/wallet/tiendas/_components/EstadoCuentaAcciones", () => ({ EstadoCuentaAcciones: () => null }));
 vi.mock("@/app/(app)/wallet/tiendas/_components/PagosTiendaEstadoCuenta", () => ({ PagosTiendaEstadoCuenta: () => null }));
 vi.mock("@/app/(app)/wallet/mensajeros/_components/PagoMensajeroAcciones", () => ({ PagoMensajeroAcciones: () => null }));
-vi.mock("@/app/(app)/wallet/satelites/_components/ConciliacionSatelite", () => ({ ConciliacionSatelite: () => null }));
+vi.mock("@/app/(app)/wallet/satelites/_components/ConciliacionSatelite", () => ({
+  ConciliacionSatelite: () => null,
+  useTotalSinConciliar: () => null,
+}));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ success: vi.fn(), error: H.toastError, info: vi.fn(), warning: vi.fn(), show: vi.fn(), dismiss: vi.fn() }),
 }));
@@ -184,13 +187,16 @@ const SUPERFICIES = {
   miWallet: () =>
     envolver(<MiEstadoCuenta inicial={{ ...TIENDA, resumen: null }} cierres={{ opciones: [], hayMas: false, disponible: true }} />),
   mensajero: () => envolver(<EstadoCuentaMensajero inicial={MENSAJERO} puedeRegistrar={false} />),
-  satelite: () =>
+  // SLT-114 (R231): el libro de la bodega, y su descarga, viven en la pestaña «Movimientos».
+  satelite: () => {
     envolver(
       <EstadoCuentaSatelite
         inicial={estado({ tipo: "bodega", nombre: "Bodega Norte", filas: [fila({ chip: "declarado", naceDeUnCierre: false })] })}
         puedeConciliar={false}
       />,
-    ),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Movimientos" }));
+  },
 };
 
 async function archivo(): Promise<Array<{ nombre: string; filas: unknown[][] }>> {

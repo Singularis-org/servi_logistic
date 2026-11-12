@@ -33,3 +33,15 @@ export const RUTA_CIERRES_ADMIN = "/cierres-admin";
 export function hrefDetalleCierre(cierreId: string): string {
   return `${RUTA_CIERRES_ADMIN}?${PARAM_CIERRE}=${encodeURIComponent(cierreId)}`;
 }
+
+/**
+ * SLT-114 (R237/R238) — el parámetro que abre el detalle único de UN cierre de bodega en la mitad
+ * «Bodega» de `/cierres-admin`. Lo emite la conciliación de `/wallet/satelites/[zonaId]` y lo lee
+ * `CierresBodegaAdminModule`; por eso, como `PARAM_CIERRE`, se escribe aquí una sola vez.
+ */
+export const PARAM_CIERRE_BODEGA = "cierreBodega";
+
+/** El enlace al detalle único de un cierre de bodega (R237). El id se codifica por lo mismo que arriba. */
+export function hrefDetalleCierreBodega(cierreBodegaId: string): string {
+  return `${RUTA_CIERRES_ADMIN}?${PARAM_CIERRE_BODEGA}=${encodeURIComponent(cierreBodegaId)}`;
+}

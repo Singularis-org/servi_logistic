@@ -6,6 +6,11 @@
  * campo sale de `cierre_detail.tarifa_modelo` (`tests/integration/db/cierre-incluye-modelo-nuevo.test.ts`); aquí
  * se mide lo que la pantalla hace con él. Los textos van literales a propósito: compararlos con sus constantes
  * dejaría pasar que alguien cambie la constante.
+ *
+ * SLT-106 «Bodega satélite: A consolidar con la cola única» (R196): en la consolidación, el total por modelo
+ * pasa de la región «… a consolidar» a la tarjeta «Gana la bodega satélite», con la nota «por devoluciones a
+ * origen» solo si ningún cierre del conjunto es del modelo nuevo. El comprobante de cada consolidable sale de
+ * esa pantalla (lo sigue usando su propio componente, probado arriba); la fila de la cola pinta el importe.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
@@ -13,7 +18,7 @@ import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
-import type { CierreBodegaResumenLite } from "@/lib/interfaces/services/ICierreBodegaService";
+import type { CierreConsolidableCola } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 
 const { consolidables, solicitados } = vi.hoisted(() => ({
@@ -75,7 +80,7 @@ const RESUMEN: CierreAdminResumen = {
   motivoRechazo: null,
 } as CierreAdminResumen;
 
-function consolidable(nombre: string, over: Partial<CierreBodegaResumenLite> = {}): CierreBodegaResumenLite {
+function consolidable(nombre: string, over: Partial<CierreConsolidableCola> = {}): CierreConsolidableCola {
   return {
     cierreDiaId: `cd-${nombre}`,
     mensajeroId: `m-${nombre}`,
@@ -83,6 +88,9 @@ function consolidable(nombre: string, over: Partial<CierreBodegaResumenLite> = {
     totales: TOTALES,
     totalPagoMensajero: "1500.00",
     totalIngresoBodegaRechazos: "570.00",
+    paraLaCentral: "6930.00",
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
     ...over,
   };
 }
@@ -152,8 +160,8 @@ describe("R71 — la tarjeta de la consolidación", () => {
   });
 });
 
-describe("R71 — el total de la consolidación", () => {
-  function montar(items: CierreBodegaResumenLite[], incluyeModeloNuevoAgregado: boolean) {
+describe("R71/R196 — el total de la consolidación (tarjeta «Gana la bodega satélite»)", () => {
+  function montar(items: CierreConsolidableCola[], incluyeModeloNuevoAgregado: boolean) {
     const pagina = <T,>(lista: T[]) => ({ status: "ok" as const, items: lista, page: 1, pageSize: 10, total: lista.length });
     consolidables.mockResolvedValue(pagina(items));
     solicitados.mockResolvedValue(pagina([]));
@@ -165,10 +173,14 @@ describe("R71 — el total de la consolidación", () => {
           totalPagoMensajeroAgregado="1500.00"
           totalIngresoBodegaRechazosAgregado="870.00"
           incluyeModeloNuevoAgregado={incluyeModeloNuevoAgregado}
-          totalNetoAgregado="7500.00"
           totalCentralDebeAgregado="0.00"
           puedesSolicitar
           motivoBloqueo={null}
+          paraLaCentralAgregado="6630.00"
+          cierresAConsolidar={items.length}
+          mensajerosAConsolidar={items.length}
+          bloqueo={null}
+          zonaNombre={null}
           cierresBodegaPasados={{ items: [], total: 0, pageSize: 10 }}
           sinZona={false}
         />
@@ -176,35 +188,45 @@ describe("R71 — el total de la consolidación", () => {
     );
   }
 
-  it("nuevo: región y rótulo dicen «Ingreso de bodega», sobre el mismo importe", () => {
+  const tarjeta = () =>
+    within(screen.getByRole("group", { name: "Cifras a consolidar" })).getByRole("group", {
+      name: "Gana la bodega satélite",
+    });
+
+  it("nuevo: la tarjeta sin la nota de devoluciones, sobre el mismo importe", () => {
     montar([consolidable("Ana", { incluyeModeloNuevo: true })], true);
-    const total = screen.getByRole("region", { name: "Ingreso de bodega a consolidar" });
-    expect(within(total).getByText(NUEVO, { exact: true })).toBeInTheDocument();
-    expect(total.textContent).toContain("₡870");
-    expect(screen.queryByRole("region", { name: `${VIEJO} a consolidar` })).toBeNull();
+    expect(tarjeta().textContent).toContain("₡870");
+    expect(tarjeta().textContent).not.toContain("devoluciones a origen");
+    expect(screen.queryByText("por devoluciones a origen")).toBeNull();
   });
 
-  it("mixto: el total dice lo nuevo y cada tarjeta sigue a su cierre", async () => {
+  it("mixto: el total dice lo nuevo y cada fila pinta el importe de su cierre", () => {
     montar(
-      [consolidable("Ana", { incluyeModeloNuevo: true }), consolidable("Beto", { incluyeModeloNuevo: false })],
+      [
+        consolidable("Ana", { incluyeModeloNuevo: true }),
+        consolidable("Beto", { incluyeModeloNuevo: false, totalIngresoBodegaRechazos: "300.00" }),
+      ],
       true,
     );
-    expect(screen.getByRole("region", { name: "Ingreso de bodega a consolidar" })).toBeInTheDocument();
-    afirmaRotuloNuevo(await ajustesDe("Ana"));
-    afirmaRotuloViejo(await ajustesDe("Beto"));
+    expect(tarjeta().textContent).not.toContain("devoluciones a origen");
+    const region = screen.getByRole("region", { name: "Cierres del día a consolidar" });
+    const fila = (n: string) =>
+      within(region)
+        .getAllByRole("row")
+        .find((r) => within(r).queryByText(n) !== null);
+    // «Gana bodega» es la 6.ª columna (Folio · Mensajero · Aprobado · Recaudado · Pago · Gana bodega).
+    expect(within(fila("Ana")!).getAllByRole("cell")[5].textContent).toBe("₡570");
+    expect(within(fila("Beto")!).getAllByRole("cell")[5].textContent).toBe("₡300");
   });
 
   it("el total sale del conjunto completo, no de la página: una página solo vieja no lo vuelve viejo (R49)", () => {
     montar([consolidable("Beto", { incluyeModeloNuevo: false })], true);
-    expect(screen.getByRole("region", { name: "Ingreso de bodega a consolidar" })).toBeInTheDocument();
+    expect(tarjeta().textContent).not.toContain("devoluciones a origen");
   });
 
-  it("viejo: región y rótulo de siempre, literales", () => {
+  it("viejo: la nota de siempre, literal", () => {
     montar([consolidable("Beto", { incluyeModeloNuevo: false })], false);
-    const total = screen.getByRole("region", {
-      name: "Ingreso de bodega por devoluciones a origen a consolidar",
-    });
-    expect(within(total).getByText(VIEJO, { exact: true })).toBeInTheDocument();
-    expect(total.textContent).toContain("₡870");
+    expect(within(tarjeta()).getByText("por devoluciones a origen", { exact: true })).toBeInTheDocument();
+    expect(tarjeta().textContent).toContain("₡870");
   });
 });

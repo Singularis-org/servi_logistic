@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 
 import { Pagination } from "@/components/shared/Pagination";
@@ -75,6 +75,7 @@ import {
   filaDescargaBodegaPendiente,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import { PARAM_CIERRE_BODEGA } from "./cierre-enlace";
 
 /** Nombre visible de la cola: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PENDIENTES = "Cierres de bodega pendientes";
@@ -214,6 +215,33 @@ function descargaColaBodega(filtros: FiltrosCierresBodega): DescargaResumenCierr
   };
 }
 
+/**
+ * SLT-114 (R238) — abre el detalle del cierre de bodega que nombra `?cierreBodega=`, el gemelo de
+ * `AbrirCierreDeLaUrl` de `CierresAdminModule`. No lee filas: llama al MISMO `abrirDetalle` de la
+ * cola, así que la lectura, el montaje y los avisos de error son los de «Ver / decidir».
+ *
+ * Una vez por navegación: el `ref` recuerda el id ya abierto para que los re-renders que provoca
+ * abrirlo no lo vuelvan a abrir, y se borra cuando el parámetro desaparece (al cerrar).
+ */
+function AbrirCierreBodegaDeLaUrl({
+  cierreBodegaId,
+  onAbrir,
+}: Readonly<{ cierreBodegaId: string | null; onAbrir: (cierreBodegaId: string) => void }>) {
+  const abiertoPorUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (cierreBodegaId === null) {
+      abiertoPorUrl.current = null;
+      return;
+    }
+    if (abiertoPorUrl.current === cierreBodegaId) return;
+    abiertoPorUrl.current = cierreBodegaId;
+    onAbrir(cierreBodegaId);
+  }, [cierreBodegaId, onAbrir]);
+
+  return null;
+}
+
 export function CierresBodegaAdminModule({
   pendientes,
   historico,
@@ -222,6 +250,8 @@ export function CierresBodegaAdminModule({
   audiencia = "satelite",
 }: Readonly<CierresBodegaAdminModuleProps>) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const { mutate } = useSWRConfig();
 
@@ -316,31 +346,59 @@ export function CierresBodegaAdminModule({
   const conciliadosCargando = conciliadosData === undefined;
   const porConciliar = tab === TAB_PENDIENTES;
 
-  /** R11-R13: abre el detalle agregado (pide totales + gestiones + evidencias firmadas). */
-  async function abrirDetalle(cierreBodegaId: string) {
+  /**
+   * R11-R13: abre el detalle agregado (pide totales + gestiones + evidencias firmadas). Devuelve si
+   * se abrió: el enlace `?cierreBodega=` lo necesita para limpiar la dirección cuando falla.
+   */
+  async function abrirDetalle(cierreBodegaId: string): Promise<boolean> {
     const result = await verCierreBodegaDetalle({ cierreBodegaId });
     if (result.status === "ok") {
       setDetalle(result);
-      return;
+      return true;
     }
     if (result.status === "no_encontrada") {
       toast.error("El cierre de bodega ya no está disponible. Actualizando la lista.");
       refrescarListas();
-      return;
+      return false;
     }
     if (result.status === "forbidden") {
       toast.error("No tenés permiso para ver este cierre de bodega.");
-      return;
+      return false;
     }
     if (result.status === "unauthenticated") {
       toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
-      return;
+      return false;
     }
     // validation_error (id malformado) u otro → feedback genérico.
     toast.error("No se pudo abrir el detalle del cierre de bodega. Intentá de nuevo.");
+    return false;
+  }
+
+  /**
+   * SLT-114 (R238, review 1) — el detalle que pide `?cierreBodega=`. Si la lectura falla, el
+   * parámetro también sale de la dirección: si no, recargar repetiría el mismo aviso de error.
+   */
+  async function abrirDetalleDeLaUrl(cierreBodegaId: string) {
+    const abierto = await abrirDetalle(cierreBodegaId);
+    if (!abierto) limpiarCierreBodegaDeLaUrl();
+  }
+
+  /**
+   * SLT-114 (R238) — saca `?cierreBodega=` de la dirección al cerrar, con `replace` y conservando el
+   * resto: si no, recargar volvería a abrir el detalle recién cerrado. El detalle abierto desde la
+   * cola no toca la URL, así que cerrarlo tampoco.
+   */
+  function limpiarCierreBodegaDeLaUrl() {
+    if (searchParams.get(PARAM_CIERRE_BODEGA) === null) return;
+    const parametros = new URLSearchParams(
+      [...searchParams.entries()].filter(([clave]) => clave !== PARAM_CIERRE_BODEGA),
+    );
+    const cadena = parametros.toString();
+    router.replace(cadena ? `${pathname}?${cadena}` : pathname, { scroll: false });
   }
 
   function cerrarDetalle() {
+    limpiarCierreBodegaDeLaUrl();
     setDetalle(null);
   }
 
@@ -392,6 +450,11 @@ export function CierresBodegaAdminModule({
       aria-label="Cierres de bodega satélite"
       className="flex flex-col gap-4"
     >
+      <AbrirCierreBodegaDeLaUrl
+        cierreBodegaId={searchParams.get(PARAM_CIERRE_BODEGA)}
+        onAbrir={(id) => void abrirDetalleDeLaUrl(id)}
+      />
+
       {/* ---------- La cola única (SLT-127, R133) ----------
           `ColaCierres` con `tipo` bodega: descripción, pestañas «Por conciliar» / «Conciliados» con
           conteo, UNA barra para las dos listas con «Descargar» a su derecha, la tabla de la pestaña
