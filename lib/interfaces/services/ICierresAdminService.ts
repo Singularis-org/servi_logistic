@@ -530,6 +530,13 @@ export type CierreDetalleAdminServiceResult =
        * ausente se pinta igual que `null`: sin «por …».
        */
       resueltoPorNombre?: string | null;
+      /**
+       * SLT-111 (R70/R263): el reparto de lo recaudado en % enteros que suman 100, en el orden
+       * [tienda (`pagoTienda`), empresa (`cobradoSobreRecaudado`)] y sobre `cierre.totales.general`.
+       * `null` = sin barra (nada recaudado, una parte negativa o partes que no cuadran). El servicio
+       * lo emite siempre; opcional solo para que los dobles no tengan que construirlo.
+       */
+      porcentajesReparto?: number[] | null;
     }
   | { status: "forbidden" } // rol invalido (R1)
   | { status: "no_encontrada" }; // id inexistente o de otra bodega/zona (R13)
