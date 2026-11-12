@@ -523,7 +523,7 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
       await fijarEmpresa(tx, conAdmins);
       for (let i = 0; i < 2; i++) await crearUsuarioDePrueba(tx, "admin");
       await fijarEmpresa(tx, "");
-      const rechazada = await el20.asignar(SUPERADMIN, { organizacionId: conAdmins, planId: p.planId, tipoCobro: "mensual" });
+      const conTopePasado = await el20.asignar(SUPERADMIN, { organizacionId: conAdmins, planId: p.planId, tipoCobro: "mensual" });
       const planDeD = (await tx.organizacion.findUniqueOrThrow({ where: { id: conAdmins }, select: { planId: true } })).planId;
       const aMedias = { recepciones: await recepciones(tx, cambio), detalle: (await planesEnTx(tx).detalle(p.planId))?.pendiente };
       // La vieja (mensual) lo recibe el 1 de diciembre: la última; el plan pasa a la versión y C queda sin versión propia.
@@ -536,7 +536,7 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
         asignadaDespues,
         deC,
         cambio,
-        rechazada,
+        conTopePasado,
         planDeD,
         aMedias,
         versionesFinal: await tx.planVersionEmpresa.count({ where: { planId: p.planId } }),
@@ -558,7 +558,7 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
     expect(r.asignadaDespues).toMatchObject({ estado: "ok", cambio: true });
     expect(r.deC.modulos).toEqual(["monitoreo"]);
     expect(r.deC.version).toMatchObject({ cambioId: r.cambio, desdeAt: a("2026-11-20"), version: { nombre: "Entra la nueva" } });
-    expect(r.rechazada).toMatchObject({ estado: "tope_excedido", excedidos: [{ tope: "admin", usados: 2, maximo: 1 }] });
+    expect(r.conTopePasado).toMatchObject({ estado: "tope_excedido", excedidos: [{ tope: "admin", usados: 2, maximo: 1 }] });
     expect(r.planDeD).toBeNull();
     // C no tiene recepción: el «N de M» sigue con B y la vieja.
     expect(Object.keys(r.aMedias.recepciones).sort()).toEqual([r.vieja, r.antesDeF].sort());
