@@ -7,6 +7,7 @@ import { SWRConfig } from "swr";
 
 import { ToastProvider } from "@/providers/ToastProvider";
 import { FORMA_UUID, UUID_BODEGA, UUID_MOV, estado, fila } from "@/tests/fixtures/estado-cuenta";
+import { casillasOfrecidas, ponerCasillas } from "@/tests/fixtures/barra-libro-wallet";
 
 // =================================================================================================
 // FICHA 458-D (T D.4; R17, R24, R30, R31, R81) — EL ESTADO DE CUENTA DE UNA BODEGA SATÉLITE.
@@ -109,11 +110,11 @@ async function abrirMovimientos(user = userEvent.setup()) {
   return user;
 }
 
-function montar(puedeConciliar = true) {
+function montar(puedeConciliar = true, inicial = INICIAL) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <ToastProvider>
-        <EstadoCuentaSatelite inicial={INICIAL} puedeConciliar={puedeConciliar} />
+        <EstadoCuentaSatelite inicial={inicial} puedeConciliar={puedeConciliar} />
       </ToastProvider>
     </SWRConfig>,
   );
@@ -219,12 +220,49 @@ describe("R31, R239 — la conciliación de hoy, en su pestaña", () => {
     const cabeceras = within(tabla)
       .getAllByRole("columnheader")
       .map((c) => c.textContent ?? "");
-    expect(cabeceras).toContain("Debe llegar");
-    expect(cabeceras).toContain("Falta");
-    expect(cabeceras).not.toContain("Para la central");
-    expect(cabeceras).not.toContain("Falta por recibir");
-    expect(cabeceras.indexOf("Debe llegar")).toBeLessThan(cabeceras.indexOf("Recibido"));
-    expect(cabeceras.indexOf("Recibido")).toBeLessThan(cabeceras.indexOf("Falta"));
+    // R239: solo cambian los dos títulos; las demás columnas y su orden, como estaban.
+    expect(cabeceras).toEqual(["Desglose", "Consolidada", "Debe llegar", "Recibido", "Falta", "Estado", "Conciliado por", ""]);
+  });
+
+  it("R239 — con dos incompletas, el aviso dice el `saldoActual` del estado de cuenta", async () => {
+    // Tres importes distintos a propósito: el de cada fila (₡20.000 y ₡12.000), su suma (₡32.000) y el
+    // saldo actual (₡48.250,75). Solo el último es el del aviso.
+    const conSaldo = estado({ ...INICIAL, saldoActual: "48250.75", saldoFinal: "48250.75", cargos: "48250.75" });
+    verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: conSaldo });
+    const incompleta = (n: number, debe: string, llego: string, falta: string) => ({
+      ...CONSOLIDACION,
+      cierreBodegaId: UUID_MOV(n),
+      paraLaCentral: debe,
+      totales: { ...CONSOLIDACION.totales, efectivo: debe, general: debe },
+      montoRecibido: llego,
+      faltaPorRecibir: falta,
+      conciliado: true,
+      conciliadoAt: "2026-09-17T15:00:00.000Z",
+      conciliadoPorNombre: "Carla Central",
+    });
+    listarConsolidacionesMock.mockResolvedValue({
+      status: "ok",
+      items: [incompleta(7, "60000.00", "40000.00", "20000.00"), incompleta(8, "30000.00", "18000.00", "12000.00")],
+      total: 2,
+      page: 1,
+      pageSize: 25,
+    });
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <ToastProvider>
+          <EstadoCuentaSatelite inicial={conSaldo} puedeConciliar />
+        </ToastProvider>
+      </SWRConfig>,
+    );
+    const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    const titulo = await within(region).findByText("2 consolidaciones llegaron incompletas");
+    const aviso = titulo.closest('[role="status"]');
+    expect(aviso).not.toBeNull();
+    expect(aviso?.textContent).toBe(
+      "2 consolidaciones llegaron incompletas" +
+        "Entre todas falta por llegar ₡48.250,75. Esa diferencia sigue contando como pendiente de esta " +
+        "bodega hasta que llegue o se corrija la marca.",
+    );
   });
 
   it("R30: marcar recibido relee el estado de cuenta de ESTA bodega", async () => {
@@ -305,6 +343,38 @@ describe("R230-R233 — «Conciliación» y «Movimientos» bajo las tarjetas", 
     expect(within(otra).getByRole("button", { name: "Todas" }).getAttribute("aria-pressed")).toBe("true");
     const pag = within(otra).getByRole("navigation", { name: "Paginación de las consolidaciones de FGAM Puntarenas" });
     expect(within(pag).getByText("26-26 de 26")).toBeTruthy();
+  });
+
+  it("R232 — volver a «Movimientos» conserva término, casillas y página del libro", async () => {
+    // 45 movimientos, 20 por página (el `pageSize` de la primera lectura): hay página 2.
+    const largo = estado({ ...INICIAL, total: 45 });
+    verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: largo });
+    const user = userEvent.setup();
+    montar(true, largo);
+    await abrirMovimientos(user);
+
+    await user.type(screen.getByRole("searchbox", { name: "Buscar en el libro" }), "etiquetas");
+    await waitFor(() => expect(verEstadoCuentaMock).toHaveBeenLastCalledWith(expect.objectContaining({ q: "etiquetas" })), {
+      timeout: 3000,
+    });
+    await ponerCasillas(user, document.body, "Tipo de movimiento");
+    const paginacionLibro = () =>
+      screen.getByRole("navigation", { name: "Paginación del estado de cuenta de FGAM Puntarenas" });
+    await user.click(within(paginacionLibro()).getByRole("button", { name: /siguiente/i }));
+    await waitFor(() =>
+      expect(verEstadoCuentaMock).toHaveBeenLastCalledWith(expect.objectContaining({ q: "etiquetas", page: 2 })),
+    );
+    const lecturas = verEstadoCuentaMock.mock.calls.length;
+
+    await user.click(screen.getByRole("tab", { name: /^Conciliación/ }));
+    expect(screen.queryByRole("searchbox", { name: "Buscar en el libro" })).toBeNull();
+    await abrirMovimientos(user);
+
+    expect(screen.getByRole("searchbox", { name: "Buscar en el libro" })).toHaveValue("etiquetas");
+    expect((await casillasOfrecidas(user, document.body)).marcadas).toEqual(["Tipo de movimiento"]);
+    expect(within(paginacionLibro()).getByText("21-40 de 45")).toBeTruthy();
+    // Ir y volver no relee el libro: la selección es la misma.
+    expect(verEstadoCuentaMock.mock.calls.length).toBe(lecturas);
   });
 
   it("R233 — la pestaña dice \"2 sin conciliar\" con total 2 y solo \"Conciliación\" con 0", async () => {

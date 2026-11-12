@@ -218,4 +218,19 @@ describe("R238 — `?cierreBodega=<id>` abre el detalle único en la mitad «Bod
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" })).toBeTruthy();
   });
+
+  // Review 1 (menor 5): si el parámetro se quedara, recargar repetiría el mismo aviso de error.
+  it.each([["no_encontrada"], ["forbidden"]])(
+    "si la lectura responde `%s`, quita `cierreBodega` con replace y conserva los demás",
+    async (status) => {
+      url.parametros = new URLSearchParams({ cierreBodega: ID_FUERA_DE_LA_COLA, vista: "tabla-zeta" });
+      vi.mocked(verCierreBodegaDetalle).mockResolvedValue({ status } as unknown as Ok);
+      montarPantalla();
+
+      await waitFor(() => expect(nav.replace).toHaveBeenCalledTimes(1));
+      expect(nav.replace).toHaveBeenCalledWith("/cierres-admin?vista=tabla-zeta", { scroll: false });
+      expect(nav.push).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
 });

@@ -346,28 +346,41 @@ export function CierresBodegaAdminModule({
   const conciliadosCargando = conciliadosData === undefined;
   const porConciliar = tab === TAB_PENDIENTES;
 
-  /** R11-R13: abre el detalle agregado (pide totales + gestiones + evidencias firmadas). */
-  async function abrirDetalle(cierreBodegaId: string) {
+  /**
+   * R11-R13: abre el detalle agregado (pide totales + gestiones + evidencias firmadas). Devuelve si
+   * se abrió: el enlace `?cierreBodega=` lo necesita para limpiar la dirección cuando falla.
+   */
+  async function abrirDetalle(cierreBodegaId: string): Promise<boolean> {
     const result = await verCierreBodegaDetalle({ cierreBodegaId });
     if (result.status === "ok") {
       setDetalle(result);
-      return;
+      return true;
     }
     if (result.status === "no_encontrada") {
       toast.error("El cierre de bodega ya no está disponible. Actualizando la lista.");
       refrescarListas();
-      return;
+      return false;
     }
     if (result.status === "forbidden") {
       toast.error("No tenés permiso para ver este cierre de bodega.");
-      return;
+      return false;
     }
     if (result.status === "unauthenticated") {
       toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
-      return;
+      return false;
     }
     // validation_error (id malformado) u otro → feedback genérico.
     toast.error("No se pudo abrir el detalle del cierre de bodega. Intentá de nuevo.");
+    return false;
+  }
+
+  /**
+   * SLT-114 (R238, review 1) — el detalle que pide `?cierreBodega=`. Si la lectura falla, el
+   * parámetro también sale de la dirección: si no, recargar repetiría el mismo aviso de error.
+   */
+  async function abrirDetalleDeLaUrl(cierreBodegaId: string) {
+    const abierto = await abrirDetalle(cierreBodegaId);
+    if (!abierto) limpiarCierreBodegaDeLaUrl();
   }
 
   /**
@@ -439,7 +452,7 @@ export function CierresBodegaAdminModule({
     >
       <AbrirCierreBodegaDeLaUrl
         cierreBodegaId={searchParams.get(PARAM_CIERRE_BODEGA)}
-        onAbrir={abrirDetalle}
+        onAbrir={(id) => void abrirDetalleDeLaUrl(id)}
       />
 
       {/* ---------- La cola única (SLT-127, R133) ----------

@@ -137,14 +137,14 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
 |---|---|
 | R230 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R230 — pestañas Conciliación y Movimientos, abre en Conciliación» (orden de `tab`, `aria-selected`) |
 | R231 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R231 — cada pestaña muestra lo suyo y las tarjetas siguen» |
-| R232 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R232 — volver a una pestaña conserva filtro y página» y el test R30 existente (marcar relee el estado de cuenta), adaptado a la pestaña |
+| R232 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R232 — volver a una pestaña conserva filtro y página», «R232 — volver a "Movimientos" conserva término, casillas y página del libro» y el test R30 existente (marcar relee el estado de cuenta), adaptado a la pestaña |
 | R233 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R233 — la pestaña dice "2 sin conciliar" con total 2 y solo "Conciliación" con 0» (literales) |
 | R234 | `tests/components/EstadoCuenta.test.tsx` › «R234 — sin pestaña de conciliación no hay tablist» (tienda) |
 | R235 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R235 — "Lo que va a la central" con literales del doble» (importes escritos a mano) y «R235 — los métodos en cero no se pintan» (PA3) |
 | R236 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R236 — "Conciliación": "—" sin marca y la falta del servidor tal cual (canario)» |
 | R237 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R237 — enlace "Ver el cierre de bodega completo" con su href» + `tests/unit/utils/cierre-enlace.test.ts` (codifica el id) |
-| R238 | `tests/components/CierresBodegaAdminDeepLink.test.tsx` (nuevo, espejo de `CierresAdminDeepLink.test.tsx`): abre en «Bodega» con el detalle, cierra y limpia el parámetro, `no_encontrada` avisa |
-| R239 | `tests/components/EstadoCuentaSatelite.test.tsx` › tests R31/R30/«sin permiso» existentes, adaptados a la pestaña, y «R239 — sin "Pendiente de llegar" y columnas "Debe llegar" y "Falta"» (PA1, PA2); `tests/integration/wallet-satelites.test.tsx` verde |
+| R238 | `tests/components/CierresBodegaAdminDeepLink.test.tsx` (nuevo, espejo de `CierresAdminDeepLink.test.tsx`): abre en «Bodega» con el detalle, cierra y limpia el parámetro, `no_encontrada` avisa; si la lectura falla (`no_encontrada`, `forbidden`) también limpia el parámetro |
+| R239 | `tests/components/EstadoCuentaSatelite.test.tsx` › tests R31/R30/«sin permiso» existentes, adaptados a la pestaña, y «R239 — sin "Pendiente de llegar" y columnas "Debe llegar" y "Falta"» (PA1, PA2; cabeceras completas en orden) y «R239 — con dos incompletas, el aviso dice el `saldoActual` del estado de cuenta» (literal `₡48.250,75`); `tests/integration/wallet-satelites.test.tsx` verde |
 
 ## Tasks
 
@@ -168,9 +168,10 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
   **Hecho:** `ConciliacionSateliteCascada.test.tsx` reescrito con literales a mano y canario;
   guardias `wallet-sin-uuid`, `enlace-contraste-458`, `cierre-bodega-vocabulario` y
   `conciliacion-esperado-unico` verdes.
-- [ ] **T6** Cierre: `./init.sh` verde; verificación en navegador de `/wallet/satelites/<zona>` (abre
+- [x] **T6** Cierre: `./init.sh` verde; verificación en navegador de `/wallet/satelites/<zona>` (abre
   en «Conciliación», conteo, despliegue con dos cuentas, enlace abre el detalle en `/cierres-admin`).
   **Hecho:** gate verde y captura o nota de la verificación en `progress/features/SLT-114.md`.
+  Evidencia: E2E «1b» de `e2e/cierre-bodega-satelite.spec.ts` y gate del leader en `progress/impl_SLT-114.md`.
 
 ## Archivos esperados
 

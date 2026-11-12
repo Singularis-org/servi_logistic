@@ -87,3 +87,36 @@ T1-T5 hechas y probadas; T6 con E2E y navegador verdes, pendiente solo de que el
 
 ## Gate del leader (2026-11-12)
 - `./init.sh` con la base slt114_conciliacion: único rojo nuevo `dominio-ordenex-fuera` por timeout de 20 s con 3 agentes en paralelo; corrido solo, 9/9 en 2 s. Flaky por carga conocido (también en SLT-106 hoy).
+
+## Arreglos review 1 (2026-11-12)
+
+Archivos:
+- `app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx` — `abrirDetalle` devuelve si abrió;
+  `abrirDetalleDeLaUrl` limpia `?cierreBodega=` también cuando la lectura falla (menor 5).
+- `tests/components/EstadoCuentaSatelite.test.tsx` — R239 aviso con dos incompletas (bloqueante 1);
+  cabeceras con `toEqual` literal en orden (menor 2); R232 del libro: término, casillas y página (menor 3).
+- `tests/components/CierresBodegaAdminDeepLink.test.tsx` — `no_encontrada` y `forbidden` limpian el parámetro.
+- `specs/SLT-114-estado-cuenta-conciliacion-pestana/requirements.md` — trazabilidad R232/R238/R239 y T6 `[x]`.
+
+Mapa añadido:
+- R239 → «R239 — con dos incompletas, el aviso dice el `saldoActual` del estado de cuenta»: literal a mano
+  «Entre todas falta por llegar ₡48.250,75…» (saldoActual `48250.75`; faltas `20000.00` y `12000.00`,
+  suma `32000.00`: tres importes distintos). Cabeceras: `["Desglose", "Consolidada", "Debe llegar",
+  "Recibido", "Falta", "Estado", "Conciliado por", ""]`.
+- R232 → «R232 — volver a "Movimientos" conserva término, casillas y página del libro» (`etiquetas`,
+  «Tipo de movimiento» marcada, «21-40 de 45», sin lectura nueva al ir y volver).
+- R238 → «si la lectura responde `no_encontrada`/`forbidden`, quita `cierreBodega` con replace…».
+
+Mutaciones (revertidas, `git diff` del archivo vacío tras restaurar):
+- Aviso con `money("0")` → cae («…falta por llegar ₡0.»).
+- Aviso con `money(incompletas[0].faltaPorRecibir)` → cae («…₡20.000.»).
+- Quitar la limpieza en el fallo → caen los 2 casos nuevos de R238.
+
+Comandos (DATABASE_URL → slt114_conciliacion):
+- `pnpm run typecheck`: `TC_EXIT=0`.
+- `eslint` de los 3 `.ts/.tsx` tocados: `LINT_EXIT=0`.
+- vitest `EstadoCuentaSatelite`, `CierresBodegaAdminDeepLink`, `CierresBodegaAdminCola`,
+  `CierresBodegaAdminDetalleUnico`, `CierresBodegaAdminRefresco`, `CierresAdminDeepLink`,
+  `ConciliacionSateliteCascada`, `integration/wallet-satelites`: 8 archivos, 111/111.
+
+Veredicto: bloqueante y menores 1, 2, 3 y 5 resueltos; el bloqueante y el menor 5 con test que cae ante su mutación; menor 4 sin tocar (cubierto en `ConciliacionSateliteCascada`).
