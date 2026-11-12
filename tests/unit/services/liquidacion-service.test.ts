@@ -75,6 +75,7 @@ const INPUT_MENSAJERO: RegistrarPagoMensajeroInput = {
 /** Cierre APROBADO con P = 50 000 y E = 0 -> pendiente generado por el cierre: 50 000. */
 function cierreDTO(over: Partial<CierreParaPagoDTO> = {}): CierreParaPagoDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: "c1",
     mensajeroId: "m1",
     estado: CierreEstado.aprobado,

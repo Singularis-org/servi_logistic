@@ -31,7 +31,7 @@ const MENSAJERO = "6a1d1f4e-6f0a-4d43-9d1b-2b8d6f1c0a01";
 const ID_INCENTIVO = "inc-fijo";
 
 function cierre(id: string, solicitadoAt: string): CierreImputableDTO {
-  return { id, mensajeroId: MENSAJERO, estado: "aprobado", totalPagoMensajero: "0.00", totalEfectivo: "0.00", solicitadoAt };
+  return { id, mensajeroId: MENSAJERO, pagoIndependienteEfectivo: false, estado: "aprobado", totalPagoMensajero: "0.00", totalEfectivo: "0.00", solicitadoAt };
 }
 
 const REGISTRO = {

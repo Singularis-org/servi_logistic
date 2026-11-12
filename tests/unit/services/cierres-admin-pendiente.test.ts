@@ -34,6 +34,7 @@ const CERO = { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: 
  */
 function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     mensajeroId: `m-${over.cierreId}`,
     mensajeroNombre: "Ana Mensajera",
     estado: "aprobado",
@@ -458,6 +459,7 @@ describe("R26 — el detalle de un cierre tambien trae su pendiente", () => {
 
 describe("R16/R18 — aprobar devuelve el pendiente, sin convertirlo en condicion", () => {
   const cierreAprobado: CierreParaPagoDTO = {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: "c1",
     mensajeroId: "m1",
     estado: "aprobado",
@@ -637,6 +639,7 @@ describe("293/R24/R27 — un cierre SALDADO con premio vuelve a estar pendiente"
       fakeRepo(),
       fakeLiquidacion({
         cierre: {
+          pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
           id: "c1",
           mensajeroId: "m1",
           estado: "aprobado",

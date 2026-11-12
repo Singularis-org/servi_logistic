@@ -919,8 +919,14 @@ const RECHAZO_A_INCORPORAR_SELECT = {
  */
 const ORDEN_CIERRES_MENSAJERO: Prisma.CierreDiaOrderByWithRelationInput = { solicitadoAt: "desc" };
 
-/** Mapper de la cabecera: Decimal -> STRING escala 2 (money-safe), fechas -> ISO. */
-function toCierrePasadoDTO(r: CierrePasadoSelectRow): CierrePasadoDTO {
+/**
+ * Mapper de la cabecera: Decimal -> STRING escala 2 (money-safe), fechas -> ISO.
+ * SLT-123 (R320): el tipo de retorno exige la marca, aunque el DTO la deje opcional por sus
+ * dobles de UI; olvidar mapearla aqui es un error de compilacion, no la regla vieja en silencio.
+ */
+function toCierrePasadoDTO(
+  r: CierrePasadoSelectRow,
+): CierrePasadoDTO & { pagoIndependienteEfectivo: boolean } {
   return {
     cierreId: r.id,
     estado: r.estado,

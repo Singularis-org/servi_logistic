@@ -97,6 +97,7 @@ function cierre(
   over: Partial<CierreImputableDTO> = {},
 ): CierreImputableDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id,
     mensajeroId: MENSAJERO,
     estado: CierreEstado.aprobado,

@@ -34,6 +34,7 @@ const CERO = { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: 
 
 function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     mensajeroId: `m-${over.cierreId}`,
     mensajeroNombre: "Ana Mensajera",
     estado: "solicitado",

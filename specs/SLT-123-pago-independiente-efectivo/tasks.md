@@ -21,7 +21,8 @@
 - [x] **T0.3** `[P]` Comprobar que `servi_app` puede hacer `UPDATE` de una columna nueva de `cierre_dia`
   (permisos de tabla, no por columna). Hecho: consulta a `information_schema.column_privileges` /
   `role_table_grants` anotada. Si son por columna, la migración de T1.2 lleva el `GRANT`.
-- [ ] **T0.4** (Carlos, en prod, transacción READ ONLY) Contar `cierre_dia` de la central en
+- [ ] **T0.4** (DIFERIDA: consulta de solo lectura a prod no ejecutada (bloqueada para agentes); es
+  informativa y no condiciona el código; Carlos la puede correr cuando quiera.) (Carlos, en prod, transacción READ ONLY) Contar `cierre_dia` de la central en
   `solicitado`/`vencido`, y los de satélite en esos estados. Hecho: números anotados; es informativo
   (cuántos cierres de la central entran con la regla nueva y cuántos de satélite se quedarán viejos
   si se aprueban antes de SLT-139, `design.md > 13`).
@@ -123,7 +124,7 @@
 ## T8 — Cierre
 
 - [ ] **T8.1** `./init.sh` en verde en el worktree. `INIT_EXIT=$?` escrito dentro del log.
-- [ ] **T8.2** `progress/impl_SLT-123.md` con el mapa R → test (abajo), las mutaciones y el tamaño
+- [x] **T8.2** `progress/impl_SLT-123.md` con el mapa R → test (abajo), las mutaciones y el tamaño
   medido por `scripts/tamano-pr.mjs`.
 
 **Total: 20 tasks** (T0.1-T0.4, T1.1-T1.3, T2.1-T2.2, T3.1, T4.1, T5.1-T5.3, T6.1-T6.2, T7.1-T7.2,
@@ -141,12 +142,12 @@ T8.1-T8.2).
 | R315 | `tests/unit/utils/pendiente-cierre.test.ts` | filas 3-6 |
 | R316 | integración caso 4 + `tests/unit/services/liquidacion-service.test.ts` | tope = P; pagar P deja `0.00` |
 | R320 | `tests/unit/services/cierres-admin-pendiente.test.ts`, `tests/unit/services/cierre-dia-pendiente-pago.test.ts`, `tests/integration/db/cierre-dia-pendiente-pago.test.ts` | página con viejo y nuevo |
-| R321 | `tests/unit/services/liquidacion-service.test.ts` | pago directo, reparto, anular, tras aprobar |
+| R321 | `tests/unit/services/liquidacion-service.test.ts` + integración «R321: el reparto «Pagar» con el repositorio real» | pago directo, reparto, anular, tras aprobar; reparto real: N1 `3000.00`, V1 `2000.00` |
 | R325 | `pendiente-cierre.test.ts` filas 1-2 + feed unit + integración casos 3, 5 y 6 | regla de la 44 intacta, también en la satélite aprobada con SLT-123 |
 | R326 | integración caso 1 | foto de V1/V2 idéntica |
 | R327 | integración casos 3 y 6 + mutaciones M7 y M8 | central viejo y satélite sin marca |
 | R328 | integración caso 4 | cuenta por pagar sube P al aprobar y baja con el pago |
-| R331 | integración caso 8 | caja, `paraLaCentral`, premios, conciliación analítica iguales |
+| R331 | integración caso 8 (dos `it`) | caja, tienda y premios de N1 iguales a los de V1; `paraLaCentral` de S1 (aprobado con el código nuevo) `1500.00` |
 | R332 | `pendiente-cierre.test.ts` (lectura del archivo) + `wallet-mensajero-feed-service.test.ts` | sin coma flotante |
 
 R317-R319, R322-R324, R329, R330, R333-R338: de SLT-139 (`requirements.md > Fuera de alcance`).

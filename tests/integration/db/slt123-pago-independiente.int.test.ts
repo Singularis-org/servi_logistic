@@ -292,6 +292,9 @@ interface Medida {
   pendientesV2: Record<string, string | null>;
   pendientesS1: Record<string, string | null>;
   centralDebeS1AntesDeConsolidar: string;
+  paraLaCentralS1: string | null;
+  repartoN1: Record<string, string>;
+  repartoV1: Record<string, string>;
   cuentaN1: { antes: string; trasAprobar: string; trasPagar: string; trasAnular: string };
   pagoN1: { status: string; restante?: string };
   pendienteN1TrasPagar: string | null;
@@ -368,12 +371,16 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
         };
 
         // S1 antes de consolidar: «La central debe» de su consolidacion (E 4 000 >= P 2 500).
-        const consolidacionS1 = await new CierreBodegaService(
+        const bodegaService = new CierreBodegaService(
           new CierreBodegaRepository(clienteConSavepoint(tx)),
           new OrdenRepository(clienteConSavepoint(tx)),
           reglasPaisFijas(),
-        ).listarConsolidacion(S1.adminSatelite);
+        );
+        const consolidacionS1 = await bodegaService.listarConsolidacion(S1.adminSatelite);
         if (consolidacionS1.status !== "ok") throw new Error(`listarConsolidacion S1: ${consolidacionS1.status}`);
+        // R331: la fila de «A consolidar» de S1, con su «Debe llegar a la central» (`paraLaCentral`).
+        const colaS1 = await bodegaService.listarConsolidablesPaginado({ page: 1, pageSize: 50 }, S1.adminSatelite);
+        if (colaS1.status !== "ok") throw new Error(`listarConsolidablesPaginado S1: ${colaS1.status}`);
         const bodegaS1 = await consolidar(tx, S1.adminSatelite);
         const conciliaS1 = await marcarRecibido(tx, bodegaS1, "20000.00", S1.maestroId);
         if (conciliaS1 !== "updated" && conciliaS1 !== "ok") throw new Error(`no se concilio S1: ${conciliaS1}`);
@@ -414,6 +421,10 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
         ).id;
         const anulacion = await liquidacion(tx).anularPago({ pagoId, motivo: "Monto mal registrado" }, maestro);
         const cuentaTrasAnular = await cuentaPorPagar(tx, mensajeroN1);
+        // R321 (review 1): el reparto «Pagar» de /wallet/mensajeros con el repositorio REAL
+        // (`listarCierresImputablesEnAlcance`), con N1 otra vez en su pendiente tras la anulacion.
+        const repartoN1 = await repartoDe(tx, mensajeroN1, maestro);
+        const repartoV1 = await repartoDe(tx, await mensajeroDe(tx, V1.cierreId), maestro);
         const incentivo = await incentivos(tx).registrar(
           {
             mensajeroId: mensajeroN1,
@@ -445,6 +456,10 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
           pendientesV2,
           pendientesS1,
           centralDebeS1AntesDeConsolidar: consolidacionS1.totalCentralDebeAgregado,
+          paraLaCentralS1:
+            colaS1.items.find((c) => c.cierreDiaId === S1.cierreId)?.paraLaCentral ?? null,
+          repartoN1,
+          repartoV1,
           cuentaN1: { antes: cuentaAntes, trasAprobar: cuentaTrasAprobar, trasPagar: cuentaTrasPagar, trasAnular: cuentaTrasAnular },
           pagoN1: pago as { status: string; restante?: string },
           pendienteN1TrasPagar,
@@ -550,6 +565,16 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
     expect(premios).toEqual({ [ids.V1]: "0.00", [ids.N1]: "0.00" });
   });
 
+  it("caso 8 (R331): «Debe llegar a la central» de S1, aprobado con el codigo nuevo, = general 4 000 − P 2 500 = 1500.00", () => {
+    expect(m().paraLaCentralS1).toBe("1500.00");
+  });
+
+  it("R321: el reparto «Pagar» con el repositorio real imputa 3000.00 a N1 (P) y 2000.00 a V1 (regla vieja)", () => {
+    const { repartoN1, repartoV1, ids } = m();
+    expect(repartoN1).toEqual({ [ids.N1]: "3000.00" });
+    expect(repartoV1).toEqual({ [ids.V1]: "2000.00" });
+  });
+
   it("caso 2 (R310): si la transaccion lanza despues de escribir la marca, N1 sigue `solicitado` y sin marca", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
@@ -574,6 +599,13 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
     expect(r.libros).toEqual({ caja: [], tienda: [], mensajero: [] });
   }, 120_000);
 });
+
+/** Imputable de cada cierre en el reparto «Pagar» (`previsualizarRepartoMensajero`), con el monto holgado. */
+async function repartoDe(tx: TxDeTest, mensajeroId: string, actor: Actor): Promise<Record<string, string>> {
+  const r = await liquidacion(tx).previsualizarRepartoMensajero({ mensajeroId, monto: "100000.00" }, actor);
+  if (r.status !== "ok") throw new Error(`previsualizarRepartoMensajero: ${r.status}`);
+  return Object.fromEntries(r.previsualizacion.imputaciones.map((i) => [i.cierreId, i.pendienteActual]));
+}
 
 async function mensajeroDe(tx: TxDeTest, cierreId: string): Promise<string> {
   return (await tx.cierreDia.findUniqueOrThrow({ where: { id: cierreId }, select: { mensajeroId: true } }))

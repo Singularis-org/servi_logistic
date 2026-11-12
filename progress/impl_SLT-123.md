@@ -240,3 +240,42 @@ Logs: `scratchpad/slt123/e2e1.log`, `e2e2.log`, `build.log`.
 ## Veredicto T7
 
 T7.1 y T7.2 hechas: 2 integraciones y 7 E2E adaptados a la regla nueva con importes a mano; grupo `dinero` 101/101.
+
+## Arreglos review 1
+
+Fuente: `progress/review_SLT-123.md` (commit a60b8868).
+
+1. **Bloqueante R321 (marca perdida en el reparto «Pagar»).**
+   - a) `pagoIndependienteEfectivo` pasa a OBLIGATORIA en las filas de repositorio:
+     `CierreParaPagoDTO` (y por herencia `CierreImputableDTO`, `ILiquidacionPagoRepository.ts`) y
+     `CierreAdminResumenRow` (`ICierresAdminRepository.ts`). `CierrePasadoDTO` es tambien el DTO de
+     la UI y se deja opcional; su mapper del repositorio (`toCierrePasadoDTO`, `CierreDiaRepository.ts`)
+     declara `CierrePasadoDTO & { pagoIndependienteEfectivo: boolean }` como retorno.
+     Dobles ajustados (solo los que construyen esas filas, `pagoIndependienteEfectivo: false`, la regla
+     de antes): 16 archivos de `tests/unit/services/*` y `tests/unit/guards/liquidacion-reparto-bloqueos.guardia.test.ts`.
+   - b) Integración, `it` «R321: el reparto «Pagar» con el repositorio real…»: `previsualizarRepartoMensajero`
+     real tras la anulacion: N1 `3000.00`, V1 `2000.00` (literales a mano).
+   - Mutacion (quitar el mapeo en `LiquidacionPagoRepository.ts:374` y `:409`): **la matan los dos**.
+     Typecheck: `TS2322` en `:368` y `:402`. Test: el `it` R321 de la integracion falla (1 failed / 14 passed).
+     Revertida (copia restaurada, `git diff` del repositorio vacio).
+2. **Menor R331 caso 8:** nuevo `it` «caso 8 (R331): «Debe llegar a la central» de S1…»: `paraLaCentral`
+   de la fila de «A consolidar» (`listarConsolidablesPaginado`) de S1, aprobado con el codigo nuevo,
+   `1500.00` (= general 4 000 − P 2 500 − bodega 0). `paraLaCentral` solo existe para cierres de satelite;
+   V1/N1 son de la central y no tienen esa cifra.
+3. **Menor JSDoc** `ICierresAdminService.ts` (`pendientePagoMensajero`): nuevos `P` − pagos vigentes;
+   viejos `P − min(P, E)` − pagos vigentes (es lo que hace `derivarPendienteCierre`; «`min(P, E)`» a secas
+   era el texto desfasado), mas premios vivos en los dos.
+4. **Proceso:** T8.2 `[x]`; T0.4 marcada DIFERIDA con su motivo; Trazabilidad de R321 y R331 al dia.
+   T8.1 queda para el gate del leader.
+
+Salida real:
+
+- `npx prisma generate` antes de cada tanda (4 regeneraciones); `index.d.ts` con 85 apariciones de
+  `pagoIndependienteEfectivo` en todas.
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit -p .`): 0 errores.
+- Lint (`npx eslint` de los 20 `.ts` tocados): exit 0.
+- Vitest (unit de liquidacion, cierres-admin, cierre-dia, incentivo, liberacion, guardia de reparto,
+  pendiente-cierre + `slt123-pago-independiente.int`, base `slt123_pago`): **36 archivos, 931/931**.
+  La integracion sola: 15/15.
+
+Veredicto: los cuatro arreglos de la review 1 aplicados; el hallazgo bloqueante queda cubierto por tipo y por test.
