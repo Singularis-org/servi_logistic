@@ -210,9 +210,9 @@ async function desplegarFila(comprobante: HTMLElement, numRemision: string) {
   );
 }
 
-/** La `<tr>` de la tabla EN VIVO que lleva ese número de guía. */
+/** La fila única (`[data-gestion]`) del cierre de HOY que lleva ese número de guía (SLT-109). */
 function filaEnVivoDeGuia(guia: string): HTMLElement {
-  const fila = screen.getByText(guia).closest("tr");
+  const fila = screen.getByText(guia).closest("[data-gestion]");
   expect(fila, `no hay ninguna fila en vivo con la guía ${guia}`).not.toBeNull();
   return fila as HTMLElement;
 }
@@ -283,8 +283,12 @@ describe("R5 — el mensajero, en su pantalla, ya no lee la contradicción", () 
 
 // ── R9 ──────────────────────────────────────────────────────────────────────────────────────
 
-describe("R9 — la tabla en vivo dice la marca; el detalle único del cierre pasado no (S3-PA6)", () => {
-  it("la tabla en vivo lleva la marca y el detalle del cierre pasado no", async () => {
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242, R244): la tabla en
+// vivo se fue; el cierre de hoy usa la MISMA fila única que el detalle de un cierre pasado, y S3-PA6
+// rige en las dos: sin la marca «La tienda». Lo que le dice al mensajero que esa gestión la registró
+// la tienda es su «Devolver a gestión» deshabilitado, con el motivo en el nombre y en `title`.
+describe("R9 → SLT-109 — ni el cierre de hoy ni el pasado llevan la marca; el de hoy lo dice en el «Devolver a gestión» (S3-PA6)", () => {
+  it("la fila de hoy no lleva la marca pero su botón dice por qué no se puede, y el detalle del cierre pasado no lleva la marca", async () => {
     // La gestión de la tabla EN VIVO y la del COMPROBANTE son distintas a propósito: lo que se
     // compara no son dos pinturas del mismo dato, son las dos superficies que leen el texto.
     verCierrePasadoMock.mockResolvedValue({
@@ -312,10 +316,15 @@ describe("R9 — la tabla en vivo dice la marca; el detalle único del cierre pa
       ],
     });
 
-    // 1) La tabla EN VIVO, donde la marca existe desde la 237.
-    const marcaEnVivo = within(filaEnVivoDeGuia("7777")).getByText(TIENDA_LABEL);
-    expect(marcaEnVivo).toHaveAttribute("title", TIENDA_NOTA);
-    expect(marcaEnVivo).toHaveAttribute("aria-label", TIENDA_NOTA);
+    // 1) El cierre de HOY: la fila única, sin la marca, con el «Devolver a gestión» apagado y su motivo.
+    const filaHoy = filaEnVivoDeGuia("7777");
+    expect(within(filaHoy).queryAllByText(TIENDA_LABEL)).toHaveLength(0);
+    const boton = within(filaHoy).getByRole("button", { name: /^Devolver a gestión la orden REM-VIVA/ });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute(
+      "title",
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+    );
 
     // 2) SLT-108: el cierre pasado se lee en el detalle único, cuya fila no lleva la marca
     // (S3-PA6, rige también para el mensajero).

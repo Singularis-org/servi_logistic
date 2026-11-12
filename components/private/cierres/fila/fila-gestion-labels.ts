@@ -83,6 +83,21 @@ export const notaFulfillment = (fecha: string | null): string =>
 export const DEVOLVER_A_GESTION = "Devolver a gestión";
 export const devolverAriaLabel = (remision: string, destinatario: string): string =>
   `${DEVOLVER_A_GESTION} la orden ${remision} · ${destinatario}`;
+/**
+ * FEATURE 237 (D3, R38) — «Devolver a gestión» va DESHABILITADO, con este motivo, sobre una gestión
+ * que registró la tienda (`desdeAyudaTienda`). Mudado de `CierreDiaModule.tsx` en SLT-109 (R244) sin
+ * cambiar un carácter.
+ *
+ * ⚠️ EL TEXTO ES EL MISMO que devuelve el servidor si alguien llega a la acción por otra vía
+ * (`MSG_GESTION_DE_LA_TIENDA`, `lib/services/CierreDiaService.ts`). Está duplicado a propósito: esa
+ * constante NO se exporta y traerla aquí arrastraría Prisma al navegador. Si alguien cambia uno,
+ * tiene que cambiar el otro: son las dos mitades de la MISMA regla, dicha antes y después.
+ */
+export const DESHACER_BLOQUEO_TIENDA =
+  "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+/** R244 — el motivo viaja también en el nombre accesible: un botón `disabled` sale del tabulador. */
+export const devolverNoDisponibleAriaLabel = (remision: string, destinatario: string, motivo: string): string =>
+  `${devolverAriaLabel(remision, destinatario)} — no disponible: ${motivo}`;
 export const detalleOrdenAriaLabel = (remision: string, destinatario: string): string =>
   `Detalle de la orden ${remision} · ${destinatario}`;
 

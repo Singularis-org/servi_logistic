@@ -58,6 +58,11 @@ export interface FilaGestionProps {
   onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /** Mismo `columnaMensajero` que la cabecera de la lista (R23). */
   columnaMensajero?: boolean;
+  /**
+   * SLT-109 (R244): el `gestionId` cuyo «Devolver a gestión» está en vuelo. Su botón se deshabilita
+   * (anti doble envío en la UI; el servidor lo corta igual).
+   */
+  enVuelo?: string | null;
 }
 
 /** Ancho de cada columna (canvas: `70px 1.7fr 110px 1fr 1fr 1fr 1.3fr 40px`). */
@@ -97,6 +102,7 @@ export function FilaGestion({
   acciones,
   onVerEvidencia,
   columnaMensajero = false,
+  enVuelo = null,
 }: Readonly<FilaGestionProps>) {
   const [abierta, setAbierta] = useState(false);
   const [calculoAbierto, setCalculoAbierto] = useState(false);
@@ -194,11 +200,19 @@ export function FilaGestion({
         ))}
         <span className="flex items-center justify-end gap-1.5">
           {ofrecidas.devolver ? (
+            // R244 (feature 237): deshabilitado CON SU MOTIVO, no oculto — en `title` y al final del
+            // nombre accesible, porque un botón `disabled` sale del orden de tabulación.
             <Button
               type="button"
               size="sm"
               variant="outline"
-              aria-label={L.devolverAriaLabel(g.numRemision, g.destinatario)}
+              aria-label={
+                ofrecidas.devolverDeshabilitado
+                  ? L.devolverNoDisponibleAriaLabel(g.numRemision, g.destinatario, ofrecidas.devolverDeshabilitado)
+                  : L.devolverAriaLabel(g.numRemision, g.destinatario)
+              }
+              title={ofrecidas.devolverDeshabilitado ?? undefined}
+              disabled={ofrecidas.devolverDeshabilitado !== null || enVuelo === g.gestionId}
               onClick={() => acciones.devolver?.(g)}
             >
               {L.DEVOLVER_A_GESTION}

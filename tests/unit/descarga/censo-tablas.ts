@@ -122,8 +122,9 @@ export interface ArchivoCensado {
 //     Cierres de bodega solicitados ......... CierresBodegaSolicitadosTabla.tsx (archivo borrado)
 //     Cierres del día a consolidar .......... ConsolidacionBodegaModule.tsx
 //
-// Siete instancias, seis archivos: `CierreDiaModule` sigue en el censo porque conserva su OTRA
-// tabla, la de gestiones del día por resultado, que no es un listado de cierres.
+// Siete instancias, seis archivos: `CierreDiaModule` seguía en el censo porque conservaba su OTRA
+// tabla, la de gestiones del día por resultado, que no es un listado de cierres (SLT-109 la retiró:
+// ver su entrada, más abajo).
 //
 // LO QUE NO CAMBIA, y es la razón de que esto sea una baja del CENSO y no de la capacidad: los
 // siete listados **siguen descargando**. La configuración `descarga` no se borró: se movió del
@@ -274,15 +275,13 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
       },
     ],
   },
-  {
-    // Pedido humano del 2026-08-16: «Cierres solicitados (mensajero)» DEJÓ DE SER UNA TABLA.
-    // Ver la nota de SEIS BAJAS en la cabecera de este archivo. La que queda es la del día.
-    // SLT-137: los solicitados vuelven a ser tabla, pero la de `ColaCierres.tsx` (montaje de abajo).
-    ruta: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
-    tablas: [
-      { nombre: "Gestiones del cierre del día por resultado", estado: "con_descarga" },
-    ],
-  },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R255, R256, PA4) — BAJA
+  // de un archivo, `con_descarga`: «Gestiones del cierre del día por resultado»
+  // (`CierreDiaModule.tsx`, una `<DataTable>` por resultado con su descarga). Las gestiones del día
+  // pasan a la lista única de la pestaña «Gestiones» del detalle (`GestionesCierre`), que no es un
+  // `<DataTable>`, con UNA descarga («Gestiones del cierre de hoy», columnas del mensajero de R152).
+  // La descarga no se pierde: se funden las cinco en una, como aceptó Carlos en la PA4.
+  // `CierreDiaModule.tsx` sigue montando la cola (`ColaCierres`, montaje de abajo).
   // FICHA 482 (2026-10-15) — BAJA de una tabla, `con_descarga`: «Gestiones de un cierre por
   // resultado (detalle)», que montaba `cierre-detalle-shared.tsx` (`DetalleSecciones`). La 478 la
   // sustituyó en el detalle de bodega por la lista en pestañas de `cierre-factura`, que no es un

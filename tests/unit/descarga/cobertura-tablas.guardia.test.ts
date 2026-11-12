@@ -277,8 +277,15 @@ const ARBOLES_UI = ["app", "components"] as const;
 // instancias. Entra `ColaCierres.tsx` («Cola de cierres del día»), `fuera` (su descarga va en la
 // barra, fuera de la tabla). Exclusiones 15 -> 16. Esta guardia se vio fallar PRIMERO con «hay tablas
 // sin registrar: components/private/cierres/cola/ColaCierres.tsx #1» antes de tocar estos números.
-const TOTAL_ARCHIVOS_CON_DATATABLE = 38;
-const TOTAL_INSTANCIAS_DATATABLE = 38;
+//
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R255, R256): 38 -> 37 archivos
+// y 38 -> 37 instancias. Sale de `CierreDiaModule.tsx` su `<DataTable>` por resultado («Gestiones del
+// cierre del día por resultado», `con_descarga`): las gestiones del día son la lista única del detalle
+// (`GestionesCierre`, no es `<DataTable>`) con UNA descarga. El archivo sigue montando la cola, que se
+// cuenta en `ColaCierres.tsx`. Dentro de alcance 22 -> 21; exclusiones intactas. Esta guardia se vio
+// fallar PRIMERO con «expected 37 to be 38», «expected 38 to be 39» y «length of 22 but got 21».
+const TOTAL_ARCHIVOS_CON_DATATABLE = 37;
+const TOTAL_INSTANCIAS_DATATABLE = 37;
 
 function listarTsx(dir: string, acc: string[] = []): string[] {
   for (const entrada of readdirSync(dir, { withFileTypes: true })) {
@@ -489,7 +496,8 @@ describe("guardia de cobertura del censo de tablas", () => {
     // 478 sustituyó por la lista en pestañas. Las 14 exclusiones NO se mueven.
     // SLT-55 (R27): 37 → 38, por «Mensajeros con valor propio». Las 22 con descarga NO se mueven.
     // SLT-102: 38 → 39, por la cola única de cierres. Las 22 con descarga NO se mueven.
-    expect(totalCensado).toBe(39);
+    // SLT-109: 39 → 38. Sale la tabla por resultado del cierre del día; las exclusiones NO se mueven.
+    expect(totalCensado).toBe(38);
   });
 
   it("la FASE 1 del export queda cerrada: ninguna tabla del censo sigue pendiente", () => {
@@ -603,7 +611,9 @@ describe("guardia de cobertura del censo de tablas", () => {
     // ⭑ FICHA 458-D (T D.5, cierre de pantalla): 24 → 23 —sale el libro de `/mi-wallet`, `con_descarga`—.
     // ⭑ FICHA 482: 23 → 22 —salen las tablas del detalle de un cierre (`DetalleSecciones`),
     // `con_descarga`; la 478 retiró su descarga por sección (P3) y la 482 las borró—.
-    expect(censadas.filter((t) => t.estado === "con_descarga")).toHaveLength(22);
+    // SLT-109: 22 → 21 —sale «Gestiones del cierre del día por resultado», `con_descarga`; sus cinco
+    // descargas son ahora una, fuera de un `<DataTable>` (PA4)—.
+    expect(censadas.filter((t) => t.estado === "con_descarga")).toHaveLength(21);
     // SLT-55 (R27): 15 → 16, por «Mensajeros con valor propio».
     // SLT-102: 16 → 17, por la cola única de cierres.
     expect(censadas.filter((t) => t.estado === "fuera")).toHaveLength(17);

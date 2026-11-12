@@ -169,6 +169,9 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura»: el montaje común del
   // detalle de bodega para la central y la satélite (pinta lo que llega, no deriva importes).
   "components/private/cierres/detalle/DetalleCierreBodegaAbierto.tsx",
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R248): la pestaña
+  // «Corregir» del rechazado (sin dinero).
+  "components/private/cierres/detalle/CorregirCierre.tsx",
   // SLT-101 «Fila de gestión única y lista con filtros» (R71): la lista y la fila de una gestión
   // pintan las cifras del servidor tal cual; ninguna se deriva en el cliente.
   "components/private/cierres/fila/GestionesCierre.tsx",

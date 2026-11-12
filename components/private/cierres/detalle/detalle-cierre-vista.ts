@@ -356,19 +356,24 @@ export function avisosDe(
   return partes.length === 0 ? [] : [{ titulo: L.POR_REVISAR_TITULO, partes, tono: "atencion" }];
 }
 
+/**
+ * SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R4, R246): la franja de
+ * bloqueo sale en CUALQUIER modo mientras el mensajero esté bloqueado (antes, solo en `vencido`), y es
+ * el único sitio de la página que la pinta. En `rechazado` va detrás del motivo; en `en curso`, antes
+ * de «Antes de cerrar:». `avisoBloqueo` devuelve `""` sin bloqueo: entonces no hay franja.
+ */
 function avisosDelMensajero(modo: Modo, d: DetalleMensajeroVista): AvisoFranja[] {
+  const avisos: AvisoFranja[] = [];
   if (modo === "rechazado") {
     const motivo = d.motivoRechazo?.trim() ? `«${d.motivoRechazo.trim()}»` : L.SIN_MOTIVO_RECHAZO;
-    return [{ titulo: L.MOTIVO_RECHAZO_TITULO, partes: [motivo], tono: "peligro" }];
+    avisos.push({ titulo: L.MOTIVO_RECHAZO_TITULO, partes: [motivo], tono: "peligro" });
   }
-  if (modo === "vencido" && d.bloqueo) {
-    const texto = avisoBloqueo(d.bloqueo, { conCta: false });
-    return texto ? [{ titulo: L.BLOQUEO_TITULO, partes: [texto], tono: "peligro" }] : [];
-  }
+  const bloqueo = d.bloqueo ? avisoBloqueo(d.bloqueo, { conCta: false }) : "";
+  if (bloqueo) avisos.push({ titulo: L.BLOQUEO_TITULO, partes: [bloqueo], tono: "peligro" });
   if (modo === "en curso" && d.motivoBloqueo) {
-    return [{ titulo: L.ANTES_DE_CERRAR_TITULO, partes: [d.motivoBloqueo], tono: "atencion" }];
+    avisos.push({ titulo: L.ANTES_DE_CERRAR_TITULO, partes: [d.motivoBloqueo], tono: "atencion" });
   }
-  return [];
+  return avisos;
 }
 
 function avisosBodega(audiencia: Audiencia, modo: Modo, d: DetalleBodegaVista): AvisoFranja[] {
@@ -459,8 +464,13 @@ function accionesDeLaTabla(tipo: TipoDetalle, audiencia: Audiencia, modo: Modo, 
   }
   if (audiencia === "mensajero") {
     if (modo === "en curso") return [{ id: "solicitar", label: L.ACCION_SOLICITAR, variante: "principal" }];
+    // SLT-109 (R252): un rechazado que no es el siguiente por enviar se abre en modal sin envío; quien
+    // lo monta no pasa `solicitarRechazado` y le queda «Cerrar». En la página no hay `onCerrar`.
     if (modo === "rechazado")
-      return [{ id: "solicitarRechazado", label: L.ACCION_SOLICITAR_RECHAZADO, variante: "principal" }];
+      return [
+        { id: "solicitarRechazado", label: L.ACCION_SOLICITAR_RECHAZADO, variante: "principal" },
+        cerrar("principal"),
+      ];
     if (modo === "vencido")
       return [{ id: "solicitarVencido", label: L.ACCION_SOLICITAR_VENCIDO, variante: "principal" }];
     return [cerrar("principal")];
@@ -484,13 +494,24 @@ export function accionesDe(tipo: TipoDetalle, audiencia: Audiencia, modo: Modo, 
   );
 }
 
-export function pieTextoDe(tipo: "mensajero", audiencia: Audiencia, modo: Modo, detalle: DetalleMensajeroVista): string;
+/**
+ * La línea de contexto del pie. `disponibles` (opcional) son las acciones que ofrece quien monta: un
+ * rechazado sin `solicitarRechazado` dice dónde se envía (SLT-109, R252).
+ */
+export function pieTextoDe(
+  tipo: "mensajero",
+  audiencia: Audiencia,
+  modo: Modo,
+  detalle: DetalleMensajeroVista,
+  disponibles?: ReadonlySet<AccionId>,
+): string;
 export function pieTextoDe(tipo: "bodega", audiencia: Audiencia, modo: Modo, detalle: DetalleBodegaVista): string;
 export function pieTextoDe(
   tipo: TipoDetalle,
   audiencia: Audiencia,
   modo: Modo,
   detalle: DetalleMensajeroVista | DetalleBodegaVista,
+  disponibles?: ReadonlySet<AccionId>,
 ): string {
   if (tipo === "bodega") {
     const d = detalle as DetalleBodegaVista;
@@ -505,7 +526,11 @@ export function pieTextoDe(
   const d = detalle as DetalleMensajeroVista;
   if (audiencia === "mensajero") {
     if (modo === "en curso") return L.PIE_MENSAJERO_EN_CURSO;
-    if (modo === "rechazado") return L.PIE_MENSAJERO_RECHAZADO;
+    if (modo === "rechazado") {
+      return disponibles && !disponibles.has("solicitarRechazado")
+        ? L.PIE_MENSAJERO_RECHAZADO_SIN_ENVIO
+        : L.PIE_MENSAJERO_RECHAZADO;
+    }
     if (modo === "vencido") return L.PIE_MENSAJERO_VENCIDO;
     return L.PIE_MENSAJERO_LECTURA;
   }
@@ -809,6 +834,103 @@ export function vistaMensajeroDesdeCierreDia(
       tiendas: 0,
     },
   };
+}
+
+// ═══ El cierre que pinta /cierre-dia (SLT-109) ════════════════════════════════════════════════
+
+/**
+ * SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» — la lectura del cierre
+ * por reenviar (`bloqueo.aReenviarPrimero`) que hace `page.tsx` con `verCierrePasado`. `error` =
+ * `no_encontrada`, `forbidden` o una excepción (R253): la página no hace `notFound()`, el mensajero
+ * tiene que poder enviarlo.
+ */
+export type CierreReenviable =
+  | {
+      estado: "ok";
+      cierre: CierrePasadoDTO;
+      grupos: CierreGrupos;
+      ordenesSinGestion: CierreOrdenSinGestion[];
+      sinGestionRegistrado: boolean;
+      rechazosDeTienda: CierreRechazoDeTienda[];
+    }
+  | { estado: "error"; reenviableEstado: "vencido" | "rechazado" };
+
+/** Lo que `listarCierreDia` y `estadoBloqueoMensajero` dan a la página, más el reenviable. */
+export interface EntradaCierreDeLaPagina {
+  grupos: CierreGrupos;
+  totales: CierreTotales;
+  totalPagoMensajero: string;
+  motivoBloqueo: string | null;
+  puedesSolicitar: boolean;
+  bloqueo: BloqueoDetalle;
+  reenviable?: CierreReenviable;
+}
+
+export type CierreDeLaPagina =
+  | { modo: "en curso"; detalle: DetalleMensajeroVista }
+  | { modo: "rechazado" | "vencido"; detalle: DetalleMensajeroVista; cierreId: string }
+  | { modo: "error"; reenviableEstado: "vencido" | "rechazado" };
+
+/**
+ * R241 — el cierre de HOY, aún sin solicitar: sin folio, sin destino (PA2: `listarCierreDia` no lo
+ * emite, se decide al solicitar), sin el dinero de la empresa (R9) y con los conteos contados de los
+ * grupos (enteros, nunca dinero; R71). «Rechazados por la tienda» en 0 (PA3: los rechazos se vinculan
+ * al solicitar). `motivoBloqueo` solo cuando no puede solicitar: es lo que pinta «Antes de cerrar:».
+ */
+export function vistaMensajeroEnCurso(e: EntradaCierreDeLaPagina): DetalleMensajeroVista {
+  // `?? []`: los dobles de los tests pasan a veces grupos parciales.
+  const gestiones = Object.values(e.grupos).flatMap((g) => g ?? []);
+  const entregadas = e.grupos.entregado?.length ?? 0;
+  return {
+    mensajeroNombre: "",
+    destino: "",
+    folio: null,
+    estado: null,
+    solicitadoAt: null,
+    resueltoAt: null,
+    reprogramadasRetenidasHoy: 0,
+    motivoRechazo: null,
+    totales: e.totales,
+    totalPagoMensajero: e.totalPagoMensajero,
+    empresa: null,
+    conteos: {
+      gestiones: gestiones.length,
+      entregadas,
+      noEntregadas: gestiones.length - entregadas,
+      pagosAjustados: 0,
+      incidentesSinIndemnizar: 0,
+      rechazosDeTienda: 0,
+      paquetesVuelven: gestiones.filter((g) =>
+        vuelveABodegaElPaquete({ origen: "gestion", resultado: g.resultado }),
+      ).length,
+      tiendas: 0,
+    },
+    bloqueo: e.bloqueo,
+    motivoBloqueo: e.puedesSolicitar ? null : e.motivoBloqueo,
+  };
+}
+
+/**
+ * R240 (S11-PA2, PA1 de SLT-109) — qué cierre pinta `/cierre-dia`: el que pide acción. Con un cierre
+ * por reenviar, ESE (`aReenviarPrimero`, el re-solicitable más viejo: el mismo que mueve
+ * `solicitarCierre`, que no recibe id), en su modo; si su lectura falló, `error` (R253) y nunca el en
+ * curso. Sin nada que reenviar, el de hoy.
+ */
+export function cierreDeLaPagina(e: EntradaCierreDeLaPagina): CierreDeLaPagina {
+  const porReenviar = e.bloqueo.aReenviarPrimero;
+  if (porReenviar && (porReenviar.estado === "vencido" || porReenviar.estado === "rechazado")) {
+    const error: CierreDeLaPagina = { modo: "error", reenviableEstado: porReenviar.estado };
+    const r = e.reenviable;
+    if (r?.estado !== "ok" || r.cierre.cierreId !== porReenviar.cierreId) return error;
+    const estado = r.cierre.estado;
+    if (estado !== "vencido" && estado !== "rechazado") return error;
+    return {
+      modo: estado,
+      cierreId: r.cierre.cierreId,
+      detalle: { ...vistaMensajeroDesdeCierreDia(r.cierre, r), bloqueo: e.bloqueo },
+    };
+  }
+  return { modo: "en curso", detalle: vistaMensajeroEnCurso(e) };
 }
 
 /** El detalle agregado de un cierre de bodega (`verDetalle` de `CierresBodegaAdminService`). */
