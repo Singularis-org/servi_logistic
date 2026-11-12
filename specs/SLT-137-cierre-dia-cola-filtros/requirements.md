@@ -2,9 +2,11 @@
 
 > Ruta: completa. Zona: **fullstack**. Escrito por spec_author el 2026-11-12.
 >
-> **Estado: BLOQUEADO, no cabe en un PR** (`## Preguntas abiertas > PA1`). Este archivo deja escritos
-> el alcance y los requisitos para que el humano decida el corte. Faltan `design.md` y `tasks.md`:
-> se escriben cuando se haya decidido el corte, una vez por rebanada.
+> **Estado: partida el 2026-11-12 (decisión de Carlos, `## Decisiones cerradas > SLT137-D1`).** Esta
+> ficha se queda con la cola «Cierres solicitados» del mensajero y su pendiente de pago en el
+> servidor. El buscador y los filtros (R167-R179) pasan a SLT-138 «/cierre-dia: buscador y filtros
+> de la cola del mensajero» (`## Fuera de alcance > → SLT-138`), sin renumerar. `design.md` y
+> `tasks.md` cubren solo lo que se queda aquí.
 >
 > Es la parte 2 de SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (S10b). Los
 > requisitos que vienen de allí se copian **tal cual y con su número**:
@@ -25,11 +27,14 @@
 - **El pendiente de pago por cierre, en el servidor.** El listado paginado emite
   `pendientePagoMensajero` con el cálculo que ya usa la cola del admin (R164, R165). Lo pinta la celda
   «Pago».
-- **Buscador y filtros, en el servidor.** Se busca por folio y se filtra por fecha de solicitud y por
-  estado con `BuscadorFiltros` + `FilterComponent`, como hace `FiltrosCierresBarra` en `/cierres-admin`
-  (R167). El filtrado va en el `WHERE`, junto al alcance del mensajero.
+- **La barra queda sin filtros.** El hueco de la barra de `ColaCierres` va vacío; «Descargar» y la
+  paginación siguen como hoy. El buscador y los filtros son de SLT-138 (abajo).
 
 ## Fuera de alcance
+
+- El buscador por folio y los filtros por fecha de solicitud y por estado (R167-R179): SLT-138
+  «/cierre-dia: buscador y filtros de la cola del mensajero», `depends_on: SLT-137`. Sus requisitos
+  están abajo, en `### → SLT-138`, con su texto y su número.
 
 - Las tarjetas «Ganancia pendiente de pago» y «Ganancia pagada este mes» (R69):
   SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero». Hasta entonces, R158.
@@ -39,6 +44,81 @@
 - El cierre del día en curso, rechazado o vencido como página (R61-R63): SLT-109 «/cierre-dia: el
   cierre de hoy, rechazado o vencido como página».
 - Cambiar cómo se calcula, congela o asienta un importe, permisos, esquema o migraciones (R71, R72).
+
+### → SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero»
+
+Estos requisitos pasan a SLT-138 con su texto tal cual, para que su spec los copie con el mismo
+número. SLT-138 depende de SLT-137: monta su barra en el hueco `barra` que esta ficha deja vacío.
+
+**Decisiones cerradas para SLT-138 (no reabrir):**
+
+| # | Fecha · quién | Decisión |
+|---|---|---|
+| SLT137-D3 | 2026-11-12 · Carlos | Buscar por folio = el folio **contiene** el texto (con «3F2A» salen los cierres cuyo folio tiene «3F2A» en cualquier posición). No se exige el folio exacto. Lo recoge R171. |
+| SLT137-D4 | 2026-11-12 · Carlos | Los filtros se hacen **reutilizando `BuscadorFiltros`** (`components/shared/BuscadorFiltros.tsx`), el componente común que usa casi toda la app, con `FilterComponent`. Nada de buscador ni filtros propios. Lo recogen R167 y R177. |
+
+- **R167** (decisión de Carlos 2026-11-11) — La barra de la cola con rol mensajero DEBE usar el
+  componente de filtros de la app: `BuscadorFiltros` (`components/shared/BuscadorFiltros.tsx`) con
+  `FilterComponent` (`components/shared/FilterComponent.tsx`), como `FiltrosCierresBarra` en
+  `/cierres-admin`. DEBE ofrecer:
+  - buscador por folio;
+  - filtro por fecha de solicitud;
+  - filtro por estado.
+
+  El filtrado DEBE hacerse en el servidor, con el alcance del mensajero en el `WHERE`. El conteo de
+  la pestaña y el archivo de «Descargar» DEBEN respetar los filtros puestos.
+
+#### Buscador y filtros (servidor)
+
+- **R168** — El listado paginado de «Cierres solicitados» y su archivo DEBEN aceptar el mismo bloque
+  `filtros`, con solo estas claves, todas opcionales: `desde`, `hasta`, `estados` y `folio`.
+  - SI la petición trae cualquier otra clave, dentro o fuera de `filtros` (entre ellas `mensajeroId`,
+    `mensajeroIds` y `destinoZonaIds`), ENTONCES el sistema DEBE responder `validation_error` sin
+    leer la base.
+  - SI `desde` es posterior a `hasta`, ENTONCES DEBE responder `validation_error`.
+- **R169** — DONDE el filtro trae `desde`, `hasta` o los dos, el listado DEBE devolver solo los
+  cierres con fecha de solicitud igual o posterior a las 00:00 de `desde` y anterior a las 00:00 del
+  día siguiente a `hasta`, en la zona horaria del país de la empresa.
+- **R170** — DONDE el filtro trae `estados`, el listado DEBE devolver solo los cierres cuyo estado
+  esté en esa lista. SI `estados` llega vacío o con un valor que no es un estado de cierre, ENTONCES
+  el sistema DEBE responder `validation_error`.
+- **R171** — DONDE el filtro trae `folio`, el sistema DEBE quitarle los espacios de los extremos y un
+  «#» inicial, y pasarlo a mayúsculas. El listado DEBE devolver solo los cierres cuyo folio (los 8
+  caracteres de R156, sin «#») contenga ese texto.
+  - SI el texto queda vacío, ENTONCES el filtro DEBE ignorarse.
+  - SI tiene un carácter que no puede estar en un folio (fuera de `0-9` y `A-F`), ENTONCES el
+    listado DEBE devolver cero cierres y `total` 0.
+  - SI pasa de 20 caracteres antes de normalizar, ENTONCES DEBE responder `validation_error`.
+- **R172** — Cada filtro, solo o combinado con los demás, DEBE aplicarse dentro del alcance del
+  mensajero de la sesión: ninguno DEBE devolver ni contar un cierre de otro mensajero. El `total`
+  DEBE ser el número de cierres del mensajero que cumplen todos los filtros a la vez.
+- **R173** — MIENTRAS no haya ningún filtro puesto, el listado paginado y su archivo DEBEN devolver
+  los mismos cierres que hoy y en el mismo orden.
+- **R174** — CUANDO el mensajero pulsa «Descargar» con filtros puestos, el archivo DEBE llevar todos
+  los cierres del mensajero que cumplen esos filtros, no solo la página visible.
+
+#### Buscador y filtros (pantalla)
+
+- **R175** — CUANDO el mensajero cambia el folio, la fecha o el estado, la cola DEBE volver a la
+  página 1 y pedir al servidor la página con los filtros nuevos. El conteo de la pestaña DEBE ser el
+  `total` de esa respuesta.
+- **R176** — SI hay algún filtro puesto y el servidor devuelve cero cierres, ENTONCES la cola DEBE
+  decir «Ningún cierre coincide con los filtros.» en lugar de «Aún no has solicitado ningún cierre.».
+- **R177** — La barra de la cola con rol mensajero DEBE ofrecer:
+  - un campo de búsqueda con la guía «Busca por folio»;
+  - en el selector «Filtros», solo «Fecha de solicitud», con los mismos atajos de rango que
+    `/cierres-admin`, y «Estado», con los cuatro estados del cierre con su etiqueta legible y sin
+    agruparlos por lista.
+
+  NO DEBE ofrecer «Bodega» ni «Mensajero», ni el aviso «Filtro activo: los dos listados muestran
+  solo lo que casa con él.».
+- **R178** — CUANDO el mensajero pulsa «Limpiar todo», la barra DEBE vaciar el folio, la fecha y el
+  estado, y la cola DEBE volver a la lista sin filtros, en la página 1.
+- **R179** — La barra de filtros de `/cierres-admin` (cola de mensajeros y de bodega) y la de la
+  consolidación de bodega NO DEBEN cambiar: mismos filtros, mismo campo de búsqueda sin efecto y
+  mismo aviso.
+
+R180 (trato tú) aplica también a SLT-138: su spec lo copia.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -52,6 +132,10 @@ Vienen de `specs/SLT-108-cierre-dia-cola-unica/requirements.md > ## Decisiones c
 | S10-PA1 | 2026-11-11 · Carlos | El pendiente de pago se trae ahora, no espera a SLT-112. Vive en esta ficha porque aquí está la celda que lo muestra. Se calcula con lo que ya existe en el servidor y se prueba contra Postgres real, con mutación. R71 y R72 siguen aplicando. |
 | S10-PA2 | 2026-11-11 · Carlos | Los filtros de la cola usan el componente de filtros de la app y se aplican en el servidor (R167). |
 | S10-PA3 | 2026-11-11 · Carlos | SLT-108 es S10a (detalle + Incidente) y SLT-137 es S10b (la cola y su pendiente de pago). |
+| SLT137-D1 | 2026-11-12 · Carlos | Se parte (PA1). SLT-137 se queda con la cola «Cierres solicitados» del mensajero (`ColaCierres` rol mensajero) y el pendiente de pago calculado en el servidor: R60, R71, R72, R155-R160, R163-R166, R180 y R181. |
+| SLT137-D2 | 2026-11-12 · Carlos | El buscador y los filtros (R167-R179) pasan a la ficha nueva SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero». Se mueven a `## Fuera de alcance > → SLT-138`, sin borrarlos ni renumerarlos. |
+| SLT137-D3 | 2026-11-12 · Carlos | Buscar por folio = el folio **contiene** el texto (PA2). Se aplica en SLT-138 (R171). |
+| SLT137-D4 | 2026-11-12 · Carlos | Los filtros se hacen reutilizando `BuscadorFiltros`, el componente común de la app; nada de buscador ni filtros propios. Se aplica en SLT-138 (R167, R177). |
 
 Cobertura:
 
@@ -59,15 +143,19 @@ Cobertura:
 |---|---|
 | D5 | R71, R72, R164 (lo que se le paga no cambia por leerlo) |
 | D6 | R180 |
-| D15, D17 | R60, R159, R167, R177 |
+| D15, D17 | R60, R159 (aquí); R167, R177 (SLT-138) |
 | S10-PA1 | R157, R164, R165 |
-| S10-PA2 | R167, R168-R172, R177 |
-| S10-PA3 | R60, R155-R160, R163-R167 |
+| S10-PA2 | R167, R168-R172, R177 (SLT-138) |
+| S10-PA3 | R60, R155-R160, R163-R166 |
+| SLT137-D1 | R60, R71, R72, R155-R160, R163-R166, R180, R181 |
+| SLT137-D2 | R155 (una sola pestaña sin barra de filtros; el hueco `barra` va vacío), R173 en SLT-138 |
+| SLT137-D3 | R171 (SLT-138) |
+| SLT137-D4 | R167, R177 (SLT-138) |
 
 ## Requisitos (EARS)
 
-El test previsto de cada R irá en `tasks.md > Trazabilidad` cuando se escriba, uno por rebanada
-(`PA1`).
+Requisitos en alcance: R60, R71, R72, R155-R160, R163-R166, R180 y R181. Su test está en
+`tasks.md > Trazabilidad`. R161 y R162 son de SLT-108 y no viven aquí.
 
 ### Copia del madre y de SLT-108 (texto tal cual)
 
@@ -134,20 +222,12 @@ El test previsto de cada R irá en `tasks.md > Trazabilidad` cuando se escriba, 
   NO DEBE emitir un `pendientePagoMensajero` inventado.
 - **R166** — `/cierre-dia` NO DEBE montar la tarjeta-comprobante propia (`CierreFacturaResumenPropio`)
   ni la tira de comprobantes (`ListaComprobantes`).
-- **R167** (decisión de Carlos 2026-11-11) — La barra de la cola con rol mensajero DEBE usar el
-  componente de filtros de la app: `BuscadorFiltros` (`components/shared/BuscadorFiltros.tsx`) con
-  `FilterComponent` (`components/shared/FilterComponent.tsx`), como `FiltrosCierresBarra` en
-  `/cierres-admin`. DEBE ofrecer:
-  - buscador por folio;
-  - filtro por fecha de solicitud;
-  - filtro por estado.
 
-  El filtrado DEBE hacerse en el servidor, con el alcance del mensajero en el `WHERE`. El conteo de
-  la pestaña y el archivo de «Descargar» DEBEN respetar los filtros puestos.
+R167 pasó a SLT-138 (`## Fuera de alcance > → SLT-138`).
 
 La tabla de la prueba de integración de R164 y sus tres mutaciones están en
-`specs/SLT-108-cierre-dia-cola-unica/requirements.md > Pendiente de pago por cierre (servidor)`. El
-`design.md` de la rebanada que lleve R164 las copia.
+`specs/SLT-108-cierre-dia-cola-unica/requirements.md > Pendiente de pago por cierre (servidor)`.
+`design.md > Prueba de integración` las copia y las amplía.
 
 ### Nuevos: la cola
 
@@ -157,59 +237,15 @@ La tabla de la prueba de integración de R164 y sus tres mutaciones están en
   detalle de ese cierre (R59 de SLT-108). MIENTRAS ese detalle se lee, el botón «Ver» de esa fila
   DEBE estar deshabilitado y con `aria-busy="true"`.
 
-### Nuevos: buscador y filtros (servidor)
-
-- **R168** — El listado paginado de «Cierres solicitados» y su archivo DEBEN aceptar el mismo bloque
-  `filtros`, con solo estas claves, todas opcionales: `desde`, `hasta`, `estados` y `folio`.
-  - SI la petición trae cualquier otra clave, dentro o fuera de `filtros` (entre ellas `mensajeroId`,
-    `mensajeroIds` y `destinoZonaIds`), ENTONCES el sistema DEBE responder `validation_error` sin
-    leer la base.
-  - SI `desde` es posterior a `hasta`, ENTONCES DEBE responder `validation_error`.
-- **R169** — DONDE el filtro trae `desde`, `hasta` o los dos, el listado DEBE devolver solo los
-  cierres con fecha de solicitud igual o posterior a las 00:00 de `desde` y anterior a las 00:00 del
-  día siguiente a `hasta`, en la zona horaria del país de la empresa.
-- **R170** — DONDE el filtro trae `estados`, el listado DEBE devolver solo los cierres cuyo estado
-  esté en esa lista. SI `estados` llega vacío o con un valor que no es un estado de cierre, ENTONCES
-  el sistema DEBE responder `validation_error`.
-- **R171** — DONDE el filtro trae `folio`, el sistema DEBE quitarle los espacios de los extremos y un
-  «#» inicial, y pasarlo a mayúsculas. El listado DEBE devolver solo los cierres cuyo folio (los 8
-  caracteres de R156, sin «#») contenga ese texto.
-  - SI el texto queda vacío, ENTONCES el filtro DEBE ignorarse.
-  - SI tiene un carácter que no puede estar en un folio (fuera de `0-9` y `A-F`), ENTONCES el
-    listado DEBE devolver cero cierres y `total` 0.
-  - SI pasa de 20 caracteres antes de normalizar, ENTONCES DEBE responder `validation_error`.
-- **R172** — Cada filtro, solo o combinado con los demás, DEBE aplicarse dentro del alcance del
-  mensajero de la sesión: ninguno DEBE devolver ni contar un cierre de otro mensajero. El `total`
-  DEBE ser el número de cierres del mensajero que cumplen todos los filtros a la vez.
-- **R173** — MIENTRAS no haya ningún filtro puesto, el listado paginado y su archivo DEBEN devolver
-  los mismos cierres que hoy y en el mismo orden.
-- **R174** — CUANDO el mensajero pulsa «Descargar» con filtros puestos, el archivo DEBE llevar todos
-  los cierres del mensajero que cumplen esos filtros, no solo la página visible.
-
-### Nuevos: buscador y filtros (pantalla)
-
-- **R175** — CUANDO el mensajero cambia el folio, la fecha o el estado, la cola DEBE volver a la
-  página 1 y pedir al servidor la página con los filtros nuevos. El conteo de la pestaña DEBE ser el
-  `total` de esa respuesta.
-- **R176** — SI hay algún filtro puesto y el servidor devuelve cero cierres, ENTONCES la cola DEBE
-  decir «Ningún cierre coincide con los filtros.» en lugar de «Aún no has solicitado ningún cierre.».
-- **R177** — La barra de la cola con rol mensajero DEBE ofrecer:
-  - un campo de búsqueda con la guía «Busca por folio»;
-  - en el selector «Filtros», solo «Fecha de solicitud», con los mismos atajos de rango que
-    `/cierres-admin`, y «Estado», con los cuatro estados del cierre con su etiqueta legible y sin
-    agruparlos por lista.
-
-  NO DEBE ofrecer «Bodega» ni «Mensajero», ni el aviso «Filtro activo: los dos listados muestran
-  solo lo que casa con él.».
-- **R178** — CUANDO el mensajero pulsa «Limpiar todo», la barra DEBE vaciar el folio, la fecha y el
-  estado, y la cola DEBE volver a la lista sin filtros, en la página 1.
-- **R179** — La barra de filtros de `/cierres-admin` (cola de mensajeros y de bodega) y la de la
-  consolidación de bodega NO DEBEN cambiar: mismos filtros, mismo campo de búsqueda sin efecto y
-  mismo aviso.
+R168-R179 pasaron a SLT-138 (`## Fuera de alcance > → SLT-138`).
 
 ## Preguntas abiertas
 
-### PA1 — No cabe en un PR (BLOQUEANTE)
+Ninguna abierta. PA1 y PA2 quedan como registro, resueltas el 2026-11-12.
+
+### PA1 — No cabe en un PR (RESUELTA: SLT137-D1 y SLT137-D2, corte en dos)
+
+Carlos eligió el corte en dos. El tamaño de lo que se queda está en `tasks.md > Tamaño`.
 
 `gate.tamano_pr` (sin valor en `arnes.config.json`, así que rige el de por defecto): 40 archivos y
 1000 líneas añadidas + borradas. Lo medido como referencia: SLT-108 «/cierre-dia: detalle y cola
@@ -244,7 +280,7 @@ intermedia. Serían tres PR de ~400-550 líneas, a cambio de un ciclo más.
 Le toca decidir a Carlos: el corte en dos, el corte en tres o aceptar el tamaño
 (`docs/gate.md > Tamaño del PR`: línea `tamano-pr-aceptado` en `progress/features/SLT-137.md`).
 
-### PA2 — Qué significa «buscar por folio»
+### PA2 — Qué significa «buscar por folio» (RESUELTA: SLT137-D3, «contiene»; aplica en SLT-138)
 
 R171 propone que el folio **contenga** el texto: con «3F2A» salen los cierres cuyo folio tiene
 «3F2A» en cualquier posición. La otra opción es exigir el folio exacto, los 8 caracteres. Es más
