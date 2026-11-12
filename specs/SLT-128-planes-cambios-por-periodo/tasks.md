@@ -96,10 +96,10 @@
 ## Bloque E — Pantalla
 
 ### T8 — Detalle del plan (depende de T4; `frontend_dev`)
-- [ ] **T8.1** `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`: la línea «N de M empresas ya lo
+- [x] **T8.1** `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`: la línea «N de M empresas ya lo
   recibieron» bajo el cambio programado y el mensaje de R14 o R15 al rechazar.
 - [x] **T8.2** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: `cambio_a_medias` en `RECHAZOS` (R16).
-- [ ] **T8.3** `tests/components/PlanDetalle.test.tsx`: R11 y R15.
+- [x] **T8.3** `tests/components/PlanDetalle.test.tsx`: R11 y R15.
 - **Hecho:** T8.3 verde; lint verde.
 
 ## Cierre

@@ -203,12 +203,12 @@ migración y `PlanesRepository`; sin cambios de producción (ningún caso revel�
 - R10 → `planes-cambio-por-empresa.test.ts` (R5/R10/R11, R4/R10, R18); `planes-historial.test.ts` («SLT-128 R10: …»);
   `planes-cambio-programado.test.ts` (R38, R39 sin empresas).
 - R11 → `planes-cambio-por-empresa.test.ts` (lectura «N de M»); `tests/unit/services/planes-service-lecturas.test.ts`;
-  pantalla: `tests/components/PlanDetalle.test.tsx` es de T8.3 (frontend_dev, pendiente).
+  pantalla: `tests/components/PlanDetalle.test.tsx` («SLT-128 R11», commit bfd33903).
 - R12 → `planes-version-por-empresa.test.ts` («R12: …»).
 - R13 → `planes-cambio-por-empresa.test.ts` («R13 (P6)…»); `planes-cambio-programado.test.ts` («SLT-128 R13 (P6)…»).
 - R14 → `planes-cambio-por-empresa.test.ts` («R14 (P1, P8)…»); `tests/unit/services/planes-service.test.ts`.
 - R15 → `planes-cambio-programado.test.ts` («SLT-128 R15…», «R40 (plan sin empresas)»); `planes-cambio-por-empresa.test.ts`;
-  `planes-cambio-correos.test.ts`; `planes-service.test.ts`. El mensaje en pantalla: T8.3 (pendiente).
+  `planes-cambio-correos.test.ts`; `planes-service.test.ts`. Pantalla: `tests/components/PlanDetalle.test.tsx` («SLT-128 R14, R15»).
 - R16 → `planes-cambio-por-empresa.test.ts` («R16 (P7)…»); `planes-service.test.ts`.
 - R17 → `planes-cambio-por-empresa.test.ts` («R17 (P4, P10 b)…»); `planes-cambio-correos.test.ts` («SLT-128 R22, R17»).
 - R18 → `planes-cambio-por-empresa.test.ts` («R18: …»); `planes-cambio-correos.test.ts` (no sale el recordatorio).
