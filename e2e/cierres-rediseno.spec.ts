@@ -153,7 +153,8 @@ async function pie(detalle: Locator): Promise<string[]> {
 
 /**
  * SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (T3.2, R59, R77, R150) — el mensajero
- * abre SU cierre desde la tira «Cierres solicitados» de `/cierre-dia` y lo lee en el detalle único.
+ * abre SU cierre desde «Cierres solicitados» de `/cierre-dia` y lo lee en el detalle único. Desde
+ * SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» es la cola, con un «Ver» por fila.
  */
 async function abrirMiCierre(page: Page): Promise<Locator> {
   await page.goto("/cierre-dia");
@@ -291,6 +292,39 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await expect(detalle.getByText("Cobro a la tienda")).toHaveCount(0);
     await expect(detalle.getByText("Los montos son los que quedaron congelados al solicitar el cierre.")).toBeVisible();
     expect(await pie(detalle)).toEqual(["Cerrar"]);
+  });
+
+  // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (T3.1; R60, R157, R181). Literales
+  // derivados a mano de la cabecera:
+  //   central A, aprobado: ganancia P = 2 × 1.500 = 3.000; efectivo del cierre E = 70.000. Lo que el
+  //   cierre deja por pagar es P − min(P, E) = 3.000 − 3.000 = 0 (se lo quedó del efectivo), sin pagos
+  //   ni premios → pendiente «0.00» → «Liquidado». Recaudado 100.000, Ganancia 3.000. Un solo cierre.
+  //   satélite A, rechazado con «Faltan paquetes» → «Motivo: «Faltan paquetes»».
+  test("mensajero A: su cola con la pestaña, «Pago» de un aprobado y de un rechazado, y «Ver» abre el detalle", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, central.m);
+    await page.goto("/cierre-dia");
+    await expect(page.getByRole("tablist", { name: "Tus cierres" }).getByRole("tab")).toHaveText(["Cierres solicitados 1"]);
+    const cola = page.getByRole("region", { name: "Cierres solicitados" });
+    const cabeceras = (await cola.getByRole("columnheader").allTextContents()).map((t) => t.trim());
+    expect(cabeceras).toEqual(["Folio", "Solicitado", "Destino", "Estado", "Recaudado", "Ganancia", "Pago", "Acciones"]);
+    const fila = cola.getByRole("row").nth(1);
+    const celda = (col: string) => fila.getByRole("cell").nth(cabeceras.indexOf(col));
+    await expect(celda("Folio")).toHaveText(`#${central.cierreId.slice(-8).toUpperCase()}`);
+    await expect(celda("Destino")).toHaveText("Bodega central");
+    await expect(celda("Estado")).toHaveText("Aprobado");
+    await expect(celda("Recaudado")).toHaveText(importe(100000, { solo: true }));
+    await expect(celda("Ganancia")).toHaveText(importe(3000, { solo: true }));
+    await expect(celda("Pago")).toHaveText("Liquidado");
+
+    await fila.getByRole("button", { name: /^Ver del cierre del / }).click();
+    const detalle = page.getByRole("dialog", { name: "Detalle del cierre · Tu cierre del día" });
+    await expect(cifra(detalle, "tuGanancia")).toHaveText(importe(3000, { solo: true }));
+
+    const paginaSat = await paginaDe(browser, satelite.m);
+    await paginaSat.goto("/cierre-dia");
+    const filaSat = paginaSat.getByRole("region", { name: "Cierres solicitados" }).getByRole("row").nth(1);
+    await expect(filaSat.getByRole("cell").nth(cabeceras.indexOf("Pago"))).toHaveText("Motivo: «Faltan paquetes»");
   });
 });
 
