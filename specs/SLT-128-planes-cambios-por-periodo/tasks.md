@@ -46,16 +46,16 @@
 - **Hecho:** `pnpm run typecheck` verde (con stubs que lanzan en el repositorio, si hace falta, hasta T5).
 
 ### T5 — Repositorio (depende de T2, T3, T4)
-- [ ] **T5.1** `programarCambio`: cerrojos empresa → plan, recepciones, trabajos con empresa, recordatorios y el
+- [x] **T5.1** `programarCambio`: cerrojos empresa → plan, recepciones, trabajos con empresa, recordatorios y el
   correo por empresa con su fecha y su versión (§3.1, §6; R1, R13, R20, R21).
-- [ ] **T5.2** `recibirCambio` y `recepcionesVencidas` (§3.3; R2–R8, R10).
-- [ ] **T5.3** `aplicarCambioProgramado` como promoción, y `aplicarVersion` con `sincronizarModulos: false` (§3.2; R10).
-- [ ] **T5.4** `cancelarCambio`, `archivar` y `editar` con `cambio_a_medias` (§3.4; R14–R16).
-- [ ] **T5.5** `aplicarEnTx`: entrar, salir y cambiar de tipo con un pendiente (§3.5; R17–R19).
-- [ ] **T5.6** `planDeEmpresa`, `detalle` y `repartirRecordatorioDeEmpresa`; `repartirRecordatorio` legado filtrado
+- [x] **T5.2** `recibirCambio` y `recepcionesVencidas` (§3.3; R2–R8, R10).
+- [x] **T5.3** `aplicarCambioProgramado` como promoción, y `aplicarVersion` con `sincronizarModulos: false` (§3.2; R10).
+- [x] **T5.4** `cancelarCambio`, `archivar` y `editar` con `cambio_a_medias` (§3.4; R14–R16).
+- [x] **T5.5** `aplicarEnTx`: entrar, salir y cambiar de tipo con un pendiente (§3.5; R17–R19).
+- [x] **T5.6** `planDeEmpresa`, `detalle` y `repartirRecordatorioDeEmpresa`; `repartirRecordatorio` legado filtrado
   (§3.6; R11, R12, R22, R24).
-- [ ] **T5.7** `lib/planes/consumo.ts`: la vista del pendiente con `recibidas` y `total`.
-- [ ] **T5.8** `lib/services/PlanesService.ts`: `cambio_a_medias` pasa tal cual en `editar`, `archivar` y
+- [x] **T5.7** `lib/planes/consumo.ts`: la vista del pendiente con `recibidas` y `total`.
+- [x] **T5.8** `lib/services/PlanesService.ts`: `cambio_a_medias` pasa tal cual en `editar`, `archivar` y
   `cancelarCambio` (§7).
 - **Hecho:** typecheck y lint verdes; T6 y T7 verdes.
 

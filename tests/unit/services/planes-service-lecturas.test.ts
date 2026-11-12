@@ -276,7 +276,13 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     if (r.estado !== "ok") return;
     expect(r.detalle.plan).toEqual(plan());
     expect(r.detalle.empresaNombre).toBeNull();
-    expect(r.detalle.pendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Nombre del plan: Básico → Básico plus"] });
+    // SLT-128 (R11): con el conteo de recepciones tal cual lo lee el repositorio.
+    expect(r.detalle.pendiente).toEqual({
+      vigenteDesde: "2026-11-15",
+      lineas: ["Nombre del plan: Básico → Básico plus"],
+      recibidas: 0,
+      total: 1,
+    });
     expect(r.detalle.empresas).toEqual([{ id: EMPRESA, nombre: "Mensajería Uno" }]);
     expect(r.detalle.rastro).toEqual([
       { id: "r2", accion: "editado", cambios: { nombre: { antes: "Inicial", despues: "Básico" } }, actorNombre: "Ana Pérez", creadoAt: "2026-10-20T10:00:00.000Z" },

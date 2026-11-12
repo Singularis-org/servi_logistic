@@ -70,3 +70,48 @@ Veredicto: T1–T4 escritas; bloqueadas por la guardia R4 y por 6 errores de tip
 - `pnpm run lint`: 0 errores (243 avisos preexistentes, ninguno en archivos de esta tanda; eslint de los tocados limpio).
 
 Veredicto: guardia R4 resuelta y tipos en verde; T1–T4 listas para seguir con T5.
+
+## Tanda 2 (backend_dev, 2026-11-12): T5 entera (T5.1–T5.8)
+
+### Archivos
+- `lib/repositories/PlanesRepository.ts`:
+  - helpers SLT-128: `versionCompleta`, `versionPropiaDe`, `comoLaCorre`, `planPartido`, `recepcionesSinRecibir`,
+    `fijarRecepciones` (recepción + `plan_aplicar_cambio` y recordatorios CON empresa), `escribirPrecioDelCambio`,
+    `promoverEnTx`, `entrarAlCambioEnTx`, `salirDelCambioEnTx`, `moverRecepcionEnTx`, `planAlEntrar`, `cambioDeLaEmpresa`;
+    `dedupeRecepcion`, `dedupeRecordatorio` (nueva firma con empresa y `recibeAt`) y la clave del aviso de recordatorio con `recibeAt`;
+  - T5.1 `programarCambio` (empresas FOR SHARE → plan; recepciones, trabajos, recordatorios y guardado por empresa);
+  - T5.2 `recibirCambio`, `recepcionesVencidas`; T5.3 `aplicarCambioProgramado` = promoción (`espera`);
+    `aplicarVersion` con `{ sincronizarModulos, escribirPrecio }`; `escribirPrecioDelHistorial` con `"dejar"` (DO NOTHING);
+  - T5.4 `cancelarCambio` (partido → `cambio_a_medias`), `archivar` (recepción sin recibir → `cambio_a_medias`),
+    `editar` (partido → `cambio_a_medias`);
+  - T5.5 `aplicarEnTx` (+ `ahora`): sale (R18), entra con versión o recepción (R17), mueve la recepción (R19);
+    `cambiarEmpresaEnTx` mira periodicidad y topes contra la versión de C si entra en F o después;
+  - T5.6 `planDeEmpresa` (versión propia y su recepción), `detalle` (recibidas/total), `repartirRecordatorioDeEmpresa`,
+    `repartirRecordatorio` legado filtrado a recepciones sin recibir; fuera los stubs `pendienteDeT5`.
+- `lib/types/planes.ts`: `PendienteDelDetalle = CambioPendienteVista & { recibidas; total }`; `DetallePlan.pendiente` lo usa
+  (sin tocar `lib/types/consumo-plan.ts`).
+- `lib/planes/consumo.ts` (T5.7): `pendienteDelDetalle(vigente, cambio)`.
+- `lib/services/PlanesService.ts` (T5.8): `detallePlan` con `pendienteDelDetalle`; `cambio_a_medias` ya pasaba tal cual
+  en `editar`, `archivar` y `cancelarCambio` (solo comentarios).
+- `tests/components/PlanDetalle.test.tsx`: el doble `DETALLE.pendiente` con `recibidas` y `total` (tipo nuevo).
+
+### Desvíos e interpretaciones
+- R3 «si cambia»: la fila `desde_at = F` se escribe si el precio del cambio no es el que el historial ya da en F (no
+  contra la fila del plan): tras un reemplazo que revierte el precio de un cambio ya recibido, comparar con el plan no
+  escribiría nada y el precio del primero quedaría para todas. En la promoción, lo mismo (aplicarVersion sin precio).
+- Correo `cancelado`: `vigenteDesde` = la recepción de cada empresa (la fecha que se le anunció, R20), F si no tiene.
+- R20 `reemplazaA`: la recepción anterior solo si aún no la había recibido.
+- R19 «si rige el mismo instante»: si `recibe_at ≤ desde` del cambio de tipo, la recepción no se mueve.
+- R18: la promoción del plan de antes va después del `UPDATE` de la empresa (si no, R37 la seguiría contando) y el
+  plan de antes solo se bloquea si hay que promover (dos empresas que se cruzan de plan no se esperan).
+- `programarCambio` relee las empresas tras el cerrojo del plan (una asignación que lo esperaba ya entró).
+- Los trabajos con empresa ya se encolan, pero los manejadores son de T6: hasta entonces `plan_aplicar_cambio` con
+  empresa cae en `aplicarCambioProgramado` (devuelve `espera`) y el recordatorio con `dias: 3` no valida.
+
+### Verificación de la tanda 2 (implementer, 2026-11-12)
+- `pnpm run typecheck` (8 GB): 0 errores. `eslint` sobre los 5 archivos de código: limpio.
+- `vitest related --run lib/repositories/PlanesRepository.ts`: 26 archivos verdes, 52 saltados (sin base), 1 rojo:
+  `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (D16, 2 casos). `TypeError ... findUnique` en
+  `moverRecepcionEnTx` (R19): el doble de `tx` no trae `planCambioProgramado`. No está en la baseline ni en «Archivos
+  esperados»: arreglarlo lleva el total a 34 > 33. Pregunta abierta al humano.
+- `PlanDetalle.test.tsx`: backend_dev solo añadió `recibidas`/`total` al doble `DETALLE.pendiente` por el tipo nuevo.

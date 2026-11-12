@@ -425,10 +425,17 @@ export type FilaRastro = {
   creadoAt: string;
 };
 
+/**
+ * SLT-128 (design §7; R11): el cambio programado del detalle del plan con cuántas de sus empresas ya lo
+ * recibieron (`recibidas`) de cuántas lo tienen que recibir (`total`), para «N de M empresas ya lo recibieron».
+ * Aparte de `CambioPendienteVista`, que también pinta «Mi plan» y no lleva el conteo.
+ */
+export type PendienteDelDetalle = CambioPendienteVista & { recibidas: number; total: number };
+
 export type DetallePlan = {
   plan: PlanDTO;
   empresaNombre: string | null;
-  pendiente: CambioPendienteVista | null;
+  pendiente: PendienteDelDetalle | null;
   empresas: { id: string; nombre: string }[];
   /** Del más reciente al más antiguo. */
   rastro: FilaRastro[];

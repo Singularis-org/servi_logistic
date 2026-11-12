@@ -16,7 +16,15 @@ import type {
   ReinicioDelCiclo,
   UsoDelPlan,
 } from "@/lib/types/consumo-plan";
-import { ROLES_CON_TOPE, type PlanDTO, type PrecioPlan, type TipoCobro, type TopesPlan, type VersionPlan } from "@/lib/types/planes";
+import {
+  ROLES_CON_TOPE,
+  type PendienteDelDetalle,
+  type PlanDTO,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopesPlan,
+  type VersionPlan,
+} from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SLT-58 (design §6.1) — el consumo del plan tal como se pinta, sin React ni base: lo comparten «Mi
@@ -114,6 +122,17 @@ export function cambioPendienteDelPlan(vigente: VersionPlan, cambio: CambioDelPl
     // Mismo molde que el job del correo: `diferenciasDelPlan` deja `{ antes, despues }` como `unknown`.
     lineas: lineasDeCambioDelPlan(diferencias as CambioDelPlanParaCorreo),
   };
+}
+
+/**
+ * SLT-128 (design §7; R11): el cambio programado del detalle del plan, con lo mismo que `cambioPendienteDelPlan`
+ * y el conteo de recepciones que pinta «N de M empresas ya lo recibieron».
+ */
+export function pendienteDelDetalle(
+  vigente: VersionPlan,
+  cambio: CambioDelPlanLeido & { recibidas: number; total: number },
+): PendienteDelDetalle {
+  return { ...cambioPendienteDelPlan(vigente, cambio), recibidas: cambio.recibidas, total: cambio.total };
 }
 
 /** R1–R7, R19: el plan como se pinta, el mismo en «Mi plan» y en el detalle de empresa del superadmin. */

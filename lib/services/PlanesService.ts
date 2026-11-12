@@ -16,7 +16,7 @@ import {
   rangoDelInicioDelCiclo,
 } from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
-import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
+import { pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
@@ -268,6 +268,7 @@ export class PlanesService implements IPlanesService {
   private async editarYa(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<PlanResult> {
     const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde);
     if (r.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(r.empresas);
+    // SLT-128 (R16): `cambio_a_medias` pasa tal cual; lo decide el repositorio bajo el cerrojo del plan.
     if (r.estado !== "ok") return r;
     return ok(planId, r.cambio, { avisos: r.avisos });
   }
@@ -279,6 +280,7 @@ export class PlanesService implements IPlanesService {
     const { planId } = parsed.data;
     if ((await this.repo.plan(planId)) === null) return { estado: "not_found" };
     const r = await this.repo.archivar(planId, actor.usuarioId);
+    // SLT-128 (R15): `cambio_a_medias` pasa tal cual.
     return r.estado === "ok" ? ok(planId, r.cambio) : r;
   }
 
@@ -401,6 +403,7 @@ export class PlanesService implements IPlanesService {
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { planId } = parsed.data;
     const r = await this.repo.cancelarCambio(planId, actor.usuarioId);
+    // SLT-128 (R14): `cambio_a_medias` pasa tal cual.
     return r.estado === "ok" ? ok(planId, true) : r;
   }
 
@@ -478,7 +481,8 @@ export class PlanesService implements IPlanesService {
       detalle: {
         plan,
         empresaNombre: leido.empresaNombre,
-        pendiente: leido.pendiente === null ? null : cambioPendienteDelPlan(plan, leido.pendiente),
+        // SLT-128 (R11): con «N de M empresas ya lo recibieron».
+        pendiente: leido.pendiente === null ? null : pendienteDelDetalle(plan, leido.pendiente),
         empresas: leido.empresas,
         rastro: leido.rastro.map((r) => ({ ...r, creadoAt: r.creadoAt.toISOString() })),
       },

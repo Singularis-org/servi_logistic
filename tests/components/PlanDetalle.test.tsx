@@ -35,7 +35,8 @@ const DETALLE: DetallePlan = {
     archivado: false,
   },
   empresaNombre: null,
-  pendiente: { vigenteDesde: "2030-01-15", lineas: ["Órdenes por ciclo: 3000 → 5000"] },
+  // SLT-128 (R11): el conteo de recepciones del pendiente.
+  pendiente: { vigenteDesde: "2030-01-15", lineas: ["Órdenes por ciclo: 3000 → 5000"], recibidas: 0, total: 1 },
   empresas: [{ id: ORG, nombre: "Envíos Norte" }],
   rastro: [
     {
