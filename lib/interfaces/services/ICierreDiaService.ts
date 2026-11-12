@@ -12,6 +12,7 @@ import type { OrderStatusRetirado, OrderStatusValue } from "@/lib/types/order-st
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type { OrigenFlete } from "@/lib/types/tarifa";
+import type { FiltrosColaPropia } from "@/lib/types/filtros-cierres";
 
 // Feature 37 — contrato del servicio del "Cierre del dia" del mensajero. Logica de
 // negocio pura (sin HTTP ni Prisma); el borde (Server Action) la traduce a
@@ -641,18 +642,19 @@ export interface ICierreDiaService {
    * como `mensajero_id` del WHERE (nunca un id de la peticion). Un mensajero no puede pedir
    * la pagina 1 del historico de otro: no hay parametro por el que pedirlo. R44 se cumple por
    * construccion. Cualquier otro rol -> forbidden, sin filas y sin total.
+   *
+   * SLT-138 (R168-R173): `filtros` opcional RECORTA dentro de ese alcance; sin el, lo de antes.
    */
   listarCierresPasadosPaginado(
-    input: { page: number; pageSize: number },
+    input: { page: number; pageSize: number; filtros?: FiltrosColaPropia },
     actor: Actor,
   ): Promise<ListarCierresPasadosServiceResult>;
   /**
    * Feature 184 — Tanda C (R1/R4/R6/R9): el CONJUNTO de «Cierres solicitados» del propio
    * mensajero, sin recorte, para producir el archivo.
    *
-   * **No recibe entrada**: este listado no admite filtros, asi que su lista blanca —derivada de
-   * la de la pagina quitando `page`/`pageSize`— no deja ninguna clave, y la barrera se aplica
-   * entera en el borde (R17). El alcance ES el actor: `actor.usuarioId` va al `mensajero_id` del
+   * Recibe el MISMO bloque `filtros` que la pagina (SLT-138, R168, R174), opcional; la barrera de
+   * claves se aplica entera en el borde (R17). El alcance ES el actor: `actor.usuarioId` va al `mensajero_id` del
    * WHERE y no hay parametro por el que pedir el historico de otro (R4).
    *
    * El tope de filas se evalua aqui (R6): superarlo NO entrega filas ni un archivo truncado.
@@ -660,7 +662,10 @@ export interface ICierreDiaService {
    * **R9:** ni una llamada al firmador de URL. La relectura que sustituye (`listarCierreDia`)
    * firma las evidencias de todas las gestiones del dia; el archivo no usa ninguna.
    */
-  listarCierresPasadosCompleto(actor: Actor): Promise<ListarCierresPasadosCompletoServiceResult>;
+  listarCierresPasadosCompleto(
+    actor: Actor,
+    filtros?: FiltrosColaPropia,
+  ): Promise<ListarCierresPasadosCompletoServiceResult>;
   /**
    * R10-R16: crea la solicitud de cierre (`solicitado`) agrupando TODAS las
    * gestiones pendientes del mensajero, con destino derivado por zona (R15) y

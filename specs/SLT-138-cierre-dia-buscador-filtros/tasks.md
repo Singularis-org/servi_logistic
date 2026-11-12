@@ -145,6 +145,8 @@ Tests:
 - `tests/unit/actions/cierre-dia-descarga-action.test.ts`
 - `tests/components/descarga/CierresDescarga.test.tsx`
 - `tests/unit/descarga/censo-tablas.ts`
+- `tests/unit/repositories/criterio-unico.guardia.test.ts` (T0.2: la MUTACION 3 buscaba
+  `cierresDeMensajeroWhere(mensajeroId);` literal; con dos parámetros más, su regex pasa a `\([^)]*\)`)
 - `e2e/cierres-rediseno.spec.ts`
 
 Specs y progreso (no cuentan para el tamaño):

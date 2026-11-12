@@ -21,6 +21,9 @@ import type {
   CierreRechazoDeTienda,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
+import type { FiltrosColaPropiaRepo } from "@/lib/types/filtros-cierres";
+// SLT-138 (R169, R170): las condiciones de fecha y estado son las del admin, sin otra declaracion.
+import { filtrosWhere } from "@/lib/repositories/CierresAdminRepository";
 // Feature 274 (design §4.2, R21/R22): la clave del Map del resolver batch la define el modulo
 // puro de la cascada, no este repositorio. Indexar aqui con una clave propia seria la segunda
 // declaracion de la regla que R21 existe para impedir.
@@ -786,9 +789,49 @@ type CierrePasadoSelectRow = Prisma.CierreDiaGetPayload<{
  *
  * Estaba escrito dos veces —una en el conjunto y otra en la pagina—, y con dos literales basta
  * que una gane un predicado para que el archivo y la tabla dejen de contar el mismo conjunto.
+ *
+ * SLT-138 (R172, R173): sin filtros, el MISMO objeto de antes. Con filtros, el alcance va DENTRO
+ * del `AND` junto a los recortes, como en el admin: ningun recorte puede sustituirlo. La fecha y el
+ * estado salen de `filtrosWhere`; el folio, de los ids que ya leyo `idsDeCierresPorFolio`.
  */
-function cierresDeMensajeroWhere(mensajeroId: string): Prisma.CierreDiaWhereInput {
-  return { mensajeroId };
+function cierresDeMensajeroWhere(
+  mensajeroId: string,
+  filtros?: FiltrosColaPropiaRepo,
+  idsPorFolio?: string[],
+): Prisma.CierreDiaWhereInput {
+  if (!filtros) return { mensajeroId };
+  const { solicitadoDesde, solicitadoHasta, estados } = filtros;
+  return {
+    AND: [
+      { mensajeroId },
+      ...filtrosWhere({ solicitadoDesde, solicitadoHasta, estados }),
+      ...(idsPorFolio ? [{ id: { in: idsPorFolio } }] : []),
+    ],
+  };
+}
+
+/**
+ * SLT-138 (R171, R172) — los ids de los cierres del mensajero cuyo FOLIO (los ultimos 8 caracteres
+ * del id, R156) contiene `texto`. Prisma no sabe decir «contiene, solo en los ultimos 8»: un
+ * `contains` sobre el id entero daria por bueno un «3F2A» del primer bloque del uuid.
+ *
+ * `strpos` y no `LIKE`: el texto no se interpreta como patron, asi que `%`/`_` no son comodines
+ * (y el servicio ya solo deja pasar `0-9A-F`). Parametrizada: ningun texto se interpola.
+ * `mensajero_id` acota la lista y es una segunda barrera; el `WHERE` principal lo vuelve a exigir.
+ * La empresa la acota la RLS de `cierre_dia` (este archivo es `porRls` en
+ * `lib/db/excepciones-aislamiento.ts`). Exportada como funcion y no como metodo de la interfaz para
+ * no romper los dobles de `ICierreDiaRepository`.
+ */
+export async function idsDeCierresPorFolio(
+  prisma: Pick<PrismaClient, "$queryRaw">,
+  mensajeroId: string,
+  texto: string,
+): Promise<string[]> {
+  const filas = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "cierre_dia"
+    WHERE "mensajero_id" = ${mensajeroId}
+      AND strpos(upper(right("id", 8)), ${texto}) > 0`;
+  return filas.map((f) => f.id);
 }
 
 /**
@@ -1714,9 +1757,13 @@ export class CierreDiaRepository implements ICierreDiaRepository {
    * entero del mensajero, con el mismo `where`, el mismo orden y el mismo mapper que la pagina, y
    * un gemelo `…Completo` habria sido la tercera declaracion del mismo criterio (R16).
    */
-  async findCierresByMensajero(mensajeroId: string): Promise<CierrePasadoDTO[]> {
+  async findCierresByMensajero(
+    mensajeroId: string,
+    filtros?: FiltrosColaPropiaRepo,
+  ): Promise<CierrePasadoDTO[]> {
+    const idsPorFolio = await this.idsPorFolio(mensajeroId, filtros);
     const rows = await this.prisma.cierreDia.findMany({
-      where: cierresDeMensajeroWhere(mensajeroId),
+      where: cierresDeMensajeroWhere(mensajeroId, filtros, idsPorFolio), // SLT-138 (R174)
       orderBy: ORDEN_CIERRES_MENSAJERO,
       select: CIERRE_PASADO_SELECT,
     });
@@ -1816,8 +1863,11 @@ export class CierreDiaRepository implements ICierreDiaRepository {
   async findCierresByMensajeroPaginado(
     mensajeroId: string,
     rango: RangoPagina,
+    filtros?: FiltrosColaPropiaRepo,
   ): Promise<PaginaRepositorio<CierrePasadoDTO>> {
-    const where = cierresDeMensajeroWhere(mensajeroId); // R16: el MISMO alcance del conjunto
+    // R16: el MISMO alcance del conjunto. SLT-138 (R172): el mismo `where` filtrado en los dos.
+    const idsPorFolio = await this.idsPorFolio(mensajeroId, filtros);
+    const where = cierresDeMensajeroWhere(mensajeroId, filtros, idsPorFolio);
     const [rows, total] = await Promise.all([
       this.prisma.cierreDia.findMany({
         where,
@@ -1829,6 +1879,18 @@ export class CierreDiaRepository implements ICierreDiaRepository {
       this.prisma.cierreDia.count({ where }), // R41: el total del CONJUNTO
     ]);
     return { items: rows.map(toCierrePasadoDTO), total };
+  }
+
+  /**
+   * SLT-138 (R171) — con folio, los ids de los cierres del mensajero que lo contienen; sin folio,
+   * `undefined` y ninguna lectura extra (R173).
+   */
+  private async idsPorFolio(
+    mensajeroId: string,
+    filtros: FiltrosColaPropiaRepo | undefined,
+  ): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsDeCierresPorFolio(this.prisma, mensajeroId, filtros.folio);
   }
 
   /**

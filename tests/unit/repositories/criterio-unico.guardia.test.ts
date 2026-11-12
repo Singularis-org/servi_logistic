@@ -598,7 +598,8 @@ describe("R16 — el detector se pone ROJO ante la segunda declaracion", () => {
     // cierres de otro mensajero.
     const real = leer(PAR_MENSAJERO.archivo);
     const mutado = mutar(real, [
-      [/const where = cierresDeMensajeroWhere\(mensajeroId\);/, "const where = { mensajeroId };"],
+      // SLT-138: la declaracion gano `filtros` e `idsPorFolio`; la mutacion la sustituye entera.
+      [/const where = cierresDeMensajeroWhere\([^)]*\);/, "const where = { mensajeroId };"],
     ]);
     const fallos = violaciones(mutado, PAR_MENSAJERO);
     expect(fallos.join(" | "), "la guardia NO ve el where reescrito").toMatch(
