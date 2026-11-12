@@ -155,7 +155,9 @@ describe("D40 — la cuenta de una consolidación", () => {
     expect(within(cuenta).getByText(NUEVO.ganaBodega)).toBeInTheDocument();
     expect(within(cuenta).getByText(NUEVO.paraLaCentral)).toBeInTheDocument();
     expect(cuenta.textContent).not.toContain("devoluciones a origen");
-    expect(cuenta.textContent).toContain("-₡2.300,50");
+    // SLT-114: la fila pinta una `Cuenta`, con el operador en el rótulo y no pegado al importe.
+    expect(cuenta.textContent).toContain("− Gana la bodega satélite");
+    expect(cuenta.textContent).toContain("₡2.300,50");
     expect(cuenta.textContent).toContain("₡67.090,25");
   });
 

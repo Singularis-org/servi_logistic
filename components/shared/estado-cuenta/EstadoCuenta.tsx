@@ -735,115 +735,115 @@ export function EstadoCuenta({
   // como siempre; con ella, dentro de su pestaña.
   const libro = (
     <>
-        {/* R49 — el fallo se dice JUNTO al libro; el libro de la última lectura buena sigue debajo. */}
-        {hayFallo ? (
-          <p role="alert" className="text-sm text-destructive">
-            {ESTADO_CUENTA_TEXTO.error} {ESTADO_CUENTA_TEXTO.errorConservado}
-          </p>
-        ) : null}
+      {/* R49 — el fallo se dice JUNTO al libro; el libro de la última lectura buena sigue debajo. */}
+      {hayFallo ? (
+        <p role="alert" className="text-sm text-destructive">
+          {ESTADO_CUENTA_TEXTO.error} {ESTADO_CUENTA_TEXTO.errorConservado}
+        </p>
+      ) : null}
 
-        {/* FICHA 469 (R21/R23) — la búsqueda es por guía: se dice junto a la barra, con el término pintado. */}
-        {terminoGuia !== null ? (
-          <p role="status" className="text-sm text-muted-foreground">
-            {BUSQUEDA_POR_GUIA_TEXTO.aviso(terminoGuia)}
-          </p>
-        ) : null}
+      {/* FICHA 469 (R21/R23) — la búsqueda es por guía: se dice junto a la barra, con el término pintado. */}
+      {terminoGuia !== null ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {BUSQUEDA_POR_GUIA_TEXTO.aviso(terminoGuia)}
+        </p>
+      ) : null}
 
-        <TablaEstadoCuenta
-          estado={data?.estado}
-          rotulos={rotulos}
-          desde={data?.seleccion.periodo.desde ?? periodo.desde}
-          posicionSaldoInicial={posicion}
-          // FICHA 467 (R1/R2/R4/R7/R9/R23/R24/R32) — la BARRA ÚNICA, encima de la tabla y en la fila de
-          // «Descargar», igual que `/ordenes`: [orden] [casillas marcadas…] [buscador] [Filtros] [Limpiar
-          // todo]. Periodo y Tipo de movimiento son el orquestador; el Cierre, el selector de la superficie.
-          filtros={
-            <BuscadorFiltros
-              label={ZONA_LIBRO_TEXTO.buscar}
-              // FICHA 469 (R24/R36) — la satélite tiene su texto propio: no nombra la guía.
-              placeholder={ESTADO_CUENTA_TEXTO.buscarPlaceholder[tipo === "bodega" ? "bodega" : vista]}
-              minChars={BUSQUEDA_LIBRO_MIN_CHARS}
-              leerDeUrl={false}
-              siembra={siembraTermino}
-              onChange={cambiarTermino}
-              filtros={casillasEstadoCuenta(selectorCierre !== undefined)}
-              activos={activos}
-              onActivosChange={cambiarActivos}
-              onLimpiarTodo={limpiarTodo}
-              // R26 — con texto escrito (lo mira la barra) o con alguna casilla marcada.
-              hayFiltrosAplicados={activos.length > 0}
-            >
-              <SegmentedToggle<DireccionOrden>
-                options={ORDEN_LIBRO.opciones}
-                valor={sortDir}
-                onChange={cambiarOrden}
-                ariaLabel={ORDEN_LIBRO.nombre}
-                soloIcono
+      <TablaEstadoCuenta
+        estado={data?.estado}
+        rotulos={rotulos}
+        desde={data?.seleccion.periodo.desde ?? periodo.desde}
+        posicionSaldoInicial={posicion}
+        // FICHA 467 (R1/R2/R4/R7/R9/R23/R24/R32) — la BARRA ÚNICA, encima de la tabla y en la fila de
+        // «Descargar», igual que `/ordenes`: [orden] [casillas marcadas…] [buscador] [Filtros] [Limpiar
+        // todo]. Periodo y Tipo de movimiento son el orquestador; el Cierre, el selector de la superficie.
+        filtros={
+          <BuscadorFiltros
+            label={ZONA_LIBRO_TEXTO.buscar}
+            // FICHA 469 (R24/R36) — la satélite tiene su texto propio: no nombra la guía.
+            placeholder={ESTADO_CUENTA_TEXTO.buscarPlaceholder[tipo === "bodega" ? "bodega" : vista]}
+            minChars={BUSQUEDA_LIBRO_MIN_CHARS}
+            leerDeUrl={false}
+            siembra={siembraTermino}
+            onChange={cambiarTermino}
+            filtros={casillasEstadoCuenta(selectorCierre !== undefined)}
+            activos={activos}
+            onActivosChange={cambiarActivos}
+            onLimpiarTodo={limpiarTodo}
+            // R26 — con texto escrito (lo mira la barra) o con alguna casilla marcada.
+            hayFiltrosAplicados={activos.length > 0}
+          >
+            <SegmentedToggle<DireccionOrden>
+              options={ORDEN_LIBRO.opciones}
+              valor={sortDir}
+              onChange={cambiarOrden}
+              ariaLabel={ORDEN_LIBRO.nombre}
+              soloIcono
+            />
+            {montadas.length > 0 ? (
+              <FilterComponent
+                filters={montadas}
+                onChange={cambiarSeleccion}
+                leerDeUrl={false}
+                // R28 — lo vigente (lo que dice la clave SWR); al subir la señal, se repone sin emitir.
+                siembra={{ senal: senalSiembra, seleccion: seleccionDe(periodo, chip) }}
               />
-              {montadas.length > 0 ? (
-                <FilterComponent
-                  filters={montadas}
-                  onChange={cambiarSeleccion}
-                  leerDeUrl={false}
-                  // R28 — lo vigente (lo que dice la clave SWR); al subir la señal, se repone sin emitir.
-                  siembra={{ senal: senalSiembra, seleccion: seleccionDe(periodo, chip) }}
-                />
-              ) : null}
-              {selectorCierre && marcadas.has(CASILLA.cierre)
-                ? selectorCierre(cierreId, (c) => {
-                    setCierreId(c);
-                    setPage(1);
-                  })
-                : null}
-            </BuscadorFiltros>
-          }
-          isLoading={data === undefined && isLoading}
-          // Solo sin ninguna lectura buena que enseñar; con una, el aviso va arriba y el libro se queda (R49).
-          error={error !== undefined && data === undefined}
-          onVer={panel === undefined ? undefined : (f) => (seAbre(f) ? setAbierta(f) : undefined)}
-          conRegistro={vista === "oficina"}
-          detalleDeFila={detalleDeFila}
-          resaltar={terminoGuia ?? undefined}
-          accionDeFila={accionDeFila}
-          descarga={{
-            ...ambitoDeLaSuperficie,
-            titulo: ESTADO_CUENTA_TEXTO.tabla(nombre),
-            columnas: vista === "oficina" ? COLUMNAS_DESCARGA_ESTADO_CUENTA : COLUMNAS_DESCARGA_MI_ESTADO_CUENTA,
-            // FICHA 468 (R51) — Concepto, Entra, Sale y Saldo no se pueden desmarcar.
-            columnasFijas: FIJAS_DESCARGA_ESTADO_CUENTA,
-            // FICHA 468 (R7/R53/R57): una petición por opción, siempre en orden cronológico ascendente.
-            obtenerFilas: (opciones) =>
-              filasDelPeriodo(
-                lector,
-                filtros,
-                rotulos,
-                opciones?.conDetalle && detalleDescarga !== null ? detalleDescarga : undefined,
-              ),
-            detalle: detalleDescarga?.hoja,
-          }}
-        />
-        {data !== undefined && data.estado.filas.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {/* FICHA 469 (R22) — con búsqueda por guía, el vacío lo dice en esos términos. */}
-            {terminoGuia !== null ? BUSQUEDA_POR_GUIA_TEXTO.vacio : ESTADO_CUENTA_TEXTO.vacio}
-          </p>
-        ) : null}
+            ) : null}
+            {selectorCierre && marcadas.has(CASILLA.cierre)
+              ? selectorCierre(cierreId, (c) => {
+                  setCierreId(c);
+                  setPage(1);
+                })
+              : null}
+          </BuscadorFiltros>
+        }
+        isLoading={data === undefined && isLoading}
+        // Solo sin ninguna lectura buena que enseñar; con una, el aviso va arriba y el libro se queda (R49).
+        error={error !== undefined && data === undefined}
+        onVer={panel === undefined ? undefined : (f) => (seAbre(f) ? setAbierta(f) : undefined)}
+        conRegistro={vista === "oficina"}
+        detalleDeFila={detalleDeFila}
+        resaltar={terminoGuia ?? undefined}
+        accionDeFila={accionDeFila}
+        descarga={{
+          ...ambitoDeLaSuperficie,
+          titulo: ESTADO_CUENTA_TEXTO.tabla(nombre),
+          columnas: vista === "oficina" ? COLUMNAS_DESCARGA_ESTADO_CUENTA : COLUMNAS_DESCARGA_MI_ESTADO_CUENTA,
+          // FICHA 468 (R51) — Concepto, Entra, Sale y Saldo no se pueden desmarcar.
+          columnasFijas: FIJAS_DESCARGA_ESTADO_CUENTA,
+          // FICHA 468 (R7/R53/R57): una petición por opción, siempre en orden cronológico ascendente.
+          obtenerFilas: (opciones) =>
+            filasDelPeriodo(
+              lector,
+              filtros,
+              rotulos,
+              opciones?.conDetalle && detalleDescarga !== null ? detalleDescarga : undefined,
+            ),
+          detalle: detalleDescarga?.hoja,
+        }}
+      />
+      {data !== undefined && data.estado.filas.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {/* FICHA 469 (R22) — con búsqueda por guía, el vacío lo dice en esos términos. */}
+          {terminoGuia !== null ? BUSQUEDA_POR_GUIA_TEXTO.vacio : ESTADO_CUENTA_TEXTO.vacio}
+        </p>
+      ) : null}
 
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={data?.estado.total ?? 0}
-          // Solo sin nada que pintar: con la página del servidor en mano se puede paginar mientras SWR
-          // revalida (su `isLoading` sigue en `true` con `fallbackData`).
-          disabled={data === undefined}
-          ariaLabel={ESTADO_CUENTA_TEXTO.paginacion(nombre)}
-          onPageChange={setPage}
-          onPageSizeChange={(s) => {
-            setPageSize(s);
-            setPage(1);
-          }}
-          pageSizeOptions={[10, 20, 50, 100].filter((s) => s <= estadoCuentaConfig.MAX_PAGE_SIZE)}
-        />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={data?.estado.total ?? 0}
+        // Solo sin nada que pintar: con la página del servidor en mano se puede paginar mientras SWR
+        // revalida (su `isLoading` sigue en `true` con `fallbackData`).
+        disabled={data === undefined}
+        ariaLabel={ESTADO_CUENTA_TEXTO.paginacion(nombre)}
+        onPageChange={setPage}
+        onPageSizeChange={(s) => {
+          setPageSize(s);
+          setPage(1);
+        }}
+        pageSizeOptions={[10, 20, 50, 100].filter((s) => s <= estadoCuentaConfig.MAX_PAGE_SIZE)}
+      />
     </>
   );
 
