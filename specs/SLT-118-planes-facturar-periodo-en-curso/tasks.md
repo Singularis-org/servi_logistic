@@ -190,29 +190,32 @@ Los archivos de T16 ya están todos en «Archivos esperados»: no sube el tamañ
 - [x] **T16.0** `db/schema.prisma`: `FacturaPlataforma.finNaturalAt` (`DateTime @map("fin_natural_at")
   @db.Timestamp(3)`, no nulo, comentario del CHECK `factura_plataforma_fin_natural`) (design §1.1, P20).
   **Hecho:** typecheck verde.
-- [ ] **T16.1** `db/migrations/20261111130100_factura_plataforma/migration.sql` (design §1.1, §1.3, §2.2–§2.6,
+- [x] **T16.1** `db/migrations/20261111130100_factura_plataforma/migration.sql` (design §1.1, §1.3, §2.2–§2.6,
   §6.2): la columna `fin_natural_at NOT NULL` y su CHECK; el trigger la congela en una `por_cerrar`; `abrir` la
   escribe con `plan_fin_periodo_calendario(periodicidad, desde)`; `avanzar` (y así `cerrar`) fija con
   `fin_natural_at` en vez de calcularlo desde `desde`; `tomar_cambio` la recalcula solo en R16 al cambiar la
   periodicidad; `en_curso` devuelve como fin previsto `fin_natural_at` (las vistas previas de la cola tarde, m7 y
   su gemelo, siguen calculando el fin con la periodicidad nueva). `down.sql` no cambia (la columna se va con la
   tabla).
-- [ ] **T16.2** Misma migración, paso 5 de design §6.2: la siembra, solo para las empresas que existen al migrar,
+- [x] **T16.2** Misma migración, paso 5 de design §6.2: la siembra, solo para las empresas que existen al migrar,
   con `desde` = 00:00 de la plataforma del día de su `created_at`, la periodicidad, el plan y el tipo de la
   empresa, sin marca, y `fin_natural_at` = el primer corte tras `now()` (design §2.8). Las empresas creadas
   después siguen con §2.2 paso 1, sin cambios.
   **Hecho (T16.1–T16.2):** `pnpm run db:migrate` y `pnpm run db:rollback` en base desechable.
-- [ ] **T16.3** En `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T15.3): R36 con el fin guardado
+- [x] **T16.3** En `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T15.3): R36 con el fin guardado
   (editar la periodicidad del plan con la factura en curso no cambia su `fin_natural_at`; la siguiente se abre
   en ese fin con la nueva) y R2/R16 (una primera asignación con efecto ≤ D y otra periodicidad recalcula el fin);
   `UPDATE` de `fin_natural_at` en una `por_cerrar` → `SL118`. Los casos de T6.2 y T15.3 siguen verdes.
-- [ ] **T16.4** `tests/integration/db/factura-plataforma-cierre.test.ts`: R26 con la factura histórica: empresa
+- [x] **T16.4** `tests/integration/db/factura-plataforma-cierre.test.ts`: R26 con la factura histórica: empresa
   dada de alta el 3 de septiembre y siembra el 10 de noviembre → una sola factura `[3 sep, 16 nov)`; cierres con
   `p_ahora` del 11 de noviembre al 15 no cierran nada; el del 16 a las 00:10 la cierra con número 1, los cargos y
   reversos de septiembre a noviembre y, si es quincenal, la cuota de la quincena del 16 (ninguna anterior);
   `en_curso` antes del 16 con `desde` el 3 de septiembre y fin el 16; con órdenes mensuales, fin el 1 de
   diciembre; una empresa creada tras la siembra, desde las 00:00 de su alta con su fin natural. Los casos de
   siembra de T6.1 (P15) siguen verdes.
+  Constancia (T16.1–T16.4): por decisión del humano (B3, 2026-11-11, `progress/features/SLT-118.md`, la B2
+  extendida a T16), `db:migrate`, `db:rollback` y la integración los da el CI del PR #130; no se mergea sin
+  `gate-completo` y `e2e` en verde.
 - **Hecho:** T16.3 y T16.4 verdes con `HAY_BASE_DE_DATOS`, cada `it` nombra su `R<n>` (R2, R26, R36); los
   tests de factura de T6, T9 y T15 siguen verdes; `progress/impl_SLT-118.md > Mapa R → test` con los `it` nuevos.
 
@@ -245,7 +248,8 @@ Los archivos de T16 ya están todos en «Archivos esperados»: no sube el tamañ
 | R10 | `tests/integration/db/factura-plataforma-cuota-gemelas.test.ts` |
 | R12 | `tests/unit/planes/jobs-factura-plataforma.test.ts` |
 | R13, R21 | `tests/integration/db/factura-plataforma-aislamiento.test.ts` |
-| R15, R16, R17, R28, R38 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R15, R16, R17, R38 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` |
+| R28 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts`, `tests/integration/db/factura-plataforma-cierre.test.ts` (sobre la factura histórica: sembrada sin plan, primer plan con inicio entre el alta y el fin guardado, review m9) |
 | R36 | `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (T15.3; con el fin guardado, P20, T16.3) |
 | R18 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` (y en cero en los tres `tests/unit/actions/*.composition-root.test.ts` de deuda, empresas y wallet) |
 | R19 | `tests/integration/db/factura-plataforma-deuda.test.ts`, `tests/unit/utils/deuda-plataforma.test.ts` |

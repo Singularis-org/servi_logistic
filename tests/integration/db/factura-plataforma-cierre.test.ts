@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { EnqueueOpts, IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { recurrenciaCierreFacturas, sembrarCierreFacturas } from "@/lib/planes/jobs-factura-plataforma";
 import { FacturaPlataformaRepository } from "@/lib/repositories/FacturaPlataformaRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
@@ -26,7 +27,7 @@ import {
   type Foto,
 } from "./_fixtures/ida-y-vuelta-32";
 import { cero } from "./_fixtures/periodo-calendario";
-import { crearPlan, revertida } from "./_fixtures/planes";
+import { crearPlan, planesEnTx, revertida } from "./_fixtures/planes";
 
 // SLT-118 · T6.1 (design §1.1, §2.2, §2.4, §2.5, §4, §6.2, §8; R1–R9, R11, R14, R25–R27) — el cierre de las
 // facturas de la plataforma contra Postgres.
@@ -37,7 +38,8 @@ import { crearPlan, revertida } from "./_fixtures/planes";
 //     Los movimientos se escriben a mano con su `ocurrido_at` (el trigger de la traza escribe la suya): el
 //     cargo que el alta de una orden deja con el reloj real se borra antes, para que la fecha del CI no
 //     cuente en ninguna factura. T16.4 (P20): la factura histórica, con la siembra de la migración (su texto)
-//     corrida para una sola empresa con su `now()` fijado (`sembrarComoLaMigracion`);
+//     corrida para una sola empresa con su `now()` fijado (`sembrarComoLaMigracion`); review m9: R28 sobre
+//     la histórica, con la primera asignación por el `PlanesRepository` real (`primeraAsignacion`);
 //   · en una base PROPIA (`slt118_iv_<rand>`), la migración de verdad: la siembra (R26, P15), dos cierres
 //     a la vez desde dos conexiones (R11; en la compartida las filas no se ven entre conexiones) y la ida y
 //     vuelta con su negativa (R27). Allí el «ahora» es el de la base (`now()`), porque la siembra lo usa.
@@ -236,6 +238,23 @@ async function sembrarComoLaMigracion(tx: TxDeTest, organizacionId: string, migr
     throw new Error("la siembra de la migración cambió de forma: revisa sembrarComoLaMigracion");
   }
   await tx.$executeRawUnsafe(`${insercion.replace(reloj, () => "$2::timestamp")} WHERE e."id" = $1`, organizacionId, migrada);
+}
+
+/**
+ * R28 sobre la histórica (review m9): la primera asignación del superadmin por el `PlanesRepository` real, con
+ * inicio el día `fecha` y su reloj `ahora` (en el acto si `ahora` ya pasó las 00:00 de `fecha`).
+ */
+async function primeraAsignacion(tx: TxDeTest, organizacionId: string, plan: string, tipo: TipoCobro, fecha: string, ahora: string): Promise<void> {
+  await fijarEmpresa(tx, "");
+  const r = await planesEnTx(tx).asignar(
+    organizacionId,
+    plan,
+    randomUUID(),
+    { clase: "inicio", fecha, desde: inicioDelDiaPlataforma(fecha), elegida: true },
+    tipo,
+    new Date(ahora),
+  );
+  if (r.estado !== "ok" || r.pendiente) throw new Error(`asignar: ${JSON.stringify(r)}`);
 }
 
 interface FacturaLeida {
@@ -743,6 +762,74 @@ describeSiHayBase("SLT-118 — el cierre de las facturas de la plataforma", () =
       [1, cero("2026-09-03"), cero("2026-12-01"), "mensual", "31000.00", cero("2026-12-01")],
       [null, cero("2026-12-01"), null, "mensual", null, null],
     ]);
+  });
+
+  it("R28, R26: sembrada sin plan (alta el 3 de septiembre, fin guardado el 16) con primer plan quincenal desde el 12: la histórica se corta el 12 y sale como UNA sola factura con todas las órdenes sin plan y la primera cuota (4 133.33); la siguiente empieza el 12 con el plan", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, { mensual: "31000.00" });
+      const e = await empresa(tx, "2026-09-03T15:00:00.000Z");
+      const [o1, o2, o3, o4] = [
+        await ordenSinCargos(tx, e),
+        await ordenSinCargos(tx, e),
+        await ordenSinCargos(tx, e),
+        await ordenSinCargos(tx, e),
+      ];
+      await movimiento(tx, e, { orden: o1, secuencia: 1, tipo: "cargo", monto: "100.00", en: "2026-09-10T15:00:00.000Z" });
+      await movimiento(tx, e, { orden: o2, secuencia: 1, tipo: "cargo", monto: "200.00", en: "2026-10-05T15:00:00.000Z" });
+      await movimiento(tx, e, { orden: o3, secuencia: 1, tipo: "cargo", monto: "50.00", en: "2026-11-11T15:00:00.000Z" });
+      // Ya con el plan: va en la factura que empieza en E.
+      await movimiento(tx, e, { orden: o4, secuencia: 1, tipo: "cargo", monto: "70.00", en: "2026-11-13T15:00:00.000Z" });
+      await sembrarComoLaMigracion(tx, e.id, "2026-11-10T18:00:00.000Z");
+      const sembrada = await fines(tx, e.id);
+      // E = 12 de noviembre: después del alta (D = 3 de septiembre) y antes del fin guardado (16).
+      await primeraAsignacion(tx, e.id, plan.id, "quincenal", "2026-11-12", "2026-11-12T15:00:00.000Z");
+      const trasAplicar = await fines(tx, e.id);
+      const el13 = await cerrar(tx, e.id, corrida("2026-11-13"));
+      const el16 = await cerrar(tx, e.id, corrida("2026-11-16"));
+      return { plan, sembrada, trasAplicar, el13, el16, lista: await facturas(tx, e.id) };
+    });
+    expect(r.sembrada).toEqual([[cero("2026-09-03"), null, cero("2026-11-16")]]);
+    // La histórica se fija en E (su fin guardado no se mueve) y la siguiente se abre en E con su fin natural.
+    expect(r.trasAplicar).toEqual([
+      [cero("2026-09-03"), cero("2026-11-12"), cero("2026-11-16")],
+      [cero("2026-11-12"), null, cero("2026-11-16")],
+    ]);
+    expect([r.el13, r.el16]).toEqual([1, 1]);
+    sinHuecosNiSolapes(r.lista);
+    // P17: una sola factura hasta E, sin plan, con todo el histórico y la primera cuota por adelantado.
+    expect(r.lista.filter((f) => f.hasta === cero("2026-11-12"))).toHaveLength(1);
+    expect(r.lista[0]).toMatchObject({
+      numero: 1,
+      estado: "cerrada",
+      desde: cero("2026-09-03"),
+      hasta: cero("2026-11-12"),
+      plan_id: null,
+      tipo_cobro: null,
+      cargos: "350.00",
+      reversos: "0.00",
+      movimientos: 3,
+      total_ordenes: "350.00",
+      primera_cuota_desde: cero("2026-11-12"),
+      // R29: del 12 al 15, 4 de 15 días de 15 500.00.
+      primera_cuota: "4133.33",
+      ...SIN_CUOTA,
+      total: "4483.33",
+    });
+    // La siguiente empieza en E con el plan, el tipo y la periodicidad nuevos; la emitida el 16 lleva la cuota de su quincena.
+    expect(r.lista[1]).toMatchObject({
+      numero: 2,
+      estado: "cerrada",
+      desde: cero("2026-11-12"),
+      hasta: cero("2026-11-16"),
+      periodicidad: "quincenal",
+      plan_id: r.plan.id,
+      tipo_cobro: "quincenal",
+      cargos: "70.00",
+      cuota: "15500.00",
+      cuota_desde: cero("2026-11-16"),
+      ...SIN_PRIMERA_CUOTA,
+    });
+    expect(r.lista[2]).toMatchObject({ numero: null, estado: "en_curso", desde: cero("2026-11-16"), plan_id: r.plan.id });
   });
 
   it("R26, R2: una empresa creada tras la siembra no tiene histórica: su primera factura va desde las 00:00 de su alta con su fin natural guardado", async () => {
