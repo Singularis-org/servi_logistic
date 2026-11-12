@@ -538,6 +538,11 @@ function renderConsolidacion() {
     motivoBloqueo: null,
     cierresBodegaPasados: BODEGA_SOLICITADOS,
     sinZona: false,
+    // SLT-106 (R67/R195): campos nuevos del resultado; esta suite no los lee.
+    paraLaCentralAgregado: "789.90",
+    cierresAConsolidar: CONSOLIDABLES.length,
+    mensajerosAConsolidar: 2,
+    bloqueo: null,
   });
   return envolver(
     <ConsolidacionBodegaModule

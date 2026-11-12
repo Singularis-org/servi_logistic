@@ -10,6 +10,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { listarConsolidablesSchema } from "@/lib/types/cierre-bodega";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
 
 // Feature 170 — FASE 2, T J.1 (R40/R41/R44/R49/R51/R54) — «Cierres del dia a consolidar»,
 // la cola paginada del adminSatelite.
@@ -69,6 +70,10 @@ function fila(
     },
     totalPagoMensajero: dinero.pago,
     totalIngresoBodegaRechazos: dinero.ingresoBodega,
+    // SLT-106 (R67/R194): campos requeridos de la fila; el servicio los pasa tal cual.
+    paraLaCentral: paraLaCentral(dinero.general, dinero.pago, dinero.ingresoBodega),
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
   };
 }
 
@@ -219,6 +224,11 @@ function repoEnMemoria() {
     contarCierresDiaSolicitados: vi.fn(async () => {
       llamadas.push("contarCierresDiaSolicitados");
       return 0;
+    }),
+    // SLT-106 (R199): los nombres de los cierres sin resolver; lo lee `listarConsolidacion`.
+    findMensajerosConCierreSinResolver: vi.fn(async () => {
+      llamadas.push("findMensajerosConCierreSinResolver");
+      return [] as string[];
     }),
     // ⭑ FICHA 431: `existeCierreBodegaSolicitado` se retiro del contrato con su indice unico parcial.
     crearCierreBodega: vi.fn(async () => "cb-1"),
@@ -391,9 +401,10 @@ describe("CierreBodegaService.listarConsolidablesPaginado", () => {
     // pendientes y el historico de la zona); el paginado hace UNA, con el conteo dentro.
     const sinPaginar = repoEnMemoria();
     await servicio(sinPaginar.repo).listarConsolidacion(SATELITE_A);
+    // SLT-106 (R199): el contador de pendientes pasa a leer sus NOMBRES; siguen siendo tres.
     expect(sinPaginar.llamadas).toEqual([
       "findCierresDiaConsolidables",
-      "contarCierresDiaSolicitados",
+      "findMensajerosConCierreSinResolver",
       "findCierresBodegaByZona",
     ]);
 

@@ -15,12 +15,15 @@ import type {
   ListarConsolidablesServiceResult,
   ListarConsolidacionServiceResult,
   SolicitarCierreBodegaServiceResult,
+  BloqueoConsolidacion,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import { descargaConfig } from "@/lib/config/descarga";
 // ⭑ FICHA 431 (R7): el error que el repositorio lanza cuando una consolidacion enlazaria menos
 // cierres de los que sus totales snapshot ya sumaron. Sustituye al `P2002` del indice unico parcial.
 import { ConsolidacionParcialError } from "@/lib/utils/consolidacion-parcial";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
+// SLT-106 (R67): la UNICA derivacion de «Debe llegar a la central», la misma de la fila.
+import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
 
 // Solo el rol autorizado (R1): el adminSatelite, SIEMPRE acotado a SU zona (el filtro
 // por zona vive en el repo, en el WHERE).
@@ -36,6 +39,30 @@ const MSG_VACIO = "No hay cierres de mensajero aprobados para consolidar."; // R
 // marque para volver a consolidar seria el MISMO bloqueo mudado de sitio, y su texto ademas ya no
 // seria cierto en ninguno de sus dos extremos.
 const MSG_SIN_ZONA = "No tienes una zona asignada; contacta a tu administrador."; // R4
+
+/**
+ * SLT-106 (R199/R47) — el motivo del bloqueo de la pantalla cuando hay cierres `solicitado`: nombra
+ * a los mensajeros que los tienen. Recibe un nombre POR CIERRE (con repetidos), tal como los da
+ * `findMensajerosConCierreSinResolver`: el numero de cierres decide «un cierre» / «cierres» y el de
+ * nombres distintos, «tiene» / «tienen». Cada nombre una vez, en orden alfabetico.
+ *
+ * Solo la pantalla: `solicitarCierreBodega` sigue con `MSG_PENDIENTES` (R200).
+ */
+export function motivoSinResolver(nombres: string[]): string {
+  const unicos = [...new Set(nombres)].sort((a, b) => a.localeCompare(b, "es"));
+  const lista =
+    unicos.length <= 1
+      ? (unicos[0] ?? "")
+      : `${unicos.slice(0, -1).join(", ")} y ${unicos[unicos.length - 1]}`;
+  const inicio = "Todavía no puedes consolidar:";
+  if (unicos.length > 1) {
+    return `${inicio} ${lista} tienen cierres sin resolver. Apruébalos o recházalos primero.`;
+  }
+  if (nombres.length === 1) {
+    return `${inicio} ${lista} tiene un cierre sin resolver. Apruébalo o recházalo primero.`;
+  }
+  return `${inicio} ${lista} tiene cierres sin resolver. Apruébalos o recházalos primero.`;
+}
 
 // Metodos de repo que consume el service (Pick para dobles de test sin DB/red).
 type OrdenRepo = Pick<IOrdenRepository, "findUsuarioZonaId">;
@@ -179,13 +206,19 @@ export class CierreBodegaService implements ICierreBodegaService {
         motivoBloqueo: MSG_SIN_ZONA,
         cierresBodegaPasados: [],
         sinZona: true,
+        paraLaCentralAgregado: "0.00", // SLT-106 (R67): sin zona, nada que consolidar
+        cierresAConsolidar: 0, // R195
+        mensajerosAConsolidar: 0, // R195
+        bloqueo: "sin_zona", // R195
       };
     }
 
     // R5/R6 + F1.4-h: SOLO lectura (R23). El filtro por zona/estado vive en el repo.
-    const [consolidables, solicitados, cierresBodegaPasados] = await Promise.all([
+    // SLT-106 (R199): los NOMBRES de los cierres sin resolver, en vez de su conteo. Mismo `where`
+    // en el repositorio que el conteo de la puerta de `solicitarCierreBodega`.
+    const [consolidables, sinResolver, cierresBodegaPasados] = await Promise.all([
       this.repo.findCierresDiaConsolidables(zonaId),
-      this.repo.contarCierresDiaSolicitados(zonaId),
+      this.repo.findMensajerosConCierreSinResolver(zonaId),
       this.repo.findCierresBodegaByZona(zonaId),
     ]);
 
@@ -214,13 +247,17 @@ export class CierreBodegaService implements ICierreBodegaService {
     const totalNetoAgregado = netoDe(totalesAgregados.general, pagado);
 
     // R6/R7: gate de "Solicitar cierre de bodega" con motivo accionable.
+    // SLT-106 (R195): el mismo orden de prioridad de hoy, ahora tambien con su tipo.
     let puedesSolicitar = true;
     let motivoBloqueo: string | null = null;
-    if (solicitados > 0) {
+    let bloqueo: BloqueoConsolidacion | null = null;
+    if (sinResolver.length > 0) {
       puedesSolicitar = false;
-      motivoBloqueo = MSG_PENDIENTES; // R6
+      bloqueo = "sin_resolver";
+      motivoBloqueo = motivoSinResolver(sinResolver); // R6 + SLT-106 (R199/R47)
     } else if (consolidables.length === 0) {
       puedesSolicitar = false;
+      bloqueo = "vacio";
       motivoBloqueo = MSG_VACIO; // R7
     }
 
@@ -238,6 +275,16 @@ export class CierreBodegaService implements ICierreBodegaService {
       motivoBloqueo,
       cierresBodegaPasados,
       sinZona: false,
+      // SLT-106 (R67): la misma resta de la fila sobre los tres agregados. La resta es lineal: la
+      // suma de los `paraLaCentral` de las filas es este numero.
+      paraLaCentralAgregado: paraLaCentral(
+        totalesAgregados.general,
+        totalPagoMensajeroAgregado,
+        totalIngresoBodegaRechazosAgregado,
+      ),
+      cierresAConsolidar: consolidables.length, // R195: el conjunto COMPLETO, no la pagina
+      mensajerosAConsolidar: new Set(consolidables.map((c) => c.mensajeroId)).size, // R195
+      bloqueo, // R195
     };
   }
 
