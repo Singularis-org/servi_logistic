@@ -9,10 +9,7 @@ import {
   useFiltroEntregas,
 } from "@/app/(app)/_components/filtro-entregas";
 import {
-  CLAVE_CANTON,
-  CLAVE_DISTRITO,
   CLAVE_MENSAJERO,
-  CLAVE_PROVINCIA,
   CLAVE_TIENDA,
   CLAVE_ZONA,
 } from "@/app/(app)/_components/entregas-filtros-def";
@@ -28,9 +25,9 @@ const consultarMock = vi.mocked(consultarConteoEntregas);
 /** La selección completa de la barra: las seis facetas de catálogo a la vez. */
 const SELECCION = {
   [CLAVE_ZONA]: ["z1"],
-  [CLAVE_PROVINCIA]: ["p1"],
-  [CLAVE_CANTON]: ["c1"],
-  [CLAVE_DISTRITO]: ["d1"],
+  nivel_1: ["p1"],
+  nivel_2: ["c1"],
+  nivel_3: ["d1"],
   [CLAVE_TIENDA]: ["t1"],
   [CLAVE_MENSAJERO]: ["m1"],
 };
@@ -90,9 +87,7 @@ describe("El filtro de entregas llega hasta la cifra", () => {
     // silencio. Que lleguen hasta la consulta es lo que impide que vuelva a pasar.
     expect(consultarMock.mock.calls[1]?.[0]).toMatchObject({
       zona_id: ["z1"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"],
       tienda_id: ["t1"],
       mensajero_id: ["m1"],
     });

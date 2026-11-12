@@ -41,7 +41,7 @@ describe("Filtro del conteo — sin rango es SIN VENTANA, no un preset por defec
   // Las demás facetas siguen viajando: «sin fecha» no es «sin filtros».
   it("se puede filtrar por las seis dimensiones sin dar ninguna fecha", () => {
     const preparada = prepararConteoEntregas(
-      { zona_id: ["z1"], distrito_id: ["d1"], mensajero_id: ["m1"] },
+      { zona_id: ["z1"], lugar_id: ["d1"], mensajero_id: ["m1"] },
       actor("maestro"),
       AHORA,
     );
@@ -49,7 +49,7 @@ describe("Filtro del conteo — sin rango es SIN VENTANA, no un preset por defec
     expect(preparada.status).toBe("ok");
     if (preparada.status !== "ok") return;
     expect(preparada.consulta.rango).toBeNull();
-    expect(preparada.consulta.filtro).toMatchObject({ zona_id: ["z1"], distrito_id: ["d1"] });
+    expect(preparada.consulta.filtro).toMatchObject({ zona_id: ["z1"], lugar_id: ["d1"] });
   });
 
   // Y sin rango, las fechas sueltas siguen PROHIBIDAS: media terna no describe una ventana, y
@@ -70,9 +70,7 @@ describe("Filtro del conteo de entregas — qué acepta el borde", () => {
       desde: "2026-08-01",
       hasta: "2026-08-16",
       zona_id: ["z1"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"], // SLT-47: el lugar elegido (antes la cadena p1, c1, d1)
       tienda_id: ["t1"],
       mensajero_id: ["m1"],
     });
@@ -93,7 +91,7 @@ describe("Filtro del conteo de entregas — qué acepta el borde", () => {
   });
 
   // Una lista vacía degradaría a "sin filtro" si el repositorio la descartara. Falla cerrado.
-  it.each(["zona_id", "provincia_id", "canton_id", "distrito_id", "tienda_id", "mensajero_id"])(
+  it.each(["zona_id", "lugar_id", "tienda_id", "mensajero_id"])(
     "rechaza la lista vacía en «%s»",
     (clave) => {
       expect(parseFiltroConteoEntregas({ rango: "semana", [clave]: [] }).status).toBe(
@@ -262,11 +260,9 @@ describe("El filtro NO puede ampliar el alcance", () => {
   // La geografía no tiene alcance por rol: nadie es "dueño" de un cantón, así que no hay
   // nada que intersecar y las tres claves pasan tal cual.
   it("provincia, cantón y distrito no se recortan por alcance", () => {
-    const filtro = { ...BASE, provincia_id: ["p1"], canton_id: ["c1"], distrito_id: ["d1"] };
+    const filtro = { ...BASE, lugar_id: ["d1"] }; // SLT-47
     expect(recortarFiltroConteoEntregas(filtro, { tipo: "zona", zonaId: "z1" })).toMatchObject({
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"],
     });
   });
 
@@ -391,9 +387,7 @@ describe("Clave de caché del conteo", () => {
     const base = claveDeConteoEntregas(consulta(BASE));
     for (const clave of [
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "lugar_id", // SLT-47: una dimension de lugar
       "tienda_id",
       "mensajero_id",
     ] as const) {
@@ -405,7 +399,7 @@ describe("Clave de caché del conteo", () => {
   // La mutación que mata: concatenar sin separador. `{zona:["a"],provincia:["b"]}` y
   // `{zona:["ab"]}` acabarían en la misma entrada.
   it("dos repartos distintos de los mismos ids no colapsan en una clave", () => {
-    const a = claveDeConteoEntregas(consulta({ ...BASE, zona_id: ["a"], provincia_id: ["b"] }));
+    const a = claveDeConteoEntregas(consulta({ ...BASE, zona_id: ["a"], lugar_id: ["b"] }));
     const b = claveDeConteoEntregas(consulta({ ...BASE, zona_id: ["ab"] }));
     expect(a).not.toBe(b);
   });

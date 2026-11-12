@@ -144,6 +144,52 @@ export const ALMACEN_SATELITE: FilaAlmacen[] = [
 ];
 
 /**
+ * SLT-47 — el id de LUGAR del doble. Este almacen describe sus filas por nombre: un canton es su
+ * nombre y un distrito, «canton/distrito» (dos «San Rafael» de cantones distintos son dos lugares).
+ * El lugar de una fila es su distrito, o su canton si no tiene (`lugarDeLaOrden`).
+ */
+export function lugarDelDoble(canton: string, distrito: string | null = null): string {
+  return distrito === null ? canton : `${canton}/${distrito}`;
+}
+
+/**
+ * SLT-47 — «el lugar de la fila es uno de los ids o esta debajo», con los ids del doble: un canton
+ * casa con sus filas con y sin distrito; un distrito, solo con las suyas. Vacio/ausente = todas.
+ */
+export function casaLugar(
+  row: { cantonNombre: string; distritoNombre: string | null },
+  lugarIds: readonly string[] | undefined,
+): boolean {
+  if (lugarIds === undefined || lugarIds.length === 0) return true;
+  return (
+    lugarIds.includes(row.cantonNombre) ||
+    (row.distritoNombre !== null && lugarIds.includes(lugarDelDoble(row.cantonNombre, row.distritoNombre)))
+  );
+}
+
+/**
+ * SLT-47 — la seleccion de HOY (cantones Y distritos por nombre, cruzados en AND) expresada como
+ * `lugar_id`: con distritos elegidos, los distritos de esos nombres que cuelgan de los cantones
+ * elegidos (o de cualquiera, si no hay); sin distritos, los cantones. Si el cruce no deja ningun
+ * lugar, un id que no existe: hoy era cero filas, y con `lugar_id` tambien (R12). Es una
+ * traduccion de ENTRADA: el conjunto esperado lo sigue calculando el filtro de hoy.
+ */
+export function lugarDeHoy(
+  filas: readonly { row: { cantonNombre: string; distritoNombre: string | null } }[],
+  canton: readonly string[],
+  distrito: readonly string[],
+): string[] | undefined {
+  if (distrito.length === 0) return canton.length === 0 ? undefined : [...canton];
+  const ids = new Set<string>();
+  for (const { row } of filas) {
+    if (row.distritoNombre === null || !distrito.includes(row.distritoNombre)) continue;
+    if (canton.length > 0 && !canton.includes(row.cantonNombre)) continue;
+    ids.add(lugarDelDoble(row.cantonNombre, row.distritoNombre));
+  }
+  return ids.size > 0 ? [...ids].sort() : ["lugar-que-no-existe"];
+}
+
+/**
  * El CONJUNTO filtrado y ordenado tal como lo produce el SQL: grupo, prioridad, recencia e
  * `id` de desempate. Lo comparten las tres lecturas del doble, igual que en produccion lo
  * comparten `condicionesSatelite` y `ordenBodegaSatelite`.
@@ -155,8 +201,6 @@ function conjuntoDe(filas: FilaAlmacen[], filtro: RecepcionSateliteFiltro): Fila
   // catálogo —sus filas se describen por nombre—, así que el doble usa el NOMBRE como id, que
   // es lo mismo que hace `catalogoSatelite`: los asserts siguen legibles y el criterio (AND,
   // y una orden sin distrito fuera bajo un filtro de distrito) es el mismo.
-  const cantones = [...(filtro.cantonIds ?? [])];
-  const distritos = [...(filtro.distritoIds ?? [])];
   return filas
     .filter((f) => f.zonaId === filtro.zonaId)
     // FICHA 357 — la otra mitad del acotamiento. NO es un campo del filtro a proposito (en
@@ -164,12 +208,7 @@ function conjuntoDe(filas: FilaAlmacen[], filtro: RecepcionSateliteFiltro): Fila
     // doble tampoco la hace opcional: se aplica a las TRES lecturas, como el `WHERE` real.
     .filter((f) => f.pasoPorBodegaSatelite)
     .filter((f) => estados.includes(f.row.estatusValue))
-    .filter((f) => cantones.length === 0 || cantones.includes(f.row.cantonNombre))
-    .filter(
-      (f) =>
-        distritos.length === 0 ||
-        (f.row.distritoNombre !== null && distritos.includes(f.row.distritoNombre)),
-    )
+    .filter((f) => casaLugar(f.row, filtro.lugarIds)) // SLT-47: el lugar elegido
     .sort((a, b) => {
       const grupo =
         ESTADOS_BODEGA_SATELITE.indexOf(a.row.estatusValue as never) -

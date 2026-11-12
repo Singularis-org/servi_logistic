@@ -8,9 +8,10 @@ import { PushReactivacion } from "@/components/shared/PushReactivacion";
 import { RevisionSinpeBodega } from "@/components/shared/RevisionSinpeBodega";
 import { TemaProvider } from "@/providers/TemaProvider";
 import { AyudaProvider } from "@/providers/AyudaProvider";
-import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
+import { EtiquetasGeograficasProvider, NivelesGeograficosProvider } from "@/providers/EtiquetasGeograficasProvider";
 import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
+import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import { AsistenteProvider } from "@/providers/AsistenteProvider";
 import { AsistentePanel } from "@/components/shared/AsistentePanel";
 import { leerResumenesAyuda } from "@/lib/ayuda/catalogo";
@@ -91,8 +92,12 @@ export default async function AppLayout({
   // ⭑ SL-20 (design §7; R19) — LA CUARTA LECTURA: cómo llama el país de la empresa a cada nivel
   // geográfico. Va en el mismo `Promise.all` por la razón de arriba. Sin empresa (el superadmin, o un
   // actor sin `organizacionId`) no hay país del que leerlas: `ETIQUETAS_NEUTRAS`, sin consulta.
-  const [usuarioRow, avisosRecordados, revisionSinpe, etiquetas] = !actor
-    ? ([null, false, null, ETIQUETAS_NEUTRAS] as const)
+  //
+  // ⭑ SLT-47 (design §5.4) — LA QUINTA: los N niveles del país (tipo y nombre de cada uno), que
+  // rotulan las listas de lugar de novedades y mis-asignaciones. Mismo `Promise.all` y mismo criterio:
+  // sin empresa, `[]` sin consulta; si falla, `[]` y queda en los logs.
+  const [usuarioRow, avisosRecordados, revisionSinpe, etiquetas, niveles] = !actor
+    ? ([null, false, null, ETIQUETAS_NEUTRAS, SIN_NIVELES] as const)
     : deLaPlataforma
     ? await Promise.all([
         comoPlataforma("SL-32", "nombre del superadmin en el pie", () =>
@@ -101,6 +106,7 @@ export default async function AppLayout({
         false,
         null,
         ETIQUETAS_NEUTRAS,
+        SIN_NIVELES,
       ])
     : await Promise.all([
         new UserRepository(getPrismaClient()).findById(actor.usuarioId),
@@ -109,6 +115,7 @@ export default async function AppLayout({
           ? resolverRevisionSinpePendiente(actor, new ZonaRepository(getPrismaClient()))
           : null,
         etiquetasDelActor(actor.organizacionId ?? null),
+        nivelesDelActor(actor.organizacionId ?? null),
       ]);
   const usuario =
     actor && usuarioRow
@@ -168,7 +175,11 @@ export default async function AppLayout({
                   SÓLO a `{children}`, como el mapa de la ayuda: es ahí donde viven las pantallas
                   que los pintan. No pinta ninguna caja. */}
               <AyudaProvider mapa={mapaAyuda}>
-                <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+                {/* SLT-47 (design §5.4) — los N niveles del país, en su propio proveedor: envuelve
+                    por fuera al de etiquetas, que sigue tal cual. Tampoco pinta caja. */}
+                <NivelesGeograficosProvider niveles={niveles}>
+                  <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+                </NivelesGeograficosProvider>
               </AyudaProvider>
             </SidebarInset>
           </SidebarProvider>
@@ -261,5 +272,23 @@ async function etiquetasDelActor(organizacionId: string | null): Promise<Etiquet
   } catch (error) {
     console.error("[geografía] no se pudieron leer los nombres de nivel; se pintan los neutros", error);
     return ETIQUETAS_NEUTRAS;
+  }
+}
+
+/** SLT-47 — sin empresa (o si la lectura falla) no hay niveles que rotular. */
+const SIN_NIVELES: readonly NivelDeFiltroDTO[] = [];
+
+/**
+ * SLT-47 (design §5.4) — los niveles del país de la empresa del actor, de 1 a P. Mismo criterio que
+ * `etiquetasDelActor`: un fallo aquí no puede dar un 500 en todas las páginas del portal, así que se
+ * devuelve `[]` (las listas que los usan no se pintan) y el error queda en `console.error`.
+ */
+async function nivelesDelActor(organizacionId: string | null): Promise<readonly NivelDeFiltroDTO[]> {
+  if (!organizacionId) return SIN_NIVELES;
+  try {
+    return await construirPaisService().nivelesDeEmpresa(organizacionId);
+  } catch (error) {
+    console.error("[geografía] no se pudieron leer los niveles del país; las listas de lugar no se rotulan", error);
+    return SIN_NIVELES;
   }
 }

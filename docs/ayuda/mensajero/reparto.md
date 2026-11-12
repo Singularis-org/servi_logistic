@@ -17,7 +17,7 @@ fuentes:
   - app/(app)/mis-asignaciones/_components/chat/ChatOrdenesLista.tsx
   - app/(app)/mis-asignaciones/_components/chat/ChatConversacion.tsx
   - app/(app)/mis-asignaciones/_components/chat/chat-contactos.ts
-  - app/(app)/mis-asignaciones/_components/useFiltroCantonDistrito.ts
+  - app/(app)/mis-asignaciones/_components/useFiltroUbicacion.ts
   - lib/services/MisAsignacionesService.ts
   - lib/constants/bloqueo-mensajero.ts
 ---

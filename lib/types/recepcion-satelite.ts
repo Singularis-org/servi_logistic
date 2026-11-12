@@ -60,9 +60,7 @@ export type RecibirActionInput = z.infer<typeof recibirSchema>;
  */
 const FILTROS_COMPARTIDOS = ordenFilterBase.pick({
   mensajero_id: true,
-  provincia_id: true,
-  canton_id: true,
-  distrito_id: true,
+  lugar_id: true, // SLT-47 (R10): el lugar elegido, como en `/ordenes`
   created_preset: true,
   created_desde: true,
   created_hasta: true,

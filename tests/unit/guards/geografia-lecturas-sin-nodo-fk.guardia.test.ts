@@ -317,3 +317,37 @@ describe("SLT-71 R14 — las lecturas de SLT-71 no leen la columna nueva (archiv
     ).toEqual([]);
   });
 });
+
+// =============================================================================================
+// SLT-47 (R15) — los archivos nuevos del filtro de lugar
+// =============================================================================================
+
+/**
+ * Los archivos de SLT-47 que calculan el lugar, ENTEROS, con su ancla antivacio. El lugar de la
+ * orden sale de `lugarDeLaOrden`/`whereLugarEn`/`sqlLugarEn` (FK viejas), nunca de
+ * `orden.nodo_geografico_id`: asi el filtro y la ruta no dependen del backfill de SLT-43. El listado
+ * de `/ordenes` y la bodega satelite (`OrdenRepository`) ya los vigila el bloque de SLT-65, y
+ * `lugares-del-filtro` el de SLT-71.
+ */
+const LECTURAS_SLT47: Record<string, string[]> = {
+  "lib/repositories/_shared/ruta-del-lugar.ts": ["export function rutaDelLugar(", "lugarDeLaOrden("],
+  "lib/repositories/_shared/lugares-del-filtro.ts": ["export function resolverLugar(", "nodosBajo("],
+  "lib/repositories/OrdenRepository.ts": ["private async criterioLugar(", "private lugaresSatelite("],
+};
+
+describe("SLT-47 R15 — el filtro de lugar y la ruta no leen la columna nueva", () => {
+  it("el barrido lee de verdad (anti-vacuidad): cada archivo existe y tiene su ancla", () => {
+    for (const [rel, marcas] of Object.entries(LECTURAS_SLT47)) {
+      const codigo = leer(rel);
+      expect(codigo.length, rel).toBeGreaterThan(300);
+      expect(marcasQueFaltan(codigo, marcas), rel).toEqual([]);
+    }
+  });
+
+  it("ni `ruta-del-lugar` ni `lugares-del-filtro` nombran la columna", () => {
+    const hallazgos = ["lib/repositories/_shared/ruta-del-lugar.ts", "lib/repositories/_shared/lugares-del-filtro.ts"].flatMap(
+      (rel) => mencionesDelNodoEn(leer(rel)).map((m) => `${rel}: ${m}`),
+    );
+    expect(hallazgos).toEqual([]);
+  });
+});

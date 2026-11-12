@@ -131,9 +131,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
       // bodega» lo impone el repositorio sin parametro.
       estatusValues: estadosDelListado(input.estados),
       ...(input.mensajero_id ? { mensajeroIds: input.mensajero_id } : {}),
-      ...(input.provincia_id ? { provinciaIds: input.provincia_id } : {}),
-      ...(input.canton_id ? { cantonIds: input.canton_id } : {}),
-      ...(input.distrito_id ? { distritoIds: input.distrito_id } : {}),
+      ...(input.lugar_id ? { lugarIds: input.lugar_id } : {}), // SLT-47 (R11): lo resuelve el repositorio
       ...(creacion?.gte ? { creadaDesde: creacion.gte } : {}),
       ...(creacion?.lt ? { creadaHasta: creacion.lt } : {}),
       ...(termino ? { busqueda: termino.busqueda } : {}),

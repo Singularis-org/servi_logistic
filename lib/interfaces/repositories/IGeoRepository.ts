@@ -1,5 +1,6 @@
 import type {
   GeografiaFiltrosDTO,
+  LugaresDeFiltroDTO,
   OpcionGeografica,
   OpcionGeograficaConPadre,
 } from "@/lib/types/filtros-ordenes";
@@ -125,6 +126,14 @@ export interface IGeoRepository {
    * 24), que es la unica fuente de verdad desde que `distrito.zona_id` se elimino.
    */
   listGeografiaLitePorZona(zonaId: string): Promise<GeografiaFiltrosDTO>;
+
+  /**
+   * SLT-47 (design §3.3; R1, R36): los niveles del pais de la empresa y sus lugares a cualquier
+   * profundidad, en el orden del catalogo. Sin `zonaId`, el catalogo entero; con `zonaId`, el mismo
+   * conjunto que `listGeografiaLitePorZona` (los nodos que la zona cubre, sin las excepciones de otra
+   * zona, y sus ancestros) sin cortar en la profundidad 3.
+   */
+  listLugaresDeFiltro(zonaId?: string): Promise<LugaresDeFiltroDTO>;
 
   // --- FICHA 374: la administracion del catalogo ---
 

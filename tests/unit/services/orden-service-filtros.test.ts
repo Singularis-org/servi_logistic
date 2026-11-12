@@ -51,16 +51,12 @@ describe("combinacion de filtros (R33/R34/R46)", () => {
   it("R33: filtros DISTINTOS son claves hermanas del mismo where -> AND", async () => {
     const where = await whereDe({
       zona_id: ["z1"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"],
       tienda_id: ["t1"],
     });
     expect(where).toEqual({
       zonaId: ["z1"],
-      provinciaId: ["p1"],
-      cantonId: ["c1"],
-      distritoId: ["d1"],
+      lugarIds: ["d1"],
       tiendaId: ["t1"],
     });
   });
@@ -73,11 +69,11 @@ describe("combinacion de filtros (R33/R34/R46)", () => {
 
   it("R46: los filtros nuevos combinan con el rango temporal (AND con la geografia)", async () => {
     const where = await whereDe({
-      provincia_id: ["p1"],
+      lugar_id: ["p1"],
       created_desde: "2026-07-01",
       created_hasta: "2026-07-15",
     });
-    expect(where.provinciaId).toEqual(["p1"]);
+    expect(where.lugarIds).toEqual(["p1"]);
     expect(where.createdAt).toEqual({
       gte: new Date("2026-07-01T06:00:00.000Z"),
       lt: new Date("2026-07-16T06:00:00.000Z"),
@@ -100,8 +96,8 @@ describe("un id inexistente NUNCA degrada a 'sin filtro' (R35)", () => {
   });
 
   it("R35: mezclar un id real con uno inventado no descarta el filtro", async () => {
-    const where = await whereDe({ canton_id: ["c-real", "c-inventado"] });
-    expect(where.cantonId).toEqual(["c-real", "c-inventado"]);
+    const where = await whereDe({ lugar_id: ["c-real", "c-inventado"] });
+    expect(where.lugarIds).toEqual(["c-real", "c-inventado"]);
   });
 });
 

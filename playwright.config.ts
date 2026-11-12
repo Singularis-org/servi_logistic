@@ -120,6 +120,8 @@ export default defineConfig({
         "reintentos-escalado",
         "reprogramacion-liberacion",
         "etiquetas-lote-tienda",
+        // SLT-47 R18, R23, R39: el filtro de lugar de /ordenes por la barra, un enlace viejo y una vista v1.
+        "geo-filtro-lugar",
       ),
     },
     {

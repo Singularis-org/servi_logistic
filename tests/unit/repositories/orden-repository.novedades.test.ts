@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { GRUPOS_NOVEDAD, type GrupoNovedad } from "@/lib/types/novedad-grupo";
 
 // Feature 89/99 (T13) → FEATURE 236 (T2.1/T2.3/T2.5) — metodos de repo de las DOS superficies de
@@ -183,6 +184,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     ordenHistorialEstado: {
       findMany: vi.fn(),
     },
+    // SLT-47 (R16): la ruta del lugar sale del catalogo de la empresa (doble de entrada).
+    ...delegadosDelCatalogo(),
     ...overrides,
   };
 }
@@ -432,6 +435,9 @@ describe("OrdenRepository.findNovedadesByTienda (R4/R10)", () => {
       provincia: { select: { nombre: true } },
       canton: { select: { nombre: true } },
       distrito: { select: { nombre: true } },
+      // SLT-47 (R16, autorizado por el humano): las FK del lugar, para la ruta del catalogo.
+      cantonId: true,
+      distritoId: true,
       // FICHA 296: el join del mensajero, ACOTADO A SU IDENTIDAD (nombre y apellidos). Este
       // `toEqual` ES el contrato del `select` (por eso es literal y no se deriva de nada):
       // quitar una de estas claves lo pone rojo, y ampliarla a `true` —que arrastraria `email`,

@@ -1,5 +1,6 @@
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type { TipoNivelDTO } from "@/lib/types/geografia-nodo";
+import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import type {
   CambiarDisponibilidadPaisInput,
   EtiquetasGeograficas,
@@ -116,4 +117,10 @@ export interface IPaisService {
    * sesión; sin empresa (el superadmin) el layout usa `ETIQUETAS_NEUTRAS` y no llama aquí.
    */
   etiquetasDeEmpresa(organizacionId: string): Promise<EtiquetasGeograficas>;
+
+  /**
+   * SLT-47 (design §5.4; R1, R2): los niveles del país de la empresa, de 1 a P, con los nombres de sus
+   * tipos. Lo llama el layout junto a `etiquetasDeEmpresa`; lanza si la empresa no tiene país, igual.
+   */
+  nivelesDeEmpresa(organizacionId: string): Promise<NivelDeFiltroDTO[]>;
 }

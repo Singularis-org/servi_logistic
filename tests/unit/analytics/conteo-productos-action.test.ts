@@ -213,7 +213,7 @@ describe("R9 · el rastro del denegado: con motivo, sin PII y sin revelarlo al c
     const { deps: d, logger } = deps({ usuarioId: "u9", rol: "adminSatelite", zonaId: "z1" });
 
     await consultarConteoProductos(
-      { tienda_id: ["t-ajena"], mensajero_id: ["m1"], distrito_id: ["d1"] },
+      { tienda_id: ["t-ajena"], mensajero_id: ["m1"], lugar_id: ["d1"] },
       d,
     );
 

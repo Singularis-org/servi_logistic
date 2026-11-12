@@ -23,6 +23,11 @@ vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
 });
+// SLT-47 (design §5.3): las listas de lugar salen de los niveles del país (layout). Costa Rica.
+vi.mock("@/hooks/use-niveles-geograficos", async () => {
+  const { NIVELES_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useNivelesGeograficos: () => NIVELES_CR };
+});
 
 // FICHA 325 — EL BUSCADOR Y LOS FILTROS DE `/novedades`, ejercidos sobre el módulo real.
 //
@@ -357,6 +362,7 @@ describe("los filtros de /novedades", () => {
       "Zona",
       "Provincia",
       "Cantón",
+      "Distrito",
       "Causa de devolución",
     ]);
   });

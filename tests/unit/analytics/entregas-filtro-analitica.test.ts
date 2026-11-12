@@ -5,11 +5,8 @@ import {
   seleccionAFiltroAnalitica,
 } from "@/app/(app)/_components/entregas-filtro-analitica";
 import {
-  CLAVE_CANTON,
   CLAVE_CREACION,
-  CLAVE_DISTRITO,
   CLAVE_MENSAJERO,
-  CLAVE_PROVINCIA,
   CLAVE_TIENDA,
   CLAVE_ZONA,
 } from "@/app/(app)/_components/entregas-filtros-def";
@@ -47,9 +44,9 @@ describe("Barra de entregas -> filtro del conteo: lo que el borde acepta", () =>
     const raw = seleccionAFiltroAnalitica({
       [CLAVE_CREACION]: ["", "2026-08-01", "2026-08-16"],
       [CLAVE_ZONA]: ["z1", "z2"],
-      [CLAVE_PROVINCIA]: ["p1"],
-      [CLAVE_CANTON]: ["c1"],
-      [CLAVE_DISTRITO]: ["d1"],
+      nivel_1: ["p1"],
+      nivel_2: ["c1"],
+      nivel_3: ["d1"],
       [CLAVE_TIENDA]: ["t1"],
       [CLAVE_MENSAJERO]: ["m1"],
     });
@@ -59,9 +56,7 @@ describe("Barra de entregas -> filtro del conteo: lo que el borde acepta", () =>
       desde: "2026-08-01",
       hasta: "2026-08-16",
       zona_id: ["z1", "z2"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"],
       tienda_id: ["t1"],
       mensajero_id: ["m1"],
     });
@@ -86,12 +81,12 @@ describe("Barra de entregas -> filtro del conteo: las listas vacías", () => {
     const raw = seleccionAFiltroAnalitica({
       [CLAVE_ZONA]: [],
       [CLAVE_TIENDA]: [""],
-      [CLAVE_DISTRITO]: ["", ""],
+      nivel_3: ["", ""],
     });
 
     expect(raw).not.toHaveProperty("zona_id");
     expect(raw).not.toHaveProperty("tienda_id");
-    expect(raw).not.toHaveProperty("distrito_id");
+    expect(raw).not.toHaveProperty("lugar_id");
     expect(validado(raw).status).toBe("ok");
   });
 });

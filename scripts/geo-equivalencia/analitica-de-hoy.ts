@@ -72,6 +72,32 @@ import type { ConsultaTransito, FilaTransito } from "@/lib/whatsapp-envios/infor
 
 export { plegarEnDesenlaces } from "@/lib/repositories/ConteoEntregasRepository";
 
+// SLT-47 (design §7) — LAS TRES FACETAS DE HOY, CONGELADAS AQUI. El contrato (`FiltroConteoEntregas`)
+// ya no las tiene: lleva `lugar_id`. El lado «hoy» de la equivalencia las sigue leyendo, por columna,
+// de un filtro al que se le añaden con `conFacetasDeHoy`; el lado «nuevo» usa `lugar_id`.
+
+/** `provincia_id`, `canton_id` y `distrito_id` como las recibia el filtro antes de SLT-47. */
+export interface FacetasDeHoy {
+  readonly provincia_id?: readonly string[];
+  readonly canton_id?: readonly string[];
+  readonly distrito_id?: readonly string[];
+}
+
+/** Las facetas de hoy del filtro (las que le puso `conFacetasDeHoy`; ninguna si no se le puso nada). */
+function facetasDeHoy(filtro: object): FacetasDeHoy {
+  return filtro as FacetasDeHoy;
+}
+
+/**
+ * La misma consulta preparada (con su alcance y su rango) con las facetas de hoy en el filtro. Solo
+ * para el lado «hoy»: los repositorios no las leen. Sin `lugar_id`, para que el «hoy» filtre solo por
+ * columna.
+ */
+export function conFacetasDeHoy<C extends { readonly filtro: object }>(consulta: C, facetas: FacetasDeHoy): C {
+  const { lugar_id: _nuevo, ...resto } = consulta.filtro as { lugar_id?: unknown };
+  return { ...consulta, filtro: { ...resto, ...facetas } } as C;
+}
+
 // =================================================================================================
 // ConteoPorStatusRepository (lib/repositories/ConteoPorStatusRepository.ts)
 // =================================================================================================
@@ -155,9 +181,9 @@ export function condicionesDeConsultaDeHoy(consulta: RecorteDeOrdenes): Prisma.S
 
   const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
     [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
+    [Prisma.sql`o."provincia_id"`, facetasDeHoy(filtro).provincia_id],
+    [Prisma.sql`o."canton_id"`, facetasDeHoy(filtro).canton_id],
+    [Prisma.sql`o."distrito_id"`, facetasDeHoy(filtro).distrito_id],
     [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
   ];
   for (const [columna, ids] of facetas) {
@@ -279,9 +305,9 @@ export function condicionesSinFechaDeHoy(consulta: ConsultaConteoEntregas): Pris
 
   const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
     [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
+    [Prisma.sql`o."provincia_id"`, facetasDeHoy(filtro).provincia_id],
+    [Prisma.sql`o."canton_id"`, facetasDeHoy(filtro).canton_id],
+    [Prisma.sql`o."distrito_id"`, facetasDeHoy(filtro).distrito_id],
     [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
   ];
   for (const [columna, ids] of facetas) {
@@ -407,9 +433,9 @@ export function condicionesDeDevolucionesDeHoy(consulta: ConsultaConteoEntregas)
   // Las cinco facetas geograficas y de tienda van sobre la ORDEN: la gestion no las tiene.
   const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
     [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
+    [Prisma.sql`o."provincia_id"`, facetasDeHoy(filtro).provincia_id],
+    [Prisma.sql`o."canton_id"`, facetasDeHoy(filtro).canton_id],
+    [Prisma.sql`o."distrito_id"`, facetasDeHoy(filtro).distrito_id],
     [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
   ];
   for (const [columna, ids] of facetas) {
@@ -498,9 +524,9 @@ export function condicionesDeCicloDeHoy(consulta: ConsultaConteoEntregas): Prism
 
   const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
     [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
+    [Prisma.sql`o."provincia_id"`, facetasDeHoy(filtro).provincia_id],
+    [Prisma.sql`o."canton_id"`, facetasDeHoy(filtro).canton_id],
+    [Prisma.sql`o."distrito_id"`, facetasDeHoy(filtro).distrito_id],
     [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
   ];
   for (const [columna, ids] of facetas) {

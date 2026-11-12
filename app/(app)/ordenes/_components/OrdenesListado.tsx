@@ -43,6 +43,8 @@ import {
   ordenesColumnsReprogramadaDe,
 } from "./ordenes-columns";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { nivelDeClave, traductorPorId } from "@/lib/utils/filtro-ubicacion";
 import { GenerarGuiaModal } from "./GenerarGuiaModal";
 import { AsignarBodegaModal } from "./AsignarBodegaModal";
 import { AsignarRecoleccionModal } from "./AsignarRecoleccionModal";
@@ -101,6 +103,13 @@ import {
 import { seleccionAFilter } from "./seleccion-a-filter";
 import type { OrdenesFilterUI } from "./serializar-filtro";
 import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
+
+/**
+ * SLT-47 (design §5.1; R17, R18, R20): traduce `lugar_id` y los enlaces viejos (`provincia_id`…) a
+ * las listas de nivel al entrar. Constante de módulo: la barra lo lee en su montaje y una identidad
+ * estable no dispara sus memos.
+ */
+const TRADUCTOR_LUGAR = traductorPorId();
 
 type ModalAbierto =
   | "generar-guia"
@@ -437,6 +446,8 @@ export function OrdenesListado({
 }>) {
   // SL-20 (R19): los nombres de nivel del país de la empresa, para columnas y filtros geográficos.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-47: los niveles del país, para declarar sus listas aunque el catálogo no haya llegado.
+  const nivelesGeograficos = useNivelesGeograficos();
   const { mutate } = useSWRConfig();
   const { data: catalogo, isLoading } = useSWR(
     "order-status:catalogo",
@@ -1083,7 +1094,7 @@ export function OrdenesListado({
         // «Reasignables»), y aquí sólo se reenvía. Va también en las dependencias del memo:
         // sin eso el control quedaría congelado en lo que valiera la prop al primer render.
         incluirSalioAReparto: incluirFiltroSalioAReparto,
-        etiquetas,
+        niveles: nivelesGeograficos,
       },
     );
     // El BUSCADOR ya no es un control más del panel: lo posee `BuscadorFiltros`, que
@@ -1110,12 +1121,19 @@ export function OrdenesListado({
     incluirFiltroSalioAReparto,
     puedeVerEliminadas,
     declaracionEstado,
-    etiquetas,
+    nivelesGeograficos,
   ]);
 
   /** Lo que ofrece el selector: cada filtro declarado, por su clave y su etiqueta. */
   const filtrosOfrecidos = useMemo(
-    () => filtrosBarra.map((f) => ({ key: f.key, label: f.label })),
+    () =>
+      filtrosBarra.map((f) =>
+        // SLT-47: las listas de lugar llevan sus opciones, que el traductor necesita para saber de
+        // qué nivel es un `lugar_id` de la URL. El resto, solo clave y etiqueta, como siempre.
+        nivelDeClave(f.key) === null
+          ? { key: f.key, label: f.label }
+          : { key: f.key, label: f.label, options: f.options },
+      ),
     [filtrosBarra],
   );
 
@@ -1489,6 +1507,7 @@ export function OrdenesListado({
               filtrosActivos.length > 0 ||
               Object.keys(seleccionFiltros).length > 0
             }
+            traductorUrl={TRADUCTOR_LUGAR}
           >
             {/* FICHA 356 — el control de ORDEN, dentro de la misma barra y SIEMPRE a la
                 vista. Es lo que faltaba: el backend sabía ordenar desde la 352 y no había
@@ -1547,6 +1566,7 @@ export function OrdenesListado({
                 // barra quedaría a medio reponer. Ojo con la `key` de arriba: se queda como
                 // está, porque remontar aquí devolvería el orquestador a leer la URL.
                 siembra={{ senal: senalSiembra, seleccion: siembraSeleccion }}
+                traductorUrl={TRADUCTOR_LUGAR}
               />
             ) : null}
           </BuscadorFiltros>

@@ -71,7 +71,7 @@ const CATALOGO: CatalogoFiltrosOrdenesDTO = {
 
 /** La vista de trabajo del enunciado: término + zona. */
 const GUARDADO: VistaFiltroPayload = {
-  v: 1,
+  v: 2,
   termino: "guia123",
   activos: ["zona_id"],
   seleccion: { zona_id: ["z1"] },
@@ -338,7 +338,7 @@ describe("/ordenes — todo se alcanza sin salir del listado (R37)", () => {
       expect(guardarVistaMock).toHaveBeenCalledWith({
         superficie: "ordenes",
         nombre: "Nueva",
-        filtro: { v: 1, termino: "guia999", activos: [], seleccion: {} },
+        filtro: { v: 2, termino: "guia999", activos: [], seleccion: {} },
       }),
     );
   });

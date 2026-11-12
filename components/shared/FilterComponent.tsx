@@ -13,7 +13,8 @@ import {
   opcionesVisibles,
   podarSeleccion,
 } from "@/lib/utils/filter-dependencies";
-import { seleccionDesdeUrl } from "@/lib/utils/filtros-url";
+import { seleccionDesdeUrl, type LectorParams } from "@/lib/utils/filtros-url";
+import type { TraductorDeUrl } from "@/lib/utils/filtro-ubicacion";
 
 import { DateRangeFilter } from "./DateRangeFilter";
 import { MultiSelectFilter } from "./MultiSelectFilter";
@@ -125,6 +126,17 @@ export interface FilterComponentProps {
    * **Ausente, el orquestador se comporta exactamente como antes** (R31).
    */
   siembra?: { senal: number; seleccion: FilterSelection };
+  /**
+   * SLT-47 (design §4.2; R17, R18, R21) — TRADUCE LA FOTO DE LA URL antes de leerla. El
+   * traductor recibe los params de entrada y los filtros MONTADOS y devuelve una vista con las
+   * claves de las listas ya puestas (`lugar_id` subiendo hasta el nivel 1, los enlaces viejos
+   * renombrados). Se aplica en los cuatro sitios donde se leía la foto, también en la re-siembra
+   * tardía, que así cubre el catálogo que llega después del montaje.
+   *
+   * La foto sigue siendo la de entrada y sigue congelada: traducir no relee la URL (R7 de la 339).
+   * **Ausente, el orquestador se comporta exactamente como antes.**
+   */
+  traductorUrl?: TraductorDeUrl;
   className?: string;
 }
 
@@ -395,6 +407,7 @@ export function FilterComponent({
   debounceMs = DEBOUNCE_MS_DEFAULT,
   leerDeUrl = true,
   siembra,
+  traductorUrl,
   className,
 }: FilterComponentProps) {
   // R13: un `kind` no soportado no se renderiza ni entra en la salida, y el resto de
@@ -427,6 +440,15 @@ export function FilterComponent({
   const [paramsIniciales] = useState(
     () => new URLSearchParams([...params.entries()]),
   );
+
+  /**
+   * SLT-47 — la foto de entrada vista por el traductor, contra los filtros montados AHORA. Sin
+   * traductor es la foto tal cual. Se recalcula contra los montados de cada momento porque un
+   * `lugar_id` solo sabe de qué nivel es cuando su lista tiene opciones: así la re-siembra tardía
+   * termina de aplicar lo que la dirección ya traía, sin leer nada nuevo.
+   */
+  const vistaDeEntrada = (filtros: readonly FilterDef[]): LectorParams =>
+    traductorUrl ? traductorUrl.traducir(paramsIniciales, filtros) : paramsIniciales;
 
   /**
    * Claves ya SEMBRADAS desde la URL: aquellas cuya siembra produjo valores de verdad.
@@ -488,7 +510,7 @@ export function FilterComponent({
   const [seleccion, setSeleccion] = useState<FilterSelection>(() => {
     if (siembraInicial !== null) return podarSeleccion(montados, siembraInicial);
     return leerDeUrl
-      ? podarSeleccion(montados, seleccionDesdeUrl(paramsIniciales, montados))
+      ? podarSeleccion(montados, seleccionDesdeUrl(vistaDeEntrada(montados), montados))
       : {};
   });
 
@@ -546,9 +568,12 @@ export function FilterComponent({
   const precargaUrl = useMemo(
     () =>
       leerDeUrl && !siembraCerrada
-        ? seleccionDesdeUrl(paramsIniciales, montados)
+        ? seleccionDesdeUrl(
+            traductorUrl ? traductorUrl.traducir(paramsIniciales, montados) : paramsIniciales,
+            montados,
+          )
         : {},
-    [leerDeUrl, siembraCerrada, paramsIniciales, montados],
+    [leerDeUrl, siembraCerrada, paramsIniciales, montados, traductorUrl],
   );
 
   // `onChange` cambia de identidad en cada render del consumidor; se lee por ref para
@@ -670,7 +695,10 @@ export function FilterComponent({
     // Se apunta aqui —y no en el inicializador de arriba— porque el render no puede tocar
     // refs, y este efecto corre antes que el de poda y siembra.
     if (leerDeUrl) {
-      const leidasAlEntrar = seleccionDesdeUrl(paramsIniciales, montadosRef.current);
+      const leidasAlEntrar = seleccionDesdeUrl(
+        vistaDeEntrada(montadosRef.current),
+        montadosRef.current,
+      );
       for (const clave of Object.keys(leidasAlEntrar)) sembradas.current.add(clave);
     }
     if (Object.keys(precargaInicial.current).length === 0) return;
@@ -709,9 +737,11 @@ export function FilterComponent({
     const pendientes = siembraCerradaRef.current
       ? []
       : montadosRef.current.filter((f) => !sembradas.current.has(f.key));
+    // SLT-47 — la vista se traduce contra TODOS los montados (el traductor necesita las listas
+    // de arriba para subir desde un `lugar_id`), y de ella se leen solo las pendientes.
     const sembrado =
       leerDeUrl && pendientes.length > 0
-        ? seleccionDesdeUrl(paramsIniciales, pendientes)
+        ? seleccionDesdeUrl(vistaDeEntrada(montadosRef.current), pendientes)
         : {};
     // Solo cuenta como sembrada la clave que PRODUJO valores. El resto sigue pendiente.
     for (const clave of Object.keys(sembrado)) sembradas.current.add(clave);

@@ -133,9 +133,7 @@ describe("Las siete facetas", () => {
     const sql = sqlDe(
       consultaDe({
         zona_id: ["z1"],
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
-        distrito_id: ["d1"],
+        lugar_id: ["d1"], // SLT-47: un solo lugar (antes p1, c1 y d1 en AND)
         tienda_id: ["t1"],
         mensajero_id: ["m1"],
       }),
@@ -144,7 +142,7 @@ describe("Las siete facetas", () => {
     // SLT-71 (design §11.1): zona y tienda con `IN`; cada faceta geografica, una condicion de lugar
     // con `= ANY`.
     for (const col of ["zona_id", "tienda_id"]) expect(sql, col).toContain(`o."${col}" IN (`);
-    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(3);
+    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
     // El mensajero SÍ es columna propia de la gestión, y aquí es además la lectura natural:
     // quien registró ESTA devolución. Sin `EXISTS` correlacionado, al revés que en las
     // lecturas cuyo universo es la orden.
@@ -348,9 +346,7 @@ describe("El borde de devoluciones", () => {
         desde: "2026-08-01",
         hasta: "2026-08-16",
         zona_id: ["z1"],
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
-        distrito_id: ["d1"],
+        lugar_id: ["d1"], // SLT-47: un solo lugar (antes p1, c1 y d1 en AND)
         tienda_id: ["t1"],
         mensajero_id: ["m1"],
       },

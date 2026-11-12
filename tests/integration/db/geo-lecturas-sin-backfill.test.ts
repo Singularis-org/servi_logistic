@@ -11,6 +11,7 @@ import {
   SNAPSHOT_SELECT,
   leerDescriptivosDeOrdenes,
 } from "@/lib/repositories/CierreDiaRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { CicloVidaRepository } from "@/lib/repositories/CicloVidaRepository";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import { CohorteCargaRepository } from "@/lib/repositories/CohorteCargaRepository";
@@ -28,6 +29,7 @@ import { planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import { estadosIncluidos, PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { ConsultaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { rawConLugar } from "@/scripts/geo-equivalencia/filtros-de-hoy";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";
 import { TRIGGERS_DE_COLUMNAS_NUEVAS, vaciarColumnasNuevas } from "./_fixtures/geo-43";
@@ -486,7 +488,11 @@ async function leerLasDe71DeUna(tx: TxDeTest, e: EmpresaGeo71, ahora: Date) {
       // Repositorios nuevos en cada lectura: la memoria del catalogo es por instancia (R13, R16).
       const analitica: unknown[] = [];
       let totalPorStatus = 0;
-      for (const raw of facetasDe71(e)) {
+      // SLT-47 (R10): el borde solo acepta `lugar_id`. Las facetas de hoy se traducen como la barra
+      // (`rawConLugar`), con el catalogo de la empresa del contexto. Cambio de ENTRADA, no de aserciones.
+      const { catalogo } = await new CatalogoGeograficoRepository(c).deLaEmpresa();
+      for (const rawDeHoy of facetasDe71(e)) {
+        const raw = rawConLugar(catalogo, rawDeHoy);
         const q = consulta71(raw);
         const porStatus = await new ConteoPorStatusRepository(c).contarPorStatus(q);
         totalPorStatus += porStatus.reduce((s, f) => s + f.conteo, 0);

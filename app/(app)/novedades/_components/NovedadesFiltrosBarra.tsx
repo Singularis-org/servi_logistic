@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   BUSQUEDA_MIN_CHARS_NOVEDADES,
   PLACEHOLDER_BUSQUEDA_NOVEDADES,
+  TRADUCTOR_URL_NOVEDADES,
 } from "./novedades-filtros";
 import type { NovedadesFiltro } from "./useNovedadesFiltro";
 
@@ -81,12 +82,16 @@ export function NovedadesFiltrosBarra({
         onActivosChange={filtro.onActivosChange}
         onLimpiarTodo={filtro.limpiar}
         hayFiltrosAplicados={filtro.hayFiltrosAplicados}
+        // SLT-47 (R19, R20): `lugar_id` y los enlaces viejos por nombre (`provincia`, `canton`) se
+        // traducen al entrar a las listas de nivel, y «Limpiar todo» también los retira de la URL.
+        traductorUrl={TRADUCTOR_URL_NOVEDADES}
       >
         {filtro.montados.length > 0 ? (
           <FilterComponent
             key={filtro.reset}
             filters={filtro.montados}
             onChange={filtro.onSeleccionChange}
+            traductorUrl={TRADUCTOR_URL_NOVEDADES}
           />
         ) : null}
       </BuscadorFiltros>

@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CLAVE_CANTON,
   CLAVE_CAUSA,
   CLAVE_MENSAJERO,
-  CLAVE_PROVINCIA,
   CLAVE_SIN_CONTACTO,
   CLAVE_ZONA,
   ETIQUETA_SIN_CAUSA,
@@ -18,7 +16,12 @@ import {
 } from "@/app/(app)/novedades/_components/novedades-filtros";
 import type { FilterSelection } from "@/components/shared/FilterComponent";
 import type { NovedadDTO } from "@/lib/types/novedad";
-import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+import { claveDeNivel } from "@/lib/utils/filtro-ubicacion";
+import { NIVELES_CR } from "../../fabricas/etiquetas-geograficas";
+
+// SLT-47 (R8): el lugar se filtra con las listas de nivel, por id. Clave de la provincia y del cantón.
+const CLAVE_PROVINCIA = claveDeNivel(1);
+const CLAVE_CANTON = claveDeNivel(2);
 
 // FICHA 325 — la mitad PURA de la barra de `/novedades`: que se ofrece en cada pestaña y como
 // acota lo elegido. Los casos estan escritos para MORDER: cada uno compara contra un literal
@@ -52,7 +55,18 @@ const base: NovedadDTO = {
   secuenciaRuta: null,
 };
 
-const novedad = (over: Partial<NovedadDTO> = {}): NovedadDTO => ({ ...base, ...over });
+// SLT-47 (R16): la ruta del lugar que el servidor emite siempre, armada con los nombres de la novedad.
+// Provincia y cantón con su nombre por id; el distrito, con el de su cantón delante (dos «San Rafael»
+// de cantones distintos son dos lugares, como en el catálogo).
+const conRuta = (n: NovedadDTO): NovedadDTO => ({
+  ...n,
+  lugarRuta: [
+    { id: n.provinciaNombre, nombre: n.provinciaNombre },
+    { id: n.cantonNombre, nombre: n.cantonNombre },
+    ...(n.distritoNombre === null ? [] : [{ id: `${n.cantonNombre}/${n.distritoNombre}`, nombre: n.distritoNombre }]),
+  ],
+});
+const novedad = (over: Partial<NovedadDTO> = {}): NovedadDTO => conRuta({ ...base, ...over });
 
 /** Ids de un resultado, para comparar contra una lista escrita a mano. */
 const ids = (items: readonly NovedadDTO[]): string[] => items.map((n) => n.id);
@@ -233,7 +247,7 @@ describe("qué ofrece cada pestaña", () => {
     }),
   ];
   const claves = (grupo: "ayuda" | "devolucion") =>
-    construirFiltrosNovedades(grupo, items, ETIQUETAS_CR).map((f) => f.key);
+    construirFiltrosNovedades(grupo, items, NIVELES_CR).map((f) => f.key);
 
   it("las cuatro compartidas están en LAS DOS pestañas", () => {
     for (const grupo of ["ayuda", "devolucion"] as const) {
@@ -256,25 +270,25 @@ describe("qué ofrece cada pestaña", () => {
   it("no se declara ningún filtro de FECHA: el DTO no trae ni una", () => {
     for (const grupo of ["ayuda", "devolucion"] as const) {
       expect(
-        construirFiltrosNovedades(grupo, items, ETIQUETAS_CR).some((f) => f.kind === "dateRange"),
+        construirFiltrosNovedades(grupo, items, NIVELES_CR).some((f) => f.kind === "dateRange"),
       ).toBe(false);
     }
   });
 
   it("las opciones salen del CONJUNTO, ordenadas por su etiqueta en español", () => {
-    const mensajero = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
+    const mensajero = construirFiltrosNovedades("devolucion", items, NIVELES_CR).find(
       (f) => f.key === CLAVE_MENSAJERO,
     );
     expect(mensajero?.options?.map((o) => o.label)).toEqual(["Aurelio", "Zoraida"]);
   });
 
   it("una opción que no está en el conjunto NO se ofrece: ninguna lleva a una lista vacía", () => {
-    const zona = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find((f) => f.key === CLAVE_ZONA);
+    const zona = construirFiltrosNovedades("devolucion", items, NIVELES_CR).find((f) => f.key === CLAVE_ZONA);
     expect(zona?.options?.map((o) => o.value)).toEqual(["GAM Este", "GAM Oeste"]);
   });
 
   it("«sin mensajero» solo se ofrece si alguna orden lo está", () => {
-    const conTodos = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
+    const conTodos = construirFiltrosNovedades("devolucion", items, NIVELES_CR).find(
       (f) => f.key === CLAVE_MENSAJERO,
     );
     expect(conTodos?.options?.map((o) => o.label)).not.toContain(ETIQUETA_SIN_MENSAJERO);
@@ -282,12 +296,12 @@ describe("qué ofrece cada pestaña", () => {
     const conHuerfana = construirFiltrosNovedades("devolucion", [
       ...items,
       novedad({ id: "c", mensajeroNombre: null }),
-    ], ETIQUETAS_CR).find((f) => f.key === CLAVE_MENSAJERO);
+    ], NIVELES_CR).find((f) => f.key === CLAVE_MENSAJERO);
     expect(conHuerfana?.options?.map((o) => o.label)).toContain(ETIQUETA_SIN_MENSAJERO);
   });
 
   it("la causa se ofrece con su etiqueta ES y su slug como valor, más «sin causa»", () => {
-    const causa = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
+    const causa = construirFiltrosNovedades("devolucion", items, NIVELES_CR).find(
       (f) => f.key === CLAVE_CAUSA,
     );
     expect(causa?.options).toEqual([
@@ -297,7 +311,7 @@ describe("qué ofrece cada pestaña", () => {
   });
 
   it("el cantón cuelga de su provincia: la cadena se declara, no se programa", () => {
-    const canton = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
+    const canton = construirFiltrosNovedades("devolucion", items, NIVELES_CR).find(
       (f) => f.key === CLAVE_CANTON,
     );
     expect(canton?.dependsOn).toBe(CLAVE_PROVINCIA);
@@ -308,7 +322,7 @@ describe("qué ofrece cada pestaña", () => {
   });
 
   it("sin conjunto cargado se ofrecen LOS MISMOS filtros, deshabilitados y sin opciones", () => {
-    const sinConjunto = construirFiltrosNovedades("devolucion", null, ETIQUETAS_CR);
+    const sinConjunto = construirFiltrosNovedades("devolucion", null, NIVELES_CR);
     expect(sinConjunto.map((f) => f.key)).toEqual(claves("devolucion"));
     expect(sinConjunto.every((f) => f.disabled === true)).toBe(true);
     expect(sinConjunto.every((f) => (f.options ?? []).length === 0)).toBe(true);
@@ -345,7 +359,7 @@ describe("qué ofrece cada pestaña", () => {
     ];
 
     for (const grupo of ["ayuda", "devolucion"] as const) {
-      for (const filtro of construirFiltrosNovedades(grupo, conjunto, ETIQUETAS_CR)) {
+      for (const filtro of construirFiltrosNovedades(grupo, conjunto, NIVELES_CR)) {
         // Un `boolean` no tiene opciones: su único valor es el de marcado.
         const valor = filtro.kind === "boolean" ? "true" : filtro.options?.[0]?.value;
         expect(valor, `el filtro ${filtro.key} no ofrece ningún valor con el que ejercerse`)

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+// SLT-47: el catalogo p1 → c1 → d1, para que el lugar elegido se resuelva a ids del catalogo.
+import { delegadosDelCatalogo } from "@/tests/unit/analytics/_catalogo-facetas";
 import {
   ESTADOS_BODEGA_SATELITE,
   ESTADOS_CUSTODIA_SATELITE,
@@ -163,31 +164,30 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
       {
         zonaId: "z-a",
         estatusValues: ["en_bodega_satelite", "novedad"],
-        cantonIds: ["c-escazu", "c-barva"],
-        distritoIds: ["d-san-rafael"],
+        // SLT-47: el lugar elegido, con ids del catalogo de `delegadosDelCatalogo` (d1 bajo c1).
+        lugarIds: ["d1"],
       },
       RANGO,
     );
 
     const sql = texto(consultas[0]!);
-    expect(sql).toContain('o."canton_id" IN (?,?)');
-    expect(sql).toContain('o."distrito_id" IN (?)');
+    // SLT-47 (R11): una sola condicion de lugar, con los ids en UN parametro de lista por rama.
+    expect(sql).toContain('(o."distrito_id" = ANY(?::text[]) OR (o."distrito_id" IS NULL AND o."canton_id" = ANY(?::text[])))');
     // Hermanas con AND: cruzarlas NO puede ser un OR (mostraria mas de lo que hoy ve).
     // FICHA 357: la clausula de alcance queda EN MEDIO y ENTRE PARENTESIS. Que su `OR` interno
     // este cerrado es lo que impide que se coma el `AND` de la zona — el modo exacto en que
     // este cambio podria haber ensanchado el alcance de todos a la vez.
     expect(sql).toMatch(
-      /o\."zona_id" = \? AND o\."deleted_at" IS NULL AND \( os\."value" IN \(\?,\?\) OR EXISTS \([^)]*\)[^)]*\) \) AND os\."value" IN \(\?,\?\) AND o\."canton_id" IN \(\?,\?\) AND o\."distrito_id" IN \(\?\)/,
+      /o\."zona_id" = \? AND o\."deleted_at" IS NULL AND \( os\."value" IN \(\?,\?\) OR EXISTS \([^)]*\)[^)]*\) \) AND os\."value" IN \(\?,\?\) AND \(o\."distrito_id" = ANY\(\?::text\[\]\) OR \(o\."distrito_id" IS NULL AND o\."canton_id" = ANY\(\?::text\[\]\)\)\)/,
     );
-    expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 5)).toEqual([
+    expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 4)).toEqual([
       "z-a",
       ...ESTADOS_CUSTODIA_SATELITE,
       ...ESTADOS_CUSTODIA_SATELITE,
       "en_bodega_satelite",
       "novedad",
-      "c-escazu",
-      "c-barva",
-      "d-san-rafael",
+      ["d1"],
+      ["d1"],
     ]);
   });
 
@@ -238,8 +238,8 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
       {
         zonaId: "z-a",
         estatusValues: ["en_bodega_satelite"],
-        provinciaIds: ["p-sj"],
-        cantonIds: ["c-central-sj"],
+        // SLT-47: la provincia es el lugar elegido; viaja con lo que cuelga de ella (c1, d1).
+        lugarIds: ["p1"],
       },
       RANGO,
     );
@@ -248,14 +248,14 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
     // Pedido humano (2026-08-19): por ID y contra las columnas de `orden`. Comparando NOMBRES
     // —como hasta hoy— «Central» casaba en cuatro provincias y la cadena provincia -> canton
     // no podia declararse; con ids, el desplegable encadenado dice la verdad.
-    expect(sql).toContain('o."provincia_id" IN (?) AND o."canton_id" IN (?)');
+    expect(sql).toContain('(o."distrito_id" = ANY(?::text[]) OR (o."distrito_id" IS NULL AND o."canton_id" = ANY(?::text[])))');
     expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 3)).toEqual([
       "z-a",
       ...ESTADOS_CUSTODIA_SATELITE,
       ...ESTADOS_CUSTODIA_SATELITE,
       "en_bodega_satelite",
-      "p-sj",
-      "c-central-sj",
+      ["c1", "d1", "p1"],
+      ["c1", "d1", "p1"],
     ]);
   });
 
@@ -266,7 +266,7 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
       {
         zonaId: "z-a",
         estatusValues: [...ESTADOS_BODEGA_SATELITE],
-        provinciaIds: ["p-sj"],
+        lugarIds: ["p1"],
       },
       RANGO,
     );
@@ -421,8 +421,7 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
       {
         zonaId: "z-a",
         estatusValues: ["novedad"],
-        cantonIds: ["c-escazu"],
-        distritoIds: ["d-san-rafael"],
+        lugarIds: ["d1"],
       },
       { skip: 100, take: 5 },
     );

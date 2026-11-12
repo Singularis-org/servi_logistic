@@ -147,9 +147,7 @@ describe("R24 · la faceta de mensajero NO recorta esta lectura", () => {
       ["zona_id", 'o."zona_id"'],
       // SLT-71 (design §11.1): `x1` no esta en el catalogo, asi que las tres geograficas recortan
       // a `FALSE` (cero ordenes), sin parametro.
-      ["provincia_id", "FALSE"],
-      ["canton_id", "FALSE"],
-      ["distrito_id", "FALSE"],
+      ["lugar_id", "FALSE"], // SLT-47: una sola faceta de lugar
       ["tienda_id", 'o."tienda_id"'],
     ];
 

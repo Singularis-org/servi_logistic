@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { contextoActual } from "@/lib/db/contexto-empresa";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
 
 /**
  * Feature 184 — Tanda A: las dos consultas NUEVAS de la bodega satélite se EJECUTAN contra un
@@ -30,6 +31,28 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+/**
+ * SLT-47 (R37): el filtro de lugar carga el catalogo del pais de la EMPRESA del contexto, asi que la
+ * lectura con lugar corre dentro de una empresa de prueba (transaccion revertida) y con un nodo real
+ * de su pais: asi se ejecuta de verdad la condicion de `sqlLugarEn`.
+ */
+async function conLugarDeEmpresa<T>(
+  prisma: PrismaClient,
+  fn: (repo: OrdenRepository, lugarId: string) => Promise<T>,
+): Promise<T> {
+  return enTransaccionRevertida(prisma, async (tx) => {
+    const ctx = contextoActual();
+    if (ctx?.tipo !== "empresa") throw new Error("sin empresa en el contexto del test");
+    const [nodo] = await tx.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT n.id FROM nodo_geografico n JOIN organizacion o ON o.pais_id = n.pais_id
+        WHERE o.id = $1 ORDER BY n.profundidad DESC, n.id LIMIT 1`,
+      ctx.organizacionId,
+    );
+    if (nodo === undefined) throw new Error("el pais de la empresa de prueba no tiene nodos");
+    return fn(new OrdenRepository(tx as unknown as PrismaClient), nodo.id);
+  });
+}
+
 /** No existe ninguna zona con este id: la lectura es real pero no puede devolver filas. */
 const ZONA_INEXISTENTE = "z-inexistente-184-tanda-a";
 
@@ -55,14 +78,15 @@ describeSiHayBase("SQL real de la bodega satélite (feature 184, T A.1/T A.2)", 
       }),
     ).resolves.toEqual([]);
 
-    // Con los dos filtros: se añaden `o."canton_id"` y `o."distrito_id"`.
+    // Con el filtro de lugar (SLT-47): se añade la condicion de `sqlLugarEn`.
     await expect(
-      repo.findRecepcionSateliteCompleta({
-        zonaId: ZONA_INEXISTENTE,
-        estatusValues: ["novedad"],
-        cantonIds: ["c-escazu"],
-        distritoIds: ["d-san-rafael"],
-      }),
+      conLugarDeEmpresa(prisma, (r, lugarId) =>
+        r.findRecepcionSateliteCompleta({
+          zonaId: ZONA_INEXISTENTE,
+          estatusValues: ["novedad"],
+          lugarIds: [lugarId], // SLT-47
+        }),
+      ),
     ).resolves.toEqual([]);
   });
 
@@ -73,11 +97,11 @@ describeSiHayBase("SQL real de la bodega satélite (feature 184, T A.1/T A.2)", 
     // nombre o el tipo no casaran, ningún test con dobles lo vería y reventaría en la primera
     // búsqueda de la bodega.
     await expect(
-      repo.findRecepcionSatelitePaginada(
+      conLugarDeEmpresa(prisma, (r, lugarId) => r.findRecepcionSatelitePaginada(
         {
           zonaId: ZONA_INEXISTENTE,
           estatusValues: [...ESTADOS_BODEGA_SATELITE],
-          provinciaIds: ["p-sj"],
+          lugarIds: [lugarId], // SLT-47
           // Pedido humano (2026-08-25): con la columna REAL. Un nombre mal escrito aqui no lo
           // ve ningun doble; revienta en la primera consulta de la bodega.
           mensajeroIds: ["m-inexistente"],
@@ -87,7 +111,7 @@ describeSiHayBase("SQL real de la bodega satélite (feature 184, T A.1/T A.2)", 
           busquedaDigitos: "88880000",
         },
         { skip: 0, take: 5 },
-      ),
+      )),
     ).resolves.toEqual({ items: [], total: 0 });
 
     // Y el conjunto de la descarga, que comparte el fragmento: una forma sola del término

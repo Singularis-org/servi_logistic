@@ -3,9 +3,8 @@ import {
   ESTADOS_BODEGA_SATELITE,
   type EstadoBodegaSatelite,
 } from "@/lib/utils/estados-bodega-satelite";
-import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import type { SalioARepartoValor } from "@/lib/types/orden";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import {
   CLAVE_BUSQUEDA,
@@ -138,8 +137,8 @@ export function construirFiltrosSatelite(
   opts: {
     /** Catálogo `order_status` para el desplegable de estado (`listarOrderStatus`). */
     estatus?: readonly OrderStatusLiteRow[] | null;
-    /** SL-20 (R19): los nombres de nivel del país de la empresa (`useEtiquetasGeograficas`). */
-    etiquetas: EtiquetasGeograficas;
+    /** SLT-47: los niveles del país que da el layout, por si el catálogo no trae los suyos. */
+    niveles?: readonly NivelDeFiltroDTO[];
     ahora?: Date;
   },
 ): FilterDef[] {
@@ -153,7 +152,7 @@ export function construirFiltrosSatelite(
     // que el adminSatelite ya puede ver —su bodega—, no lo ensancha, y el servicio la atiende
     // en los tres caminos del listado (página, descarga y vigencia de la selección).
     incluirSalioAReparto: true,
-    etiquetas: opts.etiquetas,
+    niveles: opts.niveles,
     ahora: opts.ahora,
   }).filter((f) => f.key !== CLAVE_BUSQUEDA);
 
@@ -185,10 +184,11 @@ export interface FiltroBodegaSatelite {
   estados?: EstadoBodegaSatelite[];
   /** Mensajeros asignados elegidos: la MISMA clave que el `filter` de `/ordenes`. */
   mensajero_id?: string[];
-  /** Geografía por ID, tiempo y término: las MISMAS claves que el `filter` de `/ordenes`. */
-  provincia_id?: string[];
-  canton_id?: string[];
-  distrito_id?: string[];
+  /**
+   * Lugar por ID (SLT-47, R9: los ids de la lista de nivel más honda con elección), tiempo y
+   * término: las MISMAS claves que el `filter` de `/ordenes`.
+   */
+  lugar_id?: string[];
   created_preset?: string;
   created_desde?: string;
   created_hasta?: string;

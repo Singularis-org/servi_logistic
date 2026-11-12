@@ -29,6 +29,16 @@ const GEO_ZONA = {
   distritos: [{ id: "d9", nombre: "Guapiles", padreId: "c9", disponible: true }],
 };
 
+// SLT-47 (R36): los niveles del pais y los lugares a cualquier profundidad (todos, o los de una zona).
+const LUGARES = {
+  niveles: [{ profundidad: 1, singular: "Provincia", plural: "Provincias" }],
+  lugares: [{ id: "p1", nombre: "San Jose", disponible: true, padreId: null, profundidad: 1 }],
+};
+const LUGARES_ZONA = {
+  niveles: [{ profundidad: 1, singular: "Provincia", plural: "Provincias" }],
+  lugares: [{ id: "p9", nombre: "Limon", disponible: true, padreId: null, profundidad: 1 }],
+};
+
 function actor(rol: string, zonaId?: string | null): Actor {
   return { usuarioId: "u1", rol: rol as RolValue, zonaId };
 }
@@ -59,6 +69,8 @@ function buildService(demoras: Partial<Record<string, number>> = {}) {
     listCantonesLite: lectura("cantones", CANTONES),
     listDistritosLite: lectura("distritos", DISTRITOS),
     listGeografiaLitePorZona: lectura("geo-zona", GEO_ZONA),
+    // SLT-47: doble de entrada; no se apunta en `orden` (que fija las lecturas de la 144).
+    listLugaresDeFiltro: vi.fn(async (zonaId?: string) => (zonaId === undefined ? LUGARES : LUGARES_ZONA)),
   };
   return {
     service: new FiltrosOrdenesService(zonaRepo, userRepo, geoRepo),
@@ -128,6 +140,8 @@ describe("acotamiento por rol del propio catalogo", () => {
         tiendas: [],
         mensajeros: MENSAJEROS_ZONA,
         ...GEO_ZONA,
+        niveles: LUGARES_ZONA.niveles,
+        lugares: LUGARES_ZONA.lugares,
       },
     });
     // La zona sale del actor, y el catalogo del pais no se lee siquiera.
@@ -153,6 +167,8 @@ describe("acotamiento por rol del propio catalogo", () => {
         provincias: [],
         cantones: [],
         distritos: [],
+        niveles: [],
+        lugares: [],
       },
     });
     expect(geoRepo.listGeografiaLitePorZona).not.toHaveBeenCalled();
@@ -196,6 +212,8 @@ describe("resolucion del catalogo (R47/R48)", () => {
         provincias: PROVINCIAS,
         cantones: CANTONES,
         distritos: DISTRITOS,
+        niveles: LUGARES.niveles,
+        lugares: LUGARES.lugares,
       },
     });
   });

@@ -391,6 +391,15 @@ export class PaisRepository implements IPaisRepository {
     });
     return fila?.pais ?? null;
   }
+
+  async tiposDeLaEmpresa(organizacionId: string): Promise<TipoNivelDTO[] | null> {
+    const fila = await this.prisma.organizacion.findUnique({
+      where: { id: organizacionId },
+      select: { pais: { select: { tiposDeNivel: { select: SELECT_TIPO } } } },
+    });
+    if (!fila) return null;
+    return fila.pais.tiposDeNivel.map(tipoDTO).sort((a, b) => a.profundidad - b.profundidad);
+  }
 }
 
 // --- Tipos de nivel (SLT-46) ---

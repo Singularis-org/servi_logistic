@@ -32,9 +32,7 @@ describe("ordenFilterSchema — whitelist ampliada (R30/R31)", () => {
       "status_id",
       "zona_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "lugar_id",
       "mensajero_id",
       "created_preset",
       "created_desde",
@@ -99,9 +97,7 @@ describe("ordenFilterSchema — whitelist ampliada (R30/R31)", () => {
         zona_id: ["z1"],
         mensajero_id: ["m1", "m2"],
         tienda_id: ["t1", "t2"],
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
-        distrito_id: ["d1"],
+        lugar_id: ["d1"],
         created_desde: "2026-07-01",
         created_hasta: "2026-07-28",
       },
@@ -110,9 +106,7 @@ describe("ordenFilterSchema — whitelist ampliada (R30/R31)", () => {
       zona_id: ["z1"],
       mensajero_id: ["m1", "m2"],
       tienda_id: ["t1", "t2"],
-      provincia_id: ["p1"],
-      canton_id: ["c1"],
-      distrito_id: ["d1"],
+      lugar_id: ["d1"],
       created_desde: "2026-07-01",
       created_hasta: "2026-07-28",
     });
@@ -131,7 +125,7 @@ describe("ordenFilterSchema — whitelist ampliada (R30/R31)", () => {
 });
 
 describe("ordenFilterSchema — filtros de catalogo (R32)", () => {
-  const CATALOGOS = ["zona_id", "tienda_id", "provincia_id", "canton_id", "distrito_id"] as const;
+  const CATALOGOS = ["zona_id", "tienda_id", "lugar_id"] as const;
 
   for (const clave of CATALOGOS) {
     it(`R32: ${clave} exige LISTA NO VACIA de ids no vacios`, () => {

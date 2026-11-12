@@ -122,7 +122,7 @@ export interface ListarOrdenesBodegaCompletoInput {
    * zona (sale del actor) ni la tienda (no ve el directorio de cuentas).
    *
    * Geografia por ID (antes eran nombres): las opciones salen de la geografia de la ZONA del
-   * actor. Lista ausente o vacia = todas; las tres se cruzan en AND.
+   * actor. Lista ausente o vacia = todas.
    */
   /**
    * Pedido humano (2026-08-25) — mensajeros ASIGNADOS elegidos; ausente = todos. Las opciones
@@ -130,10 +130,11 @@ export interface ListarOrdenesBodegaCompletoInput {
    * amplia nada: el acotamiento por zona del listado se impone igual.
    */
   mensajero_id?: string[];
-  provincia_id?: string[];
-  canton_id?: string[];
-  /** Con distritos elegidos, una orden SIN distrito queda fuera del conjunto. */
-  distrito_id?: string[];
+  /**
+   * SLT-47 (R10, R11): el lugar elegido, en cualquier nivel del pais (antes `provincia_id`,
+   * `canton_id` y `distrito_id`). Salen las ordenes cuyo lugar es uno de esos o esta debajo.
+   */
+  lugar_id?: string[];
   /**
    * Filtro de creacion: atajo de antiguedad O rango de fechas calendario, nunca los dos
    * (el borde lo rechaza). El servicio los traduce a instantes con el huso de Costa Rica; el

@@ -13,6 +13,7 @@ import { normalizeName } from "@/lib/utils/normalize";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { listarOrdenesBodegaPaginadoSchema } from "@/lib/types/recepcion-satelite";
 import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
+import { casaLugar, lugarDeHoy } from "@/tests/fixtures/satelite-bodega-almacen";
 
 // Feature 170 — FASE 2, T K.1 (R40/R41/R44/R45/R51) — «Órdenes de la bodega» de la bodega
 // satelite: los TRES filtros pasan al servidor y el listado pagina.
@@ -184,19 +185,13 @@ function repoEnMemoria(filas: FilaAlmacen[] = ALMACEN) {
       if (estados.length === 0) return { items: [], total: 0 };
       // Pedido humano (2026-08-19): la geografía viaja por ID. Este doble describe sus filas
       // por nombre y usa el nombre como id, igual que `catalogoSatelite`.
-      const cantones = [...(filtro.cantonIds ?? [])];
-      const distritos = [...(filtro.distritoIds ?? [])];
       const conjunto = filas
         .filter((f) => f.zonaId === filtro.zonaId)
         // FICHA 357 — la otra mitad del acotamiento, que el repositorio real emite SIEMPRE.
         .filter((f) => f.pasoPorBodegaSatelite)
         .filter((f) => estados.includes(f.row.estatusValue))
-        .filter((f) => cantones.length === 0 || cantones.includes(f.row.cantonNombre))
-        .filter(
-          (f) =>
-            distritos.length === 0 ||
-            (f.row.distritoNombre !== null && distritos.includes(f.row.distritoNombre)),
-        )
+        // SLT-47: el lugar elegido, con los ids del doble (canton o «canton/distrito»).
+        .filter((f) => casaLugar(f.row, filtro.lugarIds))
         .sort((a, b) => {
           const grupo =
             ESTADOS_BODEGA_SATELITE.indexOf(a.row.estatusValue as never) -
@@ -368,10 +363,11 @@ describe("RecepcionSateliteService.listarOrdenesBodegaPaginado", () => {
           // Una lista VACIA se OMITE, no viaja como `[]`: desde que la barra es la de
           // `/ordenes`, su borde comparte la regla R32 —lista vacia = `validation_error`—
           // porque «sin filtro» se expresa quitando la clave. Es lo que hace la barra.
+          // SLT-47: canton y distrito viajan como UN `lugar_id` (`lugarDeHoy`, solo la entrada).
+          const lugar = lugarDeHoy(ALMACEN, canton, distrito);
           const { recorrido, total } = await recorrerPaginas(svc, SAT_A, {
             ...(estado.length > 0 ? { estados: estado } : {}),
-            ...(canton.length > 0 ? { canton_id: canton } : {}),
-            ...(distrito.length > 0 ? { distrito_id: distrito } : {}),
+            ...(lugar ? { lugar_id: lugar } : {}),
           });
 
           // El MISMO conjunto y en el MISMO orden, no solo los mismos elementos.
@@ -395,8 +391,8 @@ describe("RecepcionSateliteService.listarOrdenesBodegaPaginado", () => {
     const svc = servicio(repoEnMemoria().repo);
 
     // «Escazú» existe en las dos zonas. Cada actor ve LO SUYO bajo el mismo valor de filtro.
-    const escazuDeA = await recorrerPaginas(svc, SAT_A, { canton_id: ["Escazú"] }, 50);
-    const escazuDeB = await recorrerPaginas(svc, SAT_B, { canton_id: ["Escazú"] }, 50);
+    const escazuDeA = await recorrerPaginas(svc, SAT_A, { lugar_id: ["Escazú"] }, 50);
+    const escazuDeB = await recorrerPaginas(svc, SAT_B, { lugar_id: ["Escazú"] }, 50);
 
     // FICHA 357: a-15 (`entregada` de Escazu que SI paso por la bodega) entra; a-14, que es su
     // gemela salvo por no haber pasado nunca, NO — y las dos comparten zona, canton y distrito,
@@ -410,10 +406,10 @@ describe("RecepcionSateliteService.listarOrdenesBodegaPaginado", () => {
     expect(escazuDeB.recorrido.some((id) => id.startsWith("a-"))).toBe(false);
 
     // Un canton que solo existe en la zona del vecino no abre ninguna puerta.
-    const cartagoDeA = await recorrerPaginas(svc, SAT_A, { canton_id: ["Cartago"] }, 50);
+    const cartagoDeA = await recorrerPaginas(svc, SAT_A, { lugar_id: ["Cartago"] }, 50);
     expect(cartagoDeA.recorrido).toEqual([]);
     expect(cartagoDeA.total).toBe(0);
-    const cartagoDeB = await recorrerPaginas(svc, SAT_B, { canton_id: ["Cartago"] }, 50);
+    const cartagoDeB = await recorrerPaginas(svc, SAT_B, { lugar_id: ["Cartago"] }, 50);
     expect(cartagoDeB.recorrido).toEqual(["b-03", "b-02"]);
   });
 

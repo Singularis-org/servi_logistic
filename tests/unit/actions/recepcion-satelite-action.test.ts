@@ -220,8 +220,7 @@ describe("listarOrdenesBodegaPaginado — el borde (feature 170, T K.1)", () => 
         page: 2,
         pageSize: 10,
         estados: ["novedad", "mensajero_recogiendo_en_bodega"],
-        canton_id: ["Escazú"],
-        distrito_id: ["San Rafael", "San Antonio"],
+        lugar_id: ["Escazú/San Rafael", "Escazú/San Antonio"], // SLT-47
       },
       { service, getActor: actorAdmin },
     );
@@ -230,8 +229,7 @@ describe("listarOrdenesBodegaPaginado — el borde (feature 170, T K.1)", () => 
         page: 2,
         pageSize: 10,
         estados: ["novedad", "mensajero_recogiendo_en_bodega"],
-        canton_id: ["Escazú"],
-        distrito_id: ["San Rafael", "San Antonio"],
+        lugar_id: ["Escazú/San Rafael", "Escazú/San Antonio"], // SLT-47
       },
       ADMIN,
     );
@@ -323,16 +321,14 @@ describe("listarOrdenesBodegaCompleto — el borde del conjunto (feature 184, T 
     await listarOrdenesBodegaCompleto(
       {
         estados: ["novedad", "mensajero_recogiendo_en_bodega"],
-        canton_id: ["Escazú"],
-        distrito_id: ["San Rafael", "San Antonio"],
+        lugar_id: ["Escazú/San Rafael", "Escazú/San Antonio"], // SLT-47
       },
       { service, getActor: actorAdmin },
     );
     expect(service.listarOrdenesBodegaCompleto).toHaveBeenCalledWith(
       {
         estados: ["novedad", "mensajero_recogiendo_en_bodega"],
-        canton_id: ["Escazú"],
-        distrito_id: ["San Rafael", "San Antonio"],
+        lugar_id: ["Escazú/San Rafael", "Escazú/San Antonio"], // SLT-47
       },
       ADMIN,
     );
@@ -379,12 +375,12 @@ describe("listarIdsVigentesBodega — el borde de la vigencia (feature 184, T A.
       })),
     });
     const r = await listarIdsVigentesBodega(
-      { ids: [uuid(1), uuid(2)], estados: ["novedad"], canton_id: ["Escazú"] },
+      { ids: [uuid(1), uuid(2)], estados: ["novedad"], lugar_id: ["Escazú"] },
       { service, getActor: actorAdmin },
     );
     expect(r).toEqual({ status: "ok", ids: [uuid(1)] });
     expect(service.listarIdsVigentesBodega).toHaveBeenCalledWith(
-      { ids: [uuid(1), uuid(2)], estados: ["novedad"], canton_id: ["Escazú"] },
+      { ids: [uuid(1), uuid(2)], estados: ["novedad"], lugar_id: ["Escazú"] },
       ADMIN,
     );
   });

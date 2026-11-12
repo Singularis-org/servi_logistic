@@ -65,9 +65,7 @@ describe("R26 · el camino feliz", () => {
       {
         ...RANGO,
         zona_id: ["z1"],
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
-        distrito_id: ["d1"],
+        lugar_id: ["d1"], // SLT-47: un solo lugar (antes p1, c1 y d1 en AND)
         tienda_id: ["t1"],
         mensajero_id: ["m1"],
       },

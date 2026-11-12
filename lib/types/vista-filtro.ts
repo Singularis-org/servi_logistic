@@ -43,13 +43,21 @@ export const superficieVistaSchema = z.enum(SUPERFICIES_VISTA);
  * en su propia columna (`vista_filtro.version`), para poder contar y filtrar por version sin abrir
  * el JSON el dia que exista una v2.
  */
-export const VISTA_FILTRO_VERSION = 1;
+export const VISTA_FILTRO_VERSION = 2;
+
+/**
+ * SLT-47 (design §4.3; R22, R23) — la version 1, que se sigue LEYENDO. Sus documentos guardan el lugar en
+ * las claves por nivel de hoy (`provincia_id`, `canton_id`, `distrito_id`); la v2, en las listas de
+ * nivel del filtro de N niveles (`nivel_<k>`). Ninguna fila se reescribe: la v1 se traduce en cada
+ * lectura y pasa a v2 cuando la persona la actualiza (R34).
+ */
+export const VISTA_FILTRO_VERSION_V1 = 1;
 
 /**
  * Las versiones que ESTE codigo sabe leer. Hoy es una; el dia que haya una v2, esta lista y
  * `leerPayloadGuardado` son los dos unicos sitios que hay que tocar.
  */
-export const VERSIONES_LEGIBLES: readonly number[] = [VISTA_FILTRO_VERSION];
+export const VERSIONES_LEGIBLES: readonly number[] = [VISTA_FILTRO_VERSION_V1, VISTA_FILTRO_VERSION];
 
 /** design §3.4 — el tope por persona y superficie. Lo impone el SERVICIO, no la base. */
 export const MAX_VISTAS_POR_SUPERFICIE = 20;
@@ -94,6 +102,34 @@ export const vistaFiltroPayloadSchema = z
 
 export type VistaFiltroPayload = z.infer<typeof vistaFiltroPayloadSchema>;
 
+/** SLT-47 — el formato v1, igual al de la 453. Solo para LEER filas viejas; nunca se guarda. */
+export const vistaFiltroPayloadV1Schema = vistaFiltroPayloadSchema.extend({ v: z.literal(VISTA_FILTRO_VERSION_V1) }).strict();
+
+export type VistaFiltroPayloadV1 = z.infer<typeof vistaFiltroPayloadV1Schema>;
+
+/**
+ * SLT-47 — las claves de lugar de la v1 y la lista de nivel a la que pasan. Es la unica traduccion: el
+ * resto de la seleccion y de los controles montados queda igual. La seleccion de una vista la emitio
+ * `FilterComponent`, que nunca emite combinaciones incoherentes, asi que el renombre es exacto (R23).
+ */
+const CLAVES_DE_LUGAR_V1: Readonly<Record<string, string>> = {
+  provincia_id: "nivel_1",
+  canton_id: "nivel_2",
+  distrito_id: "nivel_3",
+};
+
+const renombrar = (clave: string): string => CLAVES_DE_LUGAR_V1[clave] ?? clave;
+
+/** SLT-47 (R23) — puro: una vista v1 como v2, sin escribir nada. */
+export function deV1(doc: VistaFiltroPayloadV1): VistaFiltroPayload {
+  return {
+    v: VISTA_FILTRO_VERSION,
+    termino: doc.termino,
+    activos: doc.activos.map(renombrar),
+    seleccion: Object.fromEntries(Object.entries(doc.seleccion).map(([clave, valores]) => [renombrar(clave), valores])),
+  };
+}
+
 /**
  * R12 — «no hay nada que guardar»: ni termino, ni controles montados, ni un solo valor elegido.
  *
@@ -123,6 +159,11 @@ export function payloadVacio(payload: VistaFiltroPayload): boolean {
 export function leerPayloadGuardado(valor: unknown): VistaFiltroPayload | null {
   const version = versionDeclarada(valor);
   if (version === null || !VERSIONES_LEGIBLES.includes(version)) return null;
+  // SLT-47 (R23): la v1 se valida con SU esquema y se traduce a la v2 al leer.
+  if (version === VISTA_FILTRO_VERSION_V1) {
+    const v1 = vistaFiltroPayloadV1Schema.safeParse(valor);
+    return v1.success ? deV1(v1.data) : null;
+  }
   const leido = vistaFiltroPayloadSchema.safeParse(valor);
   return leido.success ? leido.data : null;
 }

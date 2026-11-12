@@ -232,7 +232,7 @@ describe("453/R8 · un documento ilegible sale con `filtro: null`, nunca a media
       filas: [
         filaDe({ id: "buena", nombre: "Buena", filtro: PAYLOAD }),
         // Una version que este codigo no conoce...
-        filaDe({ id: "futura", nombre: "Del futuro", filtro: { ...PAYLOAD, v: 2 }, version: 2 }),
+        filaDe({ id: "futura", nombre: "Del futuro", filtro: { ...PAYLOAD, v: 3 }, version: 3 }),
         // ...y un documento roto.
         filaDe({ id: "rota", nombre: "Rota", filtro: { cualquier: "cosa" } }),
       ],

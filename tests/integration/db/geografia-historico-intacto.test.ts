@@ -153,9 +153,9 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
     expect(medido.ids).toContain(medido.s.orden);
   });
 
-  it("⭑ y SIGUE saliendo al filtrar por su `distritoId`", async () => {
+  it("⭑ y SIGUE saliendo al filtrar por su distrito (SLT-47: `lugarIds`)", async () => {
     const medido = await conCorpus(async ({ s, ordenes }) => {
-      const listado = await pedir(ordenes, { distritoId: [s.distrito] });
+      const listado = await pedir(ordenes, { lugarIds: [s.distrito] });
       return { ids: listado.items.map((o) => o.id), s };
     });
     // El desplegable puede dejar de ofrecerlo; el id sigue siendo un filtro legitimo.
@@ -164,8 +164,8 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
 
   it("tambien al filtrar por su canton y por su provincia retirados", async () => {
     const medido = await conCorpus(async ({ s, ordenes }) => {
-      const porCanton = await pedir(ordenes, { cantonId: [s.canton] });
-      const porProvincia = await pedir(ordenes, { provinciaId: [s.provincia] });
+      const porCanton = await pedir(ordenes, { lugarIds: [s.canton] });
+      const porProvincia = await pedir(ordenes, { lugarIds: [s.provincia] });
       return {
         porCanton: porCanton.items.map((o) => o.id),
         porProvincia: porProvincia.items.map((o) => o.id),
@@ -178,7 +178,7 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
 
   it("la orden conserva su terna congelada y su distrito legible en el DTO", async () => {
     const medido = await conCorpus(async ({ s, ordenes }) => {
-      const listado = await pedir(ordenes, { distritoId: [s.distrito] });
+      const listado = await pedir(ordenes, { lugarIds: [s.distrito] });
       return { item: listado.items[0], s };
     });
     expect(medido.item).toBeDefined();

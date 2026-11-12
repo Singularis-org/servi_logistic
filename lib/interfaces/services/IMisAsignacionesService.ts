@@ -1,3 +1,4 @@
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { MetodoPago } from "@/lib/types/metodo-pago";
 import type { CausaDevolucion } from "@/lib/types/causa-devolucion";
@@ -32,6 +33,13 @@ export interface MiAsignacionDTO {
   provinciaNombre: string;
   cantonNombre: string;
   distritoNombre: string | null;
+  /**
+   * SLT-47 (R16; design §3.4) — la ruta del lugar de la orden, del nivel 1 al lugar (ids y nombres),
+   * calculada con el catalogo y `lugarDeLaOrden`. La usa el filtro de lugar por id en el cliente.
+   * Opcional (`?`) por el patron aditivo de este tipo: no rompe los fixtures que lo construyen sin
+   * ella; el repositorio SIEMPRE la emite.
+   */
+  lugarRuta?: PasoDeRuta[];
   /**
    * ⭑ FICHA 429 (R13/R14/R18) — EL SINPE DE LA BODEGA QUE COBRA ESTA ORDEN, ya resuelto por el
    * SERVIDOR con `resolverSinpeBodega` (la del mensajero asignado; si no tiene, la de la orden).

@@ -61,9 +61,6 @@ const FILTER_TO_COLUMN = {
   status_id: "estatusId",
   zona_id: "zonaId",
   tienda_id: "tiendaId",
-  provincia_id: "provinciaId",
-  canton_id: "cantonId",
-  distrito_id: "distritoId",
   // Pedido humano (2026-08-25): el filtro por MENSAJERO asignado. La clave publica es
   // `mensajero_id`; la columna real (`mensajeroAsignadoId`) sigue siendo un nombre que
   // solo vive en este mapa. Se escribe con el resto de filtros —ANTES del acotamiento
@@ -204,15 +201,9 @@ export class OrdenService implements IOrdenService {
     if (input.filter?.tienda_id !== undefined) {
       where[FILTER_TO_COLUMN.tienda_id] = input.filter.tienda_id;
     }
-    if (input.filter?.provincia_id !== undefined) {
-      where[FILTER_TO_COLUMN.provincia_id] = input.filter.provincia_id;
-    }
-    if (input.filter?.canton_id !== undefined) {
-      where[FILTER_TO_COLUMN.canton_id] = input.filter.canton_id;
-    }
-    if (input.filter?.distrito_id !== undefined) {
-      where[FILTER_TO_COLUMN.distrito_id] = input.filter.distrito_id;
-    }
+    // SLT-47 (R11): el lugar elegido NO es una columna: pasa tal cual y el repositorio lo resuelve
+    // con el catalogo a «esos nodos y los de debajo» (`whereLugarEn`). Solo acota, como el resto.
+    if (input.filter?.lugar_id !== undefined) where.lugarIds = input.filter.lugar_id;
     if (input.filter?.mensajero_id !== undefined) {
       where[FILTER_TO_COLUMN.mensajero_id] = input.filter.mensajero_id;
     }

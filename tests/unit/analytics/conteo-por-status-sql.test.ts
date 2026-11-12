@@ -100,9 +100,7 @@ describe("Las seis dimensiones de recorte", () => {
     const sql = sqlDe(
       consultaDe({
         zona_id: ["z1", "z2"],
-        provincia_id: ["p1"],
-        canton_id: ["c1"],
-        distrito_id: ["d1"],
+        lugar_id: ["d1"], // SLT-47: un solo lugar (antes p1, c1 y d1 en AND)
         tienda_id: ["t1"],
       }),
     );
@@ -110,13 +108,13 @@ describe("Las seis dimensiones de recorte", () => {
     // SLT-71 (design §11.1): zona y tienda siguen con `IN`; cada faceta geografica es una
     // condicion de lugar con `= ANY` (dos ramas por faceta: provincia, canton y distrito).
     for (const columna of ["zona_id", "tienda_id"]) expect(sql, columna).toContain(`o."${columna}" IN (`);
-    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(3);
+    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
   });
 
   it("todos los ids viajan como parámetros, en orden", () => {
     // SLT-71 (decision del humano, 2026-11-04): una faceta geografica viaja como el array de ids
     // resueltos (el canton y sus distritos), una vez por rama del lugar.
-    expect(parametrosDe(consultaDe({ zona_id: ["z1", "z2"], canton_id: ["c1"] }))).toEqual([
+    expect(parametrosDe(consultaDe({ zona_id: ["z1", "z2"], lugar_id: ["c1"] }))).toEqual([
       "z1",
       "z2",
       ["c1", "d1"],

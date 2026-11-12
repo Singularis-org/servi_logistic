@@ -7,7 +7,7 @@ import type { FilterDef, FilterSelection } from "@/components/shared/FilterCompo
 import type { ListarNovedadesCompletoActionResult } from "@/lib/actions/novedades";
 import type { NovedadDTO } from "@/lib/types/novedad";
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
-import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 
 import {
   construirFiltrosNovedades,
@@ -107,8 +107,8 @@ export function useNovedadesFiltro(
   grupo: GrupoNovedad,
   listarCompleto: () => Promise<ListarNovedadesCompletoActionResult>,
 ): NovedadesFiltro {
-  // SL-20 (R19): los filtros de provincia y cantón con los nombres de nivel del país de la empresa.
-  const etiquetas = useEtiquetasGeograficas();
+  // SLT-47 (design §5.3; R8): una lista de lugar por nivel del país de la empresa, rotulada con su tipo.
+  const niveles = useNivelesGeograficos();
   const [termino, setTermino] = useState("");
   const [seleccion, setSeleccion] = useState<FilterSelection>({});
   const [activos, setActivos] = useState<string[]>([]);
@@ -215,11 +215,13 @@ export function useNovedadesFiltro(
   }
 
   const declarados = useMemo(
-    () => construirFiltrosNovedades(grupo, conjunto, etiquetas),
-    [grupo, conjunto, etiquetas],
+    () => construirFiltrosNovedades(grupo, conjunto, niveles),
+    [grupo, conjunto, niveles],
   );
+  // SLT-47 — con sus opciones: el traductor de la URL las necesita para saber de qué lista es cada
+  // lugar, y su llegada (con el conjunto) es lo que dispara la activación tardía de la barra.
   const ofrecidos = useMemo(
-    () => declarados.map((f) => ({ key: f.key, label: f.label })),
+    () => declarados.map((f) => ({ key: f.key, label: f.label, options: f.options })),
     [declarados],
   );
   // En el orden en que se DECLARAN, no en el de los clics: asi los controles no bailan de sitio

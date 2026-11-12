@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { construirFiltrosEntregas } from "@/app/(app)/_components/entregas-filtros-def";
 import { construirFiltrosOrdenes } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
-import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+import { NIVELES_CR } from "../../fabricas/etiquetas-geograficas";
 
 // FICHA 355: aquí se importaban `CLAVE_ESTADO`, `ESTADOS_SATELITE`, `construirFiltrosSatelite`,
 // `seleccionAFiltroSatelite` y `ESTADOS_BODEGA_SATELITE` y NO se usaba ninguno: los casos de la
@@ -39,7 +39,7 @@ const CATALOGO: CatalogoFiltrosOrdenesDTO = {
 };
 
 function claves(facetas?: readonly ("zona" | "tienda" | "mensajero")[]): string[] {
-  return construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, facetas }).map((f) => f.key);
+  return construirFiltrosEntregas(CATALOGO, { niveles: NIVELES_CR, facetas }).map((f) => f.key);
 }
 
 describe("barra de entregas — facetas acotadas por el alcance", () => {
@@ -47,9 +47,9 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     expect(claves()).toEqual([
       "created",
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "tienda_id",
       "mensajero_id",
     ]);
@@ -63,9 +63,9 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     expect(declaradas).toEqual([
       "created",
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
     ]);
   });
 
@@ -76,14 +76,14 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     expect(declaradas).not.toContain("mensajero_id");
     // La geografía NO es una faceta del recorte: se ofrece siempre, y lo que la acota es el
     // catálogo (el servidor le entrega la de su zona).
-    expect(declaradas).toEqual(["created", "provincia_id", "canton_id", "distrito_id"]);
+    expect(declaradas).toEqual(["created", "nivel_1", "nivel_2", "nivel_3"]);
   });
 
   it("un filtro que no se declara tampoco se ofrece en el selector", () => {
     // El selector de «Filtros» se construye SOBRE las declaraciones (`filtros.map`), así que
     // esta es la misma lista. Se afirma para que nadie lo reintroduzca por otra vía.
     const declaraciones = construirFiltrosEntregas(CATALOGO, {
-      etiquetas: ETIQUETAS_CR,
+      niveles: NIVELES_CR,
       facetas: ["zona"],
     });
     expect(declaraciones.some((f) => f.label === "Tienda")).toBe(false);
@@ -99,7 +99,7 @@ describe("barra de órdenes — el rol acotado no elige la coordenada que ya tie
     incluirMensajero?: boolean;
     incluirSalioAReparto?: boolean;
   }): string[] {
-    return construirFiltrosOrdenes(CATALOGO, { ...opts, etiquetas: ETIQUETAS_CR }).map((f) => f.key);
+    return construirFiltrosOrdenes(CATALOGO, { ...opts, niveles: NIVELES_CR }).map((f) => f.key);
   }
 
   it("maestro/admin: la barra entera, con zona y con tienda", () => {
@@ -113,9 +113,9 @@ describe("barra de órdenes — el rol acotado no elige la coordenada que ya tie
       "zona_id",
       "mensajero_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
       "salio_a_reparto",
@@ -144,9 +144,9 @@ describe("barra de órdenes — el rol acotado no elige la coordenada que ya tie
     expect(declaradas).toEqual([
       "q",
       "zona_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
     ]);
   });

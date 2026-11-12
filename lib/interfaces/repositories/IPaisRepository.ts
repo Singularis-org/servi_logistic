@@ -109,4 +109,10 @@ export interface IPaisRepository {
 
   /** El país de la empresa, o `null` si la empresa no existe o no es visible en este contexto. */
   deLaEmpresa(organizacionId: string): Promise<PaisDTO | null>;
+
+  /**
+   * SLT-47 (design §5.4): los tipos de nivel del país de la empresa, por profundidad; `null` si la
+   * empresa no existe o no es visible en este contexto. Una sola consulta.
+   */
+  tiposDeLaEmpresa(organizacionId: string): Promise<TipoNivelDTO[] | null>;
 }

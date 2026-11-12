@@ -1,3 +1,4 @@
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
 import type { GestionCausaDevolucion, GestionResultado, RolValue } from "@prisma/client";
 import type {
   FilaBodegaSatelite,
@@ -302,11 +303,12 @@ export interface ListOrdenesWhere {
   mensajeroAsignadoId?: string | string[];
   // Feature 144: filtros de catalogo de la orden (columnas propias, sin JOIN).
   zonaId?: string | string[];
-  provinciaId?: string | string[];
-  cantonId?: string | string[];
-  // `distritoId` es NULLABLE en la tabla: `IN (...)` excluye las ordenes sin distrito
-  // (decision (f) del spec: no hay opcion "sin distrito").
-  distritoId?: string | string[];
+  /**
+   * SLT-47 (R11, R12): los ids de `lugar_id` TAL COMO LLEGAN. El repositorio los resuelve con el
+   * catalogo del pais de la empresa a «esos nodos y los de debajo» y filtra por el lugar de la orden
+   * (`whereLugarEn`). Si ninguno esta en el catalogo, cero filas, nunca «sin filtro».
+   */
+  lugarIds?: readonly string[];
   // Rango temporal YA calculado server-side (instantes UTC). `gte` inclusivo,
   // `lt` EXCLUSIVO (= comienzo del dia CR siguiente al `hasta` pedido).
   createdAt?: { gte?: Date; lt?: Date };
@@ -859,20 +861,17 @@ export interface RecepcionSateliteFiltro {
    * opciones salen ahora de la geografia de la ZONA del actor, que son ids. Vacio/ausente =
    * todas; se cruzan en AND entre si y con el resto.
    */
-  provinciaIds?: readonly string[];
-  cantonIds?: readonly string[];
+  /**
+   * SLT-47 (R11, R12): los ids de `lugar_id` TAL COMO LLEGAN; el repositorio los resuelve con el
+   * catalogo antes de armar el SQL. Vacio/ausente = todos; si ninguno esta en el catalogo, cero filas.
+   */
+  lugarIds?: readonly string[];
   /**
    * Pedido humano (2026-08-25) — mensajeros ASIGNADOS elegidos; vacio/ausente = todos. Va en
    * el mismo AND que la geografia. Una orden SIN mensajero queda fuera bajo este filtro
    * (`mensajero_asignado_id` es NULLABLE y `NULL IN (...)` no es cierto), igual que el distrito.
    */
   mensajeroIds?: readonly string[];
-  /**
-   * Distritos elegidos; vacio/ausente = todos. Con distritos elegidos, una orden SIN distrito
-   * queda fuera (`distrito_id` es NULLABLE y `NULL IN (...)` no es cierto) — el mismo trato
-   * que le da el listado de `/ordenes`.
-   */
-  distritoIds?: readonly string[];
   /**
    * Pedido humano (2026-08-19) — rango de creacion ya resuelto a instantes UTC por el
    * servicio (el atajo `7d`/`30d`… y las fechas calendario se traducen ALLI, con el huso de
@@ -1014,6 +1013,13 @@ export interface NovedadOrdenRow {
   cantonNombre: string;
   /** `distrito_id` es el UNICO FK geografico nullable -> `null` cuando la orden no lo tiene. */
   distritoNombre: string | null;
+  /**
+   * SLT-47 (R16; design §3.4) — la ruta del lugar de la orden, del nivel 1 al lugar (ids y nombres),
+   * calculada con el catalogo y `lugarDeLaOrden`. La usa el filtro de lugar por id en el cliente.
+   * Opcional (`?`) por el patron aditivo de este tipo: no rompe los fixtures que lo construyen sin
+   * ella; el repositorio SIEMPRE la emite.
+   */
+  lugarRuta?: PasoDeRuta[];
   /**
    * ⭑ FICHA 429 (R13/R15) — el SINPE de la bodega que cobra esta orden, YA RESUELTO por el
    * repositorio con `resolverSinpeBodega` (la del mensajero asignado; si no tiene, la de la orden).

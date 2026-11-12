@@ -121,7 +121,7 @@ describe("453/R7 · la version del formato, y que sirva para algo", () => {
     const sinVersion: Record<string, unknown> = { ...PAYLOAD };
     delete sinVersion.v;
     expect(vistaFiltroPayloadSchema.safeParse(sinVersion).success).toBe(false);
-    expect(vistaFiltroPayloadSchema.safeParse({ ...PAYLOAD, v: 2 }).success).toBe(false);
+    expect(vistaFiltroPayloadSchema.safeParse({ ...PAYLOAD, v: 3 }).success).toBe(false);
     expect(vistaFiltroPayloadSchema.safeParse({ ...PAYLOAD, v: 0 }).success).toBe(false);
   });
 
@@ -145,7 +145,7 @@ describe("453/R8 · un documento que no se puede leer se reporta ilegible, no se
   });
 
   it("⭑ una version DESCONOCIDA devuelve `null` — y no una lectura parcial", () => {
-    const delFuturo = { v: 2, termino: "san jose", activos: ["zona"], seleccion: { zona: ["z-1"] } };
+    const delFuturo = { v: 3, termino: "san jose", activos: ["zona"], seleccion: { zona: ["z-1"] } };
     const leido = leerPayloadGuardado(delFuturo);
     expect(leido).toBeNull();
     // ⚠️ La mutacion que este caso mata: leer «lo que se entienda» de un formato futuro. Si

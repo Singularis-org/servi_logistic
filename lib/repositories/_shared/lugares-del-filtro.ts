@@ -1,109 +1,98 @@
 import { Prisma } from "@prisma/client";
 
-import type { FiltroConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { PROFUNDIDAD_DEL_NIVEL, sqlLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { sqlLugarEn, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { nodo, nodosBajo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
-import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 
-// SLT-71 (design §3.2; R1, R3, R5, R7) — LAS FACETAS GEOGRAFICAS DE ANALITICA, RESUELTAS AL LUGAR DE
-// LA ORDEN.
+// SLT-71 (design §3.2) — EL FILTRO DE LUGAR, RESUELTO AL LUGAR DE LA ORDEN. SLT-47 (design §3.1) lo
+// generaliza: de tres facetas con nivel (`provincia_id`, `canton_id`, `distrito_id`) a UNA, `lugar_id`,
+// con los ids del lugar elegido en cualquier nivel del pais (2 a 10).
 //
-// Una faceta (`provincia_id`, `canton_id` o `distrito_id` del filtro) deja de ser «la columna del
-// nivel IN (...)» y pasa a ser «el lugar de la orden es uno de los ids pedidos o un nodo bajo ellos».
-// Los ids los calcula el dominio de SLT-44 sobre el catalogo del pais de la empresa (`nodosBajo`),
-// sin CTE recursiva (R15).
+// «El lugar de la orden es uno de los ids pedidos o un nodo bajo ellos». Los ids los calcula el dominio
+// de SLT-44 sobre el catalogo del pais de la empresa (`nodosBajo`), sin CTE recursiva (R15), y viajan a
+// la consulta como un unico parametro de tipo lista (`sqlLugarEn`, R11).
 //
 // Las dos funciones de en medio son PURAS: los constructores de condiciones de cada lectura siguen
 // siendo sincronos y se prueban sin base. La carga asincrona del catalogo vive en `lugaresDelFiltro`,
-// que la llama el metodo del repositorio, y SOLO si el filtro trae alguna faceta geografica (R5).
+// que la llama el metodo del repositorio, y SOLO si el filtro trae `lugar_id` (R5 de SLT-71).
+//
+// Ya no mira la profundidad (`PROFUNDIDAD_DEL_NIVEL`): el id es el lugar elegido, no una faceta con
+// nivel. La constante se queda en `lugar-orden.ts` hasta SLT-48.
 
-/** Las tres facetas geograficas del filtro de analitica. La entrada no cambia (R6). */
-export type FacetasGeograficas = Pick<FiltroConteoEntregas, "provincia_id" | "canton_id" | "distrito_id">;
+/** La entrada: los ids del lugar elegido. Ausente o vacia = sin filtro de lugar. */
+export interface FiltroDeLugar {
+  readonly lugar_id?: readonly string[];
+}
 
 /**
- * Por faceta pedida, los ids de su lugar: los validos de su nivel mas los nodos bajo ellos, sin
- * duplicados y ordenados. Una faceta ausente no tiene clave; una pedida sin ningun id valido es `[]`
- * y cuenta cero ordenes (R3), nunca «sin filtro».
+ * Los ids del lugar ya resueltos: los pedidos que estan en el catalogo, mas los nodos bajo ellos, sin
+ * duplicados y ordenados. Sin `lugar`, no hay filtro; `lugar: []` cuenta cero ordenes (R12), nunca
+ * «sin filtro».
  */
 export interface LugaresDelFiltro {
-  readonly provincia?: readonly string[];
-  readonly canton?: readonly string[];
-  readonly distrito?: readonly string[];
+  readonly lugar?: readonly string[];
 }
 
-/** Sin facetas geograficas: las condiciones de lugar no aportan nada (R5). */
-export const SIN_FACETAS_GEOGRAFICAS: LugaresDelFiltro = {};
+/** Sin filtro de lugar: las condiciones no aportan nada. */
+export const SIN_LUGAR: LugaresDelFiltro = {};
 
-/** Las facetas en el orden en que van en el `where`: provincia, canton, distrito (el de hoy, R2). */
-const FACETAS: readonly { nivel: NivelGeografico; clave: keyof FacetasGeograficas }[] = [
-  { nivel: "provincia", clave: "provincia_id" },
-  { nivel: "canton", clave: "canton_id" },
-  { nivel: "distrito", clave: "distrito_id" },
-];
-
-/** `undefined` o `[]` es «faceta no pedida», igual que hacia `enLista` con la columna. */
-function pedida(ids: readonly string[] | undefined): ids is readonly string[] {
-  return ids !== undefined && ids.length > 0;
-}
-
-/** Si el filtro trae alguna faceta geografica: solo entonces se carga el catalogo (R5). */
-export function tieneFacetasGeograficas(filtro: FacetasGeograficas): boolean {
-  return FACETAS.some((f) => pedida(filtro[f.clave]));
+/** `undefined` o `[]` es «sin filtro de lugar», igual que hacia `enLista` con la columna. */
+export function tieneLugar(filtro: FiltroDeLugar): boolean {
+  return filtro.lugar_id !== undefined && filtro.lugar_id.length > 0;
 }
 
 /**
- * Puro. Por cada faceta pedida:
- *  1. se queda con los ids que estan en el catalogo y cuya profundidad es la del nivel (R3);
- *  2. a cada valido le suma los nodos bajo el; une sin duplicados y ordena por id, para que el
- *     parametro sea estable;
- *  3. si no queda ninguno, la faceta queda como `[]`. Nunca se omite (R3).
+ * Puro (R11, R12). Los ids que estan en el catalogo, de cualquier profundidad, mas todos los nodos
+ * bajo ellos; sin duplicados y ordenados por id, para que el parametro sea estable. Un id que no esta
+ * en el catalogo (de otro pais, inexistente) no aporta; si no queda ninguno, `[]`.
  */
-export function resolverLugaresDelFiltro(cat: CatalogoGeografico, filtro: FacetasGeograficas): LugaresDelFiltro {
-  const lugares: { -readonly [K in keyof LugaresDelFiltro]: string[] } = {};
-  for (const { nivel, clave } of FACETAS) {
-    const ids = filtro[clave];
-    if (!pedida(ids)) continue;
-    const profundidad = PROFUNDIDAD_DEL_NIVEL[nivel];
-    const resueltos = new Set<string>();
-    for (const id of ids) {
-      const n = nodo(cat, id);
-      if (n === null || n.profundidad !== profundidad) continue;
-      resueltos.add(n.id);
-      for (const bajo of nodosBajo(cat, n.id)) resueltos.add(bajo.id);
-    }
-    lugares[nivel] = [...resueltos].sort();
+export function resolverLugar(cat: CatalogoGeografico, ids: readonly string[]): readonly string[] {
+  const resueltos = new Set<string>();
+  for (const id of ids) {
+    const n = nodo(cat, id);
+    if (n === null || resueltos.has(n.id)) continue;
+    resueltos.add(n.id);
+    for (const bajo of nodosBajo(cat, n.id)) resueltos.add(bajo.id);
   }
-  return lugares;
+  return [...resueltos].sort();
 }
 
 /**
- * Puro. Una condicion por faceta pedida, en el orden provincia, canton, distrito:
+ * Puro. A lo sumo una condicion:
  *  - con ids → `sqlLugarEn(ids)`;
  *  - con `[]` → `FALSE` (hoy, un `IN` con ids que no casan da cero filas; `FALSE` da lo mismo sin
- *    mandar un array vacio);
+ *    mandar un array vacio, R12);
  *  - ausente → nada.
  */
 export function condicionesDeLugar(lugares: LugaresDelFiltro): Prisma.Sql[] {
-  const condiciones: Prisma.Sql[] = [];
-  for (const { nivel } of FACETAS) {
-    const ids = lugares[nivel];
-    if (ids === undefined) continue;
-    condiciones.push(ids.length === 0 ? Prisma.sql`FALSE` : sqlLugarEn(ids));
-  }
-  return condiciones;
+  const ids = lugares.lugar;
+  if (ids === undefined) return [];
+  return [ids.length === 0 ? Prisma.sql`FALSE` : sqlLugarEn(ids)];
 }
 
 /**
- * Los lugares del filtro, cargando el catalogo de la empresa SOLO si hay alguna faceta geografica
- * (R5). El catalogo lo da el repositorio del llamador, uno por instancia (R13, R16); en plataforma
- * `deLaEmpresa` lanza `EmpresaNoResuelta` (R13).
+ * Puro. Lo mismo que `condicionesDeLugar`, como `where` de Prisma (el listado de `/ordenes`):
+ *  - con ids → `AND: [whereLugarEn(ids)]` (en `AND` y no como `OR` suelto: el `OR` del buscador
+ *    ocupa la misma clave);
+ *  - con `[]` → `id IN ()` (cero filas, R12);
+ *  - ausente → nada.
+ */
+export function whereDeLugares(lugares: LugaresDelFiltro): Prisma.OrdenWhereInput {
+  const ids = lugares.lugar;
+  if (ids === undefined) return {};
+  return ids.length === 0 ? { id: { in: [] } } : { AND: [whereLugarEn(ids)] };
+}
+
+/**
+ * Los lugares del filtro, cargando el catalogo de la empresa SOLO si trae `lugar_id`. El catalogo lo da
+ * el repositorio del llamador, uno por instancia (R35); en plataforma `deLaEmpresa` lanza
+ * `EmpresaNoResuelta` (R37).
  */
 export async function lugaresDelFiltro(
   catalogo: () => Pick<CatalogoGeograficoRepository, "deLaEmpresa">,
-  filtro: FacetasGeograficas,
+  filtro: FiltroDeLugar,
 ): Promise<LugaresDelFiltro> {
-  if (!tieneFacetasGeograficas(filtro)) return SIN_FACETAS_GEOGRAFICAS;
+  if (!tieneLugar(filtro)) return SIN_LUGAR;
   const { catalogo: cat } = await catalogo().deLaEmpresa();
-  return resolverLugaresDelFiltro(cat, filtro);
+  return { lugar: resolverLugar(cat, filtro.lugar_id ?? []) };
 }

@@ -60,7 +60,7 @@ const COLOR: FilterDef = {
 const FILTROS_BARRA: FilterDef[] = [COLOR];
 
 function payload(parcial: Partial<VistaFiltroPayload> = {}): VistaFiltroPayload {
-  return { v: 1, termino: "", activos: [], seleccion: {}, ...parcial };
+  return { v: 2, termino: "", activos: [], seleccion: {}, ...parcial };
 }
 
 function vista(

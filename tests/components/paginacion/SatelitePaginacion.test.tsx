@@ -130,6 +130,12 @@ vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
 });
+// SLT-47 (tanda 2; R1): las listas de lugar se rotulan solo con los niveles del país; el catálogo de
+// estos casos no los trae, así que los da el layout (aquí, el hook) con los de Costa Rica.
+vi.mock("@/hooks/use-niveles-geograficos", async () => {
+  const { NIVELES_CR } = await import("../../fabricas/etiquetas-geograficas");
+  return { useNivelesGeograficos: () => NIVELES_CR };
+});
 
 const enviarACentralMock = vi.mocked(enviarACentral);
 const recuperarABodegaMock = vi.mocked(recuperarABodega);
@@ -245,8 +251,7 @@ interface FiltroEntrada {
   estados?: string[];
   // Pedido humano (2026-08-19): las claves de la geografía son las de `/ordenes` y viajan por
   // ID. En este andamiaje el id de un cantón es su nombre (ver `catalogoSatelite`).
-  canton_id?: string[];
-  distrito_id?: string[];
+  lugar_id?: string[];
 }
 
 /**
@@ -257,11 +262,9 @@ interface FiltroEntrada {
 function filtrarComoElServidor(input: FiltroEntrada): RecepcionSateliteDTO[] {
   return CONJUNTO.filter((o) => {
     if (input.estados?.length && !input.estados.includes(o.estatusValue)) return false;
-    if (input.canton_id?.length && !input.canton_id.includes(o.cantonNombre)) return false;
-    if (input.distrito_id?.length) {
-      if (o.distritoNombre === null) return false;
-      if (!input.distrito_id.includes(o.distritoNombre)) return false;
-    }
+    // SLT-47: el lugar viaja como `lugar_id` (el nivel mas hondo elegido): la orden entra si su
+    // provincia, su canton o su distrito es uno de esos ids.
+    if (input.lugar_id?.length && ![o.provinciaNombre, o.cantonNombre, o.distritoNombre].some((id) => id !== null && input.lugar_id?.includes(id))) return false;
     return true;
   });
 }

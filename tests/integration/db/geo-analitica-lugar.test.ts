@@ -24,6 +24,7 @@ import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRep
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { lugaresDelFiltro } from "@/lib/repositories/_shared/lugares-del-filtro";
 import * as hoy from "@/scripts/geo-equivalencia/analitica-de-hoy";
+import { facetasDe, rawConLugar } from "@/scripts/geo-equivalencia/filtros-de-hoy";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_LARGO } from "./_fixtures/geo-71";
 import { comoDueno } from "./_fixtures/pais-20";
@@ -129,6 +130,30 @@ function consultaProductos(raw: object): ConsultaProductos {
   return p.consulta;
 }
 
+// SLT-47 — el filtro de hoy (`provincia_id`, `canton_id`, `distrito_id`) ya no entra por el borde: el
+// lado «hoy» lo recibe congelado (`conFacetasDeHoy`) y el «nuevo», traducido a `lugar_id` como lo
+// traduce la barra (`rawConLugar`). Es un cambio de ENTRADA: las aserciones son las de SLT-71.
+
+/** Las claves del `raw` que no son facetas geograficas de hoy. */
+function sinFacetas(raw: object): object {
+  const { provincia_id: _p, canton_id: _c, distrito_id: _d, ...resto } = raw as Record<string, unknown>;
+  return resto;
+}
+
+function consultaEntregasDeHoy(raw: object, actor: Actor = MAESTRO): ConsultaConteoEntregas {
+  return hoy.conFacetasDeHoy(consultaEntregas(sinFacetas(raw), actor), facetasDe(raw));
+}
+
+function consultaProductosDeHoy(raw: object): ConsultaProductos {
+  return hoy.conFacetasDeHoy(consultaProductos(sinFacetas(raw)), facetasDe(raw));
+}
+
+/** El `raw` de hoy con su lugar, traducido con el catalogo de la empresa del contexto. */
+async function aLugar(tx: TxDeTest, raw: object): Promise<object> {
+  const { catalogo } = await new CatalogoGeograficoRepository(tx as unknown as PrismaClient).deLaEmpresa();
+  return rawConLugar(catalogo, raw);
+}
+
 /** Las cinco lecturas de analitica: nombre, la nueva y la de hoy, sobre el mismo cliente. */
 const ANALITICA: readonly {
   nombre: string;
@@ -171,18 +196,18 @@ const COMPARTEN: readonly {
   {
     nombre: "productos",
     nueva: (c, raw) => new ConteoProductosRepository(c).contarProductos(consultaProductos(raw)),
-    deHoy: (c, raw) => hoy.contarProductosDeHoy(c, consultaProductos(raw)),
+    deHoy: (c, raw) => hoy.contarProductosDeHoy(c, consultaProductosDeHoy(raw)),
   },
   {
     nombre: "dinero",
     nueva: (c, raw) => new DineroProductosRepository(c).leerDineroPorOrden(consultaProductos(raw)),
-    deHoy: (c, raw) => hoy.dineroProductosDeHoy(c, consultaProductos(raw)),
+    deHoy: (c, raw) => hoy.dineroProductosDeHoy(c, consultaProductosDeHoy(raw)),
   },
   {
     nombre: "cohorte",
     // La cohorte exige rango: sin el, el borde responde `sin_rango` antes de llegar aqui.
     nueva: (c, raw) => ("rango" in raw ? new CohorteCargaRepository(c).contarCohortes(consultaEntregas(raw)) : null),
-    deHoy: (c, raw) => ("rango" in raw ? hoy.cohorteCargaDeHoy(c, consultaEntregas(raw)) : null),
+    deHoy: (c, raw) => ("rango" in raw ? hoy.cohorteCargaDeHoy(c, consultaEntregasDeHoy(raw)) : null),
   },
   {
     nombre: "hoy",
@@ -192,7 +217,7 @@ const COMPARTEN: readonly {
       return dia === null ? null : new ConteoHoyGestionRepository(c).contarDeHoy(q, dia);
     },
     deHoy: (c, raw) => {
-      const q = consultaEntregas(raw);
+      const q = consultaEntregasDeHoy(raw);
       const dia = consultaEntregas({ rango: "dia" }).rango;
       return dia === null ? null : hoy.conteoHoyGestionDeHoy(c, q, dia);
     },
@@ -235,15 +260,15 @@ async function compararEmpresa(tx: TxDeTest, e: EmpresaGeo71, actor: Actor = MAE
   return comoLaEmpresa(tx, e.base.base.empresaId, async () => {
     const difs: Diferencia[] = [];
     for (const f of filtrosDe(e)) {
+      const rawNuevo = await aLugar(tx, f.raw);
       for (const l of ANALITICA) {
-        const q = consultaEntregas(f.raw, actor);
-        const nueva = await l.nueva(cliente, q);
-        const deHoy = await l.deHoy(cliente, q);
+        const nueva = await l.nueva(cliente, consultaEntregas(rawNuevo, actor));
+        const deHoy = await l.deHoy(cliente, consultaEntregasDeHoy(f.raw, actor));
         if (JSON.stringify(nueva) !== JSON.stringify(deHoy)) difs.push({ lectura: l.nombre, filtro: f.nombre, nueva, deHoy });
       }
       if (actor !== MAESTRO) continue;
       for (const l of COMPARTEN) {
-        const nueva = await l.nueva(cliente, f.raw);
+        const nueva = await l.nueva(cliente, rawNuevo);
         const deHoy = await l.deHoy(cliente, f.raw);
         if (JSON.stringify(nueva) !== JSON.stringify(deHoy)) difs.push({ lectura: l.nombre, filtro: f.nombre, nueva, deHoy });
       }
@@ -256,11 +281,12 @@ async function compararEmpresa(tx: TxDeTest, e: EmpresaGeo71, actor: Actor = MAE
 async function totalesPorStatus(tx: TxDeTest, e: EmpresaGeo71, raw: object, cliente?: PrismaClient) {
   const c = cliente ?? (tx as unknown as PrismaClient);
   return comoLaEmpresa(tx, e.base.base.empresaId, async () => {
-    const q = consultaEntregas(raw);
+    const q = consultaEntregas(await aLugar(tx, raw));
+    const qHoy = consultaEntregasDeHoy(raw);
     const suma = (filas: readonly { conteo: number }[]) => filas.reduce((s, f) => s + f.conteo, 0);
     return {
       nueva: suma(await new ConteoPorStatusRepository(c).contarPorStatus(q)),
-      deHoy: suma(await hoy.contarPorStatusDeHoy(tx as unknown as PrismaClient, q)),
+      deHoy: suma(await hoy.contarPorStatusDeHoy(tx as unknown as PrismaClient, qHoy)),
     };
   });
 }
@@ -303,7 +329,7 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
       const tiendaId = e.cr.base.base.tiendaId;
       return comoLaEmpresa(tx, e.cr.base.base.empresaId, async () => {
         const q = consultaEntregas(
-          { provincia_id: [e.cr.base.base.geo.provinciaId], zona_id: [e.cr.base.base.zonas.norteId] },
+          { lugar_id: [e.cr.base.base.geo.provinciaId], zona_id: [e.cr.base.base.zonas.norteId] },
           { usuarioId: tiendaId, rol: "adminTienda" },
         );
         const repo = new CatalogoGeograficoRepository(tx as unknown as PrismaClient);
@@ -352,9 +378,12 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
       return comoLaEmpresa(tx, e.cr.base.base.empresaId, async () => {
         const salida: { nueva: unknown; deHoy: unknown }[] = [];
         for (const raw of casos) {
+          const rawNuevo = await aLugar(tx, raw);
           for (const l of ANALITICA) {
-            const q = consultaEntregas(raw);
-            salida.push({ nueva: await l.nueva(cliente, q), deHoy: await l.deHoy(cliente, q) });
+            salida.push({
+              nueva: await l.nueva(cliente, consultaEntregas(rawNuevo)),
+              deHoy: await l.deHoy(cliente, consultaEntregasDeHoy(raw)),
+            });
           }
         }
         return salida;
@@ -421,7 +450,7 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
       const { cliente, reg } = clienteEspia(tx);
       await comoLaEmpresa(tx, e.xa.base.base.empresaId, async () => {
         const repo = new ConteoPorStatusRepository(cliente);
-        const q = consultaEntregas({ provincia_id: [e.xa.base.base.geo.provinciaId] });
+        const q = consultaEntregas({ lugar_id: [e.xa.base.base.geo.provinciaId] });
         await repo.contarPorStatus(q);
         await repo.contarPorStatus(q);
       });
@@ -439,7 +468,7 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
     const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const cliente = tx as unknown as PrismaClient;
-      const q = consultaEntregas({ canton_id: [e.cr.base.base.geo.cantonId] });
+      const q = consultaEntregas({ lugar_id: [e.cr.base.base.geo.cantonId] });
       return comoPlataforma("SLT-71", "test: analitica con faceta en plataforma", async () => {
         const errores: unknown[] = [];
         for (const l of ANALITICA) {

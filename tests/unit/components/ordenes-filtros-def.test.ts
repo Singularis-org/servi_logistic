@@ -7,7 +7,7 @@ import {
 } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import { CREATED_PRESETS } from "@/lib/types/orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
-import { ETIQUETAS_CR, ETIQUETAS_XA } from "../../fabricas/etiquetas-geograficas";
+import { NIVELES_CR, NIVELES_XA_3 } from "../../fabricas/etiquetas-geograficas";
 
 // Feature 144 / TB3.1 (R51, R55, R56, R62) — declaracion de la barra de ordenes.
 
@@ -44,11 +44,11 @@ const CATALOGO: CatalogoFiltrosOrdenesDTO = {
 };
 
 function claves(incluirTienda: boolean): string[] {
-  return construirFiltrosOrdenes(CATALOGO, { etiquetas: ETIQUETAS_CR, incluirTienda }).map((f) => f.key);
+  return construirFiltrosOrdenes(CATALOGO, { niveles: NIVELES_CR, incluirTienda }).map((f) => f.key);
 }
 
 function porClave(clave: string, incluirTienda = true) {
-  const def = construirFiltrosOrdenes(CATALOGO, { etiquetas: ETIQUETAS_CR, incluirTienda }).find(
+  const def = construirFiltrosOrdenes(CATALOGO, { niveles: NIVELES_CR, incluirTienda }).find(
     (f) => f.key === clave,
   );
   if (!def) throw new Error(`no se declaro el filtro ${clave}`);
@@ -67,9 +67,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
       "zona_id",
       "mensajero_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
     ]);
@@ -80,9 +80,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
       "q",
       "zona_id",
       "mensajero_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
     ]);
@@ -102,9 +102,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
       "zona_id",
       "mensajero_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
     ]) {
       expect(porClave(clave).kind).toBe("multi");
     }
@@ -113,9 +113,9 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
   it("R55: cada filtro lleva su etiqueta visible", () => {
     expect(porClave("zona_id").label).toBe("Zona");
     expect(porClave("tienda_id").label).toBe("Tienda");
-    expect(porClave("provincia_id").label).toBe("Provincia");
-    expect(porClave("canton_id").label).toBe("Cantón");
-    expect(porClave("distrito_id").label).toBe("Distrito");
+    expect(porClave("nivel_1").label).toBe("Provincia");
+    expect(porClave("nivel_2").label).toBe("Cantón");
+    expect(porClave("nivel_3").label).toBe("Distrito");
     expect(porClave("created").label).toBe("Fecha de creación");
     expect(porClave("mensajero_id").label).toBe("Mensajero");
   });
@@ -130,8 +130,8 @@ describe("construirFiltrosOrdenes — filtros declarados (R55)", () => {
 
 describe("construirFiltrosOrdenes — cadena geografica declarada (R56)", () => {
   it("R56: canton depende de provincia y distrito depende de canton", () => {
-    expect(porClave("canton_id").dependsOn).toBe("provincia_id");
-    expect(porClave("distrito_id").dependsOn).toBe("canton_id");
+    expect(porClave("nivel_2").dependsOn).toBe("nivel_1");
+    expect(porClave("nivel_3").dependsOn).toBe("nivel_2");
   });
 
   it("el filtro de MENSAJERO depende de la ZONA, como el canton de la provincia", () => {
@@ -150,11 +150,11 @@ describe("construirFiltrosOrdenes — cadena geografica declarada (R56)", () => 
   it("R56: zona, tienda y provincia NO dependen de nadie", () => {
     expect(porClave("zona_id").dependsOn).toBeUndefined();
     expect(porClave("tienda_id").dependsOn).toBeUndefined();
-    expect(porClave("provincia_id").dependsOn).toBeUndefined();
+    expect(porClave("nivel_1").dependsOn).toBeUndefined();
   });
 
   it("R56: cada canton lleva su provincia como `parentValue`", () => {
-    expect(porClave("canton_id").options).toEqual([
+    expect(porClave("nivel_2").options).toEqual([
       { value: "c1", label: "Central", parentValue: "p1" },
       { value: "c2", label: "Escazú", parentValue: "p1" },
       { value: "c3", label: "Alajuela Central", parentValue: "p2" },
@@ -162,7 +162,7 @@ describe("construirFiltrosOrdenes — cadena geografica declarada (R56)", () => 
   });
 
   it("R56: cada distrito lleva su canton como `parentValue`", () => {
-    expect(porClave("distrito_id").options).toEqual([
+    expect(porClave("nivel_3").options).toEqual([
       { value: "d1", label: "Carmen", parentValue: "c1" },
       { value: "d2", label: "San Rafael", parentValue: "c2" },
     ]);
@@ -245,7 +245,7 @@ describe("construirFiltrosOrdenes — catalogo vacio (R64)", () => {
       // TODOS quiere decir todos: las dos claves que solo se declaran a peticion
       // —«Eliminadas» y, desde la ficha 370, «Salida a reparto»— se piden aqui, porque si
       // no el censo diria "todos" contando nueve de once.
-      { incluirTienda: true, incluirEliminados: true, incluirSalioAReparto: true, etiquetas: ETIQUETAS_CR },
+      { incluirTienda: true, incluirEliminados: true, incluirSalioAReparto: true, niveles: NIVELES_CR },
     );
     expect(defs).toHaveLength(11);
     for (const def of defs.filter((d) => d.kind === "multi")) {
@@ -274,7 +274,7 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
 
   it("`incluirReasignables: false` (adminTienda) cae SOLO esa clave", () => {
     const claves = construirFiltrosOrdenes(CATALOGO, {
-      etiquetas: ETIQUETAS_CR,
+      niveles: NIVELES_CR,
       incluirTienda: false,
       incluirReasignables: false,
     }).map((f) => f.key);
@@ -282,15 +282,15 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
       "q",
       "zona_id",
       "mensajero_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
     ]);
   });
 
   it("se declara por omision (no hay que pedirlo para maestro/admin)", () => {
-    const claves = construirFiltrosOrdenes(CATALOGO, { etiquetas: ETIQUETAS_CR, incluirTienda: true }).map(
+    const claves = construirFiltrosOrdenes(CATALOGO, { niveles: NIVELES_CR, incluirTienda: true }).map(
       (f) => f.key,
     );
     expect(claves).toContain("reasignables");
@@ -300,7 +300,7 @@ describe("construirFiltrosOrdenes — filtro REASIGNABLES", () => {
 describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
   it("cae SOLO esa clave cuando el rol no lo recibe (`incluirMensajero: false`)", () => {
     const claves = construirFiltrosOrdenes(CATALOGO, {
-      etiquetas: ETIQUETAS_CR,
+      niveles: NIVELES_CR,
       incluirTienda: true,
       incluirMensajero: false,
     }).map((f) => f.key);
@@ -309,9 +309,9 @@ describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
       "q",
       "zona_id",
       "tienda_id",
-      "provincia_id",
-      "canton_id",
-      "distrito_id",
+      "nivel_1",
+      "nivel_2",
+      "nivel_3",
       "created",
       "reasignables",
     ]);
@@ -326,8 +326,8 @@ describe("construirFiltrosOrdenes — filtro por MENSAJERO", () => {
 
 describe("SL-20/R19 — los filtros geográficos llevan los nombres de nivel del país de la empresa", () => {
   it("con un país de prueba, «Departamento», «Municipio» y «Aldea», con su buscador", () => {
-    const defs = construirFiltrosOrdenes(CATALOGO, { incluirTienda: true, etiquetas: ETIQUETAS_XA });
-    const geo = ["provincia_id", "canton_id", "distrito_id"].map((k) => defs.find((f) => f.key === k));
+    const defs = construirFiltrosOrdenes(CATALOGO, { incluirTienda: true, niveles: NIVELES_XA_3 });
+    const geo = ["nivel_1", "nivel_2", "nivel_3"].map((k) => defs.find((f) => f.key === k));
     expect(geo.map((f) => f?.label)).toEqual(["Departamento", "Municipio", "Aldea"]);
     expect(geo.map((f) => f?.searchPlaceholder)).toEqual([
       "Buscar departamento…",

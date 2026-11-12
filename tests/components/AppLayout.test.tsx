@@ -168,13 +168,16 @@ const { etiquetasDeEmpresaMock, propsDelProveedorEtiquetas } = vi.hoisted(() => 
   propsDelProveedorEtiquetas: [] as { etiquetas: unknown }[],
 }));
 vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
-  construirPaisService: () => ({ etiquetasDeEmpresa: etiquetasDeEmpresaMock }),
+  // SLT-47 — el layout también pide los niveles del país; el doble los devuelve vacíos (este archivo
+  // no afirma sobre ellos) para que `nivelesDelActor` no caiga en su `console.error`.
+  construirPaisService: () => ({ etiquetasDeEmpresa: etiquetasDeEmpresaMock, nivelesDeEmpresa: async () => [] }),
 }));
 vi.mock("@/providers/EtiquetasGeograficasProvider", () => ({
   EtiquetasGeograficasProvider: ({ etiquetas, children }: { etiquetas: unknown; children: ReactNode }) => {
     propsDelProveedorEtiquetas.push({ etiquetas });
     return <>{children}</>;
   },
+  NivelesGeograficosProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 // Por defecto, alguien que no ha decidido nada: la preferencia «no puesta» (422/R2).
