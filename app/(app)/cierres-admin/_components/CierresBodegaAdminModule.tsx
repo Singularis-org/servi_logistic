@@ -540,7 +540,9 @@ export function CierresBodegaAdminModule({
         // y, con permiso, `ConciliacionAcciones` tal cual (ficha 431: mismo botón para la misma fila).
         <DetalleCierreBodegaAbierto
           detalle={detalle}
-          audiencia="central"
+          // M1 (ficha 431/481): la audiencia la decide el servidor (`esAccesoTotal`) y entra por
+          // prop; un literal le abriría a un no-admin lo que es solo de la central (Fulfillment).
+          audiencia={audiencia === "admin" ? "central" : "satelite"}
           conciliacion={
             // R112 — sin permiso no se monta: el pie queda solo con «Cerrar».
             puedeConciliar ? (

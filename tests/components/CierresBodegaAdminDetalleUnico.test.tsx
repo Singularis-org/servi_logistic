@@ -190,14 +190,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function montar(puedeConciliar = true) {
+function montar(puedeConciliar = true, audiencia: "admin" | "satelite" | "sin prop" = "admin") {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <CierresBodegaAdminModule
         pendientes={paginaInicial([PENDIENTE])}
         historico={paginaInicial([RECIBIDO])}
         puedeConciliar={puedeConciliar}
-        audiencia="admin"
+        {...(audiencia === "sin prop" ? {} : { audiencia })}
       />
     </SWRConfig>,
   );
@@ -395,5 +395,29 @@ describe("SLT-111 R267 — el reparto del servidor llega a «Dinero» del cierre
     const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
     expect(reparto.textContent).toContain("Debe llegar a la central ₡30.700");
     expect(reparto.textContent).not.toContain("%");
+  });
+});
+
+// SLT-107 M1 (review vuelta 1, fichas 431/481): la audiencia del detalle de bodega sale de la prop
+// `audiencia` que decide el servidor, no de un literal. Un `audiencia="central"` escrito a mano le
+// enseñaría a un no-admin el fulfillment (R51) y la franja de la central: estos casos caen.
+describe("SLT-107 M1 — la audiencia del detalle de bodega sigue a la prop, no a un literal", () => {
+  async function gestionesDeAna(audiencia: "admin" | "satelite" | "sin prop") {
+    const user = montar(false, audiencia);
+    const dialogo = await abrirPendiente(user);
+    await user.click(within(dialogo).getByRole("tab", { name: "Gestiones (2)" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-ANA · Laura Vega" }));
+    return dialogo;
+  }
+
+  it("admin: ve el fulfillment de la fila", async () => {
+    const dialogo = await gestionesDeAna("admin");
+    expect(within(dialogo).getByRole("region", { name: /^Fulfillment · se cobró al crear la orden/ })).toBeTruthy();
+  });
+
+  it.each([["satelite"], ["sin prop"]] as const)("no-admin (%s): sin fulfillment y con la franja de la satélite", async (aud) => {
+    const dialogo = await gestionesDeAna(aud);
+    expect(within(dialogo).queryByRole("region", { name: /^Fulfillment/ })).toBeNull();
+    expect(within(dialogo).getByRole("status").textContent).toContain("la central aún no marca el dinero recibido");
   });
 });

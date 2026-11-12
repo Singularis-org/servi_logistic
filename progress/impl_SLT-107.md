@@ -340,3 +340,27 @@ satélite, con la deuda R190/R191 cubierta; 4/4 mutaciones matadas; 40/40 archiv
 ## Veredicto
 
 T0-T4 hechos (servidor en las tandas 1-2, pantalla en la 3); quedan T5 (gate) y T6 (Preview con Carlos).
+
+## Sync con SLT-109 y M1 (2026-11-12)
+
+- Merge `origin/dev` (SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página»), commit `1037ed2a`.
+  Un conflicto: `tests/unit/guards/liquidacion-money-safe.test.ts` (lista de rutas del censo): se
+  conservan las dos entradas (`DetalleCierreBodegaAbierto.tsx` de SLT-107 y `CorregirCierre.tsx`
+  de SLT-109). Lo demás (`detalle-cierre-vista.ts`, `CierresDescarga*.test.tsx`) mezcló solo. Sin
+  cambios en `prisma/`: ni migraciones ni `prisma generate`.
+- M1 de la review: `CierresBodegaAdminModule.tsx` pasa `audiencia={audiencia === "admin" ? "central" : "satelite"}`
+  al detalle de bodega en lugar del literal `"central"` (fichas 431/481; default `satelite`, falla cerrado).
+  - Test: `tests/components/CierresBodegaAdminDetalleUnico.test.tsx > SLT-107 M1` (admin ve
+    fulfillment; `satelite` y sin prop no lo ven y leen «la central aún no marca…»). Mutación
+    (volver al literal `"central"`): 2 rojos. Restaurado.
+  - `tests/components/CierresBodegaAdminRefresco.test.tsx`: su montaje era de la central sin
+    `audiencia`; ahora con el cambio caía a satélite y no ofrecía «Marcar recibido». Se le pasa
+    `audiencia="admin"` (igual que los demás montajes del módulo).
+- Comandos (contra `slt107_solicitados`):
+  - `pnpm run typecheck` → exit 0.
+  - `eslint` de los 4 archivos tocados → sin issues.
+  - `vitest run` (conflicto + guardias de superficies + `CierresDescarga*` + `CierresBodegaAdmin*` +
+    detalle/cola/consolidación de bodega + paginación + `tests/unit/descarga` + servicios de bodega
+    + `satelite-cierre-bodega-lectura.int`) → 69 archivos, 869/869 pasados; la integración, 11/11 ejecutados (no saltados).
+- `node scripts/tamano-pr.mjs` → 42/40 archivos, 3018 líneas (aceptado por el humano a 40/40; ahora 2 más).
+- Veredicto: sync con SLT-109 limpio y M1 cerrado con test que mata el literal.
