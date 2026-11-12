@@ -32,7 +32,7 @@ avisa.
   `CierresBodegaAdminService` o un `ListarConsolidacionServiceResult` tipado (dobles incluidos). Si
   aparece un archivo fuera de `## Archivos esperados`, se añade aquí antes de seguir. **Hecho:** lista
   en `progress/impl_SLT-107.md`.
-- [ ] **T0.2** [P] — Grep en `tests/` y `e2e/` (incluido `e2e/_wallet-iva-sl39-siembra.ts`) de lo que
+- [x] **T0.2** [P] — Grep en `tests/` y `e2e/` (incluido `e2e/_wallet-iva-sl39-siembra.ts`) de lo que
   desaparece de la pestaña «Solicitados»: `CierreBodegaFacturaResumen` dentro de la cola, los
   comprobantes de «Cierres de bodega solicitados» y la página propia de `CierresBodegaSolicitadosLista`;
   y de las guardias que leen `CierresBodegaAdminModule.tsx` o `ConsolidacionBodegaModule.tsx`
@@ -86,7 +86,7 @@ avisa.
 
 ## T2 — Lógica pura de la cola (`frontend_dev`, depende de T1.3)
 
-- [ ] **T2.1** — `detalle-cierre-vista.ts`: `CifraId` + `porLlegar`, `recibido30Dias`,
+- [x] **T2.1** — `detalle-cierre-vista.ts`: `CifraId` + `porLlegar`, `recibido30Dias`,
   `faltaPorRecibir`. `cola-cierres-vista.ts`: `COLUMNAS_SOLICITADOS_SATELITE`, `columnasCola("bodega",
   "satelite", pestana)` según la pestaña, `tarjetasSolicitados(resumen)`. `cola-cierres-labels.ts`:
   los textos de `design.md > cola-cierres-vista.ts y cola-cierres-labels.ts` (R286, R288, R289).
@@ -96,17 +96,17 @@ avisa.
 
 ## T3 — Componentes (`frontend_dev`, depende de T2)
 
-- [ ] **T3.1** — `DetalleCierreBodegaAbierto.tsx` (nuevo) con el bloque de `CierresBodegaAdminModule`
+- [x] **T3.1** — `DetalleCierreBodegaAbierto.tsx` (nuevo) con el bloque de `CierresBodegaAdminModule`
   movido sin cambiar su JSX; `CierresBodegaAdminModule` lo monta con `audiencia="central"` (R295).
   **Hecho:** `CierresBodegaAdminDetalleUnico`, `CierresBodegaAdminDeepLink` y
   `CierresBodegaAdminRefresco` verdes **sin editarlos**.
-- [ ] **T3.2** — `CifrasCierre`: `totales` opcional. `ColaCierres`: `solicitados` como objeto,
+- [x] **T3.2** — `CifrasCierre`: `totales` opcional. `ColaCierres`: `solicitados` como objeto,
   `PanelSolicitados`, `TablaColaSolicitados` (celdas de bodega compartidas + Recaudado + «Ver»), pie de
   «Solicitados» (R286, R288, R289). **Hecho:** `tests/components/ColaCierresConsolidar.test.tsx`:
   tarjetas, columnas y celdas con literales («—» sin marca, Falta resaltada solo > 0, signo de «Debe
   llegar»), nombre accesible de «Ver», región, carga, error, vacío, pie y paginación, sin aviso ni
   botón; lo de R201 se reescribe a R289.
-- [ ] **T3.3** — `CierresBodegaSolicitadosLista.tsx`: `leerSolicitados(page, pageSize, filtros)`
+- [x] **T3.3** — `CierresBodegaSolicitadosLista.tsx`: `leerSolicitados(page, pageSize, filtros)`
   exportada (la lista de hoy la sigue usando sin filtros para el caso sin zona).
   `ConsolidacionBodegaModule`: estado y SWR de «Solicitados» con filtros, conteo del servidor, filtros
   que devuelven las dos pestañas a la página 1, «Ver» con `verCierreBodegaDetalle`, toasts de R293,
@@ -123,15 +123,15 @@ avisa.
 
 ## T4 — Tests y E2E existentes (`frontend_dev`, depende de T3)
 
-- [ ] **T4.1** — Adaptar `tests/components/paginacion/ColasPaginacion.test.tsx` (la paginación de
+- [x] **T4.1** — Adaptar `tests/components/paginacion/ColasPaginacion.test.tsx` (la paginación de
   «Solicitados» ahora la monta el módulo; mismo nombre), `tests/components/descarga/CierresDescargaColumnas.test.tsx`
   (doble tipado con `solicitadosResumen`) y `tests/unit/descarga/censo-tablas.ts` si la guardia lo pide.
   **Hecho:** verdes; cada aserción que cambia de localizador conserva su número.
-- [ ] **T4.2** — `e2e/cierre-bodega-satelite.spec.ts`: la satélite ve «Solicitados» con sus tres
+- [x] **T4.2** — `e2e/cierre-bodega-satelite.spec.ts`: la satélite ve «Solicitados» con sus tres
   tarjetas y la fila del cierre recién solicitado; filtra por fecha y la fila sale y el conteo baja
   (R52, R290); «Ver» abre el detalle en lectura (R50). **Hecho:** verde en local con base desechable y
   `NEXT_PUBLIC_APP_URL` como en `gate.yml`.
-- [ ] **T4.3** — `e2e/cierres-rediseno.spec.ts`: la satélite abre su cierre de bodega (uno del modelo
+- [x] **T4.3** — `e2e/cierres-rediseno.spec.ts`: la satélite abre su cierre de bodega (uno del modelo
   viejo y otro del nuevo) y cada cifra del detalle es igual al céntimo al literal escrito a mano y a lo
   que ve la central del mismo cierre; ninguna celda de fulfillment (R77, R51). **Hecho:** verde en
   local; mutación `paraLaCentral` → `totalPagoMensajero` en la cabecera lo pone rojo.
@@ -225,6 +225,15 @@ avisa.
 - T1.3 (2026-11-12): doble tipado de `listarConsolidacion` que rompe el typecheck con el campo nuevo
   obligatorio `solicitadosResumen` (una línea, como `CierresDescargaColumnas.test.tsx`):
   - `tests/components/descarga/CierresDescarga.test.tsx`
+- T0.2 (2026-11-12, frontend_dev): la lista de hoy se queda para la satélite sin zona (R202), así que lo
+  que la nombra no cambia. Cambian (una línea o un localizador cada uno):
+  - `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx` (prop nueva obligatoria `solicitadosResumen`)
+  - `tests/components/paginacion/BajoRiesgoPaginacion.test.tsx` («Solicitados» vuelve a ser `table`; la fila
+    se reconoce por su folio y el archivo, sin cambios, por el motivo)
+  - `tests/unit/guards/liquidacion-money-safe.test.ts` (censo: `DetalleCierreBodegaAbierto.tsx`)
+  - Quedan sin tocar: `CierresBodegaSolicitadosLista.tsx` (el módulo lee «Solicitados» con su propio
+    `leerSolicitados` con filtros: un archivo menos, 40/40) y `tests/unit/descarga/censo-tablas.ts` (la
+    guardia no lo pidió).
 - `e2e/cierre-bodega-satelite.spec.ts`
 - `e2e/cierres-rediseno.spec.ts`
 - `progress/impl_SLT-107.md`

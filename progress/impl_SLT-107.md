@@ -217,7 +217,126 @@ T1 completa: permiso de lectura de la satélite con el filtro de zona en el `WHE
 SLT-110/SLT-111 y `solicitadosResumen`, con 6/6 mutaciones matadas; el único rojo (guardia 420) viene
 de `dev`.
 
+## Tanda 3 (frontend_dev, 2026-11-12): T0.2, T2, T3 y T4
+
+Grafo: no consultado; Grep/Read (los archivos de las tandas anteriores no estaban indexados). Primer
+plano, sin subagentes. Worktree limpio y con `origin/dev` dentro al empezar.
+
+### Qué se hizo
+
+- **T0.2** La lista de hoy (`CierresBodegaSolicitadosLista`) se queda para la satélite sin zona (R202):
+  lo que la nombra no cambia. Cambian `CierreIngresoBodegaTarjetaListado.test.tsx` (prop nueva),
+  `BajoRiesgoPaginacion.test.tsx` («Solicitados» vuelve a ser `table`) y `liquidacion-money-safe.test.ts`
+  (censo del archivo nuevo). Anotado en `tasks.md > Archivos esperados`.
+- **T2.1** `CifraId` + `porLlegar`, `recibido30Dias`, `faltaPorRecibir`; `COLUMNAS_SOLICITADOS_SATELITE`
+  y `columnasCola("bodega", "satelite", pestana)` según la pestaña; `tarjetasSolicitados(resumen)`; los
+  textos de «Solicitados» en `cola-cierres-labels.ts` (más `CIFRAS_SOLICITADOS_LABEL`, el nombre del
+  grupo de tarjetas, que el design no nombraba).
+- **T3.1** `DetalleCierreBodegaAbierto.tsx` con el bloque de `CierresBodegaAdminModule` movido (mismo
+  JSX; `quienMiraEsCentral={audiencia === "central"}` en vez de la `audiencia` de la descarga: el módulo
+  central solo se monta con acceso total, y el servidor ya anula el fulfillment de quien no lo es).
+  `CierresBodegaAdminDetalleUnico`, `CierresBodegaAdminDeepLink` y `CierresBodegaAdminRefresco` verdes
+  sin editarlos.
+- **T3.2** `CifrasCierre.totales` opcional; `ColaCierres`: `solicitados` como objeto, `PanelSolicitados`,
+  tabla con `celdaBodega` (extraída de `TablaColaBodega`) + Recaudado + un único «Ver», pie con
+  `PIE_SOLICITADOS` y la paginación de «Solicitados».
+- **T3.3** `ConsolidacionBodegaModule`: SWR de «Solicitados» con filtros (prefijo de clave de hoy, nula
+  sin zona), conteo del `total` filtrado, filtro → las dos páginas a 1, «Ver» con
+  `verCierreBodegaDetalle`, toasts de R293, `DetalleCierreBodegaAbierto` audiencia satélite sin
+  conciliación, «Ver su cierre» → cerrar + `router.push`. `page.tsx` pasa `solicitadosResumen`.
+  **Desvío del design (tamaño):** `leerSolicitados(page, pageSize, filtros)` vive en el módulo y no
+  exportada desde `CierresBodegaSolicitadosLista.tsx`: tocar la lista era el archivo 41. La lista sigue
+  leyendo sin filtros y conserva sus literales de región, vacío y error (los mismos textos que
+  `REGION_/VACIO_/ERROR_SOLICITADOS`).
+- **T4.1** `ColasPaginacion` y las dos de descarga: solo la prop nueva; `BajoRiesgoPaginacion`: la fila
+  de «Solicitados» se reconoce por su folio y el archivo (sin cambios) por el motivo; mismas aserciones.
+- **T4.2** `e2e/cierre-bodega-satelite.spec.ts`: describe nuevo con dos cierres de bodega (uno llevado a
+  hace 20 días en la base): tarjetas a mano, columnas y celdas, «Últimos 7 días» → «Solicitados 1» y
+  la fila vieja fuera, tarjetas iguales (R68); «Ver» en lectura; la base sin cambios.
+- **T4.3** `e2e/cierres-rediseno.spec.ts`: satélite B6 (modelo nuevo) y un describe nuevo del modelo
+  viejo; cuatro cifras + «Lo que va a la central» iguales a los literales y a la central; sin fulfillment
+  ni escrituras; pie solo «Cerrar».
+
+### Archivos creados/modificados (tanda 3)
+
+Producción: `components/private/cierres/detalle/DetalleCierreBodegaAbierto.tsx` (nuevo),
+`components/private/cierres/detalle/detalle-cierre-vista.ts`, `components/private/cierres/detalle/CifrasCierre.tsx`,
+`components/private/cierres/cola/ColaCierres.tsx`, `components/private/cierres/cola/cola-cierres-vista.ts`,
+`components/private/cierres/cola/cola-cierres-labels.ts`, `app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx`,
+`app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx`, `app/(app)/cierres-admin/page.tsx`.
+
+Tests: `tests/unit/utils/cola-cierres-vista.test.ts`, `tests/components/ColaCierresConsolidar.test.tsx`,
+`tests/components/ConsolidacionBodegaRefresco.test.tsx`, `tests/components/paginacion/ColasPaginacion.test.tsx`,
+`tests/components/paginacion/BajoRiesgoPaginacion.test.tsx`, `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx`,
+`tests/components/descarga/CierresDescarga.test.tsx`, `tests/components/descarga/CierresDescargaColumnas.test.tsx`,
+`tests/unit/guards/liquidacion-money-safe.test.ts`, `e2e/cierre-bodega-satelite.spec.ts`, `e2e/cierres-rediseno.spec.ts`.
+
+### Mapa R → test (pantalla)
+
+| R | Test |
+|---|---|
+| R32 | `ColaCierresConsolidar.test.tsx` «R32: ni las tarjetas de «A consolidar», ni el aviso, ni el botón» |
+| R49 | `cola-cierres-vista.test.ts` «columnasCola · «Solicitados»…»; `ColaCierresConsolidar.test.tsx` (tarjetas y cabeceras); E2E satélite «SLT-107» |
+| R50 | `ConsolidacionBodegaRefresco.test.tsx` (d), (e); E2E satélite «SLT-107» («Ver» en lectura) |
+| R51 | `ConsolidacionBodegaRefresco.test.tsx` (d) R51; E2E `cierres-rediseno` (B6 y modelo viejo) |
+| R52 | `ConsolidacionBodegaRefresco.test.tsx` (a) y «R52: la descarga… y la lista llevan el mismo filtro»; E2E satélite («Últimos 7 días») |
+| R68 | E2E satélite (tarjetas iguales tras filtrar) |
+| R71 | `cola-cierres-vista.test.ts` «R71: un monto negativo pasa con su signo»; `ColaCierresConsolidar.test.tsx` (celdas con literales) |
+| R77 | E2E `cierres-rediseno` «satélite, B6…» y «SLT-107 — … modelo viejo…» |
+| R202 | `ConsolidacionBodegaRefresco.test.tsx` R202 y (g) |
+| R286 | `cola-cierres-vista.test.ts` «tarjetasSolicitados» (6 casos); `ColaCierresConsolidar.test.tsx` «tarjetas» (4 casos) |
+| R288 | `cola-cierres-vista.test.ts`; `ColaCierresConsolidar.test.tsx` «tabla» (5 casos) |
+| R289 | `ColaCierresConsolidar.test.tsx` «estados y pie» (6 casos); `ConsolidacionBodegaRefresco.test.tsx` «R289 (sustituye a R201)»; `BajoRiesgoPaginacion` y `ColasPaginacion` (paginación) |
+| R290 | `ConsolidacionBodegaRefresco.test.tsx` (c); E2E satélite («Solicitados 2» → «Solicitados 1») |
+| R291 | `ConsolidacionBodegaRefresco.test.tsx` (a) deuda R191, (b) deuda R190 |
+| R292 | `ConsolidacionBodegaRefresco.test.tsx` (d) ×3 y «Cerrar» |
+| R293 | `ConsolidacionBodegaRefresco.test.tsx` (e) ×4 |
+| R294 | `ConsolidacionBodegaRefresco.test.tsx` (f) |
+| R295 | `CierresBodegaAdminDetalleUnico`, `CierresBodegaAdminDeepLink`, `CierresBodegaAdminRefresco` verdes sin editar |
+| R296 | `cola-cierres-vista.test.ts` «R296: «A consolidar», la central y los mensajeros no cambian»; `ColaCierresBodega.test.tsx` y los casos de «A consolidar» sin cambios |
+
+(h) «tras solicitar, el `mutate` sigue revalidando las dos listas»: el caso SL-44 de
+`ConsolidacionBodegaRefresco.test.tsx`, sin cambios, pasa con la clave nueva.
+
+### Mutaciones (de una en una: copia, aplicar, correr, restaurar, `cmp`)
+
+| # | Mutación | Resultado | Rojo en |
+|---|---|---|---|
+| V1 | `tarjetasSolicitados`: `aviso: cierres >= 0` | MATADA | «PA2: las tres también en 0.00…» (vista) y «PA2: también en 0.00…» (componente) |
+| V2 | `aplicarFiltros` sin `setPageSolicitados(1)` | MATADA | (a) R291 deuda R191 |
+| V3 | `DetalleCierreBodegaAbierto`: `quienMiraEsCentral={true}` | MATADA | (d) R51 |
+| E1 | `cifrasBodega`: `paraLaCentral` → `totalPagoMensajero` (E2E, `next dev`) | MATADA | `cierres-rediseno` «satélite, B6…» (`-"₡7.680" +"₡2.200"`) y «modelo viejo» (`-"₡7.000" +"₡1.500"`) |
+
+Cada corrida mutada: `MUTACION_APLICADA`, los demás casos *passed* y `RESTAURADO` (cmp). Tras
+restaurar, `git diff` solo trae los cambios de la tanda.
+
+### Salidas
+
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit`): `TC_EXIT=0`, 0 errores.
+- Lint (`npx eslint` de los archivos tocados): `LINT_EXIT=0`.
+- `vitest related --run` de lo tocado (base `slt107_solicitados`): `Test Files 57 passed (57)`,
+  `Tests 1125 passed (1125)`, `RELATED_EXIT=0`.
+- Guardias (`pnpm run test:guardias`): `Test Files 1 failed | 343 passed (344)`, `Tests 4 failed | 4851
+  passed | 1 skipped`. Las 4 son la guardia 420 (`dependencias-declaradas-presentes`), previa y de `dev`
+  (ver tanda 2). La de `liquidacion-money-safe` (censo) cayó al crear `DetalleCierreBodegaAbierto.tsx` y
+  quedó verde al censarlo.
+- E2E (candado tomado y liberado; puerto 3000; base desechable nueva `slt107_e2e` con `migrate deploy` +
+  `db:seed` + la columna `cierre_dia.pago_independiente_efectivo` añadida SOLO a esa base, por el cliente
+  compartido de SLT-123; `NEXT_PUBLIC_APP_URL=http://localhost:3000`; `E2E_SERVIDOR=dev`):
+  - `cierres-rediseno.spec.ts`: 16/16 *passed* (incluidos los dos nuevos).
+  - `cierre-bodega-satelite.spec.ts`: 6/6 *passed* en la tercera corrida. Las dos primeras cayeron por
+    el *timeout* de 30 s mientras `next dev` compilaba por primera vez una ruta (corrida 1: «1 —» al
+    pulsar «Bodega»; corrida 2: «1b —» en `/wallet/satelites`, que esta ficha no toca); el describe
+    SLT-107 pasó en las tres. Es del modo `dev` en local (compila al vuelo), no del spec; CI usa
+    `next start`.
+- Tamaño (`node scripts/tamano-pr.mjs`): **40/40 archivos, 2 984/1 000 líneas** (aceptado ~2 200).
+  Pasa de las 2 400 que `tasks.md > Tamaño` manda avisar al cerrar T5: para el leader.
+
+### Veredicto (tanda 3)
+
+T0.2, T2, T3 y T4 hechas: «Solicitados» con la cola única y el detalle de bodega en lectura para la
+satélite, con la deuda R190/R191 cubierta; 4/4 mutaciones matadas; 40/40 archivos y 2 984 líneas.
+
 ## Veredicto
 
-T0 hecha (T0.2 queda abierta para `frontend_dev`); T1 parada: T0.3 confirma que «Corregir recibido»
-reescribe `conciliado_at` y el archivo 38 de 40 pide decisión.
+T0-T4 hechos (servidor en las tandas 1-2, pantalla en la 3); quedan T5 (gate) y T6 (Preview con Carlos).
