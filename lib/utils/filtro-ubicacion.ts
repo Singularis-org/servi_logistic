@@ -41,6 +41,32 @@ export interface OpcionesDeDeclaracion {
   desde?: number;
   /** Rotula las opciones de la PRIMERA lista como «lugar (su padre)» (mis-asignaciones, P2). */
   etiquetaConPadre?: boolean;
+  /**
+   * El placeholder de cada lista segun el genero de su singular (`esFemenino`): «Todas» en Provincia,
+   * «Todos» en Cantón. Sin esta opcion no se pone ninguno y sale el por defecto del control (R6).
+   * Los textos los pone quien declara (i18n futura).
+   */
+  placeholderPorGenero?: { femenino: string; masculino: string };
+  /** El mensaje de una lista sin coincidencias, por nivel. Sin esta opcion, el por defecto del control. */
+  mensajeVacio?: (nivel: { singular: string; femenino: boolean }) => string;
+}
+
+// Femenino por la terminacion del SINGULAR (sin mayusculas ni tildes): «-a» (Provincia, Comuna),
+// «-ión» (Región; «Cantón» acaba en «-ón» y queda masculino), «-dad» (Ciudad) y «-tad».
+const TERMINACIONES_FEMENINAS = ["a", "ion", "dad", "tad"] as const;
+
+function sinTildes(texto: string): string {
+  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+/**
+ * El genero de un tipo de nivel, deducido de su singular: el tipo de nivel no lo trae. Femenino si
+ * acaba en `TERMINACIONES_FEMENINAS`; si no, masculino. Es una aproximacion del español («Mano»,
+ * «Día» fallarian), suficiente para los tipos de nivel geograficos.
+ */
+export function esFemenino(singular: string): boolean {
+  const s = sinTildes(singular.trim());
+  return TERMINACIONES_FEMENINAS.some((t) => s.endsWith(t));
 }
 
 /**
@@ -65,12 +91,16 @@ export function declararNiveles(op: OpcionesDeLugar, opts: OpcionesDeDeclaracion
     const primera = k === desde;
     const lugares = porProfundidad.get(k) ?? [];
     const homonimos = nombresRepetidos(lugares);
+    const femenino = esFemenino(nivel.singular);
+    const genero = opts.placeholderPorGenero;
     const def: FilterDef = {
       key: claveDeNivel(k),
       label: nivel.singular,
       kind: "multi",
       ...(primera ? {} : { dependsOn: claveDeNivel(k - 1) }),
+      ...(genero ? { placeholder: femenino ? genero.femenino : genero.masculino } : {}),
       searchPlaceholder: `Buscar ${nivel.singular.toLowerCase()}…`,
+      ...(opts.mensajeVacio ? { emptyMessage: opts.mensajeVacio({ singular: nivel.singular, femenino }) } : {}),
       options: lugares.map((l) => {
         const padre = l.padreId === null ? undefined : porId.get(l.padreId);
         if (primera && opts.etiquetaConPadre) {

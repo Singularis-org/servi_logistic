@@ -80,6 +80,17 @@ const CONJUNTO: NovedadDTO[] = [
       { id: "c-esc", nombre: "Escazú" },
     ],
   },
+  {
+    ...base,
+    id: "o4",
+    destinatario: "Dani Cliente",
+    distritoNombre: "San Rafael",
+    lugarRuta: [
+      { id: "p-sj", nombre: "San José" },
+      { id: "c-esc", nombre: "Escazú" },
+      { id: "d-sr-esc", nombre: "San Rafael" },
+    ],
+  },
 ];
 
 function listadoDiferido() {
@@ -155,5 +166,44 @@ describe("R19 — enlace viejo por nombre en la pantalla real de /novedades", ()
     montar(listarCompleto);
     expect(screen.queryByRole("button", { name: /^Provincia:/ })).toBeNull();
     expect(listarCompleto).not.toHaveBeenCalled();
+  });
+});
+
+// Review M4 — `?lugar_id=` en la pantalla real: el conjunto llega tarde, así que al entrar ninguna
+// lista sabe de qué nivel es el id. Como en `/ordenes`, solo se montan las listas de la cadena del
+// lugar elegido: ninguna lista más honda queda montada y vacía.
+describe("R17 — `?lugar_id=` en la pantalla real de /novedades", () => {
+  it("un id de nivel 1 elige esa provincia, acota y no deja montadas listas más hondas", async () => {
+    parametros = new URLSearchParams("lugar_id=p-sj");
+    const { listarCompleto, entregar } = listadoDiferido();
+
+    montar(listarCompleto);
+
+    await screen.findByRole("button", { name: /^Provincia:/ });
+    expect(listarCompleto).toHaveBeenCalledTimes(1);
+
+    entregar();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Provincia:/ })).toHaveTextContent("San José"));
+    await waitFor(() => expect(acotados()).toEqual(["Ana Cliente", "Carla Cliente", "Dani Cliente"]));
+    expect(screen.queryByRole("button", { name: /^Cantón:/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Distrito:/ })).toBeNull();
+  });
+
+  it("un id de nivel 3 rearma la cadena entera (provincia, cantón y distrito) y acota a ese distrito", async () => {
+    parametros = new URLSearchParams("lugar_id=d-sr-esc");
+    const { listarCompleto, entregar } = listadoDiferido();
+
+    montar(listarCompleto);
+
+    await screen.findByRole("button", { name: /^Provincia:/ });
+    expect(listarCompleto).toHaveBeenCalledTimes(1);
+
+    entregar();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Provincia:/ })).toHaveTextContent("San José"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Cantón:/ })).toHaveTextContent("Escazú"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Distrito:/ })).toHaveTextContent("San Rafael"));
+    await waitFor(() => expect(acotados()).toEqual(["Dani Cliente"]));
   });
 });

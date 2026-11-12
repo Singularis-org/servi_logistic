@@ -1113,3 +1113,81 @@ la lista final = esperadas, y el caso final compara barra = enlace = vista. Sin 
 - `pnpm exec eslint e2e/geo-filtro-lugar.spec.ts`: sin salida (0 errores). `pnpm run typecheck` (`tsc --noEmit`): limpio.
 
 Veredicto: rojo de CI 43127951913 explicado (espera que pasaba en vacío ante la lectura sin filtro previa al debounce) y arreglado en el spec; R18 en verde en local, solo y con `reparto`.
+
+## Review: M2 y M4 (frontend_dev, 2026-11-12, sobre `b334d5c1`)
+
+Sin dependencias, sin backend; `FilterComponent` y `BuscadorFiltros` sin tocar. Grafo no usado (Grep/Read).
+
+### Archivos
+- `lib/utils/filtro-ubicacion.ts`: `esFemenino(singular)` (la regla de género que vivía en `todosLosDelNivel`,
+  movida aquí y exportada); `declararNiveles` acepta `placeholderPorGenero: { femenino, masculino }` y
+  `mensajeVacio({ singular, femenino })`. Sin ellas no pone ni `placeholder` ni `emptyMessage` (R6 intacto:
+  `/ordenes`, satélite y analítica no las pasan).
+- `lib/utils/filtro-ubicacion-asignaciones.ts`: `todosLosDelNivel` usa `esFemenino` (misma salida; lo prueba
+  `todos-los-del-nivel.test.ts` sin cambios).
+- `app/(app)/novedades/_components/novedades-filtros.ts`: `PLACEHOLDER_LUGAR` («Todas»/«Todos») y
+  `mensajeVacioDeLugar` («Ninguna provincia coincide», «Ningún cantón coincide», «Ningún distrito coincide»),
+  pasados a `declararNiveles` en `listasDeLugar` (M2). `TRADUCTOR_URL_NOVEDADES`: con `lugar_id` y sin
+  opciones activa SOLO la primera lista (basta para pedir el conjunto); al llegar, la activación tardía de
+  `BuscadorFiltros` retraduce la foto y monta solo la cadena del lugar, como `/ordenes` (M4).
+- Tests: `tests/components/NovedadesFiltroLugarUrl.test.tsx` (+1 novedad con distrito, `o4`, y 2 casos),
+  `tests/unit/novedades/novedades-filtros-lugar.test.ts` (4 casos M2 y 1 aserción, abajo),
+  `tests/unit/utils/filtro-ubicacion.test.ts` (3 casos M2).
+
+### Aserción cambiada (test NUEVO de SLT-47; `git cat-file -e origin/feature/SLT-89-geo-jerarquica-zonas:` falla)
+- `tests/unit/novedades/novedades-filtros-lugar.test.ts:261` (ahora :263): fijaba el comportamiento de M4.
+  Antes `[["d-sr-esc"], ["d-sr-esc"], ["d-sr-esc"]]` → después `[["d-sr-esc"], [], []]`.
+- Ninguna aserción de tests anteriores a SLT-47 cambiada (`novedades-filtros.test.ts`, el único previo, 32/32).
+
+### Tests nuevos
+| Qué | Test |
+|---|---|
+| M2 placeholder CR («Todas» Provincia, «Todos» Cantón y Distrito) | `novedades-filtros-lugar.test.ts` › M2 › «CR: «Todas» en Provincia…» y «…mientras el conjunto todavía no llegó» |
+| M2 mensaje vacío CR por nivel | `novedades-filtros-lugar.test.ts` › M2 › «CR: el mensaje sin coincidencias…» |
+| M2 4 niveles (Región, Provincia, Comuna, Barrio) | `novedades-filtros-lugar.test.ts` › M2 › «4 niveles…»; `filtro-ubicacion.test.ts` › M2 › «con las opciones…» |
+| R6: sin opciones no hay placeholder ni mensaje | `filtro-ubicacion.test.ts` › M2 › «sin opciones…» (+ R6 congelado y `ordenes-filtros-def.test.ts`, sin cambios) |
+| `esFemenino` | `filtro-ubicacion.test.ts` › M2 › «`esFemenino` por el singular…» |
+| M4 `lugar_id` de nivel 1 (elige, acota, sin Cantón ni Distrito montados) | `NovedadesFiltroLugarUrl.test.tsx` › R17 › «un id de nivel 1…» |
+| M4 `lugar_id` de nivel 3 (cadena completa, acota al distrito) | `NovedadesFiltroLugarUrl.test.tsx` › R17 › «un id de nivel 3…» |
+
+### Rojo de M4 antes del arreglo
+```
+× un id de nivel 1 elige esa provincia, acota y no deja montadas listas más hondas 568ms
+AssertionError: expected <button type="button" …(6)>…(2)</button> to be null
+  189|     expect(screen.queryByRole("button", { name: /^Cantón:/ })).toBeNul…
+Tests  1 failed | 3 passed (4)
+```
+(el de nivel 3 ya pasaba con el código de antes). Tras el arreglo: `Tests 4 passed (4)`.
+
+### Salida (`NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run <archivo> --maxWorkers=1`, uno a uno)
+```
+filtro-ubicacion.test.ts                 30 passed (30)
+todos-los-del-nivel.test.ts              10 passed (10)
+novedades-filtros-lugar.test.ts          22 passed (22)
+novedades-filtros.test.ts                32 passed (32)
+NovedadesFiltroLugarUrl.test.tsx          4 passed (4)
+NovedadesBuscador.test.tsx               11 passed (11)
+NovedadesModule.test.tsx                 74 passed (74)
+mis-asignaciones/FiltroUbicacion.test.tsx 18 passed (18)
+RepartoModule.test.tsx                  108 passed (108)
+ordenes-filtros-def.test.ts              25 passed (25)
+FiltroUbicacionBarra.test.tsx            13 passed (13)
+FiltrosEntregas.test.tsx                 20 passed (20)
+filtros-acotados-por-rol.test.ts          6 passed (6)
+filtro-ubicacion-rendimiento.test.ts      5 passed (5)
+CorregirDatosCliente.novedades.test.tsx  13 passed (13)
+descarga/NovedadesDescarga.test.tsx       7 passed (7)
+NovedadAcciones.test.tsx                 15 passed (15)
+NovedadesHilo.test.tsx                   13 passed (13)
+RechazarNovedad.test.tsx                 19 passed (19)
+buscador-filtros-url.test.tsx            22 passed (22)
+filtros-url-herencia.test.tsx             3 passed (3)
+ordenes-listado-orden.test.tsx           24 passed (24)
+segmented-toggle-solo-icono.test.tsx     13 passed (13)
+filtros-url-hook.test.tsx                13 passed (13)
+guardias (corregir-datos, descargas, hilo, novedad-acciones x2, vistas-superficies) 22/9/19/19/8/8 passed
+```
+- `pnpm run typecheck` (`tsc --noEmit`): limpio.
+- `pnpm exec eslint` sobre los 6 archivos tocados: 0 errores, 2 avisos previos (`filtro-ubicacion.test.ts:134`, `_k`/`_d`, no de este cambio).
+
+Veredicto: M2 y M4 arreglados; CR pinta en `/novedades` los textos de antes y `?lugar_id=` monta solo la cadena del lugar; todo en verde.

@@ -5,6 +5,7 @@ import type { CatalogoFiltrosOrdenesDTO, NivelDeFiltroDTO } from "@/lib/types/fi
 import {
   claveDeNivel,
   declararNiveles,
+  esFemenino,
   lugarElegido,
   PARAM_LUGAR,
   seleccionALugar,
@@ -305,5 +306,41 @@ describe("Homonimos — como la maqueta, el lugar repetido en su lista muestra s
     // …pero el enlace viejo trae el nombre, y casa por el.
     expect(comoObjeto(t.traducir(params("canton=Central"), conCantonesHomonimos)).nivel_2?.split(",").sort()).toEqual(["c1", "c2"]);
     expect(comoObjeto(t.traducir(params("provincia=Alajuela&canton=Central"), conCantonesHomonimos))).toEqual({ nivel_1: "p2", nivel_2: "c2" });
+  });
+});
+
+// Review M2 — `declararNiveles` acepta un placeholder por género (deducido del singular con
+// `esFemenino`, la misma regla de `todosLosDelNivel`) y un mensaje sin coincidencias por nivel. Sin
+// las opciones no pone ninguno: `/ordenes`, satélite y analítica siguen con los del control (R6).
+describe("M2 — placeholder por género y mensaje vacío, como opciones de `declararNiveles`", () => {
+  const NIVELES_4: NivelDeFiltroDTO[] = [
+    { profundidad: 1, singular: "Región", plural: "Regiones" },
+    { profundidad: 2, singular: "Provincia", plural: "Provincias" },
+    { profundidad: 3, singular: "Comuna", plural: "Comunas" },
+    { profundidad: 4, singular: "Barrio", plural: "Barrios" },
+  ];
+
+  it("sin opciones no declara ni placeholder ni mensaje vacío (R6)", () => {
+    const defs = declararNiveles({ niveles: NIVELES_4, lugares: [] });
+    expect(defs.every((d) => !("placeholder" in d) && !("emptyMessage" in d))).toBe(true);
+  });
+
+  it("con las opciones, cada nivel lleva el placeholder de su género y su mensaje", () => {
+    const defs = declararNiveles(
+      { niveles: NIVELES_4, lugares: [] },
+      {
+        placeholderPorGenero: { femenino: "Todas", masculino: "Todos" },
+        mensajeVacio: ({ singular, femenino }) => `${femenino ? "F" : "M"}:${singular}`,
+      },
+    );
+    expect(defs.map((d) => d.placeholder)).toEqual(["Todas", "Todas", "Todas", "Todos"]);
+    expect(defs.map((d) => d.emptyMessage)).toEqual(["F:Región", "F:Provincia", "F:Comuna", "M:Barrio"]);
+  });
+
+  it("`esFemenino` por el singular: -a, -ión, -dad, -tad; «Cantón» y «Distrito» masculinos", () => {
+    expect(["Provincia", "Región", "REGION", "Ciudad", "Comuna", "Mitad"].map(esFemenino)).toEqual([
+      true, true, true, true, true, true,
+    ]);
+    expect(["Cantón", "Distrito", "Barrio", "Municipio"].map(esFemenino)).toEqual([false, false, false, false]);
   });
 });

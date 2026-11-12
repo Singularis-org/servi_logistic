@@ -258,6 +258,45 @@ describe("R19 — `?provincia=` y `?canton=` por nombre se traducen al entrar", 
     expect(valoresDeParam(vista, "provincia")).toEqual([]);
 
     const porId = TRADUCTOR_URL_NOVEDADES.traducir(new URLSearchParams("lugar_id=d-sr-esc"), sinConjunto);
-    expect([N1, N2, N3].map((k) => valoresDeParam(porId, k))).toEqual([["d-sr-esc"], ["d-sr-esc"], ["d-sr-esc"]]);
+    // Review M4: solo la primera lista (basta para pedir el conjunto); las más hondas las monta la
+    // activación tardía cuando ya se sabe de qué nivel es el id.
+    expect([N1, N2, N3].map((k) => valoresDeParam(porId, k))).toEqual([["d-sr-esc"], [], []]);
+  });
+});
+
+// Review M2 — los textos de las listas de lugar en `/novedades` son los de antes de SLT-47 en Costa
+// Rica (placeholder por género y «Ningún/Ninguna <nivel> coincide»), y el género sale del singular
+// del nivel, así que vale igual para un país de 4 niveles.
+describe("M2 — placeholder por género y mensaje sin coincidencias de las listas de lugar", () => {
+  it("CR: «Todas» en Provincia y «Todos» en Cantón y Distrito", () => {
+    const [p, c, d] = lugares(construirFiltrosNovedades("devolucion", CONJUNTO, NIVELES_CR));
+    expect([p.placeholder, c.placeholder, d.placeholder]).toEqual(["Todas", "Todos", "Todos"]);
+  });
+
+  it("CR: el mensaje sin coincidencias de cada nivel es el de antes", () => {
+    const [p, c, d] = lugares(construirFiltrosNovedades("devolucion", CONJUNTO, NIVELES_CR));
+    expect([p.emptyMessage, c.emptyMessage, d.emptyMessage]).toEqual([
+      "Ninguna provincia coincide",
+      "Ningún cantón coincide",
+      "Ningún distrito coincide",
+    ]);
+  });
+
+  it("CR: los mismos textos mientras el conjunto todavía no llegó", () => {
+    const [p, c, d] = lugares(construirFiltrosNovedades("ayuda", null, NIVELES_CR));
+    expect([p.placeholder, c.placeholder, d.placeholder]).toEqual(["Todas", "Todos", "Todos"]);
+    expect(p.emptyMessage).toBe("Ninguna provincia coincide");
+  });
+
+  it("4 niveles (Región, Provincia, Comuna, Barrio): género por el singular de cada nivel", () => {
+    const defs = lugares(construirFiltrosNovedades("devolucion", [], NIVELES_XA));
+    expect(defs.map((f) => f.label)).toEqual(["Región", "Provincia", "Comuna", "Barrio"]);
+    expect(defs.map((f) => f.placeholder)).toEqual(["Todas", "Todas", "Todas", "Todos"]);
+    expect(defs.map((f) => f.emptyMessage)).toEqual([
+      "Ninguna región coincide",
+      "Ninguna provincia coincide",
+      "Ninguna comuna coincide",
+      "Ningún barrio coincide",
+    ]);
   });
 });

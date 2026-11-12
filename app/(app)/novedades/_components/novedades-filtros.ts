@@ -278,6 +278,17 @@ function lugaresDelConjunto(items: readonly NovedadDTO[]): OpcionesDeLugar["luga
 }
 
 /**
+ * Review M2 — los textos de las listas de lugar, como los de antes de SLT-47 en Costa Rica: «Todas»
+ * en Provincia, «Todos» en Cantón y Distrito; «Ninguna provincia coincide», «Ningún cantón coincide».
+ * El genero sale del singular del nivel (`esFemenino`), asi que sirve para cualquier pais.
+ */
+export const PLACEHOLDER_LUGAR = { femenino: "Todas", masculino: "Todos" } as const;
+
+export function mensajeVacioDeLugar(nivel: { singular: string; femenino: boolean }): string {
+  return `${nivel.femenino ? "Ninguna" : "Ningún"} ${nivel.singular.toLowerCase()} coincide`;
+}
+
+/**
  * Las listas de lugar: una por nivel del pais (`declararNiveles`, encadenadas por `parentValue`), con
  * las opciones del conjunto ordenadas por el nombre del lugar en español, como las demas de esta
  * pantalla. Los ancestros de un homonimo («San Rafael · Escazú, San José») no cuentan: los homonimos
@@ -287,7 +298,10 @@ function listasDeLugar(
   items: readonly NovedadDTO[],
   niveles: readonly NivelDeFiltroDTO[],
 ): FilterDef[] {
-  return declararNiveles({ niveles, lugares: lugaresDelConjunto(items) }).map((def) => ({
+  return declararNiveles(
+    { niveles, lugares: lugaresDelConjunto(items) },
+    { placeholderPorGenero: PLACEHOLDER_LUGAR, mensajeVacio: mensajeVacioDeLugar },
+  ).map((def) => ({
     ...def,
     options: [...(def.options ?? [])].sort((a, b) =>
       nombreDeOpcion(a.label).localeCompare(nombreDeOpcion(b.label), "es"),
@@ -413,8 +427,8 @@ export function construirFiltrosNovedades(
  * aun no tienen opciones: el traductor de nombres no encuentra nada, ninguna lista se activa y el
  * conjunto no se pide nunca, asi que el enlace no acotaria nada (hoy si acota). Por eso, mientras
  * NINGUNA lista de lugar tiene opciones, se activan las que la URL pide (nivel 1 por `provincia`,
- * nivel 2 por `canton`; todas por `lugar_id`, que aun no sabe de que nivel es) con los valores tal
- * cual. `FilterComponent` los descarta por no ofrecidos y deja la clave PENDIENTE; al llegar el
+ * nivel 2 por `canton`; la primera por `lugar_id`, que aun no sabe de que nivel es) con los valores
+ * tal cual. `FilterComponent` los descarta por no ofrecidos y deja la clave PENDIENTE; al llegar el
  * conjunto, la re-siembra vuelve a traducir la foto de entrada, ya con opciones, y entonces manda
  * `traductorPorNombre`. Una sola instancia: es puro y sin estado, asi que su identidad es estable.
  */
@@ -434,7 +448,11 @@ export const TRADUCTOR_URL_NOVEDADES: TraductorDeUrl = {
     };
     const lugar = valoresDeParam(params, PARAM_LUGAR);
     if (lugar.length > 0) {
-      for (const f of listas) poner(nivelDeClave(f.key) ?? 0, lugar);
+      // Solo la PRIMERA lista: basta para pedir el conjunto. Al llegar, la activacion tardia de la
+      // barra vuelve a traducir y monta solo la cadena del lugar elegido (como `/ordenes`): ninguna
+      // lista mas honda se queda montada y vacia (review M4).
+      const primera = Math.min(...listas.map((f) => nivelDeClave(f.key) ?? Number.POSITIVE_INFINITY));
+      poner(primera, lugar);
     } else {
       // Las claves viejas de `traductorPorNombre` van tras `lugar_id` y en orden de nivel (1, 2…):
       // asi esta pantalla no repite sus nombres, que solo conoce `filtro-ubicacion`.

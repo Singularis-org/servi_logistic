@@ -1,6 +1,6 @@
 import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
-import { declararNiveles, nivelDeClave, type OpcionesDeLugar } from "@/lib/utils/filtro-ubicacion";
+import { declararNiveles, esFemenino, nivelDeClave, type OpcionesDeLugar } from "@/lib/utils/filtro-ubicacion";
 
 // SLT-47 (design §5.4; R7, R9, R13) — el filtro de lugar de las asignaciones del mensajero. Sucesor
 // de la lógica de la feature 117 (cantón y distrito por nombre): ahora filtra por ID sobre la
@@ -116,22 +116,12 @@ export function filtrarAsignaciones<T extends LugarDeOrden>(ordenes: T[], lugarI
   return ordenes.filter((orden) => (orden.lugarRuta ?? []).some((paso) => paso.id === lugarId));
 }
 
-// Femenino por la terminacion del SINGULAR (sin mayusculas ni tildes): «-a» (Provincia, Comuna),
-// «-ión» (Región; «Cantón» acaba en «-ón» y queda masculino), «-dad» (Ciudad) y «-tad».
-const TERMINACIONES_FEMENINAS = ["a", "ion", "dad", "tad"] as const;
-
-function sinTildes(texto: string): string {
-  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-}
-
 /**
  * «Todos los cantones» / «Todas las regiones»: la opción «todos» de una lista de lugar. El tipo de
- * nivel no trae género: se deduce del singular (`TERMINACIONES_FEMENINAS`); si no, masculino. Es una
- * aproximación del español («Mano», «Día» fallarían), suficiente para los tipos de nivel geográficos.
+ * nivel no trae género: se deduce del singular con `esFemenino` (la misma regla que el placeholder de
+ * `declararNiveles`).
  */
 export function todosLosDelNivel(singular: string, plural: string): string {
-  const s = sinTildes(singular.trim());
-  const femenino = TERMINACIONES_FEMENINAS.some((t) => s.endsWith(t));
   const p = plural.toLowerCase();
-  return femenino ? `Todas las ${p}` : `Todos los ${p}`;
+  return esFemenino(singular) ? `Todas las ${p}` : `Todos los ${p}`;
 }
