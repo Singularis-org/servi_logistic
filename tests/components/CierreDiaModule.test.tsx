@@ -424,6 +424,34 @@ describe("CierreDiaModule", () => {
     expect(successMock).not.toHaveBeenCalled();
   });
 
+  it("SLT-103 R55/R140: «Solicitar cierre del día» resume Gestiones, Recaudado y Tu ganancia, en ese orden", async () => {
+    const user = userEvent.setup();
+    const grupos = emptyGrupos();
+    grupos.entregado = [
+      makeGestion({ gestionId: "e1", resultado: "entregado", numRemision: "REM-E1" }),
+      makeGestion({ gestionId: "e2", resultado: "entregado", numRemision: "REM-E2" }),
+      makeGestion({ gestionId: "e3", resultado: "entregado", numRemision: "REM-E3" }),
+    ];
+    grupos.devolucion_a_origen_por_rechazo = [
+      makeGestion({ gestionId: "r1", resultado: "devolucion_a_origen_por_rechazo", numRemision: "REM-R1" }),
+    ];
+    renderModule({
+      grupos,
+      // `efectivo` distinto de `general` a propósito: el resumen lee el «Total general».
+      totales: { efectivo: "100000.00", simpe: "85275.00", transferencia: "100000.00", general: "285275.00" },
+      totalPagoMensajero: "45000.55",
+      puedesSolicitar: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
+    const resumen = dialog.querySelector('dl[aria-label="Resumen del cierre a solicitar"]');
+    expect(resumen).not.toBeNull();
+    if (!resumen) return;
+    const pares = Array.from(resumen.children).map((el) => el.textContent?.trim());
+    expect(pares).toEqual(["Gestiones", "4", "Recaudado", "₡285.275", "Tu ganancia", "₡45.000,55"]);
+  });
+
   it("R18: el histórico lista los cierres pasados con estado, destino y totales", () => {
     const cierresPasados: CierrePasadoDTO[] = [
       {

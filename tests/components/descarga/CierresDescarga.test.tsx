@@ -747,8 +747,8 @@ describe("Cierres · descarga", () => {
     const user = userEvent.setup();
     renderCierreDia(gruposConTresEvidencias);
 
-    // Anti-vacuidad: la pantalla SÍ recibió las tres (pinta un botón por foto).
-    expect(screen.getAllByRole("button", { name: "Ver evidencia 3" }).length).toBeGreaterThan(0);
+    // Anti-vacuidad: la pantalla SÍ recibió las tres (desde SLT-103, R54: un botón con contador).
+    expect(screen.getAllByRole("button", { name: "Ver evidencia (3)" }).length).toBeGreaterThan(0);
 
     for (const seccion of ["Devolución a origen por rechazo", "Incidente"]) {
       buildXlsxRowsMock.mockClear();
