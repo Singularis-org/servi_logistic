@@ -137,13 +137,13 @@
   medida.
 - [ ] **T7.2** Una persona aplica vistas v1 reales sobre la copia de producción (R26).
   **Hecho:** cuántas probó, cuántas salieron legibles y si dieron las mismas órdenes, anotado.
-- [ ] **T7.3** Gate completo en CI (`gate-completo` en verde), con estos E2E:
+- [x] **T7.3** Gate completo en CI (`gate-completo` en verde), con estos E2E:
   - `mis-asignaciones`, `recepcion-satelite` y `asignacion-satelite`;
   - `dos-empresas-humo`;
   - `geo-filtro-lugar`.
 
   **Hecho:** R38 en verde; el mapa `R<n> → test` está completo en `progress/impl_SLT-47.md`.
-- [ ] **T7.4** Reviewer:
+- [x] **T7.4** Reviewer:
   - diff de `tests/` según §12.1;
   - diff de `db/` (R31);
   - nada de SLT-125 ni de SLT-48 en el diff (R40);
