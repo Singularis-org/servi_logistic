@@ -16,7 +16,9 @@ import { metodosVisibles, type Cifra } from "./detalle-cierre-vista";
 
 export interface CifrasCierreProps {
   cifras: readonly Cifra[];
-  totales: CierreTotales;
+  /** Los métodos de «Recaudado»; solo los lee una caja `conMetodos`. SLT-107: las tarjetas de
+   *  «Solicitados» no tienen métodos (D4) y no lo pasan. */
+  totales?: CierreTotales;
   /** Nombre del grupo; por defecto el del detalle. SLT-106: «Cifras a consolidar». */
   ariaLabel?: string;
 }
@@ -33,7 +35,7 @@ function tonoCaja(c: Cifra): string {
   return c.destacada ? "border-brand/60 bg-brand-soft" : "border-border bg-card";
 }
 
-function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales: CierreTotales }>) {
+function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales }>) {
   const id = useId();
   const negativo = c.esMonto && esMontoNegativo(c.valor);
   return (
@@ -59,7 +61,7 @@ function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales: CierreTotales }
       >
         {c.esMonto ? money(c.valor) : c.valor}
       </span>
-      {c.conMetodos ? (
+      {c.conMetodos && totales ? (
         <dl aria-label={METODOS_DEL_RECAUDADO_LABEL} className="flex flex-col gap-0.5 text-xs text-muted-foreground">
           {metodosVisibles(totales).map((m) => (
             <div key={m.metodo} className="flex justify-between gap-2">

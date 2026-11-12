@@ -8,6 +8,7 @@ import type {
   BloqueoConsolidacion,
   CierreBodegaResumen,
   CierreConsolidableCola,
+  ResumenSolicitados,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import { esMontoCero } from "@/components/shared/monto-cliente";
@@ -94,7 +95,10 @@ export function columnasCola(
   rol: RolCola,
   pestana: PestanaCola | PestanaConsolidar,
 ): ColumnaCola[] {
-  if (tipo === "bodega" && rol === "satelite") return COLUMNAS_A_CONSOLIDAR.map((c) => ({ ...c }));
+  if (tipo === "bodega" && rol === "satelite") {
+    const cols = pestana === "solicitados" ? COLUMNAS_SOLICITADOS_SATELITE : COLUMNAS_A_CONSOLIDAR;
+    return cols.map((c) => ({ ...c }));
+  }
   if (tipo === "bodega") return COLUMNAS_BODEGA.map((c) => ({ ...c }));
   const resueltos = pestana === "resueltos";
   return [
@@ -350,6 +354,55 @@ export function tarjetasAConsolidar(a: TarjetasAConsolidarEntrada): Cifra[] {
     tarjeta("centralDebe", L.TARJETA_CENTRAL_DEBE, a.centralDebe, L.NOTA_CENTRAL_DEBE, {
       aviso: true,
     }),
+  ];
+}
+
+// ═══ Bodega · satélite: «Solicitados» (SLT-107: R286, R288) ═════════════════════════════════════
+
+/**
+ * Folio · Solicitado · Cierres · Recaudado · Debe llegar · Recibido · Falta · Estado · acciones: las
+ * celdas de la bodega central sin Bodega ni Solicitó (la satélite solo ve su zona y sus solicitudes)
+ * y con Recaudado (canvas, rama bodega · satélite, «Solicitados»).
+ */
+const COLUMNAS_SOLICITADOS_SATELITE: readonly ColumnaCola[] = [
+  { id: "folio", label: L.COLUMNA_FOLIO },
+  { id: "fecha", label: L.COLUMNA_SOLICITADO },
+  { id: "cierres", label: L.COLUMNA_CIERRES, align: "right" },
+  { id: "recaudado", label: L.COLUMNA_RECAUDADO, align: "right" },
+  { id: "debeLlegar", label: L.COLUMNA_DEBE_LLEGAR, align: "right" },
+  { id: "recibido", label: L.COLUMNA_RECIBIDO, align: "right" },
+  { id: "falta", label: L.COLUMNA_FALTA, align: "right" },
+  { id: "conciliacion", label: L.COLUMNA_ESTADO },
+  { id: "acciones", label: L.COLUMNA_ACCIONES, soloLector: true },
+];
+
+/**
+ * Las tres tarjetas de «Solicitados» (R286), en el orden del canvas y siempre, también en "0.00"
+ * (PA2). Los montos son los strings del servidor (R71); «Falta por recibir» solo toma el tono de
+ * aviso si hay al menos un cierre que llegó incompleto.
+ */
+export function tarjetasSolicitados(r: ResumenSolicitados): Cifra[] {
+  return [
+    tarjeta(
+      "porLlegar",
+      L.TARJETA_POR_LLEGAR,
+      r.porLlegar.monto,
+      L.notaPendientesConciliar(r.porLlegar.cierres),
+      { destacada: true },
+    ),
+    tarjeta(
+      "recibido30Dias",
+      L.TARJETA_RECIBIDO_30_DIAS,
+      r.recibido30Dias.monto,
+      L.notaCierresDeBodega(r.recibido30Dias.cierres),
+    ),
+    tarjeta(
+      "faltaPorRecibir",
+      L.TARJETA_FALTA_POR_RECIBIR,
+      r.faltaPorRecibir.monto,
+      L.notaLlegaronIncompletos(r.faltaPorRecibir.cierres),
+      { aviso: r.faltaPorRecibir.cierres > 0 },
+    ),
   ];
 }
 

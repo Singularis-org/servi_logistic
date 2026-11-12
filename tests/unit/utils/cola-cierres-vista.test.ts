@@ -17,12 +17,15 @@ import {
   piePorConsolidar,
   senalesConsolidable,
   tarjetasAConsolidar,
+  tarjetasSolicitados,
   type TarjetasAConsolidarEntrada,
 } from "@/components/private/cierres/cola/cola-cierres-vista";
 import {
   descripcionCola,
   descripcionColaSatelite,
+  nombreVerCierreBodega,
 } from "@/components/private/cierres/cola/cola-cierres-labels";
+import type { ResumenSolicitados } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 
 // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (T2.2) — la lógica pura de la cola.
@@ -518,5 +521,142 @@ describe("descripcionColaSatelite (R203)", () => {
     expect(descripcionColaSatelite(null)).toBe(
       "Bodega satélite. Junta los cierres aprobados de tus mensajeros y envíalos a la central.",
     );
+  });
+});
+
+// SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (T2.1) — «Solicitados» con la
+// cola única. Los esperados van escritos a mano (`requirements.md` R286, R288, R289).
+
+describe("columnasCola · «Solicitados» de la satélite (R49, R288, R296)", () => {
+  it("las columnas en el orden de R288, sin Bodega ni Solicitó", () => {
+    const cols = columnasCola("bodega", "satelite", "solicitados");
+    expect(rotulos(cols)).toEqual([
+      "Folio",
+      "Solicitado",
+      "Cierres",
+      "Recaudado",
+      "Debe llegar",
+      "Recibido",
+      "Falta",
+      "Estado",
+      "Acciones",
+    ]);
+    expect(ids(cols)).not.toContain("bodega");
+    expect(ids(cols)).not.toContain("solicito");
+    expect(cols.filter((c) => c.align === "right").map((c) => c.label)).toEqual([
+      "Cierres",
+      "Recaudado",
+      "Debe llegar",
+      "Recibido",
+      "Falta",
+    ]);
+    expect(cols.at(-1)).toMatchObject({ id: "acciones", soloLector: true });
+  });
+
+  it("R296: «A consolidar», la central y los mensajeros no cambian", () => {
+    expect(ids(columnasCola("bodega", "satelite", "aConsolidar"))).toEqual([
+      "folio",
+      "mensajero",
+      "aprobado",
+      "recaudado",
+      "pago",
+      "ganaBodega",
+      "aLaCentral",
+      "senales",
+      "acciones",
+    ]);
+    expect(ids(columnasCola("bodega", "central", "pendientes"))).toEqual([
+      "folio",
+      "bodega",
+      "solicito",
+      "fecha",
+      "cierres",
+      "debeLlegar",
+      "recibido",
+      "falta",
+      "conciliacion",
+      "acciones",
+    ]);
+    expect(ids(columnasCola("mensajero", "satelite", "pendientes"))).toEqual([
+      "folio",
+      "mensajero",
+      "fecha",
+      "estado",
+      "recaudado",
+      "pago",
+      "senales",
+      "acciones",
+    ]);
+  });
+
+  it("R288: el nombre accesible de «Ver» lleva el folio con su «#»", () => {
+    expect(nombreVerCierreBodega("#8F2AB7C9")).toBe("Ver el cierre de bodega #8F2AB7C9");
+  });
+});
+
+describe("tarjetasSolicitados (R286, R71)", () => {
+  function resumen(over: Partial<ResumenSolicitados> = {}): ResumenSolicitados {
+    return {
+      porLlegar: { monto: "436963.27", cierres: 3 },
+      recibido30Dias: { monto: "53500.00", cierres: 2 },
+      faltaPorRecibir: { monto: "15000.00", cierres: 2 },
+      ...over,
+    };
+  }
+
+  it("orden, ids, rótulos y montos del servidor sin tocar", () => {
+    const t = tarjetasSolicitados(resumen());
+    expect(t.map((c) => c.id)).toEqual(["porLlegar", "recibido30Dias", "faltaPorRecibir"]);
+    expect(t.map((c) => c.label)).toEqual([
+      "Por llegar a la central",
+      "Recibido por la central (30 días)",
+      "Falta por recibir",
+    ]);
+    expect(t.map((c) => c.valor)).toEqual(["436963.27", "53500.00", "15000.00"]);
+    expect(t.every((c) => c.esMonto && !c.conMetodos)).toBe(true);
+    expect(t.map((c) => c.destacada)).toEqual([true, false, false]);
+  });
+
+  it("notas en plural", () => {
+    expect(tarjetasSolicitados(resumen()).map((c) => c.contexto)).toEqual([
+      "3 cierres pendientes de conciliar",
+      "2 cierres de bodega",
+      "2 llegaron incompletos",
+    ]);
+  });
+
+  it("notas en singular", () => {
+    const uno = { monto: "1.00", cierres: 1 };
+    const t = tarjetasSolicitados({ porLlegar: uno, recibido30Dias: uno, faltaPorRecibir: uno });
+    expect(t.map((c) => c.contexto)).toEqual([
+      "1 cierre pendiente de conciliar",
+      "1 cierre de bodega",
+      "1 llegó incompleto",
+    ]);
+  });
+
+  it("PA2: las tres también en 0.00, con sus notas en 0 y sin aviso", () => {
+    const cero = { monto: "0.00", cierres: 0 };
+    const t = tarjetasSolicitados({ porLlegar: cero, recibido30Dias: cero, faltaPorRecibir: cero });
+    expect(t).toHaveLength(3);
+    expect(t.map((c) => c.valor)).toEqual(["0.00", "0.00", "0.00"]);
+    expect(t.map((c) => c.contexto)).toEqual([
+      "0 cierres pendientes de conciliar",
+      "0 cierres de bodega",
+      "0 llegaron incompletos",
+    ]);
+    expect(t.some((c) => c.aviso === true)).toBe(false);
+  });
+
+  it("«Falta por recibir» en tono de aviso solo con conteo mayor que 0", () => {
+    const [porLlegar, recibido, falta] = tarjetasSolicitados(resumen());
+    expect(falta.aviso).toBe(true);
+    expect(porLlegar.aviso).not.toBe(true);
+    expect(recibido.aviso).not.toBe(true);
+  });
+
+  it("R71: un monto negativo pasa con su signo, tal cual", () => {
+    const t = tarjetasSolicitados(resumen({ porLlegar: { monto: "-1200.00", cierres: 1 } }));
+    expect(t[0].valor).toBe("-1200.00");
   });
 });

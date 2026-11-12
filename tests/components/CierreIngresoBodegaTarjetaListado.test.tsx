@@ -181,6 +181,8 @@ describe("R71/R196 — el total de la consolidación (tarjeta «Gana la bodega s
           mensajerosAConsolidar={items.length}
           bloqueo={null}
           zonaNombre={null}
+          // SLT-107: la prop nueva obligatoria (R287); este test no mira las tarjetas de «Solicitados».
+          solicitadosResumen={{ porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } }}
           cierresBodegaPasados={{ items: [], total: 0, pageSize: 10 }}
           sinZona={false}
         />

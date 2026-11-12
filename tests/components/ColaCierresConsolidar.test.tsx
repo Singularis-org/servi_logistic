@@ -6,13 +6,18 @@ import userEvent from "@testing-library/user-event";
 import {
   ColaCierres,
   type ColaCierresConsolidarProps,
+  type PanelSolicitadosProps,
 } from "@/components/private/cierres/cola/ColaCierres";
 import {
   tarjetasAConsolidar,
+  tarjetasSolicitados,
   type TarjetasAConsolidarEntrada,
 } from "@/components/private/cierres/cola/cola-cierres-vista";
 import { descripcionColaSatelite } from "@/components/private/cierres/cola/cola-cierres-labels";
-import type { CierreConsolidableCola } from "@/lib/interfaces/services/ICierreBodegaService";
+import type {
+  CierreBodegaResumen,
+  CierreConsolidableCola,
+} from "@/lib/interfaces/services/ICierreBodegaService";
 
 // SLT-106 «Bodega satélite: A consolidar con la cola única» (T3.1) — `ColaCierres` con `tipo` bodega
 // y `rol` satélite, montada con dobles. Los esperados van ESCRITOS A MANO (canvas, rama bodega ·
@@ -69,6 +74,85 @@ const ENTRADA_TARJETAS: TarjetasAConsolidarEntrada = {
 };
 
 const REGION = "Cierres del día a consolidar";
+
+// SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (T3.2) — la fila de
+// «Solicitados». Importes con el formato de `money()` de hoy, escritos a mano: "987654.32" →
+// «₡987.654,32», "349100.00" → «₡349.100», "334100.00" → «₡334.100», "15000.00" → «₡15.000»,
+// "-1200.00" → «-₡1.200», "0.00" → «₡0», "436963.27" → «₡436.963,27», "53500.00" → «₡53.500».
+function solicitado(
+  over: Partial<CierreBodegaResumen> & { cierreBodegaId: string },
+): CierreBodegaResumen {
+  return {
+    zonaId: "z-limon",
+    // R288: ni Bodega ni Solicitó; valores imposibles de encontrar por casualidad.
+    zonaNombre: "BODEGA-NO-SE-PINTA-QK4",
+    solicitadoPorId: "u1",
+    solicitadoPorNombre: "SOLICITO-NO-SE-PINTA-QK4",
+    estado: "solicitado",
+    totales: { efectivo: "987654.32", simpe: "0.00", transferencia: "0.00", general: "987654.32" },
+    totalPagoMensajero: "45678.91",
+    totalIngresoBodegaRechazos: "0.00",
+    cantidadCierres: 3,
+    solicitadoAt: "2026-11-08T01:55:00.000Z",
+    resueltoAt: null,
+    motivoRechazo: null,
+    paraLaCentral: "349100.00",
+    efectivoCubreDescuentos: true,
+    conciliado: false,
+    desmarcable: false,
+    montoRecibido: null,
+    faltaPorRecibir: "349100.00",
+    conciliadoAt: null,
+    conciliadoPorNombre: null,
+    conciliadoNota: null,
+    incluyeModeloNuevo: true,
+    ...over,
+  };
+}
+
+const ID_PENDIENTE = "11111111-0000-4000-8000-00000ab1c2d3";
+const ID_INCOMPLETO = "22222222-0000-4000-8000-00000ef4a5b6";
+const ID_NEGATIVO = "33333333-0000-4000-8000-000007c8d9e0";
+
+const SOLICITADOS_FILAS: CierreBodegaResumen[] = [
+  solicitado({ cierreBodegaId: ID_PENDIENTE }),
+  solicitado({
+    cierreBodegaId: ID_INCOMPLETO,
+    estado: "aprobado",
+    conciliado: true,
+    conciliadoAt: "2026-11-08T03:00:00.000Z",
+    montoRecibido: "334100.00",
+    faltaPorRecibir: "15000.00",
+  }),
+  // Debe llegar negativo (con su signo), recibido completo: Falta «₡0» sin resaltar.
+  solicitado({
+    cierreBodegaId: ID_NEGATIVO,
+    estado: "aprobado",
+    cantidadCierres: 1,
+    totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+    paraLaCentral: "-1200.00",
+    conciliado: true,
+    conciliadoAt: "2026-11-08T03:00:00.000Z",
+    montoRecibido: "0.00",
+    faltaPorRecibir: "0.00",
+  }),
+];
+
+function panelSolicitados(over: Partial<PanelSolicitadosProps> = {}): PanelSolicitadosProps {
+  return {
+    tarjetas: tarjetasSolicitados({
+      porLlegar: { monto: "436963.27", cierres: 3 },
+      recibido30Dias: { monto: "53500.00", cierres: 2 },
+      faltaPorRecibir: { monto: "15000.00", cierres: 1 },
+    }),
+    filas: SOLICITADOS_FILAS,
+    acciones: { ver: vi.fn() },
+    cargando: false,
+    error: null,
+    paginacion: <nav aria-label="Paginación de los cierres de bodega solicitados" />,
+    ...over,
+  };
+}
 const MOTIVO =
   "Todavía no puedes consolidar: Carla Mensajera tiene un cierre sin resolver. Apruébalo o recházalo primero.";
 
@@ -97,7 +181,7 @@ function props(over: Partial<ColaCierresConsolidarProps> = {}): ColaCierresConso
     botonPie: { deshabilitado: false, onClick: vi.fn() },
     pie: "Se enviarán los 3 cierres aprobados a la central. No se puede deshacer.",
     paginacion: <nav aria-label="Paginación de los cierres del día a consolidar" />,
-    solicitados: <section aria-label="Cierres de bodega solicitados">LISTA-DE-HOY-QX9</section>,
+    solicitados: panelSolicitados(),
     ...over,
   };
 }
@@ -335,26 +419,228 @@ describe("ColaCierres · bodega satélite — aviso y pie (R46, R197, R198)", ()
   });
 });
 
-describe("ColaCierres · bodega satélite — «Solicitados» (R201, R32)", () => {
-  it("pinta la lista que pasa el módulo y ni tarjetas, ni aviso, ni botón", () => {
-    render(
-      <ColaCierres
-        {...props({
-          pestanaActiva: "solicitados",
-          aviso: MOTIVO,
-          botonPie: { deshabilitado: true, onClick: vi.fn() },
-          pie: undefined,
-          paginacion: null,
-        })}
-      />,
-    );
-    expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toHaveTextContent(
-      "LISTA-DE-HOY-QX9",
-    );
+// SLT-107: sustituye a R201 de SLT-106 (R289).
+const REGION_SOLICITADOS = "Cierres de bodega solicitados";
+
+function montarSolicitados(over: Partial<PanelSolicitadosProps> = {}, extra: Partial<ColaCierresConsolidarProps> = {}) {
+  return render(
+    <ColaCierres
+      {...props({
+        pestanaActiva: "solicitados",
+        // Lo de «A consolidar» puesto a propósito: no debe verse en «Solicitados» (R32).
+        aviso: MOTIVO,
+        botonPie: { deshabilitado: true, onClick: vi.fn() },
+        pie: "PIE-A-CONSOLIDAR-NO-SE-VE-QK4",
+        paginacion: <nav aria-label="Paginación de los cierres del día a consolidar" />,
+        solicitados: panelSolicitados(over),
+        ...extra,
+      })}
+    />,
+  );
+}
+
+function filaSolicitado(folio: string): HTMLElement {
+  const region = screen.getByRole("region", { name: REGION_SOLICITADOS });
+  const encontrada = within(region)
+    .getAllByRole("row")
+    .find((r) => within(r).queryByText(folio) !== null);
+  if (!encontrada) throw new Error(`sin fila ${folio}`);
+  return encontrada;
+}
+
+const celdasSolicitado = (folio: string) =>
+  within(filaSolicitado(folio))
+    .getAllByRole("cell")
+    .map((c) => c.textContent ?? "");
+
+describe("ColaCierres · bodega satélite — «Solicitados»: tarjetas (R49, R286, R32)", () => {
+  const caja = (nombre: string) =>
+    within(
+      screen.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" }),
+    ).getByRole("group", { name: nombre });
+
+  it("las tres tarjetas en orden, con montos y notas, «Por llegar» destacada", () => {
+    montarSolicitados();
+    const grupo = screen.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
+    expect(
+      within(grupo)
+        .getAllByRole("group")
+        .map((g) => g.querySelector("span")?.textContent),
+    ).toEqual(["Por llegar a la central", "Recibido por la central (30 días)", "Falta por recibir"]);
+    expect(caja("Por llegar a la central")).toHaveTextContent("₡436.963,27");
+    expect(caja("Por llegar a la central")).toHaveTextContent("3 cierres pendientes de conciliar");
+    expect(caja("Por llegar a la central")).toHaveClass("bg-brand-soft");
+    expect(caja("Recibido por la central (30 días)")).toHaveTextContent("₡53.500");
+    expect(caja("Recibido por la central (30 días)")).toHaveTextContent("2 cierres de bodega");
+    expect(caja("Falta por recibir")).toHaveTextContent("₡15.000");
+    expect(caja("Falta por recibir")).toHaveTextContent("1 llegó incompleto");
+    expect(caja("Falta por recibir")).toHaveClass("bg-warning-soft");
+  });
+
+  it("sin métodos de pago bajo ninguna tarjeta (D4)", () => {
+    montarSolicitados();
+    expect(screen.queryByLabelText("Métodos de pago de lo recaudado")).toBeNull();
+  });
+
+  it("PA2: también en 0.00, y «Falta por recibir» sin tono de aviso", () => {
+    const cero = { monto: "0.00", cierres: 0 };
+    montarSolicitados({
+      tarjetas: tarjetasSolicitados({ porLlegar: cero, recibido30Dias: cero, faltaPorRecibir: cero }),
+    });
+    expect(caja("Por llegar a la central")).toHaveTextContent("₡0");
+    expect(caja("Por llegar a la central")).toHaveTextContent("0 cierres pendientes de conciliar");
+    expect(caja("Recibido por la central (30 días)")).toHaveTextContent("0 cierres de bodega");
+    expect(caja("Falta por recibir")).toHaveTextContent("0 llegaron incompletos");
+    expect(caja("Falta por recibir")).not.toHaveClass("bg-warning-soft");
+  });
+
+  it("R32: ni las tarjetas de «A consolidar», ni el aviso, ni el botón", () => {
+    montarSolicitados();
     expect(screen.queryByRole("group", { name: "Cifras a consolidar" })).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(MOTIVO)).toBeNull();
     expect(screen.queryByRole("button", { name: "Solicitar cierre de bodega" })).toBeNull();
     expect(screen.queryByRole("region", { name: REGION })).toBeNull();
+  });
+});
+
+describe("ColaCierres · bodega satélite — «Solicitados»: tabla (R49, R288, R71)", () => {
+  it("las cabeceras de R288, sin Bodega ni Solicitó", () => {
+    montarSolicitados();
+    const tabla = screen.getByRole("table", { name: REGION_SOLICITADOS });
+    expect(within(tabla).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Folio",
+      "Solicitado",
+      "Cierres",
+      "Recaudado",
+      "Debe llegar",
+      "Recibido",
+      "Falta",
+      "Estado",
+      "Acciones",
+    ]);
+    expect(screen.queryByText("BODEGA-NO-SE-PINTA-QK4")).toBeNull();
+    expect(screen.queryByText("SOLICITO-NO-SE-PINTA-QK4")).toBeNull();
+  });
+
+  it("pendiente: «—» en Recibido (nunca ₡0), Falta resaltada, folio monoespaciado", () => {
+    montarSolicitados();
+    expect(celdasSolicitado("#0AB1C2D3")).toEqual([
+      "#0AB1C2D3",
+      "2026-11-07 19:55",
+      "3",
+      "₡987.654,32",
+      "₡349.100",
+      "—",
+      "₡349.100",
+      "Pendiente de conciliar",
+      "Ver",
+    ]);
+    expect(screen.getByText("#0AB1C2D3")).toHaveClass("font-mono");
+    const celdas = within(filaSolicitado("#0AB1C2D3")).getAllByRole("cell");
+    expect(celdas[4].firstElementChild).toHaveClass("font-semibold");
+    expect(celdas[6].firstElementChild).toHaveClass("text-warning-strong");
+  });
+
+  it("recibido incompleto: lo recibido y la Falta resaltada", () => {
+    montarSolicitados();
+    expect(celdasSolicitado("#0EF4A5B6")).toEqual([
+      "#0EF4A5B6",
+      "2026-11-07 19:55",
+      "3",
+      "₡987.654,32",
+      "₡349.100",
+      "₡334.100",
+      "₡15.000",
+      "Recibido incompleto",
+      "Ver",
+    ]);
+  });
+
+  it("Debe llegar negativo con su signo; Falta 0 sin resaltar; «Recibido»", () => {
+    montarSolicitados();
+    expect(celdasSolicitado("#07C8D9E0")).toEqual([
+      "#07C8D9E0",
+      "2026-11-07 19:55",
+      "1",
+      "₡0",
+      "-₡1.200",
+      "₡0",
+      "₡0",
+      "Recibido",
+      "Ver",
+    ]);
+    const celdas = within(filaSolicitado("#07C8D9E0")).getAllByRole("cell");
+    expect(celdas[6].firstElementChild).not.toHaveClass("text-warning-strong");
+  });
+
+  it("«Ver» con su nombre accesible y el id del cierre de bodega; ninguna otra acción", async () => {
+    const ver = vi.fn();
+    montarSolicitados({ acciones: { ver } });
+    const fila = filaSolicitado("#0EF4A5B6");
+    expect(within(fila).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ver"]);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Ver el cierre de bodega #0EF4A5B6" }));
+    expect(ver).toHaveBeenCalledWith(ID_INCOMPLETO);
+    expect(screen.queryByRole("button", { name: /conciliar|corregir/i })).toBeNull();
+  });
+});
+
+describe("ColaCierres · bodega satélite — «Solicitados»: estados y pie (R289)", () => {
+  it("región con nombre «Cierres de bodega solicitados»", () => {
+    montarSolicitados();
+    expect(screen.getByRole("region", { name: REGION_SOLICITADOS })).toBeInTheDocument();
+  });
+
+  it("carga: el estado de carga dentro de la región", () => {
+    montarSolicitados({ cargando: true, filas: [] });
+    const region = screen.getByRole("region", { name: REGION_SOLICITADOS });
+    expect(within(region).getByRole("status")).toHaveTextContent("Cargando");
+  });
+
+  it("error: el texto de hoy", () => {
+    montarSolicitados({
+      error: "No se pudieron cargar los cierres de bodega solicitados.",
+      filas: [],
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No se pudieron cargar los cierres de bodega solicitados.",
+    );
+  });
+
+  it("vacío: el texto de hoy", () => {
+    montarSolicitados({ filas: [] });
+    expect(
+      within(screen.getByRole("region", { name: REGION_SOLICITADOS })).getByText(
+        "Aún no has solicitado ningún cierre de bodega.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("pie: su texto y su paginación, sin el botón ni lo de «A consolidar»", () => {
+    montarSolicitados();
+    const pie = screen
+      .getByText(
+        '"Ver" abre el cierre de bodega con su dinero, sus gestiones, sus mensajeros y lo que marcó la central.',
+      )
+      .closest("footer") as HTMLElement;
+    expect(pie).not.toBeNull();
+    expect(
+      within(pie).getByRole("navigation", { name: "Paginación de los cierres de bodega solicitados" }),
+    ).toBeInTheDocument();
+    expect(within(pie).queryByRole("button", { name: "Solicitar cierre de bodega" })).toBeNull();
+    expect(screen.queryByText("PIE-A-CONSOLIDAR-NO-SE-VE-QK4")).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Paginación de los cierres del día a consolidar" }),
+    ).toBeNull();
+  });
+
+  it("en «A consolidar» el panel de «Solicitados» no se ve", () => {
+    render(<ColaCierres {...props()} />);
+    expect(screen.queryByRole("region", { name: REGION_SOLICITADOS })).toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Cifras de los cierres de bodega solicitados" }),
+    ).toBeNull();
   });
 });
 

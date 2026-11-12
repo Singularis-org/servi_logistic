@@ -176,6 +176,8 @@ export default async function CierresAdminPage() {
             total: consolidacion.solicitados.total,
             pageSize: consolidacion.solicitados.pageSize,
           }}
+          // SLT-107 (R68, R287): las cifras de las tarjetas de «Solicitados», sin filtros.
+          solicitadosResumen={consolidacion.solicitadosResumen}
           sinZona={consolidacion.sinZona}
           catalogoFiltros={catalogoFiltros}
         />

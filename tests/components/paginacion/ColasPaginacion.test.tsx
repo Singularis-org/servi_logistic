@@ -571,6 +571,8 @@ function montarConsolidacion() {
       mensajerosAConsolidar={TOTAL}
       bloqueo="sin_resolver"
       zonaNombre={null}
+      // SLT-107: la prop nueva obligatoria (R287); este test no mira las tarjetas de «Solicitados».
+      solicitadosResumen={{ porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } }}
       cierresBodegaPasados={pagina1([])}
       sinZona={false}
     />,
