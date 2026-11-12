@@ -6,7 +6,8 @@
 > Cada tanda cierra con `./init.sh` en verde. Si el gate local muere por memoria, se cierra con
 > typecheck y guardias, y el gate completo corre en CI.
 >
-> Antes de T2 tienen que estar respondidas P1, P3 y P5. Antes de T3, P2, P4 y P6.
+> P1–P6 están respondidas (2026-11-12, «Decisiones cerradas»). Nada de este plan espera ya una
+> respuesta, salvo la aprobación de la maqueta (T0.2).
 >
 > Reparto por capa (`docs/perfil-agentes.md > implementer`):
 > - `backend_dev`: T1 y T2;
@@ -21,23 +22,25 @@
 - [ ] **T0.1** El leader arma la maqueta (`/design`) en un país de 2, 3 (Costa Rica), 4 y 10 niveles.
   Cubre:
   - la tabla de `/ordenes` y de satélite con una columna por nivel (P4);
-  - el detalle de asignación con P campos, en el ancho de un teléfono;
+  - el detalle de asignación con P campos, en el ancho de un teléfono, con los de nivel 4 o más en
+    «—» (P1);
   - las tarjetas POS (mosaico, detalle y navegación) y la de satélite;
   - el detalle de satélite, el de cierre de día y el de cierres admin;
   - `/paquete` y la etiqueta con una ruta de 10 niveles;
-  - el selector de variables de plantilla (P2).
+  - el selector de variables de plantilla, con `{{ubicacion}}` y `{{nivel_1}}`…`{{nivel_P}}` rotulados
+    (P2).
 
   **Hecho:** la maqueta está en el repo o enlazada desde `progress/impl_SLT-125.md`.
 - [ ] **T0.2** El humano aprueba la maqueta.
-  **Hecho:** fecha, referencia y quién aprobó, anotados en `progress/impl_SLT-125.md` (R36). Si cambia
-  P2 o P4, el `spec_author` ajusta R5 y R30 antes de T3.
+  **Hecho:** fecha, referencia y quién aprobó, anotados en `progress/impl_SLT-125.md` (R36).
 
 ## T1 — Preparación (backend_dev) · sin dependencias de código
 
 - [ ] **T1.1** Inventario antes de tocar código. Anotar en `progress/impl_SLT-125.md`:
   - cada lectura que nombra lugares con las relaciones `provincia`, `canton` o `distrito`, con su
     archivo y línea; se parte de la tabla de design §4.2;
-  - los tests que afirman la forma de esos `select` o `include` (design §13.1, A6), con su línea;
+  - confirmar que ningún test afirma la forma de esos `select` o `include`, como se midió en design
+    §13.1 (A6 retirada); si aparece alguno, se para y se pregunta;
   - si `orden` llega a `organizacion.pais.nombre` (design §4.5);
   - los llamadores de `columnasDescarga*`, `geografiaLegible`, `ubicacion(…)` y
     `construirQueryDireccion`;
@@ -59,8 +62,8 @@
 ## T2 — Servidor (backend_dev) · depende de T1
 
 - [ ] **T2.1** Núcleo puro: `lib/utils/ubicacion-presentacion.ts` y `cabeceraNormalizada` en
-  `plantilla-geo.ts`. En `ruta-del-lugar.ts`: `rutaConTipos`, `nivelesDelCatalogo` y, si P1 = A,
-  `lugarPresentado`. Tests: `ubicacion-presentacion.test.ts`, `geo-columnas-n-niveles.test.ts` (la
+  `plantilla-geo.ts`. En `ruta-del-lugar.ts`: `rutaConTipos` y `nivelesDelCatalogo`; `rutaDelLugar`
+  sigue con `lugarDeLaOrden` (P1). Tests: `ubicacion-presentacion.test.ts`, `geo-columnas-n-niveles.test.ts` (la
   parte pura).
   **Hecho:** R1–R3, R7 y R11 en verde en unit, con países de 2, 3, 4 y 10 niveles.
 - [ ] **T2.2** Snapshot:
@@ -78,18 +81,24 @@
   `ruta-sin-consulta-por-fila.test.ts` y la guardia `presentacion-lugar-del-catalogo`.
   **Hecho:**
   - R16–R20, R37, R40 y R41 en verde;
-  - las suites existentes sin cambiar aserciones, salvo A6;
+  - las suites existentes sin cambiar aserciones: solo cambian sus filas simuladas de entrada;
   - la latencia del listado de `/ordenes` (50 filas, CR) antes y después, anotada.
 - [ ] **T2.4** [P] Geocodificación: `direccion-query.ts`, `OrdenGeocodeRepository` (+ su interfaz),
   `GeocodificacionService`, `geocodificacion-encolado.ts` y `scripts/demo-qa/ubicar-y-cerrar-jobs.ts`.
-  Tests: `direccion-query.test.ts` (ampliado), `geocodificacion-service.test.ts` (A7) y
+  Tests: `direccion-query.test.ts` (ampliado), `geocodificacion-service.test.ts` (solo la entrada
+  `ORDEN`) y
   `geo-125-geocode-cache.test.ts`.
   **Hecho:** R32 y R33 en verde; la cadena y la huella de CR, literales, sin cambio.
-- [ ] **T2.5** [P] WhatsApp en el servidor: `plantilla-datos.ts` (`lugarRuta`, `nivel_1..10` y
-  `ubicacion` según P3), `whatsapp-envio-valores.ts` y `tests/fixtures/plantilla-datos.ts`. Tests:
-  `plantilla-niveles.test.ts`; `plantilla-datos.test.ts` (A3).
-  **Hecho:** R28, R29 y R31 en verde; `preview-mismo-motor.test.ts` y
-  `campos-ocultos-siguen-resolviendo.test.ts` sin cambios.
+- [ ] **T2.5** [P] WhatsApp en el servidor:
+  - `plantilla-datos.ts`: `lugarRuta`, `nivel_1..10` con el atributo `nivel`, `ubicacion` en formato
+    postal (P3) y `DATOS_PLANTILLA_EJEMPLO` con 10 niveles (design §4.6);
+  - `whatsapp-envio-valores.ts` y `tests/fixtures/plantilla-datos.ts`.
+
+  Tests: `plantilla-niveles.test.ts`; `plantilla-datos.test.ts` (A3, solo `:235–238`).
+  **Hecho:**
+  - R28, R29 y R31 en verde;
+  - sin cambios: `preview-mismo-motor.test.ts`, `campos-ocultos-siguen-resolviendo.test.ts`,
+    `catalogo-de-variables.test.ts`, y `plantilla-datos.test.ts:40` y `:248`.
 - [ ] **T2.6** [P] PDF de tránsito: `transito/pdf.ts` (título por tipos, celdas con `dosMasHondos`).
   Test: `transito-pdf-niveles.test.ts`.
   **Hecho:** R13 y R15 (parte del PDF) en verde; en CR, «CANTÓN · DISTRITO» literal.
@@ -128,15 +137,23 @@
   `pos-format-destino.test.ts`.
   **Hecho:** R11, R12, R14 y R15 en verde, igual que la maqueta aprobada; `e2e/mis-asignaciones.spec.ts`
   en verde.
-- [ ] **T3.5** [P] Editor de plantillas: `CampoVariablePicker.tsx`. Test: `CampoVariablePicker-niveles.test.tsx`.
-  **Hecho:** R30 en verde; A4 solo si P2 lo pide.
-- [ ] **T3.6** Guardias ampliadas a los archivos nuevos: `etiquetas-geograficas-sin-literal`,
-  `geografia-sin-cte-recursiva` y `geografia-lecturas-sin-nodo-fk` (A5 si P1 = A).
+- [ ] **T3.5** [P] Editor de plantillas: `CampoVariablePicker.tsx` ofrece `ubicacion` y
+  `nivel_1..P` rotulados con los tipos del país (P2). Test: `CampoVariablePicker-niveles.test.tsx`
+  (con un país de 2 y de 4 niveles: ofrece 2 o 4 `nivel_k`, con su rótulo; nunca `nivel_k` > P).
+  **Hecho:** R30 en verde; `CampoVariablePicker.test.tsx` y `catalogo-de-variables.test.ts` en verde
+  sin editarlos (A4).
+- [ ] **T3.6** Guardias ampliadas a los archivos nuevos, sin excepciones: `etiquetas-geograficas-sin-literal`,
+  `geografia-sin-cte-recursiva` y `geografia-lecturas-sin-nodo-fk` (P1 = B).
   **Hecho:** R19 y R42 en verde, cada guardia con su contraprueba.
 
 ## T4 — E2E nuevo (frontend_dev) · depende de T3
 
-- [ ] **T4.1** `e2e/geo-presentacion-4-niveles.spec.ts` (design §10).
+- [ ] **T4.1** `e2e/geo-presentacion-4-niveles.spec.ts` (design §10). En una empresa de un país de 4
+  niveles, con órdenes en el nivel 3:
+  - la descarga de órdenes con 4 cabeceras de lugar y la cuarta celda vacía;
+  - la etiqueta con una ruta de 3 niveles;
+  - el cierre con la «Ubicación» y el `ubicacion_snapshot` de 3 niveles.
+
   **Hecho:** R43 en verde en local con `pnpm exec playwright test e2e/geo-presentacion-4-niveles.spec.ts`.
 
 ## T5 — Cierre (leader + persona) · depende de todo
@@ -166,9 +183,11 @@
 
 ## Archivos esperados
 
-Estimación: **114 archivos**:
+Estimación: **113 archivos** (recontada el 2026-11-12, tras P1–P6):
 - 72 de código, scripts, config y docs, 6 de ellos nuevos;
-- 42 de tests: 27 nuevos, incluidos el E2E y los fixtures, y 15 ajustados.
+- 41 de tests: 27 nuevos, incluidos el E2E y los fixtures, y 14 ajustados.
+
+`CampoVariablePicker.test.tsx` sale de la lista: con A4 no se edita.
 
 **Unas 4.800 líneas** cambiadas: unas 2.300 de código y scripts, y unas 2.500 de tests. Está dentro de
 los ~95–115 aceptados por el humano (decisión «Tamaño»; marca `tamano-pr-aceptado` en
@@ -282,12 +301,12 @@ Tests nuevos:
 - `tests/integration/db/geo-equivalencia-presentacion.test.ts`
 - `e2e/geo-presentacion-4-niveles.spec.ts`
 
-Tests ajustados (entradas o aserciones autorizadas en design §13.1):
+Tests ajustados (entradas, o las aserciones autorizadas en design §13.1: solo A3 en
+`plantilla-datos.test.ts`):
 - `tests/unit/geo/direccion-query.test.ts`
 - `tests/unit/services/geocodificacion-service.test.ts`
 - `tests/unit/types/plantilla-datos.test.ts`
 - `tests/fixtures/plantilla-datos.ts`
-- `tests/unit/plantillas/CampoVariablePicker.test.tsx`
 - `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
 - `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts`
 - `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts`

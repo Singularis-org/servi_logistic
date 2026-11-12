@@ -15,6 +15,12 @@
 > **Lo que NO entra:**
 > - Retirar las columnas y tablas viejas `provincia/canton/distrito` y achicar el catálogo de filtros (las listas planas que duplican `lugares`): SLT-48.
 > - Filtros: ya están en SLT-47.
+> - Deuda para SLT-48 o una ficha nueva (decisión P6, 2026-11-12): siguen mostrando 3 niveles fijos:
+>   - el aviso y el modal de corrección de ubicación (`CorregirUbicacionAviso`, `CorregirDatosClienteModal`);
+>   - las etiquetas del historial de acciones;
+>   - las pantallas de tarifas y de zonas;
+>   - la plantilla de carga masiva, que ya es de SLT-45.
+> - El nivel 4 o más hondo de una orden: hasta SLT-48 ninguna orden lo tiene (decisión P1).
 >
 > Sembrado por `/afinar-feature` el 2026-11-12. El bloque de Alcance y la tabla de «Decisiones cerradas» los fijó el humano ANTES del spec. `spec_author` los respeta, no los reabre y no los reescribe: su trabajo aquí es `## Requisitos (EARS)`.
 
@@ -29,8 +35,8 @@
 > - **«P»**: el número de niveles del país de la empresa (tipos `nivel_1`…`nivel_P`, de 2 a 10).
 > - **«Tipo del nivel k»**: el `nombre_singular` del tipo `nivel_k` del país de la empresa.
 > - **«Ruta de una orden»**: los lugares del nivel 1 al lugar de la orden, con sus ids y nombres,
->   sacados del catálogo (`rutaDelLugar`, SLT-47). Qué es «el lugar de la orden» cuando el país
->   tiene más de 3 niveles lo decide **P1**; mientras tanto es `lugarDeLaOrden` (SLT-65).
+>   sacados del catálogo (`rutaDelLugar`, SLT-47). El lugar de la orden es `lugarDeLaOrden` (SLT-65)
+>   en todos los países, así que la ruta llega como mucho al nivel 3 hasta SLT-48 (decisión P1).
 > - **«Línea de ubicación»**: la zona y los nombres de la ruta, en una sola línea.
 > - **«Cabecera del nivel k»**: el tipo del nivel k; `nivel_<k>` si choca con otra cabecera del
 >   mismo archivo o con la de otro nivel (heredada de SLT-45 y SLT-46).
@@ -48,8 +54,8 @@
 | R2 | SI el tipo de un nivel coincide, normalizado, con otra cabecera del mismo archivo o con el tipo de otro nivel, ENTONCES esa columna DEBE llamarse `nivel_<k>`. | `geo-columnas-n-niveles.test.ts` (un país con un nivel «Zona» y otro con dos niveles del mismo nombre) | Heredadas (encabezados) |
 | R3 | La clave interna de la columna del nivel k DEBE ser `provincia`, `canton` y `distrito` para k = 1, 2 y 3, y `nivel_<k>` desde k = 4. Una preferencia de columnas guardada hoy en el selector de la descarga DEBE seguir aplicándose igual. | `geo-columnas-n-niveles.test.ts`; suites de `ColumnasPopover` y `ambito-columnas.guardia` sin cambios | Heredadas (nombres internos) |
 | R4 | MIENTRAS la empresa es de Costa Rica, las descargas de órdenes, satélite y cobertura DEBEN salir igual que hoy: el CSV byte a byte, y el XLSX con las mismas cabeceras y celdas en el mismo orden. | `tests/unit/descarga/equivalencia-descargas-cr.test.ts`, contra la referencia capturada en T1.2 antes de tocar código | Columnas de lugar («CR conserva nombres y orden») |
-| R5 | MIENTRAS la empresa es de un país con P niveles, la tabla de `/ordenes` y la de recepción satélite DEBEN mostrar una columna de lugar por nivel, con el mismo criterio de R1 a R3. En Costa Rica DEBEN verse igual que hoy. Sujeto a **P4**. | `tests/unit/components/ordenes-columns-niveles.test.tsx` | Columnas de lugar; Alcance (nombres del listado) |
-| R6 | MIENTRAS la empresa es de un país con P niveles, cada fila de la descarga de cobertura DEBE ser un lugar del nivel que decida **P5**, y sus motivos «retirado del catálogo» DEBEN nombrar el tipo del nivel retirado. En Costa Rica DEBE salir igual que hoy. | `tests/unit/descarga/cobertura-n-niveles.test.ts`; `equivalencia-descargas-cr.test.ts` | Columnas de lugar |
+| R5 | MIENTRAS la empresa es de un país con P niveles, la tabla de `/ordenes` y la de recepción satélite DEBEN mostrar una columna de lugar por nivel, con el mismo criterio de R1 a R3. En Costa Rica DEBEN verse igual que hoy. | `tests/unit/components/ordenes-columns-niveles.test.tsx` | Columnas de lugar; P4 |
+| R6 | MIENTRAS la empresa es de un país con P niveles, la descarga de cobertura DEBE tener una fila por cada nodo de profundidad P del país, activo o no, y sus motivos «retirado del catálogo» DEBEN nombrar el tipo del nivel retirado. En Costa Rica (P = 3) DEBE salir igual que hoy. | `tests/unit/descarga/cobertura-n-niveles.test.ts` (países de 2 y 4 niveles); `equivalencia-descargas-cr.test.ts` | Columnas de lugar; P5 |
 
 ### Una sola «Ubicación»: novedades, ayuda, cierre de día, cierres admin, etiqueta y `/paquete`
 
@@ -77,7 +83,7 @@
 | R16 | El listado de `/ordenes`, el detalle de gestión y cada superficie de esta feature DEBEN tomar los nombres de lugar de la ruta del catálogo del país de la empresa, no de las tablas `provincia`, `canton` y `distrito`. | `tests/integration/db/geo-125-nombres-catalogo.test.ts`; guardia `tests/unit/guards/presentacion-lugar-del-catalogo.guardia.test.ts` | Alcance (nombres leídos del catálogo) |
 | R17 | MIENTRAS la cadena de la orden sea coherente y los nombres de las tablas viejas coincidan con los de sus nodos, los nombres que devuelven el listado de `/ordenes` y el detalle de gestión DEBEN ser los mismos que hoy. | `geo-125-nombres-catalogo.test.ts` (frente a las tablas viejas, en CR) | Alcance («CR igual») |
 | R18 | SI el lugar de una orden no está en el catálogo, ENTONCES los listados, las descargas y las tarjetas NO DEBEN fallar: sus nombres de lugar salen vacíos. Crear un cierre DEBE seguir revirtiéndose entero, como hoy (ficha 450). | `geo-125-nombres-catalogo.test.ts`; `tests/integration/db/geo-125-cierre-snapshot.test.ts` | Heredadas |
-| R19 | Ninguna lectura de esta feature DEBE calcular ancestros con una consulta recursiva en la base ni con una columna de ruta. Tampoco DEBE leer `orden.nodo_geografico_id`, salvo lo que decida **P1**. | `geografia-sin-cte-recursiva.guardia.test.ts` y `geografia-lecturas-sin-nodo-fk.guardia.test.ts`, ampliadas a los archivos nuevos | Heredadas (SLT-44, SLT-65, SLT-47) |
+| R19 | Ninguna lectura de esta feature DEBE calcular ancestros con una consulta recursiva en la base ni con una columna de ruta. Tampoco DEBE leer `orden.nodo_geografico_id`: el lugar de la orden es siempre `lugarDeLaOrden`. | `geografia-sin-cte-recursiva.guardia.test.ts` y `geografia-lecturas-sin-nodo-fk.guardia.test.ts`, ampliadas a los archivos nuevos sin excepciones | Heredadas (SLT-44, SLT-65, SLT-47); P1 |
 | R20 | Cada petición DEBE cargar el catálogo a lo sumo una vez por repositorio, y ninguna superficie DEBE hacer una consulta por fila para nombrar lugares. | `tests/unit/repositories/ruta-sin-consulta-por-fila.test.ts` (dobles que cuentan `deLaEmpresa` y consultas con 50 filas) | Heredadas (rendimiento) |
 
 ### `ubicacion_snapshot` en los cierres
@@ -97,8 +103,8 @@
 | R | Requisito | Test | Decisión |
 |---|---|---|---|
 | R28 | `{{provincia}}`, `{{canton}}` y `{{distrito}}` DEBEN seguir resolviendo al nombre de los niveles 1, 2 y 3 de la ruta, vacíos si la ruta no llega. Ninguna clave que hoy resuelve DEBE dejar de hacerlo ni pasar a `clavesSinCampo`. | `tests/unit/whatsapp/plantilla-niveles.test.ts` | Variables de WhatsApp |
-| R29 | El catálogo de variables DEBE sumar `{{nivel_1}}` a `{{nivel_10}}`, que resuelven al nombre del nivel k de la ruta o vacío, y `{{ubicacion}}`, que resuelve a toda la ruta con el formato que decida **P3**. | `plantilla-niveles.test.ts`; `tests/unit/types/plantilla-datos.test.ts` (recuento autorizado, §13.1) | Variables de WhatsApp |
-| R30 | El editor de plantillas DEBE rotular `{{nivel_k}}` con el tipo del nivel k del país de la empresa, y NO DEBE ofrecer un `{{nivel_k}}` con k mayor que P. Si las ofrece o no en el selector lo decide **P2**. | `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx` | Variables de WhatsApp («el editor rotula») |
+| R29 | El catálogo de variables DEBE sumar `{{nivel_1}}` a `{{nivel_10}}`, que resuelven al nombre del nivel k de la ruta o vacío, y `{{ubicacion}}`, que resuelve a los nombres de la ruta del más hondo al nivel 1, unidos por «, », sin la zona y sin tramos vacíos («Carmen, San José, San José»). | `plantilla-niveles.test.ts`; `tests/unit/types/plantilla-datos.test.ts` (recuento autorizado, §13.1) | Variables de WhatsApp; P3 |
+| R30 | El selector del editor de plantillas DEBE ofrecer `{{nivel_1}}`…`{{nivel_P}}` y `{{ubicacion}}`, con cada `{{nivel_k}}` rotulado con el tipo del nivel k del país de la empresa. NO DEBE ofrecer un `{{nivel_k}}` con k mayor que P. `{{provincia}}`, `{{canton}}` y `{{distrito}}` DEBEN seguir ocultas en el selector. | `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx`; `CampoVariablePicker.test.tsx` (A4) | Variables de WhatsApp («el editor rotula»); P2 |
 | R31 | MIENTRAS la empresa es de Costa Rica, un cuerpo con las claves de hoy DEBE producir el mismo texto que hoy, en la vista previa y en el envío. | `plantilla-niveles.test.ts`; `preview-mismo-motor.test.ts` sin cambios | Variables de WhatsApp («ninguna plantilla guardada se rompe») |
 
 ### Geocodificación
@@ -126,8 +132,8 @@
 | R40 | MIENTRAS una lectura de esta feature carga el catálogo o el país, DEBEN ser los de la empresa del contexto. SI corre en contexto de plataforma, ENTONCES DEBE fallar con `EmpresaNoResuelta`. Un lugar de otro país NO DEBE aportar nombres. | `geo-125-nombres-catalogo.test.ts` (empresas de CR y de `XA`) | Heredadas |
 | R41 | Cada superficie DEBE conservar sus permisos de hoy: quién la ve y qué órdenes o cierres recibe cada rol. Ningún DTO DEBE ganar datos personales: la ruta lleva solo ids y nombres de lugar. | Suites existentes de alcance sin cambiar aserciones; `geo-125-nombres-catalogo.test.ts` (adminSatelite y adminTienda) | Heredadas |
 | R42 | Ningún texto de nivel DEBE ir escrito a mano en el código de presentación: los tipos salen del país de la empresa. Solo los tests de Costa Rica pueden llevar los textos de hoy literales. | `etiquetas-geograficas-sin-literal.guardia.test.ts`, ampliada a los archivos nuevos | Heredadas (SLT-45, SLT-46) |
-| R43 | DEBE existir un E2E que, en una empresa de un país de 4 niveles: baje la descarga de órdenes y compruebe sus 4 columnas de lugar con las cabeceras del país; abra la etiqueta de guía y compruebe la ruta; y cree un cierre y compruebe en su detalle y en su snapshot los niveles de la ruta (4 si **P1** lo permite). | `e2e/geo-presentacion-4-niveles.spec.ts` | E2E |
-| R44 | Esta feature NO DEBE cambiar lo que es de otras fichas: los filtros (SLT-47); retirar columnas o tablas viejas, `NivelGeografico`, `PROFUNDIDAD_DEL_NIVEL` o las listas planas del catálogo de filtros (SLT-48). | Diff revisado por el reviewer | Alcance («Lo que NO entra») |
+| R43 | DEBE existir un E2E que, en una empresa de un país de 4 niveles: (a) baje la descarga de órdenes y compruebe sus 4 cabeceras de lugar con los tipos del país, las 3 primeras celdas con la ruta y la cuarta vacía; (b) abra la etiqueta de guía y compruebe la ruta de 3 niveles; (c) cree un cierre y compruebe en su detalle y en su `ubicacion_snapshot` los 3 niveles de la ruta con los tipos del país. | `e2e/geo-presentacion-4-niveles.spec.ts` | E2E, ajustado por P1 |
+| R44 | Esta feature NO DEBE cambiar lo que es de otras fichas: los filtros (SLT-47); retirar columnas o tablas viejas, `NivelGeografico`, `PROFUNDIDAD_DEL_NIVEL` o las listas planas del catálogo de filtros (SLT-48). Tampoco las superficies de la deuda P6 de «Lo que NO entra». | Diff revisado por el reviewer | Alcance («Lo que NO entra»); P6 |
 
 ### Mapa decisión → requisitos
 
@@ -141,46 +147,16 @@
 | Geocodificación | R32, R33 |
 | E2E | R38, R43 |
 | Heredadas | R2, R3, R18–R20, R36–R42 |
+| P1 (nivel 4 de una orden) | R19, R43 |
+| P2 (selector) | R30 |
+| P3 (formato de `{{ubicacion}}`) | R29 |
+| P4 (tablas) | R5 |
+| P5 (filas de cobertura) | R6 |
+| P6 (superficies fuera) | R8, R44 |
 
 ## Preguntas abiertas
 
-> Escritas por `spec_author` el 2026-11-12. Ninguna reabre una decisión cerrada: completan lo que
-> ellas no dicen. Cada una trae una propuesta, para que el humano solo tenga que confirmarla o
-> cambiarla.
-
-- **P1 — ¿De dónde sale el nivel 4 de una orden?** Hoy el lugar de una orden es
-  `COALESCE(distrito_id, canton_id)`: como mucho, el nivel 3. Además, la regla de guardado de SLT-45
-  (R33) no deja crear órdenes en países de más de 3 niveles hasta SLT-48. Con eso, ninguna orden real
-  llega al nivel 4, y el E2E de «cierre con sus 4 niveles» no puede pasar. Opciones:
-  - **A (propuesta).** La presentación lee `orden.nodo_geografico_id` solo para bajar más: si el
-    catálogo dice que cuelga del lugar de la orden, se usa ese nodo; si no, o si está en NULL, se usa
-    `lugarDeLaOrden`. En Costa Rica no cambia nada, porque no hay nodos más hondos. Es una excepción a
-    la regla heredada «no leer `nodo_geografico_id`» (SLT-44 R12, SLT-65 R19, SLT-47 R15). Va en una
-    sola función y la guardia la declara. El E2E siembra la orden con SQL.
-  - **B.** Se queda `lugarDeLaOrden`. En un país de 4 niveles la cuarta columna sale vacía hasta
-    SLT-48, y el E2E comprueba 4 cabeceras pero 3 niveles en la ruta, la etiqueta y el cierre.
-- **P2 — ¿El selector de variables ofrece `{{nivel_k}}` y `{{ubicacion}}`?** Desde el 2026-08-27,
-  `{{provincia}}`, `{{canton}}`, `{{distrito}}` y `{{zona}}` están ocultas en el selector por pedido
-  humano (`CLAVES_OCULTAS_EN_SELECTOR`). La decisión dice que «el editor rotula» las nuevas.
-  Propuesta: ofrecer `{{nivel_1}}`…`{{nivel_P}}` y `{{ubicacion}}`, rotuladas con los tipos del país,
-  y dejar ocultas las tres de hoy.
-- **P3 — Formato de `{{ubicacion}}`.** No existe hoy, así que no tiene un separador que conservar.
-  Propuesta: del más hondo al nivel 1, unidos por «, » y sin la zona, como una dirección postal
-  («Carmen, San José, San José»). La otra opción es del nivel 1 al más hondo con « · », como las
-  descargas.
-- **P4 — Tabla de `/ordenes` y de recepción satélite.** La decisión de columnas habla de las
-  descargas. La tabla de la pantalla tiene hoy las mismas 3 columnas, y la descarga copia sus
-  rótulos. Propuesta (R5): una columna por nivel, igual que la descarga; en Costa Rica no cambia.
-- **P5 — Filas de la descarga de cobertura.** Hoy hay una fila por distrito, la profundidad 3. Un
-  país de 2 niveles no tiene profundidad 3, y en uno de 4 la cobertura real se decide más abajo.
-  Propuesta: una fila por lugar del nivel P del país, y un motivo «<tipo> retirado del catálogo» por
-  cada nivel de 1 a P. En Costa Rica, P = 3: sale igual que hoy.
-- **P6 — Superficies que quedan fuera.** Muestran lugares, pero no están en el Alcance: el aviso y el
-  modal de corrección de ubicación (`CorregirUbicacionAviso`, `CorregirDatosClienteModal`), las
-  etiquetas del historial de acciones, las pantallas de tarifas y zonas, y la plantilla de carga
-  masiva (ya es de SLT-45). Propuesta: no entran. Las tres de detalle que repiten la «Ubicación» de
-  una descarga (cierre de día, cierres admin y recepción satélite) sí entran (R8), porque si no la
-  pantalla y su archivo dirían cosas distintas.
+Ninguna. P1–P6 las respondió el humano el 2026-11-12: están en «Decisiones cerradas».
 
 ## Decisiones cerradas (no reabrir)
 
@@ -194,3 +170,9 @@
 | 2026-11-12 | Geocodificación | Dirección, luego todos los niveles del más hondo al más alto, luego el nombre del país de la empresa. CR produce exactamente la misma cadena que hoy, para no invalidar `GeocodeCache` (test). |
 | 2026-11-12 | E2E | Uno nuevo con una empresa de un país de 4 niveles: descarga de órdenes con 4 columnas, etiqueta de guía con su ruta y cierre con sus 4 niveles. Los E2E de CR siguen en verde sin cambios. |
 | 2026-11-12 | Heredadas | Los nombres internos `provincia/canton/distrito` se quedan en DB, código y API (SL-20). Encabezados de un país que no es CR con el singular del tipo, o `nivel_<n>` si chocan (SLT-45, SLT-46). Cada superficie conserva su separador y su orden de hoy. Las pantallas esperan una maqueta aprobada (SLT-46 P9). Migraciones solo aditivas hasta SLT-48. Ningún agente toca producción. Las aserciones existentes cambian solo con autorización humana (R38). |
+| 2026-11-12 | P1 — ¿De dónde sale el nivel 4 de una orden? | Opción B: se queda `lugarDeLaOrden` y NO se lee `orden.nodo_geografico_id`. En un país de 4 niveles la cuarta columna lleva su cabecera y sale vacía hasta SLT-48. El E2E comprueba 4 cabeceras y una ruta de 3 niveles en la descarga, la etiqueta y el cierre. Sin la excepción a la guardia (A5 retirada). |
+| 2026-11-12 | P2 — ¿El selector ofrece `{{nivel_k}}` y `{{ubicacion}}`? | Sí: ofrece `{{nivel_1}}`…`{{nivel_P}}` y `{{ubicacion}}`, rotuladas con los tipos del país. `{{provincia}}`, `{{canton}}` y `{{distrito}}` siguen ocultas y siguen resolviendo. A4 aplica. |
+| 2026-11-12 | P3 — Formato de `{{ubicacion}}` | Como una dirección postal: del nivel más hondo al nivel 1, unidos por «, » y sin la zona («Carmen, San José, San José»). |
+| 2026-11-12 | P4 — Tablas de `/ordenes` y de recepción satélite | También una columna por nivel, como la descarga. En CR no cambian. |
+| 2026-11-12 | P5 — Filas de la descarga de cobertura | Una fila por nodo del nivel más hondo del país (P). En CR, P = 3, como hoy. |
+| 2026-11-12 | P6 — Superficies que muestran lugares fuera del Alcance | Quedan fuera y se anotan como deuda en «Lo que NO entra» (para SLT-48 o una ficha nueva). Las tres pantallas de detalle de R8 sí entran. |

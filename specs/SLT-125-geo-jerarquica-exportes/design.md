@@ -1,6 +1,7 @@
 # SLT-125 — geo-jerarquica-exportes · design.md
 
-> Requisitos: `requirements.md` (R1–R44, P1–P6). Escrito por `spec_author` el 2026-11-12 sobre
+> Requisitos: `requirements.md` (R1–R44). P1–P6 las respondió el humano el 2026-11-12 y están en
+> «Decisiones cerradas»; este diseño ya las aplica. Escrito por `spec_author` el 2026-11-12 sobre
 > `dfdd78de`. El MCP del grafo no tenía indexado este worktree: la exploración se hizo con Grep y Read.
 > El inventario previo del leader (`inventario125.md`) no estaba en el scratchpad y se rehízo.
 
@@ -17,7 +18,7 @@ Buscado `ubicacion_snapshot`, `geografiaLegible`, `construirQueryDireccion`, `ru
 | Columna `cierre_detail.ubicacion_snapshot` (JSONB NULL) | `db/schema.prisma:3512`, migración `20261104120400` | Ya existe: esta feature no añade migraciones (R39) |
 | Cabeceras de nivel por país y `nivel_<n>` cuando chocan | `lib/utils/plantilla-geo.ts` (`cabeceraDeNivel`, `cabeceraDeTipo`), SLT-45 R30 | Se reutiliza la regla. La normalización de `cabeceraDeTipo` sirve para *comparar* (R2); el texto que se escribe es el `nombre_singular` sin normalizar, como hoy hacen las etiquetas |
 | Catálogo en memoria (`ancestros`, `nodo`, `nodosDeProfundidad`) | `lib/services/geografia-dominio.ts` | Única fuente de la ruta (R16, R19) |
-| Lugar de una orden (`lugarDeLaOrden`) | `lib/repositories/_shared/lugar-orden.ts` | Se usa tal cual. P1 decide si se baja al nodo más hondo |
+| Lugar de una orden (`lugarDeLaOrden`) | `lib/repositories/_shared/lugar-orden.ts` | Se usa tal cual, sin leer `orden.nodo_geografico_id` (P1 = B). La ruta llega como mucho al nivel 3 hasta SLT-48 |
 | Etiquetas de nivel de 3 valores (`EtiquetasGeograficas`, `etiquetasDePais`, `ETIQUETAS_NEUTRAS`) | `lib/types/pais.ts` | Siguen para lo que ya las usa. Las superficies de N niveles toman los tipos de `NivelDeFiltroDTO` o de `catalogo.tipos` |
 | Nombres de la ruta ya sacados del catálogo | `InformeTransitoRepository` (SLT-71) y `CierreDiaRepository.leerDescriptivosDeOrdenes` (SLT-65) | Se amplían a la ruta completa; no se duplica la lectura |
 
@@ -84,8 +85,9 @@ snapshot.
 - Un nivel por paso de la ruta, de la raíz a la hoja.
 - `nombre` es el mismo que va a `provincia_nombre`, `canton_nombre` y `distrito_nombre` en los
   niveles 1 a 3: los dos salen del mismo `congeladoDeLaFila`.
-- `id` es el del nodo. Con P1 = B coincide con el FK de la orden, igual que en el backfill (§2.6 de
-  SLT-43). Con P1 = A, el nivel 4 o más hondo lleva el id del nodo de la orden.
+- `id` es el del nodo, que coincide con el FK de la orden, igual que en el backfill (§2.6 de SLT-43).
+  Como la ruta sale de `lugarDeLaOrden` (P1 = B), el snapshot tiene como mucho 3 niveles hasta
+  SLT-48, también en un país de 4.
 - `tipo` es el `nombre_singular` de `nivel_k` en ese instante.
 - Lo valida `ubicacionSnapshotV1Schema` (zod, `lib/types/ubicacion-snapshot.ts`). Sirve para leer
   (R24, R25) y, en los tests, para escribir.
@@ -138,17 +140,19 @@ export function rutaInvertida(ruta: Ruta): string[];
 - `rutaConTipos(cat, ruta)`: añade a cada paso su profundidad y su tipo. Lo usan el snapshot y el
   PDF de tránsito.
 - `nivelesDelCatalogo(cat): NivelDelPais[]`: los tipos `nivel_1..P`, ordenados.
-- **Solo si P1 = A:** `lugarPresentado(cat, o: { distritoId; cantonId; nodoGeograficoId })`. Devuelve
-  `nodoGeograficoId` si está en el catálogo y uno de sus ancestros es `lugarDeLaOrden(o)`, y si no,
-  `lugarDeLaOrden(o)`. `rutaDelLugar` pasa a usarla. Es la única lectura de `nodo_geografico_id` y la
-  guardia la declara como excepción (§13.1). Con la columna en NULL o igual al lugar da lo mismo que
-  hoy. Así sigue valiendo la razón de la regla heredada (no depender del backfill).
+- `rutaDelLugar` no cambia: sigue saliendo de `lugarDeLaOrden` (P1 = B). Ningún archivo de esta
+  feature lee `nodo_geografico_id` de `orden`, y la guardia `geografia-lecturas-sin-nodo-fk` se amplía
+  sin excepciones (R19).
+- En un país de P > 3 niveles, la ruta llega como mucho al nivel 3. Las columnas y campos de los
+  niveles 4 a P existen (cabecera y rótulo), pero salen vacíos o con «—» hasta SLT-48. Y como la ruta
+  ya no llega al nivel P, las superficies de «dos más hondos» (R11) muestran solo el nivel P−1 si la
+  ruta llega a él: en un país de 4 niveles, el barrio (nivel 3). Lo fija la maqueta de T0.
 
 ### 4.2 Lecturas que cambian (R16, R20, R37)
 
 En todas, el catálogo se carga una vez por repositorio y petición (`deLaEmpresa` ya memoriza), y se
 nombra en memoria. Desaparecen las relaciones de Prisma `provincia`, `canton` y `distrito` de cada
-`select` o `include` de abajo, y se seleccionan los FK (y `nodoGeograficoId` si P1 = A).
+`select` o `include` de abajo, y se seleccionan los FK.
 
 | Lectura | Archivo | Qué gana el DTO | Campos de hoy |
 |---|---|---|---|
@@ -161,9 +165,14 @@ nombra en memoria. Desaparecen las relaciones de Prisma `provincia`, `canton` y 
 | Envío de WhatsApp | `OrdenEnvioReader.ts:62` | `lugarRuta` en `OrdenPlantillaDatos` | ídem |
 | Geocodificación | `OrdenGeocodeRepository.ts:16` | `ruta: string[]` y `paisNombre` en `OrdenGeocodeRow` | Se retiran `provinciaNombre`, `cantonNombre` y `distritoNombre`: es interno, no es API |
 | PDF de tránsito | `InformeTransitoRepository.ts:156` | `ruta` y `niveles` en `PaqueteTransito` | `canton` y `distrito` se mantienen y salen de la ruta |
-| Cobertura | `CoberturaRepository.ts:48` | `ruta` en `CoberturaDistritoDTO` | `provincia`, `canton` y `distrito` de la ruta. Las filas, según P5: `nodosDeProfundidad(cat, P)` en vez de `3` |
+| Cobertura | `CoberturaRepository.ts:48` | `ruta` en `CoberturaDistritoDTO` | `provincia`, `canton` y `distrito` de la ruta. Las filas (P5): `nodosDeProfundidad(cat, P)` en vez de `3`, activos e inactivos como hoy. En un país de 4 niveles son los sectores; su zona y su marca salen de la herencia del catálogo (SLT-44), igual que hoy para un distrito |
 
-`OrdenRepository.ts:2899` (corrección de datos del cliente) **no entra** (P6).
+**No entran (P6, deuda en «Lo que NO entra»):**
+- `OrdenRepository.ts:2899` (corrección de datos del cliente);
+- `CorregirUbicacionAviso.tsx` y `CorregirDatosClienteModal.tsx`;
+- `lib/types/historial-accion-etiquetas.ts`;
+- las pantallas de tarifas y zonas;
+- la plantilla de carga masiva.
 
 **Lugar fuera del catálogo (R18).** La ruta sale `[]` y los nombres salen null. Hoy, con las relaciones
 de Prisma, eso no podía pasar. Una superficie de presentación no debe caerse por un nodo inconsistente.
@@ -183,7 +192,7 @@ fixture, y el script de R34 sobre la copia de producción.
 - No hay trigger y no se toca ninguna fila existente (R27).
 - **Equivalencia con el backfill (R22).** El test crea un cierre por el repositorio, guarda el
   snapshot, lo pone a NULL con SQL, corre la sentencia `cierre_detail` de `geo-backfill-nodo.ts` sobre
-  esa fila y compara. Con P1 = B la igualdad es exacta en cualquier país de 3 niveles.
+  esa fila y compara. Como la ruta sale de los FK (P1 = B), la igualdad es exacta en cualquier país.
 
 ### 4.4 Lectura del snapshot (R24–R26)
 
@@ -229,12 +238,33 @@ En `lib/types/plantilla-datos.ts`:
 - `provincia`, `canton` y `distrito` pasan a leer `lugarRuta[0..2]`. Si `lugarRuta` es null (vista
   previa sin ruta), caen a `provinciaNombre`, `cantonNombre` y `distritoNombre`: así ninguna vista
   previa ni envío de hoy cambia (R31).
-- Se definen `nivel_1`…`nivel_10` (`leer: d => d.orden.lugarRuta?.[k-1]?.nombre ?? null`) y
-  `ubicacion` (P3).
-- El `nombre` de catálogo de `nivel_k` es neutro («Nivel k»). El rótulo con el tipo lo pone el editor
-  (`CampoVariablePicker`) con `useNivelesGeograficos()`, y oculta los `nivel_k` con k > P (R30).
-- `DATOS_PLANTILLA_EJEMPLO` gana `lugarRuta`, para que el test de coherencia R12 de la feature 282
-  siga estricto.
+- Se definen `nivel_1`…`nivel_10` (`leer: d => d.orden.lugarRuta?.[k-1]?.nombre ?? null`).
+- Se define `ubicacion` (P3): `rutaInvertida(lugarRuta)` unida por `", "`, sin zona y sin vacíos. Su
+  `ejemplo` es «Carmen, San José, San José», que sale de `DATOS_PLANTILLA_EJEMPLO`.
+- **El selector (P2).**
+  - `ubicacion` es un campo propio ofrecido: entra en `CAMPOS_PLANTILLA_OFRECIDOS`.
+  - Los `nivel_k` llevan un atributo nuevo, `nivel: k`, y **no** entran en
+    `CAMPOS_PLANTILLA_OFRECIDOS`, porque cuántos se ofrecen depende del país. Tampoco entran en
+    `CLAVES_OCULTAS_EN_SELECTOR`, que es la lista de ocultos por pedido humano y sigue con 27.
+  - `CampoVariablePicker` añade `nivel_1..P` con `useNivelesGeograficos()`, rotulados con el
+    `singular` del nivel. Los pone justo después de `ubicacion`, el orden que fije la maqueta.
+  - Sin proveedor de niveles (P = 0, como en los tests de hoy), el selector ofrece exactamente
+    `CAMPOS_PLANTILLA_OFRECIDOS`.
+  - El `nombre` de catálogo de `nivel_k` es neutro («Nivel k»): es el que ve quien mira el catálogo
+    sin país.
+  - `provincia`, `canton` y `distrito` siguen ocultas y siguen resolviendo.
+- `catalogoDeVariables(null)` (informes, ficha 474) sigue siendo `CAMPOS_PLANTILLA_OFRECIDOS`: gana
+  `ubicacion` por derivación.
+- **`DATOS_PLANTILLA_EJEMPLO` gana `lugarRuta` con 10 niveles.** Los 3 primeros son «San José»,
+  «San José» y «Carmen», así que `provincia`, `canton` y `distrito` resuelven igual que hoy. Del 4 al
+  10 lleva nombres ficticios de lugar. Hacen falta los 10 porque dos tests de hoy no cambian:
+  - `plantilla-datos.test.ts:40` exige un `ejemplo` no vacío en cada campo;
+  - `plantilla-datos.test.ts:248` exige que los datos de ejemplo resuelvan exactamente a ese
+    `ejemplo`.
+
+  Con 3 niveles, `nivel_4`…`nivel_10` no tendrían ejemplo. La consecuencia es que el `ejemplo` de
+  `ubicacion` tiene 10 tramos, no el «Carmen, San José, San José» de P3. El formato es el de P3: solo
+  el ejemplo es más largo. Ver A3b en §13.1.
 - La vista previa del mensajero (`whatsapp-envio-valores.ts:104`) pasa `orden.lugarRuta` de
   `MiAsignacionDTO`, que ya lo trae.
 
@@ -246,7 +276,7 @@ Todas toman P y los tipos de `useNivelesGeograficos()`. La ruta, del DTO.
 |---|---|---|---|
 | Descarga de órdenes | `ordenes-descarga-columnas.ts`, `OrdenesModule.tsx` | `columnasDescargaOrdenes(niveles)` sustituye las 3 por `columnasDeNivel` en su sitio; `filaDescargaOrden` usa `celdasDeNivel(lugarRuta)`. `COLUMNAS_DESCARGA_ORDENES` no cambia de nombre ni de archivo (canario de `columnas-asercion-de-orden.guardia`) | Columnas |
 | Descarga de satélite | `satelite-descarga-columnas.ts`, `SateliteOrdenesListado.tsx` | ídem | Columnas |
-| Descarga de cobertura | `cobertura-descarga-columnas.ts`, `DescargarCoberturaButton.tsx` | ídem; `motivoSinCoberturaLabel` por nivel (P5) | Columnas |
+| Descarga de cobertura | `cobertura-descarga-columnas.ts`, `DescargarCoberturaButton.tsx` | ídem; `motivoSinCoberturaLabel` por nivel: un motivo «<tipo> retirado/a del catálogo» por cada nivel de 1 a P (P5) | Columnas |
 | Tabla de `/ordenes` y de satélite (P4) | `ordenes-columns.tsx` | Una columna por nivel, ids `provincia/canton/distrito/nivel_<k>` | — |
 | Descargas de novedades y ayuda | `novedades-descarga-columnas.ts`, `ayuda-descarga-columnas.ts` | `lineaDeUbicacion(zona, lugarRuta, " · ")` | « · », zona primero |
 | Cierre de día (descarga y pantalla) | `cierre-dia-descarga-columnas.ts`, `CierreDiaModule.tsx:485` | ídem | « · » |
@@ -261,7 +291,7 @@ Todas toman P y los tipos de `useNivelesGeograficos()`. La ruta, del DTO.
 | Detalle de asignación | `AsignacionDetalle.tsx:116–126` | Línea «abajo, arriba»; rejilla de P campos rotulados (la maqueta fija columnas y salto de línea) | «, », más hondo primero |
 | Destino de navegación | `pos-format.ts:60` | `[direccion, ...rutaInvertida]` | «, », más hondo primero |
 | Tarjeta de novedad | `novedad-a-orden-card.ts` | Pasa `lugarRuta` a la tarjeta POS | — |
-| Editor de plantillas | `CampoVariablePicker.tsx` | Rótulos por tipo; oculta k > P (P2 decide si ofrece) | — |
+| Editor de plantillas | `CampoVariablePicker.tsx` | Ofrece `ubicacion` y `nivel_1..P`, rotulados por tipo (P2, §4.6) | — |
 
 **Etiqueta con 10 niveles.** La línea de geografía pasa por el mismo recorte y filtro de caracteres
 imprimibles que hoy (`nombre-imprimible-etiqueta`). Los tests de capacidad de la etiqueta
@@ -342,16 +372,18 @@ de guardado de SLT-45 no deja crear órdenes en un país de 4 niveles):
 
 - un país `XB` de 4 niveles («Región», «Comuna», «Barrio», «Sector»);
 - una empresa, una zona, una tienda, un mensajero;
-- dos órdenes: una en el nivel 3 y, si P1 = A, otra con `nodo_geografico_id` en un sector (nivel 4).
+- dos órdenes en un barrio (nivel 3), con su `provincia_id`, `canton_id` y `distrito_id` (P1 = B: no
+  hay órdenes de nivel 4 hasta SLT-48).
 
 Pasos:
 
 1. `/ordenes` → descarga XLSX → cabeceras «Región», «Comuna», «Barrio», «Sector» en el sitio de las 3
-   de hoy, y las celdas de cada orden.
-2. Etiqueta de guía de cada orden → la línea «zona / región / comuna / barrio[ / sector]».
+   de hoy. En cada orden, las 3 primeras celdas con la ruta y «Sector» vacía.
+2. Etiqueta de guía de cada orden → la línea «zona / región / comuna / barrio».
 3. El mensajero gestiona las dos órdenes y pide el cierre de día. El admin abre el cierre en
-   cierres-admin → «Ubicación» con la ruta completa. Se comprueba por SQL de test el
-   `ubicacion_snapshot` de las dos filas (tipos y nombres).
+   cierres-admin → «Ubicación» = «zona · región · comuna · barrio». Por SQL de test se comprueba el
+   `ubicacion_snapshot` de las dos filas: 3 niveles con tipos «Región», «Comuna» y «Barrio» y sus
+   nombres.
 
 Los E2E de CR no se tocan (R38): `cierre-dia`, `cierres-admin`, `etiquetas-lote-tienda`,
 `mis-asignaciones`, `recepcion-satelite`, `asignacion-satelite`, `rastreo-publico`,
@@ -387,7 +419,8 @@ Sin librerías nuevas.
 | `pais.nombre` de CR distinto de `Costa Rica` en producción invalidaría `GeocodeCache` | El script de R34 cuenta las consultas que cambian; 0 esperado. Si sale distinto, se para y se pregunta |
 | Etiqueta con muchos niveles no cabe | §5: tests de capacidad con 10 niveles; si no cabe, se pregunta |
 | Rendimiento del listado al nombrar con el catálogo | El catálogo ya se carga en esas lecturas (marcas de SLT-65). R20 lo vigila con un doble que cuenta |
-| P1 cambia una regla heredada | Va en una función, con guardia y test con la columna en NULL |
+| En un país de más de 3 niveles las columnas hondas salen vacías hasta SLT-48 (P1 = B) | Aceptado por el humano. La maqueta de T0 lo muestra; SLT-48 llena la ruta sin tocar estas superficies, porque todas leen `rutaDelLugar` |
+| Ejemplo largo de `{{ubicacion}}` en el selector | §13.1, A3: el ejemplo del catálogo tiene 10 niveles para que los tests de coherencia de hoy sigan sin cambio. Si se prefiere el ejemplo corto de P3, hace falta autorizar A3b |
 | Tests que fijan la forma del `include` de Prisma | T1.1 los lista. Solo cambian con autorización (§13.1) |
 
 ## 13. Pruebas y trazabilidad
@@ -414,7 +447,7 @@ Fixture de integración: `tests/integration/db/_fixtures/geo-125.ts`, sobre `cre
 | R24, R25 | `tests/unit/types/ubicacion-snapshot.test.ts`, `tests/unit/descarga/cierres-snapshot-lectura.test.ts` |
 | R27 | `geo-backfill.test.ts` R40, sin cambios; diff de `db/` |
 | R28, R29, R31 | `tests/unit/whatsapp/plantilla-niveles.test.ts`; `plantilla-datos.test.ts` |
-| R30 | `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx` |
+| R30 | `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx`; `CampoVariablePicker.test.tsx` (A4) |
 | R32 | `tests/unit/geo/direccion-query.test.ts` (ampliado) |
 | R33 | `direccion-query.test.ts` (cadena y huella literales de CR); `tests/integration/db/geo-125-geocode-cache.test.ts` (entrada de caché sembrada con la huella de hoy → el doble del proveedor no recibe llamadas) |
 | R34 | `tests/integration/db/geo-equivalencia-presentacion.test.ts` |
@@ -432,13 +465,29 @@ pregunta.
 
 | # | Test | Línea | Cambio | Por qué |
 |---|---|---|---|---|
-| A1 | `tests/integration/db/geo-backfill.test.ts` | 487–521 (SLT-43 R40) | **Se espera que no cambie.** La fila la crea el test con Prisma directo, sin pasar por el cierre, así que sigue naciendo NULL y sigue sin haber trigger. Si al implementar resultara necesario, el único cambio autorizado es su título y comentario: «una fila creada fuera del cierre nace NULL» | Decisión cerrada `ubicacion_snapshot` (pre-autorizada) |
-| A2 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` | 240–259 (SLT-43 R40/R24) | Ídem A1: las filas del escenario se crean por SQL | Ídem |
-| A3 | `tests/unit/types/plantilla-datos.test.ts` | 236–238 | `CAMPOS_PLANTILLA`: 42 → 53; propios: 37 → 48; alias: 5 (sin cambio) | R29: 11 claves nuevas |
-| A4 | `tests/unit/plantillas/CampoVariablePicker.test.tsx` | las que fijan la lista ofrecida | Solo si P2 = ofrecerlas: la lista ofrecida gana `nivel_1..P` y `ubicacion` | P2 |
-| A5 | `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` | lista de archivos y excepciones | Solo si P1 = A: `_shared/ruta-del-lugar.ts` entra con `lugarPresentado` como única lectura permitida de `nodoGeograficoId` | P1 |
-| A6 | Tests que afirman la forma del `select` o `include` de Prisma en las lecturas de §4.2. Candidatos: `tests/unit/repositories/orden-envio-reader.test.ts`, `orden-repository.recepcion-satelite.test.ts`, `gestion-desde-ayuda-cierre.test.ts` y `tests/unit/whatsapp-envios/informe-transito-repo-consultas.test.ts` | T1.1 fija las líneas | Las relaciones `provincia/canton/distrito` salen del `select` y entran los FK | R16 |
-| A7 | `tests/unit/services/geocodificacion-service.test.ts` | las que afirman los argumentos de `construirQueryDireccion` | Los argumentos pasan a `{ direccion, ruta, paisNombre }`. La consulta esperada no cambia | R32 |
+Líneas medidas sobre `3772e7a8`.
+
+| # | Test | Línea | Antes → después | Por qué |
+|---|---|---|---|---|
+| A1 | `tests/integration/db/geo-backfill.test.ts` | 487 (título), 513 (`expect(r.recienCreada).toBeNull()`) | **Se espera sin cambio.** `cierreDetailNuevo` (`:131`) crea la fila con `tx.cierreDetail.create` directo, sin pasar por `crearCierre`, así que sigue naciendo NULL; y `:512` (`triggers` = 0) sigue cierto porque el snapshot lo escribe la app. Si hiciera falta, el único cambio autorizado es el título de `:487`: «un cierre nuevo nace NULL» → «una fila creada fuera de `crearCierre` nace NULL». `:513` y `:512` no se tocan | Decisión `ubicacion_snapshot` (pre-autorizada) |
+| A2 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` | 240 (título), 259 (`toEqual([{ ubicacionSnapshot: null }, { ubicacionSnapshot: null }])`) | **Se espera sin cambio**, por lo mismo que A1: las filas son del escenario y no pasan por `crearCierre`. Si hiciera falta, solo el título de `:240`: «nace con `ubicacion_snapshot` NULL» → «una fila del escenario nace con `ubicacion_snapshot` NULL» | Ídem |
+| A3 | `tests/unit/types/plantilla-datos.test.ts` | 235–238 | `:235` título «42 entradas, 37 propias y 5 alias» → «53 entradas, 48 propias y 5 alias»; `:236` `toHaveLength(42)` → `toHaveLength(53)`; `:237` `toHaveLength(37)` → `toHaveLength(48)`; `:238` `toHaveLength(5)` sin cambio. Y el comentario de `:225–234` gana una línea con la fecha y las 11 claves | R29: `nivel_1`…`nivel_10` y `ubicacion` |
+| A3b | `tests/unit/types/plantilla-datos.test.ts` | 40 y 248 | **No se pide.** Solo haría falta si el humano prefiere que el ejemplo de `{{ubicacion}}` sea el corto de P3 (3 tramos). Habría que excluir `nivel_4`…`nivel_10` de `:40` (`ejemplo` no vacío) y de `:248` (resuelve exactamente a su `ejemplo`). Sin autorizarlo, el ejemplo tiene 10 tramos (§4.6) | P3 |
+| A4 | `tests/unit/plantillas/CampoVariablePicker.test.tsx` y `tests/unit/whatsapp-envios/catalogo-de-variables.test.ts` | Picker `:87–94` (R4: opciones = `CAMPOS_OFRECIDOS`, en su orden), `:133–141` (cada ofrecido se encuentra por nombre), `:109` (`CLAVES_OCULTAS_EN_SELECTOR.size` = 27); catálogo `:13` (`catalogoDeVariables(null)` = `CAMPOS_PLANTILLA_OFRECIDOS`) | **Sin cambio de texto.** Cambia el conjunto que afirman: `CAMPOS_PLANTILLA_OFRECIDOS` gana `ubicacion` y la lista ofrecida pasa de N a N+1. Como esas aserciones derivan de la constante, siguen en verde sin editarlas. `:109` sigue en 27, porque los `nivel_k` no entran en `CLAVES_OCULTAS_EN_SELECTOR` (§4.6). Los `nivel_1..P` no aparecen en estos tests porque se montan sin proveedor de niveles (P = 0). Se autoriza el cambio de lo que significan | P2 |
+
+**Retiradas tras las respuestas del 2026-11-12:**
+- **A5** (excepción en `geografia-lecturas-sin-nodo-fk.guardia.test.ts`): P1 = B. La guardia solo se
+  amplía a los archivos nuevos, sin excepciones.
+- **A6** (forma del `select` de Prisma): medido en `3772e7a8`, ninguno de los candidatos afirma la
+  forma del `select` de lugar. `orden-envio-reader.test.ts:157` afirma solo `select.zona.select`.
+  `:53–55` de ese test, `orden-repository.recepcion-satelite.test.ts:103–105` y `:195–197`, y
+  `gestion-desde-ayuda-cierre.test.ts:104–106` son filas simuladas de entrada, y pasan a ir
+  acompañadas de un catálogo con esos nombres. Las salidas esperadas no cambian: `:169–171` y `:203`
+  del de satélite, y `:567–569` del de ayuda.
+- **A7** (`geocodificacion-service.test.ts`): la consulta esperada es `QUERY =
+  construirQueryDireccion(ORDEN)` (`:48`), derivada. Solo cambia la entrada `ORDEN` (`:40–46`), a
+  `{ direccion, ruta: ["San José", "San José", "Carmen"], paisNombre: "Costa Rica" }`. La cadena literal
+  de CR la fija `direccion-query.test.ts`, sin cambio de lo que espera.
 
 **No cambian de aserción, solo de entrada** (los DTO de prueba ganan `lugarRuta`):
 
