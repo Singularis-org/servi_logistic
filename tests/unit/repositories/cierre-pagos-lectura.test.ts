@@ -365,6 +365,8 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
       },
       gestionOrden: { findMany: vi.fn().mockResolvedValue([filaAdmin()]) },
       cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot()]) },
+      // SLT-110 (R210): el cargo vigente de fulfillment. Vacio: esta suite mide el desglose de pagos.
+      ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     };
   }
 
