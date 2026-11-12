@@ -33,22 +33,32 @@ BEGIN;
 
 -- ─── 1. Tablas, índices, FK, RLS y REVOKE (§1; R26) ──────────────────────────────────────────────────
 
--- §1.1. `recibe_at` son las 00:00 de la plataforma de la recepción, en UTC; `recibido_at` NULL = pendiente.
+-- §1.1. `recibe_at` son las 00:00 de la plataforma de la recepción, en UTC. PENDIENTE = `recibido_at` y
+-- `no_aplicada_at` NULL (§14.1). `no_aplicada_*` (R28): la recepción no se pudo aplicar por una regla del plan;
+-- cuenta como resuelta y la empresa conserva su versión. El motivo es un código de la app (`mensajes.ts`).
 -- CASCADE con el pendiente: reemplazarlo o cancelarlo borra sus recepciones. CASCADE con la empresa.
 CREATE TABLE "plan_cambio_recepcion" (
     "cambio_id" TEXT NOT NULL,
     "empresa_id" TEXT NOT NULL,
     "recibe_at" TIMESTAMP(3) NOT NULL,
     "recibido_at" TIMESTAMP(3),
+    "no_aplicada_at" TIMESTAMP(3),
+    "no_aplicada_motivo" TEXT,
 
-    CONSTRAINT "plan_cambio_recepcion_pkey" PRIMARY KEY ("cambio_id", "empresa_id")
+    CONSTRAINT "plan_cambio_recepcion_pkey" PRIMARY KEY ("cambio_id", "empresa_id"),
+    CONSTRAINT "plan_cambio_recepcion_no_aplicada_par_check"
+        CHECK (("no_aplicada_at" IS NULL) = ("no_aplicada_motivo" IS NULL)),
+    CONSTRAINT "plan_cambio_recepcion_recibida_o_no_aplicada_check"
+        CHECK ("recibido_at" IS NULL OR "no_aplicada_at" IS NULL),
+    CONSTRAINT "plan_cambio_recepcion_no_aplicada_motivo_check"
+        CHECK ("no_aplicada_motivo" IS NULL OR "no_aplicada_motivo" IN ('cobro_quincenal_ordenes_mensuales'))
 );
 
 -- La espera del cierre (§2.2) y la salida de un plan (R18) buscan por empresa; la PK empieza por el pendiente.
 CREATE INDEX "plan_cambio_recepcion_empresa_id_idx" ON "plan_cambio_recepcion" ("empresa_id");
--- El barrido (R5) y la espera del cierre (R9) solo miran las que faltan.
+-- El barrido (R5) y la espera del cierre (R9) solo miran las pendientes (ni recibidas ni no aplicadas, R28).
 CREATE INDEX "plan_cambio_recepcion_pendientes_idx" ON "plan_cambio_recepcion" ("recibe_at")
-    WHERE "recibido_at" IS NULL;
+    WHERE "recibido_at" IS NULL AND "no_aplicada_at" IS NULL;
 
 ALTER TABLE "plan_cambio_recepcion" ADD CONSTRAINT "plan_cambio_recepcion_cambio_id_fkey"
     FOREIGN KEY ("cambio_id") REFERENCES "plan_cambio_programado"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -58,14 +68,22 @@ ALTER TABLE "plan_cambio_recepcion" ADD CONSTRAINT "plan_cambio_recepcion_empres
 -- §1.2. Una como mucho por empresa. `cambio_id` es opaco y SIN FK, a propósito: la versión sobrevive al
 -- reemplazo del pendiente que la trajo (R13). `version` tiene la forma de `versionPlanSchema`, con
 -- `periodicidadOrdenes` siempre presente; la valida la app al escribir.
+-- `no_aplicada_*` (R28, §14.1): la versión que la empresa CONSERVA por una recepción no aplicada después de
+-- promover el plan; `cambio_id` es entonces el pendiente que no se aplicó. Mismos `CHECK` que la recepción.
 CREATE TABLE "plan_version_empresa" (
     "empresa_id" TEXT NOT NULL,
     "plan_id" TEXT NOT NULL,
     "cambio_id" TEXT NOT NULL,
     "version" JSONB NOT NULL,
     "desde_at" TIMESTAMP(3) NOT NULL,
+    "no_aplicada_at" TIMESTAMP(3),
+    "no_aplicada_motivo" TEXT,
 
-    CONSTRAINT "plan_version_empresa_pkey" PRIMARY KEY ("empresa_id")
+    CONSTRAINT "plan_version_empresa_pkey" PRIMARY KEY ("empresa_id"),
+    CONSTRAINT "plan_version_empresa_no_aplicada_par_check"
+        CHECK (("no_aplicada_at" IS NULL) = ("no_aplicada_motivo" IS NULL)),
+    CONSTRAINT "plan_version_empresa_no_aplicada_motivo_check"
+        CHECK ("no_aplicada_motivo" IS NULL OR "no_aplicada_motivo" IN ('cobro_quincenal_ordenes_mensuales'))
 );
 
 -- «Plan partido» = alguna fila con ese `plan_id` (R14, R16); promover borra las del plan (R10).
@@ -289,11 +307,12 @@ BEGIN
         'admin_tienda', plan_uso_rol(o."id", 'Admin Tienda'::rol_value),
         'admin_satelite', plan_uso_rol(o."id", 'adminSatelite'::rol_value)),
       -- Solo la fecha y la versión: NUNCA `avisos_al_programar` (nombra otras empresas) ni el actor (R9).
-      -- SLT-128 (R12): la fecha es SU recepción, no F; si ya lo recibió, no hay cambio que mostrar.
+      -- SLT-128 (R12): la fecha es SU recepción, no F; si ya lo recibió, o quedó «no aplicada» (R28), no hay
+      -- cambio que mostrar.
       'cambio', (SELECT jsonb_build_object('vigente_desde', r."recibe_at", 'version', c."version")
                    FROM "plan_cambio_programado" c
                    JOIN "plan_cambio_recepcion" r ON r."cambio_id" = c."id" AND r."empresa_id" = o."id"
-                  WHERE c."plan_id" = p."id" AND r."recibido_at" IS NULL),
+                  WHERE c."plan_id" = p."id" AND r."recibido_at" IS NULL AND r."no_aplicada_at" IS NULL),
       -- El pendiente de la empresa, sin `plan_cambio_actor_id` (R32).
       'cambio_empresa', CASE WHEN o."plan_cambio_id" IS NULL THEN NULL
                              ELSE jsonb_build_object(
@@ -476,10 +495,11 @@ BEGIN
     RETURN 0;
   END IF;
   -- SLT-128 (R9): la recepción más temprana que la cola aún no aplicó a la empresa, de CUALQUIER edición
-  -- programada de su plan (no solo la de la periodicidad).
+  -- programada de su plan (no solo la de la periodicidad). Una «no aplicada» (R28) ya no está pendiente: no
+  -- se espera y la factura cierra con la versión que la empresa conserva.
   SELECT min(r."recibe_at") INTO v_recepcion
     FROM "plan_cambio_recepcion" r
-   WHERE r."empresa_id" = p_org AND r."recibido_at" IS NULL;
+   WHERE r."empresa_id" = p_org AND r."recibido_at" IS NULL AND r."no_aplicada_at" IS NULL;
   v_espera := LEAST(v_espera, v_recepcion);
   -- LEAST ignora los nulos: sin recepción pendiente, avanza hasta `p_ahora`; con ella, la factura cuyo fin llega
   -- a la recepción queda en curso y la siguiente no se abre con la versión vieja.

@@ -113,7 +113,7 @@
 
 ### T10 — Recepción no aplicable (R28) y trabajos viejos (R29) (depende de T1–T9; P13–P15 cerradas el 2026-11-12)
 Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
-- [ ] **T10.1** Migración (decisión P14: se edita `20261114120000`): `no_aplicada_at` y `no_aplicada_motivo` con sus `CHECK` en
+- [x] **T10.1** Migración (decisión P14: se edita `20261114120000`): `no_aplicada_at` y `no_aplicada_motivo` con sus `CHECK` en
   las dos tablas; índice parcial con «pendiente»; `factura_plataforma_cerrar` y `plan_de_la_empresa` solo con
   pendientes; `db/schema.prisma` con las cuatro columnas. **Hecho:** T2.3 verde con los `CHECK` nuevos y el
   `down.sql` que sigue reponiendo literal; typecheck verde.

@@ -6272,9 +6272,10 @@ model PlanCambioProgramado {
 }
 
 // SLT-128 (design §1.1, R1, R5, R9) — cuándo recibe cada empresa del plan su cambio programado: el inicio
-// de su período de cobro en F o después. `recibidoAt` NULL = aún no lo recibió. Reemplazar o cancelar el
-// pendiente borra sus filas en cascada. De PLATAFORMA. Viven solo en el SQL de 20261114120000: el índice
-// parcial `(recibe_at) WHERE recibido_at IS NULL`, la RLS sin políticas y el `REVOKE ALL … FROM
+// de su período de cobro en F o después. Pendiente = `recibidoAt` y `noAplicadaAt` NULL; `noAplicada*`
+// (R28): no se pudo aplicar por una regla del plan, cuenta como resuelta. Reemplazar o cancelar el
+// pendiente borra sus filas en cascada. De PLATAFORMA. Viven solo en el SQL de 20261114120000: los `CHECK`
+// de `no_aplicada_*`, el índice parcial de las pendientes, la RLS sin políticas y el `REVOKE ALL … FROM
 // servi_app` (R26). La empresa va en `empresa_id`, no en `organizacion_id`: la guardia
 // organizacion-en-modelos prohíbe esa columna en tablas de plataforma (decisión del humano, 2026-11-12).
 model PlanCambioRecepcion {
@@ -6284,6 +6285,8 @@ model PlanCambioRecepcion {
   empresa        Organizacion          @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   recibeAt       DateTime              @map("recibe_at") @db.Timestamp(3)
   recibidoAt     DateTime?             @map("recibido_at") @db.Timestamp(3)
+  noAplicadaAt   DateTime?             @map("no_aplicada_at") @db.Timestamp(3)
+  noAplicadaMotivo String?             @map("no_aplicada_motivo")
 
   @@id([cambioId, empresaId])
   @@index([empresaId])
@@ -6304,6 +6307,9 @@ model PlanVersionEmpresa {
   cambioId       String       @map("cambio_id")
   version        Json
   desdeAt        DateTime     @map("desde_at") @db.Timestamp(3)
+  // R28 (§14.1): la versión que la empresa conserva por una recepción no aplicada tras promover el plan.
+  noAplicadaAt   DateTime?    @map("no_aplicada_at") @db.Timestamp(3)
+  noAplicadaMotivo String?    @map("no_aplicada_motivo")
 
   @@index([planId])
   @@map("plan_version_empresa")

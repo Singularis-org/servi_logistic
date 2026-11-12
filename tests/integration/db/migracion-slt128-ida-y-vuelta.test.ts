@@ -229,6 +229,63 @@ describeSiHayBase("SLT-128 R24, R25 — los pendientes previos, la subida y la b
     expect(await cuantas(`SELECT count(*)::int AS n FROM "plan_cambio_programado" WHERE "id" = $1`, [ids.cambio])).toBe(1);
   });
 
+  it("R28: los CHECK de no_aplicada_* (par, ni recibida y no aplicada a la vez, motivo de la lista) y el índice de pendientes", async () => {
+    const intento = (sql: string, valores: unknown[]) =>
+      db.query(sql, valores).then(
+        () => "ok",
+        (e: { code?: string; constraint?: string }) => `${e.code} ${e.constraint}`,
+      );
+    const r = [ids.cambio, ids.quincenal];
+    const where = `WHERE "cambio_id" = $1 AND "empresa_id" = $2`;
+
+    expect(await intento(`UPDATE "plan_cambio_recepcion" SET "no_aplicada_at" = now() ${where}`, r)).toBe(
+      "23514 plan_cambio_recepcion_no_aplicada_par_check",
+    );
+    expect(
+      await intento(
+        `UPDATE "plan_cambio_recepcion" SET "no_aplicada_at" = now(), "no_aplicada_motivo" = 'otro' ${where}`,
+        r,
+      ),
+    ).toBe("23514 plan_cambio_recepcion_no_aplicada_motivo_check");
+    expect(
+      await intento(
+        `UPDATE "plan_cambio_recepcion" SET "recibido_at" = now(), "no_aplicada_at" = now(),
+                "no_aplicada_motivo" = 'cobro_quincenal_ordenes_mensuales' ${where}`,
+        r,
+      ),
+    ).toBe("23514 plan_cambio_recepcion_recibida_o_no_aplicada_check");
+    // La versión conservada: mismos CHECK de par y de motivo.
+    const version = [ids.quincenal, ids.P, ids.cambio, F];
+    expect(
+      await intento(
+        `INSERT INTO "plan_version_empresa" ("empresa_id", "plan_id", "cambio_id", "version", "desde_at", "no_aplicada_at", "no_aplicada_motivo")
+         SELECT $1, $2, $3, c."version", $4, now(), 'otro' FROM "plan_cambio_programado" c WHERE c."id" = $3`,
+        version,
+      ),
+    ).toBe("23514 plan_version_empresa_no_aplicada_motivo_check");
+    expect(
+      await intento(
+        `INSERT INTO "plan_version_empresa" ("empresa_id", "plan_id", "cambio_id", "version", "desde_at", "no_aplicada_motivo")
+         SELECT $1, $2, $3, c."version", $4, 'cobro_quincenal_ordenes_mensuales' FROM "plan_cambio_programado" c WHERE c."id" = $3`,
+        version,
+      ),
+    ).toBe("23514 plan_version_empresa_no_aplicada_par_check");
+
+    // Válida: marcada «no aplicada» con su motivo; se deshace para los casos siguientes.
+    expect(
+      await intento(
+        `UPDATE "plan_cambio_recepcion" SET "no_aplicada_at" = now(), "no_aplicada_motivo" = 'cobro_quincenal_ordenes_mensuales' ${where}`,
+        r,
+      ),
+    ).toBe("ok");
+    await db.query(`UPDATE "plan_cambio_recepcion" SET "no_aplicada_at" = NULL, "no_aplicada_motivo" = NULL ${where}`, r);
+
+    const { rows } = await db.query(
+      `SELECT indexdef AS d FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'plan_cambio_recepcion_pendientes_idx'`,
+    );
+    expect(String(rows[0].d)).toMatch(/recibido_at IS NULL\) AND \(no_aplicada_at IS NULL/);
+  });
+
   it("R24, R26: las dos tablas son de plataforma: RLS sin políticas y nada para servi_app", async () => {
     const { rows } = await db.query(
       `SELECT c.relname AS t, c.relrowsecurity AS rls,
