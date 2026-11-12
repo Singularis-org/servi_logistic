@@ -108,6 +108,17 @@ async function fotoDeFilas(tx: TxDeTest, organizacionId: string): Promise<string
   return filas.map((f) => f.l);
 }
 
+/** P20: el inicio, el fin fijado, el fin natural GUARDADO y la periodicidad de cada factura, en orden. */
+async function fines(tx: TxDeTest, organizacionId: string): Promise<[string, string | null, string, string][]> {
+  const filas = await tx.$queryRawUnsafe<{ desde: string; hasta: string | null; fin: string; periodicidad: string }[]>(
+    `SELECT to_char("desde_at", ${ISO}) AS desde, to_char("hasta_at", ${ISO}) AS hasta,
+            to_char("fin_natural_at", ${ISO}) AS fin, "periodicidad"
+       FROM "factura_plataforma" WHERE "organizacion_id" = $1 ORDER BY "desde_at"`,
+    organizacionId,
+  );
+  return filas.map((f) => [f.desde, f.hasta, f.fin, f.periodicidad]);
+}
+
 /** Lo esencial de cada factura: intervalo, plan de las órdenes, la cuota de la emisión y la primera cuota. */
 const resumen = (f: Factura) => ({
   estado: f.estado,
@@ -619,6 +630,62 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
     ]);
   });
 
+  it("R36, R2: con el fin guardado (P20), editar la periodicidad del plan a mensual no mueve el `fin_natural_at` de la en curso (el 16); la siguiente se abre el 16 mensual con fin guardado el 1 de diciembre", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
+      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const antes = await fines(tx, e.id);
+      await editarPeriodicidad(tx, plan, "mensual");
+      const trasEditar = await fines(tx, e.id);
+      // Antes del 16 nada se fija: el fin que manda es el guardado, no uno recalculado con la periodicidad nueva.
+      const el15 = await cerrar(tx, e.id, corrida("2026-11-15"));
+      const el16 = await cerrar(tx, e.id, corrida("2026-11-16"));
+      return { antes, trasEditar, el15, el16, despues: await fines(tx, e.id) };
+    });
+    expect(r.antes).toEqual([[cero("2026-11-01"), null, cero("2026-11-16"), "quincenal"]]);
+    expect(r.trasEditar).toEqual(r.antes);
+    expect([r.el15, r.el16]).toEqual([0, 1]);
+    expect(r.despues).toEqual([
+      [cero("2026-11-01"), cero("2026-11-16"), cero("2026-11-16"), "quincenal"],
+      [cero("2026-11-16"), null, cero("2026-12-01"), "mensual"],
+    ]);
+  });
+
+  it("R2, R16: una primera asignación con inicio ≤ D a un plan de otra periodicidad recalcula el fin guardado de la en curso (del 16 al 1 de diciembre); con la misma periodicidad, el fin guardado no cambia", async () => {
+    const r = await revertida(base, async (tx) => {
+      const mensualDeMes = await planConPrecio(tx, "31000.00", "mensual");
+      const quincenal = await planConPrecio(tx, "31000.00");
+      // Las dos sin plan: la en curso del 1 es quincenal, con fin guardado el 16.
+      const otra = await empresa(tx, cero("2026-10-16"));
+      const misma = await empresa(tx, cero("2026-10-16"));
+      await cerrar(tx, otra.id, corrida("2026-11-01"));
+      await cerrar(tx, misma.id, corrida("2026-11-01"));
+      const antes = [(await fines(tx, otra.id)).at(-1), (await fines(tx, misma.id)).at(-1)];
+      await asignar(tx, otra.id, mensualDeMes, "inicio", "2026-11-01", "mensual", "2026-11-12T15:00:00.000Z");
+      await asignar(tx, misma.id, quincenal, "inicio", "2026-11-01", "quincenal", "2026-11-12T15:00:00.000Z");
+      const trasAplicar = [(await fines(tx, otra.id)).at(-1), (await fines(tx, misma.id)).at(-1)];
+      // El cierre avanza con el fin guardado: la de órdenes mensuales no se fija el 16.
+      const el16 = [await cerrar(tx, otra.id, corrida("2026-11-16")), await cerrar(tx, misma.id, corrida("2026-11-16"))];
+      const el1Dic = await cerrar(tx, otra.id, corrida("2026-12-01"));
+      return { antes, trasAplicar, el16, el1Dic, otra: await fines(tx, otra.id) };
+    });
+    expect(r.antes).toEqual([
+      [cero("2026-11-01"), null, cero("2026-11-16"), "quincenal"],
+      [cero("2026-11-01"), null, cero("2026-11-16"), "quincenal"],
+    ]);
+    expect(r.trasAplicar).toEqual([
+      [cero("2026-11-01"), null, cero("2026-12-01"), "mensual"],
+      [cero("2026-11-01"), null, cero("2026-11-16"), "quincenal"],
+    ]);
+    expect(r.el16).toEqual([0, 1]);
+    expect(r.el1Dic).toBe(1);
+    expect(r.otra.slice(1)).toEqual([
+      [cero("2026-11-01"), cero("2026-12-01"), cero("2026-12-01"), "mensual"],
+      [cero("2026-12-01"), null, cero("2027-01-01"), "mensual"],
+    ]);
+  });
+
   /* ------------------------- Primera asignación ------------------------- */
 
   it("R16, R5: quincenal con inicio el 1 aplicado el 12: nada se emite al aplicar; la del 16 lleva las órdenes del 1 al 15 y las dos cuotas", async () => {
@@ -880,7 +947,7 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
 
   /* ------------------------- Inmutabilidad (SL118) ------------------------- */
 
-  it("R16: una por cerrar no cambia su plan ni su periodicidad, y una marca ya puesta no cambia: SL118 (la marca nula sí se pone)", async () => {
+  it("R16, R2: una por cerrar no cambia su plan, su periodicidad ni su fin natural guardado (P20), y una marca ya puesta no cambia: SL118 (la marca nula sí se pone)", async () => {
     const r = await revertida(base, async (tx) => {
       const quincenal = await planConPrecio(tx, "31000.00");
       const e = await empresa(tx, cero("2026-11-01"));
@@ -897,7 +964,19 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
           quincenal,
         ),
         fechas: await intentar(tx, `UPDATE "factura_plataforma" SET "hasta_at" = "hasta_at" + interval '1 day' WHERE "id" = $1`, porCerrar.id),
+        finNatural: await intentar(
+          tx,
+          `UPDATE "factura_plataforma" SET "fin_natural_at" = "fin_natural_at" + interval '1 day' WHERE "id" = $1`,
+          porCerrar.id,
+        ),
       };
+      // El CHECK `factura_plataforma_fin_natural`, también para el dueño en la en curso: el fin natural va después
+      // del inicio.
+      const finAntesDelInicio = await intentar(
+        tx,
+        `UPDATE "factura_plataforma" SET "fin_natural_at" = "desde_at" WHERE "id" = $1`,
+        enCurso.id,
+      );
       const despuesDeRechazos = await fotoDeFilas(tx, e.id);
       // Control: la marca pasa de nula a un valor en una por cerrar y en la en curso...
       const ponerMarca = await intentar(tx, `UPDATE "factura_plataforma" SET "primera_cuota_desde_at" = "hasta_at" WHERE "id" = $1`, porCerrar.id);
@@ -905,9 +984,10 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       // ...y ya puesta no cambia ni se quita.
       const cambiarMarca = await intentar(tx, `UPDATE "factura_plataforma" SET "primera_cuota_desde_at" = "desde_at" WHERE "id" = $1`, porCerrar.id);
       const quitarMarca = await intentar(tx, `UPDATE "factura_plataforma" SET "primera_cuota_desde_at" = NULL WHERE "id" = $1`, enCurso.id);
-      return { antes, despuesDeRechazos, rechazos, ponerMarca, ponerMarcaEnCurso, cambiarMarca, quitarMarca };
+      return { antes, despuesDeRechazos, rechazos, finAntesDelInicio, ponerMarca, ponerMarcaEnCurso, cambiarMarca, quitarMarca };
     });
-    expect(r.rechazos).toEqual({ periodicidad: "SL118", plan: "SL118", fechas: "SL118" });
+    expect(r.rechazos).toEqual({ periodicidad: "SL118", plan: "SL118", fechas: "SL118", finNatural: "SL118" });
+    expect(r.finAntesDelInicio).toBe("23514");
     expect(r.despuesDeRechazos).toEqual(r.antes);
     expect([r.ponerMarca, r.ponerMarcaEnCurso]).toEqual([null, null]);
     expect([r.cambiarMarca, r.quitarMarca]).toEqual(["SL118", "SL118"]);

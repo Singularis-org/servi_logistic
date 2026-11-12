@@ -187,7 +187,7 @@
 
 ### T16 — Fin guardado, siembra desde el alta y sus tests (depende de T2.5 y T14.2)
 Los archivos de T16 ya están todos en «Archivos esperados»: no sube el tamaño.
-- [ ] **T16.0** `db/schema.prisma`: `FacturaPlataforma.finNaturalAt` (`DateTime @map("fin_natural_at")
+- [x] **T16.0** `db/schema.prisma`: `FacturaPlataforma.finNaturalAt` (`DateTime @map("fin_natural_at")
   @db.Timestamp(3)`, no nulo, comentario del CHECK `factura_plataforma_fin_natural`) (design §1.1, P20).
   **Hecho:** typecheck verde.
 - [ ] **T16.1** `db/migrations/20261111130100_factura_plataforma/migration.sql` (design §1.1, §1.3, §2.2–§2.6,

@@ -410,7 +410,7 @@ T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `
 | R | Archivo | `it` / `describe` |
 |---|---|---|
 | R1 | cierre | «R1, R2, R3, R5, R9: sin plan factura quincenal, sin cuota, y cada corrida emite la vencida y abre la siguiente» |
-| R2 | cierre | el mismo; «R2, R3, R8: mensual 31 000 con 10 % y órdenes quincenales…»; «R2, R3, R8: anual con órdenes mensuales…» |
+| R2 | cierre; cambio-plan | el mismo; «R2, R3, R8: mensual 31 000 con 10 % y órdenes quincenales…»; «R2, R3, R8: anual con órdenes mensuales…»; fin guardado (P20, T16): los tres «R26, R2: …» de la factura histórica y «R26, R2: la migración deja a cada empresa UNA factura histórica…»; «R36, R2: con el fin guardado (P20)…»; «R2, R16: una primera asignación con inicio ≤ D a un plan de otra periodicidad recalcula el fin guardado…»; «R16, R2: una por cerrar no cambia … ni su fin natural guardado (P20)…» |
 | R3 | cierre; jobs | los tres de arriba; «R3: sin que nadie lo pida, cierra CADA empresa con el mismo «ahora» del reloj de la cola», «R3: sin empresas, la corrida termina bien sin cerrar nada», «R3: una empresa sin nada vencido (o en espera de un cambio, R39) devuelve 0…» |
 | R4 | cierre | «R4: a las 00:04:59.999 del 16 la factura del 1 al 15 queda fijada pero sin cerrar; a las 00:10, se cierra» |
 | R5 | cierre; cambio-plan | «R1, R2, R3, R5, R9…»; «R5, R6, R7: cifras de las órdenes por instante…»; «R16, R5: quincenal con inicio el 1 aplicado el 12…» (las dos cuotas) |
@@ -424,7 +424,7 @@ T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `
 | R13 | aislamiento | «R13: nadie cambia una factura cerrada, tampoco el dueño: SL118 sin cambiar nada» |
 | R14 | cierre | «R14: el número es correlativo por empresa desde 1, en el orden de los períodos, y la en curso no tiene» |
 | R15 | cambio-plan | «R15, R39: mensual → quincenal al 1 de diciembre…»; «R15: un pendiente por SQL con efecto el 10 (a mitad de factura)…» |
-| R16 | cambio-plan | «R16: un cambio aplicado después del cierre de su factura…»; «R16: un plan con órdenes mensuales tomado por una factura quincenal…»; «R16, R5…»; «R16, R29: mensual con inicio el 1 aplicado el 12…»; «R16: quincenal con inicio el 1 aplicado el 20…»; «R16, R28, R29: alta el 10…»; «R16, R39: inicio el 16 que aplica la cola…»; «R16: una por cerrar no cambia su plan ni su periodicidad…: SL118…» |
+| R16 | cambio-plan | «R16: un cambio aplicado después del cierre de su factura…»; «R16: un plan con órdenes mensuales tomado por una factura quincenal…»; «R16, R5…»; «R16, R29: mensual con inicio el 1 aplicado el 12…»; «R16: quincenal con inicio el 1 aplicado el 20…»; «R16, R28, R29: alta el 10…»; «R16, R39: inicio el 16 que aplica la cola…»; «R16, R2: una por cerrar no cambia su plan, su periodicidad ni su fin natural guardado (P20)…: SL118…»; «R2, R16: una primera asignación con inicio ≤ D a un plan de otra periodicidad recalcula el fin guardado…» |
 | R17 | cambio-plan | «R17: guardar, reemplazar y cancelar un pendiente, o editar el precio del plan, no cambia ninguna factura» |
 | R18 | deuda; `tests/unit/utils/deuda-plataforma.test.ts` | «R18, R19: una factura con las dos cuotas sube la deuda en las dos…»; `describe` «SLT-118 — derivarDeudaPlataforma con cuotas (R18)» (5 `it`); cableado con cuotas en cero en los tres `tests/unit/actions/*.composition-root.test.ts` de deuda, empresas y wallet |
 | R19 | deuda; unit deuda | «R18, R19…» (pago previo intacto, tope en app y base); «pagar la cuota exacta deja la empresa al día (R19)» |
@@ -434,7 +434,7 @@ T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `
 | R23 | aislamiento | Base: «R23: la plataforma (el dueño, como el superadmin) lee las facturas de las dos empresas». App (T8.1, tanda 12): «R23: el superadmin lee las de A y las de B, cada una solo con las suyas, también desde un contexto de plataforma» (`deEmpresaParaPlataforma` por el cliente con la extensión), con el control «control: sin `conEmpresa`, la lectura de la empresa por el cliente de la app no corre (EmpresaNoResuelta)» |
 | R24 | aislamiento | Empresa: «R24: plan mensual: la del 1 al 15 sin cuota prevista…», «R24: con un cambio pendiente cuyo efecto es el fin de la en curso…», «R24: quincenal con inicio el 1 aplicado el 12…», «R24, R28: una primera asignación pendiente con inicio el 18 se ve desde que se guarda…» (m3), «R24: una primera asignación pendiente al 1 de un plan de órdenes mensuales que la cola aplica tarde…» (m7), «R24: un cambio pendiente al 1 de un plan de órdenes quincenales a uno de órdenes mensuales que la cola aplica tarde…» (gemelo de m7), «R24, R21…». Superadmin (tanda 12): «R24: el superadmin ve la en curso con su total parcial y la cuota prevista, igual que la empresa; sin número» |
 | R25 | jobs; cierre | `describe` «SLT-118 — registro y recurrencia del cierre de facturas (R25)» (6 `it` + `it.each` «R25: cada hora a los 10 minutos — $caso» ×4); «R25: la siembra del cierre (sembrarCierreFacturas) y su re-agendado dejan UNA fila por corrida (contarJobs)» |
-| R26 | cierre | «R26: una empresa dada de alta después…»; «R26: la migración deja a cada empresa UNA factura en curso…»; «R26 (P15), R11: el período de cobro en curso cuenta como pagado…» |
+| R26 | cierre | «R26: una empresa dada de alta después…»; «R26, R2: la migración deja a cada empresa UNA factura histórica en curso desde las 00:00 de su alta hasta el primer corte tras migrar…»; «R26 (P15), R11: el período de cobro en curso cuenta como pagado…»; T16.4: «R26, R2: alta el 3 de septiembre y siembra el 10 de noviembre (quincenal): una sola factura del 3 de septiembre al 16 de noviembre…», «R26, R2: la histórica de una empresa con órdenes mensuales sembrada el 10 de noviembre tiene fin el 1 de diciembre…», «R26, R2: una empresa creada tras la siembra no tiene histórica…» |
 | R27 | cierre | «R27: con una factura cerrada con cuota, el down se niega sin tocar nada»; «R27: con solo una primera cuota cerrada…»; «R27: sin cuotas cerradas, el down deja la base como estaba…» |
 | R28 | cambio-plan | «R16, R28, R29: alta el 10…»; «R28, R29: quincenal con inicio el 5 aplicado en el acto…»; «R28, R29: inicio el 18 (futuro, lo aplica la cola)…» |
 | R29 | cambio-plan; gemelas | los tres de R28; «R16, R29…»; «R29: anual desde el 18 con órdenes quincenales: 44 de 365…»; «R29: la primera cuota que guarda la base es la de costoDelPeriodoEnCurso…»; «R29: sin el permiso de primera cuota, un tramo que no empieza en el período no tiene cuota (R8)» |
@@ -444,7 +444,7 @@ T10.2 (2026-11-11, backend_dev). Sacado de los `it`/`describe` reales (grep de `
 | R33 | cambio-empresa; svc-periodo | «R33: la primera asignación no se lleva: inicio el 10 (a mitad de período)…»; «R33: una primera asignación (`inicio`) no se lleva, aunque caiga a mitad de período» |
 | R34 | cambio-empresa; svc-periodo | «R34, R32: con hoy el 10 de noviembre, quincenal → anual elegido el 10 de noviembre de 2027 (el tope)…»; «R34: elegida el 10 de noviembre de 2027 (el tope) entra…», «R34: elegida el 11 de noviembre de 2027 → validation_error…» |
 | R35 | periodicidad; `tests/components/PlanFormPeriodicidad.test.tsx`; `tests/unit/planes/rastro-periodo.test.ts`; `tests/unit/services/email/plantilla-cambio-plan.test.ts` | «R35: crear sin ella la deja quincenal…», «R35: editar en el acto la cambia…», «R35: programada, no cambia hasta su fecha…», «R35, P14: un plan que ya existía…», «R35: un valor que no es quincenal ni mensual…»; `describe` «SLT-118 R35 — «Facturación de órdenes» en el formulario del plan» (5 `it`); `describe` «SLT-118 R35 — «Facturación de órdenes: <antes> → <después>»» (5 `it`, «qué cambia» y el cambio pendiente); «SLT-118 R35: el cambio de la periodicidad de órdenes del plan sale como «Facturación de órdenes: quincenal → mensual»» (correo) |
-| R36 | cambio-plan | «R36: la periodicidad del plan editada de quincenal a mensual el 10 de noviembre…», «R36: … de mensual a quincenal el 10 de noviembre…» |
+| R36 | cambio-plan | «R36: la periodicidad del plan editada de quincenal a mensual el 10 de noviembre…», «R36: … de mensual a quincenal el 10 de noviembre…»; «R36, R2: con el fin guardado (P20), editar la periodicidad del plan a mensual no mueve el `fin_natural_at` de la en curso (el 16)…» (T16.3) |
 | R37 | periodicidad | «R37: asignar con tipo quincenal…», «R37: crear el custom con tipo quincenal y órdenes mensuales…», «R37: cambiar el tipo a quincenal…», «R37: editar a mensual con una empresa quincenal…», «R37: editar a mensual un plan que una empresa tiene como cambio pendiente…», «R37: una programada a mensual que ya no pasa al aplicarse…» |
 | R38 | cambio-plan | «R38: mensual con órdenes quincenales a un plan mensual con órdenes mensuales, guardado el 10 de noviembre…» |
 | R39 | cambio-plan; jobs | «R15, R39…»; «R16, R39: … si el cierre llega antes que la cola, espera»; «R3: una empresa sin nada vencido (o en espera de un cambio, R39)…» |
@@ -537,3 +537,22 @@ Veredicto: T8.1 y la línea de periodicidad hechos con sus tests; falta pasar `p
 - Gemelo → `factura-plataforma-aislamiento.test.ts` «R24: un cambio pendiente al 1 de un plan de órdenes quincenales a uno de órdenes mensuales que la cola aplica tarde: la en curso del 1 ya se ve mensual, hasta el 1 de diciembre y con la cuota de diciembre del plan nuevo, igual que tras la cola salvo el plan».
 - typecheck verde (exit 0); eslint del test verde (exit 0); `vitest run` del archivo → 16 skipped (integración sin base: al CI).
 - Veredicto: gemelo de m7 hecho; el caso de integración nuevo solo lo valida el CI.
+
+## T16 — factura histórica y fin guardado (T16.0–T16.4, P20) · backend_dev · sin commit (2026-11-11)
+- Archivos: `db/schema.prisma` (`FacturaPlataforma.finNaturalAt`, `@db.Timestamp(3)`, comentario del CHECK);
+  `db/migrations/20261111130100_factura_plataforma/migration.sql` editada en sitio (columna `fin_natural_at NOT NULL`,
+  CHECK `factura_plataforma_fin_natural`, trigger la congela en una `por_cerrar`, `abrir` la escribe, `avanzar` fija
+  con ella, `tomar_cambio` la recalcula en R16 solo si cambia la periodicidad y la escribe en la de R28, `en_curso`
+  usa el fin guardado salvo la vista previa §5.2 con otra periodicidad, siembra histórica desde las 00:00 del alta
+  con fin = primer corte tras `now()`); `tests/integration/db/factura-plataforma-cambio-plan.test.ts`;
+  `tests/integration/db/factura-plataforma-cierre.test.ts`. `down.sql` sin cambios: la columna se va con el
+  `DROP TABLE` y ningún objeto la nombra fuera de la tabla y las funciones que ya baja.
+- Tests nuevos/ajustados: ver el mapa (R2, R16, R26, R36). La histórica en la base compartida corre el TEXTO de la
+  siembra de la migración para una empresa con `now()` fijado (`sembrarComoLaMigracion`); en la base propia, las
+  empresas sembradas tienen alta 68 días antes de migrar y se comprueban `desde` y `fin_natural_at`.
+- typecheck exit 0 (con `prisma generate` y `DATABASE_URL` ficticia, sin `.env`); `prisma validate` válido; eslint de
+  los dos tests exit 0; `test:guardias` 4 rojos de `dependencias-declaradas-presentes` (baseline), 4822 pasan;
+  `vitest related` de lo tocado → 2 skipped (43 tests, integración sin base); disparadores de `db/` → 5 rojos que
+  también salen en HEAD sin este cambio (habilitacion-api, orden-traspaso, premio-ranking, vista-filtro,
+  verificar-rls-despliegue), 1744 pasan. `db:migrate`/`db:rollback` y la integración: al CI (sin base local).
+- Veredicto: T16.0–T16.4 escritos; la integración y la ida y vuelta solo las valida el CI.

@@ -6434,6 +6434,9 @@ model FacturaPlataforma {
   numero        Int? // R14: solo en la cerrada, correlativo por empresa desde 1
   desdeAt       DateTime  @map("desde_at")
   hastaAt       DateTime? @map("hasta_at") // excluido, y la emisión; NULL solo en curso
+  // P20: el fin natural (R2), fijado al abrirla; solo R16 lo recalcula. La sembrada histórica (R26) guarda el
+  // primer corte tras la migración. CHECK factura_plataforma_fin_natural: > desde_at y hasta_at <= él.
+  finNaturalAt  DateTime  @map("fin_natural_at") @db.Timestamp(3)
   periodicidad  String // CHECK: quincenal | mensual. La de órdenes: la del plan al abrirla, o quincenal (R2)
   // El plan de las ÓRDENES (R5): el de la empresa al abrirla; solo R16 lo cambia mientras está en curso.
   planId        String?   @map("plan_id")
