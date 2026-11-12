@@ -88,7 +88,7 @@
   rehace con la recepción.
 - [x] **T7.6** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R8, por empresa.
 - [x] **T7.7** `tests/integration/db/plan-precio-historial.test.ts`: R3 con la cola.
-- [ ] **T7.8** `tests/integration/db/planes-historial.test.ts`: `cambio_aplicado` al promover (R10).
+- [x] **T7.8** `tests/integration/db/planes-historial.test.ts`: `cambio_aplicado` al promover (R10).
 - [x] **T7.9** `tests/unit/services/planes-service.test.ts`: R14, `cambio_a_medias` y el rol de empresa sin
   llamadas al repositorio.
 - **Hecho:** los nueve verdes con `pnpm exec vitest related --run` sobre los archivos de T5 y T6.
