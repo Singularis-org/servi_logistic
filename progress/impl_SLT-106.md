@@ -240,3 +240,31 @@ E2E:
 ### Veredicto (tanda 2)
 
 T2, T3, T4 y T5.2 hechos: la satélite consolida desde la cola única, cada R de pantalla tiene test y los E2E pasan en verde dos veces seguidas. T5.1 queda para el leader.
+
+## Arreglo guardia cascada-central
+
+Rojo del gate: `tests/unit/guards/cascada-central-en-las-dos-pantallas.guardia.test.ts` >
+«y el extractor distingue los cuatro comprobantes, que comparten prefijo» (`USOS_AJENOS.length > 2`, recibía 2).
+
+- **Montaje que desapareció:** `<CierreConsolidableFacturaResumen>` en
+  `app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx`. Es la sustitución de R204
+  (`ConsolidacionBodegaModule` DEBE montar `ColaCierres` y NO `CierreConsolidableFacturaResumen`), no una
+  pérdida. El componente sigue declarado sin montar hasta SLT-115.
+- **Aserción nueva:** el umbral a ciegas se sustituye por un censo explícito `archivo · componente` con
+  `toEqual` (patrón del `it` anterior, comentario SLT-106 con el motivo):
+  `CierreDiaModule.tsx · CierreFacturaResumenPropio` y `CierresAdminHistoricoLista.tsx · CierreFacturaResumen`.
+- **Contraprueba:** mutación temporal del extractor (`if (true || !/[\w$]/.test(siguiente))`, deja de exigir
+  nombre completo) → el `it` cae en el `toEqual` (1 failed | 8 passed). Revertida (diff solo con la edición).
+  Nota: el `.every(u => u.componente === ...)` previo NO caza esa mutación (`componente` es el argumento,
+  no lo leído); quien la caza es el censo nuevo.
+
+### Comandos (DATABASE_URL → base `slt106_consolidar`)
+
+- Guardias de cierres/cascada/bodega (9 archivos): `Test Files 9 passed (9)`, `Tests 93 passed (93)`.
+- `npx vitest run tests/unit/guards` (gate.siempre): `Test Files 1 failed | 241 passed (242)`,
+  `Tests 4 failed | 3438 passed | 1 skipped (3443)`. Los 4 rojos son
+  `dependencias-declaradas-presentes.guardia.test.ts` (marcador «FIN PASO 2» de init.sh): preexistentes,
+  fallan igual (4 failed | 11 passed) en el checkout de `dev`; init.sh sin diff contra origin/dev.
+- `npx eslint <archivo>` → 0. `npx tsc --noEmit` → 0.
+
+Veredicto: guardia cascada-central en verde y vigilando el censo explícito de comprobantes ajenos; el rojo de dependencias es deuda ajena de dev.
