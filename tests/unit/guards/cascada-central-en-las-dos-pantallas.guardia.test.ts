@@ -174,16 +174,20 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
       "o un comprobante ajeno se monta en una superficie nueva —revísala a mano y añádela aquí— o " +
         "el extractor está confundiendo dos nombres que comparten prefijo.",
     ).toEqual([
-      // El comprobante propio del mensajero, en su propio cierre del día.
-      "app/(app)/cierre-dia/_components/CierreDiaModule.tsx · CierreFacturaResumenPropio",
+      // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R166): `/cierre-dia` ya no
+      // monta `<CierreFacturaResumenPropio>` (lo sustituye `ColaCierres` con rol mensajero). El
+      // componente sigue declarado sin montar hasta que lo retire SLT-115; si alguien lo vuelve a
+      // montar, su fila reaparece aquí y la guardia lo pide revisar.
       // El histórico de cierres de mensajero del admin.
       "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx · CierreFacturaResumen",
       // SLT-106 «Bodega satélite: A consolidar con la cola única»: `ConsolidacionBodegaModule` ya
       // no monta `<CierreConsolidableFacturaResumen>` (R204: la sustituye `ColaCierres`). El
       // componente sigue declarado sin montar hasta que lo retire SLT-115.
     ]);
+    // SLT-137 (R166): el comprobante propio ya no se monta en ninguna pantalla. El extractor
+    // sigue sin confundirlo con `<CierreFacturaResumen>`: lo afirma el primer `expect` de este caso.
     const propio = USOS_AJENOS.filter((u) => u.componente === "CierreFacturaResumenPropio");
-    expect(propio.length, "el comprobante propio del mensajero dejó de montarse").toBeGreaterThan(0);
+    expect(propio, "/cierre-dia volvió a montar el comprobante propio del mensajero").toEqual([]);
   });
 });
 

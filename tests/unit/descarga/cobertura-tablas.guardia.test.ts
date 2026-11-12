@@ -629,8 +629,9 @@ describe("guardia de cobertura del censo de tablas", () => {
     };
 
     // SLT-106 «Bodega satélite: A consolidar con la cola única»: tercer montaje (la satélite).
-    it("el censo real cumple (y la cola, con tres montajes, ya no declara previstos)", () => {
-      expect(tablaDeLaCola(copia()).montajes).toHaveLength(3);
+    // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros»: cuarto (el mensajero).
+    it("el censo real cumple (y la cola, con cuatro montajes, ya no declara previstos)", () => {
+      expect(tablaDeLaCola(copia()).montajes).toHaveLength(4);
       expect(tablaDeLaCola(copia()).montajesPrevistos).toBeUndefined();
       expect(problemasMontajesPrevistos(CENSO_DATATABLE)).toEqual([]);
       const unMontaje = copia();
