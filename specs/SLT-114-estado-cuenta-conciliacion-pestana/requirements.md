@@ -49,9 +49,11 @@ grafo no tiene indexado este worktree).
 - Ningún cambio de servicio, acción, consulta, esquema ni permiso. Todos los importes son los STRING
   que ya trae `ConsolidacionSateliteDTO`, pintados con `money()`; no se suma ni se resta nada en el
   cliente. Si al implementar falta un dato, se para y se pregunta.
-- Las cifras, acciones, avisos y textos de hoy de la conciliación: «Pendiente de llegar», aviso de
-  diferencia, conmutador «Sin conciliar / Todas», columnas de la tabla, `ConciliacionAcciones`,
-  descarga y nota «Marcar recibido asienta…» (R78: «no cambian»). Ver PA1, PA2 y PA3.
+- Las cifras, acciones, avisos y textos de hoy de la conciliación: aviso de diferencia, conmutador
+  «Sin conciliar / Todas», `ConciliacionAcciones`, descarga y nota «Marcar recibido asienta…» (R78:
+  «no cambian»). Excepciones decididas por Carlos el 2026-11-12 (PA1, PA2, PA3): sale la tarjeta
+  «Pendiente de llegar» de la pestaña, dos columnas cambian de título y la cuenta «Lo que va a la
+  central» oculta los métodos en cero.
 - Las otras superficies de `EstadoCuenta` (tienda, `/mi-wallet`, mensajero): sin cambios.
 - Borrar `CascadaDinero`: SLT-115 «Retirar los componentes de cierre sustituidos».
 
@@ -84,7 +86,7 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
   orden, con «Conciliación» seleccionada. Las pestañas DEBEN ser las de `components/ui/tabs` con el
   mismo estilo subrayado que `DetalleCierre`.
 - **R231** — MIENTRAS «Conciliación» esté seleccionada, la página DEBE mostrar la conciliación de la
-  bodega (pendiente, aviso, conmutador, tabla, paginación y nota) y NO DEBE mostrar el libro; MIENTRAS
+  bodega (aviso, conmutador, tabla, paginación y nota) y NO DEBE mostrar el libro; MIENTRAS
   «Movimientos» esté seleccionada, DEBE mostrar el libro (barra, tabla, paginación) y NO la
   conciliación. Las tarjetas del estado de cuenta DEBEN verse con las dos.
 - **R232** — CUANDO la central cambia de pestaña y vuelve, cada pestaña DEBE conservar su estado
@@ -100,7 +102,8 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
   de hoy.
 - **R235** — CUANDO la central despliega una consolidación, la fila DEBE mostrar la `Cuenta`
   «Lo que va a la central» con, en orden: Efectivo (`totales.efectivo`), SINPE (`totales.simpe`),
-  Transferencia (`totales.transferencia`), «Recaudado» como subtotal (`totales.general`),
+  Transferencia (`totales.transferencia`) —solo los métodos que no valen cero (PA3,
+  `metodosVisibles`)—, «Recaudado» como subtotal (`totales.general`),
   «− Pago a mensajeros» (`pagoMensajero`), «− Gana la bodega satélite» (`gananciaSatelite`, con la nota
   del modelo que corresponda) y «Debe llegar a la central» como total (`paraLaCentral`, con su nota).
   Cada importe DEBE ser el STRING del servidor pasado por `money()`.
@@ -120,9 +123,13 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
   responde `ok`, ENTONCES el sistema DEBE avisar con los mismos mensajes que la cola y dejar la cola
   visible.
 - **R239** — La conciliación en su pestaña DEBE conservar las cifras, acciones, avisos y textos de hoy:
-  «Pendiente de llegar» = `saldoActual` del estado de cuenta, el aviso de diferencia, las columnas,
-  `ConciliacionAcciones` según `puedeConciliar` (sin permiso, ningún botón), la descarga del conjunto
-  filtrado y la nota de pie. El cliente NO DEBE operar con importes (`Number(`, `parseFloat` o restas).
+  el aviso de diferencia (con varias incompletas, su importe sigue siendo el `saldoActual` del estado
+  de cuenta), `ConciliacionAcciones` según `puedeConciliar` (sin permiso, ningún botón), la descarga
+  del conjunto filtrado y la nota de pie. Por decisión de Carlos (2026-11-12): la pestaña NO DEBE
+  pintar la tarjeta «Pendiente de llegar» (PA1: la cifra ya está en «Por entregar hoy»), y las
+  columnas «Para la central» y «Falta por recibir» de la tabla DEBEN titularse «Debe llegar» y
+  «Falta» (PA2); las demás columnas y su orden no cambian. El cliente NO DEBE operar con importes
+  (`Number(`, `parseFloat` o restas).
 
 ## Trazabilidad (R → test)
 
@@ -133,18 +140,18 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
 | R232 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R232 — volver a una pestaña conserva filtro y página» y el test R30 existente (marcar relee el estado de cuenta), adaptado a la pestaña |
 | R233 | `tests/components/EstadoCuentaSatelite.test.tsx` › «R233 — la pestaña dice "2 sin conciliar" con total 2 y solo "Conciliación" con 0» (literales) |
 | R234 | `tests/components/EstadoCuenta.test.tsx` › «R234 — sin pestaña de conciliación no hay tablist» (tienda) |
-| R235 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R235 — "Lo que va a la central" con literales del doble» (importes escritos a mano) |
+| R235 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R235 — "Lo que va a la central" con literales del doble» (importes escritos a mano) y «R235 — los métodos en cero no se pintan» (PA3) |
 | R236 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R236 — "Conciliación": "—" sin marca y la falta del servidor tal cual (canario)» |
 | R237 | `tests/components/ConciliacionSateliteCascada.test.tsx` › «R237 — enlace "Ver el cierre de bodega completo" con su href» + `tests/unit/utils/cierre-enlace.test.ts` (codifica el id) |
 | R238 | `tests/components/CierresBodegaAdminDeepLink.test.tsx` (nuevo, espejo de `CierresAdminDeepLink.test.tsx`): abre en «Bodega» con el detalle, cierra y limpia el parámetro, `no_encontrada` avisa |
-| R239 | `tests/components/EstadoCuentaSatelite.test.tsx` › tests R31/R30/«sin permiso» existentes, adaptados a la pestaña; `tests/integration/wallet-satelites.test.tsx` verde |
+| R239 | `tests/components/EstadoCuentaSatelite.test.tsx` › tests R31/R30/«sin permiso» existentes, adaptados a la pestaña, y «R239 — sin "Pendiente de llegar" y columnas "Debe llegar" y "Falta"» (PA1, PA2); `tests/integration/wallet-satelites.test.tsx` verde |
 
 ## Tasks
 
-- [ ] **T1** `lib/utils/cierre-enlace.ts`: `PARAM_CIERRE_BODEGA = "cierreBodega"` y
+- [x] **T1** `lib/utils/cierre-enlace.ts`: `PARAM_CIERRE_BODEGA = "cierreBodega"` y
   `hrefDetalleCierreBodega(id)`; reexporta en `app/(app)/cierres-admin/_components/cierre-enlace.ts`.
   **Hecho:** test unitario del href con un id que necesita codificarse.
-- [ ] **T2** [P] `CierresTabs` arranca en «Bodega» si la dirección trae `cierreBodega`;
+- [x] **T2** [P] `CierresTabs` arranca en «Bodega» si la dirección trae `cierreBodega`;
   `CierresBodegaAdminModule` abre el detalle con `AbrirCierreDeLaUrl` (o su equivalente) y limpia el
   parámetro al cerrar. Depende de T1. **Hecho:** `CierresBodegaAdminDeepLink.test.tsx` verde (R238) y
   `CierresBodegaAdminDetalleUnico`/`CierresBodegaAdminCola` siguen verdes.
@@ -186,6 +193,10 @@ pestaña ya lee (misma clave SWR, sin lectura nueva en el servidor).
 15 archivos (tope `gate.tamano_pr`: 40).
 
 ## Preguntas abiertas
+
+> PA1, PA2 y PA3 cerradas por Carlos el 2026-11-12 al aprobar el spec: quitar «Pendiente de llegar»
+> de la pestaña, renombrar las columnas a «Debe llegar» y «Falta», y ocultar los métodos en cero.
+> Reflejado en R231, R235 y R239.
 
 - **PA1** — El canvas no pinta la tarjeta «Pendiente de llegar» dentro de «Conciliación» (la cifra ya
   está en la tarjeta «Por entregar hoy» de arriba). R78 dice que las cifras no cambian, así que se
