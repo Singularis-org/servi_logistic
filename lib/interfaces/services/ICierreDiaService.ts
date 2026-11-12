@@ -356,6 +356,24 @@ export interface CierrePasadoDTO {
    */
   resueltoAt?: string | null;
   motivoRechazo?: string | null;
+  /**
+   * SLT-137 (R164): solo lo emite `listarCierresPasadosPaginado` con las lecturas inyectadas.
+   * `aprobado` → string de escala 2, nunca negativo. Otro estado → `null`.
+   * Ausente (`undefined`) = el servicio no lo calculó: la celda dice «Sin dato» (R157).
+   */
+  pendientePagoMensajero?: string | null;
+}
+
+/**
+ * SLT-137 (R165): las dos lecturas en lote del pendiente de pago de una página de cierres
+ * (`ILiquidacionPagoRepository.sumarVigentesPorCierre` e
+ * `IPagoMensajeroMovimientoRepository.sumarPremiosVivosPorCierre`). Se declaran por su forma y no
+ * con `Pick<IRepo, …>` porque este archivo lo importa la pantalla: traer las interfaces de los
+ * repositorios arrastraría `@prisma/client` al grafo del navegador (`pagos-captura.guardia`).
+ */
+export interface LecturasPendienteCierre {
+  liquidaciones: { sumarVigentesPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
+  premios: { sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
 }
 
 // R2-R11/R17/R18: detalle del dia + totales + gate de "Solicitar cierre" +

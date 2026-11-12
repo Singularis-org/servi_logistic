@@ -277,6 +277,7 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
   {
     // Pedido humano del 2026-08-16: «Cierres solicitados (mensajero)» DEJÓ DE SER UNA TABLA.
     // Ver la nota de SEIS BAJAS en la cabecera de este archivo. La que queda es la del día.
+    // SLT-137: los solicitados vuelven a ser tabla, pero la de `ColaCierres.tsx` (montaje de abajo).
     ruta: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
     tablas: [
       { nombre: "Gestiones del cierre del día por resultado", estado: "con_descarga" },
@@ -705,7 +706,11 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
         // SLT-106 «Bodega satélite: A consolidar con la cola única» (R204): tercer montaje. Con él,
         // «Cierres del día a consolidar» vuelve a ser una `<DataTable>` (la de la cola, sin
         // `descarga=`; la baja de la cabecera de arriba queda en 5 de los 7 listados).
+        // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R60): cuarto montaje, la
+        // cola con rol mensajero. «Cierres solicitados (mensajero)» vuelve a ser una `<DataTable>`
+        // (la de la cola, sin `descarga=`; «Descargar» va en la barra con la configuración de hoy).
         montajes: [
+          "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
           "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
           "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
           "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx",

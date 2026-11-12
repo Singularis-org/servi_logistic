@@ -182,6 +182,11 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // los textos de los diálogos (el resumen pinta las cifras del servidor con `money()`).
   "components/private/cierres/dialogos/VisorEvidencia.tsx",
   "components/private/cierres/dialogos/dialogos-labels.ts",
+  // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R71): la lógica de la cola con
+  // rol mensajero compara el pendiente como TEXTO (`hayPendienteDeLiquidar`).
+  "components/private/cierres/cola/cola-propia-vista.ts",
+  // SLT-137 (R71, T2.2): las celdas de la cola propia pintan los importes con `money()`, tal cual.
+  "components/private/cierres/cola/TablaColaPropia.tsx",
   // SLT-106 «Bodega satélite: A consolidar con la cola única» (R71): el módulo de la satélite pasa
   // a la cola única; las tarjetas y el resumen del diálogo pintan los strings del servidor.
   "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx",
