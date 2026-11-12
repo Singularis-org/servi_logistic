@@ -172,7 +172,7 @@ async function solicitarEnPantalla(browser: Browser, m: MensajeroE2E): Promise<s
   const page = await paginaDe(browser, m);
   await page.goto("/cierre-dia");
   const dialogo = page.getByRole("dialog", { name: "Solicitar cierre del día" });
-  await abrirCon(page.getByRole("region", { name: "Solicitar cierre" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
+  await abrirCon(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
   await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
   await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
   await page.context().close();
@@ -185,7 +185,7 @@ async function enviarVencidoEnPantalla(browser: Browser, m: MensajeroE2E): Promi
   await page.goto("/cierre-dia");
   const dialogo = page.getByRole("dialog", { name: "Solicitar aprobación del cierre vencido" });
   await abrirCon(
-    page.getByRole("region", { name: "Cierre vencido" }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }),
+    page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }),
     dialogo,
   );
   await dialogo.getByRole("button", { name: "Solicitar aprobación" }).click();

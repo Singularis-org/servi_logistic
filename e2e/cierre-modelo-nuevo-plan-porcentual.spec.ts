@@ -114,6 +114,13 @@ import {
  *   B2     rechazo      vacío   1.350 + 175,50 = 1.525,50  pago 0
  *   Total de la empresa 4.576,50 · cargo de plataforma 0 en cada orden, deuda 0.
  *
+ * ── SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R77, T0.4) ────────
+ *   Las tres cifras que M1 lee en el detalle de su cierre de HOY antes de solicitarlo, a mano y de
+ *   las tablas de arriba (medidas en la base desechable `slt109_e2e` el 2026-11-12):
+ *   Viejo  · Recaudado 60.000 (V1 en efectivo; V2 no cobra) · Gestiones 2 (V1, V2) · Tu ganancia 1.700.
+ *   Nuevo  · Recaudado 110.000 (N1 100.000 + N2 10.000 en efectivo; N3 y N4 no cobran) · Gestiones 4
+ *            (N1-N4) · Tu ganancia 6.175 (2.900 + 2.900 + 90 + 285).
+ *
  * Todo lleva sufijo aleatorio y nada se borra: dos corridas seguidas sobre la misma base pasan.
  */
 
@@ -257,15 +264,28 @@ async function deudaEnWallet(page: Page): Promise<string> {
 async function abrirCierreDelDia(browser: Browser, m: MensajeroE2E): Promise<Page> {
   const page = await paginaDe(browser, m);
   await page.goto("/cierre-dia");
-  await expect(page.getByRole("region", { name: "Totales del día" })).toBeVisible();
+  // SLT-109 (R61): el cierre de hoy es el detalle único en página; sus cifras sustituyen a «Totales del día».
+  await expect(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" })).toBeVisible();
   return page;
+}
+
+/**
+ * SLT-109 (R77): las tres cifras del detalle del cierre de hoy —Recaudado, Gestiones, Tu ganancia—
+ * con los literales escritos a mano en la cabecera de este archivo.
+ */
+async function esperarCifrasDelDia(page: Page, recaudado: string, gestiones: number, ganancia: string): Promise<void> {
+  const detalle = page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
+  const valor = (rotulo: string) => detalle.getByRole("group", { name: rotulo, exact: true }).locator("[data-cifra]");
+  await expect(valor("Recaudado")).toHaveText(cifra(recaudado, true));
+  await expect(valor("Gestiones")).toHaveText(String(gestiones));
+  await expect(valor("Tu ganancia")).toHaveText(cifra(ganancia, true));
 }
 
 /** El mensajero solicita su cierre en pantalla, con su sesión. Devuelve el id del cierre que acaba de nacer. */
 async function solicitarEnPantalla(page: Page, m: MensajeroE2E): Promise<string> {
   const previos = (await cierresDe(m)).length;
   const dialogo = page.getByRole("dialog", { name: "Solicitar cierre del día" });
-  await abrirCon(page.getByRole("region", { name: "Solicitar cierre" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
+  await abrirCon(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
   await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
   await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
   const cierres = await cierresDe(m);
@@ -515,7 +535,8 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     const v2 = await gestionada("V2", t2, m1, 0, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
 
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("1.700"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("1.700"));
+    await esperarCifrasDelDia(mensajero, "60.000", 2, "1.700");
     cierreViejo = await solicitarEnPantalla(mensajero, m1);
     await mensajero.context().close();
     await aprobarEnPantalla(page, m1, [v2], { pago: "1.700", empresa: "4.294" });
@@ -567,7 +588,8 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     n4 = await gestionada("N4", t2, m1, 45_000, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
 
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("6.175"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("6.175"));
+    await esperarCifrasDelDia(mensajero, "110.000", 4, "6.175");
     cierreNuevo = await solicitarEnPantalla(mensajero, m1);
     await mensajero.context().close();
     await aprobarEnPantalla(page, m1, [n3, n4], { pago: "6.175", empresa: "10.649,50" });
@@ -662,7 +684,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     const z3 = await gestionada("Z3", t2, m2, 15_000, { resultado: "reprogramado" });
 
     const mensajero = await abrirCierreDelDia(browser, m2);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("2.360"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("2.360"));
     cierreZona = await solicitarEnPantalla(mensajero, m2);
     await mensajero.context().close();
     await aprobarEnPantalla(page, m2, [z2, z3], { pago: "2.360", empresa: "5.566" });
@@ -756,7 +778,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     // El control: el cambio de verdad rige. Sin él, «no se movió» pasaría también si el guardado no hubiera hecho nada.
     await gestionada("S1", t1, m1, 70_000, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 70_000 }] });
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("3.000"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("3.000"));
     await mensajero.context().close();
     const siguiente = await solicitarCierre(r, m1);
     await aprobarCierre(r, siguiente);
@@ -801,7 +823,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
 
     const paginaB = await paginaDe(browser, b.empresa.maestro);
     const mensajero = await abrirCierreDelDia(browser, mB);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("1.600"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("1.600"));
     const cierreB = await solicitarEnPantalla(mensajero, mB);
     await mensajero.context().close();
     await aprobarEnPantalla(paginaB, mB, [b2], { pago: "1.600", empresa: "4.576,50" });

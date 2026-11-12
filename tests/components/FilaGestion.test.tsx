@@ -374,6 +374,39 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
     expect(devolver).toHaveBeenCalledWith(g);
   });
 
+  it("SLT-109 (R244): gestión de la tienda → «Devolver a gestión» deshabilitado, con el motivo en `title` y en el nombre", () => {
+    const motivo =
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+    montar(gestionCanvas({ desdeAyudaTienda: true }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const boton = screen.getByRole("button", {
+      name: `Devolver a gestión la orden REM-001 · Beto Ruiz — no disponible: ${motivo}`,
+    });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute("title", motivo);
+  });
+
+  it("SLT-109 (R244): una gestión del mensajero sale habilitada y sin `title`", () => {
+    montar(gestionCanvas({ desdeAyudaTienda: false }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const boton = screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" });
+    expect(boton).toBeEnabled();
+    expect(boton).not.toHaveAttribute("title");
+  });
+
+  it("SLT-109 (R244): con su deshacer en vuelo, el botón de ESA gestión está deshabilitado", () => {
+    const g = gestionCanvas({ desdeAyudaTienda: false });
+    render(
+      <FilaGestion
+        gestion={g}
+        audiencia="mensajero"
+        quienMiraEsCentral={false}
+        congeladoAt={null}
+        acciones={{ devolver: vi.fn() }}
+        enVuelo={g.gestionId}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" })).toBeDisabled();
+  });
+
   it("SLT-103 (R54, R138): varias evidencias, UN botón «Ver evidencia (2)» con todas las fotos", async () => {
     const onVerEvidencia = vi.fn();
     const g = gestionCanvas({ evidenciaUrls: ["https://firmada/1", "https://firmada/2"] });

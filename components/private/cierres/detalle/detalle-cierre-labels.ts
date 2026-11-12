@@ -135,6 +135,34 @@ export const PIE_MENSAJERO_RECHAZADO = "Se envía con las gestiones que tenga al
 export const PIE_MENSAJERO_VENCIDO = "No se recalculan los montos ya registrados.";
 export const PIE_MENSAJERO_LECTURA =
   "Los montos son los que quedaron congelados al solicitar el cierre.";
+/**
+ * SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R252) — un rechazado que
+ * NO es el siguiente por enviar se abre en modal sin botón de envío. Texto propuesto en el spec: el
+ * canvas no lo trae.
+ */
+export const PIE_MENSAJERO_RECHAZADO_SIN_ENVIO =
+  "Lo envías desde esta página cuando sea el siguiente por enviar.";
+
+// --- Pestaña «Corregir» (SLT-109, R248) ---
+// Mudados de `CierreDiaModule.tsx` (ficha 477, R25/R26) sin cambiar un carácter: el panel suelto
+// «Corregir el cierre rechazado» pasa a ser la pestaña «Corregir» del detalle único.
+export const COMO_CORREGIR_TITULO = "Cómo corregir";
+export const CORRECCION_EXPLICACION =
+  "Si una gestión quedó mal, devuélvela a gestión: sale de este cierre, sus totales se recalculan y la orden vuelve a Entregas para que la gestiones de nuevo. Cuando termines, vuelve a enviar el cierre a aprobación.";
+// Pregunta abierta 1 de la ficha 477 (por defecto: se acepta y se avisa en pantalla).
+export const CORRECCION_AVISO_CORTE =
+  "Envíalo hoy: si el corte de la noche llega antes, lo que corregiste pasa a un cierre nuevo.";
+export const CORRECCION_ORDENES_TITULO = "Órdenes por volver a gestionar";
+export const CORRECCION_REGESTIONADA = "Ya la volviste a gestionar";
+export const CORRECCION_PENDIENTE = "Falta volver a gestionarla";
+export const CORRECCION_IR_ENTREGAS = "Ir a Entregas";
+export const RUTA_ENTREGAS = "/mis-asignaciones/reparto";
+
+// --- El cierre de la página (SLT-109, R253, R256) ---
+/** R253 — la lectura del cierre por reenviar falló: el mensajero no ve el detalle, pero puede enviarlo. */
+export const REENVIABLE_ERROR = "No se pudo cargar el cierre que tienes que enviar. Recarga la página.";
+/** R256 — el archivo de «Gestiones» del cierre en curso, que aún no tiene folio. */
+export const DESCARGA_GESTIONES_HOY = "Gestiones del cierre de hoy";
 
 // --- Dinero (R14, R16) ---
 export const REPARTO_REGION_LABEL = "Reparto de lo recaudado";
