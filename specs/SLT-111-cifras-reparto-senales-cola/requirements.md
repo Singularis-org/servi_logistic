@@ -108,8 +108,11 @@ R70, R71 y R72 son copia del madre, con su número y su sentido. R260-R267 son n
   «Pago a mensajeros» (`totalPagoMensajero`), «Gana la bodega satélite»
   (`totalIngresoBodegaRechazos`)] y el total `totales.general` del cierre de bodega, en ese orden.
 - **R265** — El reparto de R263 y R264 DEBE derivarse de los importes que el detalle ya lee, sin
-  ninguna consulta adicional a la base, sin escrituras y sin migración; el número de consultas del
-  detalle NO DEBE depender del número de gestiones ni de cierres del día que lleve.
+  ninguna consulta adicional a la base, sin escrituras y sin migración. En el detalle de mensajero,
+  el número de consultas NO DEBE depender del número de gestiones que lleve. En el detalle de bodega,
+  el reparto NO DEBE añadir lecturas: el servicio DEBE emitir exactamente las sentencias de su
+  repositorio. *(El N+1 previo del repositorio de bodega por cierre del día queda como deuda de la
+  épica; decisión del leader del 2026-11-12 en `progress/features/SLT-111.md`.)*
 
 ### Lo que se ve (nuevo)
 

@@ -126,7 +126,7 @@
 | R262 | `tests/unit/utils/porcentajes-reparto.test.ts` (mutación 3 de T4.1: `Math.round` cae) · revisión de `lib/utils/porcentajes-reparto.ts` sin `Number(`/`parseFloat(` |
 | R263 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (MA central; MB central y adminSatelite) · `e2e/cierres-rediseno.spec.ts` (escenario A) |
 | R264 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (BX, BY) · `e2e/cierres-rediseno.spec.ts` (B6) |
-| R265 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (sin escrituras; mismas sentencias MA = MB y BX = BY) |
+| R265 | `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` (sin escrituras; mensajero: mismas sentencias MA = MB; bodega: servicio = repositorio en BX y BY) |
 | R266 | `tests/components/DetalleCierreDinero.test.tsx` (franjas, «(n %)», `null` sin barra) |
 | R267 | `tests/unit/utils/detalle-cierre-vista.test.ts` (mapeadores; `/cierre-dia` con `empresa: null`) · `tests/components/CierresAdminDetalleUnico.test.tsx` · `tests/components/CierresBodegaAdminDetalleUnico.test.tsx` · `e2e/cierres-rediseno.spec.ts` |
 
