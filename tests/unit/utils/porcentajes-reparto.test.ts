@@ -123,4 +123,20 @@ describe("porcentajesReparto — aritmetica exacta (R262)", () => {
     // Pisos 33 / 33 / 33; restos 0,33 / 0,34 / 0,33 → el punto va a la del medio: [33, 34, 33].
     expect(porcentajesReparto(["33.33", "33.34", "33.33"], "100.00")).toEqual([33, 34, 33]);
   });
+
+  // Los dos casos siguientes DISTINGUEN Decimal de coma flotante: en float `0.1 + 0.2 !== 0.3` y
+  // `48250.1 + 1750.2 !== 50000.3`, asi que una version con `parseFloat`/`Number` ve un snapshot
+  // descuadrado y devuelve `null`. En centimos exactos cuadran al centimo.
+  it("0,10 / 0,20 de 0,30 → [33, 67] (en coma flotante la suma no cuadra y saldria null)", () => {
+    // Centimos 10 / 20 de 30 → 1000/30 = 33 resto 10; 2000/30 = 66 resto 20 → pisos 33 / 66
+    // (suman 99), el punto que falta va al mayor resto, la segunda.
+    expect(porcentajesReparto(["0.10", "0.20"], "0.30")).toEqual([33, 67]);
+  });
+
+  it("centimos del dominio: 48 250,10 / 1 750,20 de 50 000,30 → [96, 4]", () => {
+    // Centimos 4 825 010 / 175 020 de 5 000 030:
+    //   482 501 000 / 5 000 030 = 96, resto 2 498 120 (0,4996);
+    //    17 502 000 / 5 000 030 =  3, resto 2 501 910 (0,5004) → el punto va a la segunda.
+    expect(porcentajesReparto(["48250.10", "1750.20"], "50000.30")).toEqual([96, 4]);
+  });
 });

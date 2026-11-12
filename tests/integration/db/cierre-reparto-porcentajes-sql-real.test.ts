@@ -601,10 +601,11 @@ describeSiHayBase("SLT-111 — reparto en % de lo recaudado en los dos detalles,
     expect(medido.n.mb).toBe(medido.n.ma);
     // Bodega: el servicio emite EXACTAMENTE las sentencias de su repositorio, con 2 dias y con 1.
     //
-    // ⚠️ ABIERTO (T0.3, medido en `dev` antes de tocar nada): `findCierreBodegaConDetalle` lee
-    // gestiones y `cierre_detail` POR cierre del dia, asi que sus sentencias SI crecen con el
-    // numero de dias (BX 40, BY 24). Es previo a SLT-111 y no se arregla aqui; la segunda mitad de
-    // R265 para bodega queda para reescribirse (`progress/impl_SLT-111.md`).
+    // DEUDA DE LA EPICA (T0.3, medido en `dev` antes de tocar nada): `findCierreBodegaConDetalle`
+    // lee gestiones y `cierre_detail` POR cierre del dia, asi que sus sentencias SI crecen con el
+    // numero de dias (BX 40, BY 24). Es previo a SLT-111 y no se arregla aqui. R265 ya esta
+    // reescrito para bodega (el reparto no añade lecturas: servicio = repositorio), y ese N+1 queda
+    // como deuda de la epica (decision del leader del 2026-11-12, `progress/features/SLT-111.md`).
     expect({ bx: medido.n.bx, by: medido.n.by }).toEqual({ bx: medido.n.repoBx, by: medido.n.repoBy });
   });
 });
