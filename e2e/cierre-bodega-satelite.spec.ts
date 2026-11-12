@@ -204,6 +204,48 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     ]);
   });
 
+  // SLT-114 «Estado de cuenta de la satélite: conciliación en pestaña» (R230, R233, R235-R238): la central
+  // ve la consolidación recién solicitada en el estado de cuenta de la bodega, en la pestaña
+  // «Conciliación», con sus dos cuentas, y el enlace le abre el detalle único en `/cierres-admin`.
+  // Literales de la cabecera: todo efectivo (sin SINPE ni transferencia, PA3), sin marca.
+  test("1b — el estado de cuenta de la satélite abre en «Conciliación» y enlaza al detalle de bodega", async ({ browser }) => {
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto(`/wallet/satelites/${r.zonaSatelite.id}`);
+
+    const conciliacion = page.getByRole("tab", { name: "Conciliación 1 sin conciliar" });
+    await expect(conciliacion).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Movimientos" })).toHaveAttribute("aria-selected", "false");
+
+    const region = page.getByRole("region", { name: `Conciliación de ${r.zonaSatelite.nombre}` });
+    await expect(region.getByText("Pendiente de llegar")).toHaveCount(0);
+    await region.getByRole("button", { name: /^Ver la cuenta de la consolidación del / }).click();
+
+    const central = region.getByRole("region", { name: /^Lo que va a la central · consolidación del / });
+    await expect(central.locator("[data-rotulo]")).toHaveText([
+      "Efectivo",
+      "Recaudado",
+      "− Pago a mensajeros",
+      "− Gana la bodega satélite",
+      "Debe llegar a la central",
+    ]);
+    await expect(central.locator("[data-monto]")).toHaveText(["₡9.000", "₡9.000", "₡1.500", "₡500", "₡7.000"]);
+    const cuenta = region.getByRole("region", { name: /^Conciliación · consolidación del / });
+    await expect(cuenta.locator("[data-monto]")).toHaveText(["₡7.000", "—", "₡7.000"]);
+
+    await cuenta.getByRole("link", { name: "Ver el cierre de bodega completo" }).click();
+    await expect(page).toHaveURL(/\/cierres-admin\?cierreBodega=/);
+    const detalle = detalleDeBodega(page);
+    await expect(detalle).toBeVisible();
+    await detalle.locator("footer").getByRole("button", { name: "Cerrar" }).click();
+    await expect(detalle).toBeHidden();
+    await expect(page).not.toHaveURL(/cierreBodega=/);
+    // Con el modal abierto el resto de la página queda fuera del árbol accesible: se mira al cerrarlo.
+    await expect(page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   test("2 — el maestro abre el detalle único, ve las cifras, los mensajeros, la evidencia y marca recibido", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await pestanaBodega(page);
