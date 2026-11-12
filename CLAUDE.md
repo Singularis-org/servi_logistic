@@ -48,7 +48,8 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
      nuevo (`docs/gate.md > Disparadores`).
    - **CI:** la suite completa corre en `.github/workflows/gate.yml` en cada PR a la rama de
      integración; en el PR a producción, también el E2E.
-   - **Nadie mergea con el check `gate-completo` en rojo o sin terminar.**
+   - **Nadie mergea con el check `gate-completo` en rojo o sin terminar, ni antes del aviso
+     «#n listo para mergear» del leader.**
    - `./init.sh --completo` sirve para reproducir en local un rojo de CI.
 6. **No inventes.** Si un dato no está en `docs/`, `specs/` o el código, es desconocido:
    pregunta o márcalo como abierto. No lo rellenes con supuestos.
