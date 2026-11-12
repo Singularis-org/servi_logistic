@@ -167,3 +167,33 @@ del objeto que devuelve `descargaCierresPasados(filtros)`; no cambian.
 ### Veredicto
 T2 hecha: barra de folio, fecha y estado sobre `BuscadorFiltros`, filtros en la clave y en «Descargar», R167 y
 R174-R180 probados en pantalla y E2E, 3 mutaciones matadas. Falta T3 (cierre).
+
+## Sync con SLT-109
+
+`git merge origin/dev` (entró SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página»), merge
+`b3d2479e`. Un solo archivo en conflicto; el resto (incluido `tests/components/descarga/CierresDescarga.test.tsx`)
+se mezcló solo.
+
+- `app/(app)/cierre-dia/_components/CierreDiaModule.tsx`: cuatro trozos. Base = estructura de SLT-109 (`DetalleCierre`
+  en marco página arriba, cola «Cierres solicitados» abajo). De SLT-138 se conservan: imports de
+  `FiltrosColaPropiaBarra` y `sinFiltrosPropios`/`FiltrosColaPropia`, `descargaCierresPasados(filtros)`,
+  `leerCierresPasados(page, pageSize, filtros)`, filtros en la clave SWR, `fallbackData` solo sin filtros, reset a la
+  página 1, `barra`, vacío según filtros. Los JSDoc toman el texto corto de SLT-109 más la nota de SLT-138. Se quitó
+  el import de `BotonesEvidencia`: SLT-109 lo dejó de usar. Todo lo de SLT-138 tiene sitio en la estructura nueva.
+
+Verificación (base `slt138_filtros`):
+- `pnpm run typecheck`: exit 0. `eslint` de `CierreDiaModule.tsx`, `FiltrosColaPropiaBarra.tsx`,
+  `CierresDescarga.test.tsx`: `No issues found`.
+- `CierreDiaColaFiltros`, `cola-propia-vista`, `CierreDiaModule`, `CierreDiaPagina`, `CierreDiaColaPropia`,
+  `CierresDescarga*`, integración `cierre-dia-filtros-propios` (13/13 contra Postgres), guardias `cierres-*`,
+  `cierre-*`, `tests/unit/descarga/`, `descargas-por-registro`, `filtros-cierres-alcance`, `criterio-unico`,
+  `pago-mensajero-money-safe`: `Test Files 63 passed (63)`, `Tests 757 passed (757)`. Guardias `money-safe`:
+  `Tests 63 passed (63)`.
+- Mutaciones (sobre `CierreDiaColaFiltros` + `CierresDescarga*`), revertidas con `git checkout`:
+  sin reset de página → 1 rojo; sin pasar filtros a la acción → 6 rojos; descarga sin filtros → 1 rojo.
+- E2E (candado, puerto 3000, base nueva `slt138_e2e_b` + `migrate deploy` + `db:seed` + columna
+  `pago_independiente_efectivo` solo ahí, `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000`):
+  `--project=dinero e2e/cierres-rediseno.spec.ts e2e/cierre-dia.spec.ts`: `19 passed (1.4m)`.
+- `node scripts/tamano-pr.mjs`: `22/40 archivos, 1556/1000 líneas`, aceptado por el humano (2026-11-12).
+
+Veredicto: sync con SLT-109 hecho sin perder nada de SLT-138; verde en typecheck, lint, tests, mutaciones y E2E.
