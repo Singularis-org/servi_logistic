@@ -118,7 +118,7 @@ async function crearEmpresa(planId: string, tipo: "quincenal" | "mensual"): Prom
 
 async function recepciones(): Promise<string[]> {
   const { rows } = await db.query(
-    `SELECT r."cambio_id" || ' ' || r."organizacion_id" || ' ' || to_char(r."recibe_at", 'YYYY-MM-DD HH24:MI:SS')
+    `SELECT r."cambio_id" || ' ' || r."empresa_id" || ' ' || to_char(r."recibe_at", 'YYYY-MM-DD HH24:MI:SS')
             || ' ' || COALESCE(r."recibido_at"::text, 'pendiente') AS l
        FROM "plan_cambio_recepcion" r ORDER BY 1`,
   );
@@ -259,7 +259,7 @@ describeSiHayBase("SLT-128 R24, R25 — los pendientes previos, la subida y la b
 
   it("R25: con una empresa en versión propia, bajar se niega sin tocar nada", async () => {
     await db.query(
-      `INSERT INTO "plan_version_empresa" ("organizacion_id", "plan_id", "cambio_id", "version", "desde_at")
+      `INSERT INTO "plan_version_empresa" ("empresa_id", "plan_id", "cambio_id", "version", "desde_at")
        SELECT $1, $2, $3, c."version", $4 FROM "plan_cambio_programado" c WHERE c."id" = $3`,
       [ids.quincenal, ids.P, ids.cambio, F],
     );

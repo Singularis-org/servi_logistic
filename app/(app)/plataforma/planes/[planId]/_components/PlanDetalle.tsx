@@ -18,6 +18,8 @@ import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { formatearConteo } from "@/lib/planes/consumo";
 import {
   lineasDeCambioDelPlan,
+  MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
+  MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
   mensajeTopesPasados,
   SIN_LIMITE,
   SIN_LINEAS_DE_CAMBIO,
@@ -118,6 +120,12 @@ const TEXTOS = {
     `Desasignado de ${empresa} por la migración: el plan no tenía costo base concreto`,
 } as const;
 
+/** SLT-128 (design §7): el texto del rechazo `cambio_a_medias` de cada confirmación (R14 cancelar, R15 archivar). */
+const RECHAZO_CAMBIO_A_MEDIAS: Record<"archivar" | "cancelar", string> = {
+  archivar: MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
+  cancelar: MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
+};
+
 /** La acción del rastro, traducida. `Record` total: una acción nueva no compila sin su texto. */
 const ACCIONES: Record<PlanRastroAccion, string> = {
   creado: "Creado",
@@ -204,6 +212,9 @@ export function PlanDetalle({
       focoTrasOk.current = cual;
       setDesenlace({ tipo: "ok", mensaje: exito, avisos: [] });
       router.refresh();
+    } else if (r.estado === "cambio_a_medias") {
+      // SLT-128 (R14, R15): el mismo rechazo dice cosas distintas según la acción.
+      setDesenlace({ tipo: "rechazo", mensaje: RECHAZO_CAMBIO_A_MEDIAS[cual] });
     } else {
       setDesenlace({ tipo: "rechazo", mensaje: mensajeDelRechazo(r) ?? RECHAZO_GENERICO });
     }

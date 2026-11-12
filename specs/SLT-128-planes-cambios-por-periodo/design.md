@@ -35,26 +35,31 @@ reemplazo, R13). Eso pide una versión **por empresa** y que cada lector la cons
 ## 1. Modelo de datos
 
 Dos tablas de **plataforma** (como `plan_*`): RLS habilitada sin ninguna política y `REVOKE ALL … FROM servi_app`
-(R26). Llevan `organizacion_id` como dato y FK, pero no son de negocio: la empresa no las lee ni las escribe. Se
-clasifican en `MODELOS_DE_PLATAFORMA` (`lib/db/modelos-de-negocio.ts`), con el resto de planes.
+(R26). Llevan la empresa como dato y FK en `empresa_id` (campo Prisma `empresaId`), pero no son de negocio: la
+empresa no las lee ni las escribe. Se clasifican en `MODELOS_DE_PLATAFORMA` (`lib/db/modelos-de-negocio.ts`), con el
+resto de planes.
+
+> **Cambio 2026-11-12 — decisión del humano: la guardia organizacion-en-modelos prohíbe `organizacion_id` en tablas
+> de plataforma.** La columna de la empresa en las dos tablas pasa de `organizacion_id` a `empresa_id` (Prisma
+> `empresaId`). La guardia no se toca.
 
 ### 1.1 `plan_cambio_recepcion` — una fila por empresa y pendiente (R1, R5, R9, R11, R17–R19)
 
 | Columna | Tipo | Nota |
 |---|---|---|
 | `cambio_id` | `text` FK → `plan_cambio_programado(id)` `ON DELETE CASCADE` | reemplazar o cancelar el pendiente borra sus filas |
-| `organizacion_id` | `text` FK → `organizacion(id)` `ON DELETE CASCADE` | |
+| `empresa_id` | `text` FK → `organizacion(id)` `ON DELETE CASCADE` | la empresa (2026-11-12: no `organizacion_id`) |
 | `recibe_at` | `timestamp(3)` | 00:00 de la plataforma de su recepción, en UTC |
 | `recibido_at` | `timestamp(3) NULL` | cuándo la cola la aplicó; nula = pendiente |
 
-PK `(cambio_id, organizacion_id)`. Índice parcial `(recibe_at) WHERE recibido_at IS NULL` para el barrido y para
+PK `(cambio_id, empresa_id)`, índice `(empresa_id)`. Índice parcial `(recibe_at) WHERE recibido_at IS NULL` para el barrido y para
 la espera del cierre.
 
 ### 1.2 `plan_version_empresa` — la versión propia de una empresa (R2, R10, R13, R16, R17)
 
 | Columna | Tipo | Nota |
 |---|---|---|
-| `organizacion_id` | `text` PK, FK → `organizacion(id)` `ON DELETE CASCADE` | una como mucho por empresa |
+| `empresa_id` | `text` PK, FK → `organizacion(id)` `ON DELETE CASCADE` | una como mucho por empresa (2026-11-12: no `organizacion_id`) |
 | `plan_id` | `text` FK → `plan(id)` `ON DELETE CASCADE` | el plan del que es versión |
 | `cambio_id` | `text` | el pendiente que la trajo; opaco y **sin FK**, para que sobreviva al reemplazo (R13) |
 | `version` | `jsonb` | completa, con la forma de `versionPlanSchema` y `periodicidadOrdenes` siempre presente |

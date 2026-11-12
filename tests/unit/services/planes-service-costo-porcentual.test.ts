@@ -200,7 +200,12 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
     repo.detalle.mockResolvedValue({
       plan: plan(),
       empresaNombre: null,
-      pendiente: { vigenteDesde: new Date("2026-12-01T06:00:00.000Z"), version: version({ costoPorOrdenPorcentual: SIN_MINIMO }) },
+      pendiente: {
+        vigenteDesde: new Date("2026-12-01T06:00:00.000Z"),
+        version: version({ costoPorOrdenPorcentual: SIN_MINIMO }),
+        recibidas: 0, // SLT-128 (R11)
+        total: 0,
+      },
       empresas: [],
       rastro: [],
     });
@@ -211,6 +216,8 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
       pendiente: {
         vigenteDesde: new Date("2026-12-01T06:00:00.000Z"),
         version: version({ precio: { tipo: "sin_precio" }, costoPorOrdenPorcentual: SIN_MINIMO }),
+        recibidas: 0, // SLT-128 (R11)
+        total: 0,
       },
       empresas: [],
       rastro: [],

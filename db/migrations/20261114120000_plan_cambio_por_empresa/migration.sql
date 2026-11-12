@@ -4,9 +4,11 @@
 -- Cuatro piezas, en este orden:
 --   1. dos tablas de PLATAFORMA (como el resto de `plan_*`): `plan_cambio_recepcion`, una fila por empresa y
 --      pendiente, y `plan_version_empresa`, la versión propia de una empresa durante un cambio a medias.
---      Llevan `organizacion_id` como dato y FK, pero la empresa no las lee ni las escribe: RLS sin políticas y
+--      Llevan `empresa_id` como dato y FK, pero la empresa no las lee ni las escribe: RLS sin políticas y
 --      `REVOKE ALL … FROM servi_app` (R26). Sin el REVOKE, el ALTER DEFAULT PRIVILEGES de 20261022130000 le
 --      daría CRUD a `servi_app`;
+--      La columna es `empresa_id` y no `organizacion_id`: la guardia organizacion-en-modelos prohíbe
+--      `organizacion_id` en tablas de plataforma (decisión del humano, 2026-11-12);
 --   2. dos lectores internos de la versión de una empresa, `plan_version_de` y `plan_tope_rol_de`: la propia si
 --      la tiene para ese plan; si no, la fila del plan. `STABLE SECURITY DEFINER`, `search_path` fijo y EXECUTE
 --      revocado a PUBLIC: solo las llaman las funciones del dueño;
@@ -35,42 +37,42 @@ BEGIN;
 -- CASCADE con el pendiente: reemplazarlo o cancelarlo borra sus recepciones. CASCADE con la empresa.
 CREATE TABLE "plan_cambio_recepcion" (
     "cambio_id" TEXT NOT NULL,
-    "organizacion_id" TEXT NOT NULL,
+    "empresa_id" TEXT NOT NULL,
     "recibe_at" TIMESTAMP(3) NOT NULL,
     "recibido_at" TIMESTAMP(3),
 
-    CONSTRAINT "plan_cambio_recepcion_pkey" PRIMARY KEY ("cambio_id", "organizacion_id")
+    CONSTRAINT "plan_cambio_recepcion_pkey" PRIMARY KEY ("cambio_id", "empresa_id")
 );
 
 -- La espera del cierre (§2.2) y la salida de un plan (R18) buscan por empresa; la PK empieza por el pendiente.
-CREATE INDEX "plan_cambio_recepcion_organizacion_id_idx" ON "plan_cambio_recepcion" ("organizacion_id");
+CREATE INDEX "plan_cambio_recepcion_empresa_id_idx" ON "plan_cambio_recepcion" ("empresa_id");
 -- El barrido (R5) y la espera del cierre (R9) solo miran las que faltan.
 CREATE INDEX "plan_cambio_recepcion_pendientes_idx" ON "plan_cambio_recepcion" ("recibe_at")
     WHERE "recibido_at" IS NULL;
 
 ALTER TABLE "plan_cambio_recepcion" ADD CONSTRAINT "plan_cambio_recepcion_cambio_id_fkey"
     FOREIGN KEY ("cambio_id") REFERENCES "plan_cambio_programado"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "plan_cambio_recepcion" ADD CONSTRAINT "plan_cambio_recepcion_organizacion_id_fkey"
-    FOREIGN KEY ("organizacion_id") REFERENCES "organizacion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "plan_cambio_recepcion" ADD CONSTRAINT "plan_cambio_recepcion_empresa_id_fkey"
+    FOREIGN KEY ("empresa_id") REFERENCES "organizacion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- §1.2. Una como mucho por empresa. `cambio_id` es opaco y SIN FK, a propósito: la versión sobrevive al
 -- reemplazo del pendiente que la trajo (R13). `version` tiene la forma de `versionPlanSchema`, con
 -- `periodicidadOrdenes` siempre presente; la valida la app al escribir.
 CREATE TABLE "plan_version_empresa" (
-    "organizacion_id" TEXT NOT NULL,
+    "empresa_id" TEXT NOT NULL,
     "plan_id" TEXT NOT NULL,
     "cambio_id" TEXT NOT NULL,
     "version" JSONB NOT NULL,
     "desde_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "plan_version_empresa_pkey" PRIMARY KEY ("organizacion_id")
+    CONSTRAINT "plan_version_empresa_pkey" PRIMARY KEY ("empresa_id")
 );
 
 -- «Plan partido» = alguna fila con ese `plan_id` (R14, R16); promover borra las del plan (R10).
 CREATE INDEX "plan_version_empresa_plan_id_idx" ON "plan_version_empresa" ("plan_id");
 
-ALTER TABLE "plan_version_empresa" ADD CONSTRAINT "plan_version_empresa_organizacion_id_fkey"
-    FOREIGN KEY ("organizacion_id") REFERENCES "organizacion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "plan_version_empresa" ADD CONSTRAINT "plan_version_empresa_empresa_id_fkey"
+    FOREIGN KEY ("empresa_id") REFERENCES "organizacion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "plan_version_empresa" ADD CONSTRAINT "plan_version_empresa_plan_id_fkey"
     FOREIGN KEY ("plan_id") REFERENCES "plan"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -96,14 +98,14 @@ CREATE FUNCTION plan_version_de(p_org text, p_plan_id text) RETURNS TABLE (
          (v."version" -> 'costoPorOrdenPorcentual' ->> 'porcentaje')::numeric(5, 2),
          (v."version" -> 'costoPorOrdenPorcentual' ->> 'minimo')::numeric(12, 2)
     FROM "plan_version_empresa" v JOIN "plan" p ON p."id" = v."plan_id"
-   WHERE v."organizacion_id" = p_org AND v."plan_id" = p_plan_id
+   WHERE v."empresa_id" = p_org AND v."plan_id" = p_plan_id
   UNION ALL
   SELECT p."nombre", p."periodicidad_ordenes", p."tope_api_keys",
          p."costo_por_orden", p."costo_por_orden_pct", p."costo_por_orden_minimo"
     FROM "plan" p
    WHERE p."id" = p_plan_id
      AND NOT EXISTS (SELECT 1 FROM "plan_version_empresa" v
-                      WHERE v."organizacion_id" = p_org AND v."plan_id" = p_plan_id)
+                      WHERE v."empresa_id" = p_org AND v."plan_id" = p_plan_id)
 $$;
 REVOKE EXECUTE ON FUNCTION plan_version_de(text, text) FROM PUBLIC;
 
@@ -115,7 +117,7 @@ DECLARE
   v_version jsonb;
 BEGIN
   SELECT v."version" INTO v_version
-    FROM "plan_version_empresa" v WHERE v."organizacion_id" = p_org AND v."plan_id" = p_plan_id;
+    FROM "plan_version_empresa" v WHERE v."empresa_id" = p_org AND v."plan_id" = p_plan_id;
   IF FOUND THEN
     RETURN (v_version -> 'topes' -> 'porRol' ->> (CASE p_rol WHEN 'Admin Tienda' THEN 'adminTienda' ELSE p_rol::text END))::integer;
   END IF;
@@ -226,7 +228,7 @@ BEGIN
   -- SLT-128 (R2, R12): la versión propia de la empresa durante un cambio a medias, o NULL (la del plan).
   SELECT v."version" INTO v_version
     FROM "organizacion" o
-    JOIN "plan_version_empresa" v ON v."organizacion_id" = o."id" AND v."plan_id" = o."plan_id"
+    JOIN "plan_version_empresa" v ON v."empresa_id" = o."id" AND v."plan_id" = o."plan_id"
    WHERE o."id" = p_organizacion_id;
   v_plan := (
     SELECT jsonb_build_object(
@@ -290,7 +292,7 @@ BEGIN
       -- SLT-128 (R12): la fecha es SU recepción, no F; si ya lo recibió, no hay cambio que mostrar.
       'cambio', (SELECT jsonb_build_object('vigente_desde', r."recibe_at", 'version', c."version")
                    FROM "plan_cambio_programado" c
-                   JOIN "plan_cambio_recepcion" r ON r."cambio_id" = c."id" AND r."organizacion_id" = o."id"
+                   JOIN "plan_cambio_recepcion" r ON r."cambio_id" = c."id" AND r."empresa_id" = o."id"
                   WHERE c."plan_id" = p."id" AND r."recibido_at" IS NULL),
       -- El pendiente de la empresa, sin `plan_cambio_actor_id` (R32).
       'cambio_empresa', CASE WHEN o."plan_cambio_id" IS NULL THEN NULL
@@ -469,7 +471,7 @@ BEGIN
   -- programada de su plan (no solo la de la periodicidad).
   SELECT min(r."recibe_at") INTO v_recepcion
     FROM "plan_cambio_recepcion" r
-   WHERE r."organizacion_id" = p_org AND r."recibido_at" IS NULL;
+   WHERE r."empresa_id" = p_org AND r."recibido_at" IS NULL;
   v_espera := LEAST(v_espera, v_recepcion);
   -- LEAST ignora los nulos: sin recepción pendiente, avanza hasta `p_ahora`; con ella, la factura cuyo fin llega
   -- a la recepción queda en curso y la siguiente no se abre con la versión vieja.
@@ -514,7 +516,7 @@ END $$;
 -- ─── 4. Los pendientes ya guardados (§8; R24, P10 a) ─────────────────────────────────────────────────
 -- Cada empresa de su plan lo recibe en su F, la fecha anunciada, aunque no sea inicio de su período: el
 -- cierre la espera igual (R9). El `plan_aplicar_cambio` sin empresa ya encolado solo promueve (§3.2).
-INSERT INTO "plan_cambio_recepcion" ("cambio_id", "organizacion_id", "recibe_at")
+INSERT INTO "plan_cambio_recepcion" ("cambio_id", "empresa_id", "recibe_at")
 SELECT c."id", o."id", c."vigente_desde"
   FROM "plan_cambio_programado" c JOIN "organizacion" o ON o."plan_id" = c."plan_id";
 

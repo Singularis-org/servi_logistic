@@ -9,20 +9,20 @@
 ## Bloque A — Datos y base
 
 ### T1 — Modelo Prisma y clasificación
-- [ ] **T1.1** `db/schema.prisma`: `PlanCambioRecepcion` y `PlanVersionEmpresa` con sus relaciones inversas
+- [x] **T1.1** `db/schema.prisma`: `PlanCambioRecepcion` y `PlanVersionEmpresa` con sus relaciones inversas
   (design §1).
-- [ ] **T1.2** `lib/db/modelos-de-negocio.ts`: las dos en `MODELOS_DE_PLATAFORMA`.
+- [x] **T1.2** `lib/db/modelos-de-negocio.ts`: las dos en `MODELOS_DE_PLATAFORMA`.
 - **Hecho:** `pnpm run typecheck` verde y `organizacion-en-modelos.guardia` verde.
 - Depende de: nada.
 
 ### T2 — Migración `20261114120000_plan_cambio_por_empresa` (depende de T1)
-- [ ] **T2.1** `migration.sql`: tablas, índices, RLS y `REVOKE` (§1); `plan_version_de` y `plan_tope_rol_de`; los
+- [x] **T2.1** `migration.sql`: tablas, índices, RLS y `REVOKE` (§1); `plan_version_de` y `plan_tope_rol_de`; los
   ocho `CREATE OR REPLACE` de §2.1 (triggers de topes, tarifa, `plan_de_la_empresa`, `factura_plataforma_abrir`,
   `_tomar_cambio`, `_cuota`) y la espera de `factura_plataforma_cerrar` (§2.2); las recepciones de los pendientes
   previos (§8, R24).
-- [ ] **T2.2** `down.sql`: negarse con versiones propias; si no, restaurar las ocho funciones de su última
+- [x] **T2.2** `down.sql`: negarse con versiones propias; si no, restaurar las ocho funciones de su última
   migración y borrar lo nuevo (R25).
-- [ ] **T2.3** `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`: ida, pendiente previo con su
+- [x] **T2.3** `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`: ida, pendiente previo con su
   recepción en F, vuelta limpia y vuelta negada con una versión propia (R24, R25).
 - **Hecho:** T2.3 verde; `pnpm exec vitest related --run db/migrations/20261114120000_plan_cambio_por_empresa/migration.sql`
   y los disparadores de esquema (`gate.disparadores`) verdes.
@@ -37,11 +37,11 @@
 - **Hecho:** T3.2 verde.
 
 ### T4 — Contratos y tipos [P] (depende de T1)
-- [ ] **T4.1** `lib/interfaces/repositories/IPlanesRepository.ts`: `recibirCambio`, `recepcionesVencidas`,
+- [x] **T4.1** `lib/interfaces/repositories/IPlanesRepository.ts`: `recibirCambio`, `recepcionesVencidas`,
   `repartirRecordatorioDeEmpresa`; `cambio_a_medias` en los resultados de editar, archivar y cancelar; `espera` en
   `ResultadoAplicar`; `recibidas` y `total` en el pendiente del detalle; `recordatorio_3` en `AvisoCorreoPlan`.
-- [ ] **T4.2** `lib/types/planes.ts`: `PlanResult` con `cambio_a_medias`.
-- [ ] **T4.3** `lib/planes/mensajes.ts`: `recordatorio_3` (asunto e intro de R22), los mensajes de R14, R15 y R16 y
+- [x] **T4.2** `lib/types/planes.ts`: `PlanResult` con `cambio_a_medias`.
+- [x] **T4.3** `lib/planes/mensajes.ts`: `recordatorio_3` (asunto e intro de R22), los mensajes de R14, R15 y R16 y
   el texto «N de M empresas ya lo recibieron» (R11).
 - **Hecho:** `pnpm run typecheck` verde (con stubs que lanzan en el repositorio, si hace falta, hasta T5).
 
@@ -98,7 +98,7 @@
 ### T8 — Detalle del plan (depende de T4; `frontend_dev`)
 - [ ] **T8.1** `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`: la línea «N de M empresas ya lo
   recibieron» bajo el cambio programado y el mensaje de R14 o R15 al rechazar.
-- [ ] **T8.2** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: `cambio_a_medias` en `RECHAZOS` (R16).
+- [x] **T8.2** `app/(app)/plataforma/planes/_components/PlanForm.tsx`: `cambio_a_medias` en `RECHAZOS` (R16).
 - [ ] **T8.3** `tests/components/PlanDetalle.test.tsx`: R11 y R15.
 - **Hecho:** T8.3 verde; lint verde.
 
@@ -111,7 +111,7 @@
 
 ## Archivos esperados
 
-Producción (15):
+Producción (16):
 - `db/migrations/20261114120000_plan_cambio_por_empresa/migration.sql`
 - `db/migrations/20261114120000_plan_cambio_por_empresa/down.sql`
 - `db/schema.prisma`
@@ -127,8 +127,9 @@ Producción (15):
 - `lib/services/email/plantillas/cambio-plan.ts`
 - `app/(app)/plataforma/planes/_components/PlanForm.tsx`
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (2026-11-12, aceptado por el humano: el tipo `pendiente` del detalle gana `recibidas` y `total`)
 
-Tests (14):
+Tests (17):
 - `tests/unit/planes/recepcion.test.ts`
 - `tests/integration/db/planes-cambio-por-empresa.test.ts`
 - `tests/integration/db/planes-version-por-empresa.test.ts`
@@ -143,5 +144,8 @@ Tests (14):
 - `tests/unit/services/email/plantilla-cambio-plan.test.ts`
 - `tests/unit/services/planes-service.test.ts`
 - `tests/components/PlanDetalle.test.tsx`
+- `tests/unit/services/planes-service-asignar-costo.test.ts` (2026-11-12: dobles con `recibidas` y `total`)
+- `tests/unit/services/planes-service-costo-porcentual.test.ts` (2026-11-12: ídem)
+- `tests/unit/services/planes-service-lecturas.test.ts` (2026-11-12: ídem)
 
-Total: 29 archivos.
+Total: 33 archivos (29 del plan + 4 aceptados por el humano el 2026-11-12).

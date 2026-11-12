@@ -6267,17 +6267,18 @@ model PlanCambioProgramado {
 // de su período de cobro en F o después. `recibidoAt` NULL = aún no lo recibió. Reemplazar o cancelar el
 // pendiente borra sus filas en cascada. De PLATAFORMA. Viven solo en el SQL de 20261114120000: el índice
 // parcial `(recibe_at) WHERE recibido_at IS NULL`, la RLS sin políticas y el `REVOKE ALL … FROM
-// servi_app` (R26).
+// servi_app` (R26). La empresa va en `empresa_id`, no en `organizacion_id`: la guardia
+// organizacion-en-modelos prohíbe esa columna en tablas de plataforma (decisión del humano, 2026-11-12).
 model PlanCambioRecepcion {
   cambioId       String                @map("cambio_id")
   cambio         PlanCambioProgramado  @relation(fields: [cambioId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizacionId String                @map("organizacion_id")
-  organizacion   Organizacion          @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresaId      String                @map("empresa_id")
+  empresa        Organizacion          @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   recibeAt       DateTime              @map("recibe_at") @db.Timestamp(3)
   recibidoAt     DateTime?             @map("recibido_at") @db.Timestamp(3)
 
-  @@id([cambioId, organizacionId])
-  @@index([organizacionId])
+  @@id([cambioId, empresaId])
+  @@index([empresaId])
   @@map("plan_cambio_recepcion")
 }
 
@@ -6286,10 +6287,10 @@ model PlanCambioRecepcion {
 // opaco y SIN FK, a propósito: la versión sobrevive al reemplazo del pendiente que la trajo (R13).
 // `version` tiene la forma de `versionPlanSchema` con `periodicidadOrdenes` siempre presente. De
 // PLATAFORMA: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
-// 20261114120000 (R26).
+// 20261114120000 (R26). `empresa_id`, no `organizacion_id`, como `PlanCambioRecepcion`.
 model PlanVersionEmpresa {
-  organizacionId String       @id @map("organizacion_id")
-  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresaId      String       @id @map("empresa_id")
+  empresa        Organizacion @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   planId         String       @map("plan_id")
   plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   cambioId       String       @map("cambio_id")

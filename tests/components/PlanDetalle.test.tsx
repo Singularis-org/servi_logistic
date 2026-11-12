@@ -388,3 +388,39 @@ describe("SLT-58 R18 — un rechazo se explica y no da el cambio por hecho", () 
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });
+
+describe("SLT-128 R14, R15 — `cambio_a_medias` dice lo que pasa según la acción", () => {
+  it("R15: archivar → `cambio_a_medias` muestra el mensaje de R15, sin aviso de éxito ni relectura", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE, { archivarPlan: accion({ estado: "cambio_a_medias" }) });
+
+    await user.click(screen.getByRole("button", { name: "Archivar" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Archivar plan" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.",
+      ),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R14: cancelar → `cambio_a_medias` muestra el mensaje de R14, sin aviso de éxito ni relectura", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE, { cancelarCambio: accion({ estado: "cambio_a_medias" }) });
+
+    await user.click(within(seccion("Cambio programado")).getByRole("button", { name: "Cancelar cambio" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar cambio" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.",
+      ),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+});

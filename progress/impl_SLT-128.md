@@ -39,3 +39,34 @@
 - `eslint` sobre los archivos tocados: limpio.
 
 Veredicto: T1–T4 escritas; bloqueadas por la guardia R4 y por 6 errores de tipos fuera de la tanda.
+
+## Tanda 1b (backend_dev, 2026-11-12): decisiones del humano aplicadas
+
+### Decisiones
+1. La guardia `organizacion-en-modelos` no se toca: en `plan_cambio_recepcion` y `plan_version_empresa` la
+   columna de la empresa pasa a `empresa_id` (Prisma `empresaId`, relación `empresa`).
+2. Se aceptan 33 archivos: los 3 tests de servicio y `PlanEmpresa.tsx` (este, de frontend_dev) entran en
+   `tasks.md > Archivos esperados`.
+
+### Archivos
+- `db/schema.prisma`: `empresaId @map("empresa_id")` en los dos modelos, `@@id([cambioId, empresaId])` y
+  `@@index([empresaId])`. Cliente regenerado.
+- `db/migrations/20261114120000_plan_cambio_por_empresa/migration.sql`: columnas, PK, índice
+  `plan_cambio_recepcion_empresa_id_idx`, FK `*_empresa_id_fkey`, `plan_version_de`, `plan_tope_rol_de`,
+  `plan_de_la_empresa`, `factura_plataforma_cerrar` y el backfill de §4. `down.sql` sin cambios: solo hace
+  LOCK/EXISTS/DROP de las tablas, sin nombrar la columna.
+- `lib/db/modelos-de-negocio.ts`: el comentario.
+- `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`: las dos consultas que nombraban la columna.
+- `tests/unit/services/planes-service-{asignar-costo,costo-porcentual,lecturas}.test.ts`: `recibidas` y `total`
+  en el `pendiente` de los dobles de `detalle`.
+- `specs/SLT-128-planes-cambios-por-periodo/design.md` §1 (nota fechada 2026-11-12) y `tasks.md` (33 archivos).
+
+### Verificación
+- `pnpm run typecheck`: 0 errores.
+- Guardia `tests/unit/guards/organizacion-en-modelos.guardia.test.ts`: 13/13 verde.
+- `vitest run` de los 3 tests de servicio + `tests/unit/planes/recepcion.test.ts`: 4 archivos, 119 verdes.
+- `vitest run tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`: 10 verdes, 5 saltados (sin base local;
+  los corre el CI).
+- `pnpm run lint`: 0 errores (243 avisos preexistentes, ninguno en archivos de esta tanda; eslint de los tocados limpio).
+
+Veredicto: guardia R4 resuelta y tipos en verde; T1–T4 listas para seguir con T5.
