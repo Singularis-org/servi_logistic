@@ -1,117 +1,259 @@
 # SLT-128 — planes-cambios-por-periodo · requirements.md
 
-> **Actualizado 2026-11-11 tras el corte (P3):** el título de la ficha es «Planes: el cambio programado del plan llega a cada empresa al inicio de su período». Quitar «De inmediato» del Alcance pasa a SLT-135; ver las filas P1–P6 de «Decisiones cerradas», que mandan sobre el sembrado.
-
-> **Zona** backend · **Complejidad** high · **depends_on** SLT-118 «Planes: factura por empresa y período con la cuota y las órdenes» (apilada sobre su rama) · **Rama** `feature/SLT-128-planes-cambios-por-periodo`
+> **Título actual de la ficha:** «Planes: el cambio programado del plan llega a cada empresa al inicio de su
+> período» (el slug y la rama conservan el nombre original).
 >
-> **Alcance.** Al editar un plan desaparece la opción «De inmediato». El superadmin elige una fecha «A partir
-> de» y cada empresa con ese plan recibe el cambio al inicio de su siguiente período de cobro que empiece en esa
-> fecha o después. Vale para todo lo editable del plan: nombre, costo base, descuentos, cobro por orden, topes,
-> módulos y periodicidad de órdenes. Los recordatorios por correo van a cada maestro, contados hasta la fecha de
-> su empresa (sustituye SL-24 R42).
+> **Zona** backend · **Complejidad** high · **Ruta** completa · **depends_on** SLT-118 «Planes: factura por empresa
+> y período con la cuota y las órdenes» (apilada sobre su rama) · **Rama** `feature/SLT-128-planes-cambios-por-periodo`
+>
+> **Alcance (rebanada 1; el humano lo cambió el 2026-11-11 con P3).** Una edición **programada** de un plan (con
+> fecha «A partir de») ya no se aplica a todas sus empresas a la vez: cada empresa con ese plan la recibe al inicio
+> de su siguiente período de cobro que empiece en esa fecha o después. Vale para todo lo editable del plan: nombre,
+> costo base, descuentos, cobro por orden, topes, módulos y periodicidad de órdenes. Trae la versión del plan por
+> empresa, un solo pendiente por plan con el reemplazo por empresa, «Cancelar cambio» y archivar bloqueados con el
+> cambio a medias, el cierre de la factura que espera a la recepción y los correos por empresa: uno al guardar con
+> la fecha de esa empresa y los recordatorios contados hasta ella (sustituye SL-24 R42). La edición «De inmediato»
+> **sigue como hoy** en esta rebanada.
 >
 > **Lo que NO entra.**
-> - El formulario por pasos dentro de un sheet: SLT-130 «Planes: formulario por pasos compartido en un sheet
->   (crear y editar)».
+> - Quitar «De inmediato» y la regla de «hoy» en toda edición: SLT-135 «Planes: sin «De inmediato» al editar un
+>   plan» (depende de esta).
+> - El formulario por pasos dentro de un sheet y la lista de fechas por empresa en pantalla: SLT-130 «Planes:
+>   formulario por pasos compartido en un sheet (crear y editar)».
 > - El borrador del plan guardado en el servidor por pasos: SLT-129 «Planes: borrador del plan guardado en el
 >   servidor por pasos».
 > - El cambio de plan de una empresa (de un plan a otro): ya lo resuelve SLT-118 R30.
 >
-> Sembrado por `/afinar-feature` el 2026-11-11. El bloque de Alcance y la tabla de «Decisiones cerradas» los
-> fijó el humano ANTES del spec. `spec_author` los respeta, no los reabre y no los reescribe: su trabajo aquí es
-> `## Requisitos (EARS)`.
+> Sembrado por `/afinar-feature` el 2026-11-11; Alcance acotado tras el corte (P3) el mismo día. La tabla de
+> «Decisiones cerradas» la fijó el humano ANTES del spec y no se reabre.
 
 ## Requisitos (EARS)
 
-_Pendiente. `spec_author` (F1.2, 2026-11-11) devolvió **BLOQUEADO: no cabe en un PR**. Ver P3 en
-«Preguntas abiertas»: los requisitos se escriben cuando el humano acepte el corte, y solo para la
-primera rebanada._
+> Escritos por `spec_author` el 2026-11-11. Diseño en `design.md` («§N»); tareas en `tasks.md`. Heredan SL-24
+> «Planes y límites» (R16, R17, R37–R45), SLT-58 «Planes: pantallas del superadmin» (R36), SLT-86 «Planes: período
+> de facturación de calendario por empresa y sin tope de órdenes» (R15, R22) y SLT-118 «Planes: factura por empresa
+> y período con la cuota y las órdenes» (R30, R36–R39). Las horas son las de la plataforma (−06:00, CR).
+>
+> **Vocabulario.**
+> - *Edición programada*: la que el superadmin guarda con una fecha «A partir de» F (hoy, SL-24 R37 y SLT-86 R22).
+>   Rige desde las 00:00 de F. La edición sin fecha («De inmediato») no entra aquí (salvo R16).
+> - *Versión*: el nombre, los topes, los módulos, el precio, el cobro por orden y la periodicidad de órdenes de un
+>   plan. La *versión del plan* es la de su fila (catálogo, detalle, asignaciones). La *versión de la empresa* es la
+>   que rige para esa empresa: la del plan, salvo durante un cambio a medias.
+> - *Recepción* de una empresa: el instante en que recibe la versión programada. Es F si F es inicio de un período
+>   de calendario de su tipo de cobro (SLT-86 R4) y, si no, el inicio del siguiente período de su tipo (como
+>   `fechaDeEfectoPorDefecto`, SLT-118 R30).
+> - *Cambio a medias*: un pendiente que alguna empresa ya recibió y otra todavía no.
+> - *Plan partido*: alguna empresa del plan corre una versión distinta de la del plan.
+
+### Recepción por empresa
+
+- **R1** — CUANDO el superadmin guarda una edición programada con fecha F, el sistema DEBE fijar, en la misma
+  transacción, la recepción de cada empresa que tiene el plan según su tipo de cobro. Ejemplos con F = 16 de
+  noviembre de 2026: quincenal → 16 de noviembre; mensual → 1 de diciembre; bimestral → 1 de enero de 2027; anual
+  → 1 de enero de 2027. Con F = 1 de diciembre: quincenal y mensual → 1 de diciembre.
+  *Test:* `tests/unit/planes/recepcion.test.ts` (los cuatro tipos, F inicio y no inicio),
+  `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+- **R2** — MIENTRAS no llegue la recepción de una empresa, el sistema DEBE seguir aplicándole la versión que
+  tenía. DESDE las 00:00 de su recepción DEBE aplicarle la versión programada, **a ella sola**: sus altas de
+  usuarios y de API keys se cuentan contra los topes nuevos, la siguiente orden se cobra con el cobro por orden
+  nuevo, y el nombre nuevo sale en «Mi plan», en el detalle de empresa del superadmin y en la factura que se abre.
+  Las demás empresas del plan NO DEBEN cambiar hasta su propia recepción. Ejemplo: plan con tope de 3 `admin` y
+  cobro por orden 100, editado a 1 y 80 con F = 16 de noviembre; el 20 de noviembre la quincenal ya no puede
+  activar un segundo `admin` y su orden se cobra 80; la mensual activa el tercero y paga 100 hasta el 1 de
+  diciembre.
+  *Test:* `tests/integration/db/planes-version-por-empresa.test.ts` (los triggers de topes, la tarifa, «Mi plan» y
+  el detalle de empresa, con SQL a mano para los triggers).
+- **R3** — El costo base y los descuentos DEBEN seguir rigiendo por SLT-86 R15 (desde el primer período de cada
+  empresa que empieza en F o después), que es su recepción: ninguna cuota DEBE cobrarse con el precio nuevo a una
+  empresa antes de su recepción, ni con el precio viejo después.
+  *Test:* `tests/integration/db/plan-precio-historial.test.ts` (quincenal y anual con F futura aplicada por la
+  cola: la quincenal lo ve desde su recepción y la anual desde el 1 de enero).
+- **R4** — CUANDO una empresa recibe la versión programada, el sistema DEBE, en esa transacción, encender los
+  módulos añadidos y apagar los quitados **solo en esa empresa**, comparando con la versión que ella tenía, y NO
+  DEBE tocar sus otros módulos ni sus excepciones (SL-24 R11, R17, por empresa).
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+- **R5** — El sistema DEBE aplicar cada recepción una sola vez, a sus 00:00 o, como tarde, en la siguiente pasada
+  horaria del barrido (SL-24 R38). Correr el trabajo dos veces, a la vez que el barrido o con el reloj por detrás
+  de la recepción NO DEBE aplicarla dos veces ni adelantarla. La recepción NO DEBE cambiar la entrada ni el ciclo
+  de la empresa.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`, `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`.
+- **R6** — *(P2)* SI al recibir el cambio una empresa ya pasa algún tope nuevo, ENTONCES el sistema DEBE aplicarlo
+  igual y, desde ese instante, rechazar sus altas que pasen el tope hasta que su uso baje, sin tocar lo ya creado
+  (SL-24 R16, SLT-58 R36). Al guardar, la respuesta DEBE seguir avisando de cada empresa y tope que ya se pasa,
+  como hoy.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts` (3 `admin` activos, tope nuevo 1: se recibe,
+  activar otro se rechaza, inactivar dos y activar uno entra).
+- **R7** — CUANDO una empresa recibe un cambio de la periodicidad de órdenes, su factura en curso NO DEBE cambiar:
+  DEBE cerrarse con la periodicidad con la que se abrió, y la siguiente DEBE abrirse en la recepción con la
+  periodicidad nueva (SLT-118 R36, por empresa). Ejemplo: órdenes quincenales → mensuales con F = 16 de
+  noviembre y dos empresas, una mensual y otra bimestral: la mensual (recepción el 1 de diciembre) factura el 16 al
+  30 de noviembre quincenal y luego diciembre entero; la bimestral (recepción el 1 de enero) sigue quincenal hasta
+  la emitida el 1 de enero. Una empresa con tipo quincenal haría rechazar el guardado (SLT-118 R37).
+  *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
+- **R8** — SI al recibir una versión con órdenes mensuales la empresa tiene tipo de cobro quincenal, ENTONCES el
+  trabajo DEBE fallar sin escribir nada para esa empresa (SLT-118 R37, ahora por empresa). La regla al guardar no
+  cambia.
+  *Test:* `tests/integration/db/planes-periodicidad-ordenes.test.ts`.
+- **R9** — *(decisión «Cierre de la factura»)* MIENTRAS una empresa tenga una recepción pendiente con su instante
+  en o antes del fin de una factura por cerrar, el proceso NO DEBE cerrar esa factura ni las siguientes: DEBE
+  cerrarlas en la primera corrida después de la recepción, con la versión nueva (su nombre en la cuota). Vale para
+  toda edición programada, no solo la de la periodicidad, y sustituye la espera por `plan_cambio_programado` de
+  SLT-118 R39. Ejemplo: recepción el 1 de diciembre que la cola aún no aplicó a las 00:10 → la factura del 16 al 30
+  de noviembre no se cierra; recibida a las 00:40, la corrida de la 01:10 la cierra.
+  *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
+
+### La versión del plan
+
+- **R10** — *(P5)* La versión del plan DEBE seguir siendo la de antes hasta que la última empresa que lo tenía
+  reciba el cambio. En esa misma transacción el sistema DEBE pasar el plan a la versión programada, dejar la fila
+  `cambio_aplicado` del rastro (SL-24 R43), borrar el pendiente y dejar a todas sus empresas con la versión del
+  plan, sin encender ni apagar ningún módulo. Si el plan no tiene empresas (o ya no le queda ninguna sin
+  recibirlo), el cambio DEBE pasar al plan a las 00:00 de F, como hoy (SL-24 R38).
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`, `tests/integration/db/planes-historial.test.ts`.
+- **R11** — *(P5)* MIENTRAS el plan tenga un pendiente, el detalle del plan DEBE mostrar «Cambio programado desde
+  F» y cuántas de sus empresas ya lo recibieron, con el texto «N de M empresas ya lo recibieron».
+  *Test:* `tests/components/PlanDetalle.test.tsx`, `tests/integration/db/planes-cambio-por-empresa.test.ts` (la
+  lectura del detalle).
+- **R12** — MIENTRAS una empresa no haya recibido el pendiente, «Mi plan» y el detalle de empresa del superadmin
+  DEBEN mostrar el cambio programado con **su** recepción, no con F. Una vez recibido, NO DEBEN mostrar ningún
+  cambio programado del plan.
+  *Test:* `tests/integration/db/planes-version-por-empresa.test.ts`.
+
+### Reemplazar, cancelar, archivar y editar en el acto
+
+- **R13** — *(decisión «Varios cambios pendientes» y P6)* CUANDO el superadmin programa otro cambio de un plan con
+  un pendiente, el sistema DEBE reemplazarlo: una empresa que aún no lo recibió NO DEBE recibirlo nunca; una que ya
+  lo recibió DEBE conservar esa versión (no se deshace). Y **todas** las empresas del plan DEBEN recibir el cambio
+  nuevo en su recepción calculada con la fecha nueva (R1). Ejemplo: «+10 000» con F = 16 de noviembre y luego
+  «+5 000 más» guardado el 21 de noviembre con F = 21 de noviembre → la quincenal recibe el primero el 16 y el plan
+  final el 1 de diciembre; la mensual recibe solo el plan final el 1 de diciembre.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`, `tests/integration/db/planes-cambio-programado.test.ts`.
+- **R14** — *(P1; P8 abierta)* SI alguna empresa ya recibió el pendiente, o el plan está partido por un cambio
+  anterior que este reemplazó, ENTONCES «Cancelar cambio» DEBE rechazarse sin escribir nada, con el mensaje
+  «Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.». SI
+  ninguna lo recibió, ENTONCES DEBE cancelarse como hoy (SL-24 R39, R43, R45).
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`, `tests/unit/services/planes-service.test.ts`.
+- **R15** — *(decisión «Archivar un plan con un cambio a medias»; sustituye SL-24 R40)* SI el plan tiene un
+  pendiente y alguna de sus empresas aún no lo recibió, ENTONCES archivar DEBE rechazarse sin escribir nada, con
+  el mensaje «El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o
+  cancélalo.». Un pendiente de un plan sin empresas DEBE seguir cancelándose al archivar (SL-24 R40).
+  *Test:* `tests/integration/db/planes-cambio-programado.test.ts`, `tests/components/PlanDetalle.test.tsx` (el
+  mensaje).
+- **R16** — *(P7 abierta, propuesta)* SI el plan está partido, ENTONCES la edición «De inmediato» DEBE rechazarse
+  sin escribir nada, con el mensaje «Alguna empresa ya recibió el cambio programado. Programa este cambio con una
+  fecha.». SI no lo está, ENTONCES DEBE seguir como hoy (SL-24 R15: a todas en el acto; el pendiente sigue).
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+
+### Empresas que entran, salen o cambian de tipo durante el cambio
+
+- **R17** — *(P4)* CUANDO una empresa entra a un plan con un pendiente (asignación, custom, cambio de plan del
+  superadmin o del maestro), SI su entrada es en F o después, ENTONCES DEBE entrar ya con la versión programada (sus
+  módulos, y el rechazo por topes de SL-24 R12 contra esos topes); SI es antes de F, ENTONCES DEBE entrar con la
+  versión del plan y recibir la programada en su recepción (R1, con su tipo nuevo), con sus recordatorios (R21)
+  contados desde su entrada.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+- **R18** — CUANDO una empresa deja un plan con un pendiente, el sistema DEBE borrar en esa transacción su
+  recepción y su versión propia; sus trabajos ya encolados NO DEBEN hacer nada. SI era la última sin recibirlo y F
+  ya pasó, ENTONCES R10 DEBE cumplirse en esa misma transacción.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+- **R19** — *(P4)* CUANDO se aplica un cambio de tipo de cobro a una empresa con una recepción pendiente, el
+  sistema DEBE recalcularla con el tipo nuevo: el primer inicio de un período del tipo nuevo que no sea anterior a
+  F ni al efecto del cambio de tipo. Los recordatorios ya encolados para la fecha vieja NO DEBEN salir y los de la
+  nueva DEBEN contarse desde ese instante (R21). Ejemplo: F = 5 de enero de 2027 y una empresa mensual (recepción
+  el 1 de febrero) que pasa de mensual a bimestral con efecto el 1 de enero: al aplicarse el cambio de tipo, su
+  recepción pasa al 1 de marzo. Si el cambio de tipo rige el mismo instante que la recepción, la recepción no se
+  mueve.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+
+### Correos por empresa
+
+- **R20** — *(decisiones «Correos» y «¿Por empresa o por plan?»)* CUANDO el superadmin guarda una edición
+  programada, el sistema DEBE encolar en esa transacción, por cada empresa del plan, un correo a todos sus maestros
+  activos (SL-24 P7) con qué cambia respecto de **la versión de esa empresa**, desde **su recepción** y sus topes
+  ya pasados. Un reemplazo DEBE decir que reemplaza al previsto para la recepción anterior de esa empresa, si la
+  tenía, sin correo de cancelación aparte (SL-24 R45). Un fallo del correo NO DEBE deshacer la edición.
+  *Test:* `tests/integration/db/planes-cambio-correos.test.ts` (quincenal y mensual: cada correo con su fecha).
+- **R21** — *(decisión «Correos»)* Por cada empresa, con d = los días de calendario entre el día en que se guarda y
+  el día de su recepción, el sistema DEBE programar sus recordatorios a las 00:00 de n días antes de su recepción:
+  - d > 7: a 7 y a 1 día;
+  - 4 ≤ d ≤ 7: a 3 y a 1 día (guardado el 11, recepción el 16 → el 13 y el 15, más el del 11 al guardar);
+  - d ≤ 3: solo el de 1 día, si cae después del instante de guardar.
+  *Test:* `tests/unit/planes/recepcion.test.ts` (d = 0, 1, 3, 4, 7, 8 y 30; el de 1 día que cae antes de guardar),
+  `tests/integration/db/planes-cambio-correos.test.ts`.
+- **R22** — Cada recordatorio DEBE salir como mucho una vez por empresa y fecha, aunque el trabajo se repita, e
+  indicar los topes que la empresa ya pasa en ese momento (SL-24 R42). NO DEBE salir si la empresa ya recibió el
+  cambio, si el cambio se reemplazó o canceló, si la empresa dejó el plan o si su recepción cambió (R19). El de 3
+  días DEBE decir «Faltan 3 días: el plan <nombre> de <empresa> cambia a partir del <fecha>.», con el asunto «El
+  plan <nombre> cambia en 3 días».
+  *Test:* `tests/integration/db/planes-cambio-correos.test.ts`, `tests/unit/services/email/plantilla-cambio-plan.test.ts`.
+
+### Fechas, datos previos, base y cola
+
+- **R23** — *(decisión «Fecha mínima»; P9 abierta)* SI la fecha de una edición programada es anterior a hoy,
+  ENTONCES el sistema DEBE responder `validation_error` en `vigenteDesde` sin escribir nada (SLT-86 R22). Las demás
+  reglas de la fecha NO DEBEN cambiar en esta rebanada: un precio con fecha de hoy se aplica en el acto a todas y el
+  resto exige una fecha posterior a hoy (SL-24 R37), hasta SLT-135 «Planes: sin «De inmediato» al editar un plan».
+  *Test:* `tests/unit/services/planes-service-periodo.test.ts` (existente, sin cambios).
+- **R24** — *(P10 abierta, propuesta)* CUANDO se aplica la migración, cada pendiente ya guardado DEBE quedar con
+  una recepción por cada empresa de su plan **en su fecha F** (la que se anunció por correo, sin llevarla al inicio
+  de un período), y DEBE aplicarse por empresa con R2–R10. Los recordatorios ya encolados sin empresa DEBEN
+  repartirse como hoy, solo a las empresas que aún no lo recibieron.
+  *Test:* `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`.
+- **R25** — SI alguna empresa corre una versión propia (plan partido), ENTONCES el `down.sql` DEBE negarse sin tocar
+  nada: quitar las tablas la dejaría en la versión del plan sin aviso. Sin ninguna, DEBE dejar la base como estaba
+  (tablas, funciones y triggers de antes).
+  *Test:* `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts`.
+- **R26** — Las recepciones y las versiones por empresa DEBEN ser de plataforma: el rol `servi_app` NO DEBE leerlas
+  ni escribirlas (`42501`), también con SQL a mano (SL-24 R8). La empresa solo ve su propia versión por
+  `plan_de_la_empresa`.
+  *Test:* `tests/integration/db/planes-version-por-empresa.test.ts`.
+- **R27** — Los trabajos de recepción y de recordatorio por empresa DEBEN ser de núcleo (SL-24 R44): corren sea cual
+  sea el estado de los módulos de la empresa.
+  *Test:* `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`.
+
+### Cobertura de las decisiones cerradas
+
+| Decisión | Requisitos |
+|---|---|
+| Base de trabajo | — (proceso: rama apilada sobre SLT-118) |
+| ¿Cuándo rige un cambio del plan? | R1, R2, R3, R5 (sin «De inmediato»: SLT-135, por P3) |
+| ¿Qué campos? | R2, R3, R4, R7 |
+| Fecha mínima | R23 |
+| Varios cambios pendientes del mismo plan | R13 |
+| Archivar un plan con un cambio a medias | R15 |
+| Correos | R20, R21, R22 |
+| ¿Por empresa o por plan? | R20, R21, R22 |
+| Cierre de la factura | R9 |
+| E2E | — (sin E2E propio; antes del PR corren en local los E2E de planes, `docs/perfil-agentes.md`) |
+| P3 · Tamaño | — (proceso: 29 archivos, `tasks.md > Archivos esperados`) |
+| P1 · Cancelar con empresas que ya lo recibieron | R14 |
+| P6 · Reemplazo con empresas que ya recibieron el primero | R13 |
+| P2 · Tope por debajo del uso | R6 |
+| P4 · Empresa que entra al plan durante la ventana | R17, R19 |
+| P5 · Cuándo la versión nueva es «el plan» | R10, R11 |
 
 ## Preguntas abiertas
 
-- **Cancelar el cambio de un plan.** ¿«Cancelar cambio» cancela solo lo que falta (las empresas que aún no lo
-  recibieron) y deja intacto lo ya aplicado? Propuesta: sí.
-- **Tope que baja por debajo del uso actual.** Si el cambio baja un tope (p. ej. mensajeros) por debajo de lo
-  que una empresa ya usa al recibirlo, ¿qué pasa? Revisar el precedente de SL-24 («aviso de topes pasados») y
-  proponerlo.
-- **Tamaño.** Si no cabe en el tope del PR, el spec propone el corte.
+Cada una tiene su propuesta ya escrita en el requisito que cita. Si el humano elige otra cosa, cambian ese requisito
+y su test, no el resto.
 
-### Respuestas y preguntas de `spec_author` (F1.2, 2026-11-11)
-
-> Lo que ya existe, revisado antes de escribir: nada en `feature_list.json` ni en `specs/` aplica un cambio del
-> plan por empresa. Hoy el plan tiene **una sola versión para todas sus empresas**: los topes (`plan_tope_rol`,
-> `plan.tope_api_keys`), el cobro por orden (`plan.costo_por_orden*`), el nombre y la periodicidad de órdenes
-> viven en la fila del plan, y los leen por `organizacion.plan_id` los triggers de topes, la tarifa del cobro por
-> orden, `plan_de_la_empresa`, «Mi plan» y la apertura de facturas de SLT-118 «Planes: factura por empresa y
-> período con la cuota y las órdenes». El cambio programado (`plan_cambio_programado`, un pendiente por plan)
-> se aplica entero, a todas a la vez, en su fecha (SL-24 R38). **El precio ya va por período de cada empresa**
-> (SLT-86 R15: rige desde el primer período de cada empresa que empieza en la fecha o después), así que el costo
-> base y los descuentos ya cumplen la regla. Lo nuevo de fondo: durante la ventana entre guardar y que la última
-> empresa lo reciba, empresas con el mismo plan corren versiones distintas (hasta tres, con un reemplazo: la
-> vigente, la del primer cambio y la del segundo). Eso pide una versión del plan **por empresa** y que cada uno
-> de esos lectores la lea. El grafo de código no tenía índice de este worktree: la búsqueda se hizo con Grep.
-
-- **P1 · Cancelar el cambio cuando alguna empresa ya lo recibió** (responde «Cancelar el cambio de un plan»).
-  Cancelar solo lo que falta deja el plan **partido para siempre**. Ejemplo: cambio desde el 16 de noviembre; la
-  quincenal lo recibe el 16 y el 20 se cancela; la mensual se queda en la versión vieja y la quincenal en la
-  nueva, sin ningún pendiente que las junte. Entonces el catálogo, una asignación nueva y el correo ya no saben
-  cuál es «el plan». Propuesta: **«Cancelar cambio» solo mientras ninguna empresa lo haya recibido**, con el
-  efecto de hoy (SL-24 R39, R45: se borra, correo de cancelación, fila de rastro). Si alguna ya lo recibió, se
-  rechaza con un mensaje que pide programar otro cambio con los valores de antes, que reemplaza al pendiente
-  (decisión «Varios cambios pendientes») y llega a cada empresa en su período. La otra salida es la propuesta
-  del humano (cancelar lo que falta) aceptando el plan partido; entonces hace falta decidir qué versión muestra
-  el catálogo y cuál recibe una empresa nueva. ¿Cuál?
-- **P2 · Tope por debajo del uso al recibir el cambio** (responde «Tope que baja por debajo del uso actual»).
-  Resuelta con precedentes, salvo que el humano diga otra cosa: SL-24 R16 (revisado el 2026-10-28) y SLT-58 R36,
-  que SLT-86 R18 repite para los cambios de una empresa. Propuesta: el cambio **se guarda igual** y la respuesta
-  avisa de cada empresa y tope que ya se pasa, con su uso y el tope nuevo; el correo al guardar y cada
-  recordatorio de esa empresa lo dicen con el uso de ese momento (SL-24 R41, R42); al recibirlo, el tope pasado
-  **no impide** aplicarlo, y desde ese instante se rechazan las altas de esa empresa que pasen el tope (usuarios
-  del rol, API keys) hasta que su uso baje. Lo ya creado no se toca. ¿Vale?
-- **P3 · Tamaño: no cabe en un PR** (responde «Tamaño»). `gate.tamano_pr` no está fijado en
-  `arnes.config.json`, así que rige el de por defecto: 40 archivos, y el 80 % son 32. La feature entera suma unos
-  **53 archivos**: unos 19 de producción (migración y su `down.sql`, `db/schema.prisma`, `PlanesRepository`,
-  `IPlanesRepository`, `PlanesService`, `IPlanesService`, `lib/types/planes.ts`, `lib/planes/jobs-cambio-plan.ts`,
-  `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`, `lib/planes/mensajes.ts`, `lib/planes/rastro.ts`,
-  `lib/planes/consumo.ts`, la plantilla `lib/services/email/plantillas/cambio-plan.ts`, `MiPlanRepository`,
-  `PlanForm.tsx`, `PlanDetalle.tsx` y `lib/actions/planes.ts`) y unos 34 tests. Más de la mitad de esos tests
-  existen hoy y usan la edición «De inmediato» (`planes-edicion-en-uso`, `plan-costo-porcentual-escritura`,
-  `planes-costeo-escritura`, `cobro-plataforma-plan`, `plan-descuento-periodo`, `plan-precio-historial`,
-  `planes-asignacion`, los cinco `planes-service*`, los tres `planes-schema*`, cinco `PlanForm*` y dos E2E de
-  planes). Propuesta de corte en **dos rebanadas** que se mergean solas, con `depends_on` encadenado:
-  1. **SLT-128 (acotada): «Planes: el cambio programado del plan llega a cada empresa al inicio de su
-     período»** (~29 archivos, 72 %). Trae la versión del plan por empresa (modelo, migración y los lectores),
-     la recepción por empresa de todo lo editable con fecha (nombre, cobro por orden, topes, módulos y
-     periodicidad; el precio ya cumple), un pendiente por plan con el reemplazo por empresa, archivar
-     bloqueado a medias, el cierre de la factura que espera (SLT-118 R39) y los correos por empresa: al guardar
-     con su fecha y los recordatorios 7/1, 3/1 o 1 contados hasta ella. La edición «De inmediato» **sigue** en
-     esta rebanada, como hoy: aplica a todas las empresas a la vez. El producto queda funcionando: lo programado
-     ya va por período; lo inmediato, igual que ahora.
-  2. **Ficha nueva: «Planes: sin «De inmediato» al editar un plan»** (~25 archivos, depende de la 1). Toda
-     edición pide «A partir de» `≥ hoy` en el servidor y en `PlanForm`, «hoy» sigue la regla de la rebanada 1
-     (la recibe en el acto solo la empresa cuyo período empieza hoy), y se pasan a fecha los tests y los E2E que
-     hoy editan en el acto.
-
-  El corte inverso (primero quitar «De inmediato») obliga a reescribir dos veces los mismos tests: al quitarla
-  «hoy» aplicaría a todas en el acto, y la rebanada siguiente cambiaría otra vez qué significa «hoy». ¿Se acepta
-  el corte en dos? La otra salida es aceptar ~53 archivos en un PR, como SLT-118 aceptó 49 (P16).
-- **P4 · Una empresa que entra al plan durante la ventana.** Una asignación, un custom o un cambio de plan
-  pendiente hacia el plan que rige después de guardar el cambio. Propuesta, con la misma regla: si entra en la
-  fecha «A partir de» o después, entra ya con la versión nueva; si entra antes, entra con la vigente y recibe la
-  nueva al inicio de su primer período que empiece en esa fecha o después. Y una empresa del plan que cambia de
-  tipo de cobro durante la ventana (SLT-118 R30): su fecha se recalcula con los períodos del tipo que tenga a
-  partir de ese cambio. ¿Vale?
-- **P5 · Cuándo pasa la versión nueva a ser «el plan».** El catálogo, el detalle y la vista previa de asignar
-  muestran la versión del plan. Propuesta: la fila del plan pasa a la versión nueva **cuando la recibe la última
-  empresa**; si el plan no tiene empresas, a las 00:00 de la fecha «A partir de» (como hoy, SL-24 R38). Mientras
-  tanto el detalle sigue mostrando «Cambio programado» con la fecha elegida y, además, cuántas empresas ya lo
-  recibieron. ¿Vale, o la pantalla debe listar la fecha de cada empresa (eso iría con SLT-130 «Planes: formulario
-  por pasos compartido en un sheet (crear y editar)»)?
-- **P6 · Reemplazo con empresas que ya recibieron el primer cambio.** La decisión dice «las que ya lo recibieron
-  se quedan con él». Propuesta de lectura: no se les deshace, y **también reciben el cambio nuevo** al inicio de
-  su siguiente período que empiece en la fecha nueva o después. Ejemplo de la decisión: la quincenal recibe
-  «+10 000» el 16 de noviembre y el plan final el 1 de diciembre, igual que la mensual. Si no lo recibieran, el
-  plan quedaría partido como en P1. ¿Vale?
+- **P7 · «De inmediato» con el plan partido (R16).** Una edición inmediata mientras alguna empresa ya recibió el
+  pendiente dejaría tres versiones sin un pendiente que las junte. Propuesta: **rechazarla** y pedir que se programe.
+  La otra salida es aplicarla a todas en el acto y borrar las versiones propias (todas vuelven a la del plan, también
+  la que ya había recibido el pendiente). ¿Rechazo o «a todas»?
+- **P8 · Cancelar con el plan partido por un cambio anterior (R14).** P1 bloquea cancelar si alguna empresa ya
+  recibió **este** pendiente. Si el pendiente reemplazó a otro que alguna ya recibió (R13), cancelarlo también deja el
+  plan partido. Propuesta: bloquearlo igual. ¿Vale?
+- **P9 · Qué queda de «hoy» en esta rebanada (R23).** La decisión «Fecha mínima» (`≥ hoy`) y que «hoy» siga la regla
+  por empresa se dejan para SLT-135 «Planes: sin «De inmediato» al editar un plan», como dice P3 («De inmediato» sigue
+  como hoy). Así no se reescriben aquí los tests de «hoy» del precio. Propuesta: así. ¿O «hoy» debe ir por empresa ya
+  en esta rebanada? Si sí, suman unos 3 archivos de test (siguen siendo menos de 32).
+- **P10 · Pendientes guardados antes del despliegue y empresas que entran (R17, R24).** Propuesta: (a) un pendiente
+  previo se recibe en su fecha F tal cual, la que ya se anunció por correo, aunque caiga a mitad del período de una
+  empresa; (b) una empresa que entra antes de F recibe solo los recordatorios, sin el correo «guardado» (no estaba
+  cuando se guardó). La otra salida para (a) es llevar cada pendiente previo a la recepción de cada empresa (R1) y
+  avisar con un correo nuevo. ¿Vale (a) y (b)?
 
 ## Decisiones cerradas (no reabrir)
 
