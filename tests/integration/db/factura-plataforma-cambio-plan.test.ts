@@ -690,7 +690,11 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
     const r = await revertida(base, async (tx) => {
       const plan = await planConPrecio(tx, "31000.00");
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "quincenal" });
+      // Otra empresa del plan, mensual (recepción el 1 de diciembre): el plan no se promueve el 16 y el nombre de la
+      // cuota solo puede salir de la versión propia de `e`.
+      await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const [{ viejo }] = await tx.$queryRawUnsafe<{ viejo: string }[]>(`SELECT "nombre" AS "viejo" FROM "plan" WHERE "id" = $1`, plan);
       const nombre = `Nuevo ${randomUUID().slice(0, 8)}`;
       const programada = await editarPeriodicidad(tx, plan, "quincenal", { vigenteDesde: "2026-11-16", nombre });
       const recepcion = await recepcionDe(tx, e.id);
@@ -704,7 +708,7 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
         e.id,
       );
       const [{ delPlan }] = await tx.$queryRawUnsafe<{ delPlan: string }[]>(`SELECT "nombre" AS "delPlan" FROM "plan" WHERE "id" = $1`, plan);
-      return { plan, programada, recepcion, enEspera, esperando, trasRecibir, nombres, nombre, delPlan, lista: await facturas(tx, e.id) };
+      return { plan, programada, recepcion, enEspera, esperando, trasRecibir, nombres, nombre, viejo, delPlan, lista: await facturas(tx, e.id) };
     });
     expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
     expect(r.recepcion).toBe(cero("2026-11-16"));
@@ -715,13 +719,13 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       { estado: "en_curso", desde: cero("2026-11-16"), hasta: null, plan: r.plan, cuota: null, cuotaDesde: null, primera: null, marca: null },
     ]);
     // La cerrada lleva el nombre nuevo en la cuota (la de la quincena que empieza en la recepción) y la siguiente se
-    // abre con él. Al ser la única empresa, el plan ya pasó a la versión nueva (R10).
+    // abre con él, aunque el plan siga con el de antes hasta que lo reciba la mensual (R2, R10).
     expect(r.nombres.map((f) => [f.desde, f.cuota_plan_nombre])).toEqual([
       [cero("2026-11-01"), r.nombre],
       [cero("2026-11-16"), null],
     ]);
     expect(r.nombres[1].plan_nombre).toBe(r.nombre);
-    expect(r.delPlan).toBe(r.nombre);
+    expect(r.delPlan).toBe(r.viejo);
   });
 
   /* ------------------------- Primera asignación ------------------------- */

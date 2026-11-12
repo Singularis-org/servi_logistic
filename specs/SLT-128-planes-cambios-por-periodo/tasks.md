@@ -84,7 +84,7 @@
 - [x] **T7.3** `tests/integration/db/planes-cambio-correos.test.ts`: R20–R22; ajustar sus casos de R42 por plan.
 - [x] **T7.4** `tests/integration/db/planes-cambio-programado.test.ts`: R13, R15; ajustar los casos de aplicar
   entero (SL-24 R38) y de archivar con pendiente (SL-24 R40).
-- [ ] **T7.5** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R7 y R9; el caso m4 de SLT-118 R39 se
+- [x] **T7.5** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R7 y R9; el caso m4 de SLT-118 R39 se
   rehace con la recepción.
 - [ ] **T7.6** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R8, por empresa.
 - [ ] **T7.7** `tests/integration/db/plan-precio-historial.test.ts`: R3 con la cola.
