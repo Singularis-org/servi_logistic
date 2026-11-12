@@ -109,13 +109,13 @@
 
 ## T7 — Tests y E2E existentes (depende de T0.2, T6)
 
-- [ ] **T7.1** Actualizar los tests de integración que T0.2 listó (previstos: caracterizaciones
+- [x] **T7.1** Actualizar los tests de integración que T0.2 listó (previstos: caracterizaciones
   `454` y `455` `dinero-aprobacion`, `slt73-aprobar-central-igual`, `tarifas-valor-propio-caminos`,
   `pago-mensajero-idempotencia`). Regla: si el test caracteriza la aprobación de hoy, pasa a la regla
   nueva con sus importes escritos a mano; si prueba otra cosa y usaba la aprobación como montaje, se le
   da un cierre viejo (fixture con la marca en `false`). Nunca se borra una aserción sin sustituirla.
   Hecho: verdes, y cada cambio con su motivo en `progress/impl_SLT-123.md`.
-- [ ] **T7.2** `[P]` E2E que T0.2 listó (previstos: `ajuste-pago-mensajero-cierre`,
+- [x] **T7.2** `[P]` E2E que T0.2 listó (previstos: `ajuste-pago-mensajero-cierre`,
   `tarifas-valor-propio-mensajero`, `cierre-modelo-nuevo-plan-porcentual`, `cierres-rediseno`,
   `wallet-mensajeros`, `incentivo-mensajero-slt68`). Mismo criterio. Hecho: el grupo `dinero` entero
   verde en local con base desechable nueva (`docs/perfil-agentes.md > E2E en local antes del PR`).

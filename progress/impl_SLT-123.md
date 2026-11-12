@@ -173,3 +173,70 @@ ida y vuelta 232). Con T7 crecera. Decide el leader (partir o `tamano-pr-aceptad
 
 T0.1-T0.3 y T1-T6 hechas; 13/13 mutaciones matadas; `down.sql` probado. Bloqueos: el cliente Prisma
 compartido sobrescrito por otro worktree (re-generar antes del gate) y el tamaño del PR.
+
+---
+
+# Tanda T7 (T7.1 + T7.2) — backend_dev, 2026-11-12
+
+Rama al dia con `origin/dev` (`ec0e5ab3` ya ancestro; sin merge ni migraciones nuevas). Sin subagentes.
+
+## Cliente Prisma regenerado desde este worktree
+
+Ruta real del cliente (pnpm): `node_modules/.pnpm/@prisma+client@7.8.0_prisma_12a6.../node_modules/.prisma/client/index.d.ts`.
+
+| Hora | Para que | `grep -c pagoIndependienteEfectivo` |
+|---|---|---|
+| 16:30:47 → 16:30:55 | antes de los vitest de T7.1 | 85 |
+| 16:33:50 | antes del `next build` del E2E (corrida 1) | 85 |
+| 16:44:06 | justo antes de la corrida 2 del E2E (base nueva) | 85 |
+
+## T7.1 — integracion
+
+T0.2 midio dos que caen; los demas listados no cambian:
+- `454`/`455` `dinero-aprobacion`: aprueban un cierre de la **satelite** (adminSatelite) y lo asientan aparte;
+  la marca solo la pone la central (R310) → siguen con `pago_efectivo 1500.00`. Sin cambio. En local caen al
+  sembrar (baseline), igual que antes.
+- `tarifas-valor-propio-caminos`, `pago-mensajero-idempotencia`: verdes en T0.2. Sin cambio.
+
+| Test | Tipo | Cambio |
+|---|---|---|
+| `tests/integration/db/slt73-aprobar-central-igual.int.test.ts` | caracteriza la aprobacion central → regla nueva | `MENSAJERO_CENTRAL` pierde `pago_efectivo 1500.00` (queda solo `pago_devengado 1500.00`, R313); caja y tienda literales iguales (R314); nueva asercion `pagoIndependienteEfectivo === true` tras aprobar (R310). Nombre del caso actualizado. |
+| `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts` | montaje: la central es el centinela «la migracion no toca la central» | `ASENTADO_CENTRAL` (mensajero solo devengo 1500.00) para el cierre central; los satelite siguen con `ASENTADO` (marca `false`, con `pago_efectivo`). Conteo de intactos `toHaveLength(28)` escrito a mano: central 7+5+1 + conciliado 7+5+2 + 1 fila forzada (antes 29). Lo que vigila (filas de la central iguales antes y despues del up, sin respaldo) no cambia. No se le pudo «fijar la marca en false»: la aprobacion real la pone siempre en la central, y la central es lo que el test necesita. |
+
+Salida (`DATABASE_URL` → `slt123_pago`, log `scratchpad/slt123/t71.log`): 4 archivos verdes, 33 tests passed
+(los 2 adaptados + `slt73-marcar-asienta` + `slt123-pago-independiente`); `454/dinero-aprobacion` rojo al sembrar
+(baseline, ajeno).
+
+## T7.2 — E2E (grupo `dinero` entero)
+
+Base desechable nueva por corrida (`slt123_e2e_t7`, luego `slt123_e2e_t7b`: crear + `migrate deploy` + `db:seed`),
+`next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000`, puerto 3000, candado `e2e.lock`.
+
+- Corrida 1 (sin adaptar): **77 passed, 7 failed, 17 did not run** (serial). Los 7, todos por la regla nueva:
+  `ajuste-pago-mensajero-cierre` (Disponible 2.200 vs 200), `cierre-modelo-nuevo-plan-porcentual` (libro sin
+  `pago_efectivo`), `cierres-admin` (a) (aparece la oferta de pago), `cierres-rediseno` (la oferta tapa la
+  pestaña «Resueltos»), `incentivo-mensajero-slt68` (cuenta 3.000 vs 2.000), `tarifas-valor-propio-mensajero`
+  (libro sin `pago_efectivo`), `wallet-mensajeros` (pagado ₡0 vs 1.000).
+- Corrida 2 (adaptados): **101/101 passed** (`E2E_EXIT=0`).
+
+| E2E | Cambio (importes a mano) |
+|---|---|
+| `e2e/ajuste-pago-mensajero-cierre.spec.ts` | oferta «Disponible» 200 → **2.200** (P ajustado; antes 2.200 − mín(2.200, 2.000)); libro: «Pago del efectivo» 1 fila 2.000 → **0 filas**; «La empresa le debe» 200 → **2.200** |
+| `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts` | libro: fuera `mensajero:pago_efectivo=6175.00`; `egreso_pago_mensajero=6175.00` de la caja sigue (R314) |
+| `e2e/cierres-admin.spec.ts` (a) | antes «no se ofrece pago» (E 6.000 cubria P); ahora la oferta sale con «Disponible» **1.500** (1 entrega a la tarifa por defecto 1.500; el rechazo no paga) → «Ahora no» → sin dialogos |
+| `e2e/cierres-rediseno.spec.ts` | tras aprobar central A: oferta «Disponible» **3.000** (P = 2 × 1.500) → «Ahora no»; celda «Pago» del mensajero «Liquidado» → **«Pendiente de pago»** (R320; antes P − mín(P, E) = 0) |
+| `e2e/incentivo-mensajero-slt68.spec.ts` | cuenta por pagar 2.000 → **3.000** (P 3.000 − 0 pagado; antes − 1.000 del efectivo), con incentivo 2.700 → **3.700**, tras anular → **3.000**; ganancia 1.000/300 sin cambio (caja intacta) |
+| `e2e/tarifas-valor-propio-mensajero.spec.ts` | dos listas del libro: fuera `mensajero:pago:pago_efectivo=3110`; queda `pago_devengado=3110` (lo que vigila el valor propio) |
+| `e2e/wallet-mensajeros.spec.ts` | Pagado 1.000 → **0**; cuenta por pagar 2.000 → **3.000**; «La empresa le debe» 3.000; «Pago del efectivo» 1 fila → **0** |
+
+Logs: `scratchpad/slt123/e2e1.log`, `e2e2.log`, `build.log`.
+
+## Salidas T7
+
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): `TC=0`, 0 `error TS`.
+- eslint sobre los 9 archivos tocados: exit 0, sin salida.
+- Tamaño (`node scripts/tamano-pr.mjs`): **38/40 archivos, 1 527/1 000 lineas** (aceptado por Carlos).
+
+## Veredicto T7
+
+T7.1 y T7.2 hechas: 2 integraciones y 7 E2E adaptados a la regla nueva con importes a mano; grupo `dinero` 101/101.

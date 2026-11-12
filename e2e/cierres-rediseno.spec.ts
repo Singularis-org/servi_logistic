@@ -231,6 +231,11 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await lector.getByRole("button", { name: "Confirmar", exact: true }).click();
     await confirmar.getByRole("button", { name: "Confirmar y aprobar" }).click();
     await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
+    // SLT-123 «Pago al mensajero independiente del efectivo» (R315, R321): el efectivo (70.000) ya no
+    // da por pagado al mensajero; se ofrece pagarle P = 2 × 1.500 = 3.000. Se deja para después.
+    const oferta = page.getByRole("dialog", { name: `Registrar pago a ${central.m.nombre}` });
+    await expect(oferta.getByText("Disponible:")).toContainText(importe(3000));
+    await oferta.getByRole("button", { name: "Ahora no" }).click();
     expect((await cierresDe(central.m)).map((c) => [c.id, c.estado])).toEqual([[central.cierreId, "aprobado"]]);
 
     // Reabierto: solo lectura, quién lo aprobó (R80) y la pestaña de pago (R18).
@@ -304,9 +309,10 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
 
   // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (T3.1; R60, R157, R181). Literales
   // derivados a mano de la cabecera:
-  //   central A, aprobado: ganancia P = 2 × 1.500 = 3.000; efectivo del cierre E = 70.000. Lo que el
-  //   cierre deja por pagar es P − min(P, E) = 3.000 − 3.000 = 0 (se lo quedó del efectivo), sin pagos
-  //   ni premios → pendiente «0.00» → «Liquidado». Recaudado 100.000, Ganancia 3.000. Un solo cierre.
+  //   central A, aprobado: ganancia P = 2 × 1.500 = 3.000; efectivo del cierre E = 70.000. Desde
+  //   SLT-123 «Pago al mensajero independiente del efectivo» (R315, R320) lo que el cierre deja por
+  //   pagar es P = 3.000 (antes P − min(P, E) = 0, «Liquidado»), sin pagos ni premios → «Pendiente de
+  //   pago». Recaudado 100.000, Ganancia 3.000. Un solo cierre.
   //   satélite A, rechazado con «Faltan paquetes» → «Motivo: «Faltan paquetes»».
   test("mensajero A: su cola con la pestaña, «Pago» de un aprobado y de un rechazado, y «Ver» abre el detalle", async ({ browser }) => {
     test.setTimeout(180_000);
@@ -323,7 +329,7 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await expect(celda("Estado")).toHaveText("Aprobado");
     await expect(celda("Recaudado")).toHaveText(importe(100000, { solo: true }));
     await expect(celda("Ganancia")).toHaveText(importe(3000, { solo: true }));
-    await expect(celda("Pago")).toHaveText("Liquidado");
+    await expect(celda("Pago")).toHaveText("Pendiente de pago");
 
     await fila.getByRole("button", { name: /^Ver del cierre del / }).click();
     const detalle = page.getByRole("dialog", { name: "Detalle del cierre · Tu cierre del día" });
