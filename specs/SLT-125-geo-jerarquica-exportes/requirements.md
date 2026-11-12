@@ -70,11 +70,11 @@
 
 | R | Requisito | Test | Decisión |
 |---|---|---|---|
-| R11 | Las tarjetas POS (mosaico, detalle y bloque de navegación), la tarjeta de satélite y el chat DEBEN mostrar los nombres de la ruta en los niveles P−1 y P, con el orden y el separador que hoy usa cada una. SI la ruta no llega al nivel P, ENTONCES DEBEN mostrar solo el del nivel P−1, como hoy sin distrito. | `tests/unit/utils/ubicacion-presentacion.test.ts` (`dosMasHondos`); `tests/components/pos-satelite-chat-niveles.test.tsx` | Tarjetas, chat y PDF («2 niveles más hondos») |
+| R11 | Las tarjetas POS (mosaico, detalle y bloque de navegación), la tarjeta de satélite y el chat DEBEN mostrar los dos últimos pasos de la ruta de la orden (sus 2 niveles más hondos), con el orden y el separador que hoy usa cada una. En un país de 4 niveles son los niveles 2·3 hasta SLT-48. Cuando la ruta tiene un solo paso, o es una orden de CR sin distrito, rige **P7**. | `tests/unit/utils/ubicacion-presentacion.test.ts` (`dosMasHondos`); `tests/components/pos-satelite-chat-niveles.test.tsx` | Tarjetas, chat y PDF («2 niveles más hondos») |
 | R12 | El detalle de asignación DEBE mostrar la línea de R11, con su orden y separador de hoy, y un campo por cada nivel de 1 a P, rotulado con el tipo de ese nivel y con «—» cuando la ruta no llega a él. | `tests/components/AsignacionDetalle-niveles.test.tsx` | Tarjetas, chat y PDF; Alcance (detalle de asignación) |
-| R13 | El PDF de tránsito DEBE titular su columna de lugar con los tipos de los niveles P−1 y P en mayúsculas, unidos por « · », y llenar cada celda con la regla de R11. | `tests/unit/whatsapp-envios/transito-pdf-niveles.test.ts` | Tarjetas, chat y PDF («COMUNA · BARRIO») |
+| R13 | El PDF de tránsito DEBE titular su columna de lugar con los tipos, en mayúsculas y unidos por « · », de los dos niveles más hondos que puede tener una orden: los niveles D−1 y D, con D = min(P, 3) hasta SLT-48 (CR: «CANTÓN · DISTRITO»; país de 4 niveles: «COMUNA · BARRIO»). Cada celda DEBE seguir la regla de R11. | `tests/unit/whatsapp-envios/transito-pdf-niveles.test.ts` | Tarjetas, chat y PDF («COMUNA · BARRIO») |
 | R14 | El destino de navegación de la tarjeta POS DEBE armarse con la dirección y los nombres de la ruta del más hondo al nivel 1, separados por «, », como hoy. | `ubicacion-presentacion.test.ts`; `tests/unit/mis-asignaciones/pos-format-destino.test.ts` | Alcance (tarjetas POS) |
-| R15 | MIENTRAS la empresa es de Costa Rica, las superficies de R11 a R14 DEBEN verse igual que hoy, y el PDF de tránsito DEBE seguir titulando «CANTÓN · DISTRITO». | `pos-satelite-chat-niveles.test.tsx`, `AsignacionDetalle-niveles.test.tsx`, `transito-pdf-niveles.test.ts` y `pos-format-destino.test.ts`, con los textos de hoy literales | Tarjetas, chat y PDF («en CR sigue CANTÓN · DISTRITO») |
+| R15 | MIENTRAS la empresa es de Costa Rica, las superficies de R11 a R14 DEBEN verse igual que hoy para toda orden con distrito (cantón · distrito), y el PDF de tránsito DEBE seguir titulando «CANTÓN · DISTRITO». La orden sin distrito sigue **P7**. | `pos-satelite-chat-niveles.test.tsx`, `AsignacionDetalle-niveles.test.tsx`, `transito-pdf-niveles.test.ts` y `pos-format-destino.test.ts`, con los textos de hoy literales | Tarjetas, chat y PDF («en CR sigue CANTÓN · DISTRITO») |
 
 ### De dónde salen los nombres
 
@@ -103,7 +103,7 @@
 | R | Requisito | Test | Decisión |
 |---|---|---|---|
 | R28 | `{{provincia}}`, `{{canton}}` y `{{distrito}}` DEBEN seguir resolviendo al nombre de los niveles 1, 2 y 3 de la ruta, vacíos si la ruta no llega. Ninguna clave que hoy resuelve DEBE dejar de hacerlo ni pasar a `clavesSinCampo`. | `tests/unit/whatsapp/plantilla-niveles.test.ts` | Variables de WhatsApp |
-| R29 | El catálogo de variables DEBE sumar `{{nivel_1}}` a `{{nivel_10}}`, que resuelven al nombre del nivel k de la ruta o vacío, y `{{ubicacion}}`, que resuelve a los nombres de la ruta del más hondo al nivel 1, unidos por «, », sin la zona y sin tramos vacíos («Carmen, San José, San José»). | `plantilla-niveles.test.ts`; `tests/unit/types/plantilla-datos.test.ts` (recuento autorizado, §13.1) | Variables de WhatsApp; P3 |
+| R29 | El catálogo de variables DEBE sumar `{{nivel_1}}` a `{{nivel_10}}`, que resuelven al nombre del nivel k de la ruta o vacío, y `{{ubicacion}}`, que resuelve a los nombres de la ruta del más hondo al nivel 1, unidos por «, », sin la zona y sin tramos vacíos («Carmen, San José, San José»). Los datos de ejemplo DEBEN resolver `{{ubicacion}}` a «Carmen, San José, San José»; `{{nivel_4}}`…`{{nivel_10}}` no tienen ejemplo. | `plantilla-niveles.test.ts`; `tests/unit/types/plantilla-datos.test.ts` (A3 y A3b, autorizados) | Variables de WhatsApp; P3; A3b |
 | R30 | El selector del editor de plantillas DEBE ofrecer `{{nivel_1}}`…`{{nivel_P}}` y `{{ubicacion}}`, con cada `{{nivel_k}}` rotulado con el tipo del nivel k del país de la empresa. NO DEBE ofrecer un `{{nivel_k}}` con k mayor que P. `{{provincia}}`, `{{canton}}` y `{{distrito}}` DEBEN seguir ocultas en el selector. | `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx`; `CampoVariablePicker.test.tsx` (A4) | Variables de WhatsApp («el editor rotula»); P2 |
 | R31 | MIENTRAS la empresa es de Costa Rica, un cuerpo con las claves de hoy DEBE producir el mismo texto que hoy, en la vista previa y en el envío. | `plantilla-niveles.test.ts`; `preview-mismo-motor.test.ts` sin cambios | Variables de WhatsApp («ninguna plantilla guardada se rompe») |
 
@@ -156,7 +156,7 @@
 
 ## Preguntas abiertas
 
-Ninguna. P1–P6 las respondió el humano el 2026-11-12: están en «Decisiones cerradas».
+Ninguna. P1–P7 las respondió el humano el 2026-11-12: están en «Decisiones cerradas».
 
 ## Decisiones cerradas (no reabrir)
 
@@ -175,4 +175,8 @@ Ninguna. P1–P6 las respondió el humano el 2026-11-12: están en «Decisiones 
 | 2026-11-12 | P3 — Formato de `{{ubicacion}}` | Como una dirección postal: del nivel más hondo al nivel 1, unidos por «, » y sin la zona («Carmen, San José, San José»). |
 | 2026-11-12 | P4 — Tablas de `/ordenes` y de recepción satélite | También una columna por nivel, como la descarga. En CR no cambian. |
 | 2026-11-12 | P5 — Filas de la descarga de cobertura | Una fila por nodo del nivel más hondo del país (P). En CR, P = 3, como hoy. |
-| 2026-11-12 | P6 — Superficies que muestran lugares fuera del Alcance | Quedan fuera y se anotan como deuda en «Lo que NO entra» (para SLT-48 o una ficha nueva). Las tres pantallas de detalle de R8 sí entran. |
+| 2026-11-12 | P6 — Superficies que muestran lugares fuera del Alcance  Quedan fuera y se anotan como deuda en «Lo que NO entra» (para SLT-48 o una ficha nueva). Las tres pantallas de detalle de R8 sí entran. |
+| 2026-11-12 | A3 — recuento del catálogo de variables | Autorizado. En `plantilla-datos.test.ts` solo cambian `:235–237`: el título y los recuentos 42 → 53 y 37 → 48. |
+| 2026-11-12 | A3b — ejemplo de `{{ubicacion}}` | Ejemplo corto: los datos de ejemplo resuelven `{{ubicacion}}` a «Carmen, San José, San José». `nivel_4`…`nivel_10` no tienen ejemplo. Autorizado dejar esas 7 claves fuera de los dos tests de ejemplo (`plantilla-datos.test.ts:40` y `:248`), sin cambiar nada más ahí. |
+| 2026-11-12 | «2 niveles más hondos» | Son los 2 niveles más hondos de la ruta de la ORDEN, no del país. Tarjetas, chat y PDF de tránsito muestran siempre dos lugares. En un país de 4 niveles, los niveles 2·3 hasta SLT-48; CR muestra cantón · distrito, como hoy. El título del PDF de tránsito usa los nombres de tipo de esos dos niveles. A1 y A2 se esperan sin cambio; si hay que cambiarlos, el implementer para y pregunta. |
+| 2026-11-12 | P7 — Orden de CR sin distrito | Como hoy: la tarjeta, el chat y el PDF muestran solo el cantón. La regla de «2 lugares» aplica cuando la orden tiene los dos niveles más bajos que usa su país; CR se ve idéntica a hoy (R15). |

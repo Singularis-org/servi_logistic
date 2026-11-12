@@ -6,8 +6,9 @@
 > Cada tanda cierra con `./init.sh` en verde. Si el gate local muere por memoria, se cierra con
 > typecheck y guardias, y el gate completo corre en CI.
 >
-> P1–P6 están respondidas (2026-11-12, «Decisiones cerradas»). Nada de este plan espera ya una
-> respuesta, salvo la aprobación de la maqueta (T0.2).
+> P1–P6, A3, A3b y «2 niveles más hondos» están decididas (2026-11-12, «Decisiones cerradas»).
+> Queda abierta P7 (la orden de CR sin distrito en tarjetas, chat y PDF). Solo afecta al cuerpo de
+> `dosMasHondos` y sus tests (T2.1, T2.6 y T3.4); hasta que se responda se usa la opción a.
 >
 > Reparto por capa (`docs/perfil-agentes.md > implementer`):
 > - `backend_dev`: T1 y T2;
@@ -24,7 +25,8 @@
   - la tabla de `/ordenes` y de satélite con una columna por nivel (P4);
   - el detalle de asignación con P campos, en el ancho de un teléfono, con los de nivel 4 o más en
     «—» (P1);
-  - las tarjetas POS (mosaico, detalle y navegación) y la de satélite;
+  - las tarjetas POS (mosaico, detalle y navegación) y la de satélite, con los 2 niveles más hondos de
+    la ruta de la orden (país de 4 niveles: comuna · barrio);
   - el detalle de satélite, el de cierre de día y el de cierres admin;
   - `/paquete` y la etiqueta con una ruta de 10 niveles;
   - el selector de variables de plantilla, con `{{ubicacion}}` y `{{nivel_1}}`…`{{nivel_P}}` rotulados
@@ -73,7 +75,7 @@
 
   Tests: `ubicacion-snapshot.test.ts`, `geo-125-cierre-snapshot.test.ts`.
   **Hecho:** R21–R25 en verde; `geo-backfill.test.ts` y `geo-sincronia-orden-zonas.test.ts` sin cambios
-  (A1, A2).
+  (A1, A2). Si alguno tuviera que cambiar, se para y se pregunta.
 - [ ] **T2.3** Lecturas con ruta del catálogo (design §4.2): `OrdenRepository` (listado, satélite,
   etiqueta, mis-asignaciones), `GestionOrdenRepository`, `CierreDiaRepository` (en vivo),
   `OrdenEnvioReader`, `InformeTransitoRepository` y `CoberturaRepository` (P5). Más sus interfaces y DTO
@@ -91,15 +93,20 @@
   **Hecho:** R32 y R33 en verde; la cadena y la huella de CR, literales, sin cambio.
 - [ ] **T2.5** [P] WhatsApp en el servidor:
   - `plantilla-datos.ts`: `lugarRuta`, `nivel_1..10` con el atributo `nivel`, `ubicacion` en formato
-    postal (P3) y `DATOS_PLANTILLA_EJEMPLO` con 10 niveles (design §4.6);
+    postal (P3) y `DATOS_PLANTILLA_EJEMPLO` con 3 niveles, con `nivel_4..10` sin ejemplo (A3b,
+    design §4.6);
   - `whatsapp-envio-valores.ts` y `tests/fixtures/plantilla-datos.ts`.
 
-  Tests: `plantilla-niveles.test.ts`; `plantilla-datos.test.ts` (A3, solo `:235–238`).
+  Tests: `plantilla-niveles.test.ts`; en `plantilla-datos.test.ts`, solo A3 (`:235–237`) y A3b
+  (`:40` y `:248`, sin `nivel_4..10`).
   **Hecho:**
   - R28, R29 y R31 en verde;
-  - sin cambios: `preview-mismo-motor.test.ts`, `campos-ocultos-siguen-resolviendo.test.ts`,
-    `catalogo-de-variables.test.ts`, y `plantilla-datos.test.ts:40` y `:248`.
-- [ ] **T2.6** [P] PDF de tránsito: `transito/pdf.ts` (título por tipos, celdas con `dosMasHondos`).
+  - `{{ubicacion}}` resuelve a «Carmen, San José, San José» con los datos de ejemplo;
+  - sin cambios: `preview-mismo-motor.test.ts`, `campos-ocultos-siguen-resolviendo.test.ts` y
+    `catalogo-de-variables.test.ts`.
+- [ ] **T2.6** [P] PDF de tránsito: `transito/pdf.ts`. El título sale de `tiposDeDosMasHondos`, los
+  tipos de los 2 niveles más hondos de la ruta de una orden (país de 4: «COMUNA · BARRIO»). Las
+  celdas, de `dosMasHondos` (P7: opción a mientras no se responda).
   Test: `transito-pdf-niveles.test.ts`.
   **Hecho:** R13 y R15 (parte del PDF) en verde; en CR, «CANTÓN · DISTRITO» literal.
 - [ ] **T2.7** [P] Scripts de evidencia:

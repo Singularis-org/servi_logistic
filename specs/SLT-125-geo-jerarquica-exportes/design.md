@@ -113,17 +113,29 @@ export function celdasDeNivel(ruta: Ruta, niveles: readonly NivelDelPais[]): Rec
 // R7–R9: zona + ruta, sin tramos vacíos; null si no queda nada.
 export function lineaDeUbicacion(zona: string | null, ruta: Ruta, separador: string): string | null;
 
-// R11, R13: los nombres de los niveles P-1 y P de la ruta (el segundo puede faltar).
+// R11, R13: los 2 niveles más hondos de la ruta DE LA ORDEN (decisión del 2026-11-12).
+// D = min(P, 3) mientras la ruta llegue como mucho al nivel 3 (hasta SLT-48).
 export function dosMasHondos(ruta: Ruta, P: number): { arriba: string | null; abajo: string | null };
+
+// R13: los tipos de los niveles D−1 y D, para el título del PDF de tránsito.
+export function tiposDeDosMasHondos(niveles: readonly NivelDelPais[]): [string, string];
 
 // R14, R32: del más hondo al nivel 1.
 export function rutaInvertida(ruta: Ruta): string[];
 ```
 
-- **Por qué los niveles P−1 y P, y no los dos últimos pasos de la ruta (R11).** En Costa Rica, una
-  orden sin distrito muestra hoy solo el cantón, no «provincia · cantón». Con «niveles P−1 y P» esa
-  orden da `{ arriba: cantón, abajo: null }`, igual que hoy. En un país de 2 niveles son los niveles 1
-  y 2.
+- **Los 2 más hondos son los de la ruta de la orden, no los del país (decisión del 2026-11-12).**
+  Las tarjetas, el chat y el PDF muestran siempre dos lugares.
+  - En un país de 4 niveles, los niveles 2·3 (comuna · barrio) hasta SLT-48.
+  - En CR, cantón · distrito, como hoy.
+  - En un país de 2 niveles, los niveles 1·2.
+  - Con la propuesta de P7 (opción a), `dosMasHondos` toma los pasos de la ruta en los niveles D−1 y
+    D, con D = min(P, 3), y omite el que falta. Una orden de CR sin distrito da
+    `{ arriba: cantón, abajo: null }`, igual que hoy.
+  - Si P7 se responde con la opción b, toma los dos últimos pasos de la ruta, sean cuales sean, y la
+    orden de CR sin distrito pasa a «provincia · cantón».
+
+  Es una sola función: la respuesta a P7 cambia solo su cuerpo y sus tests.
 - **Comparación para el choque (R2):** `normalizeName(x).replace(/ /g, "_")`, la misma de
   `plantilla-geo.ts`. Para no duplicarla, se exporta de ahí como `cabeceraNormalizada`.
 - **Por qué existe el módulo.** Hoy hay 9 copias de «zona, provincia, cantón, distrito filtrados y
@@ -144,9 +156,9 @@ export function rutaInvertida(ruta: Ruta): string[];
   feature lee `nodo_geografico_id` de `orden`, y la guardia `geografia-lecturas-sin-nodo-fk` se amplía
   sin excepciones (R19).
 - En un país de P > 3 niveles, la ruta llega como mucho al nivel 3. Las columnas y campos de los
-  niveles 4 a P existen (cabecera y rótulo), pero salen vacíos o con «—» hasta SLT-48. Y como la ruta
-  ya no llega al nivel P, las superficies de «dos más hondos» (R11) muestran solo el nivel P−1 si la
-  ruta llega a él: en un país de 4 niveles, el barrio (nivel 3). Lo fija la maqueta de T0.
+  niveles 4 a P existen (cabecera y rótulo), pero salen vacíos o con «—» hasta SLT-48. Las
+  superficies de «dos más hondos» (R11) muestran los niveles 2·3 de la ruta de la orden, y el título
+  del PDF de tránsito usa los tipos de esos dos niveles («COMUNA · BARRIO»).
 
 ### 4.2 Lecturas que cambian (R16, R20, R37)
 
@@ -255,16 +267,15 @@ En `lib/types/plantilla-datos.ts`:
   - `provincia`, `canton` y `distrito` siguen ocultas y siguen resolviendo.
 - `catalogoDeVariables(null)` (informes, ficha 474) sigue siendo `CAMPOS_PLANTILLA_OFRECIDOS`: gana
   `ubicacion` por derivación.
-- **`DATOS_PLANTILLA_EJEMPLO` gana `lugarRuta` con 10 niveles.** Los 3 primeros son «San José»,
-  «San José» y «Carmen», así que `provincia`, `canton` y `distrito` resuelven igual que hoy. Del 4 al
-  10 lleva nombres ficticios de lugar. Hacen falta los 10 porque dos tests de hoy no cambian:
-  - `plantilla-datos.test.ts:40` exige un `ejemplo` no vacío en cada campo;
-  - `plantilla-datos.test.ts:248` exige que los datos de ejemplo resuelvan exactamente a ese
-    `ejemplo`.
+- **`DATOS_PLANTILLA_EJEMPLO` gana `lugarRuta` con 3 niveles** (decisión A3b, 2026-11-12): «San
+  José», «San José» y «Carmen».
+  - `provincia`, `canton` y `distrito` resuelven igual que hoy.
+  - `ubicacion` resuelve a «Carmen, San José, San José», que es su `ejemplo`.
+  - `nivel_1`…`nivel_3` tienen de `ejemplo` «San José», «San José» y «Carmen».
+  - `nivel_4`…`nivel_10` tienen `ejemplo: ""` y resuelven a vacío.
 
-  Con 3 niveles, `nivel_4`…`nivel_10` no tendrían ejemplo. La consecuencia es que el `ejemplo` de
-  `ubicacion` tiene 10 tramos, no el «Carmen, San José, San José» de P3. El formato es el de P3: solo
-  el ejemplo es más largo. Ver A3b en §13.1.
+  Los dos tests de ejemplo de `plantilla-datos.test.ts` (`:40`, ejemplo no vacío; `:248`, resuelve
+  exactamente a su ejemplo) dejan fuera esas 7 claves. Es la excepción autorizada A3b (§13.1).
 - La vista previa del mensajero (`whatsapp-envio-valores.ts:104`) pasa `orden.lugarRuta` de
   `MiAsignacionDTO`, que ya lo trae.
 
@@ -420,7 +431,7 @@ Sin librerías nuevas.
 | Etiqueta con muchos niveles no cabe | §5: tests de capacidad con 10 niveles; si no cabe, se pregunta |
 | Rendimiento del listado al nombrar con el catálogo | El catálogo ya se carga en esas lecturas (marcas de SLT-65). R20 lo vigila con un doble que cuenta |
 | En un país de más de 3 niveles las columnas hondas salen vacías hasta SLT-48 (P1 = B) | Aceptado por el humano. La maqueta de T0 lo muestra; SLT-48 llena la ruta sin tocar estas superficies, porque todas leen `rutaDelLugar` |
-| Ejemplo largo de `{{ubicacion}}` en el selector | §13.1, A3: el ejemplo del catálogo tiene 10 niveles para que los tests de coherencia de hoy sigan sin cambio. Si se prefiere el ejemplo corto de P3, hace falta autorizar A3b |
+| `nivel_4`…`nivel_10` sin ejemplo en el selector de un país de 4 o más niveles | Decisión A3b: aceptado por el humano |
 | Tests que fijan la forma del `include` de Prisma | T1.1 los lista. Solo cambian con autorización (§13.1) |
 
 ## 13. Pruebas y trazabilidad
@@ -460,8 +471,9 @@ Fixture de integración: `tests/integration/db/_fixtures/geo-125.ts`, sobre `cre
 
 ### 13.1 Aserciones existentes que cambian: necesitan autorización del humano (R38)
 
-Se piden con la aprobación del spec. Cualquier otra que aparezca durante la implementación para y se
-pregunta.
+A3 y A3b están autorizadas (2026-11-12). Se espera que A1 y A2 no cambien: si el implementer
+encuentra que deben cambiar, para y pregunta. Cualquier otra aserción que aparezca durante la
+implementación también para y se pregunta.
 
 | # | Test | Línea | Cambio | Por qué |
 |---|---|---|---|---|
@@ -469,10 +481,10 @@ Líneas medidas sobre `3772e7a8`.
 
 | # | Test | Línea | Antes → después | Por qué |
 |---|---|---|---|---|
-| A1 | `tests/integration/db/geo-backfill.test.ts` | 487 (título), 513 (`expect(r.recienCreada).toBeNull()`) | **Se espera sin cambio.** `cierreDetailNuevo` (`:131`) crea la fila con `tx.cierreDetail.create` directo, sin pasar por `crearCierre`, así que sigue naciendo NULL; y `:512` (`triggers` = 0) sigue cierto porque el snapshot lo escribe la app. Si hiciera falta, el único cambio autorizado es el título de `:487`: «un cierre nuevo nace NULL» → «una fila creada fuera de `crearCierre` nace NULL». `:513` y `:512` no se tocan | Decisión `ubicacion_snapshot` (pre-autorizada) |
-| A2 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` | 240 (título), 259 (`toEqual([{ ubicacionSnapshot: null }, { ubicacionSnapshot: null }])`) | **Se espera sin cambio**, por lo mismo que A1: las filas son del escenario y no pasan por `crearCierre`. Si hiciera falta, solo el título de `:240`: «nace con `ubicacion_snapshot` NULL» → «una fila del escenario nace con `ubicacion_snapshot` NULL» | Ídem |
-| A3 | `tests/unit/types/plantilla-datos.test.ts` | 235–238 | `:235` título «42 entradas, 37 propias y 5 alias» → «53 entradas, 48 propias y 5 alias»; `:236` `toHaveLength(42)` → `toHaveLength(53)`; `:237` `toHaveLength(37)` → `toHaveLength(48)`; `:238` `toHaveLength(5)` sin cambio. Y el comentario de `:225–234` gana una línea con la fecha y las 11 claves | R29: `nivel_1`…`nivel_10` y `ubicacion` |
-| A3b | `tests/unit/types/plantilla-datos.test.ts` | 40 y 248 | **No se pide.** Solo haría falta si el humano prefiere que el ejemplo de `{{ubicacion}}` sea el corto de P3 (3 tramos). Habría que excluir `nivel_4`…`nivel_10` de `:40` (`ejemplo` no vacío) y de `:248` (resuelve exactamente a su `ejemplo`). Sin autorizarlo, el ejemplo tiene 10 tramos (§4.6) | P3 |
+| A1 | `tests/integration/db/geo-backfill.test.ts` | 487 (título), 513 (`expect(r.recienCreada).toBeNull()`) | **Se espera sin cambio.** `cierreDetailNuevo` (`:131`) crea la fila con `tx.cierreDetail.create` directo, sin pasar por `crearCierre`, así que sigue naciendo NULL; y `:512` (`triggers` = 0) sigue cierto porque el snapshot lo escribe la app. Si hiciera falta cambiarlo, el implementer para y pregunta | Decisión `ubicacion_snapshot` |
+| A2 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` | 240 (título), 259 (`toEqual([{ ubicacionSnapshot: null }, { ubicacionSnapshot: null }])`) | **Se espera sin cambio**, por lo mismo que A1: las filas son del escenario y no pasan por `crearCierre`. Si hiciera falta cambiarlo, el implementer para y pregunta: no está autorizado de antemano | Ídem |
+| A3 | `tests/unit/types/plantilla-datos.test.ts` | 235–237 | **AUTORIZADO (2026-11-12).** Solo cambian:<br>· `:235`, título: «42 entradas, 37 propias y 5 alias» → «53 entradas, 48 propias y 5 alias»;<br>· `:236`: `toHaveLength(42)` → `toHaveLength(53)`;<br>· `:237`: `toHaveLength(37)` → `toHaveLength(48)`.<br>`:238` y el comentario de `:225–234` no se tocan | R29: `nivel_1`…`nivel_10` y `ubicacion` |
+| A3b | `tests/unit/types/plantilla-datos.test.ts` | 40 y 248 | **AUTORIZADO (2026-11-12).** Los dos tests de ejemplo dejan fuera `nivel_4`…`nivel_10` (7 claves), que no tienen ejemplo:<br>· `:40`: `expect(campo.ejemplo.trim()).not.toBe("")` pasa a no aplicarse a esas 7 claves;<br>· `:248`: `it.each(CAMPOS_PLANTILLA)` pasa a recorrer `CAMPOS_PLANTILLA` sin esas 7.<br>Nada más cambia en esos dos tests | P3; decisión A3b |
 | A4 | `tests/unit/plantillas/CampoVariablePicker.test.tsx` y `tests/unit/whatsapp-envios/catalogo-de-variables.test.ts` | Picker `:87–94` (R4: opciones = `CAMPOS_OFRECIDOS`, en su orden), `:133–141` (cada ofrecido se encuentra por nombre), `:109` (`CLAVES_OCULTAS_EN_SELECTOR.size` = 27); catálogo `:13` (`catalogoDeVariables(null)` = `CAMPOS_PLANTILLA_OFRECIDOS`) | **Sin cambio de texto.** Cambia el conjunto que afirman: `CAMPOS_PLANTILLA_OFRECIDOS` gana `ubicacion` y la lista ofrecida pasa de N a N+1. Como esas aserciones derivan de la constante, siguen en verde sin editarlas. `:109` sigue en 27, porque los `nivel_k` no entran en `CLAVES_OCULTAS_EN_SELECTOR` (§4.6). Los `nivel_1..P` no aparecen en estos tests porque se montan sin proveedor de niveles (P = 0). Se autoriza el cambio de lo que significan | P2 |
 
 **Retiradas tras las respuestas del 2026-11-12:**
