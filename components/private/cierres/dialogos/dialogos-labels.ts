@@ -43,3 +43,15 @@ export const RESUMEN_SOLICITUD_TEXTO = {
   recaudado: "Recaudado",
   tuGanancia: "Tu ganancia",
 } as const;
+
+/**
+ * SLT-106 (R48, R207): el resumen del diálogo «Solicitar cierre de bodega» de la satélite, con las
+ * mismas cifras que las tarjetas de «A consolidar».
+ */
+export const RESUMEN_SOLICITUD_BODEGA_TEXTO = {
+  region: "Resumen del cierre de bodega a solicitar",
+  recaudado: "Recaudado",
+  pagoMensajeros: "Pago a mensajeros",
+  ganaBodega: "Gana la bodega satélite",
+  debeLlegar: "Debe llegar a la central",
+} as const;

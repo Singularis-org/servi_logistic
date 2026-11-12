@@ -153,7 +153,7 @@ describe("ColaCierres — pestañas y barra (R99, R100)", () => {
         <ColaCierres
           {...props({ pestanaActiva: pestana })}
           barra={<BarraConEstado />}
-          onPestana={(id) => {
+          onPestana={(id: PestanaCola) => {
             onPestana(id);
             setPestana(id);
           }}

@@ -112,6 +112,11 @@ function repoEnMemoria(filas: CierreBodegaResumenRow[] = ALMACEN) {
       llamadas.push("contarCierresDiaSolicitados");
       return 0;
     }),
+    // SLT-106 (R199): los nombres de los cierres sin resolver; lo lee `listarConsolidacion`.
+    findMensajerosConCierreSinResolver: vi.fn(async () => {
+      llamadas.push("findMensajerosConCierreSinResolver");
+      return [] as string[];
+    }),
     // ⭑ FICHA 431: `existeCierreBodegaSolicitado` se retiro del contrato con su indice unico parcial.
     crearCierreBodega: vi.fn(async () => "cb-nuevo"),
   } as unknown as ICierreBodegaRepository;

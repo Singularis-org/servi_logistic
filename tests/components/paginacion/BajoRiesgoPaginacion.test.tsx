@@ -560,10 +560,15 @@ const LISTADOS: Listado[] = [
           totalPagoMensajeroAgregado="0.00"
           totalIngresoBodegaRechazosAgregado="0.00"
           incluyeModeloNuevoAgregado={false}
-          totalNetoAgregado="0.00"
           totalCentralDebeAgregado="0.00"
           puedesSolicitar={false}
           motivoBloqueo={null}
+          // SLT-106: la cola de la satélite; «Solicitados» es una pestaña cuyo panel queda montado.
+          paraLaCentralAgregado="0.00"
+          cierresAConsolidar={0}
+          mensajerosAConsolidar={0}
+          bloqueo="vacio"
+          zonaNombre={null}
           cierresBodegaPasados={pagina1(todos)}
           sinZona={false}
         />,

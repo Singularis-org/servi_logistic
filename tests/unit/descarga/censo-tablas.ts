@@ -697,12 +697,18 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
           "pestaña activa, `DescargarCierresButton` con Resumen y Detalle), para que cambiar de " +
           "pestaña no la desmonte (R100). Es el mismo conjunto del servidor que antes, y lo vigila " +
           "`paginacion-transversal` (R52). Por eso el `<DataTable>` no declara `descarga=`. " +
-          "SLT-127: la de bodega igual, con «Cierres de bodega pendientes/resueltos».",
+          "SLT-127: la de bodega igual, con «Cierres de bodega pendientes/resueltos». " +
+          "SLT-106: la de la satélite igual, con «Cierres del día a consolidar» y la de los " +
+          "solicitados, los mismos archivos de hoy.",
         // SLT-127 «Cola de bodega de la central con la cola única»: segundo montaje real, así que
-        // `montajesPrevistos` caduca (`cobertura-tablas.guardia`); SLT-106 y SLT-108 la añadirán aquí.
+        // `montajesPrevistos` caduca (`cobertura-tablas.guardia`); SLT-108 la añadirá aquí.
+        // SLT-106 «Bodega satélite: A consolidar con la cola única» (R204): tercer montaje. Con él,
+        // «Cierres del día a consolidar» vuelve a ser una `<DataTable>` (la de la cola, sin
+        // `descarga=`; la baja de la cabecera de arriba queda en 5 de los 7 listados).
         montajes: [
           "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
           "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
+          "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx",
         ],
       },
     ],
