@@ -66,6 +66,12 @@ import {
  *   Total facturado 2.500 + 1.250 = ₡3.750 · Le queda a la empresa 3.750 − 0 − 1.500 − 500 = ₡1.750
  *   Mensajeros: una fila (2 gestiones · ₡9.000 · ₡1.500 · ₡7.000 · «—»).
  *   Conciliación sin marca: ₡7.000 · «—» · ₡7.000; marcada por 7.000: ₡7.000 · ₡7.000 · ₡0.
+ *
+ * SLT-106 «Bodega satélite: A consolidar con la cola única» (T4.2; R37, R45-R48, R67, R190, R193) — el
+ * paso 1 lee la cola única de la satélite. El cierre del día del mensajero llega `solicitado`: el aviso lo
+ * nombra y el botón está deshabilitado; se aprueba (lo que haría la satélite desde «Mensajero») y, al
+ * volver, las tarjetas, la fila y el resumen del diálogo dicen, escrito a mano: Recaudado ₡9.000 · Pago
+ * ₡1.500 · Gana bodega ₡500 · A la central 9.000 − 1.500 − 500 = ₡7.000.
  */
 
 const CENTRAL = "Lo que va a la central";
@@ -99,6 +105,8 @@ async function cifrasYDinero(detalle: Locator): Promise<void> {
 let r: RepartoE2E;
 let m: MensajeroE2E;
 let rechazada: OrdenE2E;
+/** SLT-106: el cierre del día del mensajero, `solicitado` hasta que el paso 1 lo aprueba. */
+let cierreDelDia: string;
 
 async function pestanaBodega(page: Page) {
   await page.goto("/cierres-admin");
@@ -120,24 +128,72 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     await gestionar(r, entrega, m, { resultado: "entregado" });
     rechazada = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
     await gestionar(r, rechazada, m, { resultado: "devolucion_a_origen_por_rechazo" });
-    await aprobarCierre(r, await solicitarCierre(r, m));
+    cierreDelDia = await solicitarCierre(r, m);
   });
 
   test("1 — el adminSatelite ve lo consolidable y solicita el cierre de bodega", async ({ browser }) => {
     const page = await paginaDe(browser, r.adminSatelite);
+    // R37: el conmutador «Tipo de cierre» de hoy lleva a «Bodega».
     await pestanaBodega(page);
     const bodega = page.getByRole("region", { name: "Cierre de bodega" });
-    const totales = bodega.getByRole("region", { name: "Totales a consolidar" });
-    await expect(totales.getByText("Efectivo", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(9000));
-    await expect(bodega.getByRole("region", { name: "Cierres del día a consolidar" })).toContainText(m.nombre);
+    // R190: la pestaña es un `tab` de la cola única, activa al entrar.
+    const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
+    await expect(etapas.getByRole("tab", { name: /^A consolidar \d+$/ })).toHaveAttribute("aria-selected", "true");
+    const solicitar = bodega.getByRole("button", { name: "Solicitar cierre de bodega" });
 
-    const solicitar = bodega.getByRole("region", { name: "Solicitar cierre de bodega" }).getByRole("button", { name: "Solicitar cierre de bodega" });
+    // R46, R47: con el cierre del mensajero sin resolver, el aviso lo nombra y el botón no se puede pulsar.
+    const aviso = bodega.getByRole("status").filter({ hasText: "Todavía no puedes consolidar" });
+    await expect(aviso).toHaveText(
+      `Todavía no puedes consolidar: ${m.nombre} tiene un cierre sin resolver. Apruébalo o recházalo primero.`,
+    );
+    await expect(solicitar).toBeDisabled();
+
+    // La satélite lo aprueba (lo que haría desde «Mensajero») y vuelve a «Bodega».
+    await aprobarCierre(r, cierreDelDia);
+    await pestanaBodega(page);
+    await expect(aviso).toHaveCount(0);
+
+    // R45, R67: las tarjetas del conjunto, escritas a mano; sin «La central debe» (el efectivo alcanzó).
+    const cifras = bodega.getByRole("group", { name: "Cifras a consolidar" });
+    const cifra = (id: string) => cifras.locator(`[data-cifra="${id}"]`);
+    await expect(cifra("recaudado")).toHaveText("₡9.000");
+    await expect(cifra("pago")).toHaveText("₡1.500");
+    await expect(cifra("ganaBodega")).toHaveText("₡500");
+    await expect(cifra("paraCentral")).toHaveText("₡7.000");
+    await expect(cifra("centralDebe")).toHaveCount(0);
+    await expect(cifras.getByLabel("Métodos de pago de lo recaudado")).toContainText(importe(9000));
+
+    // R45, R67: la fila del cierre, con «A la central» = 9.000 − 1.500 − 500.
+    const fila = filaDeCola(bodega.getByRole("region", { name: "Cierres del día a consolidar" }), m.nombre);
+    await expect(fila.getByRole("cell").nth(3)).toHaveText("₡9.000");
+    await expect(fila.getByRole("cell").nth(4)).toHaveText("₡1.500");
+    await expect(fila.getByRole("cell").nth(5)).toHaveText("₡500");
+    await expect(fila.getByRole("cell").nth(6)).toHaveText("₡7.000");
     await expect(solicitar).toBeEnabled();
+    await expect(bodega.getByText("Se enviará el cierre aprobado a la central. No se puede deshacer.")).toBeVisible();
+
+    // R193: «Ver su cierre» abre el detalle único del cierre del día.
+    await fila.getByRole("button", { name: `Ver el cierre de ${m.nombre}` }).click();
+    const detalle = page.getByRole("dialog", { name: `Detalle del cierre · Cierre de ${m.nombre}` });
+    await expect(detalle).toBeVisible();
+    await expect(detalle.locator('[data-cifra="recaudado"]')).toHaveText("₡9.000");
+    await pestanaBodega(page);
+
+    // R48: el diálogo resume las cuatro cifras de las tarjetas.
     await solicitar.click();
-    await page.getByRole("dialog", { name: "Solicitar cierre de bodega" }).getByRole("button", { name: "Solicitar cierre de bodega" }).click();
+    const dialogo = page.getByRole("dialog", { name: "Solicitar cierre de bodega" });
+    const resumen = dialogo.getByLabel("Resumen del cierre de bodega a solicitar");
+    await expect(resumen.locator("dt")).toHaveText([
+      "Recaudado",
+      "Pago a mensajeros",
+      "Gana la bodega satélite",
+      "Debe llegar a la central",
+    ]);
+    await expect(resumen.locator("dd")).toHaveText(["₡9.000", "₡1.500", "₡500", "₡7.000"]);
+    await dialogo.getByRole("button", { name: "Solicitar cierre de bodega" }).click();
     await expect(page.getByText("Cierre de bodega solicitado correctamente.")).toBeVisible();
 
-    await bodega.getByRole("group", { name: "Cierre de bodega por etapa" }).getByRole("button", { name: /^Solicitados/ }).click();
+    await etapas.getByRole("tab", { name: /^Solicitados/ }).click();
     // Sin recargar: la lista se revalida al solicitar (defecto arreglado en SL-44, ver bitácora).
     const solicitados = bodega.getByRole("region", { name: "Cierres de bodega solicitados" });
     await expect(solicitados.getByText("Pendiente de conciliar", { exact: true })).toBeVisible();
@@ -146,6 +202,48 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     expect(consolidaciones.map((c) => [c.estado, String(c.totalEfectivo), String(c.totalGeneral), c.conciliadoAt])).toEqual([
       ["solicitado", "9000", "9000", null],
     ]);
+  });
+
+  // SLT-114 «Estado de cuenta de la satélite: conciliación en pestaña» (R230, R233, R235-R238): la central
+  // ve la consolidación recién solicitada en el estado de cuenta de la bodega, en la pestaña
+  // «Conciliación», con sus dos cuentas, y el enlace le abre el detalle único en `/cierres-admin`.
+  // Literales de la cabecera: todo efectivo (sin SINPE ni transferencia, PA3), sin marca.
+  test("1b — el estado de cuenta de la satélite abre en «Conciliación» y enlaza al detalle de bodega", async ({ browser }) => {
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto(`/wallet/satelites/${r.zonaSatelite.id}`);
+
+    const conciliacion = page.getByRole("tab", { name: "Conciliación 1 sin conciliar" });
+    await expect(conciliacion).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Movimientos" })).toHaveAttribute("aria-selected", "false");
+
+    const region = page.getByRole("region", { name: `Conciliación de ${r.zonaSatelite.nombre}` });
+    await expect(region.getByText("Pendiente de llegar")).toHaveCount(0);
+    await region.getByRole("button", { name: /^Ver la cuenta de la consolidación del / }).click();
+
+    const central = region.getByRole("region", { name: /^Lo que va a la central · consolidación del / });
+    await expect(central.locator("[data-rotulo]")).toHaveText([
+      "Efectivo",
+      "Recaudado",
+      "− Pago a mensajeros",
+      "− Gana la bodega satélite",
+      "Debe llegar a la central",
+    ]);
+    await expect(central.locator("[data-monto]")).toHaveText(["₡9.000", "₡9.000", "₡1.500", "₡500", "₡7.000"]);
+    const cuenta = region.getByRole("region", { name: /^Conciliación · consolidación del / });
+    await expect(cuenta.locator("[data-monto]")).toHaveText(["₡7.000", "—", "₡7.000"]);
+
+    await cuenta.getByRole("link", { name: "Ver el cierre de bodega completo" }).click();
+    await expect(page).toHaveURL(/\/cierres-admin\?cierreBodega=/);
+    const detalle = detalleDeBodega(page);
+    await expect(detalle).toBeVisible();
+    await detalle.locator("footer").getByRole("button", { name: "Cerrar" }).click();
+    await expect(detalle).toBeHidden();
+    await expect(page).not.toHaveURL(/cierreBodega=/);
+    // Con el modal abierto el resto de la página queda fuera del árbol accesible: se mira al cerrarlo.
+    await expect(page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   test("2 — el maestro abre el detalle único, ve las cifras, los mensajeros, la evidencia y marca recibido", async ({ browser }) => {
@@ -340,5 +438,123 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
     const recibida = filaDeCola(regionColaBodega(page, "Conciliados"), bodega);
     await expect(recibida.getByText("Recibido", { exact: true })).toBeVisible();
     await expect(recibida.getByRole("button", { name: `Ver el cierre de bodega de ${bodega}` })).toBeVisible();
+  });
+});
+
+/**
+ * SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (T4.2; R49, R50, R52, R68, R290) —
+ * la satélite lee «Solicitados» con la cola única y abre su cierre de bodega en lectura.
+ *
+ * DATOS: dos cierres de bodega de la zona, sin marca, cada uno de un mensajero distinto (tarifa 1.500 por
+ * entregado, 500 por rechazo):
+ *   viejo: entrega 9.000 + un rechazo → Debe llegar 9.000 − 1.500 − 500 = 7.000; su `solicitado_at` se
+ *          lleva a hace 20 días en la base, para que el atajo «Últimos 7 días» lo deje fuera.
+ *   nuevo: entrega 5.000 → Debe llegar 5.000 − 1.500 = 3.500; solicitado hoy.
+ * Tarjetas, a mano y sin depender del filtro (R68): Por llegar 7.000 + 3.500 = ₡10.500 (2 pendientes);
+ * Recibido (30 días) ₡0 (0 cierres); Falta por recibir ₡0 (0 incompletos).
+ */
+test.describe.serial("SLT-107 — «Solicitados» de la satélite: tarjetas, filtro y «Ver» en lectura", () => {
+  let rs: RepartoE2E;
+  let viejo: string;
+  let nuevo: string;
+  const folio = (id: string) => `#${id.slice(-8).toUpperCase()}`;
+
+  test.beforeAll(async () => {
+    rs = await crearEscenarioReparto("cierre-bodega-solicitados", {
+      tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 },
+    });
+    const m1 = await crearMensajero(rs, "satelite");
+    const e1 = await llevarA(rs, await crearOrden(rs, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: m1 });
+    await gestionar(rs, e1, m1, { resultado: "entregado" });
+    const r1 = await llevarA(rs, await crearOrden(rs, { zona: "satelite" }), "en_reparto", { mensajero: m1 });
+    await gestionar(rs, r1, m1, { resultado: "devolucion_a_origen_por_rechazo" });
+    await aprobarCierre(rs, await solicitarCierre(rs, m1));
+    viejo = await solicitarCierreBodega(rs);
+    await baseReparto().cierreBodega.update({
+      where: { id: viejo },
+      data: { solicitadoAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) },
+    });
+
+    const m2 = await crearMensajero(rs, "satelite");
+    const e2 = await llevarA(rs, await crearOrden(rs, { zona: "satelite", montoCobrar: 5000 }), "en_reparto", { mensajero: m2 });
+    await gestionar(rs, e2, m2, { resultado: "entregado" });
+    await aprobarCierre(rs, await solicitarCierre(rs, m2));
+    nuevo = await solicitarCierreBodega(rs);
+  });
+
+  test("tarjetas y filas; el filtro de fecha saca el viejo y baja el conteo; «Ver» abre en lectura", async ({ browser }) => {
+    const page = await paginaDe(browser, rs.adminSatelite);
+    await pestanaBodega(page);
+    const bodega = page.getByRole("region", { name: "Cierre de bodega" });
+    const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
+    const pestana = etapas.getByRole("tab", { name: /^Solicitados/ });
+    await pestana.click();
+    await expect(pestana).toHaveAccessibleName("Solicitados 2");
+
+    // R49, R286: las tres tarjetas, escritas a mano.
+    const cifras = bodega.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
+    const cifra = (id: string) => cifras.locator(`[data-cifra="${id}"]`);
+    await expect(cifra("porLlegar")).toHaveText("₡10.500");
+    await expect(cifra("recibido30Dias")).toHaveText("₡0");
+    await expect(cifra("faltaPorRecibir")).toHaveText("₡0");
+    await expect(cifras.getByRole("group", { name: "Por llegar a la central" })).toContainText(
+      "2 cierres pendientes de conciliar",
+    );
+
+    // R49, R288: las columnas y la fila del recién solicitado.
+    const tabla = bodega.getByRole("region", { name: "Cierres de bodega solicitados" });
+    await expect(tabla.getByRole("columnheader")).toHaveText([
+      "Folio",
+      "Solicitado",
+      "Cierres",
+      "Recaudado",
+      "Debe llegar",
+      "Recibido",
+      "Falta",
+      "Estado",
+      "Acciones",
+    ]);
+    const filaNuevo = tabla.getByRole("row").filter({ hasText: folio(nuevo) });
+    const filaViejo = tabla.getByRole("row").filter({ hasText: folio(viejo) });
+    await expect(filaNuevo.getByRole("cell").nth(3)).toHaveText("₡5.000");
+    await expect(filaNuevo.getByRole("cell").nth(4)).toHaveText("₡3.500");
+    await expect(filaNuevo.getByRole("cell").nth(5)).toHaveText("—");
+    await expect(filaNuevo.getByRole("cell").nth(7)).toHaveText("Pendiente de conciliar");
+    await expect(filaViejo.getByRole("cell").nth(4)).toHaveText("₡7.000");
+
+    // R52, R290: «Últimos 7 días» deja fuera el de hace 20 días; el conteo baja y las tarjetas no cambian.
+    await bodega.getByRole("button", { name: "Filtros" }).click();
+    const opcion = page.getByRole("option", { name: "Fecha de solicitud" });
+    await opcion.click();
+    await page.keyboard.press("Escape");
+    await bodega.getByRole("button", { name: "Fecha de solicitud" }).click();
+    await page.getByRole("group", { name: "Rangos predefinidos" }).getByRole("button", { name: "Últimos 7 días" }).click();
+    await page.keyboard.press("Escape");
+    await expect(pestana).toHaveAccessibleName("Solicitados 1");
+    await expect(filaViejo).toHaveCount(0);
+    await expect(filaNuevo).toHaveCount(1);
+    await expect(cifra("porLlegar")).toHaveText("₡10.500");
+
+    // R50, R292: «Ver» abre el detalle de bodega en lectura: sin marca, la franja de la satélite y solo «Cerrar».
+    await filaNuevo.getByRole("button", { name: `Ver el cierre de bodega ${folio(nuevo)}` }).click();
+    const detalle = detalleDeBodega(page);
+    await expect(detalle).toBeVisible();
+    await expect(detalle.locator('[data-cifra="paraCentral"]')).toHaveText("₡3.500");
+    await expect(detalle.getByRole("status")).toContainText("la central aún no marca el dinero recibido");
+    await expect(detalle.locator("footer").getByRole("button")).toHaveText(["Cerrar"]);
+    await expect(detalle.locator("footer")).toContainText("la central lo marca recibido cuando llega");
+    await detalle.locator("footer").getByRole("button", { name: "Cerrar" }).click();
+    await expect(detalle).toBeHidden();
+
+    // La base no cambió: los dos siguen sin marca.
+    const cierres = await baseReparto().cierreBodega.findMany({
+      where: { zonaId: rs.zonaSatelite.id },
+      select: { id: true, conciliadoAt: true },
+      orderBy: { solicitadoAt: "asc" },
+    });
+    expect(cierres).toEqual([
+      { id: viejo, conciliadoAt: null },
+      { id: nuevo, conciliadoAt: null },
+    ]);
   });
 });

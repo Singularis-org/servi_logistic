@@ -75,6 +75,7 @@ const INPUT_MENSAJERO: RegistrarPagoMensajeroInput = {
 /** Cierre APROBADO con P = 50 000 y E = 0 -> pendiente generado por el cierre: 50 000. */
 function cierreDTO(over: Partial<CierreParaPagoDTO> = {}): CierreParaPagoDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: "c1",
     mensajeroId: "m1",
     estado: CierreEstado.aprobado,
@@ -1714,5 +1715,86 @@ describe("money-safe: el modulo no convierte dinero a numero", () => {
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.pago.monto).toMatch(/^\d+\.\d{2}$/);
     expect(r.restante).toMatch(/^\d+\.\d{2}$/);
+  });
+});
+
+// ── SLT-123 (T5.3) — con la marca, lo pendiente del cierre es `P` completo ──────────────────────
+//
+// Cierre NUEVO de la central (marca `true`) con P 3 000 y E 5 000: con la regla de la 44 no deberia
+// nada (el pago salio del efectivo); con la regla nueva se le deben los 3 000. Importes a mano.
+
+describe("SLT-123 R316/R321 — la liquidacion deriva lo pendiente con la marca del cierre", () => {
+  const nuevo = cierreDTO({ totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: true });
+  const viejo = cierreDTO({ totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: false });
+
+  it("R316: el tope del pago directo es P (3000.00) aunque E >= P", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "3000.01" }, ACTOR_ADMIN);
+
+    expect(r).toEqual({ status: "excede", disponible: "3000.00" });
+  });
+
+  it("R316: pagar P entero entra y deja el cierre en 0.00", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "3000.00" }, ACTOR_ADMIN);
+
+    expect(r).toMatchObject({ status: "ok", restante: "0.00" });
+    expect(d.pagoRepo.crear).toHaveBeenCalledTimes(1);
+  });
+
+  it("R325: el mismo P y E SIN la marca sigue respondiendo `sin_saldo`, como hoy", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: viejo });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "3000.00" }, ACTOR_ADMIN);
+
+    expect(r).toEqual({ status: "sin_saldo" });
+    expect(d.pagoRepo.crear).not.toHaveBeenCalled();
+  });
+
+  it("R321: el reparto imputa el cierre nuevo por P (ventana 3000.00); el viejo no entra", async () => {
+    for (const [cierre, esperado] of [
+      [nuevo, "3000.00"],
+      [viejo, "0.00"],
+    ] as const) {
+      const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre });
+      d.pagoRepo.listarCierresImputablesEnAlcance = vi.fn(async () => [
+        { ...cierre, solicitadoAt: "2026-11-14T15:00:00.000Z" },
+      ]);
+      (d.mensajeroRepo as unknown as Record<string, unknown>).obtenerNombreMensajero = vi.fn(async () => "Ana");
+      (d.mensajeroRepo as unknown as Record<string, unknown>).agregarCuentaPorPagar = vi.fn(async () => ({
+        devengado: "3000.00",
+        pagado: "0.00",
+      }));
+
+      const r = await d.service.previsualizarRepartoMensajero({ mensajeroId: "m1", monto: "3000.00" }, ACTOR_MAESTRO);
+
+      if (r.status !== "ok") throw new Error(`esperaba ok y llego ${r.status}`);
+      expect(r.previsualizacion.imputable, `marca ${cierre.pagoIndependienteEfectivo}`).toBe(esperado);
+    }
+  });
+
+  it("R321: anular un pago de 1 000 contra el cierre nuevo devuelve restante 3000.00 (P entero)", async () => {
+    // Antes de anular: vigentes 1 000 -> tras anular, 0 vigentes -> se debe P completo.
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo, pagadoVigente: "1000.00" });
+    d.pagoRepo.obtenerPorId = vi.fn(async () =>
+      pagoDTO({ id: "pago-n1", mensajeroId: "m1", tiendaId: null, cierreId: "c1", monto: "1000.00" }),
+    );
+
+    const r = await d.service.anularPago({ pagoId: "pago-n1", motivo: "Monto mal tecleado" }, ACTOR_MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", restante: "3000.00" });
+  });
+
+  it("R325: la misma anulacion contra el cierre viejo devuelve 0.00, como hoy", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: viejo, pagadoVigente: "1000.00" });
+    d.pagoRepo.obtenerPorId = vi.fn(async () =>
+      pagoDTO({ id: "pago-v1", mensajeroId: "m1", tiendaId: null, cierreId: "c1", monto: "1000.00" }),
+    );
+
+    const r = await d.service.anularPago({ pagoId: "pago-v1", motivo: "Monto mal tecleado" }, ACTOR_MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", restante: "0.00" });
   });
 });

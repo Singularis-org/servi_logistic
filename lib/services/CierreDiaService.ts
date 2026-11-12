@@ -14,7 +14,9 @@ import type {
   CierreGrupos,
   CorreccionCierreDTO,
   DeshacerGestionServiceResult,
+  CierrePasadoDTO,
   ICierreDiaService,
+  LecturasPendienteCierre,
   ListarCierreDiaServiceResult,
   ListarCierresPasadosCompletoServiceResult,
   ListarCierresPasadosServiceResult,
@@ -52,6 +54,23 @@ import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { rutasAFirmar, urlsEvidenciaFirmadas } from "@/lib/utils/evidencias-gestion";
+import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import {
+  filtrosConLimites,
+  sinFiltrosPropios,
+  tieneRangoDeFechas,
+  type FiltrosColaPropia,
+  type FiltrosColaPropiaRepo,
+} from "@/lib/types/filtros-cierres";
+import { normalizarFolio } from "@/lib/utils/folio-cierre";
+
+/**
+ * SLT-138 — los filtros del mensajero tal como los recibe el repositorio, o la señal de que el
+ * folio no puede coincidir con ninguno (R171: cero cierres sin leer la base).
+ */
+type FiltrosPropiosResueltos =
+  | { tipo: "aplicar"; filtros: FiltrosColaPropiaRepo | undefined }
+  | { tipo: "vacio" };
 
 // Solo el rol autorizado en el modulo (R1/R2): el mensajero, SIEMPRE acotado a su
 // propio `usuario.id` (el filtro por mensajero vive en el repo, en el WHERE).
@@ -81,13 +100,13 @@ const ESTADOS_PENDIENTES = ["mensajero_recogiendo_en_bodega", "en_reparto"];
 // FICHA 455 (2026-09-24): sin «sin gestionar», que es el nombre retirado de `novedad_interna`; el
 // aviso habla de paquetes aun en reparto sin gestion, no de ese estado.
 const MSG_PENDIENTES =
-  "Tenés paquetes en reparto que todavía no gestionaste; gestionalos antes de cerrar."; // R10
-const MSG_VACIO = "No tenes gestiones pendientes de cierre."; // R11
+  "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar."; // R10
+const MSG_VACIO = "No tienes gestiones pendientes de cierre."; // R11
 // FEATURE 271: este motivo YA NO ES «ya tienes un cierre» (el segundo cierre se permite, R13).
 // Queda para la UNICA carrera que sigue existiendo: la re-solicitud encontro el cierre movido entre
 // la lectura y la escritura, asi que no escribio nada y hay que reintentar.
-const MSG_DUPLICADO = "Ese cierre ya se envio a aprobacion; actualiza la pagina."; // R19
-const MSG_SIN_ZONA = "No tenes una zona asignada; contacta a tu administrador."; // R16
+const MSG_DUPLICADO = "Ese cierre ya se envió a aprobación; actualiza la página."; // R19
+const MSG_SIN_ZONA = "No tienes una zona asignada; contacta a tu administrador."; // R16
 
 // ⚠️ FEATURE 271 — AQUI VIVIA `MSG_BLOQUEADO`, un texto FIJO. Se va, y no es limpieza: el motivo
 // del bloqueo tiene que CONTAR (cuantos cierres arrastra y cual toca resolver primero, R27/R43) y
@@ -96,11 +115,11 @@ const MSG_SIN_ZONA = "No tenes una zona asignada; contacta a tu administrador.";
 // se desincronizan.
 
 // Feature 67 — mensajes ACCIONABLES del deshacer (constantes i18n-ready, patron MSG_* de la 37).
-const MSG_YA_EN_CIERRE = "Esta gestion ya esta incluida en un cierre solicitado; no se puede deshacer."; // R2
-const MSG_YA_DESHECHA = "Esta gestion ya fue deshecha."; // R3
-const MSG_NO_ES_LA_ULTIMA = "Esta orden tiene una gestion mas reciente; hay que deshacer esa primero."; // R4
+const MSG_YA_EN_CIERRE = "Esta gestión ya está incluida en un cierre solicitado; no se puede deshacer."; // R2
+const MSG_YA_DESHECHA = "Esta gestión ya fue deshecha."; // R3
+const MSG_NO_ES_LA_ULTIMA = "Esta orden tiene una gestión más reciente; hay que deshacer esa primero."; // R4
 const MSG_ORDEN_MOVIDA = "Esta orden ya fue procesada por la bodega; ya no se puede deshacer."; // R5
-const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su gestion."; // R6
+const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su gestión."; // R6
 // 💰 Feature 237 (T5.5, D3 firmada por el humano el 2026-08-20, R38). ACCIONABLE: le dice al
 // mensajero QUE paso, POR QUE no puede tocarlo y A QUIEN acudir — no es un «no se puede» a secas.
 //
@@ -111,8 +130,8 @@ const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su 
 // sustituye por dos mensajes, uno por familia: al mensajero le da igual desde donde lo hizo la
 // tienda; lo que necesita saber es que no es suyo y a quien escribirle.
 const MSG_GESTION_DE_LA_TIENDA =
-  "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.";
-const MSG_CATALOGO = "catalogo de estados incompleto (seed pendiente)"; // patron `gestionar` (36)
+  "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
+const MSG_CATALOGO = "catálogo de estados incompleto (seed pendiente)"; // patron `gestionar` (36)
 
 // Feature 67/R18: unico estado desde el que se puede volver a gestionar (`ORIGEN_GESTION` de
 // MisAsignacionesService, guardia `cargarOrdenGestionable`). Destino del deshacer.
@@ -211,11 +230,49 @@ export class CierreDiaService implements ICierreDiaService {
     private readonly notificarBloqueo: MensajeroBloqueadoNotificador = notificadorNoOp,
     /** SLT-42 (R22): la zona del pais de la empresa; el dia en curso se calcula en ella. */
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+    /**
+     * SLT-137 (R165): pagos vigentes y premios vivos por cierre. Opcional y al final para no tocar
+     * las construcciones de hoy; sin el, la pagina sale sin `pendientePagoMensajero` en vez de con
+     * un pendiente inventado.
+     */
+    private readonly pendientes?: LecturasPendienteCierre,
   ) {}
 
   /** SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez por operacion. */
   private zona(operacion: string): Promise<string> {
     return zonaDeLaEmpresa(this.reglasPais, `CierreDiaService.${operacion}`);
+  }
+
+  /**
+   * SLT-138 (R169-R173) — el bloque `filtros` de «Cierres solicitados», compartido por la pagina y
+   * el archivo. Sin filtros → `undefined` (el repositorio recibe lo de antes, R173). Folio
+   * imposible → `vacio`. El rango se resuelve en la zona del pais SOLO si viene; sin rango no se lee.
+   */
+  private async filtrosParaRepo(
+    filtros: FiltrosColaPropia | undefined,
+    operacion: string,
+  ): Promise<FiltrosPropiosResueltos> {
+    if (!filtros || sinFiltrosPropios(filtros)) return { tipo: "aplicar", filtros: undefined };
+
+    const { folio, ...resto } = filtros;
+    const normalizado = folio === undefined ? { tipo: "ignorar" as const } : normalizarFolio(folio);
+    if (normalizado.tipo === "imposible") return { tipo: "vacio" };
+
+    const conLimites = filtrosConLimites(
+      resto,
+      tieneRangoDeFechas(resto) ? await this.zona(operacion) : null,
+    );
+    const repo: FiltrosColaPropiaRepo = {
+      ...conLimites,
+      ...(normalizado.tipo === "buscar" ? { folio: normalizado.texto } : {}),
+    };
+    // Un folio que quedo vacio era el unico filtro: el listado es el de antes (R171, R173).
+    const recorta =
+      repo.solicitadoDesde !== undefined ||
+      repo.solicitadoHasta !== undefined ||
+      repo.estados !== undefined ||
+      repo.folio !== undefined;
+    return { tipo: "aplicar", filtros: recorta ? repo : undefined };
   }
 
   /**
@@ -532,23 +589,63 @@ export class CierreDiaService implements ICierreDiaService {
    * para pintar la pantalla entera: el conteo de R41 viaja dentro de ella.
    */
   async listarCierresPasadosPaginado(
-    input: { page: number; pageSize: number },
+    input: { page: number; pageSize: number; filtros?: FiltrosColaPropia },
     actor: Actor,
   ): Promise<ListarCierresPasadosServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R1/R2
 
-    const { items, total } = await this.repo.findCierresByMensajeroPaginado(
-      actor.usuarioId, // el acotamiento por actor: sale de la sesion, nunca de la peticion
-      rangoDePagina(input),
-    );
+    // SLT-138 (R171): un folio imposible da cero cierres sin leer la base.
+    const resueltos = await this.filtrosParaRepo(input.filtros, "listarCierresPasadosPaginado");
+    if (resueltos.tipo === "vacio") {
+      return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 };
+    }
+
+    const { items, total } = resueltos.filtros
+      ? await this.repo.findCierresByMensajeroPaginado(
+          actor.usuarioId, // el acotamiento por actor: sale de la sesion, nunca de la peticion
+          rangoDePagina(input),
+          resueltos.filtros, // SLT-138 (R172): recorta DENTRO del alcance
+        )
+      : await this.repo.findCierresByMensajeroPaginado(actor.usuarioId, rangoDePagina(input)); // R173
 
     return {
       status: "ok",
-      items,
+      items: await this.conPendientePago(items),
       page: input.page,
       pageSize: input.pageSize,
       total, // R41: el total del CONJUNTO, nunca `items.length`
     };
+  }
+
+  /**
+   * SLT-137 (R164, R165) — el pendiente de pago de cada cierre de la pagina, con la regla unica
+   * (`derivarPendienteCierre`), como `CierresAdminService.conPendiente`.
+   *
+   * Las dos lecturas reciben solo ids que ya salieron del `WHERE` del actor, asi que no amplian
+   * el alcance. Se llaman UNA vez cada una, tambien con la lista vacia: el numero de consultas no
+   * depende de la pagina (R165). Solo un `aprobado` tiene pendiente; los demas van a `null`.
+   */
+  private async conPendientePago(items: CierrePasadoDTO[]): Promise<CierrePasadoDTO[]> {
+    if (!this.pendientes) return items;
+
+    const idsAprobados = items.filter((c) => c.estado === "aprobado").map((c) => c.cierreId);
+    const pagados = await this.pendientes.liquidaciones.sumarVigentesPorCierre(idsAprobados);
+    const premios = await this.pendientes.premios.sumarPremiosVivosPorCierre(idsAprobados);
+
+    return items.map((c) => ({
+      ...c,
+      pendientePagoMensajero:
+        c.estado === "aprobado"
+          ? derivarPendienteCierre({
+              pagoDebido: c.totalPagoMensajero,
+              efectivo: c.totales.efectivo,
+              premiosVivos: premios[c.cierreId] ?? "0.00",
+              pagadoVigente: pagados[c.cierreId] ?? "0.00",
+              // SLT-123 (R320, R327): la marca de ESTE cierre; ausente = `false` (regla de la 44).
+              pagoIndependienteEfectivo: c.pagoIndependienteEfectivo === true,
+            })
+          : null,
+    }));
   }
 
   /**
@@ -564,10 +661,9 @@ export class CierreDiaService implements ICierreDiaService {
    * ninguna de esas URL: sus ocho columnas salen enteras del `CierrePasadoDTO`. Aqui es UNA
    * consulta y cero llamadas al firmador (R9).
    *
-   * **No lleva `input`, y es deliberado** (mismo criterio que los dos conjuntos de la tanda B):
-   * este listado no admite filtros —su schema de pagina solo tenia `page`/`pageSize`— y quitarlos
-   * deja una lista blanca de CERO claves. El borde la sigue aplicando entera —un `mensajeroId`
-   * colado muere alli con `validation_error` (R17)— pero no hay nada que transportar hasta aqui.
+   * **No lleva `input`, solo `filtros`** (SLT-138, R168): el mismo bloque que la pagina. El borde
+   * sigue aplicando la lista blanca entera —un `mensajeroId` colado muere alli con
+   * `validation_error` (R17)—.
    *
    * El alcance ES el actor y no admite variantes: el rol tiene que ser `mensajero` y el
    * `mensajero_id` del WHERE es `actor.usuarioId` (R4), exactamente como en la pagina.
@@ -587,12 +683,22 @@ export class CierreDiaService implements ICierreDiaService {
    */
   async listarCierresPasadosCompleto(
     actor: Actor,
+    // Con valor por defecto y no `?`: así `listarCierresPasadosCompleto.length` sigue siendo 1 —solo
+    // el actor es obligatorio— y `cierre-dia-pasados-completo.test.ts` lo sigue afirmando.
+    filtros: FiltrosColaPropia | undefined = undefined,
   ): Promise<ListarCierresPasadosCompletoServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R4: antes del repo
 
+    // SLT-138 (R174): el archivo lleva TODOS los cierres que cumplen los filtros, con el mismo
+    // `filtrosParaRepo` que la pagina. Folio imposible → archivo vacio sin leer la base (R171).
+    const resueltos = await this.filtrosParaRepo(filtros, "listarCierresPasadosCompleto");
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 };
+
     // El MISMO metodo del que la pagina saca su recorte: mismo where, mismo orden y el mismo
     // mapper de dinero. Un gemelo `…Completo` habria sido la tercera declaracion del criterio.
-    const conjunto = await this.repo.findCierresByMensajero(actor.usuarioId);
+    const conjunto = resueltos.filtros
+      ? await this.repo.findCierresByMensajero(actor.usuarioId, resueltos.filtros)
+      : await this.repo.findCierresByMensajero(actor.usuarioId); // R173: la llamada de antes
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.

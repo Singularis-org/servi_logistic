@@ -9,6 +9,8 @@ import { money } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
 import type { CierreDetalleGestion, CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
+import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { MarcaAjustado } from "@/app/(app)/cierres-admin/_components/MarcaAjustado";
 import { desgloseAriaLabel } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { FILA_AJUSTAR_PAGO, ajustarPagoAriaLabel } from "@/app/(app)/cierres-admin/_components/cierre-labels";
@@ -52,9 +54,15 @@ export interface FilaGestionProps {
   /** `solicitadoAt` del cierre: la nota de R97. */
   congeladoAt: string | null;
   acciones: AccionesFila;
-  onVerEvidencia?: (url: string) => void;
+  /** Abre el visor único con TODAS las URL firmadas de la gestión y su contexto (SLT-103 R54). */
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /** Mismo `columnaMensajero` que la cabecera de la lista (R23). */
   columnaMensajero?: boolean;
+  /**
+   * SLT-109 (R244): el `gestionId` cuyo «Devolver a gestión» está en vuelo. Su botón se deshabilita
+   * (anti doble envío en la UI; el servidor lo corta igual).
+   */
+  enVuelo?: string | null;
 }
 
 /** Ancho de cada columna (canvas: `70px 1.7fr 110px 1fr 1fr 1fr 1.3fr 40px`). */
@@ -94,6 +102,7 @@ export function FilaGestion({
   acciones,
   onVerEvidencia,
   columnaMensajero = false,
+  enVuelo = null,
 }: Readonly<FilaGestionProps>) {
   const [abierta, setAbierta] = useState(false);
   const [calculoAbierto, setCalculoAbierto] = useState(false);
@@ -191,11 +200,19 @@ export function FilaGestion({
         ))}
         <span className="flex items-center justify-end gap-1.5">
           {ofrecidas.devolver ? (
+            // R244 (feature 237): deshabilitado CON SU MOTIVO, no oculto — en `title` y al final del
+            // nombre accesible, porque un botón `disabled` sale del orden de tabulación.
             <Button
               type="button"
               size="sm"
               variant="outline"
-              aria-label={L.devolverAriaLabel(g.numRemision, g.destinatario)}
+              aria-label={
+                ofrecidas.devolverDeshabilitado
+                  ? L.devolverNoDisponibleAriaLabel(g.numRemision, g.destinatario, ofrecidas.devolverDeshabilitado)
+                  : L.devolverAriaLabel(g.numRemision, g.destinatario)
+              }
+              title={ofrecidas.devolverDeshabilitado ?? undefined}
+              disabled={ofrecidas.devolverDeshabilitado !== null || enVuelo === g.gestionId}
               onClick={() => acciones.devolver?.(g)}
             >
               {L.DEVOLVER_A_GESTION}
@@ -251,7 +268,9 @@ export function FilaGestion({
               {onVerEvidencia ? (
                 <BotonesEvidencia
                   urls={g.evidenciaUrls}
-                  onVer={onVerEvidencia}
+                  onVer={(urls) =>
+                    onVerEvidencia({ urls, contexto: contextoEvidencia(g.numRemision, g.destinatario) })
+                  }
                   etiqueta={FILA_VER_EVIDENCIA}
                   ariaSufijo={delaOrden}
                 />

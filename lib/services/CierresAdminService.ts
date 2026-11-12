@@ -81,6 +81,7 @@ import {
   partesPorTienda,
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
+import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
 import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 import { desglosarIngresoBodegaPorOrigen } from "@/lib/utils/desglose-rechazos-sla";
 // FICHA 398: el destino de la orden corregida sale del PUNTO UNICO de la regla `resultado ->
@@ -136,7 +137,7 @@ function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle
  * un dia llegue aqui sin estar previsto tampoco lo recibe. Solo toca la tarifa: ningun total se
  * recalcula (el fulfillment no entra en `ingresoEmpresa.total`, ver `TarifaSnapshotDTO`).
  */
-function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
+export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
   fila: T,
   actor: Actor,
 ): T {
@@ -223,7 +224,7 @@ const MSG_CONFIRMACION_GUIA_DISTINTA = "La guía leída no es la de este paquete
 // Se bloquea y se DICE, nunca se omite en silencio — omitirla dejaria un paquete aprobado sin
 // que nadie lo tuviera delante, que es justo lo que esta feature viene a impedir.
 const MSG_CONFIRMACION_SIN_GUIA =
-  "Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador.";
+  "Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador.";
 
 // Feature 239 (T2.1, R9): catalogo incompleto -> la aprobacion NO ocurre. Texto SIN PII y con el
 // mismo tono accionable que el resto (patron `MSG_CATALOGO` de la 36/67).
@@ -1048,6 +1049,12 @@ export class CierresAdminService implements ICierresAdminService {
         found.cierre.estado === "aprobado" || found.cierre.estado === "rechazado"
           ? (found.resueltoPorNombre ?? null)
           : null,
+      // SLT-111 (R263, R265): el reparto en % de lo recaudado, de los importes de arriba y sin
+      // ninguna lectura mas. Orden fijo: tienda y luego empresa; base, el `general` del snapshot.
+      porcentajesReparto: porcentajesReparto(
+        [pagoTienda, cobradoSobreLoRecaudado],
+        resumen.totales.general,
+      ),
     };
   }
 
@@ -1358,6 +1365,8 @@ export class CierresAdminService implements ICierresAdminService {
               efectivo: r.totales.efectivo, // E — snapshot de la 37
               premiosVivos: premios[r.cierreId] ?? "0.00", // Σ premios VIVOS del cierre (293/R24)
               pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
+              // SLT-123 (R320, R327): la regla la da la marca de ESTA fila; ausente = `false` (44).
+              pagoIndependienteEfectivo: r.pagoIndependienteEfectivo === true,
             }),
           }
         : { ...r, ...conSenales, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
@@ -1389,6 +1398,8 @@ export class CierresAdminService implements ICierresAdminService {
       efectivo: cierre.totalEfectivo,
       premiosVivos: premios[cierreId] ?? "0.00",
       pagadoVigente: pagados[cierreId] ?? "0.00",
+      // SLT-123 (R321): la marca que la aprobacion acaba de escribir en la misma fila.
+      pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true,
     });
   }
 
@@ -1885,6 +1896,8 @@ function toResumen(row: CierreAdminResumenRow): CierreAdminResumen {
     totalPagoMensajero: row.totalPagoMensajero, // R17: snapshot, sin recomputar
     totalIngresoBodegaRechazos: row.totalIngresoBodegaRechazos, // feature 56/R16: snapshot, sin recomputar
     incluyeModeloNuevo: row.incluyeModeloNuevo, // SLT-54 (R71)
+    // SLT-123 (R320): la marca viaja hasta `conPendiente`, que deriva lo pendiente con ella.
+    pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     // Feature 172 (T C.2): el mapper NO deriva dinero. Emite `null` —el valor de un cierre no
     // aprobado (R28)— y el servicio lo rellena en `conPendiente` para los aprobados, con UNA
     // agregacion por pagina. Si la derivacion viviera aqui, seria una consulta por fila.

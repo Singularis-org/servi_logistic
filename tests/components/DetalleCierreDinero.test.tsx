@@ -313,3 +313,55 @@ describe("lo que NO se pinta (R9)", () => {
     expect(lineas("De lo facturado, le queda a la empresa").at(-1)).toEqual(["Le queda a la empresa", "-₡250"]);
   });
 });
+
+// SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.3, R266, R71) — con los
+// porcentajes del servidor el bloque «¿A dónde va lo recaudado?» dibuja la barra y el «(n %)» de cada
+// entrada, con el entero recibido tal cual; sin ellos, solo la leyenda. Literales escritos a mano
+// (MA [94, 6]; BX [97, 3, 0], PA1: la parte de ₡500 queda «(0 %)»).
+describe("SLT-111 — la barra del reparto con los porcentajes del servidor (R266)", () => {
+  function franjas(): string[] {
+    const reparto = screen.getByRole("region", { name: "Reparto de lo recaudado" });
+    return [...reparto.querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')].map((f) => f.style.width);
+  }
+  function leyenda(): string[] {
+    const reparto = screen.getByRole("region", { name: "Reparto de lo recaudado" });
+    return [...reparto.querySelectorAll("li")].map((li) => li.textContent ?? "");
+  }
+
+  it("mensajero con [94, 6]: dos franjas de 94 % y 6 % y el «(n %)» en la leyenda", () => {
+    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: [94, 6] } });
+    expect(franjas()).toEqual(["94%", "6%"]);
+    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡94.350 (94 %)", "Sale de lo recaudado ₡5.650 (6 %)"]);
+  });
+
+  it("bodega con [97, 3, 0]: tres franjas y «(0 %)» en «Gana la bodega satélite ₡500»", async () => {
+    await verBodega({ ...BODEGA, porcentajesReparto: [97, 3, 0] });
+    expect(franjas()).toEqual(["97%", "3%", "0%"]);
+    expect(leyenda()).toEqual([
+      "Debe llegar a la central ₡96.500 (97 %)",
+      "Pago a mensajeros ₡3.000 (3 %)",
+      "Gana la bodega satélite ₡500 (0 %)",
+    ]);
+  });
+
+  it("el cliente pinta el entero recibido, sin derivarlo de los importes (R71)", () => {
+    // [61, 39] no sale de ₡94.350 / ₡5.650: si el cliente lo recalculara, no aparecería.
+    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: [61, 39] } });
+    expect(franjas()).toEqual(["61%", "39%"]);
+    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡94.350 (61 %)", "Sale de lo recaudado ₡5.650 (39 %)"]);
+  });
+
+  it("con `null` o sin el campo: ninguna franja y ningún «%», solo la leyenda con los importes", async () => {
+    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: null } });
+    expect(franjas()).toEqual([]);
+    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡94.350", "Sale de lo recaudado ₡5.650"]);
+    cleanup();
+    await verBodega({ ...BODEGA, porcentajesReparto: null });
+    expect(franjas()).toEqual([]);
+    expect(screen.getByRole("region", { name: "Reparto de lo recaudado" }).textContent).not.toContain("%");
+    cleanup();
+    await verBodega();
+    expect(franjas()).toEqual([]);
+    expect(screen.getByRole("region", { name: "Reparto de lo recaudado" }).textContent).not.toContain("%");
+  });
+});

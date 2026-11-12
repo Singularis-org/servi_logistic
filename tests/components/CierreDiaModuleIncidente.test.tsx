@@ -13,14 +13,17 @@ import type {
   CierreResultado,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 
-// Feature 158 (T2.2 — R18/R17/Q-D) — el grupo "Incidente" en el detalle del cierre del
-// MENSAJERO. Lo que este archivo protege:
-//   - que el grupo existe, tiene etiqueta legible en español y es PROPIO (R18);
-//   - que NO trae ninguna columna de dinero (R17): un incidente no se paga al mensajero, y
-//     la indemnización es plata de la tienda que él no ve (design §7.2);
-//   - que el "Devolver a gestión" SÍ se ofrece sobre un incidente (Q-D/R14: se puede deshacer);
-//   - que el grupo vacío NO se pinta (patrón de la 37).
+// Feature 158 (T2.2 — R18/R17/Q-D) → SLT-108 (R58, R162) → SLT-109 «/cierre-dia: el cierre de hoy,
+// rechazado o vencido como página» (R242, R256) — el incidente en el cierre de HOY del mensajero, que
+// ahora es la lista única de «Gestiones». Lo que este archivo protege:
+//   - que el incidente es un resultado PROPIO, con su filtro y su causa (R18, R9 de la 158);
+//   - que su «Ganancia» es el `pagoMensajero` del servidor, «—» si es nulo, en la fila y en el
+//     archivo, y que la indemnización (plata de la tienda, design §7.2) no sale en ninguno (R256);
+//   - que el «Devolver a gestión» SÍ se ofrece sobre un incidente (Q-D/R14: se puede deshacer).
+// Lo que se fue con la tabla por resultado: «el grupo vacío no se pinta» (la lista no tiene secciones)
+// y las cabeceras de columna propias de cada sección.
 vi.mock("@/lib/actions/cierre-dia", () => ({
   solicitarCierre: vi.fn(),
   listarCierreDia: vi.fn(),
@@ -55,6 +58,28 @@ vi.mock("@/hooks/useToast", () => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock, push: vi.fn() }),
 }));
+
+// El botón real genera un Excel: aquí guarda lo que recibe, para afirmar columnas y filas.
+type Descarga = { titulo: string; columnas: DescargaColumna[]; obtenerFilas?: () => Promise<{ filas?: DescargaFila[] }> };
+const { descargas } = vi.hoisted(() => ({ descargas: [] as Descarga[] }));
+vi.mock("@/components/shared/DescargarDatasetButton", () => ({
+  DescargarDatasetButton: (p: Descarga) => {
+    descargas.push(p);
+    return <button type="button" aria-label={`Descargar ${p.titulo}`}>Descargar</button>;
+  },
+}));
+
+/** La lista única de «Gestiones» del cierre de hoy (R242). */
+function lista(): HTMLElement {
+  return screen.getByRole("region", { name: "Órdenes del cierre" });
+}
+
+/** La fila única de esa gestión. */
+function filaDe(gestionId: string): HTMLElement {
+  const fila = lista().querySelector(`[data-gestion="${gestionId}"]`);
+  expect(fila, `no hay fila para ${gestionId}`).not.toBeNull();
+  return fila as HTMLElement;
+}
 
 const deshacerMock = vi.mocked(deshacerGestion);
 const solicitarMock = vi.mocked(solicitarCierre);
@@ -137,6 +162,7 @@ function incidente(over: Partial<CierreDetalleGestion> = {}): CierreDetalleGesti
 
 beforeEach(() => {
   vi.clearAllMocks();
+  descargas.length = 0;
   deshacerMock.mockResolvedValue({ status: "ok", ordenId: "o-gi1" });
   solicitarMock.mockResolvedValue({
     status: "ok",
@@ -150,152 +176,118 @@ afterEach(() => {
   cleanup();
 });
 
-describe("R18 — el incidente es un grupo PROPIO del detalle del mensajero", () => {
-  it('pinta la sección "Incidente" con su etiqueta en español y el conteo', () => {
-    renderModule({ ...emptyGrupos(), incidente: [incidente()] });
+describe("R18 — el incidente es un resultado PROPIO de la lista del mensajero", () => {
+  // SLT-109 (R242): ya no hay una sección por resultado; el incidente es un filtro propio de la
+  // lista única, con su conteo, y su fila dice «Incidente».
+  it("tiene su filtro «Incidente» con el conteo y su fila dice el resultado", () => {
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente()];
+    renderModule(grupos);
 
-    const region = screen.getByRole("region", { name: "Incidente" });
-    expect(region).toBeInTheDocument();
-    expect(within(region).getByRole("heading", { name: /Incidente/ })).toHaveTextContent("(1)");
-    expect(within(region).getByText("REM-INC")).toBeInTheDocument();
-    expect(within(region).getByText("Caja aplastada en el furgón")).toBeInTheDocument();
+    expect(screen.getByText("Incidente 1")).toBeInTheDocument();
+    const fila = filaDe("gi1");
+    expect(within(fila).getByText("Incidente")).toBeInTheDocument();
   });
 
-  it("NO se mezcla con las devoluciones ni con los rechazos", () => {
-    renderModule({
-      ...emptyGrupos(),
-      novedad: [makeGestion({ gestionId: "gd", resultado: "novedad", numRemision: "REM-DEV" })],
-      incidente: [incidente()],
-    });
+  it("NO se mezcla con las devoluciones: cada una en su fila, con su resultado", () => {
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente()];
+    grupos.novedad = [makeGestion({ gestionId: "gd1", resultado: "novedad", numRemision: "REM-DEV" })];
+    renderModule(grupos);
 
-    const incidentes = screen.getByRole("region", { name: "Incidente" });
-    const devueltas = screen.getByRole("region", { name: "Novedad" });
-    expect(within(incidentes).getByText("REM-INC")).toBeInTheDocument();
-    expect(within(incidentes).queryByText("REM-DEV")).toBeNull();
-    expect(within(devueltas).queryByText("REM-INC")).toBeNull();
+    expect(within(filaDe("gi1")).queryByText("Novedad")).toBeNull();
+    expect(within(filaDe("gd1")).queryByText("Incidente")).toBeNull();
+    expect(screen.getByText("Novedad 1")).toBeInTheDocument();
   });
 
-  it("el grupo VACÍO no se pinta (patrón de la 37)", () => {
-    renderModule(emptyGrupos());
-    expect(screen.queryByRole("region", { name: "Incidente" })).toBeNull();
+  it("la causa que él reportó sale en «Señales» (R9 de la 158)", () => {
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente({ causaIncidente: "perdido" })];
+    renderModule(grupos);
+
+    expect(within(filaDe("gi1")).getByText("Paquete perdido")).toBeInTheDocument();
   });
 
   it("la evidencia se abre desde la URL FIRMADA que llega del servidor", async () => {
     const user = userEvent.setup();
-    renderModule({ ...emptyGrupos(), incidente: [incidente()] });
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente()];
+    renderModule(grupos);
 
-    const region = screen.getByRole("region", { name: "Incidente" });
-    await user.click(within(region).getByRole("button", { name: "Ver evidencia" }));
-
+    await user.click(screen.getByRole("button", { name: "Detalle de la orden REM-INC · Beto Ruiz" }));
+    await user.click(screen.getByRole("button", { name: "Ver evidencia de la orden REM-INC · Beto Ruiz" }));
     const dialog = await screen.findByRole("dialog", { name: "Evidencia de la gestión" });
-    expect(within(dialog).getByRole("img")).toHaveAttribute(
+    expect(within(dialog).getByRole("img", { name: "Evidencia fotográfica de la gestión" })).toHaveAttribute(
       "src",
       "https://signed.example/inc.jpg?token=abc",
     );
   });
 });
 
-describe("R17 — el incidente no muestra dinero en la vista del mensajero", () => {
-  it("la tabla de incidentes NO tiene columna de ganancia ni de ningún monto", () => {
-    // El snapshot de dinero de un incidente es 0.00 (backend). Aun así NO se pinta: un
-    // "₡0" en la fila se lee como "me pagaron cero por esto", que no es lo que pasó.
-    renderModule({
-      ...emptyGrupos(),
-      incidente: [incidente({ pagoMensajero: "0.00", montoRecibido: "0.00" })],
-    });
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R256; SLT-108 R58/R162):
+// la «Ganancia» de un incidente es su `pagoMensajero`, en la fila y en el archivo; la indemnización
+// (plata de la tienda, design §7.2) no aparece en ninguno de los dos.
+describe("R256 — el incidente muestra la ganancia del mensajero, no la indemnización", () => {
+  it("la fila del incidente dice su «Ganancia» con el pago del servidor", () => {
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente({ pagoMensajero: "350.00" })];
+    renderModule(grupos);
 
-    const tabla = screen.getByRole("table", { name: "Incidente" });
-    const cabeceras = within(tabla)
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent);
-    expect(cabeceras).not.toContain("Ganancia");
-    expect(cabeceras).not.toContain("Monto");
-    expect(cabeceras).not.toContain("Método");
-    // Y ningún importe en el cuerpo de la tabla.
-    expect(within(tabla).queryByText(/₡/)).toBeNull();
+    expect(within(lista()).getByText("Ganancia")).toBeInTheDocument();
+    expect(within(filaDe("gi1")).getByText("₡350")).toBeInTheDocument();
   });
 
-  it("tampoco trae la columna del MONTO de la indemnización (no es plata suya)", () => {
-    // El backend lo garantiza en la CONSULTA (`WITH_DETALLE` ni selecciona la columna), así
-    // que aquí el dato es SIEMPRE `null`. Este caso fija la otra mitad: que la pantalla del
-    // mensajero tampoco intente pintarlo. Si alguien añadiera la columna, mostraría un "—"
-    // permanente que se leería como «me deben algo y todavía no me lo pagan».
-    renderModule({ ...emptyGrupos(), incidente: [incidente()] });
+  it("sin pago (null) la fila pinta «—», nunca un cero", () => {
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente({ pagoMensajero: null })];
+    renderModule(grupos);
 
-    const cabeceras = within(screen.getByRole("table", { name: "Incidente" }))
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent);
-    expect(cabeceras).not.toContain("Indemnización");
+    const fila = filaDe("gi1");
+    expect(within(fila).getAllByText("—").length).toBeGreaterThan(0);
+    expect(within(fila).queryByText("₡0")).toBeNull();
   });
 
-  it("la sección de una ENTREGA sí conserva sus columnas de dinero (no regresión)", () => {
-    renderModule({
-      ...emptyGrupos(),
-      entregado: [
-        makeGestion({
-          gestionId: "ge",
-          resultado: "entregado",
-          montoRecibido: "150.00",
-          metodoPago: "efectivo",
-          // Feature 213 (T8): desglose COHERENTE con el escalar ya declarado (R23).
-          pagos: [{ metodo: "efectivo", monto: "150.00" }],
-          pagoMensajero: "12.00",
-        }),
-      ],
-    });
+  it("la indemnización no aparece en la fila, aunque el doble la traiga", () => {
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente({ pagoMensajero: "350.00", indemnizacion: "48713.00" })];
+    renderModule(grupos);
 
-    const tabla = screen.getByRole("table", { name: "Entregado" });
-    const cabeceras = within(tabla)
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent);
-    expect(cabeceras).toContain("Ganancia");
-    expect(cabeceras).toContain("Monto");
-    expect(within(tabla).getByText("₡150")).toBeInTheDocument();
+    expect(lista().textContent ?? "").not.toContain("48.713");
+    expect(screen.queryByText(/indemniz/i)).toBeNull();
+  });
+
+  it("«Descargar» del cierre de hoy: «Gestiones del cierre de hoy», las siete columnas del mensajero y la ganancia del incidente", async () => {
+    const grupos = emptyGrupos();
+    grupos.entregado = [
+      makeGestion({ gestionId: "ge1", resultado: "entregado", numGuia: 4321, montoRecibido: "300.00", pagoMensajero: "1700.00" }),
+    ];
+    grupos.incidente = [
+      incidente({ numGuia: 5555, pagoMensajero: "350.00", indemnizacion: "48713.00", causaIncidente: "perdido" }),
+      incidente({ gestionId: "gi2", numGuia: 6666, numRemision: "REM-INC2", pagoMensajero: null }),
+    ];
+    renderModule(grupos);
+
+    expect(screen.getByRole("button", { name: "Descargar Gestiones del cierre de hoy" })).toBeInTheDocument();
+    const d = descargas.find((x) => x.titulo === "Gestiones del cierre de hoy");
+    expect(d?.columnas.map((c) => c.encabezado)).toEqual(["Nº Guía", "Destinatario", "Tienda", "Resultado", "Recibido", "Ganancia", "Señales"]);
+    const filas = (await d!.obtenerFilas!()).filas;
+    expect(filas).toEqual([
+      { numGuia: 4321, destinatario: "Ana Pérez", tienda: "Tienda X", resultado: "Entregado", recibido: "300.00", ganancia: "1700.00", senales: null },
+      { numGuia: 5555, destinatario: "Beto Ruiz", tienda: "Tienda X", resultado: "Incidente", recibido: null, ganancia: "350.00", senales: null },
+      { numGuia: 6666, destinatario: "Beto Ruiz", tienda: "Tienda X", resultado: "Incidente", recibido: null, ganancia: null, senales: null },
+    ]);
+    expect(JSON.stringify(filas)).not.toContain("48713");
   });
 });
 
-describe("R9 — el mensajero SÍ ve la causa que él mismo reportó", () => {
-  it.each([
-    ["danado", "Paquete dañado"],
-    ["perdido", "Paquete perdido"],
-    ["robado", "Paquete robado"],
-  ] as const)("causa `%s` se muestra como «%s», nunca el slug", (value, etiqueta) => {
-    // El backend selecciona la causa en la consulta del mensajero A PROPÓSITO (a diferencia
-    // del monto, que ni siquiera pide): es el hecho que él reportó, no dinero. Sin esta
-    // columna ese `select` no lo vería nadie y sería código muerto.
-    renderModule({ ...emptyGrupos(), incidente: [incidente({ causaIncidente: value })] });
-
-    const tabla = screen.getByRole("table", { name: "Incidente" });
-    expect(within(tabla).getByText(etiqueta)).toBeInTheDocument();
-    expect(tabla.textContent).not.toMatch(/danado/);
-    cleanup();
-  });
-
-  it("la columna de causa NO aparece en los otros cuatro resultados", () => {
-    renderModule({
-      ...emptyGrupos(),
-      novedad: [makeGestion({ gestionId: "gd", resultado: "novedad" })],
-    });
-
-    const cabeceras = within(screen.getByRole("table", { name: "Novedad" }))
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent);
-    expect(cabeceras).not.toContain("Causa");
-  });
-});
-
-describe("Q-D/R14 — un incidente SE PUEDE deshacer desde el detalle", () => {
-  it("ofrece 'Devolver a gestión' en la fila del incidente y llama a la action", async () => {
+describe("Q-D/R14, R243 — un incidente SE PUEDE devolver a gestión desde la lista", () => {
+  it("ofrece «Devolver a gestión» en la fila del incidente y llama a la action", async () => {
     const user = userEvent.setup();
-    renderModule({ ...emptyGrupos(), incidente: [incidente()] });
+    const grupos = emptyGrupos();
+    grupos.incidente = [incidente()];
+    renderModule(grupos);
 
-    const region = screen.getByRole("region", { name: "Incidente" });
-    await user.click(
-      within(region).getByRole("button", {
-        name: "Devolver a gestión la orden REM-INC · Beto Ruiz",
-      }),
-    );
-
+    await user.click(within(filaDe("gi1")).getByRole("button", { name: "Devolver a gestión la orden REM-INC · Beto Ruiz" }));
     const dialog = await screen.findByRole("dialog", { name: "Devolver la orden a gestión" });
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 

@@ -104,6 +104,7 @@ function pagoAMensajero(over: Partial<LiquidacionPagoDTO> = {}): LiquidacionPago
 /** Cierre APROBADO con P = 50 000 y E = 0 -> genera 50 000 de pendiente. */
 function cierreDTO(over: Partial<CierreParaPagoDTO> = {}): CierreParaPagoDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: UUID_CIERRE,
     mensajeroId: UUID_MENSAJERO,
     estado: CierreEstado.aprobado,

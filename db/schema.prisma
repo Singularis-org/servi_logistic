@@ -1672,6 +1672,14 @@ model CierreDia {
   // `false` exactamente los que no se pueden reconstruir (`estado` fuera de los tres abiertos).
   sinGestionRegistrado Boolean @default(true) @map("sin_gestion_registrado")
 
+  // SLT-123 (R310-R312, D5) — QUE REGLA DE PAGO AL MENSAJERO TIENE ESTE CIERRE. `false` = la de la
+  // feature 44: su pago sale del efectivo que recaudo (`pago_efectivo = min(P,E)`, pendiente
+  // `P - min(P,E)`). `true` = el pago es independiente del efectivo: el libro solo devenga `P` y lo
+  // pendiente es `P` completo. La pone SOLO `resolverCierre` al aprobar un cierre de la central, en
+  // la misma tx. `DEFAULT false` sin backfill: los cierres ya aprobados no cambian ni un centimo.
+  // Es la UNICA fuente de la regla: ningun consumidor decide por fecha, destino ni libro (R327).
+  pagoIndependienteEfectivo Boolean @default(false) @map("pago_independiente_efectivo")
+
   mensajero          Usuario               @relation("CierreMensajero", fields: [mensajeroId], references: [id])
   destinoZona        Zona                  @relation(fields: [destinoZonaId], references: [id])
   resueltoPorUsuario Usuario?              @relation("CierreResueltoPor", fields: [resueltoPor], references: [id]) // feature 38/R14

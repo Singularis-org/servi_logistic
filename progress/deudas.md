@@ -362,3 +362,27 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-98 (2026-11-10, review F2.2 m2 en `progress/review_SLT-98.md`). La app solo crea el bucket si falta, con sus límites y privado. Si `BUG_REPORT_BUCKET` apunta a un bucket que ya existía, no se comprueba que sea privado ni sus límites (5 MB, PNG/JPG/WebP). Además el servidor no comprueba el `content-type` guardado: en un bucket sin tipos permitidos podría servirse un archivo que empieza como PNG con `text/html`, desde el origen de Storage y no el de la app.
 - **Qué falta:** al arrancar o al pedir permisos, leer la configuración del bucket y negarse (o avisar) si es público o no tiene los límites; o comprobar el `content-type` en el envío.
 - **Dueño:** Cristian (decidir si va a ficha). Mientras tanto, revisar el bucket a mano al configurarlo en cada entorno.
+
+### D63 — `listarCierresImputables` sin alcance se queda sin consumidores
+- **Origen:** SLT-124 (2026-11-11, review m1 en `progress/review_SLT-124.md`). El incentivo pasó a las lecturas `…EnAlcance` de SLT-122; la versión sin alcance ya no la llama nadie en `lib/`, pero la usan 7 tests.
+- **Qué falta:** borrarla con sus tests, o una guardia que prohíba llamarla desde `lib/`. Mientras exista, un consumidor nuevo podría volver a mezclar cierres de satélite con dinero de la central.
+- **Dueño:** ArqDev (se revisa con las deudas al cerrar la épica de cierres).
+
+### D64 — Fixture `caja-459`: premio movido a cierre central sin medir
+- **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
+- **Qué falta:** cuando SL-31 saque esos tests del baseline, comprobar que pasan y que R6 sigue vigilado; ajustar la zona del mensajero si choca con R12.
+- **Dueño:** ArqDev / quien cierre SL-31.
+
+### D65 — Guardias de diálogos y visor de cierres con huecos conocidos
+- **Origen:** SLT-103 (2026-11-11, review m1-m3 en `progress/review_SLT-103.md`). `cierres-dialogos-modal.guardia.test.ts`:
+  - el visor único solo detecta el título literal «Evidencia de la gestión» y `function VisorEvidencia` (no un título partido, ni vía `VISOR_EVIDENCIA_TEXTO.titulo`, ni una función flecha);
+  - la de diálogos solo mira imports de `@/components/ui/dialog` y `alert-dialog` (no `ui/sheet`, `@radix-ui/react-dialog` ni rutas relativas);
+  - el censo no incluye `DesglosePagoField.tsx` ni `EscanerGuiaCard.tsx`, y el control de censo no vacío no fija ningún archivo de `wallet/satelites` ni `shared/liquidacion`.
+  Hoy ningún archivo cae en esos huecos.
+- **Qué falta:** cerrar los huecos con SLT-134 «Textos de pantalla de cierres en tú, con guardia», que redefine el censo del módulo (incluye los compartidos con `/wallet/*`, PA8).
+- **Dueño:** ArqDev (en el spec de SLT-134).
+
+### D66 — Incidente del modelo nuevo con ganancia > 0 sin probar de punta a punta
+- **Origen:** SLT-108 (2026-11-11, review m2 en `progress/review_SLT-108.md`). En el modelo viejo un incidente no paga al mensajero (`specs/158-incidente-indemnizacion/design.md:345`, R17), y el E2E de `/cierre-dia` afirma «₡0». En el modelo nuevo existe el concepto `mensajero_incidente` (`lib/tarifas/catalogo.ts:47`) que `importePagoNuevo` paga, pero `pago-modelo-nuevo.test.ts:44` usa justo «0.00» para el incidente y ningún E2E pinta una «Ganancia» de incidente mayor que cero.
+- **Qué falta:** un test de `lib/` con tarifa `mensajero_incidente` > 0 y su ganancia en la fila de Incidente de `/cierre-dia`.
+- **Dueño:** ArqDev (se revisa con las deudas al cerrar la épica de cierres).

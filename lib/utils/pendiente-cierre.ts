@@ -11,6 +11,9 @@ import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
  *
  *     pendienteDelCierre = calcularSplitPago(P, E).pendiente + premiosVivos − Σ pagos VIGENTES
  *
+ * **SLT-123 (R315):** si el cierre lleva `pago_independiente_efectivo`, el primer termino es `P`
+ * completo (su pago no salio del efectivo): `P + premiosVivos − Σ pagos VIGENTES`.
+ *
  * `P` es `cierre_dia.total_pago_mensajero` (snapshot de la 39) y `E` es
  * `cierre_dia.total_efectivo` (snapshot de la 37). **Ninguno de los dos se reescribe jamas**
  * (293/R13): el snapshot sigue diciendo lo que dijo el dia en que se aprobo el cierre, y el
@@ -54,6 +57,14 @@ export interface PendienteCierreInput {
   premiosVivos: string | Prisma.Decimal;
   /** 172/R80 — Σ de los pagos VIGENTES registrados contra este cierre (los anulados no entran). */
   pagadoVigente: string | Prisma.Decimal;
+  /**
+   * SLT-123 (R315, R325, R327) — `cierre_dia.pago_independiente_efectivo` del PROPIO cierre. Es la
+   * UNICA fuente de la regla: nunca la fecha, el destino ni el libro. `true` = el pago no sale del
+   * efectivo y lo generado es `P` completo; `false` = la regla de la 44, `P − min(P, E)`, como
+   * siempre. Obligatorio a proposito (mismo argumento que la 293): cada consumidor deja de compilar
+   * hasta que decide de donde saca la marca.
+   */
+  pagoIndependienteEfectivo: boolean;
 }
 
 export function derivarPendienteCierre({
@@ -61,8 +72,13 @@ export function derivarPendienteCierre({
   efectivo,
   premiosVivos,
   pagadoVigente,
+  pagoIndependienteEfectivo,
 }: PendienteCierreInput): string {
-  const generadoPorElCierre = new Prisma.Decimal(calcularSplitPago(pagoDebido, efectivo).pendiente);
+  // SLT-123 (R315): con la marca, el efectivo no entra: lo generado es `P` entero, redondeado como
+  // en `calcularSplitPago`. Sin ella (R325), `P − min(P, E)` de la fuente unica de la 44.
+  const generadoPorElCierre = pagoIndependienteEfectivo
+    ? new Prisma.Decimal(pagoDebido).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+    : new Prisma.Decimal(calcularSplitPago(pagoDebido, efectivo).pendiente);
   // R25: el premio se SUMA aparte, despues del `min(P, E)` y sin tocarlo.
   const premio = new Prisma.Decimal(premiosVivos).toDecimalPlaces(
     2,

@@ -161,15 +161,23 @@ export default async function CierresAdminPage() {
             consolidacion.totalIngresoBodegaRechazosAgregado
           }
           incluyeModeloNuevoAgregado={consolidacion.incluyeModeloNuevoAgregado}
-          totalNetoAgregado={consolidacion.totalNetoAgregado}
           totalCentralDebeAgregado={consolidacion.totalCentralDebeAgregado}
           puedesSolicitar={consolidacion.puedesSolicitar}
           motivoBloqueo={consolidacion.motivoBloqueo}
+          // SLT-106 (R67, R195, R203): lo que la cola de «A consolidar» pinta y hoy no llegaba.
+          // `totalNetoAgregado` sigue en el contrato pero ya no se pinta (R204).
+          paraLaCentralAgregado={consolidacion.paraLaCentralAgregado}
+          cierresAConsolidar={consolidacion.cierresAConsolidar}
+          mensajerosAConsolidar={consolidacion.mensajerosAConsolidar}
+          bloqueo={consolidacion.bloqueo}
+          zonaNombre={zonaNombre}
           cierresBodegaPasados={{
             items: consolidacion.solicitados.items,
             total: consolidacion.solicitados.total,
             pageSize: consolidacion.solicitados.pageSize,
           }}
+          // SLT-107 (R68, R287): las cifras de las tarjetas de «Solicitados», sin filtros.
+          solicitadosResumen={consolidacion.solicitadosResumen}
           sinZona={consolidacion.sinZona}
           catalogoFiltros={catalogoFiltros}
         />

@@ -604,3 +604,24 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
     expect(lista.compareDocumentPosition(novedad) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+// SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.4, R267) — el reparto que
+// emite `verCierreDetalle` llega al detalle montado por el módulo: `abrirDetalle` lo guarda y el
+// mapeador lo pone en su hueco. Esperados escritos a mano (MA [94, 6]).
+describe("SLT-111 R267 — el reparto del servidor llega a «Dinero»", () => {
+  it.each(["admin", "satelite"] as const)("con audiencia %s la leyenda lleva «(94 %)» y «(6 %)»", async (audiencia) => {
+    const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: [94, 6] }), { audiencia });
+    const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
+    expect([...reparto.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "Se le paga hoy a la tienda ₡94.350 (94 %)",
+      "Sale de lo recaudado ₡5.650 (6 %)",
+    ]);
+  });
+
+  it("con `null` del servidor: solo la leyenda, sin «%»", async () => {
+    const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: null }));
+    const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
+    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡94.350");
+    expect(reparto.textContent).not.toContain("%");
+  });
+});

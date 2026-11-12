@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-99 | planes-vista-empresa-cambiar-plan | fullstack | high | feature/SLT-99-planes-vista-empresa-cambiar-plan | Camilo (6ace53aa94bfd46ee6a600a5) | pending |
+| SLT-99 | planes-vista-empresa-cambiar-plan | fullstack | high | feature/SLT-99-planes-vista-empresa-cambiar-plan | Camilo (6ace53aa94bfd46ee6a600a5) | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -47,3 +47,9 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-11 · PR https://github.com/Singularis-org/servi_logistic/pull/118 mergeado por el humano en `dev` (`d2538d3e`). `gate-completo` y `e2e` en verde en CI.
+- Resumen: pantalla «Mi plan» del maestro con su plan activo, carrusel de planes públicos (el activo primero, «Plan a la medida» al final) y cambio de plan con efecto al inicio del próximo período de cobro de la empresa, cancelable mientras está pendiente. Un plan ya no necesita costo concreto para asignarse ni listarse (sin costo por orden: tarifa global; sin costo base: cuota 0); modifica SLT-66 R28–R29.
+- Revisión F2.2: vuelta 1 rechazada (M1 cancelación de una primera asignación sin plan; M2 constancia de integración y E2E), corregida en código (M1, m1–m3) y con el CI del PR (M2).
+- Deuda y avisos que deja: residuo para SLT-118 (design §10): si el cambio del maestro admite un tipo de cobro más largo, quedaría una factura corta. Choque de merge previsto con SLT-118 en `PlanesRepository.ts`, `IPlanesRepository.ts`, `lib/types/planes.ts` y `excepciones-aislamiento.ts`. SLT-116 y SLT-117 quedan desbloqueadas.
+- Baseline: nada que podar (el CI no lista entradas que ya pasen).
+- Métricas (`node scripts/metricas.mjs informe --key SLT-99`): gate rápido local, 3 corridas, mediana 644 s, p90 786 s, 67 % en rojo; sin fases registradas.

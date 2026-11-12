@@ -78,9 +78,14 @@ const ORIGEN_AUTOMATICO_NOTA =
 const ORIGEN_MANUAL_LABEL = "Manual";
 const ORIGEN_MANUAL_NOTA = "Devolución a origen registrada manualmente por el mensajero.";
 
-/** El texto autosuficiente del motivo (408/R11), que aquí hace de control de no-vacuidad. */
-const MOTIVO_LARGO =
-  "Dirección errada · el sistema la pasó a devolución a origen al vencerse el plazo de la novedad";
+/**
+ * SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero»: el cierre pasado se abre en el
+ * detalle único, cuya fila (S3-PA6) no enseña motivo, marca ni origen. El control de no-vacuidad
+ * pasa a ser el producto, que solo existe con la fila desplegada.
+ */
+const PRODUCTO = "Caja mediana";
+/** La señal autosuficiente que SÍ lleva la fila del mensajero para un rechazo. */
+const SENAL_VUELVE = "Vuelve a bodega";
 
 /** La cadena EXACTA que el cron de plazos vencidos deja guardada. */
 const MOTIVO_GUARDADO_DEL_CRON = "escalado SLA wrong_address";
@@ -188,14 +193,14 @@ function renderModule(grupos: CierreGrupos = emptyGrupos()) {
   );
 }
 
-/** Abre el comprobante del cierre pasado y devuelve su región. */
+/** SLT-108: abre el cierre pasado en el detalle único y devuelve su diálogo. */
 async function abrirComprobante(): Promise<HTMLElement> {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /^Ver del cierre/ }));
-  return screen.findByRole("region", { name: "Comprobante detallado de tu cierre" });
+  return screen.findByRole("dialog", { name: "Detalle del cierre · Tu cierre del día" });
 }
 
-/** Despliega la fila de una orden DENTRO del comprobante: el bloque sólo existe abierto. */
+/** Despliega la fila de una orden DENTRO del detalle: el bloque sólo existe abierto. */
 async function desplegarFila(comprobante: HTMLElement, numRemision: string) {
   const user = userEvent.setup();
   await user.click(
@@ -205,9 +210,9 @@ async function desplegarFila(comprobante: HTMLElement, numRemision: string) {
   );
 }
 
-/** La `<tr>` de la tabla EN VIVO que lleva ese número de guía. */
+/** La fila única (`[data-gestion]`) del cierre de HOY que lleva ese número de guía (SLT-109). */
 function filaEnVivoDeGuia(guia: string): HTMLElement {
-  const fila = screen.getByText(guia).closest("tr");
+  const fila = screen.getByText(guia).closest("[data-gestion]");
   expect(fila, `no hay ninguna fila en vivo con la guía ${guia}`).not.toBeNull();
   return fila as HTMLElement;
 }
@@ -239,10 +244,10 @@ describe("R5 — el mensajero, en su pantalla, ya no lee la contradicción", () 
     const comprobante = await abrirComprobante();
     await desplegarFila(comprobante, "REM-CRON");
 
-    // Control de no-vacuidad: el bloque desplegado vive dentro de `{open ? … : null}`, así que
+    // Control de no-vacuidad: el bloque desplegado vive dentro de `{abierta ? … : null}`, así que
     // afirmar una ausencia sin la fila abierta pasaría verde SIN el arreglo.
     expect(
-      within(comprobante).getByText(MOTIVO_LARGO),
+      within(comprobante).getByText(PRODUCTO),
       "la fila no está desplegada: afirmar una ausencia aquí no probaría nada",
     ).toBeInTheDocument();
 
@@ -256,7 +261,7 @@ describe("R5 — el mensajero, en su pantalla, ya no lee la contradicción", () 
     renderModule();
     const comprobante = await abrirComprobante();
     await desplegarFila(comprobante, "REM-CRON");
-    expect(within(comprobante).getByText(MOTIVO_LARGO)).toBeInTheDocument();
+    expect(within(comprobante).getByText(PRODUCTO)).toBeInTheDocument();
 
     for (const nodo of Array.from(comprobante.querySelectorAll("[title]"))) {
       expect(nodo.getAttribute("title")).not.toBe(ORIGEN_MANUAL_NOTA);
@@ -264,23 +269,26 @@ describe("R5 — el mensajero, en su pantalla, ya no lee la contradicción", () 
     }
   });
 
-  it("lo que SÍ sigue leyendo es el motivo entero, que se sostiene solo", async () => {
-    // Es lo que la 408 dejó puesto y esta ficha no reabre: sin distintivo al lado, el texto del
-    // motivo es el ÚNICO portador de que el rechazo no fue suyo.
+  it("lo que SÍ lee es la señal «Vuelve a bodega», y nunca la cadena cruda del cron", async () => {
+    // SLT-108 (S3-PA6): la fila única del detalle no lleva motivo; la señal es la que le dice qué
+    // pasa con el paquete, sin atribuirle el rechazo.
     renderModule();
     const comprobante = await abrirComprobante();
     await desplegarFila(comprobante, "REM-CRON");
 
-    const rotulo = within(comprobante).getByText("Motivo:");
-    const fila = rotulo.parentElement as HTMLElement;
-    expect((fila.textContent ?? "").replace("Motivo:", "").trim()).toBe(MOTIVO_LARGO);
+    expect(within(comprobante).getByText(SENAL_VUELVE)).toBeInTheDocument();
+    expect(within(comprobante).queryAllByText(new RegExp(MOTIVO_GUARDADO_DEL_CRON))).toHaveLength(0);
   });
 });
 
 // ── R9 ──────────────────────────────────────────────────────────────────────────────────────
 
-describe("R9 — la tabla en vivo y el comprobante dicen la marca con las mismas palabras", () => {
-  it("el MISMO rótulo y la MISMA nota, en las dos superficies del mismo montaje", async () => {
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242, R244): la tabla en
+// vivo se fue; el cierre de hoy usa la MISMA fila única que el detalle de un cierre pasado, y S3-PA6
+// rige en las dos: sin la marca «La tienda». Lo que le dice al mensajero que esa gestión la registró
+// la tienda es su «Devolver a gestión» deshabilitado, con el motivo en el nombre y en `title`.
+describe("R9 → SLT-109 — ni el cierre de hoy ni el pasado llevan la marca; el de hoy lo dice en el «Devolver a gestión» (S3-PA6)", () => {
+  it("la fila de hoy no lleva la marca pero su botón dice por qué no se puede, y el detalle del cierre pasado no lleva la marca", async () => {
     // La gestión de la tabla EN VIVO y la del COMPROBANTE son distintas a propósito: lo que se
     // compara no son dos pinturas del mismo dato, son las dos superficies que leen el texto.
     verCierrePasadoMock.mockResolvedValue({
@@ -308,23 +316,27 @@ describe("R9 — la tabla en vivo y el comprobante dicen la marca con las mismas
       ],
     });
 
-    // 1) La tabla EN VIVO, donde la marca existe desde la 237.
-    const marcaEnVivo = within(filaEnVivoDeGuia("7777")).getByText(TIENDA_LABEL);
-    expect(marcaEnVivo).toHaveAttribute("title", TIENDA_NOTA);
-    expect(marcaEnVivo).toHaveAttribute("aria-label", TIENDA_NOTA);
+    // 1) El cierre de HOY: la fila única, sin la marca, con el «Devolver a gestión» apagado y su motivo.
+    const filaHoy = filaEnVivoDeGuia("7777");
+    expect(within(filaHoy).queryAllByText(TIENDA_LABEL)).toHaveLength(0);
+    const boton = within(filaHoy).getByRole("button", { name: /^Devolver a gestión la orden REM-VIVA/ });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute(
+      "title",
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+    );
 
-    // 2) El COMPROBANTE del cierre pasado, donde la estrena esta ficha.
+    // 2) SLT-108: el cierre pasado se lee en el detalle único, cuya fila no lleva la marca
+    // (S3-PA6, rige también para el mensajero).
     const comprobante = await abrirComprobante();
     await desplegarFila(comprobante, "REM-CRON");
 
-    const marcaEnComprobante = within(comprobante).getByText(TIENDA_LABEL);
-    expect(marcaEnComprobante).toHaveAttribute("title", TIENDA_NOTA);
-    expect(marcaEnComprobante).toHaveAttribute("aria-label", TIENDA_NOTA);
+    expect(within(comprobante).getByText(PRODUCTO)).toBeInTheDocument();
+    expect(within(comprobante).queryAllByText(TIENDA_LABEL)).toHaveLength(0);
+    expect(within(comprobante).queryAllByLabelText(TIENDA_NOTA)).toHaveLength(0);
   });
 
-  it("y en el comprobante la marca convive con el motivo, sin el distintivo de origen", async () => {
-    // Las tres piezas de la fila, juntas: la marca dice QUIÉN, el motivo dice POR QUÉ, y el
-    // distintivo que mentía ya no está.
+  it("y en el detalle del cierre pasado tampoco queda el distintivo de origen", async () => {
     verCierrePasadoMock.mockResolvedValue({
       status: "ok",
       cierre: CIERRE_PASADO,
@@ -341,8 +353,7 @@ describe("R9 — la tabla en vivo y el comprobante dicen la marca con las mismas
     const comprobante = await abrirComprobante();
     await desplegarFila(comprobante, "REM-CRON");
 
-    expect(within(comprobante).getByText(TIENDA_LABEL)).toBeInTheDocument();
-    expect(within(comprobante).getByText(MOTIVO_LARGO)).toBeInTheDocument();
+    expect(within(comprobante).getByText(PRODUCTO)).toBeInTheDocument();
     expect(within(comprobante).queryAllByText(ORIGEN_MANUAL_LABEL)).toHaveLength(0);
     expect(within(comprobante).queryAllByText(ORIGEN_AUTOMATICO_LABEL)).toHaveLength(0);
   });

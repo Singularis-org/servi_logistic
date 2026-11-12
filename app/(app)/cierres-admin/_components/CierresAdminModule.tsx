@@ -7,6 +7,10 @@ import useSWR, { useSWRConfig } from "swr";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/shared/Modal";
+import {
+  VisorEvidencia,
+  type EvidenciaAbierta,
+} from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { Pagination } from "@/components/shared/Pagination";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
@@ -439,6 +443,8 @@ interface DetalleAbierto {
   rechazosDeTienda: CierreRechazoDeTienda[];
   /** SLT-100 (R80): quién lo resolvió, para la cabecera del detalle. Solo aprobado/rechazado. */
   resueltoPorNombre?: string | null;
+  /** SLT-111 (R267): el reparto en % ya derivado en el servidor; `null` o ausente = sin barra. */
+  porcentajesReparto?: number[] | null;
 }
 
 /**
@@ -503,7 +509,7 @@ export function CierresAdminModule({
   // Detalle del cierre abierto (null = modal cerrado).
   const [detalle, setDetalle] = useState<DetalleAbierto | null>(null);
   // Evidencia (URL firmada, R7) en el visor; null = cerrado.
-  const [evidencia, setEvidencia] = useState<string | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenciaAbierta | null>(null);
   // Pedido humano (2026-08-19): la gestión cuyo desglose se está corrigiendo; `null` = diálogo
   // cerrado. Va aquí, con el resto de los hooks, y no junto al bloque que lo usa: los hooks se
   // llaman todos, siempre y en el mismo orden.
@@ -741,6 +747,8 @@ export function CierresAdminModule({
         // el mensajero en su comprobante: las dos pantallas pintan lo mismo para el mismo cierre.
         rechazosDeTienda: result.rechazosDeTienda,
         resueltoPorNombre: result.resueltoPorNombre ?? null,
+        // SLT-111 (R267): tal cual llega; aquí no se redondea ni se reordena.
+        porcentajesReparto: result.porcentajesReparto ?? null,
       });
       return;
     }
@@ -1688,26 +1696,8 @@ export function CierresAdminModule({
         />
       ) : null}
 
-      {/* ---------- Visor de evidencia (URL firmada, R7) ---------- */}
-      <Modal
-        open={evidencia !== null}
-        onOpenChange={(next) => {
-          if (!next) setEvidencia(null);
-        }}
-        title="Evidencia de la gestión"
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={() => setEvidencia(null)}
-      >
-        {evidencia ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={evidencia}
-            alt="Evidencia fotográfica de la gestión"
-            className="max-h-[60vh] w-full rounded-md object-contain"
-          />
-        ) : null}
-      </Modal>
+      {/* ---------- Visor de evidencia (URL firmada, R7; visor único SLT-103 R137) ---------- */}
+      <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
     </div>
   );
 }

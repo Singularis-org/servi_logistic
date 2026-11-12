@@ -204,14 +204,16 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
      ligera), marcando `[x]`, y escribe `progress/impl_<key>.md` (archivos tocados, mapa
      `R<n> -> test`, salida de los tests que corrió). **Ruta directa:** primero el test que
      reproduce el fallo (rojo), después el arreglo (verde).
-   - **Tras el primer push, abre el PR en borrador:**
-     `gh pr create --draft --base <integracion> --title "<key> «<title>»"`. El equipo ve qué tocas
-     y, si el repo tiene `GATE_EN_BORRADOR=true`, el CI completo corre en cada push
-     (`docs/gate.md > CI en cada tanda`).
+   - **Tras el primer push, abre el PR listo (no en borrador):**
+     `gh pr create --base <integracion> --title "<key> «<title>»"`, con esta línea en el cuerpo:
+     «No mergear hasta el aviso "listo para mergear" (review OK + `gate-completo` verde)». El
+     equipo ve qué tocas y el CI completo corre en cada push: un rojo llega en la tanda que lo
+     causó (`docs/gate.md > CI en cada tanda`). El borrador (`--draft`) queda solo para un PR
+     exploratorio que no se va a mergear.
    - **Al cerrar cada tanda:**
      - el leader corre `./init.sh` (rápido) en el worktree y reindexa el grafo;
      - `git push`, sin excepción: así tus archivos son visibles para el resto del equipo;
-     - con CI en borrador, al empezar la tanda siguiente mira el resultado de la anterior
+     - al empezar la tanda siguiente mira el resultado de la anterior
        (`gh pr checks <n>`): un rojo ahí se arregla antes de seguir, no al final. Si el rojo no
        salió en el `./init.sh` local, aplica `docs/gate.md > Cuando el CI sale rojo y el local
        salió verde`;
@@ -240,16 +242,16 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
    - Si la feature toca un flujo crítico (`CHECKPOINTS.md`), confirma que el implementer corrió
      en local los E2E que escribió o tocó (`pnpm exec playwright test <spec>`), con la salida en
      `impl_<key>.md`.
-   - Saca el PR de borrador: `gh pr ready <n>` (si no lo abriste en F2.1,
-     `gh pr create --base <integracion> --title "<key> «<title>»"`). En la ruta directa, el cuerpo
-     del PR dice qué cambió y con qué test se prueba.
+   - Si el PR aún no existe, ábrelo como en F2.1. En la ruta directa, el cuerpo del PR dice qué
+     cambió y con qué test se prueba.
    - `gh pr checks <n> --watch`: espera a `gate-completo` en CI.
      - Si sale **rojo**, primero mira si el rápido lo habría visto:
        `node scripts/test-rapido.mjs --comprobar <tests en rojo>`. Si dice «NO entra», escribe el
        disparador que falta (`docs/gate.md > Cuando el CI sale rojo y el local salió verde`).
        Después vuelve al implementer con el detalle; `./init.sh` ya lo reproduce en local (o
        `./init.sh --completo`, si no es cosa de disparadores).
-     - Solo con verde reporta la URL del PR al humano para el merge.
+     - Solo con review OK y `gate-completo` verde avisa al humano: «#n listo para mergear», con la
+       URL. Antes de ese aviso el PR no se mergea.
 10. **(F2.5) Cerrar.** Cuando el humano mergea:
     - cambia a `done`, mueve la tarjeta al estado de `done` y comenta la URL del PR en el issue;
     - `./scripts/wt.sh done <key>-<slug>` (con `--assume-merged` si el merge fue squash);

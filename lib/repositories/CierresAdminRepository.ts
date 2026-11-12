@@ -676,13 +676,34 @@ function tarifaFaltanteDe(g: GestionAdminRow, d: DetalleAdminRow): boolean {
 }
 
 /**
- * SLT-101 — lo que solo el detalle de mensajero de `/cierres-admin` le pasa al mapper. Sin esto (el
- * detalle de bodega y la descarga), `fulfillmentCargadoAt` sale `null` y `tarifaFaltante` no se
- * emite (la fila de bodega sigue con el `false` de siempre: esa pantalla no cambia, R90).
+ * SLT-101 / SLT-110 (R210, R211) — lo que los dos detalles de admin (el del cierre del dia en
+ * `/cierres-admin` y el del cierre de bodega) le pasan al mapper. La descarga no lo pasa: sin esto,
+ * `fulfillmentCargadoAt` sale `null` y `tarifaFaltante` no se emite.
  */
-export interface LecturaDetalleMensajero {
+export interface LecturaDetalleFila {
   /** `ocurrido_at` del cargo vigente de fulfillment de la orden; `null` si no hay o se revirtio. */
   cargoFulfillmentAt: Date | null;
+}
+
+/**
+ * SLT-101 (R94) / SLT-110 (R210, R216) — instante del cargo vigente de fulfillment por orden, para
+ * las ordenes de los cierres del dia dados. UNA consulta sea cual sea el numero de cierres: el
+ * conjunto va en el `where` (`in`), asi que un cargo de una orden ajena no puede entrar.
+ * `distinct` + `secuencia desc` = el ultimo evento por orden; si es un reverso, no hay cargo vigente
+ * (`null`). Lo miden los dos tests de integracion `cierre-*-cifras-fila-sql-real`.
+ */
+export async function cargosFulfillmentVigentes(
+  prisma: Pick<PrismaClient, "ordenFulfillmentMovimiento">,
+  cierreIds: readonly string[],
+): Promise<Map<string, Date | null>> {
+  if (cierreIds.length === 0) return new Map();
+  const ultimos = await prisma.ordenFulfillmentMovimiento.findMany({
+    where: { orden: { cierreDetalles: { some: { cierreId: { in: [...cierreIds] } } } } },
+    orderBy: [{ ordenId: "asc" }, { secuencia: "desc" }],
+    distinct: ["ordenId"],
+    select: { ordenId: true, tipo: true, ocurridoAt: true },
+  });
+  return new Map(ultimos.map((m) => [m.ordenId, m.tipo === "cargo" ? m.ocurridoAt : null]));
 }
 
 /**
@@ -695,8 +716,8 @@ export function toPendienteRowDesdeSnapshot(
   d: DetalleAdminRow,
   /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `created_at`. */
   zona: string,
-  /** SLT-101: solo el detalle de mensajero de `/cierres-admin` (ver `LecturaDetalleMensajero`). */
-  detalleMensajero?: LecturaDetalleMensajero,
+  /** SLT-101 / SLT-110: los dos detalles de admin, no la descarga (ver `LecturaDetalleFila`). */
+  detalleFila?: LecturaDetalleFila,
 ): CierreGestionPendienteRow {
   return {
     gestionId: g.id,
@@ -751,12 +772,11 @@ export function toPendienteRowDesdeSnapshot(
     // «monto cero». A diferencia de la vista del mensajero, el detalle de ADMIN SI lo lleva —
     // es quien lo captura y quien tiene que poder auditarlo despues.
     indemnizacion: decimalToString(g.indemnizacion),
-    ingresoEmpresa: toIngresoEmpresa(g, d, detalleMensajero?.cargoFulfillmentAt ?? null),
+    ingresoEmpresa: toIngresoEmpresa(g, d, detalleFila?.cargoFulfillmentAt ?? null),
     ajustesPago: toAjustesPago(g.ajustesPagoMensajero), // SLT-56 (R19/R20)
     pagoPorTarifa: toPagoPorTarifa(g), // SLT-101 (R66, R95)
-    // SLT-101 (R96): solo con el detalle de mensajero; en bodega la clave no existe y `toDetalleDTO`
-    // sigue dando `false`.
-    ...(detalleMensajero !== undefined ? { tarifaFaltante: tarifaFaltanteDe(g, d) } : {}),
+    // SLT-101 (R96) / SLT-110 (R211): solo con un detalle de admin; en la descarga la clave no existe.
+    ...(detalleFila !== undefined ? { tarifaFaltante: tarifaFaltanteDe(g, d) } : {}),
   };
 }
 
@@ -773,6 +793,9 @@ const CIERRE_RESUMEN_SELECT = {
   totalGeneral: true,
   totalPagoMensajero: true, // feature 39/R17: snapshot total del pago al mensajero
   totalIngresoBodegaRechazos: true, // feature 56/R16: snapshot total del ingreso de bodega por rechazos
+  // SLT-123 (R320): la regla de pago del cierre. Va en TODOS los listados: el servicio deriva lo
+  // pendiente de cada fila aprobada con ella (`conPendiente`).
+  pagoIndependienteEfectivo: true,
   solicitadoAt: true,
   resueltoAt: true,
   motivoRechazo: true,
@@ -801,6 +824,7 @@ function toResumenRow(r: CierreResumenRow): CierreAdminResumenRow {
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R17: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R16: snapshot money-safe STRING
     incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-123 (R320)
     solicitadoAt: r.solicitadoAt.toISOString(),
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,
@@ -1636,7 +1660,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     // admin veia los valores de HOY, no los del cierre que esta revisando.
     // R19 sale de aqui gratis: una orden con `deleted_at` sigue mostrandose, y ahora por
     // diseño y no por el accidente de que `WITH_DETALLE` no filtraba `deletedAt`.
-    const [gestiones, detalle, sinGestion, rechazosDeTienda, ultimosMovimientos] = await Promise.all([
+    const [gestiones, detalle, sinGestion, rechazosDeTienda, cargoPorOrden] = await Promise.all([
       this.prisma.gestionOrden.findMany({
         where: { cierreId }, // R6: gestiones vinculadas a ESTE cierre
         orderBy: { createdAt: "desc" },
@@ -1678,19 +1702,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // consulta del mismo `Promise.all` (una por detalle, no una por gestion). Las ordenes salen de
       // `cierre_detail` de ESTE cierre, en el `where`: un cargo de una orden ajena no puede entrar.
       // `distinct` + `secuencia desc` = el ultimo evento por orden; si es un reverso, no hay cargo
-      // vigente. El alcance no se repite, por la misma razon que en las de arriba.
-      this.prisma.ordenFulfillmentMovimiento.findMany({
-        where: { orden: { cierreDetalles: { some: { cierreId } } } },
-        orderBy: [{ ordenId: "asc" }, { secuencia: "desc" }],
-        distinct: ["ordenId"],
-        select: { ordenId: true, tipo: true, ocurridoAt: true },
-      }),
+      // vigente. El alcance no se repite, por la misma razon que en las de arriba. SLT-110: la consulta
+      // vive en `cargosFulfillmentVigentes`, que comparte con el detalle de bodega.
+      cargosFulfillmentVigentes(this.prisma, [cierreId]),
     ]);
     const byOrden = new Map(detalle.map((d) => [d.ordenId, d]));
-    // Un valor por orden: el ultimo movimiento, si es un cargo; `null` si es un reverso.
-    const cargoPorOrden = new Map(
-      ultimosMovimientos.map((m) => [m.ordenId, m.tipo === "cargo" ? m.ocurridoAt : null]),
-    );
     return {
       cierre: toResumenRow(cierre),
       // R11: lo congelado, tal cual. Ni un `JOIN` con la orden VIVA, que es el error que la
@@ -2434,6 +2450,15 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           select: { destinoTipo: true },
         });
         if (destino?.destinoTipo === "bodega_central") {
+          // SLT-123 (R310, design §2): un cierre de la CENTRAL aprobado desde este codigo lleva la
+          // regla nueva (su pago es independiente del efectivo). Va con `tx`, sobre la fila que el
+          // `updateMany` de arriba acaba de bloquear, y ANTES de los asientos: el feed lee la marca
+          // para decidir que escribe en el libro. Si algo lanza despues, revierte con la aprobacion.
+          // La satelite no entra aqui y se queda en `false` hasta SLT-139 (design §13).
+          await tx.cierreDia.updateMany({
+            where: { id: cierreId, estado: "aprobado" },
+            data: { pagoIndependienteEfectivo: true },
+          });
           await asentarCierreDia(tx, cierreId, this.asientos());
         }
 

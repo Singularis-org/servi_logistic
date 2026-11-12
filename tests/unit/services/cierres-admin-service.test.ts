@@ -37,6 +37,7 @@ const ZONA_SAT = "z-cartago";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: "c1",
     mensajeroId: "m1",
     mensajeroNombre: "Ana Mensajera",

@@ -51,6 +51,7 @@ const CIERRE_ID = "c-315-aprobado";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: CIERRE_ID,
     mensajeroId: "men-1",
     mensajeroNombre: "Ana Mensajera",

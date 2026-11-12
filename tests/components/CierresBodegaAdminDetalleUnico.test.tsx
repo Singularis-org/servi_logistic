@@ -190,14 +190,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function montar(puedeConciliar = true) {
+function montar(puedeConciliar = true, audiencia: "admin" | "satelite" | "sin prop" = "admin") {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <CierresBodegaAdminModule
         pendientes={paginaInicial([PENDIENTE])}
         historico={paginaInicial([RECIBIDO])}
         puedeConciliar={puedeConciliar}
-        audiencia="admin"
+        {...(audiencia === "sin prop" ? {} : { audiencia })}
       />
     </SWRConfig>,
   );
@@ -369,5 +369,55 @@ describe("R115 — «Ver su cierre» cierra el detalle de bodega y abre el del c
     await user.click(within(dialogo).getByRole("link", { name: "Ver el cierre de Ana Mensajera" }));
     expect(nav.push).toHaveBeenCalledWith("/cierres-admin?cierre=cd-ana");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: NOMBRE_DIALOGO })).toBeNull());
+  });
+});
+
+// SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.4, R267) — el reparto que
+// emite `verCierreBodegaDetalle` llega a «Dinero» del detalle montado por el módulo. Con el doble de
+// Limón (₡34.000 = ₡30.700 + ₡3.300 + ₡0), a mano: 90,29 / 9,70 / 0 → enteros 90 / 9 / 0 (suman 99);
+// el punto que falta va al mayor resto (9,70) → [90, 10, 0].
+describe("SLT-111 R267 — el reparto del servidor llega a «Dinero» del cierre de bodega", () => {
+  it("la leyenda lleva «(90 %)», «(10 %)» y «(0 %)» en el orden del servidor", async () => {
+    const user = montar();
+    vi.mocked(verCierreBodegaDetalle).mockResolvedValue({ ...detalle(PENDIENTE), porcentajesReparto: [90, 10, 0] });
+    await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
+    const dialogo = await screen.findByRole("dialog", { name: NOMBRE_DIALOGO });
+    const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
+    expect([...reparto.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "Debe llegar a la central ₡30.700 (90 %)",
+      "Pago a mensajeros ₡3.300 (10 %)",
+      "Gana la bodega satélite ₡0 (0 %)",
+    ]);
+  });
+
+  it("sin el campo (doble de siempre): solo la leyenda, sin «%»", async () => {
+    const dialogo = await abrirPendiente(montar());
+    const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
+    expect(reparto.textContent).toContain("Debe llegar a la central ₡30.700");
+    expect(reparto.textContent).not.toContain("%");
+  });
+});
+
+// SLT-107 M1 (review vuelta 1, fichas 431/481): la audiencia del detalle de bodega sale de la prop
+// `audiencia` que decide el servidor, no de un literal. Un `audiencia="central"` escrito a mano le
+// enseñaría a un no-admin el fulfillment (R51) y la franja de la central: estos casos caen.
+describe("SLT-107 M1 — la audiencia del detalle de bodega sigue a la prop, no a un literal", () => {
+  async function gestionesDeAna(audiencia: "admin" | "satelite" | "sin prop") {
+    const user = montar(false, audiencia);
+    const dialogo = await abrirPendiente(user);
+    await user.click(within(dialogo).getByRole("tab", { name: "Gestiones (2)" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Desglose de ingreso de la orden REM-ANA · Laura Vega" }));
+    return dialogo;
+  }
+
+  it("admin: ve el fulfillment de la fila", async () => {
+    const dialogo = await gestionesDeAna("admin");
+    expect(within(dialogo).getByRole("region", { name: /^Fulfillment · se cobró al crear la orden/ })).toBeTruthy();
+  });
+
+  it.each([["satelite"], ["sin prop"]] as const)("no-admin (%s): sin fulfillment y con la franja de la satélite", async (aud) => {
+    const dialogo = await gestionesDeAna(aud);
+    expect(within(dialogo).queryByRole("region", { name: /^Fulfillment/ })).toBeNull();
+    expect(within(dialogo).getByRole("status").textContent).toContain("la central aún no marca el dinero recibido");
   });
 });

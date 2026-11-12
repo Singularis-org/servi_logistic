@@ -29,12 +29,12 @@ import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
  */
 
 const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
-const MSG_YA_EN_CIERRE = "Esta gestion ya esta incluida en un cierre solicitado; no se puede deshacer.";
+const MSG_YA_EN_CIERRE = "Esta gestión ya está incluida en un cierre solicitado; no se puede deshacer.";
 const MSG_TIENDA =
-  "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.";
-const MSG_NO_ES_LA_ULTIMA = "Esta orden tiene una gestion mas reciente; hay que deshacer esa primero.";
+  "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
+const MSG_NO_ES_LA_ULTIMA = "Esta orden tiene una gestión más reciente; hay que deshacer esa primero.";
 const MSG_ORDEN_MOVIDA = "Esta orden ya fue procesada por la bodega; ya no se puede deshacer.";
-const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su gestion.";
+const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su gestión.";
 
 /** Caso (a) por defecto: gestion 454 del actor, vinculada a SU cierre `rechazado`, orden en reparto. */
 function gestion(over: Partial<GestionDeshacerRow> = {}): GestionDeshacerRow {

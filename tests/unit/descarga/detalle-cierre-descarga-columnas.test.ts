@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   COLUMNAS_DESCARGA_DETALLE_BODEGA,
   COLUMNAS_DESCARGA_DETALLE_CIERRE,
+  COLUMNAS_DESCARGA_DETALLE_MENSAJERO,
   filaDescargaDetalleBodega,
   filaDescargaDetalleCierre,
+  filaDescargaDetalleMensajero,
 } from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
 
@@ -168,5 +170,54 @@ describe("SLT-104 — columnas de «Descargar» del detalle de bodega (R113)", (
       pagoMensajero: "1500.00",
       senales: null,
     });
+  });
+});
+
+// SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R152) — el archivo que descarga el
+// propio mensajero desde el detalle de su cierre pasado: «Ganancia» y ni una cifra de la empresa.
+describe("SLT-108 — columnas de «Descargar» del detalle visto por el mensajero (R152)", () => {
+  it("son siete, en este orden, con «Ganancia» y sin «Cobro a la tienda»", () => {
+    expect(COLUMNAS_DESCARGA_DETALLE_MENSAJERO.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "destinatario",
+      "tienda",
+      "resultado",
+      "recibido",
+      "ganancia",
+      "senales",
+    ]);
+    expect(COLUMNAS_DESCARGA_DETALLE_MENSAJERO.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Destinatario",
+      "Tienda",
+      "Resultado",
+      "Recibido",
+      "Ganancia",
+      "Señales",
+    ]);
+  });
+
+  it("una fila lleva su pago como «ganancia» y no lleva el cobro a la tienda", () => {
+    const fila = filaDescargaDetalleMensajero(gestion());
+    expect(fila).toEqual({
+      numGuia: 1044,
+      destinatario: "Laura Vega",
+      tienda: "Tienda Norte",
+      resultado: "Entregado",
+      recibido: "70000.00",
+      ganancia: "1500.00",
+      senales: null,
+    });
+    expect(Object.values(fila)).not.toContain("3165.00");
+  });
+
+  it("las señales son las que ve el mensajero en su fila", () => {
+    expect(filaDescargaDetalleMensajero(gestion({ resultado: "devolucion_a_origen_por_rechazo" })).senales).toBe(
+      "Vuelve a bodega",
+    );
+  });
+
+  it("un pago ausente sale como celda vacía (null), nunca «0»", () => {
+    expect(filaDescargaDetalleMensajero(gestion({ pagoMensajero: null })).ganancia).toBeNull();
   });
 });

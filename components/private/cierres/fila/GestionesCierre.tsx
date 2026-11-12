@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import { FilterComponent } from "@/components/shared/FilterComponent";
 import { cn } from "@/lib/utils";
+import type { EvidenciaAbierta } from "../dialogos/VisorEvidencia";
 
 import { FilaGestion, GUIA_CELDA, plantillaFila } from "./FilaGestion";
 import {
@@ -39,11 +40,13 @@ export interface GestionesCierreProps {
    */
   congeladoAt: string | null;
   acciones: AccionesFila;
-  onVerEvidencia?: (url: string) => void;
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /** El `DescargarDatasetButton`, a la derecha de los filtros (R90). */
   descargar?: ReactNode;
   /** R23 bodega: la columna «Mensajero» (la monta SLT-104). */
   columnaMensajero?: boolean;
+  /** SLT-109 (R244): el `gestionId` cuyo «Devolver a gestión» está en vuelo. */
+  enVuelo?: string | null;
 }
 
 /** La barra no tiene buscador: su `onChange` de término no se emite nunca. */
@@ -58,6 +61,7 @@ export function GestionesCierre({
   onVerEvidencia,
   descargar,
   columnaMensajero = false,
+  enVuelo = null,
 }: Readonly<GestionesCierreProps>) {
   const [filtro, setFiltro] = useState<FiltroGestiones>(FILTRO_TODAS);
   const opciones = filtrosDe(
@@ -117,6 +121,7 @@ export function GestionesCierre({
               acciones={acciones}
               onVerEvidencia={onVerEvidencia}
               columnaMensajero={columnaMensajero}
+              enVuelo={enVuelo}
             />
           ))
         )}
