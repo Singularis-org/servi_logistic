@@ -371,3 +371,29 @@ describe("R115 — «Ver su cierre» cierra el detalle de bodega y abre el del c
     await waitFor(() => expect(screen.queryByRole("dialog", { name: NOMBRE_DIALOGO })).toBeNull());
   });
 });
+
+// SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.4, R267) — el reparto que
+// emite `verCierreBodegaDetalle` llega a «Dinero» del detalle montado por el módulo. Con el doble de
+// Limón (₡34.000 = ₡30.700 + ₡3.300 + ₡0), a mano: 90,29 / 9,70 / 0 → enteros 90 / 9 / 0 (suman 99);
+// el punto que falta va al mayor resto (9,70) → [90, 10, 0].
+describe("SLT-111 R267 — el reparto del servidor llega a «Dinero» del cierre de bodega", () => {
+  it("la leyenda lleva «(90 %)», «(10 %)» y «(0 %)» en el orden del servidor", async () => {
+    const user = montar();
+    vi.mocked(verCierreBodegaDetalle).mockResolvedValue({ ...detalle(PENDIENTE), porcentajesReparto: [90, 10, 0] });
+    await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
+    const dialogo = await screen.findByRole("dialog", { name: NOMBRE_DIALOGO });
+    const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
+    expect([...reparto.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "Debe llegar a la central ₡30.700 (90 %)",
+      "Pago a mensajeros ₡3.300 (10 %)",
+      "Gana la bodega satélite ₡0 (0 %)",
+    ]);
+  });
+
+  it("sin el campo (doble de siempre): solo la leyenda, sin «%»", async () => {
+    const dialogo = await abrirPendiente(montar());
+    const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
+    expect(reparto.textContent).toContain("Debe llegar a la central ₡30.700");
+    expect(reparto.textContent).not.toContain("%");
+  });
+});

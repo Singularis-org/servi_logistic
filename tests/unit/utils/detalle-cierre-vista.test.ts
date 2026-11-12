@@ -837,3 +837,79 @@ describe("SLT-108 — vistaMensajeroDesdeCierreDia (R150)", () => {
     expect(v.motivoRechazo).toBeNull();
   });
 });
+
+// SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.2, R267) — los dos mapeadores
+// de /cierres-admin copian el reparto del servidor tal cual (mismo orden, sin redondear); /cierre-dia no
+// lo recibe. Literales escritos a mano: MA [94, 6] y BX [97, 3, 0] de `design.md`.
+describe("SLT-111 — el reparto en % llega tal cual a la vista (R267)", () => {
+  const VACIOS_M = { entregado: [], reprogramado: [], novedad: [], devolucion_a_origen_por_rechazo: [], incidente: [] };
+  const mensajero = (extra: object) =>
+    vistaMensajeroDesdeAdmin({
+      cierre: {
+        cierreId: "aaaaaaaa-bbbb-4ccc-8ddd-0000c0ffee99",
+        mensajeroNombre: "Ana Mensajera",
+        destinoTipo: "bodega_central",
+        destinoZonaNombre: "GAM",
+        estado: "solicitado",
+        totales: MENSAJERO.totales,
+        totalPagoMensajero: "3000.00",
+        totalIngresoBodegaRechazos: "0.00",
+        solicitadoAt: "2026-11-08T00:42:00.000Z",
+        resueltoAt: null,
+        motivoRechazo: null,
+      },
+      grupos: VACIOS_M,
+      totalesIngreso: { ...MENSAJERO.empresa!.totalesIngreso },
+      ivaFacturado: "650.00",
+      pagoTienda: "94350.00",
+      cobradoSobreRecaudado: "5650.00",
+      netoEmpresa: "5000.00",
+      ganaLaTienda: "94350.00",
+      partesPorTienda: [],
+      ordenesSinGestion: [],
+      rechazosDeTienda: [],
+      ...extra,
+    } as unknown as Extract<CierreDetalleAdminServiceResult, { status: "ok" }>);
+  const bodega = (extra: object) =>
+    vistaBodegaDesdeAdmin({
+      status: "ok",
+      cierre: { ...BODEGA, cierreBodegaId: "11111111-2222-4333-8444-0000abcdef12", conciliado: false },
+      cierres: [ANA],
+      partesPorTienda: [],
+      ...extra,
+    } as unknown as Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>);
+
+  it("mensajero: [94, 6] llega a `empresa.porcentajesReparto` en el mismo orden", () => {
+    expect(mensajero({ porcentajesReparto: [94, 6] }).empresa?.porcentajesReparto).toEqual([94, 6]);
+  });
+
+  it("mensajero: `null` del servidor sigue siendo `null`; sin el campo, también `null`", () => {
+    expect(mensajero({ porcentajesReparto: null }).empresa?.porcentajesReparto).toBeNull();
+    expect(mensajero({}).empresa?.porcentajesReparto).toBeNull();
+  });
+
+  it("bodega: [97, 3, 0] llega a `porcentajesReparto` en el mismo orden, con el 0 incluido", () => {
+    expect(bodega({ porcentajesReparto: [97, 3, 0] }).porcentajesReparto).toEqual([97, 3, 0]);
+  });
+
+  it("bodega: `null` del servidor sigue siendo `null`; sin el campo, también `null`", () => {
+    expect(bodega({ porcentajesReparto: null }).porcentajesReparto).toBeNull();
+    expect(bodega({}).porcentajesReparto).toBeNull();
+  });
+
+  it("/cierre-dia no lo recibe: `empresa` sigue en `null`", () => {
+    const cierre: CierrePasadoDTO = {
+      cierreId: "c0ffee00-0000-4000-8000-00abcdef1234",
+      estado: "aprobado",
+      destinoTipo: "bodega_central",
+      destinoZonaId: "z-1",
+      totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
+      totalPagoMensajero: "3000.00",
+      totalIngresoBodegaRechazos: "0.00",
+      solicitadoAt: "2026-11-07T23:10:00.000Z",
+    };
+    const v = vistaMensajeroDesdeCierreDia(cierre, { grupos: VACIOS_M, ordenesSinGestion: [], rechazosDeTienda: [] });
+    expect(v.empresa).toBeNull();
+    expect(Object.keys(v)).not.toContain("porcentajesReparto");
+  });
+});

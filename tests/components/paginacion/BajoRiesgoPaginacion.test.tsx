@@ -579,7 +579,9 @@ const LISTADOS: Listado[] = [
     nombre: "Cierres solicitados del mensajero",
     paginacion: "Paginación de los cierres solicitados",
     tabla: "Cierres solicitados",
-    rol: "list",
+    // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros»: vuelve a ser una tabla, la
+    // de la cola única (una fila por cierre, con cabecera).
+    rol: "table",
     descarga: "Cierres solicitados",
     textoFila: (i) => money(`${1000 + i}.00`),
     montar: () => {

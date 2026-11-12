@@ -735,6 +735,8 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
       totalesIngreso: r.totalesIngreso,
       partesPorTienda: r.partesPorTienda,
       modeloNuevo,
+      // SLT-111 (R267): el reparto del servidor, tal cual; sin él no hay barra.
+      porcentajesReparto: r.porcentajesReparto ?? null,
     },
     // R81: oculto en el modelo nuevo (el origen solo existe para un rechazo) o sin desglose.
     desgloseIngresoBodega:
@@ -830,6 +832,8 @@ export function vistaBodegaDesdeAdmin(r: DetalleBodegaOk): DetalleBodegaVista {
     totalesIngreso: r.totalesIngreso,
     partesPorTienda: r.partesPorTienda,
     modeloNuevo: r.cierres.some((cd) => hayGestionEnModeloNuevo(cd.grupos)),
+    // SLT-111 (R267): el reparto del servidor, tal cual; sin él no hay barra.
+    porcentajesReparto: r.porcentajesReparto ?? null,
     conteos: {
       gestiones: r.cierres.reduce((n, cd) => n + Object.values(cd.grupos).flat().length, 0),
       mensajeros: new Set(r.cierres.map((cd) => cd.mensajeroId)).size,

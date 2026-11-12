@@ -400,6 +400,42 @@ describe("CierreDiaModule", () => {
     await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
+  it("SLT-137 R160: tras solicitar, la cola relee sus páginas y enseña el cierre nuevo sin recargar", async () => {
+    const user = userEvent.setup();
+    const grupos = emptyGrupos();
+    grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado" })];
+    renderModule({ grupos, puedesSolicitar: true, cierresPasados: [CIERRE_PASADO] });
+    const region = screen.getByRole("region", { name: "Cierres solicitados" });
+    expect(screen.getByRole("tab", { name: "Cierres solicitados 1" })).toBeInTheDocument();
+    // La revalidación del montaje termina ANTES de cambiar la respuesta: si no, ella sola traería
+    // el cierre nuevo y el caso pasaría sin que solicitar releyera nada.
+    await vi.waitFor(() => expect(vi.mocked(listarCierresPasadosPaginado)).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Lo que el servidor devuelve DESPUÉS de solicitar: el cierre nuevo encabeza la página.
+    const nuevo: CierrePasadoDTO = {
+      ...CIERRE_PASADO,
+      cierreId: "c-nuevo",
+      estado: "solicitado",
+      solicitadoAt: "2026-07-19T15:00:00.000Z",
+      resueltoAt: null,
+    };
+    vi.mocked(listarCierresPasadosPaginado).mockResolvedValue({
+      status: "ok",
+      page: 1,
+      ...paginaInicial([nuevo, CIERRE_PASADO]),
+    });
+
+    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
+    await user.click(within(dialog).getByRole("button", { name: "Solicitar cierre" }));
+
+    expect(
+      await within(region).findByRole("button", { name: "Ver del cierre del 2026-07-19" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados 2" })).toBeInTheDocument();
+  });
+
   it("solicitar cierre conflict: muestra toast de error con el motivo del dominio", async () => {
     const user = userEvent.setup();
     solicitarMock.mockResolvedValue({
@@ -473,25 +509,21 @@ describe("CierreDiaModule", () => {
     renderModule({ cierresPasados });
 
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
-    // Pedido humano del 2026-08-16: el histórico es una tira de COMPROBANTES. Lo que la fila
-    // decía en ocho columnas lo dice ahora la cabecera de la hoja —estado, destino, fecha y el
-    // total— y su desglose, que llega detrás del desplegable.
-    expect(within(region).getByText("Solicitado")).toBeInTheDocument();
-    expect(within(region).getByText("Bodega central")).toBeInTheDocument();
-    // Un solo ₡300 a la vista: el de la cabecera. El desglose por método está plegado.
-    // El importe va sin céntimos desde la feature 230 de `dev`.
+    // SLT-137 (R156): el histórico vuelve a ser la cola, una fila por cierre. La fila dice estado,
+    // destino, la fecha con su hora de Costa Rica (10:00 UTC = 04:00 CR) y el total recaudado.
+    const fila = within(region).getAllByRole("row")[1];
+    expect(within(fila).getByText("Solicitado")).toBeInTheDocument();
+    expect(within(fila).getByText("Bodega central")).toBeInTheDocument();
+    // Un solo ₡300 a la vista: el «Recaudado». El importe va sin céntimos desde la feature 230.
     expect(within(region).getAllByText("₡300")).toHaveLength(1);
-    // El histórico del mensajero nunca enseñó el ingreso de bodega por devoluciones a origen: es plata de
-    // la empresa (design §7.2), y no la ve NI plegada ni desplegada — lo comprueba el caso de
-    // abajo, que es la mitad que la tabla no podía tener.
+    // El histórico del mensajero nunca enseñó el ingreso de bodega por devoluciones a origen: es
+    // plata de la empresa (design §7.2).
     expect(within(region).queryByText("₡2.100")).not.toBeInTheDocument();
-    expect(within(region).getByText("2026-07-11")).toBeInTheDocument();
+    expect(within(fila).getByText("2026-07-11 04:00")).toBeInTheDocument();
   });
 
-  it("R18 + design §7.2: al desplegar su comprobante, el mensajero ve SU ganancia y no el ingreso de la empresa", async () => {
-    // La tarjeta esconde el desglose tras un botón, así que un dato que no le toca no se vería
-    // al primer vistazo: se vería al segundo. Esto abre el desplegable y mira.
-    const user = userEvent.setup();
+  it("R18 + design §7.2: en su cola, el mensajero ve SU ganancia y no el ingreso de la empresa", () => {
+    // SLT-137 (R156): la cola no tiene desplegable; la fila lo dice todo al primer vistazo.
     const cierresPasados: CierrePasadoDTO[] = [
       {
         cierreId: "c1",
@@ -512,12 +544,9 @@ describe("CierreDiaModule", () => {
     renderModule({ cierresPasados });
 
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
-    await user.click(
-      within(region).getByRole("button", { name: /^Ver detalles de tu cierre del/ }),
-    );
 
     // Su pago está, y con SU rótulo: en su pantalla ese monto se llama «Ganancia».
-    expect(within(region).getByText("Ganancia")).toBeInTheDocument();
+    expect(within(region).getByRole("columnheader", { name: "Ganancia" })).toBeInTheDocument();
     expect(within(region).getByText("₡45")).toBeInTheDocument();
     // Y el ingreso de bodega por devoluciones a origen sigue sin aparecer, ni el rótulo ni el monto.
     expect(

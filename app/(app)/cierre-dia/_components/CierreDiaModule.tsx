@@ -50,18 +50,12 @@ import type {
 // «Cierre del día» y remitirlo a la pantalla en la que está sería ruido (R52).
 import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
-// SLT-76 (R1/R2): el día del cierre se lee en el calendario de Costa Rica, no recortando el ISO.
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 // Feature 158 (T2.3): la columna de la causa es la MISMA que la del detalle del admin — se
 // reusa en vez de reescribirla, para que las dos pantallas no puedan divergir en la etiqueta.
 import { COLUMNA_CAUSA_INCIDENTE } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
-// La tira «Cierres solicitados» sigue leyendo cada cierre como su tarjeta-comprobante (la cola única
-// llega con SLT-137). SLT-108 (R59, R161): el detalle de un cierre pasado ya no es el comprobante
-// sino el detalle único del módulo, con audiencia mensajero.
-import {
-  CierreFacturaResumenPropio,
-  SeccionSinGestion,
-} from "@/app/(app)/cierres-admin/_components/cierre-factura";
+// SLT-108 (R59, R161): el detalle de un cierre pasado es el detalle único del módulo, con audiencia
+// mensajero. SLT-137 (R166): «Cierres solicitados» ya no lee cada cierre como su comprobante.
+import { SeccionSinGestion } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
 import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
 import {
@@ -75,10 +69,15 @@ import {
 import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
 import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
 import { gestionesEnOrden } from "@/components/private/cierres/fila/fila-gestion-vista";
-// Pedido humano del 2026-08-16: el histórico del mensajero deja de ser una tabla y pasa a ser
-// la tira de comprobantes que usan las demás pantallas de cierres. Mismo envoltorio, mismos
-// cuatro estados de listado.
-import { ListaComprobantes } from "@/app/(app)/cierres-admin/_components/ListaComprobantes";
+// SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R60): «Cierres solicitados» es
+// la cola única de cierres con rol mensajero, en vez de la tira de comprobantes de 2026-08-16.
+import { ColaCierres } from "@/components/private/cierres/cola/ColaCierres";
+import {
+  DESCRIPCION_PROPIA,
+  PESTANA_PROPIA,
+  REGION_PROPIA,
+  VACIO_PROPIA,
+} from "@/components/private/cierres/cola/cola-propia-vista";
 import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 // Feature 170 (T E.4): las etiquetas compartidas salen del módulo PURO (sin React) para que
@@ -311,8 +310,8 @@ function correccionRegion(i: number, total: number): string {
 // responde `resolicitado` en vez de `creado` (el botón genérico no sabe qué acaba de mover, R18).
 const REENVIAR_OK = "Cierre enviado a aprobación.";
 
-// Pedido humano: "ver" el detalle de un cierre YA solicitado (textos separados, i18n-ready).
-const VER_DETALLE_LABEL = "Ver";
+// Pedido humano: "ver" el detalle de un cierre YA solicitado (textos separados, i18n-ready). El
+// texto del botón «Ver» vive con la cola (`VER_PROPIA`, SLT-137).
 const DETALLE_ERROR = "No se pudo cargar el detalle de este cierre.";
 const DETALLE_NO_ENCONTRADA = "Este cierre ya no está disponible.";
 
@@ -926,66 +925,47 @@ export function CierreDiaModule({
         ) : null}
       </section>
 
-      {/* ---------- Cierres solicitados (histórico, solo lectura, R18) ---------- */}
-      <section aria-label="Cierres solicitados" className="flex flex-col gap-3">
+      {/* ---------- Cierres solicitados (histórico, solo lectura, R18) ----------
+          SLT-137 (R60, R155): la cola única con rol mensajero. La `<section>` no lleva nombre: la
+          región «Cierres solicitados» la da `ColaCierres`, y dos con el mismo nombre confundirían
+          al lector. Feature 170 (R52): la página es UNA; «Descargar» sigue siendo el CONJUNTO
+          COMPLETO de este mensajero, acotado en el servidor desde la sesión (R159). Sin tarjetas
+          de cifras (R158). */}
+      <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Cierres solicitados</h2>
-        {/* Pedido humano del 2026-08-16: la descarga dejó de vivir dentro de la lista y la
-            monta la pantalla. Aquí no hay pestañas con las que alinearla, así que se queda
-            donde estaba —encima del listado, a la derecha—, con el mismo nombre accesible.
-
-            Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo sigue siendo el
-            CONJUNTO COMPLETO de ESTE mensajero, y ese acotamiento lo resuelve el servidor desde
-            la sesión: descargar no puede traer los cierres de otro (R44). Feature 184 — Tanda C
-            (T C.2, R1/R2/R6/R9): ese conjunto lo entrega una lectura DEDICADA, que cuesta una
-            consulta, cero firmas de evidencia y con el tope de filas evaluado en el servidor. */}
-        <div className="flex flex-wrap items-start justify-end gap-2">
-          <DescargarDatasetButton {...DESCARGA_CIERRES_PASADOS} />
-        </div>
-        {/* Cada cierre solicitado se lee como su COMPROBANTE, la misma hoja que el mensajero
-            ya veía al abrir el detalle —y la que el admin mira para decidirlo—. El botón
-            conserva el nombre accesible que tenía en la columna «Ver detalle»: es el mismo
-            gesto y lo localizan igual los tests y el E2E. */}
-        <ListaComprobantes
-          ariaLabel={TITULO_DESCARGA_PASADOS}
-          items={pasadosData?.items ?? []}
-          clave={(c) => c.cierreId}
-          isLoading={pasadosCargando}
+        <ColaCierres
+          tipo="propios"
+          rol="mensajero"
+          descripcion={DESCRIPCION_PROPIA}
+          pestanas={[{ id: "pendientes", label: PESTANA_PROPIA, conteo: pasadosData?.total ?? 0 }]}
+          pestanaActiva="pendientes"
+          onPestana={() => {}}
+          // SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero» pone aquí la barra.
+          barra={null}
+          descargar={<DescargarDatasetButton {...DESCARGA_CIERRES_PASADOS} />}
+          cargando={pasadosCargando}
           error={pasadosError ? ERROR_PASADOS : null}
-          emptyMessage="Aún no has solicitado ningún cierre."
-          render={(c) => (
-            <CierreFacturaResumenPropio
-              cierre={c}
-              acciones={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  aria-label={`${VER_DETALLE_LABEL} del cierre del ${fechaCalendarioCR(new Date(c.solicitadoAt))}`}
-                  disabled={cargandoDetalle === c.cierreId}
-                  aria-busy={cargandoDetalle === c.cierreId}
-                  onClick={() => abrirDetalle(c)}
-                >
-                  {VER_DETALLE_LABEL}
-                </Button>
-              }
+          vacio={VACIO_PROPIA}
+          region={REGION_PROPIA}
+          paginacion={
+            <Pagination
+              page={pasadosPage}
+              pageSize={pasadosPageSize}
+              total={pasadosData?.total ?? 0}
+              disabled={pasadosCargando}
+              showFirstLast
+              siblingCount={1}
+              ariaLabel={PAGINACION_PASADOS_LABEL}
+              onPageChange={setPasadosPage}
+              onPageSizeChange={(s) => {
+                setPasadosPageSize(s);
+                setPasadosPage(1);
+              }}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
             />
-          )}
-        />
-
-        <Pagination
-          page={pasadosPage}
-          pageSize={pasadosPageSize}
-          total={pasadosData?.total ?? 0}
-          disabled={pasadosCargando}
-          showFirstLast
-          siblingCount={1}
-          ariaLabel={PAGINACION_PASADOS_LABEL}
-          onPageChange={setPasadosPage}
-          onPageSizeChange={(s) => {
-            setPasadosPageSize(s);
-            setPasadosPage(1);
-          }}
-          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          }
+          filas={pasadosData?.items ?? []}
+          acciones={{ abrir: abrirDetalle, leyendo: cargandoDetalle }}
         />
       </section>
 

@@ -162,6 +162,13 @@ export type CierreBodegaDetalleServiceResult =
       paraLaCentral: string;
       /** Feature 393 (R37) — DERIVADO: ¿los descuentos caben en el EFECTIVO agregado? */
       efectivoCubreDescuentos: boolean;
+      /**
+       * SLT-111 (R70/R264): el reparto de lo recaudado en % enteros que suman 100, en el orden
+       * [central (`paraLaCentral`), mensajeros (`cierre.totalPagoMensajero`), bodega satelite
+       * (`cierre.totalIngresoBodegaRechazos`)] y sobre `cierre.totales.general`. `null` = sin barra.
+       * El servicio lo emite siempre; opcional solo para que los dobles no tengan que construirlo.
+       */
+      porcentajesReparto?: number[] | null;
     }
   | { status: "forbidden" } // rol != maestro (R2)
   | { status: "no_encontrada" }; // id inexistente (R19)
