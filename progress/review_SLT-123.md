@@ -156,3 +156,63 @@ aditiva, con un `down` que aborta. Hay dos bloqueantes: uno de test (R321, repar
    resolver T0.4 (número o diferida con motivo).
 3. (menores) Ajustar la trazabilidad o la aserción de `paraLaCentral` en R331, y el JSDoc
    desfasado.
+
+## Vuelta 2 (acotada a a60b8868..06bcd553)
+
+Se amplió a los tipos de DTO y filas porque el arreglo toca contratos compartidos.
+
+### Veredicto: OK
+
+Hay una condición de proceso que no es de código: marcar T8.1 cuando el `./init.sh` del leader,
+que corría mientras se hizo esta revisión, termine en verde con `INIT_EXIT=$?` en el log.
+
+### Checklist
+
+- [x] **Paso 0**: `npx prisma generate` corrido desde el worktree. El `index.d.ts` del cliente
+  contiene `pagoIndependienteEfectivo` (85 apariciones).
+- [x] **B1 (R321)**: el hallazgo está cerrado. `CierreParaPagoDTO.pagoIndependienteEfectivo` y
+  `CierreAdminResumenRow.pagoIndependienteEfectivo` pasan a ser obligatorios.
+  - **Mutación I reproducida.** Se quitó el mapeo en `LiquidacionPagoRepository.ts:374` y `:409`
+    en un worktree temporal, porque el gate del leader corría sobre este árbol. Después se
+    restauró y el worktree temporal se borró.
+    - `tsc --noEmit` da exit 2, con dos TS2322 justo en `:368` y `:402`.
+    - El test de integración «R321: el reparto «Pagar» con el repositorio real…» cae y los otros
+      14 siguen verdes.
+  - **No queda otro camino de producción que pierda la marca.**
+    - `CierrePasadoDTO` sigue opcional, pero lo construye un solo mapper, `toCierrePasadoDTO`, que
+      sirve a las 3 lecturas (`:1732`, `:1805`, `:1840`).
+    - Ese mapper tiene un retorno estrecho `& { pagoIndependienteEfectivo: boolean }` y su select
+      (`:774`) lee la columna.
+    - `CierreDiaService.conPendientePago` hace un spread del DTO, así que la marca no se pierde.
+    - No hay ningún `as CierrePasadoDTO`, `as CierreAdminResumenRow` ni `as CierreParaPagoDTO` en
+      `lib/` ni en `app/`.
+    - `CierreAdminResumenRow` sale solo de `toResumenRow` (`CierresAdminRepository.ts:827`), que
+      ya obliga el compilador.
+- [x] **Literales verificados a mano** con la siembra del encabezado del test.
+  - N1 (central, regla nueva, P 3 000 / E 5 000, pago anulado): queda imputable P = `3000.00`.
+    Con la regla vieja sería 0 y N1 no se imputaría, así que el test distingue las dos reglas.
+  - V1 (marca false, P 3 000 / E 1 000): 3 000 − min(3 000, 1 000) = `2000.00`.
+  - S1 `paraLaCentral`: general 4 000 − P 2 500 = `1500.00`.
+  - Los tres valores están escritos como literales, no salen de la función que los genera.
+- [x] **Los 17 dobles con `false`**:
+  - En todos los casos el valor `false` va como default de una factory o de un literal, antes del
+    `...over`, así que un override sigue ganando.
+  - Antes, la marca ausente se leía con `=== true`, que daba `false`. La semántica no cambia y
+    estos tests siguen vigilando lo mismo.
+- [x] **m4, JSDoc**: `ICierresAdminService.ts`, el JSDoc de `pendientePagoMensajero`, dice ahora
+  «nuevo: P − pagos; viejo: P − min(P, E) − pagos; los dos + premios vivos». Coincide con
+  `derivarPendienteCierre` (`lib/utils/pendiente-cierre.ts:79-91`).
+- [x] **m3, R331**: el caso 8 tiene ahora un segundo `it` que afirma que `paraLaCentral` de S1 es
+  `1500.00`. La trazabilidad está al día.
+- [x] **B2, tasks**: T8.2 está `[x]`. T0.4 queda `[ ]` con el motivo en la propia línea: es una
+  consulta de solo lectura a prod, informativa y bloqueada para agentes. T8.1 queda para el gate
+  del leader (ver la condición del veredicto).
+- [x] **Tests del rango, sin mutar**: los 16 archivos de `tests/` del diff pasan, 539 de 539, con
+  `DATABASE_URL` apuntando a `slt123_pago`.
+
+### Hallazgos
+
+- menor (anotación): en la primera corrida de la mutación, `DATABASE_URL` quedó apuntando a la base
+  de `.env` por un error de mi sustitución. El test falló en el primer `create` dentro de
+  `enTransaccionRevertida`, así que no escribió nada. Se repitió contra `slt123_pago` y esa es la
+  corrida que cuenta.
