@@ -98,12 +98,12 @@ tabla) pasa de 1 000, **para** y avisa al leader: decide Carlos entre el corte e
 
   **Hecho:** verde. El tipo `CierrePasadoDTO.pendientePagoMensajero` puede venir de T1.1; si T1.1 no
   está, se declara el campo igual (es aditivo) y se reconcilia al traer T1.
-- [ ] **T2.2** (depende de T0.1 con SLT-106 mergeado y de T2.1) `TablaColaPropia.tsx` nuevo y los tres
+- [x] **T2.2** (depende de T0.1 con SLT-106 mergeado y de T2.1) `TablaColaPropia.tsx` nuevo y los tres
   cambios en `ColaCierres.tsx` (`design.md > Props nuevas`). No toques `cola-cierres-vista.ts` ni
   `cola-cierres-labels.ts`.
   **Hecho:** `typecheck` verde; `tests/components/ColaCierres.test.tsx` y `ColaCierresBodega.test.tsx`
   verdes **sin cambios** (R163).
-- [ ] **T2.3** (depende de T2.2) `CierreDiaModule.tsx`: monta `ColaCierres tipo="propios"`
+- [x] **T2.3** (depende de T2.2) `CierreDiaModule.tsx`: monta `ColaCierres tipo="propios"`
   (`design.md > Montaje`), quita `ListaComprobantes` y `CierreFacturaResumenPropio` de los imports y
   del JSX. Test nuevo `tests/components/CierreDiaColaPropia.test.tsx`, montando `CierreDiaModule` con
   una página de cuatro cierres (aprobado con pendiente `"300.00"`, aprobado `"0.00"`, rechazado con
@@ -120,29 +120,29 @@ tabla) pasa de 1 000, **para** y avisa al leader: decide Carlos entre el corte e
     `aria-busy="true"`; al resolver, se abre el detalle (R181).
 
   **Hecho:** verde.
-- [ ] **T2.4** Adapta los tests del censo: `CierreDiaModule.test.tsx` (incluida la relectura de todas
+- [x] **T2.4** Adapta los tests del censo: `CierreDiaModule.test.tsx` (incluida la relectura de todas
   las páginas tras solicitar, R160), `descarga/CierresDescarga.test.tsx` (R159: mismo título,
   columnas y ámbito), `paginacion/BajoRiesgoPaginacion.test.tsx` y, si T0.2 lo confirma,
   `paginacion/ColasPaginacion.test.tsx`. Ningún literal de contrato se sustituye por su propia fuente
   (memoria «Literal: contrato o polizón»).
   **Hecho:** verdes.
-- [ ] **T2.5** Guardias: `censo-tablas.ts` (montaje `CierreDiaModule.tsx` en `ColaCierres.tsx`; fuera
+- [x] **T2.5** Guardias: `censo-tablas.ts` (montaje `CierreDiaModule.tsx` en `ColaCierres.tsx`; fuera
   `ListaComprobantes` de `/cierre-dia`), `cascada-central-en-las-dos-pantallas.guardia.test.ts`,
   `liquidacion-money-safe.test.ts` (censa `TablaColaPropia.tsx` y `cola-propia-vista.ts`, R71) y
   `cierres-fecha-cr.guardia.test.ts`.
   **Hecho:** `pnpm run test:guardias` verde, y `liquidacion-money-safe` en rojo si se mete un
   `Number(` en `cola-propia-vista.ts` (comprobado a mano una vez).
-- [ ] **T2.6** `./init.sh` verde. **Hecho:** tamaño medido y anotado.
+- [x] **T2.6** `./init.sh` verde. **Hecho:** tamaño medido y anotado.
 
 ## T3 — E2E (depende de T2)
 
-- [ ] **T3.1** `e2e/cierres-rediseno.spec.ts`: el mensajero del escenario A ve su cola: pestaña con
+- [x] **T3.1** `e2e/cierres-rediseno.spec.ts`: el mensajero del escenario A ve su cola: pestaña con
   conteo, la celda «Pago» de un aprobado («Pendiente de pago» o «Liquidado», según el escenario) y
   «Ver» que abre el detalle. Los literales, derivados a mano de los datos del escenario, en la
   cabecera del spec (R60, R157, R181).
-- [ ] **T3.2** `e2e/cierre-dia.spec.ts`: los localizadores de la tira pasan a la cola (región
+- [x] **T3.2** `e2e/cierre-dia.spec.ts`: los localizadores de la tira pasan a la cola (región
   «Cierres solicitados», «Ver del cierre del …»).
-- [ ] **T3.3** En local, con base desechable y `NEXT_PUBLIC_APP_URL` como en `gate.yml`:
+- [x] **T3.3** En local, con base desechable y `NEXT_PUBLIC_APP_URL` como en `gate.yml`:
   `cierre-dia.spec.ts`, `cierres-rediseno.spec.ts`, lo que dé `grep -rl "cierre-dia" e2e/` y el grupo
   `dinero` entero (`pnpm exec playwright test --project=dinero`; el pendiente es dinero).
   **Hecho:** verde sin reintentos.

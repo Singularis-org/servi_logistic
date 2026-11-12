@@ -142,3 +142,108 @@ sola son 280 (corpus C1-C4 + M2 sembrado a mano, sin catálogos de órdenes).
 
 T0, T1.1-T1.3 y T2.1 hechos y verdes, cinco mutaciones + cableado matadas; T1.4 medido y en PARA por
 tamaño (proyección > 1 000), con el gate local rojo solo por el cliente de Prisma compartido.
+
+---
+
+# Tanda pantalla (F2.3, T2.2-T2.6, T3) — frontend_dev, 2026-11-12
+
+Primer plano, sin subagentes. `DATABASE_URL` exportada a `slt137_cola` antes de cada vitest (URL nunca
+impresa). Grafo MCP no consultado: todo con Grep/Read.
+
+## F2.3 — merge de `origin/dev` (SLT-106 dentro)
+
+`git merge origin/dev` → un conflicto, el previsto: `tests/unit/guards/liquidacion-money-safe.test.ts`,
+las dos ramas añadían una línea al final de la lista. Quedan las dos (`cola-propia-vista.ts` de SLT-137 y
+`ConsolidacionBodegaModule.tsx` de SLT-106). Sin migraciones nuevas. Merge `eca18e2d`.
+
+## Archivos
+
+Producción:
+- `components/private/cierres/cola/ColaCierres.tsx` — tipo `propios` (`ColaCierresPropiosProps`), el
+  `aria-label` del `TabsList` y una rama más en el cuerpo. 34 líneas de diff (diseño: ~20): la unión de
+  cuatro tipos y el `TabsList` los parte el formateo en varias líneas; la lógica de satélite y de
+  mensajeros/central no se toca.
+- `components/private/cierres/cola/TablaColaPropia.tsx` (nuevo) — `AccionesColaPropia` y
+  `columnasTablaPropia(acciones)`: las ocho columnas con sus celdas. **Decisión:** exporta COLUMNAS y no
+  un `<DataTable>` propio; la tabla la pinta `TablaCola` dentro de `ColaCierres.tsx`. Así la cola sigue
+  siendo UNA instancia de `<DataTable>` en el censo (`cobertura-tablas.guardia` cuenta instancias por
+  archivo) y no nace una tabla nueva que declarar.
+- `components/private/cierres/cola/cola-propia-vista.ts` — fuera el `@sin-superficie`; `VER_PROPIA`
+  («Ver»). **Desvío del design:** `VER_DETALLE_LABEL` no se queda en `CierreDiaModule.tsx`: su único uso
+  era el botón, que ahora vive en la cola, y dejarlo sería una constante muerta (lint). No la importaba
+  ningún test (no estaba exportada).
+- `app/(app)/cierre-dia/_components/CierreDiaModule.tsx` — monta `ColaCierres tipo="propios"`; fuera
+  `ListaComprobantes`, `CierreFacturaResumenPropio`, `fechaCalendarioCR` (sin uso) y el `aria-label` de
+  la `<section>` externa.
+
+Tests:
+- `tests/components/CierreDiaColaPropia.test.tsx` (nuevo, 9 casos).
+- `tests/components/CierreDiaModule.test.tsx` — los dos casos del histórico leen la fila de la cola; caso
+  nuevo de R160 (tras solicitar, la cola relee y enseña el cierre nuevo).
+- `tests/components/paginacion/BajoRiesgoPaginacion.test.tsx` — el listado del mensajero vuelve a `table`.
+- `tests/components/descarga/CierresDescargaColumnas.test.tsx` (**fuera de `## Archivos esperados`**, lo
+  señaló T0.2): «Descargar» ya no está DENTRO de la región «Cierres solicitados» (que ahora es la tabla
+  de la cola) sino en la barra de la misma sección; el registro gana `seccion` (la `<section>` del `h2`).
+- Guardias: `censo-tablas.ts` (cuarto montaje de la cola), `cobertura-tablas.guardia.test.ts` (3 → 4
+  montajes), `cascada-central-en-las-dos-pantallas.guardia.test.ts` (fuera el comprobante propio;
+  ahora afirma que NO se monta), `cierres-fecha-cr.guardia.test.ts` (barre también
+  `components/private/cierres/cola`, donde vive el «Ver del cierre del <día>»),
+  `liquidacion-money-safe.test.ts` (censa `TablaColaPropia.tsx`).
+- `CierreDiaDetalleUnico.test.tsx`, `CierreEvidenciasVarias486.test.tsx`,
+  `CierreDiaComprobanteMarcasDeOrigen.test.tsx`, `CierresDescarga.test.tsx`, `paginacion-transversal`,
+  `ColasPaginacion`: verdes SIN cambios (la región «Cierres solicitados» y «Ver del cierre del <día>» se
+  conservan).
+- `ColaCierres.test.tsx`, `ColaCierresBodega.test.tsx`, `ColaCierresConsolidar.test.tsx`: verdes sin
+  cambios (R163).
+
+E2E: `e2e/cierre-dia.spec.ts` (T3.2), `e2e/cierres-rediseno.spec.ts` (T3.1, caso nuevo «mensajero A: su
+cola…»; literales derivados a mano en su cabecera: P 3.000 ≤ E 70.000 → pendiente 0 → «Liquidado»; la
+satélite rechazada → «Motivo: «Faltan paquetes»»).
+
+## R → test (pantalla)
+
+| R | Test |
+|---|---|
+| R60 | `CierreDiaColaPropia.test.tsx` «R60/R156…»; `e2e/cierres-rediseno.spec.ts` «mensajero A: su cola…» |
+| R71 | `liquidacion-money-safe.test.ts` (censa `TablaColaPropia.tsx` y `cola-propia-vista.ts`) |
+| R155 | `CierreDiaColaPropia.test.tsx` «R155…» |
+| R156 | `CierreDiaColaPropia.test.tsx` «R60/R156…»; `CierreDiaModule.test.tsx` «R18: el histórico…» |
+| R157 | `CierreDiaColaPropia.test.tsx` «R157…»; E2E «mensajero A: su cola…» (Liquidado y Motivo) |
+| R158 | `CierreDiaColaPropia.test.tsx` «R158…» |
+| R159 | `CierresDescarga.test.tsx` y `CierresDescargaColumnas.test.tsx` (mismo título, columnas, ámbito) |
+| R160 | `CierreDiaColaPropia.test.tsx` (vacío, error, paginación); `CierreDiaModule.test.tsx` «SLT-137 R160…»; `BajoRiesgoPaginacion.test.tsx` |
+| R163 | `ColaCierres.test.tsx`, `ColaCierresBodega.test.tsx` sin cambios y verdes |
+| R166 | `CierreDiaColaPropia.test.tsx` «R166…» (marcadores ausentes); `cascada-central…guardia` (sin `CierreFacturaResumenPropio`); `censo-tablas.ts` |
+| R181 | `CierreDiaColaPropia.test.tsx` «R181…»; E2E «mensajero A: su cola…» («Ver» abre el detalle) |
+
+## Mutaciones (a mano, restauradas con `cmp`/`git diff --quiet`)
+
+| Mutación | Resultado | Aserción que cae |
+|---|---|---|
+| `refrescarListas()` sin el `mutate` de `cierre-dia:pasados` | MATADA | R160: «Unable to find role="button" and name "Ver del cierre del 2026-07-19"». La 1.ª versión del caso SOBREVIVÍA (la revalidación del montaje traía el cierre nuevo); se arregló esperando esa revalidación antes de cambiar la respuesta. |
+| `Number(pendiente)` en `cola-propia-vista.ts` | MATADA | `liquidacion-money-safe`: «ningún archivo de la feature convierte un monto a número» |
+
+## Salidas
+
+- typecheck: `pnpm run typecheck` → exit 0, 0 errores.
+- lint: `pnpm run lint` → 0 errores (243 warnings del árbol, ninguno de los archivos tocados).
+- Tests tocados: `vitest related --run` de los 4 archivos de producción → **44 archivos, 759/759 verdes**.
+  `CierreDiaColaPropia` 9/9; `CierreDiaModule` 77/77; `BajoRiesgoPaginacion` + `CierresDescargaColumnas`
+  13/13.
+- Guardias: `pnpm run test:guardias` → 343/344 archivos; el rojo es `dependencias-declaradas-presentes`
+  (4 tests, en `tests/baseline-rojos.json`).
+- `./init.sh` (T2.6): `== init OK ==` (typecheck, lint, test:rapido, down.sql, `.env`).
+- Tamaño (`node scripts/tamano-pr.mjs`): **22/40 archivos, 1 465/1 000 líneas** (aceptado por Carlos;
+  pasa de ~1 400: lo de más es el test de integración, 280, y el de pantalla, 207).
+- E2E (T3.3), con el candado, puerto 3000, base desechable nueva `slt137_e2e_*` (`migrate deploy` +
+  `db:seed`), `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000` y `next start`, `--retries=0`:
+  - `pnpm exec playwright test --project=dinero` (incluye `cierre-dia`, `cierres-rediseno` con el caso
+    nuevo, `cierre-vencido-modelo`, `reglas-bloqueos-cierre`, `tarifas-valor-propio-mensajero`,
+    `tope-intentos-por-empresa`, `cierre-modelo-nuevo-plan-porcentual`): **101 passed**, 0 flaky.
+  - `e2e/mis-asignaciones.spec.ts` (el único de `grep -rl "cierre-dia" e2e/` fuera de `dinero`):
+    **4 passed**.
+
+## Veredicto (tanda pantalla)
+
+T2.2-T2.6 y T3 hechos y verdes (unit/componentes 759/759, guardias solo con el rojo del baseline,
+`./init.sh` OK, E2E 105/105); tamaño 22/40 archivos y 1 465 líneas, por encima de ~1 400.
