@@ -296,7 +296,7 @@ describe("238/R12/R13 — la guia leida", () => {
 
     const errores = erroresDe(r);
     expect(errores[G_DEV]).toEqual([
-      "Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador.",
+      "Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador.",
     ]);
     // R13: NO se omite del conjunto esperado. Omitirla la aprobaria sin que nadie la tuviera
     // delante, que es la falla silenciosa que este mensaje evita.
@@ -549,7 +549,7 @@ describe("451/R11-R15 — cobertura exacta de las barridas, error POR FILA", () 
     // (a) Enviada con cualquier guia: el motivo es la falta de guia.
     const conEntrada = await service.aprobarCierre("c1", MAESTRO, [], [okB(O_B1, 1)]);
     expect(erroresDe(conEntrada)).toEqual({
-      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador."],
+      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador."],
     });
     // (b) Sin enviarla: sigue en el conjunto esperado (si se omitiera, esto aprobaria).
     const sinEntrada = await service.aprobarCierre("c1", MAESTRO, [], []);

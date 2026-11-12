@@ -1019,7 +1019,7 @@ describeSiHayBase("SLT-55 T2.1 — el valor propio en los caminos del cierre (Po
     expect(r.previa).toEqual({ total: "0.00", pago: "0.00" });
     expect(r.solicitud).toEqual({
       status: "validation_error",
-      fieldErrors: { zona: ["No tenes una zona asignada; contacta a tu administrador."] },
+      fieldErrors: { zona: ["No tienes una zona asignada; contacta a tu administrador."] },
     });
     expect(r.corte).toEqual({ mensajerosEvaluados: 1, vencidosCreados: 0, mensajerosSinZona: 1 });
     expect(r.cierres).toBe(0);
