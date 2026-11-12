@@ -29,7 +29,7 @@ import { buildXlsxRows } from "@/lib/utils/xlsx-template";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
   CierreBodegaResumen,
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type {
   CierreDetalleGestion,
@@ -233,7 +233,7 @@ function cierreBodega(
   };
 }
 
-function consolidable(i: number): CierreBodegaResumenLite {
+function consolidable(i: number): CierreConsolidableCola {
   return {
     cierreDiaId: `cd-${i}`,
     mensajeroId: `m-${i}`,
@@ -241,6 +241,10 @@ function consolidable(i: number): CierreBodegaResumenLite {
     totales: TOTALES,
     totalPagoMensajero: "100.10",
     totalIngresoBodegaRechazos: "5.00",
+    // SLT-106 (R67, R194): lo que pinta la fila de la cola; el archivo no lo lee.
+    paraLaCentral: "895.00",
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
   };
 }
 
@@ -551,10 +555,14 @@ function renderConsolidacion() {
       totalPagoMensajeroAgregado="200.20"
       totalIngresoBodegaRechazosAgregado="10.00"
       incluyeModeloNuevoAgregado={false}
-      totalNetoAgregado="800.00"
       totalCentralDebeAgregado="0.00"
       puedesSolicitar
       motivoBloqueo={null}
+      paraLaCentralAgregado="789.90"
+      cierresAConsolidar={CONSOLIDABLES.length}
+      mensajerosAConsolidar={2}
+      bloqueo={null}
+      zonaNombre={null}
       cierresBodegaPasados={paginaInicial(BODEGA_SOLICITADOS)}
       sinZona={false}
     />,
@@ -876,12 +884,15 @@ describe("Cierres · descarga", () => {
 
     // Los cinco agregados viven DENTRO de «A consolidar» (son la suma de ese conjunto), que es
     // la pestaña que se ve al entrar: se leen antes de irse a la otra.
+    // SLT-106 (R196): los agregados son las tarjetas «Cifras a consolidar» de la cola única.
     const numero = (etiqueta: string) =>
-      screen.getByRole("region", { name: etiqueta }).textContent;
+      within(screen.getByRole("group", { name: "Cifras a consolidar" })).getByRole("group", {
+        name: etiqueta,
+      }).textContent;
     const antes = [
-      numero("Totales a consolidar"),
-      numero("Pago a mensajeros a consolidar"),
-      numero("Ingreso de bodega por devoluciones a origen a consolidar"),
+      numero("Recaudado"),
+      numero("Pago a mensajeros"),
+      numero("Gana la bodega satélite"),
     ];
 
     await abrirPestana(user, /^Solicitados/);
@@ -896,9 +907,9 @@ describe("Cierres · descarga", () => {
     // props del servidor, no algo que la pantalla recalcule al volver—.
     await abrirPestana(user, /^A consolidar/);
     expect([
-      numero("Totales a consolidar"),
-      numero("Pago a mensajeros a consolidar"),
-      numero("Ingreso de bodega por devoluciones a origen a consolidar"),
+      numero("Recaudado"),
+      numero("Pago a mensajeros"),
+      numero("Gana la bodega satélite"),
     ]).toEqual(antes);
   });
 
@@ -998,8 +1009,9 @@ describe("Cierres · descarga", () => {
 
     const seccion = () =>
       screen.getByRole("region", { name: "Cierres del día a consolidar" }).textContent;
+    // SLT-106 (R196): los agregados son las tarjetas «Cifras a consolidar» de la cola única.
     const totales = () =>
-      screen.getByRole("region", { name: "Totales a consolidar" }).textContent;
+      screen.getByRole("group", { name: "Cifras a consolidar" }).textContent;
     const antes = [seccion(), totales()];
 
     await user.click(

@@ -19,7 +19,7 @@ import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdmin
 import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
 import type {
   CierreBodegaResumen,
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type {
   CierreDetalleGestion,
@@ -238,7 +238,7 @@ function cierreBodega(
   };
 }
 
-function consolidable(i: number): CierreBodegaResumenLite {
+function consolidable(i: number): CierreConsolidableCola {
   return {
     cierreDiaId: `cd-${i}`,
     mensajeroId: `m-${i}`,
@@ -246,6 +246,10 @@ function consolidable(i: number): CierreBodegaResumenLite {
     totales: TOTALES,
     totalPagoMensajero: "100.10",
     totalIngresoBodegaRechazos: "5.00",
+    // SLT-106 (R67, R194): lo que pinta la fila de la cola; el archivo no lo lee.
+    paraLaCentral: "895.00",
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
   };
 }
 
@@ -540,10 +544,14 @@ function renderConsolidacion() {
       totalPagoMensajeroAgregado="200.20"
       totalIngresoBodegaRechazosAgregado="10.00"
       incluyeModeloNuevoAgregado={false}
-      totalNetoAgregado="800.00"
       totalCentralDebeAgregado="0.00"
       puedesSolicitar
       motivoBloqueo={null}
+      paraLaCentralAgregado="789.90"
+      cierresAConsolidar={CONSOLIDABLES.length}
+      mensajerosAConsolidar={2}
+      bloqueo={null}
+      zonaNombre={null}
       cierresBodegaPasados={paginaInicial(BODEGA_SOLICITADOS)}
       sinZona={false}
     />,
