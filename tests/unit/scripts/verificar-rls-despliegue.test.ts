@@ -23,8 +23,8 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     });
   });
 
-  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 89 tablas (SL-38, SL-40, las dos de SL-36, SL-23, SLT-56, SLT-73, las cinco de SLT-52, la de SLT-54, la de SLT-83, la de SLT-94 y la de SLT-85)", () => {
-    expect(MODELOS_DE_NEGOCIO).toHaveLength(89);
+  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 90 tablas (SL-38, SL-40, las dos de SL-36, SL-23, SLT-56, SLT-73, las cinco de SLT-52, la de SLT-54, la de SLT-83, la de SLT-94, la de SLT-85 y la de SLT-118)", () => {
+    expect(MODELOS_DE_NEGOCIO).toHaveLength(90);
     // SLT-56: `gestion_pago_mensajero_ajuste` suma una politica, tres `sme_*` y un sin-cambio.
     // SLT-73: `conciliacion_bodega_ajuste` suma su politica, su trigger sin cambio y DOS de misma
     // empresa (sus FK a `cierre_bodega` y a `usuario`).
@@ -38,11 +38,13 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     // `orden`, a `usuario` (la tienda) y a `tarifa_valor`) (169 -> 172).
     // SLT-85: `cobro_plataforma_traza` suma su politica, su sin-cambio y TRES `sme_*` (sus FK a `orden`, a
     // `cobro_plataforma_movimiento` y a si misma por `reverso_de`) (172 -> 175).
+    // SLT-118: `factura_plataforma` suma su politica y su sin-cambio, y ningun `sme_*`: su unica FK es a
+    // `organizacion` (175 se queda).
     // SL-23: `organizacion_modulo` tampoco suma triggers de misma empresa: su unica FK es a `organizacion`.
     // SL-36 no suma triggers de misma empresa: sus dos tablas no tienen FK a otra tabla de negocio.
     // SL-19: `jobs` (empresa opcional) suma su `jobs_por_empresa`, pero no tiene trigger sin cambio.
     expect(MODELOS_CON_EMPRESA_OPCIONAL.map((m) => m.tabla)).toEqual(["jobs"]);
-    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 90, triggersMismaEmpresa: 175, triggersSinCambio: 89 });
+    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 91, triggersMismaEmpresa: 175, triggersSinCambio: 90 });
   });
 
   it("SL-19 — una tabla de empresa opcional suma una politica y ningun trigger sin cambio de empresa", () => {

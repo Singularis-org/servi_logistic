@@ -226,8 +226,10 @@ su `UPDATE "organizacion"`, con la empresa ya en `FOR UPDATE`, así que sabe si 
    `desde` D.
 2. Según el caso:
    - **efecto ≤ D** (R16; el caso normal de R38 y de un cambio de la cola: el paso 1 deja D = efecto): `F` toma
-     `p_plan_id`, su nombre, `p_tipo` y la periodicidad del plan nuevo, y su `fin_natural_at` se recalcula:
-     `plan_fin_periodo_calendario(periodicidad nueva, D)` (P20; el único recálculo del fin guardado). Si es
+     `p_plan_id`, su nombre, `p_tipo` y la periodicidad del plan nuevo; si la periodicidad cambia, su
+     `fin_natural_at` se recalcula: `plan_fin_periodo_calendario(periodicidad nueva, D)` (P20; el único
+     recálculo del fin guardado); si no cambia, se conserva el fin guardado (decisión del humano, 2026-11-11;
+     alinea con T16.1). Si es
      una **primera asignación**, la marca `primera_cuota_desde_at = D` va en la factura con `hasta_at = D` si
      existe y no está cerrada (por adelantado); si no (cerrada o inexistente, como el alta del mismo día, P19), la
      marca D va en `F`, que la emitirá en su fin natural con sus órdenes (a período vencido, P18). No se fija ni se
