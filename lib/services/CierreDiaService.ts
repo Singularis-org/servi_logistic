@@ -14,7 +14,9 @@ import type {
   CierreGrupos,
   CorreccionCierreDTO,
   DeshacerGestionServiceResult,
+  CierrePasadoDTO,
   ICierreDiaService,
+  LecturasPendienteCierre,
   ListarCierreDiaServiceResult,
   ListarCierresPasadosCompletoServiceResult,
   ListarCierresPasadosServiceResult,
@@ -52,6 +54,7 @@ import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { rutasAFirmar, urlsEvidenciaFirmadas } from "@/lib/utils/evidencias-gestion";
+import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
 
 // Solo el rol autorizado en el modulo (R1/R2): el mensajero, SIEMPRE acotado a su
 // propio `usuario.id` (el filtro por mensajero vive en el repo, en el WHERE).
@@ -211,6 +214,12 @@ export class CierreDiaService implements ICierreDiaService {
     private readonly notificarBloqueo: MensajeroBloqueadoNotificador = notificadorNoOp,
     /** SLT-42 (R22): la zona del pais de la empresa; el dia en curso se calcula en ella. */
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+    /**
+     * SLT-137 (R165): pagos vigentes y premios vivos por cierre. Opcional y al final para no tocar
+     * las construcciones de hoy; sin el, la pagina sale sin `pendientePagoMensajero` en vez de con
+     * un pendiente inventado.
+     */
+    private readonly pendientes?: LecturasPendienteCierre,
   ) {}
 
   /** SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez por operacion. */
@@ -544,11 +553,40 @@ export class CierreDiaService implements ICierreDiaService {
 
     return {
       status: "ok",
-      items,
+      items: await this.conPendientePago(items),
       page: input.page,
       pageSize: input.pageSize,
       total, // R41: el total del CONJUNTO, nunca `items.length`
     };
+  }
+
+  /**
+   * SLT-137 (R164, R165) — el pendiente de pago de cada cierre de la pagina, con la regla unica
+   * (`derivarPendienteCierre`), como `CierresAdminService.conPendiente`.
+   *
+   * Las dos lecturas reciben solo ids que ya salieron del `WHERE` del actor, asi que no amplian
+   * el alcance. Se llaman UNA vez cada una, tambien con la lista vacia: el numero de consultas no
+   * depende de la pagina (R165). Solo un `aprobado` tiene pendiente; los demas van a `null`.
+   */
+  private async conPendientePago(items: CierrePasadoDTO[]): Promise<CierrePasadoDTO[]> {
+    if (!this.pendientes) return items;
+
+    const idsAprobados = items.filter((c) => c.estado === "aprobado").map((c) => c.cierreId);
+    const pagados = await this.pendientes.liquidaciones.sumarVigentesPorCierre(idsAprobados);
+    const premios = await this.pendientes.premios.sumarPremiosVivosPorCierre(idsAprobados);
+
+    return items.map((c) => ({
+      ...c,
+      pendientePagoMensajero:
+        c.estado === "aprobado"
+          ? derivarPendienteCierre({
+              pagoDebido: c.totalPagoMensajero,
+              efectivo: c.totales.efectivo,
+              premiosVivos: premios[c.cierreId] ?? "0.00",
+              pagadoVigente: pagados[c.cierreId] ?? "0.00",
+            })
+          : null,
+    }));
   }
 
   /**
