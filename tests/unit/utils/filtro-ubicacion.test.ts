@@ -242,3 +242,68 @@ describe("R19 — los enlaces viejos de novedades, por nombre (`traductorPorNomb
     expect(comoObjeto(t.traducir(params("provincia=Limón&canton=Nada"), filtros))).toEqual({});
   });
 });
+
+describe("Homonimos — como la maqueta, el lugar repetido en su lista muestra sus ancestros", () => {
+  const op: OpcionesDeLugar = {
+    niveles: nivelesDe(3),
+    lugares: [
+      { id: "p1", nombre: "San José", padreId: null, profundidad: 1 },
+      { id: "p2", nombre: "Heredia", padreId: null, profundidad: 1 },
+      { id: "c1", nombre: "Escazú", padreId: "p1", profundidad: 2 },
+      { id: "c2", nombre: "Central", padreId: "p2", profundidad: 2 },
+      { id: "d1", nombre: "San Rafael", padreId: "c1", profundidad: 3 },
+      { id: "d2", nombre: "San Rafael", padreId: "c2", profundidad: 3 },
+      { id: "d3", nombre: "Carmen", padreId: "c2", profundidad: 3 },
+    ],
+  };
+  const filtros = declararNiveles(op);
+  const distritos = filtros.find((f) => f.key === claveDeNivel(3))?.options ?? [];
+
+  it("dos «San Rafael» en cantones distintos: padre primero, hasta el nivel 1", () => {
+    expect(distritos).toContainEqual({ value: "d1", label: "San Rafael · Escazú, San José", parentValue: "c1" });
+    expect(distritos).toContainEqual({ value: "d2", label: "San Rafael · Central, Heredia", parentValue: "c2" });
+  });
+
+  it("un nombre unico se queda con su nombre, sin ancestros (R6)", () => {
+    expect(distritos).toContainEqual({ value: "d3", label: "Carmen", parentValue: "c2" });
+    expect(filtros[0].options?.map((o) => o.label)).toEqual(["San José", "Heredia"]);
+  });
+
+  it("homonimos en el nivel 1 no tienen ancestros: quedan con su nombre", () => {
+    const uno = declararNiveles({
+      niveles: nivelesDe(1),
+      lugares: [
+        { id: "a", nombre: "Norte", padreId: null, profundidad: 1 },
+        { id: "b", nombre: "Norte", padreId: null, profundidad: 1 },
+      ],
+    });
+    expect(uno[0].options?.map((o) => o.label)).toEqual(["Norte", "Norte"]);
+  });
+
+  it("mis-asignaciones: la primera lista sigue con «lugar (padre)»; las siguientes heredan los ancestros", () => {
+    const defs = declararNiveles(op, { desde: 2, etiquetaConPadre: true });
+    expect(defs[0].options).toEqual([
+      { value: "c1", label: "Escazú (San José)" },
+      { value: "c2", label: "Central (Heredia)" },
+    ]);
+    expect(defs[1].options).toContainEqual({ value: "d1", label: "San Rafael · Escazú, San José", parentValue: "c1" });
+  });
+
+  it("`traductorPorNombre` traduce `?canton=<nombre>` por el nombre puro, no por el rotulo con ancestros", () => {
+    const conCantonesHomonimos = declararNiveles({
+      niveles: nivelesDe(2),
+      lugares: [
+        { id: "p1", nombre: "San José", padreId: null, profundidad: 1 },
+        { id: "p2", nombre: "Alajuela", padreId: null, profundidad: 1 },
+        { id: "c1", nombre: "Central", padreId: "p1", profundidad: 2 },
+        { id: "c2", nombre: "Central", padreId: "p2", profundidad: 2 },
+      ],
+    });
+    // El rotulo lleva los ancestros…
+    expect(conCantonesHomonimos[1].options?.map((o) => o.label)).toEqual(["Central · San José", "Central · Alajuela"]);
+    const t = traductorPorNombre();
+    // …pero el enlace viejo trae el nombre, y casa por el.
+    expect(comoObjeto(t.traducir(params("canton=Central"), conCantonesHomonimos)).nivel_2?.split(",").sort()).toEqual(["c1", "c2"]);
+    expect(comoObjeto(t.traducir(params("provincia=Alajuela&canton=Central"), conCantonesHomonimos))).toEqual({ nivel_1: "p2", nivel_2: "c2" });
+  });
+});

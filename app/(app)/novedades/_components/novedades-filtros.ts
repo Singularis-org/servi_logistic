@@ -10,6 +10,7 @@ import {
   declararNiveles,
   lugarElegido,
   nivelDeClave,
+  nombreDeOpcion,
   traductorPorNombre,
   type OpcionesDeLugar,
   type TraductorDeUrl,
@@ -278,7 +279,9 @@ function lugaresDelConjunto(items: readonly NovedadDTO[]): OpcionesDeLugar["luga
 
 /**
  * Las listas de lugar: una por nivel del pais (`declararNiveles`, encadenadas por `parentValue`), con
- * las opciones del conjunto ordenadas por su etiqueta en español, como las demas de esta pantalla.
+ * las opciones del conjunto ordenadas por el nombre del lugar en español, como las demas de esta
+ * pantalla. Los ancestros de un homonimo («San Rafael · Escazú, San José») no cuentan: los homonimos
+ * quedan juntos y en el orden del conjunto (el sort es estable).
  */
 function listasDeLugar(
   items: readonly NovedadDTO[],
@@ -286,7 +289,9 @@ function listasDeLugar(
 ): FilterDef[] {
   return declararNiveles({ niveles, lugares: lugaresDelConjunto(items) }).map((def) => ({
     ...def,
-    options: [...(def.options ?? [])].sort((a, b) => a.label.localeCompare(b.label, "es")),
+    options: [...(def.options ?? [])].sort((a, b) =>
+      nombreDeOpcion(a.label).localeCompare(nombreDeOpcion(b.label), "es"),
+    ),
   }));
 }
 

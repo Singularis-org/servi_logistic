@@ -105,17 +105,17 @@ describe("R8 — una lista por nivel del país, con opciones del conjunto y valo
       { value: "p-sj", label: "San José" },
     ]);
     expect(c.options?.map((o) => [o.value, o.label, o.parentValue])).toEqual([
-      ["c-cen-sj", "Central", "p-sj"],
-      ["c-cen-ala", "Central", "p-ala"],
-      ["c-cen-her", "Central", "p-her"],
+      ["c-cen-sj", "Central · San José", "p-sj"],
+      ["c-cen-ala", "Central · Alajuela", "p-ala"],
+      ["c-cen-her", "Central · Heredia", "p-her"],
       ["c-esc", "Escazú", "p-sj"],
       ["c-ore", "Oreamuno", "p-car"],
     ]);
     // Dos «San Rafael»: dos opciones, cada una bajo su cantón.
     expect(d.options?.map((o) => [o.value, o.label, o.parentValue])).toEqual([
       ["d-carmen", "Carmen", "c-cen-sj"],
-      ["d-sr-esc", "San Rafael", "c-esc"],
-      ["d-sr-ore", "San Rafael", "c-ore"],
+      ["d-sr-esc", "San Rafael · Escazú, San José", "c-esc"],
+      ["d-sr-ore", "San Rafael · Oreamuno, Cartago", "c-ore"],
     ]);
   });
 

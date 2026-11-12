@@ -147,8 +147,8 @@ describe("R3 — listas encadenadas por nivel", () => {
     const user = userEvent.setup();
     render(<Barra listas={LISTAS_CR} traductor={traductorPorId()} activosIniciales={TODAS} onSeleccion={vi.fn()} />);
 
-    expect(await opcionesDe(user, "Cantón")).toEqual(["Escazú", "Central", "Central"]);
-    expect(await opcionesDe(user, "Distrito")).toEqual(["San Rafael", "San Antonio", "San Rafael", "Carmen"]);
+    expect(await opcionesDe(user, "Cantón")).toEqual(["Escazú", "Central · San José", "Central · Alajuela"]);
+    expect(await opcionesDe(user, "Distrito")).toEqual(["San Rafael · Escazú, San José", "San Antonio", "San Rafael · Central, Alajuela", "Carmen"]);
   });
 
   it("con elección en k, k+1 ofrece solo los hijos de lo elegido (y k+2 los de debajo)", async () => {
@@ -157,11 +157,11 @@ describe("R3 — listas encadenadas por nivel", () => {
     render(<Barra listas={LISTAS_CR} traductor={traductorPorId()} activosIniciales={TODAS} onSeleccion={onSeleccion} />);
 
     await marcar(user, "Provincia", "San José");
-    expect(await opcionesDe(user, "Cantón")).toEqual(["Escazú", "Central"]);
-    expect(await opcionesDe(user, "Distrito")).toEqual(["San Rafael", "San Antonio", "Carmen"]);
+    expect(await opcionesDe(user, "Cantón")).toEqual(["Escazú", "Central · San José"]);
+    expect(await opcionesDe(user, "Distrito")).toEqual(["San Rafael · Escazú, San José", "San Antonio", "Carmen"]);
 
     await marcar(user, "Cantón", "Escazú");
-    expect(await opcionesDe(user, "Distrito")).toEqual(["San Rafael", "San Antonio"]);
+    expect(await opcionesDe(user, "Distrito")).toEqual(["San Rafael · Escazú, San José", "San Antonio"]);
     expect(ultima(onSeleccion)).toEqual({ nivel_1: ["P1"], nivel_2: ["C1"] });
   });
 
@@ -172,7 +172,7 @@ describe("R3 — listas encadenadas por nivel", () => {
 
     await marcar(user, "Provincia", "San José");
     await marcar(user, "Cantón", "Escazú");
-    await marcar(user, "Distrito", "San Rafael");
+    await marcar(user, "Distrito", "San Rafael · Escazú, San José");
     expect(ultima(onSeleccion)).toEqual({ nivel_1: ["P1"], nivel_2: ["C1"], nivel_3: ["D1"] });
 
     // Se suma Alajuela: Escazú y su San Rafael siguen colgando de lo elegido, nada se descarta.
@@ -227,7 +227,7 @@ describe("R17 — `?lugar_id=` rearma las listas subiendo hasta el nivel 1", () 
     await waitFor(() => expect(ultima(onSeleccion)).toEqual({ nivel_1: ["P1"], nivel_2: ["C1"], nivel_3: ["D1"] }));
     expect(disparador("Provincia")).toHaveAccessibleName("Provincia: San José");
     expect(disparador("Cantón")).toHaveAccessibleName("Cantón: Escazú");
-    expect(disparador("Distrito")).toHaveAccessibleName("Distrito: San Rafael");
+    expect(disparador("Distrito")).toHaveAccessibleName("Distrito: San Rafael · Escazú, San José");
   });
 
   it("un id que no está entre las opciones se descarta sin error; los demás se quedan", async () => {
@@ -301,7 +301,7 @@ describe("Activación tardía (design §4.2) — el catálogo llega después del
     rerender(<Barra listas={LISTAS_CR} traductor={traductor} onSeleccion={onSeleccion} />);
 
     await waitFor(() => expect(ultima(onSeleccion)).toEqual({ nivel_1: ["P1"], nivel_2: ["C1"], nivel_3: ["D1"] }));
-    expect(disparador("Distrito")).toHaveAccessibleName("Distrito: San Rafael");
+    expect(disparador("Distrito")).toHaveAccessibleName("Distrito: San Rafael · Escazú, San José");
   });
 
   it("si el usuario ya tocó los filtros, el catálogo tardío no le activa nada", async () => {

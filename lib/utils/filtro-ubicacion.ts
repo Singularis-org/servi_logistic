@@ -47,7 +47,8 @@ export interface OpcionesDeDeclaracion {
  * R1, R2, R6, R7 — una `FilterDef` `multi` por nivel, de `desde` a P, en orden. Rotulo: el nombre
  * singular del tipo; busqueda: «Buscar <singular>…». Cada lista depende de la anterior y sus opciones
  * llevan `parentValue` = su padre; la primera no lleva ni `dependsOn` ni `parentValue`, como hoy.
- * Con 2 niveles, 2 listas: ninguna repite el nivel 2 (R2).
+ * Con 2 niveles, 2 listas: ninguna repite el nivel 2 (R2). Dos o mas lugares con el mismo nombre en una
+ * lista se rotulan con sus ancestros (`conAncestros`); los demas, con su nombre, como hoy (R6).
  */
 export function declararNiveles(op: OpcionesDeLugar, opts: OpcionesDeDeclaracion = {}): FilterDef[] {
   const desde = opts.desde ?? 1;
@@ -63,6 +64,7 @@ export function declararNiveles(op: OpcionesDeLugar, opts: OpcionesDeDeclaracion
     const k = nivel.profundidad;
     const primera = k === desde;
     const lugares = porProfundidad.get(k) ?? [];
+    const homonimos = nombresRepetidos(lugares);
     const def: FilterDef = {
       key: claveDeNivel(k),
       label: nivel.singular,
@@ -71,15 +73,57 @@ export function declararNiveles(op: OpcionesDeLugar, opts: OpcionesDeDeclaracion
       searchPlaceholder: `Buscar ${nivel.singular.toLowerCase()}…`,
       options: lugares.map((l) => {
         const padre = l.padreId === null ? undefined : porId.get(l.padreId);
-        if (primera) {
-          const label = opts.etiquetaConPadre && padre ? `${l.nombre} (${padre.nombre})` : l.nombre;
-          return { value: l.id, label };
+        if (primera && opts.etiquetaConPadre) {
+          // Mis-asignaciones (P2): su primera lista ya distingue homonimos con «(padre)».
+          return { value: l.id, label: padre ? `${l.nombre} (${padre.nombre})` : l.nombre };
         }
-        return { value: l.id, label: l.nombre, ...(l.padreId === null ? {} : { parentValue: l.padreId }) };
+        const label = homonimos.has(l.nombre) ? conAncestros(l, porId) : l.nombre;
+        if (primera) return { value: l.id, label };
+        return { value: l.id, label, ...(l.padreId === null ? {} : { parentValue: l.padreId }) };
       }),
     };
     return def;
   });
+}
+
+type LugarDeLista = OpcionesDeLugar["lugares"][number];
+
+/** Separa el nombre del lugar de sus ancestros en el rotulo de un homonimo (como la maqueta). */
+export const SEPARADOR_ANCESTROS = " · ";
+const SEPARADOR_ENTRE_ANCESTROS = ", ";
+
+/** Los nombres que se repiten en una misma lista de nivel. */
+function nombresRepetidos(lugares: readonly LugarDeLista[]): Set<string> {
+  const vistos = new Set<string>();
+  const repetidos = new Set<string>();
+  for (const l of lugares) {
+    if (vistos.has(l.nombre)) repetidos.add(l.nombre);
+    else vistos.add(l.nombre);
+  }
+  return repetidos;
+}
+
+/**
+ * Homonimos (decision de la tanda 2, como la maqueta): «San Rafael · Escazú, San José», el padre
+ * primero y subiendo hasta el nivel 1. Un ancestro que no llego en `lugares` corta la cadena ahi. Sin
+ * ningun ancestro, el nombre solo. Lo que se muestra es lo que se busca: el buscador de la lista
+ * filtra por `label`.
+ */
+function conAncestros(l: LugarDeLista, porId: ReadonlyMap<string, LugarDeLista>): string {
+  const ancestros: string[] = [];
+  let actual = l.padreId === null ? undefined : porId.get(l.padreId);
+  // Un catalogo con ciclos no existe (FK de SLT-43); el tope evita un bucle si un doble lo trae.
+  for (let paso = 0; actual !== undefined && paso < porId.size; paso++) {
+    ancestros.push(actual.nombre);
+    actual = actual.padreId === null ? undefined : porId.get(actual.padreId);
+  }
+  return ancestros.length === 0 ? l.nombre : `${l.nombre}${SEPARADOR_ANCESTROS}${ancestros.join(SEPARADOR_ENTRE_ANCESTROS)}`;
+}
+
+/** El nombre del lugar de una opcion: su rotulo sin los ancestros de homonimo. */
+export function nombreDeOpcion(label: string): string {
+  const i = label.indexOf(SEPARADOR_ANCESTROS);
+  return i === -1 ? label : label.slice(0, i);
 }
 
 /** R4, R9 — los ids de la lista mas honda con eleccion. `[]` = sin filtro de lugar. */
@@ -192,8 +236,8 @@ export function traductorPorId(): TraductorDeUrl {
 
 /**
  * Traductor de `/novedades` (R19): `lugar_id`, y `provincia`/`canton` por nombre exacto. Cada
- * provincia pasa a los lugares de nivel 1 con ese rotulo; cada canton, a los de nivel 2 con ese
- * rotulo, solo entre los hijos de las provincias traducidas si hay alguna. Sin coincidencia, nada.
+ * provincia pasa a los lugares de nivel 1 con ese nombre; cada canton, a los de nivel 2 con ese
+ * nombre (el rotulo sin los ancestros de homonimo), solo entre los hijos de las provincias traducidas si hay alguna. Sin coincidencia, nada.
  */
 export function traductorPorNombre(): TraductorDeUrl {
   const viejas = VIEJAS_POR_NOMBRE.map(([c]) => c);
@@ -210,7 +254,8 @@ export function traductorPorNombre(): TraductorDeUrl {
           const lista = listas.get(k);
           if (nombres.size === 0 || lista === undefined) continue;
           const elegidos = (lista.options ?? [])
-            .filter((o) => nombres.has(o.label))
+            // Por el NOMBRE, no por el rotulo: un homonimo se rotula con sus ancestros.
+            .filter((o) => nombres.has(o.label) || nombres.has(nombreDeOpcion(o.label)))
             .filter((o) => padres === null || (o.parentValue !== undefined && padres.has(o.parentValue)))
             .map((o) => o.value);
           if (elegidos.length > 0) {

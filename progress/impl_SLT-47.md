@@ -964,3 +964,73 @@ Corrida 2: `5 passed (26.9s)` (los mismos 5 casos).
 - `vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 38 passed.
 
 Veredicto: T6.1 hecha; R18, R23 y R39 en verde en local, dos corridas seguidas. Sin cambios en código de producción.
+
+## B — homónimos aplicados (frontend_dev, 2026-11-11)
+
+Regla: solo los nombres repetidos dentro de una misma lista se rotulan con sus ancestros
+(«San Rafael · Escazú, San José», padre primero hasta el nivel 1); los únicos, como hoy; el buscador
+filtra por el rótulo; `traductorPorNombre` casa también por el nombre puro (`?canton=<nombre>`).
+
+### Archivos
+- `lib/utils/filtro-ubicacion.ts`: parche `slt47-B-homonimos.patch` aplicado tal cual, más `export` en
+  `nombreDeOpcion` (lo usa novedades para ordenar).
+- `app/(app)/novedades/_components/novedades-filtros.ts` (`listasDeLugar`): ordena por el nombre puro
+  (`nombreDeOpcion`). **Desvío del encargo:** los ancestros NO desempatan. Si desempataran, los tres
+  «Central» saldrían Alajuela, Heredia, San José, y `novedades-filtros-lugar.test.ts:213` (que espera
+  `["c-cen-sj", "c-cen-ala", "c-cen-her"]`, el orden de la lista) cambiaría. Con el sort estable los
+  homónimos quedan juntos y en el orden del conjunto, como hoy, y `:213` no se toca.
+- `tests/unit/utils/filtro-ubicacion.test.ts`: los casos nuevos del parche (homónimos, nombre único,
+  nivel 1 sin ancestros, mis-asignaciones, `traductorPorNombre` por nombre puro).
+- `tests/components/FiltroUbicacionBarra.test.tsx` y `tests/unit/novedades/novedades-filtros-lugar.test.ts`:
+  solo los rótulos (abajo).
+
+Procedencia comprobada con `git cat-file -e origin/feature/SLT-89-geo-jerarquica-zonas:<ruta>`: los tres
+tests tocados son NUEVOS de SLT-47. `tests/unit/components/novedades-filtros.test.ts` existe allí y no se
+tocó (32/32 en verde). Ninguna aserción anterior a SLT-47 se rompió.
+
+### Líneas de test cambiadas (todas de tests nuevos de SLT-47; solo el texto del rótulo)
+`tests/components/FiltroUbicacionBarra.test.tsx`
+- :150 `["Escazú", "Central", "Central"]` → `["Escazú", "Central · San José", "Central · Alajuela"]`
+- :151 `["San Rafael", "San Antonio", "San Rafael", "Carmen"]` → `["San Rafael · Escazú, San José", "San Antonio", "San Rafael · Central, Alajuela", "Carmen"]`
+- :160 `["Escazú", "Central"]` → `["Escazú", "Central · San José"]`
+- :161 `["San Rafael", "San Antonio", "Carmen"]` → `["San Rafael · Escazú, San José", "San Antonio", "Carmen"]`
+- :164 `["San Rafael", "San Antonio"]` → `["San Rafael · Escazú, San José", "San Antonio"]`
+- :175 (acción) `marcar(user, "Distrito", "San Rafael")` → `marcar(user, "Distrito", "San Rafael · Escazú, San José")`
+- :230 y :304 `"Distrito: San Rafael"` → `"Distrito: San Rafael · Escazú, San José"`
+
+`tests/unit/novedades/novedades-filtros-lugar.test.ts`
+- :108 `"Central"` → `"Central · San José"`; :109 `"Central"` → `"Central · Alajuela"`; :110 `"Central"` → `"Central · Heredia"` (mismo orden y valores)
+- :117 `"San Rafael"` → `"San Rafael · Escazú, San José"`; :118 `"San Rafael"` → `"San Rafael · Oreamuno, Cartago"`
+- :213 sin cambios.
+
+### Salida (`NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run <archivo> --maxWorkers=1`, uno a uno)
+```
+filtro-ubicacion.test.ts               Tests 27 passed (27)
+FiltroUbicacionBarra.test.tsx          Tests 13 passed (13)
+novedades-filtros-lugar.test.ts        Tests 18 passed (18)
+novedades-filtros.test.ts              Tests 32 passed (32)
+NovedadesFiltroLugarUrl.test.tsx       Tests  2 passed (2)
+NovedadesBuscador.test.tsx             Tests 11 passed (11)
+NovedadesModule.test.tsx               Tests 74 passed (74)
+ordenes-filtros-def.test.ts            Tests 25 passed (25)
+RepartoModule.test.tsx                 Tests 108 passed (108)
+RepartoModule477Correccion.test.tsx    Tests  8 passed (8)
+mis-asignaciones/FiltroUbicacion.test.tsx Tests 18 passed (18)
+filtros-acotados-por-rol.test.ts       Tests  6 passed (6)
+FiltrosEntregas.test.tsx               Tests 20 passed (20)
+todos-los-del-nivel.test.ts            Tests 10 passed (10)
+filtro-ubicacion-rendimiento.test.ts   Tests  5 passed (5)
+```
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` sobre los 5 archivos: 0 errores, 2 warnings ya existentes en HEAD
+  (`filtro-ubicacion.test.ts:133`, `_k`/`_d` sin usar).
+
+### E2E `geo-filtro-lugar` — NO corrido
+`next build` (env47.sh, `logistic_slt47`, `SESSION_SECRET` aleatorio, `NEXT_PUBLIC_APP_URL=http://localhost:3047`)
+compiló y pasó TypeScript («Compiled successfully in 44s», «Finished TypeScript in 3.6min») y lo mató
+Claude Code por falta de memoria del sistema en «Collecting page data using 11 workers». Playwright no
+llegó a arrancar. No se reintentó (orden: si muere por memoria, no reiniciar). Puertos 3047/54347 libres.
+Riesgo a vigilar: el spec elige el cantón por `name: nombreCanton, exact: true`; si el catálogo de la
+empresa de prueba tuviera otro cantón con ese nombre, el rótulo llevaría ancestros y ese paso fallaría.
+
+Veredicto: B aplicado y en verde en vitest (15 archivos), typecheck y lint; E2E pendiente por memoria.
