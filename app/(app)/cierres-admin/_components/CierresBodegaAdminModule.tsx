@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -11,7 +11,6 @@ import {
   type FiltrosCierresBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
-import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import { useToast } from "@/hooks/useToast";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 // ⭑ FICHA 431 (T17, R25): las DOS acciones de la conciliacion, el MISMO componente que monta el
@@ -35,26 +34,12 @@ import {
 import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreBodegaDetalleServiceResult } from "@/lib/interfaces/services/ICierresBodegaAdminService";
 // SLT-104 «Detalle de cierre de bodega en el detalle único (central)» — el detalle único de SLT-95
-// con `tipo` bodega sustituye al `Modal` de antes y sus paneles (R40, R118).
-import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
+// con `tipo` bodega sustituye al `Modal` de antes y sus paneles (R40, R118). SLT-107: su montaje es
+// común con la satélite (R295).
+import { DetalleCierreBodegaAbierto } from "@/components/private/cierres/detalle/DetalleCierreBodegaAbierto";
 // SLT-127 «Cola de bodega de la central con la cola única»: la misma cola que mensajeros (R133).
 import { ColaCierres } from "@/components/private/cierres/cola/ColaCierres";
 import * as L from "@/components/private/cierres/cola/cola-cierres-labels";
-import { ConciliacionCierreBodega } from "@/components/private/cierres/detalle/ConciliacionCierreBodega";
-import { MensajerosCierreBodega } from "@/components/private/cierres/detalle/MensajerosCierreBodega";
-import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
-import {
-  COLUMNAS_DESCARGA_DETALLE_BODEGA,
-  filaDescargaDetalleBodega,
-} from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
-import {
-  filasMensajeros,
-  folioDe,
-  gestionesDeBodega,
-  modoBodegaDe,
-  vistaBodegaDesdeAdmin,
-} from "@/components/private/cierres/detalle/detalle-cierre-vista";
-import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
 import {
   VisorEvidencia,
   type EvidenciaAbierta,
@@ -441,9 +426,6 @@ export function CierresBodegaAdminModule({
   // El refresco de las listas (`refrescarListas`) SI se conserva: la fila marcada se mueve de
   // pestaña igual que antes se movia al aprobar.
 
-  /** SLT-104: la vista del detalle, una vez por detalle abierto (no en cada render). */
-  const vista = useMemo(() => (detalle ? vistaBodegaDesdeAdmin(detalle) : null), [detalle]);
-
   return (
     // `gap-4`: la barra de filtros y las pestañas son una cabecera, no dos secciones.
     <section
@@ -553,56 +535,17 @@ export function CierresBodegaAdminModule({
           que es `ConciliacionAcciones` tal cual (ficha 431: mismo botón para la misma fila; PA5).
           Lo de cada cierre del día (sus cascadas, su «Por tienda») vive en su propio detalle, al que
           lleva «Ver su cierre» (R42, R115). */}
-      {detalle && vista ? (
-        <DetalleCierre
-          tipo="bodega"
-          marco="modal"
-          audiencia="central"
-          detalle={vista}
-          modo={modoBodegaDe(detalle.cierre)}
-          pestanas={{
-            // R31, R41, R113: la lista única, en «solo lectura» (sin corregir ni ajustar; evidencia
-            // y, para la central, fulfillment), con la columna Mensajero. La fecha de la nota de
-            // tarifas va por gestión, la de SU cierre del día (PA3, R120).
-            gestiones: (
-              <GestionesCierre
-                gestiones={gestionesDeBodega(detalle.cierres)}
-                audiencia="solo lectura"
-                columnaMensajero
-                // FICHA 481 — fulfillment SOLO para la central.
-                quienMiraEsCentral={audiencia === "admin"}
-                congeladoAt={null}
-                acciones={{}}
-                onVerEvidencia={setEvidencia}
-                descargar={
-                  <DescargarDatasetButton
-                    titulo={tituloDescargaGestiones(folioDe(detalle.cierre.cierreBodegaId))}
-                    columnas={COLUMNAS_DESCARGA_DETALLE_BODEGA}
-                    obtenerFilas={async () => ({
-                      status: "ok",
-                      filas: gestionesDeBodega(detalle.cierres).map((i) =>
-                        filaDescargaDetalleBodega(i.gestion, i.mensajeroNombre),
-                      ),
-                    })}
-                  />
-                }
-              />
-            ),
-            mensajeros: (
-              <MensajerosCierreBodega
-                filas={filasMensajeros(detalle.cierres)}
-                // R115: se cierra el detalle de bodega y se abre el del cierre del día por su enlace.
-                onVerSuCierre={(href) => {
-                  cerrarDetalle();
-                  router.push(href);
-                }}
-              />
-            ),
-            conciliacion: <ConciliacionCierreBodega detalle={vista} />,
-          }}
-          acciones={{
+      {detalle ? (
+        // SLT-107 (R295): el montaje es el común con la satélite; la central le pasa su audiencia
+        // y, con permiso, `ConciliacionAcciones` tal cual (ficha 431: mismo botón para la misma fila).
+        <DetalleCierreBodegaAbierto
+          detalle={detalle}
+          // M1 (ficha 431/481): la audiencia la decide el servidor (`esAccesoTotal`) y entra por
+          // prop; un literal le abriría a un no-admin lo que es solo de la central (Fulfillment).
+          audiencia={audiencia === "admin" ? "central" : "satelite"}
+          conciliacion={
             // R112 — sin permiso no se monta: el pie queda solo con «Cerrar».
-            conciliacion: puedeConciliar ? (
+            puedeConciliar ? (
               <ConciliacionAcciones
                 cierreBodegaId={detalle.cierre.cierreBodegaId}
                 bodega={detalle.cierre.zonaNombre}
@@ -616,9 +559,15 @@ export function CierresBodegaAdminModule({
                   refrescarListas();
                 }}
               />
-            ) : undefined,
-          }}
+            ) : undefined
+          }
           onCerrar={cerrarDetalle}
+          // R115: se cierra el detalle de bodega y se abre el del cierre del día por su enlace.
+          onVerSuCierre={(href) => {
+            cerrarDetalle();
+            router.push(href);
+          }}
+          onVerEvidencia={setEvidencia}
         />
       ) : null}
 

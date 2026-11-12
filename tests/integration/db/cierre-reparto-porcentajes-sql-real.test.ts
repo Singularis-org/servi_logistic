@@ -578,8 +578,8 @@ describeSiHayBase("SLT-111 — reparto en % de lo recaudado en los dos detalles,
       const bx = await sentencias(() => k.bodega.verCierreBodegaDetalle(k.bx, k.maestro));
       const by = await sentencias(() => k.bodega.verCierreBodegaDetalle(k.by, k.maestro));
       // La lectura del repositorio SOLA: el servicio de bodega no debe emitir ni una sentencia mas.
-      const repoBx = await sentencias(() => repoBodega.findCierreBodegaConDetalle(k.bx, ZONA_DE_CR));
-      const repoBy = await sentencias(() => repoBodega.findCierreBodegaConDetalle(k.by, ZONA_DE_CR));
+      const repoBx = await sentencias(() => repoBodega.findCierreBodegaConDetalle(k.bx, ZONA_DE_CR, { lectura: "toda_la_empresa" }));
+      const repoBy = await sentencias(() => repoBodega.findCierreBodegaConDetalle(k.by, ZONA_DE_CR, { lectura: "toda_la_empresa" }));
       const despues = await huella(k.tx, [k.ma, k.mb, k.mc], [k.bx, k.by]);
       return {
         antes,

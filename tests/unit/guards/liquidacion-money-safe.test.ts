@@ -166,6 +166,9 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // «Conciliación» del detalle de bodega.
   "components/private/cierres/detalle/MensajerosCierreBodega.tsx",
   "components/private/cierres/detalle/ConciliacionCierreBodega.tsx",
+  // SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura»: el montaje común del
+  // detalle de bodega para la central y la satélite (pinta lo que llega, no deriva importes).
+  "components/private/cierres/detalle/DetalleCierreBodegaAbierto.tsx",
   // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R248): la pestaña
   // «Corregir» del rechazado (sin dinero).
   "components/private/cierres/detalle/CorregirCierre.tsx",

@@ -156,3 +156,32 @@ export const pieSePuedeSolicitar = (n: number) =>
 export const PIE_SIN_RESOLVER =
   "Se habilita cuando no quede ningún cierre de mensajero por resolver.";
 export const BOTON_SOLICITAR_BODEGA = "Solicitar cierre de bodega";
+
+// ═══ Bodega · satélite: «Solicitados» (SLT-107), textos en trato «tú» ═══════════════════════════
+
+/** El nombre del grupo de tarjetas de «Solicitados» (R286). */
+export const CIFRAS_SOLICITADOS_LABEL = "Cifras de los cierres de bodega solicitados";
+export const TARJETA_POR_LLEGAR = "Por llegar a la central";
+export const TARJETA_RECIBIDO_30_DIAS = "Recibido por la central (30 días)";
+export const TARJETA_FALTA_POR_RECIBIR = "Falta por recibir";
+export const notaPendientesConciliar = (n: number) =>
+  n === 1 ? "1 cierre pendiente de conciliar" : `${n} cierres pendientes de conciliar`;
+export const notaCierresDeBodega = (n: number) =>
+  n === 1 ? "1 cierre de bodega" : `${n} cierres de bodega`;
+export const notaLlegaronIncompletos = (n: number) =>
+  n === 1 ? "1 llegó incompleto" : `${n} llegaron incompletos`;
+
+/** R289: el pie de «Solicitados», sin botón. */
+export const PIE_SOLICITADOS =
+  '"Ver" abre el cierre de bodega con su dinero, sus gestiones, sus mensajeros y lo que marcó la central.';
+
+/**
+ * R289: región, vacío y error de hoy, sin cambios. Son los mismos textos que sigue pintando
+ * `CierresBodegaSolicitadosLista` para la satélite sin zona (R202).
+ */
+export const REGION_SOLICITADOS = "Cierres de bodega solicitados";
+export const VACIO_SOLICITADOS = "Aún no has solicitado ningún cierre de bodega.";
+export const ERROR_SOLICITADOS = "No se pudieron cargar los cierres de bodega solicitados.";
+
+/** R288: el nombre accesible de «Ver»; `folio` ya trae su «#» (`folioBodegaCola`). */
+export const nombreVerCierreBodega = (folio: string) => `Ver el cierre de bodega ${folio}`;

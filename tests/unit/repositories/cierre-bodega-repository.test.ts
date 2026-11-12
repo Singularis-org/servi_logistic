@@ -463,6 +463,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       cierreBodega: {
         findMany: vi.fn().mockResolvedValue(filas),
         findUnique: vi.fn().mockResolvedValue(filas[0]),
+        findFirst: vi.fn().mockResolvedValue(filas[0]), // SLT-107: la cabecera del detalle
         count: vi.fn().mockResolvedValue(filas.length),
         updateMany: vi.fn(),
       },
@@ -513,7 +514,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
     }
 
     // Y el detalle, que es la octava puerta a la misma cabecera.
-    const detalle = await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR);
+    const detalle = await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
     expect(detalle?.cierre).toMatchObject(ESPERADO);
   });
 
@@ -599,7 +600,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       "maestro · findColaCompleta": (await maestro.findColaCompleta())[0],
       "maestro · findHistoricoPaginado": (await maestro.findHistoricoPaginado(rango)).items[0],
       "maestro · findColaPaginada": (await maestro.findColaPaginada(rango)).items[0],
-      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR))?.cierre,
+      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" }))?.cierre,
     };
     expect(Object.keys(porLectura)).toHaveLength(8);
     for (const [lectura, fila] of Object.entries(porLectura)) {

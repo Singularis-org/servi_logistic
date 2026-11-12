@@ -252,7 +252,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
 
   it("R20 — el detalle del cierre de bodega trae `gestionesAjustadas` (gestiones, no filas) y los ajustes por gestion", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
       expect(r).not.toBeNull();
       expect(r!.cierresDia).toHaveLength(1);
       const cd = r!.cierresDia[0]!;
@@ -268,7 +268,7 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
 
   it("R20 — un cierre del dia SIN ajustes cuenta 0 en el cierre de bodega", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
       expect(r!.cierresDia).toHaveLength(1); // control positivo
       expect(r!.cierresDia[0]!.resumen.gestionesAjustadas).toBe(0);
       expect(r!.cierresDia[0]!.gestiones.every((g) => g.ajustesPago?.length === 0)).toBe(true);

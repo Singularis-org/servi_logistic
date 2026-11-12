@@ -212,7 +212,11 @@ export type CifraId =
   | "tuGanancia"
   // SLT-106 (R196): las tarjetas de «A consolidar» de la satélite.
   | "ganaBodega"
-  | "centralDebe";
+  | "centralDebe"
+  // SLT-107 (R286): las tarjetas de «Solicitados» de la satélite.
+  | "porLlegar"
+  | "recibido30Dias"
+  | "faltaPorRecibir";
 
 export interface Cifra {
   id: CifraId;

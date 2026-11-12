@@ -12,8 +12,18 @@ import * as L from "@/components/private/cierres/cola/cola-cierres-labels";
 import {
   piePorConsolidar,
   tarjetasAConsolidar,
+  tarjetasSolicitados,
   type PestanaConsolidar,
 } from "@/components/private/cierres/cola/cola-cierres-vista";
+// SLT-107 (R292, R295): el mismo montaje del detalle de bodega que la central, con audiencia satélite.
+import {
+  DetalleCierreBodegaAbierto,
+  type CierreBodegaDetalleOk,
+} from "@/components/private/cierres/detalle/DetalleCierreBodegaAbierto";
+import {
+  VisorEvidencia,
+  type EvidenciaAbierta,
+} from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { RESUMEN_SOLICITUD_BODEGA_TEXTO } from "@/components/private/cierres/dialogos/dialogos-labels";
 import { money } from "@/lib/config/moneda";
 import type { DataTableDescarga } from "@/components/shared/DataTable";
@@ -25,18 +35,23 @@ import {
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
 import { cierreConfig } from "@/lib/config/cierre";
+import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 import {
   solicitarCierreBodega,
   listarConsolidablesPaginado,
+  listarCierresBodegaSolicitadosPaginado,
+  verCierreBodegaDetalle,
 } from "@/lib/actions/cierre-bodega";
 import type {
   BloqueoConsolidacion,
   CierreConsolidableCola,
+  ResumenSolicitados,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import { hrefDetalleCierre } from "./cierre-enlace";
 import {
   CierresBodegaSolicitadosLista,
+  PAGINACION_BODEGA_SOLICITADOS_LABEL,
   descargaBodegaSolicitados,
   type CierresBodegaSolicitadosPagina,
 } from "./CierresBodegaSolicitadosLista";
@@ -76,6 +91,10 @@ const TAB_SOLICITADOS = "solicitados";
 // (T J.1, decisión 9): con la config de bodega, ajustar el tamaño de página de los cierres de
 // bodega movería también el de una tabla de cierres del día.
 const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_SIZE);
+/** «Solicitados» son cierres de BODEGA: su tope es el de `cierreBodegaConfig`, el de su lista de hoy. */
+const PAGE_SIZE_OPTIONS_SOLICITADOS = [10, 25, 50].filter(
+  (s) => s <= cierreBodegaConfig.MAX_PAGE_SIZE,
+);
 
 /**
  * Feature 170 — FASE 2 (T J.2, R40/R41): la PÁGINA de los consolidables. `total` es el del
@@ -98,6 +117,21 @@ async function leerConsolidables(
   filtros: FiltrosCierresBodega,
 ): Promise<ConsolidablesPagina> {
   const res = await listarConsolidablesPaginado({ page, pageSize, filtros });
+  if (res.status !== "ok") throw new Error(res.status);
+  return { items: res.items, total: res.total, pageSize: res.pageSize };
+}
+
+/**
+ * SLT-107 (R52, R290): una página de «Solicitados» CON los filtros de la barra, los mismos que su
+ * descarga. La zona no viaja: la resuelve el servicio desde la sesión (R44). La lista de hoy
+ * (`CierresBodegaSolicitadosLista`, solo sin zona) sigue leyendo sin filtros.
+ */
+async function leerSolicitados(
+  page: number,
+  pageSize: number,
+  filtros: FiltrosCierresBodega,
+): Promise<CierresBodegaSolicitadosPagina> {
+  const res = await listarCierresBodegaSolicitadosPaginado({ page, pageSize, filtros });
   if (res.status !== "ok") throw new Error(res.status);
   return { items: res.items, total: res.total, pageSize: res.pageSize };
 }
@@ -166,6 +200,11 @@ export interface ConsolidacionBodegaModuleProps {
    * zona (solo lectura, F1.4-h), ya resuelta server-side, más el `total` del conjunto.
    */
   cierresBodegaPasados: CierresBodegaSolicitadosPagina;
+  /**
+   * SLT-107 (R68, R287): las cifras de las tarjetas de «Solicitados», de la zona entera y sin
+   * filtros, calculadas en `listarConsolidacion`. Aquí no se suma nada (R71).
+   */
+  solicitadosResumen: ResumenSolicitados;
   /** `true` si el adminSatelite no tiene zona asignada (R4). */
   sinZona: boolean;
   /** Opciones de los filtros (bodegas), resueltas por el Server Component. */
@@ -212,6 +251,7 @@ export function ConsolidacionBodegaModule({
   bloqueo,
   zonaNombre,
   cierresBodegaPasados,
+  solicitadosResumen,
   sinZona,
   catalogoFiltros = CATALOGO_FILTROS_CIERRES_VACIO,
 }: ConsolidacionBodegaModuleProps) {
@@ -243,10 +283,14 @@ export function ConsolidacionBodegaModule({
    */
   const [filtros, setFiltros] = useState<FiltrosCierresBodega>({});
 
-  /** Filtrar devuelve el listado a su página 1. */
+  /**
+   * Filtrar pide las DOS pestañas con el filtro y devuelve las dos a su página 1 (R291): pedir la 7
+   * de un conjunto recién recortado da vacío. Cambiar de pestaña no toca ni filtros ni páginas.
+   */
   function aplicarFiltros(next: FiltrosCierresBodega) {
     setFiltros(next);
     setPage(1);
+    setPageSolicitados(1);
   }
 
   const [page, setPage] = useState(1);
@@ -267,6 +311,55 @@ export function ConsolidacionBodegaModule({
   // R44: el esqueleto sólo cuando NO hay nada que pintar (`isLoading` de SWR sigue en `true`
   // mientras revalida aunque haya `fallbackData`).
   const cargando = data === undefined;
+
+  // SLT-107 (R52, R290, R291): «Solicitados» con los MISMOS filtros que «A consolidar». La clave
+  // conserva el prefijo de hoy para que el `mutate` tras solicitar la siga revalidando (SL-44).
+  const [pageSolicitados, setPageSolicitados] = useState(1);
+  const [pageSizeSolicitados, setPageSizeSolicitados] = useState(cierresBodegaPasados.pageSize);
+  const { data: dataSolicitados, error: errorSolicitados } = useSWR(
+    // Sin zona no hay cola: lo que se ve es la lista de hoy, que lee por su cuenta (R202).
+    sinZona ? null : ["cierres-bodega:solicitados", pageSolicitados, pageSizeSolicitados, filtros],
+    () => leerSolicitados(pageSolicitados, pageSizeSolicitados, filtros),
+    {
+      // Igual que «A consolidar»: la página 1 pre-cargada solo vale sin filtros (R290).
+      fallbackData:
+        pageSolicitados === 1 &&
+        pageSizeSolicitados === cierresBodegaPasados.pageSize &&
+        sinFiltrosBodega(filtros)
+          ? cierresBodegaPasados
+          : undefined,
+    },
+  );
+  const paginaSolicitados: CierresBodegaSolicitadosPagina = dataSolicitados ?? {
+    items: [],
+    total: 0,
+    pageSize: pageSizeSolicitados,
+  };
+  const cargandoSolicitados = dataSolicitados === undefined;
+
+  // SLT-107 (R292): el cierre de bodega abierto en lectura; `null` = cerrado.
+  const [detalle, setDetalle] = useState<CierreBodegaDetalleOk | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenciaAbierta | null>(null);
+
+  /**
+   * «Ver» (R292, R293): lee el detalle por la MISMA Server Action que la central; el servidor decide
+   * si es de su zona. Si no responde `ok`, no se abre nada y se avisa: «no es tuyo» y «no existe»
+   * dicen lo mismo, como en el servidor (R50, R281).
+   */
+  async function abrirDetalle(cierreBodegaId: string) {
+    const result = await verCierreBodegaDetalle({ cierreBodegaId });
+    if (result.status === "ok") {
+      setDetalle(result);
+      return;
+    }
+    if (result.status === "forbidden" || result.status === "no_encontrada") {
+      toast.error("No tienes permiso para ver este cierre de bodega.");
+    } else if (result.status === "unauthenticated") {
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
+    } else {
+      toast.error("No se pudo abrir el detalle del cierre de bodega. Inténtalo de nuevo.");
+    }
+  }
 
   /** R6-R10: crea la solicitud de cierre de bodega de la zona. */
   async function confirmarSolicitud() {
@@ -333,18 +426,19 @@ export function ConsolidacionBodegaModule({
         /* ---------- La cola única (SLT-106, R32, R204) ----------
            `ColaCierres` con `tipo` bodega y `rol` satélite: descripción, pestañas con conteo, UNA
            barra con «Descargar» de la pestaña activa, y en «A consolidar» aviso, tarjetas, tabla y
-           pie con el botón. «Solicitados» sigue siendo la lista de hoy hasta SLT-107 (R201).
+           pie con el botón. SLT-107: «Solicitados» con sus tarjetas, su tabla y su pie (R286-R289).
 
            LOS CONTEOS salen del `total` del SERVIDOR (R42, R190), nunca de `items.length`. Lo
-           vigila `tests/unit/descarga/contadores-cabecera.guardia.test.ts`. El de «Solicitados»
-           es el de la zona sin filtros (PA2): la lista de hoy tampoco los aplica. */
+           vigila `tests/unit/descarga/contadores-cabecera.guardia.test.ts`. Los dos llevan los
+           filtros puestos (R290). */
         <ColaCierres
           tipo="bodega"
           rol="satelite"
           descripcion={L.descripcionColaSatelite(zonaNombre)}
           pestanas={[
             { id: TAB_CONSOLIDAR, label: L.PESTANA_A_CONSOLIDAR, conteo: pagina.total },
-            { id: TAB_SOLICITADOS, label: L.PESTANA_SOLICITADOS, conteo: cierresBodegaPasados.total },
+            // R290: el `total` filtrado del servidor, el mismo que pagina la tabla.
+            { id: TAB_SOLICITADOS, label: L.PESTANA_SOLICITADOS, conteo: paginaSolicitados.total },
           ]}
           pestanaActiva={tab}
           onPestana={setTab}
@@ -352,7 +446,7 @@ export function ConsolidacionBodegaModule({
             <FiltrosCierresBarra
               catalogo={catalogoFiltros}
               onChange={aplicarFiltros}
-              disabled={cargando}
+              disabled={cargando || cargandoSolicitados}
               sinMensajero
             />
           }
@@ -394,9 +488,49 @@ export function ConsolidacionBodegaModule({
               />
             ) : null
           }
-          solicitados={<CierresBodegaSolicitadosLista initialData={cierresBodegaPasados} />}
+          solicitados={{
+            tarjetas: tarjetasSolicitados(solicitadosResumen),
+            filas: paginaSolicitados.items,
+            acciones: { ver: (id) => void abrirDetalle(id) },
+            cargando: cargandoSolicitados,
+            error: errorSolicitados ? L.ERROR_SOLICITADOS : null,
+            paginacion: (
+              <Pagination
+                page={pageSolicitados}
+                pageSize={pageSizeSolicitados}
+                total={paginaSolicitados.total}
+                disabled={cargandoSolicitados}
+                showFirstLast
+                siblingCount={1}
+                ariaLabel={PAGINACION_BODEGA_SOLICITADOS_LABEL}
+                onPageChange={setPageSolicitados}
+                onPageSizeChange={(s) => {
+                  setPageSizeSolicitados(s);
+                  setPageSolicitados(1);
+                }}
+                pageSizeOptions={PAGE_SIZE_OPTIONS_SOLICITADOS}
+              />
+            ),
+          }}
         />
       )}
+
+      {/* SLT-107 (R50, R51, R292): el detalle de bodega en lectura. Sin `conciliacion`: el pie solo
+          tiene «Cerrar» y no hay fulfillment (lo anula el servidor, R283, y la vista, R51). */}
+      {detalle ? (
+        <DetalleCierreBodegaAbierto
+          detalle={detalle}
+          audiencia="satelite"
+          onCerrar={() => setDetalle(null)}
+          // R294: el mismo camino que la central: cerrar y abrir el cierre del día por su enlace.
+          onVerSuCierre={(href) => {
+            setDetalle(null);
+            router.push(href);
+          }}
+          onVerEvidencia={setEvidencia}
+        />
+      ) : null}
+      <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
 
       {/* SIN ZONA (R4, R202) el histórico se sigue enseñando, fuera de la cola: es lo único que
           este actor puede mirar, y esconderlo tras unas pestañas que no puede usar dejaría la

@@ -2,6 +2,7 @@ import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registr
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
+  AlcanceLecturaBodega,
   CierreBodegaDetalleCierreRow,
   CorregirConciliacionInput,
   ICierresBodegaAdminRepository,
@@ -472,6 +473,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
+    alcance: AlcanceLecturaBodega,
   ): Promise<{
     cierre: CierreBodegaResumenRow;
     cierresDia: {
@@ -479,11 +481,16 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       gestiones: CierreGestionPendienteRow[];
     }[];
   } | null> {
-    const cierre = await this.prisma.cierreBodega.findUnique({
-      where: { id },
+    // SLT-107 (R280, D-S9): el filtro de zona va EN el `where` de la cabecera, junto al de empresa
+    // (extension + RLS): un cierre de otra zona no llega a leerse (no se lee y se descarta). `findFirst`
+    // porque `id` + `zonaId` no es una clave unica.
+    const cierre = await this.prisma.cierreBodega.findFirst({
+      where: { id, ...(alcance.lectura === "zona" ? { zonaId: alcance.zonaId } : {}) },
       select: BODEGA_RESUMEN_SELECT,
     });
-    if (cierre === null) return null; // R19: no existe
+    // R19 / SLT-107 (R281): no existe o fuera de alcance -> `null` ANTES de leer cierres del dia,
+    // gestiones, detalle y cargos de fulfillment.
+    if (cierre === null) return null;
 
     // Los cierre_dia incluidos (WHERE cierre_bodega_id = id), mas reciente primero.
     const cierresDiaRows = await this.prisma.cierreDia.findMany({

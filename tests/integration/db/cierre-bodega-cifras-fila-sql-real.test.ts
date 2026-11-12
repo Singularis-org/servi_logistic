@@ -487,7 +487,7 @@ describeSiHayBase("SLT-110 — cifras de la fila en el detalle del cierre de bod
 
   /** El detalle de bodega leido por el repositorio, por gestion y por cierre del dia. */
   const leer = (c: Ctx) =>
-    c.repo.findCierreBodegaConDetalle(c.cierreBodegaId, ZONA_CR).then((r) => {
+    c.repo.findCierreBodegaConDetalle(c.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" }).then((r) => {
       if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
       const todas = r.cierresDia.flatMap((cd) => cd.gestiones);
       const porId = new Map(todas.map((g) => [g.gestionId, g]));
@@ -630,7 +630,7 @@ describeSiHayBase("SLT-110 — cifras de la fila en el detalle del cierre de bod
   it("R216/R210: UNA consulta de movimientos para los dos cierres del dia; solo ordenes de X (D no se cuela)", async () => {
     const filas = await conCorpus(async (c) => {
       const desde = eventos.length;
-      await c.repo.findCierreBodegaConDetalle(c.cierreBodegaId, ZONA_CR);
+      await c.repo.findCierreBodegaConDetalle(c.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
       const consultas = eventos
         .slice(desde)
         .filter((e) => e.query.includes(`"orden_fulfillment_movimiento"`));
@@ -647,7 +647,7 @@ describeSiHayBase("SLT-110 — cifras de la fila en el detalle del cierre de bod
   it("R213: la lectura del detalle no escribe en la base", async () => {
     const escrituras = await conCorpus(async (c) => {
       const desde = eventos.length;
-      const r = await c.repo.findCierreBodegaConDetalle(c.cierreBodegaId, ZONA_CR);
+      const r = await c.repo.findCierreBodegaConDetalle(c.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
       expect(r).not.toBeNull();
       const leidas = eventos.slice(desde);
       expect(leidas.length).toBeGreaterThan(0);

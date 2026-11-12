@@ -260,8 +260,30 @@ export type ListarConsolidacionServiceResult =
       cierresAConsolidar: number; // R195: consolidables.length
       mensajerosAConsolidar: number; // R195: mensajeros distintos de los consolidables
       bloqueo: BloqueoConsolidacion | null; // R195: el motivo del gate, para el pie (R197)
+      // SLT-107 (R68, R287): las tres cifras de «Solicitados», sobre el conjunto COMPLETO de la
+      // zona (`cierresBodegaPasados`), sin filtros ni pagina.
+      solicitadosResumen: ResumenSolicitados;
     }
   | { status: "forbidden" }; // rol != adminSatelite (R1)
+
+/** SLT-107 (R287): un monto (STRING escala 2, con su signo) y cuantos cierres de bodega lo suman. */
+export interface CifraConConteo {
+  monto: string;
+  cierres: number;
+}
+
+/**
+ * SLT-107 (R68, R287): las tarjetas de «Solicitados» de la satelite. Sin zona, las tres en
+ * `"0.00"` y 0.
+ */
+export interface ResumenSolicitados {
+  /** Sin marca de recibido (`conciliadoAt` nulo): suma de su `paraLaCentral`, con su signo. */
+  porLlegar: CifraConConteo;
+  /** `conciliadoAt` vigente desde las 00:00 de hace 29 dias en la zona de la empresa: suma de `montoRecibido`. */
+  recibido30Dias: CifraConConteo;
+  /** Con marca y `faltaPorRecibir` > 0 (cero o negativo no falta): suma de `faltaPorRecibir`. */
+  faltaPorRecibir: CifraConConteo;
+}
 
 /**
  * Feature 170 — FASE 2 (T I.1, R40/R41): UNA PAGINA de los cierres de bodega SOLICITADOS por

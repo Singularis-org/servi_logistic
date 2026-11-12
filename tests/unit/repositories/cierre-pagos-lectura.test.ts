@@ -316,7 +316,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
   function prismaDoble() {
     return {
       cierreBodega: {
-        findUnique: vi.fn().mockResolvedValue({
+        findFirst: vi.fn().mockResolvedValue({
           id: "cb1",
           zonaId: "z1",
           solicitadoPor: "sat-1",
@@ -374,7 +374,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
     const prisma = prismaDoble();
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR);
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
     expect(r?.cierresDia[0].gestiones[0].pagos).toEqual(DESGLOSE_ESPERADO);
   });
@@ -385,7 +385,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
     const prisma = prismaDoble();
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    await repo.findCierreBodegaConDetalle("cb1", ZONA_CR);
+    await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
     expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).toBe(GESTION_ADMIN_SELECT);
   });

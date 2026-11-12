@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { CierreBodegaService, motivoSinResolver } from "@/lib/services/CierreBodegaService";
+import { CierreBodegaService, motivoSinResolver, resumenSolicitados } from "@/lib/services/CierreBodegaService";
 import type {
   CierreDiaConsolidableRow,
   ICierreBodegaRepository,
@@ -183,5 +183,128 @@ describe("SLT-106 R200 — `solicitarCierreBodega` no cambia", () => {
     expect(repo.contarCierresDiaSolicitados).toHaveBeenCalledWith(ZONA);
     expect(repo.findMensajerosConCierreSinResolver).not.toHaveBeenCalled();
     expect(repo.crearCierreBodega).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (R68, R287) — las tres
+// cifras de «Solicitados». Importes y fechas, literales escritos a mano.
+//
+// «Hoy» fijo: 2026-11-12 09:00 en Costa Rica (UTC−6). 30 días calendario contando hoy empiezan el
+// 2026-10-14 a las 00:00 de Costa Rica = 2026-10-14T06:00:00.000Z.
+describe("SLT-107 R287 — `solicitadosResumen` de `listarConsolidacion`", () => {
+  const HOY = new Date("2026-11-12T15:00:00.000Z");
+
+  type CierreResumen = Parameters<typeof resumenSolicitados>[0][number];
+  function cb(c: Partial<CierreResumen>): CierreResumen {
+    return { paraLaCentral: "0.00", montoRecibido: null, faltaPorRecibir: "0.00", conciliadoAt: null, ...c };
+  }
+
+  function servicioConCierres(
+    cierres: CierreResumen[],
+    opts: { zona?: string | null; reglas?: ReturnType<typeof reglasPaisFijas> } = {},
+  ) {
+    const repo = {
+      findCierresDiaConsolidables: vi.fn(async () => []),
+      findMensajerosConCierreSinResolver: vi.fn(async () => []),
+      findCierresBodegaByZona: vi.fn(async () => cierres),
+    } as unknown as ICierreBodegaRepository;
+    const ordenRepo = {
+      findUsuarioZonaId: vi.fn(async () => (opts.zona === undefined ? ZONA : opts.zona)),
+    } as unknown as IOrdenRepository;
+    return new CierreBodegaService(repo, ordenRepo, opts.reglas ?? reglasPaisFijas(), () => HOY);
+  }
+
+  async function resumen(cierres: CierreResumen[]) {
+    const r = await servicioConCierres(cierres).listarConsolidacion(SATELITE);
+    if (r.status !== "ok") throw new Error(`esperaba ok, llegó ${r.status}`);
+    return r.solicitadosResumen;
+  }
+
+  it("por llegar: tres sin marca 438163.27 + (−1200.00) + 0.00 = 436963.27, con su signo; los marcados no", async () => {
+    const r = await resumen([
+      cb({ paraLaCentral: "438163.27" }),
+      cb({ paraLaCentral: "-1200.00" }),
+      cb({ paraLaCentral: "0.00" }),
+      cb({ paraLaCentral: "77777.77", montoRecibido: "77777.77", conciliadoAt: "2026-11-10T15:00:00.000Z" }),
+    ]);
+    expect(r.porLlegar).toEqual({ monto: "436963.27", cierres: 3 });
+  });
+
+  it("solo pendientes con negativo neto: −1200.00 + 300.00 = −900.00 (signo conservado)", async () => {
+    const r = await resumen([cb({ paraLaCentral: "-1200.00" }), cb({ paraLaCentral: "300.00" })]);
+    expect(r.porLlegar).toEqual({ monto: "-900.00", cierres: 2 });
+  });
+
+  it("recibido (30 días): 00:00 del día 30 hacia atrás entra; 23:59 del día 31 no; suma `montoRecibido`", async () => {
+    const r = await resumen([
+      // 2026-10-14 00:00 Costa Rica: el primer instante de los 30 días.
+      cb({ montoRecibido: "1000.10", conciliadoAt: "2026-10-14T06:00:00.000Z" }),
+      // 2026-10-13 23:59 Costa Rica: día 31, fuera.
+      cb({ montoRecibido: "50000.00", conciliadoAt: "2026-10-14T05:59:00.000Z" }),
+      // Hoy.
+      cb({ montoRecibido: "2500.25", conciliadoAt: "2026-11-12T14:00:00.000Z" }),
+    ]);
+    expect(r.recibido30Dias).toEqual({ monto: "3500.35", cierres: 2 });
+  });
+
+  it("T0.3 (a): recibido hace 45 días y corregido hoy -> cuenta, porque el ancla es el `conciliadoAt` VIGENTE", async () => {
+    // «Corregir recibido» reescribe `conciliado_at` con «ahora» (CierresBodegaAdminRepository.corregirConciliacion):
+    // el cierre llega aquí con la fecha de la corrección, no con la de la primera marca (2026-09-28).
+    const r = await resumen([cb({ montoRecibido: "8000.00", conciliadoAt: "2026-11-12T13:30:00.000Z" })]);
+    expect(r.recibido30Dias).toEqual({ monto: "8000.00", cierres: 1 });
+  });
+
+  it("falta por recibir: 15000.00 entra; 0.00 y −500.00 (llegó de más) no; un pendiente sin marca tampoco", async () => {
+    const r = await resumen([
+      cb({ montoRecibido: "5000.00", faltaPorRecibir: "15000.00", conciliadoAt: "2026-11-01T15:00:00.000Z" }),
+      cb({ montoRecibido: "9000.00", faltaPorRecibir: "0.00", conciliadoAt: "2026-11-01T15:00:00.000Z" }),
+      cb({ montoRecibido: "9500.00", faltaPorRecibir: "-500.00", conciliadoAt: "2026-11-01T15:00:00.000Z" }),
+      // Sin marca, `faltaPorRecibir` = su `paraLaCentral` entero: eso es «por llegar», no «falta».
+      cb({ paraLaCentral: "4000.00", faltaPorRecibir: "4000.00" }),
+    ]);
+    expect(r.faltaPorRecibir).toEqual({ monto: "15000.00", cierres: 1 });
+  });
+
+  it("falta por recibir: 0.01 entra (el corte es > 0 con decimales, no >= 0)", async () => {
+    const r = await resumen([
+      cb({ montoRecibido: "99.99", faltaPorRecibir: "0.01", conciliadoAt: "2026-11-01T15:00:00.000Z" }),
+    ]);
+    expect(r.faltaPorRecibir).toEqual({ monto: "0.01", cierres: 1 });
+  });
+
+  it("sin cierres de bodega: las tres en \"0.00\" y 0 (las tarjetas se pintan igual, PA2)", async () => {
+    const r = await resumen([]);
+    expect(r).toEqual({
+      porLlegar: { monto: "0.00", cierres: 0 },
+      recibido30Dias: { monto: "0.00", cierres: 0 },
+      faltaPorRecibir: { monto: "0.00", cierres: 0 },
+    });
+  });
+
+  it("sin zona: las tres en \"0.00\" y 0, sin leer la zona horaria", async () => {
+    const reglas = reglasPaisFijas();
+    const zonaHoraria = vi.spyOn(reglas, "zonaHoraria");
+    const r = await servicioConCierres([cb({ paraLaCentral: "100.00" })], { zona: null, reglas }).listarConsolidacion(
+      SATELITE,
+    );
+    if (r.status !== "ok") throw new Error(`esperaba ok, llegó ${r.status}`);
+    expect(r.solicitadosResumen).toEqual({
+      porLlegar: { monto: "0.00", cierres: 0 },
+      recibido30Dias: { monto: "0.00", cierres: 0 },
+      faltaPorRecibir: { monto: "0.00", cierres: 0 },
+    });
+    expect(zonaHoraria).not.toHaveBeenCalled();
+  });
+
+  it("`resumenSolicitados` pura: el corte lo da `desde`, inclusivo", () => {
+    const desde = new Date("2026-10-14T06:00:00.000Z");
+    const r = resumenSolicitados(
+      [
+        cb({ montoRecibido: "10.00", conciliadoAt: "2026-10-14T06:00:00.000Z" }),
+        cb({ montoRecibido: "20.00", conciliadoAt: "2026-10-14T05:59:59.999Z" }),
+      ],
+      desde,
+    );
+    expect(r.recibido30Dias).toEqual({ monto: "10.00", cierres: 1 });
   });
 });
