@@ -75,17 +75,11 @@ interface ContadorCensado {
  * paginan a proposito y cuyo conteo por grupo sigue siendo correcto.
  */
 const CENSO_CONTADORES: ContadorCensado[] = [
-  {
-    ruta: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
-    identificador: "filas",
-    listado: "Gestiones del cierre del dia por resultado (mensajero)",
-    estado: "sin_paginar",
-    nota:
-      "Anexo IV: vista AGRUPADA en 4 listas; la seccion se OCULTA si su grupo esta vacio y el " +
-      "encabezado lleva el conteo del grupo. El conjunto esta acotado por la jornada de UN " +
-      "mensajero. Este contador sigue siendo correcto aunque el modulo pagine su OTRA tabla " +
-      "(«Cierres solicitados», tanda I).",
-  },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242, R255): aquí
+  // estaba `CierreDiaModule.tsx :: ({filas.length})`, el conteo de cada sección por resultado del
+  // cierre del día. Las secciones se fueron: las gestiones del día son la lista única de la pestaña
+  // «Gestiones (n)» del detalle, cuyo conteo sale de `pestanasDe` —forma que este detector no mira— y
+  // que sigue censada sin paginar en el Anexo IV de `paginacion-transversal.test.tsx`.
   // FICHA 482 (2026-10-15): aquí estaba `cierre-detalle-shared.tsx :: ({filas.length})`, el
   // conteo por sección de `DetalleSecciones` («Gestiones de un cierre por resultado (detalle del
   // admin)»). Se borró con su componente. El listado sigue vivo en `cierre-factura.tsx`
@@ -348,7 +342,9 @@ describe("guardia de contadores de cabecera (T H.3, R42)", () => {
     // Eran 6 hasta T J.2; las 4 colas de riesgo MEDIO dejaron de contar su array.
     // FICHA 482: 2 -> 1. El de `cierre-detalle-shared.tsx` se fue con el código que lo pintaba
     // (`DetalleSecciones`, borrado), no porque dejara de registrarse.
-    expect(enArbol).toHaveLength(1);
+    // SLT-109: 1 -> 0. El de `CierreDiaModule.tsx` se fue con sus secciones por resultado. La mitad
+    // (a) de arriba sigue viva: un `({X.length})` nuevo en el árbol la pone roja hasta registrarlo.
+    expect(enArbol).toHaveLength(0);
   });
 
   it("las cuatro colas de la tanda J muestran el total del servidor, y su pantalla se vigila", () => {
