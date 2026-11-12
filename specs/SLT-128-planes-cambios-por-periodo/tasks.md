@@ -74,7 +74,7 @@
 ## Bloque D — Tests de integración (dependen de T5 y T6) [P]
 
 ### T7
-- [ ] **T7.1** `tests/integration/db/planes-cambio-por-empresa.test.ts` (nuevo): R1, R4–R6, R10, R11 (lectura),
+- [x] **T7.1** `tests/integration/db/planes-cambio-por-empresa.test.ts` (nuevo): R1, R4–R6, R10, R11 (lectura),
   R13–R19. Casos mínimos: quincenal y mensual con F = 16 de noviembre; la quincenal recibe el 16 y la mensual el 1
   de diciembre; la promoción al recibir la mensual; módulos con una excepción que sobrevive; tope pasado; reemplazo
   del 21 de noviembre (P6); cancelar con y sin recepciones; archivar a medias y sin empresas; «De inmediato» con el

@@ -287,16 +287,17 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
       // Excepción de la quincenal (SL-23): sin analítica, que el plan incluye.
       await tx.organizacionModulo.deleteMany({ where: { organizacionId: quincenal, modulo: "analitica" } });
       await p.programar("2026-11-16", { modulos: ["analitica", "monitoreo"] });
-      const historialAntes = await tx.historialAccion.count({ where: { organizacionId: { in: p.orgs } } });
+      // Por id y no por `created_at`: dentro de una transacción `now()` no avanza y el orden no separa el antes.
+      const historialAntes = (
+        await tx.historialAccion.findMany({ where: { organizacionId: { in: p.orgs } }, select: { id: true } })
+      ).map((f) => f.id);
       await p.recibir(quincenal, a("2026-11-16", 1));
       const aMedias = { quincenal: await modulos(tx, quincenal), mensual: await modulos(tx, mensual) };
       // Otra excepción de la quincenal después de recibirlo: apaga monitoreo.
       await tx.organizacionModulo.deleteMany({ where: { organizacionId: quincenal, modulo: "monitoreo" } });
       await p.recibir(mensual, a("2026-12-01", 1));
       const filas = await tx.historialAccion.findMany({
-        where: { organizacionId: { in: p.orgs } },
-        orderBy: { createdAt: "asc" },
-        skip: historialAntes,
+        where: { organizacionId: { in: p.orgs }, id: { notIn: historialAntes } },
         select: { organizacionId: true, accion: true, valorNuevo: true },
       });
       return {
