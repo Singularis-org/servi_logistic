@@ -15,6 +15,7 @@ import {
   pestanasDe,
   vistaBodegaDesdeAdmin,
   vistaMensajeroDesdeAdmin,
+  vistaMensajeroDesdeCierreDia,
   type AccionId,
   type Audiencia,
   type DetalleBodegaVista,
@@ -23,7 +24,11 @@ import {
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import type { CierreDetalleAdminServiceResult } from "@/lib/interfaces/services/ICierresAdminService";
 import type { CierreBodegaDetalleServiceResult } from "@/lib/interfaces/services/ICierresBodegaAdminService";
-import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierreDetalleGestion,
+  CierrePasadoDTO,
+  CierreRechazoDeTienda,
+} from "@/lib/interfaces/services/ICierreDiaService";
 
 // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T1.1) — la lógica pura del
 // detalle único. Los números son los de `design.md > Números escritos a mano` y TODOS los
@@ -752,5 +757,83 @@ describe("SLT-104 — pestaña «Mensajeros (n)» cuenta filas (PA2, R121)", () 
     expect(vista.conteos.mensajeros).toBe(1);
     expect(vista.conteos.cierres).toBe(2);
     expect(filasMensajeros(r.cierres)).toHaveLength(2);
+  });
+});
+
+// SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (T1.1, R150, R71) — un cierre pasado
+// del propio mensajero a la vista del detalle único. Esperados escritos a mano.
+describe("SLT-108 — vistaMensajeroDesdeCierreDia (R150)", () => {
+  const cierre: CierrePasadoDTO = {
+    cierreId: "c0ffee00-0000-4000-8000-00abcdef1234",
+    estado: "aprobado",
+    destinoTipo: "bodega_central",
+    destinoZonaId: "z-1",
+    totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
+    totalPagoMensajero: "3000.00",
+    totalIngresoBodegaRechazos: "3503.00",
+    solicitadoAt: "2026-11-07T23:10:00.000Z",
+    resueltoAt: "2026-11-08T15:00:00.000Z",
+    motivoRechazo: null,
+  };
+  const g = (gestionId: string, resultado: CierreDetalleGestion["resultado"]) =>
+    ({ gestionId, resultado, pagoMensajero: "1500.00" }) as CierreDetalleGestion;
+  const rechazoDeTienda = { gestionId: "rt-1" } as CierreRechazoDeTienda;
+  const detalle = {
+    grupos: {
+      entregado: [g("g1", "entregado"), g("g2", "entregado")],
+      reprogramado: [],
+      novedad: [],
+      devolucion_a_origen_por_rechazo: [g("g3", "devolucion_a_origen_por_rechazo")],
+      incidente: [],
+    },
+    ordenesSinGestion: [],
+    rechazosDeTienda: [rechazoDeTienda],
+  };
+
+  it("lleva la cabecera, los importes del servidor tal cual y los conteos de ese cierre", () => {
+    expect(vistaMensajeroDesdeCierreDia(cierre, detalle)).toEqual({
+      mensajeroNombre: "",
+      destino: "Bodega central",
+      folio: "CDEF1234",
+      estado: "aprobado",
+      solicitadoAt: "2026-11-07T23:10:00.000Z",
+      resueltoAt: "2026-11-08T15:00:00.000Z",
+      reprogramadasRetenidasHoy: 0,
+      motivoRechazo: null,
+      totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
+      totalPagoMensajero: "3000.00",
+      empresa: null,
+      conteos: {
+        gestiones: 3,
+        entregadas: 2,
+        noEntregadas: 1,
+        pagosAjustados: 0,
+        incidentesSinIndemnizar: 0,
+        rechazosDeTienda: 1,
+        paquetesVuelven: 1,
+        tiendas: 0,
+      },
+    });
+  });
+
+  it("el folio son los últimos 8 del id en mayúsculas y el destino no lleva zona", () => {
+    const v = vistaMensajeroDesdeCierreDia(cierre, detalle);
+    expect(v.folio).toBe("CDEF1234");
+    expect(v.destino).toBe("Bodega central");
+  });
+
+  it("no trae el dinero de la empresa (R9): ni el ingreso de bodega ni otra cifra suya", () => {
+    const v = vistaMensajeroDesdeCierreDia(cierre, detalle);
+    expect(v.empresa).toBeNull();
+    expect(JSON.stringify(v)).not.toContain("3503.00");
+  });
+
+  it("sin resolución ni motivo en el DTO (campos opcionales) salen null", () => {
+    const sinOpcionales: CierrePasadoDTO = { ...cierre, estado: "solicitado" };
+    delete sinOpcionales.resueltoAt;
+    delete sinOpcionales.motivoRechazo;
+    const v = vistaMensajeroDesdeCierreDia(sinOpcionales, detalle);
+    expect(v.resueltoAt).toBeNull();
+    expect(v.motivoRechazo).toBeNull();
   });
 });

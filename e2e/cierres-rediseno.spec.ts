@@ -151,6 +151,21 @@ async function pie(detalle: Locator): Promise<string[]> {
   return detalle.locator("footer").getByRole("button").allTextContents();
 }
 
+/**
+ * SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (T3.2, R59, R77, R150) — el mensajero
+ * abre SU cierre desde la tira «Cierres solicitados» de `/cierre-dia` y lo lee en el detalle único.
+ */
+async function abrirMiCierre(page: Page): Promise<Locator> {
+  await page.goto("/cierre-dia");
+  await page
+    .getByRole("region", { name: "Cierres solicitados" })
+    .getByRole("button", { name: /^Ver del cierre del / })
+    .click();
+  const detalle = page.getByRole("dialog", { name: "Detalle del cierre · Tu cierre del día" });
+  await expect(detalle).toBeVisible();
+  return detalle;
+}
+
 test.describe.serial("SLT-100 — la central y la satélite ven el detalle único (escenario A)", () => {
   let r: RepartoE2E;
   let central: { m: MensajeroE2E; rechazo: OrdenE2E; cierreId: string };
@@ -246,6 +261,36 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     expect((await cierresDe(satelite.m)).map((c) => [c.id, c.estado, c.motivoRechazo])).toEqual([
       [satelite.cierreId, "rechazado", "Faltan paquetes"],
     ]);
+  });
+
+  // SLT-108 (R59, R77, R150): el mismo cierre A, ya aprobado, visto por SU mensajero desde /cierre-dia.
+  // Literales de la cabecera de arriba: Recaudado 100.000 (70.000 efectivo + 30.000 SINPE, sin
+  // Transferencia), 3 gestiones, ganancia 2 × 1.500 = 3.000. Ni «Le queda a la empresa» (3.500) ni
+  // «Cobro a la tienda».
+  test("mensajero A: su cierre en el detalle único, con sus tres cifras y sin el dinero de la empresa", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, central.m);
+    const detalle = await abrirMiCierre(page);
+
+    await expect(cifra(detalle, "recaudado")).toHaveText(importe(100000, { solo: true }));
+    await expect(cifra(detalle, "gestiones")).toHaveText("3");
+    await expect(cifra(detalle, "tuGanancia")).toHaveText(importe(3000, { solo: true }));
+    const metodos = detalle.getByRole("group", { name: "Cifras del cierre" }).getByLabel("Métodos de pago de lo recaudado");
+    await expect(metodos.getByText("Efectivo", { exact: true }).locator("..")).toContainText(importe(70000));
+    await expect(metodos.getByText("SINPE", { exact: true }).locator("..")).toContainText(importe(30000));
+    await expect(metodos.getByText("Transferencia", { exact: true })).toHaveCount(0);
+
+    await expect(detalle.getByRole("tab", { name: "Gestiones (3)" })).toHaveAttribute("aria-selected", "true");
+    await expect(detalle.getByRole("tab", { name: "Rechazados por la tienda (0)" })).toBeVisible();
+    await expect(detalle.getByRole("tab", { name: "Dinero" })).toHaveCount(0);
+    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await expect(ordenes.getByText(importe(1500, { solo: true }))).toHaveCount(2);
+
+    await expect(detalle.getByText(importe(3500, { solo: true }))).toHaveCount(0);
+    await expect(detalle.getByText("Le queda a la empresa")).toHaveCount(0);
+    await expect(detalle.getByText("Cobro a la tienda")).toHaveCount(0);
+    await expect(detalle.getByText("Los montos son los que quedaron congelados al solicitar el cierre.")).toBeVisible();
+    expect(await pie(detalle)).toEqual(["Cerrar"]);
   });
 });
 
@@ -532,6 +577,18 @@ test.describe.serial("SLT-100 — la central ve un cierre del modelo nuevo (esce
     await expect(cifra(detalle, "pago")).toHaveText(importe(2200, { solo: true }));
     await expect(cifra(detalle, "leQueda")).toHaveText(importe(900, { solo: true }));
     await expect(detalle.getByText(/Automático \(por plazo vencido\)/)).toHaveCount(0);
+  });
+
+  // SLT-108 (R77, R150): el mismo cierre B visto por su mensajero. Recaudado 10.000, 1 gestión, ganancia
+  // 2.200 (el pago congelado del modelo nuevo). Ni «le queda» 900 ni el cobro 3.503.
+  test("mensajero B: su cierre del modelo nuevo en el detalle único, sin el dinero de la empresa", async ({ browser }) => {
+    const page = await paginaDe(browser, m);
+    const detalle = await abrirMiCierre(page);
+    await expect(cifra(detalle, "recaudado")).toHaveText(importe(10000, { solo: true }));
+    await expect(cifra(detalle, "gestiones")).toHaveText("1");
+    await expect(cifra(detalle, "tuGanancia")).toHaveText(importe(2200, { solo: true }));
+    await expect(detalle.getByText(importe(900, { solo: true }))).toHaveCount(0);
+    await expect(detalle.getByText(importe(3503, { solo: true }))).toHaveCount(0);
   });
 });
 

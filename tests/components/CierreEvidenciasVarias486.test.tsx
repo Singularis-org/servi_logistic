@@ -350,10 +350,13 @@ describe("486 · R16 · S3 vistas del mensajero", () => {
 
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
     await user.click(within(region).getByRole("button", { name: /^Ver del cierre/ }));
-    const comprobante = await screen.findByRole("region", {
-      name: "Comprobante detallado de tu cierre",
+    // SLT-108 (R154): el cierre pasado se abre en el detalle único; la evidencia está en la fila
+    // única desplegada, y abre el MISMO visor de `/cierre-dia`.
+    const detalle = await screen.findByRole("dialog", {
+      name: "Detalle del cierre · Tu cierre del día",
     });
-    const fila = await desplegar(user, comprobante, "Detalle de la orden REM-TRES · Tere Tres");
+    const conmutador = await desplegar(user, detalle, "Detalle de la orden REM-TRES · Tere Tres");
+    const fila = conmutador.closest("[data-gestion]") as HTMLElement;
     expect(rotulosEvidencia(fila)).toEqual(["Ver evidencia (3)"]);
 
     await user.click(

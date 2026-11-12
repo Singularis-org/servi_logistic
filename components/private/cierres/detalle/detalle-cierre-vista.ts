@@ -5,6 +5,10 @@
 
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
 import type {
+  CierreGrupos,
+  CierreOrdenSinGestion,
+  CierrePasadoDTO,
+  CierreRechazoDeTienda,
   CierreTotales,
   TotalesIngresoEmpresa,
 } from "@/lib/interfaces/services/ICierreDiaService";
@@ -734,6 +738,57 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
       rechazosDeTienda: r.rechazosDeTienda.length,
       paquetesVuelven,
       tiendas: r.partesPorTienda.length,
+    },
+  };
+}
+
+/** Lo que `verCierrePasado` trae junto al cierre, ya guardado por `/cierre-dia`. */
+export interface DetallePasadoMensajero {
+  grupos: CierreGrupos;
+  ordenesSinGestion: readonly CierreOrdenSinGestion[];
+  rechazosDeTienda: readonly CierreRechazoDeTienda[];
+}
+
+/**
+ * SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R150) — un cierre PASADO del propio
+ * mensajero (`verCierrePasado`), para el detalle único con audiencia mensajero. Mismo patrón que
+ * `vistaMensajeroDesdeAdmin`, sin el dinero de la empresa (`empresa: null`, R9): al mensajero no le
+ * llega. El destino es solo el tipo, como en la tira de comprobantes: el DTO no trae la zona. Los
+ * importes son los STRING congelados del servidor, tal cual (R71).
+ */
+export function vistaMensajeroDesdeCierreDia(
+  c: CierrePasadoDTO,
+  d: DetallePasadoMensajero,
+): DetalleMensajeroVista {
+  const gestiones = Object.values(d.grupos).flat();
+  const paquetesVuelven =
+    gestiones.filter((g) => vuelveABodegaElPaquete({ origen: "gestion", resultado: g.resultado })).length +
+    d.ordenesSinGestion.filter(() => vuelveABodegaElPaquete({ origen: "barrida" })).length;
+  return {
+    // Con audiencia mensajero el título es «Tu cierre del día»: el nombre no se pinta.
+    mensajeroNombre: "",
+    destino: destinoLegible(c.destinoTipo, ""),
+    folio: folioDe(c.cierreId),
+    estado: c.estado,
+    solicitadoAt: c.solicitadoAt,
+    resueltoAt: c.resueltoAt ?? null,
+    // Es un dato de la cola del admin: el mensajero no lo recibe.
+    reprogramadasRetenidasHoy: 0,
+    motivoRechazo: c.motivoRechazo ?? null,
+    totales: c.totales,
+    totalPagoMensajero: c.totalPagoMensajero,
+    empresa: null,
+    conteos: {
+      gestiones: gestiones.length,
+      entregadas: d.grupos.entregado.length,
+      noEntregadas: gestiones.length - d.grupos.entregado.length,
+      // Al mensajero no le llegan ajustes (SLT-56 Q2) ni indemnización (158); «Tiendas» solo la usa
+      // una cifra de la empresa.
+      pagosAjustados: 0,
+      incidentesSinIndemnizar: 0,
+      rechazosDeTienda: d.rechazosDeTienda.length,
+      paquetesVuelven,
+      tiendas: 0,
     },
   };
 }

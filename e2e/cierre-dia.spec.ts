@@ -30,6 +30,11 @@ import {
  *  (a) 8.000 en efectivo + 3.000 por SINPE → Efectivo 8.000, SINPE 3.000, Transferencia 0, Total
  *      general 11.000; ganancia 2 × 1.700 = 3.400.
  *  (b) 5.000 + 2.000 en efectivo → Efectivo 7.000; deshecha la de 5.000 → Efectivo 2.000.
+ *  (c) SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R58, R162), T0.3: un incidente
+ *      (causa «perdido», orden de 4.000) con la tarifa 1.700 / 300 del modelo viejo. Medido en la base
+ *      desechable el 2026-11-11: la celda «Ganancia» dice «₡0». Derivación: `pagoPorResultado` del
+ *      modelo viejo solo paga `entregado` (1.700); cualquier otro resultado, incidente incluido, da
+ *      «0.00», y `money("0.00")` = «₡0». Un `null` pintaría «—».
  */
 
 const TARIFA_MENSAJERO = { cobroEntregado: 1700, cobroRechazado: 300 };
@@ -126,5 +131,21 @@ test.describe("Cierre del día — el mensajero solicita y deshace", () => {
 
     await page.goto("/mis-asignaciones/reparto");
     await expect(page.getByText(deshacer.numRemision).first()).toBeVisible();
+  });
+
+  test("(c) SLT-108: la sección «Incidente» enseña «Ganancia» tras la evidencia", async ({ browser }) => {
+    const m = await crearMensajero(r, "satelite");
+    const inc = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 4000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, inc, m, { resultado: "incidente", causa: "perdido" });
+
+    const page = await paginaDe(browser, m);
+    await page.goto("/cierre-dia");
+    const tabla = page.getByRole("table", { name: "Incidente" });
+    await expect(tabla.getByText(inc.numRemision)).toBeVisible();
+    const cabeceras = (await tabla.getByRole("columnheader").allTextContents()).map((t) => t.trim());
+    expect(cabeceras.slice(-3)).toEqual(["Evidencia", "Ganancia", "Acciones"]);
+    const fila = tabla.getByRole("row").filter({ hasText: inc.numRemision });
+    // Literal medido una vez en la base desechable (T0.3): «₡0», un importe y no «—».
+    await expect(fila.getByRole("cell").nth(cabeceras.indexOf("Ganancia"))).toHaveText("₡0");
   });
 });

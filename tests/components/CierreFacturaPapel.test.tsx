@@ -579,9 +579,14 @@ describe("Feature 223 — la ruta del MENSAJERO, con la misma regla (R11)", () =
 
   // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (D12): el detalle del admin
   // dejó de montar la hoja imprimible (lo sustituyó el detalle único, que no imprime). Hasta
-  // entonces este caso afirmaba que las DOS rutas la montaban; ahora la del mensajero la sigue
-  // montando —y R11 sigue cubriéndola— y la del admin NO, que es lo que D12 decide.
-  it("la ruta del mensajero monta la hoja, y la del admin ya no (SLT-100, D12)", () => {
+  // entonces este caso afirmaba que las DOS rutas la montaban; después, la del mensajero la
+  // siguió montando y la del admin NO, que es lo que D12 decide.
+  //
+  // SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (D12, R161): la ruta del mensajero
+  // también dejó de montar la hoja; su cierre pasado se abre en el detalle único. Ninguna pantalla
+  // monta ya `CierreFacturaDetalle`: R11 queda cubierta aquí sobre el componente suelto, hasta que
+  // SLT-115 «Retirar los componentes de cierre sustituidos» lo borre.
+  it("ni la ruta del mensajero ni la del admin montan la hoja (SLT-100 y SLT-108, D12)", () => {
     const mensajero = codigoSinComentarios(
       path.join("app", "(app)", "cierre-dia", "_components", "CierreDiaModule.tsx"),
     );
@@ -590,9 +595,9 @@ describe("Feature 223 — la ruta del MENSAJERO, con la misma regla (R11)", () =
     );
     expect(
       mensajero,
-      "CierreDiaModule dejó de montar `CierreFacturaDetalle`. Si la ruta pasa a montar otra " +
-        "hoja, R11 deja de significar lo que dice y hay que releer la regla entera.",
-    ).toMatch(/<CierreFacturaDetalle\b/);
+      "CierreDiaModule volvió a montar la hoja imprimible: D12 la quitó (SLT-108, R161)",
+    ).not.toMatch(/<CierreFacturaDetalle\b/);
+    expect(mensajero, "el cierre pasado del mensajero tiene que ser el detalle único").toMatch(/<DetalleCierre\b/);
     expect(admin, "el admin volvió a montar la hoja imprimible: D12 la quitó").not.toMatch(
       /<CierreFacturaDetalle\b/,
     );

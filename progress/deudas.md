@@ -381,3 +381,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   Hoy ningún archivo cae en esos huecos.
 - **Qué falta:** cerrar los huecos con SLT-134 «Textos de pantalla de cierres en tú, con guardia», que redefine el censo del módulo (incluye los compartidos con `/wallet/*`, PA8).
 - **Dueño:** ArqDev (en el spec de SLT-134).
+
+### D66 — Incidente del modelo nuevo con ganancia > 0 sin probar de punta a punta
+- **Origen:** SLT-108 (2026-11-11, review m2 en `progress/review_SLT-108.md`). En el modelo viejo un incidente no paga al mensajero (`specs/158-incidente-indemnizacion/design.md:345`, R17), y el E2E de `/cierre-dia` afirma «₡0». En el modelo nuevo existe el concepto `mensajero_incidente` (`lib/tarifas/catalogo.ts:47`) que `importePagoNuevo` paga, pero `pago-modelo-nuevo.test.ts:44` usa justo «0.00» para el incidente y ningún E2E pinta una «Ganancia» de incidente mayor que cero.
+- **Qué falta:** un test de `lib/` con tarifa `mensajero_incidente` > 0 y su ganancia en la fila de Incidente de `/cierre-dia`.
+- **Dueño:** ArqDev (se revisa con las deudas al cerrar la épica de cierres).
