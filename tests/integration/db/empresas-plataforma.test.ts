@@ -224,8 +224,9 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       await prisma.$executeRawUnsafe(`INSERT INTO "${esquema}"."pais" SELECT * FROM "public"."pais" WHERE "id" = 'CR'`);
       // SL-45 (R28): el listado lee también los cargos y los pagos de cada empresa. Sin restricciones
       // (`LIKE` a secas): el CHECK tipo-categoría compara con el enum de `public` y no dejaría cambiar
-      // el tipo de la columna. Vacías: aquí solo importa que existan.
-      for (const tabla of ["cobro_plataforma_movimiento", "wallet_movimiento"]) {
+      // el tipo de la columna. Vacías: aquí solo importa que existan. SLT-118 (R18): y las cuotas de
+      // las facturas cerradas (`factura_plataforma`); su `estado` es texto, sin enum que copiar.
+      for (const tabla of ["cobro_plataforma_movimiento", "wallet_movimiento", "factura_plataforma"]) {
         await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."${tabla}" (LIKE "public"."${tabla}")`);
       }
       // Prisma califica el cast del enum con el esquema del cliente (`"<esquema>".rol_value`): el

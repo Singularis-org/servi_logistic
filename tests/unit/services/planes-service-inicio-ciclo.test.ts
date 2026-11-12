@@ -130,7 +130,8 @@ describe("SLT-58 — R29: la fecha de inicio es opcional; SLT-86 R2: siempre ent
   });
 
   it("con fecha futura, el repositorio lo deja pendiente y `vigenteDesde` vuelve con la fecha elegida", async () => {
-    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [], pendiente: true });
+    // SLT-118 (R32): la fecha del pendiente la deja el repositorio; el servicio ya no la deduce.
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: "2026-11-05" });
     expect(await asignar("2026-11-05")).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: "2026-11-05" });
   });
 });
