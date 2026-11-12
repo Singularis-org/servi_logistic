@@ -526,9 +526,9 @@ describe("CierreDiaModule", () => {
     expect(within(region).queryByText("₡2.100")).not.toBeInTheDocument();
   });
 
-  // Pedido humano: cada cierre del histórico se puede ABRIR y ver su detalle, con el MISMO
-  // comprobante del admin en variante `mensajero`.
-  it("el histórico ofrece 'Ver' y abre el comprobante del cierre con sus órdenes", async () => {
+  // Pedido humano: cada cierre del histórico se puede ABRIR y ver su detalle. SLT-108 (R59): con el
+  // detalle único del módulo en audiencia mensajero, ya no con el comprobante.
+  it("el histórico ofrece 'Ver' y abre el detalle único del cierre con sus órdenes", async () => {
     const user = userEvent.setup();
     verCierrePasadoMock.mockResolvedValue({
       ordenesSinGestion: [],
@@ -559,31 +559,31 @@ describe("CierreDiaModule", () => {
     await vi.waitFor(() =>
       expect(verCierrePasadoMock).toHaveBeenCalledWith({ cierreId: "c1" }),
     );
-    // El comprobante se pinta con la orden del cierre y el pago rotulado como GANANCIA
+    // El detalle se pinta con la orden del cierre y el pago rotulado como GANANCIA
     // (para el mensajero ese monto es su ganancia, no "pago al mensajero").
-    const comprobante = await screen.findByRole("region", {
-      name: "Comprobante detallado de tu cierre",
+    const detalle = await screen.findByRole("dialog", {
+      name: "Detalle del cierre · Tu cierre del día",
     });
-    expect(within(comprobante).getByText("Ana Pérez")).toBeInTheDocument();
-    expect(within(comprobante).getAllByText("Ganancia").length).toBeGreaterThan(0);
+    expect(within(detalle).getByText("Ana Pérez")).toBeInTheDocument();
+    expect(within(detalle).getAllByText("Ganancia").length).toBeGreaterThan(0);
     // Plata de la EMPRESA: no aparece en la vista del mensajero (design §7.2).
-    expect(within(comprobante).queryByText("Pago al mensajero")).toBeNull();
-    expect(within(comprobante).queryByText("Liquidación")).toBeNull();
+    expect(within(detalle).queryByText("Pago al mensajero")).toBeNull();
+    expect(within(detalle).queryByText("Liquidación")).toBeNull();
+    // R161: el comprobante ya no se monta.
+    expect(screen.queryByRole("region", { name: "Comprobante detallado de tu cierre" })).toBeNull();
   });
 
-  it("si el cierre ya no está disponible, el comprobante avisa y no se pinta", async () => {
+  it("si el cierre ya no está disponible, avisa por toast y no abre el detalle (R153)", async () => {
     const user = userEvent.setup();
     verCierrePasadoMock.mockResolvedValue({ status: "no_encontrada" });
     renderModule({ cierresPasados: [CIERRE_PASADO] });
 
     await user.click(screen.getByRole("button", { name: /^Ver del cierre/ }));
 
-    expect(
-      await screen.findByText("Este cierre ya no está disponible."),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("region", { name: "Comprobante detallado de tu cierre" }),
-    ).toBeNull();
+    await vi.waitFor(() =>
+      expect(errorMock).toHaveBeenCalledWith("Este cierre ya no está disponible."),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("R18: sin cierres pasados muestra el estado vacío del histórico", () => {

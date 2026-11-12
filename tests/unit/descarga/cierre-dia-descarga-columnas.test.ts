@@ -189,9 +189,8 @@ describe("orden de las columnas de descarga del cierre del día (mensajero)", ()
   });
 
   it("la sección INCIDENTES declara sus columnas en el orden de la pantalla (R5)", () => {
-    // La ÚNICA de las cinco sin columna de dinero: un incidente no se le paga al mensajero y
-    // la indemnización se le paga a la tienda (158/R17/R18). Que aquí no aparezca «Ganancia»
-    // ni «Indemnización» es la afirmación que este caso sujeta.
+    // SLT-108 (R58, R162, D8): «Ganancia» entra al final, después de la evidencia, como en
+    // RECHAZADAS. La indemnización se le paga a la tienda (158/R17/R18) y sigue sin aparecer.
     expect(COLUMNAS_DESCARGA_DIA_INCIDENTES.map((c) => c.clave)).toEqual([
       "numGuia",
       "numRemision",
@@ -204,6 +203,7 @@ describe("orden de las columnas de descarga del cierre del día (mensajero)", ()
       "causa",
       "motivo",
       "tieneEvidencia",
+      "ganancia",
     ]);
     expect(COLUMNAS_DESCARGA_DIA_INCIDENTES.map((c) => c.encabezado)).toEqual([
       "Nº Guía",
@@ -217,7 +217,9 @@ describe("orden de las columnas de descarga del cierre del día (mensajero)", ()
       "Causa",
       "Motivo",
       "Tiene evidencia",
+      "Ganancia",
     ]);
+    expect(COLUMNAS_DESCARGA_DIA_INCIDENTES.map((c) => c.encabezado)).not.toContain("Indemnización");
   });
 
   it("las cinco secciones llevan «Fecha de gestión» y el histórico NO (2026-09-05)", () => {
@@ -306,6 +308,18 @@ function gestionEntregada(
     indemnizacion: null,
   };
 }
+
+describe("SLT-108 (R58, R162) — «Ganancia» en la fila de un INCIDENTE del cierre del día", () => {
+  it("es el pagoMensajero del servidor tal cual", () => {
+    const g = { ...gestionEntregada([]), resultado: "incidente" as const, causaIncidente: "perdido" as const, pagoMensajero: "275.00" };
+    expect(filaDescargaDiaIncidente(g).ganancia).toBe("275.00");
+  });
+
+  it("sin pago la celda queda vacía (null), nunca 0", () => {
+    const g = { ...gestionEntregada([]), resultado: "incidente" as const, pagoMensajero: null };
+    expect(filaDescargaDiaIncidente(g).ganancia).toBeNull();
+  });
+});
 
 describe("celda «Método» de la sección ENTREGADAS del cierre del día (mensajero)", () => {
   it("una gestión con pago MIXTO produce UNA sola fila, no un array (R27)", () => {

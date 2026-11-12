@@ -1041,7 +1041,7 @@ describe("feature 223 — la pantalla no se toca (R12)", () => {
    * imprime el detalle. Aquí se vigilaba el `max-h-[70vh]` del modal que montaba la hoja; ese modal
    * se sustituyó por el detalle único (con un solo scroll propio, R11 de SLT-95), así que el caso se
    * retira y se sustituye por el que hace cierta la decisión: el módulo del admin no monta la hoja
-   * imprimible. El flujo de impresión del mensajero y de la hoja compacta no cambia.
+   * imprimible. SLT-108 hace lo mismo con el módulo del mensajero (caso gemelo, abajo).
    */
   it("el modulo del admin no monta `CierreFacturaDetalle` ni `HojaFactura` (SLT-100, D12)", () => {
     const modulo = codigoSinComentarios(MODULO_ADMIN);
@@ -1051,6 +1051,18 @@ describe("feature 223 — la pantalla no se toca (R12)", () => {
     ).not.toMatch(/<CierreFacturaDetalle\b/);
     expect(modulo).not.toMatch(/<HojaFactura\b/);
     expect(modulo, "el detalle del admin tiene que ser el detalle único").toMatch(/<DetalleCierre\b/);
+  });
+
+  it("el modulo del mensajero no monta `CierreFacturaDetalle` ni `HojaFactura` (SLT-108, D12, R161)", () => {
+    // SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero»: el cierre pasado del mensajero
+    // se abre en el detalle único, sin hoja imprimible (D12); quien la necesite usa «Descargar».
+    const modulo = codigoSinComentarios(MODULO_MENSAJERO);
+    expect(
+      modulo,
+      "el detalle del cierre pasado vuelve a montar la hoja imprimible: D12 la quitó (se descarga)",
+    ).not.toMatch(/<CierreFacturaDetalle\b/);
+    expect(modulo).not.toMatch(/<HojaFactura\b/);
+    expect(modulo, "el detalle del cierre pasado tiene que ser el detalle único").toMatch(/<DetalleCierre\b/);
   });
 
   it("el `Modal` conserva su `overflow-auto`", () => {

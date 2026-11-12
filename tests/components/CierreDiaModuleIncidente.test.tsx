@@ -195,23 +195,39 @@ describe("R18 — el incidente es un grupo PROPIO del detalle del mensajero", ()
   });
 });
 
-describe("R17 — el incidente no muestra dinero en la vista del mensajero", () => {
-  it("la tabla de incidentes NO tiene columna de ganancia ni de ningún monto", () => {
-    // El snapshot de dinero de un incidente es 0.00 (backend). Aun así NO se pinta: un
-    // "₡0" en la fila se lee como "me pagaron cero por esto", que no es lo que pasó.
+// SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R58, R162, D8): la ganancia del
+// incidente SÍ se pinta —es el pago al mensajero de esa gestión—, después de la evidencia y antes
+// de las acciones, como en «Devolución a origen por rechazo». La indemnización sigue sin pintarse.
+describe("R58/R162 — el incidente muestra la ganancia del mensajero, no la indemnización", () => {
+  it("la tabla de incidentes tiene «Ganancia» tras la evidencia, con el pago del servidor", () => {
     renderModule({
       ...emptyGrupos(),
-      incidente: [incidente({ pagoMensajero: "0.00", montoRecibido: "0.00" })],
+      incidente: [incidente({ pagoMensajero: "300.00", montoRecibido: "0.00" })],
     });
 
     const tabla = screen.getByRole("table", { name: "Incidente" });
     const cabeceras = within(tabla)
       .getAllByRole("columnheader")
       .map((th) => th.textContent);
-    expect(cabeceras).not.toContain("Ganancia");
+    expect(cabeceras.slice(-3)).toEqual(["Evidencia", "Ganancia", "Acciones"]);
+    expect(within(tabla).getByText("₡300")).toBeInTheDocument();
+    // Ninguna otra columna de dinero.
     expect(cabeceras).not.toContain("Monto");
     expect(cabeceras).not.toContain("Método");
-    // Y ningún importe en el cuerpo de la tabla.
+  });
+
+  it("sin pago (null) la celda pinta «—», nunca un cero", () => {
+    renderModule({ ...emptyGrupos(), incidente: [incidente({ pagoMensajero: null })] });
+
+    const tabla = screen.getByRole("table", { name: "Incidente" });
+    const fila = within(tabla).getByText("REM-INC").closest("tr");
+    expect(fila).not.toBeNull();
+    const celdas = within(fila as HTMLElement).getAllByRole("cell").map((td) => td.textContent);
+    const iGanancia = within(tabla)
+      .getAllByRole("columnheader")
+      .map((th) => th.textContent)
+      .indexOf("Ganancia");
+    expect(celdas[iGanancia]).toBe("—");
     expect(within(tabla).queryByText(/₡/)).toBeNull();
   });
 
