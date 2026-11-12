@@ -259,5 +259,5 @@ Ninguna. P7–P10 cerradas por el humano el 2026-11-11 (filas de «Decisiones ce
 | 2026-11-11 | P5 · Cuándo la versión nueva es «el plan» | **Cuando la recibe la última empresa**; sin empresas, a las 00:00 de la fecha elegida. Mientras tanto el detalle muestra «Cambio programado» y cuántas empresas ya lo recibieron. La lista de fechas por empresa va con SLT-130 (humano). |
 | 2026-11-11 | P7 · «De inmediato» con el plan partido (R16) | **Se rechaza** y se pide programar el cambio con fecha (humano; propuesta del spec). |
 | 2026-11-11 | P8 · Cancelar un pendiente que reemplazó a otro ya recibido (R14) | **Se bloquea** igual que P1: cancelarlo dejaría el plan partido (humano; propuesta del spec). |
-| 2026-11-11 | P9 · «Hoy» en esta rebanada (R23) | Se queda como está (a todas en el acto);  por empresa entra en SLT-135 (humano; propuesta del spec). |
+| 2026-11-11 | P9 · «Hoy» en esta rebanada (R23) | Se queda como está (a todas en el acto); `≥ hoy` por empresa entra en SLT-135 (humano; propuesta del spec). |
 | 2026-11-11 | P10 · Pendientes previos al despliegue y empresas que entran (R17, R24) | (a) un pendiente guardado antes del despliegue llega a todas en la fecha anunciada, aunque caiga a mitad de período; (b) una empresa que entra antes de la fecha recibe solo los recordatorios, sin el correo de guardado (humano; propuesta del spec). |
