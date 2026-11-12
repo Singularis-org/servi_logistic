@@ -89,3 +89,72 @@ Tras revertir: `grep` confirma el codigo original en los cuatro puntos; `git dif
 T0-T3 hechos: el detalle de bodega emite fecha de cargo y `tarifaFaltante` por el mismo mapper y la misma
 consulta que el de mensajeros, una consulta por detalle; las cinco mutaciones de la consulta y del mapper
 ponen rojo la integracion.
+
+## Tanda 2 — frontend_dev (T4, T5, T6.2, T6.3) · 2026-11-12
+
+Mismo worktree y rama. `DATABASE_URL` exportada a `slt110_cifras` antes de cada `vitest` y del E2E. Sin
+cambios en `components/` ni en `app/` (R214: la pantalla ya pintaba los dos campos).
+
+### Archivos
+
+| Archivo | Cambio |
+|---|---|
+| `tests/components/CierresBodegaAdminCifrasFila.test.tsx` | nuevo (T4.1): 4 tests sobre `CierresBodegaAdminModule` audiencia admin, dobles de las Server Actions y de `DescargarDatasetButton`. |
+| `e2e/cierres-rediseno.spec.ts` | B6 (SLT-104): `entregaB6` guardada en el `beforeAll` y un test nuevo al final del describe (T5.1). Literales de SLT-104 sin tocar. |
+| `specs/SLT-110-cifras-servidor-fila-bodega/tasks.md` | `[x]` T4.1, T5.1, T6.2, T6.3. |
+| `progress/features/SLT-110.md` | herencia para SLT-107 (T6.2). |
+
+### T4.1 — componente
+
+- Fecha del doble `2026-11-04T03:30:00.000Z` = 03/11 21:30 en Costa Rica: el literal «…el 03/11/2026, …»
+  no puede acertar con el día UTC (y se niega `04/11/2026`).
+- Una segunda gestión sin señales, para que «Con señales 1» no salga de tener una sola fila («Todas 2»).
+- Contraprueba: con fecha nula la nota es solo «No depende de esta gestión ni de este cierre.».
+- Mutaciones del doble (cada una revertida; `cmp` contra la copia: idéntico):
+  | Mutación | Resultado |
+  |---|---|
+  | `tarifaFaltante: false` en el caso positivo | **matada**: caen «la celda «Señales» … «Con señales 1»» y «la columna «Señales» de «Descargar» …» |
+  | fecha nula en el caso positivo | **matada**: cae «con fecha: «Se cargó al saldo de la tienda el 03/11/2026 …»» |
+
+### T5.1 — E2E (B6)
+
+- Test «central, B6: la fila de bodega con el IVA incluido, la tarjeta del flete y «Por tarifa»»: «de eso, IVA
+  (no es de la empresa)₡403»; «Se le paga al mensajero» = [«Por tarifa · valor base de la zona <satélite>» ₡2.200,
+  «Se le paga» ₡2.200] sin línea de ajuste; en «Ver cómo se calculó», la tarjeta «Flete por entregado» con
+  «Tarifa: valor base de la zona <satélite>» y [Monto fijo ₡3.100, + IVA 13 % ₡403, Flete por entregado ₡3.503].
+- Corrida local con el candado `e2e.lock`, `E2E_SERVIDOR=dev`, puerto 3000, `NEXT_PUBLIC_APP_URL=http://localhost:3000`
+  como en `gate.yml`, base `slt110_cifras`: `pnpm exec playwright test e2e/cierres-rediseno.spec.ts -g "escenario B6"`
+  → **2 passed (1.5m)**, `E2E_EXIT=0` (el de SLT-104 y el nuevo, proyecto `dinero`).
+- Mutación `pagoPorTarifa: toPagoPorTarifa(g)` → `null` en `toPendienteRowDesdeSnapshot`: **matada** — el test
+  nuevo cae en la tarjeta «Se le paga al mensajero» (falta la línea «Por tarifa · valor base de la zona …» ₡2.200);
+  el de SLT-104 sigue verde. Revertida con `git checkout --` (`git status` sin el archivo).
+- Tras matar el dev server: `rm -rf .next/dev` y typecheck de nuevo, verde.
+
+### Mapa R -> test (T6.3, igual a `tasks.md > Trazabilidad`)
+
+| R | Test |
+|---|---|
+| R64 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` (A `conceptosTarifa`; C `[]`) · `e2e/cierres-rediseno.spec.ts` («central, B6: la fila de bodega …», tarjeta del flete) |
+| R65 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` (A `ivaIncluido`, `fulfillmentConIva`, `ivaPctFulfillment`, fecha; C `ivaIncluido`) · `tests/components/CierresBodegaAdminCifrasFila.test.tsx` (nota, con fecha y nula) · `e2e/cierres-rediseno.spec.ts` («de eso, IVA» ₡403) |
+| R66 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` (A `pagoPorTarifa` + ajuste; B `tarifaFaltante`) · `e2e/cierres-rediseno.spec.ts` («Por tarifa», «Se le paga») |
+| R210 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` (A cargo, B reverso, D no entra) · `tests/unit/repositories/cierres-bodega-admin-repository.test.ts` («SLT-110 R210/R216 …») |
+| R211 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` (A false, B true, C false) |
+| R212 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` («R212: cada gestion de bodega es identica …») |
+| R213 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` («R213: la lectura del detalle no escribe …») · `tests/unit/services/cierres-bodega-admin-service.test.ts`, `tests/components/CierresBodegaAdminDetalleUnico.test.tsx` (existentes, sin cambiar aserciones) |
+| R214 | `tests/components/CierresBodegaAdminCifrasFila.test.tsx` (nota; celda «Sin tarifa de pago»; «Con señales 1»; columna «Señales» de «Descargar») |
+| R215 | `tests/unit/services/cierres-bodega-admin-service.test.ts` («R2: rol sin acceso total … forbidden», existente) |
+| R216 | `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts` («R216/R210: UNA consulta …») · unit T2.2 |
+
+Todos existen y estuvieron verdes en esta rama (integración y unit en la tanda 1; componente y E2E en esta).
+
+### Salidas
+
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): `TC_EXIT=0`, 0 `error TS` (antes y después del E2E).
+- Lint (`pnpm exec eslint` de los dos archivos tocados): `LINT_EXIT=0`, sin avisos.
+- `vitest run tests/components/CierresBodegaAdminCifrasFila.test.tsx tests/components/CierresBodegaAdminDetalleUnico.test.tsx`:
+  **2 files passed, 16 tests passed** (4 nuevos + 12 de SLT-104).
+- E2E B6: **2 passed**, `E2E_EXIT=0`. El E2E entero de `cierres-rediseno` y el grupo `dinero` quedan para T6.1 (leader).
+
+### Veredicto
+
+T4, T5, T6.2 y T6.3 hechos: la fila de bodega pinta fecha del cargo, «Sin tarifa de pago» y las cifras del servidor, con componente y E2E que caen con sus mutaciones.

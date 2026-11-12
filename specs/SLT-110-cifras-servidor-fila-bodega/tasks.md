@@ -55,7 +55,7 @@
 
 ## T4 — La fila de bodega las pinta (frontend_dev) · [P] con T3, depende de T2
 
-- [ ] **T4.1** Nuevo `tests/components/CierresBodegaAdminCifrasFila.test.tsx`: monta
+- [x] **T4.1** Nuevo `tests/components/CierresBodegaAdminCifrasFila.test.tsx`: monta
   `CierresBodegaAdminModule` (audiencia admin) con un detalle de dobles; la gestión con
   `fulfillmentCargadoAt` y `tarifaFaltante: true`. Afirma, con literales escritos a mano (nunca
   calculados con `fechaCorta` ni con `textoSenales`): la nota «Se cargó al saldo de la tienda el
@@ -67,7 +67,7 @@
 
 ## T5 — E2E (frontend_dev) · depende de T2
 
-- [ ] **T5.1** En `e2e/cierres-rediseno.spec.ts`, describe de SLT-104 (escenario B6): un test nuevo,
+- [x] **T5.1** En `e2e/cierres-rediseno.spec.ts`, describe de SLT-104 (escenario B6): un test nuevo,
   o pasos al final del existente, que en el detalle de bodega abre «Gestiones (1)», despliega la
   entrega y lee con literales «de eso, IVA» ₡403, la tarjeta del flete con «+ IVA 13 %» en «Ver cómo
   se calculó», «Por tarifa» ₡2.200 y «Se le paga» ₡2.200, sin línea de ajuste. Sin tocar los
@@ -80,9 +80,9 @@
 - [ ] **T6.1** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` y grupo `dinero`
   (`pnpm exec playwright test --project=dinero`) verdes en local. **Hecho:** salida con
   `INIT_EXIT` anotada en `progress/impl_SLT-110.md`.
-- [ ] **T6.2** Anotar en `progress/features/SLT-110.md` la herencia para SLT-107 (`design.md > Lo que
+- [x] **T6.2** Anotar en `progress/features/SLT-110.md` la herencia para SLT-107 (`design.md > Lo que
   hereda SLT-107`). **Hecho:** línea escrita.
-- [ ] **T6.3** Mapa `R → test` en `progress/impl_SLT-110.md`, igual a `## Trazabilidad`. **Hecho:**
+- [x] **T6.3** Mapa `R → test` en `progress/impl_SLT-110.md`, igual a `## Trazabilidad`. **Hecho:**
   todos los R con un test que existe y está verde.
 
 ## Trazabilidad
