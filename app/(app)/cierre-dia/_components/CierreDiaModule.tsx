@@ -45,7 +45,6 @@ import type {
   CierreResultado,
   CorreccionCierreDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreDestinoTipo } from "@/lib/types/cierre";
 // FEATURE 271 (T9.1): la copia local del aviso desapareció. El texto sale del formateador
 // COMPARTIDO con los otros tres portales, con `conCta: false` porque el mensajero YA está en
 // «Cierre del día» y remitirlo a la pantalla en la que está sería ruido (R52).
@@ -56,12 +55,26 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 // Feature 158 (T2.3): la columna de la causa es la MISMA que la del detalle del admin — se
 // reusa en vez de reescribirla, para que las dos pantallas no puedan divergir en la etiqueta.
 import { COLUMNA_CAUSA_INCIDENTE } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
-// Pedido humano: el detalle de un cierre pasado se lee con el MISMO comprobante del admin
-// (feature 38/40), en su variante `mensajero`. Una sola hoja para las dos pantallas.
+// La tira «Cierres solicitados» sigue leyendo cada cierre como su tarjeta-comprobante (la cola única
+// llega con SLT-137). SLT-108 (R59, R161): el detalle de un cierre pasado ya no es el comprobante
+// sino el detalle único del módulo, con audiencia mensajero.
 import {
-  CierreFacturaDetalle,
   CierreFacturaResumenPropio,
+  SeccionSinGestion,
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
+import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
+import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
+import {
+  folioDe,
+  vistaMensajeroDesdeCierreDia,
+} from "@/components/private/cierres/detalle/detalle-cierre-vista";
+import {
+  COLUMNAS_DESCARGA_DETALLE_MENSAJERO,
+  filaDescargaDetalleMensajero,
+} from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
+import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
+import { gestionesEnOrden } from "@/components/private/cierres/fila/fila-gestion-vista";
 // Pedido humano del 2026-08-16: el histórico del mensajero deja de ser una tabla y pasa a ser
 // la tira de comprobantes que usan las demás pantallas de cierres. Mismo envoltorio, mismos
 // cuatro estados de listado.
@@ -71,8 +84,6 @@ import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButt
 // Feature 170 (T E.4): las etiquetas compartidas salen del módulo PURO (sin React) para que
 // el archivo de la descarga y esta pantalla no puedan decir cosas distintas (R8).
 import {
-  DESTINO_TIPO_LABEL,
-  ESTADO_LABEL,
   RESULTADO_LABEL,
   RESULTADO_VACIO,
   // FICHA 408 — el traductor del motivo de un rechazo automático. Se AÑADE al import que ya
@@ -302,12 +313,8 @@ const REENVIAR_OK = "Cierre enviado a aprobación.";
 
 // Pedido humano: "ver" el detalle de un cierre YA solicitado (textos separados, i18n-ready).
 const VER_DETALLE_LABEL = "Ver";
-const DETALLE_TITULO = "Detalle del cierre";
-const DETALLE_CARGANDO = "Cargando el detalle…";
 const DETALLE_ERROR = "No se pudo cargar el detalle de este cierre.";
 const DETALLE_NO_ENCONTRADA = "Este cierre ya no está disponible.";
-const DETALLE_NOTA =
-  "Los montos son los que quedaron congelados al solicitar el cierre.";
 
 /** Feature 39: etiquetas del pago al mensajero (texto separado, i18n-ready). */
 const PAGO_MENSAJERO_LABEL = "Ganancia";
@@ -366,16 +373,15 @@ function deshacerAriaLabel(g: CierreDetalleGestion): string {
 
 // --- Etiquetas i18n-ready (texto separado de la lógica) ---
 //
-// Feature 170 (T E.4): `RESULTADO_LABEL`, las etiquetas de método, `ESTADO_LABEL` y
-// `DESTINO_LABEL` estaban DUPLICADAS palabra por palabra aquí y en `cierre-detalle-shared`.
+// Feature 170 (T E.4): `RESULTADO_LABEL`, las etiquetas de método, la de estado y la de
+// destino estaban DUPLICADAS palabra por palabra aquí y en `cierre-detalle-shared`.
 // (Feature 213: las de método ya solo se leen desde `desglose-pago`.) Ahora las dos
 // pantallas —y el archivo de la descarga, que no puede importar React— leen del módulo PURO
-// `cierre-labels`. Ni un texto cambió; lo que cambia es que ya no pueden divergir (R8).
+// `cierre-labels`. Ni un texto cambió; lo que cambia es que ya no pueden divergir (R8). SLT-108: el
+// estado y el destino del cierre pasado los pinta ahora el detalle único.
 
 // FICHA 455 (2026-09-24, R5): el texto vacío de cada sección sale de `cierre-labels` con el nombre
 // exacto del resultado (antes, un mapa propio: «No hay devoluciones.» para `novedad`).
-
-const DESTINO_LABEL: Record<CierreDestinoTipo, string> = DESTINO_TIPO_LABEL;
 
 /**
  * Orden fijo de las secciones (R3). Feature 158/R18: los `incidente` son un grupo PROPIO y
@@ -565,8 +571,9 @@ export function CierreDiaModule({
   // Feature 67: gestionId del deshacer EN VUELO; deshabilita el botón de ESA fila
   // (anti-doble-submit en la UI; el WHERE guardado del repo lo cubre igual).
   const [deshaciendo, setDeshaciendo] = useState<string | null>(null);
-  // Pedido humano: cierre pasado ABIERTO en el visor de detalle; null = modal cerrado. El
-  // detalle se pide bajo demanda (no viaja en las props de la página: son N cierres).
+  // Pedido humano: cierre pasado ABIERTO en el detalle; null = cerrado. El detalle se pide bajo
+  // demanda (no viaja en las props de la página: son N cierres). SLT-108: solo se fija con la
+  // lectura hecha; no hay un diálogo vacío mientras carga.
   const [cierreAbierto, setCierreAbierto] = useState<CierrePasadoDTO | null>(null);
   // Feature 264 (Q1/R30): el estado guardaba SOLO `grupos` y ahora guarda también las órdenes
   // sin gestionar y su marca. Van juntos en un objeto y no en tres `useState` sueltos porque
@@ -575,8 +582,8 @@ export function CierreDiaModule({
   const [detallePasado, setDetallePasado] = useState<DetalleCierrePasado | null>(
     null,
   );
-  const [detalleError, setDetalleError] = useState<string | null>(null);
-  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  // SLT-108: el cierre cuyo detalle se está leyendo; su «Ver» queda deshabilitado (`aria-busy`).
+  const [cargandoDetalle, setCargandoDetalle] = useState<string | null>(null);
 
   /**
    * Pedido humano del 2026-08-19 — solicitar el cierre tiene que verse en «Cierres
@@ -590,12 +597,13 @@ export function CierreDiaModule({
     router.refresh();
   }
 
-  /** Abre el visor de un cierre pasado y carga su detalle (solo lectura). */
+  /**
+   * Lee el detalle de un cierre pasado y, con la lectura hecha, lo abre (solo lectura). SLT-108
+   * (R153): los dos errores van por toast, igual que `CierresAdminModule.abrirDetalle`, y el
+   * detalle NO se abre.
+   */
   async function abrirDetalle(cierre: CierrePasadoDTO) {
-    setCierreAbierto(cierre);
-    setDetallePasado(null);
-    setDetalleError(null);
-    setCargandoDetalle(true);
+    setCargandoDetalle(cierre.cierreId);
     try {
       const result = await verCierrePasado({ cierreId: cierre.cierreId });
       if (result.status === "ok") {
@@ -610,16 +618,22 @@ export function CierreDiaModule({
           // importe, así que la regla de audiencia de la 38/40 tampoco aplica aquí.
           rechazosDeTienda: result.rechazosDeTienda,
         });
+        setCierreAbierto(cierre);
         return;
       }
       // `no_encontrada` = el cierre ya no existe o no es suyo (no se distinguen, igual que
       // en el servidor); el resto son fallos de borde y comparten mensaje accionable.
-      setDetalleError(
-        result.status === "no_encontrada" ? DETALLE_NO_ENCONTRADA : DETALLE_ERROR,
-      );
+      toast.error(result.status === "no_encontrada" ? DETALLE_NO_ENCONTRADA : DETALLE_ERROR);
+    } catch {
+      toast.error(DETALLE_ERROR);
     } finally {
-      setCargandoDetalle(false);
+      setCargandoDetalle(null);
     }
+  }
+
+  function cerrarDetalle() {
+    setCierreAbierto(null);
+    setDetallePasado(null);
   }
 
   // Feature 170 — FASE 2 (T I.2, R40/R43): página visible de «Cierres solicitados».
@@ -947,6 +961,8 @@ export function CierreDiaModule({
                   size="sm"
                   variant="outline"
                   aria-label={`${VER_DETALLE_LABEL} del cierre del ${fechaCalendarioCR(new Date(c.solicitadoAt))}`}
+                  disabled={cargandoDetalle === c.cierreId}
+                  aria-busy={cargandoDetalle === c.cierreId}
                   onClick={() => abrirDetalle(c)}
                 >
                   {VER_DETALLE_LABEL}
@@ -1038,75 +1054,55 @@ export function CierreDiaModule({
         closeOnConfirm={false}
       />
 
-      {/* Pedido humano: visor SOLO LECTURA del detalle de un cierre pasado. Mismas secciones
-          por resultado que la vista del día, sin la columna de acciones: un cierre ya
-          solicitado no se deshace desde aquí. */}
-      <Modal
-        open={cierreAbierto !== null}
-        onOpenChange={(next) => {
-          if (!next) setCierreAbierto(null);
-        }}
-        title={DETALLE_TITULO}
-        description={
-          cierreAbierto
-            ? `${ESTADO_LABEL[cierreAbierto.estado]} · ${fechaCalendarioCR(new Date(cierreAbierto.solicitadoAt))} · ${DESTINO_LABEL[cierreAbierto.destinoTipo]}`
-            : undefined
-        }
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={() => setCierreAbierto(null)}
-      >
-        {cierreAbierto ? (
-          <div className="flex flex-col gap-4">
-            {cargandoDetalle ? (
-              <p role="status" className="text-sm text-muted-foreground">
-                {DETALLE_CARGANDO}
-              </p>
-            ) : null}
-            {detalleError ? (
-              <p role="alert" className="text-sm text-destructive">
-                {detalleError}
-              </p>
-            ) : null}
-            {detallePasado ? (
-              <>
-                {/* MISMO comprobante que usa el admin (`CierreFacturaDetalle`), en su
-                    variante `mensajero`: sin el ingreso de la empresa ni la liquidación (no es
-                    plata suya, design §7.2) y con lo recibido + su pago en los renglones. */}
-                <CierreFacturaDetalle
+      {/* SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R59, R150-R154, R161): el
+          detalle único del módulo con `tipo` mensajero, audiencia mensajero, solo lectura y marco
+          modal. Sin el dinero de la empresa ni la impresión (D12); la nota de montos congelados la
+          pone el pie del detalle. */}
+      {cierreAbierto && detallePasado ? (
+        <DetalleCierre
+          tipo="mensajero"
+          audiencia="mensajero"
+          modo="solo lectura"
+          marco="modal"
+          detalle={vistaMensajeroDesdeCierreDia(cierreAbierto, detallePasado)}
+          acciones={{}}
+          onCerrar={cerrarDetalle}
+          pestanas={{
+            gestiones: (
+              <div className="flex flex-col gap-4">
+                {/* R151: la lista y la fila únicas, en audiencia mensajero y sin acciones de
+                    corrección. R152: «Descargar» con las columnas del mensajero. */}
+                <GestionesCierre
+                  gestiones={gestionesEnOrden(detallePasado.grupos).map((gestion) => ({ gestion }))}
                   audiencia="mensajero"
-                  cierre={{
-                    cierreId: cierreAbierto.cierreId,
-                    estado: cierreAbierto.estado,
-                    destinoTipo: cierreAbierto.destinoTipo,
-                    totales: cierreAbierto.totales,
-                    totalPagoMensajero: cierreAbierto.totalPagoMensajero,
-                    totalIngresoBodegaRechazos:
-                      cierreAbierto.totalIngresoBodegaRechazos,
-                    solicitadoAt: cierreAbierto.solicitadoAt,
-                    resueltoAt: cierreAbierto.resueltoAt ?? null,
-                    motivoRechazo: cierreAbierto.motivoRechazo ?? null,
-                  }}
-                  grupos={detallePasado.grupos}
-                  // Feature 264 (R30): las MISMAS dos props que pasa el módulo del admin. El
-                  // componente es UNO: pintarla en una pantalla y callarla en la otra es el
-                  // arreglo a medias que se corrigió en la 263, y lo vigila
-                  // `cierre-detalle-superficies.guardia.test.ts`.
-                  ordenesSinGestion={detallePasado.ordenesSinGestion}
-                  sinGestionRegistrado={detallePasado.sinGestionRegistrado}
-                  // FICHA 425 (R14): la MISMA prop que pasa el módulo del admin. La sección vive
-                  // en el comprobante; aquí sólo se le entrega el dato del servidor.
-                  rechazosDeTienda={detallePasado.rechazosDeTienda}
+                  quienMiraEsCentral={false}
+                  congeladoAt={cierreAbierto.solicitadoAt}
+                  acciones={{}}
+                  // R154: el visor de evidencia de esta pantalla, con las URL firmadas del servidor.
                   onVerEvidencia={setEvidencia}
+                  descargar={
+                    <DescargarDatasetButton
+                      titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
+                      columnas={COLUMNAS_DESCARGA_DETALLE_MENSAJERO}
+                      obtenerFilas={async () => ({
+                        status: "ok",
+                        filas: gestionesEnOrden(detallePasado.grupos).map(filaDescargaDetalleMensajero),
+                      })}
+                    />
+                  }
                 />
-                <p role="note" className="text-xs text-muted-foreground">
-                  {DETALLE_NOTA}
-                </p>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+                {/* R151 — las órdenes que el corte pasó a «Novedad interna» (264), con su marca. */}
+                <SeccionSinGestion
+                  ordenes={detallePasado.ordenesSinGestion}
+                  registrado={detallePasado.sinGestionRegistrado}
+                />
+              </div>
+            ),
+            // R151 — siempre visible, también con 0 (D11).
+            rechazos: <RechazosDeTiendaCierre rechazos={detallePasado.rechazosDeTienda} />,
+          }}
+        />
+      ) : null}
 
       {/* Visor de evidencia (URL firmada, R5; visor único SLT-103 R137). */}
       <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
@@ -1306,8 +1302,10 @@ function columnasPara(
       columnaAcciones,
     ];
   }
-  // Feature 158/R17/R18: el `incidente` es un grupo PROPIO y NO lleva NINGUNA columna de
-  // dinero — ni pago al mensajero (un incidente no se paga) ni el monto de la indemnización
+  // Feature 158/R17/R18: el `incidente` es un grupo PROPIO. SLT-108 «/cierre-dia: detalle y cola
+  // únicos para el mensajero» (R58, R162, D8): el pago al mensajero de un incidente SÍ entra —es su
+  // «Ganancia», la misma columna que las demás secciones— y va después de la evidencia, como en
+  // «Devolución a origen por rechazo». Lo que sigue sin pintarse es el monto de la indemnización
   // (es plata que se le paga a la tienda, no al mensajero: no es suya y no la ve, design §7.2).
   // El backend lo garantiza en la CONSULTA: `WITH_DETALLE` ni siquiera selecciona la columna,
   // así que aquí `indemnizacion` es SIEMPRE `null` y no hay monto que pintar.
@@ -1333,6 +1331,7 @@ function columnasPara(
         render: (g) => motivoGestionLegible(g.motivo, g.esRechazoSla) ?? "—",
       },
       columnaEvidencia(verEvidencia),
+      columnaPago,
       columnaAcciones,
     ];
   }
