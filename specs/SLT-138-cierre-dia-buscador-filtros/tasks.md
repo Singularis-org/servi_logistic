@@ -5,10 +5,10 @@
 
 ## T0 — Preparación
 
-- [ ] **T0.1** Traer `origin/dev` (con SLT-137 dentro) y copiar `.env` al worktree **antes** del primer
+- [x] **T0.1** Traer `origin/dev` (con SLT-137 dentro) y copiar `.env` al worktree **antes** del primer
   gate (sin `.env` la integración se salta en verde).
   *Hecho:* `git log origin/dev..HEAD` vacío al empezar; `./init.sh` verde de partida.
-- [ ] **T0.2** [P] Repetir el censo de `design.md > Tests y guardias que pueden cambiar` con Grep
+- [x] **T0.2** [P] Repetir el censo de `design.md > Tests y guardias que pueden cambiar` con Grep
   (`DESCARGA_CIERRES_PASADOS`, `listarCierresPasadosCompleto`, `cierresDeMensajeroWhere`,
   `components/private/cierres/`, `barra={null}`) y anotar en `progress/impl_SLT-138.md` qué archivos
   cambian de verdad.
@@ -17,32 +17,32 @@
 
 ## T1 — Servidor (`backend_dev`)
 
-- [ ] **T1.1** `lib/utils/folio-cierre.ts` con `normalizarFolio` + `tests/unit/utils/folio-cierre.test.ts`
+- [x] **T1.1** `lib/utils/folio-cierre.ts` con `normalizarFolio` + `tests/unit/utils/folio-cierre.test.ts`
   (test primero, en rojo).
   *Hecho:* casos de `design.md > Tests unitarios` verdes; ningún `number` ni regex sin anclar.
-- [ ] **T1.2** (dep. T1.1) `lib/types/filtros-cierres.ts`: `MAX_FOLIO_FILTRO`,
+- [x] **T1.2** (dep. T1.1) `lib/types/filtros-cierres.ts`: `MAX_FOLIO_FILTRO`,
   `filtrosColaPropiaSchema`, `FiltrosColaPropia`, `FiltrosColaPropiaRepo`, `sinFiltrosPropios`.
   `lib/types/cierre.ts`: `filtros` opcional en `listarCierresPasadosSchema`; el `Completo` sigue
   derivado; comentarios al día.
   *Hecho:* typecheck verde; `tests/unit/guards/filtros-cierres-alcance.guardia.test.ts` sigue verde
   sin tocarlo.
-- [ ] **T1.3** (dep. T1.2) `tests/unit/actions/cierre-dia-filtros-borde.test.ts` (rojo) y
+- [x] **T1.3** (dep. T1.2) `tests/unit/actions/cierre-dia-filtros-borde.test.ts` (rojo) y
   `lib/actions/cierre-dia.ts`: el archivo pasa `data.filtros` al servicio solo si existe.
   *Hecho:* R168, R170 y el tope de R171 verdes en las dos acciones; el servicio doble no se llama en
   ningún `validation_error`; `tests/unit/actions/cierre-dia-descarga-action.test.ts` verde.
-- [ ] **T1.4** (dep. T1.2) Repositorio: `cierresDeMensajeroWhere(mensajeroId, filtros?, idsPorFolio?)`,
+- [x] **T1.4** (dep. T1.2) Repositorio: `cierresDeMensajeroWhere(mensajeroId, filtros?, idsPorFolio?)`,
   `idsDeCierresPorFolio` exportada, `filtros?` al final de `findCierresByMensajeroPaginado` y
   `findCierresByMensajero`, y `ICierreDiaRepository` al día. Caso nuevo en
   `tests/unit/repositories/historicos-paginados-where.test.ts`.
   *Hecho:* el caso sin filtros sigue pidiendo `{ mensajeroId }` exacto; con filtros, el mismo
   `{ AND: [...] }` en `findMany` y `count`; `sql-a-mano-por-empresa` y `criterio-unico` verdes;
   `CierreDiaRepository.ts` sin `organizacion_id` nuevo.
-- [ ] **T1.5** (dep. T1.3, T1.4) Servicio: `filtrosParaRepo`, firmas nuevas de los dos listados,
+- [x] **T1.5** (dep. T1.3, T1.4) Servicio: `filtrosParaRepo`, firmas nuevas de los dos listados,
   corto de folio imposible, zona solo con rango. `ICierreDiaService` al día.
   `tests/unit/services/cierre-dia-pasados-filtros.test.ts` (rojo primero).
   *Hecho:* los casos de `design.md` verdes; `cierre-dia-pasados-paginado.test.ts`,
   `cierre-dia-pasados-completo.test.ts` y `cierre-dia-pendiente-pago.test.ts` verdes sin tocarlos.
-- [ ] **T1.6** (dep. T1.5) `tests/integration/db/cierre-dia-filtros-propios.test.ts` contra la base
+- [x] **T1.6** (dep. T1.5) `tests/integration/db/cierre-dia-filtros-propios.test.ts` contra la base
   desechable, con la tabla K1-K6 y los 11 casos de `design.md`.
   *Hecho:* verde **con base** (la salida dice `passed`, no `skipped`); las **8 mutaciones** de
   `design.md` aplicadas una a una, cada una en rojo, revertidas, y anotadas en
