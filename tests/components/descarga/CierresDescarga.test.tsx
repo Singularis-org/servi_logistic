@@ -1078,7 +1078,8 @@ describe("Cierres · descarga", () => {
     //
     //   (a) montar la pantalla NO ejecuta la lectura del conjunto (R8);
     //   (b) al pulsar se llama a `listarCierresPasadosCompleto` UNA vez y SIN un solo argumento:
-    //       este listado no tiene filtros, así que ni `page`, ni `pageSize`, ni —sobre todo—
+    //       sin filtros puestos en la barra (SLT-138: con ellos viaja solo `{ filtros }`, ver
+    //       `CierreDiaColaFiltros.test.tsx`), así que ni `page`, ni `pageSize`, ni —sobre todo—
     //       `mensajeroId` pueden viajar. Es el único listado del Anexo A cuyo alcance es el
     //       propio usuario: una clave de alcance aceptada aquí abriría el histórico de dinero
     //       de OTRO mensajero (R4/R17);

@@ -5,8 +5,16 @@
 // `hayPendienteDeLiquidar` y el resto lo pinta `money()` en el `.tsx` (R71).
 
 import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
-import { DESTINO_TIPO_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
+import {
+  DESTINO_TIPO_LABEL,
+  ESTADO_LABEL,
+} from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { hayPendienteDeLiquidar } from "@/app/(app)/cierres-admin/_components/PendienteLiquidarBadge";
+import type { FilterOption, FilterSelection } from "@/components/shared/FilterComponent";
+import {
+  ESTADOS_FILTRO_CIERRES,
+  type FiltrosColaPropia,
+} from "@/lib/types/filtros-cierres";
 
 // ═══ Textos (trato tú, R180) ════════════════════════════════════════════════════════════════════
 
@@ -110,4 +118,50 @@ export function textoPagoPropio(p: PagoPropio): string {
     case "nulo":
       return PAGO_NULO;
   }
+}
+
+// ═══ Barra de filtros (SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero») ══════
+// Textos en tú (R180). La barra (`FiltrosColaPropiaBarra.tsx`) solo los monta; la traducción de la
+// selección al contrato del servidor vive aquí para probarse sin montar nada.
+
+/** R177: la guía del campo de búsqueda. */
+export const BUSCA_POR_FOLIO = "Busca por folio";
+/** R176: el vacío cuando hay algún filtro puesto. */
+export const VACIO_FILTRADO_PROPIA = "Ningún cierre coincide con los filtros.";
+/** Nombre accesible de la `section` de la barra. */
+export const BARRA_PROPIA = "Filtros de tus cierres";
+export const FILTRO_FECHA_PROPIA = "Fecha de solicitud";
+export const FILTRO_ESTADO_PROPIA = "Estado";
+
+/** Claves de los CONTROLES de la barra (no del contrato del servidor, que es `desde`/`hasta`/`estados`). */
+export const CLAVE_FECHA_PROPIA = "fecha";
+export const CLAVE_ESTADO_PROPIA = "estado";
+
+/**
+ * R177: los cuatro estados que acepta el borde, con su etiqueta legible y SIN `group`: aquí hay una
+ * sola lista, así que agruparlos por pestaña (como en `/cierres-admin`) no diría nada.
+ */
+export function opcionesEstadoPropias(): FilterOption[] {
+  return ESTADOS_FILTRO_CIERRES.map((estado) => ({ value: estado, label: ESTADO_LABEL[estado] }));
+}
+
+type EstadoFiltro = (typeof ESTADOS_FILTRO_CIERRES)[number];
+
+/**
+ * La selección de `FilterComponent` y el término del buscador → el bloque `filtros` del servidor.
+ * La fecha viaja como la terna `[atajo, desde, hasta]`; un extremo `""` no se fijó. Una lista de
+ * estados vacía es la AUSENCIA del filtro (el borde rechaza `[]`). El folio va recortado; el resto de
+ * la normalización la hace el servidor (R171). Las claves ausentes no viajan, ni como `undefined`.
+ */
+export function aFiltrosPropios(seleccion: FilterSelection, termino: string): FiltrosColaPropia {
+  const [, desde = "", hasta = ""] = seleccion[CLAVE_FECHA_PROPIA] ?? [];
+  const estados = seleccion[CLAVE_ESTADO_PROPIA] ?? [];
+  const folio = termino.trim();
+  return {
+    ...(desde === "" ? {} : { desde }),
+    ...(hasta === "" ? {} : { hasta }),
+    // `FilterComponent` solo emite valores declarados (los de `opcionesEstadoPropias`).
+    ...(estados.length === 0 ? {} : { estados: estados as [EstadoFiltro, ...EstadoFiltro[]] }),
+    ...(folio === "" ? {} : { folio }),
+  };
 }
