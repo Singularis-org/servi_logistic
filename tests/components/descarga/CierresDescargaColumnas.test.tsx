@@ -612,6 +612,12 @@ interface Superficie {
    */
   readonly region?: string;
   /**
+   * SLT-137: el título (`h2`) de la sección que contiene el control, cuando esa sección no es una
+   * región con nombre. En `/cierre-dia` la región «Cierres solicitados» es la TABLA de la cola, y
+   * «Descargar» vive en la barra de la cola, fuera de ella pero dentro de la misma sección.
+   */
+  readonly seccion?: string;
+  /**
    * Nombre accesible del disparador del selector, cuando no es el de siempre.
    *
    * Lo estrenan las cuatro superficies que la unificación de la descarga de cierres metió bajo
@@ -670,7 +676,7 @@ const SUPERFICIES: readonly Superficie[] = [
     ambito: AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
     columnas: COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
     montar: renderCierreDia,
-    region: "Cierres solicitados",
+    seccion: "Cierres solicitados",
   },
   // Las CINCO secciones de `/cierre-dia`. Mismo resultado, OTRO catálogo (el mensajero ve
   // menos), y por eso otro ámbito.
@@ -721,19 +727,27 @@ function claveDe(ambito: string): string {
 const DISPARADOR_SELECTOR = "Elegir columnas de la descarga";
 
 /** El disparador del selector de ESTA superficie, acotado a su sección si comparte pantalla. */
-function disparadorDe(superficie: Superficie): HTMLElement {
-  const ambito = superficie.region
+function ambitoDe(superficie: Superficie) {
+  if (superficie.seccion) {
+    const titulo = screen.getByRole("heading", { level: 2, name: superficie.seccion });
+    const seccion = titulo.closest("section");
+    if (!seccion) throw new Error(`«${superficie.seccion}» no está dentro de una <section>`);
+    return within(seccion);
+  }
+  return superficie.region
     ? within(screen.getByRole("region", { name: superficie.region }))
     : screen;
+}
+
+function disparadorDe(superficie: Superficie): HTMLElement {
+  const ambito = ambitoDe(superficie);
   return ambito.getByRole("button", {
     name: superficie.disparador ?? DISPARADOR_SELECTOR,
   });
 }
 
 function botonDescargaDe(superficie: Superficie): HTMLElement {
-  const ambito = superficie.region
-    ? within(screen.getByRole("region", { name: superficie.region }))
-    : screen;
+  const ambito = ambitoDe(superficie);
   return ambito.getByRole("button", { name: `Descargar ${superficie.control}` });
 }
 

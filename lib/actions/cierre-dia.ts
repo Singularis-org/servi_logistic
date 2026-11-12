@@ -2,6 +2,8 @@
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
+import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
+import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
@@ -69,6 +71,12 @@ function buildService(): ICierreDiaService {
     notificarMensajeroBloqueadoReal,
     // SLT-42 (R22): la zona del pais de la empresa, con la que se calcula el dia en curso.
     construirReglasPaisEmpresa(prisma),
+    // SLT-137 (R165): sin estas dos lecturas el listado no emite el pendiente de pago y la cola
+    // del mensajero dice «Sin dato» en cada aprobado.
+    {
+      liquidaciones: new LiquidacionPagoRepository(prisma),
+      premios: new PagoMensajeroMovimientoRepository(prisma),
+    },
   );
 }
 

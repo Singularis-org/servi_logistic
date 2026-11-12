@@ -83,9 +83,14 @@ test.describe("Cierre del día — el mensajero solicita y deshace", () => {
     await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
     await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
 
+    // SLT-137: «Cierres solicitados» es la cola del mensajero, una fila por cierre (la cabecera
+    // también dice «Solicitado»: se lee la fila, no la región entera).
     const historico = page.getByRole("region", { name: "Cierres solicitados" });
-    await expect(historico.getByText("Solicitado", { exact: true })).toBeVisible();
-    await expect(historico.getByText(/Bodega satélite/)).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Cierres solicitados 1" })).toBeVisible();
+    const fila = historico.getByRole("row").nth(1);
+    await expect(fila.getByText("Solicitado", { exact: true })).toBeVisible();
+    await expect(fila.getByRole("cell", { name: "Bodega satélite", exact: true })).toBeVisible();
+    await expect(fila.getByRole("button", { name: /^Ver del cierre del \d{4}-\d{2}-\d{2}$/ })).toBeEnabled();
 
     // El cierre quedó con el snapshot de lo gestionado (R14 de la 37).
     const cierres = await cierresDe(m);

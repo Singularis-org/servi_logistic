@@ -26,7 +26,7 @@ import type {
   CierreBodegaResumen,
   CierreConsolidableCola,
 } from "@/lib/interfaces/services/ICierreBodegaService";
-import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
+import type { CierrePasadoDTO, CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import { CifrasCierre } from "@/components/private/cierres/detalle/CifrasCierre";
 import type { Cifra } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,10 @@ import {
   type PestanaConsolidar,
   type RolCola,
 } from "./cola-cierres-vista";
+import { TABLIST_PROPIA } from "./cola-propia-vista";
+import { columnasTablaPropia, type AccionesColaPropia } from "./TablaColaPropia";
+
+export type { AccionesColaPropia } from "./TablaColaPropia";
 
 export interface AccionesCola {
   /** «Ver / decidir» y «Ver» (R36): el modo del detalle lo decide quien lo abre. */
@@ -150,7 +154,19 @@ export interface ColaCierresConsolidarProps extends ColaComun<PestanaConsolidar>
   solicitados: ReactNode;
 }
 
-type ColaCierresTodasProps = ColaCierresProps | ColaCierresBodegaProps | ColaCierresConsolidarProps;
+/** SLT-137: «Cierres solicitados» del propio mensajero en /cierre-dia (una pestaña). */
+export interface ColaCierresPropiosProps extends Omit<ColaComun, "rol"> {
+  tipo: "propios";
+  rol: "mensajero";
+  filas: readonly CierrePasadoDTO[];
+  acciones: AccionesColaPropia;
+}
+
+type ColaCierresTodasProps =
+  | ColaCierresProps
+  | ColaCierresBodegaProps
+  | ColaCierresConsolidarProps
+  | ColaCierresPropiosProps;
 
 // Pestañas subrayadas: las mismas clases que el detalle único (`DetalleCierre.tsx`).
 const TABS_LIST = "shrink-0 justify-start gap-6 rounded-none border-b border-border p-0";
@@ -226,7 +242,10 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
         onValueChange={(v) => onPestana(String(v))}
         className="flex flex-col gap-4"
       >
-        <TabsList aria-label={tablistCola(props.tipo, props.rol)} className={TABS_LIST}>
+        <TabsList
+          aria-label={props.tipo === "propios" ? TABLIST_PROPIA : tablistCola(props.tipo, props.rol)}
+          className={TABS_LIST}
+        >
           {pestanas.map((p) => (
             <TabsTrigger key={p.id} value={p.id} className={TAB_TRIGGER}>
               {`${p.label} ${p.conteo}`}
@@ -254,7 +273,14 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
         ) : (
           <TabsContent value={pestanaActiva} className="mt-0">
             <section aria-label={comun.region}>
-              {props.tipo === "bodega" ? (
+              {props.tipo === "propios" ? (
+                <TablaCola
+                  {...comun}
+                  filas={props.filas}
+                  columns={columnasTablaPropia(props.acciones)}
+                  rowKey="cierreId"
+                />
+              ) : props.tipo === "bodega" ? (
                 <TablaColaBodega {...comun} filas={props.filas} acciones={props.acciones} />
               ) : (
                 <TablaColaMensajero
