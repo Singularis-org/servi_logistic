@@ -1,7 +1,8 @@
 # SLT-119 — planes-pantallas-facturas · design.md
 
-> Requisitos: `requirements.md` (R1–R19; P1–P5 abiertas, escritas con la recomendada). Escrito por `spec_author` el
-> 2026-11-12. Sin migración, sin cambio de esquema y sin dependencias nuevas: Prisma, zod, React y los componentes de
+> Requisitos: `requirements.md` (R1–R19; P1–P5 cerradas por el humano el 2026-11-12, todas en (a), P1 con la pestaña
+> «Facturación»; P6 cerrada en (a): pestañas «Empresa», por defecto, y «Facturación», sin la pestaña en la URL). Principio del humano: las facturas van **por
+> empresa, no por plan**. Escrito por `spec_author` el 2026-11-12. Sin migración, sin cambio de esquema y sin dependencias nuevas: Prisma, zod, React y los componentes de
 > `components/ui/` ya aprobados (`docs/dependencias.md`). Solo lectura sobre lo que dejó SLT-118 «Planes: factura por
 > empresa y período con la cuota y las órdenes» y SLT-85 «Traza de facturación de los cobros por orden».
 
@@ -32,6 +33,7 @@ proyecto para este worktree (`index_status`: «project not found»): busqué con
 | El detalle de empresa del superadmin con lecturas aisladas (`leerPlan`) | `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` | Mismo molde para la sección (R12, R17) |
 | `money()`, `fechaCortaEnZona`, `ZONA_CR` | `lib/config/moneda.ts`, `lib/utils/fecha-corta.ts`, `lib/utils/fecha-cr.ts` | El formato de importes y fechas (R3, R5, R7) |
 | `Sheet`, `Table`, `Dialog` | `components/ui/` | El panel del detalle y las tablas |
+| `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` (ya usados en `RecogerModule.tsx` y `TarifasValores.tsx`) | `components/ui/tabs.tsx` | La pestaña «Facturación» del detalle de empresa (P1, P6). El detalle de empresa **hoy no tiene pestañas** |
 | `crearPlanPublicoConCosto` (costo base 1 000 mensual), `PlanesRepository.asignar`, `crearEmpresaE2E`, `clienteDueno`, `asegurarSuperadmin` | `e2e/_planes-fixture.ts`, `e2e/_dos-empresas-fixture.ts`, `e2e/_superadmin-fixture.ts`, `tests/fabricas/e2e` | La siembra del E2E (R19) |
 | Guardia de escritura solo por la base | `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` | Ya barre `lib/` y `app/`: cubre R16 sin cambios |
 
@@ -156,9 +158,14 @@ por props, para servir a las dos pantallas.
   `sumaDeCuotas(f)` (decimal exacto de `cuota` + `primeraCuota`, o `null`; solo suma importes de la base, R5);
   `instanteVisible(d)` (fecha y hora, P5); y `FACTURAS_TEXTOS` (todos los literales en un sitio).
 - **`FacturasDeLaEmpresa.tsx`** (`"use client"`). Props: `facturas: FacturaPlataformaDTO[] | null` (`null` = falló,
-  R17), `cargarDetalle: (input: { facturaId: string; pagina: number }) => Promise<DetalleFacturaResult>`. Una
-  `Table` con número, período, plan de las órdenes, órdenes, cuotas, total y estado (R1); vacía → «Aún no hay
-  facturas» (R18). Cada fila es un botón «Ver detalle» que abre el `Sheet`.
+  R17), `cargarDetalle: (input: { facturaId: string; pagina: number }) => Promise<DetalleFacturaResult>`. Título
+  «Facturas de la empresa» y una línea de ayuda: «Todas las facturas de la empresa, de cualquier plan o sin plan.»
+  Una `Table` con número, período, «Plan de las órdenes» (el de cada factura, o «Sin plan»), órdenes, cuotas, total y
+  estado (R1); vacía → «Aún no hay facturas de la empresa» (R18). Cada fila es un botón «Ver detalle» que abre el
+  `Sheet`.
+- **Por empresa, no por plan (decisión del humano).** La lista no se filtra ni se agrupa por plan, no recibe el plan
+  actual y ningún texto dice «facturas del plan»: el plan es una columna más de cada factura. `deLaEmpresa()` ya trae
+  todas las de la empresa (con plan, sin plan o con un plan anterior), así que no hace falta nada en la base.
 - **`DetalleDeFactura.tsx`** (`"use client"`). En un `Sheet` lateral: llama `cargarDetalle` al abrir y al paginar; un
   `ok` pinta cabecera, cuotas (con «prevista» en una no cerrada y «X de Y días» si `diasCobrados ≠ diasPeriodo`),
   resumen de órdenes, total y la tabla de líneas (fecha y hora, guía o «—», «Cargo»/«Reverso», valor con signo; R6,
@@ -175,11 +182,24 @@ el `forbidden` de la página sigue saliendo de `verMiPlan`. `MiPlanModule` gana 
 (la action `verDetalleFacturaMiPlanAction`) y pinta `FacturasDeLaEmpresa` al final, después de `CambioDePlan`. Ningún
 archivo nuevo nombra la ruta (guardia de SLT-91 R10).
 
-### 6.3 Detalle de empresa (superadmin)
+### 6.3 Detalle de empresa (superadmin): pestaña «Facturación»
 
-`app/(app)/plataforma/empresas/[organizacionId]/page.tsx` suma `leerFacturas(actor, organizacionId)` aislada igual y
-pinta `FacturasDeLaEmpresa` entre `PlanEmpresa` y «Núcleo», con
-`cargarDetalle={verDetalleFacturaEmpresaAction.bind(null, empresa.organizacionId)}` (R12, P1).
+Hoy la página apila `PlanEmpresa`, «Núcleo» y `ModulosEmpresa` sin pestañas. Con P1 (pestaña «Facturación») y P6 (a):
+
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` envuelve lo de hoy en
+  `<Tabs defaultValue="empresa">` con dos `TabsTrigger`: «Empresa» y «Facturación».
+  - `TabsContent value="empresa"`: `PlanEmpresa`, «Núcleo» y `ModulosEmpresa`, **sin cambios** y en el mismo orden.
+    Es la pestaña por defecto, así que lo que se ve al abrir no cambia y los E2E que lo recorren
+    (`planes-superadmin`, `superadmin-empresas`, `cobro-plataforma-sl40`, `planes-costeo`…) no se tocan.
+  - `TabsContent value="facturacion"`: `FacturasDeLaEmpresa` con
+    `cargarDetalle={verDetalleFacturaEmpresaAction.bind(null, empresa.organizacionId)}` (R12).
+- El enlace «Volver a Empresas» queda fuera de las pestañas, encima.
+- La lectura `leerFacturas(actor, organizacionId)` va en el `Promise.all` de la página, aislada como `leerPlan`
+  (R17): la lista es una sola sentencia y la pestaña no espera a que se elija para tenerla.
+- `Tabs` es de cliente y sus hijos se renderizan en el servidor: no hace falta un componente nuevo.
+- La pestaña elegida no va en la URL (P6 (a)): al recargar se vuelve a «Empresa».
+- Radix desmonta el contenido de la pestaña no elegida: los tests de la página eligen «Facturación» antes de
+  afirmar su contenido.
 
 ## 7. Datos que dependen del país
 
@@ -200,7 +220,7 @@ pinta `FacturasDeLaEmpresa` entre `PlanEmpresa` y «Núcleo», con
 | `tests/components/DetalleDeFactura.test.tsx` (**nuevo**) | R2, R6, R7, R9, R10, R16, R17 | Dos cuotas (una prorrateada), sin cuota, prevista; línea sin guía; reverso negativo; paginación; un throw de `cargarDetalle` |
 | `tests/components/MiPlanModule.test.tsx` (se ajusta) | R1 | Las props nuevas; la sección aparece |
 | `tests/integration/mi-plan-page.test.tsx` (se amplía) | R1, R17 | La lectura aislada: falla y el plan se pinta |
-| `tests/integration/plataforma-empresa-detalle-page.test.tsx` (se amplía) | R12, R17 | La sección con la empresa de la URL; falla y los módulos se pintan |
+| `tests/integration/plataforma-empresa-detalle-page.test.tsx` (se amplía) | R12, R17 | Al abrir, «Empresa» elegida con plan y módulos; al elegir «Facturación», la lista de la empresa de la URL; falla la lectura y plan y módulos se pintan |
 | `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` (existente, sin cambios) | R16 | Barre los archivos nuevos |
 | `e2e/facturas-plataforma.spec.ts` (**nuevo**, proyecto `dinero`) | R19 | §9 |
 
@@ -220,7 +240,8 @@ pinta `FacturasDeLaEmpresa` entre `PlanEmpresa` y «Núcleo», con
 4. **Cerrada.** El maestro recarga: «N.º 1», «Emitida», el total y la cuota iguales a los de la fila de la base (la
    cuota depende del día del mes, así que no se escribe a mano; los importes de las órdenes sí). La nueva en curso
    aparece encima.
-5. **Superadmin.** En el detalle de la empresa, la misma fila «N.º 1» y las mismas tres líneas.
+5. **Superadmin.** En el detalle de la empresa, elige la pestaña «Facturación»: la misma fila «N.º 1» y las mismas
+   tres líneas.
 6. **Admin.** `/mi-plan` → 404 «no encontrado» (SLT-91), sin sección de facturas.
 
 Al final archiva el plan público que creó (el catálogo es global), como `mi-plan-cambiar-plan.spec.ts`.
@@ -235,7 +256,12 @@ Al final archiva el plan público que creó (el catálogo es global), como `mi-p
   ganar solo la consistencia entre dos sentencias que §2 ya justifica innecesaria (el intervalo no cambia al cerrar).
 - **Una ruta `/mi-plan/facturas/[facturaId]`** (P4 (b)): enlazable, pero rompe la guardia de SLT-91 R10 y obliga a
   ampliarla, a sumar la ruta al reparto y a repetir la autorización en una página más.
-- **Pantalla global del superadmin** (P1 (b)): ver P1; más archivos y una lectura entre empresas que hoy no existe.
+- **Pantalla global del superadmin** (P1 (b), descartada por el humano): más archivos y una lectura entre empresas que
+  hoy no existe. Tampoco una sección suelta en el detalle de empresa (P1 (a) sin matiz): el humano pidió pestaña.
+- **Tres pestañas «Plan», «Módulos», «Facturación»** (P6 (b)): cambia lo que se ve al abrir y obliga a tocar los E2E
+  que hoy leen el plan y los módulos de esa pantalla.
+- **Lista agrupada o filtrada por plan**: contradice «las facturas van por empresa, no por plan» y escondería las de
+  períodos sin plan.
 - **Todas las líneas de una vez** (P3 (b)): la sembrada histórica de una empresa con meses de órdenes llevaría todas
   sus filas en una respuesta de Server Action.
 - **Recalcular totales en la pantalla sumando las líneas**: dos fuentes para el mismo número; con paginación,

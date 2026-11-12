@@ -2,8 +2,7 @@
 
 > Requisitos R1–R19 (`requirements.md`); diseño en `design.md` («§N»). Parte de `dev` con SLT-118 «Planes: factura
 > por empresa y período con la cuota y las órdenes» y SLT-99 «Planes: el administrador de la empresa ve su plan y los
-> públicos y cambia de plan» mergeadas. **No empezar hasta que el humano cierre P1–P5**: si elige otra opción que la
-> recomendada, el spec se reescribe antes (P1 (b) y P4 (b) cambian archivos esperados).
+> públicos y cambia de plan» mergeadas. P1–P6 cerradas por el humano el 2026-11-12. Preguntas abiertas: ninguna.
 >
 > Capas: `backend_dev` T1–T3; `frontend_dev` T4–T6; T7 el implementer. `[P]` = paralelizable con la anterior.
 
@@ -55,8 +54,9 @@
   `tests/components/MiPlanModule.test.tsx` y ampliar `tests/integration/mi-plan-page.test.tsx` (R1, R17).
   *Hecho:* verdes; la guardia `mi-plan-solo-maestro` verde (ningún archivo nuevo nombra la ruta).
 - [ ] **T6.2** (dep. T3.1, T5.1, T5.2) [P] Detalle de empresa: `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`
-  (lectura aislada, action ligada a la empresa) y `tests/integration/plataforma-empresa-detalle-page.test.tsx` (R12,
-  R17). *Hecho:* verde.
+  con `Tabs` «Empresa» (lo de hoy, sin cambios, por defecto) y «Facturación» (`FacturasDeLaEmpresa`, action ligada a
+  la empresa; lectura aislada) (design §6.3), y `tests/integration/plataforma-empresa-detalle-page.test.tsx` (R12,
+  R17). *Hecho:* verde; `planes-superadmin.spec.ts` y `superadmin-empresas.spec.ts` verdes en local sin tocarlos.
 
 ## T7 — E2E, docs y cierre
 
@@ -65,7 +65,8 @@
   base desechable, sin reintentos; `pnpm exec playwright test --project=dinero` verde antes del PR
   (`docs/perfil-agentes.md`); la guardia `e2e-sin-saltos` verde.
 - [ ] **T7.2** [P] `docs/architecture.md > Facturas de la plataforma > Lectura`: quitar «aún no existe», decir dónde
-  se pintan (sección de «Mi plan» y del detalle de empresa), las líneas desde la traza y el número «N.º». *Hecho:*
+  se pintan (sección «Facturas de la empresa» de «Mi plan» y pestaña «Facturación» del detalle de empresa; por
+  empresa, no por plan), las líneas desde la traza y el número «N.º». *Hecho:*
   el texto describe el código.
 - [ ] **T7.3** (dep. todo) Mapa `R<n> -> test` en `progress/impl_SLT-119.md`, sin huecos (R1–R19). `./init.sh` verde.
   *Hecho:* cada R con al menos un test que existe y pasa.
