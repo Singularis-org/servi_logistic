@@ -130,12 +130,12 @@ Copia tal cual de SLT-103 (R56, R141, R144, R146); R147 es de esta ficha. SLT-13
 
 ## Tasks
 
-- [ ] **T1 — Textos de `CierreDiaService`** (L1-L10, 10 constantes). Hecho: las 10 constantes dicen
+- [x] **T1 — Textos de `CierreDiaService`** (L1-L10, 10 constantes). Hecho: las 10 constantes dicen
   exactamente el texto nuevo de `## Inventario`; ningún otro cambio en el archivo salvo los comentarios
   de esas líneas si citan el texto viejo; `pnpm run typecheck` verde.
-- [ ] **T2 [P] — Textos de `CierreBodegaService`** (M1, L3). Hecho: igual que T1 para 2 constantes.
-- [ ] **T3 [P] — Texto de `CierresAdminService`** (N1). Hecho: igual que T1 para 1 constante.
-- [ ] **T4 — Tests de unidad de servicio** (depende de T1-T3). Hecho:
+- [x] **T2 [P] — Textos de `CierreBodegaService`** (M1, L3). Hecho: igual que T1 para 2 constantes.
+- [x] **T3 [P] — Texto de `CierresAdminService`** (N1). Hecho: igual que T1 para 1 constante.
+- [x] **T4 — Tests de unidad de servicio** (depende de T1-T3). Hecho:
   - los 4 archivos de unidad de `## Tests que afirman hoy el texto viejo` afirman el texto nuevo;
   - se añade un test con literal exacto para L2, L3 (día), L7, L10 en `cierre-dia-service.test.ts`
     y para M1 y L3 (bodega) en `cierre-bodega-service.test.ts`;
@@ -143,16 +143,16 @@ Copia tal cual de SLT-103 (R56, R141, R144, R146); R147 es de esta ficha. SLT-13
   - cada test afirma también `status` y el campo donde viaja el mensaje (R141), con `toEqual` sobre el
     objeto o sobre el campo, no `toContain` ni regex;
   - `pnpm exec vitest related --run` sobre los tres servicios en verde.
-- [ ] **T5 — Tests de integración** (depende de T1). Hecho: los 3 archivos de `tests/integration/db/`
+- [x] **T5 — Tests de integración** (depende de T1). Hecho: los 3 archivos de `tests/integration/db/`
   afirman el texto nuevo y pasan contra una base desechable (no la de desarrollo; `.env` copiado al
   worktree antes del gate).
-- [ ] **T6 — Test de pantalla** (depende de T1). Hecho: `tests/components/CierreDiaModule.test.tsx`
+- [x] **T6 — Test de pantalla** (depende de T1). Hecho: `tests/components/CierreDiaModule.test.tsx`
   l.373/380 y l.1315/1321 usan el texto nuevo, escrito a mano, tanto en la respuesta simulada como en la
   aserción de lo que se pinta; J3 (l.1619/1686) no se toca.
-- [ ] **T7 — Contraprueba de los tests.** Hecho: con cada constante devuelta a su texto viejo, al
+- [x] **T7 — Contraprueba de los tests.** Hecho: con cada constante devuelta a su texto viejo, al
   menos un test por fila (L1-N1) se pone en rojo; anotado en `progress/features/SLT-133.md` (sin dejar
   el cambio en el árbol).
-- [ ] **T8 — R147 y gate.** Hecho: los tests de servicios fuera del censo que afirman «catalogo…»
+- [x] **T8 — R147 y gate.** Hecho: los tests de servicios fuera del censo que afirman «catalogo…»
   siguen verdes sin tocarse; `git diff --stat` solo muestra archivos de `## Archivos esperados`;
   `./init.sh` verde.
 
