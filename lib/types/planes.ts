@@ -28,6 +28,22 @@ export const TIPOS_COBRO = ["quincenal", "mensual", "bimestral", "anual"] as con
 export type TipoCobro = (typeof TIPOS_COBRO)[number];
 export const tipoCobroSchema = z.enum(TIPOS_COBRO);
 
+/**
+ * SLT-118 (design §1.2, §3.2; R35, P14): cada cuánto se facturan las órdenes de las empresas con el plan. La
+ * columna `plan.periodicidad_ordenes` tiene el `CHECK` con estos dos y `DEFAULT 'quincenal'`.
+ */
+export const PERIODICIDADES_ORDENES = ["quincenal", "mensual"] as const;
+export type PeriodicidadOrdenes = (typeof PERIODICIDADES_ORDENES)[number];
+export const periodicidadOrdenesSchema = z.enum(PERIODICIDADES_ORDENES);
+
+/**
+ * SLT-118 (R37, P12): error del campo `tipoCobro` con un plan de órdenes mensuales. Vive aquí y no en
+ * `lib/planes/mensajes.ts` porque ese módulo importa valores de este: el refine de `crearPlanSchema` lo usa y
+ * el servicio lo reutiliza para el rechazo del repositorio.
+ */
+export const TIPO_QUINCENAL_CON_ORDENES_MENSUALES =
+  "Un plan con facturación de órdenes mensual no admite el tipo de cobro quincenal: la cuota del 16 no tendría factura que la emita.";
+
 /** SLT-86 (R10): el descuento de UN período, en porcentaje o en monto fijo; nunca los dos. */
 export type DescuentoPeriodo = { tipo: "porcentaje"; porcentaje: string } | { tipo: "monto"; monto: string };
 
@@ -171,6 +187,9 @@ export const crearPlanSchema = z
     // SLT-86 (R16): la fecha de efecto de un custom para una empresa que ya tiene plan. Que la empresa
     // tenga plan, que falte y el rango los mira el servicio, que tiene el reloj y la empresa.
     vigenteDesde: fechaSchema.optional(),
+    // SLT-118 (R35): ausente = `quincenal` (el DEFAULT de la columna). Opcional para no tocar las peticiones de
+    // los tests de planes que no la conocen; el formulario la manda siempre.
+    periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
   })
   .strict()
   // R2: un custom nombra exactamente una empresa y un público ninguna. Que exista lo mira el servicio.
@@ -191,7 +210,13 @@ export const crearPlanSchema = z
     error: "Un plan público no se asigna al crearlo: no lleva fecha de efecto.",
   })
   .refine((p) => p.inicioCiclo === undefined || p.vigenteDesde === undefined, NO_INICIO_Y_EFECTO)
-  .refine(unSoloModo, UN_SOLO_MODO);
+  .refine(unSoloModo, UN_SOLO_MODO)
+  // SLT-118 (R37, P12): el custom de una empresa con tipo quincenal no puede facturar sus órdenes por mes. El
+  // repositorio lo repite bajo el cerrojo al asignar.
+  .refine((p) => !(p.tipoCobro === "quincenal" && p.periodicidadOrdenes === "mensual"), {
+    path: ["tipoCobro"],
+    error: TIPO_QUINCENAL_CON_ORDENES_MENSUALES,
+  });
 
 // `.strict()`: traer `visibilidad` u `organizacionId` en una edición es validation_error (R2).
 // SLT-83: el refine de «un solo modo» va en los esquemas finales y no aquí, porque zod no deja hacer
@@ -205,6 +230,9 @@ const edicionDelPlan = z
     precio: precioPlanSchema,
     costoPorOrden: montoCobroSchema.nullable(),
     costoPorOrdenPorcentual: costoPorOrdenPorcentualSchema.nullable(),
+    // SLT-118 (R35): ausente = sin cambio. La hereda `versionPlanSchema`, así que una versión programada
+    // guardada antes, sin ella, sigue validando.
+    periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
     // null = de inmediato (R15); una fecha = programado (R37, T11). SLT-86 (R22): si cambia el precio o
     // un descuento es obligatoria y `≥ hoy`, y hoy se aplica en el acto; lo mira el servicio, que sabe
     // qué cambió y qué día es.
@@ -284,7 +312,7 @@ export type PrevisualizarCustomInput = z.infer<typeof previsualizarCustomSchema>
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
 export type VersionPlan = Pick<
   EditarPlanInput,
-  "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual"
+  "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual" | "periodicidadOrdenes"
 >;
 
 export type PlanDTO = {
@@ -299,6 +327,11 @@ export type PlanDTO = {
   costoPorOrden: string | null;
   /** SLT-83 (R1): porcentaje y mínimo con dos decimales; `null` = el plan no es porcentual. */
   costoPorOrdenPorcentual: CostoPorOrdenPorcentual | null;
+  /**
+   * SLT-118 (R35): la periodicidad de órdenes. Las lecturas del repositorio la llenan siempre; opcional en el
+   * tipo para no tocar los dobles de `PlanDTO` de los tests. Ausente = `quincenal` (el DEFAULT de la columna).
+   */
+  periodicidadOrdenes?: PeriodicidadOrdenes;
   archivado: boolean;
 };
 
@@ -439,10 +472,11 @@ export type AsignacionDePlan = {
 
 /**
  * Ajuste planes-custom (D10): cambiar solo el tipo de cobro. `cambio: false` = ya tenía ese tipo; no se
- * escribió nada. `sin_plan`: la empresa no tiene plan (el tipo se elige al asignarle uno).
+ * escribió nada. `sin_plan`: la empresa no tiene plan (el tipo se elige al asignarle uno). SLT-118 (R32):
+ * `vigenteDesde`, la fecha real (`AAAA-MM-DD`) del cambio que quedó pendiente; `null` si se aplicó o no cambió.
  */
 export type CambiarTipoCobroResult =
-  | { estado: "ok"; cambio: boolean }
+  | { estado: "ok"; cambio: boolean; vigenteDesde: string | null }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" }

@@ -17,6 +17,8 @@ import { cambiarTipoCobroSchema, previsualizarCustomSchema, type TopeExcedido, t
 //
 // SLT-86 (R16, R17): cambiar el tipo lleva fecha de efecto (`vigenteDesde`, de hoy a hoy + 12 meses); el
 // repositorio recibe el `EfectoElegido` y el reloj. La vista previa ya no da el siguiente ciclo (R8).
+//
+// SLT-118 (R32): la respuesta trae `vigenteDesde`, la fecha real que dejó el repositorio si quedó pendiente.
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -43,7 +45,7 @@ function doble() {
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({ avisos: [] })),
-    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "ok", cambio: true, pendiente: true })),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: "2026-11-01" })),
     cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
     aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
     cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
@@ -78,7 +80,7 @@ describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan ac
   it("ok: guarda el tipo por el repositorio con el actor de la sesión y devuelve su resultado", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
     const r = await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual"));
-    expect(r).toEqual({ estado: "ok", cambio: true });
+    expect(r).toEqual({ estado: "ok", cambio: true, vigenteDesde: "2026-11-01" });
     expect(repo.cambiarTipoCobro).toHaveBeenCalledExactlyOnceWith(EMPRESA, "anual", EFECTO, "u-sa", AHORA);
     // Ni asigna, ni crea, ni toca el plan: solo el tipo.
     expect(repo.asignar).not.toHaveBeenCalled();
@@ -91,6 +93,7 @@ describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan ac
     expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido("mensual"))).toEqual({
       estado: "ok",
       cambio: false,
+      vigenteDesde: null,
     });
   });
 
@@ -140,6 +143,19 @@ describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan ac
       expect((await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual", { vigenteDesde }))).estado).toBe("ok");
     }
     expect(repo.cambiarTipoCobro).toHaveBeenCalledTimes(2);
+  });
+
+  it("SLT-118 R32: el repositorio llevó la elegida al 1 de enero (mensual → anual) → la respuesta trae la fecha real; el repositorio recibió la elegida", async () => {
+    repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
+    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: "2027-01-01" });
+    const r = await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual", { vigenteDesde: "2026-11-10" }));
+    expect(r).toEqual({ estado: "ok", cambio: true, vigenteDesde: "2027-01-01" });
+    expect(repo.cambiarTipoCobro.mock.calls[0]?.[2]).toEqual({
+      clase: "cambio",
+      fecha: "2026-11-10",
+      desde: new Date("2026-11-10T06:00:00.000Z"),
+      elegida: true,
+    });
   });
 
   it.each([null, ...ROLES_DE_EMPRESA])("rol %s → forbidden sin llamar al repositorio (SL-24 R5)", async (rol) => {

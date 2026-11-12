@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { fechaDeEfectoPorDefecto } from "@/lib/planes/ciclo";
 import { PlanesService } from "@/lib/services/PlanesService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -26,6 +27,10 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
 const dia = (dias: number) => fechaCalendarioCR(new Date(Date.now() + dias * UN_DIA_MS));
+// SLT-118 (R30, R31): la fecha de un cambio a una empresa con plan se lleva al inicio del período siguiente del
+// tipo de referencia. Las filas de cancelación llevan la fecha real; estas ya son un inicio y se respetan.
+const PROXIMO_MES = fechaDeEfectoPorDefecto("mensual", new Date());
+const PROXIMO_ANIO = fechaDeEfectoPorDefecto("anual", new Date());
 
 let base: PrismaClient;
 let soltarSuperadmin: () => Promise<void> = async () => {};
@@ -98,7 +103,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
       const [actual, nuevo] = [await c.plan(), await c.plan()];
       const org = await c.empresa();
       await c.servicio.asignar(c.actor, { organizacionId: org, planId: actual.id, tipoCobro: "mensual", inicioCiclo: dia(0) });
-      await c.servicio.asignar(c.actor, { organizacionId: org, planId: nuevo.id, tipoCobro: "quincenal", vigenteDesde: dia(6) });
+      await c.servicio.asignar(c.actor, { organizacionId: org, planId: nuevo.id, tipoCobro: "quincenal", vigenteDesde: PROXIMO_MES });
       const cancelar = await c.servicio.cancelarCambioEmpresa(c.actor, { organizacionId: org });
       const vista = await c.servicio.planDeEmpresa(c.actor, { organizacionId: org });
       return { actual, nuevo, org, cancelar, filas: await cancelaciones(tx, org), pendiente: await pendiente(tx, org), vista, actor: c.actor };
@@ -112,7 +117,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
         entidadId: r.nuevo.id,
         entidadEtiqueta: `Plan «${r.nuevo.nombre}»`,
         valorAnterior: null,
-        valorNuevo: `${dia(6)} · quincenal`,
+        valorNuevo: `${PROXIMO_MES} · quincenal`,
         actorUsuarioId: r.actor.usuarioId,
         actorNombre: expect.any(String),
         organizacionId: r.org,
@@ -122,7 +127,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
     // La lectura que pinta T11: la cancelación arriba (la más reciente) y la asignación debajo.
     if (r.vista.estado !== "ok") throw new Error(`planDeEmpresa: ${r.vista.estado}`);
     expect(r.vista.vista.asignaciones.map(({ tipo, planNombre, tipoCobro, tipoCobroAnterior, desde }) => ({ tipo, planNombre, tipoCobro, tipoCobroAnterior, desde }))).toEqual([
-      { tipo: "cambio_cancelado", planNombre: `Plan «${r.nuevo.nombre}»`, tipoCobro: "quincenal", tipoCobroAnterior: null, desde: dia(6) },
+      { tipo: "cambio_cancelado", planNombre: `Plan «${r.nuevo.nombre}»`, tipoCobro: "quincenal", tipoCobroAnterior: null, desde: PROXIMO_MES },
       { tipo: "asignacion", planNombre: `Plan «${r.actual.nombre}»`, tipoCobro: "mensual", tipoCobroAnterior: null, desde: dia(0) },
     ]);
   });
@@ -166,7 +171,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
       const actual = await c.plan();
       const org = await c.empresa();
       await c.servicio.asignar(c.actor, { organizacionId: org, planId: actual.id, tipoCobro: "mensual", inicioCiclo: dia(0) });
-      await c.servicio.cambiarTipoCobro(c.actor, { organizacionId: org, tipoCobro: "anual", vigenteDesde: dia(9) });
+      await c.servicio.cambiarTipoCobro(c.actor, { organizacionId: org, tipoCobro: "anual", vigenteDesde: PROXIMO_ANIO });
       // La base admite un solo superadmin (SL-32): el pendiente pasa a firmarlo otro usuario, para que la
       // fila distinga a quien lo programó de quien lo cancela.
       await fijarEmpresa(tx, org);
@@ -182,7 +187,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
     expect(r.pendiente).toBeNull();
     // El pendiente era un cambio de solo el tipo: su plan es el vigente.
     expect(r.filas.map((f) => ({ entidadId: f.entidadId, valorNuevo: f.valorNuevo, actor: f.actorUsuarioId }))).toEqual([
-      { entidadId: r.actual.id, valorNuevo: `${dia(9)} · anual`, actor: r.actor.usuarioId },
+      { entidadId: r.actual.id, valorNuevo: `${PROXIMO_ANIO} · anual`, actor: r.actor.usuarioId },
     ]);
     expect(r.actor.usuarioId).not.toBe(r.programo);
   });
@@ -194,7 +199,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
       const [conPlan, sinPlan, aOtro] = [await c.empresa(), await c.empresa(), await c.empresa()];
       await c.servicio.asignar(c.actor, { organizacionId: conPlan, planId: actual.id, tipoCobro: "mensual", inicioCiclo: dia(0) });
       await c.servicio.asignar(c.actor, { organizacionId: aOtro, planId: actual.id, tipoCobro: "mensual", inicioCiclo: dia(0) });
-      await c.servicio.asignar(c.actor, { organizacionId: conPlan, planId: archivable.id, tipoCobro: "anual", vigenteDesde: dia(8) });
+      await c.servicio.asignar(c.actor, { organizacionId: conPlan, planId: archivable.id, tipoCobro: "anual", vigenteDesde: PROXIMO_ANIO });
       await c.servicio.asignar(c.actor, { organizacionId: sinPlan, planId: archivable.id, tipoCobro: "quincenal", inicioCiclo: dia(8) });
       await c.servicio.asignar(c.actor, { organizacionId: aOtro, planId: otro.id, tipoCobro: "anual", vigenteDesde: dia(8) });
       const archivar = await c.servicio.archivar(c.actor, { planId: archivable.id });
@@ -209,7 +214,7 @@ describeSiHayBase("SLT-86 — cancelar un cambio de empresa deja historial (R19,
     });
     expect(r.archivar).toMatchObject({ estado: "ok", cambio: true });
     const forma = (filas: typeof r.conPlan) => filas.map((f) => ({ entidadId: f.entidadId, valorNuevo: f.valorNuevo, actor: f.actorUsuarioId }));
-    expect(forma(r.conPlan)).toEqual([{ entidadId: r.archivable.id, valorNuevo: `${dia(8)} · anual`, actor: r.actor.usuarioId }]);
+    expect(forma(r.conPlan)).toEqual([{ entidadId: r.archivable.id, valorNuevo: `${PROXIMO_ANIO} · anual`, actor: r.actor.usuarioId }]);
     expect(forma(r.sinPlan)).toEqual([{ entidadId: r.archivable.id, valorNuevo: `${dia(8)} · quincenal`, actor: r.actor.usuarioId }]);
     expect(r.aOtro).toEqual([]);
   });

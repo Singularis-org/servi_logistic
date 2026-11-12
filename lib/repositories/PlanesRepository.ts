@@ -52,6 +52,7 @@ import {
   type CostoPorOrdenPorcentual,
   type CrearPlanInput,
   type DescuentoPeriodo,
+  periodicidadOrdenesSchema,
   type PlanDTO,
   type PrecioPlan,
   precioPlanSchema,
@@ -63,7 +64,12 @@ import {
   type VersionPlan,
   versionPlanSchema,
 } from "@/lib/types/planes";
-import { fechaCalendarioPlataforma, fechaDeEfectoPorDefecto, inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
+import {
+  fechaCalendarioPlataforma,
+  fechaDeEfectoPorDefecto,
+  inicioDelDiaPlataforma,
+  inicioDelPeriodoCalendario,
+} from "@/lib/planes/ciclo";
 
 // SL-24 (design §2, §4.4, §5, §7, §9, §16.3) — el catálogo de planes y su asignación. Lo escribe solo
 // el superadmin, que no tiene empresa: todo corre en `comoPlataforma` (como dueño, sin el filtro de la
@@ -155,6 +161,8 @@ function aDTO(f: FilaPlan): PlanDTO {
             porcentaje: f.costoPorOrdenPct.toFixed(2),
             minimo: f.costoPorOrdenMinimo === null ? null : f.costoPorOrdenMinimo.toFixed(2),
           },
+    // SLT-118 (R35): el CHECK `plan_periodicidad_ordenes_check` deja solo los dos valores.
+    periodicidadOrdenes: periodicidadOrdenesSchema.parse(f.periodicidadOrdenes),
     archivado: f.archivadoAt !== null,
   };
 }
@@ -235,6 +243,23 @@ async function leerPlan(tx: Tx, planId: string): Promise<PlanDTO | null> {
 async function bloquearPlanParaEscribir(tx: Tx, planId: string): Promise<boolean> {
   const filas = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "plan" WHERE "id" = ${planId} FOR UPDATE`;
   return filas.length > 0;
+}
+
+/**
+ * SLT-118 (design §3.2; R37, P12): con el plan ya bloqueado para escribir, cuántas empresas quedarían con tipo
+ * quincenal en un plan de órdenes mensuales si `version` se aplica sobre `antes`: las que lo tienen con tipo
+ * quincenal y las que lo tienen como cambio pendiente con tipo quincenal. 0 si la versión no pasa de
+ * quincenal a mensual. El cerrojo del plan espera a las asignaciones en vuelo (que lo tienen FOR SHARE) y las
+ * siguientes leen el plan ya mensual y se rechazan solas.
+ */
+async function empresasQuincenalesSiPasaAMensual(tx: Tx, antes: PlanDTO, version: VersionPlan): Promise<number> {
+  if (version.periodicidadOrdenes !== "mensual" || antes.periodicidadOrdenes === "mensual") return 0;
+  const [{ empresas }] = await tx.$queryRaw<{ empresas: number }[]>`
+    SELECT count(*)::int AS "empresas"
+      FROM "organizacion"
+     WHERE ("plan_id" = ${antes.id} AND "plan_tipo_cobro" = 'quincenal')
+        OR ("plan_cambio_plan_id" = ${antes.id} AND "plan_cambio_tipo_cobro" = 'quincenal')`;
+  return empresas;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -404,6 +429,9 @@ async function aplicarVersion(
       ...columnasDelPrecio(version.precio),
       costoPorOrden: version.costoPorOrden,
       ...columnasDelPorcentual(version.costoPorOrdenPorcentual),
+      // SLT-118 (R35, R36): ausente = sin cambio (Prisma no escribe un `undefined`). Las facturas en curso no
+      // se tocan: cada una cierra con la periodicidad con la que se abrió.
+      periodicidadOrdenes: version.periodicidadOrdenes,
     },
   });
   await guardarDescuentos(tx, antes.id, version.precio);
@@ -612,6 +640,8 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
       ...columnasDelPrecio(input.precio),
       costoPorOrden: input.costoPorOrden,
       ...columnasDelPorcentual(input.costoPorOrdenPorcentual),
+      // SLT-118 (R35): ausente = el DEFAULT `quincenal` de la columna.
+      periodicidadOrdenes: input.periodicidadOrdenes,
       topesPorRol: { create: filasDeTopes(input.topes) },
       modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
     },
@@ -630,6 +660,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
     precio: input.precio,
     costoPorOrden: input.costoPorOrden,
     costoPorOrdenPorcentual: input.costoPorOrdenPorcentual,
+    periodicidadOrdenes: input.periodicidadOrdenes ?? "quincenal",
     archivado: false,
   };
   const actor = await resolverActorCongelado(tx, actorUsuarioId);
@@ -732,7 +763,23 @@ function claseQueNoCasa(efecto: EfectoElegido, planActual: string | null): Extra
   return null;
 }
 
-type ResultadoDelCambio = Extract<ResultadoAsignar, { estado: "ok" | "tope_excedido" }>;
+type ResultadoDelCambio = Extract<ResultadoAsignar, { estado: "ok" | "tope_excedido" | "periodicidad_incompatible" }>;
+
+/**
+ * SLT-118 (design §3.1; R30, R31, R33; decisiones P7 y P9): la fecha de efecto real de un cambio del
+ * superadmin. Solo un `"cambio"` se lleva; un `"inicio"` (primera asignación) rige el día elegido (R33, P8).
+ * El tipo de referencia es el más largo entre el vigente y el nuevo (orden de `TIPOS_COBRO`): así un cambio a
+ * un tipo más largo rige al inicio de un período del tipo nuevo (P9). Si la fecha ya es el primer día de un
+ * período de ese tipo, se respeta (R31); si no, va al primer día del período siguiente (R30). El rango de
+ * SLT-86 R16 no se vuelve a mirar: vale sobre la elegida (R34, P10).
+ */
+export function efectoAlInicioDelPeriodo(efecto: EfectoElegido, tipoVigente: TipoCobro, tipoNuevo: TipoCobro): EfectoElegido {
+  if (efecto.clase !== "cambio") return efecto;
+  const referencia = TIPOS_COBRO.indexOf(tipoNuevo) > TIPOS_COBRO.indexOf(tipoVigente) ? tipoNuevo : tipoVigente;
+  if (inicioDelPeriodoCalendario(referencia, efecto.desde).getTime() === efecto.desde.getTime()) return efecto;
+  const fecha = fechaDeEfectoPorDefecto(referencia, efecto.desde);
+  return { ...efecto, fecha, desde: inicioDelDiaPlataforma(fecha) };
+}
 
 
 /** Ajuste planes-custom (D2): revierte la transacción de `crearYAsignar` llevando el rechazo afuera. */
@@ -779,6 +826,9 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         if (antes.archivado) return { estado: "archivado" };
         const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
         if (!hayCambios(cambios)) return { estado: "ok", cambio: false, avisos: [] };
+        // SLT-118 (R37): a mensual con alguna empresa quincenal, se rechaza sin escribir.
+        const quincenales = await empresasQuincenalesSiPasaAMensual(tx, antes, version);
+        if (quincenales > 0) return { estado: "periodicidad_incompatible", empresas: quincenales };
 
         // R16 (revisado el 2026-10-28): ya no se rechaza. Se guarda y se avisa de quién ya pasa un
         // tope; desde ahora sus altas que pasen el tope las rechazan los triggers.
@@ -878,7 +928,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
             ahora,
           );
           if (r.estado !== "ok") throw new AsignacionRechazada(r);
-          return { estado: "ok", planId, avisos: r.avisos, pendiente: r.pendiente };
+          return { estado: "ok", planId, avisos: r.avisos, pendiente: r.pendiente, vigenteDesde: r.vigenteDesde };
         });
       } catch (e) {
         if (e instanceof AsignacionRechazada) return e.resultado;
@@ -954,18 +1004,25 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         const plan = await leerPlan(tx, empresa.plan_id);
         if (plan === null) throw new Error(`cambiarTipoCobro: el plan de ${organizacionId} no existe`);
         const r = await this.cambiarEmpresaEnTx(tx, empresa, plan, tipoCobro, efecto, actorUsuarioId, ahora);
+        // SLT-118 (R37): quincenal con el plan de órdenes mensuales de la empresa; nada se escribió.
+        if (r.estado === "periodicidad_incompatible") return r;
         // Con el mismo plan no se miran topes, así que no puede rechazarse por uno.
         if (r.estado !== "ok") throw new Error(`cambiarTipoCobro: rechazo imposible (${r.estado}) para ${organizacionId}`);
-        return { estado: "ok", cambio: r.cambio, pendiente: r.pendiente };
+        return { estado: "ok", cambio: r.cambio, pendiente: r.pendiente, vigenteDesde: r.vigenteDesde };
       }),
     );
   }
 
   /**
    * §5.1, pasos 2–4, con la empresa ya bajo el cerrojo y el plan revalidado.
+   *   · SLT-118 (R37, P12): tipo quincenal con un plan de órdenes mensuales se rechaza sin escribir. Cubre
+   *     asignar, `crearYAsignar` y `cambiarTipoCobro`.
    *   · R19: mismo plan y mismo tipo que rigen → cancela el pendiente, con su fila de cancelación
    *     (decisión del 2026-11-05), o no hace nada si no lo hay.
-   *   · Fecha futura → pendiente y avisos, sin rechazar (R18).
+   *   · SLT-118 (R30, R31): un `"cambio"` se lleva al inicio de un período del tipo de referencia
+   *     (`efectoAlInicioDelPeriodo`); desde aquí todo usa la fecha real, también el pendiente, su trabajo y
+   *     el historial. La primera asignación no se toca (R33).
+   *   · Fecha futura → pendiente y avisos, sin rechazar (R18); `vigenteDesde` es la fecha real (R32).
    *   · Fecha de hoy o pasada → se aplica. Un tope ya pasado rechaza un cambio de plan (R18, SL-24 R12) y
    *     la primera asignación sin fecha (SLT-58 P14); la primera asignación con fecha se asigna y avisa
    *     (SLT-58 R36, R42). Cambiar solo el tipo no mira topes: el plan es el mismo.
@@ -975,19 +1032,25 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     empresa: EmpresaBloqueada,
     plan: PlanDTO,
     tipoCobro: TipoCobro,
-    efecto: EfectoElegido,
+    elegido: EfectoElegido,
     actorUsuarioId: string,
     ahora: Date,
   ): Promise<ResultadoDelCambio> {
+    // 1. SLT-118 (R37, P12): la cuota del 16 no tendría factura que la emita. Con el plan leído bajo el cerrojo.
+    if (tipoCobro === "quincenal" && plan.periodicidadOrdenes === "mensual") return { estado: "periodicidad_incompatible" };
+    // 2. R19: lo pedido ya es lo que rige.
     if (empresa.plan_id === plan.id && empresa.plan_tipo_cobro === tipoCobro) {
       if (empresa.plan_cambio_id === null) return { estado: "ok", cambio: false, avisos: [], pendiente: false };
       await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
       return { estado: "ok", cambio: true, avisos: [], pendiente: false };
     }
+    // 3. SLT-118 (R30, R31, R33): la fecha real, bajo el cerrojo (el tipo vigente es el de la empresa ahora).
+    const efecto = efectoAlInicioDelPeriodo(elegido, tipoCobroSchema.parse(empresa.plan_tipo_cobro), tipoCobro);
+    // 4. Pendiente o en el acto, con la fecha real.
     const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], plan.topes);
     if (efecto.desde.getTime() > ahora.getTime()) {
       await escribirPendiente(tx, empresa.id, plan.id, tipoCobro, efecto.desde, actorUsuarioId);
-      return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true };
+      return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true, vigenteDesde: fechaCalendarioPlataforma(efecto.desde) };
     }
     const avisa = efecto.clase === "inicio" && efecto.elegida;
     if (!avisa && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
@@ -1009,6 +1072,11 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     desde: Date,
     actor: ActorCongelado,
   ): Promise<void> {
+    // SLT-118 (design §2.3; R15–R17, R28): las facturas de la plataforma toman el cambio ANTES del UPDATE,
+    // con la empresa ya en FOR UPDATE: la función sabe si es una primera asignación por `plan_id IS NULL`.
+    // Solo fija y marca facturas no cerradas; no cierra ni depende del reloj.
+    await tx.$executeRaw`
+      SELECT factura_plataforma_tomar_cambio(${empresa.id}, ${comoTimestamp(desde)}::timestamp, ${plan.id}, ${tipoCobro})`;
     await tx.$executeRaw`
       UPDATE "organizacion"
          SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
@@ -1143,6 +1211,9 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         // 2. La versión vigente sin pendiente: nada que programar ni que registrar.
         const cambios = diferenciasDelPlan(vigente, { ...vigente, ...version });
         if (!hayCambios(cambios) && pendiente === null) return { estado: "ok", cambio: false, avisos: [], cambioId: null };
+        // SLT-118 (R37): a mensual con alguna empresa quincenal, se rechaza sin escribir (al aplicarla se repite).
+        const quincenales = await empresasQuincenalesSiPasaAMensual(tx, vigente, version);
+        if (quincenales > 0) return { estado: "periodicidad_incompatible", empresas: quincenales };
 
         // 3. R16 (revisado): con el uso de HOY contra los topes nuevos; se avisa, no se rechaza.
         const empresas = await empresasDelPlan(tx, planId);
@@ -1244,6 +1315,13 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         // (se reintenta y queda en `failed` con el motivo) sin escribir nada.
         const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
         const antes = (await leerPlan(tx, cambio.planId)) as PlanDTO;
+        // SLT-118 (R37): la regla de la periodicidad, con las empresas de AHORA. Si ya no pasa, falla sin escribir.
+        const quincenales = await empresasQuincenalesSiPasaAMensual(tx, antes, version);
+        if (quincenales > 0) {
+          throw new Error(
+            `aplicarCambioProgramado: el cambio ${cambio.cambioId} pasa el plan ${cambio.planId} a órdenes mensuales y ${quincenales} empresa(s) lo tienen con tipo quincenal (R37)`,
+          );
+        }
         const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
         // 3. La misma función que la edición inmediata (R17 en las empresas que lo tienen AHORA).
         // El historial de SL-23 de cada empresa lo firma el sistema; el ciclo no se toca (R38).

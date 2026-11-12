@@ -141,3 +141,49 @@ describe("R30 — las filas que ya existen se pintan tal cual", () => {
     ]);
   });
 });
+
+// SLT-118 (R35; texto del humano del 2026-11-11): la periodicidad de órdenes del plan en «qué cambia», con
+// el valor de antes y el de después tal cual, en minúscula. La misma función la usan el correo, el cambio
+// pendiente («Mi plan» y el detalle de empresa) y el selector de plan del superadmin (`PlanEmpresa`).
+describe("SLT-118 R35 — «Facturación de órdenes: <antes> → <después>»", () => {
+  it("quincenal → mensual y mensual → quincenal, desde el rastro de una edición", () => {
+    const quincenal: PlanDTO = { ...PLAN, periodicidadOrdenes: "quincenal" };
+    const mensual: PlanDTO = { ...PLAN, periodicidadOrdenes: "mensual" };
+    expect(lineas(quincenal, mensual)).toEqual(["Facturación de órdenes: quincenal → mensual"]);
+    expect(lineas(mensual, quincenal)).toEqual(["Facturación de órdenes: mensual → quincenal"]);
+  });
+
+  it("un plan sin ella es quincenal: pasar a mensual se lista; quedarse en quincenal, no", () => {
+    expect(lineas(PLAN, { ...PLAN, periodicidadOrdenes: "mensual" })).toEqual(["Facturación de órdenes: quincenal → mensual"]);
+    expect(lineas(PLAN, { ...PLAN, periodicidadOrdenes: "quincenal" })).toEqual([]);
+  });
+
+  it("junto a otro cambio, cada uno en su línea", () => {
+    expect(lineas(PLAN, { ...PLAN, nombre: "Max", periodicidadOrdenes: "mensual" })).toEqual([
+      "Nombre del plan: Pro → Max",
+      "Facturación de órdenes: quincenal → mensual",
+    ]);
+  });
+
+  it("el alta (`antes: null`) y un rastro anterior a la ficha no pintan la línea", () => {
+    expect(lineasDeCambioDelPlan({ periodicidadOrdenes: { antes: null, despues: "quincenal" } })).toEqual([]);
+    expect(lineasDeCambioDelPlan({ nombre: { antes: "A", despues: "B" } })).toEqual(["Nombre del plan: A → B"]);
+  });
+
+  it("el cambio pendiente de «Mi plan» y del detalle de empresa la lista con su fecha", () => {
+    const vigente = {
+      nombre: PLAN.nombre,
+      topes: PLAN.topes,
+      modulos: PLAN.modulos,
+      precio: PLAN.precio,
+      costoPorOrden: PLAN.costoPorOrden,
+      costoPorOrdenPorcentual: PLAN.costoPorOrdenPorcentual,
+      periodicidadOrdenes: "quincenal" as const,
+    };
+    const vista = cambioPendienteDelPlan(vigente, {
+      vigenteDesde: new Date("2026-12-01T06:00:00.000Z"),
+      version: { ...vigente, periodicidadOrdenes: "mensual" },
+    });
+    expect(vista).toEqual({ vigenteDesde: "2026-12-01", lineas: ["Facturación de órdenes: quincenal → mensual"] });
+  });
+});
