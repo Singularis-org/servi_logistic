@@ -33,24 +33,24 @@ No la parto: el corte posible está en `requirements.md > PA5`. Sin el borrado, 
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** Actualiza la rama desde `origin/dev` **con SLT-137 «/cierre-dia: cola de cierres del
+- [x] **T0.1** Actualiza la rama desde `origin/dev` **con SLT-137 «/cierre-dia: cola de cierres del
   mensajero con filtros» ya mergeada** (`git fetch` + merge; comprueba el `merge-base`). Si SLT-137
   no está en `dev`, para y avisa al leader. Lee cómo quedó el «Ver» de la cola (`abrirDetalle`).
   **Hecho:** SHA de `origin/dev` y firma del `onVer` de la cola anotados en
   `progress/features/SLT-109.md`.
-- [ ] **T0.2** Censo de tests y guardias con `grep -rl` en `tests/` y `e2e/`: «Totales del día»,
+- [x] **T0.2** Censo de tests y guardias con `grep -rl` en `tests/` y `e2e/`: «Totales del día»,
   «Cierre vencido», «Cierre rechazado», «Corregir el cierre rechazado», `name: "Ganancia"`,
   `DESCARGA_POR_RESULTADO`, `COLUMNAS_DESCARGA_DIA_`, `CierreDiaModule.tsx`, «Devolver a gestión».
   **Hecho:** la lista coincide con `## Archivos esperados`, o el leader tiene el archivo de más.
-- [ ] **T0.3** Corre `pnpm run test:guardias` en limpio y anota las verdes de partida. Mira si alguna
+- [x] **T0.3** Corre `pnpm run test:guardias` en limpio y anota las verdes de partida. Mira si alguna
   exige un consumidor para cada export de `cierre-dia-descarga-columnas.ts`. **Hecho:** anotado.
-- [ ] **T0.4** Mide una vez, en la base desechable, las tres cifras del mensajero del escenario de
+- [x] **T0.4** Mide una vez, en la base desechable, las tres cifras del mensajero del escenario de
   `e2e/cierre-dia.spec.ts` (modelo viejo) y de `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts`
   (modelo nuevo). Escríbelas a mano, con su derivación, en la cabecera de cada E2E (R77).
 
 ## T1 — Lógica pura (depende de T0) [P entre T1.1 y T1.2]
 
-- [ ] **T1.1** `detalle-cierre-vista.ts` + `detalle-cierre-labels.ts`:
+- [x] **T1.1** `detalle-cierre-vista.ts` + `detalle-cierre-labels.ts`:
   - `vistaMensajeroEnCurso` y `cierreDeLaPagina` (`design.md > Elección del cierre`);
   - `avisosDelMensajero`: franja de bloqueo en cualquier modo (R246);
   - `accionesDeLaTabla` mensajero `rechazado` = `[solicitarRechazado, cerrar]`; `pieTextoDe` sin
@@ -67,7 +67,7 @@ No la parto: el corte posible está en `requirements.md > PA5`. Sin el borrado, 
 
   **Hecho:** rojo si `cierreDeLaPagina` ignora `aReenviarPrimero`, si la vista copia `empresa` o si
   la franja de bloqueo vuelve a ser solo de `vencido`.
-- [ ] **T1.2** Fila: `fila-gestion-vista.ts` (`devolverDeshabilitado`), `fila-gestion-labels.ts`
+- [x] **T1.2** Fila: `fila-gestion-vista.ts` (`devolverDeshabilitado`), `fila-gestion-labels.ts`
   (texto de la tienda mudado sin cambiar un carácter), `FilaGestion.tsx` (`disabled`, `title`,
   nombre accesible y `enVuelo`), `GestionesCierre.tsx` (pasa `enVuelo`). Tests en
   `tests/unit/utils/fila-gestion-vista.test.ts` y `tests/components/FilaGestion.test.tsx`: gestión de
@@ -76,50 +76,50 @@ No la parto: el corte posible está en `requirements.md > PA5`. Sin el borrado, 
 
 ## T2 — Detalle (depende de T1.1)
 
-- [ ] **T2.1** `DetalleCierre.tsx`: `deshabilitadas` (botón `disabled` + `title` + descripción
+- [x] **T2.1** `DetalleCierre.tsx`: `deshabilitadas` (botón `disabled` + `title` + descripción
   `sr-only`), cabecera sin partes vacías, alto del marco página (R254). Tests en
   `tests/components/DetalleCierre.test.tsx`: «Solicitar cierre» deshabilitado con su descripción;
   cabecera en curso sin « · » de más; rechazado en modal ofrece solo «Cerrar».
-- [ ] **T2.2** [P con T2.1] `CorregirCierre.tsx` (R248). Tests en
+- [x] **T2.2** [P con T2.1] `CorregirCierre.tsx` (R248). Tests en
   `tests/components/CierreDiaModule477Correccion.test.tsx` (adaptado): explicación y aviso del corte;
   dos órdenes (una pendiente con «Ir a Entregas» → `/mis-asignaciones/reparto`, otra rehecha sin
   enlace); sin órdenes → no hay sección.
 
 ## T3 — Montaje en `/cierre-dia` (depende de T1, T2)
 
-- [ ] **T3.1** `page.tsx`: lee `verCierrePasado` solo con `aReenviarPrimero`; `error` sin
+- [x] **T3.1** `page.tsx`: lee `verCierrePasado` solo con `aReenviarPrimero`; `error` sin
   `notFound()`. Test en `tests/components/CierreDiaPage.test.tsx`: sin reenviable no lo llama; con
   reenviable lo llama con su `cierreId`; `no_encontrada` → prop `error`.
-- [ ] **T3.2** `CierreDiaModule.tsx`: monta `DetalleCierre` marco página por modo (`design.md >
+- [x] **T3.2** `CierreDiaModule.tsx`: monta `DetalleCierre` marco página por modo (`design.md >
   Montaje`), el aviso de R253, el «Ver» de un rechazado en modo rechazado (R252) y la relectura tras
   deshacer en el modal; borra lo sustituido (R255). Test nuevo `tests/components/CierreDiaPagina.test.tsx`
   con un caso por R240-R253 y R255 (ver `## Trazabilidad`).
   **Hecho:** rojo con cada mutación: pintar el en curso teniendo un reenviable; `acciones.devolver`
   en vencido; quitar `deshabilitadas.solicitar`; pintar el aviso de bloqueo fuera del detalle.
-- [ ] **T3.3** Adapta los tests que montaban las secciones del día: `CierreDiaModule.test.tsx`,
+- [x] **T3.3** Adapta los tests que montaban las secciones del día: `CierreDiaModule.test.tsx`,
   `CierreDiaModuleIncidente.test.tsx` (R256: «Ganancia» del incidente en la fila y en el archivo,
   «—»/vacía si es nula, sin indemnización), `CierreDiaMotivoRechazoAutomatico.test.tsx`,
   `CierreDiaComprobanteMarcasDeOrigen.test.tsx`, `CierreEvidenciasVarias486.test.tsx`,
   `descarga/CierresDescarga.test.tsx`, `descarga/CierresDescargaColumnas.test.tsx`. Un caso que solo
   probaba una tabla por resultado se borra y se dice en el commit; uno que probaba una regla
   (motivo legible, marca de la tienda, evidencia) se reapunta a la fila única.
-- [ ] **T3.4** Guardias: `censo-tablas.ts`, `contadores-cabecera.guardia.test.ts`,
+- [x] **T3.4** Guardias: `censo-tablas.ts`, `contadores-cabecera.guardia.test.ts`,
   `estado-con-info.guardia.test.ts`, `pagos-captura.guardia.test.ts`, `incidente-exhaustividad.test.ts`,
   `intentos-no-alcance-ui.test.ts`. **Hecho:** cada entrada que se quita o se mueve, con su porqué en
   el commit; `pnpm run test:guardias` verde.
 
 ## T4 — E2E (depende de T3)
 
-- [ ] **T4.1** `e2e/cierre-dia.spec.ts`: las cifras del detalle con los literales de T0.4 (R77,
+- [x] **T4.1** `e2e/cierre-dia.spec.ts`: las cifras del detalle con los literales de T0.4 (R77,
   modelo viejo); «Devolver a gestión» desde la fila (R243); viewport 375 × 667 con el botón del pie
   dentro de la ventana (`boundingBox`, R254).
-- [ ] **T4.2** `e2e/cierre-vencido-modelo.spec.ts`: el vencido como página y su reenvío desde el pie
+- [x] **T4.2** `e2e/cierre-vencido-modelo.spec.ts`: el vencido como página y su reenvío desde el pie
   (R63, R249, R251); tras reenviar, la página pinta el en curso.
-- [ ] **T4.3** Reapunta «Totales del día» / «Cierre vencido» a las cifras y al pie del detalle en
+- [x] **T4.3** Reapunta «Totales del día» / «Cierre vencido» a las cifras y al pie del detalle en
   `reglas-bloqueos-cierre.spec.ts`, `mis-asignaciones.spec.ts`, `tope-intentos-por-empresa.spec.ts`,
   `tarifas-valor-propio-mensajero.spec.ts` y `cierre-modelo-nuevo-plan-porcentual.spec.ts` (R77,
   modelo nuevo).
-- [ ] **T4.4** Corre en local, base desechable nueva, los 7 E2E (`docs/perfil-agentes.md > E2E en
+- [x] **T4.4** Corre en local, base desechable nueva, los 7 E2E (`docs/perfil-agentes.md > E2E en
   local antes del PR`). **Hecho:** verdes, anotados en `progress/features/SLT-109.md`.
 
 ## T5 — Cierre (leader)
