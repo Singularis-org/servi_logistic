@@ -106,7 +106,7 @@
 
 ### T9 — Gate (depende de todo)
 - [ ] `./init.sh` verde; E2E de planes y grupo `dinero` en local antes del PR (`docs/perfil-agentes.md`).
-- [ ] Mapa `R<n> → test` en `progress/impl_SLT-128.md` (R1–R27).
+- [x] Mapa `R<n> → test` en `progress/impl_SLT-128.md` (R1–R27).
 - **Hecho:** gate verde y el mapa completo.
 
 ## Archivos esperados

@@ -231,3 +231,15 @@ migración y `PlanesRepository`; sin cambios de producción (ningún caso revel�
   `planes-periodicidad-ordenes` 11, `plan-precio-historial` 9, `planes-historial` 8.
 
 Veredicto: T7 completa; los casos de integración se revisaron contra la migración y el repositorio, pero solo el CI los corre.
+
+## T9 — Cierre (implementer, 2026-11-12)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: 0 errores.
+- `pnpm run lint`: 0 errores, 2 avisos (ya estaban).
+- `pnpm run test:guardias`: 4 rojos, los de la baseline (`dependencias-declaradas-presentes`); el resto verde. En la
+  primera corrida salió `censo-order-status-rename` (455/R40) por el identificador `rechazada` en
+  `planes-cambio-por-empresa.test.ts`; renombrado a `conTopePasado` (acb6adfe) y la guardia vuelve a verde.
+- `./init.sh` (8 GB): rojo en el validador del board, no en el código: «zona backend: SLT-43, SLT-44, SLT-45, SLT-65,
+  SLT-71, SLT-118, SLT-128 (7 in_progress, max 5)». Es del leader (cupo); el resto de pasos no llegó a correr.
+- Integración (8 archivos de T7, T2.3) y E2E de planes y grupo `dinero`: NO corridos en local (no hay base desechable).
+  Quedan para el CI; ninguna migración de SLT-128 se ha ejecutado aún contra Postgres.
+- Archivos: 35 de «Archivos esperados» (29 del plan + 6 aceptados por el humano el 2026-11-12).
