@@ -115,3 +115,7 @@ Veredicto: guardia R4 resuelta y tipos en verde; T1–T4 listas para seguir con 
   `moverRecepcionEnTx` (R19): el doble de `tx` no trae `planCambioProgramado`. No está en la baseline ni en «Archivos
   esperados»: arreglarlo lleva el total a 34 > 33. Pregunta abierta al humano.
 - `PlanDetalle.test.tsx`: backend_dev solo añadió `recibidas`/`total` al doble `DETALLE.pendiente` por el tipo nuevo.
+- `vitest related --run` de consumo.ts, PlanesService.ts y types/planes.ts: 296 verdes, 63 saltados y 7 rojos. Seis
+  eran por carga (corrían a la vez que otro vitest). Corridos solos, `wallet-page` y `CierresDescargaColumnas`: 27/27
+  verdes. Solo queda el rojo de `planes-repository-tipo-cobro`.
+- `pnpm test:guardias`: 4 rojos, los de la baseline (`dependencias-declaradas-presentes`); 4822 verdes.
