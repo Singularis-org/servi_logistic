@@ -28,14 +28,14 @@ const ROL_AUTORIZADO = "adminSatelite";
 
 // Mensajes accionables del gate/precondicion.
 const MSG_PENDIENTES =
-  "Primero resolve los cierres de tus mensajeros antes de cerrar la bodega."; // R6
+  "Primero resuelve los cierres de tus mensajeros antes de cerrar la bodega."; // R6
 const MSG_VACIO = "No hay cierres de mensajero aprobados para consolidar."; // R7
 // ⭑ FICHA 431 — AQUI VIVIA `MSG_DUPLICADO` («Ya tenes un cierre de bodega solicitado pendiente de
 // aprobacion»), el mensaje del gate «a lo sumo una consolidacion por zona» de la feature 40. Se va
 // con su gate: con la aprobacion convertida en marca de conciliacion, esperar a que la central
 // marque para volver a consolidar seria el MISMO bloqueo mudado de sitio, y su texto ademas ya no
 // seria cierto en ninguno de sus dos extremos.
-const MSG_SIN_ZONA = "No tenes una zona asignada; contacta a tu administrador."; // R4
+const MSG_SIN_ZONA = "No tienes una zona asignada; contacta a tu administrador."; // R4
 
 // Metodos de repo que consume el service (Pick para dobles de test sin DB/red).
 type OrdenRepo = Pick<IOrdenRepository, "findUsuarioZonaId">;

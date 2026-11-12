@@ -81,13 +81,13 @@ const ESTADOS_PENDIENTES = ["mensajero_recogiendo_en_bodega", "en_reparto"];
 // FICHA 455 (2026-09-24): sin «sin gestionar», que es el nombre retirado de `novedad_interna`; el
 // aviso habla de paquetes aun en reparto sin gestion, no de ese estado.
 const MSG_PENDIENTES =
-  "Tenés paquetes en reparto que todavía no gestionaste; gestionalos antes de cerrar."; // R10
-const MSG_VACIO = "No tenes gestiones pendientes de cierre."; // R11
+  "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar."; // R10
+const MSG_VACIO = "No tienes gestiones pendientes de cierre."; // R11
 // FEATURE 271: este motivo YA NO ES «ya tienes un cierre» (el segundo cierre se permite, R13).
 // Queda para la UNICA carrera que sigue existiendo: la re-solicitud encontro el cierre movido entre
 // la lectura y la escritura, asi que no escribio nada y hay que reintentar.
-const MSG_DUPLICADO = "Ese cierre ya se envio a aprobacion; actualiza la pagina."; // R19
-const MSG_SIN_ZONA = "No tenes una zona asignada; contacta a tu administrador."; // R16
+const MSG_DUPLICADO = "Ese cierre ya se envió a aprobación; actualiza la página."; // R19
+const MSG_SIN_ZONA = "No tienes una zona asignada; contacta a tu administrador."; // R16
 
 // ⚠️ FEATURE 271 — AQUI VIVIA `MSG_BLOQUEADO`, un texto FIJO. Se va, y no es limpieza: el motivo
 // del bloqueo tiene que CONTAR (cuantos cierres arrastra y cual toca resolver primero, R27/R43) y
@@ -96,11 +96,11 @@ const MSG_SIN_ZONA = "No tenes una zona asignada; contacta a tu administrador.";
 // se desincronizan.
 
 // Feature 67 — mensajes ACCIONABLES del deshacer (constantes i18n-ready, patron MSG_* de la 37).
-const MSG_YA_EN_CIERRE = "Esta gestion ya esta incluida en un cierre solicitado; no se puede deshacer."; // R2
-const MSG_YA_DESHECHA = "Esta gestion ya fue deshecha."; // R3
-const MSG_NO_ES_LA_ULTIMA = "Esta orden tiene una gestion mas reciente; hay que deshacer esa primero."; // R4
+const MSG_YA_EN_CIERRE = "Esta gestión ya está incluida en un cierre solicitado; no se puede deshacer."; // R2
+const MSG_YA_DESHECHA = "Esta gestión ya fue deshecha."; // R3
+const MSG_NO_ES_LA_ULTIMA = "Esta orden tiene una gestión más reciente; hay que deshacer esa primero."; // R4
 const MSG_ORDEN_MOVIDA = "Esta orden ya fue procesada por la bodega; ya no se puede deshacer."; // R5
-const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su gestion."; // R6
+const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su gestión."; // R6
 // 💰 Feature 237 (T5.5, D3 firmada por el humano el 2026-08-20, R38). ACCIONABLE: le dice al
 // mensajero QUE paso, POR QUE no puede tocarlo y A QUIEN acudir — no es un «no se puede» a secas.
 //
@@ -111,8 +111,8 @@ const MSG_ORDEN_BORRADA = "Esta orden fue eliminada; ya no se puede deshacer su 
 // sustituye por dos mensajes, uno por familia: al mensajero le da igual desde donde lo hizo la
 // tienda; lo que necesita saber es que no es suyo y a quien escribirle.
 const MSG_GESTION_DE_LA_TIENDA =
-  "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.";
-const MSG_CATALOGO = "catalogo de estados incompleto (seed pendiente)"; // patron `gestionar` (36)
+  "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
+const MSG_CATALOGO = "catálogo de estados incompleto (seed pendiente)"; // patron `gestionar` (36)
 
 // Feature 67/R18: unico estado desde el que se puede volver a gestionar (`ORIGEN_GESTION` de
 // MisAsignacionesService, guardia `cargarOrdenGestionable`). Destino del deshacer.

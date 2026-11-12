@@ -163,7 +163,7 @@ describeSiHayBase("477/T2.3 — deshacer en un cierre rechazado (Postgres real)"
     expect(r.antes.g.cierreId).not.toBeNull(); // anti-vacuidad
     expect(r.des).toEqual({
       status: "conflict",
-      motivo: "Esta gestion ya esta incluida en un cierre solicitado; no se puede deshacer.",
+      motivo: "Esta gestión ya está incluida en un cierre solicitado; no se puede deshacer.",
     });
     expect(r.repo).toBe(false);
     expect(r.despues).toEqual(r.antes);

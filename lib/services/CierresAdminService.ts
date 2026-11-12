@@ -223,7 +223,7 @@ const MSG_CONFIRMACION_GUIA_DISTINTA = "La guía leída no es la de este paquete
 // Se bloquea y se DICE, nunca se omite en silencio — omitirla dejaria un paquete aprobado sin
 // que nadie lo tuviera delante, que es justo lo que esta feature viene a impedir.
 const MSG_CONFIRMACION_SIN_GUIA =
-  "Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador.";
+  "Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador.";
 
 // Feature 239 (T2.1, R9): catalogo incompleto -> la aprobacion NO ocurre. Texto SIN PII y con el
 // mismo tono accionable que el resto (patron `MSG_CATALOGO` de la 36/67).

@@ -370,14 +370,14 @@ describe("CierreDiaModule", () => {
   it("R10/R11: sin poder solicitar, el botón está deshabilitado y se muestra el motivo", () => {
     renderModule({
       puedesSolicitar: false,
-      motivoBloqueo: "Tenés paquetes en reparto que todavía no gestionaste; gestionalos antes de cerrar.",
+      motivoBloqueo: "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.",
     });
 
     expect(
       screen.getByRole("button", { name: "Solicitar cierre" }),
     ).toBeDisabled();
     expect(
-      screen.getByText("Tenés paquetes en reparto que todavía no gestionaste; gestionalos antes de cerrar."),
+      screen.getByText("Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar."),
     ).toBeInTheDocument();
   });
 
@@ -1312,13 +1312,13 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
 
     deshacerMock.mockResolvedValue({
       status: "validation_error",
-      fieldErrors: { estatus: ["catalogo de estados incompleto (seed pendiente)"] },
+      fieldErrors: { estatus: ["catálogo de estados incompleto (seed pendiente)"] },
     });
     renderModule({ grupos });
     let dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith("catalogo de estados incompleto (seed pendiente)"),
+      expect(errorMock).toHaveBeenCalledWith("catálogo de estados incompleto (seed pendiente)"),
     );
 
     cleanup();

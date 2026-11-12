@@ -123,6 +123,8 @@ describe("CierreBodegaService — adminSatelite sin zona (R4)", () => {
     expect(r.consolidables).toEqual([]);
     expect(r.puedesSolicitar).toBe(false);
     expect(r.motivoBloqueo).toBeTruthy();
+    // SLT-133 (L3 de bodega, R141/R144): texto exacto en «tú», en `motivoBloqueo`.
+    expect(r.motivoBloqueo).toBe("No tienes una zona asignada; contacta a tu administrador.");
     expect(repo.findCierresDiaConsolidables).not.toHaveBeenCalled();
   });
 
@@ -132,6 +134,11 @@ describe("CierreBodegaService — adminSatelite sin zona (R4)", () => {
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") throw new Error("esperaba validation_error");
     expect(r.fieldErrors.zona).toBeDefined();
+    // SLT-133 (L3 de bodega, R141/R144): viaja en `fieldErrors.zona`, en «tú».
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { zona: ["No tienes una zona asignada; contacta a tu administrador."] },
+    });
     expect(repo.crearCierreBodega).not.toHaveBeenCalled();
   });
 });
@@ -175,12 +182,19 @@ describe("CierreBodegaService.solicitarCierreBodega — precondiciones (R6/R7)",
     const { service } = newService({ repo });
     const r = await service.solicitarCierreBodega(ADMIN_SATELITE);
     expect(r.status).toBe("conflict");
+    // SLT-133 (M1, R141/R144): mismo status y campo `motivo`, en «tú».
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "Primero resuelve los cierres de tus mensajeros antes de cerrar la bodega.",
+    });
     expect(repo.crearCierreBodega).not.toHaveBeenCalled();
 
     const l = await service.listarConsolidacion(ADMIN_SATELITE);
     if (l.status !== "ok") throw new Error("esperaba ok");
     expect(l.puedesSolicitar).toBe(false);
     expect(l.motivoBloqueo).toBeTruthy();
+    // SLT-133 (M1): la pantalla recibe el mismo texto en `motivoBloqueo`.
+    expect(l.motivoBloqueo).toBe("Primero resuelve los cierres de tus mensajeros antes de cerrar la bodega.");
   });
 
   it("R7: sin consolidables -> conflict, sin crear", async () => {
