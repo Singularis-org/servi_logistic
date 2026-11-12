@@ -829,6 +829,67 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
   });
 });
 
+// SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (T4.3; R77, R51) — la satélite abre SU
+// cierre de bodega desde «Solicitados» y lee las MISMAS cifras que la central, al céntimo y contra el literal escrito
+// a mano; sin fulfillment ni acciones (solo «Cerrar»).
+const CENTRAL_CUENTA = "Lo que va a la central";
+
+/** Lo que se compara entre audiencias: las cuatro cifras y la cuenta «Lo que va a la central». */
+async function lecturaDeBodega(detalle: Locator): Promise<string[]> {
+  const textos: string[] = [];
+  for (const id of ["recaudado", "paraCentral", "pago", "leQueda"]) {
+    textos.push((await cifra(detalle, id).textContent()) ?? "");
+  }
+  await detalle.getByRole("tab", { name: "Dinero" }).click();
+  for (const rotulo of ["Total general", "− Pago a mensajeros", "− Gana la bodega satélite", "Debe llegar a la central"]) {
+    textos.push((await montoDeCuenta(detalle, CENTRAL_CUENTA, rotulo).textContent()) ?? "");
+  }
+  return textos;
+}
+
+async function bodegaDeCierres(page: Page): Promise<void> {
+  await page.goto("/cierres-admin");
+  await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
+}
+
+async function abrirBodegaComoCentral(page: Page, r: RepartoE2E): Promise<Locator> {
+  await bodegaDeCierres(page);
+  await page
+    .getByRole("region", { name: "Cierres de bodega por conciliar" })
+    .getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${r.zonaSatelite.nombre}` })
+    .click();
+  const detalle = page.getByRole("dialog", { name: `Detalle del cierre de bodega · Cierre de bodega · ${r.zonaSatelite.nombre}` });
+  await expect(detalle).toBeVisible();
+  return detalle;
+}
+
+async function abrirBodegaComoSatelite(page: Page, r: RepartoE2E): Promise<Locator> {
+  await bodegaDeCierres(page);
+  const bodega = page.getByRole("region", { name: "Cierre de bodega" });
+  await bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" }).getByRole("tab", { name: /^Solicitados/ }).click();
+  await bodega
+    .getByRole("region", { name: "Cierres de bodega solicitados" })
+    .getByRole("button", { name: /^Ver el cierre de bodega #/ })
+    .click();
+  const detalle = page.getByRole("dialog", { name: `Detalle del cierre de bodega · Cierre de bodega · ${r.zonaSatelite.nombre}` });
+  await expect(detalle).toBeVisible();
+  return detalle;
+}
+
+/** R51: «Gestiones» desplegada sin fulfillment y sin ninguna escritura; el pie, solo «Cerrar». */
+async function sateliteSoloLee(detalle: Locator): Promise<void> {
+  expect(await pie(detalle)).toEqual(["Cerrar"]);
+  await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
+  const desplegar = detalle.getByRole("button", { name: /^(Desglose de ingreso|Detalle) de la orden / }).first();
+  await desplegar.click();
+  await expect(desplegar).toHaveAttribute("aria-expanded", "true");
+  await expect(detalle.getByRole("region", { name: /^Fulfillment/ })).toHaveCount(0);
+  await expect(detalle.getByText(/Fulfillment/)).toHaveCount(0);
+  await expect(
+    detalle.getByRole("button", { name: /Marcar recibido|Desmarcar|Corregir|Ajustar pago|Aprobar|Rechazar/ }),
+  ).toHaveCount(0);
+}
+
 // SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (T6.2; R77, R40-R43, R114, R115, R116) — un
 // cierre de bodega del MODELO NUEVO, como lo ve la central. Escenario B6: las tarifas del escenario B digitadas y
 // activadas en la zona SATÉLITE (un cierre de central no se consolida), más «Pago a la satélite» por entregado 120
@@ -980,5 +1041,53 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
       ["+ IVA 13 %", "₡403"],
       ["Flete por entregado", "₡3.503"],
     ]);
+  });
+
+  // SLT-107 (T4.3; R77, R51): la satélite abre el MISMO cierre de bodega del modelo nuevo desde «Solicitados».
+  test("satélite, B6: las mismas cifras que la central, al céntimo, sin fulfillment y solo «Cerrar»", async ({ browser }) => {
+    const central = await paginaDe(browser, r.empresa.maestro);
+    const loQueVeLaCentral = await lecturaDeBodega(await abrirBodegaComoCentral(central, r));
+    await central.context().close();
+
+    const page = await paginaDe(browser, r.adminSatelite);
+    const detalle = await abrirBodegaComoSatelite(page, r);
+    const LITERALES = ["₡10.000", "₡7.680", "₡2.200", "₡780", "₡10.000", "₡2.200", "₡120", "₡7.680"];
+    expect(await lecturaDeBodega(detalle)).toEqual(LITERALES);
+    expect(loQueVeLaCentral).toEqual(LITERALES);
+    await sateliteSoloLee(detalle);
+  });
+});
+
+// SLT-107 (T4.3; R77, R51) — un cierre de bodega del MODELO VIEJO (tarifa por mensajero 1.500 por entregado, 500 por
+// rechazo; tienda por defecto de la fábrica: flete 2.500, flete devuelto 1.250, sin IVA ni comisión). Una entrega de
+// 9.000 y un rechazo. Cifras, a mano (las de `e2e/cierre-bodega-satelite.spec.ts`):
+//   Recaudado ₡9.000 · Pago a mensajeros ₡1.500 · Gana la bodega satélite ₡500
+//   Debe llegar a la central 9.000 − 1.500 − 500 = ₡7.000 · Le queda 3.750 − 1.500 − 500 = ₡1.750
+test.describe.serial("SLT-107 — la satélite lee su cierre de bodega del modelo viejo igual que la central", () => {
+  let r: RepartoE2E;
+
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("cierres-rediseno-bodega-viejo", {
+      tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 },
+    });
+    const m = await crearMensajero(r, "satelite");
+    const entrega = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, entrega, m, { resultado: "entregado" });
+    const rechazo = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
+    await gestionar(r, rechazo, m, { resultado: "devolucion_a_origen_por_rechazo" });
+    await aprobarCierre(r, await solicitarCierre(r, m));
+    await solicitarCierreBodega(r);
+  });
+
+  test("central y satélite: las mismas cifras al céntimo; la satélite sin fulfillment y solo «Cerrar»", async ({ browser }) => {
+    const LITERALES = ["₡9.000", "₡7.000", "₡1.500", "₡1.750", "₡9.000", "₡1.500", "₡500", "₡7.000"];
+    const central = await paginaDe(browser, r.empresa.maestro);
+    expect(await lecturaDeBodega(await abrirBodegaComoCentral(central, r))).toEqual(LITERALES);
+    await central.context().close();
+
+    const page = await paginaDe(browser, r.adminSatelite);
+    const detalle = await abrirBodegaComoSatelite(page, r);
+    expect(await lecturaDeBodega(detalle)).toEqual(LITERALES);
+    await sateliteSoloLee(detalle);
   });
 });

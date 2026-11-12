@@ -440,3 +440,121 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
     await expect(recibida.getByRole("button", { name: `Ver el cierre de bodega de ${bodega}` })).toBeVisible();
   });
 });
+
+/**
+ * SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (T4.2; R49, R50, R52, R68, R290) —
+ * la satélite lee «Solicitados» con la cola única y abre su cierre de bodega en lectura.
+ *
+ * DATOS: dos cierres de bodega de la zona, sin marca, cada uno de un mensajero distinto (tarifa 1.500 por
+ * entregado, 500 por rechazo):
+ *   viejo: entrega 9.000 + un rechazo → Debe llegar 9.000 − 1.500 − 500 = 7.000; su `solicitado_at` se
+ *          lleva a hace 20 días en la base, para que el atajo «Últimos 7 días» lo deje fuera.
+ *   nuevo: entrega 5.000 → Debe llegar 5.000 − 1.500 = 3.500; solicitado hoy.
+ * Tarjetas, a mano y sin depender del filtro (R68): Por llegar 7.000 + 3.500 = ₡10.500 (2 pendientes);
+ * Recibido (30 días) ₡0 (0 cierres); Falta por recibir ₡0 (0 incompletos).
+ */
+test.describe.serial("SLT-107 — «Solicitados» de la satélite: tarjetas, filtro y «Ver» en lectura", () => {
+  let rs: RepartoE2E;
+  let viejo: string;
+  let nuevo: string;
+  const folio = (id: string) => `#${id.slice(-8).toUpperCase()}`;
+
+  test.beforeAll(async () => {
+    rs = await crearEscenarioReparto("cierre-bodega-solicitados", {
+      tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 },
+    });
+    const m1 = await crearMensajero(rs, "satelite");
+    const e1 = await llevarA(rs, await crearOrden(rs, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: m1 });
+    await gestionar(rs, e1, m1, { resultado: "entregado" });
+    const r1 = await llevarA(rs, await crearOrden(rs, { zona: "satelite" }), "en_reparto", { mensajero: m1 });
+    await gestionar(rs, r1, m1, { resultado: "devolucion_a_origen_por_rechazo" });
+    await aprobarCierre(rs, await solicitarCierre(rs, m1));
+    viejo = await solicitarCierreBodega(rs);
+    await baseReparto().cierreBodega.update({
+      where: { id: viejo },
+      data: { solicitadoAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) },
+    });
+
+    const m2 = await crearMensajero(rs, "satelite");
+    const e2 = await llevarA(rs, await crearOrden(rs, { zona: "satelite", montoCobrar: 5000 }), "en_reparto", { mensajero: m2 });
+    await gestionar(rs, e2, m2, { resultado: "entregado" });
+    await aprobarCierre(rs, await solicitarCierre(rs, m2));
+    nuevo = await solicitarCierreBodega(rs);
+  });
+
+  test("tarjetas y filas; el filtro de fecha saca el viejo y baja el conteo; «Ver» abre en lectura", async ({ browser }) => {
+    const page = await paginaDe(browser, rs.adminSatelite);
+    await pestanaBodega(page);
+    const bodega = page.getByRole("region", { name: "Cierre de bodega" });
+    const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
+    const pestana = etapas.getByRole("tab", { name: /^Solicitados/ });
+    await pestana.click();
+    await expect(pestana).toHaveAccessibleName("Solicitados 2");
+
+    // R49, R286: las tres tarjetas, escritas a mano.
+    const cifras = bodega.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
+    const cifra = (id: string) => cifras.locator(`[data-cifra="${id}"]`);
+    await expect(cifra("porLlegar")).toHaveText("₡10.500");
+    await expect(cifra("recibido30Dias")).toHaveText("₡0");
+    await expect(cifra("faltaPorRecibir")).toHaveText("₡0");
+    await expect(cifras.getByRole("group", { name: "Por llegar a la central" })).toContainText(
+      "2 cierres pendientes de conciliar",
+    );
+
+    // R49, R288: las columnas y la fila del recién solicitado.
+    const tabla = bodega.getByRole("region", { name: "Cierres de bodega solicitados" });
+    await expect(tabla.getByRole("columnheader")).toHaveText([
+      "Folio",
+      "Solicitado",
+      "Cierres",
+      "Recaudado",
+      "Debe llegar",
+      "Recibido",
+      "Falta",
+      "Estado",
+      "Acciones",
+    ]);
+    const filaNuevo = tabla.getByRole("row").filter({ hasText: folio(nuevo) });
+    const filaViejo = tabla.getByRole("row").filter({ hasText: folio(viejo) });
+    await expect(filaNuevo.getByRole("cell").nth(3)).toHaveText("₡5.000");
+    await expect(filaNuevo.getByRole("cell").nth(4)).toHaveText("₡3.500");
+    await expect(filaNuevo.getByRole("cell").nth(5)).toHaveText("—");
+    await expect(filaNuevo.getByRole("cell").nth(7)).toHaveText("Pendiente de conciliar");
+    await expect(filaViejo.getByRole("cell").nth(4)).toHaveText("₡7.000");
+
+    // R52, R290: «Últimos 7 días» deja fuera el de hace 20 días; el conteo baja y las tarjetas no cambian.
+    await bodega.getByRole("button", { name: "Filtros" }).click();
+    const opcion = page.getByRole("option", { name: "Fecha de solicitud" });
+    await opcion.click();
+    await page.keyboard.press("Escape");
+    await bodega.getByRole("button", { name: "Fecha de solicitud" }).click();
+    await page.getByRole("group", { name: "Rangos predefinidos" }).getByRole("button", { name: "Últimos 7 días" }).click();
+    await page.keyboard.press("Escape");
+    await expect(pestana).toHaveAccessibleName("Solicitados 1");
+    await expect(filaViejo).toHaveCount(0);
+    await expect(filaNuevo).toHaveCount(1);
+    await expect(cifra("porLlegar")).toHaveText("₡10.500");
+
+    // R50, R292: «Ver» abre el detalle de bodega en lectura: sin marca, la franja de la satélite y solo «Cerrar».
+    await filaNuevo.getByRole("button", { name: `Ver el cierre de bodega ${folio(nuevo)}` }).click();
+    const detalle = detalleDeBodega(page);
+    await expect(detalle).toBeVisible();
+    await expect(detalle.locator('[data-cifra="paraCentral"]')).toHaveText("₡3.500");
+    await expect(detalle.getByRole("status")).toContainText("la central aún no marca el dinero recibido");
+    await expect(detalle.locator("footer").getByRole("button")).toHaveText(["Cerrar"]);
+    await expect(detalle.locator("footer")).toContainText("la central lo marca recibido cuando llega");
+    await detalle.locator("footer").getByRole("button", { name: "Cerrar" }).click();
+    await expect(detalle).toBeHidden();
+
+    // La base no cambió: los dos siguen sin marca.
+    const cierres = await baseReparto().cierreBodega.findMany({
+      where: { zonaId: rs.zonaSatelite.id },
+      select: { id: true, conciliadoAt: true },
+      orderBy: { solicitadoAt: "asc" },
+    });
+    expect(cierres).toEqual([
+      { id: viejo, conciliadoAt: null },
+      { id: nuevo, conciliadoAt: null },
+    ]);
+  });
+});
