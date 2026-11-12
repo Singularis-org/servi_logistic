@@ -519,6 +519,11 @@ describe("478 · evidencia (R10-R12)", () => {
       name: "Evidencia fotográfica de la gestión",
     });
     expect(imagen).toHaveAttribute("src", "https://signed.example/nov.jpg?token=n1");
+    // SLT-103 (R137): la bodega abre el MISMO visor, con el contexto de la gestión y sin
+    // «foto 1 de 1» (una sola foto).
+    const visor = await screen.findByRole("dialog", { name: "Evidencia de la gestión" });
+    expect(visor).toHaveAccessibleDescription("Orden REM-N1 · Nora Novedad");
+    expect(within(visor).getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
   });
 });
 
