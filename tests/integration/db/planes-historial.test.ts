@@ -141,6 +141,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
           ...ALTA_SIN_DESCUENTOS,
           costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: campo obligatorio nuevo; el alta lo registra como los demás.
           costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
+          periodicidadOrdenes: { antes: null, despues: "quincenal" }, // SLT-118 R35: campo nuevo del rastro; sin ella al crear, quincenal.
           archivado: { antes: null, despues: false },
         },
       },

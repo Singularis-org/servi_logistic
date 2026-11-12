@@ -52,9 +52,12 @@ const createMany = vi.fn(async () => {
   orden.push("insert");
   throw new Error("SENTINELA: llegó al INSERT");
 });
+// SLT-118 (design §5; R18): la deuda suma también las cuotas de las facturas cerradas; aquí, ninguna.
+const aggregate = vi.fn(async () => ({ _sum: { cuota: null, primeraCuota: null } }));
 const tx = {
   $executeRaw: executeRaw,
   cobroPlataformaMovimiento: { groupBy },
+  facturaPlataforma: { aggregate },
   walletMovimiento: { findFirst, findMany, createMany },
 };
 const $transaction = vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx));

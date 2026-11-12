@@ -36,6 +36,8 @@ vi.mock("@/lib/db/prisma-client", () => ({
     organizacion: { findMany },
     cobroPlataformaMovimiento: { groupBy },
     walletMovimiento: { findMany: findManyLibro },
+    // SLT-118 (design §5; R18): las cuotas de las facturas cerradas; aquí, ninguna.
+    facturaPlataforma: { groupBy: async () => [] },
     // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, el global y sin plan.
     // SLT-83 (R22): la fila de `cobro_plataforma_tarifa_de` gana `porcentaje` y `minimo`; el global es fijo (null).
     // SLT-126 (R11): la regla ya no da la fuente `empresa`.

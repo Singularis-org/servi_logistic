@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatearConteo } from "@/lib/planes/consumo";
+import { textoCambioProgramado } from "@/lib/planes/mensajes";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import type {
   CrearPlanInput,
@@ -43,6 +44,8 @@ const TEXTOS = {
   cambioDesde: (fecha: string) => `Desde ${fecha}`,
   verPlan: (nombre: string) => `Ver el plan ${nombre}`,
   creado: (nombre: string) => `Plan «${nombre}» creado.`,
+  /** SLT-118 (R32, P11): el custom quedó pendiente; el texto único del cambio programado, con la fecha real. */
+  programado: (fecha: string) => `${textoCambioProgramado(fecha)}.`,
   vacio: "Aún no hay planes.",
   vacioAyuda: "Crea el primero con «Nuevo plan».",
   vacioArchivados: "Todos los planes están archivados.",
@@ -97,6 +100,8 @@ export function PlanesModule({
   const [mostrarArchivados, setMostrarArchivados] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
+  /** SLT-118 (R32): la fecha real (`AAAA-MM-DD`) del custom que quedó pendiente; `null` si rige ya. */
+  const [creadoDesde, setCreadoDesde] = useState<string | null>(null);
   /** Ajuste planes-custom (D12): los topes ya pasados del `ok` de un custom, con el texto del modal. */
   const [avisosCreado, setAvisosCreado] = useState<string[]>([]);
 
@@ -105,6 +110,7 @@ export function PlanesModule({
   function alCrear(r: Extract<PlanResult, { estado: "ok" }>, nombre: string) {
     setAbierto(false);
     setCreado(nombre);
+    setCreadoDesde(r.vigenteDesde);
     setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos));
     router.refresh();
   }
@@ -139,6 +145,7 @@ export function PlanesModule({
           type="button"
           onClick={() => {
             setCreado(null);
+            setCreadoDesde(null);
             setAvisosCreado([]);
             setAbierto(true);
           }}
@@ -150,7 +157,10 @@ export function PlanesModule({
 
       {creado !== null ? (
         <Alert role="status">
-          <AlertDescription>{TEXTOS.creado(creado)}</AlertDescription>
+          <AlertDescription>
+            {TEXTOS.creado(creado)}
+            {creadoDesde !== null ? ` ${TEXTOS.programado(creadoDesde)}` : null}
+          </AlertDescription>
         </Alert>
       ) : null}
       {creado !== null && avisosCreado.length > 0 ? <AvisosDeTopes avisos={avisosCreado} /> : null}

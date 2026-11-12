@@ -5,7 +5,7 @@
 // como doble y `router.refresh` se espía. El plan se arma con `planConConsumo` real, así que el tipo de
 // cobro que arranca el modal es el mismo que pinta «Cobro del plan».
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
@@ -62,7 +62,7 @@ function vista(tipoCobro: TipoCobro = "mensual", asignaciones: AsignacionDePlan[
 
 function montar({
   v = vista(),
-  cambiar = vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: true }),
+  cambiar = vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: true, vigenteDesde: null }),
 }: { v?: PlanDeEmpresaVista; cambiar?: CambiarTipo } = {}) {
   const asignar = vi.fn();
   render(
@@ -132,10 +132,30 @@ describe("Ajuste planes-custom D10 — «Cambiar tipo de cobro» en el detalle d
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("SLT-118 R32: con el cambio pendiente, la confirmación dice la fecha real del servidor y no la elegida", async () => {
+    const user = userEvent.setup();
+    // Elegida a mitad de período; el servidor la lleva al inicio del próximo período del tipo de referencia.
+    const { cambiar } = montar({
+      cambiar: vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: true, vigenteDesde: "2027-01-01" }),
+    });
+    const modal = await abrir(user);
+    await user.click(within(modal).getByRole("radio", { name: "Anual" }));
+    fireEvent.change(within(modal).getByLabelText("Rige desde"), { target: { value: "2026-03-10" } });
+    await confirmar(user, modal);
+
+    await waitFor(() =>
+      expect(cambiar).toHaveBeenCalledWith({ organizacionId: ORG, tipoCobro: "anual", vigenteDesde: "2026-03-10" }),
+    );
+    expect(await screen.findByText("Cambio programado desde 2027-01-01.")).toBeInTheDocument();
+    expect(screen.queryByText(/2026-03-10/)).toBeNull();
+    expect(screen.queryByText("Tipo de cobro cambiado.")).toBeNull();
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
   it("D10: mismo tipo → `cambio: false`: lo dice y no relee", async () => {
     const user = userEvent.setup();
     const { cambiar } = montar({
-      cambiar: vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: false }),
+      cambiar: vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: false, vigenteDesde: null }),
     });
     const modal = await abrir(user);
     await confirmar(user, modal);
