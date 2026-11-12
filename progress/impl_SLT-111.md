@@ -166,7 +166,8 @@ Arreglos de `progress/review_SLT-111.md` (commit ddc498e8). Primer plano, sin su
 - **T7.2**: gate del leader `./init.sh` **`INIT_EXIT=0`** (2026-11-12, base `slt111_reparto`, log
   `C:UsersArqDevAppDataLocalTempclaudeaab05f6b97f87a08ea1d74f-bdf8-43cf-8e34-62eab06db841scratchpadgate-111.log`).
   E2E `e2e/cierres-rediseno.spec.ts --project=dinero`: **13/13** en local (tanda frontend). El grupo
-  `dinero` entero lo corre el job `e2e-grupo` en CI del PR #139.
+  `dinero` ENTERO no se corrió en local: lo valida el job `e2e (dinero)` del CI del PR #139 sobre el
+  último commit, y el leader no da el «listo para mergear» sin ese verde.
 - **T7.3**: herencia para SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» en
   `progress/features/SLT-111.md`; PA1/PA2 ya estaban.
 - **T7.4**: mapa único abajo, igual a `tasks.md > Trazabilidad`.

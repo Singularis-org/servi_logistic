@@ -106,8 +106,9 @@
 - [x] **T7.1** Ponerse al día con `dev` (SLT-106 «Bodega satélite: A consolidar con la cola única» y
   SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» tocan `detalle-cierre-vista.ts` y
   `e2e/cierres-rediseno.spec.ts`; `design.md > Orden de merge`). **Hecho:** sin conflictos pendientes.
-- [x] **T7.2** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` y grupo `dinero`
-  (`pnpm exec playwright test --project=dinero`) verdes en local. **Hecho:** salida con `INIT_EXIT`
+- [x] **T7.2** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` (`--project=dinero`) verde en
+  local; el grupo `dinero` ENTERO lo valida el job `e2e (dinero)` del CI del PR #139 sobre el último
+  commit, y es condición del merge (no se corrió entero en local). **Hecho:** salida con `INIT_EXIT`
   anotada en `progress/impl_SLT-111.md`.
 - [x] **T7.3** Anotar en `progress/features/SLT-111.md` la herencia para SLT-107 «Bodega satélite:
   Solicitados y su cierre de bodega en lectura» (`design.md > Lo que hereda SLT-107`) y las respuestas
