@@ -428,21 +428,28 @@ describeSiHayBase("SLT-99 — el maestro cambia el plan de su empresa (R2, R10�
       const [actual, delSuper, delMaestro] = [await c.plan(), await c.plan(), await c.plan()];
       const ahora = new Date();
       const [a, b] = [await c.empresa(), await c.empresa()];
+      // SLT-118 R30 (decisión P9): mensual → anual es un cambio a un tipo más largo; el pendiente no rige el
+      // día elegido (`dia(5)`) sino el 1 de enero siguiente. El historial guarda esa fecha real, la que
+      // devuelve asignar (R32).
+      let fechaSuper = "";
       for (const e of [a, b]) {
         const primero = await c.servicio.asignar(c.superadmin, { organizacionId: e.id, planId: actual, tipoCobro: "mensual", inicioCiclo: dia(-3) });
         if (primero.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(primero)}`);
         const pendiente = await c.servicio.asignar(c.superadmin, { organizacionId: e.id, planId: delSuper, tipoCobro: "anual", vigenteDesde: dia(5) });
         if (pendiente.estado !== "ok" || pendiente.vigenteDesde === null) throw new Error(`no quedó pendiente: ${JSON.stringify(pendiente)}`);
+        fechaSuper = pendiente.vigenteDesde;
       }
       const delSuperA = await estado(tx, a.id);
       const reemplazo = await planesEnTx(tx).cambiarPlanPorLaEmpresa(a.id, delMaestro, a.maestro, ahora);
       const reemplazadoA = await estado(tx, a.id);
       const antesB = await estado(tx, b.id);
       const cancelar = await planesEnTx(tx).cancelarCambioPorLaEmpresa(b.id, b.maestro);
-      return { ahora, delSuperA, reemplazo, reemplazadoA, antesB, cancelar, despuesB: await estado(tx, b.id), a, b, delSuper, delMaestro, fechaSuper: dia(5) };
+      return { ahora, delSuperA, reemplazo, reemplazadoA, antesB, cancelar, despuesB: await estado(tx, b.id), a, b, delSuper, delMaestro, fechaSuper };
     });
     const corte = fechaDeEfectoPorDefecto("mensual", r.ahora);
     expect(r.delSuperA.empresa.planCambioTipoCobro).toBe("anual");
+    // SLT-118 R30/R31: la fecha real es el inicio del año de `dia(5)` si ya lo es, o el 1 de enero siguiente.
+    expect(r.fechaSuper).toBe(dia(5).endsWith("-01-01") ? dia(5) : fechaDeEfectoPorDefecto("anual", inicioDelDiaPlataforma(dia(5))));
     expect(r.reemplazo).toEqual({ estado: "ok", vigenteDesde: corte });
     expect(r.reemplazadoA.empresa).toEqual({
       ...r.delSuperA.empresa,

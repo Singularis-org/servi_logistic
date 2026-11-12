@@ -179,13 +179,15 @@ DECLARE
   v_f "factura_plataforma";
 BEGIN
   INSERT INTO "factura_plataforma"
-    ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro")
-  SELECT o."id", 'en_curso', p_desde,
-         CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END,
-         o."plan_id", p."nombre",
-         CASE WHEN o."plan_id" IS NOT NULL THEN o."plan_tipo_cobro" END
-    FROM "organizacion" o LEFT JOIN "plan" p ON p."id" = o."plan_id"
-   WHERE o."id" = p_org
+    ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro", "fin_natural_at")
+  SELECT e."id", 'en_curso', p_desde, e."periodicidad", e."plan_id", e."nombre", e."tipo_cobro",
+         plan_fin_periodo_calendario(e."periodicidad", p_desde)
+    FROM (SELECT o."id",
+                 CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END AS "periodicidad",
+                 o."plan_id", p."nombre",
+                 CASE WHEN o."plan_id" IS NOT NULL THEN o."plan_tipo_cobro" END AS "tipo_cobro"
+            FROM "organizacion" o LEFT JOIN "plan" p ON p."id" = o."plan_id"
+           WHERE o."id" = p_org) e
   RETURNING * INTO v_f;
   IF v_f."id" IS NULL THEN
     RAISE EXCEPTION 'factura_plataforma_abrir: no existe la empresa %', p_org USING ERRCODE = 'no_data_found';
@@ -213,8 +215,12 @@ BEGIN
   PERFORM factura_plataforma_avanzar(p_org, p_efecto);
   SELECT * INTO v_f FROM "factura_plataforma" WHERE "organizacion_id" = p_org AND "estado" = 'en_curso';
   IF p_efecto <= v_f."desde_at" THEN
+    -- P20: el único recálculo del fin guardado, y solo si la periodicidad cambia.
     UPDATE "factura_plataforma"
-       SET "plan_id" = p_plan_id, "plan_nombre" = v_nombre, "tipo_cobro" = p_tipo, "periodicidad" = v_periodicidad
+       SET "plan_id" = p_plan_id, "plan_nombre" = v_nombre, "tipo_cobro" = p_tipo, "periodicidad" = v_periodicidad,
+           "fin_natural_at" = CASE WHEN v_periodicidad IS DISTINCT FROM v_f."periodicidad"
+                                   THEN plan_fin_periodo_calendario(v_periodicidad, v_f."desde_at")
+                                   ELSE v_f."fin_natural_at" END
      WHERE "id" = v_f."id";
     IF v_primera THEN
       UPDATE "factura_plataforma" SET "primera_cuota_desde_at" = v_f."desde_at"
@@ -228,8 +234,9 @@ BEGIN
        SET "estado" = 'por_cerrar', "hasta_at" = p_efecto, "primera_cuota_desde_at" = p_efecto
      WHERE "id" = v_f."id";
     INSERT INTO "factura_plataforma"
-      ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro")
-    VALUES (p_org, 'en_curso', p_efecto, v_periodicidad, p_plan_id, v_nombre, p_tipo);
+      ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro", "fin_natural_at")
+    VALUES (p_org, 'en_curso', p_efecto, v_periodicidad, p_plan_id, v_nombre, p_tipo,
+            plan_fin_periodo_calendario(v_periodicidad, p_efecto));
   END IF;
 END $$;
 

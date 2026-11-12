@@ -35,7 +35,8 @@ ALTER TABLE "plan" ADD CONSTRAINT "plan_periodicidad_ordenes_check"
   CHECK ("periodicidad_ordenes" IN ('quincenal', 'mensual'));
 
 -- ─── 1. Tabla, CHECK, únicos, índices, FK, RLS, política y REVOKE (§1.1) ─────────────────────────────
--- Una fila = el intervalo de órdenes `[desde, hasta)`, que se EMITE en `hasta`. Tres grupos aparte:
+-- Una fila = el intervalo de órdenes `[desde, hasta)`, que se EMITE en `hasta`. `fin_natural_at` (P20) es su
+-- fin natural (R2), guardado al abrirla: nadie lo vuelve a calcular desde `desde`. Tres grupos aparte:
 --   · el plan de las órdenes (`plan_id`, `plan_nombre`, `tipo_cobro`) y su `periodicidad`;
 --   · la cuota de la emisión (R8): la del período completo que empieza en `hasta`, con el plan de la factura
 --     siguiente (`cuota_*`, `precio_mensual`, `cuota`, `dias_*`);
@@ -48,6 +49,7 @@ CREATE TABLE "factura_plataforma" (
     "numero" INTEGER,
     "desde_at" TIMESTAMP(3) NOT NULL,
     "hasta_at" TIMESTAMP(3),
+    "fin_natural_at" TIMESTAMP(3) NOT NULL,
     "periodicidad" TEXT NOT NULL,
     "plan_id" TEXT,
     "plan_nombre" VARCHAR(80),
@@ -86,6 +88,10 @@ CREATE TABLE "factura_plataforma" (
     -- R1, R2: solo la en curso no tiene fin; el fin va después del inicio.
     CONSTRAINT "factura_plataforma_estado_fin"
       CHECK (("estado" = 'en_curso') = ("hasta_at" IS NULL) AND ("hasta_at" IS NULL OR "hasta_at" > "desde_at")),
+    -- R2, P20: el fin natural guardado va después del inicio y el fin fijado no lo pasa (R28 fija antes, en el
+    -- efecto). No limita el largo: la sembrada histórica (R26) pasa.
+    CONSTRAINT "factura_plataforma_fin_natural"
+      CHECK ("fin_natural_at" > "desde_at" AND ("hasta_at" IS NULL OR "hasta_at" <= "fin_natural_at")),
     -- R5, R14 (P1): número, cifras y las dos cuotas solo al cerrar. Una en curso o por cerrar no lleva
     -- ninguna cuota, así que no puede sumar a la deuda (R18). La marca de la primera cuota no entra: la pone
     -- la toma del cambio antes de cerrar.
@@ -155,7 +161,8 @@ CREATE TRIGGER "factura_plataforma_sin_cambio_de_empresa" BEFORE UPDATE OF "orga
 
 -- ─── 2. Una factura cerrada no cambia (§1.3; R13; decisión «Reversos») ───────────────────────────────
 -- Para cualquier rol, el dueño incluido: las cuotas de una cerrada ya están en la deuda. Una por cerrar ya no
--- mueve su plan, su periodicidad ni sus fechas (R16): solo la en curso toma un cambio. La marca de la
+-- mueve su plan, su periodicidad ni sus fechas, su fin natural incluido (R16, P20): solo la en curso toma un
+-- cambio. La marca de la
 -- primera cuota solo pasa de nula a un valor, en una en curso o una por cerrar (R16: puede llegar a la factura
 -- ya fijada que se emite en D). Un cambio de empresa se deja pasar a `…_sin_cambio_de_empresa`, que corre
 -- justo después (los BEFORE van por orden de nombre) y lo rechaza con SL017. Borrar sigue cerrado para la app
@@ -170,9 +177,11 @@ BEGIN
       USING ERRCODE = 'SL118';
   END IF;
   IF OLD."estado" = 'por_cerrar'
-     AND (NEW."plan_id", NEW."plan_nombre", NEW."tipo_cobro", NEW."periodicidad", NEW."desde_at", NEW."hasta_at")
+     AND (NEW."plan_id", NEW."plan_nombre", NEW."tipo_cobro", NEW."periodicidad", NEW."desde_at", NEW."hasta_at",
+          NEW."fin_natural_at")
          IS DISTINCT FROM
-         (OLD."plan_id", OLD."plan_nombre", OLD."tipo_cobro", OLD."periodicidad", OLD."desde_at", OLD."hasta_at") THEN
+         (OLD."plan_id", OLD."plan_nombre", OLD."tipo_cobro", OLD."periodicidad", OLD."desde_at", OLD."hasta_at",
+          OLD."fin_natural_at") THEN
     RAISE EXCEPTION 'el plan, la periodicidad y las fechas de una factura por cerrar no se cambian (factura_plataforma %)',
       OLD."id" USING ERRCODE = 'SL118';
   END IF;
@@ -242,20 +251,23 @@ REVOKE EXECUTE ON FUNCTION plan_dias_de_calendario(timestamp, timestamp) FROM PU
 -- ─── 4. Abrir y avanzar la factura en curso (§2.2; R1, R2, R26, R36) ─────────────────────────────────
 -- Abrir = insertar la en curso con el plan de la factura copiado de la empresa EN ESTE MOMENTO (plan, nombre,
 -- tipo y la periodicidad de órdenes del plan; sin plan, los tres nulos y quincenal). Así el plan de la
--- factura es el que regía en su `desde`; solo R16 y R28 lo cambian después (§2.3).
+-- factura es el que regía en su `desde`; solo R16 y R28 lo cambian después (§2.3). Su fin natural se guarda
+-- aquí: el fin del período de su periodicidad que contiene `p_desde` (R2, P20).
 CREATE FUNCTION factura_plataforma_abrir(p_org text, p_desde timestamp) RETURNS "factura_plataforma"
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_f "factura_plataforma";
 BEGIN
   INSERT INTO "factura_plataforma"
-    ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro")
-  SELECT o."id", 'en_curso', p_desde,
-         CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END,
-         o."plan_id", p."nombre",
-         CASE WHEN o."plan_id" IS NOT NULL THEN o."plan_tipo_cobro" END
-    FROM "organizacion" o LEFT JOIN "plan" p ON p."id" = o."plan_id"
-   WHERE o."id" = p_org
+    ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro", "fin_natural_at")
+  SELECT e."id", 'en_curso', p_desde, e."periodicidad", e."plan_id", e."nombre", e."tipo_cobro",
+         plan_fin_periodo_calendario(e."periodicidad", p_desde)
+    FROM (SELECT o."id",
+                 CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END AS "periodicidad",
+                 o."plan_id", p."nombre",
+                 CASE WHEN o."plan_id" IS NOT NULL THEN o."plan_tipo_cobro" END AS "tipo_cobro"
+            FROM "organizacion" o LEFT JOIN "plan" p ON p."id" = o."plan_id"
+           WHERE o."id" = p_org) e
   RETURNING * INTO v_f;
   IF v_f."id" IS NULL THEN
     RAISE EXCEPTION 'factura_plataforma_abrir: no existe la empresa %', p_org USING ERRCODE = 'no_data_found';
@@ -266,16 +278,16 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_abrir(text, timestamp) FROM PUBLIC
 
 -- Deja la factura en curso alineada con el calendario hasta `p_hasta`:
 --   1. sin factura en curso, la abre desde las 00:00 de la plataforma del día del alta (R26, empresa nueva);
---   2. mientras su fin natural (R2) sea ≤ `p_hasta`, la FIJA en él (`por_cerrar`) y abre la siguiente ahí.
--- El fin natural sale de la periodicidad DE LA FACTURA, no del tipo de cobro ni del plan de la empresa: un
--- cambio de plan o de su periodicidad no mueve el fin de la en curso (R15, R36). Quien llama ya tiene la
--- empresa en FOR UPDATE.
+--   2. mientras su fin natural GUARDADO (`fin_natural_at`, R2, P20) sea ≤ `p_hasta`, la FIJA en él
+--      (`por_cerrar`) y abre la siguiente ahí.
+-- El fin es el guardado en la factura, no uno calculado desde `desde`: un cambio de plan o de su periodicidad
+-- no mueve el fin de la en curso (R15, R36), y la sembrada histórica, más larga que un corte (R26), se fija
+-- en el suyo. Quien llama ya tiene la empresa en FOR UPDATE.
 CREATE FUNCTION factura_plataforma_avanzar(p_org text, p_hasta timestamp) RETURNS void
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_f "factura_plataforma";
   v_alta timestamp;
-  v_fin timestamp;
 BEGIN
   SELECT * INTO v_f FROM "factura_plataforma" WHERE "organizacion_id" = p_org AND "estado" = 'en_curso';
   IF NOT FOUND THEN
@@ -283,10 +295,9 @@ BEGIN
     v_f := factura_plataforma_abrir(p_org, date_trunc('day', v_alta - interval '6 hours') + interval '6 hours');
   END IF;
   LOOP
-    v_fin := plan_fin_periodo_calendario(v_f."periodicidad", v_f."desde_at");
-    EXIT WHEN v_fin > p_hasta;
-    UPDATE "factura_plataforma" SET "estado" = 'por_cerrar', "hasta_at" = v_fin WHERE "id" = v_f."id";
-    v_f := factura_plataforma_abrir(p_org, v_fin);
+    EXIT WHEN v_f."fin_natural_at" > p_hasta;
+    UPDATE "factura_plataforma" SET "estado" = 'por_cerrar', "hasta_at" = v_f."fin_natural_at" WHERE "id" = v_f."id";
+    v_f := factura_plataforma_abrir(p_org, v_f."fin_natural_at");
   END LOOP;
 END $$;
 REVOKE EXECUTE ON FUNCTION factura_plataforma_avanzar(text, timestamp) FROM PUBLIC;
@@ -298,8 +309,8 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_avanzar(text, timestamp) FROM PUBL
 --   1. avanza hasta el efecto con el plan de antes: la factura cuyo fin natural llega al efecto se fija y la
 --      siguiente se abre con el plan de antes. Así el efecto cae dentro de la en curso F, de `desde` D;
 --   2. efecto ≤ D (R16: inicio pasado, cambio que la cola aplica tarde, el caso normal de R38 o el alta con
---      plan desde ese día, P19): F pasa entera al plan, el tipo y la periodicidad nuevos; su fin natural se
---      recalcula solo. En una primera asignación, la marca de la primera cuota es D: en la factura emitida en
+--      plan desde ese día, P19): F pasa entera al plan, el tipo y la periodicidad nuevos; su fin natural guardado
+--      se recalcula solo si cambia la periodicidad (P20). En una primera asignación, la marca de la primera cuota es D: en la factura emitida en
 --      D si existe y no está cerrada (por adelantado); si no, en F, que la emitirá en su fin con sus órdenes
 --      (a período vencido, P18). No se fija ni se abre ninguna factura;
 --   3. efecto > D y F con plan (R15: un pendiente de antes de esta ficha con efecto a mitad de factura): nada;
@@ -325,8 +336,12 @@ BEGIN
   PERFORM factura_plataforma_avanzar(p_org, p_efecto);
   SELECT * INTO v_f FROM "factura_plataforma" WHERE "organizacion_id" = p_org AND "estado" = 'en_curso';
   IF p_efecto <= v_f."desde_at" THEN
+    -- P20: el único recálculo del fin guardado, y solo si la periodicidad cambia.
     UPDATE "factura_plataforma"
-       SET "plan_id" = p_plan_id, "plan_nombre" = v_nombre, "tipo_cobro" = p_tipo, "periodicidad" = v_periodicidad
+       SET "plan_id" = p_plan_id, "plan_nombre" = v_nombre, "tipo_cobro" = p_tipo, "periodicidad" = v_periodicidad,
+           "fin_natural_at" = CASE WHEN v_periodicidad IS DISTINCT FROM v_f."periodicidad"
+                                   THEN plan_fin_periodo_calendario(v_periodicidad, v_f."desde_at")
+                                   ELSE v_f."fin_natural_at" END
      WHERE "id" = v_f."id";
     IF v_primera THEN
       UPDATE "factura_plataforma" SET "primera_cuota_desde_at" = v_f."desde_at"
@@ -340,8 +355,9 @@ BEGIN
        SET "estado" = 'por_cerrar', "hasta_at" = p_efecto, "primera_cuota_desde_at" = p_efecto
      WHERE "id" = v_f."id";
     INSERT INTO "factura_plataforma"
-      ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro")
-    VALUES (p_org, 'en_curso', p_efecto, v_periodicidad, p_plan_id, v_nombre, p_tipo);
+      ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro", "fin_natural_at")
+    VALUES (p_org, 'en_curso', p_efecto, v_periodicidad, p_plan_id, v_nombre, p_tipo,
+            plan_fin_periodo_calendario(v_periodicidad, p_efecto));
   END IF;
 END $$;
 REVOKE EXECUTE ON FUNCTION factura_plataforma_tomar_cambio(text, timestamp, text, text) FROM PUBLIC;
@@ -528,7 +544,7 @@ REVOKE EXECUTE ON FUNCTION factura_plataforma_cerrar(text, timestamp) FROM PUBLI
 -- ─── 8. La lectura en curso de la empresa (§2.6; R24) ────────────────────────────────────────────────
 -- La única de estas funciones que `servi_app` puede llamar. Con el control de contexto de
 -- `plan_de_la_empresa`: con otra empresa o sin empresa, 42501. No escribe (no avanza): devuelve las facturas
--- en curso y por cerrar con su fin (el fijado o el previsto por su periodicidad), su plan, su periodicidad,
+-- en curso y por cerrar con su fin (el fijado o el previsto: el guardado en `fin_natural_at`, P20), su plan, su periodicidad,
 -- las órdenes hasta ahora y las dos cuotas previstas, cada una nula si no la llevará:
 --   · `primera_cuota_prevista`: con marca, con el plan de la factura con `desde` = la marca (como el cierre);
 --   · `cuota_prevista`: la de la emisión en su fin, con el plan del cambio pendiente de la empresa si su
@@ -590,7 +606,7 @@ BEGIN
   END IF;
   IF v_org."plan_id" IS NULL AND v_org."plan_cambio_desde_at" IS NOT NULL THEN
     IF v_ec."id" IS NOT NULL THEN
-      v_fin_natural := plan_fin_periodo_calendario(v_ec."periodicidad", v_ec."desde_at");
+      v_fin_natural := v_ec."fin_natural_at";
       IF v_org."plan_cambio_desde_at" > v_ec."desde_at" THEN
         -- §5.4 (R28) con la en curso sin plan; §5.2 si E es su fin natural. Más allá de su fin: nada aún.
         IF (v_org."plan_cambio_desde_at" < v_fin_natural AND v_ec."plan_id" IS NULL)
@@ -612,11 +628,16 @@ BEGIN
      WHERE f."organizacion_id" = p_org AND f."estado" IN ('en_curso', 'por_cerrar')
      ORDER BY f."desde_at"
   LOOP
+    -- El fin previsto es el guardado (P20), salvo la vista previa de §5.2 que cambia la periodicidad: ahí, el que
+    -- le recalculará la toma.
     v_periodicidad := v_f."periodicidad";
+    v_hasta := COALESCE(v_f."hasta_at", v_f."fin_natural_at");
     IF v_f."id" = v_ec."id" AND v_ec_periodicidad IS NOT NULL THEN
       v_periodicidad := v_ec_periodicidad;
+      IF v_ec_periodicidad IS DISTINCT FROM v_f."periodicidad" THEN
+        v_hasta := plan_fin_periodo_calendario(v_ec_periodicidad, v_f."desde_at");
+      END IF;
     END IF;
-    v_hasta := COALESCE(v_f."hasta_at", plan_fin_periodo_calendario(v_periodicidad, v_f."desde_at"));
     IF v_f."id" = v_marca_id AND v_f."primera_cuota_desde_at" IS NULL THEN
       -- La primera cuota prevista de la asignación pendiente, con el plan nuevo (el de la factura que empezará
       -- en la marca, como en `cerrar`).
@@ -739,18 +760,22 @@ BEGIN
   RETURN NEW;
 END $$;
 
--- ─── 10. Siembra (R26, P15): una factura en curso por empresa ────────────────────────────────────────
--- Desde el inicio del CORTE en curso de su periodicidad de órdenes (la de su plan; quincenal sin plan), con
--- el plan, el tipo y la periodicidad copiados de la empresa y SIN marca: el período de cobro en curso cuenta
--- como pagado y la primera cuota es la del primer período que empiece en una emisión (R8). Una empresa dada
--- de alta después la abre `avanzar` desde las 00:00 del día de su alta, la primera vez que hace falta.
+-- ─── 10. Siembra (R26, P15, P20): la factura histórica de cada empresa que existe al migrar ──────────
+-- Desde las 00:00 de la plataforma del día de su alta (la misma regla que `avanzar` usa con una empresa nueva),
+-- con el plan, el tipo y la periodicidad de órdenes copiados de la empresa (quincenal sin plan) y SIN marca:
+-- el período de cobro en curso cuenta como pagado y la primera cuota es la del primer período que empiece en
+-- una emisión (R8). Su fin guardado es el primer corte de su periodicidad tras `now()` de la migración (§2.8):
+-- se emite UNA sola, con todo el histórico de órdenes. Es la única factura que no abre `abrir`. Una empresa
+-- dada de alta después la abre `avanzar` desde las 00:00 del día de su alta, la primera vez que hace falta.
 INSERT INTO "factura_plataforma"
-  ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro")
-SELECT o."id", 'en_curso',
-       plan_inicio_periodo_calendario(CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END,
-                                      now() AT TIME ZONE 'UTC'),
-       CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END,
-       o."plan_id", p."nombre", CASE WHEN o."plan_id" IS NOT NULL THEN o."plan_tipo_cobro" END
-  FROM "organizacion" o LEFT JOIN "plan" p ON p."id" = o."plan_id";
+  ("organizacion_id", "estado", "desde_at", "periodicidad", "plan_id", "plan_nombre", "tipo_cobro", "fin_natural_at")
+SELECT e."id", 'en_curso', date_trunc('day', e."created_at" - interval '6 hours') + interval '6 hours',
+       e."periodicidad", e."plan_id", e."nombre", e."tipo_cobro",
+       plan_fin_periodo_calendario(e."periodicidad", now() AT TIME ZONE 'UTC')
+  FROM (SELECT o."id", o."created_at",
+               CASE WHEN o."plan_id" IS NOT NULL THEN p."periodicidad_ordenes" ELSE 'quincenal' END AS "periodicidad",
+               o."plan_id", p."nombre",
+               CASE WHEN o."plan_id" IS NOT NULL THEN o."plan_tipo_cobro" END AS "tipo_cobro"
+          FROM "organizacion" o LEFT JOIN "plan" p ON p."id" = o."plan_id") e;
 
 COMMIT;
