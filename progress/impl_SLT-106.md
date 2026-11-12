@@ -268,3 +268,7 @@ Rojo del gate: `tests/unit/guards/cascada-central-en-las-dos-pantallas.guardia.t
 - `npx eslint <archivo>` → 0. `npx tsc --noEmit` → 0.
 
 Veredicto: guardia cascada-central en verde y vigilando el censo explícito de comprobantes ajenos; el rojo de dependencias es deuda ajena de dev.
+
+## Gate del leader (2026-11-12)
+- `./init.sh` tras sincronizar con origin/dev (SLT-110 dentro), base slt106_consolidar: `INIT_EXIT=0`.
+- Menores de la review 1 que pasan a deuda (no bloquean): tests de R190 (pestaña conserva filtros y página) y R191 (filtro vuelve a página 1); integración de `findMensajerosConCierreSinResolver` con dos empresas.

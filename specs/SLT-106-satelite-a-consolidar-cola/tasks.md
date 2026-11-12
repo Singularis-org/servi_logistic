@@ -158,7 +158,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
 
 ## T5 — Gate
 
-- [ ] **T5.1** — `./init.sh` verde (con `.env` y la base desechable). **Hecho:** `INIT_EXIT=0` escrito
+- [x] **T5.1** — `./init.sh` verde (con `.env` y la base desechable). **Hecho:** `INIT_EXIT=0` escrito
   dentro del log; tamaño leído (si > 1 000 líneas, PA-T).
 - [x] **T5.2** — R72: `git diff --stat origin/dev` sin `db/` ni `lib/actions/`. **Hecho:** nota en
   `progress/impl_SLT-106.md`.
