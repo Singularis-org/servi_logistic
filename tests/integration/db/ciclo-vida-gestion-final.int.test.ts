@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { GestionResultado, PrismaClient } from "@prisma/client";
 
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { CicloVidaRepository } from "@/lib/repositories/CicloVidaRepository";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { ConteoPorStatusRepository } from "@/lib/repositories/ConteoPorStatusRepository";
+import { rawConLugar, tieneFacetasDeHoy } from "@/scripts/geo-equivalencia/filtros-de-hoy";
 
 import { comoApp, crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
 import { D, D_MAS_1, D_MENOS_1, consultaDe, describeSiHayBase, rangoDe } from "./_cohorte-carga";
@@ -153,10 +155,22 @@ async function montar(tx: TxDeTest): Promise<Fixture> {
       await fixture.gestion(id, "entregado", "09:00");
       return id;
     },
-    leer: (raw = {}, quien = actor) =>
-      new CicloVidaRepository(tx as unknown as PrismaClient).acumularCiclos(consultaDe(raw, quien)),
+    leer: async (raw = {}, quien = actor) =>
+      new CicloVidaRepository(tx as unknown as PrismaClient).acumularCiclos(consultaDe(await aLugar(tx, raw), quien)),
   };
   return fixture;
+}
+
+/**
+ * SLT-47 (R10): el borde solo acepta `lugar_id`. Las facetas de hoy (`provincia_id`, `canton_id`,
+ * `distrito_id`) se traducen como la barra (`rawConLugar`), con el mismo catalogo que carga el
+ * repositorio. Sin faceta geografica el `raw` pasa tal cual y no se toca el catalogo. Cambio de
+ * ENTRADA: las aserciones son las de antes.
+ */
+async function aLugar(tx: TxDeTest, raw: object): Promise<object> {
+  if (!tieneFacetasDeHoy(raw)) return raw;
+  const { catalogo } = await new CatalogoGeograficoRepository(tx as unknown as PrismaClient).deLaEmpresa();
+  return rawConLugar(catalogo, raw);
 }
 
 /** Afirma que el fixture de una orden existe tal y como el caso lo necesita. */

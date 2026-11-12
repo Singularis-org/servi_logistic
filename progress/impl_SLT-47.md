@@ -1034,3 +1034,40 @@ Riesgo a vigilar: el spec elige el cantón por `name: nombreCanton, exact: true`
 empresa de prueba tuviera otro cantón con ese nombre, el rótulo llevaría ancestros y ese paso fallaría.
 
 Veredicto: B aplicado y en verde en vitest (15 archivos), typecheck y lint; E2E pendiente por memoria.
+
+## Rojos de CI 43125634413
+
+Causa: dos tests de integración seguían mandando `provincia_id`/`canton_id`/`distrito_id` a
+`prepararConteoEntregas`/`prepararConsultaProductos`, que desde R10 solo aceptan `lugar_id` →
+`validation_error`. Arreglo solo de ENTRADA con el helper de la tanda 1
+(`scripts/geo-equivalencia/filtros-de-hoy.ts > rawConLugar`/`lugarDeFacetas`): ids válidos de su nivel,
+podados por el de arriba; nivel más hondo elegido (R6); incoherente o de otro nivel → `LUGAR_INEXISTENTE`
+(cero, como hoy). Ninguna aserción cambiada; nada de producción tocado.
+
+- `tests/integration/db/ciclo-vida-gestion-final.int.test.ts`: imports (l. 6, 10); `leer` del fixture
+  (l. 158-159) pasa el `raw` por `aLugar` (nueva, l. 164-175): sin faceta geográfica el `raw` va tal
+  cual y no se carga el catálogo; con faceta, `rawConLugar` con `CatalogoGeograficoRepository.deLaEmpresa()`
+  del mismo `tx` (el mismo catálogo que carga el repositorio).
+- `tests/integration/db/geo-lecturas-sin-backfill.test.ts`: imports (l. 14, 32); en `leerLasDe71DeUna`
+  (l. 491-495) se carga el catálogo de la empresa del contexto una vez y cada `raw` de `facetasDe71` se
+  traduce con `rawConLugar` antes de `consulta71` y `prepararConsultaProductos`.
+
+Otros revisados (grep de `provincia_id|canton_id|distrito_id` como clave en `tests/` y `e2e/`), todos
+legítimos, sin cambios: `geo-analitica-lugar` y `geo-equivalencia-filtros` (ya traducen / prueban el
+traductor); `geografia-por-pais`, `geo-sincronia-geografia`, `geo-sincronia-orden-zonas`,
+`habilitacion-api-migration`, `orden-mensajero-meta-drop-nota-migration`, `orden-nodo-escritura`,
+`orden-nota-migration`, `zona-distrito-unica-migration` y las migraciones/fixtures SQL (columnas SQL);
+unit `filtro-lugar-schemas` y `seleccion-a-filter-lugar` (afirman el RECHAZO de las claves viejas);
+`vista-filtro-v2`, `filtro-ubicacion`, `e2e/geo-filtro-lugar.spec.ts` (vista v1 / enlace viejo que
+traduce la barra); `ordenes-module-filter-key` (solo serializa la key); `informe-transito-composicion`
+(fila de tránsito); `tests/unit/analytics/{ciclo-vida,conteo-cargadas-servicio,conteo-devoluciones,conteo-por-status-sql}`
+(regex sobre la columna SQL `o."distrito_id"`). Ningún otro test manda las claves viejas a
+`listarOrdenes*`, `listarOrdenesBodega*`/`FILTROS_COMPARTIDOS`, `conteoEntregasFiltroSchema` ni a las
+acciones de analítica.
+
+Salida (2026-11-11, base local `logistic_slt47`, `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-size=8192`):
+- `ciclo-vida-gestion-final.int.test.ts`: Test Files 1 passed (1), Tests 29 passed (29), 5.17s.
+- `geo-lecturas-sin-backfill.test.ts`: Test Files 1 passed (1), Tests 3 passed (3), 14.90s.
+- `pnpm exec eslint` de los dos archivos: sin salida (0 errores). `pnpm run typecheck` (`tsc --noEmit`): limpio.
+
+Veredicto: los dos rojos de CI 43125634413 en verde en local cambiando solo la entrada; sin otros tests afectados.
