@@ -7,6 +7,7 @@ import type {
   AvisoCorreoPlan,
   CambioDeEmpresaPendiente,
   CambioPendiente,
+  IPlanesRecepcionesRepository,
   IPlanesRepository,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
@@ -36,13 +37,22 @@ import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 //
 // Todo lo que aplica pasa por `PlanesRepository.aplicarCambioProgramado` o `aplicarCambioDeEmpresa`, que
 // son idempotentes: el trabajo y el barrido pueden coincidir sin aplicar dos veces.
+//
+// SLT-128 (design §4; R5, R22, R27): `plan_aplicar_cambio` y `plan_recordatorio_cambio` tienen además un uso
+// CON empresa, sin tipos nuevos (siguen siendo de núcleo). Con empresa, el cambio llega a ESA empresa en su
+// recepción (`recibirCambio`) y su recordatorio cuenta desde ella (`repartirRecordatorioDeEmpresa`); sin
+// empresa, los trabajos encolados antes de SLT-128 siguen haciendo lo de siempre. El uso lo decide
+// `empresaDelJob`, no el payload.
 
 /* -------------------------------------------------------------------------- */
 /* Composition root                                                           */
 /* -------------------------------------------------------------------------- */
 
+/** Lo que usan los trabajos: el catálogo y, desde SLT-128, las recepciones por empresa. */
+export type PlanesRepositoryDeJobs = IPlanesRepository & IPlanesRecepcionesRepository;
+
 /** El repositorio real. `getPrismaClient()` es perezoso: construirlo no abre conexión. */
-export function buildPlanesRepositoryDeJobs(): IPlanesRepository {
+export function buildPlanesRepositoryDeJobs(): PlanesRepositoryDeJobs {
   return new PlanesRepository(getPrismaClient());
 }
 
@@ -59,16 +69,40 @@ export function cambioDelPayload(job: Pick<JobDTO, "payload">): CambioPendiente 
   return { planId, cambioId };
 }
 
+const recibeAtSchema = z.iso.datetime();
+
+/**
+ * SLT-128 (§4): el payload de `plan_aplicar_cambio` CON empresa, `{ planId, cambioId, recibeAt }`. `recibeAt` no
+ * llega al repositorio: `recibirCambio` ya no hace nada con una recepción movida a más tarde (aún no rige) ni
+ * con una ya recibida. Se exige para que un trabajo sin su fecha falle a la vista en `last_error`.
+ */
+export function recepcionDelPayload(job: Pick<JobDTO, "payload">): CambioPendiente {
+  const cambio = cambioDelPayload(job);
+  if (!recibeAtSchema.safeParse(job.payload.recibeAt).success) {
+    throw new Error("plan_aplicar_cambio: un trabajo con empresa necesita recibeAt");
+  }
+  return cambio;
+}
+
 /**
  * R38: aplica ESA programación cuando rige. Reemplazada, cancelada o ya aplicada → termina sin hacer
  * nada (R39); con el reloj por detrás de `vigente_desde` también, y la recoge el barrido.
+ *
+ * SLT-128 (§4; R5): con empresa, ESA empresa recibe ESA programación (`recibirCambio`). Sin empresa es un
+ * trabajo anterior a SLT-128 y promueve el plan (`aplicarCambioProgramado`, que espera si alguna empresa aún
+ * no lo recibió).
  */
 export function crearPlanAplicarCambioHandler(
-  repo: Pick<IPlanesRepository, "aplicarCambioProgramado">,
+  repo: Pick<PlanesRepositoryDeJobs, "aplicarCambioProgramado" | "recibirCambio">,
   now: () => Date = () => new Date(),
 ): JobHandler {
   return async (job) => {
-    await repo.aplicarCambioProgramado(cambioDelPayload(job), now());
+    const organizacionId = empresaDelJob(job);
+    if (organizacionId === null) {
+      await repo.aplicarCambioProgramado(cambioDelPayload(job), now());
+      return;
+    }
+    await repo.recibirCambio(recepcionDelPayload(job), organizacionId, now());
   };
 }
 
@@ -149,17 +183,33 @@ export function sembrarPlanCambiosVencidos(repo: IJobRepository, now: Date = new
  * SLT-86 (R20): una segunda pasada, la de los cambios de empresa vencidos. Va después de la de los
  * planes, para que un cambio de empresa que rige a la vez que una edición del plan se aplique con el
  * plan ya editado.
+ *
+ * SLT-128 (§4; R5): antes de todo, las recepciones vencidas, empresa por empresa. Así la promoción del plan
+ * (segunda pasada) no espera a quien ya debía tenerlo, y un cambio de empresa que rige a la vez (tercera)
+ * entra con el plan ya promovido.
  */
 export function crearPlanCambiosVencidosHandler(
   repo: Pick<
-    IPlanesRepository,
-    "cambiosVencidos" | "aplicarCambioProgramado" | "cambiosDeEmpresaVencidos" | "aplicarCambioDeEmpresa"
+    PlanesRepositoryDeJobs,
+    | "recepcionesVencidas"
+    | "recibirCambio"
+    | "cambiosVencidos"
+    | "aplicarCambioProgramado"
+    | "cambiosDeEmpresaVencidos"
+    | "aplicarCambioDeEmpresa"
   >,
   now: () => Date = () => new Date(),
 ): JobHandler {
   return async () => {
     const ahora = now();
     const fallidos: string[] = [];
+    for (const { organizacionId, ...cambio } of await repo.recepcionesVencidas(ahora)) {
+      try {
+        await repo.recibirCambio(cambio, organizacionId, ahora);
+      } catch {
+        fallidos.push(`${cambio.cambioId}@${organizacionId}`);
+      }
+    }
     for (const cambio of await repo.cambiosVencidos(ahora)) {
       try {
         await repo.aplicarCambioProgramado(cambio, ahora);
@@ -214,20 +264,47 @@ const recordatorioSchema = z.object({
   dias: z.union([z.literal(7), z.literal(1)]),
 });
 
+// SLT-128 (§4; R21): con empresa, también el de 3 días, y la recepción a la que avisa.
+const recordatorioDeEmpresaSchema = z.object({
+  planId: z.string().min(1),
+  cambioId: z.string().min(1),
+  dias: z.union([z.literal(7), z.literal(3), z.literal(1)]),
+  recibeAt: recibeAtSchema,
+});
+
 /**
  * `plan_recordatorio_cambio` (sin empresa, en plataforma): si ESA programación sigue pendiente,
  * encola un `plan_aviso_correo` por empresa que tiene el plan AHORA (R42). Cancelada, reemplazada o
  * aplicada: termina sin hacer nada (R39).
+ *
+ * SLT-128 (§4; R22): con empresa, el aviso va solo a ella y solo si su recepción sigue sin recibir con ESE
+ * `recibeAt` (una recepción movida, R19, deja este recordatorio sin nada que avisar).
  */
-export function crearPlanRecordatorioCambioHandler(repo: Pick<IPlanesRepository, "repartirRecordatorio">): JobHandler {
+export function crearPlanRecordatorioCambioHandler(
+  repo: Pick<PlanesRepositoryDeJobs, "repartirRecordatorio" | "repartirRecordatorioDeEmpresa">,
+): JobHandler {
   return async (job) => {
-    const p = recordatorioSchema.safeParse(job.payload);
-    if (!p.success) throw new Error("plan_recordatorio_cambio: el payload no trae planId, cambioId y dias (7 o 1)");
-    await repo.repartirRecordatorio({ planId: p.data.planId, cambioId: p.data.cambioId }, p.data.dias);
+    const organizacionId = empresaDelJob(job);
+    if (organizacionId === null) {
+      const p = recordatorioSchema.safeParse(job.payload);
+      if (!p.success) throw new Error("plan_recordatorio_cambio: el payload no trae planId, cambioId y dias (7 o 1)");
+      await repo.repartirRecordatorio({ planId: p.data.planId, cambioId: p.data.cambioId }, p.data.dias);
+      return;
+    }
+    const p = recordatorioDeEmpresaSchema.safeParse(job.payload);
+    if (!p.success) {
+      throw new Error("plan_recordatorio_cambio: el payload con empresa no trae planId, cambioId, dias (7, 3 o 1) y recibeAt");
+    }
+    await repo.repartirRecordatorioDeEmpresa(
+      { planId: p.data.planId, cambioId: p.data.cambioId },
+      organizacionId,
+      p.data.dias,
+      new Date(p.data.recibeAt),
+    );
   };
 }
 
-const tipoAvisoSchema = z.enum(["guardado", "recordatorio_7", "recordatorio_1", "cancelado"]);
+const tipoAvisoSchema = z.enum(["guardado", "recordatorio_7", "recordatorio_3", "recordatorio_1", "cancelado"]);
 const fechaIsoSchema = z.iso.datetime().nullable();
 const avisoSchema = z.object({
   cambioId: z.string().min(1).nullable(),
@@ -267,7 +344,8 @@ export function crearPlanAvisoCorreoHandler(
     const organizacionId = empresaDelJob(job);
     if (organizacionId === null) throw new Error("plan_aviso_correo: el trabajo no tiene empresa destino");
     const aviso = avisoDelPayload(job);
-    const esRecordatorio = aviso.tipo === "recordatorio_7" || aviso.tipo === "recordatorio_1";
+    const esRecordatorio =
+      aviso.tipo === "recordatorio_7" || aviso.tipo === "recordatorio_3" || aviso.tipo === "recordatorio_1";
     const destino = await repo.destinatariosDelAviso(organizacionId, esRecordatorio ? aviso.cambioId : null);
     if (destino === null || destino.maestros.length === 0) return;
 

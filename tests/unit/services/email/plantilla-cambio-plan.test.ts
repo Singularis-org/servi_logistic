@@ -129,6 +129,24 @@ describe("SL-24 — recordatorios (R42)", () => {
     expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
   });
 
+  it("SLT-128 R22: a 3 días, con el asunto y la intro literales del spec y las líneas de cambio", () => {
+    const m = correo({ tipo: "recordatorio_3" });
+    expect(m.subject).toBe("El plan Básico cambia en 3 días");
+    expect(m.text).toContain("Faltan 3 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
+    expect(m.html).toContain("Faltan 3 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
+    expect(m.text).not.toContain("Faltan 7 días");
+  });
+
+  it("SLT-128 R22: el de 3 días también dice qué topes ya pasa la empresa", () => {
+    const m = correo({
+      tipo: "recordatorio_3",
+      topesPasados: [{ empresa: "Mensajería Uno", tope: "adminTienda", usados: 4, maximo: 3 }],
+    });
+    expect(m.text).toContain("Con el plan nuevo, tu empresa ya pasa estos topes:");
+  });
+
   it("a 1 día", () => {
     const m = correo({ tipo: "recordatorio_1" });
     expect(m.subject).toBe("El plan Básico cambia mañana");

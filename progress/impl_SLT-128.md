@@ -94,6 +94,7 @@ Veredicto: guardia R4 resuelta y tipos en verde; T1–T4 listas para seguir con 
 - `lib/services/PlanesService.ts` (T5.8): `detallePlan` con `pendienteDelDetalle`; `cambio_a_medias` ya pasaba tal cual
   en `editar`, `archivar` y `cancelarCambio` (solo comentarios).
 - `tests/components/PlanDetalle.test.tsx`: el doble `DETALLE.pendiente` con `recibidas` y `total` (tipo nuevo).
+- `tests/unit/services/planes-service-lecturas.test.ts`: la expectativa del detalle con `recibidas` y `total` (R11).
 
 ### Desvíos e interpretaciones
 - R3 «si cambia»: la fila `desde_at = F` se escribe si el precio del cambio no es el que el historial ya da en F (no
@@ -119,3 +120,54 @@ Veredicto: guardia R4 resuelta y tipos en verde; T1–T4 listas para seguir con 
   eran por carga (corrían a la vez que otro vitest). Corridos solos, `wallet-page` y `CierresDescargaColumnas`: 27/27
   verdes. Solo queda el rojo de `planes-repository-tipo-cobro`.
 - `pnpm test:guardias`: 4 rojos, los de la baseline (`dependencias-declaradas-presentes`); 4822 verdes.
+
+### Mapa R → test (esta tanda)
+- Sin tests nuevos: los de R2–R19, R22 son de T7 (integración) y T6. R11 (paso por el servicio) →
+  `tests/unit/services/planes-service-lecturas.test.ts`.
+
+### Verificación (backend_dev, antes del doble de `planes-repository-tipo-cobro`, ya aceptado y arreglado)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: 0 errores.
+- `pnpm exec eslint` sobre los 7 archivos tocados: limpio.
+- `vitest related --run lib/repositories/PlanesRepository.ts lib/services/PlanesService.ts`: 790 verdes, 606 saltados
+  (integración sin `HAY_BASE_DE_DATOS`), 2 rojos (los de `planes-repository-tipo-cobro`: su doble de `tx` no tenía
+  `planCambioProgramado`, que `aplicarEnTx` lee para R19).
+- `vitest related --run lib/planes/consumo.ts lib/types/planes.ts`: 4755 verdes, 688 saltados, 11 rojos: los 2 de arriba y 9
+  de wallet, ordenes, descarga, paginación y usuario-form, ajenos a planes; corridos solos, los 9 pasan (inestables con la
+  corrida grande).
+
+Veredicto: T5 completa, tipos y lint verdes; los rojos que quedaban eran del doble de `planes-repository-tipo-cobro`.
+
+## Tanda 3 (backend_dev, 2026-11-12): T6 (T6.1–T6.4)
+
+La sesión anterior dejó T6 escrita sin commit; revisada contra T6.1–T6.4 y design §4, sin cambios de código.
+
+### Archivos
+- `lib/planes/jobs-cambio-plan.ts` (T6.1): `PlanesRepositoryDeJobs = IPlanesRepository & IPlanesRecepcionesRepository`;
+  `plan_aplicar_cambio` con empresa → `recibirCambio` (payload `{ planId, cambioId, recibeAt }`, `recibeAt` ISO exigido:
+  `recepcionDelPayload`), sin empresa → `aplicarCambioProgramado`; `plan_recordatorio_cambio` con empresa →
+  `repartirRecordatorioDeEmpresa` (`dias` 7, 3 o 1 y `recibeAt`), sin empresa → `repartirRecordatorio` (7 o 1);
+  `recordatorio_3` en `tipoAvisoSchema` y como recordatorio en `plan_aviso_correo`; barrido recepciones → planes → empresas.
+  El uso lo decide `empresaDelJob`, no el payload.
+- `lib/services/email/plantillas/cambio-plan.ts` (T6.2): solo el comentario; el tipo ya entraba por `TipoCorreoCambioPlan` (T4.3).
+- `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` (T6.3) y `tests/unit/services/email/plantilla-cambio-plan.test.ts` (T6.4).
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: el doble `planCambioProgramado` (D16, aceptado).
+
+### Mapa R → test (esta tanda)
+- R5 → `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` («SLT-128 — plan_aplicar_cambio con empresa y el barrido»: recibe
+  sin promover, `recibeAt` inválido falla, orden recepciones → planes → empresas, fallo de una recepción no frena el resto).
+- R22 → `tests/unit/services/email/plantilla-cambio-plan.test.ts` (asunto e intro de 3 días, topes pasados) y
+  `procesar-jobs-plan-cambio.test.ts` (`recordatorio_3` válido, con empresa y `dias` 7/3/1 + `recibeAt`, payloads inválidos).
+- R27 → `procesar-jobs-plan-cambio.test.ts` («SLT-128 R5, R27: con empresa, los dos corren en SU empresa, de núcleo»).
+
+### Verificación
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: 2 errores, ambos en `tests/unit/planes/jobs-cambio-empresa.test.ts`
+  (154, 169): sus dobles del barrido no traen `recepcionesVencidas` ni `recibirCambio`. Fuera de «Archivos esperados»: no tocado.
+- `pnpm exec eslint` sobre los 5 archivos: limpio.
+- `vitest run` de los 3 tests de T6 + tipo-cobro: 3 archivos, 68 verdes.
+- `vitest related --run lib/planes/jobs-cambio-plan.ts lib/services/email/plantillas/cambio-plan.ts`: 234 verdes, 41 saltados,
+  3 rojos, todos de `tests/unit/planes/jobs-cambio-empresa.test.ts` (`repo.recepcionesVencidas is not a function`):
+  «cableado: el barrido aplica los pendientes de plan y DESPUÉS los de empresa…», «el barrido: si un cambio de empresa falla…»,
+  «el barrido: un fallo de un cambio de plan no impide la pasada de empresas». Arreglo: `recepcionesVencidas: async () => []`
+  y `recibirCambio` en sus dobles (total 35 archivos). Pendiente de decisión humana.
+
+Veredicto: T6 completa y sus tests verdes; queda rojo `jobs-cambio-empresa.test.ts`, fuera de la lista, a la espera del humano.

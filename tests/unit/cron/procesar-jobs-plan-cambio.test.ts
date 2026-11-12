@@ -6,6 +6,7 @@ import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmai
 import type { AvisoCorreoPlan, CambioPendiente, IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { MODULO_POR_JOB } from "@/lib/modulos/reparto";
+import type { PlanesRepositoryDeJobs } from "@/lib/planes/jobs-cambio-plan";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
 import { EnrutadorEmailSender } from "@/lib/services/email/EnrutadorEmailSender";
@@ -16,18 +17,34 @@ import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // del módulo es el real (`importOriginal`), incluido el composition root que se prueba abajo.
 const llamadas: { metodo: string; contexto: ContextoDatos | undefined; args: unknown[] }[] = [];
 const dobleCableado: Pick<
-  IPlanesRepository,
+  PlanesRepositoryDeJobs,
   | "aplicarCambioProgramado"
   | "cambiosVencidos"
   | "repartirRecordatorio"
   | "destinatariosDelAviso"
   | "cambiosDeEmpresaVencidos"
   | "aplicarCambioDeEmpresa"
+  | "recepcionesVencidas"
+  | "recibirCambio"
+  | "repartirRecordatorioDeEmpresa"
 > = {
-  // SLT-86 (R20): la segunda pasada del barrido; sin pendientes de empresa aquí (los prueba
+  // SLT-86 (R20): la tercera pasada del barrido; sin pendientes de empresa aquí (los prueba
   // `tests/unit/planes/jobs-cambio-empresa.test.ts`).
   cambiosDeEmpresaVencidos: async () => [],
   aplicarCambioDeEmpresa: async () => ({ estado: "sin_pendiente" }),
+  // SLT-128 (§4): la primera pasada, las recepciones vencidas, y los dos trabajos con empresa.
+  recepcionesVencidas: async (...args) => {
+    llamadas.push({ metodo: "recepciones", contexto: contextoActual(), args });
+    return [{ planId: "plan-1", cambioId: "cambio-1", organizacionId: "org-a" }];
+  },
+  recibirCambio: async (...args) => {
+    llamadas.push({ metodo: "recibir", contexto: contextoActual(), args });
+    return { estado: "aplicado" };
+  },
+  repartirRecordatorioDeEmpresa: async (...args) => {
+    llamadas.push({ metodo: "recordatorio_empresa", contexto: contextoActual(), args });
+    return { estado: "repartido", empresas: 1 };
+  },
   aplicarCambioProgramado: async (...args) => {
     llamadas.push({ metodo: "aplicar", contexto: contextoActual(), args });
     return { estado: "aplicado" };
@@ -65,6 +82,7 @@ const {
   crearPlanAvisoCorreoHandler,
   crearPlanCambiosVencidosHandler,
   crearPlanRecordatorioCambioHandler,
+  recepcionDelPayload,
   recurrenciaPlanCambiosVencidos,
 } = jobsCambioPlan;
 
@@ -130,10 +148,13 @@ describe("SL-24 — registro de los trabajos del cambio programado (R38, R44)", 
       const handlers = buildHandlers(() => AHORA, { empresas });
       await handlers.get("plan_cambios_vencidos")!(job({}, { tipo: "plan_cambios_vencidos", organizacionId: null }));
       expect(findMany).not.toHaveBeenCalled();
-      expect(llamadas.map((l) => l.metodo)).toEqual(["vencidos", "aplicar"]);
+      // SLT-128 (§4): recepciones → planes → empresas.
+      expect(llamadas.map((l) => l.metodo)).toEqual(["recepciones", "recibir", "vencidos", "aplicar"]);
       for (const l of llamadas) expect(l.contexto).toMatchObject({ tipo: "plataforma" });
       expect(llamadas[0].args).toEqual([AHORA]);
-      expect(llamadas[1].args).toEqual([{ planId: "plan-1", cambioId: "cambio-1" }, AHORA]);
+      expect(llamadas[1].args).toEqual([{ planId: "plan-1", cambioId: "cambio-1" }, "org-a", AHORA]);
+      expect(llamadas[2].args).toEqual([AHORA]);
+      expect(llamadas[3].args).toEqual([{ planId: "plan-1", cambioId: "cambio-1" }, AHORA]);
 
       // Y el puntual, sin empresa, también en plataforma, con el payload y el reloj del drenador.
       llamadas.length = 0;
@@ -186,33 +207,71 @@ describe("SL-24 — registro de los trabajos del cambio programado (R38, R44)", 
     }
   });
 
+  it("SLT-128 R5, R27: con empresa, los dos corren en SU empresa, de núcleo, sin mirar módulos", async () => {
+    usarDoble = true;
+    llamadas.length = 0;
+    try {
+      // R27: de núcleo, sin módulo que comprobar (`conSuEmpresa` no consulta los módulos de la empresa).
+      expect(MODULO_POR_JOB.plan_aplicar_cambio).toBe("nucleo");
+      expect(MODULO_POR_JOB.plan_recordatorio_cambio).toBe("nucleo");
+      const handlers = buildHandlers(() => AHORA);
+      const recibeAt = "2026-12-01T06:00:00.000Z";
+      await handlers.get("plan_aplicar_cambio")!(
+        job({ planId: "p", cambioId: "c", recibeAt }, { organizacionId: "org-a" }),
+      );
+      await handlers.get("plan_recordatorio_cambio")!(
+        job({ planId: "p", cambioId: "c", dias: 3, recibeAt }, { tipo: "plan_recordatorio_cambio", organizacionId: "org-a" }),
+      );
+      expect(llamadas.map((l) => [l.metodo, l.args])).toEqual([
+        ["recibir", [{ planId: "p", cambioId: "c" }, "org-a", AHORA]],
+        ["recordatorio_empresa", [{ planId: "p", cambioId: "c" }, "org-a", 3, new Date(recibeAt)]],
+      ]);
+      for (const l of llamadas) expect(l.contexto).toMatchObject({ tipo: "empresa", organizacionId: "org-a" });
+    } finally {
+      usarDoble = false;
+    }
+  });
+
   it("el composition root del correo pasa el emisor REAL de `crearEmailSender`, no un doble", () => {
     const deps = jobsCambioPlan.buildDepsAvisoCorreo();
     expect(deps.sender instanceof ConsoleEmailSender || deps.sender instanceof EnrutadorEmailSender).toBe(true);
   });
 });
 
-/** SLT-86 (R20): el barrido también pasa por los cambios de empresa; aquí no hay ninguno. */
+/**
+ * SLT-86 (R20): el barrido también pasa por los cambios de empresa; aquí no hay ninguno. SLT-128 (§4): ni
+ * recepciones vencidas.
+ */
 const sinPendientesDeEmpresa = {
   cambiosDeEmpresaVencidos: async () => [],
   aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+  recepcionesVencidas: async () => [],
+  recibirCambio: vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>(),
 };
 
 describe("SL-24 — handlers delgados", () => {
-  it("plan_aplicar_cambio pasa ESA programación y el reloj al repositorio", async () => {
+  it("plan_aplicar_cambio sin empresa pasa ESA programación y el reloj a la promoción, sin recibir", async () => {
     const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "sin_pendiente" }));
-    await crearPlanAplicarCambioHandler({ aplicarCambioProgramado: aplicar }, () => AHORA)(job({ planId: "p", cambioId: "c" }));
+    const recibir = vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>();
+    await crearPlanAplicarCambioHandler({ aplicarCambioProgramado: aplicar, recibirCambio: recibir }, () => AHORA)(
+      job({ planId: "p", cambioId: "c" }),
+    );
     expect(aplicar).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, AHORA);
+    expect(recibir).not.toHaveBeenCalled();
   });
 
   it.each([[{}], [{ planId: "p" }], [{ cambioId: "c" }], [{ planId: "", cambioId: "c" }], [{ planId: 1, cambioId: "c" }]])(
     "un payload sin planId y cambioId falla el trabajo sin llamar al repositorio (%j)",
     async (payload) => {
       const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>();
-      await expect(crearPlanAplicarCambioHandler({ aplicarCambioProgramado: aplicar }, () => AHORA)(job(payload))).rejects.toThrow(
+      const recibir = vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>();
+      const handler = crearPlanAplicarCambioHandler({ aplicarCambioProgramado: aplicar, recibirCambio: recibir }, () => AHORA);
+      await expect(handler(job(payload))).rejects.toThrow(/planId y cambioId/);
+      await expect(handler(job({ ...payload, recibeAt: "2026-12-01T06:00:00.000Z" }, { organizacionId: "org-a" }))).rejects.toThrow(
         /planId y cambioId/,
       );
       expect(aplicar).not.toHaveBeenCalled();
+      expect(recibir).not.toHaveBeenCalled();
       expect(() => cambioDelPayload({ payload })).toThrow();
     },
   );
@@ -242,6 +301,100 @@ describe("SL-24 — handlers delgados", () => {
       () => AHORA,
     )(job({}));
     expect(aplicar).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-128 — plan_aplicar_cambio con empresa y el barrido (§4; R5)", () => {
+  const RECIBE = "2026-12-01T06:00:00.000Z";
+
+  it("con empresa, ESA empresa recibe ESA programación con el reloj del drenador; no promueve", async () => {
+    const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>();
+    const recibir = vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>(async () => ({ estado: "aun_no_rige" }));
+    await crearPlanAplicarCambioHandler({ aplicarCambioProgramado: aplicar, recibirCambio: recibir }, () => AHORA)(
+      job({ planId: "p", cambioId: "c", recibeAt: RECIBE }, { organizacionId: "org-b" }),
+    );
+    expect(recibir).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, "org-b", AHORA);
+    expect(aplicar).not.toHaveBeenCalled();
+  });
+
+  it.each([[{ planId: "p", cambioId: "c" }], [{ planId: "p", cambioId: "c", recibeAt: "1 de diciembre" }], [{ planId: "p", cambioId: "c", recibeAt: 7 }]])(
+    "con empresa y sin recibeAt válido falla sin llamar al repositorio (%j)",
+    async (payload) => {
+      const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>();
+      const recibir = vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>();
+      const j = job(payload, { organizacionId: "org-a" });
+      await expect(crearPlanAplicarCambioHandler({ aplicarCambioProgramado: aplicar, recibirCambio: recibir }, () => AHORA)(j)).rejects.toThrow(
+        /recibeAt/,
+      );
+      expect(() => recepcionDelPayload(j)).toThrow(/recibeAt/);
+      expect(aplicar).not.toHaveBeenCalled();
+      expect(recibir).not.toHaveBeenCalled();
+    },
+  );
+
+  it("el barrido recibe primero las recepciones vencidas, luego promueve los planes y al final los cambios de empresa", async () => {
+    const orden: string[] = [];
+    await crearPlanCambiosVencidosHandler(
+      {
+        recepcionesVencidas: async () => {
+          orden.push("recepciones");
+          return [
+            { planId: "p", cambioId: "c", organizacionId: "o1" },
+            { planId: "p", cambioId: "c", organizacionId: "o2" },
+          ];
+        },
+        recibirCambio: async (c, org) => {
+          orden.push(`recibir:${c.cambioId}@${org}`);
+          return { estado: "aplicado" };
+        },
+        cambiosVencidos: async () => {
+          orden.push("planes");
+          return [{ planId: "p", cambioId: "c" }];
+        },
+        aplicarCambioProgramado: async (c) => {
+          orden.push(`promover:${c.cambioId}`);
+          return { estado: "aplicado" };
+        },
+        cambiosDeEmpresaVencidos: async () => {
+          orden.push("empresas");
+          return [{ organizacionId: "o1", cambioId: "e1" }];
+        },
+        aplicarCambioDeEmpresa: async (c) => {
+          orden.push(`empresa:${c.cambioId}`);
+          return { estado: "aplicado" };
+        },
+      },
+      () => AHORA,
+    )(job({}));
+    expect(orden).toEqual(["recepciones", "recibir:c@o1", "recibir:c@o2", "planes", "promover:c", "empresas", "empresa:e1"]);
+  });
+
+  it("el barrido: si una recepción falla, recibe las demás, sigue con planes y empresas y DESPUÉS falla nombrándola", async () => {
+    const recibir = vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>(async (_c, org) => {
+      if (org === "o2") throw new Error("R8");
+      return { estado: "aplicado" };
+    });
+    const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "espera" }));
+    const aplicarEmpresa = vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(async () => ({ estado: "aplicado" }));
+    const handler = crearPlanCambiosVencidosHandler(
+      {
+        recepcionesVencidas: async () => [
+          { planId: "p", cambioId: "c", organizacionId: "o1" },
+          { planId: "p", cambioId: "c", organizacionId: "o2" },
+          { planId: "p", cambioId: "c", organizacionId: "o3" },
+        ],
+        recibirCambio: recibir,
+        cambiosVencidos: async () => [{ planId: "p", cambioId: "c" }],
+        aplicarCambioProgramado: aplicar,
+        cambiosDeEmpresaVencidos: async () => [{ organizacionId: "o9", cambioId: "e9" }],
+        aplicarCambioDeEmpresa: aplicarEmpresa,
+      },
+      () => AHORA,
+    );
+    await expect(handler(job({}))).rejects.toThrow(/1 cambio\(s\): c@o2/);
+    expect(recibir.mock.calls.map((c) => c[1])).toEqual(["o1", "o2", "o3"]);
+    expect(aplicar).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, AHORA);
+    expect(aplicarEmpresa).toHaveBeenCalledWith({ organizacionId: "o9", cambioId: "e9" }, AHORA);
   });
 });
 
@@ -281,21 +434,58 @@ const MAESTROS = [
   { email: "b@uno.example", nombre: "Beto" },
 ];
 
+/** Los dos dobles del recordatorio: el legado (sin empresa) y el de SLT-128 (con empresa). */
+function repartidores() {
+  return {
+    repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" })),
+    repartirRecordatorioDeEmpresa: vi.fn<PlanesRepositoryDeJobs["repartirRecordatorioDeEmpresa"]>(async () => ({
+      estado: "repartido",
+      empresas: 1,
+    })),
+  };
+}
+
 describe("SL-24 — plan_recordatorio_cambio (R42)", () => {
-  it("pasa ESA programación y los días al repositorio", async () => {
-    const repartir = vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" }));
-    await crearPlanRecordatorioCambioHandler({ repartirRecordatorio: repartir })(job({ planId: "p", cambioId: "c", dias: 1 }));
-    expect(repartir).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, 1);
+  it("sin empresa pasa ESA programación y los días al reparto legado", async () => {
+    const repo = repartidores();
+    await crearPlanRecordatorioCambioHandler(repo)(job({ planId: "p", cambioId: "c", dias: 1 }));
+    expect(repo.repartirRecordatorio).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, 1);
+    expect(repo.repartirRecordatorioDeEmpresa).not.toHaveBeenCalled();
   });
 
   it.each([[{}], [{ planId: "p", cambioId: "c" }], [{ planId: "p", cambioId: "c", dias: 3 }], [{ planId: "", cambioId: "c", dias: 7 }]])(
-    "un payload inválido falla sin llamar al repositorio (%j)",
+    "sin empresa, un payload inválido falla sin llamar al repositorio (%j)",
     async (payload) => {
-      const repartir = vi.fn<IPlanesRepository["repartirRecordatorio"]>();
-      await expect(crearPlanRecordatorioCambioHandler({ repartirRecordatorio: repartir })(job(payload))).rejects.toThrow(/dias/);
-      expect(repartir).not.toHaveBeenCalled();
+      const repo = repartidores();
+      await expect(crearPlanRecordatorioCambioHandler(repo)(job(payload))).rejects.toThrow(/dias/);
+      expect(repo.repartirRecordatorio).not.toHaveBeenCalled();
+      expect(repo.repartirRecordatorioDeEmpresa).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("SLT-128 — plan_recordatorio_cambio con empresa (§4; R21, R22)", () => {
+  const RECIBE = "2026-11-16T06:00:00.000Z";
+
+  it.each([7, 3, 1] as const)("con empresa y %i días pasa ESA programación, la empresa, los días y su recibeAt", async (dias) => {
+    const repo = repartidores();
+    await crearPlanRecordatorioCambioHandler(repo)(job({ planId: "p", cambioId: "c", dias, recibeAt: RECIBE }, { organizacionId: "org-a" }));
+    expect(repo.repartirRecordatorioDeEmpresa).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, "org-a", dias, new Date(RECIBE));
+    expect(repo.repartirRecordatorio).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ planId: "p", cambioId: "c", dias: 3 }],
+    [{ planId: "p", cambioId: "c", dias: 3, recibeAt: "el 16" }],
+    [{ planId: "p", cambioId: "c", dias: 2, recibeAt: RECIBE }],
+    [{ planId: "p", dias: 3, recibeAt: RECIBE }],
+    [{ planId: "p", cambioId: "", dias: 1, recibeAt: RECIBE }],
+  ])("con empresa, un payload inválido falla sin llamar al repositorio (%j)", async (payload) => {
+    const repo = repartidores();
+    await expect(crearPlanRecordatorioCambioHandler(repo)(job(payload, { organizacionId: "org-a" }))).rejects.toThrow(/recibeAt/);
+    expect(repo.repartirRecordatorio).not.toHaveBeenCalled();
+    expect(repo.repartirRecordatorioDeEmpresa).not.toHaveBeenCalled();
+  });
 });
 
 describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
@@ -353,6 +543,17 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
     ]);
     // `null` = ya no está pendiente: no se envía nada.
     expect(sender.enviados).toEqual([]);
+  });
+
+  it("SLT-128 R22: el aviso `recordatorio_3` es válido, comprueba el pendiente y sale con el asunto de 3 días", async () => {
+    const destinatarios = vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => ({ empresaNombre: "Uno", maestros: MAESTROS }));
+    const sender = emisor();
+    await crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: null, reglasPais: reglasPaisFijas() }))(
+      job(aviso({ tipo: "recordatorio_3" }), conEmpresa),
+    );
+    expect(destinatarios).toHaveBeenCalledWith("org-a", "cambio-1");
+    expect(sender.enviados.map((m) => m.subject)).toEqual(["El plan Básico cambia en 3 días", "El plan Básico cambia en 3 días"]);
+    expect(avisoDelPayload({ payload: aviso({ tipo: "recordatorio_3" }) }).tipo).toBe("recordatorio_3");
   });
 
   it("si un envío falla, envía a los demás y DESPUÉS falla el trabajo, sin el email en el motivo", async () => {

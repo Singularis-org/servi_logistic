@@ -62,13 +62,13 @@
 ## Bloque C — Cola y correos
 
 ### T6 — Trabajos (depende de T5)
-- [ ] **T6.1** `lib/planes/jobs-cambio-plan.ts`: `plan_aplicar_cambio` y `plan_recordatorio_cambio` con y sin
+- [x] **T6.1** `lib/planes/jobs-cambio-plan.ts`: `plan_aplicar_cambio` y `plan_recordatorio_cambio` con y sin
   empresa; `dias` 7, 3 o 1 con `recibeAt`; `recordatorio_3` en el aviso; el barrido en el orden recepciones →
   planes → empresas (§4).
-- [ ] **T6.2** `lib/services/email/plantillas/cambio-plan.ts`: el tipo nuevo.
-- [ ] **T6.3** `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`: los dos usos de cada trabajo, payloads
+- [x] **T6.2** `lib/services/email/plantillas/cambio-plan.ts`: el tipo nuevo.
+- [x] **T6.3** `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`: los dos usos de cada trabajo, payloads
   malformados, el orden del barrido y que siguen siendo de núcleo (R5, R27).
-- [ ] **T6.4** `tests/unit/services/email/plantilla-cambio-plan.test.ts`: el correo de 3 días (R22).
+- [x] **T6.4** `tests/unit/services/email/plantilla-cambio-plan.test.ts`: el correo de 3 días (R22).
 - **Hecho:** T6.3 y T6.4 verdes.
 
 ## Bloque D — Tests de integración (dependen de T5 y T6) [P]
@@ -129,7 +129,7 @@ Producción (16):
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (2026-11-12, aceptado por el humano: el tipo `pendiente` del detalle gana `recibidas` y `total`)
 
-Tests (17):
+Tests (18):
 - `tests/unit/planes/recepcion.test.ts`
 - `tests/integration/db/planes-cambio-por-empresa.test.ts`
 - `tests/integration/db/planes-version-por-empresa.test.ts`
@@ -147,5 +147,6 @@ Tests (17):
 - `tests/unit/services/planes-service-asignar-costo.test.ts` (2026-11-12: dobles con `recibidas` y `total`)
 - `tests/unit/services/planes-service-costo-porcentual.test.ts` (2026-11-12: ídem)
 - `tests/unit/services/planes-service-lecturas.test.ts` (2026-11-12: ídem)
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (2026-11-12, aceptado por el humano: el doble de `tx` sin `planCambioProgramado`, D16)
 
-Total: 33 archivos (29 del plan + 4 aceptados por el humano el 2026-11-12).
+Total: 34 archivos (29 del plan + 5 aceptados por el humano el 2026-11-12).

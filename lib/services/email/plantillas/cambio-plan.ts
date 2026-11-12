@@ -31,6 +31,10 @@ export interface CambioPlanParams {
   reemplazaA: Date | null;
   /** Los topes que la empresa ya pasa con la versión nueva (R41, R42). */
   topesPasados: readonly TopePasado[];
+  /**
+   * SLT-128 (R21, R22): `recordatorio_3` sale cuando entre guardar y la recepción de la empresa hay de 4 a 7
+   * días; se compone como los otros recordatorios, con la fecha de SU recepción en `vigenteDesde`.
+   */
   tipo: TipoCorreoCambioPlan;
   /** Dirección de contacto del pie, o `null`. */
   contacto: string | null;
