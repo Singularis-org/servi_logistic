@@ -12,8 +12,17 @@ import {
   recibidoCola,
   senalesDe,
   tablistCola,
+  aprobadoCola,
+  folioConsolidable,
+  piePorConsolidar,
+  senalesConsolidable,
+  tarjetasAConsolidar,
+  type TarjetasAConsolidarEntrada,
 } from "@/components/private/cierres/cola/cola-cierres-vista";
-import { descripcionCola } from "@/components/private/cierres/cola/cola-cierres-labels";
+import {
+  descripcionCola,
+  descripcionColaSatelite,
+} from "@/components/private/cierres/cola/cola-cierres-labels";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 
 // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (T2.2) — la lógica pura de la cola.
@@ -314,9 +323,10 @@ describe("columnasCola · bodega central (R44, R129)", () => {
 });
 
 describe("celdas de bodega (R127, R129, R130)", () => {
-  it("tablist por tipo", () => {
-    expect(tablistCola("mensajero")).toBe("Cierres del día por estado");
-    expect(tablistCola("bodega")).toBe("Cierres de bodega por estado");
+  it("tablist por tipo y rol (los de hoy no cambian, R206)", () => {
+    expect(tablistCola("mensajero", "central")).toBe("Cierres del día por estado");
+    expect(tablistCola("mensajero", "satelite")).toBe("Cierres del día por estado");
+    expect(tablistCola("bodega", "central")).toBe("Cierres de bodega por estado");
   });
 
   it("folio: «#» + los 8 últimos del id, en mayúsculas", () => {
@@ -351,5 +361,162 @@ describe("celdas de bodega (R127, R129, R130)", () => {
     ["rechazado sin marca", { conciliado: false, faltaPorRecibir: "7000.00" }, "verConciliar"],
   ])("accionBodegaDe: %s", (_caso, marca, esperado) => {
     expect(accionBodegaDe(marca)).toBe(esperado);
+  });
+});
+
+// ═══ SLT-106 «Bodega satélite: A consolidar con la cola única» (T2.1) ══════════════════════════
+// Esperados escritos a mano (canvas, rama bodega · satélite, y `requirements.md` R190-R197); ninguno
+// sale de la función probada.
+
+describe("columnasCola · bodega satélite (R192, R206)", () => {
+  it("«A consolidar»: las columnas en el orden de R192", () => {
+    const cols = columnasCola("bodega", "satelite", "aConsolidar");
+    expect(rotulos(cols)).toEqual([
+      "Folio",
+      "Mensajero",
+      "Aprobado",
+      "Recaudado",
+      "Pago",
+      "Gana bodega",
+      "A la central",
+      "Señales",
+      "Acciones",
+    ]);
+    expect(cols.filter((c) => c.align === "right").map((c) => c.label)).toEqual([
+      "Recaudado",
+      "Pago",
+      "Gana bodega",
+      "A la central",
+    ]);
+    expect(cols.at(-1)).toMatchObject({ id: "acciones", soloLector: true });
+  });
+
+  it("la bodega central y los mensajeros no ganan columnas de la satélite (R206)", () => {
+    expect(ids(columnasCola("bodega", "central", "pendientes"))).not.toContain("aLaCentral");
+    expect(ids(columnasCola("mensajero", "satelite", "pendientes"))).not.toContain("ganaBodega");
+  });
+
+  it("tablist de la satélite: «Cierre de bodega por etapa» (R190)", () => {
+    expect(tablistCola("bodega", "satelite")).toBe("Cierre de bodega por etapa");
+  });
+});
+
+describe("celdas de «A consolidar» (R192)", () => {
+  it("folio «#» + los 8 últimos del id del cierre del día", () => {
+    expect(folioConsolidable({ cierreDiaId: "0f3c9a2e-1b44-4d0a-9e77-5b2c8f2ab7c9" })).toBe(
+      "#8F2AB7C9",
+    );
+  });
+
+  it("Aprobado: fecha y hora; «—» sin fecha", () => {
+    expect(aprobadoCola({ aprobadoAt: "2026-11-08T01:10:00.000Z" })).toBe("2026-11-07 19:10");
+    expect(aprobadoCola({ aprobadoAt: null })).toBe("—");
+  });
+
+  it.each([
+    [0, null],
+    [1, "1 pago ajustado"],
+    [3, "3 pagos ajustados"],
+  ])("Señales con %s gestiones ajustadas → %s", (n, esperado) => {
+    expect(senalesConsolidable({ gestionesAjustadas: n })).toBe(esperado);
+  });
+});
+
+describe("tarjetasAConsolidar (R196, R71)", () => {
+  const base: TarjetasAConsolidarEntrada = {
+    totales: {
+      efectivo: "70000.00",
+      simpe: "30000.00",
+      transferencia: "0.00",
+      general: "100000.00",
+    },
+    pagoMensajeros: "3000.00",
+    ganaBodega: "500.00",
+    paraLaCentral: "96500.00",
+    centralDebe: "0.00",
+    mensajeros: 3,
+    incluyeModeloNuevo: false,
+  };
+
+  it("orden e ids; sin «La central debe» cuando vale 0.00", () => {
+    const t = tarjetasAConsolidar(base);
+    expect(t.map((c) => c.id)).toEqual(["recaudado", "pago", "ganaBodega", "paraCentral"]);
+    expect(t.map((c) => c.label)).toEqual([
+      "Recaudado",
+      "Pago a mensajeros",
+      "Gana la bodega satélite",
+      "Debe llegar a la central",
+    ]);
+  });
+
+  it("los valores son los strings de entrada, sin tocar", () => {
+    expect(tarjetasAConsolidar(base).map((c) => c.valor)).toEqual([
+      "100000.00",
+      "3000.00",
+      "500.00",
+      "96500.00",
+    ]);
+  });
+
+  it("«Recaudado» con métodos; «Debe llegar» destacada con su nota", () => {
+    const [recaudado, , , debe] = tarjetasAConsolidar(base);
+    expect(recaudado).toMatchObject({ conMetodos: true, destacada: false });
+    expect(debe).toMatchObject({ destacada: true, contexto: "recaudado − mensajeros − bodega" });
+  });
+
+  it("nota de «Pago a mensajeros» en singular y plural", () => {
+    expect(tarjetasAConsolidar({ ...base, mensajeros: 1 })[1].contexto).toBe(
+      "1 mensajero · se paga del efectivo",
+    );
+    expect(tarjetasAConsolidar(base)[1].contexto).toBe("3 mensajeros · se paga del efectivo");
+  });
+
+  it("nota de «Gana la bodega satélite»: «por devoluciones a origen» solo con el modelo viejo", () => {
+    expect(tarjetasAConsolidar(base)[2].contexto).toBe("por devoluciones a origen");
+    expect(tarjetasAConsolidar({ ...base, incluyeModeloNuevo: true })[2].contexto).toBe("");
+  });
+
+  it("«La central debe» con 12500.00: quinta tarjeta, en tono de aviso, con su nota", () => {
+    const t = tarjetasAConsolidar({ ...base, centralDebe: "12500.00" });
+    expect(t).toHaveLength(5);
+    expect(t[4]).toMatchObject({
+      id: "centralDebe",
+      label: "La central debe",
+      valor: "12500.00",
+      contexto: "el efectivo no alcanzó para pagar a todos los mensajeros",
+      aviso: true,
+    });
+  });
+});
+
+describe("piePorConsolidar (R197)", () => {
+  it("se puede solicitar: plural y singular con el número del conjunto", () => {
+    expect(piePorConsolidar(null, 3)).toBe(
+      "Se enviarán los 3 cierres aprobados a la central. No se puede deshacer.",
+    );
+    expect(piePorConsolidar(null, 1)).toBe(
+      "Se enviará el cierre aprobado a la central. No se puede deshacer.",
+    );
+  });
+
+  it("cierres sin resolver: cuándo se habilita", () => {
+    expect(piePorConsolidar("sin_resolver", 3)).toBe(
+      "Se habilita cuando no quede ningún cierre de mensajero por resolver.",
+    );
+  });
+
+  it("nada que consolidar: sin texto", () => {
+    expect(piePorConsolidar("vacio", 0)).toBeUndefined();
+  });
+});
+
+describe("descripcionColaSatelite (R203)", () => {
+  it("con y sin el nombre de la zona", () => {
+    expect(descripcionColaSatelite("Limón")).toBe(
+      "Bodega satélite · Limón. Junta los cierres aprobados de tus mensajeros y envíalos a la central.",
+    );
+    expect(descripcionColaSatelite(null)).toBe(
+      "Bodega satélite. Junta los cierres aprobados de tus mensajeros y envíalos a la central.",
+    );
   });
 });

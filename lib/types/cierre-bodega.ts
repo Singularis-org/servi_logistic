@@ -24,6 +24,7 @@ function conFiltrosDeBodega<T extends z.ZodRawShape>(base: z.ZodObject<T>) {
 import type {
   CierreBodegaResumen,
   CierreBodegaResumenLite,
+  CierreConsolidableCola,
   ListarConsolidacionServiceResult,
   SolicitarCierreBodegaServiceResult,
 } from "@/lib/interfaces/services/ICierreBodegaService";
@@ -194,8 +195,10 @@ export type ListarPendientesCierresBodegaResult = ListarPaginadoResult<
 
 // Feature 170 (T J.1, R41/R42): la COLA de cierre_dia consolidables. Fila distinta
 // (`CierreBodegaResumenLite`, un cierre del dia) y por eso alias propio, no un rename.
+// SLT-106 (R192): la pagina lleva la fila de la cola (`CierreConsolidableCola`), la misma que ya
+// devuelve el servicio; el conjunto de la descarga sigue siendo Lite.
 export type ListarConsolidablesResult = ListarPaginadoResult<
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
   CierreBodegaListadoError
 >;
 

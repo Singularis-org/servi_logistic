@@ -6,4 +6,10 @@
  * aquí para sus consumidores de siempre (`CierresAdminModule`, la wallet de mensajeros, órdenes):
  * el parámetro sigue escrito UNA sola vez.
  */
-export { PARAM_CIERRE, RUTA_CIERRES_ADMIN, hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
+export {
+  PARAM_CIERRE,
+  PARAM_CIERRE_BODEGA,
+  RUTA_CIERRES_ADMIN,
+  hrefDetalleCierre,
+  hrefDetalleCierreBodega,
+} from "@/lib/utils/cierre-enlace";
