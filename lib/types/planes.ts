@@ -361,7 +361,10 @@ export type PlanResult =
   | { estado: "archivado" }
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
-  | { estado: "sin_cambio_programado" };
+  | { estado: "sin_cambio_programado" }
+  // SLT-128 (R14–R16): cancelar, archivar o editar «De inmediato» con el cambio programado a medias. El texto
+  // lo elige la pantalla según la acción (`lib/planes/mensajes.ts`). Nada se escribió.
+  | { estado: "cambio_a_medias" };
 
 /**
  * SL-24 (design §6.3, §6.5): el rechazo de un alta por el tope del plan, en el resultado de las

@@ -31,8 +31,8 @@
 ## Bloque B — Fechas y repositorio
 
 ### T3 — Fechas puras [P] (depende de nada)
-- [ ] **T3.1** `lib/planes/recepcion.ts`: `fechaDeRecepcion` y `recordatoriosDe` (§5).
-- [ ] **T3.2** `tests/unit/planes/recepcion.test.ts`: los cuatro tipos con F inicio y no inicio; d = 0, 1, 3, 4, 7,
+- [x] **T3.1** `lib/planes/recepcion.ts`: `fechaDeRecepcion` y `recordatoriosDe` (§5).
+- [x] **T3.2** `tests/unit/planes/recepcion.test.ts`: los cuatro tipos con F inicio y no inicio; d = 0, 1, 3, 4, 7,
   8 y 30; el de 1 día que cae antes de guardar; guardado el 11 con recepción el 16 → 13 y 15 (R1, R21).
 - **Hecho:** T3.2 verde.
 

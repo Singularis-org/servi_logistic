@@ -149,7 +149,9 @@ export function periodicidadIncompatible(empresas: number): string {
 // `lineaReemplazo` (§16.2). El resto son propuestas de T12, pendientes de aprobación humana
 // (`progress/impl_SL-24.md > T12`).
 
-export type TipoCorreoCambioPlan = "guardado" | "recordatorio_7" | "recordatorio_1" | "cancelado";
+// SLT-128 (R21, R22): `recordatorio_3`, el de 3 días antes de la recepción de la empresa (de 4 a 7 días
+// entre guardar y su recepción). Asunto e intro, literales del spec.
+export type TipoCorreoCambioPlan = "guardado" | "recordatorio_7" | "recordatorio_3" | "recordatorio_1" | "cancelado";
 
 /** El asunto de cada correo. */
 export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string): string {
@@ -158,6 +160,8 @@ export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string)
       return `Cambios en el plan ${planNombre}`;
     case "recordatorio_7":
       return `El plan ${planNombre} cambia en 7 días`;
+    case "recordatorio_3":
+      return `El plan ${planNombre} cambia en 3 días`;
     case "recordatorio_1":
       return `El plan ${planNombre} cambia mañana`;
     case "cancelado":
@@ -178,6 +182,9 @@ export function introCambioPlan(
   if (tipo === "recordatorio_7") {
     return `Faltan 7 días: el plan ${planNombre} de ${empresaNombre} cambia a partir del ${fecha}.`;
   }
+  if (tipo === "recordatorio_3") {
+    return `Faltan 3 días: el plan ${planNombre} de ${empresaNombre} cambia a partir del ${fecha}.`;
+  }
   if (tipo === "recordatorio_1") {
     return `Mañana cambia el plan ${planNombre} de ${empresaNombre}: rige a partir del ${fecha}.`;
   }
@@ -189,6 +196,28 @@ export function introCambioPlan(
 /** §16.2: el correo de guardado de un cambio que reemplaza a otro (no sale correo de cancelación). */
 export function lineaReemplazo(fechaAnterior: string): string {
   return `Este cambio reemplaza al previsto para ${fechaAnterior}.`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* SLT-128 (design §7) — el cambio programado por empresa                      */
+/* -------------------------------------------------------------------------- */
+// Literales del spec. Los pinta la pantalla del plan según el rechazo `cambio_a_medias` de cada acción.
+
+/** R14 (P1, P8): «Cancelar cambio» con alguna empresa que ya recibió el pendiente, o el plan partido. */
+export const MENSAJE_CANCELAR_CAMBIO_A_MEDIAS =
+  "Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.";
+
+/** R15: archivar con un pendiente que aún no llegó a todas sus empresas. */
+export const MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS =
+  "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.";
+
+/** R16 (P7): la edición «De inmediato» con el plan partido. */
+export const MENSAJE_EDITAR_CAMBIO_A_MEDIAS =
+  "Alguna empresa ya recibió el cambio programado. Programa este cambio con una fecha.";
+
+/** R11: bajo «Cambio programado desde F» en el detalle del plan. */
+export function textoRecepcionesDelCambio(recibidas: number, total: number): string {
+  return `${recibidas} de ${total} empresas ya lo recibieron`;
 }
 
 /** R45, literal: el único texto del correo de cancelación (a mano o al archivar). */

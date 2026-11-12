@@ -15,10 +15,13 @@ import type {
   EmpresaDePlanes,
   EmpresaParaElMaestro,
   IPlanesDelMaestroRepository,
+  IPlanesRecepcionesRepository,
   IPlanesRepository,
   PlanDeEmpresaLeida,
   PrecioDesdeLeido,
+  PendienteDelDetalleLeido,
   PlanDelCatalogoLeido,
+  RecepcionPendiente,
   AsignacionAlCrear,
   ResultadoAplicar,
   ResultadoArchivar,
@@ -629,6 +632,11 @@ function pendienteDe(c: { vigenteDesde: Date; version: Prisma.JsonValue } | null
   return c === null ? null : { vigenteDesde: c.vigenteDesde, version: versionPlanSchema.parse(c.version) };
 }
 
+/** SLT-128 (R11): el pendiente del detalle con «N de M». Las recepciones las cuenta T5.6. */
+function pendienteDelDetalle(c: CambioDelPlanLeido | null): PendienteDelDetalleLeido | null {
+  return c === null ? null : pendienteDeT5("detalle: recibidas y total del pendiente");
+}
+
 /** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29), dentro de `tx`. */
 async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string): Promise<string> {
   const { id } = await tx.plan.create({
@@ -793,7 +801,12 @@ class AsignacionRechazada extends Error {
 /* El repositorio                                                              */
 /* -------------------------------------------------------------------------- */
 
-export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRepository {
+/** SLT-128: lo que la tanda de T5 rellena (`tasks.md`). Lanza para que nada lo use a medias. */
+function pendienteDeT5(que: string): never {
+  throw new Error(`SLT-128: pendiente T5 (${que})`);
+}
+
+export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRepository, IPlanesRecepcionesRepository {
   constructor(private readonly prisma: PlanesPrismaClient) {}
 
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null> {
@@ -1343,6 +1356,19 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     );
   }
 
+  // SLT-128 (T4): la forma de `IPlanesRecepcionesRepository`; los rellena T5.2 y T5.6.
+  recibirCambio(): Promise<ResultadoAplicar> {
+    return pendienteDeT5("recibirCambio");
+  }
+
+  recepcionesVencidas(): Promise<RecepcionPendiente[]> {
+    return pendienteDeT5("recepcionesVencidas");
+  }
+
+  repartirRecordatorioDeEmpresa(): Promise<ResultadoRecordatorio> {
+    return pendienteDeT5("repartirRecordatorioDeEmpresa");
+  }
+
   cambiosVencidos(ahora: Date): Promise<CambioPendiente[]> {
     return comoPlataforma("SL-24", "barrer los cambios programados vencidos (trabajo de la cola)", async () => {
       const filas = await this.prisma.planCambioProgramado.findMany({
@@ -1518,7 +1544,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
       return {
         plan: aDTO(fila),
         empresaNombre: fila.organizacionExclusiva?.nombre ?? null,
-        pendiente: pendienteDe(fila.cambioProgramado),
+        pendiente: pendienteDelDetalle(pendienteDe(fila.cambioProgramado)),
         empresas: fila.empresas,
         rastro: rastro.map((r) => ({
           id: r.id,
