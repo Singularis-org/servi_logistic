@@ -14,20 +14,20 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
 
 ## T0 — Comprobaciones previas (sin código)
 
-- [ ] **T0.1** — Confirmar con Grep que ningún archivo fuera de `## Archivos esperados` construye un
+- [x] **T0.1** — Confirmar con Grep que ningún archivo fuera de `## Archivos esperados` construye un
   `CierreDiaConsolidableRow` o lee `ListarConsolidablesServiceResult.items` (si aparece uno, se
   añade aquí antes de seguir). **Hecho:** nota en `progress/impl_SLT-106.md`.
-- [ ] **T0.2** [P] — Confirmar que `verCierreDetalle` (el `?cierre=` de `CierresAdminModule`) abre a la
+- [x] **T0.2** [P] — Confirmar que `verCierreDetalle` (el `?cierre=` de `CierresAdminModule`) abre a la
   satélite un cierre del día **aprobado** de su zona (no solo los de su cola de pendientes). **Hecho:**
   nota con archivo y línea. Si no lo abre, se para y se pregunta: R193 no se cumple sin permiso nuevo.
-- [ ] **T0.3** [P] — Listar los tests y E2E que localizan «A consolidar» por lo que desaparece
+- [x] **T0.3** [P] — Listar los tests y E2E que localizan «A consolidar» por lo que desaparece
   (`Totales a consolidar`, `Comprobante del cierre de`, `group` «Cierre de bodega por etapa», región
   «Solicitar cierre de bodega», «Central debe», «Ingreso de bodega… a consolidar»). **Hecho:** la lista
   coincide con T4; si sale uno más, se añade a `## Archivos esperados`.
 
 ## T1 — Servidor (`backend_dev`)
 
-- [ ] **T1.1** — `ICierreBodegaRepository` / `CierreBodegaRepository`: `CierreDiaConsolidableRow` con
+- [x] **T1.1** — `ICierreBodegaRepository` / `CierreBodegaRepository`: `CierreDiaConsolidableRow` con
   `paraLaCentral`, `aprobadoAt`, `gestionesAjustadas` (requeridos); `CONSOLIDABLE_SELECT` con
   `resueltoAt` y el `_count` ampliado; `toConsolidableRow` con `paraLaCentral()` de
   `ingreso-empresa.ts`; `sinResolverWhere(zonaId)` compartido por `contarCierresDiaSolicitados` y el
@@ -35,7 +35,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
   `tests/unit/repositories/cierre-bodega-repository.test.ts` comprueba con literales el mapper
   (60000.00 − 2000.00 − 300.00 → `"57700.00"`; 0.00 − 2000.00 − 0.00 → `"-2000.00"`), `aprobadoAt`
   ISO o `null`, y que `contar` y `findMensajeros…` reciben el mismo `where` (R67, R194).
-- [ ] **T1.2** — `ICierreBodegaService` / `CierreBodegaService`: `CierreConsolidableCola`,
+- [x] **T1.2** — `ICierreBodegaService` / `CierreBodegaService`: `CierreConsolidableCola`,
   `BloqueoConsolidacion`, los cuatro campos nuevos de `listarConsolidacion`, `motivoSinResolver`
   exportada; `solicitarCierreBodega` sin tocar. **Hecho:** nuevo
   `tests/unit/services/consolidacion-cola-satelite.test.ts` (dobles) verde con:
@@ -53,7 +53,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
     `contarCierresDiaSolicitados`, no al método nuevo.
   **Contraprueba:** cambiar en el servicio un `.minus` del agregado por `.plus` pone rojo el literal
   96500.00; quitar el «dedupe» pone rojo el de tres nombres.
-- [ ] **T1.3** — Integración contra la base: nuevo
+- [x] **T1.3** — Integración contra la base: nuevo
   `tests/integration/db/consolidacion-cola-satelite.test.ts`. Datos: zona A (la del actor) y zona B;
   en A, un cierre `aprobado` sin consolidar de M1 con dos gestiones (una con **dos** ajustes de pago,
   otra sin), un `aprobado` ya consolidado, dos `solicitado` (M2, M3) y un `rechazado` (M4); en B, un
@@ -71,7 +71,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
   4. invertir dos argumentos de `paraLaCentral` en `toConsolidableRow` → rojo.
   Cada mutación se deshace y el árbol vuelve a verde. No se corre el gate mientras haya una mutación
   puesta.
-- [ ] **T1.4** [P] — Actualizar los dobles del repositorio en
+- [x] **T1.4** [P] — Actualizar los dobles del repositorio en
   `tests/unit/services/cierre-bodega-service.test.ts`, `consolidacion-completo.test.ts`,
   `consolidables-paginado.test.ts` y `cierre-bodega-solicitados-paginado.test.ts` (método nuevo y
   campos nuevos de la fila). En `cierre-bodega-service.test.ts`, la aserción de hoy
@@ -228,6 +228,7 @@ líneas al cerrar T5, para y aplica `requirements.md > PA-T`.
 - `tests/components/paginacion/ColasPaginacion.test.tsx`
 - `tests/components/paginacion/BajoRiesgoPaginacion.test.tsx`
 - `tests/components/descarga/CierresDescarga.test.tsx`
+- `tests/components/descarga/CierresDescargaColumnas.test.tsx` (T0.1: construye un `ListarConsolidacionServiceResult` tipado; solo gana los cuatro campos nuevos en su doble)
 - `tests/unit/descarga/censo-tablas.ts`
 - `tests/unit/guards/liquidacion-money-safe.test.ts`
 - `e2e/cierre-bodega-satelite.spec.ts`
