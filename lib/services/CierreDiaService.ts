@@ -584,6 +584,8 @@ export class CierreDiaService implements ICierreDiaService {
               efectivo: c.totales.efectivo,
               premiosVivos: premios[c.cierreId] ?? "0.00",
               pagadoVigente: pagados[c.cierreId] ?? "0.00",
+              // SLT-123 (R320, R327): la marca de ESTE cierre; ausente = `false` (regla de la 44).
+              pagoIndependienteEfectivo: c.pagoIndependienteEfectivo === true,
             })
           : null,
     }));

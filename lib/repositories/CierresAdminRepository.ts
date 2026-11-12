@@ -793,6 +793,9 @@ const CIERRE_RESUMEN_SELECT = {
   totalGeneral: true,
   totalPagoMensajero: true, // feature 39/R17: snapshot total del pago al mensajero
   totalIngresoBodegaRechazos: true, // feature 56/R16: snapshot total del ingreso de bodega por rechazos
+  // SLT-123 (R320): la regla de pago del cierre. Va en TODOS los listados: el servicio deriva lo
+  // pendiente de cada fila aprobada con ella (`conPendiente`).
+  pagoIndependienteEfectivo: true,
   solicitadoAt: true,
   resueltoAt: true,
   motivoRechazo: true,
@@ -821,6 +824,7 @@ function toResumenRow(r: CierreResumenRow): CierreAdminResumenRow {
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R17: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R16: snapshot money-safe STRING
     incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-123 (R320)
     solicitadoAt: r.solicitadoAt.toISOString(),
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,
@@ -2446,6 +2450,15 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           select: { destinoTipo: true },
         });
         if (destino?.destinoTipo === "bodega_central") {
+          // SLT-123 (R310, design §2): un cierre de la CENTRAL aprobado desde este codigo lleva la
+          // regla nueva (su pago es independiente del efectivo). Va con `tx`, sobre la fila que el
+          // `updateMany` de arriba acaba de bloquear, y ANTES de los asientos: el feed lee la marca
+          // para decidir que escribe en el libro. Si algo lanza despues, revierte con la aprobacion.
+          // La satelite no entra aqui y se queda en `false` hasta SLT-139 (design §13).
+          await tx.cierreDia.updateMany({
+            where: { id: cierreId, estado: "aprobado" },
+            data: { pagoIndependienteEfectivo: true },
+          });
           await asentarCierreDia(tx, cierreId, this.asientos());
         }
 

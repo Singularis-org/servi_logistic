@@ -770,6 +770,8 @@ const CIERRE_PASADO_SELECT = {
   // DTO del historico no la necesita— sino que el detalle propio la lee de esta misma fila,
   // sin una segunda consulta.
   sinGestionRegistrado: true,
+  // SLT-123 (R320): la regla de pago del cierre, con la que el servicio deriva lo pendiente.
+  pagoIndependienteEfectivo: true,
 } as const;
 
 type CierrePasadoSelectRow = Prisma.CierreDiaGetPayload<{
@@ -932,6 +934,7 @@ function toCierrePasadoDTO(r: CierrePasadoSelectRow): CierrePasadoDTO {
     },
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R13: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R12
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-123 (R320)
     solicitadoAt: r.solicitadoAt.toISOString(),
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,

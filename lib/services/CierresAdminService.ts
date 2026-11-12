@@ -1365,6 +1365,8 @@ export class CierresAdminService implements ICierresAdminService {
               efectivo: r.totales.efectivo, // E — snapshot de la 37
               premiosVivos: premios[r.cierreId] ?? "0.00", // Σ premios VIVOS del cierre (293/R24)
               pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
+              // SLT-123 (R320, R327): la regla la da la marca de ESTA fila; ausente = `false` (44).
+              pagoIndependienteEfectivo: r.pagoIndependienteEfectivo === true,
             }),
           }
         : { ...r, ...conSenales, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
@@ -1396,6 +1398,8 @@ export class CierresAdminService implements ICierresAdminService {
       efectivo: cierre.totalEfectivo,
       premiosVivos: premios[cierreId] ?? "0.00",
       pagadoVigente: pagados[cierreId] ?? "0.00",
+      // SLT-123 (R321): la marca que la aprobacion acaba de escribir en la misma fila.
+      pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true,
     });
   }
 
@@ -1892,6 +1896,8 @@ function toResumen(row: CierreAdminResumenRow): CierreAdminResumen {
     totalPagoMensajero: row.totalPagoMensajero, // R17: snapshot, sin recomputar
     totalIngresoBodegaRechazos: row.totalIngresoBodegaRechazos, // feature 56/R16: snapshot, sin recomputar
     incluyeModeloNuevo: row.incluyeModeloNuevo, // SLT-54 (R71)
+    // SLT-123 (R320): la marca viaja hasta `conPendiente`, que deriva lo pendiente con ella.
+    pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     // Feature 172 (T C.2): el mapper NO deriva dinero. Emite `null` —el valor de un cierre no
     // aprobado (R28)— y el servicio lo rellena en `conPendiente` para los aprobados, con UNA
     // agregacion por pagina. Si la derivacion viviera aqui, seria una consulta por fila.

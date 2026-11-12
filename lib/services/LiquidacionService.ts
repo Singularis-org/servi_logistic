@@ -1119,6 +1119,7 @@ export class LiquidacionService implements ILiquidacionService {
         efectivo: cierre.totalEfectivo,
         premiosVivos: premios[cierre.id] ?? "0.00",
         pagadoVigente: pagados[cierre.id] ?? "0.00",
+        pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true, // SLT-123 (R321)
       });
       if (new Prisma.Decimal(pendiente).lte(0)) continue; // R5: imputable = pendiente > 0
       imputables.push({
@@ -1259,6 +1260,7 @@ export class LiquidacionService implements ILiquidacionService {
         efectivo: cierre.totalEfectivo,
         premiosVivos: premios[cierre.id] ?? "0.00",
         pagadoVigente: vigentes.lt(0) ? new Prisma.Decimal(0) : vigentes,
+        pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true, // SLT-123 (R321)
       });
     }
 
@@ -1379,6 +1381,8 @@ export class LiquidacionService implements ILiquidacionService {
       efectivo: cierre.totalEfectivo,
       premiosVivos: premios[cierre.id] ?? "0.00",
       pagadoVigente: pagados[cierre.id] ?? "0.00",
+      // SLT-123 (R316): con la marca, el tope del pago directo es `P` (+ premios − vigentes).
+      pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true,
     });
   }
 

@@ -348,6 +348,12 @@ export interface CierrePasadoDTO {
   totales: CierreTotales;
   totalPagoMensajero: string; // feature 39/R13: total snapshot del pago al mensajero (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R12: total snapshot del ingreso de bodega por rechazos (STRING)
+  /**
+   * SLT-123 (R320) — `cierre_dia.pago_independiente_efectivo`: la regla con la que el servicio
+   * deriva `pendientePagoMensajero`. El repositorio la lee siempre; opcional por retrocompat de los
+   * dobles, y ausente se lee como `false` (el `DEFAULT` de la columna, la regla de la 44).
+   */
+  pagoIndependienteEfectivo?: boolean;
   solicitadoAt: string; // ISO
   /**
    * Fecha de resolucion (aprobado/rechazado) e ISO; `null` mientras siga abierto. Viajan al
