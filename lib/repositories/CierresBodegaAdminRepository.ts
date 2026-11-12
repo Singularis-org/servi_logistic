@@ -33,6 +33,7 @@ import {
 // caminos de la descarga detallada tienen que emitir la MISMA fila desde la MISMA declaracion,
 // asi que ninguno de ellos declara nada propio.
 import {
+  cargosFulfillmentVigentes,
   componerGestionesDescarga,
   DETALLE_ADMIN_SELECT,
   DETALLE_DESCARGA_SELECT,
@@ -160,6 +161,9 @@ type CierresBodegaAdminPrismaClient = Pick<
   | "conciliacionBodegaAjuste"
   // SLT-105 (R122): los ids de los recibidos incompletos salen de SQL a mano (`idsRecibidosIncompletos`).
   | "$queryRaw"
+  // SLT-110 (R210): SOLO LECTURA del cargo vigente de fulfillment de las ordenes del detalle. La app
+  // no puede escribir esa tabla (REVOKE, SLT-94).
+  | "ordenFulfillmentMovimiento"
 >;
 
 // Proyeccion de la cabecera de un cierre_dia incluido en el detalle (mensajero +
@@ -494,33 +498,47 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     // son los datos CONGELADOS. Antes esto reusaba `WITH_DETALLE`, que navegaba
     // `gestion_orden.orden.*` VIVO: esta pantalla y la de `findCierreByIdEnAlcance` mostraban
     // detalle distinto del MISMO cierre. Mismo DTO que antes -> la UI no cambia.
-    const cierresDia = await Promise.all(
-      cierresDiaRows.map(async (cd) => {
-        const [gestiones, detalle] = await Promise.all([
-          this.prisma.gestionOrden.findMany({
-            where: { cierreId: cd.id }, // R11: gestiones vinculadas a ESTE cierre_dia
-            orderBy: { createdAt: "desc" },
-            select: GESTION_ADMIN_SELECT,
-          }),
-          this.prisma.cierreDetail.findMany({
-            where: { cierreId: cd.id }, // el snapshot de ESE cierre_dia
-            select: DETALLE_ADMIN_SELECT,
-          }),
-        ]);
-        // Grano: N gestiones de una orden comparten su UNICA fila congelada.
-        const byOrden = new Map(detalle.map((d) => [d.ordenId, d]));
-        return {
-          resumen: toDetalleCierreRow(cd),
-          // Sin fallback (R14/decision (a)): si falta la fila, error DURO. Igual que T18: un
-          // fallback a datos vivos seria el camino de lectura que esta feature vino a matar.
-          gestiones: gestiones.map((g) => {
-            const d = byOrden.get(g.ordenId);
-            if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
-            return toPendienteRowDesdeSnapshot(g, d, zona);
-          }),
-        };
-      }),
-    );
+    //
+    // SLT-110 (R210, R216): el cargo vigente de fulfillment de las ordenes de TODOS los cierres del
+    // dia, en UNA consulta (el conjunto va en el `where`), en paralelo con el bucle. Es la regla de
+    // SLT-101 R94 por orden: una orden en dos cierres del dia lleva el mismo cargo en las dos.
+    const [cargoPorOrden, lecturas] = await Promise.all([
+      cargosFulfillmentVigentes(this.prisma, cierresDiaRows.map((cd) => cd.id)),
+      Promise.all(
+        cierresDiaRows.map(async (cd) => {
+          const [gestiones, detalle] = await Promise.all([
+            this.prisma.gestionOrden.findMany({
+              where: { cierreId: cd.id }, // R11: gestiones vinculadas a ESTE cierre_dia
+              orderBy: { createdAt: "desc" },
+              select: GESTION_ADMIN_SELECT,
+            }),
+            this.prisma.cierreDetail.findMany({
+              where: { cierreId: cd.id }, // el snapshot de ESE cierre_dia
+              select: DETALLE_ADMIN_SELECT,
+            }),
+          ]);
+          return { cd, gestiones, detalle };
+        }),
+      ),
+    ]);
+    const cierresDia = lecturas.map(({ cd, gestiones, detalle }) => {
+      // Grano: N gestiones de una orden comparten su UNICA fila congelada.
+      const byOrden = new Map(detalle.map((d) => [d.ordenId, d]));
+      return {
+        resumen: toDetalleCierreRow(cd),
+        // Sin fallback (R14/decision (a)): si falta la fila, error DURO. Igual que T18: un
+        // fallback a datos vivos seria el camino de lectura que esta feature vino a matar.
+        gestiones: gestiones.map((g) => {
+          const d = byOrden.get(g.ordenId);
+          if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
+          // SLT-110 (R210-R212): la misma lectura que el detalle de mensajeros -> fecha del cargo y
+          // `tarifaFaltante` por el mismo mapper.
+          return toPendienteRowDesdeSnapshot(g, d, zona, {
+            cargoFulfillmentAt: cargoPorOrden.get(g.ordenId) ?? null,
+          });
+        }),
+      };
+    });
 
     // SLT-76 (R3/R4): la cabecera con `desmarcable`, por el mismo camino que las listas.
     const [resumen] = await aResumenRows(this.prisma, [cierre]);
