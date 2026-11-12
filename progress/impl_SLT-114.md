@@ -84,3 +84,6 @@ Base desechable `slt114_conciliacion` (DROP/CREATE en el Postgres local del `.en
 
 T1-T5 hechas y probadas; T6 con E2E y navegador verdes, pendiente solo de que el humano acepte el tamaño del PR
 (1132/1000) para que el gate quede verde.
+
+## Gate del leader (2026-11-12)
+- `./init.sh` con la base slt114_conciliacion: único rojo nuevo `dominio-ordenex-fuera` por timeout de 20 s con 3 agentes en paralelo; corrido solo, 9/9 en 2 s. Flaky por carga conocido (también en SLT-106 hoy).
