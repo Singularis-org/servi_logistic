@@ -22,12 +22,12 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** Actualiza la rama desde `origin/dev`, que ya trae el PR #131 de SLT-103 «Diálogos del
+- [x] **T0.1** Actualiza la rama desde `origin/dev`, que ya trae el PR #131 de SLT-103 «Diálogos del
   módulo de cierres y trato tú» (`git fetch` + merge; comprueba el `merge-base`). Lee cómo quedó la
   API de evidencia en `GestionesCierre` y el visor de `CierreDiaModule`.
   **Hecho:** el SHA de `origin/dev` y la firma de `onVerEvidencia` anotados en
   `progress/features/SLT-108.md`.
-- [ ] **T0.2** Repite el censo de `design.md > Tests y guardias que cambian` con `grep -rl` en
+- [x] **T0.2** Repite el censo de `design.md > Tests y guardias que cambian` con `grep -rl` en
   `tests/` y `e2e/`. Busca:
   - «Comprobante detallado de tu cierre»;
   - «Ver del cierre»;
@@ -37,15 +37,15 @@
   - `COLUMNAS_DESCARGA_DIA_INCIDENTES`.
 
   **Hecho:** la lista coincide con `## Archivos esperados`, o el leader tiene el archivo de más.
-- [ ] **T0.3** Mide una vez, en la base desechable, el `pagoMensajero` que la vista del día da a un
+- [x] **T0.3** Mide una vez, en la base desechable, el `pagoMensajero` que la vista del día da a un
   incidente con la tarifa de `e2e/cierre-dia.spec.ts` (1 700 / 300). Escríbelo a mano, con su
   derivación, en la cabecera del E2E.
-- [ ] **T0.4** Corre `pnpm run test:guardias` en limpio. **Hecho:** las guardias verdes de partida,
+- [x] **T0.4** Corre `pnpm run test:guardias` en limpio. **Hecho:** las guardias verdes de partida,
   anotadas.
 
 ## T1 — Lógica pura (depende de T0) [P entre T1.1 y T1.2]
 
-- [ ] **T1.1** `detalle-cierre-vista.ts`: `vistaMensajeroDesdeCierreDia`. Test en
+- [x] **T1.1** `detalle-cierre-vista.ts`: `vistaMensajeroDesdeCierreDia`. Test en
   `tests/unit/utils/detalle-cierre-vista.test.ts`, con un cierre de 2 entregadas y 1 rechazo:
   - `empresa: null`;
   - los conteos de ese cierre;
@@ -53,7 +53,7 @@
   - folio en mayúsculas.
 
   **Hecho:** el test se pone rojo si el adaptador copia `empresa`.
-- [ ] **T1.2** Descargas:
+- [x] **T1.2** Descargas:
   - `detalle-cierre-descarga-columnas.ts`: `COLUMNAS_DESCARGA_DETALLE_MENSAJERO` y
     `filaDescargaDetalleMensajero`.
     - Test en `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts`: claves y encabezados,
@@ -64,16 +64,16 @@
 
 ## T2 — Montaje en `/cierre-dia` (depende de T1)
 
-- [ ] **T2.1** `CierreDiaModule.tsx` (R59, R150-R154, R161):
+- [x] **T2.1** `CierreDiaModule.tsx` (R59, R150-R154, R161):
   - el `Modal` del cierre pasado pasa a `DetalleCierre`, montado como en `design.md`;
   - «Ver» queda deshabilitado mientras carga;
   - los errores van por toast;
   - se quita `CierreFacturaDetalle`;
   - la tira «Cierres solicitados» no se toca.
-- [ ] **T2.2** `CierreDiaModule.tsx` (R58, R162):
+- [x] **T2.2** `CierreDiaModule.tsx` (R58, R162):
   - `columnaPago` en la rama `incidente`, entre la evidencia y las acciones;
   - se reescribe el comentario de la 158.
-- [ ] **T2.3** `tests/components/CierreDiaDetalleUnico.test.tsx` (nuevo). Monta `CierreDiaModule`,
+- [x] **T2.3** `tests/components/CierreDiaDetalleUnico.test.tsx` (nuevo). Monta `CierreDiaModule`,
   que es el composition root. Debe comprobar:
   - «Ver» → `verCierrePasado({ cierreId })` → `dialog` «Detalle del cierre · Tu cierre del día»;
   - las cifras «Recaudado» ₡300, «Gestiones» 1 y «Tu ganancia» ₡45;
@@ -89,7 +89,7 @@
   - audiencia `"central"`;
   - `SeccionSinGestion` sin montar;
   - el toast de `no_encontrada` cambiado por el genérico.
-- [ ] **T2.4** Tests adaptados:
+- [x] **T2.4** Tests adaptados:
   - `CierreDiaModule.test.tsx`: los dos casos del «Ver».
   - `CierreDiaModuleIncidente.test.tsx`:
     - «Ganancia» de un incidente con `pagoMensajero: "300.00"` → `₡300`, literal escrito a mano;
@@ -97,23 +97,23 @@
     - se conservan los negativos de «Indemnización», «Monto» y «Método».
   - `CierreDiaComprobanteMarcasDeOrigen.test.tsx` y `CierreEvidenciasVarias486.test.tsx`: la mitad
     del cierre pasado.
-- [ ] **T2.5** Guardias:
+- [x] **T2.5** Guardias:
   - `cierre-detalle-superficies.guardia.test.ts`: cero montajes del comprobante y la superficie
     nueva del detalle único;
   - `impresion-flujo.guardia.test.ts`: el caso del módulo del mensajero.
 
   **Hecho:** `pnpm run test:guardias` verde, y las dos guardias se ponen rojas si se vuelve a montar
   `<CierreFacturaDetalle` en `CierreDiaModule.tsx`.
-- [ ] **T2.6** `./init.sh` verde, con el tamaño medido y anotado.
+- [x] **T2.6** `./init.sh` verde, con el tamaño medido y anotado.
 
 ## T3 — E2E (depende de T2)
 
-- [ ] **T3.1** `e2e/cierre-dia.spec.ts`, caso nuevo: un incidente gestionado → la sección
+- [x] **T3.1** `e2e/cierre-dia.spec.ts`, caso nuevo: un incidente gestionado → la sección
   «Incidente» enseña «Ganancia» con el literal de T0.3.
-- [ ] **T3.2** `e2e/cierres-rediseno.spec.ts`: el mensajero del escenario A abre su cierre desde la
+- [x] **T3.2** `e2e/cierres-rediseno.spec.ts`: el mensajero del escenario A abre su cierre desde la
   tira de `/cierre-dia` y lee las cifras de `design.md > Verificación`. Lo mismo con el escenario B
   (R77).
-- [ ] **T3.3** En local, con base desechable y `NEXT_PUBLIC_APP_URL` como en `gate.yml`, corre:
+- [x] **T3.3** En local, con base desechable y `NEXT_PUBLIC_APP_URL` como en `gate.yml`, corre:
   - `cierre-dia.spec.ts`;
   - `cierres-rediseno.spec.ts`;
   - lo que dé `grep -rl "cierre-dia" e2e/`.
