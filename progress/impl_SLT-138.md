@@ -101,3 +101,69 @@ R167, R175-R180 son de T2 (pantalla).
 
 ### Veredicto
 T0 y T1 hechas: servidor de filtros con R168-R174 probados y las 8 mutaciones matadas. Falta T2 (pantalla).
+
+## Tanda 2 — pantalla (frontend_dev, 2026-11-12): T2
+
+### Archivos
+Producción: `app/(app)/cierre-dia/_components/FiltrosColaPropiaBarra.tsx` (nuevo),
+`app/(app)/cierre-dia/_components/CierreDiaModule.tsx`, `components/private/cierres/cola/cola-propia-vista.ts`.
+
+Tests: `tests/components/CierreDiaColaFiltros.test.tsx` (nuevo, 7 casos),
+`tests/unit/utils/cola-propia-vista.test.ts` (regex de voseo + 6 casos), `tests/components/descarga/CierresDescarga.test.tsx`
+(solo el comentario de cabecera del caso del archivo), `e2e/cierres-rediseno.spec.ts` (1 caso en el escenario A).
+
+Sin tocar (R179): `FiltrosCierresBarra.tsx`, `ColaCierres.tsx`, `BuscadorFiltros.tsx`, `FilterComponent.tsx`.
+Censo de T0.2: `censo-tablas.ts` y las guardias de descarga siguen viendo `ambitoColumnas:` como propiedad
+del objeto que devuelve `descargaCierresPasados(filtros)`; no cambian.
+
+### Decisiones técnicas
+- La barra sigue la lectura de URL por defecto de `BuscadorFiltros` (como la del admin): `q`, `fecha` y
+  `estado` se leen al entrar y «Limpiar todo» los retira.
+- `aFiltrosPropios` omite toda clave vacía; `leerCierresPasados` manda `filtros` solo si
+  `!sinFiltrosPropios(filtros)` (R173: sin filtros la petición es `{ page, pageSize }`, la de antes).
+- Voseo: el regex viejo `\b(...)\b/i` NO casa «Buscá por folio» ni «Usá los filtros»; el nuevo
+  `(?<!\p{L})(...)(?!\p{L})/iu` sí, y no casa «Busca por folio» (comprobado una vez con node, y queda
+  como control positivo en el test).
+
+### R → test (pantalla)
+| R | Test |
+|---|---|
+| R167 | `CierreDiaColaFiltros.test.tsx` («la barra usa el buscador y los filtros de la app, con folio, fecha y estado») |
+| R174 | `CierreDiaColaFiltros.test.tsx` («Descargar» con filtro manda `{ filtros }`; sin filtros, sin entrada) |
+| R175 | `CierreDiaColaFiltros.test.tsx` (desde la página 2 → página 1 con filtros, pestaña = `total`; folio con foco y texto); `e2e/cierres-rediseno.spec.ts` |
+| R176 | `CierreDiaColaFiltros.test.tsx` (vacío filtrado); `cola-propia-vista.test.ts` (texto); `e2e/cierres-rediseno.spec.ts` |
+| R177 | `CierreDiaColaFiltros.test.tsx` (placeholder, solo dos filtros, cuatro estados sin grupo, sin aviso); `cola-propia-vista.test.ts` (`opcionesEstadoPropias`) |
+| R178 | `CierreDiaColaFiltros.test.tsx` («Limpiar todo» → página 1 sin `filtros`); `e2e/cierres-rediseno.spec.ts` |
+| R179 | `FiltrosCierresBarraEstado.test.tsx`, `CierresAdminFiltros.test.tsx`, `CierresAdminPage.test.tsx` sin tocar y verdes |
+| R180 | `cola-propia-vista.test.ts` («ningún texto usa voseo» con el regex Unicode y su control positivo) |
+
+### Mutaciones (pantalla), una a una sobre `CierreDiaModule.tsx`, restauradas desde copia (sin stash)
+| # | Mutación | Resultado | Caso que cae |
+|---|---|---|---|
+| P1 | `aplicarFiltrosPropios` sin `setPasadosPage(1)` | MATADA | R175 «desde la página 2…» |
+| P2 | `leerCierresPasados` sin `filtros` en la acción | MATADA | 6 de 7 (R174-R178) |
+| P3 | `descargaCierresPasados` sin `{ filtros }` | MATADA | R174 |
+
+### Salidas (unit/componente contra `slt138_filtros`; E2E contra `slt138_e2e`)
+- `pnpm run typecheck` (NODE_OPTIONS 8192): `TC_EXIT=0`, 0 errores.
+- `eslint` de los 6 archivos tocados: `LINT_EXIT=0`, sin avisos.
+- Nuevos: `CierreDiaColaFiltros.test.tsx` + `cola-propia-vista.test.ts`: `Tests 27 passed (27)`.
+- Tocados y vecinos (23 archivos: los dos nuevos, `CierreDiaModule`, `CierreDiaColaPropia`, `BajoRiesgoPaginacion`,
+  `FiltrosCierresBarraEstado`, `CierresAdminFiltros`, `CierresAdminPage`, `CierresDescarga`, `CierresDescargaColumnas`,
+  `CierreDiaPage`, `CierreDiaDetalleUnico`, `CierreDiaModuleIncidente`, `CierreDiaModule477Correccion`,
+  `CierreDiaMotivoRechazoAutomatico`, `CierreDiaComprobanteMarcasDeOrigen`, `CierreEvidenciasVarias486`,
+  `paginacion-transversal`, `liquidacion-money-safe` y las guardias de descarga `ambito-columnas`, `cobertura-tablas`,
+  `contadores-cabecera`, `adaptador-conjunto`): `Test Files 23 passed`, `Tests 298 passed (298)`.
+- `pnpm run test:guardias`: `Tests 4 failed | 4851 passed | 1 skipped`; los 4 rojos son los mismos de la tanda 1
+  (`dependencias-declaradas-presentes.guardia.test.ts`, ya en `origin/dev`).
+- E2E (candado `e2e.lock`, puerto 3000, `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000` como en
+  `gate.yml`), `--project=dinero e2e/cierres-rediseno.spec.ts e2e/cierre-dia.spec.ts`: `18 passed (2.4m)`, el caso nuevo
+  incluido («mensajero A: busca por folio, ve el vacío filtrado y «Limpiar todo» devuelve su cierre»).
+- Base E2E `slt138_e2e`: nueva + `migrate deploy` + `db:seed` + la columna `cierre_dia.pago_independiente_efectivo`
+  añadida SOLO ahí (`ALTER TABLE … ADD COLUMN IF NOT EXISTS … DEFAULT false`), porque el cliente Prisma compartido
+  lo exige desde SLT-123. Ningún archivo de la rama la usa.
+- `node scripts/tamano-pr.mjs`: `22/40 archivos, 1557/1000 líneas`, aceptado por el humano (2026-11-12).
+
+### Veredicto
+T2 hecha: barra de folio, fecha y estado sobre `BuscadorFiltros`, filtros en la clave y en «Descargar», R167 y
+R174-R180 probados en pantalla y E2E, 3 mutaciones matadas. Falta T3 (cierre).

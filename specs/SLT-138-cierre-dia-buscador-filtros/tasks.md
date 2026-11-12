@@ -51,22 +51,22 @@
 
 ## T2 — Pantalla (`frontend_dev`)
 
-- [ ] **T2.1** (dep. T1.2) `components/private/cierres/cola/cola-propia-vista.ts`: textos nuevos,
+- [x] **T2.1** (dep. T1.2) `components/private/cierres/cola/cola-propia-vista.ts`: textos nuevos,
   `opcionesEstadoPropias`, `aFiltrosPropios`. En `tests/unit/utils/cola-propia-vista.test.ts`:
   sus casos y el arreglo del test de voseo (`design.md > El test de voseo`).
   *Hecho:* el control positivo «Buscá por folio» casa con el regex nuevo y con el viejo **no**
   (se comprueba una vez y se anota); los textos nuevos pasan.
-- [ ] **T2.2** (dep. T2.1) `app/(app)/cierre-dia/_components/FiltrosColaPropiaBarra.tsx`.
+- [x] **T2.2** (dep. T2.1) `app/(app)/cierre-dia/_components/FiltrosColaPropiaBarra.tsx`.
   *Hecho:* usa `BuscadorFiltros` y `FilterComponent` de `components/shared/`, sin `disabled` por
   carga; `FiltrosCierresBarra.tsx` sin cambios.
-- [ ] **T2.3** (dep. T1.5, T2.2) `CierreDiaModule.tsx`: estado de filtros, clave de SWR,
+- [x] **T2.3** (dep. T1.5, T2.2) `CierreDiaModule.tsx`: estado de filtros, clave de SWR,
   `fallbackData` solo sin filtros, `aplicarFiltrosPropios` a la página 1, `vacio` según filtros,
   `barra`, `descargaCierresPasados(filtros)`. `tests/components/CierreDiaColaFiltros.test.tsx`
   (rojo primero) y lo que pida el censo de T0.2 (`CierresDescarga.test.tsx`, censo de tablas).
   *Hecho:* R167, R174-R178 verdes en componente; `CierreDiaModule.test.tsx`,
   `CierreDiaColaPropia.test.tsx`, `BajoRiesgoPaginacion.test.tsx`, `FiltrosCierresBarraEstado.test.tsx`,
   `CierresAdminFiltros.test.tsx` y `CierresAdminPage.test.tsx` verdes.
-- [ ] **T2.4** (dep. T2.3) `e2e/cierres-rediseno.spec.ts`: el caso del escenario A de
+- [x] **T2.4** (dep. T2.3) `e2e/cierres-rediseno.spec.ts`: el caso del escenario A de
   `design.md > Tests unitarios y de componente`. El folio se **lee de la fila**, nunca de `folioDe`.
   *Hecho:* verde en local contra base desechable nueva, con `NEXT_PUBLIC_APP_URL` como en
   `.github/workflows/gate.yml`; también `e2e/cierre-dia.spec.ts` verde (toca la pantalla).
