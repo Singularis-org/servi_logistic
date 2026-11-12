@@ -169,3 +169,38 @@ describe("SLT-137 — pendiente de pago en el listado paginado del mensajero", (
     expect(l.sumarVigentesPorCierre).not.toHaveBeenCalled();
   });
 });
+
+// ── SLT-123 (T5.2) — la marca del cierre decide la regla de cada fila ───────────────────────────
+
+describe("SLT-123 R320 — en «Cierres solicitados», lo pendiente sigue la marca de cada cierre", () => {
+  it("misma pagina: viejo (sin marca) 0.00, nuevo (marca) 3000.00, viejo con E < P 2000.00", async () => {
+    // Importes a mano. Viejo con E 5 000 >= P 3 000: el pago salio del efectivo -> 0.00.
+    // Nuevo con el mismo P y E: el efectivo no entra -> P completo, 3 000.00.
+    // Viejo con E 1 000 < P 3 000: 3 000 − 1 000 = 2 000.00, como hoy.
+    const items: CierrePasadoDTO[] = [
+      { ...cierre("c-viejo", "aprobado", "3000.00", "5000.00"), pagoIndependienteEfectivo: false },
+      { ...cierre("c-nuevo", "aprobado", "3000.00", "5000.00"), pagoIndependienteEfectivo: true },
+      { ...cierre("c-viejo-e", "aprobado", "3000.00", "1000.00"), pagoIndependienteEfectivo: false },
+    ];
+    const l = lecturas();
+
+    const filas = await pagina(servicio(repoConPagina(items).repo, l.pendientes));
+
+    expect(filas.map((f) => [f.cierreId, f.pendientePagoMensajero])).toEqual([
+      ["c-viejo", "0.00"],
+      ["c-nuevo", "3000.00"],
+      ["c-viejo-e", "2000.00"],
+    ]);
+  });
+
+  it("nuevo con un pago vigente de 1 000 y un premio de 500: 3 000 + 500 − 1 000 = 2500.00", async () => {
+    const items: CierrePasadoDTO[] = [
+      { ...cierre("c-nuevo", "aprobado", "3000.00", "5000.00"), pagoIndependienteEfectivo: true },
+    ];
+    const l = lecturas({ "c-nuevo": "1000.00" }, { "c-nuevo": "500.00" });
+
+    const filas = await pagina(servicio(repoConPagina(items).repo, l.pendientes));
+
+    expect(filas[0].pendientePagoMensajero).toBe("2500.00");
+  });
+});

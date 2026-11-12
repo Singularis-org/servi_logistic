@@ -36,8 +36,10 @@ import {
  *
  * CIFRAS, a mano:
  *  (1) entrega de 2.000 en efectivo + un rechazo. Pago antes 1.500 + 0 = 1.500; el rechazo pasa a
- *      700 → 2.200. Al aprobar: devengo 2.200, pagado del efectivo mín(2.200, 2.000) = 2.000,
- *      pendiente 200. Sin el ajuste el efectivo lo cubría todo y no quedaba nada pendiente.
+ *      700 → 2.200. Al aprobar: devengo 2.200 y, desde SLT-123 «Pago al mensajero independiente
+ *      del efectivo» (R313, R315), NADA pagado del efectivo: pendiente = P = 2.200. Antes de SLT-123
+ *      se pagaba mín(2.200, 2.000) = 2.000 del efectivo y quedaba 200; lo que vigila R13 (que todo
+ *      sale del total AJUSTADO, 2.200 y no 1.500) sigue igual.
  *  (2) entrega de 9.000 en efectivo. Pago 1.500 → 1.800. Para la central = 9.000 − 1.800 − 0 =
  *      7.200 (sin el ajuste serían 7.500).
  */
@@ -209,9 +211,9 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await confirmar.getByRole("button", { name: "Confirmar y aprobar" }).click();
     await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
 
-    // Con el total ajustado el efectivo (2.000) ya no cubre el devengo (2.200): queda 200 por pagar.
+    // SLT-123 (R315, R321): el pago ya no sale del efectivo; se ofrece pagar todo el total AJUSTADO, 2.200.
     const oferta = page.getByRole("dialog", { name: `Registrar pago a ${m.nombre}` });
-    await expect(oferta.getByText("Disponible:")).toContainText(importe(200));
+    await expect(oferta.getByText("Disponible:")).toContainText(importe(2200));
     await oferta.getByRole("button", { name: "Ahora no" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
@@ -219,7 +221,8 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
       [cierreId, "aprobado", "2200"],
     ]);
 
-    // R13 — el estado de cuenta del mensajero: devengo 2.200, pagado del efectivo 2.000, debe 200.
+    // R13 — el estado de cuenta del mensajero: devengo 2.200, sin «Pago del efectivo» (SLT-123, R313),
+    // debe 2.200.
     await page.goto("/wallet/mensajeros");
     await navegarCon(
       page,
@@ -230,11 +233,10 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     const devengo = libro.getByRole("row").filter({ hasText: "Pago devengado" });
     const pagado = libro.getByRole("row").filter({ hasText: "Pago del efectivo" });
     await expect(devengo).toHaveCount(1);
-    await expect(pagado).toHaveCount(1);
     await expect(devengo).toContainText(importe(2200));
-    await expect(pagado).toContainText(importe(2000));
+    await expect(pagado).toHaveCount(0);
     const tarjeta = page.getByRole("region", { name: `Saldo de ${m.nombre}` });
-    await expect(tarjeta.getByText("La empresa le debe")).toContainText(importe(200));
+    await expect(tarjeta.getByText("La empresa le debe")).toContainText(importe(2200));
   });
 
   test("satélite — el adminSatelite ajusta y aprueba solo; la central ve «1 pago ajustado» en «Mensajeros» y el total ajustado", async ({

@@ -34,6 +34,9 @@ import {
  *   C2 aprobado   P 2 000 / E 5 000, sin pagos                               → 0.00
  *   C3 solicitado P   800 / E     0                                          → null
  *   C4 aprobado   P 1 000 / E     0, premio vivo 250, sin pagos             → 1 000 + 250 = 1250.00
+ * SLT-123 (T5.2, R320) — dos cierres NUEVOS (marca `pago_independiente_efectivo`) en la misma pagina:
+ *   C5 aprobado+marca P 2 000 / E 5 000, sin pagos (mismos P y E que C2)      → P completo = 2000.00
+ *   C6 aprobado+marca P 3 000 / E 1 000, pago vigente 1 000                   → 3 000 − 1 000 = 2000.00
  * y otro mensajero M2 con un cierre aprobado y un pago vigente, que no puede salir en la pagina de M.
  *
  * Sin base se SALTA (`describe.skip`, visible en la salida); con base y sin catalogos, FALLA.
@@ -47,7 +50,7 @@ const FECHA_PAGO = new Date("2026-11-06T00:00:00.000Z");
 
 interface Corpus {
   m: string;
-  c: { C1: string; C2: string; C3: string; C4: string };
+  c: { C1: string; C2: string; C3: string; C4: string; C5: string; C6: string };
   cierreM2: string;
 }
 
@@ -96,6 +99,7 @@ async function sembrar(
     pago: string,
     efectivo: string,
     dia: number,
+    pagoIndependienteEfectivo = false, // SLT-123: la marca de la regla (DEFAULT false)
   ) =>
     (
       await tx.cierreDia.create({
@@ -108,6 +112,7 @@ async function sembrar(
           totalEfectivo: new Prisma.Decimal(efectivo),
           totalGeneral: new Prisma.Decimal(efectivo),
           solicitadoAt: new Date(`2026-11-0${dia}T15:00:00.000Z`),
+          pagoIndependienteEfectivo,
         },
         select: { id: true },
       })
@@ -118,6 +123,8 @@ async function sembrar(
   const C3 = await cierre(m, "solicitado", "800.00", "0.00", 3);
   const C4 = await cierre(m, "aprobado", "1000.00", "0.00", 4);
   const cierreM2 = await cierre(m2, "aprobado", "3000.00", "0.00", 5);
+  const C5 = await cierre(m, "aprobado", "2000.00", "5000.00", 6, true);
+  const C6 = await cierre(m, "aprobado", "3000.00", "1000.00", 7, true);
 
   const pagar = async (mensajeroId: string, cierreId: string, monto: string) =>
     (
@@ -141,6 +148,7 @@ async function sembrar(
     data: { pagoId: anulado, motivo: "Monto equivocado SLT-137", anuladoPor: registrador },
   });
   await pagar(m2, cierreM2, "700.00");
+  await pagar(m, C6, "1000.00");
 
   await tx.pagoMensajeroMovimiento.create({
     data: {
@@ -155,7 +163,7 @@ async function sembrar(
     },
   });
 
-  return { m, c: { C1, C2, C3, C4 }, cierreM2 };
+  return { m, c: { C1, C2, C3, C4, C5, C6 }, cierreM2 };
 }
 
 function servicio(tx: TxDeTest, conLecturas: boolean): CierreDiaService {
@@ -246,10 +254,10 @@ describeSiHayBase("SLT-137 — pendiente de pago en «Cierres solicitados», con
     await prisma?.$disconnect();
   });
 
-  it("1. la pagina de M trae sus cuatro cierres y el total del conjunto", () => {
+  it("1. la pagina de M trae sus seis cierres y el total del conjunto", () => {
     const { items, total } = m();
-    expect(items).toHaveLength(4);
-    expect(total).toBe(4);
+    expect(items).toHaveLength(6);
+    expect(total).toBe(6);
   });
 
   it("2. el pendiente de cada cierre: anulado no resta, premio suma, solicitado null (R164)", () => {
@@ -261,6 +269,20 @@ describeSiHayBase("SLT-137 — pendiente de pago en «Cierres solicitados», con
     expect(pendienteDe.get(corpus.c.C4)).toBe("1250.00");
   });
 
+  it("2b. SLT-123 (R320): un cierre con la marca debe P completo; el efectivo no entra", () => {
+    const { items, corpus } = m();
+    const pendienteDe = new Map(items.map((i) => [i.cierreId, i.pendientePagoMensajero]));
+    // C5 tiene el mismo P y E que C2: C2 (viejo) 0.00, C5 (nuevo) 2000.00.
+    expect(pendienteDe.get(corpus.c.C2)).toBe("0.00");
+    expect(pendienteDe.get(corpus.c.C5)).toBe("2000.00");
+    // C6: 3 000 − 1 000 pagado = 2000.00 (con la regla vieja serian 2 000 − 1 000 = 1000.00).
+    expect(pendienteDe.get(corpus.c.C6)).toBe("2000.00");
+    // La marca viaja con la fila tal como esta en la base.
+    const marcaDe = new Map(items.map((i) => [i.cierreId, i.pagoIndependienteEfectivo]));
+    expect(marcaDe.get(corpus.c.C1)).toBe(false);
+    expect(marcaDe.get(corpus.c.C5)).toBe(true);
+  });
+
   it("3. ningun cierre de otro mensajero sale en la pagina de M", () => {
     const { items, corpus } = m();
     expect(items.map((i) => i.cierreId)).not.toContain(corpus.cierreM2);
@@ -268,7 +290,7 @@ describeSiHayBase("SLT-137 — pendiente de pago en «Cierres solicitados», con
 
   it("4. leer el pendiente no cambia lo que se le paga ni el efectivo congelado (R164)", () => {
     const { snapshotsAntes, snapshotsDespues } = m();
-    expect(snapshotsAntes).toHaveLength(4);
+    expect(snapshotsAntes).toHaveLength(6);
     expect(snapshotsDespues).toEqual(snapshotsAntes);
   });
 

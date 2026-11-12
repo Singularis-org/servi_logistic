@@ -33,7 +33,10 @@ import {
 // Cada `migration.sql`/`down.sql` es UN bloque `DO`, asi que corre como una sola sentencia.
 //
 // ESCENARIO (todo por el camino real: aprobar, `asentarCierreDia`, consolidar, marcar recibido):
-//   central        cierre de la central aprobado: la aprobacion escribe sus asientos (R3).
+//   central        cierre de la central aprobado: la aprobacion escribe sus asientos (R3). Desde
+//                  SLT-123 (R313) esa aprobacion lleva la regla nueva: el libro del mensajero solo
+//                  recibe el devengo, sin `pago_efectivo` (ASENTADO_CENTRAL). Aqui es el centinela
+//                  «la migracion no toca la central»: lo que vigila es que sus filas sigan iguales.
 //   sinConsolidar  satelite aprobado SIN consolidar, con los asientos que escribia la aprobacion de
 //                  antes del hotfix (`asentarCierreDia`), mas un INCENTIVO y un PREMIO del ranking
 //                  posteriores al cierre en el libro del mensajero.
@@ -74,6 +77,10 @@ const MENSAJERO = [
   { tipo: "pago", categoria: "pago_efectivo", monto: "1500.00" },
 ];
 
+// SLT-123 (R313, R314): la central aprobada desde SLT-123 devenga P = 1.500,00 y NO se da por pagada
+// con su efectivo: sin la fila `pago_efectivo`. La caja sigue igual (`egreso_pago_mensajero`, D11).
+const MENSAJERO_CENTRAL = [{ tipo: "devengo", categoria: "pago_devengado", monto: "1500.00" }];
+
 /** Los devengos posteriores al cierre que la migracion NO retira (la conciliacion no los re-escribe). */
 const POSTERIORES = [
   { tipo: "devengo", categoria: "incentivo", monto: "400.00" },
@@ -84,6 +91,7 @@ const POSTERIORES = [
 const MENSAJERO_CON_POSTERIORES = [POSTERIORES[0], ...MENSAJERO, POSTERIORES[1]];
 
 const ASENTADO = { caja: CAJA, tienda: TIENDA, mensajero: MENSAJERO };
+const ASENTADO_CENTRAL = { caja: CAJA, tienda: TIENDA, mensajero: MENSAJERO_CENTRAL };
 const VACIO = { caja: [], tienda: [], mensajero: [] };
 
 type Fila = { tabla: string; fila: Record<string, unknown> };
@@ -241,7 +249,7 @@ describeSiHayBase("SLT-73 T8 — migracion C: retirar los asientos de los cierre
         solicitado: await filasDeLibros(tx, e.solicitado.cierreId),
       };
     });
-    expect(r.central).toEqual(ASENTADO);
+    expect(r.central).toEqual(ASENTADO_CENTRAL);
     expect(r.sinConsolidar).toEqual({ caja: CAJA, tienda: TIENDA, mensajero: MENSAJERO_CON_POSTERIORES });
     expect(r.consolidado).toEqual(ASENTADO);
     expect(r.conciliado).toEqual(ASENTADO);
@@ -285,7 +293,8 @@ describeSiHayBase("SLT-73 T8 — migracion C: retirar los asientos de los cierre
     expect(retiradas).toHaveLength(2 * (CAJA.length + TIENDA.length + MENSAJERO.length));
     expect(r.respaldoRetirables).toEqual(retiradas);
     // R17: la central, el satelite conciliado y el no aprobado, intactos y sin respaldo.
-    expect(r.antesIntactos).toHaveLength(2 * (CAJA.length + TIENDA.length + MENSAJERO.length) + 1);
+    // central (7 + 5 + 1, SLT-123) + conciliado (7 + 5 + 2) + la fila forzada del no aprobado = 28.
+    expect(r.antesIntactos).toHaveLength(28);
     expect(r.despuesIntactos).toEqual(r.antesIntactos);
     expect(r.respaldoIntactos).toEqual([]);
     // El respaldo no es de la app: `servi_app` no puede ni entrar al esquema.

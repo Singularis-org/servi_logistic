@@ -131,6 +131,13 @@ export interface CierreParaPagoDTO {
   estado: CierreEstado;
   totalPagoMensajero: string; // P — STRING 2 dec (snapshot de la 39)
   totalEfectivo: string; // E — STRING 2 dec (snapshot de la 37)
+  /**
+   * SLT-123 (R316, R321) — `cierre_dia.pago_independiente_efectivo`: la regla con la que se deriva
+   * lo pendiente de este cierre. OBLIGATORIA en el tipo (review 1, R321): si un mapeo del
+   * repositorio la olvida, no compila; antes, opcional, se leia como `false` y el reparto aplicaba
+   * la regla vieja a un cierre nuevo sin que nada lo notara.
+   */
+  pagoIndependienteEfectivo: boolean;
 }
 
 /**

@@ -100,9 +100,18 @@ export interface CierreAdminResumen {
    */
   incluyeModeloNuevo?: boolean;
   /**
+   * SLT-123 (R310, R320) — `cierre_dia.pago_independiente_efectivo`: la regla de pago al mensajero
+   * de ESTE cierre (`true` = su pago es independiente del efectivo). La puebla el repositorio en toda
+   * lectura (`toResumenRow`). Opcional en el tipo (aditivo, como `incluyeModeloNuevo`); ausente se
+   * lee como `false`, igual que el `DEFAULT` de la columna: la regla de la feature 44.
+   */
+  pagoIndependienteEfectivo?: boolean;
+  /**
    * Feature 172 (T C.2, §5/R22/R26/R28) — lo que de ESTE cierre sigue sin entregarse al
-   * mensajero, DERIVADO en el servidor: `min(P, E)` menos los pagos VIGENTES registrados contra
-   * el (`derivarPendienteCierre`). STRING de escala 2, money-safe: la pantalla no hace
+   * mensajero, DERIVADO en el servidor (`derivarPendienteCierre`): en un cierre NUEVO
+   * (SLT-123, `pagoIndependienteEfectivo`), `P` menos los pagos VIGENTES registrados contra el;
+   * en uno VIEJO, lo que el efectivo no cubrio, `P − min(P, E)`, menos esos mismos pagos
+   * vigentes (en los dos, mas los premios vivos de la 293). STRING de escala 2, money-safe: la pantalla no hace
    * aritmetica con dinero (R14), solo lo pinta.
    *
    * **`null` = el cierre NO esta aprobado** (R28). No es «cero» ni «no se sabe»: en un cierre

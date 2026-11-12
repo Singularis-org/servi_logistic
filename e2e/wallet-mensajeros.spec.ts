@@ -21,8 +21,10 @@ import { paginaDe } from "./_escenarios/reparto";
  * CIFRAS, escritas a mano a partir del escenario (pago al mensajero 1.500 por entrega; de lo cobrado,
  * 1.000 en efectivo y 7.000 por transferencia):
  *   - devengado P = 2 × 1.500 = 3.000;
- *   - efectivo recaudado E = 1.000 (la transferencia no es efectivo) → pagado = mín(P, E) = 1.000;
- *   - cuenta por pagar = 3.000 − 1.000 = 2.000 → «La empresa le debe 2.000 a <mensajero>».
+ *   - efectivo recaudado E = 1.000 (la transferencia no es efectivo). Desde SLT-123 «Pago al mensajero
+ *     independiente del efectivo» (R313) el cierre de la central NO se da por pagado con el efectivo:
+ *     pagado = 0 (antes mín(P, E) = 1.000);
+ *   - cuenta por pagar = 3.000 − 0 = 3.000 → «La empresa le debe 3.000 a <mensajero>» (antes 2.000).
  */
 
 let c: CajaE2E;
@@ -44,8 +46,8 @@ test.describe.serial("Cuentas por pagar a mensajeros — cuenta, desglose y bloq
     // Columnas: Mensajero · Devengado · Pagado · Cuenta por pagar · Estado · Estado de cuenta.
     const celdas = fila.getByRole("cell");
     await expect(celdas.nth(1)).toHaveText(importe(3000));
-    await expect(celdas.nth(2)).toHaveText(importe(1000));
-    await expect(celdas.nth(3)).toHaveText(importe(2000));
+    await expect(celdas.nth(2)).toHaveText(importe(0));
+    await expect(celdas.nth(3)).toHaveText(importe(3000));
     await expect(celdas.nth(4)).toHaveText("Pendiente");
 
     const buscador = page.getByRole("searchbox", { name: "Buscar por mensajero" });
@@ -67,16 +69,16 @@ test.describe.serial("Cuentas por pagar a mensajeros — cuenta, desglose y bloq
     );
 
     const tarjeta = page.getByRole("region", { name: `Saldo de ${c.mensajero.nombre}` });
-    await expect(tarjeta.getByText(`La empresa le debe`)).toContainText(importe(2000));
+    await expect(tarjeta.getByText(`La empresa le debe`)).toContainText(importe(3000));
     await expect(tarjeta.getByText(`La empresa le debe`)).toContainText(c.mensajero.nombre);
 
     const libro = page.getByRole("table", { name: `Estado de cuenta de ${c.mensajero.nombre}` });
     const devengo = libro.getByRole("row").filter({ hasText: "Pago devengado" });
     const pago = libro.getByRole("row").filter({ hasText: "Pago del efectivo" });
     await expect(devengo).toHaveCount(1);
-    await expect(pago).toHaveCount(1);
     await expect(devengo).toContainText(importe(3000));
-    await expect(pago).toContainText(importe(1000));
+    // SLT-123 (R313): sin «Pago del efectivo» (antes 1.000).
+    await expect(pago).toHaveCount(0);
 
     // D42. Este botón alterna: un segundo clic plegaría el panel.
     await desplegar(page.getByRole("button", { name: /^Ver las órdenes que componen «Pago devengado»/ }));

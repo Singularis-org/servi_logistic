@@ -54,6 +54,7 @@ function fuente(ruta: string): string {
 
 function cierre(id: string, pendiente: string, solicitadoAt: string): CierreImputableDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id,
     mensajeroId: MENSAJERO,
     estado: CierreEstado.aprobado,

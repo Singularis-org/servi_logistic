@@ -125,8 +125,13 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     await aprobar.click();
 
     await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
-    // El detalle se cierra. El efectivo (6.000) cubre la ganancia del mensajero, así que no queda
-    // nada que liquidar y tampoco se ofrece registrar un pago (feature 172/R16).
+    // El detalle se cierra. Hasta SLT-123 el efectivo (6.000) cubría la ganancia del mensajero y no se
+    // ofrecía registrar un pago (feature 172/R16). Desde SLT-123 «Pago al mensajero independiente del
+    // efectivo» (R315, R321) el pago no sale del efectivo: se ofrece pagar la ganancia entera, 1.500
+    // (la entrega a la tarifa por defecto del escenario; el rechazo no paga).
+    const oferta = page.getByRole("dialog", { name: `Registrar pago a ${m.nombre}` });
+    await expect(oferta.getByText("Disponible:")).toContainText(importe(1500));
+    await oferta.getByRole("button", { name: "Ahora no" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
     const resuelto = await verResueltos(page, m);

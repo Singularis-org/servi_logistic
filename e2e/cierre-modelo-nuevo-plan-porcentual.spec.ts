@@ -636,7 +636,8 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
       "empresa:ingreso_iva_flete=591.00",
       "empresa:ingreso_iva_flete_devolucion=108.50",
       "mensajero:pago_devengado=6175.00",
-      "mensajero:pago_efectivo=6175.00",
+      // SLT-123 «Pago al mensajero independiente del efectivo» (R313): la central aprobada ya no
+      // escribe `mensajero:pago_efectivo=6175.00`; la caja sigue con su egreso (R314).
     ]);
     libroAntes.set(cierreNuevo, libro);
 

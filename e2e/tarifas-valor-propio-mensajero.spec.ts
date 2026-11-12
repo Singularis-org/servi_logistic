@@ -258,11 +258,12 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     ]);
     expect(congeladoConPropio.gestiones.map((g) => g.pagosCongelados.filter((p) => p.actor === "mensajero"))).toEqual(PAGOS_CON_PROPIO);
 
-    // Lo que la aprobación dejó en el libro del mensajero: devengó 3.110 y se los quedó del efectivo.
+    // Lo que la aprobación dejó en el libro del mensajero: devengó 3.110. Desde SLT-123 «Pago al
+    // mensajero independiente del efectivo» (R313) la central ya no se los da por pagados con el
+    // efectivo: sin la fila `pago_efectivo=3110` de antes. Lo que vigila (el valor propio 3.110) sigue.
     movimientosConPropio = await movimientosDelCierre(cierreConPropio);
     expect(movimientosConPropio.filter((m) => m.startsWith("mensajero:"))).toEqual([
       "mensajero:devengo:pago_devengado=3110",
-      "mensajero:pago:pago_efectivo=3110",
     ]);
   });
 
@@ -305,9 +306,9 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     const aprobadoDespues = await congeladoDelCierre(cierreCongeladoAntes);
     expect(aprobadoDespues).toMatchObject({ estado: "aprobado", totalPagoMensajero: "3110" });
     expect(aprobadoDespues.gestiones.map((g) => g.pagosCongelados.filter((p) => p.actor === "mensajero"))).toEqual(PAGOS_CON_PROPIO);
+    // SLT-123 (R313): solo el devengo, sin `pago_efectivo`.
     expect((await movimientosDelCierre(cierreCongeladoAntes)).filter((m) => m.startsWith("mensajero:"))).toEqual([
       "mensajero:devengo:pago_devengado=3110",
-      "mensajero:pago:pago_efectivo=3110",
     ]);
 
     // Lo ya aprobado, fila a fila.
