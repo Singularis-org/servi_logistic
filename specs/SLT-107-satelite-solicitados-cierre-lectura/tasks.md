@@ -28,7 +28,7 @@ avisa.
 
 ## T0 — Comprobaciones previas (sin código)
 
-- [ ] **T0.1** — Grep de quién llama a `findCierreBodegaConDetalle` y de quién construye
+- [x] **T0.1** — Grep de quién llama a `findCierreBodegaConDetalle` y de quién construye
   `CierresBodegaAdminService` o un `ListarConsolidacionServiceResult` tipado (dobles incluidos). Si
   aparece un archivo fuera de `## Archivos esperados`, se añade aquí antes de seguir. **Hecho:** lista
   en `progress/impl_SLT-107.md`.
@@ -39,9 +39,9 @@ avisa.
   (`contadores-cabecera`, `cascada-central-en-las-dos-pantallas`, `cierre-bodega-vocabulario`,
   `liquidacion-money-safe`, `cierres-descarga-detallada-puerta`). **Hecho:** cada uno que vaya a
   cambiar está en `## Archivos esperados` (si pasa de 32 archivos, para: no cabe en un PR).
-- [ ] **T0.3** [P] — PA3: leer el servicio de «Corregir recibido» y anotar si reescribe
+- [x] **T0.3** [P] — PA3: leer el servicio de «Corregir recibido» y anotar si reescribe
   `cierre_bodega.conciliado_at`. **Hecho:** nota con archivo y línea.
-- [ ] **T0.4** [P] — Confirmar que la satélite abre por `hrefDetalleCierre` un cierre del día de su
+- [x] **T0.4** [P] — Confirmar que la satélite abre por `hrefDetalleCierre` un cierre del día de su
   zona ya consolidado en un cierre de bodega (R294). **Hecho:** nota con archivo y línea; si no lo abre,
   se para y se pregunta.
 
@@ -212,6 +212,16 @@ avisa.
 - `tests/components/paginacion/ColasPaginacion.test.tsx`
 - `tests/components/descarga/CierresDescargaColumnas.test.tsx`
 - `tests/unit/descarga/censo-tablas.ts`
+- T0.1 (2026-11-12): llamadas a `findCierreBodegaConDetalle(id, zona)` con dos argumentos o dobles de
+  `cierreBodega.findUnique` que rompen con `alcance` obligatorio y `findFirst` (una línea cada uno):
+  - `tests/integration/db/486-evidencias-cierres-sql-real.test.ts`
+  - `tests/integration/db/ajuste-pago-mensajero-lectura.int.test.ts`
+  - `tests/integration/db/cierre-bodega-cifras-fila-sql-real.test.ts`
+  - `tests/integration/db/cierre-bodega-desglose-por-tienda-sql-real.test.ts`
+  - `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts`
+  - `tests/integration/db/slt76-desmarcable.int.test.ts`
+  - `tests/unit/repositories/cierre-bodega-repository.test.ts`
+  - `tests/unit/repositories/cierre-pagos-lectura.test.ts`
 - `e2e/cierre-bodega-satelite.spec.ts`
 - `e2e/cierres-rediseno.spec.ts`
 - `progress/impl_SLT-107.md`
