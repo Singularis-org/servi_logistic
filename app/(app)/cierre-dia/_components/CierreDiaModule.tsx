@@ -62,8 +62,12 @@ import {
   DESCRIPCION_PROPIA,
   PESTANA_PROPIA,
   REGION_PROPIA,
+  VACIO_FILTRADO_PROPIA,
   VACIO_PROPIA,
 } from "@/components/private/cierres/cola/cola-propia-vista";
+// SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero» (R167): la barra de la cola.
+import { FiltrosColaPropiaBarra } from "./FiltrosColaPropiaBarra";
+import { sinFiltrosPropios, type FiltrosColaPropia } from "@/lib/types/filtros-cierres";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import {
   filasLocales,
@@ -209,17 +213,27 @@ const ERROR_PASADOS = "No se pudieron cargar tus cierres solicitados.";
  * La configuración de descarga del HISTÓRICO de cierres solicitados del mensajero. Es un objeto con
  * nombre para que el ámbito de la ficha 314 viaje como una PROPIEDAD `ambitoColumnas:` y
  * `ambito-columnas.guardia` lo vea.
+ *
+ * SLT-138: es una función de los filtros de la barra; el objeto devuelto es el mismo (y
+ * `ambitoColumnas:` sigue siendo una propiedad).
  */
-const DESCARGA_CIERRES_PASADOS: DataTableDescarga = {
-  titulo: TITULO_DESCARGA_PASADOS,
-  columnas: COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
-  ambitoColumnas: AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
-  obtenerFilas: () =>
-    filasDesdeResultado(
-      descargarDatos("listarCierresPasadosCompleto", undefined),
-      filaDescargaDiaCierrePasado,
-    ),
-};
+function descargaCierresPasados(filtros: FiltrosColaPropia): DataTableDescarga {
+  return {
+    titulo: TITULO_DESCARGA_PASADOS,
+    columnas: COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
+    ambitoColumnas: AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
+    // SLT-138 (R174): con filtros puestos, el archivo es el de esos filtros (todas las páginas). Sin
+    // ninguno, la llamada es la de antes, sin entrada (R173).
+    obtenerFilas: () =>
+      filasDesdeResultado(
+        descargarDatos(
+          "listarCierresPasadosCompleto",
+          sinFiltrosPropios(filtros) ? undefined : { filtros },
+        ),
+        filaDescargaDiaCierrePasado,
+      ),
+  };
+}
 
 // R40: el tamaño sale de la config del dominio (T H.1), nunca de un literal de pantalla.
 const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_SIZE);
@@ -227,12 +241,17 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
 /**
  * Feature 170 — FASE 2 (T I.2, R40/R41/R44): una página de los cierres solicitados POR ESTE
  * mensajero. El `mensajero_id` no viaja en el input: lo pone el servidor desde la sesión.
+ *
+ * SLT-138 (R173): `filtros` viaja SOLO si recorta algo; sin filtros la petición es la de antes.
  */
 async function leerCierresPasados(
   page: number,
   pageSize: number,
+  filtros: FiltrosColaPropia,
 ): Promise<CierresPasadosPagina> {
-  const res = await listarCierresPasadosPaginado({ page, pageSize });
+  const res = await listarCierresPasadosPaginado(
+    sinFiltrosPropios(filtros) ? { page, pageSize } : { page, pageSize, filtros },
+  );
   if (res.status !== "ok") throw new Error(res.status);
   return { items: res.items, total: res.total, pageSize: res.pageSize };
 }
@@ -345,12 +364,21 @@ export function CierreDiaModule({
   // Feature 170 — FASE 2 (T I.2, R40/R43): página visible de «Cierres solicitados».
   const [pasadosPage, setPasadosPage] = useState(1);
   const [pasadosPageSize, setPasadosPageSize] = useState(cierresPasados.pageSize);
+  // SLT-138 (R175): los filtros de la barra van en la clave; cambiarlos vuelve a la página 1. La
+  // página del Server Component solo vale como `fallbackData` sin filtros.
+  const [filtrosPropios, setFiltrosPropios] = useState<FiltrosColaPropia>({});
+  function aplicarFiltrosPropios(next: FiltrosColaPropia) {
+    setFiltrosPropios(next);
+    setPasadosPage(1);
+  }
   const { data: pasadosData, error: pasadosError } = useSWR(
-    ["cierre-dia:pasados", pasadosPage, pasadosPageSize],
-    () => leerCierresPasados(pasadosPage, pasadosPageSize),
+    ["cierre-dia:pasados", pasadosPage, pasadosPageSize, filtrosPropios],
+    () => leerCierresPasados(pasadosPage, pasadosPageSize, filtrosPropios),
     {
       fallbackData:
-        pasadosPage === 1 && pasadosPageSize === cierresPasados.pageSize
+        pasadosPage === 1 &&
+        pasadosPageSize === cierresPasados.pageSize &&
+        sinFiltrosPropios(filtrosPropios)
           ? cierresPasados
           : undefined,
     },
@@ -553,7 +581,8 @@ export function CierreDiaModule({
       {/* ---------- Cierres solicitados (histórico, R18) ----------
           SLT-137 (R60, R155): la cola única con rol mensajero. La `<section>` no lleva nombre: la
           región «Cierres solicitados» la da `ColaCierres`. Feature 170 (R52): «Descargar» es el
-          CONJUNTO COMPLETO de este mensajero, acotado en el servidor desde la sesión (R159). */}
+          CONJUNTO COMPLETO de este mensajero, acotado en el servidor desde la sesión (R159), con los
+          filtros de la barra si hay alguno (SLT-138, R174). */}
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Cierres solicitados</h2>
         <ColaCierres
@@ -563,12 +592,12 @@ export function CierreDiaModule({
           pestanas={[{ id: "pendientes", label: PESTANA_PROPIA, conteo: pasadosData?.total ?? 0 }]}
           pestanaActiva="pendientes"
           onPestana={() => {}}
-          // SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero» pone aquí la barra.
-          barra={null}
-          descargar={<DescargarDatasetButton {...DESCARGA_CIERRES_PASADOS} />}
+          barra={<FiltrosColaPropiaBarra onChange={aplicarFiltrosPropios} />}
+          descargar={<DescargarDatasetButton {...descargaCierresPasados(filtrosPropios)} />}
           cargando={pasadosCargando}
           error={pasadosError ? ERROR_PASADOS : null}
-          vacio={VACIO_PROPIA}
+          // R176: con un filtro puesto, el vacío dice que nada coincide, no que no hay cierres.
+          vacio={sinFiltrosPropios(filtrosPropios) ? VACIO_PROPIA : VACIO_FILTRADO_PROPIA}
           region={REGION_PROPIA}
           paginacion={
             <Pagination

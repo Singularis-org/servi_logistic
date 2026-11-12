@@ -184,11 +184,10 @@ export async function listarCierresPasadosPaginado(
  * traia las gestiones del dia, la tarifa por zona+vehiculo y la FIRMA en lote de las evidencias
  * fotograficas de todas ellas — de todo eso, el archivo usaba un solo campo y ninguna URL (R9).
  *
- * El `mensajero_id` no viaja en el input: lo pone el servicio desde el actor de la sesion. Y como
- * este listado no tiene filtros, la lista blanca derivada de la de su pagina no deja NINGUNA
- * clave: cualquier cosa que llegue —empezando por `mensajeroId`— muere aqui con
- * `validation_error` sin tocar el servicio (R17). El input se parsea aunque no se transporte
- * nada: parsear ES la barrera.
+ * El `mensajero_id` no viaja en el input: lo pone el servicio desde el actor de la sesion. La
+ * lista blanca derivada de la de su pagina deja una sola clave, `filtros` (SLT-138, R168): todo
+ * lo demas —empezando por `mensajeroId`— muere aqui con `validation_error` sin tocar el servicio
+ * (R17). Con filtros, el archivo lleva TODOS los cierres que los cumplen, no la pagina (R174).
  */
 export async function listarCierresPasadosCompleto(
   input: unknown = {},
@@ -197,9 +196,12 @@ export async function listarCierresPasadosCompleto(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
-    listarCierresPasadosCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const data = listarCierresPasadosCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
-    return service.listarCierresPasadosCompleto(actor);
+    // SLT-138 (R173, R174): sin `filtros`, la llamada es la de antes (solo el actor).
+    return data.filtros
+      ? service.listarCierresPasadosCompleto(actor, data.filtros)
+      : service.listarCierresPasadosCompleto(actor);
   });
   return isAppErrorShape(r) ? toCierreDiaActionError(r) : r;
 }

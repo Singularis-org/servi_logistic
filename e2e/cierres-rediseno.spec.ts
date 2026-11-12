@@ -334,6 +334,37 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     const filaSat = paginaSat.getByRole("region", { name: "Cierres solicitados" }).getByRole("row").nth(1);
     await expect(filaSat.getByRole("cell").nth(cabeceras.indexOf("Pago"))).toHaveText("Motivo: «Faltan paquetes»");
   });
+
+  // SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero» (T2.4; R175, R176, R178). El folio
+  // se LEE de la fila, como lo ve el mensajero. 4 caracteres en minúscula (el servidor los pasa a
+  // mayúsculas) → su fila; «ZZ» no puede estar en un folio (solo 0-9 y A-F) → vacío filtrado y 0.
+  test("mensajero A: busca por folio, ve el vacío filtrado y «Limpiar todo» devuelve su cierre", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, central.m);
+    await page.goto("/cierre-dia");
+    const pestana = page.getByRole("tablist", { name: "Tus cierres" }).getByRole("tab");
+    await expect(pestana).toHaveText(["Cierres solicitados 1"]);
+    const cola = page.getByRole("region", { name: "Cierres solicitados" });
+    const folio = ((await cola.getByRole("row").nth(1).getByRole("cell").first().textContent()) ?? "").trim();
+    expect(folio).toMatch(/^#[0-9A-F]{8}$/);
+
+    const barra = page.getByRole("region", { name: "Filtros de tus cierres" });
+    const campo = barra.getByRole("searchbox", { name: "Buscar" });
+    await expect(campo).toHaveAttribute("placeholder", "Busca por folio");
+
+    await campo.fill(folio.slice(3, 7).toLowerCase());
+    await expect(pestana).toHaveText(["Cierres solicitados 1"]);
+    await expect(cola.getByRole("row").nth(1).getByRole("cell").first()).toHaveText(folio);
+
+    await campo.fill("ZZ");
+    await expect(cola.getByText("Ningún cierre coincide con los filtros.", { exact: true })).toBeVisible();
+    await expect(pestana).toHaveText(["Cierres solicitados 0"]);
+
+    await barra.getByRole("button", { name: "Limpiar todo" }).click();
+    await expect(campo).toHaveValue("");
+    await expect(pestana).toHaveText(["Cierres solicitados 1"]);
+    await expect(cola.getByRole("row").nth(1).getByRole("cell").first()).toHaveText(folio);
+  });
 });
 
 // ═══ SLT-101 «Fila de gestión única y lista con filtros» (T6.1, R77) ═══════════════════════════════════════════

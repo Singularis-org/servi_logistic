@@ -1,8 +1,15 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  BARRA_PROPIA,
+  BUSCA_POR_FOLIO,
   DESCRIPCION_PROPIA,
   ERROR_PROPIA,
+  FILTRO_ESTADO_PROPIA,
+  FILTRO_FECHA_PROPIA,
+  VACIO_FILTRADO_PROPIA,
+  aFiltrosPropios,
+  opcionesEstadoPropias,
   MOTIVO_SIN_TEXTO,
   PAGO_LIQUIDADO,
   PAGO_PENDIENTE,
@@ -17,6 +24,13 @@ import {
   textoPagoPropio,
 } from "@/components/private/cierres/cola/cola-propia-vista";
 import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
+import { filtrosColaPropiaSchema } from "@/lib/types/filtros-cierres";
+
+/**
+ * SLT-138 (R180, deuda de la review de SLT-137): límites de letra Unicode. Con `\b` y sin la bandera
+ * `u`, la «á» final no cuenta como letra y «Buscá» pasaba sin casar.
+ */
+const VOSEO = /(?<!\p{L})(vos|tenés|podés|querés|hacé|buscá|mirá|usá)(?!\p{L})/iu;
 
 // SLT-137 (T2.1) — la lógica pura de la cola con rol mensajero. Los textos esperados son LITERALES
 // del spec (`design.md > Textos`, `requirements.md > R155-R157, R160`): compararlos contra la
@@ -95,6 +109,11 @@ describe("SLT-137 — textos de la cola propia (R155, R157, R160, R180)", () => 
 
   it("ningún texto usa voseo (R180)", () => {
     const textos = [
+      BUSCA_POR_FOLIO,
+      VACIO_FILTRADO_PROPIA,
+      BARRA_PROPIA,
+      FILTRO_FECHA_PROPIA,
+      FILTRO_ESTADO_PROPIA,
       DESCRIPCION_PROPIA,
       PESTANA_PROPIA,
       TABLIST_PROPIA,
@@ -106,7 +125,61 @@ describe("SLT-137 — textos de la cola propia (R155, R157, R160, R180)", () => 
       PAGO_SIN_DATO,
       MOTIVO_SIN_TEXTO,
     ];
-    for (const t of textos) expect(t).not.toMatch(/\b(vos|tenés|podés|querés|hacé|buscá|mirá)\b/i);
+    for (const t of textos) expect(t).not.toMatch(VOSEO);
+  });
+
+  it("el regex de voseo reconoce la tilde final (control positivo, SLT-138)", () => {
+    // Sin la bandera `u`, `\b` no ve la «á» final como letra y «Buscá por folio» no casaba: el test
+    // de arriba salía verde con voseo dentro.
+    expect("Buscá por folio").toMatch(VOSEO);
+    expect("Usá los filtros").toMatch(VOSEO);
+    expect("Busca por folio").not.toMatch(VOSEO);
+  });
+});
+
+describe("SLT-138 — textos y traducción de la barra (R176, R177)", () => {
+  it("los textos nuevos, literales del spec", () => {
+    expect(BUSCA_POR_FOLIO).toBe("Busca por folio");
+    expect(VACIO_FILTRADO_PROPIA).toBe("Ningún cierre coincide con los filtros.");
+    expect(BARRA_PROPIA).toBe("Filtros de tus cierres");
+    expect(FILTRO_FECHA_PROPIA).toBe("Fecha de solicitud");
+    expect(FILTRO_ESTADO_PROPIA).toBe("Estado");
+  });
+
+  it("opcionesEstadoPropias: los cuatro estados con su etiqueta y sin grupo", () => {
+    expect(opcionesEstadoPropias()).toEqual([
+      { value: "solicitado", label: "Solicitado" },
+      { value: "vencido", label: "Vencido" },
+      { value: "aprobado", label: "Aprobado" },
+      { value: "rechazado", label: "Rechazado" },
+    ]);
+    expect(opcionesEstadoPropias().some((o) => "group" in o)).toBe(false);
+  });
+
+  it("aFiltrosPropios: sin selección ni término, el objeto vacío (ninguna clave viaja)", () => {
+    expect(aFiltrosPropios({}, "")).toEqual({});
+    expect(Object.keys(aFiltrosPropios({ fecha: ["", "", ""], estado: [] }, "   "))).toEqual([]);
+  });
+
+  it("aFiltrosPropios: la terna de fecha con un extremo vacío deja solo el otro", () => {
+    expect(aFiltrosPropios({ fecha: ["", "2026-07-01", ""] }, "")).toEqual({ desde: "2026-07-01" });
+    expect(aFiltrosPropios({ fecha: ["7d", "2026-07-01", "2026-07-08"] }, "")).toEqual({
+      desde: "2026-07-01",
+      hasta: "2026-07-08",
+    });
+  });
+
+  it("aFiltrosPropios: estados y folio recortado; el servidor normaliza el resto", () => {
+    expect(aFiltrosPropios({ estado: ["vencido", "rechazado"] }, "  #3f2a ")).toEqual({
+      estados: ["vencido", "rechazado"],
+      folio: "#3f2a",
+    });
+    // Lo emitido pasa por el MISMO zod que valida la acción.
+    expect(
+      filtrosColaPropiaSchema.safeParse(
+        aFiltrosPropios({ fecha: ["", "2026-07-01", "2026-07-08"], estado: ["aprobado"] }, "AB12"),
+      ).success,
+    ).toBe(true);
   });
 });
 

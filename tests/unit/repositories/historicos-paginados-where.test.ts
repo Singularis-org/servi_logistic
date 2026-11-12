@@ -177,6 +177,66 @@ describe("WHERE de los listados paginados de la tanda I (T I.1)", () => {
     });
   });
 
+  // SLT-138 (R172): con filtros, el alcance va DENTRO del `AND` junto a los recortes —ningún
+  // recorte puede sustituirlo— y es el MISMO objeto en la página, el conteo y el archivo.
+  const DESDE = new Date("2026-11-04T06:00:00.000Z");
+  const HASTA = new Date("2026-11-05T06:00:00.000Z");
+  const WHERE_FILTRADO = {
+    AND: [
+      { mensajeroId: "m-a" },
+      { solicitadoAt: { gte: DESDE, lt: HASTA } },
+      { estado: { in: ["rechazado"] } },
+      { id: { in: ["c-1", "c-2"] } },
+    ],
+  };
+  function clienteMensajero(cierreDia: ReturnType<typeof delegado>) {
+    const $queryRaw = vi.fn(async () => [{ id: "c-1" }, { id: "c-2" }]);
+    return { cliente: { cierreDia, $queryRaw } as unknown as PrismaClient, $queryRaw };
+  }
+
+  it("SLT-138 — cierres solicitados del mensajero CON filtros: el alcance va dentro del AND", async () => {
+    const cierreDia = delegado();
+    const { cliente, $queryRaw } = clienteMensajero(cierreDia);
+    const repo = new CierreDiaRepository(cliente, {} as never);
+
+    await repo.findCierresByMensajeroPaginado("m-a", RANGO, {
+      solicitadoDesde: DESDE,
+      solicitadoHasta: HASTA,
+      estados: ["rechazado"],
+      folio: "3F2A",
+    });
+
+    verificar(cierreDia, { where: WHERE_FILTRADO, orderBy: { solicitadoAt: "desc" } });
+    // La lectura del folio va acotada por el mismo mensajero (el SQL lo prueba la integración).
+    expect($queryRaw).toHaveBeenCalledTimes(1);
+    expect(($queryRaw.mock.calls[0] as unknown[]).slice(1)).toEqual(["m-a", "3F2A"]);
+  });
+
+  it("SLT-138 — el archivo del mensajero usa el MISMO where filtrado; sin folio no lee ids", async () => {
+    const cierreDia = delegado();
+    const { cliente, $queryRaw } = clienteMensajero(cierreDia);
+    const repo = new CierreDiaRepository(cliente, {} as never);
+
+    await repo.findCierresByMensajero("m-a", {
+      solicitadoDesde: DESDE,
+      solicitadoHasta: HASTA,
+      estados: ["rechazado"],
+      folio: "3F2A",
+    });
+    expect(cierreDia.findMany.mock.calls[0]?.[0]?.where).toEqual(WHERE_FILTRADO);
+
+    await repo.findCierresByMensajero("m-a", { estados: ["aprobado"] });
+    expect(cierreDia.findMany.mock.calls[1]?.[0]?.where).toEqual({
+      AND: [{ mensajeroId: "m-a" }, { estado: { in: ["aprobado"] } }],
+    });
+    expect($queryRaw).toHaveBeenCalledTimes(1);
+
+    // R173: sin filtros, el objeto de siempre y ninguna lectura extra.
+    await repo.findCierresByMensajero("m-a");
+    expect(cierreDia.findMany.mock.calls[2]?.[0]?.where).toEqual({ mensajeroId: "m-a" });
+    expect($queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   it("incidentes — historico: alcance por la zona de la ORDEN + estados fuera de la cola", async () => {
     const ordenIncidente = delegado();
     const repo = new IncidenteAdminRepository(
