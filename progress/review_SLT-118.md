@@ -179,3 +179,68 @@ SLT-118 «Planes: factura por empresa y período con la cuota y las órdenes». 
 **OK.** B1 y B2 están resueltos (B2 por decisión del humano: el merge exige `gate-completo` y `e2e` en verde) y m1–m4 están
 corregidos. m5 está en SLT-119 «Planes: pantallas de facturas para el superadmin y el maestro». Quedan los menores m6–m8, que no
 bloquean.
+
+## Vuelta 3 (acotada a 8b1ffdf0..d13cf08b: 3dd042e2, c5556abd, 4cc48462, a7c3b7c6, 7bdb066b, d13cf08b)
+
+### Verificación ejecutada
+- [x] typecheck (`tsc --noEmit`) sin errores; eslint sin errores en `scripts/verificar-rls-despliegue.ts`, su test y los tres
+  tests de integración de factura tocados.
+- [x] `pnpm test:guardias`: 4 rojos, todos de `dependencias-declaradas-presentes` (baseline); 4822 pasan.
+- [x] `vitest run tests/unit/scripts/verificar-rls-despliegue.test.ts`: 4/4.
+- [x] `git merge-tree HEAD origin/dev`: limpio (dev solo trae SLT-124, sin migraciones ni archivos de esta rama).
+- [x] Tamaño: 75 archivos; lo acepta la línea «todo en un PR, sin tope fijo».
+- [ ] Integración (T16.3, T16.4, m7 y su gemelo) y `db:migrate`/`db:rollback`: **leídos, no corridos** (sin base local). En
+  el PR #130 los shards de vitest y `e2e (dinero)` estaban `pending` al revisar.
+
+### Revisión de fondo (dinero)
+- **Factura histórica (R26, T16.2).** La siembra usa `date_trunc('day', created_at − 6 h) + 6 h`, la misma regla que
+  `avanzar` paso 1, y `fin_natural_at = plan_fin_periodo_calendario(periodicidad, now())`. La sembrada lleva todo
+  `[alta, primer corte)`. `factura_plataforma_ordenes` suma `[desde, hasta)` sin tope de largo, y las facturas
+  siguientes empiezan en su `hasta`, así que no hay huecos ni solapes: ninguna orden se duplica ni se pierde. No lleva
+  marca. La cuota es la del período que empieza en la emisión, sin las anteriores (P15). Lo verifica el test «alta el 3 de
+  septiembre…» con cifras: 350 / 100 / 4 movimientos / cuota 15 500, sin primera cuota, número 1, y la mensual con fin el 1
+  de diciembre. Además corre el TEXTO de la siembra (`sembrarComoLaMigracion`, que falla si la siembra cambia de forma), y
+  la base propia comprueba `desde` = 00:00 del alta y el fin.
+- **`fin_natural_at` (P20).** Lo escribe `abrir`; `avanzar` fija con él (y, por tanto, `cerrar`). `tomar_cambio` §5.2 lo
+  recalcula solo si la periodicidad cambia (con la misma lo conserva; ese es el R16 aclarado, y design §2.3 ya está
+  alineado). En R28 la factura nueva lo lleva calculado desde E. `en_curso` lee el guardado salvo en la vista previa
+  §5.2 con otra periodicidad, que calcula como la toma. El trigger lo congela en una `por_cerrar` (SL118, con test).
+- **R36.** Editar el plan no toca facturas; `avanzar` lee el fin guardado. El test T16.3 comprueba `trasEditar ==
+  antes`, nada el 15, la fija el 16 y la siguiente mensual con fin el 1 de diciembre.
+- **R28 sobre la histórica.** `avanzar(efecto)` no la fija, porque E < fin guardado. Cae en la rama «efecto > D, sin
+  plan», que la fija en E (`hasta = E ≤ fin_natural_at`, CHECK ok) con la marca, y abre la nueva con su fin desde E. Las
+  órdenes `[alta, E)` van en ella y `[E, …)` en las siguientes. Es correcto, pero no tiene test propio (ver m9).
+- **CHECK `factura_plataforma_fin_natural`** (`fin > desde`, `hasta ≤ fin`). Se cumple en todas las escrituras: la
+  siembra (el fin es posterior a `now()` y `now()` es posterior al alta), `abrir`, la fijación de `avanzar` (`hasta = fin`),
+  R28 (`hasta = E < fin`) y el recálculo de R16. Hay test del 23514. **`down.sql`** no cambia: la columna se va con el
+  `DROP TABLE` y ningún otro objeto la nombra; el CI corre la ida y vuelta de la base propia (R27).
+- **m7 y su gemelo.** `en_curso`, con `plan_cambio_desde_at ≤ D`, muestra la periodicidad del plan del cambio y, si es
+  distinta, el fin recalculado. Es lo que hará la toma, para la primera asignación y para el cambio. Hay dos tests
+  nuevos en `aislamiento`, que comparan contra el estado tras la cola. m6 está resuelto: design §2.6 y el *Test* de R24
+  ya los incluyen. m8 está resuelto: el merge de dev no deja conflicto.
+- **verificar-rls-despliegue.** `MODELOS_DE_NEGOCIO` llega a 90 y el contrato sube a 91 políticas y 90 triggers «sin
+  cambio». `triggersMismaEmpresa` se queda en 175, y está justificado: la única FK de `factura_plataforma` es a
+  `organizacion`. No baja la exigencia.
+- **Trazabilidad R26/R36.** El mapa de `impl_SLT-118.md` cita los `it` nuevos, que existen y nombran su `R<n>` con
+  aserciones reales.
+
+### Hallazgos
+- **B3 (BLOQUEANTE). T16.1, T16.2, T16.3 y T16.4 están sin marcar** (`tasks.md:193-215`). El checkpoint 2 exige
+  todas las tasks en `[x]`. El código y los tests están escritos; falta la constancia. Hay que marcarlas con la misma
+  fórmula que T10.3: «Hecho» por el CI del PR (integración de `cierre`, `cambio-plan` y `aislamiento`, y la ida y
+  vuelta de la base propia), con la decisión B2 del humano extendida a T16 en `progress/features/SLT-118.md`.
+  Otra opción es correr `db:migrate`/`db:rollback` y la integración en una base desechable y dejar la evidencia. En
+  cualquier caso, no se mergea sin `gate-completo` en verde.
+- **m9 (menor).** Falta un test de R28 sobre la factura histórica: una empresa sembrada sin plan (D = alta, semanas
+  antes del corte) a la que se le asigna un primer plan con inicio E entre D y el fin guardado. El caso es de dinero:
+  emite al momento `[alta, E)` con la primera cuota. Hoy solo lo cubre el razonamiento de design §2.8 («sin regla
+  nueva»). Por eso conviene dejarlo en `factura-plataforma-cambio-plan.test.ts` con `sembrarComoLaMigracion`.
+- **m10 (menor, informativo).** Con un inicio pasado (hasta −1 mes) posterior al alta, la histórica cae en R28 y cobra
+  la primera cuota desde E. Con la siembra anterior, E ≤ D caía en R16 con la marca en D. Es lo que dicen R28 y design
+  §2.8, y la empresa no tenía plan, así que no choca con P15. Lo anoto porque cambia la cifra respecto de antes de la
+  decisión de la histórica.
+
+### Veredicto vuelta 3
+**RECHAZADO** solo por B3 (tasks T16.1–T16.4 sin marcar). La lógica de dinero revisada (histórica, `fin_natural_at`,
+R16, R28, R36, CHECK, `down.sql`, m7 y su gemelo, verificar-rls 90) no tiene defectos. Con B3 resuelto y el CI en verde,
+pasa.
