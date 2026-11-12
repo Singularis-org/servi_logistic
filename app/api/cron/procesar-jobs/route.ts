@@ -71,6 +71,11 @@ import {
   crearPlanRecordatorioCambioHandler,
   recurrenciaPlanCambiosVencidos,
 } from "@/lib/planes/jobs-cambio-plan";
+import {
+  buildFacturaPlataformaRepositoryDeJobs,
+  crearCierreFacturasHandler,
+  recurrenciaCierreFacturas,
+} from "@/lib/planes/jobs-factura-plataforma";
 
 export interface ProcesarJobsDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -268,6 +273,12 @@ export function buildHandlers(
   // SLT-86 (design §5.2; R17, R20): el cambio de empresa con fecha. PUNTUAL y CON empresa (`conSuEmpresa`
   // lo corre en su contexto); el repositorio aplica en plataforma, bajo el cerrojo de la empresa.
   handlers.set("plan_aplicar_cambio_empresa", crearPlanAplicarCambioEmpresaHandler(planes, now));
+  // SLT-118 (design §4.2; R3, R12): el cierre de las facturas de la plataforma, RECURRENTE (cada hora a los
+  // :10) y de plataforma: recorre todas las empresas. `getPrismaClient()` es perezoso.
+  handlers.set(
+    "factura_plataforma_cerrar",
+    crearCierreFacturasHandler(buildFacturaPlataformaRepositoryDeJobs(), now),
+  );
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,
@@ -287,7 +298,12 @@ export function buildHandlers(
  * Barrer los cambios vencidos una vez por empresa repetiría el mismo barrido N veces, y con cero
  * empresas no correría nunca. Siguen re-agendándose por `buildRecurrencias`.
  */
-export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>(["plan_cambios_vencidos"]);
+export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>([
+  "plan_cambios_vencidos",
+  // SLT-118 (design §4.2): el cierre de facturas es de todas las empresas, y una por empresa no abriría la
+  // primera factura de una empresa nueva.
+  "factura_plataforma_cerrar",
+]);
 
 /**
  * Registro de recurrencia por tipo. Recurrentes son los tipos que dispara el RELOJ:
@@ -311,6 +327,9 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   // SL-24 (design §16.3): el barrido de cambios de plan vencidos, cada hora en punto. Corre una vez
   // en plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
   recurrencias.set("plan_cambios_vencidos", recurrenciaPlanCambiosVencidos);
+  // SLT-118 (design §4.2; R25): el cierre de las facturas de la plataforma, cada hora a los :10. Corre una
+  // vez en plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
+  recurrencias.set("factura_plataforma_cerrar", recurrenciaCierreFacturas);
   return recurrencias;
 }
 

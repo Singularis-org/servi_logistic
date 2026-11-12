@@ -33,6 +33,7 @@ describe("SL-24 — diferenciasDelPlan", () => {
       descuento_anual: { antes: null, despues: { tipo: "porcentaje", porcentaje: "10.00" } },
       costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: al crear también sale el costo por orden.
       costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
+      periodicidadOrdenes: { antes: null, despues: "quincenal" }, // SLT-118 R35: campo nuevo del rastro; el alta lo registra.
       archivado: { antes: null, despues: false },
     });
   });

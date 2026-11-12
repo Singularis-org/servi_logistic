@@ -148,6 +148,43 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("SLT-118 R32: crear un custom para una empresa con plan avisa con la fecha real del servidor y no la elegida", async () => {
+    const user = userEvent.setup();
+    const { crearPlan } = montar(vi.fn().mockResolvedValue({ ...OK, vigenteDesde: "2026-12-01" } satisfies PlanResult));
+
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    await user.type(within(panel).getByRole("textbox", { name: "Nombre" }), "Norte a medida");
+    await user.click(within(panel).getByRole("radio", { name: "Custom" }));
+    await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
+    await user.click(within(panel).getByRole("radio", { name: "Con monto" }));
+    await user.type(within(panel).getByLabelText("Costo base mensual"), "50000");
+    await user.type(within(panel).getByLabelText("Costo por orden"), "100");
+    await user.click(within(panel).getByRole("button", { name: "Crear plan" }));
+
+    // La elegida es la propuesta por defecto de la empresa (2026-11-01); el servidor devuelve la real.
+    await waitFor(() => expect(crearPlan).toHaveBeenCalledTimes(1));
+    expect(crearPlan.mock.calls[0]![0]).toMatchObject({ vigenteDesde: "2026-11-01" });
+    const aviso = await screen.findByRole("status");
+    expect(aviso).toHaveTextContent("Plan «Norte a medida» creado. Cambio programado desde 2026-12-01.");
+    expect(aviso).not.toHaveTextContent("2026-11-01");
+  });
+
+  it("SLT-118 R32: un plan que rige ya (sin `vigenteDesde`) no menciona ningún cambio programado", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    await user.type(within(panel).getByRole("textbox", { name: "Nombre" }), "Libre");
+    await user.click(within(panel).getByRole("button", { name: "Crear plan" }));
+
+    const aviso = await screen.findByRole("status");
+    expect(aviso).toHaveTextContent("Plan «Libre» creado.");
+    expect(aviso).not.toHaveTextContent(/Cambio programado/);
+  });
+
   it("SLT-83 (texto aprobado 2026-11-04): el panel «Nuevo plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
     const user = userEvent.setup();
     montar();

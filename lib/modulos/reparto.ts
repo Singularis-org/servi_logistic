@@ -254,6 +254,8 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   plan_cambios_vencidos: "nucleo",
   // SLT-86 (design §5.2): aplicar el cambio de empresa con fecha; de plataforma, sin módulo.
   plan_aplicar_cambio_empresa: "nucleo",
+  // SLT-118 (design §4.1): el cierre de las facturas de la plataforma; de plataforma, sin módulo.
+  factura_plataforma_cerrar: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */
