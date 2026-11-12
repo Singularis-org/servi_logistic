@@ -132,3 +132,13 @@ Al preparar `DATABASE_URL`, una validación con `new URL` falló por las comilla
 y su error imprimió la URL local de Postgres (credencial de la base de desarrollo local) en **mi
 salida de herramienta**. No llegó a ningún archivo ni a este informe. El leader decide si rota esa
 contraseña local.
+
+## Vuelta 2 (acotada a 09e333a9..HEAD)
+
+**Veredicto: OK** (0 bloqueantes, 1 menor residual)
+
+- Rango: solo `0550ea54`, `progress/features/SLT-110.md` +2 líneas (marcador de tamaño). Sin cambios de código ni de tests.
+- [x] **B1 cerrado.** `gate-110b.log` (leader): único rojo, el tamaño (7/40 archivos, 1137/1000 líneas), `INIT_EXIT=1`. `gate-110c.log`, línea 13: el mismo aviso pasa a amarillo, «aceptado por el humano: 2026-11-12 … Carlos: «te doy el ok»».
+- [x] **m3 cerrado.** En `gate-110c.log` los tres shards de guardias dan `Test Files 100 passed (100)` (líneas 715, 893 y 1111). `test:rapido` da 43/43 archivos y 542/542 tests (línea 1178). Los 245 rojos heredados son del baseline. Termina en `== init OK ==` con `INIT_EXIT=0` (línea 1193). En el log no sale ningún rojo de `dependencias-declaradas-presentes`.
+- [~] **m1, parcial (menor, sigue abierto).** De T6.1 está hecho `./init.sh` verde, y el E2E B6 de `cierres-rediseno` sale 2/2 en `progress/impl_SLT-110.md`. Faltan en local el E2E de `cierres-rediseno` entero y `--project=dinero`, que el leader manda a CI al sacar el PR de borrador. Tampoco está anotado `INIT_EXIT` en `progress/impl_SLT-110.md`, que es el «Hecho» de T6.1. No marco T6.1 por dos motivos: la evidencia no cubre todo su «Hecho», y mi alcance de escritura es solo este archivo. Según `docs/perfil-agentes.md > reviewer`, la pantalla de dinero obliga a que ese E2E esté en verde antes de abrir el PR: el `gate-completo` de CI con el E2E y `dinero` en verde es la condición para sacarlo de borrador y mergear.
+- m2: aviso de proceso; este rango no cambia nada de eso.
