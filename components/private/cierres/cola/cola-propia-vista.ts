@@ -10,14 +10,16 @@ import { hayPendienteDeLiquidar } from "@/app/(app)/cierres-admin/_components/Pe
 
 // ═══ Textos (trato tú, R180) ════════════════════════════════════════════════════════════════════
 
-/** @sin-superficie SLT-137 T2.1: la lógica llega antes que su tabla; la monta `TablaColaPropia.tsx` en T2.2, que espera a SLT-106 en origin/dev. Al montarla, esta anotación caduca y el guardia obliga a quitarla. */
-export const DESCRIPCION_PROPIA ="Tus cierres enviados a aprobación y cómo terminaron.";
+export const DESCRIPCION_PROPIA = "Tus cierres enviados a aprobación y cómo terminaron.";
 export const PESTANA_PROPIA = "Cierres solicitados";
 export const TABLIST_PROPIA = "Tus cierres";
 export const REGION_PROPIA = "Cierres solicitados";
 /** R160: los de hoy, sin cambiar una letra. */
 export const VACIO_PROPIA = "Aún no has solicitado ningún cierre.";
 export const ERROR_PROPIA = "No se pudieron cargar tus cierres solicitados.";
+
+/** «Ver» de la fila; su nombre accesible añade el día del cierre (`TablaColaPropia.tsx`). */
+export const VER_PROPIA = "Ver";
 
 export const PAGO_PENDIENTE = "Pendiente de pago";
 export const PAGO_LIQUIDADO = "Liquidado";
