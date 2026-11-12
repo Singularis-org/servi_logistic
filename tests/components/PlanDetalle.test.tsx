@@ -425,3 +425,25 @@ describe("SLT-128 R14, R15 — `cambio_a_medias` dice lo que pasa según la acci
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });
+
+describe("SLT-128 R11 — cuántas empresas ya recibieron el cambio programado", () => {
+  it("R11: bajo «Cambio programado desde F» dice «N de M empresas ya lo recibieron»", () => {
+    montar({ ...DETALLE, pendiente: { ...DETALLE.pendiente!, recibidas: 2, total: 5 } });
+    const pendiente = seccion("Cambio programado");
+    const lineas = within(pendiente).getAllByText(/Cambio programado desde|empresas ya lo recibieron/);
+    expect(lineas.map((p) => p.textContent)).toEqual([
+      "Cambio programado desde 2030-01-15",
+      "2 de 5 empresas ya lo recibieron",
+    ]);
+  });
+
+  it("R11: con ninguna recibida también lo dice («0 de M»)", () => {
+    montar();
+    expect(within(seccion("Cambio programado")).getByText("0 de 1 empresas ya lo recibieron")).toBeInTheDocument();
+  });
+
+  it("R11: sin cambio programado no muestra la línea", () => {
+    montar({ ...DETALLE, pendiente: null });
+    expect(screen.queryByText(/empresas ya lo recibieron/)).toBeNull();
+  });
+});

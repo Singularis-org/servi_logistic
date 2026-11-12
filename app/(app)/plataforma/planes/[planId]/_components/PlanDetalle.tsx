@@ -25,6 +25,7 @@ import {
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
   textoDelPrecio,
+  textoRecepcionesDelCambio,
   TITULO_LINEAS_DE_CAMBIO,
   type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
@@ -101,6 +102,8 @@ const TEXTOS = {
   creadoCon: "Alta del plan",
   /** Texto único del cambio pendiente (Decisiones cerradas, design §6.5). */
   cambioProgramado: textoCambioProgramado,
+  /** SLT-128 (R11): cuántas de sus empresas ya recibieron el cambio programado. */
+  recepciones: textoRecepcionesDelCambio,
   /** Solo el rastro: una fila que fija la vigencia de un cambio, no la sección del pendiente. */
   rigeDesde: (fecha: string) => `Rige desde ${fecha}`,
   reemplaza: (antes: string, despues: string) => `Reemplaza al previsto para ${antes}; rige desde ${despues}`,
@@ -316,6 +319,7 @@ export function PlanDetalle({
         ) : (
           <div className="flex flex-col gap-3 text-sm">
             <p className="font-medium">{TEXTOS.cambioProgramado(pendiente.vigenteDesde)}</p>
+            <p>{TEXTOS.recepciones(pendiente.recibidas, pendiente.total)}</p>
             {pendiente.lineas.length === 0 ? (
               <p>{SIN_LINEAS_DE_CAMBIO}</p>
             ) : (
