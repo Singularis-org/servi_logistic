@@ -55,7 +55,10 @@ import {
   vistaBodegaDesdeAdmin,
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
-import { VisorEvidencia } from "./cierre-detalle-shared";
+import {
+  VisorEvidencia,
+  type EvidenciaAbierta,
+} from "@/components/private/cierres/dialogos/VisorEvidencia";
 import {
   DescargarCierresButton,
   type DescargaResumenCierres,
@@ -225,7 +228,7 @@ export function CierresBodegaAdminModule({
   // Detalle del cierre de bodega abierto (null = modal cerrado).
   const [detalle, setDetalle] = useState<DetalleAbierto | null>(null);
   // Evidencia (URL firmada, R12) en el visor; null = cerrado.
-  const [evidencia, setEvidencia] = useState<string | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenciaAbierta | null>(null);
   // Sub-modal de rechazo (R17): true = abierto.
 
   // Motivo del rechazo (obligatorio, R17) + su error de validación.
@@ -557,7 +560,7 @@ export function CierresBodegaAdminModule({
       ) : null}
 
       {/* ---------- Visor de evidencia (URL firmada, R12) ---------- */}
-      <VisorEvidencia url={evidencia} onClose={() => setEvidencia(null)} />
+      <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
     </section>
   );
 }

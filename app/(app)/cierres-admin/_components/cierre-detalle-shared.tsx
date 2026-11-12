@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Modal } from "@/components/shared/Modal";
 import type { Column } from "@/components/shared/DataTable";
 import { money, moneyTope } from "@/lib/config/moneda";
 import { EMPRESA } from "@/lib/config/marca";
@@ -1297,39 +1296,5 @@ export function TotalesIngresoPanel({
         </CardContent>
       </Card>
     </section>
-  );
-}
-
-/**
- * Visor de la evidencia fotográfica (URL FIRMADA, R12): nunca el storage_path
- * crudo. `url === null` → cerrado. Modal reutilizable entre módulos.
- */
-export function VisorEvidencia({
-  url,
-  onClose,
-}: {
-  url: string | null;
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      open={url !== null}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-      title="Evidencia de la gestión"
-      confirmLabel="Cerrar"
-      hideCancel
-      onConfirm={onClose}
-    >
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={url}
-          alt="Evidencia fotográfica de la gestión"
-          className="max-h-[60vh] w-full rounded-md object-contain"
-        />
-      ) : null}
-    </Modal>
   );
 }

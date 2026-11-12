@@ -12,6 +12,14 @@ import { cn } from "@/lib/utils";
 import { EstadoConInfo, InfoEstado } from "@/components/shared/EstadoInfo";
 import { Modal } from "@/components/shared/Modal";
 import {
+  VisorEvidencia,
+  type EvidenciaAbierta,
+} from "@/components/private/cierres/dialogos/VisorEvidencia";
+import {
+  RESUMEN_SOLICITUD_TEXTO,
+  contextoEvidencia,
+} from "@/components/private/cierres/dialogos/dialogos-labels";
+import {
   DataTable,
   type Column,
   type DataTableDescarga,
@@ -538,6 +546,10 @@ export function CierreDiaModule({
       ? `${RECHAZADO_CONFIRM_DETALLE} ${rechazadoConfirmSinRehacer(sinRehacerDelReenviable)}`
       : RECHAZADO_CONFIRM_DETALLE;
 
+  // SLT-103 (R140): «Gestiones» del resumen = las filas que pintan las secciones por resultado.
+  // Es un conteo de filas, no dinero.
+  const gestionesListadas = ORDEN_RESULTADOS.reduce((n, r) => n + (grupos[r]?.length ?? 0), 0);
+
   // Confirmación de "Solicitar cierre"; true = modal abierto.
   const [confirmar, setConfirmar] = useState(false);
   // Feature 111/R13: confirmación del CTA del cierre `vencido`; true = modal abierto.
@@ -545,7 +557,7 @@ export function CierreDiaModule({
   // Feature 109/R31: confirmación del CTA del cierre `rechazado`; true = modal abierto.
   const [confirmarRechazado, setConfirmarRechazado] = useState(false);
   // Evidencia (URL firmada, R5) en el visor; null = cerrado.
-  const [evidencia, setEvidencia] = useState<string | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenciaAbierta | null>(null);
   // Feature 67/R36: fila pendiente de confirmar el deshacer; null = modal cerrado.
   const [deshacerFila, setDeshacerFila] = useState<CierreDetalleGestion | null>(
     null,
@@ -970,7 +982,19 @@ export function CierreDiaModule({
         confirmLabel="Solicitar cierre"
         onConfirm={() => confirmarSolicitud(REENVIAR_OK)}
         closeOnConfirm={false}
-      />
+      >
+        {/* SLT-103 (R55, R140): resumen con las MISMAS cifras de la página, tal como las da el
+            servidor; no se suma dinero en el cliente. «Gestiones» cuenta las filas de las
+            secciones por resultado. */}
+        <dl aria-label={RESUMEN_SOLICITUD_TEXTO.region} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">
+          <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_TEXTO.gestiones}</dt>
+          <dd className="text-right font-medium">{gestionesListadas}</dd>
+          <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_TEXTO.recaudado}</dt>
+          <dd className="text-right font-medium">{money(totales.general)}</dd>
+          <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_TEXTO.tuGanancia}</dt>
+          <dd className="text-right font-semibold">{money(totalPagoMensajero)}</dd>
+        </dl>
+      </Modal>
 
       {/* Feature 111/R13: confirmación del CTA del cierre vencido (differente del
           "Solicitar cierre" del día). Misma action; el backend transiciona el vencido. */}
@@ -1084,26 +1108,8 @@ export function CierreDiaModule({
         ) : null}
       </Modal>
 
-      {/* Visor de evidencia (URL firmada, R5). */}
-      <Modal
-        open={evidencia !== null}
-        onOpenChange={(next) => {
-          if (!next) setEvidencia(null);
-        }}
-        title="Evidencia de la gestión"
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={() => setEvidencia(null)}
-      >
-        {evidencia ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={evidencia}
-            alt="Evidencia fotográfica de la gestión"
-            className="max-h-[60vh] w-full rounded-md object-contain"
-          />
-        ) : null}
-      </Modal>
+      {/* Visor de evidencia (URL firmada, R5; visor único SLT-103 R137). */}
+      <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
     </div>
   );
 }
@@ -1222,7 +1228,7 @@ const COLUMNAS_COMUNES: Column<CierreDetalleGestion>[] = [
  */
 function columnasPara(
   resultado: CierreResultado,
-  verEvidencia: (url: string) => void,
+  verEvidencia: (evidencia: EvidenciaAbierta) => void,
   pedirDeshacer: (g: CierreDetalleGestion) => void,
   deshaciendo: string | null,
 ): Column<CierreDetalleGestion>[] {
@@ -1490,15 +1496,19 @@ function PanelCorreccion({
  * abre el visor con la URL que ya viene firmada del servidor, nunca el storage_path crudo.
  */
 function columnaEvidencia(
-  verEvidencia: (url: string) => void,
+  verEvidencia: (evidencia: EvidenciaAbierta) => void,
 ): Column<CierreDetalleGestion> {
   return {
     id: "evidencia",
     value: "Evidencia",
-    // FICHA 486 (R12-R16): un botón por foto; sin ninguna, «—» como siempre.
+    // FICHA 486 (R12-R16), SLT-103 (R54): un solo botón con todas las fotos y el contexto de la
+    // fila; sin ninguna, «—» como siempre.
     render: (g) =>
       g.evidenciaUrls.length > 0 ? (
-        <BotonesEvidencia urls={g.evidenciaUrls} onVer={verEvidencia} />
+        <BotonesEvidencia
+          urls={g.evidenciaUrls}
+          onVer={(urls) => verEvidencia({ urls, contexto: contextoEvidencia(g.numRemision, g.destinatario) })}
+        />
       ) : (
         "—"
       ),

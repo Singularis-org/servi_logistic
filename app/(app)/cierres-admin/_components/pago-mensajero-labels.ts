@@ -36,6 +36,8 @@ export const PAGO_MENSAJERO_TEXTO = {
   ahoraNo: "Ahora no",
   /** R27 — el cierre está pagado del todo: no se ofrece registrar más pagos contra él. */
   liquidado: "Este cierre ya está liquidado: no queda nada por pagar.",
+  /** SLT-103 (R57, R141; PA2): respuesta `sin_saldo` del registro, sin hablar de una tienda. */
+  sinSaldo: "Este mensajero no tiene ganancia pendiente de pago en este cierre, así que no hay nada que pagar.",
   /** Insignia del cierre aprobado sin nada pendiente (R27). */
   sinPendiente: "Liquidado",
   /** Confirmación de un pago registrado. El monto es el STRING del servidor, tal cual. */
