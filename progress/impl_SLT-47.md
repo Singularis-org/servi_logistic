@@ -1071,3 +1071,45 @@ Salida (2026-11-11, base local `logistic_slt47`, `--maxWorkers=1`, `NODE_OPTIONS
 - `pnpm exec eslint` de los dos archivos: sin salida (0 errores). `pnpm run typecheck` (`tsc --noEmit`): limpio.
 
 Veredicto: los dos rojos de CI 43125634413 en verde en local cambiando solo la entrada; sin otros tests afectados.
+
+## E2E rojo en CI 43127951913 (frontend_dev, 2026-11-11)
+
+### Causa raíz — (b) carrera de la espera del propio spec, no bug de producción
+`e2e/geo-filtro-lugar.spec.ts` (2) R18 falló en el intento y en el retry: la tabla dio 3 guías y se esperaban 2.
+- **Qué guía sobraba.** Retry #1: recibidas `56005968, 65260878, 81942718`, esperadas `56005968, 81942718`. En la
+  traza (`3-trace.network`) la única lectura del listado (`POST /ordenes?canton_id=3471be42…`, 00:35:30.099Z) va
+  **sin filtro** (`{page:1,pageSize:25,sortBy:"created_at",sortDir:"desc"}`) y devuelve las tres órdenes de la
+  empresa del spec: la sobrante, `65260878` (`E2E-ffc52917c4`), es la orden de la zona «Satelite E2E 6173c68fc5»,
+  cantón `efc66ab3…`, o sea `delOtro[0]`. Las otras dos son de la central, cantón `3471be42…` = el del enlace. No es
+  una orden de otro spec ni un homónimo: es la orden del otro cantón, sin filtrar.
+- **Por qué.** Con un enlace viejo la barra lee la URL al montar, pinta «Cantón: Naranjo» y emite la precarga por el
+  camino de siempre, `emitir` con su debounce de 500 ms (`FilterComponent`, R5 de la ficha 339, de antes de SLT-47).
+  Mientras, el listado ya hizo su primera lectura sin filtro. `soloDelCanton` miraba primero
+  `toHaveCount(0)` de la fila del otro cantón, que **pasaba en vacío** con la tabla aún sin filas, luego esperaba las
+  del cantón (visibles ya en la lectura sin filtro) y leía la tabla: las tres. En la traza CI, del `goto` (mono 35288)
+  al fallo (36349) pasan ~1,06 s; la emisión con filtro llegaba después y la traza termina sin ella.
+- **Comprobación en local** (traza de (2) con `--trace on`): `00:57:56.471Z` lectura sin filtro → sin guías aún;
+  `00:57:56.941Z` (470 ms después) lectura con `filter: {lugar_id: ["22d53a2d…"]}` → solo las dos guías del cantón.
+  El traductor y el alcance de `lugar_id` son correctos; lo que falla es la espera. En local pasaba porque el
+  arranque es lo bastante lento para que la segunda lectura aterrice antes de leer la tabla.
+- Lo mismo vale, en principio, para (3) (la vista aplica la selección y se relee el listado), pero ahí la fila del
+  otro cantón ya estaba visible antes, así que `toHaveCount(0)` sí esperaba. (1) igual.
+
+### Arreglo (solo el spec, nuevo de SLT-47)
+`soloDelCanton` espera primero con `expect.poll(() => guiasDeLaTabla(page)).toEqual(esperadas())` y después comprueba
+las filas (ninguna del otro cantón, las del cantón visibles) y relee las guías. La comparación sigue siendo estricta:
+la lista final = esperadas, y el caso final compara barra = enlace = vista. Sin cambios de producción.
+
+### Archivos
+- `e2e/geo-filtro-lugar.spec.ts` (función `soloDelCanton` y su comentario).
+
+### Salida
+- `next build` nuevo (exit 0), `logistic_slt47`, puerto 3047, Storage 54347, `SESSION_SECRET` aleatorio.
+- `playwright test e2e/geo-filtro-lugar.spec.ts --trace on`: `5 passed (1.4m)`.
+- `playwright test --project=reparto`: `19 passed, 2 failed (3.0m)`; geo-filtro-lugar 5/5 en verde. Los dos rojos,
+  `mis-asignaciones.spec.ts` (b) y (c), son `Test timeout of 30000ms exceeded` esperando el panel «Detalle de la
+  orden» (`Motivo` / `Nueva fecha de reprogramación`); en CI 43127951913 pasaron (no hay artefactos suyos) y corrido
+  solo en local da `4 passed (46.9s)`: lentitud de la máquina local, ajena a este cambio.
+- `pnpm exec eslint e2e/geo-filtro-lugar.spec.ts`: sin salida (0 errores). `pnpm run typecheck` (`tsc --noEmit`): limpio.
+
+Veredicto: rojo de CI 43127951913 explicado (espera que pasaba en vacío ante la lectura sin filtro previa al debounce) y arreglado en el spec; R18 en verde en local, solo y con `reparto`.

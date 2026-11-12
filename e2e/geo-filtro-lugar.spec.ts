@@ -46,9 +46,18 @@ async function guiasDeLaTabla(page: Page): Promise<number[]> {
   }).sort((a, b) => a - b);
 }
 
-/** Espera a que la tabla enseñe EXACTAMENTE las órdenes del cantón elegido y ninguna del otro. */
+/**
+ * Espera a que la tabla enseñe EXACTAMENTE las órdenes del cantón elegido y ninguna del otro.
+ *
+ * Primero se espera a que las guías de la tabla SEAN las del cantón, y solo después se mira que no
+ * haya filas del otro. Al revés, el `toHaveCount(0)` pasaba en vacío con la tabla todavía sin pintar:
+ * con el enlace viejo la barra emite la precarga de la URL con su debounce (R5 de la 339), así que la
+ * primera lectura del listado sale SIN filtro y la tabla enseña un momento las tres órdenes (CI
+ * 43127951913). La comparación sigue siendo estricta: la lista final tiene que ser idéntica a la esperada.
+ */
 async function soloDelCanton(page: Page): Promise<number[]> {
   const tabla = page.getByRole("table", { name: "Órdenes" });
+  await expect.poll(() => guiasDeLaTabla(page)).toEqual(esperadas());
   for (const o of delOtro) await expect(tabla.getByRole("row", { name: new RegExp(o.numRemision) })).toHaveCount(0);
   for (const o of delCanton) await expect(tabla.getByRole("row", { name: new RegExp(o.numRemision) })).toBeVisible();
   return guiasDeLaTabla(page);
