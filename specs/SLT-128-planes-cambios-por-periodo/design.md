@@ -1,7 +1,7 @@
 # SLT-128 — planes-cambios-por-periodo · design.md
 
 > Ficha: SLT-128 «Planes: el cambio programado del plan llega a cada empresa al inicio de su período» (rebanada 1
-> del corte P3). Requisitos: `requirements.md` (R1–R27). Tareas: `tasks.md`. Apilada sobre SLT-118 «Planes: factura
+> del corte P3). Requisitos: `requirements.md` (R1–R29; R28 y R29 de la review, en §14). Tareas: `tasks.md`. Apilada sobre SLT-118 «Planes: factura
 > por empresa y período con la cuota y las órdenes»: su código y su `design.md` son la base vigente.
 
 ## Lo que ya existe
@@ -327,3 +327,119 @@ Sin E2E propio (decisión «E2E»). Antes del PR corren en local los E2E de plan
   es lo que se anunció. El cierre espera igual (R9), así que no hay factura con dos versiones.
 - **JSON en los triggers de topes.** `plan_tope_rol_de` lee un `jsonb` solo durante un cambio a medias; fuera de él
   sigue leyendo `plan_tope_rol`. La forma la fija `versionPlanSchema`, que se valida al escribir.
+
+## 14. Tras la review: recepción no aplicable (R28) y trabajos viejos (R29) — 2026-11-12
+
+### 14.1 Datos (se edita `20261114120000`, decisión P14)
+
+`plan_cambio_recepcion` gana:
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `no_aplicada_at` | `timestamp(3) NULL` | cuándo se intentó y no se pudo |
+| `no_aplicada_motivo` | `text NULL` | código del motivo; hoy solo `cobro_quincenal_ordenes_mensuales` (R8) |
+
+`CHECK ((no_aplicada_at IS NULL) = (no_aplicada_motivo IS NULL))`, `CHECK (recibido_at IS NULL OR no_aplicada_at IS
+NULL)` y `CHECK` del motivo contra la lista de códigos. **Pendiente** pasa a ser `recibido_at IS NULL AND
+no_aplicada_at IS NULL`; el índice parcial de §1.1 usa esa condición.
+
+`plan_version_empresa` gana las mismas dos columnas (mismos `CHECK`): marcan la versión que una empresa **conserva**
+por una recepción no aplicada después de promover el plan, cuando la fila de recepción ya se fue en cascada con el
+pendiente. En esa fila `cambio_id` es el pendiente que no se aplicó.
+
+### 14.2 Base
+
+- `factura_plataforma_cerrar` (§2.2): `v_recepcion` solo mira recepciones pendientes (R9).
+- `plan_de_la_empresa` (§2.1): `cambio` solo con una recepción pendiente (R12).
+- `down.sql`: sin cambios; una `plan_version_empresa` conservada lo hace negarse (R25).
+
+### 14.3 Repositorio
+
+- `recibirCambio` (§3.3), paso 3: en lugar de lanzar, si la regla de R8 falla → `no_aplicada_at = ahora`,
+  `no_aplicada_motivo`, el aviso a la lista (§14.4) y, en la misma transacción, el paso 7 (promover si ya no queda
+  ninguna pendiente y `ahora ≥ F`). Devuelve `{ estado: "no_aplicada", motivo }`; el trabajo termina `done`. No
+  escribe módulos, precio ni versión. Un error de base o de red sigue lanzando y la cola reintenta con su backoff (`JobRepository`): solo
+  una regla del plan marca.
+- `recepcionesVencidas`, `recepcionesSinRecibir`, `archivar` (§3.4), la salida de `aplicarEnTx` (§3.5) y
+  `repartirRecordatorioDeEmpresa` cuentan solo pendientes. `detalle` (§3.6): `total` las incluye, `recibidas` no.
+- **Promover** (§3.2): antes de borrar las `plan_version_empresa` del plan, por cada recepción no aplicada del
+  pendiente se escribe (upsert) la versión que la empresa tenía —su fila propia si la había; si no, la del plan
+  antes de promover— con `no_aplicada_*` copiadas. Se borran las demás filas del plan, no esas. El plan queda partido
+  (R16 rechaza «De inmediato»; ver §14.6).
+- `recibirCambio` de un cambio posterior hace upsert de la versión con `no_aplicada_* = NULL`; salir del plan (R18) la
+  borra. Así el aviso se va solo.
+- `detalle` gana `noAplicadas: { empresaId, empresa, motivo, desde }[]`: las recepciones no aplicadas del pendiente
+  más las `plan_version_empresa` marcadas del plan.
+- El repositorio no lee destinatarios: no hay lectura nueva de `usuario` ni cambio en `lib/db/excepciones-aislamiento.ts`.
+
+### 14.4 Correo a la lista de alertas (P13)
+
+- **Destinatarios:** `PLAN_CHANGE_ALERT_EMAILS`, lista separada por «,», documentada en `.env.example` junto a
+  `BUG_REPORT_EMAILS` (mismo formato y mismo comportamiento si está vacía). El nombre sigue el precedente: inglés,
+  sufijo `_EMAILS`.
+- **Parseo compartido:** el cuerpo de `destinatariosReporteBug` (`lib/config/reporte-bug.ts`: recorta, descarta lo
+  vacío y lo inválido, quita duplicados sin mayúsculas, avisa en el log con la cifra) pasa a
+  `destinatariosDeLista(valor, variable)` en el mismo archivo; `destinatariosReporteBug` la llama y conserva su
+  firma (su test no cambia), y la línea del log nombra la variable que corresponde. Se añade
+  `destinatariosAlertaPlan(valor = process.env.PLAN_CHANGE_ALERT_EMAILS)`. El archivo no importa nada del servidor,
+  así que sigue sirviendo al navegador.
+- **Vacía, ausente o sin válidas** (SLT-87 R16): el trabajo termina `done` sin enviar; la marca, el aviso del
+  detalle y la promoción ocurren igual. Un fallo de SMTP con destinatarios sí falla el trabajo y se reintenta, como
+  los demás `plan_aviso_correo` (R41).
+- La lista la lee el **manejador** de la cola (`lib/planes/jobs-cambio-plan.ts`) al enviar, no el repositorio al
+  encolar: un cambio de la variable vale para los avisos aún en cola.
+
+- Va por la cola, como todos los de planes (outbox, R41): un `plan_aviso_correo` con el tipo nuevo `no_aplicada` en
+  `tipoAvisoSchema` y `AvisoCorreoPlan`, payload `{ tipo, planId, cambioId, empresaId, empresa, plan, recibeAt,
+  motivo }`, `dedupe_key = dedupeAviso(cambioId, "no_aplicada", empresaId)` (uno por recepción).
+- Nace **sin empresa** (`organizacion_id` NULL, como `encolarAplicacion`). Hoy un `plan_aviso_correo` sin empresa
+  falla («no tiene empresa destino»); ese caso pasa a ser el de la lista: el manejador solo acepta `no_aplicada`
+  sin empresa y los demás tipos siguen exigiendo empresa.
+- Plantilla: **la existente** `lib/services/email/plantillas/cambio-plan.ts` gana `plantillaCambioPlanNoAplicado`
+  sobre `componerCorreo` (marca). Asunto «El cambio del plan <plan> no se aplicó a <empresa>»; cuerpo con la fecha
+  (zona de la plataforma: la lista no es de ninguna empresa ni país), el motivo de `mensajes.ts` y «Sigue con su versión
+  anterior.». No se crea archivo de plantilla nuevo.
+- `lib/planes/mensajes.ts`: el texto de cada código de motivo y la línea del detalle de R28.
+
+### 14.5 Cancelar trabajos (R29)
+
+Precedente: el estado `descartado` de la cola (SL-23 R20: no se ejecuta ni se reintenta, motivo en `last_error`).
+Un helper del repositorio, en la transacción que mueve o reemplaza:
+
+```
+UPDATE jobs SET estado = 'descartado', last_error = 'plan_cambio_obsoleto:<cambioId>', dedupe_key = NULL,
+       updated_at = now()
+WHERE dedupe_key IN (<claves>) AND estado = 'pending'
+```
+
+- **Mover (R19):** claves de la fecha vieja: `dedupeRecepcion(c, org, viejo)` y `dedupeRecordatorio(c, org, viejo,
+  7|3|1)`, calculadas **antes** de encolar las nuevas; las que coinciden con una nueva no se tocan.
+- **Reemplazar (R13) y cancelar (R14):** antes de borrar el pendiente (la cascada se lleva sus recepciones y con
+  ellas las fechas): `dedupeAplicarCambio(c)`, y por cada recepción `dedupeRecepcion` y `dedupeRecordatorio` de 7, 3
+  y 1, más las claves de los recordatorios legados sin empresa (R24). Cancelar va en `cancelarCambio` y en el
+  `archivar` de un plan sin empresas, que cancela el pendiente (SL-24 R40).
+- **Salir (R18):** antes de borrar su recepción en `aplicarEnTx`: `dedupeRecepcion` y `dedupeRecordatorio` de esa
+  empresa y su `recibe_at`. Si su salida promueve el plan, el `plan_aplicar_cambio` sin empresa también se descarta.
+- Por clave y no por `payload`: va por el índice único de `dedupe_key`.
+- `dedupe_key = NULL` al descartar: si la fecha vuelve a una ya cancelada (R19 de ida y vuelta), la clave queda
+  libre y se encola de nuevo. El motivo guarda el `cambioId` para el rastro.
+- `processing` no se toca: termina sin hacer nada, como hoy.
+- Vale en los cuatro casos (decisión P15): mover, reemplazar, cancelar y salir.
+
+### 14.6 Alternativas descartadas (§14)
+
+- **E. Estado en una sola columna `estado` (`pendiente | recibida | no_aplicada`) en la recepción.** Más limpio,
+  pero cambia `recibido_at` (ya usada por el código de T5 y por los nueve tests de integración) y el índice
+  parcial; dos columnas nulas suman sin tocar lo hecho.
+- **F. Dejar el pendiente sin borrar al promover mientras haya una no aplicada.** Mantendría el aviso en la fila de
+  recepción, pero el plan no sería «el plan» nuevo (choca con P5 y con «cuenta como resuelta») y bloquearía programar
+  otro.
+- **G. Plantilla nueva en un archivo propio.** Un archivo más contra el tamaño; el correo es del mismo dominio que
+  `cambio-plan.ts`.
+- **H. Descartar por `payload->>'cambioId'`.** Sin índice en `jobs.payload`; las claves ya identifican cada trabajo.
+- **I. Llamar a `destinatariosReporteBug(process.env.PLAN_CHANGE_ALERT_EMAILS)` tal cual.** Ahorra tocar
+  `lib/config/reporte-bug.ts` (39 archivos en vez de 40), pero el log de direcciones inválidas diría
+  `BUG_REPORT_EMAILS` para la lista de planes. Copiar el parseo en `jobs-cambio-plan.ts` lo duplicaría.
+
+Residuo: tras promover con una no aplicada, el plan queda partido y R16 rechaza «De inmediato» con el texto de
+«Alguna empresa ya recibió el cambio programado»; el superadmin programa con fecha (R13 le da recepción a todas).

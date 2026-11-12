@@ -1,7 +1,7 @@
 # SLT-128 — planes-cambios-por-periodo · tasks.md
 
 > Ficha: SLT-128 «Planes: el cambio programado del plan llega a cada empresa al inicio de su período».
-> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R27). P7–P10 abiertas: cada una tiene su propuesta
+> Diseño: `design.md` («§N»). Requisitos: `requirements.md` (R1–R29; R28 y R29 en T10). P7–P10 abiertas: cada una tiene su propuesta
 > escrita en su requisito (R16, R14, R23, R17/R24); si el humano elige otra cosa, cambian esa task y su test.
 > Capa: `backend_dev` (`db/`, `lib/`, `tests/`), salvo T8 (`frontend_dev`: `PlanForm.tsx`, `PlanDetalle.tsx` y su test).
 > Un solo PR: 29 archivos (72 % de 40). `[P]` = paralelizable con las demás `[P]` del mismo bloque.
@@ -109,9 +109,45 @@
 - [x] Mapa `R<n> → test` en `progress/impl_SLT-128.md` (R1–R27).
 - **Hecho:** gate verde y el mapa completo.
 
+## Bloque F — Tras la review (2026-11-12: decisiones «Review m2» y «Review m3»)
+
+### T10 — Recepción no aplicable (R28) y trabajos viejos (R29) (depende de T1–T9; P13–P15 cerradas el 2026-11-12)
+Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
+- [ ] **T10.1** Migración (decisión P14: se edita `20261114120000`): `no_aplicada_at` y `no_aplicada_motivo` con sus `CHECK` en
+  las dos tablas; índice parcial con «pendiente»; `factura_plataforma_cerrar` y `plan_de_la_empresa` solo con
+  pendientes; `db/schema.prisma` con las cuatro columnas. **Hecho:** T2.3 verde con los `CHECK` nuevos y el
+  `down.sql` que sigue reponiendo literal; typecheck verde.
+- [ ] **T10.2** [P] Contratos y textos: `IPlanesRepository` (`no_aplicada` en el resultado de `recibirCambio`,
+  `noAplicadas` en el detalle); `lib/types/planes.ts` (`noAplicadas`); `lib/planes/mensajes.ts`
+  (texto del motivo, línea del detalle, asunto); `no_aplicada` en `AvisoCorreoPlan`. **Hecho:** typecheck verde.
+- [ ] **T10.3** Repositorio R28 (depende de T10.1, T10.2): `recibirCambio` marca en vez de lanzar y encola el aviso
+  sin empresa; «pendiente» en `recepcionesVencidas`, `archivar`, la salida de `aplicarEnTx`, el recordatorio y la
+  promoción; promover conserva la versión de la no aplicada con su marca; `detalle` con `noAplicadas`;
+  `lib/planes/consumo.ts` y `PlanesService` pasan `noAplicadas`. **Hecho:** T10.6 verde.
+- [ ] **T10.4** Repositorio R29 (depende de T10.1): el helper de descarte (§14.5) en los cuatro casos:
+  `moverRecepcionEnTx`, el reemplazo de `programarCambio`, `cancelarCambio` (y el `archivar` sin empresas) y la
+  salida en `aplicarEnTx`. **Hecho:** T10.7 verde.
+- [ ] **T10.5** Cola, lista y correo (depende de T10.2): `destinatariosDeLista` y `destinatariosAlertaPlan` en
+  `lib/config/reporte-bug.ts` (`destinatariosReporteBug` con la misma firma); `PLAN_CHANGE_ALERT_EMAILS=` vacía y
+  comentada en `.env.example`, junto a `BUG_REPORT_EMAILS`; `plan_aviso_correo` sin empresa solo para
+  `no_aplicada`, a cada dirección de la lista (vacía o sin válidas → `done` sin enviar);
+  `plantillaCambioPlanNoAplicado` en `cambio-plan.ts`. Tests en `procesar-jobs-plan-cambio.test.ts` y
+  `plantilla-cambio-plan.test.ts`. **Hecho:** los dos verdes, más `tests/unit/config/reporte-bug-config.test.ts`
+  (existente) sin cambios y verde.
+- [ ] **T10.6** [P] Integración R28 (depende de T10.3): los casos de R28 en `planes-periodicidad-ordenes`,
+  `planes-cambio-por-empresa`, `factura-plataforma-cambio-plan` y `planes-version-por-empresa`; el caso R8 viejo
+  («el trabajo falla») se rehace. **Hecho:** verdes contra Postgres (CI por `workflow_dispatch`, como B1).
+- [ ] **T10.7** [P] Integración R29 (depende de T10.4): `planes-cambio-por-empresa` (mover, ida y vuelta, salir) y
+  `planes-cambio-programado` (reemplazo, cancelar, `processing` intacto). **Hecho:** verdes contra Postgres.
+- [ ] **T10.8** Pantalla (`frontend_dev`, depende de T10.2): `PlanDetalle.tsx` pinta una línea por `noAplicadas`;
+  `PlanDetalle.test.tsx` con el caso de R28. Si el tipo nuevo rompe `PlanEmpresa.tsx`, solo el tipo. **Hecho:** test
+  y lint verdes.
+- [ ] **T10.9** Cierre: mapa R28, R29 → test en `progress/impl_SLT-128.md`; gate a mano (`workflow_dispatch`) en
+  verde con `gate-completo` y `e2e`. **Hecho:** constancia del run en `progress/impl_SLT-128.md`.
+
 ## Archivos esperados
 
-Producción (16):
+Producción (18):
 - `db/migrations/20261114120000_plan_cambio_por_empresa/migration.sql`
 - `db/migrations/20261114120000_plan_cambio_por_empresa/down.sql`
 - `db/schema.prisma`
@@ -128,8 +164,10 @@ Producción (16):
 - `app/(app)/plataforma/planes/_components/PlanForm.tsx`
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (2026-11-12, aceptado por el humano: el tipo `pendiente` del detalle gana `recibidas` y `total`)
+- `lib/config/reporte-bug.ts` (2026-11-12, T10.5: el parseo de la lista compartido con `PLAN_CHANGE_ALERT_EMAILS`, R28; dentro del tope de 40 aceptado)
+- `.env.example` (2026-11-12, T10.5: `PLAN_CHANGE_ALERT_EMAILS`, R28; dentro del tope de 40 aceptado)
 
-Tests (19):
+Tests (22):
 - `tests/unit/planes/recepcion.test.ts`
 - `tests/integration/db/planes-cambio-por-empresa.test.ts`
 - `tests/integration/db/planes-version-por-empresa.test.ts`
@@ -153,4 +191,7 @@ Tests (19):
 - `tests/integration/db/plan-de-la-empresa.test.ts` (2026-11-12, aceptado por el humano: ídem)
 - `tests/integration/db/planes-lecturas-plataforma.test.ts` (2026-11-12, aceptado por el humano: ídem, y el detalle con `recibidas` y `total`, R11)
 
-Total: 38 archivos (29 del plan + 9 aceptados por el humano el 2026-11-12).
+Total: 40 archivos (29 del plan + 9 aceptados por el humano el 2026-11-12 + 2 de T10, dentro del tope de 40
+aceptado el 2026-11-12). T10 reusa los otros 38 (migración editada por P14, schema, repositorio, contrato, tipos,
+mensajes, consumo, servicio, cola, plantilla, `PlanDetalle.tsx` y sus tests). No queda margen: un archivo más
+pide otra decisión del humano (la alternativa I de design §14.6 ahorra uno).

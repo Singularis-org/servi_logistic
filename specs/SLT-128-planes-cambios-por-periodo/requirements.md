@@ -92,8 +92,10 @@
   la emitida el 1 de enero. Una empresa con tipo quincenal haría rechazar el guardado (SLT-118 R37).
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
 - **R8** — SI al recibir una versión con órdenes mensuales la empresa tiene tipo de cobro quincenal, ENTONCES el
-  trabajo DEBE fallar sin escribir nada para esa empresa (SLT-118 R37, ahora por empresa). La regla al guardar no
-  cambia.
+  sistema NO DEBE aplicarle nada de la versión (ni módulos, ni precio, ni versión propia) y DEBE tratar la
+  recepción como no aplicable (R28) (SLT-118 R37, ahora por empresa). La regla al guardar no cambia.
+  > *Ajustado 2026-11-12 (review m2):* antes decía «el trabajo DEBE fallar sin escribir nada»; ahora la recepción
+  > queda «no aplicada» con su motivo y el trabajo termina sin reintento (R28).
   *Test:* `tests/integration/db/planes-periodicidad-ordenes.test.ts`.
 - **R9** — *(decisión «Cierre de la factura»)* MIENTRAS una empresa tenga una recepción pendiente con su instante
   en o antes del fin de una factura por cerrar, el proceso NO DEBE cerrar esa factura ni las siguientes: DEBE
@@ -101,6 +103,8 @@
   toda edición programada, no solo la de la periodicidad, y sustituye la espera por `plan_cambio_programado` de
   SLT-118 R39. Ejemplo: recepción el 1 de diciembre que la cola aún no aplicó a las 00:10 → la factura del 16 al 30
   de noviembre no se cierra; recibida a las 00:40, la corrida de la 01:10 la cierra.
+  > *Ajustado 2026-11-12 (review m2):* una recepción «no aplicada» (R28) ya no está pendiente: el cierre NO DEBE
+  > esperarla y cierra con la versión que la empresa conserva.
   *Test:* `tests/integration/db/factura-plataforma-cambio-plan.test.ts`.
 
 ### La versión del plan
@@ -110,6 +114,8 @@
   `cambio_aplicado` del rastro (SL-24 R43), borrar el pendiente y dejar a todas sus empresas con la versión del
   plan, sin encender ni apagar ningún módulo. Si el plan no tiene empresas (o ya no le queda ninguna sin
   recibirlo), el cambio DEBE pasar al plan a las 00:00 de F, como hoy (SL-24 R38).
+  > *Ajustado 2026-11-12 (review m2):* «reciba el cambio» se lee «lo resuelva»: recibirlo o quedar «no aplicada»
+  > (R28). La empresa con la recepción no aplicada NO DEBE quedar con la versión del plan: conserva la que tenía.
   *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`, `tests/integration/db/planes-historial.test.ts`.
 - **R11** — *(P5)* MIENTRAS el plan tenga un pendiente, el detalle del plan DEBE mostrar «Cambio programado desde
   F» y cuántas de sus empresas ya lo recibieron, con el texto «N de M empresas ya lo recibieron».
@@ -118,6 +124,8 @@
 - **R12** — MIENTRAS una empresa no haya recibido el pendiente, «Mi plan» y el detalle de empresa del superadmin
   DEBEN mostrar el cambio programado con **su** recepción, no con F. Una vez recibido, NO DEBEN mostrar ningún
   cambio programado del plan.
+  > *Ajustado 2026-11-12 (review m2):* con la recepción «no aplicada» (R28) tampoco DEBEN mostrarlo: la fecha ya
+  > pasó y la empresa sigue con su versión.
   *Test:* `tests/integration/db/planes-version-por-empresa.test.ts`.
 
 ### Reemplazar, cancelar, archivar y editar en el acto
@@ -138,6 +146,8 @@
   pendiente y alguna de sus empresas aún no lo recibió, ENTONCES archivar DEBE rechazarse sin escribir nada, con
   el mensaje «El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o
   cancélalo.». Un pendiente de un plan sin empresas DEBE seguir cancelándose al archivar (SL-24 R40).
+  > *Ajustado 2026-11-12 (review m2):* «aún no lo recibió» = su recepción no está ni recibida ni «no aplicada»
+  > (R28). Una recepción no aplicada no bloquea el archivado.
   *Test:* `tests/integration/db/planes-cambio-programado.test.ts`, `tests/components/PlanDetalle.test.tsx` (el
   mensaje).
 - **R16** — *(P7 abierta, propuesta)* SI el plan está partido, ENTONCES la edición «De inmediato» DEBE rechazarse
@@ -156,6 +166,8 @@
 - **R18** — CUANDO una empresa deja un plan con un pendiente, el sistema DEBE borrar en esa transacción su
   recepción y su versión propia; sus trabajos ya encolados NO DEBEN hacer nada. SI era la última sin recibirlo y F
   ya pasó, ENTONCES R10 DEBE cumplirse en esa misma transacción.
+  > *Ajustado 2026-11-12 (review m2):* «la última sin recibirlo» = la última con la recepción sin resolver; las «no
+  > aplicadas» (R28) cuentan como resueltas.
   *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts`.
 - **R19** — *(P4)* CUANDO se aplica un cambio de tipo de cobro a una empresa con una recepción pendiente, el
   sistema DEBE recalcularla con el tipo nuevo: el primer inicio de un período del tipo nuevo que no sea anterior a
@@ -212,6 +224,63 @@
   sea el estado de los módulos de la empresa.
   *Test:* `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`.
 
+### Tras la review (2026-11-12): recepción no aplicable y trabajos viejos
+
+> Escritos por `spec_author` el 2026-11-12 desde las decisiones «Review m2» y «Review m3». Ajustan R8, R9, R10, R12,
+> R15 y R18 (nota fechada en cada uno). Diseño en `design.md §14`; tareas en `tasks.md > T10`.
+
+- **R28** — *(decisión «Review m2»)* SI una recepción no se puede aplicar a su empresa por una regla del plan (hoy
+  solo R8: cobro quincenal con órdenes mensuales), ENTONCES el sistema DEBE, en la transacción del primer intento:
+  - no aplicarle nada de la versión: la empresa conserva la que tenía (la del plan o su versión propia);
+  - marcar la recepción «no aplicada», con el instante y el motivo;
+  - encolar un correo con el plan, la empresa, la fecha de la recepción y el motivo para cada dirección válida de
+    la variable de entorno `PLAN_CHANGE_ALERT_EMAILS` (lista separada por «,», decisión P13); SI la lista está
+    vacía, ausente o sin ninguna dirección válida, ENTONCES NO DEBE salir correo y todo lo demás DEBE ocurrir
+    igual (como SLT-87 R16);
+  - terminar el trabajo sin error: ni el trabajo ni el barrido horario DEBEN volver a intentarla.
+
+  MIENTRAS haya una recepción no aplicada del pendiente, o la empresa conserve su versión por una, el detalle del
+  plan DEBE mostrar por cada una «<empresa> no recibió el cambio: <motivo>. Sigue con su versión anterior.», y el
+  motivo de R8 DEBE decir «cobra por quincena y el plan nuevo factura las órdenes por mes». Una recepción no
+  aplicada DEBE contar como resuelta para promover el plan (R10, R18) y para archivarlo (R15), y NO DEBE frenar el
+  cierre de sus facturas (R9). Al promover, la empresa DEBE seguir con su versión anterior y el aviso DEBE seguir en
+  el detalle hasta que reciba otro cambio, deje el plan o el reemplazo de su pendiente le dé otra recepción (R13).
+  Un error que no sea de una regla del plan (base, red) NO DEBE marcarla: el trabajo falla y se reintenta como hoy.
+  Ejemplo: plan con órdenes quincenales → mensuales con F = 1 de diciembre; la empresa A (mensual) lo recibe el 1
+  de diciembre; la empresa B quedó quincenal por un error de asignación: su recepción del 1 de diciembre queda no
+  aplicada, el plan se promueve a las 00:00 del 1 de diciembre, B sigue con órdenes quincenales, su factura del 16
+  al 30 de noviembre se cierra en la corrida de las 00:10, sale el correo a la lista y el superadmin ve el aviso.
+  *Test:* `tests/integration/db/planes-periodicidad-ordenes.test.ts` (marca, motivo, sin escritura de versión ni
+  módulos, el barrido no la devuelve, el aviso encolado una vez y sin empresa);
+  `tests/integration/db/planes-cambio-por-empresa.test.ts` (promoción con una no aplicada: B conserva su versión y
+  su aviso; archivar permitido; salir la última pendiente promueve; reemplazo que le da otra recepción);
+  `tests/integration/db/factura-plataforma-cambio-plan.test.ts` (el cierre no la espera);
+  `tests/integration/db/planes-version-por-empresa.test.ts` («Mi plan» sin cambio programado);
+  `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` (el aviso sin empresa va a cada dirección de la lista; con
+  la lista vacía o sin válidas termina sin enviar y sin error; con espacios, duplicados y una inválida);
+  `tests/unit/services/email/plantilla-cambio-plan.test.ts` (asunto y cuerpo);
+  `tests/components/PlanDetalle.test.tsx` (la línea del aviso);
+  `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts` (los `CHECK` de las columnas nuevas).
+- **R29** — *(decisiones «Review m3» y P15)* CUANDO se mueve una recepción (R19), se reemplaza un pendiente (R13),
+  se cancela un pendiente (R14) o una empresa deja un plan con un pendiente (R18), el sistema DEBE, en esa misma
+  transacción, cancelar los trabajos de la cola aún sin empezar que ya no aplican, de los tipos
+  `plan_aplicar_cambio` y `plan_recordatorio_cambio`:
+  - al mover: los de la fecha vieja de esa empresa;
+  - al reemplazar o cancelar: todos los del pendiente, con y sin empresa;
+  - al salir una empresa: los de esa empresa para ese pendiente.
+
+  Un trabajo cancelado NO DEBE ejecutarse ni
+  reintentarse y DEBE quedar visible con su motivo. Los trabajos que siguen aplicando (los de la fecha nueva, los
+  del pendiente nuevo) NO DEBEN tocarse, y uno que ya se está ejecutando termina como hoy (sin hacer nada). Si la
+  recepción vuelve después a una fecha ya cancelada, sus trabajos DEBEN encolarse de nuevo.
+  *Test:* `tests/integration/db/planes-cambio-por-empresa.test.ts` (R19: mensual → bimestral, los del 1 de febrero
+  cancelados con motivo y los del 1 de marzo pendientes; ida y vuelta de la fecha vuelve a encolar);
+  `tests/integration/db/planes-cambio-programado.test.ts` (R13: el aplicar sin empresa, los de recepción y los
+  recordatorios del primero cancelados; los del segundo pendientes; uno en `processing` no se toca; R14: cancelar
+  descarta todos los del pendiente);
+  `tests/integration/db/planes-cambio-por-empresa.test.ts` (R18: la empresa que sale deja sus trabajos
+  descartados y los de las demás pendientes).
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | Requisitos |
@@ -232,10 +301,23 @@
 | P2 · Tope por debajo del uso | R6 |
 | P4 · Empresa que entra al plan durante la ventana | R17, R19 |
 | P5 · Cuándo la versión nueva es «el plan» | R10, R11 |
+| P7 · «De inmediato» con el plan partido | R16 |
+| P8 · Cancelar un pendiente que reemplazó a otro ya recibido | R14 |
+| P9 · «Hoy» en esta rebanada | R23 |
+| P10 · Pendientes previos y empresas que entran | R17, R24 |
+| P11 · R3: comparación del precio | R3 |
+| P12 · Fecha del correo «cancelado» | R20 |
+| Review m1 · «N de M» sin las que entran después | — (va a SLT-130 «Planes: formulario por pasos compartido en un sheet (crear y editar)») |
+| Review m2 · Recepción que no se puede aplicar | R28 (ajusta R8, R9, R10, R12, R15, R18) |
+| Review m3 · Trabajos viejos en la cola | R29 |
+| P13 · Destinatarios del correo de R28 | R28 |
+| P14 · Migración editada o nueva | — (proceso: T10.1 edita `20261114120000`) |
+| P15 · R29 en los cuatro casos | R29 |
+| Tamaño tras la review | — (proceso: 40 archivos, `tasks.md > Archivos esperados`) |
 
 ## Preguntas abiertas
 
-Ninguna. P7–P10 cerradas por el humano el 2026-11-11 (filas de «Decisiones cerradas»).
+Ninguna. P13–P15 cerradas por el humano el 2026-11-12 (filas de «Decisiones cerradas»).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -266,3 +348,7 @@ Ninguna. P7–P10 cerradas por el humano el 2026-11-11 (filas de «Decisiones ce
 | 2026-11-12 | Review m1 · «N de M» sin las empresas que entran después de la fecha | Va a SLT-130 «Planes: formulario por pasos compartido en un sheet (crear y editar)», anotado en su ficha (humano). |
 | 2026-11-12 | Review m2 · Recepción que no se puede aplicar a una empresa | **Avisar y saltar esa empresa** (humano): al primer fallo no se reintenta; la empresa conserva su versión y su recepción queda marcada «no aplicada» con el motivo; el superadmin ve el aviso en el detalle del plan y recibe un correo. Para R18 (promoción) y para archivar, la recepción no aplicada cuenta como resuelta. Se arregla en esta ficha, antes del PR. |
 | 2026-11-12 | Review m3 · Trabajos viejos en la cola al mover o reemplazar | **Se arregla en esta ficha** (humano): al mover una recepción o reemplazar un cambio, los trabajos pendientes que ya no aplican se cancelan en la misma transacción, en lugar de quedar en la cola y terminar sin hacer nada. |
+| 2026-11-12 | P13 · ¿A quién va el correo de R28? | A una **lista de correos de una variable de entorno**, como `BUG_REPORT_EMAILS` de SLT-87; no al usuario superadmin (humano). Nombre propuesto por el spec: `PLAN_CHANGE_ALERT_EMAILS`, separada por «,»; vacía, ausente o sin ninguna válida → no sale correo y lo demás ocurre igual (precedente SLT-87 R16). |
+| 2026-11-12 | P14 · ¿Migración editada o nueva? | **Se edita la existente** `20261114120000_plan_cambio_por_empresa` (humano): no está en `dev` y solo corrió en bases desechables del CI. |
+| 2026-11-12 | P15 · ¿R29 también al cancelar y al salir? | **Sí, en los cuatro casos**: mover la recepción, reemplazar el pendiente, cancelarlo y la empresa que sale del plan (humano). |
+| 2026-11-12 | Tamaño tras la review | Se aceptan **hasta 40 archivos**, `.env.example` incluido si hace falta (humano). |
