@@ -558,6 +558,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
           efectivo: s.cierre.totalEfectivo.toFixed(2),
           premiosVivos: premios[s.cierre.id] ?? "0.00",
           pagadoVigente: pagados[s.cierre.id] ?? "0.00",
+          pagoIndependienteEfectivo: false, // SLT-123: cierre de fixture (`create` sin la marca), regla de la 44
         });
       };
 
@@ -681,6 +682,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
           efectivo: "0.00",
           premiosVivos: (await libroRepo.sumarPremiosVivosPorCierre([s.cierre.id]))[s.cierre.id]!,
           pagadoVigente: "0.00",
+          pagoIndependienteEfectivo: false, // SLT-123: cierre de fixture, regla de la 44
         });
 
       await servicio.registrarPremio({ filaId }, s.actor);

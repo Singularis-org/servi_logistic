@@ -9,16 +9,16 @@
 
 ## T0 — Medir antes de tocar (sin código de producción)
 
-- [ ] **T0.1** Confirmar que `CierresAdminRepository.resolverCierre` es el único sitio que pasa un
+- [x] **T0.1** Confirmar que `CierresAdminRepository.resolverCierre` es el único sitio que pasa un
   `cierre_dia` a `aprobado` (revisar los `updateMany` de `CierresAdminRepository.ts:1907, 2207, 2329,
   3053`, `CierreDiaRepository.ts` y `CierreBodegaRepository.ts:480`). Hecho: lista escrita en
   `progress/impl_SLT-123.md` con línea y qué estado escribe cada uno. Si aparece otro camino a
   `aprobado`, PARA y avisa al leader (R310 tendría que cubrirlo).
-- [ ] **T0.2** Con la marca puesta a mano en la aprobación central (rama local, sin commitear), correr
+- [x] **T0.2** Con la marca puesta a mano en la aprobación central (rama local, sin commitear), correr
   los tests de integración y los E2E que nombran `pago_efectivo`, «Pago del efectivo», «Liquidado» o
   «del efectivo» y listar los que caen. Hecho: lista en `progress/impl_SLT-123.md` con el motivo de
   cada uno; actualiza `## Archivos esperados` si sale uno que no está (y avisa si el total pasa de 40).
-- [ ] **T0.3** `[P]` Comprobar que `servi_app` puede hacer `UPDATE` de una columna nueva de `cierre_dia`
+- [x] **T0.3** `[P]` Comprobar que `servi_app` puede hacer `UPDATE` de una columna nueva de `cierre_dia`
   (permisos de tabla, no por columna). Hecho: consulta a `information_schema.column_privileges` /
   `role_table_grants` anotada. Si son por columna, la migración de T1.2 lleva el `GRANT`.
 - [ ] **T0.4** (Carlos, en prod, transacción READ ONLY) Contar `cierre_dia` de la central en
@@ -28,34 +28,34 @@
 
 ## T1 — Esquema y migración (depende de T0.3)
 
-- [ ] **T1.1** `db/schema.prisma`: `pagoIndependienteEfectivo Boolean @default(false)
+- [x] **T1.1** `db/schema.prisma`: `pagoIndependienteEfectivo Boolean @default(false)
   @map("pago_independiente_efectivo")` en `CierreDia`, con comentario. **Sin** `pago_satelite` (D13).
   Hecho: `prisma validate` y `prisma generate` sin error (avisar antes de generar: `node_modules`
   compartido).
-- [ ] **T1.2** `db/migrations/20261114120000_pago_independiente_efectivo/migration.sql` y `down.sql`
+- [x] **T1.2** `db/migrations/20261114120000_pago_independiente_efectivo/migration.sql` y `down.sql`
   (design §3.2-SLT-123). Hecho: sube y baja en la base desechable; el down aborta con un cierre marcado.
-- [ ] **T1.3** `tests/integration/db/migracion-slt123-ida-y-vuelta.test.ts` (design §11.2). Hecho: verde;
+- [x] **T1.3** `tests/integration/db/migracion-slt123-ida-y-vuelta.test.ts` (design §11.2). Hecho: verde;
   cubre R312.
 
 ## T2 — La marca al aprobar (depende de T1)
 
-- [ ] **T2.1** `CierresAdminRepository.resolverCierre`: dentro de la rama aprobada, si el destino es
+- [x] **T2.1** `CierresAdminRepository.resolverCierre`: dentro de la rama aprobada, si el destino es
   `bodega_central`, `updateMany` de la marca **antes** de `asentarCierreDia` (design §2). Hecho: R310 y
   R311 en verde en la integración (casos 2, 6 y 7 de design §11.1).
-- [ ] **T2.2** `[P]` `toResumen` y los `select` de los listados de `CierresAdminRepository` traen la
+- [x] **T2.2** `[P]` `toResumen` y los `select` de los listados de `CierresAdminRepository` traen la
   marca; `CierreAdminResumen` (`lib/interfaces/services/ICierresAdminService.ts`) la declara. Hecho:
   typecheck.
 
 ## T3 — El feed (depende de T1)
 
-- [ ] **T3.1** `WalletMensajeroFeedService` + `IWalletMensajeroFeedService` (design §4.1, versión
+- [x] **T3.1** `WalletMensajeroFeedService` + `IWalletMensajeroFeedService` (design §4.1, versión
   SLT-123: sin rama de satélite). Hecho: `tests/unit/services/wallet-mensajero-feed-service.test.ts`
   cubre viejo central y viejo satélite (`pago_efectivo = min(P,E)`), nuevo central con E ≥ P y E < P
   (solo devengo), P = 0 en viejo y nuevo (nada).
 
 ## T4 — Lo pendiente (depende de T1)
 
-- [ ] **T4.1** `derivarPendienteCierre` con el contrato de design §5.1 (versión SLT-123: sin
+- [x] **T4.1** `derivarPendienteCierre` con el contrato de design §5.1 (versión SLT-123: sin
   `pagadoPorSatelite`). Hecho: `tests/unit/utils/pendiente-cierre.test.ts` con la tabla de abajo,
   importes escritos a mano, y la aserción de «sin coma flotante» que ya lee el archivo, extendida a la
   rama nueva (R332).
@@ -71,13 +71,13 @@
 
 ## T5 — Los consumidores (depende de T2, T4)
 
-- [ ] **T5.1** `CierresAdminService.conPendiente` y `pendienteTrasAprobar` pasan la marca. Hecho:
+- [x] **T5.1** `CierresAdminService.conPendiente` y `pendienteTrasAprobar` pasan la marca. Hecho:
   `tests/unit/services/cierres-admin-pendiente.test.ts` con un cierre viejo y uno nuevo de la central
   en la misma página, y uno viejo de satélite con el pendiente de hoy (R320).
-- [ ] **T5.2** `[P]` `CierreDiaService.conPendientePago` + `findCierresByMensajeroPaginado` +
+- [x] **T5.2** `[P]` `CierreDiaService.conPendientePago` + `findCierresByMensajeroPaginado` +
   `CierrePasadoDTO`. Hecho: `tests/unit/services/cierre-dia-pendiente-pago.test.ts` y la tabla de
   `tests/integration/db/cierre-dia-pendiente-pago.test.ts` ganan las filas de cierre nuevo (R320).
-- [ ] **T5.3** `[P]` `LiquidacionService` (`imputablesDe`, `restanteTrasAnular`, `pendienteDelCierre`) +
+- [x] **T5.3** `[P]` `LiquidacionService` (`imputablesDe`, `restanteTrasAnular`, `pendienteDelCierre`) +
   `LiquidacionPagoRepository` (`obtenerCierreParaPago`, `listarCierresImputablesEnAlcance`) +
   `ILiquidacionPagoRepository` (`CierreParaPagoDTO`). Hecho: `tests/unit/services/liquidacion-service.test.ts`
   con un cierre nuevo central: tope = P con E ≥ P; reparto lo imputa; anular devuelve el restante
@@ -85,9 +85,9 @@
 
 ## T6 — Integración y mutaciones (depende de T2-T5)
 
-- [ ] **T6.1** `tests/integration/db/slt123-pago-independiente.int.test.ts` con los ocho casos de
+- [x] **T6.1** `tests/integration/db/slt123-pago-independiente.int.test.ts` con los ocho casos de
   design §11.1. Hecho: verde contra Postgres real, con la foto de V1/V2 idéntica antes y después.
-- [ ] **T6.2** Mutaciones. Cada una se aplica a mano, se corre el test indicado, **debe caer**, y se
+- [x] **T6.2** Mutaciones. Cada una se aplica a mano, se corre el test indicado, **debe caer**, y se
   revierte. Antes de creer un «sobrevive», comprobar que el test se ejecutó (nombre y número de tests en
   la salida). Resultado en `progress/impl_SLT-123.md` (mutación, test, rojo/verde, línea del fallo).
 
@@ -205,6 +205,7 @@ Producción:
 - `lib/services/LiquidacionService.ts`
 - `lib/repositories/LiquidacionPagoRepository.ts`
 - `lib/interfaces/repositories/ILiquidacionPagoRepository.ts`
+- `lib/interfaces/repositories/ICierresAdminRepository.ts` (T0.2/T2.2: la fila del repositorio declara la marca)
 
 Tests nuevos:
 - `tests/integration/db/slt123-pago-independiente.int.test.ts`
@@ -218,12 +219,20 @@ Tests que se amplían:
 - `tests/unit/services/liquidacion-service.test.ts`
 - `tests/integration/db/cierre-dia-pendiente-pago.test.ts`
 
-Tests y E2E previstos que caen (los confirma T0.2):
-- `tests/integration/db/454/caracterizacion/dinero-aprobacion.test.ts`
-- `tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts`
-- `tests/integration/db/slt73-aprobar-central-igual.int.test.ts`
-- `tests/integration/db/tarifas-valor-propio-caminos.test.ts`
-- `tests/integration/db/pago-mensajero-idempotencia.test.ts`
+Tests que solo ganan el campo obligatorio `pagoIndependienteEfectivo: false` (T0.2: el compilador los
+señaló al hacer obligatorio el campo de `derivarPendienteCierre`; caracterizan la regla de la 44):
+- `tests/integration/db/liquidacion-idempotencia.test.ts`
+- `tests/integration/db/premio-ranking-idempotencia.test.ts`
+- `tests/unit/guards/caja-173-alcance.guardia.test.ts`
+- `tests/unit/services/cierre-dia-service-totales-mixtos.test.ts`
+
+Tests y E2E que caen (T0.2, medido el 2026-11-12 con la marca puesta; detalle en `progress/impl_SLT-123.md`):
+- `tests/integration/db/454/caracterizacion/dinero-aprobacion.test.ts` (en el baseline; en local no siembra: sin medir)
+- `tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts` (en el baseline; en local no siembra: sin medir)
+- `tests/integration/db/slt73-aprobar-central-igual.int.test.ts` (cae)
+- `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts` (cae; no estaba previsto)
+- ~~`tests/integration/db/tarifas-valor-propio-caminos.test.ts`~~ (no cae: 37/37 verdes con la marca)
+- ~~`tests/integration/db/pago-mensajero-idempotencia.test.ts`~~ (no cae: 4/4 verdes con la marca)
 - `e2e/ajuste-pago-mensajero-cierre.spec.ts`
 - `e2e/tarifas-valor-propio-mensajero.spec.ts`
 - `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts`
