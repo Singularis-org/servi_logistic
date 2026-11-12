@@ -87,7 +87,7 @@
 - [x] **T7.5** `tests/integration/db/factura-plataforma-cambio-plan.test.ts`: R7 y R9; el caso m4 de SLT-118 R39 se
   rehace con la recepción.
 - [x] **T7.6** `tests/integration/db/planes-periodicidad-ordenes.test.ts`: R8, por empresa.
-- [ ] **T7.7** `tests/integration/db/plan-precio-historial.test.ts`: R3 con la cola.
+- [x] **T7.7** `tests/integration/db/plan-precio-historial.test.ts`: R3 con la cola.
 - [ ] **T7.8** `tests/integration/db/planes-historial.test.ts`: `cambio_aplicado` al promover (R10).
 - [x] **T7.9** `tests/unit/services/planes-service.test.ts`: R14, `cambio_a_medias` y el rol de empresa sin
   llamadas al repositorio.
