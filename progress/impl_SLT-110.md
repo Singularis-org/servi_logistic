@@ -158,3 +158,6 @@ Todos existen y estuvieron verdes en esta rama (integración y unit en la tanda 
 ### Veredicto
 
 T4, T5, T6.2 y T6.3 hechos: la fila de bodega pinta fecha del cargo, «Sin tarifa de pago» y las cifras del servidor, con componente y E2E que caen con sus mutaciones.
+
+## Gate del leader (2026-11-12)
+- `./init.sh` sobre el árbol final (base slt110_cifras): `INIT_EXIT=0`, tamaño aceptado por Carlos. E2E B6 2/2 en local; `cierres-rediseno` entero y grupo `dinero` los corre `e2e-grupo` en CI al sacar el PR de borrador.

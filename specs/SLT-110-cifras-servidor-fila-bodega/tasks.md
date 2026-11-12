@@ -77,7 +77,7 @@
 
 ## T6 — Cierre (implementer)
 
-- [ ] **T6.1** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` y grupo `dinero`
+- [x] **T6.1** `./init.sh` verde; E2E de `e2e/cierres-rediseno.spec.ts` y grupo `dinero`
   (`pnpm exec playwright test --project=dinero`) verdes en local. **Hecho:** salida con
   `INIT_EXIT` anotada en `progress/impl_SLT-110.md`.
 - [x] **T6.2** Anotar en `progress/features/SLT-110.md` la herencia para SLT-107 (`design.md > Lo que
