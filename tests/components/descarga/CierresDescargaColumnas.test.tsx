@@ -536,6 +536,8 @@ function renderConsolidacion() {
     cierresAConsolidar: CONSOLIDABLES.length,
     mensajerosAConsolidar: 2,
     bloqueo: null,
+    // SLT-107 (R287): campo nuevo obligatorio del contrato; esta suite no lo lee.
+    solicitadosResumen: { porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } },
   });
   envolver(
     <ConsolidacionBodegaModule

@@ -9,6 +9,7 @@ import type {
 } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
@@ -1824,5 +1825,205 @@ describe("SLT-104 (PA3, R120) — cada cierre del día del detalle de bodega lle
     // Aditivo: la cabecera conserva el suyo y los campos de siempre siguen ahí.
     expect(r.cierre.solicitadoAt).toBe("2026-07-12T10:00:00.000Z");
     expect(r.cierres[1].mensajeroNombre).toBe("Beto");
+  });
+});
+
+// --- SLT-107: la satelite lee el detalle de SU cierre de bodega (R280-R285) ---
+
+describe("CierresBodegaAdminService.verCierreBodegaDetalle — SLT-107 satelite de su zona", () => {
+  const Z_SAT = "z-cartago";
+
+  function ingresoConFulfillment(): IngresoEmpresaDTO {
+    return {
+      tarifaModelo: "viejo",
+      montoCobrar: null,
+      cobraComision: false,
+      esCentral: false,
+      esZonaEspecial: false,
+      fleteOrigen: "normal",
+      fleteDevolucionOrigen: "normal",
+      flete: "2000.00",
+      ivaFlete: "260.00",
+      fleteDevolucion: null,
+      ivaFleteDevolucion: null,
+      comisionCod: null,
+      ivaComisionCod: null,
+      fleteConIva: "2260.00",
+      fleteDevolucionConIva: null,
+      comisionConIva: null,
+      total: "2260.00",
+      fulfillment: "450.00",
+      ivaFulfillment: "58.50",
+      tarifa: {
+        tarifaId: "t1",
+        valorFlete: "2000.00",
+        valorFleteGam: "2000.00",
+        valorFleteDevuelto: "1000.00",
+        valorFleteDevueltoGam: "1000.00",
+        comisionCod: "0.00",
+        ivaFlete: "13.00",
+        ivaComisionCod: "13.00",
+        fulfillment: "450.00",
+        tarifaEspecial: null,
+        tarifaEspecialDevuelta: null,
+      },
+      fulfillmentConIva: "508.50",
+      ivaPctFulfillment: "13.00",
+      fulfillmentCargadoAt: "2026-11-06T15:00:00.000Z",
+    };
+  }
+
+  // Un cierre de bodega con evidencia y fulfillment cargado, conciliado y desmarcable: lo que la
+  // central ve entero y la satelite sin lo de R283.
+  function repoConCierre() {
+    return fakeRepo({
+      findCierreBodegaConDetalle: vi.fn(async () => ({
+        cierre: bodegaResumenRow({
+          estado: "aprobado",
+          conciliado: true,
+          desmarcable: true,
+          montoRecibido: "10.00",
+          faltaPorRecibir: "0.00",
+          conciliadoAt: "2026-07-13T10:00:00.000Z",
+        }),
+        cierresDia: [
+          {
+            resumen: detalleCierreRow(),
+            gestiones: [
+              gestionRow({
+                ingresoEmpresa: ingresoConFulfillment(),
+                evidenciaStoragePath: "o1/e.jpg",
+                evidenciaStoragePaths: ["o1/e.jpg"],
+              }),
+            ],
+          },
+        ],
+      })),
+    });
+  }
+
+  function servicio(
+    repo: Repo,
+    zona: Pick<IOrdenRepository, "findUsuarioZonaId"> | undefined,
+    signedUrls: ISignedUrlProvider = fakeSignedUrls(),
+  ) {
+    return new CierresBodegaAdminService(repo, signedUrls, reglasPaisFijas(), zona);
+  }
+
+  const zonaDe = (zonaId: string | null) => ({ findUsuarioZonaId: vi.fn(async () => zonaId) });
+
+  it("R280/R283: satelite de su zona -> ok; los seis campos del fulfillment en null y `desmarcable` false", async () => {
+    const repo = repoConCierre();
+    const zona = zonaDe(Z_SAT);
+    const r = await servicio(repo, zona).verCierreBodegaDetalle("cb1", ADMIN_SATELITE);
+
+    if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
+    // R280: la zona sale de SU usuario y va al repositorio como alcance de zona.
+    expect(zona.findUsuarioZonaId).toHaveBeenCalledWith("adm-sat");
+    expect(repo.findCierreBodegaConDetalle).toHaveBeenCalledWith("cb1", ZONA_DE_CR, {
+      lectura: "zona",
+      zonaId: Z_SAT,
+    });
+    const tarifa = ingresoConFulfillment().tarifa;
+    expect(r.cierres[0].grupos.entregado[0].ingresoEmpresa).toEqual({
+      ...ingresoConFulfillment(),
+      fulfillment: null,
+      ivaFulfillment: null,
+      tarifa: tarifa === null ? null : { ...tarifa, fulfillment: null },
+      fulfillmentConIva: null,
+      ivaPctFulfillment: null,
+      fulfillmentCargadoAt: null, // D-H110
+    });
+    expect(r.cierre.desmarcable).toBe(false);
+  });
+
+  it("R284: mismo doble leido por central y satelite -> iguales salvo R283, mismas llamadas al repositorio", async () => {
+    const repoCentral = repoConCierre();
+    const repoSat = repoConCierre();
+    const central = await servicio(repoCentral, zonaDe(null)).verCierreBodegaDetalle("cb1", MAESTRO);
+    const sat = await servicio(repoSat, zonaDe(Z_SAT)).verCierreBodegaDetalle("cb1", ADMIN_SATELITE);
+    if (central.status !== "ok" || sat.status !== "ok") throw new Error("esperaba ok en las dos");
+
+    // La central no cambia: fulfillment entero y su `desmarcable`.
+    expect(central.cierres[0].grupos.entregado[0].ingresoEmpresa).toEqual(ingresoConFulfillment());
+    expect(central.cierre.desmarcable).toBe(true);
+
+    // Todo lo demas, identico (cabecera, cierres, totales, derivados, desglose, reparto en %).
+    const sinR283 = (x: typeof central) => ({
+      ...x,
+      cierre: { ...x.cierre, desmarcable: "R283" },
+      cierres: x.cierres.map((c) => ({ ...c, grupos: "R283" })),
+    });
+    expect(sinR283(sat)).toEqual(sinR283(central));
+    expect(sat.porcentajesReparto).toBeDefined();
+    // Las gestiones, iguales salvo el fulfillment.
+    const g = (x: typeof central) => ({ ...x.cierres[0].grupos.entregado[0], ingresoEmpresa: null });
+    expect(g(sat)).toEqual(g(central));
+
+    // Ninguna lectura de mas para la satelite: la misma llamada (salvo el alcance) y nada mas.
+    expect(repoSat.findCierreBodegaConDetalle).toHaveBeenCalledTimes(1);
+    expect(repoCentral.findCierreBodegaConDetalle).toHaveBeenCalledWith("cb1", ZONA_DE_CR, {
+      lectura: "toda_la_empresa",
+    });
+    for (const m of [
+      "findCierresBodega",
+      "findColaPaginada",
+      "findHistoricoPaginado",
+      "findGestionesDeCierresBodegaCompleto",
+      "resolverCierreBodega",
+    ] as const) {
+      expect(repoSat[m]).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    ["sin zona", zonaDe(null)],
+    ["sin `zonaDelUsuario` inyectado", undefined],
+  ])("R281: satelite %s -> forbidden sin leer el cierre ni firmar evidencias", async (_n, zona) => {
+    const repo = repoConCierre();
+    const signedUrls = fakeSignedUrls();
+    const r = await servicio(repo, zona, signedUrls).verCierreBodegaDetalle("cb1", ADMIN_SATELITE);
+    expect(r.status).toBe("forbidden");
+    expect(repo.findCierreBodegaConDetalle).not.toHaveBeenCalled();
+    expect(signedUrls.createSignedUrls).not.toHaveBeenCalled();
+  });
+
+  it("R281: satelite y el repositorio no lo encuentra en su zona (otra zona o inexistente) -> forbidden, sin firmar", async () => {
+    const repo = fakeRepo({ findCierreBodegaConDetalle: vi.fn(async () => null) });
+    const signedUrls = fakeSignedUrls();
+    const r = await servicio(repo, zonaDe("z-otra"), signedUrls).verCierreBodegaDetalle(
+      "cb-de-z1",
+      ADMIN_SATELITE,
+    );
+    expect(r.status).toBe("forbidden");
+    expect(repo.findCierreBodegaConDetalle).toHaveBeenCalledWith("cb-de-z1", ZONA_DE_CR, {
+      lectura: "zona",
+      zonaId: "z-otra",
+    });
+    expect(signedUrls.createSignedUrls).not.toHaveBeenCalled();
+    expect(signedUrls.createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("R281: acceso total y cierre inexistente -> sigue siendo no_encontrada", async () => {
+    const repo = fakeRepo({ findCierreBodegaConDetalle: vi.fn(async () => null) });
+    const r = await servicio(repo, zonaDe(Z_SAT)).verCierreBodegaDetalle("cb-x", MAESTRO);
+    expect(r.status).toBe("no_encontrada");
+  });
+
+  it("R282: mensajero -> forbidden sin leer su zona ni el repositorio", async () => {
+    const repo = repoConCierre();
+    const zona = zonaDe(Z_SAT);
+    const r = await servicio(repo, zona).verCierreBodegaDetalle("cb1", MENSAJERO);
+    expect(r.status).toBe("forbidden");
+    expect(zona.findUsuarioZonaId).not.toHaveBeenCalled();
+    expect(repo.findCierreBodegaConDetalle).not.toHaveBeenCalled();
+  });
+
+  it("R285: aprobar y rechazar con satelite (con zona) -> forbidden, sin escribir", async () => {
+    const repo = repoConCierre();
+    const svc = servicio(repo, zonaDe(Z_SAT));
+    expect((await svc.aprobarCierreBodega("cb1", ADMIN_SATELITE)).status).toBe("forbidden");
+    expect((await svc.rechazarCierreBodega("cb1", "motivo", ADMIN_SATELITE)).status).toBe("forbidden");
+    expect(repo.resolverCierreBodega).not.toHaveBeenCalled();
   });
 });

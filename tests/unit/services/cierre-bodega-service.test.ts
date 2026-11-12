@@ -135,6 +135,12 @@ describe("CierreBodegaService — adminSatelite sin zona (R4)", () => {
     // SLT-133 (L3 de bodega, R141/R144): texto exacto en «tú», en `motivoBloqueo`.
     expect(r.motivoBloqueo).toBe("No tienes una zona asignada; contacta a tu administrador.");
     expect(repo.findCierresDiaConsolidables).not.toHaveBeenCalled();
+    // SLT-107 (R287): sin zona, las tres cifras de «Solicitados» en cero.
+    expect(r.solicitadosResumen).toEqual({
+      porLlegar: { monto: "0.00", cierres: 0 },
+      recibido30Dias: { monto: "0.00", cierres: 0 },
+      faltaPorRecibir: { monto: "0.00", cierres: 0 },
+    });
   });
 
   it("R4: solicitarCierreBodega sin zona -> validation_error {zona}, sin crear", async () => {
