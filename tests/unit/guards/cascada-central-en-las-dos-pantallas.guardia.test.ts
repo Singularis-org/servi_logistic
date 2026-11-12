@@ -165,9 +165,23 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
     expect(usosDe("CierreFacturaResumen").every((u) => u.componente === "CierreFacturaResumen")).toBe(
       true,
     );
-    expect(USOS_AJENOS.length, "no se encontró ningún comprobante de los otros tres").toBeGreaterThan(
-      2,
-    );
+    // Censo EXPLÍCITO de los ajenos: cada montaje con su componente. Si el extractor confundiera
+    // `<CierreFacturaResumenPropio>` con `<CierreFacturaResumen>`, la primera fila saldría con el
+    // nombre del otro (o duplicada) y esta lista no cuadraría.
+    const ajenos = USOS_AJENOS.map((u) => `${u.archivo} · ${u.componente}`).sort();
+    expect(
+      ajenos,
+      "o un comprobante ajeno se monta en una superficie nueva —revísala a mano y añádela aquí— o " +
+        "el extractor está confundiendo dos nombres que comparten prefijo.",
+    ).toEqual([
+      // El comprobante propio del mensajero, en su propio cierre del día.
+      "app/(app)/cierre-dia/_components/CierreDiaModule.tsx · CierreFacturaResumenPropio",
+      // El histórico de cierres de mensajero del admin.
+      "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx · CierreFacturaResumen",
+      // SLT-106 «Bodega satélite: A consolidar con la cola única»: `ConsolidacionBodegaModule` ya
+      // no monta `<CierreConsolidableFacturaResumen>` (R204: la sustituye `ColaCierres`). El
+      // componente sigue declarado sin montar hasta que lo retire SLT-115.
+    ]);
     const propio = USOS_AJENOS.filter((u) => u.componente === "CierreFacturaResumenPropio");
     expect(propio.length, "el comprobante propio del mensajero dejó de montarse").toBeGreaterThan(0);
   });

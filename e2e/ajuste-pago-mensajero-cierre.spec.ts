@@ -272,8 +272,12 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await sat.goto("/cierres-admin");
     await sat.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
     const bodega = sat.getByRole("region", { name: "Cierre de bodega" });
-    await expect(bodega.getByRole("region", { name: "Cierres del día a consolidar" })).toContainText(m.nombre);
-    await bodega.getByRole("region", { name: "Solicitar cierre de bodega" }).getByRole("button", { name: "Solicitar cierre de bodega" }).click();
+    // SLT-106 «Bodega satélite: A consolidar con la cola única» (R192): la fila de la cola lleva la señal
+    // del ajuste y el pago ya ajustado; el botón vive en el pie de la cola, no en una región propia.
+    const fila = filaDeCola(bodega.getByRole("region", { name: "Cierres del día a consolidar" }), m.nombre);
+    await expect(fila.getByRole("cell").nth(4)).toHaveText("₡1.800");
+    await expect(fila.getByRole("cell").nth(7)).toHaveText("1 pago ajustado");
+    await bodega.getByRole("button", { name: "Solicitar cierre de bodega" }).click();
     await sat.getByRole("dialog", { name: "Solicitar cierre de bodega" }).getByRole("button", { name: "Solicitar cierre de bodega" }).click();
     await expect(sat.getByText("Cierre de bodega solicitado correctamente.")).toBeVisible();
 

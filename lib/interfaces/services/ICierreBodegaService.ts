@@ -115,6 +115,23 @@ export interface CierreBodegaResumenLite {
   incluyeModeloNuevo?: boolean;
 }
 
+/**
+ * SLT-106 (R67/R192/R194) — lo que pinta la fila de «A consolidar» (la pagina). El conjunto de la
+ * descarga y `cierre-factura.tsx` siguen con `CierreBodegaResumenLite`: este tipo es asignable a
+ * aquel, asi que el row mas rico entra sin cambiar a nadie.
+ */
+export interface CierreConsolidableCola extends CierreBodegaResumenLite {
+  /** R67: `paraLaCentral(general, pago, bodega)` de ESTE cierre, con su signo. */
+  paraLaCentral: string;
+  /** R194: `cierre_dia.resuelto_at` en ISO; `null` si no llega. */
+  aprobadoAt: string | null;
+  /** R194: gestiones de este cierre con al menos un ajuste del pago (una ajustada dos veces cuenta una). */
+  gestionesAjustadas: number;
+}
+
+/** SLT-106 (R195) — por que no se puede «Solicitar cierre de bodega». `null` = se puede. */
+export type BloqueoConsolidacion = "sin_zona" | "sin_resolver" | "vacio";
+
 // Un cierre_dia incluido, con su detalle de gestiones (reuso 37) + su total snapshot.
 // R14/F1.4-f: NO incluye pago al mensajero (feature 39).
 export interface CierreBodegaDetalleCierre {
@@ -238,6 +255,11 @@ export type ListarConsolidacionServiceResult =
       motivoBloqueo: string | null; // texto accionable si !puedesSolicitar
       cierresBodegaPasados: CierreBodegaResumen[]; // historico propio de la zona (F1.4-h)
       sinZona: boolean; // adminSatelite sin zona (R4)
+      // SLT-106 — sobre el conjunto COMPLETO de la zona, sin filtros ni pagina (R195):
+      paraLaCentralAgregado: string; // R67: paraLaCentral(totalesAgregados.general, totalPagoMensajeroAgregado, totalIngresoBodegaRechazosAgregado)
+      cierresAConsolidar: number; // R195: consolidables.length
+      mensajerosAConsolidar: number; // R195: mensajeros distintos de los consolidables
+      bloqueo: BloqueoConsolidacion | null; // R195: el motivo del gate, para el pie (R197)
     }
   | { status: "forbidden" }; // rol != adminSatelite (R1)
 
@@ -260,7 +282,7 @@ export type ListarCierresBodegaSolicitadosServiceResult =
  * los pagos INDIVIDUALES ordenados: una pagina no los puede producir ni aproximar.
  */
 export type ListarConsolidablesServiceResult =
-  ListarPaginadoServiceResult<CierreBodegaResumenLite>;
+  ListarPaginadoServiceResult<CierreConsolidableCola>; // SLT-106: la fila de «A consolidar»
 
 /**
  * Feature 184 — Tanda B (R1/R6/R10) — el CONJUNTO de «Cierres de bodega solicitados» de la zona,
