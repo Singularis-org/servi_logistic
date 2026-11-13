@@ -84,7 +84,12 @@ import {
   whereDeLugares,
 } from "@/lib/repositories/_shared/lugares-del-filtro";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
+import {
+  nombresDeLaRuta,
+  rutaDelLugar,
+  tresPrimerosNiveles,
+  type PasoDeRuta,
+} from "@/lib/repositories/_shared/ruta-del-lugar";
 import {
   ancestros,
   esZonaEspecial,
@@ -1141,12 +1146,11 @@ const WITH_ESTATUS_Y_TIENDA = {
       },
     },
     zona: { select: { id: true, nombre: true, esCentral: true } },
-    provincia: { select: { id: true, nombre: true } },
-    canton: { select: { id: true, nombre: true } },
-    // El id y el nombre del distrito son presentacion (SLT-47). La marca de zona especial, que
-    // decide el MONTO del flete de las dos columnas de dinero, ya no viaja aqui: desde SLT-65 sale
-    // del catalogo sobre el lugar de la orden (`marcasDeOrdenes`) y `toListItemDTO` la recibe.
-    distrito: { select: { id: true, nombre: true } },
+    // SLT-125 (design §4.2; R16, R19): aqui ya no hay relaciones `provincia`, `canton` ni `distrito`.
+    // Los nombres de lugar salen de la ruta del catalogo de la empresa sobre las FK de la orden
+    // (`include` trae los escalares, y `lugarDeLaOrden` usa `cantonId` y `distritoId`), en memoria y
+    // con una carga por instancia (`lugaresDeOrdenes`). La marca de zona especial sale del mismo
+    // catalogo desde SLT-65.
     mensajeroAsignado: { select: { id: true, ...NOMBRE_USUARIO_SELECT } },
     // Gestion de reprogramacion VIGENTE (a lo sumo una, `take: 1`): alimenta la
     // columna "Liberada el" de la tab `reprogramada`. `orden -> gestiones` es 1:N
@@ -1259,10 +1263,22 @@ function tarifaDe(tarifas: TarifasDePagina, row: OrdenListRow): TarifaDeFila {
   return { cobro: tarifas.cobro.get(clave) ?? null, vista: tarifas.vista.get(clave) ?? null };
 }
 
+/** SLT-125: `{ id, nombre }` de un paso de la ruta (una copia: el DTO no comparte el objeto de la ruta). */
+function refDePaso(paso: PasoDeRuta | null): { id: string; nombre: string } | null {
+  return paso === null ? null : { id: paso.id, nombre: paso.nombre };
+}
+
 // Arma el bloque `relaciones` con los datos de las relaciones directas (FK) de la
 // orden, resueltas por el include del listado. La `tarifa` de `tienda` NO sale del include:
 // llega ya resuelta por la cascada (tienda, zona) de la pagina (feature 274, R18).
-function toRelaciones(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenListItemRelaciones {
+function toRelaciones(
+  row: OrdenListRow,
+  tarifa: TarifaListRow | null,
+  ruta: readonly PasoDeRuta[],
+): OrdenListItemRelaciones {
+  // SLT-125 (R16, R17, R37): `{ id, nombre }` del nodo de nivel 1, 2 y 3 de la ruta, la misma forma
+  // que daban las relaciones; `null` donde la ruta no llega (sin distrito, o lugar fuera del catalogo).
+  const niveles = tresPrimerosNiveles(ruta);
   return {
     estatus: row.estatus ? { id: row.estatus.id, value: row.estatus.value } : null,
     tienda: row.tienda
@@ -1279,9 +1295,9 @@ function toRelaciones(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLis
     zona: row.zona
       ? { id: row.zona.id, nombre: row.zona.nombre, esCentral: row.zona.esCentral }
       : null,
-    provincia: row.provincia ? { id: row.provincia.id, nombre: row.provincia.nombre } : null,
-    canton: row.canton ? { id: row.canton.id, nombre: row.canton.nombre } : null,
-    distrito: row.distrito ? { id: row.distrito.id, nombre: row.distrito.nombre } : null,
+    provincia: refDePaso(niveles.provincia),
+    canton: refDePaso(niveles.canton),
+    distrito: refDePaso(niveles.distrito),
     mensajeroAsignado: row.mensajeroAsignado
       ? { id: row.mensajeroAsignado.id, nombre: nombreCompletoUsuario(row.mensajeroAsignado) }
       : null,
@@ -1297,8 +1313,9 @@ function toRelaciones(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLis
 function toListItemDTO(
   row: OrdenListRow,
   tarifa: TarifaDeFila | null,
-  esZonaEspecial: boolean,
+  lugar: LugarDeFila,
 ): OrdenListItemDTO {
+  const { esZonaEspecial, ruta } = lugar;
   // Feature 204: las dos columnas de dinero DERIVADO ("Flete + IVA" y "Comisión + IVA") se
   // resuelven AQUI, con Decimal, y viajan como STRING ya derivado. Antes las calculaba el
   // navegador multiplicando los `number` de la tarifa, y no daba lo mismo: sobre las órdenes
@@ -1349,8 +1366,20 @@ function toListItemDTO(
     // `toFechaISO` da el dia correcto sin tocar ninguna zona horaria. El navegador NO construye
     // ninguna fecha: recibe el texto y lo pone en palabras con `fechaLegible`.
     fechaRepartoISO: toFechaISO(row.fechaReparto),
-    relaciones: toRelaciones(row, tarifa?.vista ?? null),
+    relaciones: toRelaciones(row, tarifa?.vista ?? null, ruta),
+    // SLT-125 (design §4.2, §6): la ruta del lugar, del nivel 1 al lugar de la orden. De aqui salen las
+    // columnas por nivel de la tabla y de la descarga (R1, R5). Solo ids y nombres de lugar (R41).
+    lugarRuta: ruta,
   };
+}
+
+/**
+ * SLT-125 (design §4.2; R16, R20) — lo que el catalogo dice del lugar de UNA fila del listado: la marca
+ * de zona especial (SLT-65) y la ruta. Las dos salen de la misma carga del catalogo por instancia.
+ */
+interface LugarDeFila {
+  esZonaEspecial: boolean;
+  ruta: PasoDeRuta[];
 }
 
 // Feature 16 — resumen del lote recien cargado: los datos de la orden + el
@@ -1413,9 +1442,10 @@ const WITH_ETIQUETA = {
     createdAt: true,
     tienda: { select: { nombre: true } },
     zona: { select: { nombre: true } },
-    provincia: { select: { nombre: true } },
-    canton: { select: { nombre: true } },
-    distrito: { select: { nombre: true } },
+    // SLT-125 (design §4.2; R16, R19): las FK del lugar (`lugarDeLaOrden`) en vez de las relaciones a
+    // las tablas viejas; los nombres salen de la ruta del catalogo de la empresa.
+    cantonId: true,
+    distritoId: true,
   },
 } as const;
 
@@ -1427,7 +1457,9 @@ type OrdenEtiquetaRow = Prisma.OrdenGetPayload<typeof WITH_ETIQUETA>;
 // Feature 295: `created_at` (timestamp UTC) sale como fecha CALENDARIO DE CR
 // `YYYY-MM-DD`, la misma convencion con la que el manifiesto escribe su columna
 // `fecha` y con la que el comprobante de cierre pinta las suyas.
-function toEtiquetaRow(row: OrdenEtiquetaRow): EtiquetaRow {
+function toEtiquetaRow(row: OrdenEtiquetaRow, catalogo: CatalogoGeografico): EtiquetaRow {
+  // SLT-125 (R16, R17, R18): la ruta del catalogo; los tres nombres de hoy salen de ella.
+  const ruta = rutaDelLugar(catalogo, row);
   return {
     id: row.id,
     tiendaId: row.tiendaId,
@@ -1440,9 +1472,9 @@ function toEtiquetaRow(row: OrdenEtiquetaRow): EtiquetaRow {
     montoCobrar: row.montoCobrar ? row.montoCobrar.toNumber() : null,
     tiendaNombre: row.tienda.nombre,
     zonaNombre: row.zona.nombre,
-    provinciaNombre: row.provincia.nombre,
-    cantonNombre: row.canton.nombre,
-    distritoNombre: row.distrito?.nombre ?? null,
+    ...nombresDeLaRuta(ruta),
+    // SLT-125 (design §4.2, §6): la ruta entera, para la linea de la etiqueta y de `/paquete` (R9).
+    lugarRuta: ruta,
     fechaCreacion: fechaCalendarioCR(row.createdAt), // feature 295
   };
 }
@@ -1825,8 +1857,8 @@ function ordenBodegaSatelite(): Prisma.Sql {
  * tendria a quien servir. Si algun dia el satelite pasa a ver esos importes, esto vuelve a ser
  * `resolverTarifasDePagina` + `tarifaDe`, exactamente como en `findMany`.
  */
-function toBodegaSateliteRow(row: OrdenListRow, esZonaEspecial: boolean): RecepcionSateliteRow {
-  const base = recortarPorAlcance(toListItemDTO(row, null, esZonaEspecial), "zona");
+function toBodegaSateliteRow(row: OrdenListRow, lugar: LugarDeFila): RecepcionSateliteRow {
+  const base = recortarPorAlcance(toListItemDTO(row, null, lugar), "zona");
   // `fleteOrigen` describe DE DONDE salio el importe de `fleteConIva`, y ese importe no viaja a
   // este alcance. Dejarlo seria publicar una afirmacion sin referente —y ademas FALSA en el caso
   // que el campo existe para señalar: con la tarifa sin resolver siempre diria "normal", incluso
@@ -1840,9 +1872,8 @@ function toBodegaSateliteRow(row: OrdenListRow, esZonaEspecial: boolean): Recepc
     direccion: row.direccion,
     montoCobrar: row.montoCobrar ? row.montoCobrar.toNumber() : null,
     zonaNombre: row.zona.nombre,
-    provinciaNombre: row.provincia.nombre,
-    cantonNombre: row.canton.nombre,
-    distritoNombre: row.distrito?.nombre ?? null,
+    // SLT-125 (R16, R17): de la misma ruta que `relaciones` y `lugarRuta` (`toListItemDTO`).
+    ...nombresDeLaRuta(lugar.ruta),
     prioridad: row.prioridad,
     fechaRepartoISO: toFechaISO(row.fechaReparto),
   };
@@ -1965,6 +1996,29 @@ export class OrdenRepository implements IOrdenRepository {
     if (filas.length === 0) return [];
     const { catalogo, asignaciones } = await this.catalogoGeografico().deLaEmpresa();
     return filas.map((f) => esZonaEspecial(catalogo, asignaciones, lugarDeLaOrden(f)));
+  }
+
+  /**
+   * SLT-125 (design §4.2; R16, R18, R20, R40) — la marca y la ruta de cada fila, en el orden de `filas`,
+   * con UNA llamada a `deLaEmpresa` (que ademas memoriza por instancia): ninguna consulta por fila.
+   *
+   * Sin filas no carga el catalogo. En plataforma `deLaEmpresa` lanza `EmpresaNoResuelta` (R40); un
+   * lugar de otro pais o fuera del catalogo da una ruta vacia y nombres vacios, sin fallar (R18).
+   */
+  private async lugaresDeOrdenes(
+    filas: readonly { distritoId: string | null; cantonId: string }[],
+  ): Promise<LugarDeFila[]> {
+    if (filas.length === 0) return [];
+    const { catalogo, asignaciones } = await this.catalogoGeografico().deLaEmpresa();
+    return filas.map((f) => ({
+      esZonaEspecial: esZonaEspecial(catalogo, asignaciones, lugarDeLaOrden(f)),
+      ruta: rutaDelLugar(catalogo, f),
+    }));
+  }
+
+  /** SLT-125 (R16, R20): el catalogo de la empresa solo si hay filas que nombrar. */
+  private async catalogoSiHayFilas(hayFilas: boolean): Promise<CatalogoGeografico | null> {
+    return hayFilas ? (await this.catalogoGeografico().deLaEmpresa()).catalogo : null;
   }
 
   // BORRADO 2026-08-07 (tanda 2 del chore de deuda de superficie): aqui vivia `create`, el
@@ -2159,15 +2213,16 @@ export class OrdenRepository implements IOrdenRepository {
     // tres consultas y solo DOS de datos, sea la pagina de 1 fila o de 50.
     const tarifas = await this.resolverTarifasDePagina(items);
 
-    // SLT-65 (design §3): la marca de cada fila, del catalogo (una carga por instancia).
-    const marcas = await this.marcasDeOrdenes(items);
+    // SLT-65 (design §3) y SLT-125 (R16, R20): la marca y la ruta de cada fila, del catalogo (una carga
+    // por instancia, ninguna consulta por fila).
+    const lugares = await this.lugaresDeOrdenes(items);
 
     // FICHA 454 (R29): y UNA mas, las señales de la gestion pendiente y la ayuda abierta, sobre las
     // filas que el `where` de arriba (con el acotamiento por rol) ya dejo pasar.
     return {
       items: await anotarSenalesGestion(
         this.prisma,
-        items.map((row, i) => toListItemDTO(row, tarifaDe(tarifas, row), marcas[i])),
+        items.map((row, i) => toListItemDTO(row, tarifaDe(tarifas, row), lugares[i])),
       ),
       total,
     };
@@ -2255,9 +2310,9 @@ export class OrdenRepository implements IOrdenRepository {
     // Feature 274 (T8.1): la MISMA resolucion de tarifa que `list()`, y por el mismo motivo por
     // el que comparte include y mapeo — si no, el detalle del tablero diverge del listado.
     const tarifas = await this.resolverTarifasDePagina(rows);
-    const marcas = await this.marcasDeOrdenes(rows);
+    const lugares = await this.lugaresDeOrdenes(rows);
     // R2: el MISMO mapeo que `list()`.
-    return rows.map((row, i) => toListItemDTO(row, tarifaDe(tarifas, row), marcas[i]));
+    return rows.map((row, i) => toListItemDTO(row, tarifaDe(tarifas, row), lugares[i]));
   }
 
   async update(
@@ -4169,7 +4224,9 @@ export class OrdenRepository implements IOrdenRepository {
       where: { id: { in: ids }, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
-    return rows.map(toEtiquetaRow);
+    // SLT-125 (R20): una carga del catalogo para todas las etiquetas, y ninguna si no hay filas.
+    const catalogo = await this.catalogoSiHayFilas(rows.length > 0);
+    return catalogo === null ? [] : rows.map((row) => toEtiquetaRow(row, catalogo));
   }
 
   /**
@@ -4187,7 +4244,8 @@ export class OrdenRepository implements IOrdenRepository {
       where: { numGuia, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
-    return row ? toEtiquetaRow(row) : null;
+    const catalogo = await this.catalogoSiHayFilas(row !== null);
+    return row === null || catalogo === null ? null : toEtiquetaRow(row, catalogo);
   }
 
   // --- Feature 148: manifiesto Excel por lote (READ derivado, R4/R6/R7/R12/R29) ---
@@ -4279,11 +4337,11 @@ export class OrdenRepository implements IOrdenRepository {
       // FICHA 349: la MISMA proyeccion que `/ordenes`, no una segunda.
       ...WITH_ESTATUS_Y_TIENDA,
     });
-    const marcas = await this.marcasDeOrdenes(rows);
+    const lugares = await this.lugaresDeOrdenes(rows);
     // FICHA 454 (R29): las señales de la gestion pendiente y la ayuda, en una consulta mas.
     return anotarSenalesGestion(
       this.prisma,
-      rows.map((row, i) => toBodegaSateliteRow(row, marcas[i])),
+      rows.map((row, i) => toBodegaSateliteRow(row, lugares[i])),
     );
   }
 
@@ -4434,15 +4492,15 @@ export class OrdenRepository implements IOrdenRepository {
       // acotamiento, y compartir la proyeccion no puede ensancharlo.
       ...WITH_ESTATUS_Y_TIENDA,
     });
-    const marcas = await this.marcasDeOrdenes(filas);
-    const porId = new Map(filas.map((fila, i) => [fila.id, { fila, marca: marcas[i] }]));
+    const lugares = await this.lugaresDeOrdenes(filas);
+    const porId = new Map(filas.map((fila, i) => [fila.id, { fila, lugar: lugares[i] }]));
     // FICHA 454 (R29): las señales de la gestion pendiente y la ayuda, en UNA consulta por pagina
     // (la comparten la pagina y la descarga, como el resto de la hidratacion).
     return anotarSenalesGestion(
       this.prisma,
       ids.flatMap((id) => {
         const hallada = porId.get(id);
-        return hallada === undefined ? [] : [toBodegaSateliteRow(hallada.fila, hallada.marca)];
+        return hallada === undefined ? [] : [toBodegaSateliteRow(hallada.fila, hallada.lugar)];
       }),
     );
   }
@@ -5925,10 +5983,8 @@ export class OrdenRepository implements IOrdenRepository {
         tienda: { select: { nombre: true } },
         // FICHA 429 (R13/R15): dos columnas mas en el `select` de zona QUE YA EXISTIA.
         zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
-        provincia: { select: { nombre: true } },
-        canton: { select: { nombre: true } },
-        distrito: { select: { nombre: true } },
-        // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`).
+        // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`). SLT-125 (A8;
+        // R16): de esa misma ruta salen tambien los tres nombres; ya no se seleccionan las relaciones.
         cantonId: true,
         distritoId: true,
         // FICHA 296: el MENSAJERO, por nombre y en la MISMA consulta. `mensajero_asignado_id` es
@@ -5950,7 +6006,8 @@ export class OrdenRepository implements IOrdenRepository {
       },
     });
     // SLT-47 (R16): una carga del catalogo por instancia, y solo si hay filas.
-    const catalogo = rows.length === 0 ? null : (await this.catalogoGeografico().deLaEmpresa()).catalogo;
+    const catalogo = await this.catalogoSiHayFilas(rows.length > 0);
+    if (catalogo === null) return [];
     return rows.map((row) => ({
       id: row.id,
       numGuia: row.numGuia,
@@ -5969,9 +6026,8 @@ export class OrdenRepository implements IOrdenRepository {
       notas: row.notas,
       tiendaNombre: row.tienda.nombre,
       zonaNombre: row.zona.nombre,
-      provinciaNombre: row.provincia.nombre,
-      cantonNombre: row.canton.nombre,
-      distritoNombre: row.distrito?.nombre ?? null,
+      // SLT-125 (R16, R17): los tres nombres de hoy, de la ruta del catalogo de la empresa.
+      ...nombresDeLaRuta(rutaDelLugar(catalogo, row)),
       intentosContacto: row.intentosContacto,
       // FICHA 296: `null` cuando la orden no tiene mensajero asignado. NUNCA `""`: una cadena
       // vacia se pinta como una etiqueta sin valor y la tienda no sabria si es que no hay nadie
@@ -5984,8 +6040,8 @@ export class OrdenRepository implements IOrdenRepository {
         row.mensajeroAsignado?.zona ?? null,
         { numero: row.zona.sinpeNumero, nombre: row.zona.sinpeNombre },
       ),
-      // SLT-47 (R16): la ruta del lugar, del catalogo de la empresa (`null` solo si no hay filas).
-      lugarRuta: catalogo === null ? [] : rutaDelLugar(catalogo, row),
+      // SLT-47 (R16): la ruta del lugar, del catalogo de la empresa.
+      lugarRuta: rutaDelLugar(catalogo, row),
       createdAt: row.createdAt,
     }));
   }

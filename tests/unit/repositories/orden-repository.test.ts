@@ -76,15 +76,21 @@ function ordenListRow(overrides: Record<string, unknown> = {}) {
     },
     // Feature 30/R14: el listado incluye la zona (nombre + flag GAM).
     zona: { id: "z1", nombre: "GAM", esCentral: true },
-    provincia: { id: "p1", nombre: "San José" },
-    canton: { id: "c1", nombre: "Central" },
-    distrito: null,
+    // SLT-125 (design §4.2): sin relaciones de lugar; el listado nombra con la ruta del catalogo de la
+    // empresa sobre `cantonId`/`distritoId` de `ordenRow` (`CADENA_DEL_LUGAR`, en `buildPrisma`).
     mensajeroAsignado: null,
     // Gestión de reprogramación vigente (`take: 1`): vacío = sin reprogramación.
     gestiones: [],
     ...overrides,
   };
 }
+
+/** SLT-125: la cadena del lugar de las filas del listado en el catalogo del doble. Entrada. */
+const CADENA_DEL_LUGAR = [
+  { id: "p1", nombre: "San José" },
+  { id: "c1", padreId: "p1", nombre: "Central" },
+  { id: "d1", padreId: "c1", nombre: "Carmen" },
+];
 
 // Feature 49: `update` corre en `$transaction`; el fake `$transaction` invoca el callback con
 // el propio `prisma` como `tx` (tiene los modelos + el choke point
@@ -118,7 +124,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn(),
     // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
-    ...delegadosDelCatalogo(),
+    // SLT-125: y los nombres de lugar, de la ruta de ese catalogo (San José · Central · Carmen).
+    ...delegadosDelCatalogo({ nodos: CADENA_DEL_LUGAR }),
     ...overrides,
   };
   // El `$transaction` fake ejecuta el callback con el propio prisma como `tx`.
@@ -362,7 +369,7 @@ describe("OrdenRepository.list (R30/R31/R34)", () => {
     const prisma = buildPrisma();
     prisma.orden.findMany.mockResolvedValue([
       ordenListRow({
-        distrito: { id: "d1", nombre: "Carmen", zonasEspeciales: [] },
+        distritoId: "d1", // SLT-125: el distrito por su FK; el nombre sale del catalogo
         mensajeroAsignado: { id: "msj-1", nombre: "Luis" },
       }),
     ]);

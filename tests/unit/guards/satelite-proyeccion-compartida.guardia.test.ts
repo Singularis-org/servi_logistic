@@ -128,7 +128,8 @@ describe("FICHA 349 — la bodega satelite proyecta como `/ordenes`, no aparte",
     // «Liberada el»: la gestion de reprogramacion VIGENTE.
     expect(include.gestiones).toBeDefined();
     // Y las que ya traia, para que este caso no pueda pasar con un include de dos claves.
-    for (const relacion of ["estatus", "tienda", "zona", "provincia", "canton", "distrito"]) {
+    // SLT-125 (A11): las de lugar salieron del `include`; los nombres salen de la ruta del catalogo.
+    for (const relacion of ["estatus", "tienda", "zona"]) {
       expect(include[relacion]).toBeDefined();
     }
   });

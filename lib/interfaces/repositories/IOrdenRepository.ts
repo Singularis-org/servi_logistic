@@ -765,6 +765,11 @@ export interface EtiquetaRow {
   cantonNombre: string;
   distritoNombre: string | null;
   /**
+   * SLT-125 (design §4.2, §6) — la ruta del lugar, del catalogo del pais de la empresa. Los tres nombres
+   * de arriba salen de ella (R16, R17); `[]` y nombres vacios si el lugar no esta en el catalogo (R18).
+   */
+  lugarRuta?: PasoDeRuta[];
+  /**
    * Feature 295 — DIA en que la tienda cargo el envio (`orden.created_at`), como
    * fecha CALENDARIO de Costa Rica `YYYY-MM-DD`, YA SERIALIZADA (patron de
    * `RecepcionSateliteRow.fechaReparto`: el `Date` no cruza la frontera del repo).

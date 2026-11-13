@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { GestionResultado } from "@prisma/client";
 import { ordenesConfig } from "@/lib/config/ordenes";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import type { TarifaDTO, OrigenFlete } from "@/lib/types/tarifa";
 import {
@@ -543,6 +544,13 @@ export type OrdenListItemDTO = OrdenDTO & {
   // en una query adicional por pagina. Cada relacion es nullable porque el `include`
   // puede no resolver (FK opcional o dato ausente).
   relaciones?: OrdenListItemRelaciones;
+  /**
+   * SLT-125 (design §4.2, §6) — la ruta del lugar de la orden, del nivel 1 al lugar, sacada del
+   * catalogo del pais de la empresa (`rutaDelLugar`). De ella salen tambien los nombres de
+   * `relaciones` y las columnas por nivel. `[]` si el lugar no esta en el catalogo (R18). Solo ids y
+   * nombres de lugar (R41). Opcional por el mismo patron aditivo; el repositorio SIEMPRE la envia.
+   */
+  lugarRuta?: PasoDeRuta[];
 };
 
 /**

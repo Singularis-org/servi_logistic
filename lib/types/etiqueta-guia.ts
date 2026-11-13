@@ -5,6 +5,8 @@
 // se exponen (patron lib/types/orden-guia.ts).
 import { z } from "zod";
 
+import type { PasoDeRuta } from "@/lib/types/geografia-nodo";
+
 // Payload por orden imprimible (R1). Solo ordenes con `num_guia` producen etiqueta
 // (R2), por eso `numGuia` es `number` garantizado y `barcodeValue` es `string`. El
 // QR codifica la URL del paquete (`<origin>/paquete/<numGuia>`), resuelta en la UI a
@@ -25,6 +27,12 @@ export interface EtiquetaGuiaDTO {
   provinciaNombre: string;
   cantonNombre: string;
   distritoNombre: string | null; // R4
+  /**
+   * SLT-125 (design §4.2, §6; R9) — la ruta del lugar, del nivel 1 al lugar, del catalogo del pais de
+   * la empresa: la linea de geografia de la etiqueta y de `/paquete`. Los tres nombres de arriba salen
+   * de ella. `[]` si el lugar no esta en el catalogo (R18). Opcional: es aditivo (R37).
+   */
+  lugarRuta?: PasoDeRuta[];
   /**
    * Feature 295 — el DIA en que la tienda cargo el envio (`orden.created_at`) como
    * fecha calendario de Costa Rica `YYYY-MM-DD`, el mismo formato con el que el

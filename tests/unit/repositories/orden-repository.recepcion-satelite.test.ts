@@ -27,7 +27,14 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn(),
     // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
-    ...delegadosDelCatalogo(),
+    // SLT-125: y los nombres de lugar, de la ruta de ese catalogo (Prov · Canton · Distrito).
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p-1", nombre: "Prov" },
+        { id: "c-1", padreId: "p-1", nombre: "Canton" },
+        { id: "d-1", padreId: "c-1", nombre: "Distrito" },
+      ],
+    }),
     ...overrides,
   };
   prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma));
@@ -100,9 +107,8 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
       estatus: { id: "st-1", value: "en_ruta_bodega_satelite" },
       tienda: { id: "t-1", nombre: "Tienda X", email: "tienda@x.test", telefono: "88887777" },
       zona: { id: "z-limon", nombre: "Limon", esCentral: false },
-      provincia: { id: "p-1", nombre: "Prov" },
-      canton: { id: "c-1", nombre: "Canton" },
-      distrito: { id: "d-1", nombre: "Distrito", zonasEspeciales: [] },
+      // SLT-125 (design §4.2): sin relaciones de lugar; los nombres salen de la ruta del catalogo
+      // sobre `cantonId`/`distritoId` (`CADENA_DEL_LUGAR`, en `buildPrisma`). Cambio de entrada.
       mensajeroAsignado: null,
       gestiones: [],
       ...overrides,
@@ -113,7 +119,7 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
     const prisma = buildPrisma();
     prisma.orden.findMany.mockResolvedValue([
       ordenRow({ prioridad: true }),
-      ordenRow({ id: "o2", estatus: { value: "en_bodega_satelite" }, distrito: null, montoCobrar: null }),
+      ordenRow({ id: "o2", estatus: { value: "en_bodega_satelite" }, distritoId: null, montoCobrar: null }),
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
@@ -183,6 +189,12 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
       // junto al estado. Aqui el doble de `$queryRaw` no devuelve filas: en reposo.
       gestionPendiente: null,
       ayudaAbierta: false,
+      // SLT-125 (A11, design §4.2): la ruta del catalogo sobre el lugar de la orden, raiz -> hoja.
+      lugarRuta: [
+        { id: "p-1", nombre: "Prov" },
+        { id: "c-1", nombre: "Canton" },
+        { id: "d-1", nombre: "Distrito" },
+      ],
       // FICHA 349 — LO QUE **NO** ESTA EN ESTE LITERAL ES LA MITAD DEL CONTRATO: no hay
       // `fleteConIva`, ni `comisionConIva`, ni `fleteOrigen`, y `relaciones.tienda` no lleva
       // `email`, `telefono` ni una `tarifa` distinta de `null`. El `toEqual` es EXACTO, asi que
