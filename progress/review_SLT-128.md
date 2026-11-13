@@ -74,3 +74,80 @@ esta revisión pasa a OK sin otra vuelta de código.
 
 ## Cierre de B1 (2026-11-12, leader)
 Condición de la vuelta 1 cumplida sin vuelta de código: gate a mano run 43262530746 sobre `ca3361e8` en verde (`gate-completo` y `e2e` con sus tres grupos). Por la regla de esta revisión («si todo sale verde, la revisión pasa a OK»), **veredicto: OK**. Quedan los menores m1–m3 para decisión del humano.
+
+## Vuelta 2 (T10) — acotada a e2da5582..e8c9c86f (2026-11-12, reviewer)
+
+Alcance: lo propio de SLT-128 desde la review OK (`666ac8b7..e8c9c86f`, 25 archivos fuera de `specs/`/`progress/`):
+T10.1–T10.8 (R28, R29; m2, m3; P13–P17). El merge de `origin/dev` (666ac8b7) se trató solo por la colisión de
+migraciones. No repetido (ya comprobado por el leader): gate en CI verde en run 43343522019 sobre e8c9c86f; tamaño
+40 archivos con tope aceptado; P16 aceptado como residuo.
+
+### Checklist
+- [x] **Trazabilidad R28** → casos concretos, con aserciones reales: `planes-periodicidad-ordenes` («SLT-128 R8, R28»:
+  marca en `plan_version_empresa` tras promover, recepción borrada en cascada, módulos/precio/empresa intactos, barrido
+  vacío, segundo intento `sin_pendiente`, un aviso con `organizacionId` NULL y su payload); `planes-cambio-por-empresa`
+  («R28, R10», «R28, R18, R15», «R28, R13»); `factura-plataforma-cambio-plan` («SLT-128 R28, R9»);
+  `planes-version-por-empresa` («R12, R28»); `migracion-slt128-ida-y-vuelta` (los `CHECK`); `procesar-jobs-plan-cambio`
+  (lista, vacía, inválidas/duplicados, fallo parcial, solo `no_aplicada` sin empresa); `plantilla-cambio-plan`
+  (literales); `planes-service-lecturas`; `PlanDetalle.test.tsx` (con pendiente, tras promover, sin ninguna).
+- [x] **Trazabilidad R29** → `planes-cambio-por-empresa` «R29 (R19)» (viejos `descartado` con motivo y clave NULL, los
+  de la nueva fecha y los de la otra empresa intactos) y «R29 (R18)» (con ida y vuelta); `planes-cambio-programado`
+  «SLT-128 R29 (R13, R14)» (con y sin empresa, legados, `processing` intacto, cancelar).
+- [~] **Tasks:** T10.1–T10.8 `[x]`. T10.9 `[ ]`: es del leader (mapa ya está en la bitácora; falta anotar el run
+  43343522019 y marcarla). Ver m6.
+- [x] **Tamaño:** 40/40, tope aceptado en la ficha (no repetido).
+- [x] **Lo que ya existe:** reutiliza `destinatariosDeLista` (extraído de `destinatariosReporteBug`), el estado
+  `descartado` de SL-23 R20, el patrón de `encolarEnEmpresas` para `app.organizacion_id`, `componerCorreo`. Nada re-creado.
+- [x] **Verificación ejecutable (local):** `vitest run` de `procesar-jobs-plan-cambio`, `plantilla-cambio-plan`,
+  `PlanDetalle`, `planes-service-lecturas` y `reporte-bug-config`: 5 archivos, 154/154 verdes. Integración contra
+  Postgres: la cubre el run de CI ya comprobado.
+- [x] **Migraciones con el mismo timestamp:** por nombre, `20261114120000_pago_independiente_efectivo` (dev) va antes
+  que `20261114120000_plan_cambio_por_empresa`. La de dev solo añade `cierre_dia.pago_independiente_efectivo`
+  (`BOOLEAN NOT NULL DEFAULT false`); la de SLT-128 no toca `cierre_dia` ni nada de cierres, y la de dev no toca planes
+  ni facturas de plataforma: sin dependencias en ningún sentido, el orden da igual. La edición de la de SLT-128 (P14)
+  es válida porque no está en `dev`: tras el merge ninguna base de `dev` la tendrá con el checksum viejo. `down.sql`
+  sigue bastando (borra las tablas con sus columnas nuevas).
+
+### Desvíos declarados
+1. **`AvisoNoAplicadaPlan` aparte** (design §14.4 decía ampliar `tipoAvisoSchema`/`AvisoCorreoPlan`): **aceptado.** El
+   payload no comparte forma con el de los maestros (sin `vigenteDesde`, `cambios`, `topesPasados`; con empresa, plan y
+   motivo), y el esquema propio deja que solo `no_aplicada` vaya sin empresa y que cualquier otro sin empresa falle como
+   antes (lo prueba «solo `no_aplicada` va sin empresa»). `dedupeAviso` acepta la unión. Falta reflejarlo en el design (m4).
+2. **`DetallePlan.noAplicadas?` opcional:** aceptable, menor (m5). `DetallePlanLeido.noAplicadas` sí es obligatorio y el
+   servicio lo rellena siempre; la pantalla hace `?? []`. Lo opcional solo ahorra tocar dobles; el riesgo (un camino
+   que olvide rellenarlo y esconda el aviso sin error de tipos) es bajo con un solo productor.
+3. **Ida y vuelta de R29 con salir y volver:** **aceptado.** Lo que R29 exige es que una fecha cancelada vuelva a
+   encolar; eso depende de que `descartarTrabajos` libere la clave (`dedupe_key = NULL`) y de que el re-encolado pase
+   por `fijarRecepciones`, que es la misma función que usa `moverRecepcionEnTx`. El test afirma las mismas claves
+   pendientes otra vez y los tres descartados conservados. El literal del spec en R29 («ida y vuelta de la fecha»)
+   dice mover; el caso de mover-y-volver no está, pero el mecanismo cubierto es el mismo (menor, sin acción).
+4. **Promover excluye a las no aplicadas de la regla mensual/quincenal:** **correcto y necesario.** R28 manda que la no
+   aplicada cuente como resuelta para promover (R10, R18); sin la exclusión, `promoverEnTx` lanzaría por la misma
+   empresa que se acaba de marcar y el plan quedaría como en m2. La exclusión es por `cambio_id` del pendiente y solo
+   para empresas con `no_aplicada_at`; esas conservan su versión quincenal en `plan_version_empresa` (la leen los
+   triggers y la factura), así que la cuota del 16 sigue teniendo factura. Cualquier otra quincenal sigue frenando.
+5. **Encolado sin empresa con `app.organizacion_id = ''` y reposición:** **correcto.** El `DEFAULT` de
+   `jobs.organizacion_id` es `NULLIF(current_setting('app.organizacion_id', true), '')`: con `''` el aviso nace NULL
+   (trabajo de plataforma, no visible para ninguna empresa con la política `jobs_por_empresa`). `set_config(..., true)`
+   es local a la transacción y se repone el valor previo antes de seguir, así que lo que `recibirCambio` escribe
+   después (promoción) no cambia de empresa; es el mismo patrón que `encolarEnEmpresas`. `recibirCambio` corre en
+   `comoPlataforma` (sin `role servi_app`), así que el `WITH CHECK` de la política no aplica; si algún día corriera
+   como `servi_app`, el INSERT fallaría a la vista, no filtraría datos. El test lo cubre fijando la empresa antes y
+   afirmando `organizacionId` NULL.
+6. **Log `[lista-de-correos] <VARIABLE>`** en vez de `[reporte-bug] BUG_REPORT_EMAILS`: aceptable. Sigue sin
+   direcciones, nombra la variable (distingue las dos listas) y no hay en el repo ni test ni doc que dependa del
+   prefijo viejo (búsqueda vacía). Si hay una alerta de logs fuera del repo filtrando por `[reporte-bug]`, el humano
+   lo sabrá: no es verificable desde aquí.
+
+### Hallazgos
+- **m4 — menor.** design §14.4 sigue diciendo «`no_aplicada` en `tipoAvisoSchema` y `AvisoCorreoPlan`»; el código usa
+  `AvisoNoAplicadaPlan` con esquema propio. Actualizar el design al cerrar.
+- **m5 — menor.** `DetallePlan.noAplicadas` opcional (desvío 2). Se puede volver obligatorio cuando se toquen los dobles.
+- **m6 — menor (del leader).** T10.9 sin `[x]` y sin la constancia del run 43343522019 en `progress/impl_SLT-128.md`.
+  Cerrarla antes del aviso de merge.
+
+Ningún bloqueante.
+
+### Veredicto vuelta 2
+**OK** — R28 y R29 trazados a tests con aserciones reales y verdes en CI; los seis desvíos son correctos o
+aceptables; las dos migraciones `20261114120000_*` son independientes. Quedan m4–m6 como menores.
