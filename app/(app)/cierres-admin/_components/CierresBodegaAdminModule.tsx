@@ -360,15 +360,15 @@ export function CierresBodegaAdminModule({
       return false;
     }
     if (result.status === "forbidden") {
-      toast.error("No tenés permiso para ver este cierre de bodega.");
+      toast.error("No tienes permiso para ver este cierre de bodega.");
       return false;
     }
     if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
       return false;
     }
     // validation_error (id malformado) u otro → feedback genérico.
-    toast.error("No se pudo abrir el detalle del cierre de bodega. Intentá de nuevo.");
+    toast.error("No se pudo abrir el detalle del cierre de bodega. Inténtalo de nuevo.");
     return false;
   }
 

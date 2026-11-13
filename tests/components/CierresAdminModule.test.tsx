@@ -315,7 +315,7 @@ describe("CierresAdminModule", () => {
   it("R3: sinZona muestra aviso accionable y NO tablas de acción", () => {
     renderModule({ sinZona: true });
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "No tenés una zona asignada; contactá a tu administrador.",
+      "No tienes una zona asignada; contacta a tu administrador.",
     );
     expect(
       screen.queryByRole("region", { name: "Pendientes de decisión" }),

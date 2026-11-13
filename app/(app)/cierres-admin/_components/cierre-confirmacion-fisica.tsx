@@ -42,13 +42,13 @@ export type MedioDeCaptura = "camara" | "manual";
 
 export const CONFIRMACION_TITULO = "Confirmar los paquetes que vuelven";
 export const CONFIRMACION_DETALLE =
-  "Antes de aprobar, tené delante cada paquete que vuelve a bodega y confirmá su guía: escaneá el código o escribí el número.";
+  "Antes de aprobar, ten delante cada paquete que vuelve a bodega y confirma su guía: escanea el código o escribe el número.";
 /** Queda un paso más (los montos de los incidentes), así que el botón no promete aprobar. */
 export const CONFIRMACION_CONTINUAR = "Continuar";
 export const CONFIRMACION_APROBAR = "Confirmar y aprobar";
 
 const ESCANER_TITULO = "Confirmar paquete recibido";
-const ESCANER_DESCRIPCION = "Escaneá el código de la guía o escribí su número";
+const ESCANER_DESCRIPCION = "Escanea el código de la guía o escribe su número";
 const ESCANER_BOTON = "Confirmar";
 const ESCANER_ERROR_CAMARA = "No se pudo abrir la cámara.";
 
@@ -66,7 +66,7 @@ const FILA_CONFIRMADA = "Confirmada";
  * si algún día divergieran, la que manda es la del servidor, que es la que decide.
  */
 const FILA_SIN_GUIA =
-  "Sin número de guía: no se puede confirmar. Avisá a un administrador.";
+  "Sin número de guía: no se puede confirmar. Avisa a un administrador.";
 
 /**
  * Ficha 451 (R29/R30) — el estado al que el corte pasó las órdenes BARRIDAS. El spec (2026-09-21)
@@ -116,7 +116,7 @@ export function filaMismoPaquete(cuantasFilas: number): string {
 
 /** R29 — lo leído no se puede interpretar como número de guía. */
 const LECTURA_ILEGIBLE =
-  "No se pudo leer un número de guía en ese código. Escaneá de nuevo o escribí el número.";
+  "No se pudo leer un número de guía en ese código. Escanea de nuevo o escribe el número.";
 /** R30 (238) / R33 (451) — la guía no es de ninguna gestión ni de ninguna barrida de este cierre. */
 const LECTURA_AJENA = "Esa guía no pertenece a este cierre.";
 /** R32 — ya se confirmó en esta sesión. */
@@ -135,8 +135,8 @@ function lecturaNoVuelve(resultado: CierreResultado): string {
  */
 export function textoFaltan(faltan: number): string {
   return faltan === 1
-    ? "Falta 1 paquete por confirmar. Si no llegó, rechazá el cierre indicando cuál falta."
-    : `Faltan ${faltan} paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.`;
+    ? "Falta 1 paquete por confirmar. Si no llegó, rechaza el cierre indicando cuál falta."
+    : `Faltan ${faltan} paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.`;
 }
 
 /**
