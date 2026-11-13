@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
 import {
   ajustarPagoMensajero,
@@ -739,6 +739,21 @@ const COLUMNAS_RESUELTOS_SATELITE = ["Folio", "Mensajero", "Resuelto", "Estado",
 const pendientes = (page: Page): Locator => page.getByRole("region", { name: "Pendientes de decisión" });
 const historico = (page: Page): Locator => page.getByRole("region", { name: "Histórico" });
 
+/**
+ * SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (T6.1; R358, R360): las dos
+ * tarjetas de «Cierres solicitados» en /cierre-dia, leídas en una carga nueva. Cada caja = [rótulo,
+ * importe, nota], en el orden del spec.
+ */
+async function tarjetasGananciaDe(browser: Browser, m: MensajeroE2E): Promise<Locator[]> {
+  const page = await paginaDe(browser, m);
+  await page.goto("/cierre-dia");
+  const grupo = page.getByRole("group", { name: "Ganancia de tus cierres" });
+  return [
+    grupo.getByRole("group", { name: "Ganancia pendiente de pago" }).locator("span"),
+    grupo.getByRole("group", { name: "Ganancia pagada este mes" }).locator("span"),
+  ];
+}
+
 test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () => {
   let r: RepartoE2E;
   let central: { m: MensajeroE2E; rechazo: OrdenE2E; cierreId: string };
@@ -809,6 +824,11 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect((await cierresDe(central.m)).map((c) => [c.id, c.estado])).toEqual([[central.cierreId, "aprobado"]]);
 
+    // SLT-112 (R358): ANTES del pago el mensajero ve P 3.500 pendiente en un cierre y nada pagado este mes.
+    const [pendienteAntes, pagadaAntes] = await tarjetasGananciaDe(browser, central.m);
+    await expect(pendienteAntes).toHaveText(["Ganancia pendiente de pago", "₡3.500", "1 cierre aprobado sin liquidar"]);
+    await expect(pagadaAntes).toHaveText(["Ganancia pagada este mes", "₡0", "Ningún pago este mes"]);
+
     // R103: en Resueltos, «Pago entregado» y «Registrar pago»; el incidente ya está indemnizado.
     await pestanaDeCola(page, "Resueltos").click();
     await expect(historico(page).getByRole("columnheader")).toHaveText(COLUMNAS_RESUELTOS_CENTRAL);
@@ -836,6 +856,12 @@ test.describe.serial("SLT-102 — la fila de la cola única (escenario S4)", () 
     await expect(pago).toHaveCount(0);
     await expect(resuelta.getByRole("cell").nth(6)).toHaveText("Liquidado");
     await expect(resuelta.getByRole("button", { name: `Registrar pago del cierre de ${central.m.nombre}` })).toHaveCount(0);
+
+    // SLT-112 (R358, R360): la carga siguiente del mensajero ya trae el pago: nada pendiente y un pago
+    // de 3.500 este mes.
+    const [pendienteDespues, pagadaDespues] = await tarjetasGananciaDe(browser, central.m);
+    await expect(pendienteDespues).toHaveText(["Ganancia pendiente de pago", "₡0", "Ningún cierre aprobado sin liquidar"]);
+    await expect(pagadaDespues).toHaveText(["Ganancia pagada este mes", "₡3.500", "1 pago"]);
   });
 
   test("satélite: su fila sin «Pago entregado» ni «Registrar pago», aunque le quede pendiente", async ({ browser }) => {

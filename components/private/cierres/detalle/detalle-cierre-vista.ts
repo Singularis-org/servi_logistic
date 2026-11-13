@@ -220,7 +220,10 @@ export type CifraId =
   // SLT-107 (R286): las tarjetas de «Solicitados» de la satélite.
   | "porLlegar"
   | "recibido30Dias"
-  | "faltaPorRecibir";
+  | "faltaPorRecibir"
+  // SLT-112 (R358): las tarjetas de «Cierres solicitados» del mensajero.
+  | "gananciaPendiente"
+  | "gananciaPagada";
 
 export interface Cifra {
   id: CifraId;

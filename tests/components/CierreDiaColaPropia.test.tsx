@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within, cleanup } from "@testing-library/react";
+import { render, screen, within, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
 import { CierreDiaModule } from "@/app/(app)/cierre-dia/_components/CierreDiaModule";
 import { listarCierresPasadosPaginado, verCierrePasado } from "@/lib/actions/cierre-dia";
-import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierrePasadoDTO,
+  ResumenGananciaMensajero,
+} from "@/lib/interfaces/services/ICierreDiaService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
 
@@ -83,7 +86,11 @@ const SOLICITADO: CierrePasadoDTO = {
 };
 const CUATRO = [APROBADO_PENDIENTE, APROBADO_LIQUIDADO, RECHAZADO, SOLICITADO];
 
-function montar(items: CierrePasadoDTO[] = CUATRO, total = 7) {
+function montar(
+  items: CierrePasadoDTO[] = CUATRO,
+  total = 7,
+  resumenGanancia?: ResumenGananciaMensajero,
+) {
   const pagina = paginaInicial(items, { total });
   vi.mocked(listarCierresPasadosPaginado).mockResolvedValue({ status: "ok", page: 1, ...pagina });
   render(
@@ -96,6 +103,7 @@ function montar(items: CierrePasadoDTO[] = CUATRO, total = 7) {
         motivoBloqueo={null}
         cierresPasados={pagina}
         bloqueo={SIN_BLOQUEO}
+        resumenGanancia={resumenGanancia}
       />
     </SWRConfig>,
   );
@@ -142,10 +150,12 @@ describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
     ]);
   });
 
-  it("R158: sin tarjetas de cifras de la ganancia", () => {
+  it("R158/R357: sin las cifras del servidor, sin tarjetas de la ganancia ni ceros en su lugar", () => {
     montar();
+    expect(screen.queryByRole("group", { name: "Ganancia de tus cierres" })).not.toBeInTheDocument();
     expect(screen.queryByText("Ganancia pendiente de pago")).not.toBeInTheDocument();
     expect(screen.queryByText("Ganancia pagada este mes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ningún pago este mes")).not.toBeInTheDocument();
   });
 
   it("R166: la pantalla ya no monta la tira de comprobantes ni su hoja resumida", () => {
@@ -203,5 +213,83 @@ describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
       await screen.findByRole("dialog", { name: "Detalle del cierre · Tu cierre del día" }),
     ).toBeInTheDocument();
     expect(vi.mocked(verCierrePasado)).toHaveBeenCalledWith({ cierreId: APROBADO_PENDIENTE.cierreId });
+  });
+});
+
+// SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (T5.4, R358). Los importes
+// esperados son los que pinta `money()` escritos a mano: 47500.55 → «₡47.500,55», 3500.00 → «₡3.500».
+describe("SLT-112 · /cierre-dia: las tarjetas de la ganancia (R358)", () => {
+  const RESUMEN: ResumenGananciaMensajero = {
+    pendiente: { monto: "47500.55", conteo: 2 },
+    pagadaEsteMes: { monto: "3500.00", conteo: 2 },
+  };
+
+  /** Los textos de las dos cajas del grupo «Ganancia de tus cierres», en orden. */
+  function cajas(): string[][] {
+    const grupo = screen.getByRole("group", { name: "Ganancia de tus cierres" });
+    return within(grupo)
+      .getAllByRole("group")
+      .map((caja) => [...caja.querySelectorAll("span")].map((s) => s.textContent?.trim() ?? ""));
+  }
+
+  it("con las cifras del servidor, dos tarjetas en orden con el importe y su nota", () => {
+    montar(CUATRO, 7, RESUMEN);
+    expect(cajas()).toEqual([
+      ["Ganancia pendiente de pago", "₡47.500,55", "2 cierres aprobados sin liquidar"],
+      ["Ganancia pagada este mes", "₡3.500", "2 pagos"],
+    ]);
+    expect(screen.getByRole("group", { name: "Ganancia pendiente de pago" }).className).toContain("bg-brand-soft");
+    expect(screen.getByRole("group", { name: "Ganancia pagada este mes" }).className).not.toContain("bg-brand-soft");
+  });
+
+  it("van entre la barra y la tabla", () => {
+    montar(CUATRO, 7, RESUMEN);
+    const barra = screen.getByRole("region", { name: "Filtros de tus cierres" });
+    const grupo = screen.getByRole("group", { name: "Ganancia de tus cierres" });
+    const tabla = screen.getByRole("region", { name: "Cierres solicitados" });
+    expect(barra.compareDocumentPosition(grupo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(grupo.compareDocumentPosition(tabla) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("también en cero, con las notas de cero y una sola de cada", () => {
+    montar(CUATRO, 7, {
+      pendiente: { monto: "0.00", conteo: 0 },
+      pagadaEsteMes: { monto: "0.00", conteo: 0 },
+    });
+    expect(cajas()).toEqual([
+      ["Ganancia pendiente de pago", "₡0", "Ningún cierre aprobado sin liquidar"],
+      ["Ganancia pagada este mes", "₡0", "Ningún pago este mes"],
+    ]);
+  });
+
+  it("con 1, las notas en singular", () => {
+    montar(CUATRO, 7, {
+      pendiente: { monto: "3500.00", conteo: 1 },
+      pagadaEsteMes: { monto: "875.25", conteo: 1 },
+    });
+    expect(cajas().map((c) => c[2])).toEqual(["1 cierre aprobado sin liquidar", "1 pago"]);
+  });
+
+  it("paginar y filtrar no cambian las tarjetas", async () => {
+    const user = userEvent.setup();
+    montar(CUATRO, 30, RESUMEN);
+    const antes = cajas();
+
+    vi.mocked(listarCierresPasadosPaginado).mockResolvedValue({
+      status: "ok",
+      ...paginaInicial([SOLICITADO], { total: 30 }),
+      page: 2,
+    });
+    await user.click(screen.getByRole("button", { name: "Página siguiente" }));
+    await waitFor(() => expect(vi.mocked(listarCierresPasadosPaginado)).toHaveBeenCalled());
+    expect(cajas()).toEqual(antes);
+
+    await user.type(screen.getByPlaceholderText("Busca por folio"), "DDDD4444");
+    await waitFor(() =>
+      expect(vi.mocked(listarCierresPasadosPaginado)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ filtros: expect.objectContaining({ folio: "DDDD4444" }) }),
+      ),
+    );
+    expect(cajas()).toEqual(antes);
   });
 });

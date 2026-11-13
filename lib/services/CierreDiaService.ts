@@ -16,14 +16,16 @@ import type {
   DeshacerGestionServiceResult,
   CierrePasadoDTO,
   ICierreDiaService,
+  LecturasGananciaMensajero,
   LecturasPendienteCierre,
   ListarCierreDiaServiceResult,
   ListarCierresPasadosCompletoServiceResult,
   ListarCierresPasadosServiceResult,
+  ResumenGananciaServiceResult,
   SolicitarCierreServiceResult,
   VerCierrePasadoServiceResult,
 } from "@/lib/interfaces/services/ICierreDiaService";
-import type { GestionResultado } from "@prisma/client";
+import { Prisma, type GestionResultado } from "@prisma/client";
 import { descargaConfig } from "@/lib/config/descarga";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { resolverDestinoCierre } from "@/lib/utils/bodega-responsable";
@@ -50,7 +52,12 @@ import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 // es el helper de la convencion `@db.Date` de `fecha_reparto`; `inicioDelDiaEnUtc` es la de las
 // columnas `timestamp` y aqui desplazaria el dia (ficha 166). SLT-42: con la zona del pais de la
 // empresa, leida una vez por operacion.
-import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import {
+  inicioDelDiaComoFecha,
+  inicioDelDiaEnUtc,
+  periodoMensual,
+  sumarDiasCalendario,
+} from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { rutasAFirmar, urlsEvidenciaFirmadas } from "@/lib/utils/evidencias-gestion";
@@ -236,6 +243,11 @@ export class CierreDiaService implements ICierreDiaService {
      * un pendiente inventado.
      */
     private readonly pendientes?: LecturasPendienteCierre,
+    /**
+     * SLT-112 (R352, R353, R357): los pagos del mes [y lo pagado por la satelite]. Opcional y al
+     * final por la misma razon que `pendientes`; sin el, `resumenGanancia` da `sin_dato`.
+     */
+    private readonly ganancia?: LecturasGananciaMensajero,
   ) {}
 
   /** SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez por operacion. */
@@ -628,24 +640,123 @@ export class CierreDiaService implements ICierreDiaService {
   private async conPendientePago(items: CierrePasadoDTO[]): Promise<CierrePasadoDTO[]> {
     if (!this.pendientes) return items;
 
-    const idsAprobados = items.filter((c) => c.estado === "aprobado").map((c) => c.cierreId);
-    const pagados = await this.pendientes.liquidaciones.sumarVigentesPorCierre(idsAprobados);
-    const premios = await this.pendientes.premios.sumarPremiosVivosPorCierre(idsAprobados);
+    const porCierre = await this.pendientesPorCierre(
+      this.pendientes,
+      items
+        .filter((c) => c.estado === "aprobado")
+        .map((c) => ({
+          cierreId: c.cierreId,
+          totalPagoMensajero: c.totalPagoMensajero,
+          efectivo: c.totales.efectivo,
+          // SLT-123 (R320, R327): la marca de ESTE cierre; ausente = `false` (regla de la 44).
+          pagoIndependienteEfectivo: c.pagoIndependienteEfectivo === true,
+        })),
+    );
 
     return items.map((c) => ({
       ...c,
-      pendientePagoMensajero:
-        c.estado === "aprobado"
-          ? derivarPendienteCierre({
-              pagoDebido: c.totalPagoMensajero,
-              efectivo: c.totales.efectivo,
-              premiosVivos: premios[c.cierreId] ?? "0.00",
-              pagadoVigente: pagados[c.cierreId] ?? "0.00",
-              // SLT-123 (R320, R327): la marca de ESTE cierre; ausente = `false` (regla de la 44).
-              pagoIndependienteEfectivo: c.pagoIndependienteEfectivo === true,
-            })
-          : null,
+      pendientePagoMensajero: c.estado === "aprobado" ? (porCierre[c.cierreId] ?? null) : null,
     }));
+  }
+
+  /**
+   * SLT-112 (R351) — lo pendiente de cada cierre aprobado. La celda «Pago» (`conPendientePago`) y
+   * la tarjeta «Ganancia pendiente de pago» (`resumenGanancia`) usan ESTE, no otro: un termino
+   * nuevo de la regla (SLT-139) entra aqui y llega a las dos.
+   *
+   * Dos lecturas en lote, una vez cada una, sea cual sea el numero de cierres (R165, R356).
+   */
+  private async pendientesPorCierre(
+    lecturas: LecturasPendienteCierre,
+    cierres: ReadonlyArray<{
+      cierreId: string;
+      totalPagoMensajero: string;
+      efectivo: string;
+      pagoIndependienteEfectivo: boolean;
+    }>,
+  ): Promise<Record<string, string>> {
+    const ids = cierres.map((c) => c.cierreId);
+    const pagados = await lecturas.liquidaciones.sumarVigentesPorCierre(ids);
+    const premios = await lecturas.premios.sumarPremiosVivosPorCierre(ids);
+
+    const porCierre: Record<string, string> = {};
+    for (const c of cierres) {
+      porCierre[c.cierreId] = derivarPendienteCierre({
+        pagoDebido: c.totalPagoMensajero,
+        efectivo: c.efectivo,
+        premiosVivos: premios[c.cierreId] ?? "0.00",
+        pagadoVigente: pagados[c.cierreId] ?? "0.00",
+        pagoIndependienteEfectivo: c.pagoIndependienteEfectivo,
+      });
+    }
+    return porCierre;
+  }
+
+  /**
+   * SLT-112 (R350-R357, R359) — «Ganancia pendiente de pago» y «Ganancia pagada este mes».
+   *
+   * Del CONJUNTO del mensajero de la sesion: ni filtros ni pagina (R354). Consultas fijas (R356):
+   * aprobados, pagos vigentes por cierre, premios vivos por cierre, pagos del mes [+ satelite].
+   * Todo en `Prisma.Decimal` y salida en escala 2 (R355). Una excepcion de una lectura sube al
+   * borde: la pagina la trata como «sin cifras» (R357), nunca como ceros.
+   */
+  async resumenGanancia(actor: Actor): Promise<ResumenGananciaServiceResult> {
+    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R359: sin leer nada
+    if (!this.pendientes || !this.ganancia) return { status: "sin_dato" }; // R357
+
+    // R350: los aprobados del actor; el `mensajero_id` sale de la sesion, nunca de la peticion.
+    const aprobados = await this.repo.findAprobadosParaPendiente(actor.usuarioId);
+    const porCierre = await this.pendientesPorCierre(
+      this.pendientes,
+      aprobados.map((c) => ({
+        cierreId: c.cierreId,
+        totalPagoMensajero: c.totalPagoMensajero,
+        efectivo: c.totalEfectivo,
+        pagoIndependienteEfectivo: c.pagoIndependienteEfectivo,
+      })),
+    );
+    let pendienteMonto = new Prisma.Decimal(0);
+    let pendienteConteo = 0;
+    for (const p of Object.values(porCierre)) {
+      const d = new Prisma.Decimal(p);
+      pendienteMonto = pendienteMonto.plus(d);
+      if (d.gt(0)) pendienteConteo += 1; // R350: solo los que tienen algo pendiente
+    }
+
+    // R352: el mes en curso en la zona del pais de la empresa, nunca en UTC.
+    const ahora = this.ganancia.ahora?.() ?? new Date();
+    const zona = await this.zona("resumenGanancia");
+    const primerDia = `${periodoMensual(ahora, zona)}-01`;
+    // Dia 1 + 31 dias cae siempre en el mes siguiente (ningun mes tiene mas de 31 dias).
+    const primerDiaSiguiente = `${sumarDiasCalendario(primerDia, 31).slice(0, 7)}-01`;
+    // `fecha_pago` es `@db.Date`: fechas calendario a medianoche UTC, la convencion del repo.
+    const pagos = await this.ganancia.pagos.sumarVigentesDelMensajeroEnRango(
+      actor.usuarioId,
+      new Date(`${primerDia}T00:00:00.000Z`),
+      new Date(`${primerDiaSiguiente}T00:00:00.000Z`),
+    );
+    let pagadaMonto = new Prisma.Decimal(pagos.monto);
+    let pagadaConteo = pagos.conteo;
+
+    // R353: lo pagado por la satelite, solo si SLT-139 inyecta la lectura. `fecha_movimiento` es
+    // `timestamp`: aqui el rango son INSTANTES (las 00:00 locales del dia 1 de cada mes).
+    if (this.ganancia.pagadoPorSatelite) {
+      const sat = await this.ganancia.pagadoPorSatelite.sumarPagadoPorSateliteEnRango(
+        actor.usuarioId,
+        inicioDelDiaEnUtc(primerDia, zona),
+        inicioDelDiaEnUtc(primerDiaSiguiente, zona),
+      );
+      pagadaMonto = pagadaMonto.plus(new Prisma.Decimal(sat.monto));
+      pagadaConteo += sat.conteo;
+    }
+
+    return {
+      status: "ok",
+      resumen: {
+        pendiente: { monto: pendienteMonto.toFixed(2), conteo: pendienteConteo },
+        pagadaEsteMes: { monto: pagadaMonto.toFixed(2), conteo: pagadaConteo },
+      },
+    };
   }
 
   /**

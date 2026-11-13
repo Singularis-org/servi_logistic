@@ -20,6 +20,7 @@ import type {
 import { esP2002, textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where";
+import type { CifraGanancia } from "@/lib/interfaces/services/ICierreDiaService";
 
 // Cliente Prisma acotado a lo que este repo necesita (patron WalletTiendaMovimientoRepository).
 // `cierreDia` entra SOLO para leer (R42): ningun metodo de esta clase lo escribe.
@@ -566,6 +567,23 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       total[g.cierreId] = new Prisma.Decimal(g._sum.monto ?? 0).toFixed(2);
     }
     return total;
+  }
+
+  /**
+   * SLT-112 (R352, R354) — Σ y nº de los pagos VIGENTES del mensajero con `fecha_pago` en
+   * [desde, hasta). Un anulado no cuenta aunque su fecha sea del rango. Una consulta.
+   */
+  async sumarVigentesDelMensajeroEnRango(
+    mensajeroId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<CifraGanancia> {
+    const agg = await this.prisma.liquidacionPago.aggregate({
+      where: { mensajeroId, fechaPago: { gte: desde, lt: hasta }, ...VIGENTE },
+      _sum: { monto: true },
+      _count: { _all: true },
+    });
+    return { monto: new Prisma.Decimal(agg._sum.monto ?? 0).toFixed(2), conteo: agg._count._all };
   }
 
   /** §5/R80: Σ de los pagos VIGENTES de una tienda. Salida STRING (money-safe). */

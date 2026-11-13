@@ -22,6 +22,9 @@ import {
   destinoPropio,
   pagoPropioDe,
   textoPagoPropio,
+  notaCierresSinLiquidar,
+  notaPagosDelMes,
+  tarjetasGanancia,
 } from "@/components/private/cierres/cola/cola-propia-vista";
 import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import { filtrosColaPropiaSchema } from "@/lib/types/filtros-cierres";
@@ -205,5 +208,44 @@ describe("SLT-137 — columnas y destino (R60, R156)", () => {
   it("el destino es el rótulo del tipo, sin la zona", () => {
     expect(destinoPropio({ destinoTipo: "bodega_central" })).toBe("Bodega central");
     expect(destinoPropio({ destinoTipo: "bodega_satelite" })).toBe("Bodega satélite");
+  });
+});
+
+// SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (T5.2, R358). Literales del
+// spec (`requirements.md > R358`, PA3 = «<n> pagos»), nunca la constante que los genera.
+describe("SLT-112 — las tarjetas de la ganancia (R358)", () => {
+  it("la nota de lo pendiente en 0, 1 y n", () => {
+    expect(notaCierresSinLiquidar(0)).toBe("Ningún cierre aprobado sin liquidar");
+    expect(notaCierresSinLiquidar(1)).toBe("1 cierre aprobado sin liquidar");
+    expect(notaCierresSinLiquidar(13)).toBe("13 cierres aprobados sin liquidar");
+  });
+
+  it("la nota de lo pagado en 0, 1 y n (número de pagos, PA3)", () => {
+    expect(notaPagosDelMes(0)).toBe("Ningún pago este mes");
+    expect(notaPagosDelMes(1)).toBe("1 pago");
+    expect(notaPagosDelMes(17)).toBe("17 pagos");
+  });
+
+  it("dos tarjetas en orden, la pendiente destacada y los importes del servidor sin tocar", () => {
+    const t = tarjetasGanancia({
+      pendiente: { monto: "47500.55", conteo: 2 },
+      pagadaEsteMes: { monto: "3500.00", conteo: 2 },
+    });
+    expect(t.map((c) => [c.id, c.label, c.valor, c.contexto, c.destacada, c.esMonto])).toEqual([
+      ["gananciaPendiente", "Ganancia pendiente de pago", "47500.55", "2 cierres aprobados sin liquidar", true, true],
+      ["gananciaPagada", "Ganancia pagada este mes", "3500.00", "2 pagos", false, true],
+    ]);
+    expect(t.every((c) => !c.conMetodos && !c.aviso)).toBe(true);
+  });
+
+  it("también en cero, con sus notas de cero", () => {
+    const t = tarjetasGanancia({
+      pendiente: { monto: "0.00", conteo: 0 },
+      pagadaEsteMes: { monto: "0.00", conteo: 0 },
+    });
+    expect(t.map((c) => [c.valor, c.contexto])).toEqual([
+      ["0.00", "Ningún cierre aprobado sin liquidar"],
+      ["0.00", "Ningún pago este mes"],
+    ]);
   });
 });
