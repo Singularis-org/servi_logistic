@@ -424,8 +424,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D73 — Guardia 420 `dependencias-declaradas-presentes` roja en `dev`
 - **Origen:** sync del arnés 2.14.0. La guardia espera en `init.sh` el marcador «(ficha 420)» y la llamada a `scripts/verificar-dependencias.mjs`, que el `init.sh` de `dev` no tiene. Está en el baseline y no bloquea, pero no vigila nada.
-- **Qué falta:** volver a sincronizar `init.sh` con la plantilla (`./scripts/arnes-sync.sh --aplicar`) o subir la diferencia local.
-- **Dueño:** ArqDev.
+- **Qué falta:** lo decide SL-29 «Paso de dependencias declaradas en el gate del arnés» (subir el paso a la plantilla o retirar la guardia y el script). La plantilla tampoco tiene el paso: un `--aplicar` no lo arregla.
+- **Dueño:** Camilo (SL-29).
 
 ### D74 — T0.4 de SLT-123/SLT-139: conteo en producción diferido
 - **Origen:** SLT-123 y SLT-139 (T0.4). El conteo en producción no se hizo: la lectura de prod está bloqueada para agentes.
