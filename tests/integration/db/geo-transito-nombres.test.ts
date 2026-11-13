@@ -124,6 +124,22 @@ function consultaDe(e: EmpresaGeo71): ConsultaTransito {
 }
 
 /** El repositorio de hoy: el nuevo con `filasEnAlerta` de la copia congelada. */
+/**
+ * SLT-125 (A10) — una copia profunda sin las claves `ruta` y `niveles`, que la lectura de hoy no tenia.
+ * Solo recorre arrays y objetos planos: las fechas y el resto de valores pasan tal cual a la comparacion.
+ */
+function sinRutaNiNiveles<T>(x: T): T {
+  if (Array.isArray(x)) return x.map(sinRutaNiNiveles) as T;
+  if (x !== null && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(x)
+        .filter(([k]) => k !== "ruta" && k !== "niveles")
+        .map(([k, v]) => [k, sinRutaNiNiveles(v)]),
+    ) as T;
+  }
+  return x;
+}
+
 function repoDeHoy(cliente: PrismaClient): IInformeTransitoRepository {
   const nuevo = new InformeTransitoRepository(cliente);
   return {
@@ -203,11 +219,12 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     });
     for (const x of r) {
       expect(x.nuevas.map((f) => f.ordenId)).toEqual(x.transito);
-      expect(x.nuevas).toEqual(x.deHoy);
+      // SLT-125 (A10): la copia de hoy no tiene `ruta` ni `niveles`; todo lo demas se compara igual.
+      expect(sinRutaNiNiveles(x.nuevas)).toEqual(sinRutaNiNiveles(x.deHoy));
       // R8: con distrito, su nombre; sin distrito, null. Nunca vacio.
       expect(x.nuevas.every((f) => f.canton.length > 0)).toBe(true);
       expect(x.nuevas.filter((f) => f.distrito === null)).toHaveLength(1);
-      expect(x.modeloNuevo).toEqual(x.modeloDeHoy);
+      expect(sinRutaNiNiveles(x.modeloNuevo)).toEqual(sinRutaNiNiveles(x.modeloDeHoy));
     }
   }, TIEMPO_DE_TEST_LARGO);
 

@@ -104,7 +104,7 @@
   - `{{ubicacion}}` resuelve a «Carmen, San José, San José» con los datos de ejemplo;
   - sin cambios: `preview-mismo-motor.test.ts`, `campos-ocultos-siguen-resolviendo.test.ts` y
     `catalogo-de-variables.test.ts`.
-- [ ] **T2.6** [P] PDF de tránsito: `transito/pdf.ts`. El título sale de `tiposDeDosMasHondos`, los
+- [x] **T2.6** [P] PDF de tránsito: `transito/pdf.ts`. El título sale de `tiposDeDosMasHondos`, los
   tipos de los 2 niveles más hondos de la ruta de una orden (país de 4: «COMUNA · BARRIO»). Las
   celdas, de `dosMasHondos` (P7: opción a mientras no se responda).
   Test: `transito-pdf-niveles.test.ts`.

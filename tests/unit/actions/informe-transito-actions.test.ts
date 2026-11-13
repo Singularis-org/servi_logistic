@@ -5,6 +5,7 @@ import { crearInformeTransito } from "@/lib/whatsapp-envios/informes/transito/in
 import { PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { NIVELES_CR, rutaDeCR } from "../../fixtures/transito-ruta";
 
 // Ficha 475 (T5.4) — R38/R39: la vista previa del panel. Solo maestro, solo lectura, y LA MISMA
 // seleccion que `generar`.
@@ -26,6 +27,8 @@ function fila(dias: number, estado: string, diasEnEstado: number | null, zonaId 
     destinatario: "C",
     canton: "K",
     distrito: null,
+    ruta: rutaDeCR("K", null),
+    niveles: NIVELES_CR,
     montoCobrar: null,
     hitoAt: new Date(AHORA.getTime() - dias * UN_DIA),
     ultimaTransicionAt: diasEnEstado === null ? null : new Date(AHORA.getTime() - diasEnEstado * UN_DIA),

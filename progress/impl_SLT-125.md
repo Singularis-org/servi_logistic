@@ -388,25 +388,55 @@ guardias etiquetas-geograficas-sin-literal (6), sinpe-en-toda-superficie (9), li
 pnpm run typecheck → exit 0; eslint de los 5 archivos → sin problemas
 ```
 
-## T2.6 — PDF de tránsito: PARADA (backend_dev, 2026-11-12)
+## T2.6 — PDF de tránsito (backend_dev, 2026-11-13)
 
-No implementada ni commiteada (R38). Design §4.2 pide `ruta` y `niveles` en `PaqueteTransito`, que se
-arma en `clasificar` desde `FilaTransito` (lo que devuelve `InformeTransitoRepository.filasEnAlerta`).
-Para que la celda use `dosMasHondos` (un país de 2 niveles da «nivel 1 · nivel 2», no solo el «cantón») la
-ruta tiene que viajar en `FilaTransito`, y eso rompe tres aserciones de igualdad estricta que no están en
-§13.1:
-- `tests/integration/db/informe-transito-seleccion.test.ts:66–78` — `expect(r.fila).toEqual({ ordenId, …,
-  canton, distrito, montoCobrar, hitoAt, ultimaTransicionAt })`. Después tendría que sumar
-  `ruta: [...]` y `niveles: [...]` al objeto esperado.
-- `tests/integration/db/geo-transito-nombres.test.ts:206` — `expect(x.nuevas).toEqual(x.deHoy)`: `deHoy`
-  sale de la copia congelada `scripts/geo-equivalencia/analitica-de-hoy.ts > filasEnAlertaDeHoy`, que no
-  tiene ruta. Habría que comparar sin `ruta`/`niveles` (p. ej. `toMatchObject` o quitar esas claves).
-- `tests/integration/db/geo-transito-nombres.test.ts:210` — `expect(x.modeloNuevo).toEqual(x.modeloDeHoy)`:
-  el modelo nuevo llevaría `ruta`/`niveles` en cada paquete. Mismo cambio.
-Además cambiarían solo entradas (sin aserciones): el `fila()` de `tests/unit/pdf/informe-transito-pdf.test.ts`
-(para que siga esperando «CANTÓN · DISTRITO» y «San José · Hatillo», que con R42 salen de los tipos y la
-ruta de la entrada), y las filas de `informe-transito-calculo`, `-informe`, `-repo-consultas` e
-`informe-transito-actions.test.ts`. Se espera autorización del humano.
+La parada del 2026-11-12 (3 aserciones fuera de §13.1) la resolvió el humano con **A10**. Hecha así:
+
+Archivos:
+- `lib/whatsapp-envios/informes/transito/tipos.ts`: `FilaTransito` suma `ruta: Ruta` y `niveles: NivelDelPais[]`.
+- `lib/repositories/InformeTransitoRepository.ts`: con el catálogo ya cargado (cero consultas más),
+  `ruta = rutaDelLugar(cat, fila)` y `niveles = nivelesDelCatalogo(cat)`; `canton` y `distrito` como antes.
+- `lib/whatsapp-envios/informes/transito/calculo.ts`: `PaqueteTransito` pasa `ruta` y `niveles`.
+- `lib/whatsapp-envios/informes/transito/pdf.ts`: el título de la columna de lugar es
+  `tiposDeDosMasHondos(niveles)` en mayúsculas unidos « · » (sin ningún texto de nivel a mano, R42); la celda,
+  `dosMasHondos(ruta, P)` sin tramos vacíos (P7 opción a). `COLUMNAS_ZONA` pasa a `columnasZona(niveles)`.
+- `scripts/geo-equivalencia/analitica-de-hoy.ts` (copia congelada de SLT-71): `filasEnAlertaDeHoy` devuelve
+  `ruta: []` y `niveles: []` para cumplir el tipo. No es una aserción; hoy esos campos no existían y la
+  comparación los excluye (A10). Sin esto no compilan la copia, `repoDeHoy` del test ni el script de equivalencia.
+- Tests, A10: `informe-transito-seleccion.test.ts:66` espera el mismo objeto más `ruta` (provincia, cantón y
+  distrito de la base, con sus ids) y `niveles` de CR; `geo-transito-nombres.test.ts:223` y `:227` (antes
+  `:206` y `:210`) comparan con `sinRutaNiNiveles` (copia profunda sin esas dos claves; lo demás, igual).
+- Solo entradas: el `fila()` de `informe-transito-pdf`, `-calculo`, `-informe`, `-repo-consultas` e
+  `informe-transito-actions` suma `ruta` y `niveles` con `tests/fixtures/transito-ruta.ts` (nuevo:
+  `NIVELES_CR`, `rutaDeCR`). En el del PDF la ruta sale del cantón y el distrito ya mezclados con `over`.
+- Test nuevo: `tests/unit/whatsapp-envios/transito-pdf-niveles.test.ts`.
+
+| R | Test |
+|---|---|
+| R13 | `transito-pdf-niveles.test.ts` › «SLT-125 R13 — …» (país de 4: «COMUNA · BARRIO» y «Ñuñoa · Villa Olímpica»; país de 2: «DEPARTAMENTO · MUNICIPIO» y niveles 1·2; país de 3 sin textos de CR; ruta que no llega al nivel más hondo) |
+| R15 (PDF) | `transito-pdf-niveles.test.ts` › «SLT-125 R15 — Costa Rica…» («CANTÓN · DISTRITO», «San José · Hatillo», sin distrito «Heredia»); `informe-transito-pdf.test.ts` sin cambiar aserciones («CANTÓN · DISTRITO», «San José · Hatillo» literales) |
+
+Salidas (con `env125.sh`, uno a uno, `--maxWorkers=1`):
+```
+transito-pdf-niveles.test.ts                       6 passed (6)
+informe-transito-pdf.test.ts                      21 passed (21)
+informe-transito-calculo.test.ts                  16 passed (16)
+informe-transito-informe.test.ts                  14 passed (14)
+informe-transito-repo-consultas.test.ts            2 passed (2)
+informe-transito-actions.test.ts                  10 passed (10)
+informe-transito-{composicion,deps,parametros}     1 / 1 / 23 passed
+geo-transito-nombres.test.ts                       5 passed (5)
+geo-equivalencia-analitica.test.ts                13 passed (13)
+geo-analitica-lugar / geo-lecturas-sin-backfill / geo-71-fixture   8 / 3 / 1 passed
+guardias etiquetas-geograficas-sin-literal (6), geografia-lecturas-sin-nodo-fk (18),
+  catalogo-geografico-sin-instancia-de-modulo (7): verdes
+informe-transito-{seleccion,zonas,hitos,parados,catalogo-real}: rojos en el arranque con
+  «475: no hay ningun usuario en la base de test» (base sin semilla): ambiental. Por eso la aserción A10 de
+  `informe-transito-seleccion.test.ts:66` NO se pudo ver en verde en local; la verá la CI.
+pnpm run typecheck → exit 0
+pnpm exec eslint <15 archivos> → 0 errores (1 warning previo en analitica-de-hoy.ts:97, no tocado)
+vitest run guard → 1 failed | 334 passed | 3 skipped; los 4 rojos de dependencias-declaradas-presentes (baseline)
+```
 
 ## T2.7 — Scripts de evidencia (backend_dev, 2026-11-12)
 
@@ -440,3 +470,7 @@ vitest run guard → 1 failed | 334 passed | 3 skipped; los 4 rojos de dependenc
 ## Veredicto T2.4–T2.7
 
 T2.4, T2.5 y T2.7 hechas y en verde; T2.6 parada por 3 aserciones fuera de §13.1, a la espera del humano.
+
+## Veredicto T2.2 y T2.6
+
+T2.2 y T2.6 hechas y en verde (A9, A10); las integraciones que piden semilla de órdenes/usuarios no corren en `logistic_slt125`.

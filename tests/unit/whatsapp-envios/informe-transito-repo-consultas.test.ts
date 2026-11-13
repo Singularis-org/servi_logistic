@@ -3,6 +3,7 @@ import { crearInformeTransito } from "@/lib/whatsapp-envios/informes/transito/in
 import { PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { NIVELES_CR, rutaDeCR } from "../../fixtures/transito-ruta";
 
 // Ficha 475 (T2.7, R40) — el numero de consultas por generacion no depende del numero de ordenes.
 
@@ -19,6 +20,8 @@ function filas(n: number): FilaTransito[] {
     destinatario: "Cliente",
     canton: "Cantón",
     distrito: null,
+    ruta: rutaDeCR("Cantón", null),
+    niveles: NIVELES_CR,
     montoCobrar: "1000.00",
     hitoAt: new Date(AHORA.getTime() - (16 + (i % 10)) * UN_DIA),
     ultimaTransicionAt: new Date(AHORA.getTime() - (i % 5) * UN_DIA),
