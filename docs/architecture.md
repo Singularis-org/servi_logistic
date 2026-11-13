@@ -167,7 +167,7 @@ esta bien hecha, no solo si "funciona".
     SLT-43 (triggers `AFTER` en `pais`, `provincia`, `canton` y `distrito`) sigue para el SQL a mano, y
     triggers `BEFORE` rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y
     `distrito_zona_especial`. Las filas
-    anteriores y `cierre_detail.ubicacion_snapshot` las llena `pnpm geo:backfill`
+    anteriores y el `cierre_detail.ubicacion_snapshot` de los cierres anteriores a SLT-125 las llena `pnpm geo:backfill`
     (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
     `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
     (design §6 de SLT-43).
@@ -217,6 +217,34 @@ esta bien hecha, no solo si "funciona".
       lugar de la orden (`COALESCE(distrito_id, canton_id)`) y pone el lugar en cualquier otro caso;
       con las escrituras de hoy (sin nodo o igual al lugar) da lo mismo que SLT-43. Ninguna escritura
       de la app manda todavía un nodo más profundo (regla de guardado de SLT-45).
+  - **Presentación sobre el árbol (SLT-125).** Toda presentación de un lugar sale de la ruta del
+    catálogo (`CatalogoGeograficoRepository`, cargado una vez por instancia y nunca por fila) y se
+    adapta a los niveles del país de la empresa. Costa Rica se ve y se descarga igual que antes.
+    - **Núcleo puro:** `lib/utils/ubicacion-presentacion.ts`. Tiene las columnas por nivel
+      (`columnasDeNivel`, con el singular del tipo o `nivel_<k>` si chocan), la línea «Ubicación»
+      con toda la ruta (`lineaDeUbicacion`, con el separador de hoy de cada superficie) y los dos
+      niveles más hondos (`dosMasHondos`) para las tarjetas POS y de satélite, el chat y el PDF de
+      tránsito.
+    - **Lecturas:** el listado de `/ordenes`, satélite, novedades, la etiqueta de guía, `/paquete`,
+      la gestión, el cierre de día en vivo, cobertura y el envío de WhatsApp nombran el lugar con la
+      ruta del catálogo. Ya no hacen join a `provincia`, `canton` ni `distrito`. Cobertura da una
+      fila por nodo del nivel más hondo. Desde el nivel 4, el motivo de un nodo retirado es
+      `nivel_<k>_retirado`; los niveles 1–3 conservan sus claves.
+    - **WhatsApp:** `{provincia}`, `{canton}` y `{distrito}` siguen siendo los niveles 1–3. Se suman
+      `{nivel_1}…{nivel_N}` y `{ubicacion}`.
+    - **`cierre_detail.ubicacion_snapshot`:** el cierre nuevo lo escribe en la misma transacción,
+      además de las 3 columnas de nombre. La forma es la de SLT-43 §2.6 (`lib/types/ubicacion-snapshot.ts`).
+      Los cierres admin y su descarga lo leen con `leerUbicacionCongelada`, que lo valida con zod;
+      si falta o no es válido, leen las 3 columnas como antes. Lo congelado no se recalcula.
+    - **Geocodificación:** `construirQueryDireccion` (`lib/geo/direccion-query.ts`) une la
+      dirección, la ruta del nivel más hondo al más alto (`rutaInvertida`) y `pais.nombre` de la
+      empresa. En Costa Rica da la misma cadena y la misma huella que antes, así que `GeocodeCache`
+      no se invalida.
+    - **Evidencia antes del merge:** `pnpm geo:equivalencia-presentacion`
+      (`scripts/geo-equivalencia-presentacion.ts`, solo lectura) compara los nombres y la consulta
+      de geocodificación de hoy con los nuevos. `pnpm descargas:comparar`
+      (`scripts/comparar-descargas.ts`) compara las descargas. Los corre una persona sobre una
+      copia de producción, nunca un agente.
 - **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
   solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
   para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
