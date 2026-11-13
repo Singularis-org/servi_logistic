@@ -159,10 +159,10 @@ en `feature_list.json`, `specs/`, `progress/` y el código del worktree (Grep; e
   de R416 muerde (quitarlo con la marca opcional → rojo).
 - [x] **T5 (D72, R418)** [P] — Editar las filas R190 y R191 de `progress/impl_SLT-106.md`.
   *Hecho:* el mapa cita los dos tests de `ConsolidacionBodegaRefresco.test.tsx`.
-- [ ] **T6** — `progress/deudas.md`: marcar D63 y D66 como cerradas (commit, R410-R415) y **dar de
+- [x] **T6** — `progress/deudas.md`: marcar D63 y D66 como cerradas (commit, R410-R415) y **dar de
   alta D68 y D72 ya cerradas** (hoy no existen en el archivo), con su origen. *Hecho:* las cuatro
   constan como cerradas.
-- [ ] **T7** — `./init.sh` verde con `INIT_EXIT` en el log; mapa R410-R418 → test en
+- [x] **T7** — `./init.sh` verde con `INIT_EXIT` en el log; mapa R410-R418 → test en
   `progress/impl_SLT-147.md`.
 
 ## Tamaño
