@@ -2,6 +2,13 @@
 
 Bitácora de implementación. Spec: `specs/SLT-125-geo-jerarquica-exportes/` (aprobado en `77f7369d`).
 
+## Maqueta (T0, R36)
+
+- **Aprobada por el humano el 2026-11-12** (T0.2), antes de cualquier commit de pantalla.
+- Referencia: `specs/SLT-125-geo-jerarquica-exportes/maqueta-SLT-125.html` (copia estática en el repo)
+  y el artifact https://claude.ai/artifact/LNRExdwKbj9SgRhQzERf28.
+- La armó el leader (T0.1) con países de 2, 3 (CR), 4 y 10 niveles. T3 la sigue.
+
 ## Base de datos de esta feature
 
 - Base local `logistic_slt125` en el Postgres de `localhost:5432`, creada por el leader con `node` + `pg`

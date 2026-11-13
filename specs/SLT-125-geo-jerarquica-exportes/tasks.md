@@ -20,7 +20,7 @@
 
 ## T0 — Maqueta (leader + humano) · bloquea T3
 
-- [ ] **T0.1** El leader arma la maqueta (`/design`) en un país de 2, 3 (Costa Rica), 4 y 10 niveles.
+- [x] **T0.1** El leader arma la maqueta (`/design`) en un país de 2, 3 (Costa Rica), 4 y 10 niveles.
   Cubre:
   - la tabla de `/ordenes` y de satélite con una columna por nivel (P4);
   - el detalle de asignación con P campos, en el ancho de un teléfono, con los de nivel 4 o más en
@@ -33,7 +33,7 @@
     (P2).
 
   **Hecho:** la maqueta está en el repo o enlazada desde `progress/impl_SLT-125.md`.
-- [ ] **T0.2** El humano aprueba la maqueta.
+- [x] **T0.2** El humano aprueba la maqueta.
   **Hecho:** fecha, referencia y quién aprobó, anotados en `progress/impl_SLT-125.md` (R36).
 
 ## T1 — Preparación (backend_dev) · sin dependencias de código
