@@ -200,6 +200,11 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // calcula sobre centimos exactos con `Prisma.Decimal`; un `Number(`/`parseFloat(` de un importe
   // aqui lo devolveria a la coma flotante. Su ruta no casa la auto-captura: entra a mano.
   "lib/utils/porcentajes-reparto.ts",
+  // SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (R355): las dos cifras
+  // de «Cierres solicitados» se suman con `Prisma.Decimal` en el servicio, sobre los aprobados que
+  // lee el repositorio. Sus rutas no casan la auto-captura: entran a mano.
+  "lib/services/CierreDiaService.ts",
+  "lib/repositories/CierreDiaRepository.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */

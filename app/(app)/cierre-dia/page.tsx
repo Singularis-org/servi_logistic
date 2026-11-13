@@ -6,6 +6,7 @@ import {
   listarCierreDia,
   listarCierresPasadosPaginado,
   estadoBloqueoMensajero,
+  resumenGananciaMensajero,
   verCierrePasado,
 } from "@/lib/actions/cierre-dia";
 import { SIN_BLOQUEO, type CierreAResolver } from "@/lib/utils/bloqueo-cierre";
@@ -27,12 +28,17 @@ export default async function CierreDiaPage() {
 
   // Feature 170 — FASE 2 (T I.2, R40): el listado compuesto sigue trayendo las gestiones del
   // día, los totales y los gates; «Cierres solicitados» llega como PÁGINA 1 y su total (R41).
-  const [result, pasadosResult] = await Promise.all([
+  // SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (R357, R358, R360): las
+  // cifras de las tarjetas se leen en cada render (y `router.refresh()` las relee). Una lectura que no
+  // es `ok` —o que lanza— deja la página sin tarjetas, nunca sin página: sin `notFound()`.
+  const [result, pasadosResult, gananciaResult] = await Promise.all([
     listarCierreDia(),
     listarCierresPasadosPaginado({}),
+    resumenGananciaMensajero().catch(() => ({ status: "error" as const })),
   ]);
   if (result.status !== "ok") notFound(); // forbidden/unauthenticated → sin módulo
   if (pasadosResult.status !== "ok") notFound(); // defensa en profundidad
+  const resumenGanancia = gananciaResult.status === "ok" ? gananciaResult.resumen : undefined;
 
   // Feature 41 (R21) -> FEATURE 271 (T9.3): el DETALLE del bloqueo, derivado server-side por la
   // regla N/V. SUSTITUYE a tres props del módulo: el flag `bloqueado` y los dos `tieneVencido` /
@@ -69,6 +75,7 @@ export default async function CierreDiaPage() {
         // FICHA 477 (R25/R26): lo que hace falta para corregir cada cierre rechazado propio.
         correcciones={result.correcciones ?? []}
         reenviable={reenviable}
+        resumenGanancia={resumenGanancia}
       />
     </AppPage>
   );

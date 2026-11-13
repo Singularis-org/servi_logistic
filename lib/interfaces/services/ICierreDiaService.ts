@@ -391,6 +391,49 @@ export interface LecturasPendienteCierre {
   };
 }
 
+/** SLT-112 — una cifra de «Cierres solicitados»: importe en escala 2 (string) y su conteo. */
+export interface CifraGanancia {
+  monto: string;
+  conteo: number;
+}
+
+/** SLT-112 (R350-R353) — las dos tarjetas de «Cierres solicitados» del mensajero. */
+export interface ResumenGananciaMensajero {
+  /** R350: Σ lo pendiente de sus cierres aprobados; conteo = aprobados con pendiente > 0. */
+  pendiente: CifraGanancia;
+  /** R352/R353: Σ pagos vigentes con `fecha_pago` en el mes (+ lo pagado por la satélite); conteo = pagos. */
+  pagadaEsteMes: CifraGanancia;
+}
+
+export type ResumenGananciaServiceResult =
+  | { status: "ok"; resumen: ResumenGananciaMensajero }
+  | { status: "sin_dato" } // R357: el servicio no tiene las lecturas
+  | { status: "forbidden" }; // R359
+
+/**
+ * SLT-112 (R353) — la lectura de lo «pagado por la satélite» en un rango de instantes, que
+ * implementa e inyecta SLT-139. Mientras no se inyecte, «Ganancia pagada este mes» es la de R352.
+ */
+export interface LecturaPagadoPorSatelite {
+  /** Σ y nº de movimientos «pagado por la satélite» del mensajero con `fecha_movimiento` en [desde, hasta). */
+  sumarPagadoPorSateliteEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
+}
+
+/**
+ * SLT-112 — lo que el servicio necesita, ademas de `LecturasPendienteCierre`, para las cifras.
+ * `pagos` se declara por su forma (`ILiquidacionPagoRepository.sumarVigentesDelMensajeroEnRango`)
+ * por la misma razon que `LecturasPendienteCierre`: este archivo lo importa la pantalla.
+ */
+export interface LecturasGananciaMensajero {
+  pagos: {
+    sumarVigentesDelMensajeroEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
+  };
+  /** R353: ausente = solo los pagos de liquidacion (R352). */
+  pagadoPorSatelite?: LecturaPagadoPorSatelite;
+  /** Reloj inyectable para fijar «hoy» en los tests; ausente = `new Date()`. */
+  ahora?: () => Date;
+}
+
 // R2-R11/R17/R18: detalle del dia + totales + gate de "Solicitar cierre" +
 // historico. `forbidden` si el rol no es mensajero (R1/R2). `unauthenticated` lo
 // resuelve el borde (Server Action).
@@ -663,6 +706,12 @@ export interface ICierreDiaService {
     input: { page: number; pageSize: number; filtros?: FiltrosColaPropia },
     actor: Actor,
   ): Promise<ListarCierresPasadosServiceResult>;
+  /**
+   * SLT-112 (R350-R357, R359) — «Ganancia pendiente de pago» y «Ganancia pagada este mes» del
+   * mensajero de la sesion, del conjunto (no de la pagina ni de los filtros). Otro rol →
+   * `forbidden` sin leer; sin las lecturas → `sin_dato`.
+   */
+  resumenGanancia(actor: Actor): Promise<ResumenGananciaServiceResult>;
   /**
    * Feature 184 — Tanda C (R1/R4/R6/R9): el CONJUNTO de «Cierres solicitados» del propio
    * mensajero, sin recorte, para producir el archivo.

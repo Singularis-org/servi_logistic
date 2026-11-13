@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
   AnularGestionDeCierreRechazadoInput,
   AnularGestionInput,
+  CierreAprobadoParaPendienteRow,
   CierreGestionPendienteRow,
   CierreSinGestionRow,
   CierreSolicitadoInfo,
@@ -1888,6 +1889,29 @@ export class CierreDiaRepository implements ICierreDiaRepository {
       this.prisma.cierreDia.count({ where }), // R41: el total del CONJUNTO
     ]);
     return { items: rows.map(toCierrePasadoDTO), total };
+  }
+
+  /**
+   * SLT-112 (R350, R354) — los cierres `aprobado` del mensajero, sin filtros ni pagina. El
+   * `mensajeroId` sale de la sesion (el servicio lo toma del actor); la empresa, de la extension
+   * del cliente. Una consulta, sea cual sea el numero de cierres (R356).
+   */
+  async findAprobadosParaPendiente(mensajeroId: string): Promise<CierreAprobadoParaPendienteRow[]> {
+    const rows = await this.prisma.cierreDia.findMany({
+      where: { mensajeroId, estado: "aprobado" },
+      select: {
+        id: true,
+        totalPagoMensajero: true,
+        totalEfectivo: true,
+        pagoIndependienteEfectivo: true,
+      },
+    });
+    return rows.map((r) => ({
+      cierreId: r.id,
+      totalPagoMensajero: r.totalPagoMensajero.toFixed(2),
+      totalEfectivo: r.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: r.pagoIndependienteEfectivo,
+    }));
   }
 
   /**

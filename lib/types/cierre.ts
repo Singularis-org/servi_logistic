@@ -8,6 +8,7 @@ import type {
   CierrePasadoDTO,
   DeshacerGestionServiceResult,
   ListarCierreDiaServiceResult,
+  ResumenGananciaServiceResult,
   SolicitarCierreServiceResult,
   VerCierrePasadoServiceResult,
 } from "@/lib/interfaces/services/ICierreDiaService";
@@ -55,6 +56,14 @@ void _destinoExhaustive;
 // los *Result de recepcion-satelite/mis-asignaciones.
 export type ListarCierreDiaResult = ListarCierreDiaServiceResult | { status: "unauthenticated" };
 export type SolicitarCierreResult = SolicitarCierreServiceResult | { status: "unauthenticated" };
+/**
+ * SLT-112 (R357) — las cifras de «Cierres solicitados» tal como llegan a la pagina. `error` = una
+ * lectura fallo: la pagina carga igual, sin tarjetas y sin ceros en su lugar.
+ */
+export type ResumenGananciaResult =
+  | ResumenGananciaServiceResult
+  | { status: "unauthenticated" }
+  | { status: "error" };
 
 // Feature 67/R10 — validacion de BORDE del deshacer. El input del cliente es el
 // `gestion_orden.id` (uuid, ver `GestionOrden.id @default(uuid())` en schema.prisma); un valor

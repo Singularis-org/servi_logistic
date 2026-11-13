@@ -30,6 +30,7 @@ import type {
   CierreTotales,
   CierrePasadoDTO,
   CorreccionCierreDTO,
+  ResumenGananciaMensajero,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 // SLT-108 (R59, R161): el detalle de un cierre pasado es el detalle único del módulo, con audiencia
@@ -64,6 +65,7 @@ import {
   REGION_PROPIA,
   VACIO_FILTRADO_PROPIA,
   VACIO_PROPIA,
+  tarjetasGanancia,
 } from "@/components/private/cierres/cola/cola-propia-vista";
 // SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero» (R167): la barra de la cola.
 import { FiltrosColaPropiaBarra } from "./FiltrosColaPropiaBarra";
@@ -144,6 +146,12 @@ export interface CierreDiaModuleProps {
    * `page.tsx`. Opcional para no romper los dobles; ausente con un cierre por reenviar = `error`.
    */
   reenviable?: CierreReenviable;
+  /**
+   * SLT-112 (R358, R357): las cifras de la ganancia que lee `page.tsx`. Ausente (el servidor no las
+   * emitió o la lectura falló) = la cola sin tarjetas. No llega por SWR: no depende de la página ni
+   * de los filtros (R354).
+   */
+  resumenGanancia?: ResumenGananciaMensajero;
 }
 
 // =================================================================================================
@@ -266,6 +274,7 @@ export function CierreDiaModule({
   bloqueo,
   correcciones = [],
   reenviable,
+  resumenGanancia,
 }: CierreDiaModuleProps) {
   const router = useRouter();
   const toast = useToast();
@@ -618,6 +627,7 @@ export function CierreDiaModule({
           }
           filas={pasadosData?.items ?? []}
           acciones={{ abrir: abrirDetalle, leyendo: cargandoDetalle }}
+          tarjetas={resumenGanancia ? tarjetasGanancia(resumenGanancia) : undefined}
         />
       </section>
 

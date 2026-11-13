@@ -100,6 +100,7 @@ function fakeRepo(gestiones: GestionPendienteDeCierreRow[]) {
     findCierresByMensajero: vi.fn(async () => []),
     findCierrePropioConGestiones: vi.fn(async () => null),
     findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [], total: 0 })),
+    findAprobadosParaPendiente: vi.fn(async () => []),
     findGestionParaDeshacer: vi.fn(async () => null),
     findUltimaGestionNoAnuladaId: vi.fn(async () => null),
     anularGestionYDevolverAGestion: vi.fn(async () => true),

@@ -4,7 +4,11 @@
 // satélite (R163). Ningún importe se convierte a número: el pendiente se compara como TEXTO con
 // `hayPendienteDeLiquidar` y el resto lo pinta `money()` en el `.tsx` (R71).
 
-import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierrePasadoDTO,
+  ResumenGananciaMensajero,
+} from "@/lib/interfaces/services/ICierreDiaService";
+import type { Cifra } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import {
   DESTINO_TIPO_LABEL,
   ESTADO_LABEL,
@@ -118,6 +122,54 @@ export function textoPagoPropio(p: PagoPropio): string {
     case "nulo":
       return PAGO_NULO;
   }
+}
+
+// ═══ Tarjetas de la ganancia (SLT-112 «Cifras del servidor: ganancia pendiente y pagada», R358) ═══
+// Las cifras las calcula el servidor (R71): aquí solo se ponen nombre y nota. El `valor` es el string
+// del servidor sin tocar; lo pinta `money()` en `CifrasCierre`.
+
+export const TARJETA_GANANCIA_PENDIENTE = "Ganancia pendiente de pago";
+export const TARJETA_GANANCIA_PAGADA = "Ganancia pagada este mes";
+/** Nombre accesible del grupo de las dos tarjetas. */
+// No «Tu ganancia» (design.md > 4): así se llama ya la caja destacada del detalle de hoy en la misma
+// página, y dos grupos con el mismo nombre no se distinguen con lector de pantalla.
+export const CIFRAS_GANANCIA_LABEL = "Ganancia de tus cierres";
+
+/** Nota de «Ganancia pendiente de pago» (R358); en 0 la decide el spec, en tú. */
+export function notaCierresSinLiquidar(n: number): string {
+  if (n === 0) return "Ningún cierre aprobado sin liquidar";
+  if (n === 1) return "1 cierre aprobado sin liquidar";
+  return `${n} cierres aprobados sin liquidar`;
+}
+
+/** Nota de «Ganancia pagada este mes» (R358, PA3: número de pagos, no de cierres). */
+export function notaPagosDelMes(n: number): string {
+  if (n === 0) return "Ningún pago este mes";
+  if (n === 1) return "1 pago";
+  return `${n} pagos`;
+}
+
+/** Las dos tarjetas en el orden del spec: pendiente (destacada) y pagada; también en "0.00". */
+export function tarjetasGanancia(r: ResumenGananciaMensajero): Cifra[] {
+  const base = { esMonto: true, conMetodos: false } as const;
+  return [
+    {
+      ...base,
+      id: "gananciaPendiente",
+      label: TARJETA_GANANCIA_PENDIENTE,
+      valor: r.pendiente.monto,
+      contexto: notaCierresSinLiquidar(r.pendiente.conteo),
+      destacada: true,
+    },
+    {
+      ...base,
+      id: "gananciaPagada",
+      label: TARJETA_GANANCIA_PAGADA,
+      valor: r.pagadaEsteMes.monto,
+      contexto: notaPagosDelMes(r.pagadaEsteMes.conteo),
+      destacada: false,
+    },
+  ];
 }
 
 // ═══ Barra de filtros (SLT-138 «/cierre-dia: buscador y filtros de la cola del mensajero») ══════
