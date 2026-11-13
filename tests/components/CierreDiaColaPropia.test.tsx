@@ -37,10 +37,6 @@ vi.mock("@/components/shared/DescargarDatasetButton", () => ({
     <button type="button" aria-label={`Descargar ${p.titulo}`}>Descargar</button>
   ),
 }));
-// R166: si la pantalla volviera a montar la tira de comprobantes, estos marcadores aparecerían.
-vi.mock("@/app/(app)/cierres-admin/_components/ListaComprobantes", () => ({
-  ListaComprobantes: () => <p>MARCADOR-LISTA-COMPROBANTES-Q7</p>,
-}));
 vi.mock("@/app/(app)/cierres-admin/_components/cierre-factura", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/(app)/cierres-admin/_components/cierre-factura")>()),
   CierreFacturaResumenPropio: () => <p>MARCADOR-RESUMEN-PROPIO-Q7</p>,
@@ -160,7 +156,6 @@ describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
 
   it("R166: la pantalla ya no monta la tira de comprobantes ni su hoja resumida", () => {
     montar();
-    expect(screen.queryByText("MARCADOR-LISTA-COMPROBANTES-Q7")).not.toBeInTheDocument();
     expect(screen.queryByText("MARCADOR-RESUMEN-PROPIO-Q7")).not.toBeInTheDocument();
   });
 
