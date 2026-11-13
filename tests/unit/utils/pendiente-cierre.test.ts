@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { derivarPendienteCierre, type PendienteCierreInput } from "@/lib/utils/pendiente-cierre";
+import {
+  derivarPagoEntregadoCierre,
+  derivarPendienteCierre,
+  type PendienteCierreInput,
+} from "@/lib/utils/pendiente-cierre";
 import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
 
 // Feature 172 / T A.4 — derivacion PURA del pendiente de un cierre. Cubre R22 (el pendiente se
@@ -451,5 +455,99 @@ describe("SLT-139 R338 — en un cierre nuevo, lo pagado por la satelite se rest
     // Y el termino de la satelite trabaja con `Prisma.Decimal` y redondeo explicito.
     const pendiente = fs.readFileSync(path.join(__dirname, "..", "..", "..", "lib", "utils", "pendiente-cierre.ts"), "utf8");
     expect(pendiente).toMatch(/new Prisma\.Decimal\(input\.pagadoPorSatelite\)\.toDecimalPlaces\(2, Prisma\.Decimal\.ROUND_HALF_UP\)/);
+  });
+});
+
+// SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (R382, PA1 del 2026-11-12) —
+// «Pago entregado» = (P + premios vivos) − pendiente, de la MISMA entrada que el pendiente. Cifras
+// escritas a mano: son el contrato.
+describe("SLT-140 R382 — «Pago entregado» = (P + premios vivos) − pendiente", () => {
+  it("(a) con la marca: P 3 000,00 y un pago de 1 200,00 → entregado 1 200,00", () => {
+    expect(
+      derivarPagoEntregadoCierre({
+        pagoDebido: "3000.00",
+        efectivo: "70000.00",
+        premiosVivos: "0.00",
+        pagadoVigente: "1200.00",
+        pagoIndependienteEfectivo: true,
+        pagadoPorSatelite: "0.00",
+      }),
+    ).toBe("1200.00");
+  });
+
+  it("(b) sin la marca: P 3 000,00 con E 70 000,00 y nada pagado → el efectivo lo cubrio: 3 000,00", () => {
+    expect(
+      derivarPagoEntregadoCierre({
+        pagoDebido: "3000.00",
+        efectivo: "70000.00",
+        premiosVivos: "0.00",
+        pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: false,
+      }),
+    ).toBe("3000.00");
+  });
+
+  it("(b') sin la marca y E por debajo de P: lo entregado es min(P, E) = 1 000,00", () => {
+    expect(
+      derivarPagoEntregadoCierre({
+        pagoDebido: "3000.00",
+        efectivo: "1000.00",
+        premiosVivos: "0.00",
+        pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: false,
+      }),
+    ).toBe("1000.00");
+  });
+
+  it("(c) con la marca, P 3 000,00 y un premio de 500,00 sin pagar → 0,00 (sin los premios daria −500,00)", () => {
+    expect(
+      derivarPagoEntregadoCierre({
+        pagoDebido: "3000.00",
+        efectivo: "70000.00",
+        premiosVivos: "500.00",
+        pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: true,
+        pagadoPorSatelite: "0.00",
+      }),
+    ).toBe("0.00");
+  });
+
+  it("(d) pagado de mas → P + premios, nunca mas", () => {
+    expect(
+      derivarPagoEntregadoCierre({
+        pagoDebido: "3000.00",
+        efectivo: "70000.00",
+        premiosVivos: "500.00",
+        pagadoVigente: "9000.00",
+        pagoIndependienteEfectivo: true,
+        pagadoPorSatelite: "0.00",
+      }),
+    ).toBe("3500.00");
+  });
+
+  it("(e) lo pagado por la satelite (SLT-139) cuenta como entregado: 700,00 + 1 000,00 = 1 700,00", () => {
+    expect(
+      derivarPagoEntregadoCierre({
+        pagoDebido: "3000.00",
+        efectivo: "70000.00",
+        premiosVivos: "0.00",
+        pagadoVigente: "700.00",
+        pagoIndependienteEfectivo: true,
+        pagadoPorSatelite: "1000.00",
+      }),
+    ).toBe("1700.00");
+  });
+
+  it("entregado + pendiente = P + premios en el caso del premio pagado a medias", () => {
+    const entrada: PendienteCierreInput = {
+      pagoDebido: "3000.00",
+      efectivo: "70000.00",
+      premiosVivos: "500.00",
+      pagadoVigente: "3200.00",
+      pagoIndependienteEfectivo: true,
+      pagadoPorSatelite: "0.00",
+    };
+    expect(derivarPendienteCierre(entrada)).toBe("300.00");
+    expect(derivarPagoEntregadoCierre(entrada)).toBe("3200.00");
   });
 });

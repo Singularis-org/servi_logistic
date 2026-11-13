@@ -15,6 +15,7 @@ import type {
   ListarCierresAdminServiceResult,
   CierreAdminResumen,
   CierreGestionDescargaDTO,
+  ConCifrasModeloNuevoEnOk,
   ConRechazosDeTiendaEnOk,
   CierreDetalleAdminServiceResult,
   AprobarCierreServiceResult,
@@ -374,9 +375,15 @@ export type ListarPendientesCierresAdminResult = ListarPaginadoResult<
  * pagina: quien los consume es `filasDesdeResultado`, el adaptador comun de la descarga, que
  * redacta el mensaje de CUALQUIER error de borde en un solo sitio. `limite_excedido` lleva SOLO
  * conteos, jamas filas ni un conjunto truncado (R6).
+ *
+ * SLT-140 (R378): la rama `ok` puede llevar ademas `cifrasModeloNuevo` (solo con cierres nuevos).
  */
-export type ListarHistoricoCierresAdminCompletoResult = ListarCompletoResult<CierreAdminResumen>;
-export type ListarPendientesCierresAdminCompletoResult = ListarCompletoResult<CierreAdminResumen>;
+export type ListarHistoricoCierresAdminCompletoResult = ConCifrasModeloNuevoEnOk<
+  ListarCompletoResult<CierreAdminResumen>
+>;
+export type ListarPendientesCierresAdminCompletoResult = ConCifrasModeloNuevoEnOk<
+  ListarCompletoResult<CierreAdminResumen>
+>;
 
 /**
  * Feature 230 — Tanda 2 (T2.3, R13/R21/R38) — el conjunto de la HOJA FUNDIDA de «cierres del

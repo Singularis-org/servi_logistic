@@ -1872,6 +1872,53 @@ export class CierresAdminRepository implements ICierresAdminRepository {
   }
 
   /**
+   * SLT-140 (R380, R383) — las gestiones de VARIOS cierres en DOS consultas (mas las de sus relaciones,
+   * por lote), sea uno o sean cien. Mismas proyecciones, mismo orden y mismo mapper que
+   * `findCierreByIdEnAlcance`, para que `cifrasDelCierre` dé aqui lo mismo que en el detalle.
+   *
+   * El alcance va en el `WHERE` de LAS DOS consultas (`cierre: alcanceWhere(alcance)`), ademas de los
+   * ids: los ids ya salen del conjunto acotado, pero un id fuera de alcance pasado a mano no devuelve ni
+   * una fila (R383). La empresa la ponen la extension del cliente y la RLS, como en el resto del repo.
+   *
+   * Sin `cargosFulfillmentVigentes` (la fecha del cargo no entra en ninguna cifra) ni firma de URLs.
+   */
+  async findGestionesDeCierresEnAlcance(
+    cierreIds: readonly string[],
+    alcance: Alcance,
+    zona: string,
+  ): Promise<ReadonlyMap<string, CierreGestionPendienteRow[]>> {
+    const porCierre = new Map<string, CierreGestionPendienteRow[]>();
+    if (cierreIds.length === 0) return porCierre;
+    const ids = [...cierreIds];
+    const [gestiones, detalle] = await Promise.all([
+      this.prisma.gestionOrden.findMany({
+        where: { cierreId: { in: ids }, cierre: alcanceWhere(alcance) }, // R383: alcance en el WHERE
+        orderBy: { createdAt: "desc" }, // el orden del detalle: `partesPorTienda` empata igual
+        select: { ...GESTION_ADMIN_SELECT, cierreId: true },
+      }),
+      this.prisma.cierreDetail.findMany({
+        where: { cierreId: { in: ids }, cierre: alcanceWhere(alcance) },
+        select: { ...DETALLE_ADMIN_SELECT, cierreId: true },
+      }),
+    ]);
+    const porCierreYOrden = new Map(detalle.map((d) => [`${d.cierreId}:${d.ordenId}`, d]));
+    // Un cierre en alcance con filas congeladas y sin gestiones sale con `[]`.
+    for (const d of detalle) if (!porCierre.has(d.cierreId)) porCierre.set(d.cierreId, []);
+    for (const g of gestiones) {
+      // `cierreId` no es null: el `in` del WHERE lo exige.
+      const cierreId = g.cierreId ?? "";
+      const d = porCierreYOrden.get(`${cierreId}:${g.ordenId}`);
+      // Sin fallback (feature 69/T18, R14): sin la fila congelada es un error DURO, como el detalle.
+      if (d === undefined) throw new CierreDetalleFaltanteError(cierreId, g.ordenId);
+      const fila = toPendienteRowDesdeSnapshot(g, d, zona, { cargoFulfillmentAt: null });
+      const lista = porCierre.get(cierreId);
+      if (lista === undefined) porCierre.set(cierreId, [fila]);
+      else lista.push(fila);
+    }
+    return porCierre;
+  }
+
+  /**
    * Feature 230 — Tanda 2 (T2.1, R11/R13/R14/R15/R22/R24/R41) — TODAS las gestiones de los
    * cierres del dia que caen dentro del alcance del actor y de los recortes del dialogo.
    *
