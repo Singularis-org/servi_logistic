@@ -175,21 +175,43 @@ async function abrirCon(
   };
 }
 
-/** Rellena los campos comunes del form de un plan: nombre, topes, módulos y costo concreto (R28). */
-async function rellenarPlan(form: Locator, nombre: string, visibilidad: "Público" | "Custom"): Promise<void> {
+/**
+ * SLT-130 (design §4): pulsa «Siguiente» y espera a que el paso `proximo` esté en pantalla (su título es
+ * el `h3` del paso). «Siguiente» valida solo el paso actual; si no avanza, el `expect` lo dice.
+ */
+async function siguiente(form: Locator, proximo: string): Promise<void> {
+  await form.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
+/** Paso General del form de un plan: nombre y visibilidad. Lo propio del custom lo rellena cada caso. */
+async function rellenarGeneral(form: Locator, nombre: string, visibilidad: "Público" | "Custom"): Promise<void> {
+  await expect(form.getByRole("heading", { level: 3, name: "General", exact: true })).toBeVisible();
   await form.getByRole("textbox", { name: /^Nombre/ }).fill(nombre);
   await form.getByRole("radio", { name: visibilidad, exact: true }).click();
+}
+
+/**
+ * Del paso General a «Revisar y crear»: costo concreto (R28), topes y módulos, cada uno en su paso
+ * (SLT-130). Las aserciones son las de antes; solo cambia en qué paso se buscan los campos.
+ */
+async function rellenarRestoDelPlan(form: Locator): Promise<void> {
+  // SLT-66 R28: solo se asigna un plan con costo concreto, así que se crea «Con monto» y con costo por
+  // orden (antes, «Sin precio»).
+  await siguiente(form, "Precio y descuentos");
+  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
+  await form.getByLabel("Costo base mensual", { exact: true }).fill("1000");
+  await siguiente(form, "Cobro por orden");
+  await form.getByLabel("Costo por orden", { exact: true }).fill("100");
   // Vacío = sin límite: solo mensajeros lleva tope. SLT-86 (R8, R23): el campo de órdenes ya no está.
+  await siguiente(form, "Topes");
   await expect(form.getByRole("textbox", { name: TOPE_DE_ORDENES })).toHaveCount(0);
   await form.getByRole("textbox", { name: "Usuarios activos con el rol Mensajero" }).fill(String(TOPE_MENSAJEROS));
+  await siguiente(form, "Módulos");
   for (const modulo of ORDEN_MODULOS) {
     await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
-  // SLT-66 R28: solo se asigna un plan con costo concreto, así que se crea «Con monto» y con costo por
-  // orden (antes, «Sin precio»).
-  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
-  await form.getByLabel("Costo base mensual", { exact: true }).fill("1000");
-  await form.getByLabel("Costo por orden", { exact: true }).fill("100");
+  await siguiente(form, "Revisar y crear");
 }
 
 async function abrirNuevoPlan(page: Page): Promise<Locator> {
@@ -205,7 +227,7 @@ test("el superadmin crea por pantalla un custom de A, que queda asignado con su 
   const page = superadmin();
   const form = await abrirNuevoPlan(page);
 
-  await rellenarPlan(form, nombreDelPlan, "Custom");
+  await rellenarGeneral(form, nombreDelPlan, "Custom");
   await form.getByRole("combobox", { name: "Empresa" }).click();
   await page.getByRole("option", { name: nombreEmpresaA, exact: true }).click();
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveText(nombreEmpresaA);
@@ -222,6 +244,7 @@ test("el superadmin crea por pantalla un custom de A, que queda asignado con su 
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   const hoy = fechaCalendarioCR(new Date());
   await inicio.fill(hoy);
+  await rellenarRestoDelPlan(form);
 
   // D13/D17: «Crear plan» espera a la vista previa; empresa nueva, así que ni avisa ni falla.
   const crear = form.getByRole("button", { name: "Crear plan" });
@@ -281,11 +304,13 @@ test("el superadmin crea por pantalla un plan público con costo concreto, que n
   const page = superadmin();
   const form = await abrirNuevoPlan(page);
 
-  await rellenarPlan(form, nombreDelPublico, "Público");
+  await rellenarGeneral(form, nombreDelPublico, "Público");
   // Un público no nombra empresa, ni lleva tipo de cobro ni inicio del ciclo (D2: no se asigna al crearlo).
+  // SLT-130: se mira en el paso General, que es donde los pide un custom.
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveCount(0);
   await expect(form.getByRole("radiogroup", { name: "Tipo de cobro" })).toHaveCount(0);
   await expect(form.getByLabel("Inicio del período", { exact: true })).toHaveCount(0);
+  await rellenarRestoDelPlan(form);
   await form.getByRole("button", { name: "Crear plan" }).click();
 
   await expect(page.getByRole("status").filter({ hasText: `Plan «${nombreDelPublico}» creado.` })).toBeVisible({

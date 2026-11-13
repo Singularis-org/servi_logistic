@@ -17,6 +17,8 @@ vi.mock("next/navigation", () => ({
 
 import { PlanesModule } from "@/app/(app)/plataforma/planes/_components/PlanesModule";
 
+import { avanzarHasta, terminar, tituloDelPasoActual } from "./plan-form-pasos";
+
 const PUBLICO: PlanDelCatalogo = {
   id: "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b",
   nombre: "Básico",
@@ -140,7 +142,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
     const panel = await screen.findByRole("dialog");
     await user.type(within(panel).getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(within(panel).getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(crearPlan).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Libre» creado.");
@@ -158,10 +160,12 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     await user.click(within(panel).getByRole("radio", { name: "Custom" }));
     await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
     await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
+    await avanzarHasta(user, "Precio y descuentos");
     await user.click(within(panel).getByRole("radio", { name: "Con monto" }));
     await user.type(within(panel).getByLabelText("Costo base mensual"), "50000");
+    await avanzarHasta(user, "Cobro por orden");
     await user.type(within(panel).getByLabelText("Costo por orden"), "100");
-    await user.click(within(panel).getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     // La elegida es la propuesta por defecto de la empresa (2026-11-01); el servidor devuelve la real.
     await waitFor(() => expect(crearPlan).toHaveBeenCalledTimes(1));
@@ -178,11 +182,35 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
     const panel = await screen.findByRole("dialog");
     await user.type(within(panel).getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(within(panel).getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     const aviso = await screen.findByRole("status");
     expect(aviso).toHaveTextContent("Plan «Libre» creado.");
     expect(aviso).not.toHaveTextContent(/Cambio programado/);
+  });
+
+  it("R6: el panel abre el formulario por pasos", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    // El Sheet ancho de la maqueta (design §7), sin el tope de ancho por defecto. jsdom descarta el
+    // `width: min(…)`, así que se mide el `maxWidth` que lo acompaña.
+    expect(panel.style.maxWidth).toBe("none");
+    // Dentro, el componente de pasos con los pasos de crear, abierto en General.
+    const pasos = within(panel).getByRole("navigation", { name: "Pasos" });
+    expect(within(pasos).getAllByRole("button").map((b) => b.textContent?.replace(/^\d+/, ""))).toEqual([
+      "General",
+      "Precio y descuentos",
+      "Cobro por orden",
+      "Topes",
+      "Módulos",
+      "Revisar y crear",
+    ]);
+    expect(tituloDelPasoActual()).toBe("General");
+    expect(within(panel).getByText("Paso 1 de 6")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Siguiente" })).toBeInTheDocument();
   });
 
   it("SLT-83 (texto aprobado 2026-11-04): el panel «Nuevo plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {

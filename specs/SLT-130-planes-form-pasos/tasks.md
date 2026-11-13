@@ -53,7 +53,7 @@
 
 ## Tanda 3 — tests (depende de T5 y T6)
 
-- [ ] **T7 [P] — Helper y tests de hoy adaptados.** (R8, R14, R15, R17, R24, R26, R27)
+- [x] **T7 [P] — Helper y tests de hoy adaptados.** (R8, R14, R15, R17, R24, R26, R27)
   - `tests/components/plan-form-pasos.ts` con `avanzarHasta` y `terminar` (design §10).
   - Adaptar, sin debilitar ninguna aserción de carga útil ni de error:
     - `PlanForm.test.tsx`, `PlanFormCosteo.test.tsx`, `PlanFormCostoPorcentual.test.tsx`;
@@ -64,13 +64,13 @@
     - «R28: botón final bloqueado con su motivo y enlace a Topes», en `PlanFormVistaPreviaCustom.test.tsx`.
   - *Hecho:* pasan. `git diff` de esos archivos solo añade navegación, o cambia el sitio donde se busca
     un campo. Ningún `expect` de carga útil cambia de valor, salvo la forma de los descuentos.
-- [ ] **T8 [P] — `PlanFormDescuentos.test.tsx` reescrito.** (R10–R13)
+- [x] **T8 [P] — `PlanFormDescuentos.test.tsx` reescrito.** (R10–R13)
   - Casos: «R10: cada línea viaja como el descuento de su período», «R10: cambiar el tipo conserva el
     valor», los tres de R11, los dos de R12 y «R13: al editar abre con los descuentos del plan».
   - Se conservan los casos de hoy sobre errores de descuento de la action (claves
     `precio.descuentos.<período>.<forma>`), contra la línea de ese período.
   - *Hecho:* pasan.
-- [ ] **T9 [P] — Tests nuevos de pasos y de «Revisar».** (R7, R9, R14, R16, R18–R23, R25)
+- [x] **T9 [P] — Tests nuevos de pasos y de «Revisar».** (R7, R9, R14, R16, R18–R23, R25)
   - `tests/components/PlanFormPasos.test.tsx` y `tests/components/PlanFormRevisar.test.tsx`, con los
     nombres de caso que cita `requirements.md`.
   - *Hecho:* pasan. Cada `R<n>` de `requirements.md` tiene al menos un test con su número en el nombre.
