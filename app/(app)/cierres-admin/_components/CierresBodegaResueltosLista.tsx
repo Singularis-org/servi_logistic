@@ -22,6 +22,8 @@ import {
   filaDescargaBodegaResuelto,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
+import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
 
 /**
  * Feature 170 — FASE 2 (T I.2, R43/R44/R52): el HISTÓRICO de «Cierres de bodega resueltos»
@@ -88,6 +90,7 @@ async function leerPagina(
  */
 export function descargaBodegaResueltos(
   filtros: FiltrosCierresBodega,
+  audiencia: AudienciaDescargaGestionesFundida,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA,
@@ -98,6 +101,14 @@ export function descargaBodegaResueltos(
       filasDesdeResultado(
         descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
         filaDescargaBodegaResuelto,
+      ),
+    // SLT-141 (R384, R385): el libro del modelo nuevo si el conjunto lo tiene; si no, el de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaResuelto,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }

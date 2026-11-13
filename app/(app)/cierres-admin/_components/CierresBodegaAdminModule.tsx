@@ -61,6 +61,7 @@ import {
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { PARAM_CIERRE_BODEGA } from "./cierre-enlace";
+import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
 
 /** Nombre visible de la cola: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PENDIENTES = "Cierres de bodega pendientes";
@@ -186,7 +187,10 @@ type DetalleAbierto = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }
  * Pedido humano del 2026-08-16 — con los mismos filtros que la página: el archivo es «esto que
  * estoy viendo, entero».
  */
-function descargaColaBodega(filtros: FiltrosCierresBodega): DescargaResumenCierres {
+export function descargaColaBodega(
+  filtros: FiltrosCierresBodega,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
     columnas: COLUMNAS_DESCARGA_BODEGA_PENDIENTES,
@@ -196,6 +200,15 @@ function descargaColaBodega(filtros: FiltrosCierresBodega): DescargaResumenCierr
       filasDesdeResultado(
         descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
         filaDescargaBodegaPendiente,
+      ),
+    // SLT-141 (R384, R385): con cierres de bodega del modelo nuevo, el libro «Cierres» + «Por tienda»
+    // (+ la hoja de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaPendiente,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }
@@ -469,7 +482,11 @@ export function CierresBodegaAdminModule({
           // Lo que cambia es la Server Action: aquí salen las gestiones de los cierres del día ya
           // CONSOLIDADOS en un cierre de bodega (design §2.6).
           <DescargarCierresButton
-            resumen={porConciliar ? descargaColaBodega(filtros) : descargaBodegaResueltos(filtros)}
+            resumen={
+              porConciliar
+                ? descargaColaBodega(filtros, audiencia)
+                : descargaBodegaResueltos(filtros, audiencia)
+            }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresBodegaCompleto", f)}
             disabled={pendientesCargando || conciliadosCargando}

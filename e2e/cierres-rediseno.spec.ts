@@ -6,11 +6,13 @@ import {
   aprobarCierre,
   cierreModeloNuevo,
   cierresDe,
+  conciliarCierreBodega,
   filaDeCola,
   filaDeMensajeros,
   importe,
   montoDeCuenta,
   pestanaDeCola,
+  pestanaDeColaBodega,
   solicitarCierre,
   solicitarCierreBodega,
 } from "./_escenarios/cierres";
@@ -1329,5 +1331,117 @@ test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre
     const anterior = filasDeHoja(libro.worksheets[2]);
     expect(anterior.some((f) => f.includes(viejo.nombre))).toBe(true);
     expect(anterior.some((f) => f.includes(nuevo.m.nombre))).toBe(false);
+  });
+});
+
+/**
+ * SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (T5.1; R384-R388) — el «Resumen» de
+ * «Conciliados» (Bodega) con un cierre de bodega VIEJO y uno NUEVO, los dos conciliados por lo que debían.
+ *   BV (modelo viejo): el de SLT-107 de arriba — mensajero 1.500 por entrega y 500 por rechazo; una entrega de
+ *     9.000 y un rechazo. Debe llegar a la central 9.000 − 1.500 − 500 = 7.000; se marca recibido 7.000.
+ *   BN (modelo nuevo): el escenario B6 de SLT-104 — las tarifas de B y «Pago a la satélite» 120 por entregado,
+ *     activadas en la zona satélite DESPUÉS de consolidar BV. Una entrega de 10.000 en efectivo. A mano:
+ *     Recaudado 10.000 · Pago al mensajero 2.200 · Pago a la bodega satélite 120
+ *     Debe llegar a la central 10.000 − 2.200 − 120 = 7.680 (se marca recibido 7.680; falta 0)
+ *     Total facturado 3.100 + 403 = 3.503 · IVA facturado 403 · Le queda 3.503 − 403 − 2.200 − 120 = 780
+ *     Gana la tienda en total 10.000 − 3.503 = 6.497 · Gestiones 1 · Cierres incluidos 1
+ *   «Por tienda»: una fila del folio de BN, 10.000 · 6.497 · 6.497.
+ */
+const ENCABEZADOS_CIERRES_BODEGA_CENTRAL = [
+  "Folio", "Bodega", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE", "Transferencia",
+  "Recaudado", "Debe llegar a la central", "Gana la tienda en total", "Pago al mensajero",
+  "Pago a la bodega satélite", "Total facturado", "IVA facturado", "Le queda a la empresa", "Gestiones",
+  "Pagos ajustados", "Pago entregado", "Cierres incluidos", "Recibido", "Falta por recibir",
+  "Estado de conciliación", "Conciliado por", "Conciliado el",
+];
+
+test.describe.serial("SLT-141 — el «Resumen» de «Conciliados» (bodega) con un cierre viejo y uno nuevo", () => {
+  let r: RepartoE2E;
+  let bodegaNueva: string;
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(300_000);
+    r = await crearEscenarioReparto("cierres-bodega-resumen-nuevo", {
+      tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 },
+    });
+    const viejo = await crearMensajero(r, "satelite");
+    const entregaVieja = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: viejo });
+    await gestionar(r, entregaVieja, viejo, { resultado: "entregado" });
+    const rechazo = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: viejo });
+    await gestionar(r, rechazo, viejo, { resultado: "devolucion_a_origen_por_rechazo" });
+    await aprobarCierre(r, await solicitarCierre(r, viejo));
+    await conciliarCierreBodega(r, await solicitarCierreBodega(r), "7000");
+
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await abrirTarifas(page);
+    await irAZona(page, r.zonaSatelite.nombre);
+    await digitarYGuardar(page, "Cobro a la tienda", COBRO_B);
+    await digitarYGuardar(page, "Pago al mensajero", PAGO_B);
+    await digitarYGuardar(page, "Pago a la satélite", PAGO_SATELITE_B6);
+    await activarConFaltantes(page);
+    await page.context().close();
+
+    const nuevo = await crearMensajero(r, "satelite");
+    const entregaNueva = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 10000 }), "en_reparto", { mensajero: nuevo });
+    await gestionar(r, entregaNueva, nuevo, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 10000 }] });
+    await aprobarCierre(r, await solicitarCierre(r, nuevo));
+    bodegaNueva = await solicitarCierreBodega(r);
+    await conciliarCierreBodega(r, bodegaNueva, "7680");
+  });
+
+  test("central: «Cierres», «Por tienda» y «Cierres modelo anterior»; las cifras de bodega del nuevo como número", async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await bodegaDeCierres(page);
+    await pestanaDeColaBodega(page, "Conciliados").click();
+    await expect(pestanaDeColaBodega(page, "Conciliados")).toHaveAccessibleName("Conciliados 2");
+
+    const [descarga] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Descargar Cierres de bodega resueltos" }).click(),
+    ]);
+    const libro = new ExcelJS.Workbook();
+    await libro.xlsx.readFile(await descarga.path());
+
+    expect(libro.worksheets.map((h) => h.name)).toEqual(["Cierres", "Por tienda", "Cierres modelo anterior"]);
+
+    const cierres = filasDeHoja(libro.worksheets[0]);
+    const cabecera = cierres.findIndex((f) => f[0] === "Folio");
+    expect(cierres[cabecera]).toEqual(ENCABEZADOS_CIERRES_BODEGA_CENTRAL);
+    const datos = cierres.slice(cabecera + 1);
+    const folioNuevo = bodegaNueva.slice(-8).toUpperCase();
+    // Solo el cierre de bodega nuevo; el viejo va a «Cierres modelo anterior».
+    expect(datos.map((f) => f[0])).toEqual([folioNuevo]);
+    const celda = (encabezado: string) => datos[0][ENCABEZADOS_CIERRES_BODEGA_CENTRAL.indexOf(encabezado)];
+    expect(celda("Bodega")).toBe(r.zonaSatelite.nombre);
+    expect(celda("Destino")).toBe("Bodega central");
+    expect(celda("Estado")).toBe("Recibido");
+    expect(celda("Recaudado")).toBe(10000);
+    expect(celda("Debe llegar a la central")).toBe(7680);
+    expect(celda("Gana la tienda en total")).toBe(6497);
+    expect(celda("Pago al mensajero")).toBe(2200);
+    expect(celda("Pago a la bodega satélite")).toBe(120);
+    expect(celda("Total facturado")).toBe(3503);
+    expect(celda("IVA facturado")).toBe(403);
+    expect(celda("Le queda a la empresa")).toBe(780);
+    expect(celda("Gestiones")).toBe(1);
+    expect(celda("Cierres incluidos")).toBe(1);
+    expect(celda("Recibido")).toBe(7680);
+    expect(celda("Falta por recibir")).toBe(0);
+
+    const porTienda = filasDeHoja(libro.worksheets[1]);
+    const cabeceraTienda = porTienda.findIndex((f) => f[0] === "Folio");
+    expect(porTienda[cabeceraTienda]).toEqual(["Folio", "Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
+    const tiendas = porTienda.slice(cabeceraTienda + 1);
+    expect(tiendas.map((f) => [f[0], f[2], f[3], f[4]])).toEqual([[folioNuevo, 10000, 6497, 6497]]);
+
+    // «Cierres modelo anterior»: BV con el formato de hoy (Total general 9.000), y BN no está (sus 10.000).
+    const anterior = filasDeHoja(libro.worksheets[2]);
+    const cabeceraAnterior = anterior.findIndex((f) => f.includes("Total general"));
+    const general = anterior[cabeceraAnterior].indexOf("Total general");
+    const filasAnteriores = anterior.slice(cabeceraAnterior + 1);
+    expect(filasAnteriores.map((f) => Number(f[general]))).toEqual([9000]);
   });
 });
