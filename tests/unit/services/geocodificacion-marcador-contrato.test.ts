@@ -55,9 +55,9 @@ const AHORA = new Date("2026-09-09T12:00:00.000Z");
 const ORDEN_GEO: OrdenGeocodeRow = {
   id: ORDEN_ID,
   direccion: DIRECCION,
-  distritoNombre: "Carmen",
-  cantonNombre: "San José",
-  provinciaNombre: "San José",
+  // SLT-125 (A7): la entrada pasa a la ruta del catalogo y el pais de la empresa.
+  ruta: ["San José", "San José", "Carmen"],
+  paisNombre: "Costa Rica",
 };
 
 /** El MISMO recorte que `JobQueueService.mensajeError` aplica antes de `repo.fail(...)`. */

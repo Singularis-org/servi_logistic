@@ -170,7 +170,8 @@ vi.mock("@/lib/crypto/boveda-integraciones", async (original) => ({
 
 vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) }));
 
-const ORDEN = { id: "orden-1", direccion: "Calle 1", distritoNombre: "D", cantonNombre: "C", provinciaNombre: "P" };
+// SLT-125: la entrada pasa a la ruta del catalogo y el pais de la empresa.
+const ORDEN = { id: "orden-1", direccion: "Calle 1", ruta: ["P", "C", "D"], paisNombre: "X" };
 vi.mock("@/lib/repositories/OrdenGeocodeRepository", () => ({
   OrdenGeocodeRepository: class {
     async findParaGeocodificar() {

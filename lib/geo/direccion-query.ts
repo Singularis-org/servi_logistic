@@ -14,17 +14,20 @@
 import { createHash } from "node:crypto";
 import { collapseSpaces, stripDiacritics } from "@/lib/geo/normalize";
 
-/** Pais fijo del negocio: todas las ordenes son de Costa Rica. */
-const PAIS = "Costa Rica";
-
 // Todos los componentes admiten `undefined` ademas de `null`: esta funcion se alimenta de
 // filas de DB proyectadas en varios writers y un campo AUSENTE debe comportarse igual que
 // uno vacio (omitirse), nunca reventar en mitad de la transaccion del writer.
+//
+// SLT-125 (design §4.5; R32, R33): la ruta del catalogo, a cualquier profundidad, y el nombre del
+// pais de la empresa reemplazan a los tres nombres fijos y a la constante del pais. En Costa Rica,
+// con la ruta `[provincia, canton, distrito?]` y el `pais.nombre` sembrado, la consulta sale con los
+// mismos tramos en el mismo orden que antes, asi que la huella no cambia y `GeocodeCache` sigue
+// sirviendo lo que ya tiene.
 export interface ComponentesDireccion {
   direccion: string | null | undefined;
-  distritoNombre: string | null | undefined;
-  cantonNombre: string | null | undefined;
-  provinciaNombre: string | null | undefined;
+  /** Del nivel 1 al lugar de la orden. */
+  ruta: readonly (string | null | undefined)[];
+  paisNombre: string | null | undefined;
 }
 
 /** trim + colapso de espacios tolerando ausencia (null/undefined -> ""). */
@@ -36,6 +39,9 @@ function normalizar(raw: string | null | undefined): string {
  * R15/R16: consulta legible para el proveedor. Une con ", " los componentes NO vacios
  * (omitiendo los ausentes, sin dejar separadores vacios) y anade el pais.
  *
+ * SLT-125 (R32): la ruta va del lugar mas hondo al nivel 1, como una direccion postal: es el
+ * orden en que la consulta ya nombraba distrito, canton y provincia.
+ *
  * Devuelve `null` cuando la direccion libre esta vacia tras normalizar (gate F1.4-Q5):
  * geocodificar solo con catalogo devolveria el centroide del canton, un APPROXIMATE
  * inutil que cuesta dinero y ensucia el dato con coordenadas que PARECEN validas.
@@ -44,13 +50,7 @@ export function construirQueryDireccion(c: ComponentesDireccion): string | null 
   const direccion = normalizar(c.direccion);
   if (direccion === "") return null;
 
-  const partes = [
-    direccion,
-    normalizar(c.distritoNombre),
-    normalizar(c.cantonNombre),
-    normalizar(c.provinciaNombre),
-    PAIS,
-  ];
+  const partes = [direccion, ...[...c.ruta].reverse().map(normalizar), normalizar(c.paisNombre)];
   return partes.filter((p) => p !== "").join(", ");
 }
 

@@ -255,3 +255,46 @@ pnpm exec eslint <los 5 archivos> → No issues found
 pnpm exec vitest run guard --maxWorkers=2 → 1 failed | 334 passed | 3 skipped (338); 4 failed | 4718 passed
   - los 4 rojos son de dependencias-declaradas-presentes (ficha 420), en tests/baseline-rojos.json
 ```
+
+## T2.4 — Geocodificación (backend_dev, 2026-11-12)
+
+Explorado con Grep/Read (el índice del grafo no tiene este worktree).
+
+Archivos:
+- `lib/geo/direccion-query.ts`: `ComponentesDireccion = { direccion, ruta, paisNombre }`; la consulta es
+  `[direccion, ...ruta invertida, paisNombre]`; se borra la constante del país.
+- `lib/interfaces/repositories/IOrdenGeocodeRepository.ts`: `OrdenGeocodeRow` = `{ id, direccion, ruta, paisNombre }`
+  (se retiran los 3 nombres; contrato interno).
+- `lib/repositories/OrdenGeocodeRepository.ts`: `select` con `cantonId`, `distritoId` y
+  `organizacion.pais.nombre`; sin relaciones `provincia/canton/distrito` ni `nodo_geografico_id`; ruta con
+  `rutaDelLugar` sobre el catálogo de `deLaEmpresa()` (uno por instancia, solo si hay fila).
+- `lib/services/GeocodificacionService.ts`, `lib/services/jobs/geocodificacion-encolado.ts`,
+  `scripts/demo-qa/ubicar-y-cerrar-jobs.ts` (`ruta: []`, `paisNombre: null`; el tipo de su cliente suma los
+  modelos del catálogo).
+- Tests: `tests/unit/geo/direccion-query.test.ts` (entradas a la forma nueva, lo esperado igual; casos
+  nuevos 2/4/10 niveles y CR con cadena y huella literales), `tests/integration/db/geo-125-geocode-cache.test.ts`
+  (nuevo). Solo entradas: `geocodificacion-service.test.ts` (A7), `geocodificacion-marcador-contrato.test.ts`,
+  `geocodificacion-motivo.test.ts`, `integraciones-consumidores-composition-root.test.ts` (este último no
+  estaba en el inventario: su doble devuelve una fila con los 3 nombres).
+
+| R | Test |
+|---|---|
+| R32 | `direccion-query.test.ts` › «SLT-125 R32 — ruta de N niveles y pais de la empresa» (2, 4, 10 niveles; dirección vacía) |
+| R33 | `direccion-query.test.ts` › «SLT-125 R33 — Costa Rica: cadena y huella literales de hoy» (huellas medidas con la función de antes); `geo-125-geocode-cache.test.ts` (caché sembrada con la huella de hoy → 0 llamadas al proveedor, con y sin distrito; y la cadena nueva = la de hoy en las 3 órdenes de CR) |
+
+Salidas (con `env125.sh`, uno a uno, `--maxWorkers=1`):
+```
+geo-125-geocode-cache.test.ts                     3 passed (3)
+direccion-query.test.ts                          21 passed (21)
+geocodificacion-service.test.ts                  60 passed (60)
+orden-geocode-enqueue.test.ts                     8 passed (8)
+demo-qa-jobs.test.ts                             13 passed (13)
+geocodificacion-encolado.test.ts                 18 passed (18)
+geocodificacion-marcador-contrato.test.ts        26 passed (26)
+geocodificacion-motivo.test.ts                   14 passed (14)
+integraciones-consumidores-composition-root      14 passed (14)
+notificacion-notificadores-reales.test.ts        39 passed (39)
+pnpm run typecheck → exit 0
+pnpm exec eslint <12 archivos> → 0 errores (1 warning previo en geocodificacion-service.test.ts:386, no tocado)
+vitest run guard → 1 failed | 334 passed | 3 skipped; los 4 rojos de dependencias-declaradas-presentes (baseline)
+```

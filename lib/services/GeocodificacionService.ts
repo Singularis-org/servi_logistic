@@ -154,9 +154,8 @@ export class GeocodificacionService {
 
     const query = construirQueryDireccion({
       direccion: orden.direccion,
-      distritoNombre: orden.distritoNombre,
-      cantonNombre: orden.cantonNombre,
-      provinciaNombre: orden.provinciaNombre,
+      ruta: orden.ruta,
+      paisNombre: orden.paisNombre,
     });
 
     // R9: sin direccion geocodificable. No deberia haberse encolado, pero la direccion

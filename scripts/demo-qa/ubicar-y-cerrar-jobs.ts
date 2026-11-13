@@ -5,6 +5,7 @@ import { construirQueryDireccion, hashDireccion } from "@/lib/geo/direccion-quer
 import type { IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
 import type { IOrdenGeocodeRepository } from "@/lib/interfaces/repositories/IOrdenGeocodeRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
+import type { CatalogoPrismaClient } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { OrdenGeocodeRepository } from "@/lib/repositories/OrdenGeocodeRepository";
 import { dedupeKeyGeocodificacion } from "@/lib/services/jobs/geocodificacion-encolado";
 
@@ -53,7 +54,9 @@ export interface DepsJobsDemo {
   jobsAbiertos(organizacionId: string): Promise<JobAbierto[]>;
 }
 
-type ClienteJobsDemo = Pick<PrismaClient, "orden" | "$queryRaw" | "$executeRaw">;
+// SLT-125: `OrdenGeocodeRepository` nombra la ruta con el catalogo, asi que pide sus modelos aunque
+// aqui solo se escriba el resultado.
+type ClienteJobsDemo = Pick<PrismaClient, "orden" | "$queryRaw" | "$executeRaw"> & CatalogoPrismaClient;
 
 /**
  * Las dependencias reales sobre el cliente de la app (`getPrismaClient`, sobre `DATABASE_URL`), el
@@ -90,9 +93,8 @@ function claveDeGeocodificacion(orden: OrdenAUbicar): string | null {
   // El mismo criterio que `encolarGeocodificacion`: sin dirección con contenido no hay job.
   const geocodificable = construirQueryDireccion({
     direccion: orden.direccion,
-    distritoNombre: null,
-    cantonNombre: "",
-    provinciaNombre: "",
+    ruta: [],
+    paisNombre: null,
   });
   return geocodificable === null ? null : dedupeKeyGeocodificacion(orden.id, hashDireccion(orden.direccion ?? ""));
 }

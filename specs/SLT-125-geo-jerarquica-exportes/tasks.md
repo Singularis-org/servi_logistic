@@ -85,7 +85,7 @@
   - R16–R20, R37, R40 y R41 en verde;
   - las suites existentes sin cambiar aserciones: solo cambian sus filas simuladas de entrada;
   - la latencia del listado de `/ordenes` (50 filas, CR) antes y después, anotada.
-- [ ] **T2.4** [P] Geocodificación: `direccion-query.ts`, `OrdenGeocodeRepository` (+ su interfaz),
+- [x] **T2.4** [P] Geocodificación: `direccion-query.ts`, `OrdenGeocodeRepository` (+ su interfaz),
   `GeocodificacionService`, `geocodificacion-encolado.ts` y `scripts/demo-qa/ubicar-y-cerrar-jobs.ts`.
   Tests: `direccion-query.test.ts` (ampliado), `geocodificacion-service.test.ts` (solo la entrada
   `ORDEN`) y

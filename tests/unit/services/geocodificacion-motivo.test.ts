@@ -27,9 +27,9 @@ const AHORA = new Date("2026-10-31T12:00:00.000Z");
 const ORDEN = {
   id: "orden-1",
   direccion: "Av. Central 100",
-  distritoNombre: "Carmen",
-  cantonNombre: "San José",
-  provinciaNombre: "San José",
+  // SLT-125 (A7): la entrada pasa a la ruta del catalogo y el pais de la empresa.
+  ruta: ["San José", "San José", "Carmen"],
+  paisNombre: "Costa Rica",
 };
 const GEO_OK = {
   status: "OK",
