@@ -30,32 +30,32 @@
 
 ## T1 — Esquema y migraciones (depende de T0.1)
 
-- [ ] **T1.1** `db/schema.prisma`: `pago_satelite` en `PagoMensajeroMovimientoCategoria`, con
+- [x] **T1.1** `db/schema.prisma`: `pago_satelite` en `PagoMensajeroMovimientoCategoria`, con
   comentario. Hecho: `prisma validate` y `prisma generate` sin error.
-- [ ] **T1.2** `db/migrations/20261115120000_pago_satelite_enum/{migration,down}.sql` (design §3.1). La
+- [x] **T1.2** `db/migrations/20261115120000_pago_satelite_enum/{migration,down}.sql` (design §3.1). La
   fecha se ajusta si `dev` ya tiene una migración posterior. Hecho: sube en la base desechable; el
   down aborta con una fila `pago_satelite`.
-- [ ] **T1.3** `db/migrations/20261115120100_pago_satelite_checks/{migration,down}.sql` (design §3.2).
+- [x] **T1.3** `db/migrations/20261115120100_pago_satelite_checks/{migration,down}.sql` (design §3.2).
   Hecho: sube; el down aborta con una fila `pago_satelite` (RAISE) y sin ella deja el CHECK de SLT-68.
-- [ ] **T1.4** `tests/integration/db/migracion-slt139-ida-y-vuelta.test.ts` (design §13.2). Hecho: verde
+- [x] **T1.4** `tests/integration/db/migracion-slt139-ida-y-vuelta.test.ts` (design §13.2). Hecho: verde
   contra Postgres real; cubre R330, R337 y la unicidad de R318.
 
 ## T2 — La marca al aprobar (depende de T1)
 
-- [ ] **T2.1** `CierresAdminRepository.resolverCierre`: la marca en el `updateMany` que aprueba, solo
+- [x] **T2.1** `CierresAdminRepository.resolverCierre`: la marca en el `updateMany` que aprueba, solo
   con `nuevoEstado === "aprobado"`; se quita el `updateMany` aparte de SLT-123 (design §2). Hecho:
   casos 2 de la integración (T10.1) en verde.
 
 ## T3 — El feed (depende de T1)
 
-- [ ] **T3.1** `WalletMensajeroFeedService`: `destinoTipo` en el `select` y la rama `pago_satelite = P`
+- [x] **T3.1** `WalletMensajeroFeedService`: `destinoTipo` en el `select` y la rama `pago_satelite = P`
   (design §4); comentario de la cabecera al día. `lib/types/wallet-mensajero.ts`: `pago_satelite` en
   los dos SEED. Hecho: casos 5 y 7 de la integración en verde; `wallet-mensajero-feed-service.test.ts`
   sigue verde sin cambios.
 
 ## T4 — Lo pendiente (depende de T1)
 
-- [ ] **T4.1** `derivarPendienteCierre` con la unión de design §5.1 y `LecturaPagadoSateliteAusenteError`.
+- [x] **T4.1** `derivarPendienteCierre` con la unión de design §5.1 y `LecturaPagadoSateliteAusenteError`.
   Hecho: `tests/unit/utils/pendiente-cierre.test.ts` con la tabla de abajo (importes a mano); un
   `// @ts-expect-error` que fija que una marca `boolean` sin `pagadoPorSatelite` no compila; la lectura
   estática de que toda llamada en `lib/` nombra `pagadoPorSatelite`; y la aserción de «sin coma
@@ -74,43 +74,43 @@
 
 ## T5 — La lectura (depende de T1)
 
-- [ ] **T5.1** `IPagadoPorSateliteLectura` en `lib/interfaces/repositories/IPagoMensajeroMovimientoRepository.ts`
+- [x] **T5.1** `IPagadoPorSateliteLectura` en `lib/interfaces/repositories/IPagoMensajeroMovimientoRepository.ts`
   y `sumarPagadoSatelitePorCierre` en `PagoMensajeroMovimientoRepository` (design §5.2). Hecho: casos 3,
   6 y 11 de la integración en verde (R333).
 
 ## T6 — Los consumidores (depende de T4, T5)
 
-- [ ] **T6.1** `CierresAdminService` (`PremiosLecturaRepo` con `Partial<IPagadoPorSateliteLectura>`;
+- [x] **T6.1** `CierresAdminService` (`PremiosLecturaRepo` con `Partial<IPagadoPorSateliteLectura>`;
   `conPendiente` y `pendienteTrasAprobar`, design §5.3). Hecho:
   `tests/unit/services/cierres-admin-pendiente.test.ts` con una página de un cierre viejo de satélite, uno
   nuevo de satélite conciliado (lectura `2500.00` → `0.00`) y uno nuevo central (`3000.00`); la lectura
   llamada una vez con los ids nuevos y ninguna con una página solo de viejos (R334); sin la lectura y
   con un cierre nuevo, `listarCierresAdmin` lanza `LecturaPagadoSateliteAusenteError` y
   `pendienteTrasAprobar` da `"0.00"` (R335).
-- [ ] **T6.2** `[P]` `CierreDiaService.conPendientePago` + `LecturasPendienteCierre.premios` con
+- [x] **T6.2** `[P]` `CierreDiaService.conPendientePago` + `LecturasPendienteCierre.premios` con
   `sumarPagadoSatelitePorCierre?` (`lib/interfaces/services/ICierreDiaService.ts`). Hecho:
   `tests/unit/services/cierre-dia-pendiente-pago.test.ts` con un cierre nuevo de satélite antes
   (`2500.00`) y después de conciliar (`0.00`); una llamada por página (R334); sin la lectura, el cierre
   nuevo sale sin `pendientePagoMensajero` y el viejo con su cifra (R335).
-- [ ] **T6.3** `[P]` `LiquidacionService` (`mensajeroRepo` con `Partial<IPagadoPorSateliteLectura>`;
+- [x] **T6.3** `[P]` `LiquidacionService` (`mensajeroRepo` con `Partial<IPagadoPorSateliteLectura>`;
   `imputablesDe`, `restanteTrasAnular`, `pendienteDelCierre`). Hecho:
   `tests/unit/services/liquidacion-service.test.ts`: con la lectura en `1000.00` para un cierre nuevo
   central de P 3 000, el tope es `2000.00` (prueba que se usa); sin la lectura y con un cierre nuevo,
   registrar un pago lanza antes de escribir (ningún `crearMovimientos`, ningún `liquidacion_pago`)
   (R344).
-- [ ] **T6.4** `tests/integration/actions/cierre-dia-pendiente-cableado.test.ts`: las tres acciones
+- [x] **T6.4** `tests/integration/actions/cierre-dia-pendiente-cableado.test.ts`: las tres acciones
   (`cierre-dia`, `cierres-admin`, `liquidacion`) ejecutadas sin servicio inyectado reciben el
   `PagoMensajeroMovimientoRepository` real con `sumarPagadoSatelitePorCierre` como función (R335,
   R344). Hecho: verde; y rojo si se cambia en una acción el repositorio por un objeto sin la lectura.
 
 ## T7 — La consolidación (depende de T1)
 
-- [ ] **T7.1** `CierreDiaConsolidableRow.pagoIndependienteEfectivo: boolean` obligatorio
+- [x] **T7.1** `CierreDiaConsolidableRow.pagoIndependienteEfectivo: boolean` obligatorio
   (`ICierreBodegaRepository.ts`), leído en `CONSOLIDABLE_SELECT` y emitido por `toConsolidableRow`
   (`CierreBodegaRepository.ts`). Los constructores de filas de `consolidacion-completo`,
   `consolidacion-cola-satelite`, `consolidables-paginado` y `cierre-bodega-service` ganan `false` por
   defecto. Hecho: typecheck; `cierre-bodega-repository.test.ts` al día si fija la fila o el `select`.
-- [ ] **T7.2** `CierreBodegaService.listarConsolidacion` (design §6). Hecho:
+- [x] **T7.2** `CierreBodegaService.listarConsolidacion` (design §6). Hecho:
   `tests/unit/services/cierre-bodega-service.test.ts` con estos conjuntos (importes a mano):
 
   | Conjunto | «La central debe» | `totalNetoAgregado` | Tarjeta |
@@ -125,13 +125,13 @@
 
 ## T8 — La nota (independiente) `[P]`
 
-- [ ] **T8.1** `notaPagoMensajeros` sin «· se paga del efectivo» (design §8). Hecho:
+- [x] **T8.1** `notaPagoMensajeros` sin «· se paga del efectivo» (design §8). Hecho:
   `tests/unit/utils/cola-cierres-vista.test.ts` y `tests/components/ColaCierresConsolidar.test.tsx`
   afirman «1 mensajero» y «2 mensajeros» literales y que el texto no contiene «del efectivo» (R324).
 
 ## T9 — Catálogos (depende de T1) `[P]`
 
-- [ ] **T9.1** `pago_satelite` en `CATEGORIA_PAGO_LABEL` («Pagado por la satélite»), `FUENTE_MENSAJERO`
+- [x] **T9.1** `pago_satelite` en `CATEGORIA_PAGO_LABEL` («Pagado por la satélite»), `FUENTE_MENSAJERO`
   (`snapshot_gestion`, `pago_mensajero`), `estado-cuenta-chips.ts` (`"cierres"`) y
   `cuenta_por_pagar_mensajero.definicion.categorias` (design §7). Hecho: typecheck;
   `tests/unit/utils/incentivo-analitica-slt68.test.ts` (catálogo de métricas = SEED) y
@@ -140,9 +140,9 @@
 
 ## T10 — Integración y mutaciones (depende de T2-T9)
 
-- [ ] **T10.1** `tests/integration/db/slt139-pago-satelite.int.test.ts` con los trece casos de design
+- [x] **T10.1** `tests/integration/db/slt139-pago-satelite.int.test.ts` con los trece casos de design
   §13.1. Hecho: verde contra Postgres real, con la foto de VC idéntica antes y después.
-- [ ] **T10.2** Mutaciones. Cada una se aplica a mano, se corre el test indicado, **debe caer**, y se
+- [x] **T10.2** Mutaciones. Cada una se aplica a mano, se corre el test indicado, **debe caer**, y se
   revierte. Antes de creer un «sobrevive», comprobar que el test se ejecutó (nombre y número de tests en
   la salida; memoria del leader «arnés de mutaciones que miente»). Resultado en
   `progress/impl_SLT-139.md` (mutación, test, rojo/verde, línea del fallo). Las del gate y el árbol
