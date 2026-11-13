@@ -181,3 +181,26 @@ Es solo una nota.
 existente (SLT-140, `cierres-bodega-descarga-columnas.ts`), el documento aprobado los pide «tal cual»
 y la guardia `pais-sin-literales` está verde. Sigue siendo deuda de país heredada; no es nueva de
 SLT-141.
+
+## Vuelta 2 (acotada a 906094fc..94517b85)
+
+`git diff 906094fc..HEAD --stat`: solo `progress/features/SLT-141.md`, `progress/impl_SLT-141.md` y
+`specs/.../tasks.md` (50+/4-). Sin código nuevo, así que el gate de `cd32557f` (INIT_EXIT=0) sigue valiendo.
+
+### Checklist
+- [x] **B1 (T6 sin hacer) — cerrado.** T6.1/T6.2/T6.3 marcadas `[x]`; 0 tareas `[ ]` en `tasks.md`.
+  - T6.1: `INIT_EXIT=0` anotado; proyecto `dinero` entero 109 passed dos veces (0 failed/skipped/flaky),
+    con `cierres-rediseno.spec.ts` entero (20) dentro.
+  - T6.3: el mapa R→test de `impl_SLT-141.md` es idéntico a `tasks.md > ## Trazabilidad` (R384-R389).
+    Los 11 archivos existen. Reejecutados por mí los 10 de vitest con la base desechable `slt141_wt`
+    (la integración corre contra Postgres): `Test Files 10 passed (10)` · `Tests 88 passed (88)` · VT_EXIT=0.
+- [x] **m1 (tamaño) — cerrado.** `node scripts/tamano-pr.mjs`: 27/40 archivos, 3324/1000 líneas,
+  reconocido como aceptado por la línea `tamano-pr-aceptado` del 2026-11-13 (OK de Carlos, cifras reales).
+- [x] **m2 (Destino sin zona) — cerrado.** Decisión del leader en `progress/features/SLT-141.md`:
+  «Bodega central» sin zona = el texto de `destinoCierre` hoy (PA2), sin dato nuevo fuera del spec.
+
+### Hallazgos
+Ninguno nuevo. Sin regresiones: el rango no toca código ni tests.
+
+### Veredicto
+**OK**
