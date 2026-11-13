@@ -4,6 +4,7 @@ import type {
   AnularGestionInput,
   CierreAprobadoParaPendienteRow,
   CierreGestionPendienteRow,
+  CierrePasadoDeRepositorio,
   CierreSinGestionRow,
   CierreSolicitadoInfo,
   CorreccionCierreRow,
@@ -965,12 +966,11 @@ const ORDEN_CIERRES_MENSAJERO: Prisma.CierreDiaOrderByWithRelationInput = { soli
 
 /**
  * Mapper de la cabecera: Decimal -> STRING escala 2 (money-safe), fechas -> ISO.
- * SLT-123 (R320): el tipo de retorno exige la marca, aunque el DTO la deje opcional por sus
- * dobles de UI; olvidar mapearla aqui es un error de compilacion, no la regla vieja en silencio.
+ * SLT-123 (R320) + SLT-147 (D68, R416): el tipo de retorno exige la marca, aunque el DTO la deje
+ * opcional por sus dobles de UI; olvidar mapearla aqui es un error de compilacion, no la regla
+ * vieja en silencio. Es el UNICO constructor de `CierrePasadoDeRepositorio`.
  */
-function toCierrePasadoDTO(
-  r: CierrePasadoSelectRow,
-): CierrePasadoDTO & { pagoIndependienteEfectivo: boolean } {
+function toCierrePasadoDTO(r: CierrePasadoSelectRow): CierrePasadoDeRepositorio {
   return {
     cierreId: r.id,
     estado: r.estado,
@@ -1874,7 +1874,7 @@ export class CierreDiaRepository implements ICierreDiaRepository {
     mensajeroId: string,
     rango: RangoPagina,
     filtros?: FiltrosColaPropiaRepo,
-  ): Promise<PaginaRepositorio<CierrePasadoDTO>> {
+  ): Promise<PaginaRepositorio<CierrePasadoDeRepositorio>> {
     // R16: el MISMO alcance del conjunto. SLT-138 (R172): el mismo `where` filtrado en los dos.
     const idsPorFolio = await this.idsPorFolio(mensajeroId, filtros);
     const where = cierresDeMensajeroWhere(mensajeroId, filtros, idsPorFolio);
