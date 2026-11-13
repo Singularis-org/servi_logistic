@@ -357,3 +357,8 @@ correr en CI.
   ya leen de `plan_version_empresa` o no leen la recepción tras promover: sin cambios.
 - typecheck 0; eslint del test limpio; `vitest run` del archivo: 11 saltados (sin base; lo confirma CI);
   `test:guardias`: 4 rojos de `dependencias-declaradas-presentes` (baseline).
+
+## Constancia del CI tras T10 (T10.9, 2026-11-12, leader)
+- Run 43341050767 sobre b9ca6ebf: rojo nuevo en `planes-periodicidad-ordenes` (R8, R28); fallo del test, arreglado en e8c9c86f.
+- Run 43343522019 sobre e8c9c86f (`workflow_dispatch`): **verde**. estatico, vitest ×3, gate-completo y e2e (aislamiento, dinero, reparto) en success.
+- Review vuelta 2 (T10): OK (`progress/review_SLT-128.md`). m4 corregido en design §14.4; m5 queda como mejora menor.

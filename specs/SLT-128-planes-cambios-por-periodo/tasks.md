@@ -142,7 +142,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
 - [x] **T10.8** Pantalla (`frontend_dev`, depende de T10.2): `PlanDetalle.tsx` pinta una línea por `noAplicadas`;
   `PlanDetalle.test.tsx` con el caso de R28. Si el tipo nuevo rompe `PlanEmpresa.tsx`, solo el tipo. **Hecho:** test
   y lint verdes.
-- [ ] **T10.9** Cierre: mapa R28, R29 → test en `progress/impl_SLT-128.md`; gate a mano (`workflow_dispatch`) en
+- [x] **T10.9** Cierre: mapa R28, R29 → test en `progress/impl_SLT-128.md`; gate a mano (`workflow_dispatch`) en
   verde con `gate-completo` y `e2e`. **Hecho:** constancia del run en `progress/impl_SLT-128.md`.
 
 ## Archivos esperados

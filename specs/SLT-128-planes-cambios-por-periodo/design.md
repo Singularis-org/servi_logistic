@@ -390,7 +390,8 @@ pendiente. En esa fila `cambio_id` es el pendiente que no se aplicó.
   encolar: un cambio de la variable vale para los avisos aún en cola.
 
 - Va por la cola, como todos los de planes (outbox, R41): un `plan_aviso_correo` con el tipo nuevo `no_aplicada` en
-  `tipoAvisoSchema` y `AvisoCorreoPlan`, payload `{ tipo, planId, cambioId, empresaId, empresa, plan, recibeAt,
+  `tipoAvisoSchema` y un tipo aparte `AvisoNoAplicadaPlan` (implementado así en lugar de ampliar `AvisoCorreoPlan`;
+  su esquema es el único que admite ir sin empresa), payload `{ tipo, planId, cambioId, empresaId, empresa, plan, recibeAt,
   motivo }`, `dedupe_key = dedupeAviso(cambioId, "no_aplicada", empresaId)` (uno por recepción).
 - Nace **sin empresa** (`organizacion_id` NULL, como `encolarAplicacion`). Hoy un `plan_aviso_correo` sin empresa
   falla («no tiene empresa destino»); ese caso pasa a ser el de la lista: el manejador solo acepta `no_aplicada`
