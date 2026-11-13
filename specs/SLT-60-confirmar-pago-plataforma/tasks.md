@@ -10,11 +10,11 @@
 - [x] **T0.1** Insertar, en una base desechable, una fila con FK a `usuario` apuntando al superadmin
   (`organizacion_id` nulo) en una tabla con trigger de misma empresa. **Hecho:** anotado en
   `progress/impl_SLT-60.md` si `confirmado_por` lleva FK (design §1).
-- [ ] **T0.2** Comprobar que la última migración de `dev` sigue siendo anterior a `20261116120000`. Si no lo
+- [x] **T0.2** Comprobar que la última migración de `dev` sigue siendo anterior a `20261116120000`. Si no lo
   es, se renombra la carpeta antes de aplicarla en ninguna base compartida. **Hecho:** timestamp anotado.
 - [x] **T0.3** Mirar si `scripts/demo-qa/receta.ts` cierra alguna factura antes del pago a la plataforma.
   **Hecho:** anotado qué cambia en T9.3.
-- [ ] **T0.4** Volver a correr `node scripts/archivos-en-vuelo.mjs --candidata SLT-60`. **Hecho:** los
+- [x] **T0.4** Volver a correr `node scripts/archivos-en-vuelo.mjs --candidata SLT-60`. **Hecho:** los
   choques anotados. Se espera solo el de SLT-119 «Planes: pantallas de facturas para el superadmin y el
   maestro», en `page.tsx` y `reparto.ts`.
 
