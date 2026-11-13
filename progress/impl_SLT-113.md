@@ -305,3 +305,6 @@ Antes: `git pull --ff-only` (al día), `git fetch`, árbol limpio; `origin/dev` 
 
 ### Veredicto
 H1, H3 y H5 cerradas; guardias solo con la baseline; `dinero` 107/107 y `cierres-rediseno` 18/18 en local.
+
+## Gate del leader (2026-11-12)
+- Tras `npx prisma generate` desde este worktree (22:15:30), `./init.sh` con la base slt113_excel: `INIT_EXIT=0` (log `scratchpad/gate-113.log`). Tamaño medido por el gate: 45 archivos (la cifra 51 de T6.2 contaba specs/progress).

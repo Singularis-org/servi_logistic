@@ -130,7 +130,7 @@
 
 ## T6 — Cierre (implementer)
 
-- [ ] **T6.1** `./init.sh` verde con `INIT_EXIT` anotado; E2E `cierres-rediseno` entero y grupo
+- [x] **T6.1** `./init.sh` verde con `INIT_EXIT` anotado; E2E `cierres-rediseno` entero y grupo
   `dinero` (`pnpm exec playwright test --project=dinero`) verdes en local. **Hecho:** salidas en
   `progress/impl_SLT-113.md`.
 - [x] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA7 escrita por el leader en
@@ -142,7 +142,7 @@
 - [ ] **T6.3** Anotar en `progress/features/SLT-113.md` lo que heredan SLT-140 «Excel del modelo nuevo:
   hojas por cierre de mensajeros» y SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega»: el
   `libro` del control, `tituloHoja`, `folioCierre` y el criterio de R371. **Hecho:** líneas escritas.
-- [ ] **T6.4** Mapa `R → test` en `progress/impl_SLT-113.md`, igual a `## Trazabilidad`. **Hecho:**
+- [x] **T6.4** Mapa `R → test` en `progress/impl_SLT-113.md`, igual a `## Trazabilidad`. **Hecho:**
   cada R con un test que existe y está verde.
 
 ## Trazabilidad
