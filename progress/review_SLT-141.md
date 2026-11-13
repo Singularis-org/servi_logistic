@@ -204,3 +204,45 @@ Ninguno nuevo. Sin regresiones: el rango no toca código ni tests.
 
 ### Veredicto
 **OK**
+
+## Vuelta 3 (acotada a 2ba53bd9..HEAD, arreglo de CI en bc756367)
+
+Alcance: `git diff 2ba53bd9..HEAD -- tests/ app/ lib/` + `progress/impl_SLT-141.md > CI de #153`.
+El merge de origin/dev (`b97ea293`, trae SLT-119 «Planes: pantallas de facturas para el superadmin y
+el maestro» y SLT-128) no tiene resolución de conflicto en `tests/ app/ lib/` (`git show --cc` vacío):
+queda fuera. Lo propio de SLT-141 en el rango es solo `bc756367` (2 tests + bitácora).
+
+### Checklist
+- [x] **R52 (paginacion-transversal) no afloja el contrato.** El contrato es la conducta «la descarga
+  va al servidor por el conjunto», no el literal `filasDesdeResultado(` en la pantalla (polizón del
+  test de texto). El envoltorio `obtenerResumenCierresBodega` hace UNA llamada a la acción y, sin
+  modelo nuevo, devuelve exactamente `filasDesdeResultado(respuesta, filaAnterior)`; con modelo
+  nuevo arma el libro desde los mismos `items` del `…Completo`. Se acepta solo con las dos condiciones
+  a la vez (envoltorio sin comentarios —`fuenteDe` usa `sinComentarios`— llama a `filasDesdeResultado(`,
+  y la pantalla le pasa `descargarDatos("<x>Completo"`).
+- [x] **Sigue mordiendo para las otras 12.** `cumpleAdaptador` cae en el `ADAPTADOR[adaptador].test`
+  de siempre salvo que la fuente contenga la llamada exacta al envoltorio con `…Completo`; ninguna
+  otra pantalla del censo la tiene, y el adaptador `conjunto`, el negativo `CONTRARIO`, `filasLocales(`
+  y el censo de 13 no cambian.
+- [x] **Migración SLT-139: no afloja R337.** R337 (specs/SLT-123…/requirements.md) exige migraciones
+  aditivas y `down.sql` reversible; la adyacencia con la última de dev era un detalle del test, que
+  dejó de ser controlable al entrar `20261114120000_plan_cambio_por_empresa` (SLT-128) con el mismo
+  timestamp. Se conserva lo que importa: ambas después de `ULTIMA_DE_DEV`, `M_CHECKS` justo detrás de
+  `M_ENUM`, `down.sql` exigido. El caso sintético nuevo prueba los cuatro fallos y el caso válido.
+- [x] **Mutaciones plausibles.** (a) y (b) rompen respectivamente la condición 1 y la 2 de la
+  guardia (por lectura del código, ambas son necesarias para el `true`); (c) anula la única rama que
+  produce el mensaje que el caso sintético espera. No las re-ejecuté (no edito código); la lógica
+  confirma que cada una tiene que dar rojo.
+- [x] **Ejecutado por mí** (base desechable `slt141_wt`): los dos archivos `Test Files 2 passed (2)` ·
+  `Tests 17 passed (17)` · EXIT=0, 0 skipped. `eslint` de ambos EXIT=0.
+
+### Hallazgos
+- **menor m7** — `llamadaConCompleto` admite cualquier `\w+Completo`, no la acción propia del listado:
+  una pantalla podría pasar la `…Completo` de otro listado. El riesgo es bajo (la acción es nominal y
+  la pantalla tiene sus propios tests), pero ligarla al listado sería más estricto. No bloquea.
+- **menor m8** — `20261114120000_plan_cambio_por_empresa` (SLT-128) ordena antes de las de SLT-139
+  aunque llegó después: en una base que ya tenga las de SLT-139, Prisma la aplica fuera de orden.
+  Es de SLT-128, no de SLT-141; se anota para quien mire el orden de migraciones en prod.
+
+### Veredicto
+**OK**
