@@ -1162,6 +1162,9 @@ describe("R82/R75 — no hay camino para anular una anulacion", () => {
     // el reparto y sus N imputaciones intactos y visibles. Lo que R52 prohíbe, y sigue prohibido,
     // es EDITAR el acto o hacerlo desaparecer. El barrido de nombres de abajo no lo tapa: `anular`
     // nunca estuvo en esa lista, precisamente porque anular es la forma legítima de corregir.
+    // ⚠️ **SLT-139 — la lista crece a 19 con `pagadoPorSatelite`.** Es una LECTURA privada: suma lo
+    // pagado por la satélite de los cierres con pago independiente (R338) para que el pendiente
+    // del cierre no lo vuelva a cobrar. No escribe, no edita ni deshace nada.
     expect(metodos).toEqual([
       "anularPago",
       "anularReparto",
@@ -1170,6 +1173,7 @@ describe("R82/R75 — no hay camino para anular una anulacion", () => {
       "imputablesDe",
       "listarPagosDeCierre",
       "listarPagosDeTienda",
+      "pagadoPorSatelite",
       "pendienteDelCierre",
       "previsualizarRepartoMensajero",
       "registrarPagoMensajero",

@@ -8,7 +8,10 @@ import type {
   LiquidacionPagoDTO,
 } from "@/lib/interfaces/repositories/ILiquidacionPagoRepository";
 import type { ILiquidacionRepartoRepository } from "@/lib/interfaces/repositories/ILiquidacionRepartoRepository";
-import type { IPagoMensajeroMovimientoRepository } from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
+import type {
+  IPagadoPorSateliteLectura,
+  IPagoMensajeroMovimientoRepository,
+} from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
 import type { IWalletTiendaMovimientoRepository } from "@/lib/interfaces/repositories/IWalletTiendaMovimientoRepository";
 import type { ICajaPagoTiendaFeedService } from "@/lib/interfaces/services/ICajaPagoTiendaFeedService";
 import type {
@@ -51,7 +54,10 @@ import {
 import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
-import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import {
+  derivarPendienteCierre,
+  LecturaPagadoSateliteAusenteError,
+} from "@/lib/utils/pendiente-cierre";
 import {
   ordenarCierresFifo,
   repartirEntreCierres,
@@ -254,7 +260,9 @@ export class LiquidacionService implements ILiquidacionService {
   constructor(
     private readonly pagoRepo: ILiquidacionPagoRepository,
     private readonly tiendaRepo: IWalletTiendaMovimientoRepository,
-    private readonly mensajeroRepo: IPagoMensajeroMovimientoRepository,
+    // SLT-139 (R344, design §5.3): + la lectura de «pagado por la satelite», opcional en el TIPO
+    // (seis dobles implementan la interfaz a mano) y RUIDOSA si falta ante un cierre nuevo.
+    private readonly mensajeroRepo: IPagoMensajeroMovimientoRepository & Partial<IPagadoPorSateliteLectura>,
     private readonly runTransaction: LiquidacionTxRunner,
     /**
      * Feature 173 (R23) — el puerto de la caja. Va SIN valor por defecto a proposito: un
@@ -1108,6 +1116,11 @@ export class LiquidacionService implements ILiquidacionService {
     // de cierres. Sin esto el premio nunca entraria en la ventana imputable y no se podria
     // cobrar — que es el corazon de la decision humana de imputarlo al cierre.
     const premios = await this.mensajeroRepo.sumarPremiosVivosPorCierre(ids);
+    // SLT-139 (R338, R344): lo pagado por la satelite de los cierres nuevos, UNA lectura.
+    const satelite = await this.pagadoPorSatelite(
+      cierres.filter((c) => c.pagoIndependienteEfectivo === true).map((c) => c.id),
+      "LiquidacionService.imputablesDe",
+    );
     const imputables: CierreImputable[] = [];
     for (const cierre of cierres) {
       // R24, defensa en profundidad: el WHERE del repositorio ya acota por mensajero, pero un
@@ -1119,7 +1132,7 @@ export class LiquidacionService implements ILiquidacionService {
         efectivo: cierre.totalEfectivo,
         premiosVivos: premios[cierre.id] ?? "0.00",
         pagadoVigente: pagados[cierre.id] ?? "0.00",
-        pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true, // SLT-123 (R321)
+        ...reglaDelCierre(cierre.pagoIndependienteEfectivo, satelite[cierre.id]), // SLT-123 (R321), SLT-139 (R338)
       });
       if (new Prisma.Decimal(pendiente).lte(0)) continue; // R5: imputable = pendiente > 0
       imputables.push({
@@ -1255,12 +1268,16 @@ export class LiquidacionService implements ILiquidacionService {
       // anular un pago, un restante MENOR que el real en cierres con premio: la pantalla diria
       // que queda menos por pagar del que queda.
       const premios = await this.mensajeroRepo.sumarPremiosVivosPorCierre([cierre.id]);
+      const satelite = await this.pagadoPorSatelite(
+        cierre.pagoIndependienteEfectivo === true ? [cierre.id] : [],
+        "LiquidacionService.restanteTrasAnular",
+      );
       return derivarPendienteCierre({
         pagoDebido: cierre.totalPagoMensajero,
         efectivo: cierre.totalEfectivo,
         premiosVivos: premios[cierre.id] ?? "0.00",
         pagadoVigente: vigentes.lt(0) ? new Prisma.Decimal(0) : vigentes,
-        pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true, // SLT-123 (R321)
+        ...reglaDelCierre(cierre.pagoIndependienteEfectivo, satelite[cierre.id]), // SLT-123 (R321), SLT-139 (R338)
       });
     }
 
@@ -1376,14 +1393,35 @@ export class LiquidacionService implements ILiquidacionService {
     // devolveria `sin_saldo` —o `excede` si el cierre tenia otra deuda menor—: el tope de [P1]
     // se compara contra ESTE numero.
     const premios = await this.mensajeroRepo.sumarPremiosVivosPorCierre([cierre.id]);
+    const satelite = await this.pagadoPorSatelite(
+      cierre.pagoIndependienteEfectivo === true ? [cierre.id] : [],
+      "LiquidacionService.pendienteDelCierre",
+    );
     return derivarPendienteCierre({
       pagoDebido: cierre.totalPagoMensajero,
       efectivo: cierre.totalEfectivo,
       premiosVivos: premios[cierre.id] ?? "0.00",
       pagadoVigente: pagados[cierre.id] ?? "0.00",
       // SLT-123 (R316): con la marca, el tope del pago directo es `P` (+ premios − vigentes).
-      pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true,
+      // SLT-139 (R338): y menos lo pagado por la satelite.
+      ...reglaDelCierre(cierre.pagoIndependienteEfectivo, satelite[cierre.id]),
     });
+  }
+
+  /**
+   * SLT-139 (R338, R344, design §5.3) — lo «pagado por la satelite» de los cierres NUEVOS que la
+   * operacion tiene delante, en UNA lectura (ninguna sin cierres nuevos). Sin la lectura y con un
+   * cierre nuevo LANZA antes de calcular un tope, una ventana o un restante: dentro de la
+   * transaccion, nada se escribe. En produccion siempre da `"0.00"` (la central solo paga cierres
+   * `bodega_central`, SLT-122, y `pago_satelite` solo nace en cierres de satelite); se lee igual
+   * para que el pendiente tenga una sola formula.
+   */
+  private async pagadoPorSatelite(idsNuevos: string[], contexto: string): Promise<Record<string, string>> {
+    if (idsNuevos.length === 0) return {};
+    if (typeof this.mensajeroRepo.sumarPagadoSatelitePorCierre !== "function") {
+      throw new LecturaPagadoSateliteAusenteError(contexto);
+    }
+    return this.mensajeroRepo.sumarPagadoSatelitePorCierre(idsNuevos);
   }
 
   /**
@@ -1444,4 +1482,17 @@ async function registrarComprobanteDePago(
   const r = await puerto.registrarEnTx(tx, { pago: pagoId }, guardado, subidoPor);
   // Un pago recien creado no puede tener ya comprobante: si lo tuviera, se revierte todo.
   if (r !== "creado") throw new Error(`pago ${pagoId}: ya tenia comprobante recien creado`);
+}
+
+/**
+ * SLT-123 (R321) + SLT-139 (R338) — la parte de la entrada de `derivarPendienteCierre` que decide la
+ * regla: la marca del cierre y, si la lleva, lo pagado por la satelite (`"0.00"` si no hay filas).
+ */
+function reglaDelCierre(
+  marca: boolean | undefined,
+  pagadoPorSatelite: string | undefined,
+): { pagoIndependienteEfectivo: false } | { pagoIndependienteEfectivo: true; pagadoPorSatelite: string } {
+  return marca === true
+    ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoPorSatelite ?? "0.00" }
+    : { pagoIndependienteEfectivo: false };
 }

@@ -14,6 +14,10 @@ import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
  * **SLT-123 (R315):** si el cierre lleva `pago_independiente_efectivo`, el primer termino es `P`
  * completo (su pago no salio del efectivo): `P + premiosVivos − Σ pagos VIGENTES`.
  *
+ * **SLT-139 (R338):** en un cierre con la marca se resta ademas lo «pagado por la satelite»: Σ de
+ * los `pago_satelite` del libro con origen en ese cierre. En un cierre sin la marca ese termino se
+ * IGNORA aunque venga distinto de cero: la formula vieja queda igual pase lo que pase en el libro.
+ *
  * `P` es `cierre_dia.total_pago_mensajero` (snapshot de la 39) y `E` es
  * `cierre_dia.total_efectivo` (snapshot de la 37). **Ninguno de los dos se reescribe jamas**
  * (293/R13): el snapshot sigue diciendo lo que dijo el dia en que se aprobo el cierre, y el
@@ -43,7 +47,7 @@ import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
  * si un dato historico dejara la resta por debajo de cero, lo correcto que puede decir esta
  * funcion es que no queda nada pendiente, no una deuda al reves.
  */
-export interface PendienteCierreInput {
+interface PendienteCierreBase {
   /** `P` — `cierre_dia.total_pago_mensajero`, el snapshot de la 39. Nunca se reescribe (R13). */
   pagoDebido: string | Prisma.Decimal;
   /** `E` — `cierre_dia.total_efectivo`, el snapshot de la 37. */
@@ -57,23 +61,41 @@ export interface PendienteCierreInput {
   premiosVivos: string | Prisma.Decimal;
   /** 172/R80 — Σ de los pagos VIGENTES registrados contra este cierre (los anulados no entran). */
   pagadoVigente: string | Prisma.Decimal;
-  /**
-   * SLT-123 (R315, R325, R327) — `cierre_dia.pago_independiente_efectivo` del PROPIO cierre. Es la
-   * UNICA fuente de la regla: nunca la fecha, el destino ni el libro. `true` = el pago no sale del
-   * efectivo y lo generado es `P` completo; `false` = la regla de la 44, `P − min(P, E)`, como
-   * siempre. Obligatorio a proposito (mismo argumento que la 293): cada consumidor deja de compilar
-   * hasta que decide de donde saca la marca.
-   */
-  pagoIndependienteEfectivo: boolean;
 }
 
-export function derivarPendienteCierre({
-  pagoDebido,
-  efectivo,
-  premiosVivos,
-  pagadoVigente,
-  pagoIndependienteEfectivo,
-}: PendienteCierreInput): string {
+/**
+ * La entrada es una UNION discriminada por la marca (SLT-139, design §5.1): con la marca en `true`,
+ * `pagadoPorSatelite` es obligatorio. Un consumidor que pasa la marca como `boolean` no compila sin
+ * el termino; los tests de la regla vieja (`false` literal) siguen compilando sin el.
+ *
+ *   - `pagoIndependienteEfectivo` — SLT-123 (R315, R325, R327) — `cierre_dia.pago_independiente_efectivo`
+ *     del PROPIO cierre. Es la UNICA fuente de la regla: nunca la fecha, el destino ni el libro.
+ *     `true` = el pago no sale del efectivo y lo generado es `P` completo; `false` = la regla de la
+ *     44, `P − min(P, E)`, como siempre. Obligatorio (mismo argumento que la 293).
+ *   - `pagadoPorSatelite` — SLT-139 (R338) — Σ `pago_satelite` del libro con origen en este cierre
+ *     (`IPagadoPorSateliteLectura.sumarPagadoSatelitePorCierre`, una lectura por pagina).
+ */
+export type PendienteCierreInput = PendienteCierreBase &
+  (
+    | { pagoIndependienteEfectivo: false; pagadoPorSatelite?: string | Prisma.Decimal }
+    | { pagoIndependienteEfectivo: true; pagadoPorSatelite: string | Prisma.Decimal }
+  );
+
+/**
+ * SLT-139 (R335, R344) — un servicio que tiene delante un cierre NUEVO y no recibio la lectura de
+ * «pagado por la satelite» no puede decir cuanto queda pendiente: lanza esto en vez de inventar una
+ * cifra. En produccion no ocurre (las acciones inyectan el repositorio real; lo prueba
+ * `cierre-dia-pendiente-cableado.test.ts`).
+ */
+export class LecturaPagadoSateliteAusenteError extends Error {
+  constructor(contexto: string) {
+    super(`SLT-139: falta la lectura de «pagado por la satelite» (${contexto}); no se calcula el pendiente`);
+    this.name = "LecturaPagadoSateliteAusenteError";
+  }
+}
+
+export function derivarPendienteCierre(input: PendienteCierreInput): string {
+  const { pagoDebido, efectivo, premiosVivos, pagadoVigente, pagoIndependienteEfectivo } = input;
   // SLT-123 (R315): con la marca, el efectivo no entra: lo generado es `P` entero, redondeado como
   // en `calcularSplitPago`. Sin ella (R325), `P − min(P, E)` de la fuente unica de la 44.
   const generadoPorElCierre = pagoIndependienteEfectivo
@@ -88,6 +110,10 @@ export function derivarPendienteCierre({
     2,
     Prisma.Decimal.ROUND_HALF_UP,
   );
-  const pendiente = generadoPorElCierre.add(premio).sub(yaEntregado);
+  // SLT-139 (R338): lo pagado por la satelite solo cuenta en un cierre con la marca.
+  const pagadoPorSatelite = input.pagoIndependienteEfectivo
+    ? new Prisma.Decimal(input.pagadoPorSatelite).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+    : new Prisma.Decimal(0);
+  const pendiente = generadoPorElCierre.add(premio).sub(yaEntregado).sub(pagadoPorSatelite);
   return pendiente.gt(0) ? pendiente.toFixed(2) : "0.00";
 }

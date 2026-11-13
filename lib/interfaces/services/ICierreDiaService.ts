@@ -380,7 +380,15 @@ export interface CierrePasadoDTO {
  */
 export interface LecturasPendienteCierre {
   liquidaciones: { sumarVigentesPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
-  premios: { sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
+  /**
+   * SLT-139 (R335, design §5.3): el mismo repositorio del libro trae, ademas, lo «pagado por la
+   * satelite» por cierre. Opcional en el tipo (las suites pasan un doble de una funcion); sin ella,
+   * un cierre NUEVO sale sin `pendientePagoMensajero` («Sin dato»), nunca con una cifra inventada.
+   */
+  premios: {
+    sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+    sumarPagadoSatelitePorCierre?(cierreIds: string[]): Promise<Record<string, string>>;
+  };
 }
 
 /** SLT-112 — una cifra de «Cierres solicitados»: importe en escala 2 (string) y su conteo. */
@@ -420,7 +428,7 @@ export interface LecturasGananciaMensajero {
   pagos: {
     sumarVigentesDelMensajeroEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
   };
-  /** R353: ausente = solo los pagos de liquidacion (R352). */
+  /** R353 (revisado en SLT-139): ausente = `sin_dato` (R357), nunca una pagada que la omita. */
   pagadoPorSatelite?: LecturaPagadoPorSatelite;
   /** Reloj inyectable para fijar «hoy» en los tests; ausente = `new Date()`. */
   ahora?: () => Date;

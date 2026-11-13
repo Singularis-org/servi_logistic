@@ -68,6 +68,7 @@ const CONSOLIDABLE_SELECT = {
   totalPagoMensajero: true, // feature 39/R18: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia
   resueltoAt: true, // SLT-106 (R194): la columna «Aprobado» de «A consolidar»
+  pagoIndependienteEfectivo: true, // SLT-139 (R322, R323): la regla de pago de este cierre
   mensajero: { select: NOMBRE_USUARIO_SELECT },
   // SLT-54 (R71): en la misma sentencia, sin consulta por fila.
   // SLT-106 (R194): + las gestiones con al menos un ajuste del pago, la misma subconsulta que
@@ -317,6 +318,7 @@ function toConsolidableRow(r: ConsolidableRow): CierreDiaConsolidableRow {
     paraLaCentral: paraLaCentral(totales.general, totalPagoMensajero, totalIngresoBodegaRechazos),
     aprobadoAt: r.resueltoAt === null ? null : r.resueltoAt.toISOString(), // R194
     gestionesAjustadas: r._count.gestiones, // R194
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-139 (R322, R323)
   };
 }
 

@@ -109,6 +109,13 @@ interface Escenario {
 async function aprobado(tx: TxDeTest, destino: "bodega_central" | "bodega_satelite") {
   const k = await sembrarCierreAprobable(tx, destino);
   if ((await aprobar(k)) !== "ok") throw new Error(`no se aprobo el cierre ${destino}`);
+  // SLT-139 (R336, R340): desde SLT-139 `aprobar` pone la marca a todo destino. Esta suite usa la
+  // aprobacion como MONTAJE de cierres de satelite de la epoca de la migracion C (anteriores a
+  // SLT-139), asi que se les devuelve la marca a `false`: son cierres VIEJOS y se asientan con la
+  // regla de la 44 (`pago_efectivo`), que es lo que la migracion retiro y su `down.sql` devuelve.
+  if (destino === "bodega_satelite") {
+    await tx.cierreDia.update({ where: { id: k.cierreId }, data: { pagoIndependienteEfectivo: false } });
+  }
   return k;
 }
 

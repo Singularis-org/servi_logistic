@@ -62,9 +62,12 @@ const TIENDA = [
   { tipo: "debito", categoria: "iva_flete", monto: "325.00" },
 ];
 
+// SLT-139 (R317, R336): el cierre se aprueba con `aprobar` real, que desde SLT-139 le pone la marca
+// a todo destino: es un cierre NUEVO de satelite y al conciliarse el libro lleva `pago_satelite = P`
+// (P 1 500 del cierre), no `pago_efectivo = min(P, E)`. Caja y tienda no cambian (R341).
 const MENSAJERO = [
   { tipo: "devengo", categoria: "pago_devengado", monto: "1500.00" },
-  { tipo: "pago", categoria: "pago_efectivo", monto: "1500.00" },
+  { tipo: "pago", categoria: "pago_satelite", monto: "1500.00" },
 ];
 
 const VACIO = { caja: [], tienda: [], mensajero: [] };

@@ -47,18 +47,29 @@ function repoConPagina(items: CierrePasadoDTO[]) {
   return { repo, findCierresByMensajero };
 }
 
-function lecturas(pagados: Record<string, string> = {}, premios: Record<string, string> = {}) {
+function lecturas(
+  pagados: Record<string, string> = {},
+  premios: Record<string, string> = {},
+  // SLT-139 (R335): `null` = el doble de premios SIN la lectura de «pagado por la satelite».
+  satelite: Record<string, string> | null = {},
+) {
   const sumarVigentesPorCierre = vi.fn<(ids: string[]) => Promise<Record<string, string>>>(
     async () => pagados,
   );
   const sumarPremiosVivosPorCierre = vi.fn<(ids: string[]) => Promise<Record<string, string>>>(
     async () => premios,
   );
+  const sumarPagadoSatelitePorCierre = vi.fn<(ids: string[]) => Promise<Record<string, string>>>(
+    async (ids) => Object.fromEntries(ids.map((id) => [id, satelite?.[id] ?? "0.00"])),
+  );
   const pendientes: LecturasPendienteCierre = {
     liquidaciones: { sumarVigentesPorCierre },
-    premios: { sumarPremiosVivosPorCierre },
+    premios:
+      satelite === null
+        ? { sumarPremiosVivosPorCierre }
+        : { sumarPremiosVivosPorCierre, sumarPagadoSatelitePorCierre },
   };
-  return { pendientes, sumarVigentesPorCierre, sumarPremiosVivosPorCierre };
+  return { pendientes, sumarVigentesPorCierre, sumarPremiosVivosPorCierre, sumarPagadoSatelitePorCierre };
 }
 
 function servicio(repo: ICierreDiaRepository, pendientes?: LecturasPendienteCierre) {
@@ -202,5 +213,57 @@ describe("SLT-123 R320 — en «Cierres solicitados», lo pendiente sigue la mar
     const filas = await pagina(servicio(repoConPagina(items).repo, l.pendientes));
 
     expect(filas[0].pendientePagoMensajero).toBe("2500.00");
+  });
+});
+
+// SLT-139 (T6.2) — en «Cierres solicitados», un cierre NUEVO de satelite resta lo que la satelite le
+// pago (R319, R334, R335, R338). P 2 500, E 1 000; importes escritos a mano.
+describe("SLT-139 R319/R334/R335 — lo pagado por la satelite en «Cierres solicitados»", () => {
+  const nuevoSat = (id: string): CierrePasadoDTO => ({
+    ...cierre(id, "aprobado", "2500.00", "1000.00"),
+    destinoTipo: "bodega_satelite",
+    destinoZonaId: "z-sat",
+    pagoIndependienteEfectivo: true,
+  });
+  const viejoSat: CierrePasadoDTO = {
+    ...cierre("c-viejo", "aprobado", "3000.00", "1000.00"),
+    destinoTipo: "bodega_satelite",
+    destinoZonaId: "z-sat",
+    pagoIndependienteEfectivo: false,
+  };
+
+  it("R319: antes de conciliar debe P (2500.00); conciliado (la satelite pago 2 500) 0.00", async () => {
+    const antes = lecturas();
+    expect((await pagina(servicio(repoConPagina([nuevoSat("c-ns")]).repo, antes.pendientes)))[0]!.pendientePagoMensajero).toBe(
+      "2500.00",
+    );
+    const despues = lecturas({}, {}, { "c-ns": "2500.00" });
+    expect((await pagina(servicio(repoConPagina([nuevoSat("c-ns")]).repo, despues.pendientes)))[0]!.pendientePagoMensajero).toBe(
+      "0.00",
+    );
+  });
+
+  it("R334: UNA lectura por pagina, solo con los nuevos; ninguna con una pagina solo de viejos", async () => {
+    const l = lecturas({}, {}, { "c-ns1": "2500.00" });
+    const items = await pagina(servicio(repoConPagina([viejoSat, nuevoSat("c-ns1"), nuevoSat("c-ns2")]).repo, l.pendientes));
+    expect(l.sumarPagadoSatelitePorCierre).toHaveBeenCalledTimes(1);
+    expect(l.sumarPagadoSatelitePorCierre).toHaveBeenCalledWith(["c-ns1", "c-ns2"]);
+    expect(Object.fromEntries(items.map((c) => [c.cierreId, c.pendientePagoMensajero]))).toEqual({
+      "c-viejo": "2000.00",
+      "c-ns1": "0.00",
+      "c-ns2": "2500.00",
+    });
+
+    const soloViejos = lecturas();
+    await pagina(servicio(repoConPagina([viejoSat]).repo, soloViejos.pendientes));
+    expect(soloViejos.sumarPagadoSatelitePorCierre).not.toHaveBeenCalled();
+  });
+
+  it("R335: sin la lectura, el nuevo sale sin cifra («Sin dato») y el viejo con la suya", async () => {
+    const l = lecturas({}, {}, null);
+    const items = await pagina(servicio(repoConPagina([viejoSat, nuevoSat("c-ns")]).repo, l.pendientes));
+    const porId = Object.fromEntries(items.map((c) => [c.cierreId, c]));
+    expect(porId["c-viejo"]!.pendientePagoMensajero).toBe("2000.00");
+    expect(porId["c-ns"]!.pendientePagoMensajero).toBeUndefined();
   });
 });

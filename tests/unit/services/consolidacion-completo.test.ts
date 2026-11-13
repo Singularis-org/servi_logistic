@@ -112,6 +112,7 @@ function consolidable(
       paraLaCentral: "0.00",
       aprobadoAt: null,
       gestionesAjustadas: 0,
+      pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
     },
     ["totales", "totalPagoMensajero", "totalIngresoBodegaRechazos"],
     lecturas,
@@ -266,6 +267,7 @@ function consolidablesPlanos(n: number): CierreDiaConsolidableRow[] {
     paraLaCentral: "0.00", // SLT-106: 1.00 − 1.00 − 0.00
     aprobadoAt: null,
     gestionesAjustadas: 0,
+    pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
   }));
 }
 

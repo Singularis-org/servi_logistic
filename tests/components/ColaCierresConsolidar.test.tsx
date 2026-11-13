@@ -335,7 +335,9 @@ describe("ColaCierres · bodega satélite — tarjetas (R45, R196)", () => {
     ).toEqual(["Recaudado", "Pago a mensajeros", "Gana la bodega satélite", "Debe llegar a la central"]);
     expect(caja("Recaudado")).toHaveTextContent("₡100.000");
     expect(caja("Pago a mensajeros")).toHaveTextContent("₡3.000");
-    expect(caja("Pago a mensajeros")).toHaveTextContent("3 mensajeros · se paga del efectivo");
+    // SLT-139 R324: la nota ya no dice «· se paga del efectivo».
+    expect(caja("Pago a mensajeros")).toHaveTextContent("3 mensajeros");
+    expect(caja("Pago a mensajeros")).not.toHaveTextContent("del efectivo");
     expect(caja("Gana la bodega satélite")).toHaveTextContent("₡500");
     expect(caja("Gana la bodega satélite")).toHaveTextContent("por devoluciones a origen");
     expect(caja("Debe llegar a la central")).toHaveTextContent("₡96.500");
