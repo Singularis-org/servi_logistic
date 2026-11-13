@@ -97,7 +97,8 @@ Archivo de integración con el código nuevo: **8 passed (8), EXIT=0** (R420-R42
   respuesta trae la de cd2 primero); el caso SLT-110 con una sola respuesta. R19 y SLT-107 sin cambios.
 - `cierre-pagos-lectura.test.ts`: el doble del detalle de bodega da `cierreId: "cd1"` a sus filas
   (vía overrides: `filaAdmin` / `filaSnapshot` también los usa el camino 2) y la aserción pasa a
-  `toEqual({ ...GESTION_ADMIN_SELECT, cierreId: true })`.
+  `toEqual({ ...GESTION_ADMIN_SELECT, cierreId: true })`. **Sustituida en la tanda 2** (guardia R23 de
+  la 212): la aserción vigente es `toBe(GESTION_ADMIN_SELECT)` sobre el `select` de la relación.
 
 `vitest related --run lib/repositories/CierresBodegaAdminRepository.ts`: **227 archivos, 221 passed /
 6 failed; 3085 tests passed, 26 failed, 14 skipped; EXIT=1**. Las dos suites de unidad y todas las de
@@ -144,7 +145,7 @@ Ninguna sobrevive. Tras la campaña `git status --short lib/` vacío y
 
 | R | Test |
 |---|---|
-| R420 | «R420: mismas sentencias con N = 3 (BX, 2 + 2 + 1 gestiones) que con N = 1 (B1, 1 gestion)»; unidad: «R11 / SLT-148: UNA lectura de gestiones y UNA de snapshot…» |
+| R420 | «R420: mismas sentencias con N = 3 (BX, 2 + 2 + 1 gestiones) que con N = 1 (B1, 1 gestion)»; «R420: BV, un cierre del dia SIN gestiones -> el dia sale con su lista vacia, sin corte» (tanda 3); unidad: «R11 / SLT-148: UNA lectura de gestiones y UNA de snapshot…» |
 | R421 | «R421: B1 (un cierre del dia) no cuesta mas sentencias que la linea base de T0» |
 | R422 | «R422/R423/R424: BX entero, para la central y para S, igual a lo escrito a mano» |
 | R423 | ídem (orden de cierres del día y de gestiones intercaladas en el literal) |
@@ -186,10 +187,49 @@ de `cierre_dia` con `select: GESTION_ADMIN_SELECT` tal cual (Prisma: una sentenc
 lectura con `cierreId IN`. Como Prisma emite las sentencias de una relación aunque no haya padres, el
 corte N = 0 pasa a usar `_count.cierresDia` de la cabecera, antes de leer `cierre_dia`.
 
-Sentencias: B1 24, BX 24 (R420/R421 verdes), B0 5 (antes 7; el test pasa a «como mucho» la línea base).
+Sentencias: B1 24, BX 24 (R420/R421 verdes), B0 5 (antes 7; exacto en 5 desde `aef11c73`: un 6 o un 7 sería regresión).
 Guardia: 10 passed. `vitest run tests/unit/guards`: 243/244 archivos, 3617 passed, 4 failed, todos en
 `dependencias-declaradas-presentes.guardia` (`init.sh` no llama a `scripts/verificar-dependencias.mjs`;
 viene de la sincronización del arnés mergeada desde dev, `9aa7e060`; ajeno a esta ficha). Integración
 8 passed. Mutaciones sobre el código nuevo: M1 (filas por cierre del día) → R420 «expected 34 to be 24»;
 M2 → R422 (`direccion`); M3 (`cierre_detail` por `cierreBodegaId`) → R426 «parametro ajeno»; M6 (sin
 el corte) → R428 (`gestion_orden` leída). Todas EXIT=1 con 1 failed / 7 passed; revertidas 8 passed.
+
+## Tanda 3 — backend_dev: review vuelta 1 (2026-11-13)
+
+**m1 — cierre del día sin gestiones.** El corpus gana BV (zona C, snapshot en cero) con un cierre del
+día DV (M4, 15:55 UTC, snapshot en cero) y ninguna gestión; la autocomprobación lo verifica (0 gestiones
+en DV). Test nuevo «R420: BV, un cierre del dia SIN gestiones -> el dia sale con su lista vacia, sin
+corte»: `toEqual` entero con literales a mano (cabecera `cantidadCierres: 1`, `incluyeModeloNuevo: false`,
+importes 0,00; un día con su resumen y `gestiones: []`) y **24 sentencias exactas**
+(`CONSULTAS_DETALLE_DIA_SIN_GESTIONES`), medidas con un `console.log` temporal de las tablas: cabecera 4,
+`cierre_dia` + `usuario` 2, `gestion_orden` + 10 relaciones (Prisma las emite con la lista vacía),
+`orden_fulfillment_movimiento` 1, `cierre_detail` + 4 relaciones 5, marca de modelo nuevo 1. Igual que B1.
+- Archivo de integración (base desechable `slt148_it`): **9 passed (9), EXIT=0**.
+- Mutación: tras leer `cierre_dia`, `if (cierresDiaRows.every((cd) => cd.gestiones.length === 0)) return
+  this.conCabecera(cierre, []);` (el corte salta con días presentes sin gestiones) → **EXIT=1, 1 failed /
+  8 passed**, cae el test nuevo: «expected { cierre, cierresDia: [] } to deeply equal { cierre, …(1) }».
+  Revertida con `git checkout` (`git status --short lib/` vacío) → **9 passed, EXIT=0**.
+- `pnpm exec tsc --noEmit -p .` → TSC_EXIT=0; `pnpm exec eslint` del test → ESLINT_EXIT=0.
+
+**m2 —** los dos puntos desfasados de la bitácora (T3 y tanda 2) corregidos en su sitio.
+
+**T6.2** marcada (D67 cerrada en `772fe8d0`). **T4.1** la cierra el leader con el `gate-completo` de CI.
+
+**T6.3 — E2E `dinero` en local: ROJO, sin cerrar.** Base nueva `slt148_e2e` (migrada + seed),
+`next build` con `NEXT_PUBLIC_APP_URL` en el puerto 3044 (BUILD_EXIT=0),
+`E2E_PUERTO=3044 pnpm exec playwright test --project=dinero --reporter=list`, dos corridas seguidas:
+- Corrida 1: **109 passed, 1 failed, 3 did not run, 0 flaky** (6.2 min), E2E_EXIT=1. Cae
+  `e2e/tarifas-valor-propio-mensajero.spec.ts:270` «R16: M2, de la misma zona, cobra el valor de la zona»
+  a los 0 ms con «worker process exited unexpectedly (code=3221226505, signal=null)»; no corren los 3
+  siguientes de su `describe` serial.
+- Corrida 2: **108 passed, 1 failed, 4 did not run, 0 flaky** (6.0 min), E2E_EXIT=1. Cae
+  `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts:681` «M2, sin valor propio: paga la zona, …» con el
+  mismo error de worker; no corren los 4 siguientes.
+- No parece de esta ficha: el worker muere antes de ejecutar un paso (0 ms), en un test distinto cada
+  vez, y ninguno abre el detalle de un cierre de bodega; 3221226505 = 0xC0000409, caída del proceso
+  en Windows, no una aserción. Los 21 tests con «bodega» en el nombre pasaron en las dos corridas.
+  T6.3 queda `[ ]` hasta un E2E sin caídas (otra corrida local o el CI).
+
+**Veredicto:** m1, m2 y T6.2 cerrados con test, mutación roja y revertida verde; T6.3 sigue abierta por
+dos caídas del worker de Playwright ajenas al detalle de bodega.

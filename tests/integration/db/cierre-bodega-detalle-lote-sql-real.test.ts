@@ -45,6 +45,7 @@ import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
  *   - B1 (C) con un solo cierre del dia D4 y una gestion (caso N = 1).
  *   - BZ (N) con DZ y una gestion de O1 (fila congelada «Calle 1, DZ»): señuelo de alcance y de R426.
  *   - B0 (C) sin cierres del dia (R428).
+ *   - BV (C) con un cierre del dia DV SIN gestiones (R420: el dia sale con su lista vacia).
  *   - BF (C) con DF y una gestion de O5 SIN fila congelada (R427).
  *
  * CIFRAS ESCRITAS A MANO (memoria «asercion contra su propia fuente»; el calculo, junto a cada literal
@@ -72,6 +73,16 @@ const CONSULTAS_DETALLE_UNO_LINEA_BASE = 24;
 const CONSULTAS_DETALLE_SIN_DIAS = 5;
 
 /**
+ * R420 — sentencias EXACTAS para BV (un cierre del dia, 0 gestiones), medidas contra Postgres real:
+ * la cabecera (4), `cierre_dia` con su `mensajero` (2), `gestion_orden` y las 10 de sus relaciones de
+ * `GESTION_ADMIN_SELECT` (Prisma las emite aunque la lista salga vacia), los cargos de fulfillment (1),
+ * `cierre_detail` con sus 4 relaciones (5) y la marca de modelo nuevo de la cabecera (1) = 24. Las
+ * mismas que B1 con una gestion: el numero no depende de cuantas gestiones haya. Un 5 seria el corte
+ * de R428 saltando con dias presentes; mas de 24, una lectura por cierre del dia o por gestion.
+ */
+const CONSULTAS_DETALLE_DIA_SIN_GESTIONES = 24;
+
+/**
  * T0.1 (R425) — lo que emite la lectura de la cabecera (`findFirst` con `BODEGA_RESUMEN_SELECT`): su
  * sentencia y una por relacion (zona, quien solicito, quien concilio), haya fila o no.
  */
@@ -95,8 +106,8 @@ interface Corpus {
   tienda: string;
   tarifaVieja: string;
   mensajero: { M1: string; M2: string; M3: string; M4: string };
-  bodega: { BX: string; B1: string; BZ: string; B0: string; BF: string };
-  dia: { D1: string; D2: string; D3: string; D4: string; DZ: string; DF: string };
+  bodega: { BX: string; B1: string; BZ: string; B0: string; BF: string; BV: string };
+  dia: { D1: string; D2: string; D3: string; D4: string; DZ: string; DF: string; DV: string };
   orden: { O1: string; O2: string; O3: string; O4: string; O5: string; O6: string };
   gestion: { G1a: string; G1b: string; G2a: string; G2b: string; G3a: string; G4: string; GZ: string };
 }
@@ -202,6 +213,7 @@ async function sembrar(tx: TxDeTest): Promise<Corpus> {
     BZ: await nuevaBodega(zona.N, S_DIEZ),
     B0: await nuevaBodega(zona.C, S_CERO),
     BF: await nuevaBodega(zona.C, S_DIEZ),
+    BV: await nuevaBodega(zona.C, S_CERO),
   };
 
   const nuevoDia = async (bodegaId: string, zonaId: string, mensajeroId: string, solicitadoAt: string, s: Snap) =>
@@ -229,6 +241,7 @@ async function sembrar(tx: TxDeTest): Promise<Corpus> {
     D4: await nuevoDia(bodega.B1, zona.C, mensajero.M4, "2026-11-06T15:30:00.000Z", S_DIEZ),
     DZ: await nuevoDia(bodega.BZ, zona.N, mz, "2026-11-06T15:45:00.000Z", S_DIEZ),
     DF: await nuevoDia(bodega.BF, zona.C, mf, "2026-11-06T15:50:00.000Z", S_DIEZ),
+    DV: await nuevoDia(bodega.BV, zona.C, mensajero.M4, "2026-11-06T15:55:00.000Z", S_CERO),
   };
 
   const nuevaOrden = async (clave: string, montoCobrar: string, cobraComision: boolean, mensajeroId: string) =>
@@ -513,6 +526,8 @@ async function sembrar(tx: TxDeTest): Promise<Corpus> {
   if (movimientos[0]?.n !== 3) throw new Error(`corpus incompleto: ${movimientos[0]?.n} movimientos de 3`);
   const sinFila = await tx.cierreDetail.count({ where: { ordenId: orden.O5 } });
   if (sinFila !== 0) throw new Error("corpus incorrecto: O5 no debe tener fila congelada");
+  const gestionesDV = await tx.gestionOrden.count({ where: { cierreId: dia.DV } });
+  if (gestionesDV !== 0) throw new Error(`corpus incorrecto: DV no debe tener gestiones (${gestionesDV})`);
 
   return {
     repo: new CierresBodegaAdminRepository(tx as unknown as PrismaClient),
@@ -990,6 +1005,37 @@ describeSiHayBase("SLT-148 — detalle del cierre de bodega en lote, contra Post
       expect(tres.r.cierresDia.map((cd) => cd.gestiones.length)).toEqual([2, 1, 2]);
       expect(uno.ev.length).toBeGreaterThan(0);
       expect(tres.ev.length).toBe(uno.ev.length);
+    });
+  });
+
+  it("R420: BV, un cierre del dia SIN gestiones -> el dia sale con su lista vacia, sin corte", async () => {
+    await conCorpus(async (c) => {
+      const { r, ev } = await medir(() => c.repo.findCierreBodegaConDetalle(c.bodega.BV, ZONA_CR, TODA));
+      expect(r).toEqual({
+        cierre: cabecera(c, c.bodega.BV, S_CERO, {
+          cantidadCierres: 1,
+          incluyeModeloNuevo: false, // sin filas congeladas no hay ninguna `tarifa_modelo = 'nuevo'`
+          paraLaCentral: "0.00",
+          faltaPorRecibir: "0.00",
+          efectivoCubreDescuentos: true, // 0 >= 0 + 0
+        }),
+        cierresDia: [
+          {
+            resumen: {
+              cierreDiaId: c.dia.DV,
+              mensajeroId: c.mensajero.M4,
+              mensajeroNombre: "Mia Cuatro",
+              totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+              totalPagoMensajero: "0.00",
+              totalIngresoBodegaRechazos: "0.00",
+              gestionesAjustadas: 0,
+              solicitadoAt: "2026-11-06T15:55:00.000Z",
+            },
+            gestiones: [],
+          },
+        ],
+      });
+      expect(ev).toHaveLength(CONSULTAS_DETALLE_DIA_SIN_GESTIONES);
     });
   });
 

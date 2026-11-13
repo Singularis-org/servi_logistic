@@ -102,7 +102,7 @@ ninguna sobrevive. Un «todo rojo» o «todo verde» sin la lista de tests ejecu
 ## T6 — Cierre
 
 - [x] **T6.1** `progress/impl_SLT-148.md`: mapa `R420…R429 → test` (nombre del `it`), T0, T2 y T5.
-- [ ] **T6.2** `progress/deudas.md`: D67 como resuelta por SLT-148 «Detalle del cierre de bodega sin
+- [x] **T6.2** `progress/deudas.md`: D67 como resuelta por SLT-148 «Detalle del cierre de bodega sin
   N+1» con los números de T0 y T2 (si la entrada D67 no existe, se crea ya resuelta con origen
   `feature_list.json`; ver `requirements.md > Preguntas abiertas`).
 - [ ] **T6.3** `./init.sh` verde con `.env` y la base desechable. E2E: el diff no toca `db/`, ni
