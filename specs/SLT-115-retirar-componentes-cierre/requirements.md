@@ -228,7 +228,7 @@ pantalla, se porta a `ColaCierres`/`DetalleCierre` en vez de borrarlo, y el impl
 - [x] **T5 [P] — Columnas sin consumidor (R404, R405, R406).** Depende solo de T1; va en paralelo con T2-T4.
   Podar `cierre-dia-descarga-columnas.ts` y `desglose-pago.ts`; ajustar sus tests y la guardia de pagos.
   *Hecho:* la guardia de T1 entera en verde; R406 verde con su esperado literal sin cambios.
-- [ ] **T6 — Cierre.** `./init.sh` verde; comprobar R407 con `git diff --name-only`; Grep de los nombres de
+- [x] **T6 — Cierre.** `./init.sh` verde; comprobar R407 con `git diff --name-only`; Grep de los nombres de
   la lista en `app/`, `components/`, `lib/`, `tests/` y `e2e/` (solo comentarios de historia, ninguno en
   código). Mapa `R400-R409 → test` en `progress/impl_SLT-115.md`. Correr en local
   `e2e/cierre-bodega-satelite.spec.ts` y `e2e/cierres-rediseno.spec.ts` (tocan las pantallas, regla

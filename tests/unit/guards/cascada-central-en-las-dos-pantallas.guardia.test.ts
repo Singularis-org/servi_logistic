@@ -186,13 +186,13 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
     ).toEqual([
       // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R166): `/cierre-dia` ya no
       // monta `<CierreFacturaResumenPropio>` (lo sustituye `ColaCierres` con rol mensajero). El
-      // componente sigue declarado sin montar hasta que lo retire SLT-115; si alguien lo vuelve a
-      // montar, su fila reaparece aquí y la guardia lo pide revisar.
+      // componente sigue declarado sin montar hasta que lo retire SLT-146 «Podar cierre-factura.tsx de lo que
+      // quedó sin montar»; si alguien lo vuelve a montar, su fila reaparece aquí y la guardia lo pide revisar.
       // SLT-115 (R409): el histórico de cierres de mensajero del admin (`CierresAdminHistoricoLista`)
       // se borró; lo sustituye `ColaCierres`. Ya no monta `<CierreFacturaResumen>` ninguna pantalla.
       // SLT-106 «Bodega satélite: A consolidar con la cola única»: `ConsolidacionBodegaModule` ya
       // no monta `<CierreConsolidableFacturaResumen>` (R204: la sustituye `ColaCierres`). El
-      // componente sigue declarado sin montar hasta que lo retire SLT-115.
+      // componente sigue declarado sin montar hasta que lo retire SLT-146.
     ]);
     // SLT-137 (R166): el comprobante propio ya no se monta en ninguna pantalla. El extractor
     // sigue sin confundirlo con `<CierreFacturaResumen>`: lo afirma el primer `expect` de este caso.

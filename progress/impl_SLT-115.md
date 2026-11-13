@@ -196,6 +196,21 @@ ajeno → hallazgo; prefijos distinguidos).
   `Tests 1209 passed (1209)`, **RELATED_EXIT=0**. El rojo heredado de la tanda 1 (`paginacion-transversal`)
   queda resuelto.
 
+### T6 — cierre (salida real)
+
+- Gate del leader (`./init.sh`, log `gate-115.log`): **INIT_EXIT=0**.
+- R407: `git diff --name-only origin/dev...HEAD` → 33 rutas; `grep -E "^(lib|db|e2e)/"` sin coincidencias
+  (exit 1). Solo `app/(app)/cierre-dia/_components/`, `app/(app)/cierres-admin/_components/`,
+  `components/private/cierres/cola/cola-cierres-labels.ts`, `progress/`, `specs/` y `tests/`.
+- E2E local (`docs/verification.md > En local`): base nueva `slt115_e2e` (migrada + catálogos),
+  `next build` con `NEXT_PUBLIC_APP_URL` en el puerto 3044, grupo `dinero`,
+  `e2e/cierre-bodega-satelite.spec.ts` + `e2e/cierres-rediseno.spec.ts`, dos corridas seguidas sobre la misma base:
+  - Corrida 1: `26 passed (3.2m)`, 0 failed / 0 skipped / 0 flaky, **E2E_EXIT=0**.
+  - Corrida 2: `26 passed (2.1m)`, 0 failed / 0 skipped / 0 flaky, **E2E_EXIT=0**.
+- Menor (3) de review: en `cascada-central-en-las-dos-pantallas.guardia.test.ts` los comentarios «hasta que
+  lo retire SLT-115» nombran ahora a SLT-146 «Podar cierre-factura.tsx de lo que quedó sin montar».
+  `vitest run` de la guardia: `Tests 8 passed (8)`, EXIT=0.
+
 ### Mapa R → test (completo)
 
 | R | Test |
@@ -207,7 +222,7 @@ ajeno → hallazgo; prefijos distinguidos).
 | R404 | `cierres-retirados.guardia.test.ts` › R404; `cierre-dia-descarga-columnas.test.ts` |
 | R405 | `cierres-retirados.guardia.test.ts` › R405; `pagos-captura.guardia.test.ts` |
 | R406 | `cierre-dia-descarga-columnas.test.ts` (literal); `CierresDescargaColumnas.test.tsx` |
-| R407 | T6 (`git diff --name-only`): esta tanda no toca `lib/`, `db/` ni `e2e/` |
+| R407 | T6 (`git diff --name-only origin/dev...HEAD`): sin rutas de `lib/`, `db/` ni `e2e/` (verificado) |
 | R408 | `cierres-retirados.guardia.test.ts` › control positivo y contrapruebas |
 | R409 | `cascada-central-en-las-dos-pantallas.guardia.test.ts` › superficies `[]`, `problemasR38/R21` + contrapruebas |
 
@@ -220,4 +235,4 @@ ajeno → hallazgo; prefijos distinguidos).
 
 ### Veredicto
 
-T0, T2, T3 y T4 hechas: mudanza idéntica, sin zona solo el aviso, cuatro archivos borrados y guardia R400 en verde; queda T6 para el leader.
+T0-T4 y T6 hechas: gate verde, R407 sin `lib/`, `db/` ni `e2e/`, y los dos E2E verdes en dos corridas seguidas (26/26 cada una).
