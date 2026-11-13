@@ -13,8 +13,8 @@
 - **Extracción de textos por AST** en `tests/unit/guards/rechazo-nombre-466.guardia.test.ts`
   (`textosVisibles`, con `typescript`, que ya es dependencia del repo): literales, plantillas y texto JSX
   con su línea. No separa los especificadores de `import`.
-- **Quitador de comentarios** `tests/fixtures/sin-comentarios.ts`: lo sigue usando la guardia de
-  diálogos para lo que no pasa a AST.
+- **Quitador de comentarios** `tests/fixtures/sin-comentarios.ts`: ya no lo usa ninguna guardia de
+  esta ficha (la de diálogos pasó a AST en T3.1); sigue en el repo para otros tests.
 - **Regex de voseo con `\p{L}` y bandera `u`** en `tests/unit/utils/cola-propia-vista.test.ts`
   (SLT-138): la idea de los límites se hereda; la lista no (es corta y local).
 - **El gate rápido corre siempre las guardias**: `arnes.config.json > gate.siempre = ["guard"]` y

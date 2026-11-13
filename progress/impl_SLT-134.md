@@ -254,3 +254,7 @@ estaban verdes en la tanda 1 y no se tocan en esta. Ningún R sin test.
 
 T3 y T4.2 hechas: guardia de diálogos por AST sobre el censo compartido, D65 cerrada, 7 mutaciones rojas y
 revertidas, mapa completo sin R huérfanos; falta T4.1 (`./init.sh`, leader).
+
+## T4.1 (leader)
+- `./init.sh` verde en la rama a 0b51c59e: `INIT_EXIT=0` (log del leader `gate-134b.log`, base desechable `slt134_wt`; 344 archivos de test en verde).
+- **Diff solo textos:** `git diff origin/feature/SLT-141-excel-hojas-cierre-bodega...HEAD -- app components` = 12 archivos, 52+/51−, solo literales, plantillas, texto JSX y el comentario de P3 (R146). Revisado en la review 1 (`progress/review_SLT-134.md`): los 47 textos coinciden con el Anexo A.

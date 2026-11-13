@@ -72,7 +72,7 @@ Solo cadenas: ni constantes nuevas ni ramas nuevas.
 
 ## T4 — Cierre
 
-- [ ] **T4.1** `./init.sh` verde. `git diff origin/dev -- app components` solo con cambios dentro de
+- [x] **T4.1** `./init.sh` verde. `git diff origin/dev -- app components` solo con cambios dentro de
   literales de cadena, plantillas, texto JSX y el comentario de P3 (R146), revisado a ojo y anotado.
   *Hecho:* gate verde con `INIT_EXIT=` en el log; nota «diff solo textos» en `progress/impl_SLT-134.md`.
 - [x] **T4.2** `progress/impl_SLT-134.md` con el mapa `R<n> → test` de `## Trazabilidad`, las mutaciones
