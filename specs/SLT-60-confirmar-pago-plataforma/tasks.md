@@ -148,7 +148,7 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
 - [x] **T8.1** `docs/architecture.md`, en «Facturas de la plataforma»: el saldo, lo disponible, la
   confirmación, las dos tablas, el bloqueo de la anulación y que la deuda cuenta los confirmados. **Hecho:**
   la guardia del perfil en verde.
-- [ ] **T8.2** `progress/impl_SLT-60.md` con el mapa `R<n> → test` de R1 a R38.
+- [x] **T8.2** `progress/impl_SLT-60.md` con el mapa `R<n> → test` de R1 a R38.
 
 ## T9 — Cierre (depende de todo)
 

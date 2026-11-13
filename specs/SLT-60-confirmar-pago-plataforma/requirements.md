@@ -182,7 +182,9 @@ Escritos por `spec_author` el 2026-11-13. Vocabulario:
   mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.»
 - **R37.** CUANDO se elige «Pago a la plataforma» en el diálogo de registro, la frase del efecto DEBE decir:
   «Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma
-  confirma el pago. Baja la ganancia.»
+  confirma el pago; baja la ganancia.»
+  > Decisión del humano (2026-11-13): una sola oración, porque la regla de «una oración» de
+  > `tests/unit/components/wallet-conceptos-manuales.test.ts` (fichas 459 R60 / 461 R41) no cambia.
 - **R38.** La ayuda de la wallet (`docs/ayuda/oficina/wallet-caja.md`, sección «Lo que la empresa debe a la
   plataforma») DEBE explicar cuatro cosas:
   - que el pago queda por confirmar y la deuda baja al confirmarlo;

@@ -210,7 +210,7 @@ ruta no se puede quitar `sumaPagosVigentes` ni pasar el tope a un solo repositor
 **Veredicto:** T5b.1 y T5b.4 en verde; T5b.3 queda en rojo por el choque del literal de R37 con el
 invariante «una oración» (a decidir en el spec).
 
-## Pregunta abierta — R37 contra la regla de una oración
+## R37 contra la regla de una oración (resuelta)
 
 La frase de R37 tiene dos oraciones («…confirma el pago. Baja la ganancia.») y la regla de las fichas 459 R60 /
 461 R41 en `tests/unit/components/wallet-conceptos-manuales.test.ts` («son de UNA línea: … sin dos oraciones
@@ -590,3 +590,61 @@ test de integración de T3.5).
   skipped`; los 4 son `dependencias-declaradas-presentes` (baseline). `catalogo-postgres-acota-esquema` en verde.
 
 **Veredicto:** T5b.2, T6.1–T6.6, T8.1 y T9.3 en verde con base; queda abierta la pregunta de R37 (T5b.3).
+
+**Decisión del humano (2026-11-13):** opción (a), una sola oración: «…confirma el pago; baja la ganancia.».
+La regla no cambia. R37 actualizado en `requirements.md`.
+
+## T9.2 — conteo en prod
+
+Pendiente del humano: el conteo de solo lectura en prod
+(`SELECT count(*) FROM wallet_movimiento WHERE categoria = 'egreso_pago_plataforma'`) lo corre él, no el
+implementer (decisión del 2026-11-13). T9.2 queda sin marcar.
+
+## T8.2 — Mapa R → test
+
+Siglas: **INT** = `tests/integration/db/pago-plataforma-confirmacion.test.ts`; **SVC** =
+`tests/unit/services/pago-plataforma-confirmacion-service.test.ts`; **ACT** = `tests/unit/actions/pagos-plataforma.test.ts`;
+**E2E** = `e2e/pago-plataforma-confirmacion.spec.ts`; **COMP** = `tests/components/PagosPorConfirmar.test.tsx`;
+**PAG** = `tests/integration/plataforma-empresa-detalle-page.test.tsx`; **TOPE** =
+`tests/unit/services/tope-pago-plataforma-service.test.ts`; **DEUDA45** = `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`.
+
+| R | Test |
+|---|---|
+| R1 | INT «R1, R6: A paga 200 000 → por confirmar; la caja baja 200 000, la deuda NO baja y lo disponible sí» |
+| R2 | INT «R2: A intenta 180 000,01 → validation_error…»; TOPE «R2: … 180 000,00 cabe (el borde exacto)» y «R2: … 180 000,01 supera»; `wallet-egreso-service.test.ts` «R9, SLT-60 R36: supera → validation_error en monto…» |
+| R3 | INT «R3: A con órdenes por 380 000 y sin cerrar → disponible 0…»; TOPE «R3: con 0,00 disponibles…», «R3: con lo disponible negativo (−30 000,00…)» |
+| R4 | INT «R4: como servi_app a mano, un pago de 180 000,01 → check_violation; uno de 180 000,00 entra» |
+| R5 | INT «R5: dos pagos de 100 000 a la vez… uno entra y el otro es validation_error»; TOPE «R5: toma el candado ANTES…» |
+| R6 | INT «R1, R6: …» (deuda 380 000, disponible 180 000) |
+| R7 | INT «R16, R22» y «R18, R7»; DEUDA45 «SLT-60 R7, R8, R27: …»; `tests/unit/actions/deuda-plataforma.composition-root.test.ts`; E2E paso 4 |
+| R8 | DEUDA45 «SLT-60 R7, R8, R27: …»; `tests/unit/actions/empresas-plataforma.composition-root.test.ts` «el superadmin recibe el listado…» |
+| R9 | INT «R9: A anula el pago de 100 000 por confirmar → ok…» |
+| R10 | INT «R10: A anula el pago confirmado → forbidden…»; `tests/unit/services/wallet-anulacion-service.test.ts` «SLT-60 … (R10)»; `tests/integration/db/pago-plataforma-sl45.test.ts` «SLT-60 R10»; E2E paso 4 |
+| R11 | INT «R11: el contra-asiento del pago confirmado escrito a mano → SL060» |
+| R12 | INT «R12, R14, R32: …»; COMP «SLT-60 R12 …»; PAG «R12: lee con el actor de la sesión…», «R12: sin pagos…», «R12: un rol de empresa no lee…»; SVC «verDeEmpresa (R12, R14)»; ACT «verPagosDeEmpresaAction… (R12, R14, R32)» |
+| R13 | COMP «con `null` dice «No se pudieron cargar los pagos por confirmar»…»; PAG «R13: si la lectura da %s…»; ACT «si la base devuelve otra forma, lanza (… R13)» |
+| R14 | `tests/unit/utils/reparto-pago-plataforma.test.ts` «R14: el pago de 300 000 propone 200 000 … y 100 000…» (+4 casos R14); COMP «Confirmar pago de {monto}…»; INT «R12, R14, R32» |
+| R15 | INT «R15, R17: un reparto inválido…» y «R31»; SVC «R15, R17: %s de la base va bajo su factura» |
+| R16 | INT «R16, R22: el superadmin confirma los 200 000…»; SVC «R16: …»; ACT «R16: …» |
+| R17 | INT «R15, R17»; SVC «R17: …» (4 casos); ACT «R17: …»; reparto «R17: …» (9 casos); COMP «si la suma no cuadra…», «un monto sobre el saldo…», «un `validation_error` del servidor…» |
+| R18 | INT «R18, R7: un pago que deja el saldo en 0…» |
+| R19 | INT «R19: confirmar otra vez → ya_confirmado» y «R19: dos confirmaciones a la vez…»; SVC «R19»; ACT «R19» |
+| R20 | INT «R20: confirmar el anulado, uno inexistente o el de otra empresa → not_found»; SVC «R20»; ACT «R20» |
+| R21 | INT «R21: A anula y el superadmin confirma el mismo pago a la vez → gana exactamente una…» |
+| R22 | INT «R16, R22: … disponible igual…» |
+| R23 | COMP «SLT-60 R23 — tras confirmar, la página se relee» |
+| R24 | SVC «R24: …» (4 casos); ACT «R24: un maestro recibe forbidden…», «R24: sin sesión…» |
+| R25 | INT «R25: B lee solo sus confirmaciones y aplicaciones; otra empresa no ve nada; y no puede escribirlas (42501)» |
+| R26 | INT «R26: una confirmación o una aplicación no cambian, tampoco como dueño (SL060)» |
+| R27 | `tests/components/empresas-module.test.tsx` «SLT-60 — el contador … (R27)» (0, 1, 3); DEUDA45 «SLT-60 R27: …»; E2E paso 3 |
+| R28 | `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts` «R28: …» |
+| R29 | `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts` «R29: el down.sql quita … y repone el tope de SLT-118» |
+| R30 | E2E pasos 2, 3 y 4 |
+| R31 | INT «R31: C con cerradas de 200 000 y −30 000 → disponible 170 000…» |
+| R32 | COMP ««Ver comprobante» con comprobante y «Sin comprobante» sin él (R32)»; INT «R12, R14, R32» y «R32, R34»; E2E paso 3 |
+| R33 | SVC «R33: firma con el TTL de la wallet…»; ACT «R33: …»; COMP «al pulsarlo pide SOLO el pago y abre la url firmada… (R33)»; PAG «R33: …»; INT «R32, R34»; E2E paso 3 |
+| R34 | SVC «R34: …» (4 casos); ACT «R34: …» (2 casos); INT «R32, R34: … el pago de C no se ve desde B» |
+| R35 | `tests/unit/components/wallet-labels.test.ts`; `tests/components/WalletDeudaPlataformaSL45.test.tsx`; `tests/components/WalletDeudaPlataformaSL40.test.tsx`; `tests/unit/asistente/contexto-sl45.test.ts` «R1–R3 y SLT-60 R35…»; E2E paso 2; `e2e/cobro-plataforma-sl40.spec.ts` |
+| R36 | `tests/unit/services/wallet-egreso-service.test.ts` «R9, SLT-60 R36…»; `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx` «R9, SLT-60 R36…»; E2E paso 2 |
+| R37 | `tests/unit/components/wallet-conceptos-manuales.test.ts` «cada concepto tiene su frase…» y «R6: sus dos frases…»; `tests/components/WalletDeudaPlataformaSL45.test.tsx` «R4: …»; `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx` «las siete frases de la 461…» |
+| R38 | `tests/unit/asistente/contexto-sl45.test.ts` «SLT-60 R38, …» (3 casos) |
