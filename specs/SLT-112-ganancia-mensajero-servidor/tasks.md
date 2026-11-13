@@ -83,14 +83,14 @@
 
 ## T7 — Cierre (implementer)
 
-- [ ] **T7.1** Ponerse al día con `dev` (SLT-139 toca `CierreDiaService.ts` y `lib/actions/cierre-dia.ts`;
+- [x] **T7.1** Ponerse al día con `dev` (SLT-139 toca `CierreDiaService.ts` y `lib/actions/cierre-dia.ts`;
   `design.md > 5 > Orden de merge`). **Hecho:** sin conflictos pendientes; T2.2 y T3.1 verdes tras el
   merge.
-- [ ] **T7.2** `./init.sh` verde y el grupo `dinero` en local (`docs/perfil-agentes.md`). **Hecho:**
+- [x] **T7.2** `./init.sh` verde y el grupo `dinero` en local (`docs/perfil-agentes.md`). **Hecho:**
   salida con `INIT_EXIT` anotada en `progress/impl_SLT-112.md`.
-- [ ] **T7.3** Anotar en `progress/features/SLT-112.md` lo que hereda SLT-139 (`design.md > 5 > Lo que
+- [x] **T7.3** Anotar en `progress/features/SLT-112.md` lo que hereda SLT-139 (`design.md > 5 > Lo que
   SLT-139 hereda`). **Hecho:** líneas escritas.
-- [ ] **T7.4** Mapa `R → test` en `progress/impl_SLT-112.md`, igual a `## Trazabilidad`. **Hecho:** todos
+- [x] **T7.4** Mapa `R → test` en `progress/impl_SLT-112.md`, igual a `## Trazabilidad`. **Hecho:** todos
   los R con un test que existe y está verde.
 
 ## Trazabilidad

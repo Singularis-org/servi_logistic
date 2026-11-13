@@ -203,3 +203,6 @@ Tests:
 
 **Veredicto (pantalla):** T5-T6 hechas; R357, R358 y R360 con test verde (componente y E2E) y 3/3 mutaciones de
 pantalla matadas.
+
+## Gate del leader (2026-11-12)
+- Tras `npx prisma generate` desde este worktree (20:46:30), `./init.sh` con la base slt112_ganancia: `INIT_EXIT=0` (log `scratchpad/gate-112.log`). E2E: `cierres-rediseno` del grupo `dinero` 17/17 en local; el grupo `dinero` entero y `dos-empresas-humo` (aislamiento) en verde en el CI del PR #147.
