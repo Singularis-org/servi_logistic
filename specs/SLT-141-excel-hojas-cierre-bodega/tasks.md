@@ -92,7 +92,7 @@
 
 - [ ] **T6.1** `./init.sh` verde con `INIT_EXIT` anotado; E2E `cierres-rediseno` entero y grupo
   `dinero` verdes en local. **Hecho:** salidas en `progress/impl_SLT-141.md`.
-- [ ] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA5 escrita por el leader en
+- [x] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA5 escrita por el leader en
   `progress/features/SLT-141.md`. **Hecho:** línea `tamano-pr-aceptado` presente o PA5 resuelta.
 - [ ] **T6.3** Mapa `R → test` en `progress/impl_SLT-141.md`, igual a `## Trazabilidad`. **Hecho:** cada
   R con un test que existe y está verde.
