@@ -3,7 +3,7 @@ import type { GestionResultado } from "@prisma/client";
 
 import { pagoPorResultado } from "@/lib/utils/pago-mensajero";
 import { ingresoBodegaPorResultado } from "@/lib/utils/ingreso-bodega";
-import { derivarIngresoBodega, derivarPagos } from "@/lib/utils/cierre-totales";
+import { derivarIngresoBodega, derivarPagos, pagosDelCierre } from "@/lib/utils/cierre-totales";
 import { fleteSinIvaDeGestion } from "@/lib/utils/ingreso-empresa";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { TarifaPago, ValorCobro, ValorPago, ValoresTienda } from "@/lib/types/tarifa-flexible";
@@ -159,6 +159,53 @@ describe("SLT-52 R34 — el pago es exactamente el importe, sin IVA", () => {
     expect(derivarPagos(gestiones, tarifas)).toStrictEqual({
       pagoByGestionId: { g1: "1250.50", g2: "400.00", g3: "0.00" },
       total: "1650.50",
+    });
+  });
+});
+
+/**
+ * SLT-147 (D66) — en el modelo nuevo el Incidente SI se paga cuando la tarifa tiene
+ * `mensajero_incidente`. La tabla de SLT-52 de arriba lo prueba solo con «0.00»; aqui, con un
+ * importe mayor que cero. Esperados a mano.
+ */
+describe("SLT-147 R412 — Incidente con valor del mensajero > 0 se paga", () => {
+  it("monto 1250.00: el pago es exactamente 1250.00, sin IVA", () => {
+    const t = nuevo(pago("mensajero_incidente", "monto", "1250.00"), null, "2750.55");
+    expect(pagoPorResultado("incidente", t)).toBe("1250.00");
+  });
+
+  it("porcentaje 10 % sobre el flete sin IVA 2750.55 = 275.055 -> 275.06", () => {
+    const t = nuevo(pago("mensajero_incidente", "porcentaje", "10.00"), null, "2750.55");
+    expect(pagoPorResultado("incidente", t)).toBe("275.06");
+  });
+});
+
+describe("SLT-147 R413 — el cierre suma el Incidente y lo congela con su importe", () => {
+  const entregado = pago("mensajero_entregado", "monto", "1250.50");
+  const incidente = pago("mensajero_incidente", "monto", "1250.00");
+  const tarifas = new Map<string, TarifaPago | null>([
+    ["g1", nuevo(entregado, null, "2750.55")],
+    ["g2", nuevo(incidente, null, "2750.55")],
+  ]);
+  const gestiones = [
+    { gestionId: "g1", resultado: "entregado" },
+    { gestionId: "g2", resultado: "incidente" },
+  ] as CierreGestionPendienteRow[];
+
+  it("derivarPagos: 1250.50 + 1250.00 = 2500.50", () => {
+    expect(derivarPagos(gestiones, tarifas)).toStrictEqual({
+      pagoByGestionId: { g1: "1250.50", g2: "1250.00" },
+      total: "2500.50",
+    });
+  });
+
+  it("pagosDelCierre: la gestion Incidente congela su importe 1250.00", () => {
+    expect(pagosDelCierre(gestiones, tarifas)).toStrictEqual({
+      modelo: "nuevo",
+      congelados: [
+        { gestionId: "g1", actor: "mensajero", valor: entregado, base: null, importe: "1250.50" },
+        { gestionId: "g2", actor: "mensajero", valor: incidente, base: null, importe: "1250.00" },
+      ],
     });
   });
 });

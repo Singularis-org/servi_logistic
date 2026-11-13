@@ -97,6 +97,22 @@ describe("R86 — fila cerrada", () => {
     expect(screen.queryByText("Pago ajustado")).toBeNull();
   });
 
+  it("SLT-147 (D66, R415): mensajero, un Incidente con pago 1250.00 pinta «₡1.250» en Ganancia", () => {
+    montar(
+      gestionFila({
+        gestionId: "i",
+        resultado: "incidente",
+        montoRecibido: "3000.00",
+        pagos: [{ metodo: "efectivo", monto: "3000.00" }],
+        pagoMensajero: "1250.00",
+      }),
+      { audiencia: "mensajero" },
+    );
+    expect(screen.getByText("₡1.250")).toBeInTheDocument();
+    expect(screen.queryByText("₡0")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
   it("R24: una gestión sin señales deja la celda vacía", () => {
     montar(gestionFila({ gestionId: "e" }));
     expect(screen.queryByText(/Vuelve a bodega|Pago ajustado|Sin tarifa/)).toBeNull();

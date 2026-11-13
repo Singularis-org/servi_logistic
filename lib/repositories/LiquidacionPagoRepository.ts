@@ -333,54 +333,19 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
   }
 
   /**
-   * Feature 205 (T2.2, R5/R6/R8) — los cierres `aprobado` de UN mensajero, con sus dos snapshots
-   * y su ANTIGUEDAD, ordenados `solicitado_at ASC, id ASC`.
+   * Feature 205 (T2.2, R5/R6/R8) + SLT-122 (R9/R10) — los cierres `aprobado` de UN mensajero
+   * dentro del alcance del actor, con sus dos snapshots y su ANTIGUEDAD, ordenados
+   * `solicitado_at ASC, id ASC`. Es la UNICA lectura de imputables (SLT-147, D63): la version sin
+   * alcance se borro porque podia mezclar cierres de satelite con dinero de la central.
    *
-   * Tres cosas que solo se ven aqui y que ningun doble de servicio veria:
+   * Lo que solo se ve aqui y que ningun doble de servicio veria:
    *
-   *  - el WHERE lleva `estado: "aprobado"` (mitad de R5) **y** `mensajeroId` (R24: nunca se
-   *    imputa a un cierre de otra persona). Quitar cualquiera de los dos es lo que una mutacion
-   *    del `where` haria, y los tests de servicio pasarian igual;
+   *  - el WHERE lleva `estado: "aprobado"` (mitad de R5), `mensajeroId` (R24: nunca se imputa a un
+   *    cierre de otra persona) y el `alcanceWhere` (el reparto solo imputa a cierres de su bodega;
+   *    quitarlo es la mutacion que la integracion pone en rojo);
    *  - **no hay `take`** (design §2.5.6): el tope de R53 acota la escritura, no la lectura;
-   *  - el `select` es explicito y minimo: de una tabla que esta feature NO gobierna se leen seis
+   *  - el `select` es explicito y minimo: de una tabla que esta feature NO gobierna se leen siete
    *    columnas y ni una mas. `resuelto_at` NO esta, a proposito (design §2.4).
-   */
-  async listarCierresImputables(
-    mensajeroId: string,
-    tx?: LiquidacionCierreTxClient,
-  ): Promise<CierreImputableDTO[]> {
-    const cliente = tx ?? this.prisma;
-    const rows = await cliente.cierreDia.findMany({
-      where: { mensajeroId, estado: "aprobado" },
-      select: {
-        id: true,
-        mensajeroId: true,
-        estado: true,
-        totalPagoMensajero: true,
-        totalEfectivo: true,
-        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
-        solicitadoAt: true,
-      },
-      // Eficiencia, no la verdad del orden: quien fija R8 es `ordenarCierresFifo`, que reordena
-      // lo que reciba. El desempate por `id` esta igualmente aqui para que dos cierres del mismo
-      // instante salgan siempre igual del motor.
-      orderBy: [{ solicitadoAt: "asc" }, { id: "asc" }],
-    });
-    return rows.map((row) => ({
-      id: row.id,
-      mensajeroId: row.mensajeroId,
-      estado: row.estado,
-      totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
-      totalEfectivo: row.totalEfectivo.toFixed(2),
-      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
-      solicitadoAt: row.solicitadoAt.toISOString(),
-    }));
-  }
-
-  /**
-   * SLT-122 (R9/R10) — `listarCierresImputables` con el alcance del actor en el WHERE: el reparto
-   * solo imputa a cierres de su bodega. Mismo `select` y mismo orden; quitar el `alcanceWhere` es
-   * la mutacion que la integracion pone en rojo.
    */
   async listarCierresImputablesEnAlcance(
     mensajeroId: string,
@@ -414,7 +379,8 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
 
   /**
    * Feature 205 (T3.1, R36 — enmienda de negocio) — CUANTOS cierres del mensajero NO estan
-   * `aprobado`, por estado. Es el complemento exacto del metodo de arriba, contado.
+   * `aprobado`, por estado. Es el complemento exacto de `listarCierresImputablesEnAlcance`, en
+   * el mismo alcance, contado.
    *
    * Lo que solo se ve aqui, y por eso se prueba aqui:
    *

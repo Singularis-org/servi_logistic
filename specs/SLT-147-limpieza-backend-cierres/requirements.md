@@ -132,9 +132,9 @@ en `feature_list.json`, `specs/`, `progress/` y el código del worktree (Grep; e
 
 ## Tasks
 
-- [ ] **T0** — Copiar `.env` al worktree antes del primer gate. *Hecho:* existe y el gate no salta la
+- [x] **T0** — Copiar `.env` al worktree antes del primer gate. *Hecho:* existe y el gate no salta la
   integración.
-- [ ] **T1 (D63, R410-R411)** — Borrar `listarCierresImputables` de
+- [x] **T1 (D63, R410-R411)** — Borrar `listarCierresImputables` de
   `lib/interfaces/repositories/ILiquidacionPagoRepository.ts` y de
   `lib/repositories/LiquidacionPagoRepository.ts`; corregir los comentarios que la citan
   (`ILiquidacionPagoRepository.ts:309-312`, `:324`; `LiquidacionPagoRepository.ts:381`, `:417`).
@@ -144,20 +144,20 @@ en `feature_list.json`, `specs/`, `progress/` y el código del worktree (Grep; e
   (`liquidacion-pago-repository.test.ts:1225-1233`). Crear la guardia de R410. *Hecho:* typecheck
   verde; `grep -rn "listarCierresImputables\b" lib app tests` solo encuentra la guardia; mutación de
   R410 roja y revertida.
-- [ ] **T2 (D66, R412-R413)** [P] — Casos nuevos en `pago-modelo-nuevo.test.ts` (no se toca el caso
+- [x] **T2 (D66, R412-R413)** [P] — Casos nuevos en `pago-modelo-nuevo.test.ts` (no se toca el caso
   «0.00» de la tabla de SLT-52). *Hecho:* verdes contra el código actual; mutación «`incidente` →
   `0.00`» en `importePagoNuevo` roja y revertida. Si salen rojos sin mutación: parar y avisar al leader.
-- [ ] **T3 (D66, R414-R415)** [P] — Caso nuevo en `cierre-pago-por-gestion.test.ts` y en
+- [x] **T3 (D66, R414-R415)** [P] — Caso nuevo en `cierre-pago-por-gestion.test.ts` y en
   `FilaGestion.test.tsx`. *Hecho:* verdes; mutación «la celda Ganancia de un incidente pinta 0» roja y
   revertida.
-- [ ] **T4 (D68, R416-R417)** — Declarar el tipo con la marca obligatoria para la lectura paginada del
+- [x] **T4 (D68, R416-R417)** — Declarar el tipo con la marca obligatoria para la lectura paginada del
   histórico (`ICierreDiaRepository.findCierresByMensajeroPaginado`), con `toCierrePasadoDTO` como
   único constructor; `conPendientePago` recibe ese tipo y lee la marca sin `=== true`; actualizar el
   comentario de `ICierreDiaService.ts:352-357`. Añadir `pagoIndependienteEfectivo: false` (el valor que
   hoy se infiere) a los dobles que el compilador pida, nunca `true` donde no estaba. *Hecho:*
   typecheck verde; los tests de los dobles tocados no cambian ninguna aserción; el `@ts-expect-error`
   de R416 muerde (quitarlo con la marca opcional → rojo).
-- [ ] **T5 (D72, R418)** [P] — Editar las filas R190 y R191 de `progress/impl_SLT-106.md`.
+- [x] **T5 (D72, R418)** [P] — Editar las filas R190 y R191 de `progress/impl_SLT-106.md`.
   *Hecho:* el mapa cita los dos tests de `ConsolidacionBodegaRefresco.test.tsx`.
 - [ ] **T6** — `progress/deudas.md`: marcar D63 y D66 como cerradas (commit, R410-R415) y **dar de
   alta D68 y D72 ya cerradas** (hoy no existen en el archivo), con su origen. *Hecho:* las cuatro

@@ -205,10 +205,9 @@ function makeStore(saldoTienda: string) {
     sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => pagos),
-    // Feature 205 (T2.2): el contrato gana dos LECTURAS. Ningun test de este archivo las
-    // usa —son del reparto—, pero el doble las expone para poder afirmar que los caminos de la
-    // 172 NO las llaman.
-    listarCierresImputables: vi.fn(async () => []),
+    // Feature 205 (T2.2): una LECTURA del reparto. Ningun test de este archivo la usa, pero el
+    // doble la expone para poder afirmar que los caminos de la 172 NO la llaman. (La lectura de
+    // imputables sin alcance se borro en SLT-147, D63.)
     listarPorReparto: vi.fn(async () => []),
     // Feature 205 (T3.1): la tercera lectura del reparto (el CONTEO por estado de R36).
     contarCierresNoAprobadosPorEstado: vi.fn(async () => []),
