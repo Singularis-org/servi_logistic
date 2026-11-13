@@ -340,3 +340,8 @@ Diseño §14; R28 (recepción «no aplicada»), R29 (trabajos que ya no aplican,
 
 Veredicto: T10.1–T10.7 hechos; typecheck, lint, unitarios y guardias en verde (baseline); integración R28/R29 por
 correr en CI.
+
+### T10.8 (frontend_dev, a16dc988)
+- R28 (pantalla) → `tests/components/PlanDetalle.test.tsx` («SLT-128 R28»: con pendiente, con `pendiente` null y sin
+  ninguna). `vitest run`: 28/28. eslint limpio; typecheck 0.
+- Diff contra `origin/dev` fuera de `specs/` y `progress/`: 40 archivos (tope aceptado).
