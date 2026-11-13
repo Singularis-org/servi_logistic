@@ -89,3 +89,17 @@ Base de vitest: `slt112_ganancia`. Sin `prisma generate`, sin `git stash`; árbo
 reproducidas mueren y no hay floats ni fugas entre empresas. Para la vuelta 2: marcar T7.1-T7.4, anotar
 `./init.sh` con `INIT_EXIT` y escribir en `progress/features/SLT-112.md` lo que hereda SLT-139, incluido
 quién implementa e inyecta el puerto `LecturaPagadoPorSatelite`. Sin cambios de código.
+
+## Vuelta 2 (acotada a a2ffdaaa..1628941d)
+
+Diff: solo `tasks.md`, `progress/impl_SLT-112.md`, `progress/features/SLT-112.md`. Sin cambios de código.
+
+- [x] B1 cerrado: T7.1-T7.4 marcadas `[x]`.
+  - T7.1: `origin/dev` es ancestro de HEAD (rama al día).
+  - T7.2: `## Gate del leader` en `progress/impl_SLT-112.md` con `INIT_EXIT=0` (base `slt112_ganancia`) y grupo `dinero` / `dos-empresas-humo` en CI del PR #147.
+  - T7.3: `## Lo que hereda SLT-139` en `progress/features/SLT-112.md`: SLT-139 IMPLEMENTA `LecturaPagadoPorSatelite.sumarPagadoPorSateliteEnRango` sobre `pago_satelite` y lo INYECTA en el composition root, con integración, antes de su merge.
+  - T7.4: `## Mapa R → test` presente en `progress/impl_SLT-112.md` (backend y pantalla).
+- menor: la nota dice «anotado también en `progress/features/SLT-139.md`», pero ese archivo no lo menciona en esta rama; la verificación queda del lado del leader (archivo de otra ficha).
+- m1 y m2 de la vuelta 1 siguen como estaban (aceptados / en CI).
+
+**Veredicto: OK.**
