@@ -91,3 +91,20 @@ Base de tests: `slt140_excel`. MCP del grafo no usado (Grep/Read y git en el wor
 
 **RECHAZADO (CAMBIOS)**: solo por B1, que es papeleo de T6. El código, los tests y la trazabilidad
 de R377-R383 están bien. Para la vuelta 2 basta comprobar B1 en el rango nuevo.
+
+## Vuelta 2 (acotada a 311f22ec..34c1703b)
+
+Rango: solo `progress/features/SLT-140.md`, `progress/impl_SLT-140.md` y `tasks.md`; ningún
+cambio de código ni de tests. No se corrieron tests ni mutaciones (árbol quieto).
+
+- [x] **B1 cerrado:** T6.1–T6.4 marcadas `[x]` (0 casillas abiertas en `tasks.md`).
+  `progress/impl_SLT-140.md > Gate del leader` anota `INIT_EXIT=0` sobre el árbol quieto
+  (log `gate-140b.log`) y que la primera corrida (`gate-140.log`) no vale. La herencia para
+  SLT-141 está en `progress/features/SLT-140.md > Lo que hereda SLT-141 (T6.3)`. El mapa R → test
+  de T6.4 está en las dos secciones `R → test` de la bitácora.
+- [x] **m2 cerrado:** `tamano-pr-aceptado` actualizado a 33 archivos / 2 726 líneas con el OK de
+  Carlos al tamaño real.
+- [x] **m4 cerrado:** gate repetido sin mutaciones en curso.
+- m1 («SINPE», deuda SL-22) y m3 (`reglaDelCierre` calculado dos veces): **menores aceptados**.
+
+**Veredicto: OK**
