@@ -102,6 +102,10 @@ export function etiquetaGuia(numGuia: number | null): string {
  *     `estado`, `acciones` y `mostrarRuta`, que también son datos que sólo tiene esta pantalla—.
  *     Dejarlo colarse en el spread lo metería en el objeto como un polizón que nadie lee y haría
  *     creer que la card lo recibe por ahí.
+ *
+ * SLT-125 (R11, design §5): `lugarRuta` viaja en el spread a propósito. Con ella la card enseña los
+ * dos lugares más hondos de la ruta de la orden y el destino de navegación lleva toda la ruta; sin
+ * ella, la card vuelve a los nombres de hoy.
  */
 export function novedadAOrdenCard({
   causa: _causa,

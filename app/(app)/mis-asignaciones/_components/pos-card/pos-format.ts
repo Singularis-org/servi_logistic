@@ -4,6 +4,7 @@ import {
   urlNavegacion,
   type DestinoNavegacion,
 } from "@/lib/utils/navegacion-externa";
+import { rutaInvertida } from "@/lib/utils/ubicacion-presentacion";
 
 // Rediseño "POS card" (rama ux): helpers de PRESENTACIÓN puros para la card del
 // mensajero estilo terminal (navegación primero, targets grandes, alto contraste).
@@ -56,18 +57,18 @@ export function mapsNavUrl(orden: MiAsignacionDTO): string {
  *
  * Feature 289. Vive aquí y no en `lib/utils/navegacion-externa.ts` a propósito: así aquel
  * módulo no conoce el DTO del mensajero y se puede testear con objetos literales.
+ *
+ * SLT-125 (R14, R15): el texto es la dirección y TODA la ruta de la orden, del lugar más hondo al
+ * nivel 1 (`rutaInvertida`), unidos por «, » como hoy. Sin `lugarRuta`, los tres nombres de hoy; en
+ * Costa Rica las dos dan la misma cadena.
  */
 export function destinoDeOrden(orden: MiAsignacionDTO): DestinoNavegacion {
+  const lugares = Array.isArray(orden.lugarRuta)
+    ? rutaInvertida(orden.lugarRuta)
+    : [orden.distritoNombre, orden.cantonNombre, orden.provinciaNombre];
   return {
     lat: orden.latitud,
     lng: orden.longitud,
-    texto: [
-      orden.direccion,
-      orden.distritoNombre,
-      orden.cantonNombre,
-      orden.provinciaNombre,
-    ]
-      .filter(Boolean)
-      .join(", "),
+    texto: [orden.direccion, ...lugares].filter(Boolean).join(", "),
   };
 }

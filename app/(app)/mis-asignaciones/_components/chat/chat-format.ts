@@ -6,6 +6,8 @@
 import type { ChatMensajeDireccion } from "@prisma/client";
 
 import { nombreDeEstado, type OrderStatusValue } from "@/lib/types/order-status";
+import type { NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
+import { dosLugaresDeLaOrden, type OrdenConLugar } from "@/app/(app)/_components/lugar-de-la-orden";
 
 /**
  * FICHA 455 (2026-09-24, design §2.1; R7, R12). Hasta la 455 el chip de la lista y de la cabecera
@@ -72,14 +74,19 @@ export function guiaVisible(orden: {
   return orden.numGuia === null ? orden.numRemision : `${orden.numGuia}`;
 }
 
-/** Zona de la parada ("Distrito · Cantón"), como segunda línea de la fila. */
-export function zonaCorta(orden: {
-  distritoNombre: string | null;
-  cantonNombre: string;
-}): string {
-  return orden.distritoNombre === null
-    ? orden.cantonNombre
-    : `${orden.distritoNombre} · ${orden.cantonNombre}`;
+/**
+ * Zona de la parada ("Distrito · Cantón"), como segunda línea de la fila.
+ *
+ * SLT-125 (R11, R15): con los `niveles` del país y la ruta de la orden, sus dos lugares más hondos en
+ * el mismo orden de hoy, el más hondo primero («abajo · arriba»); sin el más hondo, solo el otro (P7).
+ * Sin niveles o sin ruta, los dos campos de hoy.
+ */
+export function zonaCorta(
+  orden: OrdenConLugar,
+  niveles: readonly NivelDelPais[] = [],
+): string {
+  const { arriba, abajo } = dosLugaresDeLaOrden(orden, niveles);
+  return abajo === null ? (arriba ?? "") : `${abajo} · ${arriba ?? ""}`;
 }
 
 /**

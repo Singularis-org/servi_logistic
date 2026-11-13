@@ -136,7 +136,7 @@
 - [x] **T3.3** [P] Tabla de `/ordenes` y de satélite por niveles (`ordenes-columns.tsx`, P4). Test:
   `ordenes-columns-niveles.test.tsx`.
   **Hecho:** R5 en verde; las suites de `ordenes-columns` sin cambios.
-- [ ] **T3.4** [P] Tarjetas y detalle:
+- [x] **T3.4** [P] Tarjetas y detalle:
   - POS (`pos-format.ts`, `PosOrderCardMosaico.tsx`, `PosOrderCardDetalle.tsx`, `PosNavBlock.tsx`);
   - `SateliteOrderCard.tsx`, `chat-format.ts`, `AsignacionDetalle.tsx` y `novedad-a-orden-card.ts`.
 

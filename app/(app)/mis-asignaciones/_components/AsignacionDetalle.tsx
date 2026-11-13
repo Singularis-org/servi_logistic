@@ -11,6 +11,11 @@ import {
 import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import {
+  camposDeNivelDeLaOrden,
+  dosLugaresDeLaOrden,
+} from "@/app/(app)/_components/lugar-de-la-orden";
 
 // Feature 36 (R11) / rediseño 63: detalle de una orden asignada en TRES secciones
 // (Pedido, Entrega, Cobro), cada una como lista de definición accesible (<dt>/<dd>).
@@ -88,6 +93,12 @@ export interface AsignacionDetalleProps {
 export function AsignacionDetalle({ orden }: AsignacionDetalleProps) {
   // SL-20 (design §7; R19): los rótulos de la ubicación son los nombres de nivel del país.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-125 (R11, R12, R15): la línea bajo la dirección son los dos lugares más hondos de la ruta, el
+  // más hondo primero y unidos por «, » como hoy; debajo, un campo por nivel del país, rotulado con su
+  // tipo. Sin niveles o sin ruta (`null`), los tres campos de hoy con las etiquetas.
+  const niveles = useNivelesGeograficos();
+  const { arriba, abajo } = dosLugaresDeLaOrden(orden, niveles);
+  const camposDeNivel = camposDeNivelDeLaOrden(orden, niveles);
   return (
     <div className="flex flex-col gap-3">
       {/* Sección 1 — Pedido */}
@@ -114,17 +125,29 @@ export function AsignacionDetalle({ orden }: AsignacionDetalleProps) {
               {orden.direccion ?? "—"}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {orden.distritoNombre === null
-                ? orden.cantonNombre
-                : `${orden.distritoNombre}, ${orden.cantonNombre}`}
+              {abajo === null ? arriba : `${abajo}, ${arriba ?? ""}`}
             </p>
           </div>
         </div>
-        <dl className="grid grid-cols-3 gap-x-3 gap-y-4">
-          <Campo label={etiquetas.provincia.singular}>{orden.provinciaNombre}</Campo>
-          <Campo label={etiquetas.canton.singular}>{orden.cantonNombre}</Campo>
-          <Campo label={etiquetas.distrito.singular}>{orden.distritoNombre ?? "—"}</Campo>
-        </dl>
+        {camposDeNivel === null ? (
+          <dl className="grid grid-cols-3 gap-x-3 gap-y-4">
+            <Campo label={etiquetas.provincia.singular}>{orden.provinciaNombre}</Campo>
+            <Campo label={etiquetas.canton.singular}>{orden.cantonNombre}</Campo>
+            <Campo label={etiquetas.distrito.singular}>{orden.distritoNombre ?? "—"}</Campo>
+          </dl>
+        ) : (
+          // Teléfono primero (maqueta aprobada): con 3 niveles, la fila de 3 de hoy; con otro número,
+          // dos por fila, que es lo que cabe sin cortar el nombre de un tipo largo.
+          <dl
+            className={`grid gap-x-3 gap-y-4 ${camposDeNivel.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+          >
+            {camposDeNivel.map((campo) => (
+              <Campo key={campo.profundidad} label={campo.tipo}>
+                {campo.nombre ?? "—"}
+              </Campo>
+            ))}
+          </dl>
+        )}
         <dl className="mt-4 grid grid-cols-[1fr_auto] gap-x-4 border-t border-border pt-4">
           <Campo label="Notas">{orden.notas ?? "—"}</Campo>
           {/* Feature 160 (R18/R19/R24): intentos de entrega como UN CAMPO MAS del

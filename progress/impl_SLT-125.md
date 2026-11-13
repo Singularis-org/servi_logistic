@@ -738,3 +738,59 @@ vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped
 ### Veredicto T3.2
 
 Hecha: R7–R10 y R24–R26 en verde; Costa Rica descarga y se ve igual que hoy; ninguna aserción existente cambiada.
+
+## Género del motivo «retirado del catálogo» desde el nivel 4 (frontend_dev, 2026-11-13)
+
+Decisión humana del 2026-11-13. `motivoSinCoberturaLabel` (`app/(app)/configuracion/zonas/_components/cobertura-descarga-columnas.ts`)
+toma el género del singular del tipo con `esFemenino` de `lib/utils/filtro-ubicacion.ts` (la regla de SLT-47,
+reutilizada, no copiada). Niveles 1–3: textos de hoy sin cambio. Doc comment actualizado.
+
+- `tests/unit/descarga/cobertura-n-niveles.test.ts` (nuevo en SLT-125, no está en la base): «Manzana retirado» →
+  «Manzana retirada»; caso nuevo con un tipo femenino (Comuna, nivel 4) y uno masculino (Barrio, nivel 5).
+- R6 → `cobertura-n-niveles.test.ts`: 15/15.
+
+## T3.4 — Tarjetas y detalle (frontend_dev, 2026-11-13)
+
+### Archivos
+
+- Nuevo, puro: `app/(app)/_components/lugar-de-la-orden.ts` (`dosLugaresDeLaOrden` sobre `dosMasHondos`;
+  `camposDeNivelDeLaOrden`). Sin niveles del país o sin `lugarRuta`, los campos de hoy.
+- POS: `pos-card/pos-format.ts` (`destinoDeOrden`: dirección + `rutaInvertida`, «, »), `PosOrderCardMosaico.tsx`,
+  `PosOrderCardDetalle.tsx`, `PosNavBlock.tsx` («arriba · abajo»; el `ariaLabel` usa `arriba`).
+- `recepcion-satelite/_components/SateliteOrderCard.tsx` («arriba · abajo»).
+- Chat: `chat/chat-format.ts` (`zonaCorta(orden, niveles = [])`, «abajo · arriba») y su único consumidor
+  `chat/ChatOrdenesLista.tsx` (le pasa `useNivelesGeograficos()`).
+- `AsignacionDetalle.tsx`: línea «abajo, arriba» y un campo por nivel 1..P rotulado con el tipo, «—» donde la
+  ruta no llega; 3 niveles en la fila de 3 de hoy, otro número en 2 columnas (teléfono primero, maqueta).
+- `novedades/_components/novedad-a-orden-card.ts`: solo comentario; `lugarRuta` ya viaja en el spread.
+- Tests nuevos: `tests/unit/mis-asignaciones/pos-format-destino.test.ts`,
+  `tests/components/pos-satelite-chat-niveles.test.tsx`, `tests/components/AsignacionDetalle-niveles.test.tsx`.
+  Ninguna aserción de la base cambiada.
+
+### R → test
+
+| R | Test | Cifras |
+|---|---|---|
+| R11 | `pos-satelite-chat-niveles.test.tsx` (mosaico, detalle, nav, satélite y chat × países de 2, 3 y 4 niveles; aria-label) | 18/18 en el archivo |
+| R12 | `AsignacionDetalle-niveles.test.tsx` (2 y 4 niveles, «—» del nivel 4, dt/dd, 2 columnas) | 7/7 en el archivo |
+| R14 | `pos-format-destino.test.ts` (2 y 4 niveles, ruta de 4 pasos, vacíos, coordenadas) | 8/8 en el archivo |
+| R15 / P7 | los tres archivos, casos CR literales: con distrito, sin distrito y sin proveedor/sin `lugarRuta` | dentro de las cifras |
+
+### Salidas
+
+```
+pnpm run typecheck → exit 0
+pnpm exec eslint <11 fuentes + 4 tests> → 0 errores, 2 warnings (no-unused-vars de `_causa`/`_mensajeroNombre`
+  en novedad-a-orden-card.ts, previos a este cambio)
+vitest related --run <11 fuentes tocadas> --maxWorkers=1 → Test Files 72 passed (72) · Tests 1048 passed (1048)
+vitest run (los 4 archivos de test de esta tanda) → 15/15, 18/18, 7/7, 8/8
+vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped (339) · Tests 4 failed | 4723 passed | 25 skipped
+  los 4 rojos: dependencias-declaradas-presentes (baseline, heredado)
+e2e/mis-asignaciones.spec.ts → NO corrido: el worktree no tiene `.next` (haría falta `next build`) ni `.env`
+  propio; la app tomaría el `.env` de la raíz, con recursos remotos. Queda para CI.
+```
+
+### Veredicto T3.4
+
+Hecha: R11, R12, R14 y R15 en verde en unitarios y componentes; Costa Rica igual que hoy; ninguna aserción
+existente cambiada; E2E pendiente de CI.

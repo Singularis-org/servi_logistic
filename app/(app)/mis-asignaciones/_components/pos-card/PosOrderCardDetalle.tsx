@@ -9,6 +9,8 @@ import {
   ETIQUETA_PARA_MANANA,
 } from "@/lib/utils/dia-reparto-textos";
 
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { dosLugaresDeLaOrden } from "@/app/(app)/_components/lugar-de-la-orden";
 import { UbicacionTrigger } from "../UbicacionTrigger";
 import { formatMonto } from "./pos-format";
 import { CLASE_NOTA_AYUDA, claseChipEstado, marcasDeTarjeta, textoParada } from "./pos-estado";
@@ -57,9 +59,11 @@ export function PosOrderCardDetalle({
     bloqueado,
   });
 
-  // Ubicación en una línea: cantón · distrito — dirección (lo que falta se omite).
+  // Ubicación en una línea: cantón · distrito — dirección (lo que falta se omite). SLT-125 (R11,
+  // R15): los dos lugares más hondos de la ruta de la orden, que en Costa Rica son esos dos.
+  const { arriba, abajo } = dosLugaresDeLaOrden(orden, useNivelesGeograficos());
   const ubicacion = [
-    [orden.cantonNombre, orden.distritoNombre].filter(Boolean).join(" · "),
+    [arriba, abajo].filter(Boolean).join(" · "),
     orden.direccion,
   ]
     .filter(Boolean)

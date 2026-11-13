@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { normalizeName } from "@/lib/utils/normalize";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import {
   avisoReservaParaOtroDia,
   ETIQUETA_PARA_MANANA,
@@ -65,6 +66,8 @@ function OrdenFila({
   onSeleccionar: (id: string) => void;
 }) {
   const chip = chipDeEstado(orden.estatusValue);
+  // SLT-125 (R11): la zona de la fila son los dos lugares más hondos de la ruta, con los niveles del país.
+  const niveles = useNivelesGeograficos();
   // FICHA 456 (T3.7, design §4.3; R9/R30/R32): PATRÓN DE HERMANO. La fila es un `<button>` entero y
   // un botón no anida otro: el de información va FUERA, a su derecha. El contenido de la fila, su
   // nombre accesible y `aria-current` no cambian; tocar el botón de información no abre la
@@ -139,7 +142,7 @@ function OrdenFila({
           </div>
 
           <p className="mt-1 truncate text-xs text-muted-foreground">
-            {zonaCorta(orden)}
+            {zonaCorta(orden, niveles)}
           </p>
 
           {/* FICHA 430 (punto 3) — Y CON PALABRAS, no sólo con el badge. Si el mensajero escribe el
