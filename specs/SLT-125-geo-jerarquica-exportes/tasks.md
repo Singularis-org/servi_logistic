@@ -38,7 +38,7 @@
 
 ## T1 — Preparación (backend_dev) · sin dependencias de código
 
-- [ ] **T1.1** Inventario antes de tocar código. Anotar en `progress/impl_SLT-125.md`:
+- [x] **T1.1** Inventario antes de tocar código. Anotar en `progress/impl_SLT-125.md`:
   - cada lectura que nombra lugares con las relaciones `provincia`, `canton` o `distrito`, con su
     archivo y línea; se parte de la tabla de design §4.2;
   - confirmar que ningún test afirma la forma de esos `select` o `include`, como se midió en design
@@ -50,7 +50,7 @@
 
   **Hecho:** la lista está anotada. Cada archivo nuevo que aparezca se añade a «Archivos esperados», y
   cada aserción nueva que cambie se pregunta antes de seguir.
-- [ ] **T1.2** Referencia de las descargas de Costa Rica, **antes de cualquier cambio de código**
+- [x] **T1.2** Referencia de las descargas de Costa Rica, **antes de cualquier cambio de código**
   (design §7):
   - `tests/fixtures/descargas-cr/entrada.ts`;
   - `scripts/capturar-referencia-descargas.ts`;
@@ -58,7 +58,7 @@
 
   **Hecho:** el commit de la referencia va antes del primer commit de `lib/` o `app/`. El hash queda en
   `progress/impl_SLT-125.md`.
-- [ ] **T1.3** [P] Fixture `tests/integration/db/_fixtures/geo-125.ts` (design §13).
+- [x] **T1.3** [P] Fixture `tests/integration/db/_fixtures/geo-125.ts` (design §13).
   **Hecho:** lo importa un test vacío que pasa con `HAY_BASE_DE_DATOS`.
 
 ## T2 — Servidor (backend_dev) · depende de T1
@@ -283,6 +283,7 @@ Tests nuevos:
 - `tests/fixtures/descargas-cr/entrada.ts`
 - `tests/fixtures/descargas-cr/referencia.json`
 - `tests/integration/db/_fixtures/geo-125.ts`
+- `tests/integration/db/geo-125-fixture.test.ts` (añadido en T1.1/T1.3: el test que importa el fixture)
 - `tests/unit/utils/ubicacion-presentacion.test.ts`
 - `tests/unit/descarga/geo-columnas-n-niveles.test.ts`
 - `tests/unit/descarga/equivalencia-descargas-cr.test.ts`
@@ -324,3 +325,26 @@ Tests ajustados (entradas, o las aserciones autorizadas en design §13.1: solo A
 - `tests/unit/repositories/orden-repository.recepcion-satelite.test.ts`
 - `tests/unit/repositories/gestion-desde-ayuda-cierre.test.ts`
 - `tests/unit/whatsapp-envios/informe-transito-repo-consultas.test.ts`
+
+Añadidos por el inventario de T1.1 (2026-11-12; detalle en `progress/impl_SLT-125.md > T1.1`):
+- **Pendiente de autorización** — `tests/unit/repositories/orden-repository.novedades.test.ts`: `:415–449`
+  afirma con `toEqual` el `select` literal de `findNovedadesByTienda`, con las relaciones de lugar en
+  `:435–437`. Además su fila de entrada (`:160`).
+- `app/(app)/cierres-admin/_components/cierre-factura.tsx` (llama a `ubicacion` de `cierre-detalle-shared`).
+- Solo entrada (filas simuladas con `provincia: { nombre }` para un repositorio de §4.2, o
+  `OrdenGeocodeRow` con los 3 nombres):
+  - `tests/unit/repositories/cierre-dia-repository.test.ts`
+  - `tests/unit/repositories/cierre-detalle-causa-monto.test.ts`
+  - `tests/unit/repositories/cierre-pagos-lectura.test.ts`
+  - `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`
+  - `tests/unit/repositories/gestion-orden-repository.test.ts`
+  - `tests/unit/repositories/orden-repository.guia.test.ts`
+  - `tests/unit/repositories/orden-repository.test.ts`
+  - `tests/unit/repositories/satelite-paginado-where.test.ts`
+  - `tests/unit/services/api-pdf-etiqueta-columna-intacta.test.ts`
+  - `tests/unit/services/geocodificacion-marcador-contrato.test.ts`
+  - `tests/unit/services/geocodificacion-motivo.test.ts`
+  - `tests/integration/asimetria-sin-tarifa.test.ts`
+  - `tests/integration/db/devolucion-rechazadas-flow.test.ts` (si su doble de Prisma no admite las FK)
+
+Con ellos, la estimación sube de 113 a unos 129 archivos: se avisa al humano antes de seguir.
