@@ -244,10 +244,6 @@ function buildDobles(opciones: {
     // Feature 205 (T2.2): el contrato gana dos LECTURAS. Ningun test de este archivo las
     // usa —son del reparto—, pero el doble las expone para poder afirmar que los caminos de la
     // 172 NO las llaman.
-    listarCierresImputables: vi.fn(async () => {
-      log.push("listar:cierres-imputables");
-      return [];
-    }),
     listarCierresImputablesEnAlcance: vi.fn(async () => {
       log.push("listar:cierres-imputables");
       return [];
