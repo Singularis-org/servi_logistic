@@ -6,6 +6,8 @@ import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { EstatusBadge } from "./EstatusBadge";
 import { NotaGestionPendiente } from "./NotaGestionPendiente";
 import { toValidNumber } from "@/lib/utils/number";
+import { columnasDeNivel, type NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
+import { nivelesDeColumnas, rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
 
 // Placeholder para valores ausentes (relación opcional no resuelta).
 const SIN_DATO = "—";
@@ -87,17 +89,80 @@ function tiempoTranscurrido(value: Date | string): string {
  * `recibidas-columns.tsx`) siguen montando los mismos objetos y la tabla no ve columnas nuevas en
  * cada render.
  */
-const MEMO_COLUMNAS = new WeakMap<EtiquetasGeograficas, Column<OrdenListItemDTO>[]>();
+const MEMO_COLUMNAS = new WeakMap<EtiquetasGeograficas, WeakMap<object, Column<OrdenListItemDTO>[]>>();
 
-export function ordenesColumnsDe(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
-  const memo = MEMO_COLUMNAS.get(etiquetas);
+/**
+ * SLT-125 (design §5, P4; R5): con los `niveles` del país (`useNivelesGeograficos`), las tres columnas
+ * de lugar pasan a ser una por nivel, de 1 a P y en su sitio, con el mismo criterio que las descargas
+ * (R1–R3): encabezado = tipo del nivel, o `nivel_<k>` si choca con otro encabezado de la tabla o con
+ * otro nivel; ids `provincia`, `canton`, `distrito` y `nivel_<k>` desde el 4. Sin niveles (`[]` o sin
+ * proveedor), las tres de las `etiquetas`: en Costa Rica la tabla se ve igual que hoy.
+ *
+ * Se memoriza por etiquetas Y por niveles: el hook da la misma referencia en cada render, así que el
+ * mismo par devuelve EL MISMO arreglo. Sin niveles cuenta como una sola clave.
+ */
+const SIN_NIVELES: readonly NivelDelPais[] = [];
+
+export function ordenesColumnsDe(
+  etiquetas: EtiquetasGeograficas,
+  niveles: readonly NivelDelPais[] = SIN_NIVELES,
+): Column<OrdenListItemDTO>[] {
+  const clave = niveles.length === 0 ? SIN_NIVELES : niveles;
+  let porNiveles = MEMO_COLUMNAS.get(etiquetas);
+  if (porNiveles === undefined) {
+    porNiveles = new WeakMap();
+    MEMO_COLUMNAS.set(etiquetas, porNiveles);
+  }
+  const memo = porNiveles.get(clave);
   if (memo) return memo;
-  const columnas = construirOrdenesColumns(etiquetas);
-  MEMO_COLUMNAS.set(etiquetas, columnas);
+  const columnas = construirOrdenesColumns(etiquetas, nivelesDeColumnas(etiquetas, clave));
+  porNiveles.set(clave, columnas);
   return columnas;
 }
 
-function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
+/** Los nombres de lugar de hoy, que viajan en `relaciones` (niveles 1–3). */
+function nombresDeHoy(row: OrdenListItemDTO): (string | undefined)[] {
+  return [row.relaciones?.provincia?.nombre, row.relaciones?.canton?.nombre, row.relaciones?.distrito?.nombre];
+}
+
+/**
+ * Las columnas de lugar, una por nivel (R5). La celda del nivel k es el nombre del paso k de la ruta
+ * de la orden (`lugarRuta`), o `SIN_DATO` si no llega; un DTO sin ruta (el detalle de `/monitoreo`)
+ * cae a los nombres de `relaciones`, que es lo que estas columnas leían antes.
+ */
+function columnasDeLugar(
+  niveles: readonly NivelDelPais[],
+  otrosEncabezados: readonly string[],
+): Column<OrdenListItemDTO>[] {
+  const profundidades = [...niveles].sort((a, b) => a.profundidad - b.profundidad).map((n) => n.profundidad);
+  return columnasDeNivel(niveles, otrosEncabezados).map((columna, i) => {
+    const k = profundidades[i]!;
+    return {
+      id: columna.clave,
+      value: columna.encabezado,
+      render: (row: OrdenListItemDTO) => rutaDeLaFila(row.lugarRuta, nombresDeHoy(row))[k - 1]?.nombre ?? SIN_DATO,
+    };
+  });
+}
+
+/** El id de la columna tras la que van las de lugar (su sitio de siempre). */
+const ID_ANTES_DEL_LUGAR = "zona";
+
+function construirOrdenesColumns(
+  etiquetas: EtiquetasGeograficas,
+  niveles: readonly NivelDelPais[],
+): Column<OrdenListItemDTO>[] {
+  const otras = columnasSinLugar(etiquetas);
+  const sitio = otras.findIndex((c) => c.id === ID_ANTES_DEL_LUGAR) + 1;
+  const deLugar = columnasDeLugar(
+    niveles,
+    otras.map((c) => c.value),
+  );
+  return [...otras.slice(0, sitio), ...deLugar, ...otras.slice(sitio)];
+}
+
+/** Las columnas de la tabla que no son de lugar, en su orden de siempre. */
+function columnasSinLugar(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
   return [
     {
       id: "numGuia",
@@ -168,22 +233,7 @@ function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenL
       // `tienda`) y a `SIN_DATO` cuando la relación opcional no resolvió.
       render: (row) => row.relaciones?.zona?.nombre ?? row.zonaNombre ?? SIN_DATO,
     },
-    {
-      id: "provincia",
-      value: etiquetas.provincia.singular,
-      render: (row) => row.relaciones?.provincia?.nombre ?? SIN_DATO,
-    },
-    {
-      id: "canton",
-      value: etiquetas.canton.singular,
-      render: (row) => row.relaciones?.canton?.nombre ?? SIN_DATO,
-    },
-    {
-      id: "distrito",
-      value: etiquetas.distrito.singular,
-      // Relación opcional: la orden puede no tener distrito.
-      render: (row) => row.relaciones?.distrito?.nombre ?? SIN_DATO,
-    },
+    // Aquí, tras «Zona», van las columnas de lugar, una por nivel (`columnasDeLugar`).
     {
       id: "montoCobrar",
       value: "Monto a cobrar",
@@ -283,12 +333,18 @@ const liberadaColumn: Column<OrdenListItemDTO> = {
  * usan esta variante a propósito (ver sus propios comentarios): siguen derivando de
  * `ordenesColumns`, que no cambia.
  */
-const MEMO_REPROGRAMADA = new WeakMap<EtiquetasGeograficas, Column<OrdenListItemDTO>[]>();
+const MEMO_REPROGRAMADA = new WeakMap<Column<OrdenListItemDTO>[], Column<OrdenListItemDTO>[]>();
 
-export function ordenesColumnsReprogramadaDe(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
-  const memo = MEMO_REPROGRAMADA.get(etiquetas);
+export function ordenesColumnsReprogramadaDe(
+  etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
+): Column<OrdenListItemDTO>[] {
+  // Memoriza sobre el arreglo base (ya memorizado por etiquetas y niveles): el mismo par, el mismo
+  // arreglo.
+  const base = ordenesColumnsDe(etiquetas, niveles);
+  const memo = MEMO_REPROGRAMADA.get(base);
   if (memo) return memo;
-  const columnas = [...ordenesColumnsDe(etiquetas), liberadaColumn];
-  MEMO_REPROGRAMADA.set(etiquetas, columnas);
+  const columnas = [...base, liberadaColumn];
+  MEMO_REPROGRAMADA.set(base, columnas);
   return columnas;
 }

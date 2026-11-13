@@ -9,6 +9,7 @@ import { Pagination } from "@/components/shared/Pagination";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { BodegaLiberadasHoy } from "@/components/private/BodegaLiberadasHoy";
 import { useToast } from "@/hooks/useToast";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import { recepcionSateliteConfig } from "@/lib/config/recepcion-satelite";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
@@ -31,7 +32,7 @@ import { SateliteOrdenesListado } from "./SateliteOrdenesListado";
 import { AsignarSateliteModal } from "./AsignarSateliteModal";
 import { DeshacerAsignacionSateliteModal } from "./DeshacerAsignacionSateliteModal";
 import { CambiarDiaRepartoSateliteModal } from "./CambiarDiaRepartoSateliteModal";
-import { filaDescargaSatelite } from "./satelite-descarga-columnas";
+import { filaDescargaSateliteDe } from "./satelite-descarga-columnas";
 import {
   FILTRO_SATELITE_VACIO,
   filtroSinResultados,
@@ -230,6 +231,9 @@ export function RecepcionSateliteModule({
 }: RecepcionSateliteModuleProps) {
   const router = useRouter();
   const toast = useToast();
+  // SLT-125 (design §5; R1): los niveles del país, para la celda de cada nivel del archivo. Las
+  // columnas las declara el listado con los mismos niveles.
+  const nivelesGeograficos = useNivelesGeograficos();
   // Órdenes elegidas para asignar: SNAPSHOT que el listado entrega al pulsar "Asignar".
   // Vive aquí porque es lo que consume el modal de asignación.
   const [ordenesAAsignar, setOrdenesAAsignar] = useState<RecepcionSateliteDTO[]>(
@@ -610,7 +614,7 @@ export function RecepcionSateliteModule({
                     total: 0,
                   })
                 : descargarDatos("listarOrdenesBodegaCompleto", { ...filtro }),
-              filaDescargaSatelite,
+              filaDescargaSateliteDe(nivelesGeograficos),
             )
           }
           /**

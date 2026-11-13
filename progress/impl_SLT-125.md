@@ -619,3 +619,66 @@ autorización de 3 aserciones, y cobertura (P5) la de 2 más y el nombre del mot
 | R19 | `geografia-lecturas-sin-nodo-fk` (18/18), `geografia-sin-cte-recursiva` (5/5), sin cambios |
 | R20 | `tests/unit/repositories/ruta-sin-consulta-por-fila.test.ts` (9/9) |
 | R37 | 33 suites de `tests/integration/api`, sin cambios |
+
+## T3.1 y T3.3 — Columnas por nivel en descargas y tablas (frontend_dev, 2026-11-13)
+
+Explorado con Grep/Read (el índice del grafo no tiene este worktree).
+
+### Archivos
+
+- Nuevo: `app/(app)/_components/niveles-de-columnas.ts` — `nivelesDeColumnas` (los niveles del país, o
+  los 3 de las etiquetas si no llegan: superadmin, tests sin proveedor), `nivelesDeCeldas`,
+  `conColumnasDeNivel` (las de lugar en el sitio de las 3 de hoy, con `columnasDeNivel`) y `rutaDeLaFila`
+  (la ruta del DTO, o los 3 nombres de hoy si el DTO no la trae).
+- `ordenes-descarga-columnas.ts`: `columnasDescargaOrdenes(etiquetas, niveles?)`; factoría nueva
+  `filaDescargaOrdenDe(niveles?)` (celdas desde `lugarRuta`); `filaDescargaOrden(orden)` sigue con un
+  parámetro (hay `filas.map(filaDescargaOrden)` en tests de 470/170). `COLUMNAS_DESCARGA_ORDENES` igual.
+- `satelite-descarga-columnas.ts`: ídem (`columnasDescargaSatelite(etiquetas, niveles?)`, `filaDescargaSateliteDe`).
+- `cobertura-descarga-columnas.ts`: `columnasDescargaCobertura(etiquetas, niveles?)`,
+  `filaCobertura(etiquetas, niveles?)` (celdas desde `ruta`), `motivoSinCoberturaLabel(etiquetas, niveles?)`
+  da «<tipo del nivel k> retirado del catálogo» para `nivel_<k>_retirado` (k ≥ 4); 1–3 con sus textos de hoy.
+- Llamadores: `OrdenesModule.tsx`, `RecepcionSateliteModule.tsx`, `SateliteOrdenesListado.tsx`,
+  `DescargarCoberturaButton.tsx` (leen `useNivelesGeograficos()`).
+- `ordenes-columns.tsx` (P4): `ordenesColumnsDe(etiquetas, niveles?)` y `ordenesColumnsReprogramadaDe`;
+  una columna por nivel tras «Zona», ids `provincia/canton/distrito/nivel_<k>`, celda «—» si la ruta no
+  llega; memo por etiquetas y niveles. `recibidas-columns.tsx` pasa los niveles. `/monitoreo` sin cambio
+  (sin niveles: las 3 de hoy).
+- Tests: `tests/unit/descarga/equivalencia-descargas-cr.test.ts` (nuevo),
+  `tests/unit/components/ordenes-columns-niveles.test.tsx` (nuevo); ampliados (nuevos en SLT-125)
+  `geo-columnas-n-niveles.test.ts` y `cobertura-n-niveles.test.ts`. `referencia.json` y `entrada.ts` sin tocar:
+  la ruta se arma en el test (`rutaDeLugar`; en cobertura, de los 3 nombres).
+
+Notas:
+- `rutaDeLaFila` usa `Array.isArray` y no `??`. Bajo la sonda de `columnas-sensibles.guardia` la ruta no
+  es lista y la celda cae a los nombres de hoy; leer `dto.ruta[]` daría el origen `ruta[].nombre`, que su
+  lista negra (`\bruta\b`, pensada para rutas de almacenamiento) marcaría como prohibido. La guardia no se tocó.
+- El género del texto del motivo desde el nivel 4 es «retirado» (como cantón y distrito); el país no trae
+  el género (pregunta abierta heredada de SL-20).
+
+### R → test
+
+| R | Test | Cifras |
+|---|---|---|
+| R1 | `geo-columnas-n-niveles.test.ts` › «R1–R3: descargas de órdenes, satélite y cobertura…» (2, 3, 4 y 10 niveles; celdas desde la ruta) | 27/27 en el archivo |
+| R2 | ídem › «R2: un nivel «Zona» choca…; dos niveles iguales…» | dentro de 27/27 |
+| R3 | ídem › «R3: las claves de hoy no cambian…»; `ambito-columnas.guardia` sin cambios | dentro de 27/27 |
+| R4 | `equivalencia-descargas-cr.test.ts` (órdenes, satélite, cobertura: columnas, CSV byte a byte, XLSX celdas) | 11/11 |
+| R5 | `ordenes-columns-niveles.test.tsx` (CR igual que hoy; 2, 4 y 10 niveles; choque; satélite) | 11/11 |
+| R6 | `cobertura-n-niveles.test.ts` (parte de cliente: 2 y 4 niveles, motivo `nivel_4_retirado` por tipo, CR) + `equivalencia-descargas-cr` | 14/14; 11/11 |
+
+### Salidas
+
+```
+pnpm run typecheck → exit 0
+pnpm exec eslint <14 archivos tocados> → 0 problemas
+vitest related --run <10 fuentes tocadas> --maxWorkers=1 → Test Files 64 passed (64) · Tests 818 passed (818)
+  (incluye ordenes-columns, recibidas-columns, detalle-columnas, ordenes/satelite/cobertura-descarga-columnas,
+   DescargarCoberturaButton, archivo-identico-470, columnas-sensibles, sin editar)
+vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped (339) · Tests 4 failed | 4723 passed | 25 skipped
+  los 4 rojos: dependencias-declaradas-presentes (baseline, heredado)
+```
+
+### Veredicto T3.1 y T3.3
+
+Hechas: R1–R6 en verde, Costa Rica descarga y se ve igual que hoy (referencia sin regenerar), ninguna
+aserción existente cambiada.

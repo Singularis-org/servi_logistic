@@ -8,6 +8,13 @@
 import type { CoberturaDistritoDTO, MotivoSinCobertura } from "@/lib/types/cobertura";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
+import { celdasDeNivel, type NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
+import {
+  conColumnasDeNivel,
+  nivelesDeCeldas,
+  nivelesDeColumnas,
+  rutaDeLaFila,
+} from "@/app/(app)/_components/niveles-de-columnas";
 
 /** R16 — ámbito de la preferencia de columnas (selector + orden recordados en el navegador). */
 export const AMBITO_DESCARGA_COBERTURA = "tarifas-cobertura";
@@ -31,13 +38,15 @@ export const COLUMNAS_DESCARGA_COBERTURA: DescargaColumna[] = [
  * empresa (`etiquetas`, de `useEtiquetasGeograficas`). Es lo que monta la pantalla.
  * `COLUMNAS_DESCARGA_COBERTURA` sigue siendo el contrato de claves y orden, pero sus encabezados de provincia, cantón
  * y distrito son los neutros («Nivel 1»…): no se descarga con ella directamente.
+ *
+ * SLT-125 (design §5, P5; R1–R4, R6): con los `niveles` del país, una columna de lugar por nivel en
+ * el sitio de las tres de hoy, con el mismo criterio que la descarga de órdenes. Sin niveles, las de hoy.
  */
-export function columnasDescargaCobertura(etiquetas: EtiquetasGeograficas): DescargaColumna[] {
-  return COLUMNAS_DESCARGA_COBERTURA.map((columna) =>
-    columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito"
-      ? { ...columna, encabezado: etiquetas[columna.clave].singular }
-      : columna,
-  );
+export function columnasDescargaCobertura(
+  etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
+): DescargaColumna[] {
+  return conColumnasDeNivel(COLUMNAS_DESCARGA_COBERTURA, nivelesDeColumnas(etiquetas, niveles));
 }
 
 const SI = "Sí";
@@ -48,17 +57,28 @@ const NO = "No";
  * con el nombre del país de la empresa. La concordancia («retirada»/«retirado») es la de Costa
  * Rica: el género del nombre de nivel depende del país y el dato no lo trae (pregunta abierta,
  * `progress/impl_SL-20-T5b.md`).
+ *
+ * SLT-125 (R6, P5; decisión del 2026-11-13): desde el nivel 4 el motivo es `nivel_<k>_retirado`, y su
+ * texto nombra el tipo del nivel k del país (`niveles`), con la concordancia de «cantón» y «distrito».
+ * Los niveles 1–3 conservan sus textos de hoy. Sin niveles de 4 o más, no hay motivos de nivel ≥ 4.
  */
 export function motivoSinCoberturaLabel(
   etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
 ): Record<MotivoSinCobertura, string> {
-  return {
+  const textos: Record<MotivoSinCobertura, string> = {
     provincia_retirada: `${etiquetas.provincia.singular} retirada del catálogo`,
     canton_retirado: `${etiquetas.canton.singular} retirado del catálogo`,
     distrito_retirado: `${etiquetas.distrito.singular} retirado del catálogo`,
     sin_zona: "Sin zona asignada",
     varias_zonas: "Asignado a varias zonas",
   };
+  for (const nivel of niveles ?? []) {
+    if (nivel.profundidad >= 4) {
+      textos[`nivel_${nivel.profundidad}_retirado`] = `${nivel.singular} retirado del catálogo`;
+    }
+  }
+  return textos;
 }
 
 function siNo(valor: boolean): string {
@@ -75,16 +95,19 @@ function textoZona(zonas: readonly string[]): string {
 /**
  * Proyecta un distrito a una fila del archivo con los textos de R7-R14. SL-20 (R19): es una
  * factoría sobre las `etiquetas` del país de la empresa, que nombran los motivos de nivel; la forma
- * `fila(etiquetas)(dto)` es la que ya reconoce `columnas-sensibles.guardia`.
+ * `fila(etiquetas)(dto)` es la que ya reconoce `columnas-sensibles.guardia`. SLT-125: también sobre
+ * los `niveles` del país (columnas de lugar y motivos desde el nivel 4).
  */
 export function filaCobertura(
   etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
 ): (dto: CoberturaDistritoDTO) => DescargaFila {
-  const motivos = motivoSinCoberturaLabel(etiquetas);
+  const motivos = motivoSinCoberturaLabel(etiquetas, niveles);
+  const nivelesDeLaFila = nivelesDeCeldas(niveles);
   return (dto) => ({
-    provincia: dto.provincia,
-    canton: dto.canton,
-    distrito: dto.distrito,
+    // SLT-125 (R1, R6): una celda por nivel desde la ruta de la fila (nivel 1 a P); sin ella, los
+    // tres nombres de hoy.
+    ...celdasDeNivel(rutaDeLaFila(dto.ruta, [dto.provincia, dto.canton, dto.distrito]), nivelesDeLaFila),
     activo: siNo(dto.disponible),
     cobertura: siNo(dto.cobertura),
     motivo: dto.motivo === null ? null : motivos[dto.motivo],

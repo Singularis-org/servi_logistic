@@ -119,7 +119,7 @@
 
 ## T3 — Pantallas (frontend_dev) · depende de T0.2 y T2
 
-- [ ] **T3.1** [P] Descargas por columnas: órdenes, satélite y cobertura, con sus llamadores
+- [x] **T3.1** [P] Descargas por columnas: órdenes, satélite y cobertura, con sus llamadores
   (`OrdenesModule.tsx`, `SateliteOrdenesListado.tsx`, `DescargarCoberturaButton.tsx`). Tests:
   `geo-columnas-n-niveles.test.ts`, `cobertura-n-niveles.test.ts` y `equivalencia-descargas-cr.test.ts`.
   **Hecho:** R1–R4 y R6 en verde; la referencia de T1.2 sin regenerar.
@@ -133,7 +133,7 @@
   **Hecho:**
   - R7–R10, R24–R26 en verde;
   - los tests de capacidad de la etiqueta en verde con 10 niveles (design §5).
-- [ ] **T3.3** [P] Tabla de `/ordenes` y de satélite por niveles (`ordenes-columns.tsx`, P4). Test:
+- [x] **T3.3** [P] Tabla de `/ordenes` y de satélite por niveles (`ordenes-columns.tsx`, P4). Test:
   `ordenes-columns-niveles.test.tsx`.
   **Hecho:** R5 en verde; las suites de `ordenes-columns` sin cambios.
 - [ ] **T3.4** [P] Tarjetas y detalle:
