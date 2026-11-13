@@ -74,6 +74,8 @@ function txDeCambio(tipoActual: string) {
     $executeRaw: executeRaw,
     usuario: { findUnique },
     plan,
+    // SLT-128 (R19): el cambio de tipo busca una recepción del pendiente del plan que mover; aquí no hay pendiente.
+    planCambioProgramado: { findUnique: vi.fn(async () => null) },
     historialAccion: { createMany },
   };
   const prisma = { $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as Repo;

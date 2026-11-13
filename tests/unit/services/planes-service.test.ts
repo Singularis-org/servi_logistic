@@ -390,3 +390,37 @@ describe("SL-24 — cancelar un cambio programado y listar (R7, R39)", () => {
     expect(await servicio.planesPublicos()).toEqual([plan()]);
   });
 });
+
+// SLT-128 (design §7; R14–R16): el rechazo `cambio_a_medias` lo decide el repositorio bajo el cerrojo del plan; el
+// servicio no lo traduce ni le añade reglas. El SQL (quién ya lo recibió, plan partido) lo mide
+// `tests/integration/db/planes-cambio-por-empresa.test.ts`.
+describe("SLT-128 — cambio_a_medias pasa tal cual (R14, R15, R16)", () => {
+  it("R14: «Cancelar cambio» con alguna empresa que ya lo recibió devuelve cambio_a_medias, una sola llamada", async () => {
+    repo.cancelarCambio.mockResolvedValueOnce({ estado: "cambio_a_medias" });
+    expect(await servicio.cancelarCambio(SUPERADMIN, { planId: PLAN })).toEqual({ estado: "cambio_a_medias" });
+    expect(repo.cancelarCambio).toHaveBeenCalledWith(PLAN, "u-sa");
+    expect(llamadasAlRepositorio()).toBe(1);
+  });
+
+  it("R15: archivar con el cambio a medias devuelve cambio_a_medias", async () => {
+    repo.archivar.mockResolvedValueOnce({ estado: "cambio_a_medias" });
+    expect(await servicio.archivar(SUPERADMIN, { planId: PLAN })).toEqual({ estado: "cambio_a_medias" });
+    expect(repo.archivar).toHaveBeenCalledWith(PLAN, "u-sa");
+  });
+
+  it("R16: la edición «De inmediato» con el plan partido devuelve cambio_a_medias y no programa nada", async () => {
+    repo.editar.mockResolvedValueOnce({ estado: "cambio_a_medias" });
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: null })).toEqual({ estado: "cambio_a_medias" });
+    expect(repo.editar).toHaveBeenCalledTimes(1);
+    expect(repo.programarCambio).not.toHaveBeenCalled();
+  });
+
+  it.each(ROLES_DE_EMPRESA)("R14: el rol %s de una empresa no llega al repositorio al cancelar, archivar ni editar", async (rol) => {
+    const actor: Actor = { usuarioId: "u-1", rol, organizacionId: EMPRESA };
+    repo.cancelarCambio.mockResolvedValue({ estado: "cambio_a_medias" });
+    expect(await servicio.cancelarCambio(actor, { planId: PLAN })).toEqual({ estado: "forbidden" });
+    expect(await servicio.archivar(actor, { planId: PLAN })).toEqual({ estado: "forbidden" });
+    expect(await servicio.editar(actor, { planId: PLAN, ...VERSION, vigenteDesde: null })).toEqual({ estado: "forbidden" });
+    expect(llamadasAlRepositorio()).toBe(0);
+  });
+});

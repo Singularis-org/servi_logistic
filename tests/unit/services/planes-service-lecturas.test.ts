@@ -74,7 +74,8 @@ function detalleLeido(): DetallePlanLeido {
   return {
     plan: plan(),
     empresaNombre: null,
-    pendiente: { vigenteDesde: RIGE, version: PENDIENTE },
+    pendiente: { vigenteDesde: RIGE, version: PENDIENTE, recibidas: 0, total: 1 }, // SLT-128 (R11): 0 de su única empresa
+    noAplicadas: [],
     empresas: [{ id: EMPRESA, nombre: "Mensajería Uno" }],
     rastro: [
       {
@@ -276,7 +277,13 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     if (r.estado !== "ok") return;
     expect(r.detalle.plan).toEqual(plan());
     expect(r.detalle.empresaNombre).toBeNull();
-    expect(r.detalle.pendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Nombre del plan: Básico → Básico plus"] });
+    // SLT-128 (R11): con el conteo de recepciones tal cual lo lee el repositorio.
+    expect(r.detalle.pendiente).toEqual({
+      vigenteDesde: "2026-11-15",
+      lineas: ["Nombre del plan: Básico → Básico plus"],
+      recibidas: 0,
+      total: 1,
+    });
     expect(r.detalle.empresas).toEqual([{ id: EMPRESA, nombre: "Mensajería Uno" }]);
     expect(r.detalle.rastro).toEqual([
       { id: "r2", accion: "editado", cambios: { nombre: { antes: "Inicial", despues: "Básico" } }, actorNombre: "Ana Pérez", creadoAt: "2026-10-20T10:00:00.000Z" },
@@ -288,6 +295,28 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     repo.detalle.mockResolvedValueOnce({ ...detalleLeido(), pendiente: null });
     const r = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
     expect(r.estado === "ok" && r.detalle.pendiente).toBeNull();
+  });
+
+  it("SLT-128 R28: las empresas que no recibieron el cambio pasan tal cual, con el instante en ISO; sin ninguna, vacío", async () => {
+    const r0 = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
+    expect(r0.estado === "ok" && r0.detalle.noAplicadas).toEqual([]);
+
+    repo.detalle.mockResolvedValueOnce({
+      ...detalleLeido(),
+      pendiente: null,
+      noAplicadas: [
+        {
+          empresaId: EMPRESA,
+          empresa: "Mensajería Uno",
+          motivo: "cobro_quincenal_ordenes_mensuales",
+          desde: new Date("2026-12-01T06:00:00.000Z"),
+        },
+      ],
+    });
+    const r = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
+    expect(r.estado === "ok" && r.detalle.noAplicadas).toEqual([
+      { empresaId: EMPRESA, empresa: "Mensajería Uno", motivo: "cobro_quincenal_ordenes_mensuales", desde: "2026-12-01T06:00:00.000Z" },
+    ]);
   });
 });
 

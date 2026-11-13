@@ -4,14 +4,23 @@ import { contextoActual, type ContextoDatos } from "@/lib/db/contexto-empresa";
 import type { CambioDeEmpresaPendiente, IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { MODULO_POR_JOB } from "@/lib/modulos/reparto";
+import type { PlanesRepositoryDeJobs } from "@/lib/planes/jobs-cambio-plan";
 
 // El repositorio de los handlers cableados: un doble que registra en qué contexto lo llaman. El resto del
 // módulo es el real (`importOriginal`).
 const llamadas: { metodo: string; contexto: ContextoDatos | undefined; args: unknown[] }[] = [];
+// SLT-128: el barrido también pasa por las recepciones por empresa; aquí no hay ninguna vencida.
 const dobleCableado: Pick<
-  IPlanesRepository,
-  "aplicarCambioProgramado" | "cambiosVencidos" | "aplicarCambioDeEmpresa" | "cambiosDeEmpresaVencidos"
+  PlanesRepositoryDeJobs,
+  | "recepcionesVencidas"
+  | "recibirCambio"
+  | "aplicarCambioProgramado"
+  | "cambiosVencidos"
+  | "aplicarCambioDeEmpresa"
+  | "cambiosDeEmpresaVencidos"
 > = {
+  recepcionesVencidas: async () => [],
+  recibirCambio: vi.fn(),
   aplicarCambioProgramado: async (...args) => {
     llamadas.push({ metodo: "aplicar_plan", contexto: contextoActual(), args });
     return { estado: "aplicado" };
@@ -152,6 +161,8 @@ describe("SLT-86 — handlers delgados del cambio de empresa (R20)", () => {
     });
     const handler = crearPlanCambiosVencidosHandler(
       {
+        recepcionesVencidas: async () => [],
+        recibirCambio: vi.fn(),
         cambiosVencidos: async () => [],
         aplicarCambioProgramado: vi.fn(),
         cambiosDeEmpresaVencidos: async () => vencidos,
@@ -167,6 +178,8 @@ describe("SLT-86 — handlers delgados del cambio de empresa (R20)", () => {
     const aplicarEmpresa = vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(async () => ({ estado: "aplicado" }));
     const handler = crearPlanCambiosVencidosHandler(
       {
+        recepcionesVencidas: async () => [],
+        recibirCambio: vi.fn(),
         cambiosVencidos: async () => [{ planId: "p", cambioId: "c-plan" }],
         aplicarCambioProgramado: async () => {
           throw new Error("roto");

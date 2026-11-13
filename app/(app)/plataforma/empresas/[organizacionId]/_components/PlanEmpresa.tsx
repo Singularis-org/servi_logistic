@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/useToast";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import {
   lineasDeCambioDelPlan,
+  MENSAJE_EDITAR_CAMBIO_A_MEDIAS,
   rangoInicioCiclo as textoRangoInicioCiclo,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
@@ -185,6 +186,8 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
+  // SLT-128 (design §3.4): asignar no lo devuelve; el texto de R16, el mismo que el formulario del plan.
+  cambio_a_medias: MENSAJE_EDITAR_CAMBIO_A_MEDIAS,
 };
 
 export interface PlanEmpresaProps {
