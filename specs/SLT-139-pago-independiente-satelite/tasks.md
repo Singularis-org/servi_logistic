@@ -208,7 +208,7 @@
 ## T12 — Cierre
 
 - [ ] **T12.1** `./init.sh` en verde en el worktree, con `INIT_EXIT=$?` escrito dentro del log.
-- [ ] **T12.2** `progress/impl_SLT-139.md` con el mapa R → test (abajo), las mutaciones y el tamaño
+- [x] **T12.2** `progress/impl_SLT-139.md` con el mapa R → test (abajo), las mutaciones y el tamaño
   medido por `scripts/tamano-pr.mjs`.
 - [ ] **T12.3** Preview con Carlos antes de promover (memoria «aprobar en Preview antes de prod», D10):
   un cierre de satélite nuevo «Pendiente <P>» en `/cierres-admin` y en `/cierre-dia` hasta conciliar y

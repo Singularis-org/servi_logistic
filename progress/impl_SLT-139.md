@@ -290,3 +290,25 @@ también resta lo de la satélite, y si un cierre nuevo queda sin cifra `resumen
 
 ## Veredicto (tanda 3)
 Merge hecho, puerto implementado e inyectado con 3/3 mutaciones matadas, `dinero` 106/106; queda T12.
+
+## Arreglos review 1 (2026-11-12, sobre d00fa124)
+
+Archivos (ninguno nuevo): `lib/services/CierreDiaService.ts`, `lib/interfaces/services/ICierreDiaService.ts`,
+`tests/unit/services/cierre-dia-ganancia.test.ts`, `tests/integration/db/cierre-dia-ganancia-sql-real.test.ts`,
+`specs/SLT-139-pago-independiente-satelite/requirements.md` (D14 + SLT-112 R353 en «Relación…»), `tasks.md` (T12.2).
+
+- **m1** — borde del mes de `sumarPagadoPorSateliteEnRango` (`gte`/`lt`). En `cierre-dia-ganancia-sql-real.test.ts`,
+  mensajero M4 sin cierres con dos `pago_satelite` a mano: 250 en 2026-11-01T06:00Z (00:00 CR, cuenta) y 130 en
+  2026-12-01T06:00Z (no cuenta). Esperado `{ "250.00", 1 }`. Mutaciones (revertidas con `git checkout`):
+  `gt/lte` → 130/1 ROJO; `gt/lt` → 0/0 ROJO; `gte/lte` → 380/2 ROJO.
+- **m2** — `resumenGanancia` sin `pagadoPorSatelite` da `sin_dato` sin leer nada (D14, decisión del leader:
+  R353 de SLT-112 se revisa; su spec no se edita). Test unitario «R353 (revisado en SLT-139) + R357»; el
+  doble ahora inyecta la lectura por defecto (en cero) y `sinLecturaSatelite` la quita. Mutación (devolver la
+  pagada sin satélite si falta la lectura) → ROJO 1/18; revertida.
+- Cliente Prisma regenerado una vez (había perdido `pago_satelite` por el E2E de SLT-113 en paralelo).
+
+Salidas: `tsc --noEmit` (8 GB) sin errores; `eslint` de los 4 archivos tocados: 0 errores (7 avisos
+`no-unused-vars` de los `_m/_d/_h` de los dobles, previos); `vitest run cierre-dia ganancia` contra
+`slt139_satelite`: 24 archivos, 498/498, 0 saltados. `tamano-pr.mjs`: 45/40 archivos, 2545 líneas (aceptado ≤ 45).
+
+Veredicto: m1 y m2 cerrados con 4/4 mutaciones matadas; T12.2 marcada, T12.1 queda al leader.

@@ -58,6 +58,7 @@ aplica a esta ficha.
 | D11 | (PA3) La caja no se toca: `egreso_pago_mensajero = P`. | Carlos, 2026-11-12 | R341 |
 | D12 | (PA5) Si lo «pagado por la satélite» cuenta en «Ganancia pagada este mes» lo decide SLT-112. Aquí no se toca ninguna cifra de ganancia. | Carlos, 2026-11-12 | R341, R345 |
 | D13 | El valor de enum `pago_satelite` y sus `CHECK` van en las migraciones de SLT-139, no en la de SLT-123. | spec_author, 2026-11-12 | R330, R337 |
+| D14 | SLT-112 R353 se revisa: ahora que la lectura de lo «pagado por la satélite» existe y se inyecta, su ausencia es un cableado roto y «Ganancia pagada este mes» DEBE dar `sin_dato` (R357), nunca la cifra de R352 que omite lo de la satélite. | leader, 2026-11-12 (review 1, m2) | R353 (revisado) |
 
 ## Requisitos (EARS)
 
@@ -166,6 +167,11 @@ de escala 2, calculados con `Prisma.Decimal`.
 - **SLT-106 R196** (nota «· se paga del efectivo»; «La central debe», «el efectivo no alcanzó…»): la
   nota la cambia R324; «La central debe» la recalcula R322 y su nota no cambia (sigue siendo cierta:
   la cifra solo sale de cierres viejos).
+- **SLT-112 R353** («MIENTRAS no la tenga, DEBE ser exactamente la de R352»): lo sustituye D14.
+  Texto vigente: DONDE el servidor tenga la lectura de lo «pagado por la satélite», «Ganancia pagada
+  este mes» DEBE sumarla (sin cambio); SI le falta la lectura, DEBE dar `sin_dato` (R357). El spec
+  de SLT-112 no se edita. Test: `tests/unit/services/cierre-dia-ganancia.test.ts` («R353 (revisado
+  en SLT-139) + R357») y el borde del mes en `tests/integration/db/cierre-dia-ganancia-sql-real.test.ts`.
 - **SLT-73 Q4** («si el cierre es todo SINPE, el mensajero queda con cuenta por pagar»): lo cierran
   R317-R319 para los cierres nuevos.
 - **SLT-73 R10/R22** (la conciliación asienta con el instante de la marca): sin cambio; R317 se apoya

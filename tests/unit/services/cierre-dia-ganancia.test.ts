@@ -48,6 +48,8 @@ function montar(o: {
   aprobados?: CierreAprobadoParaPendienteRow[];
   pagosDelMes?: CifraGanancia;
   satelite?: CifraGanancia;
+  /** SLT-139 (R353 revisado): el cableado SIN `pagadoPorSatelite`. */
+  sinLecturaSatelite?: boolean;
   conPendientes?: boolean;
   conGanancia?: boolean;
   ahora?: Date;
@@ -85,7 +87,7 @@ function montar(o: {
   );
   const ganancia: LecturasGananciaMensajero = {
     pagos: { sumarVigentesDelMensajeroEnRango },
-    ...(o.satelite ? { pagadoPorSatelite: { sumarPagadoPorSateliteEnRango } } : {}),
+    ...(o.sinLecturaSatelite ? {} : { pagadoPorSatelite: { sumarPagadoPorSateliteEnRango } }),
     ahora: () => o.ahora ?? AHORA,
   };
 
@@ -220,12 +222,18 @@ describe("SLT-112 — resumenGanancia con dobles", () => {
     expect(hasta.toISOString()).toBe("2026-12-01T06:00:00.000Z");
   });
 
-  it("R353: sin la lectura de la satelite, la pagada es exactamente la de R352", async () => {
+  it("R353 (revisado en SLT-139) + R357: sin la lectura de la satelite → `sin_dato`, sin leer nada (nunca una pagada que la omita)", async () => {
+    const m = montar({ sinLecturaSatelite: true, pagosDelMes: { monto: "3500.00", conteo: 2 } });
+    expect(await m.svc.resumenGanancia(MENSAJERO)).toEqual({ status: "sin_dato" });
+    for (const l of m.lecturas) expect(l).not.toHaveBeenCalled();
+  });
+
+  it("R353: con la lectura de la satelite en cero, la pagada es la de R352", async () => {
     const m = montar({});
     const r = await m.svc.resumenGanancia(MENSAJERO);
     if (r.status !== "ok") throw new Error(`se esperaba ok y llego ${r.status}`);
     expect(r.resumen.pagadaEsteMes).toEqual({ monto: "3500.00", conteo: 2 });
-    expect(m.sumarPagadoPorSateliteEnRango).not.toHaveBeenCalled();
+    expect(m.sumarPagadoPorSateliteEnRango).toHaveBeenCalledTimes(1);
   });
 
   it("R355: importes de tres decimales salen redondeados a escala 2 con Decimal", async () => {

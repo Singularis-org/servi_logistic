@@ -428,7 +428,7 @@ export interface LecturasGananciaMensajero {
   pagos: {
     sumarVigentesDelMensajeroEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
   };
-  /** R353: ausente = solo los pagos de liquidacion (R352). */
+  /** R353 (revisado en SLT-139): ausente = `sin_dato` (R357), nunca una pagada que la omita. */
   pagadoPorSatelite?: LecturaPagadoPorSatelite;
   /** Reloj inyectable para fijar «hoy» en los tests; ausente = `new Date()`. */
   ahora?: () => Date;

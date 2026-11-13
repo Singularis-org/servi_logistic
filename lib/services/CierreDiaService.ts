@@ -717,7 +717,10 @@ export class CierreDiaService implements ICierreDiaService {
    */
   async resumenGanancia(actor: Actor): Promise<ResumenGananciaServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R359: sin leer nada
-    if (!this.pendientes || !this.ganancia) return { status: "sin_dato" }; // R357
+    // R357. SLT-139 (R353 revisado, leader 2026-11-12): sin la lectura de la satelite la pagada
+    // omitiria lo que pago la satelite; eso es un cableado roto, no una cifra valida.
+    const satelite = this.ganancia?.pagadoPorSatelite;
+    if (!this.pendientes || !this.ganancia || !satelite) return { status: "sin_dato" };
 
     // R350: los aprobados del actor; el `mensajero_id` sale de la sesion, nunca de la peticion.
     const aprobados = await this.repo.findAprobadosParaPendiente(actor.usuarioId);
@@ -756,17 +759,15 @@ export class CierreDiaService implements ICierreDiaService {
     let pagadaMonto = new Prisma.Decimal(pagos.monto);
     let pagadaConteo = pagos.conteo;
 
-    // R353: lo pagado por la satelite, solo si SLT-139 inyecta la lectura. `fecha_movimiento` es
-    // `timestamp`: aqui el rango son INSTANTES (las 00:00 locales del dia 1 de cada mes).
-    if (this.ganancia.pagadoPorSatelite) {
-      const sat = await this.ganancia.pagadoPorSatelite.sumarPagadoPorSateliteEnRango(
-        actor.usuarioId,
-        inicioDelDiaEnUtc(primerDia, zona),
-        inicioDelDiaEnUtc(primerDiaSiguiente, zona),
-      );
-      pagadaMonto = pagadaMonto.plus(new Prisma.Decimal(sat.monto));
-      pagadaConteo += sat.conteo;
-    }
+    // R353: lo pagado por la satelite. `fecha_movimiento` es `timestamp`: aqui el rango son
+    // INSTANTES (las 00:00 locales del dia 1 de cada mes).
+    const sat = await satelite.sumarPagadoPorSateliteEnRango(
+      actor.usuarioId,
+      inicioDelDiaEnUtc(primerDia, zona),
+      inicioDelDiaEnUtc(primerDiaSiguiente, zona),
+    );
+    pagadaMonto = pagadaMonto.plus(new Prisma.Decimal(sat.monto));
+    pagadaConteo += sat.conteo;
 
     return {
       status: "ok",
