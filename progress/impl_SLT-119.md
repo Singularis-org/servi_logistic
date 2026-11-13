@@ -111,3 +111,95 @@ Verificación (salida real, 2026-11-12):
   nuevo `facturas-plataforma.spec.ts` quedan para T7.1.
 
 Veredicto: frontend T4–T6 listo; guardia de superficie verde; faltan los E2E de T6.2/T7.1.
+
+## Tanda E2E (T7.1) · sin commit (lo hace el implementer)
+
+Archivos:
+- `e2e/facturas-plataforma.spec.ts` (**nuevo**, serial; design §9): empresa con maestro, `admin`, zona y tienda; plan
+  público (base 1 000 mensual, 300,00 por orden) asignado desde hoy con `PlanesRepository.asignar`; dos órdenes por
+  `crearOrdenesDirectas` y una eliminada con la empresa fijada (se comprueban 2 cargos y 1 reverso en la base).
+  Tests: (1) maestro en «Mi plan», fila «En curso» con órdenes «₡300» y detalle con las tres líneas (guías, «Cargo»
+  «₡300» ×2, «Reverso» «-₡300»); (2) `factura_plataforma_cerrar(org, fin_natural_at + 6 min)`, el maestro recarga:
+  «N.º 1», «Emitida», cuotas y total iguales a los de la fila de la base, la nueva en curso encima, mismo detalle;
+  (3) superadmin, pestaña «Facturación» del detalle de empresa: misma «N.º 1» y mismas líneas; (4) `admin` →
+  404 «no encontrado» sin la sección. `afterAll` archiva el plan. Sin `waitForTimeout`.
+- `playwright.config.ts`: `facturas-plataforma` en `specs(...)` del proyecto `dinero`.
+
+R19 → `e2e/facturas-plataforma.spec.ts` (los cuatro tests).
+
+Entorno local (como `gate.yml > e2e-grupo`): base desechable `servi_logistic_slt119_e2e` (DROP/CREATE), `prisma
+migrate deploy`, `pnpm run db:seed`; `next build` con `NODE_OPTIONS=--max-old-space-size=8192` y
+`NEXT_PUBLIC_APP_URL`/`NEXT_PUBLIC_SITE_URL=http://localhost:3044` (exit 0); `DATABASE_URL` a la base e2e y
+`E2E_PUERTO=3044` por entorno. El `.env` del worktree no se tocó.
+
+**Hallazgo de entorno:** el `.env` local lleva `AUTH_RISK_THRESHOLD=1000`, que `next start` lee: el superadmin
+entra sin OTP y `entrarConOtp` (fixture) espera el campo del código en vano. La 1.ª corrida cayó por eso (1 failed,
+3 did not run). En CI no hay `.env` (umbral por defecto 50). Las demás corridas pasan `AUTH_RISK_THRESHOLD=50` por
+entorno. Afecta a todo spec que use `entrarConOtp` en local con este `.env`; no es de esta ficha.
+
+Salida real (2026-11-12):
+- `playwright test e2e/facturas-plataforma.spec.ts` (sin `AUTH_RISK_THRESHOLD`): 1 failed, 3 did not run (el OTP de
+  arriba).
+- Ídem con `AUTH_RISK_THRESHOLD=50`, corrida 1: **4 passed** (16.2s), 0 failed, 0 flaky, 0 skipped.
+- Ídem, corrida 2 seguida sobre la misma base: **4 passed** (37.7s), 0 failed, 0 flaky, 0 skipped.
+- `playwright test e2e/planes-superadmin.spec.ts e2e/superadmin-empresas.spec.ts` (T6.2, sin tocarlos; arrastran
+  `plataforma-vacia`): **18 passed** (1.3m), 0 failed, 0 flaky.
+- `playwright test --project=dinero`: **102 passed** (8.9m), 0 failed, 0 flaky, 0 skipped.
+- `vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 38 passed (la 1.ª vez cayó porque el comentario del
+  config citaba el nombre de la función entre comillas invertidas y la guardia lo leyó como spec; se reescribió).
+- `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`): sin errores. `eslint` sobre los dos archivos: sin
+  errores ni avisos.
+
+Veredicto: T7.1 hecha; R19 verde en local dos veces seguidas, T6.2 y `dinero` verdes.
+
+## Cierre del implementer (T7.2, T7.3) · 2026-11-12
+
+Commits: `55cb78ee` (T1–T3), `e14a6b88` (T4–T6), y el de T7. PR borrador #146.
+
+**T7.2:** `docs/architecture.md > Facturas de la plataforma > Lectura` ya no dice «aún no existe»; nueva viñeta
+«Pantallas (SLT-119)»: por empresa, no por plan; sección de «Mi plan» y pestaña «Facturación»; líneas desde la traza,
+100 por página; «N.º N»; sin descarga (SLT-136).
+
+### Mapa R<n> → test (consolidado)
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/services/factura-plataforma-service.test.ts` (orden), `tests/components/FacturasDeLaEmpresa.test.tsx`, `tests/components/MiPlanModule.test.tsx`, `tests/integration/mi-plan-page.test.tsx` |
+| R2 | `tests/unit/planes/facturas-vista.test.ts`, `FacturasDeLaEmpresa.test.tsx`, `DetalleDeFactura.test.tsx` |
+| R3, R4 | `tests/unit/planes/facturas-vista.test.ts` |
+| R5 | `FacturasDeLaEmpresa.test.tsx`, `facturas-vista.test.ts` |
+| R6, R9 | `tests/components/DetalleDeFactura.test.tsx` |
+| R7, R8 | `tests/integration/db/factura-plataforma-detalle.test.ts`; R7 también `DetalleDeFactura.test.tsx` |
+| R10 | `factura-plataforma-detalle.test.ts` (230 líneas: 100/100/30/vacía), `DetalleDeFactura.test.tsx` |
+| R11 | `factura-plataforma-detalle.test.ts` |
+| R12 | `factura-plataforma-detalle.test.ts`, `tests/integration/plataforma-empresa-detalle-page.test.tsx` |
+| R13 | `factura-plataforma-service.test.ts`, `tests/unit/actions/facturas-plataforma.test.ts` |
+| R14 | `factura-plataforma-detalle.test.ts`, `factura-plataforma-service.test.ts` |
+| R15 | `factura-plataforma-service.test.ts` |
+| R16 | `FacturasDeLaEmpresa.test.tsx`, `DetalleDeFactura.test.tsx`, `facturas-plataforma.test.ts`, guardia `cobro-plataforma-solo-por-trigger` |
+| R17 | `FacturasDeLaEmpresa.test.tsx`, `DetalleDeFactura.test.tsx`, `MiPlanModule.test.tsx`, `mi-plan-page.test.tsx`, `plataforma-empresa-detalle-page.test.tsx` |
+| R18 | `FacturasDeLaEmpresa.test.tsx` |
+| R19 | `e2e/facturas-plataforma.spec.ts` (proyecto `dinero`) |
+
+### Salida real (implementer, 2026-11-12, base `servi_logistic_slt119`)
+
+- `pnpm run typecheck` (8 GB): exit 0.
+- `pnpm exec vitest run` de los 9 archivos tocados: `Test Files 9 passed (9)`, `Tests 150 passed (150)`, 0 skipped.
+- `pnpm run test:guardias`: `Test Files 1 failed | 343 passed (344)`; los 4 rojos son
+  `dependencias-declaradas-presentes`, que está en `tests/baseline-rojos.json` (no lo toca este cambio).
+- `./init.sh`: **rojo por el board, no por el código**: «features en vuelo sin assignee en el tracker: SLT-119» y
+  «zona backend: SLT-43, SLT-44, SLT-45, SLT-65, SLT-71, SLT-128 (6 in_progress, max 5)». Es `feature_list.json`
+  (del leader); el gate corta ahí antes de los pasos de código.
+
+### Desvíos menores respecto al design (para el reviewer)
+
+1. `deEmpresa` con un `organizacionId` que no es uuid lanza (sin leer la base) en vez de `validation_error`, porque
+   `FacturasResult` (§3) no lo tiene; la página lo pinta como «No se pudieron cargar las facturas» (R17). Con test.
+2. `errores: Record<string, string>` (§3) con el primer mensaje de cada campo; `PlanesService` usa `string[]`.
+3. `MiPlanModule` recibe una prop opcional `facturas: { lista, cargarDetalle }` en vez de dos props obligatorias
+   (§6.2), para no tocar ~20 montajes en otros tests; la página siempre la pasa.
+4. Archivo extra fuera de la lista de tasks: `tests/components/_facturas-plataforma.ts` (datos de prueba). 28/40.
+
+### Nota de entorno E2E local
+El `.env` local trae `AUTH_RISK_THRESHOLD=1000`: el superadmin entra sin OTP y `entrarConOtp` espera en vano. Las
+corridas E2E pasaron `AUTH_RISK_THRESHOLD=50` por entorno (el de CI). Propuesta para `docs/verification.md > En local`.

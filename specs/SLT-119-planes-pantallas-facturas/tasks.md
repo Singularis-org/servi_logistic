@@ -53,22 +53,22 @@
   `app/(app)/mi-plan/_components/MiPlanModule.tsx` (sección al final). Ajustar
   `tests/components/MiPlanModule.test.tsx` y ampliar `tests/integration/mi-plan-page.test.tsx` (R1, R17).
   *Hecho:* verdes; la guardia `mi-plan-solo-maestro` verde (ningún archivo nuevo nombra la ruta).
-- [ ] **T6.2** (dep. T3.1, T5.1, T5.2) [P] Detalle de empresa: `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`
+- [x] **T6.2** (dep. T3.1, T5.1, T5.2) [P] Detalle de empresa: `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`
   con `Tabs` «Empresa» (lo de hoy, sin cambios, por defecto) y «Facturación» (`FacturasDeLaEmpresa`, action ligada a
   la empresa; lectura aislada) (design §6.3), y `tests/integration/plataforma-empresa-detalle-page.test.tsx` (R12,
   R17). *Hecho:* verde; `planes-superadmin.spec.ts` y `superadmin-empresas.spec.ts` verdes en local sin tocarlos.
 
 ## T7 — E2E, docs y cierre
 
-- [ ] **T7.1** (dep. T6.1, T6.2) `e2e/facturas-plataforma.spec.ts` (R19, design §9) y su entrada en el proyecto
+- [x] **T7.1** (dep. T6.1, T6.2) `e2e/facturas-plataforma.spec.ts` (R19, design §9) y su entrada en el proyecto
   `dinero` de `playwright.config.ts`. *Hecho:* `pnpm exec playwright test e2e/facturas-plataforma.spec.ts` verde en
   base desechable, sin reintentos; `pnpm exec playwright test --project=dinero` verde antes del PR
   (`docs/perfil-agentes.md`); la guardia `e2e-sin-saltos` verde.
-- [ ] **T7.2** [P] `docs/architecture.md > Facturas de la plataforma > Lectura`: quitar «aún no existe», decir dónde
+- [x] **T7.2** [P] `docs/architecture.md > Facturas de la plataforma > Lectura`: quitar «aún no existe», decir dónde
   se pintan (sección «Facturas de la empresa» de «Mi plan» y pestaña «Facturación» del detalle de empresa; por
   empresa, no por plan), las líneas desde la traza y el número «N.º». *Hecho:*
   el texto describe el código.
-- [ ] **T7.3** (dep. todo) Mapa `R<n> -> test` en `progress/impl_SLT-119.md`, sin huecos (R1–R19). `./init.sh` verde.
+- [x] **T7.3** (dep. todo) Mapa `R<n> -> test` en `progress/impl_SLT-119.md`, sin huecos (R1–R19). `./init.sh` verde.
   *Hecho:* cada R con al menos un test que existe y pasa.
 
 ## Archivos esperados
