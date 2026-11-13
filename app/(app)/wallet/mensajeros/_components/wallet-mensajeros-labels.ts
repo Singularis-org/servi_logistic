@@ -133,6 +133,8 @@ export const CATEGORIA_PAGO_LABEL: Record<PagoMensajeroMovimientoCategoria, stri
   // SLT-68 (D6, R18): categoria propia del incentivo y de su contraasiento.
   incentivo: "Incentivo",
   reverso_incentivo: "Anulación de incentivo",
+  // SLT-139 (R329): la satélite le pagó P al mensajero de un cierre nuevo (estado de cuenta y descarga).
+  pago_satelite: "Pagado por la satélite",
 };
 
 export { ORIGEN_PAGO_LABEL };

@@ -2555,6 +2555,11 @@ enum PagoMensajeroMovimientoCategoria {
   // migracion `20261030120100_incentivo_mensajero_checks`.
   incentivo
   reverso_incentivo
+  // SLT-139 (design §3, R317, R330): «PAGADO POR LA SATÉLITE». Rama `pago`: al conciliar un cierre
+  // NUEVO de satélite (marca `pago_independiente_efectivo` en true) la satélite le pagó P al
+  // mensajero. Solo cuelga de un `cierre_dia`; el CHECK tipo<->categoria y el CHECK de origen viven
+  // en la migracion `20261115120100_pago_satelite_checks`.
+  pago_satelite
 
   @@map("pago_mensajero_movimiento_categoria")
 }

@@ -467,11 +467,13 @@ describe("tarjetasAConsolidar (R196, R71)", () => {
     expect(debe).toMatchObject({ destacada: true, contexto: "recaudado − mensajeros − bodega" });
   });
 
-  it("nota de «Pago a mensajeros» en singular y plural", () => {
-    expect(tarjetasAConsolidar({ ...base, mensajeros: 1 })[1].contexto).toBe(
-      "1 mensajero · se paga del efectivo",
-    );
-    expect(tarjetasAConsolidar(base)[1].contexto).toBe("3 mensajeros · se paga del efectivo");
+  it("SLT-139 R324: nota de «Pago a mensajeros» en singular y plural, sin «· se paga del efectivo»", () => {
+    expect(tarjetasAConsolidar({ ...base, mensajeros: 1 })[1].contexto).toBe("1 mensajero");
+    expect(tarjetasAConsolidar({ ...base, mensajeros: 2 })[1].contexto).toBe("2 mensajeros");
+    expect(tarjetasAConsolidar(base)[1].contexto).toBe("3 mensajeros");
+    for (const n of [1, 2, 3]) {
+      expect(tarjetasAConsolidar({ ...base, mensajeros: n })[1].contexto).not.toContain("del efectivo");
+    }
   });
 
   it("nota de «Gana la bodega satélite»: «por devoluciones a origen» solo con el modelo viejo", () => {

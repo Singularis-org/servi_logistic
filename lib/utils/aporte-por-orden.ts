@@ -181,6 +181,9 @@ export const FUENTE_MENSAJERO: Record<PagoMensajeroMovimientoCategoria, FuenteDe
   // nace de sus guias.
   incentivo: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   reverso_incentivo: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-139 (R329): `pago_satelite` es P del cierre (no `min(P, E)`), así que sale del pago al
+  // mensajero de cada gestión, igual que `pago_devengado`.
+  pago_satelite: { tipo: "snapshot_gestion", campo: "pago_mensajero" },
 };
 
 /**

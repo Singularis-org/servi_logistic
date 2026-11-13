@@ -48,6 +48,9 @@ import {
  * Ademas: M2 (empresa A) con un aprobado nuevo P 10 000 y pago 1 000 (5 nov); M3 (empresa A) con un
  * solo aprobado nuevo P 700 sin pagos; y la empresa B con su mensajero MB, aprobado nuevo P 8 000 y
  * pago 600 (5 nov).
+ * SLT-139 (borde de R353): M4 (empresa A), sin cierres, con dos `pago_satelite` justo en las 00:00 de
+ * Costa Rica (UTC−6): 250 el 1 de noviembre (2026-11-01T06:00Z, cuenta) y 130 el 1 de diciembre
+ * (2026-12-01T06:00Z, no cuenta) → pagada 250,00 con 1. Con `gt` sale 0; con `lte`, 380 con 2.
  *
  * ESPERADO PARA M (a mano):
  *   pendiente = 45 000,55 + 2 500,00 = "47500.55", 2 cierres con algo pendiente.
@@ -70,6 +73,7 @@ interface Corpus {
   m: string;
   m2: string;
   m3: string;
+  m4: string;
   mb: string;
   c: Record<Clave, string>;
 }
@@ -81,6 +85,7 @@ interface Medida {
   resumenM2: ResumenGananciaServiceResult;
   resumenM3: ResumenGananciaServiceResult;
   resumenMB: ResumenGananciaServiceResult;
+  resumenM4: ResumenGananciaServiceResult;
   resumenComoApp: ResumenGananciaServiceResult;
   resumenTrasFiltrar: ResumenGananciaServiceResult;
   pagina: CierrePasadoDTO[];
@@ -180,6 +185,7 @@ async function sembrar(
   const m = await usuario(tx, "m", cat);
   const m2 = await usuario(tx, "m2", cat);
   const m3 = await usuario(tx, "m3", cat);
+  const m4 = await usuario(tx, "m4", cat);
   const reg = await usuario(tx, "admin", cat);
 
   const C1 = await cierre(tx, { mensajeroId: m, zonaId: z, estado: "aprobado", pago: "50000.55", efectivo: "5000.00", dia: "2026-11-01", nuevo: false });
@@ -204,6 +210,24 @@ async function sembrar(
   await pagar(tx, { mensajeroId: m2, cierreId: cM2, monto: "1000.00", fecha: "2026-11-05", registrador: reg });
   await cierre(tx, { mensajeroId: m3, zonaId: z, estado: "aprobado", pago: "700.00", efectivo: "0.00", dia: "2026-11-05", nuevo: true });
 
+  // SLT-139: los dos bordes del mes de M4, a mano (00:00 de Costa Rica = 06:00Z).
+  for (const [monto, instante] of [
+    ["250.00", "2026-11-01T06:00:00.000Z"],
+    ["130.00", "2026-12-01T06:00:00.000Z"],
+  ] as const) {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "pago_mensajero_movimiento"
+         ("id","mensajero_id","tipo","categoria","monto","origen_tipo","origen_id","fecha_movimiento","organizacion_id")
+       VALUES ($1,$2,'pago','pago_satelite',$3::numeric,'cierre_dia',$4,$5,$6)`,
+      randomUUID(),
+      m4,
+      monto,
+      randomUUID(),
+      new Date(instante),
+      empresaA,
+    );
+  }
+
   // Empresa B: sus filas nacen con SU `organizacion_id` (el DEFAULT sale de `app.organizacion_id`).
   const empresaB = (await crearOrganizacion(tx)).id;
   await fijarEmpresa(tx, empresaB);
@@ -214,7 +238,7 @@ async function sembrar(
   await pagar(tx, { mensajeroId: mb, cierreId: cB, monto: "600.00", fecha: "2026-11-05", registrador: regB });
   await fijarEmpresa(tx, empresaA);
 
-  return { m, m2, m3, mb, c: { C1, C2, C3, C4, C5, C6, C7, C8 } };
+  return { m, m2, m3, m4, mb, c: { C1, C2, C3, C4, C5, C6, C7, C8 } };
 }
 
 function servicio(tx: TxDeTest, ahora: Date = AHORA): CierreDiaService {
@@ -232,7 +256,12 @@ function servicio(tx: TxDeTest, ahora: Date = AHORA): CierreDiaService {
       liquidaciones: new LiquidacionPagoRepository(cliente),
       premios: new PagoMensajeroMovimientoRepository(cliente),
     },
-    { pagos: new LiquidacionPagoRepository(cliente), ahora: () => ahora },
+    {
+      pagos: new LiquidacionPagoRepository(cliente),
+      // SLT-139 (R345 -> R353): como el composition root de /cierre-dia.
+      pagadoPorSatelite: new PagoMensajeroMovimientoRepository(cliente),
+      ahora: () => ahora,
+    },
   );
 }
 
@@ -299,6 +328,7 @@ describeSiHayBase("SLT-112 — cifras de la ganancia del mensajero, contra Postg
         const resumenFinDeMes = await servicio(tx, AHORA_FIN_DE_MES).resumenGanancia(actor(corpus.m));
         const resumenM2 = await servicio(tx).resumenGanancia(actor(corpus.m2));
         const resumenMB = await servicio(tx).resumenGanancia(actor(corpus.mb));
+        const resumenM4 = await servicio(tx).resumenGanancia(actor(corpus.m4));
 
         const p = await servicio(tx).listarCierresPasadosPaginado({ page: 1, pageSize: 50 }, actor(corpus.m));
         // R354: un filtro que deja fuera a C1 (solicitado el 1 de noviembre).
@@ -324,6 +354,7 @@ describeSiHayBase("SLT-112 — cifras de la ganancia del mensajero, contra Postg
           resumenM2,
           resumenM3,
           resumenMB,
+          resumenM4,
           resumenComoApp,
           resumenTrasFiltrar,
           pagina: p.items,
@@ -353,6 +384,10 @@ describeSiHayBase("SLT-112 — cifras de la ganancia del mensajero, contra Postg
 
   it("R352: el mes es el de la zona de la empresa: a las 21:00 del 30 de noviembre sigue siendo noviembre", () => {
     expect(ok(m().resumenFinDeMes).pagadaEsteMes).toEqual({ monto: "3500.00", conteo: 2 });
+  });
+
+  it("SLT-139 (R353, borde): lo de la satelite a las 00:00 del dia 1 cuenta; el del dia 1 del mes siguiente no", () => {
+    expect(ok(m().resumenM4).pagadaEsteMes).toEqual({ monto: "250.00", conteo: 1 });
   });
 
   it("R351: lo pendiente de cada cierre es el de la celda «Pago» y la tarjeta es la suma de la pagina", () => {
@@ -404,8 +439,9 @@ describeSiHayBase("SLT-112 — cifras de la ganancia del mensajero, contra Postg
 
   it("R356: mismas sentencias con seis aprobados (M) que con uno (M3)", () => {
     const { sentenciasM, sentenciasM3 } = m();
-    // aprobados + pagos vigentes por cierre + premios vivos por cierre + pagos del mes.
-    expect(sentenciasM).toHaveLength(4);
+    // aprobados + pagos vigentes por cierre + premios vivos por cierre + pagos del mes; SLT-139 suma
+    // lo pagado por la satelite por cierre (M y M3 tienen cierres nuevos) y lo de la satelite del mes.
+    expect(sentenciasM).toHaveLength(6);
     expect(sentenciasM3).toEqual(sentenciasM);
   });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import { derivarPendienteCierre, type PendienteCierreInput } from "@/lib/utils/pendiente-cierre";
 import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
 
 // Feature 172 / T A.4 — derivacion PURA del pendiente de un cierre. Cubre R22 (el pendiente se
@@ -189,7 +189,7 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
       pagoDebido: "30000.00",
       efectivo: "0.00",
       pagadoVigente: "30000.00",
-      pagoIndependienteEfectivo: false,
+      pagoIndependienteEfectivo: false as const,
     };
     const saldado = derivarPendienteCierre({ ...entrada, premiosVivos: "0.00" });
     const conPremio = derivarPendienteCierre({ ...entrada, premiosVivos: "5000.00" });
@@ -315,6 +315,7 @@ describe("SLT-123 R315/R325/R327 — la marca `pagoIndependienteEfectivo` decide
           premiosVivos: premios,
           pagadoVigente: vigentes,
           pagoIndependienteEfectivo: marca,
+          pagadoPorSatelite: "0.00", // SLT-139: nada pagado por la satelite; la regla de SLT-123 intacta
         }),
       ).toBe(esperado);
     },
@@ -329,6 +330,7 @@ describe("SLT-123 R315/R325/R327 — la marca `pagoIndependienteEfectivo` decide
           premiosVivos: "0.00",
           pagadoVigente: "0.00",
           pagoIndependienteEfectivo: true,
+          pagadoPorSatelite: "0.00",
         }),
       ).toBe("3000.00");
     }
@@ -343,6 +345,7 @@ describe("SLT-123 R315/R325/R327 — la marca `pagoIndependienteEfectivo` decide
         premiosVivos: "0.00",
         pagadoVigente: "0.00",
         pagoIndependienteEfectivo: true,
+        pagadoPorSatelite: "0.00",
       }),
     ).toBe("3000.01");
   });
@@ -356,5 +359,97 @@ describe("SLT-123 R315/R325/R327 — la marca `pagoIndependienteEfectivo` decide
     expect(fuente).toMatch(/pagoIndependienteEfectivo\s*\n?\s*\?\s*new Prisma\.Decimal\(pagoDebido\)\.toDecimalPlaces\(2, Prisma\.Decimal\.ROUND_HALF_UP\)/);
     // Y en todo el modulo, ni `Number(`, ni `parseFloat`, ni `+x`/`Math`, ni `toNumber`.
     expect(fuente).not.toMatch(/Number\(|parseFloat|Math\.|toNumber\(/);
+  });
+});
+
+// ── SLT-139 (T4.1) — lo pagado por la satelite (R338, R343) ─────────────────────────────────────
+//
+// La tabla de `specs/SLT-139-pago-independiente-satelite/tasks.md > T4.1`, importes ESCRITOS A MANO.
+// Filas 7-11: con la marca, lo pagado por la satelite se RESTA (nunca por debajo de 0). Fila 12: sin
+// la marca se IGNORA aunque venga distinto de cero (la regla de la 44 queda igual).
+
+describe("SLT-139 R338 — en un cierre nuevo, lo pagado por la satelite se resta", () => {
+  it.each([
+    // [#, marca, P, E, premios, vigentes, pagado satelite, esperado]
+    ["7", true, "2500.00", "4000.00", "0.00", "0.00", "0.00", "2500.00"],
+    ["8", true, "2500.00", "4000.00", "0.00", "0.00", "2500.00", "0.00"],
+    ["9", true, "2500.00", "0.00", "300.00", "0.00", "2500.00", "300.00"],
+    ["10", true, "2500.00", "0.00", "0.00", "0.00", "1000.00", "1500.00"],
+    ["11", true, "2500.00", "0.00", "0.00", "0.00", "3000.00", "0.00"],
+    ["12", false, "3000.00", "1000.00", "0.00", "0.00", "1500.00", "2000.00"],
+  ] as const)(
+    "fila %s: marca %s, P %s, E %s, premios %s, vigentes %s, satelite %s -> %s",
+    (_fila, marca, P, E, premios, vigentes, satelite, esperado) => {
+      expect(
+        derivarPendienteCierre({
+          pagoDebido: P,
+          efectivo: E,
+          premiosVivos: premios,
+          pagadoVigente: vigentes,
+          pagoIndependienteEfectivo: marca,
+          pagadoPorSatelite: satelite,
+        }),
+      ).toBe(esperado);
+    },
+  );
+
+  it("el tipo: una marca `boolean` sin `pagadoPorSatelite` no compila; `false` literal si", () => {
+    // Una marca leida de una fila: `boolean`, sin el estrechamiento de un literal.
+    const leerMarca = (fila: { m: boolean }): boolean => fila.m;
+    const marca = leerMarca({ m: true });
+    const base = { pagoDebido: "2500.00", efectivo: "0.00", premiosVivos: "0.00", pagadoVigente: "0.00" };
+    // @ts-expect-error SLT-139 (design §5.1): con la marca como `boolean`, el termino es obligatorio.
+    const sinTermino: PendienteCierreInput = { ...base, pagoIndependienteEfectivo: marca };
+    // @ts-expect-error SLT-139: con la marca en `true`, tambien.
+    const nuevoSinTermino: PendienteCierreInput = { ...base, pagoIndependienteEfectivo: true };
+    const viejo: PendienteCierreInput = { ...base, pagoIndependienteEfectivo: false };
+    void sinTermino;
+    void nuevoSinTermino;
+    expect(derivarPendienteCierre(viejo)).toBe("2500.00");
+  });
+
+  it("toda llamada a derivarPendienteCierre en lib/ nombra pagadoPorSatelite (o la regla de su cierre)", () => {
+    const raiz = path.join(__dirname, "..", "..", "..", "lib");
+    const archivos: string[] = [];
+    const recorrer = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) recorrer(p);
+        else if (/\.tsx?$/.test(e.name)) archivos.push(p);
+      }
+    };
+    recorrer(raiz);
+    const llamadas: string[] = [];
+    for (const archivo of archivos) {
+      if (archivo.endsWith(path.join("utils", "pendiente-cierre.ts"))) continue;
+      const fuente = fs.readFileSync(archivo, "utf8");
+      let i = fuente.indexOf("derivarPendienteCierre({");
+      while (i >= 0) {
+        // El objeto de la llamada, hasta su `})` de cierre.
+        const fin = fuente.indexOf("})", i);
+        llamadas.push(`${path.basename(archivo)}: ${fuente.slice(i, fin)}`);
+        i = fuente.indexOf("derivarPendienteCierre({", fin);
+      }
+    }
+    // Los seis consumidores de produccion (design §5.3).
+    expect(llamadas).toHaveLength(6);
+    for (const l of llamadas) expect(l, l.slice(0, 80)).toMatch(/pagadoPorSatelite|reglaDelCierre\(/);
+  });
+
+  it("R343: ni pendiente-cierre ni el feed ni la consolidacion ni CierreDiaService tocan coma flotante", () => {
+    const sinComentarios = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    for (const rel of [
+      ["lib", "utils", "pendiente-cierre.ts"],
+      ["lib", "services", "WalletMensajeroFeedService.ts"],
+      ["lib", "services", "CierreBodegaService.ts"],
+      ["lib", "services", "CierreDiaService.ts"],
+    ]) {
+      const fuente = sinComentarios(fs.readFileSync(path.join(__dirname, "..", "..", "..", ...rel), "utf8"));
+      expect(fuente.length, rel.join("/")).toBeGreaterThan(500);
+      expect(fuente, rel.join("/")).not.toMatch(/Number\(|parseFloat|Math\.|toNumber\(/);
+    }
+    // Y el termino de la satelite trabaja con `Prisma.Decimal` y redondeo explicito.
+    const pendiente = fs.readFileSync(path.join(__dirname, "..", "..", "..", "lib", "utils", "pendiente-cierre.ts"), "utf8");
+    expect(pendiente).toMatch(/new Prisma\.Decimal\(input\.pagadoPorSatelite\)\.toDecimalPlaces\(2, Prisma\.Decimal\.ROUND_HALF_UP\)/);
   });
 });
