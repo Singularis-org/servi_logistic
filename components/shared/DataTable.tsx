@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type {
   DescargaColumna,
   DescargaFila,
+  DescargaHoja,
   DescargaTipo,
 } from "@/lib/types/descarga";
 import { cn } from "@/lib/utils";
@@ -120,6 +121,12 @@ export type DescargaFilasResult =
        */
       filasDestacadas?: readonly number[];
       filasDestacadasDetalle?: readonly number[];
+      /**
+       * SLT-113 — el LIBRO entero, ya resuelto por el consumidor (nombres, columnas y filas de cada
+       * hoja). Presente ⇒ el control genera siempre xlsx con estas hojas y el selector de columnas no
+       * se aplica a ellas; `filas` lleva las de la primera hoja. Ausente ⇒ todo como siempre.
+       */
+      libro?: { hojas: [DescargaHoja, ...DescargaHoja[]] };
     }
   | { status: "error"; mensaje: string };
 

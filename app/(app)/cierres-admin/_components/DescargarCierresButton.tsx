@@ -243,6 +243,7 @@ export function DescargarCierresButton({
           accion={accion}
           columnas={visibles}
           disabled={disabled}
+          audiencia={audiencia === "admin" ? "admin" : "satelite"}
         />
       ) : (
         <DescargarDatasetButton
