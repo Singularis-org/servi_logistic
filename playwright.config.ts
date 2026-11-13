@@ -154,6 +154,9 @@ export default defineConfig({
         "fulfillment-cobro-por-paquete",
         // SLT-100 R77: lo que ven la central y la satélite en el detalle único, modelos viejo y nuevo.
         "cierres-rediseno",
+        // SLT-119 R19: las facturas de la plataforma en «Mi plan» y en la pestaña «Facturación»; cierra una
+        // factura de su empresa con la función de cierre de la base y usa el superadmin de prueba.
+        "facturas-plataforma",
       ),
     },
   ],

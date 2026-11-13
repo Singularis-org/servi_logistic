@@ -53,6 +53,19 @@ async function abrirConfirmacion(nombre = "Pro") {
   return screen.findByRole("dialog", { name: `¿Cambiar a ${nombre}?` });
 }
 
+/**
+ * El aviso del rechazo. SLT-119 (R17): sin la prop `facturas`, «Facturas de la empresa» pinta su propio aviso de
+ * fallo, así que se descarta el que vive en esa sección.
+ */
+function alertaDelCambio() {
+  return waitFor(() => {
+    const facturas = screen.getByRole("region", { name: "Facturas de la empresa" });
+    const alertas = screen.getAllByRole("alert").filter((a) => !facturas.contains(a));
+    expect(alertas).toHaveLength(1);
+    return alertas[0]!;
+  });
+}
+
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
@@ -176,7 +189,7 @@ describe("R20 — el texto de cada rechazo, sin mostrar un pendiente que no se g
     const dialogo = await abrirConfirmacion();
     await userEvent.click(within(dialogo).getByRole("button", { name: "Confirmar cambio" }));
 
-    const alerta = await screen.findByRole("alert");
+    const alerta = await alertaDelCambio();
     for (const linea of lineas) expect(within(alerta).getByText(linea)).toBeInTheDocument();
     expect(screen.queryByText(/^Listo:/)).toBeNull();
     expect(screen.queryByText(/^Desde el /)).toBeNull();
@@ -191,7 +204,7 @@ describe("R20 — el texto de cada rechazo, sin mostrar un pendiente que no se g
     const dialogo = await screen.findByRole("dialog");
     await userEvent.click(within(dialogo).getByRole("button", { name: "Cancelar cambio" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Tu empresa ya no tiene un cambio pendiente.");
+    expect(await alertaDelCambio()).toHaveTextContent("Tu empresa ya no tiene un cambio pendiente.");
     expect(refresh).not.toHaveBeenCalled();
   });
 });

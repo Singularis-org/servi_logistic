@@ -2,6 +2,7 @@ import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { z } from "zod";
 
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import type { MotivoNoAplicada } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 import type { CambioPendienteVista, PendienteDeEmpresa, PeriodoDelCobro, PlanConConsumo } from "@/lib/types/consumo-plan";
@@ -361,7 +362,10 @@ export type PlanResult =
   | { estado: "archivado" }
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
-  | { estado: "sin_cambio_programado" };
+  | { estado: "sin_cambio_programado" }
+  // SLT-128 (R14–R16): cancelar, archivar o editar «De inmediato» con el cambio programado a medias. El texto
+  // lo elige la pantalla según la acción (`lib/planes/mensajes.ts`). Nada se escribió.
+  | { estado: "cambio_a_medias" };
 
 /**
  * SL-24 (design §6.3, §6.5): el rechazo de un alta por el tope del plan, en el resultado de las
@@ -422,10 +426,34 @@ export type FilaRastro = {
   creadoAt: string;
 };
 
+/**
+ * SLT-128 (design §7; R11): el cambio programado del detalle del plan con cuántas de sus empresas ya lo
+ * recibieron (`recibidas`) de cuántas lo tienen que recibir (`total`), para «N de M empresas ya lo recibieron».
+ * Aparte de `CambioPendienteVista`, que también pinta «Mi plan» y no lleva el conteo.
+ */
+export type PendienteDelDetalle = CambioPendienteVista & { recibidas: number; total: number };
+
+/**
+ * SLT-128 (design §14.3; R28): una empresa del plan que no recibió el cambio programado y sigue con su versión
+ * anterior. `motivo` es el código (`MotivoNoAplicada` de `lib/planes/mensajes.ts`); la línea la compone
+ * `lineaNoAplicada(empresa, motivo)`. `desde`: el instante en que quedó no aplicada, en ISO.
+ */
+export type NoAplicadaVista = {
+  empresaId: string;
+  empresa: string;
+  motivo: MotivoNoAplicada;
+  desde: string;
+};
+
 export type DetallePlan = {
   plan: PlanDTO;
   empresaNombre: string | null;
-  pendiente: CambioPendienteVista | null;
+  pendiente: PendienteDelDetalle | null;
+  /**
+   * SLT-128 (R28): las empresas que no recibieron el cambio («<empresa> no recibió el cambio: …»). Opcional
+   * para los dobles de pantalla que no lo usan; el servicio siempre lo trae (vacío si no hay ninguna).
+   */
+  noAplicadas?: NoAplicadaVista[];
   empresas: { id: string; nombre: string }[];
   /** Del más reciente al más antiguo. */
   rastro: FilaRastro[];

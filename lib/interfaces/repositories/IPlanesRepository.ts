@@ -2,7 +2,8 @@ import type { PlanRastroAccion } from "@prisma/client";
 
 import type { CambioDelPlanLeido, PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
-import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
+import type { MotivoNoAplicada, TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
+import type { DiasDeRecordatorio } from "@/lib/planes/recepcion";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import type {
   AccionDeAsignacion,
@@ -32,13 +33,26 @@ export interface EmpresaDePlanes {
  */
 export type PeriodicidadIncompatibleAlEditar = { estado: "periodicidad_incompatible"; empresas: number };
 
+/**
+ * SLT-128 (design §3.4; R14–R16): el pendiente del plan ya llegó a alguna empresa (o el plan está partido por
+ * uno anterior) y la operación dejaría empresas del mismo plan en versiones que nadie programó. Nada se
+ * escribió.
+ */
+export type CambioAMedias = { estado: "cambio_a_medias" };
+
 export type ResultadoEdicion =
   | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[] }
   | { estado: "not_found" }
   | { estado: "archivado" }
-  | PeriodicidadIncompatibleAlEditar;
+  | PeriodicidadIncompatibleAlEditar
+  /** SLT-128 (R16, P7): edición «De inmediato» con el plan partido. */
+  | CambioAMedias;
 
-export type ResultadoArchivar = { estado: "ok"; cambio: boolean } | { estado: "not_found" };
+export type ResultadoArchivar =
+  | { estado: "ok"; cambio: boolean }
+  | { estado: "not_found" }
+  /** SLT-128 (R15): el pendiente aún no llegó a todas sus empresas. */
+  | CambioAMedias;
 
 /**
  * SLT-99 (design §3) — la empresa del maestro, para «Mi plan». `hayPendiente` es de quien sea (P3); el actor
@@ -139,6 +153,12 @@ export type ResultadoCancelarCambio =
   | { estado: "sin_cambio_programado" };
 
 /**
+ * SLT-128 (R14; P1, P8): «Cancelar cambio» del PLAN, que además se niega si alguna empresa ya recibió el
+ * pendiente o el plan está partido. Aparte del de empresa (`cancelarCambioEmpresa`), que no cambia.
+ */
+export type ResultadoCancelarCambioDelPlan = ResultadoCancelarCambio | CambioAMedias;
+
+/**
  * Programar o reemplazar el cambio pendiente (§16.2). `cambio: false` = la versión es la vigente y no
  * había pendiente: no se escribió nada. `cambioId` es la programación nueva (null sin cambio).
  */
@@ -151,13 +171,35 @@ export type ResultadoProgramar =
 /**
  * Aplicar un cambio programado (§16.3). `sin_pendiente`: reemplazado, cancelado o ya aplicado;
  * `aun_no_rige`: el reloj no llegó a `vigente_desde`. Los dos terminan sin escribir nada.
+ * SLT-128 (design §3.2; R10): `espera` = el pendiente del plan rige pero alguna empresa aún no lo recibió; el
+ * plan no se promueve hasta que lo reciba la última. Tampoco escribe nada.
  */
-export type ResultadoAplicar = { estado: "aplicado" } | { estado: "sin_pendiente" } | { estado: "aun_no_rige" };
+export type ResultadoAplicar =
+  | { estado: "aplicado" }
+  | { estado: "sin_pendiente" }
+  | { estado: "aun_no_rige" }
+  | { estado: "espera" };
+
+/**
+ * SLT-128 (design §14.3; R8, R28): lo que devuelve `recibirCambio`. `no_aplicada` = una regla del plan impide
+ * aplicarle la versión a ESA empresa: la recepción queda marcada con su motivo, la empresa conserva su versión y
+ * el trabajo termina sin error (no se reintenta).
+ */
+export type ResultadoRecibir = ResultadoAplicar | { estado: "no_aplicada"; motivo: MotivoNoAplicada };
 
 /** Lo que identifica una programación concreta: va en el payload de `plan_aplicar_cambio`. */
 export interface CambioPendiente {
   planId: string;
   cambioId: string;
+}
+
+/**
+ * SLT-128 (design §3.3, §4; R5): la recepción de ESA programación por UNA empresa. La empresa va en
+ * `jobs.organizacion_id` del `plan_aplicar_cambio` con empresa; un pendiente reemplazado o cancelado ya no la
+ * tiene.
+ */
+export interface RecepcionPendiente extends CambioPendiente {
+  organizacionId: string;
 }
 
 /**
@@ -180,12 +222,33 @@ export interface AvisoCorreoPlan {
   planId: string;
   /** El nombre que rige al encolar: el que conoce el maestro (el nuevo va en `cambios`). */
   planNombre: string;
+  /** SLT-128 (R22): también `recordatorio_3`, el de 3 días antes de la recepción. */
   tipo: TipoCorreoCambioPlan;
   cambios: CambiosDelPlan;
+  /** SLT-128 (R20): la recepción de ESA empresa, no la F del plan. */
   vigenteDesde: string | null;
-  /** §16.2: la fecha del pendiente al que reemplaza este cambio, o `null`. */
+  /** §16.2: la fecha del pendiente al que reemplaza este cambio, o `null`. SLT-128: la recepción anterior de esa empresa. */
   reemplazaA: string | null;
   topesPasados: TopePasado[];
+}
+
+/**
+ * SLT-128 (design §14.4; R28): el payload de `plan_aviso_correo` del tipo `no_aplicada`. Nace SIN empresa
+ * (`organizacion_id` NULL): va a cada dirección de `PLAN_CHANGE_ALERT_EMAILS`, que lee el manejador al enviar.
+ * Es la variante `no_aplicada` del aviso de cambio de plan; la de los maestros es `AvisoCorreoPlan`. Fechas en ISO.
+ */
+export interface AvisoNoAplicadaPlan {
+  tipo: "no_aplicada";
+  planId: string;
+  cambioId: string;
+  empresaId: string;
+  /** El nombre de la empresa al marcar. */
+  empresa: string;
+  /** El nombre del plan que rige al marcar. */
+  plan: string;
+  /** La recepción que no se aplicó. */
+  recibeAt: string;
+  motivo: MotivoNoAplicada;
 }
 
 /** Lo que el envío de un aviso lee al correr: la empresa y sus maestros activos (P7). */
@@ -219,11 +282,31 @@ export interface FilaRastroLeida {
   creadoAt: Date;
 }
 
+/**
+ * SLT-128 (design §3.6; R11): el pendiente del detalle con cuántas de sus recepciones ya se aplicaron
+ * (`recibidas`) de cuántas tiene (`total`). Un plan sin empresas tiene `0` de `0`.
+ */
+export type PendienteDelDetalleLeido = CambioDelPlanLeido & { recibidas: number; total: number };
+
+/**
+ * SLT-128 (design §14.3; R28): una empresa del plan que no recibió el cambio y sigue con su versión anterior: una
+ * recepción no aplicada del pendiente o, ya promovido el plan, su `plan_version_empresa` marcada. `desde` es el
+ * instante en que quedó no aplicada.
+ */
+export interface NoAplicadaLeida {
+  empresaId: string;
+  empresa: string;
+  motivo: MotivoNoAplicada;
+  desde: Date;
+}
+
 /** R16: el plan, su pendiente (con la versión ya validada), sus empresas y su rastro. */
 export interface DetallePlanLeido {
   plan: PlanDTO;
   empresaNombre: string | null;
-  pendiente: CambioDelPlanLeido | null;
+  pendiente: PendienteDelDetalleLeido | null;
+  /** SLT-128 (R28): las empresas que no recibieron el cambio, por nombre. Vacío si no hay ninguna. */
+  noAplicadas: NoAplicadaLeida[];
   empresas: { id: string; nombre: string }[];
   /** Del más reciente al más antiguo, como mucho 100. */
   rastro: FilaRastroLeida[];
@@ -356,8 +439,11 @@ export interface IPlanesRepository {
   aplicarCambioDeEmpresa(cambio: CambioDeEmpresaPendiente, ahora: Date): Promise<ResultadoAplicar>;
   /** SLT-86 (R20): los pendientes de empresa con fecha `<= ahora` (barrido de `plan_cambios_vencidos`). */
   cambiosDeEmpresaVencidos(ahora: Date): Promise<CambioDeEmpresaPendiente[]>;
-  /** Borra el cambio pendiente y deja su fila `cambio_cancelado` (R39, R43). */
-  cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio>;
+  /**
+   * Borra el cambio pendiente y deja su fila `cambio_cancelado` (R39, R43). SLT-128 (R14): si el plan está
+   * partido (alguna empresa ya lo recibió, o recibió uno anterior que este reemplazó), `cambio_a_medias`.
+   */
+  cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambioDelPlan>;
   /**
    * Programa la versión para `vigenteDesde` (R37), reemplazando el pendiente si lo hay (R39), con sus
    * filas de `plan_rastro` (R43) y el trabajo que la aplicará, todo en una transacción (§16.2). No toca
@@ -402,6 +488,39 @@ export interface IPlanesRepository {
   preciosQueRigenDesde(planIds: readonly string[], desde: Date): Promise<PrecioDesdeLeido[]>;
   /** Solo públicos no archivados (R7; la lectura de SL-25). */
   publicos(): Promise<PlanDTO[]>;
+}
+
+/**
+ * SLT-128 (design §3.3, §3.6, §4) — lo que usan los trabajos de la cola para el cambio programado por empresa.
+ * Aparte de `IPlanesRepository`, como `IPlanesDelMaestroRepository`, para que los dobles de `PlanesService`,
+ * que no los usan, no cambien; `PlanesRepository` implementa las tres.
+ */
+export interface IPlanesRecepcionesRepository {
+  /**
+   * SLT-128 (design §3.3; R2, R4–R8, R10): la empresa recibe ESA programación si su recepción sigue sin recibir
+   * y ya rige en `ahora`: módulos contra la versión que tenía, precio, su versión propia y `recibido_at`. Si era
+   * la última y F ya pasó, promueve el plan en la misma transacción. Idempotente: sin la recepción
+   * (reemplazada, cancelada, ya recibida, no aplicada o la empresa salió) devuelve `sin_pendiente`. R8, R28: tipo
+   * quincenal con órdenes mensuales NO lanza: marca la recepción `no_aplicada` con su motivo, encola el aviso a
+   * la lista de alertas y, si ya no queda ninguna pendiente y F pasó, promueve el plan; devuelve `no_aplicada`.
+   */
+  recibirCambio(cambio: CambioPendiente, organizacionId: string, ahora: Date): Promise<ResultadoRecibir>;
+  /**
+   * SLT-128 (design §3.6; R5, R28): las recepciones pendientes (ni recibidas ni no aplicadas) con
+   * `recibe_at <= ahora` (barrido de §4).
+   */
+  recepcionesVencidas(ahora: Date): Promise<RecepcionPendiente[]>;
+  /**
+   * SLT-128 (design §3.6, §4; R22): `plan_recordatorio_cambio` con empresa. Si esa empresa sigue en el plan y
+   * su recepción de ESA programación sigue sin recibir con ESE `recibeAt`, encola su `plan_aviso_correo` con
+   * los topes que ya pasa ahora. Una vez por empresa y fecha (`dedupe_key` con `recibeAt`).
+   */
+  repartirRecordatorioDeEmpresa(
+    cambio: CambioPendiente,
+    organizacionId: string,
+    dias: DiasDeRecordatorio,
+    recibeAt: Date,
+  ): Promise<ResultadoRecordatorio>;
 }
 
 /**

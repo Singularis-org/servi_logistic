@@ -5943,6 +5943,9 @@ model Organizacion {
   planCambioTipoCobro String?   @map("plan_cambio_tipo_cobro")
   planCambioDesdeAt   DateTime? @map("plan_cambio_desde_at") @db.Timestamp(3)
   planCambioActorId   String?   @map("plan_cambio_actor_id")
+  // SLT-128 (design §1): sus recepciones de cambios programados y su versión propia del plan
+  planRecepciones PlanCambioRecepcion[]
+  planVersion     PlanVersionEmpresa?
 
   // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
   // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
@@ -6171,6 +6174,7 @@ model Plan {
   cambiosDeEmpresa Organizacion[]         @relation("PlanCambioEmpresa") // SLT-86: pendientes hacia este plan
   descuentos       PlanDescuentoPeriodo[] // SLT-86
   historialPrecio  PlanPrecioHistorial[] // SLT-86
+  versionesDeEmpresa PlanVersionEmpresa[] // SLT-128: empresas que ya corren el cambio a medias
 
   @@map("plan")
 }
@@ -6267,7 +6271,53 @@ model PlanCambioProgramado {
   actorNombre       String   @map("actor_nombre") @db.VarChar(120)
   createdAt         DateTime @default(now()) @map("created_at")
 
+  recepciones PlanCambioRecepcion[] // SLT-128
+
   @@map("plan_cambio_programado")
+}
+
+// SLT-128 (design §1.1, R1, R5, R9) — cuándo recibe cada empresa del plan su cambio programado: el inicio
+// de su período de cobro en F o después. Pendiente = `recibidoAt` y `noAplicadaAt` NULL; `noAplicada*`
+// (R28): no se pudo aplicar por una regla del plan, cuenta como resuelta. Reemplazar o cancelar el
+// pendiente borra sus filas en cascada. De PLATAFORMA. Viven solo en el SQL de 20261114120000: los `CHECK`
+// de `no_aplicada_*`, el índice parcial de las pendientes, la RLS sin políticas y el `REVOKE ALL … FROM
+// servi_app` (R26). La empresa va en `empresa_id`, no en `organizacion_id`: la guardia
+// organizacion-en-modelos prohíbe esa columna en tablas de plataforma (decisión del humano, 2026-11-12).
+model PlanCambioRecepcion {
+  cambioId       String                @map("cambio_id")
+  cambio         PlanCambioProgramado  @relation(fields: [cambioId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresaId      String                @map("empresa_id")
+  empresa        Organizacion          @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  recibeAt       DateTime              @map("recibe_at") @db.Timestamp(3)
+  recibidoAt     DateTime?             @map("recibido_at") @db.Timestamp(3)
+  noAplicadaAt   DateTime?             @map("no_aplicada_at") @db.Timestamp(3)
+  noAplicadaMotivo String?             @map("no_aplicada_motivo")
+
+  @@id([cambioId, empresaId])
+  @@index([empresaId])
+  @@map("plan_cambio_recepcion")
+}
+
+// SLT-128 (design §1.2, R2, R10, R13) — la versión del plan que corre una empresa durante un cambio a
+// medias. Sin fila, la empresa corre la del plan; al promover el plan se borran todas. `cambioId` es
+// opaco y SIN FK, a propósito: la versión sobrevive al reemplazo del pendiente que la trajo (R13).
+// `version` tiene la forma de `versionPlanSchema` con `periodicidadOrdenes` siempre presente. De
+// PLATAFORMA: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261114120000 (R26). `empresa_id`, no `organizacion_id`, como `PlanCambioRecepcion`.
+model PlanVersionEmpresa {
+  empresaId      String       @id @map("empresa_id")
+  empresa        Organizacion @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  planId         String       @map("plan_id")
+  plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  cambioId       String       @map("cambio_id")
+  version        Json
+  desdeAt        DateTime     @map("desde_at") @db.Timestamp(3)
+  // R28 (§14.1): la versión que la empresa conserva por una recepción no aplicada tras promover el plan.
+  noAplicadaAt   DateTime?    @map("no_aplicada_at") @db.Timestamp(3)
+  noAplicadaMotivo String?    @map("no_aplicada_motivo")
+
+  @@index([planId])
+  @@map("plan_version_empresa")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.
