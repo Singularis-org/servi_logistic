@@ -192,7 +192,7 @@
 
 ## T11 — Tests y E2E existentes (depende de T0.2, T10)
 
-- [ ] **T11.1** Actualizar los que T0.2 listó. Previstos: `tests/integration/db/slt123-pago-independiente.int.test.ts`
+- [x] **T11.1** Actualizar los que T0.2 listó. Previstos: `tests/integration/db/slt123-pago-independiente.int.test.ts`
   (caso 6: S1 aprobado con el código nuevo ahora lleva la marca; pasa a fixture viejo con la marca en
   `false`, que es lo que caracteriza) y `tests/integration/db/slt73-marcar-asienta.int.test.ts` (aprueba
   con `aprobar` real; sus cierres pasan a nuevos: el libro lleva `pago_satelite` en vez de
@@ -200,7 +200,7 @@
   pasa a la regla nueva; si usa la aprobación como montaje para otra cosa, se le da un cierre viejo.
   Nunca se borra una aserción sin sustituirla. Hecho: verdes, y cada cambio con su motivo en
   `progress/impl_SLT-139.md`.
-- [ ] **T11.2** `[P]` E2E: el grupo `dinero` entero y los que T0.2 listó (previsto: ninguno cae;
+- [x] **T11.2** `[P]` E2E: el grupo `dinero` entero y los que T0.2 listó (previsto: ninguno cae;
   `e2e/cierre-bodega-satelite.spec.ts` ya espera «La central debe» ausente) en local, con base
   desechable nueva y `NEXT_PUBLIC_APP_URL` como en `gate.yml` (`docs/perfil-agentes.md > E2E en local
   antes del PR`). Hecho: verde.

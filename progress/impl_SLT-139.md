@@ -1,7 +1,7 @@
 # impl SLT-139 «Pago al mensajero independiente del efectivo: satélite»
 
 > backend_dev, 2026-11-12. Tanda 1 (T0): parada en T0.2 con 41 archivos; Carlos aceptó hasta 45.
-> Tanda 2 (T1-T10, esta): hecha. Ver «Tanda 2» al final. T11 (E2E) y T12 quedan para otra tanda.
+> Tanda 2 (T1-T10): hecha. Tanda 3 (merge de SLT-112 + puerto de ganancia + T11): hecha, ver «Tanda 3» al final. T12 pendiente.
 
 ## Entorno
 
@@ -238,3 +238,55 @@ la medida de `slt123`. Todas comprobadas con el nombre y el número de tests eje
 ## Veredicto (tanda 2)
 
 T1-T10 hechos, 41 archivos (≤ 45), 31/31 mutaciones matadas; pendientes T11 (E2E) y T12.
+
+## Tanda 3 — merge de `origin/dev` (SLT-112), puerto de la ganancia y T11 (2026-11-12)
+
+### Merge (36c6e8be)
+Un conflicto, en `lib/services/CierreDiaService.ts > conPendientePago`: SLT-112 sacó el cálculo a
+`pendientesPorCierre` (la celda «Pago» y la tarjeta «Ganancia pendiente» usan el mismo); SLT-139 lo tenía
+inline con lo pagado por la satélite. Resuelto conservando la estructura de SLT-112 y metiendo el término
+de SLT-139 **dentro** de `pendientesPorCierre` (una lectura `sumarPagadoSatelitePorCierre` con los nuevos;
+sin la lectura, el cierre nuevo va a `undefined` = «Sin dato»). Consecuencia: la tarjeta de pendiente
+también resta lo de la satélite, y si un cierre nuevo queda sin cifra `resumenGanancia` da `sin_dato`
+(R357 de SLT-112: nunca un total que omita un cierre). `lib/actions/cierre-dia.ts` se mezcló solo.
+
+### Puerto `LecturaPagadoPorSatelite.sumarPagadoPorSateliteEnRango` (R345 -> R353 de SLT-112)
+- `PagoMensajeroMovimientoRepository.sumarPagadoPorSateliteEnRango(mensajeroId, desde, hasta)`: un
+  `aggregate` de `categoria = 'pago_satelite'`, `mensajero_id`, `fecha_movimiento` `gte`/`lt` (la primera
+  marca; la fila es inmutable). Empresa por RLS. Interfaz `IPagadoPorSateliteEnRangoLectura`.
+- Inyectado en `lib/actions/cierre-dia.ts > buildService` (`ganancia.pagadoPorSatelite`). Queda opcional en
+  el tipo (R353 de SLT-112 «sin la lectura = R352» sigue vivo); el test de cableado cae si no se inyecta.
+- Tests: `tests/integration/db/cierre-dia-ganancia-accion-real.test.ts` (acción real como la app, con RLS:
+  M con 700 en el mes y 400 un minuto antes del mes con su consolidación corregida ahora; M2 900; empresa B
+  999 → pagada **1900.00 / 2**, pendiente 3800.00 / 1, literales a mano);
+  `tests/integration/actions/cierre-dia-pendiente-cableado.test.ts` (instancia real inyectada);
+  `tests/unit/services/cierre-dia-ganancia.test.ts` (+3: la satélite resta en nuevos, sin lectura por cierre
+  → `sin_dato`, sin nuevos no cambia); `tests/integration/db/cierre-dia-ganancia-sql-real.test.ts` (inyecta
+  el puerto como el composition root; R356 pasa de 4 a 6 sentencias: + satélite por cierre + satélite del mes).
+- Mutaciones (logs `mut-M1..M3` de esta tanda, revertidas copiando el respaldo):
+  | # | Mutación | Cae |
+  |---|---|---|
+  | M1 | no inyectar `pagadoPorSatelite` | cableado + acción real |
+  | M2 | quitar el filtro de mensajero | acción real |
+  | M3 | fechar por `cierre_bodega.conciliado_at` (la corrección) en vez de `fecha_movimiento` | acción real (+ sql-real por sentencia extra) |
+
+### T11
+- T11.1: ya hecho en la tanda 2 (sección «Los 5 tests existentes que caían»); verde de nuevo tras el merge.
+- T11.2: grupo `dinero` ENTERO en local, base desechable nueva `slt139_e2e_t11` (generate, migrate deploy,
+  db:seed y `next build` por separado; `NEXT_PUBLIC_APP_URL=http://localhost:3000`; puerto 3000; candado
+  `e2e.lock`). **106/106 verdes** (`e2e-run2`, 5.6 min). Ningún E2E cambió.
+  - Corrida 1 (`e2e-run1`) inválida: 23 rojos por `PrismaClientValidationError … pago_satelite` — otro
+    worktree regeneró el cliente sin el enum a las 21:26 y mi script no lo regeneró (fallo mío de rutas en
+    el script; también dejó el candado puesto 21:31-21:36; lo quité al verlo). Arreglado y repetido.
+
+### Salidas reales
+- typecheck (8192): EXIT 0 tras el merge y tras el puerto.
+- eslint de los 8 archivos tocados: EXIT 0 (7 avisos `no-unused-vars` de los parámetros `_m/_d/_h` de los
+  dobles de `cierre-dia-ganancia.test.ts`, que ya venían de SLT-112).
+- vitest (`t11b`): 5 archivos, 47/47 (unidad ganancia, cableado, acción real, sql-real, slt139 int).
+- Tamaño (`scripts/tamano-pr.mjs`): 45/40 archivos, 2472 líneas — en el tope aceptado (45).
+- Regeneraciones del cliente: 21:22:31 (prep E2E) y 21:36:47 (script de E2E, el cliente había perdido
+  `pago_satelite`).
+
+## Veredicto (tanda 3)
+Merge hecho, puerto implementado e inyectado con 3/3 mutaciones matadas, `dinero` 106/106; queda T12.
