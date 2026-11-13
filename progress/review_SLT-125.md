@@ -190,3 +190,21 @@ Comparé cada línea `-` de los 35 archivos de `tests/` que ya existían en la b
 
 - La integración contra Postgres y el E2E: los cubre el CI.
 - `./init.sh`: corrí por separado typecheck, lint y `tests/unit` + `tests/components` enteros.
+
+## Vuelta 2 (acotada a 5b89c18a..175583b4)
+
+### Veredicto final: **OK con menores**
+
+- **B1, resuelto.** El diff solo toca `docs/architecture.md` (+29/−1) y no cambia código.
+  - `:170` limita `geo:backfill` a los cierres anteriores a SLT-125.
+  - El párrafo nuevo «Presentación sobre el árbol (SLT-125)» cubre:
+    - el núcleo puro y el separador de hoy de cada superficie;
+    - las lecturas que nombran con la ruta del catálogo, con una carga por instancia y ninguna por fila;
+    - WhatsApp;
+    - la escritura de `ubicacion_snapshot` en la misma transacción, y su lectura con zod y vuelta a las 3 columnas;
+    - la geocodificación con `pais.nombre`, con la misma huella en CR;
+    - los scripts de evidencia, que corre una persona.
+- **Regresiones:** ninguna.
+- **Guardias:** el leader informa 242/243 en local. El único rojo es `dependencias-declaradas-presentes`, que está en `tests/baseline-rojos.json`, así que no es un hallazgo.
+- **M6 (menor, nuevo):** el párrafo no dice que la ruta de una orden llega como mucho al nivel 3 hasta SLT-48 «Geografía jerárquica: retirar modelo viejo» (decisión P1). Basta una línea; puede ir aquí o en SLT-48.
+- **Siguen abiertos M1–M5.** M1 (R35/T5.1, el ensayo de una persona sobre la copia de producción) sigue siendo condición del merge.
