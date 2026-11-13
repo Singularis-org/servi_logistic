@@ -117,7 +117,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
   las dos tablas; índice parcial con «pendiente»; `factura_plataforma_cerrar` y `plan_de_la_empresa` solo con
   pendientes; `db/schema.prisma` con las cuatro columnas. **Hecho:** T2.3 verde con los `CHECK` nuevos y el
   `down.sql` que sigue reponiendo literal; typecheck verde.
-- [ ] **T10.2** [P] Contratos y textos: `IPlanesRepository` (`no_aplicada` en el resultado de `recibirCambio`,
+- [x] **T10.2** [P] Contratos y textos: `IPlanesRepository` (`no_aplicada` en el resultado de `recibirCambio`,
   `noAplicadas` en el detalle); `lib/types/planes.ts` (`noAplicadas`); `lib/planes/mensajes.ts`
   (texto del motivo, línea del detalle, asunto); `no_aplicada` en `AvisoCorreoPlan`. **Hecho:** typecheck verde.
 - [ ] **T10.3** Repositorio R28 (depende de T10.1, T10.2): `recibirCambio` marca en vez de lanzar y encola el aviso

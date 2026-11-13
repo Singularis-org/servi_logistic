@@ -2,6 +2,7 @@ import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { z } from "zod";
 
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import type { MotivoNoAplicada } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 import type { CambioPendienteVista, PendienteDeEmpresa, PeriodoDelCobro, PlanConConsumo } from "@/lib/types/consumo-plan";
@@ -432,10 +433,27 @@ export type FilaRastro = {
  */
 export type PendienteDelDetalle = CambioPendienteVista & { recibidas: number; total: number };
 
+/**
+ * SLT-128 (design §14.3; R28): una empresa del plan que no recibió el cambio programado y sigue con su versión
+ * anterior. `motivo` es el código (`MotivoNoAplicada` de `lib/planes/mensajes.ts`); la línea la compone
+ * `lineaNoAplicada(empresa, motivo)`. `desde`: la recepción que no se aplicó, en ISO.
+ */
+export type NoAplicadaVista = {
+  empresaId: string;
+  empresa: string;
+  motivo: MotivoNoAplicada;
+  desde: string;
+};
+
 export type DetallePlan = {
   plan: PlanDTO;
   empresaNombre: string | null;
   pendiente: PendienteDelDetalle | null;
+  /**
+   * SLT-128 (R28): las empresas que no recibieron el cambio («<empresa> no recibió el cambio: …»). Opcional
+   * para los dobles de pantalla que no lo usan; el servicio siempre lo trae (vacío si no hay ninguna).
+   */
+  noAplicadas?: NoAplicadaVista[];
   empresas: { id: string; nombre: string }[];
   /** Del más reciente al más antiguo. */
   rastro: FilaRastro[];

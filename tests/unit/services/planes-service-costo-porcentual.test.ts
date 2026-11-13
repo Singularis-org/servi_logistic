@@ -96,6 +96,7 @@ function doble() {
       pendiente: null,
       empresas: [],
       rastro: [],
+      noAplicadas: [],
     })),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(async () => null),
   } satisfies IPlanesRepository;
@@ -208,6 +209,7 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
       },
       empresas: [],
       rastro: [],
+      noAplicadas: [],
     });
     expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
     repo.detalle.mockResolvedValue({
@@ -221,6 +223,7 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
       },
       empresas: [],
       rastro: [],
+      noAplicadas: [],
     });
     expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
   });

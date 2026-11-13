@@ -80,6 +80,7 @@ function doble() {
       pendiente: null,
       empresas: [],
       rastro: [],
+      noAplicadas: [],
     })),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(async () => null),
   } satisfies IPlanesRepository;
@@ -100,6 +101,7 @@ function conPendiente(v: VersionPlan) {
     pendiente: { vigenteDesde: new Date("2026-12-01T06:00:00.000Z"), version: v, recibidas: 0, total: 0 }, // SLT-128 (R11)
     empresas: [],
     rastro: [],
+    noAplicadas: [],
   });
 }
 

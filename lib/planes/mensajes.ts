@@ -220,6 +220,35 @@ export function textoRecepcionesDelCambio(recibidas: number, total: number): str
   return `${recibidas} de ${total} empresas ya lo recibieron`;
 }
 
+/* -------------------------------------------------------------------------- */
+/* SLT-128 (design §14; R28) — la recepción que no se pudo aplicar             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R28: los códigos de motivo de una recepción «no aplicada», los mismos que acepta el `CHECK` de
+ * `no_aplicada_motivo` en `20261114120000_plan_cambio_por_empresa`. Hoy solo el de R8.
+ */
+export const MOTIVOS_NO_APLICADA = ["cobro_quincenal_ordenes_mensuales"] as const;
+export type MotivoNoAplicada = (typeof MOTIVOS_NO_APLICADA)[number];
+
+/** R28, literal: el texto de cada motivo. */
+export function textoMotivoNoAplicada(motivo: MotivoNoAplicada): string {
+  switch (motivo) {
+    case "cobro_quincenal_ordenes_mensuales":
+      return "cobra por quincena y el plan nuevo factura las órdenes por mes";
+  }
+}
+
+/** R28, literal: la línea del detalle del plan por cada empresa que no recibió el cambio. */
+export function lineaNoAplicada(empresaNombre: string, motivo: MotivoNoAplicada): string {
+  return `${empresaNombre} no recibió el cambio: ${textoMotivoNoAplicada(motivo)}. Sigue con su versión anterior.`;
+}
+
+/** R28 (design §14.4): el asunto del correo a la lista de alertas. */
+export function asuntoCambioPlanNoAplicado(planNombre: string, empresaNombre: string): string {
+  return `El cambio del plan ${planNombre} no se aplicó a ${empresaNombre}`;
+}
+
 /** R45, literal: el único texto del correo de cancelación (a mano o al archivar). */
 export function mensajeCambioCancelado(planNombre: string, fecha: string): string {
   return `El cambio del plan ${planNombre} previsto para ${fecha} se canceló; tu plan sigue igual.`;

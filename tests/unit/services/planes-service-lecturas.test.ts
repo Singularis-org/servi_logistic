@@ -75,6 +75,7 @@ function detalleLeido(): DetallePlanLeido {
     plan: plan(),
     empresaNombre: null,
     pendiente: { vigenteDesde: RIGE, version: PENDIENTE, recibidas: 0, total: 1 }, // SLT-128 (R11): 0 de su única empresa
+    noAplicadas: [],
     empresas: [{ id: EMPRESA, nombre: "Mensajería Uno" }],
     rastro: [
       {

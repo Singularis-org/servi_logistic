@@ -2017,6 +2017,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         plan: aDTO(fila),
         empresaNombre: fila.organizacionExclusiva?.nombre ?? null,
         pendiente: pendienteDelDetalle(fila.cambioProgramado),
+        noAplicadas: [],
         empresas: fila.empresas,
         rastro: rastro.map((r) => ({
           id: r.id,
