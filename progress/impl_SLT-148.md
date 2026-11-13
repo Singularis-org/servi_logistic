@@ -233,3 +233,7 @@ importes 0,00; un día con su resumen y `gestiones: []`) y **24 sentencias exact
 
 **Veredicto:** m1, m2 y T6.2 cerrados con test, mutación roja y revertida verde; T6.3 sigue abierta por
 dos caídas del worker de Playwright ajenas al detalle de bodega.
+
+## Constancia de CI (leader)
+- PR #158 a 205f78b1: `gate-completo` verde (suite entera con `cierre-bodega-desglose-por-tienda` y `486-evidencias` contra base con datos: T4.1) y `e2e (dinero)` verde (T6.3): https://github.com/Singularis-org/servi_logistic/actions/runs/43502649475/job/132152143990
+- En local, las 2 corridas de `dinero` cayeron por el proceso de Windows (code=3221226505), cada vez en un test distinto ajeno a bodega; 21/21 tests de bodega verdes.

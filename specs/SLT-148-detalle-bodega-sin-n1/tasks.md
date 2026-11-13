@@ -72,7 +72,7 @@
 
 ## T4 — Regresión de los consumidores (depende de T2.1) [P con T3]
 
-- [ ] **T4.1** Correr sin tocar sus aserciones: `cierres-bodega-cifras-lote-sql-real.test.ts`,
+- [x] **T4.1** Correr sin tocar sus aserciones: `cierres-bodega-cifras-lote-sql-real.test.ts`,
   `cierre-bodega-desglose-por-tienda-sql-real.test.ts`, `cierre-bodega-cifras-fila-sql-real.test.ts`,
   `cierre-reparto-porcentajes-sql-real.test.ts`, `ajuste-pago-mensajero-lectura.int.test.ts`,
   `486-evidencias-cierres-sql-real.test.ts`, `slt76-desmarcable.int.test.ts` y
@@ -105,7 +105,7 @@ ninguna sobrevive. Un «todo rojo» o «todo verde» sin la lista de tests ejecu
 - [x] **T6.2** `progress/deudas.md`: D67 como resuelta por SLT-148 «Detalle del cierre de bodega sin
   N+1» con los números de T0 y T2 (si la entrada D67 no existe, se crea ya resuelta con origen
   `feature_list.json`; ver `requirements.md > Preguntas abiertas`).
-- [ ] **T6.3** `./init.sh` verde con `.env` y la base desechable. E2E: el diff no toca `db/`, ni
+- [x] **T6.3** `./init.sh` verde con `.env` y la base desechable. E2E: el diff no toca `db/`, ni
   pantallas, ni escribe dinero; sí lee dinero, así que corre en local el grupo `dinero`
   (`pnpm exec playwright test --project=dinero`) y los E2E que abren el detalle de un cierre de bodega
   (`grep -rl` en `e2e/` por «cierre de bodega»/`cierres-bodega`).
