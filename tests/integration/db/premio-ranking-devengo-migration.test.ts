@@ -74,16 +74,20 @@ function ramaDelCheck(sql: string, tipo: PagoMensajeroMovimientoTipo): string[] 
   return [...(match as RegExpMatchArray)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
-/** SLT-68: las categorias del incentivo, posteriores a esta migracion. */
-const CATEGORIAS_DE_SLT68: readonly string[] = ["incentivo", "reverso_incentivo"];
+/**
+ * Las categorias posteriores a esta migracion, cada una con su propio CHECK: las del incentivo
+ * (SLT-68, `20261030120100_incentivo_mensajero_checks`) y «pagado por la satelite» (SLT-139,
+ * `20261115120100_pago_satelite_checks`).
+ */
+const CATEGORIAS_POSTERIORES: readonly string[] = ["incentivo", "reverso_incentivo", "pago_satelite"];
 
 // ── El vocabulario tipado ───────────────────────────────────────────────────────────────────
 
 describe("T1.5 — los dos SEED tipados ganan su valor y conservan los previos", () => {
   it("`premio_ranking` entra en el catalogo del libro del mensajero, sin perder los 5 previos", () => {
     expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED).toContain("premio_ranking");
-    // 6 al cerrar la 293; SLT-68 anadio DESPUES `incentivo` y `reverso_incentivo`.
-    expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_DE_SLT68.includes(v))).toHaveLength(6);
+    // 6 al cerrar la 293; SLT-68 anadio DESPUES `incentivo` y `reverso_incentivo`, y SLT-139 `pago_satelite`.
+    expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_POSTERIORES.includes(v))).toHaveLength(6);
     for (const previa of [
       "pago_devengado",
       "pago_efectivo",
@@ -185,9 +189,9 @@ describe("UP — los siete pasos de design §10, en su orden", () => {
   it("las 6 categorias del catalogo estan en UNA sola rama: ninguna suelta, ninguna repetida", () => {
     const todas = [...ramaDelCheck(upSql, "devengo"), ...ramaDelCheck(upSql, "pago")];
     expect(new Set(todas).size).toBe(todas.length);
-    // Foto de la 293: las categorias que SLT-68 anadio despues viven en el CHECK de su migracion.
+    // Foto de la 293: las categorias que SLT-68 y SLT-139 anadieron despues viven en el CHECK de su migracion.
     expect([...todas].sort()).toEqual(
-      PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_DE_SLT68.includes(v)).sort(),
+      PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_POSTERIORES.includes(v)).sort(),
     );
   });
 

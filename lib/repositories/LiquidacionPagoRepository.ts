@@ -20,6 +20,7 @@ import type {
 import { esP2002, textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where";
+import type { CifraGanancia } from "@/lib/interfaces/services/ICierreDiaService";
 
 // Cliente Prisma acotado a lo que este repo necesita (patron WalletTiendaMovimientoRepository).
 // `cierreDia` entra SOLO para leer (R42): ningun metodo de esta clase lo escribe.
@@ -285,6 +286,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     if (row === null) return null;
@@ -294,6 +296,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     };
   }
 
@@ -315,6 +318,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     if (row === null) return null;
@@ -324,6 +328,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     };
   }
 
@@ -353,6 +358,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
         solicitadoAt: true,
       },
       // Eficiencia, no la verdad del orden: quien fija R8 es `ordenarCierresFifo`, que reordena
@@ -366,6 +372,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
       solicitadoAt: row.solicitadoAt.toISOString(),
     }));
   }
@@ -389,6 +396,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
         solicitadoAt: true,
       },
       orderBy: [{ solicitadoAt: "asc" }, { id: "asc" }],
@@ -399,6 +407,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
       solicitadoAt: row.solicitadoAt.toISOString(),
     }));
   }
@@ -558,6 +567,23 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       total[g.cierreId] = new Prisma.Decimal(g._sum.monto ?? 0).toFixed(2);
     }
     return total;
+  }
+
+  /**
+   * SLT-112 (R352, R354) — Σ y nº de los pagos VIGENTES del mensajero con `fecha_pago` en
+   * [desde, hasta). Un anulado no cuenta aunque su fecha sea del rango. Una consulta.
+   */
+  async sumarVigentesDelMensajeroEnRango(
+    mensajeroId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<CifraGanancia> {
+    const agg = await this.prisma.liquidacionPago.aggregate({
+      where: { mensajeroId, fechaPago: { gte: desde, lt: hasta }, ...VIGENTE },
+      _sum: { monto: true },
+      _count: { _all: true },
+    });
+    return { monto: new Prisma.Decimal(agg._sum.monto ?? 0).toFixed(2), conteo: agg._count._all };
   }
 
   /** §5/R80: Σ de los pagos VIGENTES de una tienda. Salida STRING (money-safe). */

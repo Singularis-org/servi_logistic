@@ -37,6 +37,7 @@ const ROL_APP = "servi_app";
 // `tarifa_valor`.
 // SLT-85 (20261109120000) suma tres: las de `cobro_plataforma_traza` a `orden`, a `cobro_plataforma_movimiento`
 // y a sí misma (`reverso_de`).
+// SLT-118 (20261111130100_factura_plataforma) no lo mueve: la única FK de `factura_plataforma` es a `organizacion`.
 const TRIGGERS_MISMA_EMPRESA = 175;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */

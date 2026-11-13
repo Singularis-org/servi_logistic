@@ -204,14 +204,17 @@ export function filaDescargaDiaRechazada(gestion: CierreDetalleGestion): Descarg
 }
 
 /**
- * El grupo `incidente` NO lleva ninguna columna de dinero en esta pantalla (158/R17/R18): un
- * incidente no se paga al mensajero y la indemnización no es suya. El archivo respeta eso.
+ * SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R58, R162, D8): el grupo
+ * `incidente` lleva «Ganancia» al final, después de la evidencia, como «Devolución a origen por
+ * rechazo». Es el `pagoMensajero` de la gestión tal cual (`null` = celda vacía, nunca 0). La
+ * indemnización sigue sin viajar: no es del mensajero y la consulta no la selecciona.
  */
 export const COLUMNAS_DESCARGA_DIA_INCIDENTES: DescargaColumna[] = [
   ...COMUNES,
   { clave: "causa", encabezado: CAUSA_INCIDENTE_COL },
   { clave: "motivo", encabezado: "Motivo" },
   { clave: "tieneEvidencia", encabezado: TIENE_EVIDENCIA_COL },
+  { clave: "ganancia", encabezado: GANANCIA_COL },
 ];
 
 export function filaDescargaDiaIncidente(gestion: CierreDetalleGestion): DescargaFila {
@@ -222,6 +225,7 @@ export function filaDescargaDiaIncidente(gestion: CierreDetalleGestion): Descarg
       : null,
     motivo: motivoGestionLegible(gestion.motivo, gestion.esRechazoSla),
     tieneEvidencia: tieneEvidencia(gestion),
+    ganancia: gestion.pagoMensajero,
   };
 }
 

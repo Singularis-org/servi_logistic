@@ -11,7 +11,8 @@ import type {
   CierreSinGestionRow,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type {
-  CierreGestionDescargaDTO,
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
   SenalesColaCierre,
 } from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
@@ -68,6 +69,9 @@ export interface CierreAdminResumenRow {
   totalPagoMensajero: string; // feature 39/R17: snapshot total del pago al mensajero (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R16: snapshot total del ingreso de bodega por rechazos (STRING)
   incluyeModeloNuevo?: boolean; // SLT-54 (R71): ver `CierreAdminResumen.incluyeModeloNuevo`
+  // SLT-123 (R320): ver `CierreAdminResumen.pagoIndependienteEfectivo`. Obligatoria en la fila
+  // (review 1): un mapeo que la olvide no compila.
+  pagoIndependienteEfectivo: boolean;
   solicitadoAt: string; // ISO
   resueltoAt: string | null; // ISO
   motivoRechazo: string | null;
@@ -552,6 +556,28 @@ export interface ICierresAdminRepository {
     resueltoPorNombre?: string | null;
   } | null>;
   /**
+   * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (R380, R383) — las gestiones de
+   * VARIOS cierres, con la MISMA forma que las del detalle (`toPendienteRowDesdeSnapshot`, mismo orden
+   * `createdAt desc`), para derivar sus cifras con `cifrasDelCierre`.
+   *
+   *  - Un numero FIJO de consultas para cualquier numero de cierres: nunca una por cierre (R383).
+   *  - El alcance va en el `WHERE` (relacion `cierre`), ademas de los ids: un id fuera de alcance no
+   *    devuelve nada aunque se pase a mano.
+   *  - Un cierre en alcance con filas congeladas y sin gestiones sale con `[]`; uno que no sale en el
+   *    mapa no tiene ninguna fila en alcance (el servicio lo lee como `[]`).
+   *  - Lista vacia: mapa vacio, sin consultar.
+   *  - Falta la fila congelada de una gestion: `CierreDetalleFaltanteError`, como el detalle.
+   *
+   * OBLIGATORIO en la interfaz (lección de SLT-123: un metodo opcional que un camino no puebla se lee
+   * en silencio como «no hay»).
+   */
+  findGestionesDeCierresEnAlcance(
+    cierreIds: readonly string[],
+    alcance: Alcance,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha cada gestion. */
+    zona: string,
+  ): Promise<ReadonlyMap<string, CierreGestionPendienteRow[]>>;
+  /**
    * Feature 158 (T1.12, R19/R21/R25): las gestiones con `resultado = incidente` vinculadas a ESE
    * cierre, acotadas por el alcance en el WHERE (nunca en memoria). Es lo que el service necesita
    * para exigir COBERTURA EXACTA de los montos al aprobar: ni falta ninguna (R19/R20) ni sobra
@@ -632,7 +658,19 @@ export interface ICierresAdminRepository {
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
-  ): Promise<CierreGestionDescargaDTO[]>;
+  ): Promise<CierreGestionDescargaRow[]>;
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del MODELO NUEVO del mismo
+   * conjunto que `findGestionesPorAlcanceCompleto`: el mismo alcance y los mismos recortes, en el
+   * WHERE (nunca en memoria), y solo cierres con alguna gestion (el conjunto de la hoja). Orden: el
+   * de los cierres del listado y, dentro de cada uno, el del detalle. Sin ids ni importes.
+   */
+  findRechazosTiendaModeloNuevoCompleto(
+    alcance: Alcance,
+    filtros: FiltrosDescargaGestionesRepo,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `fechaRechazo`. */
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]>;
   /**
    * R10-R15: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si
    * el cierre sigue `solicitado` y casa el alcance (updateMany con guardia). NO toca

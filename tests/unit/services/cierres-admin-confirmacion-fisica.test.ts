@@ -53,6 +53,9 @@ function ok(gestionId: string, numGuia: number = GUIA[gestionId] ?? 9999) {
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => []),
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
@@ -66,6 +69,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
     findBarridasDelCierre: vi.fn(async () => []),
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     // Merge 238 <- dev (2026-08-19): la correccion del desglose de pago amplio el contrato del
     // repositorio. Esta suite no toca esa ruta; los stubs estan por completitud del doble y
@@ -296,7 +300,7 @@ describe("238/R12/R13 — la guia leida", () => {
 
     const errores = erroresDe(r);
     expect(errores[G_DEV]).toEqual([
-      "Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador.",
+      "Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador.",
     ]);
     // R13: NO se omite del conjunto esperado. Omitirla la aprobaria sin que nadie la tuviera
     // delante, que es la falla silenciosa que este mensaje evita.
@@ -549,7 +553,7 @@ describe("451/R11-R15 — cobertura exacta de las barridas, error POR FILA", () 
     // (a) Enviada con cualquier guia: el motivo es la falta de guia.
     const conEntrada = await service.aprobarCierre("c1", MAESTRO, [], [okB(O_B1, 1)]);
     expect(erroresDe(conEntrada)).toEqual({
-      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador."],
+      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador."],
     });
     // (b) Sin enviarla: sigue en el conjunto esperado (si se omitiera, esto aprobaria).
     const sinEntrada = await service.aprobarCierre("c1", MAESTRO, [], []);

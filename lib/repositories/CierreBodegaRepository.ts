@@ -67,8 +67,18 @@ const CONSOLIDABLE_SELECT = {
   totalGeneral: true,
   totalPagoMensajero: true, // feature 39/R18: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia
+  resueltoAt: true, // SLT-106 (R194): la columna «Aprobado» de «A consolidar»
+  pagoIndependienteEfectivo: true, // SLT-139 (R322, R323): la regla de pago de este cierre
   mensajero: { select: NOMBRE_USUARIO_SELECT },
-  _count: CONTEO_DETALLE_MODELO_NUEVO, // SLT-54 (R71): en la misma sentencia, sin consulta por fila
+  // SLT-54 (R71): en la misma sentencia, sin consulta por fila.
+  // SLT-106 (R194): + las gestiones con al menos un ajuste del pago, la misma subconsulta que
+  // `CierresBodegaAdminRepository.DETALLE_CIERRE_SELECT` (una gestion ajustada dos veces cuenta una).
+  _count: {
+    select: {
+      ...CONTEO_DETALLE_MODELO_NUEVO.select,
+      gestiones: { where: { ajustesPagoMensajero: { some: {} } } },
+    },
+  },
 } as const;
 
 // Proyeccion de la cabecera de un cierre de bodega (join a zona/usuario + _count).
@@ -291,14 +301,38 @@ type ConsolidableRow = Prisma.CierreDiaGetPayload<{ select: typeof CONSOLIDABLE_
 
 /** Fila cruda de un cierre_dia consolidable -> DTO de dominio (money-safe STRING). */
 function toConsolidableRow(r: ConsolidableRow): CierreDiaConsolidableRow {
+  const totales = totalesToString(r);
+  const totalPagoMensajero = r.totalPagoMensajero.toFixed(2); // R18: snapshot money-safe STRING
+  const totalIngresoBodegaRechazos = r.totalIngresoBodegaRechazos.toFixed(2); // feature 56/R17
   return {
     cierreDiaId: r.id,
     mensajeroId: r.mensajeroId,
     mensajeroNombre: nombreCompletoUsuario(r.mensajero),
-    totales: totalesToString(r),
-    totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R18: snapshot money-safe STRING
-    totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R17: snapshot money-safe STRING
+    totales,
+    totalPagoMensajero,
+    totalIngresoBodegaRechazos,
     incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
+    // SLT-106 (R67): la MISMA derivacion que `toBodegaResumenRow`, desde los snapshots de ESTE
+    // cierre. Como el mapper lo comparten la pagina, el conjunto y la descarga, las tres emiten lo
+    // mismo.
+    paraLaCentral: paraLaCentral(totales.general, totalPagoMensajero, totalIngresoBodegaRechazos),
+    aprobadoAt: r.resueltoAt === null ? null : r.resueltoAt.toISOString(), // R194
+    gestionesAjustadas: r._count.gestiones, // R194
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-139 (R322, R323)
+  };
+}
+
+/**
+ * SLT-106 (R199/R200) — los cierre_dia de la zona aun `solicitado`: los que bloquean «Solicitar
+ * cierre de bodega». Declarado UNA vez: lo leen la puerta de `solicitarCierreBodega` (cuenta) y el
+ * aviso de la pantalla (nombres). Con dos `where` gemelos el aviso podria nombrar a quien la
+ * puerta no cuenta.
+ */
+function sinResolverWhere(zonaId: string): Prisma.CierreDiaWhereInput {
+  return {
+    destinoTipo: DESTINO_SATELITE,
+    destinoZonaId: zonaId, // R3: la zona del actor, en el WHERE
+    estado: ESTADO_SOLICITADO,
   };
 }
 
@@ -399,13 +433,16 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
 
   /** R6: cierre_dia de la zona aun `solicitado` (sin resolver por el adminSatelite). */
   async contarCierresDiaSolicitados(zonaId: string): Promise<number> {
-    return this.prisma.cierreDia.count({
-      where: {
-        destinoTipo: DESTINO_SATELITE,
-        destinoZonaId: zonaId,
-        estado: ESTADO_SOLICITADO,
-      },
+    return this.prisma.cierreDia.count({ where: sinResolverWhere(zonaId) });
+  }
+
+  /** SLT-106 (R199): un nombre por cierre `solicitado` de la zona, con repetidos. */
+  async findMensajerosConCierreSinResolver(zonaId: string): Promise<string[]> {
+    const rows = await this.prisma.cierreDia.findMany({
+      where: sinResolverWhere(zonaId),
+      select: { mensajero: { select: NOMBRE_USUARIO_SELECT } },
     });
+    return rows.map((r) => nombreCompletoUsuario(r.mensajero));
   }
 
   // ⭑ FICHA 431 — AQUI VIVIA `existeCierreBodegaSolicitado`, el gate «a lo sumo una consolidacion

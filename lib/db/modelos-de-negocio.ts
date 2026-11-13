@@ -116,6 +116,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "CobroPlataformaPorcentualOrden", tabla: "cobro_plataforma_porcentual_orden" },
   // Traza de facturación de cada movimiento del cobro de la plataforma (SLT-85): la escribe solo el trigger de `cobro_plataforma_movimiento`
   { modelo: "CobroPlataformaTraza", tabla: "cobro_plataforma_traza" },
+  // Factura de la plataforma por empresa y período, con la cuota del plan (SLT-118): la escriben solo funciones del dueño
+  { modelo: "FacturaPlataforma", tabla: "factura_plataforma" },
   // Cobro de fulfillment por paquete a la tienda (SLT-94): lo escriben solo los triggers de `orden` y de su bitácora
   { modelo: "OrdenFulfillmentMovimiento", tabla: "orden_fulfillment_movimiento" },
   // Devoluciones

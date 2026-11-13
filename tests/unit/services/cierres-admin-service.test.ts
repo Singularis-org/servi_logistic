@@ -37,6 +37,7 @@ const ZONA_SAT = "z-cartago";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: "c1",
     mensajeroId: "m1",
     mensajeroNombre: "Ana Mensajera",
@@ -99,6 +100,9 @@ type Repo = ICierresAdminRepository;
 function fakeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
     // Feature 170 (T I.1): el historico paginado vive en su propia suite (*-paginado).
     findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
@@ -122,6 +126,7 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
     // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     // Pedido humano (2026-08-19): la correccion del desglose. Dobles no-op: esta suite no la
     // ejercita (vive en `cierres-admin-corregir-pagos.test.ts`).

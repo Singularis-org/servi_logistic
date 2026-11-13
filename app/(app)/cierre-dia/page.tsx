@@ -6,8 +6,11 @@ import {
   listarCierreDia,
   listarCierresPasadosPaginado,
   estadoBloqueoMensajero,
+  resumenGananciaMensajero,
+  verCierrePasado,
 } from "@/lib/actions/cierre-dia";
-import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { SIN_BLOQUEO, type CierreAResolver } from "@/lib/utils/bloqueo-cierre";
+import type { CierreReenviable } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 
 import { CierreDiaModule } from "./_components/CierreDiaModule";
 
@@ -25,12 +28,17 @@ export default async function CierreDiaPage() {
 
   // Feature 170 — FASE 2 (T I.2, R40): el listado compuesto sigue trayendo las gestiones del
   // día, los totales y los gates; «Cierres solicitados» llega como PÁGINA 1 y su total (R41).
-  const [result, pasadosResult] = await Promise.all([
+  // SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (R357, R358, R360): las
+  // cifras de las tarjetas se leen en cada render (y `router.refresh()` las relee). Una lectura que no
+  // es `ok` —o que lanza— deja la página sin tarjetas, nunca sin página: sin `notFound()`.
+  const [result, pasadosResult, gananciaResult] = await Promise.all([
     listarCierreDia(),
     listarCierresPasadosPaginado({}),
+    resumenGananciaMensajero().catch(() => ({ status: "error" as const })),
   ]);
   if (result.status !== "ok") notFound(); // forbidden/unauthenticated → sin módulo
   if (pasadosResult.status !== "ok") notFound(); // defensa en profundidad
+  const resumenGanancia = gananciaResult.status === "ok" ? gananciaResult.resumen : undefined;
 
   // Feature 41 (R21) -> FEATURE 271 (T9.3): el DETALLE del bloqueo, derivado server-side por la
   // regla N/V. SUSTITUYE a tres props del módulo: el flag `bloqueado` y los dos `tieneVencido` /
@@ -41,6 +49,11 @@ export default async function CierreDiaPage() {
   // escritura la sigue gateando el servidor (defensa suave arriba, defensa real abajo).
   const estado = await estadoBloqueoMensajero();
   const bloqueo = estado.status === "ok" ? estado.bloqueo : SIN_BLOQUEO;
+
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R240, R253): con un
+  // cierre por reenviar, la página pinta ESE, leído aquí y no en el cliente —llega pintada y
+  // `router.refresh()` lo relee por el mismo camino—. Solo en el caso raro.
+  const reenviable = bloqueo.aReenviarPrimero ? await leerReenviable(bloqueo.aReenviarPrimero) : undefined;
 
   return (
     <AppPage
@@ -61,7 +74,31 @@ export default async function CierreDiaPage() {
         bloqueo={bloqueo}
         // FICHA 477 (R25/R26): lo que hace falta para corregir cada cierre rechazado propio.
         correcciones={result.correcciones ?? []}
+        reenviable={reenviable}
+        resumenGanancia={resumenGanancia}
       />
     </AppPage>
   );
+}
+
+/**
+ * R253: `no_encontrada`, `forbidden` o una excepción son `error`, sin `notFound()`: el mensajero tiene
+ * que poder enviar ese cierre aunque no se haya podido leer.
+ */
+async function leerReenviable(c: CierreAResolver): Promise<CierreReenviable> {
+  const reenviableEstado = c.estado === "rechazado" ? "rechazado" : "vencido";
+  try {
+    const r = await verCierrePasado({ cierreId: c.cierreId });
+    if (r.status !== "ok") return { estado: "error", reenviableEstado };
+    return {
+      estado: "ok",
+      cierre: r.cierre,
+      grupos: r.grupos,
+      ordenesSinGestion: r.ordenesSinGestion,
+      sinGestionRegistrado: r.sinGestionRegistrado,
+      rechazosDeTienda: r.rechazosDeTienda,
+    };
+  } catch {
+    return { estado: "error", reenviableEstado };
+  }
 }

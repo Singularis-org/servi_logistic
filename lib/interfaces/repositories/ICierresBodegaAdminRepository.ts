@@ -1,5 +1,8 @@
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
@@ -26,6 +29,15 @@ export interface CierreBodegaDetalleCierreRow {
   /** SLT-104 (PA3, R120): ISO del `solicitado_at` de ESTE cierre_dia, no el del cierre de bodega. */
   solicitadoAt: string;
 }
+
+/**
+ * SLT-107 (R280, R281): el alcance con el que se LEE la cabecera de un cierre de bodega. Acceso
+ * total = toda la empresa (la central, como hoy); `adminSatelite` = solo la zona de SU usuario,
+ * resuelta por el servicio desde la base (nunca de la peticion).
+ */
+export type AlcanceLecturaBodega =
+  | { lectura: "toda_la_empresa" }
+  | { lectura: "zona"; zonaId: string };
 
 // Datos de la transicion guardada (aprobar/rechazar) de un cierre de bodega.
 // `motivoRechazo` = null al aprobar; el motivo (ya validado) al rechazar.
@@ -176,6 +188,12 @@ export interface ICierresBodegaAdminRepository {
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
+    /**
+     * SLT-107 (R280, R281): con que alcance se LEE la cabecera. De zona = `zonaId` en el `where`
+     * (no se lee y se descarta); fuera de alcance = `null` sin leer nada mas. Obligatorio: cada
+     * llamada declara el suyo.
+     */
+    alcance: AlcanceLecturaBodega,
   ): Promise<{
     cierre: CierreBodegaResumenRow;
     cierresDia: {
@@ -205,7 +223,17 @@ export interface ICierresBodegaAdminRepository {
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
-  ): Promise<CierreGestionDescargaDTO[]>;
+  ): Promise<CierreGestionDescargaRow[]>;
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del MODELO NUEVO del mismo
+   * conjunto que `findGestionesDeCierresBodegaCompleto` (consolidados en bodega, mismos recortes, con
+   * alguna gestion), con el criterio en el WHERE. Sin ids ni importes.
+   */
+  findRechazosTiendaDeCierresBodegaModeloNuevoCompleto(
+    filtros: FiltrosDescargaGestionesRepo,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `fechaRechazo`. */
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]>;
   /**
    * R16-R22: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si el
    * cierre de bodega sigue `solicitado` (updateMany con guardia de estado). Un solo

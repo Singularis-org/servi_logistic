@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { FilaGestion } from "@/components/private/cierres/fila/FilaGestion";
 import type { AccionesFila, AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import {
   CONGELADO_AT,
   gestionCanvas,
@@ -32,7 +33,7 @@ function montar(
     audiencia?: AudienciaFila;
     central?: boolean;
     acciones?: AccionesFila;
-    onVerEvidencia?: (url: string) => void;
+    onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
     mensajero?: string;
   } = {},
 ) {
@@ -333,7 +334,11 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
     await user.click(screen.getByRole("button", { name: `Corregir el resultado ${DE_CANVAS}` }));
     expect(acciones.corregirResultado).toHaveBeenCalledWith(g);
     await user.click(screen.getByRole("button", { name: `Ver evidencia ${DE_CANVAS}` }));
-    expect(onVerEvidencia).toHaveBeenCalledWith("https://firmada/1");
+    // SLT-103 (R137): el visor recibe las URL y el contexto «Orden <remisión> · <destinatario>».
+    expect(onVerEvidencia).toHaveBeenCalledWith({
+      urls: ["https://firmada/1"],
+      contexto: "Orden REM-001 · Beto Ruiz",
+    });
   });
 
   it("satélite: solo ajustar pago, aunque le pasaran los demás callbacks", async () => {
@@ -369,12 +374,52 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
     expect(devolver).toHaveBeenCalledWith(g);
   });
 
-  it("paridad: varias evidencias, un botón por foto", async () => {
+  it("SLT-109 (R244): gestión de la tienda → «Devolver a gestión» deshabilitado, con el motivo en `title` y en el nombre", () => {
+    const motivo =
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+    montar(gestionCanvas({ desdeAyudaTienda: true }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const boton = screen.getByRole("button", {
+      name: `Devolver a gestión la orden REM-001 · Beto Ruiz — no disponible: ${motivo}`,
+    });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute("title", motivo);
+  });
+
+  it("SLT-109 (R244): una gestión del mensajero sale habilitada y sin `title`", () => {
+    montar(gestionCanvas({ desdeAyudaTienda: false }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const boton = screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" });
+    expect(boton).toBeEnabled();
+    expect(boton).not.toHaveAttribute("title");
+  });
+
+  it("SLT-109 (R244): con su deshacer en vuelo, el botón de ESA gestión está deshabilitado", () => {
+    const g = gestionCanvas({ desdeAyudaTienda: false });
+    render(
+      <FilaGestion
+        gestion={g}
+        audiencia="mensajero"
+        quienMiraEsCentral={false}
+        congeladoAt={null}
+        acciones={{ devolver: vi.fn() }}
+        enVuelo={g.gestionId}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" })).toBeDisabled();
+  });
+
+  it("SLT-103 (R54, R138): varias evidencias, UN botón «Ver evidencia (2)» con todas las fotos", async () => {
+    const onVerEvidencia = vi.fn();
     const g = gestionCanvas({ evidenciaUrls: ["https://firmada/1", "https://firmada/2"] });
-    const user = montar(g, { onVerEvidencia: vi.fn() });
+    const user = montar(g, { onVerEvidencia });
     await desplegar(user, g);
-    expect(screen.getByRole("button", { name: `Ver evidencia 1 de 2 ${DE_CANVAS}` })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: `Ver evidencia 2 de 2 ${DE_CANVAS}` })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Ver evidencia/ })).toHaveLength(1);
+    const boton = screen.getByRole("button", { name: "Ver evidencia (2) de la orden REM-001 · Beto Ruiz" });
+    expect(boton).toHaveTextContent(/^Ver evidencia \(2\)$/);
+    await user.click(boton);
+    expect(onVerEvidencia).toHaveBeenCalledWith({
+      urls: ["https://firmada/1", "https://firmada/2"],
+      contexto: "Orden REM-001 · Beto Ruiz",
+    });
   });
 
   it("sin snapshot, el botón de desplegar se llama «Detalle de la orden …»", () => {

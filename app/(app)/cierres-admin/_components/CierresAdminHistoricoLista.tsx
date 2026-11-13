@@ -18,6 +18,8 @@ import {
 } from "./cierres-admin-descarga-columnas";
 import { PendienteLiquidarBadge } from "./PendienteLiquidarBadge";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import { obtenerResumenCierres } from "./cierres-resumen-modelo-nuevo-descarga";
 
 /**
  * Feature 170 — FASE 2 (T I.2, R43/R44/R52): el HISTÓRICO de «Cierres del día» (feature 38,
@@ -102,6 +104,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
  */
 export function descargaHistoricoCierres(
   filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA,
@@ -113,6 +116,14 @@ export function descargaHistoricoCierres(
       filasDesdeResultado(
         descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
         filaDescargaCierreHistorico,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro; sin ellos, el archivo de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }

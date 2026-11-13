@@ -51,6 +51,7 @@ const CIERRE_ID = "c-315-aprobado";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: CIERRE_ID,
     mensajeroId: "men-1",
     mensajeroNombre: "Ana Mensajera",
@@ -76,6 +77,9 @@ function fakeRepo(
 ): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => []),
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
@@ -98,6 +102,7 @@ function fakeRepo(
     // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
     findBarridasDelCierre: vi.fn(async () => []),
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     findGestionEditableEnCierre: vi.fn(async () => null),
     actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),

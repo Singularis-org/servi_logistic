@@ -29,6 +29,7 @@ import type {
   RegistrarPagoTiendaInput,
 } from "@/lib/types/liquidacion";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { LecturaPagadoSateliteAusenteError } from "@/lib/utils/pendiente-cierre";
 
 // Feature 172 / T B.3 (mitad TIENDA) + T B.5 (mitad MENSAJERO) — `LiquidacionService`.
 // Cubre R1, R2, R5, R6, R20, R21, R23, R24, R25, R29, R30, R31, R32, R35, R36, R38, R39, R40,
@@ -75,6 +76,7 @@ const INPUT_MENSAJERO: RegistrarPagoMensajeroInput = {
 /** Cierre APROBADO con P = 50 000 y E = 0 -> pendiente generado por el cierre: 50 000. */
 function cierreDTO(over: Partial<CierreParaPagoDTO> = {}): CierreParaPagoDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: "c1",
     mensajeroId: "m1",
     estado: CierreEstado.aprobado,
@@ -163,6 +165,11 @@ function buildDobles(opciones: {
   /** Feature 293 (T2.3, §6/4): Σ de PREMIOS VIVOS del cierre. Ausente = "0.00". */
   premiosVivos?: string;
   /**
+   * SLT-139 (R338, R344): Σ `pago_satelite` del cierre. Ausente = "0.00"; `null` = el repositorio
+   * del libro SIN la lectura (como los dobles que implementan la interfaz a mano).
+   */
+  pagadoSatelite?: string | null;
+  /**
    * SLT-122: el DESTINO del cierre sembrado. El doble de `obtenerCierreParaPagoEnAlcance` hace lo
    * que el WHERE hace en la base —un cierre fuera del alcance pedido sale `null`—; que la base
    * lo haga de verdad lo mide `pago-mensajero-bodega-duena.test.ts` (integracion). Ausente = central.
@@ -225,6 +232,7 @@ function buildDobles(opciones: {
       return Object.fromEntries(ids.map((id) => [id, opciones.pagadoVigente ?? "0.00"]));
     }),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => {
       log.push("listar:por-cierre");
       return opciones.pagos ?? [];
@@ -314,6 +322,15 @@ function buildDobles(opciones: {
       return Object.fromEntries(ids.map((id) => [id, opciones.premiosVivos ?? "0.00"]));
     }),
     listarPremiosPorDias: vi.fn(async () => []),
+    // SLT-139 (R338, R344): la lectura de «pagado por la satelite»; `pagadoSatelite: null` la quita.
+    ...(opciones.pagadoSatelite === null
+      ? {}
+      : {
+          sumarPagadoSatelitePorCierre: vi.fn(async (ids: string[]) => {
+            log.push("leer:pagado-satelite");
+            return Object.fromEntries(ids.map((id) => [id, opciones.pagadoSatelite ?? "0.00"]));
+          }),
+        }),
   } as unknown as IPagoMensajeroMovimientoRepository;
 
   const llamadasTx = { n: 0 };
@@ -1714,5 +1731,124 @@ describe("money-safe: el modulo no convierte dinero a numero", () => {
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.pago.monto).toMatch(/^\d+\.\d{2}$/);
     expect(r.restante).toMatch(/^\d+\.\d{2}$/);
+  });
+});
+
+// ── SLT-123 (T5.3) — con la marca, lo pendiente del cierre es `P` completo ──────────────────────
+//
+// Cierre NUEVO de la central (marca `true`) con P 3 000 y E 5 000: con la regla de la 44 no deberia
+// nada (el pago salio del efectivo); con la regla nueva se le deben los 3 000. Importes a mano.
+
+describe("SLT-123 R316/R321 — la liquidacion deriva lo pendiente con la marca del cierre", () => {
+  const nuevo = cierreDTO({ totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: true });
+  const viejo = cierreDTO({ totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: false });
+
+  it("R316: el tope del pago directo es P (3000.00) aunque E >= P", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "3000.01" }, ACTOR_ADMIN);
+
+    expect(r).toEqual({ status: "excede", disponible: "3000.00" });
+  });
+
+  it("R316: pagar P entero entra y deja el cierre en 0.00", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "3000.00" }, ACTOR_ADMIN);
+
+    expect(r).toMatchObject({ status: "ok", restante: "0.00" });
+    expect(d.pagoRepo.crear).toHaveBeenCalledTimes(1);
+  });
+
+  it("R325: el mismo P y E SIN la marca sigue respondiendo `sin_saldo`, como hoy", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: viejo });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "3000.00" }, ACTOR_ADMIN);
+
+    expect(r).toEqual({ status: "sin_saldo" });
+    expect(d.pagoRepo.crear).not.toHaveBeenCalled();
+  });
+
+  it("R321: el reparto imputa el cierre nuevo por P (ventana 3000.00); el viejo no entra", async () => {
+    for (const [cierre, esperado] of [
+      [nuevo, "3000.00"],
+      [viejo, "0.00"],
+    ] as const) {
+      const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre });
+      d.pagoRepo.listarCierresImputablesEnAlcance = vi.fn(async () => [
+        { ...cierre, solicitadoAt: "2026-11-14T15:00:00.000Z" },
+      ]);
+      (d.mensajeroRepo as unknown as Record<string, unknown>).obtenerNombreMensajero = vi.fn(async () => "Ana");
+      (d.mensajeroRepo as unknown as Record<string, unknown>).agregarCuentaPorPagar = vi.fn(async () => ({
+        devengado: "3000.00",
+        pagado: "0.00",
+      }));
+
+      const r = await d.service.previsualizarRepartoMensajero({ mensajeroId: "m1", monto: "3000.00" }, ACTOR_MAESTRO);
+
+      if (r.status !== "ok") throw new Error(`esperaba ok y llego ${r.status}`);
+      expect(r.previsualizacion.imputable, `marca ${cierre.pagoIndependienteEfectivo}`).toBe(esperado);
+    }
+  });
+
+  it("R321: anular un pago de 1 000 contra el cierre nuevo devuelve restante 3000.00 (P entero)", async () => {
+    // Antes de anular: vigentes 1 000 -> tras anular, 0 vigentes -> se debe P completo.
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo, pagadoVigente: "1000.00" });
+    d.pagoRepo.obtenerPorId = vi.fn(async () =>
+      pagoDTO({ id: "pago-n1", mensajeroId: "m1", tiendaId: null, cierreId: "c1", monto: "1000.00" }),
+    );
+
+    const r = await d.service.anularPago({ pagoId: "pago-n1", motivo: "Monto mal tecleado" }, ACTOR_MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", restante: "3000.00" });
+  });
+
+  it("R325: la misma anulacion contra el cierre viejo devuelve 0.00, como hoy", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: viejo, pagadoVigente: "1000.00" });
+    d.pagoRepo.obtenerPorId = vi.fn(async () =>
+      pagoDTO({ id: "pago-v1", mensajeroId: "m1", tiendaId: null, cierreId: "c1", monto: "1000.00" }),
+    );
+
+    const r = await d.service.anularPago({ pagoId: "pago-v1", motivo: "Monto mal tecleado" }, ACTOR_MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", restante: "0.00" });
+  });
+});
+
+// ── SLT-139 (T6.3) — la liquidacion resta lo pagado por la satelite (R338, R344) ────────────────
+//
+// En produccion la lectura da siempre 0.00 (la central solo paga cierres `bodega_central`); aqui se
+// le da 1 000 a un cierre NUEVO de la central de P 3 000 para PROBAR que se usa: el tope pasa a
+// 2000.00. Importes escritos a mano.
+
+describe("SLT-139 R338/R344 — LiquidacionService con la lectura de «pagado por la satelite»", () => {
+  const nuevo = cierreDTO({ totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: true });
+  const viejo = cierreDTO({ totalPagoMensajero: "3000.00", totalEfectivo: "1000.00", pagoIndependienteEfectivo: false });
+
+  it("R338: con 1 000 pagados por la satelite, el tope de un cierre nuevo de P 3 000 es 2000.00", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo, pagadoSatelite: "1000.00" });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "2000.01" }, ACTOR_ADMIN);
+
+    expect(r).toEqual({ status: "excede", disponible: "2000.00" });
+    expect(d.pagoRepo.crear).not.toHaveBeenCalled();
+  });
+
+  it("R344: sin la lectura y con un cierre nuevo, registrar un pago LANZA antes de escribir", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: nuevo, pagadoSatelite: null });
+
+    await expect(
+      d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "1000.00" }, ACTOR_ADMIN),
+    ).rejects.toBeInstanceOf(LecturaPagadoSateliteAusenteError);
+    expect(d.pagoRepo.crear).not.toHaveBeenCalled();
+    expect(d.mensajeroRepo.crearMovimientos).not.toHaveBeenCalled();
+  });
+
+  it("R344: sin la lectura, un cierre VIEJO sigue pagandose con la regla de la 44 (no la necesita)", async () => {
+    const d = buildDobles({ creditos: "0.00", debitos: "0.00", cierre: viejo, pagadoSatelite: null });
+
+    const r = await d.service.registrarPagoMensajero({ ...INPUT_MENSAJERO, monto: "2000.00" }, ACTOR_ADMIN);
+
+    expect(r).toMatchObject({ status: "ok", restante: "0.00" });
   });
 });

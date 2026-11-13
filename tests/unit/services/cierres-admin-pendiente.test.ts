@@ -10,7 +10,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import { derivarPendienteCierre, LecturaPagadoSateliteAusenteError } from "@/lib/utils/pendiente-cierre";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 172 / T C.2 (R22, R26, R28) — `pendientePagoMensajero` viaja con el cierre.
@@ -34,6 +34,7 @@ const CERO = { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: 
  */
 function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     mensajeroId: `m-${over.cierreId}`,
     mensajeroNombre: "Ana Mensajera",
     estado: "aprobado",
@@ -53,6 +54,9 @@ function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): Cierr
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
     findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
@@ -71,6 +75,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
     // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     // Pedido humano (2026-08-19): la correccion del desglose. Dobles no-op: esta suite no la
     // ejercita (vive en `cierres-admin-corregir-pagos.test.ts`).
@@ -105,21 +110,35 @@ function fakeLiquidacion(opts: { pagados?: Record<string, string>; cierre?: Cier
  * premios VIVOS por cierre; ausente = "0.00", que es lo que hace que todos los casos previos de
  * este archivo sigan midiendo exactamente lo que median.
  */
-function fakePremios(opts: { premios?: Record<string, string> } = {}) {
+function fakePremios(opts: { premios?: Record<string, string>; satelite?: Record<string, string> } = {}) {
   const idsPedidos: string[][] = [];
+  // SLT-139 (R334): las llamadas a la lectura de «pagado por la satelite», aparte.
+  const idsSatelite: string[][] = [];
   return {
     idsPedidos,
+    idsSatelite,
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) => {
       idsPedidos.push(ids);
       return Object.fromEntries(ids.map((id) => [id, opts.premios?.[id] ?? "0.00"]));
     }),
+    sumarPagadoSatelitePorCierre: vi.fn(async (ids: string[]) => {
+      idsSatelite.push(ids);
+      return Object.fromEntries(ids.map((id) => [id, opts.satelite?.[id] ?? "0.00"]));
+    }),
   };
 }
 
-function newService(
+/** SLT-139 (R335): el doble de premios de UNA funcion, sin la lectura de la satelite. */
+function premiosSinLectura() {
+  return {
+    sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, "0.00"]))),
+  };
+}
+
+function newService<P extends ReturnType<typeof premiosSinLectura> = ReturnType<typeof fakePremios>>(
   repo: ICierresAdminRepository,
   liquidacion = fakeLiquidacion(),
-  premios = fakePremios(),
+  premios: P = fakePremios() as unknown as P,
 ) {
   const zonaRepo = {
     findCentralZonaId: vi.fn(async () => "z-central"),
@@ -240,6 +259,7 @@ describe("R22 — el pendiente sale de min(P, E) menos los pagos VIGENTES, en el
           efectivo: e,
           premiosVivos: "0.00",
           pagadoVigente: pagado,
+          pagoIndependienteEfectivo: false, // SLT-123: las filas de `row()` no llevan la marca
         }),
       );
     }
@@ -457,6 +477,7 @@ describe("R26 — el detalle de un cierre tambien trae su pendiente", () => {
 
 describe("R16/R18 — aprobar devuelve el pendiente, sin convertirlo en condicion", () => {
   const cierreAprobado: CierreParaPagoDTO = {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: "c1",
     mensajeroId: "m1",
     estado: "aprobado",
@@ -636,6 +657,7 @@ describe("293/R24/R27 — un cierre SALDADO con premio vuelve a estar pendiente"
       fakeRepo(),
       fakeLiquidacion({
         cierre: {
+          pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
           id: "c1",
           mensajeroId: "m1",
           estado: "aprobado",
@@ -649,5 +671,246 @@ describe("293/R24/R27 — un cierre SALDADO con premio vuelve a estar pendiente"
     const r = await service.aprobarCierre("c1", MAESTRO);
 
     expect(r).toMatchObject({ status: "ok", pendientePagoMensajero: "5000.00" });
+  });
+});
+
+// ── SLT-123 (T5.1) — la marca del cierre decide la regla de cada fila ───────────────────────────
+//
+// Importes escritos a mano. La misma pagina mezcla un cierre VIEJO de la central (marca `false`),
+// uno NUEVO de la central (marca `true`) y uno VIEJO de la satelite (con SLT-123 sola la satelite
+// nunca lleva la marca, design §13). Cada fila se deriva con SU marca (R320, R327): ni el destino
+// ni la fecha deciden.
+
+describe("SLT-123 R320/R321 — lo pendiente sigue la marca de cada cierre", () => {
+  const pagina = [
+    // V1 central viejo: P 3 000, E 1 000 -> 3 000 − min(3 000, 1 000) = 2 000.
+    row({ cierreId: "v1", totalPagoMensajero: "3000.00", totales: { ...CERO, efectivo: "1000.00" }, pagoIndependienteEfectivo: false }),
+    // N1 central nuevo: P 3 000, E 5 000 -> P completo, 3 000 (el efectivo no entra).
+    row({ cierreId: "n1", totalPagoMensajero: "3000.00", totales: { ...CERO, efectivo: "5000.00" }, pagoIndependienteEfectivo: true }),
+    // S1 satelite viejo: P 2 500, E 1 000 -> 2 500 − 1 000 = 1 500, como hoy.
+    row({
+      cierreId: "s1",
+      destinoTipo: "bodega_satelite",
+      destinoZonaId: "z-sat",
+      destinoZonaNombre: "Satelite",
+      totalPagoMensajero: "2500.00",
+      totales: { ...CERO, efectivo: "1000.00" },
+      pagoIndependienteEfectivo: false,
+    }),
+  ];
+
+  it("historico paginado: viejo central 2000.00, nuevo central 3000.00, viejo satelite 1500.00", async () => {
+    const repo = fakeRepo({
+      findHistoricoPaginado: vi.fn(async () => ({ items: pagina, total: pagina.length })),
+    });
+    const { service } = newService(repo);
+
+    const r = await service.listarHistoricoCierresAdminPaginado({ page: 1, pageSize: 20 }, MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const porId = Object.fromEntries(r.items.map((c) => [c.cierreId, c.pendientePagoMensajero]));
+    expect(porId).toEqual({ v1: "2000.00", n1: "3000.00", s1: "1500.00" });
+  });
+
+  it("listado sin paginar: la misma pagina da las mismas cifras", async () => {
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => pagina) });
+    const { service } = newService(repo);
+
+    const r = await service.listarCierresAdmin(MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const porId = Object.fromEntries(r.historico.map((c) => [c.cierreId, c.pendientePagoMensajero]));
+    expect(porId).toEqual({ v1: "2000.00", n1: "3000.00", s1: "1500.00" });
+  });
+
+  it("nuevo central con un pago vigente de 1 000 y un premio de 500: 3 000 + 500 − 1 000 = 2500.00", async () => {
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => [pagina[1]!]) });
+    const { service } = newService(
+      repo,
+      fakeLiquidacion({ pagados: { n1: "1000.00" } }),
+      fakePremios({ premios: { n1: "500.00" } }),
+    );
+
+    const r = await service.listarCierresAdmin(MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.historico[0]!.pendientePagoMensajero).toBe("2500.00");
+  });
+
+  it("R321: tras aprobar un cierre nuevo de la central (E 5 000 >= P 3 000) se ofrece pagar 3000.00", async () => {
+    const { service } = newService(
+      fakeRepo(),
+      fakeLiquidacion({
+        cierre: {
+          id: "n1",
+          mensajeroId: "m1",
+          estado: "aprobado",
+          totalPagoMensajero: "3000.00",
+          totalEfectivo: "5000.00",
+          pagoIndependienteEfectivo: true,
+        },
+      }),
+    );
+
+    const r = await service.aprobarCierre("n1", MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", pendientePagoMensajero: "3000.00" });
+  });
+
+  it("R325: tras aprobar un cierre sin la marca (mismo P y E) se ofrece 0.00, como hoy", async () => {
+    const { service } = newService(
+      fakeRepo(),
+      fakeLiquidacion({
+        cierre: {
+          id: "v1",
+          mensajeroId: "m1",
+          estado: "aprobado",
+          totalPagoMensajero: "3000.00",
+          totalEfectivo: "5000.00",
+          pagoIndependienteEfectivo: false,
+        },
+      }),
+    );
+
+    const r = await service.aprobarCierre("v1", MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", pendientePagoMensajero: "0.00" });
+  });
+});
+
+
+// ── SLT-139 (T6.1) — lo pagado por la satelite en `/cierres-admin` (R319, R334, R335, R338) ─────
+//
+// Una pagina con un cierre VIEJO de satelite (P 3 000, E 1 000 -> 2000.00 con la 44), uno NUEVO de
+// satelite ya conciliado (P 2 500; la satelite le pago 2 500 -> 0.00) y uno NUEVO de la central
+// (P 3 000, sin pago de satelite -> 3000.00). Importes escritos a mano.
+
+describe("SLT-139 R319/R334/R335 — CierresAdminService resta lo pagado por la satelite", () => {
+  const SAT = { destinoTipo: "bodega_satelite" as const, destinoZonaId: "z-sat", destinoZonaNombre: "Cartago" };
+  const pagina: CierreAdminResumenRow[] = [
+    row({ cierreId: "vs", ...SAT, totalPagoMensajero: "3000.00", totales: { ...CERO, efectivo: "1000.00", general: "1000.00" } }),
+    row({
+      cierreId: "ns",
+      ...SAT,
+      totalPagoMensajero: "2500.00",
+      totales: { ...CERO, efectivo: "1000.00", simpe: "3000.00", general: "4000.00" },
+      pagoIndependienteEfectivo: true,
+    }),
+    row({
+      cierreId: "nc",
+      totalPagoMensajero: "3000.00",
+      totales: { ...CERO, efectivo: "5000.00", general: "5000.00" },
+      pagoIndependienteEfectivo: true,
+    }),
+  ];
+
+  it("viejo de satelite 2000.00, nuevo de satelite conciliado 0.00, nuevo central 3000.00", async () => {
+    const premios = fakePremios({ satelite: { ns: "2500.00" } });
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => pagina) });
+    const { service } = newService(repo, fakeLiquidacion(), premios);
+
+    const r = await service.listarCierresAdmin(MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const porId = Object.fromEntries(r.historico.map((c) => [c.cierreId, c.pendientePagoMensajero]));
+    expect(porId).toEqual({ vs: "2000.00", ns: "0.00", nc: "3000.00" });
+    // R334: UNA lectura para la pagina, solo con los ids NUEVOS.
+    expect(premios.idsSatelite).toEqual([["ns", "nc"]]);
+  });
+
+  it("R319: el nuevo de satelite sin conciliar (nada pagado por la satelite) debe P: 2500.00", async () => {
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => [pagina[1]!]) });
+    const { service } = newService(repo, fakeLiquidacion(), fakePremios());
+
+    const r = await service.listarCierresAdmin(MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.historico[0]!.pendientePagoMensajero).toBe("2500.00");
+  });
+
+  it("R334: una pagina solo de cierres viejos no llama a la lectura", async () => {
+    const premios = fakePremios();
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => [pagina[0]!]) });
+    const { service } = newService(repo, fakeLiquidacion(), premios);
+
+    const r = await service.listarCierresAdmin(MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.historico[0]!.pendientePagoMensajero).toBe("2000.00");
+    expect(premios.idsSatelite).toEqual([]);
+  });
+
+  it("R334: el historico paginado tambien hace UNA lectura por pagina", async () => {
+    const premios = fakePremios({ satelite: { ns: "2500.00" } });
+    const repo = fakeRepo({
+      findHistoricoPaginado: vi.fn(async () => ({ items: pagina, total: pagina.length })),
+    });
+    const { service } = newService(repo, fakeLiquidacion(), premios);
+
+    const r = await service.listarHistoricoCierresAdminPaginado({ page: 1, pageSize: 20 }, MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(premios.sumarPagadoSatelitePorCierre).toHaveBeenCalledTimes(1);
+    expect(Object.fromEntries(r.items.map((c) => [c.cierreId, c.pendientePagoMensajero]))).toEqual({
+      vs: "2000.00",
+      ns: "0.00",
+      nc: "3000.00",
+    });
+  });
+
+  it("R335: sin la lectura y con un cierre nuevo en la pagina, el listado LANZA en vez de inventar", async () => {
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => pagina) });
+    const { service } = newService(repo, fakeLiquidacion(), premiosSinLectura());
+
+    await expect(service.listarCierresAdmin(MAESTRO)).rejects.toBeInstanceOf(LecturaPagadoSateliteAusenteError);
+  });
+
+  it("R335: sin la lectura y solo cierres viejos, el listado sigue dando su cifra", async () => {
+    const repo = fakeRepo({ findCierresByAlcance: vi.fn(async () => [pagina[0]!]) });
+    const { service } = newService(repo, fakeLiquidacion(), premiosSinLectura());
+
+    const r = await service.listarCierresAdmin(MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.historico[0]!.pendientePagoMensajero).toBe("2000.00");
+  });
+
+  const nuevoSatelite: CierreParaPagoDTO = {
+    id: "ns",
+    mensajeroId: "m1",
+    estado: "aprobado",
+    totalPagoMensajero: "2500.00",
+    totalEfectivo: "1000.00",
+    pagoIndependienteEfectivo: true,
+  };
+
+  it("R319: tras aprobar un nuevo de satelite (sin conciliar) se ofrece P: 2500.00", async () => {
+    const premios = fakePremios();
+    const { service } = newService(fakeRepo(), fakeLiquidacion({ cierre: nuevoSatelite }), premios);
+
+    const r = await service.aprobarCierre("ns", MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", pendientePagoMensajero: "2500.00" });
+    expect(premios.idsSatelite).toEqual([["ns"]]);
+  });
+
+  it("pendienteTrasAprobar usa la lectura: con 1 000 pagados por la satelite ofrece 1500.00", async () => {
+    const { service } = newService(
+      fakeRepo(),
+      fakeLiquidacion({ cierre: nuevoSatelite }),
+      fakePremios({ satelite: { ns: "1000.00" } }),
+    );
+
+    const r = await service.aprobarCierre("ns", MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", pendientePagoMensajero: "1500.00" });
+  });
+
+  it("R335: sin la lectura, tras aprobar un cierre nuevo se ofrece 0.00 (la respuesta segura)", async () => {
+    const { service } = newService(fakeRepo(), fakeLiquidacion({ cierre: nuevoSatelite }), premiosSinLectura());
+
+    const r = await service.aprobarCierre("ns", MAESTRO);
+
+    expect(r).toMatchObject({ status: "ok", pendientePagoMensajero: "0.00" });
   });
 });

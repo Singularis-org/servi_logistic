@@ -97,6 +97,7 @@ function cierre(
   over: Partial<CierreImputableDTO> = {},
 ): CierreImputableDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id,
     mensajeroId: MENSAJERO,
     estado: CierreEstado.aprobado,
@@ -289,6 +290,7 @@ function buildDobles(opciones: Opciones = {}) {
     }),
     obtenerPorId: vi.fn(async () => null),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => []),
   };

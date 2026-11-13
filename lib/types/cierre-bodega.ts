@@ -2,7 +2,10 @@ import { z } from "zod";
 import { cierreConfig } from "@/lib/config/cierre";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  ConRechazosDeTiendaEnOk,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import { paginaInputSchema } from "@/lib/types/pagina-input";
 import { filtrosCierresBodegaSchema } from "@/lib/types/filtros-cierres";
@@ -24,6 +27,7 @@ function conFiltrosDeBodega<T extends z.ZodRawShape>(base: z.ZodObject<T>) {
 import type {
   CierreBodegaResumen,
   CierreBodegaResumenLite,
+  CierreConsolidableCola,
   ListarConsolidacionServiceResult,
   SolicitarCierreBodegaServiceResult,
 } from "@/lib/interfaces/services/ICierreBodegaService";
@@ -194,8 +198,10 @@ export type ListarPendientesCierresBodegaResult = ListarPaginadoResult<
 
 // Feature 170 (T J.1, R41/R42): la COLA de cierre_dia consolidables. Fila distinta
 // (`CierreBodegaResumenLite`, un cierre del dia) y por eso alias propio, no un rename.
+// SLT-106 (R192): la pagina lleva la fila de la cola (`CierreConsolidableCola`), la misma que ya
+// devuelve el servicio; el conjunto de la descarga sigue siendo Lite.
 export type ListarConsolidablesResult = ListarPaginadoResult<
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
   CierreBodegaListadoError
 >;
 
@@ -236,8 +242,9 @@ export type ListarHistoricoCierresBodegaCompletoResult =
  * Union de error ANCHO por el motivo de siempre: lo consume `filasDesdeResultado`, que traduce
  * `limite_excedido`, `forbidden` y `unauthenticated` a mensajes accionables en un solo sitio.
  */
-export type ListarGestionesCierresBodegaCompletoResult =
-  ListarCompletoResult<CierreGestionDescargaDTO>;
+export type ListarGestionesCierresBodegaCompletoResult = ConRechazosDeTiendaEnOk<
+  ListarCompletoResult<CierreGestionDescargaDTO>
+>; // SLT-113 (R372): la rama `ok` puede llevar `rechazosDeTienda`
 
 // Resultados de las Server Actions: resultado de dominio del service +
 // `unauthenticated` (sin sesion, lo resuelve el borde). Para ver-detalle/aprobar se

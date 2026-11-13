@@ -38,6 +38,9 @@ function inc(gestionId: string) {
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => []),
     // Feature 170 (T I.1): el historico paginado. Doble no-op: esta suite no lo ejercita.
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
@@ -58,6 +61,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
     // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     // Pedido humano (2026-08-19): la correccion del desglose. Dobles no-op: esta suite no la
     // ejercita (vive en `cierres-admin-corregir-pagos.test.ts`).

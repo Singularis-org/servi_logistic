@@ -25,8 +25,11 @@ import {
 //     flete 2.500,00 · IVA del flete 325,00 · comision 700,00 · IVA de la comision 91,00
 //     contra-entrega 20.000,00 (credito a la tienda y su ingreso en la caja, 173)
 //   INCIDENTE indemnizado con 6.000,00 (egreso de la caja, 158); no factura nada.
-//   PAGO AL MENSAJERO 1.500,00 con 20.000,00 de efectivo: devengo 1.500,00, pagado 1.500,00 y el
-//     egreso de la caja por 1.500,00 (44).
+//   PAGO AL MENSAJERO 1.500,00 con 20.000,00 de efectivo: devengo 1.500,00 y el egreso de la caja por
+//     1.500,00. Hasta SLT-123 (regla de la 44, `min(P, E)`) el libro llevaba ademas `pago_efectivo
+//     1.500,00`: el pago se daba por hecho con el efectivo. Desde SLT-123 (R313) la central aprobada
+//     devenga P y NO escribe `pago_efectivo` aunque E >= P; la caja no cambia (R314, D11). Lo que
+//     queda pendiente de pagar (1.500,00) lo prueba `slt123-pago-independiente.int.test.ts`.
 //
 // Contra Postgres real, en una transaccion que SIEMPRE se revierte, con los servicios reales.
 
@@ -50,10 +53,8 @@ const TIENDA_CENTRAL = [
   { tipo: "debito", categoria: "iva_flete", monto: "325.00" },
 ];
 
-const MENSAJERO_CENTRAL = [
-  { tipo: "devengo", categoria: "pago_devengado", monto: "1500.00" },
-  { tipo: "pago", categoria: "pago_efectivo", monto: "1500.00" },
-];
+// SLT-123 (R313): solo el devengo; la fila `pago_efectivo 1500.00` de antes ya no se escribe.
+const MENSAJERO_CENTRAL = [{ tipo: "devengo", categoria: "pago_devengado", monto: "1500.00" }];
 
 describeSiHayBase("SLT-73 R3 — aprobar un cierre de la central asienta igual que antes", () => {
   let prisma: PrismaClient;
@@ -84,14 +85,20 @@ describeSiHayBase("SLT-73 R3 — aprobar un cierre de la central asienta igual q
     expect(r.libros).toEqual({ caja: [], tienda: [], mensajero: [] });
   });
 
-  it("R3: tras aprobar, los tres libros tienen exactamente las filas de siempre (literal)", async () => {
+  it("R3 + SLT-123 R313/R314: tras aprobar, caja y tienda como siempre; el mensajero solo devenga (literal)", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
       const k = await sembrarCierreAprobable(tx, "bodega_central");
       const status = await aprobar(k);
-      return { status, libros: await filasDeLibros(tx, k.cierreId) };
+      const { pagoIndependienteEfectivo } = await tx.cierreDia.findUniqueOrThrow({
+        where: { id: k.cierreId },
+        select: { pagoIndependienteEfectivo: true },
+      });
+      return { status, pagoIndependienteEfectivo, libros: await filasDeLibros(tx, k.cierreId) };
     });
     expect(r.status).toBe("ok");
+    // SLT-123 (R310): la aprobacion de la central marca el cierre con la regla nueva.
+    expect(r.pagoIndependienteEfectivo).toBe(true);
     expect(r.libros.caja).toEqual(CAJA_CENTRAL);
     expect(r.libros.tienda).toEqual(TIENDA_CENTRAL);
     expect(r.libros.mensajero).toEqual(MENSAJERO_CENTRAL);

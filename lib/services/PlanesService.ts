@@ -22,6 +22,7 @@ import {
   FECHA_DE_EFECTO_OBLIGATORIA,
   FECHA_DE_EFECTO_PASADA,
   mensajeTopesPasados,
+  periodicidadIncompatible,
   rangoInicioCiclo,
   SOLO_CON_PLAN,
   SOLO_PRIMERA_ASIGNACION,
@@ -52,6 +53,7 @@ import {
   type PlanResult,
   type PrecioDesde,
   type PreciosQueRigenResult,
+  TIPO_QUINCENAL_CON_ORDENES_MENSUALES,
   type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
@@ -104,8 +106,9 @@ interface FechasDelCambio {
 
 /**
  * SLT-58 R30: la fecha de inicio entre «hoy − 1 mes» y «hoy + 1 mes» de la plataforma. SLT-86 R16: la de
- * efecto entre hoy y «hoy + 12 meses». «Hoy» es el del reloj del servicio y `AAAA-MM-DD` compara bien
- * como texto. `null` si las dos están dentro (o no vienen).
+ * efecto entre hoy y «hoy + 12 meses», sobre la fecha ELEGIDA (SLT-118 R34, P10: la real puede caer
+ * después). «Hoy» es el del reloj del servicio y `AAAA-MM-DD` compara bien como texto. `null` si las dos
+ * están dentro (o no vienen).
  */
 function fueraDeRango(fechas: FechasDelCambio, ahora: Date): ErrorDeValidacion | null {
   if (fechas.inicioCiclo !== undefined) {
@@ -154,11 +157,25 @@ function fechaDelCatalogo(instante: Date): string {
 
 const ZONA_DEL_CATALOGO = "UTC";
 
+/**
+ * SLT-118 (design §3.2; R37, P12): el rechazo de la periodicidad al asignar, crear el custom o cambiar el tipo:
+ * el tipo de cobro elegido es el que no cabe.
+ */
+function tipoIncompatible(): ErrorDeValidacion {
+  return { estado: "validation_error", fieldErrors: { tipoCobro: [TIPO_QUINCENAL_CON_ORDENES_MENSUALES] } };
+}
+
+/** SLT-118 (R37, P12): el rechazo de la periodicidad al editar, en el campo que la pasa a mensual. */
+function periodicidadQueNoCabe(empresas: number): ErrorDeValidacion {
+  return { estado: "validation_error", fieldErrors: { periodicidadOrdenes: [periodicidadIncompatible(empresas)] } };
+}
+
 /** Un rechazo del repositorio al asignar, como `PlanResult`: el de topes lleva su texto ya redactado. */
 function rechazoDeAsignar(r: Exclude<ResultadoAsignar, { estado: "ok" }>): PlanResult {
   if (r.estado === "tope_excedido") {
     return { estado: "tope_excedido", excedidos: r.excedidos, mensaje: mensajeTopesPasados(r.excedidos) };
   }
+  if (r.estado === "periodicidad_incompatible") return tipoIncompatible();
   return r;
 }
 
@@ -199,7 +216,8 @@ export class PlanesService implements IPlanesService {
       { efecto, tipoCobro: tipoCobro ?? "mensual" },
       ahora,
     );
-    if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos, vigenteDesde: r.pendiente ? efecto.fecha : null });
+    // SLT-118 (R32): la fecha real del pendiente, la que dejó el repositorio (puede ser posterior a la elegida).
+    if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos, vigenteDesde: r.vigenteDesde ?? null });
     return rechazoDeAsignar(r);
   }
 
@@ -238,6 +256,7 @@ export class PlanesService implements IPlanesService {
         actor.usuarioId,
         ahora,
       );
+      if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
       if (p.estado !== "ok") return p;
       // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
       return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
@@ -248,6 +267,7 @@ export class PlanesService implements IPlanesService {
   /** La edición inmediata; `precioDesde` (las 00:00 de hoy) es desde cuándo rige un precio nuevo (R15). */
   private async editarYa(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<PlanResult> {
     const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde);
+    if (r.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(r.empresas);
     if (r.estado !== "ok") return r;
     return ok(planId, r.cambio, { avisos: r.avisos });
   }
@@ -278,8 +298,8 @@ export class PlanesService implements IPlanesService {
     const efecto = efectoElegido(reglas.empresa.planId, fechas, ahora);
     const r = await this.repo.asignar(organizacionId, planId, actor.usuarioId, efecto, tipoCobro, ahora);
     // R36, R42 y SLT-86 R18: los topes ya pasados que no rechazaron viajan en `avisos`; con fecha futura,
-    // `vigenteDesde` es la fecha del pendiente.
-    if (r.estado === "ok") return ok(planId, r.cambio, { avisos: r.avisos, vigenteDesde: r.pendiente ? efecto.fecha : null });
+    // `vigenteDesde` es la fecha real del pendiente, llevada por el repositorio (SLT-118 R30–R32).
+    if (r.estado === "ok") return ok(planId, r.cambio, { avisos: r.avisos, vigenteDesde: r.vigenteDesde ?? null });
     return rechazoDeAsignar(r);
   }
 
@@ -342,7 +362,10 @@ export class PlanesService implements IPlanesService {
     if (empresa.planId === null) return { estado: "sin_plan" };
     const efecto = efectoElegido(empresa.planId, { vigenteDesde }, ahora);
     const r = await this.repo.cambiarTipoCobro(organizacionId, tipoCobro, efecto, actor.usuarioId, ahora);
-    return r.estado === "ok" ? { estado: "ok", cambio: r.cambio } : r;
+    // SLT-118 (R37): quincenal con el plan de órdenes mensuales de la empresa.
+    if (r.estado === "periodicidad_incompatible") return tipoIncompatible();
+    // SLT-118 (R32): con pendiente, la fecha real; el rango ya se miró sobre la elegida (R34).
+    return r.estado === "ok" ? { estado: "ok", cambio: r.cambio, vigenteDesde: r.vigenteDesde ?? null } : r;
   }
 
   /**

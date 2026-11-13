@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   accionesDe,
+  cierreDeLaPagina,
+  pieTextoDe,
+  vistaMensajeroEnCurso,
+  type EntradaCierreDeLaPagina,
   cuentaConciliacion,
   filasMensajeros,
   gestionesDeBodega,
@@ -15,6 +19,7 @@ import {
   pestanasDe,
   vistaBodegaDesdeAdmin,
   vistaMensajeroDesdeAdmin,
+  vistaMensajeroDesdeCierreDia,
   type AccionId,
   type Audiencia,
   type DetalleBodegaVista,
@@ -23,7 +28,11 @@ import {
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import type { CierreDetalleAdminServiceResult } from "@/lib/interfaces/services/ICierresAdminService";
 import type { CierreBodegaDetalleServiceResult } from "@/lib/interfaces/services/ICierresBodegaAdminService";
-import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierreDetalleGestion,
+  CierrePasadoDTO,
+  CierreRechazoDeTienda,
+} from "@/lib/interfaces/services/ICierreDiaService";
 
 // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T1.1) — la lógica pura del
 // detalle único. Los números son los de `design.md > Números escritos a mano` y TODOS los
@@ -311,9 +320,16 @@ describe("accionesDe (R12)", () => {
     expect(ids("bodega", "central", "solo lectura")).toEqual(["conciliacion", "Cerrar"]);
     expect(ids("bodega", "satelite", "solo lectura")).toEqual(["Cerrar"]);
     expect(ids("mensajero", "mensajero", "en curso")).toEqual(["Solicitar cierre"]);
-    expect(ids("mensajero", "mensajero", "rechazado")).toEqual(["Solicitar aprobación del cierre rechazado"]);
+    expect(ids("mensajero", "mensajero", "rechazado")).toEqual(["Solicitar aprobación del cierre rechazado", "Cerrar"]);
     expect(ids("mensajero", "mensajero", "vencido")).toEqual(["Solicitar aprobación del cierre vencido"]);
     expect(ids("mensajero", "mensajero", "solo lectura")).toEqual(["Cerrar"]);
+  });
+
+  it("SLT-109 (R252): el rechazado en la página solo envía; en el modal de la cola, solo «Cerrar»", () => {
+    const pagina = new Set<AccionId>(["solicitarRechazado"]);
+    const modal = new Set<AccionId>(["cerrar"]);
+    expect(ids("mensajero", "mensajero", "rechazado", 0, pagina)).toEqual(["Solicitar aprobación del cierre rechazado"]);
+    expect(ids("mensajero", "mensajero", "rechazado", 0, modal)).toEqual(["Cerrar"]);
   });
 
   it("sin permiso no aparece: la acción que quien monta no ofrece se cae del pie", () => {
@@ -752,5 +768,293 @@ describe("SLT-104 — pestaña «Mensajeros (n)» cuenta filas (PA2, R121)", () 
     expect(vista.conteos.mensajeros).toBe(1);
     expect(vista.conteos.cierres).toBe(2);
     expect(filasMensajeros(r.cierres)).toHaveLength(2);
+  });
+});
+
+// SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (T1.1, R150, R71) — un cierre pasado
+// del propio mensajero a la vista del detalle único. Esperados escritos a mano.
+describe("SLT-108 — vistaMensajeroDesdeCierreDia (R150)", () => {
+  const cierre: CierrePasadoDTO = {
+    cierreId: "c0ffee00-0000-4000-8000-00abcdef1234",
+    estado: "aprobado",
+    destinoTipo: "bodega_central",
+    destinoZonaId: "z-1",
+    totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
+    totalPagoMensajero: "3000.00",
+    totalIngresoBodegaRechazos: "3503.00",
+    solicitadoAt: "2026-11-07T23:10:00.000Z",
+    resueltoAt: "2026-11-08T15:00:00.000Z",
+    motivoRechazo: null,
+  };
+  const g = (gestionId: string, resultado: CierreDetalleGestion["resultado"]) =>
+    ({ gestionId, resultado, pagoMensajero: "1500.00" }) as CierreDetalleGestion;
+  const rechazoDeTienda = { gestionId: "rt-1" } as CierreRechazoDeTienda;
+  const detalle = {
+    grupos: {
+      entregado: [g("g1", "entregado"), g("g2", "entregado")],
+      reprogramado: [],
+      novedad: [],
+      devolucion_a_origen_por_rechazo: [g("g3", "devolucion_a_origen_por_rechazo")],
+      incidente: [],
+    },
+    ordenesSinGestion: [],
+    rechazosDeTienda: [rechazoDeTienda],
+  };
+
+  it("lleva la cabecera, los importes del servidor tal cual y los conteos de ese cierre", () => {
+    expect(vistaMensajeroDesdeCierreDia(cierre, detalle)).toEqual({
+      mensajeroNombre: "",
+      destino: "Bodega central",
+      folio: "CDEF1234",
+      estado: "aprobado",
+      solicitadoAt: "2026-11-07T23:10:00.000Z",
+      resueltoAt: "2026-11-08T15:00:00.000Z",
+      reprogramadasRetenidasHoy: 0,
+      motivoRechazo: null,
+      totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
+      totalPagoMensajero: "3000.00",
+      empresa: null,
+      conteos: {
+        gestiones: 3,
+        entregadas: 2,
+        noEntregadas: 1,
+        pagosAjustados: 0,
+        incidentesSinIndemnizar: 0,
+        rechazosDeTienda: 1,
+        paquetesVuelven: 1,
+        tiendas: 0,
+      },
+    });
+  });
+
+  it("el folio son los últimos 8 del id en mayúsculas y el destino no lleva zona", () => {
+    const v = vistaMensajeroDesdeCierreDia(cierre, detalle);
+    expect(v.folio).toBe("CDEF1234");
+    expect(v.destino).toBe("Bodega central");
+  });
+
+  it("no trae el dinero de la empresa (R9): ni el ingreso de bodega ni otra cifra suya", () => {
+    const v = vistaMensajeroDesdeCierreDia(cierre, detalle);
+    expect(v.empresa).toBeNull();
+    expect(JSON.stringify(v)).not.toContain("3503.00");
+  });
+
+  it("sin resolución ni motivo en el DTO (campos opcionales) salen null", () => {
+    const sinOpcionales: CierrePasadoDTO = { ...cierre, estado: "solicitado" };
+    delete sinOpcionales.resueltoAt;
+    delete sinOpcionales.motivoRechazo;
+    const v = vistaMensajeroDesdeCierreDia(sinOpcionales, detalle);
+    expect(v.resueltoAt).toBeNull();
+    expect(v.motivoRechazo).toBeNull();
+  });
+});
+
+// SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.2, R267) — los dos mapeadores
+// de /cierres-admin copian el reparto del servidor tal cual (mismo orden, sin redondear); /cierre-dia no
+// lo recibe. Literales escritos a mano: MA [94, 6] y BX [97, 3, 0] de `design.md`.
+describe("SLT-111 — el reparto en % llega tal cual a la vista (R267)", () => {
+  const VACIOS_M = { entregado: [], reprogramado: [], novedad: [], devolucion_a_origen_por_rechazo: [], incidente: [] };
+  const mensajero = (extra: object) =>
+    vistaMensajeroDesdeAdmin({
+      cierre: {
+        cierreId: "aaaaaaaa-bbbb-4ccc-8ddd-0000c0ffee99",
+        mensajeroNombre: "Ana Mensajera",
+        destinoTipo: "bodega_central",
+        destinoZonaNombre: "GAM",
+        estado: "solicitado",
+        totales: MENSAJERO.totales,
+        totalPagoMensajero: "3000.00",
+        totalIngresoBodegaRechazos: "0.00",
+        solicitadoAt: "2026-11-08T00:42:00.000Z",
+        resueltoAt: null,
+        motivoRechazo: null,
+      },
+      grupos: VACIOS_M,
+      totalesIngreso: { ...MENSAJERO.empresa!.totalesIngreso },
+      ivaFacturado: "650.00",
+      pagoTienda: "94350.00",
+      cobradoSobreRecaudado: "5650.00",
+      netoEmpresa: "5000.00",
+      ganaLaTienda: "94350.00",
+      partesPorTienda: [],
+      ordenesSinGestion: [],
+      rechazosDeTienda: [],
+      ...extra,
+    } as unknown as Extract<CierreDetalleAdminServiceResult, { status: "ok" }>);
+  const bodega = (extra: object) =>
+    vistaBodegaDesdeAdmin({
+      status: "ok",
+      cierre: { ...BODEGA, cierreBodegaId: "11111111-2222-4333-8444-0000abcdef12", conciliado: false },
+      cierres: [ANA],
+      partesPorTienda: [],
+      ...extra,
+    } as unknown as Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>);
+
+  it("mensajero: [94, 6] llega a `empresa.porcentajesReparto` en el mismo orden", () => {
+    expect(mensajero({ porcentajesReparto: [94, 6] }).empresa?.porcentajesReparto).toEqual([94, 6]);
+  });
+
+  it("mensajero: `null` del servidor sigue siendo `null`; sin el campo, también `null`", () => {
+    expect(mensajero({ porcentajesReparto: null }).empresa?.porcentajesReparto).toBeNull();
+    expect(mensajero({}).empresa?.porcentajesReparto).toBeNull();
+  });
+
+  it("bodega: [97, 3, 0] llega a `porcentajesReparto` en el mismo orden, con el 0 incluido", () => {
+    expect(bodega({ porcentajesReparto: [97, 3, 0] }).porcentajesReparto).toEqual([97, 3, 0]);
+  });
+
+  it("bodega: `null` del servidor sigue siendo `null`; sin el campo, también `null`", () => {
+    expect(bodega({ porcentajesReparto: null }).porcentajesReparto).toBeNull();
+    expect(bodega({}).porcentajesReparto).toBeNull();
+  });
+
+  it("/cierre-dia no lo recibe: `empresa` sigue en `null`", () => {
+    const cierre: CierrePasadoDTO = {
+      cierreId: "c0ffee00-0000-4000-8000-00abcdef1234",
+      estado: "aprobado",
+      destinoTipo: "bodega_central",
+      destinoZonaId: "z-1",
+      totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
+      totalPagoMensajero: "3000.00",
+      totalIngresoBodegaRechazos: "0.00",
+      solicitadoAt: "2026-11-07T23:10:00.000Z",
+    };
+    const v = vistaMensajeroDesdeCierreDia(cierre, { grupos: VACIOS_M, ordenesSinGestion: [], rechazosDeTienda: [] });
+    expect(v.empresa).toBeNull();
+    expect(Object.keys(v)).not.toContain("porcentajesReparto");
+  });
+});
+
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (T1.1) — qué cierre pinta
+// la página (R240), la vista del cierre de hoy (R241, R242) y la franja de bloqueo en cualquier modo
+// (R4, R246). Literales a mano.
+describe("SLT-109 — el cierre de la página", () => {
+  const TOTALES_HOY = { efectivo: "8000.00", simpe: "3000.00", transferencia: "0.00", general: "11000.00" };
+  const g = (gestionId: string, resultado: CierreDetalleGestion["resultado"]) =>
+    ({ gestionId, resultado, pagoMensajero: "1700.00" }) as CierreDetalleGestion;
+  const GRUPOS_HOY = {
+    entregado: [g("h1", "entregado"), g("h2", "entregado")],
+    reprogramado: [],
+    novedad: [],
+    devolucion_a_origen_por_rechazo: [],
+    incidente: [g("h3", "incidente")],
+  };
+  const LIBRE = { bloqueado: false, cierresAbiertos: 0, cierresPorReenviar: 0, aResolverPrimero: null, aReenviarPrimero: null };
+  const porReenviar = (cierreId: string, estado: "vencido" | "rechazado") => ({
+    bloqueado: true,
+    cierresAbiertos: 1,
+    cierresPorReenviar: 1,
+    aResolverPrimero: null,
+    aReenviarPrimero: { cierreId, estado, solicitadoAt: "2026-11-10T23:00:00.000Z", jornadaCR: null, resuelve: "mensajero" as const },
+  });
+  const pasado = (cierreId: string, estado: CierrePasadoDTO["estado"]): CierrePasadoDTO => ({
+    cierreId,
+    estado,
+    destinoTipo: "bodega_satelite",
+    destinoZonaId: "z-9",
+    totales: { efectivo: "5000.00", simpe: "0.00", transferencia: "0.00", general: "5000.00" },
+    totalPagoMensajero: "1700.00",
+    totalIngresoBodegaRechazos: "0.00",
+    solicitadoAt: "2026-11-10T23:00:00.000Z",
+    motivoRechazo: "Falta el paquete de Ana",
+  });
+  const leido = (cierre: CierrePasadoDTO) => ({
+    estado: "ok" as const,
+    cierre,
+    grupos: { entregado: [g("v1", "entregado")], reprogramado: [], novedad: [], devolucion_a_origen_por_rechazo: [], incidente: [] },
+    ordenesSinGestion: [],
+    sinGestionRegistrado: true,
+    rechazosDeTienda: [],
+  });
+  const entrada = (extra: Partial<EntradaCierreDeLaPagina> = {}): EntradaCierreDeLaPagina => ({
+    grupos: GRUPOS_HOY,
+    totales: TOTALES_HOY,
+    totalPagoMensajero: "3400.00",
+    motivoBloqueo: "Tienes 2 paquetes en reparto sin gestionar.",
+    puedesSolicitar: true,
+    bloqueo: LIBRE,
+    ...extra,
+  });
+
+  it("R240: sin cierre por reenviar pinta el de hoy, en curso", () => {
+    expect(cierreDeLaPagina(entrada()).modo).toBe("en curso");
+  });
+
+  it("R240: con un vencido por reenviar y su lectura, pinta ESE en modo vencido y no el de hoy", () => {
+    const id = "aaaaaaaa-0000-4000-8000-0000000000v1";
+    const p = cierreDeLaPagina(entrada({ bloqueo: porReenviar(id, "vencido"), reenviable: leido(pasado(id, "vencido")) }));
+    expect(p.modo).toBe("vencido");
+    if (p.modo !== "vencido") return;
+    expect(p.cierreId).toBe(id);
+    // Los importes son los congelados de ESE cierre, no los de hoy.
+    expect(p.detalle.totales.general).toBe("5000.00");
+    expect(p.detalle.estado).toBe("vencido");
+  });
+
+  it("R240: con un rechazado, en modo rechazado con su cierreId y el bloqueo para la franja", () => {
+    const id = "aaaaaaaa-0000-4000-8000-0000000000r1";
+    const bloqueo = porReenviar(id, "rechazado");
+    const p = cierreDeLaPagina(entrada({ bloqueo, reenviable: leido(pasado(id, "rechazado")) }));
+    expect(p.modo).toBe("rechazado");
+    if (p.modo !== "rechazado") return;
+    expect(p.cierreId).toBe(id);
+    expect(p.detalle.bloqueo).toEqual(bloqueo);
+    expect(p.detalle.motivoRechazo).toBe("Falta el paquete de Ana");
+  });
+
+  it("R253: con la lectura fallida, ausente o de otro cierre es `error` con el estado a enviar, nunca el en curso", () => {
+    const id = "aaaaaaaa-0000-4000-8000-0000000000r2";
+    const bloqueo = porReenviar(id, "rechazado");
+    const error = { modo: "error", reenviableEstado: "rechazado" };
+    expect(cierreDeLaPagina(entrada({ bloqueo, reenviable: { estado: "error", reenviableEstado: "rechazado" } }))).toEqual(error);
+    expect(cierreDeLaPagina(entrada({ bloqueo }))).toEqual(error);
+    const otro = leido(pasado("aaaaaaaa-0000-4000-8000-0000000000x9", "rechazado"));
+    expect(cierreDeLaPagina(entrada({ bloqueo, reenviable: otro }))).toEqual(error);
+  });
+
+  it("R241: la vista de hoy no trae empresa, folio ni destino, y cuenta 2 entregadas + 1 incidente = 3", () => {
+    const v = vistaMensajeroEnCurso(entrada());
+    expect(v.empresa).toBeNull();
+    expect(v.folio).toBeNull();
+    expect(v.estado).toBeNull();
+    expect(v.destino).toBe("");
+    expect([v.conteos.gestiones, v.conteos.entregadas, v.conteos.noEntregadas, v.conteos.rechazosDeTienda]).toEqual([3, 2, 1, 0]);
+    expect([v.totales.general, v.totalPagoMensajero]).toEqual(["11000.00", "3400.00"]);
+  });
+
+  it("R245: `motivoBloqueo` solo llega a la vista cuando no puede solicitar", () => {
+    expect(vistaMensajeroEnCurso(entrada()).motivoBloqueo).toBeNull();
+    expect(vistaMensajeroEnCurso(entrada({ puedesSolicitar: false })).motivoBloqueo).toBe(
+      "Tienes 2 paquetes en reparto sin gestionar.",
+    );
+  });
+
+  describe("R4, R246: la franja de bloqueo en cualquier modo", () => {
+    const BLOQUEADO = { bloqueado: true, cierresAbiertos: 1, cierresPorReenviar: 1, aResolverPrimero: null, aReenviarPrimero: null };
+    const titulos = (modo: Modo, d: DetalleMensajeroVista) => avisosDe("mensajero", "mensajero", modo, d).map((a) => a.titulo);
+
+    it("rechazado + bloqueado: dos franjas, el motivo primero", () => {
+      const d = { ...MENSAJERO, motivoRechazo: "Faltan 2 paquetes", bloqueo: BLOQUEADO };
+      expect(titulos("rechazado", d)).toEqual(["Motivo del rechazo:", "Tu cierre está bloqueado:"]);
+    });
+
+    it("en curso + bloqueado + motivo: dos franjas, el bloqueo antes de «Antes de cerrar:»", () => {
+      const d = { ...MENSAJERO, estado: null, bloqueo: BLOQUEADO, motivoBloqueo: "Tienes 2 paquetes en reparto sin gestionar." };
+      expect(titulos("en curso", d)).toEqual(["Tu cierre está bloqueado:", "Antes de cerrar:"]);
+    });
+
+    it("sin bloqueo ni motivo: ninguna", () => {
+      const d = { ...MENSAJERO, estado: null, bloqueo: LIBRE, motivoBloqueo: null };
+      expect(titulos("en curso", d)).toEqual([]);
+    });
+  });
+
+  it("R252: el pie de un rechazado sin envío dice dónde se envía; con envío, el de siempre", () => {
+    expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, new Set<AccionId>(["cerrar"]))).toBe(
+      "Lo envías desde esta página cuando sea el siguiente por enviar.",
+    );
+    expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, new Set<AccionId>(["solicitarRechazado"]))).toBe(
+      "Se envía con las gestiones que tenga al enviarlo.",
+    );
   });
 });

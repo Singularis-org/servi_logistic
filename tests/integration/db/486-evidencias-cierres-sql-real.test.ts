@@ -326,7 +326,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R2/R4/R5/R6: el detalle de cierre de bodega trae las 3 rutas de A en orden", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
       expect(r).not.toBeNull();
       expect(r!.cierresDia).toHaveLength(1);
       afirmarConjunto(r!.cierresDia[0]!.gestiones, ctx.delCierre, "cierre");

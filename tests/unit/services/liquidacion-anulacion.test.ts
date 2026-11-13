@@ -104,6 +104,7 @@ function pagoAMensajero(over: Partial<LiquidacionPagoDTO> = {}): LiquidacionPago
 /** Cierre APROBADO con P = 50 000 y E = 0 -> genera 50 000 de pendiente. */
 function cierreDTO(over: Partial<CierreParaPagoDTO> = {}): CierreParaPagoDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id: UUID_CIERRE,
     mensajeroId: UUID_MENSAJERO,
     estado: CierreEstado.aprobado,
@@ -229,6 +230,7 @@ function buildDobles(opciones: {
       return Object.fromEntries(ids.map((id) => [id, opciones.pagadoVigente ?? "0.00"]));
     }),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => []),
     // Feature 205 (T2.2): el contrato gana dos LECTURAS. Ningun test de este archivo las
@@ -1160,6 +1162,9 @@ describe("R82/R75 — no hay camino para anular una anulacion", () => {
     // el reparto y sus N imputaciones intactos y visibles. Lo que R52 prohíbe, y sigue prohibido,
     // es EDITAR el acto o hacerlo desaparecer. El barrido de nombres de abajo no lo tapa: `anular`
     // nunca estuvo en esa lista, precisamente porque anular es la forma legítima de corregir.
+    // ⚠️ **SLT-139 — la lista crece a 19 con `pagadoPorSatelite`.** Es una LECTURA privada: suma lo
+    // pagado por la satélite de los cierres con pago independiente (R338) para que el pendiente
+    // del cierre no lo vuelva a cobrar. No escribe, no edita ni deshace nada.
     expect(metodos).toEqual([
       "anularPago",
       "anularReparto",
@@ -1168,6 +1173,7 @@ describe("R82/R75 — no hay camino para anular una anulacion", () => {
       "imputablesDe",
       "listarPagosDeCierre",
       "listarPagosDeTienda",
+      "pagadoPorSatelite",
       "pendienteDelCierre",
       "previsualizarRepartoMensajero",
       "registrarPagoMensajero",

@@ -4,7 +4,11 @@ import { cierreConfig } from "@/lib/config/cierre";
 import { descargaConfig } from "@/lib/config/descarga";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
-import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
+import type {
+  AlcanceLecturaBodega,
+  ICierresBodegaAdminRepository,
+} from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { filtrosParaRepo, zonaDeLaEmpresa, zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
 import { filtrosConLimites, type RangoDeFechasCierres } from "@/lib/types/filtros-cierres";
@@ -32,6 +36,8 @@ import { esColaSolicitado } from "@/lib/utils/colas-cierre";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { rutasAFirmar } from "@/lib/utils/evidencias-gestion";
 import { toDetalleDTO } from "@/lib/services/CierreDiaService";
+// SLT-107 (R283, D-H110): la MISMA anulacion del fulfillment que el detalle de mensajeros.
+import { ocultarFulfillmentSiNoCentral } from "@/lib/services/CierresAdminService";
 import {
   cobradoSobreRecaudado,
   efectivoCubreDescuentos,
@@ -43,6 +49,7 @@ import {
   partesPorTienda,
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
+import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
 import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 
 // Roles autorizados (R2): acceso total (maestro/admin, bodega central). El alcance es
@@ -67,7 +74,24 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
      * cada gestion en los DTO.
      */
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+    /**
+     * SLT-107 (R280): la zona del `adminSatelite`, leida de SU usuario en la base (la misma fuente
+     * que `CierreBodegaService` y `CierresAdminService.resolveAlcance`). Ausente = la satelite no
+     * tiene alcance: falla cerrado (`forbidden`).
+     */
+    private readonly zonaDelUsuario?: Pick<IOrdenRepository, "findUsuarioZonaId">,
   ) {}
+
+  /**
+   * SLT-107 (R280-R282): con que alcance lee `actor` el detalle de un cierre de bodega. `null` =
+   * `forbidden` sin leer nada: ni acceso total ni `adminSatelite` (R282), o satelite sin zona (R281).
+   */
+  private async alcanceDeLecturaBodega(actor: Actor): Promise<AlcanceLecturaBodega | null> {
+    if (esAccesoTotal(actor.rol)) return { lectura: "toda_la_empresa" };
+    if (actor.rol !== "adminSatelite") return null; // R282
+    const zonaId = (await this.zonaDelUsuario?.findUsuarioZonaId(actor.usuarioId)) ?? null;
+    return zonaId === null ? null : { lectura: "zona", zonaId }; // R281: sin zona
+  }
 
   /**
    * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
@@ -278,10 +302,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       this.reglasPais,
       "CierresBodegaAdminService.listarGestionesCierresBodegaCompleto",
     );
-    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(
-      filtrosConLimites(filtros, zona),
-      zona,
-    );
+    // SLT-113: los MISMOS recortes para las gestiones y para los rechazos (un solo objeto).
+    const filtrosRepo = filtrosConLimites(filtros, zona);
+    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(filtrosRepo, zona);
 
     const limite = descargaConfig.MAX_FILAS;
     // R21: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -289,21 +312,38 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       return { status: "limite_excedido", total: conjunto.length, limite };
     }
 
-    return { status: "ok", items: conjunto, total: conjunto.length };
+    // SLT-113 (R372): la hoja de rechazos solo si algun cierre del conjunto es del modelo nuevo; sin
+    // ninguno, ni consulta ni clave. La bodega es solo de acceso total: el fulfillment va entero.
+    if (!conjunto.some((fila) => fila.cierreModelo === "nuevo")) {
+      return { status: "ok", items: conjunto, total: conjunto.length };
+    }
+    const rechazosDeTienda = await this.repo.findRechazosTiendaDeCierresBodegaModeloNuevoCompleto(
+      filtrosRepo,
+      zona,
+    );
+    return { status: "ok", items: conjunto, total: conjunto.length, rechazosDeTienda };
   }
 
   async verCierreBodegaDetalle(
     cierreBodegaId: string,
     actor: Actor,
   ): Promise<CierreBodegaDetalleServiceResult> {
-    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+    // R2 + SLT-107 (R280-R282): acceso total lee toda la empresa; la satelite, solo su zona.
+    const alcance = await this.alcanceDeLecturaBodega(actor);
+    if (alcance === null) return { status: "forbidden" };
 
     // SLT-42 (R22): la zona fecha las gestiones del detalle.
     const found = await this.repo.findCierreBodegaConDetalle(
       cierreBodegaId,
       await zonaDeLaEmpresa(this.reglasPais, "CierresBodegaAdminService.verCierreBodegaDetalle"),
+      alcance,
     );
-    if (found === null) return { status: "no_encontrada" }; // R19
+    // R19: para acceso total, «no existe» sigue siendo `no_encontrada`. SLT-107 (R281): con
+    // alcance de zona, «no es de tu zona» y «no existe» no se distinguen: `forbidden`, sin firmar
+    // ninguna evidencia.
+    if (found === null) {
+      return alcance.lectura === "zona" ? { status: "forbidden" } : { status: "no_encontrada" };
+    }
 
     // R12: firma en LOTE las evidencias de TODAS las gestiones de todos los cierre_dia
     // (path crudo -> URL firmada de TTL acotado). Nunca se expone el storage_path.
@@ -325,7 +365,10 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         incidente: [], // feature 158/R18
       };
       for (const g of cd.gestiones) {
-        grupos[g.resultado].push(toDetalleDTO(g, urlByPath));
+        // SLT-107 (R283, D-H110): el fulfillment (con `fulfillmentCargadoAt`) es dato de la
+        // central; quien no es acceso total lo recibe anulado, con la MISMA funcion que el detalle
+        // de mensajeros. Para acceso total devuelve la fila tal cual.
+        grupos[g.resultado].push(ocultarFulfillmentSiNoCentral(toDetalleDTO(g, urlByPath), actor));
       }
       const totalesIngreso = totalesIngresoEmpresa(cd.gestiones);
       // SL-39 (R21–R23): ganancia y neto de ESTE dia restan desde lo facturado SIN IVA.
@@ -466,7 +509,8 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     // R11/R13: cabecera con totales agregados snapshot.
     return {
       status: "ok",
-      cierre: resumen,
+      // SLT-107 (R283): solo la central puede desmarcar; para quien no es acceso total, `false`.
+      cierre: esAccesoTotal(actor.rol) ? resumen : { ...resumen, desmarcable: false },
       cierres,
       totalesIngreso,
       ivaFacturado: ivaFacturado(totalesIngreso), // SL-39 (R21)
@@ -480,6 +524,12 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       partesPorTienda: partesDeLasTiendas,
       paraLaCentral: resumen.paraLaCentral,
       efectivoCubreDescuentos: resumen.efectivoCubreDescuentos,
+      // SLT-111 (R264, R265): el reparto en % de lo recaudado AGREGADO, de los snapshots que ya
+      // estan en `resumen`. Orden fijo: central, mensajeros, bodega satelite; base, el `general`.
+      porcentajesReparto: porcentajesReparto(
+        [resumen.paraLaCentral, resumen.totalPagoMensajero, resumen.totalIngresoBodegaRechazos],
+        resumen.totales.general,
+      ),
     };
   }
 

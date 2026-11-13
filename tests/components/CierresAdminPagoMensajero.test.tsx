@@ -535,6 +535,24 @@ describe("T E.1/R17 — si el PAGO FALLA, el cierre sigue aprobado y el mensaje 
   });
 });
 
+describe("SLT-103 R57/R141 — `sin_saldo` habla del mensajero, no de una tienda", () => {
+  it("el diálogo dice que el mensajero no tiene ganancia pendiente y no menciona «tienda»", async () => {
+    const user = userEvent.setup();
+    registrarPagoMock.mockResolvedValue({ status: "sin_saldo" });
+    await aprobarDesdeLaCola(user);
+    const dialogo = await screen.findByRole("dialog", { name: DIALOGO_PAGO });
+
+    await user.click(within(dialogo).getByRole("button", { name: "Registrar pago" }));
+
+    await waitFor(() => expect(registrarPagoMock).toHaveBeenCalledTimes(1));
+    const aviso = await within(dialogo).findByRole("alert");
+    expect(aviso).toHaveTextContent(
+      "Este mensajero no tiene ganancia pendiente de pago en este cierre, así que no hay nada que pagar.",
+    );
+    expect(dialogo.textContent?.toLowerCase()).not.toContain("tienda");
+  });
+});
+
 describe("T E.1/R18 — aprobar NO exige pagar ni crea ningún estado nuevo", () => {
   it("el payload de aprobar es el MISMO de la 38: ni una clave de pago", async () => {
     const user = userEvent.setup();

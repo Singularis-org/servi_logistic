@@ -4,6 +4,7 @@ import { CierreDelDiaRepository } from "@/lib/repositories/CierreDelDiaRepositor
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { RankingSnapshotRepository } from "@/lib/repositories/RankingSnapshotRepository";
 import { ventanaDelDia } from "@/lib/ranking/snapshot-dia";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 
 import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 293 (T2.2, T3.1, T3.2, T3.3) — las CUATRO lecturas nuevas, con Prisma mockeado.
@@ -310,7 +311,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
     const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
     const ventana = ventanaDelDia("2026-08-26", ZONA_DE_CR);
 
-    await repo.resolverCierreDelDia("m1", ventana);
+    await repo.resolverCierreDelDia("m1", ventana, ALCANCE_ACCESO_TOTAL);
 
     expect(findFirst.mock.calls[0][0]).toMatchObject({
       where: {
@@ -328,6 +329,28 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
     });
   });
 
+  it("SLT-124 (R1, R5): el destino `bodega_central` va en el WHERE, junto al resto, sin acotar por zona", async () => {
+    const { prisma, findFirst } = prismaCierres(null);
+    const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
+    const ventana = ventanaDelDia("2026-08-26", ZONA_DE_CR);
+
+    await repo.resolverCierreDelDia("m1", ventana, ALCANCE_ACCESO_TOTAL);
+
+    // `toEqual` y el literal escrito a mano: es el contrato. Un cierre de satelite no casa con este
+    // WHERE, y el desempate de `orderBy` elige solo entre los centrales (R3). El acceso total no
+    // acota por zona: sin `destinoZonaId`.
+    expect(findFirst.mock.calls[0][0].where).toEqual({
+      mensajeroId: "m1",
+      gestiones: {
+        some: {
+          anuladaAt: null,
+          createdAt: { gte: ventana.desde, lt: ventana.hasta },
+        },
+      },
+      destinoTipo: "bodega_central",
+    });
+  });
+
   it("la ventana es la del CRON: 06:00Z del dia a 06:00Z del siguiente", async () => {
     // Si alguien usara `startOfDayCR` (medianoche UTC) como cota contra un `timestamp`, la
     // ventana seria la 18:00-18:00 hora CR que cerro la ficha 166.
@@ -340,7 +363,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
     const { prisma } = prismaCierres(null);
     const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26", ZONA_DE_CR))).toBeNull();
+    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26", ZONA_DE_CR), ALCANCE_ACCESO_TOTAL)).toBeNull();
   });
 
   it("devuelve id Y estado: quien decide si sirve es el servicio, no el repositorio", async () => {
@@ -351,7 +374,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
     });
     const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26", ZONA_DE_CR))).toEqual({
+    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26", ZONA_DE_CR), ALCANCE_ACCESO_TOTAL)).toEqual({
       cierreId: "c1",
       estado: "solicitado",
       solicitadoAt: new Date("2026-08-27T02:00:00.000Z"),

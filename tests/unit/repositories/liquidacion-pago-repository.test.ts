@@ -414,7 +414,7 @@ describe("LiquidacionPagoRepository.listarCierresImputables (205 / R5/R6/R8)", (
     expect(arg).not.toHaveProperty("cursor");
   });
 
-  it("lee SEIS columnas del cierre y emite los montos como STRING de escala 2", async () => {
+  it("lee SIETE columnas del cierre (SLT-123: + la marca) y emite los montos como STRING de escala 2", async () => {
     const prisma = buildPrisma();
     prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow()]);
     const repo = buildRepo(prisma);
@@ -427,6 +427,7 @@ describe("LiquidacionPagoRepository.listarCierresImputables (205 / R5/R6/R8)", (
       estado: true,
       totalPagoMensajero: true,
       totalEfectivo: true,
+      pagoIndependienteEfectivo: true, // SLT-123 (R321): la regla de lo pendiente
       solicitadoAt: true,
     });
     expect(cierres).toEqual([
@@ -1057,7 +1058,7 @@ describe("LiquidacionPagoRepository.anular (R73/R75)", () => {
 // ── T B.5: la lectura del cierre contra el que se paga (R20/R21/R22/R42) ──
 
 describe("LiquidacionPagoRepository.obtenerCierreParaPago (R20/R22/R42)", () => {
-  it("lee SOLO las cinco columnas que el pago necesita y devuelve los montos como STRING", async () => {
+  it("lee SOLO las seis columnas que el pago necesita (SLT-123: + la marca) y devuelve los montos como STRING", async () => {
     const prisma = buildPrisma();
     prisma.cierreDia.findUnique.mockResolvedValue(cierreRow());
     const repo = buildRepo(prisma);
@@ -1073,6 +1074,7 @@ describe("LiquidacionPagoRepository.obtenerCierreParaPago (R20/R22/R42)", () => 
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     expect(cierre).toEqual({
@@ -1153,6 +1155,7 @@ describe("SLT-122 — LiquidacionPagoRepository.obtenerCierreParaPagoEnAlcance (
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     expect(prisma.cierreDia.findUnique).not.toHaveBeenCalled();

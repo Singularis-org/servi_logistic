@@ -49,6 +49,7 @@ function fila(
   over: Partial<CierreAdminResumenRow> & { cierreId: string },
 ): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     mensajeroId: `m-${over.cierreId}`,
     mensajeroNombre: `Mensajero ${over.cierreId}`,
     estado: "solicitado",

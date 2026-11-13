@@ -7,6 +7,10 @@ import useSWR, { useSWRConfig } from "swr";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/shared/Modal";
+import {
+  VisorEvidencia,
+  type EvidenciaAbierta,
+} from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { Pagination } from "@/components/shared/Pagination";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
@@ -126,6 +130,8 @@ import {
   COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
   filaDescargaCierrePendiente,
 } from "./cierres-admin-descarga-columnas";
+import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import { obtenerResumenCierres } from "./cierres-resumen-modelo-nuevo-descarga";
 // Feature 172 (TANDA E): el pago al mensajero. Tres piezas, ninguna con lógica de dominio
 // propia — el pendiente lo deriva el servidor (T C.2) y el rol lo decide el servicio (R1/R6).
 import { hayPendienteDeLiquidar } from "./PendienteLiquidarBadge";
@@ -303,7 +309,10 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
  * El título no repite el del otro listado: dos controles en la misma pantalla necesitan nombres
  * accesibles distintos (R13).
  */
-function descargaColaCierres(filtros: FiltrosCierres): DescargaResumenCierres {
+export function descargaColaCierres(
+  filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
     columnas: COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
@@ -315,6 +324,15 @@ function descargaColaCierres(filtros: FiltrosCierres): DescargaResumenCierres {
       filasDesdeResultado(
         descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
         filaDescargaCierrePendiente,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro «Cierres» + «Por tienda» (+ la hoja
+    // de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy tal cual.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
+        filaDescargaCierrePendiente,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }
@@ -439,6 +457,8 @@ interface DetalleAbierto {
   rechazosDeTienda: CierreRechazoDeTienda[];
   /** SLT-100 (R80): quién lo resolvió, para la cabecera del detalle. Solo aprobado/rechazado. */
   resueltoPorNombre?: string | null;
+  /** SLT-111 (R267): el reparto en % ya derivado en el servidor; `null` o ausente = sin barra. */
+  porcentajesReparto?: number[] | null;
 }
 
 /**
@@ -503,7 +523,7 @@ export function CierresAdminModule({
   // Detalle del cierre abierto (null = modal cerrado).
   const [detalle, setDetalle] = useState<DetalleAbierto | null>(null);
   // Evidencia (URL firmada, R7) en el visor; null = cerrado.
-  const [evidencia, setEvidencia] = useState<string | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenciaAbierta | null>(null);
   // Pedido humano (2026-08-19): la gestión cuyo desglose se está corrigiendo; `null` = diálogo
   // cerrado. Va aquí, con el resto de los hooks, y no junto al bloque que lo usa: los hooks se
   // llaman todos, siempre y en el mismo orden.
@@ -741,6 +761,8 @@ export function CierresAdminModule({
         // el mensajero en su comprobante: las dos pantallas pintan lo mismo para el mismo cierre.
         rechazosDeTienda: result.rechazosDeTienda,
         resueltoPorNombre: result.resueltoPorNombre ?? null,
+        // SLT-111 (R267): tal cual llega; aquí no se redondea ni se reordena.
+        porcentajesReparto: result.porcentajesReparto ?? null,
       });
       return;
     }
@@ -1235,8 +1257,8 @@ export function CierresAdminModule({
           <DescargarCierresButton
             resumen={
               tab === TAB_PENDIENTES
-                ? descargaColaCierres(filtros)
-                : descargaHistoricoCierres(filtros)
+                ? descargaColaCierres(filtros, audiencia)
+                : descargaHistoricoCierres(filtros, audiencia)
             }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresAdminCompleto", f)}
@@ -1688,26 +1710,8 @@ export function CierresAdminModule({
         />
       ) : null}
 
-      {/* ---------- Visor de evidencia (URL firmada, R7) ---------- */}
-      <Modal
-        open={evidencia !== null}
-        onOpenChange={(next) => {
-          if (!next) setEvidencia(null);
-        }}
-        title="Evidencia de la gestión"
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={() => setEvidencia(null)}
-      >
-        {evidencia ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={evidencia}
-            alt="Evidencia fotográfica de la gestión"
-            className="max-h-[60vh] w-full rounded-md object-contain"
-          />
-        ) : null}
-      </Modal>
+      {/* ---------- Visor de evidencia (URL firmada, R7; visor único SLT-103 R137) ---------- */}
+      <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
     </div>
   );
 }

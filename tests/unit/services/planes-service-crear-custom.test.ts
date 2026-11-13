@@ -131,7 +131,8 @@ describe("D2 — crear un custom con empresa lo asigna en la misma operación", 
   });
 
   it("SLT-86 R17: si el repositorio lo deja pendiente, `vigenteDesde` vuelve con la fecha", async () => {
-    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true });
+    // SLT-118 (R32): la fecha del pendiente la deja el repositorio; el servicio ya no la deduce.
+    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true, vigenteDesde: "2026-11-01" });
     expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, inicioCiclo: "2026-11-01" })).toMatchObject({ estado: "ok", vigenteDesde: "2026-11-01" });
   });
 

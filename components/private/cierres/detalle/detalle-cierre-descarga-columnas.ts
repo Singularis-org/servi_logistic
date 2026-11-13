@@ -19,6 +19,7 @@ import { RESULTADO_COL } from "@/app/(app)/cierres-admin/_components/cierres-ges
 import { COL_MENSAJERO, COL_SENALES } from "../fila/fila-gestion-labels";
 import { textoSenales, type AudienciaFila } from "../fila/fila-gestion-vista";
 import { COBRO_A_LA_TIENDA_COL, PAGO_AL_MENSAJERO_COL } from "./detalle-cierre-labels";
+import { GANANCIA_COL } from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
 
 /** Las siete columnas de R82 y «Señales» (R91), en su orden. */
 export const COLUMNAS_DESCARGA_DETALLE_CIERRE: DescargaColumna[] = [
@@ -65,5 +66,33 @@ export function filaDescargaDetalleCierre(g: CierreDetalleGestion, audiencia: Au
     cobroTienda: g.ingresoEmpresa?.total ?? null,
     pagoMensajero: g.pagoMensajero,
     senales: textoSenales(g, audiencia) || null,
+  };
+}
+
+/**
+ * SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero» (R152) — las columnas de
+ * «Descargar» del detalle cuando lo mira el propio mensajero: «Ganancia» (su pago) en lugar del par
+ * «Cobro a la tienda» / «Pago al mensajero». Ni una cifra del dinero de la empresa (R9).
+ */
+export const COLUMNAS_DESCARGA_DETALLE_MENSAJERO: DescargaColumna[] = [
+  { clave: "numGuia", encabezado: "Nº Guía" },
+  { clave: "destinatario", encabezado: "Destinatario" },
+  { clave: "tienda", encabezado: "Tienda" },
+  { clave: "resultado", encabezado: RESULTADO_COL },
+  { clave: "recibido", encabezado: RECIBIDO_LABEL },
+  { clave: "ganancia", encabezado: GANANCIA_COL },
+  { clave: "senales", encabezado: COL_SENALES },
+];
+
+/** R152 — una gestión del detalle a la fila del mensajero; las señales, las que él ve en la fila. */
+export function filaDescargaDetalleMensajero(g: CierreDetalleGestion): DescargaFila {
+  return {
+    numGuia: g.numGuia,
+    destinatario: g.destinatario,
+    tienda: g.tiendaNombre,
+    resultado: RESULTADO_FILA_LABEL[g.resultado],
+    recibido: g.montoRecibido,
+    ganancia: g.pagoMensajero,
+    senales: textoSenales(g, "mensajero") || null,
   };
 }

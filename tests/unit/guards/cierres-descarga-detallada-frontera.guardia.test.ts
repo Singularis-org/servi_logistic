@@ -21,6 +21,12 @@ const RAIZ = path.resolve(__dirname, "../../..");
 const SUBARBOL = [
   "app/(app)/cierres-admin/_components/DescargarGestionesDialog.tsx",
   "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts",
+  // SLT-113 — el libro del modelo nuevo y sus hojas («Gestiones», «Rechazados por la tienda»).
+  "app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga.ts",
+  // SLT-140 — el libro del «Resumen» del modelo nuevo y sus hojas («Cierres», «Por tienda»).
+  "app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga.ts",
 ];
 
 const MODULO_COLUMNAS = SUBARBOL[1];
@@ -98,6 +104,26 @@ describe("frontera de la descarga detallada de cierres (T6.1)", () => {
     expect(cuerpo).toContain("numRemision"); // no-vacuidad: se leyó el DTO y no otro bloque
     expect(cuerpo).not.toMatch(/evidencia/i);
     expect(cuerpo).not.toMatch(/^\s*(gestionId|ordenId|cierreId|mensajeroId|zonaId)\b/im);
+  });
+
+  it("SLT-113 y SLT-140: los módulos de los libros del modelo nuevo son puros como el de la fundida (R49)", () => {
+    for (const relativa of SUBARBOL.slice(2)) {
+      const texto = fuente(relativa);
+      expect(texto, relativa).not.toMatch(/from\s+["']react["']/);
+      expect(texto, relativa).not.toMatch(/"use client"/);
+      expect(texto, relativa).not.toMatch(/\bdocument\.|\bwindow\./);
+      expect(texto, relativa).not.toMatch(/from\s+["'][^"']+\.tsx["']/);
+    }
+  });
+
+  it("SLT-113: el DTO de un rechazo de la tienda no declara ids ni evidencia (R41)", () => {
+    const texto = fuente("lib/interfaces/services/ICierresAdminService.ts");
+    const desde = texto.indexOf("export interface RechazoTiendaDescargaDTO");
+    expect(desde).toBeGreaterThan(-1);
+    const cuerpo = texto.slice(desde, texto.indexOf("\n}", desde));
+    expect(cuerpo).toContain("fechaRechazo"); // no-vacuidad: se leyó este DTO y no otro bloque
+    expect(cuerpo).not.toMatch(/evidencia/i);
+    expect(cuerpo).not.toMatch(/^\s*(id|gestionId|ordenId|cierreId|mensajeroId|zonaId|tiendaId)\b/im);
   });
 
   it("el código nuevo no ramifica por esCentral (R27)", () => {

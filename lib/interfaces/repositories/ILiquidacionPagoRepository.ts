@@ -1,6 +1,7 @@
 import type { CierreEstado, PrismaClient } from "@prisma/client";
 import type { AnulacionDTO, MetodoLiquidacion } from "@/lib/types/liquidacion";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import type { CifraGanancia } from "@/lib/interfaces/services/ICierreDiaService";
 
 // Feature 172 (design §3.1) — contrato del repositorio del DOCUMENTO del pago. Solo queries
 // Prisma; sin logica de negocio, sin guardias de rol y sin decidir cuanto se puede pagar.
@@ -131,6 +132,13 @@ export interface CierreParaPagoDTO {
   estado: CierreEstado;
   totalPagoMensajero: string; // P — STRING 2 dec (snapshot de la 39)
   totalEfectivo: string; // E — STRING 2 dec (snapshot de la 37)
+  /**
+   * SLT-123 (R316, R321) — `cierre_dia.pago_independiente_efectivo`: la regla con la que se deriva
+   * lo pendiente de este cierre. OBLIGATORIA en el tipo (review 1, R321): si un mapeo del
+   * repositorio la olvida, no compila; antes, opcional, se leia como `false` y el reparto aplicaba
+   * la regla vieja a un cierre nuevo sin que nada lo notara.
+   */
+  pagoIndependienteEfectivo: boolean;
 }
 
 /**
@@ -367,6 +375,12 @@ export interface ILiquidacionPagoRepository {
    * distinguir «no hay» de «no lo pedi».
    */
   sumarVigentesPorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+  /**
+   * SLT-112 (R352) — Σ y nº de los pagos VIGENTES del mensajero con `fecha_pago` en
+   * [desde, hasta): `desde` y `hasta` son fechas calendario a medianoche UTC (`@db.Date`). Sin
+   * filas, `{ monto: "0.00", conteo: 0 }`. Una consulta (indice `(mensajero_id, fecha_pago)`).
+   */
+  sumarVigentesDelMensajeroEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
   /** §5/R80: Σ de los pagos VIGENTES de una tienda (sin cierre: contra el saldo acumulado). */
   sumarVigentesPorTienda(tiendaId: string): Promise<string>;
   /** R49: los comprobantes de un cierre, anulados incluidos y marcados (R74). */

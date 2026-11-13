@@ -10,6 +10,7 @@ import type {
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { tarjetasAConsolidar } from "@/components/private/cierres/cola/cola-cierres-vista";
 
 // Feature 40 — tests unit del CierreBodegaService (lado adminSatelite; dobles de
 // repo/orden, sin DB/red). Cubre R1 (rol), R3 (acota a su zona), R4 (sin zona), R5
@@ -39,6 +40,11 @@ function consolidableRow(
     totales: { efectivo: "10.00", simpe: "5.00", transferencia: "0.00", general: "15.00" },
     totalPagoMensajero: "0.00", // feature 39/R18: snapshot del pago (override en tests R18/R19)
     totalIngresoBodegaRechazos: "0.00", // feature 56/R17: snapshot del ingreso (override en tests R17/R18)
+    // SLT-106 (R67/R194): campos requeridos de la fila. Este servicio no los deriva ni los lee.
+    paraLaCentral: "15.00",
+    aprobadoAt: "2026-11-10T15:00:00.000Z",
+    gestionesAjustadas: 0,
+    pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
     ...overrides,
   };
 }
@@ -53,6 +59,8 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     // comportamiento se mide contra Postgres real en `tests/integration/db`.
     resumirConsolidablesPendientes: vi.fn(async () => ({ cantidad: 0, totalGeneral: "0.00" })),
     contarCierresDiaSolicitados: vi.fn(async () => 0),
+    // SLT-106 (R199): los nombres de los cierres sin resolver; lo lee `listarConsolidacion`.
+    findMensajerosConCierreSinResolver: vi.fn(async () => [] as string[]),
     // ⭑ FICHA 431: `existeCierreBodegaSolicitado` se retiro del contrato con el indice unico
     // parcial que lo respaldaba. Ver el caso de R6 mas abajo.
     crearCierreBodega: vi.fn(async () => "cb1"),
@@ -107,7 +115,10 @@ describe("CierreBodegaService — autorizacion y alcance (R1/R3)", () => {
     await service.listarConsolidacion(ADMIN_SATELITE);
     expect(ordenRepo.findUsuarioZonaId).toHaveBeenCalledWith("adm-sat");
     expect(repo.findCierresDiaConsolidables).toHaveBeenCalledWith(ZONA_SAT);
-    expect(repo.contarCierresDiaSolicitados).toHaveBeenCalledWith(ZONA_SAT);
+    // SLT-106 (R199): la pantalla pide los NOMBRES de los cierres sin resolver de SU zona; el conteo
+    // queda para la puerta de `solicitarCierreBodega` (R200).
+    expect(repo.findMensajerosConCierreSinResolver).toHaveBeenCalledWith(ZONA_SAT);
+    expect(repo.contarCierresDiaSolicitados).not.toHaveBeenCalled();
     expect(repo.findCierresBodegaByZona).toHaveBeenCalledWith(ZONA_SAT);
   });
 });
@@ -123,7 +134,15 @@ describe("CierreBodegaService — adminSatelite sin zona (R4)", () => {
     expect(r.consolidables).toEqual([]);
     expect(r.puedesSolicitar).toBe(false);
     expect(r.motivoBloqueo).toBeTruthy();
+    // SLT-133 (L3 de bodega, R141/R144): texto exacto en «tú», en `motivoBloqueo`.
+    expect(r.motivoBloqueo).toBe("No tienes una zona asignada; contacta a tu administrador.");
     expect(repo.findCierresDiaConsolidables).not.toHaveBeenCalled();
+    // SLT-107 (R287): sin zona, las tres cifras de «Solicitados» en cero.
+    expect(r.solicitadosResumen).toEqual({
+      porLlegar: { monto: "0.00", cierres: 0 },
+      recibido30Dias: { monto: "0.00", cierres: 0 },
+      faltaPorRecibir: { monto: "0.00", cierres: 0 },
+    });
   });
 
   it("R4: solicitarCierreBodega sin zona -> validation_error {zona}, sin crear", async () => {
@@ -132,6 +151,11 @@ describe("CierreBodegaService — adminSatelite sin zona (R4)", () => {
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") throw new Error("esperaba validation_error");
     expect(r.fieldErrors.zona).toBeDefined();
+    // SLT-133 (L3 de bodega, R141/R144): viaja en `fieldErrors.zona`, en «tú».
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { zona: ["No tienes una zona asignada; contacta a tu administrador."] },
+    });
     expect(repo.crearCierreBodega).not.toHaveBeenCalled();
   });
 });
@@ -171,16 +195,31 @@ describe("CierreBodegaService.solicitarCierreBodega — precondiciones (R6/R7)",
   //   · NIVEL 1 (este): cierres del DIA de sus mensajeros sin resolver -> NO puede consolidar. VIVE.
   //   · NIVEL 2 (retirado): consolidacion pendiente de conciliar -> ya NO impide nada.
   it("R6/431-R5: con cierre_dia solicitado pendiente -> conflict, sin crear; y bloquea el gate al listar", async () => {
-    const repo = fakeRepo({ contarCierresDiaSolicitados: vi.fn(async () => 2) });
+    const repo = fakeRepo({
+      contarCierresDiaSolicitados: vi.fn(async () => 2),
+      // SLT-106 (R199): los mismos dos cierres, vistos por su mensajero (mismo `where` en el repo).
+      findMensajerosConCierreSinResolver: vi.fn(async () => ["Beto Mensajero", "Ana Mensajera"]),
+    });
     const { service } = newService({ repo });
     const r = await service.solicitarCierreBodega(ADMIN_SATELITE);
     expect(r.status).toBe("conflict");
+    // SLT-133 (M1, R141/R144): mismo status y campo `motivo`, en «tú».
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "Primero resuelve los cierres de tus mensajeros antes de cerrar la bodega.",
+    });
     expect(repo.crearCierreBodega).not.toHaveBeenCalled();
 
     const l = await service.listarConsolidacion(ADMIN_SATELITE);
     if (l.status !== "ok") throw new Error("esperaba ok");
     expect(l.puedesSolicitar).toBe(false);
     expect(l.motivoBloqueo).toBeTruthy();
+    // SLT-106 (R199/R47): la pantalla ya no recibe el texto de la puerta: nombra a los mensajeros.
+    // La puerta de `solicitar` (arriba) conserva el suyo (R200).
+    expect(l.motivoBloqueo).toBe(
+      "Todavía no puedes consolidar: Ana Mensajera y Beto Mensajero tienen cierres sin resolver. Apruébalos o recházalos primero.",
+    );
+    expect(l.bloqueo).toBe("sin_resolver");
   });
 
   it("R7: sin consolidables -> conflict, sin crear", async () => {
@@ -489,5 +528,82 @@ describe("CierreBodegaService — ingreso de bodega por devoluciones a origen ag
     expect(r.status).toBe("ok");
     const arg = (repo.crearCierreBodega as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(arg.totalIngresoBodegaRechazos).toBe("6.50"); // R18: snapshot agregado en la tx
+  });
+});
+
+// ── SLT-139 (T7.2, R322, R323, R341) — «La central debe» y el neto con cierres viejos y nuevos ──
+//
+// La tabla de `specs/SLT-139-pago-independiente-satelite/tasks.md > T7.2`, con los importes ESCRITOS
+// A MANO. V = viejo (marca `false`), N/N0 = nuevos (marca `true`). Con el codigo de antes el primer
+// conjunto daba «La central debe» 0.00 (efectivo 7 000 >= 0 + 2 500 + 3 000) y neto 4 500.00.
+
+describe("SLT-139 R322/R323 — la consolidacion reparte solo el efectivo de los cierres viejos", () => {
+  const V = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "V",
+      mensajeroId: "mV",
+      totales: { efectivo: "2000.00", simpe: "3000.00", transferencia: "0.00", general: "5000.00" },
+      totalPagoMensajero: "3000.00",
+      pagoIndependienteEfectivo: false,
+    });
+  const Vp = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "Vp",
+      mensajeroId: "mVp",
+      totales: { efectivo: "2000.00", simpe: "0.00", transferencia: "0.00", general: "2000.00" },
+      totalPagoMensajero: "1500.00",
+      pagoIndependienteEfectivo: false,
+    });
+  const N = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "N",
+      mensajeroId: "mN",
+      totales: { efectivo: "4000.00", simpe: "0.00", transferencia: "0.00", general: "4000.00" },
+      totalPagoMensajero: "2500.00",
+      pagoIndependienteEfectivo: true,
+    });
+  const N0 = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "N0",
+      mensajeroId: "mN0",
+      totales: { efectivo: "1000.00", simpe: "0.00", transferencia: "0.00", general: "1000.00" },
+      totalPagoMensajero: "0.00",
+      pagoIndependienteEfectivo: true,
+    });
+
+  async function consolidar(filas: CierreDiaConsolidableRow[]) {
+    const repo = fakeRepo({ findCierresDiaConsolidables: vi.fn(async () => filas) });
+    const { service } = newService({ repo });
+    const r = await service.listarConsolidacion(ADMIN_SATELITE);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const pintaCentralDebe = tarjetasAConsolidar({
+      totales: r.totalesAgregados,
+      pagoMensajeros: r.totalPagoMensajeroAgregado,
+      ganaBodega: r.totalIngresoBodegaRechazosAgregado,
+      paraLaCentral: r.paraLaCentralAgregado,
+      centralDebe: r.totalCentralDebeAgregado,
+      mensajeros: filas.length,
+      incluyeModeloNuevo: false,
+    }).some((c) => c.id === "centralDebe");
+    return { r, pintaCentralDebe };
+  }
+
+  it.each([
+    // [conjunto, filas, «La central debe», neto, se pinta]
+    ["V + N + N0", () => [V(), N(), N0()], "3000.00", "7500.00", true],
+    ["N + N0 (solo nuevos)", () => [N(), N0()], "0.00", "2500.00", false],
+    ["V solo (todos viejos: igual que antes de la ficha)", () => [V()], "3000.00", "5000.00", true],
+    ["V' + N (los pagos viejos alcanzan)", () => [Vp(), N()], "0.00", "2000.00", false],
+  ] as const)("%s -> central debe %s, neto %s", async (_n, filas, debe, neto, pinta) => {
+    const { r, pintaCentralDebe } = await consolidar(filas());
+    expect(r.totalCentralDebeAgregado).toBe(debe);
+    expect(r.totalNetoAgregado).toBe(neto);
+    expect(pintaCentralDebe).toBe(pinta);
+  });
+
+  it("R341: el pago agregado y «Debe llegar a la central» del primer conjunto no cambian", async () => {
+    const { r } = await consolidar([V(), N(), N0()]);
+    expect(r.totalPagoMensajeroAgregado).toBe("5500.00");
+    expect(r.paraLaCentralAgregado).toBe("4500.00");
   });
 });

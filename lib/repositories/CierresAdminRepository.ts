@@ -62,9 +62,11 @@ import type {
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type {
-  CierreGestionDescargaDTO,
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
   SenalesColaCierre,
 } from "@/lib/interfaces/services/ICierresAdminService";
+import { folioCierre } from "@/lib/utils/folio-cierre";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
   CatalogoFiltrosCierresDTO,
@@ -319,6 +321,48 @@ const FAMILIAS_DERIVADAS_DEL_HISTORIAL: OrdenHistorialOrigenTipo[] = [
   ...ORIGENES_GESTION_DE_LA_TIENDA,
 ];
 
+/**
+ * SLT-56 (R19/R20) — los ajustes del pago al mensajero de una gestion, del mas viejo al mas nuevo.
+ * SLT-113: declarado UNA vez y referenciado por `GESTION_ADMIN_SELECT` (los dos detalles) y por
+ * `GESTION_DESCARGA_SELECT` (la hoja fundida), para que pantalla y archivo lean lo mismo.
+ */
+const AJUSTES_PAGO_MENSAJERO_SELECT = {
+  select: {
+    createdAt: true,
+    pagoAnterior: true,
+    pagoNuevo: true,
+    motivo: true,
+    actorRol: true,
+    actor: { select: NOMBRE_USUARIO_SELECT },
+  },
+  orderBy: { createdAt: "asc" },
+} as const;
+
+/**
+ * SLT-101 (R66, R95, R96) — el pago congelado de la gestion, SOLO el del mensajero. El filtro va en
+ * el `where` de la relacion y no en memoria: sin el, la fila de la satelite (mismo `gestion_orden`)
+ * se pintaria como pago al mensajero. `@@unique([gestionOrdenId, actor])`: a lo sumo una fila.
+ * Lo miden `tests/integration/db/cierre-detalle-cifras-fila-sql-real.test.ts` y, para la hoja
+ * fundida (SLT-113), `cierres-gestiones-modelo-nuevo-descarga-sql-real.test.ts`.
+ */
+const PAGOS_CONGELADOS_MENSAJERO_SELECT = {
+  where: { actor: "mensajero" },
+  select: {
+    modo: true,
+    valor: true,
+    base: true,
+    importe: true,
+    nivel: true,
+    tarifaValor: {
+      select: {
+        zona: { select: { nombre: true } },
+        grupo: { select: { nombre: true } },
+        vehiculo: { select: { name: true } },
+      },
+    },
+  },
+} as const;
+
 export const GESTION_ADMIN_SELECT = {
   id: true,
   ordenId: true,
@@ -370,42 +414,18 @@ export const GESTION_ADMIN_SELECT = {
   // resuelve con UNA consulta por nivel (no una por gestion), y como esta proyeccion alimenta los
   // dos detalles de admin (cierre del dia y cierre de bodega), la marca llega a los dos sin otra
   // lectura. La marca «Ajustado» se DERIVA de que la lista no este vacia: no hay columna booleana.
-  ajustesPagoMensajero: {
-    select: {
-      createdAt: true,
-      pagoAnterior: true,
-      pagoNuevo: true,
-      motivo: true,
-      actorRol: true,
-      actor: { select: NOMBRE_USUARIO_SELECT },
-    },
-    orderBy: { createdAt: "asc" },
-  },
-  // SLT-101 (R66, R95, R96): el pago congelado de la gestion, SOLO el del mensajero. El filtro va en
-  // el `where` de la relacion y no en memoria: sin el, la fila de la satelite (mismo `gestion_orden`)
-  // se pintaria como pago al mensajero. `@@unique([gestionOrdenId, actor])`: a lo sumo una fila.
-  // Lo mide `tests/integration/db/cierre-detalle-cifras-fila-sql-real.test.ts`.
-  pagosCongelados: {
-    where: { actor: "mensajero" },
-    select: {
-      modo: true,
-      valor: true,
-      base: true,
-      importe: true,
-      nivel: true,
-      tarifaValor: {
-        select: {
-          zona: { select: { nombre: true } },
-          grupo: { select: { nombre: true } },
-          vehiculo: { select: { name: true } },
-        },
-      },
-    },
-  },
+  ajustesPagoMensajero: AJUSTES_PAGO_MENSAJERO_SELECT,
+  // SLT-101 (R66, R95, R96): el pago congelado de la gestion, SOLO el del mensajero (ver la constante).
+  pagosCongelados: PAGOS_CONGELADOS_MENSAJERO_SELECT,
 } as const;
 
 type DetalleAdminRow = Prisma.CierreDetailGetPayload<{ select: typeof DETALLE_ADMIN_SELECT }>;
 type GestionAdminRow = Prisma.GestionOrdenGetPayload<{ select: typeof GESTION_ADMIN_SELECT }>;
+/** SLT-113: lo que leen los helpers del pago; lo comparten la fila del detalle y la de la descarga. */
+type GestionPagoRow = Pick<
+  GestionAdminRow,
+  "resultado" | "pagoMensajero" | "ajustesPagoMensajero" | "pagosCongelados"
+>;
 
 // Money-safe: Decimal -> string escala 2 fija (nunca number/parseFloat).
 function decimalToString(d: Prisma.Decimal | null): string | null {
@@ -417,7 +437,7 @@ function decimalToString(d: Prisma.Decimal | null): string | null {
  * como estaban al ajustar (el rol esta congelado en la fila); importes STRING escala 2 (R16). El
  * orden ya lo trae la consulta.
  */
-function toAjustesPago(rows: GestionAdminRow["ajustesPagoMensajero"]): AjustePagoGestionDTO[] {
+function toAjustesPago(rows: GestionPagoRow["ajustesPagoMensajero"]): AjustePagoGestionDTO[] {
   return rows.map((a) => ({
     creadoAt: a.createdAt.toISOString(),
     actorNombre: nombreCompletoUsuario(a.actor),
@@ -642,7 +662,7 @@ function hayPagoMensajeroEnCatalogo(resultado: GestionAdminRow["resultado"]): bo
  * SLT-101 (R66, R95) — el pago «por tarifa» del mensajero (la relacion ya viene filtrada por
  * `actor = 'mensajero'` en el `where`) y, si hubo ajuste, la diferencia hasta `pagoMensajero`.
  */
-function toPagoPorTarifa(g: GestionAdminRow): PagoPorTarifaDTO | null {
+function toPagoPorTarifa(g: GestionPagoRow): PagoPorTarifaDTO | null {
   const p = g.pagosCongelados[0];
   if (p === undefined) return null;
   let ajuste: PagoPorTarifaDTO["ajuste"] = null;
@@ -667,7 +687,10 @@ function toPagoPorTarifa(g: GestionAdminRow): PagoPorTarifaDTO | null {
  * de pago al mensajero y sin fila congelada del mensajero. En el viejo, `false`: lo congelado no
  * guarda si la zona tenia tarifa de pago (PA9).
  */
-function tarifaFaltanteDe(g: GestionAdminRow, d: DetalleAdminRow): boolean {
+function tarifaFaltanteDe(
+  g: Pick<GestionPagoRow, "resultado" | "pagosCongelados">,
+  d: Pick<DetalleAdminRow, "tarifaModelo">,
+): boolean {
   return (
     d.tarifaModelo === "nuevo" &&
     hayPagoMensajeroEnCatalogo(g.resultado) &&
@@ -676,13 +699,34 @@ function tarifaFaltanteDe(g: GestionAdminRow, d: DetalleAdminRow): boolean {
 }
 
 /**
- * SLT-101 — lo que solo el detalle de mensajero de `/cierres-admin` le pasa al mapper. Sin esto (el
- * detalle de bodega y la descarga), `fulfillmentCargadoAt` sale `null` y `tarifaFaltante` no se
- * emite (la fila de bodega sigue con el `false` de siempre: esa pantalla no cambia, R90).
+ * SLT-101 / SLT-110 (R210, R211) — lo que los dos detalles de admin (el del cierre del dia en
+ * `/cierres-admin` y el del cierre de bodega) le pasan al mapper. La descarga no lo pasa: sin esto,
+ * `fulfillmentCargadoAt` sale `null` y `tarifaFaltante` no se emite.
  */
-export interface LecturaDetalleMensajero {
+export interface LecturaDetalleFila {
   /** `ocurrido_at` del cargo vigente de fulfillment de la orden; `null` si no hay o se revirtio. */
   cargoFulfillmentAt: Date | null;
+}
+
+/**
+ * SLT-101 (R94) / SLT-110 (R210, R216) — instante del cargo vigente de fulfillment por orden, para
+ * las ordenes de los cierres del dia dados. UNA consulta sea cual sea el numero de cierres: el
+ * conjunto va en el `where` (`in`), asi que un cargo de una orden ajena no puede entrar.
+ * `distinct` + `secuencia desc` = el ultimo evento por orden; si es un reverso, no hay cargo vigente
+ * (`null`). Lo miden los dos tests de integracion `cierre-*-cifras-fila-sql-real`.
+ */
+export async function cargosFulfillmentVigentes(
+  prisma: Pick<PrismaClient, "ordenFulfillmentMovimiento">,
+  cierreIds: readonly string[],
+): Promise<Map<string, Date | null>> {
+  if (cierreIds.length === 0) return new Map();
+  const ultimos = await prisma.ordenFulfillmentMovimiento.findMany({
+    where: { orden: { cierreDetalles: { some: { cierreId: { in: [...cierreIds] } } } } },
+    orderBy: [{ ordenId: "asc" }, { secuencia: "desc" }],
+    distinct: ["ordenId"],
+    select: { ordenId: true, tipo: true, ocurridoAt: true },
+  });
+  return new Map(ultimos.map((m) => [m.ordenId, m.tipo === "cargo" ? m.ocurridoAt : null]));
 }
 
 /**
@@ -695,8 +739,8 @@ export function toPendienteRowDesdeSnapshot(
   d: DetalleAdminRow,
   /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `created_at`. */
   zona: string,
-  /** SLT-101: solo el detalle de mensajero de `/cierres-admin` (ver `LecturaDetalleMensajero`). */
-  detalleMensajero?: LecturaDetalleMensajero,
+  /** SLT-101 / SLT-110: los dos detalles de admin, no la descarga (ver `LecturaDetalleFila`). */
+  detalleFila?: LecturaDetalleFila,
 ): CierreGestionPendienteRow {
   return {
     gestionId: g.id,
@@ -751,12 +795,11 @@ export function toPendienteRowDesdeSnapshot(
     // «monto cero». A diferencia de la vista del mensajero, el detalle de ADMIN SI lo lleva —
     // es quien lo captura y quien tiene que poder auditarlo despues.
     indemnizacion: decimalToString(g.indemnizacion),
-    ingresoEmpresa: toIngresoEmpresa(g, d, detalleMensajero?.cargoFulfillmentAt ?? null),
+    ingresoEmpresa: toIngresoEmpresa(g, d, detalleFila?.cargoFulfillmentAt ?? null),
     ajustesPago: toAjustesPago(g.ajustesPagoMensajero), // SLT-56 (R19/R20)
     pagoPorTarifa: toPagoPorTarifa(g), // SLT-101 (R66, R95)
-    // SLT-101 (R96): solo con el detalle de mensajero; en bodega la clave no existe y `toDetalleDTO`
-    // sigue dando `false`.
-    ...(detalleMensajero !== undefined ? { tarifaFaltante: tarifaFaltanteDe(g, d) } : {}),
+    // SLT-101 (R96) / SLT-110 (R211): solo con un detalle de admin; en la descarga la clave no existe.
+    ...(detalleFila !== undefined ? { tarifaFaltante: tarifaFaltanteDe(g, d) } : {}),
   };
 }
 
@@ -773,6 +816,9 @@ const CIERRE_RESUMEN_SELECT = {
   totalGeneral: true,
   totalPagoMensajero: true, // feature 39/R17: snapshot total del pago al mensajero
   totalIngresoBodegaRechazos: true, // feature 56/R16: snapshot total del ingreso de bodega por rechazos
+  // SLT-123 (R320): la regla de pago del cierre. Va en TODOS los listados: el servicio deriva lo
+  // pendiente de cada fila aprobada con ella (`conPendiente`).
+  pagoIndependienteEfectivo: true,
   solicitadoAt: true,
   resueltoAt: true,
   motivoRechazo: true,
@@ -801,6 +847,7 @@ function toResumenRow(r: CierreResumenRow): CierreAdminResumenRow {
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R17: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R16: snapshot money-safe STRING
     incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-123 (R320)
     solicitadoAt: r.solicitadoAt.toISOString(),
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,
@@ -1045,6 +1092,11 @@ export const GESTION_DESCARGA_SELECT = {
   },
   // R8/R11: la identidad del CIERRE al que pertenece la gestion.
   cierre: { select: { solicitadoAt: true, mensajero: { select: NOMBRE_USUARIO_SELECT } } },
+  // SLT-113 (R374, R375): el pago «por tarifa», su ajuste y «Sin tarifa de pago» de la hoja
+  // «Gestiones», con las MISMAS constantes que el detalle (las cifras del archivo son las de la
+  // pantalla). Una consulta por relacion para todo el conjunto, no una por gestion.
+  ajustesPagoMensajero: AJUSTES_PAGO_MENSAJERO_SELECT,
+  pagosCongelados: PAGOS_CONGELADOS_MENSAJERO_SELECT,
 } as const;
 
 type GestionDescargaRow = Prisma.GestionOrdenGetPayload<{
@@ -1076,7 +1128,17 @@ export function toGestionDescargaDTO(
   intentosEntrega: number,
   /** SLT-42 (R22): la zona del pais de la empresa, con la que se fechan los `created_at`. */
   zona: string,
-): CierreGestionDescargaDTO {
+  /**
+   * SLT-113 (R371): el modelo del CIERRE de la gestion (alguna fila congelada `nuevo`), ya resuelto
+   * por `componerGestionesDescarga`. Obligatorio: un default diria «viejo» en silencio.
+   */
+  cierreModelo: "viejo" | "nuevo",
+  /**
+   * SLT-113 (R375): `ocurrido_at` del cargo vigente de fulfillment de la orden, SOLO si el cierre es
+   * nuevo (`null` en el viejo y sin cargo). Obligatorio por la misma razon.
+   */
+  cargoFulfillmentAt: Date | null,
+): CierreGestionDescargaRow {
   // `cierre` es nullable en el modelo (una gestion del dia aun sin cerrar tiene `cierre_id`
   // NULL), pero los DOS caminos de esta feature exigen el cierre en su WHERE. Si llega null,
   // el WHERE dejo de acotar y la fila no tiene ni mensajero ni fecha que emitir: se LANZA con
@@ -1140,8 +1202,34 @@ export function toGestionDescargaDTO(
     indemnizacion: decimalToString(g.indemnizacion),
     pagoMensajero: decimalToString(g.pagoMensajero),
     ingresoBodegaRechazo: decimalToString(g.ingresoBodegaRechazo),
-    ingresoEmpresa: toIngresoEmpresa(g, d),
+    // SLT-113 (R374): el mismo mapper que el detalle, ahora con la fecha del cargo (R375).
+    ingresoEmpresa: toIngresoEmpresa(g, d, cargoFulfillmentAt),
+    // SLT-113 (R371, R374, R375): lo de la hoja «Gestiones», con los MISMOS helpers que el detalle
+    // (`toPendienteRowDesdeSnapshot`), para que archivo y pantalla digan las mismas cifras.
+    folioCierre: folioCierre(g.cierreId ?? ""),
+    cierreModelo,
+    pagoPorTarifa: toPagoPorTarifa(g),
+    ajustesPago: toAjustesPago(g.ajustesPagoMensajero),
+    tarifaFaltante: tarifaFaltanteDe(g, d),
+    fulfillmentCargadoDia:
+      cargoFulfillmentAt === null ? null : fechaCalendario(cargoFulfillmentAt, zona),
   };
+}
+
+/**
+ * SLT-113 (R371) — los cierres del MODELO NUEVO de un conjunto de filas congeladas: los que tienen
+ * ALGUNA fila con `tarifa_modelo = 'nuevo'`, el mismo criterio que `incluyeModeloNuevoDe`. Lo usan
+ * el compositor (para el modelo de cada gestion) y los dos `find…Completo` (para pedir los cargos
+ * de fulfillment solo de esos cierres): una sola definicion.
+ */
+export function cierresDelModeloNuevo(
+  detalle: ReadonlyArray<Pick<DetalleDescargaRow, "cierreId" | "tarifaModelo">>,
+): Set<string> {
+  const nuevos = new Set<string>();
+  for (const d of detalle) {
+    if (d.tarifaModelo === "nuevo") nuevos.add(d.cierreId);
+  }
+  return nuevos;
 }
 
 /**
@@ -1160,6 +1248,12 @@ export const DETALLE_DESCARGA_SELECT = {
 type DetalleDescargaRow = Prisma.CierreDetailGetPayload<{
   select: typeof DETALLE_DESCARGA_SELECT;
 }>;
+
+/** SLT-113 — orden total de las filas congeladas de la descarga (grano `(cierre_id, orden_id)`). */
+export const ORDEN_DETALLE_DESCARGA: Prisma.CierreDetailOrderByWithRelationInput[] = [
+  { cierreId: "asc" },
+  { ordenId: "asc" },
+];
 
 /**
  * Feature 230 (T2.1/T7.1, R26) — empareja cada gestion con su fila congelada y proyecta el DTO.
@@ -1189,14 +1283,83 @@ export function componerGestionesDescarga(
   intentosPorOrden: ReadonlyMap<string, number>,
   /** SLT-42 (R22): la zona del pais de la empresa, con la que se fechan los `created_at`. */
   zona: string,
-): CierreGestionDescargaDTO[] {
+  /**
+   * SLT-113 (R375): el cargo vigente de fulfillment POR ORDEN (`cargosFulfillmentVigentes`), pedido
+   * solo para los cierres del modelo nuevo. Obligatorio como `intentosPorOrden`: un default
+   * `new Map()` dejaria la fecha vacia en todas las filas sin romper nada.
+   */
+  cargoPorOrden: ReadonlyMap<string, Date | null>,
+): CierreGestionDescargaRow[] {
   const porCierreYOrden = new Map(detalle.map((d) => [`${d.cierreId}:${d.ordenId}`, d]));
+  const nuevos = cierresDelModeloNuevo(detalle);
   return gestiones.map((g) => {
     const d = porCierreYOrden.get(`${g.cierreId}:${g.ordenId}`);
     if (d === undefined) throw new CierreDetalleFaltanteError(g.cierreId ?? "", g.ordenId);
-    return toGestionDescargaDTO(g, d, intentosPorOrden.get(g.ordenId) ?? 0, zona);
+    // `d` existe, asi que `g.cierreId` no es null: el emparejamiento lo hizo con el.
+    const esNuevo = g.cierreId !== null && nuevos.has(g.cierreId);
+    return toGestionDescargaDTO(
+      g,
+      d,
+      intentosPorOrden.get(g.ordenId) ?? 0,
+      zona,
+      esNuevo ? "nuevo" : "viejo",
+      // El cargo solo cuenta en un cierre nuevo (R375); en el viejo la fila no lo pinta.
+      esNuevo ? (cargoPorOrden.get(g.ordenId) ?? null) : null,
+    );
   });
 }
+
+/**
+ * SLT-113 (R373) — proyeccion de un rechazo de la tienda para la hoja «Rechazados por la tienda»:
+ * los campos de `RECHAZO_DE_TIENDA_SELECT` que la hoja usa, mas `cierreId` para el folio. Sin
+ * `gestionId` ni `ordenId` (no son celdas) y sin importes (la tabla no tiene).
+ */
+export const RECHAZO_TIENDA_DESCARGA_SELECT = {
+  cierreId: true,
+  numGuia: RECHAZO_DE_TIENDA_SELECT.numGuia,
+  destinatario: RECHAZO_DE_TIENDA_SELECT.destinatario,
+  tiendaNombre: RECHAZO_DE_TIENDA_SELECT.tiendaNombre,
+  rechazadoAt: RECHAZO_DE_TIENDA_SELECT.rechazadoAt,
+  motivo: RECHAZO_DE_TIENDA_SELECT.motivo,
+} as const;
+
+type RechazoTiendaDescargaRow = Prisma.CierreRechazoTiendaGetPayload<{
+  select: typeof RECHAZO_TIENDA_DESCARGA_SELECT;
+}>;
+
+/** SLT-113 (R373) — el mapper unico de los dos repositorios. Fecha en la zona de la empresa. */
+export function toRechazoTiendaDescargaDTO(
+  r: RechazoTiendaDescargaRow,
+  zona: string,
+): RechazoTiendaDescargaDTO {
+  return {
+    folioCierre: folioCierre(r.cierreId),
+    numGuia: r.numGuia,
+    destinatario: r.destinatario,
+    motivo: r.motivo,
+    tiendaNombre: r.tiendaNombre,
+    fechaRechazo: fechaCalendario(r.rechazadoAt, zona),
+  };
+}
+
+/**
+ * SLT-113 (R372) — el criterio de cierre de la hoja de rechazos, añadido al del `find…Completo`
+ * hermano: modelo nuevo (alguna fila congelada `nuevo`) y con alguna gestion (el conjunto de cierres
+ * de la hoja «Gestiones» es el de los cierres con gestiones). Va en el WHERE, nunca en memoria.
+ */
+export const CIERRE_NUEVO_CON_GESTIONES: readonly Prisma.CierreDiaWhereInput[] = [
+  { detalle: { some: { tarifaModelo: "nuevo" } } },
+  { gestiones: { some: {} } },
+];
+
+/**
+ * SLT-113 (R373) — el orden de la hoja de rechazos: los cierres como el listado
+ * (`ORDEN_CIERRES_ADMIN` elevado a la relacion) y, dentro de cada uno, el del detalle.
+ */
+export const ORDEN_RECHAZOS_DESCARGA: Prisma.CierreRechazoTiendaOrderByWithRelationInput[] = [
+  { cierre: ORDEN_CIERRES_ADMIN },
+  ...ORDEN_RECHAZOS_DE_TIENDA,
+];
 
 /**
  * Feature 230 (T2.1/T7.1, R11) — el ORDEN de la hoja fundida, declarado UNA vez para los dos
@@ -1636,7 +1799,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     // admin veia los valores de HOY, no los del cierre que esta revisando.
     // R19 sale de aqui gratis: una orden con `deleted_at` sigue mostrandose, y ahora por
     // diseño y no por el accidente de que `WITH_DETALLE` no filtraba `deletedAt`.
-    const [gestiones, detalle, sinGestion, rechazosDeTienda, ultimosMovimientos] = await Promise.all([
+    const [gestiones, detalle, sinGestion, rechazosDeTienda, cargoPorOrden] = await Promise.all([
       this.prisma.gestionOrden.findMany({
         where: { cierreId }, // R6: gestiones vinculadas a ESTE cierre
         orderBy: { createdAt: "desc" },
@@ -1678,19 +1841,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // consulta del mismo `Promise.all` (una por detalle, no una por gestion). Las ordenes salen de
       // `cierre_detail` de ESTE cierre, en el `where`: un cargo de una orden ajena no puede entrar.
       // `distinct` + `secuencia desc` = el ultimo evento por orden; si es un reverso, no hay cargo
-      // vigente. El alcance no se repite, por la misma razon que en las de arriba.
-      this.prisma.ordenFulfillmentMovimiento.findMany({
-        where: { orden: { cierreDetalles: { some: { cierreId } } } },
-        orderBy: [{ ordenId: "asc" }, { secuencia: "desc" }],
-        distinct: ["ordenId"],
-        select: { ordenId: true, tipo: true, ocurridoAt: true },
-      }),
+      // vigente. El alcance no se repite, por la misma razon que en las de arriba. SLT-110: la consulta
+      // vive en `cargosFulfillmentVigentes`, que comparte con el detalle de bodega.
+      cargosFulfillmentVigentes(this.prisma, [cierreId]),
     ]);
     const byOrden = new Map(detalle.map((d) => [d.ordenId, d]));
-    // Un valor por orden: el ultimo movimiento, si es un cargo; `null` si es un reverso.
-    const cargoPorOrden = new Map(
-      ultimosMovimientos.map((m) => [m.ordenId, m.tipo === "cargo" ? m.ocurridoAt : null]),
-    );
     return {
       cierre: toResumenRow(cierre),
       // R11: lo congelado, tal cual. Ni un `JOIN` con la orden VIVA, que es el error que la
@@ -1714,6 +1869,53 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         });
       }),
     };
+  }
+
+  /**
+   * SLT-140 (R380, R383) — las gestiones de VARIOS cierres en DOS consultas (mas las de sus relaciones,
+   * por lote), sea uno o sean cien. Mismas proyecciones, mismo orden y mismo mapper que
+   * `findCierreByIdEnAlcance`, para que `cifrasDelCierre` dé aqui lo mismo que en el detalle.
+   *
+   * El alcance va en el `WHERE` de LAS DOS consultas (`cierre: alcanceWhere(alcance)`), ademas de los
+   * ids: los ids ya salen del conjunto acotado, pero un id fuera de alcance pasado a mano no devuelve ni
+   * una fila (R383). La empresa la ponen la extension del cliente y la RLS, como en el resto del repo.
+   *
+   * Sin `cargosFulfillmentVigentes` (la fecha del cargo no entra en ninguna cifra) ni firma de URLs.
+   */
+  async findGestionesDeCierresEnAlcance(
+    cierreIds: readonly string[],
+    alcance: Alcance,
+    zona: string,
+  ): Promise<ReadonlyMap<string, CierreGestionPendienteRow[]>> {
+    const porCierre = new Map<string, CierreGestionPendienteRow[]>();
+    if (cierreIds.length === 0) return porCierre;
+    const ids = [...cierreIds];
+    const [gestiones, detalle] = await Promise.all([
+      this.prisma.gestionOrden.findMany({
+        where: { cierreId: { in: ids }, cierre: alcanceWhere(alcance) }, // R383: alcance en el WHERE
+        orderBy: { createdAt: "desc" }, // el orden del detalle: `partesPorTienda` empata igual
+        select: { ...GESTION_ADMIN_SELECT, cierreId: true },
+      }),
+      this.prisma.cierreDetail.findMany({
+        where: { cierreId: { in: ids }, cierre: alcanceWhere(alcance) },
+        select: { ...DETALLE_ADMIN_SELECT, cierreId: true },
+      }),
+    ]);
+    const porCierreYOrden = new Map(detalle.map((d) => [`${d.cierreId}:${d.ordenId}`, d]));
+    // Un cierre en alcance con filas congeladas y sin gestiones sale con `[]`.
+    for (const d of detalle) if (!porCierre.has(d.cierreId)) porCierre.set(d.cierreId, []);
+    for (const g of gestiones) {
+      // `cierreId` no es null: el `in` del WHERE lo exige.
+      const cierreId = g.cierreId ?? "";
+      const d = porCierreYOrden.get(`${cierreId}:${g.ordenId}`);
+      // Sin fallback (feature 69/T18, R14): sin la fila congelada es un error DURO, como el detalle.
+      if (d === undefined) throw new CierreDetalleFaltanteError(cierreId, g.ordenId);
+      const fila = toPendienteRowDesdeSnapshot(g, d, zona, { cargoFulfillmentAt: null });
+      const lista = porCierre.get(cierreId);
+      if (lista === undefined) porCierre.set(cierreId, [fila]);
+      else lista.push(fila);
+    }
+    return porCierre;
   }
 
   /**
@@ -1743,7 +1945,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
-  ): Promise<CierreGestionDescargaDTO[]> {
+  ): Promise<CierreGestionDescargaRow[]> {
     const gestiones = await this.prisma.gestionOrden.findMany({
       where: {
         // El alcance y los recortes se componen con `AND`, EXACTAMENTE como `historicoWhere` y
@@ -1768,6 +1970,9 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     const [detalle, intentosPorOrden] = await Promise.all([
       this.prisma.cierreDetail.findMany({
         where: { cierreId: { in: cierreIds } },
+        // SLT-113: orden DETERMINISTA. El compositor empareja por clave y no depende de el, pero asi
+        // el modelo de un cierre mixto no puede depender del orden fisico de las filas.
+        orderBy: ORDEN_DETALLE_DESCARGA,
         select: DETALLE_DESCARGA_SELECT,
       }),
       // FICHA 394 — UNA consulta para todo el conjunto, sea de diez filas o de miles: es el
@@ -1775,7 +1980,37 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // MISMO `Promise.all` que el snapshot, asi que la descarga paga un round-trip mas, no dos.
       contarIntentosVigentesEnLoteCon(this.prisma.gestionOrden, ordenIds),
     ]);
-    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona);
+    // SLT-113 (R375): la fecha del cargo de fulfillment, solo de los cierres del modelo nuevo y en
+    // UNA consulta. Sin ninguno (todo el historico de hoy, D19) no se consulta nada.
+    const idsNuevos = [...cierresDelModeloNuevo(detalle)];
+    const cargoPorOrden =
+      idsNuevos.length > 0
+        ? await cargosFulfillmentVigentes(this.prisma, idsNuevos)
+        : new Map<string, Date | null>();
+    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona, cargoPorOrden);
+  }
+
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del modelo nuevo del MISMO
+   * conjunto que `findGestionesPorAlcanceCompleto`: mismo alcance y mismos recortes (en el WHERE,
+   * por conjuncion), mas el criterio de la hoja (`CIERRE_NUEVO_CON_GESTIONES`). Una consulta.
+   */
+  async findRechazosTiendaModeloNuevoCompleto(
+    alcance: Alcance,
+    filtros: FiltrosDescargaGestionesRepo,
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]> {
+    const filas = await this.prisma.cierreRechazoTienda.findMany({
+      where: {
+        cierre: {
+          ...alcanceWhere(alcance), // el alcance en el WHERE, nunca en memoria
+          AND: [...filtrosWhere(filtros), ...CIERRE_NUEVO_CON_GESTIONES],
+        },
+      },
+      orderBy: ORDEN_RECHAZOS_DESCARGA,
+      select: RECHAZO_TIENDA_DESCARGA_SELECT,
+    });
+    return filas.map((r) => toRechazoTiendaDescargaDTO(r, zona));
   }
 
   /**
@@ -2385,6 +2620,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           resueltoPor,
           resueltoAt: new Date(),
           motivoRechazo,
+          // SLT-139 (R336, design §2): la marca de la regla nueva («el pago al mensajero es
+          // independiente del efectivo») viaja en la MISMA escritura que aprueba, para TODO destino.
+          // No puede haber un cierre aprobado por este codigo sin la marca, ni una marca sin
+          // aprobacion; si algo lanza despues, revierten juntas. Rechazar no la toca.
+          ...(nuevoEstado === "aprobado" ? { pagoIndependienteEfectivo: true } : {}),
         },
       });
 
@@ -2434,6 +2674,8 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           select: { destinoTipo: true },
         });
         if (destino?.destinoTipo === "bodega_central") {
+          // SLT-123 (R310) -> SLT-139 (R336): la marca ya la puso el `updateMany` de arriba, para todo
+          // destino y ANTES de los asientos (el feed la lee para decidir que escribe en el libro).
           await asentarCierreDia(tx, cierreId, this.asientos());
         }
 

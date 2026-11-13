@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { KpiValorAnimado } from "@/components/shared/KpiValorAnimado";
 import { BotonesEvidencia } from "./botones-evidencia";
+import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { cn } from "@/lib/utils";
 import { EMPRESA } from "@/lib/config/marca";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
@@ -1347,8 +1349,8 @@ export interface CierreFacturaDetalleProps {
   ivaFacturado?: string;
   pagoTienda?: string;
   audiencia?: CierreFacturaAudiencia;
-  /** Abre el visor con la URL FIRMADA de la evidencia (nunca el storage_path). */
-  onVerEvidencia?: (url: string) => void;
+  /** Abre el visor con las URL FIRMADAS de la evidencia (nunca el storage_path) y su contexto. */
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /**
    * Pedido humano (2026-08-19): abre la corrección del desglose de pago de una gestión.
    * Ausente = la hoja es de solo lectura, que es lo que sigue siendo en un cierre resuelto,
@@ -1712,7 +1714,7 @@ function FilaGestion({
   g: CierreDetalleGestion;
   /** Vista del mensajero: las dos cifras de la fila son lo RECIBIDO y SU pago. */
   esMensajero?: boolean;
-  onVerEvidencia?: (url: string) => void;
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /**
    * Pedido humano (2026-08-19): abre la corrección del desglose de ESTA gestión. Ausente = no
    * se ofrece, que es lo que pasa en un cierre ya resuelto, para el rol que no corrige y en la
@@ -1967,12 +1969,14 @@ function FilaGestion({
                 )}
               </>
             ) : null}
-            {/* FICHA 486 (R12-R16): un botón por foto, en el orden del servidor; con una sola,
-                el «Ver evidencia» de siempre. */}
+            {/* FICHA 486 (R12-R16), SLT-103 (R54): un solo botón con todas las fotos, en el orden
+                del servidor; con una sola, el «Ver evidencia» de siempre. */}
             {onVerEvidencia ? (
               <BotonesEvidencia
                 urls={g.evidenciaUrls}
-                onVer={onVerEvidencia}
+                onVer={(urls) =>
+                  onVerEvidencia({ urls, contexto: contextoEvidencia(g.numRemision, g.destinatario) })
+                }
                 etiqueta={FILA_VER_EVIDENCIA}
                 ariaSufijo={`de la orden ${g.numRemision} · ${g.destinatario}`}
               />
@@ -2050,7 +2054,7 @@ export interface GestionesPorResultadoProps {
    * El comprobante del cierre de mensajero lo pasa SIEMPRE, desde su `audiencia`.
    */
   verFulfillment?: boolean;
-  onVerEvidencia?: (url: string) => void;
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /** Ausente = no se ofrece (478/R14). */
   onCorregirPagos?: (g: CierreDetalleGestion) => void;
   /** Ausente = no se ofrece (478/R14). */

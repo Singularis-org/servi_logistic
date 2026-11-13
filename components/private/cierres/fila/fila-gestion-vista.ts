@@ -81,8 +81,17 @@ export interface SenalFila {
 const esMensajero = (a: AudienciaFila) => a === "mensajero";
 const esAdministracion = (a: AudienciaFila) => a === "central" || a === "satelite";
 
+/**
+ * SLT-113 — los SEIS campos que leen las señales. La pantalla pasa la gestión entera; la hoja
+ * «Gestiones» del Excel del modelo nuevo pasa su fila de descarga, que no es un `CierreDetalleGestion`.
+ */
+export type GestionConSenales = Pick<
+  CierreDetalleGestion,
+  "ajustesPago" | "resultado" | "indemnizacion" | "causaIncidente" | "esRechazoSla" | "tarifaFaltante"
+>;
+
 /** Las señales de una gestión para esa audiencia, en el orden de R85. Solo campos que llegan. */
-export function senalesDe(g: CierreDetalleGestion, a: AudienciaFila): SenalFila[] {
+export function senalesDe(g: GestionConSenales, a: AudienciaFila): SenalFila[] {
   const s: SenalFila[] = [];
   // Al mensajero no le llegan los ajustes (SLT-56 Q2): nunca se le dice «Pago ajustado».
   if (!esMensajero(a) && (g.ajustesPago?.length ?? 0) > 0) {
@@ -108,7 +117,7 @@ export function senalesDe(g: CierreDetalleGestion, a: AudienciaFila): SenalFila[
 }
 
 /** La celda «Señales» (y la columna de «Descargar», R91): `""` sin señales. */
-export function textoSenales(g: CierreDetalleGestion, a: AudienciaFila): string {
+export function textoSenales(g: GestionConSenales, a: AudienciaFila): string {
   return senalesDe(g, a)
     .map((x) => x.texto)
     .join(L.SEPARADOR_SENALES);
@@ -516,6 +525,11 @@ export interface AccionesOfrecidas {
   ajustarPago: boolean;
   corregirResultado: boolean;
   devolver: boolean;
+  /**
+   * SLT-109 (R244, feature 237): el motivo por el que «Devolver a gestión» sale deshabilitado; `null`
+   * = habilitado. Una gestión de la tienda solo la corrige la tienda.
+   */
+  devolverDeshabilitado: string | null;
 }
 
 /**
@@ -531,5 +545,6 @@ export function accionesDe(g: CierreDetalleGestion, a: AudienciaFila, acciones: 
     corregirResultado: a === "central" && acciones.corregirResultado !== undefined && entregado,
     ajustarPago: esAdministracion(a) && acciones.ajustarPago !== undefined && g.pagoMensajero !== null,
     devolver: a === "mensajero" && acciones.devolver !== undefined,
+    devolverDeshabilitado: g.desdeAyudaTienda ? L.DESHACER_BLOQUEO_TIENDA : null,
   };
 }

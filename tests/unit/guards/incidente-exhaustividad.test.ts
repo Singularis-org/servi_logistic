@@ -130,9 +130,13 @@ describe("R5/R31 — la categoria nueva esta clasificada en la wallet", () => {
     // (sus tablas, `DetalleSecciones`, se borraron; el archivo solo RE-EXPORTA las etiquetas y
     // seguir mirándolo dejaría verde este caso sin que nadie pintara nada). Se sigue al detalle
     // a su sitio: la lista en pestañas de `cierre-factura.tsx`, que sustituyó a la tabla en la 478.
+    // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242): el detalle del
+    // MENSAJERO ya no pinta sus tablas por resultado en `CierreDiaModule.tsx`; su lista es la única
+    // (`GestionesCierre`), y quien lee las etiquetas y el texto vacío es su lógica pura. Se sigue al
+    // detalle a su sitio, igual que en la 482.
     for (const archivo of [
       path.join(APP, "(app)", "cierres-admin", "_components", "cierre-factura.tsx"),
-      path.join(APP, "(app)", "cierre-dia", "_components", "CierreDiaModule.tsx"),
+      path.join(APP, "..", "components", "private", "cierres", "fila", "fila-gestion-vista.ts"),
     ]) {
       const src = fs.readFileSync(archivo, "utf8");
       expect(src, `${path.basename(archivo)} no lee RESULTADO_LABEL de cierre-labels`).toMatch(

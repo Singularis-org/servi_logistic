@@ -488,24 +488,28 @@ describe("R26 — acciones por audiencia, resultado y presencia del callback", (
       ajustarPago: true,
       corregirResultado: true,
       devolver: false,
+      devolverDeshabilitado: null,
     });
     expect(accionesDe(entrega, "satelite", todas)).toEqual({
       corregirMetodos: false,
       ajustarPago: true,
       corregirResultado: false,
       devolver: false,
+      devolverDeshabilitado: null,
     });
     expect(accionesDe(entrega, "mensajero", todas)).toEqual({
       corregirMetodos: false,
       ajustarPago: false,
       corregirResultado: false,
       devolver: true,
+      devolverDeshabilitado: null,
     });
     expect(accionesDe(entrega, "solo lectura", todas)).toEqual({
       corregirMetodos: false,
       ajustarPago: false,
       corregirResultado: false,
       devolver: false,
+      devolverDeshabilitado: null,
     });
   });
 
@@ -515,7 +519,19 @@ describe("R26 — acciones por audiencia, resultado y presencia del callback", (
       ajustarPago: false,
       corregirResultado: false,
       devolver: false,
+      devolverDeshabilitado: null,
     });
+  });
+
+  it("SLT-109 (R244): una gestión de la tienda ofrece «Devolver a gestión» deshabilitado, con su motivo", () => {
+    const deLaTienda = gestionFila({ gestionId: "t", desdeAyudaTienda: true });
+    const delMensajero = gestionFila({ gestionId: "m", desdeAyudaTienda: false });
+    expect(accionesDe(deLaTienda, "mensajero", todas)).toMatchObject({
+      devolver: true,
+      devolverDeshabilitado:
+        "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+    });
+    expect(accionesDe(delMensajero, "mensajero", todas)).toMatchObject({ devolver: true, devolverDeshabilitado: null });
   });
 
   it("corregir métodos solo en una entrega que cobró; corregir resultado solo en una entrega", () => {

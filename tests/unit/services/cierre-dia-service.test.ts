@@ -110,6 +110,7 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     findCierrePropioConGestiones: vi.fn(async () => null),
     // Feature 170 (T I.1): el listado paginado vive en su propia suite (*-paginado).
     findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [], total: 0 })),
+    findAprobadosParaPendiente: vi.fn(async () => []),
     // Feature 67: por defecto, una gestion `entregada` vigente del propio mensajero, sin
     // cierre, que ES la mas reciente y cuya orden sigue en `entregada` -> deshacible (R1).
     findGestionParaDeshacer: vi.fn(async () => gestionDeshacer()),
@@ -485,6 +486,8 @@ describe("listarCierreDia — gate de solicitar (R10/R11) y solo lectura (R17)",
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.puedesSolicitar).toBe(false);
     expect(r.motivoBloqueo).not.toBeNull();
+    // SLT-133 (L2, R141/R144): texto exacto en «tú», en el mismo campo.
+    expect(r.motivoBloqueo).toBe("No tienes gestiones pendientes de cierre.");
   });
 
   it("R10/R11: sin pendientes y con >=1 gestion -> puedesSolicitar true", async () => {
@@ -568,6 +571,8 @@ describe("solicitarCierre — precondiciones (R1/R10/R11/R12)", () => {
     const { service } = newService({ repo });
     const r = await service.solicitarCierre(MENSAJERO);
     expect(r).toMatchObject({ status: "conflict" });
+    // SLT-133 (L2, R141/R144): mismo status, mismo campo, texto en «tú».
+    expect(r).toEqual({ status: "conflict", motivo: "No tienes gestiones pendientes de cierre." });
     expect(repo.crearCierre).not.toHaveBeenCalled();
   });
 });
@@ -580,6 +585,11 @@ describe("solicitarCierre — ruteo por zona (R15/R16) y snapshot (R13/R14)", ()
     expect(r).toMatchObject({ status: "validation_error" });
     if (r.status !== "validation_error") throw new Error("esperaba validation_error");
     expect(r.fieldErrors.zona).toBeDefined();
+    // SLT-133 (L3, R141/R144): viaja en `fieldErrors.zona`, en «tú».
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { zona: ["No tienes una zona asignada; contacta a tu administrador."] },
+    });
     expect(repo.crearCierre).not.toHaveBeenCalled();
   });
 
@@ -991,6 +1001,8 @@ describe("Feature 67 · deshacerGestion — ventana y elegibilidad (R1-R6)", () 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("esperaba conflict");
     expect(r.motivo).toMatch(/ya fue deshecha/i);
+    // SLT-133 (L7, R141/R144): texto exacto con tilde.
+    expect(r).toEqual({ status: "conflict", motivo: "Esta gestión ya fue deshecha." });
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
   });
 
@@ -1005,7 +1017,11 @@ describe("Feature 67 · deshacerGestion — ventana y elegibilidad (R1-R6)", () 
 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("esperaba conflict");
-    expect(r.motivo).toMatch(/mas reciente/i);
+    // SLT-133 (L8, R141/R144): texto exacto con tildes, mismo status y campo.
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "Esta orden tiene una gestión más reciente; hay que deshacer esa primero.",
+    });
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
   });
 
@@ -1202,7 +1218,7 @@ describe("Feature 237 · deshacerGestion — la gestion de LA TIENDA (D3/R38)", 
     expect(r).toEqual({
       status: "conflict",
       motivo:
-        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     });
     // Y la pantalla que ya no corresponde no vuelve por la puerta de atras.
     expect(r.status === "conflict" && r.motivo).not.toContain("pantalla de ayuda");
@@ -1282,7 +1298,7 @@ describe("Feature 240 · deshacerGestion — el rechazo MANUAL de la tienda (D6/
     expect(r).toEqual({
       status: "conflict",
       motivo:
-        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     });
     // 💰 Lo que de verdad protege: NI UNA escritura.
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
@@ -1387,6 +1403,11 @@ describe("Feature 67 · deshacerGestion — transicion y efectos (R18/R19/R29/R3
     const r = await service.deshacerGestion("g1", MENSAJERO);
 
     expect(r.status).toBe("validation_error");
+    // SLT-133 (L10, PA5, R141/R144): viaja en `fieldErrors.estatus`, con tilde.
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { estatus: ["catálogo de estados incompleto (seed pendiente)"] },
+    });
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
   });
 
@@ -2245,10 +2266,9 @@ describe("235 · el bloqueo del cierre (T4.1, R22/R23)", () => {
 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") return;
-    expect(r.motivo).toContain("gestionalos antes de cerrar");
-    // FICHA 455 (recorrido F3): sin «sin gestionar» (nombre retirado de `novedad_interna`) y con tildes.
+        // FICHA 455 (recorrido F3): sin «sin gestionar» (nombre retirado de `novedad_interna`) y con tildes.
     expect(r.motivo).toBe(
-      "Tenés paquetes en reparto que todavía no gestionaste; gestionalos antes de cerrar.",
+      "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.",
     );
     // Sin PII (R46): el motivo no nombra la orden, ni al mensajero, ni al cierre.
     expect(r.motivo).not.toMatch(/m1|o1|c1/);
@@ -2268,7 +2288,9 @@ describe("235 · el bloqueo del cierre (T4.1, R22/R23)", () => {
     expect(r.puedesSolicitar).toBe(false);
     // Los dos consumidores de la lista dicen lo mismo: el gate y la precondicion. Si divergieran,
     // el boton estaria activo y la accion fallaria al pulsarlo.
-    expect(r.motivoBloqueo).toContain("gestionalos antes de cerrar");
+    expect(r.motivoBloqueo).toBe(
+      "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.",
+    );
   });
 });
 

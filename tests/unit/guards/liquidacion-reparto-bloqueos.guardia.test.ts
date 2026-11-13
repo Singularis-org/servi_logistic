@@ -54,6 +54,7 @@ function fuente(ruta: string): string {
 
 function cierre(id: string, pendiente: string, solicitadoAt: string): CierreImputableDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id,
     mensajeroId: MENSAJERO,
     estado: CierreEstado.aprobado,
@@ -186,6 +187,7 @@ function montar(
     }),
     obtenerPorClave: vi.fn(async () => null),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => []),
   };
