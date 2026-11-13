@@ -307,3 +307,75 @@ servidor no parte filas entre hojas. Queda para el test de T4.1 (`tests/unit/des
 
 T3.1 hecha: 7/7 verde contra Postgres real; 4 de las 5 mutaciones dan rojo y vuelven a verde; la 5.ª es
 de T4.1 (cliente) y queda abierta allí.
+
+## Tanda 4 — frontend_dev: T4 (T4.1, T4.2) (2026-11-13)
+
+MCP del grafo: no usado; Grep/Read sobre el worktree. Sin `lib/` tocado.
+
+### Archivos
+
+- **Nuevos (producción):** `app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga-columnas.ts`
+  (`COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO` 26, `columnasCierresBodegaModeloNuevoPara`, `filaCierreBodegaModeloNuevo`),
+  `app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga.ts` (`libroCierresBodega`,
+  `obtenerResumenCierresBodega`).
+- **Modificados:** `CierresBodegaAdminModule.tsx` (`descargaColaBodega(filtros, audiencia)`, ahora exportada,
+  con `obtenerFilasConColumnas`), `CierresBodegaResueltosLista.tsx` (`descargaBodegaResueltos(filtros, audiencia)`,
+  ídem), `CierresBodegaSolicitadosLista.tsx` (`obtenerFilas` vía el libro, audiencia `"satelite"` fija).
+- **Tests:** nuevo `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts` (16), nuevo
+  `tests/components/descarga/CierresBodegaResumenModeloNuevo.test.tsx` (6); los dos módulos añadidos a
+  `tests/unit/guards/cierres-descarga-detallada-frontera.guardia.test.ts`.
+
+### Reuso de SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros»
+
+`HOJA_CIERRES` / `HOJA_POR_TIENDA` / `HOJA_CIERRES_ANTERIOR`, `COLUMNAS_POR_TIENDA` + `filaPorTienda` (la parte
+de bodega `ParteDeTienda` la satisface; `tiendaId` no sale), `obtenerFilasConColumnas` de
+`DescargarCierresButton` (PA3: la anterior con las columnas marcadas). Propio de bodega: solo «Cierres» (26/25
+sobre `CierreBodegaResumen`).
+
+### Decisiones técnicas
+
+- Audiencia `"admin"`/`"satelite"` (decisión del leader). La central pasa la `audiencia` del módulo (default
+  `"satelite"`, falla cerrado); «Solicitados» siempre `"satelite"`.
+- «Destino» = `DESTINO_TIPO_LABEL.bodega_central` («Bodega central»), sin « · zona»: `CierreBodegaResumen` no
+  trae el nombre de la zona central. Si el humano quiere «Bodega central · <zona>», hace falta un dato del
+  servidor (abierto, menor).
+- «Estado» y «Estado de conciliación» = `ESTADO_CONCILIACION_LABEL[estadoConciliacionDe(item)]` (PA2).
+- «Recibido» y «Falta por recibir» con `formato: "monto"` (el archivo de hoy no los formatea; en el libro
+  nuevo son importes, R387). «Pago entregado» de la central: `cifras.pagoEntregado ?? null`.
+- «Solicitados» no recibe columnas marcadas (`DescargarDatasetButton` llama a `obtenerFilas()` sin
+  argumentos): su «Cierres modelo anterior» sale con TODAS las columnas de hoy, en su orden (PA3).
+
+### Mutaciones (aplicar → correr SOLO el test → revertir → correr)
+
+| # | Mutación | Test | Mutado | Revertido |
+|---|---|---|---|---|
+| M5 (de T3) | libro: «Cierres modelo anterior» con `items.map(filaAnterior)` (todas) en vez de `anteriores` | `cierres-bodega-modelo-nuevo-descarga.test.ts` | 1 failed / 15 passed, EXIT=1: «mixto: … ningún cierre en dos hojas» `expected [ { estado: 'Recibido', …(10) }, …(3) ] to deeply equal [ { estado: 'Recibido', …(10) }, …(1) ]` | 16 passed, EXIT=0 |
+| M7 | «Solicitados» con audiencia `"admin"` | `CierresBodegaResumenModeloNuevo.test.tsx` | 1 failed / 5 passed, EXIT=1: «(b, c) Solicitados, mixto …» | 6 passed, EXIT=0 |
+| M8 | libro desactivado en «Por conciliar» (`obtenerFilasConColumnas` renombrada) | ídem | 1 failed / 5 passed, EXIT=1: «(b) Por conciliar, mixto …» | 6 passed, EXIT=0 |
+
+Comando: `npx vitest run <test>` con `DATABASE_URL` de la desechable `slt141_wt` y `NODE_OPTIONS=--max-old-space-size=8192`.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R384 | `CierresBodegaResumenModeloNuevo.test.tsx` (a) ×3 pantallas · `cierres-bodega-modelo-nuevo-descarga.test.ts` («solo viejos → null», `obtenerResumenCierresBodega` solo viejos) · existentes sin tocar: `cierres-bodega-descarga-columnas.test.ts`, `CierresDescargaNiveles.test.tsx`, `CierresDescargaColumnas.test.tsx` |
+| R385 | `cierres-bodega-modelo-nuevo-descarga.test.ts` (solo nuevos, mixto, orden, ningún cierre en dos hojas; M5) · `CierresBodegaResumenModeloNuevo.test.tsx` (b) ×3 (M8) |
+| R386 | `cierres-bodega-modelo-nuevo-descarga.test.ts` (encabezados 26/25, «Por tienda», satélite sin la clave) · `CierresBodegaResumenModeloNuevo.test.tsx` (c) (M7) |
+| R387 | `cierres-bodega-modelo-nuevo-descarga.test.ts` (celdas BN, formato monto, negativos con signo + `celdaMonto`) |
+| R388 | `cierres-bodega-modelo-nuevo-descarga.test.ts` (folio, fechas en CR, Recibido/Resuelto/Conciliado vacíos, conteos) |
+
+### Verificación de la tanda
+
+- `pnpm run typecheck` → TC_EXIT=0.
+- `pnpm exec eslint` sobre los 8 archivos tocados → LINT_EXIT=0, sin avisos.
+- Nuevos + los tres existentes de T4.2 sin tocar + guardias de descarga (`cierres-descarga-detallada-frontera`,
+  `columnas-sensibles`, `columnas-asercion-de-orden`, `cierres-descarga-detallada-money`,
+  `cierre-bodega-vocabulario`, `ambito-columnas`): `Test Files 11 passed (11) · Tests 125 passed (125)`, EXIT=0.
+  (`columnas-sensibles` dio rojo al primer intento: el módulo de columnas no exportaba ninguna lista; se
+  exporta `COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO` y su orden se afirma en el test unitario.)
+- `pnpm exec vitest related --run` (los 8 archivos) → `Test Files 26 passed (26) · Tests 367 passed (367)`, REL_EXIT=0.
+
+### Veredicto
+
+T4.1 y T4.2 hechas: libro de bodega en las tres descargas, verde, con M5 en rojo real y revertida. Abierto: «Destino» sin el nombre de la zona central.

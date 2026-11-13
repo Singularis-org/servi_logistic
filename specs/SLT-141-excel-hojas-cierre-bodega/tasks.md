@@ -64,14 +64,14 @@
 
 ## T4 — Cliente (frontend_dev) · depende de T2.1 · [P] con T3
 
-- [ ] **T4.1** `cierres-bodega-modelo-nuevo-descarga-columnas.ts` y `cierres-bodega-modelo-nuevo-descarga.ts`
+- [x] **T4.1** `cierres-bodega-modelo-nuevo-descarga-columnas.ts` y `cierres-bodega-modelo-nuevo-descarga.ts`
   (o reuso de SLT-140 según T0.1). Nuevo `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts`:
   encabezados de «Cierres» (26 central, 25 satélite) y «Por tienda» contra listas literales; celdas de
   BN con `formato: "monto"`, negativos con signo, «Recibido» vacío sin conciliar, fechas; `null` sin
   cierres nuevos; mixto con «Cierres modelo anterior» y ningún cierre en dos hojas; item nuevo sin
   cifras → error. Añadir los dos módulos a
   `tests/unit/guards/cierres-descarga-detallada-frontera.guardia.test.ts`. **Hecho:** verdes.
-- [ ] **T4.2** `descargaColaBodega` (`CierresBodegaAdminModule.tsx`), `descargaBodegaResueltos`
+- [x] **T4.2** `descargaColaBodega` (`CierresBodegaAdminModule.tsx`), `descargaBodegaResueltos`
   (`CierresBodegaResueltosLista.tsx`) y `descargaBodegaSolicitados` (`CierresBodegaSolicitadosLista.tsx`)
   con el libro. Nuevo `tests/components/descarga/CierresBodegaResumenModeloNuevo.test.tsx` con
   `construirDescarga` espiado: (a) solo viejos → llamada `toEqual` al literal de hoy en las tres
