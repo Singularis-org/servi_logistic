@@ -931,7 +931,6 @@ describe("R14 — ni un `Number(` ni un `parseFloat` sobre montos en esta tanda"
     "app/(app)/cierres-admin/_components/RegistrarPagoMensajeroDialog.tsx",
     "app/(app)/cierres-admin/_components/pago-mensajero-labels.ts",
     "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
-    "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx",
     // SLT-102: la cola única pinta el pendiente y el pago desde la fila.
     "components/private/cierres/cola/ColaCierres.tsx",
     "components/private/cierres/cola/cola-cierres-vista.ts",

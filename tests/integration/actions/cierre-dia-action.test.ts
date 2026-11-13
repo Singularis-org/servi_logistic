@@ -114,7 +114,11 @@ function inMemoryRepo(seed: GestionPendienteDeCierreRow[]): ICierreDiaRepository
       };
     }),
     // Feature 170 (T I.1): version paginada del mismo listado (no la ejercita esta suite).
-    findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [...cierres], total: cierres.length })),
+    // SLT-147 (D68): la marca es obligatoria en la pagina; `false` es lo que el doble ya implicaba.
+    findCierresByMensajeroPaginado: vi.fn(async () => ({
+      items: cierres.map((c) => ({ ...c, pagoIndependienteEfectivo: false })),
+      total: cierres.length,
+    })),
     findAprobadosParaPendiente: vi.fn(async () => []),
   };
 }

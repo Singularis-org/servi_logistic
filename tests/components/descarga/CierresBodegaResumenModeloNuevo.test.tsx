@@ -51,8 +51,8 @@ import {
 } from "@/app/(app)/cierres-admin/_components/DescargarCierresButton";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import { descargaColaBodega } from "@/app/(app)/cierres-admin/_components/CierresBodegaAdminModule";
-import { descargaBodegaResueltos } from "@/app/(app)/cierres-admin/_components/CierresBodegaResueltosLista";
-import { descargaBodegaSolicitados } from "@/app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista";
+import { descargaBodegaResueltos } from "@/app/(app)/cierres-admin/_components/CierresBodegaAdminModule";
+import { descargaBodegaSolicitados } from "@/app/(app)/cierres-admin/_components/ConsolidacionBodegaModule";
 
 // --- Dobles -----------------------------------------------------------------------------------
 

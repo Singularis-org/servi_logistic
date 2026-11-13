@@ -146,11 +146,7 @@ function montar(
       };
       return { status: "creado" as const, pago };
     }),
-    // SLT-122: el reparto lee los imputables CON alcance; la lectura sin alcance ya no la usa.
-    listarCierresImputables: vi.fn(async () => {
-      log.push("leer:imputables:SIN-ALCANCE");
-      return opciones.cierres ?? cincoDesordenados();
-    }),
+    // SLT-122: el reparto lee los imputables CON alcance (SLT-147, D63: es la unica lectura).
     listarCierresImputablesEnAlcance: vi.fn(async () => {
       log.push("leer:imputables");
       return opciones.cierres ?? cincoDesordenados();
