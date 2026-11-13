@@ -230,6 +230,7 @@ function buildDobles(opciones: {
       return Object.fromEntries(ids.map((id) => [id, opciones.pagadoVigente ?? "0.00"]));
     }),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => []),
     // Feature 205 (T2.2): el contrato gana dos LECTURAS. Ningun test de este archivo las

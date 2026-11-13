@@ -202,6 +202,7 @@ function makeStore(saldoTienda: string) {
     obtenerCierreParaPago: vi.fn(async () => null),
     sumarVigentesPorCierre: vi.fn(async () => ({})),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => pagos),
     // Feature 205 (T2.2): el contrato gana dos LECTURAS. Ningun test de este archivo las

@@ -7,56 +7,56 @@
 
 ## T0 — Comprobaciones previas (backend_dev)
 
-- [ ] **T0.1** Confirmar en `origin/dev` (`git fetch` + `git grep`) que nadie emite ya las cifras
+- [x] **T0.1** Confirmar en `origin/dev` (`git fetch` + `git grep`) que nadie emite ya las cifras
   (`resumenGanancia`, `gananciaPendiente`, «Ganancia pagada este mes» fuera de tests/specs) y si
   SLT-139 «Pago al mensajero independiente del efectivo: satélite» ya está en `dev`.
   **Hecho:** anotado en `progress/impl_SLT-112.md`; si las cifras ya existen, PARA y avisa al leader;
   si SLT-139 ya entró, trae `origin/dev` y sigue `design.md > 5`.
-- [ ] **T0.2** Comprobar el corpus de `design.md > 6` contra el esquema: que `fecha_pago` admite
+- [x] **T0.2** Comprobar el corpus de `design.md > 6` contra el esquema: que `fecha_pago` admite
   2026-12-01 con «hoy» = 2026-11-20 (sin `CHECK` que lo impida), la zona horaria de `reglasPaisFijas`
   y que con ella `2026-12-01T03:00:00Z` sigue siendo 30 de noviembre (mutación 9). Recalcular a mano
   los dos literales (`47500.55`/2 y `3500.00`/2). **Hecho:** anotado; si algo no casa, PARA y reporta
   (no se cambia el literal para que pase).
-- [ ] **T0.3** Leer la respuesta de Carlos a PA1-PA3 en `requirements.md`. Si PA1 = «no», quitar
+- [x] **T0.3** Leer la respuesta de Carlos a PA1-PA3 en `requirements.md`. Si PA1 = «no», quitar
   `LecturaPagadoPorSatelite`, `pagadoPorSatelite` y R353 del contrato antes de T1 y anotarlo.
   **Hecho:** la decisión, anotada en `progress/features/SLT-112.md > Decisiones`.
 
 ## T1 — Lecturas (backend_dev) · depende de T0
 
-- [ ] **T1.1** `ICierreDiaRepository.findAprobadosParaPendiente` + implementación en
+- [x] **T1.1** `ICierreDiaRepository.findAprobadosParaPendiente` + implementación en
   `CierreDiaRepository` (`design.md > 1`). **Hecho:** typecheck verde.
-- [ ] **T1.2** [P] `ILiquidacionPagoRepository.sumarVigentesDelMensajeroEnRango` + implementación en
+- [x] **T1.2** [P] `ILiquidacionPagoRepository.sumarVigentesDelMensajeroEnRango` + implementación en
   `LiquidacionPagoRepository` con `VIGENTE`, `gte`/`lt` y `_count`. **Hecho:** typecheck verde.
 
 ## T2 — Servicio y borde (backend_dev) · depende de T1
 
-- [ ] **T2.1** `ICierreDiaService.ts`: `CifraGanancia`, `ResumenGananciaMensajero`,
+- [x] **T2.1** `ICierreDiaService.ts`: `CifraGanancia`, `ResumenGananciaMensajero`,
   `ResumenGananciaServiceResult`, `LecturaPagadoPorSatelite`, `LecturasGananciaMensajero` y
   `resumenGanancia(actor)`. **Hecho:** typecheck verde.
-- [ ] **T2.2** `CierreDiaService`: helper privado `pendientesPorCierre`; `conPendientePago` lo usa; y
+- [x] **T2.2** `CierreDiaService`: helper privado `pendientesPorCierre`; `conPendientePago` lo usa; y
   `resumenGanancia` con los pasos de `design.md > 2` (parámetro opcional `ganancia` al final del
   constructor). **Hecho:** `tests/unit/services/cierre-dia-pendiente-pago.test.ts` y
   `tests/unit/services/cierre-dia-pasados-paginado.test.ts` verdes **sin cambiar aserciones** (R72).
-- [ ] **T2.3** `tests/unit/services/cierre-dia-ganancia.test.ts` con los casos de `design.md > 6 >
+- [x] **T2.3** `tests/unit/services/cierre-dia-ganancia.test.ts` con los casos de `design.md > 6 >
   Servicio con dobles` (R353, R355, R357, R359). **Hecho:** verde.
-- [ ] **T2.4** `lib/actions/cierre-dia.ts`: acción `resumenGananciaMensajero` y el bundle `ganancia` en
+- [x] **T2.4** `lib/actions/cierre-dia.ts`: acción `resumenGananciaMensajero` y el bundle `ganancia` en
   `buildService()`. Ampliar `tests/integration/actions/cierre-dia-pendiente-cableado.test.ts`: la acción
   real, contra la base, devuelve `ok` con cifras (no `sin_dato`) para un mensajero sembrado.
   **Hecho:** verde y visible como `passed`.
-- [ ] **T2.5** Si `lib/services/CierreDiaService.ts` no está censado por
+- [x] **T2.5** Si `lib/services/CierreDiaService.ts` no está censado por
   `tests/unit/guards/liquidacion-money-safe.test.ts`, añadirlo. **Hecho:** guardia verde; y roja con un
   `Number(` puesto a mano en `resumenGanancia` (se revierte).
 
 ## T3 — Integración contra Postgres real (backend_dev) · depende de T2
 
-- [ ] **T3.1** Nuevo `tests/integration/db/cierre-dia-ganancia-sql-real.test.ts` con el corpus y las
+- [x] **T3.1** Nuevo `tests/integration/db/cierre-dia-ganancia-sql-real.test.ts` con el corpus y las
   aserciones de `design.md > 6 > Integración` (R350, R351, R352, R354, R356, R72). Servicio real sobre
   repositorios reales, `describeSiHayBase`, fallo ruidoso sin corpus, nada de `return` temprano.
   **Hecho:** verde contra la base desechable y visible como `passed` (no `skipped`).
 
 ## T4 — Mutaciones (backend_dev) · depende de T3
 
-- [ ] **T4.1** Aplicar una a una las nueve mutaciones de `design.md > 6 > Mutaciones`, correr T2.3 y
+- [x] **T4.1** Aplicar una a una las nueve mutaciones de `design.md > 6 > Mutaciones`, correr T2.3 y
   T3.1, revertir. **Hecho:** las nueve ponen rojo al menos un test (anotado en
   `progress/impl_SLT-112.md` cuál y qué aserción cae) y el árbol vuelve limpio.
 
