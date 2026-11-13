@@ -146,9 +146,51 @@ Escritos por `spec_author` el 2026-11-13. Vocabulario:
 - **R30.** El sistema DEBE tener un E2E, en el grupo `dinero`, que recorra:
   - la empresa paga una factura cerrada y la deuda no baja;
   - un pago mayor que lo disponible es rechazado;
-  - el superadmin ve el contador en Empresas y confirma el pago con el reparto propuesto;
+  - el superadmin ve el contador en Empresas, ve el enlace al comprobante y confirma el pago con el reparto
+    propuesto;
   - la deuda de la empresa baja;
   - la empresa ya no puede anular el pago confirmado.
+
+### Factura cerrada con total negativo (decisión del 2026-11-13)
+
+- **R31.** SI una factura cerrada tiene saldo negativo, ENTONCES el sistema DEBE:
+  - restarlo con su signo de lo disponible para registrar, igual que en la deuda. Ejemplo: cerradas con
+    saldo 200 000 y −30 000, y nada por confirmar, dan 170 000 disponibles;
+  - no ofrecerla en el reparto ni aceptar aplicaciones a ella (R15).
+
+### El comprobante del pago (decisión del 2026-11-13)
+
+- **R32.** En la sección «Pagos por confirmar», cada pago con comprobante DEBE mostrar el enlace «Ver
+  comprobante» junto al monto, la fecha, la referencia y quién lo registró. Un pago sin comprobante DEBE
+  decir «Sin comprobante».
+- **R33.** CUANDO el superadmin pulsa «Ver comprobante», el sistema DEBE abrir el archivo del comprobante de
+  ese pago con un enlace temporal, con la misma duración que el de SL-45. La ruta del archivo NO DEBE llegar
+  al navegador.
+- **R34.** SI quien pide el comprobante no es el superadmin, ENTONCES el sistema DEBE responder `forbidden`
+  antes de leer nada. SI el movimiento no es un pago a la plataforma de la empresa del detalle, ENTONCES
+  DEBE responder «no encontrado». SI el pago no tiene comprobante, ENTONCES DEBE responder «sin
+  comprobante».
+
+### Los textos de la wallet (decisión del 2026-11-13)
+
+- **R35.** MIENTRAS la empresa debe a la plataforma, la pista de la región de la deuda DEBE decir:
+  «Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a
+  un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se
+  registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la
+  plataforma lo confirma.»
+- **R36.** CUANDO un pago se rechaza por R2 o R3, el error bajo el monto DEBE decir: «El pago no puede ser
+  mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.»
+- **R37.** CUANDO se elige «Pago a la plataforma» en el diálogo de registro, la frase del efecto DEBE decir:
+  «Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma
+  confirma el pago. Baja la ganancia.»
+- **R38.** La ayuda de la wallet (`docs/ayuda/oficina/wallet-caja.md`, sección «Lo que la empresa debe a la
+  plataforma») DEBE explicar cuatro cosas:
+  - que el pago queda por confirmar y la deuda baja al confirmarlo;
+  - que solo se pagan facturas cerradas, hasta su saldo menos los pagos por confirmar;
+  - que el pago solo se anula mientras está por confirmar;
+  - la pista de R35.
+
+  Ya NO DEBE decir que la deuda baja al registrar.
 
 ### Cobertura de las decisiones cerradas
 
@@ -163,37 +205,23 @@ Escritos por `spec_author` el 2026-11-13. Vocabulario:
 | La empresa anula solo mientras está por confirmar | R9, R10, R11, R21 |
 | Corte por tamaño, tamaño (×2) | Sin comportamiento: definen el alcance y el tamaño del PR |
 | Avisos solo en la app: el contador | R27 |
-| Datos del pago | R12 (el registro no cambia: SL-45) |
-| Quién registra y quién confirma | R1, R24 |
+| Datos del pago | R12, R32, R33 (el registro no cambia: SL-45) |
+| Quién registra y quién confirma | R1, R24, R34 |
 | Libro y categoría | R9, R26 |
 | Deuda | R7, R8 |
 | E2E | R30 |
+| Un solo PR (2026-11-13) | Sin comportamiento |
+| Factura cerrada con total negativo (2026-11-13) | R31, R15 |
+| El superadmin ve el comprobante (2026-11-13) | R32, R33, R34 |
+| Textos de la wallet en esta ficha (2026-11-13) | R35, R36, R37, R38 |
 
 ## Preguntas abiertas
 
-- **Factura cerrada con total negativo.** El código de SLT-118 lo permite: una factura sin cuota cuyos
-  reversos, por fecha del reverso, superan sus cargos. Las decisiones no lo cubren. El design asume esto
-  (design §3.1):
-  - su saldo cuenta con signo en lo disponible para registrar, igual que en la deuda;
-  - nunca se ofrece ni acepta aplicaciones (R15).
-
-  Si el humano decide otra cosa, cambian R3, R15 y la función del saldo.
-- **¿El superadmin ve el comprobante del pago al confirmar?** El código no lo resuelve:
-  - el comprobante (`wallet_comprobante`) solo se abre hoy desde la sesión de la empresa;
-  - abrirlo desde la plataforma pide firmar la URL con `conEmpresa` de esa empresa, como el detalle de
-    `bug_report`.
-
-  El design asume que **no** lo ve en esta ficha: la sección muestra monto, fecha, referencia y quién lo
-  registró. Si el humano lo quiere, son unos 3 archivos más.
-- **Textos de la wallet que dejan de ser ciertos.** Con esta ficha, tres textos de SL-45 dicen algo que ya no
-  es verdad:
-  - la pista de la región («…sale de la caja y baja esta deuda»);
-  - el mensaje del tope («El pago no puede ser mayor que lo que la empresa debe a la plataforma.»);
-  - la ayuda `docs/ayuda/oficina/wallet-caja.md` («La deuda baja en el monto»).
-
-  Cambiarlos rompe unos 6 tests más que fijan esos literales. Propuesta: que los ajuste SLT-142 «Rechazo del
-  pago a la plataforma y su estado en la wallet», que es la ficha del estado del pago en la wallet. La
-  alternativa es meterlos aquí. Decide el humano.
+- **La frase del efecto del diálogo (R37).** El humano nombró tres textos: la pista, el mensaje del tope y la
+  ayuda. La frase del efecto de «Pago a la plataforma» en el diálogo de registro («…y baja lo que la empresa
+  le debe…») dice lo mismo, y el spec la corrige también, en
+  `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` y dos tests. Si el humano prefiere dejarla, se
+  quitan R37 y esos tres archivos.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -215,3 +243,7 @@ Escritos por `spec_author` el 2026-11-13. Vocabulario:
 | 2026-11-11 | E2E | Obligatorio: toca el flujo crítico «Dinero: wallet» (`docs/checkpoints-proyecto.md`). |
 | 2026-11-11 | Tamaño | Los correos salen a SLT-132 para que quepa en el tope del PR (humano). |
 | 2026-11-13 | Tamaño tras la segunda pasada | El humano acepta un PR por encima del tope (~46 archivos, ~13 son tests existentes que hay que sembrar con una factura cerrada); no se parte otra vez. |
+| 2026-11-13 | Tamaño final, con el comprobante y los textos de la wallet | Un solo PR con todas las rutas (~61 estimadas por el humano); no se parte (humano). |
+| 2026-11-13 | Factura cerrada con total negativo | Resta del tope con su signo, como saldo a favor (cerradas 200 000 y −30 000 → tope 170 000), igual que en la deuda. Nunca recibe pagos (humano). |
+| 2026-11-13 | ¿El superadmin ve el comprobante al confirmar? | Sí: un enlace para abrirlo, junto al monto, la fecha, la referencia y quién registró el pago. Reutiliza el acceso al comprobante de SL-45, con la autorización del superadmin (humano). |
+| 2026-11-13 | Textos de la wallet que dicen que la deuda baja al pagar | Se corrigen en esta ficha: la pista de la región, el mensaje del tope y la ayuda de la wallet, con el ajuste de los tests que fijan esos literales (humano). |

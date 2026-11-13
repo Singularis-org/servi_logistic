@@ -1,6 +1,6 @@
 # SLT-60 «Confirmación del pago a la plataforma por el superadmin» — tasks
 
-> Requisitos: `requirements.md` (R1–R30). Diseño: `design.md`. `[P]` = puede ir en paralelo con las otras
+> Requisitos: `requirements.md` (R1–R38). Diseño: `design.md`. `[P]` = puede ir en paralelo con las otras
 > `[P]` de la misma tanda. Cada tanda cierra con `./init.sh` en verde y un commit (`feat(SLT-60): …`).
 > Reparto: `backend_dev` para `lib/`, `db/`, `scripts/` y los tests de servidor; `frontend_dev` para
 > `app/` y los tests de componentes.
@@ -72,8 +72,19 @@
 - [ ] **T3.4** `lib/actions/pagos-plataforma.ts`, `"pagos-plataforma": "nucleo"` en `lib/modulos/reparto.ts` y
   `tests/unit/actions/pagos-plataforma.test.ts`. **Hecho:** verde; la guardia `modulos-reparto` en verde.
 - [ ] **T3.5** `tests/integration/db/_fixtures/factura-cerrada.ts` y
-  `tests/integration/db/pago-plataforma-confirmacion.test.ts`, con la tabla de pasos de design §8 y sus cuatro
-  mutaciones medidas y revertidas. **Hecho:** verde con base. Cubre R1–R7, R9–R11, R15–R22, R25 y R26.
+  `tests/integration/db/pago-plataforma-confirmacion.test.ts`, con la tabla de pasos de design §8 (incluida
+  la empresa C con la factura de −30 000) y sus cuatro mutaciones medidas y revertidas. **Hecho:** verde con
+  base. Cubre R1–R7, R9–R11, R15–R22, R25, R26, R31 y la lectura de R32 y R34.
+- [ ] **T3.6** El comprobante para el superadmin (design §4.8), en archivos que ya están en la lista:
+  - `verComprobante` en el servicio y su interfaz;
+  - `pagoDeLaEmpresa` y `tieneComprobante` en el repositorio;
+  - `verComprobantePagoSchema` y su resultado en los tipos;
+  - `verComprobantePagoPlataformaAction` y su composition root, que pasa `WalletComprobanteRepository`,
+    `SupabaseSignedUrlProvider` con el bucket de la wallet y el TTL.
+
+  Los casos del comprobante van en `tests/unit/services/pago-plataforma-confirmacion-service.test.ts` y en
+  `tests/unit/actions/pagos-plataforma.test.ts`. **Hecho:** verde (R33, R34); la guardia
+  `storage-solo-por-adaptador` en verde.
 
 ## T4 — El listado de Empresas (depende de T2.2)
 
@@ -85,10 +96,29 @@
 
 ## T5 — La pantalla del superadmin (depende de T3.4)
 
-- [ ] **T5.1** `PagosPorConfirmar.tsx` (design §6.1) y `tests/components/PagosPorConfirmar.test.tsx`.
-  **Hecho:** verde (R12–R14, R17, R23).
-- [ ] **T5.2** `page.tsx` del detalle, con `leerPagos` aislada y la sección antes de `PlanEmpresa`. Se amplía
+- [ ] **T5.1** `PagosPorConfirmar.tsx` (design §6.1), con la columna y el enlace del comprobante, y
+  `tests/components/PagosPorConfirmar.test.tsx`. **Hecho:** verde (R12–R14, R17, R23, R32, R33).
+- [ ] **T5.2** `page.tsx` del detalle, con `leerPagos` aislada, la sección antes de `PlanEmpresa` y
+  `verComprobantePagoPlataformaAction` ligada con `organizacionId`. Se amplía
   `tests/integration/plataforma-empresa-detalle-page.test.tsx`. **Hecho:** verde (R12, R13).
+
+## T5b — Los textos de la wallet (depende de T2.3; [P] con T5)
+
+Cada test pasa al literal nuevo escrito a mano, nunca leído de la constante (design §6.4).
+
+- [ ] **T5b.1** [P] La pista (R35): `app/(app)/wallet/_components/wallet-labels.ts`,
+  `tests/unit/components/wallet-labels.test.ts`, `tests/components/WalletDeudaPlataformaSL45.test.tsx`,
+  `tests/components/WalletDeudaPlataformaSL40.test.tsx` y `e2e/cobro-plataforma-sl40.spec.ts`. **Hecho:**
+  verde.
+- [ ] **T5b.2** [P] El mensaje del tope (R36): `lib/types/cobro-plataforma.ts`,
+  `tests/unit/services/wallet-egreso-service.test.ts` y
+  `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`. **Hecho:** verde.
+- [ ] **T5b.3** [P] La frase del efecto (R37): `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` y
+  `tests/unit/components/wallet-conceptos-manuales.test.ts`; el diálogo y la región ya están en T5b.1 y
+  T5b.2. **Hecho:** verde.
+- [ ] **T5b.4** La ayuda (R38): `docs/ayuda/oficina/wallet-caja.md`, con `actualizado:`, y
+  `tests/unit/asistente/contexto-sl45.test.ts`. **Hecho:** verde; ninguna frase de la ayuda dice que la deuda
+  baja al registrar (`grep`).
 
 ## T6 — Poner al día los tests que pagan sin factura cerrada (depende de T2 y T3.5)
 
@@ -108,8 +138,8 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
 
 - [ ] **T7.1** `e2e/pago-plataforma-confirmacion.spec.ts` (design §9) y su proyecto en `playwright.config.ts`.
   **Hecho:** verde en local con una base desechable nueva (R30).
-- [ ] **T7.2** `e2e/pago-plataforma-sl45.spec.ts` al día: siembra, y la región no baja al pagar. **Hecho:**
-  verde.
+- [ ] **T7.2** `e2e/pago-plataforma-sl45.spec.ts` al día: siembra, la región no baja al pagar, y los literales
+  de R35, R36 y R37. **Hecho:** verde.
 - [ ] **T7.3** Correr el grupo `dinero` entero, `e2e/wallet.spec.ts` y `e2e/dos-empresas-humo.spec.ts`
   (`docs/perfil-agentes.md`). **Hecho:** verde, con la salida anotada en `progress/impl_SLT-60.md`.
 
@@ -118,7 +148,7 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
 - [ ] **T8.1** `docs/architecture.md`, en «Facturas de la plataforma»: el saldo, lo disponible, la
   confirmación, las dos tablas, el bloqueo de la anulación y que la deuda cuenta los confirmados. **Hecho:**
   la guardia del perfil en verde.
-- [ ] **T8.2** `progress/impl_SLT-60.md` con el mapa `R<n> → test` de R1 a R30.
+- [ ] **T8.2** `progress/impl_SLT-60.md` con el mapa `R<n> → test` de R1 a R38.
 
 ## T9 — Cierre (depende de todo)
 
@@ -187,8 +217,20 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
 - `tests/unit/actions/wallet-egresos.composition-root.test.ts`
 - `tests/unit/actions/empresas-plataforma.composition-root.test.ts`
 - `e2e/pago-plataforma-sl45.spec.ts`
+- `app/(app)/wallet/_components/wallet-labels.ts`
+- `app/(app)/wallet/_components/wallet-conceptos-manuales.ts`
+- `lib/types/cobro-plataforma.ts`
+- `docs/ayuda/oficina/wallet-caja.md`
+- `tests/unit/components/wallet-labels.test.ts`
+- `tests/components/WalletDeudaPlataformaSL45.test.tsx`
+- `tests/components/WalletDeudaPlataformaSL40.test.tsx`
+- `tests/unit/asistente/contexto-sl45.test.ts`
+- `e2e/cobro-plataforma-sl40.spec.ts`
+- `tests/unit/services/wallet-egreso-service.test.ts`
+- `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`
+- `tests/unit/components/wallet-conceptos-manuales.test.ts`
 
-55 rutas, por encima del tope de `gate.tamano_pr` (40). Lo aceptó el humano el 2026-11-13 («~46»; la
-diferencia está en design §11). Con SLT-119 «Planes: pantallas de facturas para el superadmin y el maestro»
+67 rutas, por encima del tope de `gate.tamano_pr` (40). El humano aceptó un solo PR con todas el 2026-11-13
+(«~61»; el desglose está en design §11). Con SLT-119 «Planes: pantallas de facturas para el superadmin y el maestro»
 coinciden `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` y `lib/modulos/reparto.ts`: rebasa quien
 mergee segundo.

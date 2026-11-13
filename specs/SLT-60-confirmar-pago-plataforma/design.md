@@ -1,7 +1,9 @@
 # SLT-60 «Confirmación del pago a la plataforma por el superadmin» — design
 
-> Requisitos: `requirements.md` (R1–R30). Escrito por `spec_author` el 2026-11-13, tras el corte en tres
-> (SLT-142 y SLT-143 salen) y con el PR por encima del tope aceptado por el humano.
+> Requisitos: `requirements.md` (R1–R38). Escrito por `spec_author` el 2026-11-13, tras el corte en tres
+> (SLT-142 y SLT-143 salen) y con el PR por encima del tope aceptado por el humano. Ajustado el mismo día
+> con sus respuestas: la factura con total negativo (§3.1), el comprobante (§4.8) y los textos de la wallet
+> (§6.4).
 > - Hay una migración nueva, con su `down.sql`.
 > - No hay dependencias nuevas: Prisma, zod, React y `components/ui/`.
 > - Los importes del cliente van en céntimos `bigint` con `lib/planes/centimos.ts`, sin `Prisma.Decimal`
@@ -39,6 +41,7 @@ respondió (`index_status`: ready).
 | `FacturaPlataformaRepository.cerrar` llama a una función del dueño en `comoPlataforma` y está en `EXCEPCIONES_DE_PLATAFORMA` | `lib/repositories/FacturaPlataformaRepository.ts`, `lib/db/excepciones-aislamiento.ts` | **Es el molde** del repositorio nuevo (§4.3) |
 | `traducirErrorDeTope`: un SQLSTATE propio con JSON en `MESSAGE` | `lib/planes/tope-error.ts` | **Es el molde** de los errores `SL060` (§3.6) |
 | `aCentimos`, `aCentimosConSigno` y `aTexto` | `lib/planes/centimos.ts` | **Se reutilizan** en la propuesta del reparto, que corre en el cliente (§5) |
+| El comprobante lateral de la caja (458-B): `WalletComprobanteRepository.lateralDe({ caja })`, `SupabaseSignedUrlProvider`, `walletComprobanteConfig`; y la firma desde la plataforma con `conEmpresa` en `ReportesBugPlataformaService` | `lib/repositories/WalletComprobanteRepository.ts`, `lib/storage/`, `lib/config/wallet-comprobante.ts`, `lib/services/ReportesBugPlataformaService.ts` | **Se reutilizan** para que el superadmin abra el comprobante (§4.8, R32–R34) |
 | `money()`, `fechaCortaEnZona` y `ZONA_CR`; `Dialog`, `Table` e `Input` | `lib/config/moneda.ts`, `lib/utils/fecha-corta.ts`, `lib/utils/fecha-cr.ts`, `components/ui/` | El formato y el diálogo del reparto |
 | El detalle de empresa, con lecturas aisladas (`leerPlan`) | `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` | Mismo molde para la sección nueva (R13) |
 
@@ -137,8 +140,9 @@ revocado a `PUBLIC`. Solo `pago_plataforma_disponible` tiene `GRANT EXECUTE … 
 - `aplicado` = Σ `pago_plataforma_aplicacion.monto` de esa factura (0 sin aplicaciones);
 - `saldo` = `total − aplicado`, **con signo**.
 
-Una cerrada con total negativo (pregunta abierta) sale con saldo negativo:
-- en lo disponible cuenta con su signo, igual que en la deuda, que ya suma los reversos con su signo;
+Una cerrada con total negativo sale con saldo negativo (decisión del humano del 2026-11-13, R31):
+- en lo disponible cuenta con su signo, como saldo a favor, igual que en la deuda, que ya suma los reversos
+  con su signo. Con cerradas de 200 000 y −30 000, lo disponible es 170 000;
 - nunca recibe aplicaciones (§3.4).
 
 ### 3.2 Lo disponible para registrar
@@ -246,8 +250,8 @@ El constructor queda en `(pagos: IPagoPlataformaRepository)`, sin el repositorio
 4. `"supera"` si `disponible <= 0` o `monto > disponible`, y si no `"cabe"`, con `Prisma.Decimal` (servidor).
 
 Cambian con él `lib/actions/wallet-egresos.ts > buildService`, su test de composition root,
-`scripts/demo-qa/receta.ts` y los dos tests de integración que construyen el tope. El mensaje del error no
-cambia (pregunta abierta de los textos de la wallet).
+`scripts/demo-qa/receta.ts` y los dos tests de integración que construyen el tope. El mensaje del error cambia
+(R36, §6.4).
 
 ### 4.3 `PagoPlataformaConfirmacionRepository` (nuevo) e `IPagoPlataformaConfirmacionRepository`
 
@@ -256,7 +260,8 @@ Tiene su entrada en `EXCEPCIONES_DE_PLATAFORMA`. Recibe el cliente por construct
 
 ```ts
 leer(organizacionId: string): Promise<PagosDeEmpresa>;
-  // pagos: pago_plataforma_por_confirmar(org) JOIN usuario (nombre de quien registró), por created_at, id
+  // pagos: pago_plataforma_por_confirmar(org) JOIN usuario (nombre de quien registró)
+  //        + EXISTS en wallet_comprobante (caja_movimiento_id = el pago) → tieneComprobante; por created_at, id
   // facturas: factura_plataforma_saldos(org) WHERE saldo > 0, por desde_at
 confirmar(input: ConfirmarPagoRepoInput): Promise<ConfirmarPagoRepoResult>;
   // SELECT pago_plataforma_confirmar(org, pago, jsonb, por, ahora); SL060 → resultado con traducirErrorDeConfirmacion
@@ -267,7 +272,7 @@ Ningún método escribe en `factura_plataforma` (la guardia `cobro-plataforma-so
 ### 4.4 Tipos (`lib/types/pago-plataforma.ts`, nuevo)
 
 ```ts
-export interface PagoPorConfirmarDTO { id: string; monto: string; fecha: Date; referencia: string | null; registradoPor: string | null }
+export interface PagoPorConfirmarDTO { id: string; monto: string; fecha: Date; referencia: string | null; registradoPor: string | null; tieneComprobante: boolean }
 export interface FacturaConSaldoDTO { id: string; numero: number; desde: Date; hasta: Date; total: string; saldo: string }
 export interface PagosDeEmpresa { pagos: PagoPorConfirmarDTO[]; facturas: FacturaConSaldoDTO[] }
 
@@ -283,6 +288,11 @@ export type VerPagosDeEmpresaResult = { estado: "ok"; datos: PagosDeEmpresa } | 
 export type ConfirmarPagoResult = { estado: "ok" } | { estado: "ya_confirmado" } | { estado: "not_found" }
   | { estado: "forbidden" } | { estado: "validation_error"; errores: Record<string, string> };
 export const TEXTOS_CONFIRMACION = { /* mensajes de cada código SL060, en un solo sitio */ };
+
+export const verComprobantePagoSchema = z.object({ organizacionId: z.uuid(), pagoId: z.uuid() });
+export type VerComprobantePagoResult = { estado: "ok"; url: string; contentType: string }
+  | { estado: "sin_comprobante" } | { estado: "not_found" } | { estado: "forbidden" }
+  | { estado: "validation_error"; errores: Record<string, string> };
 ```
 
 `monto`, `total` y `saldo` van en texto con dos decimales (los `saldo` > 0 garantizan que no son negativos).
@@ -330,6 +340,58 @@ otra confirmación pudo cambiar los saldos. El reloj se inyecta por constructor.
   (R10). Su interfaz no cambia: `forbidden` ya es un resultado del servicio, y la pantalla ya lo pinta («No
   tenés permiso para anular este registro.»).
 
+### 4.8 El comprobante del pago para el superadmin (R32–R34)
+
+**Qué se reutiliza de SL-45.** El comprobante del pago es el lateral de la caja de la ficha 458-B: una fila
+de `wallet_comprobante` con `caja_movimiento_id` = el pago, en el bucket privado
+`walletComprobanteConfig.BUCKET`, guardado en `<organizacion_id>/<ruta>` (SL-19). Se reutiliza:
+- `WalletComprobanteRepository.duenoDeLateral({ caja })` y `.lateralDe({ caja })`, para saber si el
+  movimiento existe y leer `storagePath` y `contentType`;
+- `SupabaseSignedUrlProvider` con ese bucket, que firma dentro de la carpeta de la empresa del contexto;
+- `walletComprobanteConfig.SIGNED_URL_TTL_SECONDS`, la misma duración que en la wallet (R33).
+
+**Qué no se reutiliza.** `WalletComprobanteService.ver` y `verComprobanteAction` no sirven tal cual:
+- piden `esAccesoTotal`, que el superadmin no tiene;
+- corren con la empresa de la sesión, y el superadmin no tiene empresa.
+
+Abrirles la puerta al superadmin cambiaría la autorización de todos los comprobantes de la wallet. En su
+lugar, el servicio de esta ficha gana un método con la autorización del superadmin y la empresa fijada en el
+servidor. El molde es `ReportesBugPlataformaService`, que firma con `conEmpresa(organizacionId, …)` las
+imágenes de un reporte.
+
+```ts
+// PagoPlataformaConfirmacionService
+verComprobante(actor, input): Promise<VerComprobantePagoResult>
+  // 1. esPlataforma(actor.rol), si no forbidden (R34), antes de leer
+  // 2. zod (verComprobantePagoSchema)
+  // 3. conEmpresa(input.organizacionId, async () => {
+  //      pago = repo.pagoDeLaEmpresa(input.pagoId)   // egreso_pago_plataforma de esa empresa; si no, not_found
+  //      objeto = comprobantes.lateralDe({ caja: pago.id }); si es null, sin_comprobante
+  //      url = urls.createSignedUrl(objeto.storagePath, TTL)
+  //    })
+  // 4. { estado: "ok", url, contentType }. La ruta nunca sale (R33)
+```
+
+- **Dependencias por constructor:**
+  - `Pick<IWalletComprobanteRepository, "lateralDe">`, construido con el cliente extendido: dentro de
+    `conEmpresa` la extensión y la RLS acotan a esa empresa;
+  - `ISignedUrlProvider`;
+  - el TTL.
+
+  El composition root de `lib/actions/pagos-plataforma.ts` los pasa reales, y su test lo comprueba.
+- **Lectura del pago:** `pagoDeLaEmpresa(pagoId)` es un método nuevo de
+  `IPagoPlataformaConfirmacionRepository`. Corre dentro de `conEmpresa`, **no** en `comoPlataforma`:
+  `walletMovimiento.findFirst({ where: { id, tipo: "egreso", categoria: "egreso_pago_plataforma" } })`. Un
+  pago de otra empresa no se ve: responde «no encontrado» (R34).
+- **Se ofrece para todo pago listado.** El enlace se ofrece para todo pago por confirmar con
+  `tieneComprobante`. También vale para un pago ya confirmado o anulado entre la lectura y el clic: el
+  comprobante sigue siendo suyo.
+- **La action** `verComprobantePagoPlataformaAction(input)` va en `lib/actions/pagos-plataforma.ts` y la
+  página la liga con `organizacionId` en el servidor (`.bind`).
+- **El cliente** abre la `url` en una pestaña nueva, como «Ver comprobante» de la wallet.
+- **Guardias:** `storage-solo-por-adaptador` sigue en verde (se usa el adaptador) y `plataforma-solo-en-lista`
+  no cambia (`conEmpresa` no es plataforma).
+
 ## 5. La propuesta del reparto (`lib/utils/reparto-pago-plataforma.ts`, nuevo, puro)
 
 Sin `@prisma/client`: llega al cliente. Va en céntimos `bigint` con `lib/planes/centimos.ts`.
@@ -359,7 +421,13 @@ va a `shared/`. Props:
 
 - **Título** «Pagos por confirmar» y ayuda: «Pagos que la empresa registró en su wallet. Al confirmarlos se
   aplican a sus facturas cerradas y baja su deuda.»
-- **Tabla:** fecha, monto, referencia, «Registrado por» y el botón «Confirmar…». Si está vacía: «No hay pagos
+- **Tabla:** fecha, monto, referencia, «Registrado por», comprobante y el botón «Confirmar…».
+  - La columna del comprobante es un botón-enlace «Ver comprobante» si `tieneComprobante`, o «Sin
+    comprobante» si no (R32).
+  - El botón llama a la prop `verComprobante(pagoId)` y abre la `url` en una pestaña nueva.
+  - Con `sin_comprobante`, `not_found` o un fallo, dice «No se pudo abrir el comprobante» en la fila (R33,
+    R34).
+  - El diálogo de confirmar repite el enlace junto al monto. Si está vacía: «No hay pagos
   por confirmar» (R12). Si `null`: «No se pudieron cargar los pagos por confirmar».
 - **Diálogo «Confirmar pago de {monto}»:**
   - una fila por factura con saldo: «N.º {numero}», período (`fechaCortaEnZona`, con el último día =
@@ -390,6 +458,22 @@ va a `shared/`. Props:
 `CeldaPlataforma` suma una tercera línea cuando `pagosPorConfirmar > 0`: «1 pago por confirmar» o «N pagos
 por confirmar», con `data-pagos-por-confirmar` (R27). Los textos van en `TEXTOS_PLATAFORMA`.
 
+### 6.4 Los textos de la wallet (R35–R38; decisión del 2026-11-13)
+
+| Texto | Dónde vive | Tests que fijan el literal |
+|---|---|---|
+| La pista de «debe» (R35) | `app/(app)/wallet/_components/wallet-labels.ts > deudaPlataformaPista` | `tests/unit/components/wallet-labels.test.ts`, `tests/components/WalletDeudaPlataformaSL45.test.tsx`, `tests/components/WalletDeudaPlataformaSL40.test.tsx`, `tests/unit/asistente/contexto-sl45.test.ts`, `e2e/cobro-plataforma-sl40.spec.ts`, `e2e/pago-plataforma-sl45.spec.ts` |
+| El mensaje del tope (R36) | `lib/types/cobro-plataforma.ts > MENSAJE_TOPE_PAGO_PLATAFORMA` | `tests/unit/services/wallet-egreso-service.test.ts`, `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`, `tests/unit/asistente/contexto-sl45.test.ts`, y los que ya cambian: `wallet-egresos.composition-root`, `pago-plataforma-sl45`, `-concurrencia` y el E2E de SL-45 |
+| La frase del efecto (R37) | `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` (la entrada `pago_plataforma` de `FRASE_DEL_EFECTO`) | `tests/unit/components/wallet-conceptos-manuales.test.ts`, `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`, `tests/components/WalletDeudaPlataformaSL45.test.tsx`, `e2e/pago-plataforma-sl45.spec.ts` |
+| La ayuda (R38) | `docs/ayuda/oficina/wallet-caja.md`, sección «Lo que la empresa debe a la plataforma» (fila «Debe» de la tabla y los párrafos de «La deuda baja» y «No se puede pagar de más») | `tests/unit/asistente/contexto-sl45.test.ts`. Se actualiza `actualizado:` |
+
+- **Cómo se ajustan los tests.** Cada uno pasa al literal nuevo **escrito a mano**, nunca leído de la
+  constante: es la regla de SL-45 §12.3, «Literal: contrato o polizón».
+- **La pista de «al día» y «a favor»** no habla de pagos, así que no cambia.
+- **La ayuda** suma un párrafo «El pago queda por confirmar» con lo de R38. Cambia «No se puede pagar de
+  más» por «Solo se pagan facturas cerradas», con el ejemplo de 380 000 cerradas y 200 000 por confirmar
+  (180 000 disponibles) y el mensaje nuevo entre comillas, que es el que lee `contexto-sl45`.
+
 ## 7. Autorización, módulo y país
 
 | Operación | Quién | Dónde se decide | R |
@@ -398,6 +482,7 @@ por confirmar», con `data-pagos-por-confirmar` (R27). Los textos van en `TEXTOS
 | Anular un pago por confirmar | `maestro`, `admin` | `EgresoCajaAnulacionService` (SL-45) | R9 |
 | Anular un confirmado | nadie desde la empresa | trigger §3.5 y `forbidden` en el servicio | R10, R11 |
 | Ver y confirmar | superadmin | `PagoPlataformaConfirmacionService` antes del repositorio; la página ya da `notFound()` a otro rol | R24 |
+| Ver el comprobante desde Plataforma | superadmin | `PagoPlataformaConfirmacionService.verComprobante`, antes de leer; firma con `conEmpresa` de la empresa del detalle | R34 |
 | Escribir confirmaciones | solo la función del dueño | `REVOKE` a `servi_app` | R25 |
 
 - **Moneda:** la de la app (`money()`), sin conversión (SL-21).
@@ -412,9 +497,10 @@ por confirmar», con `data-pagos-por-confirmar` (R27). Los textos van en `TEXTOS
 | `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts` (**nuevo**) | R28, R29 | Aplica la migración con un pago previo: 0 confirmaciones, el pago queda por confirmar. El `down` borra tablas y funciones, y la definición del tope vuelve a ser la de SLT-118 (`pg_get_functiondef`) |
 | `tests/integration/db/_fixtures/factura-cerrada.ts` (**nuevo**) | — | `cerrarFacturaEnCurso(base, org)`: como dueño, `factura_plataforma_cerrar(org, fin_natural_at + 6 min)`, el artificio de SLT-119 §9. Lo usan el test nuevo y los que se ponen al día |
 | `tests/unit/utils/reparto-pago-plataforma.test.ts` (**nuevo**) | R14, R17 | Ejemplo de §5; un saldo exacto; montos con 1 y 2 decimales; ni `Number` ni `parseFloat` (lectura del fuente) |
-| `tests/unit/services/pago-plataforma-confirmacion-service.test.ts` (**nuevo**) | R17, R19, R20, R24 | Repositorio doble: `forbidden` sin llamadas (maestro, admin, sin sesión); `validation_error` del zod sin llamadas; montos 0 quitados; traducción de cada código |
+| `tests/unit/services/pago-plataforma-confirmacion-service.test.ts` (**nuevo**) | R17, R19, R20, R24, R33, R34 | Repositorio doble: `forbidden` sin llamadas (maestro, admin, sin sesión); `validation_error` del zod sin llamadas; montos 0 quitados; traducción de cada código. **Comprobante:** `forbidden` sin llamadas; `not_found` sin firmar si el pago no es de la empresa; `sin_comprobante` sin firmar; `ok` firma con el TTL de la wallet dentro de `conEmpresa` de la empresa pedida (se espía el contexto), y la respuesta no lleva `storagePath` |
 | `tests/unit/actions/pagos-plataforma.test.ts` (**nuevo**) | R24 | Actor de la sesión; el composition root pasa el repositorio real |
-| `tests/components/PagosPorConfirmar.test.tsx` (**nuevo**) | R12–R14, R17, R23 | Vacío, `null`, la propuesta precargada, el botón deshabilitado si la suma no cuadra, `refresh` tras `ok`, errores bajo la fila |
+| `tests/components/PagosPorConfirmar.test.tsx` (**nuevo**) | R12–R14, R17, R23, R32, R33 | Vacío, `null`, la propuesta precargada, el botón deshabilitado si la suma no cuadra, `refresh` tras `ok`, errores bajo la fila; «Ver comprobante» con `tieneComprobante` y «Sin comprobante» sin él; un fallo de `verComprobante` dice «No se pudo abrir el comprobante» |
+| Los tests de los textos de la wallet (§6.4) (se ajustan) | R35–R38 | El literal nuevo escrito a mano en cada uno |
 | `tests/integration/plataforma-empresa-detalle-page.test.tsx` (se amplía) | R12, R13 | La sección aparece; si su lectura falla, plan y módulos se pintan |
 | `tests/components/empresas-module.test.tsx` (se amplía) | R27 | 0, 1 y 3 |
 | `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts` (se ajusta) | R7, R8, R27 | Factura cerrada sembrada; «Pagado» y la deuda cuentan solo los confirmados; el contador |
@@ -442,6 +528,8 @@ por confirmar», con `data-pagos-por-confirmar` (R27). Los textos van en `TEXTOS
 | Anular y confirmar a la vez el mismo pago | — | — | Gana exactamente uno (R21) |
 | B lee las tablas nuevas | — | — | Solo lo suyo; `INSERT`/`UPDATE`/`DELETE` → `42501` (R25); `UPDATE` como dueño → `SL060` (R26) |
 | Pago que deja el saldo en 0 | — | — | La factura sale de `leer` (R18) |
+| Empresa C con dos cerradas: 200 000 y −30 000 (la segunda con solo un reverso, sin cuota) | 170 000 | — | Pagar 170 000,01 → `validation_error`; 170 000 → `ok`; `leer` ofrece solo la de 200 000, y confirmar contra la de −30 000 → `factura_no_valida` (R31) |
+| `leer` de un pago con comprobante (fila en `wallet_comprobante`, sin subir a Storage) y de uno sin él | — | — | `tieneComprobante` verdadero y falso; `pagoDeLaEmpresa` dentro de `conEmpresa(B)` no ve el pago de A (R32, R34) |
 
 **Control de no vacuidad:** antes de afirmar, la factura está cerrada (leída con el cliente base) y las
 funciones existen en `pg_proc`. Un `skip` por falta de base no cuenta como verde.
@@ -478,10 +566,12 @@ Serial, en el proyecto `dinero` de `playwright.config.ts`. Usa `_dos-empresas-fi
 
 1. **Datos (dueño):** empresa con `maestro`, dos órdenes con cargo y `factura_plataforma_cerrar` de su
    factura en curso. El total sale de la fila de la base, no se escribe a mano.
-2. **Maestro:** paga el total menos 100 desde la wallet; la región de la deuda **no** cambia. Intenta pagar
-   101 y ve el error bajo el monto.
-3. **Superadmin:** en Empresas, la fila dice «1 pago por confirmar». En el detalle, «Confirmar…» trae la
-   propuesta con todo el pago en la factura; confirma y el pago desaparece de la sección.
+2. **Maestro:** paga el total menos 100 desde la wallet, **con un comprobante** (PNG pequeño); la región de
+   la deuda **no** cambia y su pista es la de R35. Intenta pagar 101 y ve bajo el monto el mensaje de R36.
+3. **Superadmin:** en Empresas, la fila dice «1 pago por confirmar». En el detalle, el pago trae «Ver
+   comprobante»; al pulsarlo se abre una pestaña cuya URL responde 200 con el tipo del archivo (R33).
+   «Confirmar…» trae la propuesta con todo el pago en la factura; confirma y el pago desaparece de la
+   sección.
 4. **Maestro:** la región baja en el monto pagado. «Anular…» del pago responde «No tenés permiso para anular
    este registro.».
 
@@ -512,14 +602,22 @@ el grupo `dinero` entero (`docs/perfil-agentes.md`).
    - Todo para un texto que `forbidden` ya dice bien: «una vez confirmado, solo lo toca el superadmin».
 
    Si SLT-142 rehace los textos del pago en la wallet, puede retomarlo.
-6. **Validar el reparto solo en el servicio.** Entre la lectura y la confirmación otra confirmación puede
+6. **Abrir `WalletComprobanteService.ver` al superadmin** (§4.8), con `esPlataforma` en su puerta y una
+   empresa pasada desde fuera.
+   - Toca la autorización de todos los comprobantes de la wallet, de todos sus caminos, y su clasificador
+     (`WalletAnulacionService`), que corre con la empresa de la sesión.
+   - Su `ver` además pide la zona del país para el rótulo, que la plataforma no necesita.
+
+   Un método propio, que reutiliza el repositorio y el adaptador de firma, deja intacto lo de la empresa.
+7. **Validar el reparto solo en el servicio.** Entre la lectura y la confirmación otra confirmación puede
    bajar el saldo. Solo la función, bajo el candado de la empresa, ve el saldo de verdad.
 
 ## 11. Riesgos
 
-- **Tamaño:** 55 rutas en `## Archivos esperados` (aceptado por el humano: «~46»). La diferencia son
-  los tests de composition root y de guardias, y el contador de `verificar-rls-despliegue.ts`, que solo se
-  vieron al escribir el spec. El gate avisará por tamaño; no se parte (decisión del 2026-11-13).
+- **Tamaño:** 67 rutas en `## Archivos esperados`. El humano aceptó un solo PR con todas («~61»; decisión
+  del 2026-11-13). Son 55 del spec inicial y 12 de los textos de la wallet (§6.4: 4 de producción y docs, y
+  8 tests). El comprobante no suma archivos: cabe en el servicio, el repositorio, la action, los tipos y el
+  componente que ya estaban. El gate avisará por tamaño; no se parte.
 - **El trigger de misma empresa con el superadmin** (`confirmado_por`): T0 lo comprueba (§1).
 - **La demo:** si la receta no cierra ninguna factura antes de pagar, `demo-qa.test.ts` cae. T0 lo mira y
   T9.3 lo arregla.
