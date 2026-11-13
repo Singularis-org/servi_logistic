@@ -552,8 +552,8 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
       if (uno.r.status !== "ok" || tres.r.status !== "ok") throw new Error("status");
       expect(uno.r.cifrasModeloNuevo).toHaveLength(1);
       expect(tres.r.cifrasModeloNuevo).toHaveLength(3);
-      expect(lote).toHaveBeenCalledTimes(2);
       expect(tres.sql.length).toBe(uno.sql.length);
+      expect(lote).toHaveBeenCalledTimes(2);
 
       lote.mockClear();
       const viejos = await medir(() => c.svc.listarHistoricoCierresAdminCompleto(c.maestro, { mensajeroIds: [c.m.V1] }));

@@ -6,32 +6,32 @@
 
 ## T0 — Comprobaciones previas (backend_dev)
 
-- [ ] **T0.1** En `origin/dev` actualizado (`git fetch` + `git grep`): ¿está mergeado #149 (SLT-139
+- [x] **T0.1** En `origin/dev` actualizado (`git fetch` + `git grep`): ¿está mergeado #149 (SLT-139
   «Pago al mensajero independiente del efectivo: satélite»)? ¿Alguien emite ya `cifrasModeloNuevo`,
   `derivarPagoEntregadoCierre`, `cifrasDelCierre`, `obtenerFilasConColumnas` o
   `findGestionesDeCierresEnAlcance`? **Hecho:** resultado en `progress/impl_SLT-140.md`; si #149 no
   está mergeado o algo ya existe, PARA y avisa (PA3).
-- [ ] **T0.2** Calcular a mano los literales de `design.md > Verificación` leyendo (no ejecutando)
+- [x] **T0.2** Calcular a mano los literales de `design.md > Verificación` leyendo (no ejecutando)
   `derivarIngresoOrden` con conceptos del modelo nuevo, `pagoTiendaEmpresa`, `ganaLaTienda`,
   `netoEmpresa`, `partesPorTienda` y `derivarPendienteCierre`; y cómo siembra el corpus de SLT-113
   (`tests/integration/db/cierres-gestiones-modelo-nuevo-descarga-sql-real.test.ts`) un cierre nuevo
   con sus snapshots. **Hecho:** literales anotados; si alguno no casa, PARA y reporta (no se ajusta el
   literal a la salida).
-- [ ] **T0.3** Contar los dobles que tipan `ICierresAdminRepository` entero y llaman a los dos
+- [x] **T0.3** Contar los dobles que tipan `ICierresAdminRepository` entero y llaman a los dos
   `listar…Completo` (empezar por `tests/unit/services/cierres-admin-completo.test.ts` y
   `cierres-admin-filtro-estado.test.ts`), y qué siembra `e2e/_escenarios/cierres.ts`. **Hecho:**
   anotado; si hace falta tocar un archivo fuera de `## Archivos esperados`, PARA y avisa al leader.
-- [ ] **T0.4** Medir y anotar el número de consultas de hoy de `listarHistoricoCierresAdminCompleto` con
+- [x] **T0.4** Medir y anotar el número de consultas de hoy de `listarHistoricoCierresAdminCompleto` con
   un conjunto solo viejo (línea base de R383). **Hecho:** cifra en `progress/impl_SLT-140.md`.
 
 ## T1 — Funciones puras (backend_dev) · depende de T0
 
-- [ ] **T1.1** [P] `lib/utils/cifras-cierre.ts > cifrasDelCierre` moviendo el bloque de
+- [x] **T1.1** [P] `lib/utils/cifras-cierre.ts > cifrasDelCierre` moviendo el bloque de
   `verCierreDetalle` tal cual; `verCierreDetalle` lo llama. Nuevo `tests/unit/utils/cifras-cierre.test.ts`
   con el escenario N1 contra literales (incluido `ganaLaTienda` negativo de Tienda Sur y las tres
   sumas de R381). **Hecho:** verde; los tests de detalle existentes (`vitest related` de
   `CierresAdminService.ts`) verdes sin tocar sus aserciones.
-- [ ] **T1.2** [P] `derivarPagoEntregadoCierre` en `lib/utils/pendiente-cierre.ts`; casos nuevos en
+- [x] **T1.2** [P] `derivarPagoEntregadoCierre` en `lib/utils/pendiente-cierre.ts`; casos nuevos en
   `tests/unit/utils/pendiente-cierre.test.ts`: (a) marca `true`, P 3 000,00, pagado 1 200,00 → 1 200,00;
   (b) marca `false`, P 3 000,00, E 70 000,00, nada pagado → 3 000,00; (c) marca `true`, P 3 000,00,
   premio 500,00, nada pagado → 0,00; (d) pagado de más → `P + premios`, nunca más; (e) con lo pagado
@@ -40,12 +40,12 @@
 
 ## T2 — Servidor (backend_dev) · depende de T1
 
-- [ ] **T2.1** `findGestionesDeCierresEnAlcance` en `ICierresAdminRepository` (obligatorio) y
+- [ ] **T2.1** (BLOQUEADO en los dobles: 12 archivos fuera de `## Archivos esperados`, ver `progress/impl_SLT-140.md`) `findGestionesDeCierresEnAlcance` en `ICierresAdminRepository` (obligatorio) y
   `CierresAdminRepository` (`design.md > Servidor 3`). **Hecho:** typecheck verde; dobles de T0.3
   con `vi.fn()` que falla si se llama.
-- [ ] **T2.2** Tipos de `design.md > Contrato I/O` en `ICierresAdminService.ts` y su réplica de borde
+- [x] **T2.2** Tipos de `design.md > Contrato I/O` en `ICierresAdminService.ts` y su réplica de borde
   en `lib/types/cierres-admin.ts`. **Hecho:** typecheck verde; ninguna acción ni schema cambia.
-- [ ] **T2.3** `CierresAdminService`: `entradaPendiente` + `conPendienteYEntregado` (sin consultas
+- [x] **T2.3** `CierresAdminService`: `entradaPendiente` + `conPendienteYEntregado` (sin consultas
   nuevas; `conPendiente` devuelve lo de hoy) y la rama de cifras en los dos `listar…Completo`
   (`design.md > Servidor 4`). Nuevo `tests/unit/services/cierres-resumen-modelo-nuevo-descarga-service.test.ts`
   con dobles: (a) solo viejos → sin `cifrasModeloNuevo` y `findGestionesDeCierresEnAlcance` no llamado;
@@ -56,11 +56,11 @@
 
 ## T3 — Integración contra Postgres real (backend_dev) · depende de T2
 
-- [ ] **T3.1** Nuevo `tests/integration/db/cierres-resumen-modelo-nuevo-descarga-sql-real.test.ts` con
+- [x] **T3.1** Nuevo `tests/integration/db/cierres-resumen-modelo-nuevo-descarga-sql-real.test.ts` con
   el corpus y las comprobaciones de `design.md > Verificación` (literales, paridad con
   `verCierreDetalle` y con la página de la cola, alcance, consultas con 1 y 3 nuevos y con solo viejos
   contra T0.4, audiencia, sin escrituras). **Hecho:** verde con base; `describe.skip` visible sin ella.
-- [ ] **T3.2** Aplicar una a una las mutaciones de `design.md > Verificación` y anotar en
+- [x] **T3.2** Aplicar una a una las mutaciones de `design.md > Verificación` y anotar en
   `progress/impl_SLT-140.md` qué test se pone rojo con cada una (ejecutado, no supuesto; revertir
   antes de seguir). **Hecho:** las seis matadas.
 
