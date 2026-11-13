@@ -229,3 +229,11 @@ pago-plataforma-sl45 6, cobro-plataforma-sl40 3, mi-plan-cambiar-plan 2).
 
 **m2.** T7.3 en `tasks.md` y aquí: `./init.sh` no está verde, rojo solo por el validador de features.
 **m3.** Quitada de esta bitácora la propuesta sobre `AUTH_RISK_THRESHOLD` para `docs/verification.md`.
+
+## Review vuelta 2 (2026-11-12): m4 y F2.3
+
+- m4: `FACTURAS_NO_RECIBIDAS` sube encima del JSDoc de `MiPlanModule` (commit `92b97d4c`, junto con `progress/review_SLT-119.md`).
+- F2.3: `git merge origin/dev` (`0d0686c4`) sin conflictos. Trajo la migración `20261114120000_pago_independiente_efectivo`,
+  aplicada a `servi_logistic_slt119` con `prisma migrate deploy`.
+- Tras el merge: `pnpm run typecheck` (8 GB) exit 0; `vitest run` de los 11 archivos de la feature (incluye
+  MiPlanCambioDePlan y ConsumoDelPlanPeriodo): `Test Files 11 passed (11)`, `Tests 176 passed (176)`.
