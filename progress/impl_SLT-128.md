@@ -345,3 +345,15 @@ correr en CI.
 - R28 (pantalla) → `tests/components/PlanDetalle.test.tsx` («SLT-128 R28»: con pendiente, con `pendiente` null y sin
   ninguna). `vitest run`: 28/28. eslint limpio; typecheck 0.
 - Diff contra `origin/dev` fuera de `specs/` y `progress/`: 40 archivos (tope aceptado).
+
+### Rojo de CI en el run 43341050767 (sobre b9ca6ebf): `planes-periodicidad-ordenes` R8, R28
+- Causa: el test leía la marca de `plan_cambio_recepcion` después de promover. La recepción era la única pendiente;
+  al quedar no aplicada, `recibirCambio` promueve en la misma transacción (design §14.3, paso 7), borra el pendiente
+  y sus recepciones se van en `ON DELETE CASCADE`. La marca vive en `plan_version_empresa` (design §14.1: «cuando la
+  fila de recepción ya se fue en cascada con el pendiente»). Producción cumple el spec; el test estaba mal.
+- Arreglo (solo test): la marca se lee de `plan_version_empresa` (`cambioId`, `noAplicadaAt`, `noAplicadaMotivo`) y
+  se afirma que la recepción ya no existe. Se quita el conteo `version`, que no se afirmaba.
+- Los otros casos de R28 (`planes-cambio-por-empresa`, `factura-plataforma-cambio-plan`, `planes-version-por-empresa`)
+  ya leen de `plan_version_empresa` o no leen la recepción tras promover: sin cambios.
+- typecheck 0; eslint del test limpio; `vitest run` del archivo: 11 saltados (sin base; lo confirma CI);
+  `test:guardias`: 4 rojos de `dependencias-declaradas-presentes` (baseline).

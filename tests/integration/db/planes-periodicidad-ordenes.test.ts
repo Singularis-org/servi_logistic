@@ -369,11 +369,14 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
         despues: { empresa: await fotoDeEmpresa(tx, org), precio: await tx.planPrecioHistorial.count({ where: { planId } }) },
         modulosAntes,
         modulosDespues: await tx.organizacionModulo.findMany({ where: { organizacionId: org }, orderBy: { modulo: "asc" } }),
-        marca: await tx.planCambioRecepcion.findUniqueOrThrow({
-          where: clave,
-          select: { recibidoAt: true, noAplicadaAt: true, noAplicadaMotivo: true },
+        // La recepción era la única pendiente: al quedar no aplicada, `recibirCambio` promueve en esa misma
+        // transacción y borra el pendiente, que se lleva sus recepciones en cascada. La marca sobrevive en la versión
+        // que la empresa conserva (design §14.1, §14.3).
+        recepcionTrasPromover: await tx.planCambioRecepcion.findUnique({ where: clave }),
+        marca: await tx.planVersionEmpresa.findUnique({
+          where: { empresaId: org },
+          select: { cambioId: true, noAplicadaAt: true, noAplicadaMotivo: true },
         }),
-        version: await tx.planVersionEmpresa.count({ where: { empresaId: org } }),
         avisos,
         alRecibir,
         // Era la única: con F pasada, el plan se promueve igual (la no aplicada cuenta como resuelta).
@@ -392,7 +395,8 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
     // Resuelta: ni el trabajo ni el barrido la vuelven a intentar.
     expect(r.otraVez).toEqual({ estado: "sin_pendiente" });
     expect(r.barrido).toEqual([]);
-    expect(r.marca).toEqual({ recibidoAt: null, noAplicadaAt: r.alRecibir, noAplicadaMotivo: "cobro_quincenal_ordenes_mensuales" });
+    expect(r.recepcionTrasPromover).toBeNull();
+    expect(r.marca).toEqual({ cambioId: r.cambioId, noAplicadaAt: r.alRecibir, noAplicadaMotivo: "cobro_quincenal_ordenes_mensuales" });
     // Nada de la versión: ni módulos, ni precio, ni la fila ni el historial de la empresa. El único trabajo nuevo es
     // el aviso, y nace SIN empresa (no cuenta en los de la empresa).
     expect(r.modulosDespues).toEqual(r.modulosAntes);
