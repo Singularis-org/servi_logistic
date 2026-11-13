@@ -301,13 +301,21 @@ export class CierreBodegaService implements ICierreBodegaService {
     // Reparto del efectivo entre los pagos a mensajeros (atomico, de menor a mayor). El
     // agregado `totalPagoMensajeroAgregado` NO cambia: sigue siendo lo que se les debe en
     // total; esto solo decide cuanto de eso se puede pagar hoy y cuanto queda a la central.
+    //
+    // SLT-139 (R322): el reparto es SOLO de los cierres viejos (marca en `false`): su efectivo entre
+    // sus pagos, como siempre. Un cierre nuevo no se paga del efectivo (lo paga la satelite) y no
+    // aporta a «La central debe». Con todos viejos, es exactamente el calculo de antes (R323).
+    const viejos = consolidables.filter((c) => !c.pagoIndependienteEfectivo);
+    const nuevos = consolidables.filter((c) => c.pagoIndependienteEfectivo);
     const { pagado, centralDebe } = repartirEfectivo(
-      totalesAgregados.efectivo,
-      consolidables.map((c) => c.totalPagoMensajero),
+      sumTotales(viejos).efectivo,
+      viejos.map((c) => c.totalPagoMensajero),
     );
     const totalCentralDebeAgregado = centralDebe;
-    // Neto agregado DERIVADO: total general - lo EFECTIVAMENTE pagado.
-    const totalNetoAgregado = netoDe(totalesAgregados.general, pagado);
+    // Neto agregado DERIVADO: total general - lo EFECTIVAMENTE pagado del efectivo a los viejos -
+    // Σ P de los nuevos (SLT-139 R323: la satelite les pago P completo).
+    const pagadoTotal = new Prisma.Decimal(pagado).plus(sumPagoMensajero(nuevos)).toFixed(2);
+    const totalNetoAgregado = netoDe(totalesAgregados.general, pagadoTotal);
 
     // R6/R7: gate de "Solicitar cierre de bodega" con motivo accionable.
     // SLT-106 (R195): el mismo orden de prioridad de hoy, ahora tambien con su tipo.

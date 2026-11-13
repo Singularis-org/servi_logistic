@@ -10,6 +10,7 @@ import type {
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { tarjetasAConsolidar } from "@/components/private/cierres/cola/cola-cierres-vista";
 
 // Feature 40 — tests unit del CierreBodegaService (lado adminSatelite; dobles de
 // repo/orden, sin DB/red). Cubre R1 (rol), R3 (acota a su zona), R4 (sin zona), R5
@@ -43,6 +44,7 @@ function consolidableRow(
     paraLaCentral: "15.00",
     aprobadoAt: "2026-11-10T15:00:00.000Z",
     gestionesAjustadas: 0,
+    pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
     ...overrides,
   };
 }
@@ -526,5 +528,82 @@ describe("CierreBodegaService — ingreso de bodega por devoluciones a origen ag
     expect(r.status).toBe("ok");
     const arg = (repo.crearCierreBodega as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(arg.totalIngresoBodegaRechazos).toBe("6.50"); // R18: snapshot agregado en la tx
+  });
+});
+
+// ── SLT-139 (T7.2, R322, R323, R341) — «La central debe» y el neto con cierres viejos y nuevos ──
+//
+// La tabla de `specs/SLT-139-pago-independiente-satelite/tasks.md > T7.2`, con los importes ESCRITOS
+// A MANO. V = viejo (marca `false`), N/N0 = nuevos (marca `true`). Con el codigo de antes el primer
+// conjunto daba «La central debe» 0.00 (efectivo 7 000 >= 0 + 2 500 + 3 000) y neto 4 500.00.
+
+describe("SLT-139 R322/R323 — la consolidacion reparte solo el efectivo de los cierres viejos", () => {
+  const V = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "V",
+      mensajeroId: "mV",
+      totales: { efectivo: "2000.00", simpe: "3000.00", transferencia: "0.00", general: "5000.00" },
+      totalPagoMensajero: "3000.00",
+      pagoIndependienteEfectivo: false,
+    });
+  const Vp = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "Vp",
+      mensajeroId: "mVp",
+      totales: { efectivo: "2000.00", simpe: "0.00", transferencia: "0.00", general: "2000.00" },
+      totalPagoMensajero: "1500.00",
+      pagoIndependienteEfectivo: false,
+    });
+  const N = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "N",
+      mensajeroId: "mN",
+      totales: { efectivo: "4000.00", simpe: "0.00", transferencia: "0.00", general: "4000.00" },
+      totalPagoMensajero: "2500.00",
+      pagoIndependienteEfectivo: true,
+    });
+  const N0 = (): CierreDiaConsolidableRow =>
+    consolidableRow({
+      cierreDiaId: "N0",
+      mensajeroId: "mN0",
+      totales: { efectivo: "1000.00", simpe: "0.00", transferencia: "0.00", general: "1000.00" },
+      totalPagoMensajero: "0.00",
+      pagoIndependienteEfectivo: true,
+    });
+
+  async function consolidar(filas: CierreDiaConsolidableRow[]) {
+    const repo = fakeRepo({ findCierresDiaConsolidables: vi.fn(async () => filas) });
+    const { service } = newService({ repo });
+    const r = await service.listarConsolidacion(ADMIN_SATELITE);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const pintaCentralDebe = tarjetasAConsolidar({
+      totales: r.totalesAgregados,
+      pagoMensajeros: r.totalPagoMensajeroAgregado,
+      ganaBodega: r.totalIngresoBodegaRechazosAgregado,
+      paraLaCentral: r.paraLaCentralAgregado,
+      centralDebe: r.totalCentralDebeAgregado,
+      mensajeros: filas.length,
+      incluyeModeloNuevo: false,
+    }).some((c) => c.id === "centralDebe");
+    return { r, pintaCentralDebe };
+  }
+
+  it.each([
+    // [conjunto, filas, «La central debe», neto, se pinta]
+    ["V + N + N0", () => [V(), N(), N0()], "3000.00", "7500.00", true],
+    ["N + N0 (solo nuevos)", () => [N(), N0()], "0.00", "2500.00", false],
+    ["V solo (todos viejos: igual que antes de la ficha)", () => [V()], "3000.00", "5000.00", true],
+    ["V' + N (los pagos viejos alcanzan)", () => [Vp(), N()], "0.00", "2000.00", false],
+  ] as const)("%s -> central debe %s, neto %s", async (_n, filas, debe, neto, pinta) => {
+    const { r, pintaCentralDebe } = await consolidar(filas());
+    expect(r.totalCentralDebeAgregado).toBe(debe);
+    expect(r.totalNetoAgregado).toBe(neto);
+    expect(pintaCentralDebe).toBe(pinta);
+  });
+
+  it("R341: el pago agregado y «Debe llegar a la central» del primer conjunto no cambian", async () => {
+    const { r } = await consolidar([V(), N(), N0()]);
+    expect(r.totalPagoMensajeroAgregado).toBe("5500.00");
+    expect(r.paraLaCentralAgregado).toBe("4500.00");
   });
 });

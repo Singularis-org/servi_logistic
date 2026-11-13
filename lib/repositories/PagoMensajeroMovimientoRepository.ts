@@ -5,6 +5,7 @@ import type {
   CuentaPorPagarAgregadoRow,
   CuentaPorPagarFiltros,
   CuentasPorPagarFiltro,
+  IPagadoPorSateliteLectura,
   IPagoMensajeroMovimientoRepository,
   ListarPorMensajeroFiltros,
   ListarPorMensajeroPage,
@@ -76,7 +77,9 @@ function cierreDeLaFila(
  * por fecha desc acotado a `mensajero_id` en el WHERE (R20/R22) y agrega la cuenta por pagar por
  * mensajero (R14). Money-safe: montos entran/salen como STRING.
  */
-export class PagoMensajeroMovimientoRepository implements IPagoMensajeroMovimientoRepository {
+export class PagoMensajeroMovimientoRepository
+  implements IPagoMensajeroMovimientoRepository, IPagadoPorSateliteLectura
+{
   constructor(private readonly prisma: PagoMensajeroPrismaClient) {}
 
   /**
@@ -394,6 +397,33 @@ export class PagoMensajeroMovimientoRepository implements IPagoMensajeroMovimien
       }
     }
     for (const [cierreId, valor] of acumulado) total[cierreId] = valor.toFixed(2);
+    return total;
+  }
+
+  /**
+   * SLT-139 (R333, R334, R338, design §5.2) — lo «pagado por la satelite» de cada cierre: Σ de sus
+   * `pago_satelite`. Mismo molde que `sumarPremiosVivosPorCierre`: una entrada por id pedido, una
+   * sola consulta, sin consulta con la lista vacia. La empresa la acota el cliente (extension +
+   * RLS de `pago_mensajero_movimiento`).
+   */
+  async sumarPagadoSatelitePorCierre(cierreIds: string[]): Promise<Record<string, string>> {
+    const total: Record<string, string> = {};
+    for (const id of cierreIds) total[id] = "0.00";
+    if (cierreIds.length === 0) return total;
+
+    const grupos = await this.prisma.pagoMensajeroMovimiento.groupBy({
+      by: ["origenId"],
+      where: {
+        origenTipo: "cierre_dia",
+        origenId: { in: cierreIds },
+        categoria: "pago_satelite",
+      },
+      _sum: { monto: true },
+    });
+    for (const g of grupos) {
+      if (g.origenId === null) continue; // imposible por el `in`; el tipo lo admite
+      total[g.origenId] = new Prisma.Decimal(g._sum.monto ?? 0).toFixed(2);
+    }
     return total;
   }
 

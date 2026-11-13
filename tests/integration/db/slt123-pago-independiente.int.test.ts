@@ -59,7 +59,11 @@ import {
  *   N1  central   —            P 3 000 / E 5 000  `solicitado`, se aprueba con `resolverCierre` real
  *   V2  satelite  marca false  P 6 000 / E     0  aprobado por la fixture, consolidado y conciliado real
  *   S1  satelite  —            P 2 500 / E 4 000  se aprueba, consolida y concilia con el codigo real
- *                                                  (el caso «entre los dos merges», design §13)
+ *                                                  (el caso «entre los dos merges», design §13).
+ *                                                  SLT-139 (R336): la aprobacion real ya le pone la
+ *                                                  marca; se mide y despues se le devuelve a `false`
+ *                                                  (un cierre aprobado con el codigo de SLT-123, que es
+ *                                                  lo que este caso caracteriza, R340)
  *   N3  central   —            P     0 / E 1 000  `solicitado`, se aprueba (P = 0)
  *   R1  central   —            P 3 000 / E 5 000  `solicitado`, se RECHAZA
  *
@@ -369,6 +373,10 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
           N3: await marca(tx, N3.cierreId),
           R1: await marca(tx, R1.cierreId),
         };
+        // SLT-139 (R336 sustituye a R310): S1 sale de la aprobacion CON la marca. Para seguir
+        // caracterizando «aprobado entre los dos merges» (codigo de SLT-123, marca `false`) se le
+        // devuelve a `false`: desde aqui S1 es un cierre VIEJO de satelite (R340).
+        await tx.cierreDia.update({ where: { id: S1.cierreId }, data: { pagoIndependienteEfectivo: false } });
 
         // S1 antes de consolidar: «La central debe» de su consolidacion (E 4 000 >= P 2 500).
         const bodegaService = new CierreBodegaService(
@@ -492,8 +500,8 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
     expect(r.fotoDespues).toEqual(r.fotoAntes);
   });
 
-  it("caso 2 (R310): N1 (central) aprobado lleva la marca; V1, V2, S1 y N3/R1 segun su camino", () => {
-    expect(m().marcas).toEqual({ V1: false, N1: true, V2: false, S1: false, N3: true, R1: false });
+  it("caso 2 (R310 -> SLT-139 R336): N1 y S1 aprobados llevan la marca (todo destino); V1, V2 y R1 no", () => {
+    expect(m().marcas).toEqual({ V1: false, N1: true, V2: false, S1: true, N3: true, R1: false });
   });
 
   it("caso 2 (R310): la marca ya estaba escrita cuando el feed asento N1 (va ANTES de los asientos)", () => {
@@ -540,7 +548,7 @@ describeSiHayBase("SLT-123 — pago al mensajero independiente del efectivo, con
     expect(pendientesV2[ids.V2]).toBe("6000.00");
   });
 
-  it("caso 6 (R310/R325/R327): S1 sin marca; «La central debe» 0.00; conciliado con la regla de la 44; pendiente 0.00", () => {
+  it("caso 6 (R325/R327, SLT-139 R340): S1 viejo (marca devuelta a false); «La central debe» 0.00; conciliado con la regla de la 44; pendiente 0.00", () => {
     const { libros, pendientesS1, ids, centralDebeS1AntesDeConsolidar } = m();
     expect(centralDebeS1AntesDeConsolidar).toBe("0.00");
     expect(libros.S1.mensajero).toEqual([

@@ -631,20 +631,36 @@ export class CierreDiaService implements ICierreDiaService {
     const idsAprobados = items.filter((c) => c.estado === "aprobado").map((c) => c.cierreId);
     const pagados = await this.pendientes.liquidaciones.sumarVigentesPorCierre(idsAprobados);
     const premios = await this.pendientes.premios.sumarPremiosVivosPorCierre(idsAprobados);
+    // SLT-139 (R319, R334, R335): lo pagado por la satelite de los cierres NUEVOS de la pagina, UNA
+    // lectura (ninguna si no hay nuevos). Sin la lectura, esos cierres salen sin cifra («Sin dato»).
+    const idsNuevos = items
+      .filter((c) => c.estado === "aprobado" && c.pagoIndependienteEfectivo === true)
+      .map((c) => c.cierreId);
+    const lecturaSatelite = this.pendientes.premios;
+    const sinLectura = typeof lecturaSatelite.sumarPagadoSatelitePorCierre !== "function";
+    const pagadoSatelite =
+      idsNuevos.length > 0 && typeof lecturaSatelite.sumarPagadoSatelitePorCierre === "function"
+        ? await lecturaSatelite.sumarPagadoSatelitePorCierre(idsNuevos)
+        : {};
 
     return items.map((c) => ({
       ...c,
       pendientePagoMensajero:
-        c.estado === "aprobado"
-          ? derivarPendienteCierre({
+        c.estado !== "aprobado"
+          ? null
+          : c.pagoIndependienteEfectivo === true && sinLectura
+            ? undefined
+            : derivarPendienteCierre({
               pagoDebido: c.totalPagoMensajero,
               efectivo: c.totales.efectivo,
               premiosVivos: premios[c.cierreId] ?? "0.00",
               pagadoVigente: pagados[c.cierreId] ?? "0.00",
               // SLT-123 (R320, R327): la marca de ESTE cierre; ausente = `false` (regla de la 44).
-              pagoIndependienteEfectivo: c.pagoIndependienteEfectivo === true,
-            })
-          : null,
+              // SLT-139 (R338): con la marca, ademas lo pagado por la satelite.
+              ...(c.pagoIndependienteEfectivo === true
+                ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoSatelite[c.cierreId] ?? "0.00" }
+                : { pagoIndependienteEfectivo: false }),
+            }),
     }));
   }
 

@@ -18,7 +18,10 @@ import type {
 } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { OrigenDelPaquete } from "@/lib/types/gestion-retorno";
 import type { ILiquidacionPagoRepository } from "@/lib/interfaces/repositories/ILiquidacionPagoRepository";
-import type { IPagoMensajeroMovimientoRepository } from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
+import type {
+  IPagadoPorSateliteLectura,
+  IPagoMensajeroMovimientoRepository,
+} from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -67,7 +70,7 @@ import {
   type ZonaDeLaOperacion,
 } from "@/lib/services/zona-de-la-empresa";
 import { filtrosConLimites } from "@/lib/types/filtros-cierres";
-import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import { derivarPendienteCierre, LecturaPagadoSateliteAusenteError } from "@/lib/utils/pendiente-cierre";
 import { excesoIndemnizacion } from "@/lib/utils/tope-indemnizacion";
 import { validarAjustePago } from "@/lib/utils/ajuste-pago-mensajero";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
@@ -287,7 +290,11 @@ type LiquidacionLecturaRepo = Pick<
  * pagable con el premio dentro, y NO puede escribir un premio (R3: el premio solo nace de un
  * acto humano en `Wallet > Mensajeros`).
  */
-type PremiosLecturaRepo = Pick<IPagoMensajeroMovimientoRepository, "sumarPremiosVivosPorCierre">;
+type PremiosLecturaRepo = Pick<IPagoMensajeroMovimientoRepository, "sumarPremiosVivosPorCierre"> &
+  // SLT-139 (R335, design §5.3): opcional en el TIPO (decenas de suites pasan un doble de una sola
+  // funcion) y RUIDOSA si falta: con un cierre nuevo delante, `conPendiente` lanza. En produccion la
+  // trae el `PagoMensajeroMovimientoRepository` real (cierre-dia-pendiente-cableado.test.ts).
+  Partial<IPagadoPorSateliteLectura>;
 
 /**
  * FICHA 412 (T5.2) — lo que las lecturas posteriores al rechazo dejan en la mano, y que los DOS
@@ -1328,6 +1335,19 @@ export class CierresAdminService implements ICierresAdminService {
     // propiedad —UNA llamada por listado, no una por fila—. Es lo que hace que un cierre saldado
     // al que se le registra un premio vuelva a aparecer con «Pendiente de liquidar».
     const premios = await this.premiosRepo.sumarPremiosVivosPorCierre(idsAprobados);
+    // SLT-139 (R319, R334, R338): lo pagado por la satelite, UNA lectura por pagina y solo de los
+    // cierres NUEVOS aprobados; sin ninguno, no se consulta. Sin la lectura y con un cierre nuevo,
+    // no se inventa un pendiente: se lanza (R335).
+    const idsNuevos = resumenes
+      .filter((r) => r.estado === "aprobado" && r.pagoIndependienteEfectivo === true)
+      .map((r) => r.cierreId);
+    let pagadoSatelite: Record<string, string> = {};
+    if (idsNuevos.length > 0) {
+      if (typeof this.premiosRepo.sumarPagadoSatelitePorCierre !== "function") {
+        throw new LecturaPagadoSateliteAusenteError("CierresAdminService.conPendiente");
+      }
+      pagadoSatelite = await this.premiosRepo.sumarPagadoSatelitePorCierre(idsNuevos);
+    }
 
     // FEATURE 271 (T7.1, R48) — EL ESTADO DE BLOQUEO DEL MENSAJERO, EN LA FILA.
     //
@@ -1366,7 +1386,10 @@ export class CierresAdminService implements ICierresAdminService {
               premiosVivos: premios[r.cierreId] ?? "0.00", // Σ premios VIVOS del cierre (293/R24)
               pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
               // SLT-123 (R320, R327): la regla la da la marca de ESTA fila; ausente = `false` (44).
-              pagoIndependienteEfectivo: r.pagoIndependienteEfectivo === true,
+              // SLT-139 (R338): con la marca, ademas lo pagado por la satelite.
+              ...(r.pagoIndependienteEfectivo === true
+                ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoSatelite[r.cierreId] ?? "0.00" }
+                : { pagoIndependienteEfectivo: false }),
             }),
           }
         : { ...r, ...conSenales, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
@@ -1393,13 +1416,22 @@ export class CierresAdminService implements ICierresAdminService {
     // siempre. Se hace igual, y a proposito: dos formulas para el mismo numero es como dos
     // pantallas acaban diciendo cifras distintas (R26).
     const premios = await this.premiosRepo.sumarPremiosVivosPorCierre([cierreId]);
+    // SLT-139 (R319, R335): en un cierre nuevo, lo pagado por la satelite. Sin la lectura, `"0.00"`:
+    // la respuesta segura que ya documenta este metodo (no ofrece pagar una cifra no derivada).
+    let pagadoSatelite = "0.00";
+    if (cierre.pagoIndependienteEfectivo === true) {
+      if (typeof this.premiosRepo.sumarPagadoSatelitePorCierre !== "function") return "0.00";
+      pagadoSatelite = (await this.premiosRepo.sumarPagadoSatelitePorCierre([cierreId]))[cierreId] ?? "0.00";
+    }
     return derivarPendienteCierre({
       pagoDebido: cierre.totalPagoMensajero,
       efectivo: cierre.totalEfectivo,
       premiosVivos: premios[cierreId] ?? "0.00",
       pagadoVigente: pagados[cierreId] ?? "0.00",
       // SLT-123 (R321): la marca que la aprobacion acaba de escribir en la misma fila.
-      pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo === true,
+      ...(cierre.pagoIndependienteEfectivo === true
+        ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoSatelite }
+        : { pagoIndependienteEfectivo: false }),
     });
   }
 

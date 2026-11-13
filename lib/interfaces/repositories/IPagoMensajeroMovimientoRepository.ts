@@ -233,6 +233,19 @@ export interface IPagoMensajeroMovimientoRepository {
   ): Promise<PremioRegistradoRow[]>;
 }
 
+/**
+ * SLT-139 (R333, R334, design §5.2) — Σ de los `pago_satelite` del libro con origen en cada cierre:
+ * lo que la satelite le pago al mensajero de un cierre NUEVO al conciliarse su consolidacion.
+ * Una entrada por CADA id pedido (`"0.00"` si no hay filas), STRING de escala 2, UNA consulta para
+ * toda la lista (sin consulta con la lista vacia), acotada a la empresa por el cliente con RLS.
+ *
+ * Interfaz APARTE de `IPagoMensajeroMovimientoRepository` a proposito: seis dobles de test la
+ * implementan a mano y ninguno usa esta lectura. La implementa `PagoMensajeroMovimientoRepository`.
+ */
+export interface IPagadoPorSateliteLectura {
+  sumarPagadoSatelitePorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+}
+
 /** SLT-68 — un incentivo leido del libro. `monto` STRING (money-safe). */
 export interface IncentivoRow {
   id: string;

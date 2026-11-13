@@ -380,7 +380,15 @@ export interface CierrePasadoDTO {
  */
 export interface LecturasPendienteCierre {
   liquidaciones: { sumarVigentesPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
-  premios: { sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
+  /**
+   * SLT-139 (R335, design §5.3): el mismo repositorio del libro trae, ademas, lo «pagado por la
+   * satelite» por cierre. Opcional en el tipo (las suites pasan un doble de una funcion); sin ella,
+   * un cierre NUEVO sale sin `pendientePagoMensajero` («Sin dato»), nunca con una cifra inventada.
+   */
+  premios: {
+    sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+    sumarPagadoSatelitePorCierre?(cierreIds: string[]): Promise<Record<string, string>>;
+  };
 }
 
 // R2-R11/R17/R18: detalle del dia + totales + gate de "Solicitar cierre" +

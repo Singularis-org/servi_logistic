@@ -15,9 +15,17 @@ import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensaj
  *
  * Se mockea la clase del servicio para capturar sus argumentos y el cliente de Prisma para no abrir
  * ninguna conexion: aqui se mide el cableado, no la base.
+ *
+ * SLT-139 (R335, R344) — la lectura de «pagado por la satelite» es OPCIONAL en el tipo de los tres
+ * servicios (`CierreDiaService`, `CierresAdminService`, `LiquidacionService`) y ruidosa si falta.
+ * Lo que garantiza que en produccion no falte es esto: las tres acciones, ejecutadas sin servicio
+ * inyectado, le pasan el `PagoMensajeroMovimientoRepository` real con
+ * `sumarPagadoSatelitePorCierre` como funcion.
  */
 
 const argsCapturados: unknown[][] = [];
+const argsCierresAdmin: unknown[][] = [];
+const argsLiquidacion: unknown[][] = [];
 
 vi.mock("@/lib/db/prisma-client", () => ({
   // Los repositorios solo lo guardan en su constructor; ninguno consulta al construirse.
@@ -40,7 +48,44 @@ vi.mock("@/lib/services/CierreDiaService", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/services/CierresAdminService", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/services/CierresAdminService")>();
+  return {
+    ...real,
+    CierresAdminService: class {
+      constructor(...args: unknown[]) {
+        argsCierresAdmin.push(args);
+      }
+      async listarCierresAdmin() {
+        return { status: "ok" as const, pendientes: [], historico: [] };
+      }
+    },
+  };
+});
+
+vi.mock("@/lib/services/LiquidacionService", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/services/LiquidacionService")>();
+  return {
+    ...real,
+    LiquidacionService: class {
+      constructor(...args: unknown[]) {
+        argsLiquidacion.push(args);
+      }
+      async previsualizarRepartoMensajero() {
+        return { status: "forbidden" as const };
+      }
+    },
+  };
+});
+
 const MENSAJERO: Actor = { usuarioId: "m-1", rol: "mensajero" };
+const MAESTRO: Actor = { usuarioId: "adm-1", rol: "maestro" };
+
+/** SLT-139: el argumento es el repositorio REAL del libro y trae la lectura como funcion. */
+function esLecturaDeSatelite(arg: unknown): void {
+  expect(arg).toBeInstanceOf(PagoMensajeroMovimientoRepository);
+  expect(typeof (arg as PagoMensajeroMovimientoRepository).sumarPagadoSatelitePorCierre).toBe("function");
+}
 
 describe("SLT-137 · `buildService()` de /cierre-dia inyecta las lecturas del pendiente", () => {
   it("ejecutada SIN servicio inyectado, el ultimo argumento trae los dos repositorios reales (R165)", async () => {
@@ -64,5 +109,33 @@ describe("SLT-137 · `buildService()` de /cierre-dia inyecta las lecturas del pe
     expect(
       typeof (pendientes?.premios as PagoMensajeroMovimientoRepository).sumarPremiosVivosPorCierre,
     ).toBe("function");
+    // SLT-139 (R335): el mismo repositorio trae la lectura de «pagado por la satelite».
+    esLecturaDeSatelite(pendientes?.premios);
+  });
+});
+
+describe("SLT-139 R335/R344 — las otras dos acciones pasan la lectura de «pagado por la satelite»", () => {
+  it("/cierres-admin: el sexto argumento de CierresAdminService es el repositorio real con la lectura (R335)", async () => {
+    const { listarCierresAdmin } = await import("@/lib/actions/cierres-admin");
+
+    const r = await listarCierresAdmin({ getActor: async () => MAESTRO });
+
+    expect(r.status).toBe("ok");
+    expect(argsCierresAdmin).toHaveLength(1);
+    // (repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo, premiosRepo, ...)
+    esLecturaDeSatelite(argsCierresAdmin[0]![5]);
+  });
+
+  it("liquidacion: el tercer argumento de LiquidacionService es el repositorio real con la lectura (R344)", async () => {
+    const { previsualizarRepartoMensajeroAction } = await import("@/lib/actions/liquidacion");
+
+    await previsualizarRepartoMensajeroAction(
+      { mensajeroId: "6b1f2c3d-0000-4000-8000-000000000139", monto: "1000.00" },
+      { getActor: async () => MAESTRO },
+    );
+
+    expect(argsLiquidacion).toHaveLength(1);
+    // (pagoRepo, tiendaRepo, mensajeroRepo, runTransaction, ...)
+    esLecturaDeSatelite(argsLiquidacion[0]![2]);
   });
 });

@@ -2401,6 +2401,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           resueltoPor,
           resueltoAt: new Date(),
           motivoRechazo,
+          // SLT-139 (R336, design §2): la marca de la regla nueva («el pago al mensajero es
+          // independiente del efectivo») viaja en la MISMA escritura que aprueba, para TODO destino.
+          // No puede haber un cierre aprobado por este codigo sin la marca, ni una marca sin
+          // aprobacion; si algo lanza despues, revierten juntas. Rechazar no la toca.
+          ...(nuevoEstado === "aprobado" ? { pagoIndependienteEfectivo: true } : {}),
         },
       });
 
@@ -2450,15 +2455,8 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           select: { destinoTipo: true },
         });
         if (destino?.destinoTipo === "bodega_central") {
-          // SLT-123 (R310, design §2): un cierre de la CENTRAL aprobado desde este codigo lleva la
-          // regla nueva (su pago es independiente del efectivo). Va con `tx`, sobre la fila que el
-          // `updateMany` de arriba acaba de bloquear, y ANTES de los asientos: el feed lee la marca
-          // para decidir que escribe en el libro. Si algo lanza despues, revierte con la aprobacion.
-          // La satelite no entra aqui y se queda en `false` hasta SLT-139 (design §13).
-          await tx.cierreDia.updateMany({
-            where: { id: cierreId, estado: "aprobado" },
-            data: { pagoIndependienteEfectivo: true },
-          });
+          // SLT-123 (R310) -> SLT-139 (R336): la marca ya la puso el `updateMany` de arriba, para todo
+          // destino y ANTES de los asientos (el feed la lee para decidir que escribe en el libro).
           await asentarCierreDia(tx, cierreId, this.asientos());
         }
 
