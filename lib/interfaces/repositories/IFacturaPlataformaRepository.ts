@@ -2,7 +2,7 @@
 // escribe la tabla: la escriben solo las funciones del dueño en la base (R22), y esto solo las llama.
 // Lo vigila `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`.
 
-import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
+import type { DetalleDeFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
 export interface IFacturaPlataformaRepository {
   /**
@@ -33,4 +33,19 @@ export interface IFacturaPlataformaRepository {
    * Necesita el cliente con la extensión de empresa (`getPrismaClient()`).
    */
   deEmpresaParaPlataforma(organizacionId: string): Promise<FacturaPlataformaDTO[]>;
+
+  /**
+   * SLT-119 (design §2; R7, R8, R10, R11, R14): la factura `facturaId` de la empresa del contexto y la página
+   * `pagina` (desde 1) de sus líneas: las filas de `cobro_plataforma_traza` con `cobrado_at` en `[desde, hasta)`,
+   * por `(cobrado_at, id)`, de `LINEAS_POR_PAGINA` en `LINEAS_POR_PAGINA`, con el total de líneas de la factura
+   * entera. La cabecera sale de `deLaEmpresa()`, la misma lectura que la lista. `null` si la factura no es de
+   * esa empresa o no existe. Una página posterior a la última trae `lineas: []`. No escribe nada (R16).
+   */
+  detalleDeLaEmpresa(facturaId: string, pagina: number): Promise<DetalleDeFactura | null>;
+
+  /**
+   * SLT-119 (R12, R14): lo mismo para el superadmin, de la empresa `organizacionId`, fijada con `conEmpresa`
+   * como `deEmpresaParaPlataforma`. `null` si la factura no es de esa empresa.
+   */
+  detalleParaPlataforma(organizacionId: string, facturaId: string, pagina: number): Promise<DetalleDeFactura | null>;
 }

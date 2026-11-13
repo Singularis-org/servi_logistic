@@ -8,30 +8,30 @@
 
 ## T1 — Tipos y repositorio (backend)
 
-- [ ] **T1.1** Tipos de §3 en `lib/types/factura-plataforma.ts` (línea, página, detalle, resultados, esquemas zod,
+- [x] **T1.1** Tipos de §3 en `lib/types/factura-plataforma.ts` (línea, página, detalle, resultados, esquemas zod,
   `LINEAS_POR_PAGINA = 100`). *Hecho:* `pnpm run typecheck` verde.
-- [ ] **T1.2** (dep. T1.1) `detalleDeLaEmpresa` y `detalleParaPlataforma` en `IFacturaPlataformaRepository` y
+- [x] **T1.2** (dep. T1.1) `detalleDeLaEmpresa` y `detalleParaPlataforma` en `IFacturaPlataformaRepository` y
   `FacturaPlataformaRepository` (§2): cabecera desde `deLaEmpresa()`, líneas por `cobradoAt` en `[desde, hasta)`
   ordenadas por `(cobradoAt, id)`, `count` en la misma transacción, `null` si no está. Ninguna escritura.
   *Hecho:* typecheck y lint verdes; la guardia `cobro-plataforma-solo-por-trigger` verde.
-- [ ] **T1.3** (dep. T1.2) `tests/integration/db/factura-plataforma-detalle.test.ts` (R7, R8, R10, R11, R12, R14),
+- [x] **T1.3** (dep. T1.2) `tests/integration/db/factura-plataforma-detalle.test.ts` (R7, R8, R10, R11, R12, R14),
   escrito antes de dar T1.2 por bueno. *Hecho:* verde en base local desechable; cada `it` nombra su `R<n>`.
 
 ## T2 — Servicio (backend)
 
-- [ ] **T2.1** (dep. T1.1) [P] `lib/interfaces/services/IFacturaPlataformaService.ts` y
+- [x] **T2.1** (dep. T1.1) [P] `lib/interfaces/services/IFacturaPlataformaService.ts` y
   `lib/services/FacturaPlataformaService.ts` (§4): actor → esquema → repositorio; lista de la más reciente a la más
   antigua. *Hecho:* typecheck verde.
-- [ ] **T2.2** (dep. T2.1) `tests/unit/services/factura-plataforma-service.test.ts` (R1 orden, R13, R14, R15) con un
+- [x] **T2.2** (dep. T2.1) `tests/unit/services/factura-plataforma-service.test.ts` (R1 orden, R13, R14, R15) con un
   repositorio doble que falla si se le llama en `forbidden` o `validation_error`. *Hecho:* verde.
 
 ## T3 — Bordes (backend)
 
-- [ ] **T3.1** (dep. T2.1) `lib/actions/_shared/facturas-plataforma.ts` (composition root, `verFacturasDeMiPlan`,
+- [x] **T3.1** (dep. T2.1) `lib/actions/_shared/facturas-plataforma.ts` (composition root, `verFacturasDeMiPlan`,
   `verFacturasDeEmpresa`) y `lib/actions/facturas-plataforma.ts` (`verDetalleFacturaMiPlanAction`,
   `verDetalleFacturaEmpresaAction(organizacionId, input)`, con `deps`). `"facturas-plataforma": "nucleo"` en
   `lib/modulos/reparto.ts`. *Hecho:* `pnpm run test:guardias` verde (reparto, mi-plan-solo-maestro).
-- [ ] **T3.2** (dep. T3.1) `tests/unit/actions/facturas-plataforma.test.ts` (R13: actor de la sesión y empresa
+- [x] **T3.2** (dep. T3.1) `tests/unit/actions/facturas-plataforma.test.ts` (R13: actor de la sesión y empresa
   ligada). *Hecho:* verde.
 
 ## T4 — Vista pura (frontend)
