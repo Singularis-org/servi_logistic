@@ -50,6 +50,7 @@ import {
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
 import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
+import { cifrasAgregadasBodega } from "@/lib/utils/cifras-cierre-bodega";
 import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 
 // Roles autorizados (R2): acceso total (maestro/admin, bodega central). El alcance es
@@ -443,68 +444,15 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       };
     });
 
-    // Agregado de toda la bodega: se suma desde las MISMAS gestiones que alimentan el
-    // desglose por cierre_dia, no por una consulta aparte que podria no cuadrar con ellas.
+    // SLT-141 (R387): el agregado de toda la bodega sale de `cifrasAgregadasBodega`, la MISMA
+    // funcion que usa el Excel: detalle y descarga no pueden divergir. Minuendos = snapshots
+    // AGREGADOS del cierre de bodega (393, R13); facturado y reparto por tienda = las gestiones de
+    // TODOS sus cierres del dia (396). La asimetria honesta entre las dos vias se queda a la vista.
     const resumen = toResumen(found.cierre);
-    // Ficha 396: el `flatMap` se nombra UNA vez y lo comparten lo facturado agregado y el
-    // desglose por tienda. Dos expresiones iguales escritas dos veces son dos sitios donde
-    // divergir; asi es literal que las dos cifras salen del MISMO conjunto de gestiones.
-    const gestionesDeTodaLaBodega = found.cierresDia.flatMap((cd) => cd.gestiones);
-    const totalesIngreso = totalesIngresoEmpresa(gestionesDeTodaLaBodega);
-    // SL-39 (R21–R23): el agregado tambien resta desde lo facturado SIN IVA.
-    const sinIvaAgregado = facturadoSinIva(totalesIngreso);
-    // El pago agregado sale del snapshot del cierre de bodega (R13), no de sumar los cierre_dia.
-    const ganancia = gananciaEmpresa(sinIvaAgregado, resumen.totalPagoMensajero);
-    // Pago a tiendas agregado: parte del total general recibido, no del bruto facturado.
-    const pagoTienda = pagoTiendaEmpresa(
-      resumen.totales.general,
-      totalesIngreso.fleteConIva,
-      totalesIngreso.comisionConIva,
+    const agregado = cifrasAgregadasBodega(
+      resumen,
+      found.cierresDia.flatMap((cd) => cd.gestiones),
     );
-
-    // Feature 393 (R15/R17) — los tres derivados AGREGADOS salen de los snapshots AGREGADOS
-    // del propio cierre de bodega, NO de sumar los de sus `cierre_dia`. Que las dos vias den
-    // lo mismo se midio contra produccion el 2026-09-08 (14 cierres, 14 cuadran, 0
-    // descuadran), pero eso es una MEDICION, no una regla: si un dia un snapshot agregado
-    // dejara de ser la suma de sus dias, esta pantalla ensena el descuadre en vez de
-    // maquillarlo. `paraLaCentral` y `efectivoCubreDescuentos` ya vienen del mapper (R38).
-    const cobradoSobreRecaudadoAgregado = cobradoSobreRecaudado(
-      totalesIngreso.fleteConIva,
-      totalesIngreso.comisionConIva,
-    );
-    const netoEmpresaAgregado = netoEmpresa(
-      sinIvaAgregado,
-      resumen.totalPagoMensajero,
-      resumen.totalIngresoBodegaRechazos,
-    );
-
-    // 💰 FICHA 396 (D1) — LO QUE LAS TIENDAS GANAN EN TOTAL con toda la bodega. Este contrato NO
-    // lo tenia: la 395 lo puso solo en el detalle del cierre del mensajero, y sin el el desglose
-    // de abajo sumaria hacia un total que no esta en ninguna pantalla (`design.md §5.2`).
-    //
-    // MISMO minuendo que `pagoTienda` —el snapshot AGREGADO `resumen.totales.general`, no la suma
-    // de los `cierre_dia`—, por la misma decision de la 393 que se explica justo arriba: cada
-    // nivel se lee de su propio snapshot. Y misma funcion que en el nivel del mensajero.
-    const ganaLaTiendaAgregado = ganaLaTienda(resumen.totales.general, totalesIngreso.total);
-
-    // 💰 FICHA 396 (R20/Q8) — DE QUIEN ES CADA PARTE, en el nivel AGREGADO. Una fila POR TIENDA a
-    // traves de todos los mensajeros: agrupar por `tiendaId` sobre el `flatMap` ES una fila por
-    // tienda, asi que Q8 —«no hay matriz tienda × mensajero»— se cumple por construccion y sin un
-    // `if` que lo diga. El cruce ya existe un nivel mas abajo, en `cierres[].partesPorTienda`.
-    //
-    // MISMO argumento que `totalesIngresoEmpresa` de arriba (R21): sale de las gestiones, nunca
-    // de SUMAR el desglose de los mensajeros ni de repartir nada.
-    //
-    // ⚠️ Y AQUI ESTA LA ASIMETRIA HONESTA, que se deja escrita en vez de taparla: los agregados
-    // (`pagoTienda`, `ganaLaTiendaAgregado`) parten del snapshot AGREGADO, y el desglose solo
-    // puede partir de las gestiones. Las dos vias coinciden mientras el snapshot agregado sea la
-    // suma de sus dias — medido contra produccion el 2026-09-08, 14 de 14, igual que midio la
-    // 393—, pero eso es una MEDICION, NO UNA REGLA. Si un dia dejaran de coincidir, la suma de las
-    // partes no dara el agregado y **eso es un descuadre real que la pantalla debe ensenar (R21)**:
-    // no se corrige el agregado para que cuadre con las gestiones —violaria R18 y contradiria la
-    // decision explicita de la 393, escrita seis lineas mas arriba— ni el desglose para que cuadre
-    // con el agregado.
-    const partesDeLasTiendas = partesPorTienda(gestionesDeTodaLaBodega);
 
     // R11/R13: cabecera con totales agregados snapshot.
     return {
@@ -512,16 +460,15 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       // SLT-107 (R283): solo la central puede desmarcar; para quien no es acceso total, `false`.
       cierre: esAccesoTotal(actor.rol) ? resumen : { ...resumen, desmarcable: false },
       cierres,
-      totalesIngreso,
-      ivaFacturado: ivaFacturado(totalesIngreso), // SL-39 (R21)
-      ganancia,
-      pagoTienda,
-      cobradoSobreRecaudado: cobradoSobreRecaudadoAgregado,
-      netoEmpresa: netoEmpresaAgregado,
-      // Ficha 396: el agregado que le faltaba a este contrato y la particion de las dos cifras de
-      // pago por tienda, ya ORDENADA por el servidor (por lo que se le paga, de mayor a menor).
-      ganaLaTienda: ganaLaTiendaAgregado,
-      partesPorTienda: partesDeLasTiendas,
+      totalesIngreso: agregado.totalesIngreso,
+      ivaFacturado: agregado.ivaFacturado, // SL-39 (R21)
+      ganancia: agregado.ganancia,
+      pagoTienda: agregado.pagoTienda,
+      cobradoSobreRecaudado: agregado.cobradoSobreRecaudado,
+      netoEmpresa: agregado.netoEmpresa,
+      // Ficha 396: la particion por tienda ya ORDENADA por el servidor (de mayor a menor pago).
+      ganaLaTienda: agregado.ganaLaTienda,
+      partesPorTienda: agregado.partesPorTienda,
       paraLaCentral: resumen.paraLaCentral,
       efectivoCubreDescuentos: resumen.efectivoCubreDescuentos,
       // SLT-111 (R264, R265): el reparto en % de lo recaudado AGREGADO, de los snapshots que ya

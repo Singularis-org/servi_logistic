@@ -8,23 +8,23 @@
 
 ## T0 — Comprobaciones previas (backend_dev)
 
-- [ ] **T0.1** En `origin/dev` actualizado (`git fetch` + `git grep`): (a) SLT-140 y SLT-139 «Pago al
+- [x] **T0.1** En `origin/dev` actualizado (`git fetch` + `git grep`): (a) SLT-140 y SLT-139 «Pago al
   mensajero independiente del efectivo: satélite» están mergeadas (`sumarPagadoSatelitePorCierre`
   existe); (b) nadie emite ya `cifrasModeloNuevo` ni hojas «Cierres» de bodega; (c) qué exporta
   SLT-140 para «Por tienda», «Pago entregado» por cierre del día y las columnas marcadas de «Cierres
   modelo anterior» (`design.md > Relación con SLT-140`). **Hecho:** resultado en
   `progress/impl_SLT-141.md` con lo que se reusa y lo que no; si (a) falla o (b) ya existe, PARA y
   avisa al leader.
-- [ ] **T0.2** Calcular a mano los literales de `design.md > Verificación` leyendo (no ejecutando)
+- [x] **T0.2** Calcular a mano los literales de `design.md > Verificación` leyendo (no ejecutando)
   `derivarIngresoOrden`, `totalesIngresoEmpresa`, `netoEmpresa`, `ganaLaTienda`, `partesPorTienda`,
   `saldoDe` y `derivarPendienteCierre`. **Hecho:** literales anotados; si alguno no casa con el
   design, PARA y reporta (no se ajusta el literal a la salida).
-- [ ] **T0.3** Medir hoy: número de consultas de `listarHistoricoCierresBodegaCompleto` con 1 y con 3
+- [x] **T0.3** Medir hoy: número de consultas de `listarHistoricoCierresBodegaCompleto` con 1 y con 3
   cierres de bodega viejos (base de R384 «ninguna lectura más»). **Hecho:** números anotados.
 
 ## T1 — Derivación agregada única (backend_dev) · depende de T0
 
-- [ ] **T1.1** `lib/utils/cifras-cierre-bodega.ts > cifrasAgregadasBodega` con el bloque agregado de
+- [x] **T1.1** `lib/utils/cifras-cierre-bodega.ts > cifrasAgregadasBodega` con el bloque agregado de
   `verCierreBodegaDetalle` movido tal cual; el servicio lo llama. Nuevo
   `tests/unit/utils/cifras-cierre-bodega.test.ts` con los literales de BN (dos tiendas, rechazo de T1,
   neto 3 500.00, gana 92 090.00, por tienda en su orden). **Hecho:** verde; rojo con la mutación
