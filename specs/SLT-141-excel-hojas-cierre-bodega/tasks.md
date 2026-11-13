@@ -34,14 +34,14 @@
 
 ## T2 — Lectura en lote y servicios (backend_dev) · depende de T1
 
-- [ ] **T2.1** Tipos: `CifrasCierreBodegaDescargaDTO` / `…CentralDescargaDTO` y `cifrasModeloNuevo?` en
+- [x] **T2.1** Tipos: `CifrasCierreBodegaDescargaDTO` / `…CentralDescargaDTO` y `cifrasModeloNuevo?` en
   `lib/interfaces/services/ICierreBodegaService.ts` y `ICierresBodegaAdminService.ts`;
   `ConCifrasBodegaEnOk` y los tres tipos de borde en `lib/types/cierre-bodega.ts`. **Hecho:**
   typecheck verde.
-- [ ] **T2.2** `ICifrasBodegaLoteLectura` + `CifrasBodegaLoteRepository` (tres consultas, alcance en el
+- [x] **T2.2** `ICifrasBodegaLoteLectura` + `CifrasBodegaLoteRepository` (tres consultas, alcance en el
   `where`, campos obligatorios); exportar `DETALLE_CIERRE_SELECT` y `toDetalleCierreRow` de
   `CierresBodegaAdminRepository.ts`. **Hecho:** typecheck verde.
-- [ ] **T2.3** `CierresBodegaAdminService` (pendientes e histórico, con `pagoEntregado` según PA1) y
+- [x] **T2.3** `CierresBodegaAdminService` (pendientes e histórico, con `pagoEntregado` según PA1) y
   `CierreBodegaService` (solicitados, sin él), dependencias opcionales que lanzan si faltan con un
   cierre nuevo; inyección en `lib/actions/cierre-bodega.ts`. Nuevos
   `tests/unit/services/cierres-bodega-resumen-modelo-nuevo-service.test.ts` (a: solo viejos → la

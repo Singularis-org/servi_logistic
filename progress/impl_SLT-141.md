@@ -138,3 +138,93 @@ npx vitest run tests/unit/utils/cifras-cierre-bodega.test.ts \
 ### Veredicto
 
 T0 sin bloqueos y T1.1 hecha: verde, con la mutación probada en rojo.
+
+## Tanda 2 — backend_dev: T2 (T2.1, T2.2, T2.3) (2026-11-13)
+
+MCP del grafo: no usado; Grep/Read sobre el worktree.
+
+### Archivos
+
+- **Nuevos:** `lib/interfaces/repositories/ICifrasBodegaLoteLectura.ts` (`CierreDiaDeBodegaLoteRow`, todos
+  los campos obligatorios), `lib/repositories/CifrasBodegaLoteRepository.ts` (tres consultas: `cierreDia`
+  con el alcance en el `WHERE` (`cierreBodega: { zonaId }` / `{}`), `gestionOrden` y `cierreDetail` por
+  `cierreId in idsDia`; mismo orden y mapper que el detalle; `CierreDetalleFaltanteError` sin fallback;
+  `ids` vacío → `[]` sin consultar), `lib/services/cifras-bodega-descarga.ts` (piezas compartidas por los
+  dos servicios: `cierresBodegaModeloNuevo`, `cifrasBodegaDescarga`, `pagoEntregadoPorBodega`,
+  `LecturaCifrasBodegaAusenteError`, `LecturasPagoEntregadoBodega`).
+- **Modificados:** `ICierreBodegaService.ts` (`CifrasCierreBodegaDescargaDTO`,
+  `CifrasCierreBodegaCentralDescargaDTO`, `ConCifrasBodegaEnOk<R, C>` y el resultado de «Solicitados»),
+  `ICierresBodegaAdminService.ts` (los dos `…CompletoServiceResult`), `lib/types/cierre-bodega.ts` (los
+  tres tipos de borde), `CierresBodegaAdminRepository.ts` (exporta `DETALLE_CIERRE_SELECT` y
+  `toDetalleCierreRow`), `CierresBodegaAdminService.ts` (`completoConCifras`, deps 5.ª `cifrasLote` y 6.ª
+  `pagosEntregados`, opcionales), `CierreBodegaService.ts` (dep 5.ª `cifrasLote`, opcional; sin pagos),
+  `lib/actions/cierre-bodega.ts` (inyecta las dos cosas en la central y la lectura en la satélite).
+- **Tests nuevos:** `tests/unit/services/cierres-bodega-resumen-modelo-nuevo-service.test.ts` (5 casos ×
+  las dos descargas de la central), `tests/unit/services/cierre-bodega-solicitados-modelo-nuevo-service.test.ts`
+  (4), `tests/unit/actions/cierre-bodega-cifras-cableado.test.ts` (3).
+
+### Decisiones técnicas de la tanda
+
+- `ConCifrasBodegaEnOk` se declara en `ICierreBodegaService.ts` (junto a los DTO, como
+  `ConCifrasModeloNuevoEnOk` de SLT-140 en `ICierresAdminService.ts`) y `lib/types/cierre-bodega.ts` lo
+  importa: así los resultados de servicio y de borde usan el mismo genérico. Lleva el DTO como segundo
+  parámetro para que la satélite no pueda tiparse con `pagoEntregado`.
+- `partesPorTienda: ParteDeTienda[]` (como el design); satisface estructuralmente el
+  `ParteDeTiendaDescargaDTO` que pide `filaPorTienda` de SLT-140.
+- «Pago entregado» (PA1, decisión del leader): Σ por cierre del día de `derivarPagoEntregadoCierre`; las
+  tres lecturas se llaman UNA vez para todo el lote (vigentes y premios con los aprobados; satélite solo
+  con los aprobados con la marca, y sin ninguno no se llama).
+- La zona horaria se lee solo cuando hay cierres nuevos (R384: sin ellos, ninguna lectura más).
+- La lectura en lote se llama tras el tope (`limite_excedido` no lee nada nuevo).
+
+### Mutaciones (aplicar → correr → revertir → correr), script `scratchpad/mut.py`
+
+| # | Mutación | Test | Mutado | Revertido |
+|---|---|---|---|---|
+| M1 | central sin la lectura en lote (`undefined` en su lugar) | `cierre-bodega-cifras-cableado.test.ts` | 2 failed / 1 passed, EXIT=1 | 3 passed, EXIT=0 |
+| M2 | central sin las tres lecturas de pago | idem | 2 failed / 1 passed, EXIT=1 | 3 passed, EXIT=0 |
+| M3 | satélite sin la lectura en lote | idem | 1 failed / 2 passed, EXIT=1 | 3 passed, EXIT=0 |
+| M4 | mandar `pagoEntregado` a la satélite (`.map(c => ({ ...c, pagoEntregado: null }))`) | `cierre-bodega-solicitados-modelo-nuevo-service.test.ts` | 1 failed / 3 passed, EXIT=1 | 4 passed, EXIT=0 |
+| M5 | «Pago entregado» sin premios (`P − pendiente`) | `cierres-bodega-resumen-modelo-nuevo-service.test.ts` | (c) ×2 failed / 8 passed, EXIT=1 | 10 passed, EXIT=0 |
+| M6 | leer el lote sin filtrar por `incluyeModeloNuevo` | los dos de servicio | 8 failed, EXIT=1 | 14 passed, EXIT=0 |
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R384 | `cierres-bodega-resumen-modelo-nuevo-service.test.ts` (a) · `cierre-bodega-solicitados-modelo-nuevo-service.test.ts` («solo cierres viejos») |
+| R385 | `cierres-bodega-resumen-modelo-nuevo-service.test.ts` (b) |
+| R386 | `cierre-bodega-solicitados-modelo-nuevo-service.test.ts` (sin `pagoEntregado`; M4) · cableado (satélite sin pagos) |
+| R387 | (b) de la central y el caso R386 de la satélite (importes a mano) |
+| R388 | (b) Gestiones / Pagos ajustados / Pago entregado · (c) PA1 |
+| R389 | (c) una llamada por lectura · alcance `zona` de la satélite · `cierre-bodega-cifras-cableado.test.ts` (M1-M3). El conteo de consultas y el alcance en SQL van en T3.1 |
+
+### Verificación de la tanda
+
+- `pnpm run typecheck` → TC_EXIT=0.
+- `pnpm exec eslint` sobre los 13 archivos tocados → LINT_EXIT=0, sin avisos.
+- Tests nuevos: 3 archivos, 17 passed, EXIT=0.
+- `pnpm exec vitest related --run` (los 13 archivos) → 241 archivos, 3 264 passed / 30 failed / 17
+  skipped, REL_EXIT=1. Desglose de los 8 archivos rojos:
+  - **1 por este cambio, corregido:** `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts`. (i) Su
+    `servicioZona` construía `CierreBodegaService` sin la lectura en lote y lee «Solicitados» con
+    consolidaciones nuevas → `LecturaCifrasBodegaAusenteError` (el contrato «ruidosa si falta» de
+    T2.3). Se le pasa la `CifrasBodegaLoteRepository` real, como producción. (ii) El caso «tres cierres
+    cuestan una sentencia» contaba las de `cierre_detail` de esa descarga: con consolidaciones nuevas
+    ahora son **2** (1 de D40 + 1 del lote de SLT-141, fija con tres). Aserción `1 → 2` con comentario.
+    **Para el leader/reviewer:** es un literal existente cambiado a propósito (la lectura nueva es la de
+    R385/R389, no una por fila). Tras el arreglo: 16/16 verdes.
+  - **7 de entorno, no de código:** `marca-conciliacion.int`, `corregir-conciliacion.int`,
+    `cierre-bodega-conciliacion.int`, `cierre-bodega-desglose-por-tienda-sql-real`,
+    `486-evidencias-cierres-sql-real`, `454/cierre-bodega-sf001-sql-real`,
+    `454/caracterizacion/alcance-satelite-y-sf001`: todos paran en su precondición de datos («`usuario`
+    vacía / menos de 2 filas», «`orden` vacía: corre `pnpm run db:seed`»). La base desechable
+    `slt141_wt` está migrada pero sin semilla. No la sembré (no estaba en el encargo): queda abierto.
+- `pnpm run test:guardias` → 341/344 archivos; rojos: los 4 de la guardia 420 (baseline conocido) y 2
+  timeouts de 20 s (`dominio-ordenex-fuera`, `otp-debug-solo-en-pruebas`) por correr a la vez que
+  `vitest related`; re-ejecutados solos: 20/20 verdes, EXIT=0.
+
+### Veredicto
+
+T2 hecha: tipos, lectura en lote y servicios con cableado probado; las 6 mutaciones dan rojo y vuelven a
+verde. Abierto: semilla de la base desechable para los 7 de integración y el literal 1 → 2 de D40.

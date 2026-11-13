@@ -51,6 +51,14 @@ import {
 } from "@/lib/utils/ingreso-empresa";
 import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
 import { cifrasAgregadasBodega } from "@/lib/utils/cifras-cierre-bodega";
+import type { ICifrasBodegaLoteLectura } from "@/lib/interfaces/repositories/ICifrasBodegaLoteLectura";
+import {
+  cierresBodegaModeloNuevo,
+  cifrasBodegaDescarga,
+  LecturaCifrasBodegaAusenteError,
+  pagoEntregadoPorBodega,
+  type LecturasPagoEntregadoBodega,
+} from "@/lib/services/cifras-bodega-descarga";
 import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 
 // Roles autorizados (R2): acceso total (maestro/admin, bodega central). El alcance es
@@ -81,7 +89,52 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
      * tiene alcance: falla cerrado (`forbidden`).
      */
     private readonly zonaDelUsuario?: Pick<IOrdenRepository, "findUsuarioZonaId">,
+    /**
+     * SLT-141 (R389): la lectura en lote de los cierres del dia de los cierres de bodega NUEVOS de una
+     * descarga. Opcional para no tocar los dobles de hoy; con un cierre nuevo y sin ella, lanza.
+     */
+    private readonly cifrasLote?: ICifrasBodegaLoteLectura,
+    /**
+     * SLT-141 (R388, PA1): las tres lecturas de lo pagado al mensajero, para «Pago entregado» (solo la
+     * central). Opcional por el mismo motivo y ruidosa por el mismo motivo.
+     */
+    private readonly pagosEntregados?: LecturasPagoEntregadoBodega,
   ) {}
+
+  /**
+   * SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (R384-R389) — la rama `ok` de los dos
+   * `listar…Completo`: las filas de hoy y, SOLO si algun cierre de bodega del conjunto es del modelo
+   * nuevo (`incluyeModeloNuevo`, D40), `cifrasModeloNuevo` (uno por cierre nuevo, en el orden de
+   * `items`). Sin ninguno: ni la clave ni una lectura mas (R384). Con alguno: UNA lectura en lote con
+   * el alcance de la central y las tres de pago, una vez cada una (R389).
+   */
+  private async completoConCifras(
+    items: CierreBodegaResumen[],
+    operacion: string,
+  ): Promise<ListarHistoricoCierresBodegaCompletoServiceResult> {
+    const total = items.length;
+    const nuevos = cierresBodegaModeloNuevo(items);
+    if (nuevos.length === 0) return { status: "ok", items, total }; // R384: cero lecturas mas
+    if (this.cifrasLote === undefined || this.pagosEntregados === undefined) {
+      throw new LecturaCifrasBodegaAusenteError(operacion);
+    }
+    const ids = nuevos.map((c) => c.cierreBodegaId);
+    const filas = await this.cifrasLote.leerCierresDiaDeBodegas(
+      ids,
+      { lectura: "toda_la_empresa" },
+      await zonaDeLaEmpresa(this.reglasPais, operacion),
+    );
+    const entregado = await pagoEntregadoPorBodega(ids, filas, this.pagosEntregados, operacion);
+    return {
+      status: "ok",
+      items,
+      total,
+      cifrasModeloNuevo: cifrasBodegaDescarga(nuevos, filas).map((c) => ({
+        ...c,
+        pagoEntregado: entregado.get(c.cierreBodegaId) ?? null, // PA1: solo la central
+      })),
+    };
+  }
 
   /**
    * SLT-107 (R280-R282): con que alcance lee `actor` el detalle de un cierre de bodega. `null` =
@@ -236,7 +289,11 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       return { status: "limite_excedido", total: conjunto.length, limite };
     }
 
-    return { status: "ok", items: conjunto.map(toResumen), total: conjunto.length };
+    // SLT-141 (R384, R385): tras el tope, las cifras de los cierres nuevos (si los hay).
+    return this.completoConCifras(
+      conjunto.map(toResumen),
+      "CierresBodegaAdminService.listarHistoricoCierresBodegaCompleto",
+    );
   }
 
   /**
@@ -272,7 +329,11 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       return { status: "limite_excedido", total: conjunto.length, limite }; // R6
     }
 
-    return { status: "ok", items: conjunto.map(toResumen), total: conjunto.length };
+    // SLT-141 (R384, R385): tras el tope, las cifras de los cierres nuevos (si los hay).
+    return this.completoConCifras(
+      conjunto.map(toResumen),
+      "CierresBodegaAdminService.listarPendientesCierresBodegaCompleto",
+    );
   }
 
   /**

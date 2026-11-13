@@ -3,6 +3,8 @@ import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
 import type {
   CierreBodegaDetalleCierre,
   CierreBodegaResumen,
+  CifrasCierreBodegaCentralDescargaDTO,
+  ConCifrasBodegaEnOk,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { TotalesIngresoEmpresa } from "@/lib/interfaces/services/ICierreDiaService";
 // Ficha 396 — mismo camino que en `ICierresAdminService` y en `ICierreBodegaService`: la parte
@@ -56,15 +58,19 @@ export type ListarPendientesCierresBodegaServiceResult =
  * `limite_excedido` lleva SOLO conteos, nunca filas ni un conjunto truncado (R6). No hay
  * `sinZona`: este listado es de acceso total y no se acota por zona.
  */
-export type ListarHistoricoCierresBodegaCompletoServiceResult =
-  ListarCompletoServiceResult<CierreBodegaResumen>;
+export type ListarHistoricoCierresBodegaCompletoServiceResult = ConCifrasBodegaEnOk<
+  ListarCompletoServiceResult<CierreBodegaResumen>,
+  CifrasCierreBodegaCentralDescargaDTO
+>; // SLT-141 (R385): con cierres nuevos, sus cifras
 
 /**
  * Feature 184 — Tanda E (T E.2, R1/R6) — la COLA ENTERA de cierres de bodega pendientes, sin
  * recorte: el conjunto del que sale el archivo del listado 4.
  */
-export type ListarPendientesCierresBodegaCompletoServiceResult =
-  ListarCompletoServiceResult<CierreBodegaResumen>;
+export type ListarPendientesCierresBodegaCompletoServiceResult = ConCifrasBodegaEnOk<
+  ListarCompletoServiceResult<CierreBodegaResumen>,
+  CifrasCierreBodegaCentralDescargaDTO
+>; // SLT-141 (R385)
 
 // R2/R11-R13/R19: detalle agregado de UN cierre de bodega (por cada cierre_dia, su
 // detalle por resultado reuso 37 + totales). `no_encontrada` = id inexistente (R19).
