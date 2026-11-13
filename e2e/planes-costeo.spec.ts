@@ -235,6 +235,15 @@ function b(): EmpresaE2E {
   return empresaB;
 }
 
+/**
+ * SLT-130 (design §4): pulsa «Siguiente» del form del plan y espera a que el paso `proximo` esté en
+ * pantalla (su título es el `h3` del paso).
+ */
+async function siguientePaso(form: Locator, proximo: string): Promise<void> {
+  await form.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
 test("el superadmin crea un custom de A «Con monto» con costo por orden 100, que queda asignado (R26, D2, D4–D6)", async () => {
   test.setTimeout(240_000);
   const page = superadmin();
@@ -251,18 +260,13 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100, q
   const form = page.getByRole("dialog").getByRole("form", { name: "Crear plan" });
   await expect(form).toBeVisible({ timeout: 60_000 });
 
+  // SLT-130 (design §4): el form va por pasos. General: nombre, custom, empresa, tipo de cobro e inicio.
+  await expect(form.getByRole("heading", { level: 3, name: "General", exact: true })).toBeVisible();
   await form.getByRole("textbox", { name: /^Nombre/ }).fill(nombreDelPlan);
   await form.getByRole("radio", { name: "Custom", exact: true }).click();
   await form.getByRole("combobox", { name: "Empresa" }).click();
   await page.getByRole("option", { name: nombreA, exact: true }).click();
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveText(nombreA);
-  // Todos los módulos: asignar el plan no apaga la wallet que el paso 3 abre. Topes vacíos = sin límite.
-  for (const modulo of ORDEN_MODULOS) {
-    await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
-  }
-  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
-  await form.getByLabel("Costo base mensual", { exact: true }).fill(COSTO_BASE_MENSUAL);
-  await form.getByLabel("Costo por orden", { exact: true }).fill(COSTO_POR_ORDEN);
 
   // D6: «Mensual», el tipo por defecto, que es el que da el total mensual de «Mi plan».
   const mensual = form.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Mensual", exact: true });
@@ -273,6 +277,20 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100, q
   const inicio = form.getByLabel("Inicio del período", { exact: true });
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   await inicio.fill(primerDiaDelMes());
+
+  await siguientePaso(form, "Precio y descuentos");
+  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
+  await form.getByLabel("Costo base mensual", { exact: true }).fill(COSTO_BASE_MENSUAL);
+  await siguientePaso(form, "Cobro por orden");
+  await form.getByLabel("Costo por orden", { exact: true }).fill(COSTO_POR_ORDEN);
+  // Topes vacíos = sin límite.
+  await siguientePaso(form, "Topes");
+  // Todos los módulos: asignar el plan no apaga la wallet que el paso 3 abre.
+  await siguientePaso(form, "Módulos");
+  for (const modulo of ORDEN_MODULOS) {
+    await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
+  }
+  await siguientePaso(form, "Revisar y crear");
 
   // D13/D17: «Crear plan» espera a la vista previa.
   const crear = form.getByRole("button", { name: "Crear plan" });

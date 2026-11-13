@@ -49,7 +49,13 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { cn } from "@/lib/utils";
 
-import { mensajeDelRechazo, PlanForm, RECHAZO_GENERICO, TEXTOS_PLAN_FORM } from "../../_components/PlanForm";
+import {
+  ESTILO_SHEET_PLAN,
+  mensajeDelRechazo,
+  PlanForm,
+  RECHAZO_GENERICO,
+  TEXTOS_PLAN_FORM,
+} from "../../_components/PlanForm";
 import {
   lineasDeTopes,
   TEXTOS_PLAN,
@@ -391,12 +397,12 @@ export function PlanDetalle({
       {plan.archivado ? null : (
         <>
           <Sheet open={editando} onOpenChange={setEditando}>
-            <SheetContent className="w-full overflow-y-auto sm:max-w-lg data-[side=right]:sm:max-w-lg">
+            <SheetContent className="gap-0" style={ESTILO_SHEET_PLAN}>
               <SheetHeader>
                 <SheetTitle>{TEXTOS.tituloEditar}</SheetTitle>
                 <SheetDescription>{TEXTOS.descripcionEditar}</SheetDescription>
               </SheetHeader>
-              <div className="px-4 pb-4">
+              <div className="flex min-h-0 flex-1">
                 <PlanForm
                   modo="editar"
                   plan={plan}

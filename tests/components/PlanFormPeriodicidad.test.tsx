@@ -8,6 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
+import { avanzarHasta, terminar } from "./plan-form-pasos";
+
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const RANGO = { hoy: "2026-11-10", min: "2026-10-10", max: "2026-12-10" };
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
@@ -50,10 +52,16 @@ function montarEditar(plan: PlanDTO = PLAN, enviar = vi.fn().mockResolvedValue(O
 }
 
 const grupo = () => screen.getByRole("radiogroup", { name: "Facturación de órdenes" });
+/** SLT-130 (R5): salta a un paso ya visitado desde la lista de pasos. */
+const irAlPaso = (user: ReturnType<typeof userEvent.setup>, titulo: string) =>
+  user.click(within(screen.getByRole("navigation", { name: "Pasos" })).getByRole("button", { name: titulo }));
 
 describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan", () => {
-  it("R35: ofrece «Quincenal» y «Mensual», con quincenal marcada al crear", () => {
+  it("R35: ofrece «Quincenal» y «Mensual», con quincenal marcada al crear", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
+    await avanzarHasta(user, "Cobro por orden");
     expect(within(grupo()).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "Quincenal",
       "Mensual",
@@ -65,11 +73,13 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
     const user = userEvent.setup();
     const { enviar } = montarCrear();
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0].periodicidadOrdenes).toBe("quincenal");
 
+    await irAlPaso(user, "Cobro por orden");
     await user.click(within(grupo()).getByRole("radio", { name: "Mensual" }));
+    await irAlPaso(user, "Revisar y crear");
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(2));
     expect(enviar.mock.calls[1]![0].periodicidadOrdenes).toBe("mensual");
@@ -78,8 +88,9 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
   it("R35: al editar marca la del plan y la manda aunque no se toque", async () => {
     const user = userEvent.setup();
     const { enviar } = montarEditar();
+    await avanzarHasta(user, "Cobro por orden");
     expect(within(grupo()).getByRole("radio", { name: "Mensual" })).toBeChecked();
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({ planId: PLAN_ID, periodicidadOrdenes: "mensual" });
   });
@@ -89,9 +100,10 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
     const sinPeriodicidad: PlanDTO = { ...PLAN };
     delete sinPeriodicidad.periodicidadOrdenes;
     const { enviar } = montarEditar(sinPeriodicidad);
+    await avanzarHasta(user, "Cobro por orden");
     expect(within(grupo()).getByRole("radio", { name: "Quincenal" })).toBeChecked();
     await user.click(within(grupo()).getByRole("radio", { name: "Mensual" }));
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0].periodicidadOrdenes).toBe("mensual");
   });
@@ -104,7 +116,7 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
       fieldErrors: { periodicidadOrdenes: [mensaje] },
     } satisfies PlanResult);
     montarEditar(PLAN, enviar);
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     // Va junto a su campo (su `FieldError`, enlazado por `aria-describedby`), no al aviso general.
     const error = (await screen.findByText(mensaje)).closest<HTMLElement>('[role="alert"]');
