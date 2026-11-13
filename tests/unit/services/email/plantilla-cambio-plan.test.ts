@@ -3,8 +3,12 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { lineasDeCambioDelPlan } from "@/lib/planes/mensajes";
-import { plantillaCambioPlan, type CambioPlanParams } from "@/lib/services/email/plantillas/cambio-plan";
+import { lineaNoAplicada, lineasDeCambioDelPlan, textoMotivoNoAplicada } from "@/lib/planes/mensajes";
+import {
+  plantillaCambioPlan,
+  plantillaCambioPlanNoAplicado,
+  type CambioPlanParams,
+} from "@/lib/services/email/plantillas/cambio-plan";
 import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SL-24 · T12 (design §16.4; R41, R42, R45) — el correo del cambio de un plan. Los literales del spec
@@ -129,6 +133,24 @@ describe("SL-24 — recordatorios (R42)", () => {
     expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
   });
 
+  it("SLT-128 R22: a 3 días, con el asunto y la intro literales del spec y las líneas de cambio", () => {
+    const m = correo({ tipo: "recordatorio_3" });
+    expect(m.subject).toBe("El plan Básico cambia en 3 días");
+    expect(m.text).toContain("Faltan 3 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
+    expect(m.html).toContain("Faltan 3 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
+    expect(m.text).not.toContain("Faltan 7 días");
+  });
+
+  it("SLT-128 R22: el de 3 días también dice qué topes ya pasa la empresa", () => {
+    const m = correo({
+      tipo: "recordatorio_3",
+      topesPasados: [{ empresa: "Mensajería Uno", tope: "adminTienda", usados: 4, maximo: 3 }],
+    });
+    expect(m.text).toContain("Con el plan nuevo, tu empresa ya pasa estos topes:");
+  });
+
   it("a 1 día", () => {
     const m = correo({ tipo: "recordatorio_1" });
     expect(m.subject).toBe("El plan Básico cambia mañana");
@@ -178,5 +200,52 @@ describe("SL-24 — marca, país y escapado", () => {
     expect(m.text).toContain("Facturación de órdenes: quincenal → mensual");
     expect(m.html).toContain("Facturación de órdenes: quincenal → mensual");
     expect(correo().text).not.toContain("Facturación de órdenes");
+  });
+});
+
+describe("SLT-128 — el correo a la lista de alertas de una recepción no aplicada (§14.4; R28)", () => {
+  const m = plantillaCambioPlanNoAplicado({
+    to: "ops@servi.example",
+    empresaNombre: "Mensajería B",
+    planNombre: "Básico",
+    fecha: "1 dic 2026",
+    motivo: "cobro_quincenal_ordenes_mensuales",
+    contacto: "hola@ejemplo.example",
+  });
+
+  it("R28: el asunto nombra el plan y la empresa", () => {
+    expect(m.to).toBe("ops@servi.example");
+    expect(m.subject).toBe("El cambio del plan Básico no se aplicó a Mensajería B");
+  });
+
+  it("R28: el cuerpo lleva la fecha, el motivo literal y «Sigue con su versión anterior.», en texto y HTML", () => {
+    for (const cuerpo of [m.text, m.html]) {
+      expect(cuerpo).toContain("1 dic 2026");
+      expect(cuerpo).toContain("cobra por quincena y el plan nuevo factura las órdenes por mes");
+      expect(cuerpo).toContain("Sigue con su versión anterior.");
+    }
+    expect(m.text).toContain("hola@ejemplo.example");
+  });
+
+  it("R28: los textos literales del spec (motivo y línea del detalle)", () => {
+    expect(textoMotivoNoAplicada("cobro_quincenal_ordenes_mensuales")).toBe(
+      "cobra por quincena y el plan nuevo factura las órdenes por mes",
+    );
+    expect(lineaNoAplicada("B", "cobro_quincenal_ordenes_mensuales")).toBe(
+      "B no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. Sigue con su versión anterior.",
+    );
+  });
+
+  it("los datos variables se escapan en el HTML", () => {
+    const x = plantillaCambioPlanNoAplicado({
+      to: "ops@servi.example",
+      empresaNombre: "<b>B</b>",
+      planNombre: "A & B",
+      fecha: "1 dic 2026",
+      motivo: "cobro_quincenal_ordenes_mensuales",
+      contacto: null,
+    });
+    expect(x.html).toContain("&lt;b&gt;B&lt;/b&gt;");
+    expect(x.html).not.toContain("<b>B</b>");
   });
 });

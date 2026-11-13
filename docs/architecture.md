@@ -379,10 +379,18 @@ esta bien hecha, no solo si "funciona".
       pago no ganan los dos.
   - **Lectura:** la empresa lee sus facturas con `FacturaPlataformaRepository.deLaEmpresa`. Es una
     sola sentencia que trae las cerradas y `factura_plataforma_en_curso` (`42501` con otra empresa o
-    sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. La
-    lectura del superadmin de una empresa (`deEmpresaParaPlataforma`) **aún no existe**: está abierta
-    la pregunta de cómo fija el contexto de empresa (`progress/features/SLT-118.md > Preguntas
-    abiertas`).
+    sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. El
+    superadmin lee las de una empresa con `deEmpresaParaPlataforma(organizacionId)`, la misma sentencia
+    con `conEmpresa`, sin `comoPlataforma`.
+  - **Pantallas (SLT-119, 2026-11-12).** Las facturas van **por empresa, no por plan**: el plan es
+    una columna de cada factura. Se pintan en la sección «Facturas de la empresa» de «Mi plan» (solo el
+    maestro) y en la pestaña «Facturación» del detalle de empresa del superadmin (la pestaña
+    «Empresa» sigue siendo la de por defecto). Componentes en `components/shared/facturas/`; servicio
+    `FacturaPlataformaService` (la autorización vive ahí) y actions en `lib/actions/facturas-plataforma.ts`.
+    Una cerrada muestra su número «N.º N»; una no cerrada, «En curso». El detalle se abre en un panel
+    lateral, se carga al abrirlo y al paginar, y sus líneas salen de `cobro_plataforma_traza` por
+    `cobrado_at` en `[desde, hasta)`, 100 por página (`detalleDeLaEmpresa` / `detalleParaPlataforma`),
+    sin copiarlas. Solo lectura: sin descarga (SLT-136).
 - **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
   plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
   empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo

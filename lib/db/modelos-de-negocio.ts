@@ -182,6 +182,11 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   // Descuentos por periodo y historial de precio de un plan (SLT-86): igual que el catalogo
   { modelo: "PlanDescuentoPeriodo", tabla: "plan_descuento_periodo" },
   { modelo: "PlanPrecioHistorial", tabla: "plan_precio_historial" },
+  // La recepción por empresa del cambio programado y la versión propia durante un cambio a medias
+  // (SLT-128, R26): llevan la empresa en `empresa_id` (no `organizacion_id`, que esta lista reserva a los
+  // modelos de negocio), pero la empresa no las lee ni las escribe
+  { modelo: "PlanCambioRecepcion", tabla: "plan_cambio_recepcion" },
+  { modelo: "PlanVersionEmpresa", tabla: "plan_version_empresa" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)

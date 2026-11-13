@@ -7,6 +7,7 @@ import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositorie
 import type {
   AsignacionLeida,
   AvisoCorreoPlan,
+  AvisoNoAplicadaPlan,
   CambioDeEmpresaPendiente,
   CambioPendiente,
   DestinatariosDelAviso,
@@ -15,10 +16,14 @@ import type {
   EmpresaDePlanes,
   EmpresaParaElMaestro,
   IPlanesDelMaestroRepository,
+  IPlanesRecepcionesRepository,
   IPlanesRepository,
+  NoAplicadaLeida,
   PlanDeEmpresaLeida,
   PrecioDesdeLeido,
+  PendienteDelDetalleLeido,
   PlanDelCatalogoLeido,
+  RecepcionPendiente,
   AsignacionAlCrear,
   ResultadoAplicar,
   ResultadoArchivar,
@@ -26,10 +31,12 @@ import type {
   ResultadoCambiarTipoCobro,
   ResultadoCambioDelMaestro,
   ResultadoCancelarCambio,
+  ResultadoCancelarCambioDelPlan,
   ResultadoCancelarDelMaestro,
   ResultadoCrearYAsignar,
   ResultadoEdicion,
   ResultadoProgramar,
+  ResultadoRecibir,
   ResultadoRecordatorio,
   VistaPreviaLeida,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
@@ -37,7 +44,14 @@ import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
 import { esPlanDisponible } from "@/lib/planes/costo-concreto";
-import { FECHA_DE_EFECTO_OBLIGATORIA, SOLO_CON_PLAN, SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
+import { fechaDeRecepcion, recordatoriosDe, type DiasDeRecordatorio } from "@/lib/planes/recepcion";
+import {
+  FECHA_DE_EFECTO_OBLIGATORIA,
+  MOTIVOS_NO_APLICADA,
+  SOLO_CON_PLAN,
+  SOLO_PRIMERA_ASIGNACION,
+  type MotivoNoAplicada,
+} from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan, hayCambios, importeCanonico, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { pendienteDeEmpresa, precioDelHistorial } from "@/lib/repositories/_shared/precio-del-periodo";
@@ -52,6 +66,7 @@ import {
   type CostoPorOrdenPorcentual,
   type CrearPlanInput,
   type DescuentoPeriodo,
+  type PeriodicidadOrdenes,
   periodicidadOrdenesSchema,
   type PlanDTO,
   type PrecioPlan,
@@ -98,7 +113,14 @@ import {
 
 export type PlanesPrismaClient = Pick<
   PrismaClient,
-  "plan" | "organizacion" | "planCambioProgramado" | "usuario" | "historialAccion" | "planRastro" | "$transaction"
+  | "plan"
+  | "organizacion"
+  | "planCambioProgramado"
+  | "planCambioRecepcion"
+  | "usuario"
+  | "historialAccion"
+  | "planRastro"
+  | "$transaction"
 >;
 type Tx = Prisma.TransactionClient;
 
@@ -199,7 +221,17 @@ async function guardarDescuentos(tx: Tx, planId: string, precio: PrecioPlan): Pr
  * siempre (`-infinity`, al crear). Dos ediciones del mismo día dejan la última. `descuentos` con la forma
  * de `PrecioPlan.descuentos`, que es la que lee `precio_del_periodo`.
  */
-async function escribirPrecioDelHistorial(tx: Tx, planId: string, desde: Date | "siempre", precio: PrecioPlan): Promise<void> {
+async function escribirPrecioDelHistorial(
+  tx: Tx,
+  planId: string,
+  desde: Date | "siempre",
+  precio: PrecioPlan,
+  /**
+   * SLT-128 (design §3.2, §3.3; R3): `"dejar"` = si ya hay fila en `desde`, se queda. La recepción de la primera
+   * empresa la escribe y ni las siguientes ni la promoción la tocan.
+   */
+  siYaEsta: "pisar" | "dejar" = "pisar",
+): Promise<void> {
   const mensual = precio.tipo === "monto" ? precio.mensual : null;
   // Con dos decimales, como los lee `plan_descuento_periodo`: «10» y «10.00» son el mismo descuento.
   const canonicos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
@@ -215,11 +247,14 @@ async function escribirPrecioDelHistorial(tx: Tx, planId: string, desde: Date | 
   }
   const descuentos = JSON.stringify(canonicos);
   const desdeAt = desde === "siempre" ? Prisma.sql`'-infinity'::timestamp` : Prisma.sql`${comoTimestamp(desde)}::timestamp`;
+  const alChocar =
+    siYaEsta === "dejar"
+      ? Prisma.sql`DO NOTHING`
+      : Prisma.sql`DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
   await tx.$executeRaw`
     INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos")
     VALUES (${planId}, ${desdeAt}, ${mensual}::numeric, ${descuentos}::jsonb)
-    ON CONFLICT ("plan_id", "desde_at")
-    DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
+    ON CONFLICT ("plan_id", "desde_at") ${alChocar}`;
 }
 
 /** SLT-83 (R1, R4): las dos columnas del modo porcentual; `null` las vacía (el plan pasa a fijo o vacío). */
@@ -252,13 +287,23 @@ async function bloquearPlanParaEscribir(tx: Tx, planId: string): Promise<boolean
  * quincenal a mensual. El cerrojo del plan espera a las asignaciones en vuelo (que lo tienen FOR SHARE) y las
  * siguientes leen el plan ya mensual y se rechazan solas.
  */
-async function empresasQuincenalesSiPasaAMensual(tx: Tx, antes: PlanDTO, version: VersionPlan): Promise<number> {
+async function empresasQuincenalesSiPasaAMensual(
+  tx: Tx,
+  antes: PlanDTO,
+  version: VersionPlan,
+  /**
+   * SLT-128 (R28): las empresas cuya recepción de ESTE cambio quedó «no aplicada»: conservan su versión al
+   * promover, así que no frenan el plan.
+   */
+  excluir: readonly string[] = [],
+): Promise<number> {
   if (version.periodicidadOrdenes !== "mensual" || antes.periodicidadOrdenes === "mensual") return 0;
   const [{ empresas }] = await tx.$queryRaw<{ empresas: number }[]>`
     SELECT count(*)::int AS "empresas"
       FROM "organizacion"
-     WHERE ("plan_id" = ${antes.id} AND "plan_tipo_cobro" = 'quincenal')
-        OR ("plan_cambio_plan_id" = ${antes.id} AND "plan_cambio_tipo_cobro" = 'quincenal')`;
+     WHERE (("plan_id" = ${antes.id} AND "plan_tipo_cobro" = 'quincenal')
+        OR ("plan_cambio_plan_id" = ${antes.id} AND "plan_cambio_tipo_cobro" = 'quincenal'))
+       AND NOT ("id" = ANY(${[...excluir]}::text[]))`;
   return empresas;
 }
 
@@ -420,6 +465,11 @@ async function aplicarVersion(
   actor: ActorCongelado,
   /** SLT-86 (§1.2; R15): desde cuándo rige el precio nuevo, si la versión lo cambia. */
   precioDesde: Date,
+  /**
+   * SLT-128 (design §3.2; R10): al promover, cada empresa ya recibió sus módulos: repetirlos borraría las
+   * excepciones de R4. El precio lo escribe aparte `escribirPrecioDelCambio`, como al recibir.
+   */
+  opciones: { sincronizarModulos: boolean; escribirPrecio: boolean } = { sincronizarModulos: true, escribirPrecio: true },
 ): Promise<void> {
   await tx.plan.update({
     where: { id: antes.id },
@@ -436,7 +486,7 @@ async function aplicarVersion(
   });
   await guardarDescuentos(tx, antes.id, version.precio);
   // R15: el precio vigente y su fila del historial cambian juntos; sin cambio de precio, ninguna fila.
-  if (cambiaElPrecio(diferenciasDelPlan(antes, { ...antes, ...version }))) {
+  if (opciones.escribirPrecio && cambiaElPrecio(diferenciasDelPlan(antes, { ...antes, ...version }))) {
     const vigente = (await leerPlan(tx, antes.id)) as PlanDTO;
     await escribirPrecioDelHistorial(tx, antes.id, precioDesde, vigente.precio);
   }
@@ -447,7 +497,7 @@ async function aplicarVersion(
 
   const anadidos = version.modulos.filter((m) => !antes.modulos.includes(m));
   const quitados = antes.modulos.filter((m) => !version.modulos.includes(m));
-  if (anadidos.length === 0 && quitados.length === 0) return;
+  if (!opciones.sincronizarModulos || (anadidos.length === 0 && quitados.length === 0)) return;
   const empresas = await tx.organizacion.findMany({
     where: { planId: antes.id },
     orderBy: { id: "asc" },
@@ -475,11 +525,16 @@ async function cancelarPendienteEnTx(
     select: { id: true, vigenteDesde: true },
   });
   if (pendiente === null) return false;
+  // SLT-128 (R20): a cada empresa se le anunció SU recepción; la cancelación habla de esa fecha. Se leen antes
+  // de borrar el pendiente, que se las lleva en cascada.
+  const filas = await tx.planCambioRecepcion.findMany({ where: { cambioId: pendiente.id }, select: { empresaId: true, recibeAt: true } });
+  const recepciones = new Map(filas.map((r) => [r.empresaId, r.recibeAt]));
+  // SLT-128 (R29): todos los trabajos del pendiente, con y sin empresa. Sirve a cancelar y a archivar (R40).
+  await descartarTrabajos(tx, pendiente.id, clavesDelPendiente(pendiente.id, filas));
   await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
   // R45 (§16.2): un `plan_aviso_correo` `cancelado` por cada empresa del plan, en esta transacción.
   // Sirve a cancelar a mano y a archivar (R40); reemplazar NO pasa por aquí (no lleva correo de
   // cancelación aparte). El envío va por la cola: un fallo del correo no deshace la cancelación.
-  const vigenteDesde = pendiente.vigenteDesde.toISOString();
   await encolarAvisos(
     tx,
     (await empresasDelPlan(tx, plan.id)).map((e) => ({
@@ -491,7 +546,7 @@ async function cancelarPendienteEnTx(
         planNombre: plan.nombre,
         tipo: "cancelado",
         cambios: {},
-        vigenteDesde,
+        vigenteDesde: (recepciones.get(e.id) ?? pendiente.vigenteDesde).toISOString(),
         reemplazaA: null,
         topesPasados: [],
       },
@@ -539,20 +594,18 @@ async function encolarAplicacion(tx: Tx, cambio: CambioPendiente, vigenteDesde: 
 /* Correos del cambio (T12; §16.2 paso 6, §16.4; R41, R42, R45)                */
 /* -------------------------------------------------------------------------- */
 
-const UN_DIA_MS = 24 * 60 * 60 * 1000;
-/** Los dos recordatorios: 7×24 h y 24 h antes de `vigente_desde` (§16.1). */
-const DIAS_DE_RECORDATORIO = [7, 1] as const;
-
-/** `dedupe_key` de un recordatorio de ESA programación: uno por días, aunque se encole dos veces. */
-export function dedupeRecordatorio(cambioId: string, dias: 7 | 1): string {
-  return `plan_recordatorio:${cambioId}:${dias}`;
-}
+// SLT-128 (R21): los recordatorios ya no son del plan: cada empresa tiene los suyos, contados hasta su
+// recepción (`fijarRecepciones`, `dedupeRecordatorio`).
 
 /**
  * `dedupe_key` de un aviso: `plan_aviso:<cambioId|editId>:<tipo>:<organizacionId>` (§16.4). Impide
  * encolar dos veces el mismo aviso a la misma empresa (R42), aunque el recordatorio se repita.
  */
-export function dedupeAviso(origenId: string, tipo: AvisoCorreoPlan["tipo"], organizacionId: string): string {
+export function dedupeAviso(
+  origenId: string,
+  tipo: AvisoCorreoPlan["tipo"] | AvisoNoAplicadaPlan["tipo"],
+  organizacionId: string,
+): string {
   return `plan_aviso:${origenId}:${tipo}:${organizacionId}`;
 }
 
@@ -614,6 +667,430 @@ function actorDelAplicador(programadoPor: string): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* SLT-128 (design §3, §4) — el cambio programado llega a cada empresa          */
+/* -------------------------------------------------------------------------- */
+// Durante un cambio a medias, empresas del mismo plan corren versiones distintas. La de una empresa vive en
+// `plan_version_empresa` (sin fila = la del plan) y cada recepción en `plan_cambio_recepcion`. Las dos tablas son
+// de plataforma: aquí se leen y escriben en `comoPlataforma`, con la empresa explícita en `empresa_id`.
+
+/** Lo que hace falta del pendiente para recibirlo o promoverlo. */
+const PENDIENTE_COMPLETO = {
+  id: true,
+  planId: true,
+  vigenteDesde: true,
+  version: true,
+  actorUsuarioId: true,
+  actorNombre: true,
+} as const;
+
+type PendienteCompleto = Prisma.PlanCambioProgramadoGetPayload<{ select: typeof PENDIENTE_COMPLETO }>;
+
+/** Una versión con la periodicidad de órdenes siempre presente: así se guarda en `plan_version_empresa` (§1.2). */
+type VersionCompleta = VersionPlan & { periodicidadOrdenes: PeriodicidadOrdenes };
+
+/**
+ * La versión del pendiente validada (§16.1) y completada: una programada antes de SLT-118 no trae la
+ * periodicidad, que entonces es la del plan.
+ */
+function versionCompleta(version: Prisma.JsonValue, plan: PlanDTO): VersionCompleta {
+  const v = versionPlanSchema.parse(version);
+  // Ausente en el plan = el DEFAULT `quincenal` de la columna (SLT-118 R35).
+  return { ...v, periodicidadOrdenes: v.periodicidadOrdenes ?? plan.periodicidadOrdenes ?? "quincenal" };
+}
+
+/** La versión propia de la empresa en ESE plan, o `null` si corre la del plan. */
+async function versionPropiaDe(tx: Tx, organizacionId: string, planId: string): Promise<VersionPlan | null> {
+  const fila = await tx.planVersionEmpresa.findUnique({
+    where: { empresaId: organizacionId },
+    select: { planId: true, version: true },
+  });
+  return fila === null || fila.planId !== planId ? null : versionPlanSchema.parse(fila.version);
+}
+
+/** El plan tal como lo corre una empresa: su versión propia sobre la fila del plan. */
+function comoLaCorre(plan: PlanDTO, propia: VersionPlan | null): PlanDTO {
+  if (propia === null) return plan;
+  return { ...plan, ...propia, periodicidadOrdenes: propia.periodicidadOrdenes ?? plan.periodicidadOrdenes };
+}
+
+/** «Plan partido» (§1.2): alguna empresa corre una versión propia de este plan. */
+async function planPartido(tx: Tx, planId: string): Promise<boolean> {
+  return (await tx.planVersionEmpresa.findFirst({ where: { planId }, select: { empresaId: true } })) !== null;
+}
+
+/**
+ * SLT-128 (§14.1; R28): una recepción PENDIENTE no está recibida ni «no aplicada». La no aplicada cuenta como
+ * resuelta: no frena la promoción (R10, R18), el archivado (R15) ni el cierre (R9), y el barrido no la devuelve.
+ */
+const PENDIENTE = { recibidoAt: null, noAplicadaAt: null } as const;
+
+/** Cuántas recepciones de ESA programación siguen pendientes (ni recibidas ni no aplicadas). */
+function recepcionesSinRecibir(tx: Tx, cambioId: string): Promise<number> {
+  return tx.planCambioRecepcion.count({ where: { cambioId, ...PENDIENTE } });
+}
+
+/**
+ * SLT-128 (R8, R28): el motivo por el que una regla del plan impide aplicar `version` a una empresa con ese tipo
+ * de cobro, o `null` si se puede. Hoy solo R8 (SLT-118 R37): la cuota del 16 no tendría factura que la emita.
+ */
+function motivoNoAplicable(tipoCobro: string, version: VersionCompleta): MotivoNoAplicada | null {
+  return tipoCobro === "quincenal" && version.periodicidadOrdenes === "mensual" ? "cobro_quincenal_ordenes_mensuales" : null;
+}
+
+/** Un código leído de la base (lo acota el `CHECK` de `no_aplicada_motivo`). */
+function comoMotivo(motivo: string | null): MotivoNoAplicada {
+  const m = MOTIVOS_NO_APLICADA.find((x) => x === motivo);
+  if (m === undefined) throw new Error(`no_aplicada_motivo desconocido: ${String(motivo)}`);
+  return m;
+}
+
+/** La versión que corre el plan (su fila), con la forma de `plan_version_empresa` (§1.2). */
+function versionDelPlan(plan: PlanDTO): VersionCompleta {
+  return {
+    nombre: plan.nombre,
+    topes: plan.topes,
+    modulos: plan.modulos,
+    precio: plan.precio,
+    costoPorOrden: plan.costoPorOrden,
+    costoPorOrdenPorcentual: plan.costoPorOrdenPorcentual,
+    periodicidadOrdenes: plan.periodicidadOrdenes ?? "quincenal",
+  };
+}
+
+/**
+ * SLT-128 (design §14.4; R28): el aviso de una recepción no aplicada, SIN empresa (`organizacion_id` NULL, como
+ * `encolarAplicacion`): lo envía el manejador a cada dirección de `PLAN_CHANGE_ALERT_EMAILS`. Uno por recepción.
+ */
+async function encolarAvisoNoAplicada(tx: Tx, aviso: AvisoNoAplicadaPlan): Promise<void> {
+  // Sin empresa aunque quien llama la tenga fijada (el trabajo de recepción corre en SU empresa): el DEFAULT de
+  // `jobs.organizacion_id` lee `app.organizacion_id`. Se deja como estaba al final, como `encolarEnEmpresas`.
+  const [{ previa }] = await tx.$queryRaw<{ previa: string | null }[]>`
+    SELECT current_setting('app.organizacion_id', true) AS "previa"`;
+  await tx.$executeRaw`SELECT set_config('app.organizacion_id', '', true)`;
+  await new JobRepository(tx).enqueue(
+    "plan_aviso_correo",
+    { ...aviso },
+    { dedupeKey: dedupeAviso(aviso.cambioId, "no_aplicada", aviso.empresaId) },
+    tx,
+  );
+  await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${previa ?? ""}, true)`;
+}
+
+/** `dedupe_key` del `plan_aplicar_cambio` con empresa (§4): una por programación, empresa y fecha. */
+export function dedupeRecepcion(cambioId: string, organizacionId: string, recibeAt: Date): string {
+  return `plan_cambio:${cambioId}:${organizacionId}:${recibeAt.toISOString()}`;
+}
+
+/** `dedupe_key` de un recordatorio con empresa (§4; R22): uno por programación, empresa, fecha y días. */
+export function dedupeRecordatorio(cambioId: string, organizacionId: string, recibeAt: Date, dias: DiasDeRecordatorio): string {
+  return `plan_recordatorio:${cambioId}:${organizacionId}:${recibeAt.toISOString()}:${dias}`;
+}
+
+/** Los días de los recordatorios con empresa (§4; R21). */
+const DIAS_DE_RECORDATORIO: readonly DiasDeRecordatorio[] = [7, 3, 1];
+
+/** Las claves de los trabajos de UNA recepción: su `plan_aplicar_cambio` y sus recordatorios de 7, 3 y 1 días. */
+function clavesDeRecepcion(cambioId: string, organizacionId: string, recibeAt: Date): string[] {
+  return [
+    dedupeRecepcion(cambioId, organizacionId, recibeAt),
+    ...DIAS_DE_RECORDATORIO.map((dias) => dedupeRecordatorio(cambioId, organizacionId, recibeAt, dias)),
+  ];
+}
+
+/**
+ * Las claves de TODOS los trabajos de un pendiente: el `plan_aplicar_cambio` sin empresa, los de cada recepción y
+ * los recordatorios sin empresa encolados antes de SLT-128 (R24; `plan_recordatorio:<cambioId>:<7|1>`).
+ */
+function clavesDelPendiente(cambioId: string, recepciones: readonly { empresaId: string; recibeAt: Date }[]): string[] {
+  return [
+    dedupeAplicarCambio(cambioId),
+    `plan_recordatorio:${cambioId}:7`,
+    `plan_recordatorio:${cambioId}:1`,
+    ...recepciones.flatMap((r) => clavesDeRecepcion(cambioId, r.empresaId, r.recibeAt)),
+  ];
+}
+
+/**
+ * SLT-128 (design §14.5; R29): cancela, en la transacción que mueve, reemplaza, cancela o saca, los trabajos aún sin
+ * empezar (`pending`) que ya no aplican. Quedan `descartado` (precedente SL-23 R20: no se ejecutan ni se reintentan)
+ * con el motivo y el pendiente en `last_error`. La clave se libera (`dedupe_key = NULL`): si la recepción vuelve a
+ * una fecha cancelada, sus trabajos se encolan de nuevo. Por clave y no por `payload`: va por el índice único. Uno
+ * en `processing` no se toca: termina sin hacer nada, como antes.
+ */
+async function descartarTrabajos(tx: Tx, cambioId: string, claves: readonly string[]): Promise<void> {
+  if (claves.length === 0) return;
+  await tx.$executeRaw`
+    UPDATE "jobs"
+       SET "estado" = 'descartado', "last_error" = ${`plan_cambio_obsoleto:${cambioId}`}, "dedupe_key" = NULL,
+           "updated_at" = CURRENT_TIMESTAMP
+     WHERE "dedupe_key" = ANY(${[...claves]}::text[]) AND "estado" = 'pending'`;
+}
+
+/**
+ * El aviso de un recordatorio lleva la fecha de la recepción en la clave (§4; R19): si la recepción se mueve,
+ * el de la fecha nueva sí sale.
+ */
+function dedupeAvisoRecordatorio(cambioId: string, tipo: AvisoCorreoPlan["tipo"], organizacionId: string, recibeAt: Date): string {
+  return `${dedupeAviso(cambioId, tipo, organizacionId)}:${recibeAt.toISOString()}`;
+}
+
+const TIPO_DE_RECORDATORIO: Record<DiasDeRecordatorio, AvisoCorreoPlan["tipo"]> = {
+  7: "recordatorio_7",
+  3: "recordatorio_3",
+  1: "recordatorio_1",
+};
+
+/**
+ * Fija la recepción de cada empresa (la crea o le mueve la fecha, R19) y encola, CON la empresa, su
+ * `plan_aplicar_cambio` en `recibe_at` y sus recordatorios contados desde `ahora` (R21). Los trabajos de una
+ * fecha anterior los descarta quien mueve (`moverRecepcionEnTx`, R29); uno ya en curso no encuentra su `recibeAt`.
+ */
+async function fijarRecepciones(
+  tx: Tx,
+  cambio: CambioPendiente,
+  recepciones: readonly { organizacionId: string; recibeAt: Date }[],
+  ahora: Date,
+): Promise<void> {
+  if (recepciones.length === 0) return;
+  for (const r of recepciones) {
+    await tx.planCambioRecepcion.upsert({
+      where: { cambioId_empresaId: { cambioId: cambio.cambioId, empresaId: r.organizacionId } },
+      create: { cambioId: cambio.cambioId, empresaId: r.organizacionId, recibeAt: r.recibeAt },
+      update: { recibeAt: r.recibeAt },
+    });
+  }
+  const jobs = new JobRepository(tx);
+  await encolarEnEmpresas(
+    tx,
+    recepciones.map((r) => ({
+      organizacionId: r.organizacionId,
+      encolar: async () => {
+        const recibeAt = r.recibeAt.toISOString();
+        await jobs.enqueue(
+          "plan_aplicar_cambio",
+          { planId: cambio.planId, cambioId: cambio.cambioId, recibeAt },
+          {
+            runAfter: r.recibeAt,
+            dedupeKey: dedupeRecepcion(cambio.cambioId, r.organizacionId, r.recibeAt),
+            maxIntentos: MAX_INTENTOS_APLICAR,
+          },
+          tx,
+        );
+        for (const { dias, runAfter } of recordatoriosDe(ahora, r.recibeAt)) {
+          await jobs.enqueue(
+            "plan_recordatorio_cambio",
+            { planId: cambio.planId, cambioId: cambio.cambioId, dias, recibeAt },
+            { runAfter, dedupeKey: dedupeRecordatorio(cambio.cambioId, r.organizacionId, r.recibeAt, dias) },
+            tx,
+          );
+        }
+      },
+    })),
+  );
+}
+
+/**
+ * R3: la fila del historial con `desde_at = F` si el precio del cambio no es el que el historial ya da en F. Se
+ * compara con el historial y no con la fila del plan: tras un reemplazo (R13) el historial puede llevar ya el
+ * precio de un cambio anterior que alguna empresa recibió. Si la fila ya está (la escribió otra recepción), se
+ * queda.
+ */
+async function escribirPrecioDelCambio(tx: Tx, plan: PlanDTO, desde: Date, precio: PrecioPlan): Promise<void> {
+  const [fila] = await tx.$queryRaw<{ precio_mensual: string | null; descuentos: unknown }[]>`
+    SELECT "precio_mensual"::text AS "precio_mensual", "descuentos"
+      FROM "plan_precio_historial"
+     WHERE "plan_id" = ${plan.id} AND "desde_at" <= ${comoTimestamp(desde)}::timestamp
+     ORDER BY "desde_at" DESC LIMIT 1`;
+  const rige = fila === undefined ? plan.precio : precioDelHistorial(fila.precio_mensual, fila.descuentos);
+  if (!cambiaElPrecio(diferenciasDelPlan({ ...plan, precio: rige }, { ...plan, precio }))) return;
+  await escribirPrecioDelHistorial(tx, plan.id, desde, precio, "dejar");
+}
+
+/**
+ * §3.2 (R10): con el plan ya en FOR UPDATE, el pendiente pasa a ser la versión del plan. Sin tocar los módulos
+ * de ninguna empresa (cada una ya los recibió); se borran las versiones propias del plan, queda la fila
+ * `cambio_aplicado` del rastro con quien lo programó y el pendiente desaparece (con sus recepciones).
+ */
+async function promoverEnTx(tx: Tx, pendiente: PendienteCompleto): Promise<void> {
+  const antes = (await leerPlan(tx, pendiente.planId)) as PlanDTO;
+  const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
+  // SLT-128 (§14.3; R28): las empresas con la recepción no aplicada conservan la versión que tenían.
+  const noAplicadas = await tx.planCambioRecepcion.findMany({
+    where: { cambioId: pendiente.id, noAplicadaAt: { not: null } },
+    orderBy: { empresaId: "asc" },
+    select: { empresaId: true, recibeAt: true, noAplicadaAt: true, noAplicadaMotivo: true },
+  });
+  // SLT-118 (R37): con las empresas de AHORA, salvo las no aplicadas (R28). Si ya no pasa, falla sin escribir
+  // (cada recepción ya lo miró, R8).
+  const quincenales = await empresasQuincenalesSiPasaAMensual(
+    tx,
+    antes,
+    version,
+    noAplicadas.map((r) => r.empresaId),
+  );
+  if (quincenales > 0) {
+    throw new Error(
+      `promover: el cambio ${pendiente.id} pasa el plan ${pendiente.planId} a órdenes mensuales y ${quincenales} empresa(s) lo tienen con tipo quincenal (R37)`,
+    );
+  }
+  const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
+  if (hayCambios(cambios)) {
+    await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, pendiente.vigenteDesde, {
+      sincronizarModulos: false,
+      escribirPrecio: false,
+    });
+    await escribirPrecioDelCambio(tx, antes, pendiente.vigenteDesde, version.precio);
+  }
+  // R28: antes de borrar las versiones propias del plan, cada no aplicada se queda con la que tenía (su fila propia
+  // o la del plan antes de promover), marcada con su motivo: el aviso del detalle sigue mientras la conserve.
+  const conservan: string[] = [];
+  for (const r of noAplicadas) {
+    const propia = await tx.planVersionEmpresa.findUnique({
+      where: { empresaId: r.empresaId },
+      select: { planId: true, version: true, desdeAt: true },
+    });
+    const suya = propia !== null && propia.planId === pendiente.planId ? propia : null;
+    const fila = {
+      planId: pendiente.planId,
+      cambioId: pendiente.id,
+      version: (suya === null ? versionDelPlan(antes) : suya.version) as Prisma.InputJsonValue,
+      desdeAt: suya === null ? r.recibeAt : suya.desdeAt,
+      noAplicadaAt: r.noAplicadaAt,
+      noAplicadaMotivo: r.noAplicadaMotivo,
+    };
+    await tx.planVersionEmpresa.upsert({ where: { empresaId: r.empresaId }, create: { empresaId: r.empresaId, ...fila }, update: fila });
+    conservan.push(r.empresaId);
+  }
+  await tx.planVersionEmpresa.deleteMany({ where: { planId: pendiente.planId, empresaId: { notIn: conservan } } });
+  await escribirRastro(
+    tx,
+    { id: pendiente.planId, nombre: version.nombre },
+    "cambio_aplicado",
+    cambios,
+    pendiente.actorUsuarioId,
+    { actorUsuarioId: pendiente.actorUsuarioId, actorNombre: actorDelAplicador(pendiente.actorNombre), actorRol: null },
+  );
+  // Ya no está pendiente: una segunda ejecución no lo encuentra. Sus recepciones se van en cascada.
+  await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
+}
+
+/**
+ * R17 (P4): la empresa (ya en FOR UPDATE) entra a `plan` con efecto `desde`. Con un pendiente C: en F o después
+ * entra con la versión de C (se escribe antes de `factura_plataforma_tomar_cambio`, que la lee); antes de F
+ * entra con la del plan y recibe C en su recepción, con sus recordatorios desde `ahora` y sin correo de guardado
+ * (P10 b). Devuelve los módulos con los que entra.
+ */
+async function entrarAlCambioEnTx(
+  tx: Tx,
+  organizacionId: string,
+  plan: PlanDTO,
+  tipoCobro: TipoCobro,
+  desde: Date,
+  ahora: Date,
+): Promise<readonly ModuloApagable[]> {
+  const pendiente = await tx.planCambioProgramado.findUnique({
+    where: { planId: plan.id },
+    select: { id: true, vigenteDesde: true, version: true },
+  });
+  if (pendiente === null) return plan.modulos;
+  if (desde.getTime() >= pendiente.vigenteDesde.getTime()) {
+    const version = versionCompleta(pendiente.version, plan);
+    const fila = {
+      planId: plan.id,
+      cambioId: pendiente.id,
+      version: version as Prisma.InputJsonValue,
+      desdeAt: desde,
+      noAplicadaAt: null,
+      noAplicadaMotivo: null,
+    };
+    await tx.planVersionEmpresa.upsert({ where: { empresaId: organizacionId }, create: { empresaId: organizacionId, ...fila }, update: fila });
+    return version.modulos;
+  }
+  await fijarRecepciones(
+    tx,
+    { planId: plan.id, cambioId: pendiente.id },
+    [{ organizacionId, recibeAt: fechaDeRecepcion(tipoCobro, pendiente.vigenteDesde) }],
+    ahora,
+  );
+  return plan.modulos;
+}
+
+/**
+ * R18: la empresa (ya en FOR UPDATE) deja `planAntesId`. Se borran su versión propia y su recepción del pendiente
+ * de ese plan; sus trabajos ya encolados no la encuentran. Si era la última sin recibirlo y F ya pasó, devuelve el
+ * pendiente que hay que promover (R10), ya con el plan de antes en FOR UPDATE (después de la empresa, §6). Quien
+ * llama lo promueve DESPUÉS de sacar a la empresa del plan: si no, la regla de R37 la seguiría contando.
+ */
+async function salirDelCambioEnTx(
+  tx: Tx,
+  organizacionId: string,
+  planAntesId: string,
+  ahora: Date,
+): Promise<PendienteCompleto | null> {
+  await tx.planVersionEmpresa.deleteMany({ where: { empresaId: organizacionId, planId: planAntesId } });
+  const pendiente = await tx.planCambioProgramado.findUnique({
+    where: { planId: planAntesId },
+    select: { id: true, vigenteDesde: true },
+  });
+  if (pendiente === null) return null;
+  // R29: los trabajos de esa empresa para ese pendiente, antes de borrar su recepción (que lleva la fecha).
+  const suya = await tx.planCambioRecepcion.findUnique({
+    where: { cambioId_empresaId: { cambioId: pendiente.id, empresaId: organizacionId } },
+    select: { recibeAt: true },
+  });
+  if (suya !== null) await descartarTrabajos(tx, pendiente.id, clavesDeRecepcion(pendiente.id, organizacionId, suya.recibeAt));
+  await tx.planCambioRecepcion.deleteMany({ where: { cambioId: pendiente.id, empresaId: organizacionId } });
+  // Sin bloquear el plan si no hay nada que promover: dos empresas que se cruzan de plan no se esperan.
+  if (pendiente.vigenteDesde.getTime() > ahora.getTime() || (await recepcionesSinRecibir(tx, pendiente.id)) > 0) return null;
+  await bloquearPlanParaEscribir(tx, planAntesId);
+  // Bajo el cerrojo, ESE pendiente otra vez: otra transacción pudo promoverlo, cancelarlo o reemplazarlo.
+  const vigente = await tx.planCambioProgramado.findFirst({
+    where: { id: pendiente.id, planId: planAntesId },
+    select: PENDIENTE_COMPLETO,
+  });
+  if (vigente === null || vigente.vigenteDesde.getTime() > ahora.getTime()) return null;
+  return (await recepcionesSinRecibir(tx, vigente.id)) > 0 ? null : vigente;
+}
+
+/**
+ * R19: con el mismo plan y otro tipo de cobro, una recepción sin recibir pasa al primer inicio de un período del
+ * tipo nuevo que no sea anterior a F ni a `desde` (el efecto del cambio de tipo). Si ya rige en `desde` o antes,
+ * no se mueve. Los recordatorios de la fecha nueva se cuentan desde `ahora`.
+ */
+async function moverRecepcionEnTx(
+  tx: Tx,
+  organizacionId: string,
+  planId: string,
+  tipoCobro: TipoCobro,
+  desde: Date,
+  ahora: Date,
+): Promise<void> {
+  const pendiente = await tx.planCambioProgramado.findUnique({
+    where: { planId },
+    select: { id: true, vigenteDesde: true, recepciones: { where: { empresaId: organizacionId, ...PENDIENTE }, select: { recibeAt: true } } },
+  });
+  const recepcion = pendiente?.recepciones[0];
+  if (pendiente === null || recepcion === undefined) return;
+  if (recepcion.recibeAt.getTime() <= desde.getTime()) return;
+  const base = Math.max(pendiente.vigenteDesde.getTime(), desde.getTime());
+  const recibeAt = fechaDeRecepcion(tipoCobro, new Date(base));
+  if (recibeAt.getTime() === recepcion.recibeAt.getTime()) return;
+  // R29: los trabajos de la fecha vieja, antes de encolar los de la nueva (las claves llevan la fecha: no coinciden).
+  await descartarTrabajos(tx, pendiente.id, clavesDeRecepcion(pendiente.id, organizacionId, recepcion.recibeAt));
+  await fijarRecepciones(tx, { planId, cambioId: pendiente.id }, [{ organizacionId, recibeAt }], ahora);
+}
+
+/** R17: el plan con el que entra una empresa con efecto `desde`: la versión del pendiente si `desde ≥ F`. */
+async function planAlEntrar(tx: Tx, plan: PlanDTO, desde: Date): Promise<PlanDTO> {
+  const pendiente = await tx.planCambioProgramado.findUnique({
+    where: { planId: plan.id },
+    select: { vigenteDesde: true, version: true },
+  });
+  if (pendiente === null || desde.getTime() < pendiente.vigenteDesde.getTime()) return plan;
+  return { ...plan, ...versionCompleta(pendiente.version, plan) };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Lecturas del superadmin (SLT-58, design §3.2)                               */
 /* -------------------------------------------------------------------------- */
 
@@ -627,6 +1104,59 @@ const LIMITE_ASIGNACIONES = 50;
  */
 function pendienteDe(c: { vigenteDesde: Date; version: Prisma.JsonValue } | null): CambioDelPlanLeido | null {
   return c === null ? null : { vigenteDesde: c.vigenteDesde, version: versionPlanSchema.parse(c.version) };
+}
+
+/**
+ * SLT-128 (design §3.6; R11): el pendiente del detalle con «N de M»: de sus recepciones, cuántas ya se aplicaron
+ * y cuántas tiene. Un plan sin empresas tiene 0 de 0.
+ */
+function pendienteDelDetalle(
+  c: { vigenteDesde: Date; version: Prisma.JsonValue; recepciones: { recibidoAt: Date | null }[] } | null,
+): PendienteDelDetalleLeido | null {
+  const leido = pendienteDe(c);
+  if (c === null || leido === null) return null;
+  return { ...leido, recibidas: c.recepciones.filter((r) => r.recibidoAt !== null).length, total: c.recepciones.length };
+}
+
+type FilaNoAplicada = {
+  empresaId: string;
+  noAplicadaAt: Date | null;
+  noAplicadaMotivo: string | null;
+  empresa: { nombre: string };
+};
+
+/**
+ * SLT-128 (design §14.3; R28): las empresas que no recibieron el cambio: las recepciones no aplicadas del pendiente
+ * y las versiones conservadas por una no aplicada. Una por empresa (la del pendiente gana: es la más reciente), por
+ * nombre. `desde` es el instante en que quedó no aplicada.
+ */
+function noAplicadasDelDetalle(
+  recepciones: readonly FilaNoAplicada[],
+  conservadas: readonly FilaNoAplicada[],
+): NoAplicadaLeida[] {
+  const porEmpresa = new Map<string, NoAplicadaLeida>();
+  for (const f of [...conservadas, ...recepciones]) {
+    if (f.noAplicadaAt === null) continue;
+    porEmpresa.set(f.empresaId, {
+      empresaId: f.empresaId,
+      empresa: f.empresa.nombre,
+      motivo: comoMotivo(f.noAplicadaMotivo),
+      desde: f.noAplicadaAt,
+    });
+  }
+  return [...porEmpresa.values()].sort((a, b) => a.empresa.localeCompare(b.empresa, "es") || a.empresaId.localeCompare(b.empresaId));
+}
+
+/**
+ * SLT-128 (design §3.6; R12): el cambio programado como lo ve UNA empresa: con su recepción como fecha mientras
+ * no lo reciba, y ninguno si ya lo recibió o no tiene recepción (entró con la versión nueva, R17).
+ */
+function cambioDeLaEmpresa(
+  c: { version: Prisma.JsonValue; recepciones: { recibeAt: Date }[] } | null,
+): CambioDelPlanLeido | null {
+  const recepcion = c?.recepciones[0];
+  if (c === null || recepcion === undefined) return null;
+  return pendienteDe({ vigenteDesde: recepcion.recibeAt, version: c.version });
 }
 
 /** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29), dentro de `tx`. */
@@ -793,7 +1323,7 @@ class AsignacionRechazada extends Error {
 /* El repositorio                                                              */
 /* -------------------------------------------------------------------------- */
 
-export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRepository {
+export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRepository, IPlanesRecepcionesRepository {
   constructor(private readonly prisma: PlanesPrismaClient) {}
 
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null> {
@@ -824,6 +1354,9 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
         const antes = (await leerPlan(tx, planId)) as PlanDTO;
         if (antes.archivado) return { estado: "archivado" };
+        // SLT-128 (R16, P7): con el plan partido, aplicar «a todas en el acto» dejaría a cada empresa en una
+        // versión que nadie programó. Se pide programarlo con fecha.
+        if (await planPartido(tx, planId)) return { estado: "cambio_a_medias" };
         const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
         if (!hayCambios(cambios)) return { estado: "ok", cambio: false, avisos: [] };
         // SLT-118 (R37): a mensual con alguna empresa quincenal, se rechaza sin escribir.
@@ -874,6 +1407,10 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
         const plan = (await leerPlan(tx, planId)) as PlanDTO;
         if (plan.archivado) return { estado: "ok", cambio: false };
+        // SLT-128 (R15; sustituye SL-24 R40): con un pendiente que aún no llegó a todas sus empresas no se archiva.
+        // Sin recepciones (plan sin empresas) se cancela como antes, más abajo.
+        const pendiente = await tx.planCambioProgramado.findUnique({ where: { planId }, select: { id: true } });
+        if (pendiente !== null && (await recepcionesSinRecibir(tx, pendiente.id)) > 0) return { estado: "cambio_a_medias" };
         // Las empresas lo conservan y los triggers no miran `archivado_at`: siguen topadas (R6).
         await tx.plan.update({ where: { id: planId }, data: { archivadoAt: new Date() } });
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
@@ -1046,15 +1583,19 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     }
     // 3. SLT-118 (R30, R31, R33): la fecha real, bajo el cerrojo (el tipo vigente es el de la empresa ahora).
     const efecto = efectoAlInicioDelPeriodo(elegido, tipoCobroSchema.parse(empresa.plan_tipo_cobro), tipoCobro);
+    // SLT-128 (R17): quien entra en la F del pendiente del plan o después entra con esa versión; la periodicidad
+    // (R37) y los topes se miran contra ella.
+    const queRige = empresa.plan_id === plan.id ? plan : await planAlEntrar(tx, plan, efecto.desde);
+    if (tipoCobro === "quincenal" && queRige.periodicidadOrdenes === "mensual") return { estado: "periodicidad_incompatible" };
     // 4. Pendiente o en el acto, con la fecha real.
-    const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], plan.topes);
+    const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], queRige.topes);
     if (efecto.desde.getTime() > ahora.getTime()) {
       await escribirPendiente(tx, empresa.id, plan.id, tipoCobro, efecto.desde, actorUsuarioId);
       return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true, vigenteDesde: fechaCalendarioPlataforma(efecto.desde) };
     }
     const avisa = efecto.clase === "inicio" && efecto.elegida;
     if (!avisa && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
-    await this.aplicarEnTx(tx, empresa, plan, tipoCobro, efecto.desde, await resolverActorCongelado(tx, actorUsuarioId));
+    await this.aplicarEnTx(tx, empresa, plan, tipoCobro, efecto.desde, await resolverActorCongelado(tx, actorUsuarioId), ahora);
     return { estado: "ok", cambio: true, avisos: avisa ? excedidos : [], pendiente: false };
   }
 
@@ -1063,15 +1604,25 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
    * pendiente; los módulos del plan si cambió el plan (con el mismo plan no se tocan: borraría las
    * excepciones de SL-23, R11); y la fila del historial con `actor`. `plan_asignado` si cambió el plan;
    * si no, `plan_tipo_cobro_cambiado` (D16). El `valor_nuevo` lleva la fecha delante del tipo (R30).
+   *
+   * SLT-128 (design §3.5; R17–R19): el punto común para entrar, salir y cambiar de tipo con un pendiente del
+   * plan. Sale del de antes (R18), entra al nuevo con su versión o con su recepción (R17) o mueve su recepción
+   * (R19). `ahora` cuenta los recordatorios de una recepción nueva o movida.
    */
   private async aplicarEnTx(
     tx: Tx,
     empresa: Pick<EmpresaBloqueada, "id" | "plan_id" | "plan_tipo_cobro">,
-    plan: Pick<PlanDTO, "id" | "nombre" | "modulos">,
+    plan: PlanDTO,
     tipoCobro: TipoCobro,
     desde: Date,
     actor: ActorCongelado,
+    ahora: Date,
   ): Promise<void> {
+    const entra = empresa.plan_id !== plan.id;
+    const aPromover = entra && empresa.plan_id !== null ? await salirDelCambioEnTx(tx, empresa.id, empresa.plan_id, ahora) : null;
+    if (!entra) await moverRecepcionEnTx(tx, empresa.id, plan.id, tipoCobro, desde, ahora);
+    // Antes de `tomar_cambio`: la factura que abre lee el nombre y la periodicidad de la versión de la empresa.
+    const modulosAlEntrar = entra ? await entrarAlCambioEnTx(tx, empresa.id, plan, tipoCobro, desde, ahora) : plan.modulos;
     // SLT-118 (design §2.3; R15–R17, R28): las facturas de la plataforma toman el cambio ANTES del UPDATE,
     // con la empresa ya en FOR UPDATE: la función sabe si es una primera asignación por `plan_id IS NULL`.
     // Solo fija y marca facturas no cerradas; no cierra ni depende del reloj.
@@ -1082,6 +1633,12 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
          SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
              ${SIN_PENDIENTE}
        WHERE "id" = ${empresa.id}`;
+    // SLT-128 (R18): era la última del plan de antes sin recibir su pendiente, y F ya pasó. R29: su
+    // `plan_aplicar_cambio` sin empresa ya no tiene nada que promover.
+    if (aPromover !== null) {
+      await promoverEnTx(tx, aPromover);
+      await descartarTrabajos(tx, aPromover.id, [dedupeAplicarCambio(aPromover.id)]);
+    }
     const comun = {
       entidadTipo: "plan",
       entidadId: plan.id,
@@ -1096,7 +1653,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
       ]);
       return;
     }
-    const modulos = await sincronizarModulos(tx, empresa.id, plan.modulos);
+    const modulos = await sincronizarModulos(tx, empresa.id, modulosAlEntrar);
     // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).
     await appendAccion(tx, [
       { ...comun, accion: "plan_asignado", valorAnterior: null },
@@ -1162,7 +1719,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         if (plan === null) throw new Error(`aplicarCambioDeEmpresa: el plan ${planId} del pendiente no existe`);
         // R18: un tope ya pasado no lo impide (SLT-58 R36). R20: el historial lo firma quien lo programó.
         const actor = await resolverActorCongelado(tx, empresa.plan_cambio_actor_id);
-        await this.aplicarEnTx(tx, empresa, plan, tipoCobroSchema.parse(empresa.plan_cambio_tipo_cobro), desde, actor);
+        await this.aplicarEnTx(tx, empresa, plan, tipoCobroSchema.parse(empresa.plan_cambio_tipo_cobro), desde, actor, ahora);
         return { estado: "aplicado" };
       }),
     );
@@ -1179,10 +1736,13 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     });
   }
 
-  cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio> {
+  cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambioDelPlan> {
     return comoPlataforma("SL-24", "cancelar el cambio programado de un plan (superadmin)", () =>
-      this.prisma.$transaction(async (tx): Promise<ResultadoCancelarCambio> => {
+      this.prisma.$transaction(async (tx): Promise<ResultadoCancelarCambioDelPlan> => {
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
+        // SLT-128 (R14; P1, P8): alguna empresa ya lo recibió, o recibió uno anterior que este reemplazó. Cancelar
+        // dejaría el plan partido para siempre: se pide programar otro cambio con los valores de antes.
+        if (await planPartido(tx, planId)) return { estado: "cambio_a_medias" };
         const plan = (await leerPlan(tx, planId)) as PlanDTO;
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
         const cancelado = await cancelarPendienteEnTx(tx, plan, actorUsuarioId, actor);
@@ -1200,6 +1760,9 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
   ): Promise<ResultadoProgramar> {
     return comoPlataforma("SL-24", "programar un cambio de un plan del catálogo (superadmin)", () =>
       this.prisma.$transaction(async (tx): Promise<ResultadoProgramar> => {
+        // SLT-128 (design §6): las empresas del plan FOR SHARE ANTES que el plan (empresa → plan). Un cambio de
+        // tipo en vuelo (empresa FOR UPDATE) termina antes y la recepción se calcula con su tipo.
+        await tx.$queryRaw`SELECT "id" FROM "organizacion" WHERE "plan_id" = ${planId} ORDER BY "id" FOR SHARE`;
         // 1. Cerrojo del plan (§4.4): espera a las altas en vuelo, a otra edición y al aplicador.
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
         const vigente = (await leerPlan(tx, planId)) as PlanDTO;
@@ -1215,15 +1778,36 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         const quincenales = await empresasQuincenalesSiPasaAMensual(tx, vigente, version);
         if (quincenales > 0) return { estado: "periodicidad_incompatible", empresas: quincenales };
 
-        // 3. R16 (revisado): con el uso de HOY contra los topes nuevos; se avisa, no se rechaza.
-        const empresas = await empresasDelPlan(tx, planId);
+        // 3. R16 (revisado): con el uso de HOY contra los topes nuevos; se avisa, no se rechaza. SLT-128: las
+        // empresas de AHORA, releídas bajo el cerrojo del plan (una asignación que lo esperaba ya entró), con su tipo.
+        const empresas = await tx.$queryRaw<{ id: string; nombre: string; plan_tipo_cobro: string }[]>`
+          SELECT "id", "nombre", "plan_tipo_cobro" FROM "organizacion" WHERE "plan_id" = ${planId} ORDER BY "id"`;
         const avisos = await excedidosDe(tx, empresas, version.topes);
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
         const despues = vigenteDesde.toISOString();
+        // SLT-128 (R20): la recepción anterior de cada empresa que aún no lo había recibido, para su «reemplaza
+        // al previsto para…». Antes de borrar el pendiente, que se las lleva en cascada.
+        const anteriores = new Map<string, Date>(
+          pendiente === null
+            ? []
+            : (
+                await tx.planCambioRecepcion.findMany({
+                  where: { cambioId: pendiente.id, ...PENDIENTE },
+                  select: { empresaId: true, recibeAt: true },
+                })
+              ).map((r) => [r.empresaId, r.recibeAt]),
+        );
 
-        // 4. R39: un solo pendiente por plan. Reemplazar = borrar y crear otro con id nuevo; los
-        // trabajos del viejo no se tocan: al correr no encuentran su `cambioId` (§16.3).
+        // 4. R39: un solo pendiente por plan. Reemplazar = borrar y crear otro con id nuevo. SLT-128 (R13): sus
+        // recepciones se van en cascada (quien no lo recibió ya no lo recibe) y las versiones propias se quedan (no
+        // se deshace). R29: sus trabajos aún sin empezar, con y sin empresa, quedan descartados; uno en curso no
+        // encuentra su `cambioId` (§16.3).
         if (pendiente !== null) {
+          const todas = await tx.planCambioRecepcion.findMany({
+            where: { cambioId: pendiente.id },
+            select: { empresaId: true, recibeAt: true },
+          });
+          await descartarTrabajos(tx, pendiente.id, clavesDelPendiente(pendiente.id, todas));
           await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
           await escribirRastro(
             tx,
@@ -1256,40 +1840,40 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
           actor,
         );
 
-        // 6. Outbox, en esta misma transacción.
+        // 6. Outbox, en esta misma transacción. El trabajo sin empresa en F solo promueve el plan (§3.2).
         await encolarAplicacion(tx, { planId, cambioId }, vigenteDesde);
-        // R42: los recordatorios, 7×24 h y 24 h antes; solo los que caen DESPUÉS de ahora. Sin empresa
-        // (`organizacion_id` NULL): reparten por empresa al correr, con las que tengan el plan entonces.
-        const jobs = new JobRepository(tx);
-        for (const dias of DIAS_DE_RECORDATORIO) {
-          const runAfter = new Date(vigenteDesde.getTime() - dias * UN_DIA_MS);
-          if (runAfter.getTime() <= ahora.getTime()) continue;
-          await jobs.enqueue(
-            "plan_recordatorio_cambio",
-            { planId, cambioId, dias },
-            { runAfter, dedupeKey: dedupeRecordatorio(cambioId, dias) },
-            tx,
-          );
-        }
-        // R41 y R45: un correo de guardado por empresa, con la fecha del pendiente al que reemplaza
-        // (no sale correo de cancelación aparte, §16.2).
-        const reemplazaA = pendiente === null ? null : pendiente.vigenteDesde.toISOString();
+        // SLT-128 (R1, R21): la recepción de cada empresa según su tipo, con su trabajo y sus recordatorios.
+        const recepciones = empresas.map((e) => ({
+          organizacionId: e.id,
+          recibeAt: fechaDeRecepcion(tipoCobroSchema.parse(e.plan_tipo_cobro), vigenteDesde),
+        }));
+        await fijarRecepciones(tx, { planId, cambioId }, recepciones, ahora);
+        // SLT-128 (R20; sustituye R41 y R45 por plan): un correo de guardado por empresa con SU recepción, lo que
+        // cambia respecto de SU versión (la propia, si recibió uno anterior) y la recepción a la que reemplaza.
+        const propias = new Map(
+          (await tx.planVersionEmpresa.findMany({ where: { planId }, select: { empresaId: true, version: true } })).map(
+            (v) => [v.empresaId, versionPlanSchema.parse(v.version)],
+          ),
+        );
         await encolarAvisos(
           tx,
-          empresas.map((e) => ({
-            organizacionId: e.id,
-            dedupeKey: dedupeAviso(cambioId, "guardado", e.id),
-            payload: {
-              cambioId,
-              planId,
-              planNombre: vigente.nombre,
-              tipo: "guardado",
-              cambios,
-              vigenteDesde: despues,
-              reemplazaA,
-              topesPasados: topesDeLaEmpresa(avisos, e.id),
-            },
-          })),
+          recepciones.map((r) => {
+            const suya = comoLaCorre(vigente, propias.get(r.organizacionId) ?? null);
+            return {
+              organizacionId: r.organizacionId,
+              dedupeKey: dedupeAviso(cambioId, "guardado", r.organizacionId),
+              payload: {
+                cambioId,
+                planId,
+                planNombre: suya.nombre,
+                tipo: "guardado",
+                cambios: diferenciasDelPlan(suya, { ...suya, ...version }),
+                vigenteDesde: r.recibeAt.toISOString(),
+                reemplazaA: anteriores.get(r.organizacionId)?.toISOString() ?? null,
+                topesPasados: topesDeLaEmpresa(avisos, r.organizacionId),
+              },
+            };
+          }),
         );
         return { estado: "ok", cambio: true, avisos, cambioId };
       }),
@@ -1305,40 +1889,176 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         // 2. ESTA programación, por su id (R39): reemplazada, cancelada o ya aplicada no está.
         const pendiente = await tx.planCambioProgramado.findFirst({
           where: { id: cambio.cambioId, planId: cambio.planId },
-          select: { id: true, vigenteDesde: true, version: true, actorUsuarioId: true, actorNombre: true },
+          select: PENDIENTE_COMPLETO,
         });
         if (pendiente === null) return { estado: "sin_pendiente" };
         // Reloj adelantado del trabajo: no se adelanta el cambio; lo recoge el barrido.
         if (pendiente.vigenteDesde.getTime() > ahora.getTime()) return { estado: "aun_no_rige" };
-
-        // La misma validación que al guardar (§16.1). Una versión que ya no pasa falla el trabajo
-        // (se reintenta y queda en `failed` con el motivo) sin escribir nada.
-        const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
-        const antes = (await leerPlan(tx, cambio.planId)) as PlanDTO;
-        // SLT-118 (R37): la regla de la periodicidad, con las empresas de AHORA. Si ya no pasa, falla sin escribir.
-        const quincenales = await empresasQuincenalesSiPasaAMensual(tx, antes, version);
-        if (quincenales > 0) {
-          throw new Error(
-            `aplicarCambioProgramado: el cambio ${cambio.cambioId} pasa el plan ${cambio.planId} a órdenes mensuales y ${quincenales} empresa(s) lo tienen con tipo quincenal (R37)`,
-          );
-        }
-        const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
-        // 3. La misma función que la edición inmediata (R17 en las empresas que lo tienen AHORA).
-        // El historial de SL-23 de cada empresa lo firma el sistema; el ciclo no se toca (R38).
-        // SLT-86 (§1.2; R15): un precio programado rige desde las 00:00 de su `vigente_desde`.
-        if (hayCambios(cambios)) await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, pendiente.vigenteDesde);
-        // 4. R43: la fila del sistema, con quien lo programó.
-        await escribirRastro(
-          tx,
-          { id: cambio.planId, nombre: version.nombre },
-          "cambio_aplicado",
-          cambios,
-          pendiente.actorUsuarioId,
-          { actorUsuarioId: pendiente.actorUsuarioId, actorNombre: actorDelAplicador(pendiente.actorNombre), actorRol: null },
-        );
-        // 5. Ya no está pendiente: una segunda ejecución no lo encuentra.
-        await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
+        // 3. SLT-128 (design §3.2; R10): el plan pasa a la versión nueva cuando la recibe la última de sus empresas.
+        // Hasta entonces no hace nada; lo promoverá la última recepción. Sin empresas, promueve en F, como antes.
+        if ((await recepcionesSinRecibir(tx, pendiente.id)) > 0) return { estado: "espera" };
+        await promoverEnTx(tx, pendiente);
         return { estado: "aplicado" };
+      }),
+    );
+  }
+
+  recibirCambio(cambio: CambioPendiente, organizacionId: string, ahora: Date): Promise<ResultadoRecibir> {
+    return comoPlataforma("SL-24", "recibir el cambio programado de un plan en una empresa (trabajo de la cola, SLT-128)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoRecibir> => {
+        // 1. design §6: empresa FOR UPDATE → plan FOR UPDATE. Un alta (empresa y plan FOR SHARE) espera, y la
+        // siguiente cuenta contra los topes nuevos (SL-24 R24). Una empresa que ya dejó el plan no lo recibe (R18).
+        const empresa = await bloquearEmpresa(tx, organizacionId);
+        if (empresa === undefined || empresa.plan_id !== cambio.planId) return { estado: "sin_pendiente" };
+        if (!(await bloquearPlanParaEscribir(tx, cambio.planId))) return { estado: "sin_pendiente" };
+        // ESTA programación y SU recepción (R5): reemplazada, cancelada o ya recibida no está.
+        const pendiente = await tx.planCambioProgramado.findFirst({
+          where: { id: cambio.cambioId, planId: cambio.planId },
+          select: PENDIENTE_COMPLETO,
+        });
+        if (pendiente === null) return { estado: "sin_pendiente" };
+        const clave = { cambioId_empresaId: { cambioId: pendiente.id, empresaId: organizacionId } };
+        const recepcion = await tx.planCambioRecepcion.findUnique({
+          where: clave,
+          select: { recibeAt: true, recibidoAt: true, noAplicadaAt: true },
+        });
+        // R28: una no aplicada ya está resuelta; ni el trabajo ni el barrido la vuelven a intentar.
+        if (recepcion === null || recepcion.recibidoAt !== null || recepcion.noAplicadaAt !== null) return { estado: "sin_pendiente" };
+        // Reloj por detrás de la recepción: no se adelanta; lo recoge el barrido (R5).
+        if (recepcion.recibeAt.getTime() > ahora.getTime()) return { estado: "aun_no_rige" };
+
+        // 2. La versión del pendiente, completada con la periodicidad del plan si no la trae.
+        const plan = (await leerPlan(tx, cambio.planId)) as PlanDTO;
+        const version = versionCompleta(pendiente.version, plan);
+        // 3. R8, R28 (§14.3): una regla del plan impide aplicársela. No se escribe nada de la versión (ni módulos,
+        // ni precio, ni versión propia): la recepción queda «no aplicada» con su motivo, sale el aviso a la lista
+        // de alertas y, si era la última pendiente y F ya pasó, el plan se promueve igual (cuenta como resuelta).
+        // El trabajo termina sin error. Un error de base o de red sigue lanzando y la cola reintenta.
+        const motivo = motivoNoAplicable(empresa.plan_tipo_cobro, version);
+        if (motivo !== null) {
+          await tx.planCambioRecepcion.update({ where: clave, data: { noAplicadaAt: ahora, noAplicadaMotivo: motivo } });
+          await encolarAvisoNoAplicada(tx, {
+            tipo: "no_aplicada",
+            planId: plan.id,
+            cambioId: pendiente.id,
+            empresaId: organizacionId,
+            empresa: empresa.nombre,
+            plan: plan.nombre,
+            recibeAt: recepcion.recibeAt.toISOString(),
+            motivo,
+          });
+          if (pendiente.vigenteDesde.getTime() <= ahora.getTime() && (await recepcionesSinRecibir(tx, pendiente.id)) === 0) {
+            await promoverEnTx(tx, pendiente);
+          }
+          return { estado: "no_aplicada", motivo };
+        }
+        // 4. R4: los módulos contra la versión que ELLA tenía, solo en ella; sus excepciones no se tocan. El
+        // historial de SL-23 lo firma el sistema, en un solo lote.
+        const tenia = comoLaCorre(plan, await versionPropiaDe(tx, organizacionId, plan.id));
+        const entradas = await cambiarModulos(
+          tx,
+          organizacionId,
+          version.modulos.filter((m) => !tenia.modulos.includes(m)),
+          tenia.modulos.filter((m) => !version.modulos.includes(m)),
+        );
+        await appendAccion(
+          tx,
+          entradas.map((e): EntradaAccion => ({ ...e, ...ACTOR_SISTEMA })),
+        );
+        // 5. R3: el precio rige desde F en el historial del plan; cada empresa lo toma en su primer período desde F.
+        await escribirPrecioDelCambio(tx, plan, pendiente.vigenteDesde, version.precio);
+        // 6. R2: su versión propia, que leen los triggers, la tarifa, «Mi plan» y la factura. Sin tocar el ciclo (R5).
+        // R28: sin la marca de una no aplicada anterior: el aviso del detalle se va solo.
+        const fila = {
+          planId: plan.id,
+          cambioId: pendiente.id,
+          version: version as Prisma.InputJsonValue,
+          desdeAt: recepcion.recibeAt,
+          noAplicadaAt: null,
+          noAplicadaMotivo: null,
+        };
+        await tx.planVersionEmpresa.upsert({
+          where: { empresaId: organizacionId },
+          create: { empresaId: organizacionId, ...fila },
+          update: fila,
+        });
+        await tx.planCambioRecepcion.update({ where: clave, data: { recibidoAt: ahora } });
+        // 7. R10: era la última y F ya pasó → el plan se promueve en esta misma transacción.
+        if (pendiente.vigenteDesde.getTime() <= ahora.getTime() && (await recepcionesSinRecibir(tx, pendiente.id)) === 0) {
+          await promoverEnTx(tx, pendiente);
+        }
+        return { estado: "aplicado" };
+      }),
+    );
+  }
+
+  recepcionesVencidas(ahora: Date): Promise<RecepcionPendiente[]> {
+    return comoPlataforma("SL-24", "barrer las recepciones vencidas de los cambios programados (trabajo de la cola, SLT-128)", async () => {
+      const filas = await this.prisma.planCambioRecepcion.findMany({
+        where: { ...PENDIENTE, recibeAt: { lte: ahora } },
+        orderBy: [{ recibeAt: "asc" }, { cambioId: "asc" }, { empresaId: "asc" }],
+        select: { cambioId: true, empresaId: true, cambio: { select: { planId: true } } },
+      });
+      return filas.map((f) => ({ planId: f.cambio.planId, cambioId: f.cambioId, organizacionId: f.empresaId }));
+    });
+  }
+
+  repartirRecordatorioDeEmpresa(
+    cambio: CambioPendiente,
+    organizacionId: string,
+    dias: DiasDeRecordatorio,
+    recibeAt: Date,
+  ): Promise<ResultadoRecordatorio> {
+    return comoPlataforma("SL-24", "encolar el recordatorio de un cambio programado a una empresa (trabajo de la cola, SLT-128)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoRecordatorio> => {
+        // design §6: empresa → plan, los dos FOR SHARE: espera a una recepción, un cambio de tipo, una salida, una
+        // cancelación o un reemplazo en vuelo, y lee lo que dejaron.
+        const [empresa] = await tx.$queryRaw<{ id: string; nombre: string; plan_id: string | null }[]>`
+          SELECT "id", "nombre", "plan_id" FROM "organizacion" WHERE "id" = ${organizacionId} FOR SHARE`;
+        if (empresa === undefined || empresa.plan_id !== cambio.planId) return { estado: "sin_pendiente" };
+        await tx.$queryRaw`SELECT "id" FROM "plan" WHERE "id" = ${cambio.planId} FOR SHARE`;
+        const pendiente = await tx.planCambioProgramado.findFirst({
+          where: { id: cambio.cambioId, planId: cambio.planId },
+          select: { id: true, version: true },
+        });
+        if (pendiente === null) return { estado: "sin_pendiente" };
+        // R22: ya recibida, o movida a otra fecha (R19): este recordatorio ya no avisa de nada.
+        const recepcion = await tx.planCambioRecepcion.findUnique({
+          where: { cambioId_empresaId: { cambioId: pendiente.id, empresaId: organizacionId } },
+          select: { recibeAt: true, recibidoAt: true, noAplicadaAt: true },
+        });
+        // R28: tampoco si quedó «no aplicada».
+        if (
+          recepcion === null ||
+          recepcion.recibidoAt !== null ||
+          recepcion.noAplicadaAt !== null ||
+          recepcion.recibeAt.getTime() !== recibeAt.getTime()
+        ) {
+          return { estado: "sin_pendiente" };
+        }
+        const plan = (await leerPlan(tx, cambio.planId)) as PlanDTO;
+        const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
+        const suya = comoLaCorre(plan, await versionPropiaDe(tx, organizacionId, plan.id));
+        // R22 (SL-24 R42): los topes que la empresa ya pasa AHORA contra la versión que recibirá.
+        const excedidos = await excedidosDe(tx, [empresa], version.topes);
+        const tipo = TIPO_DE_RECORDATORIO[dias];
+        await encolarAvisos(tx, [
+          {
+            organizacionId,
+            dedupeKey: dedupeAvisoRecordatorio(pendiente.id, tipo, organizacionId, recibeAt),
+            payload: {
+              cambioId: pendiente.id,
+              planId: cambio.planId,
+              planNombre: suya.nombre,
+              tipo,
+              cambios: diferenciasDelPlan(suya, { ...suya, ...version }),
+              vigenteDesde: recibeAt.toISOString(),
+              reemplazaA: null,
+              topesPasados: topesDeLaEmpresa(excedidos, organizacionId),
+            },
+          },
+        ]);
+        return { estado: "repartido", empresas: 1 };
       }),
     );
   }
@@ -1369,11 +2089,20 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
         const vigente = (await leerPlan(tx, cambio.planId)) as PlanDTO;
         const cambios = diferenciasDelPlan(vigente, { ...vigente, ...version });
-        // R42: las empresas que tienen el plan AHORA y sus topes pasados contra la versión pendiente.
-        const empresas = await empresasDelPlan(tx, cambio.planId);
+        // SLT-128 (R24): queda para los trabajos sin empresa encolados antes del despliegue. Solo a las empresas
+        // que tienen el plan AHORA y aún no lo recibieron, cada una con SU recepción como fecha (R42: sus topes
+        // pasados contra la versión pendiente).
+        const recepciones = new Map(
+          (
+            await tx.planCambioRecepcion.findMany({
+              where: { cambioId: pendiente.id, ...PENDIENTE },
+              select: { empresaId: true, recibeAt: true },
+            })
+          ).map((r) => [r.empresaId, r.recibeAt]),
+        );
+        const empresas = (await empresasDelPlan(tx, cambio.planId)).filter((e) => recepciones.has(e.id));
         const excedidos = await excedidosDe(tx, empresas, version.topes);
         const tipo = dias === 7 ? "recordatorio_7" : "recordatorio_1";
-        const vigenteDesde = pendiente.vigenteDesde.toISOString();
         await encolarAvisos(
           tx,
           empresas.map((e) => ({
@@ -1385,7 +2114,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
               planNombre: vigente.nombre,
               tipo,
               cambios,
-              vigenteDesde,
+              vigenteDesde: (recepciones.get(e.id) as Date).toISOString(),
               reemplazaA: null,
               topesPasados: topesDeLaEmpresa(excedidos, e.id),
             },
@@ -1502,8 +2231,29 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         include: {
           ...INCLUIR,
           organizacionExclusiva: { select: { nombre: true } },
-          cambioProgramado: { select: { vigenteDesde: true, version: true } },
+          // SLT-128 (R11): sus recepciones, para «N de M empresas ya lo recibieron».
+          cambioProgramado: {
+            select: {
+              vigenteDesde: true,
+              version: true,
+              // SLT-128 (R28): las no aplicadas cuentan en `total` pero no en `recibidas`, y van a `noAplicadas`.
+              recepciones: {
+                select: {
+                  recibidoAt: true,
+                  empresaId: true,
+                  noAplicadaAt: true,
+                  noAplicadaMotivo: true,
+                  empresa: { select: { nombre: true } },
+                },
+              },
+            },
+          },
           empresas: { select: { id: true, nombre: true }, orderBy: [{ nombre: "asc" }, { id: "asc" }] },
+          // SLT-128 (§14.3; R28): las versiones que sus empresas conservan por una no aplicada, ya promovido el plan.
+          versionesDeEmpresa: {
+            where: { noAplicadaAt: { not: null } },
+            select: { empresaId: true, noAplicadaAt: true, noAplicadaMotivo: true, empresa: { select: { nombre: true } } },
+          },
         },
       });
       if (fila === null) return null;
@@ -1518,7 +2268,8 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
       return {
         plan: aDTO(fila),
         empresaNombre: fila.organizacionExclusiva?.nombre ?? null,
-        pendiente: pendienteDe(fila.cambioProgramado),
+        pendiente: pendienteDelDetalle(fila.cambioProgramado),
+        noAplicadas: noAplicadasDelDetalle(fila.cambioProgramado?.recepciones ?? [], fila.versionesDeEmpresa),
         empresas: fila.empresas,
         rastro: rastro.map((r) => ({
           id: r.id,
@@ -1541,7 +2292,17 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
             planCicloAnclaAt: true,
             planTipoCobro: true,
             plan: {
-              include: { ...INCLUIR, cambioProgramado: { select: { vigenteDesde: true, version: true } } },
+              include: {
+                ...INCLUIR,
+                // SLT-128 (R12): el pendiente del plan con SU recepción si aún no lo recibió.
+                cambioProgramado: {
+                  select: {
+                    vigenteDesde: true,
+                    version: true,
+                    recepciones: { where: { empresaId: organizacionId, ...PENDIENTE }, select: { recibeAt: true } },
+                  },
+                },
+              },
             },
             // SLT-86 (§3.3; R26): el pendiente de la empresa. El superadmin no pasa por la lectura acotada:
             // lee las columnas directamente, como el resto del detalle. El actor no sale de aquí.
@@ -1593,7 +2354,9 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
         // El CHECK de 20261028130000 impide un plan sin entrada.
         const entrada = empresa.planCicloAnclaAt;
         if (entrada === null) throw new Error(`planDeEmpresa: la empresa ${organizacionId} tiene plan y no entrada`);
-        const dto = aDTO(plan);
+        // SLT-128 (R2, R12): durante un cambio a medias, la versión que corre ESTA empresa (la propia, si ya lo
+        // recibió). Aparte de la consulta de la empresa, como el plan que entra (ficha 450).
+        const dto = comoLaCorre(aDTO(plan), await versionPropiaDe(tx, organizacionId, plan.id));
         const uso = await usoDe(tx, organizacionId);
         // SLT-66 (R18, §3.2): la misma función que el trigger del cargo, para que el detalle diga lo que
         // cobrará la próxima orden. El enum va como texto: el driver no conoce el tipo de Postgres.
@@ -1649,7 +2412,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
                 number
               >,
             },
-            cambio: pendienteDe(plan.cambioProgramado),
+            cambio: cambioDeLaEmpresa(plan.cambioProgramado),
             costoVigente: costoVigenteDeLaTarifa(tarifa),
             cobroCiclo,
             // SLT-86 (R1): el CHECK de 20261106120000 deja los cuatro tipos.

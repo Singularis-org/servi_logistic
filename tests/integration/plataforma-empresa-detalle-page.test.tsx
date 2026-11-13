@@ -5,6 +5,10 @@
 // la pantalla y la página ni siquiera pide los módulos de la empresa. Con el superadmin se monta el
 // `ModulosEmpresa` REAL con lo que baja por props, y se lee lo que pinta: 8 interruptores y el núcleo,
 // con sus 8 nombres y sin control.
+//
+// SLT-119 (design §6.3; R12, R17): dos pestañas. «Empresa», la elegida al abrir, con plan, núcleo y módulos; y
+// «Facturación», con las facturas de la empresa de la URL. La lectura de las facturas y la action del detalle son
+// dobles. La pestaña no elegida no se monta: los tests eligen «Facturación» antes de afirmar su contenido.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -71,7 +75,20 @@ vi.mock("@/lib/actions/pagos-plataforma", () => ({
   verComprobantePagoPlataformaAction: (...a: unknown[]) => comprobanteMock(...a),
 }));
 
+// SLT-119 (R12, R17): las facturas de la empresa y el detalle de una, como dobles.
+const { verFacturasMock, verDetalleFacturaMock } = vi.hoisted(() => ({
+  verFacturasMock: vi.fn(),
+  verDetalleFacturaMock: vi.fn(),
+}));
+vi.mock("@/lib/actions/_shared/facturas-plataforma", () => ({
+  verFacturasDeEmpresa: (...a: unknown[]) => verFacturasMock(...a),
+}));
+vi.mock("@/lib/actions/facturas-plataforma", () => ({
+  verDetalleFacturaEmpresaAction: (...a: unknown[]) => verDetalleFacturaMock(...a),
+}));
+
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import type { DetalleFacturaResult, FacturaPlataformaDTO, FacturasResult } from "@/lib/types/factura-plataforma";
 import { ToastProvider } from "@/providers/ToastProvider";
 import EmpresaDetallePage from "@/app/(app)/plataforma/empresas/[organizacionId]/page";
 
@@ -115,6 +132,7 @@ beforeEach(() => {
   previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [] });
   cancelarMock.mockResolvedValue({ estado: "ok" });
   verPagosMock.mockResolvedValue({ estado: "ok", datos: { pagos: [], facturas: [] } } satisfies VerPagosDeEmpresaResult);
+  verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [] } satisfies FacturasResult);
 });
 
 afterEach(() => cleanup());
@@ -573,5 +591,114 @@ describe("SLT-60 (R12, R13) — «Pagos por confirmar» en el detalle de la empr
 
     await expect(EmpresaDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
     expect(verPagosMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", () => {
+  const superadmin = { usuarioId: "sa-1", rol: "superadmin" as const };
+  /** Las 00:00 de la hora de la plataforma (−06:00) del día `fecha`. */
+  const dia = (fecha: string) => new Date(Date.parse(`${fecha}T00:00:00.000Z`) + 6 * 3_600_000);
+  const CERRADA: FacturaPlataformaDTO = {
+    id: "aaaaaaaa-0000-4000-8000-000000000001",
+    estado: "cerrada",
+    numero: 1,
+    desde: dia("2026-11-01"),
+    hasta: dia("2026-11-16"),
+    hastaPrevisto: false,
+    periodicidad: "quincenal",
+    plan: { planId: "p-1", planNombre: "Plan Crecer", tipoCobro: "mensual" },
+    cargos: "600.00",
+    reversos: "300.00",
+    movimientos: 3,
+    totalOrdenes: "300.00",
+    cuota: null,
+    primeraCuota: null,
+    total: "300.00",
+    cerradaAt: dia("2026-11-16"),
+  };
+
+  async function abrirFacturacion() {
+    const user = userEvent.setup();
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+    await user.click(screen.getByRole("tab", { name: "Facturación" }));
+    return user;
+  }
+
+  it("R12: al abrir, «Empresa» es la pestaña elegida y muestra plan, núcleo y módulos; «Facturación» no se ha montado", async () => {
+    actorMock.mockResolvedValue(superadmin);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Empresa", "Facturación"]);
+    expect(screen.getByRole("tab", { name: "Empresa" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Facturación" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Núcleo (siempre activo)" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Módulos" })).getAllByRole("switch")).toHaveLength(3);
+    expect(screen.queryByRole("region", { name: "Facturas de la empresa" })).toBeNull();
+    // El enlace de vuelta queda fuera de las pestañas.
+    expect(screen.getByRole("link", { name: "Volver a Empresas" })).toBeInTheDocument();
+  });
+
+  it("R12: «Facturación» muestra las facturas de la empresa de la URL, leídas con el actor del superadmin", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [CERRADA] } satisfies FacturasResult);
+
+    await abrirFacturacion();
+
+    expect(verFacturasMock).toHaveBeenCalledWith(superadmin, { organizacionId: ORG });
+    const seccion = screen.getByRole("region", { name: "Facturas de la empresa" });
+    const [, fila] = within(seccion).getAllByRole("row");
+    expect(within(fila).getAllByRole("cell").slice(0, 3).map((c) => c.textContent)).toEqual([
+      "N.º 1",
+      "1 nov 2026 – 15 nov 2026",
+      "Plan Crecer",
+    ]);
+    // La pestaña «Empresa» se desmonta al elegir otra.
+    expect(screen.queryByRole("region", { name: "Módulos" })).toBeNull();
+  });
+
+  it("R12: el detalle lo pide la action ligada a la empresa de la URL; el panel solo manda la factura y la página", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [CERRADA] } satisfies FacturasResult);
+    verDetalleFacturaMock.mockResolvedValue({
+      estado: "ok",
+      detalle: { factura: CERRADA, lineas: { lineas: [], pagina: 1, porPagina: 100, total: 0 } },
+    } satisfies DetalleFacturaResult);
+
+    const user = await abrirFacturacion();
+    await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
+
+    expect(await screen.findByRole("dialog", { name: "Factura N.º 1" })).toBeInTheDocument();
+    expect(verDetalleFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id, pagina: 1 });
+  });
+
+  it.each<[string, () => void]>([
+    ["la lectura lanza", () => verFacturasMock.mockRejectedValue(new Error("db caída"))],
+    ["la lectura no es ok", () => verFacturasMock.mockResolvedValue({ estado: "forbidden" } satisfies FacturasResult)],
+  ])("R17: si %s, «Facturación» lo dice y plan, núcleo y módulos se pintan igual", async (_caso, preparar) => {
+    actorMock.mockResolvedValue(superadmin);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    preparar();
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Envíos Norte" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Núcleo (siempre activo)" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Módulos" })).getAllByRole("switch")).toHaveLength(3);
+
+    await user.click(screen.getByRole("tab", { name: "Facturación" }));
+
+    const seccion = screen.getByRole("region", { name: "Facturas de la empresa" });
+    expect(within(seccion).getByRole("alert")).toHaveTextContent("No se pudieron cargar las facturas");
+  });
+
+  it("R12: un rol de empresa no lee las facturas (notFound antes de leer)", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
+
+    await expect(EmpresaDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(verFacturasMock).not.toHaveBeenCalled();
   });
 });

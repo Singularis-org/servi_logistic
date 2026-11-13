@@ -20,8 +20,9 @@ import { crearPlan, entradaAsignable, entradaDePlan, planesEnTx, revertida, sqls
 //
 // R35: crear con y sin ella, editar en el acto y programada (con su rastro y el aplicador de la cola), un plan
 // existente queda quincenal, valor inválido. R37: asignar, crear el custom y cambiar el tipo con quincenal en un
-// plan de órdenes mensuales; editar a mensual con una empresa quincenal y con un pendiente quincenal; una
-// programada que deja de pasar al aplicarse. Cada rechazo se mide «sin escribir nada».
+// plan de órdenes mensuales; editar a mensual con una empresa quincenal y con un pendiente quincenal. Cada
+// rechazo se mide «sin escribir nada».
+// SLT-128 (R8, R28): la programada que deja de pasar deja «no aplicada» la recepción de ESA empresa, no el plan.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -329,27 +330,91 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
     expect(r.despues).toEqual(r.antes);
   });
 
-  it("R37: una programada a mensual que ya no pasa al aplicarse (una empresa quincenal asignada después) hace fallar el trabajo sin escribir nada", async () => {
+  it("SLT-128 R8, R28: una programada a mensual que una empresa quincenal (asignada después) recibe queda «no aplicada» con su motivo, sin escribirle nada de la versión; el barrido no la devuelve y el aviso sale una vez y sin empresa", async () => {
     const r = await revertida(base, async (tx) => {
       const planId = await crear(tx, entradaAsignable());
       const programada = await editar(tx, planId, { periodicidadOrdenes: "mensual" }, PROGRAMADA);
-      // Hasta su fecha el plan sigue quincenal: una empresa quincenal se le puede asignar.
-      await empresaCon(tx, planId, "quincenal");
-      const antes = await fotoDelPlan(tx, planId);
-      const cambioId = antes.programado?.id ?? "";
-      let error: unknown = null;
-      try {
-        await planesEnTx(tx).aplicarCambioProgramado({ planId, cambioId }, new Date(inicioDelDiaPlataforma(PROGRAMADA).getTime() + 60_000));
-      } catch (e) {
-        error = e;
-      }
-      return { programada, antes, error, despues: await fotoDelPlan(tx, planId) };
+      // Hasta su fecha el plan sigue quincenal: una empresa quincenal se le puede asignar. Entra antes de F, así
+      // que recibe la versión programada en su recepción (el 1 de diciembre, la quincena que empieza en F o después).
+      const org = await empresaCon(tx, planId, "quincenal");
+      const cambioId = (await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } })).id;
+      const clave = { cambioId_empresaId: { cambioId, empresaId: org } };
+      const recepcion = await tx.planCambioRecepcion.findUniqueOrThrow({ where: clave, select: { recibeAt: true } });
+      const modulosAntes = await tx.organizacionModulo.findMany({ where: { organizacionId: org }, orderBy: { modulo: "asc" } });
+      const antes = { empresa: await fotoDeEmpresa(tx, org), precio: await tx.planPrecioHistorial.count({ where: { planId } }) };
+      const repo = planesEnTx(tx);
+      // El sin empresa, en F: no promueve (la quincenal aún no lo resolvió) y no escribe.
+      const enF = await repo.aplicarCambioProgramado({ planId, cambioId }, new Date(inicioDelDiaPlataforma(PROGRAMADA).getTime() + 60_000));
+      const alRecibir = new Date(recepcion.recibeAt.getTime() + 60_000);
+      // La recepción corre en SU empresa (el trabajo con empresa): el aviso nace igual sin empresa.
+      await fijarEmpresa(tx, org);
+      const recibida = await repo.recibirCambio({ planId, cambioId }, org, alRecibir);
+      await fijarEmpresa(tx, "");
+      const otraVez = await repo.recibirCambio({ planId, cambioId }, org, new Date(alRecibir.getTime() + 60_000));
+      const barrido = await repo.recepcionesVencidas(new Date(alRecibir.getTime() + 120_000));
+      const avisos = await tx.job.findMany({
+        where: { tipo: "plan_aviso_correo", dedupeKey: { startsWith: `plan_aviso:${cambioId}:no_aplicada:` } },
+        select: { organizacionId: true, payload: true, dedupeKey: true },
+      });
+      return {
+        cambioId,
+        org,
+        programada,
+        recibeAt: recepcion.recibeAt,
+        enF,
+        recibida,
+        otraVez,
+        barrido: barrido.filter((b) => b.cambioId === cambioId),
+        antes,
+        despues: { empresa: await fotoDeEmpresa(tx, org), precio: await tx.planPrecioHistorial.count({ where: { planId } }) },
+        modulosAntes,
+        modulosDespues: await tx.organizacionModulo.findMany({ where: { organizacionId: org }, orderBy: { modulo: "asc" } }),
+        // La recepción era la única pendiente: al quedar no aplicada, `recibirCambio` promueve en esa misma
+        // transacción y borra el pendiente, que se lleva sus recepciones en cascada. La marca sobrevive en la versión
+        // que la empresa conserva (design §14.1, §14.3).
+        recepcionTrasPromover: await tx.planCambioRecepcion.findUnique({ where: clave }),
+        marca: await tx.planVersionEmpresa.findUnique({
+          where: { empresaId: org },
+          select: { cambioId: true, noAplicadaAt: true, noAplicadaMotivo: true },
+        }),
+        avisos,
+        alRecibir,
+        // Era la única: con F pasada, el plan se promueve igual (la no aplicada cuenta como resuelta).
+        pendiente: await tx.planCambioProgramado.count({ where: { planId } }),
+        columna: await columna(tx, planId),
+        conservada: await tx.planVersionEmpresa.findUnique({
+          where: { empresaId: org },
+          select: { noAplicadaMotivo: true, version: true },
+        }),
+      };
     });
     expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
-    expect(r.error).toBeInstanceOf(Error);
-    expect(String((r.error as Error).message)).toContain("R37");
-    // Ni la columna, ni el rastro, ni el programado (sigue pendiente: el trabajo se reintenta y queda `failed`).
+    expect(r.recibeAt.toISOString()).toBe("2026-12-01T06:00:00.000Z");
+    expect(r.enF).toEqual({ estado: "espera" });
+    expect(r.recibida).toEqual({ estado: "no_aplicada", motivo: "cobro_quincenal_ordenes_mensuales" });
+    // Resuelta: ni el trabajo ni el barrido la vuelven a intentar.
+    expect(r.otraVez).toEqual({ estado: "sin_pendiente" });
+    expect(r.barrido).toEqual([]);
+    expect(r.recepcionTrasPromover).toBeNull();
+    expect(r.marca).toEqual({ cambioId: r.cambioId, noAplicadaAt: r.alRecibir, noAplicadaMotivo: "cobro_quincenal_ordenes_mensuales" });
+    // Nada de la versión: ni módulos, ni precio, ni la fila ni el historial de la empresa. El único trabajo nuevo es
+    // el aviso, y nace SIN empresa (no cuenta en los de la empresa).
+    expect(r.modulosDespues).toEqual(r.modulosAntes);
     expect(r.despues).toEqual(r.antes);
-    expect(r.despues.programado).not.toBeNull();
+    expect(r.avisos).toHaveLength(1);
+    expect(r.avisos[0].organizacionId).toBeNull();
+    expect(r.avisos[0].dedupeKey).toBe(`plan_aviso:${r.cambioId}:no_aplicada:${r.org}`);
+    expect(r.avisos[0].payload).toMatchObject({
+      tipo: "no_aplicada",
+      cambioId: r.cambioId,
+      empresaId: r.org,
+      recibeAt: "2026-12-01T06:00:00.000Z",
+      motivo: "cobro_quincenal_ordenes_mensuales",
+    });
+    // R10 con la no aplicada resuelta: el plan pasa a mensual y la empresa conserva su versión quincenal, marcada.
+    expect(r.pendiente).toBe(0);
+    expect(r.columna).toBe("mensual");
+    expect(r.conservada?.noAplicadaMotivo).toBe("cobro_quincenal_ordenes_mensuales");
+    expect(r.conservada?.version).toMatchObject({ periodicidadOrdenes: "quincenal" });
   });
 });

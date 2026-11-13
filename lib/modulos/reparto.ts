@@ -173,6 +173,9 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "envio-devolucion-central": "nucleo",
   "eliminar-orden": "nucleo",
   "etiquetas-guia": "nucleo",
+  // SLT-119: el detalle de una factura de la plataforma, en «Mi plan» (maestro) y en el detalle de empresa
+  // (superadmin), ambas núcleo.
+  "facturas-plataforma": "nucleo",
   "filtros-ordenes": "nucleo",
   geografia: "nucleo",
   "geografia-plataforma": "nucleo",

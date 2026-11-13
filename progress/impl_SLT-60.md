@@ -662,3 +662,29 @@ Siglas: **INT** = `tests/integration/db/pago-plataforma-confirmacion.test.ts`; *
   relanzó y Claude Code la detuvo por falta de memoria en la máquina.
 - Decisión del humano (2026-11-13): la segunda corrida la cierra el check `e2e` del CI cuando el PR #151 salga
   de borrador. T7.3 queda pendiente de ese check.
+
+## F2.3 — merge de `origin/dev` (2026-11-13, implementer)
+
+Trae SLT-119 «Planes: pantallas de facturas para el superadmin y el maestro» (#146) y SLT-128 «Planes: el cambio
+programado del plan llega a cada empresa al inicio de su período» (#132). Tres conflictos, todos de «conservar los dos lados»:
+
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`: los dos imports de tipos; `leerPagos` y `leerFacturas`
+  como lecturas aisladas; las dos en el mismo `Promise.all` (`pagos`, `facturas`); `PagosPorConfirmar` queda fuera de las
+  pestañas, entre «Volver a Empresas» y `Tabs` (lo que preveía el spec); el plan, núcleo y módulos van en «Empresa».
+- `playwright.config.ts`: los dos specs en la lista (`pago-plataforma-confirmacion` y `facturas-plataforma`).
+- `tests/integration/plataforma-empresa-detalle-page.test.tsx`: los dobles de las dos ramas (pagos y facturas), los dos
+  `mockResolvedValue` del `beforeEach` y los dos `describe` (SLT-60 R12/R13/R33 y SLT-119 R12/R17).
+
+Migraciones: `prisma migrate deploy` en `servi_logistic_slt60` aplicó `20261114120000_plan_cambio_por_empresa`;
+`prisma generate` después.
+
+Verificación (en primer plano, sin E2E):
+- `tsc --noEmit` (con `--max-old-space-size=6144`; con el heap por defecto se queda sin memoria): 0 errores.
+- `eslint` sobre los tres archivos: limpio.
+- `vitest related --run` sobre los archivos en conflicto y las migraciones nuevas: 1 archivo, 38/38.
+- `tests/integration/plataforma-empresa-detalle-page.test.tsx` contra `servi_logistic_slt60`: 38/38.
+- Tests que nombran la migración nueva: `migracion-slt128-ida-y-vuelta` y `migracion-slt123-ida-y-vuelta` en verde;
+  `migracion-slt139-ida-y-vuelta` 1 rojo (R337, orden en disco). **Viene de dev, no de este merge:** espera que
+  `20261115120000_pago_satelite_enum` vaya justo detrás de `20261114120000_pago_independiente_efectivo`, pero en
+  `origin/dev` ya está en medio `20261114120000_plan_cambio_por_empresa` (SLT-128). No está en `tests/baseline-rojos.json`.
+  No se toca aquí (es test de otra ficha).
