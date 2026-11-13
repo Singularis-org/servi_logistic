@@ -434,3 +434,48 @@ corrida 1; `DATABASE_URL` de esa base, `NODE_OPTIONS=--max-old-space-size=8192`,
 ### Veredicto
 
 T5.1 hecha: E2E de SLT-141 verde dos veces seguidas (20/20) y rojo real con el libro desactivado.
+
+## Cierre — T6.1 y T6.3 (B1 de la review, vuelta 1) (2026-11-13)
+
+### Gate local (del leader)
+
+`./init.sh` sobre la rama a HEAD `cd32557f`, log del leader: **`INIT_EXIT=0`** (`== init OK ==`).
+`test:rapido` corrió 343 archivos en cuatro lotes, todos verdes: 100 (1212 tests), 100 (1590),
+100 (1499 passed, 1 skipped heredado), 43 (542; guardias). Los 247 relacionados por imports
+pasan del presupuesto (150) y no se corren en local: los cubre la suite completa del CI.
+245 rojos heredados del baseline no cuentan (los compara el CI).
+
+### E2E: proyecto `dinero` entero (T6.1)
+
+Base desechable `slt141_e2e` recreada antes de la corrida 1 (DROP/CREATE + `prisma migrate deploy` +
+`db:seed`). `DATABASE_URL` de esa base, `NODE_OPTIONS=--max-old-space-size=8192`,
+`NEXT_PUBLIC_APP_URL=http://localhost:3044`; `pnpm exec next build` (sin `prisma generate`) → BUILD_EXIT=0.
+
+`E2E_PUERTO=3044 pnpm exec playwright test --project=dinero --reporter=list`, sin dev server:
+
+- corrida 1: `109 passed (5.4m)`, PW_EXIT=0 → 0 failed / 0 skipped / 0 flaky
+- corrida 2 (misma base): `109 passed (5.5m)`, PW_EXIT=0 → 0 failed / 0 skipped / 0 flaky
+
+Incluye `cierres-rediseno.spec.ts` entero (20), `cierre-bodega-satelite.spec.ts` (6) y
+`ajuste-pago-mensajero-cierre.spec.ts` (2), más los otros 15 specs del grupo. Puertos 3044 y 54329
+libres al terminar.
+
+### Mapa R → test consolidado (T6.3), igual a `tasks.md > ## Trazabilidad`
+
+| R | Test |
+|---|---|
+| R384 | `tests/components/descarga/CierresBodegaResumenModeloNuevo.test.tsx` (a) · `tests/unit/services/cierres-bodega-resumen-modelo-nuevo-service.test.ts` (a) · `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` (solo BV) · existentes sin cambiar aserciones: `tests/unit/descarga/cierres-bodega-descarga-columnas.test.ts`, `tests/components/descarga/CierresDescargaNiveles.test.tsx`, `tests/components/descarga/CierresDescargaColumnas.test.tsx` |
+| R385 | `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts` (libro, mixto, orden) · `tests/components/descarga/CierresBodegaResumenModeloNuevo.test.tsx` (b) · `e2e/cierres-rediseno.spec.ts` (hojas) |
+| R386 | `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts` (encabezados 26/25) · `tests/unit/services/cierre-bodega-solicitados-modelo-nuevo-service.test.ts` (sin `pagoEntregado`) · `tests/components/descarga/CierresBodegaResumenModeloNuevo.test.tsx` (c) |
+| R387 | `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` (literales, paridad, sin escrituras) · `tests/unit/utils/cifras-cierre-bodega.test.ts` · `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts` (celdas, signo) · `e2e/cierres-rediseno.spec.ts` (números) |
+| R388 | `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts` (folio, fechas, vacíos, conteos) · `tests/unit/services/cierres-bodega-resumen-modelo-nuevo-service.test.ts` (c) · `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` (Gestiones, Pagos ajustados, Pago entregado) |
+| R389 | `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` (consultas con 1 y 3; alcance) · `tests/unit/services/cierre-bodega-solicitados-modelo-nuevo-service.test.ts` (alcance) · `tests/unit/actions/cierre-bodega-cifras-cableado.test.ts` |
+
+Comprobación: los 11 archivos del mapa existen (`ls`, 11 OK). Los 10 de vitest, juntos y con
+`DATABASE_URL` de `slt141_e2e` (la integración corre contra Postgres, no se salta):
+`Test Files 10 passed (10)` · `Tests 88 passed (88)` · VT_EXIT=0. El E2E `e2e/cierres-rediseno.spec.ts`
+verde dentro de las dos corridas de `dinero`. Ningún R384-R389 queda sin test.
+
+### Veredicto
+
+T6.1 y T6.3 hechas: gate INIT_EXIT=0, `dinero` 109/109 dos veces seguidas y mapa R → test completo y verde.
