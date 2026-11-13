@@ -37,13 +37,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 
-import {
-  listarCierresBodegaSolicitadosPaginado,
-  listarHistoricoCierresBodegaPaginado,
-} from "@/lib/actions/cierre-bodega";
 import { CascadasCierreMensajero } from "@/app/(app)/cierres-admin/_components/CascadasCierreMensajero";
-import { CierresBodegaResueltosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaResueltosLista";
-import { CierresBodegaSolicitadosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista";
 import { DesglosePorTienda } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
 import { CierreBodegaFacturaResumen } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import { ComposicionGananciaCard } from "@/app/(app)/wallet/_components/ComposicionGananciaCard";
@@ -219,21 +213,6 @@ describe("D40 — la tarjeta del cierre de bodega", () => {
     const cascada = await desplegarTarjeta();
     expect(within(cascada).getByText(VIEJO.paraLaCentral)).toBeInTheDocument();
     expect(cascada.textContent).not.toContain("sus gestiones");
-  });
-
-  it("el `adminSatelite` en sus solicitados y el maestro en los resueltos leen la misma nota", async () => {
-    const fila = cierreBodega({ incluyeModeloNuevo: true });
-    const pagina = { items: [fila], total: 1, pageSize: 10 };
-    const respuesta = { status: "ok" as const, page: 1, ...pagina };
-    vi.mocked(listarCierresBodegaSolicitadosPaginado).mockResolvedValue(respuesta);
-    vi.mocked(listarHistoricoCierresBodegaPaginado).mockResolvedValue(respuesta);
-
-    const satelite = conSWR(<CierresBodegaSolicitadosLista initialData={pagina} />);
-    expect(within(await desplegarTarjeta()).getByText(NUEVO.paraLaCentral)).toBeInTheDocument();
-    satelite.unmount();
-
-    conSWR(<CierresBodegaResueltosLista initialData={pagina} onAbrir={() => {}} />);
-    expect(within(await desplegarTarjeta()).getByText(NUEVO.paraLaCentral)).toBeInTheDocument();
   });
 });
 

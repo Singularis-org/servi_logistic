@@ -208,11 +208,19 @@ interface ListadoPaginado {
   etiquetaPaginacion: string;
   /**
    * Archivo donde vive el `useSWR` que lee la página, cuando NO es el mismo que monta el
-   * control. En este repo hay UNO así —el histórico de cierres del día, que T I.2 sacó a su
-   * propio componente presentacional y cuyo lector se quedó en el módulo padre— y se declara
-   * en vez de aflojar la guardia: es exactamente el reparto que Q-I6 dejó escrito.
+   * control. Hubo UNO así —el histórico de cierres del día, que T I.2 sacó a su propio
+   * componente presentacional y cuyo lector se quedó en el módulo padre—; SLT-115 borró ese
+   * componente y hoy no queda ninguno. Se declara en vez de aflojar la guardia (Q-I6).
    */
   lector?: string;
+  /**
+   * SLT-115 «Retirar los componentes de cierre sustituidos»: nombre de la función de descarga
+   * cuando el archivo de `ruta` monta MÁS de una descarga (la lista vieja se borró y su descarga se
+   * mudó al módulo, que ya tenía la suya). R52 se mide entonces sobre el cuerpo de ESA función, no
+   * sobre el archivo entero: si no, la otra descarga del módulo la taparía. Y se exige además que
+   * toda acción que esa función lee sea un `…Completo`.
+   */
+  descarga?: string;
 }
 
 /**
@@ -238,11 +246,12 @@ const ANEXO_III: ListadoPaginado[] = [
     // Feature 184 — Tanda D (T D.3/T D.4): su relectura traía la cola Y el histórico juntos y
     // se quedaba con una mitad; la lectura dedicada corta por estado en la base.
     listado: "Cierres del día — histórico",
-    ruta: "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx",
+    // SLT-115: la lista vieja se borró; su control, su lector y su descarga viven en el módulo.
+    ruta: "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
     tanda: "I",
     adaptador: "completo",
     etiquetaPaginacion: "PAGINACION_HISTORICO_LABEL",
-    lector: "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
+    descarga: "descargaHistoricoCierres",
   },
   {
     // Feature 184 — Tanda D (T D.3/T D.4): el gemelo del anterior, y el que más se ahorra en
@@ -275,15 +284,18 @@ const ANEXO_III: ListadoPaginado[] = [
     tanda: "I",
     adaptador: "completo",
     etiquetaPaginacion: "PAGINACION_CONCILIADOS_LABEL",
+    descarga: "descargaBodegaResueltos",
   },
   {
     // Feature 184 — Tanda B (T B.2/T B.3): su relectura era la más cara del inventario —cuatro
     // consultas, cinco agregados de dinero y el reparto del efectivo— para quedarse con un campo.
     listado: "Cierres de bodega solicitados",
-    ruta: "app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx",
+    // SLT-115: la lista vieja se borró; la pestaña «Solicitados» del módulo monta el control.
+    ruta: "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx",
     tanda: "I",
     adaptador: "completo",
     etiquetaPaginacion: "PAGINACION_BODEGA_SOLICITADOS_LABEL",
+    descarga: "descargaBodegaSolicitados",
   },
   {
     // Feature 184 — Tanda B (T B.2/T B.3): el gemelo del anterior. Su relectura, además de las
@@ -492,6 +504,18 @@ function rutaRelativa(archivo: string): string {
 
 function fuenteDe(ruta: string): string {
   return sinComentarios(readFileSync(path.join(RAIZ, ruta), "utf8"));
+}
+
+/**
+ * SLT-115: el cuerpo de `export function <nombre>(` hasta su `}` de cierre en columna 0. Si no
+ * está, la fila del censo apunta a un archivo que ya no la tiene: rojo, con el listado.
+ */
+function cuerpoDeFuncion(fuente: string, nombre: string, listado: string): string {
+  const inicio = fuente.indexOf(`export function ${nombre}(`);
+  expect(inicio, `${listado}: no hay \`export function ${nombre}(\` en su archivo`).toBeGreaterThanOrEqual(0);
+  const fin = fuente.indexOf("\n}\n", inicio);
+  expect(fin, `${listado}: ${nombre} sin cierre en columna 0`).toBeGreaterThan(inicio);
+  return fuente.slice(inicio, fin + 2);
 }
 
 /** `export const PAGINACION_X_LABEL` — el ancla del censo: uno por listado del Anexo III (R43). */
@@ -934,8 +958,8 @@ describe("T M.1 · R54 — ningún listado paginado consulta de más por render"
       expect(fuenteDe(ruta), `${listado}: no monta control de paginación`).toMatch(
         /<Pagination[\s/>]/,
       );
-      // El lector es el mismo archivo salvo en el histórico de cierres del día, cuyo módulo
-      // padre resuelve las DOS páginas de la pantalla (declarado arriba, Q-I6).
+      // El lector es el mismo archivo salvo que la fila declare `lector` (Q-I6; desde SLT-115,
+      // ninguna lo declara).
       const fuenteLectora = fuenteDe(lector ?? ruta);
       expect(fuenteLectora, `${listado}: no lee su página del servidor`).toMatch(/\buseSWR\b/);
       expect(
@@ -944,11 +968,10 @@ describe("T M.1 · R54 — ningún listado paginado consulta de más por render"
       ).toMatch(/\bfallbackData\b/);
     }
 
-    // Anti-vacuidad del reparto: hoy sólo UNO tiene su lector en otro archivo. Si mañana fueran
-    // más, la guardia sigue valiendo, pero alguien tiene que venir a declararlo.
-    expect(ANEXO_III.filter((l) => l.lector !== undefined).map((l) => l.listado)).toEqual([
-      "Cierres del día — histórico",
-    ]);
+    // Anti-vacuidad del reparto: desde SLT-115 ninguno tiene su lector en otro archivo (el
+    // histórico, el único que lo tenía, vive ya en el módulo que lo lee). Si mañana volviera a
+    // haber uno, la guardia sigue valiendo, pero alguien tiene que venir a declararlo.
+    expect(ANEXO_III.filter((l) => l.lector !== undefined).map((l) => l.listado)).toEqual([]);
   });
 
   it("el censo y el árbol no se despegan: 13 controles declarados, 13 listados", () => {
@@ -1066,19 +1089,54 @@ describe("T M.1 · R52 — toda descarga de un listado paginado entrega el datas
       completo: "conjunto",
     };
 
-    for (const { listado, ruta, adaptador } of ANEXO_III) {
-      const fuente = fuenteDe(ruta);
-      expect(fuente, `${listado}: su descarga no va al servidor por el conjunto (R52)`).toMatch(
-        ADAPTADOR[adaptador],
-      );
+    // SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (CI de #153): «Solicitados» ya
+    // no llama a `filasDesdeResultado(` en su propia fuente; le pasa la acción `…Completo` a
+    // `obtenerResumenCierresBodega`, que arma el libro y, si no hay modelo nuevo, termina en
+    // `filasDesdeResultado(respuesta, …)`. La conducta R52 es la misma; la guardia de texto solo
+    // no la veía. Se acepta ESE envoltorio y solo con las dos condiciones a la vez: que el
+    // envoltorio, leído aquí como texto, siga llamando a `filasDesdeResultado(`, y que la pantalla
+    // le pase una acción `…Completo` del servidor (la paginada da rojo). Nada se afloja para el
+    // resto: una pantalla sin ninguno de los dos caminos sigue roja.
+    const ENVOLTORIO_COMPLETO = {
+      ruta: "app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga.ts",
+      llamadaConCompleto:
+        /obtenerResumenCierresBodega\(\s*\(\)\s*=>\s*descargarDatos\(\s*"\w+Completo"/,
+    };
+    const envoltorioDelegaEnCompleto = ADAPTADOR.completo.test(
+      fuenteDe(ENVOLTORIO_COMPLETO.ruta).replace(/\r\n/g, "\n"),
+    );
+    const cumpleAdaptador = (fuente: string, adaptador: AdaptadorDescarga): boolean =>
+      ADAPTADOR[adaptador].test(fuente) ||
+      (adaptador === "completo" &&
+        envoltorioDelegaEnCompleto &&
+        ENVOLTORIO_COMPLETO.llamadaConCompleto.test(fuente));
+
+    for (const { listado, ruta, adaptador, descarga } of ANEXO_III) {
+      const archivo = fuenteDe(ruta).replace(/\r\n/g, "\n");
+      // SLT-115: con `descarga`, R52 se mide sobre el cuerpo de ESA función (el módulo monta otra
+      // descarga que, leída como archivo entero, la taparía), y toda acción que lee es `…Completo`.
+      const fuente = descarga ? cuerpoDeFuncion(archivo, descarga, listado) : archivo;
+      if (descarga) {
+        const acciones = [...fuente.matchAll(/descargarDatos\(\s*"(\w+)"/g)].map((m) => m[1]!);
+        expect(acciones.length, `${listado}: ${descarga} no lee ninguna acción`).toBeGreaterThan(0);
+        expect(
+          acciones.filter((a) => !a.endsWith("Completo")),
+          `${listado}: ${descarga} lee una acción que no es la del conjunto (R52)`,
+        ).toEqual([]);
+      }
       expect(
-        fuente,
+        cumpleAdaptador(fuente, adaptador),
+        `${listado}: su descarga no va al servidor por el conjunto (R52)`,
+      ).toBe(true);
+      // Las dos mitades negativas siguen sobre el archivo ENTERO: acotarlas a la función las aflojaría.
+      expect(
+        archivo,
         `${listado}: se declara «${adaptador}» pero también llama al adaptador «${CONTRARIO[adaptador]}»`,
       ).not.toMatch(ADAPTADOR[CONTRARIO[adaptador]]);
 
       if (!CONVIVEN_ANEXO_III_Y_IV.has(ruta)) {
         expect(
-          fuente,
+          archivo,
           `${listado}: proyecta el array que la tabla pinta, o sea «descargar lo que se ve» (R52)`,
         ).not.toMatch(/filasLocales\(/);
       }

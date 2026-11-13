@@ -53,12 +53,12 @@ export const MARCAR_RECIBIDO_TEXTO = {
 
 /** Errores de campo que este formulario puede levantar por sí solo, antes de enviar. */
 export const MARCAR_RECIBIDO_ERROR = {
-  monto: "Escribí un monto válido, mayor que cero y con dos decimales como máximo.",
+  monto: "Escribe un monto válido, mayor que cero y con dos decimales como máximo.",
   /**
    * SLT-96 (R13) — el aviso cuando lo declarado es 0: ahí el 0 SÍ vale, y decir «mayor que cero»
    * mandaría a la persona a teclear un monto que no recibió.
    */
-  montoConCero: "Escribí un monto válido, de cero o más y con dos decimales como máximo.",
+  montoConCero: "Escribe un monto válido, de cero o más y con dos decimales como máximo.",
   notaLarga: (max: number) => `La nota no puede pasar de ${max} caracteres.`,
 } as const;
 
@@ -74,9 +74,9 @@ export const CONCILIACION_RESPUESTA = {
    */
   conflicto: "Esta consolidación ya cambió de estado. Actualizando la lista.",
   noEncontrada: "Esta consolidación ya no está disponible.",
-  forbidden: "No tenés permiso para conciliar consolidaciones de bodega.",
-  unauthenticated: "Tu sesión expiró. Iniciá sesión de nuevo.",
-  fallo: "No se pudo completar la operación. Intentá de nuevo.",
+  forbidden: "No tienes permiso para conciliar consolidaciones de bodega.",
+  unauthenticated: "Tu sesión expiró. Inicia sesión de nuevo.",
+  fallo: "No se pudo completar la operación. Inténtalo de nuevo.",
   /**
    * SLT-73 (R14) — el título del aviso cuando la marca ya asentó el dinero en los libros y la
    * reversión se rechaza. El detalle es el `mensaje` que devuelve la acción

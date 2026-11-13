@@ -1322,7 +1322,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 
     await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith("No podés deshacer esta gestión."),
+      expect(errorMock).toHaveBeenCalledWith("No puedes deshacer esta gestión."),
     );
     expect(refreshMock).not.toHaveBeenCalled();
     expect(listaGestiones().querySelector('[data-gestion="g1"]')).not.toBeNull();
@@ -1353,7 +1353,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith("No se pudo deshacer la gestión. Intentá de nuevo."),
+      expect(errorMock).toHaveBeenCalledWith("No se pudo deshacer la gestión. Inténtalo de nuevo."),
     );
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -1439,7 +1439,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
 describe("Cierre del día — 237/D3: la gestión de la tienda no se puede devolver a gestión", () => {
   /** El motivo, escrito a mano. Es el MISMO que devuelve el servidor si se llega por otra vía. */
   const MOTIVO =
-    "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+    "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
 
   /** La fila única (`[data-gestion]`) que contiene ese número de guía. */
   function fila(guia: string): HTMLElement {
@@ -1506,7 +1506,7 @@ describe("Cierre del día — 237/D3: la gestión de la tienda no se puede devol
     const titulo = botonDeshacer("5555").getAttribute("title") as string;
 
     expect(titulo).toContain("la resolvió la tienda");
-    expect(titulo).toContain("Escribile por el chat de la orden");
+    expect(titulo).toContain("Escríbele por el chat de la orden");
   });
 
   it("pulsarlo NO abre el modal que promete devolver la orden, ni llama al servidor", async () => {

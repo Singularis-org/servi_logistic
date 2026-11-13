@@ -119,15 +119,11 @@ import {
 // pantalla (`/wallet/mensajeros`) y renombrarlo en un solo lado dejaría el enlace mudo.
 import { PARAM_CIERRE } from "./cierre-enlace";
 import {
-  ERROR_CARGA_HISTORICO,
-  PAGINACION_HISTORICO_LABEL,
-  VACIO_HISTORICO,
-  descargaHistoricoCierres,
-  type CierresAdminHistoricoPagina,
-} from "./CierresAdminHistoricoLista";
-import {
+  AMBITO_DESCARGA_CIERRES_HISTORICO,
   AMBITO_DESCARGA_CIERRES_PENDIENTES,
+  COLUMNAS_DESCARGA_CIERRES_HISTORICO,
   COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
+  filaDescargaCierreHistorico,
   filaDescargaCierrePendiente,
 } from "./cierres-admin-descarga-columnas";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
@@ -337,6 +333,67 @@ export function descargaColaCierres(
   };
 }
 
+/** La página del histórico que se está mostrando, tal como la devuelve el servidor. */
+export interface CierresAdminHistoricoPagina {
+  items: CierreAdminResumen[];
+  total: number;
+  pageSize: number;
+}
+
+/** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA = "Cierres del día resueltos";
+/** Nombre accesible del control (R43). Propio: la pantalla monta varios listados paginados. */
+export const PAGINACION_HISTORICO_LABEL = "Paginación del histórico de cierres del día";
+/** Textos de hoy del error y del vacío del histórico; SLT-102 los pasa a la cola única (R104). */
+export const ERROR_CARGA_HISTORICO = "No se pudo cargar el histórico de cierres.";
+export const VACIO_HISTORICO = "Aún no hay cierres resueltos.";
+
+/**
+ * La configuración de descarga de ESTE listado, para que la monte quien pinta la fila de las
+ * pestañas (pedido humano del 2026-08-16: el botón va alineado con «Pendientes/Resueltos», no
+ * en una fila propia encima de la lista).
+ *
+ * Vive AQUÍ y no en el módulo aunque allí se use: el título, las columnas y la lectura de la
+ * que sale el archivo son de este listado, y separarlas de él es como acaban divergiendo el
+ * nombre de la hoja y el de la pantalla.
+ *
+ * Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo es el CONJUNTO. Proyectar
+ * `pagina.items` habría convertido «descargar el histórico» en «descargar las 25 filas que veo»
+ * sin que nada fallara. Feature 184 — Tanda D (T D.3, R1): ese conjunto lo entrega una lectura
+ * DEDICADA, que corta por estado en la base con el mismo criterio y el mismo orden que la
+ * página, y cuyo tope de filas evalúa el servidor (R6).
+ *
+ * Pedido humano del 2026-08-16 — «el CONJUNTO» pasa a significar «el conjunto FILTRADO», y la
+ * distinción con el alcance sigue intacta: los `filtros` viajan porque el usuario los puso; el
+ * ALCANCE no viaja, lo pone el servidor desde la sesión, y un `adminSatelite` sigue descargando
+ * solo los cierres de su zona por mucho que filtre (R14/R44).
+ */
+export function descargaHistoricoCierres(
+  filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
+  return {
+    titulo: TITULO_DESCARGA,
+    columnas: COLUMNAS_DESCARGA_CIERRES_HISTORICO,
+    // Ficha 314: enciende el selector de columnas. El ámbito es el del HISTÓRICO y no el de la
+    // cola: son dos catálogos distintos y una sola clave los haría pisarse (R10).
+    ambitoColumnas: AMBITO_DESCARGA_CIERRES_HISTORICO,
+    obtenerFilas: () =>
+      filasDesdeResultado(
+        descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro; sin ellos, el archivo de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
+        columnasMarcadas,
+        audiencia,
+      ),
+  };
+}
+
 /**
  * Feature 170 — FASE 2 (T I.2, R40/R41): una página del histórico. El alcance NO viaja en el
  * input —lo resuelve el servicio desde la sesión, igual que el listado sin paginar (R44)—;
@@ -368,7 +425,7 @@ async function leerPendientes(
 // separados de la lógica (i18n-ready), como el resto del módulo. ---
 const INDEMNIZACION_TITULO = "Indemnizar los incidentes del cierre";
 const INDEMNIZACION_DETALLE =
-  "Este cierre trae paquetes dañados, perdidos o robados. Indicá cuánto se indemniza por cada uno: al aprobar, la suma sale de la caja principal como un solo egreso.";
+  "Este cierre trae paquetes dañados, perdidos o robados. Indica cuánto se indemniza por cada uno: al aprobar, la suma sale de la caja principal como un solo egreso.";
 const INDEMNIZACION_CONFIRMAR = "Aprobar e indemnizar";
 const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 /**
@@ -386,9 +443,9 @@ const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 // es lo que el validador de esta misma pantalla rechaza y un dígito más de los «10 dígitos»
 // que la frase promete. `moneyTope` descarta la cola y el mensaje queda más estricto que la
 // realidad, que es el lado seguro.
-const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisá si sobra un dígito.`;
+const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisa si sobra un dígito.`;
 const INDEMNIZACION_MONTO_FORMATO =
-  "Escribí un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
+  "Escribe un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
 /** R34: rótulo de la causa en la fila del incidente (el dato que justifica el monto). */
 const INDEMNIZACION_CAUSA_LABEL = "Causa";
 /** Causa ausente: no debería pasar (el borde la exige, R9), pero no se inventa un valor. */
@@ -672,7 +729,7 @@ export function CierresAdminModule({
         role="alert"
         className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
-        No tenés una zona asignada; contactá a tu administrador.
+        No tienes una zona asignada; contacta a tu administrador.
       </p>
     );
   }
@@ -731,7 +788,7 @@ export function CierresAdminModule({
     try {
       result = await verCierreDetalle({ cierreId });
     } catch {
-      toast.error("No se pudo abrir el detalle del cierre. Intentá de nuevo.");
+      toast.error("No se pudo abrir el detalle del cierre. Inténtalo de nuevo.");
       return;
     }
     if (result.status === "ok") {
@@ -772,10 +829,10 @@ export function CierresAdminModule({
       return;
     }
     if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
       return;
     }
-    toast.error("No se pudo abrir el detalle del cierre. Intentá de nuevo.");
+    toast.error("No se pudo abrir el detalle del cierre. Inténtalo de nuevo.");
   }
 
   /**
@@ -853,11 +910,11 @@ export function CierresAdminModule({
     } else if (status === "no_encontrada") {
       toast.error("El cierre ya no está disponible.");
     } else if (status === "forbidden") {
-      toast.error("No tenés permiso para resolver este cierre.");
+      toast.error("No tienes permiso para resolver este cierre.");
     } else if (status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo resolver el cierre. Intentá de nuevo.");
+      toast.error("No se pudo resolver el cierre. Inténtalo de nuevo.");
     }
     cerrarDetalle();
     refrescarListas();
@@ -1096,11 +1153,11 @@ export function CierresAdminModule({
     } else if (result.status === "no_encontrada") {
       toast.error("El cierre ya no está disponible.");
     } else if (result.status === "forbidden") {
-      toast.error("No tenés permiso para destrabar este cierre.");
+      toast.error("No tienes permiso para destrabar este cierre.");
     } else if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo destrabar el cierre. Intentá de nuevo.");
+      toast.error("No se pudo destrabar el cierre. Inténtalo de nuevo.");
     }
     setDestrabar(null);
     refrescarListas();
@@ -1485,7 +1542,7 @@ export function CierresAdminModule({
           }
         }}
         title="Rechazar cierre"
-        description="Indicá el motivo del rechazo. El mensajero lo verá para corregir."
+        description="Indica el motivo del rechazo. El mensajero lo verá para corregir."
         confirmLabel="Rechazar cierre"
         confirmVariant="destructive"
         onConfirm={confirmarRechazo}

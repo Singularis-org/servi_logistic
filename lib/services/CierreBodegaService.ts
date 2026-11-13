@@ -29,6 +29,12 @@ import { ConsolidacionParcialError } from "@/lib/utils/consolidacion-parcial";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 // SLT-106 (R67): la UNICA derivacion de «Debe llegar a la central», la misma de la fila.
 import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
+import type { ICifrasBodegaLoteLectura } from "@/lib/interfaces/repositories/ICifrasBodegaLoteLectura";
+import {
+  cierresBodegaModeloNuevo,
+  cifrasBodegaDescarga,
+  LecturaCifrasBodegaAusenteError,
+} from "@/lib/services/cifras-bodega-descarga";
 
 // Solo el rol autorizado (R1): el adminSatelite, SIEMPRE acotado a SU zona (el filtro
 // por zona vive en el repo, en el WHERE).
@@ -236,6 +242,12 @@ export class CierreBodegaService implements ICierreBodegaService {
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
     /** SLT-107 (R287): el reloj, para que el corte de «30 dias» se pruebe con un «hoy» fijo. */
     private readonly ahora: () => Date = () => new Date(),
+    /**
+     * SLT-141 (R389): la lectura en lote de los cierres del dia de los cierres de bodega NUEVOS de la
+     * descarga de «Solicitados». Opcional para no tocar los dobles de hoy; con un cierre nuevo y sin
+     * ella, lanza. Sin lecturas de pago: la satelite no recibe «Pago entregado» (F481, R386).
+     */
+    private readonly cifrasLote?: ICifrasBodegaLoteLectura,
   ) {}
 
   /**
@@ -511,7 +523,24 @@ export class CierreBodegaService implements ICierreBodegaService {
       return { status: "limite_excedido", total: conjunto.length, limite };
     }
 
-    return { status: "ok", items: conjunto, total: conjunto.length };
+    // SLT-141 (R384): sin cierres nuevos, la respuesta de hoy y ni una lectura mas.
+    const nuevos = cierresBodegaModeloNuevo(conjunto);
+    if (nuevos.length === 0) return { status: "ok", items: conjunto, total: conjunto.length };
+    const operacion = "CierreBodegaService.listarCierresBodegaSolicitadosCompleto";
+    if (this.cifrasLote === undefined) throw new LecturaCifrasBodegaAusenteError(operacion);
+    // R389: el alcance de la satelite (su zona) va DENTRO de la lectura en lote.
+    const filas = await this.cifrasLote.leerCierresDiaDeBodegas(
+      nuevos.map((c) => c.cierreBodegaId),
+      { lectura: "zona", zonaId },
+      await zonaDeLaEmpresa(this.reglasPais, operacion),
+    );
+    // R386 (F481): las cifras SIN `pagoEntregado`; la clave no existe en el DTO de la satelite.
+    return {
+      status: "ok",
+      items: conjunto,
+      total: conjunto.length,
+      cifrasModeloNuevo: cifrasBodegaDescarga(nuevos, filas),
+    };
   }
 
   /**

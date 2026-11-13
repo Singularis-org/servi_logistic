@@ -168,7 +168,7 @@ export const GESTION_TIENDA_BADGE_LABEL = "La tienda";
  * no son suyos, y que aun asi cuenta en este cierre.
  */
 export const GESTION_TIENDA_BADGE_NOTA =
-  "Esta gestión la registró la tienda desde «Ayuda solicitada», no vos: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
+  "Esta gestión la registró la tienda desde «Ayuda solicitada», no tú: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
 
 // --- Desglose del ingreso de la empresa por orden (texto separado, i18n-ready) ---
 export const MONTO_COBRAR_COL = "A cobrar";

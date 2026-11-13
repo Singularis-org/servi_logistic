@@ -318,7 +318,7 @@ describe("R119 — si la lectura falla no se abre el detalle", () => {
     const user = montar();
     vi.mocked(verCierreBodegaDetalle).mockResolvedValue({ status: "forbidden" });
     await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No tenés permiso para ver este cierre de bodega."));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No tienes permiso para ver este cierre de bodega."));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
