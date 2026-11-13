@@ -35,7 +35,8 @@ const DETALLE: DetallePlan = {
     archivado: false,
   },
   empresaNombre: null,
-  pendiente: { vigenteDesde: "2030-01-15", lineas: ["Órdenes por ciclo: 3000 → 5000"] },
+  // SLT-128 (R11): el conteo de recepciones del pendiente.
+  pendiente: { vigenteDesde: "2030-01-15", lineas: ["Órdenes por ciclo: 3000 → 5000"], recibidas: 0, total: 1 },
   empresas: [{ id: ORG, nombre: "Envíos Norte" }],
   rastro: [
     {
@@ -386,5 +387,101 @@ describe("SLT-58 R18 — un rechazo se explica y no da el cambio por hecho", () 
     expect(within(panel).getByText("Ya hay un plan con ese nombre.")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-128 R14, R15 — `cambio_a_medias` dice lo que pasa según la acción", () => {
+  it("R15: archivar → `cambio_a_medias` muestra el mensaje de R15, sin aviso de éxito ni relectura", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE, { archivarPlan: accion({ estado: "cambio_a_medias" }) });
+
+    await user.click(screen.getByRole("button", { name: "Archivar" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Archivar plan" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.",
+      ),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R14: cancelar → `cambio_a_medias` muestra el mensaje de R14, sin aviso de éxito ni relectura", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE, { cancelarCambio: accion({ estado: "cambio_a_medias" }) });
+
+    await user.click(within(seccion("Cambio programado")).getByRole("button", { name: "Cancelar cambio" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar cambio" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.",
+      ),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-128 R11 — cuántas empresas ya recibieron el cambio programado", () => {
+  it("R11: bajo «Cambio programado desde F» dice «N de M empresas ya lo recibieron»", () => {
+    montar({ ...DETALLE, pendiente: { ...DETALLE.pendiente!, recibidas: 2, total: 5 } });
+    const pendiente = seccion("Cambio programado");
+    const lineas = within(pendiente).getAllByText(/Cambio programado desde|empresas ya lo recibieron/);
+    expect(lineas.map((p) => p.textContent)).toEqual([
+      "Cambio programado desde 2030-01-15",
+      "2 de 5 empresas ya lo recibieron",
+    ]);
+  });
+
+  it("R11: con ninguna recibida también lo dice («0 de M»)", () => {
+    montar();
+    expect(within(seccion("Cambio programado")).getByText("0 de 1 empresas ya lo recibieron")).toBeInTheDocument();
+  });
+
+  it("R11: sin cambio programado no muestra la línea", () => {
+    montar({ ...DETALLE, pendiente: null });
+    expect(screen.queryByText(/empresas ya lo recibieron/)).toBeNull();
+  });
+});
+
+describe("SLT-128 R28 — las empresas que no recibieron el cambio", () => {
+  const NO_APLICADA = {
+    empresaId: ORG,
+    empresa: "Envíos Norte",
+    motivo: "cobro_quincenal_ordenes_mensuales" as const,
+    desde: "2030-01-15T06:00:00.000Z",
+  };
+  const LINEA =
+    "Envíos Norte no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. " +
+    "Sigue con su versión anterior.";
+
+  it("R28: con cambio programado pinta una línea por empresa no aplicada", () => {
+    montar({
+      ...DETALLE,
+      noAplicadas: [NO_APLICADA, { ...NO_APLICADA, empresaId: "otra", empresa: "Rápido Sur" }],
+    });
+    const pendiente = seccion("Cambio programado");
+    expect(within(pendiente).getByText(LINEA)).toBeInTheDocument();
+    expect(within(pendiente).getByText(/^Rápido Sur no recibió el cambio: /)).toBeInTheDocument();
+    expect(within(pendiente).getByText("Cambio programado desde 2030-01-15")).toBeInTheDocument();
+  });
+
+  it("R28: tras promover (sin pendiente) la línea sigue mientras la empresa conserve su versión", () => {
+    montar({ ...DETALLE, pendiente: null, noAplicadas: [NO_APLICADA] });
+    const pendiente = seccion("Cambio programado");
+    expect(within(pendiente).getByText(LINEA)).toBeInTheDocument();
+    expect(within(pendiente).getByText("No hay ningún cambio programado.")).toBeInTheDocument();
+  });
+
+  it("R28: sin no aplicadas (vacío o ausente) no pinta ninguna línea", () => {
+    montar({ ...DETALLE, noAplicadas: [] });
+    expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
+    cleanup();
+    montar({ ...DETALLE, pendiente: null });
+    expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
   });
 });

@@ -17,12 +17,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { formatearConteo } from "@/lib/planes/consumo";
 import {
+  lineaNoAplicada,
   lineasDeCambioDelPlan,
+  MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
+  MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
   mensajeTopesPasados,
   SIN_LIMITE,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
   textoDelPrecio,
+  textoRecepcionesDelCambio,
   TITULO_LINEAS_DE_CAMBIO,
   type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
@@ -99,6 +103,8 @@ const TEXTOS = {
   creadoCon: "Alta del plan",
   /** Texto único del cambio pendiente (Decisiones cerradas, design §6.5). */
   cambioProgramado: textoCambioProgramado,
+  /** SLT-128 (R11): cuántas de sus empresas ya recibieron el cambio programado. */
+  recepciones: textoRecepcionesDelCambio,
   /** Solo el rastro: una fila que fija la vigencia de un cambio, no la sección del pendiente. */
   rigeDesde: (fecha: string) => `Rige desde ${fecha}`,
   reemplaza: (antes: string, despues: string) => `Reemplaza al previsto para ${antes}; rige desde ${despues}`,
@@ -117,6 +123,12 @@ const TEXTOS = {
   desasignadoDe: (empresa: string) =>
     `Desasignado de ${empresa} por la migración: el plan no tenía costo base concreto`,
 } as const;
+
+/** SLT-128 (design §7): el texto del rechazo `cambio_a_medias` de cada confirmación (R14 cancelar, R15 archivar). */
+const RECHAZO_CAMBIO_A_MEDIAS: Record<"archivar" | "cancelar", string> = {
+  archivar: MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
+  cancelar: MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
+};
 
 /** La acción del rastro, traducida. `Record` total: una acción nueva no compila sin su texto. */
 const ACCIONES: Record<PlanRastroAccion, string> = {
@@ -168,6 +180,7 @@ export function PlanDetalle({
 }: PlanDetalleProps) {
   const router = useRouter();
   const { plan, pendiente } = detalle;
+  const noAplicadas = detalle.noAplicadas ?? [];
   const [editando, setEditando] = useState(false);
   const [confirmar, setConfirmar] = useState<"archivar" | "cancelar" | null>(null);
   const [desenlace, setDesenlace] = useState<Desenlace | null>(null);
@@ -204,6 +217,9 @@ export function PlanDetalle({
       focoTrasOk.current = cual;
       setDesenlace({ tipo: "ok", mensaje: exito, avisos: [] });
       router.refresh();
+    } else if (r.estado === "cambio_a_medias") {
+      // SLT-128 (R14, R15): el mismo rechazo dice cosas distintas según la acción.
+      setDesenlace({ tipo: "rechazo", mensaje: RECHAZO_CAMBIO_A_MEDIAS[cual] });
     } else {
       setDesenlace({ tipo: "rechazo", mensaje: mensajeDelRechazo(r) ?? RECHAZO_GENERICO });
     }
@@ -305,6 +321,7 @@ export function PlanDetalle({
         ) : (
           <div className="flex flex-col gap-3 text-sm">
             <p className="font-medium">{TEXTOS.cambioProgramado(pendiente.vigenteDesde)}</p>
+            <p>{TEXTOS.recepciones(pendiente.recibidas, pendiente.total)}</p>
             {pendiente.lineas.length === 0 ? (
               <p>{SIN_LINEAS_DE_CAMBIO}</p>
             ) : (
@@ -333,6 +350,18 @@ export function PlanDetalle({
             )}
           </div>
         )}
+        {/* SLT-128 (R28): fuera del bloque del pendiente; tras promover el aviso sigue mientras la empresa
+            conserve su versión anterior, ya sin pendiente. */}
+        {noAplicadas.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-sm">
+            {noAplicadas.map((n) => (
+              <li key={n.empresaId} className="flex items-start gap-2">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-strong" />
+                <span>{lineaNoAplicada(n.empresa, n.motivo)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </Seccion>
 
       <Seccion titulo={TEXTOS.empresas}>

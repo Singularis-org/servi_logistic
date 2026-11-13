@@ -18,6 +18,7 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { montoParaCampo } from "@/lib/config/moneda";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import { MENSAJE_EDITAR_CAMBIO_A_MEDIAS } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
@@ -121,6 +122,8 @@ const RECHAZOS = {
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  // SLT-128 (R16): el texto del formulario de edición. El detalle del plan pinta el de R14 o R15 según la acción.
+  cambio_a_medias: MENSAJE_EDITAR_CAMBIO_A_MEDIAS,
   /** Ajuste planes-custom (D3): al crear un custom, el `not_found` es la empresa elegida. */
   empresa_no_existe: "Esa empresa ya no existe.",
   generico: "No se pudo guardar. Inténtalo de nuevo.",
