@@ -315,3 +315,23 @@ Veredicto: m1 y m2 cerrados con 4/4 mutaciones matadas; T12.2 marcada, T12.1 que
 
 ## Gate del leader (2026-11-12)
 - Tras `npx prisma generate` desde este worktree (22:08:27), `./init.sh` con la base slt139_satelite: `INIT_EXIT=0` (log `scratchpad/gate-139b.log`). La corrida anterior (21:44) cayó por un worker de vitest muerto por carga, no por un test.
+
+## Rojos de CI en el PR #149 (2026-11-12)
+
+Dos archivos fuera del baseline en `gate-completo`; en `origin/dev` (bf98fc04) pasan los dos. Ninguno es bug: son literales-contrato que SLT-139 cambia a propósito, actualizados a mano con su porqué.
+
+- `tests/unit/services/busqueda-por-guia-469.test.ts`: el catálogo del mensajero ahora tiene `pago_satelite` con criterio (`snapshot_gestion/pago_mensajero`, R329: su detalle por guía sale del pago de cada gestión). Literal `["pago_devengado"]` → `["pago_devengado", "pago_satelite"]`; sigue vigilando que `pago_efectivo` no entra.
+- `tests/unit/services/liquidacion-anulacion.test.ts`: la lista cerrada de métodos de `LiquidacionService` crece a 19 con `pagadoPorSatelite` (lectura privada, R338). No deshace/borra/edita; el barrido de nombres sigue.
+
+Por qué el local no los vio: el diff relaciona 840 tests por imports (> presupuesto 150) y no se corren en local. `test-rapido --comprobar` decía «NO entra» para los dos. Disparadores añadidos en `arnes.config.json` (archivo del proyecto, no del manifest):
+- `lib/utils/aporte-por-orden.ts` → `tests/unit/utils/aporte-por-orden`, `tests/unit/services/busqueda-por-guia-469` (4 tests)
+- `lib/services/LiquidacionService.ts` → `tests/unit/services/liquidacion-` (4 tests)
+Tras añadirlos, `--comprobar` → «entra» en los dos.
+
+Verificación:
+- `vitest run` de los dos: 2 files, 79 passed.
+- `vitest run tests/unit/services tests/unit/repositories`: 525 files, 10187 passed, 0 rojos.
+- `tsc --noEmit`: exit 0. `eslint` de los dos tests: sin issues.
+- `tamano-pr`: 48/40 archivos (pasa de 45, el tope aceptado), 2566 líneas.
+
+Veredicto: rojos de CI resueltos (tests desfasados, no bug) y disparadores puestos.
