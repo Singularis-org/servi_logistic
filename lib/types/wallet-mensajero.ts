@@ -53,6 +53,9 @@ export const PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED = [
   // su contraasiento (pago, cuelga del incentivo). Categorias PROPIAS: ni premio ni ajuste.
   "incentivo",
   "reverso_incentivo",
+  // SLT-139 (design §3, R317): «pagado por la satélite». Pago de P al mensajero de un cierre NUEVO de
+  // satélite, escrito por el feed al conciliar. Solo cuelga de un `cierre_dia`.
+  "pago_satelite",
 ] as const satisfies readonly PrismaPagoMensajeroMovimientoCategoria[];
 
 export type PagoMensajeroMovimientoCategoria =
@@ -67,12 +70,14 @@ type _EnsureCategoriaExhaustive = Exclude<
 const _categoriaExhaustive: _EnsureCategoriaExhaustive = true;
 void _categoriaExhaustive;
 
-// Las 2 categorias que EMITE el feed del cierre aprobado (R10): el devengo `pago_devengado`
-// (= total_pago_mensajero) y el pago `pago_efectivo` (= min(P,E)). El resto (liquidacion,
-// ajuste_*) NO viene del feed automatico.
+// Las 3 categorias que EMITE el feed del cierre asentado (R10): el devengo `pago_devengado`
+// (= total_pago_mensajero), el pago `pago_efectivo` (= min(P,E), solo un cierre VIEJO) y el pago
+// `pago_satelite` (= P, cierre NUEVO de satélite al conciliar; SLT-139 R317). El resto
+// (liquidacion, ajuste_*) NO viene del feed automatico.
 export const PAGO_MENSAJERO_FEED_CATEGORIA_SEED = [
   "pago_devengado",
   "pago_efectivo",
+  "pago_satelite",
 ] as const satisfies readonly PagoMensajeroMovimientoCategoria[];
 
 export type PagoMensajeroFeedCategoria =

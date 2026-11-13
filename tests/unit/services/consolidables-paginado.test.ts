@@ -74,6 +74,7 @@ function fila(
     paraLaCentral: paraLaCentral(dinero.general, dinero.pago, dinero.ingresoBodega),
     aprobadoAt: null,
     gestionesAjustadas: 0,
+    pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
   };
 }
 
@@ -261,7 +262,9 @@ function ids(items: ReadonlyArray<{ cierreDiaId: string }>): string[] {
 }
 
 /** Suma money-safe (Prisma.Decimal, como produccion) de un campo de las filas dadas. */
-function suma(filas: ReadonlyArray<CierreDiaConsolidableRow>, campo: "pago" | "general"): string {
+function suma(
+  filas: ReadonlyArray<Pick<CierreDiaConsolidableRow, "totalPagoMensajero" | "totales">>,
+  campo: "pago" | "general"): string {
   let acc = new Prisma.Decimal(0);
   for (const f of filas) {
     acc = acc.plus(campo === "pago" ? f.totalPagoMensajero : f.totales.general);
@@ -472,7 +475,7 @@ describe("CierreBodegaService.listarConsolidablesPaginado", () => {
 
     // (d) El conjunto sobre el que se agrega es EXACTAMENTE el que la paginacion recorre: el
     // dinero de todas las paginas juntas es el mismo que el del listado entero.
-    const recorrido: CierreDiaConsolidableRow[] = [];
+    const recorrido: Pick<CierreDiaConsolidableRow, "totalPagoMensajero" | "totales">[] = [];
     for (let page = 1; page <= 10; page += 1) {
       const p = await svc.listarConsolidablesPaginado(input({ page, pageSize: 2 }), SATELITE_A);
       if (p.status !== "ok" || p.items.length === 0) break;

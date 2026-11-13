@@ -60,6 +60,19 @@
           "sql-real",
           "tests/unit/scripts/verificar-rls"
         ]
+      },
+      {
+        "si_cambia": "lib/utils/aporte-por-orden.ts",
+        "corre": [
+          "tests/unit/utils/aporte-por-orden",
+          "tests/unit/services/busqueda-por-guia-469"
+        ]
+      },
+      {
+        "si_cambia": "lib/services/LiquidacionService.ts",
+        "corre": [
+          "tests/unit/services/liquidacion-"
+        ]
       }
     ]
   }

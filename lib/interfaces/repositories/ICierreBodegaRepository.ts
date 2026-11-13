@@ -24,6 +24,10 @@ export interface CierreDiaConsolidableRow {
   paraLaCentral: string; // R67: `paraLaCentral(general, pago, bodega)` de ESTE cierre, con su signo
   aprobadoAt: string | null; // R194: `cierre_dia.resuelto_at` en ISO
   gestionesAjustadas: number; // R194: gestiones de este cierre con al menos un ajuste del pago
+  // SLT-139 (R322, R323): la marca de la regla de pago del cierre. OBLIGATORIA (B1 de la review de
+  // SLT-123): una marca opcional en una fila de repositorio se pierde sin aviso si el mapper deja
+  // de emitirla. `true` = cierre nuevo (no aporta a «La central debe»; su P resta del neto).
+  pagoIndependienteEfectivo: boolean;
 }
 
 // Fila cruda de un cierre de bodega (cabecera). Totales ya como STRING (money-safe);

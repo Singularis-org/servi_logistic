@@ -655,7 +655,8 @@ export class CierreDiaService implements ICierreDiaService {
 
     return items.map((c) => ({
       ...c,
-      pendientePagoMensajero: c.estado === "aprobado" ? (porCierre[c.cierreId] ?? null) : null,
+      // `undefined` = cierre nuevo sin la lectura de la satelite («Sin dato», SLT-139 R334).
+      pendientePagoMensajero: c.estado === "aprobado" ? porCierre[c.cierreId] : null,
     }));
   }
 
@@ -674,20 +675,34 @@ export class CierreDiaService implements ICierreDiaService {
       efectivo: string;
       pagoIndependienteEfectivo: boolean;
     }>,
-  ): Promise<Record<string, string>> {
+  ): Promise<Record<string, string | undefined>> {
     const ids = cierres.map((c) => c.cierreId);
     const pagados = await lecturas.liquidaciones.sumarVigentesPorCierre(ids);
     const premios = await lecturas.premios.sumarPremiosVivosPorCierre(ids);
+    // SLT-139 (R319, R334, R335, R338): lo pagado por la satelite de los cierres NUEVOS, UNA lectura
+    // (ninguna si no hay nuevos). Sin la lectura, esos cierres van a `undefined` («Sin dato»).
+    const idsNuevos = cierres.filter((c) => c.pagoIndependienteEfectivo).map((c) => c.cierreId);
+    const lecturaSatelite = lecturas.premios;
+    const sinLectura = typeof lecturaSatelite.sumarPagadoSatelitePorCierre !== "function";
+    const pagadoSatelite =
+      idsNuevos.length > 0 && typeof lecturaSatelite.sumarPagadoSatelitePorCierre === "function"
+        ? await lecturaSatelite.sumarPagadoSatelitePorCierre(idsNuevos)
+        : {};
 
-    const porCierre: Record<string, string> = {};
+    const porCierre: Record<string, string | undefined> = {};
     for (const c of cierres) {
-      porCierre[c.cierreId] = derivarPendienteCierre({
-        pagoDebido: c.totalPagoMensajero,
-        efectivo: c.efectivo,
-        premiosVivos: premios[c.cierreId] ?? "0.00",
-        pagadoVigente: pagados[c.cierreId] ?? "0.00",
-        pagoIndependienteEfectivo: c.pagoIndependienteEfectivo,
-      });
+      porCierre[c.cierreId] =
+        c.pagoIndependienteEfectivo && sinLectura
+          ? undefined
+          : derivarPendienteCierre({
+            pagoDebido: c.totalPagoMensajero,
+            efectivo: c.efectivo,
+            premiosVivos: premios[c.cierreId] ?? "0.00",
+            pagadoVigente: pagados[c.cierreId] ?? "0.00",
+            ...(c.pagoIndependienteEfectivo
+              ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoSatelite[c.cierreId] ?? "0.00" }
+              : { pagoIndependienteEfectivo: false }),
+          });
     }
     return porCierre;
   }
@@ -702,7 +717,10 @@ export class CierreDiaService implements ICierreDiaService {
    */
   async resumenGanancia(actor: Actor): Promise<ResumenGananciaServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R359: sin leer nada
-    if (!this.pendientes || !this.ganancia) return { status: "sin_dato" }; // R357
+    // R357. SLT-139 (R353 revisado, leader 2026-11-12): sin la lectura de la satelite la pagada
+    // omitiria lo que pago la satelite; eso es un cableado roto, no una cifra valida.
+    const satelite = this.ganancia?.pagadoPorSatelite;
+    if (!this.pendientes || !this.ganancia || !satelite) return { status: "sin_dato" };
 
     // R350: los aprobados del actor; el `mensajero_id` sale de la sesion, nunca de la peticion.
     const aprobados = await this.repo.findAprobadosParaPendiente(actor.usuarioId);
@@ -718,6 +736,9 @@ export class CierreDiaService implements ICierreDiaService {
     let pendienteMonto = new Prisma.Decimal(0);
     let pendienteConteo = 0;
     for (const p of Object.values(porCierre)) {
+      // SLT-139: un cierre nuevo sin la lectura de la satelite no tiene cifra; la tarjeta tampoco
+      // (R357: «sin cifras», nunca un total que la omita).
+      if (p === undefined) return { status: "sin_dato" };
       const d = new Prisma.Decimal(p);
       pendienteMonto = pendienteMonto.plus(d);
       if (d.gt(0)) pendienteConteo += 1; // R350: solo los que tienen algo pendiente
@@ -738,17 +759,15 @@ export class CierreDiaService implements ICierreDiaService {
     let pagadaMonto = new Prisma.Decimal(pagos.monto);
     let pagadaConteo = pagos.conteo;
 
-    // R353: lo pagado por la satelite, solo si SLT-139 inyecta la lectura. `fecha_movimiento` es
-    // `timestamp`: aqui el rango son INSTANTES (las 00:00 locales del dia 1 de cada mes).
-    if (this.ganancia.pagadoPorSatelite) {
-      const sat = await this.ganancia.pagadoPorSatelite.sumarPagadoPorSateliteEnRango(
-        actor.usuarioId,
-        inicioDelDiaEnUtc(primerDia, zona),
-        inicioDelDiaEnUtc(primerDiaSiguiente, zona),
-      );
-      pagadaMonto = pagadaMonto.plus(new Prisma.Decimal(sat.monto));
-      pagadaConteo += sat.conteo;
-    }
+    // R353: lo pagado por la satelite. `fecha_movimiento` es `timestamp`: aqui el rango son
+    // INSTANTES (las 00:00 locales del dia 1 de cada mes).
+    const sat = await satelite.sumarPagadoPorSateliteEnRango(
+      actor.usuarioId,
+      inicioDelDiaEnUtc(primerDia, zona),
+      inicioDelDiaEnUtc(primerDiaSiguiente, zona),
+    );
+    pagadaMonto = pagadaMonto.plus(new Prisma.Decimal(sat.monto));
+    pagadaConteo += sat.conteo;
 
     return {
       status: "ok",

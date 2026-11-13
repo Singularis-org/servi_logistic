@@ -121,7 +121,9 @@ describe("469 — BusquedaPorGuiaService (dobles)", () => {
     const caja = gruposDeCriterio(CAJA).flatMap((g) => g.categorias);
     expect(caja).toEqual(expect.arrayContaining(["ingreso_cod_recaudado", "egreso_pago_mensajero", "egreso_indemnizacion"]));
     const mensajero = gruposDeCriterio(MENSAJERO).flatMap((g) => g.categorias);
-    expect(mensajero).toEqual(["pago_devengado"]);
+    // SLT-139 (R329): `pago_satelite` es P del cierre y su detalle por guía sale del pago al
+    // mensajero de cada gestión, así que entra con criterio; `pago_efectivo` (min(P, E)) sigue fuera.
+    expect(mensajero).toEqual(["pago_devengado", "pago_satelite"]);
     expect(mensajero).not.toContain("pago_efectivo");
   });
 
