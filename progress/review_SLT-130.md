@@ -160,3 +160,29 @@ adaptados verdes en CI. Lo que bloquea es proceso y gate, no el código:
   aceptar el E2E y el gate de CI) y anotándolo en la bitácora.
 
 Ninguno pide cambios en el código de la feature. Vuelta 2 acotada a esos dos puntos (y m1 si se corrige el design).
+
+## Vuelta 2 (acotada a dd651580..1c0887a7: merge 1ae4d46b + 1c0887a7)
+
+Feature: SLT-130 «Planes: formulario por pasos compartido en un sheet (crear y editar)».
+
+### Checklist
+- [x] **B1 cerrado.** `bc756367` (arreglo del test de SLT-139) es ancestro de `1c0887a7`. El merge
+  `1ae4d46b` no tuvo conflictos (`git show --cc` sin hunks combinados) y no toca ningún archivo del diff de
+  SLT-130 (intersección vacía; `git diff dd651580 1ae4d46b -- <archivos de la feature>` vacío). El run
+  43498735892 de CI, sobre `headSha` 1c0887a7, termina en `success`: 11/11 checks verdes, incluidos
+  `gate-completo`, los 3 shards de vitest, `e2e (aislamiento)` y `e2e (dinero)`.
+- [x] **B2 cerrado.** La decisión humana (2026-11-13, «Aceptar CI como constancia») queda en
+  `progress/impl_SLT-130.md > Constancia de T10 y T11`. T10 y T11 están en `[x]` en `tasks.md`. La constancia
+  pesa más que el run citado (43474894170, que falló en conjunto por el rojo de B1 sobre dd651580): el run
+  43498735892, sobre el HEAD actual, vuelve a pasar los E2E y el gate completo.
+- [x] **Tamaño.** `tamano-pr.mjs`: 32/40 archivos, 2528/1000 de producción y 1776/3000 de tests. Sigue aceptado
+  por la línea `tamano-pr-aceptado` (el merge no lo cambia).
+- [x] **Sin regresiones en el rango.** `1c0887a7` solo toca docs (`impl`, `review` y `tasks`); no toca código.
+
+### Hallazgos
+- Ningún bloqueante nuevo.
+- m1–m4 siguen abiertos tal como quedaron en la vuelta 1 (menores; m2 es la revisión visual del humano).
+- menor: en la bitácora conviene citar el run 43498735892 (verde y sobre HEAD) en lugar del 43474894170, o
+  junto a él.
+
+### Veredicto vuelta 2: **OK**
