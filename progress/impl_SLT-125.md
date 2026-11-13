@@ -298,3 +298,45 @@ pnpm run typecheck → exit 0
 pnpm exec eslint <12 archivos> → 0 errores (1 warning previo en geocodificacion-service.test.ts:386, no tocado)
 vitest run guard → 1 failed | 334 passed | 3 skipped; los 4 rojos de dependencias-declaradas-presentes (baseline)
 ```
+
+## T2.5 — WhatsApp en el servidor (backend_dev, 2026-11-12)
+
+Archivos:
+- `lib/types/plantilla-datos.ts`: `OrdenPlantillaDatos.lugarRuta?: readonly { nombre }[] | null` (opcional
+  para no tocar `OrdenEnvioReader`, que es de T2.3 y lo llenará allí); `provincia/canton/distrito` leen
+  `lugarRuta[0..2]` y, sin ruta, los 3 nombres de hoy; `ubicacion` (P3, con `rutaInvertida`, ofrecida);
+  `nivel_1`…`nivel_10` con atributo `nivel`, nombre neutro «Nivel k», fuera de `CAMPOS_PLANTILLA_OFRECIDOS`
+  y de `CLAVES_OCULTAS_EN_SELECTOR` (sigue en 27); `DATOS_PLANTILLA_EJEMPLO.lugarRuta` con 3 niveles; los
+  ejemplos de `nivel_1..3` salen de esa misma ruta, `nivel_4..10` con `""`.
+- `lib/utils/whatsapp-envio-valores.ts`: `ordenVacia().lugarRuta = null`; la vista previa del mensajero pasa
+  `orden.lugarRuta` del DTO.
+- `tests/fixtures/plantilla-datos.ts`: `lugarRuta: null` (solo entrada: las suites que lo usan siguen igual).
+- Tests: `tests/unit/whatsapp/plantilla-niveles.test.ts` (nuevo). En `tests/unit/types/plantilla-datos.test.ts`,
+  solo lo autorizado:
+  - A3, `:235–237`: título «53 entradas, 48 propias y 5 alias», `42 → 53`, `37 → 48`;
+  - A3b, `:40`: el `not.toBe("")` del ejemplo no se aplica a `nivel_4`…`nivel_10` (una línea de comentario
+    más, así que el `it.each` pasa de `:247` a `:248`).
+  - A3b `:248` **no se tocó**: `nivel_4..10` tienen `ejemplo: ""` y resuelven a `""`, así que la igualdad
+    estricta sigue cumpliéndose sin excluirlos. Cambiarla habría debilitado una aserción sin necesidad.
+  Verificado antes: las líneas `:40`, `:235–237` y `:247` (it.each) coincidían con el spec.
+
+| R | Test |
+|---|---|
+| R28 | `plantilla-niveles.test.ts` › «R28 — provincia, canton y distrito son los niveles 1, 2 y 3 de la ruta» (con ruta, ruta corta o vacía, sin ruta; ninguna clave de hoy deja de resolver ni pasa a `clavesSinCampo`) |
+| R29 | `plantilla-niveles.test.ts` › «R29 — nivel_1..nivel_10 y ubicacion» (2, 4 y 10 niveles; ejemplo «Carmen, San José, San José»; `nivel_4..10` sin ejemplo); `plantilla-datos.test.ts` (A3, A3b) |
+| R31 | `plantilla-niveles.test.ts` › «R31 — Costa Rica: …» (envío, sin distrito, vista previa y vista previa del mensajero, con el texto de hoy literal); `preview-mismo-motor.test.ts` sin cambios |
+
+Salidas (con `env125.sh`, uno a uno):
+```
+plantilla-niveles.test.ts                    15 passed (15)
+plantilla-datos.test.ts                      85 passed (85)
+preview-mismo-motor.test.ts                  10 passed (10)   (sin cambios)
+campos-ocultos-siguen-resolviendo.test.ts    98 passed (98)   (sin cambios)
+catalogo-de-variables.test.ts                 6 passed (6)    (sin cambios)
+CampoVariablePicker.test.tsx                 16 passed (16)   (sin cambios, A4)
++ 26 suites más que importan plantilla-datos / whatsapp-envio-valores / plantilla-mensaje: todas verdes,
+  salvo 455/caracterizacion/plantilla-estatus.test.ts («tabla `orden` vacia»: base sin semilla de órdenes;
+  está en tests/baseline-rojos.json)
+guardias etiquetas-geograficas-sin-literal (6), sinpe-en-toda-superficie (9), lib-no-importa-app (3): verdes
+pnpm run typecheck → exit 0; eslint de los 5 archivos → sin problemas
+```

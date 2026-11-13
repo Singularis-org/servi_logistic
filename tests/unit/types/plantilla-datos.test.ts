@@ -37,7 +37,8 @@ describe("catalogo de campos", () => {
       expect(campo.campo.trim()).not.toBe("");
       expect(campo.nombre.trim()).not.toBe("");
       expect(campo.descripcion.trim()).not.toBe("");
-      expect(campo.ejemplo.trim()).not.toBe("");
+      // SLT-125 (A3b): `nivel_4`…`nivel_10` no tienen ejemplo.
+      if (!/^nivel_([4-9]|10)$/.test(campo.clave)) expect(campo.ejemplo.trim()).not.toBe("");
     }
   });
 
@@ -232,9 +233,9 @@ describe("alias del catalogo (R4/R5)", () => {
   // `direccion_completa` —ninguna de las 7 plantillas vivas las usaba—, asi que quedan 42
   // (37 propias + 5 alias). Los otros 25 campos retirados NO se descuentan aqui: siguen en el
   // catalogo con `ocultoEnSelector`, que es justo la diferencia entre ocultar y borrar.
-  it("el catalogo tiene 42 entradas, 37 propias y 5 alias", () => {
-    expect(CAMPOS_PLANTILLA).toHaveLength(42);
-    expect(CAMPOS_PLANTILLA.filter((c) => c.aliasDe === undefined)).toHaveLength(37);
+  it("el catalogo tiene 53 entradas, 48 propias y 5 alias", () => {
+    expect(CAMPOS_PLANTILLA).toHaveLength(53);
+    expect(CAMPOS_PLANTILLA.filter((c) => c.aliasDe === undefined)).toHaveLength(48);
     expect(CAMPOS_PLANTILLA.filter((c) => c.aliasDe !== undefined)).toHaveLength(5);
   });
 });

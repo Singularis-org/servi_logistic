@@ -91,7 +91,7 @@
   `ORDEN`) y
   `geo-125-geocode-cache.test.ts`.
   **Hecho:** R32 y R33 en verde; la cadena y la huella de CR, literales, sin cambio.
-- [ ] **T2.5** [P] WhatsApp en el servidor:
+- [x] **T2.5** [P] WhatsApp en el servidor:
   - `plantilla-datos.ts`: `lugarRuta`, `nivel_1..10` con el atributo `nivel`, `ubicacion` en formato
     postal (P3) y `DATOS_PLANTILLA_EJEMPLO` con 3 niveles, con `nivel_4..10` sin ejemplo (A3b,
     design §4.6);
