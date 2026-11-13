@@ -278,7 +278,7 @@ describe("477 → SLT-109 — el rechazado como página, con «Corregir» (R62, 
     expect(boton).toBeDisabled();
     expect(boton).toHaveAttribute(
       "title",
-      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     );
   });
 
