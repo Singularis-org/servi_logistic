@@ -363,8 +363,9 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
           },
         ]),
       },
-      gestionOrden: { findMany: vi.fn().mockResolvedValue([filaAdmin()]) },
-      cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot()]) },
+      // SLT-148: la lectura en lote agrupa por `cierreId` y busca la fila por (cierreId, ordenId).
+      gestionOrden: { findMany: vi.fn().mockResolvedValue([filaAdmin({ cierreId: "cd1" })]) },
+      cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot({ cierreId: "cd1" })]) },
       // SLT-110 (R210): el cargo vigente de fulfillment. Vacio: esta suite mide el desglose de pagos.
       ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     };
@@ -387,7 +388,8 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
 
     await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).toBe(GESTION_ADMIN_SELECT);
+    // SLT-148: + `cierreId` (la clave del lote) y NADA mas: un campo de mas o de menos lo pone rojo.
+    expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).toEqual({ ...GESTION_ADMIN_SELECT, cierreId: true });
   });
 });
 

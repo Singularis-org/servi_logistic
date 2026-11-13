@@ -913,6 +913,8 @@ describeSiHayBase("SLT-148 — detalle del cierre de bodega en lote, contra Post
         const { r, ev } = await medir(() => c.repo.findCierreBodegaConDetalle(id, ZONA_CR, alcance));
         expect(r).toBeNull();
         expect(ev.map((e) => tablaPrincipal(e.query))).toEqual(TABLAS_DE_LA_CABECERA);
+        // SLT-107 R280: la zona de S va EN el `where` de la cabecera (no se lee y se descarta).
+        if (alcance.lectura === "zona") expect(parametrosDe(ev[0])).toContain(alcance.zonaId);
       }
       // Y BZ con la central SI existe: el null de arriba es el alcance, no un id roto.
       expect(await c.repo.findCierreBodegaConDetalle(c.bodega.BZ, ZONA_CR, TODA)).not.toBeNull();
@@ -974,6 +976,18 @@ describeSiHayBase("SLT-148 — detalle del cierre de bodega en lote, contra Post
       expect(tablas).not.toContain("cierre_detail");
       expect(tablas).not.toContain("orden_fulfillment_movimiento");
       expect(ev).toHaveLength(CONSULTAS_DETALLE_SIN_DIAS);
+    });
+  });
+
+  it("R420: mismas sentencias con N = 3 (BX, 2 + 2 + 1 gestiones) que con N = 1 (B1, 1 gestion)", async () => {
+    await conCorpus(async (c) => {
+      const uno = await medir(() => c.repo.findCierreBodegaConDetalle(c.bodega.B1, ZONA_CR, TODA));
+      const tres = await medir(() => c.repo.findCierreBodegaConDetalle(c.bodega.BX, ZONA_CR, TODA));
+      if (uno.r === null || tres.r === null) throw new Error("B1 o BX no se encontro");
+      expect(uno.r.cierresDia).toHaveLength(1);
+      expect(tres.r.cierresDia.map((cd) => cd.gestiones.length)).toEqual([2, 1, 2]);
+      expect(uno.ev.length).toBeGreaterThan(0);
+      expect(tres.ev.length).toBe(uno.ev.length);
     });
   });
 
