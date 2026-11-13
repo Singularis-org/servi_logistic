@@ -22,7 +22,7 @@
 
 ## T1 — Contrato del control de descarga (frontend_dev) · [P] con T2
 
-- [ ] **T1.1** `DescargaConfig.tituloHoja?` en `lib/types/descarga.ts` y su uso en
+- [x] **T1.1** `DescargaConfig.tituloHoja?` en `lib/types/descarga.ts` y su uso en
   `construirDescarga` (`lib/utils/descarga-dataset.ts`), como `design.md > Contrato del control`.
   Nuevo `tests/unit/descarga/descarga-titulo-hoja.test.ts`: con `tituloHoja: "Gestiones"` y
   `titulo: "Gestiones de cierres"`, la primera hoja del xlsx (leído con ExcelJS) se llama
@@ -30,7 +30,7 @@
   el título. **Hecho:** verde; rojo si el generador ignora `tituloHoja`;
   `tests/unit/descarga/archivo-identico-470.test.ts` y `tests/unit/descarga/libro-kardex-468.test.ts`
   verdes sin tocarlos.
-- [ ] **T1.2** `DescargaFilasResult.libro?` en `components/shared/DataTable.tsx` y su rama en
+- [x] **T1.2** `DescargaFilasResult.libro?` en `components/shared/DataTable.tsx` y su rama en
   `components/shared/DescargarDatasetButton.tsx`. Nuevo
   `tests/components/descarga/DescargarDatasetLibro.test.tsx` con `construirDescarga` espiado: (a) con
   `libro` de tres hojas, la llamada es `toEqual` a un literal
@@ -85,10 +85,10 @@
 
 ## T4 — Cliente de cierres (frontend_dev) · depende de T1 y T2.2
 
-- [ ] **T4.1** `senalesDe` / `textoSenales` con `Pick` en
+- [x] **T4.1** `senalesDe` / `textoSenales` con `Pick` en
   `components/private/cierres/fila/fila-gestion-vista.ts`. **Hecho:** typecheck verde;
   `tests/unit/utils/fila-gestion-vista.test.ts` verde sin tocarlo.
-- [ ] **T4.2** Nuevo `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga.ts`
+- [x] **T4.2** Nuevo `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga.ts`
   (`design.md > Cliente` y `> Hojas`). Nuevo `tests/unit/descarga/cierres-gestiones-modelo-nuevo-descarga.test.ts`
   con DTOs de dobles y **literales escritos a mano** (nunca con `textoSenales`, `money`, `origenDe`
   ni las funciones del módulo):
@@ -103,7 +103,7 @@
     con las columnas recibidas (literal de una fila).
 
   **Hecho:** verde; rojo si una celda de importe se calcula o si un cierre mixto reparte gestiones.
-- [ ] **T4.3** `DescargarGestionesDialog.tsx` (rama del libro, prop `audiencia`) y
+- [x] **T4.3** `DescargarGestionesDialog.tsx` (rama del libro, prop `audiencia`) y
   `DescargarCierresButton.tsx` (la pasa). Nuevo `tests/components/descarga/DescargarGestionesModeloNuevo.test.tsx`,
   montando `DescargarCierresButton` en «Detalle» con una acción de dobles y `construirDescarga`
   espiado: (a) solo viejo → la configuración es `toEqual` al literal de hoy (título «Gestiones de
@@ -119,7 +119,7 @@
 
 ## T5 — E2E (frontend_dev) · depende de T3 y T4
 
-- [ ] **T5.1** En `e2e/cierres-rediseno.spec.ts`, describe de SLT-113: la central, en
+- [x] **T5.1** En `e2e/cierres-rediseno.spec.ts`, describe de SLT-113: la central, en
   `/cierres-admin`, elige «Detalle · una fila por gestión», descarga con todos los mensajeros y sin
   rango, y lee el xlsx con ExcelJS: nombres de hojas en orden, encabezados de «Gestiones» y, en la
   fila de la gestión del cierre nuevo del escenario, «Se le cobra a la tienda» y «Pago al mensajero»

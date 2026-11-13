@@ -161,3 +161,103 @@ cambios, las 18 vuelven a caer; `git diff` de `lib/` igual al de antes de cada m
 T0, T2 y T3 hechas: servidor de la hoja «Gestiones» y de «Rechazados por la tienda» con alcance en
 el WHERE, 18/18 mutaciones matadas; quedan para el leader el corpus de alcance del design (no
 casaba) y los ~14 archivos de test fuera de la lista (PR > 40 archivos).
+
+## T1, T4, T5 · frontend_dev · 2026-11-12
+
+Rama al día con `origin/dev` (sin merge). Base desechable de unitarios `slt113_excel`; base E2E nueva
+`slt113_e2e_1` (generate + migrate deploy + db:seed + next build por separado, como `gate.yml`). No hizo
+falta `pago_satelite` en ninguna base. MCP del grafo: no usado (worktree sin indexar); Grep/Read.
+
+### Archivos
+
+Producción:
+- `lib/types/descarga.ts` — `DescargaConfig.tituloHoja?`.
+- `lib/utils/descarga-dataset.ts` — `nombreHoja(config.tituloHoja ?? titulo)` en hoja única, libro y
+  guardia de límite; el nombre de archivo sigue en `titulo`.
+- `components/shared/DataTable.tsx` — `DescargaFilasResult.libro?: { hojas: [DescargaHoja, ...] }`.
+- `components/shared/DescargarDatasetButton.tsx` — rama `libro` (siempre xlsx, sin selector); sin
+  `libro`, la rama de hoy sin cambiar una línea.
+- `components/private/cierres/fila/fila-gestion-vista.ts` — `GestionConSenales` (`Pick` de seis campos)
+  en `senalesDe` / `textoSenales`.
+- NUEVO `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts` —
+  columnas (35 central / 32 satélite) y proyecciones de «Gestiones» y «Rechazados por la tienda».
+- NUEVO `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga.ts` — `libroGestiones`.
+- `app/(app)/cierres-admin/_components/DescargarGestionesDialog.tsx` — una llamada a la acción; libro si
+  hay cierre nuevo; prop `audiencia` (ausente = `satelite`); `AccionGestionesDescarga` admite
+  `rechazosDeTienda?` en `ok`.
+- `app/(app)/cierres-admin/_components/DescargarCierresButton.tsx` — pasa `audiencia`.
+
+Tests:
+- NUEVOS: `tests/unit/descarga/descarga-titulo-hoja.test.ts` (3),
+  `tests/components/descarga/DescargarDatasetLibro.test.tsx` (3),
+  `tests/unit/descarga/cierres-gestiones-modelo-nuevo-descarga.test.ts` (15),
+  `tests/components/descarga/DescargarGestionesModeloNuevo.test.tsx` (4).
+- `tests/unit/guards/cierres-descarga-detallada-frontera.guardia.test.ts` — los dos módulos nuevos en
+  `SUBARBOL`, su pureza y `RechazoTiendaDescargaDTO` sin ids ni evidencia.
+- `tests/unit/guards/estado-con-info.guardia.test.ts` — FUERA de la lista: una excepción `descarga` para
+  la celda «Resultado» de «Gestiones» (igual que la de la hoja fundida).
+- `e2e/cierres-rediseno.spec.ts` — describe SLT-113 (cierre viejo + nuevo en la misma empresa). No hizo
+  falta tocar `e2e/_escenarios/cierres.ts`: el viejo se solicita antes de activar las tarifas de B.
+
+### Desviaciones del design (para el leader)
+
+1. **Dos módulos en vez de uno.** Un archivo que declara `: DescargaColumna[] =` tiene que llamarse
+   `*-descarga-columnas.ts` (`columnas-sensibles.guardia`), y esa guardia ejecuta cada función exportada
+   con una sonda: `libroGestiones` devuelve `null` con ella y la guardia lo rechaza. Columnas y
+   proyecciones van en `…-descarga-columnas.ts` (la guardia de datos sensibles las cubre); el libro, en
+   el nombre del design. En `textoTarifa`, una plantilla sobre `t.valor` para que la sonda llegue como su
+   marcador (no cambia un string).
+2. **Encabezados del flete de no entregadas.** «Flete de no entregadas» lo rechaza
+   `nombres-estado-retirados.guardia` (participio plural). Se usa el rótulo aprobado de R65 de SLT-54,
+   `FLETE_NO_ENTREGADAS_LABEL`: «Flete de gestiones no entregadas», «Tarifa del flete de gestiones no
+   entregadas», «IVA del flete de gestiones no entregadas». Si Carlos prefiere otro texto, es una línea.
+3. **Diálogo:** la llamada sigue siendo `filasDesdeResultado(accion(…))` (lo fija
+   `cierres-descarga-detallada-puerta.test.ts`); la respuesta se guarda en el `.then` para armar el libro.
+4. **Motivo** de «Gestiones» = `motivoGestionLegible` (el rótulo de la hoja de hoy), no el slug crudo.
+
+### Mapa R → test (cliente)
+
+| R | Test |
+|---|---|
+| R370 | `DescargarGestionesModeloNuevo.test.tsx` (a) · `DescargarDatasetLibro.test.tsx` (b, c) · `descarga-titulo-hoja.test.ts` (sin `tituloHoja`) · `cierres-gestiones-modelo-nuevo-descarga.test.ts` («todo viejo → null», «sin cierreModelo → null») · existentes sin tocar, verdes |
+| R371 | `cierres-gestiones-modelo-nuevo-descarga.test.ts` («el modelo es del CIERRE…», «sin cierreModelo → null») |
+| R372 | `cierres-gestiones-modelo-nuevo-descarga.test.ts` (`libroGestiones`) · `DescargarGestionesModeloNuevo.test.tsx` (b, c) · `descarga-titulo-hoja.test.ts` · `e2e/cierres-rediseno.spec.ts` (hojas) |
+| R373 | `cierres-gestiones-modelo-nuevo-descarga.test.ts` (encabezados, hoja vacía) · `DescargarDatasetLibro.test.tsx` (a: el selector no se aplica) |
+| R374 | `cierres-gestiones-modelo-nuevo-descarga.test.ts` (celdas A y B, vacías, «Ajuste» `-700.00`, `formato`, «ningún importe se recalcula») · `e2e/cierres-rediseno.spec.ts` (3503 y 2200 como número) |
+| R375 | `cierres-gestiones-modelo-nuevo-descarga.test.ts` (texto de tarifa con origen, folio, día del cargo) |
+| R376 | `cierres-gestiones-modelo-nuevo-descarga.test.ts` (32 columnas de la satélite) · `DescargarGestionesModeloNuevo.test.tsx` (d) |
+
+### Mutaciones (copia en el scratchpad + `cmp`; ninguna con el gate corriendo)
+
+| id | mutación | resultado | cae |
+|---|---|---|---|
+| F1 | el generador ignora `tituloHoja` | MATADA | `descarga-titulo-hoja` (2 casos) |
+| F2 | el botón sin libro añade `tituloHoja: titulo` a su llamada | MATADA | `DescargarDatasetLibro` (b) |
+| F3 | el modelo viejo recibe el libro (`cierreModelo !== undefined`) | MATADA | unit «todo viejo → null», «mixto…»; componente (a), (c) |
+| F4 | «Se le cobra a la tienda» sumado en el cliente con `Number(…).toFixed(2)` | MATADA | unit «ningún importe se recalcula» |
+| F5 | clasificar por el modelo de la FILA (`ingresoEmpresa.tarifaModelo`) | MATADA | unit «el modelo es del CIERRE…» |
+| F6 | E2E: libro desactivado en el diálogo (`false ? libroDe(…) : null`), build aparte | MATADA | E2E: hojas `["Gestiones de cierres"]` en vez de las tres |
+
+### Salidas
+
+- **Typecheck** (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`, tras el `prisma generate`
+  del E2E): `TC_EXIT=0`, 0 errores. Antes del generate: los 4 ajenos de SLT-139 de siempre y ninguno más.
+- **Lint** (eslint sobre los archivos tocados y el spec E2E): 0 errores; 1 aviso `_recorte` sin usar en
+  un doble (mismo patrón que `DescargarGestionesDialog.test.tsx`).
+- **Unitarios y componentes** (`DATABASE_URL` → `slt113_excel`; `vitest run tests/unit/descarga
+  tests/components/descarga tests/unit/guards` + `fila-gestion-vista`, `descarga-dataset`,
+  `descarga-varias-hojas-464`, `folio-cierre`, `DescargarDataset`): 319 archivos, 4230 passed,
+  1 skipped, 4 failed — los 4 de `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`
+  (lee `init.sh`; ni `init.sh`, ni `scripts/`, ni ese test cambian en esta rama: ajeno).
+- **E2E** (candado tomado 21:20:04, liberado 21:30:30; puerto 3000; `NEXT_PUBLIC_APP_URL` y
+  `APP_BASE_URL` = `http://localhost:3000`): `prisma generate` a las 21:20:37 y otra vez a las 21:25:58
+  (otra sesión regeneró el cliente compartido y el build de la mutación cayó por tipos de
+  `EstadoCuentaRepository`). Builds: 21:20:56→21:22:46 (verde), F6 →21:27:51, final →21:30:07.
+  `playwright test e2e/cierres-rediseno.spec.ts --project=dinero -g "SLT-113"`: 1 passed; 1 failed con
+  F6; 1 passed tras revertir. El spec entero y el grupo `dinero` quedan para T6.
+
+### Veredicto
+
+T1, T4 y T5 hechas: libro de tres hojas en el «Detalle» con el archivo viejo idéntico, 6/6 mutaciones
+matadas y E2E verde; para el leader, las desviaciones 1 y 2 (módulo partido por la guardia y rótulo de
+R65 en el flete de no entregadas).
