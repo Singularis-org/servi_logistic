@@ -149,13 +149,13 @@
   (con un país de 2 y de 4 niveles: ofrece 2 o 4 `nivel_k`, con su rótulo; nunca `nivel_k` > P).
   **Hecho:** R30 en verde; `CampoVariablePicker.test.tsx` y `catalogo-de-variables.test.ts` en verde
   sin editarlos (A4).
-- [x] **T3.6** Guardias ampliadas a los archivos nuevos, sin excepciones: `etiquetas-geograficas-sin-literal`,
+- [ ] **T3.6** Guardias ampliadas a los archivos nuevos, sin excepciones: `etiquetas-geograficas-sin-literal`,
   `geografia-sin-cte-recursiva` y `geografia-lecturas-sin-nodo-fk` (P1 = B).
   **Hecho:** R19 y R42 en verde, cada guardia con su contraprueba.
 
 ## T4 — E2E nuevo (frontend_dev) · depende de T3
 
-- [ ] **T4.1** `e2e/geo-presentacion-4-niveles.spec.ts` (design §10). En una empresa de un país de 4
+- [x] **T4.1** `e2e/geo-presentacion-4-niveles.spec.ts` (design §10). En una empresa de un país de 4
   niveles, con órdenes en el nivel 3:
   - la descarga de órdenes con 4 cabeceras de lugar y la cuarta celda vacía;
   - la etiqueta con una ruta de 3 niveles;

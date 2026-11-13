@@ -832,4 +832,114 @@ vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped
 
 ### Veredicto T3.5 y T3.6
 
-Hechas: R30, R19 y R42 en verde; Costa Rica igual que hoy (P = 3 ofrece nivel_1..3 rotulados con sus tipos).
+T3.5 hecha: R30 en verde; Costa Rica igual que hoy. T3.6 pendiente de decisión humana sobre los 2 recortes por nombre (las entradas ocultas de `plantilla-datos.ts` y los tipos de entrada de `IOrdenRepository.ts`): el commit 58092695 ya los lleva; si el humano los rechaza, un commit posterior los quita.
+
+## T3.5 — Selector de variables con `nivel_1..P` (frontend_dev, 2026-11-13)
+
+- `app/(app)/configuracion/plantillas/_components/CampoVariablePicker.tsx`: sin `campos` inyectados ofrece
+  `CAMPOS_PLANTILLA_OFRECIDOS` (que ya trae `ubicacion`, T2.5) más `nivel_1..P` de `useNivelesGeograficos()`,
+  rotulados con el `singular` del nivel k. Nunca k > P. Con P = 0 devuelve la MISMA constante. Un catálogo
+  inyectado (variables de informe) se usa tal cual. `provincia/canton/distrito` siguen ocultas.
+- **Orden:** los `nivel_k` van en bloque JUSTO ANTES de `{{ubicacion}}`. Así los pinta la maqueta aprobada
+  (sección 6: Provincia, Cantón, Distrito, Ubicación). El texto de design §4.6 y el de la tarea dicen «justo
+  después de `ubicacion`» y a la vez «el orden que fije la maqueta». Se siguió la maqueta.
+- Test nuevo: `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx`.
+- `CampoVariablePicker.test.tsx` y `catalogo-de-variables.test.ts` no se editaron (A4).
+
+| R | Test | Cifras |
+|---|---|---|
+| R30 | `CampoVariablePicker-niveles.test.tsx`: países de 2 y 4 niveles y CR, 5 casos cada uno (solo `nivel_1..P`, nunca P+1; rótulo = singular; bloque antes de `ubicacion`; resto = OFRECIDOS sin provincia/canton/distrito; clic inserta). P = 0 sin proveedor y con proveedor vacío. Catálogo inyectado. Filtro por tipo | 19/19 |
+| R30 (A4) | `CampoVariablePicker.test.tsx` + `catalogo-de-variables.test.ts`, sin editar | en verde: 3 archivos, 41/41 junto al nuevo |
+
+## T3.6 — Guardias ampliadas a los archivos de SLT-125 (frontend_dev, 2026-11-13)
+
+- `tests/fixtures/archivos-slt125.ts` (nuevo) contiene:
+  - los 62 archivos de `git diff --name-only origin/feature/SLT-47-geo-jerarquica-presentacion...HEAD -- app lib components hooks`;
+  - `CampoVariablePicker.tsx`;
+  - los 4 nuevos, aparte.
+
+  La lista va escrita: el CI clona sin la rama base.
+- Las 3 guardias solo **suman** bloques (`git diff --numstat`: 93/0, 98/0 y 34/0). Ninguna aserción existente
+  cambia. Cada bloque tiene anti-vacuidad, una contraprueba sobre un archivo real con la violación sembrada y el
+  barrido de los 63 archivos.
+  - `etiquetas-geograficas-sin-literal`: barre los 63 (también `lib/`). Hay un recorte por nombre:
+    - qué recorta: las 3 entradas del catálogo `provincia/canton/distrito` de `lib/types/plantilla-datos.ts`;
+    - por qué: son 6 literales de la base SLT-47, nombres internos SL-20 ocultos en el selector, y cambiarlos
+      cambia CR (`nombresDeVariables`);
+    - cómo se vigila: si la entrada desaparece o deja de estar oculta, el recorte falla. Un literal en otra
+      entrada sigue siendo hallazgo.
+  - `geografia-sin-cte-recursiva`: barre los 63, incluidos los de `app/`. Antes solo barría `lib/` y `scripts/`.
+  - `geografia-lecturas-sin-nodo-fk`: barre los 63 enteros. Solo recorta las 2 escrituras de SLT-45:
+    - los métodos de `OrdenRepository`, con la exención ya existente;
+    - sus tipos de entrada `CreateOrdenData` y `CorregirDatosClienteData` de `IOrdenRepository.ts`, por nombre.
+
+    Esa exención es nueva y se comprueba a sí misma. No exime ninguna lectura.
+- Mutación real: se sembró un literal en `ubicacion-presentacion.ts`, `nodoGeograficoId` en `lugar-de-la-orden.ts`
+  y `WITH RECURSIVE` en `niveles-de-columnas.ts`. Resultado: 5 rojos en los bloques nuevos. Luego se revirtió.
+- Ninguna fuente nueva violaba las guardias: no hubo que arreglar código.
+
+| R | Test | Cifras |
+|---|---|---|
+| R42 | `etiquetas-geograficas-sin-literal.guardia.test.ts`, bloque SLT-125 | +5 casos |
+| R19 | `geografia-sin-cte-recursiva.guardia.test.ts`, bloque SLT-125 | +3 casos |
+| R19 | `geografia-lecturas-sin-nodo-fk.guardia.test.ts`, bloques SLT-125 | +5 casos |
+
+Las 3 guardias juntas: 42/42.
+
+### Salidas (T3.5 + T3.6)
+
+```
+pnpm run typecheck → tsc --noEmit, exit 0
+pnpm exec eslint <picker, test nuevo, fixture, 3 guardias> → exit 0, sin salida
+vitest run <3 archivos del picker> --maxWorkers=1 → Test Files 3 passed (3) · Tests 41 passed (41)
+vitest run <3 guardias> --maxWorkers=1 → Test Files 3 passed (3) · Tests 42 passed (42)
+vitest related --run CampoVariablePicker.tsx archivos-slt125.ts --maxWorkers=1 → Test Files 13 passed (13) · Tests 142 passed (142)
+vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped (339) · Tests 4 failed | 4736 passed | 25 skipped
+  los 4 rojos: dependencias-declaradas-presentes (baseline, heredado)
+  (la 1.ª corrida dio 14 rojos: 4 de baseline y 10 en 5 guardias ajenas. Esas 5 guardias, corridas solas,
+  dieron 70/70, y en la 2.ª corrida completa solo quedaron los 4 de baseline: fallos transitorios bajo carga)
+```
+
+### Veredicto T3.5 y T3.6
+
+Hechas. R30, R19 y R42 en verde. Costa Rica igual que hoy y ninguna aserción existente cambiada. Hay 2 recortes
+por nombre que el humano debe confirmar: las entradas internas de `plantilla-datos.ts` y los tipos de entrada
+de SLT-45.
+
+## T4.1 — E2E de un país de 4 niveles (frontend_dev, 2026-11-13)
+
+### Archivos
+
+- Nuevo: `e2e/geo-presentacion-4-niveles.spec.ts`. Siembra por el cliente dueño del E2E: país `XB` idempotente
+  (upsert; «Región», «Comuna», «Barrio» + `tipo_nivel_geografico` `nivel_4` «Sector» con ON CONFLICT), una región,
+  una comuna y dos barrios con sufijo aleatorio; empresa en `XB` con `escenarioReparto`; dos órdenes de nivel 3
+  insertadas por SQL en `en_preparacion` con FK viejas y coordenadas (sin job de geocodificación). Guía,
+  asignación, recogida, gestión y cierre por los servicios reales.
+- `playwright.config.ts`: el spec entra en el proyecto `reparto` (ya en la matriz de `gate.yml`; sin cambio ahí).
+- `tests/fabricas/e2e.ts`: `crearEmpresaE2E(etiqueta, opts = {})` acepta `paisId` opcional; sin él, Costa Rica
+  como siempre (aditivo).
+- Ningún spec E2E de CR ni aserción existente tocados (R38).
+
+### R → test
+
+| R | Test | Qué afirma |
+|---|---|---|
+| R43 (1) | `geo-presentacion-4-niveles.spec.ts` | XLSX de `/ordenes` (exceljs): tras «Zona», «Región», «Comuna», «Barrio», «Sector»; cada orden [región, comuna, barrio, ""] |
+| R43 (2) | ídem | vista previa de «Imprimir etiquetas»: «zona / región / comuna / barrio» en cada etiqueta; el PDF descarga |
+| R43 (3) | ídem | `/cierres-admin`: «zona · región · comuna · barrio» dos veces; `ubicacion_snapshot` de las 2 filas `v: 1`, 3 niveles Región/Comuna/Barrio con sus nombres |
+
+### Salidas
+
+```
+pnpm run typecheck → exit 0
+pnpm exec eslint e2e/geo-presentacion-4-niveles.spec.ts tests/fabricas/e2e.ts playwright.config.ts → sin salida
+pnpm exec playwright test e2e/geo-presentacion-4-niveles.spec.ts → NO corrido: el worktree no tiene `.next` ni
+  `.env` propio; queda para CI (proyecto `reparto`).
+```
+
+### Veredicto T4.1
+
+Escrito; R43 sin evidencia de ejecución hasta CI. Supuestos leídos del código, no comprobados: que guía,
+asignación y cierre no restringen un país de 4 niveles, y que el maestro ve «Imprimir etiquetas» en
+`mensajero_recogiendo_en_bodega`. El texto del PDF no se lee (no hay dependencia para ello): se afirma la vista
+previa, que usa la misma `geografiaLegible`.
