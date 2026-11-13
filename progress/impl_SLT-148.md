@@ -175,3 +175,21 @@ Ninguna sobrevive. Tras la campaña `git status --short lib/` vacío y
 **Veredicto:** el detalle de bodega pasa de 56 a 24 sentencias con N = 3 (igual que N = 1), con la
 respuesta idéntica a los literales a mano y las 9 mutaciones (+1 variante) en rojo; queda T4.1 para
 una base con datos.
+
+## Tanda 2 — backend_dev: guardia R23 de la 212 (2026-11-13)
+
+El gate del leader (772fe8d0) salió rojo en `tests/unit/guards/pagos-proyeccion.guardia.test.ts` («el
+tercer camino importa y USA `select: GESTION_ADMIN_SELECT`»): el lote pedía `{ ...GESTION_ADMIN_SELECT,
+cierreId }`. Arreglo sin tocar la guardia (`debe0cb9`): las gestiones pasan a ser relación de la lectura
+de `cierre_dia` con `select: GESTION_ADMIN_SELECT` tal cual (Prisma: una sentencia por nivel con
+`cierre_id IN`, agrupada y en `createdAt desc` por cierre del día); las filas congeladas siguen en una
+lectura con `cierreId IN`. Como Prisma emite las sentencias de una relación aunque no haya padres, el
+corte N = 0 pasa a usar `_count.cierresDia` de la cabecera, antes de leer `cierre_dia`.
+
+Sentencias: B1 24, BX 24 (R420/R421 verdes), B0 5 (antes 7; el test pasa a «como mucho» la línea base).
+Guardia: 10 passed. `vitest run tests/unit/guards`: 243/244 archivos, 3617 passed, 4 failed, todos en
+`dependencias-declaradas-presentes.guardia` (`init.sh` no llama a `scripts/verificar-dependencias.mjs`;
+viene de la sincronización del arnés mergeada desde dev, `9aa7e060`; ajeno a esta ficha). Integración
+8 passed. Mutaciones sobre el código nuevo: M1 (filas por cierre del día) → R420 «expected 34 to be 24»;
+M2 → R422 (`direccion`); M3 (`cierre_detail` por `cierreBodegaId`) → R426 «parametro ajeno»; M6 (sin
+el corte) → R428 (`gestion_orden` leída). Todas EXIT=1 con 1 failed / 7 passed; revertidas 8 passed.
