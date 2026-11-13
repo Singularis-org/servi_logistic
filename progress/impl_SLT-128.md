@@ -288,3 +288,55 @@ Veredicto: sync con SLT-118 hecho y los 6 rojos del CI atendidos; falta que el C
 ## Constancia del CI (B1 de la review, 2026-11-12, leader)
 - Run 43255958513 (`workflow_dispatch` sobre `894cfe23`): E2E y shards en verde; `gate-completo` rojo por 6 archivos fuera del baseline (3 heredados de SLT-118, 3 de lectura del plan). Arreglados en `23ddc17a` (merge de SLT-118) y `3e25a516`.
 - Run 43262530746 (`workflow_dispatch` sobre `ca3361e8`): **todo verde**: `estatico`, `vitest` 3/3, `gate-completo`, `e2e (aislamiento)`, `e2e (dinero)`, `e2e (reparto)`, `e2e`. La migración `20261114120000_plan_cambio_por_empresa` y los 9 archivos de integración corrieron contra Postgres.
+
+## T10 (m2, m3) — backend_dev, 2026-11-12: T10.1–T10.7 (T10.8 es de frontend_dev; T10.9, del leader)
+
+Diseño §14; R28 (recepción «no aplicada»), R29 (trabajos que ya no aplican, descartados). Migración EDITADA (P14).
+
+### Archivos (todos de «Archivos esperados»; ninguno nuevo)
+- `db/migrations/20261114120000_plan_cambio_por_empresa/migration.sql`: `no_aplicada_at`/`no_aplicada_motivo` con
+  `CHECK` (par, ni recibida y no aplicada a la vez, motivo de la lista) en las dos tablas; índice parcial con
+  «pendiente»; `factura_plataforma_cerrar` y `plan_de_la_empresa` solo con pendientes. `down.sql` sin cambios.
+- `db/schema.prisma`: las cuatro columnas (Prisma regenerado).
+- `lib/planes/mensajes.ts`: `MOTIVOS_NO_APLICADA`, `textoMotivoNoAplicada`, `lineaNoAplicada`,
+  `introCambioPlanNoAplicado`, `asuntoCambioPlanNoAplicado`.
+- `lib/interfaces/repositories/IPlanesRepository.ts`: `ResultadoRecibir` (`no_aplicada`), `AvisoNoAplicadaPlan`,
+  `NoAplicadaLeida`, `noAplicadas` en `DetallePlanLeido`.
+- `lib/types/planes.ts`: `NoAplicadaVista`, `noAplicadas?` en `DetallePlan` (opcional: los dobles de pantalla fuera
+  de la lista no cambian; el servicio lo trae siempre).
+- `lib/repositories/PlanesRepository.ts`: `recibirCambio` marca en vez de lanzar, encola el aviso sin empresa y
+  promueve si era la última pendiente; `PENDIENTE` en barrido, archivar, salir, mover, recordatorios, `planDeEmpresa`
+  y promoción; promover conserva la versión de la no aplicada con su marca (excluida de la regla R37); `detalle`
+  con `noAplicadas`; `descartarTrabajos` en mover, reemplazar, cancelar (y archivar) y salir.
+- `lib/planes/consumo.ts`, `lib/services/PlanesService.ts`: `noAplicadas` al detalle (ISO).
+- `lib/config/reporte-bug.ts`: `destinatariosDeLista(valor, variable)`, `destinatariosAlertaPlan`;
+  `destinatariosReporteBug` con la misma firma. El log pasa a `[lista-de-correos] <VARIABLE>: …`.
+- `.env.example`: `PLAN_CHANGE_ALERT_EMAILS=` comentada, junto a `BUG_REPORT_EMAILS`.
+- `lib/planes/jobs-cambio-plan.ts`: `plan_aviso_correo` sin empresa solo para `no_aplicada`, a cada dirección
+  de la lista; vacía → `done` sin enviar; `DepsAvisoCorreo.destinatariosAlerta` opcional.
+- `lib/services/email/plantillas/cambio-plan.ts`: `plantillaCambioPlanNoAplicado`.
+- Tests: `migracion-slt128-ida-y-vuelta`, `planes-periodicidad-ordenes`, `planes-cambio-por-empresa`,
+  `factura-plataforma-cambio-plan`, `planes-version-por-empresa`, `planes-cambio-programado`,
+  `procesar-jobs-plan-cambio`, `plantilla-cambio-plan`, `planes-service-lecturas`, `planes-service-asignar-costo`,
+  `planes-service-costo-porcentual` (dobles con `noAplicadas: []`).
+
+### Mapa R → test
+| R | Test |
+|---|---|
+| R28 | `tests/integration/db/planes-periodicidad-ordenes.test.ts` («SLT-128 R8, R28: … no aplicada …»); `tests/integration/db/planes-cambio-por-empresa.test.ts` («R28, R10», «R28, R18, R15», «R28, R13»); `tests/integration/db/factura-plataforma-cambio-plan.test.ts` («SLT-128 R28, R9»); `tests/integration/db/planes-version-por-empresa.test.ts` («R12, R28»); `tests/integration/db/migracion-slt128-ida-y-vuelta.test.ts` («R28: los CHECK …»); `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` («R28: una recepción `no_aplicada` termina …» y el bloque «plan_aviso_correo `no_aplicada` a la lista de alertas»); `tests/unit/services/email/plantilla-cambio-plan.test.ts` (bloque SLT-128 R28); `tests/unit/services/planes-service-lecturas.test.ts` («SLT-128 R28»); la línea del detalle: `tests/components/PlanDetalle.test.tsx` (T10.8, frontend_dev) |
+| R29 | `tests/integration/db/planes-cambio-por-empresa.test.ts` («R29 (R19)», «R29 (R18)» con ida y vuelta); `tests/integration/db/planes-cambio-programado.test.ts` («SLT-128 R29 (R13, R14)») |
+| R8, R9, R10, R12, R15, R18 (ajustes) | los mismos casos de R28 de arriba |
+
+### Verificación (local, sin Postgres)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: 0 errores (tras cada sub-task).
+- `pnpm exec eslint` de cada archivo tocado: limpio.
+- `pnpm exec vitest run`: `procesar-jobs-plan-cambio` + `reporte-bug-config` 57/57; `plantilla-cambio-plan` 22/22;
+  `planes-service-lecturas` 47/47; los 7 unitarios de planes 246/246; los 6 de integración: 1 archivo verde
+  (`migracion-slt128-ida-y-vuelta`, 10 estáticos) y 5 saltados (74 tests, sin base).
+- `pnpm exec vitest related --run`: `PlanesRepository.ts` 27 verdes | 54 saltados; `reporte-bug.ts` 25 | 8;
+  `jobs-cambio-plan.ts` 14 | 7; `cambio-plan.ts` 15 | 7; `mensajes.ts` 297 | 63. Ningún rojo.
+- `pnpm run test:guardias` tras cada commit: 4 rojos, todos de `dependencias-declaradas-presentes` (baseline).
+- Pendiente: los de integración contra Postgres (CI por `workflow_dispatch`, T10.9).
+
+Veredicto: T10.1–T10.7 hechos; typecheck, lint, unitarios y guardias en verde (baseline); integración R28/R29 por
+correr en CI.
