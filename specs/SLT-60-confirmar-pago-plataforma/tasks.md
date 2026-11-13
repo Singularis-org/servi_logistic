@@ -71,11 +71,11 @@
   `tests/unit/services/pago-plataforma-confirmacion-service.test.ts`. **Hecho:** verde (R17, R19, R20, R24).
 - [x] **T3.4** `lib/actions/pagos-plataforma.ts`, `"pagos-plataforma": "nucleo"` en `lib/modulos/reparto.ts` y
   `tests/unit/actions/pagos-plataforma.test.ts`. **Hecho:** verde; la guardia `modulos-reparto` en verde.
-- [ ] **T3.5** `tests/integration/db/_fixtures/factura-cerrada.ts` y
+- [x] **T3.5** `tests/integration/db/_fixtures/factura-cerrada.ts` y
   `tests/integration/db/pago-plataforma-confirmacion.test.ts`, con la tabla de pasos de design §8 (incluida
   la empresa C con la factura de −30 000) y sus cuatro mutaciones medidas y revertidas. **Hecho:** verde con
   base. Cubre R1–R7, R9–R11, R15–R22, R25, R26, R31 y la lectura de R32 y R34.
-- [ ] **T3.6** El comprobante para el superadmin (design §4.8), en archivos que ya están en la lista:
+- [x] **T3.6** El comprobante para el superadmin (design §4.8), en archivos que ya están en la lista:
   - `verComprobante` en el servicio y su interfaz;
   - `pagoDeLaEmpresa` y `tieneComprobante` en el repositorio;
   - `verComprobantePagoSchema` y su resultado en los tipos;
@@ -88,7 +88,7 @@
 
 ## T4 — El listado de Empresas (depende de T2.2)
 
-- [ ] **T4.1** `EmpresasPlataformaRepository` (confirmados y contador) y `lib/types/empresas-plataforma.ts`
+- [x] **T4.1** `EmpresasPlataformaRepository` (confirmados y contador) y `lib/types/empresas-plataforma.ts`
   (`pagosPorConfirmar`). Se ajustan `tests/unit/actions/empresas-plataforma.composition-root.test.ts` y
   `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`. **Hecho:** verde (R7, R8, R27).
 - [ ] **T4.2** [P] `EmpresasModule.tsx` (la tercera línea de `CeldaPlataforma`) y

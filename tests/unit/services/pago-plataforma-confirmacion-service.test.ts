@@ -5,6 +5,8 @@ import type {
   ConfirmarPagoRepoResult,
   IPagoPlataformaConfirmacionRepository,
 } from "@/lib/interfaces/repositories/IPagoPlataformaConfirmacionRepository";
+import { contextoActual } from "@/lib/db/contexto-empresa";
+import type { ObjetoComprobante } from "@/lib/interfaces/repositories/IWalletComprobanteRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PagoPlataformaConfirmacionService } from "@/lib/services/PagoPlataformaConfirmacionService";
 import type { PagosDeEmpresa } from "@/lib/types/pago-plataforma";
@@ -13,12 +15,19 @@ import type { PagosDeEmpresa } from "@/lib/types/pago-plataforma";
 // reglas del reparto bajo candado (saldo, factura válida, suma) las decide la base: aquí se prueba que el
 // servicio autoriza primero, valida la forma, quita los ceros y traduce cada respuesta de la base. El SQL se
 // prueba contra Postgres en `tests/integration/db/pago-plataforma-confirmacion.test.ts`.
+//
+// El comprobante (design §4.8; R33, R34): forbidden sin leer; not_found y sin_comprobante sin firmar; ok firma
+// con el TTL que recibe el servicio DENTRO de `conEmpresa` de la empresa pedida (los dobles leen el contexto
+// en el momento de la llamada), y la respuesta no lleva la ruta del archivo.
 
 const ORG = "6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b";
 const PAGO = "0a1b2c3d-4e5f-4061-8728-394a5b6c7d8e";
 const F1 = "11111111-2222-4333-8444-555555555555";
 const F2 = "66666666-7777-4888-8999-aaaaaaaaaaaa";
 const AHORA = new Date("2026-11-20T15:00:00.000Z");
+const TTL = 321;
+const RUTA = "comprobantes/caja/0a1b2c3d.png";
+const URL_FIRMADA = "https://storage.test/firmada?token=abc";
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: RolValue.superadmin, organizacionId: null };
 const ROLES_DE_EMPRESA = Object.values(RolValue).filter((r) => r !== RolValue.superadmin);
@@ -37,11 +46,41 @@ const DATOS: PagosDeEmpresa = {
   facturas: [],
 };
 
-function montar(respuesta: ConfirmarPagoRepoResult = { estado: "ok" }) {
+/** La empresa del contexto en el momento de la llamada, o `null` fuera de `conEmpresa`. */
+function empresaDelContexto(): string | null {
+  const c = contextoActual();
+  return c?.tipo === "empresa" ? c.organizacionId : null;
+}
+
+interface Comprobante {
+  pago?: { id: string } | null;
+  objeto?: ObjetoComprobante | null;
+}
+
+function montar(respuesta: ConfirmarPagoRepoResult = { estado: "ok" }, comprobante: Comprobante = {}) {
+  const contextos: Record<string, string | null> = {};
   const leer = vi.fn<IPagoPlataformaConfirmacionRepository["leer"]>(async () => DATOS);
   const confirmar = vi.fn<IPagoPlataformaConfirmacionRepository["confirmar"]>(async () => respuesta);
-  const service = new PagoPlataformaConfirmacionService({ leer, confirmar }, () => AHORA);
-  return { service, leer, confirmar };
+  const pagoDeLaEmpresa = vi.fn<IPagoPlataformaConfirmacionRepository["pagoDeLaEmpresa"]>(async () => {
+    contextos.pago = empresaDelContexto();
+    return comprobante.pago === undefined ? { id: PAGO } : comprobante.pago;
+  });
+  const lateralDe = vi.fn<(destino: { caja: string }) => Promise<ObjetoComprobante | null>>(async () => {
+    contextos.lateral = empresaDelContexto();
+    return comprobante.objeto === undefined ? { storagePath: RUTA, contentType: "image/png" } : comprobante.objeto;
+  });
+  const createSignedUrl = vi.fn<(ruta: string, segundos: number) => Promise<string>>(async () => {
+    contextos.firma = empresaDelContexto();
+    return URL_FIRMADA;
+  });
+  const service = new PagoPlataformaConfirmacionService(
+    { leer, confirmar, pagoDeLaEmpresa },
+    { lateralDe },
+    { createSignedUrl },
+    TTL,
+    () => AHORA,
+  );
+  return { service, leer, confirmar, pagoDeLaEmpresa, lateralDe, createSignedUrl, contextos };
 }
 
 const entrada = (aplicaciones: { facturaId: string; monto: string }[] = [
@@ -214,5 +253,59 @@ describe("SLT-60 — confirmar: lo que responde la base (R15, R17, R19, R20)", (
     const { service, confirmar } = montar();
     confirmar.mockRejectedValueOnce(new Error("conexión perdida"));
     await expect(service.confirmar(SUPERADMIN, entrada())).rejects.toThrow("conexión perdida");
+  });
+});
+
+describe("SLT-60 — verComprobante: el comprobante del pago para el superadmin (R33, R34)", () => {
+  const pedido = { organizacionId: ORG, pagoId: PAGO };
+
+  it.each(ROLES_DE_EMPRESA)("R34: el rol %s recibe forbidden sin leer el pago ni firmar", async (rol) => {
+    const { service, pagoDeLaEmpresa, lateralDe, createSignedUrl } = montar();
+    expect(await service.verComprobante({ usuarioId: "u-1", rol, organizacionId: ORG }, pedido)).toEqual({ estado: "forbidden" });
+    expect(pagoDeLaEmpresa).not.toHaveBeenCalled();
+    expect(lateralDe).not.toHaveBeenCalled();
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("R34: sin sesión, forbidden aunque la entrada sea inválida, sin leer", async () => {
+    const { service, pagoDeLaEmpresa } = montar();
+    expect(await service.verComprobante(null, {})).toEqual({ estado: "forbidden" });
+    expect(pagoDeLaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("una empresa o un pago que no son uuid son validation_error, sin leer", async () => {
+    const { service, pagoDeLaEmpresa } = montar();
+    const r = await service.verComprobante(SUPERADMIN, { organizacionId: "org-a", pagoId: "p-1" });
+    expect(r.estado).toBe("validation_error");
+    if (r.estado === "validation_error") expect(Object.keys(r.errores).sort()).toEqual(["organizacionId", "pagoId"]);
+    expect(pagoDeLaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("R34: si el movimiento no es un pago a la plataforma de esa empresa, not_found sin buscar el archivo ni firmar", async () => {
+    const { service, pagoDeLaEmpresa, lateralDe, createSignedUrl, contextos } = montar({ estado: "ok" }, { pago: null });
+    expect(await service.verComprobante(SUPERADMIN, pedido)).toEqual({ estado: "not_found" });
+    expect(pagoDeLaEmpresa).toHaveBeenCalledWith(ORG, PAGO);
+    expect(contextos.pago).toBe(ORG);
+    expect(lateralDe).not.toHaveBeenCalled();
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("R34: si el pago no tiene comprobante, sin_comprobante sin firmar", async () => {
+    const { service, lateralDe, createSignedUrl } = montar({ estado: "ok" }, { objeto: null });
+    expect(await service.verComprobante(SUPERADMIN, pedido)).toEqual({ estado: "sin_comprobante" });
+    expect(lateralDe).toHaveBeenCalledWith({ caja: PAGO });
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("R33: firma con el TTL de la wallet dentro de conEmpresa de la empresa pedida, y la ruta no sale", async () => {
+    const { service, createSignedUrl, contextos } = montar();
+    const r = await service.verComprobante(SUPERADMIN, pedido);
+    expect(r).toEqual({ estado: "ok", url: URL_FIRMADA, contentType: "image/png" });
+    expect(createSignedUrl).toHaveBeenCalledWith(RUTA, TTL);
+    // Las tres lecturas corren con la empresa del detalle en el contexto, no con la de la sesión (ninguna).
+    expect(contextos).toEqual({ pago: ORG, lateral: ORG, firma: ORG });
+    expect(JSON.stringify(r)).not.toContain(RUTA);
+    // Fuera del servicio no queda empresa en el contexto.
+    expect(empresaDelContexto()).toBeNull();
   });
 });

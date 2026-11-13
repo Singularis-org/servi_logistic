@@ -1,8 +1,11 @@
 import type { z } from "zod";
 
 import { esPlataforma } from "@/lib/auth/plataforma";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { ErrorDeConfirmacion } from "@/lib/db/errores-pago-plataforma";
+import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { IPagoPlataformaConfirmacionRepository } from "@/lib/interfaces/repositories/IPagoPlataformaConfirmacionRepository";
+import type { IWalletComprobanteRepository } from "@/lib/interfaces/repositories/IWalletComprobanteRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IPagoPlataformaConfirmacionService } from "@/lib/interfaces/services/IPagoPlataformaConfirmacionService";
 import { aCentimos, aTexto } from "@/lib/planes/centimos";
@@ -10,8 +13,10 @@ import {
   claveDeFactura,
   confirmarPagoSchema,
   TEXTOS_CONFIRMACION,
+  verComprobantePagoSchema,
   verPagosDeEmpresaSchema,
   type ConfirmarPagoResult,
+  type VerComprobantePagoResult,
   type VerPagosDeEmpresaResult,
 } from "@/lib/types/pago-plataforma";
 
@@ -19,6 +24,11 @@ import {
 // base, ni para un error de validación), luego qué (zod), y al final el repositorio. La suma y los saldos los
 // decide la base bajo el candado de la empresa, no este servicio: entre la lectura del superadmin y su
 // confirmación otra confirmación pudo bajar un saldo.
+//
+// El comprobante (design §4.8; R33, R34) reutiliza el lateral de la caja de la ficha 458-B, pero no su servicio:
+// `WalletComprobanteService.ver` pide acceso total y la empresa de la sesión, y el superadmin no tiene ninguna
+// de las dos. Aquí la empresa la fija el servidor con `conEmpresa` (molde `ReportesBugPlataformaService`): la
+// lectura del pago y del comprobante pasan por la RLS de esa empresa, y el adaptador firma dentro de su carpeta.
 
 const FORBIDDEN = { estado: "forbidden" } as const;
 const CERO = BigInt(0);
@@ -59,6 +69,12 @@ function errorDeReparto(error: ErrorDeConfirmacion): ConfirmarPagoResult {
 export class PagoPlataformaConfirmacionService implements IPagoPlataformaConfirmacionService {
   constructor(
     private readonly repo: IPagoPlataformaConfirmacionRepository,
+    /** Construido con el cliente extendido: dentro de `conEmpresa` lee solo los de esa empresa. */
+    private readonly comprobantes: Pick<IWalletComprobanteRepository, "lateralDe">,
+    /** Con el bucket de los comprobantes de la wallet. */
+    private readonly urls: Pick<ISignedUrlProvider, "createSignedUrl">,
+    /** La duración del enlace: la misma que en la wallet (R33). */
+    private readonly ttlSegundos: number,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -96,5 +112,21 @@ export class PagoPlataformaConfirmacionService implements IPagoPlataformaConfirm
     // R20, R21: anulado, inexistente, de otra empresa o anulado mientras tanto.
     if (r.error.codigo === "pago_no_encontrado") return { estado: "not_found" };
     return errorDeReparto(r.error);
+  }
+
+  async verComprobante(actor: Actor | null, input: unknown): Promise<VerComprobantePagoResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = verComprobantePagoSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", errores: erroresDeCampo(parsed.error, input) };
+    const { organizacionId, pagoId } = parsed.data;
+    return conEmpresa(organizacionId, async (): Promise<VerComprobantePagoResult> => {
+      const pago = await this.repo.pagoDeLaEmpresa(organizacionId, pagoId);
+      if (pago === null) return { estado: "not_found" };
+      const objeto = await this.comprobantes.lateralDe({ caja: pago.id });
+      if (objeto === null) return { estado: "sin_comprobante" };
+      // R33: solo el enlace y el tipo; la ruta en el bucket no sale del servidor.
+      const url = await this.urls.createSignedUrl(objeto.storagePath, this.ttlSegundos);
+      return { estado: "ok", url, contentType: objeto.contentType };
+    });
   }
 }

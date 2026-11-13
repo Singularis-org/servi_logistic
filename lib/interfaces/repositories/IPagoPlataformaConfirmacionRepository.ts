@@ -38,4 +38,10 @@ export interface IPagoPlataformaConfirmacionRepository {
   leer(organizacionId: string): Promise<PagosDeEmpresa>;
   /** Confirma el pago y guarda su reparto en una sola operación (R16). Un error que no es `SL060` se propaga. */
   confirmar(input: ConfirmarPagoRepoInput): Promise<ConfirmarPagoRepoResult>;
+  /**
+   * El pago a la plataforma `pagoId` de la empresa, o `null` si no existe, no es un pago a la plataforma o
+   * es de otra empresa (R34). Corre dentro de `conEmpresa(organizacionId)`: la extensión y la RLS acotan a
+   * esa empresa, y el filtro por empresa va además escrito.
+   */
+  pagoDeLaEmpresa(organizacionId: string, pagoId: string): Promise<{ id: string } | null>;
 }

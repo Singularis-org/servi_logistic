@@ -19,8 +19,12 @@ import { nombreCompletoUsuarioSql } from "@/lib/utils/nombre-usuario";
 //
 // Las funciones filtran por la empresa que reciben; los JOIN a tablas de negocio llevan además su
 // `organizacion_id` escrito, porque como dueño no hay RLS que lo ponga.
+//
+// `pagoDeLaEmpresa` (design §4.8) es la excepción: NO corre como plataforma. La llama el servicio dentro de
+// `conEmpresa(organizacionId)`, así que la extensión baja a `servi_app` con esa empresa y la RLS esconde los
+// pagos de las demás (R34).
 
-type PagoPlataformaConfirmacionPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type PagoPlataformaConfirmacionPrismaClient = Pick<PrismaClient, "$queryRaw" | "walletMovimiento">;
 
 const FICHA = "SL-45";
 
@@ -135,6 +139,15 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
         if (error !== null) return { estado: "rechazado", error };
         throw e;
       }
+    });
+  }
+
+  async pagoDeLaEmpresa(organizacionId: string, pagoId: string): Promise<{ id: string } | null> {
+    // El filtro por empresa va escrito aunque la RLS ya acote a la del contexto: el aislamiento no depende
+    // de con qué cliente se construyó el repositorio.
+    return this.prisma.walletMovimiento.findFirst({
+      where: { id: pagoId, organizacionId, tipo: "egreso", categoria: "egreso_pago_plataforma" },
+      select: { id: true },
     });
   }
 }

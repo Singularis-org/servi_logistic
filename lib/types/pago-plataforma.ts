@@ -86,6 +86,24 @@ export type ConfirmarPagoResult =
   | { estado: "forbidden" }
   | { estado: "validation_error"; errores: Record<string, string> };
 
+/** El comprobante de un pago para el superadmin (design §4.8; R33, R34). La empresa la fija el servidor. */
+export const verComprobantePagoSchema = z.object({ organizacionId: z.uuid(), pagoId: z.uuid() });
+
+export type VerComprobantePagoInput = z.infer<typeof verComprobantePagoSchema>;
+
+/**
+ * - `ok`: el enlace temporal y el tipo del archivo; la ruta en el bucket nunca sale (R33);
+ * - `sin_comprobante`: el pago no tiene comprobante (R34);
+ * - `not_found`: el movimiento no es un pago a la plataforma de esa empresa (R34);
+ * - `forbidden`: quien pide no es el superadmin (R34).
+ */
+export type VerComprobantePagoResult =
+  | { estado: "ok"; url: string; contentType: string }
+  | { estado: "sin_comprobante" }
+  | { estado: "not_found" }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; errores: Record<string, string> };
+
 /** La clave de `errores` para el error de una factura del reparto. */
 export function claveDeFactura(facturaId: string): string {
   return `aplicaciones.${facturaId}`;

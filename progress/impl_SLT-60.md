@@ -330,3 +330,142 @@ negativo); `lte(disponible)` → `lt` → 3 failed (borde exacto de R2 en el ser
 
 **Veredicto:** T2.2, T2.3 y T3.1–T3.4 en verde; queda bloqueado
 `tests/unit/actions/deuda-plataforma.composition-root.test.ts` (rojo desde T2.4, fuera de la lista).
+
+### Rutas fuera de la lista (2026-11-13, T3 cierre)
+
+- `tests/unit/actions/deuda-plataforma.composition-root.test.ts` (autorizada por el leader): su cliente falso gana
+  `pagoPlataformaAplicacion.aggregate` (1 000) y se afirma esa llamada con el filtro por empresa; el
+  `walletMovimiento.findMany` queda como trampa (9 999) que no debe llamarse (R7). `Tests 5 passed (5)`.
+
+## T3 (cierre) — T3.5 y T3.6 (backend_dev)
+
+**Archivos:**
+- `tests/integration/db/_fixtures/factura-cerrada.ts` (nuevo, T3.5): `facturaEnCurso(base, org)` (la abre con un cierre
+  a la hora de la base si no hay) y `cerrarFacturaEnCurso(base, org)` → `{ id, numero, total, desdeAt, hastaAt }`, con el
+  artificio de SLT-119 §9 (`factura_plataforma_cerrar(org, fin_natural_at + 6 min)`), bajo el lock de la 227 y
+  commiteado. Lanza si no cierra exactamente una.
+- `tests/integration/db/pago-plataforma-confirmacion.test.ts` (nuevo, T3.5): la tabla de pasos de design §8 en orden,
+  con filas commiteadas y todo por las actions sin servicio inyectado (wallet para registrar y anular; las de
+  `pagos-plataforma` para leer y confirmar, con un superadmin commiteado bajo `tomarLockDeSuperadmin`). A con 380 000,
+  B con su cerrada de 50 000 y un pago, C con 200 000 y −30 000 (la segunda con solo un reverso). La concurrencia
+  (R5, R19, R21) se fuerza: otra conexión sostiene el MISMO candado (`hashtext('pago_plataforma:' || org)`) 1,5 s
+  mientras arrancan las dos operaciones; se afirma que ninguna termina con el candado tomado. Limpieza: aplicaciones,
+  confirmaciones y comprobantes antes que el libro (`limpiar459`) y el superadmin al final.
+- `lib/types/pago-plataforma.ts` (T3.6): `verComprobantePagoSchema`, `VerComprobantePagoInput`, `VerComprobantePagoResult`.
+- `lib/interfaces/repositories/IPagoPlataformaConfirmacionRepository.ts` y
+  `lib/repositories/PagoPlataformaConfirmacionRepository.ts` (T3.6): `pagoDeLaEmpresa(organizacionId, pagoId)` →
+  `walletMovimiento.findFirst({ id, organizacionId, tipo: egreso, categoria: egreso_pago_plataforma })`, fuera de
+  `comoPlataforma`. El cliente del repositorio suma `"walletMovimiento"`.
+- `lib/interfaces/services/IPagoPlataformaConfirmacionService.ts` y `lib/services/PagoPlataformaConfirmacionService.ts`
+  (T3.6): `verComprobante(actor, input)`: superadmin → zod → `conEmpresa(org)` { `pagoDeLaEmpresa` → `not_found`;
+  `lateralDe({ caja })` → `sin_comprobante`; `createSignedUrl(ruta, ttl)` } → `{ ok, url, contentType }`. Constructor:
+  `(repo, comprobantes: Pick<IWalletComprobanteRepository, "lateralDe">, urls: Pick<ISignedUrlProvider,
+  "createSignedUrl">, ttlSegundos, ahora)`.
+- `lib/actions/pagos-plataforma.ts` (T3.6): el composition root pasa `WalletComprobanteRepository(prisma)`,
+  `SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET)` y `SIGNED_URL_TTL_SECONDS`;
+  `verComprobantePagoPlataformaAction(organizacionId, pagoId, deps)`, con `@sin-superficie` hasta T5.2.
+- `tests/unit/services/pago-plataforma-confirmacion-service.test.ts` (T3.6): `montar` con los tres dobles nuevos;
+  `describe` del comprobante (R33, R34): forbidden por rol y sin sesión sin leer, `validation_error` sin leer,
+  `not_found` sin buscar el archivo ni firmar, `sin_comprobante` sin firmar, `ok` con el TTL y las tres lecturas dentro
+  de `conEmpresa(ORG)` (los dobles leen `contextoActual()`), sin la ruta en la respuesta.
+- `tests/unit/actions/pagos-plataforma.test.ts` (T3.6): cliente falso con `walletMovimiento.findFirst` y
+  `walletComprobante.findFirst`; `SupabaseSignedUrlProvider` y la config mockeados para ver bucket, TTL y empresa del
+  contexto al firmar; ok, not_found, sin_comprobante, maestro y sin sesión.
+
+**Decisiones no fijadas por el design:**
+- **`verComprobantePagoPlataformaAction(organizacionId, pagoId, deps)`**, dos argumentos y no un objeto: §4.8 dice que
+  la página la liga con `.bind(null, organizacionId)`, y `.bind` solo fija argumentos posicionales. El cliente
+  (T5.1) llama `accion(pagoId)`. Lo tiene que saber frontend_dev.
+- **`pagoDeLaEmpresa(organizacionId, pagoId)`**, con la empresa como argumento y escrita en el `where` (§4.8 la
+  pinta con solo `pagoId`): toda query de negocio filtra por empresa aunque la RLS ya acote. El test de integración
+  prueba que la RLS sola basta: en `conEmpresa(B)` pedir el pago de C con la empresa de C da `null`.
+- **«`tieneComprobante` en el repositorio»** (tasks T3.6) ya estaba desde T3.2 (`EXISTS` en `wallet_comprobante` dentro
+  de `leer`); no hubo nada más que añadir.
+- **El caso de §8 «`pagoDeLaEmpresa` dentro de `conEmpresa(B)` no ve el pago de A»** se hace con el pago de C (el que
+  tiene comprobante); es el mismo aislamiento.
+- **El mensaje del tope no se compara en el test nuevo**: se afirma `validation_error` con la clave `monto`. El
+  literal lo cambia T5b.2 (R36) y lo fijan sus propios tests.
+- **Los cargos de 380 000, 50 000, 170 000 y 30 000** se escriben como dueño sobre una orden real (molde
+  `factura-plataforma-deuda.test.ts`: se borra el cargo del trigger y se inserta el del monto pedido).
+
+**Mapa R → test (`pago-plataforma-confirmacion.test.ts` salvo que se diga):**
+- R1, R6 → «R1, R6: A paga 200 000 → por confirmar…»
+- R2 → «R2: A intenta 180 000,01…» y el borde 180 000,00 en «R4…»
+- R3 → «R3: A con órdenes por 380 000 y sin cerrar…» y «R18, R7…» (saldo 0 → 0,01 rechazado)
+- R4 → «R4: como servi_app a mano…»
+- R5 → «R5: dos pagos de 100 000 a la vez…»
+- R7 → «R16, R22…», «R18, R7…»; `deuda-plataforma.composition-root.test.ts`; `empresas-plataforma-deuda-sl45.test.ts`
+- R9 → «R9: A anula el pago de 100 000…»
+- R10 → «R10: A anula el pago confirmado…»
+- R11 → «R11: el contra-asiento del pago confirmado escrito a mano…»
+- R12, R14 → «R12, R14, R32: el superadmin lee…»
+- R15, R17 → «R15, R17: un reparto inválido…», «R31…» (la de −30 000)
+- R16, R22 → «R16, R22: el superadmin confirma los 200 000…»
+- R18 → «R18, R7: un pago que deja el saldo en 0…»
+- R19 → «R19: confirmar otra vez…» y «R19: dos confirmaciones del mismo pago a la vez…»
+- R20 → «R20: confirmar el anulado, uno inexistente o el de otra empresa…»
+- R21 → «R21: A anula y el superadmin confirma el mismo pago a la vez…»
+- R25 → «R25: B lee solo sus confirmaciones…» (otra `organizacion_id` no ve nada; INSERT/UPDATE/DELETE → 42501;
+  `pago_plataforma_disponible` ajena → 42501; `sumaPagosConfirmados` de A en el contexto de B → 0,00)
+- R26 → «R26: una confirmación o una aplicación no cambian, tampoco como dueño»
+- R31 → «R31: C con cerradas de 200 000 y −30 000…»
+- R32 (lectura) → «R12, R14, R32…» (`false`) y «R32, R34…» (`true`)
+- R33 → `pago-plataforma-confirmacion-service.test.ts` («R33: firma con el TTL…»), `pagos-plataforma.test.ts` («R33: sin
+  deps.service…»), «R32, R34…» de integración
+- R34 → los mismos tres (forbidden, not_found, sin_comprobante) y, en integración, `pagoDeLaEmpresa` en
+  `conEmpresa(B)` → `null`
+
+**Mutaciones (medidas y revertidas, base `servi_logistic_slt60`; `CREATE OR REPLACE` / `DROP TRIGGER` con el cuerpo
+literal de la migración y restaurado con el mismo):**
+1. `pago_plataforma_disponible_de` sin restar los por confirmar → `10 failed` (R1/R6, R2, R4, R5, R12, R16, R9, R20, R15,
+   R18).
+2. `sumaPagosConfirmados` que suma los pagos vigentes del libro → `Tests 5 failed | 17 passed (22)` (R1/R6, R5, R16,
+   R10, R9).
+3. `pago_plataforma_confirmar` sin `pg_advisory_xact_lock` → `Tests 2 failed | 20 passed (22)` (R21, R19 concurrente).
+4. Sin el trigger `pago_plataforma_no_anular_confirmado` → `Tests 4 failed | 18 passed (22)` (R10, R11, R9, R21).
+5. (T3.6) `verComprobante` sin `conEmpresa` → `Tests 18 failed | 43 passed (61)`; sin la comprobación de superadmin →
+   `Tests 9 failed | 52 passed (61)`.
+
+Tras restaurar, todo verde otra vez.
+
+## T4 — El listado de Empresas (backend_dev; T4.1)
+
+**Archivos:**
+- `lib/repositories/EmpresasPlataformaRepository.ts`: lo pagado sale de
+  `pagoPlataformaAplicacion.groupBy({ by: ["organizacionId"], where: { organizacionId: { in: ids } }, _sum: { monto } })`;
+  fuera los dos `walletMovimiento.findMany` (pagos y contra-asientos). Contador: una consulta para todas,
+  `SELECT i.id, (SELECT count(*) FROM pago_plataforma_por_confirmar(i.id))::int FROM unnest(ids)`.
+  `EmpresasPlataformaPrismaClient`: entra `pagoPlataformaAplicacion`, sale `walletMovimiento`.
+- `lib/types/empresas-plataforma.ts`: `pagosPorConfirmar: number`; los comentarios de `deudaPlataforma` y
+  `pagadoPlataforma` hablan de los confirmados.
+- `tests/unit/actions/empresas-plataforma.composition-root.test.ts`: el doble suma `pagoPlataformaAplicacion.groupBy`
+  (200) y un `$queryRaw` que responde al contador (3); el libro queda como trampa (9 999) que no se llama; se afirma
+  el `groupBy` con las empresas del listado y una sola consulta del contador con `[ids]` (R7, R8, R27).
+- `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`: superadmin commiteado; cierra la factura de A (1 000)
+  y de B (300) antes de pagar; pagar deja la deuda y «Pagado» igual con 1 por confirmar (el anulado no cuenta);
+  confirmar baja la deuda y sube «Pagado» con el contador a 0; el reverso de B sigue en a favor; dos pagos más de A
+  → contador 2 sin tocar la fila de B; el repositorio con el cliente dueño reparte igual (R7, R8, R27).
+
+**Bloqueo (typecheck):** `pagosPorConfirmar` es obligatorio en `EmpresaListada` (design §4.7) y 12 errores TS2741
+salen en fixtures de tests que construyen esa fila a mano. `EmpresasModule.tsx` compila.
+- `tests/components/empresas-module.test.tsx` (2): está en la lista, pero es de frontend_dev (T4.2).
+- **Fuera de la lista** (10): `tests/components/EmpresasModuleCobro.test.tsx` (3),
+  `tests/components/EmpresasModuleCobroPorcentual.test.tsx`, `tests/components/EmpresasModulePeriodo.test.tsx`,
+  `tests/components/EmpresasModulePlan.test.tsx`, `tests/integration/empresas-page.test.tsx` (2) y
+  `tests/unit/services/empresas-plataforma-service.test.ts` (2). Cada uno necesita `pagosPorConfirmar: 0` en su fila.
+  En tiempo de ejecución pasan: `empresas-plataforma-service.test.ts` está verde en el `vitest run` de abajo.
+
+**Verificación (T3 cierre y T4):**
+- `vitest run` de los 7 archivos tocados, con base: `Test Files 7 passed (7) · Tests 115 passed (115)`.
+- `vitest run pago-plataforma-confirmacion + empresas-plataforma-deuda-sl45`, dos veces seguidas sobre la misma base:
+  `Test Files 2 passed (2) · Tests 29 passed (29)` las dos.
+- `vitest run` de los 5 unitarios (después de los ajustes de lint): `Test Files 5 passed (5) · Tests 86 passed (86)`.
+- `pnpm run typecheck`: los 12 TS2741 de arriba; ningún otro error.
+- `pnpm run lint`: `0 errors`; `eslint` sobre los archivos tocados: sin avisos (los 6 `no-unused-vars` de los
+  dobles se quitaron).
+- `pnpm run test:guardias` (sin `DATABASE_URL`): `Test Files 1 failed | 340 passed | 3 skipped (344) · Tests 4 failed |
+  4830 passed | 25 skipped`; los 4 son `dependencias-declaradas-presentes` (baseline). `storage-solo-por-adaptador`,
+  `superficie-de-uso`, `plataforma-solo-en-lista` y `sql-a-mano-por-empresa` en verde.
+
+**Veredicto:** T3.5, T3.6 y T4.1 en verde con base; el typecheck queda rojo por 12 fixtures de `EmpresaListada` sin
+`pagosPorConfirmar` (2 de T4.2 y 10 fuera de la lista).

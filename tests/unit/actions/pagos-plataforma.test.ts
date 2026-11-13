@@ -8,6 +8,10 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 // responde a `$queryRaw` lo que la base respondería, y se llaman las actions reales sin servicio inyectado.
 // Si el root montara el servicio con otro repositorio, o con ninguno, el cliente falso no vería las llamadas
 // y el mapeo del DTO no saldría.
+//
+// El comprobante (design §4.8; R33, R34): el cliente falso responde también `walletMovimiento.findFirst` (el
+// pago, por el repositorio real) y `walletComprobante.findFirst` (el lateral, por `WalletComprobanteRepository`
+// real), y se mockea el adaptador de Storage para ver con qué bucket se construye y con qué TTL firma.
 
 const ORG = "6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b";
 const PAGO = "0a1b2c3d-4e5f-4061-8728-394a5b6c7d8e";
@@ -17,18 +21,53 @@ const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: RolValue.superadmin, organiz
 const MAESTRO: Actor = { usuarioId: "u-m", rol: RolValue.maestro, organizacionId: ORG };
 
 const queryRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<unknown[]>>();
+const findFirstPago = vi.fn<(args: unknown) => Promise<unknown>>();
+const findFirstComprobante = vi.fn<(args: unknown) => Promise<unknown>>();
 
 vi.mock("@/lib/db/prisma-client", () => ({
-  getPrismaClient: () => ({ $queryRaw: queryRaw }),
+  getPrismaClient: () => ({
+    $queryRaw: queryRaw,
+    walletMovimiento: { findFirst: findFirstPago },
+    walletComprobante: { findFirst: findFirstComprobante },
+  }),
   PRISMA_OMIT: {},
 }));
+
+const BUCKET = "bucket-de-la-wallet";
+const TTL = 777;
+vi.mock("@/lib/config/wallet-comprobante", () => ({
+  walletComprobanteConfig: { BUCKET, SIGNED_URL_TTL_SECONDS: TTL },
+}));
+
+const firmas: { bucket: string; ruta: string; segundos: number; empresa: string | null }[] = [];
+vi.mock("@/lib/storage/SupabaseSignedUrlProvider", async () => {
+  const { contextoActual } = await import("@/lib/db/contexto-empresa");
+  return {
+    SupabaseSignedUrlProvider: class {
+      constructor(
+        _storage: unknown,
+        private readonly bucket: string,
+      ) {}
+      async createSignedUrl(ruta: string, segundos: number): Promise<string> {
+        const c = contextoActual();
+        firmas.push({ bucket: this.bucket, ruta, segundos, empresa: c?.tipo === "empresa" ? c.organizacionId : null });
+        return "https://storage.test/firmada";
+      }
+    },
+  };
+});
 
 const acciones = await import("@/lib/actions/pagos-plataforma");
 
 /** El texto del SQL de la llamada `n` (los trozos de la plantilla, unidos). */
 const sqlDe = (n: number) => queryRaw.mock.calls[n][0].join("?");
 
-beforeEach(() => queryRaw.mockReset());
+beforeEach(() => {
+  queryRaw.mockReset();
+  findFirstPago.mockReset();
+  findFirstComprobante.mockReset();
+  firmas.length = 0;
+});
 
 describe("SLT-60 — verPagosDeEmpresaAction usa PagoPlataformaConfirmacionRepository (R12, R14, R32)", () => {
   it("sin deps.service, lee por el repositorio real y mapea su jsonb al DTO", async () => {
@@ -161,5 +200,57 @@ describe("SLT-60 — solo el superadmin (R24)", () => {
     expect(await acciones.verPagosDeEmpresaAction({ organizacionId: ORG }, deps)).toEqual({ estado: "forbidden" });
     expect(await acciones.confirmarPagoPlataformaAction({}, deps)).toEqual({ estado: "forbidden" });
     expect(queryRaw).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-60 — verComprobantePagoPlataformaAction cablea el comprobante real (R33, R34)", () => {
+  const RUTA = "caja/0a1b2c3d.png";
+
+  it("R33: sin deps.service, lee el pago y el lateral por los repositorios reales y firma con el bucket y el TTL de la wallet", async () => {
+    findFirstPago.mockResolvedValueOnce({ id: PAGO });
+    findFirstComprobante.mockResolvedValueOnce({ storagePath: RUTA, contentType: "application/pdf" });
+    const r = await acciones.verComprobantePagoPlataformaAction(ORG, PAGO, { getActor: async () => SUPERADMIN });
+    expect(r).toEqual({ estado: "ok", url: "https://storage.test/firmada", contentType: "application/pdf" });
+    expect(findFirstPago).toHaveBeenCalledWith({
+      where: { id: PAGO, organizacionId: ORG, tipo: "egreso", categoria: "egreso_pago_plataforma" },
+      select: { id: true },
+    });
+    expect(findFirstComprobante).toHaveBeenCalledWith({
+      where: { cajaMovimientoId: PAGO },
+      select: { storagePath: true, contentType: true },
+    });
+    expect(firmas).toEqual([{ bucket: BUCKET, ruta: RUTA, segundos: TTL, empresa: ORG }]);
+    expect(JSON.stringify(r)).not.toContain(RUTA);
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("R34: un movimiento que no es un pago a la plataforma de la empresa → not_found, sin buscar el archivo", async () => {
+    findFirstPago.mockResolvedValueOnce(null);
+    expect(await acciones.verComprobantePagoPlataformaAction(ORG, PAGO, { getActor: async () => SUPERADMIN })).toEqual({
+      estado: "not_found",
+    });
+    expect(findFirstComprobante).not.toHaveBeenCalled();
+    expect(firmas).toEqual([]);
+  });
+
+  it("R34: un pago sin comprobante → sin_comprobante, sin firmar", async () => {
+    findFirstPago.mockResolvedValueOnce({ id: PAGO });
+    findFirstComprobante.mockResolvedValueOnce(null);
+    expect(await acciones.verComprobantePagoPlataformaAction(ORG, PAGO, { getActor: async () => SUPERADMIN })).toEqual({
+      estado: "sin_comprobante",
+    });
+    expect(firmas).toEqual([]);
+  });
+
+  it.each([
+    ["un maestro", MAESTRO],
+    ["sin sesión", null],
+  ] as const)("R34: %s recibe forbidden sin tocar el cliente ni firmar", async (_quien, actor) => {
+    expect(await acciones.verComprobantePagoPlataformaAction(ORG, PAGO, { getActor: async () => actor })).toEqual({
+      estado: "forbidden",
+    });
+    expect(findFirstPago).not.toHaveBeenCalled();
+    expect(findFirstComprobante).not.toHaveBeenCalled();
+    expect(firmas).toEqual([]);
   });
 });
