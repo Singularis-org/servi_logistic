@@ -68,7 +68,7 @@
   se pintan (sección «Facturas de la empresa» de «Mi plan» y pestaña «Facturación» del detalle de empresa; por
   empresa, no por plan), las líneas desde la traza y el número «N.º». *Hecho:*
   el texto describe el código.
-- [x] **T7.3** (dep. todo) Mapa `R<n> -> test` en `progress/impl_SLT-119.md`, sin huecos (R1–R19). `./init.sh` verde.
+- [x] **T7.3** (dep. todo) Mapa `R<n> -> test` en `progress/impl_SLT-119.md`, sin huecos (R1–R19). `./init.sh` verde. *Estado real (2026-11-12): `./init.sh` NO está verde: rojo solo por el validador de features (cupo backend 6/5 por las fichas geo en pausa, aceptado por el humano); typecheck, guardias (salvo baseline) y tests tocados verdes.*
   *Hecho:* cada R con al menos un test que existe y pasa.
 
 ## Archivos esperados

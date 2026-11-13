@@ -5,7 +5,7 @@
 // pantalla es lo que de verdad le llega a la empresa: el panel del plan activo (SLT-99 R3), el consumo con una fila
 // por tope, el reinicio y el cambio programado (SLT-58, sin cambios: R21, P8) y los planes disponibles. SLT-99
 // sustituye SLT-58 R11 («Mi plan» es solo información): el maestro cambia de plan desde aquí (R19).
-// SLT-119 (design §6.2; R1, R17): las facturas de la empresa, al final, cuando la página se las pasa.
+// SLT-119 (design §6.2; R1, R17): las facturas de la empresa, al final; sin la prop, con el aviso de fallo.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -316,9 +316,12 @@ describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»
     expect(screen.getAllByRole("heading", { name: "Plan Crecer" })).toHaveLength(2);
   });
 
-  it("R1: sin la prop `facturas` no hay sección (las pruebas de las otras partes de la pantalla)", () => {
+  it("R17: sin la prop facturas, la sección se ve con el aviso de fallo, no desaparece", () => {
     render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
 
-    expect(screen.queryByRole("region", { name: "Facturas de la empresa" })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "Facturas de la empresa" })).getByRole("alert"),
+    ).toHaveTextContent("No se pudieron cargar las facturas");
+    expect(screen.queryByRole("button", { name: /Ver detalle de la factura/ })).toBeNull();
   });
 });

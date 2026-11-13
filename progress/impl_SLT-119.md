@@ -132,10 +132,7 @@ migrate deploy`, `pnpm run db:seed`; `next build` con `NODE_OPTIONS=--max-old-sp
 `NEXT_PUBLIC_APP_URL`/`NEXT_PUBLIC_SITE_URL=http://localhost:3044` (exit 0); `DATABASE_URL` a la base e2e y
 `E2E_PUERTO=3044` por entorno. El `.env` del worktree no se tocó.
 
-**Hallazgo de entorno:** el `.env` local lleva `AUTH_RISK_THRESHOLD=1000`, que `next start` lee: el superadmin
-entra sin OTP y `entrarConOtp` (fixture) espera el campo del código en vano. La 1.ª corrida cayó por eso (1 failed,
-3 did not run). En CI no hay `.env` (umbral por defecto 50). Las demás corridas pasan `AUTH_RISK_THRESHOLD=50` por
-entorno. Afecta a todo spec que use `entrarConOtp` en local con este `.env`; no es de esta ficha.
+Las corridas pasan `AUTH_RISK_THRESHOLD=50` por entorno, como CI.
 
 Salida real (2026-11-12):
 - `playwright test e2e/facturas-plataforma.spec.ts` (sin `AUTH_RISK_THRESHOLD`): 1 failed, 3 did not run (el OTP de
@@ -190,6 +187,8 @@ Commits: `55cb78ee` (T1–T3), `e14a6b88` (T4–T6), y el de T7. PR borrador #14
 - `./init.sh`: **rojo por el board, no por el código**: «features en vuelo sin assignee en el tracker: SLT-119» y
   «zona backend: SLT-43, SLT-44, SLT-45, SLT-65, SLT-71, SLT-128 (6 in_progress, max 5)». Es `feature_list.json`
   (del leader); el gate corta ahí antes de los pasos de código.
+  **T7.3 no queda «verde»** (m2 de la review): el rojo es solo del validador de features (cupo backend 6/5 por las
+  fichas geo en pausa, aceptado por el humano).
 
 ### Desvíos menores respecto al design (para el reviewer)
 
@@ -200,6 +199,33 @@ Commits: `55cb78ee` (T1–T3), `e14a6b88` (T4–T6), y el de T7. PR borrador #14
    (§6.2), para no tocar ~20 montajes en otros tests; la página siempre la pasa.
 4. Archivo extra fuera de la lista de tasks: `tests/components/_facturas-plataforma.ts` (datos de prueba). 28/40.
 
-### Nota de entorno E2E local
-El `.env` local trae `AUTH_RISK_THRESHOLD=1000`: el superadmin entra sin OTP y `entrarConOtp` espera en vano. Las
-corridas E2E pasaron `AUTH_RISK_THRESHOLD=50` por entorno (el de CI). Propuesta para `docs/verification.md > En local`.
+
+## Review vuelta 1 (2026-11-12): B2, m1, m2, m3
+
+**m1.** `MiPlanModule`: `facturas` sigue opcional pero toma por defecto `FACTURAS_NO_RECIBIDAS` (`lista: null`): sin la
+prop, la sección «Facturas de la empresa» se pinta con el aviso de R17 «No se pudieron cargar las facturas», no
+desaparece. Test: `MiPlanModule.test.tsx` «R17: sin la prop facturas, la sección se ve con el aviso de fallo, no
+desaparece» (sustituye al viejo «R1: sin la prop `facturas` no hay sección»). `MiPlanCambioDePlan.test.tsx`: 4 casos
+de R20 usaban `findByRole("alert")` y ahora hay dos alertas; helper `alertaDelCambio()`, sin tocar montajes.
+- `vitest run` de MiPlanModule, MiPlanCambioDePlan, ConsumoDelPlanPeriodo y mi-plan-page: `Test Files 4 passed (4)`,
+  `Tests 64 passed (64)`. `tsc --noEmit` (8 GB) exit 0; eslint de los 3 archivos limpio.
+
+**B2.** Base desechable `servi_logistic_slt119_e2e` recreada (DROP/CREATE, `migrate deploy`, `db:seed`), `next build`
+nuevo con `NEXT_PUBLIC_APP_URL`/`NEXT_PUBLIC_SITE_URL=http://localhost:3044`. Comando, con `AUTH_RISK_THRESHOLD=50`,
+`E2E_PUERTO=3044`, `PRISMA_LOG_QUERIES=off` y `DATABASE_URL` a la base e2e por entorno:
+`pnpm exec playwright test --project=aislamiento e2e/mi-plan-cambiar-plan.spec.ts e2e/planes-costeo.spec.ts
+e2e/cobro-plataforma-sl40.spec.ts e2e/pago-plataforma-sl45.spec.ts e2e/dos-empresas-humo.spec.ts --reporter=list`
+
+| Corrida | passed | failed | flaky | skipped | tiempo |
+|---|---|---|---|---|---|
+| 0 (sin `PRISMA_LOG_QUERIES=off`) | 7 | 1 | 0 | 0 (26 did not run) | — |
+| 1 | 34 | 0 | 0 | 0 | 1.9 min |
+| 2 (seguida, misma base) | 34 | 0 | 0 | 0 | 2.0 min |
+
+Corrida 0: cayó `superadmin-arranque.spec.ts:54` (R18 de esa ficha, «no imprime sus datos») porque el `.env` local
+activa el log de consultas de Prisma con parámetros; ajeno a esta ficha. Desglose 1 y 2: `plataforma-vacia`
+(superadmin-arranque 3, superadmin-empresas 7) y `aislamiento` (dos-empresas-humo 8, planes-costeo 5,
+pago-plataforma-sl45 6, cobro-plataforma-sl40 3, mi-plan-cambiar-plan 2).
+
+**m2.** T7.3 en `tasks.md` y aquí: `./init.sh` no está verde, rojo solo por el validador de features.
+**m3.** Quitada de esta bitácora la propuesta sobre `AUTH_RISK_THRESHOLD` para `docs/verification.md`.

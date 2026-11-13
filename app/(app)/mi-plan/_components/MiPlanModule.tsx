@@ -24,7 +24,8 @@ export interface MiPlanModuleProps {
   readonly planes: PlanesDeMiPlan;
   /**
    * SLT-119 (design §6.2; R1, R17): las facturas de la empresa (`lista: null` = no se pudieron leer) y la lectura
-   * del detalle. La página siempre las pasa; sin ellas no se pinta la sección (los tests de las otras partes).
+   * del detalle. La página siempre las pasa; si faltan, la sección se pinta igual con el aviso de fallo (R17)
+   * en vez de desaparecer en silencio.
    */
   readonly facturas?: {
     readonly lista: FacturaPlataformaDTO[] | null;
@@ -38,7 +39,18 @@ export interface MiPlanModuleProps {
  * período debajo, sin cambios (R21, P8), y los planes disponibles para cambiar de plan (R5–R8, R18–R20).
  * SLT-119 (R1): al final, las facturas de la empresa, de cualquier plan o sin plan.
  */
-export function MiPlanModule({ plan, pendienteSinPlan = null, planes, facturas }: MiPlanModuleProps) {
+/** Sin la prop `facturas`: la lista no se pudo leer (R17). Sin filas no hay detalle que abrir; no se llama. */
+const FACTURAS_NO_RECIBIDAS: NonNullable<MiPlanModuleProps["facturas"]> = {
+  lista: null,
+  cargarDetalle: async () => ({ estado: "not_found" }),
+};
+
+export function MiPlanModule({
+  plan,
+  pendienteSinPlan = null,
+  planes,
+  facturas = FACTURAS_NO_RECIBIDAS,
+}: MiPlanModuleProps) {
   const pendiente = plan?.cobro.pendiente ?? null;
   return (
     <div className="flex flex-col gap-6">
@@ -46,9 +58,7 @@ export function MiPlanModule({ plan, pendienteSinPlan = null, planes, facturas }
       {plan !== null && <PlanActivo plan={plan} />}
       <ConsumoDelPlan plan={plan} textoSinPlan={MI_PLAN_TEXTOS.sinPlan} pendienteSinPlan={pendienteSinPlan} />
       <CambioDePlan planes={planes} plan={plan} pendiente={pendiente} />
-      {facturas !== undefined && (
-        <FacturasDeLaEmpresa facturas={facturas.lista} cargarDetalle={facturas.cargarDetalle} />
-      )}
+      <FacturasDeLaEmpresa facturas={facturas.lista} cargarDetalle={facturas.cargarDetalle} />
     </div>
   );
 }
