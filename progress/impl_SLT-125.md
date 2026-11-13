@@ -217,3 +217,41 @@ pnpm exec vitest run guard --maxWorkers=2   (= test:guardias, sin DATABASE_URL)
 ## Veredicto
 
 T1.1–T1.3 hechas; **para antes de T2.3** por el hallazgo 1 (`orden-repository.novedades.test.ts:435–437`).
+
+## T2.1 — Núcleo puro de la presentación (backend_dev, 2026-11-12)
+
+Explorado con Grep/Read (el índice del grafo no tiene este worktree, como en T1.1).
+
+Archivos:
+- `lib/utils/ubicacion-presentacion.ts` (nuevo): `NivelDelPais`, `Ruta`, `columnasDeNivel`,
+  `claveDeColumnaDeNivel`, `celdasDeNivel`, `lineaDeUbicacion`, `dosMasHondos`, `tiposDeDosMasHondos`,
+  `rutaInvertida`. Sin Prisma ni React; ningún texto de nivel (R42). `dosMasHondos` con P7 = opción a
+  (por nivel D−1·D, D = min(P, 3)): CR sin distrito → `{ arriba: cantón, abajo: null }`.
+- `lib/utils/plantilla-geo.ts`: exporta `cabeceraNormalizada` y `cabeceraDeTipo` la usa (sin cambio de
+  comportamiento; `plantilla-geo.test.ts` 21/21 verde sin tocar).
+- `lib/repositories/_shared/ruta-del-lugar.ts`: `nivelesDelCatalogo`, `rutaConTipos` (profundidad = posición
+  del paso; tipo = `nombre_singular` de `nivel_<k>` del país, la regla de `geo:backfill`) y
+  `TipoDeNivelAusente` (un nivel sin tipo lanza: R23). `rutaDelLugar` sin cambios (P1).
+- Tests: `tests/unit/utils/ubicacion-presentacion.test.ts`, `tests/unit/descarga/geo-columnas-n-niveles.test.ts`.
+
+| R | Test |
+|---|---|
+| R1 (pura) | `geo-columnas-n-niveles.test.ts` › «R1/R3: una columna por nivel…» y «R1: la celda del nivel k…» (2, 3, 4 y 10 niveles) |
+| R2 | `geo-columnas-n-niveles.test.ts` › «R2: …» (nivel «Zona», normalizado, dos niveles homónimos, reserva de otro, vacío) |
+| R3 | `geo-columnas-n-niveles.test.ts` › «R3: clave del nivel k…» y claves en los casos de 4 y 10 niveles |
+| R7 (pura) | `ubicacion-presentacion.test.ts` › «lineaDeUbicacion (R7)» |
+| R11 (pura, P7 = a) | `ubicacion-presentacion.test.ts` › «dosMasHondos (R11; P7 opcion a)» |
+| R13 (pura) | `ubicacion-presentacion.test.ts` › «tiposDeDosMasHondos (R13)» |
+| R14 (pura) | `ubicacion-presentacion.test.ts` › «rutaInvertida (R14, R32)» |
+| R21 (pura) | `ubicacion-presentacion.test.ts` › «rutaConTipos (R21)», «nivelesDelCatalogo» |
+
+Salidas (con `env125.sh`):
+```
+pnpm exec vitest run tests/unit/utils/ubicacion-presentacion.test.ts --maxWorkers=1   → 22 passed (22)
+pnpm exec vitest run tests/unit/descarga/geo-columnas-n-niveles.test.ts --maxWorkers=1 → 17 passed (17)
+pnpm exec vitest run tests/unit/utils/plantilla-geo.test.ts --maxWorkers=1            → 21 passed (21)
+pnpm run typecheck → tsc --noEmit, exit 0
+pnpm exec eslint <los 5 archivos> → No issues found
+pnpm exec vitest run guard --maxWorkers=2 → 1 failed | 334 passed | 3 skipped (338); 4 failed | 4718 passed
+  - los 4 rojos son de dependencias-declaradas-presentes (ficha 420), en tests/baseline-rojos.json
+```

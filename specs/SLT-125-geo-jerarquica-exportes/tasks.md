@@ -63,7 +63,7 @@
 
 ## T2 — Servidor (backend_dev) · depende de T1
 
-- [ ] **T2.1** Núcleo puro: `lib/utils/ubicacion-presentacion.ts` y `cabeceraNormalizada` en
+- [x] **T2.1** Núcleo puro: `lib/utils/ubicacion-presentacion.ts` y `cabeceraNormalizada` en
   `plantilla-geo.ts`. En `ruta-del-lugar.ts`: `rutaConTipos` y `nivelesDelCatalogo`; `rutaDelLugar`
   sigue con `lugarDeLaOrden` (P1). Tests: `ubicacion-presentacion.test.ts`, `geo-columnas-n-niveles.test.ts` (la
   parte pura).
