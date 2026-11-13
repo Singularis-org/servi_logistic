@@ -65,7 +65,7 @@ const CONSULTAS_DETALLE_UNO_LINEA_BASE = 24;
 /**
  * T0.1 (R428) — sentencias para B0 (N = 0) medidas con el codigo anterior a esta ficha: la cabecera (4,
  * ver `TABLAS_DE_LA_CABECERA`), los cierres del dia con su relacion `mensajero` (2) y la marca de modelo
- * nuevo de la cabecera (1). Sin cierres del dia no se lee nada mas.
+ * nuevo de la cabecera (1). Sin cierres del dia no se lee nada mas; el test exige como mucho este numero.
  */
 const CONSULTAS_DETALLE_SIN_DIAS = 7;
 
@@ -975,7 +975,8 @@ describeSiHayBase("SLT-148 — detalle del cierre de bodega en lote, contra Post
       expect(tablas).not.toContain("gestion_orden");
       expect(tablas).not.toContain("cierre_detail");
       expect(tablas).not.toContain("orden_fulfillment_movimiento");
-      expect(ev).toHaveLength(CONSULTAS_DETALLE_SIN_DIAS);
+      // Como mucho lo de antes (T0.1); desde SLT-148 el corte va antes de leer `cierre_dia` (5: cabecera + marca de modelo nuevo).
+      expect(ev.length).toBeLessThanOrEqual(CONSULTAS_DETALLE_SIN_DIAS);
     });
   });
 

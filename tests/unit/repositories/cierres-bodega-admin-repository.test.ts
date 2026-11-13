@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { GESTION_ADMIN_SELECT } from "@/lib/repositories/CierresAdminRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
@@ -68,7 +69,6 @@ function gestionDbRow(overrides: Record<string, unknown> = {}) {
     createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
-    cierreId: "cd1", // SLT-148: la clave con la que la lectura en lote agrupa por cierre del dia
     resultado: "entregado",
     montoRecibido: new Prisma.Decimal("10.00"),
     metodoPago: "efectivo",
@@ -267,22 +267,21 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     expect(prisma.ordenFulfillmentMovimiento.findMany).not.toHaveBeenCalled();
   });
 
-  it("R11 / SLT-148: UNA lectura de gestiones y UNA de snapshot con WHERE cierre_id IN (los cierre_dia) y cada gestion en el suyo", async () => {
+  it("R11 / SLT-148: gestiones como relacion de los cierre_dia (proyeccion de admin) y UNA lectura de snapshot WHERE cierre_id IN", async () => {
     const prisma = buildPrisma();
     prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
+    // SLT-148: las gestiones llegan ya agrupadas por cierre del dia, como relacion de la misma lectura.
     prisma.cierreDia.findMany.mockResolvedValue([
-      detalleCierreDbRow({ id: "cd1" }),
+      detalleCierreDbRow({ id: "cd1", gestiones: [gestionDbRow({ id: "g1" })] }),
       detalleCierreDbRow({
         id: "cd2",
         mensajeroId: "m2",
         mensajero: { nombre: "Beto" },
         solicitadoAt: new Date("2026-07-12T09:30:00.000Z"),
+        gestiones: [
+          gestionDbRow({ id: "g2", ordenId: "o2", resultado: "novedad", montoRecibido: null, metodoPago: null, evidenciaStoragePath: null }),
+        ],
       }),
-    ]);
-    // SLT-148: una sola respuesta con las filas de los dos cierres del dia (la de cd2 primero).
-    prisma.gestionOrden.findMany.mockResolvedValue([
-      gestionDbRow({ id: "g2", ordenId: "o2", cierreId: "cd2", resultado: "novedad", montoRecibido: null, metodoPago: null, evidenciaStoragePath: null }),
-      gestionDbRow({ id: "g1" }),
     ]);
     prisma.cierreDetail.findMany.mockResolvedValue([
       detalleDbRow({ ordenId: "o2", cierreId: "cd2" }),
@@ -295,9 +294,11 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     expect(r).not.toBeNull();
     // los cierre_dia se buscan por cierre_bodega_id.
     expect(prisma.cierreDia.findMany.mock.calls[0][0].where).toEqual({ cierreBodegaId: "cb1" });
-    // SLT-148 (R420, R426): UNA llamada de gestiones para todos los cierre_dia, WHERE cierre_id IN (...).
-    expect(prisma.gestionOrden.findMany).toHaveBeenCalledTimes(1);
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].where).toEqual({ cierreId: { in: ["cd1", "cd2"] } });
+    // SLT-148 (R420, R423): las gestiones van como relacion de esa lectura, con LA proyeccion de admin
+    // (la misma referencia, no una copia) y `createdAt desc`; ninguna lectura de gestiones aparte.
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.select).toBe(GESTION_ADMIN_SELECT);
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.orderBy).toEqual({ createdAt: "desc" });
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
     // 69/T23: y el snapshot de ESOS cierre_dia, en UNA llamada.
     expect(prisma.cierreDetail.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.cierreDetail.findMany.mock.calls[0][0].where).toEqual({ cierreId: { in: ["cd1", "cd2"] } });
@@ -327,13 +328,13 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
   it("69/R15: los descriptivos salen del SNAPSHOT, no de la orden viva", async () => {
     const prisma = buildPrisma();
     prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
-    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1" })]);
     // El doble de `gestion_orden` SI devuelve la relacion `orden` VIVA (como haria un JOIN
     // real si alguien reintrodujera WITH_DETALLE), y dice cosas DISTINTAS del snapshot: la
     // orden fue re-apuntada de tienda/zona y re-guiada despues de cerrar. Un lector que
     // vuelva a mirar datos vivos pone este test rojo con "Tienda HOY"; el codigo correcto
     // ignora esta rama porque ni siquiera la pide en el select.
-    prisma.gestionOrden.findMany.mockResolvedValue([
+    // SLT-148: la gestion llega como relacion del cierre_dia.
+    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1", gestiones: [
       gestionDbRow({
         orden: {
           numGuia: 999,
@@ -348,7 +349,7 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
           distrito: { nombre: "Distrito HOY" },
         },
       }),
-    ]);
+    ] })]);
     // La fila congelada dice "Tienda ORIGINAL"/"Cartago ORIGINAL". Si esta vista leyera la
     // orden VIVA mostraria lo que la orden diga HOY -> dos pantallas de admin, dos detalles
     // distintos del MISMO cierre cerrado. Eso es lo que este test impide.
@@ -372,8 +373,9 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
       distritoNombre: "Oriental",
     });
     // El select de la gestion ya no navega la relacion `orden` (adios WITH_DETALLE).
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).not.toHaveProperty("orden");
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.select).not.toHaveProperty("orden");
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones).not.toHaveProperty("include");
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
     // Y nada del camino VIVO se consulta en toda la operacion.
     expect(prisma.orden.findMany).not.toHaveBeenCalled();
     expect(prisma.orden.findUnique).not.toHaveBeenCalled();
@@ -388,8 +390,7 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
   it("69/R14: falta la fila congelada de una orden -> error duro (sin fallback a datos vivos)", async () => {
     const prisma = buildPrisma();
     prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
-    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1" })]);
-    prisma.gestionOrden.findMany.mockResolvedValue([gestionDbRow()]);
+    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1", gestiones: [gestionDbRow()] })]);
     prisma.cierreDetail.findMany.mockResolvedValue([]); // sin snapshot
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
@@ -400,13 +401,13 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     const prisma = buildPrisma();
     prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
     prisma.cierreDia.findMany.mockResolvedValue([
-      detalleCierreDbRow({ id: "cd1" }),
-      detalleCierreDbRow({ id: "cd2", mensajeroId: "m2", mensajero: { nombre: "Beto" } }),
-    ]);
-    // SLT-148: una sola respuesta con las filas de los dos cierres del dia.
-    prisma.gestionOrden.findMany.mockResolvedValue([
-      gestionDbRow({ id: "g1", ordenId: "o1" }),
-      gestionDbRow({ id: "g2", ordenId: "o2", cierreId: "cd2" }),
+      detalleCierreDbRow({ id: "cd1", gestiones: [gestionDbRow({ id: "g1", ordenId: "o1" })] }),
+      detalleCierreDbRow({
+        id: "cd2",
+        mensajeroId: "m2",
+        mensajero: { nombre: "Beto" },
+        gestiones: [gestionDbRow({ id: "g2", ordenId: "o2" })],
+      }),
     ]);
     prisma.cierreDetail.findMany.mockResolvedValue([
       detalleDbRow({ ordenId: "o1" }),

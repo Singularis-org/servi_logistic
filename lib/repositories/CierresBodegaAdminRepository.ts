@@ -507,63 +507,56 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     // gestiones, detalle y cargos de fulfillment.
     if (cierre === null) return null;
 
-    // Los cierre_dia incluidos (WHERE cierre_bodega_id = id), mas reciente primero.
+    // SLT-148 (R428): sin cierres del dia no hay gestiones, filas congeladas ni cargos que leer. El
+    // conteo ya viene en la cabecera (`_count.cierresDia` de `BODEGA_RESUMEN_SELECT`): el corte va
+    // ANTES de leer `cierre_dia`, porque esa lectura carga sus gestiones como relacion y Prisma emite
+    // las sentencias de una relacion aunque no haya filas padre.
+    if (cierre._count.cierresDia === 0) return this.conCabecera(cierre, []);
+
+    // Los cierre_dia incluidos (WHERE cierre_bodega_id = id), mas reciente primero, CON sus gestiones.
+    // Feature 69/T23 (R15): un cierre_dia consolidado en un cierre_bodega esta YA CREADO (y normalmente
+    // ya aprobado y liquidado), asi que su detalle son los datos CONGELADOS, nunca
+    // `gestion_orden.orden.*` VIVO. Mismo DTO que `findCierreByIdEnAlcance` -> la UI no cambia.
+    //
+    // SLT-148 (R420, R423, R426): las gestiones van como RELACION de esta misma lectura, con la
+    // proyeccion de admin tal cual (R23 de la 212: el tercer camino reusa `GESTION_ADMIN_SELECT`, no
+    // una copia). Prisma la resuelve con UNA sentencia por nivel acotada a `cierre_id IN (los cierres
+    // del dia leidos)`, ya agrupada por cierre del dia y en `createdAt desc` dentro de cada uno: el
+    // numero de sentencias no depende de cuantos cierres del dia haya. Antes eran dos lecturas por
+    // cierre del dia (D67).
     const cierresDiaRows = await this.prisma.cierreDia.findMany({
       where: { cierreBodegaId: id },
       orderBy: { solicitadoAt: "desc" },
-      select: DETALLE_CIERRE_SELECT,
+      select: {
+        ...DETALLE_CIERRE_SELECT,
+        gestiones: { orderBy: { createdAt: "desc" }, select: GESTION_ADMIN_SELECT },
+      },
     });
-
-    // SLT-148 (R428): sin cierres del dia no hay gestiones, filas congeladas ni cargos que leer.
     const idsDia = cierresDiaRows.map((cd) => cd.id);
-    if (idsDia.length === 0) return this.conCabecera(cierre, []);
 
-    // Las gestiones de TODOS los cierres del dia compuestas con el SNAPSHOT de su cierre. Feature
-    // 69/T23 (R15): un cierre_dia consolidado en un cierre_bodega esta YA CREADO (y normalmente ya
-    // aprobado y liquidado), asi que su detalle son los datos CONGELADOS, nunca `gestion_orden.orden.*`
-    // VIVO. Mismo DTO que `findCierreByIdEnAlcance` -> la UI no cambia.
-    //
-    // SLT-148 (R420, R426): tres lecturas FIJAS sea cual sea el numero de cierres del dia, con el
-    // conjunto `cierreId IN (idsDia)` en el `where`: una gestion o una fila de otro cierre de bodega no
-    // llega a leerse. Antes eran dos lecturas por cierre del dia (D67). Misma forma que
-    // `CifrasBodegaLoteRepository.leerCierresDiaDeBodegas` (SLT-141).
-    //
-    // SLT-110 (R210, R216): el cargo vigente de fulfillment por orden, en UNA consulta. Es la regla de
-    // SLT-101 R94 por orden: una orden en dos cierres del dia lleva el mismo cargo en las dos.
-    const [cargoPorOrden, gestiones, detalle] = await Promise.all([
+    // SLT-148 (R426): las filas congeladas de TODOS los cierres del dia en una lectura, con el conjunto
+    // `cierreId IN (idsDia)` en el `where`. SLT-110 (R210, R216): el cargo vigente de fulfillment por
+    // orden, en UNA consulta; una orden en dos cierres del dia lleva el mismo cargo en las dos.
+    const [cargoPorOrden, detalle] = await Promise.all([
       cargosFulfillmentVigentes(this.prisma, idsDia),
-      this.prisma.gestionOrden.findMany({
-        where: { cierreId: { in: idsDia } },
-        // R423: `createdAt desc` global; restringido a un cierre del dia es el orden de antes.
-        orderBy: { createdAt: "desc" },
-        select: { ...GESTION_ADMIN_SELECT, cierreId: true },
-      }),
       this.prisma.cierreDetail.findMany({
         where: { cierreId: { in: idsDia } },
         select: { ...DETALLE_ADMIN_SELECT, cierreId: true },
       }),
     ]);
-
-    const gestionesPorDia = new Map<string, typeof gestiones>();
-    for (const g of gestiones) {
-      if (g.cierreId === null) continue; // inalcanzable: el `where` exige un cierre del conjunto
-      const delDia = gestionesPorDia.get(g.cierreId);
-      if (delDia === undefined) gestionesPorDia.set(g.cierreId, [g]);
-      else delDia.push(g);
-    }
     // R424: la clave es (cierre del dia, orden), el grano de `@@unique([cierreId, ordenId])`. Una orden
     // con gestiones en dos cierres del dia del mismo cierre de bodega tiene una fila congelada en cada uno.
     const filaPorClave = new Map(detalle.map((d) => [`${d.cierreId}:${d.ordenId}`, d]));
 
-    const cierresDia = cierresDiaRows.map((cd) => ({
+    const cierresDia = cierresDiaRows.map(({ gestiones, ...cd }) => ({
       resumen: toDetalleCierreRow(cd),
       // Sin fallback (R14/decision (a), R427): si falta la fila, error DURO. Un fallback a datos vivos
       // seria el camino de lectura que la feature 69 vino a matar.
-      gestiones: (gestionesPorDia.get(cd.id) ?? []).map((g) => {
+      gestiones: gestiones.map((g) => {
         const d = filaPorClave.get(`${cd.id}:${g.ordenId}`);
         if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
         // SLT-110 (R210-R212): la misma lectura que el detalle de mensajeros -> fecha del cargo y
-        // `tarifaFaltante` por el mismo mapper. `cierreId` (clave de agrupacion) no llega al DTO.
+        // `tarifaFaltante` por el mismo mapper.
         return toPendienteRowDesdeSnapshot(g, d, zona, {
           cargoFulfillmentAt: cargoPorOrden.get(g.ordenId) ?? null,
         });
