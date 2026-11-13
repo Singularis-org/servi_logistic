@@ -203,7 +203,7 @@ export const NOVEDADES_CR: readonly NovedadDTO[] = CASOS_CR.map((c, i) => ({
   id: `orden-${c.clave}`,
   numGuia: c.numGuia,
   numRemision: c.numRemision,
-  estatusValue: "devuelta",
+  estatusValue: "novedad",
   destinatario: c.destinatario,
   telefonoDest: c.telefono,
   direccion: c.direccion,
