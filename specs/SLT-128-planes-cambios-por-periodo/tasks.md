@@ -124,7 +124,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
   sin empresa; «pendiente» en `recepcionesVencidas`, `archivar`, la salida de `aplicarEnTx`, el recordatorio y la
   promoción; promover conserva la versión de la no aplicada con su marca; `detalle` con `noAplicadas`;
   `lib/planes/consumo.ts` y `PlanesService` pasan `noAplicadas`. **Hecho:** T10.6 verde.
-- [ ] **T10.4** Repositorio R29 (depende de T10.1): el helper de descarte (§14.5) en los cuatro casos:
+- [x] **T10.4** Repositorio R29 (depende de T10.1): el helper de descarte (§14.5) en los cuatro casos:
   `moverRecepcionEnTx`, el reemplazo de `programarCambio`, `cancelarCambio` (y el `archivar` sin empresas) y la
   salida en `aplicarEnTx`. **Hecho:** T10.7 verde.
 - [ ] **T10.5** Cola, lista y correo (depende de T10.2): `destinatariosDeLista` y `destinatariosAlertaPlan` en

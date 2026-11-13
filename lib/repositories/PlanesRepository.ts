@@ -527,11 +527,10 @@ async function cancelarPendienteEnTx(
   if (pendiente === null) return false;
   // SLT-128 (R20): a cada empresa se le anunció SU recepción; la cancelación habla de esa fecha. Se leen antes
   // de borrar el pendiente, que se las lleva en cascada.
-  const recepciones = new Map(
-    (await tx.planCambioRecepcion.findMany({ where: { cambioId: pendiente.id }, select: { empresaId: true, recibeAt: true } })).map(
-      (r) => [r.empresaId, r.recibeAt],
-    ),
-  );
+  const filas = await tx.planCambioRecepcion.findMany({ where: { cambioId: pendiente.id }, select: { empresaId: true, recibeAt: true } });
+  const recepciones = new Map(filas.map((r) => [r.empresaId, r.recibeAt]));
+  // SLT-128 (R29): todos los trabajos del pendiente, con y sin empresa. Sirve a cancelar y a archivar (R40).
+  await descartarTrabajos(tx, pendiente.id, clavesDelPendiente(pendiente.id, filas));
   await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
   // R45 (§16.2): un `plan_aviso_correo` `cancelado` por cada empresa del plan, en esta transacción.
   // Sirve a cancelar a mano y a archivar (R40); reemplazar NO pasa por aquí (no lleva correo de
@@ -781,6 +780,46 @@ export function dedupeRecordatorio(cambioId: string, organizacionId: string, rec
   return `plan_recordatorio:${cambioId}:${organizacionId}:${recibeAt.toISOString()}:${dias}`;
 }
 
+/** Los días de los recordatorios con empresa (§4; R21). */
+const DIAS_DE_RECORDATORIO: readonly DiasDeRecordatorio[] = [7, 3, 1];
+
+/** Las claves de los trabajos de UNA recepción: su `plan_aplicar_cambio` y sus recordatorios de 7, 3 y 1 días. */
+function clavesDeRecepcion(cambioId: string, organizacionId: string, recibeAt: Date): string[] {
+  return [
+    dedupeRecepcion(cambioId, organizacionId, recibeAt),
+    ...DIAS_DE_RECORDATORIO.map((dias) => dedupeRecordatorio(cambioId, organizacionId, recibeAt, dias)),
+  ];
+}
+
+/**
+ * Las claves de TODOS los trabajos de un pendiente: el `plan_aplicar_cambio` sin empresa, los de cada recepción y
+ * los recordatorios sin empresa encolados antes de SLT-128 (R24; `plan_recordatorio:<cambioId>:<7|1>`).
+ */
+function clavesDelPendiente(cambioId: string, recepciones: readonly { empresaId: string; recibeAt: Date }[]): string[] {
+  return [
+    dedupeAplicarCambio(cambioId),
+    `plan_recordatorio:${cambioId}:7`,
+    `plan_recordatorio:${cambioId}:1`,
+    ...recepciones.flatMap((r) => clavesDeRecepcion(cambioId, r.empresaId, r.recibeAt)),
+  ];
+}
+
+/**
+ * SLT-128 (design §14.5; R29): cancela, en la transacción que mueve, reemplaza, cancela o saca, los trabajos aún sin
+ * empezar (`pending`) que ya no aplican. Quedan `descartado` (precedente SL-23 R20: no se ejecutan ni se reintentan)
+ * con el motivo y el pendiente en `last_error`. La clave se libera (`dedupe_key = NULL`): si la recepción vuelve a
+ * una fecha cancelada, sus trabajos se encolan de nuevo. Por clave y no por `payload`: va por el índice único. Uno
+ * en `processing` no se toca: termina sin hacer nada, como antes.
+ */
+async function descartarTrabajos(tx: Tx, cambioId: string, claves: readonly string[]): Promise<void> {
+  if (claves.length === 0) return;
+  await tx.$executeRaw`
+    UPDATE "jobs"
+       SET "estado" = 'descartado', "last_error" = ${`plan_cambio_obsoleto:${cambioId}`}, "dedupe_key" = NULL,
+           "updated_at" = CURRENT_TIMESTAMP
+     WHERE "dedupe_key" = ANY(${[...claves]}::text[]) AND "estado" = 'pending'`;
+}
+
 /**
  * El aviso de un recordatorio lleva la fecha de la recepción en la clave (§4; R19): si la recepción se mueve,
  * el de la fecha nueva sí sale.
@@ -798,7 +837,7 @@ const TIPO_DE_RECORDATORIO: Record<DiasDeRecordatorio, AvisoCorreoPlan["tipo"]> 
 /**
  * Fija la recepción de cada empresa (la crea o le mueve la fecha, R19) y encola, CON la empresa, su
  * `plan_aplicar_cambio` en `recibe_at` y sus recordatorios contados desde `ahora` (R21). Los trabajos de una
- * fecha anterior no se borran: al correr no encuentran su `recibeAt` y no hacen nada.
+ * fecha anterior los descarta quien mueve (`moverRecepcionEnTx`, R29); uno ya en curso no encuentra su `recibeAt`.
  */
 async function fijarRecepciones(
   tx: Tx,
@@ -988,6 +1027,12 @@ async function salirDelCambioEnTx(
     select: { id: true, vigenteDesde: true },
   });
   if (pendiente === null) return null;
+  // R29: los trabajos de esa empresa para ese pendiente, antes de borrar su recepción (que lleva la fecha).
+  const suya = await tx.planCambioRecepcion.findUnique({
+    where: { cambioId_empresaId: { cambioId: pendiente.id, empresaId: organizacionId } },
+    select: { recibeAt: true },
+  });
+  if (suya !== null) await descartarTrabajos(tx, pendiente.id, clavesDeRecepcion(pendiente.id, organizacionId, suya.recibeAt));
   await tx.planCambioRecepcion.deleteMany({ where: { cambioId: pendiente.id, empresaId: organizacionId } });
   // Sin bloquear el plan si no hay nada que promover: dos empresas que se cruzan de plan no se esperan.
   if (pendiente.vigenteDesde.getTime() > ahora.getTime() || (await recepcionesSinRecibir(tx, pendiente.id)) > 0) return null;
@@ -1024,6 +1069,8 @@ async function moverRecepcionEnTx(
   const base = Math.max(pendiente.vigenteDesde.getTime(), desde.getTime());
   const recibeAt = fechaDeRecepcion(tipoCobro, new Date(base));
   if (recibeAt.getTime() === recepcion.recibeAt.getTime()) return;
+  // R29: los trabajos de la fecha vieja, antes de encolar los de la nueva (las claves llevan la fecha: no coinciden).
+  await descartarTrabajos(tx, pendiente.id, clavesDeRecepcion(pendiente.id, organizacionId, recepcion.recibeAt));
   await fijarRecepciones(tx, { planId, cambioId: pendiente.id }, [{ organizacionId, recibeAt }], ahora);
 }
 
@@ -1580,8 +1627,12 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
          SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
              ${SIN_PENDIENTE}
        WHERE "id" = ${empresa.id}`;
-    // SLT-128 (R18): era la última del plan de antes sin recibir su pendiente, y F ya pasó.
-    if (aPromover !== null) await promoverEnTx(tx, aPromover);
+    // SLT-128 (R18): era la última del plan de antes sin recibir su pendiente, y F ya pasó. R29: su
+    // `plan_aplicar_cambio` sin empresa ya no tiene nada que promover.
+    if (aPromover !== null) {
+      await promoverEnTx(tx, aPromover);
+      await descartarTrabajos(tx, aPromover.id, [dedupeAplicarCambio(aPromover.id)]);
+    }
     const comun = {
       entidadTipo: "plan",
       entidadId: plan.id,
@@ -1741,10 +1792,16 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
               ).map((r) => [r.empresaId, r.recibeAt]),
         );
 
-        // 4. R39: un solo pendiente por plan. Reemplazar = borrar y crear otro con id nuevo; los trabajos del
-        // viejo no se tocan: al correr no encuentran su `cambioId` (§16.3). SLT-128 (R13): sus recepciones se van
-        // en cascada (quien no lo recibió ya no lo recibe) y las versiones propias se quedan (no se deshace).
+        // 4. R39: un solo pendiente por plan. Reemplazar = borrar y crear otro con id nuevo. SLT-128 (R13): sus
+        // recepciones se van en cascada (quien no lo recibió ya no lo recibe) y las versiones propias se quedan (no
+        // se deshace). R29: sus trabajos aún sin empezar, con y sin empresa, quedan descartados; uno en curso no
+        // encuentra su `cambioId` (§16.3).
         if (pendiente !== null) {
+          const todas = await tx.planCambioRecepcion.findMany({
+            where: { cambioId: pendiente.id },
+            select: { empresaId: true, recibeAt: true },
+          });
+          await descartarTrabajos(tx, pendiente.id, clavesDelPendiente(pendiente.id, todas));
           await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
           await escribirRastro(
             tx,
