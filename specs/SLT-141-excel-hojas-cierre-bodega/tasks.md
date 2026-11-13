@@ -56,7 +56,7 @@
 
 ## T3 — Integración contra Postgres real (backend_dev) · depende de T2
 
-- [ ] **T3.1** `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` con el corpus y los
+- [x] **T3.1** `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` con el corpus y los
   literales de `design.md > Verificación`: paridad con `verCierreBodegaDetalle` (central y S), alcance,
   número de consultas igual con 1 y 3 cierres nuevos, sin escrituras, sin lote con solo BV.
   **Hecho:** verde contra base desechable; las cinco mutaciones de `design.md` puestas una a una dan

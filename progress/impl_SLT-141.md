@@ -228,3 +228,82 @@ MCP del grafo: no usado; Grep/Read sobre el worktree.
 
 T2 hecha: tipos, lectura en lote y servicios con cableado probado; las 6 mutaciones dan rojo y vuelven a
 verde. Abierto: semilla de la base desechable para los 7 de integración y el literal 1 → 2 de D40.
+
+## Tanda 3 — backend_dev: T3.1 (2026-11-13)
+
+MCP del grafo: no usado; Grep/Read sobre el worktree. Base desechable `slt141_wt` (solo catálogos): el
+test siembra todo (zonas, usuarios, órdenes, filas congeladas, cierres del día y de bodega) en una
+transacción que siempre se revierte, y se autocomprueba (7 gestiones, 5 cierres del día consolidados) o
+LANZA. Sin `return` temprano; sin base, `describe.skip` visible.
+
+### Archivos
+
+- **Nuevo:** `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` (7 casos).
+- `lib/`: sin cambios (`git diff --stat lib/` vacío al terminar).
+
+### Corpus (el del design, más dos)
+
+BN, BV, BZ como `design.md > Verificación`. Dos añadidos, necesarios para lo que el design pide medir:
+
+- **B2 (Este) y B3 (Oeste)**, nuevos, sin conciliar (cola): los otros dos de «1 contra 3 cierres
+  nuevos».
+- **B2 lleva a propósito un snapshot AGREGADO distinto de su día** (general 12 000 / P 800 contra
+  10 000 / 600). En BN agregado y suma coinciden, así que la mutación «suma de los cierres del día en vez
+  del snapshot agregado» no se vería en ningún literal de BN. Literales a mano de B2: facturado 1 130,00;
+  IVA 130,00; neto (1 130 − 130) − 800 − 0 = 200,00; gana 12 000 − 1 130 = 10 870,00; por tienda
+  10 000 / 8 870 / 8 870; «Pago entregado» = el de D2 (P del día 600, efectivo 10 000 la cubre: pendiente
+  0) = 600,00. B3: 1 130 / 130 / 1 000 / 8 870 / entregado 0,00.
+- Hallazgo de esquema: el CHECK `cierre_bodega_conciliacion_coherente` exige `aprobado` ⇔ conciliado.
+  BZ, B2 y B3 (sin conciliar) van `solicitado`; sus cierres del día, `aprobado`. BV conciliado completo
+  (Histórico); BN recibido incompleto (cola/Pendientes).
+
+### Casos
+
+| Caso | R |
+|---|---|
+| BN en Pendientes: `cifrasModeloNuevo` `toEqual` literal (7 910 / 910 / 3 500 / 92 090 / 3 gestiones / 1 ajuste / por tienda / «Pago entregado» 3 000,00) y la fila de hoy (folio B0DE9A01, 96 500, 96 000, falta 500, «Ana Pérez», 2026-11-07T02:30Z) | R387, R388 |
+| Paridad: `cifrasAgregadasBodega` sobre el lote `toEqual` el detalle de BN, central y S; detalle contra literales | R387 |
+| «Solicitados» de S (mixto BN + BV): cifras solo de BN, sin clave `pagoEntregado` | R386, R384 |
+| Alcance en el WHERE: S con [BN, BZ] → solo D1; [BZ] → `[]`; `[]` → `[]` | R389 |
+| B2 (snapshot agregado manda) y B3, literales | R387, R388 |
+| 1 contra 3 cierres nuevos: mismas consultas, lote 2 llamadas, ninguna INSERT/UPDATE/DELETE | R389, R387 |
+| Solo BV en Histórico: sin `cifrasModeloNuevo`, lote no llamado, 9 consultas (línea base T0.3), sin escrituras | R384 |
+
+### Mutaciones (aplicar en producción → correr SOLO este test → revertir con `git checkout -- lib/` → correr)
+
+Script `scratchpad/mut31.mjs <n>` (falla si el texto no casa una sola vez) + `scratchpad/t31.sh`
+(`npx vitest run tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` con la base
+desechable).
+
+| # | Mutación | Mutado | Aserción que cae | Revertido |
+|---|---|---|---|---|
+| 1 | quitar el alcance del `where` (`CifrasBodegaLoteRepository`: `cierreBodega: {}`) | 1 failed / 6 passed, EXIT=1 | alcance: `expected [ [ …(2) ], [ …(2) ] ] to deeply equal [ [ …(2) ] ]` (llega el día de BZ) | 7 passed, EXIT=0 |
+| 2 | leer el lote sin filtrar por `incluyeModeloNuevo` (`cierresBodegaModeloNuevo` → `[...items]`) | 2 failed / 5 passed, EXIT=1 | «Solicitados» (`[ {…}, {…} ]` vs `[ {…} ]`) y R384 (`"cifrasModeloNuevo" in` → `expected true to be false`) | 7 passed, EXIT=0 |
+| 3 | suma de los cierres del día en vez del snapshot agregado (`cifrasAgregadasBodega`: `totales: computeTotales(gestiones)`) | 1 failed / 6 passed, EXIT=1 | B2: `- "ganaLaTienda": "10870.00"` / `+ "8870.00"` | 7 passed, EXIT=0 |
+| 4 | mandar `pagoEntregado` a la satélite (`CierreBodegaService`: `.map(c => ({ ...c, pagoEntregado: null }))`) | 1 failed / 6 passed, EXIT=1 | «Solicitados»: `+ "pagoEntregado": null` | 7 passed, EXIT=0 |
+| 5 | proyectar «Cierres modelo anterior» con todas las filas | **no aplica aquí** | — | — |
+
+M5 vive en el libro del cliente (`cierres-bodega-modelo-nuevo-descarga.ts`, T4.1), que aún no existe; el
+servidor no parte filas entre hojas. Queda para el test de T4.1 (`tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts`, «ningún cierre en dos hojas»).
+
+### Verificación de la tanda
+
+- `pnpm run typecheck` → TC_EXIT=0.
+- `pnpm exec eslint tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` → LINT_EXIT=0, sin avisos.
+- El test, dos veces seguidas: `Tests 7 passed (7)` EXIT=0 y `Tests 7 passed (7)` EXIT=0 (ninguno saltado).
+- `git diff --stat lib/` vacío.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R384 | `cierres-bodega-cifras-lote-sql-real.test.ts` (solo BV; mixto de S) |
+| R386 | ídem («Solicitados» sin `pagoEntregado`; M4) |
+| R387 | ídem (literales BN y B2/B3, paridad central y S, sin escrituras; M3) |
+| R388 | ídem (Gestiones, Pagos ajustados, Pago entregado de BN y por día en B2/B3) |
+| R389 | ídem (alcance en el WHERE, M1; consultas iguales con 1 y 3; M2) |
+
+### Veredicto
+
+T3.1 hecha: 7/7 verde contra Postgres real; 4 de las 5 mutaciones dan rojo y vuelven a verde; la 5.ª es
+de T4.1 (cliente) y queda abierta allí.
