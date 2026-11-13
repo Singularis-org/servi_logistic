@@ -36,6 +36,7 @@ function fila(
     paraLaCentral: dinero.aLaCentral ?? "999999.99",
     aprobadoAt: null,
     gestionesAjustadas: 0,
+    pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
   };
 }
 

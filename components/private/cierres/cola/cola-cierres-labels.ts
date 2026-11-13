@@ -142,8 +142,8 @@ export const nombreVerSuCierre = (mensajero: string) => `Ver el cierre de ${mens
 export const CIFRAS_A_CONSOLIDAR_LABEL = "Cifras a consolidar";
 export const TARJETA_GANA_BODEGA = "Gana la bodega satélite";
 export const TARJETA_CENTRAL_DEBE = "La central debe";
-export const notaPagoMensajeros = (n: number) =>
-  n === 1 ? "1 mensajero · se paga del efectivo" : `${n} mensajeros · se paga del efectivo`;
+// SLT-139 (R324, PA1): sin «· se paga del efectivo»: el pago de un cierre nuevo no sale del efectivo.
+export const notaPagoMensajeros = (n: number) => (n === 1 ? "1 mensajero" : `${n} mensajeros`);
 export const NOTA_GANA_BODEGA_VIEJO = "por devoluciones a origen";
 export const NOTA_DEBE_LLEGAR = "recaudado − mensajeros − bodega";
 export const NOTA_CENTRAL_DEBE = "el efectivo no alcanzó para pagar a todos los mensajeros";
