@@ -30,6 +30,9 @@ Ver `specs/SLT-60-confirmar-pago-plataforma/requirements.md` (afinada 2026-11-11
   tres: SLT-60 (confirmar y repartir), SLT-142 «Rechazo del pago a la plataforma y su estado en la wallet» y
   SLT-143 «El superadmin registra un pago hecho por fuera y anula un pago confirmado». También cerró: solo se
   pagan facturas cerradas, sin excedentes (el tope de registro cambia), y en prod no hay pagos previos.
+- 2026-11-13: segunda pasada de spec_author, otra vez BLOQUEADO (~46 archivos; ~13 tests existentes registran
+  pagos sin factura cerrada y hay que sembrarles una). El humano **acepta un PR por encima del tope**
+  (`docs/gate.md > Tamaño del PR`), opción «Aceptar PR sobre el tope», en vez de partir otra vez.
 - Pendiente del humano: añadir en Trello el checklist «Depende de» (el script no lo edita): SLT-142 en
   SLT-132; SLT-60 y SLT-143 en SLT-121.
 
