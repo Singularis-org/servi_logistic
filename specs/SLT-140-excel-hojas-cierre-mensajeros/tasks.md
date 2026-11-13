@@ -93,13 +93,13 @@
 
 ## T6 — Cierre (implementer)
 
-- [ ] **T6.1** `./init.sh` verde con `INIT_EXIT` anotado; E2E `cierres-rediseno` entero y grupo
+- [x] **T6.1** `./init.sh` verde con `INIT_EXIT` anotado; E2E `cierres-rediseno` entero y grupo
   `dinero` verdes en local. **Hecho:** salidas en `progress/impl_SLT-140.md`.
-- [ ] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA4 escrita por el leader en
+- [x] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA4 escrita por el leader en
   `progress/features/SLT-140.md`. **Hecho:** línea `tamano-pr-aceptado` presente o PA4 resuelta.
-- [ ] **T6.3** Anotar en `progress/features/SLT-140.md` lo que hereda SLT-141 «Excel del modelo nuevo:
+- [x] **T6.3** Anotar en `progress/features/SLT-140.md` lo que hereda SLT-141 «Excel del modelo nuevo:
   hojas por cierre de bodega» (`design.md > Archivos compartidos`). **Hecho:** líneas escritas.
-- [ ] **T6.4** Mapa `R → test` en `progress/impl_SLT-140.md`, igual a `## Trazabilidad`. **Hecho:**
+- [x] **T6.4** Mapa `R → test` en `progress/impl_SLT-140.md`, igual a `## Trazabilidad`. **Hecho:**
   cada R con un test que existe y está verde.
 
 ## Trazabilidad

@@ -181,3 +181,6 @@ Desviaciones menores del design (anotadas):
 ## Veredicto
 
 T0–T5 hechas y verdes; T6 (cierre, implementer) pendiente.
+
+## Gate del leader (2026-11-13)
+- `./init.sh` con la base slt140_excel sobre el árbol quieto: `INIT_EXIT=0` (log `scratchpad/gate-140b.log`). La primera corrida (`gate-140.log`) no vale: coincidió con las mutaciones del reviewer.
