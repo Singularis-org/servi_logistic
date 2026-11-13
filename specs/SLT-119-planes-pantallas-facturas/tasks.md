@@ -36,20 +36,20 @@
 
 ## T4 — Vista pura (frontend)
 
-- [ ] **T4.1** (dep. T1.1) [P] `components/shared/facturas/facturas-vista.ts` (§6.1: número, período, estado, suma de
+- [x] **T4.1** (dep. T1.1) [P] `components/shared/facturas/facturas-vista.ts` (§6.1: número, período, estado, suma de
   cuotas, instante, textos) y `tests/unit/planes/facturas-vista.test.ts` (R2, R3, R4). *Hecho:* verde; ningún import
   de `lib/actions`, `lib/services`, `lib/repositories` ni `lib/db`.
 
 ## T5 — Componentes (frontend)
 
-- [ ] **T5.1** (dep. T4.1) `components/shared/facturas/FacturasDeLaEmpresa.tsx` y
+- [x] **T5.1** (dep. T4.1) `components/shared/facturas/FacturasDeLaEmpresa.tsx` y
   `tests/components/FacturasDeLaEmpresa.test.tsx` (R1, R2, R5, R16, R17, R18). *Hecho:* verde.
-- [ ] **T5.2** (dep. T4.1) [P] `components/shared/facturas/DetalleDeFactura.tsx` (en `Sheet`) y
+- [x] **T5.2** (dep. T4.1) [P] `components/shared/facturas/DetalleDeFactura.tsx` (en `Sheet`) y
   `tests/components/DetalleDeFactura.test.tsx` (R2, R6, R7, R9, R10, R16, R17). *Hecho:* verde.
 
 ## T6 — Pantallas (frontend)
 
-- [ ] **T6.1** (dep. T3.1, T5.1, T5.2) «Mi plan»: `app/(app)/mi-plan/page.tsx` (lectura aislada) y
+- [x] **T6.1** (dep. T3.1, T5.1, T5.2) «Mi plan»: `app/(app)/mi-plan/page.tsx` (lectura aislada) y
   `app/(app)/mi-plan/_components/MiPlanModule.tsx` (sección al final). Ajustar
   `tests/components/MiPlanModule.test.tsx` y ampliar `tests/integration/mi-plan-page.test.tsx` (R1, R17).
   *Hecho:* verdes; la guardia `mi-plan-solo-maestro` verde (ningún archivo nuevo nombra la ruta).

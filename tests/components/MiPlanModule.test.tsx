@@ -5,6 +5,7 @@
 // pantalla es lo que de verdad le llega a la empresa: el panel del plan activo (SLT-99 R3), el consumo con una fila
 // por tope, el reinicio y el cambio programado (SLT-58, sin cambios: R21, P8) y los planes disponibles. SLT-99
 // sustituye SLT-58 R11 («Mi plan» es solo información): el maestro cambia de plan desde aquí (R19).
+// SLT-119 (design §6.2; R1, R17): las facturas de la empresa, al final, cuando la página se las pasa.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,6 +17,7 @@ import { planConConsumo, type PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { PlanConConsumo } from "@/lib/types/consumo-plan";
 import type { VersionPlan } from "@/lib/types/planes";
 
+import { factura } from "./_facturas-plataforma";
 import { planesDeMiPlan, planesSinPlan } from "./_mi-plan-planes";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
@@ -282,5 +284,41 @@ describe("Ajuste planes-custom D9, SLT-86 R27 — «Mi plan» muestra el tipo, e
     render(<MiPlanModule plan={plan({ vigente: sinPrecio, precioDelPeriodo: sinPrecio.precio })} planes={planesDeMiPlan()} />);
     expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base mensual: 0.00");
     expect(screen.queryByText(/por definir/)).toBeNull();
+  });
+});
+
+describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»", () => {
+  const cargarDetalle = vi.fn();
+
+  it("R1: con las facturas de la página, la sección va después del cambio de plan y lista las de la empresa", () => {
+    render(
+      <MiPlanModule
+        plan={plan()}
+        planes={planesDeMiPlan()}
+        facturas={{ lista: [factura({ plan: null })], cargarDetalle }}
+      />,
+    );
+
+    const seccion = screen.getByRole("region", { name: "Facturas de la empresa" });
+    expect(within(seccion).getByText("Sin plan")).toBeInTheDocument();
+    expect(within(seccion).getByRole("button", { name: /Ver detalle de la factura/ })).toBeInTheDocument();
+    const planes = screen.getByRole("heading", { name: "Planes disponibles" });
+    expect(planes.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cargarDetalle).not.toHaveBeenCalled();
+  });
+
+  it("R17: con la lista `null`, la sección dice «No se pudieron cargar las facturas» y el plan se pinta igual", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} facturas={{ lista: null, cargarDetalle }} />);
+
+    expect(
+      within(screen.getByRole("region", { name: "Facturas de la empresa" })).getByRole("alert"),
+    ).toHaveTextContent("No se pudieron cargar las facturas");
+    expect(screen.getAllByRole("heading", { name: "Plan Crecer" })).toHaveLength(2);
+  });
+
+  it("R1: sin la prop `facturas` no hay sección (las pruebas de las otras partes de la pantalla)", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    expect(screen.queryByRole("region", { name: "Facturas de la empresa" })).toBeNull();
   });
 });
