@@ -24,6 +24,9 @@ const SUBARBOL = [
   // SLT-113 — el libro del modelo nuevo y sus hojas («Gestiones», «Rechazados por la tienda»).
   "app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts",
   "app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga.ts",
+  // SLT-140 — el libro del «Resumen» del modelo nuevo y sus hojas («Cierres», «Por tienda»).
+  "app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga.ts",
 ];
 
 const MODULO_COLUMNAS = SUBARBOL[1];
@@ -103,7 +106,7 @@ describe("frontera de la descarga detallada de cierres (T6.1)", () => {
     expect(cuerpo).not.toMatch(/^\s*(gestionId|ordenId|cierreId|mensajeroId|zonaId)\b/im);
   });
 
-  it("SLT-113: los módulos del libro del modelo nuevo son puros como el de la fundida (R49)", () => {
+  it("SLT-113 y SLT-140: los módulos de los libros del modelo nuevo son puros como el de la fundida (R49)", () => {
     for (const relativa of SUBARBOL.slice(2)) {
       const texto = fuente(relativa);
       expect(texto, relativa).not.toMatch(/from\s+["']react["']/);

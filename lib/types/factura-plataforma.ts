@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { TipoCobro } from "@/lib/types/planes";
 
 // SLT-118 (design §1.1, §2.6, §3) — la factura de la plataforma a una empresa, cerrada o en curso.
@@ -73,3 +75,62 @@ export interface FacturaPlataformaDTO {
   total: string;
   cerradaAt: Date | null;
 }
+
+/* -------------------------------------------------------------------------- */
+/* SLT-119 (design §3) — las pantallas de facturas: líneas, detalle y bordes   */
+/* -------------------------------------------------------------------------- */
+
+/** Una línea es un movimiento de la traza de SLT-85: un cargo o un reverso de una orden. */
+export const TIPOS_LINEA_FACTURA = ["cargo", "reverso"] as const;
+export type TipoLineaFactura = (typeof TIPOS_LINEA_FACTURA)[number];
+
+/** R7, R9: una fila de `cobro_plataforma_traza` con `cobrado_at` en `[desde, hasta)` de la factura. */
+export interface LineaDeFactura {
+  id: string;
+  /** `cobrado_at`: el instante del movimiento. */
+  instante: Date;
+  /** `null` si la traza no lo guardó (R9). */
+  numGuia: number | null;
+  tipo: TipoLineaFactura;
+  /** Con signo y dos decimales: un reverso ya es ≤ 0 por el CHECK de la traza. */
+  valor: string;
+}
+
+/** R10: una página de líneas y el total de la factura entera. */
+export interface PaginaDeLineas {
+  lineas: LineaDeFactura[];
+  pagina: number;
+  porPagina: number;
+  total: number;
+}
+
+/** R6–R11: la cabecera (la misma lectura que la lista) y una página de sus líneas. */
+export interface DetalleDeFactura {
+  factura: FacturaPlataformaDTO;
+  lineas: PaginaDeLineas;
+}
+
+/** P3: páginas de 100 líneas leídas en el servidor. */
+export const LINEAS_POR_PAGINA = 100;
+
+export type FacturasResult = { estado: "ok"; facturas: FacturaPlataformaDTO[] } | { estado: "forbidden" };
+
+export type DetalleFacturaResult =
+  | { estado: "ok"; detalle: DetalleDeFactura }
+  | { estado: "forbidden" }
+  | { estado: "not_found" }
+  | { estado: "validation_error"; errores: Record<string, string> };
+
+/** R15: el detalle que pide el maestro (la empresa es la de la sesión). */
+export const detalleFacturaSchema = z.object({
+  facturaId: z.uuid(),
+  pagina: z.int().min(1).default(1),
+});
+export type DetalleFacturaInput = z.infer<typeof detalleFacturaSchema>;
+
+/** R15: el detalle que pide el superadmin, de la empresa que nombra. */
+export const detalleFacturaEmpresaSchema = detalleFacturaSchema.extend({ organizacionId: z.uuid() });
+export type DetalleFacturaEmpresaInput = z.infer<typeof detalleFacturaEmpresaSchema>;
+
+/** R12, R15: la lista que pide el superadmin, de la empresa que nombra. */
+export const facturasDeEmpresaSchema = z.object({ organizacionId: z.uuid() });

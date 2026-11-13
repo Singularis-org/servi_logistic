@@ -36,8 +36,12 @@ const VERSION: VersionPlan = {
 /** Las 00:00 de la plataforma del 2027-01-10 (−06:00). */
 const RIGE = new Date("2027-01-10T06:00:00.000Z");
 
-async function programar(tx: TxDeTest, planId: string): Promise<void> {
-  await tx.planCambioProgramado.create({
+/**
+ * El pendiente del plan en RIGE. SLT-128 (R12, R24): cada empresa de `empresas` lo recibe con su recepción sin
+ * recibir en RIGE; sin ella, la empresa no ve el pendiente.
+ */
+async function programar(tx: TxDeTest, planId: string, empresas: readonly string[] = []): Promise<void> {
+  const cambio = await tx.planCambioProgramado.create({
     data: {
       planId,
       vigenteDesde: RIGE,
@@ -47,6 +51,9 @@ async function programar(tx: TxDeTest, planId: string): Promise<void> {
       actorNombre: "Ana Pérez",
     },
   });
+  for (const empresaId of empresas) {
+    await tx.planCambioRecepcion.create({ data: { cambioId: cambio.id, empresaId, recibeAt: RIGE } });
+  }
 }
 
 async function rastro(tx: TxDeTest, planId: string, accion: "creado" | "editado" | "archivado", creadoAt: string) {
@@ -131,7 +138,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       const otro = await crearPlan(tx);
       await asignarPlan(tx, a, planId);
       await asignarPlan(tx, b, planId);
-      await programar(tx, planId);
+      await programar(tx, planId, [a, b]);
       // Insertadas fuera de orden: el orden lo pone la lectura.
       const medio = await rastro(tx, planId, "editado", "2026-10-10T10:00:00.000Z");
       const viejo = await rastro(tx, planId, "creado", "2026-10-01T10:00:00.000Z");
@@ -146,7 +153,8 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     const d = r.detalle!;
     expect(d.plan).toMatchObject({ id: r.planId, topes: { apiKeys: 50 } });
     expect(d.empresaNombre).toBeNull();
-    expect(d.pendiente).toEqual({ vigenteDesde: RIGE, version: VERSION });
+    // SLT-128 (R11): «0 de 2»: las dos empresas tienen su recepción y ninguna lo recibió aún.
+    expect(d.pendiente).toEqual({ vigenteDesde: RIGE, version: VERSION, recibidas: 0, total: 2 });
     expect(d.empresas).toEqual([
       { id: r.b, nombre: "A empresa slt58" },
       { id: r.a, nombre: "B empresa slt58" },
@@ -163,7 +171,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       const sinPlan = (await crearOrganizacion(tx)).id;
       const planId = await crearPlan(tx, { apiKeys: 100, porRol: { mensajero: 3 } });
       await asignarPlan(tx, a, planId);
-      await programar(tx, planId);
+      await programar(tx, planId, [a]);
       await asignacion(tx, a, "Primero", "2026-09-01T10:00:00.000Z");
       await asignacion(tx, a, "Tercero", "2026-10-20T10:00:00.000Z");
       await asignacion(tx, a, "Segundo", "2026-10-01T10:00:00.000Z");

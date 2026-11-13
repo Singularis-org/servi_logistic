@@ -38,6 +38,9 @@ const ESTATUS_IDS: Record<string, string | null> = {
 function fakeRepo(): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => []),
     // Feature 170 (T I.1): doble no-op; esta suite solo aprueba cierres.
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
