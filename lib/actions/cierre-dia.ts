@@ -28,6 +28,7 @@ import {
   type ListarCierreDiaResult,
   type ListarCierresPasadosCompletoResult,
   type ListarCierresPasadosResult,
+  type ResumenGananciaResult,
   type SolicitarCierreResult,
   type VerCierrePasadoResult,
 } from "@/lib/types/cierre";
@@ -77,6 +78,9 @@ function buildService(): ICierreDiaService {
       liquidaciones: new LiquidacionPagoRepository(prisma),
       premios: new PagoMensajeroMovimientoRepository(prisma),
     },
+    // SLT-112 (R352, R357): sin esta lectura `resumenGanancia` da `sin_dato` y la cola no pinta
+    // las tarjetas. `pagadoPorSatelite` (R353) lo inyecta SLT-139 cuando exista el movimiento.
+    { pagos: new LiquidacionPagoRepository(prisma) },
   );
 }
 
@@ -155,6 +159,27 @@ export async function listarCierreDia(
     return service.listarCierreDia(actor);
   });
   return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+}
+
+/**
+ * SLT-112 (R350-R357, R359) — «Ganancia pendiente de pago» y «Ganancia pagada este mes» del
+ * mensajero de la sesion. Sin input de negocio: el `mensajero_id` sale del actor. Un fallo de
+ * lectura devuelve `error` (no lanza): la pagina carga igual, sin tarjetas (R357).
+ *
+ * @sin-superficie SLT-112 (temporal, tanda de backend): la llama `app/(app)/cierre-dia/page.tsx` en la
+ * tanda de pantalla de esta misma ficha (`tasks.md > T5.3`), que quita esta anotacion al cablearla.
+ */
+export async function resumenGananciaMensajero(
+  deps: CierreDiaDeps = {},
+): Promise<ResumenGananciaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
+    const service = deps.service ?? buildService();
+    return service.resumenGanancia(actor);
+  });
+  if (!isAppErrorShape(r)) return r;
+  return r.code === "UNAUTHORIZED" ? { status: "unauthenticated" } : { status: "error" };
 }
 
 /**
