@@ -593,6 +593,10 @@ test de integración de T3.5).
 
 **Decisión del humano (2026-11-13):** opción (a), una sola oración: «…confirma el pago; baja la ganancia.».
 La regla no cambia. R37 actualizado en `requirements.md`.
+- T5b.3 aplicada (literal en la constante, 3 tests de vitest y `e2e/pago-plataforma-sl45.spec.ts`):
+  `vitest run` de `wallet-conceptos-manuales.test.ts`, `WalletDeudaPlataformaSL45.test.tsx` y
+  `wallet-registrar-movimiento-dialog.test.tsx`: `Test Files 3 passed (3) · Tests 111 passed (111)`; eslint de
+  los 5 archivos sin avisos.
 
 ## T9.2 — conteo en prod
 

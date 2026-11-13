@@ -154,6 +154,9 @@ export default defineConfig({
         "fulfillment-cobro-por-paquete",
         // SLT-100 R77: lo que ven la central y la satélite en el detalle único, modelos viejo y nuevo.
         "cierres-rediseno",
+        // SLT-60 R30: la empresa paga una factura cerrada y el superadmin confirma el pago. Usa el superadmin
+        // de prueba y un plan con costo por orden; no toca el global del cobro.
+        "pago-plataforma-confirmacion",
       ),
     },
   ],

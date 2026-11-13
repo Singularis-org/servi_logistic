@@ -113,7 +113,7 @@ Cada test pasa al literal nuevo escrito a mano, nunca leído de la constante (de
 - [x] **T5b.2** [P] El mensaje del tope (R36): `lib/types/cobro-plataforma.ts`,
   `tests/unit/services/wallet-egreso-service.test.ts` y
   `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`. **Hecho:** verde.
-- [ ] **T5b.3** [P] La frase del efecto (R37): `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` y
+- [x] **T5b.3** [P] La frase del efecto (R37): `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` y
   `tests/unit/components/wallet-conceptos-manuales.test.ts`; el diálogo y la región ya están en T5b.1 y
   T5b.2. **Hecho:** verde.
 - [x] **T5b.4** La ayuda (R38): `docs/ayuda/oficina/wallet-caja.md`, con `actualizado:`, y

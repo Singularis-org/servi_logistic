@@ -302,7 +302,7 @@ describe("458-C R39/R52 — la frase del efecto y la del libro siguen al concept
       // SL-45 (R6), SLT-60 (R37): literal del requisito.
       [
         "Pago a la plataforma",
-        "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago. Baja la ganancia.",
+        "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago; baja la ganancia.",
       ],
     ];
     for (const [concepto, frase] of casos) {

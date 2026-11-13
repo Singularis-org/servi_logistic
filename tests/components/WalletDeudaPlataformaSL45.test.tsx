@@ -289,7 +289,7 @@ describe("SL-45 R4 — el botón abre el registro con el pago ya elegido", () =>
     expect(within(dialog).getByRole("radio", { name: "Pago a la plataforma" })).toBeChecked();
     expect(within(dialog).getByRole("radio", { name: "Gasto de la empresa" })).not.toBeChecked();
     expect(dialog.querySelector("#movimiento-concepto-efecto")?.textContent).toBe(
-      "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago. Baja la ganancia.",
+      "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago; baja la ganancia.",
     );
   });
 
