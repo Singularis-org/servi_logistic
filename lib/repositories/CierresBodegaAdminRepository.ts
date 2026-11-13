@@ -181,7 +181,7 @@ type CierresBodegaAdminPrismaClient = Pick<
 
 // Proyeccion de la cabecera de un cierre_dia incluido en el detalle (mensajero +
 // totales snapshot).
-const DETALLE_CIERRE_SELECT = {
+export const DETALLE_CIERRE_SELECT = {
   id: true,
   mensajeroId: true,
   totalEfectivo: true,
@@ -201,7 +201,7 @@ const DETALLE_CIERRE_SELECT = {
 
 type DetalleCierreRow = Prisma.CierreDiaGetPayload<{ select: typeof DETALLE_CIERRE_SELECT }>;
 
-function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
+export function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
   return {
     cierreDiaId: r.id,
     mensajeroId: r.mensajeroId,

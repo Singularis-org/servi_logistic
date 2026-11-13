@@ -6,7 +6,6 @@ import type { DataTableDescarga } from "@/components/shared/DataTable";
 import useSWR from "swr";
 
 import { Pagination } from "@/components/shared/Pagination";
-import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 import {
   listarCierresBodegaSolicitadosPaginado,
@@ -21,6 +20,7 @@ import {
   filaDescargaBodegaSolicitado,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
 
 /**
  * Feature 170 — FASE 2 (T I.2, R43/R44/R52): «Cierres de bodega solicitados», el histórico
@@ -92,10 +92,16 @@ export function descargaBodegaSolicitados(filtros: FiltrosCierresBodega): DataTa
     columnas: COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
     // Ficha 314: enciende el selector de columnas de esta descarga (ámbito propio, R10).
     ambitoColumnas: AMBITO_DESCARGA_BODEGA_SOLICITADOS,
+    // SLT-141 (R384, R385, PA4): «Solicitados» es el «Resumen» de la satélite. Con cierres de bodega
+    // del modelo nuevo, el libro (sin «Pago entregado», R386); sin ellos, el archivo de hoy. Esta
+    // descarga no pasa las columnas marcadas a `obtenerFilas`: «Cierres modelo anterior» sale con
+    // todas las de hoy, en su orden (PA3).
     obtenerFilas: () =>
-      filasDesdeResultado(
-        descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
         filaDescargaBodegaSolicitado,
+        COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
+        "satelite",
       ),
   };
 }

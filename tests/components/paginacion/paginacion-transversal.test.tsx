@@ -1066,11 +1066,34 @@ describe("T M.1 · R52 — toda descarga de un listado paginado entrega el datas
       completo: "conjunto",
     };
 
+    // SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (CI de #153): «Solicitados» ya
+    // no llama a `filasDesdeResultado(` en su propia fuente; le pasa la acción `…Completo` a
+    // `obtenerResumenCierresBodega`, que arma el libro y, si no hay modelo nuevo, termina en
+    // `filasDesdeResultado(respuesta, …)`. La conducta R52 es la misma; la guardia de texto solo
+    // no la veía. Se acepta ESE envoltorio y solo con las dos condiciones a la vez: que el
+    // envoltorio, leído aquí como texto, siga llamando a `filasDesdeResultado(`, y que la pantalla
+    // le pase una acción `…Completo` del servidor (la paginada da rojo). Nada se afloja para el
+    // resto: una pantalla sin ninguno de los dos caminos sigue roja.
+    const ENVOLTORIO_COMPLETO = {
+      ruta: "app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga.ts",
+      llamadaConCompleto:
+        /obtenerResumenCierresBodega\(\s*\(\)\s*=>\s*descargarDatos\(\s*"\w+Completo"/,
+    };
+    const envoltorioDelegaEnCompleto = ADAPTADOR.completo.test(
+      fuenteDe(ENVOLTORIO_COMPLETO.ruta).replace(/\r\n/g, "\n"),
+    );
+    const cumpleAdaptador = (fuente: string, adaptador: AdaptadorDescarga): boolean =>
+      ADAPTADOR[adaptador].test(fuente) ||
+      (adaptador === "completo" &&
+        envoltorioDelegaEnCompleto &&
+        ENVOLTORIO_COMPLETO.llamadaConCompleto.test(fuente));
+
     for (const { listado, ruta, adaptador } of ANEXO_III) {
-      const fuente = fuenteDe(ruta);
-      expect(fuente, `${listado}: su descarga no va al servidor por el conjunto (R52)`).toMatch(
-        ADAPTADOR[adaptador],
-      );
+      const fuente = fuenteDe(ruta).replace(/\r\n/g, "\n");
+      expect(
+        cumpleAdaptador(fuente, adaptador),
+        `${listado}: su descarga no va al servidor por el conjunto (R52)`,
+      ).toBe(true);
       expect(
         fuente,
         `${listado}: se declara «${adaptador}» pero también llama al adaptador «${CONTRARIO[adaptador]}»`,
