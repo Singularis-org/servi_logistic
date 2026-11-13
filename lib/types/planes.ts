@@ -436,7 +436,7 @@ export type PendienteDelDetalle = CambioPendienteVista & { recibidas: number; to
 /**
  * SLT-128 (design §14.3; R28): una empresa del plan que no recibió el cambio programado y sigue con su versión
  * anterior. `motivo` es el código (`MotivoNoAplicada` de `lib/planes/mensajes.ts`); la línea la compone
- * `lineaNoAplicada(empresa, motivo)`. `desde`: la recepción que no se aplicó, en ISO.
+ * `lineaNoAplicada(empresa, motivo)`. `desde`: el instante en que quedó no aplicada, en ISO.
  */
 export type NoAplicadaVista = {
   empresaId: string;

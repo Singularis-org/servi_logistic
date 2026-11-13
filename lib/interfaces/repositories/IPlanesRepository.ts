@@ -290,8 +290,8 @@ export type PendienteDelDetalleLeido = CambioDelPlanLeido & { recibidas: number;
 
 /**
  * SLT-128 (design §14.3; R28): una empresa del plan que no recibió el cambio y sigue con su versión anterior: una
- * recepción no aplicada del pendiente o, ya promovido el plan, su `plan_version_empresa` marcada. `desde` es la
- * recepción que no se aplicó.
+ * recepción no aplicada del pendiente o, ya promovido el plan, su `plan_version_empresa` marcada. `desde` es el
+ * instante en que quedó no aplicada.
  */
 export interface NoAplicadaLeida {
   empresaId: string;

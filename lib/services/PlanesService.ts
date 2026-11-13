@@ -16,7 +16,7 @@ import {
   rangoDelInicioDelCiclo,
 } from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
-import { pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
+import { noAplicadasDelDetalle, pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
@@ -483,6 +483,8 @@ export class PlanesService implements IPlanesService {
         empresaNombre: leido.empresaNombre,
         // SLT-128 (R11): con «N de M empresas ya lo recibieron».
         pendiente: leido.pendiente === null ? null : pendienteDelDetalle(plan, leido.pendiente),
+        // SLT-128 (R28): las empresas que no recibieron el cambio y siguen con su versión anterior.
+        noAplicadas: noAplicadasDelDetalle(leido.noAplicadas),
         empresas: leido.empresas,
         rastro: leido.rastro.map((r) => ({ ...r, creadoAt: r.creadoAt.toISOString() })),
       },

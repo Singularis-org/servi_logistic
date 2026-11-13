@@ -296,6 +296,28 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     const r = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
     expect(r.estado === "ok" && r.detalle.pendiente).toBeNull();
   });
+
+  it("SLT-128 R28: las empresas que no recibieron el cambio pasan tal cual, con el instante en ISO; sin ninguna, vacío", async () => {
+    const r0 = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
+    expect(r0.estado === "ok" && r0.detalle.noAplicadas).toEqual([]);
+
+    repo.detalle.mockResolvedValueOnce({
+      ...detalleLeido(),
+      pendiente: null,
+      noAplicadas: [
+        {
+          empresaId: EMPRESA,
+          empresa: "Mensajería Uno",
+          motivo: "cobro_quincenal_ordenes_mensuales",
+          desde: new Date("2026-12-01T06:00:00.000Z"),
+        },
+      ],
+    });
+    const r = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
+    expect(r.estado === "ok" && r.detalle.noAplicadas).toEqual([
+      { empresaId: EMPRESA, empresa: "Mensajería Uno", motivo: "cobro_quincenal_ordenes_mensuales", desde: "2026-12-01T06:00:00.000Z" },
+    ]);
+  });
 });
 
 describe("SLT-58 — plan de una empresa (R19)", () => {

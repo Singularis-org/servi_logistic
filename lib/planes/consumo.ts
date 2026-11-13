@@ -18,6 +18,7 @@ import type {
 } from "@/lib/types/consumo-plan";
 import {
   ROLES_CON_TOPE,
+  type NoAplicadaVista,
   type PendienteDelDetalle,
   type PlanDTO,
   type PrecioPlan,
@@ -133,6 +134,16 @@ export function pendienteDelDetalle(
   cambio: CambioDelPlanLeido & { recibidas: number; total: number },
 ): PendienteDelDetalle {
   return { ...cambioPendienteDelPlan(vigente, cambio), recibidas: cambio.recibidas, total: cambio.total };
+}
+
+/**
+ * SLT-128 (design §14.3; R28): las empresas que no recibieron el cambio, como las pinta el detalle del plan
+ * (`lineaNoAplicada`), con la fecha en ISO.
+ */
+export function noAplicadasDelDetalle(
+  leidas: readonly { empresaId: string; empresa: string; motivo: NoAplicadaVista["motivo"]; desde: Date }[],
+): NoAplicadaVista[] {
+  return leidas.map((n) => ({ empresaId: n.empresaId, empresa: n.empresa, motivo: n.motivo, desde: n.desde.toISOString() }));
 }
 
 /** R1–R7, R19: el plan como se pinta, el mismo en «Mi plan» y en el detalle de empresa del superadmin. */

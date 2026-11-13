@@ -120,7 +120,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
 - [x] **T10.2** [P] Contratos y textos: `IPlanesRepository` (`no_aplicada` en el resultado de `recibirCambio`,
   `noAplicadas` en el detalle); `lib/types/planes.ts` (`noAplicadas`); `lib/planes/mensajes.ts`
   (texto del motivo, línea del detalle, asunto); `no_aplicada` en `AvisoCorreoPlan`. **Hecho:** typecheck verde.
-- [ ] **T10.3** Repositorio R28 (depende de T10.1, T10.2): `recibirCambio` marca en vez de lanzar y encola el aviso
+- [x] **T10.3** Repositorio R28 (depende de T10.1, T10.2): `recibirCambio` marca en vez de lanzar y encola el aviso
   sin empresa; «pendiente» en `recepcionesVencidas`, `archivar`, la salida de `aplicarEnTx`, el recordatorio y la
   promoción; promover conserva la versión de la no aplicada con su marca; `detalle` con `noAplicadas`;
   `lib/planes/consumo.ts` y `PlanesService` pasan `noAplicadas`. **Hecho:** T10.6 verde.
