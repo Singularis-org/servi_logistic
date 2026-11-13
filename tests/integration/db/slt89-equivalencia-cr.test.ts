@@ -95,7 +95,8 @@ describeSiHayBase("SLT-89 · R38 — con las tablas nuevas vacias, Costa Rica da
       filas
         .map((f) => ({ ...f, zonas: [...f.zonas].sort((a, b) => a.id.localeCompare(b.id)) }))
         .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-    expect(normal(r.cobertura.nuevo)).toEqual(normal(r.cobertura.deHoy));
+    // SLT-125 (A12): todo menos `ruta` (P5), que la lectura de hoy no tiene.
+    expect(normal(r.cobertura.nuevo.map((f) => ({ ...f, ruta: undefined })))).toEqual(normal(r.cobertura.deHoy));
     expect(r.arbol.nuevo).toEqual(r.arbol.deHoy);
     expect(r.plan.nuevo).toEqual(r.plan.deHoy);
     // Antivacio: hay algo que comparar.

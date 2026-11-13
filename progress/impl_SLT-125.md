@@ -576,3 +576,46 @@ vitest run guard → 2 failed | 334 passed | 3 skipped: dependencias-declaradas-
 
 Parada por R38: commiteada la parte de gestión, cierre en vivo y envío; la de `OrdenRepository` espera la
 autorización de 3 aserciones, y cobertura (P5) la de 2 más y el nombre del motivo de nivel ≥ 4.
+
+### T2.3 — continuación (backend_dev, 2026-11-13, tras A11/A12)
+
+- **A11 aplicada y commiteada** — `2214a351` «feat(SLT-125): T2.3 listado, satélite, etiqueta y novedades nombran
+  el lugar con el catálogo». La `lugarRuta` de satélite salió tal cual se autorizó (`p-1`/`c-1`/`d-1`). Verdes:
+  satelite-proyeccion-compartida 3/3, list-items-by-ids 8/8, recepcion-satelite 8/8 y los 25 `orden-repository*`.
+- **Cobertura (P5) escrita, en verde y SIN commitear** — PARADA por R38:
+  - `CoberturaRepository.listDistritos`: filas = `nodosDeProfundidad(cat, P)`, con P de `nivelesDelCatalogo`;
+    `ruta` (nivel 1 → P, con el flag propio) en `DistritoCoberturaRow`; los tres campos de hoy, de la ruta.
+    Si el país no tiene el nivel, el campo queda vacío y activo. Zona y marca son las de la hoja.
+  - `lib/utils/cobertura-distrito.ts`: el motivo sale del primer nivel inactivo de la ruta (1–3: claves de hoy;
+    k ≥ 4: `nivel_<k>_retirado`). `CoberturaDistritoDTO.ruta?` (opcional, patrón aditivo); el orden va nivel
+    por nivel de la ruta.
+  - `lib/types/cobertura.ts` añade `MotivoNivelRetirado`.
+  - A12 aplicada en `geo-lecturas-catalogo.test.ts:454` y `slt89-equivalencia-cr.test.ts:98`.
+  - No son aserciones:
+    - `scripts/geo-equivalencia-dinero.ts`: empareja ignorando `ruta`;
+    - `tests/unit/utils/cobertura-vs-resolve-geo.test.ts`: `default` del switch auxiliar (typecheck).
+  - Test nuevo: `tests/unit/descarga/cobertura-n-niveles.test.ts`, 9/9.
+- **Aserción que tendría que cambiar (NO cambiada):** `tests/unit/actions/cobertura.composition-root.test.ts:59–74`.
+  - Antes: `toEqual` exacto del ítem sin `ruta`.
+  - Después: el mismo ítem + `ruta: [{ id: "p1", nombre: "San José" }, { id: "c1", nombre: "Escazú" }, { id: "d1", nombre: "San Rafael" }]`,
+    o comparar sin `ruta`, como A12.
+- **Falta para R6 en T3.1:** columnas por nivel desde `ruta`, y un texto de `motivoSinCoberturaLabel` (cliente)
+  para `nivel_<k>_retirado`. Hoy compila (`Record` con clave de plantilla), pero a ese motivo le da `undefined`.
+
+## T2.3 — cierre (implementer, 2026-11-13)
+
+- A13 (autorizada, `9a3d32d3`): `cobertura.composition-root.test.ts:59` espera el mismo resultado más la `ruta`
+  exacta del ítem (`p1/San José`, `c1/Escazú`, `d1/San Rafael`). No se excluye `ruta` de la comparación.
+- Aceptados por el humano, sin aserción: `scripts/geo-equivalencia-dinero.ts` y el `default` de
+  `cobertura-vs-resolve-geo.test.ts`.
+- Salida: `cobertura.composition-root` + `cobertura-n-niveles` → `Test Files 2 passed (2)`, `Tests 10 passed (10)`.
+  `pnpm run typecheck` → exit 0. eslint de los archivos de cobertura → 0 errores, 1 warning previo.
+  Guardias (`vitest run guard`): 338 de 339 archivos verdes; 4 rojos, todos de `dependencias-declaradas-presentes` (baseline).
+
+| R | Test |
+|---|---|
+| R6 (servidor) | `tests/unit/descarga/cobertura-n-niveles.test.ts` (9/9); `cobertura.composition-root.test.ts` (A13) |
+| R16–R18, R40, R41 | `tests/integration/db/geo-125-nombres-catalogo.test.ts` (6/6); guardia `presentacion-lugar-del-catalogo` (5/5) |
+| R19 | `geografia-lecturas-sin-nodo-fk` (18/18), `geografia-sin-cte-recursiva` (5/5), sin cambios |
+| R20 | `tests/unit/repositories/ruta-sin-consulta-por-fila.test.ts` (9/9) |
+| R37 | 33 suites de `tests/integration/api`, sin cambios |

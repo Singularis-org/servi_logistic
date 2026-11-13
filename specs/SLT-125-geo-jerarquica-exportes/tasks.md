@@ -76,7 +76,7 @@
   Tests: `ubicacion-snapshot.test.ts`, `geo-125-cierre-snapshot.test.ts`.
   **Hecho:** R21–R25 en verde; `geo-backfill.test.ts` y `geo-sincronia-orden-zonas.test.ts` sin cambios
   (A1, A2). Si alguno tuviera que cambiar, se para y se pregunta.
-- [ ] **T2.3** Lecturas con ruta del catálogo (design §4.2): `OrdenRepository` (listado, satélite,
+- [x] **T2.3** Lecturas con ruta del catálogo (design §4.2): `OrdenRepository` (listado, satélite,
   etiqueta, mis-asignaciones), `GestionOrdenRepository`, `CierreDiaRepository` (en vivo),
   `OrdenEnvioReader`, `InformeTransitoRepository` y `CoberturaRepository` (P5). Más sus interfaces y DTO
   (`lugarRuta`), y los servicios que los pasan. Tests: `geo-125-nombres-catalogo.test.ts`,

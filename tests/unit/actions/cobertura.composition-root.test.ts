@@ -70,6 +70,12 @@ describe("465 — el composition root PASA un CoberturaRepository real", () => {
           zonas: ["GAM"],
           zonaUnica: { nombre: "GAM", esCentral: true, tieneTarifaGeneral: true },
           zonaEspecial: false,
+          // SLT-125 A13 (autorizado por el humano): la fila lleva su ruta del catálogo, exacta.
+          ruta: [
+            { id: "p1", nombre: "San José" },
+            { id: "c1", nombre: "Escazú" },
+            { id: "d1", nombre: "San Rafael" },
+          ],
         },
       ],
     });

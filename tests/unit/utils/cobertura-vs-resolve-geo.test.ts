@@ -114,6 +114,9 @@ function rechazoEsperado(motivo: MotivoSinCobertura, distrito: string): Record<s
     case "varias_zonas":
       // La carga colapsa 0 y >1 zonas al mismo `null`: un solo mensaje para los dos motivos.
       return { distrito: [`el distrito '${distrito}' no tiene zona asignada`] };
+    default:
+      // SLT-125 (R6): `nivel_<k>_retirado` (k >= 4) no existe en la carga de 3 niveles de este caso.
+      throw new Error(`motivo sin rechazo de la carga: ${motivo}`);
   }
 }
 

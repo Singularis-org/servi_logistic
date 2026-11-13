@@ -14,6 +14,7 @@ import {
   zonasCandidatas,
 } from "@/lib/services/geografia-dominio";
 import { usaModeloNuevo } from "@/lib/repositories/_shared/resolver-tarifas";
+import { nivelesDelCatalogo } from "@/lib/repositories/_shared/ruta-del-lugar";
 
 // Ficha 465 (design §3.2) — las dos lecturas del Excel de cobertura. Solo lectura; la regla
 // (cobertura, motivo, colapso de zonas) vive en `lib/utils/cobertura-distrito.ts`.
@@ -42,24 +43,40 @@ export class CoberturaRepository implements ICoberturaRepository {
   }
 
   async listDistritos(): Promise<DistritoCoberturaRow[]> {
-    // TODOS los distritos del pais, activos e inactivos (R4 de la 465): la disponibilidad se
-    // PROYECTA, no se recorta. El distrito es la profundidad 3 (design §2.4).
+    // TODOS los lugares del nivel mas hondo del pais, activos e inactivos (R4 de la 465): la
+    // disponibilidad se PROYECTA, no se recorta.
+    //
+    // SLT-125 (design §4.2, P5; R6): una fila por nodo de profundidad P, la del ultimo nivel del pais
+    // (`nivelesDelCatalogo`), no la 3 fija. En Costa Rica P = 3: los mismos distritos de hoy. En un pais
+    // de 4 niveles son los del cuarto; su zona y su marca salen de la herencia del catalogo (SLT-44),
+    // igual que hoy para un distrito.
     const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
-    return nodosDeProfundidad(catalogo, 3).map((d): DistritoCoberturaRow => {
-      const [canton, provincia] = ancestros(catalogo, d.id);
+    const niveles = nivelesDelCatalogo(catalogo);
+    const P = niveles.length === 0 ? 3 : niveles[niveles.length - 1].profundidad;
+    return nodosDeProfundidad(catalogo, P).map((hoja): DistritoCoberturaRow => {
+      // Del nivel 1 a la hoja, con el flag PROPIO de cada nivel (el motivo nombra el primero retirado).
+      const ruta = [...ancestros(catalogo, hoja.id).reverse(), hoja].map((n) => ({
+        id: n.id,
+        nombre: n.nombre,
+        activo: n.activo,
+      }));
+      // Los campos de hoy, del nivel k de la ruta (R37). Un pais sin ese nivel lo deja vacio y activo:
+      // no hay nada retirado ahi, y el motivo se calcula sobre la ruta.
+      const nivel = (k: number) => ({ nombre: ruta[k - 1]?.nombre ?? "", activo: ruta[k - 1]?.activo ?? true });
       return {
-        provincia: { nombre: provincia.nombre, activo: provincia.activo },
-        canton: { nombre: canton.nombre, activo: canton.activo },
+        provincia: nivel(1),
+        canton: nivel(2),
         distrito: {
-          nombre: d.nombre,
-          activo: d.activo,
-          // SL-38: la marca de la EMPRESA del actor (R15 de la 465), propia o de un ancestro (R7).
-          zonaEspecial: esZonaEspecial(catalogo, asignaciones, d.id),
+          ...nivel(3),
+          // SL-38: la marca de la EMPRESA del actor (R15 de la 465), propia o de un ancestro (R7). Es
+          // la de la hoja (el lugar de la fila), que en Costa Rica es el distrito.
+          zonaEspecial: esZonaEspecial(catalogo, asignaciones, hoja.id),
         },
-        disponible: estaActivo(catalogo, d.id) === true,
+        ruta,
+        disponible: estaActivo(catalogo, hoja.id) === true,
         // Las zonas del nodo mas cercano con asignacion (R6), SIN colapsar: la regla pura
         // distingue «sin zona» de «varias zonas».
-        zonas: (zonasCandidatas(catalogo, asignaciones, d.id)?.zonas ?? []).map((z) => ({
+        zonas: (zonasCandidatas(catalogo, asignaciones, hoja.id)?.zonas ?? []).map((z) => ({
           id: z.id,
           nombre: z.nombre,
           esCentral: z.esCentral,

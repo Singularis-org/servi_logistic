@@ -9,6 +9,13 @@ export interface DistritoCoberturaRow {
   canton: { nombre: string; activo: boolean };
   /** `zonaEspecial`: la marca de la EMPRESA del actor (SL-38). Dos valores: hay marca o no. */
   distrito: { nombre: string; activo: boolean; zonaEspecial: boolean };
+  /**
+   * SLT-125 (design §4.2, P5) — la ruta del lugar de la fila, del nivel 1 al nivel P del pais, con el
+   * flag PROPIO de cada nivel. Los tres campos de arriba son sus niveles 1, 2 y 3 (vacios y activos si
+   * el pais no llega). El motivo «retirado» nombra el primer nivel inactivo de esta ruta.
+   * Opcional por el patron aditivo (R37): el repositorio SIEMPRE la envia.
+   */
+  ruta?: { id: string; nombre: string; activo: boolean }[];
   /** Disponibilidad efectiva (`disponibleDesdeCadena`), calculada en el repositorio. */
   disponible: boolean;
   /**
@@ -20,7 +27,10 @@ export interface DistritoCoberturaRow {
 }
 
 export interface ICoberturaRepository {
-  /** Todos los distritos del catalogo, ACTIVOS E INACTIVOS (R4). Sin orden garantizado. */
+  /**
+   * Todos los lugares del nivel mas hondo del pais (los distritos en Costa Rica), ACTIVOS E
+   * INACTIVOS (R4; SLT-125 P5). Sin orden garantizado.
+   */
   listDistritos(): Promise<DistritoCoberturaRow[]>;
 
   /**

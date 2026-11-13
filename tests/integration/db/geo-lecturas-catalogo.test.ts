@@ -449,9 +449,12 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
       // Las zonas de una fila no tienen orden garantizado (ni hoy ni ahora): se ordenan por id.
       const normal = (filas: typeof r[number]["nuevo"]) =>
         comoConjunto(filas.map((f) => ({ ...f, zonas: [...f.zonas].sort((a, b) => a.id.localeCompare(b.id)) })));
+      // SLT-125 (A12): la fila nueva lleva ademas `ruta` (P5), que la lectura de hoy no tiene. Se
+      // compara todo lo demas; la ruta la cubren `cobertura-n-niveles` y `geo-125-nombres-catalogo`.
+      const sinRuta = (filas: typeof r[number]["nuevo"]) => filas.map((f) => ({ ...f, ruta: undefined }));
       for (const { empresa, nuevo, deHoy } of r) {
         expect(nuevo).toHaveLength(deHoy.length);
-        expect(normal(nuevo)).toEqual(normal(deHoy));
+        expect(normal(sinRuta(nuevo))).toEqual(normal(deHoy));
 
         // Cada empresa ve solo su pais, y en el hay un solo escenario de `geo-44.ts`.
         const fila = (nombre: string) => nuevo.find((f) => f.distrito.nombre.startsWith(`${nombre} SLT44`));
