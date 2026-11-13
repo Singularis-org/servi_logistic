@@ -11,7 +11,8 @@ import type {
   CierreSinGestionRow,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type {
-  CierreGestionDescargaDTO,
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
   SenalesColaCierre,
 } from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
@@ -635,7 +636,19 @@ export interface ICierresAdminRepository {
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
-  ): Promise<CierreGestionDescargaDTO[]>;
+  ): Promise<CierreGestionDescargaRow[]>;
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del MODELO NUEVO del mismo
+   * conjunto que `findGestionesPorAlcanceCompleto`: el mismo alcance y los mismos recortes, en el
+   * WHERE (nunca en memoria), y solo cierres con alguna gestion (el conjunto de la hoja). Orden: el
+   * de los cierres del listado y, dentro de cada uno, el del detalle. Sin ids ni importes.
+   */
+  findRechazosTiendaModeloNuevoCompleto(
+    alcance: Alcance,
+    filtros: FiltrosDescargaGestionesRepo,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `fechaRechazo`. */
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]>;
   /**
    * R10-R15: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si
    * el cierre sigue `solicitado` y casa el alcance (updateMany con guardia). NO toca

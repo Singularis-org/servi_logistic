@@ -35,7 +35,13 @@ import {
 // asi que ninguno de ellos declara nada propio.
 import {
   cargosFulfillmentVigentes,
+  CIERRE_NUEVO_CON_GESTIONES,
+  cierresDelModeloNuevo,
   componerGestionesDescarga,
+  ORDEN_DETALLE_DESCARGA,
+  ORDEN_RECHAZOS_DESCARGA,
+  RECHAZO_TIENDA_DESCARGA_SELECT,
+  toRechazoTiendaDescargaDTO,
   DETALLE_ADMIN_SELECT,
   DETALLE_DESCARGA_SELECT,
   GESTION_ADMIN_SELECT,
@@ -48,7 +54,10 @@ import {
 // que consumen la analitica y el tope de la 276. Se IMPORTA, no se reescribe: es el numero con
 // el que el sistema cobra, y dos agregaciones «iguales» divergen a la primera correccion.
 import { contarIntentosVigentesEnLoteCon } from "@/lib/repositories/OrdenHistorialRepository";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
@@ -165,6 +174,9 @@ type CierresBodegaAdminPrismaClient = Pick<
   // SLT-110 (R210): SOLO LECTURA del cargo vigente de fulfillment de las ordenes del detalle. La app
   // no puede escribir esa tabla (REVOKE, SLT-94).
   | "ordenFulfillmentMovimiento"
+  // SLT-113 (R373): SOLO LECTURA de los rechazos de la tienda para la hoja de la descarga. La
+  // escritura vive en la tx de `CierreDiaRepository.crearCierre`.
+  | "cierreRechazoTienda"
 >;
 
 // Proyeccion de la cabecera de un cierre_dia incluido en el detalle (mensajero +
@@ -578,7 +590,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
-  ): Promise<CierreGestionDescargaDTO[]> {
+  ): Promise<CierreGestionDescargaRow[]> {
     const gestiones = await this.prisma.gestionOrden.findMany({
       where: {
         cierre: {
@@ -601,13 +613,43 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     const [detalle, intentosPorOrden] = await Promise.all([
       this.prisma.cierreDetail.findMany({
         where: { cierreId: { in: cierreIds } },
+        orderBy: ORDEN_DETALLE_DESCARGA, // SLT-113: el mismo orden determinista que el camino A
         select: DETALLE_DESCARGA_SELECT,
       }),
       // FICHA 394 — el MISMO derivador en lote que el camino A (R26: las dos hojas emiten la
       // misma fila). Una consulta para todo el conjunto, no una por gestion.
       contarIntentosVigentesEnLoteCon(this.prisma.gestionOrden, ordenIds),
     ]);
-    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona);
+    // SLT-113 (R375): los cargos de fulfillment, solo de los cierres del modelo nuevo; sin ninguno,
+    // ninguna consulta (mismo criterio y mismo compositor que el camino de `/cierres-admin`).
+    const idsNuevos = [...cierresDelModeloNuevo(detalle)];
+    const cargoPorOrden =
+      idsNuevos.length > 0
+        ? await cargosFulfillmentVigentes(this.prisma, idsNuevos)
+        : new Map<string, Date | null>();
+    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona, cargoPorOrden);
+  }
+
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del modelo nuevo del MISMO
+   * conjunto que `findGestionesDeCierresBodegaCompleto`: consolidados en bodega, mismos recortes y el
+   * criterio de la hoja (`CIERRE_NUEVO_CON_GESTIONES`), todo en el WHERE. Una consulta.
+   */
+  async findRechazosTiendaDeCierresBodegaModeloNuevoCompleto(
+    filtros: FiltrosDescargaGestionesRepo,
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]> {
+    const filas = await this.prisma.cierreRechazoTienda.findMany({
+      where: {
+        cierre: {
+          cierreBodegaId: { not: null }, // R24: el mismo criterio que la hoja de gestiones
+          AND: [...filtrosWhere(filtros), ...CIERRE_NUEVO_CON_GESTIONES],
+        },
+      },
+      orderBy: ORDEN_RECHAZOS_DESCARGA,
+      select: RECHAZO_TIENDA_DESCARGA_SELECT,
+    });
+    return filas.map((r) => toRechazoTiendaDescargaDTO(r, zona));
   }
 
   /**

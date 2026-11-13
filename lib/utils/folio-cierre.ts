@@ -4,6 +4,15 @@
 /** Largo del folio (R156). Un texto más largo no puede estar contenido en él. */
 const LARGO_FOLIO = 8;
 
+/**
+ * SLT-113 (R375) — el folio de un cierre: los últimos 8 caracteres del id, en mayúsculas (R156).
+ * Una sola definición para la pantalla (`folioDe`), el comprobante y el archivo descargado: si cada
+ * uno lo recortara por su lado, el mismo cierre podría salir con dos folios distintos.
+ */
+export function folioCierre(id: string): string {
+  return id.slice(-LARGO_FOLIO).toUpperCase();
+}
+
 /** Solo dígitos hexadecimales en mayúsculas, de principio a fin. */
 const SOLO_HEX = /^[0-9A-F]+$/;
 

@@ -302,10 +302,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       this.reglasPais,
       "CierresBodegaAdminService.listarGestionesCierresBodegaCompleto",
     );
-    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(
-      filtrosConLimites(filtros, zona),
-      zona,
-    );
+    // SLT-113: los MISMOS recortes para las gestiones y para los rechazos (un solo objeto).
+    const filtrosRepo = filtrosConLimites(filtros, zona);
+    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(filtrosRepo, zona);
 
     const limite = descargaConfig.MAX_FILAS;
     // R21: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -313,7 +312,16 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       return { status: "limite_excedido", total: conjunto.length, limite };
     }
 
-    return { status: "ok", items: conjunto, total: conjunto.length };
+    // SLT-113 (R372): la hoja de rechazos solo si algun cierre del conjunto es del modelo nuevo; sin
+    // ninguno, ni consulta ni clave. La bodega es solo de acceso total: el fulfillment va entero.
+    if (!conjunto.some((fila) => fila.cierreModelo === "nuevo")) {
+      return { status: "ok", items: conjunto, total: conjunto.length };
+    }
+    const rechazosDeTienda = await this.repo.findRechazosTiendaDeCierresBodegaModeloNuevoCompleto(
+      filtrosRepo,
+      zona,
+    );
+    return { status: "ok", items: conjunto, total: conjunto.length, rechazosDeTienda };
   }
 
   async verCierreBodegaDetalle(

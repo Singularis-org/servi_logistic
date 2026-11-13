@@ -50,6 +50,7 @@ import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/Desg
 import { pagosAjustados } from "../cola/cola-cierres-labels";
 import type { ItemGestion } from "../fila/fila-gestion-vista";
 import * as L from "./detalle-cierre-labels";
+import { folioCierre } from "@/lib/utils/folio-cierre";
 
 // ═══ Props del componente (design.md > 1. Detalle del cierre) ═══════════════════════════════════
 
@@ -153,9 +154,12 @@ export interface DetalleBodegaVista {
 
 // ═══ Cabecera (R2) ════════════════════════════════════════════════════════════════════════════
 
-/** Folio corto y estable: los últimos 8 del id, como el comprobante de hoy (`cierre-factura.tsx`). */
+/**
+ * Folio corto y estable: los últimos 8 del id, como el comprobante de hoy (`cierre-factura.tsx`).
+ * SLT-113 (R375): delega en `folioCierre`, la misma definición que usa el archivo descargado.
+ */
 export function folioDe(id: string): string {
-  return id.slice(-8).toUpperCase();
+  return folioCierre(id);
 }
 
 /** «2026-11-07 18:42» en el calendario y la hora de Costa Rica; «—» si el instante no vale. */

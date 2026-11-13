@@ -6,14 +6,14 @@
 
 ## T0 — Comprobaciones previas (backend_dev)
 
-- [ ] **T0.1** En `origin/dev` actualizado (`git fetch` + `git grep`): nadie emite ya `cierreModelo`,
+- [x] **T0.1** En `origin/dev` actualizado (`git fetch` + `git grep`): nadie emite ya `cierreModelo`,
   `folioCierre`, `rechazosDeTienda` en la hoja fundida, ni `libro` / `tituloHoja` en el control de
   descarga. **Hecho:** resultado en `progress/impl_SLT-113.md`; si algo ya está, PARA y avisa.
-- [ ] **T0.2** Calcular a mano los literales de `design.md > Verificación` leyendo (no ejecutando)
+- [x] **T0.2** Calcular a mano los literales de `design.md > Verificación` leyendo (no ejecutando)
   `derivarIngresoOrden`, `money`, `porcentajeDe`, `origenDe` y el catálogo de conceptos (¿la novedad
   tiene concepto de pago al mensajero? de eso depende `tarifaFaltante` de B). **Hecho:** literales
   anotados; si alguno no casa con el design, PARA y reporta (no se ajusta el literal a la salida).
-- [ ] **T0.3** Mirar cómo se tipan los dobles de `ICierresAdminRepository` e
+- [x] **T0.3** Mirar cómo se tipan los dobles de `ICierresAdminRepository` e
   `ICierresBodegaAdminRepository` en `tests/unit/services/CierresAdminService.gestiones-completo.test.ts`
   y `tests/unit/services/CierresBodegaAdminService.gestiones-completo.test.ts`, y qué siembra
   `e2e/_escenarios/cierres.ts` (¿un cierre viejo y uno nuevo del mismo mensajero o rango? ¿algún
@@ -42,15 +42,15 @@
 
 ## T2 — Servidor (backend_dev) · depende de T0
 
-- [ ] **T2.1** `lib/utils/folio-cierre.ts > folioCierre(id)`; `folioDe` de
+- [x] **T2.1** `lib/utils/folio-cierre.ts > folioCierre(id)`; `folioDe` de
   `components/private/cierres/detalle/detalle-cierre-vista.ts` lo devuelve. Nuevo
   `tests/unit/utils/folio-cierre.test.ts`: `"…-0000abcd1234"` → «ABCD1234» (literal) y `folioDe`
   da lo mismo. **Hecho:** verde; los tests de la pantalla que leen el folio, verdes sin tocarlos.
-- [ ] **T2.2** Tipos: campos opcionales de `CierreGestionDescargaDTO`, `RechazoTiendaDescargaDTO` y
+- [x] **T2.2** Tipos: campos opcionales de `CierreGestionDescargaDTO`, `RechazoTiendaDescargaDTO` y
   `ListarGestionesDescargaServiceResult` en `lib/interfaces/services/ICierresAdminService.ts`; tipos
   de borde en `lib/types/cierres-admin.ts` y `lib/types/cierre-bodega.ts`. **Hecho:** typecheck
   verde.
-- [ ] **T2.3** `lib/repositories/CierresAdminRepository.ts`: `GESTION_DESCARGA_SELECT` con ajustes y
+- [x] **T2.3** `lib/repositories/CierresAdminRepository.ts`: `GESTION_DESCARGA_SELECT` con ajustes y
   pagos congelados (constante común con `GESTION_ADMIN_SELECT`); helpers con `Pick`;
   `componerGestionesDescarga` con `cargoPorOrden`, modelo por cierre, folio, día del cargo; los dos
   `find…Completo` llaman a `cargosFulfillmentVigentes` solo con ids de cierres nuevos
@@ -59,11 +59,11 @@
   `tests/unit/services/CierresAdminService.gestiones-completo.test.ts`,
   `tests/unit/services/CierresBodegaAdminService.gestiones-completo.test.ts`) verdes con sus mismas
   aserciones.
-- [ ] **T2.4** Métodos de rechazos en los dos repositorios y sus interfaces
+- [x] **T2.4** Métodos de rechazos en los dos repositorios y sus interfaces
   (`lib/interfaces/repositories/ICierresAdminRepository.ts`,
   `lib/interfaces/repositories/ICierresBodegaAdminRepository.ts`), con `toRechazoTiendaDescargaDTO`
   común. **Hecho:** typecheck verde; los dobles de T0.3 reciben el método nuevo si su tipo lo exige.
-- [ ] **T2.5** Servicios (`lib/services/CierresAdminService.ts`, `lib/services/CierresBodegaAdminService.ts`)
+- [x] **T2.5** Servicios (`lib/services/CierresAdminService.ts`, `lib/services/CierresBodegaAdminService.ts`)
   como `design.md > Servidor 4`. Nuevo `tests/unit/services/cierres-gestiones-modelo-nuevo-descarga-service.test.ts`
   con dobles: (a) todo viejo → el método de rechazos no se llama y `ok` no lleva `rechazosDeTienda`;
   (b) un nuevo → se llama una vez con el alcance y los filtros de la gestión y la respuesta lo lleva;
@@ -74,12 +74,12 @@
 
 ## T3 — Integración contra Postgres real (backend_dev) · depende de T2
 
-- [ ] **T3.1** Nuevo `tests/integration/db/cierres-gestiones-modelo-nuevo-descarga-sql-real.test.ts`
+- [x] **T3.1** Nuevo `tests/integration/db/cierres-gestiones-modelo-nuevo-descarga-sql-real.test.ts`
   con el corpus y las aserciones de `design.md > Verificación` (A, B, C, rechazos con central, con S
   y con rango, bodega, paridad con `findCierreByIdEnAlcance`, cero consultas de cargos con solo
   viejos, ninguna escritura). **Hecho:** verde contra la base desechable y visible como `passed` (no
   `skipped`).
-- [ ] **T3.2** Las seis mutaciones de `design.md > Verificación`, una a una. **Hecho:** las seis ponen
+- [x] **T3.2** Las seis mutaciones de `design.md > Verificación`, una a una. **Hecho:** las seis ponen
   rojo T3.1 (se anota qué aserción cae en cada una en `progress/impl_SLT-113.md`) y el código vuelve
   al original con el árbol limpio.
 
