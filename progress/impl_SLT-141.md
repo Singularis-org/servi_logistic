@@ -479,3 +479,21 @@ verde dentro de las dos corridas de `dinero`. Ningún R384-R389 queda sin test.
 ### Veredicto
 
 T6.1 y T6.3 hechas: gate INIT_EXIT=0, `dinero` 109/109 dos veces seguidas y mapa R → test completo y verde.
+
+## CI de #153 — dos rojos fuera del baseline (2026-11-13)
+
+**Rojo 1 — `tests/components/paginacion/paginacion-transversal.test.tsx` (R52, «ninguno de los TRECE…»).**
+- Causa (confirmada): la guardia exigía el texto `filasDesdeResultado(` en `CierresBodegaSolicitadosLista.tsx`. SLT-141 pasó su `obtenerFilas` a `obtenerResumenCierresBodega(() => descargarDatos("listarCierresBodegaSolicitadosCompleto", …), …)`; el envoltorio (`cierres-bodega-modelo-nuevo-descarga.ts`) termina en `filasDesdeResultado(respuesta, filaAnterior)`. Conducta R52 intacta; la guardia de texto no la veía. Resueltos y Conciliados no rompían: siguen llamando también a `filasDesdeResultado(` en su fuente.
+- Arreglo: `cumpleAdaptador` acepta `completo` por el envoltorio SOLO si (1) la fuente del envoltorio, sin comentarios y con CRLF normalizado, llama a `filasDesdeResultado(` y (2) la pantalla llama `obtenerResumenCierresBodega(() => descargarDatos("<x>Completo"`. Lo demás de la guardia (negativo del adaptador contrario, `filasLocales(`, censo de 13) no cambia.
+- Mutación (a) envoltorio `return filasDesdeResultado(respuesta, filaAnterior)` → `return { status: "ok", filas: [] } as never`: `AssertionError: Cierres de bodega solicitados: su descarga no va al servidor por el conjunto (R52)` · `Tests 1 failed | 8 skipped (9)` · EXIT=1.
+- Mutación (b) pantalla `listarCierresBodegaSolicitadosCompleto` → `listarCierresBodegaSolicitadosPaginado`: mismo AssertionError · `Tests 1 failed | 8 skipped (9)` · EXIT=1.
+- Ambas revertidas con `git checkout`; `git diff --stat app/ lib/` vacío.
+
+**Rojo 2 — `tests/integration/db/migracion-slt139-ida-y-vuelta.test.ts` (SLT-139 R337).**
+- Causa (confirmada, no es de SLT-141): exigía `M_ENUM`/`M_CHECKS` en `previa+1`/`previa+2` de `ULTIMA_DE_DEV`. Desde dev entró `20261114120000_plan_cambio_por_empresa` (SLT-128), mismo timestamp que `ULTIMA_DE_DEV` y ordena entre medias.
+- Arreglo: función pura `fallosDeOrden` en el test: las dos de SLT-139 van DESPUÉS de `ULTIMA_DE_DEV` y `M_CHECKS` justo detrás de `M_ENUM`; down.sql de ambas sigue exigido. Caso nuevo con listas sintéticas (con la de SLT-128 entre medias = ok; `M_ENUM` antes de `ULTIMA_DE_DEV` = fallo; algo entre `M_ENUM` y `M_CHECKS` = fallo; orden invertido = fallo; falta una = fallo).
+- Mutación (c) `if (enumIdx <= previa)` → `if (false && enumIdx <= previa)`: `× la comprobacion de orden muerde…` · `AssertionError: expected [ Array(1) ] to include '20261115120000_pago_satelite_enum no …'` · `Tests 1 failed | 7 passed (8)` · EXIT=1. Revertida (copia de respaldo).
+
+**Verde final:** los dos archivos `Test Files 2 passed (2)` · `Tests 17 passed (17)` · EXIT=0 (0 skipped, con base). `eslint` de ambos EXIT=0. `tsc --noEmit` EXIT=0.
+
+Veredicto: los dos rojos de CI de #153 arreglados sin aflojar la guardia; mutaciones rojas y reversión verde.
