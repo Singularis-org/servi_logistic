@@ -395,7 +395,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D67 — `findCierreBodegaConDetalle` lee en N+1
 - **Origen:** épica de cierres (SLT-139/SLT-140, anotada al cerrar la sesión del 2026-11-13). El detalle de un cierre de bodega se arma con una lectura por fila. SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» no la usa para el Excel (lee en lote, tres consultas fijas).
 - **Qué falta:** pasar el detalle a lectura en lote, medido con el contador de consultas de los tests de integración.
-- **Dueño:** ArqDev.
+- **Cerrada en SLT-148 «Detalle del cierre de bodega sin N+1» (2026-11-13):** `findCierreBodegaConDetalle` lee en lote: con 1 y con 3 cierres del día emite 24 sentencias (antes 24 y 56); paridad con literales en `tests/integration/db/cierre-bodega-detalle-lote-sql-real.test.ts` (R420-R429).
+- **Dueño:** cerrada.
 
 ### D68 — `CierrePasadoDTO.pagoIndependienteEfectivo` es opcional
 - **Origen:** SLT-139 «Pago al mensajero independiente del efectivo: satélite» (review m3). El campo se dejó opcional; un consumidor que no lo lea no da error de tipos.

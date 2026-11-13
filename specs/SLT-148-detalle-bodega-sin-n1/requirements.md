@@ -59,7 +59,8 @@ integración (`crearPrismaDeTestConEspia`).
 - **R424** — SI una misma orden tiene gestiones en dos cierres del día del mismo cierre de bodega,
   ENTONCES el sistema DEBE componer cada gestión con la fila congelada de su propio cierre del día.
 - **R425** — SI el cierre de bodega no existe o está fuera del alcance de quien lee (otra zona para
-  la satélite), ENTONCES el sistema DEBE devolver «no encontrado» tras una sola sentencia, sin leer
+  la satélite), ENTONCES el sistema DEBE devolver «no encontrado» tras leer solo la cabecera (las 4 sentencias
+  que Prisma emite para ella, medidas en T0), con el alcance en su `WHERE`, sin leer
   cierres del día, gestiones, filas congeladas ni cargos de fulfillment.
 - **R426** — CUANDO se leen las gestiones y las filas congeladas, el sistema DEBE acotar en la
   propia sentencia a los cierres del día del cierre de bodega pedido: ninguna gestión ni fila
