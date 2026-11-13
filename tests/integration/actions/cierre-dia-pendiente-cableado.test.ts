@@ -143,8 +143,8 @@ describe("SLT-139 R335/R344 — las otras dos acciones pasan la lectura de «pag
   });
 });
 
-describe("SLT-112 · `buildService()` de /cierre-dia inyecta la lectura de los pagos del mes", () => {
-  it("ejecutada SIN servicio inyectado, el decimo argumento trae el repositorio real de pagos (R352, R357)", async () => {
+describe("SLT-112 + SLT-139 · `buildService()` de /cierre-dia inyecta las lecturas de lo pagado en el mes", () => {
+  it("ejecutada SIN servicio inyectado, el decimo argumento trae los repositorios reales de pagos y de la satelite (R352, R353, R357)", async () => {
     const { resumenGananciaMensajero } = await import("@/lib/actions/cierre-dia");
     argsCapturados.length = 0;
 
@@ -162,7 +162,11 @@ describe("SLT-112 · `buildService()` de /cierre-dia inyecta la lectura de los p
     expect(
       typeof (ganancia?.pagos as LiquidacionPagoRepository).sumarVigentesDelMensajeroEnRango,
     ).toBe("function");
-    // R353: hasta SLT-139 no hay lectura de lo pagado por la satelite que inyectar.
-    expect(ganancia?.pagadoPorSatelite).toBeUndefined();
+    // SLT-139 (R345 -> R353 de SLT-112): la lectura de lo pagado por la satelite en el mes, el
+    // repositorio REAL del libro. Opcional en el tipo: este `expect` es lo que cae si no se inyecta.
+    expect(ganancia?.pagadoPorSatelite).toBeInstanceOf(PagoMensajeroMovimientoRepository);
+    expect(
+      typeof (ganancia?.pagadoPorSatelite as PagoMensajeroMovimientoRepository).sumarPagadoPorSateliteEnRango,
+    ).toBe("function");
   });
 });

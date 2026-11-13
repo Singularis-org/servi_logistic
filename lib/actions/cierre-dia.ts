@@ -79,8 +79,12 @@ function buildService(): ICierreDiaService {
       premios: new PagoMensajeroMovimientoRepository(prisma),
     },
     // SLT-112 (R352, R357): sin esta lectura `resumenGanancia` da `sin_dato` y la cola no pinta
-    // las tarjetas. `pagadoPorSatelite` (R353) lo inyecta SLT-139 cuando exista el movimiento.
-    { pagos: new LiquidacionPagoRepository(prisma) },
+    // las tarjetas. SLT-139 (R345 -> R353): `pagadoPorSatelite` suma a «Ganancia pagada este mes»
+    // los `pago_satelite` del mes; sin ella la tarjeta omitiria lo que pago la satelite.
+    {
+      pagos: new LiquidacionPagoRepository(prisma),
+      pagadoPorSatelite: new PagoMensajeroMovimientoRepository(prisma),
+    },
   );
 }
 

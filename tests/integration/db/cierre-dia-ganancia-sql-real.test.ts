@@ -232,7 +232,12 @@ function servicio(tx: TxDeTest, ahora: Date = AHORA): CierreDiaService {
       liquidaciones: new LiquidacionPagoRepository(cliente),
       premios: new PagoMensajeroMovimientoRepository(cliente),
     },
-    { pagos: new LiquidacionPagoRepository(cliente), ahora: () => ahora },
+    {
+      pagos: new LiquidacionPagoRepository(cliente),
+      // SLT-139 (R345 -> R353): como el composition root de /cierre-dia.
+      pagadoPorSatelite: new PagoMensajeroMovimientoRepository(cliente),
+      ahora: () => ahora,
+    },
   );
 }
 
@@ -404,8 +409,9 @@ describeSiHayBase("SLT-112 — cifras de la ganancia del mensajero, contra Postg
 
   it("R356: mismas sentencias con seis aprobados (M) que con uno (M3)", () => {
     const { sentenciasM, sentenciasM3 } = m();
-    // aprobados + pagos vigentes por cierre + premios vivos por cierre + pagos del mes.
-    expect(sentenciasM).toHaveLength(4);
+    // aprobados + pagos vigentes por cierre + premios vivos por cierre + pagos del mes; SLT-139 suma
+    // lo pagado por la satelite por cierre (M y M3 tienen cierres nuevos) y lo de la satelite del mes.
+    expect(sentenciasM).toHaveLength(6);
     expect(sentenciasM3).toEqual(sentenciasM);
   });
 

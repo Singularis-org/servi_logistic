@@ -246,6 +246,21 @@ export interface IPagadoPorSateliteLectura {
   sumarPagadoSatelitePorCierre(cierreIds: string[]): Promise<Record<string, string>>;
 }
 
+/**
+ * SLT-139 (R345) para SLT-112 (R353) — Σ y numero de los `pago_satelite` de UN mensajero con
+ * `fecha_movimiento` (= la PRIMERA marca de conciliacion de su consolidacion) en `[desde, hasta)`.
+ * `monto` STRING de escala 2 (`"0.00"` sin filas). La empresa la acota el cliente con RLS.
+ * Es la forma de `LecturaPagadoPorSatelite` (ICierreDiaService), que no se importa aqui para no
+ * cruzar capas.
+ */
+export interface IPagadoPorSateliteEnRangoLectura {
+  sumarPagadoPorSateliteEnRango(
+    mensajeroId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<{ monto: string; conteo: number }>;
+}
+
 /** SLT-68 — un incentivo leido del libro. `monto` STRING (money-safe). */
 export interface IncentivoRow {
   id: string;

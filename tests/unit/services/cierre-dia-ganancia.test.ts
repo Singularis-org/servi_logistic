@@ -51,6 +51,10 @@ function montar(o: {
   conPendientes?: boolean;
   conGanancia?: boolean;
   ahora?: Date;
+  /** SLT-139 (R338): lo pagado por la satelite por cierre; ausente = "0.00" en todos. */
+  pagadoSatelitePorCierre?: Record<string, string>;
+  /** SLT-139 (R334): el doble del libro SIN `sumarPagadoSatelitePorCierre`. */
+  sinLecturaSatelitePorCierre?: boolean;
 }) {
   const findAprobadosParaPendiente = vi.fn(async (_m: string) => o.aprobados ?? APROBADOS);
   const repo = { findAprobadosParaPendiente } as unknown as ICierreDiaRepository;
@@ -61,9 +65,14 @@ function montar(o: {
   const sumarPremiosVivosPorCierre = vi.fn(async (ids: string[]) =>
     Object.fromEntries(ids.map((id) => [id, "0.00"])),
   );
+  const sumarPagadoSatelitePorCierre = vi.fn(async (ids: string[]) =>
+    Object.fromEntries(ids.map((id) => [id, o.pagadoSatelitePorCierre?.[id] ?? "0.00"])),
+  );
   const pendientes: LecturasPendienteCierre = {
     liquidaciones: { sumarVigentesPorCierre },
-    premios: { sumarPremiosVivosPorCierre },
+    premios: o.sinLecturaSatelitePorCierre
+      ? { sumarPremiosVivosPorCierre }
+      : { sumarPremiosVivosPorCierre, sumarPagadoSatelitePorCierre },
   };
 
   const sumarVigentesDelMensajeroEnRango = vi.fn(
@@ -98,6 +107,7 @@ function montar(o: {
     sumarPremiosVivosPorCierre,
     sumarVigentesDelMensajeroEnRango,
     sumarPagadoPorSateliteEnRango,
+    sumarPagadoSatelitePorCierre,
   ];
   return {
     svc,
@@ -107,6 +117,7 @@ function montar(o: {
     sumarPremiosVivosPorCierre,
     sumarVigentesDelMensajeroEnRango,
     sumarPagadoPorSateliteEnRango,
+    sumarPagadoSatelitePorCierre,
   };
 }
 
@@ -164,6 +175,7 @@ describe("SLT-112 — resumenGanancia con dobles", () => {
       expect(m.sumarVigentesPorCierre).toHaveBeenCalledTimes(1);
       expect(m.sumarPremiosVivosPorCierre).toHaveBeenCalledTimes(1);
       expect(m.sumarVigentesDelMensajeroEnRango).toHaveBeenCalledTimes(1);
+      expect(m.sumarPagadoSatelitePorCierre).toHaveBeenCalledTimes(1); // SLT-139: una, con los nuevos
     }
   });
 
@@ -244,5 +256,27 @@ describe("SLT-112 — resumenGanancia con dobles", () => {
         pagadaEsteMes: { monto: "0.00", conteo: 0 },
       },
     });
+  });
+
+  it("SLT-139 (R338): lo pagado por la satelite resta en los cierres NUEVOS; la lectura recibe solo los nuevos", async () => {
+    // A nuevo 2 500 - 1 000 de la satelite = 1 500; B viejo 45 000,55; C nuevo 0 (y la satelite no
+    // puede llevarlo a negativo: 0 - 0). Σ 46 500,55 con dos cierres con algo pendiente.
+    const m = montar({ pagadoSatelitePorCierre: { A: "1000.00", B: "777.00" } });
+    const r = await m.svc.resumenGanancia(MENSAJERO);
+    if (r.status !== "ok") throw new Error(`se esperaba ok y llego ${r.status}`);
+    expect(r.resumen.pendiente).toEqual({ monto: "46500.55", conteo: 2 });
+    expect(m.sumarPagadoSatelitePorCierre).toHaveBeenCalledWith(["A", "C"]);
+  });
+
+  it("SLT-139 (R334, R357): un cierre nuevo sin la lectura por cierre deja las cifras en `sin_dato`", async () => {
+    const m = montar({ sinLecturaSatelitePorCierre: true });
+    expect(await m.svc.resumenGanancia(MENSAJERO)).toEqual({ status: "sin_dato" });
+  });
+
+  it("SLT-139: sin cierres nuevos, la falta de la lectura por cierre no cambia nada (ni se la pide)", async () => {
+    const m = montar({ sinLecturaSatelitePorCierre: true, aprobados: [APROBADOS[1]!] });
+    const r = await m.svc.resumenGanancia(MENSAJERO);
+    if (r.status !== "ok") throw new Error(`se esperaba ok y llego ${r.status}`);
+    expect(r.resumen.pendiente).toEqual({ monto: "45000.55", conteo: 1 });
   });
 });

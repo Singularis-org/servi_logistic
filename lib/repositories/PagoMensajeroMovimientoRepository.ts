@@ -6,6 +6,7 @@ import type {
   CuentaPorPagarFiltros,
   CuentasPorPagarFiltro,
   IPagadoPorSateliteLectura,
+  IPagadoPorSateliteEnRangoLectura,
   IPagoMensajeroMovimientoRepository,
   ListarPorMensajeroFiltros,
   ListarPorMensajeroPage,
@@ -78,7 +79,7 @@ function cierreDeLaFila(
  * mensajero (R14). Money-safe: montos entran/salen como STRING.
  */
 export class PagoMensajeroMovimientoRepository
-  implements IPagoMensajeroMovimientoRepository, IPagadoPorSateliteLectura
+  implements IPagoMensajeroMovimientoRepository, IPagadoPorSateliteLectura, IPagadoPorSateliteEnRangoLectura
 {
   constructor(private readonly prisma: PagoMensajeroPrismaClient) {}
 
@@ -425,6 +426,32 @@ export class PagoMensajeroMovimientoRepository
       total[g.origenId] = new Prisma.Decimal(g._sum.monto ?? 0).toFixed(2);
     }
     return total;
+  }
+
+  /**
+   * SLT-139 (R345) para SLT-112 (R353) — lo «pagado por la satelite» a un mensajero en un rango de
+   * instantes. La fecha es `fecha_movimiento`, que el feed fija en la PRIMERA marca de conciliacion
+   * y nadie reescribe (la fila es inmutable; «Corregir recibido» no re-asienta, design §9). Una
+   * consulta; `gte`/`lt` para que un movimiento de las 00:00 del dia 1 cuente en un solo mes.
+   */
+  async sumarPagadoPorSateliteEnRango(
+    mensajeroId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<{ monto: string; conteo: number }> {
+    const agg = await this.prisma.pagoMensajeroMovimiento.aggregate({
+      where: {
+        mensajeroId,
+        categoria: "pago_satelite",
+        fechaMovimiento: { gte: desde, lt: hasta },
+      },
+      _sum: { monto: true },
+      _count: { _all: true },
+    });
+    return {
+      monto: new Prisma.Decimal(agg._sum.monto ?? 0).toFixed(2),
+      conteo: agg._count._all,
+    };
   }
 
   /**
