@@ -15,6 +15,8 @@ import {
   ETIQUETA_PARA_MANANA,
 } from "@/lib/utils/dia-reparto-textos";
 
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { dosLugaresDeLaOrden } from "@/app/(app)/_components/lugar-de-la-orden";
 import { AsignacionDetalle } from "../AsignacionDetalle";
 import { UbicacionTrigger } from "../UbicacionTrigger";
 import { formatMonto, formatPeso } from "./pos-format";
@@ -67,6 +69,9 @@ export function PosOrderCardMosaico({
     onGestionar,
     bloqueado,
   });
+  // SLT-125 (R11, R15): los dos lugares más hondos de la ruta de la orden («arriba · abajo», como
+  // hoy cantón · distrito).
+  const { arriba, abajo } = dosLugaresDeLaOrden(orden, useNivelesGeograficos());
 
   return (
     <article
@@ -174,7 +179,7 @@ export function PosOrderCardMosaico({
       {verNavegacion ? (
         <UbicacionTrigger
           orden={orden}
-          ariaLabel={`Ver en el mapa la ruta hasta ${orden.direccion ?? orden.cantonNombre}`}
+          ariaLabel={`Ver en el mapa la ruta hasta ${orden.direccion ?? arriba ?? ""}`}
           className="flex w-full items-center gap-2 rounded-lg bg-navy px-2 py-1.5 text-left text-white transition-colors hover:bg-navy-deep"
         >
           <MapPin className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
@@ -182,9 +187,9 @@ export function PosOrderCardMosaico({
               corta con elipsis en vez de ensanchar la card del mosaico. */}
           <div className="min-w-0 flex-1">
             <span className="block truncate text-xs font-semibold">
-              {orden.cantonNombre}
-              {orden.distritoNombre ? (
-                <span className="text-white/60"> · {orden.distritoNombre}</span>
+              {arriba}
+              {abajo ? (
+                <span className="text-white/60"> · {abajo}</span>
               ) : null}
             </span>
             {orden.direccion ? (

@@ -138,6 +138,13 @@ function filaDeGrupo(grupo: GrupoNovedad): FilaDePrueba {
 // `Prisma.Decimal` de verdad. Es el insumo que el repo tiene que traducir a `NovedadOrdenRow`
 // (nombres resueltos + `.toNumber()`), asi que el doble NO puede darlos ya convertidos: eso
 // haria pasar el test aunque el repo dejase filtrar un Decimal al service.
+/** SLT-125: el lugar de `prismaRow` en el catalogo del doble (San Jose · Central · Carmen). */
+const CADENA_DEL_LUGAR = [
+  { id: "p-sj", nombre: "San Jose" },
+  { id: "c-central", padreId: "p-sj", nombre: "Central" },
+  { id: "d-carmen", padreId: "c-central", nombre: "Carmen" },
+];
+
 function prismaRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "o1",
@@ -157,9 +164,10 @@ function prismaRow(overrides: Record<string, unknown> = {}) {
     estatus: { value: "novedad" },
     tienda: { nombre: "Tienda Uno" },
     zona: { nombre: "GAM" },
-    provincia: { nombre: "San Jose" },
-    canton: { nombre: "Central" },
-    distrito: { nombre: "Carmen" },
+    // SLT-125 (design §4.2): las FK del lugar; los nombres salen de la ruta del catalogo del doble
+    // (`CADENA_DEL_LUGAR`). Cambio de entrada: los nombres son los de antes.
+    cantonId: "c-central",
+    distritoId: "d-carmen",
     // FICHA 296: la relacion del mensajero tal como la devuelve Prisma —objeto anidado, no un
     // nombre ya plano—. Es NULLABLE (`mensajero_asignado_id` lo es), asi que el doble tiene que
     // poder darla como `null` sin que el repo reviente.
@@ -184,8 +192,9 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     ordenHistorialEstado: {
       findMany: vi.fn(),
     },
-    // SLT-47 (R16): la ruta del lugar sale del catalogo de la empresa (doble de entrada).
-    ...delegadosDelCatalogo(),
+    // SLT-47 (R16): la ruta del lugar sale del catalogo de la empresa (doble de entrada). SLT-125: con
+    // la cadena del lugar de `prismaRow`, de la que salen tambien los tres nombres.
+    ...delegadosDelCatalogo({ nodos: CADENA_DEL_LUGAR }),
     ...overrides,
   };
 }
@@ -432,9 +441,6 @@ describe("OrdenRepository.findNovedadesByTienda (R4/R10)", () => {
       // FICHA 429: dos columnas mas en el `select` de zona que YA se hacia. La proyeccion crece,
       // el numero de consultas no.
       zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
-      provincia: { select: { nombre: true } },
-      canton: { select: { nombre: true } },
-      distrito: { select: { nombre: true } },
       // SLT-47 (R16, autorizado por el humano): las FK del lugar, para la ruta del catalogo.
       cantonId: true,
       distritoId: true,
@@ -597,7 +603,7 @@ describe("OrdenRepository.findNovedadesByTienda (R4/R10)", () => {
         latitud: null,
         longitud: null,
         notas: null,
-        distrito: null, // `distrito_id` es el UNICO FK geografico nullable
+        distritoId: null, // `distrito_id` es el UNICO FK geografico nullable
       }),
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);

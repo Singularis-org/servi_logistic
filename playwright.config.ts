@@ -122,6 +122,8 @@ export default defineConfig({
         "etiquetas-lote-tienda",
         // SLT-47 R18, R23, R39: el filtro de lugar de /ordenes por la barra, un enlace viejo y una vista v1.
         "geo-filtro-lugar",
+        // SLT-125 R43: un país de 4 niveles en la descarga de /ordenes, la etiqueta y el cierre.
+        "geo-presentacion-4-niveles",
       ),
     },
     {

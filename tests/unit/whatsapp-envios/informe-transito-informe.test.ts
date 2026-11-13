@@ -4,6 +4,7 @@ import { catalogoDeVariables, INFORMES_WHATSAPP } from "@/lib/whatsapp-envios/in
 import { PARAMETROS_POR_DEFECTO, type ParametrosTransito } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito, ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { NIVELES_CR, rutaDeCR } from "../../fixtures/transito-ruta";
 
 // Ficha 475 (T5.2) — R1, R2, R18-R22, R33 sobre el informe con un doble del repositorio.
 
@@ -22,6 +23,8 @@ function fila(over: Partial<FilaTransito>, dias: number): FilaTransito {
     destinatario: "María Jiménez",
     canton: "San José",
     distrito: "Hatillo",
+    ruta: rutaDeCR("San José", "Hatillo"),
+    niveles: NIVELES_CR,
     montoCobrar: "18500.00",
     hitoAt: new Date(AHORA.getTime() - dias * UN_DIA),
     ultimaTransicionAt: new Date(AHORA.getTime() - 1 * UN_DIA),

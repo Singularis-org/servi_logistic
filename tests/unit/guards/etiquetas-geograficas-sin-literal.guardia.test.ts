@@ -26,6 +26,9 @@ import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { CLAVES_OCULTAS_EN_SELECTOR } from "@/lib/types/plantilla-datos";
+import { ARCHIVOS_NUEVOS_SLT125, ARCHIVOS_SLT125 } from "../../fixtures/archivos-slt125";
+
 const RAIZ = path.resolve(__dirname, "../../..");
 const ARBOLES = ["app", "components"] as const;
 
@@ -172,6 +175,96 @@ function conteosDeNivel(fuente: string): string[] {
   visitar(sf);
   return hallados;
 }
+
+// SLT-125 (T3.6; R42) — los archivos de la feature fuera de `app/` y `components/` tambien. El barrido de
+// arriba ya cubre los de `app/`; aqui se barren TODOS los archivos fuente de SLT-125
+// (`tests/fixtures/archivos-slt125.ts`), incluidos los de `lib/` que arman lo que se pinta (la ruta, el
+// snapshot, la etiqueta, el PDF de transito, las variables de plantilla). Los tipos de nivel salen del
+// pais de la empresa, nunca de un literal.
+//
+// Lo unico que el barrido no cuenta son las 3 entradas del catalogo de plantillas `{{provincia}}`,
+// `{{canton}}` y `{{distrito}}` de `lib/types/plantilla-datos.ts`. Son anteriores a SLT-125 (base
+// SLT-47), sus nombres son los internos de SL-20 (decision cerrada: se quedan) y estan ocultas en el
+// selector (P2). Cambiarlas cambiaria Costa Rica (`nombresDeVariables`). Cualquier otro literal del
+// archivo, y cualquiera que se siembre dentro de otra entrada, sigue siendo hallazgo.
+const ENTRADAS_INTERNAS_SL20: Readonly<Record<string, readonly string[]>> = {
+  "lib/types/plantilla-datos.ts": ["provincia", "canton", "distrito"],
+};
+
+/** `fuente` sin la entrada `definir({ clave: "<clave>", … })` de cada clave. Lanza si falta una. */
+export function sinEntradasDelCatalogo(fuente: string, claves: readonly string[]): string {
+  let resto = fuente;
+  for (const clave of claves) {
+    const marca = resto.indexOf(`clave: "${clave}",`);
+    const inicio = marca < 0 ? -1 : resto.lastIndexOf("definir({", marca);
+    const fin = marca < 0 ? -1 : resto.indexOf("\n  }),", marca);
+    if (inicio < 0 || fin < 0) throw new Error(`no se encontro la entrada ${clave}`);
+    resto = resto.slice(0, inicio) + resto.slice(fin + "\n  }),".length);
+  }
+  return resto;
+}
+
+describe("SLT-125 / R42 — ningún literal de nivel en los archivos de SLT-125", () => {
+  const leerFuente = (rel: string) => readFileSync(path.join(RAIZ, rel), "utf8");
+
+  it("el barrido lee de verdad (anti-vacuidad): cada archivo existe y hay de lib/ y de app/", () => {
+    expect(ARCHIVOS_SLT125.length).toBeGreaterThan(60);
+    for (const rel of ARCHIVOS_NUEVOS_SLT125) expect(ARCHIVOS_SLT125, rel).toContain(rel);
+    for (const rel of ARCHIVOS_SLT125) expect(leerFuente(rel).length, rel).toBeGreaterThan(100);
+    expect(ARCHIVOS_SLT125.filter((r) => r.startsWith("lib/")).length).toBeGreaterThan(20);
+  });
+
+  it("contraprueba: un literal sembrado en un archivo real de SLT-125 se detecta", () => {
+    const rel = "lib/utils/ubicacion-presentacion.ts";
+    expect(literalesGeograficos(leerFuente(rel), rel)).toEqual([]);
+    const sembrado = `${leerFuente(rel)}\nexport const ROTULO = "Distrito";\nexport const OTRO = \`Cantón: \${x}\`;\n`;
+    expect(literalesGeograficos(sembrado, rel).map((h) => h.texto)).toEqual(["Distrito", "Cantón:"]);
+  });
+
+  it("contraprueba: solo se recortan las 3 entradas internas; un literal en otra entrada sigue siendo hallazgo", () => {
+    const inventado = [
+      "const C = [",
+      "  definir({",
+      '    clave: "provincia",',
+      '    nombre: "Provincia",',
+      "  }),",
+      "  definir({",
+      '    clave: "ubicacion",',
+      '    nombre: "Distrito",',
+      "  }),",
+      "];",
+      "",
+    ].join("\n");
+    expect(literalesGeograficos(sinEntradasDelCatalogo(inventado, ["provincia"])).map((h) => h.texto)).toEqual([
+      "Distrito",
+    ]);
+    expect(() => sinEntradasDelCatalogo(inventado, ["canton"])).toThrow(/no se encontro/);
+  });
+
+  it("las 3 entradas internas existen, llevan su literal y siguen ocultas en el selector (si no, sobran)", () => {
+    for (const [rel, claves] of Object.entries(ENTRADAS_INTERNAS_SL20)) {
+      expect(ARCHIVOS_SLT125, rel).toContain(rel);
+      const fuente = leerFuente(rel);
+      expect(literalesGeograficos(fuente, rel).length).toBeGreaterThan(0);
+      for (const clave of claves) {
+        expect(CLAVES_OCULTAS_EN_SELECTOR.has(clave), clave).toBe(true);
+        const sinLaEntrada = sinEntradasDelCatalogo(fuente, [clave]);
+        expect(literalesGeograficos(sinLaEntrada, rel).length, clave).toBeLessThan(literalesGeograficos(fuente, rel).length);
+      }
+    }
+  });
+
+  it("el barrido de los archivos de SLT-125 no encuentra ninguno", () => {
+    const hallazgos = ARCHIVOS_SLT125.flatMap((rel) =>
+      literalesGeograficos(sinEntradasDelCatalogo(leerFuente(rel), ENTRADAS_INTERNAS_SL20[rel] ?? []), rel),
+    ).map((h) => `${h.archivo}:${h.linea} — ${h.texto}`);
+    expect(
+      hallazgos,
+      "El tipo de un nivel sale del país de la empresa (`useNivelesGeograficos()` en el cliente, " +
+        "`rutaConTipos` en el servidor), nunca de un literal (R42).",
+    ).toEqual([]);
+  });
+});
 
 describe("SLT-54 / R61 — Tarifas no escribe a mano el nivel en un conteo", () => {
   it("contraprueba: caza el conteo en literal, plantilla y JSX; no una frase", () => {

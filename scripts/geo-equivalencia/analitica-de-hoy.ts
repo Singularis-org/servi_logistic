@@ -699,6 +699,10 @@ export async function filasEnAlertaDeHoy(
     destinatario: f.destinatario,
     canton: f.canton,
     distrito: f.distrito,
+    // SLT-125 (A10): `FilaTransito` gano `ruta` y `niveles`, que hoy no existian. Van vacios solo para
+    // cumplir el tipo; la comparacion con la lectura nueva los excluye y compara todo lo demas.
+    ruta: [],
+    niveles: [],
     montoCobrar: f.monto_cobrar,
     hitoAt: f.hito_at,
     ultimaTransicionAt: f.ultima_at,

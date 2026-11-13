@@ -688,6 +688,7 @@ describe("Feature 274/R24 — el shape del snapshot no cambia", () => {
       "provinciaNombre",
       "cantonNombre",
       "distritoNombre",
+      "ubicacionSnapshot",
     ];
     const escritas = Object.keys(db.detalle[0]).filter((k) => k !== "id");
     expect(escritas.sort()).toEqual([...COLUMNAS_DEV].sort());

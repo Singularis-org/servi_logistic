@@ -55,6 +55,7 @@ import { ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-column
 import type { Column } from "@/components/shared/DataTable";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
+import type { NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
 
 /**
  * Los ids de `ordenesColumns` que leen un campo que `recortarPorAlcance(fila, "zona")` RETIRA
@@ -91,9 +92,13 @@ export const COLUMNAS_SIN_DATO_EN_ALCANCE_ZONA: readonly string[] = [
  * (`SateliteOrdenesListado`), que es la fuente de verdad de la selección y de la regla de
  * disponibilidad del incidente — igual que `OrdenesModule` antepone su checkbox en `/ordenes`.
  */
-export function recibidasColumns(etiquetas: EtiquetasGeograficas): Column<RecepcionSateliteDTO>[] {
+export function recibidasColumns(
+  etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
+): Column<RecepcionSateliteDTO>[] {
   // SL-20 (R19): los encabezados de nivel son los del país de la empresa (`etiquetas`).
-  return ordenesColumnsDe(etiquetas).filter(
+  // SLT-125 (P4; R5): con los `niveles` del país, una columna de lugar por nivel, como `/ordenes`.
+  return ordenesColumnsDe(etiquetas, niveles).filter(
     (columna) => !COLUMNAS_SIN_DATO_EN_ALCANCE_ZONA.includes(columna.id),
   );
 }

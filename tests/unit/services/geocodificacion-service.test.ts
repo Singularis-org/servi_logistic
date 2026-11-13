@@ -40,9 +40,9 @@ const AHORA = new Date("2026-07-19T12:00:00.000Z");
 const ORDEN: OrdenGeocodeRow = {
   id: ORDEN_ID,
   direccion: "Av. Central 100",
-  distritoNombre: "Carmen",
-  cantonNombre: "San José",
-  provinciaNombre: "San José",
+  // SLT-125 (A7): la entrada pasa a la ruta del catalogo y el pais de la empresa.
+  ruta: ["San José", "San José", "Carmen"],
+  paisNombre: "Costa Rica",
 };
 
 const QUERY = construirQueryDireccion(ORDEN) as string;

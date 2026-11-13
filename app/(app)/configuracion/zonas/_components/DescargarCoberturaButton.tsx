@@ -11,7 +11,9 @@ import {
 } from "./cobertura-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
+import type { NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
 
 /**
  * Ficha 465 (design §3.6, T8) — control «Descargar cobertura» de la página Tarifas.
@@ -39,12 +41,15 @@ export const MENSAJE_SESION_COBERTURA =
   "Tu sesión ya no es válida. Vuelve a iniciar sesión y descarga de nuevo.";
 
 /** Lee al pulsar (R4) y traduce el resultado a filas o a un mensaje accionable (R3, R18). */
-async function obtenerFilasCobertura(etiquetas: EtiquetasGeograficas): Promise<DescargaFilasResult> {
+async function obtenerFilasCobertura(
+  etiquetas: EtiquetasGeograficas,
+  niveles: readonly NivelDelPais[],
+): Promise<DescargaFilasResult> {
   const resultado = await descargarDatos("listarCoberturaDistritos", undefined);
   if (resultado.status === "unauthenticated") {
     return { status: "error", mensaje: MENSAJE_SESION_COBERTURA };
   }
-  return filasDesdeResultado(resultado, filaCobertura(etiquetas));
+  return filasDesdeResultado(resultado, filaCobertura(etiquetas, niveles));
 }
 
 export interface DescargarCoberturaButtonProps {
@@ -62,6 +67,8 @@ export function DescargarCoberturaButton({
 }: DescargarCoberturaButtonProps) {
   // SL-20 (R19): encabezados y motivos con los nombres de nivel del país de la empresa.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-125 (R1, R6): una columna de lugar por nivel del país, y el motivo de cada nivel retirado.
+  const niveles = useNivelesGeograficos();
   return (
     <div
       role="group"
@@ -70,11 +77,11 @@ export function DescargarCoberturaButton({
     >
       <DescargarDatasetButton
         titulo={TITULO_DESCARGA_COBERTURA}
-        columnas={columnasDescargaCobertura(etiquetas)}
+        columnas={columnasDescargaCobertura(etiquetas, niveles)}
         formatos={["xlsx"]}
         ambitoColumnas={AMBITO_DESCARGA_COBERTURA}
         label={label}
-        obtenerFilas={() => obtenerFilasCobertura(etiquetas)}
+        obtenerFilas={() => obtenerFilasCobertura(etiquetas, niveles)}
       />
       <p id={ID_AYUDA} className="text-sm text-muted-foreground">
         {ayuda}

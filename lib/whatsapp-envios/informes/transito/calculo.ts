@@ -51,6 +51,9 @@ export interface PaqueteTransito {
   destinatario: string;
   canton: string;
   distrito: string | null;
+  /** SLT-125 (R13): la ruta y los niveles de la fila, para la celda y el titulo de lugar del PDF. */
+  ruta: FilaTransito["ruta"];
+  niveles: FilaTransito["niveles"];
   montoCobrar: string | null;
   /** Dias naturales CR desde el hito. */
   dias: number;
@@ -174,6 +177,8 @@ export function clasificar(
       destinatario: f.destinatario,
       canton: f.canton,
       distrito: f.distrito,
+      ruta: f.ruta,
+      niveles: f.niveles,
       montoCobrar: f.montoCobrar,
       dias,
       plazoDias: plazo.plazoDias,

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { OrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 429 / T13 — `findParaEnvio` RESUELVE EL SINPE POR LA BODEGA DEL MENSAJERO.
@@ -50,9 +51,9 @@ function filaDeOrden(opciones: {
       sinpeNumero: SINPE_ORDEN.numero,
       sinpeNombre: SINPE_ORDEN.nombre,
     },
-    provincia: { nombre: "Prov" },
-    canton: { nombre: "Canton" },
-    distrito: { nombre: "Distrito" },
+    // SLT-125 (design §4.2): las FK del lugar; los nombres salen del catalogo del doble (`readerCon`).
+    cantonId: "c-1",
+    distritoId: "d-1",
     mensajeroAsignado:
       m === undefined
         ? {
@@ -78,7 +79,15 @@ function filaDeOrden(opciones: {
 
 function readerCon(fila: unknown) {
   const findFirst = vi.fn().mockResolvedValue(fila);
-  const prisma = { orden: { findFirst } } as unknown as ConstructorParameters<
+  // SLT-125: el catalogo de la empresa con el lugar de la fila (Prov · Canton · Distrito). Entrada.
+  const catalogo = delegadosDelCatalogo({
+    nodos: [
+      { id: "p-1", nombre: "Prov" },
+      { id: "c-1", padreId: "p-1", nombre: "Canton" },
+      { id: "d-1", padreId: "c-1", nombre: "Distrito" },
+    ],
+  });
+  const prisma = { orden: { findFirst }, ...catalogo } as unknown as ConstructorParameters<
     typeof OrdenEnvioReader
   >[0];
   return { reader: new OrdenEnvioReader(prisma), findFirst };

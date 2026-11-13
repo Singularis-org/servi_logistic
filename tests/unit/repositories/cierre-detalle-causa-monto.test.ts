@@ -7,6 +7,7 @@ import {
 } from "@/lib/repositories/CierresAdminRepository";
 import { toDetalleDTO } from "@/lib/services/CierreDiaService";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
+import { catalogoEnMemoria } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // Feature 158 (R34/R9/R19) — la CAUSA del incidente y el MONTO de la indemnización recorren la
 // cadena completa hasta el DTO que ve el cliente: proyección del repo → fila de dominio →
@@ -50,9 +51,10 @@ function filaEnVivo(over: Record<string, unknown> = {}) {
       producto: "Caja",
       tienda: { nombre: "Tienda X" },
       zona: { nombre: "Cartago" },
-      provincia: { nombre: "Cartago" },
-      canton: { nombre: "Central" },
-      distrito: { nombre: "Oriental" },
+      // SLT-125 (design §4.2): `WITH_DETALLE` lee las FK del lugar y nombra con el catalogo
+      // (`CATALOGO`, abajo). Cambio de entrada: las salidas esperadas no cambian.
+      cantonId: "c1",
+      distritoId: "d1",
     },
     ...over,
   };
@@ -117,13 +119,20 @@ const mapAdmin = (g = filaAdmin(), d = filaSnapshot()): CierreGestionPendienteRo
     d as unknown as Parameters<typeof toPendienteRowDesdeSnapshot>[1],
   );
 
+/** SLT-125: el catalogo con el que la vista en vivo nombra el lugar (los nombres de antes). */
+const CATALOGO = catalogoEnMemoria([
+  { id: "p1", nombre: "Cartago" },
+  { id: "c1", padreId: "p1", nombre: "Central" },
+  { id: "d1", padreId: "c1", nombre: "Oriental" },
+]);
+
 const mapEnVivo = (
   row = filaEnVivo(),
   // Feature 237 (D6/R41): el flag lo resuelve el repositorio EN LOTE y se lo pasa al mapper. Por
   // defecto `false` (la registro el mensajero), que es lo que estos casos de causa/monto ejercen.
   desdeAyudaTienda = false,
 ): CierreGestionPendienteRow =>
-  toPendienteRow(row as unknown as Parameters<typeof toPendienteRow>[0], desdeAyudaTienda);
+  toPendienteRow(row as unknown as Parameters<typeof toPendienteRow>[0], desdeAyudaTienda, CATALOGO);
 
 // --- Proyecciones ------------------------------------------------------------------------
 

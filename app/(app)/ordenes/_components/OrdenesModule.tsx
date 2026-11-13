@@ -30,10 +30,11 @@ import {
 } from "./ordenamiento-ordenes";
 import { ordenesColumnsDe } from "./ordenes-columns";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import {
   AMBITO_DESCARGA_ORDENES,
   columnasDescargaOrdenes,
-  filaDescargaOrden,
+  filaDescargaOrdenDe,
 } from "./ordenes-descarga-columnas";
 import { serializarFiltro, type OrdenesFilterUI } from "./serializar-filtro";
 import { OrdenesCargaMasivaButton } from "./OrdenesCargaMasivaButton";
@@ -283,7 +284,10 @@ export function OrdenesModule({
   // SL-20 (R19): sin `columns`, las del listado con los nombres de nivel del país de la empresa.
   // `ordenesColumnsDe` memoriza por objeto de etiquetas: el mismo arreglo en cada render.
   const etiquetas = useEtiquetasGeograficas();
-  const columns = columnsProp ?? ordenesColumnsDe(etiquetas);
+  // SLT-125 (design §5; R1, R5): los niveles del país, para las columnas de lugar de la tabla y de la
+  // descarga (una por nivel). Sin proveedor, `[]`: las tres de las etiquetas, como antes.
+  const nivelesGeograficos = useNivelesGeograficos();
+  const columns = columnsProp ?? ordenesColumnsDe(etiquetas, nivelesGeograficos);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(ordenesConfig.DEFAULT_PAGE_SIZE);
   /**
@@ -619,7 +623,7 @@ export function OrdenesModule({
   const descarga: DataTableDescarga | undefined = permitirDescarga
     ? {
         titulo: TITULO_DESCARGA,
-        columnas: columnasDescargaOrdenes(etiquetas),
+        columnas: columnasDescargaOrdenes(etiquetas, nivelesGeograficos),
         // Ficha 314: enciende el selector de columnas de esta descarga. Es un IDENTIFICADOR de
         // ámbito y nada más — aquí no se lee ni se escribe almacenamiento; de eso se encarga
         // el control común, que es quien conoce la clave.
@@ -640,7 +644,7 @@ export function OrdenesModule({
               ...(filter ? { filter } : {}),
               ...(orden ?? {}),
             }),
-            filaDescargaOrden,
+            filaDescargaOrdenDe(nivelesGeograficos),
           ),
       }
     : undefined;

@@ -27,6 +27,13 @@ import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { celdasDeNivel, type NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
+import {
+  conColumnasDeNivel,
+  nivelesDeCeldas,
+  nivelesDeColumnas,
+  rutaDeLaFila,
+} from "@/app/(app)/_components/niveles-de-columnas";
 import { estatusLabel } from "./estatus-label";
 
 /**
@@ -85,13 +92,17 @@ export const COLUMNAS_DESCARGA_ORDENES: DescargaColumna[] = [
  * empresa (`etiquetas`, de `useEtiquetasGeograficas`). Es lo que monta la pantalla.
  * `COLUMNAS_DESCARGA_ORDENES` sigue siendo el contrato de claves y orden, pero sus encabezados de provincia, cantón
  * y distrito son los neutros («Nivel 1»…): no se descarga con ella directamente.
+ *
+ * SLT-125 (design §5; R1–R4): con los `niveles` del país (`useNivelesGeograficos`), las tres de lugar
+ * pasan a ser P, una por nivel y en su sitio, con el tipo del nivel por encabezado (`nivel_<k>` si
+ * choca, R2) y las claves `provincia`, `canton`, `distrito` y `nivel_<k>` desde el 4 (R3). Sin niveles,
+ * las tres de las `etiquetas`, como antes. En Costa Rica el resultado es el de hoy (R4).
  */
-export function columnasDescargaOrdenes(etiquetas: EtiquetasGeograficas): DescargaColumna[] {
-  return COLUMNAS_DESCARGA_ORDENES.map((columna) =>
-    columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito"
-      ? { ...columna, encabezado: etiquetas[columna.clave].singular }
-      : columna,
-  );
+export function columnasDescargaOrdenes(
+  etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
+): DescargaColumna[] {
+  return conColumnasDeNivel(COLUMNAS_DESCARGA_ORDENES, nivelesDeColumnas(etiquetas, niveles));
 }
 
 /**
@@ -134,6 +145,29 @@ function estado(orden: OrdenListItemDTO): string | null {
  *  · Dato ausente ⇒ `null`, celda vacía (R14).
  */
 export function filaDescargaOrden(orden: OrdenListItemDTO): DescargaFila {
+  return filaDescargaOrdenDe()(orden);
+}
+
+/**
+ * SLT-125 (design §5; R1) — la proyección de `filaDescargaOrden` para los `niveles` del país: una
+ * celda por nivel, con el nombre del paso k de la ruta de la orden (`lugarRuta`), o vacía si no llega.
+ * Sin niveles, los tres de hoy (las celdas no necesitan rótulos). Es una factoría, y no un segundo
+ * parámetro, para que `filas.map(filaDescargaOrden)` siga sin recibir el índice como niveles.
+ */
+export function filaDescargaOrdenDe(niveles?: readonly NivelDelPais[]): (orden: OrdenListItemDTO) => DescargaFila {
+  const nivelesDeLaFila = nivelesDeCeldas(niveles);
+  return (orden) => proyectarOrden(orden, nivelesDeLaFila);
+}
+
+function proyectarOrden(orden: OrdenListItemDTO, niveles: readonly NivelDelPais[]): DescargaFila {
+  const lugar = celdasDeNivel(
+    rutaDeLaFila(orden.lugarRuta, [
+      orden.relaciones?.provincia?.nombre,
+      orden.relaciones?.canton?.nombre,
+      orden.relaciones?.distrito?.nombre,
+    ]),
+    niveles,
+  );
   return {
     numGuia: orden.numGuia,
     numRemision: orden.numRemision,
@@ -145,9 +179,7 @@ export function filaDescargaOrden(orden: OrdenListItemDTO): DescargaFila {
     direccion: orden.direccion ?? null,
     tienda: orden.relaciones?.tienda?.nombre ?? orden.tiendaNombre ?? null,
     zona: orden.relaciones?.zona?.nombre ?? orden.zonaNombre ?? null,
-    provincia: orden.relaciones?.provincia?.nombre ?? null,
-    canton: orden.relaciones?.canton?.nombre ?? null,
-    distrito: orden.relaciones?.distrito?.nombre ?? null,
+    ...lugar,
     montoCobrar: orden.montoCobrar ?? null,
     fleteConIva: orden.fleteConIva ?? null,
     comisionConIva: orden.comisionConIva ?? null,

@@ -14,6 +14,13 @@ import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
+import {
+  conColumnasDeNivel,
+  nivelesDeCeldas,
+  nivelesDeColumnas,
+  rutaDeLaFila,
+} from "@/app/(app)/_components/niveles-de-columnas";
+import { celdasDeNivel, type NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
 
 /**
  * Columnas del archivo, en su orden. Espejan las TRECE PRIMERAS columnas de datos de la
@@ -47,13 +54,15 @@ export const COLUMNAS_DESCARGA_SATELITE: DescargaColumna[] = [
  * empresa (`etiquetas`, de `useEtiquetasGeograficas`). Es lo que monta la pantalla.
  * `COLUMNAS_DESCARGA_SATELITE` sigue siendo el contrato de claves y orden, pero sus encabezados de provincia, cantón
  * y distrito son los neutros («Nivel 1»…): no se descarga con ella directamente.
+ *
+ * SLT-125 (design §5; R1–R4): con los `niveles` del país, una columna de lugar por nivel en el sitio
+ * de las tres de hoy, con el mismo criterio que la descarga de órdenes. Sin niveles, las de hoy.
  */
-export function columnasDescargaSatelite(etiquetas: EtiquetasGeograficas): DescargaColumna[] {
-  return COLUMNAS_DESCARGA_SATELITE.map((columna) =>
-    columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito"
-      ? { ...columna, encabezado: etiquetas[columna.clave].singular }
-      : columna,
-  );
+export function columnasDescargaSatelite(
+  etiquetas: EtiquetasGeograficas,
+  niveles?: readonly NivelDelPais[],
+): DescargaColumna[] {
+  return conColumnasDeNivel(COLUMNAS_DESCARGA_SATELITE, nivelesDeColumnas(etiquetas, niveles));
 }
 
 /**
@@ -66,6 +75,26 @@ export function columnasDescargaSatelite(etiquetas: EtiquetasGeograficas): Desca
  * dato en dos. `intentosEntrega` usa `?? 0` porque el 0 es un valor CONOCIDO (160/R14).
  */
 export function filaDescargaSatelite(orden: RecepcionSateliteDTO): DescargaFila {
+  return filaDescargaSateliteDe()(orden);
+}
+
+/**
+ * SLT-125 (design §5; R1) — la proyección de `filaDescargaSatelite` para los `niveles` del país: una
+ * celda por nivel desde la ruta de la orden (`lugarRuta`); sin ella, los tres nombres de hoy. Factoría
+ * por la misma razón que `filaDescargaOrdenDe`.
+ */
+export function filaDescargaSateliteDe(
+  niveles?: readonly NivelDelPais[],
+): (orden: RecepcionSateliteDTO) => DescargaFila {
+  const nivelesDeLaFila = nivelesDeCeldas(niveles);
+  return (orden) => proyectarSatelite(orden, nivelesDeLaFila);
+}
+
+function proyectarSatelite(orden: RecepcionSateliteDTO, niveles: readonly NivelDelPais[]): DescargaFila {
+  const lugar = celdasDeNivel(
+    rutaDeLaFila(orden.lugarRuta, [orden.provinciaNombre, orden.cantonNombre, orden.distritoNombre]),
+    niveles,
+  );
   return {
     numGuia: orden.numGuia,
     numRemision: orden.numRemision,
@@ -76,9 +105,7 @@ export function filaDescargaSatelite(orden: RecepcionSateliteDTO): DescargaFila 
     direccion: orden.direccion ?? null,
     tienda: orden.tiendaNombre ?? null,
     zona: orden.zonaNombre ?? null,
-    provincia: orden.provinciaNombre ?? null,
-    canton: orden.cantonNombre ?? null,
-    distrito: orden.distritoNombre ?? null,
+    ...lugar,
     montoCobrar: orden.montoCobrar ?? null,
   };
 }

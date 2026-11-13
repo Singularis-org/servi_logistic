@@ -17,6 +17,10 @@
 // consultas fijas: no dependen del numero de ordenes (R10). Un canton o distrito que no este en el
 // catalogo hace FALLAR la generacion, despues de dejar una linea en el log de errores con solo ids
 // (R12): un informe con un lugar sin nombre no se manda.
+//
+// SLT-125 (design §4.2; R13, R15) — cada fila lleva ademas la RUTA de su lugar y los NIVELES del pais,
+// del mismo catalogo ya cargado (cero consultas mas). El PDF pinta los dos niveles mas hondos de la ruta
+// y titula la columna con sus tipos: asi un pais de 2 o de 4 niveles no sale con «CANTÓN · DISTRITO».
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
@@ -25,6 +29,7 @@ import {
   CatalogoGeograficoRepository,
   type CatalogoPrismaClient,
 } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { nivelesDelCatalogo, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import { CatalogoGeograficoInconsistente, nodo } from "@/lib/services/geografia-dominio";
 import type { Hito } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type {
@@ -148,6 +153,8 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
     if (filas.length === 0) return [];
     const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
     const nombreDe = (id: string): string | null => nodo(catalogo, id)?.nombre ?? null;
+    // Iguales para todas las filas: un pais por empresa.
+    const niveles = nivelesDelCatalogo(catalogo);
 
     // R12: se recorren TODAS las filas antes de fallar, para que el log nombre cada nodo ausente.
     const ausentes = new Set<string>();
@@ -179,6 +186,9 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
       destinatario: f.destinatario,
       canton,
       distrito,
+      // El lugar ya se comprobo arriba (un nodo ausente falla antes), asi que la ruta no sale vacia.
+      ruta: rutaDelLugar(catalogo, { cantonId: f.canton_id, distritoId: f.distrito_id }),
+      niveles,
       montoCobrar: f.monto_cobrar,
       hitoAt: f.hito_at,
       ultimaTransicionAt: f.ultima_at,

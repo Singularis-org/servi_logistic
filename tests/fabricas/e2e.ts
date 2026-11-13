@@ -162,8 +162,12 @@ function contrasenaE2E(): string {
 export type UsuarioE2E = UsuarioCreado;
 export type EmpresaE2E = EmpresaCreada;
 
-/** Alta de una empresa nueva por el servicio del superadmin, y su maestro listo para entrar. */
-export async function crearEmpresaE2E(etiqueta: string): Promise<EmpresaE2E> {
+/**
+ * Alta de una empresa nueva por el servicio del superadmin, y su maestro listo para entrar.
+ * SLT-125 (R43): `opts.paisId` la da de alta en otro país (que ya tiene que existir); sin él, en
+ * Costa Rica, como siempre.
+ */
+export async function crearEmpresaE2E(etiqueta: string, opts: { paisId?: string } = {}): Promise<EmpresaE2E> {
   await comprobarBaseE2E();
   const s = sufijo();
   const slugEtiqueta = etiqueta.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
@@ -176,6 +180,7 @@ export async function crearEmpresaE2E(etiqueta: string): Promise<EmpresaE2E> {
       contrasena: contrasenaE2E(),
       nombreMaestro: `Maestro E2E ${s}`,
       documentoMaestro: `e2e-${s}`,
+      ...(opts.paisId !== undefined ? { paisId: opts.paisId } : {}),
     },
     { ficha: "SL-44", motivo: "fábrica E2E: alta de empresa" },
   );

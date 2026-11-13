@@ -17,11 +17,27 @@ function compararTexto(a: string, b: string): number {
   return a.localeCompare(b, "es", { sensitivity: "base" });
 }
 
+/** Los tres niveles con clave propia desde SL-20; desde el 4, `nivel_<k>_retirado` (SLT-125, R6). */
+const RETIRADO_DE_HOY: readonly MotivoSinCobertura[] = ["provincia_retirada", "canton_retirado", "distrito_retirado"];
+
+/** SLT-125 (R6) — el motivo «retirado del catalogo» del nivel k (1..P). */
+export function motivoNivelRetirado(k: number): MotivoSinCobertura {
+  return RETIRADO_DE_HOY[k - 1] ?? `nivel_${k}_retirado`;
+}
+
+/**
+ * La cadena de la fila, del nivel 1 al lugar. SLT-125 (P5): la `ruta` del repositorio, de P niveles;
+ * una fila sin ella (la lectura de hoy, de 3 niveles) usa sus tres campos, que son los mismos flags.
+ */
+function cadenaDe(row: DistritoCoberturaRow): { nombre: string; activo: boolean }[] {
+  return row.ruta ?? [row.provincia, row.canton, row.distrito];
+}
+
 /** La PRIMERA causa que aplique, en el orden de R9 / `resolveGeo`. `null` = con cobertura. */
 function motivoDe(row: DistritoCoberturaRow): MotivoSinCobertura | null {
-  if (!row.provincia.activo) return "provincia_retirada";
-  if (!row.canton.activo) return "canton_retirado";
-  if (!row.distrito.activo) return "distrito_retirado";
+  // Del nivel 1 hacia abajo, como `resolveGeo` (provincia -> canton -> distrito -> ...).
+  const retirado = cadenaDe(row).findIndex((n) => !n.activo);
+  if (retirado !== -1) return motivoNivelRetirado(retirado + 1);
   if (row.zonas.length === 0) return "sin_zona";
   if (zonaUnicaDeDistrito(row.zonas) === null) return "varias_zonas";
   return null;
@@ -54,14 +70,25 @@ export function clasificarCobertura(
             tieneTarifaGeneral: zonasConTarifaGeneral.has(zona.id),
           },
     zonaEspecial: row.distrito.zonaEspecial,
+    // SLT-125 (P5): solo si el repositorio la trae; una fila sin ruta conserva la forma de hoy.
+    ...(row.ruta === undefined ? {} : { ruta: row.ruta.map((n) => ({ id: n.id, nombre: n.nombre })) }),
   };
 }
 
-/** R6: provincia, despues canton, despues distrito. */
+/**
+ * R6: provincia, despues canton, despues distrito. SLT-125 (P5): nivel por nivel de la ruta, del 1 al P;
+ * en Costa Rica la ruta son esos tres nombres y el orden es el de hoy.
+ */
 export function compararCobertura(a: CoberturaDistritoDTO, b: CoberturaDistritoDTO): number {
-  return (
-    compararTexto(a.provincia, b.provincia) ||
-    compararTexto(a.canton, b.canton) ||
-    compararTexto(a.distrito, b.distrito)
-  );
+  const na = nombresDe(a);
+  const nb = nombresDe(b);
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const c = compararTexto(na[i] ?? "", nb[i] ?? "");
+    if (c !== 0) return c;
+  }
+  return 0;
+}
+
+function nombresDe(d: CoberturaDistritoDTO): string[] {
+  return d.ruta?.map((p) => p.nombre) ?? [d.provincia, d.canton, d.distrito];
 }

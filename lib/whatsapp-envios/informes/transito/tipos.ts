@@ -2,6 +2,7 @@
 // `lib/types/`, design §0). Sin imports de Prisma en tiempo de ejecucion: el panel importa la
 // forma del resultado de la vista previa.
 import type { Hito, ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/parametros";
+import type { NivelDelPais, Ruta } from "@/lib/utils/ubicacion-presentacion";
 
 export type { ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/parametros";
 
@@ -34,6 +35,17 @@ export interface FilaTransito {
   destinatario: string;
   canton: string;
   distrito: string | null;
+  /**
+   * SLT-125 (design §4.2; R13, R15) — la ruta del lugar de la orden, del nivel 1 al lugar, con los
+   * nombres del catalogo. La celda de lugar del PDF toma de aqui los dos niveles mas hondos
+   * (`dosMasHondos`): con solo `canton` y `distrito` un pais de 2 niveles no podria pintar su nivel 1.
+   */
+  ruta: Ruta;
+  /**
+   * SLT-125 (R13, R42) — los niveles del pais de la empresa (`nivelesDelCatalogo`). El titulo de la
+   * columna de lugar sale de sus tipos: el PDF no escribe ningun nombre de nivel a mano.
+   */
+  niveles: readonly NivelDelPais[];
   /** `monto_cobrar::text` (`"18500.00"`) o `null`. Nunca `number` (dinero). */
   montoCobrar: string | null;
   hitoAt: Date;

@@ -133,6 +133,9 @@ export class EtiquetaGuiaService implements IEtiquetaGuiaService {
       provinciaNombre: row.provinciaNombre,
       cantonNombre: row.cantonNombre,
       distritoNombre: row.distritoNombre,
+      // SLT-125 (design §6; R9): la ruta pasa tal cual. Solo si la fila la trae: es aditiva (R37), como
+      // `lugarRuta` en `MisAsignacionesService` y `NovedadesService`.
+      ...(row.lugarRuta ? { lugarRuta: row.lugarRuta } : {}),
       // Feature 295: la fecha viaja TAL CUAL desde la fila (ya es `YYYY-MM-DD` de
       // Costa Rica). El service no la formatea ni la recalcula: derivar el dia dos
       // veces, en dos capas, es como se acaban imprimiendo dos dias distintos.

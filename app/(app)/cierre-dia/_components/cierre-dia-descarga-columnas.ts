@@ -33,6 +33,8 @@ import {
   motivoGestionLegible,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { desgloseDescarga } from "@/app/(app)/cierres-admin/_components/desglose-pago";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
 
 /**
  * Encabezado del pago al mensajero EN SU PANTALLA. Aquí se llama "Ganancia" (y no "Pago
@@ -96,15 +98,14 @@ const COMUNES: DescargaColumna[] = [
   { clave: "fechaGestion", encabezado: FECHA_GESTION_COL },
 ];
 
-/** Jerarquía geográfica en una línea, misma composición que la columna "Ubicación". */
+/**
+ * SLT-125 (R7, R10): la zona y TODA la ruta del lugar (`lugarRuta`, del nivel 1 al lugar) unidas por
+ * « · », sin tramos vacíos; sin ningún tramo, celda vacía. Sin `lugarRuta` (DTO de un lector que no la
+ * anota) se usan los tres nombres de hoy. En Costa Rica sale igual que antes.
+ */
 function ubicacion(gestion: CierreDetalleGestion): string | null {
-  const partes = [
-    gestion.zonaNombre,
-    gestion.provinciaNombre,
-    gestion.cantonNombre,
-    gestion.distritoNombre,
-  ].filter((parte): parte is string => Boolean(parte));
-  return partes.length === 0 ? null : partes.join(" · ");
+  const ruta = rutaDeLaFila(gestion.lugarRuta, [gestion.provinciaNombre, gestion.cantonNombre, gestion.distritoNombre]);
+  return lineaDeUbicacion(gestion.zonaNombre, ruta, " · ");
 }
 
 /** Celdas comunes. Valores CRUDOS: `null` es celda vacía, no el "—" de presentación (R7). */

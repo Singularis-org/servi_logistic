@@ -20,6 +20,7 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { fechaCRLegible, fechaLargaCR, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import { HITO_EN_PALABRAS } from "@/lib/whatsapp-envios/informes/transito/parametros";
+import { dosMasHondos, tiposDeDosMasHondos, type NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
 import type {
   GrupoParados,
   ModeloInformeTransito,
@@ -71,16 +72,34 @@ interface Columna {
   derecha?: boolean;
 }
 
-const COLUMNAS_ZONA: Columna[] = [
-  { titulo: "REMISIÓN", ancho: 22 },
-  { titulo: "GUÍA", ancho: 14 },
-  { titulo: "DÍAS", ancho: 13 },
-  { titulo: "ESTADO", ancho: 31 },
-  { titulo: "CLIENTE", ancho: 33 },
-  { titulo: "CANTÓN · DISTRITO", ancho: 35 },
-  { titulo: "POR COBRAR", ancho: 19, derecha: true },
-  { titulo: "", ancho: 19 },
-];
+/** Separador de los dos lugares, en el titulo y en la celda (el de hoy). */
+const SEPARADOR_LUGAR = " · ";
+
+/**
+ * SLT-125 (R13, R42) — el titulo de la columna de lugar: los tipos de los dos niveles mas hondos que
+ * puede tener una orden del pais, en mayusculas (CR: «CANTÓN · DISTRITO»; pais de 4: «COMUNA · BARRIO»).
+ * Sale de los niveles del pais, nunca de un texto escrito aqui. Un tipo que el pais no tiene se omite.
+ */
+function tituloDeLugar(niveles: readonly NivelDelPais[]): string {
+  return tiposDeDosMasHondos(niveles)
+    .filter((t) => t !== "")
+    .map((t) => t.toLocaleUpperCase("es"))
+    .join(SEPARADOR_LUGAR);
+}
+
+/** Las columnas de la tabla de una zona; solo el titulo del lugar depende del pais. */
+function columnasZona(niveles: readonly NivelDelPais[]): Columna[] {
+  return [
+    { titulo: "REMISIÓN", ancho: 22 },
+    { titulo: "GUÍA", ancho: 14 },
+    { titulo: "DÍAS", ancho: 13 },
+    { titulo: "ESTADO", ancho: 31 },
+    { titulo: "CLIENTE", ancho: 33 },
+    { titulo: tituloDeLugar(niveles), ancho: 35 },
+    { titulo: "POR COBRAR", ancho: 19, derecha: true },
+    { titulo: "", ancho: 19 },
+  ];
+}
 
 const COLUMNAS_PARADOS: Columna[] = [
   { titulo: "GUÍA", ancho: 25 },
@@ -196,8 +215,13 @@ function porCobrarCelda(monto: string | null): string {
   return sinImporte(monto) ? "—" : formatMontoString(monto);
 }
 
-function cantonDistrito(p: PaqueteTransito): string {
-  return p.distrito === null || p.distrito.trim() === "" ? p.canton : `${p.canton} · ${p.distrito}`;
+/**
+ * SLT-125 (R11, R13; P7 opcion a) — la celda de lugar: los dos niveles mas hondos de la ruta de la orden.
+ * En CR, «cantón · distrito», y solo el cantón si la orden no tiene distrito (como hoy, R15).
+ */
+function lugarDelPaquete(p: PaqueteTransito): string {
+  const { arriba, abajo } = dosMasHondos(p.ruta, p.niveles.length);
+  return [arriba, abajo].filter((n): n is string => n !== null && n.trim() !== "").join(SEPARADOR_LUGAR);
 }
 
 function encabezado(l: Lienzo, m: ModeloInformeTransito): void {
@@ -287,8 +311,10 @@ function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
     { derecha: true },
   );
   l.y += 7;
+  // Un pais por empresa: todos los paquetes traen los mismos niveles. Una zona sin paquetes no llega aqui.
+  const columnas = columnasZona(z.paquetes[0]?.niveles ?? []);
   l.tabla(
-    COLUMNAS_ZONA,
+    columnas,
     z.paquetes,
     (p) => [
       p.numRemision,
@@ -296,14 +322,14 @@ function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
       `${p.dias}/${p.plazoDias}`,
       nombreDeEstado(p.estado),
       p.destinatario,
-      cantonDistrito(p),
+      lugarDelPaquete(p),
       porCobrarCelda(p.montoCobrar),
       "",
     ],
     (p) => (p.vencido ? ROJO : TINTA),
     (p, base) => {
       // R27: la marca es TEXTO, ademas del color.
-      const xMarca = ANCHO - MARGEN - COLUMNAS_ZONA[COLUMNAS_ZONA.length - 1].ancho + 1;
+      const xMarca = ANCHO - MARGEN - columnas[columnas.length - 1].ancho + 1;
       let x = xMarca;
       l.estilo(6, ROJO);
       if (p.vencido) {

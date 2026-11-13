@@ -112,13 +112,11 @@ describe("OrdenRepository.findListItemsByIds — NO es una segunda proyeccion (R
     // exactamente cuando hace falta que se ponga roja.
     expect(includeDeLaHidratacion).toEqual(includeDelListado);
     // Y no es verde por vacio: ese `include` trae de verdad las relaciones del listado.
+    // SLT-125 (A11): sin relaciones de lugar; los nombres salen de la ruta del catalogo.
     expect(Object.keys(includeDeLaHidratacion).sort()).toEqual([
-      "canton",
-      "distrito",
       "estatus",
       "gestiones",
       "mensajeroAsignado",
-      "provincia",
       "tienda",
       "zona",
     ]);

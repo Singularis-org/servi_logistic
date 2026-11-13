@@ -565,7 +565,7 @@ export function SateliteOrdenesListado({
       // las columnas son las de `/ordenes` tal cual, y allí el chip de estado lee la zona DE
       // LA FILA (`relaciones.zona.nombre`), no la del actor. `zonaNombre` sigue haciendo falta
       // más abajo, para la regla de disponibilidad del incidente (R48).
-      ...conBadgePrioridad(recibidasColumns(etiquetas)),
+      ...conBadgePrioridad(recibidasColumns(etiquetas, nivelesGeograficos)),
       // FICHA 367 — la columna pasa de "Incidente" a "Acciones" y agrupa DOS disparadores,
       // igual que `/ordenes` (`OrdenesModule`, columna `acciones`):
       //
@@ -591,7 +591,7 @@ export function SateliteOrdenesListado({
         ),
       },
     ],
-    [seleccionados, zonaNombre, ordenes, sinZona, onIncidenteReportado, etiquetas],
+    [seleccionados, zonaNombre, ordenes, sinZona, onIncidenteReportado, etiquetas, nivelesGeograficos],
   );
 
   return (
@@ -752,7 +752,7 @@ export function SateliteOrdenesListado({
         // el módulo. Las columnas del archivo las declara esta tabla (T A.2).
         descarga={{
           titulo: TITULO_BODEGA,
-          columnas: columnasDescargaSatelite(etiquetas),
+          columnas: columnasDescargaSatelite(etiquetas, nivelesGeograficos),
           obtenerFilas: obtenerFilasDescarga,
         }}
         isLoading={cargando}

@@ -7,6 +7,7 @@ import {
   type ZonaInforme,
 } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { NIVELES_CR, rutaDeCR } from "../../fixtures/transito-ruta";
 
 // Ficha 475 (T3.2) — R6, R7, R15, R16, R17, R20, R24-R26 sobre el calculo PURO.
 
@@ -33,6 +34,8 @@ function fila(over: Partial<FilaTransito> & { dias?: number; diasEnEstado?: numb
     destinatario: "Cliente",
     canton: "San José",
     distrito: "Hatillo",
+    ruta: rutaDeCR("San José", "Hatillo"),
+    niveles: NIVELES_CR,
     montoCobrar: "1000.00",
     hitoAt: new Date(AHORA.getTime() - dias * UN_DIA),
     ultimaTransicionAt: diasEnEstado === null ? null : new Date(AHORA.getTime() - diasEnEstado * UN_DIA),

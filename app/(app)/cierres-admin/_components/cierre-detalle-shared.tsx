@@ -20,6 +20,8 @@ import type { CierreEstado } from "@/lib/types/cierre";
 import type { OrigenFlete } from "@/lib/utils/ingreso-empresa";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
 // SLT-56 (R19/R20) — la marca «Ajustado» con su historial. Vive en su propio archivo: lleva un
 // popover, y este archivo pinta nombres de estado (guardia `estado-con-info`, brazo d).
 import { MarcaAjustado } from "./MarcaAjustado";
@@ -607,11 +609,14 @@ export function esMontoCero(monto: string): boolean {
   return /^-?0(\.0+)?$/.test(monto.trim());
 }
 
-/** Une la jerarquía geográfica en una línea legible (omite los vacíos). */
+/**
+ * Une la zona y toda la ruta del lugar en una línea legible (omite los vacíos). SLT-125 (R8, R24–R26):
+ * la ruta es `lugarRuta`, que el servidor saca del `ubicacion_snapshot` del cierre o, sin él, de las
+ * tres columnas de nombre; si no llega, se usan esos tres nombres. En Costa Rica sale igual que antes.
+ */
 export function ubicacion(g: CierreDetalleGestion): string {
-  return [g.zonaNombre, g.provinciaNombre, g.cantonNombre, g.distritoNombre]
-    .filter((parte): parte is string => Boolean(parte))
-    .join(" · ");
+  const ruta = rutaDeLaFila(g.lugarRuta, [g.provinciaNombre, g.cantonNombre, g.distritoNombre]);
+  return lineaDeUbicacion(g.zonaNombre, ruta, " · ") ?? "";
 }
 
 /** Ítem del panel de totales. */

@@ -209,14 +209,17 @@ async function compararCobertura(
     cobertura = { comparados: 1, distintos: distinto ? 1 : 0 };
   } else {
     // Como multiconjunto: entre nombres repetidos el orden de hoy no esta definido (design §3).
+    // SLT-125 (P5, como A12): la fila nueva lleva ademas `ruta`, que la lectura de hoy no tiene; se
+    // empareja por todo lo demas.
+    const clave = (f: CoberturaDistritoDTO) => JSON.stringify({ ...f, ruta: undefined });
     const pendientes = new Map<string, CoberturaDistritoDTO[]>();
     for (const f of rHoy.items) {
-      const k = JSON.stringify(f);
+      const k = clave(f);
       pendientes.set(k, [...(pendientes.get(k) ?? []), f]);
     }
     const sobranNuevas: CoberturaDistritoDTO[] = [];
     for (const f of rNuevo.items) {
-      const lista = pendientes.get(JSON.stringify(f));
+      const lista = pendientes.get(clave(f));
       if (lista && lista.length > 0) lista.pop();
       else sobranNuevas.push(f);
     }

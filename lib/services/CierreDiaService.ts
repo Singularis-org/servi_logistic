@@ -1012,6 +1012,8 @@ export function toDetalleDTO(
     provinciaNombre: g.provinciaNombre,
     cantonNombre: g.cantonNombre,
     distritoNombre: g.distritoNombre,
+    // SLT-125 (R24): passthrough de la ruta que trae la fila; sin ella el DTO queda como hoy.
+    ...(g.lugarRuta ? { lugarRuta: g.lugarRuta } : {}),
     producto: g.producto,
     tiendaNombre: g.tiendaNombre,
     resultado: g.resultado,

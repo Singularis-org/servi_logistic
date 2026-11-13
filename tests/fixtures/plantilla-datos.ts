@@ -39,6 +39,9 @@ export function datosPlantillaFixture(overrides?: {
       provinciaNombre: "San Jose",
       cantonNombre: "San Jose",
       distritoNombre: "Carmen",
+      // SLT-125: sin ruta, las claves de hoy leen los tres nombres de arriba, como antes. Quien
+      // prueba la ruta la pasa en `overrides.orden`.
+      lugarRuta: null,
       ...overrides?.orden,
     },
     mensajero: {

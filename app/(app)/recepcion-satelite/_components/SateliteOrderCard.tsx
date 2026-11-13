@@ -12,6 +12,8 @@ import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { IntentosDato, valorIntentos } from "@/components/shared/intentos-entrega";
 import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { dosLugaresDeLaOrden } from "@/app/(app)/_components/lugar-de-la-orden";
 
 import { RecepcionDetalle } from "./RecepcionDetalle";
 
@@ -56,6 +58,9 @@ export function SateliteOrderCard({
   // Estado del desplegable del detalle: UI efímera, de un solo consumidor.
   const [detalleAbierto, setDetalleAbierto] = useState(false);
   const intentos = valorIntentos(orden);
+  // SLT-125 (R11, R15): los dos lugares más hondos de la ruta de la orden («arriba · abajo», como
+  // hoy cantón · distrito), con la misma regla que la tarjeta del mensajero.
+  const { arriba, abajo } = dosLugaresDeLaOrden(orden, useNivelesGeograficos());
 
   return (
     <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-sm">
@@ -91,9 +96,9 @@ export function SateliteOrderCard({
         <MapPin className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <span className="block truncate text-xs font-semibold">
-            {orden.cantonNombre}
-            {orden.distritoNombre ? (
-              <span className="text-white/60"> · {orden.distritoNombre}</span>
+            {arriba}
+            {abajo ? (
+              <span className="text-white/60"> · {abajo}</span>
             ) : null}
           </span>
           {orden.direccion ? (

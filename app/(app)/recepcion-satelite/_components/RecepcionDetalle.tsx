@@ -8,6 +8,8 @@ import {
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
 
 // Feature 33 (R9): detalle de presentación de una orden del módulo satélite,
 // como lista de definición accesible (<dt>/<dd>). Componente puro (sin lógica de
@@ -26,16 +28,14 @@ function formatMonto(monto: number | null): string {
   return formatMontoConfigurado(monto, SIN_MONTO_RAYA);
 }
 
-/** Une la jerarquía geográfica en una línea legible (omite los vacíos). */
+/**
+ * Une la zona y toda la ruta del lugar en una línea legible (omite los vacíos). SLT-125 (R8, R10): la
+ * ruta es `lugarRuta`, del nivel 1 al lugar; sin ella, los tres nombres de hoy. En Costa Rica sale
+ * igual que antes.
+ */
 function ubicacion(orden: RecepcionSateliteDTO): string {
-  return [
-    orden.zonaNombre,
-    orden.provinciaNombre,
-    orden.cantonNombre,
-    orden.distritoNombre,
-  ]
-    .filter((parte): parte is string => Boolean(parte))
-    .join(" · ");
+  const ruta = rutaDeLaFila(orden.lugarRuta, [orden.provinciaNombre, orden.cantonNombre, orden.distritoNombre]);
+  return lineaDeUbicacion(orden.zonaNombre, ruta, " · ") ?? "";
 }
 
 /**

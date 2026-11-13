@@ -64,9 +64,17 @@ export function cabeceraDeNivel(n: number): string {
   return `nivel_${n}`;
 }
 
-/** `nombreSingular` con `normalizeName` y los espacios a `_` («Region Metropolitana» → `region_metropolitana`). */
+/**
+ * Un texto con `normalizeName` y los espacios a `_` («Region Metropolitana» → `region_metropolitana`).
+ * SLT-125 (design §3; R2): exportada para que las descargas comparen cabeceras con la MISMA regla que la
+ * plantilla de carga; una copia propia dejaria que una cabecera chocara en una y no en la otra.
+ */
+export function cabeceraNormalizada(texto: string): string {
+  return normalizeName(texto).replace(/ /g, "_");
+}
+
 function cabeceraDeTipo(tipo: TipoDeNivel): string {
-  return normalizeName(tipo.nombreSingular).replace(/ /g, "_");
+  return cabeceraNormalizada(tipo.nombreSingular);
 }
 
 function profundidadMaxima(cat: CatalogoGeografico): number {

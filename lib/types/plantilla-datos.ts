@@ -21,6 +21,7 @@ import { EMPRESA, MARCA } from "@/lib/config/marca";
 import { formatMonto } from "@/lib/config/moneda";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import { PARAM_GUIA } from "@/app/_landing/guia-en-url";
+import { rutaInvertida } from "@/lib/utils/ubicacion-presentacion";
 
 /* -------------------------------------------------------------------------- */
 /* 1. Los datos                                                                */
@@ -61,6 +62,17 @@ export interface OrdenPlantillaDatos {
   provinciaNombre: string | null;
   cantonNombre: string | null;
   distritoNombre: string | null;
+  /**
+   * SLT-125 (design §4.6; R28, R29) — la ruta del lugar de la orden en el catalogo del pais de la
+   * empresa, del nivel 1 al lugar. De aqui salen `{{nivel_k}}` y `{{ubicacion}}`, y tambien
+   * `{{provincia}}`, `{{canton}}` y `{{distrito}}` cuando llega.
+   *
+   * `null` o ausente = quien arma los datos no trae la ruta (una vista previa vieja, un adaptador
+   * parcial): entonces `{{provincia}}`, `{{canton}}` y `{{distrito}}` caen a los tres nombres de
+   * arriba, para que ningun envio ni vista previa de hoy cambie (R31). Opcional para no obligar a
+   * cada productor a la vez.
+   */
+  lugarRuta?: readonly { nombre: string }[] | null;
 }
 
 /**
@@ -216,6 +228,13 @@ export interface CampoPlantilla {
    * del catalogo». Ocultar es reversible y no toca ningun envio vivo.
    */
   ocultoEnSelector?: boolean;
+  /**
+   * SLT-125 (design §4.6; P2) — `k` si la entrada es `{{nivel_k}}`, el nombre del lugar de nivel k
+   * de la ruta. Cuantos de estos ofrece el selector depende del pais de la empresa (P niveles), asi
+   * que no entran en `CAMPOS_PLANTILLA_OFRECIDOS`: el selector añade `nivel_1..P` rotulados con el
+   * tipo de cada nivel. Siguen resolviendo como cualquier otra entrada.
+   */
+  nivel?: number;
   /** El valor CRUDO, tal como viene en `DatosPlantilla`. */
   leer(datos: DatosPlantilla): unknown;
   /** Convierte ese crudo en el texto que se envia. Puro: mismo valor -> mismo texto. */
@@ -234,6 +253,7 @@ function definir<V>(def: {
   descripcion: string;
   ejemplo: string;
   sensible?: boolean;
+  nivel?: number;
   leer: (datos: DatosPlantilla) => V;
   transform: (valor: V) => string;
 }): CampoPlantilla {
@@ -244,6 +264,7 @@ function definir<V>(def: {
     descripcion: def.descripcion,
     ejemplo: def.ejemplo,
     ...(def.sensible === true ? { sensible: true } : {}),
+    ...(def.nivel !== undefined ? { nivel: def.nivel } : {}),
     leer: def.leer,
     transform: (valor: unknown) => def.transform(valor as V),
   };
@@ -265,6 +286,45 @@ function alias(base: CampoPlantilla, clave: string, nombre: string): CampoPlanti
 /* -------------------------------------------------------------------------- */
 /* 4. El catalogo                                                              */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * SLT-125 (R28) — el nombre del nivel k de la orden. Con la ruta, sale de ella (vacio si no llega a
+ * ese nivel); sin ruta, del nombre de hoy, para que una vista previa que no la trae no cambie (R31).
+ */
+function nombreDelNivel(o: OrdenPlantillaDatos, k: number, deHoy: string | null): string | null {
+  if (o.lugarRuta === null || o.lugarRuta === undefined) return deHoy;
+  return o.lugarRuta[k - 1]?.nombre ?? null;
+}
+
+/**
+ * SLT-125 (design §4.6; R29) — la ruta de `DATOS_PLANTILLA_EJEMPLO`. Los ejemplos de `{{nivel_k}}`
+ * salen de aqui, y no se escriben aparte, para que el ejemplo y el dato no puedan divergir. Mas alla
+ * de sus 3 niveles no hay ejemplo (decision A3b).
+ */
+const RUTA_DE_EJEMPLO: readonly { nombre: string }[] = [
+  { nombre: "San José" },
+  { nombre: "San José" },
+  { nombre: "Carmen" },
+];
+
+/** Cuantos `{{nivel_k}}` hay en el catalogo: el maximo de niveles de un pais (SLT-44). */
+const NIVELES_MAXIMOS = 10;
+
+const CAMPOS_DE_NIVEL: CampoPlantilla[] = Array.from({ length: NIVELES_MAXIMOS }, (_, i) => {
+  const k = i + 1;
+  return definir({
+    clave: `nivel_${k}`,
+    campo: `orden.lugarRuta[${k - 1}].nombre`,
+    // Neutro a proposito: es lo que ve quien mira el catalogo sin pais. El selector lo rotula con el
+    // tipo del nivel k del pais de la empresa (R30, R42).
+    nombre: `Nivel ${k}`,
+    descripcion: `Nombre del lugar de nivel ${k} de la dirección de entrega. Vacío si la dirección no llega a ese nivel.`,
+    ejemplo: RUTA_DE_EJEMPLO[k - 1]?.nombre ?? "",
+    nivel: k,
+    leer: (d) => d.orden.lugarRuta?.[k - 1]?.nombre ?? null,
+    transform: texto,
+  });
+});
 
 const CLIENTE = definir({
   clave: "cliente",
@@ -365,7 +425,7 @@ const CATALOGO_DECLARADO: CampoPlantilla[] = [
     nombre: "Provincia",
     descripcion: "Provincia de la dirección de entrega.",
     ejemplo: "San José",
-    leer: (d) => d.orden.provinciaNombre,
+    leer: (d) => nombreDelNivel(d.orden, 1, d.orden.provinciaNombre),
     transform: texto,
   }),
   definir({
@@ -374,7 +434,7 @@ const CATALOGO_DECLARADO: CampoPlantilla[] = [
     nombre: "Cantón",
     descripcion: "Cantón de la dirección de entrega.",
     ejemplo: "San José",
-    leer: (d) => d.orden.cantonNombre,
+    leer: (d) => nombreDelNivel(d.orden, 2, d.orden.cantonNombre),
     transform: texto,
   }),
   definir({
@@ -383,9 +443,21 @@ const CATALOGO_DECLARADO: CampoPlantilla[] = [
     nombre: "Distrito",
     descripcion: "Distrito de la dirección de entrega. Es el único opcional de la geografía.",
     ejemplo: "Carmen",
-    leer: (d) => d.orden.distritoNombre,
+    leer: (d) => nombreDelNivel(d.orden, 3, d.orden.distritoNombre),
     transform: texto,
   }),
+  definir({
+    clave: "ubicacion",
+    campo: "orden.lugarRuta",
+    nombre: "Ubicación",
+    descripcion:
+      "Los lugares de la dirección de entrega, del más pequeño al más grande, como en una dirección postal.",
+    ejemplo: "Carmen, San José, San José",
+    // P3: del nivel mas hondo al nivel 1, unidos por «, », sin la zona y sin tramos vacios.
+    leer: (d) => d.orden.lugarRuta ?? [],
+    transform: (ruta) => rutaInvertida(ruta.map((p) => ({ id: null, nombre: p.nombre.trim() }))).join(", "),
+  }),
+  ...CAMPOS_DE_NIVEL,
   definir({
     clave: "zona",
     campo: "orden.zonaNombre",
@@ -740,7 +812,7 @@ export const CLAVES_OCULTAS_EN_SELECTOR: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * El catalogo COMPLETO: 42 entradas. Ocultar del selector no saca a nadie
+ * El catalogo COMPLETO: 53 entradas (SLT-125 sumo `ubicacion` y `nivel_1`…`nivel_10`). Ocultar del selector no saca a nadie
  * de aqui, porque de aqui es de donde se resuelve `{{clave}}` al enviar (feature 288).
  */
 export const CAMPOS_PLANTILLA: CampoPlantilla[] = CATALOGO_DECLARADO.map((campo) =>
@@ -753,7 +825,8 @@ export const CAMPOS_PLANTILLA: CampoPlantilla[] = CATALOGO_DECLARADO.map((campo)
  * afirmar sobre EL MISMO que usa la UI.
  */
 export const CAMPOS_PLANTILLA_OFRECIDOS: CampoPlantilla[] = CAMPOS_PLANTILLA.filter(
-  (campo) => campo.aliasDe === undefined && campo.ocultoEnSelector !== true,
+  // SLT-125 (P2): los `nivel_k` tampoco: cuantos se ofrecen depende del pais, y los pone el selector.
+  (campo) => campo.aliasDe === undefined && campo.ocultoEnSelector !== true && campo.nivel === undefined,
 );
 
 /** Indice `clave -> campo`, para resolver en O(1) y para que la UI busque por clave. */
@@ -804,6 +877,8 @@ export const DATOS_PLANTILLA_EJEMPLO: DatosPlantilla = {
     provinciaNombre: "San José",
     cantonNombre: "San José",
     distritoNombre: "Carmen",
+    // SLT-125 (A3b): la ruta de 3 niveles; `{{ubicacion}}` resuelve a «Carmen, San José, San José».
+    lugarRuta: RUTA_DE_EJEMPLO,
   },
   mensajero: {
     id: "8c21…",

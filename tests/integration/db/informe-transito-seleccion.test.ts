@@ -52,6 +52,9 @@ describeSiHayBase("475/R9-R10 — seleccion de ordenes en alerta", () => {
         dentro: dentro.id,
         fuera: { borrada: borrada.id, noIncluida: noIncluida.id, cierreEntrega: cierreEntrega.id, cierreTienda: cierreTienda.id, bajo: bajo.id },
         fila: filas.find((f) => f.ordenId === dentro.id),
+        // SLT-125 (A10): el nombre de la provincia de la base, para la `ruta` esperada.
+        provinciaNombre: (await tx.provincia.findUniqueOrThrow({ where: { id: base.provinciaId }, select: { nombre: true } }))
+          .nombre,
         numGuia: dentro.numGuia,
         base,
         zona,
@@ -72,6 +75,17 @@ describeSiHayBase("475/R9-R10 — seleccion de ordenes en alerta", () => {
       destinatario: "Cliente dentro",
       canton: r.base.cantonNombre,
       distrito: r.base.distritoNombre,
+      // SLT-125 (A10): la ruta del lugar, del nivel 1 al distrito, y los niveles de Costa Rica.
+      ruta: [
+        { id: r.base.provinciaId, nombre: r.provinciaNombre },
+        { id: r.base.cantonId, nombre: r.base.cantonNombre },
+        { id: r.base.distritoId, nombre: r.base.distritoNombre },
+      ],
+      niveles: [
+        { profundidad: 1, singular: "Provincia" },
+        { profundidad: 2, singular: "Cantón" },
+        { profundidad: 3, singular: "Distrito" },
+      ],
       montoCobrar: "18500.00",
       hitoAt: r.antes,
       ultimaTransicionAt: null,

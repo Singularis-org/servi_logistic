@@ -6,6 +6,7 @@ import { clasificar } from "@/lib/whatsapp-envios/informes/transito/calculo";
 import { pdfInformeTransito } from "@/lib/whatsapp-envios/informes/transito/pdf";
 import { PARAMETROS_POR_DEFECTO, type ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { NIVELES_CR, rutaDeCR } from "../../fixtures/transito-ruta";
 
 // Ficha 475 (T4.2) — R19, R23-R32 sobre el PDF REAL, leyendo el texto con el /ToUnicode que el
 // propio documento declara (la fuente embebida escribe en Identity-H: un grep no lo veria).
@@ -20,7 +21,11 @@ const COCO: ZonaInforme = { id: randomUUID(), nombre: "FGAM El Coco", esCentral:
 const ZONAS = [GAM, SUR, LIMON, COCO];
 
 function fila(over: Partial<FilaTransito>, dias: number, diasEnEstado = 0): FilaTransito {
+  const canton = over.canton ?? "Cartago";
+  const distrito = over.distrito === undefined ? "Oriental" : over.distrito;
   return {
+    ruta: rutaDeCR(canton, distrito),
+    niveles: NIVELES_CR,
     ordenId: randomUUID(),
     numRemision: "GM-10533",
     numGuia: 48240,

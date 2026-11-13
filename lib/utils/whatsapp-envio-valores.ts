@@ -70,6 +70,7 @@ function ordenVacia(): OrdenPlantillaDatos {
     provinciaNombre: null,
     cantonNombre: null,
     distritoNombre: null,
+    lugarRuta: null,
   };
 }
 
@@ -105,6 +106,9 @@ export function datosPlantillaDesdeAsignacion(orden: MiAsignacionDTO): DatosPlan
       provinciaNombre: orden.provinciaNombre,
       cantonNombre: orden.cantonNombre,
       distritoNombre: orden.distritoNombre,
+      // SLT-125 (design §4.6): la ruta del catalogo que el DTO ya trae (SLT-47). Sin ella, las
+      // claves de hoy caen a los tres nombres de arriba, como antes.
+      lugarRuta: orden.lugarRuta ?? null,
     },
     mensajero: MENSAJERO_PLANTILLA_VACIO,
     // ⭑ FICHA 429 (R13/R14/R18) — el par sale del DTO, que el SERVIDOR ya resolvio con

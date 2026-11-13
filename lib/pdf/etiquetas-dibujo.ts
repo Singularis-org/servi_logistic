@@ -3,6 +3,7 @@ import type { jsPDF } from "jspdf";
 import { EMPRESA } from "@/lib/config/marca";
 import { formatMonto } from "@/lib/config/moneda";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
+import { lineaDeUbicacion, type Ruta } from "@/lib/utils/ubicacion-presentacion";
 
 import {
   ajustarBloque,
@@ -140,16 +141,25 @@ export const ROTULO_TIENDA = "TIENDA";
 /** Marcador cuando la orden no trae direccion. */
 export const SIN_DIRECCION = "—";
 
-/** Une la geografia disponible; omite el distrito si es null (R4 de la 32). */
+/**
+ * Une la zona y la geografia disponible; omite los tramos vacios (R4 de la 32). SLT-125 (R9, R10): la
+ * ruta es `lugarRuta`, del nivel 1 al lugar (hasta 10 niveles); sin ella, los tres nombres de hoy. El
+ * separador « / » y el filtro son los de siempre: en Costa Rica la linea sale igual que antes.
+ */
 export function geografiaLegible(etiqueta: EtiquetaGuiaDTO): string {
-  return [
-    etiqueta.zonaNombre,
-    etiqueta.provinciaNombre,
-    etiqueta.cantonNombre,
-    etiqueta.distritoNombre,
-  ]
-    .filter((parte): parte is string => Boolean(parte))
-    .join(" / ");
+  return lineaDeUbicacion(etiqueta.zonaNombre, rutaDeEtiqueta(etiqueta), " / ") ?? "";
+}
+
+/**
+ * La ruta del lugar de la etiqueta: `lugarRuta` si llega (aunque sea `[]`: lugar fuera del catalogo,
+ * R18); si no llega, los tres nombres de hoy. `Array.isArray` porque la ruta es opcional en el DTO.
+ */
+function rutaDeEtiqueta(etiqueta: EtiquetaGuiaDTO): Ruta {
+  if (Array.isArray(etiqueta.lugarRuta)) return etiqueta.lugarRuta;
+  return [etiqueta.provinciaNombre, etiqueta.cantonNombre, etiqueta.distritoNombre].map((nombre) => ({
+    id: null,
+    nombre: nombre ?? "",
+  }));
 }
 
 /**

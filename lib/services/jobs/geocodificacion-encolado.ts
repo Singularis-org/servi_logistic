@@ -71,12 +71,11 @@ export async function encolarGeocodificacion(
 ): Promise<void> {
   // R9: se encola SOLO si hay direccion libre con contenido tras normalizar (gate
   // F1.4-Q5). `construirQueryDireccion` devuelve null exactamente en ese caso; se le pasa
-  // el catalogo vacio porque aqui solo importa la geocodificabilidad de la direccion.
+  // la ruta vacia y sin pais porque aqui solo importa la geocodificabilidad de la direccion.
   const query = construirQueryDireccion({
     direccion: orden.direccion,
-    distritoNombre: null,
-    cantonNombre: "",
-    provinciaNombre: "",
+    ruta: [],
+    paisNombre: null,
   });
   if (query === null) return;
 

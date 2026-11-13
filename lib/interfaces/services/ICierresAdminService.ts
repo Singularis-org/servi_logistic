@@ -1,4 +1,5 @@
 import type { MetodoPagoValue } from "@prisma/client";
+import type { Ruta } from "@/lib/utils/ubicacion-presentacion";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   CatalogoFiltrosCierresDTO,
@@ -255,6 +256,12 @@ export interface CierreGestionDescargaDTO {
   provinciaNombre: string;
   cantonNombre: string;
   distritoNombre: string | null;
+  /**
+   * SLT-125 (design §4.4, §6; R24–R26) — la ruta del lugar, del nivel 1 al lugar. En los detalles de
+   * admin sale del `ubicacion_snapshot` del cierre o, sin el, de las tres columnas de nombre
+   * (`leerUbicacionCongelada`). Opcional y aditivo: los campos de nombre de hoy no cambian (R37).
+   */
+  lugarRuta?: Ruta;
   producto: string;
   tiendaNombre: string;
   /**

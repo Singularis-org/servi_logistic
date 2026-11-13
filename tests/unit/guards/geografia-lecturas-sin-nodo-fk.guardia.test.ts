@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { ARCHIVOS_NUEVOS_SLT125, ARCHIVOS_SLT125 } from "../../fixtures/archivos-slt125";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
 
 // SLT-44 (T4.6; R12; design §3, §10) — LAS LECTURAS DE ESTA FEATURE NO LEEN `nodo_geografico_id`.
@@ -349,5 +350,102 @@ describe("SLT-47 R15 — el filtro de lugar y la ruta no leen la columna nueva",
       (rel) => mencionesDelNodoEn(leer(rel)).map((m) => `${rel}: ${m}`),
     );
     expect(hallazgos).toEqual([]);
+  });
+});
+
+// =============================================================================================
+// SLT-125 (T3.6; R19; P1 = B) — todos los archivos fuente de la feature, ENTEROS
+// =============================================================================================
+
+/**
+ * Las ENTRADAS de las 2 escrituras de SLT-45, por nombre: los tipos de datos de `toCreateManyInput` y
+ * de `corregirDatosCliente` (las exentas de `ESCRITURAS_EXENTAS_SLT45`). Son escrituras, no lecturas, y
+ * SLT-125 no las toca: `IOrdenRepository.ts` entra en el barrido porque SLT-125 le suma `lugarRuta`.
+ * No es una excepcion de lectura nueva; cualquier otra mencion del archivo sigue siendo hallazgo.
+ */
+const ENTRADAS_DE_ESCRITURA_SLT45: Record<string, string[]> = {
+  "lib/interfaces/repositories/IOrdenRepository.ts": [
+    "export interface CreateOrdenData {",
+    "export interface CorregirDatosClienteData {",
+  ],
+};
+
+/**
+ * `codigo` sin cada declaracion de nivel superior de `declaraciones` (desde su cabecera hasta la
+ * primera linea `}`). Lanza si falta una: una exencion que no encuentra su tipo no puede callar.
+ */
+export function sinDeclaraciones(codigo: string, declaraciones: readonly string[]): string {
+  let resto = codigo;
+  for (const cabecera of declaraciones) {
+    const inicio = resto.indexOf(cabecera);
+    if (inicio < 0) throw new Error(`no se encontro la declaracion exenta ${cabecera}`);
+    const fin = resto.indexOf("\n}\n", inicio);
+    if (fin < 0) throw new Error(`no se encontro el cierre de ${cabecera}`);
+    resto = resto.slice(0, inicio) + resto.slice(fin + 3);
+  }
+  return resto;
+}
+
+/** Un archivo de SLT-125 sin comentarios y sin las 2 escrituras de SLT-45 (metodos y sus entradas). */
+function lecturasDe(rel: string): string {
+  return sinDeclaraciones(sinMetodos(leer(rel), ESCRITURAS_EXENTAS_SLT45[rel] ?? []), ENTRADAS_DE_ESCRITURA_SLT45[rel] ?? []);
+}
+
+describe("SLT-125 R19 — el barrido de SLT-125 se prueba a si mismo", () => {
+  it("CONTRAPRUEBA: una lectura de la columna sembrada en un archivo real de SLT-125 se detecta", () => {
+    const rel = "app/(app)/_components/lugar-de-la-orden.ts";
+    expect(mencionesDelNodoEn(lecturasDe(rel))).toEqual([]);
+    expect(mencionesDelNodoEn(`${lecturasDe(rel)}\nconst lugar = orden.nodoGeograficoId;\n`)).toEqual(["nodoGeograficoId"]);
+  });
+
+  it("CONTRAPRUEBA: solo se recortan los tipos exentos; una mencion en otro tipo del mismo archivo sigue siendo hallazgo", () => {
+    const texto = [
+      "export interface CreateOrdenData {",
+      "  nodoGeograficoId: string;",
+      "}",
+      "export interface OrdenListItem {",
+      "  nodoGeograficoId: string | null;",
+      "}",
+      "export interface CorregirDatosClienteData {",
+      "  nodoGeograficoId?: string;",
+      "}",
+      "",
+    ].join("\n");
+    const resto = sinDeclaraciones(texto, ENTRADAS_DE_ESCRITURA_SLT45["lib/interfaces/repositories/IOrdenRepository.ts"]);
+    expect(mencionesDelNodoEn(resto)).toEqual(["nodoGeograficoId"]);
+    expect(resto).toContain("export interface OrdenListItem {");
+    expect(() => sinDeclaraciones("sin tipos", ["export interface CreateOrdenData {"])).toThrow(/no se encontro/);
+  });
+
+  it("los tipos exentos existen y nombran el nodo (si dejan de hacerlo, la exencion sobra)", () => {
+    for (const [rel, cabeceras] of Object.entries(ENTRADAS_DE_ESCRITURA_SLT45)) {
+      expect(ARCHIVOS_SLT125, rel).toContain(rel);
+      const codigo = leer(rel);
+      for (const cabecera of cabeceras) {
+        const inicio = codigo.indexOf(cabecera);
+        expect(inicio, cabecera).toBeGreaterThanOrEqual(0);
+        const cuerpo = codigo.slice(inicio, codigo.indexOf("\n}\n", inicio));
+        expect(mencionesDelNodoEn(cuerpo).length, cabecera).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe("SLT-125 R19 — los archivos de SLT-125 no leen la columna nueva (archivos enteros)", () => {
+  it("el barrido lee de verdad (anti-vacuidad): cada archivo existe y tiene codigo", () => {
+    expect(ARCHIVOS_SLT125.length).toBeGreaterThan(60);
+    for (const rel of ARCHIVOS_NUEVOS_SLT125) expect(ARCHIVOS_SLT125, rel).toContain(rel);
+    for (const rel of ARCHIVOS_SLT125) expect(leer(rel).length, rel).toBeGreaterThan(100);
+    // El lugar de la orden de las superficies de SLT-125 es `lugarDeLaOrden` (R19).
+    expect(leer("app/(app)/_components/lugar-de-la-orden.ts")).toContain("lugarRuta");
+  });
+
+  it("ningun archivo de SLT-125 nombra `nodoGeograficoId` ni `nodo_geografico_id` (fuera de las 2 escrituras de SLT-45)", () => {
+    const hallazgos = ARCHIVOS_SLT125.flatMap((rel) => mencionesDelNodoEn(lecturasDe(rel)).map((m) => `${rel}: ${m}`));
+    expect(
+      hallazgos,
+      "el lugar de la orden es siempre `lugarDeLaOrden` (FK viejas) y su ruta la del catalogo: asi la " +
+        "presentacion no depende del backfill de SLT-43 (R19, P1 = B)",
+    ).toEqual([]);
   });
 });

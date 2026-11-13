@@ -39,7 +39,7 @@ import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 // SLT-47 (R16): la ruta del lugar de cada asignacion, del catalogo de la empresa.
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
+import { nombresDeLaRuta, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import type { CatalogoGeografico } from "@/lib/services/geografia-dominio";
 
 // Feature 61: estado terminal de entrega para el KPI "entregadas" del portal.
@@ -305,10 +305,8 @@ const WITH_ASIGNACION = {
     // SINPE, no a la fila de `usuario`, que lleva `password_hash` y el telefono de una persona.
     zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
     mensajeroAsignado: { select: { zona: { select: { sinpeNumero: true, sinpeNombre: true } } } },
-    provincia: { select: { nombre: true } },
-    canton: { select: { nombre: true } },
-    distrito: { select: { nombre: true } },
-    // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`).
+    // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`). SLT-125 (design
+    // §4.2; R16): de esa ruta salen tambien los tres nombres; ya no se seleccionan las relaciones.
     cantonId: true,
     distritoId: true,
   },
@@ -336,6 +334,7 @@ function sinpeDeLaFila(row: AsignacionRow): { sinpeNumero: string; sinpeNombre: 
 }
 
 function toMiAsignacionRow(row: AsignacionRow, catalogo: CatalogoGeografico): MiAsignacionRow {
+  const ruta = rutaDelLugar(catalogo, row);
   return {
     id: row.id,
     numGuia: row.numGuia,
@@ -355,11 +354,10 @@ function toMiAsignacionRow(row: AsignacionRow, catalogo: CatalogoGeografico): Mi
     tiendaNombre: row.tienda.nombre,
     tiendaTelefono: row.tienda.telefono, // feature 157/R15
     zonaNombre: row.zona.nombre,
-    provinciaNombre: row.provincia.nombre,
-    cantonNombre: row.canton.nombre,
-    distritoNombre: row.distrito?.nombre ?? null,
+    // SLT-125 (R16, R17, R18): los tres nombres de hoy, de la misma ruta.
+    ...nombresDeLaRuta(ruta),
     // SLT-47 (R16): la ruta del lugar, del catalogo de la empresa.
-    lugarRuta: rutaDelLugar(catalogo, row),
+    lugarRuta: ruta,
     // FICHA 429 (R13/R15/R16): la MISMA funcion pura que usa el envio por servidor. Que sea una
     // sola es lo que impide que las dos superficies rindan numeros distintos para la misma orden.
     ...sinpeDeLaFila(row),

@@ -3,6 +3,18 @@ import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type { GenerarGuiaDecisionData } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+
+// SLT-125 (design §4.2): la etiqueta nombra el lugar con el catalogo de la empresa, que el repositorio
+// lee en su propia transaccion (por eso va tambien en el `tx` fake). La cadena da los nombres de
+// antes (P · C · D). Cambio de entrada.
+const CATALOGO_DE_LA_ETIQUETA = delegadosDelCatalogo({
+  nodos: [
+    { id: "p", nombre: "P" },
+    { id: "c", padreId: "p", nombre: "C" },
+    { id: "d", padreId: "c", nombre: "D" },
+  ],
+});
 
 // Feature 17 — repo de "Generar guia"/asignacion de mensajero. $transaction se
 // mockea ejecutando el callback con un tx fake (patron zona-repository.test.ts).
@@ -24,6 +36,7 @@ function buildTx() {
       ),
     },
     ordenHistorialEstado: { createMany: vi.fn() },
+    ...CATALOGO_DE_LA_ETIQUETA,
   };
 }
 
@@ -183,9 +196,8 @@ describe("OrdenRepository.findEtiquetaByNumGuia (feature 32/R1/R3)", () => {
       createdAt: new Date("2026-08-25T15:00:00.000Z"), // feature 295
       tienda: { nombre: "T" },
       zona: { nombre: "Limon" },
-      provincia: { nombre: "P" },
-      canton: { nombre: "C" },
-      distrito: { nombre: "D" },
+      cantonId: "c",
+      distritoId: "d",
     });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
@@ -235,9 +247,8 @@ function filaCrudaEtiqueta(createdAt: Date) {
     createdAt,
     tienda: { nombre: "T" },
     zona: { nombre: "Limon" },
-    provincia: { nombre: "P" },
-    canton: { nombre: "C" },
-    distrito: { nombre: "D" },
+    cantonId: "c",
+    distritoId: "d",
   };
 }
 

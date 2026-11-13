@@ -37,6 +37,8 @@
  */
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { NovedadDTO } from "@/lib/types/novedad";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
 
 /**
  * Nombre de la hoja, base del nombre de archivo y nombre accesible del control.
@@ -69,15 +71,14 @@ export const COLUMNAS_DESCARGA_AYUDA: DescargaColumna[] = [
   { clave: "intentos", encabezado: "Intentos de entrega" },
 ];
 
-/** Jerarquía geográfica en una línea, misma composición que el resto de los archivos. */
+/**
+ * SLT-125 (R7, R10): la zona y TODA la ruta del lugar (`lugarRuta`, del nivel 1 al lugar) unidas por
+ * « · », sin tramos vacíos; sin ningún tramo, celda vacía. Sin `lugarRuta` (DTO de un lector que no la
+ * anota) se usan los tres nombres de hoy. En Costa Rica sale igual que antes.
+ */
 function ubicacion(novedad: NovedadDTO): string | null {
-  const partes = [
-    novedad.zonaNombre,
-    novedad.provinciaNombre,
-    novedad.cantonNombre,
-    novedad.distritoNombre,
-  ].filter((parte): parte is string => Boolean(parte));
-  return partes.length === 0 ? null : partes.join(" · ");
+  const ruta = rutaDeLaFila(novedad.lugarRuta, [novedad.provinciaNombre, novedad.cantonNombre, novedad.distritoNombre]);
+  return lineaDeUbicacion(novedad.zonaNombre, ruta, " · ");
 }
 
 /**

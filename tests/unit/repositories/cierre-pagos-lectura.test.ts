@@ -12,6 +12,23 @@ import {
 } from "@/lib/repositories/CierresAdminRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { catalogoEnMemoria, delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+
+/** SLT-125: los delegados del mismo catalogo, para el doble de Prisma del camino en vivo. */
+const catalogoDelDoble = delegadosDelCatalogo({
+  nodos: [
+    { id: "p1", nombre: "Cartago" },
+    { id: "c1", padreId: "p1", nombre: "Central" },
+    { id: "d1", padreId: "c1", nombre: "Oriental" },
+  ],
+});
+
+/** SLT-125 (design §4.2): el catalogo con el que la vista en vivo nombra el lugar. Solo entrada. */
+const CATALOGO = catalogoEnMemoria([
+  { id: "p1", nombre: "Cartago" },
+  { id: "c1", padreId: "p1", nombre: "Central" },
+  { id: "d1", padreId: "c1", nombre: "Oriental" },
+]);
 
 /**
  * Feature 212 (T10, R21/R22/R23) — el DESGLOSE del recaudo llega por los TRES caminos de
@@ -60,9 +77,8 @@ function filaEnVivo(overrides: Record<string, unknown> = {}) {
       producto: "Caja",
       tienda: { nombre: "Tienda X" },
       zona: { nombre: "Cartago" },
-      provincia: { nombre: "Cartago" },
-      canton: { nombre: "Central" },
-      distrito: { nombre: "Oriental" },
+      // SLT-125 (design §4.2): las FK del lugar; los nombres salen del catalogo (`CATALOGO`).
+      cantonId: "c1",
       // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (`WITH_DETALLE_PENDIENTE`).
       distritoId: "d1",
       zonaId: "z1",
@@ -169,7 +185,10 @@ describe("R23 — las dos proyecciones que producen la fila seleccionan `pagos`"
 
 describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`", () => {
   function prismaDoble(filas: unknown[]) {
-    return {
+    const prisma = {
+      // SLT-125 (design §4.2): la vista en vivo nombra el lugar con el catalogo de la empresa, que se
+      // lee en su propia transaccion (el doble la corre sobre si mismo). Cambio de entrada.
+      ...catalogoDelDoble,
       gestionOrden: { findMany: vi.fn().mockResolvedValue(filas) },
       // Feature 237 (D6/R41): la lectura EN LOTE de «¿cual la registro la tienda?». Vacia: estos
       // casos miran el desglose de pagos, no de quien es la gestion.
@@ -180,6 +199,8 @@ describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`
       tarifa: { findMany: vi.fn() },
       $transaction: vi.fn(),
     };
+    prisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(prisma));
+    return prisma;
   }
 
   it("la fila trae el desglose con los montos money-safe STRING de escala 2", async () => {
@@ -226,6 +247,7 @@ describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`
     const row = toPendienteRow(
       filaEnVivo({ resultado: "reprogramado", montoRecibido: null, pagos: [] }) as never,
       false, // feature 237 (D6/R41): el flag lo resuelve el repo en lote; aqui no se ejercita
+      CATALOGO,
     );
     expect(row.pagos).toEqual([]);
   });
@@ -395,6 +417,7 @@ describe("R21/R22/R30 — los mappers serializan el desglose sin tocar el orden"
         ],
       }) as never,
       false, // feature 237 (D6/R41): irrelevante para el orden del desglose
+      CATALOGO,
     );
     expect(row.pagos.map((p) => p.metodo)).toEqual(["efectivo", "SINPE", "transferencia"]);
   });

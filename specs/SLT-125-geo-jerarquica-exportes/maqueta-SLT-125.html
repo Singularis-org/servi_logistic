@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta SLT-125 lugares</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: stacked boards per surface, each comparing Costa Rica (today) with 2-, 4- and 10-level countries */
+:root{
+  --bg:#ECEAE6; --lienzo:#F7F7F5; --card:#FFFFFF; --fg:#151514; --muted:#57534E;
+  --line:#E2DFDA; --sel:#F2F1EE; --nuevo-bg:#FFF6D6; --nuevo-fg:#6B4A0E; --nuevo-line:#F1D98A;
+  --vacio:#A8A29E; --papel:#FFFFFF;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121211; --lienzo:#1B1B1A; --card:#232321; --fg:#EDEBE7; --muted:#A8A39C;
+    --line:#34322F; --sel:#2C2B29; --nuevo-bg:#3A3015; --nuevo-fg:#F3D98C; --nuevo-line:#5C4B1E;
+    --vacio:#77726B; --papel:#F4F3F0; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121211; --lienzo:#1B1B1A; --card:#232321; --fg:#EDEBE7; --muted:#A8A39C;
+  --line:#34322F; --sel:#2C2B29; --nuevo-bg:#3A3015; --nuevo-fg:#F3D98C; --nuevo-line:#5C4B1E;
+  --vacio:#77726B; --papel:#F4F3F0; color-scheme:dark;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.envoltura{max-width:1200px;margin:0 auto;padding-block:28px 56px;display:flex;flex-direction:column;gap:28px}
+h1{margin:0;font-size:26px;text-wrap:balance}
+h2{margin:0 0 10px;font-size:16px;font-weight:600;text-wrap:balance}
+p{margin:0}
+.intro{display:flex;flex-direction:column;gap:6px;max-width:72ch;color:var(--muted)}
+.intro strong{color:var(--fg)}
+.lienzo{background:var(--lienzo);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.tarjeta{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.tarjeta.cr{border:2px solid var(--fg)}
+.etq{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.nota{font-size:13px;color:var(--muted)}
+.nuevo{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--nuevo-bg);color:var(--nuevo-fg);border:1px solid var(--nuevo-line);margin-left:6px;vertical-align:1px}
+.desliza{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{font-weight:600;background:var(--sel)}
+tr:last-child td{border-bottom:0}
+.vacio{color:var(--vacio)}
+code,.mono{font-family:var(--mono);font-size:12px}
+/* teléfono */
+.tel{background:var(--lienzo);border:1px solid var(--line);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:10px;max-width:360px;width:100%}
+.pos{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.pos .guia{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.pos .cliente{font-weight:600}
+.pos .lugar{font-size:13px}
+.campos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.campo{display:flex;flex-direction:column;gap:2px;min-width:0}
+.campo span:first-child{font-size:11px;color:var(--muted)}
+.campo span:last-child{font-size:14px;overflow-wrap:anywhere}
+/* etiqueta */
+.etiqueta{background:var(--papel);color:#151514;border:1px dashed #8A857E;border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;gap:4px;max-width:420px}
+.etiqueta b{font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.ejemplo{font-size:12px;color:var(--muted)}
+.selector{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:10px;padding:6px;background:var(--card)}
+.op{display:flex;justify-content:space-between;gap:12px;padding:6px 8px;border-radius:6px;font-size:13px}
+.op:hover{background:var(--sel)}
+.op .mono{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="envoltura">
+
+<header class="intro">
+  <h1>SLT-125 · Lugares en pantallas, descargas y documentos</h1>
+  <p>Maqueta para aprobar. Cada superficie muestra los lugares con los nombres de nivel del país de la empresa. <strong>Costa Rica (marco grueso) se ve igual que hoy.</strong> Hasta SLT-48 una orden llega como mucho al nivel 3, así que el nivel 4 sale con encabezado y vacío («—»).</p>
+  <p>Versión estática: nombres, guías y montos son de ejemplo. Países de ejemplo: Costa Rica (3 niveles), uno de 2 (Departamento, Municipio), uno de 4 (Región, Provincia, Comuna, Barrio) y uno de 10.</p>
+</header>
+
+<section>
+<h2>1 · Tabla de /ordenes y de recepción satélite (la descarga lleva las mismas columnas)</h2>
+<div class="lienzo">
+  <div class="tarjeta cr">
+    <p class="etq">Costa Rica · igual que hoy</p>
+    <div class="desliza"><table>
+      <thead><tr><th>Guía</th><th>Cliente</th><th>Zona</th><th>Provincia</th><th>Cantón</th><th>Distrito</th><th>Monto</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">SL-104882</td><td>Ana Mora</td><td>GAM Oeste</td><td>San José</td><td>Escazú</td><td>San Rafael</td><td>₡12.500</td></tr>
+        <tr><td class="mono">SL-104883</td><td>Luis Brenes</td><td>GAM Oeste</td><td>San José</td><td>Escazú</td><td class="vacio">—</td><td>₡8.000</td></tr>
+      </tbody>
+    </table></div>
+    <p class="nota">Descarga en Excel: mismas columnas, mismos nombres y mismo orden que hoy (las plantillas que la leen siguen funcionando).</p>
+  </div>
+  <div class="fila">
+    <div class="tarjeta">
+      <p class="etq">País de 2 niveles</p>
+      <div class="desliza"><table>
+        <thead><tr><th>Guía</th><th>Zona</th><th>Departamento</th><th>Municipio</th></tr></thead>
+        <tbody><tr><td class="mono">SL-2001</td><td>Caribe</td><td>Bolívar</td><td>Cartagena</td></tr></tbody>
+      </table></div>
+      <p class="nota">Solo 2 columnas de lugar: desaparece la tercera vacía.</p>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles</p>
+      <div class="desliza"><table>
+        <thead><tr><th>Guía</th><th>Zona</th><th>Región</th><th>Provincia</th><th>Comuna</th><th>Barrio</th></tr></thead>
+        <tbody><tr><td class="mono">SL-4001</td><td>Costa Norte</td><td>Costa</td><td>Litoral</td><td>Viña</td><td class="vacio">—</td></tr></tbody>
+      </table></div>
+      <p class="nota">«Barrio» aparece pero queda vacío hasta SLT-48.</p>
+    </div>
+  </div>
+  <div class="tarjeta">
+    <p class="etq">País de 10 niveles · la tabla se desliza de lado</p>
+    <div class="desliza"><table>
+      <thead><tr><th>Guía</th><th>Zona</th><th>Región</th><th>Subregión</th><th>Provincia</th><th>Departamento</th><th>Municipio</th><th>Comuna</th><th>Sector</th><th>Barrio</th><th>Manzana</th><th>Lote</th></tr></thead>
+      <tbody><tr><td class="mono">SL-9001</td><td>Norte</td><td>Norte</td><td>Alto Norte</td><td>Andina</td><td class="vacio">—</td><td class="vacio">—</td><td class="vacio">—</td><td class="vacio">—</td><td class="vacio">—</td><td class="vacio">—</td><td class="vacio">—</td></tr></tbody>
+    </table></div>
+  </div>
+  <div class="tarjeta">
+    <p class="etq">Cobertura de zonas (descarga)</p>
+    <p class="nota">Una fila por lugar del nivel más bajo del país: distrito en Costa Rica (igual que hoy), municipio en uno de 2 niveles, barrio en uno de 4.</p>
+  </div>
+</div>
+</section>
+
+<section>
+<h2>2 · Mensajero: tarjetas, detalle de asignación y chat (teléfono)</h2>
+<div class="lienzo">
+  <div class="fila">
+    <div class="tel">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <div class="pos"><span class="guia">SL-104882</span><span class="cliente">Ana Mora</span><span class="lugar">Escazú · San Rafael</span></div>
+      <div class="pos"><span class="guia">SL-104883 · sin distrito</span><span class="cliente">Luis Brenes</span><span class="lugar">Escazú</span></div>
+      <p class="etq" style="margin-top:6px">Detalle de asignación</p>
+      <p class="lugar">San Rafael, Escazú</p>
+      <div class="campos">
+        <div class="campo"><span>Provincia</span><span>San José</span></div>
+        <div class="campo"><span>Cantón</span><span>Escazú</span></div>
+        <div class="campo"><span>Distrito</span><span>San Rafael</span></div>
+      </div>
+      <p class="etq" style="margin-top:6px">Chat</p>
+      <p class="nota">Ana Mora · San Rafael · Escazú</p>
+    </div>
+    <div class="tel">
+      <p class="etq">País de 4 niveles</p>
+      <div class="pos"><span class="guia">SL-4001</span><span class="cliente">Rosa Pérez</span><span class="lugar">Litoral · Viña</span></div>
+      <p class="nota">Los 2 lugares más hondos que tiene la orden (provincia · comuna) hasta que existan órdenes con barrio.</p>
+      <p class="etq" style="margin-top:6px">Detalle de asignación <span class="nuevo">Un campo por nivel</span></p>
+      <p class="lugar">Viña, Litoral</p>
+      <div class="campos">
+        <div class="campo"><span>Región</span><span>Costa</span></div>
+        <div class="campo"><span>Provincia</span><span>Litoral</span></div>
+        <div class="campo"><span>Comuna</span><span>Viña</span></div>
+        <div class="campo"><span>Barrio</span><span class="vacio">—</span></div>
+      </div>
+      <p class="etq" style="margin-top:6px">Chat</p>
+      <p class="nota">Rosa Pérez · Viña · Litoral</p>
+    </div>
+    <div class="tel">
+      <p class="etq">País de 2 niveles</p>
+      <div class="pos"><span class="guia">SL-2001</span><span class="cliente">Jorge Ríos</span><span class="lugar">Bolívar · Cartagena</span></div>
+      <p class="etq" style="margin-top:6px">Detalle de asignación</p>
+      <div class="campos">
+        <div class="campo"><span>Departamento</span><span>Bolívar</span></div>
+        <div class="campo"><span>Municipio</span><span>Cartagena</span></div>
+      </div>
+      <p class="nota">Botón de navegación: «Calle 30 #12, Cartagena, Bolívar» (de lo más chico a lo más grande, como hoy).</p>
+    </div>
+  </div>
+  <p class="nota">La tarjeta de recepción satélite sigue la misma regla que las del mensajero.</p>
+</div>
+</section>
+
+<section>
+<h2>3 · Línea «Ubicación» en detalles y descargas de novedades, ayuda, cierre de día y cierres admin</h2>
+<div class="lienzo">
+  <div class="fila">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <p>GAM Oeste · San José · Escazú · San Rafael</p>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles</p>
+      <p>Costa Norte · Costa · Litoral · Viña</p>
+      <p class="nota">Zona y después todos los lugares de la orden, del más grande al más chico.</p>
+    </div>
+  </div>
+  <div class="tarjeta">
+    <p class="etq">Cierres ya hechos</p>
+    <p class="nota">Cada cierre nuevo guarda la ruta del lugar al cerrar. Si después se renombra un lugar, el cierre sigue mostrando el nombre de entonces. Los cierres viejos sin ruta guardada se ven como hoy.</p>
+  </div>
+</div>
+</section>
+
+<section>
+<h2>4 · Etiqueta de guía y página pública del paquete</h2>
+<div class="lienzo">
+  <div class="fila">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <div class="etiqueta"><b>SL-104882</b><span>Ana Mora · 8888-0000</span><span>Del Walmart 200 m sur</span><span>GAM Oeste / San José / Escazú / San Rafael</span></div>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">Ruta larga (10 niveles)</p>
+      <div class="etiqueta"><b>SL-9001</b><span>María Soto · 7000-1111</span><span>Lote 7, pasaje 3</span><span>Norte / Norte / Alto Norte / Andina / Cordillera / Valle Alto / San Pedro / Sector 4 / Las Flores / Manzana B</span></div>
+      <p class="nota">La ruta pasa a la línea siguiente; en la etiqueta impresa no se corta.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<h2>5 · PDF de tránsito</h2>
+<div class="lienzo">
+  <div class="fila">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <div class="desliza"><table><thead><tr><th>GUÍA</th><th>CANTÓN · DISTRITO</th><th>ESTADO</th></tr></thead>
+      <tbody><tr><td class="mono">SL-104882</td><td>Escazú · San Rafael</td><td>En ruta</td></tr></tbody></table></div>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles</p>
+      <div class="desliza"><table><thead><tr><th>GUÍA</th><th>PROVINCIA · COMUNA</th><th>ESTADO</th></tr></thead>
+      <tbody><tr><td class="mono">SL-4001</td><td>Litoral · Viña</td><td>En ruta</td></tr></tbody></table></div>
+      <p class="nota">El título usa los nombres de nivel de los 2 lugares que se muestran.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<h2>6 · Plantillas de WhatsApp: selector de variables</h2>
+<div class="lienzo">
+  <div class="fila">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica</p>
+      <div class="selector">
+        <div class="op"><span>Provincia <span class="nuevo">Nueva</span></span><span class="mono">{{nivel_1}}</span></div>
+        <div class="op"><span>Cantón <span class="nuevo">Nueva</span></span><span class="mono">{{nivel_2}}</span></div>
+        <div class="op"><span>Distrito <span class="nuevo">Nueva</span></span><span class="mono">{{nivel_3}}</span></div>
+        <div class="op"><span>Ubicación <span class="nuevo">Nueva</span></span><span class="mono">{{ubicacion}}</span></div>
+      </div>
+      <p class="ejemplo">Ejemplo de {{ubicacion}}: «Carmen, San José, San José»</p>
+      <p class="nota">Las plantillas que ya usan {{provincia}}, {{canton}} o {{distrito}} siguen funcionando igual; esas tres siguen sin aparecer en el selector, como hoy.</p>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles</p>
+      <div class="selector">
+        <div class="op"><span>Región</span><span class="mono">{{nivel_1}}</span></div>
+        <div class="op"><span>Provincia</span><span class="mono">{{nivel_2}}</span></div>
+        <div class="op"><span>Comuna</span><span class="mono">{{nivel_3}}</span></div>
+        <div class="op"><span>Barrio</span><span class="mono">{{nivel_4}}</span></div>
+        <div class="op"><span>Ubicación</span><span class="mono">{{ubicacion}}</span></div>
+      </div>
+      <p class="ejemplo">En un mensaje: «Su paquete va a Viña, Litoral, Costa».</p>
+    </div>
+  </div>
+</div>
+</section>
+
+</div>
+</body>
+</html>

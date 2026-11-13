@@ -4,6 +4,8 @@ import { useState } from "react";
 import { MapPin, Navigation } from "lucide-react";
 
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import { dosLugaresDeLaOrden } from "@/app/(app)/_components/lugar-de-la-orden";
 
 import { UbicacionModal } from "../UbicacionModal";
 import { puntoDeOrden, UbicacionTrigger } from "../UbicacionTrigger";
@@ -28,12 +30,15 @@ export interface PosNavBlockProps {
 export function PosNavBlock({ orden }: PosNavBlockProps) {
   const punto = puntoDeOrden(orden);
   const [abierto, setAbierto] = useState(false);
+  // SLT-125 (R11, R15): los dos lugares más hondos de la ruta de la orden, en el sitio de cantón y
+  // distrito. En Costa Rica son esos mismos dos.
+  const { arriba, abajo } = dosLugaresDeLaOrden(orden, useNivelesGeograficos());
 
   return (
     <div className="flex w-full items-stretch gap-3 rounded-2xl bg-navy p-3 text-left text-white">
       <UbicacionTrigger
         orden={orden}
-        ariaLabel={`Ver en el mapa la ruta hasta ${orden.direccion ?? orden.cantonNombre}`}
+        ariaLabel={`Ver en el mapa la ruta hasta ${orden.direccion ?? arriba ?? ""}`}
         className="flex flex-col items-center justify-center rounded-xl bg-brand-light px-4 py-2 text-brand-dark transition-transform hover:bg-brand-light/90 active:scale-[0.99]"
       >
         <Navigation className="size-6" aria-hidden="true" />
@@ -42,11 +47,11 @@ export function PosNavBlock({ orden }: PosNavBlockProps) {
       <div className="min-w-0 flex-1 py-0.5">
         <div className="flex items-center gap-2">
           <span className="truncate font-mono text-lg font-bold tabular-nums text-white">
-            {orden.cantonNombre}
+            {arriba}
           </span>
-          {orden.distritoNombre ? (
+          {abajo ? (
             <span className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-bold">
-              {orden.distritoNombre}
+              {abajo}
             </span>
           ) : null}
         </div>
