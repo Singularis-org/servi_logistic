@@ -57,13 +57,27 @@ const EXTENSIONES_BINARIAS = new Set([
   ".xlsx", ".xls", ".docx", ".pdf", ".zip", ".gz", ".mp4", ".mp3", ".wasm",
 ]);
 
-/** Universo de la guardia: lo versionado mas `.env.example`, sin `progress/` ni binarios. */
+/**
+ * Universo de la guardia: lo versionado mas `.env.example`, sin `progress/` ni binarios.
+ *
+ * SLT-150 — de lo versionado solo entran los candidatos: los que `git grep` marca con el nombre
+ * heredado sin distinguir mayusculas (`-i -F`). Todo acierto del detector contiene ese nombre, asi
+ * que el filtro no deja fuera ningun hallazgo: solo evita que Node lea los ~8000 archivos que no lo
+ * llevan (eso tardo 31 s bajo la carga del gate). `git grep` sin `-I` tambien lista los binarios;
+ * el filtro por extension de abajo los saca, igual que antes.
+ */
 function universo(): string[] {
-  const salida = execFileSync("git", ["ls-files", "-z"], {
-    cwd: RAIZ_DEL_REPO,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  let salida = "";
+  try {
+    salida = execFileSync("git", ["grep", "-l", "-z", "-i", "-F", NOMBRE_HEREDADO.minusculas], {
+      cwd: RAIZ_DEL_REPO,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (e) {
+    // `git grep` sale con 1 cuando no hay ningun acierto: universo vacio, no error.
+    if ((e as { status?: number }).status !== 1) throw e;
+  }
   const rutas = new Set(salida.split("\0").filter(Boolean));
   rutas.add(".env.example");
   return [...rutas].filter(
@@ -76,14 +90,23 @@ function universo(): string[] {
 
 let cache: Map<string, number[]> | null = null;
 
+/** SLT-150 — costo del barrido: cuantas veces se recorre el repo y cuantos archivos lee Node sin el nombre. */
+export const costoDelBarrido = { barridos: 0, lecturasSinNombre: 0 };
+
 /** Mapa ruta -> lineas con el dominio, solo de los archivos que lo tienen. */
 function archivosConDominio(): Map<string, number[]> {
   if (cache) return cache;
+  costoDelBarrido.barridos++;
   const mapa = new Map<string, number[]>();
   for (const ruta of universo()) {
     const abs = path.join(RAIZ_DEL_REPO, ruta);
     if (!fs.statSync(abs).isFile()) continue;
-    const lineas = lineasConDominio(fs.readFileSync(abs, "utf8"));
+    const texto = fs.readFileSync(abs, "utf8");
+    // `.env.example` entra siempre al universo, lleve o no el nombre: no cuenta como lectura de mas.
+    if (ruta !== ".env.example" && !texto.toLowerCase().includes(NOMBRE_HEREDADO.minusculas)) {
+      costoDelBarrido.lecturasSinNombre++;
+    }
+    const lineas = lineasConDominio(texto);
     if (lineas.length > 0) mapa.set(ruta, lineas);
   }
   cache = mapa;
@@ -167,5 +190,19 @@ describe("SL-14 — el dominio de la marca anterior fuera del repo", () => {
       `${archivos.size} archivo(s) llevan el dominio de la marca anterior. Sacalo a configuracion o usa ` +
         `example.com:\n${hallazgos.join("\n")}`,
     ).toEqual([]);
+  });
+
+  // SLT-150 — bajo carga del gate el barrido tardo 31 s contra un `testTimeout` de 20 s. Va al final:
+  // para entonces los dos tests que barren ya corrieron y el contador refleja la corrida entera.
+  describe("costo del barrido (SLT-150)", () => {
+    it("recorre el repo una sola vez por corrida del archivo", () => {
+      archivosConDominio();
+      expect(costoDelBarrido.barridos).toBe(1);
+    });
+
+    it("Node solo lee los archivos que git grep marca con el nombre heredado", () => {
+      archivosConDominio();
+      expect(costoDelBarrido.lecturasSinNombre).toBe(0);
+    });
   });
 });
