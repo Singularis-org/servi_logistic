@@ -8,6 +8,7 @@
 import type { CoberturaDistritoDTO, MotivoSinCobertura } from "@/lib/types/cobertura";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
+import { esFemenino } from "@/lib/utils/filtro-ubicacion";
 import { celdasDeNivel, type NivelDelPais } from "@/lib/utils/ubicacion-presentacion";
 import {
   conColumnasDeNivel,
@@ -59,7 +60,8 @@ const NO = "No";
  * `progress/impl_SL-20-T5b.md`).
  *
  * SLT-125 (R6, P5; decisión del 2026-11-13): desde el nivel 4 el motivo es `nivel_<k>_retirado`, y su
- * texto nombra el tipo del nivel k del país (`niveles`), con la concordancia de «cantón» y «distrito».
+ * texto nombra el tipo del nivel k del país (`niveles`). Su género sale del singular del tipo con la
+ * misma regla de SLT-47 (`esFemenino`): «Comuna retirada del catálogo», «Barrio retirado del catálogo».
  * Los niveles 1–3 conservan sus textos de hoy. Sin niveles de 4 o más, no hay motivos de nivel ≥ 4.
  */
 export function motivoSinCoberturaLabel(
@@ -75,7 +77,8 @@ export function motivoSinCoberturaLabel(
   };
   for (const nivel of niveles ?? []) {
     if (nivel.profundidad >= 4) {
-      textos[`nivel_${nivel.profundidad}_retirado`] = `${nivel.singular} retirado del catálogo`;
+      const retirado = esFemenino(nivel.singular) ? "retirada" : "retirado";
+      textos[`nivel_${nivel.profundidad}_retirado`] = `${nivel.singular} ${retirado} del catálogo`;
     }
   }
   return textos;

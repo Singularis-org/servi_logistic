@@ -250,8 +250,16 @@ describe("R6 (cliente) — el archivo de cobertura de un pais de 4 niveles", () 
   it("R42: el texto sale del tipo del país, no de un literal (otro nombre, otro texto)", () => {
     const otros = nivelesDe("Región", "Comuna", "Barrio", "Manzana", "Lote");
     const textos = motivoSinCoberturaLabel(ETIQUETAS, otros);
-    expect(textos.nivel_4_retirado).toBe("Manzana retirado del catálogo");
+    expect(textos.nivel_4_retirado).toBe("Manzana retirada del catálogo");
     expect(textos.nivel_5_retirado).toBe("Lote retirado del catálogo");
+  });
+
+  it("desde el nivel 4 el género sale del singular del tipo (regla de SLT-47): un tipo femenino y uno masculino", () => {
+    const textos = motivoSinCoberturaLabel(ETIQUETAS, nivelesDe("Región", "Provincia", "Ciudad", "Comuna", "Barrio"));
+    expect(textos.nivel_4_retirado).toBe("Comuna retirada del catálogo");
+    expect(textos.nivel_5_retirado).toBe("Barrio retirado del catálogo");
+    // Los niveles 1–3 conservan sus textos de hoy, sin pasar por la regla.
+    expect(textos.canton_retirado).toBe(`${ETIQUETAS.canton.singular} retirado del catálogo`);
   });
 });
 
