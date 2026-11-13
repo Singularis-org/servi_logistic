@@ -178,6 +178,30 @@ async function pendienteDeEmpresaPorSql(tx: TxDeTest, organizacionId: string, pl
   return cambioId;
 }
 
+/** SLT-128 (R29): una fila de la cola de un pendiente (`plan_aplicar_cambio` o `plan_recordatorio_cambio`). */
+interface FilaDeCola {
+  tipo: string;
+  estado: string;
+  motivo: string | null;
+  clave: string | null;
+  recibe: string | null;
+  dias: string | null;
+}
+
+/** SLT-128 (R29): los trabajos de aplicar y de recordatorio del pendiente `cambioId` para esa empresa (o sin ella). */
+async function colaDe(tx: TxDeTest, cambioId: string, organizacionId: string | null): Promise<FilaDeCola[]> {
+  return tx.$queryRaw<FilaDeCola[]>`
+    SELECT "tipo"::text AS "tipo", "estado"::text AS "estado", "last_error" AS "motivo", "dedupe_key" AS "clave",
+           "payload"->>'recibeAt' AS "recibe", "payload"->>'dias' AS "dias"
+      FROM "jobs"
+     WHERE "tipo" IN ('plan_aplicar_cambio', 'plan_recordatorio_cambio') AND "payload"->>'cambioId' = ${cambioId}
+       AND "organizacion_id" IS NOT DISTINCT FROM ${organizacionId}::text
+     ORDER BY "tipo", "payload"->>'recibeAt', "payload"->>'dias', "estado"`;
+}
+
+/** Lo que identifica cada trabajo de una fila de la cola, sin su estado. */
+const queEs = (f: FilaDeCola) => [f.tipo, f.recibe, f.dias];
+
 describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su recepción", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
@@ -671,5 +695,235 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
       [r.aBimestral]: "bimestral",
       [r.aQuincenal]: "quincenal",
     });
+  });
+
+  /* --------------------------- Tras la review (R28, R29) --------------------------- */
+
+  it("R28, R10: B (quincenal, entró antes de F) deja «no aplicada» su recepción; el plan se promueve igual, B conserva su versión marcada y el aviso sigue en el detalle hasta que recibe otro cambio", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["mensual"]);
+      const [mensual] = p.orgs;
+      await p.programar("2026-12-01", { nombre: "Órdenes por mes", periodicidadOrdenes: "mensual" });
+      const cambio = await p.pendiente();
+      // B entra el 28 de octubre, quincenal: el plan aún factura las órdenes por quincena (R37 lo deja).
+      const { id: b } = await crearOrganizacion(tx, { nombre: `SLT128 B ${randomUUID().slice(0, 6)}` });
+      const asignadaB = await p.servicio.asignar(SUPERADMIN, { organizacionId: b, planId: p.planId, tipoCobro: "quincenal" });
+      const modulosB = await modulos(tx, b);
+      const recibeA = await p.recibir(mensual, a("2026-12-01", 1));
+      const detalleAntes = await planesEnTx(tx).detalle(p.planId);
+      const recibeB = await p.recibir(b, a("2026-12-01", 2));
+      const detalle = await planesEnTx(tx).detalle(p.planId);
+      const [corre] = await tx.$queryRawUnsafe<{ p: string; n: string }[]>(
+        `SELECT v."periodicidad_ordenes" AS p, v."nombre" AS n FROM plan_version_de($1, $2) v`,
+        b,
+        p.planId,
+      );
+      const plan = await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { nombre: true, periodicidadOrdenes: true } });
+      const conservada = await tx.planVersionEmpresa.findUnique({
+        where: { empresaId: b },
+        select: { cambioId: true, version: true, noAplicadaAt: true, noAplicadaMotivo: true },
+      });
+      const versionesDeA = await tx.planVersionEmpresa.count({ where: { empresaId: mensual } });
+      const avisos = (await trabajos(tx, "plan_aviso_correo", p.planId)).filter((t) => t.payload.tipo === "no_aplicada");
+      const trasB = { modulosB: await modulos(tx, b) };
+
+      // Otro cambio, de vuelta a órdenes por quincena, guardado el 2 de diciembre con F = 16: B lo recibe el 16 y
+      // su versión deja de estar marcada; el aviso se va del detalle.
+      const vuelta = await p.programar("2026-12-16", { nombre: "De vuelta", periodicidadOrdenes: "quincenal" }, new Date("2026-12-02T15:00:00.000Z"));
+      const detalleTrasProgramar = await planesEnTx(tx).detalle(p.planId);
+      const recibeVuelta = await p.recibir(b, a("2026-12-16", 1));
+      const detalleTrasRecibir = await planesEnTx(tx).detalle(p.planId);
+      return {
+        b,
+        cambio,
+        asignadaB,
+        modulosB,
+        recibeA,
+        detalleAntes,
+        recibeB,
+        detalle,
+        corre,
+        plan,
+        conservada,
+        versionesDeA,
+        avisos,
+        trasB,
+        vuelta,
+        detalleTrasProgramar,
+        recibeVuelta,
+        detalleTrasRecibir,
+        marcaTrasRecibir: await tx.planVersionEmpresa.findUnique({ where: { empresaId: b }, select: { noAplicadaAt: true } }),
+        nombreOriginal: p.entrada.nombre,
+      };
+    });
+    expect(r.asignadaB).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.recibeA).toEqual({ estado: "aplicado" });
+    expect(r.detalleAntes?.pendiente).toMatchObject({ recibidas: 1, total: 2 });
+    expect(r.detalleAntes?.noAplicadas).toEqual([]);
+    expect(r.recibeB).toEqual({ estado: "no_aplicada", motivo: "cobro_quincenal_ordenes_mensuales" });
+    // R10: resuelta → el plan pasa a la versión nueva en esa misma transacción.
+    expect(r.plan).toEqual({ nombre: "Órdenes por mes", periodicidadOrdenes: "mensual" });
+    expect(r.detalle?.pendiente).toBeNull();
+    // R28: B sigue con la versión que tenía (la del plan antes de promover), marcada; A no conserva nada.
+    expect(r.corre).toEqual({ p: "quincenal", n: r.nombreOriginal });
+    expect(r.conservada).toMatchObject({
+      cambioId: r.cambio,
+      version: { nombre: r.nombreOriginal, periodicidadOrdenes: "quincenal" },
+      noAplicadaAt: a("2026-12-01", 2),
+      noAplicadaMotivo: "cobro_quincenal_ordenes_mensuales",
+    });
+    expect(r.versionesDeA).toBe(0);
+    expect(r.trasB.modulosB).toEqual(r.modulosB);
+    expect(r.detalle?.noAplicadas).toEqual([
+      { empresaId: r.b, empresa: expect.stringMatching(/^SLT128 B /), motivo: "cobro_quincenal_ordenes_mensuales", desde: a("2026-12-01", 2) },
+    ]);
+    // Un aviso, sin empresa.
+    expect(r.avisos.map((t) => [t.organizacionId, t.payload.empresaId, t.dedupeKey])).toEqual([
+      [null, r.b, `plan_aviso:${r.cambio}:no_aplicada:${r.b}`],
+    ]);
+    // Mientras B no recibe el otro cambio, el aviso sigue; al recibirlo, se va.
+    expect(r.vuelta).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.detalleTrasProgramar?.noAplicadas.map((n) => n.empresaId)).toEqual([r.b]);
+    expect(r.recibeVuelta).toEqual({ estado: "aplicado" });
+    expect(r.detalleTrasRecibir?.noAplicadas).toEqual([]);
+    expect(r.marcaTrasRecibir).toEqual({ noAplicadaAt: null });
+  });
+
+  it("R28, R18, R15: con B no aplicada y A pendiente el plan espera y archivar se rechaza; cuando A (la última pendiente) sale, el plan se promueve y ya se puede archivar", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["bimestral"]);
+      const [bimestral] = p.orgs;
+      await p.programar("2026-12-01", { nombre: "Por mes", periodicidadOrdenes: "mensual" });
+      const { id: b } = await crearOrganizacion(tx);
+      await p.servicio.asignar(SUPERADMIN, { organizacionId: b, planId: p.planId, tipoCobro: "quincenal" });
+      const recibeB = await p.recibir(b, a("2026-12-01", 1));
+      const esperando = {
+        pendientes: await tx.planCambioProgramado.count({ where: { planId: p.planId } }),
+        archivar: await p.servicio.archivar(SUPERADMIN, { planId: p.planId }),
+        barrido: (await planesEnTx(tx).recepcionesVencidas(a("2026-12-01", 90))).filter((v) => v.planId === p.planId),
+      };
+      // A, la última pendiente (recepción el 1 de enero), deja el plan el 10 de diciembre.
+      const otro = await crearPlan(tx);
+      const salida = await pendienteDeEmpresaPorSql(tx, bimestral, otro, "bimestral", a("2026-12-10"));
+      await fijarEmpresa(tx, "");
+      const salio = await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: bimestral, cambioId: salida }, a("2026-12-10", 1));
+      return {
+        b,
+        recibeB,
+        esperando,
+        salio,
+        pendientes: await tx.planCambioProgramado.count({ where: { planId: p.planId } }),
+        plan: await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { periodicidadOrdenes: true } }),
+        noAplicadas: (await planesEnTx(tx).detalle(p.planId))?.noAplicadas.map((n) => n.empresaId),
+        archivar: await p.servicio.archivar(SUPERADMIN, { planId: p.planId }),
+      };
+    });
+    expect(r.recibeB).toEqual({ estado: "no_aplicada", motivo: "cobro_quincenal_ordenes_mensuales" });
+    expect(r.esperando).toEqual({ pendientes: 1, archivar: { estado: "cambio_a_medias" }, barrido: [] });
+    expect(r.salio).toEqual({ estado: "aplicado" });
+    expect(r.pendientes).toBe(0);
+    expect(r.plan.periodicidadOrdenes).toBe("mensual");
+    expect(r.noAplicadas).toEqual([r.b]);
+    expect(r.archivar).toMatchObject({ estado: "ok", cambio: true });
+  });
+
+  it("R28, R13: el reemplazo del pendiente le da a B otra recepción: el aviso de la no aplicada se va del detalle", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["bimestral"]);
+      await p.programar("2026-12-01", { nombre: "Por mes", periodicidadOrdenes: "mensual" });
+      const { id: b } = await crearOrganizacion(tx);
+      await p.servicio.asignar(SUPERADMIN, { organizacionId: b, planId: p.planId, tipoCobro: "quincenal" });
+      await p.recibir(b, a("2026-12-01", 1));
+      const antes = (await planesEnTx(tx).detalle(p.planId))?.noAplicadas.map((n) => n.empresaId);
+      const reemplazo = await p.programar("2026-12-16", { nombre: "Solo el nombre" }, new Date("2026-12-02T15:00:00.000Z"));
+      const nuevo = await p.pendiente();
+      return {
+        b,
+        antes,
+        reemplazo,
+        despues: (await planesEnTx(tx).detalle(p.planId))?.noAplicadas,
+        recepcionDeB: await tx.planCambioRecepcion.findUnique({
+          where: { cambioId_empresaId: { cambioId: nuevo, empresaId: b } },
+          select: { recibeAt: true, recibidoAt: true, noAplicadaAt: true },
+        }),
+      };
+    });
+    expect(r.antes).toEqual([r.b]);
+    expect(r.reemplazo).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.despues).toEqual([]);
+    expect(r.recepcionDeB).toEqual({ recibeAt: a("2026-12-16"), recibidoAt: null, noAplicadaAt: null });
+  });
+
+  it("R29 (R19): al mover la recepción, sus trabajos de la fecha vieja quedan descartados con su motivo y la clave libre; los de la nueva y los de otra empresa, pendientes", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["mensual", "mensual"]);
+      const [mueve, otra] = p.orgs;
+      await p.programar("2027-01-05", { nombre: "Enero" });
+      const cambio = await p.pendiente();
+      const antes = await colaDe(tx, cambio, mueve);
+      // Mensual → bimestral con efecto el 1 de enero: su recepción pasa del 1 de febrero al 1 de marzo (R19).
+      await p.servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: mueve, tipoCobro: "bimestral", vigenteDesde: "2027-01-01" });
+      const deTipo = (await tx.organizacion.findUniqueOrThrow({ where: { id: mueve }, select: { planCambioId: true } })).planCambioId as string;
+      await fijarEmpresa(tx, "");
+      await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: mueve, cambioId: deTipo }, a("2027-01-01", 1));
+      return { cambio, antes, despues: await colaDe(tx, cambio, mueve), otra: await colaDe(tx, cambio, otra), sinEmpresa: await colaDe(tx, cambio, null) };
+    });
+    const febrero = "2027-02-01T06:00:00.000Z";
+    const marzo = "2027-03-01T06:00:00.000Z";
+    // Antes: el aplicar y los recordatorios de 7 y 1 días del 1 de febrero, pendientes.
+    expect(r.antes.map((f) => [...queEs(f), f.estado])).toEqual([
+      ["plan_aplicar_cambio", febrero, null, "pending"],
+      ["plan_recordatorio_cambio", febrero, "1", "pending"],
+      ["plan_recordatorio_cambio", febrero, "7", "pending"],
+    ]);
+    const viejos = r.despues.filter((f) => f.recibe === febrero);
+    const nuevos = r.despues.filter((f) => f.recibe === marzo);
+    expect(viejos.map(queEs)).toEqual(r.antes.map(queEs));
+    expect(viejos.every((f) => f.estado === "descartado" && f.motivo === `plan_cambio_obsoleto:${r.cambio}` && f.clave === null)).toBe(true);
+    expect(nuevos.map((f) => [...queEs(f), f.estado])).toEqual([
+      ["plan_aplicar_cambio", marzo, null, "pending"],
+      ["plan_recordatorio_cambio", marzo, "1", "pending"],
+      ["plan_recordatorio_cambio", marzo, "7", "pending"],
+    ]);
+    expect(nuevos.every((f) => f.clave !== null)).toBe(true);
+    // Los de la otra empresa y el sin empresa del pendiente siguen aplicando: no se tocan.
+    expect(r.otra.length).toBe(3);
+    expect([...r.otra, ...r.sinEmpresa].every((f) => f.estado === "pending" && f.clave !== null)).toBe(true);
+  });
+
+  it("R29 (R18): la empresa que sale deja descartados sus trabajos del pendiente y los de las demás pendientes; si vuelve a entrar antes de F, la misma fecha se encola de nuevo (ida y vuelta)", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["mensual", "mensual"]);
+      const [sale, queda] = p.orgs;
+      await p.programar("2026-11-16", { nombre: "Se va y vuelve" });
+      const cambio = await p.pendiente();
+      const antes = await colaDe(tx, cambio, sale);
+      // Sale el 1 de noviembre (antes de F, sin promover) a otro plan…
+      const otro = await crearPlan(tx);
+      const salida = await pendienteDeEmpresaPorSql(tx, sale, otro, "mensual", a("2026-11-01"));
+      await fijarEmpresa(tx, "");
+      await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: sale, cambioId: salida }, a("2026-11-01", 1));
+      const trasSalir = { sale: await colaDe(tx, cambio, sale), queda: await colaDe(tx, cambio, queda), sinEmpresa: await colaDe(tx, cambio, null) };
+      // …y vuelve el 2: su recepción es otra vez el 1 de diciembre, con las mismas claves (liberadas al descartar).
+      const vuelta = await pendienteDeEmpresaPorSql(tx, sale, p.planId, "mensual", a("2026-11-02"));
+      await fijarEmpresa(tx, "");
+      await planesEnTx(tx).aplicarCambioDeEmpresa({ organizacionId: sale, cambioId: vuelta }, a("2026-11-02", 1));
+      return { cambio, antes, trasSalir, trasVolver: await colaDe(tx, cambio, sale) };
+    });
+    const diciembre = "2026-12-01T06:00:00.000Z";
+    expect(r.antes.map((f) => [...queEs(f), f.estado])).toEqual([
+      ["plan_aplicar_cambio", diciembre, null, "pending"],
+      ["plan_recordatorio_cambio", diciembre, "1", "pending"],
+      ["plan_recordatorio_cambio", diciembre, "7", "pending"],
+    ]);
+    expect(r.trasSalir.sale.map(queEs)).toEqual(r.antes.map(queEs));
+    expect(r.trasSalir.sale.every((f) => f.estado === "descartado" && f.motivo === `plan_cambio_obsoleto:${r.cambio}` && f.clave === null)).toBe(true);
+    expect([...r.trasSalir.queda, ...r.trasSalir.sinEmpresa].every((f) => f.estado === "pending" && f.clave !== null)).toBe(true);
+    expect(r.trasSalir.queda.length).toBe(3);
+    // Ida y vuelta: los tres descartados siguen ahí y los tres de la misma fecha nacen otra vez, con sus claves.
+    const pendientes = r.trasVolver.filter((f) => f.estado === "pending");
+    expect(pendientes.map(queEs)).toEqual(r.antes.map(queEs));
+    expect(pendientes.map((f) => f.clave)).toEqual(r.antes.map((f) => f.clave));
+    expect(r.trasVolver.filter((f) => f.estado === "descartado")).toHaveLength(3);
   });
 });

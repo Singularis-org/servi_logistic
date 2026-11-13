@@ -739,6 +739,48 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
     expect(r.delPlan).toBe(r.viejo);
   });
 
+  it("SLT-128 R28, R9: una recepción «no aplicada» ya no frena el cierre: la del 16 al 30 de noviembre espera mientras está pendiente y se cierra en cuanto queda no aplicada; la siguiente sigue quincenal", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      // Órdenes quincenales → mensuales con F = 1 de diciembre, guardado sin empresas (R37 no rechaza).
+      const programada = await editarPeriodicidad(tx, plan, "mensual", { vigenteDesde: "2026-12-01" });
+      const [{ cambio }] = await tx.$queryRawUnsafe<{ cambio: string }[]>(
+        `SELECT "id" AS cambio FROM "plan_cambio_programado" WHERE "plan_id" = $1`,
+        plan,
+      );
+      // B quedó quincenal por un error de asignación (por SQL), con su recepción del 1 de diciembre.
+      const b = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "quincenal" });
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "plan_cambio_recepcion" ("cambio_id", "empresa_id", "recibe_at") VALUES ($1, $2, $3::timestamp)`,
+        cambio,
+        b.id,
+        cero("2026-12-01"),
+      );
+      await cerrar(tx, b.id, "2026-11-10T14:00:00.000Z");
+      const el16 = await cerrar(tx, b.id, corrida("2026-11-16"));
+      // Pendiente: a las 00:05 del 1 la del 16 al 30 espera (R9).
+      const pendiente = await cerrar(tx, b.id, mas(cero("2026-12-01"), 5));
+      await fijarEmpresa(tx, "");
+      const recibida = await planesEnTx(tx).recibirCambio({ planId: plan, cambioId: cambio }, b.id, new Date(mas(cero("2026-12-01"), 7)));
+      // No aplicada: la corrida de las 00:10 la cierra y abre la siguiente con la versión que B conserva.
+      const noAplicada = await cerrar(tx, b.id, corrida("2026-12-01"));
+      const el16Dic = await cerrar(tx, b.id, corrida("2026-12-16"));
+      const [columna] = await tx.$queryRawUnsafe<{ p: string }[]>(`SELECT "periodicidad_ordenes" AS p FROM "plan" WHERE "id" = $1`, plan);
+      return { programada, recibida, el16, pendiente, noAplicada, el16Dic, columna: columna.p, lista: await facturas(tx, b.id) };
+    });
+    expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.recibida).toEqual({ estado: "no_aplicada", motivo: "cobro_quincenal_ordenes_mensuales" });
+    expect([r.el16, r.pendiente, r.noAplicada, r.el16Dic]).toEqual([1, 0, 1, 1]);
+    // El plan se promovió (la no aplicada cuenta como resuelta); B sigue quincenal.
+    expect(r.columna).toBe("mensual");
+    expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal"],
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "quincenal"],
+      ["cerrada", cero("2026-12-01"), cero("2026-12-16"), "quincenal"],
+      ["en_curso", cero("2026-12-16"), null, "quincenal"],
+    ]);
+  });
+
   it("R36, R2: con el fin guardado (P20), editar la periodicidad del plan a mensual no mueve el `fin_natural_at` de la en curso (el 16); la siguiente se abre el 16 mensual con fin guardado el 1 de diciembre", async () => {
     const r = await revertida(base, async (tx) => {
       const plan = await planConPrecio(tx, "31000.00");

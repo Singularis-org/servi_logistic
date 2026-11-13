@@ -134,7 +134,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
   `plantillaCambioPlanNoAplicado` en `cambio-plan.ts`. Tests en `procesar-jobs-plan-cambio.test.ts` y
   `plantilla-cambio-plan.test.ts`. **Hecho:** los dos verdes, más `tests/unit/config/reporte-bug-config.test.ts`
   (existente) sin cambios y verde.
-- [ ] **T10.6** [P] Integración R28 (depende de T10.3): los casos de R28 en `planes-periodicidad-ordenes`,
+- [x] **T10.6** [P] Integración R28 (depende de T10.3): los casos de R28 en `planes-periodicidad-ordenes`,
   `planes-cambio-por-empresa`, `factura-plataforma-cambio-plan` y `planes-version-por-empresa`; el caso R8 viejo
   («el trabajo falla») se rehace. **Hecho:** verdes contra Postgres (CI por `workflow_dispatch`, como B1).
 - [ ] **T10.7** [P] Integración R29 (depende de T10.4): `planes-cambio-por-empresa` (mover, ida y vuelta, salir) y

@@ -193,6 +193,27 @@ describeSiHayBase("SLT-128 — la versión del plan por empresa (R2, R12, R26)",
     });
   });
 
+  it("R12, R28: con su recepción «no aplicada», «Mi plan» y el detalle del superadmin no muestran cambio programado y siguen con la versión de antes", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await escenario(tx);
+      // La recepción de la mensual queda no aplicada (lo que deja `recibirCambio` con una regla del plan, R8).
+      await tx.$executeRawUnsafe(
+        `UPDATE "plan_cambio_recepcion" SET "no_aplicada_at" = $2::timestamp, "no_aplicada_motivo" = 'cobro_quincenal_ordenes_mensuales'
+          WHERE "empresa_id" = $1`,
+        e.mensual,
+        "2026-12-01 06:01:00",
+      );
+      await comoApp(tx, e.mensual);
+      const miMensual = await miPlan(tx, e.mensual);
+      await tx.$executeRawUnsafe("RESET ROLE");
+      await fijarEmpresa(tx, "");
+      return { e, miMensual, detalleMensual: await planesEnTx(tx).planDeEmpresa(e.mensual), tarifa: await tarifa(tx, e.mensual) };
+    });
+    expect(r.miMensual).toMatchObject({ nombre: r.e.nombreViejo, costo_por_orden: "100.00", cambio: null });
+    expect(r.detalleMensual?.plan).toMatchObject({ dto: { nombre: r.e.nombreViejo, costoPorOrden: "100.00" }, cambio: null });
+    expect(r.tarifa).toBe("100.00");
+  });
+
   it("R26: servi_app no lee ni escribe plan_cambio_recepcion ni plan_version_empresa, ni con su propia empresa (42501); tampoco ejecuta los lectores internos", async () => {
     const r = await revertida(base, async (tx) => {
       const e = await escenario(tx);
