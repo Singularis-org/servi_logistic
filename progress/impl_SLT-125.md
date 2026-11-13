@@ -340,3 +340,56 @@ CampoVariablePicker.test.tsx                 16 passed (16)   (sin cambios, A4)
 guardias etiquetas-geograficas-sin-literal (6), sinpe-en-toda-superficie (9), lib-no-importa-app (3): verdes
 pnpm run typecheck → exit 0; eslint de los 5 archivos → sin problemas
 ```
+
+## T2.6 — PDF de tránsito: PARADA (backend_dev, 2026-11-12)
+
+No implementada ni commiteada (R38). Design §4.2 pide `ruta` y `niveles` en `PaqueteTransito`, que se
+arma en `clasificar` desde `FilaTransito` (lo que devuelve `InformeTransitoRepository.filasEnAlerta`).
+Para que la celda use `dosMasHondos` (un país de 2 niveles da «nivel 1 · nivel 2», no solo el «cantón») la
+ruta tiene que viajar en `FilaTransito`, y eso rompe tres aserciones de igualdad estricta que no están en
+§13.1:
+- `tests/integration/db/informe-transito-seleccion.test.ts:66–78` — `expect(r.fila).toEqual({ ordenId, …,
+  canton, distrito, montoCobrar, hitoAt, ultimaTransicionAt })`. Después tendría que sumar
+  `ruta: [...]` y `niveles: [...]` al objeto esperado.
+- `tests/integration/db/geo-transito-nombres.test.ts:206` — `expect(x.nuevas).toEqual(x.deHoy)`: `deHoy`
+  sale de la copia congelada `scripts/geo-equivalencia/analitica-de-hoy.ts > filasEnAlertaDeHoy`, que no
+  tiene ruta. Habría que comparar sin `ruta`/`niveles` (p. ej. `toMatchObject` o quitar esas claves).
+- `tests/integration/db/geo-transito-nombres.test.ts:210` — `expect(x.modeloNuevo).toEqual(x.modeloDeHoy)`:
+  el modelo nuevo llevaría `ruta`/`niveles` en cada paquete. Mismo cambio.
+Además cambiarían solo entradas (sin aserciones): el `fila()` de `tests/unit/pdf/informe-transito-pdf.test.ts`
+(para que siga esperando «CANTÓN · DISTRITO» y «San José · Hatillo», que con R42 salen de los tipos y la
+ruta de la entrada), y las filas de `informe-transito-calculo`, `-informe`, `-repo-consultas` e
+`informe-transito-actions.test.ts`. Se espera autorización del humano.
+
+## T2.7 — Scripts de evidencia (backend_dev, 2026-11-12)
+
+Archivos:
+- `scripts/geo-equivalencia-presentacion.ts` (nuevo): por empresa (`conEmpresa`), órdenes vivas por lotes
+  (`--lote`, 1000), cuenta `nombres-distintos` (ruta del catálogo frente a las tablas viejas),
+  `consultas-distintas` y `huellas-distintas` (consulta nueva frente a la de hoy). Cliente de solo lectura
+  (`crearClienteDeSoloLectura`, reexportado como `crearClienteDelScript`); solo localhost salvo `--destino`
+  igual al proyecto o host de la URL (`destinoDeUrl` de `geo:backfill`). Imprime cifras e ids (como mucho
+  100 por bloque, más «y N más»). Salida 0/1/2.
+- `scripts/geo-equivalencia/geocode-de-hoy.ts` (nuevo): copia congelada de `construirQueryDireccion` de antes.
+- `scripts/comparar-descargas.ts` (nuevo): dos CSV o dos XLSX con `exceljs` (ya aprobado), celda a celda
+  (XLSX por valor crudo con su tipo), y en CSV además si son iguales byte a byte. Imprime filas, columnas,
+  `celdas-distintas` y coordenadas `F<f>C<c>` (máx. 200), nunca valores. Salida 0/1/2. Probado a mano en el
+  scratchpad: CSV igual → 0, CSV con una celda distinta → `F2C2` y 1, XLSX igual (dos libros con distinta
+  fecha de creación) → 0, XLSX distinto → 1, extensiones mezcladas → 2.
+- `package.json`: `geo:equivalencia-presentacion` y `descargas:comparar`.
+- Test: `tests/integration/db/geo-equivalencia-presentacion.test.ts` (nuevo).
+
+| R | Test |
+|---|---|
+| R34 | `geo-equivalencia-presentacion.test.ts` › «CR: 0 nombres y 0 consultas distintas, salida 0; no escribe ni imprime datos del fixture» (fixture `geo-125`, lote 2 para pasar por varios lotes); «un nombre del catalogo distinto…» (antivacío: un nodo renombrado solo en la lectura cuenta las órdenes de ese cantón por id y sin el nombre); «…un INSERT falla con 25006»; «…no es local y sin --destino, sale con 2…»; los casos sin base (argumentos, `baseAdmitida`, código de salida, consulta de hoy) |
+
+Salidas (con `env125.sh`):
+```
+geo-equivalencia-presentacion.test.ts   8 passed (8)
+pnpm run typecheck → exit 0; eslint de los 4 archivos → sin problemas
+vitest run guard → 1 failed | 334 passed | 3 skipped; los 4 rojos de dependencias-declaradas-presentes (baseline)
+```
+
+## Veredicto T2.4–T2.7
+
+T2.4, T2.5 y T2.7 hechas y en verde; T2.6 parada por 3 aserciones fuera de §13.1, a la espera del humano.

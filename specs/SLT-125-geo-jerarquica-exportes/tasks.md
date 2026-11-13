@@ -109,7 +109,7 @@
   celdas, de `dosMasHondos` (P7: opción a mientras no se responda).
   Test: `transito-pdf-niveles.test.ts`.
   **Hecho:** R13 y R15 (parte del PDF) en verde; en CR, «CANTÓN · DISTRITO» literal.
-- [ ] **T2.7** [P] Scripts de evidencia:
+- [x] **T2.7** [P] Scripts de evidencia:
   - `scripts/geo-equivalencia-presentacion.ts` con `scripts/geo-equivalencia/geocode-de-hoy.ts`;
   - `scripts/comparar-descargas.ts`;
   - las entradas en `package.json`.
