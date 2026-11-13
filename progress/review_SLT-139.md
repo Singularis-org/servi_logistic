@@ -133,3 +133,36 @@ SLT-122), conciliación analítica (libro de tienda igual, caso 9).
 
 **OK** — sin bloqueantes. Condición del arnés que sigue en pie: el `./init.sh` del leader (T12.1) en
 verde antes de abrir el PR.
+
+## Vuelta 2 (acotada a d00fa124..0ec7ab45)
+
+Rango: un commit (`0ec7ab45`). Toca `CierreDiaService.ts` (guarda de `resumenGanancia`),
+`ICierreDiaService.ts` (comentario), los dos tests de ganancia, `requirements.md` (D14 y la nota de
+SLT-112 R353), `tasks.md` (T12.2) y la bitácora. Ningún otro cambio de código.
+
+### Checklist
+- [x] **m1 (borde del mes):** M4 con dos `pago_satelite` sembrados con literales a mano
+  (`2026-11-01T06:00Z` = 250, cuenta; `2026-12-01T06:00Z` = 130, no cuenta) → esperado `250.00`/1.
+  Mutaciones reproducidas en `PagoMensajeroMovimientoRepository.sumarPagadoPorSateliteEnRango` y
+  revertidas (`git status` limpio): `gt` → rojo (`0.00`/0); `lte` → rojo (`380.00`/2).
+- [x] **m2 (`sin_dato`):** sin `pagadoPorSatelite`, `resumenGanancia` devuelve `sin_dato` antes de
+  leer nada. Mutación que vuelve al comportamiento viejo (sin la guarda, satélite = 0) → rojo en el
+  test nuevo («R353 (revisado en SLT-139) + R357»); revertida.
+- [x] **Cableado de producción:** el único `new CierreDiaService(` de `lib/`/`app/` es
+  `lib/actions/cierre-dia.ts`, que inyecta `pagadoPorSatelite: new PagoMensajeroMovimientoRepository(prisma)`;
+  lo vigila `tests/integration/actions/cierre-dia-pendiente-cableado.test.ts` (verde, 4/4). Ningún
+  camino de producción cae en `sin_dato` por la guarda nueva.
+- [x] **Test viejo reescrito:** lo que vigilaba («la pagada sin la satélite es la de R352») sigue en
+  «con la lectura en cero, la pagada es la de R352» (3500.00/2) y además exige que la lectura se
+  llame una vez; el caso «sin lectura» pasa a vigilar el comportamiento nuevo. No se debilita.
+- [x] **D14:** escrita en la tabla de decisiones (leader, review 1 m2) y en «Lo que cambia de otras
+  fichas» con texto vigente y test; el spec de SLT-112 no se edita.
+- [x] Verificación: los 2 tests de ganancia 28/28 contra `slt139_satelite` (la integración corrió,
+  no se saltó); cableado 4/4; `tsc --noEmit` 0; eslint de los 4 archivos 0. Cliente Prisma con
+  `pago_satelite`.
+
+### Hallazgos
+Ninguno.
+
+### Veredicto
+**OK.** Sigue en pie la condición de la vuelta 1: `./init.sh` del leader (T12.1) en verde antes del PR.
