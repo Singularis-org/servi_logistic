@@ -6,7 +6,6 @@ import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { filtrosConLimites, type FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
-import type { ICierresAdminRepository } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -16,6 +15,7 @@ import type {
   CierreGestionDescargaRow,
   RechazoTiendaDescargaDTO,
 } from "@/lib/interfaces/services/ICierresAdminService";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // La mecanica del tope (N entra, N+1 no) no depende del valor real: se fija en 2.
 vi.mock("@/lib/config/descarga", async (original) => {
@@ -112,15 +112,10 @@ const R1: RechazoTiendaDescargaDTO = {
 };
 
 function repoAdmin(filas: CierreGestionDescargaRow[]) {
-  const findGestionesPorAlcanceCompleto = vi.fn(async () => filas);
-  const findRechazosTiendaModeloNuevoCompleto = vi.fn(async () => [R1]);
-  return {
-    findGestionesPorAlcanceCompleto,
-    findRechazosTiendaModeloNuevoCompleto,
-  } as unknown as ICierresAdminRepository & {
-    findGestionesPorAlcanceCompleto: typeof findGestionesPorAlcanceCompleto;
-    findRechazosTiendaModeloNuevoCompleto: typeof findRechazosTiendaModeloNuevoCompleto;
-  };
+  return dobleCierresAdmin({
+    findGestionesPorAlcanceCompleto: vi.fn(async () => filas),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => [R1]),
+  });
 }
 
 function servicioAdmin(repo: ReturnType<typeof repoAdmin>) {

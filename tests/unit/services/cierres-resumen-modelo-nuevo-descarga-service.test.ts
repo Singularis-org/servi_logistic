@@ -15,6 +15,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 vi.mock("@/lib/config/descarga", async (original) => {
   const real = await original<typeof import("@/lib/config/descarga")>();
@@ -158,12 +159,12 @@ function montar(filas: CierreAdminResumenRow[], gestiones: Record<string, Cierre
     async (ids) =>
       new Map(ids.map((id) => [id, gestiones[id] ?? []])),
   );
-  const repo = {
+  const repo = dobleCierresAdmin({
     findHistoricoCompleto: vi.fn(async (a: Alcance) => filas.filter((f) => casaAlcance(f, a) && !esCola(f))),
     findColaCompleta: vi.fn(async (a: Alcance) => filas.filter((f) => casaAlcance(f, a) && esCola(f))),
     contarSenalesPorCierre: vi.fn(async () => new Map()),
     findGestionesDeCierresEnAlcance,
-  } as unknown as ICierresAdminRepository;
+  });
   const ordenRepo = {
     contarCierresAbiertosPorMensajero: vi.fn(async () => new Map()),
     findUsuarioZonaId: vi.fn(async (u: string) => ZONA_POR_USUARIO[u] ?? null),

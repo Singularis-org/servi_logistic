@@ -143,13 +143,13 @@ sobrescritura en ese archivo (R436). La tabla no se cambia para acomodar un arch
 
 ## Tasks
 
-- [ ] **T1 — Fábrica** (R430, R431, R432). Crear `tests/fixtures/dobles/cierres-admin-repository.ts`
+- [x] **T1 — Fábrica** (R430, R431, R432). Crear `tests/fixtures/dobles/cierres-admin-repository.ts`
   con `dobleCierresAdmin(sobrescrituras?: Partial<ICierresAdminRepository>)`. Los defaults se
   declaran en un objeto con tipo que exige TODOS los métodos obligatorios (sin cast, sin `Partial`),
   para que un método que falta sea un error de tipo en ese archivo. El tipo de retorno expone cada
   método como mock tipado. Comentarios: el porqué de D3 y D4.
   *Hecho:* typecheck verde; el archivo no importa nada de `lib/` salvo tipos.
-- [ ] **T2 — Test de completitud** (R430-R433). `tests/unit/guards/fabrica-dobles-cierres-admin.guardia.test.ts`:
+- [x] **T2 — Test de completitud** (R430-R433). `tests/unit/guards/fabrica-dobles-cierres-admin.guardia.test.ts`:
   lee el texto de `lib/interfaces/repositories/ICierresAdminRepository.ts`, extrae los miembros del
   bloque `interface ICierresAdminRepository`, y afirma: (a) cada obligatorio existe en
   `dobleCierresAdmin()` y es un mock que devuelve el default de la tabla; (b) cada opcional NO existe
@@ -157,24 +157,24 @@ sobrescritura en ese archivo (R436). La tabla no se cambia para acomodar un arch
   fallo con el nombre del método. Que la extracción no esté vacía (afirmar ≥ 22 obligatorios), para
   que no pase en verde sin comprobar nada.
   *Hecho:* verde con `pnpm exec vitest run tests/unit/guards/fabrica-dobles-cierres-admin.guardia.test.ts`.
-- [ ] **T3 — Medida antes de migrar** (R437). Antes de tocar ningún archivo del inventario, anotar en
+- [x] **T3 — Medida antes de migrar** (R437). Antes de tocar ningún archivo del inventario, anotar en
   `progress/impl_SLT-149.md` por archivo: nº de `expect(`, nº de tests que pasan
   (`pnpm exec vitest run <archivo>`). Base desechable exportada antes de cualquier vitest.
   *Hecho:* tabla de 24 filas en el `impl`.
-- [ ] **T4 [P] — Migrar A1-A12** (R434-R437). Depende de T1 y T3. Sustituir el literal por la
+- [x] **T4 [P] — Migrar A1-A12** (R434-R437). Depende de T1 y T3. Sustituir el literal por la
   fábrica; lo que difiera de la tabla, como sobrescritura (anotar cuáles por archivo en el `impl`).
   Los envoltorios `repoCon` (A1) y `repoConDetalle` (A8) siguen igual sobre el `fakeRepo` migrado.
   *Hecho:* los 12 en verde con el mismo número de tests y de `expect(` que en T3.
-- [ ] **T5 [P] — Migrar B1-B12** (R435-R437). Depende de T1 y T3. Igual que T4; el cast desaparece. En
+- [x] **T5 [P] — Migrar B1-B12** (R435-R437). Depende de T1 y T3. Igual que T4; el cast desaparece. En
   B10/B11 el `& {…}` deja de hacer falta porque la fábrica ya da mocks tipados (R431).
   *Hecho:* como T4.
-- [ ] **T6 — Guardia de dobles a mano** (R438, R439). Depende de T4 y T5. En el mismo archivo de
+- [x] **T6 — Guardia de dobles a mano** (R438, R439). Depende de T4 y T5. En el mismo archivo de
   guardia de T2 o en `tests/unit/guards/dobles-cierres-admin-a-mano.guardia.test.ts`: recorre
   `tests/**/*.{ts,tsx}` salvo la fábrica, detecta las formas de R438 (el alias local cuenta si el
   archivo declara `type X = ICierresAdminRepository`) y falla con `archivo:línea`. Incluye los
   ejemplos de R439 en memoria.
   *Hecho:* verde sobre el árbol migrado; `pnpm run test:guardias` la ejecuta.
-- [ ] **T7 — Mutaciones** (R433, R434, R438). Sin commitear ninguna; resultado en el `impl`:
+- [x] **T7 — Mutaciones** (R433, R434, R438). Sin commitear ninguna; resultado en el `impl`:
   1. Quitar `findBarridasDelCierre` de los defaults de la fábrica → typecheck rojo en la fábrica y
      test de completitud rojo nombrando el método.
   2. Añadir a mano un método obligatorio ficticio al interfaz → typecheck rojo **solo** en la fábrica

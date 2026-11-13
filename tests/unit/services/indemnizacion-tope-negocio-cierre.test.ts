@@ -11,6 +11,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { INDEMNIZACION_MONTO_MAX } from "@/lib/types/cierres-admin";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // Fix «tope de negocio de la indemnizacion» (2026-08-04) — EMISOR 1 de 2: la aprobacion del
 // CIERRE (`lib/actions/cierres-admin.ts` -> `CierresAdminService.aprobarCierre`).
@@ -37,41 +38,10 @@ function gestion(
   return { gestionId, ordenMontoCobrar };
 }
 
-function fakeRepo(delCierre: GestionIncidenteDelCierre[]): ICierresAdminRepository {
-  return {
-    leerTopeIntentos: vi.fn(async () => 3),
-    findGestionesDeCierresEnAlcance: vi.fn(async () => {
-      throw new Error("SLT-140: este doble no lee gestiones en lote");
-    }),
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    // Feature 184 (T D.1): los dos CONJUNTOS de la descarga; no-op en esta suite.
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
+function fakeRepo(delCierre: GestionIncidenteDelCierre[]) {
+  return dobleCierresAdmin({
     findGestionesIncidenteDelCierre: vi.fn(async () => delCierre),
-    // Feature 238 (T1.3): el conjunto esperado de la confirmacion fisica. Doble VACIO por
-    // defecto: sin nada que devolver, la guardia de la 238 deja el camino de esta suite intacto.
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
-    findBarridasDelCierre: vi.fn(async () => []),
-    // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
-    // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
-    // Pedido humano (2026-08-19): la correccion del desglose. Dobles no-op: esta suite no la
-    // ejercita (vive en `cierres-admin-corregir-pagos.test.ts`).
-    findGestionEditableEnCierre: vi.fn(async () => null),
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    // FICHA 398: la correccion en sitio del resultado. Doble MUDO: este archivo no la ejercita,
-    // y devolver `conflict` deja constancia de que nadie la esta midiendo aqui.
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-  };
+  });
 }
 
 function newService(repo: ICierresAdminRepository) {
