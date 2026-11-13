@@ -38,7 +38,10 @@ const ROL_APP = "servi_app";
 // SLT-85 (20261109120000) suma tres: las de `cobro_plataforma_traza` a `orden`, a `cobro_plataforma_movimiento`
 // y a sí misma (`reverso_de`).
 // SLT-118 (20261111130100_factura_plataforma) no lo mueve: la única FK de `factura_plataforma` es a `organizacion`.
-const TRIGGERS_MISMA_EMPRESA = 175;
+// SLT-60 (20261116120000_pago_plataforma_confirmacion) suma cuatro: las de `pago_plataforma_confirmacion` a
+// `wallet_movimiento` y a `usuario` (el superadmin), y las de `pago_plataforma_aplicacion` a la confirmación y a
+// `factura_plataforma`.
+const TRIGGERS_MISMA_EMPRESA = 179;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {

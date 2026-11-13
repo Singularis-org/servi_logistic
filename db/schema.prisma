@@ -181,6 +181,7 @@ model Usuario {
   aportesCapitalAnulados              AporteCapitalAnulacion[]           @relation("AporteCapitalAnulacionActor") // ficha 459/R74: anulaciones de saldo inicial o aporte
   cobrosTiendaAnulados                CobroTiendaAnulacion[]             @relation("CobroTiendaAnulacionActor") // ficha 461/R10: anulaciones de cobros de la empresa a una tienda que este usuario hizo; FK RESTRICT (quien devolvio dinero es evidencia)
   ajustesCajaAnulados                 AjusteCajaAnulacion[]              @relation("AjusteCajaAnulacionActor") // ficha 461/R69: anulaciones de correcciones de caja que este usuario hizo; FK RESTRICT
+  pagosPlataformaConfirmados          PagoPlataformaConfirmacion[]       @relation("PagoPlataformaConfirmador") // SLT-60: pagos a la plataforma que este superadmin confirmó; FK RESTRICT
   abonosComoTienda                    AbonoTienda[]                      @relation("AbonoTiendaTienda") // ficha 457/R1: pagos que ESTA tienda le hizo a la empresa
   abonosRegistrados                   AbonoTienda[]                      @relation("AbonoTiendaRegistrador") // ficha 457/R1: pagos de una tienda a la empresa que este usuario registro
   abonosAnulados                      AbonoTiendaAnulacion[]             @relation("AbonoTiendaAnulacionActor") // ficha 457/R31: anulaciones de pagos de una tienda a la empresa que este usuario hizo; FK RESTRICT
@@ -2385,6 +2386,10 @@ model WalletMovimiento {
   // sin `deleted_at` y sin `update`/`delete` expuestos en su repositorio (R3 de la 42). La FK
   // vive en `gasto_fijo_cobro.movimiento_id` y es RESTRICT: el libro no se borra nunca.
   cobroGastoFijo  GastoFijoCobro?
+  // SLT-60: la confirmación del superadmin de un `egreso_pago_plataforma`. 0 o 1 por el UNIQUE
+  // (organizacion_id, pago_id); lista porque Prisma solo admite un 1 a 1 sobre un único de una columna.
+  // La FK vive en `pago_plataforma_confirmacion.pago_id`: la fila del libro sigue append-only.
+  confirmacionesPagoPlataforma PagoPlataformaConfirmacion[]
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -5903,6 +5908,8 @@ model Organizacion {
   cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
   cobrosPlataformaTraza CobroPlataformaTraza[] // SLT-85
   facturasPlataforma FacturaPlataforma[] // SLT-118
+  pagosPlataformaConfirmacion PagoPlataformaConfirmacion[] // SLT-60
+  pagosPlataformaAplicacion PagoPlataformaAplicacion[] // SLT-60
   ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
@@ -6489,10 +6496,63 @@ model FacturaPlataforma {
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
 
+  // SLT-60: lo que los pagos confirmados aplicaron a esta factura. El saldo NO es una columna (la cerrada es
+  // inmutable): lo calcula `factura_plataforma_saldos(org)` desde estas filas.
+  aplicacionesPago PagoPlataformaAplicacion[]
+
   @@unique([organizacionId, desdeAt]) // R11: un intervalo no se factura dos veces
   @@unique([organizacionId, numero]) // R14: sin repetidos
   @@index([organizacionId, estado])
   @@map("factura_plataforma")
+}
+
+// SLT-60 (design §1) — la confirmación del superadmin de un pago a la plataforma (`egreso_pago_plataforma` de
+// `wallet_movimiento`). De NEGOCIO. El estado del pago no se guarda: confirmado = tiene esta fila; anulado = tiene
+// su contra-asiento; por confirmar = ni lo uno ni lo otro. La escribe SOLO `pago_plataforma_confirmar` (función
+// del dueño de 20261116120000); `servi_app` solo la lee. Viven solo en el SQL de esa migración:
+//   · la política `pago_plataforma_confirmacion_por_empresa` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`
+//     (R25);
+//   · el trigger `pago_plataforma_confirmacion_inmutable`: nadie la cambia, tampoco el dueño (SL060, R26);
+//   · los triggers de misma empresa y de «sin cambio de empresa» de SL-17. `confirmado_por` es el superadmin, sin
+//     empresa: el trigger de misma empresa lo deja pasar (T0.1).
+// Las FK a `wallet_movimiento` van sin acción: el libro no se borra.
+model PagoPlataformaConfirmacion {
+  id           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  pagoId       String   @map("pago_id")
+  confirmadoPor String  @map("confirmado_por")
+  confirmadoAt DateTime @map("confirmado_at") @db.Timestamp(3)
+
+  pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  confirmador  Usuario          @relation("PagoPlataformaConfirmador", fields: [confirmadoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  aplicaciones PagoPlataformaAplicacion[]
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, pagoId], map: "pago_plataforma_confirmacion_org_pago_key") // R19: una confirmación por pago
+  @@index([organizacionId]) // SL-17/R2
+  @@map("pago_plataforma_confirmacion")
+}
+
+// SLT-60 (design §1) — cuánto de un pago confirmado se aplicó a cada factura cerrada. De NEGOCIO; la escribe solo
+// `pago_plataforma_confirmar`. Σ de las aplicaciones de una confirmación = monto del pago (lo exige la función). Viven
+// solo en el SQL de 20261116120000: el CHECK `monto > 0`, la política, el REVOKE, el trigger
+// `pago_plataforma_aplicacion_inmutable` y los de SL-17.
+model PagoPlataformaAplicacion {
+  id             String  @id @default(dbgenerated("(gen_random_uuid())::text"))
+  confirmacionId String  @map("confirmacion_id")
+  facturaId      String  @map("factura_id")
+  monto          Decimal @db.Decimal(14, 2) // CHECK > 0
+
+  confirmacion PagoPlataformaConfirmacion @relation(fields: [confirmacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  factura      FacturaPlataforma          @relation(fields: [facturaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, confirmacionId, facturaId], map: "pago_plataforma_aplicacion_org_conf_factura_key") // una fila por factura
+  @@index([organizacionId, facturaId], map: "pago_plataforma_aplicacion_org_factura_idx") // el saldo de cada factura
+  @@map("pago_plataforma_aplicacion")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
