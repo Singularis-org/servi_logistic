@@ -54,6 +54,9 @@ function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): Cierr
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
     findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),

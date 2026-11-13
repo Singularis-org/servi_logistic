@@ -117,3 +117,22 @@ export function derivarPendienteCierre(input: PendienteCierreInput): string {
   const pendiente = generadoPorElCierre.add(premio).sub(yaEntregado).sub(pagadoPorSatelite);
   return pendiente.gt(0) ? pendiente.toFixed(2) : "0.00";
 }
+
+/**
+ * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (R382, PA1 del 2026-11-12) — lo
+ * ENTREGADO al mensajero por un cierre aprobado: `(P + premios vivos) − pendiente`.
+ *
+ * Sale de la MISMA entrada y de la MISMA fuente que el pendiente (`derivarPendienteCierre`): no hay una
+ * segunda regla. Todo lo que cuente como entregado alli —lo que el efectivo ya cubrio en la regla de
+ * la 44, los pagos vigentes, lo pagado por la satelite de SLT-139— cuenta aqui sin tocar esta funcion.
+ *
+ * Los premios vivos entran en lo debido (PA1): sin ellos, un premio sin pagar daria un entregado
+ * negativo. Como el pendiente nunca baja de cero y lo generado nunca supera `P`, el resultado queda en
+ * `[0, P + premios]`. Money-safe: `Prisma.Decimal` y STRING de escala 2, sin coma flotante.
+ */
+export function derivarPagoEntregadoCierre(input: PendienteCierreInput): string {
+  const debido = new Prisma.Decimal(input.pagoDebido)
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+    .add(new Prisma.Decimal(input.premiosVivos).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP));
+  return debido.sub(derivarPendienteCierre(input)).toFixed(2);
+}

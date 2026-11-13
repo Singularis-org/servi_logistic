@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { ColumnasPopover } from "@/components/shared/ColumnasPopover";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
-import type { DataTableDescarga } from "@/components/shared/DataTable";
+import type { DataTableDescarga, DescargaFilasResult } from "@/components/shared/DataTable";
 import { RadioGroup, type RadioGroupOption } from "@/components/ui/radio-group";
 import { usePreferenciaColumnas } from "@/hooks/usePreferenciaColumnas";
 import { claveDeAmbitoDescarga } from "@/lib/columnas/preferencia-columnas";
@@ -154,7 +154,15 @@ const COLUMNAS_DETALLE_POR_AUDIENCIA: Readonly<
  * asignación sin resolver.
  */
 export type DescargaResumenCierres = DataTableDescarga &
-  Required<Pick<DataTableDescarga, "ambitoColumnas">>;
+  Required<Pick<DataTableDescarga, "ambitoColumnas">> & {
+    /**
+     * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» — si está, el control lo
+     * llama con las columnas MARCADAS del «Resumen» en vez de `obtenerFilas`: el consumidor las
+     * necesita para la hoja «Cierres modelo anterior» del libro mixto (R378). Ausente (bodega hasta
+     * SLT-141) ⇒ la llamada de siempre.
+     */
+    obtenerFilasConColumnas?: (columnasMarcadas: DescargaColumna[]) => Promise<DescargaFilasResult>;
+  };
 
 export interface DescargarCierresButtonProps {
   /** La descarga de una fila por CIERRE: la de la pestaña que se está mirando. */
@@ -216,6 +224,12 @@ export function DescargarCierresButton({
   // selector, y habría dos sitios para la misma decisión.
   const { visibles } = usePreferenciaColumnas(clave, columnas, claveDeDescarga);
 
+  // SLT-140 — el «Resumen» que sabe armar el libro del modelo nuevo recibe las columnas marcadas;
+  // el que no, la función de siempre, tal cual.
+  const conColumnas = resumen.obtenerFilasConColumnas;
+  const obtenerFilasResumen =
+    conColumnas === undefined ? resumen.obtenerFilas : () => conColumnas(visibles);
+
   const encabezadoSelector = (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
@@ -249,7 +263,7 @@ export function DescargarCierresButton({
         <DescargarDatasetButton
           titulo={resumen.titulo}
           columnas={visibles}
-          obtenerFilas={resumen.obtenerFilas}
+          obtenerFilas={obtenerFilasResumen}
           formatos={resumen.formatos}
         />
       )}
