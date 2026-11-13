@@ -40,7 +40,7 @@
 
 ## T2 — Servidor (backend_dev) · depende de T1
 
-- [ ] **T2.1** (BLOQUEADO en los dobles: 12 archivos fuera de `## Archivos esperados`, ver `progress/impl_SLT-140.md`) `findGestionesDeCierresEnAlcance` en `ICierresAdminRepository` (obligatorio) y
+- [x] **T2.1** (dobles: 12 archivos añadidos a `## Archivos esperados` por decisión del leader 2026-11-12) `findGestionesDeCierresEnAlcance` en `ICierresAdminRepository` (obligatorio) y
   `CierresAdminRepository` (`design.md > Servidor 3`). **Hecho:** typecheck verde; dobles de T0.3
   con `vi.fn()` que falla si se llama.
 - [x] **T2.2** Tipos de `design.md > Contrato I/O` en `ICierresAdminService.ts` y su réplica de borde
@@ -158,6 +158,21 @@ Tests:
 - `tests/unit/guards/cierres-descarga-detallada-frontera.guardia.test.ts`
 - `tests/unit/descarga/cierres-admin-descarga-columnas.test.ts`
 - `tests/components/descarga/CierresDescargaNiveles.test.tsx`
+
+Dobles de `ICierresAdminRepository` (T2.1, decisión del leader 2026-11-12):
+
+- `tests/unit/services/cierres-admin-ajustar-pago.test.ts`
+- `tests/unit/services/cierres-admin-aviso-rechazo.test.ts`
+- `tests/unit/services/cierres-admin-confirmacion-fisica.test.ts`
+- `tests/unit/services/cierres-admin-corregir-pagos.test.ts`
+- `tests/unit/services/cierres-admin-corregir-resultado.test.ts`
+- `tests/unit/services/cierres-admin-indemnizacion.test.ts`
+- `tests/unit/services/cierres-admin-pendiente.test.ts`
+- `tests/unit/services/cierres-admin-service.test.ts`
+- `tests/unit/services/cierres-admin-tope-sin-gestion.test.ts`
+- `tests/unit/services/CierresAdminService.aprobar.devolucion.test.ts`
+- `tests/unit/services/indemnizacion-tope-negocio-cierre.test.ts`
+- `tests/unit/services/liberacion-al-aprobar-cierre.test.ts`
 
 Estado (no cuentan para el tamaño):
 
