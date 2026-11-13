@@ -4,7 +4,10 @@ import { useId, useMemo, useState, type KeyboardEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
+import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 import {
+  CAMPOS_PLANTILLA,
   CAMPOS_PLANTILLA_OFRECIDOS,
   type CampoPlantilla,
 } from "@/lib/types/plantilla-datos";
@@ -39,11 +42,43 @@ import {
  * El predicado NO se reimplementa aqui: se consume `CAMPOS_PLANTILLA_OFRECIDOS`, que ya excluye
  * alias (feature 282, R4) y campos con `ocultoEnSelector` (feature 288). Asi la UI y los tests
  * afirman sobre LA MISMA lista, y ampliar/reducir la oferta es tocar el catalogo, no el picker.
+ * Lo unico que añade el picker son los `{{nivel_k}}`, que dependen del pais (ver abajo).
  */
-const CAMPOS_POR_DEFECTO: readonly CampoOfrecido[] = CAMPOS_PLANTILLA_OFRECIDOS;
-
 /** Lo que el selector usa de un campo. Ficha 474: tambien lo cumple una variable de INFORME. */
 type CampoOfrecido = Pick<CampoPlantilla, "clave" | "nombre" | "descripcion" | "sensible">;
+
+/** La clave del catálogo ante la que van los `{{nivel_k}}`: la maqueta aprobada los pinta justo antes. */
+const CLAVE_UBICACION = "ubicacion";
+
+/**
+ * SLT-125 (design §4.6; R30, P2) — la oferta del selector para el país de la empresa: los
+ * `CAMPOS_PLANTILLA_OFRECIDOS` más `{{nivel_1}}`…`{{nivel_P}}`, cada uno rotulado con el `singular`
+ * del tipo de su nivel (R42: el texto sale del país, nunca de un literal). Van en bloque justo antes
+ * de `{{ubicacion}}`, el orden de la maqueta aprobada. Solo se ofrece un `nivel_k` que exista en el
+ * catálogo y en el país (k ≤ P). Sin niveles (P = 0) la oferta es `CAMPOS_PLANTILLA_OFRECIDOS` tal
+ * cual, la misma referencia: así los tests montados sin proveedor afirman sobre la lista de siempre.
+ */
+function camposOfrecidosConNiveles(niveles: readonly NivelDeFiltroDTO[]): readonly CampoOfrecido[] {
+  if (niveles.length === 0) return CAMPOS_PLANTILLA_OFRECIDOS;
+  const deNivel: CampoOfrecido[] = [];
+  for (const nivel of [...niveles].sort((a, b) => a.profundidad - b.profundidad)) {
+    const campo = CAMPOS_PLANTILLA.find((c) => c.nivel === nivel.profundidad);
+    if (campo === undefined || nivel.profundidad > niveles.length) continue;
+    deNivel.push({
+      clave: campo.clave,
+      nombre: nivel.singular,
+      descripcion: campo.descripcion,
+      sensible: campo.sensible,
+    });
+  }
+  const indice = CAMPOS_PLANTILLA_OFRECIDOS.findIndex((c) => c.clave === CLAVE_UBICACION);
+  const corte = indice < 0 ? CAMPOS_PLANTILLA_OFRECIDOS.length : indice;
+  return [
+    ...CAMPOS_PLANTILLA_OFRECIDOS.slice(0, corte),
+    ...deNivel,
+    ...CAMPOS_PLANTILLA_OFRECIDOS.slice(corte),
+  ];
+}
 
 /** minúsculas + sin diacríticos, para que "GUIA" y "guía" filtren el mismo conjunto (R3). */
 function normalizar(texto: string): string {
@@ -60,14 +95,22 @@ function idDeOpcion(clave: string): string {
 export interface CampoVariablePickerProps {
   /** Se dispara con la CLAVE del catálogo elegida. El anfitrión decide dónde insertarla. */
   onSeleccionar: (clave: string) => void;
-  /** Catálogo inyectable para test; por defecto los campos OFRECIDOS (sin alias ni ocultos). */
+  /**
+   * Catálogo inyectable (variables de un informe, o un test); por defecto los campos OFRECIDOS (sin
+   * alias ni ocultos) más los `{{nivel_k}}` del país de la empresa. Si se inyecta, se usa tal cual.
+   */
   campos?: readonly CampoOfrecido[];
 }
 
 export function CampoVariablePicker({
   onSeleccionar,
-  campos = CAMPOS_POR_DEFECTO,
+  campos: camposInyectados,
 }: CampoVariablePickerProps) {
+  const niveles = useNivelesGeograficos();
+  const campos = useMemo(
+    () => camposInyectados ?? camposOfrecidosConNiveles(niveles),
+    [camposInyectados, niveles],
+  );
   const [filtro, setFiltro] = useState("");
   const [activo, setActivo] = useState(0);
 

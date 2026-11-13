@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { ARCHIVOS_NUEVOS_SLT125, ARCHIVOS_SLT125 } from "../../fixtures/archivos-slt125";
 import { quitarComentarios, quitarComentariosSql } from "../../fixtures/sin-comentarios";
 
 // SLT-44 (T2.4; R13) — NINGUNA LECTURA CALCULA ANCESTROS NI DESCENDIENTES CON UNA CTE RECURSIVA.
@@ -86,5 +87,38 @@ describe("SLT-44 R13 — `lib/` y `scripts/` sin CTE recursiva", () => {
       "ancestros y descendientes salen del catalogo en memoria (`geografia-dominio.ts`); la consulta " +
         "recibe `nodosBajo(cat, x)` como `= ANY($ids)` (R13)",
     ).toEqual([]);
+  });
+});
+
+// =============================================================================================
+// SLT-125 (T3.6; R19) — los archivos de la feature, ENTEROS, tambien los de `app/`
+// =============================================================================================
+//
+// El barrido de arriba mira `lib/` y `scripts/`. SLT-125 ademas pinta la ruta en `app/`: aqui se
+// barren todos sus archivos fuente (`tests/fixtures/archivos-slt125.ts`), sin excepciones. Los
+// ancestros salen de `lugarRuta` (la ruta del catalogo en memoria), nunca de una CTE recursiva.
+
+describe("SLT-125 R19 — los archivos de SLT-125 sin CTE recursiva", () => {
+  it("el barrido lee de verdad (anti-vacuidad): cada archivo existe y tiene codigo", () => {
+    expect(ARCHIVOS_SLT125.length).toBeGreaterThan(60);
+    for (const rel of ARCHIVOS_NUEVOS_SLT125) expect(ARCHIVOS_SLT125, rel).toContain(rel);
+    for (const rel of ARCHIVOS_SLT125) expect(codigoDe(path.join(RAIZ, rel)).length, rel).toBeGreaterThan(100);
+    expect(ARCHIVOS_SLT125.filter((r) => r.startsWith("app/")).length).toBeGreaterThan(20);
+  });
+
+  it("CONTRAPRUEBA: una CTE recursiva sembrada en un archivo real de SLT-125 se detecta", () => {
+    const rel = "lib/utils/ubicacion-presentacion.ts";
+    const sembrado = `${codigoDe(path.join(RAIZ, rel))}\nconst q = sql\`WITH RECURSIVE arriba AS (SELECT 1) SELECT * FROM arriba\`;\n`;
+    expect(ctesRecursivasEn(codigoDe(path.join(RAIZ, rel)))).toEqual([]);
+    expect(ctesRecursivasEn(sembrado)).toEqual(["WITH RECURSIVE"]);
+  });
+
+  it("ningun archivo de SLT-125 escribe `WITH RECURSIVE`", () => {
+    const hallazgos = ARCHIVOS_SLT125.flatMap((rel) =>
+      ctesRecursivasEn(codigoDe(path.join(RAIZ, rel))).map((h) => `${rel}: ${h}`),
+    );
+    expect(hallazgos, "la ruta de un lugar sale del catalogo en memoria (`rutaDelLugar`), no de la base (R19)").toEqual(
+      [],
+    );
   });
 });

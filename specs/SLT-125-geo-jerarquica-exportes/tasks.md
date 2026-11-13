@@ -144,12 +144,12 @@
   `pos-format-destino.test.ts`.
   **Hecho:** R11, R12, R14 y R15 en verde, igual que la maqueta aprobada; `e2e/mis-asignaciones.spec.ts`
   en verde.
-- [ ] **T3.5** [P] Editor de plantillas: `CampoVariablePicker.tsx` ofrece `ubicacion` y
+- [x] **T3.5** [P] Editor de plantillas: `CampoVariablePicker.tsx` ofrece `ubicacion` y
   `nivel_1..P` rotulados con los tipos del país (P2). Test: `CampoVariablePicker-niveles.test.tsx`
   (con un país de 2 y de 4 niveles: ofrece 2 o 4 `nivel_k`, con su rótulo; nunca `nivel_k` > P).
   **Hecho:** R30 en verde; `CampoVariablePicker.test.tsx` y `catalogo-de-variables.test.ts` en verde
   sin editarlos (A4).
-- [ ] **T3.6** Guardias ampliadas a los archivos nuevos, sin excepciones: `etiquetas-geograficas-sin-literal`,
+- [x] **T3.6** Guardias ampliadas a los archivos nuevos, sin excepciones: `etiquetas-geograficas-sin-literal`,
   `geografia-sin-cte-recursiva` y `geografia-lecturas-sin-nodo-fk` (P1 = B).
   **Hecho:** R19 y R42 en verde, cada guardia con su contraprueba.
 

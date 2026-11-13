@@ -794,3 +794,42 @@ e2e/mis-asignaciones.spec.ts → NO corrido: el worktree no tiene `.next` (harí
 
 Hecha: R11, R12, R14 y R15 en verde en unitarios y componentes; Costa Rica igual que hoy; ninguna aserción
 existente cambiada; E2E pendiente de CI.
+
+## T3.5 y T3.6 — Selector de plantillas y guardias (implementer, 2026-11-13)
+
+### Archivos
+
+- `app/(app)/configuracion/plantillas/_components/CampoVariablePicker.tsx`: sin `campos` inyectados, la oferta es
+  `CAMPOS_PLANTILLA_OFRECIDOS` más `{{nivel_1}}`…`{{nivel_P}}` del país (`useNivelesGeograficos()`), rotulados
+  con el `singular` del tipo, en bloque antes de `{{ubicacion}}`. Sin niveles (P = 0), la lista de siempre.
+- `tests/unit/plantillas/CampoVariablePicker-niveles.test.tsx` (nuevo; países de 2, 4 y CR).
+- `tests/fixtures/archivos-slt125.ts` (nuevo): los 62 archivos fuente de SLT-125 (diff con la base + el picker).
+  Se quitó una entrada duplicada del picker.
+- Guardias, solo líneas añadidas: `etiquetas-geograficas-sin-literal`, `geografia-sin-cte-recursiva`,
+  `geografia-lecturas-sin-nodo-fk` barren esos archivos enteros, cada una con su contraprueba y su
+  anti-vacuidad. Recortes acotados y con contraprueba propia: las 3 entradas internas `provincia`/`canton`/
+  `distrito` del catálogo de plantillas (anteriores, ocultas en el selector) y los tipos de entrada de las 2
+  escrituras de SLT-45 en `IOrdenRepository.ts`. Ninguna aserción existente relajada.
+
+### R → test
+
+| R | Test | Cifras |
+|---|---|---|
+| R30 | `CampoVariablePicker-niveles.test.tsx` | 19/19 |
+| R30 / A4 | `CampoVariablePicker.test.tsx` y `catalogo-de-variables.test.ts`, sin editar | 16/16 y 6/6 |
+| R42 | `etiquetas-geograficas-sin-literal.guardia.test.ts` (bloque SLT-125) | verde |
+| R19 | `geografia-sin-cte-recursiva` y `geografia-lecturas-sin-nodo-fk` (bloques SLT-125) | verde |
+
+### Salidas
+
+```
+pnpm run typecheck → exit 0
+pnpm exec eslint <6 archivos> → sin salida (0 errores, 0 warnings)
+vitest run CampoVariablePicker-niveles CampoVariablePicker.test catalogo-de-variables → Test Files 3 passed · Tests 41 passed
+vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped (339) · Tests 4 failed | 4736 passed | 25 skipped
+  los 4 rojos: dependencias-declaradas-presentes (en tests/baseline-rojos.json)
+```
+
+### Veredicto T3.5 y T3.6
+
+Hechas: R30, R19 y R42 en verde; Costa Rica igual que hoy (P = 3 ofrece nivel_1..3 rotulados con sus tipos).
