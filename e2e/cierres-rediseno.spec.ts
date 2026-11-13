@@ -1154,3 +1154,89 @@ test.describe.serial("SLT-107 — la satélite lee su cierre de bodega del model
     await sateliteSoloLee(detalle);
   });
 });
+
+// SLT-113 «Excel del modelo nuevo de cierres» (T5.1; R372, R374) — la central descarga «Detalle · una fila por
+// gestión» con un cierre VIEJO (tarifa A, solicitado antes de activar) y uno NUEVO (las tarifas de B activadas
+// en la zona central), todos los mensajeros y sin rango. El .xlsx se lee con ExcelJS.
+// Literales a mano, los de B: flete por entregado 3.100 + IVA 13 % 403 = se le cobra 3.503; pago congelado del
+// mensajero 2.200, sin ajuste.
+const ENCABEZADOS_GESTIONES_CENTRAL = [
+  "Folio del cierre", "Mensajero", "Fecha de gestión", "Nº Guía", "Nº Remisión", "Destinatario", "Tienda",
+  "Resultado", "Motivo", "Recibido", "Efectivo", "SINPE", "Transferencia", "Flete por entregado",
+  "Tarifa del flete", "IVA del flete", "Comisión COD", "Tarifa de la comisión", "IVA de la comisión",
+  "Flete de gestiones no entregadas", "Tarifa del flete de gestiones no entregadas",
+  "IVA del flete de gestiones no entregadas", "Se le cobra a la tienda", "De eso, IVA", "Pago por tarifa",
+  "Tarifa del pago", "Ajuste", "Pago al mensajero", "Motivo del ajuste", "Ajustó", "Gana la bodega satélite",
+  "Fulfillment", "IVA de fulfillment", "Fulfillment cargado el", "Señales",
+];
+
+/** Las filas de una hoja como arrays de valores CRUDOS (número o texto), sin el hueco del índice 0 de ExcelJS. */
+function filasDeHoja(hoja: ExcelJS.Worksheet): unknown[][] {
+  const filas: unknown[][] = [];
+  hoja.eachRow((f) => filas.push((f.values as unknown[]).slice(1)));
+  return filas;
+}
+
+test.describe.serial("SLT-113 — el «Detalle» de /cierres-admin con un cierre viejo y uno nuevo", () => {
+  let r: RepartoE2E;
+  let entregaVieja: OrdenE2E;
+  let entregaNueva: OrdenE2E;
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(300_000);
+    r = await crearEscenarioReparto("cierres-excel-modelo-nuevo", { tarifa: TARIFA_A, tarifaMensajero: PAGO_A });
+    const viejo = await crearMensajero(r, "central");
+    entregaVieja = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 18000 }), "en_reparto", { mensajero: viejo });
+    await gestionar(r, entregaVieja, viejo, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 18000 }] });
+    await solicitarCierre(r, viejo);
+
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await abrirTarifas(page);
+    await irAZona(page, r.zonaCentral.nombre);
+    await digitarYGuardar(page, "Cobro a la tienda", COBRO_B);
+    await digitarYGuardar(page, "Pago al mensajero", PAGO_B);
+    await activarConFaltantes(page);
+    await page.context().close();
+
+    const nuevo = await crearMensajero(r, "central");
+    entregaNueva = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 10000 }), "en_reparto", { mensajero: nuevo });
+    await gestionar(r, entregaNueva, nuevo, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 10000 }] });
+    await solicitarCierre(r, nuevo);
+  });
+
+  test("central: tres hojas en orden, los encabezados de «Gestiones» y las cifras del cierre nuevo como número", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto("/cierres-admin");
+    await page.getByRole("button", { name: "Elegir el detalle y las columnas de la descarga" }).click();
+    await page.getByRole("radio", { name: "Detalle · una fila por gestión" }).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Descargar detallada por mensajero" }).click();
+    const [descarga] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Descargar Gestiones de cierres" }).click(),
+    ]);
+    const libro = new ExcelJS.Workbook();
+    await libro.xlsx.readFile(await descarga.path());
+
+    expect(libro.worksheets.map((h) => h.name)).toEqual([
+      "Gestiones",
+      "Rechazados por la tienda",
+      "Gestiones modelo anterior",
+    ]);
+
+    const gestiones = filasDeHoja(libro.worksheets[0]);
+    const cabecera = gestiones.findIndex((f) => f[0] === "Folio del cierre");
+    expect(gestiones[cabecera]).toEqual(ENCABEZADOS_GESTIONES_CENTRAL);
+    const datos = gestiones.slice(cabecera + 1);
+    // La hoja «Gestiones» lleva SOLO la gestión del cierre nuevo; la vieja va a «Gestiones modelo anterior».
+    expect(datos.map((f) => f[3])).toEqual([entregaNueva.numGuia]);
+    const fila = datos[0];
+    expect(fila[ENCABEZADOS_GESTIONES_CENTRAL.indexOf("Se le cobra a la tienda")]).toBe(3503);
+    expect(fila[ENCABEZADOS_GESTIONES_CENTRAL.indexOf("Pago al mensajero")]).toBe(2200);
+
+    const anterior = filasDeHoja(libro.worksheets[2]);
+    expect(anterior.some((f) => f.includes(entregaVieja.numGuia))).toBe(true);
+    expect(anterior.some((f) => f.includes(entregaNueva.numGuia))).toBe(false);
+  });
+});

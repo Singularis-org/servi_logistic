@@ -1,5 +1,8 @@
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
@@ -220,7 +223,17 @@ export interface ICierresBodegaAdminRepository {
      * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
      */
     zona: string,
-  ): Promise<CierreGestionDescargaDTO[]>;
+  ): Promise<CierreGestionDescargaRow[]>;
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del MODELO NUEVO del mismo
+   * conjunto que `findGestionesDeCierresBodegaCompleto` (consolidados en bodega, mismos recortes, con
+   * alguna gestion), con el criterio en el WHERE. Sin ids ni importes.
+   */
+  findRechazosTiendaDeCierresBodegaModeloNuevoCompleto(
+    filtros: FiltrosDescargaGestionesRepo,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `fechaRechazo`. */
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]>;
   /**
    * R16-R22: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si el
    * cierre de bodega sigue `solicitado` (updateMany con guardia de estado). Un solo

@@ -75,6 +75,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     findGestionesIncidenteDelCierre: vi.fn(async () => []),
     findGestionesRetornablesDelCierre: vi.fn(async () => []),
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     findGestionEditableEnCierre: vi.fn(async () => editable()),
     actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),

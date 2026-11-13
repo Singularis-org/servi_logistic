@@ -22,6 +22,7 @@ import type {
   CierreResultado,
   CierreTotales,
   IngresoEmpresaDTO,
+  PagoPorTarifaDTO,
   TotalesIngresoEmpresa,
 } from "@/lib/interfaces/services/ICierreDiaService";
 // Ficha 396 — la parte de UNA tienda se DECLARA junto a la funcion que la produce
@@ -365,7 +366,69 @@ export interface CierreGestionDescargaDTO {
   ingresoBodegaRechazo: string | null;
   /** `null` = la orden no tenia tarifa vigente al solicitar (gap conocido de la feature 69). */
   ingresoEmpresa: IngresoEmpresaDTO | null;
+  // --- SLT-113 (R371, R374, R375): lo que la hoja «Gestiones» del modelo nuevo necesita ---
+  // Opcionales en el DTO (como los aditivos de SLT-101): un doble de test de hoy sigue valiendo y
+  // la ausencia se lee como modelo viejo. El repositorio los emite SIEMPRE: su tipo de retorno es
+  // `CierreGestionDescargaRow`, donde son obligatorios.
+  /** Folio del cierre al que pertenece la gestion: el mismo que la pantalla (`folioCierre`). */
+  folioCierre?: string;
+  /** R371: modelo del CIERRE (no de la fila): "nuevo" si alguna de sus filas congeladas lo es. */
+  cierreModelo?: "viejo" | "nuevo";
+  /** El pago «por tarifa» congelado del mensajero; `null` si no hay fila congelada. */
+  pagoPorTarifa?: PagoPorTarifaDTO | null;
+  /** Los ajustes del pago al mensajero, del mas viejo al mas nuevo. */
+  ajustesPago?: AjustePagoGestionDTO[];
+  /** «Sin tarifa de pago»: modelo nuevo, resultado con pago al mensajero y sin fila congelada. */
+  tarifaFaltante?: boolean;
+  /** Dia calendario (zona de la empresa) del cargo vigente de fulfillment; solo central (F481). */
+  fulfillmentCargadoDia?: string | null;
 }
+
+/**
+ * SLT-113 (R371, R374, R375) — la fila de la hoja fundida tal como la EMITE el repositorio: los
+ * campos del modelo nuevo son OBLIGATORIOS aqui. Si un camino de lectura se olvida de uno, el
+ * typecheck lo dice; en el DTO de borde siguen opcionales para los consumidores y dobles de hoy.
+ */
+export type CierreGestionDescargaRow = CierreGestionDescargaDTO &
+  Required<
+    Pick<
+      CierreGestionDescargaDTO,
+      | "folioCierre"
+      | "cierreModelo"
+      | "pagoPorTarifa"
+      | "ajustesPago"
+      | "tarifaFaltante"
+      | "fulfillmentCargadoDia"
+    >
+  >;
+
+/**
+ * SLT-113 (R373) — un rechazo de la tienda de un cierre del modelo nuevo, para la hoja «Rechazados
+ * por la tienda». Lo congelado al incorporar, sin ids (R42 de la 230), sin evidencia y sin importes
+ * (la tabla no tiene ninguno).
+ */
+export interface RechazoTiendaDescargaDTO {
+  folioCierre: string;
+  numGuia: number | null;
+  destinatario: string;
+  motivo: string | null;
+  tiendaNombre: string;
+  /** Dia calendario YYYY-MM-DD en la zona de la empresa. */
+  fechaRechazo: string;
+}
+
+/** SLT-113 (R372): lo que la rama `ok` de la descarga de gestiones lleva ademas de las filas. */
+export interface ExtraRechazosDeTienda {
+  /** Presente solo si algun cierre del conjunto es del modelo nuevo. */
+  rechazosDeTienda?: RechazoTiendaDescargaDTO[];
+}
+
+/**
+ * SLT-113 — añade `rechazosDeTienda?` SOLO a la rama `ok` de un resultado de descarga. Se declara
+ * una vez y la usan el servicio y los dos tipos de borde; el generico comun `ListarCompleto*Result`
+ * no cambia (lo usan ~25 descargas).
+ */
+export type ConRechazosDeTiendaEnOk<R> = R extends { status: "ok" } ? R & ExtraRechazosDeTienda : R;
 
 /**
  * Feature 230 (T1.1) — el conjunto de gestiones del que sale la hoja fundida, tal como lo
@@ -375,9 +438,12 @@ export interface CierreGestionDescargaDTO {
  * `limite_excedido` ni `forbidden` llevan nunca `items`. El tope lo evalua el SERVICIO —el
  * mismo `descargaConfig.MAX_FILAS` que sus dos hermanos, sin constante nueva (D13/R21)— y
  * superarlo es un ERROR ACCIONABLE con los conteos, jamas un archivo truncado en silencio.
+ *
+ * SLT-113 (R372): la rama `ok` puede llevar ademas `rechazosDeTienda`.
  */
-export type ListarGestionesDescargaServiceResult =
-  ListarCompletoServiceResult<CierreGestionDescargaDTO>;
+export type ListarGestionesDescargaServiceResult = ConRechazosDeTiendaEnOk<
+  ListarCompletoServiceResult<CierreGestionDescargaDTO>
+>;
 
 // R6-R9/R13: detalle completo de UN cierre. Reusa CierreGrupos (grupos por
 // resultado) de la 37. `no_encontrada` = id inexistente o fuera de alcance (R13, no

@@ -168,6 +168,7 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     // Feature 230 (T7.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
     // descarga detallada; el conjunto vacio deja el camino de la 40 intacto.
     findGestionesDeCierresBodegaCompleto: vi.fn(async () => []),
+    findRechazosTiendaDeCierresBodegaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
     resolverCierreBodega: vi.fn(async () => "updated" as const),
     // ⭑ FICHA 431: las dos escrituras de la MARCA DE CONCILIACION completan el contrato. Este
     // archivo NO las ejercita —sus casos viven en `conciliacion-satelites-service.test.ts` y en la

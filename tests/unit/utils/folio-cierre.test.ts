@@ -1,5 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { normalizarFolio } from "@/lib/utils/folio-cierre";
+import { folioCierre, normalizarFolio } from "@/lib/utils/folio-cierre";
+import { folioDe } from "@/components/private/cierres/detalle/detalle-cierre-vista";
+
+// SLT-113 «Excel del modelo nuevo de cierres» (T2.1, R375) — el folio del archivo es el de la
+// pantalla: una sola definición. Literal escrito a mano, no derivado de la función.
+describe("folioCierre (SLT-113, R375)", () => {
+  const id = "3f2a9c10-7b4e-4d21-9a0f-0000abcd1234";
+
+  it("los últimos 8 del id, en mayúsculas", () => {
+    expect(folioCierre(id)).toBe("ABCD1234");
+  });
+
+  it("la pantalla (`folioDe`) da el mismo folio que el archivo", () => {
+    expect(folioDe(id)).toBe("ABCD1234");
+  });
+});
 
 // SLT-138 (R171) — la normalización del texto del buscador por folio de la cola del mensajero.
 // El folio es el de R156: los últimos 8 caracteres del id del cierre, en mayúsculas.

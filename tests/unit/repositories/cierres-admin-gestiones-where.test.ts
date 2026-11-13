@@ -209,12 +209,21 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
     // SLT-101 (2026-11-09): el detalle gana `pagosCongelados` (el pago «por tarifa» de la fila y
     // «Sin tarifa de pago», R66/R95/R96) y la hoja fundida NO: el spec lo pide en la fila del
     // detalle; la «Señales» de «Descargar» (R91) sale del DTO del detalle, no de esta hoja.
+    //
+    // SLT-113 (2026-11-12, design §Servidor 2): la hoja fundida gana `ajustesPagoMensajero` y
+    // `pagosCongelados` —el pago «por tarifa», su ajuste y «Sin tarifa de pago» de la hoja
+    // «Gestiones» del modelo nuevo (R374, R375)— con las MISMAS constantes que el detalle. Salen de
+    // esta lista por decision del spec; la evidencia sigue fuera.
     expect([...delDetalle].filter((k) => !deLaDescarga.has(k))).toEqual([
       "evidenciaStoragePath",
       "evidencias",
-      "ajustesPagoMensajero",
-      "pagosCongelados",
     ]);
+    // Y las dos relaciones de pago son la MISMA declaracion en las dos proyecciones (una sola
+    // fuente: el filtro `actor = mensajero` no puede quedarse en una y faltar en la otra).
+    expect(GESTION_DESCARGA_SELECT.pagosCongelados).toBe(GESTION_ADMIN_SELECT.pagosCongelados);
+    expect(GESTION_DESCARGA_SELECT.ajustesPagoMensajero).toBe(
+      GESTION_ADMIN_SELECT.ajustesPagoMensajero,
+    );
     // `cierreId` no es una celda (R42): es la clave del join contra `cierre_detail`, cuyo grano
     // es (cierre_id, orden_id). Al cruzar cierres, emparejar sólo por orden cogería la fila
     // congelada del cierre equivocado.

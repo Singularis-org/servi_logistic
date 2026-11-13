@@ -15,6 +15,7 @@ import type {
   ListarCierresAdminServiceResult,
   CierreAdminResumen,
   CierreGestionDescargaDTO,
+  ConRechazosDeTiendaEnOk,
   CierreDetalleAdminServiceResult,
   AprobarCierreServiceResult,
   RechazarCierreServiceResult,
@@ -391,8 +392,9 @@ export type ListarPendientesCierresAdminCompletoResult = ListarCompletoResult<Ci
  * (`filtrosDescargaGestionesSchema`): lo comparten los DOS bordes de la feature, y una lista
  * blanca duplicada es una lista blanca que se afloja por un lado sin que el otro se entere.
  */
-export type ListarGestionesCierresAdminCompletoResult =
-  ListarCompletoResult<CierreGestionDescargaDTO>;
+export type ListarGestionesCierresAdminCompletoResult = ConRechazosDeTiendaEnOk<
+  ListarCompletoResult<CierreGestionDescargaDTO>
+>; // SLT-113 (R372): la rama `ok` puede llevar `rechazosDeTienda`
 
 // Resultados de las Server Actions: resultado de dominio del service +
 // `unauthenticated` (sin sesion, lo resuelve el borde).

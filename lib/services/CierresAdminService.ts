@@ -820,9 +820,11 @@ export class CierresAdminService implements ICierresAdminService {
       this.reglasPais,
       "CierresAdminService.listarGestionesCierresAdminCompleto",
     );
+    // SLT-113: los MISMOS recortes para las gestiones y para los rechazos (un solo objeto).
+    const filtrosRepo = filtrosConLimites(filtros, zona);
     const conjunto = await this.repo.findGestionesPorAlcanceCompleto(
       scope.alcance,
-      filtrosConLimites(filtros, zona),
+      filtrosRepo,
       zona,
     );
 
@@ -833,8 +835,28 @@ export class CierresAdminService implements ICierresAdminService {
     }
 
     // FICHA 481: la hoja «Detalle» de la satelite no lleva el fulfillment de la central.
-    const items = conjunto.map((fila) => ocultarFulfillmentSiNoCentral(fila, actor));
-    return { status: "ok", items, total: conjunto.length };
+    // SLT-113 (R376): tampoco el dia en que se cargo a la tienda. Falla cerrado como la 481: el
+    // criterio es «NO es acceso total». El repositorio emite siempre la clave; si no viene, no se
+    // añade (mismo trato que los campos aditivos de `ocultarFulfillmentSiNoCentral`).
+    const items = conjunto.map((fila) =>
+      ocultarFulfillmentSiNoCentral(
+        esAccesoTotal(actor.rol) || fila.fulfillmentCargadoDia === undefined
+          ? fila
+          : { ...fila, fulfillmentCargadoDia: null },
+        actor,
+      ),
+    );
+    // SLT-113 (R372): la hoja de rechazos solo existe si algun cierre del conjunto es del modelo
+    // nuevo. Sin ninguno (todo el historico de hoy, D19) no se consulta nada y la clave no va.
+    if (!conjunto.some((fila) => fila.cierreModelo === "nuevo")) {
+      return { status: "ok", items, total: conjunto.length };
+    }
+    const rechazosDeTienda = await this.repo.findRechazosTiendaModeloNuevoCompleto(
+      scope.alcance,
+      filtrosRepo,
+      zona,
+    );
+    return { status: "ok", items, total: conjunto.length, rechazosDeTienda };
   }
 
   /**
