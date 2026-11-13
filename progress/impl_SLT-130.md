@@ -297,3 +297,11 @@ Nota para el reviewer: R8, R15, R17, R24, R26 y R27 se cubren con los casos de h
   formulario con varios campos y R19 no se cumpliría. `onSubmit` decide por paso; solo el último guarda.
 - Quitar una línea de descuento también descarta sus errores pendientes (design §5 solo lo dice del cambio de período).
 - `filasDeRevision` recibe lo escrito (`escrito?: Formulario`) para pintar tal cual los valores aún no válidos (design §6).
+
+### Constancia de T10 y T11 (decisión humana, 2026-11-13)
+- El humano aceptó el E2E de CI como constancia («Aceptar CI como constancia»): `planes-superadmin` y
+  `planes-costeo` pasaron en `e2e (aislamiento)` y `planes-costo-porcentual` en `e2e (dinero)`, run 43474894170.
+  En local no corrieron: Docker parado y sin base desechable.
+- `./init.sh` local muere por memoria en este entorno: lo sustituye el `gate-completo` de CI. Su único rojo
+  (`migracion-slt139-ida-y-vuelta.test.ts`, ajeno al diff) ya lo arregló dev en `bc756367`; la rama lo trae
+  con el merge `1ae4d46b`.

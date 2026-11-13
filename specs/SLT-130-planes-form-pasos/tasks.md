@@ -74,7 +74,7 @@
   - `tests/components/PlanFormPasos.test.tsx` y `tests/components/PlanFormRevisar.test.tsx`, con los
     nombres de caso que cita `requirements.md`.
   - *Hecho:* pasan. Cada `R<n>` de `requirements.md` tiene al menos un test con su número en el nombre.
-- [ ] **T10 — E2E de hoy adaptados.**
+- [x] **T10 — E2E de hoy adaptados.**
   - `e2e/planes-superadmin.spec.ts`, `e2e/planes-costeo.spec.ts` y `e2e/planes-costo-porcentual.spec.ts`
     navegan por los pasos; las aserciones no cambian.
   - *Hecho:* los tres pasan en local contra una base desechable
@@ -82,7 +82,7 @@
 
 ## Cierre
 
-- [ ] **T11 — Gate y trazabilidad.** `./init.sh` en verde. El mapa `R<n> -> test` (R1–R28) queda en
+- [x] **T11 — Gate y trazabilidad.** `./init.sh` en verde. El mapa `R<n> -> test` (R1–R28) queda en
   `progress/impl_SLT-130.md`.
 
 ## Archivos esperados
