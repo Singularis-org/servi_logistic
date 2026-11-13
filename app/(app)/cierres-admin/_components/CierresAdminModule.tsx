@@ -119,15 +119,11 @@ import {
 // pantalla (`/wallet/mensajeros`) y renombrarlo en un solo lado dejaría el enlace mudo.
 import { PARAM_CIERRE } from "./cierre-enlace";
 import {
-  ERROR_CARGA_HISTORICO,
-  PAGINACION_HISTORICO_LABEL,
-  VACIO_HISTORICO,
-  descargaHistoricoCierres,
-  type CierresAdminHistoricoPagina,
-} from "./CierresAdminHistoricoLista";
-import {
+  AMBITO_DESCARGA_CIERRES_HISTORICO,
   AMBITO_DESCARGA_CIERRES_PENDIENTES,
+  COLUMNAS_DESCARGA_CIERRES_HISTORICO,
   COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
+  filaDescargaCierreHistorico,
   filaDescargaCierrePendiente,
 } from "./cierres-admin-descarga-columnas";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
@@ -331,6 +327,67 @@ export function descargaColaCierres(
       obtenerResumenCierres(
         () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
         filaDescargaCierrePendiente,
+        columnasMarcadas,
+        audiencia,
+      ),
+  };
+}
+
+/** La página del histórico que se está mostrando, tal como la devuelve el servidor. */
+export interface CierresAdminHistoricoPagina {
+  items: CierreAdminResumen[];
+  total: number;
+  pageSize: number;
+}
+
+/** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA = "Cierres del día resueltos";
+/** Nombre accesible del control (R43). Propio: la pantalla monta varios listados paginados. */
+export const PAGINACION_HISTORICO_LABEL = "Paginación del histórico de cierres del día";
+/** Textos de hoy del error y del vacío del histórico; SLT-102 los pasa a la cola única (R104). */
+export const ERROR_CARGA_HISTORICO = "No se pudo cargar el histórico de cierres.";
+export const VACIO_HISTORICO = "Aún no hay cierres resueltos.";
+
+/**
+ * La configuración de descarga de ESTE listado, para que la monte quien pinta la fila de las
+ * pestañas (pedido humano del 2026-08-16: el botón va alineado con «Pendientes/Resueltos», no
+ * en una fila propia encima de la lista).
+ *
+ * Vive AQUÍ y no en el módulo aunque allí se use: el título, las columnas y la lectura de la
+ * que sale el archivo son de este listado, y separarlas de él es como acaban divergiendo el
+ * nombre de la hoja y el de la pantalla.
+ *
+ * Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo es el CONJUNTO. Proyectar
+ * `pagina.items` habría convertido «descargar el histórico» en «descargar las 25 filas que veo»
+ * sin que nada fallara. Feature 184 — Tanda D (T D.3, R1): ese conjunto lo entrega una lectura
+ * DEDICADA, que corta por estado en la base con el mismo criterio y el mismo orden que la
+ * página, y cuyo tope de filas evalúa el servidor (R6).
+ *
+ * Pedido humano del 2026-08-16 — «el CONJUNTO» pasa a significar «el conjunto FILTRADO», y la
+ * distinción con el alcance sigue intacta: los `filtros` viajan porque el usuario los puso; el
+ * ALCANCE no viaja, lo pone el servidor desde la sesión, y un `adminSatelite` sigue descargando
+ * solo los cierres de su zona por mucho que filtre (R14/R44).
+ */
+export function descargaHistoricoCierres(
+  filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
+  return {
+    titulo: TITULO_DESCARGA,
+    columnas: COLUMNAS_DESCARGA_CIERRES_HISTORICO,
+    // Ficha 314: enciende el selector de columnas. El ámbito es el del HISTÓRICO y no el de la
+    // cola: son dos catálogos distintos y una sola clave los haría pisarse (R10).
+    ambitoColumnas: AMBITO_DESCARGA_CIERRES_HISTORICO,
+    obtenerFilas: () =>
+      filasDesdeResultado(
+        descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro; sin ellos, el archivo de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
         columnasMarcadas,
         audiencia,
       ),

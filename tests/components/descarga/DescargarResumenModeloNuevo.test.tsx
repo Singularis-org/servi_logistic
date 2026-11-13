@@ -54,7 +54,7 @@ import {
   type DescargaResumenCierres,
 } from "@/app/(app)/cierres-admin/_components/DescargarCierresButton";
 import { descargaColaCierres } from "@/app/(app)/cierres-admin/_components/CierresAdminModule";
-import { descargaHistoricoCierres } from "@/app/(app)/cierres-admin/_components/CierresAdminHistoricoLista";
+import { descargaHistoricoCierres } from "@/app/(app)/cierres-admin/_components/CierresAdminModule";
 
 // --- Dobles -----------------------------------------------------------------------------------
 
