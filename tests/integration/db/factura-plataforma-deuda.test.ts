@@ -19,15 +19,22 @@ import { crearEmpresa, crearOrden, type EmpresaPorcentual } from "./_fixtures/co
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { cero } from "./_fixtures/periodo-calendario";
 import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
+import { confirmarComoDueno, type AplicacionDePrueba } from "./_fixtures/factura-cerrada";
 
 // SLT-118 · T9.1 (design §2.7, §5; R18–R20, R40) — la deuda de la empresa con la plataforma cuando se cierran
 // facturas con cuota, contra Postgres. La deuda se mide en sus cuatro sitios, que tienen que dar lo mismo:
 //   · la wallet de la empresa: `derivarDeudaPlataforma` sobre `CobroPlataformaMovimientoRepository.sumasPorTipo`
-//     y `PagoPlataformaRepository.sumaPagosVigentes` (lo que pinta `DeudaPlataformaService`);
+//     y `PagoPlataformaRepository.sumaPagosConfirmados` (lo que pinta `DeudaPlataformaService`);
 //   · el tope del pago en la app: `TopePagoPlataformaService.comprobar` (`cabe` / `supera`);
 //   · el tope del pago en la base: un INSERT del pago como `servi_app`; uno que la supera → 23514
 //     (`wallet_movimiento_tope_pago_plataforma`);
 //   · el listado de empresas del superadmin: `EmpresasPlataformaRepository.listar`.
+//
+// SLT-60 (design §8.1): el tope ya no es la deuda sino lo DISPONIBLE (Σ saldo de las facturas cerradas − Σ pagos
+// por confirmar), y la deuda baja al CONFIRMAR un pago. Para que los cuatro sitios sigan comparándose con el mismo
+// número, cada pago que entra se confirma como dueño (`confirmarComoDueno`) contra las cerradas antes de medir, y
+// el cargo del primer caso cae en la primera factura (la del alta), que se cierra antes de pagar. Así la deuda y
+// lo disponible coinciden en cada medida.
 //
 // El escenario de dos cuotas es el de R16 con P18 (`factura-plataforma-cambio-plan.test.ts`): alta el 16 de
 // octubre sin plan y un plan quincenal de 15 500 con inicio el 1 de noviembre aplicado el 12. La factura del
@@ -159,6 +166,32 @@ async function pagoEnLaBase(tx: TxDeTest, organizacionId: string, usuarioId: str
   }
 }
 
+/** SLT-60: el id del pago escrito a mano por `pagoEnLaBase` con ese monto (uno solo). */
+async function pagoDe(tx: TxDeTest, organizacionId: string, monto: string): Promise<string> {
+  const filas = await tx.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT "id" FROM "wallet_movimiento"
+      WHERE "organizacion_id" = $1 AND "categoria" = 'egreso_pago_plataforma' AND "monto" = $2::numeric`,
+    organizacionId,
+    monto,
+  );
+  if (filas.length !== 1) throw new Error(`se esperaba un pago de ${monto} y hay ${filas.length}`);
+  return filas[0].id;
+}
+
+/** SLT-60: los ids de las facturas cerradas de la empresa, de la más vieja a la más nueva. */
+async function idsDeCerradas(tx: TxDeTest, organizacionId: string): Promise<string[]> {
+  const filas = await tx.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT "id" FROM "factura_plataforma" WHERE "organizacion_id" = $1 AND "estado" = 'cerrada' ORDER BY "desde_at"`,
+    organizacionId,
+  );
+  return filas.map((f) => f.id);
+}
+
+/** SLT-60: confirma como dueño el pago de `monto` con el reparto dado (la deuda baja al confirmar). */
+async function confirmar(tx: TxDeTest, organizacionId: string, usuarioId: string, monto: string, aplicaciones: AplicacionDePrueba[]): Promise<void> {
+  await confirmarComoDueno(tx, organizacionId, await pagoDe(tx, organizacionId, monto), aplicaciones, usuarioId);
+}
+
 /** Las filas de la empresa en los tres libros que el cierre no debe tocar (R20). */
 async function libros(tx: TxDeTest, organizacionId: string): Promise<{ cargos: string[]; trazas: string[]; wallet: string[] }> {
   const filas = (tabla: string) =>
@@ -205,11 +238,16 @@ describeSiHayBase("SLT-118 — la deuda con la plataforma y las cuotas de las fa
       const e = await empresa(tx, cero("2026-10-16"));
       await fijarEmpresa(tx, e.id);
       const { id: usuario } = await crearUsuarioDePrueba(tx, "maestro");
+      // SLT-60 (R3): solo se paga lo de facturas cerradas. El cargo cae en la factura del alta (del 16 de octubre
+      // al 1 de noviembre), que el cierre del 1 deja cerrada antes del pago.
+      await cargo(tx, e, "100.00", "2026-10-20T15:00:00.000Z");
       await cerrar(tx, e.id, corrida("2026-11-01"));
-      await cargo(tx, e, "100.00", "2026-11-05T15:00:00.000Z");
       // R16 con P18: la en curso del 1 pasa entera al plan con su marca; aún no suma ninguna cuota.
       await asignar(tx, e.id, quincenal, "inicio", "2026-11-01", "quincenal", "2026-11-12T15:00:00.000Z");
       const pagoPrevio = await pagoEnLaBase(tx, e.id, usuario, "60.00");
+      const [delAlta] = await idsDeCerradas(tx, e.id);
+      // SLT-60 (R7): la deuda baja al confirmar el pago, no al registrarlo.
+      await confirmar(tx, e.id, usuario, "60.00", [{ facturaId: delAlta, monto: "60.00" }]);
       const antes = {
         wallet: await deudaDeLaWallet(tx, e.id),
         listado: await deudaDelListado(tx, e.id),
@@ -229,6 +267,13 @@ describeSiHayBase("SLT-118 — la deuda con la plataforma y las cuotas de las fa
         baseSupera: await pagoEnLaBase(tx, e.id, usuario, "31040.01"),
         baseCabe: await pagoEnLaBase(tx, e.id, usuario, "31040.00"),
       };
+      // SLT-60: el pago que cabe se confirma contra las dos cerradas (40.00 de saldo de la del alta y 31 000.00 de
+      // las cuotas) antes de medir la deuda saldada.
+      const [primera, segunda] = await idsDeCerradas(tx, e.id);
+      await confirmar(tx, e.id, usuario, "31040.00", [
+        { facturaId: primera, monto: "40.00" },
+        { facturaId: segunda, monto: "31000.00" },
+      ]);
       const saldada = {
         wallet: await deudaDeLaWallet(tx, e.id),
         app: await topeDeLaApp(tx, e.id, "0.01"),
@@ -237,7 +282,8 @@ describeSiHayBase("SLT-118 — la deuda con la plataforma y las cuotas de las fa
       return { pagoPrevio, antes, pagosAntes, cerradas, facturas, pagosDespues, despues, saldada };
     });
     expect(r.pagoPrevio).toBeNull();
-    // Antes del cierre: 100.00 de cargos − 60.00 pagados. La en curso con su marca no suma.
+    // Antes del cierre: 100.00 de cargos − 60.00 pagados y confirmados (lo disponible: 100.00 de la cerrada − 60.00
+    // aplicados). La en curso con su marca no suma.
     expect(r.antes).toEqual({ wallet: "40.00", listado: "40.00", appSupera: "supera", appCabe: "cabe", baseSupera: "23514" });
     expect(r.cerradas).toBe(1);
     expect(r.facturas).toEqual([
@@ -254,7 +300,7 @@ describeSiHayBase("SLT-118 — la deuda con la plataforma y las cuotas de las fa
       baseSupera: "23514",
       baseCabe: null,
     });
-    // R19: el pago de antes del cierre sigue igual, y con la cuota pagada no cabe ni un céntimo más.
+    // R19: el pago de antes del cierre sigue igual, y con la cuota pagada y confirmada no cabe ni un céntimo más.
     expect(r.pagosDespues).toEqual(r.pagosAntes);
     expect(r.saldada).toEqual({ wallet: "0.00", app: "supera", base: "23514" });
   });

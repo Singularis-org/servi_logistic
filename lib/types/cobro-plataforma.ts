@@ -47,5 +47,6 @@ export type DeudaPlataformaDTO = {
   importe: string;
 };
 
-/** SL-45 (R9): el mensaje bajo el monto cuando el pago supera la deuda o no hay deuda. */
-export const MENSAJE_TOPE_PAGO_PLATAFORMA = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+/** SL-45 (R9), SLT-60 (R36): el mensaje bajo el monto cuando el pago supera lo disponible (lo pendiente de las
+ * facturas cerradas menos los pagos por confirmar) o no hay nada disponible. */
+export const MENSAJE_TOPE_PAGO_PLATAFORMA = "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.";

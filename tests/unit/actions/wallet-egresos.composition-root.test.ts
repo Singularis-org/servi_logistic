@@ -30,7 +30,7 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // Además, el borde: «a quién» es opcional SOLO en el pago a la plataforma (R6), y la referencia vacía
 // sigue siendo `validation_error` (R12).
 
-const MENSAJE_R9 = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+const MENSAJE_R9 = "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.";
 
 const orden: string[] = [];
 const executeRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<number>>(async () => {

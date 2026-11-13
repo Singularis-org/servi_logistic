@@ -433,7 +433,8 @@ describeSiHayBase("SLT-60 — la confirmación del pago a la plataforma (Postgre
 
   it("control: las funciones existen, B y C tienen sus cerradas y A aún no tiene ninguna", async () => {
     const funciones = await base.$queryRawUnsafe<{ proname: string }[]>(
-      `SELECT DISTINCT proname FROM pg_proc WHERE proname = ANY($1::text[]) ORDER BY proname`,
+      `SELECT DISTINCT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = ANY($1::text[]) ORDER BY p.proname`,
       ["factura_plataforma_saldos", "pago_plataforma_confirmar", "pago_plataforma_disponible", "pago_plataforma_disponible_de", "pago_plataforma_no_anular_confirmado", "pago_plataforma_por_confirmar"],
     );
     expect(funciones.map((f) => f.proname)).toHaveLength(6);

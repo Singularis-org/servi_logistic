@@ -299,10 +299,10 @@ describe("458-C R39/R52 — la frase del efecto y la del libro siguen al concept
         "La empresa le paga a un mensajero",
         "La empresa le paga al mensajero lo que le debe por sus cierres y baja su cuenta por pagar; la ganancia no cambia.",
       ],
-      // SL-45 (R6): literal del requisito.
+      // SL-45 (R6), SLT-60 (R37): literal del requisito.
       [
         "Pago a la plataforma",
-        "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
+        "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago. Baja la ganancia.",
       ],
     ];
     for (const [concepto, frase] of casos) {
@@ -1216,10 +1216,10 @@ describe("SL-45 R6/R9 — «Pago a la plataforma» en el diálogo", () => {
     expect(registrarEgresoMock).not.toHaveBeenCalled();
   });
 
-  it("R9: el tope del servidor se pinta bajo el MONTO, con su literal, y el diálogo no cierra", async () => {
+  it("R9, SLT-60 R36: el tope del servidor se pinta bajo el MONTO, con su literal, y el diálogo no cierra", async () => {
     registrarEgresoMock.mockResolvedValue({
       status: "validation_error",
-      fieldErrors: { monto: ["El pago no puede ser mayor que lo que la empresa debe a la plataforma."] },
+      fieldErrors: { monto: ["El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar."] },
     });
     const { user, dialog } = await abrir();
     await elegirConcepto(user, dialog, "Pago a la plataforma");
@@ -1227,7 +1227,7 @@ describe("SL-45 R6/R9 — «Pago a la plataforma» en el diálogo", () => {
     escribir(dialog, /^Referencia del pago/, "Transferencia 4455");
     await confirmar(user, dialog);
     const aviso = await within(dialog).findByText(
-      "El pago no puede ser mayor que lo que la empresa debe a la plataforma.",
+      "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.",
     );
     expect(aviso.closest("#movimiento-monto-error")).not.toBeNull();
     expect(successMock).not.toHaveBeenCalled();

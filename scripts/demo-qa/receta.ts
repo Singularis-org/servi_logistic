@@ -1138,7 +1138,21 @@ export async function crearEmpresaDemo(
       ),
     );
 
-    // Pago a la plataforma (SL-45): el tope exige que la deuda de cargos ya cubra el monto.
+    // SLT-60 (R3): solo se paga lo facturado en facturas cerradas, y la demo no espera al fin de su período.
+    // Como dueño, abre la factura en curso si aún no la tiene (un cierre con la hora de la base no cierra nada)
+    // y la cierra con `fin_natural_at + 6 min`: el artificio de SLT-119 §9 y de
+    // `tests/integration/db/_fixtures/factura-cerrada.ts`. Su total son los cargos de las órdenes ya creadas
+    // (más la cuota del plan), que cubren el pago de abajo.
+    await enPaso("factura_plataforma_cerrar (antes del pago a la plataforma)", async () => {
+      await dueno.$queryRaw`SELECT factura_plataforma_cerrar(${org}, (now() AT TIME ZONE 'UTC')::timestamp)`;
+      const filas = await dueno.$queryRaw<{ n: number }[]>`
+        SELECT factura_plataforma_cerrar(f."organizacion_id", f."fin_natural_at" + interval '6 minutes')::int AS "n"
+          FROM "factura_plataforma" f
+         WHERE f."organizacion_id" = ${org} AND f."estado" = 'en_curso'`;
+      if (filas[0]?.n !== 1) throw new Error(`[demo-qa] el cierre de la factura en curso cerró ${String(filas[0]?.n ?? 0)}, no 1`);
+    });
+
+    // Pago a la plataforma (SL-45): el tope de SLT-60 exige que lo pendiente de la factura cerrada cubra el monto.
     await llamar(
       "WalletEgresoService.registrarEgreso(pago_plataforma)",
       () => conEmpresa(org, () =>

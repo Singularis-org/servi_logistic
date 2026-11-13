@@ -91,14 +91,14 @@
 - [x] **T4.1** `EmpresasPlataformaRepository` (confirmados y contador) y `lib/types/empresas-plataforma.ts`
   (`pagosPorConfirmar`). Se ajustan `tests/unit/actions/empresas-plataforma.composition-root.test.ts` y
   `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`. **Hecho:** verde (R7, R8, R27).
-- [ ] **T4.2** [P] `EmpresasModule.tsx` (la tercera línea de `CeldaPlataforma`) y
+- [x] **T4.2** [P] `EmpresasModule.tsx` (la tercera línea de `CeldaPlataforma`) y
   `tests/components/empresas-module.test.tsx` con 0, 1 y 3. **Hecho:** verde (R27).
 
 ## T5 — La pantalla del superadmin (depende de T3.4)
 
-- [ ] **T5.1** `PagosPorConfirmar.tsx` (design §6.1), con la columna y el enlace del comprobante, y
+- [x] **T5.1** `PagosPorConfirmar.tsx` (design §6.1), con la columna y el enlace del comprobante, y
   `tests/components/PagosPorConfirmar.test.tsx`. **Hecho:** verde (R12–R14, R17, R23, R32, R33).
-- [ ] **T5.2** `page.tsx` del detalle, con `leerPagos` aislada, la sección antes de `PlanEmpresa` y
+- [x] **T5.2** `page.tsx` del detalle, con `leerPagos` aislada, la sección antes de `PlanEmpresa` y
   `verComprobantePagoPlataformaAction` ligada con `organizacionId`. Se amplía
   `tests/integration/plataforma-empresa-detalle-page.test.tsx`. **Hecho:** verde (R12, R13).
 
@@ -110,7 +110,7 @@ Cada test pasa al literal nuevo escrito a mano, nunca leído de la constante (de
   `tests/unit/components/wallet-labels.test.ts`, `tests/components/WalletDeudaPlataformaSL45.test.tsx`,
   `tests/components/WalletDeudaPlataformaSL40.test.tsx` y `e2e/cobro-plataforma-sl40.spec.ts`. **Hecho:**
   verde.
-- [ ] **T5b.2** [P] El mensaje del tope (R36): `lib/types/cobro-plataforma.ts`,
+- [x] **T5b.2** [P] El mensaje del tope (R36): `lib/types/cobro-plataforma.ts`,
   `tests/unit/services/wallet-egreso-service.test.ts` y
   `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`. **Hecho:** verde.
 - [ ] **T5b.3** [P] La frase del efecto (R37): `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` y
@@ -124,12 +124,12 @@ Cada test pasa al literal nuevo escrito a mano, nunca leído de la constante (de
 
 Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, confirma antes (design §8.1).
 
-- [ ] **T6.1** [P] `tests/integration/db/pago-plataforma-sl45.test.ts`
-- [ ] **T6.2** [P] `tests/integration/db/pago-plataforma-sl45-concurrencia.test.ts`
-- [ ] **T6.3** [P] `tests/integration/db/pago-plataforma-sl45-blindaje.test.ts`
-- [ ] **T6.4** [P] `tests/integration/db/factura-plataforma-deuda.test.ts`
-- [ ] **T6.5** [P] `tests/integration/db/descarga-pago-plataforma-sl45.test.ts`
-- [ ] **T6.6** [P] `tests/integration/db/migracion-sl45-ida-y-vuelta.test.ts`
+- [x] **T6.1** [P] `tests/integration/db/pago-plataforma-sl45.test.ts`
+- [x] **T6.2** [P] `tests/integration/db/pago-plataforma-sl45-concurrencia.test.ts`
+- [x] **T6.3** [P] `tests/integration/db/pago-plataforma-sl45-blindaje.test.ts`
+- [x] **T6.4** [P] `tests/integration/db/factura-plataforma-deuda.test.ts`
+- [x] **T6.5** [P] `tests/integration/db/descarga-pago-plataforma-sl45.test.ts`
+- [x] **T6.6** [P] `tests/integration/db/migracion-sl45-ida-y-vuelta.test.ts`
 
 **Hecho:** los seis en verde con base, sin ningún `skip` nuevo y sin bajar ninguna afirmación que no sea la de
 «la deuda baja al registrar», que pasa a «al confirmar».
@@ -145,7 +145,7 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
 
 ## T8 — Documentación (depende de T1–T5)
 
-- [ ] **T8.1** `docs/architecture.md`, en «Facturas de la plataforma»: el saldo, lo disponible, la
+- [x] **T8.1** `docs/architecture.md`, en «Facturas de la plataforma»: el saldo, lo disponible, la
   confirmación, las dos tablas, el bloqueo de la anulación y que la deuda cuenta los confirmados. **Hecho:**
   la guardia del perfil en verde.
 - [ ] **T8.2** `progress/impl_SLT-60.md` con el mapa `R<n> → test` de R1 a R38.
@@ -157,7 +157,7 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
   2026-11-13), con una consulta de solo lectura:
   `SELECT count(*) FROM wallet_movimiento WHERE categoria = 'egreso_pago_plataforma'`. **Hecho:** el número
   anotado en `progress/impl_SLT-60.md`. Con más de 0 se para y decide el humano.
-- [ ] **T9.3** `scripts/demo-qa/receta.ts`: cerrar la factura de la demo antes del pago, si T0.3 lo pidió.
+- [x] **T9.3** `scripts/demo-qa/receta.ts`: cerrar la factura de la demo antes del pago, si T0.3 lo pidió.
   **Hecho:** `tests/integration/db/demo-qa.test.ts` en verde sin tocarlo.
 
 ## Archivos esperados

@@ -16,6 +16,7 @@ import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 import { clienteConEmpresa459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
+import { cerrarFacturaEnCurso, confirmarComoDueno, facturaEnCurso } from "./_fixtures/factura-cerrada";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -33,11 +34,16 @@ import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 //     T5) lee 500,00 mientras el primero está en pausa → `ok`, y la empresa queda con 300,00 a favor.
 //   · R11 — la MISMA clave dos veces a la vez: el segundo espera, mira la clave después del candado y
 //     responde `ya_registrado` con el pago original, aunque el tope ya lo rechazaría.
+//
+// SLT-60 (design §8.1): el tope compara con lo DISPONIBLE (Σ saldo de las facturas cerradas − Σ pagos por
+// confirmar), no con la deuda, y la deuda baja al confirmar. La factura de la orden se cierra en la siembra con
+// el fixture `factura-cerrada.ts`; antes de afirmar la deuda tras pagar, el pago que entró se confirma como
+// dueño. Las cifras del candado no cambian: 500,00 disponibles, 400,00 + 400,00 → el segundo ve 100,00.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
-const MENSAJE_TOPE = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+const MENSAJE_TOPE = "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.";
 
 const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -59,17 +65,20 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
   let zonaId: string;
   let geo: { provinciaId: string; cantonId: string; distritoId: string };
   let estatusInicialId: string;
+  /** SLT-60: las facturas cerradas de la empresa, de la más vieja a la más nueva. */
+  const facturas: string[] = [];
 
   const org = () => (p as Personas459).organizacionId;
 
   /** Una orden por el repositorio real de la carga masiva: el trigger de SL-40 escribe su cargo. */
-  async function crearOrden(): Promise<void> {
+  async function crearOrden(): Promise<string> {
     const personas = p as Personas459;
+    const numRemision = `SL45C-${RUN}-${randomUUID().slice(0, 8)}`;
     const r = await conEmpresa(org(), () =>
       new OrdenRepository(clienteA).createManyOrdenes(
         [
           {
-            numRemision: `SL45C-${RUN}-${randomUUID().slice(0, 8)}`,
+            numRemision,
             estatusId: estatusInicialId,
             destinatario: `Cliente SL45C ${RUN}`,
             telefonoDest: "88887777",
@@ -91,6 +100,35 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
       ),
     );
     expect(r.inserted, JSON.stringify(r.omitidas)).toBe(1);
+    const { id } = await base.orden.findFirstOrThrow({ where: { organizacionId: org(), numRemision }, select: { id: true } });
+    return id;
+  }
+
+  /**
+   * SLT-60: pasa el cargo de la orden a la factura en curso (su `ocurrido_at` al minuto de empezar), para que el
+   * cierre lo facture. Tras el primer cierre la en curso empieza en el futuro y un cargo con la hora real no caería
+   * en ninguna (ver `factura-cerrada.ts`). Molde: `reversoEnLaEnCurso` de `pago-plataforma-confirmacion.test.ts`.
+   */
+  async function cargoALaEnCurso(ordenId: string): Promise<void> {
+    const enCurso = await facturaEnCurso(base, org());
+    await bajoLockDeEscrituraReal(() =>
+      base.$executeRawUnsafe(
+        `UPDATE "cobro_plataforma_movimiento" SET "ocurrido_at" = $2::timestamp + interval '1 minute' WHERE "orden_id" = $1`,
+        ordenId,
+        enCurso.desdeAt.toISOString().replace("T", " ").replace("Z", ""),
+      ),
+    );
+  }
+
+  /** SLT-60: confirma, como dueño, el pago entero contra la factura cerrada. */
+  function confirmar(facturaId: string, pagoId: string, monto: string) {
+    const personas = p as Personas459;
+    return bajoLockDeEscrituraReal(() => confirmarComoDueno(base, org(), pagoId, [{ facturaId, monto }], personas.maestro.usuarioId));
+  }
+
+  async function disponible(): Promise<string> {
+    const [f] = await base.$queryRaw<{ d: string }[]>`SELECT pago_plataforma_disponible_de(${org()})::text AS d`;
+    return f.d;
   }
 
   /** El servicio REAL sobre `cliente`; con `pausa`, el tope se detiene tras responder y antes del INSERT. */
@@ -170,6 +208,8 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
     );
     zonaId = zona.id;
     await crearOrden();
+    // SLT-60 (R3): sin factura cerrada no se puede pagar nada.
+    facturas.push((await cerrarFacturaEnCurso(base, org())).id);
   }, 180_000);
 
   afterAll(async () => {
@@ -178,6 +218,10 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
       if (p !== null) {
         const orgs = [p.organizacionId];
         await bajoLockDeEscrituraReal(async () => {
+          // SLT-60: la FK del pago a su confirmación no tiene acción; las confirmaciones se van antes que el libro.
+          for (const tabla of ["pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
+            await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
+          }
           for (const tabla of ["historial_accion", "orden_historial_estado", "jobs", "orden", "carga", "zona"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
           }
@@ -190,12 +234,15 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
     }
   }, 180_000);
 
-  it("control: la empresa debe 500,00 (un cargo real) y no tiene pagos", async () => {
+  it("control: la empresa debe 500,00 (un cargo real), su factura está cerrada con 500,00 disponibles y no tiene pagos", async () => {
     expect(await deuda()).toEqual({ deuda: "500.00", estado: "debe", importe: "500.00" });
+    const f = await base.facturaPlataforma.findUniqueOrThrow({ where: { id: facturas[0] }, select: { estado: true, total: true } });
+    expect({ estado: f.estado, total: f.total?.toFixed(2) }).toEqual({ estado: "cerrada", total: "500.00" });
+    expect(await disponible()).toBe("500.00");
     expect(await pagosEnLaBase()).toBe(0);
   });
 
-  it("R10: dos pagos de 400,00 a la vez sobre 500,00 → el segundo espera, ve 100,00 y se rechaza; la deuda queda en 100,00", async () => {
+  it("R10: dos pagos de 400,00 a la vez sobre 500,00 disponibles → el segundo espera, ve 100,00 y se rechaza; confirmado el primero, la deuda queda en 100,00", async () => {
     const a = await pagoPausado("400.00");
 
     let bTermino = false;
@@ -211,19 +258,29 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
     expect(rA.status, JSON.stringify(rA)).toBe("ok");
     expect(rB).toEqual({ status: "validation_error", fieldErrors: { monto: [MENSAJE_TOPE] } });
     expect(await pagosEnLaBase()).toBe(1);
+    expect(await disponible()).toBe("100.00");
+    if (rA.status !== "ok") return;
+    await confirmar(facturas[0], rA.movimiento.id, "400.00");
     expect(await deuda()).toEqual({ deuda: "100.00", estado: "debe", importe: "100.00" });
   }, 120_000);
 
-  it("R10: sin pausa, dos pagos de 100,00 a la vez sobre 100,00 → exactamente uno entra y la empresa queda al día", async () => {
+  it("R10: sin pausa, dos pagos de 100,00 a la vez sobre 100,00 disponibles → exactamente uno entra; confirmado, la empresa queda al día", async () => {
     const [r1, r2] = await Promise.all([pagar(clienteA, "100.00"), pagar(clienteB, "100.00")]);
     expect([r1.status, r2.status].sort()).toEqual(["ok", "validation_error"]);
     expect(await pagosEnLaBase()).toBe(2);
+    expect(await disponible()).toBe("0.00");
+    const entro = [r1, r2].find((r) => r.status === "ok");
+    if (entro?.status !== "ok") return;
+    await confirmar(facturas[0], entro.movimiento.id, "100.00");
     expect(await deuda()).toEqual({ deuda: "0.00", estado: "al_dia", importe: "0.00" });
   }, 120_000);
 
   it("R11: la misma clave dos veces a la vez → el segundo espera y responde ya_registrado con el original, aunque el tope ya lo rechazaría", async () => {
-    await crearOrden(); // la deuda vuelve a 500,00
+    // La deuda vuelve a 500,00 con una orden nueva; SLT-60: su cargo se factura en una cerrada nueva.
+    await cargoALaEnCurso(await crearOrden());
+    facturas.push((await cerrarFacturaEnCurso(base, org())).id);
     expect(await deuda()).toEqual({ deuda: "500.00", estado: "debe", importe: "500.00" });
+    expect(await disponible()).toBe("500.00");
     const clave = randomUUID();
     const a = await pagoPausado("400.00", clave);
     const b = pagar(clienteB, "400.00", { clave });
@@ -235,6 +292,9 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
     expect(rB.status, JSON.stringify(rB)).toBe("ya_registrado");
     if (rA.status === "ok" && rB.status === "ya_registrado") expect(rB.movimiento.id).toBe(rA.movimiento.id);
     expect(await pagosEnLaBase()).toBe(3);
+    expect(await disponible()).toBe("100.00");
+    if (rA.status !== "ok") return;
+    await confirmar(facturas[1], rA.movimiento.id, "400.00");
     expect(await deuda()).toEqual({ deuda: "100.00", estado: "debe", importe: "100.00" });
   }, 120_000);
 });

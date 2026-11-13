@@ -469,3 +469,124 @@ salen en fixtures de tests que construyen esa fila a mano. `EmpresasModule.tsx` 
 
 **Veredicto:** T3.5, T3.6 y T4.1 en verde con base; el typecheck queda rojo por 12 fixtures de `EmpresaListada` sin
 `pagosPorConfirmar` (2 de T4.2 y 10 fuera de la lista).
+
+## T4.2 y T5 (frontend_dev)
+
+**Archivos:**
+- `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx` (T4.2): `TEXTOS_PLATAFORMA.pagosPorConfirmar(n)` y la
+  tercera línea de `CeldaPlataforma`, solo con `pagosPorConfirmar > 0`, con `data-pagos-por-confirmar` (R27).
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/PagosPorConfirmar.tsx` (nuevo, T5.1, design §6.1): props
+  `datos | null`, `organizacionId`, `confirmar` y `verComprobante(pagoId)`. Tabla (fecha, monto, referencia,
+  «Registrado por», comprobante, «Confirmar…»); vacío con `EmptyState`; `null` con `Alert`. «Ver comprobante» abre la
+  pestaña antes del `await` (molde `VerComprobanteMiMovimiento`); cualquier no-`ok` o throw → «No se pudo abrir el
+  comprobante» en la fila. Diálogo `Modal` «Confirmar pago de {monto}» con el enlace junto al monto, fila por factura
+  (N.º, período con `hasta − 1 ms` en `ZONA_CR`, total, saldo, `Input` «Aplicar» con `proponerReparto`), pie «Repartido…
+  / Falta…», errores de `resumenDelReparto` (o del servidor) bajo cada fila, «Confirmar pago» deshabilitado si
+  `!valido`; sin facturas, el texto de §6.1 y sin botón. Resultados como §6.1.
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` (T5.2): `leerPagos(actor, org)` aislada en el `Promise.all`
+  (llama a `verPagosDeEmpresaAction({ organizacionId }, { getActor: async () => actor })`); la sección tras «Volver a
+  Empresas» y antes de `PlanEmpresa`; `verComprobantePagoPlataformaAction.bind(null, empresa.organizacionId)`.
+- `lib/actions/pagos-plataforma.ts`: fuera las tres anotaciones `@sin-superficie` (las tres quedan ligadas). Nada más.
+- Tests: `tests/components/empresas-module.test.tsx` (fixtures + `describe` de R27 con 0, 1 y 3),
+  `tests/components/PagosPorConfirmar.test.tsx` (nuevo), `tests/integration/plataforma-empresa-detalle-page.test.tsx`
+  (mock de `@/lib/actions/pagos-plataforma` + `describe` SLT-60).
+
+**Decisiones no fijadas por el design:**
+- `ya_confirmado` y `not_found` cierran el diálogo y dejan el aviso en la sección (`role="status"`); `forbidden`/throw
+  dejan el diálogo abierto con «No se pudo confirmar ahora» (`role="alert"`). Los errores del servidor se olvidan al
+  editar un monto.
+- Se mandan todas las facturas con monto escrito (incluido `"0.00"`; el servicio quita los 0); las vacías no.
+- Rótulos derivados del design sin literal propio: cabeceras «Fecha», «Monto», «Referencia», «Comprobante», «Factura»,
+  «Período», «Total», «Saldo»; el `aria-label` del input «Aplicar · N.º {n}»; celdas sin dato con «—». Los botones de
+  cada fila llevan `aria-describedby` al monto, sin texto nuevo.
+
+### Rutas fuera de la lista (2026-11-13, T4.2 y T5)
+
+Autorizadas por el leader, solo `pagosPorConfirmar: 0` en la fila: `tests/components/EmpresasModuleCobro.test.tsx` (3
+filas literales; las que hacen spread lo heredan), `tests/components/EmpresasModuleCobroPorcentual.test.tsx`,
+`tests/components/EmpresasModulePeriodo.test.tsx`, `tests/components/EmpresasModulePlan.test.tsx`,
+`tests/integration/empresas-page.test.tsx` (2) y `tests/unit/services/empresas-plataforma-service.test.ts` (2).
+
+**Mapa R → test:**
+- R12 → `PagosPorConfirmar.test.tsx` («SLT-60 R12…»: filas en orden con fecha/monto/referencia/registrado por; vacío);
+  `plataforma-empresa-detalle-page.test.tsx` («R12: lee con el actor…», «R12: sin pagos…», «R12: un rol de empresa…»)
+- R13 → `PagosPorConfirmar.test.tsx` («SLT-60 R13…»); `plataforma-empresa-detalle-page.test.tsx` («R13: … estado distinto
+  de ok / un throw …»: plan, núcleo y módulos se pintan)
+- R14 → `PagosPorConfirmar.test.tsx` («SLT-60 R14…»: 200 000 + 100 000 precargados, N.º, período, total, saldo; sin facturas)
+- R17 → `PagosPorConfirmar.test.tsx` («SLT-60 R17…»: suma corta deshabilita; sobre saldo bajo su fila; `validation_error`)
+- R23 → `PagosPorConfirmar.test.tsx` («SLT-60 R23…»: `ok` manda el reparto, cierra y `refresh`; `ya_confirmado`,
+  `not_found`; `forbidden` y throw)
+- R27 → `empresas-module.test.tsx` («SLT-60 — el contador… (R27)»: 0, 1 y 3)
+- R32 → `PagosPorConfirmar.test.tsx` («Ver comprobante» / «Sin comprobante»; el diálogo repite el enlace)
+- R33 → `PagosPorConfirmar.test.tsx` (pide solo el pago y abre la url sin opener; 4 fallos → «No se pudo abrir el
+  comprobante»); `plataforma-empresa-detalle-page.test.tsx` («R33: … empresa ligada en el servidor»: `(ORG, pagoId)`)
+
+**Salida:**
+- `vitest run PagosPorConfirmar.test.tsx empresas-module.test.tsx`: `Test Files 2 passed (2) · Tests 65 passed (65)`.
+- `vitest run plataforma-empresa-detalle-page.test.tsx`: `Test Files 1 passed (1) · Tests 32 passed (32)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: sin errores (los 12 TS2741 de T4.1 resueltos).
+- `pnpm run lint`: `✖ 251 problems (0 errors, 251 warnings)`; `eslint` sobre los 7 archivos tocados: sin avisos.
+- `pnpm run test:guardias`: `Test Files 2 failed | 339 passed | 3 skipped (344) · Tests 5 failed | 4829 passed | 25
+  skipped`. 4 son `dependencias-declaradas-presentes` (baseline). El 5.º es `catalogo-postgres-acota-esquema`:
+  `tests/integration/db/pago-plataforma-confirmacion.test.ts:436` lee `pg_proc` sin acotar el esquema (archivo de
+  backend_dev, T3.5; no tocado). `superficie-de-uso` en verde tras quitar las tres `@sin-superficie`.
+
+**Veredicto:** T4.2, T5.1 y T5.2 en verde; queda un rojo de guardia ajeno (`catalogo-postgres-acota-esquema` en el
+test de integración de T3.5).
+
+## T5b.2, T6, T8.1, T9.3 (backend_dev)
+
+**Archivos:**
+- `lib/types/cobro-plataforma.ts` (T5b.2, R36): `MENSAJE_TOPE_PAGO_PLATAFORMA` = «El pago no puede ser mayor que lo pendiente
+  de las facturas cerradas, descontados los pagos por confirmar.»; su comentario habla de lo disponible.
+- Literal de R36 escrito a mano en `tests/unit/services/wallet-egreso-service.test.ts`,
+  `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`, `tests/unit/actions/wallet-egresos.composition-root.test.ts`,
+  `tests/integration/db/pago-plataforma-sl45.test.ts` y `-concurrencia.test.ts`. En el diálogo, además, la frase del efecto
+  al literal de R37 del spec (la pregunta abierta de R37 sigue sin resolver; no se tocó).
+- `tests/integration/db/_fixtures/factura-cerrada.ts`: `confirmarComoDueno(cliente, org, pagoId, aplicaciones, porUsuarioId)`
+  (`pago_plataforma_confirmar` como dueño; lanza si no responde `ok`) y el tipo `AplicacionDePrueba`.
+- T6.1 `pago-plataforma-sl45.test.ts`: cierra las facturas de A (1 500) y B (300) en la siembra; control de las cerradas y
+  de lo disponible. El pago deja la deuda igual y baja lo disponible; paso nuevo «SLT-60 R7: confirmado el pago de 1 500 →
+  al día». El R18 de SL-45 (anular con la deuda en cero o a favor) choca con SLT-60 R10 si el pago está confirmado: se
+  parte en «SLT-60 R10: A intenta anular su pago confirmado con saldo a favor → forbidden, nada escrito» y «R18: con la
+  deuda de B en 0,00 (eliminó su orden), B anula su pago por confirmar → ok, la deuda sigue en 0,00». R20: B paga y sigue
+  debiendo 300 (por confirmar).
+- T6.2 `-concurrencia.test.ts`: cierra la factura; antes de cada afirmación de deuda confirma el pago que entró. Para R11
+  la orden nueva lleva su cargo a la en curso (`UPDATE ocurrido_at` como dueño) y se cierra una segunda factura. Mismas
+  cifras (500 / 400 + 400 / 100), ahora también sobre lo disponible.
+- T6.3 `-blindaje.test.ts`: cierra las facturas de A y B (1 000); P1 se confirma en la siembra (deuda y disponible 400).
+  m3 pasa a `sumaPagosConfirmados` (B: 0,00 por confirmar, 200,00 confirmado). El último caso confirma el INSERT a mano
+  que entró antes de afirmar 100,00.
+- T6.4 `factura-plataforma-deuda.test.ts`: el cargo del caso R18/R19 cae en la factura del alta (20-oct), que se cierra
+  antes del pago; el pago de 60 y el de 31 040 (40 + 31 000) se confirman como dueño dentro de la transacción revertida.
+  Todas las cifras de los cuatro sitios quedan igual. Comentario de cabecera: `sumaPagosConfirmados` y lo disponible.
+- T6.5 `descarga-pago-plataforma-sl45.test.ts`: cierra la factura antes del pago.
+- T6.6 `migracion-sl45-ida-y-vuelta.test.ts`: **sin cambios**. Su base propia se migra solo hasta SL-45
+  (`20261024140000`), antes de `factura_plataforma` (SLT-118): no hay factura que sembrar y el tope de SLT-60 no existe ahí.
+  Verde sin tocarlo.
+- `tests/integration/db/pago-plataforma-confirmacion.test.ts:436`: el `pg_proc` del control acota `n.nspname = 'public'`
+  (rojo de la guardia `catalogo-postgres-acota-esquema` que anotó frontend_dev).
+- T9.3 `scripts/demo-qa/receta.ts`: antes del pago, como dueño, `factura_plataforma_cerrar(org, ahora)` (abre la en curso si
+  falta) y `factura_plataforma_cerrar(org, fin_natural_at + 6 min)` de la en curso; lanza si no cierra exactamente una.
+- T8.1 `docs/architecture.md`, «Facturas de la plataforma»: la deuda cuenta los confirmados (wallet y listado, «Pagado» y
+  el contador) y un viñeta nueva «Pagos a la plataforma: registro y confirmación» con el saldo, lo disponible y el tope
+  en dos capas, la confirmación, las dos tablas y el bloqueo de la anulación.
+
+**Decisiones:**
+- **Confirmar como dueño con el maestro como `confirmado_por`** en los tests de §8.1 (design: «como dueño o con el
+  servicio»): la base solo exige un usuario de la misma empresa o sin empresa. Así estos archivos no compiten por el
+  superadmin único (`tomarLockDeSuperadmin`). La autorización del superadmin la cubre `pago-plataforma-confirmacion.test.ts`.
+- **R18 de SL-45** se mide con un pago por confirmar y la deuda en 0,00 (no a favor): con un pago por confirmar, la deuda
+  no puede quedar a favor sin una cerrada con saldo. El caso del confirmado a favor queda como SLT-60 R10.
+
+**Verificación (base `servi_logistic_slt60`):**
+- `vitest run` de T5b.2: `Test Files 3 passed (3) · Tests 114 passed (114)`.
+- `vitest run` de los 6 de T6 + `pago-plataforma-confirmacion` + los 3 unitarios de T5b.2: `Test Files 10 passed (10) ·
+  Tests 180 passed (180)`, sin `skipped`.
+- `vitest run tests/integration/db/demo-qa.test.ts` (sin tocarlo): `Test Files 1 passed (1) · Tests 13 passed (13)`.
+- `pnpm run typecheck`: exit 0. `pnpm run lint`: `0 errors, 251 warnings`; `eslint` sobre los archivos tocados: sin avisos.
+- `node scripts/check-perfil.mjs`: «6/6 docs revisados en los ultimos 60 dias», exit 0.
+- `pnpm run test:guardias`: `Test Files 1 failed | 340 passed | 3 skipped (344) · Tests 4 failed | 4830 passed | 25
+  skipped`; los 4 son `dependencias-declaradas-presentes` (baseline). `catalogo-postgres-acota-esquema` en verde.
+
+**Veredicto:** T5b.2, T6.1–T6.6, T8.1 y T9.3 en verde con base; queda abierta la pregunta de R37 (T5b.3).

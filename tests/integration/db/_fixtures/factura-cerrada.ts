@@ -59,3 +59,35 @@ export async function cerrarFacturaEnCurso(base: PrismaClient, organizacionId: s
     return { id: f.id, numero: f.numero, total: f.total.toFixed(2), desdeAt: f.desdeAt, hastaAt: f.hastaAt };
   });
 }
+
+/** Lo que se aplica de un pago a una factura cerrada: texto con dos decimales. */
+export interface AplicacionDePrueba {
+  facturaId: string;
+  monto: string;
+}
+
+/**
+ * SLT-60 (design §8.1): confirma un pago como dueño con `pago_plataforma_confirmar`, para los tests de SL-45 y
+ * SLT-118 que solo necesitan que la deuda baje (desde SLT-60, al confirmar y no al registrar). La autorización
+ * del superadmin y la traducción de los errores las prueba `pago-plataforma-confirmacion.test.ts` por la action;
+ * aquí `porUsuarioId` es cualquier usuario de la misma empresa (la base solo exige eso a `confirmado_por`).
+ *
+ * No toma el lock de escritura real: lo toma quien commitea (`bajoLockDeEscrituraReal`); dentro de una
+ * transacción revertida no hace falta. Lanza si la base no responde `ok`.
+ */
+export async function confirmarComoDueno(
+  cliente: Pick<PrismaClient, "$queryRawUnsafe">,
+  organizacionId: string,
+  pagoId: string,
+  aplicaciones: AplicacionDePrueba[],
+  porUsuarioId: string,
+): Promise<void> {
+  const filas = await cliente.$queryRawUnsafe<{ r: string }[]>(
+    `SELECT pago_plataforma_confirmar($1, $2, $3::jsonb, $4, (now() AT TIME ZONE 'UTC')::timestamp) AS r`,
+    organizacionId,
+    pagoId,
+    JSON.stringify(aplicaciones.map((a) => ({ factura_id: a.facturaId, monto: a.monto }))),
+    porUsuarioId,
+  );
+  if (filas[0]?.r !== "ok") throw new Error(`la confirmación del pago ${pagoId} respondió ${JSON.stringify(filas)}`);
+}
