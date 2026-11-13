@@ -220,6 +220,7 @@ esta bien hecha, no solo si "funciona".
   - **Presentación sobre el árbol (SLT-125).** Toda presentación de un lugar sale de la ruta del
     catálogo (`CatalogoGeograficoRepository`, cargado una vez por instancia y nunca por fila) y se
     adapta a los niveles del país de la empresa. Costa Rica se ve y se descarga igual que antes.
+    Hasta SLT-48, la ruta de una orden llega como mucho al nivel 3; los niveles más hondos salen vacíos (P1).
     - **Núcleo puro:** `lib/utils/ubicacion-presentacion.ts`. Tiene las columnas por nivel
       (`columnasDeNivel`, con el singular del tipo o `nivel_<k>` si chocan), la línea «Ubicación»
       con toda la ruta (`lineaDeUbicacion`, con el separador de hoy de cada superficie) y los dos

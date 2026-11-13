@@ -943,3 +943,7 @@ Escrito; R43 sin evidencia de ejecución hasta CI. Supuestos leídos del código
 asignación y cierre no restringen un país de 4 niveles, y que el maestro ve «Imprimir etiquetas» en
 `mensajero_recogiendo_en_bodega`. El texto del PDF no se lee (no hay dependencia para ello): se afirma la vista
 previa, que usa la misma `geografiaLegible`.
+
+## Mapa R → test (review M2)
+
+El mapa consolidado de R1–R44 a su test está en `progress/review_SLT-125.md > Trazabilidad (R → test que lo prueba de verdad)`, incluidos R27, R35 (pendiente: el ensayo lo hace una persona), R39 y R44. Es la fuente: no se duplica aquí.
