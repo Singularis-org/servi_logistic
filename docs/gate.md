@@ -68,6 +68,10 @@ dato que el gate comprueba.
 - `./init.sh` **avisa** (no falla) de los tests que recorren `app/`, `lib/` o `components/` y no
   casan con ningún patrón (`scripts/tests-de-arbol.mjs`). Un test sale del aviso con
   `// gate: related` y su motivo.
+- El rápido corre también, siempre y fuera del presupuesto, los tests que **nombran por su ruta**
+  un archivo del diff (`'app/x/Y.tsx'`, con o sin extensión, entre comillas o backticks): los que
+  leen el código como texto sin importarlo. No hace falta declararlos. Una ruta armada con
+  `path.join` o por partes no se ve: para esa, un disparador.
 
 ### Disparadores: lo que no es un import
 
@@ -127,7 +131,9 @@ implementer (`AGENTS.md > F2.4`):
    sí lo seleccionaba: entonces el rojo es de verdad nuevo y va al implementer, sin disparador.
    «NO entra»: sigue.
 3. **Encuentra el acoplamiento.** Abre el test y busca qué lee sin importarlo: `readFileSync`,
-   `readdir`/`glob`, una ruta escrita a mano, la base de datos, una variable de entorno. Cruza eso
+   `readdir`/`glob`, una ruta armada por partes, la base de datos, una variable de entorno (una
+ruta escrita entera en un string ya la selecciona el rápido: si `--comprobar` dice «NO entra»,
+no es ese caso). Cruza eso
    con `git diff --name-only origin/<integracion>...HEAD`: el archivo de tu diff que el test lee es
    el `si_cambia`.
 4. **Escribe el disparador** en `arnes.config.json > gate.disparadores` (el leader puede editar
@@ -155,8 +161,8 @@ y mira el informe tras una semana.
 
 ### Lo que `--rapido` NO cubre — no te engañes
 
-- Acoplamientos que **no son imports** y que ningún disparador declara: SQL, nombres de archivo,
-  lectura de `feature_list.json`.
+- Acoplamientos que **no son imports**, no nombran el archivo por su ruta literal y ningún
+  disparador declara: SQL, rutas armadas por código, lectura de `feature_list.json`.
 - Un cambio en un archivo **sin tests que lo importen ni disparador** selecciona cero tests y sale
   verde.
 - Los relacionados que pasan del presupuesto.
@@ -332,6 +338,12 @@ fueron del proyecto `ui` (jsdom: importar módulos y montar el entorno, no los t
 `isolate: false` daba 3–5× pero se descartó por fugas de estado entre archivos.
 **Coste aceptado:** con 3 shards se facturan ~30 min por corrida frente a ~23 de un solo job, en el
 plan Free (2000 min/mes); a cambio, el reloj del PR baja.
+
+**Tests que nombran un archivo.** En servi_logistic (2026-11-13), SLT-141 cambió
+`CierresBodegaSolicitadosLista.tsx`; `paginacion-transversal`, que lo lee como texto por su ruta
+literal, no lo importaba ni se llamaba `guard*`. El rápido salió verde y el rojo apareció en
+`gate-completo`. Buscar la ruta en el texto de los tests cuesta unos cientos de ms por corrida y
+cubre ese caso sin que nadie declare nada.
 
 ## Tamaño del PR
 
