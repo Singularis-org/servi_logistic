@@ -254,6 +254,8 @@ export function presupuestoRapido(config) {
 /**
  * Que se corre, a partir de los cuatro grupos ya calculados. Pura: la prueba la guardia.
  * `nombran` (grupo 4) va fuera del presupuesto, como `siempre` y `disparados`.
+ * @param {{ relacionados: string[], siempre: string[], disparados: string[], nombran?: string[],
+ *   heredados: string[], presupuesto: number, sinPresupuesto?: boolean }} grupos
  * @returns {{ archivos: string[], relacionadosFuera: boolean }}
  */
 export function seleccion({ relacionados, siempre, disparados, nombran = [], heredados, presupuesto, sinPresupuesto = false }) {
