@@ -208,7 +208,7 @@ pantalla, se porta a `ColaCierres`/`DetalleCierre` en vez de borrarlo, y el impl
   de algo de la lista, parar y avisar. Escribir el mapa de cobertura (sección de arriba) en
   `progress/impl_SLT-115.md`.
   *Hecho:* inventario confirmado con `archivo:línea` y mapa de cobertura escrito, sin casos «sin cubrir».
-- [ ] **T1 — Guardia en rojo (R400, R404, R405, R408).** Crear `tests/unit/guards/cierres-retirados.guardia.test.ts`.
+- [x] **T1 — Guardia en rojo (R400, R404, R405, R408).** Crear `tests/unit/guards/cierres-retirados.guardia.test.ts`.
   *Hecho:* la contraprueba y el control positivo pasan; los casos de R400, R404 y R405 fallan nombrando los
   cuatro archivos y los exports que aún existen.
 - [ ] **T2 — Mudar lo vivo (R401, R402).** Depende de T0. Sin cambiar una línea: `descargaHistoricoCierres`,
@@ -225,7 +225,7 @@ pantalla, se porta a `ColaCierres`/`DetalleCierre` en vez de borrarlo, y el impl
   cambios de tests de la tabla de arriba (salvo los de T5).
   *Hecho:* la parte R400 de la guardia de T1 en verde; `cascada-central…` y `cierre-bodega-vocabulario…` en
   verde con R409.
-- [ ] **T5 [P] — Columnas sin consumidor (R404, R405, R406).** Depende solo de T1; va en paralelo con T2-T4.
+- [x] **T5 [P] — Columnas sin consumidor (R404, R405, R406).** Depende solo de T1; va en paralelo con T2-T4.
   Podar `cierre-dia-descarga-columnas.ts` y `desglose-pago.ts`; ajustar sus tests y la guardia de pagos.
   *Hecho:* la guardia de T1 entera en verde; R406 verde con su esperado literal sin cambios.
 - [ ] **T6 — Cierre.** `./init.sh` verde; comprobar R407 con `git diff --name-only`; Grep de los nombres de
