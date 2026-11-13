@@ -1,0 +1,2057 @@
+{
+  "v": 1,
+  "descargas": {
+    "ordenes": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "estatus",
+          "encabezado": "Estado"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "telefonoDest",
+          "encabezado": "Teléfono del destinatario"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "peso",
+          "encabezado": "Peso (kg)"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "zona",
+          "encabezado": "Zona"
+        },
+        {
+          "clave": "provincia",
+          "encabezado": "Provincia"
+        },
+        {
+          "clave": "canton",
+          "encabezado": "Cantón"
+        },
+        {
+          "clave": "distrito",
+          "encabezado": "Distrito"
+        },
+        {
+          "clave": "montoCobrar",
+          "encabezado": "Monto a cobrar"
+        },
+        {
+          "clave": "fleteConIva",
+          "encabezado": "Flete + IVA"
+        },
+        {
+          "clave": "comisionConIva",
+          "encabezado": "Comisión + IVA"
+        },
+        {
+          "clave": "mensajero",
+          "encabezado": "Mensajero"
+        },
+        {
+          "clave": "intentos",
+          "encabezado": "Intentos"
+        },
+        {
+          "clave": "fechaCreacion",
+          "encabezado": "Fecha de creación"
+        },
+        {
+          "clave": "fechaReparto",
+          "encabezado": "Día de reparto"
+        },
+        {
+          "clave": "fechaReprogramacion",
+          "encabezado": "Fecha de reprogramación"
+        },
+        {
+          "clave": "notas",
+          "encabezado": "Notas de la tienda"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Estado,Destinatario,Teléfono del destinatario,Producto,Peso (kg),Dirección,Tienda,Zona,Provincia,Cantón,Distrito,Monto a cobrar,Flete + IVA,Comisión + IVA,Mensajero,Intentos,Fecha de creación,Día de reparto,Fecha de reprogramación,Notas de la tienda\r\n125001,REM-125-001,En preparación,Destinatario Uno,70000001,Caja pequeña,1.5,\"Avenida 2, calle 5\",Tienda Prueba,Zona Central,San José,San José,Carmen,15000,2260.00,0.00,Mensajero Uno,0,2026-11-10,2026-11-11,,\r\n125002,REM-125-002,En preparación,Destinatario Dos,70000002,Paquete; frágil,,\"Del parque 100 m sur, casa \"\"verde\"\"\",Tienda Prueba,Zona Sur,San José,Pérez Zeledón,San Isidro de El General,16000,2260.00,0.00,,1,2026-11-10,,,\"Llamar antes, por favor\"\r\n,REM-125-003,En preparación,Destinatario Tres,70000003,Sobre,1.5,,Tienda Prueba,Zona Atlántico,Limón,Pococí,,17000,2260.00,0.00,,2,2026-11-10,,2026-11-12,\r\n125004,REM-125-004,En preparación,Destinatario Cuatro,70000004,Caja mediana,,Frente a la escuela,Tienda Ñandú,,Alajuela,San Ramón,Ángeles,18000,2260.00,0.00,,3,2026-11-10,,,\r\n125005,REM-125-005,En preparación,Destinatario Cinco,70000005,Caja grande,1.5,\"Barrio Socorro, 50 m oeste\",Tienda Ñandú,,Heredia,Santo Domingo,,19000,2260.00,0.00,,4,2026-11-10,,,",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Estado",
+          "Destinatario",
+          "Teléfono del destinatario",
+          "Producto",
+          "Peso (kg)",
+          "Dirección",
+          "Tienda",
+          "Zona",
+          "Provincia",
+          "Cantón",
+          "Distrito",
+          "Monto a cobrar",
+          "Flete + IVA",
+          "Comisión + IVA",
+          "Mensajero",
+          "Intentos",
+          "Fecha de creación",
+          "Día de reparto",
+          "Fecha de reprogramación",
+          "Notas de la tienda"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "En preparación",
+          "Destinatario Uno",
+          "70000001",
+          "Caja pequeña",
+          1.5,
+          "Avenida 2, calle 5",
+          "Tienda Prueba",
+          "Zona Central",
+          "San José",
+          "San José",
+          "Carmen",
+          15000,
+          "2260.00",
+          "0.00",
+          "Mensajero Uno",
+          0,
+          "2026-11-10",
+          "2026-11-11",
+          null,
+          null
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "En preparación",
+          "Destinatario Dos",
+          "70000002",
+          "Paquete; frágil",
+          null,
+          "Del parque 100 m sur, casa \"verde\"",
+          "Tienda Prueba",
+          "Zona Sur",
+          "San José",
+          "Pérez Zeledón",
+          "San Isidro de El General",
+          16000,
+          "2260.00",
+          "0.00",
+          null,
+          1,
+          "2026-11-10",
+          null,
+          null,
+          "Llamar antes, por favor"
+        ],
+        [
+          null,
+          "REM-125-003",
+          "En preparación",
+          "Destinatario Tres",
+          "70000003",
+          "Sobre",
+          1.5,
+          null,
+          "Tienda Prueba",
+          "Zona Atlántico",
+          "Limón",
+          "Pococí",
+          null,
+          17000,
+          "2260.00",
+          "0.00",
+          null,
+          2,
+          "2026-11-10",
+          null,
+          "2026-11-12",
+          null
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "En preparación",
+          "Destinatario Cuatro",
+          "70000004",
+          "Caja mediana",
+          null,
+          "Frente a la escuela",
+          "Tienda Ñandú",
+          "",
+          "Alajuela",
+          "San Ramón",
+          "Ángeles",
+          18000,
+          "2260.00",
+          "0.00",
+          null,
+          3,
+          "2026-11-10",
+          null,
+          null,
+          null
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "En preparación",
+          "Destinatario Cinco",
+          "70000005",
+          "Caja grande",
+          1.5,
+          "Barrio Socorro, 50 m oeste",
+          "Tienda Ñandú",
+          "",
+          "Heredia",
+          "Santo Domingo",
+          null,
+          19000,
+          "2260.00",
+          "0.00",
+          null,
+          4,
+          "2026-11-10",
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "satelite": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "estatus",
+          "encabezado": "Estado"
+        },
+        {
+          "clave": "intentos",
+          "encabezado": "Intentos"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "zona",
+          "encabezado": "Zona"
+        },
+        {
+          "clave": "provincia",
+          "encabezado": "Provincia"
+        },
+        {
+          "clave": "canton",
+          "encabezado": "Cantón"
+        },
+        {
+          "clave": "distrito",
+          "encabezado": "Distrito"
+        },
+        {
+          "clave": "montoCobrar",
+          "encabezado": "Monto a cobrar"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Estado,Intentos,Destinatario,Producto,Dirección,Tienda,Zona,Provincia,Cantón,Distrito,Monto a cobrar\r\n125001,REM-125-001,En bodega satélite,0,Destinatario Uno,Caja pequeña,\"Avenida 2, calle 5\",Tienda Prueba,Zona Central,San José,San José,Carmen,15000\r\n125002,REM-125-002,En bodega satélite,1,Destinatario Dos,Paquete; frágil,\"Del parque 100 m sur, casa \"\"verde\"\"\",Tienda Prueba,Zona Sur,San José,Pérez Zeledón,San Isidro de El General,16000\r\n,REM-125-003,En bodega satélite,2,Destinatario Tres,Sobre,,Tienda Prueba,Zona Atlántico,Limón,Pococí,,17000\r\n125004,REM-125-004,En bodega satélite,3,Destinatario Cuatro,Caja mediana,Frente a la escuela,Tienda Ñandú,,Alajuela,San Ramón,Ángeles,18000\r\n125005,REM-125-005,En bodega satélite,4,Destinatario Cinco,Caja grande,\"Barrio Socorro, 50 m oeste\",Tienda Ñandú,,Heredia,Santo Domingo,,19000",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Estado",
+          "Intentos",
+          "Destinatario",
+          "Producto",
+          "Dirección",
+          "Tienda",
+          "Zona",
+          "Provincia",
+          "Cantón",
+          "Distrito",
+          "Monto a cobrar"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "En bodega satélite",
+          0,
+          "Destinatario Uno",
+          "Caja pequeña",
+          "Avenida 2, calle 5",
+          "Tienda Prueba",
+          "Zona Central",
+          "San José",
+          "San José",
+          "Carmen",
+          15000
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "En bodega satélite",
+          1,
+          "Destinatario Dos",
+          "Paquete; frágil",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Tienda Prueba",
+          "Zona Sur",
+          "San José",
+          "Pérez Zeledón",
+          "San Isidro de El General",
+          16000
+        ],
+        [
+          null,
+          "REM-125-003",
+          "En bodega satélite",
+          2,
+          "Destinatario Tres",
+          "Sobre",
+          null,
+          "Tienda Prueba",
+          "Zona Atlántico",
+          "Limón",
+          "Pococí",
+          null,
+          17000
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "En bodega satélite",
+          3,
+          "Destinatario Cuatro",
+          "Caja mediana",
+          "Frente a la escuela",
+          "Tienda Ñandú",
+          "",
+          "Alajuela",
+          "San Ramón",
+          "Ángeles",
+          18000
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "En bodega satélite",
+          4,
+          "Destinatario Cinco",
+          "Caja grande",
+          "Barrio Socorro, 50 m oeste",
+          "Tienda Ñandú",
+          "",
+          "Heredia",
+          "Santo Domingo",
+          null,
+          19000
+        ]
+      ]
+    },
+    "novedades": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "telefono",
+          "encabezado": "Teléfono"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "montoCobrar",
+          "encabezado": "Monto a cobrar"
+        },
+        {
+          "clave": "causa",
+          "encabezado": "Causa de devolución"
+        },
+        {
+          "clave": "intentos",
+          "encabezado": "Intentos de entrega"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Teléfono,Dirección,Ubicación,Producto,Monto a cobrar,Causa de devolución,Intentos de entrega\r\n125001,REM-125-001,Destinatario Uno,70000001,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,9000,Cliente no localizado,0\r\n125002,REM-125-002,Destinatario Dos,70000002,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,9500,Dirección errada,1\r\n,REM-125-003,Destinatario Tres,70000003,,Zona Atlántico · Limón · Pococí,Sobre,,Sin causa registrada,2\r\n125004,REM-125-004,Destinatario Cuatro,70000004,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,10500,Sin causa registrada,3\r\n125005,REM-125-005,Destinatario Cinco,70000005,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,11000,Sin causa registrada,4",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Teléfono",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Monto a cobrar",
+          "Causa de devolución",
+          "Intentos de entrega"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "70000001",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          9000,
+          "Cliente no localizado",
+          0
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "70000002",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          9500,
+          "Dirección errada",
+          1
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          "70000003",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          null,
+          "Sin causa registrada",
+          2
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "70000004",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          10500,
+          "Sin causa registrada",
+          3
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "70000005",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          11000,
+          "Sin causa registrada",
+          4
+        ]
+      ]
+    },
+    "ayuda": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "telefono",
+          "encabezado": "Teléfono"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "montoCobrar",
+          "encabezado": "Monto a cobrar"
+        },
+        {
+          "clave": "intentosContacto",
+          "encabezado": "Intentos de contacto"
+        },
+        {
+          "clave": "intentos",
+          "encabezado": "Intentos de entrega"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Teléfono,Dirección,Ubicación,Producto,Monto a cobrar,Intentos de contacto,Intentos de entrega\r\n125001,REM-125-001,Destinatario Uno,70000001,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,9000,0,0\r\n125002,REM-125-002,Destinatario Dos,70000002,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,9500,1,1\r\n,REM-125-003,Destinatario Tres,70000003,,Zona Atlántico · Limón · Pococí,Sobre,,2,2\r\n125004,REM-125-004,Destinatario Cuatro,70000004,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,10500,0,3\r\n125005,REM-125-005,Destinatario Cinco,70000005,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,11000,1,4",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Teléfono",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Monto a cobrar",
+          "Intentos de contacto",
+          "Intentos de entrega"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "70000001",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          9000,
+          0,
+          0
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "70000002",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          9500,
+          1,
+          1
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          "70000003",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          null,
+          2,
+          2
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "70000004",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          10500,
+          0,
+          3
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "70000005",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          11000,
+          1,
+          4
+        ]
+      ]
+    },
+    "cierre-dia-entregadas": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "monto",
+          "encabezado": "Monto"
+        },
+        {
+          "clave": "metodo",
+          "encabezado": "Método"
+        },
+        {
+          "clave": "ganancia",
+          "encabezado": "Ganancia"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Fecha de gestión,Monto,Método,Ganancia\r\n125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,2026-11-11,15000.00,Efectivo,1500.00\r\n125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,2026-11-11,,,1500.00\r\n,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2026-11-11,,,1500.00\r\n125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,2026-11-11,,,1500.00\r\n125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,2026-11-11,,,",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Fecha de gestión",
+          "Monto",
+          "Método",
+          "Ganancia"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          "2026-11-11",
+          "15000.00",
+          "Efectivo",
+          "1500.00"
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          null,
+          "1500.00"
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          null,
+          "1500.00"
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          "2026-11-11",
+          null,
+          null,
+          "1500.00"
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          "2026-11-11",
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "cierre-dia-reprogramadas": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "nuevaFecha",
+          "encabezado": "Nueva fecha"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo"
+        },
+        {
+          "clave": "ganancia",
+          "encabezado": "Ganancia"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Fecha de gestión,Nueva fecha,Motivo,Ganancia\r\n125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,2026-11-11,,,1500.00\r\n125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,2026-11-11,2026-11-13,Motivo de prueba,1500.00\r\n,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2026-11-11,,Motivo de prueba,1500.00\r\n125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,2026-11-11,,Motivo de prueba,1500.00\r\n125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,2026-11-11,,Motivo de prueba,",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Fecha de gestión",
+          "Nueva fecha",
+          "Motivo",
+          "Ganancia"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          null,
+          "1500.00"
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          "2026-11-11",
+          "2026-11-13",
+          "Motivo de prueba",
+          "1500.00"
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          "Motivo de prueba",
+          "1500.00"
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          "2026-11-11",
+          null,
+          "Motivo de prueba",
+          "1500.00"
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          "2026-11-11",
+          null,
+          "Motivo de prueba",
+          null
+        ]
+      ]
+    },
+    "cierre-dia-devueltas": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo"
+        },
+        {
+          "clave": "ganancia",
+          "encabezado": "Ganancia"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Fecha de gestión,Motivo,Ganancia\r\n125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,2026-11-11,,1500.00\r\n125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,2026-11-11,Motivo de prueba,1500.00\r\n,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2026-11-11,Motivo de prueba,1500.00\r\n125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,2026-11-11,Motivo de prueba,1500.00\r\n125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,2026-11-11,Motivo de prueba,",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Fecha de gestión",
+          "Motivo",
+          "Ganancia"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          "1500.00"
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          "2026-11-11",
+          "Motivo de prueba",
+          "1500.00"
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          "2026-11-11",
+          "Motivo de prueba",
+          "1500.00"
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          "2026-11-11",
+          "Motivo de prueba",
+          "1500.00"
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          "2026-11-11",
+          "Motivo de prueba",
+          null
+        ]
+      ]
+    },
+    "cierre-dia-rechazadas": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo"
+        },
+        {
+          "clave": "tieneEvidencia",
+          "encabezado": "Tiene evidencia"
+        },
+        {
+          "clave": "ganancia",
+          "encabezado": "Ganancia"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Fecha de gestión,Motivo,Tiene evidencia,Ganancia\r\n125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,2026-11-11,,No,1500.00\r\n125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,2026-11-11,Motivo de prueba,No,1500.00\r\n,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2026-11-11,Motivo de prueba,No,1500.00\r\n125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,2026-11-11,Motivo de prueba,Sí,1500.00\r\n125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,2026-11-11,Motivo de prueba,No,",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Fecha de gestión",
+          "Motivo",
+          "Tiene evidencia",
+          "Ganancia"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          "No",
+          "1500.00"
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          "2026-11-11",
+          "Motivo de prueba",
+          "No",
+          "1500.00"
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          "2026-11-11",
+          "Motivo de prueba",
+          "No",
+          "1500.00"
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          "2026-11-11",
+          "Motivo de prueba",
+          "Sí",
+          "1500.00"
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          "2026-11-11",
+          "Motivo de prueba",
+          "No",
+          null
+        ]
+      ]
+    },
+    "cierre-dia-incidentes": {
+      "columnas": [
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "causa",
+          "encabezado": "Causa"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo"
+        },
+        {
+          "clave": "tieneEvidencia",
+          "encabezado": "Tiene evidencia"
+        }
+      ],
+      "csv": "Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Fecha de gestión,Causa,Motivo,Tiene evidencia\r\n125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,2026-11-11,,,No\r\n125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,2026-11-11,,Motivo de prueba,No\r\n,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2026-11-11,,Motivo de prueba,No\r\n125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,2026-11-11,,Motivo de prueba,Sí\r\n125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,2026-11-11,Paquete dañado,Motivo de prueba,No",
+      "xlsx": [
+        [
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Fecha de gestión",
+          "Causa",
+          "Motivo",
+          "Tiene evidencia"
+        ],
+        [
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          null,
+          "No"
+        ],
+        [
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          "Motivo de prueba",
+          "No"
+        ],
+        [
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          "2026-11-11",
+          null,
+          "Motivo de prueba",
+          "No"
+        ],
+        [
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          "2026-11-11",
+          null,
+          "Motivo de prueba",
+          "Sí"
+        ],
+        [
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          "2026-11-11",
+          "Paquete dañado",
+          "Motivo de prueba",
+          "No"
+        ]
+      ]
+    },
+    "cierres-admin-fundida": {
+      "columnas": [
+        {
+          "clave": "mensajero",
+          "encabezado": "Mensajero"
+        },
+        {
+          "clave": "fechaCierre",
+          "encabezado": "Fecha del cierre"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "diaReparto",
+          "encabezado": "Día de reparto"
+        },
+        {
+          "clave": "fechaCreacionOrden",
+          "encabezado": "Fecha de creación de la orden"
+        },
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "intentosEntrega",
+          "encabezado": "Intentos de entrega"
+        },
+        {
+          "clave": "resultado",
+          "encabezado": "Resultado"
+        },
+        {
+          "clave": "montoCobrar",
+          "encabezado": "A cobrar"
+        },
+        {
+          "clave": "fulfillment",
+          "encabezado": "Fulfillment"
+        },
+        {
+          "clave": "recibido",
+          "encabezado": "Recibido"
+        },
+        {
+          "clave": "pago_efectivo",
+          "encabezado": "Efectivo"
+        },
+        {
+          "clave": "pago_SINPE",
+          "encabezado": "SINPE"
+        },
+        {
+          "clave": "pago_transferencia",
+          "encabezado": "Transferencia"
+        },
+        {
+          "clave": "nuevaFecha",
+          "encabezado": "Nueva fecha"
+        },
+        {
+          "clave": "origenRechazo",
+          "encabezado": "Origen"
+        },
+        {
+          "clave": "causa",
+          "encabezado": "Causa"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo"
+        },
+        {
+          "clave": "fleteConIva",
+          "encabezado": "Flete + IVA"
+        },
+        {
+          "clave": "comisionConIva",
+          "encabezado": "Comisión + IVA"
+        },
+        {
+          "clave": "fleteDevolucionConIva",
+          "encabezado": "Flete por devolución a origen + IVA"
+        },
+        {
+          "clave": "ingresoTotal",
+          "encabezado": "Total de la empresa"
+        },
+        {
+          "clave": "pagoMensajero",
+          "encabezado": "Pago mensajero"
+        },
+        {
+          "clave": "ingresoBodega",
+          "encabezado": "Ingreso bodega"
+        },
+        {
+          "clave": "indemnizacion",
+          "encabezado": "Indemnización"
+        }
+      ],
+      "csv": "Mensajero,Fecha del cierre,Fecha de gestión,Día de reparto,Fecha de creación de la orden,Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Intentos de entrega,Resultado,A cobrar,Fulfillment,Recibido,Efectivo,SINPE,Transferencia,Nueva fecha,Origen,Causa,Motivo,Flete + IVA,Comisión + IVA,Flete por devolución a origen + IVA,Total de la empresa,Pago mensajero,Ingreso bodega,Indemnización\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,0,Entregado,15000.00,,15000.00,15000.00,,,,,,,2260.00,,,2260.00,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,1,Reprogramado,15000.00,,,,,,2026-11-13,,,Motivo de prueba,,,,,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2,Novedad,,,,,,,,,,Motivo de prueba,,,,,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,3,Devolución a origen por rechazo,15000.00,,,,,,,Manual,,Motivo de prueba,,,,2260.00,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,,2026-11-10,125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,4,Incidente,15000.00,,,,,,,,Paquete dañado,Motivo de prueba,,,,,,,",
+      "xlsx": [
+        [
+          "Mensajero",
+          "Fecha del cierre",
+          "Fecha de gestión",
+          "Día de reparto",
+          "Fecha de creación de la orden",
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Intentos de entrega",
+          "Resultado",
+          "A cobrar",
+          "Fulfillment",
+          "Recibido",
+          "Efectivo",
+          "SINPE",
+          "Transferencia",
+          "Nueva fecha",
+          "Origen",
+          "Causa",
+          "Motivo",
+          "Flete + IVA",
+          "Comisión + IVA",
+          "Flete por devolución a origen + IVA",
+          "Total de la empresa",
+          "Pago mensajero",
+          "Ingreso bodega",
+          "Indemnización"
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          0,
+          "Entregado",
+          "15000.00",
+          null,
+          "15000.00",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "2260.00",
+          null,
+          null,
+          "2260.00",
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          1,
+          "Reprogramado",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          "2026-11-13",
+          null,
+          null,
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          null,
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          2,
+          "Novedad",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          null,
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          3,
+          "Devolución a origen por rechazo",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Manual",
+          null,
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          "2260.00",
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          null,
+          "2026-11-10",
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          4,
+          "Incidente",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Paquete dañado",
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "cierres-admin-fundida-satelite": {
+      "columnas": [
+        {
+          "clave": "mensajero",
+          "encabezado": "Mensajero"
+        },
+        {
+          "clave": "fechaCierre",
+          "encabezado": "Fecha del cierre"
+        },
+        {
+          "clave": "fechaGestion",
+          "encabezado": "Fecha de gestión"
+        },
+        {
+          "clave": "diaReparto",
+          "encabezado": "Día de reparto"
+        },
+        {
+          "clave": "fechaCreacionOrden",
+          "encabezado": "Fecha de creación de la orden"
+        },
+        {
+          "clave": "numGuia",
+          "encabezado": "Nº Guía"
+        },
+        {
+          "clave": "numRemision",
+          "encabezado": "Nº Remisión"
+        },
+        {
+          "clave": "destinatario",
+          "encabezado": "Destinatario"
+        },
+        {
+          "clave": "direccion",
+          "encabezado": "Dirección"
+        },
+        {
+          "clave": "ubicacion",
+          "encabezado": "Ubicación"
+        },
+        {
+          "clave": "producto",
+          "encabezado": "Producto"
+        },
+        {
+          "clave": "tienda",
+          "encabezado": "Tienda"
+        },
+        {
+          "clave": "intentosEntrega",
+          "encabezado": "Intentos de entrega"
+        },
+        {
+          "clave": "resultado",
+          "encabezado": "Resultado"
+        },
+        {
+          "clave": "montoCobrar",
+          "encabezado": "A cobrar"
+        },
+        {
+          "clave": "recibido",
+          "encabezado": "Recibido"
+        },
+        {
+          "clave": "pago_efectivo",
+          "encabezado": "Efectivo"
+        },
+        {
+          "clave": "pago_SINPE",
+          "encabezado": "SINPE"
+        },
+        {
+          "clave": "pago_transferencia",
+          "encabezado": "Transferencia"
+        },
+        {
+          "clave": "nuevaFecha",
+          "encabezado": "Nueva fecha"
+        },
+        {
+          "clave": "origenRechazo",
+          "encabezado": "Origen"
+        },
+        {
+          "clave": "causa",
+          "encabezado": "Causa"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo"
+        },
+        {
+          "clave": "fleteConIva",
+          "encabezado": "Flete + IVA"
+        },
+        {
+          "clave": "comisionConIva",
+          "encabezado": "Comisión + IVA"
+        },
+        {
+          "clave": "fleteDevolucionConIva",
+          "encabezado": "Flete por devolución a origen + IVA"
+        },
+        {
+          "clave": "ingresoTotal",
+          "encabezado": "Total de la empresa"
+        },
+        {
+          "clave": "pagoMensajero",
+          "encabezado": "Pago mensajero"
+        },
+        {
+          "clave": "ingresoBodega",
+          "encabezado": "Ingreso bodega"
+        },
+        {
+          "clave": "indemnizacion",
+          "encabezado": "Indemnización"
+        }
+      ],
+      "csv": "Mensajero,Fecha del cierre,Fecha de gestión,Día de reparto,Fecha de creación de la orden,Nº Guía,Nº Remisión,Destinatario,Dirección,Ubicación,Producto,Tienda,Intentos de entrega,Resultado,A cobrar,Recibido,Efectivo,SINPE,Transferencia,Nueva fecha,Origen,Causa,Motivo,Flete + IVA,Comisión + IVA,Flete por devolución a origen + IVA,Total de la empresa,Pago mensajero,Ingreso bodega,Indemnización\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,125001,REM-125-001,Destinatario Uno,\"Avenida 2, calle 5\",Zona Central · San José · San José · Carmen,Caja pequeña,Tienda Prueba,0,Entregado,15000.00,15000.00,15000.00,,,,,,,2260.00,,,2260.00,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,125002,REM-125-002,Destinatario Dos,\"Del parque 100 m sur, casa \"\"verde\"\"\",Zona Sur · San José · Pérez Zeledón · San Isidro de El General,Paquete; frágil,Tienda Prueba,1,Reprogramado,15000.00,,,,,2026-11-13,,,Motivo de prueba,,,,,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,,REM-125-003,Destinatario Tres,,Zona Atlántico · Limón · Pococí,Sobre,Tienda Prueba,2,Novedad,,,,,,,,,Motivo de prueba,,,,,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,2026-11-11,2026-11-10,125004,REM-125-004,Destinatario Cuatro,Frente a la escuela,Alajuela · San Ramón · Ángeles,Caja mediana,Tienda Ñandú,3,Devolución a origen por rechazo,15000.00,,,,,,Manual,,Motivo de prueba,,,,2260.00,1500.00,,\r\nMensajero Uno,2026-11-11,2026-11-11,,2026-11-10,125005,REM-125-005,Destinatario Cinco,\"Barrio Socorro, 50 m oeste\",Heredia · Santo Domingo,Caja grande,Tienda Ñandú,4,Incidente,15000.00,,,,,,,Paquete dañado,Motivo de prueba,,,,,,,",
+      "xlsx": [
+        [
+          "Mensajero",
+          "Fecha del cierre",
+          "Fecha de gestión",
+          "Día de reparto",
+          "Fecha de creación de la orden",
+          "Nº Guía",
+          "Nº Remisión",
+          "Destinatario",
+          "Dirección",
+          "Ubicación",
+          "Producto",
+          "Tienda",
+          "Intentos de entrega",
+          "Resultado",
+          "A cobrar",
+          "Recibido",
+          "Efectivo",
+          "SINPE",
+          "Transferencia",
+          "Nueva fecha",
+          "Origen",
+          "Causa",
+          "Motivo",
+          "Flete + IVA",
+          "Comisión + IVA",
+          "Flete por devolución a origen + IVA",
+          "Total de la empresa",
+          "Pago mensajero",
+          "Ingreso bodega",
+          "Indemnización"
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          125001,
+          "REM-125-001",
+          "Destinatario Uno",
+          "Avenida 2, calle 5",
+          "Zona Central · San José · San José · Carmen",
+          "Caja pequeña",
+          "Tienda Prueba",
+          0,
+          "Entregado",
+          "15000.00",
+          "15000.00",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "2260.00",
+          null,
+          null,
+          "2260.00",
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          125002,
+          "REM-125-002",
+          "Destinatario Dos",
+          "Del parque 100 m sur, casa \"verde\"",
+          "Zona Sur · San José · Pérez Zeledón · San Isidro de El General",
+          "Paquete; frágil",
+          "Tienda Prueba",
+          1,
+          "Reprogramado",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          "2026-11-13",
+          null,
+          null,
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          null,
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          null,
+          "REM-125-003",
+          "Destinatario Tres",
+          null,
+          "Zona Atlántico · Limón · Pococí",
+          "Sobre",
+          "Tienda Prueba",
+          2,
+          "Novedad",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          null,
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-11",
+          "2026-11-10",
+          125004,
+          "REM-125-004",
+          "Destinatario Cuatro",
+          "Frente a la escuela",
+          "Alajuela · San Ramón · Ángeles",
+          "Caja mediana",
+          "Tienda Ñandú",
+          3,
+          "Devolución a origen por rechazo",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Manual",
+          null,
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          "2260.00",
+          "1500.00",
+          null,
+          null
+        ],
+        [
+          "Mensajero Uno",
+          "2026-11-11",
+          "2026-11-11",
+          null,
+          "2026-11-10",
+          125005,
+          "REM-125-005",
+          "Destinatario Cinco",
+          "Barrio Socorro, 50 m oeste",
+          "Heredia · Santo Domingo",
+          "Caja grande",
+          "Tienda Ñandú",
+          4,
+          "Incidente",
+          "15000.00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Paquete dañado",
+          "Motivo de prueba",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "cobertura": {
+      "columnas": [
+        {
+          "clave": "provincia",
+          "encabezado": "Provincia"
+        },
+        {
+          "clave": "canton",
+          "encabezado": "Cantón"
+        },
+        {
+          "clave": "distrito",
+          "encabezado": "Distrito"
+        },
+        {
+          "clave": "activo",
+          "encabezado": "Activo"
+        },
+        {
+          "clave": "cobertura",
+          "encabezado": "Cobertura"
+        },
+        {
+          "clave": "motivo",
+          "encabezado": "Motivo sin cobertura"
+        },
+        {
+          "clave": "zona",
+          "encabezado": "Zona"
+        },
+        {
+          "clave": "gam",
+          "encabezado": "GAM"
+        },
+        {
+          "clave": "zona_especial",
+          "encabezado": "Zona especial"
+        },
+        {
+          "clave": "tarifa_general",
+          "encabezado": "Tarifa general de la zona"
+        }
+      ],
+      "csv": "Provincia,Cantón,Distrito,Activo,Cobertura,Motivo sin cobertura,Zona,GAM,Zona especial,Tarifa general de la zona\r\nSan José,San José,Carmen,Sí,Sí,,Zona Central,Sí,No,Sí\r\nSan José,Pérez Zeledón,San Isidro de El General,Sí,Sí,,Zona Sur,No,Sí,No\r\nAlajuela,San Ramón,Ángeles,Sí,No,Sin zona asignada,Sin zona,,No,\r\nLimón,Pococí,Guápiles,Sí,No,Asignado a varias zonas,\"Varias zonas: Zona Atlántico, Zona Caribe\",,No,\r\nPuntarenas,Osa,Puerto Cortés,No,No,Provincia retirada del catálogo,Sin zona,,No,\r\nHeredia,Santo Domingo,Santo Tomás,No,No,Cantón retirado del catálogo,Zona Norte,No,No,Sí\r\nCartago,Paraíso,Orosí,No,No,Distrito retirado del catálogo,Sin zona,,No,",
+      "xlsx": [
+        [
+          "Provincia",
+          "Cantón",
+          "Distrito",
+          "Activo",
+          "Cobertura",
+          "Motivo sin cobertura",
+          "Zona",
+          "GAM",
+          "Zona especial",
+          "Tarifa general de la zona"
+        ],
+        [
+          "San José",
+          "San José",
+          "Carmen",
+          "Sí",
+          "Sí",
+          null,
+          "Zona Central",
+          "Sí",
+          "No",
+          "Sí"
+        ],
+        [
+          "San José",
+          "Pérez Zeledón",
+          "San Isidro de El General",
+          "Sí",
+          "Sí",
+          null,
+          "Zona Sur",
+          "No",
+          "Sí",
+          "No"
+        ],
+        [
+          "Alajuela",
+          "San Ramón",
+          "Ángeles",
+          "Sí",
+          "No",
+          "Sin zona asignada",
+          "Sin zona",
+          null,
+          "No",
+          null
+        ],
+        [
+          "Limón",
+          "Pococí",
+          "Guápiles",
+          "Sí",
+          "No",
+          "Asignado a varias zonas",
+          "Varias zonas: Zona Atlántico, Zona Caribe",
+          null,
+          "No",
+          null
+        ],
+        [
+          "Puntarenas",
+          "Osa",
+          "Puerto Cortés",
+          "No",
+          "No",
+          "Provincia retirada del catálogo",
+          "Sin zona",
+          null,
+          "No",
+          null
+        ],
+        [
+          "Heredia",
+          "Santo Domingo",
+          "Santo Tomás",
+          "No",
+          "No",
+          "Cantón retirado del catálogo",
+          "Zona Norte",
+          "No",
+          "No",
+          "Sí"
+        ],
+        [
+          "Cartago",
+          "Paraíso",
+          "Orosí",
+          "No",
+          "No",
+          "Distrito retirado del catálogo",
+          "Sin zona",
+          null,
+          "No",
+          null
+        ]
+      ]
+    }
+  }
+}
