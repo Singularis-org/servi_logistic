@@ -76,6 +76,8 @@ export const CHIP_POR_CATEGORIA_MENSAJERO: Record<
 > = {
   pago_devengado: () => "cierres",
   pago_efectivo: () => "cierres",
+  // SLT-139 (R329): lo pagado por la satélite nace de un cierre conciliado.
+  pago_satelite: () => "cierres",
   liquidacion: () => "pagos",
   premio_ranking: () => "premios",
   incentivo: () => "incentivos",

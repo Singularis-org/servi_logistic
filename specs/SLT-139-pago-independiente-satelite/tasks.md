@@ -9,21 +9,21 @@
 
 ## T0 — Medir antes de tocar (sin código de producción)
 
-- [ ] **T0.1** Confirmar la definición vigente de `pago_mensajero_movimiento_tipo_categoria_check` y de
+- [x] **T0.1** Confirmar la definición vigente de `pago_mensajero_movimiento_tipo_categoria_check` y de
   `pago_mensajero_movimiento_origen_uq` en la base desechable con todas las migraciones
   (`pg_get_constraintdef`, `pg_indexes`). Hecho: texto anotado en `progress/impl_SLT-139.md`; si no
   coincide con `design.md > 3.2`, PARA y avisa al leader.
-- [ ] **T0.2** Con R336 aplicado a mano en una rama local sin commitear (la marca en el `updateMany` de
+- [x] **T0.2** Con R336 aplicado a mano en una rama local sin commitear (la marca en el `updateMany` de
   la aprobación, para todo destino), correr los tests de integración y los E2E que nombran
   `pago_efectivo`, «Pago del efectivo», «La central debe», «se paga del efectivo», `marcarConciliado`
   o `aprobar` de satélite, y los unit de `CierresAdminService`, `CierreDiaService` y
   `LiquidacionService` con filas de marca `true`. Hecho: lista de los que caen, con el motivo, en
   `progress/impl_SLT-139.md`; `## Archivos esperados` actualizado. Si el total pasa de 40, PARA y
   avisa al leader antes de seguir.
-- [ ] **T0.3** `[P]` Con `pago_satelite` solo en `schema.prisma` y `prisma generate` (avisado), correr
+- [x] **T0.3** `[P]` Con `pago_satelite` solo en `schema.prisma` y `prisma generate` (avisado), correr
   `pnpm run typecheck` y listar cada `Record<PagoMensajeroMovimientoCategoria, …>` que señale. Hecho:
   la lista coincide con `design.md > 7` o se actualizan el diseño y `## Archivos esperados`.
-- [ ] **T0.4** `[P]` (Carlos, en prod, transacción READ ONLY; informativa, no bloquea) Contar los
+- [ ] **T0.4** `[P]` DIFERIDA (consulta de solo lectura a prod bloqueada para agentes; informativa). (Carlos, en prod, transacción READ ONLY; informativa, no bloquea) Contar los
   `cierre_dia` de satélite `aprobado` con la marca en `false` cuya consolidación no está conciliada, y
   los de satélite en `solicitado`/`vencido`. Hecho: números anotados en `progress/features/SLT-139.md`
   (cuántos quedarán con la regla vieja, `requirements.md > PA3`).
