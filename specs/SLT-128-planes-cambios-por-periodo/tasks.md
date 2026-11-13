@@ -137,7 +137,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
 - [x] **T10.6** [P] Integración R28 (depende de T10.3): los casos de R28 en `planes-periodicidad-ordenes`,
   `planes-cambio-por-empresa`, `factura-plataforma-cambio-plan` y `planes-version-por-empresa`; el caso R8 viejo
   («el trabajo falla») se rehace. **Hecho:** verdes contra Postgres (CI por `workflow_dispatch`, como B1).
-- [ ] **T10.7** [P] Integración R29 (depende de T10.4): `planes-cambio-por-empresa` (mover, ida y vuelta, salir) y
+- [x] **T10.7** [P] Integración R29 (depende de T10.4): `planes-cambio-por-empresa` (mover, ida y vuelta, salir) y
   `planes-cambio-programado` (reemplazo, cancelar, `processing` intacto). **Hecho:** verdes contra Postgres.
 - [ ] **T10.8** Pantalla (`frontend_dev`, depende de T10.2): `PlanDetalle.tsx` pinta una línea por `noAplicadas`;
   `PlanDetalle.test.tsx` con el caso de R28. Si el tipo nuevo rompe `PlanEmpresa.tsx`, solo el tipo. **Hecho:** test

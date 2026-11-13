@@ -149,6 +149,25 @@ function correrAplicar(tx: TxDeTest, job: JobDTO, ahora: Date): Promise<void> {
   return crearPlanAplicarCambioHandler(planesEnTx(tx), () => ahora)(job);
 }
 
+/** SLT-128 (R29): los trabajos de aplicar y de recordatorio de un pendiente, con y sin empresa. */
+interface FilaDeCola {
+  tipo: string;
+  empresa: string | null;
+  estado: string;
+  motivo: string | null;
+  clave: string | null;
+  dias: string | null;
+}
+
+async function colaDelPendiente(tx: TxDeTest, cambioId: string): Promise<FilaDeCola[]> {
+  return tx.$queryRaw<FilaDeCola[]>`
+    SELECT "tipo"::text AS "tipo", "organizacion_id" AS "empresa", "estado"::text AS "estado", "last_error" AS "motivo",
+           "dedupe_key" AS "clave", "payload"->>'dias' AS "dias"
+      FROM "jobs"
+     WHERE "tipo" IN ('plan_aplicar_cambio', 'plan_recordatorio_cambio') AND "payload"->>'cambioId' = ${cambioId}
+     ORDER BY "organizacion_id" NULLS FIRST, "tipo", "payload"->>'dias', "id"`;
+}
+
 async function contarJobs(tx: TxDeTest): Promise<number> {
   const [f] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "jobs" WHERE "tipo" = 'plan_cambios_vencidos'`;
   return f.n;
@@ -507,6 +526,53 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
     expect(r.recepciones).toBe(0);
     expect(r.plan.nombre).toBe(r.entrada.nombre);
     expect(r.versiones).toBe(0);
+  });
+
+  it("SLT-128 R29 (R13, R14): reemplazar descarta los trabajos aún sin empezar del primero, con y sin empresa y los recordatorios legados, y deja los del segundo; uno en curso no se toca; cancelar descarta todos los del pendiente", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["quincenal", "mensual"]);
+      const [quincenal] = p.orgs;
+      await p.programar("2026-11-20", { nombre: "Primero" });
+      const primero = (await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId }, select: { id: true } })).id;
+      // Un recordatorio sin empresa encolado antes de SLT-128 (R24), con la clave de entonces.
+      await fijarEmpresa(tx, "");
+      await new JobRepository(tx).enqueue(
+        "plan_recordatorio_cambio",
+        { planId: p.planId, cambioId: primero, dias: 7 },
+        { runAfter: rige("2026-11-13"), dedupeKey: `plan_recordatorio:${primero}:7` },
+        tx,
+      );
+      // La recepción de la quincenal ya la tomó el drenador: está en curso.
+      await tx.$executeRaw`
+        UPDATE "jobs" SET "estado" = 'processing', "locked_at" = now()
+         WHERE "tipo" = 'plan_aplicar_cambio' AND "payload"->>'cambioId' = ${primero} AND "organizacion_id" = ${quincenal}`;
+      const reemplazo = await p.programar("2026-11-25", { nombre: "Segundo" }, new Date("2026-11-17T15:00:00.000Z"));
+      const segundo = (await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId }, select: { id: true } })).id;
+      const trasReemplazo = { primero: await colaDelPendiente(tx, primero), segundo: await colaDelPendiente(tx, segundo) };
+      const cancelado = await p.servicio.cancelarCambio(SUPERADMIN, { planId: p.planId });
+      return { quincenal, primero, segundo, reemplazo, trasReemplazo, cancelado, trasCancelar: await colaDelPendiente(tx, segundo) };
+    });
+    expect(r.reemplazo).toMatchObject({ estado: "ok", cambio: true });
+    const { primero, segundo } = r.trasReemplazo;
+    // El primero: el sin empresa, la recepción de la mensual, los recordatorios de las dos y el legado: descartados,
+    // con su motivo y la clave libre. La recepción en curso de la quincenal sigue igual.
+    const enCurso = primero.filter((f) => f.estado === "processing");
+    expect(enCurso).toEqual([expect.objectContaining({ tipo: "plan_aplicar_cambio", empresa: r.quincenal, motivo: null })]);
+    expect(enCurso[0].clave).not.toBeNull();
+    const descartados = primero.filter((f) => f.estado !== "processing");
+    expect(descartados.length).toBeGreaterThanOrEqual(6);
+    expect(descartados.every((f) => f.estado === "descartado" && f.motivo === `plan_cambio_obsoleto:${r.primero}` && f.clave === null)).toBe(true);
+    expect(descartados.filter((f) => f.empresa === null).map((f) => [f.tipo, f.dias])).toEqual([
+      ["plan_aplicar_cambio", null],
+      ["plan_recordatorio_cambio", "7"],
+    ]);
+    // El segundo: todos pendientes, con su clave.
+    expect(segundo.length).toBeGreaterThanOrEqual(5);
+    expect(segundo.every((f) => f.estado === "pending" && f.clave !== null)).toBe(true);
+    // Cancelar (R14, nadie lo recibió): todos los del segundo, descartados.
+    expect(r.cancelado).toMatchObject({ estado: "ok" });
+    expect(r.trasCancelar.map((f) => [f.tipo, f.empresa, f.dias])).toEqual(segundo.map((f) => [f.tipo, f.empresa, f.dias]));
+    expect(r.trasCancelar.every((f) => f.estado === "descartado" && f.motivo === `plan_cambio_obsoleto:${r.segundo}` && f.clave === null)).toBe(true);
   });
 
   it("R40 (plan sin empresas): archivar con un cambio programado lo cancela; su trabajo no aplica nada", async () => {
