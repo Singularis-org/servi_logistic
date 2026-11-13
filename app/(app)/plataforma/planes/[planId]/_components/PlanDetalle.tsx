@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { formatearConteo } from "@/lib/planes/consumo";
 import {
+  lineaNoAplicada,
   lineasDeCambioDelPlan,
   MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
   MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
@@ -179,6 +180,7 @@ export function PlanDetalle({
 }: PlanDetalleProps) {
   const router = useRouter();
   const { plan, pendiente } = detalle;
+  const noAplicadas = detalle.noAplicadas ?? [];
   const [editando, setEditando] = useState(false);
   const [confirmar, setConfirmar] = useState<"archivar" | "cancelar" | null>(null);
   const [desenlace, setDesenlace] = useState<Desenlace | null>(null);
@@ -348,6 +350,18 @@ export function PlanDetalle({
             )}
           </div>
         )}
+        {/* SLT-128 (R28): fuera del bloque del pendiente; tras promover el aviso sigue mientras la empresa
+            conserve su versión anterior, ya sin pendiente. */}
+        {noAplicadas.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-sm">
+            {noAplicadas.map((n) => (
+              <li key={n.empresaId} className="flex items-start gap-2">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-strong" />
+                <span>{lineaNoAplicada(n.empresa, n.motivo)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </Seccion>
 
       <Seccion titulo={TEXTOS.empresas}>

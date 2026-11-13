@@ -447,3 +447,41 @@ describe("SLT-128 R11 — cuántas empresas ya recibieron el cambio programado",
     expect(screen.queryByText(/empresas ya lo recibieron/)).toBeNull();
   });
 });
+
+describe("SLT-128 R28 — las empresas que no recibieron el cambio", () => {
+  const NO_APLICADA = {
+    empresaId: ORG,
+    empresa: "Envíos Norte",
+    motivo: "cobro_quincenal_ordenes_mensuales" as const,
+    desde: "2030-01-15T06:00:00.000Z",
+  };
+  const LINEA =
+    "Envíos Norte no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. " +
+    "Sigue con su versión anterior.";
+
+  it("R28: con cambio programado pinta una línea por empresa no aplicada", () => {
+    montar({
+      ...DETALLE,
+      noAplicadas: [NO_APLICADA, { ...NO_APLICADA, empresaId: "otra", empresa: "Rápido Sur" }],
+    });
+    const pendiente = seccion("Cambio programado");
+    expect(within(pendiente).getByText(LINEA)).toBeInTheDocument();
+    expect(within(pendiente).getByText(/^Rápido Sur no recibió el cambio: /)).toBeInTheDocument();
+    expect(within(pendiente).getByText("Cambio programado desde 2030-01-15")).toBeInTheDocument();
+  });
+
+  it("R28: tras promover (sin pendiente) la línea sigue mientras la empresa conserve su versión", () => {
+    montar({ ...DETALLE, pendiente: null, noAplicadas: [NO_APLICADA] });
+    const pendiente = seccion("Cambio programado");
+    expect(within(pendiente).getByText(LINEA)).toBeInTheDocument();
+    expect(within(pendiente).getByText("No hay ningún cambio programado.")).toBeInTheDocument();
+  });
+
+  it("R28: sin no aplicadas (vacío o ausente) no pinta ninguna línea", () => {
+    montar({ ...DETALLE, noAplicadas: [] });
+    expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
+    cleanup();
+    montar({ ...DETALLE, pendiente: null });
+    expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
+  });
+});

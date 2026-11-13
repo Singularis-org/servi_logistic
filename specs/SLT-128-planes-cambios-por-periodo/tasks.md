@@ -139,7 +139,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
   («el trabajo falla») se rehace. **Hecho:** verdes contra Postgres (CI por `workflow_dispatch`, como B1).
 - [x] **T10.7** [P] Integración R29 (depende de T10.4): `planes-cambio-por-empresa` (mover, ida y vuelta, salir) y
   `planes-cambio-programado` (reemplazo, cancelar, `processing` intacto). **Hecho:** verdes contra Postgres.
-- [ ] **T10.8** Pantalla (`frontend_dev`, depende de T10.2): `PlanDetalle.tsx` pinta una línea por `noAplicadas`;
+- [x] **T10.8** Pantalla (`frontend_dev`, depende de T10.2): `PlanDetalle.tsx` pinta una línea por `noAplicadas`;
   `PlanDetalle.test.tsx` con el caso de R28. Si el tipo nuevo rompe `PlanEmpresa.tsx`, solo el tipo. **Hecho:** test
   y lint verdes.
 - [ ] **T10.9** Cierre: mapa R28, R29 → test en `progress/impl_SLT-128.md`; gate a mano (`workflow_dispatch`) en
