@@ -16,6 +16,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (T1.2; R109) — las señales de la
 // cola en el SERVICIO, con dobles. El SQL y su `WHERE` se prueban en
@@ -49,14 +50,8 @@ function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): Cierr
   };
 }
 
-function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
-  return {
-    findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    ...overrides,
-  } as unknown as ICierresAdminRepository;
+function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}) {
+  return dobleCierresAdmin(overrides);
 }
 
 /** Doble del conteo: devuelve el mapa pedido para los ids que se le pasan. */
