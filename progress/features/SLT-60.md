@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-60 | confirmar-pago-plataforma | fullstack | high | feature/SLT-60-confirmar-pago-plataforma | Camilo | pending |
+| SLT-60 | confirmar-pago-plataforma | fullstack | high | feature/SLT-60-confirmar-pago-plataforma | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -38,7 +38,10 @@ Ver `specs/SLT-60-confirmar-pago-plataforma/requirements.md` (afinada 2026-11-11
 
 ## Preguntas abiertas
 
+<!-- tamano-pr-aceptado: 2026-11-13 · un solo PR por encima del tope (~67 archivos en el spec, 75 en el diff); el humano eligió «Aceptar PR sobre el tope» y luego «Sí, 55 en un PR», y aprobó el spec con 67 -->
+
 ## Tandas
+- 2026-11-13 · T0–T9 (salvo T7.3 al CI y T9.2 al humano) · 67cde81e · typecheck 0, lint 0, guardias verdes salvo dependencias-declaradas-presentes (rojo previo); init.sh corta por cupo (geo en pausa). Review vuelta 1: APROBADO, 0 mayores y 5 menores.
 
 ## Modelos (overrides)
 
