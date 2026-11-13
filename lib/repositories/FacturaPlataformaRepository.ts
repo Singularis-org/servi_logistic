@@ -3,8 +3,14 @@ import { z } from "zod";
 
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories/IFacturaPlataformaRepository";
-import type { CuotaDeLaFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
-import { ESTADOS_FACTURA, PERIODICIDADES_FACTURA } from "@/lib/types/factura-plataforma";
+import type {
+  CuotaDeLaFactura,
+  DetalleDeFactura,
+  FacturaPlataformaDTO,
+  LineaDeFactura,
+  PaginaDeLineas,
+} from "@/lib/types/factura-plataforma";
+import { ESTADOS_FACTURA, LINEAS_POR_PAGINA, PERIODICIDADES_FACTURA } from "@/lib/types/factura-plataforma";
 import { tipoCobroSchema } from "@/lib/types/planes";
 
 // SLT-118 (design §2.5, §3, §4) — las facturas de la plataforma. Ningún método escribe la tabla: el cierre
@@ -20,7 +26,13 @@ import { tipoCobroSchema } from "@/lib/types/planes";
 // la de la factura con `conEmpresa`, el camino de los jobs por empresa (decisión del 2026-11-11). Así la
 // extensión baja a `servi_app` con esa empresa y la base la acota igual que a la empresa misma.
 
-type FacturaPlataformaPrismaClient = Pick<PrismaClient, "$queryRaw" | "organizacion">;
+// SLT-119 (design §2): las líneas del detalle salen de la traza de SLT-85 (`cobroPlataformaTraza`), con la página
+// y su total en una transacción `repeatable read`. `$transaction` es opcional porque el tipo del cliente de una
+// transacción (`Prisma.TransactionClient`) no lo declara; sin él, ya se está dentro de una.
+type FacturaPlataformaPrismaClient = Pick<PrismaClient, "$queryRaw" | "organizacion" | "cobroPlataformaTraza"> & {
+  $transaction?: PrismaClient["$transaction"];
+};
+type LectorDeTraza = Pick<PrismaClient, "cobroPlataformaTraza">;
 
 /** El instante como `TIMESTAMP` sin zona en UTC, como lo guarda la base (la forma de `PlanesRepository`). */
 function comoTimestamp(instante: Date): string {
@@ -161,6 +173,37 @@ const CERRADAS_JSON = Prisma.sql`
 /** Según el driver, el `jsonb` llega ya parseado o como texto. */
 const comoJson = (v: unknown): unknown => (typeof v === "string" ? (JSON.parse(v) as unknown) : v);
 
+/* -------------------------------------------------------------------------- */
+/* SLT-119: las líneas de una factura                                          */
+/* -------------------------------------------------------------------------- */
+
+const SELECT_LINEA = { id: true, cobradoAt: true, numGuia: true, tipoMovimiento: true, valorCobrado: true } as const;
+
+/**
+ * R7, R10: una página de las líneas de `[desde, hasta)` por `(cobrado_at, id)` y el total de la factura entera.
+ * La empresa la ponen la extensión del cliente (`MODELOS_DE_NEGOCIO`) y la RLS; usa el índice
+ * `(organizacion_id, cobrado_at)`.
+ */
+async function paginaDeLineas(c: LectorDeTraza, desde: Date, hasta: Date, pagina: number): Promise<PaginaDeLineas> {
+  const where = { cobradoAt: { gte: desde, lt: hasta } };
+  const filas = await c.cobroPlataformaTraza.findMany({
+    where,
+    orderBy: [{ cobradoAt: "asc" }, { id: "asc" }],
+    skip: (pagina - 1) * LINEAS_POR_PAGINA,
+    take: LINEAS_POR_PAGINA,
+    select: SELECT_LINEA,
+  });
+  const total = await c.cobroPlataformaTraza.count({ where });
+  const lineas: LineaDeFactura[] = filas.map((f) => ({
+    id: f.id,
+    instante: f.cobradoAt,
+    numGuia: f.numGuia,
+    tipo: f.tipoMovimiento,
+    valor: f.valorCobrado.toFixed(2),
+  }));
+  return { lineas, pagina, porPagina: LINEAS_POR_PAGINA, total };
+}
+
 export class FacturaPlataformaRepository implements IFacturaPlataformaRepository {
   constructor(private readonly prisma: FacturaPlataformaPrismaClient) {}
 
@@ -216,5 +259,27 @@ export class FacturaPlataformaRepository implements IFacturaPlataformaRepository
   deEmpresaParaPlataforma(organizacionId: string): Promise<FacturaPlataformaDTO[]> {
     // Dentro de `comoPlataforma` también: el `conEmpresa` de dentro manda mientras dura la lectura.
     return conEmpresa(organizacionId, () => this.deLaEmpresa());
+  }
+
+  async detalleDeLaEmpresa(facturaId: string, pagina: number): Promise<DetalleDeFactura | null> {
+    // La cabecera, de la misma lectura que la lista (R5): cuotas, previstas, total parcial y `hasta` previsto.
+    // Otra empresa en el contexto no la ve (RLS y `WHERE` de `CERRADAS_JSON`; 42501 en la en curso): `null` (R14).
+    const factura = (await this.deLaEmpresa()).find((f) => f.id === facturaId);
+    if (factura === undefined) return null;
+    // Dos sentencias, no una (design §2): si la factura se cierra entre la cabecera y las líneas, su intervalo
+    // `[desde, hasta)` no cambia, así que las líneas siguen siendo las suyas. En la no cerrada, `hasta` es el fin
+    // previsto y no hay movimientos futuros: salen las líneas hasta ahora (R11).
+    const leer = (c: LectorDeTraza) => paginaDeLineas(c, factura.desde, factura.hasta, pagina);
+    // Página y total de la misma foto: `repeatable read` fija el snapshot en la primera sentencia.
+    const lineas =
+      this.prisma.$transaction === undefined
+        ? await leer(this.prisma)
+        : await this.prisma.$transaction((tx) => leer(tx), { isolationLevel: "RepeatableRead" });
+    return { factura, lineas };
+  }
+
+  detalleParaPlataforma(organizacionId: string, facturaId: string, pagina: number): Promise<DetalleDeFactura | null> {
+    // El camino de `deEmpresaParaPlataforma`: `servi_app` con esa empresa fijada, sin `comoPlataforma`.
+    return conEmpresa(organizacionId, () => this.detalleDeLaEmpresa(facturaId, pagina));
   }
 }
