@@ -21,6 +21,10 @@ import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
  *     posterior (Qf) NO vuelve a emitir egreso (evita doble conteo).
  * SI P=0 (cierre sin entregas que paguen) devuelve listas vacias (R10). NO persiste (lo hacen los
  * repos en la tx). Money-safe: Prisma.Decimal + montos STRING.
+ *
+ * SLT-123 (R313, R325): la regla la decide SOLO `cierre_dia.pago_independiente_efectivo`. Con la
+ * marca en `true` (cierre de la central aprobado desde SLT-123) el libro lleva solo el devengo; el
+ * egreso de caja no cambia (R314). Con `false` todo sigue como arriba.
  */
 export class WalletMensajeroFeedService implements IWalletMensajeroFeedService {
   async construirMovimientosDePago(
@@ -30,7 +34,13 @@ export class WalletMensajeroFeedService implements IWalletMensajeroFeedService {
     // R8: UN SOLO read del cierre; consume los snapshots (mensajero + P + E), no re-deriva.
     const cierre = await tx.cierreDia.findUnique({
       where: { id: cierreId },
-      select: { mensajeroId: true, totalPagoMensajero: true, totalEfectivo: true },
+      // SLT-123 (R313, R325): + la marca de la regla, en la MISMA lectura.
+      select: {
+        mensajeroId: true,
+        totalPagoMensajero: true,
+        totalEfectivo: true,
+        pagoIndependienteEfectivo: true,
+      },
     });
     // Defensivo: si el cierre no existe, no hay nada que alimentar (el enganche solo llama tras
     // una aprobacion aplicada, por lo que en la practica siempre existe).
@@ -58,8 +68,10 @@ export class WalletMensajeroFeedService implements IWalletMensajeroFeedService {
         registradoPor: null,
       });
     }
-    // R10: emite el pago (tomado del efectivo) SOLO si pagado>0.
-    if (pagado.gt(0)) {
+    // R10: emite el pago (tomado del efectivo) SOLO si pagado>0 y SOLO con la regla de la 44
+    // (marca en `false`, R325). SLT-123 (R313): con la marca en `true` el pago es independiente
+    // del efectivo: el libro solo devenga P y la central lo paga despues con «Registrar pago».
+    if (!cierre.pagoIndependienteEfectivo && pagado.gt(0)) {
       libro.push({
         mensajeroId: cierre.mensajeroId,
         tipo: "pago",

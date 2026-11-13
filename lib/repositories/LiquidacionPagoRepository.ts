@@ -285,6 +285,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     if (row === null) return null;
@@ -294,6 +295,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     };
   }
 
@@ -315,6 +317,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     if (row === null) return null;
@@ -324,6 +327,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     };
   }
 
@@ -353,6 +357,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
         solicitadoAt: true,
       },
       // Eficiencia, no la verdad del orden: quien fija R8 es `ordenarCierresFifo`, que reordena
@@ -366,6 +371,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
       solicitadoAt: row.solicitadoAt.toISOString(),
     }));
   }
@@ -389,6 +395,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
         solicitadoAt: true,
       },
       orderBy: [{ solicitadoAt: "asc" }, { id: "asc" }],
@@ -399,6 +406,7 @@ export class LiquidacionPagoRepository implements ILiquidacionPagoRepository {
       estado: row.estado,
       totalPagoMensajero: row.totalPagoMensajero.toFixed(2),
       totalEfectivo: row.totalEfectivo.toFixed(2),
+      pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
       solicitadoAt: row.solicitadoAt.toISOString(),
     }));
   }

@@ -11,6 +11,7 @@ import type {
   PagoPorTarifaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
+import type { FiltrosColaPropiaRepo } from "@/lib/types/filtros-cierres";
 import type { PagosDelCierre } from "@/lib/types/tarifa-flexible";
 
 // Feature 37 — contrato del repositorio del cierre del dia. Solo queries Prisma;
@@ -557,8 +558,14 @@ export interface ICierreDiaRepository {
    *     pero hoy nadie lo emite. Es alcance de otra ficha.
    */
   crearCierre(input: CrearCierreInput): Promise<string | null>;
-  /** R18: cierres del mensajero (mas reciente primero) con estado + totales. */
-  findCierresByMensajero(mensajeroId: string): Promise<CierrePasadoDTO[]>;
+  /**
+   * R18: cierres del mensajero (mas reciente primero) con estado + totales.
+   * SLT-138 (R172, R174): `filtros` opcional recorta DENTRO del alcance del mensajero.
+   */
+  findCierresByMensajero(
+    mensajeroId: string,
+    filtros?: FiltrosColaPropiaRepo,
+  ): Promise<CierrePasadoDTO[]>;
   /**
    * Cierre PROPIO del mensajero (cabecera + sus gestiones vinculadas), para el detalle de
    * "ver" un cierre anterior. El scope va en el WHERE (`id` + `mensajero_id`): un cierre de
@@ -599,10 +606,12 @@ export interface ICierreDiaRepository {
    * Es `findCierresByMensajero` con el recorte `skip`/`take`, compartiendo proyeccion, mapper
    * y `orderBy solicitadoAt desc` (R51). El `where { mensajeroId }` es el acotamiento por
    * actor y va tambien en el `count`: pagina y total cuentan el MISMO conjunto (R41/R44).
+   * SLT-138 (R172): con `filtros`, el total es el del conjunto FILTRADO.
    */
   findCierresByMensajeroPaginado(
     mensajeroId: string,
     rango: RangoPagina,
+    filtros?: FiltrosColaPropiaRepo,
   ): Promise<PaginaRepositorio<CierrePasadoDTO>>;
   /**
    * Feature 67 — lee la gestion candidata a deshacerse + el estado real de su orden. Devuelve

@@ -26,7 +26,9 @@ function consolidableDbRow(overrides: Record<string, unknown> = {}) {
     totalGeneral: new Prisma.Decimal("15.5"),
     totalPagoMensajero: new Prisma.Decimal("5"), // feature 39/R18: snapshot del pago
     totalIngresoBodegaRechazos: new Prisma.Decimal("3"), // feature 56/R17: snapshot del ingreso
-    _count: { detalle: 0 }, // SLT-54 (R71): sin filas del modelo nuevo
+    // SLT-54 (R71): sin filas del modelo nuevo. SLT-106 (R194): sin gestiones ajustadas.
+    _count: { detalle: 0, gestiones: 0 },
+    resueltoAt: new Date("2026-11-10T15:00:00.000Z"), // SLT-106 (R194): cuando se aprobo
     mensajero: { nombre: "Ana Mensajera" },
     ...overrides,
   };
@@ -76,6 +78,9 @@ describe("CierreBodegaRepository.findCierresDiaConsolidables (R5/R10)", () => {
       totalPagoMensajero: "5.00", // feature 39/R18: snapshot money-safe STRING
       totalIngresoBodegaRechazos: "3.00", // feature 56/R17: snapshot money-safe STRING
       incluyeModeloNuevo: false, // SLT-54 (R71)
+      paraLaCentral: "7.50", // SLT-106 (R67): 15.50 − 5.00 − 3.00
+      aprobadoAt: "2026-11-10T15:00:00.000Z", // SLT-106 (R194)
+      gestionesAjustadas: 0, // SLT-106 (R194)
     });
     expect(typeof rows[0].totales.general).toBe("string");
     expect(typeof rows[0].totalPagoMensajero).toBe("string");
@@ -93,6 +98,83 @@ describe("CierreBodegaRepository.contarCierresDiaSolicitados (R6)", () => {
 
     expect(n).toBe(3);
     expect(prisma.cierreDia.count.mock.calls[0][0].where).toEqual({
+      destinoTipo: "bodega_satelite",
+      destinoZonaId: "z-cartago",
+      estado: "solicitado",
+    });
+  });
+});
+
+// SLT-106 (R67/R194/R199) — la fila de «A consolidar» y los nombres de los cierres sin resolver.
+// Los literales estan escritos a mano: nunca se comparan contra `paraLaCentral()`, que es su fuente.
+describe("SLT-106 — la fila de «A consolidar» y los cierres sin resolver", () => {
+  async function filaDe(db: Record<string, unknown>) {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findMany.mockResolvedValue([consolidableDbRow(db)]);
+    const repo = new CierreBodegaRepository(prisma as unknown as PrismaClient);
+    const [fila] = await repo.findCierresDiaConsolidables("z-cartago");
+    return { fila, prisma };
+  }
+
+  it("R67: «A la central» de la fila = recaudado − pago − bodega, con literales", async () => {
+    const { fila } = await filaDe({
+      totalGeneral: new Prisma.Decimal("60000.00"),
+      totalPagoMensajero: new Prisma.Decimal("2000.00"),
+      totalIngresoBodegaRechazos: new Prisma.Decimal("300.00"),
+    });
+    expect(fila.paraLaCentral).toBe("57700.00");
+  });
+
+  it("R67: negativo con su signo (0.00 − 2000.00 − 0.00)", async () => {
+    const { fila } = await filaDe({
+      totalEfectivo: new Prisma.Decimal("0"),
+      totalSimpe: new Prisma.Decimal("0"),
+      totalGeneral: new Prisma.Decimal("0.00"),
+      totalPagoMensajero: new Prisma.Decimal("2000.00"),
+      totalIngresoBodegaRechazos: new Prisma.Decimal("0.00"),
+    });
+    expect(fila.paraLaCentral).toBe("-2000.00");
+  });
+
+  it("R194: `aprobadoAt` en ISO, o `null` si `resuelto_at` no llega; `gestionesAjustadas` del _count", async () => {
+    const con = await filaDe({ _count: { detalle: 0, gestiones: 2 } });
+    expect(con.fila.aprobadoAt).toBe("2026-11-10T15:00:00.000Z");
+    expect(con.fila.gestionesAjustadas).toBe(2);
+
+    const sin = await filaDe({ resueltoAt: null });
+    expect(sin.fila.aprobadoAt).toBeNull();
+    expect(sin.fila.gestionesAjustadas).toBe(0);
+  });
+
+  it("R194: el select pide `resueltoAt` y cuenta gestiones con al menos un ajuste, en la misma sentencia", async () => {
+    const { prisma } = await filaDe({});
+    const arg = prisma.cierreDia.findMany.mock.calls[0][0];
+    expect(arg.select.resueltoAt).toBe(true);
+    expect(arg.select._count).toEqual({
+      select: {
+        detalle: { where: { tarifaModelo: "nuevo" } },
+        gestiones: { where: { ajustesPagoMensajero: { some: {} } } },
+      },
+    });
+  });
+
+  it("R199: `findMensajerosConCierreSinResolver` usa el MISMO where que `contarCierresDiaSolicitados`", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.count.mockResolvedValue(2);
+    prisma.cierreDia.findMany.mockResolvedValue([
+      { mensajero: { nombre: "Beto Mensajero" } },
+      { mensajero: { nombre: "Ana Mensajera" } },
+    ]);
+    const repo = new CierreBodegaRepository(prisma as unknown as PrismaClient);
+
+    await repo.contarCierresDiaSolicitados("z-cartago");
+    const nombres = await repo.findMensajerosConCierreSinResolver("z-cartago");
+
+    expect(nombres).toEqual(["Beto Mensajero", "Ana Mensajera"]); // con repetidos y sin ordenar: lo junta el servicio
+    const whereContar = prisma.cierreDia.count.mock.calls[0][0].where;
+    const whereNombres = prisma.cierreDia.findMany.mock.calls[0][0].where;
+    expect(whereNombres).toEqual(whereContar);
+    expect(whereNombres).toEqual({
       destinoTipo: "bodega_satelite",
       destinoZonaId: "z-cartago",
       estado: "solicitado",
@@ -381,6 +463,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       cierreBodega: {
         findMany: vi.fn().mockResolvedValue(filas),
         findUnique: vi.fn().mockResolvedValue(filas[0]),
+        findFirst: vi.fn().mockResolvedValue(filas[0]), // SLT-107: la cabecera del detalle
         count: vi.fn().mockResolvedValue(filas.length),
         updateMany: vi.fn(),
       },
@@ -431,7 +514,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
     }
 
     // Y el detalle, que es la octava puerta a la misma cabecera.
-    const detalle = await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR);
+    const detalle = await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
     expect(detalle?.cierre).toMatchObject(ESPERADO);
   });
 
@@ -517,7 +600,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       "maestro · findColaCompleta": (await maestro.findColaCompleta())[0],
       "maestro · findHistoricoPaginado": (await maestro.findHistoricoPaginado(rango)).items[0],
       "maestro · findColaPaginada": (await maestro.findColaPaginada(rango)).items[0],
-      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR))?.cierre,
+      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" }))?.cierre,
     };
     expect(Object.keys(porLectura)).toHaveLength(8);
     for (const [lectura, fila] of Object.entries(porLectura)) {

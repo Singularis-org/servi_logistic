@@ -443,6 +443,8 @@ interface DetalleAbierto {
   rechazosDeTienda: CierreRechazoDeTienda[];
   /** SLT-100 (R80): quién lo resolvió, para la cabecera del detalle. Solo aprobado/rechazado. */
   resueltoPorNombre?: string | null;
+  /** SLT-111 (R267): el reparto en % ya derivado en el servidor; `null` o ausente = sin barra. */
+  porcentajesReparto?: number[] | null;
 }
 
 /**
@@ -745,6 +747,8 @@ export function CierresAdminModule({
         // el mensajero en su comprobante: las dos pantallas pintan lo mismo para el mismo cierre.
         rechazosDeTienda: result.rechazosDeTienda,
         resueltoPorNombre: result.resueltoPorNombre ?? null,
+        // SLT-111 (R267): tal cual llega; aquí no se redondea ni se reordena.
+        porcentajesReparto: result.porcentajesReparto ?? null,
       });
       return;
     }

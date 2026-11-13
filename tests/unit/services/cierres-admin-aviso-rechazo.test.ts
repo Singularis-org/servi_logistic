@@ -61,6 +61,7 @@ const JORNADA = "2026-08-21";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: "c-rechazado",
     mensajeroId: "men-1",
     mensajeroNombre: "Ana Mensajera",

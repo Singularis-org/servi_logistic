@@ -121,7 +121,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
       );
       const historicoCompleto = deMaestro(await admin.findColaCompleta(), await admin.findHistoricoCompleto());
       const detalleMaestro = await Promise.all(
-        ids.map(async (id) => (await admin.findCierreBodegaConDetalle(id, ZONA_CR))?.cierre.desmarcable ?? "ausente"),
+        ids.map(async (id) => (await admin.findCierreBodegaConDetalle(id, ZONA_CR, { lectura: "toda_la_empresa" }))?.cierre.desmarcable ?? "ausente"),
       );
       const paginaSatelite = deLista(
         (await new CierreBodegaRepository(cliente).findCierresBodegaByZonaPaginado(k.zonaId, PAGINA)).items,
@@ -164,7 +164,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
       const fila = (
         await new SaldosSatelitesRepository(cliente).findConsolidacionesPaginado(k.zonaId, PAGINA)
       ).items.find((f) => f.cierreBodegaId === id);
-      const cabecera = (await new CierresBodegaAdminRepository(cliente).findCierreBodegaConDetalle(id, ZONA_CR))?.cierre;
+      const cabecera = (await new CierresBodegaAdminRepository(cliente).findCierreBodegaConDetalle(id, ZONA_CR, { lectura: "toda_la_empresa" }))?.cierre;
       return { fila, cabecera };
     });
     expect(r.fila?.conciliado).toBe(false);

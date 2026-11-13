@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { Fragment, useId, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,11 @@ export type DetalleCierreProps =
       pestanas: SlotsMensajero;
       acciones: AccionesPie;
       onCerrar?: () => void;
+      /**
+       * SLT-109 (R245): acciones que se ofrecen pero aún no se pueden pulsar, con su motivo. El botón
+       * sale `disabled`, con el motivo en `title` y como descripción accesible.
+       */
+      deshabilitadas?: Partial<Record<AccionId, string>>;
     }
   | {
       tipo: "bodega";
@@ -91,6 +96,7 @@ export type DetalleCierreProps =
       pestanas: SlotsBodega;
       acciones: AccionesPie;
       onCerrar: () => void;
+      deshabilitadas?: Partial<Record<AccionId, string>>;
     };
 
 /** Todo lo que la pantalla pinta, ya decidido. */
@@ -177,7 +183,7 @@ function modeloDe(props: DetalleCierreProps): Modelo {
       corregir: props.pestanas.corregir,
     },
     paquetesVuelven: d.conteos.paquetesVuelven,
-    pieTexto: pieTextoDe("mensajero", props.audiencia, props.modo, d),
+    pieTexto: pieTextoDe("mensajero", props.audiencia, props.modo, d, disponiblesDe(props)),
   };
 }
 
@@ -213,8 +219,58 @@ function Franja({ aviso }: Readonly<{ aviso: AvisoFranja }>) {
   );
 }
 
+/**
+ * Un botón del pie. SLT-109 (R245): con `motivo`, sale `disabled` con el motivo en `title` y como
+ * descripción accesible (un `sr-only` enlazado por `aria-describedby`).
+ */
+function BotonPie({
+  accion,
+  motivo,
+  motivoId,
+  onPulsar,
+}: Readonly<{ accion: AccionPie; motivo: string | undefined; motivoId: string; onPulsar: () => void }>) {
+  return (
+    <>
+      <Button
+        type="button"
+        variant={VARIANTE_BOTON[accion.variante]}
+        disabled={motivo !== undefined}
+        title={motivo}
+        aria-describedby={motivo !== undefined ? motivoId : undefined}
+        onClick={onPulsar}
+      >
+        {accion.label}
+      </Button>
+      {motivo !== undefined ? (
+        <span id={motivoId} className="sr-only">
+          {motivo}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** SLT-109 (R241): `sub · folio · fechas` sin las partes vacías (sin destino no queda « · » suelto). */
+function LineaCabecera({ m }: Readonly<{ m: Modelo }>) {
+  const partes: { key: string; nodo: ReactNode }[] = [];
+  if (m.sub) partes.push({ key: "sub", nodo: m.sub });
+  if (m.folio) partes.push({ key: "folio", nodo: <span className="font-mono text-xs">{m.folio}</span> });
+  if (m.fechas) partes.push({ key: "fechas", nodo: m.fechas });
+  return (
+    <p className="m-0 text-sm text-muted-foreground">
+      {partes.map((p, i) => (
+        <Fragment key={p.key}>
+          {i > 0 ? " · " : null}
+          {p.nodo}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
 function Cuerpo({ props, tituloId }: Readonly<{ props: DetalleCierreProps; tituloId: string }>) {
   const m = modeloDe(props);
+  const motivoId = useId();
   const acciones = accionesDe(props.tipo, props.audiencia, props.modo, {
     disponibles: disponiblesDe(props),
     paquetesVuelven: m.paquetesVuelven,
@@ -246,9 +302,7 @@ function Cuerpo({ props, tituloId }: Readonly<{ props: DetalleCierreProps; titul
           {m.estado}
           <RetieneReprogramadasBadge cuantas={m.retenidas} />
         </div>
-        <p className="m-0 text-sm text-muted-foreground">
-          {m.sub} · <span className="font-mono text-xs">{m.folio}</span> · {m.fechas}
-        </p>
+        <LineaCabecera m={m} />
       </header>
 
       {m.avisos.map((a) => (
@@ -279,7 +333,14 @@ function Cuerpo({ props, tituloId }: Readonly<{ props: DetalleCierreProps; titul
         ))}
       </Tabs>
 
-      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+      {/* SLT-109 (R254): en página, el pie se pega al borde inferior de la ventana mientras el detalle
+          esté a la vista, así su botón se ve en un teléfono sin desplazar la página. */}
+      <footer
+        className={cn(
+          "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border pt-3",
+          props.marco === "pagina" && "sticky bottom-0 z-10 bg-background pb-3",
+        )}
+      >
         <span className="text-sm text-muted-foreground">{m.pieTexto}</span>
         <div className="flex flex-wrap gap-2">
           {acciones.map((a) =>
@@ -288,9 +349,13 @@ function Cuerpo({ props, tituloId }: Readonly<{ props: DetalleCierreProps; titul
                 {props.acciones.conciliacion}
               </div>
             ) : (
-              <Button key={a.id} type="button" variant={VARIANTE_BOTON[a.variante]} onClick={() => alPulsar(a.id)}>
-                {a.label}
-              </Button>
+              <BotonPie
+                key={a.id}
+                accion={a}
+                motivo={props.deshabilitadas?.[a.id]}
+                motivoId={`${motivoId}-${a.id}`}
+                onPulsar={() => alPulsar(a.id)}
+              />
             ),
           )}
         </div>
@@ -315,8 +380,15 @@ export function DetalleCierre(props: Readonly<DetalleCierreProps>) {
       </Dialog>
     );
   }
+  // SLT-109 (R254): en escritorio el marco página tiene el alto de la ventana menos la cabecera de
+  // `AppPage`, con un solo scroll en el panel de la pestaña; en el teléfono fluye con la página y el
+  // pie va pegado abajo. «Cierres solicitados» sigue debajo, en el scroll de la página.
   return (
-    <section role="region" aria-labelledby={tituloId} className="flex h-full min-h-0 flex-col gap-4">
+    <section
+      role="region"
+      aria-labelledby={tituloId}
+      className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-12rem)] lg:min-h-[28rem]"
+    >
       <Cuerpo props={props} tituloId={tituloId} />
     </section>
   );

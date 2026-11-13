@@ -87,7 +87,8 @@ async function gestionesDelDia(r: RepartoE2E, m: MensajeroE2E): Promise<OrdenE2E
 async function abrirCierreDelDia(browser: Browser, m: MensajeroE2E): Promise<Page> {
   const page = await paginaDe(browser, m);
   await page.goto("/cierre-dia");
-  await expect(page.getByRole("region", { name: "Totales del día" })).toBeVisible();
+  // SLT-109 (R61): el cierre de hoy es el detalle único en página; sus cifras sustituyen a «Totales del día».
+  await expect(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" })).toBeVisible();
   return page;
 }
 
@@ -95,7 +96,7 @@ async function abrirCierreDelDia(browser: Browser, m: MensajeroE2E): Promise<Pag
 async function solicitarEnPantalla(page: Page, m: MensajeroE2E): Promise<string> {
   const previos = (await cierresDe(m)).length;
   const dialogo = page.getByRole("dialog", { name: "Solicitar cierre del día" });
-  await abrirCon(page.getByRole("region", { name: "Solicitar cierre" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
+  await abrirCon(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
   await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
   await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
   const cierres = await cierresDe(m);
@@ -214,7 +215,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     test.setTimeout(240_000);
     await gestionesDelDia(r, m1);
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(importe(1700));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(importe(1700));
     await mensajero.context().close();
 
     cierreViejo = await solicitarCierre(r, m1);
@@ -243,7 +244,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
 
     const rechazo = await gestionesDelDia(r, m1);
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(importe(3110));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(importe(3110));
     cierreConPropio = await solicitarEnPantalla(mensajero, m1);
     await mensajero.context().close();
 
@@ -257,11 +258,12 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     ]);
     expect(congeladoConPropio.gestiones.map((g) => g.pagosCongelados.filter((p) => p.actor === "mensajero"))).toEqual(PAGOS_CON_PROPIO);
 
-    // Lo que la aprobación dejó en el libro del mensajero: devengó 3.110 y se los quedó del efectivo.
+    // Lo que la aprobación dejó en el libro del mensajero: devengó 3.110. Desde SLT-123 «Pago al
+    // mensajero independiente del efectivo» (R313) la central ya no se los da por pagados con el
+    // efectivo: sin la fila `pago_efectivo=3110` de antes. Lo que vigila (el valor propio 3.110) sigue.
     movimientosConPropio = await movimientosDelCierre(cierreConPropio);
     expect(movimientosConPropio.filter((m) => m.startsWith("mensajero:"))).toEqual([
       "mensajero:devengo:pago_devengado=3110",
-      "mensajero:pago:pago_efectivo=3110",
     ]);
   });
 
@@ -269,7 +271,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     test.setTimeout(240_000);
     await gestionesDelDia(r, m2);
     const mensajero = await abrirCierreDelDia(browser, m2);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(importe(2200));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(importe(2200));
     await mensajero.context().close();
 
     const cierreId = await solicitarCierre(r, m2);
@@ -289,7 +291,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     // Congelado a 3.110 antes del cambio, y aprobado después: es la aprobación la que no debe recalcular.
     const rechazoCongelado = await gestionesDelDia(r, m1);
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(importe(3110));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(importe(3110));
     cierreCongeladoAntes = await solicitarEnPantalla(mensajero, m1);
     await mensajero.context().close();
 
@@ -304,9 +306,9 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     const aprobadoDespues = await congeladoDelCierre(cierreCongeladoAntes);
     expect(aprobadoDespues).toMatchObject({ estado: "aprobado", totalPagoMensajero: "3110" });
     expect(aprobadoDespues.gestiones.map((g) => g.pagosCongelados.filter((p) => p.actor === "mensajero"))).toEqual(PAGOS_CON_PROPIO);
+    // SLT-123 (R313): solo el devengo, sin `pago_efectivo`.
     expect((await movimientosDelCierre(cierreCongeladoAntes)).filter((m) => m.startsWith("mensajero:"))).toEqual([
       "mensajero:devengo:pago_devengado=3110",
-      "mensajero:pago:pago_efectivo=3110",
     ]);
 
     // Lo ya aprobado, fila a fila.
@@ -316,7 +318,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
     // El siguiente: 3.000 de entregado, y el 15 % de devolución sigue igual.
     await gestionesDelDia(r, m1);
     const siguiente = await abrirCierreDelDia(browser, m1);
-    await expect(siguiente.getByRole("region", { name: "Ganancia" })).toContainText(importe(3210));
+    await expect(siguiente.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(importe(3210));
     await siguiente.context().close();
     cierreConCambio = await solicitarCierre(r, m1);
     await aprobarCierre(r, cierreConCambio);
@@ -339,7 +341,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
 
     await gestionesDelDia(r, m1);
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(importe(2200));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(importe(2200));
     await mensajero.context().close();
     const cierreId = await solicitarCierre(r, m1);
     await aprobarCierre(r, cierreId);
@@ -386,7 +388,7 @@ test.describe.serial("Valor propio del mensajero — de la sección al cierre ap
 
   test("R39, R35: M1 no ve nada de esto en su portal, ni entra a Tarifas", async ({ browser }) => {
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toBeVisible();
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toBeVisible();
     await expect(mensajero.locator("body")).not.toContainText(/valor propio/i);
 
     await mensajero.goto("/configuracion/tarifas");

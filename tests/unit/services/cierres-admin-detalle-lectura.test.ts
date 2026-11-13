@@ -47,6 +47,7 @@ const ALCANCE_CENTRAL: Alcance = { destinoTipo: "bodega_central", destinoZonaId:
 const LECTURA_EMPRESA: AlcanceLecturaDetalle = { lectura: "toda_la_empresa" };
 
 const RESUMEN_SAT: CierreAdminResumenRow = {
+  pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
   cierreId: CIERRE_SAT,
   mensajeroId: "m1",
   mensajeroNombre: "Ana Mensajera",

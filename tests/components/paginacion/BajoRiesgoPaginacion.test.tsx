@@ -524,9 +524,10 @@ const LISTADOS: Listado[] = [
     paginacion: "Paginación de los cierres de bodega solicitados",
     tabla: "Cierres de bodega solicitados",
     abrir: [/^Solicitados/],
-    rol: "list",
+    // SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura» (R288): vuelve a ser
+    // una tabla —la de la cola única— y la fila se reconoce por su folio («#» + `b-<i>`).
     descarga: "Cierres de bodega solicitados",
-    textoFila: (i) => `Motivo ${etiqueta(i)}`,
+    textoFila: (i) => `#B-${i}`,
     montar: () => {
       const todos = conjunto(cierreBodega);
       servirPaginas(paginado.bodegaSolicitados, todos);
@@ -560,10 +561,17 @@ const LISTADOS: Listado[] = [
           totalPagoMensajeroAgregado="0.00"
           totalIngresoBodegaRechazosAgregado="0.00"
           incluyeModeloNuevoAgregado={false}
-          totalNetoAgregado="0.00"
           totalCentralDebeAgregado="0.00"
           puedesSolicitar={false}
           motivoBloqueo={null}
+          // SLT-106: la cola de la satélite; «Solicitados» es una pestaña cuyo panel queda montado.
+          paraLaCentralAgregado="0.00"
+          cierresAConsolidar={0}
+          mensajerosAConsolidar={0}
+          bloqueo="vacio"
+          zonaNombre={null}
+          // SLT-107: la prop nueva obligatoria (R287); este test no mira las tarjetas de «Solicitados».
+          solicitadosResumen={{ porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } }}
           cierresBodegaPasados={pagina1(todos)}
           sinZona={false}
         />,
@@ -574,7 +582,9 @@ const LISTADOS: Listado[] = [
     nombre: "Cierres solicitados del mensajero",
     paginacion: "Paginación de los cierres solicitados",
     tabla: "Cierres solicitados",
-    rol: "list",
+    // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros»: vuelve a ser una tabla, la
+    // de la cola única (una fila por cierre, con cabecera).
+    rol: "table",
     descarga: "Cierres solicitados",
     textoFila: (i) => money(`${1000 + i}.00`),
     montar: () => {
@@ -980,7 +990,8 @@ describe("Riesgo BAJO · paginación server-side de los 7 listados (T I.2)", () 
  * el símbolo de colón (money-safe: la celda es un número, no una etiqueta).
  */
 function etiquetaDeArchivo(listado: Listado, i: number): string {
-  return listado.nombre === "Cierres solicitados del mensajero"
-    ? `${1000 + i}.00`
-    : listado.textoFila(i);
+  if (listado.nombre === "Cierres solicitados del mensajero") return `${1000 + i}.00`;
+  // SLT-107: la tabla de «Solicitados» no pinta el motivo; el archivo (sin cambios) sí lo trae.
+  if (listado.nombre === "Cierres de bodega solicitados") return `Motivo ${etiqueta(i)}`;
+  return listado.textoFila(i);
 }

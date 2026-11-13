@@ -12,9 +12,6 @@ import {
   verCierrePasado,
 } from "@/lib/actions/cierre-dia";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
-// Feature 213 (T9/R25): las etiquetas de método se MUTAN en un caso para probar que la celda
-// las lee de aquí y no de una cadena escrita a mano en la pantalla.
-import { METODO_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import type {
   CierreDetalleGestion,
   CierreGrupos,
@@ -23,6 +20,7 @@ import type {
   CierreResultado,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
+import type { CierreReenviable } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { SIN_BLOQUEO, estaBloqueadoPorCierres } from "@/lib/utils/bloqueo-cierre";
 import {
   bloqueoConRechazado,
@@ -155,6 +153,7 @@ function renderModule(
     page: 1,
     ...pagina,
   });
+  const bloqueo = props?.bloqueo ?? SIN_BLOQUEO;
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <CierreDiaModule
@@ -164,10 +163,50 @@ function renderModule(
         puedesSolicitar={props?.puedesSolicitar ?? true}
         motivoBloqueo={props?.motivoBloqueo ?? null}
         cierresPasados={pagina}
-        bloqueo={props?.bloqueo ?? SIN_BLOQUEO}
+        bloqueo={bloqueo}
+        correcciones={props?.correcciones}
+        // SLT-109 (R240): con un cierre por reenviar, `page.tsx` lo lee; el doble lo da leído.
+        reenviable={"reenviable" in (props ?? {}) ? props?.reenviable : reenviableDe(bloqueo)}
       />
     </SWRConfig>,
   );
+}
+
+/**
+ * SLT-109 (R240): la lectura `ok` del cierre por reenviar que haría `page.tsx` con `verCierrePasado`,
+ * con el id y el estado de `aReenviarPrimero`. Sin nada que reenviar, ninguna.
+ */
+function reenviableDe(bloqueo: BloqueoDetalle): CierreReenviable | undefined {
+  const r = bloqueo.aReenviarPrimero;
+  if (!r) return undefined;
+  return {
+    estado: "ok",
+    cierre: { ...CIERRE_PASADO, cierreId: r.cierreId, estado: r.estado, resueltoAt: null, motivoRechazo: null },
+    grupos: emptyGrupos(),
+    ordenesSinGestion: [],
+    sinGestionRegistrado: true,
+    rechazosDeTienda: [],
+  };
+}
+
+/**
+ * SLT-109 (R246): el aviso de bloqueo vive ahora en la franja del detalle, con su título. Devuelve
+ * esa franja entera (título + texto).
+ */
+function avisoDeBloqueo(): HTMLElement {
+  const franja = screen.getByText("Tu cierre está bloqueado:").closest('[role="status"]');
+  expect(franja, "no hay franja de bloqueo en el detalle").not.toBeNull();
+  return franja as HTMLElement;
+}
+
+/** SLT-109 (R242): la lista única de «Gestiones» del cierre de la página. */
+function listaGestiones(): HTMLElement {
+  return screen.getByRole("region", { name: "Órdenes del cierre" });
+}
+
+/** La cifra del detalle con ese rótulo («Recaudado», «Gestiones», «Tu ganancia»). */
+function cifra(rotulo: string): HTMLElement {
+  return screen.getByRole("group", { name: rotulo });
 }
 
 beforeEach(() => {
@@ -186,31 +225,33 @@ afterEach(() => {
 });
 
 describe("CierreDiaModule", () => {
-  it("R3: agrupa las gestiones en las 4 secciones por resultado", () => {
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242, R255): las
+  // gestiones del día ya no van en una tabla por resultado sino en la lista y la fila únicas de la
+  // pestaña «Gestiones» del detalle. Los casos que vigilaban una REGLA (qué datos llegan, que el
+  // importe es el string del servidor, que la evidencia es la URL firmada, que el ingreso de bodega
+  // no se le muestra) se reapuntan a la fila; los que solo probaban la tabla por resultado
+  // («Ubicación», «Método» y «Motivo» como columnas) se fueron con ella.
+  it("R3/R242: las gestiones de los 4 resultados salen en la lista única, una fila por gestión", () => {
     const grupos: CierreGrupos = {
       entregado: [makeGestion({ gestionId: "g1", resultado: "entregado", numRemision: "REM-ENT" })],
       reprogramado: [makeGestion({ gestionId: "g2", resultado: "reprogramado", numRemision: "REM-REP" })],
       novedad: [makeGestion({ gestionId: "g3", resultado: "novedad", numRemision: "REM-DEV" })],
       devolucion_a_origen_por_rechazo: [makeGestion({ gestionId: "g4", resultado: "devolucion_a_origen_por_rechazo", numRemision: "REM-REC" })],
-      incidente: [], // feature 158/R18: la 5.a seccion la puebla la fase 2 (T2.2)
+      incidente: [],
     };
     renderModule({ grupos });
 
-    expect(
-      within(screen.getByRole("region", { name: "Entregado" })).getByText("REM-ENT"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Reprogramado" })).getByText("REM-REP"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Novedad" })).getByText("REM-DEV"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Devolución a origen por rechazo" })).getByText("REM-REC"),
-    ).toBeInTheDocument();
+    const lista = listaGestiones();
+    const filas = Array.from(lista.querySelectorAll("[data-gestion]")).map((f) => f.getAttribute("data-gestion"));
+    expect(filas).toEqual(["g1", "g2", "g3", "g4"]);
+    for (const remision of ["REM-ENT", "REM-REP", "REM-DEV", "REM-REC"]) {
+      expect(within(lista).getByRole("button", { name: `Devolver a gestión la orden ${remision} · Ana Pérez` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("tab", { name: "Gestiones (4)" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("R4: muestra el detalle completo de la orden gestionada", () => {
+  it("R4: la fila dice guía, destinatario y tienda, y al desplegarla la orden, el producto y la dirección", async () => {
+    const user = userEvent.setup();
     const grupos = emptyGrupos();
     grupos.novedad = [
       makeGestion({
@@ -222,28 +263,21 @@ describe("CierreDiaModule", () => {
         direccion: "Av. Central 100",
         producto: "Sobre",
         tiendaNombre: "Tienda Norte",
-        zonaNombre: "Cartago",
-        provinciaNombre: "Cartago",
-        cantonNombre: "Oreamuno",
-        distritoNombre: "San Rafael",
-        motivo: "Cliente rechazó",
       }),
     ];
     renderModule({ grupos });
 
-    const region = screen.getByRole("region", { name: "Novedad" });
-    expect(within(region).getByText("2002")).toBeInTheDocument();
-    expect(within(region).getByText("Beto Ruiz")).toBeInTheDocument();
-    expect(within(region).getByText("Av. Central 100")).toBeInTheDocument();
-    expect(within(region).getByText("Sobre")).toBeInTheDocument();
-    expect(within(region).getByText("Tienda Norte")).toBeInTheDocument();
-    expect(within(region).getByText("Cliente rechazó")).toBeInTheDocument();
-    expect(
-      within(region).getByText("Cartago · Cartago · Oreamuno · San Rafael"),
-    ).toBeInTheDocument();
+    const lista = listaGestiones();
+    expect(within(lista).getByText("2002")).toBeInTheDocument();
+    expect(within(lista).getByText(/Beto Ruiz/)).toBeInTheDocument();
+    expect(within(lista).getByText(/Tienda Norte/)).toBeInTheDocument();
+    await user.click(within(lista).getByRole("button", { name: "Detalle de la orden REM-DETALLE · Beto Ruiz" }));
+    expect(within(lista).getByText("REM-DETALLE")).toBeInTheDocument();
+    expect(within(lista).getByText("Av. Central 100")).toBeInTheDocument();
+    expect(within(lista).getByText("Sobre")).toBeInTheDocument();
   });
 
-  it("R6: una entrega expone su monto (string, money-safe) y su método de pago", () => {
+  it("R6: una entrega expone su monto recibido tal cual lo da el servidor (money-safe)", () => {
     const grupos = emptyGrupos();
     grupos.entregado = [
       makeGestion({
@@ -252,16 +286,12 @@ describe("CierreDiaModule", () => {
         numRemision: "REM-ENT",
         montoRecibido: "1250.50",
         metodoPago: "SINPE",
-        // Feature 213 (T8): el fixture declara el desglose COHERENTE con su escalar. La
-        // presentación deriva del desglose (R23) y la aserción de abajo no se relaja.
         pagos: [{ metodo: "SINPE", monto: "1250.50" }],
       }),
     ];
     renderModule({ grupos });
 
-    const region = screen.getByRole("region", { name: "Entregado" });
-    expect(within(region).getByText("₡1.250,50")).toBeInTheDocument();
-    expect(within(region).getByText("SINPE")).toBeInTheDocument();
+    expect(within(listaGestiones()).getByText("₡1.250,50")).toBeInTheDocument();
   });
 
   it("R5: la evidencia se muestra vía URL firmada en el visor (nunca el path crudo)", async () => {
@@ -278,7 +308,8 @@ describe("CierreDiaModule", () => {
     ];
     renderModule({ grupos });
 
-    await user.click(screen.getByRole("button", { name: "Ver evidencia" }));
+    await user.click(screen.getByRole("button", { name: "Detalle de la orden REM-REC · Ana Pérez" }));
+    await user.click(screen.getByRole("button", { name: "Ver evidencia de la orden REM-REC · Ana Pérez" }));
 
     const dialog = await screen.findByRole("dialog", {
       name: "Evidencia de la gestión",
@@ -292,7 +323,7 @@ describe("CierreDiaModule", () => {
     );
   });
 
-  it("R7: el panel de totales muestra los 4 totales tal cual (sin reparsear)", () => {
+  it("R7/R241: «Recaudado» es el total del servidor y debajo los métodos que no valen cero (sin reparsear)", () => {
     renderModule({
       totales: {
         efectivo: "100.00",
@@ -302,20 +333,16 @@ describe("CierreDiaModule", () => {
       },
     });
 
-    // El general es el del SERVIDOR, no una suma de la pantalla.
-    //
-    // FICHA 359 — Y AHORA LA CUENTA SE PUEDE LEER: 100 + 50,25 + 10,10 = 160,35, que es
-    // exactamente el total pintado. La 230 dejaba aquí escrita la consecuencia A1 («una
-    // columna puede no cuadrar a ojo con su total por ±1/±2»): con estos mismos datos pintaba
-    // ₡100, ₡50, ₡10 y ₡160, y cuadraba de casualidad. Ya no hace falta la advertencia.
-    const region = screen.getByRole("region", { name: "Totales del día" });
-    expect(within(region).getByText("₡100")).toBeInTheDocument();
-    expect(within(region).getByText("₡50,25")).toBeInTheDocument();
-    expect(within(region).getByText("₡10,10")).toBeInTheDocument();
-    expect(within(region).getByText("₡160,35")).toBeInTheDocument();
+    // El general es el del SERVIDOR, no una suma de la pantalla. FICHA 359: 100 + 50,25 + 10,10 =
+    // 160,35, que es exactamente el total pintado.
+    const recaudado = cifra("Recaudado");
+    expect(within(recaudado).getByText("₡160,35")).toBeInTheDocument();
+    expect(within(recaudado).getByText("₡100")).toBeInTheDocument();
+    expect(within(recaudado).getByText("₡50,25")).toBeInTheDocument();
+    expect(within(recaudado).getByText("₡10,10")).toBeInTheDocument();
   });
 
-  it("R10: expone el pago al mensajero por orden (string, money-safe) en la sección de entregadas", () => {
+  it("R10/R256: expone la ganancia por gestión (string, money-safe) en su fila", () => {
     const grupos = emptyGrupos();
     grupos.entregado = [
       makeGestion({
@@ -330,18 +357,17 @@ describe("CierreDiaModule", () => {
     ];
     renderModule({ grupos });
 
-    const region = screen.getByRole("region", { name: "Entregado" });
-    expect(within(region).getByText("₡1.500")).toBeInTheDocument();
+    expect(within(listaGestiones()).getByText("₡1.500")).toBeInTheDocument();
   });
 
-  it("R11: el total a pagar al mensajero se muestra separado de los totales de dinero recibido", () => {
+  it("R11/R241: el total a pagar al mensajero es la cifra «Tu ganancia», separada de «Recaudado»", () => {
     renderModule({ totalPagoMensajero: "4200.00" });
 
-    const region = screen.getByRole("region", { name: "Ganancia" });
-    expect(within(region).getByText("₡4.200")).toBeInTheDocument();
+    expect(within(cifra("Tu ganancia")).getByText("₡4.200")).toBeInTheDocument();
+    expect(within(cifra("Recaudado")).queryByText("₡4.200")).toBeNull();
   });
 
-  it("feature 56/R12: el ingreso de bodega por devoluciones a origen NO se muestra por orden en la tabla de rechazadas (solo el total; el desglose vive en las vistas de bodega/admin)", () => {
+  it("feature 56/R12: el ingreso de bodega por devoluciones a origen NO se muestra en la fila (el desglose vive en las vistas de bodega/admin)", () => {
     const grupos = emptyGrupos();
     grupos.devolucion_a_origen_por_rechazo = [
       makeGestion({
@@ -349,14 +375,14 @@ describe("CierreDiaModule", () => {
         resultado: "devolucion_a_origen_por_rechazo",
         numRemision: "REM-REC",
         motivo: "Cliente rechazó",
-        ingresoBodegaRechazo: "3500.00",
+        ingresoBodegaRechazo: "3517.00",
       }),
     ];
     renderModule({ grupos });
 
-    const region = screen.getByRole("region", { name: "Devolución a origen por rechazo" });
-    expect(within(region).queryByText("Ingreso bodega")).not.toBeInTheDocument();
-    expect(within(region).queryByText("₡3.500")).not.toBeInTheDocument();
+    const lista = listaGestiones();
+    expect(within(lista).queryByText("Ingreso bodega")).not.toBeInTheDocument();
+    expect(within(lista).queryByText("₡3.517")).not.toBeInTheDocument();
   });
 
   it("feature 56/R10: el ingreso de bodega por devoluciones a origen NO se le muestra al mensajero (el total vive en las vistas de bodega/admin)", () => {
@@ -367,18 +393,15 @@ describe("CierreDiaModule", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("R10/R11: sin poder solicitar, el botón está deshabilitado y se muestra el motivo", () => {
-    renderModule({
-      puedesSolicitar: false,
-      motivoBloqueo: "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.",
-    });
+  it("R10/R11/R245: sin poder solicitar, el botón está deshabilitado y el motivo lo dicen la franja y el botón", () => {
+    const motivo = "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.";
+    renderModule({ puedesSolicitar: false, motivoBloqueo: motivo });
 
-    expect(
-      screen.getByRole("button", { name: "Solicitar cierre" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText("Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar."),
-    ).toBeInTheDocument();
+    const boton = screen.getByRole("button", { name: "Solicitar cierre" });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAccessibleDescription(motivo);
+    const franja = screen.getByText("Antes de cerrar:").closest('[role="status"]');
+    expect(franja).toHaveTextContent(motivo);
   });
 
   it("solicitar cierre OK: confirma, muestra toast de éxito y refresca", async () => {
@@ -398,6 +421,42 @@ describe("CierreDiaModule", () => {
     await vi.waitFor(() => expect(solicitarMock).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(successMock).toHaveBeenCalled());
     await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
+  });
+
+  it("SLT-137 R160: tras solicitar, la cola relee sus páginas y enseña el cierre nuevo sin recargar", async () => {
+    const user = userEvent.setup();
+    const grupos = emptyGrupos();
+    grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado" })];
+    renderModule({ grupos, puedesSolicitar: true, cierresPasados: [CIERRE_PASADO] });
+    const region = screen.getByRole("region", { name: "Cierres solicitados" });
+    expect(screen.getByRole("tab", { name: "Cierres solicitados 1" })).toBeInTheDocument();
+    // La revalidación del montaje termina ANTES de cambiar la respuesta: si no, ella sola traería
+    // el cierre nuevo y el caso pasaría sin que solicitar releyera nada.
+    await vi.waitFor(() => expect(vi.mocked(listarCierresPasadosPaginado)).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Lo que el servidor devuelve DESPUÉS de solicitar: el cierre nuevo encabeza la página.
+    const nuevo: CierrePasadoDTO = {
+      ...CIERRE_PASADO,
+      cierreId: "c-nuevo",
+      estado: "solicitado",
+      solicitadoAt: "2026-07-19T15:00:00.000Z",
+      resueltoAt: null,
+    };
+    vi.mocked(listarCierresPasadosPaginado).mockResolvedValue({
+      status: "ok",
+      page: 1,
+      ...paginaInicial([nuevo, CIERRE_PASADO]),
+    });
+
+    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
+    await user.click(within(dialog).getByRole("button", { name: "Solicitar cierre" }));
+
+    expect(
+      await within(region).findByRole("button", { name: "Ver del cierre del 2026-07-19" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados 2" })).toBeInTheDocument();
   });
 
   it("solicitar cierre conflict: muestra toast de error con el motivo del dominio", async () => {
@@ -473,25 +532,21 @@ describe("CierreDiaModule", () => {
     renderModule({ cierresPasados });
 
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
-    // Pedido humano del 2026-08-16: el histórico es una tira de COMPROBANTES. Lo que la fila
-    // decía en ocho columnas lo dice ahora la cabecera de la hoja —estado, destino, fecha y el
-    // total— y su desglose, que llega detrás del desplegable.
-    expect(within(region).getByText("Solicitado")).toBeInTheDocument();
-    expect(within(region).getByText("Bodega central")).toBeInTheDocument();
-    // Un solo ₡300 a la vista: el de la cabecera. El desglose por método está plegado.
-    // El importe va sin céntimos desde la feature 230 de `dev`.
+    // SLT-137 (R156): el histórico vuelve a ser la cola, una fila por cierre. La fila dice estado,
+    // destino, la fecha con su hora de Costa Rica (10:00 UTC = 04:00 CR) y el total recaudado.
+    const fila = within(region).getAllByRole("row")[1];
+    expect(within(fila).getByText("Solicitado")).toBeInTheDocument();
+    expect(within(fila).getByText("Bodega central")).toBeInTheDocument();
+    // Un solo ₡300 a la vista: el «Recaudado». El importe va sin céntimos desde la feature 230.
     expect(within(region).getAllByText("₡300")).toHaveLength(1);
-    // El histórico del mensajero nunca enseñó el ingreso de bodega por devoluciones a origen: es plata de
-    // la empresa (design §7.2), y no la ve NI plegada ni desplegada — lo comprueba el caso de
-    // abajo, que es la mitad que la tabla no podía tener.
+    // El histórico del mensajero nunca enseñó el ingreso de bodega por devoluciones a origen: es
+    // plata de la empresa (design §7.2).
     expect(within(region).queryByText("₡2.100")).not.toBeInTheDocument();
-    expect(within(region).getByText("2026-07-11")).toBeInTheDocument();
+    expect(within(fila).getByText("2026-07-11 04:00")).toBeInTheDocument();
   });
 
-  it("R18 + design §7.2: al desplegar su comprobante, el mensajero ve SU ganancia y no el ingreso de la empresa", async () => {
-    // La tarjeta esconde el desglose tras un botón, así que un dato que no le toca no se vería
-    // al primer vistazo: se vería al segundo. Esto abre el desplegable y mira.
-    const user = userEvent.setup();
+  it("R18 + design §7.2: en su cola, el mensajero ve SU ganancia y no el ingreso de la empresa", () => {
+    // SLT-137 (R156): la cola no tiene desplegable; la fila lo dice todo al primer vistazo.
     const cierresPasados: CierrePasadoDTO[] = [
       {
         cierreId: "c1",
@@ -512,12 +567,9 @@ describe("CierreDiaModule", () => {
     renderModule({ cierresPasados });
 
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
-    await user.click(
-      within(region).getByRole("button", { name: /^Ver detalles de tu cierre del/ }),
-    );
 
     // Su pago está, y con SU rótulo: en su pantalla ese monto se llama «Ganancia».
-    expect(within(region).getByText("Ganancia")).toBeInTheDocument();
+    expect(within(region).getByRole("columnheader", { name: "Ganancia" })).toBeInTheDocument();
     expect(within(region).getByText("₡45")).toBeInTheDocument();
     // Y el ingreso de bodega por devoluciones a origen sigue sin aparecer, ni el rótulo ni el monto.
     expect(
@@ -619,7 +671,7 @@ describe("CierreDiaModule", () => {
   it("271/§10.2 caso 1 · bloqueado por ACUMULAR (N=2, V=0), con la fecha de la jornada", () => {
     renderModule({ bloqueo: bloqueoPorAcumular("2026-08-21") });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes 2 cierres esperando aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Se desbloquea cuando la bodega apruebe el más antiguo, el del 21 de agosto.",
     );
   });
@@ -627,7 +679,7 @@ describe("CierreDiaModule", () => {
   it("271/R60 · el MISMO caso sin jornada fiable: la fecha desaparece entera", () => {
     renderModule({ bloqueo: bloqueoPorAcumular(null) });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes 2 cierres esperando aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Se desbloquea cuando la bodega apruebe el más antiguo.",
     );
   });
@@ -637,21 +689,21 @@ describe("CierreDiaModule", () => {
 
     // La única diferencia con los portales «Entregas» y «Recolección» (R52): allí el puntero manda
     // a «Cierre del día»; aquí el mensajero YA está, y remitirlo aquí sería ruido.
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes un cierre sin enviar a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envíalo a aprobación con el botón de abajo.",
     );
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/Ve a «Cierre del día»/);
+    expect(avisoDeBloqueo()).not.toHaveTextContent(/Ve a «Cierre del día»/);
   });
 
   it("271/§10.2 caso 3 · las DOS cosas a la vez (N=2, V=1)", () => {
     renderModule({ bloqueo: bloqueoDe({ n: 2, v: 1, jornadaCR: "2026-08-21" }) });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes 2 cierres sin resolver y 1 de ellos no se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envía el que falta y espera a que la bodega apruebe el más antiguo, el del 21 de agosto.",
     );
     // Aquí NUNCA hay puntero (R52): el mensajero ya está en esta pantalla. El cambio del
     // 2026-08-23 —el puntero de este caso pierde el objeto— sólo afecta a los otros tres portales.
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/Ve a «Cierre del día»/);
+    expect(avisoDeBloqueo()).not.toHaveTextContent(/Ve a «Cierre del día»/);
   });
 
   it("271/§10.2 caso 3 con el MÁS VIEJO SUYO · la fecha es la del que él envía", () => {
@@ -662,11 +714,11 @@ describe("CierreDiaModule", () => {
     // la espera se corre al RESTO.
     renderModule({ bloqueo: bloqueoMixtoElMasViejoEsSuyo({ jornadaCR: "2026-08-20" }) });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes 2 cierres sin resolver y 1 de ellos no se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envía el que falta, el del 20 de agosto, y después espera a que la bodega apruebe el resto.",
     );
     // Aquí nunca hay puntero (R52) y el botón del rechazado está debajo, en la misma pantalla.
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/Ve a «Cierre del día»/);
+    expect(avisoDeBloqueo()).not.toHaveTextContent(/Ve a «Cierre del día»/);
     expect(
       screen.getByRole("button", { name: "Solicitar aprobación del cierre rechazado" }),
     ).toBeInTheDocument();
@@ -678,10 +730,10 @@ describe("CierreDiaModule", () => {
     // bodega cuando el más antiguo es suyo. Y sigue sin puntero, que es lo propio de esta pantalla.
     renderModule({ bloqueo: bloqueoTodosPorEnviar(2, "2026-08-21") });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes 2 cierres sin resolver y ninguno se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envíalos a aprobación, empezando por el más antiguo, el del 21 de agosto.",
     );
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/Ve a «Cierre del día»/);
+    expect(avisoDeBloqueo()).not.toHaveTextContent(/Ve a «Cierre del día»/);
   });
 
   it("271/R51 · el aviso NO promete recibir asignaciones ni recoger en tiendas", () => {
@@ -690,7 +742,7 @@ describe("CierreDiaModule", () => {
     // agosto y es falsa desde el 23.
     renderModule({ bloqueo: bloqueoDe({ n: 2, v: 1, jornadaCR: "2026-08-21" }) });
 
-    const aviso = screen.getByRole("alert");
+    const aviso = avisoDeBloqueo();
     expect(aviso).not.toHaveTextContent(/seguir recibiendo asignaciones/i);
     expect(aviso).not.toHaveTextContent(/seguir recogiendo en tiendas/i);
     expect(aviso).not.toHaveTextContent(/sí puedes/i);
@@ -703,12 +755,14 @@ describe("CierreDiaModule", () => {
     renderModule({ bloqueo: bloqueoDe({ n: 1, v: 0 }) });
 
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Tu cierre está bloqueado:")).toBeNull();
   });
 
   it("271/R4 · sin ningún cierre abierto tampoco hay aviso", () => {
     renderModule({ bloqueo: SIN_BLOQUEO });
 
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Tu cierre está bloqueado:")).toBeNull();
   });
 
   // ---------- Feature 111 (R13) -> 271 (T9.3): el CTA del cierre vencido, DERIVADO ----------
@@ -726,10 +780,9 @@ describe("CierreDiaModule", () => {
     expect(cta).toBeInTheDocument();
     // R13: habilitado con INDEPENDENCIA del gate de creación (`puedesSolicitar`).
     expect(cta).toBeEnabled();
-    // El botón normal de "Solicitar cierre" sigue deshabilitado por el gate.
-    expect(
-      screen.getByRole("button", { name: "Solicitar cierre" }),
-    ).toBeDisabled();
+    // SLT-109 (R240): la página pinta el vencido y NO el cierre de hoy, así que no hay «Solicitar
+    // cierre» (antes salía deshabilitado debajo).
+    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
   });
 
   it("R13: sin nada que reenviar NO aparece el CTA del vencido", () => {
@@ -781,56 +834,35 @@ describe("CierreDiaModule", () => {
     });
     expect(cta).toBeInTheDocument();
     expect(cta).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Solicitar cierre" }),
-    ).toBeDisabled();
+    // SLT-109 (R240): se pinta el rechazado, no el cierre de hoy.
+    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
   });
 
-  // ⚠️ FEATURE 271 — LOS DOS AVISOS DE ABAJO PERDIERON SU PROMESA, Y NO ES UN RECORTE DE ESTILO.
-  //
-  // Decían «Envíalo a aprobación PARA DESTRABAR tu operación» y «con eso SE LEVANTA EL BLOQUEO y
-  // sigues gestionando y cobrando, sin esperar a que tu bodega lo apruebe». Era cierto mientras un
-  // mensajero no podía tener más de un cierre abierto: enviar el único que arrastraba lo dejaba
-  // libre en esa misma escritura, y la feature 241 lo verificó contra el predicado.
-  //
-  // Desde esta ficha puede arrastrar DOS, y entonces enviar el que falta NO lo desbloquea: sigue
-  // bloqueado hasta que la bodega apruebe el más antiguo (R8). La promesa pasó de cierta a
-  // condicional, y una promesa condicional dicha en absoluto es una promesa falsa la mitad de las
-  // veces. Quien dice ahora qué pasa después es el aviso de bloqueo de arriba, que SÍ distingue
-  // los dos casos —y que se pinta siempre que hay algo que reenviar, porque tenerlo implica estar
-  // bloqueado por la propia regla—.
-
-  const AVISO_RECHAZADO_ESPERADO =
-    "Tu cierre fue rechazado, pero no queda cerrado. Vuelve a enviarlo a aprobación con el botón de abajo.";
-
-  it("R31/271: el aviso del rechazado dice que NO queda cerrado, y ya no promete el desbloqueo", () => {
+  // SLT-109 (R246, R255): los avisos sueltos «Cierre rechazado» y «Cierre vencido» se fueron con sus
+  // regiones. Lo que decían lo dicen ahora la franja del detalle (el motivo del rechazo y el aviso de
+  // bloqueo, que distingue «envíalo» de «espera a la bodega») y el pie con su botón. Lo que estos
+  // casos vigilaban —que nada promete que el bloqueo se levanta al reenviar (271)— sigue vigilado
+  // sobre el detalle entero.
+  it("R31/271 → SLT-109: el rechazado se pinta en el detalle, sin la región suelta, y nada promete el desbloqueo", () => {
     renderModule({ bloqueo: bloqueoConRechazado() });
 
-    const region = screen.getByRole("region", { name: "Cierre rechazado" });
-    expect(region).toHaveTextContent(AVISO_RECHAZADO_ESPERADO);
-    // Lo que el aviso SIGUE aportando y no se perdió: un rechazado no es terminal.
-    expect(region).toHaveTextContent(/no queda cerrado/i);
-  });
-
-  it("R31/271: el aviso NO promete que el bloqueo se levante al reenviar (con dos cierres, no)", () => {
-    renderModule({ bloqueo: bloqueoConRechazado() });
-
-    const region = screen.getByRole("region", { name: "Cierre rechazado" });
+    expect(screen.queryByRole("region", { name: "Cierre rechazado" })).toBeNull();
+    const detalle = screen.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
+    expect(within(detalle).getByText("Motivo del rechazo:")).toBeInTheDocument();
     // Ni la promesa vieja de la 109 («hasta que tu bodega lo apruebe») ni la de la 241 («con eso
     // se levanta el bloqueo»): las dos son ciertas sólo para un valor concreto de N.
-    expect(region).not.toHaveTextContent(/sigue bloqueando/i);
-    expect(region).not.toHaveTextContent(/y tu bodega lo apruebe/i);
-    expect(region).not.toHaveTextContent(/se levanta el bloqueo/i);
+    expect(detalle).not.toHaveTextContent(/sigue bloqueando/i);
+    expect(detalle).not.toHaveTextContent(/y tu bodega lo apruebe/i);
+    expect(detalle).not.toHaveTextContent(/se levanta el bloqueo/i);
   });
 
-  it("R13/271: el aviso del vencido dice qué pasó y dónde está el botón, sin prometer nada más", () => {
+  it("R13/271 → SLT-109: el vencido se pinta en el detalle con la franja de bloqueo, sin la región suelta ni promesas", () => {
     renderModule({ bloqueo: bloqueoConVencido() });
 
-    const region = screen.getByRole("region", { name: "Cierre vencido" });
-    expect(region).toHaveTextContent(
-      "Tu cierre venció sin enviarse a aprobación. Envíalo con el botón de abajo.",
-    );
-    expect(region).not.toHaveTextContent(/destrabar tu operación/i);
+    expect(screen.queryByRole("region", { name: "Cierre vencido" })).toBeNull();
+    expect(avisoDeBloqueo()).toHaveTextContent("Envíalo a aprobación con el botón de abajo.");
+    const detalle = screen.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
+    expect(detalle).not.toHaveTextContent(/destrabar tu operación/i);
   });
 
   it("R31: sin cierre rechazado NO aparece su CTA", () => {
@@ -968,7 +1000,7 @@ describe("CierreDiaModule", () => {
       puedesSolicitar: false,
     });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(avisoDeBloqueo()).toHaveTextContent(
       "Tienes 2 cierres sin resolver y 1 de ellos no se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envía el que falta y espera a que la bodega apruebe el más antiguo, el del 21 de agosto.",
     );
     expect(
@@ -989,7 +1021,7 @@ describe("CierreDiaModule", () => {
       }),
     });
 
-    const aviso = screen.getByRole("alert");
+    const aviso = avisoDeBloqueo();
     expect(aviso).toHaveTextContent("el más antiguo, el del 21 de agosto");
     expect(aviso).not.toHaveTextContent("22 de agosto");
   });
@@ -1039,6 +1071,7 @@ describe("CierreDiaModule", () => {
     renderModule({ bloqueo: SIN_BLOQUEO });
 
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Tu cierre está bloqueado:")).toBeNull();
     expect(screen.queryByRole("button", { name: CTA_NEUTRO_RETIRADO })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Solicitar aprobación del cierre vencido" }),
@@ -1096,11 +1129,10 @@ const REGIONES: Array<{ resultado: CierreResultado; region: string }> = [
 /** Abre el modal de confirmación desde la fila indicada y devuelve el diálogo. */
 async function abrirDeshacer(
   user: ReturnType<typeof userEvent.setup>,
-  region: string,
   nombreBoton: string,
 ) {
   await user.click(
-    within(screen.getByRole("region", { name: region })).getByRole("button", {
+    within(listaGestiones()).getByRole("button", {
       name: nombreBoton,
     }),
   );
@@ -1109,8 +1141,8 @@ async function abrirDeshacer(
 
 describe("CierreDiaModule — feature 67: devolver a gestión", () => {
   it.each(REGIONES)(
-    "R35: ofrece la acción por fila en la tabla de $region",
-    ({ resultado, region }) => {
+    "R35/R243: ofrece la acción en la fila de una gestión «$region» de la lista única",
+    ({ resultado }) => {
       const grupos = emptyGrupos();
       grupos[resultado] = [
         makeGestion({ gestionId: "g1", resultado, destinatario: "Ana Pérez", numRemision: "REM-A" }),
@@ -1118,7 +1150,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
       renderModule({ grupos });
 
       expect(
-        within(screen.getByRole("region", { name: region })).getByRole("button", {
+        within(listaGestiones()).getByRole("button", {
           name: "Devolver a gestión la orden REM-A · Ana Pérez",
         }),
       ).toBeInTheDocument();
@@ -1133,7 +1165,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const region = screen.getByRole("region", { name: "Entregado" });
+    const region = listaGestiones();
     expect(
       within(region).getAllByRole("button", { name: /^Devolver a gestión la orden/ }),
     ).toHaveLength(2);
@@ -1161,7 +1193,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Novedad", "Devolver a gestión la orden REM-A · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
 
     expect(dialog).toBeInTheDocument();
     expect(deshacerMock).not.toHaveBeenCalled();
@@ -1175,7 +1207,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-A · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
 
     expect(deshacerMock).not.toHaveBeenCalled();
@@ -1190,7 +1222,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-A · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
 
     expect(dialog).toHaveTextContent(/Orden REM-A · Ana Pérez/);
     expect(dialog).toHaveTextContent(/quedará anulada/i);
@@ -1206,10 +1238,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(
-      user,
-      "Reprogramado",
-      "Devolver a gestión la orden REM-2 · Beto Ruiz",
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-2 · Beto Ruiz",
     );
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 
@@ -1225,7 +1254,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-A · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 
     await vi.waitFor(() => expect(successMock).toHaveBeenCalled());
@@ -1259,7 +1288,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     };
     renderModule({ grupos, totales, totalPagoMensajero: "1500.00" });
 
-    const dialog = await abrirDeshacer(user, "Novedad", "Devolver a gestión la orden REM-A · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 
     await vi.waitFor(() =>
@@ -1269,17 +1298,15 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     );
     expect(successMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
-    // La fila sigue en su tabla y los totales no se movieron (R38).
-    const region = screen.getByRole("region", { name: "Novedad" });
-    expect(within(region).getByText("REM-A")).toBeInTheDocument();
+    // La fila sigue en la lista y las cifras no se movieron (R38; SLT-109 R243).
+    const region = listaGestiones();
+    expect(region.querySelector('[data-gestion="g1"]')).not.toBeNull();
     expect(
       within(region).getByRole("button", { name: "Devolver a gestión la orden REM-A · Ana Pérez" }),
     ).toBeEnabled();
-    const panel = screen.getByRole("region", { name: "Totales del día" });
-    expect(within(panel).getAllByText("₡150")).toHaveLength(2);
-    expect(
-      within(screen.getByRole("region", { name: "Ganancia" })).getByText("₡1.500"),
-    ).toBeInTheDocument();
+    // «Recaudado» y su único método (efectivo) dicen ₡150.
+    expect(within(cifra("Recaudado")).getAllByText("₡150")).toHaveLength(2);
+    expect(within(cifra("Tu ganancia")).getByText("₡1.500")).toBeInTheDocument();
   });
 
   it("R38: forbidden → mensaje accionable propio (el server no revela motivo) sin refresh", async () => {
@@ -1291,16 +1318,14 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Devolución a origen por rechazo", "Devolver a gestión la orden REM-A · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 
     await vi.waitFor(() =>
       expect(errorMock).toHaveBeenCalledWith("No podés deshacer esta gestión."),
     );
     expect(refreshMock).not.toHaveBeenCalled();
-    expect(
-      within(screen.getByRole("region", { name: "Devolución a origen por rechazo" })).getByText("REM-A"),
-    ).toBeInTheDocument();
+    expect(listaGestiones().querySelector('[data-gestion="g1"]')).not.toBeNull();
   });
 
   it("R38: validation_error → muestra el primer fieldError; unauthenticated → mensaje genérico", async () => {
@@ -1315,7 +1340,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
       fieldErrors: { estatus: ["catálogo de estados incompleto (seed pendiente)"] },
     });
     renderModule({ grupos });
-    let dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-A · Ana Pérez");
+    let dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() =>
       expect(errorMock).toHaveBeenCalledWith("catálogo de estados incompleto (seed pendiente)"),
@@ -1325,7 +1350,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     vi.clearAllMocks();
     deshacerMock.mockResolvedValue({ status: "unauthenticated" });
     renderModule({ grupos });
-    dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-A · Ana Pérez");
+    dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() =>
       expect(errorMock).toHaveBeenCalledWith("No se pudo deshacer la gestión. Intentá de nuevo."),
@@ -1347,12 +1372,12 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-1 · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-1 · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
 
     // El refresh aún no repuso las props (el test las mantiene): la fila sigue visible.
-    const region = screen.getByRole("region", { name: "Entregado" });
+    const region = listaGestiones();
     await vi.waitFor(() =>
       expect(
         within(region).getByRole("button", { name: "Devolver a gestión la orden REM-1 · Ana Pérez" }),
@@ -1373,13 +1398,13 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     ];
     renderModule({ grupos });
 
-    const dialog = await abrirDeshacer(user, "Entregado", "Devolver a gestión la orden REM-1 · Ana Pérez");
+    const dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-1 · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
 
     await vi.waitFor(() =>
       expect(
-        within(screen.getByRole("region", { name: "Entregado" })).getByRole("button", {
+        within(listaGestiones()).getByRole("button", {
           name: "Devolver a gestión la orden REM-1 · Ana Pérez",
         }),
       ).toBeEnabled(),
@@ -1387,217 +1412,15 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
   });
 });
 
-/**
- * Feature 213 (T9) — el TERCER sitio de presentación del desglose: la celda «Método» de la
- * tabla del cierre del día. Los otros dos (la tabla del detalle compartido y el comprobante
- * tipo factura) tienen sus casos gemelos en `CierreDetallePagos.test.tsx`; los tres afirman
- * lo mismo, porque los tres leen del MISMO formateador.
- */
-describe("Feature 213 — desglose de pago en la tabla del cierre del día", () => {
-  /**
-   * Texto de la celda «Método» de la primera fila, localizada por el ÍNDICE de su cabecera:
-   * así el caso no depende de la posición de la columna y el "—" no se confunde con el de
-   * otra celda de la misma fila.
-   */
-  function celdaMetodo(): string {
-    const region = screen.getByRole("region", { name: "Entregado" });
-    const tabla = within(region).getByRole("table");
-    const encabezados = within(tabla)
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent?.trim() ?? "");
-    const indice = encabezados.indexOf("Método");
-    expect(indice).toBeGreaterThanOrEqual(0);
-    const celdas = within(within(tabla).getAllByRole("row")[1]).getAllByRole("cell");
-    return celdas[indice].textContent?.trim() ?? "";
-  }
-
-  function renderEntrega(over: Partial<CierreDetalleGestion>) {
-    const grupos = emptyGrupos();
-    grupos.entregado = [
-      makeGestion({
-        gestionId: "g1",
-        resultado: "entregado",
-        numRemision: "REM-ENT",
-        montoRecibido: "8000.00",
-        ...over,
-      }),
-    ];
-    renderModule({ grupos });
-  }
-
-  it("R20: una sola línea se ve EXACTAMENTE igual que antes: la etiqueta a secas, sin monto", () => {
-    renderEntrega({ pagos: [{ metodo: "SINPE", monto: "8000.00" }] });
-
-    expect(celdaMetodo()).toBe("SINPE");
-  });
-
-  it("R21: dos líneas se ven las DOS, cada una con su monto en la moneda de configuración", () => {
-    renderEntrega({
-      pagos: [
-        { metodo: "efectivo", monto: "5000.00" },
-        { metodo: "transferencia", monto: "3000.00" },
-      ],
-    });
-
-    expect(celdaMetodo()).toBe("Efectivo ₡5.000 + Transferencia ₡3.000");
-  });
-
-  it("R22/R23: sin líneas la celda sigue siendo «—», aunque la gestión traiga el escalar", () => {
-    // El escalar sigue vivo en el DTO (R32): si la celda lo leyera, aquí diría «SINPE».
-    renderEntrega({ metodoPago: "SINPE", pagos: [] });
-
-    expect(celdaMetodo()).toBe("—");
-  });
-
-  it("R24: se pinta el ORDEN del DTO, no el alfabético", () => {
-    // Alfabéticamente sería Efectivo, SINPE, Transferencia; el DTO las manda al revés.
-    renderEntrega({
-      pagos: [
-        { metodo: "transferencia", monto: "3000.00" },
-        { metodo: "SINPE", monto: "2000.00" },
-        { metodo: "efectivo", monto: "3000.00" },
-      ],
-    });
-
-    expect(celdaMetodo()).toBe(
-      "Transferencia ₡3.000 + SINPE ₡2.000 + Efectivo ₡3.000",
-    );
-  });
-
-  it("R25: la etiqueta sale de METODO_LABEL (mutarla cambia lo pintado)", () => {
-    const original = METODO_LABEL.SINPE;
-    try {
-      METODO_LABEL.SINPE = "SINPE-MUTADO";
-      renderEntrega({ pagos: [{ metodo: "SINPE", monto: "8000.00" }] });
-      expect(celdaMetodo()).toBe("SINPE-MUTADO");
-    } finally {
-      METODO_LABEL.SINPE = original;
-    }
-  });
-});
-
-// =================================================================================================
-// FEATURE 237 (T7.5 — R41, D6) — LA FILA DICE QUIEN REGISTRO LA GESTION.
-// =================================================================================================
-//
-// **Lo que protege.** Desde la 237 la TIENDA puede resolver una orden que sigue en la moto del
-// mensajero, y esa gestion se le atribuye a el: entra en este cierre, suma un intento y mueve el
-// mismo dinero. Sin la marca, el mensajero firma su cierre con una gestion que no hizo y una
-// evidencia que no subio, y no puede explicarla si le preguntan. La orden ya desaparecio de su
-// portal (R40), asi que esta pantalla es el UNICO sitio donde la vuelve a ver.
-//
-// ⚠️ EL PAR PRESENCIA / AUSENCIA VA EN LA MISMA TABLA, y es deliberado: una marca que aparece en
-// TODAS las filas pasa igual de verde que una que no aparece en ninguna. Los dos casos que se
-// afirman aqui viven sobre el MISMO render, asi que uno no puede estar bien y el otro vacio.
-//
-// ⚠️ LOS TEXTOS, ESCRITOS A MANO. No se importan `GESTION_TIENDA_BADGE_LABEL` ni `..._NOTA`:
-// comparar un texto con la constante que lo genera esta siempre verde, y en esta misma rama se
-// arreglaron dos avisos que mentian exactamente por eso.
-describe("Cierre del día — 237/R41: la gestión que registró la tienda va marcada", () => {
-  /** La `<tr>` que contiene ese número de guía. */
-  function filaDeGuia(guia: string): HTMLElement {
-    const fila = screen.getByText(guia).closest("tr");
-    expect(fila, `no hay ninguna fila con la guía ${guia}`).not.toBeNull();
-    return fila as HTMLElement;
-  }
-
-  /** Dos rechazos en la MISMA sección: uno de la tienda (5555) y uno del mensajero (7777). */
-  function renderConLasDos() {
-    const grupos = emptyGrupos();
-    grupos.devolucion_a_origen_por_rechazo = [
-      makeGestion({
-        gestionId: "g-tienda",
-        resultado: "devolucion_a_origen_por_rechazo",
-        numGuia: 5555,
-        numRemision: "REM-TIENDA",
-        desdeAyudaTienda: true,
-      }),
-      makeGestion({
-        gestionId: "g-mensajero",
-        resultado: "devolucion_a_origen_por_rechazo",
-        numGuia: 7777,
-        numRemision: "REM-MENSAJERO",
-        desdeAyudaTienda: false,
-      }),
-    ];
-    renderModule({ grupos });
-  }
-
-  it("la fila de la TIENDA lleva la marca y la del MENSAJERO no (el par, en la misma tabla)", () => {
-    renderConLasDos();
-
-    // Presencia: dice QUIÉN, no sólo que la fila es distinta.
-    expect(within(filaDeGuia("5555")).getByText("La tienda")).toBeInTheDocument();
-    // Ausencia: y su significado es «la registraste vos», no «no lo sé» — el DTO trae el campo
-    // obligatorio y derivado del historial, que nace en la misma transacción que la gestión.
-    expect(within(filaDeGuia("7777")).queryByText("La tienda")).toBeNull();
-  });
-
-  it("la marca trae su nota accesible, que es lo que le deja explicarla si le preguntan", () => {
-    renderConLasDos();
-    const marca = within(filaDeGuia("5555")).getByText("La tienda");
-
-    // El literal completo, a mano. Dice desde dónde se hizo, que el motivo y la foto no son suyos,
-    // y que aun así cuenta en su cierre: las tres cosas que necesita para responder.
-    const NOTA =
-      "Esta gestión la registró la tienda desde «Ayuda solicitada», no vos: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
-    expect(marca).toHaveAttribute("title", NOTA);
-    // `title` es sólo para el puntero: quien navega con lector de pantalla —o desde un móvil, donde
-    // no hay hover— necesita el nombre en el propio control.
-    expect(marca).toHaveAttribute("aria-label", NOTA);
-  });
-
-  it("la nota nombra las tres cosas: quién, con qué evidencia y que cuenta igual", () => {
-    // Anti-degradación: un «Registrada por la tienda» seco pasaría el caso de arriba si alguien
-    // acortara el texto, pero no éste. Lo que no puede perderse es que la evidencia no es suya y
-    // que el cierre la incluye de todos modos — es lo que hace que la marca sirva de algo.
-    renderConLasDos();
-    const nota = within(filaDeGuia("5555"))
-      .getByText("La tienda")
-      .getAttribute("title") as string;
-
-    expect(nota).toContain("Ayuda solicitada");
-    expect(nota).toContain("el motivo y la foto son suyos");
-    expect(nota).toContain("Cuenta en tu cierre igual");
-  });
-
-  it("la marca NO se come la guía: el número sigue ahí", () => {
-    // El badge cuelga del número, que es el identificador con el que el mensajero busca el paquete.
-    // Si lo sustituyera, la marca costaría más de lo que informa.
-    renderConLasDos();
-    const fila = filaDeGuia("5555");
-
-    expect(within(fila).getByText("5555")).toBeInTheDocument();
-    expect(within(fila).getByText("REM-TIENDA")).toBeInTheDocument();
-  });
-
-  it("vale para los DOS desenlaces que la tienda puede registrar, no sólo para el rechazo", () => {
-    // La 237 declaró dos aristas desde `ayuda_tienda`: `reprogramada` y `rechazada`. Marcar sólo
-    // una dejaría la mitad de las gestiones de la tienda indistinguibles de las del mensajero.
-    const grupos = emptyGrupos();
-    grupos.reprogramado = [
-      makeGestion({
-        gestionId: "g-repro-tienda",
-        resultado: "reprogramado",
-        numGuia: 4444,
-        desdeAyudaTienda: true,
-      }),
-    ];
-    grupos.entregado = [
-      // El contraste: una entrega NUNCA puede venir de la tienda (no hay arista), y aquí se ve.
-      makeGestion({
-        gestionId: "g-entrega",
-        resultado: "entregado",
-        numGuia: 3333,
-        desdeAyudaTienda: false,
-      }),
-    ];
-    renderModule({ grupos });
-
-    expect(within(filaDeGuia("4444")).getByText("La tienda")).toBeInTheDocument();
-    expect(within(filaDeGuia("3333")).queryByText("La tienda")).toBeNull();
-  });
-});
+// SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242, R255) — AQUÍ VIVÍAN
+// dos bloques que probaban la TABLA POR RESULTADO del día, que esta ficha retira:
+//   · Feature 213 — la celda «Método» con el desglose de pago. La fila única no tiene columna
+//     «Método»: el desglose se pinta en la tarjeta «Recibió el mensajero» de la fila desplegada, con
+//     el mismo formateador, y lo vigila `tests/components/FilaGestion.test.tsx` («Efectivo» / «+ SINPE»).
+//   · Feature 237/R41 — la marca «La tienda» pegada a la guía. La fila única no la pinta (S3-PA6 de
+//     SLT-101, ya vigente en el detalle de un cierre pasado: `CierreDiaComprobanteMarcasDeOrigen`).
+//     Lo que queda en /cierre-dia sobre una gestión de la tienda es el «Devolver a gestión»
+//     deshabilitado con su motivo, que vigila el bloque de abajo.
 
 // =================================================================================================
 // FEATURE 237 (D3/R38) — «DEVOLVER A GESTION» NO SE OFRECE SOBRE LA GESTION DE LA TIENDA.
@@ -1618,9 +1441,9 @@ describe("Cierre del día — 237/D3: la gestión de la tienda no se puede devol
   const MOTIVO =
     "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
 
-  /** La `<tr>` que contiene ese número de guía. */
+  /** La fila única (`[data-gestion]`) que contiene ese número de guía. */
   function fila(guia: string): HTMLElement {
-    const tr = screen.getByText(guia).closest("tr");
+    const tr = screen.getByText(guia).closest("[data-gestion]");
     expect(tr, `no hay ninguna fila con la guía ${guia}`).not.toBeNull();
     return tr as HTMLElement;
   }

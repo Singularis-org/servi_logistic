@@ -154,7 +154,7 @@ describe("SLT-100 — el detalle único del cierre de mensajero pinta las tres l
     ]);
   });
 
-  it.each(SUPERFICIES_DETALLE_UNICO.map((archivo) => [archivo] as const))(
+  it.each([...new Set(SUPERFICIES_DETALLE_UNICO)].map((archivo) => [archivo] as const))(
     "%s monta las dos piezas y les pasa sus props desde el detalle del servidor",
     (archivo) => {
       for (const { componente, props } of PIEZAS_DETALLE_UNICO) {
@@ -164,6 +164,7 @@ describe("SLT-100 — el detalle único del cierre de mensajero pinta las tres l
           for (const prop of props) {
             const valor = uso.etiqueta.match(new RegExp(`${prop}=\\{([^}]*)\\}`))?.[1];
             expect(valor, `${archivo} monta <${componente}> sin \`${prop}\``).toBeTruthy();
+            if (esLiteralPermitido(archivo, componente, prop, (valor ?? "").trim())) continue;
             expect(
               (valor ?? "").trim(),
               `${archivo} pasa \`${prop}\` con un literal en vez del dato del servidor (R28)`,
@@ -173,4 +174,32 @@ describe("SLT-100 — el detalle único del cierre de mensajero pinta las tres l
       }
     },
   );
+
+  it("SLT-109 (PA3): el único literal permitido es el `[]` de «Rechazados por la tienda» del cierre en curso, y una sola vez", () => {
+    // El cierre de HOY aún no tiene rechazos de tienda: se vinculan al solicitarlo y el servidor no
+    // da los pendientes del día (PA3 de SLT-109, aceptada por Carlos el 2026-11-12). La pestaña se ve
+    // con su estado vacío (D11). La excepción es de UNA etiqueta: un segundo `[]` en el archivo —por
+    // ejemplo en el rechazado o el vencido, que SÍ tienen su lista del servidor— la pone roja.
+    for (const { archivo, componente, prop, valor } of LITERALES_PERMITIDOS) {
+      const usos = usosEnApp(componente).filter((u) => u.archivo === archivo);
+      const conLiteral = usos.filter((u) => u.etiqueta.match(new RegExp(`${prop}=\\{([^}]*)\\}`))?.[1]?.trim() === valor);
+      expect(conLiteral, `${archivo}: <${componente} ${prop}={${valor}}>`).toHaveLength(1);
+    }
+  });
 });
+
+/** Literales que una superficie puede pasar en vez del dato del servidor, con su motivo escrito. */
+const LITERALES_PERMITIDOS = [
+  {
+    archivo: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
+    componente: "RechazosDeTiendaCierre",
+    prop: "rechazos",
+    valor: "[]",
+  },
+] as const;
+
+function esLiteralPermitido(archivo: string, componente: string, prop: string, valor: string): boolean {
+  return LITERALES_PERMITIDOS.some(
+    (l) => l.archivo === archivo && l.componente === componente && l.prop === prop && l.valor === valor,
+  );
+}

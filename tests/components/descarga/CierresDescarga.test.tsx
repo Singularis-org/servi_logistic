@@ -29,7 +29,7 @@ import { buildXlsxRows } from "@/lib/utils/xlsx-template";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
   CierreBodegaResumen,
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type {
   CierreDetalleGestion,
@@ -233,7 +233,7 @@ function cierreBodega(
   };
 }
 
-function consolidable(i: number): CierreBodegaResumenLite {
+function consolidable(i: number): CierreConsolidableCola {
   return {
     cierreDiaId: `cd-${i}`,
     mensajeroId: `m-${i}`,
@@ -241,6 +241,10 @@ function consolidable(i: number): CierreBodegaResumenLite {
     totales: TOTALES,
     totalPagoMensajero: "100.10",
     totalIngresoBodegaRechazos: "5.00",
+    // SLT-106 (R67, R194): lo que pinta la fila de la cola; el archivo no lo lee.
+    paraLaCentral: "895.00",
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
   };
 }
 
@@ -538,6 +542,13 @@ function renderConsolidacion() {
     motivoBloqueo: null,
     cierresBodegaPasados: BODEGA_SOLICITADOS,
     sinZona: false,
+    // SLT-106 (R67/R195): campos nuevos del resultado; esta suite no los lee.
+    paraLaCentralAgregado: "789.90",
+    cierresAConsolidar: CONSOLIDABLES.length,
+    mensajerosAConsolidar: 2,
+    bloqueo: null,
+    // SLT-107 (R287): campo nuevo obligatorio del contrato; esta suite no lo lee.
+    solicitadosResumen: { porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } },
   });
   return envolver(
     <ConsolidacionBodegaModule
@@ -546,10 +557,16 @@ function renderConsolidacion() {
       totalPagoMensajeroAgregado="200.20"
       totalIngresoBodegaRechazosAgregado="10.00"
       incluyeModeloNuevoAgregado={false}
-      totalNetoAgregado="800.00"
       totalCentralDebeAgregado="0.00"
       puedesSolicitar
       motivoBloqueo={null}
+      paraLaCentralAgregado="789.90"
+      cierresAConsolidar={CONSOLIDABLES.length}
+      mensajerosAConsolidar={2}
+      bloqueo={null}
+      zonaNombre={null}
+      // SLT-107: la prop nueva obligatoria (R287); este test no mira las tarjetas de «Solicitados».
+      solicitadosResumen={{ porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } }}
       cierresBodegaPasados={paginaInicial(BODEGA_SOLICITADOS)}
       sinZona={false}
     />,
@@ -631,10 +648,10 @@ const TABLAS = [
     pestana: /^Solicitados/,
   },
   { control: "Cierres solicitados", montar: renderCierreDia, filas: 2 },
-  // Las secciones del cierre del día: UNA descarga por sección (P2 de la 170). Hasta la 482
-  // estas dos filas montaban el detalle del admin (`DetalleSecciones`, borrado).
-  { control: "Entregado", montar: renderCierreDia, filas: 1 },
-  { control: "Devolución a origen por rechazo", montar: renderCierreDia, filas: 1 },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R256, PA4): las cinco
+  // descargas por sección del cierre del día pasan a UNA, la de «Gestiones» del detalle, con las
+  // columnas del mensajero (R152). Las tres gestiones de `gruposConEvidencia`.
+  { control: "Gestiones del cierre de hoy", montar: renderCierreDia, filas: 3 },
 ] as const;
 
 beforeEach(() => {
@@ -715,29 +732,25 @@ describe("Cierres · descarga", () => {
   });
 
   it("ninguna URL firmada ni ruta de almacenamiento llega al archivo", async () => {
-    // R22. El cierre del día es la superficie con evidencia FIRMADA que sigue descargando por
-    // sección (la del detalle del admin se retiró en la 478/P3 y se borró en la 482). Se
-    // descargan las secciones que la tienen y se revisa CADA celda: ni el enlace, ni el token,
-    // ni la ruta de almacenamiento. Lo que sí viaja es el «Sí» de que existe.
+    // R22. El cierre del día es la superficie con evidencia FIRMADA del mensajero. SLT-109 (R256,
+    // PA4): su descarga es ahora UNA, la de «Gestiones», con las columnas del mensajero (R152), que
+    // no llevan la columna «Tiene evidencia». Lo que este caso vigila no cambia: se revisa CADA
+    // celda de CADA fila y no viaja ni el enlace, ni el token, ni la ruta de almacenamiento.
     const user = userEvent.setup();
     renderCierreDia();
 
-    for (const seccion of ["Devolución a origen por rechazo", "Incidente"]) {
-      await user.click(screen.getByRole("button", { name: `Descargar ${seccion}` }));
-      await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Descargar Gestiones del cierre de hoy" }));
+    await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalled());
 
-      const [columnas, filas] = buildXlsxRowsMock.mock.calls.at(-1)!;
-      for (const celda of Object.values(filas[0])) {
+    const [, filas] = buildXlsxRowsMock.mock.calls.at(-1)!;
+    expect(filas).toHaveLength(3);
+    for (const fila of filas) {
+      for (const celda of Object.values(fila)) {
         const texto = String(celda ?? "");
-        expect(texto, `${seccion}: celda con URL`).not.toMatch(/https?:\/\//i);
-        expect(texto, `${seccion}: celda con ruta de almacén`).not.toMatch(
-          /(^|\/)(storage|buckets?|evidencias?|uploads?)\//i,
-        );
+        expect(texto, "celda con URL").not.toMatch(/https?:\/\//i);
+        expect(texto, "celda con ruta de almacén").not.toMatch(/(^|\/)(storage|buckets?|evidencias?|uploads?)\//i);
         expect(texto).not.toContain("token=");
       }
-      // El dato que SÍ se entrega: hay evidencia, sin regalar el acceso.
-      expect(columnas.map((c) => c.header)).toContain("Tiene evidencia");
-      expect(filas[0].tieneEvidencia).toBe("Sí");
     }
   });
 
@@ -747,25 +760,24 @@ describe("Cierres · descarga", () => {
     const user = userEvent.setup();
     renderCierreDia(gruposConTresEvidencias);
 
-    // Anti-vacuidad: la pantalla SÍ recibió las tres (desde SLT-103, R54: un botón con contador).
-    expect(screen.getAllByRole("button", { name: "Ver evidencia (3)" }).length).toBeGreaterThan(0);
+    // Anti-vacuidad: la pantalla SÍ recibió las tres (SLT-103, R54: un botón con contador), en la
+    // fila desplegada de la lista única (SLT-109).
+    const lista = screen.getByRole("region", { name: "Órdenes del cierre" });
+    await user.click(within(lista).getByRole("button", { name: /^(Detalle|Desglose de ingreso) de la orden REM-g2 · Ana Pérez$/ }));
+    expect(within(lista).getAllByRole("button", { name: /^Ver evidencia \(3\)/ }).length).toBeGreaterThan(0);
 
-    for (const seccion of ["Devolución a origen por rechazo", "Incidente"]) {
-      buildXlsxRowsMock.mockClear();
-      await user.click(screen.getByRole("button", { name: `Descargar ${seccion}` }));
-      await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Descargar Gestiones del cierre de hoy" }));
+    await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalled());
 
-      const [, filas] = buildXlsxRowsMock.mock.calls.at(-1)!;
-      expect(filas.length).toBeGreaterThan(0);
-      for (const fila of filas) {
-        for (const celda of Object.values(fila)) {
-          const texto = String(celda ?? "");
-          for (const url of TRES_EVIDENCIAS_FIRMADAS) {
-            expect(texto, `${seccion}: celda con una URL firmada`).not.toContain(url);
-          }
-          expect(texto).not.toContain("token=");
+    const [, filas] = buildXlsxRowsMock.mock.calls.at(-1)!;
+    expect(filas.length).toBeGreaterThan(0);
+    for (const fila of filas) {
+      for (const celda of Object.values(fila)) {
+        const texto = String(celda ?? "");
+        for (const url of TRES_EVIDENCIAS_FIRMADAS) {
+          expect(texto, "celda con una URL firmada").not.toContain(url);
         }
-        expect(fila.tieneEvidencia).toBe("Sí");
+        expect(texto).not.toContain("token=");
       }
     }
   });
@@ -789,16 +801,20 @@ describe("Cierres · descarga", () => {
     vi.clearAllMocks();
     buildXlsxRowsMock.mockResolvedValue(new ArrayBuffer(8));
 
-    // La causa del incidente, en la sección del cierre del día. FICHA 482: hasta hoy se miraba
-    // en el detalle del admin, que además afirmaba la indemnización y el origen del rechazo; esas
-    // dos columnas solo existían en las descargas por sección de ese detalle (borradas) y hoy
-    // las vigila la hoja fundida (`cierres-gestiones-fundida-descarga-columnas.test.ts`).
+    // SLT-109 (R256): en el archivo de «Gestiones» del cierre de hoy, el resultado y la causa del
+    // incidente (en «Señales», como en la fila) salen legibles. Al mensajero la indemnización no le
+    // llega nunca (design §7.2): aquí se pone en `null`, como la da el servidor.
     const user2 = userEvent.setup();
-    renderCierreDia();
-    await user2.click(screen.getByRole("button", { name: "Descargar Incidente" }));
+    renderCierreDia(() => {
+      const g = gruposConEvidencia();
+      return { ...g, incidente: g.incidente.map((i) => ({ ...i, indemnizacion: null })) };
+    });
+    await user2.click(screen.getByRole("button", { name: "Descargar Gestiones del cierre de hoy" }));
     await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
-    const [, filasIncidente] = buildXlsxRowsMock.mock.calls[0];
-    expect(filasIncidente[0].causa).toBe("Paquete robado");
+    const [, filasHoy] = buildXlsxRowsMock.mock.calls[0];
+    const filaIncidente = filasHoy.find((f) => f.resultado === "Incidente");
+    expect(filaIncidente?.senales).toBe("Paquete robado");
+    expect(filasHoy.map((f) => f.resultado)).toEqual(["Entregado", "Devolución a origen por rechazo", "Incidente"]);
   });
 
   it("el archivo del adminSatelite solo trae los cierres de su zona", async () => {
@@ -871,12 +887,15 @@ describe("Cierres · descarga", () => {
 
     // Los cinco agregados viven DENTRO de «A consolidar» (son la suma de ese conjunto), que es
     // la pestaña que se ve al entrar: se leen antes de irse a la otra.
+    // SLT-106 (R196): los agregados son las tarjetas «Cifras a consolidar» de la cola única.
     const numero = (etiqueta: string) =>
-      screen.getByRole("region", { name: etiqueta }).textContent;
+      within(screen.getByRole("group", { name: "Cifras a consolidar" })).getByRole("group", {
+        name: etiqueta,
+      }).textContent;
     const antes = [
-      numero("Totales a consolidar"),
-      numero("Pago a mensajeros a consolidar"),
-      numero("Ingreso de bodega por devoluciones a origen a consolidar"),
+      numero("Recaudado"),
+      numero("Pago a mensajeros"),
+      numero("Gana la bodega satélite"),
     ];
 
     await abrirPestana(user, /^Solicitados/);
@@ -891,9 +910,9 @@ describe("Cierres · descarga", () => {
     // props del servidor, no algo que la pantalla recalcule al volver—.
     await abrirPestana(user, /^A consolidar/);
     expect([
-      numero("Totales a consolidar"),
-      numero("Pago a mensajeros a consolidar"),
-      numero("Ingreso de bodega por devoluciones a origen a consolidar"),
+      numero("Recaudado"),
+      numero("Pago a mensajeros"),
+      numero("Gana la bodega satélite"),
     ]).toEqual(antes);
   });
 
@@ -993,8 +1012,9 @@ describe("Cierres · descarga", () => {
 
     const seccion = () =>
       screen.getByRole("region", { name: "Cierres del día a consolidar" }).textContent;
+    // SLT-106 (R196): los agregados son las tarjetas «Cifras a consolidar» de la cola única.
     const totales = () =>
-      screen.getByRole("region", { name: "Totales a consolidar" }).textContent;
+      screen.getByRole("group", { name: "Cifras a consolidar" }).textContent;
     const antes = [seccion(), totales()];
 
     await user.click(
@@ -1061,7 +1081,8 @@ describe("Cierres · descarga", () => {
     //
     //   (a) montar la pantalla NO ejecuta la lectura del conjunto (R8);
     //   (b) al pulsar se llama a `listarCierresPasadosCompleto` UNA vez y SIN un solo argumento:
-    //       este listado no tiene filtros, así que ni `page`, ni `pageSize`, ni —sobre todo—
+    //       sin filtros puestos en la barra (SLT-138: con ellos viaja solo `{ filtros }`, ver
+    //       `CierreDiaColaFiltros.test.tsx`), así que ni `page`, ni `pageSize`, ni —sobre todo—
     //       `mensajeroId` pueden viajar. Es el único listado del Anexo A cuyo alcance es el
     //       propio usuario: una clave de alcance aceptada aquí abriría el histórico de dinero
     //       de OTRO mensajero (R4/R17);

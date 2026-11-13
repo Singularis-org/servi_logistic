@@ -22,7 +22,13 @@ function sinPremio(
   efectivo: string,
   pagadoVigente: string,
 ): string {
-  return derivarPendienteCierre({ pagoDebido, efectivo, premiosVivos: "0.00", pagadoVigente });
+  return derivarPendienteCierre({
+    pagoDebido,
+    efectivo,
+    premiosVivos: "0.00",
+    pagadoVigente,
+    pagoIndependienteEfectivo: false, // SLT-123: los casos de la 172 son de la regla vieja
+  });
 }
 
 describe("R22 — el pendiente sale de min(P, E) menos lo ya entregado", () => {
@@ -129,6 +135,7 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
         efectivo: "0.00",
         premiosVivos: "5000.00",
         pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("5000.00");
     // Y un cierre ya pagado por completo (P = 30 000 entregados) tambien vuelve a deber.
@@ -138,6 +145,7 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
         efectivo: "0.00",
         premiosVivos: "5000.00",
         pagadoVigente: "30000.00",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("5000.00");
   });
@@ -150,6 +158,7 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
         efectivo: "20000.00",
         premiosVivos: "5000.00",
         pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("35000.00");
   });
@@ -161,6 +170,7 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
         efectivo: "20000.00",
         premiosVivos: "5000.00",
         pagadoVigente: "34999.99",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("0.01");
     expect(
@@ -169,12 +179,18 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
         efectivo: "20000.00",
         premiosVivos: "5000.00",
         pagadoVigente: "35000.00",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("0.00");
   });
 
   it("anular el premio (premiosVivos vuelve a 0) devuelve el cierre a como estaba (R33)", () => {
-    const entrada = { pagoDebido: "30000.00", efectivo: "0.00", pagadoVigente: "30000.00" };
+    const entrada = {
+      pagoDebido: "30000.00",
+      efectivo: "0.00",
+      pagadoVigente: "30000.00",
+      pagoIndependienteEfectivo: false,
+    };
     const saldado = derivarPendienteCierre({ ...entrada, premiosVivos: "0.00" });
     const conPremio = derivarPendienteCierre({ ...entrada, premiosVivos: "5000.00" });
     // `premiosVivos` llega YA NETO: el repositorio resta la compensacion de la anulacion.
@@ -192,6 +208,7 @@ describe("293/R24 — lo pagable de un cierre SUMA los premios vivos imputados a
         efectivo: "0.00",
         premiosVivos: "0.10",
         pagadoVigente: "0.20",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("0.20");
   });
@@ -207,6 +224,7 @@ describe("293/R25 — el premio queda FUERA de la regla min(P, E)", () => {
       efectivo: "90000.00",
       premiosVivos: "5000.00",
       pagadoVigente: "0.00",
+      pagoIndependienteEfectivo: false,
     });
     expect(conEfectivoDeSobra).toBe("5000.00");
     // Y la contraprueba de que la alternativa D daria otra cosa: metido dentro, `min(35000,
@@ -233,6 +251,7 @@ describe("293/R25 — el premio queda FUERA de la regla min(P, E)", () => {
           efectivo: "12000.00",
           premiosVivos: premio,
           pagadoVigente: "0.00",
+          pagoIndependienteEfectivo: false,
         }),
       ).toBe(esperado);
     }
@@ -264,7 +283,78 @@ describe("money-safe — el modulo no toca coma flotante", () => {
         efectivo: "0",
         premiosVivos: "0.5",
         pagadoVigente: "0.25",
+        pagoIndependienteEfectivo: false,
       }),
     ).toBe("100.25");
+  });
+});
+
+// ── SLT-123 (T4.1) — la marca del cierre decide la regla ───────────────────────────────────────
+//
+// La tabla de `specs/SLT-123-pago-independiente-efectivo/tasks.md > T4.1`, con los importes
+// ESCRITOS A MANO: nunca derivados de `calcularSplitPago` ni de la funcion bajo prueba (una
+// asercion contra su propia fuente siempre esta verde). Filas 1-2: la regla de la 44 sigue intacta
+// (R325). Filas 3-6: con la marca, lo generado es `P` completo y el efectivo no entra (R315).
+
+describe("SLT-123 R315/R325/R327 — la marca `pagoIndependienteEfectivo` decide la regla", () => {
+  it.each([
+    // [#, marca, P, E, premios, vigentes, esperado]
+    ["1", false, "3000.00", "1000.00", "0.00", "0.00", "2000.00"],
+    ["2", false, "3000.00", "5000.00", "0.00", "0.00", "0.00"],
+    ["3", true, "3000.00", "5000.00", "0.00", "0.00", "3000.00"],
+    ["4", true, "3000.00", "0.00", "500.00", "1000.00", "2500.00"],
+    ["5", true, "3000.00", "0.00", "0.00", "3500.00", "0.00"],
+    ["6", true, "0.00", "1000.00", "0.00", "0.00", "0.00"],
+  ] as const)(
+    "fila %s: marca %s, P %s, E %s, premios %s, vigentes %s -> %s",
+    (_fila, marca, P, E, premios, vigentes, esperado) => {
+      expect(
+        derivarPendienteCierre({
+          pagoDebido: P,
+          efectivo: E,
+          premiosVivos: premios,
+          pagadoVigente: vigentes,
+          pagoIndependienteEfectivo: marca,
+        }),
+      ).toBe(esperado);
+    },
+  );
+
+  it("con la marca, el efectivo no mueve lo pendiente: E = 0, E < P y E > P dan lo mismo", () => {
+    for (const E of ["0.00", "1000.00", "2999.99", "3000.00", "90000.00"]) {
+      expect(
+        derivarPendienteCierre({
+          pagoDebido: "3000.00",
+          efectivo: E,
+          premiosVivos: "0.00",
+          pagadoVigente: "0.00",
+          pagoIndependienteEfectivo: true,
+        }),
+      ).toBe("3000.00");
+    }
+  });
+
+  it("con la marca, P con mas de dos decimales se redondea igual que en la regla vieja", () => {
+    // 3000.005 -> 3000.01 (ROUND_HALF_UP), el mismo redondeo que `calcularSplitPago` aplica a P.
+    expect(
+      derivarPendienteCierre({
+        pagoDebido: "3000.005",
+        efectivo: "0.00",
+        premiosVivos: "0.00",
+        pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: true,
+      }),
+    ).toBe("3000.01");
+  });
+
+  it("R332: la rama nueva tampoco toca coma flotante (lee el archivo)", () => {
+    const fuente = fs.readFileSync(
+      path.join(__dirname, "..", "..", "..", "lib", "utils", "pendiente-cierre.ts"),
+      "utf8",
+    );
+    // La rama de la marca existe y trabaja con `Prisma.Decimal` y redondeo explicito.
+    expect(fuente).toMatch(/pagoIndependienteEfectivo\s*\n?\s*\?\s*new Prisma\.Decimal\(pagoDebido\)\.toDecimalPlaces\(2, Prisma\.Decimal\.ROUND_HALF_UP\)/);
+    // Y en todo el modulo, ni `Number(`, ni `parseFloat`, ni `+x`/`Math`, ni `toNumber`.
+    expect(fuente).not.toMatch(/Number\(|parseFloat|Math\.|toNumber\(/);
   });
 });

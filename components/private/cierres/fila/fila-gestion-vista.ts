@@ -516,6 +516,11 @@ export interface AccionesOfrecidas {
   ajustarPago: boolean;
   corregirResultado: boolean;
   devolver: boolean;
+  /**
+   * SLT-109 (R244, feature 237): el motivo por el que «Devolver a gestión» sale deshabilitado; `null`
+   * = habilitado. Una gestión de la tienda solo la corrige la tienda.
+   */
+  devolverDeshabilitado: string | null;
 }
 
 /**
@@ -531,5 +536,6 @@ export function accionesDe(g: CierreDetalleGestion, a: AudienciaFila, acciones: 
     corregirResultado: a === "central" && acciones.corregirResultado !== undefined && entregado,
     ajustarPago: esAdministracion(a) && acciones.ajustarPago !== undefined && g.pagoMensajero !== null,
     devolver: a === "mensajero" && acciones.devolver !== undefined,
+    devolverDeshabilitado: g.desdeAyudaTienda ? L.DESHACER_BLOQUEO_TIENDA : null,
   };
 }

@@ -120,7 +120,8 @@ describe("CierresBodegaAdminModule — refresco tras marcar recibida (SL-44)", (
 
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        <CierresBodegaAdminModule pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} puedeConciliar />
+        {/* FICHA 431/481 (SLT-107 M1): montaje de la CENTRAL; sin audiencia falla cerrado a la satélite. */}
+        <CierresBodegaAdminModule pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} puedeConciliar audiencia="admin" />
       </SWRConfig>,
     );
     await waitFor(() => expect(listarHistoricoCierresBodegaPaginado).toHaveBeenCalled());

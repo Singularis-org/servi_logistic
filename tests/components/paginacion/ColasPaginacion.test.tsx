@@ -51,7 +51,7 @@ import { money } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
   CierreBodegaResumen,
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import type { IncidenteAdminDTO } from "@/lib/interfaces/services/IIncidenteAdminService";
@@ -266,7 +266,7 @@ function cierreBodega(i: number): CierreBodegaResumen {
  * que convive con agregados de dinero, y con montos en cero una suma sobre la página visible
  * daría el mismo número que el conjunto y no se notaría nada (§R50).
  */
-function consolidable(i: number): CierreBodegaResumenLite {
+function consolidable(i: number): CierreConsolidableCola {
   return {
     cierreDiaId: `cd-${i}`,
     mensajeroId: `m-${i}`,
@@ -274,6 +274,10 @@ function consolidable(i: number): CierreBodegaResumenLite {
     totales: { efectivo: "10.00", simpe: "4.00", transferencia: "0.00", general: "14.00" },
     totalPagoMensajero: "30.00",
     totalIngresoBodegaRechazos: "1.00",
+    // SLT-106 (R67, R194): lo que la fila de la cola pinta. 14.00 − 30.00 − 1.00.
+    paraLaCentral: "-17.00",
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
   };
 }
 
@@ -298,6 +302,8 @@ const AGREGADOS = {
   ingresoBodega: "60.00",
   neto: "120.00",
   centralDebe: "500.00",
+  // SLT-106 (R67): «Debe llegar a la central» del conjunto, 840.00 − 1800.00 − 60.00.
+  paraLaCentral: "-1020.00",
 };
 /**
  * Lo que se vería si un agregado se calculara sobre la página visible. NUNCA en pantalla.
@@ -312,6 +318,8 @@ const AGREGADOS_DE_LA_PAGINA = [
   money("350.00"),
   money("750.00"),
   money("25.00"),
+  // SLT-106: «Debe llegar a la central» sumado sobre las 25 filas de la página (25 × −17.00).
+  money("-425.00"),
 ];
 
 const MOTIVO_BLOQUEO =
@@ -502,8 +510,12 @@ const COLAS: Cola[] = [
     paginacion: "Paginación de los cierres del día a consolidar",
     seccion: "Cierres del día a consolidar",
     descarga: "Cierres del día a consolidar",
-    rol: "list",
+    // SLT-106 «Bodega satélite: A consolidar con la cola única»: vuelve a ser una TABLA (la cola
+    // única) y el contador vive en el `tablist` «Cierre de bodega por etapa» (R190).
+    rol: "table",
     contadorEn: "Cierre de bodega por etapa",
+    contadorRol: "tablist",
+    textoContador: (n) => `A consolidar ${n}`,
     textoFila: (i) => `Mensajero ${etiqueta(i)}`,
     montar: () => montarConsolidacion(),
   },
@@ -551,10 +563,16 @@ function montarConsolidacion() {
       totalPagoMensajeroAgregado={AGREGADOS.pagoMensajero}
       totalIngresoBodegaRechazosAgregado={AGREGADOS.ingresoBodega}
       incluyeModeloNuevoAgregado={false}
-      totalNetoAgregado={AGREGADOS.neto}
       totalCentralDebeAgregado={AGREGADOS.centralDebe}
       puedesSolicitar={false}
       motivoBloqueo={MOTIVO_BLOQUEO}
+      paraLaCentralAgregado={AGREGADOS.paraLaCentral}
+      cierresAConsolidar={TOTAL}
+      mensajerosAConsolidar={TOTAL}
+      bloqueo="sin_resolver"
+      zonaNombre={null}
+      // SLT-107: la prop nueva obligatoria (R287); este test no mira las tarjetas de «Solicitados».
+      solicitadosResumen={{ porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } }}
       cierresBodegaPasados={pagina1([])}
       sinZona={false}
     />,
@@ -845,23 +863,25 @@ describe("Riesgo MEDIO · paginación de las 4 colas con contador de cabecera (T
     const user = userEvent.setup();
     montarConsolidacion();
 
+    // SLT-106 (R196): los agregados son las tarjetas «Cifras a consolidar» de la cola única. El
+    // neto deja de pintarse (R204): su lugar lo toma «Debe llegar a la central» (R67), y su
+    // ausencia se afirma abajo.
+    const tarjeta = (nombre: string) =>
+      within(screen.getByRole("group", { name: "Cifras a consolidar" })).getByRole("group", {
+        name: nombre,
+      });
     const dineroVisible = () => ({
-      general: within(
-        screen.getByRole("region", { name: "Totales a consolidar" }),
-      ).getByText(money(AGREGADOS.totales.general)),
-      neto: within(
-        screen.getByRole("region", { name: "Totales a consolidar" }),
-      ).getByText(money(AGREGADOS.neto)),
-      pago: within(
-        screen.getByRole("region", { name: "Pago a mensajeros a consolidar" }),
-      ).getByText(money(AGREGADOS.pagoMensajero)),
-      ingreso: within(
-        screen.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen a consolidar" }),
-      ).getByText(money(AGREGADOS.ingresoBodega)),
-      centralDebe: within(
-        screen.getByRole("region", { name: "Central debe" }),
-      ).getByText(money(AGREGADOS.centralDebe)),
+      general: within(tarjeta("Recaudado")).getByText(money(AGREGADOS.totales.general)),
+      debeLlegar: within(tarjeta("Debe llegar a la central")).getByText(
+        money(AGREGADOS.paraLaCentral),
+      ),
+      pago: within(tarjeta("Pago a mensajeros")).getByText(money(AGREGADOS.pagoMensajero)),
+      ingreso: within(tarjeta("Gana la bodega satélite")).getByText(
+        money(AGREGADOS.ingresoBodega),
+      ),
+      centralDebe: within(tarjeta("La central debe")).getByText(money(AGREGADOS.centralDebe)),
     });
+    expect(screen.queryByText(money(AGREGADOS.neto)), "el neto ya no se pinta (R204)").toBeNull();
 
     expect(dineroVisible().centralDebe).toBeInTheDocument();
     for (const dePagina of AGREGADOS_DE_LA_PAGINA) {
@@ -873,8 +893,9 @@ describe("Riesgo MEDIO · paginación de las 4 colas con contador de cabecera (T
 
     // (b) EL AVISO DE BLOQUEO: el gate `puedesSolicitar`/`motivoBloqueo` es del conjunto, no
     //     de la página. Si desapareciera al paginar, el botón se habilitaría solo.
-    const bloqueo = screen.getByRole("note");
-    expect(bloqueo).toHaveTextContent(MOTIVO_BLOQUEO);
+    // SLT-106 (R198): el aviso es un `status` entre la barra y las tarjetas.
+    const bloqueo = screen.getByText(MOTIVO_BLOQUEO);
+    expect(bloqueo).toHaveAttribute("role", "status");
     expect(
       screen.getByRole("button", { name: "Solicitar cierre de bodega" }),
     ).toBeDisabled();
@@ -891,7 +912,7 @@ describe("Riesgo MEDIO · paginación de las 4 colas con contador de cabecera (T
 
     // Los cinco siguen ahí, con el MISMO valor, y el aviso también.
     expect(dineroVisible().general).toBeInTheDocument();
-    expect(dineroVisible().neto).toBeInTheDocument();
+    expect(dineroVisible().debeLlegar).toBeInTheDocument();
     expect(dineroVisible().pago).toBeInTheDocument();
     expect(dineroVisible().ingreso).toBeInTheDocument();
     expect(dineroVisible().centralDebe).toBeInTheDocument();
@@ -901,7 +922,7 @@ describe("Riesgo MEDIO · paginación de las 4 colas con contador de cabecera (T
         `tras paginar, un agregado salió de la página visible: ${dePagina}`,
       ).not.toBeInTheDocument();
     }
-    expect(screen.getByRole("note")).toHaveTextContent(MOTIVO_BLOQUEO);
+    expect(screen.getByText(MOTIVO_BLOQUEO)).toHaveAttribute("role", "status");
     expect(
       screen.getByRole("button", { name: "Solicitar cierre de bodega" }),
     ).toBeDisabled();
