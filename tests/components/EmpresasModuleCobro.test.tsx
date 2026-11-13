@@ -39,6 +39,7 @@ const NORTE: EmpresaListada = {
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
   pagadoPlataforma: "0.00",
+  pagosPorConfirmar: 0,
   // SL-20 (R9): toda empresa tiene país; no es de este test.
   pais: { id: "CR", nombre: "Costa Rica" },
 };
@@ -54,6 +55,7 @@ const SUR: EmpresaListada = {
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
   pagadoPlataforma: "0.00",
+  pagosPorConfirmar: 0,
   // SL-20 (R9): toda empresa tiene país; no es de este test.
   pais: { id: "CR", nombre: "Costa Rica" },
 };
@@ -323,6 +325,7 @@ const A_FAVOR: EmpresaListada = {
   plan: null, // SLT-66 R32: campo nuevo; no es de este test.
   deudaPlataforma: { deuda: "-250.00", estado: "a_favor", importe: "250.00" },
   pagadoPlataforma: "750.00",
+  pagosPorConfirmar: 0,
   pais: { id: "CR", nombre: "Costa Rica" },
 };
 

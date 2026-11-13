@@ -28,6 +28,7 @@ function empresa(
     maestros: [],
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     pais: { id: "CR", nombre: "Costa Rica" },
     ...extra,
   };

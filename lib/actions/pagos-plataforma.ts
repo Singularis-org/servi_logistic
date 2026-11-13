@@ -52,7 +52,6 @@ async function conServicio<T>(
 
 /**
  * Los pagos por confirmar y las facturas cerradas con saldo de una empresa (R12, R14, R24).
- * @sin-superficie SLT-60 en curso: la liga la sección «Pagos por confirmar» del detalle de la empresa (T5.2, `page.tsx`), de la misma rama; al ligarla, la guardia exige borrar esta anotación.
  */
 export async function verPagosDeEmpresaAction(
   input: unknown,
@@ -63,7 +62,6 @@ export async function verPagosDeEmpresaAction(
 
 /**
  * Confirma un pago por confirmar con su reparto entre facturas cerradas (R16, R17, R19, R20, R24).
- * @sin-superficie SLT-60 en curso: la liga la sección «Pagos por confirmar» del detalle de la empresa (T5.2, `page.tsx`), de la misma rama; al ligarla, la guardia exige borrar esta anotación.
  */
 export async function confirmarPagoPlataformaAction(
   input: unknown,
@@ -75,7 +73,6 @@ export async function confirmarPagoPlataformaAction(
 /**
  * El enlace temporal al comprobante de un pago (R33, R34). La página la liga con la empresa del detalle en el
  * servidor (`.bind(null, organizacionId)`): el cliente solo manda el pago.
- * @sin-superficie SLT-60 en curso: la liga la sección «Pagos por confirmar» del detalle de la empresa (T5.2, `page.tsx`), de la misma rama; al ligarla, la guardia exige borrar esta anotación.
  */
 export async function verComprobantePagoPlataformaAction(
   organizacionId: unknown,
