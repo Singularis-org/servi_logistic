@@ -95,3 +95,35 @@ Base de pruebas: `slt113_excel` (DATABASE_URL exportada sin imprimir). MCP del g
 **RECHAZADO** (H1, H2). Para volver: quitar el `20000` del E2E (guardia R47 verde), correr `./init.sh`
 con `INIT_EXIT`, el E2E `cierres-rediseno` entero y el grupo `dinero` en local, marcar T6 y anotarlo en
 la bitácora. H3–H5 pueden ir en la misma tanda.
+
+## Vuelta 2 (acotada a f7255a46..4ce7e5ea)
+
+Incluye el merge `e288780d` de origin/dev (SLT-112 «Ganancia del mensajero en servidor»).
+
+### Checklist
+- [x] **H1 cerrado.** `e2e/cierres-rediseno.spec.ts:1189-1190` usa `18000`; `tests/unit/analytics/rollup-guards.test.ts`
+      verde (21/21). `18000` solo aparece en fixtures/tests ajenos (etiquetas, openapi), ninguna constante de la
+      guardia R47. Las aserciones del bloque SLT-113 (nombres de hoja, encabezados, guía de N, 3503, 2200, guía
+      vieja presente en la hoja anterior) no dependen del monto de la entrega vieja.
+- [x] **H3 cerrado.** `design.md:324-327` dice central [R6], S sin rango [R1, R4], S noviembre [R1], bodega [R1];
+      coincide con `cierres-gestiones-modelo-nuevo-descarga-sql-real.test.ts:734-737,761`.
+- [x] **H4 cerrado** por decisión técnica del leader en `progress/features/SLT-113.md:16` (rótulo de R65 de SLT-54;
+      Carlos lo valida en Preview).
+- [x] **H5 cerrado.** El comentario de `cierres-gestiones-modelo-nuevo-descarga-columnas.ts:102` ya no lleva
+      literal de moneda. Tests del archivo (descarga + guardias frontera y estado-con-info): 39/39 verdes.
+- [x] **T6.2** bien marcada: `tamano-pr-aceptado` presente (hasta 52); `scripts/tamano-pr.mjs` mide 45/52 y
+      solo avisa.
+- [x] **T6.3** escrita en `progress/features/SLT-113.md > Lo que heredan SLT-140 y SLT-141` (ver m2).
+- [ ] **T6.1 / T6.4** pendientes del gate del leader (`./init.sh` con `INIT_EXIT`), como corresponde.
+- [x] **Merge con SLT-112:** de los archivos de SLT-113 solo toca `e2e/cierres-rediseno.spec.ts`, en bloques
+      SLT-102/112 ajenos; el bloque SLT-113 queda intacto. La bitácora reporta `cierres-rediseno` 18/18 y `dinero`
+      107/107 después del merge.
+
+### Hallazgos
+- **m1 — menor.** La evidencia de T6.2 en `tasks.md` dice «51 archivos tras el merge»; `tamano-pr.mjs` mide 45.
+  Ambos bajo el tope de 52; solo afinar la cifra si se vuelve a tocar.
+- **m2 — menor.** T6.3 pide nombrar `folioCierre` y el criterio de R371; la nota cubre libro, `tituloHoja` y la
+  clasificación por modelo del cierre, pero no menciona `folioCierre` ni cita R371 por número. Añadir una línea.
+
+### Veredicto
+**OK** (sin bloqueantes; T6.1/T6.4 quedan para el gate del leader).
