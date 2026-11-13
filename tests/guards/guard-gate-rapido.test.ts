@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { casaAlguno, compilarPatron, disparados, erroresDisparadores } from '../../scripts/disparadores.mjs'
-import { noSeleccionados, presupuestoRapido, seleccion } from '../../scripts/test-rapido.mjs'
+import { nombranCambiados, noSeleccionados, presupuestoRapido, seleccion } from '../../scripts/test-rapido.mjs'
 
 const TESTS = [
   'tests/unit/pedidos/schema/pedidos-schema.test.ts',
@@ -107,5 +107,58 @@ describe('guardia: presupuesto del rapido', () => {
     expect(presupuestoRapido({ gate: { presupuesto_rapido: 40 } })).toBe(40)
     expect(presupuestoRapido({ gate: { presupuesto_rapido: -1 } })).toBe(150)
     expect(presupuestoRapido(null)).toBe(150)
+  })
+})
+
+describe('guardia: tests que nombran por su ruta un archivo cambiado (grupo 4)', () => {
+  // Caso real de SLT-141: el test lee el componente como texto y ningun import lo relaciona.
+  const LISTA = 'app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx'
+
+  it('entra el test que cita la ruta entera entre comillas dobles (ruta con parentesis)', () => {
+    const tests = [
+      { ruta: 'tests/unit/cierres/lista-texto.test.ts', texto: 'const f = readFileSync("app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx", "utf8")' },
+      { ruta: 'tests/unit/otro.test.ts', texto: 'import { x } from "../../lib/x"' },
+    ]
+    expect(nombranCambiados(tests, [LISTA])).toEqual(['tests/unit/cierres/lista-texto.test.ts'])
+  })
+
+  it('entra con la ruta sin extension y con backticks', () => {
+    const tests = [
+      { ruta: 'tests/unit/b.test.ts', texto: "leer('app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista')" },
+      { ruta: 'tests/unit/a.test.ts', texto: 'leer(`app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx`)' },
+    ]
+    expect(nombranCambiados(tests, [LISTA])).toEqual(['tests/unit/a.test.ts', 'tests/unit/b.test.ts'])
+  })
+
+  it('NO entra por el nombre de archivo suelto', () => {
+    const tests = [{ ruta: 'tests/unit/a.test.ts', texto: "describe('CierresBodegaSolicitadosLista', () => {})" }]
+    expect(nombranCambiados(tests, [LISTA])).toEqual([])
+  })
+
+  it('NO entra si la ruta es prefijo de otra mas larga dentro de la misma cita', () => {
+    const tests = [
+      { ruta: 'tests/unit/a.test.ts', texto: "leer('app/(app)/cierres-admin/_components/CierresBodegaSolicitadosListaVieja.tsx')" },
+      { ruta: 'tests/unit/b.test.ts', texto: "leer('app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx.bak')" },
+      { ruta: 'tests/unit/c.test.ts', texto: 'leer("x/app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx")' },
+    ]
+    expect(nombranCambiados(tests, [LISTA])).toEqual([])
+  })
+
+  it('sin duplicados y ordenado aunque nombre varios cambiados', () => {
+    const tests = [{ ruta: 'tests/unit/a.test.ts', texto: "'lib/a.ts' y 'lib/b'" }]
+    expect(nombranCambiados(tests, ['lib/b.ts', 'lib/a.ts'])).toEqual(['tests/unit/a.test.ts'])
+  })
+
+  it('seleccion: el grupo 4 corre aunque los relacionados pasen del presupuesto, sin repetir', () => {
+    const s = seleccion({
+      relacionados: ['a.test.ts', 'b.test.ts', 'c.test.ts'],
+      siempre: ['tests/guards/guard-x.test.ts'],
+      disparados: ['tests/unit/recetas/scope.test.ts'],
+      nombran: ['tests/unit/cierres/lista-texto.test.ts', 'tests/guards/guard-x.test.ts'],
+      heredados: [],
+      presupuesto: 2,
+    })
+    expect(s.relacionadosFuera).toBe(true)
+    expect(s.archivos).toEqual(['tests/guards/guard-x.test.ts', 'tests/unit/cierres/lista-texto.test.ts', 'tests/unit/recetas/scope.test.ts'])
   })
 })

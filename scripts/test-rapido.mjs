@@ -2,7 +2,7 @@
 /**
  * `pnpm run test:rapido` — el gate de cerrar tanda (`docs/gate.md`).
  *
- * Corre, en UNA sola seleccion, tres grupos de tests:
+ * Corre, en UNA sola seleccion, cuatro grupos de tests:
  *   1. Los que el GRAFO DE IMPORTS relaciona con el diff contra `origin/<integracion>`,
  *      calculado con TRES puntos (merge-base) y sumando lo que aun no esta commiteado: una tanda
  *      de tres commits mirando solo el tercero es un agujero.
@@ -13,21 +13,28 @@
  *   3. Los DISPARADOS por `arnes.config.json > gate.disparadores`: «si el diff toca esto, corre
  *      estos tests», para los acoplamientos que no son imports (esquema, migraciones, alcance de
  *      un modulo). Detalle en `scripts/disparadores.mjs`.
+ *   4. Los que NOMBRAN por su ruta un archivo de codigo cambiado: un test cuyo texto contiene, entre
+ *      comillas simples, dobles o backticks, la ruta relativa al repo (con `/`) de ese archivo, con
+ *      extension o sin ella (`'app/(app)/x/_components/Lista'`). Son los tests que leen el fuente
+ *      como texto en vez de importarlo, y que ningun grafo ve. La cita entera debe ser la ruta: no
+ *      entra por el nombre de archivo suelto ni por una ruta mas larga que la contenga. LIMITE: una
+ *      ruta armada en partes (`path.join('app', x)`) no se ve; para esa queda un disparador.
  *
  * PRESUPUESTO (`gate.presupuesto_rapido`, por defecto 150 archivos): si el grupo 1 pasa de ese
  * numero —un util importado por medio repo—, no se corre en local y se dice en voz alta; los
- * grupos 2 y 3 si corren, y el resto lo cubre el CI. Un «rapido» de 16 minutos (medido en el
+ * grupos 2, 3 y 4 si corren, y el resto lo cubre el CI. Un «rapido» de 16 minutos (medido en el
  * proyecto de origen, 978 s) ya no es rapido y el agente lo vive como un cuelgue.
  * `TEST_RAPIDO_SIN_PRESUPUESTO=1` lo desactiva para una corrida.
  *
  * Sin correr nada:
- *   node scripts/test-rapido.mjs --seleccion            que correria y por que (los tres grupos)
+ *   node scripts/test-rapido.mjs --seleccion            que correria y por que (los cuatro grupos)
  *   node scripts/test-rapido.mjs --comprobar <test>...  exit 1 si alguno NO entra en la seleccion:
  *                                                       verifica un disparador nuevo
  *
  * La seleccion se calcula con la API de vitest (`createVitest` + `getRelevantTestSpecifications`),
  * que la devuelve sin ejecutar nada, y se corre con el CLI. Si la API falla, cae a `vitest related`
- * + `gate.siempre` como antes, sin presupuesto ni disparadores, y lo avisa.
+ * + `gate.siempre` + el grupo 4 (listando los tests con git), sin presupuesto ni disparadores, y lo
+ * avisa.
  *
  * Sale en verde cuando la seleccion esta vacia (`--passWithNoTests`): el diff puede no tocar
  * ningun archivo con tests, y un repo recien montado puede no tener guardias. "Sin tests seleccionados" no es un
@@ -95,6 +102,68 @@ const deCodigo = (archivos) => archivos.filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)
 
 /** Rutas comparables entre Windows y Linux: relativas al repo y siempre con `/`. */
 const normalizar = (p) => path.relative(process.cwd(), path.resolve(p)).split('\\').join('/');
+
+/** Escapa un texto para usarlo literal en un regex (las rutas de Next llevan parentesis). */
+const escaparRegex = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Un regex por archivo cambiado: la cita ENTERA es su ruta, con extension o sin ella. El
+ * delimitador de apertura la precede y el mismo delimitador la cierra, asi no entra `'Lista'`
+ * suelto ni `'app/x/Lista.tsx.bak'`.
+ */
+function citasDe(cambiados) {
+  return [...new Set(cambiados.map(normalizar))].sort().map((ruta) => {
+    const sinExt = ruta.replace(/\.[^./]+$/, '');
+    const alternativas = [...new Set([ruta, sinExt])].map(escaparRegex).join('|');
+    return { ruta, re: new RegExp(`(['"\`])(?:${alternativas})\\1`) };
+  });
+}
+
+/** Los cambiados que nombra cada test; los tests que no nombran ninguno no aparecen. */
+function nombradosPorTest(tests, cambiados) {
+  const citas = citasDe(cambiados);
+  const porTest = new Map();
+  if (citas.length === 0) return porTest;
+  for (const t of tests) {
+    const nombra = citas.filter((c) => c.re.test(t.texto)).map((c) => c.ruta);
+    if (nombra.length > 0) porTest.set(normalizar(t.ruta), nombra);
+  }
+  return porTest;
+}
+
+/**
+ * Grupo 4: los tests que nombran por su ruta un archivo de codigo cambiado. Pura: la prueba la
+ * guardia `tests/guards/guard-gate-rapido.test.ts`.
+ * @param {Array<{ ruta: string, texto: string }>} tests
+ * @param {string[]} cambiados rutas relativas al repo de los archivos de codigo cambiados
+ * @returns {string[]} rutas de test, ordenadas y sin duplicados
+ */
+export function nombranCambiados(tests, cambiados) {
+  return [...nombradosPorTest(tests, cambiados).keys()].sort();
+}
+
+/** Lee del disco cada test de `rutasDeTest`; uno que no se puede leer no nombra nada. */
+function leerTests(rutasDeTest) {
+  const tests = [];
+  for (const ruta of rutasDeTest) {
+    try {
+      tests.push({ ruta, texto: readFileSync(ruta, 'utf8') });
+    } catch {
+      // ilegible: fuera del grupo 4
+    }
+  }
+  return tests;
+}
+
+/** Los tests del repo sin la API de vitest (`vitest.config.ts > include`): seguidos y nuevos. */
+function testsConGit() {
+  const rutas = new Set();
+  for (const args of [['ls-files', 'tests'], ['ls-files', '--others', '--exclude-standard', 'tests']]) {
+    const r = spawnSync('git', args, { encoding: 'utf8' });
+    if (r.status === 0) for (const f of lineas(r.stdout)) if (/\.test\.tsx?$/.test(f) && existsSync(f)) rutas.add(normalizar(f));
+  }
+  return [...rutas].sort();
+}
 
 /**
  * Veredicto de una corrida de vitest con rojos heredados. Es una funcion pura para que la guardia
@@ -183,17 +252,18 @@ export function presupuestoRapido(config) {
 }
 
 /**
- * Que se corre, a partir de los tres grupos ya calculados. Pura: la prueba la guardia.
+ * Que se corre, a partir de los cuatro grupos ya calculados. Pura: la prueba la guardia.
+ * `nombran` (grupo 4) va fuera del presupuesto, como `siempre` y `disparados`.
  * @returns {{ archivos: string[], relacionadosFuera: boolean }}
  */
-export function seleccion({ relacionados, siempre, disparados, heredados, presupuesto, sinPresupuesto = false }) {
+export function seleccion({ relacionados, siempre, disparados, nombran = [], heredados, presupuesto, sinPresupuesto = false }) {
   const relacionadosFuera = !sinPresupuesto && relacionados.length > presupuesto;
-  const todos = new Set([...(relacionadosFuera ? [] : relacionados), ...siempre, ...disparados]);
+  const todos = new Set([...(relacionadosFuera ? [] : relacionados), ...siempre, ...disparados, ...nombran]);
   const conocidos = new Set(heredados.map(normalizar));
   return { archivos: [...todos].filter((f) => !conocidos.has(normalizar(f))).sort(), relacionadosFuera };
 }
 
-/** Los tres grupos, con la API de vitest. `null` si la API no esta o falla. */
+/** Los grupos 1 y 2 y la lista de tests, con la API de vitest. `null` si la API no esta o falla. */
 async function gruposConLaApi(codigo, siempre) {
   let vitest;
   try {
@@ -224,7 +294,7 @@ function correrArchivos(archivos, heredados, etiqueta) {
   return estado;
 }
 
-/** El camino de antes: `vitest related` + `gate.siempre`. Solo si la API no esta. */
+/** El camino de antes: `vitest related` + `gate.siempre` + el grupo 4. Solo si la API no esta. */
 function modoAnterior(codigo, siempre, heredados) {
   const excluir = heredados.flatMap((f) => ['--exclude', f]);
   const files = codigo.filter((f) => !heredados.includes(f));
@@ -234,6 +304,11 @@ function modoAnterior(codigo, siempre, heredados) {
   }
   if (status === 0) {
     status = runVitest(['run', ...siempre, '--passWithNoTests', ...excluir], `tests que corren siempre (gate.siempre: ${siempre.join(', ')})`, heredados);
+  }
+  const nombran = codigo.length > 0 ? nombranCambiados(leerTests(testsConGit()), codigo) : [];
+  const aCorrer = nombran.filter((f) => !heredados.map(normalizar).includes(f));
+  if (status === 0 && aCorrer.length > 0) {
+    status = correrArchivos(aCorrer, heredados, `tests que nombran un archivo cambiado: ${aCorrer.length}`);
   }
   return status;
 }
@@ -271,10 +346,13 @@ async function main() {
   } else {
     const { archivos: delDisparador, motivos } = disparados(cambios, grupos.todos, config?.gate?.disparadores);
     const presupuesto = presupuestoRapido(config);
+    const porTest = codigo.length > 0 ? nombradosPorTest(leerTests(grupos.todos), codigo) : new Map();
+    const nombran = [...porTest.keys()].sort();
     const sel = seleccion({
       relacionados: grupos.relacionados,
       siempre: grupos.siempre,
       disparados: delDisparador,
+      nombran,
       heredados,
       presupuesto,
       sinPresupuesto: process.env.TEST_RAPIDO_SIN_PRESUPUESTO === '1',
@@ -283,6 +361,7 @@ async function main() {
     console.log(`[test:rapido] relacionados por imports: ${grupos.relacionados.length}${sel.relacionadosFuera ? ` -> FUERA (presupuesto ${presupuesto})` : ''}`);
     console.log(`[test:rapido] gate.siempre (${siempre.join(', ')}): ${grupos.siempre.length}`);
     console.log(`[test:rapido] disparadores: ${delDisparador.length}${motivos.length ? `\n  ${motivos.join('\n  ')}` : ''}`);
+    console.log(`[test:rapido] nombran un archivo cambiado: ${nombran.length}${nombran.length ? `\n  ${nombran.map((t) => `${t}: nombra ${porTest.get(t).join(', ')}`).join('\n  ')}` : ''}`);
     if (sel.relacionadosFuera) {
       console.log(
         `[test:rapido] AVISO: ${grupos.relacionados.length} tests relacionados pasan del presupuesto (${presupuesto}): NO se corren en local.\n` +
