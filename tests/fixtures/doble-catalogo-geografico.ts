@@ -31,6 +31,15 @@ export interface OpcionesDelCatalogo {
   marcas?: readonly string[];
 }
 
+const TIPO_DEL_DOBLE: TipoDeNivel = {
+  id: "tipo-del-doble",
+  clave: "nivel_1",
+  nombreSingular: "Nivel 1",
+  nombrePlural: "Niveles 1",
+  digitosCodigo: null,
+  codigoHeredaPrefijo: false,
+};
+
 function nodoDelDoble(n: NodoDelDoble) {
   const nombre = n.nombre ?? n.id;
   return {
@@ -54,7 +63,10 @@ export function delegadosDelCatalogo(o: OpcionesDelCatalogo = {}) {
   for (const id of o.marcas ?? []) if (!porId.has(id)) porId.set(id, { id });
   return {
     organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: PAIS_DEL_DOBLE }) },
-    tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([]) },
+    // SLT-125 (A9): el tipo de los nodos del doble. Sin el, `rutaConTipos` (el `ubicacion_snapshot`
+    // del cierre) lanza `TipoDeNivelAusente`; los nodos del doble no tienen padre, asi que su ruta es
+    // de un paso y basta el nivel 1. Cambio de entrada: ninguna salida esperada cambia.
+    tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([TIPO_DEL_DOBLE]) },
     nodoGeografico: { findMany: vi.fn().mockResolvedValue([...porId.values()].map(nodoDelDoble)) },
     zonaNodo: { findMany: vi.fn().mockResolvedValue([]) }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: { findMany: vi.fn().mockResolvedValue([]) },

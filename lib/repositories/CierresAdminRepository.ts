@@ -48,6 +48,7 @@ import type {
   IngresoEmpresaDTO,
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
+import { leerUbicacionCongelada } from "@/lib/types/ubicacion-snapshot";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
@@ -250,6 +251,9 @@ export const DETALLE_ADMIN_SELECT = {
   provinciaNombre: true,
   cantonNombre: true,
   distritoNombre: true,
+  // SLT-125 (design §4.4; R24, R25): la ruta congelada al cerrar. NULL en las filas viejas que
+  // `geo:backfill` aun no relleno: entonces se leen las tres columnas de arriba.
+  ubicacionSnapshot: true,
   // Entradas de la formula del ingreso + la tarifa congelada (feature 69/R6/R8). El admin
   // ve el desglose completo (flete, IVA, comision) y de que tarifa salio, sin volver a
   // consultar datos VIVOS: el snapshot es la unica fuente (R14).
@@ -517,6 +521,9 @@ export function toPendienteRowDesdeSnapshot(
     provinciaNombre: d.provinciaNombre,
     cantonNombre: d.cantonNombre,
     distritoNombre: d.distritoNombre,
+    // SLT-125 (R24, R25): la ruta del snapshot o, sin el, de las tres columnas. Los tres campos de
+    // nombre de arriba siguen saliendo de las columnas, sin tocar (R37).
+    lugarRuta: leerUbicacionCongelada(d),
     producto: d.producto,
     // Ficha 396: el id CONGELADO (`d`, o sea `cierre_detail`), nunca el vivo de la orden. El
     // cierre ya existe: su verdad es la del snapshot (R6). Si la orden se re-apuntara manana a
@@ -903,6 +910,9 @@ export function toGestionDescargaDTO(
     provinciaNombre: d.provinciaNombre,
     cantonNombre: d.cantonNombre,
     distritoNombre: d.distritoNombre,
+    // SLT-125 (R24, R25): la ruta del snapshot o, sin el, de las tres columnas. Los tres campos de
+    // nombre de arriba siguen saliendo de las columnas, sin tocar (R37).
+    lugarRuta: leerUbicacionCongelada(d),
     producto: d.producto,
     tiendaNombre: d.tiendaNombre,
     // FICHA 385 — los intentos de LA TIENDA (`orden.intentos_contacto`), NO los del mensajero.

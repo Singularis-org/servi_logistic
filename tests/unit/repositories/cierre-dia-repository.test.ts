@@ -2049,6 +2049,7 @@ describe("Feature 69 — crearCierre puebla cierre_detail (R3-R9/R11)", () => {
       "provinciaNombre",
       "cantonNombre",
       "distritoNombre",
+      "ubicacionSnapshot",
     ];
     const tx = buildSnapshotTx([snapshotRow()]);
     const prisma = buildPrisma({

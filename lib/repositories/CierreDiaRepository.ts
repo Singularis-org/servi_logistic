@@ -42,7 +42,11 @@ import {
   type CatalogoPrismaClient,
 } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
-import { esZonaEspecial, nodo } from "@/lib/services/geografia-dominio";
+import { esZonaEspecial, nodo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
+// SLT-125 (design §4.3): la ruta del lugar con sus tipos, para el `ubicacion_snapshot` del cierre.
+import { lugarDeLaOrden } from "@/lib/repositories/_shared/lugar-orden";
+import { rutaConTipos, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
+import type { UbicacionSnapshotV1 } from "@/lib/types/ubicacion-snapshot";
 import {
   SELECT_REGISTRO_DE_CALLE,
   whereOrdenSinGestionPendiente,
@@ -380,6 +384,11 @@ export interface DescriptivosDeOrden {
   cantones: Map<string, { nombre: string; zonaEspecial: boolean }>;
   /** `zonaEspecial`: la marca de la EMPRESA de la transaccion (SL-38), ya resuelta a dos valores. */
   distritos: Map<string, { nombre: string; zonaEspecial: boolean }>;
+  /**
+   * SLT-125 (design §4.3): el catalogo ya cargado arriba, en esta misma transaccion. El snapshot de la
+   * ubicacion arma con el la ruta y sus tipos sin volver a la base: es la misma foto que dio los nombres.
+   */
+  catalogo: CatalogoGeografico;
 }
 
 /**
@@ -438,6 +447,7 @@ export async function leerDescriptivosDeOrdenes(
     provincias: new Map(enCatalogo(provinciaIds).map((p) => [p.id, { nombre: p.nombre }])),
     cantones: new Map(enCatalogo(cantonIds).map(conMarca)),
     distritos: new Map(enCatalogo(distritoIds).map(conMarca)),
+    catalogo,
   };
 }
 
@@ -451,12 +461,26 @@ export async function leerDescriptivosDeOrdenes(
  */
 function descriptivoDe<T>(mapa: Map<string, T>, id: string, tabla: string): T {
   const fila = mapa.get(id);
-  if (fila === undefined) {
-    throw new Error(
-      `snapshot del cierre: falta la fila de \`${tabla}\` con id ${id} dentro de la transaccion`,
-    );
-  }
+  if (fila === undefined) throw faltaDescriptivo(tabla, id);
   return fila;
+}
+
+function faltaDescriptivo(tabla: string, id: string): Error {
+  return new Error(`snapshot del cierre: falta la fila de \`${tabla}\` con id ${id} dentro de la transaccion`);
+}
+
+/**
+ * SLT-125 (design §2.1, §4.3; R21–R23) — la ubicacion de la fila con su forma v1 (SLT-43 §2.6).
+ *
+ * La ruta sale de `lugarDeLaOrden` y del catalogo de ESTA transaccion, como los nombres de las tres
+ * columnas: por eso el `nombre` de los niveles 1 a 3 es el mismo que va a `provincia_nombre`,
+ * `canton_nombre` y `distrito_nombre`. Una ruta vacia (lugar fuera del catalogo) lanza el mismo error
+ * que un nombre ausente, y el cierre entero se revierte (R23).
+ */
+function ubicacionDeLaFila(f: SnapshotRow, catalogo: CatalogoGeografico): UbicacionSnapshotV1 {
+  const ruta = rutaDelLugar(catalogo, f.orden);
+  if (ruta.length === 0) throw faltaDescriptivo("nodo_geografico", lugarDeLaOrden(f.orden));
+  return { v: 1, niveles: rutaConTipos(catalogo, ruta) };
 }
 
 /** La marca y los nombres que `crearCierre` congela en `cierre_detail` para una fila. */
@@ -468,6 +492,8 @@ export interface CongeladoDeLaFila {
   provinciaNombre: string;
   cantonNombre: string;
   distritoNombre: string | null;
+  /** SLT-125 (R21): la ruta del lugar con sus tipos en este instante; se escribe junto a los nombres. */
+  ubicacionSnapshot: UbicacionSnapshotV1;
 }
 
 /**
@@ -495,6 +521,7 @@ export function congeladoDeLaFila(f: SnapshotRow, descriptivos: DescriptivosDeOr
       f.orden.distritoId === null
         ? null
         : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
+    ubicacionSnapshot: ubicacionDeLaFila(f, descriptivos.catalogo),
   };
 }
 

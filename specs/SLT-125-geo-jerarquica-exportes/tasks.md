@@ -68,7 +68,7 @@
   sigue con `lugarDeLaOrden` (P1). Tests: `ubicacion-presentacion.test.ts`, `geo-columnas-n-niveles.test.ts` (la
   parte pura).
   **Hecho:** R1–R3, R7 y R11 en verde en unit, con países de 2, 3, 4 y 10 niveles.
-- [ ] **T2.2** Snapshot:
+- [x] **T2.2** Snapshot:
   - `lib/types/ubicacion-snapshot.ts` (esquema v1 y `leerUbicacionCongelada`);
   - la escritura en `CierreDiaRepository` (`congeladoDeLaFila`, `crearCierre`);
   - la lectura en `CierresAdminRepository`.

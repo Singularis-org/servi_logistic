@@ -256,6 +256,53 @@ pnpm exec vitest run guard --maxWorkers=2 → 1 failed | 334 passed | 3 skipped 
   - los 4 rojos son de dependencias-declaradas-presentes (ficha 420), en tests/baseline-rojos.json
 ```
 
+## T2.2 — Snapshot de la ubicación en el cierre (backend_dev, 2026-11-13)
+
+Código escrito por el subagente anterior y revisado aquí; se añade A9 y el cambio de entrada del doble.
+
+Archivos:
+- `lib/types/ubicacion-snapshot.ts` (nuevo): `ubicacionSnapshotV1Schema` (zod, forma de SLT-43 §2.6, `niveles`
+  con al menos uno) y `leerUbicacionCongelada` (snapshot v1 → sus niveles; si no, las 3 columnas sin vacías,
+  `id: null`; nunca nombra por id).
+- `lib/repositories/CierreDiaRepository.ts`: `DescriptivosDeOrden.catalogo` (el de la misma transacción);
+  `congeladoDeLaFila` suma `ubicacionSnapshot = { v: 1, niveles: rutaConTipos(cat, rutaDelLugar(cat, orden)) }`;
+  ruta vacía → el mismo error de descriptivo ausente (el cierre se revierte, R23).
+- `lib/repositories/CierresAdminRepository.ts`: `DETALLE_ADMIN_SELECT.ubicacionSnapshot`; `lugarRuta` con
+  `leerUbicacionCongelada` en `toPendienteRowDesdeSnapshot` y `toGestionDescargaDTO`.
+- `lib/services/CierreDiaService.ts` (`toDetalleDTO` pasa `lugarRuta`), y `lugarRuta?: Ruta` opcional en
+  `ICierreDiaRepository`, `ICierreDiaService` y `ICierresAdminService` (aditivo, R37).
+- Tests nuevos: `tests/unit/types/ubicacion-snapshot.test.ts`, `tests/integration/db/geo-125-cierre-snapshot.test.ts`.
+- A9: `"ubicacionSnapshot"` en `COLUMNAS_DEV` de `tests/unit/repositories/cierre-dia-repository.test.ts:2052`
+  y `tests/integration/db/cierre-detail-congelado.test.ts:691` (29 → 30). Nada más en esos tests.
+- Entrada: `tests/fixtures/doble-catalogo-geografico.ts` devuelve un tipo (`tipo-del-doble`, `nivel_1`) para
+  que `rutaConTipos` no lance; los nodos del doble no tienen padre (ruta de un paso).
+
+| R | Test |
+|---|---|
+| R21 | `geo-125-cierre-snapshot.test.ts` › «R21: cada fila nueva lleva {v:1, niveles}…»; `cierre-dia-repository.test.ts` y `cierre-detail-congelado.test.ts` (`COLUMNAS_DEV` con 30, A9) |
+| R22 | `geo-125-cierre-snapshot.test.ts` › «R22: en Costa Rica el snapshot … es igual al que escribe geo:backfill» |
+| R23 | `geo-125-cierre-snapshot.test.ts` › «R23: … el pais sin tipos de nivel, el cierre entero se revierte» y «R18: si el lugar … no esta en el catalogo…» |
+| R24 | `ubicacion-snapshot.test.ts` › «R24: con un snapshot v1 valido…» (5 casos, incluido país de 4 niveles e id nulo) |
+| R25 | `ubicacion-snapshot.test.ts` › «R25: sin snapshot o con uno que no cumple la v1…» |
+
+Salidas (con `env125.sh`, uno a uno, `--maxWorkers=1`; 152 archivos: los 26 que importan el doble, los de
+cierre/cierres-admin, los nuevos, A1 y A2):
+```
+ubicacion-snapshot.test.ts            16 passed (16)
+geo-125-cierre-snapshot.test.ts        4 passed (4)
+cierre-dia-repository.test.ts        116 passed (116)
+cierre-detail-congelado.test.ts        7 passed (7)
+geo-backfill.test.ts                  16 passed (16)   (A1, sin cambios)
+geo-sincronia-orden-zonas.test.ts     10 passed (10)   (A2, sin cambios)
+los 26 que importan doble-catalogo-geografico: 26/26 verdes
+total: 129 verdes, 23 rojos. Los 23 fallan en el arranque con «tabla `orden` vacia: corre `pnpm run db:seed`»
+  (la base logistic_slt125 no tiene semilla de órdenes ni usuarios): ambiental, no de este cambio. Son
+  454/caracterizacion/{confirmacion-fisica-238,tope-276}, 486-evidencias-cierres-sql-real y 20 cierre-*/
+  correccion-*/corte-diario-*/deshacer-*/emisor-* de tests/integration/db. No se sembró la base.
+pnpm run typecheck → exit 0
+pnpm exec eslint <12 archivos> → sin problemas
+```
+
 ## T2.4 — Geocodificación (backend_dev, 2026-11-12)
 
 Explorado con Grep/Read (el índice del grafo no tiene este worktree).
