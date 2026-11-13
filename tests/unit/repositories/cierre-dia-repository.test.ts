@@ -61,9 +61,9 @@ function detalleRow(overrides: Record<string, unknown> = {}) {
       producto: "Caja",
       tienda: { nombre: "Tienda X" },
       zona: { nombre: "Cartago" },
-      provincia: { nombre: "Cartago" },
-      canton: { nombre: "Central" },
-      distrito: { nombre: "Oriental" },
+      // SLT-125 (design §4.2): la vista en vivo lee las FK del lugar y nombra con el catalogo de la
+      // empresa (`CADENA_DEL_LUGAR`, en `buildPrisma`). Cambio de entrada: los nombres son los de antes.
+      cantonId: "c1",
       // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (`WITH_DETALLE_PENDIENTE`).
       distritoId: "d1",
       zonaId: "z1",
@@ -74,8 +74,17 @@ function detalleRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** SLT-125: el lugar de `detalleRow` en el catalogo del doble (Cartago · Central · Oriental). */
+const CADENA_DEL_LUGAR = [
+  { id: "p1", nombre: "Cartago" },
+  { id: "c1", padreId: "p1", nombre: "Central" },
+  { id: "d1", padreId: "c1", nombre: "Oriental" },
+];
+
 function buildPrisma(overrides: Record<string, unknown> = {}) {
-  return {
+  const prisma = {
+    // SLT-125 (design §4.2): la vista en vivo nombra el lugar con el catalogo de la empresa.
+    ...delegadosDelCatalogo({ nodos: CADENA_DEL_LUGAR }),
     gestionOrden: {
       findMany: vi.fn(),
       updateMany: vi.fn(),
@@ -115,6 +124,15 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     $transaction: vi.fn(),
     ...overrides,
   };
+  // SLT-125: la carga del catalogo de la vista en vivo lee en su propia transaccion (una foto). Sin un
+  // `$transaction` propio del caso, el doble la corre sobre si mismo; los casos de `crearCierre` siguen
+  // pasando el suyo.
+  if (!("$transaction" in overrides)) {
+    prisma.$transaction.mockImplementation(async (cb: unknown) =>
+      typeof cb === "function" ? (cb as (t: unknown) => unknown)(prisma) : cb,
+    );
+  }
+  return prisma;
 }
 
 // Feature 69/T10 (design §3.1) — doble del resolver de tarifa que `crearCierre` recibe por
@@ -334,7 +352,7 @@ describe("CierreDiaRepository.findGestionesPendientes (R2/R3)", () => {
         evidenciaStoragePath: null,
         pagoMensajero: null, // feature 39: aun sin cerrar / snapshot ausente
         ingresoBodegaRechazo: null, // feature 56: aun sin cerrar / snapshot ausente
-        orden: { ...detalleRow().orden, distrito: null },
+        orden: { ...detalleRow().orden, distritoId: null }, // SLT-125: sin distrito por su FK
       }),
     ]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());

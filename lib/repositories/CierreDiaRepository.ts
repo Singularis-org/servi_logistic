@@ -45,7 +45,7 @@ import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccio
 import { esZonaEspecial, nodo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
 // SLT-125 (design §4.3): la ruta del lugar con sus tipos, para el `ubicacion_snapshot` del cierre.
 import { lugarDeLaOrden } from "@/lib/repositories/_shared/lugar-orden";
-import { rutaConTipos, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
+import { nombresDeLaRuta, rutaConTipos, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import type { UbicacionSnapshotV1 } from "@/lib/types/ubicacion-snapshot";
 import {
   SELECT_REGISTRO_DE_CALLE,
@@ -299,7 +299,10 @@ type CierrePrismaClient = Pick<
   | "$transaction"
   // FICHA 477 (D2): el predicado de «orden en correccion» es SQL crudo (`findCorreccionesPendientes`).
   | "$queryRaw"
->;
+> &
+  // SLT-125 (design §4.2; R16): la vista en vivo nombra los lugares con el catalogo de la empresa, que
+  // lee sus propios modelos (`CatalogoGeograficoRepository`).
+  CatalogoPrismaClient;
 
 // Feature 69 (design §3, paso 5) — proyeccion del snapshot: TODO lo que `cierre_detail`
 // congela de la orden. Se lee DENTRO de la tx, de las gestiones que el `updateMany`
@@ -614,9 +617,11 @@ export const WITH_DETALLE = {
         tiendaId: true,
         tienda: { select: { nombre: true } },
         zona: { select: { nombre: true } },
-        provincia: { select: { nombre: true } },
-        canton: { select: { nombre: true } },
-        distrito: { select: { nombre: true } },
+        // SLT-125 (design §4.2; R16, R19): las FK del lugar (`lugarDeLaOrden`) y no las relaciones a las
+        // tablas viejas. Los nombres salen de la ruta del catalogo de la empresa (`toPendienteRow`).
+        // Ademas, una relacion hermana menos que Prisma lanzaria en paralelo (ficha 450).
+        cantonId: true,
+        distritoId: true,
       },
     },
   },
@@ -631,10 +636,14 @@ function decimalToString(d: Prisma.Decimal | null): string | null {
 
 // Mapper de la proyeccion WITH_DETALLE a la fila de dominio. Exportado para reuso
 // por CierresAdminRepository (feature 38).
+// SLT-125 (design §4.2; R16–R18): recibe el catalogo de la empresa, ya cargado una vez por peticion;
+// la ruta y los tres nombres de hoy salen de el, en memoria.
 export function toPendienteRow(
   row: DetalleRow,
   desdeAyudaTienda: boolean,
+  catalogo: CatalogoGeografico,
 ): CierreGestionPendienteRow {
+  const ruta = rutaDelLugar(catalogo, row.orden);
   return {
     gestionId: row.id,
     ordenId: row.ordenId,
@@ -647,9 +656,9 @@ export function toPendienteRow(
     destinatario: row.orden.destinatario,
     direccion: row.orden.direccion,
     zonaNombre: row.orden.zona.nombre,
-    provinciaNombre: row.orden.provincia.nombre,
-    cantonNombre: row.orden.canton.nombre,
-    distritoNombre: row.orden.distrito?.nombre ?? null,
+    ...nombresDeLaRuta(ruta),
+    // SLT-125 (design §6): la ruta, para la linea «Ubicacion» de la pantalla y la descarga (R7, R8).
+    lugarRuta: ruta,
     producto: row.orden.producto,
     // Ficha 396: el id VIVO, mismo criterio con el que la linea de abajo ya toma el NOMBRE vivo.
     tiendaId: row.orden.tiendaId,
@@ -718,9 +727,10 @@ type DetallePendienteRow = Prisma.GestionOrdenGetPayload<typeof WITH_DETALLE_PEN
 function toPendienteDeCierreRow(
   row: DetallePendienteRow,
   desdeAyudaTienda: boolean,
+  catalogo: CatalogoGeografico,
 ): GestionPendienteDeCierreRow {
   return {
-    ...toPendienteRow(row, desdeAyudaTienda),
+    ...toPendienteRow(row, desdeAyudaTienda, catalogo),
     distritoId: row.orden.distritoId,
     zonaOrdenId: row.orden.zonaId,
     montoCobrar: decimalToString(row.orden.montoCobrar),
@@ -1053,6 +1063,18 @@ export class CierreDiaRepository implements ICierreDiaRepository {
     private readonly tarifaRepo: ITarifaVigenteRepository,
   ) {}
 
+  // SLT-125 (design §4.2; R20): el catalogo de la empresa para nombrar los lugares de la vista en vivo,
+  // uno por instancia y creado al primer uso (la vida de la memoria es la de la peticion). El cierre
+  // (`crearCierre`) no lo usa: carga el suyo dentro de su transaccion (`leerDescriptivosDeOrdenes`).
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
+  /** SLT-125 (R18, R20, R40): el catalogo de la empresa, solo si hay filas que nombrar. */
+  private async catalogoParaNombrar(hayFilas: boolean): Promise<CatalogoGeografico | null> {
+    if (!hayFilas) return null;
+    this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma);
+    return (await this.catalogoRepo.deLaEmpresa()).catalogo;
+  }
+
   /**
    * 💰 Feature 237 (D6/R41) — ¿cuales de estas gestiones las registro LA TIENDA?
    *
@@ -1111,7 +1133,8 @@ export class CierreDiaRepository implements ICierreDiaRepository {
       ...WITH_DETALLE_PENDIENTE,
     });
     const deLaTienda = await this.marcarDesdeAyudaTienda(rows);
-    return rows.map((r) => toPendienteDeCierreRow(r, deLaTienda.has(r.id)));
+    const catalogo = await this.catalogoParaNombrar(rows.length > 0);
+    return catalogo === null ? [] : rows.map((r) => toPendienteDeCierreRow(r, deLaTienda.has(r.id), catalogo));
   }
 
   /**
@@ -1839,9 +1862,10 @@ export class CierreDiaRepository implements ICierreDiaRepository {
       }),
     ]);
     const deLaTienda = await this.marcarDesdeAyudaTienda(rows);
+    const catalogo = await this.catalogoParaNombrar(rows.length > 0);
     return {
       cierre: toCierrePasadoDTO(cierre),
-      gestiones: rows.map((r) => toPendienteRow(r, deLaTienda.has(r.id))),
+      gestiones: catalogo === null ? [] : rows.map((r) => toPendienteRow(r, deLaTienda.has(r.id), catalogo)),
       sinGestion: sinGestion.map(toSinGestionRow),
       sinGestionRegistrado: cierre.sinGestionRegistrado, // R27/R28
       rechazosDeTienda: rechazosDeTienda.map(toRechazoDeTienda), // FICHA 425: lista vacia, nunca null

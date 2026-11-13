@@ -22,6 +22,13 @@ const PAIS_DEL_DOBLE = "XX";
 export interface NodoDelDoble {
   id: string;
   nombre?: string;
+  /**
+   * SLT-125 (design §4.2): el padre del nodo, para que la ruta del lugar (`rutaDelLugar`) tenga sus
+   * niveles. Los listados nombran provincia, canton y distrito con esa ruta, asi que un doble que
+   * antes devolvia las tres relaciones en la fila ahora siembra aqui la cadena. Sin ningun padre en el
+   * doble, todo queda como antes (nodos sueltos de profundidad 3 y un solo tipo).
+   */
+  padreId?: string;
 }
 
 export interface OpcionesDelCatalogo {
@@ -40,13 +47,19 @@ const TIPO_DEL_DOBLE: TipoDeNivel = {
   codigoHeredaPrefijo: false,
 };
 
-function nodoDelDoble(n: NodoDelDoble) {
+/** SLT-125: el tipo del nivel k de un doble con cadena (`Nivel k`, como `catalogoEnMemoria`). */
+function tipoDeNivel(k: number): TipoDeNivel {
+  return { ...TIPO_DEL_DOBLE, id: `tipo-del-doble-${k}`, clave: `nivel_${k}`, nombreSingular: `Nivel ${k}`, nombrePlural: `Niveles ${k}` };
+}
+
+function nodoDelDoble(n: NodoDelDoble, profundidad: number | null) {
   const nombre = n.nombre ?? n.id;
   return {
     id: n.id,
-    padreId: null,
-    profundidad: 3,
-    tipoId: "tipo-del-doble",
+    padreId: n.padreId ?? null,
+    // Sin cadena en el doble: profundidad 3 y el tipo unico, como antes de SLT-125.
+    profundidad: profundidad ?? 3,
+    tipoId: profundidad === null ? "tipo-del-doble" : `tipo-del-doble-${profundidad}`,
     nombre,
     nombreNormalizado: nombre.toLowerCase(),
     codigoOficial: null,
@@ -61,13 +74,25 @@ export function delegadosDelCatalogo(o: OpcionesDelCatalogo = {}) {
     porId.set(nodo.id, nodo);
   }
   for (const id of o.marcas ?? []) if (!porId.has(id)) porId.set(id, { id });
+  // SLT-125: con alguna cadena, la profundidad sale de los padres y hay un tipo por nivel.
+  const conCadena = [...porId.values()].some((n) => n.padreId !== undefined);
+  const profundidad = (id: string): number => {
+    const padre = porId.get(id)?.padreId;
+    return padre === undefined ? 1 : 1 + profundidad(padre);
+  };
+  const nodos = [...porId.values()].map((n) => nodoDelDoble(n, conCadena ? profundidad(n.id) : null));
+  const maxima = Math.max(1, ...nodos.map((n) => n.profundidad));
   return {
     organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: PAIS_DEL_DOBLE }) },
     // SLT-125 (A9): el tipo de los nodos del doble. Sin el, `rutaConTipos` (el `ubicacion_snapshot`
-    // del cierre) lanza `TipoDeNivelAusente`; los nodos del doble no tienen padre, asi que su ruta es
-    // de un paso y basta el nivel 1. Cambio de entrada: ninguna salida esperada cambia.
-    tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([TIPO_DEL_DOBLE]) },
-    nodoGeografico: { findMany: vi.fn().mockResolvedValue([...porId.values()].map(nodoDelDoble)) },
+    // del cierre) lanza `TipoDeNivelAusente`. Sin cadena, la ruta es de un paso y basta el nivel 1; con
+    // cadena, un tipo por nivel. Cambio de entrada: ninguna salida esperada cambia.
+    tipoNivelGeografico: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue(conCadena ? Array.from({ length: maxima }, (_, i) => tipoDeNivel(i + 1)) : [TIPO_DEL_DOBLE]),
+    },
+    nodoGeografico: { findMany: vi.fn().mockResolvedValue(nodos) },
     zonaNodo: { findMany: vi.fn().mockResolvedValue([]) }, // SLT-89: la carga del catalogo lee tambien `zona_nodo` (vacia)
     zonaDistrito: { findMany: vi.fn().mockResolvedValue([]) },
     distritoZonaEspecial: {

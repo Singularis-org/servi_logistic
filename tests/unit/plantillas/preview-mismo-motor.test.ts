@@ -28,6 +28,7 @@ import {
   renderPlantilla,
 } from "@/lib/utils/plantilla-mensaje";
 import { OrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { datosPlantillaDesdeAsignacion } from "@/lib/utils/whatsapp-envio-valores";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
@@ -137,9 +138,10 @@ const FILA_DE_LA_ORDEN = {
     sinpeNumero: SINPE_DE_LA_ORDEN.numero,
     sinpeNombre: SINPE_DE_LA_ORDEN.nombre,
   },
-  provincia: { nombre: "San Jose" },
-  canton: { nombre: "San Jose" },
-  distrito: { nombre: "Carmen" },
+  // SLT-125 (design §4.2): el lector selecciona las FK del lugar y nombra con el catalogo de la
+  // empresa (`CATALOGO_DE_LA_ORDEN`, abajo), con los mismos nombres. Cambio de entrada.
+  cantonId: "c-sj",
+  distritoId: "d-carmen",
   mensajeroAsignado: {
     id: "m-1",
     nombre: "Jose",
@@ -158,6 +160,15 @@ const FILA_DE_LA_ORDEN = {
     },
   },
 };
+
+/** SLT-125: la cadena del lugar de la orden en el catalogo del doble (San Jose · San Jose · Carmen). */
+const CATALOGO_DE_LA_ORDEN = delegadosDelCatalogo({
+  nodos: [
+    { id: "p-sj", nombre: "San Jose" },
+    { id: "c-sj", padreId: "p-sj", nombre: "San Jose" },
+    { id: "d-carmen", padreId: "c-sj", nombre: "Carmen" },
+  ],
+});
 
 /** EL MISMO pedido, tal como lo tiene en la mano la pantalla del mensajero. */
 const DTO_DE_LA_MISMA_ORDEN: MiAsignacionDTO = {
@@ -196,6 +207,7 @@ describe("429/R16 — el mismo pedido, el mismo texto por los dos caminos", () =
   it("⭑ el servidor y el dispositivo producen el MISMO texto, caracter a caracter", async () => {
     const reader = new OrdenEnvioReader({
       orden: { findFirst: vi.fn().mockResolvedValue(FILA_DE_LA_ORDEN) },
+      ...CATALOGO_DE_LA_ORDEN,
     } as unknown as ConstructorParameters<typeof OrdenEnvioReader>[0]);
 
     const delServidor = await reader.findParaEnvio("o-1", "m-1");

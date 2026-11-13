@@ -24,6 +24,45 @@ export function rutaDelLugar(
   return [...ancestros(cat, lugar.id).reverse(), lugar].map((n) => ({ id: n.id, nombre: n.nombre }));
 }
 
+/** Los pasos de los niveles 1, 2 y 3 de una ruta; `null` donde la ruta no llega. */
+export interface TresPrimerosNiveles {
+  provincia: PasoDeRuta | null;
+  canton: PasoDeRuta | null;
+  distrito: PasoDeRuta | null;
+}
+
+/**
+ * SLT-125 (design §4.2; R16, R17, R18, R37) — los campos de nombre de hoy (`provincia`, `canton`,
+ * `distrito`) salen de la ruta del catalogo y no de las relaciones de Prisma a las tablas viejas.
+ *
+ * Los DTO conservan su forma (R37): el nivel k de la ruta va al campo de hoy del nivel k. Con la cadena
+ * coherente son los mismos nombres que daban las tablas viejas (R17); una orden sin distrito tiene una
+ * ruta de dos pasos y su distrito sale `null`, como hoy. Un lugar fuera del catalogo da `[]` y los tres
+ * salen `null`: la superficie no falla (R18).
+ */
+export function tresPrimerosNiveles(ruta: readonly PasoDeRuta[]): TresPrimerosNiveles {
+  return { provincia: ruta[0] ?? null, canton: ruta[1] ?? null, distrito: ruta[2] ?? null };
+}
+
+/**
+ * SLT-125 (R18, R37) — los tres nombres de hoy de una ruta, con la forma de los DTO que los llevan:
+ * provincia y canton son `string` y salen `""` (vacio) si la ruta no llega; el distrito es nullable,
+ * como hoy, y sale `null`. Cambiar el tipo de los dos primeros a nullable cambiaria la forma de los DTO
+ * y de sus lectores (R37), y R18 pide nombres vacios, no un fallo.
+ */
+export function nombresDeLaRuta(ruta: readonly PasoDeRuta[]): {
+  provinciaNombre: string;
+  cantonNombre: string;
+  distritoNombre: string | null;
+} {
+  const { provincia, canton, distrito } = tresPrimerosNiveles(ruta);
+  return {
+    provinciaNombre: provincia?.nombre ?? "",
+    cantonNombre: canton?.nombre ?? "",
+    distritoNombre: distrito?.nombre ?? null,
+  };
+}
+
 /** k de una clave `nivel_<k>`, o `null` si no lo es. */
 function profundidadDeClave(clave: string): number | null {
   const m = /^nivel_(\d+)$/.exec(clave);

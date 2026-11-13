@@ -10,11 +10,17 @@
 // tocar el timbre. Si una plantilla no puede nombrar un dato, ese dato no tiene por que salir
 // de la base.
 import type { PrismaClient } from "@prisma/client";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { nombresDeLaRuta, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import type { DatosPlantilla } from "@/lib/types/plantilla-datos";
 import { resolverSinpeBodega } from "@/lib/utils/sinpe-bodega";
 import { negocioConSinpe } from "@/lib/utils/whatsapp-envio-valores";
 
-type OrdenPrismaClient = Pick<PrismaClient, "orden">;
+// SLT-125 (design §4.2): mas los modelos del catalogo, que nombra el lugar de la orden.
+type OrdenPrismaClient = Pick<PrismaClient, "orden"> & CatalogoPrismaClient;
 
 export interface IOrdenEnvioReader {
   /** Datos de envio de la orden si esta vigente y asignada a `mensajeroId`; `null` si no. */
@@ -22,7 +28,14 @@ export interface IOrdenEnvioReader {
 }
 
 export class OrdenEnvioReader implements IOrdenEnvioReader {
+  // SLT-125 (R20): el catalogo de la empresa, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: OrdenPrismaClient) {}
+
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
 
   async findParaEnvio(ordenId: string, mensajeroId: string): Promise<DatosPlantilla | null> {
     const row = await this.prisma.orden.findFirst({
@@ -59,9 +72,10 @@ export class OrdenEnvioReader implements IOrdenEnvioReader {
         // EXISTIA. Cero consultas nuevas: son dos columnas mas de una relacion que este metodo ya
         // traia para `{{zona}}`.
         zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
-        provincia: { select: { nombre: true } },
-        canton: { select: { nombre: true } },
-        distrito: { select: { nombre: true } },
+        // SLT-125 (design §4.2; R16, R19): las FK del lugar (`lugarDeLaOrden`), no las relaciones a las
+        // tablas viejas; los nombres de `{{provincia}}`…`{{ubicacion}}` salen de la ruta del catalogo.
+        cantonId: true,
+        distritoId: true,
         mensajeroAsignado: {
           select: {
             id: true,
@@ -83,6 +97,10 @@ export class OrdenEnvioReader implements IOrdenEnvioReader {
     });
     if (row === null) return null;
 
+    // El catalogo de la empresa del contexto (R40): en plataforma lanza `EmpresaNoResuelta`; un lugar
+    // fuera de el deja la ruta vacia y los nombres vacios, sin fallar el envio (R18).
+    const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
+    const ruta = rutaDelLugar(catalogo, row);
     const m = row.mensajeroAsignado;
     return {
       orden: {
@@ -109,9 +127,10 @@ export class OrdenEnvioReader implements IOrdenEnvioReader {
         downloadUrl: row.downloadUrl,
         tiendaNombre: row.tienda.nombre,
         zonaNombre: row.zona.nombre,
-        provinciaNombre: row.provincia.nombre,
-        cantonNombre: row.canton.nombre,
-        distritoNombre: row.distrito?.nombre ?? null,
+        ...nombresDeLaRuta(ruta),
+        // SLT-125 (design §4.2, §4.6): la ruta llena `{{nivel_k}}` y `{{ubicacion}}` (R28, R29). Es el
+        // hueco que T2.5 dejo abierto: hasta aqui el envio resolvia solo con los tres nombres.
+        lugarRuta: ruta,
       },
       mensajero: {
         id: m?.id ?? null,
