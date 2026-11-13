@@ -82,7 +82,7 @@
 
 ## T5 — E2E (frontend_dev) · depende de T3 y T4
 
-- [ ] **T5.1** Describe de SLT-141 en `e2e/cierres-rediseno.spec.ts` (`design.md > Verificación > E2E`).
+- [x] **T5.1** Describe de SLT-141 en `e2e/cierres-rediseno.spec.ts` (`design.md > Verificación > E2E`).
   Si el escenario no tiene un cierre de bodega nuevo y uno viejo en «Conciliados», se amplía
   `e2e/_escenarios/cierres.ts` sin cambiar lo que leen los describes de SLT-113 y SLT-140.
   **Hecho:** verde en local (base desechable, `NEXT_PUBLIC_APP_URL` como en `gate.yml`); rojo con el

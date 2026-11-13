@@ -379,3 +379,58 @@ Comando: `npx vitest run <test>` con `DATABASE_URL` de la desechable `slt141_wt`
 ### Veredicto
 
 T4.1 y T4.2 hechas: libro de bodega en las tres descargas, verde, con M5 en rojo real y revertida. Abierto: «Destino» sin el nombre de la zona central.
+
+## Tanda 5 — frontend_dev: T5.1 (2026-11-13)
+
+MCP del grafo: no usado; Grep/Read sobre el worktree. Sin `app/` ni `lib/` tocados (`git diff --stat app/ lib/` vacío).
+
+### Archivos
+
+- `e2e/cierres-rediseno.spec.ts`: describe «SLT-141 — el «Resumen» de «Conciliados» (bodega) con un cierre viejo y
+  uno nuevo» + `ENCABEZADOS_CIERRES_BODEGA_CENTRAL` (26, literal a mano). BV = el escenario de SLT-107 (9.000 +
+  rechazo, debe llegar 7.000); BN = B6 de SLT-104 activado en la satélite después de consolidar BV. Los dos se
+  concilian por lo que debían. Se leen con ExcelJS las hojas, los encabezados de «Cierres», la fila de BN (Debe
+  llegar 7.680, Le queda 780, Recaudado 10.000, Gana la tienda 6.497, Pago 2.200, Pago a la satélite 120, Total
+  facturado 3.503, IVA 403, Gestiones 1, Cierres incluidos 1, Recibido 7.680, Falta 0, Estado «Recibido»), «Por
+  tienda» (folio de BN, 10.000 · 6.497 · 6.497) y «Cierres modelo anterior» (solo BV: Total general 9.000).
+- `e2e/_escenarios/cierres.ts`: nuevo `conciliarCierreBodega(r, id, monto)` (`marcarRecibida` con el maestro, como
+  `lib/actions/conciliacion-satelites.ts`). Nada de lo que leen SLT-113 ni SLT-140 cambia.
+- `specs/SLT-141-excel-hojas-cierre-bodega/tasks.md`: T5.1 marcada.
+
+### Mapa R → test (E2E)
+
+| R | Test |
+|---|---|
+| R384, R385 | describe SLT-141: nombres de hoja en orden; BN solo en «Cierres», BV solo en «Cierres modelo anterior» |
+| R386 | ídem: encabezados de la central (26, con «Pago entregado») y «Por tienda» |
+| R387 | ídem: importes como número (7.680, 780, …) |
+| R388 | ídem: folio (`id.slice(-8)` en mayúsculas), Bodega, Destino, Estado, Recibido / Falta por recibir |
+
+### Comandos y salida real
+
+Base desechable `slt141_e2e` (crear-base.sh: DROP/CREATE + migrate deploy + db:seed) recreada antes de la
+corrida 1; `DATABASE_URL` de esa base, `NODE_OPTIONS=--max-old-space-size=8192`,
+`NEXT_PUBLIC_APP_URL=http://localhost:3044`; `pnpm exec next build` (sin `prisma generate`) → BUILD_EXIT=0.
+
+- `E2E_PUERTO=3044 pnpm exec playwright test e2e/cierres-rediseno.spec.ts --project=dinero --reporter=list`
+  - corrida 1: `20 passed (1.5m)`, E2E_EXIT=0 (0 failed / 0 skipped / 0 flaky)
+  - corrida 2 (misma base): `20 passed (1.6m)`, E2E_EXIT=0 (0 failed / 0 skipped / 0 flaky)
+- Primer intento del describe: rojo de la fábrica por el slug (`e2e-cierres-resumen-bodega-modelo--…`, truncado
+  en guion → `invalida`); escenario renombrado a `cierres-bodega-resumen-nuevo`. No es de la app.
+
+### Mutación (rojo real → verde)
+
+- M9: `CierresBodegaResueltosLista.tsx` sin `obtenerFilasConColumnas` (y sin su import): «Conciliados» no usa el
+  libro. Rebuild → `-g "SLT-141"`: `1 failed`, E2E_EXIT=1, `Expected ["Cierres","Por tienda","Cierres modelo
+  anterior"]` · `Received ["Cierres de bodega resueltos"]`.
+- `git checkout --` del archivo, rebuild → `1 passed (18.7s)`, E2E_EXIT=0. `git diff --stat app/ lib/` vacío.
+
+### Verificación de la tanda
+
+- `pnpm exec eslint e2e/cierres-rediseno.spec.ts e2e/_escenarios/cierres.ts` → LINT_EXIT=0.
+- `pnpm run typecheck` → TC_EXIT=0.
+- Puertos 3044 y 54329 libres al terminar.
+
+### Veredicto
+
+T5.1 hecha: E2E de SLT-141 verde dos veces seguidas (20/20) y rojo real con el libro desactivado.
