@@ -408,7 +408,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D69 — Sin fábrica de dobles de `ICierresAdminRepository`
 - **Origen:** SLT-113, SLT-140 y SLT-141 (2026-11-12/13). Cada método nuevo del repositorio obliga a tocar 12-13 archivos de test con dobles escritos a mano.
 - **Qué falta:** una fábrica de dobles única en `tests/` que los tests extiendan.
-- **Dueño:** ArqDev.
+- **Cerrada en SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13):** los 24 dobles a mano pasan a `tests/fixtures/dobles/cierres-admin-repository.ts`; un método nuevo del interfaz rompe en un solo sitio (la fábrica) y la guardia `dobles-cierres-admin-a-mano` impide volver a escribirlos a mano (R430-R439). Quedan fuera los dobles de `ICierreDiaRepository` e `ICierreBodegaRepository`.
+- **Dueño:** cerrada.
 
 ### D70 — Voseo fuera del módulo de cierres
 - **Origen:** SLT-134 «Textos de pantalla de cierres en tú, con guardia», decisiones P1 y P2 de Carlos (2026-11-12): `ErrorState` (toda la app) y `estado-cuenta-labels` (`/mi-wallet`) quedaron fuera de su alcance.
