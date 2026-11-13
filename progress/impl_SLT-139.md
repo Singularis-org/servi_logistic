@@ -312,3 +312,6 @@ Salidas: `tsc --noEmit` (8 GB) sin errores; `eslint` de los 4 archivos tocados: 
 `slt139_satelite`: 24 archivos, 498/498, 0 saltados. `tamano-pr.mjs`: 45/40 archivos, 2545 líneas (aceptado ≤ 45).
 
 Veredicto: m1 y m2 cerrados con 4/4 mutaciones matadas; T12.2 marcada, T12.1 queda al leader.
+
+## Gate del leader (2026-11-12)
+- Tras `npx prisma generate` desde este worktree (22:08:27), `./init.sh` con la base slt139_satelite: `INIT_EXIT=0` (log `scratchpad/gate-139b.log`). La corrida anterior (21:44) cayó por un worker de vitest muerto por carga, no por un test.
