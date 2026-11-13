@@ -151,7 +151,7 @@ const HASTA_LABEL = "Hasta";
  * quien pulse «Hoy» y quiera volver a «todo» tendría que adivinar.
  */
 const RANGO_AYUDA =
-  "Recorta por la fecha de solicitud del cierre. Vacías no recortan nada: se lleva todo el historial de los mensajeros elegidos. Vaciá una fecha para quitar ese extremo, o «Limpiar» para quitar las dos.";
+  "Recorta por la fecha de solicitud del cierre. Vacías no recortan nada: se lleva todo el historial de los mensajeros elegidos. Vacía una fecha para quitar ese extremo, o «Limpiar» para quitar las dos.";
 /** Atajo al caso diario (ficha 384): el cierre del día de toda la flota, en un clic. */
 const HOY_LABEL = "Hoy";
 /**
@@ -171,7 +171,7 @@ const CERRAR_LABEL = "Cerrar";
 
 /** R39: el aviso accionable de confirmar sin nadie elegido. No se llama al servidor. */
 const MENSAJE_SIN_MENSAJERO =
-  "Elegí al menos un mensajero para descargar sus gestiones. Sin mensajeros no hay archivo.";
+  "Elige al menos un mensajero para descargar sus gestiones. Sin mensajeros no hay archivo.";
 /** R32: el rango invertido se corta acá; el borde lo vuelve a rechazar con su schema. */
 const MENSAJE_RANGO_INVERTIDO =
   "El rango de fechas está invertido: «Desde» tiene que ser anterior o igual a «Hasta».";
@@ -192,9 +192,9 @@ const MENSAJE_RANGO_INVERTIDO =
  * filtraría información sobre el alcance ajeno.
  */
 const MENSAJE_SIN_DATOS_EN_RANGO =
-  "No hay gestiones de cierre en el rango de fechas elegido para esos mensajeros. Ampliá el rango o vaciá las fechas y volvé a intentarlo.";
+  "No hay gestiones de cierre en el rango de fechas elegido para esos mensajeros. Amplía el rango o vacía las fechas y vuelve a intentarlo.";
 const MENSAJE_SIN_DATOS =
-  "Los mensajeros elegidos no tienen gestiones de cierre. Elegí otros mensajeros y volvé a intentarlo.";
+  "Los mensajeros elegidos no tienen gestiones de cierre. Elige otros mensajeros y vuelve a intentarlo.";
 
 export interface DescargarGestionesDialogProps {
   /** Opciones YA acotadas al alcance del actor, resueltas en el servidor (R29). */
