@@ -99,7 +99,7 @@ function audienciaSenales(audiencia: AudienciaDescargaGestionesFundida): Audienc
   return audiencia === "admin" ? "central" : "satelite";
 }
 
-/** «Monto fijo ₡3.500 · grupo «San José centro» de la zona Centro»: las piezas de «Ver cómo se calculó». */
+/** «Monto fijo <importe> · grupo «San José centro» de la zona Centro»: las piezas de «Ver cómo se calculó». */
 function textoTarifa(t: ConceptoTarifaDTO | PagoPorTarifaDTO): string {
   // El texto se arma con los strings tal cual. La plantilla (`${…}`) no cambia un string; está para
   // que la sonda de la guardia de datos sensibles (un Proxy) llegue al texto como su marcador.

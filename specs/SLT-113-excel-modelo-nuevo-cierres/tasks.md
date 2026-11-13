@@ -133,9 +133,12 @@
 - [ ] **T6.1** `./init.sh` verde con `INIT_EXIT` anotado; E2E `cierres-rediseno` entero y grupo
   `dinero` (`pnpm exec playwright test --project=dinero`) verdes en local. **Hecho:** salidas en
   `progress/impl_SLT-113.md`.
-- [ ] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA7 escrita por el leader en
+- [x] **T6.2** Si el gate avisa del tamaño en líneas, la decisión de PA7 escrita por el leader en
   `progress/features/SLT-113.md`. **Hecho:** línea `tamano-pr-aceptado` presente o PA7 resuelta de
-  otro modo.
+  otro modo. **Evidencia (review 1):** `tamano-pr-aceptado` en `progress/features/SLT-113.md:26`
+  (hasta 52 archivos); medido tras el merge de origin/dev: 51 archivos. E2E en local con base
+  desechable nueva `slt113_e2e_r1`: grupo `dinero` 107/107 y `cierres-rediseno` 18/18
+  (`progress/impl_SLT-113.md > Arreglos review 1`).
 - [ ] **T6.3** Anotar en `progress/features/SLT-113.md` lo que heredan SLT-140 «Excel del modelo nuevo:
   hojas por cierre de mensajeros» y SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega»: el
   `libro` del control, `tituloHoja`, `folioCierre` y el criterio de R371. **Hecho:** líneas escritas.

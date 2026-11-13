@@ -321,8 +321,10 @@ se para y se reporta):
 - B: flete de no entregadas 1500.00, IVA 195.00; `total` 1695.00; `ivaIncluido` 195.00;
   `pagoPorTarifa` null; `tarifaFaltante` true.
 - C: `cierreModelo` viejo; `fulfillmentCargadoDia` null; `pagoPorTarifa` null.
-- Rechazos con el alcance de la central y sin rango: [R1]; con S: [R1]; con un rango que deja fuera
-  N3: R4 no está; R2, R3 (para S) y R5 no salen nunca. R1: Folio «ABCD1234», fecha «2026-11-05».
+- Rechazos: con el alcance de la central, [R6]; con S sin rango, [R1, R4]; con S y noviembre (rango
+  que deja fuera N3), [R1]; con el de bodega, [R1]. R2, R3, R5 y R7 no salen nunca. R1: Folio
+  «ABCD1234», fecha «2026-11-05». Por qué: `alcanceWhere` da a la central solo `bodega_central` y a la
+  satélite solo su zona; los dos alcances son disjuntos (corregido en la review vuelta 1, H3).
 - Paridad (R374): para A y B, `ingresoEmpresa`, `pagoPorTarifa`, `ajustesPago` y `tarifaFaltante`
   de la descarga son `toEqual` a los de `findCierreByIdEnAlcance` sobre N1.
 - Con solo V1 en el conjunto: ninguna consulta a `orden_fulfillment_movimiento`. Durante toda la

@@ -1186,8 +1186,8 @@ test.describe.serial("SLT-113 — el «Detalle» de /cierres-admin con un cierre
     test.setTimeout(300_000);
     r = await crearEscenarioReparto("cierres-excel-modelo-nuevo", { tarifa: TARIFA_A, tarifaMensajero: PAGO_A });
     const viejo = await crearMensajero(r, "central");
-    entregaVieja = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 20000 }), "en_reparto", { mensajero: viejo });
-    await gestionar(r, entregaVieja, viejo, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 20000 }] });
+    entregaVieja = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 18000 }), "en_reparto", { mensajero: viejo });
+    await gestionar(r, entregaVieja, viejo, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 18000 }] });
     await solicitarCierre(r, viejo);
 
     const page = await paginaDe(browser, r.empresa.maestro);

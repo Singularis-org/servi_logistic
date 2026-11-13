@@ -261,3 +261,47 @@ Tests:
 T1, T4 y T5 hechas: libro de tres hojas en el «Detalle» con el archivo viejo idéntico, 6/6 mutaciones
 matadas y E2E verde; para el leader, las desviaciones 1 y 2 (módulo partido por la guardia y rótulo de
 R65 en el flete de no entregadas).
+
+## Arreglos review 1 · frontend_dev · 2026-11-12
+
+Antes: `git pull --ff-only` (al día), `git fetch`, árbol limpio; `origin/dev` había avanzado (SLT-112
+«ganancia del mensajero en servidor») y se mergeó sin conflictos.
+
+### Archivos
+- `e2e/cierres-rediseno.spec.ts` (H1): el monto del cierre viejo pasa de 20000 a 18000 (`montoCobrar` y
+  el pago en efectivo). 20000 es `UMBRAL_AVISO_FILAS_CORRIDA` y R47 (b) de `rollup-guards` lo prohíbe
+  fuera de `lib/config/analitica-rollup.ts`. 18000 no es ninguna constante del código (grep: solo
+  ejemplos de OpenAPI y fixtures de tests). Ningún otro literal del E2E dependía de él: del cierre viejo
+  solo se afirma que su guía va en «Gestiones modelo anterior» y no en «Gestiones».
+- `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (H5): el
+  comentario de `textoTarifa` dice «Monto fijo <importe> · …» en vez de un literal de moneda.
+- `specs/SLT-113-excel-modelo-nuevo-cierres/design.md` (H3): corpus de rechazos alineado con el test —
+  central [R6]; satélite S [R1, R4] sin rango y [R1] con noviembre; bodega [R1]; nunca R2, R3, R5, R7 —
+  con el porqué (`alcanceWhere`: la central solo ve `bodega_central`, la satélite su zona).
+- `specs/SLT-113-excel-modelo-nuevo-cierres/tasks.md`: T6.2 `[x]` con evidencia. T6.1 y T6.4 quedan
+  para el leader.
+
+### Salidas
+- `vitest run tests/unit/analytics/rollup-guards.test.ts`: 21 passed (21), EXIT=0.
+- `pnpm run test:guardias` (`DATABASE_URL` → `slt113_excel`): Test Files 1 failed | 343 passed (344);
+  Tests 4 failed | 4854 passed | 1 skipped. Los 4 rojos, todos de
+  `dependencias-declaradas-presentes.guardia.test.ts` (baseline). EXIT=1 solo por esa baseline.
+- `eslint` de los dos archivos de código tocados: EXIT=0.
+- `tsc --noEmit` (con 8 GB; con el default se queda sin memoria): 4 errores, los ajenos conocidos del
+  enum `pago_satelite` (SLT-139) en `EstadoCuentaRepository.ts` (2), `PagoMensajeroMovimientoRepository.ts`
+  y `wallet-mensajero.ts`. Ninguno en archivos de esta feature.
+- E2E (candado `e2e.lock` tomado 21:56:12, liberado 22:08:06; puerto 3000; base desechable NUEVA
+  `slt113_e2e_r1`; `NEXT_PUBLIC_APP_URL=http://localhost:3000`; sin `demo-qa`):
+  - `prisma generate` 21:56:46→21:56:54; `migrate deploy` verde; `db:seed` verde.
+  - Primer `next build`: ROJO por los tipos de `pago_satelite`: otra sesión (SLT-139) regeneró el
+    cliente compartido a las 21:57:14, entre mi generate y mi build.
+  - Segundo `prisma generate` 21:59:37→21:59:45 (cliente sin `pago_satelite`) y `next build` inmediato:
+    verde, 22:01:53. Durante el build, otra sesión volvió a regenerar el cliente (22:00:25, con
+    `pago_satelite`). La única diferencia estructural entre los dos esquemas es ese valor del enum (diff
+    normalizado), así que el runtime de `next start` no cambia para esta base.
+  - `playwright test --project=dinero` 22:02:17→22:07:50: **107 passed**, EXIT=0. Dentro,
+    `cierres-rediseno.spec.ts` **18/18** (el `--list` del archivo da 18), con el test de SLT-113 verde.
+- Tamaño tras el merge: 51 archivos, +4300 −79 contra `origin/dev` (aceptado hasta 52).
+
+### Veredicto
+H1, H3 y H5 cerradas; guardias solo con la baseline; `dinero` 107/107 y `cierres-rediseno` 18/18 en local.
