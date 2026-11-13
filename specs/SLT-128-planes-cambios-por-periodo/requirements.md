@@ -317,7 +317,7 @@
 
 ## Preguntas abiertas
 
-Ninguna. P13–P15 cerradas por el humano el 2026-11-12 (filas de «Decisiones cerradas»).
+Ninguna. P13–P17 cerradas por el humano el 2026-11-12 (filas de «Decisiones cerradas»).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -352,3 +352,5 @@ Ninguna. P13–P15 cerradas por el humano el 2026-11-12 (filas de «Decisiones c
 | 2026-11-12 | P14 · ¿Migración editada o nueva? | **Se edita la existente** `20261114120000_plan_cambio_por_empresa` (humano): no está en `dev` y solo corrió en bases desechables del CI. |
 | 2026-11-12 | P15 · ¿R29 también al cancelar y al salir? | **Sí, en los cuatro casos**: mover la recepción, reemplazar el pendiente, cancelarlo y la empresa que sale del plan (humano). |
 | 2026-11-12 | Tamaño tras la review | Se aceptan **hasta 40 archivos**, `.env.example` incluido si hace falta (humano). |
+| 2026-11-12 | P16 · Precio tras promover con una empresa «no aplicada» (R28) | **Se acepta como residuo** (humano): el historial de precio es por plan, así que la empresa con la recepción no aplicada también paga el precio nuevo desde F. Límite conocido; el superadmin lo corrige a mano tras el correo de R28. |
+| 2026-11-12 | P17 · Texto del correo de R28 | **Se acepta** (humano): «El cambio del plan <plan> previsto para el <fecha> no se aplicó a <empresa>.», fecha como «1 dic 2026» en la hora de la plataforma. |
