@@ -136,9 +136,9 @@ Cada una siembra con el fixture de T3.5 y, donde afirma la deuda tras pagar, con
 
 ## T7 — E2E (depende de T4 y T5)
 
-- [ ] **T7.1** `e2e/pago-plataforma-confirmacion.spec.ts` (design §9) y su proyecto en `playwright.config.ts`.
+- [x] **T7.1** `e2e/pago-plataforma-confirmacion.spec.ts` (design §9) y su proyecto en `playwright.config.ts`.
   **Hecho:** verde en local con una base desechable nueva (R30).
-- [ ] **T7.2** `e2e/pago-plataforma-sl45.spec.ts` al día: siembra, la región no baja al pagar, y los literales
+- [x] **T7.2** `e2e/pago-plataforma-sl45.spec.ts` al día: siembra, la región no baja al pagar, y los literales
   de R35, R36 y R37. **Hecho:** verde.
 - [ ] **T7.3** Correr el grupo `dinero` entero, `e2e/wallet.spec.ts` y `e2e/dos-empresas-humo.spec.ts`
   (`docs/perfil-agentes.md`). **Hecho:** verde, con la salida anotada en `progress/impl_SLT-60.md`.

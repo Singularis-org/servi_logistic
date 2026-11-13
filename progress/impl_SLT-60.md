@@ -652,3 +652,13 @@ Siglas: **INT** = `tests/integration/db/pago-plataforma-confirmacion.test.ts`; *
 | R36 | `tests/unit/services/wallet-egreso-service.test.ts` «R9, SLT-60 R36…»; `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx` «R9, SLT-60 R36…»; E2E paso 2 |
 | R37 | `tests/unit/components/wallet-conceptos-manuales.test.ts` «cada concepto tiene su frase…» y «R6: sus dos frases…»; `tests/components/WalletDeudaPlataformaSL45.test.tsx` «R4: …»; `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx` «las siete frases de la 461…» |
 | R38 | `tests/unit/asistente/contexto-sl45.test.ts` «SLT-60 R38, …» (3 casos) |
+
+## T7 (E2E) — leader, 2026-11-13
+
+- Primera corrida completa (frontend_dev, base `servi_logistic_slt60_e2e` recreada): grupo `dinero` entero,
+  incluido `e2e/pago-plataforma-confirmacion.spec.ts`: «111 passed (10.2m)». `dos-empresas-humo` + sl40 + sl45:
+  «27 passed (2.6m)». 0 failed, 0 skipped y 0 flaky.
+- Segunda corrida: no válida. Primero, otro agente recreó la base a mitad de camino. Después, el leader la
+  relanzó y Claude Code la detuvo por falta de memoria en la máquina.
+- Decisión del humano (2026-11-13): la segunda corrida la cierra el check `e2e` del CI cuando el PR #151 salga
+  de borrador. T7.3 queda pendiente de ese check.
