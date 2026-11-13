@@ -130,6 +130,8 @@ import {
   COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
   filaDescargaCierrePendiente,
 } from "./cierres-admin-descarga-columnas";
+import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import { obtenerResumenCierres } from "./cierres-resumen-modelo-nuevo-descarga";
 // Feature 172 (TANDA E): el pago al mensajero. Tres piezas, ninguna con lógica de dominio
 // propia — el pendiente lo deriva el servidor (T C.2) y el rol lo decide el servicio (R1/R6).
 import { hayPendienteDeLiquidar } from "./PendienteLiquidarBadge";
@@ -307,7 +309,10 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
  * El título no repite el del otro listado: dos controles en la misma pantalla necesitan nombres
  * accesibles distintos (R13).
  */
-function descargaColaCierres(filtros: FiltrosCierres): DescargaResumenCierres {
+export function descargaColaCierres(
+  filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
     columnas: COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
@@ -319,6 +324,15 @@ function descargaColaCierres(filtros: FiltrosCierres): DescargaResumenCierres {
       filasDesdeResultado(
         descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
         filaDescargaCierrePendiente,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro «Cierres» + «Por tienda» (+ la hoja
+    // de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy tal cual.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
+        filaDescargaCierrePendiente,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }
@@ -1243,8 +1257,8 @@ export function CierresAdminModule({
           <DescargarCierresButton
             resumen={
               tab === TAB_PENDIENTES
-                ? descargaColaCierres(filtros)
-                : descargaHistoricoCierres(filtros)
+                ? descargaColaCierres(filtros, audiencia)
+                : descargaHistoricoCierres(filtros, audiencia)
             }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresAdminCompleto", f)}

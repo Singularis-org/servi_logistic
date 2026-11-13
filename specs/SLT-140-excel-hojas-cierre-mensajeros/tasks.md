@@ -66,7 +66,7 @@
 
 ## T4 — Cliente (frontend_dev) · depende de T2.2
 
-- [ ] **T4.1** [P] `cierres-resumen-modelo-nuevo-descarga-columnas.ts` y
+- [x] **T4.1** [P] `cierres-resumen-modelo-nuevo-descarga-columnas.ts` y
   `cierres-resumen-modelo-nuevo-descarga.ts` (`design.md > Cliente` y `> Hojas`). Nuevo
   `tests/unit/descarga/cierres-resumen-modelo-nuevo-descarga.test.ts`: encabezados de «Cierres»
   (20 central / 19 satélite) y «Por tienda» contra listas literales; celdas del escenario N1 contra
@@ -75,7 +75,7 @@
   sin `cifras` o sin nuevos, dos hojas solo nuevos, tres en mixto con «Cierres modelo anterior» =
   columnas marcadas + `filaAnterior`, ningún cierre en dos hojas, error si falta la cifra de un nuevo.
   Si existe la guardia de frontera, añadir los dos módulos. **Hecho:** verde.
-- [ ] **T4.2** `DescargarCierresButton.tsx` (`obtenerFilasConColumnas`), `CierresAdminModule.tsx` y
+- [x] **T4.2** `DescargarCierresButton.tsx` (`obtenerFilasConColumnas`), `CierresAdminModule.tsx` y
   `CierresAdminHistoricoLista.tsx` (constructores con `audiencia`). Nuevo
   `tests/components/descarga/DescargarResumenModeloNuevo.test.tsx` con `construirDescarga` espiado:
   (a) solo viejos, en las dos pestañas → la llamada `toEqual` al literal de hoy, sin `tituloHoja` ni
@@ -87,7 +87,7 @@
 
 ## T5 — E2E (frontend_dev) · depende de T3 y T4
 
-- [ ] **T5.1** Describe nuevo en `e2e/cierres-rediseno.spec.ts` (`design.md > Verificación > E2E`), con
+- [x] **T5.1** Describe nuevo en `e2e/cierres-rediseno.spec.ts` (`design.md > Verificación > E2E`), con
   el escenario en `e2e/_escenarios/cierres.ts` si T0.3 dice que falta. **Hecho:** verde en local con
   base desechable nueva.
 

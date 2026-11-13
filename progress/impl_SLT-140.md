@@ -100,13 +100,84 @@ sin tocarla, y el pendiente y lo entregado siguen saliendo de la misma base y la
 - `vitest related` de los 4 archivos de `lib/` se cortó a mano: arrastraba cientos de suites de
   integración ajenas que dependen de datos sembrados (memoria «nunca la suite completa»).
 
-## Bloqueo
+## Bloqueo (resuelto)
 
-T2.1 queda abierta: el método obligatorio rompe 12 dobles fuera de `## Archivos esperados` (T0.3 manda
-parar). Arreglo propuesto, mecánico y sin tocar ninguna aserción: una línea por doble,
-`findGestionesDeCierresEnAlcance: vi.fn(async () => { throw new Error("SLT-140: este doble no lee gestiones en lote"); })`.
-Sube el tamaño de 25 a 37 archivos (por encima del 80 % de 40) y +36 líneas. Decide el leader.
+T2.1: el método obligatorio rompía 12 dobles fuera de `## Archivos esperados`. 2026-11-12, decisión del leader:
+se aplica el arreglo mecánico (`findGestionesDeCierresEnAlcance: vi.fn` que lanza si se llama; ninguna
+aserción tocada), los 12 entran en `## Archivos esperados` y T2.1 queda `[x]`. Typecheck en 0. Commit
+`f653f15a`. Deuda anotada en `progress/features/SLT-140.md > Decisiones`: fábrica de dobles de
+`ICierresAdminRepository`.
+
+# Tanda frontend_dev: T4–T5 (2026-11-12/13)
+
+MCP del grafo no usado (Grep/Read en el worktree, como la tanda backend).
+
+## Archivos
+
+Producción (5):
+- `app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga-columnas.ts` (nuevo):
+  `columnasCierresModeloNuevoPara` (20 central / 19 satélite), `filaCierreModeloNuevo`, `COLUMNAS_POR_TIENDA`,
+  `filaPorTienda`.
+- `app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga.ts` (nuevo): `libroResumenCierres`,
+  `obtenerResumenCierres`.
+- `DescargarCierresButton.tsx`: `DescargaResumenCierres.obtenerFilasConColumnas?`; en «Resumen» el control
+  la llama con las columnas marcadas; sin ella, `obtenerFilas` tal cual.
+- `CierresAdminModule.tsx` (`descargaColaCierres` exportada, con `audiencia`) y
+  `CierresAdminHistoricoLista.tsx` (`descargaHistoricoCierres` con `audiencia`): añaden
+  `obtenerFilasConColumnas`; `titulo`, `columnas`, `ambitoColumnas` y `obtenerFilas` sin cambios.
+
+Tests y E2E (5):
+- `tests/unit/descarga/cierres-resumen-modelo-nuevo-descarga.test.ts` (nuevo, 17).
+- `tests/components/descarga/DescargarResumenModeloNuevo.test.tsx` (nuevo, 7: a×2, b×2, c, d, e).
+- `tests/unit/guards/cierres-descarga-detallada-frontera.guardia.test.ts`: los dos módulos nuevos en `SUBARBOL`.
+- `e2e/_escenarios/cierres.ts`: `cierreModeloNuevo(browser, r, { cobro, pago, montoCobrar })` (activa
+  tarifas por la pantalla, entrega en efectivo y solicita).
+- `e2e/cierres-rediseno.spec.ts`: describe «SLT-140 — el «Resumen» de /cierres-admin con un cierre viejo y uno
+  nuevo» (escenario B + pago parcial de 1.200 desde la fila).
+
+Desviaciones menores del design (anotadas):
+- El folio lo calcula el LIBRO (`folioCierre(item.cierreId)`) y llega a la proyección ya hecho: la guardia
+  `columnas-sensibles` ejecuta cada export de un `*-descarga-columnas.ts` con una sonda y rechaza leer
+  `cierreId` (identificador interno). Por la misma sonda (un solo argumento), las proyecciones reciben UN
+  objeto: `filaCierreModeloNuevo({ folio, item, cifras }, audiencia)` y `filaPorTienda({ folio, parte })`
+  (una fila por parte, en vez de `filasPorTienda(item, cifras)`).
+- «Pago entregado» vacío en «Pendientes» (PA2) sale del `null` del servidor (un cierre no aprobado no lo
+  tiene); el cliente no ramifica por pestaña.
+
+## R → test (parte cliente; la de servidor, arriba)
+
+| R | Test |
+|---|---|
+| R377 | componente (a) «Pendientes» y (a) «Resueltos»/satélite: `toEqual` al literal de hoy, sin `tituloHoja` ni `hojasAdicionales`; (e) sin el campo, `obtenerFilas()` sin argumentos · unit `libroResumenCierres` `null` sin cifras y solo viejos · unit `obtenerResumenCierres` solo viejos = `filasDesdeResultado` |
+| R378 | unit «solo nuevos», «mixto», «un cierre nuevo sin sus cifras es un error» · componente (b), (c) · E2E SLT-140 (hojas en orden) |
+| R379 | unit encabezados 20/19 y «Por tienda» · unit N1 (folio, fechas en CR, Gestiones, Pagos ajustados) y N2 (vacíos) · E2E (encabezados de «Cierres» y «Por tienda») |
+| R380 | unit `formato: "monto"` · unit N1 contra literales · unit «el string del servidor TAL CUAL» (señuelo) · unit −2260.00 con signo · E2E (números de Excel: 10000, 6497, 3503, 403, 900) |
+| R381 | unit «solo nuevos» (dos filas de N1 en el orden del detalle) · E2E (una fila de «Por tienda») |
+| R382 | unit satélite sin la clave · componente (d) 19 columnas · componente (b) «Pendientes» con «Pago entregado» `null` · E2E «Pago entregado» 1200 |
+
+## Mutaciones (cliente) — de una en una, restauradas desde copia y `md5sum -c` OK tras cada una
+
+| # | Mutación | Resultado | Lo mata |
+|---|---|---|---|
+| C1 | el viejo recibe el libro: `esModeloNuevo` = `incluyeModeloNuevo !== undefined` | MATADA (4) | componente (c) · unit «solo viejos», «mixto», `obtenerResumenCierres` con nuevos |
+| C1' | quitar `if (nuevos.length === 0) return null` | MATADA (1) | unit «solo cierres viejos: `null`» (el componente no la ve: sin cierres nuevos el servidor no manda `cifras`) |
+| C2 | «Pago entregado» relleno: `cifras.pagoEntregado ?? "0.00"` | MATADA (2) | componente (b) «Pendientes» · unit N2 |
+| C3 | «Le queda a la empresa» calculada en el cliente con `Number(...)` y `toFixed(2)` | MATADA (1) | unit «el string del servidor TAL CUAL» (con N1 todo cuadra y la sobrevivía: por eso el señuelo) |
+
+## Salidas
+
+- `pnpm run typecheck`: exit 0 (tras los 12 dobles y tras T4–T5).
+- `pnpm run lint`: exit 0, 0 errores, 251 warnings (los mismos de antes; ninguno en archivos de esta tanda).
+- vitest (base `slt140_excel`): los 2 nuevos 24/24; frontera + columnas-sensibles + nuevo 28/28; existentes de
+  descarga (`CierresDescargaNiveles`, `CierresDescargaColumnas`, `CierresDescarga`,
+  `DescargarGestionesModeloNuevo`, `DescargarDatasetLibro`, `tests/unit/descarga`) 54 archivos / 551 verdes sin
+  tocar aserciones; filtro final (nuevos + descarga + `tests/unit/services`) 403 archivos / 8158 verdes.
+- `pnpm run test:guardias`: 4854 passed, 4 failed, todos en `dependencias-declaradas-presentes.guardia` (ya roto
+  en `origin/dev`, ver arriba).
+- E2E, base desechable nueva (`migrate deploy` + `db:seed` + `prisma generate` + `next build` por separado,
+  `NEXT_PUBLIC_APP_URL=http://localhost:3000`, puerto 3000, candado `e2e.lock`): describe SLT-140 1/1; grupo
+  `dinero` entero **108/108** (`cierres-rediseno` entero dentro: 19/19), 5.4 min.
 
 ## Veredicto
 
-T0–T3 hechas y verdes salvo T2.1: typecheck rojo solo por los 12 dobles pendientes de decisión.
+T0–T5 hechas y verdes; T6 (cierre, implementer) pendiente.

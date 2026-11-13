@@ -4,6 +4,7 @@ import { expect, test, type Browser, type Locator, type Page } from "@playwright
 import {
   ajustarPagoMensajero,
   aprobarCierre,
+  cierreModeloNuevo,
   cierresDe,
   filaDeCola,
   filaDeMensajeros,
@@ -1238,5 +1239,95 @@ test.describe.serial("SLT-113 — el «Detalle» de /cierres-admin con un cierre
     const anterior = filasDeHoja(libro.worksheets[2]);
     expect(anterior.some((f) => f.includes(entregaVieja.numGuia))).toBe(true);
     expect(anterior.some((f) => f.includes(entregaNueva.numGuia))).toBe(false);
+  });
+});
+
+/**
+ * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (T5.1; R378, R379, R380, R382) — el
+ * «Resumen · una fila por cierre» de «Resueltos» con un cierre viejo y uno nuevo, los dos aprobados. Literales
+ * ESCRITOS A MANO con el ESCENARIO B de arriba (una entrega de 10.000 en efectivo; flete 3.100 + 13 %; pago al
+ * mensajero 2.200) y un pago PARCIAL de 1.200 registrado desde la fila:
+ *   Recaudado 10.000 · Total facturado 3.100 + 403 = 3.503 · IVA facturado 403
+ *   Se le paga a la tienda 10.000 − 3.503 = 6.497 · Gana la tienda en total 10.000 − 3.503 = 6.497
+ *   Le queda a la empresa 3.503 − 403 − 2.200 − 0 = 900 · Gestiones 1
+ *   Pendiente 2.200 − 1.200 = 1.000 → Pago entregado (2.200 + 0) − 1.000 = 1.200
+ * La tienda de la única gestión se lleva una fila en «Por tienda»: 10.000 · 6.497 · 6.497.
+ */
+const ENCABEZADOS_CIERRES_CENTRAL = [
+  "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE", "Transferencia",
+  "Recaudado", "Se le paga a la tienda", "Gana la tienda en total", "Pago al mensajero",
+  "Pago a la bodega satélite", "Total facturado", "IVA facturado", "Le queda a la empresa", "Gestiones",
+  "Pagos ajustados", "Pago entregado",
+];
+
+test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre viejo y uno nuevo", () => {
+  let r: RepartoE2E;
+  let viejo: MensajeroE2E;
+  let nuevo: { m: MensajeroE2E; cierreId: string };
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(300_000);
+    r = await crearEscenarioReparto("cierres-resumen-modelo-nuevo", { tarifa: TARIFA_A, tarifaMensajero: PAGO_A });
+    viejo = await crearMensajero(r, "central");
+    const entregaVieja = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 18000 }), "en_reparto", { mensajero: viejo });
+    await gestionar(r, entregaVieja, viejo, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 18000 }] });
+    await aprobarCierre(r, await solicitarCierre(r, viejo));
+
+    nuevo = await cierreModeloNuevo(browser, r, { cobro: COBRO_B, pago: PAGO_B, montoCobrar: 10000 });
+    await aprobarCierre(r, nuevo.cierreId);
+  });
+
+  test("central: «Cierres», «Por tienda» y «Cierres modelo anterior»; las cifras del nuevo como número", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto("/cierres-admin");
+    await pestanaDeCola(page, "Resueltos").click();
+
+    // El pago parcial, desde la fila: deja 1.000 pendientes.
+    const fila = filaDeCola(historico(page), nuevo.m.nombre);
+    await fila.getByRole("button", { name: `Registrar pago del cierre de ${nuevo.m.nombre}` }).click();
+    const pago = page.getByRole("dialog", { name: `Registrar pago a ${nuevo.m.nombre}` });
+    await pago.getByLabel("Monto").fill("1200");
+    await pago.getByRole("button", { name: "Registrar pago", exact: true }).click();
+    await expect(pago).toHaveCount(0);
+    await expect(fila.getByRole("cell").nth(6)).toHaveText("Pendiente ₡1.000");
+
+    const [descarga] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Descargar Cierres del día resueltos" }).click(),
+    ]);
+    const libro = new ExcelJS.Workbook();
+    await libro.xlsx.readFile(await descarga.path());
+
+    expect(libro.worksheets.map((h) => h.name)).toEqual(["Cierres", "Por tienda", "Cierres modelo anterior"]);
+
+    const cierres = filasDeHoja(libro.worksheets[0]);
+    const cabecera = cierres.findIndex((f) => f[0] === "Folio");
+    expect(cierres[cabecera]).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
+    const datos = cierres.slice(cabecera + 1);
+    // Solo el cierre nuevo; el viejo va a «Cierres modelo anterior».
+    expect(datos.map((f) => f[1])).toEqual([nuevo.m.nombre]);
+    const celda = (encabezado: string) => datos[0][ENCABEZADOS_CIERRES_CENTRAL.indexOf(encabezado)];
+    expect(celda("Folio")).toBe(nuevo.cierreId.slice(-8).toUpperCase());
+    expect(celda("Estado")).toBe("Aprobado");
+    expect(celda("Recaudado")).toBe(10000);
+    expect(celda("Se le paga a la tienda")).toBe(6497);
+    expect(celda("Gana la tienda en total")).toBe(6497);
+    expect(celda("Pago al mensajero")).toBe(2200);
+    expect(celda("Total facturado")).toBe(3503);
+    expect(celda("IVA facturado")).toBe(403);
+    expect(celda("Le queda a la empresa")).toBe(900);
+    expect(celda("Gestiones")).toBe(1);
+    expect(celda("Pago entregado")).toBe(1200);
+
+    const porTienda = filasDeHoja(libro.worksheets[1]);
+    const cabeceraTienda = porTienda.findIndex((f) => f[0] === "Folio");
+    expect(porTienda[cabeceraTienda]).toEqual(["Folio", "Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
+    const tiendas = porTienda.slice(cabeceraTienda + 1);
+    expect(tiendas.map((f) => [f[0], f[2], f[3], f[4]])).toEqual([[celda("Folio"), 10000, 6497, 6497]]);
+
+    const anterior = filasDeHoja(libro.worksheets[2]);
+    expect(anterior.some((f) => f.includes(viejo.nombre))).toBe(true);
+    expect(anterior.some((f) => f.includes(nuevo.m.nombre))).toBe(false);
   });
 });
