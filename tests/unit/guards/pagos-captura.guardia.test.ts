@@ -333,11 +333,12 @@ const MODULO_DE_CAPTURA = "app/(app)/mis-asignaciones/_components/desglose-captu
 // detalle de un cierre, retiradas con `DetalleSecciones`) y `medios-pago-descarga-columnas.ts`
 // (su declaración de columnas por medio, mudada a la hoja fundida, su único consumidor; la
 // proyección `celdasMediosPago` solo la llamaban las cinco).
+//
+// SLT-115 «Retirar los componentes de cierre sustituidos» (R405): sale
+// `cierre-dia-descarga-columnas.ts`. Sus cinco catálogos por resultado —los únicos que llamaban a
+// `desgloseDescarga(`— se retiraron con esa función; lo que queda del módulo (el histórico de
+// cierres) no proyecta desglose. La descarga del mensajero ya no lleva pagos por esa vía.
 const MODULOS_DE_DESCARGA: { ruta: string; ancla: string }[] = [
-  {
-    ruta: "app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas.ts",
-    ancla: "desgloseDescarga(",
-  },
   {
     ruta: "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts",
     ancla: "montoPorMetodo(",

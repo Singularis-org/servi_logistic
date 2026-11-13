@@ -6,12 +6,11 @@
 // ── QUÉ SE MIDE AQUÍ, Y POR QUÉ ESTE ARCHIVO EXISTE
 // Dos cosas que ningún test de la 431 mide en otro sitio:
 //
-//  1. **LO QUE VE LA BODEGA SATÉLITE (R26/Q7).** La decisión del humano fue explícita: si la
-//     central recibe ₡485.000 de ₡500.000, la bodega tiene que verlo DONDE YA MIRA. Su pantalla
-//     es `CierresBodegaSolicitadosLista`, acotada por zona en el servidor y **sin acción de
-//     abrir detalle**: si la diferencia viviera en el modal del maestro, la satélite no la vería
-//     nunca y se enteraría cuando se la reclamen. Y no puede marcar ni desmarcar: eso es de la
-//     central (R25/R27).
+//  1. **LO QUE VE LA BODEGA SATÉLITE (R26/Q7).** SLT-115 «Retirar los componentes de cierre
+//     sustituidos» borró su lista vieja: la satélite ve hoy la marca en la pestaña «Solicitados»
+//     de `ColaCierres` y en el detalle en lectura de SLT-107, y lo miden
+//     `ColaCierresConsolidar.test.tsx` (tabla de «Solicitados»: recibido, falta) y
+//     `ConsolidacionBodegaRefresco.test.tsx` (detalle: pie solo «Cerrar», sin marcar ni desmarcar).
 //  2. **EL VOCABULARIO (R28) Y LO QUE SE RETIRA (R16).** `solicitado` se lee «Pendiente de
 //     conciliar», `aprobado` se lee «Recibido», y una conciliada por menos se lee «Recibido
 //     incompleto» —un estado que la base NO tiene y la pantalla SÍ, porque el dato existe—.
@@ -42,9 +41,7 @@ vi.mock("@/lib/actions/cierre-bodega", () => ({
   listarHistoricoCierresBodegaCompleto: vi.fn(),
 }));
 
-import { listarCierresBodegaSolicitadosPaginado } from "@/lib/actions/cierre-bodega";
 import { CierreBodegaFacturaResumen } from "@/app/(app)/cierres-admin/_components/cierre-factura";
-import { CierresBodegaSolicitadosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista";
 import { marcaRecibida, marcaSinConciliar } from "@/tests/fixtures/marca-conciliacion";
 
 const ZONA = "33333333-3333-4333-8333-333333333333";
@@ -237,66 +234,5 @@ describe("⭑ 431/R24 — la marca en el desplegable de la tarjeta", () => {
     expect(
       within(marca).getByText("Conciliación retroactiva de la migración"),
     ).toBeInTheDocument();
-  });
-});
-
-// =========================================================================
-describe("⭑ 431/R26 — lo que ve la BODEGA SATÉLITE en su pestaña", () => {
-  function montarSatelite(items: CierreBodegaResumen[]) {
-    vi.mocked(listarCierresBodegaSolicitadosPaginado).mockResolvedValue({
-      status: "ok",
-      page: 1,
-      items,
-      total: items.length,
-      pageSize: 10,
-    });
-    return envolver(
-      <CierresBodegaSolicitadosLista
-        initialData={{ items, total: items.length, pageSize: 10 }}
-      />,
-    );
-  }
-
-  it("⭑ ve el estado, el monto recibido y la diferencia de SU consolidación (Q7)", async () => {
-    // La decisión del humano, medida: la bodega tiene que ver la diferencia donde ya mira. Ésta
-    // es su pantalla —la satélite NO entra a `/wallet/satelites`, que enseña el dinero de todas
-    // las bodegas (R27)—.
-    montarSatelite([INCOMPLETA]);
-    expect(badgeDeEstado()).toHaveTextContent(RECIBIDO_INCOMPLETO_LABEL);
-
-    const marca = await desplegarConciliacion();
-    expect(within(marca).getByText(money("485000.00"))).toBeInTheDocument();
-    expect(within(marca).getByText(money("15000.17"))).toBeInTheDocument();
-  });
-
-  it("⭑ y NO puede marcar ni desmarcar: ni un solo botón de conciliar (R25/R27)", async () => {
-    montarSatelite([INCOMPLETA]);
-    await desplegarConciliacion();
-
-    for (const prohibido of [/Marcar recibido/i, /Desmarcar/i, /Corregir/i, /Aprobar/i, /Rechazar/i]) {
-      expect(
-        screen.queryByRole("button", { name: prohibido }),
-        `la satélite no puede ${prohibido.source}`,
-      ).toBeNull();
-    }
-    // Y tampoco por texto suelto: un botón mal rotulado seguiría siendo un botón.
-    expect(document.body.textContent ?? "").not.toMatch(/Marcar recibido|Desmarcar/);
-  });
-
-  it("la satélite y la central leen la MISMA tarjeta, así que no pueden discrepar", async () => {
-    // Las dos montan `CierreBodegaFacturaResumen` con el mismo DTO y el mismo mapper detrás. Se
-    // mide en vez de razonarse: es la propiedad que impide que la bodega lea «te faltan
-    // ₡15.000» y la central «ya llegó completa».
-    const satelite = montarSatelite([INCOMPLETA]);
-    const marcaSatelite = await desplegarConciliacion();
-    const estadoSatelite = badgeDeEstado().textContent;
-    const textoSatelite = marcaSatelite.textContent;
-    satelite.unmount();
-
-    envolver(<CierreBodegaFacturaResumen cierre={INCOMPLETA} />);
-    const marcaCentral = await desplegarConciliacion();
-
-    expect(badgeDeEstado().textContent).toBe(estadoSatelite);
-    expect(marcaCentral.textContent).toBe(textoSatelite);
   });
 });

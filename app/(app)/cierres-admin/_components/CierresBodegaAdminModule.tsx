@@ -49,15 +49,14 @@ import {
   type DescargaResumenCierres,
 } from "./DescargarCierresButton";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
-import {
-  descargaBodegaResueltos,
-  type CierresBodegaResueltosPagina,
-} from "./CierresBodegaResueltosLista";
 import { FiltrosCierresBarra } from "./FiltrosCierresBarra";
 import {
   AMBITO_DESCARGA_BODEGA_PENDIENTES,
+  AMBITO_DESCARGA_BODEGA_RESUELTOS,
   COLUMNAS_DESCARGA_BODEGA_PENDIENTES,
+  COLUMNAS_DESCARGA_BODEGA_RESUELTOS,
   filaDescargaBodegaPendiente,
+  filaDescargaBodegaResuelto,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { PARAM_CIERRE_BODEGA } from "./cierre-enlace";
@@ -207,6 +206,53 @@ export function descargaColaBodega(
       obtenerResumenCierresBodega(
         () => descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
         filaDescargaBodegaPendiente,
+        columnasMarcadas,
+        audiencia,
+      ),
+  };
+}
+
+/** La página que pre-carga el Server Component (R44: es la que el usuario ve al entrar). */
+export interface CierresBodegaResueltosPagina {
+  items: CierreBodegaResumen[];
+  total: number;
+  pageSize: number;
+}
+
+/** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA = "Cierres de bodega resueltos";
+
+/**
+ * La configuración de descarga de «Cierres de bodega resueltos», para que la monte quien pinta
+ * la fila de las pestañas (pedido humano del 2026-08-16: el botón va alineado con las pestañas, no en una
+ * fila propia encima de la lista). Vive aquí, con el listado del que habla: el título, las
+ * columnas y la lectura de la que sale el archivo son suyos.
+ *
+ * Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo es el CONJUNTO, cortado en
+ * la BASE con el mismo criterio y el mismo orden que la página, y con el tope de filas evaluado
+ * en el servidor (R6). El alcance lo aplica el servicio desde la sesión: descargar no amplía lo
+ * que el actor podía ver (R44). Pedido humano del 2026-08-16: «el CONJUNTO» pasa a significar
+ * «el conjunto FILTRADO» — los `filtros` viajan porque el usuario los puso; el alcance, nunca.
+ */
+export function descargaBodegaResueltos(
+  filtros: FiltrosCierresBodega,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
+  return {
+    titulo: TITULO_DESCARGA,
+    columnas: COLUMNAS_DESCARGA_BODEGA_RESUELTOS,
+    // Ficha 314: enciende el selector de columnas de esta descarga (ámbito propio, R10).
+    ambitoColumnas: AMBITO_DESCARGA_BODEGA_RESUELTOS,
+    obtenerFilas: () =>
+      filasDesdeResultado(
+        descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaResuelto,
+      ),
+    // SLT-141 (R384, R385): el libro del modelo nuevo si el conjunto lo tiene; si no, el de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaResuelto,
         columnasMarcadas,
         audiencia,
       ),
