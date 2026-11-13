@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { contextoActual, type ContextoDatos } from "@/lib/db/contexto-empresa";
 import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmailSender";
-import type { AvisoCorreoPlan, CambioPendiente, IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
+import type {
+  AvisoCorreoPlan,
+  AvisoNoAplicadaPlan,
+  CambioPendiente,
+  IPlanesRepository,
+} from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { MODULO_POR_JOB } from "@/lib/modulos/reparto";
 import type { PlanesRepositoryDeJobs } from "@/lib/planes/jobs-cambio-plan";
@@ -77,6 +82,7 @@ const { buildHandlers, buildRecurrencias, RECURRENTES_DE_PLATAFORMA } = await im
 const jobsCambioPlan = await import("@/lib/planes/jobs-cambio-plan");
 const {
   avisoDelPayload,
+  avisoNoAplicadaDelPayload,
   cambioDelPayload,
   crearPlanAplicarCambioHandler,
   crearPlanAvisoCorreoHandler,
@@ -396,6 +402,34 @@ describe("SLT-128 — plan_aplicar_cambio con empresa y el barrido (§4; R5)", (
     expect(aplicar).toHaveBeenCalledWith({ planId: "p", cambioId: "c" }, AHORA);
     expect(aplicarEmpresa).toHaveBeenCalledWith({ organizacionId: "o9", cambioId: "e9" }, AHORA);
   });
+
+  it("R28: una recepción `no_aplicada` termina el trabajo y el barrido sin error (sin reintento)", async () => {
+    const noAplicada = vi.fn<PlanesRepositoryDeJobs["recibirCambio"]>(async () => ({
+      estado: "no_aplicada",
+      motivo: "cobro_quincenal_ordenes_mensuales",
+    }));
+    await expect(
+      crearPlanAplicarCambioHandler({ aplicarCambioProgramado: vi.fn(), recibirCambio: noAplicada }, () => AHORA)(
+        job({ planId: "p", cambioId: "c", recibeAt: RECIBE }, { organizacionId: "org-b" }),
+      ),
+    ).resolves.toBeUndefined();
+    const aplicarEmpresa = vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(async () => ({ estado: "aplicado" }));
+    await expect(
+      crearPlanCambiosVencidosHandler(
+        {
+          recepcionesVencidas: async () => [{ planId: "p", cambioId: "c", organizacionId: "o2" }],
+          recibirCambio: noAplicada,
+          cambiosVencidos: async () => [],
+          aplicarCambioProgramado: vi.fn(),
+          cambiosDeEmpresaVencidos: async () => [{ organizacionId: "o9", cambioId: "e9" }],
+          aplicarCambioDeEmpresa: aplicarEmpresa,
+        },
+        () => AHORA,
+      )(job({})),
+    ).resolves.toBeUndefined();
+    expect(noAplicada).toHaveBeenCalledTimes(2);
+    expect(aplicarEmpresa).toHaveBeenCalledWith({ organizacionId: "o9", cambioId: "e9" }, AHORA);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -578,5 +612,96 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
     expect(destinatarios).not.toHaveBeenCalled();
     expect(deps).not.toHaveBeenCalled();
     expect(() => avisoDelPayload({ payload: { ...aviso(), vigenteDesde: "mañana" } })).toThrow();
+  });
+});
+
+describe("SLT-128 — plan_aviso_correo `no_aplicada` a la lista de alertas (§14.4; R28, P13)", () => {
+  const SIN_EMPRESA = { organizacionId: null, tipo: "plan_aviso_correo" as const };
+
+  function noAplicada(extra: Partial<AvisoNoAplicadaPlan> = {}): Record<string, unknown> {
+    const a: AvisoNoAplicadaPlan = {
+      tipo: "no_aplicada",
+      planId: "plan-1",
+      cambioId: "cambio-1",
+      empresaId: "org-b",
+      empresa: "Mensajería B",
+      plan: "Básico",
+      // Las 00:00 del 1 de diciembre en la plataforma (−06:00).
+      recibeAt: "2026-12-01T06:00:00.000Z",
+      motivo: "cobro_quincenal_ordenes_mensuales",
+      ...extra,
+    };
+    return { ...a };
+  }
+
+  function manejador(lista: readonly string[], sender = emisor()) {
+    const destinatarios = vi.fn<IPlanesRepository["destinatariosDelAviso"]>();
+    const handler = crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({
+      sender,
+      contacto: "hola@ejemplo.example",
+      destinatariosAlerta: () => lista,
+    }));
+    return { handler, sender, destinatarios };
+  }
+
+  it("sin empresa, un correo a cada dirección de la lista con el plan, la empresa, la fecha y el motivo; no lee maestros", async () => {
+    const { handler, sender, destinatarios } = manejador(["ops@servi.example", "jefe@servi.example"]);
+    await handler(job(noAplicada(), SIN_EMPRESA));
+    expect(sender.enviados.map((m) => m.to)).toEqual(["ops@servi.example", "jefe@servi.example"]);
+    expect(sender.enviados[0].subject).toBe("El cambio del plan Básico no se aplicó a Mensajería B");
+    expect(sender.enviados[0].text).toContain("1 dic 2026");
+    expect(sender.enviados[0].text).toContain(
+      "Mensajería B no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. Sigue con su versión anterior.",
+    );
+    expect(destinatarios).not.toHaveBeenCalled();
+  });
+
+  it("la lista vacía (o sin ninguna válida) termina sin enviar y sin error", async () => {
+    const { handler, sender } = manejador([]);
+    await expect(handler(job(noAplicada(), SIN_EMPRESA))).resolves.toBeUndefined();
+    expect(sender.enviados).toEqual([]);
+  });
+
+  it("la lista sale de PLAN_CHANGE_ALERT_EMAILS al enviar: espacios, duplicados y una inválida", async () => {
+    vi.stubEnv("PLAN_CHANGE_ALERT_EMAILS", " ops@servi.example , OPS@servi.example,no-es-correo,, jefe@servi.example ");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const sender = emisor();
+      await crearPlanAvisoCorreoHandler({ destinatariosDelAviso: vi.fn() }, () => ({ sender, contacto: null }))(
+        job(noAplicada(), SIN_EMPRESA),
+      );
+      expect(sender.enviados.map((m) => m.to)).toEqual(["ops@servi.example", "jefe@servi.example"]);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("PLAN_CHANGE_ALERT_EMAILS: 1");
+      expect(String(warn.mock.calls[0]?.[0])).not.toContain("no-es-correo");
+
+      vi.stubEnv("PLAN_CHANGE_ALERT_EMAILS", "no-es-correo");
+      const vacio = emisor();
+      await expect(
+        crearPlanAvisoCorreoHandler({ destinatariosDelAviso: vi.fn() }, () => ({ sender: vacio, contacto: null }))(
+          job(noAplicada(), SIN_EMPRESA),
+        ),
+      ).resolves.toBeUndefined();
+      expect(vacio.enviados).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+      warn.mockRestore();
+    }
+  });
+
+  it("si un envío falla, envía a los demás y DESPUÉS falla el trabajo, sin la dirección en el motivo", async () => {
+    const { handler, sender } = manejador(["ops@servi.example", "jefe@servi.example"], emisor(["ops@servi.example"]));
+    const error = await handler(job(noAplicada(), SIN_EMPRESA)).catch((e: unknown) => e);
+    expect(String(error)).toMatch(/fallaron 1 de 2 envío/);
+    expect(String(error)).not.toMatch(/@/);
+    expect(sender.enviados.map((m) => m.to)).toEqual(["jefe@servi.example"]);
+  });
+
+  it("solo `no_aplicada` va sin empresa: con empresa o con un payload malformado falla sin enviar", async () => {
+    const { handler, sender } = manejador(["ops@servi.example"]);
+    await expect(handler(job(noAplicada(), { organizacionId: "org-b", tipo: "plan_aviso_correo" }))).rejects.toThrow(/payload/);
+    await expect(handler(job(noAplicada({ motivo: "otro" as never }), SIN_EMPRESA))).rejects.toThrow(/empresa destino/);
+    await expect(handler(job(noAplicada({ recibeAt: "el 1" }), SIN_EMPRESA))).rejects.toThrow(/empresa destino/);
+    expect(sender.enviados).toEqual([]);
+    expect(avisoNoAplicadaDelPayload({ payload: noAplicada() }).empresaId).toBe("org-b");
   });
 });

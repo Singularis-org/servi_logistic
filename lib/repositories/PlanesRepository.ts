@@ -762,12 +762,18 @@ function versionDelPlan(plan: PlanDTO): VersionCompleta {
  * `encolarAplicacion`): lo envía el manejador a cada dirección de `PLAN_CHANGE_ALERT_EMAILS`. Uno por recepción.
  */
 async function encolarAvisoNoAplicada(tx: Tx, aviso: AvisoNoAplicadaPlan): Promise<void> {
+  // Sin empresa aunque quien llama la tenga fijada (el trabajo de recepción corre en SU empresa): el DEFAULT de
+  // `jobs.organizacion_id` lee `app.organizacion_id`. Se deja como estaba al final, como `encolarEnEmpresas`.
+  const [{ previa }] = await tx.$queryRaw<{ previa: string | null }[]>`
+    SELECT current_setting('app.organizacion_id', true) AS "previa"`;
+  await tx.$executeRaw`SELECT set_config('app.organizacion_id', '', true)`;
   await new JobRepository(tx).enqueue(
     "plan_aviso_correo",
     { ...aviso },
     { dedupeKey: dedupeAviso(aviso.cambioId, "no_aplicada", aviso.empresaId) },
     tx,
   );
+  await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${previa ?? ""}, true)`;
 }
 
 /** `dedupe_key` del `plan_aplicar_cambio` con empresa (§4): una por programación, empresa y fecha. */

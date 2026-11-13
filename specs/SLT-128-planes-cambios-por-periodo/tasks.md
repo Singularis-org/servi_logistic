@@ -127,7 +127,7 @@ Capa `backend_dev`, salvo T10.8 (`frontend_dev`). Diseño en §14.
 - [x] **T10.4** Repositorio R29 (depende de T10.1): el helper de descarte (§14.5) en los cuatro casos:
   `moverRecepcionEnTx`, el reemplazo de `programarCambio`, `cancelarCambio` (y el `archivar` sin empresas) y la
   salida en `aplicarEnTx`. **Hecho:** T10.7 verde.
-- [ ] **T10.5** Cola, lista y correo (depende de T10.2): `destinatariosDeLista` y `destinatariosAlertaPlan` en
+- [x] **T10.5** Cola, lista y correo (depende de T10.2): `destinatariosDeLista` y `destinatariosAlertaPlan` en
   `lib/config/reporte-bug.ts` (`destinatariosReporteBug` con la misma firma); `PLAN_CHANGE_ALERT_EMAILS=` vacía y
   comentada en `.env.example`, junto a `BUG_REPORT_EMAILS`; `plan_aviso_correo` sin empresa solo para
   `no_aplicada`, a cada dirección de la lista (vacía o sin válidas → `done` sin enviar);

@@ -244,6 +244,11 @@ export function lineaNoAplicada(empresaNombre: string, motivo: MotivoNoAplicada)
   return `${empresaNombre} no recibió el cambio: ${textoMotivoNoAplicada(motivo)}. Sigue con su versión anterior.`;
 }
 
+/** R28 (design §14.4): la primera frase del correo a la lista de alertas, con la fecha ya pintada. */
+export function introCambioPlanNoAplicado(planNombre: string, empresaNombre: string, fecha: string): string {
+  return `El cambio del plan ${planNombre} previsto para el ${fecha} no se aplicó a ${empresaNombre}.`;
+}
+
 /** R28 (design §14.4): el asunto del correo a la lista de alertas. */
 export function asuntoCambioPlanNoAplicado(planNombre: string, empresaNombre: string): string {
   return `El cambio del plan ${planNombre} no se aplicó a ${empresaNombre}`;

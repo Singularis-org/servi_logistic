@@ -1,10 +1,12 @@
 import { z } from "zod";
 
 import { emailContacto } from "@/lib/config/email";
+import { destinatariosAlertaPlan } from "@/lib/config/reporte-bug";
 import type { IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import { empresaDelJob, type IJobRepository, type JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type {
   AvisoCorreoPlan,
+  AvisoNoAplicadaPlan,
   CambioDeEmpresaPendiente,
   CambioPendiente,
   IPlanesRecepcionesRepository,
@@ -12,13 +14,15 @@ import type {
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import type { CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
+import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
+import { MOTIVOS_NO_APLICADA, type CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { crearEmailSender } from "@/lib/services/EmailProvider";
-import { plantillaCambioPlan } from "@/lib/services/email/plantillas/cambio-plan";
+import { plantillaCambioPlan, plantillaCambioPlanNoAplicado } from "@/lib/services/email/plantillas/cambio-plan";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { fechaCortaEnZona } from "@/lib/utils/fecha-corta";
 
 // SL-24 (design §16.3, §16.4; R38, R39, R44) — los trabajos del cambio programado de un plan, con su
 // composition root. Los cablea `app/api/cron/procesar-jobs/route.ts` (`buildHandlers` y
@@ -30,7 +34,8 @@ import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 //     aplica lo que siga pendiente con `vigente_desde <= ahora` (un trabajo perdido).
 //   · `plan_recordatorio_cambio` (T12): puntual, sin empresa, 7×24 h y 24 h antes de la fecha.
 //     Reparte un `plan_aviso_correo` por empresa con el plan en ese momento.
-//   · `plan_aviso_correo` (T12): puntual, con la empresa destino. Un correo por maestro activo.
+//   · `plan_aviso_correo` (T12): puntual, con la empresa destino. Un correo por maestro activo. SLT-128 (§14.4;
+//     R28): SIN empresa solo el tipo `no_aplicada`, a cada dirección de `PLAN_CHANGE_ALERT_EMAILS`.
 //   · `plan_aplicar_cambio_empresa` (SLT-86 §5.2; R17, R20): puntual, CON la empresa. Lo encola el
 //     cambio de empresa con fecha futura, en su transacción, con `run_after` = sus 00:00. Payload
 //     `{ cambioId }`; la empresa es la del trabajo.
@@ -247,6 +252,11 @@ export interface DepsAvisoCorreo {
    * El trabajo corre en `conEmpresa` con esa empresa. Sin zona en el país, el trabajo falla (R28).
    */
   reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
+  /**
+   * SLT-128 (§14.4; R28, P13): la lista de alertas del aviso `no_aplicada`, leída AL ENVIAR (un cambio de la
+   * variable vale para los avisos aún en cola). Ausente = `PLAN_CHANGE_ALERT_EMAILS`.
+   */
+  destinatariosAlerta?: () => readonly string[];
 }
 
 /** Composition root del envío: el emisor que elige el entorno (`crearEmailSender`, que ya compone `EnrutadorEmailSender`). */
@@ -319,6 +329,70 @@ const avisoSchema = z.object({
   ),
 });
 
+// SLT-128 (§14.4; R28): el aviso sin empresa de una recepción no aplicada.
+const avisoNoAplicadaSchema = z.object({
+  tipo: z.literal("no_aplicada"),
+  planId: z.string().min(1),
+  cambioId: z.string().min(1),
+  empresaId: z.string().min(1),
+  empresa: z.string(),
+  plan: z.string(),
+  recibeAt: z.iso.datetime(),
+  motivo: z.enum(MOTIVOS_NO_APLICADA),
+});
+
+/**
+ * SLT-128 (§14.4; R28): el payload de `plan_aviso_correo` sin empresa. Solo el tipo `no_aplicada` va sin empresa;
+ * cualquier otro falla el trabajo como antes («no tiene empresa destino»).
+ */
+export function avisoNoAplicadaDelPayload(job: Pick<JobDTO, "payload">): AvisoNoAplicadaPlan {
+  const p = avisoNoAplicadaSchema.safeParse(job.payload);
+  if (!p.success) throw new Error("plan_aviso_correo: el trabajo no tiene empresa destino");
+  return p.data;
+}
+
+/**
+ * La fecha de la recepción en la hora de la plataforma («1 dic 2026»): la lista de alertas no es de ninguna empresa
+ * ni país. El día de la plataforma, pintado a mediodía UTC para que ninguna zona lo mueva.
+ */
+function fechaDeLaPlataforma(instante: Date): string {
+  return fechaCortaEnZona(new Date(`${fechaCalendarioPlataforma(instante)}T12:00:00.000Z`), "UTC");
+}
+
+/**
+ * SLT-128 (§14.4; R28, P13): el aviso de una recepción no aplicada, un correo por dirección de la lista. Vacía,
+ * ausente o sin ninguna válida: termina sin enviar (SLT-87 R16). Si un envío falla, sigue con los demás y DESPUÉS
+ * falla el trabajo, para el backoff.
+ */
+async function enviarAvisoNoAplicada(job: Pick<JobDTO, "payload">, deps: () => DepsAvisoCorreo): Promise<void> {
+  const aviso = avisoNoAplicadaDelPayload(job);
+  const { sender, contacto, destinatariosAlerta = destinatariosAlertaPlan } = deps();
+  const lista = destinatariosAlerta();
+  if (lista.length === 0) return;
+  const fecha = fechaDeLaPlataforma(new Date(aviso.recibeAt));
+  let fallidos = 0;
+  for (const to of lista) {
+    try {
+      await sender.enviar(
+        plantillaCambioPlanNoAplicado({
+          to,
+          empresaNombre: aviso.empresa,
+          planNombre: aviso.plan,
+          fecha,
+          motivo: aviso.motivo,
+          contacto,
+        }),
+      );
+    } catch {
+      // Sin la dirección en el motivo: `last_error` no lleva datos personales.
+      fallidos += 1;
+    }
+  }
+  if (fallidos > 0) {
+    throw new Error(`plan_aviso_correo: fallaron ${fallidos} de ${lista.length} envío(s) a la lista de alertas`);
+  }
+}
+
 /** El payload de `plan_aviso_correo`. Uno malformado falla el trabajo con su motivo en `last_error`. */
 export function avisoDelPayload(job: Pick<JobDTO, "payload">): AvisoCorreoPlan {
   const p = avisoSchema.safeParse(job.payload);
@@ -330,7 +404,8 @@ export function avisoDelPayload(job: Pick<JobDTO, "payload">): AvisoCorreoPlan {
 }
 
 /**
- * `plan_aviso_correo` (en la empresa destino, `conEmpresa`): un correo por maestro activo (P7).
+ * `plan_aviso_correo` (en la empresa destino, `conEmpresa`): un correo por maestro activo (P7). SLT-128 (R28): sin
+ * empresa, el aviso `no_aplicada` a cada dirección de la lista de alertas (`enviarAvisoNoAplicada`).
  *   1. lee la empresa y sus maestros activos;
  *   2. si es un recordatorio, comprueba que la programación sigue pendiente; si no, termina. El
  *      `cancelado` no lo comprueba: el cambio ya no existe;
@@ -342,7 +417,11 @@ export function crearPlanAvisoCorreoHandler(
 ): JobHandler {
   return async (job) => {
     const organizacionId = empresaDelJob(job);
-    if (organizacionId === null) throw new Error("plan_aviso_correo: el trabajo no tiene empresa destino");
+    // SLT-128 (R28): sin empresa, solo el aviso `no_aplicada` a la lista de alertas.
+    if (organizacionId === null) {
+      await enviarAvisoNoAplicada(job, deps);
+      return;
+    }
     const aviso = avisoDelPayload(job);
     const esRecordatorio =
       aviso.tipo === "recordatorio_7" || aviso.tipo === "recordatorio_3" || aviso.tipo === "recordatorio_1";

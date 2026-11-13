@@ -15,14 +15,15 @@ export const DESCRIPCION_MAX = 500;
 const esEmail = (valor: string): boolean => z.email().safeParse(valor).success;
 
 /**
- * R15, R16: los destinatarios de la copia por correo, de `BUG_REPORT_EMAILS` (lista separada por «,»).
- * Recorta, descarta lo vacío y lo que no es un email, y quita duplicados sin distinguir mayúsculas.
- * Vacía, ausente o sin ninguna válida: `[]`, y el reporte se guarda sin correo.
+ * Una lista de correos de una variable de entorno (separada por «,»). Recorta, descarta lo vacío y lo que no es
+ * un email, y quita duplicados sin distinguir mayúsculas. Vacía, ausente o sin ninguna válida: `[]`.
  *
- * Si descartó alguna dirección lo dice en una línea con la cifra, nunca con las direcciones: una mal
- * escrita puede ser casi la buena y el log no es sitio para listas de correos.
+ * Si descartó alguna dirección lo dice en una línea con la cifra y el nombre de `variable`, nunca con las
+ * direcciones: una mal escrita puede ser casi la buena y el log no es sitio para listas de correos.
+ *
+ * SLT-128 (design §14.4): el parseo de `destinatariosReporteBug`, compartido con `PLAN_CHANGE_ALERT_EMAILS`.
  */
-export function destinatariosReporteBug(valor: string | undefined = process.env.BUG_REPORT_EMAILS): string[] {
+export function destinatariosDeLista(valor: string | undefined, variable: string): string[] {
   if (valor === undefined) return [];
   const vistos = new Set<string>();
   const validos: string[] = [];
@@ -40,9 +41,25 @@ export function destinatariosReporteBug(valor: string | undefined = process.env.
     validos.push(direccion);
   }
   if (descartados > 0) {
-    console.warn(`[reporte-bug] BUG_REPORT_EMAILS: ${descartados} direccion(es) no valida(s) descartada(s)`);
+    console.warn(`[lista-de-correos] ${variable}: ${descartados} direccion(es) no valida(s) descartada(s)`);
   }
   return validos;
+}
+
+/**
+ * R15, R16: los destinatarios de la copia por correo, de `BUG_REPORT_EMAILS` (lista separada por «,»).
+ * Vacía, ausente o sin ninguna válida: `[]`, y el reporte se guarda sin correo.
+ */
+export function destinatariosReporteBug(valor: string | undefined = process.env.BUG_REPORT_EMAILS): string[] {
+  return destinatariosDeLista(valor, "BUG_REPORT_EMAILS");
+}
+
+/**
+ * SLT-128 (design §14.4; R28, P13): a quién avisar de una recepción de un cambio de plan que no se pudo aplicar, de
+ * `PLAN_CHANGE_ALERT_EMAILS`. Vacía, ausente o sin ninguna válida: `[]`, y no sale correo (como SLT-87 R16).
+ */
+export function destinatariosAlertaPlan(valor: string | undefined = process.env.PLAN_CHANGE_ALERT_EMAILS): string[] {
+  return destinatariosDeLista(valor, "PLAN_CHANGE_ALERT_EMAILS");
 }
 
 // ─── SLT-98 (design §6): imágenes del reporte ────────────────────────────────────────────────────

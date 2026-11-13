@@ -3,8 +3,12 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { lineasDeCambioDelPlan } from "@/lib/planes/mensajes";
-import { plantillaCambioPlan, type CambioPlanParams } from "@/lib/services/email/plantillas/cambio-plan";
+import { lineaNoAplicada, lineasDeCambioDelPlan, textoMotivoNoAplicada } from "@/lib/planes/mensajes";
+import {
+  plantillaCambioPlan,
+  plantillaCambioPlanNoAplicado,
+  type CambioPlanParams,
+} from "@/lib/services/email/plantillas/cambio-plan";
 import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SL-24 · T12 (design §16.4; R41, R42, R45) — el correo del cambio de un plan. Los literales del spec
@@ -196,5 +200,52 @@ describe("SL-24 — marca, país y escapado", () => {
     expect(m.text).toContain("Facturación de órdenes: quincenal → mensual");
     expect(m.html).toContain("Facturación de órdenes: quincenal → mensual");
     expect(correo().text).not.toContain("Facturación de órdenes");
+  });
+});
+
+describe("SLT-128 — el correo a la lista de alertas de una recepción no aplicada (§14.4; R28)", () => {
+  const m = plantillaCambioPlanNoAplicado({
+    to: "ops@servi.example",
+    empresaNombre: "Mensajería B",
+    planNombre: "Básico",
+    fecha: "1 dic 2026",
+    motivo: "cobro_quincenal_ordenes_mensuales",
+    contacto: "hola@ejemplo.example",
+  });
+
+  it("R28: el asunto nombra el plan y la empresa", () => {
+    expect(m.to).toBe("ops@servi.example");
+    expect(m.subject).toBe("El cambio del plan Básico no se aplicó a Mensajería B");
+  });
+
+  it("R28: el cuerpo lleva la fecha, el motivo literal y «Sigue con su versión anterior.», en texto y HTML", () => {
+    for (const cuerpo of [m.text, m.html]) {
+      expect(cuerpo).toContain("1 dic 2026");
+      expect(cuerpo).toContain("cobra por quincena y el plan nuevo factura las órdenes por mes");
+      expect(cuerpo).toContain("Sigue con su versión anterior.");
+    }
+    expect(m.text).toContain("hola@ejemplo.example");
+  });
+
+  it("R28: los textos literales del spec (motivo y línea del detalle)", () => {
+    expect(textoMotivoNoAplicada("cobro_quincenal_ordenes_mensuales")).toBe(
+      "cobra por quincena y el plan nuevo factura las órdenes por mes",
+    );
+    expect(lineaNoAplicada("B", "cobro_quincenal_ordenes_mensuales")).toBe(
+      "B no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. Sigue con su versión anterior.",
+    );
+  });
+
+  it("los datos variables se escapan en el HTML", () => {
+    const x = plantillaCambioPlanNoAplicado({
+      to: "ops@servi.example",
+      empresaNombre: "<b>B</b>",
+      planNombre: "A & B",
+      fecha: "1 dic 2026",
+      motivo: "cobro_quincenal_ordenes_mensuales",
+      contacto: null,
+    });
+    expect(x.html).toContain("&lt;b&gt;B&lt;/b&gt;");
+    expect(x.html).not.toContain("<b>B</b>");
   });
 });
