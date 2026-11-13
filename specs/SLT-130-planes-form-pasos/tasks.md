@@ -7,18 +7,18 @@
 
 ## Tanda 1 — piezas sin consumidor (no cambian la pantalla)
 
-- [ ] **T1 [P] — Componente de pasos y guarda de `useIsMobile`.** (R1–R5)
+- [x] **T1 [P] — Componente de pasos y guarda de `useIsMobile`.** (R1–R5)
   - `hooks/use-mobile.ts`: sin `matchMedia`, devuelve `false` y no lanza (design §3).
   - `components/shared/FormularioPorPasos.tsx` con el contrato de design §3.
   - `tests/components/FormularioPorPasos.test.tsx` con un caso por cada requisito, R1–R5.
   - *Hecho:* los cinco casos pasan. `tests/components/` del Sidebar, si los hay, siguen en verde.
-- [ ] **T2 [P] — Mudar el estado y los textos del formulario, sin cambiar la conducta.**
+- [x] **T2 [P] — Mudar el estado y los textos del formulario, sin cambiar la conducta.**
   - `plan-form/textos.ts` (`TEXTOS_PLAN_FORM`, re-exportado desde `PlanForm.tsx`).
   - `plan-form/estado.ts`: `Formulario`, `inicial`, `versionDe`, `precioDe`, `camposEnOrden`, `tope`,
     `erroresDeZod`, `pasosDe` y `pasoDeLaClave` (design §4).
   - *Hecho:* `PlanForm.tsx` importa de ahí. Los 9 archivos de tests de planes de hoy pasan sin tocarlos
     (`pasosDe` y `pasoDeLaClave` aún sin usar). `PlanDetalle.tsx` y `PlanEmpresa.tsx` no cambian sus imports.
-- [ ] **T3 [P] — `filasDeRevision` y `textoDeHoy`.** (R16, R22, R23)
+- [x] **T3 [P] — `filasDeRevision` y `textoDeHoy`.** (R16, R22, R23)
   - `plan-form/revision.ts` según design §6.
   - `tests/unit/planes/plan-form-revision.test.ts`:
     - «R22: filas al crear» (público y custom);

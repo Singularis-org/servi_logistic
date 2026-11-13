@@ -15,8 +15,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Select, type SelectOption } from "@/components/ui/select";
-import { ROL_LABELS } from "@/lib/auth/rol-label";
-import { montoParaCampo } from "@/lib/config/moneda";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { MENSAJE_EDITAR_CAMBIO_A_MEDIAS } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
@@ -30,75 +28,31 @@ import {
   ROLES_CON_TOPE,
   TIPOS_COBRO,
   type CrearPlanInput,
-  type DescuentoPeriodo,
   type EditarPlanInput,
-  type PeriodicidadOrdenes,
   type PlanDTO,
   type PlanResult,
-  type PrecioPlan,
   type PrevisualizarCustomInput,
-  type RolConTope,
   type TipoCobro,
   type TopeExcedido,
   type VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 import { esFechaCalendarioValida, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
 
-import { TEXTOS_PLAN } from "./plan-vista";
+import {
+  camposEnOrden,
+  erroresDeZod,
+  inicial,
+  precioDe,
+  versionDe,
+  type CamposVisibles,
+  type DescuentoDelFormulario,
+  type Errores,
+  type Formulario,
+} from "./plan-form/estado";
+import { TEXTOS_PLAN_FORM } from "./plan-form/textos";
 
-/** Textos del formulario, en un solo sitio para cuando llegue la i18n. */
-export const TEXTOS_PLAN_FORM = {
-  nombre: "Nombre",
-  visibilidad: "Visibilidad",
-  publico: "Público",
-  custom: "Custom",
-  empresa: "Empresa",
-  empresaPlaceholder: "Elige la empresa",
-  sinEmpresas: "No se pudieron cargar las empresas.",
-  topes: "Topes",
-  topesAyuda: "Vacío = sin límite.",
-  topeVacio: "Sin límite",
-  rol: (rol: RolConTope) => TEXTOS_PLAN.rol(ROL_LABELS[rol]),
-  apiKeys: "API keys activas",
-  modulos: "Módulos incluidos",
-  // SLT-66 (R9): el precio informativo de SL-24 se llama «costo base».
-  precio: "Costo base",
-  sinPrecio: "Sin precio",
-  monto: "Con monto",
-  mensual: "Costo base mensual",
-  /** SLT-86 (R23; design §7.1): un descuento por período, en lugar del pago anual. */
-  descuento: (tipo: TipoCobro) => `Descuento ${tipo}`,
-  descuentoNinguno: "Ninguno",
-  descuentoPorcentaje: "Porcentaje",
-  descuentoMonto: "Monto fijo",
-  costoPorOrden: "Costo por orden",
-  costoPorOrdenAyuda: "Vacío: se aplica el valor global de la plataforma.",
-  /** SLT-83 (design §6.1; R20): el modo del costo por orden. */
-  cobroPorOrden: "Cobro por orden",
-  cobroFijo: "Fijo",
-  cobroPorcentual: "Porcentual",
-  porcentajePorOrden: "Porcentaje",
-  sufijoPorcentaje: "%",
-  minimoPorOrden: "Mínimo",
-  /** SLT-118 (R35): la periodicidad de las facturas de órdenes del plan; las opciones, las del tipo de cobro. */
-  periodicidadOrdenes: "Facturación de órdenes",
-  aplicar: "Aplicar",
-  inmediato: "De inmediato",
-  programado: "A partir de",
-  fecha: "Fecha",
-  fechaAyuda: "Rige desde las 00:00 de ese día, hora de la plataforma.",
-  guardar: "Guardar",
-  programar: "Programar cambio",
-  crear: "Crear plan",
-  /** Ajuste planes-custom (D4): solo si la empresa elegida todavía no tiene plan. */
-  inicioCiclo: "Inicio del período",
-  inicioCicloAyuda: "El período de la empresa empieza ese día, hora de la plataforma.",
-  revisa: "Revisa los campos marcados.",
-  /** Ajuste planes-custom (D13): el mismo texto que el modal de primera asignación (SLT-58 P11). */
-  vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
-  /** Ajuste planes-custom (D17): el mismo texto que el modal de primera asignación (SLT-58 P11). */
-  reintentar: "Reintentar",
-} as const;
+// SLT-130 (design §2): `PlanDetalle.tsx` y `PlanEmpresa.tsx` siguen importando los textos de aquí.
+export { TEXTOS_PLAN_FORM };
 
 /**
  * Ajuste planes-custom (D13): cuánto se espera tras la última tecla antes de leer la vista previa, para
@@ -146,154 +100,6 @@ export function mensajeDelRechazo(r: PlanResult): string | null {
 }
 
 export const RECHAZO_GENERICO = RECHAZOS.generico;
-
-type Accion = "inmediato" | "programado";
-/** SLT-86 (R23): la forma del descuento de un período. */
-type FormaDescuento = "ninguno" | "porcentaje" | "monto";
-/**
- * SLT-86 (R23): el descuento de un período en el formulario. Los dos campos se conservan al cambiar de
- * forma (no se borra lo escrito); al enviar solo viaja el de la forma elegida.
- */
-type DescuentoDelFormulario = { forma: FormaDescuento; porcentaje: string; monto: string };
-/** SLT-83 (R20): el modo del costo por orden; al abrir un plan sale de `costoPorOrdenPorcentual !== null`. */
-type ModoCostoPorOrden = "fijo" | "porcentual";
-
-type Formulario = {
-  nombre: string;
-  visibilidad: "publico" | "custom";
-  organizacionId: string;
-  porRol: Record<RolConTope, string>;
-  apiKeys: string;
-  modulos: ModuloApagable[];
-  precio: PrecioPlan["tipo"];
-  mensual: string;
-  descuentos: Record<TipoCobro, DescuentoDelFormulario>;
-  /** SLT-66 (R7, R23): vacío = sin costo por orden del plan (se aplica el global). */
-  costoPorOrden: string;
-  /**
-   * SLT-83 (design §6.1; R20): el modo elegido. Los campos del otro modo se conservan mientras no se
-   * envía (cambiar de modo no borra lo escrito); al enviar, el modo no elegido viaja como `null`.
-   */
-  modoCosto: ModoCostoPorOrden;
-  /** SLT-83 (R20): obligatorio en modo porcentual; lo valida el esquema. */
-  porcentajePorOrden: string;
-  /** SLT-83 (R20): vacío = sin mínimo. */
-  minimoPorOrden: string;
-  /** SLT-118 (R35): quincenal al crear (P14); al editar, la del plan. Viaja siempre. */
-  periodicidadOrdenes: PeriodicidadOrdenes;
-  aplicar: Accion;
-  /**
-   * Al editar, la fecha de «A partir de» (SLT-58). Al crear un custom para una empresa que ya tiene plan,
-   * su fecha de efecto «Rige desde» (SLT-86 R16, R25).
-   */
-  vigenteDesde: string;
-  /** SLT-86 (R22, R23): al editar, «Rige desde» de un cambio de precio; mañana por defecto. */
-  precioDesde: string;
-  /** Ajuste planes-custom (D6): solo viaja en un custom (se asigna a su empresa al crearlo). */
-  tipoCobro: TipoCobro;
-  /** Ajuste planes-custom (D4, D5): solo viaja si la empresa elegida no tiene plan. */
-  inicioCiclo: string;
-};
-
-/** Errores por ruta de zod (`topes.porRol.mensajero`, `precio.mensual`…), como los manda la action. */
-type Errores = Record<string, string[]>;
-
-const texto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
-
-function descuentoInicial(d: DescuentoPeriodo | undefined): DescuentoDelFormulario {
-  if (d === undefined) return { forma: "ninguno", porcentaje: "", monto: "" };
-  return d.tipo === "porcentaje"
-    ? { forma: "porcentaje", porcentaje: d.porcentaje, monto: "" }
-    : { forma: "monto", porcentaje: "", monto: montoParaCampo(d.monto) };
-}
-
-function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: string): Formulario {
-  const precio = plan?.precio ?? { tipo: "sin_precio" };
-  const descuentos = precio.tipo === "monto" ? precio.descuentos : {};
-  return {
-    nombre: plan?.nombre ?? "",
-    visibilidad: plan?.visibilidad ?? "publico",
-    organizacionId: plan?.organizacionId ?? "",
-    porRol: Object.fromEntries(ROLES_CON_TOPE.map((r) => [r, texto(plan?.topes.porRol[r])])) as Record<
-      RolConTope,
-      string
-    >,
-    apiKeys: texto(plan?.topes.apiKeys),
-    modulos: plan?.modulos ?? [],
-    precio: precio.tipo,
-    mensual: precio.tipo === "monto" ? montoParaCampo(precio.mensual) : "",
-    descuentos: Object.fromEntries(TIPOS_COBRO.map((t) => [t, descuentoInicial(descuentos[t])])) as Record<
-      TipoCobro,
-      DescuentoDelFormulario
-    >,
-    costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
-    modoCosto: plan?.costoPorOrdenPorcentual == null ? "fijo" : "porcentual",
-    porcentajePorOrden: plan?.costoPorOrdenPorcentual?.porcentaje ?? "",
-    minimoPorOrden:
-      plan?.costoPorOrdenPorcentual?.minimo == null ? "" : montoParaCampo(plan.costoPorOrdenPorcentual.minimo),
-    // SLT-118 (R35): un DTO sin ella es un plan quincenal, el DEFAULT de la columna (P14).
-    periodicidadOrdenes: plan?.periodicidadOrdenes ?? "quincenal",
-    aplicar: "inmediato",
-    vigenteDesde: "",
-    precioDesde,
-    tipoCobro: "mensual",
-    inicioCiclo,
-  };
-}
-
-/** Un tope del formulario: vacío = sin límite (`null`); lo demás lo valida el esquema. */
-function tope(valor: string): number | null {
-  return valor.trim() === "" ? null : Number(valor.trim());
-}
-
-/** SLT-86 (R23): solo viaja el dato de la forma elegida; «Ninguno» no deja clave (sin descuento). */
-function precioDe(f: Formulario): PrecioPlan {
-  if (f.precio !== "monto") return { tipo: f.precio };
-  const descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
-  for (const tipo of TIPOS_COBRO) {
-    const d = f.descuentos[tipo];
-    if (d.forma === "porcentaje") descuentos[tipo] = { tipo: "porcentaje", porcentaje: d.porcentaje.trim() };
-    if (d.forma === "monto") descuentos[tipo] = { tipo: "monto", monto: d.monto.trim() };
-  }
-  return { tipo: "monto", mensual: f.mensual.trim(), descuentos };
-}
-
-function versionDe(f: Formulario) {
-  const porRol: Partial<Record<RolConTope, number>> = {};
-  for (const rol of ROLES_CON_TOPE) {
-    const maximo = tope(f.porRol[rol]);
-    if (maximo !== null) porRol[rol] = maximo;
-  }
-  return {
-    nombre: f.nombre,
-    // SLT-86 (R8): sin tope de órdenes.
-    topes: { porRol, apiKeys: tope(f.apiKeys) },
-    // En el orden de pantalla, sea cual sea el orden en que se marcaron.
-    modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
-    precio: precioDe(f),
-    // SLT-83 (R20): solo viajan los datos del modo elegido; el otro, `null`.
-    costoPorOrden: f.modoCosto === "fijo" && f.costoPorOrden.trim() !== "" ? f.costoPorOrden.trim() : null,
-    costoPorOrdenPorcentual:
-      f.modoCosto === "porcentual"
-        ? {
-            porcentaje: f.porcentajePorOrden.trim(),
-            minimo: f.minimoPorOrden.trim() === "" ? null : f.minimoPorOrden.trim(),
-          }
-        : null,
-    // SLT-118 (R35): siempre en la petición, al crear y al editar.
-    periodicidadOrdenes: f.periodicidadOrdenes,
-  };
-}
-
-/** Los errores de zod en el cliente, con las mismas rutas que los `fieldErrors` de la action. */
-function erroresDeZod(issues: readonly { path: readonly PropertyKey[]; message: string }[]): Errores {
-  const errores: Errores = {};
-  for (const issue of issues) {
-    const clave = issue.path.length > 0 ? issue.path.map(String).join(".") : "_";
-    (errores[clave] ??= []).push(issue.message);
-  }
-  return errores;
-}
 
 /**
  * Una empresa del selector del plan custom (ajuste planes-custom, D4). SLT-86 (R25):
@@ -1018,38 +824,6 @@ export function PlanForm(props: PlanFormProps) {
       </div>
     </form>
   );
-}
-
-/**
- * Las rutas de error que tienen un campo propio y visible ahora mismo, EN EL ORDEN DE PANTALLA (el foco
- * va al primero con error). El resto va al aviso general, para que ningún rechazo se quede sin pintar
- * por caer en un campo oculto.
- */
-/** Qué campos condicionales están en pantalla ahora mismo. */
-type CamposVisibles = { pideInicioCiclo: boolean; pideFechaDeEfecto: boolean; cambiaPrecio: boolean };
-
-function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario, v: CamposVisibles): string[] {
-  const claves = ["nombre"];
-  if (modo === "crear") claves.push("visibilidad");
-  if (modo === "crear" && f.visibilidad === "custom") claves.push("organizacionId");
-  claves.push(...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`), "topes.apiKeys", "modulos", "precio");
-  if (f.precio === "monto") {
-    claves.push("precio.mensual");
-    // SLT-86 (R10, R23): el error de un descuento va en su grupo o en el campo de su forma.
-    for (const tipo of TIPOS_COBRO) {
-      const forma = f.descuentos[tipo].forma;
-      claves.push(`precio.descuentos.${tipo}`);
-      if (forma !== "ninguno") claves.push(`precio.descuentos.${tipo}.${forma}`);
-    }
-  }
-  if (f.modoCosto === "fijo") claves.push("costoPorOrden");
-  else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
-  claves.push("periodicidadOrdenes");
-  if (modo === "crear" && f.visibilidad === "custom") claves.push("tipoCobro");
-  if (modo === "crear" && v.pideInicioCiclo) claves.push("inicioCiclo");
-  if (modo === "crear" && v.pideFechaDeEfecto) claves.push("vigenteDesde");
-  if (modo === "editar" && (v.cambiaPrecio || f.aplicar === "programado")) claves.push("vigenteDesde");
-  return claves;
 }
 
 interface CampoDescuentoProps {
