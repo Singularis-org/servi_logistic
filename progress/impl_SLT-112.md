@@ -135,3 +135,71 @@ Todo con `DATABASE_URL` → `slt112_ganancia`.
 
 **Veredicto:** T0-T4 hechas; R350-R357 y R359 con test verde contra Postgres real y 9/9 mutaciones matadas;
 typecheck rojo solo por el cliente Prisma compartido de SLT-139.
+
+---
+
+# Tanda frontend_dev: T5-T6 (2026-11-12)
+
+## Archivos
+
+Producción:
+- `components/private/cierres/detalle/detalle-cierre-vista.ts` — `CifraId` + `gananciaPendiente`, `gananciaPagada`.
+- `components/private/cierres/cola/cola-propia-vista.ts` — `TARJETA_GANANCIA_PENDIENTE`, `TARJETA_GANANCIA_PAGADA`,
+  `CIFRAS_GANANCIA_LABEL`, `notaCierresSinLiquidar`, `notaPagosDelMes` (PA3: «<n> pagos»), `tarjetasGanancia`.
+- `components/private/cierres/cola/ColaCierres.tsx` — `tarjetas?` en `ColaCierresPropiosProps`; `CifrasCierre` entre la
+  barra y la `<section>` de la tabla solo con `tarjetas` no vacías (R357/R158).
+- `app/(app)/cierre-dia/_components/CierreDiaModule.tsx` — prop `resumenGanancia?` → `tarjetasGanancia()` → `ColaCierres`.
+- `app/(app)/cierre-dia/page.tsx` — `resumenGananciaMensajero()` en el `Promise.all`, con `.catch` a `error`; solo
+  `ok` pasa al módulo; nunca `notFound()` por esta lectura (R357).
+- `lib/actions/cierre-dia.ts` — quitada la anotación `@sin-superficie` temporal (ya la llama `page.tsx`).
+
+Tests:
+- `tests/unit/utils/cola-propia-vista.test.ts` — 4 casos SLT-112 (notas 0/1/n, orden, destacada, valor intacto, ceros).
+- `tests/components/CierreDiaColaPropia.test.tsx` — R158 pasa a «sin cifras → sin tarjetas ni ceros»; 5 casos nuevos
+  (dos tarjetas con «₡47.500,55»/«₡3.500» y notas; entre barra y tabla; en cero; en singular; paginar y filtrar no
+  las cambian).
+- `tests/components/CierreDiaPage.test.tsx` — mock de `resumenGananciaMensajero`; `ok` → tarjetas; `error`, `sin_dato`,
+  `forbidden`, `unauthenticated` y una excepción → página cargada sin tarjetas y sin `notFound`.
+- `e2e/cierres-rediseno.spec.ts` — suite «SLT-102 — la fila de la cola única (escenario S4)»: el mensajero central
+  abre `/cierre-dia` antes y después del «Registrar pago».
+
+## Desvío del design (anotado)
+
+- `CIFRAS_GANANCIA_LABEL` = «Ganancia de tus cierres», no «Tu ganancia» (`design.md > 4`). En `/cierre-dia` la caja
+  destacada del detalle de hoy ya es un `group` llamado «Tu ganancia» (`CajaCifra`): con el literal del design había
+  dos grupos con el mismo nombre accesible (los tests de componente lo cazaron: «Found multiple elements with the role
+  group and name Tu ganancia»). Los rótulos visibles de las tarjetas no cambian.
+
+## Mapa R → test (tanda de pantalla)
+
+| R | Test |
+|---|---|
+| R357 | componente `CierreDiaColaPropia` «R158/R357: sin las cifras del servidor, sin tarjetas … ni ceros»; `CierreDiaPage` «con `error`/`sin_dato`/`forbidden`/`unauthenticated` …» y «una excepción en la lectura tampoco tumba la página» |
+| R358 | unit `cola-propia-vista` «SLT-112 — las tarjetas de la ganancia» (4); componente `CierreDiaColaPropia` «SLT-112 · …» (5); `CierreDiaPage` «con `ok` …»; E2E S4 «central: … «Registrar pago» → «Liquidado»» (antes: «₡3.500» · «1 cierre aprobado sin liquidar» / «₡0» · «Ningún pago este mes») |
+| R360 | E2E S4, misma prueba (después del pago, carga nueva: «₡0» · «Ningún cierre aprobado sin liquidar» / «₡3.500» · «1 pago») |
+
+## Mutaciones de pantalla (aplicar → 3 archivos de test → restaurar con copia, `cmp` igual)
+
+| # | Mutación | Resultado | Cae |
+|---|---|---|---|
+| P1 | `tarjetasGanancia`: pendiente con `valor: "0.00"` fijo (valor del cliente) | matada | unit «dos tarjetas en orden …»; componente «con las cifras del servidor …»; página «con `ok` …» (3) |
+| P2 | `CierreDiaModule`: `tarjetas={undefined}` (no se monta) | matada | página «con `ok`»; componente: las 5 de SLT-112 (6) |
+| P3 | pagada recalculada en el cliente (`Number(pagada) + Number(pendiente)`) | matada | unit (2), componente (1), página (1) (4) |
+
+## Verificación (tanda de pantalla)
+
+- **Typecheck** antes del build E2E: exit 2 con EXACTAMENTE los 4 errores ajenos (cliente Prisma de SLT-139:
+  `EstadoCuentaRepository.ts(545,35)`, `(558,5)`, `PagoMensajeroMovimientoRepository.ts(50,5)`, `wallet-mensajero.ts(67,7)`).
+  Después del `prisma generate` del E2E (cliente con el esquema de esta rama): **exit 0, 0 errores**.
+- **Lint** (`pnpm run lint`): exit 0, 0 errors; `eslint` de los 8 archivos tocados: «No issues found».
+- **Tests de la tanda** (3 archivos): `Test Files 3 passed (3)`, `Tests 52 passed (52)`.
+- **`vitest related`** de los 5 archivos de producción: `Test Files 58 passed (58)`, `Tests 1185 passed (1185)`.
+- **Guardias**: `4 failed | 4852 passed | 1 skipped`; los 4 son `dependencias-declaradas-presentes.guardia.test.ts`
+  (rojo heredado de `dev`, ya anotado arriba). `superficie-de-uso` verde sin `@sin-superficie`.
+- **E2E** `pnpm exec playwright test e2e/cierres-rediseno.spec.ts --project=dinero`: **17 passed (1.3m)**, exit 0.
+  Base desechable nueva `slt112_e2e_a` (`migrate deploy` + `db:seed`), `NEXT_PUBLIC_APP_URL=http://localhost:3000`,
+  `next build` (no `pnpm build`, como `gate.yml`), puerto 3000, candado tomado 20:17:16 y liberado 20:21:49.
+  **`prisma generate` con el esquema de esta rama a las 20:17:52** (node_modules compartido): SLT-139 debe regenerar.
+
+**Veredicto (pantalla):** T5-T6 hechas; R357, R358 y R360 con test verde (componente y E2E) y 3/3 mutaciones de
+pantalla matadas.

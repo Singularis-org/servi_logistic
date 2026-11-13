@@ -62,22 +62,22 @@
 
 ## T5 — Pantalla (frontend_dev) · [P] con T3-T4, depende de T2.1
 
-- [ ] **T5.1** `detalle-cierre-vista.ts`: `CifraId` gana `gananciaPendiente` y `gananciaPagada`.
-- [ ] **T5.2** `cola-propia-vista.ts`: constantes, `notaCierresSinLiquidar`, `notaPagosDelMes`,
+- [x] **T5.1** `detalle-cierre-vista.ts`: `CifraId` gana `gananciaPendiente` y `gananciaPagada`.
+- [x] **T5.2** `cola-propia-vista.ts`: constantes, `notaCierresSinLiquidar`, `notaPagosDelMes`,
   `tarjetasGanancia` (`design.md > 4`). Tests en `tests/unit/utils/cola-propia-vista.test.ts` con
   literales (0, 1, n; orden; destacada; valor intacto). **Hecho:** verde.
-- [ ] **T5.3** `ColaCierres.tsx`: `tarjetas?` en `ColaCierresPropiosProps` y `CifrasCierre` entre barra
+- [x] **T5.3** `ColaCierres.tsx`: `tarjetas?` en `ColaCierresPropiosProps` y `CifrasCierre` entre barra
   y tabla. `CierreDiaModule.tsx`: prop `resumenGanancia?` → `tarjetasGanancia`. `page.tsx`: la acción en
   el `Promise.all`, `undefined` si no es `ok`, sin `notFound` (R357).
   **Hecho:** typecheck y lint verdes.
-- [ ] **T5.4** `tests/components/CierreDiaColaPropia.test.tsx` (R158 → sin cifras sin tarjetas; con
+- [x] **T5.4** `tests/components/CierreDiaColaPropia.test.tsx` (R158 → sin cifras sin tarjetas; con
   cifras las dos tarjetas con sus literales, también en 0; paginar y filtrar no las cambian) y
   `tests/components/CierreDiaPage.test.tsx` (acción en error → página sin tarjetas y sin `notFound`).
   **Hecho:** verdes.
 
 ## T6 — E2E (frontend_dev) · depende de T2.4 y T5
 
-- [ ] **T6.1** `e2e/cierres-rediseno.spec.ts`: las dos lecturas del mensajero central antes y después
+- [x] **T6.1** `e2e/cierres-rediseno.spec.ts`: las dos lecturas del mensajero central antes y después
   del «Registrar pago» (`design.md > 6 > E2E`, R358, R360). **Hecho:** verde en local con
   `--project=dinero` sobre base desechable; salida anotada.
 

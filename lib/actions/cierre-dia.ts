@@ -164,10 +164,8 @@ export async function listarCierreDia(
 /**
  * SLT-112 (R350-R357, R359) — «Ganancia pendiente de pago» y «Ganancia pagada este mes» del
  * mensajero de la sesion. Sin input de negocio: el `mensajero_id` sale del actor. Un fallo de
- * lectura devuelve `error` (no lanza): la pagina carga igual, sin tarjetas (R357).
- *
- * @sin-superficie SLT-112 (temporal, tanda de backend): la llama `app/(app)/cierre-dia/page.tsx` en la
- * tanda de pantalla de esta misma ficha (`tasks.md > T5.3`), que quita esta anotacion al cablearla.
+ * lectura devuelve `error` (no lanza): la pagina carga igual, sin tarjetas (R357). La llama
+ * `app/(app)/cierre-dia/page.tsx`.
  */
 export async function resumenGananciaMensajero(
   deps: CierreDiaDeps = {},
