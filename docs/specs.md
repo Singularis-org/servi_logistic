@@ -92,8 +92,8 @@ comprueba el gate.
 
 ## Partir una feature
 
-Una feature tiene que caber en **un PR por debajo de `gate.tamano_pr`** (por defecto 40 archivos y
-1000 líneas; `docs/gate.md > Tamaño del PR`). Si no cabe, se parte en el board **antes** de
+Una feature tiene que caber en **un PR por debajo de `gate.tamano_pr`** (por defecto 40 archivos,
+1000 líneas de producción y 3000 de tests, con topes separados; `docs/gate.md > Tamaño del PR`). Si no cabe, se parte en el board **antes** de
 implementar, no a mitad.
 
 **Cuándo se mira:**
