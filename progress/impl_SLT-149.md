@@ -142,3 +142,7 @@ Total: 429/429 antes y después; 24 de 24 filas iguales.
 - T2 decía `>= 22` obligatorios; el interfaz tiene 20.
 
 Veredicto: T1-T7 hechos, 24 de 24 migrados con R437 igual antes y después; T8 (`./init.sh`) queda para el leader.
+
+
+## T8 (leader)
+- `./init.sh` verde tras mergear dev: `INIT_EXIT=0` (log `gate-149b.log`, base `slt149_wt`). Nota de la review: «429/429» son tests, no `expect(`; R437 por `expect(` lo comprobó el reviewer en 7 archivos (iguales). D69 cerrada; B6/B11/B12 a D75.

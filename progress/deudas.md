@@ -409,7 +409,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D69 — Sin fábrica de dobles de `ICierresAdminRepository`
 - **Origen:** SLT-113, SLT-140 y SLT-141 (2026-11-12/13). Cada método nuevo del repositorio obliga a tocar 12-13 archivos de test con dobles escritos a mano.
 - **Qué falta:** una fábrica de dobles única en `tests/` que los tests extiendan.
-- **Cerrada en SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13):** los 24 dobles a mano pasan a `tests/fixtures/dobles/cierres-admin-repository.ts`; un método nuevo del interfaz rompe en un solo sitio (la fábrica) y la guardia `dobles-cierres-admin-a-mano` impide volver a escribirlos a mano (R430-R439). Quedan fuera los dobles de `ICierreDiaRepository` e `ICierreBodegaRepository`.
+- **Cerrada en SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13):** los 24 dobles a mano pasan a `tests/fixtures/dobles/cierres-admin-repository.ts`; un método nuevo del interfaz rompe en un solo sitio (la fábrica) y la guardia `dobles-cierres-admin-a-mano` impide volver a escribirlos a mano (R430-R439). Quedan fuera los dobles de `ICierreDiaRepository` e `ICierreBodegaRepository`, y los datos fuera de contrato de B6, B11 y B12 (D75).
 - **Dueño:** cerrada.
 
 ### D70 — Voseo fuera del módulo de cierres
@@ -437,3 +437,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-123 y SLT-139 (T0.4). El conteo en producción no se hizo: la lectura de prod está bloqueada para agentes.
 - **Qué falta:** que Carlos corra la SQL de T0.4 (en sus specs) en producción y se anote el número.
 - **Dueño:** Carlos.
+
+### D75 — Dobles de cierres con datos fuera de contrato
+- **Origen:** SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13, review m2 en `progress/review_SLT-149.md`). En `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`, `tests/unit/services/CierresAdminService.gestiones-completo.test.ts` y `tests/unit/services/cierre-desglose-tres-superficies.test.ts` (B6, B11, B12) los datos que devuelve el doble no cumplen el tipo de retorno (faltan `rechazosDeTienda` y `pagoIndependienteEfectivo`, o devuelven el DTO en vez de la fila). Antes lo escondía un `as unknown as` sobre el repositorio; ahora el cast va solo sobre el dato, para no cambiar lo que miden.
+- **Qué falta:** completar esos datos al contrato y quitar el cast; comprobar que las aserciones siguen verdes.
+- **Dueño:** ArqDev.

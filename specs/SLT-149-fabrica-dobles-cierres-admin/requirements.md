@@ -27,7 +27,7 @@ Buscado `fábrica de dobles`, `doble compartido`, `fakeRepo`, `ICierresAdminRepo
 
 ### Inventario de dobles de `ICierresAdminRepository` (origin/dev, 2026-11-13)
 
-Interfaz: `lib/interfaces/repositories/ICierresAdminRepository.ts:431`, con 22 métodos obligatorios y
+Interfaz: `lib/interfaces/repositories/ICierresAdminRepository.ts:431`, con 20 métodos obligatorios (corregido en la implementación: la tabla D2/D3 trae 20) y
 1 opcional (`contarSenalesPorCierre?`, línea 518).
 
 **A. Dobles completos** (literal tipado con el interfaz entero; son los que rompen al añadir un
@@ -154,7 +154,7 @@ sobrescritura en ese archivo (R436). La tabla no se cambia para acomodar un arch
   bloque `interface ICierresAdminRepository`, y afirma: (a) cada obligatorio existe en
   `dobleCierresAdmin()` y es un mock que devuelve el default de la tabla; (b) cada opcional NO existe
   por defecto y sí al sobrescribirlo; (c) una sobrescritura reemplaza solo ese método. Mensaje de
-  fallo con el nombre del método. Que la extracción no esté vacía (afirmar ≥ 22 obligatorios), para
+  fallo con el nombre del método. Que la extracción no esté vacía (afirmar ≥ 20 obligatorios), para
   que no pase en verde sin comprobar nada.
   *Hecho:* verde con `pnpm exec vitest run tests/unit/guards/fabrica-dobles-cierres-admin.guardia.test.ts`.
 - [x] **T3 — Medida antes de migrar** (R437). Antes de tocar ningún archivo del inventario, anotar en
@@ -184,7 +184,7 @@ sobrescritura en ese archivo (R436). La tabla no se cambia para acomodar un arch
   4. Cambiar el default de `findCierreByIdEnAlcance` a `undefined` → al menos una suite migrada roja
      (prueba de que las suites dependen de la fábrica y no de un literal superviviente).
   *Hecho:* las cuatro anotadas con su salida resumida y el árbol limpio (`git status`).
-- [ ] **T8 — Cierre.** `./init.sh` verde; R437 comprobado contra la tabla de T3; mapa `R<n> -> test`
+- [x] **T8 — Cierre.** `./init.sh` verde; R437 comprobado contra la tabla de T3; mapa `R<n> -> test`
   en `progress/impl_SLT-149.md`.
 
 Mapa previsto `R<n> -> test`:
