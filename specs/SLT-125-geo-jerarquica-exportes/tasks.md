@@ -348,3 +348,17 @@ Añadidos por el inventario de T1.1 (2026-11-12; detalle en `progress/impl_SLT-1
   - `tests/integration/db/devolucion-rechazadas-flow.test.ts` (si su doble de Prisma no admite las FK)
 
 Con ellos, la estimación sube de 113 a unos 129 archivos: se avisa al humano antes de seguir.
+
+Añadidos en T2.3 (2026-11-13; detalle en `progress/impl_SLT-125.md > T2.3`):
+- Solo entrada: `tests/unit/plantillas/preview-mismo-motor.test.ts` (su doble del lector de envío lleva
+  filas con las relaciones de lugar) y `tests/fixtures/doble-catalogo-geografico.ts` (admite `padreId`:
+  una cadena de nodos con un tipo por nivel).
+- **Pendiente de autorización** (aserciones que afirman las relaciones de lugar del `include` del listado
+  o la forma exacta de la fila de satélite):
+  - `tests/unit/guards/satelite-proyeccion-compartida.guardia.test.ts:131`;
+  - `tests/unit/repositories/orden-repository-list-items-by-ids.test.ts:115–124`;
+  - `tests/unit/repositories/orden-repository.recepcion-satelite.test.ts:146` (`toEqual` exacto: falta
+    `lugarRuta`).
+- **Pendiente de autorización** (cobertura, P5): `tests/integration/db/geo-lecturas-catalogo.test.ts:454` y
+  `tests/integration/db/slt89-equivalencia-cr.test.ts:98` comparan con `toEqual` la fila de
+  `CoberturaRepository.listDistritos` con la copia de hoy (`scripts/geo-equivalencia/lecturas-de-hoy.ts`).

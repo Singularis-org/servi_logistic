@@ -474,3 +474,105 @@ T2.4, T2.5 y T2.7 hechas y en verde; T2.6 parada por 3 aserciones fuera de §13.
 ## Veredicto T2.2 y T2.6
 
 T2.2 y T2.6 hechas y en verde (A9, A10); las integraciones que piden semilla de órdenes/usuarios no corren en `logistic_slt125`.
+
+## T2.3 — Lecturas con la ruta del catálogo (backend_dev, 2026-11-13) — PARADA en parte (R38)
+
+Explorado con Grep/Read (el índice del grafo no tiene este worktree).
+
+**Estado:** hecho y commiteado lo que no cambia aserciones (`9da81ef0`). La parte de `OrdenRepository`
+(listado, satélite, etiqueta, novedades) está **escrita y en verde en sus tests nuevos, pero sin commitear**
+en el worktree, porque 3 aserciones existentes fuera de §13.1 tendrían que cambiar. `CoberturaRepository`
+(P5) **no se tocó**: añadir `ruta` a su fila cambia 2 aserciones de equivalencia. Detalle abajo.
+
+### Commiteado — `9da81ef0`
+
+- `lib/repositories/_shared/ruta-del-lugar.ts`: `tresPrimerosNiveles` y `nombresDeLaRuta` (los 3 campos de
+  nombre de hoy salen de la ruta: `string` → `""` y distrito → `null` si la ruta no llega; R18, R37).
+- `lib/repositories/GestionOrdenRepository.ts` (`WITH_ASIGNACION`), `lib/repositories/CierreDiaRepository.ts`
+  (`WITH_DETALLE`, vista en vivo, `toPendienteRow(row, flag, catalogo)`; el catálogo, uno por instancia, solo
+  si hay filas; `CierrePrismaClient` suma los modelos del catálogo) y `lib/repositories/OrdenEnvioReader.ts`
+  (llena `OrdenPlantillaDatos.lugarRuta`, hueco de T2.5): sin relaciones `provincia/canton/distrito`, con las FK.
+- Solo entradas: `tests/fixtures/doble-catalogo-geografico.ts` (admite `padreId`: profundidad por la cadena
+  y un tipo por nivel; sin cadena, todo como antes), `preview-mismo-motor.test.ts`, `cierre-detalle-causa-monto`,
+  `cierre-dia-repository` (el doble corre `$transaction` sobre sí mismo si el caso no trae el suyo; filas con
+  `cantonId`, y `distritoId: null` donde antes era `distrito: null`), `cierre-pagos-lectura`, `orden-envio-reader`.
+
+### Escrito y sin commitear (pendiente de autorización)
+
+- `lib/repositories/OrdenRepository.ts`: `WITH_ESTATUS_Y_TIENDA` y `WITH_ETIQUETA` sin relaciones de lugar
+  (`WITH_ETIQUETA` suma `cantonId`, `distritoId`); `lugaresDeOrdenes` (marca + ruta con UNA llamada a
+  `deLaEmpresa`) en `list`, `findListItemsByIds`, `findRecepcionSateliteByZona` y `hidratarSatelite`;
+  `toRelaciones` desde la ruta; `toListItemDTO` emite `lugarRuta`; `toEtiquetaRow` y `findNovedadesByTienda`
+  nombran con la ruta (A8).
+- `lib/types/orden.ts` (`OrdenListItemDTO.lugarRuta?`, que hereda `RecepcionSateliteDTO`),
+  `lib/types/etiqueta-guia.ts` (`EtiquetaGuiaDTO.lugarRuta?`), `lib/interfaces/repositories/IOrdenRepository.ts`
+  (`EtiquetaRow.lugarRuta?`), `lib/services/EtiquetaGuiaService.ts` (la pasa si viene).
+- A8 aplicada en `tests/unit/repositories/orden-repository.novedades.test.ts`: se quitaron solo las 3 líneas
+  `provincia/canton/distrito: { select: { nombre: true } }` del `select` esperado; **no** hizo falta
+  `provinciaId` (la ruta sale de `cantonId`/`distritoId`). Además, solo entrada: la fila lleva FK y el doble la cadena.
+- Solo entrada: `orden-repository.test.ts`, `orden-repository.guia.test.ts`, `orden-repository.recepcion-satelite.test.ts`.
+- Tests nuevos: `tests/integration/db/geo-125-nombres-catalogo.test.ts`,
+  `tests/unit/repositories/ruta-sin-consulta-por-fila.test.ts`,
+  `tests/unit/guards/presentacion-lugar-del-catalogo.guardia.test.ts`.
+
+### Aserciones que tendrían que cambiar (NO cambiadas)
+
+| Archivo:línea | Hoy | Tendría que ser | Por qué |
+|---|---|---|---|
+| `tests/unit/guards/satelite-proyeccion-compartida.guardia.test.ts:131` | `for (const relacion of ["estatus", "tienda", "zona", "provincia", "canton", "distrito"]) expect(include[relacion]).toBeDefined()` | la lista sin `"provincia", "canton", "distrito"` | design §4.2 quita esas relaciones del `include` del listado |
+| `tests/unit/repositories/orden-repository-list-items-by-ids.test.ts:115–124` | `Object.keys(include).sort()` = `["canton","distrito","estatus","gestiones","mensajeroAsignado","provincia","tienda","zona"]` | `["estatus","gestiones","mensajeroAsignado","tienda","zona"]` | ídem |
+| `tests/unit/repositories/orden-repository.recepcion-satelite.test.ts:146` (`toEqual` exacto de la fila) | el objeto de hoy (31 claves) | el mismo objeto + `lugarRuta: [{ id: "p-1", nombre: "Prov" }, { id: "c-1", nombre: "Canton" }, { id: "d-1", nombre: "Distrito" }]` | design §4.2/§6: `RecepcionSateliteDTO` gana `lugarRuta` |
+| `tests/integration/db/geo-lecturas-catalogo.test.ts:454` | `expect(normal(nuevo)).toEqual(normal(deHoy))` (fila de `listDistritos` = copia de hoy) | comparar sin la `ruta` nueva (como A10) | P5: la fila de cobertura necesita la ruta de P niveles para que `CoberturaDistritoDTO.ruta` exista |
+| `tests/integration/db/slt89-equivalencia-cr.test.ts:98` | `expect(normal(r.cobertura.nuevo)).toEqual(normal(r.cobertura.deHoy))` | ídem | ídem |
+
+Además, para P5 hay una decisión de forma no escrita en el spec: cómo se llama el motivo «retirado del
+catálogo» de un nivel ≥ 4 (`MotivoSinCobertura` hoy solo tiene `provincia_retirada`, `canton_retirado`,
+`distrito_retirado`). Propuesta, siguiendo R3: las claves de hoy para k = 1..3 y `nivel_<k>_retirado` desde k = 4.
+
+### R → test
+
+| R | Test | Cifras |
+|---|---|---|
+| R16 | `geo-125-nombres-catalogo.test.ts` › «R16/R17: en CR, el listado, satelite, etiqueta, detalle de gestion, cierre en vivo y envio…»; guardia `presentacion-lugar-del-catalogo` (7 archivos de §4.2, con contraprueba) | 6/6; 5/5 |
+| R17 | `geo-125-nombres-catalogo.test.ts` (frente a las tablas viejas, CR, 3 órdenes × 6 superficies, con y sin distrito) | dentro de 6/6 |
+| R18 | `geo-125-nombres-catalogo.test.ts` › «R18: un lugar que no esta en el catalogo no hace fallar ninguna lectura…» | dentro de 6/6 |
+| R19 | `geografia-lecturas-sin-nodo-fk` y `geografia-sin-cte-recursiva`, sin cambios | 18/18; 5/5 |
+| R20 | `ruta-sin-consulta-por-fila.test.ts` (6 superficies con 1 y 50 filas: 1 `deLaEmpresa`, 1 `nodoGeografico.findMany`, mismas consultas; sin filas, 0 cargas; envío; memoria por instancia) | 9/9 |
+| R37 | suites de `tests/integration/api/` sin cambios (incl. `v2-consulta`, `v2-ordenes`, `contrato-v1`) | 33/33 archivos verdes |
+| R40 | `geo-125-nombres-catalogo.test.ts` › «R40: en XA…», «…un lugar de otro pais no aporta nombres…», «…en plataforma… EmpresaNoResuelta» (5 lecturas) | dentro de 6/6 |
+| R41 | `geo-125-nombres-catalogo.test.ts` › «R41: adminTienda y adminSatelite…» (tienda y zona propias y ajenas; recorte de satélite; `lugarRuta` solo con `id` y `nombre`) | dentro de 6/6 |
+
+### Latencia del listado de `/ordenes` (50 filas, CR, base local)
+
+Test temporal no commiteado: fixture `geo-125` + 50 órdenes de CR, `list({ where: { tiendaId }, take: 50 })`
+como la app, con un repositorio nuevo por medición; 5 de calentamiento y 30 alternadas con una copia del
+`OrdenRepository` de `8c045b1d` (antes) y el de ahora (después).
+
+```
+corrida 1: antes mediana 22.0 ms, p90 25.8 ms | despues mediana 19.5 ms, p90 24.0 ms
+corrida 2: antes mediana 21.0 ms, p90 24.9 ms | despues mediana 18.8 ms, p90 21.8 ms
+```
+
+Más rápido: se van las 3 consultas de las relaciones, y la carga del catálogo ya la hacía la marca (SLT-65).
+
+### Salidas (con `env125.sh`, uno a uno, `--maxWorkers=1`)
+
+```
+unit (116 archivos que importan los repos/servicios tocados): verdes salvo los 3 de la tabla de arriba
+  y 4 módulos que no son tests (fabricas/_semilla/_escenario: «No test files found»)
+integration/db (116): 67 verdes, 45 rojos, todos en tests/baseline-rojos.json y por base sin semilla
+  («tabla `orden` vacia», «no hay ningun usuario», «estatus ayuda_tienda»), + 4 módulos que no son tests
+integration/api (30 + 3): todas verdes
+geo-125-nombres-catalogo 6/6 · ruta-sin-consulta-por-fila 9/9 · presentacion-lugar-del-catalogo 5/5
+orden-repository.novedades 36/36 (A8) · orden-repository 47/47 · orden-repository.guia 31/31
+cierre-dia-repository 116/116 · cierre-pagos-lectura 14/14 · orden-envio-reader 8/8 · preview-mismo-motor 10/10
+pnpm run typecheck → exit 0
+pnpm exec eslint <archivos tocados> → 0 errores (2 warnings previos, no tocados)
+vitest run guard → 2 failed | 334 passed | 3 skipped: dependencias-declaradas-presentes (4, baseline) y
+  satelite-proyeccion-compartida (1, la aserción :131 de arriba)
+```
+
+### Veredicto T2.3
+
+Parada por R38: commiteada la parte de gestión, cierre en vivo y envío; la de `OrdenRepository` espera la
+autorización de 3 aserciones, y cobertura (P5) la de 2 más y el nombre del motivo de nivel ≥ 4.
