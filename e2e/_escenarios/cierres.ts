@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Browser, Locator, Page } from "@playwright/test";
 
 import { conEmpresa } from "../../lib/db/contexto-empresa";
 import { getPrismaClient } from "../../lib/db/prisma-client";
@@ -14,7 +14,19 @@ import {
 } from "../../tests/fabricas/escenarios/cierres";
 import { fijarEmpresa } from "../../tests/fabricas/organizaciones";
 
-import { baseReparto, type MensajeroE2E, type RepartoE2E } from "./reparto";
+import { abrirTarifas, activarConFaltantes, digitarYGuardar, irAZona, type Digitado } from "../_tarifas-activacion-fixture";
+
+import {
+  baseReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./reparto";
 
 /**
  * SL-44 T3.2 (design D4; R8) — EL CIERRE DEL DÍA, lo mínimo que el grupo `reparto` necesita para
@@ -224,4 +236,33 @@ export async function solicitarCierreBodega(r: RepartoE2E, opts: { quien?: Actor
   );
   if (res.status !== "ok") throw new Error(`SLT-104 E2E: solicitarCierreBodega no fue ok: ${JSON.stringify(res)}`);
   return res.cierreBodegaId;
+}
+
+// ── Un cierre del modelo nuevo (SLT-140 T5.1) ───────────────────────────────────────────────────
+//
+//   cierreModeloNuevo(browser, r, { cobro, pago, montoCobrar }) → { m, orden, cierreId }
+//     Activa POR LA PANTALLA de Tarifas, como el maestro, el cobro a la tienda y el pago al mensajero
+//     digitados en la zona central (`_tarifas-activacion-fixture`); después un mensajero NUEVO de la
+//     central entrega UNA orden cobrada entera en efectivo y solicita su cierre, que queda congelado
+//     con el modelo nuevo. Los cierres solicitados ANTES de llamarlo siguen siendo del modelo viejo.
+
+export async function cierreModeloNuevo(
+  browser: Browser,
+  r: RepartoE2E,
+  a: { cobro: readonly Digitado[]; pago: readonly Digitado[]; montoCobrar: number },
+): Promise<{ m: MensajeroE2E; orden: OrdenE2E; cierreId: string }> {
+  const page = await paginaDe(browser, r.empresa.maestro);
+  await abrirTarifas(page);
+  await irAZona(page, r.zonaCentral.nombre);
+  await digitarYGuardar(page, "Cobro a la tienda", a.cobro);
+  await digitarYGuardar(page, "Pago al mensajero", a.pago);
+  await activarConFaltantes(page);
+  await page.context().close();
+
+  const m = await crearMensajero(r, "central");
+  const orden = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: a.montoCobrar }), "en_reparto", {
+    mensajero: m,
+  });
+  await gestionar(r, orden, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: a.montoCobrar }] });
+  return { m, orden, cierreId: await solicitarCierre(r, m) };
 }

@@ -38,6 +38,9 @@ function inc(gestionId: string) {
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => []),
     // Feature 170 (T I.1): el historico paginado. Doble no-op: esta suite no lo ejercita.
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),

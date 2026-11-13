@@ -193,8 +193,9 @@ export type ListarPendientesCierresAdminServiceResult =
  * las columnas que la tabla enseña (R12) y las proyecta con la misma funcion. `limite_excedido`
  * lleva SOLO conteos: ni una fila, ni un conjunto truncado (R6).
  */
-export type ListarHistoricoCierresAdminCompletoServiceResult =
-  ListarCompletoServiceResult<CierreAdminResumen>;
+export type ListarHistoricoCierresAdminCompletoServiceResult = ConCifrasModeloNuevoEnOk<
+  ListarCompletoServiceResult<CierreAdminResumen>
+>;
 
 /**
  * Feature 184 — Tanda D (T D.2, R1/R6) — la COLA ENTERA de pendientes de decision del alcance.
@@ -203,8 +204,52 @@ export type ListarHistoricoCierresAdminCompletoServiceResult =
  * schemas de pagina: son dos listados distintos y el nombre es lo unico que dice cual de las
  * dos mitades se esta pidiendo.
  */
-export type ListarPendientesCierresAdminCompletoServiceResult =
-  ListarCompletoServiceResult<CierreAdminResumen>;
+export type ListarPendientesCierresAdminCompletoServiceResult = ConCifrasModeloNuevoEnOk<
+  ListarCompletoServiceResult<CierreAdminResumen>
+>;
+
+/** SLT-140 (R381): una tienda de un cierre en la hoja «Por tienda». Sin `tiendaId`: nunca es columna. */
+export interface ParteDeTiendaDescargaDTO {
+  tiendaNombre: string;
+  recaudado: string;
+  pagoTienda: string;
+  ganaLaTienda: string;
+}
+
+/**
+ * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (R379-R382) — las cifras de UN cierre
+ * del modelo nuevo para la hoja «Cierres», derivadas con `cifrasDelCierre` (las mismas del detalle).
+ * Todo OBLIGATORIO (lección de SLT-123): un campo opcional que un camino no puebla se lee como «no hay».
+ * Importes: STRING de escala 2, con su signo.
+ */
+export interface CifrasCierreDescargaDTO {
+  /** Une con el item (`CierreAdminResumen.cierreId`); nunca es columna. */
+  cierreId: string;
+  pagoTienda: string;
+  ganaLaTienda: string;
+  /** `totalesIngreso.total` del detalle. */
+  totalFacturado: string;
+  ivaFacturado: string;
+  netoEmpresa: string;
+  /** Numero de gestiones del cierre (Σ de los grupos del detalle). */
+  gestiones: number;
+  /** `(P + premios vivos) − pendiente`; `null` si el cierre no esta aprobado o el actor no es central (R382). */
+  pagoEntregado: string | null;
+  /** En el orden del detalle (de mayor a menor pago a la tienda). */
+  partesPorTienda: ParteDeTiendaDescargaDTO[];
+}
+
+/** SLT-140 (R378): lo que la rama `ok` del «Resumen» de cierres lleva ademas de las filas. */
+export interface ExtraCifrasModeloNuevo {
+  /** Presente solo si algun cierre del conjunto es del modelo nuevo; uno por cierre nuevo, en el orden de `items`. */
+  cifrasModeloNuevo?: CifrasCierreDescargaDTO[];
+}
+
+/**
+ * SLT-140 — añade `cifrasModeloNuevo?` SOLO a la rama `ok`, como `ConRechazosDeTiendaEnOk` de SLT-113.
+ * El generico comun `ListarCompleto*Result` no cambia.
+ */
+export type ConCifrasModeloNuevoEnOk<R> = R extends { status: "ok" } ? R & ExtraCifrasModeloNuevo : R;
 
 /**
  * Feature 230 (T1.1, design §2.4) — UNA GESTION de un cierre, lista para proyectar a una fila

@@ -100,6 +100,9 @@ type Repo = ICierresAdminRepository;
 function fakeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
     leerTopeIntentos: vi.fn(async () => 3),
+    findGestionesDeCierresEnAlcance: vi.fn(async () => {
+      throw new Error("SLT-140: este doble no lee gestiones en lote");
+    }),
     findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
     // Feature 170 (T I.1): el historico paginado vive en su propia suite (*-paginado).
     findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
