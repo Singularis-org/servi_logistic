@@ -88,3 +88,46 @@ Rama `feature/SLT-148-detalle-bodega-sin-n1`, HEAD `aef11c73`, diff `origin/dev.
 
 **CAMBIOS** (RECHAZADO) por B1. El código y los tests están bien (paridad, alcance, sin N+1, mutaciones
 cubiertas). Lo que falta es cerrar T4.1/T6.2/T6.3 con constancia; no hace falta tocar `lib/`.
+
+## Vuelta 2 (acotada a 146dbf0a..6a8b1a49)
+
+Diff: `tests/integration/db/cierre-bodega-detalle-lote-sql-real.test.ts` (+caso BV), `tasks.md`
+(T4.1, T6.2, T6.3 a `[x]`), `progress/impl_SLT-148.md` (tanda 3 y constancia de CI).
+
+### Checklist
+- [x] **m1 / test nuevo R420 (BV, cierre del día sin gestiones).** `toEqual` entero con literales
+  escritos a mano (ids del corpus, «Mia Cuatro», importes `"0.00"`, `solicitadoAt` literal,
+  `gestiones: []`) y `toHaveLength(24)` con la constante desglosada a mano (4+2+1+10+1+5+1). No compara
+  contra su propia fuente. La autocomprobación del corpus falla si DV tuviera gestiones.
+- [x] **Mutación real.** La de la bitácora (corte `every(gestiones.length === 0) → cierresDia: []`)
+  es justo el fallo que el test debe cazar; el rojo citado («expected { cierre, cierresDia: [] } to
+  deeply equal …») es coherente con el `toEqual`. No la reejecuto (no edito código).
+- [x] **Corrida propia** del archivo contra la base desechable `slt148_wt`: **9 passed (9), EXIT=0**,
+  sin skips (el `describeSiHayBase` corrió).
+- [x] **T6.2** marcada; D67 cerrada en `772fe8d0` (ya visto en vuelta 1).
+- [x] **T4.1.** `gh run view 43502649475`: headSha `205f78b1` (= HEAD salvo docs), conclusion
+  `success`; vitest shards 1-3, `estatico`, `e2e (aislamiento|dinero|reparto)` y `gate-completo`, todos
+  `success`. La suite entera con base con datos cubre los dos tests que faltaban en local.
+- [x] **T6.3 / regla `perfil-agentes.md > reviewer` («constancia de los E2E afectados corridos en
+  local»).** La regla pide los E2E **afectados** en local, no el grupo entero. Los afectados son los
+  que abren el detalle de un cierre de bodega (`grep -rlE` en `e2e/`): `cierre-bodega-satelite`,
+  `ajuste-pago-mensajero-cierre` y `cierres-rediseno`, los tres del proyecto `dinero`
+  (`playwright.config.ts`). En las dos corridas locales pasaron (21/21 con «bodega»); las dos caídas
+  fueron `tarifas-valor-propio-mensajero` y `cierre-modelo-nuevo-plan-porcentual` (y sus hermanos
+  seriales), a 0 ms con `code=3221226505` (0xC0000409, caída del proceso en Windows), un test distinto
+  cada vez y ninguno afectado por el diff. Con eso la regla se cumple al pie de la letra para los
+  afectados, y el `e2e (dinero)` verde de CI sobre el mismo SHA cubre el resto del grupo que T6.3
+  pidió por prudencia. No hace falta repetir con `--workers=1`.
+- `gh pr checks 158` ahora: run 43504808834 (del push docs 6a8b1a49) en `pending`. No cambia código
+  frente a 205f78b1, pero el merge sigue esperando ese `gate-completo` (CLAUDE.md regla 5).
+
+### Hallazgos
+- **menor** — T6.3 se marca citando el CI como constancia de todo `dinero`; lo exacto es «afectados
+  en local verdes (3 specs, 21 tests) + grupo `dinero` completo verde en CI». Conviene dejarlo así
+  en la bitácora para no sentar el precedente de que el CI sustituye al local.
+- **menor** — la caída 0xC0000409 del worker de Playwright en Windows es deuda de entorno; si se
+  repite en otra ficha, registrarla en `progress/deudas.md`.
+
+### Veredicto vuelta 2: **OK**
+B1 de la vuelta 1 cerrado (T4.1, T6.2, T6.3 con constancia verificable). Sin bloqueantes. Merge sujeto
+al `gate-completo` del run en curso.
