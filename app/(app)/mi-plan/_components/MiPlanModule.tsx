@@ -33,17 +33,18 @@ export interface MiPlanModuleProps {
   };
 }
 
+/** Sin la prop `facturas`: la lista no se pudo leer (R17). Sin filas no hay detalle que abrir; no se llama. */
+const FACTURAS_NO_RECIBIDAS: NonNullable<MiPlanModuleProps["facturas"]> = {
+  lista: null,
+  cargarDetalle: async () => ({ estado: "not_found" }),
+};
+
 /**
  * SLT-58 (design §6.4; R1–R7) — lo que la empresa ve de su plan. SLT-99 sustituye SLT-58 R11 («solo información»):
  * el maestro ve su plan activo (R3), el pendiente con «Cancelar cambio» (R16, R17), el consumo y el costeo del
  * período debajo, sin cambios (R21, P8), y los planes disponibles para cambiar de plan (R5–R8, R18–R20).
  * SLT-119 (R1): al final, las facturas de la empresa, de cualquier plan o sin plan.
  */
-/** Sin la prop `facturas`: la lista no se pudo leer (R17). Sin filas no hay detalle que abrir; no se llama. */
-const FACTURAS_NO_RECIBIDAS: NonNullable<MiPlanModuleProps["facturas"]> = {
-  lista: null,
-  cargarDetalle: async () => ({ estado: "not_found" }),
-};
 
 export function MiPlanModule({
   plan,

@@ -137,3 +137,35 @@ La propuesta del implementer para `docs/verification.md > En local` es útil, pe
 **RECHAZADO** — 2 bloqueantes (B1 tamaño sin aceptación; B2 E2E afectados de `aislamiento` sin correr en local),
 3 menores. El código, la autorización, el aislamiento y la trazabilidad R1–R19 están bien; los cuatro desvíos
 declarados se aceptan y el m5 de SLT-118 queda cerrado.
+
+## Vuelta 2 (acotada a 6001f679..HEAD)
+
+Commits `f9abc3bf` (arreglos) y `6c10023f` (aceptación del tamaño). Revisado el 2026-11-12, solo contra los hallazgos
+de la vuelta 1 y sus regresiones.
+
+Verificación del reviewer:
+- `node scripts/tamano-pr.mjs`: AVISO aceptado (28/40 archivos, 3057/1000 líneas; aceptado por el humano el 2026-11-12).
+- `vitest run` de `MiPlanModule`, `MiPlanCambioDePlan`, `ConsumoDelPlanPeriodo` y `mi-plan-page`: 4 archivos, 64 pasados.
+- `eslint` sobre `MiPlanModule.tsx` y los dos tests tocados: sin problemas.
+- No corrí los E2E: me baso en la salida que anotó el implementer.
+
+| Hallazgo | Estado | Evidencia |
+|---|---|---|
+| B1 tamaño | **Cerrado** | `<!-- tamano-pr-aceptado: 2026-11-12 · … -->` en `progress/features/SLT-119.md`; el script lo da como aviso aceptado. Las líneas reales (3057) superan las ~3027 de la nota; la diferencia viene de la propia vuelta y no cambia la decisión |
+| B2 E2E de `aislamiento` | **Cerrado** | `progress/impl_SLT-119.md > Review vuelta 1`: los cinco specs pedidos (más `plataforma-vacia` por dependencia), 34 pasados y 0 fallidos/flaky/skipped en dos corridas seguidas sobre base desechable con build nuevo. La corrida 0 cayó en `superadmin-arranque` por el log de consultas del `.env` local; está explicada y es ajena a la ficha |
+| m1 prop opcional | **Cerrado** | Sin la prop, `facturas` toma por defecto `lista: null` y la sección se pinta con el aviso de R17. Test nuevo en `MiPlanModule.test.tsx`; `MiPlanCambioDePlan.test.tsx` filtra el aviso de la sección (`alertaDelCambio`) sin debilitar la aserción: sigue exigiendo exactamente una alerta fuera de ella |
+| m2 `init.sh` en T7.3 | **Cerrado** | `tasks.md` T7.3 y la bitácora dicen el estado real |
+| m3 nota de entorno | **Cerrado** | Quitada de la bitácora |
+
+Regresiones: ninguna. La sección ahora aparece siempre en `MiPlanModule`; con la página no cambia nada, porque la
+página siempre pasa la prop.
+
+Hallazgo nuevo:
+- **m4 · menor** — `app/(app)/mi-plan/_components/MiPlanModule.tsx`: la constante `FACTURAS_NO_RECIBIDAS` quedó entre el
+  JSDoc del componente (SLT-58/SLT-99/SLT-119) y `export function MiPlanModule`. Ese bloque ahora documenta la
+  constante y el componente pierde su doc en el editor. Basta con mover la constante encima del JSDoc. No bloquea.
+
+### Veredicto vuelta 2
+
+**OK** — 0 bloqueantes y 1 menor nuevo (m4). B1, B2, m1, m2 y m3 quedan cerrados. El merge sigue condicionado a
+`gate-completo` en verde en CI.
