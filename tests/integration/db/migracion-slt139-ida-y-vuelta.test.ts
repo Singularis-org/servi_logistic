@@ -37,7 +37,7 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La ultima de `origin/dev` medida en T1.2 (2026-11-12): las de SLT-139 van justo detras. */
+/** La ultima de `origin/dev` medida en T1.2 (2026-11-12): las de SLT-139 van detras (ver `fallosDeOrden`). */
 const ULTIMA_DE_DEV = "20261114120000_pago_independiente_efectivo";
 const M_ENUM = "20261115120000_pago_satelite_enum";
 const M_CHECKS = "20261115120100_pago_satelite_checks";
@@ -49,16 +49,51 @@ const CHECK_DE_SLT68 =
 
 const BASE = `slt139_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
+/**
+ * Los fallos de orden de las dos de SLT-139 respecto de `ULTIMA_DE_DEV`, o `[]` si estan bien.
+ *
+ * SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (CI de #153): antes se exigia
+ * adyacencia (`previa+1`, `previa+2`). Desde dev entro `20261114120000_plan_cambio_por_empresa`
+ * (SLT-128), con el MISMO timestamp que `ULTIMA_DE_DEV`, y ordena entre medias: la adyacencia con
+ * dev deja de ser algo que SLT-139 controle. Lo que R337 necesita se conserva: las dos van DESPUES
+ * de `ULTIMA_DE_DEV` y `M_CHECKS` va JUSTO detras de `M_ENUM` (el down de checks antes que el del
+ * enum, y nada de otra feature aplicandose entre las dos).
+ */
+function fallosDeOrden(carpetas: readonly string[]): string[] {
+  const previa = carpetas.indexOf(ULTIMA_DE_DEV);
+  const enumIdx = carpetas.indexOf(M_ENUM);
+  const checksIdx = carpetas.indexOf(M_CHECKS);
+  const fallos: string[] = [];
+  if (previa < 0) fallos.push(`falta ${ULTIMA_DE_DEV}`);
+  if (enumIdx < 0) fallos.push(`falta ${M_ENUM}`);
+  if (checksIdx < 0) fallos.push(`falta ${M_CHECKS}`);
+  if (fallos.length > 0) return fallos;
+  if (enumIdx <= previa) fallos.push(`${M_ENUM} no va despues de ${ULTIMA_DE_DEV}`);
+  if (checksIdx !== enumIdx + 1) fallos.push(`${M_CHECKS} no va justo detras de ${M_ENUM}`);
+  return fallos;
+}
+
 describe("SLT-139 R337 — las dos migraciones en disco", () => {
-  it("traen su down.sql y van, en orden, justo detras de la ultima migracion de dev medida en T1.2", () => {
-    const carpetas = carpetasDeMigracion();
-    const previa = carpetas.indexOf(ULTIMA_DE_DEV);
-    expect(previa, `falta ${ULTIMA_DE_DEV}`).toBeGreaterThanOrEqual(0);
-    expect(carpetas.indexOf(M_ENUM), `${M_ENUM} fuera de orden`).toBe(previa + 1);
-    expect(carpetas.indexOf(M_CHECKS), `${M_CHECKS} fuera de orden`).toBe(previa + 2);
+  it("traen su down.sql y van, en orden, detras de la ultima migracion de dev medida en T1.2", () => {
+    expect(fallosDeOrden(carpetasDeMigracion())).toEqual([]);
     for (const c of DE_SLT139) {
       expect(existsSync(path.join(MIGRACIONES, c, "down.sql")), `${c} sin down.sql`).toBe(true);
     }
+  });
+
+  it("la comprobacion de orden muerde: listas sinteticas fuera de orden dan fallo", () => {
+    const OTRA = "20261114120000_plan_cambio_por_empresa";
+    expect(fallosDeOrden([ULTIMA_DE_DEV, OTRA, M_ENUM, M_CHECKS])).toEqual([]);
+    expect(fallosDeOrden([M_ENUM, ULTIMA_DE_DEV, M_CHECKS])).toContain(
+      `${M_ENUM} no va despues de ${ULTIMA_DE_DEV}`,
+    );
+    expect(fallosDeOrden([ULTIMA_DE_DEV, M_ENUM, OTRA, M_CHECKS])).toContain(
+      `${M_CHECKS} no va justo detras de ${M_ENUM}`,
+    );
+    expect(fallosDeOrden([ULTIMA_DE_DEV, M_CHECKS, M_ENUM])).toContain(
+      `${M_CHECKS} no va justo detras de ${M_ENUM}`,
+    );
+    expect(fallosDeOrden([ULTIMA_DE_DEV, M_ENUM])).toEqual([`falta ${M_CHECKS}`]);
   });
 });
 

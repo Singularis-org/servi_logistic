@@ -318,8 +318,52 @@ export type ListarConsolidablesServiceResult =
  * ni el reparto de efectivo, que son de `listarConsolidacion` y viven sobre otro conjunto —los
  * consolidables—. Ese es justo el coste que esta tanda quita del camino de la descarga.
  */
-export type ListarCierresBodegaSolicitadosCompletoServiceResult =
-  ListarCompletoServiceResult<CierreBodegaResumen>;
+export type ListarCierresBodegaSolicitadosCompletoServiceResult = ConCifrasBodegaEnOk<
+  ListarCompletoServiceResult<CierreBodegaResumen>,
+  CifrasCierreBodegaDescargaDTO
+>; // SLT-141 (R385, R386): la satelite, sin `pagoEntregado`
+
+/**
+ * SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (R385, R387, R388) — las cifras de UN
+ * cierre de bodega del modelo nuevo para las hojas «Cierres» y «Por tienda». Salen de
+ * `cifrasAgregadasBodega`, la misma funcion que el detalle. Todo OBLIGATORIO: un campo opcional que un
+ * camino no puebla se lee como «no hay». Importes: STRING de escala 2, con su signo.
+ */
+export interface CifrasCierreBodegaDescargaDTO {
+  /** Une con el item (`CierreBodegaResumen.cierreBodegaId`); nunca es columna. */
+  cierreBodegaId: string;
+  /** Numero de gestiones de sus cierres del dia. */
+  gestiones: number;
+  /** Numero de esas gestiones con al menos un ajuste del pago (Σ `gestionesAjustadas`). */
+  pagosAjustados: number;
+  /** `totalesIngreso.total` del detalle. */
+  totalFacturado: string;
+  ivaFacturado: string;
+  /** «Le queda a la empresa». */
+  netoEmpresa: string;
+  ganaLaTienda: string;
+  /** En el orden del detalle (de mayor a menor pago a la tienda). */
+  partesPorTienda: ParteDeTienda[];
+}
+
+/**
+ * SLT-141 (R388, PA1, F481) — solo la central: «Pago entregado» del cierre de bodega = Σ por sus
+ * cierres del dia de `derivarPagoEntregadoCierre`; `null` si alguno no esta aprobado.
+ */
+export interface CifrasCierreBodegaCentralDescargaDTO extends CifrasCierreBodegaDescargaDTO {
+  pagoEntregado: string | null;
+}
+
+/**
+ * SLT-141 — anade `cifrasModeloNuevo?` SOLO a la rama `ok`, gemelo de `ConRechazosDeTiendaEnOk` de
+ * SLT-113. Presente solo si algun cierre de bodega del conjunto es nuevo; uno por cierre nuevo, en el
+ * orden de `items`. `C` es el DTO de la audiencia: la satelite no puede recibir `pagoEntregado`.
+ */
+export type ConCifrasBodegaEnOk<R, C extends CifrasCierreBodegaDescargaDTO> = R extends {
+  status: "ok";
+}
+  ? R & { cifrasModeloNuevo?: C[] }
+  : R;
 
 /**
  * Feature 184 — Tanda B (R1/R6/R10) — el CONJUNTO de «Cierres del dia a consolidar» de la zona,
