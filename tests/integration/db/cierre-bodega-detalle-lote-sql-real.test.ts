@@ -63,11 +63,13 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 const CONSULTAS_DETALLE_UNO_LINEA_BASE = 24;
 
 /**
- * T0.1 (R428) — sentencias para B0 (N = 0) medidas con el codigo anterior a esta ficha: la cabecera (4,
- * ver `TABLAS_DE_LA_CABECERA`), los cierres del dia con su relacion `mensajero` (2) y la marca de modelo
- * nuevo de la cabecera (1). Sin cierres del dia no se lee nada mas; el test exige como mucho este numero.
+ * R428 — sentencias EXACTAS para B0 (N = 0): la cabecera (4, ver `TABLAS_DE_LA_CABECERA`) y la marca de
+ * modelo nuevo de la cabecera (1). Con el codigo anterior a esta ficha eran 7 (T0.1: + los cierres del
+ * dia con su relacion `mensajero`, 2). Bajo de 7 a 5 porque el corte usa `_count.cierresDia` de la
+ * cabecera y va ANTES de leer `cierre_dia` (que carga las gestiones como relacion: Prisma emitiria sus
+ * sentencias aunque no hubiera filas). Exacto a proposito: un 6 o un 7 seria una regresion.
  */
-const CONSULTAS_DETALLE_SIN_DIAS = 7;
+const CONSULTAS_DETALLE_SIN_DIAS = 5;
 
 /**
  * T0.1 (R425) — lo que emite la lectura de la cabecera (`findFirst` con `BODEGA_RESUMEN_SELECT`): su
@@ -975,8 +977,7 @@ describeSiHayBase("SLT-148 — detalle del cierre de bodega en lote, contra Post
       expect(tablas).not.toContain("gestion_orden");
       expect(tablas).not.toContain("cierre_detail");
       expect(tablas).not.toContain("orden_fulfillment_movimiento");
-      // Como mucho lo de antes (T0.1); desde SLT-148 el corte va antes de leer `cierre_dia` (5: cabecera + marca de modelo nuevo).
-      expect(ev.length).toBeLessThanOrEqual(CONSULTAS_DETALLE_SIN_DIAS);
+      expect(ev).toHaveLength(CONSULTAS_DETALLE_SIN_DIAS);
     });
   });
 
