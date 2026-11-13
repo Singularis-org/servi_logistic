@@ -1,19 +1,40 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import type {
   IPagoPlataformaRepository,
   PagoPlataformaCliente,
   PagoPlataformaTxCandado,
+  PagoPlataformaTxDisponible,
 } from "@/lib/interfaces/repositories/IPagoPlataformaRepository";
 
 // SL-45 (design §3, §6) — la lectura de los pagos vigentes y el candado del tope. Dos consultas
 // Prisma y ningún SQL a mano sobre negocio: los índices `(tipo, categoria)` y `(origen_tipo,
 // origen_id)` ya cubren las dos.
+// SLT-60 (design §4.1): la suma de los pagos confirmados (Prisma, por empresa) y lo disponible para
+// registrar, que es una función de la base (`pago_plataforma_disponible`, con control de empresa).
 
 export class PagoPlataformaRepository implements IPagoPlataformaRepository {
   constructor(private readonly prisma: PagoPlataformaCliente) {}
 
-  async sumaPagosVigentes(organizacionId: string, cliente?: PagoPlataformaCliente): Promise<string> {
+  async sumaPagosConfirmados(
+    organizacionId: string,
+    cliente?: Pick<PrismaClient, "pagoPlataformaAplicacion">,
+  ): Promise<string> {
+    // El filtro por empresa va escrito, como en `sumaPagosVigentes` (R25): no depende del cliente.
+    const r = await (cliente ?? this.prisma).pagoPlataformaAplicacion.aggregate({
+      where: { organizacionId },
+      _sum: { monto: true },
+    });
+    return new Prisma.Decimal(r._sum.monto ?? 0).toFixed(2);
+  }
+
+  async disponibleParaRegistrar(organizacionId: string, tx: PagoPlataformaTxDisponible): Promise<string> {
+    // `::text` para no pasar por `number`: el importe llega como texto exacto y se normaliza a 2 decimales.
+    const filas = await tx.$queryRaw<{ d: string | null }[]>`SELECT pago_plataforma_disponible(${organizacionId})::text AS d`;
+    return new Prisma.Decimal(filas[0]?.d ?? 0).toFixed(2);
+  }
+
+  async sumaPagosVigentes(organizacionId: string, cliente?: Pick<PrismaClient, "walletMovimiento">): Promise<string> {
     const db = cliente ?? this.prisma;
     // El filtro va escrito aunque la extensión y la RLS ya acoten a la empresa de la sesión (R20): es
     // el molde de `CobroPlataformaMovimientoRepository.sumasPorTipo`, y el aislamiento del dinero no
@@ -44,7 +65,7 @@ export class PagoPlataformaRepository implements IPagoPlataformaRepository {
   async claveYaRegistrada(
     organizacionId: string,
     claveIdempotencia: string,
-    cliente?: PagoPlataformaCliente,
+    cliente?: Pick<PrismaClient, "walletMovimiento">,
   ): Promise<boolean> {
     // El único es `(organizacion_id, clave_idempotencia)`: con la empresa en el `where`, a lo sumo una.
     const fila = await (cliente ?? this.prisma).walletMovimiento.findFirst({

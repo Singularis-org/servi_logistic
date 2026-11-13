@@ -7,12 +7,12 @@
 
 ## T0 — Comprobaciones antes de escribir (sin código)
 
-- [ ] **T0.1** Insertar, en una base desechable, una fila con FK a `usuario` apuntando al superadmin
+- [x] **T0.1** Insertar, en una base desechable, una fila con FK a `usuario` apuntando al superadmin
   (`organizacion_id` nulo) en una tabla con trigger de misma empresa. **Hecho:** anotado en
   `progress/impl_SLT-60.md` si `confirmado_por` lleva FK (design §1).
 - [ ] **T0.2** Comprobar que la última migración de `dev` sigue siendo anterior a `20261116120000`. Si no lo
   es, se renombra la carpeta antes de aplicarla en ninguna base compartida. **Hecho:** timestamp anotado.
-- [ ] **T0.3** Mirar si `scripts/demo-qa/receta.ts` cierra alguna factura antes del pago a la plataforma.
+- [x] **T0.3** Mirar si `scripts/demo-qa/receta.ts` cierra alguna factura antes del pago a la plataforma.
   **Hecho:** anotado qué cambia en T9.3.
 - [ ] **T0.4** Volver a correr `node scripts/archivos-en-vuelo.mjs --candidata SLT-60`. **Hecho:** los
   choques anotados. Se espera solo el de SLT-119 «Planes: pantallas de facturas para el superadmin y el
@@ -20,7 +20,7 @@
 
 ## T1 — La base (depende de T0)
 
-- [ ] **T1.1** La migración `20261116120000_pago_plataforma_confirmacion/migration.sql` (design §1, §3):
+- [x] **T1.1** La migración `20261116120000_pago_plataforma_confirmacion/migration.sql` (design §1, §3):
   - las dos tablas, con sus CHECK, únicos, índice, FK, RLS, políticas y `REVOKE`;
   - los triggers sin cambio de empresa, inmutable y de misma empresa (generados con `--faltantes`);
   - las funciones `factura_plataforma_saldos`, `pago_plataforma_por_confirmar`,
@@ -30,19 +30,19 @@
   - ningún `INSERT` de datos (R28).
 
   **Hecho:** aplica en una base desechable.
-- [ ] **T1.2** `down.sql` (design §3.8), con el cuerpo literal del tope de `20261111130100` §9. **Hecho:**
+- [x] **T1.2** `down.sql` (design §3.8), con el cuerpo literal del tope de `20261111130100` §9. **Hecho:**
   `pnpm run db:rollback` y la migración otra vez, sin error.
-- [ ] **T1.3** `db/schema.prisma`: los dos modelos y sus relaciones inversas. `lib/db/modelos-de-negocio.ts`:
+- [x] **T1.3** `db/schema.prisma`: los dos modelos y sus relaciones inversas. `lib/db/modelos-de-negocio.ts`:
   los dos en `MODELOS_DE_NEGOCIO`. **Hecho:** `pnpm run typecheck` en verde.
-- [ ] **T1.4** [P] `scripts/verificar-rls-despliegue.ts` (`TRIGGERS_MISMA_EMPRESA` = 179, con su línea de
+- [x] **T1.4** [P] `scripts/verificar-rls-despliegue.ts` (`TRIGGERS_MISMA_EMPRESA` = 179, con su línea de
   comentario) y `tests/unit/guards/rls-por-empresa.guardia.test.ts` (92). **Hecho:** `pnpm run test:guardias`
   en verde.
-- [ ] **T1.5** [P] `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts`. **Hecho:** verde con base
+- [x] **T1.5** [P] `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts`. **Hecho:** verde con base
   (R28, R29).
 
 ## T2 — Lectura del dinero en el servidor (depende de T1)
 
-- [ ] **T2.1** `lib/db/errores-pago-plataforma.ts`: `traducirErrorDeConfirmacion` y `esPagoConfirmadoError`
+- [x] **T2.1** `lib/db/errores-pago-plataforma.ts`: `traducirErrorDeConfirmacion` y `esPagoConfirmadoError`
   (design §3.6).
 - [ ] **T2.2** `IPagoPlataformaRepository` y `PagoPlataformaRepository`:
   - fuera `sumaPagosVigentes`;
@@ -54,9 +54,9 @@
 - [ ] **T2.3** `TopePagoPlataformaService` con un solo repositorio (design §4.2), `lib/actions/wallet-egresos.ts`
   y `tests/unit/actions/wallet-egresos.composition-root.test.ts`. Se reescribe
   `tests/unit/services/tope-pago-plataforma-service.test.ts`. **Hecho:** verde, con el borde exacto (R2, R3).
-- [ ] **T2.4** `DeudaPlataformaService` con `sumaPagosConfirmados` y
+- [x] **T2.4** `DeudaPlataformaService` con `sumaPagosConfirmados` y
   `tests/unit/services/deuda-plataforma-service.test.ts`. **Hecho:** verde (R7).
-- [ ] **T2.5** `EgresoCajaAnulacionService`: `esPagoConfirmadoError` da `forbidden`. Se amplía
+- [x] **T2.5** `EgresoCajaAnulacionService`: `esPagoConfirmadoError` da `forbidden`. Se amplía
   `tests/unit/services/wallet-anulacion-service.test.ts`. **Hecho:** verde (R10).
 
 ## T3 — La confirmación en el servidor (depende de T2.1)

@@ -31,7 +31,13 @@ function montar(sumas: SumaCobroPlataformaPorTipo[], pagosVigentes: string, clav
     orden.push("clave");
     return claveYa;
   });
-  const tope = new TopePagoPlataformaService({ sumasPorTipo }, { sumaPagosVigentes, bloquear, claveYaRegistrada });
+  // SLT-60 (T2.2): los dos métodos nuevos, sin uso aquí hasta que el tope pase a lo disponible (T2.3).
+  const sumaPagosConfirmados = vi.fn<IPagoPlataformaRepository["sumaPagosConfirmados"]>();
+  const disponibleParaRegistrar = vi.fn<IPagoPlataformaRepository["disponibleParaRegistrar"]>();
+  const tope = new TopePagoPlataformaService(
+    { sumasPorTipo },
+    { sumaPagosVigentes, sumaPagosConfirmados, disponibleParaRegistrar, bloquear, claveYaRegistrada },
+  );
   return { tope, orden, sumasPorTipo, sumaPagosVigentes, bloquear, claveYaRegistrada };
 }
 

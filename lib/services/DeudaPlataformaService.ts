@@ -8,6 +8,8 @@ import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 // SL-40 (design §5, §6) — la deuda de la empresa con la plataforma. La ven los mismos que ven la caja
 // (`esAccesoTotal`: maestro y admin), y no depende de los filtros del libro (R23).
 // SL-45 (design §3): resta los pagos vigentes, que se leen del libro de la caja.
+// SLT-60 (design §4.7; R6, R7): resta solo los pagos CONFIRMADOS por el superadmin. Un pago por confirmar
+// ya bajó la caja, pero no la deuda.
 
 export class DeudaPlataformaService implements IDeudaPlataformaService {
   constructor(
@@ -22,10 +24,10 @@ export class DeudaPlataformaService implements IDeudaPlataformaService {
     const organizacionId = actor.organizacionId ?? null;
     if (organizacionId === null) return { status: "forbidden" };
 
-    const [sumas, pagosVigentes] = await Promise.all([
+    const [sumas, pagosConfirmados] = await Promise.all([
       this.movimientos.sumasPorTipo(organizacionId),
-      this.pagos.sumaPagosVigentes(organizacionId),
+      this.pagos.sumaPagosConfirmados(organizacionId),
     ]);
-    return { status: "ok", deudaPlataforma: derivarDeudaPlataforma(sumas, pagosVigentes) };
+    return { status: "ok", deudaPlataforma: derivarDeudaPlataforma(sumas, pagosConfirmados) };
   }
 }
