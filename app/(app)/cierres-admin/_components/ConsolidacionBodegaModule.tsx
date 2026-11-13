@@ -44,24 +44,23 @@ import {
 } from "@/lib/actions/cierre-bodega";
 import type {
   BloqueoConsolidacion,
+  CierreBodegaResumen,
   CierreConsolidableCola,
   ResumenSolicitados,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import { hrefDetalleCierre } from "./cierre-enlace";
-import {
-  CierresBodegaSolicitadosLista,
-  PAGINACION_BODEGA_SOLICITADOS_LABEL,
-  descargaBodegaSolicitados,
-  type CierresBodegaSolicitadosPagina,
-} from "./CierresBodegaSolicitadosLista";
 import { FiltrosCierresBarra } from "./FiltrosCierresBarra";
 import {
+  AMBITO_DESCARGA_BODEGA_SOLICITADOS,
   AMBITO_DESCARGA_CONSOLIDABLES,
+  COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
   COLUMNAS_DESCARGA_CONSOLIDABLES,
+  filaDescargaBodegaSolicitado,
   filaDescargaConsolidable,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
 
 /** Nombre visible del listado de consolidables: hoja, archivo y control (R12/R13). */
 const TITULO_DESCARGA_CONSOLIDABLES = "Cierres del día a consolidar";
@@ -123,8 +122,8 @@ async function leerConsolidables(
 
 /**
  * SLT-107 (R52, R290): una página de «Solicitados» CON los filtros de la barra, los mismos que su
- * descarga. La zona no viaja: la resuelve el servicio desde la sesión (R44). La lista de hoy
- * (`CierresBodegaSolicitadosLista`, solo sin zona) sigue leyendo sin filtros.
+ * descarga. La zona no viaja: la resuelve el servicio desde la sesión (R44). SLT-115 (R403): sin
+ * zona no se lee nada; la pantalla enseña solo el aviso.
  */
 async function leerSolicitados(
   page: number,
@@ -232,6 +231,51 @@ function descargaConsolidables(filtros: FiltrosCierresBodega): DataTableDescarga
       filasDesdeResultado(
         descargarDatos("listarConsolidablesCompleto", { filtros }),
         filaDescargaConsolidable,
+      ),
+  };
+}
+
+/** La página que pre-carga el Server Component (R44: es la que el usuario ve al entrar). */
+export interface CierresBodegaSolicitadosPagina {
+  items: CierreBodegaResumen[];
+  total: number;
+  pageSize: number;
+}
+
+/** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA = "Cierres de bodega solicitados";
+/** Nombre accesible del control (R43). Propio: la pantalla monta varios listados. */
+export const PAGINACION_BODEGA_SOLICITADOS_LABEL =
+  "Paginación de los cierres de bodega solicitados";
+
+/**
+ * La configuración de descarga de «Cierres de bodega solicitados», para que la monte quien
+ * pinta la fila de las pestañas (pedido humano del 2026-08-16: el botón va alineado con las pestañas, no en una
+ * fila propia encima de la lista). Vive aquí, con el listado del que habla: el título, las
+ * columnas y la lectura de la que sale el archivo son suyos.
+ *
+ * Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo es el CONJUNTO, cortado en
+ * la BASE con el mismo criterio y el mismo orden que la página, y con el tope de filas evaluado
+ * en el servidor (R6). El alcance lo aplica el servicio desde la sesión: descargar no amplía lo
+ * que el actor podía ver (R44). Pedido humano del 2026-08-16: «el CONJUNTO» pasa a significar
+ * «el conjunto FILTRADO» — los `filtros` viajan porque el usuario los puso; el alcance, nunca.
+ */
+export function descargaBodegaSolicitados(filtros: FiltrosCierresBodega): DataTableDescarga {
+  return {
+    titulo: TITULO_DESCARGA,
+    columnas: COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
+    // Ficha 314: enciende el selector de columnas de esta descarga (ámbito propio, R10).
+    ambitoColumnas: AMBITO_DESCARGA_BODEGA_SOLICITADOS,
+    // SLT-141 (R384, R385, PA4): «Solicitados» es el «Resumen» de la satélite. Con cierres de bodega
+    // del modelo nuevo, el libro (sin «Pago entregado», R386); sin ellos, el archivo de hoy. Esta
+    // descarga no pasa las columnas marcadas a `obtenerFilas`: «Cierres modelo anterior» sale con
+    // todas las de hoy, en su orden (PA3).
+    obtenerFilas: () =>
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
+        filaDescargaBodegaSolicitado,
+        COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
+        "satelite",
       ),
   };
 }
@@ -414,7 +458,7 @@ export function ConsolidacionBodegaModule({
 
   return (
     <section aria-label="Cierre de bodega" className="flex flex-col gap-4">
-      {/* R4: adminSatelite sin zona → aviso accionable, sin tablas de acción. */}
+      {/* R4, SLT-115 (R403): adminSatelite sin zona → SOLO el aviso accionable; ni cola ni lista. */}
       {sinZona ? (
         <p
           role="alert"
@@ -531,11 +575,6 @@ export function ConsolidacionBodegaModule({
         />
       ) : null}
       <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
-
-      {/* SIN ZONA (R4, R202) el histórico se sigue enseñando, fuera de la cola: es lo único que
-          este actor puede mirar, y esconderlo tras unas pestañas que no puede usar dejaría la
-          pantalla en blanco detrás de un aviso. */}
-      {sinZona ? <CierresBodegaSolicitadosLista initialData={cierresBodegaPasados} /> : null}
 
       {/* Confirmación de "Solicitar cierre de bodega". R48/R207: el resumen con las MISMAS
           props que las tarjetas, formateadas con `money()`. */}

@@ -21,9 +21,6 @@ import * as desglosePago from "@/app/(app)/cierres-admin/_components/desglose-pa
  * - R408: control positivo (el barrido lee de verdad) y contraprueba (el detector ve cada forma).
  *
  * Las rutas retiradas se declaran aquí y en ningún otro sitio: la guardia se excluye a sí misma.
- *
- * Mientras T4 no borre los cuatro archivos, los dos casos de R400 van con `it.fails`: se ESPERA que
- * fallen. Cuando T4 los borre, `it.fails` se pondrá ROJO por sí solo, y T4 debe cambiarlos a `it`.
  */
 
 const RAIZ = path.resolve(__dirname, "../../..");
@@ -175,15 +172,14 @@ describe("SLT-115 (R408) — autocomprobación del detector", () => {
 });
 
 describe("SLT-115 (R400) — las colas viejas de comprobantes siguen retiradas", () => {
-  // `it.fails` hasta T4: los cuatro archivos aún existen. T4 los cambia a `it`.
-  it.fails("ninguno de los cuatro archivos existe", () => {
+  it("ninguno de los cuatro archivos existe", () => {
     const presentes = MODULOS_RETIRADOS.map((ruta) => `${ruta}.tsx`).filter((ruta) =>
       existsSync(path.join(RAIZ, ruta)),
     );
     expect(presentes, `${AVISO}\nExisten: ${presentes.join(", ")}`).toEqual([]);
   });
 
-  it.fails("ningún archivo de app/, components/, lib/, tests/ ni e2e/ los importa", () => {
+  it("ningún archivo de app/, components/, lib/, tests/ ni e2e/ los importa", () => {
     const culpables = ARCHIVOS_BARRIDOS.flatMap((archivo) =>
       hallazgos(archivo, readFileSync(path.join(RAIZ, archivo), "utf8")),
     );

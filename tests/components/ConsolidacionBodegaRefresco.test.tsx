@@ -24,7 +24,7 @@
  */
 import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
@@ -313,12 +313,13 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
     expect(screen.queryByRole("button", { name: "Solicitar cierre de bodega" })).toBeNull();
   });
 
-  it("R202: sin zona, el aviso de hoy y la lista de solicitados, sin cola, tarjetas ni botón", () => {
+  it("SLT-115 R403 (sustituye a R202): sin zona, SOLO el aviso; ni la lista de solicitados, ni cola, tarjetas ni botón", () => {
     montar({ sinZona: true, puedesSolicitar: false, bloqueo: "sin_zona" });
     expect(screen.getByRole("alert")).toHaveTextContent(
       "No tienes una zona asignada; contacta a tu administrador.",
     );
-    expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierres de bodega solicitados" })).toBeNull();
+    expect(screen.queryByText("Aún no has solicitado ningún cierre de bodega.")).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.queryByRole("group", { name: "Cifras a consolidar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Solicitar cierre de bodega" })).toBeNull();
@@ -511,12 +512,17 @@ describe("SLT-107 — «Solicitados» con filtros y páginas (R52, R290, R291)",
     );
   });
 
-  it("(g) R202: sin zona, la lista de hoy sin filtros, como antes", async () => {
+  it("(g) SLT-115 R403: sin zona no hay región de solicitados y no se pide ninguna página", async () => {
     montar({ sinZona: true, puedesSolicitar: false, bloqueo: "sin_zona" });
-    expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierres de bodega solicitados" })).toBeNull();
     expect(screen.queryByRole("group", { name: "Cifras de los cierres de bodega solicitados" })).toBeNull();
-    await waitFor(() => expect(solicitados).toHaveBeenCalled());
-    expect(solicitados.mock.calls.every(([input]) => input.filtros === undefined)).toBe(true);
+    // Se deja correr el ciclo de efectos y de SWR antes de afirmar la ausencia de la lectura: con
+    // zona, este mismo montaje la pide (casos de arriba).
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(solicitados).not.toHaveBeenCalled();
   });
 });
 

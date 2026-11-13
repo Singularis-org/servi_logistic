@@ -80,7 +80,19 @@ function usosDe(componente: string): Uso[] {
   for (const archivo of tsxDeApp()) {
     if (path.basename(archivo) === DECLARANTE) continue;
     const fuente = quitarComentarios(readFileSync(archivo, "utf8"));
+    usos.push(...usosEnFuente(path.relative(RAIZ, archivo).replaceAll("\\", "/"), fuente, componente));
+  }
+  return usos;
+}
 
+/**
+ * SLT-115 «Retirar los componentes de cierre sustituidos»: el extractor, sobre UNA fuente ya sin
+ * comentarios. Separado de `usosDe` para poder probarlo con fuentes de muestra ahora que ninguna
+ * pantalla de `app/` monta los comprobantes (R409) y el barrido real sale vacío.
+ */
+function usosEnFuente(archivo: string, fuente: string, componente: string): Uso[] {
+  const usos: Uso[] = [];
+  {
     let desde = fuente.indexOf(`<${componente}`);
     while (desde !== -1) {
       const siguiente = fuente[desde + componente.length + 1] ?? "";
@@ -94,7 +106,7 @@ function usosDe(componente: string): Uso[] {
       }
       if (!/[\w$]/.test(siguiente)) {
         usos.push({
-          archivo: path.relative(RAIZ, archivo).replaceAll("\\", "/"),
+          archivo,
           componente,
           etiqueta: fuente.slice(desde, i + 1),
         });
@@ -150,12 +162,10 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
       "o apareció una superficie nueva —y entonces hay que revisarla a mano y añadirla aquí— o " +
         "una de las dos desapareció y esta guardia se quedó vigilando un nombre muerto.",
     ).toEqual([
-      // SLT-127 «Cola de bodega de la central con la cola única»: la cola del maestro ya no monta
-      // la tarjeta (la sustituye `ColaCierres`). El HISTÓRICO de resueltos sigue en el árbol sin
-      // montar hasta que lo retire SLT-115.
-      "app/(app)/cierres-admin/_components/CierresBodegaResueltosLista.tsx",
-      // El `adminSatelite`: su única superficie, y la que motivó la ficha.
-      "app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista.tsx",
+      // SLT-115 «Retirar los componentes de cierre sustituidos» (R409): las dos listas que la
+      // montaban (resueltos de la central, solicitados de la satélite) se borraron; las sustituye
+      // `ColaCierres`. Mientras la tarjeta siga declarada en `cierre-factura.tsx`, ninguna pantalla
+      // la monta: si una vuelve, aparece aquí y hay que revisarla a mano.
     ]);
   });
 
@@ -178,8 +188,8 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
       // monta `<CierreFacturaResumenPropio>` (lo sustituye `ColaCierres` con rol mensajero). El
       // componente sigue declarado sin montar hasta que lo retire SLT-115; si alguien lo vuelve a
       // montar, su fila reaparece aquí y la guardia lo pide revisar.
-      // El histórico de cierres de mensajero del admin.
-      "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx · CierreFacturaResumen",
+      // SLT-115 (R409): el histórico de cierres de mensajero del admin (`CierresAdminHistoricoLista`)
+      // se borró; lo sustituye `ColaCierres`. Ya no monta `<CierreFacturaResumen>` ninguna pantalla.
       // SLT-106 «Bodega satélite: A consolidar con la cola única»: `ConsolidacionBodegaModule` ya
       // no monta `<CierreConsolidableFacturaResumen>` (R204: la sustituye `ColaCierres`). El
       // componente sigue declarado sin montar hasta que lo retire SLT-115.
@@ -191,45 +201,79 @@ describe("393 — autocomprobación: el censo encuentra de verdad las superficie
   });
 });
 
-describe("393 — la cascada a la central llega a las DOS pantallas (R38)", () => {
-  it.each(USOS_BODEGA.map((u) => [u.archivo, u] as const))(
-    "%s le pasa a la tarjeta el `cierre` del servidor, no un literal",
-    (archivo, uso) => {
-      expect(
-        uso.etiqueta.length,
-        `no se pudo aislar la etiqueta de <${TARJETA_DE_BODEGA}> en ${archivo}`,
-      ).toBeGreaterThan(20);
+/**
+ * SLT-115 «Retirar los componentes de cierre sustituidos» (R409): las comprobaciones de R38 y de
+ * R21/R39 como funciones que devuelven los problemas de UN uso. Antes eran `it.each` sobre el
+ * barrido; con cero pantallas montando los comprobantes, un `it.each` vacío no registra ningún caso
+ * y la regla dejaría de existir sin un rojo. Ahora se afirman sobre el barrido (vacío hoy: verde
+ * por la lista de arriba, que exige `[]`) Y sobre fuentes de muestra, que prueban que siguen mordiendo.
+ */
+function problemasR38(uso: Uso): string[] {
+  const { archivo, etiqueta } = uso;
+  if (etiqueta.length <= 20) return [`no se pudo aislar la etiqueta de <${TARJETA_DE_BODEGA}> en ${archivo}`];
+  if (!etiqueta.includes("cierre=")) {
+    return [`${archivo} monta la tarjeta del cierre de bodega SIN pasarle \`cierre\`.`];
+  }
+  const valor = etiqueta.match(/cierre=\{([^}]*)\}/)?.[1];
+  if (!valor) return [`\`cierre\` en ${archivo} no se pasa como expresión`];
+  if (!/^[A-Za-z_$][\w$]*(?:\.[\w$]+)*$/.test(valor.trim())) {
+    return [
+      `${archivo} compone el \`cierre\` a mano en vez de pasar la fila del servidor. El ` +
+        "compilador exigiría `paraLaCentral` campo a campo, y quien lo escriba pondrá un " +
+        "«0.00» para que compile: un cero inventado en una pantalla de dinero es peor que no " +
+        "tener el número.",
+    ];
+  }
+  return [];
+}
 
-      expect(
-        uso.etiqueta,
-        `${archivo} monta la tarjeta del cierre de bodega SIN pasarle \`cierre\`.`,
-      ).toContain("cierre=");
+function problemasR21(uso: Uso): string[] {
+  return uso.etiqueta.includes("cascadaCentral")
+    ? [
+        `${uso.archivo} · <${uso.componente}> recibe la cascada del cierre de bodega. La prop es ` +
+          "OPCIONAL —tiene que serlo, esas superficies no tienen cierre de bodega del que hablar— así " +
+          "que el typecheck no caza este error: pintaría «Para la central» en el comprobante de un mensajero.",
+      ]
+    : [];
+}
 
-      const valor = uso.etiqueta.match(/cierre=\{([^}]*)\}/)?.[1];
-      expect(valor, `\`cierre\` en ${archivo} no se pasa como expresión`).toBeTruthy();
-      expect(
-        (valor ?? "").trim(),
-        `${archivo} compone el \`cierre\` a mano en vez de pasar la fila del servidor. El ` +
-          "compilador exigiría `paraLaCentral` campo a campo, y quien lo escriba pondrá un " +
-          "«0.00» para que compile: un cero inventado en una pantalla de dinero es peor que no " +
-          "tener el número.",
-      ).toMatch(/^[A-Za-z_$][\w$]*(?:\.[\w$]+)*$/);
-    },
-  );
+const MUESTRA = "app/(app)/muestra/Muestra.tsx";
+
+describe("393 — la cascada a la central llega a la tarjeta de bodega (R38)", () => {
+  it("toda pantalla que monte la tarjeta le pasa el `cierre` del servidor, no un literal", () => {
+    expect(USOS_BODEGA.flatMap(problemasR38)).toEqual([]);
+  });
+
+  it("contraprueba: sobre fuentes de muestra, el extractor la encuentra y la regla muerde", () => {
+    const bien = usosEnFuente(MUESTRA, `<CierreBodegaFacturaResumen cierre={fila.cierre} onAbrir={abrir} />`, TARJETA_DE_BODEGA);
+    expect(bien).toHaveLength(1);
+    expect(bien.flatMap(problemasR38)).toEqual([]);
+
+    const literal = usosEnFuente(
+      MUESTRA,
+      `<CierreBodegaFacturaResumen cierre={{ ...c, paraLaCentral: "0.00" }} onAbrir={abrir} />`,
+      TARJETA_DE_BODEGA,
+    );
+    expect(literal.flatMap(problemasR38)).toHaveLength(1);
+
+    const sinCierre = usosEnFuente(MUESTRA, `<CierreBodegaFacturaResumen onAbrir={abrir} rotulo={x} />`, TARJETA_DE_BODEGA);
+    expect(sinCierre.flatMap(problemasR38)).toHaveLength(1);
+  });
 });
 
 describe("393 — y NO se cuela en las otras tres superficies (R21/R39)", () => {
-  it.each(USOS_AJENOS.map((u) => [`${u.archivo} · <${u.componente}>`, u] as const))(
-    "%s no recibe `cascadaCentral`",
-    (donde, uso) => {
-      expect(
-        uso.etiqueta,
-        `${donde} recibe la cascada del cierre de bodega. La prop es OPCIONAL —tiene que serlo, ` +
-          "esas superficies no tienen cierre de bodega del que hablar— así que el typecheck no " +
-          "caza este error: pintaría «Para la central» en el comprobante de un mensajero.",
-      ).not.toContain("cascadaCentral");
-    },
-  );
+  it("ninguna pantalla pasa `cascadaCentral` a un comprobante ajeno", () => {
+    expect(USOS_AJENOS.flatMap(problemasR21)).toEqual([]);
+  });
+
+  it("contraprueba: el extractor distingue los prefijos y la regla muerde", () => {
+    const fuente =
+      `<CierreFacturaResumen cierre={c} cascadaCentral={x} />\n` +
+      `<CierreFacturaResumenPropio cierre={c} />`;
+    const usos = COMPROBANTES_AJENOS.flatMap((c) => usosEnFuente(MUESTRA, fuente, c));
+    expect(usos.map((u) => u.componente).sort()).toEqual(["CierreFacturaResumen", "CierreFacturaResumenPropio"]);
+    expect(usos.flatMap(problemasR21)).toHaveLength(1);
+  });
 
   it("dentro del archivo que los declara, sólo la tarjeta de bodega pasa la prop", () => {
     const declarante = quitarComentarios(

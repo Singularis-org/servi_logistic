@@ -114,8 +114,7 @@ const HOJA = path.join(COMPONENTES, "cierre-factura.tsx");
 /** Los archivos que son ENTEROS una superficie del cierre de bodega. */
 const SUPERFICIES_ENTERAS = [
   "CierresBodegaAdminModule.tsx",
-  "CierresBodegaSolicitadosLista.tsx",
-  "CierresBodegaResueltosLista.tsx",
+  // SLT-115 «Retirar los componentes de cierre sustituidos»: salen las dos listas de bodega, borradas.
   "CascadaDinero.tsx",
 ] as const;
 

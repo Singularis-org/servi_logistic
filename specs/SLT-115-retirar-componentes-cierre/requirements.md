@@ -203,7 +203,7 @@ pantalla, se porta a `ColaCierres`/`DetalleCierre` en vez de borrarlo, y el impl
 
 ## Tasks
 
-- [ ] **T0 — Medir antes de tocar.** Rebasar sobre `origin/dev` (con SLT-141 y SLT-134 dentro si ya
+- [x] **T0 — Medir antes de tocar.** Rebasar sobre `origin/dev` (con SLT-141 y SLT-134 dentro si ya
   mergearon) y copiar `.env` al worktree. Repetir los Grep del inventario: si aparece un importador nuevo
   de algo de la lista, parar y avisar. Escribir el mapa de cobertura (sección de arriba) en
   `progress/impl_SLT-115.md`.
@@ -211,17 +211,17 @@ pantalla, se porta a `ColaCierres`/`DetalleCierre` en vez de borrarlo, y el impl
 - [x] **T1 — Guardia en rojo (R400, R404, R405, R408).** Crear `tests/unit/guards/cierres-retirados.guardia.test.ts`.
   *Hecho:* la contraprueba y el control positivo pasan; los casos de R400, R404 y R405 fallan nombrando los
   cuatro archivos y los exports que aún existen.
-- [ ] **T2 — Mudar lo vivo (R401, R402).** Depende de T0. Sin cambiar una línea: `descargaHistoricoCierres`,
+- [x] **T2 — Mudar lo vivo (R401, R402).** Depende de T0. Sin cambiar una línea: `descargaHistoricoCierres`,
   su título, `PAGINACION_HISTORICO_LABEL`, `ERROR_CARGA_HISTORICO`, `VACIO_HISTORICO` y
   `CierresAdminHistoricoPagina` → `CierresAdminModule.tsx`; `descargaBodegaResueltos`, su título y
   `CierresBodegaResueltosPagina` → `CierresBodegaAdminModule.tsx`; `descargaBodegaSolicitados`, su título,
   `PAGINACION_BODEGA_SOLICITADOS_LABEL` y `CierresBodegaSolicitadosPagina` → `ConsolidacionBodegaModule.tsx`.
   Actualizar los imports de los tests de R401 y las filas de R402.
   *Hecho:* typecheck verde; los tests de R401 y R402 verdes sin tocar una aserción.
-- [ ] **T3 — Sin zona (R403).** Depende de T2. Quitar el montaje de `ConsolidacionBodegaModule.tsx:535-538`
+- [x] **T3 — Sin zona (R403).** Depende de T2. Quitar el montaje de `ConsolidacionBodegaModule.tsx:535-538`
   y el comentario de `cola-cierres-labels.ts:178-181` que lo cita.
   *Hecho:* `ConsolidacionBodegaRefresco.test.tsx` verde con R403.
-- [ ] **T4 — Borrar las cuatro (R400, R409).** Depende de T2 y T3. Borrar los cuatro archivos y aplicar los
+- [x] **T4 — Borrar las cuatro (R400, R409).** Depende de T2 y T3. Borrar los cuatro archivos y aplicar los
   cambios de tests de la tabla de arriba (salvo los de T5).
   *Hecho:* la parte R400 de la guardia de T1 en verde; `cascada-central…` y `cierre-bodega-vocabulario…` en
   verde con R409.
