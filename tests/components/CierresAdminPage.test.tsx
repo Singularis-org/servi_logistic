@@ -360,7 +360,7 @@ describe("CierresAdminPage — control de acceso por rol (R1)", () => {
 
     expect(
       screen.getByRole("alert"),
-    ).toHaveTextContent("No tenés una zona asignada; contactá a tu administrador.");
+    ).toHaveTextContent("No tienes una zona asignada; contacta a tu administrador.");
     // Sin zona: NO se muestran las tablas de acción (R3).
     expect(
       screen.queryByRole("region", { name: "Pendientes de decisión" }),
