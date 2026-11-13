@@ -425,6 +425,17 @@ export interface CierreSolicitadoInfo {
   mensajeroNombre: string | null;
 }
 
+/**
+ * SLT-112 (R350) — un cierre aprobado del mensajero, con lo que pide `derivarPendienteCierre`.
+ * Todos los campos son obligatorios: uno opcional se perdería sin aviso en el mapper (SLT-123).
+ */
+export interface CierreAprobadoParaPendienteRow {
+  cierreId: string;
+  totalPagoMensajero: string; // P, escala 2
+  totalEfectivo: string; // E, escala 2
+  pagoIndependienteEfectivo: boolean; // SLT-123 (R327): la regla de ESTE cierre
+}
+
 export interface ICierreDiaRepository {
   /**
    * R2/R3: gestiones del mensajero con `cierre_id IS NULL` + detalle de la orden
@@ -613,6 +624,11 @@ export interface ICierreDiaRepository {
     rango: RangoPagina,
     filtros?: FiltrosColaPropiaRepo,
   ): Promise<PaginaRepositorio<CierrePasadoDTO>>;
+  /**
+   * SLT-112 (R350) — los cierres `aprobado` del mensajero, con solo lo que pide la regla de lo
+   * pendiente. Sin filtros ni pagina: las cifras son del conjunto (R354). Importes en escala 2.
+   */
+  findAprobadosParaPendiente(mensajeroId: string): Promise<CierreAprobadoParaPendienteRow[]>;
   /**
    * Feature 67 — lee la gestion candidata a deshacerse + el estado real de su orden. Devuelve
    * la fila SIN juzgarla (las guardias de R2/R3/R5/R6/R9 viven en el service); `null` si la

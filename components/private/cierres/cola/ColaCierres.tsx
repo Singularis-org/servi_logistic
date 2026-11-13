@@ -66,7 +66,7 @@ import {
   type PestanaConsolidar,
   type RolCola,
 } from "./cola-cierres-vista";
-import { TABLIST_PROPIA } from "./cola-propia-vista";
+import { CIFRAS_GANANCIA_LABEL, TABLIST_PROPIA } from "./cola-propia-vista";
 import { columnasTablaPropia, type AccionesColaPropia } from "./TablaColaPropia";
 
 export type { AccionesColaPropia } from "./TablaColaPropia";
@@ -182,6 +182,11 @@ export interface ColaCierresPropiosProps extends Omit<ColaComun, "rol"> {
   rol: "mensajero";
   filas: readonly CierrePasadoDTO[];
   acciones: AccionesColaPropia;
+  /**
+   * SLT-112 (R358): las tarjetas de la ganancia, de `tarjetasGanancia()`. Ausentes (el servidor no
+   * emitió las cifras) = sin tarjetas, ni ceros en su lugar (R357, R158).
+   */
+  tarjetas?: readonly Cifra[];
 }
 
 type ColaCierresTodasProps =
@@ -293,7 +298,12 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
             </TabsContent>
           </>
         ) : (
-          <TabsContent value={pestanaActiva} className="mt-0">
+          <TabsContent value={pestanaActiva} className="mt-0 flex flex-col gap-4">
+            {/* SLT-112 (R358): las tarjetas van entre la barra y la tabla; no dependen de la página
+                ni de los filtros (R354), así que paginar o filtrar no las toca. */}
+            {props.tipo === "propios" && props.tarjetas && props.tarjetas.length > 0 ? (
+              <CifrasCierre cifras={props.tarjetas} ariaLabel={CIFRAS_GANANCIA_LABEL} />
+            ) : null}
             <section aria-label={comun.region}>
               {props.tipo === "propios" ? (
                 <TablaCola

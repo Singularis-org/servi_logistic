@@ -110,6 +110,7 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     findCierrePropioConGestiones: vi.fn(async () => null),
     // Feature 170 (T I.1): el listado paginado vive en su propia suite (*-paginado).
     findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [], total: 0 })),
+    findAprobadosParaPendiente: vi.fn(async () => []),
     // Feature 67: por defecto, una gestion `entregada` vigente del propio mensajero, sin
     // cierre, que ES la mas reciente y cuya orden sigue en `entregada` -> deshacible (R1).
     findGestionParaDeshacer: vi.fn(async () => gestionDeshacer()),

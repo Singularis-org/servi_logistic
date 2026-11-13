@@ -36,6 +36,9 @@ vi.mock("@/lib/services/CierreDiaService", async (importOriginal) => {
       async listarCierresPasadosPaginado(input: { page: number; pageSize: number }) {
         return { status: "ok" as const, items: [], page: input.page, pageSize: input.pageSize, total: 0 };
       }
+      async resumenGanancia() {
+        return { status: "sin_dato" as const }; // SLT-112: aqui solo se mide el constructor
+      }
     },
   };
 });
@@ -51,8 +54,8 @@ describe("SLT-137 · `buildService()` de /cierre-dia inyecta las lecturas del pe
     expect(r.status).toBe("ok");
     expect(argsCapturados).toHaveLength(1);
     const args = argsCapturados[0];
-    // El parametro va al final del constructor (despues de `reglasPais`, el octavo).
-    expect(args).toHaveLength(9);
+    // El parametro va despues de `reglasPais` (el octavo); SLT-112 añade `ganancia` detras (el decimo).
+    expect(args).toHaveLength(10);
     const pendientes = args[8] as { liquidaciones?: unknown; premios?: unknown } | undefined;
 
     expect(pendientes).toBeDefined();
@@ -64,5 +67,29 @@ describe("SLT-137 · `buildService()` de /cierre-dia inyecta las lecturas del pe
     expect(
       typeof (pendientes?.premios as PagoMensajeroMovimientoRepository).sumarPremiosVivosPorCierre,
     ).toBe("function");
+  });
+});
+
+describe("SLT-112 · `buildService()` de /cierre-dia inyecta la lectura de los pagos del mes", () => {
+  it("ejecutada SIN servicio inyectado, el decimo argumento trae el repositorio real de pagos (R352, R357)", async () => {
+    const { resumenGananciaMensajero } = await import("@/lib/actions/cierre-dia");
+    argsCapturados.length = 0;
+
+    const r = await resumenGananciaMensajero({ getActor: async () => MENSAJERO });
+
+    // La accion devuelve lo que da el doble del servicio; las cifras reales contra la base las mide
+    // `tests/integration/db/cierre-dia-ganancia-accion-real.test.ts`.
+    expect(r).toEqual({ status: "sin_dato" });
+    expect(argsCapturados).toHaveLength(1);
+    const args = argsCapturados[0];
+    expect(args).toHaveLength(10);
+    const ganancia = args[9] as { pagos?: unknown; pagadoPorSatelite?: unknown } | undefined;
+    expect(ganancia).toBeDefined();
+    expect(ganancia?.pagos).toBeInstanceOf(LiquidacionPagoRepository);
+    expect(
+      typeof (ganancia?.pagos as LiquidacionPagoRepository).sumarVigentesDelMensajeroEnRango,
+    ).toBe("function");
+    // R353: hasta SLT-139 no hay lectura de lo pagado por la satelite que inyectar.
+    expect(ganancia?.pagadoPorSatelite).toBeUndefined();
   });
 });
