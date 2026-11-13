@@ -529,7 +529,7 @@ describe("R26 — acciones por audiencia, resultado y presencia del callback", (
     expect(accionesDe(deLaTienda, "mensajero", todas)).toMatchObject({
       devolver: true,
       devolverDeshabilitado:
-        "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+        "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     });
     expect(accionesDe(delMensajero, "mensajero", todas)).toMatchObject({ devolver: true, devolverDeshabilitado: null });
   });

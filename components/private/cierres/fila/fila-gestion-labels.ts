@@ -88,13 +88,14 @@ export const devolverAriaLabel = (remision: string, destinatario: string): strin
  * que registró la tienda (`desdeAyudaTienda`). Mudado de `CierreDiaModule.tsx` en SLT-109 (R244) sin
  * cambiar un carácter.
  *
- * ⚠️ EL TEXTO ES EL MISMO que devuelve el servidor si alguien llega a la acción por otra vía
- * (`MSG_GESTION_DE_LA_TIENDA`, `lib/services/CierreDiaService.ts`). Está duplicado a propósito: esa
- * constante NO se exporta y traerla aquí arrastraría Prisma al navegador. Si alguien cambia uno,
- * tiene que cambiar el otro: son las dos mitades de la MISMA regla, dicha antes y después.
+ * ⚠️ Es la MISMA regla que devuelve el servidor si alguien llega a la acción por otra vía
+ * (`MSG_GESTION_DE_LA_TIENDA`, `lib/services/CierreDiaService.ts`), con el mismo imperativo
+ * («Escríbele»); la frase de la pantalla, además, nombra la pantalla de ayuda (SLT-103, Anexo A: J3 y
+ * L4). Está duplicada a propósito: esa constante NO se exporta y traerla aquí arrastraría Prisma al
+ * navegador. Si alguien cambia una, tiene que revisar la otra: son las dos mitades de la MISMA regla.
  */
 export const DESHACER_BLOQUEO_TIENDA =
-  "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+  "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
 /** R244 — el motivo viaja también en el nombre accesible: un botón `disabled` sale del tabulador. */
 export const devolverNoDisponibleAriaLabel = (remision: string, destinatario: string, motivo: string): string =>
   `${devolverAriaLabel(remision, destinatario)} — no disponible: ${motivo}`;

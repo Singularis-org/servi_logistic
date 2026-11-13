@@ -389,11 +389,11 @@ export function ConsolidacionBodegaModule({
       const primero = Object.values(result.fieldErrors)[0]?.[0];
       toast.error(primero ?? "No se pudo solicitar el cierre de bodega.");
     } else if (result.status === "forbidden") {
-      toast.error("No tenés permiso para solicitar el cierre de bodega.");
+      toast.error("No tienes permiso para solicitar el cierre de bodega.");
     } else if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo solicitar el cierre de bodega. Intentá de nuevo.");
+      toast.error("No se pudo solicitar el cierre de bodega. Inténtalo de nuevo.");
     }
     setConfirmar(false);
     router.refresh();
@@ -420,7 +420,7 @@ export function ConsolidacionBodegaModule({
           role="alert"
           className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
-          No tenés una zona asignada; contactá a tu administrador.
+          No tienes una zona asignada; contacta a tu administrador.
         </p>
       ) : (
         /* ---------- La cola única (SLT-106, R32, R204) ----------

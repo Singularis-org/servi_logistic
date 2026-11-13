@@ -316,7 +316,7 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
   it("R202: sin zona, el aviso de hoy y la lista de solicitados, sin cola, tarjetas ni botón", () => {
     montar({ sinZona: true, puedesSolicitar: false, bloqueo: "sin_zona" });
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "No tenés una zona asignada; contactá a tu administrador.",
+      "No tienes una zona asignada; contacta a tu administrador.",
     );
     expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).toBeNull();

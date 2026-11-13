@@ -376,7 +376,7 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
 
   it("SLT-109 (R244): gestión de la tienda → «Devolver a gestión» deshabilitado, con el motivo en `title` y en el nombre", () => {
     const motivo =
-      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
     montar(gestionCanvas({ desdeAyudaTienda: true }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
     const boton = screen.getByRole("button", {
       name: `Devolver a gestión la orden REM-001 · Beto Ruiz — no disponible: ${motivo}`,

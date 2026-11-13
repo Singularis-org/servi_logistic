@@ -418,7 +418,7 @@ describe("T4.2 — la ventana dice, con palabras, qué acto físico se está pid
     const dialog = await abrirVentana(user);
 
     const DESCRIPCION =
-      "Antes de aprobar, tené delante cada paquete que vuelve a bodega y confirmá su guía: escaneá el código o escribí el número.";
+      "Antes de aprobar, ten delante cada paquete que vuelve a bodega y confirma su guía: escanea el código o escribe el número.";
     const nodo = within(dialog).getByText(DESCRIPCION);
     // Y no es un párrafo suelto en cualquier sitio: es la DESCRIPCIÓN ACCESIBLE del diálogo, que
     // es lo que un lector de pantalla anuncia al abrirlo. Si mañana el texto se mudara al cuerpo
@@ -444,7 +444,7 @@ describe("T4.2 — la ventana dice, con palabras, qué acto físico se está pid
     expect(
       within(tarjeta).getByRole("heading", { name: "Confirmar paquete recibido" }),
     ).toBeInTheDocument();
-    expect(tarjeta).toHaveTextContent("Escaneá el código de la guía o escribí su número");
+    expect(tarjeta).toHaveTextContent("Escanea el código de la guía o escribe su número");
     expect(within(tarjeta).getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
 
     // Y el acierto se dice CON EL NÚMERO: «confirmada» a secas no distingue cuál de las catorce
@@ -572,7 +572,7 @@ describe("T4.3/R29 — un código que no se puede interpretar como guía", () =>
     await escanear(user, dialog, "esto-no-es-una-url");
 
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "No se pudo leer un número de guía en ese código. Escaneá de nuevo o escribí el número.",
+      "No se pudo leer un número de guía en ese código. Escanea de nuevo o escribe el número.",
     );
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 2.");
     expect(fila(dialog, DEV_1.gestionId)).toContain("Pendiente");
@@ -723,7 +723,7 @@ describe("T4.5/R27 — el bloqueo se dice con texto, no sólo con un botón apag
 
     // Se lee el TEXTO, no el `disabled`: un botón apagado y mudo se lee como una app rota.
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.",
     );
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 3.");
 
@@ -732,7 +732,7 @@ describe("T4.5/R27 — el bloqueo se dice con texto, no sólo con un botón apag
 
     // Con una sola pendiente, el texto pasa al singular y sigue nombrando la salida.
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Falta 1 paquete por confirmar. Si no llegó, rechazá el cierre indicando cuál falta.",
+      "Falta 1 paquete por confirmar. Si no llegó, rechaza el cierre indicando cuál falta.",
     );
     expect(
       within(dialog).getByRole("button", { name: "Confirmar y aprobar" }),
@@ -776,7 +776,7 @@ describe("T4.5/R27 — el bloqueo se dice con texto, no sólo con un botón apag
     const dialog = await abrirVentana(user);
 
     expect(fila(dialog, "g-dev-2")).toContain(
-      "Sin número de guía: no se puede confirmar. Avisá a un administrador.",
+      "Sin número de guía: no se puede confirmar. Avisa a un administrador.",
     );
     // Y la que SÍ tiene guía no lleva ese aviso: la línea es de la fila, no del bloque.
     expect(fila(dialog, DEV_1.gestionId)).not.toContain("Sin número de guía");
@@ -1140,7 +1140,7 @@ describe("el contador dice PAQUETES y cuenta paquetes, no filas", () => {
 
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 2.");
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Faltan 2 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+      "Faltan 2 paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.",
     );
     // Pero las TRES filas siguen ahí: R33 pide una fila por gestión, y agrupar el conteo no es
     // esconder ninguna.
@@ -1316,7 +1316,7 @@ describe("451/R31 — las barridas cuentan en el MISMO contador y en el MISMO «
     expect(within(dialog).getAllByRole("note")).toHaveLength(1);
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 3.");
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.",
     );
 
     // Terminar las gestiones NO dice «están todos» con barridas pendientes detrás.
@@ -1474,7 +1474,7 @@ describe("451/R19 (mitad cliente) — con una barrida pendiente no hay forma de 
     const boton = within(dialog).getByRole("button", { name: "Confirmar y aprobar" });
     expect(boton).toBeDisabled();
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Falta 1 paquete por confirmar. Si no llegó, rechazá el cierre indicando cuál falta.",
+      "Falta 1 paquete por confirmar. Si no llegó, rechaza el cierre indicando cuál falta.",
     );
     await user.click(boton);
     expect(aprobarMock).not.toHaveBeenCalled();
@@ -1516,7 +1516,7 @@ describe("451/R34 — si alguna fila no tiene guía, se dice ANTES de la lista, 
     expect(aviso.parentElement).toBe(within(dialog).getByRole("status").parentElement);
     // La advertencia por fila de la 238 se conserva, ahora también en la barrida.
     expect(filaBarrida(dialog, "o-bar-sin").textContent).toContain(
-      "Sin número de guía: no se puede confirmar. Avisá a un administrador.",
+      "Sin número de guía: no se puede confirmar. Avisa a un administrador.",
     );
     // Y el bloqueo sigue diciéndose con UN solo `note` (R27 de la 238).
     expect(within(dialog).getAllByRole("note")).toHaveLength(1);

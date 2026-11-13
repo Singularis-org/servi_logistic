@@ -368,7 +368,7 @@ async function leerPendientes(
 // separados de la lógica (i18n-ready), como el resto del módulo. ---
 const INDEMNIZACION_TITULO = "Indemnizar los incidentes del cierre";
 const INDEMNIZACION_DETALLE =
-  "Este cierre trae paquetes dañados, perdidos o robados. Indicá cuánto se indemniza por cada uno: al aprobar, la suma sale de la caja principal como un solo egreso.";
+  "Este cierre trae paquetes dañados, perdidos o robados. Indica cuánto se indemniza por cada uno: al aprobar, la suma sale de la caja principal como un solo egreso.";
 const INDEMNIZACION_CONFIRMAR = "Aprobar e indemnizar";
 const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 /**
@@ -386,9 +386,9 @@ const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 // es lo que el validador de esta misma pantalla rechaza y un dígito más de los «10 dígitos»
 // que la frase promete. `moneyTope` descarta la cola y el mensaje queda más estricto que la
 // realidad, que es el lado seguro.
-const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisá si sobra un dígito.`;
+const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisa si sobra un dígito.`;
 const INDEMNIZACION_MONTO_FORMATO =
-  "Escribí un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
+  "Escribe un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
 /** R34: rótulo de la causa en la fila del incidente (el dato que justifica el monto). */
 const INDEMNIZACION_CAUSA_LABEL = "Causa";
 /** Causa ausente: no debería pasar (el borde la exige, R9), pero no se inventa un valor. */
@@ -672,7 +672,7 @@ export function CierresAdminModule({
         role="alert"
         className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
-        No tenés una zona asignada; contactá a tu administrador.
+        No tienes una zona asignada; contacta a tu administrador.
       </p>
     );
   }
@@ -731,7 +731,7 @@ export function CierresAdminModule({
     try {
       result = await verCierreDetalle({ cierreId });
     } catch {
-      toast.error("No se pudo abrir el detalle del cierre. Intentá de nuevo.");
+      toast.error("No se pudo abrir el detalle del cierre. Inténtalo de nuevo.");
       return;
     }
     if (result.status === "ok") {
@@ -772,10 +772,10 @@ export function CierresAdminModule({
       return;
     }
     if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
       return;
     }
-    toast.error("No se pudo abrir el detalle del cierre. Intentá de nuevo.");
+    toast.error("No se pudo abrir el detalle del cierre. Inténtalo de nuevo.");
   }
 
   /**
@@ -853,11 +853,11 @@ export function CierresAdminModule({
     } else if (status === "no_encontrada") {
       toast.error("El cierre ya no está disponible.");
     } else if (status === "forbidden") {
-      toast.error("No tenés permiso para resolver este cierre.");
+      toast.error("No tienes permiso para resolver este cierre.");
     } else if (status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo resolver el cierre. Intentá de nuevo.");
+      toast.error("No se pudo resolver el cierre. Inténtalo de nuevo.");
     }
     cerrarDetalle();
     refrescarListas();
@@ -1096,11 +1096,11 @@ export function CierresAdminModule({
     } else if (result.status === "no_encontrada") {
       toast.error("El cierre ya no está disponible.");
     } else if (result.status === "forbidden") {
-      toast.error("No tenés permiso para destrabar este cierre.");
+      toast.error("No tienes permiso para destrabar este cierre.");
     } else if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo destrabar el cierre. Intentá de nuevo.");
+      toast.error("No se pudo destrabar el cierre. Inténtalo de nuevo.");
     }
     setDestrabar(null);
     refrescarListas();
@@ -1485,7 +1485,7 @@ export function CierresAdminModule({
           }
         }}
         title="Rechazar cierre"
-        description="Indicá el motivo del rechazo. El mensajero lo verá para corregir."
+        description="Indica el motivo del rechazo. El mensajero lo verá para corregir."
         confirmLabel="Rechazar cierre"
         confirmVariant="destructive"
         onConfirm={confirmarRechazo}

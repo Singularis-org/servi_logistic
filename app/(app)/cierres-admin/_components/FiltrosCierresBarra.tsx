@@ -391,7 +391,7 @@ export function FiltrosCierresBarra({
         label="Buscar"
         // El campo de la barra no aplica nada en esta pantalla (ver la nota de cabecera): el
         // placeholder lo dice en vez de dejar que alguien teclee una guía y no pase nada.
-        placeholder="Usá los filtros para acotar los cierres"
+        placeholder="Usa los filtros para acotar los cierres"
         disabled={disabled}
         onChange={SIN_BUSQUEDA}
         filtros={ofrecidos}
