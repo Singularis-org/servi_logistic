@@ -65,7 +65,7 @@ const TEXTO = {
   fuentePropia: "propio",
   regionDeuda: `Lo que ${EMPRESA_EN_FRASE} debe a la plataforma`,
   pistaDeuda:
-    "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+    "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la plataforma lo confirma.",
   /** SL-45 R2: con deuda cero la región dice que la empresa está al día. */
   pistaAlDia: "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.",
 } as const;

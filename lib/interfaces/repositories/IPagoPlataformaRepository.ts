@@ -19,12 +19,6 @@ export type PagoPlataformaTxDisponible = Pick<PrismaClient, "$queryRaw">;
 
 export interface IPagoPlataformaRepository {
   /**
-   * PENDIENTE de quitar (SLT-60 T2.3, design §4.1): la usa aún `TopePagoPlataformaService`, hasta que
-   * pase a `disponibleParaRegistrar`. Σ `monto` de los pagos vigentes de la empresa, como texto con
-   * dos decimales.
-   */
-  sumaPagosVigentes(organizacionId: string, cliente?: Pick<PrismaClient, "walletMovimiento">): Promise<string>;
-  /**
    * SLT-60 (R7): Σ `monto` de las aplicaciones de la empresa, como texto con dos decimales ("0.00" sin
    * confirmaciones). Las aplicaciones de una confirmación suman el monto de su pago (design §3.4), así
    * que es la Σ de los pagos confirmados.

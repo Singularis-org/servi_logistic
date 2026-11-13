@@ -8,12 +8,15 @@ import type { RolValue } from "@prisma/client";
  * SL-45 (T9, design §7.4) — la ayuda de la caja al día con el pago a la plataforma. Molde:
  * `contexto-457.test.ts`.
  *
- * Apoya R1–R3 (la región dice qué hacer en cada estado), R9 (no se paga de más) y R15 (la anulación sube
- * la deuda). Se afirma que esas explicaciones LLEGAN al contexto de la oficina, maestro y admin, que es
+ * Apoya R1–R3 (la región dice qué hacer en cada estado), R9 (no se paga de más) y R15 (la anulación;
+ * desde SLT-60 ya no sube la deuda). Se afirma que esas explicaciones LLEGAN al contexto de la oficina, maestro y admin, que es
  * quien ve la caja, y que NO llegan a mensajero, adminTienda ni adminSatelite.
  *
  * Las frases van escritas a mano: son el contrato de lo que el asistente tiene que poder explicar, y las
  * tres pistas son las literales de R1–R3. No se leen de `wallet-labels.ts`.
+ *
+ * SLT-60 (R38, design §6.4): la deuda baja al confirmar, no al registrar; solo se pagan facturas cerradas,
+ * con el tope y el mensaje de R36; el pago solo se anula mientras está por confirmar; la pista de R35.
  */
 
 const docs = await leerCatalogoAyuda();
@@ -33,10 +36,10 @@ function cuerpoEnContexto(rol: RolValue, slug: string): string {
 }
 
 describe("SL-45 — la oficina puede preguntar cómo se paga y se registra la deuda con la plataforma", () => {
-  it.each(OFICINA)("%s: R1–R3, la región en sus tres estados, con las pistas literales", (rol) => {
+  it.each(OFICINA)("%s: R1–R3 y SLT-60 R35, la región en sus tres estados, con las pistas literales", (rol) => {
     const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
     expect(caja).toContain(
-      "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+      "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la plataforma lo confirma.",
     );
     expect(caja).toContain("La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.");
     expect(caja).toContain("**Saldo a favor de la empresa con la plataforma**");
@@ -52,19 +55,39 @@ describe("SL-45 — la oficina puede preguntar cómo se paga y se registra la de
     expect(caja).toContain("### Pagarle a la plataforma");
     expect(caja).toContain("se abre **Registrar un movimiento** con el concepto **Pago a la plataforma** ya elegido");
     expect(caja).toContain("**la ganancia de la empresa baja** en el monto, como con un sueldo");
-    expect(caja).toContain("**La deuda baja** en el monto");
+    expect(caja).toContain("**La deuda no baja al registrar.** Baja cuando la plataforma confirma el pago");
   });
 
-  it.each(OFICINA)("%s: R9, no se paga de más, y cuándo aparece el saldo a favor", (rol) => {
+  it.each(OFICINA)("%s: SLT-60 R38, el pago queda por confirmar y la deuda baja al confirmarlo", (rol) => {
     const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
-    expect(caja).toContain("**No se puede pagar de más.**");
-    expect(caja).toContain("«El pago no puede ser mayor que lo que la empresa debe a la plataforma.»");
+    expect(caja).toContain("**El pago queda por confirmar.**");
+    expect(caja).toContain("**la deuda baja al confirmarlo**");
+    // Ninguna frase dice que la deuda baja al registrar.
+    expect(caja).not.toContain("**La deuda baja** en el monto");
+    expect(caja).not.toContain("sale de la caja y baja esta deuda.");
+    expect(caja).not.toContain("menos las anuladas y lo ya pagado.");
+    expect(caja).not.toContain("Baja la deuda con la plataforma y la ganancia");
+  });
+
+  it.each(OFICINA)("%s: SLT-60 R38, solo se pagan facturas cerradas, hasta su saldo menos lo por confirmar", (rol) => {
+    const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
+    expect(caja).toContain("**Solo se pagan facturas cerradas.**");
+    expect(caja).toContain(
+      "si la empresa tiene facturas cerradas por 380 000 y 200 000 por confirmar, puede registrar hasta 180 000.",
+    );
+    expect(caja).toContain(
+      "«El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.»",
+    );
+    expect(caja).not.toContain("**No se puede pagar de más.**");
+    expect(caja).not.toContain("«El pago no puede ser mayor que lo que la empresa debe a la plataforma.»");
     expect(caja).toContain("**Cuándo aparece el saldo a favor.** Solo de una forma");
   });
 
-  it.each(OFICINA)("%s: R15, el pago mal registrado se anula y la deuda vuelve a subir", (rol) => {
+  it.each(OFICINA)("%s: SLT-60 R38, el pago solo se anula mientras está por confirmar", (rol) => {
     const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
-    expect(caja).toContain("Al anularlo, la deuda vuelve a subir en el monto y la caja y la ganancia también.");
+    expect(caja).toContain("**El pago solo se anula mientras está por confirmar.**");
+    expect(caja).toContain("Una vez que la plataforma lo confirma, la empresa ya no puede anularlo.");
+    expect(caja).not.toContain("la deuda vuelve a subir");
     expect(caja).toContain(
       "Al anular un **pago a la plataforma**, aparece una **Corrección de caja (suma)** por el mismo monto",
     );

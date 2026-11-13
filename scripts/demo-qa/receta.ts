@@ -24,7 +24,6 @@ import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
-import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
 import { CorteDiarioRepository } from "@/lib/repositories/CorteDiarioRepository";
 import { DevolucionTiendaRepository } from "@/lib/repositories/DevolucionTiendaRepository";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
@@ -1147,7 +1146,7 @@ export async function crearEmpresaDemo(
           caja,
           app,
           buildComprobantes(app),
-          new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
+          new TopePagoPlataformaService(new PagoPlataformaRepository(app)),
           construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarEgreso(
           registrarEgresoConLateralesSchema(zona).parse({

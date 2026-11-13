@@ -44,14 +44,14 @@
 
 - [x] **T2.1** `lib/db/errores-pago-plataforma.ts`: `traducirErrorDeConfirmacion` y `esPagoConfirmadoError`
   (design §3.6).
-- [ ] **T2.2** `IPagoPlataformaRepository` y `PagoPlataformaRepository`:
+- [x] **T2.2** `IPagoPlataformaRepository` y `PagoPlataformaRepository`:
   - fuera `sumaPagosVigentes`;
   - entran `sumaPagosConfirmados` y `disponibleParaRegistrar`;
   - el tipo del cliente se amplía.
 
   También `tests/unit/guards/pago-plataforma-inmutable-sl45.guardia.test.ts`. **Hecho:** typecheck y
   guardias en verde.
-- [ ] **T2.3** `TopePagoPlataformaService` con un solo repositorio (design §4.2), `lib/actions/wallet-egresos.ts`
+- [x] **T2.3** `TopePagoPlataformaService` con un solo repositorio (design §4.2), `lib/actions/wallet-egresos.ts`
   y `tests/unit/actions/wallet-egresos.composition-root.test.ts`. Se reescribe
   `tests/unit/services/tope-pago-plataforma-service.test.ts`. **Hecho:** verde, con el borde exacto (R2, R3).
 - [x] **T2.4** `DeudaPlataformaService` con `sumaPagosConfirmados` y
@@ -61,15 +61,15 @@
 
 ## T3 — La confirmación en el servidor (depende de T2.1)
 
-- [ ] **T3.1** [P] `lib/types/pago-plataforma.ts` (design §4.4) y `lib/utils/reparto-pago-plataforma.ts` (§5),
+- [x] **T3.1** [P] `lib/types/pago-plataforma.ts` (design §4.4) y `lib/utils/reparto-pago-plataforma.ts` (§5),
   con `tests/unit/utils/reparto-pago-plataforma.test.ts`. **Hecho:** verde con el ejemplo de 300 000 (R14,
   R17).
-- [ ] **T3.2** `IPagoPlataformaConfirmacionRepository` y `PagoPlataformaConfirmacionRepository` (§4.3), y la
+- [x] **T3.2** `IPagoPlataformaConfirmacionRepository` y `PagoPlataformaConfirmacionRepository` (§4.3), y la
   entrada en `lib/db/excepciones-aislamiento.ts`. **Hecho:** las guardias `plataforma-solo-en-lista` y
   `sql-a-mano-por-empresa` en verde.
-- [ ] **T3.3** `IPagoPlataformaConfirmacionService` y `PagoPlataformaConfirmacionService` (§4.5), con
+- [x] **T3.3** `IPagoPlataformaConfirmacionService` y `PagoPlataformaConfirmacionService` (§4.5), con
   `tests/unit/services/pago-plataforma-confirmacion-service.test.ts`. **Hecho:** verde (R17, R19, R20, R24).
-- [ ] **T3.4** `lib/actions/pagos-plataforma.ts`, `"pagos-plataforma": "nucleo"` en `lib/modulos/reparto.ts` y
+- [x] **T3.4** `lib/actions/pagos-plataforma.ts`, `"pagos-plataforma": "nucleo"` en `lib/modulos/reparto.ts` y
   `tests/unit/actions/pagos-plataforma.test.ts`. **Hecho:** verde; la guardia `modulos-reparto` en verde.
 - [ ] **T3.5** `tests/integration/db/_fixtures/factura-cerrada.ts` y
   `tests/integration/db/pago-plataforma-confirmacion.test.ts`, con la tabla de pasos de design §8 (incluida
@@ -106,7 +106,7 @@
 
 Cada test pasa al literal nuevo escrito a mano, nunca leído de la constante (design §6.4).
 
-- [ ] **T5b.1** [P] La pista (R35): `app/(app)/wallet/_components/wallet-labels.ts`,
+- [x] **T5b.1** [P] La pista (R35): `app/(app)/wallet/_components/wallet-labels.ts`,
   `tests/unit/components/wallet-labels.test.ts`, `tests/components/WalletDeudaPlataformaSL45.test.tsx`,
   `tests/components/WalletDeudaPlataformaSL40.test.tsx` y `e2e/cobro-plataforma-sl40.spec.ts`. **Hecho:**
   verde.
@@ -116,7 +116,7 @@ Cada test pasa al literal nuevo escrito a mano, nunca leído de la constante (de
 - [ ] **T5b.3** [P] La frase del efecto (R37): `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` y
   `tests/unit/components/wallet-conceptos-manuales.test.ts`; el diálogo y la región ya están en T5b.1 y
   T5b.2. **Hecho:** verde.
-- [ ] **T5b.4** La ayuda (R38): `docs/ayuda/oficina/wallet-caja.md`, con `actualizado:`, y
+- [x] **T5b.4** La ayuda (R38): `docs/ayuda/oficina/wallet-caja.md`, con `actualizado:`, y
   `tests/unit/asistente/contexto-sl45.test.ts`. **Hecho:** verde; ninguna frase de la ayuda dice que la deuda
   baja al registrar (`grep`).
 

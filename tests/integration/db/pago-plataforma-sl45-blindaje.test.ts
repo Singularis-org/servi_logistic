@@ -397,8 +397,8 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
     // el `where`, el cliente dueño sumaría los de las dos empresas (y los de cualquier otra en la base).
     await pagarOk(B, "200.00");
     const repo = new PagoPlataformaRepository(base);
-    expect(await repo.sumaPagosVigentes(org(A))).toBe("600.00");
-    expect(await repo.sumaPagosVigentes(org(B))).toBe("200.00");
+    expect(await repo.sumaPagosConfirmados(org(A))).toBe("600.00");
+    expect(await repo.sumaPagosConfirmados(org(B))).toBe("200.00");
   });
 
   /* ----------------------- B1 c) con dos inserts a la vez ------------------- */

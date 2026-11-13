@@ -95,10 +95,7 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
 
   /** El servicio REAL sobre `cliente`; con `pausa`, el tope se detiene tras responder y antes del INSERT. */
   function egresos(cliente: PrismaClient, pausa?: { dentro: () => void; soltar: Promise<void> }) {
-    const real = new TopePagoPlataformaService(
-      new CobroPlataformaMovimientoRepository(cliente),
-      new PagoPlataformaRepository(cliente),
-    );
+    const real = new TopePagoPlataformaService(new PagoPlataformaRepository(cliente));
     const tope: ITopePagoPlataforma = pausa
       ? {
           comprobar: async (tx, i) => {

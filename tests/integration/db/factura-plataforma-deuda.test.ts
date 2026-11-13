@@ -115,14 +115,14 @@ async function asignar(
 /** La deuda de la wallet: la misma derivación que `DeudaPlataformaService`. */
 async function deudaDeLaWallet(tx: TxDeTest, organizacionId: string): Promise<string> {
   const sumas = await new CobroPlataformaMovimientoRepository(tx).sumasPorTipo(organizacionId, tx);
-  const pagos = await new PagoPlataformaRepository(tx).sumaPagosVigentes(organizacionId, tx);
+  const pagos = await new PagoPlataformaRepository(tx).sumaPagosConfirmados(organizacionId, tx);
   return derivarDeudaPlataforma(sumas, pagos).deuda;
 }
 
 /** El tope del pago en la app, con la empresa fijada (el candado la lee de `app.organizacion_id`). */
 async function topeDeLaApp(tx: TxDeTest, organizacionId: string, monto: string): Promise<string> {
   await fijarEmpresa(tx, organizacionId);
-  const tope = new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(tx), new PagoPlataformaRepository(tx));
+  const tope = new TopePagoPlataformaService(new PagoPlataformaRepository(tx));
   return tope.comprobar(tx, { organizacionId, monto, claveIdempotencia: randomUUID() });
 }
 

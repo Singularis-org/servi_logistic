@@ -17,23 +17,21 @@ function repoDoble(pagosConfirmados = "0.00") {
     { tipo: "reverso", monto: "500.00" },
   ]);
   const sumaPagosConfirmados = vi.fn<IPagoPlataformaRepository["sumaPagosConfirmados"]>(async () => pagosConfirmados);
-  // SLT-60 (R7): si el servicio leyera los pagos vigentes (por confirmar incluidos), daría otra cifra.
-  const sumaPagosVigentes = vi.fn<IPagoPlataformaRepository["sumaPagosVigentes"]>(async () => "9999.00");
-  const disponibleParaRegistrar = vi.fn<IPagoPlataformaRepository["disponibleParaRegistrar"]>(async () => "0.00");
+  // SLT-60 (R7): lo disponible descuenta los pagos por confirmar; si la deuda lo leyera, daría otra cifra.
+  const disponibleParaRegistrar = vi.fn<IPagoPlataformaRepository["disponibleParaRegistrar"]>(async () => "9999.00");
   const bloquear = vi.fn<IPagoPlataformaRepository["bloquear"]>(async () => undefined);
   const claveYaRegistrada = vi.fn<IPagoPlataformaRepository["claveYaRegistrada"]>(async () => false);
   return {
     repo: { sumasPorTipo } satisfies ICobroPlataformaMovimientoRepository,
     pagos: {
       sumaPagosConfirmados,
-      sumaPagosVigentes,
       disponibleParaRegistrar,
       bloquear,
       claveYaRegistrada,
     } satisfies IPagoPlataformaRepository,
     sumasPorTipo,
     sumaPagosConfirmados,
-    sumaPagosVigentes,
+    disponibleParaRegistrar,
   };
 }
 
@@ -48,13 +46,13 @@ const SIN_ACCESO_TOTAL = Object.values(RolValue).filter((r) => !ACCESO_TOTAL.inc
 
 describe("SL-40 — DeudaPlataformaService.verDeuda (R25)", () => {
   it.each(ACCESO_TOTAL)("el rol %s ve la deuda de su empresa, derivada de las sumas", async (rol) => {
-    const { repo, pagos, sumasPorTipo, sumaPagosConfirmados, sumaPagosVigentes } = repoDoble();
+    const { repo, pagos, sumasPorTipo, sumaPagosConfirmados, disponibleParaRegistrar } = repoDoble();
     const r = await new DeudaPlataformaService(repo, pagos).verDeuda(actor(rol));
     expect(r).toEqual({ status: "ok", deudaPlataforma: { deuda: "1600.00", estado: "debe", importe: "1600.00" } });
     expect(sumasPorTipo).toHaveBeenCalledTimes(1);
     expect(sumasPorTipo).toHaveBeenCalledWith("org-a");
     expect(sumaPagosConfirmados).toHaveBeenCalledWith("org-a");
-    expect(sumaPagosVigentes).not.toHaveBeenCalled();
+    expect(disponibleParaRegistrar).not.toHaveBeenCalled();
   });
 
   it("hay roles sin acceso total que comprobar", () => {

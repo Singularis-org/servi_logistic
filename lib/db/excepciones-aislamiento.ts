@@ -231,6 +231,14 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
       "SLT-118: el cierre horario de las facturas de la plataforma recorre todas las empresas y llama a `factura_plataforma_cerrar`, función del dueño que `servi_app` no puede ejecutar (R3, R22, R25)",
   },
   {
+    // SLT-60 (design §4.3). Lleva `SL-45` (la ficha del pago a la plataforma) porque `FichaJira` no admite
+    // `SLT` (deuda D29).
+    archivo: "lib/repositories/PagoPlataformaConfirmacionRepository.ts",
+    ficha: "SL-45",
+    motivo:
+      "SLT-60: el superadmin, que no tiene empresa, lee los pagos por confirmar y los saldos de las facturas de una empresa y confirma un pago; llama a `pago_plataforma_por_confirmar`, `factura_plataforma_saldos` y `pago_plataforma_confirmar`, funciones del dueño que `servi_app` no puede ejecutar (R12, R14, R16, R24)",
+  },
+  {
     // SLT-87 (design §2.3). Lleva la ficha que separó negocio y plataforma porque `FichaJira` no admite
     // `SLT` (deuda D29).
     archivo: "lib/repositories/BugReportRepository.ts",
