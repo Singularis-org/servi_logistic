@@ -164,21 +164,93 @@ Mutaciones (cada una aplicada sobre una copia, corrida la guardia y restaurada; 
     sigue rojo, `EXIT=1`. Abierto para el leader / SLT-141.
 - Guardia final: `Tests 154 passed (154)`, `GUARD_EXIT=0`.
 
-## Mapa R → test (de esta tanda)
-
-| R | Test |
-|---|---|
-| R56 | `cierres-trato-tu.guardia.test.ts` «R56/R142: ningún texto del censo…» (mutaciones 1-2) |
-| R142 | idem + «la terminación aguda marca…», «el hallazgo nombra ruta, línea y forma», «en un comentario o en un especificador de import no cuenta» |
-| R143 | «R143: no marca formas de «tú»…», «R143: cada excepción lleva motivo y no pasan de 40» |
-| R144 | describe «SLT-134 · Anexo A (R144)» (40 filas, 44 casos) + los 16 tests de componente/unidad con el literal nuevo |
-| R145 | «R145: control positivo del censo…» (mutación 5) y las 5 contraprueba `it.each` por lista |
-| R146 | diff de producción solo literales + comentario P3; los 16 tests verdes con solo el literal cambiado (T4.1 lo revisa) |
-| R392 | la guardia de trato importa `tests/fixtures/censo-cierres.ts` (la de diálogos, en T3) |
-| R393 | «R393: la guardia corre en el gate rápido…» (mutación 6) |
-| R394 | «R394: ni la tilde que falta ni los posesivos marcan» |
-
-## Veredicto
+## Veredicto (tanda 1)
 
 Tanda 1 hecha: 47 textos en «tú» con el Anexo A, guardia de trato ROJA (59 hallazgos / 47 textos / 12
 archivos) → VERDE, mutaciones 1-6 anotadas; P4 no salta (31 archivos); un rojo heredado de SLT-141 abierto.
+
+## Decisiones del leader sobre lo abierto en la tanda 1
+
+- (a) `app/(app)/wallet/mensajeros/_components/wallet-mensajeros-labels.ts` l.214
+  (`PAGO_MENSAJERO_WALLET.noRegistrado`) **queda en voseo**, fuera del censo, igual que P2. Es la deuda D70,
+  que vive en la rama de SLT-115; aquí no se toca.
+- (b) A6 cuenta **2** en `ConsolidacionBodegaModule.tsx`: correcto.
+- El rojo de `paginacion-transversal.test.tsx` heredado de SLT-141 «Excel del modelo nuevo: hojas por
+  cierre de bodega»: el leader mergeó su arreglo (fd0efa94). Re-corrido en la tanda 2: **verde** (abajo).
+
+## T3.1 — Guardia de diálogos por AST (R390-R392, D65)
+
+`tests/unit/guards/cierres-dialogos-modal.guardia.test.ts` reescrita: censo de `censoPantalla()` del
+fixture (fuera `ARBOLES`/`listar` locales y `quitarComentarios`), imports/visor por AST (`typescript`),
+control positivo con `ConciliacionSatelite.tsx`, `RegistrarPagoDialog.tsx`, `DesglosePagoField.tsx` y
+`EscanerGuiaCard.tsx` (sigue `> 40`), y contraprueba con un `it.each` por vía: 8 de imports (las 2 de hoy
++ `ui/sheet`, `@radix-ui/react-dialog`, `@radix-ui/react-alert-dialog`, `"../../ui/dialog"`,
+`export { Dialog } from "@/components/ui/dialog"`, `import("@/components/ui/sheet")`) y 9 del visor
+(título literal, partido con `+`, partido en tres con paréntesis y plantilla, plantilla,
+`VISOR_EVIDENCIA_TEXTO.titulo`, `["titulo"]`, `function`, `const` flecha, `const` `function` anónima); cada
+una detectada y, comentada con `//`, ninguna. Más un negativo: `shared/Modal`, `ui/button` y
+`ui/sheet-header` no son diálogo prohibido. Sobre el árbol: `Tests 24 passed (24)`, `EXIT=0`.
+
+Mutaciones (una línea añadida a un archivo real del censo, guardia corrida, `git checkout -- <archivo>`;
+`git status` final solo con la guardia):
+
+| # | Archivo y línea añadida | Resultado |
+|---|---|---|
+| M1 | `components/shared/conciliacion/ConciliacionAcciones.tsx` ← `import { Sheet } from "@/components/ui/sheet";` | `EXIT=1`, `1 failed \| 23 passed`: `"components/shared/conciliacion/ConciliacionAcciones.tsx → @/components/ui/sheet"` |
+| M2 | `app/(app)/wallet/satelites/_components/ConciliacionSatelite.tsx` ← `import * as D from "@radix-ui/react-dialog";` | `EXIT=1`: `"app/(app)/wallet/satelites/_components/ConciliacionSatelite.tsx → @radix-ui/react-dialog"` |
+| M3 | `components/shared/DesglosePagoField.tsx` (suelto) ← `import { Dialog } from "../ui/dialog";` | `EXIT=1`: `"components/shared/DesglosePagoField.tsx → ../ui/dialog"` |
+| M4 | `components/shared/liquidacion/RegistrarPagoDialog.tsx` ← `export const T = "Evidencia " + "de la gestión";` | `EXIT=1`, rojo «R137: título…»: `"components/shared/liquidacion/RegistrarPagoDialog.tsx"` |
+| M5 | `app/(app)/cierre-dia/_components/CierreDiaModule.tsx` ← `export const T2 = VISOR_EVIDENCIA_TEXTO.titulo;` | `EXIT=1`, rojo «R137: VISOR_EVIDENCIA_TEXTO.titulo…»: `"app/(app)/cierre-dia/_components/CierreDiaModule.tsx"` |
+| M6 | `components/shared/EscanerGuiaCard.tsx` (suelto) ← `export const VisorEvidencia = () => null;` | `EXIT=1`, rojo «R137: declaración…»: `"components/shared/EscanerGuiaCard.tsx"` |
+| M7 | `app/(app)/cierres-admin/_components/CierresAdminModule.tsx` ← `export { Dialog } from "@/components/ui/dialog";` | `EXIT=1`: `"app/(app)/cierres-admin/_components/CierresAdminModule.tsx → @/components/ui/dialog"` |
+
+Commit: 8656db4a.
+
+## T3.2 — D65 cerrada
+
+`progress/deudas.md > D65`: cerrada con el commit 8656db4a y qué hueco cierra cada R (R390 imports,
+R391 visor, R392 censo).
+
+## Comandos de la tanda 2 (salida real)
+
+- `pnpm run typecheck` → `TC_EXIT=0`.
+- `pnpm exec eslint tests/unit/guards/cierres-dialogos-modal.guardia.test.ts tests/fixtures/censo-cierres.ts`
+  → `LINT_EXIT=0` (sin salida).
+- `pnpm exec vitest related --run tests/unit/guards/cierres-dialogos-modal.guardia.test.ts tests/fixtures/censo-cierres.ts`
+  → `Test Files 2 passed (2)`, `Tests 178 passed (178)`, `REL_EXIT=0`.
+- Las dos guardias + `tests/components/paginacion/paginacion-transversal.test.tsx` →
+  `Test Files 3 passed (3)`, `Tests 187 passed (187)`, `GUARD_EXIT=0` (el rojo heredado de SLT-141 ya no está).
+- T4.1 (`./init.sh`) la corre el leader.
+
+## T4.2 — Mapa R → test (igual a `tasks.md > Trazabilidad`)
+
+| R | Test |
+|---|---|
+| R56 | `tests/unit/guards/cierres-trato-tu.guardia.test.ts` («ningún texto del censo tiene voseo ni usted»; mutaciones 1-2) |
+| R142 | `cierres-trato-tu.guardia.test.ts` («ningún texto…», «hallazgo nombra ruta, línea y forma», «comentario e import no cuentan», «terminación aguda») |
+| R143 | `cierres-trato-tu.guardia.test.ts` («nada de R143 marca», «excepciones con motivo y ≤ 40») |
+| R144 | `cierres-trato-tu.guardia.test.ts` describe «Anexo A» (A1-K4); y los tests de componente/unidad actualizados con el literal nuevo (16, no 17: ver T2) |
+| R145 | `cierres-trato-tu.guardia.test.ts` («control positivo», «contraprueba por forma»; mutación 5) |
+| R146 | los tests actualizados (16), verdes con solo el literal cambiado; T4.1 (diff solo textos) |
+| R390 | `tests/unit/guards/cierres-dialogos-modal.guardia.test.ts` («R53: ningún archivo… importa un diálogo» y contraprueba de las vías nuevas; mutaciones M1-M3, M7) |
+| R391 | `cierres-dialogos-modal.guardia.test.ts` («R137: título…», «R137: declaración…», «R137: VISOR_EVIDENCIA_TEXTO.titulo…» y su contraprueba; mutaciones M4-M6) |
+| R392 | `cierres-dialogos-modal.guardia.test.ts` («control positivo», con los cuatro archivos nuevos); `cierres-trato-tu.guardia.test.ts` («control positivo»); los dos importan `tests/fixtures/censo-cierres.ts` |
+| R393 | `cierres-trato-tu.guardia.test.ts` («la guardia está en `gate.siempre`»; mutación 6) |
+| R394 | `cierres-trato-tu.guardia.test.ts` («sin tilde y posesivos no marcan») |
+
+Los dos archivos de guardia y el fixture existen y están verdes (arriba); los 16 tests de componente/unidad
+estaban verdes en la tanda 1 y no se tocan en esta. Ningún R sin test.
+
+## Lista de Preview (de `design.md`)
+
+- `/cierres-admin` › Mensajero, sin zona asignada (A4); rechazar un cierre (A11); confirmación física con
+  una guía sin número (B3) y faltando paquetes (B5/B6); indemnización con monto inválido (A3).
+- `/cierres-admin` › Descargar gestiones sin mensajeros (E2).
+- `/cierre-dia`: «Devolver a gestión» deshabilitado en una gestión de la tienda (J3, en el `title` y el
+  nombre accesible).
+- Conciliación de bodega con monto inválido (K1).
+
+## Veredicto
+
+T3 y T4.2 hechas: guardia de diálogos por AST sobre el censo compartido, D65 cerrada, 7 mutaciones rojas y
+revertidas, mapa completo sin R huérfanos; falta T4.1 (`./init.sh`, leader).

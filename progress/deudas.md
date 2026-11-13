@@ -380,7 +380,12 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - el censo no incluye `DesglosePagoField.tsx` ni `EscanerGuiaCard.tsx`, y el control de censo no vacío no fija ningún archivo de `wallet/satelites` ni `shared/liquidacion`.
   Hoy ningún archivo cae en esos huecos.
 - **Qué falta:** cerrar los huecos con SLT-134 «Textos de pantalla de cierres en tú, con guardia», que redefine el censo del módulo (incluye los compartidos con `/wallet/*`, PA8).
-- **Dueño:** ArqDev (en el spec de SLT-134).
+- **Cerrada (2026-11-13):** SLT-134, commit 8656db4a (`cierres-dialogos-modal.guardia.test.ts` por AST):
+  - **R390** cierra el hueco de imports: `ui/sheet`, `@radix-ui/react-(alert-)dialog` y rutas relativas a `ui/(alert-dialog|dialog|sheet)`, en `import`, `export … from` e `import()`; el hallazgo nombra archivo y especificador.
+  - **R391** cierra el hueco del visor: título plegado (concatenación `+` y plantilla), lectura de `VISOR_EVIDENCIA_TEXTO.titulo` (`.titulo` y `["titulo"]`) y `VisorEvidencia` como `const` con flecha o `function` anónima.
+  - **R392** cierra el hueco del censo: sale de `tests/fixtures/censo-cierres.ts > censoPantalla()` (con `DesglosePagoField.tsx` y `EscanerGuiaCard.tsx`), compartido con la guardia de trato; el control positivo fija `ConciliacionSatelite.tsx`, `RegistrarPagoDialog.tsx` y los dos sueltos.
+  - Mutaciones M1-M7 (cada vía nueva en un archivo real del censo) rojas y revertidas: `progress/impl_SLT-134.md > T3.1`.
+- **Dueño:** cerrada.
 
 ### D66 — Incidente del modelo nuevo con ganancia > 0 sin probar de punta a punta
 - **Origen:** SLT-108 (2026-11-11, review m2 en `progress/review_SLT-108.md`). En el modelo viejo un incidente no paga al mensajero (`specs/158-incidente-indemnizacion/design.md:345`, R17), y el E2E de `/cierre-dia` afirma «₡0». En el modelo nuevo existe el concepto `mensajero_incidente` (`lib/tarifas/catalogo.ts:47`) que `importePagoNuevo` paga, pero `pago-modelo-nuevo.test.ts:44` usa justo «0.00» para el incidente y ningún E2E pinta una «Ganancia» de incidente mayor que cero.

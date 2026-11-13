@@ -61,13 +61,13 @@ Solo cadenas: ni constantes nuevas ni ramas nuevas.
 
 ## T3 — Guardia de diálogos: D65 (R390-R392)
 
-- [ ] **T3.1** `cierres-dialogos-modal.guardia.test.ts` al censo del fixture, imports por AST con las vías
+- [x] **T3.1** `cierres-dialogos-modal.guardia.test.ts` al censo del fixture, imports por AST con las vías
   nuevas, visor por AST (título plegado, `VISOR_EVIDENCIA_TEXTO.titulo`, declaración flecha) y control
   positivo ampliado (`design.md > Guardia de diálogos`). Depende de T1.1.
   *Hecho:* verde sobre el árbol; cada muestra nueva de la contraprueba detectada y, comentada, no;
   mutación: un `import { Sheet } from "@/components/ui/sheet"` en `ConciliacionAcciones.tsx` (local, sin
   commitear) → rojo con ruta y especificador.
-- [ ] **T3.2** [P] `progress/deudas.md`: D65 a cerrada, con el commit y los R390-R392.
+- [x] **T3.2** [P] `progress/deudas.md`: D65 a cerrada, con el commit y los R390-R392.
   *Hecho:* la entrada dice qué hueco cierra cada R.
 
 ## T4 — Cierre
@@ -75,7 +75,7 @@ Solo cadenas: ni constantes nuevas ni ramas nuevas.
 - [ ] **T4.1** `./init.sh` verde. `git diff origin/dev -- app components` solo con cambios dentro de
   literales de cadena, plantillas, texto JSX y el comentario de P3 (R146), revisado a ojo y anotado.
   *Hecho:* gate verde con `INIT_EXIT=` en el log; nota «diff solo textos» en `progress/impl_SLT-134.md`.
-- [ ] **T4.2** `progress/impl_SLT-134.md` con el mapa `R<n> → test` de `## Trazabilidad`, las mutaciones
+- [x] **T4.2** `progress/impl_SLT-134.md` con el mapa `R<n> → test` de `## Trazabilidad`, las mutaciones
   y la lista de Preview de `design.md`.
   *Hecho:* cada R con un test que existe y está verde.
 
