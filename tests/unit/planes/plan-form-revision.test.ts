@@ -7,6 +7,7 @@ import {
   haySoloExtras,
   textoDeHoy,
 } from "@/app/(app)/plataforma/planes/_components/plan-form/revision";
+import { inicial, versionDe } from "@/app/(app)/plataforma/planes/_components/plan-form/estado";
 import type { PlanDTO } from "@/lib/types/planes";
 
 // SLT-130 (design §6; R16, R22, R23) — las filas de «Revisar» y el «Hoy: …», puras.
@@ -149,6 +150,42 @@ describe("SLT-130 — filasDeRevision al editar", () => {
 
     expect(filas).toEqual([{ clave: "Aplicar", valor: "De inmediato" }]);
     expect(haySoloExtras(filas, extras)).toBe(true);
+  });
+});
+
+describe("SLT-130 — filasDeRevision con valores aún no válidos", () => {
+  it("R22, R23: valores aún no válidos se pintan tal cual — topes, descuentos y porcentual, sin «NaN» ni «.00»", () => {
+    const escrito = {
+      ...inicial(PLAN, "", ""),
+      porRol: { admin: "1", mensajero: "muchos", adminTienda: "", adminSatelite: "" },
+      apiKeys: "-1",
+      descuentos: [
+        { periodo: "mensual" as const, forma: "monto" as const, valor: "5" },
+        { periodo: "anual" as const, forma: "porcentaje" as const, valor: "abc" },
+      ],
+      modoCosto: "porcentual" as const,
+      porcentajePorOrden: "dos",
+      minimoPorOrden: "50",
+    };
+    const despues: PlanDTO = { ...PLAN, ...versionDe(escrito) };
+
+    const alCrear = filasDeRevision({ modo: "crear", plan: null, despues, extras: [], escrito });
+    expect(alCrear).toContainEqual({ clave: "Tope de Mensajero", valor: "muchos" });
+    expect(alCrear).toContainEqual({ clave: "Tope de API keys", valor: "-1" });
+    expect(alCrear).toContainEqual({ clave: "Descuentos", valor: "Descuento mensual: 5.00 · Descuento anual: abc %" });
+    expect(alCrear).toContainEqual({ clave: "Cobro por orden", valor: "dos % · Mínimo: 50" });
+    // Lo válido sigue con su formato de siempre.
+    expect(alCrear).toContainEqual({ clave: "Tope de Administrador", valor: "1" });
+
+    const alEditar = filasDeRevision({ modo: "editar", plan: PLAN, despues, extras: [], escrito });
+    expect(alEditar).toContainEqual({ clave: "Tope de Mensajero", valor: "5 → muchos" });
+    expect(alEditar).toContainEqual({ clave: "Tope de API keys", valor: "2 → -1" });
+    expect(alEditar).toContainEqual({
+      clave: "Descuentos",
+      valor: "Descuento anual: 10.00 % → Descuento mensual: 5.00 · Descuento anual: abc %",
+    });
+    expect(alEditar).toContainEqual({ clave: "Cobro por orden", valor: "se aplica el valor global → dos % · Mínimo: 50" });
+    expect(JSON.stringify([...alCrear, ...alEditar])).not.toMatch(/NaN|abc\.00|dos\.00/);
   });
 });
 

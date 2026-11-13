@@ -28,9 +28,6 @@ export const TEXTOS_PLAN_FORM = {
   mensual: "Costo base mensual",
   /** SLT-86 (R23; design §7.1): un descuento por período, en lugar del pago anual. */
   descuento: (tipo: TipoCobro) => `Descuento ${tipo}`,
-  descuentoNinguno: "Ninguno",
-  descuentoPorcentaje: "Porcentaje",
-  descuentoMonto: "Monto fijo",
   costoPorOrden: "Costo por orden",
   costoPorOrdenAyuda: "Vacío: se aplica el valor global de la plataforma.",
   /** SLT-83 (design §6.1; R20): el modo del costo por orden. */
@@ -88,4 +85,15 @@ export const TEXTOS_PLAN_FORM = {
   /** SLT-130 (R28): por qué el botón final está bloqueado mientras se lee la vista previa del custom. */
   comprobandoConsumo: "Comprobando el consumo de la empresa…",
   irATopes: "Ir a Topes",
+  /** SLT-130 (design §4): la navegación entre pasos. */
+  anterior: "Anterior",
+  siguiente: "Siguiente",
+  /** SLT-130 (R10, R11; design §5): cada línea de la lista de descuentos y el botón para añadir otra. */
+  periodoDelDescuento: "Período",
+  valorDelDescuento: "Valor",
+  tipoDelDescuento: "Tipo del descuento",
+  descuentoFijo: "Fijo",
+  descuentoPorciento: "%",
+  quitarDescuento: (tipo: TipoCobro) => `Quitar descuento ${tipo}`,
+  agregarDescuento: "Agregar descuento",
 } as const;

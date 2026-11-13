@@ -30,7 +30,7 @@
 
 ## Tanda 2 — el formulario por pasos (depende de T1, T2, T3)
 
-- [ ] **T4 — Los siete pasos.** (R8–R17, R22, R23, R27)
+- [x] **T4 — Los siete pasos.** (R8–R17, R22, R23, R27)
   - `plan-form/PasoGeneral.tsx`, `PasoPrecio.tsx`, `PasoCobroPorOrden.tsx`, `PasoTopes.tsx`,
     `PasoModulos.tsx`, `PasoCuandoRige.tsx` y `PasoRevisar.tsx`, con `PropsDelPaso` (design §2, §5).
   - Un solo componente por paso para los dos modos; ninguno con variante por modo.
@@ -38,7 +38,7 @@
     `descuentos` a lista, y `inicial`, `precioDe` y `camposEnOrden` lo siguen.
   - *Hecho:* typecheck en verde. Cada JSX movido desde `PlanForm.tsx` conserva sus ids, textos y
     `aria-*`.
-- [ ] **T5 — `PlanForm` por pasos.** (R7, R18–R21, R24–R26, R28)
+- [x] **T5 — `PlanForm` por pasos.** (R7, R18–R21, R24–R26, R28)
   - Estado `paso` y `visitados`; «Siguiente» con el esquema completo filtrado por paso; Enter según el paso.
   - Foco al título al cambiar de paso; `mostrarErrores` lleva al paso del primer error.
   - Vista previa del custom: el aviso se pinta en Topes y el motivo del bloqueo, con «Ir a Topes», junto
@@ -46,7 +46,7 @@
   - Exporta `ESTILO_SHEET_PLAN`.
   - *Hecho:* `PlanForm.tsx` solo orquesta: estado, navegación, guardar y vista previa. Ya no tiene JSX de
     campos.
-- [ ] **T6 — Hosts en el Sheet ancho.** (R6)
+- [x] **T6 — Hosts en el Sheet ancho.** (R6)
   - `PlanesModule.tsx` y `PlanDetalle.tsx` según design §7.
   - *Hecho:* en `pnpm dev`, el panel de crear y el de editar miden `min(920px, 100vw)`. Los pasos van al
     lado en escritorio y arriba con menos de 768 px. El pie no se mueve al hacer scroll del contenido.

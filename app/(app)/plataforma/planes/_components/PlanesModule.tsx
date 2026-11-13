@@ -24,7 +24,7 @@ import type {
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
-import { PlanForm, type EmpresaParaCustom } from "./PlanForm";
+import { ESTILO_SHEET_PLAN, PlanForm, type EmpresaParaCustom } from "./PlanForm";
 import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
@@ -168,12 +168,13 @@ export function PlanesModule({
       <Catalogo planes={visibles} hayArchivadosOcultos={!mostrarArchivados && planes.length > 0} />
 
       <Sheet open={abierto} onOpenChange={setAbierto}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-lg data-[side=right]:sm:max-w-lg">
+        {/* SLT-130 (R6): el Sheet ancho; el scroll lo lleva el contenido del paso, no el panel entero. */}
+        <SheetContent className="gap-0" style={ESTILO_SHEET_PLAN}>
           <SheetHeader>
             <SheetTitle>{TEXTOS.tituloNuevo}</SheetTitle>
             <SheetDescription>{TEXTOS.descripcionNuevo}</SheetDescription>
           </SheetHeader>
-          <div className="px-4 pb-4">
+          <div className="flex min-h-0 flex-1">
             <PlanForm
               modo="crear"
               empresas={empresas}

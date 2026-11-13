@@ -2,10 +2,19 @@ import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { SIN_LIMITE, textoDelDescuento, textoDelPrecio } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
-import { ROLES_CON_TOPE, TIPOS_COBRO, type PlanDTO, type PrecioPlan, type TipoCobro } from "@/lib/types/planes";
+import {
+  costoPorOrdenPorcentualSchema,
+  descuentoPeriodoSchema,
+  ROLES_CON_TOPE,
+  TIPOS_COBRO,
+  topesPlanSchema,
+  type PlanDTO,
+  type PrecioPlan,
+  type TipoCobro,
+} from "@/lib/types/planes";
 
 import { textoDeVisibilidad, textoDelCostoPorOrdenDelPlan } from "../plan-vista";
-import type { ModoDelPlanForm } from "./estado";
+import type { Formulario, ModoDelPlanForm } from "./estado";
 import { TEXTOS_PLAN_FORM } from "./textos";
 
 // SLT-130 (design §6; R16, R22, R23) — las filas del paso «Revisar» y el «Hoy: …» de los campos que
@@ -24,13 +33,33 @@ function textoDelCostoBase(p: PrecioPlan): string {
   return textoDelPrecio(p.tipo === "monto" ? { tipo: "monto", mensual: p.mensual } : p);
 }
 
-function textoDeLosDescuentos(p: PrecioPlan): string {
-  if (p.tipo !== "monto") return TEXTOS_PLAN_FORM.ninguno;
-  const lineas = TIPOS_COBRO.flatMap((tipo) => {
-    const d = p.descuentos[tipo];
-    return d === undefined ? [] : [textoDelDescuento(tipo, d)];
-  });
+/**
+ * Design §6: un valor que todavía no pasa el esquema se pinta tal cual lo escribió el usuario. Los
+ * formateadores de `mensajes.ts` lo canonizan («abc» → «abc.00») y un tope no numérico sería «NaN»; por
+ * eso, si el valor del formulario no es válido, el texto sale de `escrito` (lo crudo del formulario).
+ */
+function textoDelDescuentoEscrito(tipo: TipoCobro, p: PrecioPlan, escrito: Formulario | null): string | null {
+  const d = p.tipo === "monto" ? p.descuentos[tipo] : undefined;
+  if (d === undefined) return null;
+  const linea = escrito?.descuentos.find((l) => l.periodo === tipo);
+  if (linea === undefined || descuentoPeriodoSchema.safeParse(d).success) return textoDelDescuento(tipo, d);
+  const sufijo = linea.forma === "porcentaje" ? ` ${TEXTOS_PLAN_FORM.sufijoPorcentaje}` : "";
+  return `${TEXTOS_PLAN_FORM.descuento(tipo)}: ${linea.valor.trim()}${sufijo}`;
+}
+
+function textoDeLosDescuentos(p: PrecioPlan, escrito: Formulario | null): string {
+  const lineas = TIPOS_COBRO.flatMap((tipo) => textoDelDescuentoEscrito(tipo, p, escrito) ?? []);
   return lineas.length === 0 ? TEXTOS_PLAN_FORM.ninguno : lineas.join(SEPARADOR);
+}
+
+function textoDelCobroPorOrden(p: PlanDTO, escrito: Formulario | null): string {
+  const porcentual = p.costoPorOrdenPorcentual;
+  if (escrito === null || porcentual === null || costoPorOrdenPorcentualSchema.safeParse(porcentual).success) {
+    return textoDelCostoPorOrdenDelPlan(p);
+  }
+  const partes = [`${escrito.porcentajePorOrden.trim()} ${TEXTOS_PLAN_FORM.sufijoPorcentaje}`];
+  if (porcentual.minimo !== null) partes.push(`${TEXTOS_PLAN_FORM.minimoPorOrden}: ${escrito.minimoPorOrden.trim()}`);
+  return partes.join(SEPARADOR);
 }
 
 function textoDeLosModulos(p: PlanDTO): string {
@@ -40,12 +69,21 @@ function textoDeLosModulos(p: PlanDTO): string {
 
 const textoDelTope = (n: number | null | undefined) => (n === null || n === undefined ? SIN_LIMITE : String(n));
 
+/** Un tope: el número del plan si es válido; si no, lo que dice el campo del formulario. */
+function textoDelTopeEscrito(n: number | null | undefined, crudo: string | undefined): string {
+  if (crudo === undefined || topesPlanSchema.shape.apiKeys.safeParse(n ?? null).success) return textoDelTope(n);
+  return crudo.trim();
+}
+
 const periodicidad = (p: PlanDTO) => TEXTOS_TIPO_COBRO.tipo[p.periodicidadOrdenes ?? "quincenal"];
 
-/** Una fila del plan: qué clave lleva, cómo se pinta su valor y si cambia entre las dos versiones. */
+/**
+ * Una fila del plan: qué clave lleva, cómo se pinta su valor y si cambia entre las dos versiones. `valor`
+ * recibe lo crudo del formulario en el lado «después» (`null` en el lado del plan guardado).
+ */
 type FilaDelPlan = {
   clave: string;
-  valor: (p: PlanDTO) => string;
+  valor: (p: PlanDTO, escrito: Formulario | null) => string;
   cambia: (c: CambiosDelPlan, antes: PlanDTO, despues: PlanDTO) => boolean;
 };
 
@@ -55,10 +93,14 @@ const algunDescuento = (c: CambiosDelPlan) => TIPOS_COBRO.some((tipo) => c[`desc
 const FILAS_DEL_PLAN: readonly FilaDelPlan[] = [
   { clave: TEXTOS_PLAN_FORM.nombre, valor: (p) => p.nombre, cambia: (c) => c.nombre !== undefined },
   { clave: TEXTOS_PLAN_FORM.mensual, valor: (p) => textoDelCostoBase(p.precio), cambia: (c) => c.precio !== undefined },
-  { clave: TEXTOS_PLAN_FORM.descuentos, valor: (p) => textoDeLosDescuentos(p.precio), cambia: algunDescuento },
+  {
+    clave: TEXTOS_PLAN_FORM.descuentos,
+    valor: (p, escrito) => textoDeLosDescuentos(p.precio, escrito),
+    cambia: algunDescuento,
+  },
   {
     clave: TEXTOS_PLAN_FORM.cobroPorOrden,
-    valor: textoDelCostoPorOrdenDelPlan,
+    valor: textoDelCobroPorOrden,
     cambia: (c) => c.costoPorOrden !== undefined || c.costoPorOrdenPorcentual !== undefined,
   },
   {
@@ -69,13 +111,13 @@ const FILAS_DEL_PLAN: readonly FilaDelPlan[] = [
   ...ROLES_CON_TOPE.map(
     (rol): FilaDelPlan => ({
       clave: TEXTOS_PLAN_FORM.topeDeRol(rol),
-      valor: (p) => textoDelTope(p.topes.porRol[rol]),
+      valor: (p, escrito) => textoDelTopeEscrito(p.topes.porRol[rol], escrito?.porRol[rol]),
       cambia: (_c, antes, despues) => (antes.topes.porRol[rol] ?? null) !== (despues.topes.porRol[rol] ?? null),
     }),
   ),
   {
     clave: TEXTOS_PLAN_FORM.topeDeApiKeys,
-    valor: (p) => textoDelTope(p.topes.apiKeys),
+    valor: (p, escrito) => textoDelTopeEscrito(p.topes.apiKeys, escrito?.apiKeys),
     cambia: (_c, antes, despues) => antes.topes.apiKeys !== despues.topes.apiKeys,
   },
   { clave: TEXTOS_PLAN_FORM.modulos, valor: textoDeLosModulos, cambia: (c) => c.modulos !== undefined },
@@ -87,23 +129,26 @@ const FILAS_DEL_PLAN: readonly FilaDelPlan[] = [
  * después los `extras` (la fila de cuándo rige). Si al editar no cambia nada del plan, devuelve solo los
  * `extras`: la vista pinta entonces «Sin cambios.» (`haySoloExtras`).
  *
- * «Revisar» no valida (se llega saltando pasos): un importe que todavía no es válido sale tal cual lo
- * escribió el usuario. Guardar valida y lleva al paso del error (R25).
+ * «Revisar» no valida (se llega saltando pasos): con `escrito` (lo crudo del formulario del que sale
+ * `despues`), un importe o un tope que todavía no es válido sale tal cual lo escribió el usuario. Guardar
+ * valida y lleva al paso del error (R25).
  */
 export function filasDeRevision(e: {
   modo: ModoDelPlanForm;
   plan: PlanDTO | null;
   despues: PlanDTO;
   extras: readonly FilaDeRevision[];
+  escrito?: Formulario;
 }): FilaDeRevision[] {
+  const escrito = e.escrito ?? null;
   if (e.modo === "crear" || e.plan === null) {
-    return [...e.extras, ...FILAS_DEL_PLAN.map((f) => ({ clave: f.clave, valor: f.valor(e.despues) }))];
+    return [...e.extras, ...FILAS_DEL_PLAN.map((f) => ({ clave: f.clave, valor: f.valor(e.despues, escrito) }))];
   }
   const antes = e.plan;
   const cambios = diferenciasDelPlan(antes, e.despues);
   const delPlan = FILAS_DEL_PLAN.filter((f) => f.cambia(cambios, antes, e.despues)).map((f) => ({
     clave: f.clave,
-    valor: `${f.valor(antes)}${FLECHA}${f.valor(e.despues)}`,
+    valor: `${f.valor(antes, null)}${FLECHA}${f.valor(e.despues, escrito)}`,
   }));
   return [...delPlan, ...e.extras];
 }

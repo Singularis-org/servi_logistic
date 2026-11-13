@@ -1,38 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { ModuloApagable } from "@prisma/client";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
-import { AvisosDeTopes, textosDeLosAvisosDeTopes } from "@/components/shared/AvisosDeTopes";
-import { FormField } from "@/components/shared/FormField";
-import { FieldError } from "@/components/shared/FieldError";
-import { MontoInput } from "@/components/shared/MontoInput";
-import { TipoCobroCampo } from "@/components/shared/TipoCobroCampo";
+import { FormularioPorPasos } from "@/components/shared/FormularioPorPasos";
 import { primerPeriodoDelCambio, TEXTOS_TIPO_COBRO, textoDelPeriodo } from "@/components/shared/tipo-cobro";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { RadioGroup } from "@/components/ui/radio-group";
-import { Select, type SelectOption } from "@/components/ui/select";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { MENSAJE_EDITAR_CAMBIO_A_MEDIAS } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
-import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
   editarPlanSchema,
-  PERIODICIDADES_ORDENES,
   precioPlanSchema,
   previsualizarCustomSchema,
-  ROLES_CON_TOPE,
-  TIPOS_COBRO,
   type CrearPlanInput,
   type EditarPlanInput,
   type PlanDTO,
   type PlanResult,
   type PrevisualizarCustomInput,
-  type TipoCobro,
   type TopeExcedido,
   type VistaPreviaCustomResult,
 } from "@/lib/types/planes";
@@ -42,17 +27,37 @@ import {
   camposEnOrden,
   erroresDeZod,
   inicial,
+  pasoDeLaClave,
+  pasosDe,
   precioDe,
   versionDe,
   type CamposVisibles,
-  type DescuentoDelFormulario,
+  type EmpresaParaCustom,
   type Errores,
   type Formulario,
+  type IdPaso,
+  type PropsDelPaso,
 } from "./plan-form/estado";
+import { PasoCobroPorOrden } from "./plan-form/PasoCobroPorOrden";
+import { PasoCuandoRige } from "./plan-form/PasoCuandoRige";
+import { PasoGeneral } from "./plan-form/PasoGeneral";
+import { PasoModulos } from "./plan-form/PasoModulos";
+import { PasoPrecio } from "./plan-form/PasoPrecio";
+import { PasoRevisar } from "./plan-form/PasoRevisar";
+import { PasoTopes } from "./plan-form/PasoTopes";
+import { extrasDeGeneral, filaDeCuandoRige } from "./plan-form/revision";
 import { TEXTOS_PLAN_FORM } from "./plan-form/textos";
 
-// SLT-130 (design §2): `PlanDetalle.tsx` y `PlanEmpresa.tsx` siguen importando los textos de aquí.
+// SLT-130 (design §2): `PlanDetalle.tsx`, `PlanesModule.tsx` y `PlanEmpresa.tsx` siguen importando de aquí.
 export { TEXTOS_PLAN_FORM };
+export type { EmpresaParaCustom };
+
+/**
+ * SLT-130 (R6; design §7): el ancho del Sheet que monta el formulario, el de la maqueta. Va en `style`
+ * por lo mismo que `configuracion/plantillas/_components/FormSheet.tsx`: el `style` inline gana al
+ * `w-3/4` de la clase base, y sin `maxWidth: "none"` el `data-[side=right]:sm:max-w-sm` lo recortaría.
+ */
+export const ESTILO_SHEET_PLAN: CSSProperties = { width: "min(920px, 100vw)", maxWidth: "none" };
 
 /**
  * Ajuste planes-custom (D13): cuánto se espera tras la última tecla antes de leer la vista previa, para
@@ -101,18 +106,6 @@ export function mensajeDelRechazo(r: PlanResult): string | null {
 
 export const RECHAZO_GENERICO = RECHAZOS.generico;
 
-/**
- * Una empresa del selector del plan custom (ajuste planes-custom, D4). SLT-86 (R25):
- * `fechaDeEfectoPorDefecto` es el primer día de su siguiente período de calendario con su tipo vigente
- * (`fechaDeEfectoPorDefecto` de `lib/planes/ciclo.ts`, del reloj del servidor); `null` sin plan.
- */
-export type EmpresaParaCustom = {
-  id: string;
-  nombre: string;
-  tienePlan: boolean;
-  fechaDeEfectoPorDefecto: string | null;
-};
-
 type PropsComunes = {
   /** Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado. */
   onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string) => void;
@@ -158,11 +151,11 @@ export type PlanFormProps = PropsComunes &
   );
 
 /**
- * SLT-58 (design §6.3; R14, R15, R18) — crear o editar un plan. Al crear pide la visibilidad (solo
- * «Público» o «Custom»: no hay un tipo «enterprise») y, si es custom, la empresa. Al editar, en vez
- * de la visibilidad (que no se edita, SL-24 R2) pide cuándo aplicar: de inmediato o a partir de una
- * fecha. Valida con el MISMO esquema que la action antes de llamarla y pinta cada error junto a su
- * campo, venga del cliente o de la action. «Guardar» se deshabilita mientras la petición está en vuelo.
+ * SLT-58 (design §6.3; R14, R15, R18) — crear o editar un plan. SLT-130 (design §4): por pasos, con el
+ * mismo componente de pasos y los mismos pasos en los dos modos; este componente solo orquesta (estado,
+ * navegación, guardar y la vista previa del custom). «Siguiente» valida con el MISMO esquema que la
+ * action, solo los campos del paso actual; el botón final valida todo, llama a la action una sola vez y,
+ * si hay errores, lleva al paso del primero. «Guardar» se deshabilita mientras la petición está en vuelo.
  */
 export function PlanForm(props: PlanFormProps) {
   const base = useId();
@@ -176,14 +169,21 @@ export function PlanForm(props: PlanFormProps) {
   const [errores, setErrores] = useState<Errores>({});
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [paso, setPaso] = useState<IdPaso>("general");
+  const [visitados, setVisitados] = useState<ReadonlySet<IdPaso>>(() => new Set<IdPaso>(["general"]));
   const enVuelo = useRef(false);
   const avisoRef = useRef<HTMLDivElement>(null);
+  const tituloRef = useRef<HTMLHeadingElement>(null);
   /**
    * Adónde llevar el foco tras pintar los errores: la clave del primer campo con error o `null` para el
    * aviso general. Se aplica en un efecto tras pintar los errores, porque el campo y su error tienen que
    * estar ya en el DOM.
    */
   const focoPendiente = useRef<{ clave: string | null } | null>(null);
+
+  const pasos = pasosDe(props.modo);
+  const indice = pasos.findIndex((p) => p.id === paso);
+  const esUltimo = indice === pasos.length - 1;
 
   const idDe = (clave: string) => `${base}-${clave.replaceAll(".", "-")}`;
   const errorDe = (clave: string) => errores[clave];
@@ -312,6 +312,19 @@ export function PlanForm(props: PlanFormProps) {
     return leerVistaPrevia(entradaPrevia, clavePrevia);
   }
 
+  /**
+   * R21: al cambiar de paso, el foco va al título del paso nuevo. No en el primer render (no se roba el
+   * foco al abrir el panel) ni si hay un foco pendiente de errores (R25: manda el campo con error). Se
+   * declara antes del efecto de los errores para ver `focoPendiente` antes de que ese lo consuma.
+   */
+  const pasoEnfocado = useRef<IdPaso>(paso);
+  useEffect(() => {
+    if (pasoEnfocado.current === paso) return;
+    pasoEnfocado.current = paso;
+    if (focoPendiente.current !== null) return;
+    tituloRef.current?.focus();
+  }, [paso]);
+
   useEffect(() => {
     const foco = focoPendiente.current;
     if (foco === null) return;
@@ -326,26 +339,33 @@ export function PlanForm(props: PlanFormProps) {
     destino.focus({ preventScroll: true });
   }, [errores, rechazo, base]);
 
+  function irA(destino: IdPaso) {
+    setPaso(destino);
+    setVisitados((v) => (v.has(destino) ? v : new Set(v).add(destino)));
+  }
+
   /**
-   * Pinta los errores y lleva el foco al primero en el orden del formulario. Si ninguno tiene un campo
-   * visible (solo errores sueltos o un rechazo), al aviso general.
+   * Pinta los errores y lleva el foco al primero en el orden del formulario, en su paso (R25). Si ninguno
+   * tiene un campo visible (solo errores sueltos o un rechazo), al aviso general de «Revisar» (R26).
    */
   function mostrarErrores(nuevos: Errores, nuevoRechazo: string | null = null) {
     setErrores(nuevos);
     setRechazo(nuevoRechazo);
     const primera = camposEnOrden(props.modo, form, visibles).find((clave) => (nuevos[clave]?.length ?? 0) > 0);
     focoPendiente.current = { clave: primera ?? null };
+    irA((primera === undefined ? null : pasoDeLaClave(primera, props.modo)) ?? "revisar");
   }
 
   function cambiar<K extends keyof Formulario>(campo: K, valor: Formulario[K]) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
-  function alternarModulo(modulo: ModuloApagable, marcado: boolean) {
-    setForm((f) => ({
-      ...f,
-      modulos: marcado ? [...f.modulos, modulo] : f.modulos.filter((m) => m !== modulo),
-    }));
+  /** Design §5: una línea de descuento que cambia de período o se quita se lleva sus errores pendientes. */
+  function descartarErrores(prefijo: string) {
+    setErrores((e) => {
+      const quedan = Object.entries(e).filter(([clave]) => clave !== prefijo && !clave.startsWith(`${prefijo}.`));
+      return quedan.length === Object.keys(e).length ? e : Object.fromEntries(quedan);
+    });
   }
 
   /**
@@ -379,8 +399,48 @@ export function PlanForm(props: PlanFormProps) {
     return v.success ? { llamar: () => enviar(v.data) } : { errores: erroresDeZod(v.error.issues) };
   }
 
-  async function guardar(e: FormEvent<HTMLFormElement>) {
+  /**
+   * R18: valida con el esquema completo de la action y se queda solo con los errores de los campos
+   * visibles de ESTE paso. Con alguno, no avanza; sin ninguno, limpia los errores y pasa al siguiente.
+   * No llama a ninguna action.
+   */
+  function siguiente() {
+    const p = peticion();
+    const conCampo = new Set(camposEnOrden(props.modo, form, visibles));
+    const delPaso =
+      "errores" in p
+        ? Object.fromEntries(
+            Object.entries(p.errores).filter(([clave]) => conCampo.has(clave) && pasoDeLaClave(clave, props.modo) === paso),
+          )
+        : {};
+    if (Object.keys(delPaso).length > 0) {
+      mostrarErrores(delPaso, rechazo);
+      return;
+    }
+    setErrores({});
+    const destino = pasos[indice + 1];
+    if (destino !== undefined) irA(destino.id);
+  }
+
+  /** R20: «Anterior» y la lista de pasos cambian de paso sin validar; lo escrito vive en `form`. */
+  function anterior() {
+    const destino = pasos[indice - 1];
+    if (destino !== undefined) setPaso(destino.id);
+  }
+
+  function alElegirPaso(id: string) {
+    const destino = pasos.find((p) => p.id === id);
+    if (destino !== undefined && visitados.has(destino.id)) setPaso(destino.id);
+  }
+
+  /** R19, R24: el formulario es uno solo; Enter o el botón del pie avanzan, y solo el último paso guarda. */
+  function alEnviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (esUltimo) void guardar();
+    else siguiente();
+  }
+
+  async function guardar() {
     if (enVuelo.current || creacionBloqueada) return;
     setErrores({});
     setRechazo(null);
@@ -425,30 +485,12 @@ export function PlanForm(props: PlanFormProps) {
     }
   }
 
-  // Los errores que no tienen un campo VISIBLE donde ir (`_`, `planId`…) se pintan arriba del botón.
+  // Los errores que no tienen un campo VISIBLE donde ir (`_`, `planId`…) se pintan en «Revisar».
   const conCampo = new Set(camposEnOrden(props.modo, form, visibles));
   const sueltos = Object.entries(errores)
     .filter(([clave]) => !conCampo.has(clave))
     .flatMap(([, mensajes]) => mensajes);
 
-  const idAyudaTopes = idDe("topes-ayuda");
-  // Cada tope enlaza la ayuda «Vacío = sin límite» (además del placeholder): el lector de pantalla la
-  // oye en el propio campo, no solo al pasar por el párrafo.
-  const campoTope = (clave: string, label: ReactNode, valor: string, onCambio: (v: string) => void) => (
-    <FormField id={idDe(clave)} label={label} error={errorDe(clave)}>
-      <Input
-        inputMode="numeric"
-        placeholder={TEXTOS_PLAN_FORM.topeVacio}
-        aria-describedby={idAyudaTopes}
-        value={valor}
-        onChange={(ev) => onCambio(ev.target.value)}
-      />
-    </FormField>
-  );
-
-  const empresas = props.modo === "crear" ? props.empresas : [];
-  const opcionesEmpresa: SelectOption[] = (empresas ?? []).map((e) => ({ value: e.id, label: e.nombre }));
-  const idSinEmpresas = idDe("sin-empresas");
   const textoEnviar =
     props.modo === "crear"
       ? TEXTOS_PLAN_FORM.crear
@@ -462,429 +504,145 @@ export function PlanForm(props: PlanFormProps) {
     props.modo === "crear" && fechaDelCustom !== "" && precioValido.success && esFechaCalendarioValida(fechaDelCustom)
       ? primerPeriodoDelCambio(precioValido.data, form.tipoCobro, fechaDelCustom)
       : null;
+  const lineasDelPrimerPeriodo =
+    primerPeriodo === null
+      ? []
+      : [
+          TEXTOS_TIPO_COBRO.costoBase(form.tipoCobro, primerPeriodo.costo),
+          textoDelPeriodo(form.tipoCobro, primerPeriodo.periodo),
+        ];
+  const extras =
+    props.modo === "crear"
+      ? extrasDeGeneral({
+          visibilidad: form.visibilidad,
+          empresaNombre: empresaElegida?.nombre ?? null,
+          tipoCobro: form.tipoCobro,
+          fecha: pideInicioCiclo
+            ? { campo: "inicioCiclo", valor: form.inicioCiclo }
+            : pideFechaDeEfecto
+              ? { campo: "rigeDesde", valor: form.vigenteDesde }
+              : null,
+        })
+      : [
+          filaDeCuandoRige({
+            cambiaPrecio,
+            aplicar: form.aplicar,
+            precioDesde: form.precioDesde,
+            vigenteDesde: form.vigenteDesde,
+          }),
+        ];
+  const idMotivo = idDe("motivo-bloqueo");
+
+  const delPaso: PropsDelPaso = {
+    modo: props.modo,
+    form,
+    cambiar,
+    setForm,
+    idDe,
+    errorDe,
+    plan: props.modo === "editar" ? props.plan : null,
+  };
+
+  function contenido() {
+    switch (paso) {
+      case "general":
+        return (
+          <PasoGeneral
+            {...delPaso}
+            empresas={props.modo === "crear" ? props.empresas : []}
+            rangos={
+              props.modo === "crear"
+                ? { inicioCiclo: props.rangoInicioCiclo, fechaDeEfecto: props.rangoFechaDeEfecto }
+                : null
+            }
+            pideInicioCiclo={pideInicioCiclo}
+            pideFechaDeEfecto={pideFechaDeEfecto}
+            lineasDelPrimerPeriodo={lineasDelPrimerPeriodo}
+          />
+        );
+      case "precio":
+        return <PasoPrecio {...delPaso} descartarErrores={descartarErrores} />;
+      case "orden":
+        return <PasoCobroPorOrden {...delPaso} />;
+      case "topes":
+        return (
+          <PasoTopes
+            {...delPaso}
+            vistaPrevia={pideInicioCiclo ? vistaPreviaVigente : undefined}
+            onReintentar={reintentarVistaPrevia}
+          />
+        );
+      case "modulos":
+        return <PasoModulos {...delPaso} />;
+      case "vigencia":
+        return <PasoCuandoRige {...delPaso} cambiaPrecio={cambiaPrecio} />;
+      case "revisar":
+        return (
+          <PasoRevisar
+            {...delPaso}
+            extras={extras}
+            lineasDelPrimerPeriodo={lineasDelPrimerPeriodo}
+            textoEnviar={textoEnviar}
+            rechazo={rechazo}
+            sueltos={sueltos}
+            avisoRef={avisoRef}
+            bloqueo={creacionBloqueada && vistaPreviaVigente !== null ? (vistaPreviaVigente.fase === "fallo" ? "fallo" : "cargando") : null}
+            idMotivo={idMotivo}
+            onIrATopes={() => irA("topes")}
+          />
+        );
+    }
+  }
+
+  // «Siguiente» es `submit` para que Enter dentro de un paso intermedio avance (R19): sin un botón de
+  // envío, el navegador no envía el formulario con Enter cuando hay más de un campo. `alEnviar` decide
+  // por el paso, así que solo el último guarda. Las `key` distintas impiden que el botón final reutilice
+  // el nodo de «Siguiente».
+  const pie = (
+    <div className="flex items-center justify-between gap-2">
+      {indice > 0 ? (
+        <Button type="button" variant="outline" onClick={anterior}>
+          {TEXTOS_PLAN_FORM.anterior}
+        </Button>
+      ) : (
+        <span />
+      )}
+      {esUltimo ? (
+        <Button
+          key="final"
+          type="submit"
+          loading={enviando}
+          disabled={creacionBloqueada}
+          aria-describedby={creacionBloqueada ? idMotivo : undefined}
+        >
+          {textoEnviar}
+        </Button>
+      ) : (
+        <Button key="siguiente" type="submit">
+          {TEXTOS_PLAN_FORM.siguiente}
+        </Button>
+      )}
+    </div>
+  );
 
   return (
     <form
       noValidate
       aria-label={props.modo === "crear" ? TEXTOS_PLAN_FORM.crear : TEXTOS_PLAN_FORM.guardar}
-      onSubmit={(ev) => void guardar(ev)}
-      className="flex flex-col gap-6"
+      onSubmit={alEnviar}
+      className="flex min-h-0 flex-1 flex-col"
     >
-      <FormField id={idDe("nombre")} label={TEXTOS_PLAN_FORM.nombre} error={errorDe("nombre")} required>
-        <Input value={form.nombre} onChange={(ev) => cambiar("nombre", ev.target.value)} maxLength={80} />
-      </FormField>
-
-      {props.modo === "crear" ? (
-        <div className="flex flex-col gap-4">
-          <FormField id={idDe("visibilidad")} label={TEXTOS_PLAN_FORM.visibilidad} error={errorDe("visibilidad")}>
-            {(control) => (
-              // El `id` va en el contenedor para poder llevar el foco al grupo si tiene error.
-              <div id={control.id}>
-                <RadioGroup
-                  aria-label={TEXTOS_PLAN_FORM.visibilidad}
-                  aria-invalid={control["aria-invalid"]}
-                  aria-describedby={control["aria-describedby"]}
-                  value={form.visibilidad}
-                  onValueChange={(v) => cambiar("visibilidad", v === "custom" ? "custom" : "publico")}
-                  options={[
-                    { value: "publico", label: TEXTOS_PLAN_FORM.publico },
-                    { value: "custom", label: TEXTOS_PLAN_FORM.custom },
-                  ]}
-                />
-              </div>
-            )}
-          </FormField>
-          {form.visibilidad === "custom" ? (
-            <FormField id={idDe("organizacionId")} label={TEXTOS_PLAN_FORM.empresa} error={errorDe("organizacionId")}>
-              {(control) => (
-                <>
-                  <Select
-                    id={control.id}
-                    aria-label={TEXTOS_PLAN_FORM.empresa}
-                    aria-invalid={control["aria-invalid"]}
-                    aria-describedby={
-                      [control["aria-describedby"], empresas === null ? idSinEmpresas : undefined]
-                        .filter(Boolean)
-                        .join(" ") || undefined
-                    }
-                    value={form.organizacionId}
-                    options={opcionesEmpresa}
-                    placeholder={TEXTOS_PLAN_FORM.empresaPlaceholder}
-                    onValueChange={(v) =>
-                      // SLT-86 (R25): «Rige desde» propone el siguiente período de la empresa elegida.
-                      setForm((f) => ({
-                        ...f,
-                        organizacionId: v,
-                        vigenteDesde: (empresas ?? []).find((e) => e.id === v)?.fechaDeEfectoPorDefecto ?? "",
-                      }))
-                    }
-                  />
-                  {empresas === null ? (
-                    <p id={idSinEmpresas} className="text-sm text-danger-strong">
-                      {TEXTOS_PLAN_FORM.sinEmpresas}
-                    </p>
-                  ) : null}
-                </>
-              )}
-            </FormField>
-          ) : null}
-        </div>
-      ) : null}
-
-      <fieldset className="flex flex-col gap-4">
-        <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.topes}</legend>
-        <p id={idAyudaTopes} className="text-sm text-muted-foreground">
-          {TEXTOS_PLAN_FORM.topesAyuda}
-        </p>
-        {/* Una sola columna: en el panel (~480 px) dos columnas parten las etiquetas de rol en varias líneas. */}
-        <div className="flex flex-col gap-4">
-          {ROLES_CON_TOPE.map((rol) => (
-            <div key={rol}>
-              {campoTope(`topes.porRol.${rol}`, TEXTOS_PLAN_FORM.rol(rol), form.porRol[rol], (v) =>
-                setForm((f) => ({ ...f, porRol: { ...f.porRol, [rol]: v } })),
-              )}
-            </div>
-          ))}
-          {campoTope("topes.apiKeys", TEXTOS_PLAN_FORM.apiKeys, form.apiKeys, (v) => cambiar("apiKeys", v))}
-        </div>
-      </fieldset>
-
-      <fieldset
-        id={idDe("modulos")}
-        className="flex flex-col gap-3"
-        aria-describedby={errorDe("modulos") ? `${idDe("modulos")}-error` : undefined}
+      <FormularioPorPasos
+        pasos={pasos}
+        actual={paso}
+        visitados={visitados}
+        onIr={alElegirPaso}
+        pie={pie}
+        tituloRef={tituloRef}
       >
-        <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.modulos}</legend>
-        <ul className="flex flex-col gap-2">
-          {ORDEN_MODULOS.map((modulo) => {
-            const id = idDe(`modulo-${modulo}`);
-            return (
-              <li key={modulo} className="flex min-h-11 items-center gap-2 text-sm">
-                <Checkbox
-                  id={id}
-                  checked={form.modulos.includes(modulo)}
-                  onCheckedChange={(marcado) => alternarModulo(modulo, marcado === true)}
-                />
-                <label htmlFor={id} className="cursor-pointer">
-                  {nombreDelModulo(modulo)}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-        <FieldError id={`${idDe("modulos")}-error`} messages={errorDe("modulos")} />
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-4">
-        <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.precio}</legend>
-        <div id={idDe("precio")}>
-          <RadioGroup
-            aria-label={TEXTOS_PLAN_FORM.precio}
-            aria-invalid={Boolean(errorDe("precio"))}
-            aria-describedby={errorDe("precio") ? `${idDe("precio")}-error` : undefined}
-            value={form.precio}
-            onValueChange={(v) => cambiar("precio", v === "monto" ? "monto" : "sin_precio")}
-            options={[
-              { value: "sin_precio", label: TEXTOS_PLAN_FORM.sinPrecio },
-              { value: "monto", label: TEXTOS_PLAN_FORM.monto },
-            ]}
-          />
-        </div>
-        <FieldError id={`${idDe("precio")}-error`} messages={errorDe("precio")} />
-        {form.precio === "monto" ? (
-          <div className="flex flex-col gap-4">
-            <FormField id={idDe("precio.mensual")} label={TEXTOS_PLAN_FORM.mensual} error={errorDe("precio.mensual")}>
-              <MontoInput value={form.mensual} onChange={(v) => cambiar("mensual", v)} />
-            </FormField>
-            {TIPOS_COBRO.map((tipo) => (
-              <CampoDescuento
-                key={tipo}
-                tipo={tipo}
-                valor={form.descuentos[tipo]}
-                onCambio={(d) => setForm((f) => ({ ...f, descuentos: { ...f.descuentos, [tipo]: d } }))}
-                idDe={idDe}
-                errorDe={errorDe}
-              />
-            ))}
-          </div>
-        ) : null}
-      </fieldset>
-
-      {/* SLT-66 (R7, R23): fuera del grupo «Costo base», porque no depende de su forma. SLT-83 (R20): con
-          su modo, «Fijo» o «Porcentual». */}
-      <fieldset className="flex flex-col gap-4">
-        <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.cobroPorOrden}</legend>
-        <RadioGroup
-          aria-label={TEXTOS_PLAN_FORM.cobroPorOrden}
-          value={form.modoCosto}
-          onValueChange={(v) => cambiar("modoCosto", v === "porcentual" ? "porcentual" : "fijo")}
-          options={[
-            { value: "fijo", label: TEXTOS_PLAN_FORM.cobroFijo },
-            { value: "porcentual", label: TEXTOS_PLAN_FORM.cobroPorcentual },
-          ]}
-        />
-        {form.modoCosto === "fijo" ? (
-          <FormField
-            id={idDe("costoPorOrden")}
-            label={TEXTOS_PLAN_FORM.costoPorOrden}
-            hint={TEXTOS_PLAN_FORM.costoPorOrdenAyuda}
-            error={errorDe("costoPorOrden")}
-          >
-            <MontoInput value={form.costoPorOrden} onChange={(v) => cambiar("costoPorOrden", v)} />
-          </FormField>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <FormField
-              id={idDe("costoPorOrdenPorcentual.porcentaje")}
-              label={TEXTOS_PLAN_FORM.porcentajePorOrden}
-              error={errorDe("costoPorOrdenPorcentual.porcentaje")}
-              required
-            >
-              {(control) => (
-                <div className="flex items-center gap-2">
-                  <Input
-                    {...control}
-                    inputMode="decimal"
-                    value={form.porcentajePorOrden}
-                    onChange={(ev) => cambiar("porcentajePorOrden", ev.target.value)}
-                  />
-                  {/* El sufijo es visual: la etiqueta ya dice «Porcentaje». */}
-                  <span aria-hidden="true" className="text-sm text-muted-foreground">
-                    {TEXTOS_PLAN_FORM.sufijoPorcentaje}
-                  </span>
-                </div>
-              )}
-            </FormField>
-            <FormField
-              id={idDe("costoPorOrdenPorcentual.minimo")}
-              label={TEXTOS_PLAN_FORM.minimoPorOrden}
-              error={errorDe("costoPorOrdenPorcentual.minimo")}
-            >
-              <MontoInput value={form.minimoPorOrden} onChange={(v) => cambiar("minimoPorOrden", v)} />
-            </FormField>
-          </div>
-        )}
-      </fieldset>
-
-      {/* SLT-118 (R35): la periodicidad de las facturas de órdenes, al crear y al editar. */}
-      <FormField
-        id={idDe("periodicidadOrdenes")}
-        label={TEXTOS_PLAN_FORM.periodicidadOrdenes}
-        error={errorDe("periodicidadOrdenes")}
-      >
-        {(control) => (
-          // El `id` va en el contenedor para poder llevar el foco al grupo si tiene error.
-          <div id={control.id}>
-            <RadioGroup
-              aria-label={TEXTOS_PLAN_FORM.periodicidadOrdenes}
-              aria-invalid={control["aria-invalid"]}
-              aria-describedby={control["aria-describedby"]}
-              value={form.periodicidadOrdenes}
-              onValueChange={(v) => {
-                const periodicidad = PERIODICIDADES_ORDENES.find((p) => p === v);
-                if (periodicidad !== undefined) cambiar("periodicidadOrdenes", periodicidad);
-              }}
-              options={PERIODICIDADES_ORDENES.map((p) => ({ value: p, label: TEXTOS_TIPO_COBRO.tipo[p] }))}
-            />
-          </div>
-        )}
-      </FormField>
-
-      {/* Ajuste planes-custom (D2, D4–D6): el custom se asigna a su empresa al crearlo. */}
-      {props.modo === "crear" && form.visibilidad === "custom" ? (
-        <div className="flex flex-col gap-4">
-          <TipoCobroCampo
-            id={idDe("tipoCobro")}
-            value={form.tipoCobro}
-            onValueChange={(t) => cambiar("tipoCobro", t)}
-            error={errorDe("tipoCobro")}
-          />
-          {pideInicioCiclo ? (
-            <FormField
-              id={idDe("inicioCiclo")}
-              label={TEXTOS_PLAN_FORM.inicioCiclo}
-              hint={TEXTOS_PLAN_FORM.inicioCicloAyuda}
-              error={errorDe("inicioCiclo")}
-            >
-              <Input
-                type="date"
-                value={form.inicioCiclo}
-                min={props.rangoInicioCiclo.min}
-                max={props.rangoInicioCiclo.max}
-                onChange={(ev) => cambiar("inicioCiclo", ev.target.value)}
-              />
-            </FormField>
-          ) : null}
-          {pideFechaDeEfecto ? (
-            <FormField
-              id={idDe("vigenteDesde")}
-              label={TEXTOS_TIPO_COBRO.rigeDesde}
-              hint={TEXTOS_TIPO_COBRO.ayudaCambioDeEmpresa}
-              error={errorDe("vigenteDesde")}
-            >
-              <Input
-                type="date"
-                value={form.vigenteDesde}
-                min={props.rangoFechaDeEfecto.min}
-                max={props.rangoFechaDeEfecto.max}
-                onChange={(ev) => cambiar("vigenteDesde", ev.target.value)}
-              />
-            </FormField>
-          ) : null}
-          {/* SLT-86 (R25): el costo base del primer período o tramo que abrirá la asignación. */}
-          {primerPeriodo !== null ? (
-            <ul className="flex flex-col gap-1 text-sm">
-              <li>{TEXTOS_TIPO_COBRO.costoBase(form.tipoCobro, primerPeriodo.costo)}</li>
-              <li>{textoDelPeriodo(form.tipoCobro, primerPeriodo.periodo)}</li>
-            </ul>
-          ) : null}
-          {/* D13: la vista previa de SLT-58 R37 con los topes del formulario. D17: si no carga, bloquea
-              «Crear plan» y ofrece «Reintentar», como el modal de primera asignación (P11). */}
-          {pideInicioCiclo ? (
-            <div aria-live="polite" aria-busy={vistaPreviaVigente?.fase === "cargando"}>
-              {vistaPreviaVigente?.fase === "ok" && vistaPreviaVigente.avisos.length > 0 ? (
-                <AvisosDeTopes avisos={textosDeLosAvisosDeTopes(vistaPreviaVigente.avisos)} />
-              ) : vistaPreviaVigente?.fase === "fallo" ? (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    <p>{TEXTOS_PLAN_FORM.vistaPreviaNoCargo}</p>
-                    {(vistaPreviaVigente.motivo ?? []).map((m) => (
-                      <p key={m}>{m}</p>
-                    ))}
-                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={reintentarVistaPrevia}>
-                      {TEXTOS_PLAN_FORM.reintentar}
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* SLT-86 (R22, R23): un cambio de precio no se aplica «de inmediato»: lleva su fecha, mañana por defecto. */}
-      {props.modo === "editar" && cambiaPrecio ? (
-        <FormField
-          id={idDe("vigenteDesde")}
-          label={TEXTOS_TIPO_COBRO.rigeDesde}
-          hint={TEXTOS_TIPO_COBRO.ayudaCambioDePrecio}
-          error={errorDe("vigenteDesde")}
-        >
-          <Input type="date" value={form.precioDesde} onChange={(ev) => cambiar("precioDesde", ev.target.value)} />
-        </FormField>
-      ) : null}
-
-      {props.modo === "editar" && !cambiaPrecio ? (
-        <fieldset className="flex flex-col gap-4">
-          <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.aplicar}</legend>
-          <RadioGroup
-            aria-label={TEXTOS_PLAN_FORM.aplicar}
-            value={form.aplicar}
-            onValueChange={(v) => cambiar("aplicar", v === "programado" ? "programado" : "inmediato")}
-            options={[
-              { value: "inmediato", label: TEXTOS_PLAN_FORM.inmediato },
-              { value: "programado", label: TEXTOS_PLAN_FORM.programado },
-            ]}
-          />
-          {form.aplicar === "programado" ? (
-            <FormField
-              id={idDe("vigenteDesde")}
-              label={TEXTOS_PLAN_FORM.fecha}
-              hint={TEXTOS_PLAN_FORM.fechaAyuda}
-              error={errorDe("vigenteDesde")}
-            >
-              <Input type="date" value={form.vigenteDesde} onChange={(ev) => cambiar("vigenteDesde", ev.target.value)} />
-            </FormField>
-          ) : null}
-        </fieldset>
-      ) : null}
-
-      {rechazo !== null || sueltos.length > 0 ? (
-        <Alert
-          ref={avisoRef}
-          tabIndex={-1}
-          variant="destructive"
-          className="focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          <AlertDescription>
-            {rechazo !== null ? <p>{rechazo}</p> : null}
-            {sueltos.map((m, i) => (
-              <p key={i}>{m}</p>
-            ))}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {/* Pie fijo al fondo del panel: en móvil no hay que bajar todo el formulario para enviar. El margen
-          negativo cubre el `px-4 pb-4` del contenedor del `Sheet` para que el fondo tape lo que pasa debajo. */}
-      <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-border bg-popover px-4 py-4">
-        <Button type="submit" loading={enviando} disabled={creacionBloqueada}>
-          {textoEnviar}
-        </Button>
-      </div>
+        {contenido()}
+      </FormularioPorPasos>
     </form>
-  );
-}
-
-interface CampoDescuentoProps {
-  tipo: TipoCobro;
-  valor: DescuentoDelFormulario;
-  onCambio: (d: DescuentoDelFormulario) => void;
-  idDe: (clave: string) => string;
-  errorDe: (clave: string) => string[] | undefined;
-}
-
-/**
- * SLT-86 (R10, R23) — el descuento de UN período: «Ninguno», «Porcentaje» o «Monto fijo», con el campo de
- * la forma elegida. El grupo lleva título visible para que las cuatro tandas de radios no se confundan.
- */
-function CampoDescuento({ tipo, valor, onCambio, idDe, errorDe }: CampoDescuentoProps) {
-  const clave = `precio.descuentos.${tipo}`;
-  const titulo = TEXTOS_PLAN_FORM.descuento(tipo);
-  return (
-    <fieldset id={idDe(clave)} className="flex flex-col gap-2">
-      <legend className="mb-2 text-sm font-medium">{titulo}</legend>
-      <RadioGroup
-        aria-label={titulo}
-        aria-invalid={Boolean(errorDe(clave))}
-        aria-describedby={errorDe(clave) ? `${idDe(clave)}-error` : undefined}
-        value={valor.forma}
-        onValueChange={(v) => onCambio({ ...valor, forma: v === "porcentaje" || v === "monto" ? v : "ninguno" })}
-        options={[
-          { value: "ninguno", label: TEXTOS_PLAN_FORM.descuentoNinguno },
-          { value: "porcentaje", label: TEXTOS_PLAN_FORM.descuentoPorcentaje },
-          { value: "monto", label: TEXTOS_PLAN_FORM.descuentoMonto },
-        ]}
-      />
-      <FieldError id={`${idDe(clave)}-error`} messages={errorDe(clave)} />
-      {valor.forma === "porcentaje" ? (
-        <FormField
-          id={idDe(`${clave}.porcentaje`)}
-          label={TEXTOS_PLAN_FORM.descuentoPorcentaje}
-          error={errorDe(`${clave}.porcentaje`)}
-        >
-          {(control) => (
-            <div className="flex items-center gap-2">
-              <Input
-                {...control}
-                inputMode="decimal"
-                value={valor.porcentaje}
-                onChange={(ev) => onCambio({ ...valor, porcentaje: ev.target.value })}
-              />
-              {/* El sufijo es visual: la etiqueta ya dice «Porcentaje». */}
-              <span aria-hidden="true" className="text-sm text-muted-foreground">
-                {TEXTOS_PLAN_FORM.sufijoPorcentaje}
-              </span>
-            </div>
-          )}
-        </FormField>
-      ) : null}
-      {valor.forma === "monto" ? (
-        <FormField id={idDe(`${clave}.monto`)} label={TEXTOS_PLAN_FORM.descuentoMonto} error={errorDe(`${clave}.monto`)}>
-          <MontoInput value={valor.monto} onChange={(v) => onCambio({ ...valor, monto: v })} />
-        </FormField>
-      ) : null}
-    </fieldset>
   );
 }
 

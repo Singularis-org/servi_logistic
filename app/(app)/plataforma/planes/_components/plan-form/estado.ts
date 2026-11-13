@@ -1,5 +1,7 @@
+import type { Dispatch, SetStateAction } from "react";
 import type { ModuloApagable } from "@prisma/client";
 
+import type { PasoDelFormulario } from "@/components/shared/FormularioPorPasos";
 import { montoParaCampo } from "@/lib/config/moneda";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
@@ -21,13 +23,11 @@ import { TEXTOS_PLAN_FORM } from "./textos";
 export type ModoDelPlanForm = "crear" | "editar";
 
 export type Accion = "inmediato" | "programado";
-/** SLT-86 (R23): la forma del descuento de un período. */
-export type FormaDescuento = "ninguno" | "porcentaje" | "monto";
 /**
- * SLT-86 (R23): el descuento de un período en el formulario. Los dos campos se conservan al cambiar de
- * forma (no se borra lo escrito); al enviar solo viaja el de la forma elegida.
+ * SLT-130 (design §5; R10–R13): una línea de la lista de descuentos. Un solo `valor` por línea, para que
+ * cambiar la forma no borre lo escrito (R10). Cada período tiene a lo sumo una línea (R11).
  */
-export type DescuentoDelFormulario = { forma: FormaDescuento; porcentaje: string; monto: string };
+export type LineaDeDescuento = { periodo: TipoCobro; forma: "porcentaje" | "monto"; valor: string };
 /** SLT-83 (R20): el modo del costo por orden; al abrir un plan sale de `costoPorOrdenPorcentual !== null`. */
 export type ModoCostoPorOrden = "fijo" | "porcentual";
 
@@ -40,7 +40,7 @@ export type Formulario = {
   modulos: ModuloApagable[];
   precio: PrecioPlan["tipo"];
   mensual: string;
-  descuentos: Record<TipoCobro, DescuentoDelFormulario>;
+  descuentos: LineaDeDescuento[];
   /** SLT-66 (R7, R23): vacío = sin costo por orden del plan (se aplica el global). */
   costoPorOrden: string;
   /**
@@ -73,11 +73,22 @@ export type Errores = Record<string, string[]>;
 
 const texto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 
-function descuentoInicial(d: DescuentoPeriodo | undefined): DescuentoDelFormulario {
-  if (d === undefined) return { forma: "ninguno", porcentaje: "", monto: "" };
-  return d.tipo === "porcentaje"
-    ? { forma: "porcentaje", porcentaje: d.porcentaje, monto: "" }
-    : { forma: "monto", porcentaje: "", monto: montoParaCampo(d.monto) };
+/** SLT-130 (R13): una línea por período con descuento, en el orden de `TIPOS_COBRO`. */
+function lineasIniciales(descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>>): LineaDeDescuento[] {
+  return TIPOS_COBRO.flatMap((periodo): LineaDeDescuento[] => {
+    const d = descuentos[periodo];
+    if (d === undefined) return [];
+    return [
+      d.tipo === "porcentaje"
+        ? { periodo, forma: "porcentaje", valor: d.porcentaje }
+        : { periodo, forma: "monto", valor: montoParaCampo(d.monto) },
+    ];
+  });
+}
+
+/** SLT-130 (R11): el primer período sin línea, en el orden de `TIPOS_COBRO`; `null` si los cuatro la tienen. */
+export function primerPeriodoLibre(lineas: readonly LineaDeDescuento[]): TipoCobro | null {
+  return TIPOS_COBRO.find((t) => !lineas.some((l) => l.periodo === t)) ?? null;
 }
 
 export function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: string): Formulario {
@@ -95,10 +106,7 @@ export function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: 
     modulos: plan?.modulos ?? [],
     precio: precio.tipo,
     mensual: precio.tipo === "monto" ? montoParaCampo(precio.mensual) : "",
-    descuentos: Object.fromEntries(TIPOS_COBRO.map((t) => [t, descuentoInicial(descuentos[t])])) as Record<
-      TipoCobro,
-      DescuentoDelFormulario
-    >,
+    descuentos: lineasIniciales(descuentos),
     costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
     modoCosto: plan?.costoPorOrdenPorcentual == null ? "fijo" : "porcentual",
     porcentajePorOrden: plan?.costoPorOrdenPorcentual?.porcentaje ?? "",
@@ -119,14 +127,18 @@ export function tope(valor: string): number | null {
   return valor.trim() === "" ? null : Number(valor.trim());
 }
 
-/** SLT-86 (R23): solo viaja el dato de la forma elegida; «Ninguno» no deja clave (sin descuento). */
+/**
+ * SLT-130 (R10, R12): cada línea viaja como el descuento de su período, con la forma elegida; un período
+ * sin línea no deja clave (sin descuento).
+ */
 export function precioDe(f: Formulario): PrecioPlan {
   if (f.precio !== "monto") return { tipo: f.precio };
   const descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
-  for (const tipo of TIPOS_COBRO) {
-    const d = f.descuentos[tipo];
-    if (d.forma === "porcentaje") descuentos[tipo] = { tipo: "porcentaje", porcentaje: d.porcentaje.trim() };
-    if (d.forma === "monto") descuentos[tipo] = { tipo: "monto", monto: d.monto.trim() };
+  for (const l of f.descuentos) {
+    descuentos[l.periodo] =
+      l.forma === "porcentaje"
+        ? { tipo: "porcentaje", porcentaje: l.valor.trim() }
+        : { tipo: "monto", monto: l.valor.trim() };
   }
   return { tipo: "monto", mensual: f.mensual.trim(), descuentos };
 }
@@ -172,30 +184,29 @@ export function erroresDeZod(issues: readonly { path: readonly PropertyKey[]; me
 export type CamposVisibles = { pideInicioCiclo: boolean; pideFechaDeEfecto: boolean; cambiaPrecio: boolean };
 
 /**
- * Las rutas de error que tienen un campo propio y visible ahora mismo, EN EL ORDEN DE PANTALLA (el foco
- * va al primero con error). El resto va al aviso general, para que ningún rechazo se quede sin pintar
- * por caer en un campo oculto.
+ * Las rutas de error que tienen un campo propio y visible, EN EL ORDEN DE PANTALLA (el foco va al primero
+ * con error). El resto va al aviso general, para que ningún rechazo se quede sin pintar por caer en un
+ * campo oculto. SLT-130 (R25): el orden de pantalla es el de los pasos (General, Precio, Cobro por orden,
+ * Topes, Módulos, Cuándo rige), así el formulario va al primer paso con error.
  */
 export function camposEnOrden(modo: ModoDelPlanForm, f: Formulario, v: CamposVisibles): string[] {
   const claves = ["nombre"];
   if (modo === "crear") claves.push("visibilidad");
-  if (modo === "crear" && f.visibilidad === "custom") claves.push("organizacionId");
-  claves.push(...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`), "topes.apiKeys", "modulos", "precio");
+  if (modo === "crear" && f.visibilidad === "custom") claves.push("organizacionId", "tipoCobro");
+  if (modo === "crear" && v.pideInicioCiclo) claves.push("inicioCiclo");
+  if (modo === "crear" && v.pideFechaDeEfecto) claves.push("vigenteDesde");
+  claves.push("precio");
   if (f.precio === "monto") {
     claves.push("precio.mensual");
-    // SLT-86 (R10, R23): el error de un descuento va en su grupo o en el campo de su forma.
-    for (const tipo of TIPOS_COBRO) {
-      const forma = f.descuentos[tipo].forma;
-      claves.push(`precio.descuentos.${tipo}`);
-      if (forma !== "ninguno") claves.push(`precio.descuentos.${tipo}.${forma}`);
+    // SLT-130 (design §5): el error de un descuento va en su línea o en el campo de su valor.
+    for (const l of f.descuentos) {
+      claves.push(`precio.descuentos.${l.periodo}`, `precio.descuentos.${l.periodo}.${l.forma}`);
     }
   }
   if (f.modoCosto === "fijo") claves.push("costoPorOrden");
   else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
   claves.push("periodicidadOrdenes");
-  if (modo === "crear" && f.visibilidad === "custom") claves.push("tipoCobro");
-  if (modo === "crear" && v.pideInicioCiclo) claves.push("inicioCiclo");
-  if (modo === "crear" && v.pideFechaDeEfecto) claves.push("vigenteDesde");
+  claves.push(...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`), "topes.apiKeys", "modulos");
   if (modo === "editar" && (v.cambiaPrecio || f.aplicar === "programado")) claves.push("vigenteDesde");
   return claves;
 }
@@ -204,11 +215,11 @@ export function camposEnOrden(modo: ModoDelPlanForm, f: Formulario, v: CamposVis
 export type IdPaso = "general" | "precio" | "orden" | "topes" | "modulos" | "vigencia" | "revisar";
 
 /**
- * Un paso tal como lo pinta el componente de pasos. Es la forma de `PasoDelFormulario`
- * (`components/shared/FormularioPorPasos.tsx`) con el id acotado a `IdPaso`; se declara aquí para que
- * el estado no dependa de un componente.
+ * Un paso tal como lo pinta el componente de pasos: `PasoDelFormulario`
+ * (`components/shared/FormularioPorPasos.tsx`) con el id acotado a `IdPaso`. Solo se importa el tipo, así
+ * el estado no carga el componente.
  */
-export type PasoDelPlan = { id: IdPaso; titulo: string };
+export type PasoDelPlan = PasoDelFormulario & { id: IdPaso };
 
 /** SLT-130 (R7): los pasos en orden; el título de «Revisar» dice qué hace el botón final del modo. */
 export function pasosDe(modo: ModoDelPlanForm): PasoDelPlan[] {
@@ -243,3 +254,31 @@ export function pasoDeLaClave(clave: string, modo: ModoDelPlanForm): IdPaso | nu
   if (clave === "modulos") return "modulos";
   return null;
 }
+
+/**
+ * Una empresa del selector del plan custom (ajuste planes-custom, D4). SLT-86 (R25):
+ * `fechaDeEfectoPorDefecto` es el primer día de su siguiente período de calendario con su tipo vigente
+ * (`fechaDeEfectoPorDefecto` de `lib/planes/ciclo.ts`, del reloj del servidor); `null` sin plan.
+ * SLT-130: vive aquí porque la usan `PlanForm` y `PasoGeneral`; `PlanForm` la re-exporta.
+ */
+export type EmpresaParaCustom = {
+  id: string;
+  nombre: string;
+  tienePlan: boolean;
+  fechaDeEfectoPorDefecto: string | null;
+};
+
+/**
+ * SLT-130 (design §2): lo que recibe cada paso, igual en los dos modos. Las diferencias de modo van por
+ * condiciones sobre `modo` dentro del paso, no por variantes del componente.
+ */
+export type PropsDelPaso = {
+  modo: ModoDelPlanForm;
+  form: Formulario;
+  cambiar: <K extends keyof Formulario>(campo: K, valor: Formulario[K]) => void;
+  setForm: Dispatch<SetStateAction<Formulario>>;
+  idDe: (clave: string) => string;
+  errorDe: (clave: string) => string[] | undefined;
+  /** El plan guardado al editar (para «Hoy» y «Revisar»); `null` al crear. */
+  plan: PlanDTO | null;
+};
