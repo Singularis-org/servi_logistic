@@ -682,3 +682,59 @@ vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped
 
 Hechas: R1–R6 en verde, Costa Rica descarga y se ve igual que hoy (referencia sin regenerar), ninguna
 aserción existente cambiada.
+
+## T3.2 — «Ubicación» de una línea (frontend_dev, 2026-11-13)
+
+### Archivos
+
+- Descargas (`lineaDeUbicacion(zona, rutaDeLaFila(lugarRuta, [3 nombres]), " · ")`):
+  `app/(app)/novedades/_components/novedades-descarga-columnas.ts`, `ayuda-descarga-columnas.ts`,
+  `app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas.ts`,
+  `app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts`.
+- Pantallas (misma línea, `?? ""` para conservar el `|| "—"` de quien llama): `CierreDiaModule.tsx`,
+  `cierre-detalle-shared.tsx` (`ubicacion`, la usa también `cierre-factura.tsx` sin cambios),
+  `RecepcionDetalle.tsx`.
+- Etiqueta: `lib/pdf/etiquetas-dibujo.ts` (`geografiaLegible` con « / » sobre `lugarRuta`; sin ella, los 3
+  nombres; `[]` deja solo la zona, R18). La vista previa `EtiquetaGuia.tsx` ya usa `geografiaLegible`: sin
+  cambios. `app/paquete/[numGuia]/page.tsx`: « / » y «—» si no queda tramo.
+- Tests nuevos: `tests/unit/descarga/ubicacion-n-niveles.test.ts`, `tests/unit/descarga/cierres-snapshot-lectura.test.ts`,
+  `tests/unit/pdf/etiqueta-geografia-n-niveles.test.ts`, `tests/components/paquete-ubicacion.test.tsx`,
+  `tests/components/ubicacion-pantallas-n-niveles.test.tsx`. Ampliado (nuevo en SLT-125, no está en la base):
+  `tests/unit/descarga/equivalencia-descargas-cr.test.ts` con novedades, ayuda, las 5 de cierre de día y las 2
+  fundidas contra `referencia.json` (sin regenerar). Ninguna aserción de la base cambiada.
+
+### R → test
+
+| R | Test | Cifras |
+|---|---|---|
+| R7 | `ubicacion-n-niveles.test.ts` (4 descargas × 2, 3, 4, 10 niveles; vacíos; celda null; sin `lugarRuta`) | 32/32 |
+| R8 | `ubicacion-pantallas-n-niveles.test.tsx` (cierre de día, comprobante admin, satélite; 2, 3, 4, 10 niveles) | 18/18 |
+| R9 | `etiqueta-geografia-n-niveles.test.ts` (PDF/datos; 10 niveles cabe en las 4 hojas con dirección de 286) + `paquete-ubicacion.test.tsx` (`/paquete` y vista previa) | 15/15; 14/14 |
+| R10 | `equivalencia-descargas-cr.test.ts` (9 descargas nuevas: columnas, CSV byte a byte, XLSX) + casos CR de los 3 archivos de arriba | 41/41 en el archivo |
+| R24 | `cierres-snapshot-lectura.test.ts` › R24 (4, 10 y 2 niveles, ids nulos, nombre = foto) | dentro de 15/15 |
+| R25 | ídem › R25 (null, v2, sin niveles, forma rota, texto) | dentro de 15/15 |
+| R26 | ídem › R26 (las 5 filas CR con/sin snapshot) + `equivalencia-descargas-cr` (fundida con snapshot mezclado) | dentro de 15/15; 41/41 |
+
+### Capacidad de la etiqueta con 10 niveles (design §5)
+
+`etiquetas-capacidad.test.ts` sin tocar: 19/19. Medida aparte (dirección máxima que cabe, 10 niveles):
+nombres de ≤12 caracteres (línea de 153) → 100x100: 315 · 4x6in: 1692 · a4: 8864 · carta: 7827 (cabe el
+peor caso de producción, 286). Con nombres de ~18 caracteres (línea de 213) la 100x100 baja a 237 (< 286):
+la etiqueta lanza `ErrorEtiquetaNoCabe` (visible, sin recortar), como hoy con cualquier dato que no cabe.
+No se cambió la maqueta. Queda anotado para el humano.
+
+### Salidas
+
+```
+pnpm run typecheck → exit 0
+pnpm exec eslint <9 fuentes + 6 tests> → exit 0, 0 problemas
+vitest related --run <9 fuentes tocadas> --maxWorkers=1 → Test Files 169 passed | 8 skipped (177) · Tests 2626 passed | 86 skipped (2712)
+vitest run tests/unit/pdf/etiquetas-capacidad.test.ts → 19 passed (19)
+vitest run (3 de descarga) → 88 passed (88); etiqueta-geografia 15/15; paquete-ubicacion 14/14; pantallas 18/18
+vitest run guard --maxWorkers=1 → Test Files 1 failed | 335 passed | 3 skipped (339) · Tests 4 failed | 4723 passed | 25 skipped
+  los 4 rojos: dependencias-declaradas-presentes (baseline, heredado)
+```
+
+### Veredicto T3.2
+
+Hecha: R7–R10 y R24–R26 en verde; Costa Rica descarga y se ve igual que hoy; ninguna aserción existente cambiada.

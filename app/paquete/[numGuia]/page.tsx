@@ -5,16 +5,20 @@ import { obtenerEtiquetaPorGuia } from "@/lib/actions/etiquetas-guia";
 import { formatMonto } from "@/lib/config/moneda";
 import { PAQUETE_BASE_PATH } from "@/lib/utils/paquete-url";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
 import { Logo } from "@/components/shared/Logo";
 
 const SIN_DATO = "—";
 
-/** Une los tramos de geografía disponibles; omite los ausentes. */
+/**
+ * Une la zona y los tramos de geografía disponibles; omite los ausentes. SLT-125 (R9, R10): la ruta es
+ * `lugarRuta`, del nivel 1 al lugar (sin ella, los tres nombres de hoy), con el mismo separador « / »
+ * que la etiqueta. Sin ningún tramo, «—», como hoy.
+ */
 function ubicacionLegible(e: EtiquetaGuiaDTO): string {
-  const partes = [e.zonaNombre, e.provinciaNombre, e.cantonNombre, e.distritoNombre]
-    .filter((p): p is string => Boolean(p))
-    .join(" / ");
-  return partes || SIN_DATO;
+  const ruta = rutaDeLaFila(e.lugarRuta, [e.provinciaNombre, e.cantonNombre, e.distritoNombre]);
+  return lineaDeUbicacion(e.zonaNombre, ruta, " / ") ?? SIN_DATO;
 }
 
 /** El segmento de ruta es un `num_guia`: entero positivo o nada (404). */

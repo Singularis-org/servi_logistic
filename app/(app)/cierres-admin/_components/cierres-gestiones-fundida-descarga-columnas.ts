@@ -120,6 +120,8 @@ import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaServic
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaCelda, DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import { fechaDiaInstanteCR } from "@/lib/utils/fecha-dia-iso";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
 
 import {
   CAUSA_INCIDENTE_COL,
@@ -418,18 +420,13 @@ const ESPECIFICAS_EXTRA_MODELO_NUEVO: Record<CierreResultado, readonly ClaveEspe
 };
 
 /**
- * Jerarquía geográfica en una línea, con la MISMA composición que la columna «Ubicación» de la
- * pantalla y que las cinco descargas por sección. Los tramos vacíos se omiten; si no queda
- * ninguno, celda vacía.
+ * SLT-125 (R7, R10): la zona y TODA la ruta del lugar (`lugarRuta`, del nivel 1 al lugar) unidas por
+ * « · », sin tramos vacíos; sin ningún tramo, celda vacía. Sin `lugarRuta` (DTO de un lector que no la
+ * anota) se usan los tres nombres de hoy. En Costa Rica sale igual que antes.
  */
 function ubicacion(gestion: CierreGestionDescargaDTO): string | null {
-  const partes = [
-    gestion.zonaNombre,
-    gestion.provinciaNombre,
-    gestion.cantonNombre,
-    gestion.distritoNombre,
-  ].filter((parte): parte is string => Boolean(parte));
-  return partes.length === 0 ? null : partes.join(" · ");
+  const ruta = rutaDeLaFila(gestion.lugarRuta, [gestion.provinciaNombre, gestion.cantonNombre, gestion.distritoNombre]);
+  return lineaDeUbicacion(gestion.zonaNombre, ruta, " · ");
 }
 
 /** Las catorce celdas que TODA fila lleva, sea cual sea su resultado. Valores CRUDOS. */

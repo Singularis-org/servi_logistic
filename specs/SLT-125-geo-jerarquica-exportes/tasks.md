@@ -123,7 +123,7 @@
   (`OrdenesModule.tsx`, `SateliteOrdenesListado.tsx`, `DescargarCoberturaButton.tsx`). Tests:
   `geo-columnas-n-niveles.test.ts`, `cobertura-n-niveles.test.ts` y `equivalencia-descargas-cr.test.ts`.
   **Hecho:** R1–R4 y R6 en verde; la referencia de T1.2 sin regenerar.
-- [ ] **T3.2** [P] «Ubicación» de una línea:
+- [x] **T3.2** [P] «Ubicación» de una línea:
   - descargas de novedades, ayuda, cierre de día y cierres admin;
   - pantallas de cierre de día, cierres admin y detalle de satélite;
   - la etiqueta (PDF y vista previa) y `/paquete`.

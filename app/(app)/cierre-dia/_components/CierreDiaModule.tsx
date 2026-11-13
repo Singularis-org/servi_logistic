@@ -45,6 +45,8 @@ import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 // SLT-76 (R1/R2): el día del cierre se lee en el calendario de Costa Rica, no recortando el ISO.
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { rutaDeLaFila } from "@/app/(app)/_components/niveles-de-columnas";
+import { lineaDeUbicacion } from "@/lib/utils/ubicacion-presentacion";
 // Feature 158 (T2.3): la columna de la causa es la MISMA que la del detalle del admin — se
 // reusa en vez de reescribirla, para que las dos pantallas no puedan divergir en la etiqueta.
 import { COLUMNA_CAUSA_INCIDENTE } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
@@ -480,11 +482,14 @@ async function leerCierresPasados(
 // detalle del admin, que es la MISMA hoja vista desde el otro lado (R6/R7 intactos: el monto
 // llega como STRING y NUNCA se parsea a número).
 
-/** Une la jerarquía geográfica en una línea legible (omite los vacíos, R4). */
+/**
+ * Une la zona y toda la ruta del lugar en una línea legible (omite los vacíos, R4). SLT-125 (R8, R10):
+ * la ruta es `lugarRuta`, del nivel 1 al lugar; sin ella, los tres nombres de hoy. En Costa Rica sale
+ * igual que antes.
+ */
 function ubicacion(g: CierreDetalleGestion): string {
-  return [g.zonaNombre, g.provinciaNombre, g.cantonNombre, g.distritoNombre]
-    .filter((parte): parte is string => Boolean(parte))
-    .join(" · ");
+  const ruta = rutaDeLaFila(g.lugarRuta, [g.provinciaNombre, g.cantonNombre, g.distritoNombre]);
+  return lineaDeUbicacion(g.zonaNombre, ruta, " · ") ?? "";
 }
 
 export function CierreDiaModule({
