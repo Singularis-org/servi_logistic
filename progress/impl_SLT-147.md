@@ -82,3 +82,6 @@ Variables: `DATABASE_URL` a la base desechable `slt147_wt` y `NODE_OPTIONS=--max
 ## Veredicto
 
 R410-R418 implementados con su test y sus mutaciones mordiendo; typecheck y lint verdes; D66 verde contra el código de hoy (sin hallazgo de dinero); el rojo de `vitest related` es la base desechable sin sembrar, a confirmar con el `./init.sh` del leader.
+
+## T7 (leader)
+- `./init.sh` verde a 30804110: `INIT_EXIT=0` (log `gate-147b.log`, base `slt147_wt`). Mapa R410-R418 → test en este archivo. Deudas D63, D66, D68 y D72 cerradas en `progress/deudas.md` (T6).
