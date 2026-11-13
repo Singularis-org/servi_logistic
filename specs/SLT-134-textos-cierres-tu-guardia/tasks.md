@@ -7,11 +7,11 @@
 
 ## T0 — Preparación
 
-- [ ] **T0.1** Traer `origin/dev` con SLT-139, SLT-140 y SLT-141 dentro y copiar `.env` al worktree
+- [x] **T0.1** Traer `origin/dev` con SLT-139, SLT-140 y SLT-141 dentro y copiar `.env` al worktree
   **antes** del primer gate.
   *Hecho:* `git log origin/dev..HEAD` vacío al empezar; `./init.sh` verde de partida, con
   `INIT_EXIT=` dentro del log.
-- [ ] **T0.2** [P] Repetir el censo de `requirements.md > Inventario re-censado` (voseo en el censo de
+- [x] **T0.2** [P] Repetir el censo de `requirements.md > Inventario re-censado` (voseo en el censo de
   `SLT-103 > Definiciones` y tests que afirman el texto viejo) sobre el árbol de T0.1. Anotar en
   `progress/impl_SLT-134.md` lo que cambió.
   *Hecho:* la lista anotada. Si sale un texto con voseo nuevo, su texto en «tú» se escribe a mano en
@@ -20,18 +20,18 @@
 
 ## T1 — Guardia de trato (R56, R142-R145, R392-R394)
 
-- [ ] **T1.1** `tests/fixtures/censo-cierres.ts`: `CENSO_PANTALLA_ARBOLES`, `CENSO_PANTALLA_SUELTOS`,
+- [x] **T1.1** `tests/fixtures/censo-cierres.ts`: `CENSO_PANTALLA_ARBOLES`, `CENSO_PANTALLA_SUELTOS`,
   `CENSO_LIB`, `censoPantalla()`, `censoModulo()` y `textosDeFuente()` (`design.md > Censo`).
   *Hecho:* `censoModulo().length > 60`; un suelto inexistente lanza error; `textosDeFuente` de una muestra
   con `import`, `export … from`, `import()`, comentario y JSX devuelve solo los textos (comprobado en
   T1.2).
-- [ ] **T1.2** `tests/unit/guards/cierres-trato-tu.guardia.test.ts` con detección, `EXCEPCIONES`, y todos
+- [x] **T1.2** `tests/unit/guards/cierres-trato-tu.guardia.test.ts` con detección, `EXCEPCIONES`, y todos
   los casos de `design.md > Casos` salvo el de Anexo A. Depende de T1.1.
   *Hecho:* contraprueba, R143, R394 y R393 verdes; el caso «ningún texto del censo…» **rojo con 47
   hallazgos en 12 archivos** (los de `## Inventario re-censado` más lo que añada T0.2), pegados en
   `progress/impl_SLT-134.md`. Si sale un hallazgo que no es voseo, va a `EXCEPCIONES` con motivo (≤ 40).
   No se commitea hasta T2.4.
-- [ ] **T1.3** Describe «Anexo A» en la misma guardia: las 40 filas A1-K4 como literales escritos a mano,
+- [x] **T1.3** Describe «Anexo A» en la misma guardia: las 40 filas A1-K4 como literales escritos a mano,
   con archivo de hoy y número de apariciones (A4 ×2, A5 ×2, A6 ×6). Depende de T1.2.
   *Hecho:* rojo antes de T2 (ningún texto nuevo existe aún), anotado.
 
@@ -40,21 +40,21 @@
 Cada task cambia los textos de su grupo por el Anexo A **y** actualiza a mano los tests que los afirman.
 Solo cadenas: ni constantes nuevas ni ramas nuevas.
 
-- [ ] **T2.1** [P] `/cierres-admin`, mensajero: `CierresAdminModule.tsx` (14), `cierre-confirmacion-fisica.tsx`
+- [x] **T2.1** [P] `/cierres-admin`, mensajero: `CierresAdminModule.tsx` (14), `cierre-confirmacion-fisica.tsx`
   (6), `pago-mensajero-labels.ts` (2), `cierre-labels.ts` (1), `FiltrosCierresBarra.tsx` (1), `error.tsx`
   (2). Tests: `CierresAdminModule`, `CierresAdminPage` (l.363), `CierresAdminDeepLink`,
   `CierresAdminConfirmacionFisica`, `PagoMensajeroAcciones`, `RedDeErrores`,
   `ComprobanteMensajeroOrigenRechazo`, `CierreDiaComprobanteMarcasDeOrigen` (l.72, H1).
   *Hecho:* `pnpm exec vitest related --run <archivos>` verde; esos archivos sin hallazgos en T1.2.
-- [ ] **T2.2** [P] `/cierres-admin`, bodega y descarga: `ConsolidacionBodegaModule.tsx` (4),
+- [x] **T2.2** [P] `/cierres-admin`, bodega y descarga: `ConsolidacionBodegaModule.tsx` (4),
   `CierresBodegaAdminModule.tsx` (3), `DescargarGestionesDialog.tsx` (4). Tests:
   `ConsolidacionBodegaRefresco`, `CierresBodegaAdminDetalleUnico`, `descarga/DescargarGestionesDialog`.
   *Hecho:* igual que T2.1.
-- [ ] **T2.3** [P] `/cierre-dia`: `CierreDiaModule.tsx` (4) y `fila-gestion-labels.ts` (J3, y el comentario
+- [x] **T2.3** [P] `/cierre-dia`: `CierreDiaModule.tsx` (4) y `fila-gestion-labels.ts` (J3, y el comentario
   de l.91-94, P3). Tests: `CierreDiaModule`, `CierreDiaModule477Correccion`,
   `CierreDiaComprobanteMarcasDeOrigen` (l.326), `FilaGestion`, `tests/unit/utils/fila-gestion-vista`.
   *Hecho:* igual que T2.1.
-- [ ] **T2.4** Conciliación: `conciliacion-labels.ts` (5). Tests: `ConciliacionAccionesConAsientos`,
+- [x] **T2.4** Conciliación: `conciliacion-labels.ts` (5). Tests: `ConciliacionAccionesConAsientos`,
   `MarcarRecibidoDeclaradoCero`. Después, la guardia entera. Depende de T1.3, T2.1-T2.3.
   *Hecho:* `cierres-trato-tu.guardia.test.ts` verde entero (0 hallazgos, 40 filas del Anexo A);
   mutaciones 1-6 de `design.md` hechas y anotadas (cada una roja y revertida). Commit de T1 + T2.4.
