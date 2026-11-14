@@ -325,7 +325,7 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     test.setTimeout(180_000);
     const page = await paginaDe(browser, central.m);
     await page.goto("/cierre-dia");
-    await expect(page.getByRole("tablist", { name: "Tus cierres" }).getByRole("tab")).toHaveText(["Cierres solicitados 1"]);
+    await expect(page.getByRole("tablist", { name: "Tus cierres" }).getByRole("tab")).toHaveText(["Cierres solicitados (1)"]);
     const cola = page.getByRole("region", { name: "Cierres solicitados" });
     const cabeceras = (await cola.getByRole("columnheader").allTextContents()).map((t) => t.trim());
     expect(cabeceras).toEqual(["Folio", "Solicitado", "Destino", "Estado", "Recaudado", "Ganancia", "Pago", "Acciones"]);
@@ -356,7 +356,7 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     const page = await paginaDe(browser, central.m);
     await page.goto("/cierre-dia");
     const pestana = page.getByRole("tablist", { name: "Tus cierres" }).getByRole("tab");
-    await expect(pestana).toHaveText(["Cierres solicitados 1"]);
+    await expect(pestana).toHaveText(["Cierres solicitados (1)"]);
     const cola = page.getByRole("region", { name: "Cierres solicitados" });
     const folio = ((await cola.getByRole("row").nth(1).getByRole("cell").first().textContent()) ?? "").trim();
     expect(folio).toMatch(/^#[0-9A-F]{8}$/);
@@ -366,16 +366,16 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await expect(campo).toHaveAttribute("placeholder", "Busca por folio");
 
     await campo.fill(folio.slice(3, 7).toLowerCase());
-    await expect(pestana).toHaveText(["Cierres solicitados 1"]);
+    await expect(pestana).toHaveText(["Cierres solicitados (1)"]);
     await expect(cola.getByRole("row").nth(1).getByRole("cell").first()).toHaveText(folio);
 
     await campo.fill("ZZ");
     await expect(cola.getByText("Ningún cierre coincide con los filtros.", { exact: true })).toBeVisible();
-    await expect(pestana).toHaveText(["Cierres solicitados 0"]);
+    await expect(pestana).toHaveText(["Cierres solicitados (0)"]);
 
     await barra.getByRole("button", { name: "Limpiar todo" }).click();
     await expect(campo).toHaveValue("");
-    await expect(pestana).toHaveText(["Cierres solicitados 1"]);
+    await expect(pestana).toHaveText(["Cierres solicitados (1)"]);
     await expect(cola.getByRole("row").nth(1).getByRole("cell").first()).toHaveText(folio);
   });
 });
@@ -393,8 +393,8 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
 //   IVA 260 + 91 = 351; se le paga 1.500 (sin «Por tarifa»: el viejo no congela el pago). Fulfillment 300, IVA 0
 //   (el viejo no tiene % de IVA del fulfillment): se cobró 300.
 //   Rechazo: flete de devolución 2.000 + 260 = 2.260; se le cobra 2.260; señal «Vuelve a bodega».
-//   Filtros: Todas 3 · Entregado 2 · Reprogramado 0 · Novedad 0 · Devolución a origen por rechazo 1 · Incidente 0 ·
-//   Con señales 1.
+//   Filtros: Todas (3) · Entregado (2) · Reprogramado (0) · Novedad (0) · Devolución a origen por rechazo (1) · Incidente (0) ·
+//   Con señales (1).
 //   La central (zona GAM) aplica la columna GAM; la satélite, la no GAM (mismo 2.000, la tarifa A es plana).
 
 // Se pasa como variable y no como literal: `TarifaTienda` de la fábrica no declara el fulfillment, pero el esquema
@@ -414,13 +414,13 @@ async function cierreS3(r: RepartoE2E, zona: "central" | "satelite") {
 }
 
 const FILTROS_S3_A = [
-  "Todas 3",
-  "Entregado 2",
-  "Reprogramado 0",
-  "Novedad 0",
-  "Devolución a origen por rechazo 1",
-  "Incidente 0",
-  "Con señales 1",
+  "Todas (3)",
+  "Entregado (2)",
+  "Reprogramado (0)",
+  "Novedad (0)",
+  "Devolución a origen por rechazo (1)",
+  "Incidente (0)",
+  "Con señales (1)",
 ];
 
 const filtros = (detalle: Locator): Locator => detalle.getByRole("group", { name: "Filtrar por resultado" });
@@ -472,15 +472,15 @@ test.describe.serial("SLT-101 — la fila única en «Gestiones» (escenario S3-
     // R84, R89: sin buscador, los 7 filtros con su conteo y «Todas» activa.
     await expect(detalle.getByRole("searchbox")).toHaveCount(0);
     await expect(filtros(detalle).getByRole("button")).toHaveText(FILTROS_S3_A);
-    await expect(filtros(detalle).getByRole("button", { name: "Todas 3" })).toHaveAttribute("aria-pressed", "true");
+    await expect(filtros(detalle).getByRole("button", { name: "Todas (3)" })).toHaveAttribute("aria-pressed", "true");
     await expect(ordenesDe(detalle).locator("[data-gestion]")).toHaveCount(3);
 
     // R84: filtrar no cambia la URL de /cierres-admin.
     const url = page.url();
-    await filtros(detalle).getByRole("button", { name: "Con señales 1" }).click();
+    await filtros(detalle).getByRole("button", { name: "Con señales (1)" }).click();
     await expect(ordenesDe(detalle).locator("[data-gestion]")).toHaveCount(1);
     await expect(filaDe(detalle, central.rechazo).getByText("Vuelve a bodega", { exact: true })).toBeVisible();
-    await filtros(detalle).getByRole("button", { name: "Entregado 2" }).click();
+    await filtros(detalle).getByRole("button", { name: "Entregado (2)" }).click();
     await expect(ordenesDe(detalle).locator("[data-gestion]")).toHaveCount(2);
     expect(page.url()).toBe(url);
 
@@ -536,7 +536,7 @@ test.describe.serial("SLT-101 — la fila única en «Gestiones» (escenario S3-
     await expect(fila.getByRole("button", { name: `Corregir el resultado ${deLa(central.entrega)}` })).toBeVisible();
 
     // La devolución: su cobro y su señal.
-    await filtros(detalle).getByRole("button", { name: "Devolución a origen por rechazo 1" }).click();
+    await filtros(detalle).getByRole("button", { name: "Devolución a origen por rechazo (1)" }).click();
     const filaRechazo = await desplegarFila(detalle, central.rechazo);
     expect(await lineasDe(tarjeta(filaRechazo, "Se le cobra a la tienda", central.rechazo))).toEqual([
       ["Flete por devolución a origen + IVA", "₡2.260"],
@@ -1400,7 +1400,7 @@ test.describe.serial("SLT-141 — el «Resumen» de «Conciliados» (bodega) con
     const page = await paginaDe(browser, r.empresa.maestro);
     await bodegaDeCierres(page);
     await pestanaDeColaBodega(page, "Conciliados").click();
-    await expect(pestanaDeColaBodega(page, "Conciliados")).toHaveAccessibleName("Conciliados 2");
+    await expect(pestanaDeColaBodega(page, "Conciliados")).toHaveAccessibleName("Conciliados (2)");
 
     const [descarga] = await Promise.all([
       page.waitForEvent("download"),

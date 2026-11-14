@@ -429,7 +429,7 @@ describe("CierreDiaModule", () => {
     grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado" })];
     renderModule({ grupos, puedesSolicitar: true, cierresPasados: [CIERRE_PASADO] });
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 1" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (1)" })).toBeInTheDocument();
     // La revalidación del montaje termina ANTES de cambiar la respuesta: si no, ella sola traería
     // el cierre nuevo y el caso pasaría sin que solicitar releyera nada.
     await vi.waitFor(() => expect(vi.mocked(listarCierresPasadosPaginado)).toHaveBeenCalled());
@@ -456,7 +456,7 @@ describe("CierreDiaModule", () => {
     expect(
       await within(region).findByRole("button", { name: "Ver del cierre del 2026-07-19" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 2" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (2)" })).toBeInTheDocument();
   });
 
   it("solicitar cierre conflict: muestra toast de error con el motivo del dominio", async () => {

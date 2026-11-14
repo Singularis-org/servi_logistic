@@ -71,11 +71,26 @@ function cuenta(nombre: string): string[][] {
 
 const DE_CANVAS = "de la orden REM-001 · Beto Ruiz";
 
+/** SLT-152: la celda de la rejilla de una columna de la fila cerrada. */
+function celda(id: string): HTMLElement {
+  const el = document.querySelector<HTMLElement>(`[data-gestion] [data-columna="${id}"]`);
+  if (!el) throw new Error(`sin celda ${id}`);
+  return el;
+}
+
+/** SLT-152 (R444): el elemento que lleva el texto de la celda (su único hijo). */
+function textoDe(id: string): HTMLElement {
+  const hijo = celda(id).firstElementChild;
+  if (!(hijo instanceof HTMLElement)) throw new Error(`la celda ${id} no tiene elemento de texto`);
+  return hijo;
+}
+
 describe("R86 — fila cerrada", () => {
-  it("central: guía, destinatario · tienda, resultado con su botón de información, importes y señales", () => {
+  it("central: guía, destinatario, tienda, resultado con su botón de información, importes y señales", () => {
     montar(gestionCanvas());
     expect(screen.getByText("1001")).toBeInTheDocument();
-    expect(screen.getByText("· Tienda Norte")).toBeInTheDocument();
+    expect(celda("destinatario").textContent).toBe("Beto Ruiz");
+    expect(celda("tienda").textContent).toBe("Tienda Norte");
     expect(screen.getByRole("button", { name: "Qué significa «Entregado»" })).toBeInTheDocument();
     expect(screen.getByText("₡25.000")).toBeInTheDocument();
     expect(screen.getByText("₡4.520")).toBeInTheDocument();
@@ -121,6 +136,57 @@ describe("R86 — fila cerrada", () => {
   it("R23: con mensajero (bodega), su nombre en la fila", () => {
     montar(gestionFila({ gestionId: "e" }), { audiencia: "solo lectura", mensajero: "Ana Mensajera" });
     expect(screen.getByText("Ana Mensajera")).toBeInTheDocument();
+  });
+});
+
+// SLT-152 «Tablas de cierres legibles»: una columna por dato y el texto recortado dentro de ella.
+describe("R442, R444, R445 — Destinatario, Tienda y Mensajero en su columna", () => {
+  const LARGO = "Mensajero Satélite Demo QA A con un nombre larguísimo";
+
+  it("R442: destinatario y tienda, cada uno en su celda y sin «·» entre ambos", () => {
+    for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
+      montar(gestionCanvas(), { audiencia });
+      expect(celda("destinatario").textContent).toBe("Beto Ruiz");
+      expect(celda("tienda").textContent).toBe("Tienda Norte");
+      expect(celda("destinatario").textContent).not.toContain("·");
+      expect(celda("tienda").textContent).not.toContain("·");
+      cleanup();
+    }
+  });
+
+  it("R444: el elemento con el texto es de bloque, recorta con «…», sin salto y con el texto entero en title", () => {
+    montar(gestionFila({ gestionId: "e", destinatario: "Beatriz Elena Ruiz Montoya", tiendaNombre: "Tienda Norte Principal" }), {
+      audiencia: "solo lectura",
+      mensajero: LARGO,
+    });
+    const esperado: Record<string, string> = {
+      destinatario: "Beatriz Elena Ruiz Montoya",
+      tienda: "Tienda Norte Principal",
+      mensajero: LARGO,
+    };
+    for (const [id, texto] of Object.entries(esperado)) {
+      const el = textoDe(id);
+      expect(el.textContent).toBe(texto);
+      expect(el.getAttribute("title")).toBe(texto);
+      // El recorte vive en el elemento que tiene el texto, no en un hijo en línea.
+      expect(el.children).toHaveLength(0);
+      for (const clase of ["block", "min-w-0", "truncate"]) expect(el.classList.contains(clase)).toBe(true);
+    }
+  });
+
+  it("R445: sin nombre de mensajero, la celda «Mensajero» dice «—» (también en title)", () => {
+    render(
+      <FilaGestion
+        gestion={gestionFila({ gestionId: "e" })}
+        audiencia="solo lectura"
+        quienMiraEsCentral
+        congeladoAt={CONGELADO_AT}
+        acciones={{}}
+        columnaMensajero
+      />,
+    );
+    expect(textoDe("mensajero").textContent).toBe("—");
+    expect(textoDe("mensajero").getAttribute("title")).toBe("—");
   });
 });
 

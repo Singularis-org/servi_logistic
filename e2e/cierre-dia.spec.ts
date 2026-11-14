@@ -111,7 +111,7 @@ test.describe("Cierre del día — el mensajero solicita y deshace", () => {
     // SLT-137: «Cierres solicitados» es la cola del mensajero, una fila por cierre (la cabecera
     // también dice «Solicitado»: se lee la fila, no la región entera).
     const historico = page.getByRole("region", { name: "Cierres solicitados" });
-    await expect(page.getByRole("tab", { name: "Cierres solicitados 1" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Cierres solicitados (1)" })).toBeVisible();
     const filaCola = historico.getByRole("row").nth(1);
     await expect(filaCola.getByText("Solicitado", { exact: true })).toBeVisible();
     await expect(filaCola.getByRole("cell", { name: "Bodega satélite", exact: true })).toBeVisible();

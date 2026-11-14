@@ -220,7 +220,7 @@ async function filtrarPor(
   resultado: string,
 ): Promise<HTMLElement> {
   const grupo = within(dialog).getByRole("group", { name: "Filtrar por resultado" });
-  await user.click(within(grupo).getByRole("button", { name: new RegExp(`^${resultado} \\d+$`) }));
+  await user.click(within(grupo).getByRole("button", { name: new RegExp(`^${resultado} \\(\\d+\\)$`) }));
   return within(dialog).getByRole("region", { name: "Órdenes del cierre" });
 }
 
@@ -1685,11 +1685,11 @@ describe("SLT-102 — la cola única en /cierres-admin (R99, R103, R106, R107)",
     });
     const lista = screen.getByRole("tablist", { name: "Cierres del día por estado" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Pendientes 37",
-      "Resueltos 12",
+      "Pendientes (37)",
+      "Resueltos (12)",
     ]);
     // Arranca en Pendientes (R99).
-    expect(within(lista).getByRole("tab", { name: "Pendientes 37" })).toHaveAttribute(
+    expect(within(lista).getByRole("tab", { name: "Pendientes (37)" })).toHaveAttribute(
       "aria-selected",
       "true",
     );

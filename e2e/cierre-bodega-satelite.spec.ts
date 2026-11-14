@@ -102,6 +102,53 @@ async function cifrasYDinero(detalle: Locator): Promise<void> {
   await expect(montoDeCuenta(detalle, QUEDA, "Le queda a la empresa")).toHaveText("₡1.750");
 }
 
+/** Borde izquierdo de una celda y el borde derecho de lo que se PINTA en ella (la celda o su texto). */
+interface CajaCelda {
+  columna: string;
+  izq: number;
+  der: number;
+}
+
+/**
+ * SLT-152 «Tablas de cierres legibles» (R446): en una ventana de 1280 px, ni la cabecera ni la primera
+ * fila de «Órdenes del cierre» pintan una celda encima de la siguiente. Se mide el borde derecho de
+ * la celda Y de cada elemento dentro de ella: un texto en línea que se sale de su pista agranda su
+ * propia caja aunque la celda no crezca (era el fallo de la captura de Preview).
+ */
+async function textoSinMontar(page: Page, ordenes: Locator, nombreMensajero: string): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const cabecera = ordenes.locator(":scope > div").first();
+  const primeraFila = ordenes.locator("[data-gestion] > div").first();
+  const celdaMensajero = primeraFila.locator('[data-columna="mensajero"]');
+  await expect(celdaMensajero).toHaveText(nombreMensajero);
+
+  // Antes de nada, que haya algo que recortar: el nombre es más ancho que su columna. Sin esto, la
+  // comprobación de abajo pasaría en verde sin probar nada.
+  const medida = await celdaMensajero.evaluate((celda) => {
+    const texto = celda.firstElementChild as HTMLElement;
+    return { columna: celda.clientWidth, nombre: Math.max(celda.scrollWidth, texto.scrollWidth), texto: { scroll: texto.scrollWidth, client: texto.clientWidth } };
+  });
+  expect(medida.nombre).toBeGreaterThan(medida.columna);
+
+  for (const fila of [cabecera, primeraFila]) {
+    const cajas: CajaCelda[] = await fila.locator(":scope > *").evaluateAll((celdas) =>
+      celdas.map((c) => ({
+        columna: c.getAttribute("data-columna") ?? "acciones",
+        izq: c.getBoundingClientRect().left,
+        der: Math.max(...[c, ...c.querySelectorAll("*")].map((e) => e.getBoundingClientRect().right)),
+      })),
+    );
+    expect(cajas.length).toBeGreaterThan(1);
+    for (let i = 0; i + 1 < cajas.length; i++) {
+      const [a, b] = [cajas[i]!, cajas[i + 1]!];
+      expect(a.der, `«${a.columna}» invade «${b.columna}»`).toBeLessThanOrEqual(b.izq + 0.5);
+    }
+  }
+
+  // Y el texto se recorta en su propio elemento: el que tiene el nombre esconde lo que no cabe.
+  expect(medida.texto.scroll).toBeGreaterThan(medida.texto.client);
+}
+
 let r: RepartoE2E;
 let m: MensajeroE2E;
 let rechazada: OrdenE2E;
@@ -124,6 +171,12 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
   test.beforeAll(async () => {
     r = await crearEscenarioReparto("cierre-bodega", { tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 } });
     m = await crearMensajero(r, "satelite");
+    // SLT-152 «Tablas de cierres legibles» (R446): un nombre más largo que la columna «Mensajero» del
+    // detalle, como el de la captura de Preview, para que la celda tenga algo que recortar. Se pone
+    // antes de crear nada que lo lea.
+    const nombreLargo = `${m.nombre} Demo QA A con un nombre de mensajero satélite larguísimo`;
+    await baseReparto().usuario.update({ where: { id: m.id }, data: { nombre: nombreLargo } });
+    m = { ...m, nombre: nombreLargo };
     const entrega = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: m });
     await gestionar(r, entrega, m, { resultado: "entregado" });
     rechazada = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
@@ -138,7 +191,7 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     const bodega = page.getByRole("region", { name: "Cierre de bodega" });
     // R190: la pestaña es un `tab` de la cola única, activa al entrar.
     const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
-    await expect(etapas.getByRole("tab", { name: /^A consolidar \d+$/ })).toHaveAttribute("aria-selected", "true");
+    await expect(etapas.getByRole("tab", { name: /^A consolidar \(\d+\)$/ })).toHaveAttribute("aria-selected", "true");
     const solicitar = bodega.getByRole("button", { name: "Solicitar cierre de bodega" });
 
     // R46, R47: con el cierre del mensajero sin resolver, el aviso lo nombra y el botón no se puede pulsar.
@@ -275,6 +328,7 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     // R41: las gestiones de todos los cierres del día en UNA lista; la evidencia firmada del rechazo.
     await irA(detalle, /^Gestiones \(/);
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await textoSinMontar(page, ordenes, m.nombre);
     await detalle
       .getByRole("group", { name: "Filtrar por resultado" })
       .getByRole("button", { name: /^Devolución a origen por rechazo/ })
@@ -400,8 +454,8 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
     const fila = filaDeCola(regionColaBodega(page, "Por conciliar"), bodega);
     const verCorregir = fila.getByRole("button", { name: `Ver / corregir el cierre de bodega de ${bodega}` });
 
-    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 1");
-    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados 0");
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar (1)");
+    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados (0)");
     await fila.getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${bodega}` }).click();
     const detalle = detalleDeBodega(page);
     await detalle.locator("footer").getByRole("button", { name: /^Marcar recibido la consolidación de / }).click();
@@ -413,7 +467,7 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
 
     // R126 (C1), R44, R129, R130 — sin recargar: sigue en «Por conciliar», que la sigue contando,
     // con su pastilla, lo recibido, lo que falta (8.ª celda) y «Ver / corregir».
-    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 1");
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar (1)");
     await expect(fila.getByText("Recibido incompleto", { exact: true })).toBeVisible();
     await expect(fila.getByRole("cell").nth(6)).toHaveText(importe(6000, { solo: true }));
     await expect(fila.getByRole("cell").nth(7)).toHaveText(importe(1000, { solo: true }));
@@ -432,8 +486,8 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
     await expect(page.getByText(/^Monto recibido corregido a /)).toContainText(importe(7000));
     await expect(detalle).toHaveCount(0);
 
-    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 0");
-    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados 1");
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar (0)");
+    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados (1)");
     await pestanaConciliados.click();
     const recibida = filaDeCola(regionColaBodega(page, "Conciliados"), bodega);
     await expect(recibida.getByText("Recibido", { exact: true })).toBeVisible();
@@ -489,7 +543,7 @@ test.describe.serial("SLT-107 — «Solicitados» de la satélite: tarjetas, fil
     const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
     const pestana = etapas.getByRole("tab", { name: /^Solicitados/ });
     await pestana.click();
-    await expect(pestana).toHaveAccessibleName("Solicitados 2");
+    await expect(pestana).toHaveAccessibleName("Solicitados (2)");
 
     // R49, R286: las tres tarjetas, escritas a mano.
     const cifras = bodega.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
@@ -530,7 +584,7 @@ test.describe.serial("SLT-107 — «Solicitados» de la satélite: tarjetas, fil
     await bodega.getByRole("button", { name: "Fecha de solicitud" }).click();
     await page.getByRole("group", { name: "Rangos predefinidos" }).getByRole("button", { name: "Últimos 7 días" }).click();
     await page.keyboard.press("Escape");
-    await expect(pestana).toHaveAccessibleName("Solicitados 1");
+    await expect(pestana).toHaveAccessibleName("Solicitados (1)");
     await expect(filaViejo).toHaveCount(0);
     await expect(filaNuevo).toHaveCount(1);
     await expect(cifra("porLlegar")).toHaveText("₡10.500");

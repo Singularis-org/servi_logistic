@@ -69,7 +69,9 @@ export interface FilaGestionProps {
 const ANCHO: Record<ColumnaFila["id"], string> = {
   // La guía no se recorta (263): pista `auto` con un piso, igual en cabecera y fila.
   guia: "auto",
-  destino: "minmax(0,1.7fr)",
+  // SLT-152 (D2): el 1.7fr de «Destinatario · tienda» se reparte entre las dos columnas.
+  destinatario: "minmax(0,1.2fr)",
+  tienda: "minmax(0,1fr)",
   mensajero: "minmax(0,1.1fr)",
   resultado: "minmax(110px,1.2fr)",
   recibido: "minmax(0,1fr)",
@@ -84,6 +86,20 @@ export function plantillaFila(columnas: readonly ColumnaFila[]): CSSProperties {
   return { gridTemplateColumns: `${columnas.map((c) => ANCHO[c.id]).join(" ")} auto` };
 }
 export const GUIA_CELDA = "min-w-[70px] whitespace-nowrap tabular-nums";
+/**
+ * SLT-152 (R444, D1): recorta el texto DENTRO de su columna. Va en un elemento de bloque: en uno en
+ * línea `overflow: hidden` no se aplica y el texto se pintaba encima de la columna siguiente.
+ */
+export const CELDA_RECORTA = "block min-w-0 truncate";
+
+/** El texto de una celda de texto libre, recortado con «…» y entero en `title`. */
+function TextoRecortado({ texto, className }: Readonly<{ texto: string; className?: string }>) {
+  return (
+    <span className={cn(CELDA_RECORTA, className)} title={texto}>
+      {texto}
+    </span>
+  );
+}
 
 const TONO_RESULTADO: Record<CierreResultado, string> = {
   entregado: "bg-success/15 text-success-strong",
@@ -116,14 +132,13 @@ export function FilaGestion({
     switch (c.id) {
       case "guia":
         return <span className={cn("font-mono text-[13px]", GUIA_CELDA)}>{g.numGuia ?? "—"}</span>;
-      case "destino":
-        return (
-          <span className="min-w-0 truncate">
-            {g.destinatario} <span className="text-xs text-muted-foreground">· {g.tiendaNombre}</span>
-          </span>
-        );
+      case "destinatario":
+        return <TextoRecortado texto={g.destinatario} />;
+      case "tienda":
+        return <TextoRecortado texto={g.tiendaNombre} className="text-muted-foreground" />;
       case "mensajero":
-        return <span className="min-w-0 truncate">{mensajeroNombre ?? "—"}</span>;
+        // R445: sin nombre, «—».
+        return <TextoRecortado texto={mensajeroNombre ?? "—"} />;
       case "resultado":
         // Ficha 456: el nombre del resultado con su botón de información.
         return (
@@ -194,7 +209,7 @@ export function FilaGestion({
     <div className="break-inside-avoid border-b border-border last:border-b-0" data-gestion={g.gestionId}>
       <div className="grid items-center gap-2 px-4 py-2.5 text-sm" style={plantillaFila(columnas)}>
         {columnas.map((c) => (
-          <span key={c.id} className={cn("min-w-0", c.derecha && "text-right")}>
+          <span key={c.id} data-columna={c.id} className={cn("min-w-0", c.derecha && "text-right")}>
             {celda(c)}
           </span>
         ))}

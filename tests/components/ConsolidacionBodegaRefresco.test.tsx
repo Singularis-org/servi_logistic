@@ -280,8 +280,8 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
     ).toBeInTheDocument();
     const lista = screen.getByRole("tablist", { name: "Cierre de bodega por etapa" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "A consolidar 1",
-      "Solicitados 8",
+      "A consolidar (1)",
+      "Solicitados (8)",
     ]);
     expect(screen.getByRole("region", { name: "Cierres del día a consolidar" })).toBeInTheDocument();
     expect(
@@ -299,7 +299,7 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
 
   it("R289 (sustituye a R201): «Solicitados» con sus tarjetas y su región, sin las de «A consolidar» ni botón", async () => {
     montar();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Solicitados 0" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Solicitados (0)" }));
     expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
     const cifras = screen.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
     expect(within(cifras).getByRole("group", { name: "Por llegar a la central" })).toHaveTextContent(
@@ -497,9 +497,9 @@ describe("SLT-107 — «Solicitados» con filtros y páginas (R52, R290, R291)",
   it("(c) R290: «Solicitados <n>» es el `total` filtrado del servidor, el de la tabla", async () => {
     montar(conPaginas);
     const usuario = userEvent.setup();
-    expect(screen.getByRole("tab", { name: "Solicitados 25" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Solicitados (25)" })).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Aplicar filtro QK4" }));
-    expect(await screen.findByRole("tab", { name: "Solicitados 13" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Solicitados (13)" })).toBeInTheDocument();
   });
 
   it("R52: la descarga de «Solicitados» y la lista llevan el mismo filtro", async () => {

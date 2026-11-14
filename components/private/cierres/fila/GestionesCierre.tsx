@@ -99,7 +99,7 @@ export function GestionesCierre({
           style={plantillaFila(columnas)}
         >
           {columnas.map((c) => (
-            <span key={c.id} className={cn("min-w-0", c.id === "guia" && GUIA_CELDA, c.derecha && "text-right", c.id === "senales" && "pl-4")}>
+            <span key={c.id} data-columna={c.id} className={cn("min-w-0", c.id === "guia" && GUIA_CELDA, c.derecha && "text-right", c.id === "senales" && "pl-4")}>
               {c.label}
             </span>
           ))}

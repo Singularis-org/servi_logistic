@@ -286,7 +286,7 @@ describe("R61, R241, R242 — el cierre de hoy", () => {
     const lista = screen.getByRole("region", { name: "Órdenes del cierre" });
     expect(lista.querySelectorAll("[data-gestion]")).toHaveLength(3);
     expect(within(lista).getByText("Ganancia")).toBeInTheDocument();
-    expect(screen.getByText("Entregado 2")).toBeInTheDocument();
+    expect(screen.getByText("Entregado (2)")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Rechazados por la tienda (0)" }));
     expect(screen.getByText("Este cierre no tiene paquetes rechazados por la tienda.")).toBeInTheDocument();

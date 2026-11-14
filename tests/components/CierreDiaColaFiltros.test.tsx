@@ -174,7 +174,7 @@ describe("SLT-138 · /cierre-dia: la barra de «Cierres solicitados»", () => {
   it("R175: desde la página 2, cambiar el estado pide la página 1 con filtros y la pestaña dice su total", async () => {
     const user = userEvent.setup();
     const barra = montar();
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 30" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (30)" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Página siguiente" }));
     await waitFor(() => expect(ultimaPeticion()).toEqual({ page: 2, pageSize: 25 }), ESPERA);
@@ -186,7 +186,7 @@ describe("SLT-138 · /cierre-dia: la barra de «Cierres solicitados»", () => {
       () => expect(ultimaPeticion()).toEqual({ page: 1, pageSize: 25, filtros: { estados: ["vencido"] } }),
       ESPERA,
     );
-    expect(await screen.findByRole("tab", { name: "Cierres solicitados 3" }, ESPERA)).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Cierres solicitados (3)" }, ESPERA)).toBeInTheDocument();
   });
 
   it("R175: escribir un folio pide con `folio` y el campo conserva el foco y el texto", async () => {
@@ -201,7 +201,7 @@ describe("SLT-138 · /cierre-dia: la barra de «Cierres solicitados»", () => {
       () => expect(ultimaPeticion()).toEqual({ page: 1, pageSize: 25, filtros: { folio: "bbbb" } }),
       ESPERA,
     );
-    expect(await screen.findByRole("tab", { name: "Cierres solicitados 3" }, ESPERA)).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Cierres solicitados (3)" }, ESPERA)).toBeInTheDocument();
     expect(campo).toHaveFocus();
     expect(campo).toHaveValue("bbbb");
     expect(campo).toBeEnabled();
@@ -215,7 +215,7 @@ describe("SLT-138 · /cierre-dia: la barra de «Cierres solicitados»", () => {
 
     expect(await screen.findByText("Ningún cierre coincide con los filtros.", undefined, ESPERA)).toBeInTheDocument();
     expect(screen.queryByText("Aún no has solicitado ningún cierre.")).toBeNull();
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 0" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (0)" })).toBeInTheDocument();
   });
 
   it("R178: «Limpiar todo» vacía campo y filtros y pide la página 1 sin `filtros`", async () => {
@@ -242,7 +242,7 @@ describe("SLT-138 · /cierre-dia: la barra de «Cierres solicitados»", () => {
       expect(vi.mocked(listarCierresPasadosPaginado).mock.calls.length).toBeGreaterThan(antes);
       expect(ultimaPeticion()).toEqual({ page: 1, pageSize: 25 });
     }, ESPERA);
-    expect(await screen.findByRole("tab", { name: "Cierres solicitados 30" }, ESPERA)).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Cierres solicitados (30)" }, ESPERA)).toBeInTheDocument();
     expect(screen.queryByText("Ningún cierre coincide con los filtros.")).toBeNull();
   });
 
