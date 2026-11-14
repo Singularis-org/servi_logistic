@@ -89,3 +89,6 @@ Specs: `cierre-bodega-satelite`, `cierre-dia`, `cierres-admin`, `cierres-admin-r
 - Guardia 420 en rojo sin tocar `init.sh` (ver arriba).
 
 Veredicto: SLT-152 implementada (T1-T6 + T4b); E2E dos corridas verdes; falta `./init.sh` (leader).
+
+## T7 (leader)
+- `./init.sh` verde tras mergear dev: `INIT_EXIT=0` (log `gate-152.log`, base `slt152_wt`). Review 1 APROBADO. Menor 2 (comentarios de test con el formato viejo «<resultado> <n>», sin aserciones) queda sin tocar.

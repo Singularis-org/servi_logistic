@@ -146,7 +146,7 @@ elemento recorta.
   el nombre del escenario no basta, darle uno más largo en el escenario de esa spec.
   *Hecho:* verde en local; con la mutación «quitar `block` de la celda de Mensajero» queda rojo
   (anotado en el `impl`, sin commitear la mutación).
-- [ ] **T7 — Cierre.** `./init.sh` verde; E2E locales de `grep -rl "Órdenes del cierre\|tablist" e2e/`
+- [x] **T7 — Cierre.** `./init.sh` verde; E2E locales de `grep -rl "Órdenes del cierre\|tablist" e2e/`
   que tocan estas pantallas en verde (`docs/perfil-agentes.md > Todos los agentes`); comprobación de
   que ningún archivo de descarga está en el diff; mapa `R<n> -> test` en `progress/impl_SLT-152.md`.
 
