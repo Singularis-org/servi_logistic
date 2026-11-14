@@ -40,6 +40,13 @@ import { cn } from "@/lib/utils";
 /** Texto del disparador cuando la superficie no nombra su propio acto. */
 export const ESCANER_LABEL_POR_DEFECTO = "Recibir paquete";
 
+/**
+ * SLT-156 (R500): el disparador ÚNICO de escaneo de las pantallas del mensajero (Reparto, Recoger en
+ * bodega y Recolección), bajo el encabezado y encima de `BuscadorFiltros`. Arranca cerrado, como
+ * todos. La tarjeta de dentro conserva su título y su flujo.
+ */
+export const ESCANER_LABEL_GUIA = "Escanear o escribir guía";
+
 export interface EscanerModalProps {
   /** Texto del disparador. Nombra el ACTO de esta superficie. */
   label?: string;

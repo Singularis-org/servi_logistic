@@ -6,7 +6,7 @@ import { EscanerModal } from "@/components/shared/EscanerModal";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
 import { recibirPorQr } from "@/lib/actions/recepcion-satelite";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import type { RecibirResult } from "@/lib/types/recepcion-satelite";
 
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
@@ -86,16 +86,16 @@ export function EscanerRecepcion({ onRecibida }: EscanerRecepcionProps) {
   );
 
   /**
-   * Dado el texto escaneado, recibe la orden. El QR de la etiqueta codifica la
-   * URL del paquete (`<origin>/paquete/<numGuia>`), así que se extrae el num_guia
-   * del último segmento. CORTE LIMPIO: un texto que no resuelve a num_guia (p. ej.
+   * Dado el texto escaneado, recibe la orden. Cámara y teclado lo leen con `leerGuia`
+   * (SLT-157): el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de la
+   * etiqueta. CORTE LIMPIO: un texto que no resuelve a num_guia (p. ej.
    * el UUID de una etiqueta vieja) se rechaza aquí con el mismo mensaje que el
    * `validation_error` del borde, sin llamar a la acción.
    */
   const procesar = useCallback(
     async (escaneado: string) => {
       if (procesando) return;
-      const numGuia = extractNumGuiaFromScan(escaneado);
+      const numGuia = leerGuia(escaneado);
       if (numGuia === null) {
         toast.error("Código inválido.");
         return;
@@ -123,16 +123,20 @@ export function EscanerRecepcion({ onRecibida }: EscanerRecepcionProps) {
   );
 
   /**
-   * Camino manual: lo tecleado ES el número de guía (base 10, mismo criterio que la URL
-   * del paquete). Un valor que no son dígitos no resuelve a ninguna guía: no se llama a
-   * la acción y el texto se queda en el campo para corregirlo. Devuelve `true` solo si la
-   * recepción entró (`ok`), que es lo que limpia el campo en `EscanerGuiaCard`.
+   * Camino manual o pistola: lo tecleado pasa por la misma `leerGuia` (SLT-157), así
+   * vale el número a secas y la URL del QR que teclea una pistola 2D. Lo que no es guía
+   * se rechaza CON mensaje (antes se descartaba en silencio), no se llama a la acción y
+   * el texto se queda en el campo para corregirlo. Devuelve `true` solo si la recepción
+   * entró (`ok`), que es lo que limpia el campo en `EscanerGuiaCard`.
    */
   const onManual = useCallback(
     async (valor: string): Promise<boolean> => {
       if (procesando) return false;
-      if (!/^\d+$/.test(valor)) return false;
-      const numGuia = Number(valor);
+      const numGuia = leerGuia(valor);
+      if (numGuia === null) {
+        toast.error("Código inválido.");
+        return false;
+      }
       setProcesando(true);
       try {
         const result = await recibirPorQr({ numGuia });
@@ -142,7 +146,7 @@ export function EscanerRecepcion({ onRecibida }: EscanerRecepcionProps) {
         setProcesando(false);
       }
     },
-    [notificar, procesando],
+    [notificar, procesando, toast],
   );
 
   return (

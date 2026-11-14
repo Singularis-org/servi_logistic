@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QrScanner } from "@/components/shared/QrScanner";
 import { useToast } from "@/hooks/useToast";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 
 // Feature 98: gate de verificación de guía ANTES de habilitar la gestión de una
 // orden en reparto. El mensajero debe confirmar que tiene en la mano el paquete
@@ -15,9 +15,10 @@ import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
 // equivocado.
 //
 // Reutiliza el patrón de la feature 96 (recoger por guía/escaneo):
-//  - `QrScanner` (click-to-start; NO auto-enciende la cámara) + `extractNumGuiaFromScan`
-//    para el QR de la etiqueta (que codifica `<origin>/paquete/<numGuia>`).
-//  - Input numérico validado con `/^\d+$/`, igual que `InputRecoger`.
+//  - `QrScanner` (click-to-start; NO auto-enciende la cámara) para el QR o el CODE128
+//    de la etiqueta.
+//  - Input donde se teclea o donde escribe la pistola.
+// Los dos caminos leen con la MISMA `leerGuia` (SLT-157) y rechazan con mensaje.
 // A diferencia de la 96, aquí NO se llama ninguna Server Action: solo confirma
 // que el número coincide y avanza el flujo local del panel (`onVerificado`).
 
@@ -57,20 +58,12 @@ export function VerificarGuiaGate({
   );
 
   /**
-   * Submit del input tecleado: solo dígitos (mismo criterio de `num_guia` que la
-   * URL del paquete). Si coincide avanza; si son dígitos que no coinciden avisa;
-   * un texto no numérico se ignora en silencio (no resuelve a ninguna guía).
+   * Lectura por cámara o por teclado: lee el num_guia con `leerGuia`; lo que no es
+   * guía → toast (antes, lo tecleado se ignoraba en silencio); si es guía, compara.
    */
-  const confirmarTecleado = useCallback(() => {
-    const texto = valor.trim();
-    if (!/^\d+$/.test(texto)) return;
-    confirmarNumero(Number(texto));
-  }, [valor, confirmarNumero]);
-
-  /** Decode del QR: extrae el num_guia; inválido → toast; si es válido, compara. */
-  const handleDecoded = useCallback(
+  const handleLectura = useCallback(
     (texto: string) => {
-      const numGuia = extractNumGuiaFromScan(texto);
+      const numGuia = leerGuia(texto);
       if (numGuia === null) {
         toast.error("Código inválido.");
         return;
@@ -107,7 +100,7 @@ export function VerificarGuiaGate({
         className="flex items-end gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          confirmarTecleado();
+          handleLectura(valor);
         }}
       >
         <div className="flex flex-1 flex-col gap-1">
@@ -130,7 +123,7 @@ export function VerificarGuiaGate({
       </form>
 
       <QrScanner
-        onDecoded={handleDecoded}
+        onDecoded={handleLectura}
         disabled={disabled}
         mensajeErrorCamara="No se pudo abrir la cámara."
       />

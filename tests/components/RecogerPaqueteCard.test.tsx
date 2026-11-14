@@ -456,3 +456,45 @@ describe("RecogerPaqueteCard — guía asignada después de abrir la pantalla (S
     expect(confirmacion).toHaveTextContent("Guía 34991060 recogida correctamente.");
   });
 });
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`. La
+// action recibe el id de la orden de esa guía, así que «mismo numGuia» = misma orden.
+describe("RecogerPaqueteCard — guía única por cámara o pistola (SLT-157)", () => {
+  const conGuia1024 = [makeAsignacion({ id: "ord-1024", numGuia: 1024 })];
+
+  async function renderCon1024(user: ReturnType<typeof userEvent.setup>) {
+    listarMock.mockResolvedValue(listaVigente(conGuia1024));
+    render(<RecogerPaqueteCard porRecoger={conGuia1024} onRecogida={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Recoger paquete" }));
+  }
+
+  it("R565: el CODE128 por cámara y la URL del QR tecleada recogen la misma orden", async () => {
+    const user = userEvent.setup();
+    // `forbidden`: sin recogida efectiva, la tarjeta no cambia entre las dos lecturas.
+    recogerMock.mockResolvedValue({ status: "forbidden" });
+    await renderCon1024(user);
+
+    await escanear(user, "1024");
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(1));
+    expect(recogerMock).toHaveBeenNthCalledWith(1, { ordenIds: ["ord-1024"] });
+
+    await tecleaYConfirma(user, "https://app.ejemplo.test/paquete/1024");
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(2));
+    expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["ord-1024"] });
+  });
+
+  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la action", async () => {
+    const user = userEvent.setup();
+    await renderCon1024(user);
+
+    await escanear(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO.
+    await tecleaYConfirma(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+    expect(recogerMock).not.toHaveBeenCalled();
+  });
+});

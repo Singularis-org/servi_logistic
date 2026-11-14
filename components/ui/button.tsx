@@ -116,6 +116,9 @@ const buttonVariants = cva(
         "icon-sm":
           "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
+        // SLT-156 (R493): área táctil de 44 px para las pantallas del mensajero (teléfono).
+        touch: "h-11 gap-2 px-4",
+        "icon-touch": "size-11",
       },
     },
     defaultVariants: {

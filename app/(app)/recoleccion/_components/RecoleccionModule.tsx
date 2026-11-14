@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/useToast";
 // aquí hay que decirle a dónde ir (R52).
 import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import type {
   RecolectadaHoyDTO,
   RecoleccionOrdenDTO,
@@ -152,10 +152,10 @@ export function RecoleccionModule({
     [recolectar, router],
   );
 
-  /** Camino cámara: el QR de la etiqueta codifica `/paquete/<numGuia>`. */
+  /** Camino cámara: el QR (`/paquete/<numGuia>`) o el CODE128 de la etiqueta (SLT-157). */
   const onDecoded = useCallback(
     (texto: string) => {
-      const numGuia = extractNumGuiaFromScan(texto);
+      const numGuia = leerGuia(texto);
       if (numGuia === null) {
         // R11: código MAL FORMADO -> se corta aquí, sin viaje al servidor. Es lo único que
         // el cliente sigue decidiendo; de quién es la guía lo decide el servidor (R12).
@@ -167,13 +167,20 @@ export function RecoleccionModule({
     [recolectarGuia, toast],
   );
 
-  /** Camino manual: lo tecleado ES el número (base 10, mismo criterio que la URL, R10). */
+  /**
+   * Camino manual o pistola: misma `leerGuia` que la cámara (SLT-157). R11: lo mal formado
+   * se corta aquí CON mensaje (antes, en silencio) y el texto se queda en el campo.
+   */
   const onManual = useCallback(
     async (valor: string): Promise<boolean> => {
-      if (!/^\d+$/.test(valor)) return false; // R11
-      return recolectarGuia(Number(valor));
+      const numGuia = leerGuia(valor);
+      if (numGuia === null) {
+        toast.error("Código inválido.");
+        return false;
+      }
+      return recolectarGuia(numGuia);
     },
-    [recolectarGuia],
+    [recolectarGuia, toast],
   );
 
   /**

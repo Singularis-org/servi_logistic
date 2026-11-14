@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import type { RecibirEnOrigenResult } from "@/lib/types/recepcion-origen";
 
 import { estatusLabel } from "./estatus-label";
@@ -73,14 +73,14 @@ export function EscanerRecepcionOrigen({
   );
 
   /**
-   * El QR de la etiqueta codifica la URL del paquete (`<origin>/paquete/<numGuia>`);
-   * se extrae el num_guia del último segmento. Un texto que no resuelve a num_guia
+   * Lectura por cámara: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
+   * la etiqueta, los dos por `leerGuia` (SLT-157). Un texto que no resuelve a num_guia
    * (p. ej. el UUID de una etiqueta vieja) se rechaza aquí, sin llamar a la acción.
    */
   const procesar = useCallback(
     async (escaneado: string) => {
       if (procesando) return;
-      const numGuia = extractNumGuiaFromScan(escaneado);
+      const numGuia = leerGuia(escaneado);
       if (numGuia === null) {
         toast.error("Código inválido.");
         return;
@@ -110,21 +110,21 @@ export function EscanerRecepcionOrigen({
    * que degradaba a solo cámara: sin cámara disponible, o con una etiqueta ilegible, no
    * había forma de recibir.
    *
-   * Lo tecleado ES el número, sin pasar por `extractNumGuiaFromScan`: ese helper existe para
-   * desenvolver la URL que codifica el QR (`<origin>/paquete/<numGuia>`), y aplicarlo aquí
-   * rechazaría el número escrito a secas. Mismo criterio que la recolección en tienda.
+   * Lo tecleado pasa por la misma `leerGuia` que la cámara (SLT-157): acepta el número
+   * escrito a secas y también la URL del QR que teclea una pistola 2D. Lo que no es guía
+   * se rechaza con "Código inválido.", como en el resto de superficies.
    *
    * Devolver `false` conserva lo tecleado en el campo para corregirlo, en vez de vaciarlo y
    * obligar a reescribir la guía entera.
    */
   const onManual = useCallback(
     async (valor: string): Promise<boolean> => {
-      if (!/^\d+$/.test(valor)) {
-        toast.error("El número de guía solo admite dígitos.");
+      const numGuia = leerGuia(valor);
+      if (numGuia === null) {
+        toast.error("Código inválido.");
         return false;
       }
       if (procesando) return false;
-      const numGuia = Number(valor);
       setProcesando(true);
       try {
         const result = await recibirEnOrigenPorQr({ numGuia });

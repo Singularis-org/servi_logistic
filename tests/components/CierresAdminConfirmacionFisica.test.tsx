@@ -1652,3 +1652,59 @@ describe("PREMISA — `orden.numGuia` es @unique, y de eso depende que el arregl
     expect(modeloOrden).toMatch(/numGuia\s+Int\?\s+@unique\s+@map\("num_guia"\)/);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`. La
+// «acción» de esta superficie es confirmar la fila: la guía 1024 la confirma por los dos.
+// ---------------------------------------------------------------------------------------------
+
+describe("SLT-157 — guía única por cámara o pistola", () => {
+  const DEV_1024 = makeGestion({
+    gestionId: "g-dev-1024",
+    resultado: "novedad",
+    numGuia: 1024,
+  });
+  const AVISO_ILEGIBLE =
+    "No se pudo leer un número de guía en ese código. Escanea de nuevo o escribe el número.";
+
+  it("R565: el CODE128 por cámara confirma la fila 1024", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+
+    await escanear(user, dialog, "1024");
+
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  it("R565: la URL del QR tecleada (pistola 2D) confirma la fila 1024", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "https://app.ejemplo.test/paquete/1024");
+
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  // Un caso por camino, cada uno con la ventana recién abierta: el aviso persiste entre
+  // lecturas, y con los dos en el mismo caso el segundo vería el aviso del primero.
+  it.each([
+    ["cámara", escanear],
+    ["teclado", teclear],
+  ] as const)("R566: lo que no es guía avisa (D4) por %s y no confirma nada", async (_camino, leer) => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+
+    await leer(user, dialog, "1024abc");
+
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(AVISO_ILEGIBLE);
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Pendiente");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 1.");
+    expect(aprobarMock).not.toHaveBeenCalled();
+  });
+});
