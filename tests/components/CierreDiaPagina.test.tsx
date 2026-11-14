@@ -193,6 +193,18 @@ function cabecera(): string {
   return within(detalle()).getByRole("heading", { level: 2 }).closest("header")?.textContent ?? "";
 }
 
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R452, R453, R455): los
+ * pares [rótulo, valor] de la cabecera de un detalle, en orden.
+ */
+function paresDe(raiz: HTMLElement): [string, string][] {
+  const header = raiz.querySelector("header") as HTMLElement;
+  const terminos = within(header).queryAllByRole("term");
+  const definiciones = within(header).queryAllByRole("definition");
+  expect(definiciones).toHaveLength(terminos.length);
+  return terminos.map((t, i) => [t.textContent ?? "", definiciones[i]!.textContent ?? ""]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   solicitarMock.mockResolvedValue({ status: "ok", via: "creado" } as unknown as Awaited<ReturnType<typeof solicitarCierre>>);
@@ -233,13 +245,17 @@ describe("R240 — qué cierre pinta la página", () => {
 });
 
 describe("R61, R241, R242 — el cierre de hoy", () => {
-  it("R241: cabecera «Tu cierre del día», «Sin solicitar», «Solicitud nueva · Hoy · sin solicitar», sin destino", () => {
+  it("R241, SLT-153 R453: cabecera «Tu cierre del día», «Sin solicitar», «Folio» → «Solicitud nueva» y «Día» → «Hoy», sin destino", () => {
     montar();
     const texto = cabecera();
     expect(texto).toContain("Tu cierre del día");
     expect(texto).toContain("Sin solicitar");
-    expect(texto).toContain("Solicitud nueva · Hoy · sin solicitar");
-    expect(texto).not.toMatch(/^\s*·|· ·/);
+    expect(paresDe(detalle())).toEqual([
+      ["Folio", "Solicitud nueva"],
+      ["Día", "Hoy"],
+    ]);
+    expect(texto).not.toContain("Solicitud nueva · Hoy · sin solicitar");
+    expect(texto).not.toContain("Destino");
   });
 
   it("R241: tres cifras — Recaudado 11.000 con sus métodos, 3 gestiones y Tu ganancia 3.400 — y nada de la empresa", () => {
@@ -364,11 +380,16 @@ describe("R247, R250 — el rechazado como página", () => {
         resueltoAt: "2026-11-11T15:30:00.000Z",
       }),
     });
-    const texto = cabecera();
-    expect(texto).toContain("Rechazado");
-    expect(texto).toContain("Bodega satélite · ");
-    expect(texto).toContain("Solicitado 2026-11-10 17:00");
-    expect(texto).toContain("Rechazado 2026-11-11 09:30");
+    expect(cabecera()).toContain("Rechazado");
+    // SLT-153 (R452): el DTO no trae zona ni quién lo rechazó: esos pares no se pintan.
+    const pares = paresDe(detalle());
+    expect(pares).toEqual([
+      // El id del doble de `bloqueoConRechazado` es «c-viejo»: su folio son sus 8 últimos, en mayúsculas.
+      ["Folio", "#C-VIEJO"],
+      ["Destino", "Bodega satélite"],
+      ["Solicitado", "2026-11-10 17:00"],
+      ["Rechazado", "2026-11-11 09:30"],
+    ]);
     expect(within(detalle()).getByText("Motivo del rechazo:").closest('[role="status"]')).toHaveTextContent("«Faltan 2 paquetes»");
     expect(screen.getByRole("tab", { name: "Corregir" })).toHaveAttribute("aria-selected", "true");
   });
@@ -386,13 +407,15 @@ describe("R247, R250 — el rechazado como página", () => {
 });
 
 describe("R63, R249, R251 — el vencido como página", () => {
-  it("R249: «Vencido», «Del … · venció sin solicitarse», franja de bloqueo y SIN «Devolver a gestión»", () => {
+  it("R249, SLT-153 R452: «Vencido», «Del día» en lugar de «Solicitado», franja de bloqueo y SIN «Devolver a gestión»", () => {
     const bloqueo = bloqueoConVencido("2026-11-10");
     const grupos = { ...vacios(), entregado: [makeGestion({ gestionId: "v1", resultado: "entregado", numRemision: "REM-V1", destinatario: "Vera" })] };
     montar({ bloqueo, reenviable: leidoDe(bloqueo, {}, grupos) });
     const texto = cabecera();
     expect(texto).toContain("Vencido");
-    expect(texto).toContain("Del 2026-11-10 17:00 · venció sin solicitarse");
+    const pares = paresDe(detalle());
+    expect(pares.map(([r]) => r)).toEqual(["Folio", "Destino", "Del día"]);
+    expect(pares[2]).toEqual(["Del día", "2026-11-10 17:00"]);
     expect(within(detalle()).getByText("Tu cierre está bloqueado:")).toBeInTheDocument();
     expect(within(detalle()).getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Gestiones (1)",
@@ -415,6 +438,39 @@ describe("R63, R249, R251 — el vencido como página", () => {
     await vi.waitFor(() => expect(solicitarMock).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(successMock).toHaveBeenCalledWith("Cierre vencido enviado a aprobación."));
     expect(refreshMock).toHaveBeenCalled();
+  });
+});
+
+describe("SLT-153 (R452) — un cierre pasado aprobado, abierto desde la cola", () => {
+  const APROBADO = "dddddddd-0000-4000-8000-00000000a7b3";
+  const aprobado = pasado({
+    cierreId: APROBADO,
+    estado: "aprobado",
+    solicitadoAt: "2026-11-09T23:00:00.000Z",
+    resueltoAt: "2026-11-10T15:30:00.000Z",
+  });
+
+  it("Folio, Destino, Solicitado y Aprobado; sin «Zona» ni «Aprobado por» (el DTO no los trae)", async () => {
+    verMock.mockResolvedValue({
+      status: "ok" as const,
+      cierre: aprobado,
+      grupos: vacios(),
+      ordenesSinGestion: [],
+      sinGestionRegistrado: true,
+      rechazosDeTienda: [],
+    });
+    const user = montar({ cierresPasados: [aprobado] });
+    await user.click(await screen.findByRole("button", { name: "Ver del cierre del 2026-11-09" }));
+    const dialogo = await screen.findByRole("dialog", { name: DETALLE });
+    expect(paresDe(dialogo)).toEqual([
+      ["Folio", "#0000A7B3"],
+      ["Destino", "Bodega satélite"],
+      ["Solicitado", "2026-11-09 17:00"],
+      ["Aprobado", "2026-11-10 09:30"],
+    ]);
+    const header = dialogo.querySelector("header") as HTMLElement;
+    expect(within(header).queryByText("Zona")).toBeNull();
+    expect(within(header).queryByText("Aprobado por")).toBeNull();
   });
 });
 

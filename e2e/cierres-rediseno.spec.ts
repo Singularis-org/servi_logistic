@@ -247,7 +247,11 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
       .getByRole("button", { name: `Ver el cierre resuelto de ${central.m.nombre}` })
       .click();
     const resuelto = detalleDe(page, central.m);
-    await expect(resuelto.getByText(new RegExp(`· Aprobado \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} por ${r.empresa.maestro.nombre}$`))).toBeVisible();
+    // SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R450, R455): el par
+    // «Aprobado por» → el nombre del maestro, como término y definición.
+    const aprobadoPor = resuelto.locator("header dt", { hasText: /^Aprobado por$/ });
+    await expect(aprobadoPor).toBeVisible();
+    await expect(aprobadoPor.locator("xpath=following-sibling::dd[1]")).toHaveText(r.empresa.maestro.nombre);
     expect(await pie(resuelto)).toEqual(["Cerrar"]);
     await expect(resuelto.getByRole("tab", { name: "Pago al mensajero" })).toBeVisible();
     await cifrasA(resuelto);

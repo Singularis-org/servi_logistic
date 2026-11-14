@@ -21,19 +21,34 @@ export const DETALLE_CIERRE_BODEGA_PREFIJO = "Detalle del cierre de bodega";
 export const TU_CIERRE_TITULO = "Tu cierre del día";
 export const tituloCierreMensajero = (nombre: string): string => `Cierre de ${nombre}`;
 export const tituloCierreBodega = (zona: string): string => `Cierre de bodega · ${zona}`;
-export const subtituloCierreBodega = (solicitadoPor: string, mensajeros: number): string =>
-  `Bodega satélite · lo solicitó ${solicitadoPor} · ${cuantos(mensajeros, "mensajero", "mensajeros")}`;
 /** El estado de un cierre del día que todavía no se ha solicitado (modo «en curso»). */
 export const SIN_SOLICITAR_LABEL = "Sin solicitar";
+/** El valor de «Folio» del cierre de hoy, que aún no tiene folio (R453). */
 export const FOLIO_NUEVO_LABEL = "Solicitud nueva";
-export const FECHA_SOLICITADO = "Solicitado";
-export const FECHA_APROBADO = "Aprobado";
-export const FECHA_RECHAZADO = "Rechazado";
-export const FECHA_RECIBIDO = "Recibido";
-export const fechaConQuien = (fecha: string, quien: string | null | undefined): string =>
-  quien ? `${fecha} por ${quien}` : fecha;
-export const fechaVencido = (fecha: string): string => `Del ${fecha} · venció sin solicitarse`;
-export const HOY_SIN_SOLICITAR = "Hoy · sin solicitar";
+/** El valor de «Día» del cierre de hoy sin solicitar (R453). */
+export const DIA_HOY = "Hoy";
+/** El valor de «Origen» del cierre de bodega: siempre lo solicita una satélite (R454). */
+export const ORIGEN_BODEGA_SATELITE = "Bodega satélite";
+
+// SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R450-R455): los rótulos
+// de los pares de la cabecera, uno por dato.
+export const ROTULO_FOLIO = "Folio";
+export const ROTULO_DESTINO = "Destino";
+export const ROTULO_ZONA = "Zona";
+export const ROTULO_SOLICITADO = "Solicitado";
+export const ROTULO_APROBADO = "Aprobado";
+export const ROTULO_APROBADO_POR = "Aprobado por";
+export const ROTULO_RECHAZADO = "Rechazado";
+export const ROTULO_RECHAZADO_POR = "Rechazado por";
+export const ROTULO_DEL_DIA = "Del día";
+export const ROTULO_DIA = "Día";
+export const ROTULO_ORIGEN = "Origen";
+export const ROTULO_SOLICITADO_POR = "Solicitado por";
+export const ROTULO_MENSAJEROS = "Mensajeros";
+export const ROTULO_RECIBIDO = "Recibido";
+export const ROTULO_RECIBIDO_POR = "Recibido por";
+/** El nombre accesible de la lista de pares de la cabecera. */
+export const DATOS_DEL_CIERRE_LABEL = "Datos del cierre";
 
 // --- Franja de atención (R4) ---
 export const POR_REVISAR_TITULO = "Por revisar:";

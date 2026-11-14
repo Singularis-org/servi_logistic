@@ -149,9 +149,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
 
   /**
    * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
-   * La zona solo se lee si el filtro trae rango.
+   * La zona solo se lee si el filtro trae rango. SLT-153 (R457): un folio imposible da `vacio`.
    */
-  private filtrosRepo<F extends RangoDeFechasCierres>(filtros: F | undefined) {
+  private filtrosRepo<F extends RangoDeFechasCierres & { folio?: string }>(filtros: F | undefined) {
     return filtrosParaRepo(filtros, zonaPerezosa(this.reglasPais, "CierresBodegaAdminService"));
   }
 
@@ -192,10 +192,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
 
     // Pedido humano del 2026-08-16: el filtro RECORTA dentro del alcance del rol, no lo
     // sustituye — se compone con `AND` en el repositorio.
-    const { items, total } = await this.repo.findHistoricoPaginado(
-      rangoDePagina(input),
-      await this.filtrosRepo(input.filtros),
-    );
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
+    const { items, total } = await this.repo.findHistoricoPaginado(rangoDePagina(input), resueltos.filtros);
 
     return {
       status: "ok",
@@ -224,7 +223,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarPendientesCierresBodegaServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
 
-    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), await this.filtrosRepo(input.filtros));
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
+    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), resueltos.filtros);
 
     return {
       status: "ok",
@@ -281,7 +282,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
 
     // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const conjunto = await this.repo.findHistoricoCompleto(await this.filtrosRepo(filtros));
+    const resueltos = await this.filtrosRepo(filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findHistoricoCompleto(resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -322,7 +325,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarPendientesCierresBodegaCompletoServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
 
-    const conjunto = await this.repo.findColaCompleta(await this.filtrosRepo(filtros)); // idem
+    const resueltos = await this.filtrosRepo(filtros); // idem
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findColaCompleta(resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {

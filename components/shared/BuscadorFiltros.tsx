@@ -64,6 +64,12 @@ export interface BuscadorFiltrosProps {
    */
   minChars?: number;
   /**
+   * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» — tope de caracteres del
+   * campo, tal como se escribe. Lo que pase del tope (también al pegar) no entra ni se emite: así el
+   * término nunca supera lo que acepta el borde del servidor. Ausente = sin tope (como antes).
+   */
+  maxLength?: number;
+  /**
    * Espera (ms) entre la última pulsación y la emisión. El campo responde al
    * instante; lo que se aplaza es AVISAR al consumidor, para que teclear una guía no
    * dispare una consulta por letra. `0` emite en el acto.
@@ -215,6 +221,7 @@ export function BuscadorFiltros({
   label = "Buscar",
   placeholder,
   minChars = 0,
+  maxLength,
   debounceMs = DEBOUNCE_MS_DEFAULT,
   disabled = false,
   onChange,
@@ -386,7 +393,10 @@ export function BuscadorFiltros({
     onChangeRef.current(siguiente);
   }
 
-  function escribir(valor: string) {
+  function escribir(entrada: string) {
+    // El atributo `maxLength` ya frena el teclado; el recorte cubre lo que el atributo no frena
+    // (un valor puesto por código o un navegador que no lo respete).
+    const valor = maxLength === undefined ? entrada : entrada.slice(0, maxLength);
     setTexto(valor);
     const recortado = valor.trim();
     // `!== ""` aparte del mínimo: con `minChars` 0 (default) un campo vacío seguiría
@@ -513,6 +523,7 @@ export function BuscadorFiltros({
             aria-label={label}
             aria-describedby={faltanCaracteres ? idAviso : undefined}
             placeholder={placeholder}
+            maxLength={maxLength}
             disabled={disabled}
             // El campo ocupa el 100% de su hueco, alto incluido, y conserva su marco y
             // su anillo de foco de `Input`. `text-ellipsis` porque el placeholder
