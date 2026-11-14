@@ -1,9 +1,12 @@
-# SLT-154 «Vista de la bodega satélite: solo lo suyo» — requirements (BORRADOR: inventario + matriz)
+# SLT-154 «Vista de la bodega satélite: solo lo suyo» — requirements
 
-> Estado: **borrador para decisión de Carlos**. Aún sin requisitos EARS, sin `design.md` ni
-> `tasks.md`. Ruta completa, zona fullstack. Pasa por `/design` antes de implementarse.
-> Fuente: lectura del worktree (desde `origin/dev`, con la épica de cierres). El índice del grafo
-> no tiene este worktree: el inventario se hizo con Grep/Read.
+> Estado: **BLOQUEADO: no cabe en un PR** (2026-11-14, spec_author). Inventario, matriz y decisiones
+> cerrados; el diseño está aprobado (canvas https://claude.ai/artifact/38TStFo8VMupWd4uSwBdmQ) y el
+> reuso fijado en `reuso.md`. Los requisitos EARS, `design.md` y `tasks.md` esperan a que Carlos
+> elija entre partir la ficha o aceptar el tamaño: ver `## Preguntas abiertas > PA1`.
+> Ruta completa, zona fullstack. Fuente: lectura del worktree (desde `origin/dev`, ya con SLT-153
+> «Cabecera del detalle del cierre con rótulos y folio buscable»). El índice del grafo no tiene este
+> worktree: todo se leyó con Grep/Read.
 
 ## Alcance
 
@@ -234,31 +237,92 @@ Contadores del inventario: **12 superficies** (10 con dinero, 2 sin cambios: S11
 la tienda, «Sale de lo recaudado», IVA facturado, «Se le paga hoy a la tienda», «Gana la tienda en
 total», «Le queda a la empresa»/ganancia, «Por tienda»); **5 fugas en el payload** (F1–F5).
 
+## Decisiones cerradas (no reabrir)
+
+Las preguntas P1–P7 del borrador y las dos de `reuso.md`, ya respondidas
+(`progress/features/SLT-154.md > Decisiones`). La columna «Cubre» se rellena con los `R<n>` al
+escribir los requisitos (ver PA1).
+
+| # | Decisión | Quién y cuándo | Cubre |
+|---|---|---|---|
+| P1 | Las tarjetas del detalle del cierre de bodega de la satélite (S4) son las de «A consolidar»: Recaudado, Pago a mensajeros, Gana la bodega satélite, Debe llegar a la central y, solo si ≠ 0, La central debe. | Carlos, 2026-11-13 | pendiente |
+| P2 | La satélite SÍ ve lo recaudado (COD) por su mensajero y el monto a cobrar por guía. | Carlos, 2026-11-13 | pendiente |
+| P3 | Se mantiene el nombre de la tienda por gestión; se quita «Por tienda» (pantalla y hoja del Excel). | Carlos, 2026-11-13 | pendiente |
+| P4 | En la lista de gestiones, «Cobro a la tienda» se sustituye por «Gana bodega» (lo que gana la bodega por esa gestión). | Carlos, 2026-11-13 | pendiente |
+| P5 | La pestaña «Dinero» pasa a «Lo que va a la central»: barra de reparto [central, pago, bodega] y la cuenta «Lo que va a la central», en S4 y en S6. | por defecto, sin objeción, 2026-11-13 | pendiente |
+| P6 | `/ordenes`, `/analitica`, `/monitoreo` y `/recepcion-satelite` quedan fuera de esta ficha. | por defecto, sin objeción, 2026-11-13 | exclusión de alcance (sin `R`) |
+| P7 | El dato de la empresa se corta EN EL SERVIDOR en las 5 lecturas con fuga (F1–F5), con el criterio «no es acceso total», como el fulfillment (F481). | Carlos, 2026-11-13 | pendiente |
+| P8 | La tarjeta resaltada es «Debe llegar a la central», como en «A consolidar» (`reuso.md` pregunta 1). | leader con el criterio de Carlos, 2026-11-13 | pendiente |
+| P9 | Las columnas Guía y Señales de la lista de gestiones se quedan (`reuso.md` pregunta 2). | leader con el criterio de Carlos, 2026-11-13 | pendiente |
+| P10 | Ningún componente nuevo: todo se pinta con las 8 piezas de `reuso.md` (RU1–RU6). | Carlos, 2026-11-13 | regla de diseño (sin `R`) |
+| P11 | Falta el dato «La central debe» del cierre de bodega en su detalle: lo añade el servidor. | leader, 2026-11-13 | pendiente |
+| P12 | Diseño aprobado (canvas https://claude.ai/artifact/38TStFo8VMupWd4uSwBdmQ). | Carlos, 2026-11-13 | — |
+
 ## Preguntas abiertas
 
-Solo las que dependen de Carlos; cada una con la recomendación.
+### PA1 — BLOQUEADO: no cabe en un PR. ¿Partir en dos o aceptar el tamaño? (decide Carlos)
 
-- **P1 — ¿«A conciliar» es «A consolidar»?** La satélite no tiene ninguna pestaña «A conciliar». Sus
-  pestañas son «A consolidar» y «Solicitados»; «Por conciliar» es de la central. Las KPI que
-  describiste (pago al mensajero, lo que ganó, lo que va a la central) son las de «A consolidar».
-  *Recomendación:* usar las KPI de «A consolidar» en el modal (S4) y, por cierre, en S6.
-- **P2 — El COD que recaudó su mensajero.** «Recaudado» (lo cobrado al cliente final) y «Monto a
-  cobrar» por guía no son dinero de la empresa: la satélite los entrega y con ellos cuadra.
-  *Recomendación:* que los vea (S1, S3–S6, S10).
-- **P3 — La tienda.** El nombre de la tienda por gestión es operativo (la satélite devuelve paquetes a
-  esa tienda). Los importes por tienda («Por tienda») son de la empresa.
-  *Recomendación:* mantener la columna «Tienda» y quitar «Por tienda» (pantalla y hoja Excel).
-- **P4 — ¿Qué ocupa el lugar de «Cobro a la tienda» en la lista de gestiones?** Opción A: quitar la
-  columna. Opción B: poner «Gana bodega» de la gestión (`ingresoBodegaRechazos` de la fila, que ya
-  existe en el Excel del modelo nuevo). *Recomendación:* B, porque sigue la regla de «mismo componente,
-  otra información». Se decide en `/design`.
-- **P5 — Pestaña «Dinero» del cierre del mensajero (S6).** Hoy solo tiene cuentas de la empresa.
-  Opción A: sustituirla por «¿A dónde va lo recaudado?» y «Lo que va a la central» de ese cierre.
-  Opción B: quitar la pestaña y dejar el dinero solo en la cabecera. *Recomendación:* A, que es la
-  misma forma que el modal de bodega (S4).
-- **P6 — Alcance.** `/ordenes`, `/analitica`, `/monitoreo` y `/recepcion-satelite` también abren a la
-  satélite y no están inventariados aquí. *Recomendación:* dejarlos fuera de esta ficha. Si alguno
-  enseña tarifas o cobros a la tienda, se abre una ficha aparte.
-- **P7 — Recorte en el servidor.** ¿Aceptas que el dato EMP deje de enviarse a la satélite, no solo
-  de pintarse (F1–F5)? Puede tocar tests y E2E que hoy esperan esos campos con audiencia satélite.
-  *Recomendación:* sí, en el servidor, con el mismo criterio que el fulfillment (F481).
+`arnes.config.json > gate.tamano_pr`: 40 archivos con tests incluidos, 1000 líneas de producción y
+3000 de tests. El 80% son **32 archivos**. Estimación al leer el código (sin contar `specs/` ni
+`progress/`, que no cuentan):
+
+| Tipo | Archivos | Líneas estimadas |
+|---|---|---|
+| Producción | 23 | ~550 |
+| Tests y E2E | 13 seguros + 4–6 que hoy esperan el dato de la empresa con la satélite | ~1 800 |
+| **Total** | **36–42** | por debajo de los dos topes de líneas |
+
+Lo que rompe el tope son los **archivos**, no las líneas: el corte toca 5 lecturas en 3 servicios y
+4 interfaces, y cada descarga del modelo nuevo tiene su archivo de columnas, su libro y su test.
+
+Producción (23): `lib/services/CierresAdminService.ts`, `lib/services/CierresBodegaAdminService.ts`,
+`lib/services/CierreBodegaService.ts`, `lib/repositories/CierresBodegaAdminRepository.ts`,
+`lib/interfaces/repositories/ICierresBodegaAdminRepository.ts`,
+`lib/interfaces/services/ICierresAdminService.ts`, `lib/interfaces/services/ICierresBodegaAdminService.ts`,
+`lib/interfaces/services/ICierreBodegaService.ts`, `lib/interfaces/services/ICierreDiaService.ts`,
+`components/private/cierres/detalle/detalle-cierre-vista.ts`,
+`components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts`,
+`components/private/cierres/detalle/DetalleCierreBodegaAbierto.tsx`,
+`components/private/cierres/fila/fila-gestion-vista.ts`, `components/private/cierres/fila/GestionesCierre.tsx`,
+`components/private/cierres/fila/FilaGestion.tsx`, `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`,
+`app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx` y los seis de descarga del modelo
+nuevo de `app/(app)/cierres-admin/_components/` (fundida, gestiones, resumen ×2, bodega ×2).
+
+Hallazgos del dimensionado que el diseño tendrá que recoger, sea cual sea la opción:
+- El COD por guía (`montoCobrar`, P2) y `tarifaModelo` viven DENTRO de `ingresoEmpresa`
+  (`lib/interfaces/services/ICierreDiaService.ts:260`, `:294`), y la hoja fundida los lee de ahí
+  (`cierres-gestiones-fundida-descarga-columnas.ts:494`, `:542`). El corte por gestión no puede anular
+  `ingresoEmpresa` entero: anula campo a campo, como `ocultarFulfillmentSiNoCentral`. Y
+  `ingresoEmpresa.total` hoy es `string` no nulo: su tipo cambia.
+- «La central debe» del cierre de bodega sale de repartir el efectivo de sus cierres del día del
+  modelo anterior (`repartirEfectivo`, `lib/services/CierreBodegaService.ts:144`, hoy privada). La
+  lectura del detalle no trae la marca `pagoIndependienteEfectivo` de cada cierre del día
+  (`DETALLE_CIERRE_SELECT`, `lib/repositories/CierresBodegaAdminRepository.ts:185`): hay que añadirla.
+
+**Opción A — partir en dos rebanadas verticales** (recomendada por la regla; `docs/specs.md >
+Partir una feature`). Cada una se mergea sola y deja el producto funcionando:
+
+1. **SLT-154 (esta ficha), acotada a «La satélite ve sus detalles sin el dinero de la empresa»**:
+   F1 y F2 cortadas en el servidor (agregado, cada cierre del día y cada gestión), «La central debe»
+   y las cifras de la central del cierre del mensajero, las tarjetas, la pestaña «Lo que va a la
+   central», la lista de gestiones con «Gana bodega» y la descarga del modal; E2E
+   `e2e/cierre-bodega-satelite.spec.ts`. ~16 de producción + ~10 de tests = **~26 archivos (65%)**.
+   Requisitos reservados: **R460–R479**. Hasta la rebanada 2, la hoja fundida sigue con su corte de
+   hoy (solo fulfillment): la rebanada 1 usa una función nueva para los detalles y no toca F5, así que
+   ningún archivo sale con columnas vacías.
+2. **Ficha nueva, «Descargas de la satélite sin el dinero de la empresa»** (`depends_on`: SLT-154):
+   F3, F4 y F5 cortadas en el servidor, y las columnas y la hoja «Por tienda» fuera de los libros
+   «Solicitados», «Resumen» y «Detalle». ~10 de producción + ~8 de tests = **~18 archivos (45%)**.
+   Requisitos reservados: **R480–R489**.
+
+Hasta que entre la rebanada 2, las descargas de la satélite siguen como hoy (con el dato de la
+empresa): no empeora nada, pero la fuga de los archivos sigue abierta ese tiempo.
+
+**Opción B — aceptar el tamaño con desglose**, como SLT-140 «Excel del modelo nuevo: hojas por
+cierre de mensajeros» y SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (allí lo rompían
+las líneas de tests; aquí, los archivos). Las líneas caben de sobra. Hace falta la frase de Carlos
+escrita y que el leader añada a `progress/features/SLT-154.md` la línea
+`<!-- tamano-pr-aceptado: AAAA-MM-DD · <motivo y frase de Carlos> -->`. Ventaja: la fuga se cierra
+entera en un solo PR.
+
+En cualquiera de las dos, al responder se escriben los EARS (desde R460), `design.md` y `tasks.md`.
