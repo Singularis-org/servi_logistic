@@ -116,3 +116,25 @@ exento) que medir»; (m10) `-ml-8` en la tarjeta de gestión → debe fallar «�
 ## Veredicto
 
 Rebanada D implementada (D1-D6) con R→test y 28 mutaciones muertas; D7 escrita para el leader.
+
+## Tanda 2 — E2E del leader (3 rojos sobre 00ae6f1b)
+
+- **(a) 360 y 414 px, `toHaveCount(1)` recibe 0.** Era el test. El servidor da las gestiones de la más
+  nueva a la más vieja (`CierreDiaRepository.ts`, `orderBy: { createdAt: "desc" }`). La del destinatario
+  largo se creaba la primera, así que quedaba la 30.ª, en la página 2 (en el snapshot sale primero
+  «Destinatario 30», con «1-25 de 30»). Ahora las dos de textos largos se crean al final. No se ablandó nada.
+- **Con eso, un rojo nuevo de verdad en la pantalla:** al llevar «Página siguiente» a la vista, quedaba DEBAJO
+  de la barra fija y el clic se lo comía «Solicitar cierre del día». Arreglo: la barra publica también
+  `scroll-padding-bottom` en `<html>` con su alto, así que lo que se desplaza a la vista (el foco del
+  teclado, `scrollIntoView`) queda encima de la barra. Test: `DetalleCierre.test.tsx` «SLT-165 R534».
+  Mutación (quitar el `setProperty`) → rojo.
+- **cierre-bodega-satelite:205, `page.goto: Test ended`.** Era el primer test de la tanda: se pasó de 30 s
+  con el dev server compilando en frío. Corrido solo: 6/6 en verde.
+- **m9/m10 muertos con Playwright**, con un spec temporal (ya borrado) que mete el defecto en la página:
+  `margin-left:-40px` en la tarjeta y `position:fixed` en los hijos del inset.
+  - Con el fixture nuevo, verde.
+  - Con el `sinDesborde` de antes (c27a5af8), rojo: «m10: no cazó el desborde por la izquierda».
+  - Con solo `revisados++` antes de la exención, rojo: «m9: salió verde sin medir nada».
+- E2E_EXIT: `pwa-mensajero-cierre-dia` 0 (3/3) · `pwa-mensajero-base` 0 (4/4) · `cierre-bodega-satelite` 0 (6/6).
+- `./init.sh` tras el arreglo: 1.ª vuelta, INIT_EXIT=1 en el typecheck, por los tipos de `.next/dev` truncados
+  al parar el dev server del E2E. Después de `rm -rf .next/dev`: INIT_EXIT=0. Tamaño: 30/40, 683/1000 y 1062/3000.

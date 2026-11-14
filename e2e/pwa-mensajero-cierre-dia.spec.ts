@@ -69,9 +69,12 @@ test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => 
     test.setTimeout(600_000);
     r = await crearEscenarioReparto("pwa-mensajero-cierre-dia");
     conTreinta = await crearMensajero(r, "satelite");
-    await entregada(conTreinta, DESTINATARIO_LARGO, 2500);
-    await entregada(conTreinta, "Beto Ruiz", IMPORTE_LARGO);
+    // El servidor da las gestiones de la más nueva a la más vieja (`CierreDiaRepository`,
+    // `orderBy: { createdAt: "desc" }`): las dos de textos largos se crean AL FINAL para que caigan
+    // en la página 1 de 25. Creadas primero, quedaban en la 2 y el test no las encontraba.
     for (let i = 0; i < 28; i++) await entregada(conTreinta, `Destinatario ${i + 3}`, 1000 + i);
+    await entregada(conTreinta, "Beto Ruiz", IMPORTE_LARGO);
+    await entregada(conTreinta, DESTINATARIO_LARGO, 2500);
   });
 
   for (const ancho of ANCHOS_MOVIL) {

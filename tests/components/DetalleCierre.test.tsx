@@ -623,8 +623,13 @@ describe("SLT-165 R534 — la barra publica su alto para los flotantes", () => {
     movil.valor = true;
     const { unmount } = enPagina();
     expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toMatch(/^\d+px$/);
+    // Lo que se desplaza a la vista (foco, `scrollIntoView`) queda encima de la barra, no debajo.
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe(
+      document.documentElement.style.getPropertyValue("--alto-barra-inferior"),
+    );
     unmount();
     expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe("");
   });
 
   it("en escritorio no hay barra fija: la variable no existe", () => {

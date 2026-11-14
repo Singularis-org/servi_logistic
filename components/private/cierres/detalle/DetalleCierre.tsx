@@ -307,13 +307,20 @@ function usePublicarAltoBarra(ref: RefObject<HTMLElement | null>, activa: boolea
     const el = ref.current;
     if (!activa || !el) return;
     const raiz = document.documentElement;
-    const medir = () => raiz.style.setProperty(VARIABLE_ALTO_BARRA, `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    // `scroll-padding-bottom`: lo que se desplaza a la vista (un control enfocado con el teclado,
+    // `scrollIntoView`) queda ENCIMA de la barra y no debajo de ella (la paginación lo sufría).
+    const medir = () => {
+      const alto = `${Math.ceil(el.getBoundingClientRect().height)}px`;
+      raiz.style.setProperty(VARIABLE_ALTO_BARRA, alto);
+      raiz.style.setProperty("scroll-padding-bottom", alto);
+    };
     medir();
     const observador = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(medir);
     observador?.observe(el);
     return () => {
       observador?.disconnect();
       raiz.style.removeProperty(VARIABLE_ALTO_BARRA);
+      raiz.style.removeProperty("scroll-padding-bottom");
     };
   }, [ref, activa]);
 }
