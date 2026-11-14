@@ -127,3 +127,62 @@ describe("EscanerModal", () => {
     expect(screen.queryByText("cámara")).toBeNull();
   });
 });
+
+// SLT-158 «Entrada de escaneo para pistola» (R571, D1): con puntero fino (escritorio, pistola)
+// el foco inicial cae en el campo de la guía, para que la pistola escriba ahí sin un clic
+// previo; con puntero táctil no, porque en el teléfono abriría el teclado sobre el visor.
+describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
+  const matchMediaOriginal = window.matchMedia;
+
+  function conPuntero(fino: boolean) {
+    window.matchMedia = ((consulta: string) => ({
+      matches: fino && consulta === "(pointer: fine)",
+      media: consulta,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  afterEach(() => {
+    window.matchMedia = matchMediaOriginal;
+  });
+
+  // Un botón ANTES del campo: así el foco en el campo no es el "primer tabulable" por defecto
+  // del Dialog, sino la elección del modal.
+  const tarjeta = (
+    <div>
+      <button type="button">Escanear con cámara</button>
+      <input aria-label="Número de guía" data-escaner-campo="" />
+    </div>
+  );
+
+  it("R571: con puntero fino, al abrir el foco queda en el campo «Número de guía»", async () => {
+    conPuntero(true);
+    const user = userEvent.setup();
+    render(<EscanerModal>{tarjeta}</EscanerModal>);
+
+    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+
+    const campo = await screen.findByLabelText("Número de guía");
+    await vi.waitFor(() => expect(document.activeElement).toBe(campo));
+  });
+
+  it("R571: con puntero táctil, al abrir el foco NO va al campo", async () => {
+    conPuntero(false);
+    const user = userEvent.setup();
+    render(<EscanerModal>{tarjeta}</EscanerModal>);
+
+    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+
+    const campo = await screen.findByLabelText("Número de guía");
+    // Se espera a que el Dialog asiente su foco inicial antes de afirmar dónde NO está.
+    await vi.waitFor(() =>
+      expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true),
+    );
+    expect(document.activeElement).not.toBe(campo);
+  });
+});

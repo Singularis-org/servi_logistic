@@ -696,14 +696,17 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     );
   });
 
-  it("un número tecleado que no son dígitos se queda en el campo para corregirlo", async () => {
+  // SLT-158 (R575, D2): el campo se vacía siempre al enviar, para que la lectura siguiente de la
+  // pistola no se pegue a esta. Lo que falló lo sigue diciendo el aviso de la ventana, el ÚNICO
+  // `role="alert"`: la tarjeta va con `lineaDeError={false}` y no lo repite.
+  it("un número tecleado que no son dígitos vacía el campo y el aviso dice qué falló", async () => {
     const user = userEvent.setup();
     conGrupos({ novedad: [DEV_1] });
     const dialog = await abrirVentana(user);
 
     await teclear(user, dialog, "70O1"); // una «O» donde va un cero
 
-    expect(within(dialog).getByLabelText("Número de guía")).toHaveValue("70O1");
+    expect(within(dialog).getByLabelText("Número de guía")).toHaveValue("");
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
       "No se pudo leer un número de guía en ese código.",
     );

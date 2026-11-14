@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
+import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
 import { cn } from "@/lib/utils";
 
 // El envoltorio ÚNICO de toda tarjeta de escaneo del producto (`EscanerGuiaCard` y
@@ -36,6 +38,10 @@ import { cn } from "@/lib/utils";
 //
 // El cierre lo pone el propio Dialog (la "X" con nombre accesible "Cerrar"), así que ya no
 // hay un segundo texto que mantener por superficie.
+//
+// SLT-158 (R571): con puntero fino (escritorio, pistola) el foco inicial va al campo de la
+// guía, para que la pistola escriba ahí sin un clic previo; con táctil NO, porque en el
+// teléfono abriría el teclado y taparía el visor. Arrancar cerrado no cambia.
 
 /** Texto del disparador cuando la superficie no nombra su propio acto. */
 export const ESCANER_LABEL_POR_DEFECTO = "Recibir paquete";
@@ -57,6 +63,14 @@ export function EscanerModal({
   className,
 }: Readonly<EscanerModalProps>) {
   const [abierto, setAbierto] = useState(false);
+  const punteroFino = usePunteroFino();
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  /** El campo de la tarjeta con puntero fino; si no, el foco inicial por defecto del Dialog. */
+  function focoInicial(): HTMLElement | true {
+    if (!punteroFino) return true;
+    return popupRef.current?.querySelector<HTMLElement>(SELECTOR_CAMPO_ESCANER) ?? true;
+  }
 
   return (
     <div className={cn("flex w-full flex-wrap items-center gap-2", className)}>
@@ -70,7 +84,10 @@ export function EscanerModal({
         {/* El popup no pinta superficie propia: la tarjeta que entra como `children` YA es
             una tarjeta (borde, fondo, sombra), y envolverla en otra la enmarcaba dos veces.
             El alto lo limita el viewport: la tarjeta es alta y en un teléfono no cabe. */}
-        <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
+        <DialogContent
+          ref={popupRef}
+          initialFocus={focoInicial}
+          className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
           {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
               que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
           <DialogTitle className="sr-only">{label}</DialogTitle>

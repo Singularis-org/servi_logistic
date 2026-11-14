@@ -4,7 +4,10 @@ import { PackageCheck } from "lucide-react";
 
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { Badge } from "@/components/ui/badge";
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
+import {
+  EscanerGuiaCard,
+  type ResultadoLectura,
+} from "@/components/shared/EscanerGuiaCard";
 import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   RESULTADOS_QUE_VUELVEN,
@@ -488,7 +491,7 @@ export interface ConfirmacionFisicaCuerpoProps {
   aviso: string | null;
   /** Confirmación persistente del último acierto, bajo el formulario. */
   ultimaGuiaConfirmada: number | null;
-  /** Interpreta y aplica una lectura. Devuelve `true` si marcó una fila (limpia el campo). */
+  /** Interpreta y aplica una lectura. Devuelve `true` si marcó una fila (acierto, SLT-158). */
   onLectura: (texto: string) => boolean;
 }
 
@@ -573,6 +576,14 @@ export function ConfirmacionFisicaCuerpo({
   // Ficha 451 (R34): las filas que no se pueden confirmar nunca, de los dos orígenes.
   const sinGuia = filas.filter((f) => f.numGuia === null).length;
   const barridas = filas.filter((f): f is FilaDeBarrida => f.origen === "barrida");
+
+  // SLT-158 (D4): la tarjeta necesita saber si la lectura marcó una fila (tono, marca del
+  // campo). El MOTIVO de una lectura rechazada ya lo pinta esta ventana en su aviso persistente
+  // de arriba (`aviso`, R29-R32), así que la tarjeta va con `lineaDeError={false}` y el motivo
+  // que se le devuelve no se muestra: repetirlo pondría dos `role="alert"` con el mismo texto.
+  function leer(texto: string): ResultadoLectura {
+    return onLectura(texto) ? { tipo: "acierto" } : { tipo: "error", motivo: "" };
+  }
 
   function pintarFila(f: FilaAConfirmar) {
     return (
@@ -660,12 +671,11 @@ export function ConfirmacionFisicaCuerpo({
           titulo={ESCANER_TITULO}
           descripcion={ESCANER_DESCRIPCION}
           icono={PackageCheck}
-          onDecoded={(texto) => {
-            onLectura(texto);
-          }}
+          onDecoded={leer}
+          lineaDeError={false}
           mensajeErrorCamara={ESCANER_ERROR_CAMARA}
           manual={{
-            onSubmit: (valor) => onLectura(valor),
+            onSubmit: leer,
             submitLabel: ESCANER_BOTON,
           }}
           exito={

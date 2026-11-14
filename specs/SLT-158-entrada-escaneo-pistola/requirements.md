@@ -120,19 +120,19 @@ Literales a mano. `matchMedia` se dobla por test (fino / táctil). El tono se pr
 
 ## Tasks
 
-- [ ] **T1 — Contrato de la tarjeta.** `manual.onSubmit` y `onDecoded` devuelven el resultado
+- [x] **T1 — Contrato de la tarjeta.** `manual.onSubmit` y `onDecoded` devuelven el resultado
   (`{ tipo: "acierto" } | { tipo: "error"; motivo: string }`, o su promesa). Se escribe en el
   JSDoc de `EscanerGuiaCardProps`. *Hecho:* typecheck en verde con los seis consumidores adaptados.
-- [ ] **T2 — Entrada de escaneo (depende de T1).** Hook `hooks/useEntradaEscaneo.ts`: cola en orden,
+- [x] **T2 — Entrada de escaneo (depende de T1).** Hook `hooks/useEntradaEscaneo.ts`: cola en orden,
   limpieza, último error, marca de resultado, foco tras cada lectura con puntero fino. La tarjeta lo
   usa y deja de pasar `disabled={procesando}` al campo. *Hecho:* R573-R576, R578 en verde.
-- [ ] **T3 — Orden y foco (depende de T2).** Orden por puntero (D1), «Lista para la pistola» y foco
+- [x] **T3 — Orden y foco (depende de T2).** Orden por puntero (D1), «Lista para la pistola» y foco
   inicial en el campo al abrir `EscanerModal` (sin tocar que arranca cerrado). *Hecho:* R570-R572,
   R579 (foco) en verde.
-- [ ] **T4 [P] — Tonos.** `lib/audio/tono-notificacion.ts` gana el tono de acierto y el de error (el
+- [x] **T4 [P] — Tonos.** `lib/audio/tono-notificacion.ts` gana el tono de acierto y el de error (el
   de notificaciones no cambia); la tarjeta lo llama respetando `leerPreferenciaSonido` y llama a
   `prepararAudio` al montarse. *Hecho:* R577 en verde; `tono-notificacion.test.ts` existente en verde.
-- [ ] **T5 — Consumidores (depende de T1).** C1, C2, C3/C4, C5, `RecogerPaqueteCard` y
+- [x] **T5 — Consumidores (depende de T1).** C1, C2, C3/C4, C5, `RecogerPaqueteCard` y
   `RecoleccionModule` devuelven el resultado; quitan su propio `if (procesando) return`; C2 cambia el
   título (D5). Los toasts de hoy se quedan. *Hecho:* tests de los seis en verde; R579 (título) en verde.
 - [ ] **T6 — Dispositivo.** En Preview, con la pistola: abrir «Recibir paquete» en `/ordenes` y leer

@@ -6,7 +6,10 @@ import { Store } from "lucide-react";
 
 import { ContactoButtons } from "@/components/shared/ContactoButtons";
 import { EscanerModal } from "@/components/shared/EscanerModal";
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
+import {
+  EscanerGuiaCard,
+  type ResultadoLectura,
+} from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
 // Feature 111/R12 + 167/R9 -> FEATURE 271 (T9.1/T9.2): el aviso del bloqueo dejó de ser una
 // constante y pasó a ser un FORMATEADOR que CUENTA (cuántos cierres arrastra el mensajero y cuál
@@ -123,7 +126,7 @@ export function RecoleccionModule({
   const bloqueado = bloqueo.bloqueado;
   const router = useRouter();
   const toast = useToast();
-  const { recolectar, procesando } = useRecolectarPorGuia();
+  const { recolectar } = useRecolectarPorGuia();
   // Confirmación PERSISTENTE de la última (R15): el toast se va solo y en una tanda seguida
   // el mensajero necesita ver que la anterior sí entró (mismo criterio que `RecogerPaqueteCard`).
   const [ultima, setUltima] = useState<number | null>(null);
@@ -137,50 +140,29 @@ export function RecoleccionModule({
     cambiarVista,
   } = useTransicionVista<VistaCards>("mosaico");
 
-  const recolectarGuia = useCallback(
-    async (numGuia: number): Promise<boolean> => {
-      const ok = await recolectar(numGuia);
-      if (ok) {
+  /**
+   * Cámara, tecleo o pistola: misma `leerGuia` para todos (SLT-157). R11: lo mal formado se
+   * corta aquí CON mensaje, sin viaje al servidor; de quién es la guía lo decide el servidor
+   * (R12). SLT-158: devuelve el resultado a la tarjeta (tono, marca, línea de error).
+   */
+  const procesar = useCallback(
+    async (texto: string): Promise<ResultadoLectura> => {
+      const numGuia = leerGuia(texto);
+      if (numGuia === null) {
+        toast.error("Código inválido.");
+        return { tipo: "error", motivo: "Código inválido." };
+      }
+      const resultado = await recolectar(numGuia);
+      if (resultado.tipo === "acierto") {
         setUltima(numGuia);
         // R14: la orden deja de estar pendiente y pasa a "Recolectadas hoy". Las dos listas
         // las resuelve el servidor, así que la verdad se relee de allí en vez de moverse a
         // mano en el cliente (que es como se desincronizan).
         router.refresh();
       }
-      return ok;
+      return resultado;
     },
-    [recolectar, router],
-  );
-
-  /** Camino cámara: el QR (`/paquete/<numGuia>`) o el CODE128 de la etiqueta (SLT-157). */
-  const onDecoded = useCallback(
-    (texto: string) => {
-      const numGuia = leerGuia(texto);
-      if (numGuia === null) {
-        // R11: código MAL FORMADO -> se corta aquí, sin viaje al servidor. Es lo único que
-        // el cliente sigue decidiendo; de quién es la guía lo decide el servidor (R12).
-        toast.error("Código inválido.");
-        return;
-      }
-      void recolectarGuia(numGuia);
-    },
-    [recolectarGuia, toast],
-  );
-
-  /**
-   * Camino manual o pistola: misma `leerGuia` que la cámara (SLT-157). R11: lo mal formado
-   * se corta aquí CON mensaje (antes, en silencio) y el texto se queda en el campo.
-   */
-  const onManual = useCallback(
-    async (valor: string): Promise<boolean> => {
-      const numGuia = leerGuia(valor);
-      if (numGuia === null) {
-        toast.error("Código inválido.");
-        return false;
-      }
-      return recolectarGuia(numGuia);
-    },
-    [recolectarGuia, toast],
+    [recolectar, router, toast],
   );
 
   /**
@@ -258,10 +240,9 @@ export function RecoleccionModule({
             titulo="Recolectar en tienda"
             descripcion="Escanea o ingresa el número de guía"
             icono={Store}
-            onDecoded={onDecoded}
-            procesando={procesando}
+            onDecoded={procesar}
             mensajeErrorCamara="No se pudo abrir la cámara."
-            manual={{ onSubmit: onManual, submitLabel: "Confirmar recolección" }}
+            manual={{ onSubmit: procesar, submitLabel: "Confirmar recolección" }}
             exito={
               ultima === null ? undefined : (
                 <>

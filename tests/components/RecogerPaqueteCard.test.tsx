@@ -326,15 +326,19 @@ describe("RecogerPaqueteCard — camino manual (número tecleado)", () => {
     expect(recogerMock).not.toHaveBeenCalled();
   });
 
-  it("robustez: entrada NO numérica no llama a la action y CONSERVA lo tecleado", async () => {
+  it("robustez: entrada NO numérica no llama a la action y deja lo tecleado en la línea de error", async () => {
     const user = userEvent.setup();
     await renderAbierta(user);
 
     await tecleaYConfirma(user, "abc");
 
     expect(recogerMock).not.toHaveBeenCalled();
-    // Se queda en el campo para corregirlo, en vez de borrarse sin explicacion.
-    expect(screen.getByLabelText("Número de guía")).toHaveValue("abc");
+    // SLT-158 (R575/R576): el campo se vacía —la lectura siguiente de la pistola no se pega a
+    // esta— y lo tecleado queda escrito, con el motivo, en la línea de error de la tarjeta.
+    expect(screen.getByLabelText("Número de guía")).toHaveValue("");
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("abc");
+    expect(alerta).toHaveTextContent("Código inválido.");
   });
 
   it("forbidden → toast de error 'sin permiso', sin onRecogida", async () => {

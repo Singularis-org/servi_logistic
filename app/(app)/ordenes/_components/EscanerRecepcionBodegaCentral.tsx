@@ -2,7 +2,10 @@
 
 import { useCallback, useState } from "react";
 
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
+import {
+  EscanerGuiaCard,
+  type ResultadoLectura,
+} from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
 import { leerGuia } from "@/lib/utils/paquete-url";
@@ -14,8 +17,13 @@ import { estatusLabel } from "./estatus-label";
 // callejón de `en_ruta_bodega_central`. Espejo de `EscanerRecepcionOrigen`, con DOS
 // entradas equivalentes (R12): (a) escaneo de QR por cámara y (b) entrada manual del
 // número de guía. Ambas funelan a la MISMA Server Action `recibirEnBodegaCentralPorQr`
-// y traducen el resultado a un toast por estado (R15). Guard `procesando` anti-doble
-// envío. Tras `ok`/`ya_recibida` invoca `onRecibida` para refrescar el listado (R14).
+// y traducen el resultado a un toast por estado (R15). Tras `ok`/`ya_recibida` invoca
+// `onRecibida` para refrescar el listado (R14).
+//
+// SLT-158: cada lectura DEVUELVE su resultado a la tarjeta (acierto, o error con el mismo
+// motivo del toast) para el tono, la marca y la línea de error. Sin guard `procesando`
+// propio: la tarjeta encola las lecturas y las envía de a una (R574); el guard tiraba la
+// segunda lectura de la pistola.
 //
 // El rol (maestro/admin) NO se decide aquí: el padre (OrdenesListado) solo monta este
 // control cuando `puedeRecibirBodegaCentral`, y el service revalida server-side (R16).
@@ -29,14 +37,22 @@ export function EscanerRecepcionBodegaCentral({
   onRecibida,
 }: Readonly<EscanerRecepcionBodegaCentralProps>) {
   const toast = useToast();
-  const [procesando, setProcesando] = useState(false);
   // Confirmacion PERSISTENTE del ultimo acierto: el toast se va solo y quien recibe
   // una tanda seguida necesita ver que la anterior si entro.
   const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
 
+  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
+  const rechazar = useCallback(
+    (motivo: string): ResultadoLectura => {
+      toast.error(motivo);
+      return { tipo: "error", motivo };
+    },
+    [toast],
+  );
+
   /** Traduce cada resultado de la acción a un toast (R15, los 8 estados). */
   const notificar = useCallback(
-    (result: RecibirEnBodegaCentralResult, numGuia: number) => {
+    (result: RecibirEnBodegaCentralResult, numGuia: number): ResultadoLectura => {
       switch (result.status) {
         case "ok":
           // Feature 139/T3.5: la recepción central es STATE-AWARE. Si la orden venía
@@ -50,85 +66,45 @@ export function EscanerRecepcionBodegaCentral({
           );
           setUltimaRecibida(numGuia);
           onRecibida();
-          break;
+          return { tipo: "acierto" };
         case "ya_recibida":
+          // La lectura fue buena: el paquete ya estaba dentro. Suena como acierto.
           toast.info(`La guía ${numGuia} ya estaba recibida.`);
           onRecibida();
-          break;
+          return { tipo: "acierto" };
         case "estado_invalido":
-          toast.error(
+          return rechazar(
             `No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`,
           );
-          break;
         case "no_encontrada":
-          toast.error("Orden no encontrada.");
-          break;
+          return rechazar("Orden no encontrada.");
         case "validation_error":
-          toast.error("Código inválido.");
-          break;
+          return rechazar("Código inválido.");
         case "forbidden":
-          toast.error("No tienes permiso para recibir órdenes.");
-          break;
+          return rechazar("No tienes permiso para recibir órdenes.");
         case "unauthenticated":
-          toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
-          break;
+          return rechazar("Tu sesión expiró. Inicia sesión de nuevo.");
         case "conflict":
-          toast.error("La orden cambió de estado. Vuelve a intentar.");
-          break;
+          return rechazar("La orden cambió de estado. Vuelve a intentar.");
       }
     },
-    [toast, onRecibida],
-  );
-
-  /** Dispara la recepción de un `num_guia` ya resuelto a entero positivo. */
-  const recibir = useCallback(
-    async (numGuia: number) => {
-      if (procesando) return;
-      setProcesando(true);
-      try {
-        const result = await recibirEnBodegaCentralPorQr({ numGuia });
-        notificar(result, numGuia);
-      } finally {
-        setProcesando(false);
-      }
-    },
-    [notificar, procesando],
+    [toast, onRecibida, rechazar],
   );
 
   /**
-   * Lectura por cámara: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
-   * la etiqueta, los dos por `leerGuia` (SLT-157). Un texto que no resuelve a num_guia
-   * (p. ej. el UUID de una etiqueta vieja) se rechaza aquí, sin llamar a la acción (R10).
+   * Cámara, tecleo o pistola: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
+   * la etiqueta, los dos por `leerGuia` (SLT-157), así la pistola 2D que teclea la URL del QR
+   * también vale. Un texto que no resuelve a num_guia (p. ej. el UUID de una etiqueta vieja)
+   * se rechaza aquí con "Código inválido", sin llamar a la acción (R10).
    */
-  const procesarEscaneo = useCallback(
-    (escaneado: string) => {
+  const procesar = useCallback(
+    async (escaneado: string): Promise<ResultadoLectura> => {
       const numGuia = leerGuia(escaneado);
-      if (numGuia === null) {
-        toast.error("Código inválido.");
-        return;
-      }
-      void recibir(numGuia);
+      if (numGuia === null) return rechazar("Código inválido.");
+      const result = await recibirEnBodegaCentralPorQr({ numGuia });
+      return notificar(result, numGuia);
     },
-    [recibir, toast],
-  );
-
-  /**
-   * Entrada manual (R12b) o pistola: lo tecleado pasa por la misma `leerGuia` que la
-   * cámara (SLT-157), así la pistola 2D que teclea la URL del QR también vale. Lo que
-   * no es guía se corta en cliente con "Código inválido", sin llamar a la acción
-   * (coherente con el borde, R10); devolver `false` deja el valor para corregirlo.
-   */
-  const enviarManual = useCallback(
-    (valor: string) => {
-      const numGuia = leerGuia(valor);
-      if (numGuia === null) {
-        toast.error("Código inválido.");
-        return false;
-      }
-      void recibir(numGuia);
-      return true;
-    },
-    [recibir, toast],
+    [notificar, rechazar],
   );
 
   return (
@@ -136,10 +112,9 @@ export function EscanerRecepcionBodegaCentral({
       ariaLabel="Recepción en bodega central"
       titulo="Recibir paquete"
       descripcion="Escanea o ingresa el número de guía"
-      onDecoded={procesarEscaneo}
-      procesando={procesando}
+      onDecoded={procesar}
       mensajeErrorCamara="No se pudo abrir la cámara."
-      manual={{ onSubmit: enviarManual, submitLabel: "Recibir" }}
+      manual={{ onSubmit: procesar, submitLabel: "Recibir" }}
       exito={
         ultimaRecibida === null ? undefined : (
           <>

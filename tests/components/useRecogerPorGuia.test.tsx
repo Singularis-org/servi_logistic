@@ -93,6 +93,8 @@ afterEach(() => {
   cleanup();
 });
 
+// SLT-158: `recoger` devuelve el resultado de la lectura; aquí se compara su `tipo` con
+// "acierto", que es lo que antes era `true`.
 describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)", () => {
   it("R1/R2: relee la lista UNA vez y recoge la guía asignada después de abrir la pantalla", async () => {
     listarMock.mockResolvedValue(listaVigente([...cargada, nueva]));
@@ -101,7 +103,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let ok = false;
     await act(async () => {
-      ok = await result.current.recoger(34991060);
+      ok = (await result.current.recoger(34991060)).tipo === "acierto";
     });
 
     expect(errorMock).not.toHaveBeenCalled();
@@ -120,7 +122,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.recoger(9999);
+      ok = (await result.current.recoger(9999)).tipo === "acierto";
     });
 
     expect(ok).toBe(false);
@@ -149,7 +151,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.recoger(34991060);
+      ok = (await result.current.recoger(34991060)).tipo === "acierto";
     });
 
     expect(ok).toBe(false);
@@ -166,7 +168,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.recoger(34991060);
+      ok = (await result.current.recoger(34991060)).tipo === "acierto";
     });
 
     expect(ok).toBe(false);
@@ -182,7 +184,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.recoger(34991060);
+      ok = (await result.current.recoger(34991060)).tipo === "acierto";
     });
 
     expect(ok).toBe(false);
@@ -200,7 +202,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.recoger(34991060);
+      ok = (await result.current.recoger(34991060)).tipo === "acierto";
     });
 
     expect(ok).toBe(false);
@@ -221,7 +223,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
     );
     const { result } = renderHook(() => useRecogerPorGuia(cargada));
 
-    let primera: Promise<boolean> = Promise.resolve(false);
+    let primera: Promise<unknown> = Promise.resolve();
     act(() => {
       primera = result.current.recoger(34991060);
     });
@@ -229,7 +231,7 @@ describe("useRecogerPorGuia — guía que no está en la lista cargada (SLT-69)"
 
     let segunda = true;
     await act(async () => {
-      segunda = await result.current.recoger(34991060);
+      segunda = (await result.current.recoger(34991060)).tipo === "acierto";
     });
 
     expect(segunda).toBe(false);
@@ -252,7 +254,7 @@ describe("useRecogerPorGuia — guía que SÍ está en la lista cargada (R10)", 
 
     let ok = false;
     await act(async () => {
-      ok = await result.current.recoger(1001);
+      ok = (await result.current.recoger(1001)).tipo === "acierto";
     });
 
     expect(ok).toBe(true);
@@ -268,7 +270,7 @@ describe("useRecogerPorGuia — guía que SÍ está en la lista cargada (R10)", 
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.recoger(1001);
+      ok = (await result.current.recoger(1001)).tipo === "acierto";
     });
 
     expect(ok).toBe(false);
