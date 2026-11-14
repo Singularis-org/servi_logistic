@@ -4,9 +4,11 @@ import path from "node:path";
 
 import {
   ESTADOS_FILTRO_CIERRES,
+  filtrosCierresBodegaSchema,
   filtrosCierresSchema,
   MAX_IDS_POR_FILTRO,
   sinFiltros,
+  sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { CIERRE_ESTADO_SEED } from "@/lib/types/cierre";
 import {
@@ -61,6 +63,8 @@ describe("guardia: un filtro de cierres recorta dentro del alcance, nunca lo rea
       // contrato de la lista blanca, no una copia de la fuente: si alguien quitara `estados` del
       // schema, este `toEqual` se pondría rojo por la clave que sobra en el esperado.
       estados: ["solicitado", "aprobado"],
+      // SLT-153 (R456): la sexta, el folio buscado, sin normalizar (lo normaliza el servicio).
+      folio: " #3f2a ",
     };
     expect(filtrosCierresSchema.parse(completo)).toEqual(completo);
     expect(sinFiltros(filtrosCierresSchema.parse(completo))).toBe(false);
@@ -68,6 +72,13 @@ describe("guardia: un filtro de cierres recorta dentro del alcance, nunca lo rea
     // …y con SOLO el estado puesto tampoco es «sin filtros»: si `sinFiltros` no lo mirara, la
     // pantalla escondería el «limpiar» de un recorte que sí está aplicado.
     expect(sinFiltros(filtrosCierresSchema.parse({ estados: ["vencido"] }))).toBe(false);
+    // SLT-153: idem con SOLO el folio puesto, en los dos bloques (día y bodega).
+    expect(sinFiltros(filtrosCierresSchema.parse({ folio: "3F2A" }))).toBe(false);
+    expect(sinFiltrosBodega(filtrosCierresBodegaSchema.parse({ folio: "3F2A" }))).toBe(false);
+    expect(sinFiltrosBodega(filtrosCierresBodegaSchema.parse({}))).toBe(true);
+    const bodega = { desde: "2026-08-01", hasta: "2026-08-16", destinoZonaIds: [UUID], folio: "3F2A" };
+    expect(filtrosCierresBodegaSchema.parse(bodega)).toEqual(bodega);
+    expect(filtrosCierresBodegaSchema.safeParse({ ...bodega, mensajeroIds: [UUID] }).success).toBe(false);
 
     // `.strict()`: cualquier clave que no esté en la lista muere aquí.
     expect(filtrosCierresSchema.safeParse({ ...completo, loQueSea: 1 }).success).toBe(false);
@@ -132,7 +143,7 @@ describe("guardia: un filtro de cierres recorta dentro del alcance, nunca lo rea
     // FICHA 386: `estados` viaja en el MISMO bloque, así que los cuatro puntos de entrada lo
     // aceptan por construcción. Si alguien lo declarara suelto en el schema de una página, el
     // archivo de esa lista dejaría de poder reproducirla y nada fallaría.
-    const filtros = { desde: "2026-08-01", mensajeroIds: [UUID], estados: ["vencido"] };
+    const filtros = { desde: "2026-08-01", mensajeroIds: [UUID], estados: ["vencido"], folio: "3F2A" };
     for (const [nombre, schema] of [
       ["histórico (página)", listarHistoricoCierresAdminSchema],
       ["cola (página)", listarPendientesCierresAdminSchema],

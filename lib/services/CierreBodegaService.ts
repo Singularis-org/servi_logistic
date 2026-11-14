@@ -252,9 +252,9 @@ export class CierreBodegaService implements ICierreBodegaService {
 
   /**
    * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
-   * La zona solo se lee si el filtro trae rango.
+   * La zona solo se lee si el filtro trae rango. SLT-153 (R457): un folio imposible da `vacio`.
    */
-  private filtrosRepo<F extends RangoDeFechasCierres>(filtros: F | undefined) {
+  private filtrosRepo<F extends RangoDeFechasCierres & { folio?: string }>(filtros: F | undefined) {
     return filtrosParaRepo(filtros, zonaPerezosa(this.reglasPais, "CierreBodegaService"));
   }
 
@@ -407,10 +407,12 @@ export class CierreBodegaService implements ICierreBodegaService {
 
     // Pedido humano del 2026-08-16: el filtro RECORTA dentro de la zona del actor —se compone
     // con `AND` en el repositorio—, nunca la sustituye. Pedir la zona vecina da vacio.
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
     const { items, total } = await this.repo.findCierresBodegaByZonaPaginado(
       zonaId,
       rangoDePagina(input),
-      await this.filtrosRepo(input.filtros),
+      resueltos.filtros,
     );
 
     return {
@@ -456,10 +458,12 @@ export class CierreBodegaService implements ICierreBodegaService {
       return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 };
     }
 
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
     const { items, total } = await this.repo.findCierresDiaConsolidablesPaginado(
       zonaId,
       rangoDePagina(input),
-      await this.filtrosRepo(input.filtros), // recorte DENTRO de la zona (ver la nota del listado de solicitados)
+      resueltos.filtros, // recorte DENTRO de la zona (ver la nota del listado de solicitados)
     );
 
     return {
@@ -515,7 +519,9 @@ export class CierreBodegaService implements ICierreBodegaService {
     // El MISMO metodo del que la pagina saca su recorte: mismo where, mismo orden y —lo que en
     // una pantalla de dinero no es estilo— el MISMO mapper de totales.
     // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const conjunto = await this.repo.findCierresBodegaByZona(zonaId, await this.filtrosRepo(filtros));
+    const resueltos = await this.filtrosRepo(filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findCierresBodegaByZona(zonaId, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -575,7 +581,9 @@ export class CierreBodegaService implements ICierreBodegaService {
     if (zonaId === null) return { status: "ok", items: [], total: 0 };
 
     // El MISMO metodo que alimenta la pagina y los agregados: un conjunto, no dos parecidos.
-    const conjunto = await this.repo.findCierresDiaConsolidables(zonaId, await this.filtrosRepo(filtros)); // idem
+    const resueltos = await this.filtrosRepo(filtros); // idem
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findCierresDiaConsolidables(zonaId, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {

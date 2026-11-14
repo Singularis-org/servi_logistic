@@ -4,6 +4,8 @@ import {
   accionesDe,
   cierreDeLaPagina,
   pieTextoDe,
+  paresCabeceraBodega,
+  paresCabeceraMensajero,
   vistaMensajeroEnCurso,
   type EntradaCierreDeLaPagina,
   cuentaConciliacion,
@@ -40,7 +42,8 @@ import type {
 
 const MENSAJERO: DetalleMensajeroVista = {
   mensajeroNombre: "Ana Mensajera",
-  destino: "Bodega central · GAM",
+  destino: "Bodega central",
+  zona: "GAM",
   folio: "8F2A11C4",
   estado: "solicitado",
   solicitadoAt: "2026-11-08T00:42:00.000Z",
@@ -476,7 +479,9 @@ describe("de los resultados del servidor a la vista (T0.2)", () => {
       tiendas: 2,
     });
     expect(v.folio).toBe("C0FFEE99");
-    expect(v.destino).toBe("Bodega central · GAM");
+    // SLT-153 (R450): el tipo y la zona van aparte, cada uno a su par de la cabecera.
+    expect(v.destino).toBe("Bodega central");
+    expect(v.zona).toBe("GAM");
     expect(v.empresa?.netoEmpresa).toBe("3500.00");
   });
 
@@ -831,6 +836,7 @@ describe("SLT-108 — vistaMensajeroDesdeCierreDia (R150)", () => {
     const v = vistaMensajeroDesdeCierreDia(cierre, detalle);
     expect(v.folio).toBe("CDEF1234");
     expect(v.destino).toBe("Bodega central");
+    expect(v.zona ?? null).toBeNull();
   });
 
   it("no trae el dinero de la empresa (R9): ni el ingreso de bodega ni otra cifra suya", () => {
@@ -1056,5 +1062,49 @@ describe("SLT-109 — el cierre de la página", () => {
     expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, new Set<AccionId>(["solicitarRechazado"]))).toBe(
       "Se envía con las gestiones que tenga al enviarlo.",
     );
+  });
+});
+
+// SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R450-R454): los pares, puros.
+// Los rótulos van escritos a mano.
+describe("SLT-153 — paresCabeceraMensajero / paresCabeceraBodega", () => {
+  const filas = (pares: { rotulo: string; valor: string }[]) => pares.map((p) => [p.rotulo, p.valor]);
+
+  it("R450: el folio va primero con «#» y en monoespaciada; el resto en orden", () => {
+    const pares = paresCabeceraMensajero(MENSAJERO);
+    expect(pares[0]).toEqual({ rotulo: "Folio", valor: "#8F2A11C4", mono: true });
+    expect(filas(pares)).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+    ]);
+  });
+
+  it("R451: una fecha inválida o ausente no deja el par con «—»", () => {
+    const pares = paresCabeceraMensajero({ ...MENSAJERO, estado: "rechazado", solicitadoAt: "no-es-fecha", resueltoAt: null });
+    expect(filas(pares)).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+    ]);
+  });
+
+  it("R452: un solicitado o vencido no lleva pares de resolución", () => {
+    const vencido = paresCabeceraMensajero({ ...MENSAJERO, estado: "vencido", resueltoAt: "2026-11-08T01:10:00.000Z" });
+    expect(filas(vencido).map(([r]) => r)).toEqual(["Folio", "Destino", "Zona", "Del día"]);
+  });
+
+  it("R453: hoy sin solicitar: solo «Folio» → «Solicitud nueva» y «Día» → «Hoy»", () => {
+    const pares = paresCabeceraMensajero({ ...MENSAJERO, estado: null, folio: null, destino: "", zona: null });
+    expect(pares).toEqual([
+      { rotulo: "Folio", valor: "Solicitud nueva" },
+      { rotulo: "Día", valor: "Hoy" },
+    ]);
+  });
+
+  it("R454: «Recibido por» solo con la fecha de la marca", () => {
+    const sinFecha = paresCabeceraBodega({ ...BODEGA, conciliadoAt: null, conciliadoPorNombre: "Carlos R." });
+    expect(filas(sinFecha).map(([r]) => r)).toEqual(["Folio", "Origen", "Zona", "Solicitado por", "Mensajeros", "Solicitado"]);
   });
 });

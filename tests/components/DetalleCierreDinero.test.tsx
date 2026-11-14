@@ -23,7 +23,8 @@ const PARTES_DOS_TIENDAS = [
 
 const MENSAJERO: DetalleMensajeroVista = {
   mensajeroNombre: "Ana Mensajera",
-  destino: "Bodega central · GAM",
+  destino: "Bodega central",
+  zona: "GAM",
   folio: "8F2A11C4",
   estado: "solicitado",
   solicitadoAt: "2026-11-08T00:42:00.000Z",

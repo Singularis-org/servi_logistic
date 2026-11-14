@@ -93,8 +93,13 @@ export interface DineroEmpresaMensajero {
 
 export interface DetalleMensajeroVista {
   mensajeroNombre: string;
-  /** Destino ya legible: «Bodega central · GAM». */
+  /** Tipo de destino ya legible: «Bodega central». `""` = sin destino (el cierre de hoy). */
   destino: string;
+  /**
+   * SLT-153 (R450): la zona de destino, aparte del tipo. Ausente o vacía = no se pinta «Zona» (R451):
+   * `/cierre-dia` no la trae.
+   */
+  zona?: string | null;
   /** `null` = aún no solicitado (modo «en curso»). */
   folio: string | null;
   /** `null` = aún no solicitado (modo «en curso»). */
@@ -170,24 +175,87 @@ export function fechaHora(iso: string | null): string {
   return `${fechaCalendarioCR(instante)} ${horaCostaRica(iso)}`;
 }
 
-const FECHA_RESOLUCION: Partial<Record<CierreEstado, string>> = {
-  aprobado: L.FECHA_APROBADO,
-  rechazado: L.FECHA_RECHAZADO,
-};
-
-export function fechasMensajero(d: DetalleMensajeroVista): string {
-  if (d.estado === null) return L.HOY_SIN_SOLICITAR;
-  if (d.estado === "vencido") return L.fechaVencido(fechaHora(d.solicitadoAt));
-  const solicitado = `${L.FECHA_SOLICITADO} ${fechaHora(d.solicitadoAt)}`;
-  const resolucion = FECHA_RESOLUCION[d.estado];
-  if (!resolucion || !d.resueltoAt) return solicitado;
-  return `${solicitado} · ${L.fechaConQuien(`${resolucion} ${fechaHora(d.resueltoAt)}`, d.resueltoPorNombre)}`;
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R450-R455): un dato de la
+ * cabecera con su rótulo. `mono` = se pinta en monoespaciada (el folio).
+ */
+export interface ParCabecera {
+  rotulo: string;
+  valor: string;
+  mono?: boolean;
 }
 
-export function fechasBodega(d: DetalleBodegaVista): string {
-  const solicitado = `${L.FECHA_SOLICITADO} ${fechaHora(d.solicitadoAt)}`;
-  if (!d.conciliadoAt) return solicitado;
-  return `${solicitado} · ${L.fechaConQuien(`${L.FECHA_RECIBIDO} ${fechaHora(d.conciliadoAt)}`, d.conciliadoPorNombre)}`;
+/** El folio como en las colas: «#» delante (D2). */
+function folioConAlmohadilla(folio: string): string {
+  return `#${folio}`;
+}
+
+/** La fecha y hora legible, o `null` si no hay instante válido (R451: no se pinta «—»). */
+function fechaHoraOpcional(iso: string | null): string | null {
+  const texto = fechaHora(iso);
+  return texto === "—" ? null : texto;
+}
+
+/** Solo los pares con valor (R451): un par vacío no deja ni rótulo ni relleno. */
+function conValor(pares: readonly (readonly [string, string | null | undefined, boolean?])[]): ParCabecera[] {
+  const out: ParCabecera[] = [];
+  for (const [rotulo, valor, mono] of pares) {
+    if (!valor) continue;
+    out.push(mono ? { rotulo, valor, mono } : { rotulo, valor });
+  }
+  return out;
+}
+
+const RESOLUCION: Partial<Record<CierreEstado, readonly [string, string]>> = {
+  aprobado: [L.ROTULO_APROBADO, L.ROTULO_APROBADO_POR],
+  rechazado: [L.ROTULO_RECHAZADO, L.ROTULO_RECHAZADO_POR],
+};
+
+/**
+ * R450-R453: los pares de la cabecera de un cierre de mensajero, en orden. El de hoy sin solicitar
+ * lleva «Folio» → «Solicitud nueva» y «Día» → «Hoy»; el vencido, «Del día» en lugar de «Solicitado».
+ */
+export function paresCabeceraMensajero(d: DetalleMensajeroVista): ParCabecera[] {
+  if (d.estado === null) {
+    return conValor([
+      [L.ROTULO_FOLIO, d.folio ? folioConAlmohadilla(d.folio) : L.FOLIO_NUEVO_LABEL, d.folio !== null],
+      [L.ROTULO_DIA, L.DIA_HOY],
+    ]);
+  }
+  const inicio: (readonly [string, string | null | undefined, boolean?])[] = [
+    [L.ROTULO_FOLIO, d.folio ? folioConAlmohadilla(d.folio) : null, true],
+    [L.ROTULO_DESTINO, d.destino],
+    [L.ROTULO_ZONA, d.zona],
+  ];
+  if (d.estado === "vencido") {
+    return conValor([...inicio, [L.ROTULO_DEL_DIA, fechaHoraOpcional(d.solicitadoAt)]]);
+  }
+  const resolucion = RESOLUCION[d.estado];
+  return conValor([
+    ...inicio,
+    [L.ROTULO_SOLICITADO, fechaHoraOpcional(d.solicitadoAt)],
+    ...(resolucion
+      ? ([
+          [resolucion[0], fechaHoraOpcional(d.resueltoAt)],
+          [resolucion[1], d.resueltoPorNombre],
+        ] as const)
+      : []),
+  ]);
+}
+
+/** R454: los pares de la cabecera de un cierre de bodega, en orden; «Recibido» solo con la marca. */
+export function paresCabeceraBodega(d: DetalleBodegaVista): ParCabecera[] {
+  const recibidoAt = fechaHoraOpcional(d.conciliadoAt);
+  return conValor([
+    [L.ROTULO_FOLIO, d.folio ? folioConAlmohadilla(d.folio) : null, true],
+    [L.ROTULO_ORIGEN, L.ORIGEN_BODEGA_SATELITE],
+    [L.ROTULO_ZONA, d.zonaNombre],
+    [L.ROTULO_SOLICITADO_POR, d.solicitadoPorNombre],
+    [L.ROTULO_MENSAJEROS, String(d.conteos.mensajeros)],
+    [L.ROTULO_SOLICITADO, fechaHoraOpcional(d.solicitadoAt)],
+    [L.ROTULO_RECIBIDO, recibidoAt],
+    [L.ROTULO_RECIBIDO_POR, recibidoAt ? d.conciliadoPorNombre : null],
+  ]);
 }
 
 export function estadoConciliacionBodega(d: DetalleBodegaVista): EstadoConciliacion {
@@ -737,8 +805,9 @@ export function lineasDinero(
 type DetalleAdminOk = Omit<Extract<CierreDetalleAdminServiceResult, { status: "ok" }>, "status">;
 type DetalleBodegaOk = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
 
-function destinoLegible(tipo: CierreDestinoTipo, zona: string): string {
-  return zona ? `${DESTINO_TIPO_LABEL[tipo]} · ${zona}` : DESTINO_TIPO_LABEL[tipo];
+/** SLT-153 (R450): solo el tipo; la zona va en su propio par. */
+function destinoLegible(tipo: CierreDestinoTipo): string {
+  return DESTINO_TIPO_LABEL[tipo];
 }
 
 /** El detalle del cierre de mensajero que ven la central y la satélite (`verCierreDetalle`). */
@@ -751,7 +820,8 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
   const desglose = r.desgloseIngresoBodegaRechazos;
   return {
     mensajeroNombre: r.cierre.mensajeroNombre,
-    destino: destinoLegible(r.cierre.destinoTipo, r.cierre.destinoZonaNombre),
+    destino: destinoLegible(r.cierre.destinoTipo),
+    zona: r.cierre.destinoZonaNombre || null,
     folio: folioDe(r.cierre.cierreId),
     estado: r.cierre.estado,
     solicitadoAt: r.cierre.solicitadoAt,
@@ -817,7 +887,7 @@ export function vistaMensajeroDesdeCierreDia(
   return {
     // Con audiencia mensajero el título es «Tu cierre del día»: el nombre no se pinta.
     mensajeroNombre: "",
-    destino: destinoLegible(c.destinoTipo, ""),
+    destino: destinoLegible(c.destinoTipo),
     folio: folioDe(c.cierreId),
     estado: c.estado,
     solicitadoAt: c.solicitadoAt,

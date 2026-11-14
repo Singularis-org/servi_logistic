@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useId, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +24,8 @@ import {
   avisosDe,
   cifrasDe,
   estadoConciliacionBodega,
-  fechasBodega,
-  fechasMensajero,
+  paresCabeceraBodega,
+  paresCabeceraMensajero,
   lineasDinero,
   pestanasDe,
   pieTextoDe,
@@ -37,6 +37,7 @@ import {
   type DetalleBodegaVista,
   type DetalleMensajeroVista,
   type Modo,
+  type ParCabecera,
   type Pestana,
   type PestanaId,
 } from "./detalle-cierre-vista";
@@ -103,9 +104,8 @@ export type DetalleCierreProps =
 interface Modelo {
   prefijo: string;
   titulo: string;
-  sub: string;
-  folio: string;
-  fechas: string;
+  /** SLT-153 (R450-R455): los datos de la cabecera, cada uno con su rótulo. */
+  pares: ParCabecera[];
   estado: ReactNode;
   retenidas: number;
   avisos: AvisoFranja[];
@@ -125,9 +125,7 @@ function modeloDe(props: DetalleCierreProps): Modelo {
     return {
       prefijo: L.DETALLE_CIERRE_BODEGA_PREFIJO,
       titulo: L.tituloCierreBodega(d.zonaNombre),
-      sub: L.subtituloCierreBodega(d.solicitadoPorNombre, d.conteos.mensajeros),
-      folio: d.folio,
-      fechas: fechasBodega(d),
+      pares: paresCabeceraBodega(d),
       estado: (
         <Badge variant={ESTADO_CONCILIACION_VARIANT[conciliacion]}>
           {ESTADO_CONCILIACION_LABEL[conciliacion]}
@@ -157,9 +155,7 @@ function modeloDe(props: DetalleCierreProps): Modelo {
   return {
     prefijo: L.DETALLE_CIERRE_PREFIJO,
     titulo: props.audiencia === "mensajero" ? L.TU_CIERRE_TITULO : L.tituloCierreMensajero(d.mensajeroNombre),
-    sub: d.destino,
-    folio: d.folio ?? L.FOLIO_NUEVO_LABEL,
-    fechas: fechasMensajero(d),
+    pares: paresCabeceraMensajero(d),
     estado:
       d.estado === null ? (
         <Badge variant="secondary">{L.SIN_SOLICITAR_LABEL}</Badge>
@@ -250,21 +246,25 @@ function BotonPie({
   );
 }
 
-/** SLT-109 (R241): `sub · folio · fechas` sin las partes vacías (sin destino no queda « · » suelto). */
-function LineaCabecera({ m }: Readonly<{ m: Modelo }>) {
-  const partes: { key: string; nodo: ReactNode }[] = [];
-  if (m.sub) partes.push({ key: "sub", nodo: m.sub });
-  if (m.folio) partes.push({ key: "folio", nodo: <span className="font-mono text-xs">{m.folio}</span> });
-  if (m.fechas) partes.push({ key: "fechas", nodo: m.fechas });
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (D1, R455): cada dato con su
+ * rótulo, como término y definición de un `<dl>`. Los pares ya vienen sin los vacíos (R451); se
+ * reparten en columnas y saltan de línea en el teléfono.
+ */
+function DatosCabecera({ pares }: Readonly<{ pares: ParCabecera[] }>) {
+  if (pares.length === 0) return null;
   return (
-    <p className="m-0 text-sm text-muted-foreground">
-      {partes.map((p, i) => (
-        <Fragment key={p.key}>
-          {i > 0 ? " · " : null}
-          {p.nodo}
-        </Fragment>
+    <dl
+      aria-label={L.DATOS_DEL_CIERRE_LABEL}
+      className="m-0 flex flex-wrap gap-x-5 gap-y-1.5 text-sm"
+    >
+      {pares.map((p) => (
+        <div key={p.rotulo} className="flex min-w-0 flex-col">
+          <dt className="text-xs text-muted-foreground">{p.rotulo}</dt>
+          <dd className={cn("m-0 text-foreground", p.mono && "font-mono")}>{p.valor}</dd>
+        </div>
       ))}
-    </p>
+    </dl>
   );
 }
 
@@ -302,7 +302,7 @@ function Cuerpo({ props, tituloId }: Readonly<{ props: DetalleCierreProps; titul
           {m.estado}
           <RetieneReprogramadasBadge cuantas={m.retenidas} />
         </div>
-        <LineaCabecera m={m} />
+        <DatosCabecera pares={m.pares} />
       </header>
 
       {m.avisos.map((a) => (
