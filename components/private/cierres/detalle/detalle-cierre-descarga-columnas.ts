@@ -18,6 +18,7 @@ import { RESULTADO_COL } from "@/app/(app)/cierres-admin/_components/cierres-ges
 
 import { COL_MENSAJERO, COL_SENALES } from "../fila/fila-gestion-labels";
 import { textoSenales, type AudienciaFila } from "../fila/fila-gestion-vista";
+import { COLUMNA_GANA_BODEGA } from "../cola/cola-cierres-labels";
 import { COBRO_A_LA_TIENDA_COL, PAGO_AL_MENSAJERO_COL } from "./detalle-cierre-labels";
 import { GANANCIA_COL } from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
 
@@ -45,6 +46,17 @@ export const COLUMNAS_DESCARGA_DETALLE_BODEGA: DescargaColumna[] = [
 ];
 
 /**
+ * SLT-154 (R476, R477, D5) — las columnas de «Descargar» del detalle según quien mira: la central, las
+ * de siempre; quien no ve el dinero de la empresa, las mismas con «Gana bodega» en el sitio de «Cobro
+ * a la tienda» (mismo orden).
+ */
+export function columnasDescargaDetalle(tipo: "mensajero" | "bodega", veDineroEmpresa: boolean): DescargaColumna[] {
+  const base = tipo === "bodega" ? COLUMNAS_DESCARGA_DETALLE_BODEGA : COLUMNAS_DESCARGA_DETALLE_CIERRE;
+  if (veDineroEmpresa) return base;
+  return base.map((c) => (c.clave === "cobroTienda" ? { clave: "ganaBodega", encabezado: COLUMNA_GANA_BODEGA } : c));
+}
+
+/**
  * R113 — una gestión del detalle de bodega a su fila: la de mensajero más su mensajero. Las señales,
  * con el texto de la audiencia «solo lectura», que es la de la fila que se ve (R31).
  */
@@ -64,6 +76,8 @@ export function filaDescargaDetalleCierre(g: CierreDetalleGestion, audiencia: Au
     resultado: RESULTADO_FILA_LABEL[g.resultado],
     recibido: g.montoRecibido,
     cobroTienda: g.ingresoEmpresa?.total ?? null,
+    // SLT-154 (R476): la columna que descarga quien no es la central; `null` = celda vacía.
+    ganaBodega: g.ingresoBodegaRechazo,
     pagoMensajero: g.pagoMensajero,
     senales: textoSenales(g, audiencia) || null,
   };

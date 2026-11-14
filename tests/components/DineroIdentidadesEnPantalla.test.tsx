@@ -940,6 +940,9 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
         <CierresBodegaAdminModule
+          // SLT-154 (R469, R477): las cuentas de la empresa son de la central; la satélite (la
+          // audiencia por defecto del módulo) ya no las ve.
+          audiencia="admin"
           pendientes={paginaInicial([BODEGA_CABECERA])}
           historico={paginaInicial([])}
         />

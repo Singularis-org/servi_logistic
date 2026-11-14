@@ -485,6 +485,9 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <CierresBodegaAdminModule
+        // SLT-154 (R469, R477): «Por tienda» y las cuentas de la empresa son de la central; la
+        // satélite (la audiencia por defecto del módulo) ya no las ve.
+        audiencia="admin"
         pendientes={paginaInicial([CABECERA])}
         historico={paginaInicial([])}
       />

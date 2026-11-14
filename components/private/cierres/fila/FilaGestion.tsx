@@ -80,6 +80,8 @@ const ANCHO: Record<ColumnaFila["id"], string> = {
   // fallo que SLT-152 tapaba con el recorte).
   recibido: "minmax(max-content,1fr)",
   cobro: "minmax(max-content,1fr)",
+  // SLT-154 (R474): ocupa el sitio de «Cobro a la tienda», con su mismo ancho.
+  ganaBodega: "minmax(max-content,1fr)",
   pago: "minmax(max-content,1fr)",
   ganancia: "minmax(max-content,1fr)",
   senales: "minmax(0,1.3fr)",
@@ -121,7 +123,7 @@ export function FilaGestion({
   const [abierta, setAbierta] = useState(false);
   const [calculoAbierto, setCalculoAbierto] = useState(false);
   const idCalculo = useId();
-  const columnas = columnasDe(audiencia, columnaMensajero);
+  const columnas = columnasDe(audiencia, columnaMensajero, quienMiraEsCentral);
   const ofrecidas = accionesDe(g, audiencia, acciones);
   const delaOrden = `de la orden ${g.numRemision} · ${g.destinatario}`;
   const senales = textoSenales(g, audiencia);

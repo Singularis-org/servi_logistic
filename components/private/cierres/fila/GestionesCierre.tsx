@@ -69,7 +69,7 @@ export function GestionesCierre({
     audiencia,
   );
   const visibles = filtrar(gestiones, filtro, audiencia);
-  const columnas = columnasDe(audiencia, columnaMensajero);
+  const columnas = columnasDe(audiencia, columnaMensajero, quienMiraEsCentral);
 
   return (
     <div className="flex flex-col gap-3">

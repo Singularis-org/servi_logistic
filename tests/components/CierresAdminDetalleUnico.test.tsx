@@ -243,7 +243,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SLT-100 R38 — el detalle de /cierres-admin es el detalle único", () => {
-  it.each(["admin", "satelite"] as const)("con audiencia %s abre el diálogo nuevo con sus pestañas", async (audiencia) => {
+  // SLT-154 (R473, R471): la satélite tiene su propio caso, abajo.
+  it.each(["admin"] as const)("con audiencia %s abre el diálogo nuevo con sus pestañas", async (audiencia) => {
     const { dialogo } = await abrir(detalle("solicitado"), { audiencia });
     const pestanas = within(dialogo).getByRole("tablist", { name: "Secciones del cierre" });
     expect(within(pestanas).getAllByRole("tab").map((t) => t.textContent)).toEqual([
@@ -258,6 +259,20 @@ describe("SLT-100 R38 — el detalle de /cierres-admin es el detalle único", ()
     // Lo que el modal anterior pintaba y el nuevo no (D3, D12).
     expect(within(dialogo).queryByText("Debe")).toBeNull();
     expect(within(dialogo).queryByRole("region", { name: "Decisión del cierre" })).toBeNull();
+  });
+
+  it("SLT-154 (R473, R471) — con audiencia satelite abre en Gestiones, sin «Le queda a la empresa»", async () => {
+    const { dialogo } = await abrir(detalle("solicitado"), { audiencia: "satelite" });
+    const pestanas = within(dialogo).getByRole("tablist", { name: "Secciones del cierre" });
+    expect(within(pestanas).getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Gestiones (2)",
+      "Lo que va a la central",
+      "Rechazados por la tienda (0)",
+    ]);
+    const cifras = within(dialogo).getByRole("group", { name: "Cifras del cierre" });
+    expect(within(cifras).getByRole("group", { name: "Recaudado" })).toHaveTextContent("₡100.000");
+    expect(within(cifras).queryByRole("group", { name: "Le queda a la empresa" })).toBeNull();
+    expect(within(cifras).queryByRole("group", { name: "Se le paga hoy a la tienda" })).toBeNull();
   });
 });
 
@@ -571,10 +586,11 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
     expect(within(dialogo).queryByRole("button", { name: /Corregir métodos de pago/ })).toBeNull();
     expect(within(dialogo).queryByRole("button", { name: /Corregir el resultado/ })).toBeNull();
     expect(within(dialogo).getByRole("button", { name: "Ajustar pago al mensajero de la orden REM-001 · Beto Ruiz" })).toBeInTheDocument();
-    // Lo que sí ve: el cobro a la tienda con su IVA incluido (R25, R93).
-    const cobro = within(dialogo).getByRole("region", { name: "Se le cobra a la tienda de la orden REM-001 · Beto Ruiz" });
-    expect(cobro).toHaveTextContent("Se le cobra₡3.051");
-    expect(cobro).toHaveTextContent("de eso, IVA (no es de la empresa)₡351");
+    // SLT-154 (R475): tampoco el cobro a la tienda, aunque llegara (antes lo veía: R25, R93).
+    expect(
+      within(dialogo).queryByRole("region", { name: "Se le cobra a la tienda de la orden REM-001 · Beto Ruiz" }),
+    ).toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: "Ver cómo se calculó" })).toBeNull();
   });
 
   it("«Ajustar pago» abre el diálogo de hoy con esa gestión", async () => {
@@ -620,7 +636,8 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
 // emite `verCierreDetalle` llega al detalle montado por el módulo: `abrirDetalle` lo guarda y el
 // mapeador lo pone en su hueco. Esperados escritos a mano (MA [94, 6]).
 describe("SLT-111 R267 — el reparto del servidor llega a «Dinero»", () => {
-  it.each(["admin", "satelite"] as const)("con audiencia %s la leyenda lleva «(94 %)» y «(6 %)»", async (audiencia) => {
+  // SLT-154 (R472): la satélite ya no ve esta barra (la de la empresa); la suya, en la vista (unidad).
+  it.each(["admin"] as const)("con audiencia %s la leyenda lleva «(94 %)» y «(6 %)»", async (audiencia) => {
     const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: [94, 6] }), { audiencia });
     const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
     expect([...reparto.querySelectorAll("li")].map((li) => li.textContent)).toEqual([

@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 
 import { FilaGestion, plantillaFila } from "@/components/private/cierres/fila/FilaGestion";
 import { columnasDe } from "@/components/private/cierres/fila/fila-gestion-vista";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
 import type { AccionesFila, AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
 import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
@@ -197,15 +198,15 @@ describe("R442, R490, R491, R445 — Destinatario, Tienda y Mensajero en su colu
 
   it("R492: guía en pista `max-content` e importes en `minmax(max-content,1fr)`, en las cuatro audiencias", () => {
     for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
-      const columnas = columnasDe(audiencia, audiencia === "solo lectura");
+      const columnas = columnasDe(audiencia, audiencia === "solo lectura", audiencia === "central");
       const pistas = String(plantillaFila(columnas).gridTemplateColumns).split(" ");
       columnas.forEach((c, i) => {
         if (c.id === "guia") expect(pistas[i]).toBe("max-content");
-        if (["recibido", "cobro", "pago", "ganancia"].includes(c.id)) expect(pistas[i]).toBe("minmax(max-content,1fr)");
+        if (["recibido", "cobro", "ganaBodega", "pago", "ganancia"].includes(c.id)) expect(pistas[i]).toBe("minmax(max-content,1fr)");
       });
     }
     // La ganancia del mensajero es el importe que se veía montado en la columna vecina.
-    const mensajero = columnasDe("mensajero", false);
+    const mensajero = columnasDe("mensajero", false, false);
     const i = mensajero.findIndex((c) => c.id === "ganancia");
     expect(i).toBeGreaterThan(-1);
     expect(String(plantillaFila(mensajero).gridTemplateColumns).split(" ")[i]).toBe("minmax(max-content,1fr)");
@@ -317,10 +318,11 @@ describe("R25, R27, R30, R93-R98 — tarjetas del canvas (central)", () => {
 
 describe("R25, R30 — tarjetas por audiencia", () => {
   it.each([
-    ["satelite", false, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero"]],
+    // SLT-154 (R475): sin la central, sin «Se le cobra a la tienda».
+    ["satelite", false, ["Recibió el mensajero", "Se le paga al mensajero"]],
     ["mensajero", false, ["Recibió el mensajero", "Tu ganancia"]],
     ["solo lectura", true, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero", "Fulfillment · se cobró al crear la orden"]],
-    ["solo lectura", false, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero"]],
+    ["solo lectura", false, ["Recibió el mensajero", "Se le paga al mensajero"]],
   ] as const)("%s (mira la central: %s)", async (audiencia, central, titulos) => {
     const g = gestionCanvas();
     const user = montar(g, { audiencia, central });
@@ -541,5 +543,74 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
       "aria-expanded",
       "false",
     );
+  });
+});
+
+// SLT-154 «Vista de la bodega satélite: solo lo suyo» (R474, R475, R477): la lista y la fila de quien
+// no es la central. La gestión rechazada trae el cobro (defensa: aunque llegara, no se pinta) y lo que
+// gana la bodega por ella, ₡500 (corpus de `e2e/cierre-bodega-satelite.spec.ts`).
+describe("SLT-154 — quien no es la central (R474, R475)", () => {
+  const rechazo = () =>
+    gestionCanvas({ resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" });
+
+  function montarLista(central: boolean) {
+    render(
+      <GestionesCierre
+        gestiones={[{ gestion: rechazo(), mensajeroNombre: "Ana Mensajera" }]}
+        audiencia="solo lectura"
+        quienMiraEsCentral={central}
+        congeladoAt={CONGELADO_AT}
+        acciones={{}}
+        columnaMensajero
+      />,
+    );
+    return userEvent.setup();
+  }
+
+  function cabecera(): string[] {
+    const region = screen.getByRole("region", { name: "Órdenes del cierre" });
+    const fila = region.firstElementChild as HTMLElement;
+    return Array.from(fila.querySelectorAll("[data-columna]")).map((c) => c.textContent ?? "");
+  }
+
+  it("R474 — la cabecera trae «Gana bodega» en el sitio de «Cobro a la tienda»", () => {
+    montarLista(false);
+    expect(cabecera()).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R474 — la fila del rechazo muestra ₡500 en «Gana bodega»", () => {
+    montarLista(false);
+    expect(celda("ganaBodega")).toHaveTextContent("₡500");
+    expect(document.querySelector('[data-gestion] [data-columna="cobro"]')).toBeNull();
+  });
+
+  it("R475 — desplegada, sin «Se le cobra a la tienda» ni «Ver cómo se calculó»; conserva Recibió y el pago", async () => {
+    const user = montarLista(false);
+    await desplegar(user, rechazo());
+    expect(screen.queryByText("Se le cobra a la tienda")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ver cómo se calculó" })).toBeNull();
+    expect(Array.from(document.querySelectorAll("section h3")).map((h) => h.textContent)).toEqual([
+      "Recibió el mensajero",
+      "Se le paga al mensajero",
+    ]);
+  });
+
+  it("R477 — la central, con la misma gestión, conserva el cobro y «Ver cómo se calculó»", async () => {
+    const user = montarLista(true);
+    expect(cabecera()).toContain("Cobro a la tienda");
+    expect(cabecera()).not.toContain("Gana bodega");
+    await desplegar(user, rechazo());
+    expect(screen.getByText("Se le cobra a la tienda")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver cómo se calculó" })).toBeInTheDocument();
   });
 });

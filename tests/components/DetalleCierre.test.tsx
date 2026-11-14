@@ -530,3 +530,87 @@ describe("R1 — un componente para todo", () => {
     }
   });
 });
+
+// ═══ SLT-154 «Vista de la bodega satélite: solo lo suyo» (T3.5) ═══════════════════════════════════
+// Corpus de `e2e/cierre-bodega-satelite.spec.ts`, a mano: recaudado 9 000 (efectivo) − pago 1 500 −
+// gana la bodega 500 = debe llegar 7 000. `money()` no pinta «,00»: «₡9.000», «₡1.500», «₡500»,
+// «₡7.000». Lo de la empresa llega en `null` a la satélite (R460, R462).
+describe("SLT-154 — la satélite ve solo lo suyo (R468-R473)", () => {
+  const TOTALES_S = { efectivo: "9000.00", simpe: "0.00", transferencia: "0.00", general: "9000.00" };
+  const S4: DetalleBodegaVista = {
+    ...BODEGA,
+    zonaNombre: "Satélite Norte",
+    faltaPorRecibir: "7000.00",
+    totales: TOTALES_S,
+    totalPagoMensajero: "1500.00",
+    totalIngresoBodegaRechazos: "500.00",
+    paraLaCentral: "7000.00",
+    efectivoCubreDescuentos: true,
+    pagoTienda: null,
+    cobradoSobreRecaudado: null,
+    ivaFacturado: null,
+    netoEmpresa: null,
+    totalesIngreso: null,
+    partesPorTienda: null,
+    centralDebe: "0.00",
+    porcentajesReparto: [78, 17, 5],
+    conteos: { gestiones: 2, mensajeros: 1, cierres: 1, pagosAjustados: 0 },
+  };
+  const S6: DetalleMensajeroVista = {
+    ...MENSAJERO,
+    estado: "aprobado",
+    totales: TOTALES_S,
+    totalPagoMensajero: "1500.00",
+    empresa: null,
+    haciaLaCentral: {
+      totales: TOTALES_S,
+      pago: "1500.00",
+      ganaBodega: "500.00",
+      paraLaCentral: "7000.00",
+      efectivoCubreDescuentos: true,
+      porcentajes: [78, 17, 5],
+      modeloNuevo: false,
+    },
+    conteos: { ...MENSAJERO.conteos, gestiones: 2, entregadas: 1, noEntregadas: 1, rechazosDeTienda: 0, tiendas: 0 },
+  };
+
+  const tarjeta = (id: string) => document.querySelector<HTMLElement>(`[data-cifra="${id}"]`);
+  const PROHIBIDOS = ["Le queda a la empresa", "Lo que se le factura a la tienda", "Se le paga hoy a la tienda"];
+
+  async function revisar(user: ReturnType<typeof userEvent.setup>) {
+    const dialogo = await screen.findByRole("dialog");
+    expect(tarjeta("recaudado")).toHaveTextContent("₡9.000");
+    expect(tarjeta("pago")).toHaveTextContent("₡1.500");
+    expect(tarjeta("ganaBodega")).toHaveTextContent("₡500");
+    expect(tarjeta("paraCentral")).toHaveTextContent("₡7.000");
+    expect(tarjeta("leQueda")).toBeNull();
+    expect(tarjeta("paraTienda")).toBeNull();
+    // R470, R473: abre en Gestiones.
+    expect(screen.getByRole("tab", { name: "Gestiones (2)" }).getAttribute("aria-selected")).toBe("true");
+    for (const t of PROHIBIDOS) expect(dialogo.textContent).not.toContain(t);
+    // Y en la pestaña del dinero, tampoco.
+    await user.click(screen.getByRole("tab", { name: "Lo que va a la central" }));
+    expect(screen.getByRole("tabpanel").textContent).toContain("Lo que va a la central");
+    for (const t of PROHIBIDOS) expect(dialogo.textContent).not.toContain(t);
+  }
+
+  it("S4 (R468, R469, R470) — tarjetas, pestaña abierta y sin las cifras de la empresa", async () => {
+    bodega("satelite", "decidir", S4);
+    await revisar(userEvent.setup());
+    expect(
+      within(screen.getByRole("tablist", { name: "Secciones del cierre" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Gestiones (2)", "Lo que va a la central", "Mensajeros (1)", "Conciliación"]);
+  });
+
+  it("S6 (R471, R472, R473) — tarjetas, pestaña abierta y sin las cifras de la empresa", async () => {
+    mensajero("satelite", "solo lectura", { detalle: S6 });
+    await revisar(userEvent.setup());
+    expect(
+      within(screen.getByRole("tablist", { name: "Secciones del cierre" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Gestiones (2)", "Lo que va a la central", "Rechazados por la tienda (0)"]);
+  });
+});
