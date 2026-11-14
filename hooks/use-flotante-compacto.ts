@@ -38,7 +38,11 @@ export function useFlotanteCompacto(): boolean {
   const referenciaRef = useRef(0);
 
   useEffect(() => {
-    referenciaRef.current = window.scrollY;
+    // La referencia arranca ARRIBA (0) y se mide una vez al montar: si el componente se hidrata con
+    // la página ya desplazada (navegación que restaura el scroll, o un móvil lento que pinta el HTML
+    // del servidor y el usuario baja antes de que llegue el JS), el `scroll` ya ocurrió y no se
+    // repite; sin esta medida el flotante se quedaría grande hasta el siguiente gesto.
+    referenciaRef.current = 0;
     let marco: number | null = null;
     let pendiente = false;
 
@@ -65,6 +69,7 @@ export function useFlotanteCompacto(): boolean {
     }
 
     window.addEventListener("scroll", alDesplazar, { passive: true });
+    medir();
     return () => {
       window.removeEventListener("scroll", alDesplazar);
       if (pendiente && marco !== null) window.cancelAnimationFrame(marco);

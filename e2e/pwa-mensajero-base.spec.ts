@@ -31,7 +31,7 @@ import {
  *  (b) R497, R498: al bajar por Reparto, los dos flotantes («Reportar un problema» y el chat) miden
  *      44 px; al volver arriba, su tamaño de hoy (48 / 56 px).
  *  (c) R490-R492: `/cierre-dia` a 1280 px, con una gestión de destinatario largo e importe de
- *      ₡99.999.999,99: en «Gestiones» no hay «…» y los datos de la fila no se montan.
+ *      ₡99.999.999: en «Gestiones» no hay «…» y los datos de la fila no se montan.
  *
  * DATOS: empresa nueva (`crearEscenarioReparto`), cada caso con SU mensajero de la zona satélite y
  * SUS órdenes, por los servicios reales. El escenario solo deja fijar destinatario, remisión y monto
@@ -69,7 +69,9 @@ test.describe("SLT-156 A — base común de las pantallas del mensajero", () => 
 
       const tarjeta = page.locator("article").filter({ hasText: DESTINATARIO_LARGO });
       await expect(tarjeta.first()).toBeVisible();
-      await expect(tarjeta.first().getByText(DESTINATARIO_LARGO, { exact: true })).toBeVisible();
+      // El destinatario de la tarjeta (el `<p>`); el `<dd>` del detalle plegado repite el mismo texto.
+      await expect(tarjeta.first().locator("p").filter({ hasText: DESTINATARIO_LARGO })).toHaveText(DESTINATARIO_LARGO);
+      await expect(tarjeta.first().locator("p").filter({ hasText: DESTINATARIO_LARGO })).toBeVisible();
 
       await sinDesborde(page);
       await sinElipsis(page.locator("article"));
@@ -94,6 +96,10 @@ test.describe("SLT-156 A — base común de las pantallas del mensajero", () => 
     expect(alto, "la página no tiene por dónde bajar").toBeGreaterThan(200);
 
     await page.mouse.wheel(0, 600);
+    // Primero, que la VENTANA bajó (el hook escucha el `scroll` de `window`).
+    await expect.poll(() => page.evaluate(() => window.scrollY), { message: "la ventana no bajó" }).toBeGreaterThan(100);
+    // En dev el JS puede hidratar después del gesto: el hook mide también al montar.
+    await expect(page.getByRole("button", { name: BUG })).toHaveAttribute("data-compacto", "", { timeout: 15_000 });
     await expect.poll(() => anchoDe(page, BUG)).toBe(44);
     await expect.poll(() => anchoDe(page, CHAT)).toBe(44);
 

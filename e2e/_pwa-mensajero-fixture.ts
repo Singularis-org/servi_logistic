@@ -23,39 +23,104 @@ export const PRODUCTO_LARGO =
   "espátula de silicona incl.";
 /** Motivo de rechazo de 300 caracteres. */
 export const MOTIVO_LARGO = ("El cliente no quiso recibir el paquete porque dice que no lo pidió y que no conoce la tienda. ").repeat(4).slice(0, 300);
-/** El importe más ancho (₡99 999 999,99). */
-export const IMPORTE_LARGO = 99_999_999.99;
+/**
+ * El importe más ancho que admite una orden: ₡99 999 999. El monto a cobrar es ENTERO
+ * (`orden_monto_cobrar_entero_check`), y el monto recibido de una entrega tiene que cuadrar con él.
+ */
+export const IMPORTE_LARGO = 99_999_999;
 
 /** Anchos de teléfono de la ficha (R501). */
 export const ANCHOS_MOVIL = [360, 414] as const;
 export const ALTO_MOVIL = 780;
 
+/** El contenedor del contenido de las pantallas autenticadas (`SidebarInset`, `app/(app)/layout.tsx`). */
+export const CONTENIDO = '[data-slot="sidebar-inset"]';
+
 /**
- * R501 — ni el documento ni el contenedor desbordan en horizontal (`scrollWidth <= clientWidth`).
- * `selector` es opcional: sin él, solo el documento.
+ * R501 — nada desborda en horizontal.
+ *
+ * Medir solo `document.documentElement.scrollWidth` NO sirve: el contenido vive dentro de
+ * `SidebarInset`, que lleva `overflow-x-clip` y `min-w-0`, así que lo que se sale se RECORTA sin que
+ * el documento lo note (lo cazó el reviewer de SLT-156). Por eso, además del documento, se mide cada
+ * descendiente visible del contenido: ninguno puede tener su borde derecho (`getBoundingClientRect`)
+ * más allá del borde derecho del contenido. Se saltan los `position: fixed` (flotantes) y lo que vive
+ * dentro de un contenedor con scroll horizontal propio (`overflow-x: auto|scroll`), que es su
+ * manera legítima de enseñar algo ancho. En un carrusel, cada diapositiva no puede ser más ancha que
+ * su vista y lo de dentro no puede salirse de su diapositiva.
+ *
+ * `selector` es opcional: además, cada contenedor que case cumple `scrollWidth <= clientWidth`.
  */
 export async function sinDesborde(page: Page, selector?: string): Promise<void> {
-  const medidas = await page.evaluate((sel) => {
-    const doc = document.documentElement;
-    const out: { que: string; scroll: number; client: number }[] = [
-      { que: "documento", scroll: doc.scrollWidth, client: doc.clientWidth },
-    ];
-    if (sel) {
-      document.querySelectorAll<HTMLElement>(sel).forEach((el, i) => {
-        out.push({ que: `${sel} #${i}`, scroll: el.scrollWidth, client: el.clientWidth });
-      });
-    }
-    return out;
-  }, selector ?? null);
-  if (selector) expect(medidas.length, `no hay ningún ${selector} que medir`).toBeGreaterThan(1);
-  for (const m of medidas) {
+  const r = await page.evaluate(
+    ({ sel, contenido }) => {
+      const doc = document.documentElement;
+      const medidas: { que: string; scroll: number; client: number }[] = [
+        { que: "documento", scroll: doc.scrollWidth, client: doc.clientWidth },
+      ];
+      if (sel) {
+        document.querySelectorAll<HTMLElement>(sel).forEach((el, i) => {
+          medidas.push({ que: `${sel} #${i}`, scroll: el.scrollWidth, client: el.clientWidth });
+        });
+      }
+
+      const raiz = document.querySelector<HTMLElement>(contenido);
+      if (!raiz) return { medidas, hayContenido: false, revisados: 0, fuera: [] as string[] };
+      const borde = raiz.getBoundingClientRect().right;
+      const fuera: string[] = [];
+      let revisados = 0;
+
+      /** ¿`el` o un ancestor hasta `raiz` es fijo o tiene scroll horizontal propio? */
+      function exento(el: HTMLElement): boolean {
+        for (let n: HTMLElement | null = el; n && n !== raiz; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.position === "fixed") return true;
+          if (n !== el && (cs.overflowX === "auto" || cs.overflowX === "scroll")) return true;
+        }
+        return false;
+      }
+
+      for (const el of Array.from(raiz.querySelectorAll<HTMLElement>("*"))) {
+        const caja = el.getBoundingClientRect();
+        if (caja.width === 0 || caja.height === 0) continue;
+        if (getComputedStyle(el).visibility === "hidden") continue;
+        revisados++;
+        if (exento(el)) continue;
+        // Carrusel (`components/ui/carousel.tsx`): las diapositivas de fuera de la vista están a la
+        // derecha POR DISEÑO. Ahí la regla es otra: la diapositiva no es más ancha que su vista, y lo
+        // de dentro no se sale de su diapositiva.
+        if (el.getAttribute("data-slot") === "carousel-item") {
+          const vista = el.closest<HTMLElement>('[data-slot="carousel-content"]');
+          const ancho = vista ? vista.getBoundingClientRect().width : borde;
+          // Sin el relleno: el hueco entre diapositivas (`pl-*` con `-ml-*` en la pista) es del carrusel.
+          const cs = getComputedStyle(el);
+          const util = caja.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+          if (util > ancho + 1) fuera.push(`diapositiva de ${Math.round(util)} px útiles en una vista de ${Math.round(ancho)}`);
+          continue;
+        }
+        const diapositiva = el.parentElement?.closest<HTMLElement>('[data-slot="carousel-item"]');
+        const limite = diapositiva && raiz.contains(diapositiva) ? diapositiva.getBoundingClientRect().right : borde;
+        if (caja.right > limite + 1) {
+          const nombre = `${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.split(/\s+/).slice(0, 3).join(".") : ""}`;
+          fuera.push(`${nombre} acaba en ${Math.round(caja.right)} > ${Math.round(limite)}`);
+        }
+      }
+      return { medidas, hayContenido: true, revisados, fuera: fuera.slice(0, 10) };
+    },
+    { sel: selector ?? null, contenido: CONTENIDO },
+  );
+
+  expect(r.hayContenido, `no hay contenido ${CONTENIDO} que medir`).toBe(true);
+  expect(r.revisados, "el contenido no tiene nada visible que medir").toBeGreaterThan(0);
+  if (selector) expect(r.medidas.length, `no hay ningún ${selector} que medir`).toBeGreaterThan(1);
+  for (const m of r.medidas) {
     expect(m.scroll, `${m.que} desborda: scrollWidth ${m.scroll} > clientWidth ${m.client}`).toBeLessThanOrEqual(m.client);
   }
+  expect(r.fuera, "elementos que se salen del contenido por la derecha (recortados por el inset)").toEqual([]);
 }
 
 /**
  * R490 — ningún elemento con texto de la región se recorta: ni `text-overflow: ellipsis`, ni
- * `-webkit-line-clamp`, ni `overflow: hidden` con el contenido más ancho que la caja.
+ * `-webkit-line-clamp`, ni `overflow: hidden|clip` con el contenido más ancho que la caja.
  */
 export async function sinElipsis(region: Locator): Promise<void> {
   await expect(region.first()).toBeVisible();
@@ -71,7 +136,10 @@ export async function sinElipsis(region: Locator): Promise<void> {
         const texto = (el.textContent ?? "").trim().slice(0, 40);
         if (cs.textOverflow === "ellipsis") out.push(`ellipsis: «${texto}»`);
         else if (clamp && clamp !== "none") out.push(`line-clamp ${clamp}: «${texto}»`);
-        else if ((cs.overflowX === "hidden" || cs.overflow === "hidden") && el.scrollWidth > el.clientWidth + 1) {
+        else if (
+          (cs.overflowX === "hidden" || cs.overflowX === "clip" || cs.overflow === "hidden" || cs.overflow === "clip") &&
+          el.scrollWidth > el.clientWidth + 1
+        ) {
           out.push(`overflow oculto (${el.scrollWidth} > ${el.clientWidth}): «${texto}»`);
         }
       }

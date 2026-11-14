@@ -46,10 +46,12 @@ describe("R493 — tamaños táctiles de `Button`", () => {
 });
 
 describe("R493 — conmutador Mosaico / Detalle a 44 px", () => {
-  it("sus dos botones miden 44 px de alto (`[&>button]:h-11` en el grupo)", () => {
+  it("en móvil sus dos botones miden 44 px de alto (`max-md:[&>button]:h-11` en el grupo); en escritorio, los de hoy", () => {
     render(<VistaCardsToggle vista="mosaico" onVistaChange={vi.fn()} />);
     const grupo = screen.getByRole("group", { name: "Vista de las órdenes" });
-    expect(clases(grupo)).toContain("[&>button]:h-11");
+    expect(clases(grupo)).toContain("max-md:[&>button]:h-11");
+    // Sin variante sin prefijo: en escritorio (y en `/novedades`) el alto no cambia.
+    expect(clases(grupo)).not.toContain("[&>button]:h-11");
     // Los dos botones son hijos DIRECTOS del grupo: si no, el selector `>button` no los alcanza.
     for (const nombre of ["Mosaico", "Detalle"]) {
       expect(screen.getByRole("button", { name: nombre }).parentElement).toBe(grupo);

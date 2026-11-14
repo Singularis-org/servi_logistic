@@ -77,6 +77,15 @@ describe("R497, R498 — `useFlotanteCompacto` con el scroll de la ventana", () 
     expect(result.current).toBe(false);
   });
 
+  it("montado con la página ya desplazada (se hidrató tarde): reducido desde el principio", () => {
+    y = 400;
+    const { result } = renderHook(() => useFlotanteCompacto());
+    expect(result.current).toBe(true);
+    // Y desde ahí, subir más de 8 px lo devuelve.
+    desplazarA(391);
+    expect(result.current).toBe(false);
+  });
+
   it("al volver arriba del todo, tamaño de hoy", () => {
     const { result } = renderHook(() => useFlotanteCompacto());
     desplazarA(50);
