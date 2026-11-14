@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useToast } from "@/hooks/useToast";
+import type { ResultadoLectura } from "@/hooks/useEntradaEscaneo";
 import {
   listarMisAsignaciones,
   recogerAsignaciones,
@@ -30,16 +31,21 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 //
 // NO parsea URLs de QR: el llamador entrega ya el `num_guia` (cámara y teclado via
 // `leerGuia`, la lectura única de SLT-157). Tampoco decide la
-// revalidación: `recoger` devuelve `true` en éxito y el consumidor dispara su refresh.
+// revalidación: `recoger` devuelve el acierto y el consumidor dispara su refresh.
+//
+// SLT-158: `recoger` devuelve el resultado de la lectura (acierto, o error con el MISMO texto
+// del toast) para que la tarjeta de escaneo suene, marque y deje escrito el motivo. Y la guarda
+// anti-doble envío pasa a un ref: con estado, la lectura que la tarjeta encola justo al
+// terminar la anterior veía todavía el `procesando` del render previo y se perdía.
 
 export interface UseRecogerPorGuia {
   /**
-   * Recoge la orden cuyo `numGuia` coincide con `numGuia`. Devuelve `true` SOLO si la
-   * recogida fue exitosa (el consumidor revalida la lista y limpia su control). Si la
-   * guía no está entre las "por recoger" cargadas, relee una vez la lista del servidor; si
-   * tampoco está ahí, muestra un toast de rechazo y NO llama a la action.
+   * Recoge la orden cuyo `numGuia` coincide con `numGuia`. Devuelve `{ tipo: "acierto" }`
+   * SOLO si la recogida fue exitosa (el consumidor revalida la lista); si no, el error con el
+   * mismo motivo del toast. Si la guía no está entre las "por recoger" cargadas, relee una
+   * vez la lista del servidor; si tampoco está ahí, la rechaza y NO llama a la action.
    */
-  recoger: (numGuia: number) => Promise<boolean>;
+  recoger: (numGuia: number) => Promise<ResultadoLectura>;
   /** `true` mientras hay una recogida o una relectura en curso (para deshabilitar controles). */
   procesando: boolean;
 }
@@ -49,16 +55,31 @@ export function useRecogerPorGuia(
 ): UseRecogerPorGuia {
   const toast = useToast();
   const [procesando, setProcesando] = useState(false);
+  // La guarda de SLT-69/R9, en un ref: se suelta en el `finally`, sin esperar a un render.
+  const enCurso = useRef(false);
+
+  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
+  const rechazar = useCallback(
+    (motivo: string): ResultadoLectura => {
+      toast.error(motivo);
+      return { tipo: "error", motivo };
+    },
+    [toast],
+  );
 
   const recoger = useCallback(
-    async (numGuia: number): Promise<boolean> => {
-      if (procesando) return false;
+    async (numGuia: number): Promise<ResultadoLectura> => {
+      // Sin toast: la otra recogida en curso ya dirá el suyo.
+      if (enCurso.current) {
+        return { tipo: "error", motivo: "Hay otra recogida en curso." };
+      }
       // SLT-69 (R10): la guía que SÍ está en la lista cargada sigue el camino de siempre, sin
       // un viaje extra al servidor.
       let orden = porRecoger.find((o) => o.numGuia === numGuia);
       // `procesando` se enciende ANTES de cualquier espera (relectura o recogida), para que un
       // segundo envío salga por la guarda de arriba (SLT-69/R9), y un solo `try/finally` lo
       // apaga en todos los caminos, incluida una relectura que lance.
+      enCurso.current = true;
       setProcesando(true);
       try {
         if (!orden) {
@@ -70,21 +91,17 @@ export function useRecogerPorGuia(
             vigente = await listarMisAsignaciones();
           } catch {
             // No se traga en silencio: se convierte en el desenlace visible de reintento (R5).
-            toast.error("No se pudo registrar la recogida. Intentá de nuevo.");
-            return false;
+            return rechazar("No se pudo registrar la recogida. Intentá de nuevo.");
           }
           if (vigente.status === "unauthenticated") {
-            toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
-            return false;
+            return rechazar("Tu sesión expiró. Inicia sesión de nuevo.");
           }
           if (vigente.status !== "ok") {
-            toast.error("No se pudo registrar la recogida. Intentá de nuevo.");
-            return false;
+            return rechazar("No se pudo registrar la recogida. Intentá de nuevo.");
           }
           orden = vigente.porRecoger.find((o) => o.numGuia === numGuia);
           if (!orden) {
-            toast.error(`La guía ${numGuia} no está entre tus órdenes para recoger.`);
-            return false;
+            return rechazar(`La guía ${numGuia} no está entre tus órdenes para recoger.`);
           }
         }
         // Feature 261 (F1, R13) — LA ORDEN ESTÁ RESERVADA PARA UN DÍA POSTERIOR: se rechaza AQUÍ,
@@ -97,13 +114,12 @@ export function useRecogerPorGuia(
         // servidor (R1/R4/R5) y vive además en el `WHERE` de la escritura. `esParaManana` lo
         // decidió el SERVIDOR (R14): el navegador no compara ninguna fecha.
         if (orden.esParaManana) {
-          toast.error(avisoReservaParaOtroDia(orden.fechaRepartoISO));
-          return false;
+          return rechazar(avisoReservaParaOtroDia(orden.fechaRepartoISO));
         }
         const result = await recogerAsignaciones({ ordenIds: [orden.id] });
         if (result.status === "ok") {
           toast.success(`Guía ${numGuia} recogida.`);
-          return true;
+          return { tipo: "acierto" };
         }
         switch (result.status) {
           case "conflict":
@@ -113,36 +129,31 @@ export function useRecogerPorGuia(
             // la misma frase de arriba, con el día que la orden trae consigo: una regla, dos
             // sitios, un texto. Sin esto, el mensajero leería «la orden ya no está por recoger»,
             // que es falso y le mandaría a actualizar para siempre.
-            toast.error(
+            return rechazar(
               result.detalle.some((d) => d.codigo === "reservada_para_otro_dia")
                 ? avisoReservaParaOtroDia(orden.fechaRepartoISO)
                 : `La orden ya no está en «${nombreDeEstado("mensajero_recogiendo_en_bodega")}». Actualiza y vuelve a intentar.`,
             );
-            break;
           case "forbidden":
-            toast.error("No tienes permiso para recoger esta orden.");
-            break;
+            return rechazar("No tienes permiso para recoger esta orden.");
           case "unauthenticated":
-            toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
-            break;
+            return rechazar("Tu sesión expiró. Inicia sesión de nuevo.");
           case "validation_error":
-            toast.error("Código inválido.");
-            break;
+            return rechazar("Código inválido.");
           // FICHA 440: el tropiezo de base. Este `switch` NO tiene `default`, así que sin este
           // caso el desenlace nuevo no pintaría NADA: el spinner se apagaría y la guía se
           // quedaría sin recoger en silencio, que es exactamente el fallo mudo que la ficha vino
           // a tapar. No se le dice qué falló —no es asunto suyo ni lo puede arreglar—, se le dice
           // que puede volver a intentarlo, que aquí sí suele funcionar a la segunda.
           case "error":
-            toast.error("No se pudo registrar la recogida. Intentá de nuevo.");
-            break;
+            return rechazar("No se pudo registrar la recogida. Intentá de nuevo.");
         }
-        return false;
       } finally {
+        enCurso.current = false;
         setProcesando(false);
       }
     },
-    [porRecoger, procesando, toast],
+    [porRecoger, toast, rechazar],
   );
 
   return { recoger, procesando };
