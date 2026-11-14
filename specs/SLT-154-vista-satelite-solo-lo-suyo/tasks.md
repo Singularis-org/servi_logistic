@@ -119,7 +119,7 @@
 
 ## T4 — Tests existentes que cambian (depende de T2 y T3)
 
-- [ ] **T4.1** Actualizar SOLO las expectativas que esta ficha cambia, de la lista de T0.1 (previstas:
+- [x] **T4.1** Actualizar SOLO las expectativas que esta ficha cambia, de la lista de T0.1 (previstas:
   `satelite-cierre-bodega-lectura.int.test.ts`, `cierres-bodega-admin-service.test.ts`,
   `cierres-admin-service.test.ts`, `CierresAdminDetalleUnico.test.tsx`,
   `CierresBodegaAdminDetalleUnico.test.tsx`). Cada cambio con un comentario que cita su `R`. Nada de
@@ -128,7 +128,7 @@
 
 ## T5 — E2E de la satélite (depende de T3 y T4)
 
-- [ ] **T5.1** `e2e/cierre-bodega-satelite.spec.ts`, test nuevo «4 — la satélite ve solo lo suyo»
+- [x] **T5.1** (escrito, sin ejecutar) `e2e/cierre-bodega-satelite.spec.ts`, test nuevo «4 — la satélite ve solo lo suyo»
   (R468–R471, R474, R475), con los datos del archivo:
   - S4 («Ver» en «Solicitados»): tarjetas `[data-cifra]` recaudado «₡9.000», pago «₡1.500», ganaBodega
     «₡500», paraCentral «₡7.000»; sin `[data-cifra="leQueda"]`; pestaña abierta «Gestiones (2)»; en
@@ -138,7 +138,7 @@
     rechazo muestra «₡500»; desplegada, sin «Se le cobra a la tienda» ni «Ver cómo se calculó».
   - S6 (el cierre del mensajero abierto por la satélite): recaudado «₡9.000», pago «₡1.500»,
     ganaBodega «₡500», paraCentral «₡7.000»; sin «Se le paga hoy a la tienda».
-- [ ] **T5.2** Acotar por rol los localizadores «Lo que va a la central» de los pasos de la satélite
+- [x] **T5.2** (escrito, sin ejecutar) Acotar por rol los localizadores «Lo que va a la central» de los pasos de la satélite
   (pestaña y cuenta se llaman igual). Los pasos de la central (2, 3) no cambian (R477).
   **Hecho T5:** `pnpm exec playwright test e2e/cierre-bodega-satelite.spec.ts` y
   `pnpm exec playwright test --project=dinero` verdes en local, con base desechable nueva y
@@ -146,14 +146,14 @@
 
 ## T6 — Cierre
 
-- [ ] **T6.1** `./init.sh` verde (con `INIT_EXIT=$?` escrito dentro del log).
-- [ ] **T6.2** Mapa `R → test` de R460–R478 en `progress/impl_SLT-154.md` (el de
+- [x] **T6.1** `./init.sh` verde (con `INIT_EXIT=$?` escrito dentro del log).
+- [x] **T6.2** Mapa `R → test` de R460–R478 en `progress/impl_SLT-154.md` (el de
   `requirements.md > Trazabilidad`, con los nombres reales).
-- [ ] **T6.3** Reuso (P10, RU1–RU6): `git diff --diff-filter=A --name-only origin/dev -- '*.tsx'` vacío;
+- [x] **T6.3** Reuso (P10, RU1–RU6): `git diff --diff-filter=A --name-only origin/dev -- '*.tsx'` vacío;
   el diff de `detalle-cierre-vista.ts` no añade miembros a `CifraId`; ninguna prop nueva en
   `DineroCierre`, `Cuenta`, `CifrasCierre`, `DetalleCierre`, `GestionesCierre` ni `FilaGestion`.
   **Hecho:** la salida de los tres checks en `impl_SLT-154.md > T6`.
-- [ ] **T6.4** `scripts/tamano-pr.mjs` (en `./init.sh`) por debajo del 80%.
+- [x] **T6.4** (40/40 archivos: por encima del 80 %, lo decide el leader) `scripts/tamano-pr.mjs` (en `./init.sh`) por debajo del 80%.
 
 ## Tamaño
 

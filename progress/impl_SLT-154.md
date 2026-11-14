@@ -343,3 +343,122 @@ Ninguna sobrevive al final.
 
 Vista de T3 hecha y probada con literales a mano (R468-R478, 15 mutaciones muertas); typecheck de
 producción en cero; quedan los 99 errores y los rojos de servicios/integración de T4.
+
+---
+
+# Tanda 3 — tests existentes (T4), E2E escrito (T5) y cierre (T6), backend_dev, 2026-11-14
+
+El grafo no indexa este worktree: todo con Grep/Read.
+
+## T4 — Archivos (solo tests; cada cambio cita su `R` de SLT-154)
+
+| Archivo | Qué cambia | R |
+|---|---|---|
+| `tests/unit/services/cierres-bodega-admin-service.test.ts` | asercion `exigirDineroEmpresa` (lanza si la central recibe en `null` alguna de las ocho, en el agregado o en un cierre del día) tras el `ok` de 13 lecturas del MAESTRO; ningún esperado tocado. Doble `detalleCierreRow` con `pagoIndependienteEfectivo: false` (columna nueva; modelo anterior, como todos sus casos). SLT-107 R280/R283: la gestión de la satélite llega con `ingresoEmpresa: null` y `tarifaModelo: "viejo"`. SLT-107 R284: la central igual que antes + `exigirDineroEmpresa`; la satélite con las ocho en `null` en el agregado y en el cierre del día (mirado por nombre); paridad del resto con `centralDebe` a mano «0.00» (efectivo 10,00 ≥ pago 5,00) | R463, R460, R461, R465, R466 |
+| `tests/unit/services/cierres-admin-service.test.ts` | `exigirDineroEmpresa` (nueve cifras; `porcentajesReparto` no, ya admitía `null`) tras 12 lecturas del MAESTRO; ningún esperado tocado | R462, R465 |
+| `tests/integration/db/cierre-iva-aparte-sl39.test.ts` | SL-39 R21–R23 cierre A y B: las cifras se leen con el maestro (mismos literales 1.700 / −100 / 416 / 260 / 3.616 / 2.260); la satélite, en la misma siembra, recibe `[null, null, null, null]`. Bodega (maestro): `?.` solo por el tipo | R462, R465 |
+| `tests/integration/db/cierres-resumen-modelo-nuevo-descarga-sql-real.test.ts` | paridad R380/R382 con el maestro: `throw` si llega `null` (no una paridad que se cumple sola) | R465 |
+| `tests/integration/db/satelite-cierre-bodega-lectura.int.test.ts` | SLT-107 R280/R283: gestiones con `ingresoEmpresa: null` y modelo aparte (A «nuevo», C «viejo», la siembra). R284: la central con las ocho, la satélite con las ocho en `null` (agregado y cierre del día), paridad del resto. Fuera `sinFulfillment` y su import | R463, R460, R461, R465 |
+| `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts` | SLT-111 MB: la central `[89, 11]` sin cambio; la satélite `porcentajesReparto: null` y sus dos partes `null` | R462, R465 |
+| `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts` | SLT-141 R387: el lote leído con el alcance de CADA lector (toda la empresa / la zona de S) se compara con el detalle de la CENTRAL; los literales (94 350 / 3 500 / 92 090 / partes) sobre la central; S, las ocho en `null` | R460, R465 |
+| `tests/integration/db/cierre-bodega-detalle-lote-sql-real.test.ts` | SLT-148 R420/R422: la fila del repositorio lleva `pagoIndependienteEfectivo: false` (la siembra `nuevoDia` la escribe así) | R466 (T2.3) |
+
+Los títulos de los casos de SLT-107, SL-39, SLT-111, SLT-141 y SLT-148 no se cambian (son su
+trazabilidad); el comentario junto a cada cambio dice qué R de esta ficha lo pide.
+`CierresAdminDetalleUnico.test.tsx` y `CierresBodegaAdminDetalleUnico.test.tsx` (lista de T4.1): ya
+verdes desde la tanda 2, sin cambio aquí.
+
+### Mutaciones de T4 (aplicar, correr los 8 archivos, `git checkout`; `git diff -- lib/` limpio al final)
+
+| M | Mutación | Rojo |
+|---|---|---|
+| X1 | `verCierreBodegaDetalle` devuelve el agregado sin recorte | unidad R284, integración R284, R387 |
+| X2 | cada cierre del día de bodega sin recorte | unidad R284, integración R284 |
+| X3 | `ocultarDineroEmpresaSiNoCentral` devuelve la fila siempre | unidad R280/R283, integración R280/R283 |
+| X4 | `verCierreDetalle` sin recorte | SL-39 A y B, SLT-111 MB |
+| X5 | `anularEmpresaSiNoCentral` recorta también a la central | 49 casos (todas las `exigirDineroEmpresa`, SL-39, SLT-111, SLT-140, SLT-141, SLT-107) |
+
+Ninguna sobrevive.
+
+## T5 — E2E (escrito, SIN ejecutar: lo corre el leader)
+
+`e2e/cierre-bodega-satelite.spec.ts` › «4 — la satélite ve solo lo suyo», último del `describe.serial`
+(tras el 3; «Solicitados» lista los cierres de la zona en cualquier estado, `cierresBodegaDeZonaWhere`).
+S4 desde «Solicitados» → «Ver el cierre de bodega #FOLIO»: tarjetas `recaudado` ₡9.000, `pago`
+₡1.500, `ganaBodega` ₡500, `paraCentral` ₡7.000, sin `leQueda` ni `centralDebe`; abre en «Gestiones
+(2)», sin pestaña «Dinero»; cabecera con «Gana bodega» y sin «Cobro a la tienda»; fila del rechazo
+₡500; desplegada con «Recibió el mensajero», sin «Se le cobra a la tienda» ni «Ver cómo se calculó»;
+pestaña «Lo que va a la central» (`tab`) con su cuenta (`region`): Total general ₡9.000, − Pago
+₡1.500, − Gana la bodega ₡500, Debe llegar ₡7.000; sin las regiones de factura y «le queda», y el
+diálogo sin «Le queda a la empresa», «Lo que se le factura a la tienda», «₡3.750» ni «₡1.750». S6 por
+«Ver su cierre» (R294 de SLT-107): mismas cuatro tarjetas, sin `paraTienda` ni `leQueda`, sin «Se le
+paga hoy a la tienda». T5.2: los pasos de la satélite usan `irA` (rol `tab`) y `montoDeCuenta` (rol
+`region`); los pasos 2 y 3 de la central, sin cambio (R477). Typecheck y lint verdes.
+
+## T6.2 — Mapa R → test completo (R460-R478)
+
+Integración = `tests/integration/db/satelite-detalle-sin-dinero-empresa-sql-real.test.ts`; vista =
+`tests/unit/utils/detalle-cierre-vista.test.ts`; fila = `tests/unit/utils/fila-gestion-vista.test.ts`;
+E2E = `e2e/cierre-bodega-satelite.spec.ts` › «4 — la satélite ve solo lo suyo» (escrito, sin ejecutar).
+
+| R | Test(s) |
+|---|---|
+| R460 | integración › «R460: la satélite recibe el detalle de bodega sin las ocho cifras de la empresa»; `cierres-bodega-admin-service.test.ts` › «R284: mismo doble leido por central y satelite…»; `satelite-cierre-bodega-lectura.int.test.ts` › «R284: S1 y el maestro leen CB1 igual…»; `cierres-bodega-cifras-lote-sql-real.test.ts` › «R387 paridad…» |
+| R461 | integración › «R461: cada cierre del día llega sin cifras de la empresa y con sus cifras propias»; las dos R284 de arriba (cierre del día) |
+| R462 | integración › «R462: la satélite recibe el detalle del cierre del mensajero sin las cifras de la empresa»; `cierres-admin-fulfillment-solo-central.test.ts` › «R462: las diez cifras…»; `cierre-iva-aparte-sl39.test.ts` › «R21–R23 cierre A…», «R22 cierre B…»; `cierre-reparto-porcentajes-sql-real.test.ts` › «R263/R260 MB (satelite)…» |
+| R463 | integración › «R463: cada gestión llega sin cobro a la tienda y con su modelo de tarifa»; `cierres-admin-fulfillment-solo-central.test.ts` › «adminSatelite: el cobro a la tienda llega null entero…» (×2); `cierres-bodega-admin-service.test.ts` › «R280/R283: satelite de su zona…»; `satelite-cierre-bodega-lectura.int.test.ts` › «R280/R283: S1 lee CB1…» |
+| R464 | `cierres-admin-fulfillment-solo-central.test.ts` › «un rol sin acceso total que no es la satélite también recibe el recorte (adminTienda / mensajero / adminSatelite)» y la clasificación exhaustiva |
+| R465 | integración › «R465: el maestro recibe los dos detalles con las cifras de la empresa de antes»; `exigirDineroEmpresa` en `cierres-bodega-admin-service.test.ts` (13 casos) y `cierres-admin-service.test.ts` (12); SL-39, SLT-111 MA/MB/MC, SLT-140 R380/R382, SLT-141 R387 con el maestro |
+| R466 | integración › «R466: La central debe del cierre de bodega…» (S y M); `cierres-bodega-admin-service.test.ts` › R284 (`centralDebe` «0.00»); `cierre-bodega-detalle-lote-sql-real.test.ts` › R420, R422 (la columna en la fila); vista › «`centralDebe` pasa tal cual; ausente, `null`» |
+| R467 | integración › «R467: el detalle del cierre del mensajero trae lo que debe llegar a la central y su reparto» |
+| R468 | vista › SLT-154 › S4 › «R468 — cuatro tarjetas…», «…La central debe 800…»; `DetalleCierre.test.tsx` › SLT-154 › S4; E2E |
+| R469 | vista › S4 › «R469 — «Lo que va a la central»…»; `DetalleCierre.test.tsx` › S4; E2E |
+| R470 | vista › S4 › «R470 — pestañas…»; `DetalleCierre.test.tsx` › S4; `ConsolidacionBodegaRefresco.test.tsx` (d); E2E |
+| R471 | vista › S6 › «R471 — recaudado…», «…aunque llegara…»; `DetalleCierre.test.tsx` › S6; E2E |
+| R472 | vista › S6 › «R472 — la barra…», «R472, R478 — sin empresa ni…» |
+| R473 | vista › S6 › «R473 — pestañas…» y `pestanasDe` › «mensajero · satélite»; `DetalleCierre.test.tsx` › S6; `CierresAdminDetalleUnico.test.tsx` › «SLT-154 (R473, R471)» |
+| R474 | fila › SLT-154 › «R474 — …» (3); `FilaGestion.test.tsx` › «R474 — la cabecera…», «R474 — la fila del rechazo muestra ₡500…»; E2E |
+| R475 | fila › «R475 — …» y R25; `FilaGestion.test.tsx` › «R475 — desplegada…»; `CierresAdminDetalleUnico.test.tsx` › «satélite: sin Fulfillment…»; E2E |
+| R476 | `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts` › SLT-154 › «R476 — …» (3) |
+| R477 | vista › «la central (R477)…» (2); fila › «R477 — …» (2); `FilaGestion.test.tsx` › «R477 — …»; descarga › «R477 — la central…»; los 4 de componentes que pasan a `admin`; E2E pasos 2 y 3 (sin cambio) |
+| R478 | vista › «R478 — …» (8) |
+
+## T6.3 — Reuso
+
+- `git diff --diff-filter=A --name-only origin/dev -- '*.tsx'` → vacío.
+- `detalle-cierre-vista.ts`: el diff no añade miembros a `CifraId` (0 líneas `+  | "…"`).
+- `DineroCierre.tsx`, `Cuenta.tsx`, `CifrasCierre.tsx`, `DetalleCierre.tsx`: sin diff. `GestionesCierre.tsx`
+  y `FilaGestion.tsx`: solo el tercer argumento de `columnasDe` y el ancho de la pista `ganaBodega`;
+  ninguna prop nueva en sus `…Props`.
+
+## T6.4 — Tamaño
+
+`node scripts/tamano-pr.mjs`: **40/40 archivos**, 692/1000 líneas de producción, 1821/3000 de tests
+(AVISO, no rojo). Por encima del 80 % de archivos (32); no se anota como aceptado (lo decide el
+leader). Desglose: producción 17 archivos (`lib/` 9: 297 líneas; vista y cableado 8: 395); E2E 1 (75);
+tests 22 (tanda 1: 2 archivos, 661 líneas; tanda 2: 12, 786; tanda 3: 8, 299).
+
+## Verificación (tanda 3)
+
+- `pnpm run typecheck`: **0 errores** (de 99).
+- `pnpm exec eslint` de los 9 archivos tocados: sin problemas.
+- Los 9 archivos de T4 + la integración nueva: **9/9 archivos, 220/220 tests** verdes (base desechable).
+- TODOS los de `tests/integration/db/` y `tests/unit/services/` que nombran cierre o bodega (130
+  archivos): 33 rojos, 32 de ellos en `tests/baseline-rojos.json` («La app nace vacia (SL-11)…»: la
+  suite asume órdenes, usuarios y zonas sembrados; en esta base fallan con «referencia a otra empresa»
+  o «falta el estatus … corre db:seed» porque la base tiene restos de corridas anteriores de otras
+  empresas y el catálogo `order_status` sin `ayuda_tienda` ni `devolucion_por_confirmar`, aunque sus
+  migraciones constan aplicadas). El único fuera del baseline,
+  `notificacion-evento-bloqueo-cierre-migration.test.ts` (ejercita el DOWN de una migración), falla
+  igual SOLO: la base tiene 2 filas `notificacion` con `cierre_dia_rechazado`, que el enum recreado por
+  ese DOWN no admite. Datos de la base, no de esta rama (no toca `db/` ni notificaciones).
+- `./init.sh` → **`INIT_EXIT=0`** (typecheck, lint, 369 tests relacionados en 4 tandas verdes, guardias;
+  «245 rojo(s) heredado(s) del baseline no cuentan»). La guardia
+  `dependencias-declaradas-presentes.guardia.test.ts` está en el baseline; `init.sh` y la guardia son
+  idénticos a `origin/dev`.
+- No corrido: E2E (lo corre el leader), dev server.
+
+## Veredicto (tanda 3)
+
+T4-T6 hechos: los tests que la ficha cambia, ajustados con su R y sin debilitar (5 mutaciones
+muertas), gate verde; E2E escrito sin ejecutar; el tamaño queda en 40/40 archivos, a decidir.
