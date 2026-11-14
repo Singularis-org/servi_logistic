@@ -479,6 +479,15 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     const desplegar = page.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${rechazada.numRemision} · `) });
     const fila = ordenes.locator("[data-gestion]").filter({ has: desplegar });
     await expect(fila.locator('[data-columna="ganaBodega"]')).toHaveText("₡500");
+    // R474 con SLT-165 (R523): en el teléfono la fila es una tarjeta sin cabecera; «Gana bodega» no se
+    // pierde: va en su línea, con el rótulo delante. Después, de vuelta al escritorio.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const ganaBodegaMovil = fila.locator('[data-columna="ganaBodega"]');
+    await expect(ganaBodegaMovil).toBeVisible();
+    await expect(ganaBodegaMovil).toHaveText("₡500");
+    expect(await ganaBodegaMovil.evaluate((el) => getComputedStyle(el, "::before").content)).toBe('"Gana bodega:"');
+    await expect(fila.locator('[data-columna="cobro"]')).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 800 });
     // R475: desplegada, conserva lo del mensajero y no trae el cobro a la tienda.
     await fila.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${rechazada.numRemision} · `) }).click();
     await expect(fila.getByText("Recibió el mensajero")).toBeVisible();

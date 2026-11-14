@@ -19,6 +19,7 @@ import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { fechaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
 import { esMontoCero } from "@/components/shared/monto-cliente";
+import { normalizeName } from "@/lib/utils/normalize";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import {
   RESULTADO_LABEL,
@@ -149,6 +150,24 @@ export function filtrar<T extends { gestion: CierreDetalleGestion }>(
   if (filtro === FILTRO_TODAS) return [...items];
   if (filtro === FILTRO_CON_SENALES) return items.filter((i) => senalesDe(i.gestion, a).length > 0);
   return items.filter((i) => i.gestion.resultado === filtro);
+}
+
+/** SLT-156 (R526): en el teléfono, «Gestiones» se pagina de 25 en 25. */
+export const GESTIONES_POR_PAGINA = 25;
+
+/**
+ * SLT-156 (R527) — `true` si la gestión casa con el término: guía, remisión o destinatario, parcial e
+ * insensible a mayúsculas y acentos (la misma normalización que el buscador de Reparto,
+ * `normalizeName`). Un término vacío casa con todo. Sin teléfono (P2 de SLT-156).
+ */
+export function coincideGestion(
+  g: Pick<CierreDetalleGestion, "numGuia" | "numRemision" | "destinatario">,
+  termino: string,
+): boolean {
+  const buscado = normalizeName(termino);
+  if (buscado === "") return true;
+  const texto = normalizeName([g.numGuia === null ? "" : String(g.numGuia), g.numRemision, g.destinatario].join(" "));
+  return texto.includes(buscado);
 }
 
 /** El estado vacío de un filtro sin gestiones (R84): siempre un texto. */

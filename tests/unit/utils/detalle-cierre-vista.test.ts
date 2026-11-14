@@ -322,7 +322,8 @@ describe("accionesDe (R12)", () => {
     expect(ids("bodega", "central", "decidir")).toEqual(["Cerrar", "conciliacion"]);
     expect(ids("bodega", "central", "solo lectura")).toEqual(["conciliacion", "Cerrar"]);
     expect(ids("bodega", "satelite", "solo lectura")).toEqual(["Cerrar"]);
-    expect(ids("mensajero", "mensajero", "en curso")).toEqual(["Solicitar cierre"]);
+    // SLT-165 (R531): el botón principal del cierre en curso.
+    expect(ids("mensajero", "mensajero", "en curso")).toEqual(["Solicitar cierre del día"]);
     expect(ids("mensajero", "mensajero", "rechazado")).toEqual(["Solicitar aprobación del cierre rechazado", "Cerrar"]);
     expect(ids("mensajero", "mensajero", "vencido")).toEqual(["Solicitar aprobación del cierre vencido"]);
     expect(ids("mensajero", "mensajero", "solo lectura")).toEqual(["Cerrar"]);
@@ -1469,5 +1470,33 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
         "pago",
       ]);
     });
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D4; R532): «Solicitar cierre del día» solo
+// vive en Cierre del día. Se leen de disco los árboles de Reparto y Recoger en bodega
+// (`mis-asignaciones`) y de Recolección: ninguno pinta el texto, importa su rótulo ni monta el detalle
+// del cierre o el módulo de Cierre del día.
+describe("SLT-165 R532 — «Solicitar cierre del día» no está en Reparto, Recoger en bodega ni Recolección", () => {
+  it("los tres árboles de pantallas no lo pintan ni lo importan", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const arboles = ["app/(app)/mis-asignaciones", "app/(app)/recoleccion"];
+    const archivos: string[] = [];
+    const recorrer = (dir: string) => {
+      for (const n of readdirSync(dir)) {
+        const ruta = join(dir, n);
+        if (statSync(ruta).isDirectory()) recorrer(ruta);
+        else if (/\.tsx?$/.test(n)) archivos.push(ruta);
+      }
+    };
+    for (const a of arboles) recorrer(join(process.cwd(), a));
+    // Si la carpeta se mueve, el test no puede quedar verde sin mirar nada.
+    expect(archivos.some((a) => /RepartoModule\.tsx$/.test(a)), "no encuentro Reparto").toBe(true);
+    expect(archivos.some((a) => /RecogerModule\.tsx$/.test(a)), "no encuentro Recoger en bodega").toBe(true);
+    expect(archivos.some((a) => /RecoleccionModule\.tsx$/.test(a)), "no encuentro Recolección").toBe(true);
+    const prohibido = /Solicitar cierre del día|ACCION_SOLICITAR\b|cierres\/detalle\/DetalleCierre"|cierre-dia\/_components\/CierreDiaModule"/;
+    const malos = archivos.filter((a) => prohibido.test(readFileSync(a, "utf8")));
+    expect(malos).toEqual([]);
   });
 });

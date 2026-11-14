@@ -128,41 +128,42 @@
 
 ## Rebanada D — Cierre del día (R523-R538)
 
-- [ ] **D1 Tarjeta de gestión (R523-R525).** `components/private/cierres/fila/FilaGestion.tsx`
+- [x] **D1 Tarjeta de gestión (R523-R525).** `components/private/cierres/fila/FilaGestion.tsx`
   (`--plantilla-fila`, áreas en móvil, `TACTIL_MOVIL`), `GestionesCierre.tsx` (cabecera
   `max-md:hidden`). *Hecho:* `tests/components/FilaGestion.test.tsx` y
   `tests/components/DetalleCierreGestiones.test.tsx`: la rejilla de escritorio solo con `md:`; los
   mismos botones una sola vez. *Mutación:* volver el `style` en línea → rojo.
-- [ ] **D2 Buscador y paginación de 25 (R526, R527).** Depende de D1. `GestionesCierre.tsx`,
+- [x] **D2 Buscador y paginación de 25 (R526, R527).** Depende de D1. `GestionesCierre.tsx`,
   `fila-gestion-vista.ts` (`coincideGestion`), `fila-gestion-labels.ts`. *Hecho:* test nuevo
   `tests/components/GestionesCierreMovil.test.tsx` con `useIsMobile` simulado: 30 gestiones → 25 +
   `Pagination`; cambiar pastilla o término vuelve a página 1; búsqueda por remisión; en escritorio
   sin buscador ni paginación. `tests/unit/utils/coincide-gestion.test.ts`. *Mutaciones:*
   `pageSize` 50; no resetear página → rojo.
-- [ ] **D3 [P] Rechazados, sin gestión y pestañas (R528-R530).** `RechazosDeTiendaCierre.tsx`,
+- [x] **D3 [P] Rechazados, sin gestión y pestañas (R528-R530).** `RechazosDeTiendaCierre.tsx`,
   `cierre-factura.tsx` (`FilaSinGestion`), `DetalleCierre.tsx` (`TabsList` envuelve). *Hecho:*
   `CierreRechazosDeTienda.test.tsx` y `DetalleCierre.test.tsx` actualizados. *Mutación:* quitar
   `flex-wrap` → rojo en el E2E (D7).
-- [ ] **D4 Barra fija y «Solicitar cierre del día» (R531-R534).** `DetalleCierre.tsx` (pie `fixed` en
+- [x] **D4 Barra fija y «Solicitar cierre del día» (R531-R534).** `DetalleCierre.tsx` (pie `fixed` en
   móvil, publica `--alto-barra-inferior`), `detalle-cierre-labels.ts`. *Hecho:*
   `tests/unit/utils/detalle-cierre-vista.test.ts`, `CierreDiaModule.test.tsx` y
   `CierreDiaPagina.test.tsx` actualizados («Solicitar cierre del día» con «{n} gestiones» en el
   botón; desactivado con «No tienes gestiones pendientes»; diálogo con «Solicitar cierre» y
   «Cancelar» que no envía); test de las tres pantallas del portal sin ese botón. *Mutaciones:* `sticky` en vez de
   `fixed`; «Cancelar» que envía → rojo.
-- [ ] **D5 [P] Cola en tarjetas (R535, R536, R538).** `cola/TablaColaPropia.tsx`
+- [x] **D5 [P] Cola en tarjetas (R535, R536, R538).** `cola/TablaColaPropia.tsx`
   (`columnasTablaPropiaMovil`), `cola/cola-propia-vista.ts`, `cola/ColaCierres.tsx`,
   `app/(app)/cierre-dia/_components/FiltrosColaPropiaBarra.tsx`. *Hecho:*
   `tests/components/CierreDiaColaPropia.test.tsx` y `ColaCierres.test.tsx`: en móvil 2 columnas y
   `renderExpanded` con folio, recaudado y pago; una sola `DataTable` (censo verde); descarga igual.
   *Mutación:* dos instancias de `DataTable` → rojo en el censo.
-- [ ] **D6 [P] «Ver» a pantalla completa (R537).** `DetalleCierre.tsx` marco modal. *Hecho:* test
+- [x] **D6 [P] «Ver» a pantalla completa (R537).** `DetalleCierre.tsx` marco modal. *Hecho:* test
   con `h-dvh w-screen` en móvil y «Volver» de 44 px. *Mutación:* volver `calc(100dvh-2rem)` → rojo.
-- [ ] **D7 E2E a 360 px.** Depende de D1-D6. `e2e/pwa-mensajero-cierre-dia.spec.ts` (30 gestiones
+- [x] **D7 E2E a 360 px.** Depende de D1-D6. `e2e/pwa-mensajero-cierre-dia.spec.ts` (30 gestiones
   con textos largos: tarjetas, paginación, sin desborde ni «…», barra fija visible y flotantes
   encima, «Ver»); `e2e/cierre-dia.spec.ts` actualizado. Archivos de D en la guardia. *Hecho:*
   verde en local; también el grupo `dinero` si el diff lo dispara. *Mutación:* `truncate` en la
-  fecha del rechazo → rojo.
+  fecha del rechazo → rojo. *(SLT-165: escrita, SIN ejecutar — la corre el leader; ver
+  `progress/impl_SLT-165.md`.)*
 
 ## Rebanada E — mapa de ruta (R539-R544)
 

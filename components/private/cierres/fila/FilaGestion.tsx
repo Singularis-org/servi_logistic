@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { money } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
-import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { COLUMNA_FIJA, TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { CierreDetalleGestion, CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
 import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
@@ -87,11 +87,82 @@ const ANCHO: Record<ColumnaFila["id"], string> = {
   senales: "minmax(0,1.3fr)",
 };
 
-/** La plantilla de la rejilla, la MISMA para la cabecera y para cada fila (R10 de la 263). */
+/**
+ * La plantilla de la rejilla, la MISMA para la cabecera y para cada fila (R10 de la 263). SLT-156
+ * (R523, R524): va en la variable `--plantilla-fila` y solo la aplica `REJILLA_ESCRITORIO` (≥ 768 px);
+ * por debajo, la misma rejilla es una tarjeta (`REJILLA_TARJETA`). Un `gridTemplateColumns` en línea
+ * ganaría a la tarjeta en el teléfono.
+ */
 export function plantillaFila(columnas: readonly ColumnaFila[]): CSSProperties {
-  return { gridTemplateColumns: `${columnas.map((c) => ANCHO[c.id]).join(" ")} auto` };
+  return { "--plantilla-fila": `${columnas.map((c) => ANCHO[c.id]).join(" ")} auto` } as CSSProperties;
 }
 export const GUIA_CELDA = "min-w-[70px] whitespace-nowrap tabular-nums";
+
+/** SLT-156 (R524): las columnas de hoy, solo desde 768 px. */
+export const REJILLA_ESCRITORIO = "md:[grid-template-columns:var(--plantilla-fila)]";
+
+/**
+ * SLT-156 (R523, `design.md §10`): por debajo de 768 px la fila es una tarjeta con los MISMOS
+ * elementos (un solo DOM, sin botones repetidos): destinatario; guía · tienda; resultado y acciones;
+ * la Ganancia, dato principal, en la columna fija de la derecha; las señales debajo.
+ */
+export const REJILLA_TARJETA =
+  "max-md:grid-cols-[max-content_minmax(0,1fr)_max-content] max-md:items-start max-md:gap-x-3 max-md:gap-y-1";
+/** Las áreas de la tarjeta sin la columna «Mensajero» (p. ej. el cierre del propio mensajero). */
+export const AREAS_TARJETA =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'resultado_resultado_acciones'_'senales_senales_senales']";
+/**
+ * SLT-165 (R491, B1 de la review): con la columna «Mensajero» (el detalle del cierre de bodega), la
+ * tarjeta dice de quién es cada gestión en una línea propia, bajo «guía · tienda».
+ */
+export const AREAS_TARJETA_CON_MENSAJERO =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']";
+/**
+ * SLT-154 (R474) con SLT-165: quien no es la central ve «Gana bodega» en lugar del cobro, y en el
+ * teléfono no hay tarjeta desplegada que lo diga (la del cobro no existe para ella): va en su línea,
+ * bajo «guía · tienda» (y bajo «Mensajero» en el detalle de bodega). Nada se pierde en el móvil.
+ */
+export const AREAS_TARJETA_CON_GANA_BODEGA =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']";
+export const AREAS_TARJETA_CON_MENSAJERO_Y_GANA_BODEGA =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']";
+
+/** Las áreas de la tarjeta según las columnas que lleva la fila (literales: Tailwind no las compone). */
+export function areasTarjeta(columnas: readonly ColumnaFila[]): string {
+  const conMensajero = columnas.some((c) => c.id === "mensajero");
+  const conGanaBodega = columnas.some((c) => c.id === "ganaBodega");
+  if (conMensajero) return conGanaBodega ? AREAS_TARJETA_CON_MENSAJERO_Y_GANA_BODEGA : AREAS_TARJETA_CON_MENSAJERO;
+  return conGanaBodega ? AREAS_TARJETA_CON_GANA_BODEGA : AREAS_TARJETA;
+}
+
+/**
+ * El sitio de cada celda en la tarjeta (`null` = no se pinta en la tarjeta). «Recibido» y «Cobro»
+ * están en el detalle desplegado; el «Pago» de la administración ES la ganancia del mensajero
+ * (`montoDeColumna`), así que ocupa su sitio. «Mensajero» va en su línea (R491).
+ */
+const AREA_TARJETA: Record<ColumnaFila["id"], string | null> = {
+  guia: "max-md:[grid-area:guia]",
+  destinatario: "max-md:[grid-area:dest] max-md:font-medium",
+  tienda: "max-md:[grid-area:tienda] max-md:before:mr-1 max-md:before:content-['·']",
+  // En la tarjeta no hay cabecera de columnas: el rótulo va delante, solo en el teléfono (pseudo-elemento:
+  // el DOM y el texto de la celda en escritorio no cambian).
+  mensajero:
+    "max-md:[grid-area:mensajero] max-md:flex max-md:gap-1 max-md:text-muted-foreground max-md:before:shrink-0 max-md:before:content-['Mensajero:']",
+  resultado: "max-md:[grid-area:resultado] max-md:mt-1",
+  recibido: null,
+  cobro: null,
+  // SLT-154 (R474): con su rótulo delante, como «Mensajero» (en la tarjeta no hay cabecera).
+  ganaBodega:
+    "max-md:[grid-area:ganabodega] max-md:flex max-md:justify-between max-md:gap-1 max-md:text-muted-foreground max-md:before:shrink-0 max-md:before:content-['Gana_bodega:']",
+  pago: "max-md:[grid-area:ganancia] max-md:text-base max-md:font-semibold",
+  ganancia: "max-md:[grid-area:ganancia] max-md:text-base max-md:font-semibold",
+  senales: "max-md:[grid-area:senales]",
+};
+
+/** La clase de la celda `id` en la tarjeta: su área, o `max-md:hidden` si la tarjeta no la pinta. */
+export function areaTarjeta(id: ColumnaFila["id"]): string {
+  return AREA_TARJETA[id] ?? "max-md:hidden";
+}
 
 /**
  * SLT-156 (R490, R491): el texto libre de una celda va ENTERO, en varias líneas si no cabe. Sustituye
@@ -180,7 +251,7 @@ export function FilaGestion({
           aria-expanded={calculoAbierto}
           aria-controls={calculoAbierto ? idCalculo : undefined}
           onClick={() => setCalculoAbierto((v) => !v)}
-          className="text-[13px] text-info-strong hover:underline"
+          className="text-left text-[13px] text-info-strong hover:underline max-md:min-h-11"
         >
           {calculoAbierto ? L.OCULTAR_CALCULO : L.VER_CALCULO}
         </button>
@@ -207,13 +278,30 @@ export function FilaGestion({
   return (
     // `break-inside-avoid` (feature 223): la fila no se parte entre dos páginas al imprimir.
     <div className="break-inside-avoid border-b border-border last:border-b-0" data-gestion={g.gestionId}>
-      <div className="grid items-center gap-2 px-4 py-3 text-sm" style={plantillaFila(columnas)}>
+      <div
+        className={cn(
+          "grid items-center gap-2 px-4 py-3 text-sm",
+          REJILLA_ESCRITORIO,
+          REJILLA_TARJETA,
+          areasTarjeta(columnas),
+        )}
+        style={plantillaFila(columnas)}
+      >
         {columnas.map((c) => (
-          <span key={c.id} data-columna={c.id} className={cn("min-w-0", c.derecha && "text-right")}>
+          <span
+            key={c.id}
+            data-columna={c.id}
+            className={cn(
+              "min-w-0",
+              c.derecha && "text-right",
+              // Sin señales, la tarjeta no reserva su línea.
+              c.id === "senales" && senales === "" ? "max-md:hidden" : areaTarjeta(c.id),
+            )}
+          >
             {celda(c)}
           </span>
         ))}
-        <span className="flex items-center justify-end gap-2">
+        <span className="flex items-center justify-end gap-2 max-md:[grid-area:acciones]">
           {ofrecidas.devolver ? (
             // R244 (feature 237): deshabilitado CON SU MOTIVO, no oculto — en `title` y al final del
             // nombre accesible, porque un botón `disabled` sale del orden de tabulación.
@@ -227,6 +315,7 @@ export function FilaGestion({
                   : L.devolverAriaLabel(g.numRemision, g.destinatario)
               }
               title={ofrecidas.devolverDeshabilitado ?? undefined}
+              className={TACTIL_MOVIL}
               disabled={ofrecidas.devolverDeshabilitado !== null || enVuelo === g.gestionId}
               onClick={() => acciones.devolver?.(g)}
             >
@@ -239,7 +328,7 @@ export function FilaGestion({
             // R89: el nombre de hoy, que leen los E2E (con snapshot, el del desglose).
             aria-label={g.ingresoEmpresa ? desgloseAriaLabel(g) : L.detalleOrdenAriaLabel(g.numRemision, g.destinatario)}
             onClick={() => setAbierta((v) => !v)}
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            className={cn("flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted", TACTIL_MOVIL)}
           >
             <ChevronDown size={16} aria-hidden="true" className={cn("transition-transform", abierta && "rotate-180")} />
           </button>
@@ -248,14 +337,14 @@ export function FilaGestion({
 
       {abierta ? (
         <div className="flex flex-col gap-4 bg-muted/30 px-5 py-4">
-          {/* Solo datos de la orden (canvas, PA6). */}
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-3 border-b border-border pb-4 sm:grid-cols-[140px_140px_minmax(0,1fr)]">
+          {/* Solo datos de la orden (canvas, PA6). SLT-156 (R525): una sola columna por debajo de 768 px. */}
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-3 border-b border-border pb-4 md:grid-cols-[140px_140px_minmax(0,1fr)]">
             <Dato label={L.DATO_ORDEN} value={g.numRemision} />
             <Dato label={L.DATO_PRODUCTO} value={g.producto} />
             <Dato label={L.DATO_DIRECCION} value={g.direccion ?? "—"} />
           </dl>
 
-          <div className="grid items-stretch gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
             {tarjetas.map((t) => (
               <Cuenta
                 key={t.id}
@@ -279,7 +368,8 @@ export function FilaGestion({
           ) : null}
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-3">
-            <div className="flex gap-2">
+            {/* SLT-156 (R493): «Ver evidencia» de 44 px en el teléfono. */}
+            <div className="flex gap-2 max-md:[&_button]:min-h-11">
               {onVerEvidencia ? (
                 <BotonesEvidencia
                   urls={g.evidenciaUrls}
@@ -313,7 +403,7 @@ function Dato({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="flex flex-col gap-1">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="m-0 text-sm">{value}</dd>
+      <dd className={cn("m-0 text-sm", TEXTO_ENTERO)}>{value}</dd>
     </div>
   );
 }

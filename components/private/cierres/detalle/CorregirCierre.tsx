@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { OrdenEnCorreccionDTO } from "@/lib/interfaces/services/ICierreDiaService";
 
 import {
@@ -43,17 +44,18 @@ export function CorregirCierre({ ordenesEnCorreccion }: Readonly<CorregirCierreP
           <ul className="m-0 flex list-none flex-col divide-y rounded-md border p-0">
             {ordenesEnCorreccion.map((o) => (
               <li key={o.ordenId} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm">
-                <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
                   <span className="font-semibold">{o.numGuia ?? "—"}</span>
                   <span>{o.numRemision}</span>
-                  <span className="text-muted-foreground">· {o.destinatario}</span>
+                  {/* SLT-156 (R490): el destinatario entero, aunque sea largo. */}
+                  <span className={cn("text-muted-foreground", TEXTO_ENTERO)}>· {o.destinatario}</span>
                 </span>
                 <span className="inline-flex flex-wrap items-center gap-2">
                   <Badge variant={o.regestionada ? "success" : "warning"}>
                     {o.regestionada ? CORRECCION_REGESTIONADA : CORRECCION_PENDIENTE}
                   </Badge>
                   {o.regestionada ? null : (
-                    <Link href={RUTA_ENTREGAS} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                    <Link href={RUTA_ENTREGAS} className={cn(buttonVariants({ variant: "outline", size: "sm" }), TACTIL_MOVIL)}>
                       {CORRECCION_IR_ENTREGAS}
                     </Link>
                   )}

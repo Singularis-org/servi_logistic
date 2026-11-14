@@ -204,3 +204,35 @@ describe("R90, R23 — «Descargar» en la misma fila y columnas", () => {
     }
   });
 });
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D1; R523, R524): la cabecera de columnas
+// es de escritorio; en el teléfono cada fila es una tarjeta y no hay cabecera. Clases a mano.
+describe("SLT-165 R523, R524 — la cabecera de columnas solo desde 768 px", () => {
+  it("oculta en el teléfono, con la plantilla de `md:` y sin `gridTemplateColumns` en línea", () => {
+    montar({ columnaMensajero: true });
+    const region = screen.getByRole("region", { name: "Órdenes del cierre" });
+    const cabecera = region.firstElementChild as HTMLElement;
+    expect(cabecera.querySelector('[data-columna="guia"]')?.textContent).toBe("Guía");
+    expect(cabecera.classList.contains("max-md:hidden")).toBe(true);
+    expect(cabecera.classList.contains("md:[grid-template-columns:var(--plantilla-fila)]")).toBe(true);
+    expect(cabecera.style.gridTemplateColumns).toBe("");
+    // R524: las mismas columnas y en el mismo orden de hoy.
+    expect(Array.from(cabecera.querySelectorAll("[data-columna]")).map((c) => c.textContent)).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Cobro a la tienda",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("en escritorio, sin buscador ni paginación (R526, R527 son solo del teléfono)", () => {
+    montar();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Páginas de las gestiones" })).toBeNull();
+  });
+});

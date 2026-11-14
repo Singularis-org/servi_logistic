@@ -199,7 +199,8 @@ describe("R442, R490, R491, R445 — Destinatario, Tienda y Mensajero en su colu
   it("R492: guía en pista `max-content` e importes en `minmax(max-content,1fr)`, en las cuatro audiencias", () => {
     for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
       const columnas = columnasDe(audiencia, audiencia === "solo lectura", audiencia === "central");
-      const pistas = String(plantillaFila(columnas).gridTemplateColumns).split(" ");
+      // SLT-165 (R524): la plantilla viaja en `--plantilla-fila` (solo la aplica `md:`).
+      const pistas = String((plantillaFila(columnas) as Record<string, string>)["--plantilla-fila"]).split(" ");
       columnas.forEach((c, i) => {
         if (c.id === "guia") expect(pistas[i]).toBe("max-content");
         if (["recibido", "cobro", "ganaBodega", "pago", "ganancia"].includes(c.id)) expect(pistas[i]).toBe("minmax(max-content,1fr)");
@@ -209,7 +210,7 @@ describe("R442, R490, R491, R445 — Destinatario, Tienda y Mensajero en su colu
     const mensajero = columnasDe("mensajero", false, false);
     const i = mensajero.findIndex((c) => c.id === "ganancia");
     expect(i).toBeGreaterThan(-1);
-    expect(String(plantillaFila(mensajero).gridTemplateColumns).split(" ")[i]).toBe("minmax(max-content,1fr)");
+    expect(String((plantillaFila(mensajero) as Record<string, string>)["--plantilla-fila"]).split(" ")[i]).toBe("minmax(max-content,1fr)");
   });
 
   it("R492: el importe va en columna fija, alineado a la derecha y sin partirse", () => {
@@ -612,5 +613,150 @@ describe("SLT-154 — quien no es la central (R474, R475)", () => {
     await desplegar(user, rechazo());
     expect(screen.getByText("Se le cobra a la tienda")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver cómo se calculó" })).toBeInTheDocument();
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D1; R523-R525, R493). Las clases van
+// escritas a mano: son el contrato de la tarjeta (por debajo de 768 px) y de la rejilla de escritorio.
+describe("SLT-165 R523-R525 — la fila es una tarjeta en el teléfono y la rejilla de hoy desde 768 px", () => {
+  function rejilla(): HTMLElement {
+    const el = document.querySelector<HTMLElement>("[data-gestion]")?.firstElementChild;
+    if (!(el instanceof HTMLElement)) throw new Error("sin rejilla");
+    return el;
+  }
+
+  it("R524: la plantilla de columnas solo la aplica `md:`; nada de `gridTemplateColumns` en línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const r = rejilla();
+    expect(r.style.gridTemplateColumns).toBe("");
+    expect(r.style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+    expect(r.classList.contains("md:[grid-template-columns:var(--plantilla-fila)]")).toBe(true);
+  });
+
+  it("R523: en la tarjeta, destinatario; guía · tienda; resultado y acciones; la Ganancia a la derecha", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const r = rejilla();
+    expect(r.classList.contains("max-md:grid-cols-[max-content_minmax(0,1fr)_max-content]")).toBe(true);
+    expect(
+      r.classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+    const areas: Record<string, string> = {
+      guia: "max-md:[grid-area:guia]",
+      destinatario: "max-md:[grid-area:dest]",
+      tienda: "max-md:[grid-area:tienda]",
+      resultado: "max-md:[grid-area:resultado]",
+      ganancia: "max-md:[grid-area:ganancia]",
+    };
+    for (const [id, area] of Object.entries(areas)) expect(celda(id).classList.contains(area), id).toBe(true);
+    // «Recibido» va en el detalle desplegado («Recibió el mensajero»), no en la tarjeta.
+    expect(celda("recibido").classList.contains("max-md:hidden")).toBe(true);
+    // Las acciones, en su área.
+    expect(r.lastElementChild?.classList.contains("max-md:[grid-area:acciones]")).toBe(true);
+  });
+
+  it("R523, para cualquier audiencia: en la administración el «Pago» (la ganancia del mensajero) ocupa el sitio de la Ganancia", () => {
+    // SLT-154 (R477): la central mirando un cierre de satélite (con el cobro); la satélite, abajo.
+    montar(gestionFila({ gestionId: "c" }), { audiencia: "solo lectura", central: true, mensajero: "Ana Mensajera" });
+    expect(celda("pago").classList.contains("max-md:[grid-area:ganancia]")).toBe(true);
+    for (const id of ["recibido", "cobro"]) expect(celda(id).classList.contains("max-md:hidden"), id).toBe(true);
+    expect(celda("destinatario").classList.contains("max-md:[grid-area:dest]")).toBe(true);
+  });
+
+  it("R491 (B1 de la review de SLT-165): con la columna «Mensajero», la tarjeta dice de quién es la gestión en su línea", () => {
+    // SLT-154: la central (sin la línea de «Gana bodega», que es de la satélite; abajo).
+    montar(gestionFila({ gestionId: "m" }), { audiencia: "solo lectura", central: true, mensajero: "Ana Mensajera" });
+    const m = celda("mensajero");
+    expect(m.classList.contains("max-md:hidden")).toBe(false);
+    expect(m.classList.contains("max-md:[grid-area:mensajero]")).toBe(true);
+    expect(textoDe("mensajero").textContent).toBe("Ana Mensajera");
+    // En la tarjeta no hay cabecera: el rótulo, solo en el teléfono y sin tocar el texto de la celda.
+    expect(m.classList.contains("max-md:before:content-['Mensajero:']")).toBe(true);
+    expect(m.textContent).toBe("Ana Mensajera");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("SLT-154 R474 con R523: en el teléfono, la satélite ve «Gana bodega» en su línea, bajo «Mensajero»", () => {
+    montar(gestionFila({ gestionId: "gb", resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" }), {
+      audiencia: "solo lectura",
+      central: false,
+      mensajero: "Ana Mensajera",
+    });
+    const gb = celda("ganaBodega");
+    expect(gb.classList.contains("max-md:hidden")).toBe(false);
+    expect(gb.classList.contains("max-md:[grid-area:ganabodega]")).toBe(true);
+    expect(gb.classList.contains("max-md:before:content-['Gana_bodega:']")).toBe(true);
+    expect(gb.textContent).toBe("₡500");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("SLT-154 R474 con R523: el cierre del mensajero visto por la satélite, «Gana bodega» sin línea de «Mensajero»", () => {
+    montar(gestionFila({ gestionId: "gs" }), { audiencia: "satelite", central: false });
+    expect(celda("ganaBodega").classList.contains("max-md:[grid-area:ganabodega]")).toBe(true);
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+    // R524: su pista en la plantilla de escritorio, con el ancho de un importe.
+    expect(rejilla().style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+  });
+
+  it("R523: sin la columna «Mensajero», la tarjeta no reserva su línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    expect(rejilla().className).not.toContain("mensajero_mensajero");
+  });
+
+  it("R523: sin señales, la tarjeta no reserva su línea; con señales, va debajo", () => {
+    montar(gestionFila({ gestionId: "s" }), { audiencia: "mensajero" });
+    expect(celda("senales").classList.contains("max-md:hidden")).toBe(true);
+    cleanup();
+    montar(gestionFila({ gestionId: "t", tarifaFaltante: true }), { audiencia: "mensajero" });
+    expect(celda("senales").classList.contains("max-md:[grid-area:senales]")).toBe(true);
+  });
+
+  it("R523, R493: «Devolver a gestión» y el desplegable, una sola vez y de 44 px en el teléfono", () => {
+    const g = gestionCanvas();
+    montar(g, { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const devolver = screen.getAllByRole("button", { name: `Devolver a gestión la orden ${g.numRemision} · ${g.destinatario}` });
+    expect(devolver).toHaveLength(1);
+    const desplegar = screen.getAllByRole("button", { name: /^(Detalle|Desglose de ingreso) de la orden REM-001/ });
+    expect(desplegar).toHaveLength(1);
+    for (const b of [devolver[0], desplegar[0]]) {
+      expect(b.classList.contains("max-md:min-h-11"), b.textContent ?? "").toBe(true);
+      expect(b.classList.contains("max-md:min-w-11"), b.textContent ?? "").toBe(true);
+    }
+  });
+
+  it("R525: desplegada, el detalle de hoy en una sola columna por debajo de 768 px", async () => {
+    const g = gestionCanvas();
+    const user = montar(g, { audiencia: "mensajero" });
+    await desplegar(user, g);
+    const orden = screen.getByText("Orden", { selector: "dt" }).closest("dl");
+    expect(orden?.classList.contains("grid-cols-1")).toBe(true);
+    expect(orden?.classList.contains("md:grid-cols-[140px_140px_minmax(0,1fr)]")).toBe(true);
+    const tarjetas = screen.getByRole("region", { name: `Tu ganancia ${DE_CANVAS}` }).parentElement;
+    expect(tarjetas?.classList.contains("grid-cols-1")).toBe(true);
+    expect(tarjetas?.classList.contains("md:grid-cols-2")).toBe(true);
+  });
+
+  it("R493: «Ver cómo se calculó» mide 44 px de alto en el teléfono", async () => {
+    const g = gestionCanvas();
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(screen.getByRole("button", { name: "Ver cómo se calculó" }).classList.contains("max-md:min-h-11")).toBe(true);
   });
 });
