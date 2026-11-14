@@ -877,3 +877,42 @@ describe("RecoleccionModule — «Recolectadas hoy» (R24/R28/R30/R31)", () => {
     expect(within(lista()).getByText(/9:30/)).toBeInTheDocument();
   });
 });
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
+describe("RecoleccionModule — guía única por cámara o pistola (SLT-157)", () => {
+  it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
+    const user = userEvent.setup();
+    // `no_encontrada`: sin transición, el escáner sigue igual entre las dos lecturas.
+    recolectarMock.mockResolvedValue({ status: "no_encontrada" });
+    textoEscaneado = "1024";
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(1));
+    expect(recolectarMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
+
+    await user.type(screen.getByRole("textbox"), "https://app.ejemplo.test/paquete/1024");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(2));
+    expect(recolectarMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
+  });
+
+  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la action", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = "1024abc";
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(toastError).toHaveBeenLastCalledWith("Código inválido.");
+
+    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO.
+    await user.type(screen.getByRole("textbox"), "1024abc");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
+    expect(toastError).toHaveBeenLastCalledWith("Código inválido.");
+    expect(recolectarMock).not.toHaveBeenCalled();
+  });
+});

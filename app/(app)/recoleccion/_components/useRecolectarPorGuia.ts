@@ -21,8 +21,8 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 // Coste aceptado: un viaje de servidor por escaneo equivocado.
 //
 // Lo que SÍ sigue cortándose en el cliente es el código MAL FORMADO (R11): eso no consulta
-// datos, solo evita mandar basura. Lo hace el llamador (`extractNumGuiaFromScan` para la
-// cámara, `/^\d+$/` para el teclado) antes de entrar aquí.
+// datos, solo evita mandar basura. Lo hace el llamador (`leerGuia`, la misma para cámara y
+// teclado desde SLT-157) antes de entrar aquí.
 //
 // NO parsea URLs de QR: el llamador entrega ya el `num_guia`. Tampoco decide la
 // revalidación: `recolectar` devuelve `true` en éxito y el consumidor dispara su refresh.
