@@ -15,26 +15,26 @@
 
 ## T0 — Inventario (sin tocar producción)
 
-- [ ] **T0.1** Listar los tests que hoy esperan, con un lector sin acceso total, cifras de la empresa o
+- [x] **T0.1** Listar los tests que hoy esperan, con un lector sin acceso total, cifras de la empresa o
   `ingresoEmpresa` en los dos detalles, o que llaman a `columnasDe` con dos argumentos:
   `grep -rln "adminSatelite\|\"satelite\"\|columnasDe(" tests/ e2e/` cruzado con `pagoTienda`,
   `netoEmpresa`, `ingresoEmpresa`, `leQueda`, `Le queda a la empresa`, `Cobro a la tienda`.
   **Hecho:** la lista, con la línea y el `R` que cambia cada expectativa, en
   `progress/impl_SLT-154.md > T0`. Si sale un archivo que no está en `## Archivos esperados`, se añade
   aquí; si con él la lista pasa de 32 archivos, PARA y avisa al leader.
-- [ ] **T0.2** Comprobar que el corpus del E2E (`e2e/cierre-bodega-satelite.spec.ts`, cabecera) siga
+- [x] **T0.2** Comprobar que el corpus del E2E (`e2e/cierre-bodega-satelite.spec.ts`, cabecera) siga
   dando recaudado 9 000, pago 1 500, gana la bodega 500, debe llegar 7 000, facturado 3 750 y le queda
   1 750 en la base de la corrida.
   **Hecho:** los números medidos en `impl_SLT-154.md > T0`.
 
 ## T1 — Integración contra Postgres real, primero (depende de T0)
 
-- [ ] **T1.1** Crear `tests/integration/db/satelite-detalle-sin-dinero-empresa-sql-real.test.ts` con el
+- [x] **T1.1** Crear `tests/integration/db/satelite-detalle-sin-dinero-empresa-sql-real.test.ts` con el
   corpus de `design.md > Verificación` (zona C, S, M; BX con A, B y N), sembrado en
   `enTransaccionRevertida`. Sin base, `describe.skip` visible; con base y sin catálogos, falla ruidosa
   (patrón de `satelite-cierre-bodega-lectura.int.test.ts`). **Prohibido** `if (!dato) return;`: un caso
   sin datos falla.
-- [ ] **T1.2** Casos, cada uno con su `R` en el nombre:
+- [x] **T1.2** Casos, cada uno con su `R` en el nombre:
   - R460: `verCierreBodegaDetalle(BX, S)` → las ocho claves del agregado son `null` (`toBeNull()` una a
     una, no un `toMatchObject` parcial).
   - R461: cada `cierres[i]` de S → las ocho en `null`; `totales`, `totalPagoMensajero`,
@@ -49,29 +49,29 @@
   - R466: `centralDebe` de BX = `"800.00"`, para S y para M.
   - R467: `verCierreDetalle(A, …)` → `paraLaCentral "2200.00"`, `efectivoCubreDescuentos true`,
     `porcentajesRepartoCentral` = el literal calculado a mano con la regla de `porcentajesReparto`.
-- [ ] **T1.3** Correr el archivo **contra el código de hoy**.
+- [x] **T1.3** Correr el archivo **contra el código de hoy**.
   **Hecho:** rojos R460–R464, R466, R467 y verde R465 (la central ya es así), anotado en
   `impl_SLT-154.md > T1`. Commit solo de tests.
 
 ## T2 — Servidor (depende de T1.3)
 
-- [ ] **T2.1** Tipos: `ICierresAdminService.ts`, `ICierresBodegaAdminService.ts`, `ICierreDiaService.ts`
+- [x] **T2.1** Tipos: `ICierresAdminService.ts`, `ICierresBodegaAdminService.ts`, `ICierreDiaService.ts`
   (`tarifaModelo?` en `CierreDetalleGestion`), `ICierresBodegaAdminRepository.ts`
   (`pagoIndependienteEfectivo`), según `design.md > Contratos`.
   **Hecho:** `pnpm run typecheck` solo con errores en los consumidores que tocan T2–T3.
-- [ ] **T2.2** `ocultarDineroEmpresaSiNoCentral`, `anularEmpresa` y las tres clasificaciones
+- [x] **T2.2** `ocultarDineroEmpresaSiNoCentral`, `anularEmpresa` y las tres clasificaciones
   exhaustivas (`satisfies Record<keyof …, "propio" | "empresa">`); aplicarlas al final de
   `verCierreDetalle` y `verCierreBodegaDetalle` (agregado y cada cierre del día). F5 no se toca.
-- [ ] **T2.3** «La central debe»: `pagoIndependienteEfectivo` en `DETALLE_CIERRE_SELECT` y
+- [x] **T2.3** «La central debe»: `pagoIndependienteEfectivo` en `DETALLE_CIERRE_SELECT` y
   `toDetalleCierreRow`; `export` de `repartirEfectivo`; `centralDebe` en `verCierreBodegaDetalle`.
-- [ ] **T2.4** `paraLaCentral`, `efectivoCubreDescuentos`, `porcentajesRepartoCentral` en
+- [x] **T2.4** `paraLaCentral`, `efectivoCubreDescuentos`, `porcentajesRepartoCentral` en
   `verCierreDetalle`.
-- [ ] **T2.5** `hayGestionEnModeloNuevo` lee también `g.tarifaModelo`.
-- [ ] **T2.6** `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`: R464 (un actor con
+- [x] **T2.5** `hayGestionEnModeloNuevo` lee también `g.tarifaModelo`.
+- [x] **T2.6** `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`: R464 (un actor con
   un rol sin acceso total distinto de `adminSatelite` recibe el recorte; `maestro` no) y la expectativa
   de la satélite de F481 en los detalles pasa a `ingresoEmpresa: null` (cita R463).
   **Hecho T2:** T1.2 entero verde; `pnpm exec vitest related --run` de los archivos tocados, verde.
-- [ ] **T2.7** **Mutaciones** (una a una; aplicar, correr, anotar el test que se pone rojo, revertir,
+- [x] **T2.7** **Mutaciones** (una a una; aplicar, correr, anotar el test que se pone rojo, revertir,
   `git diff` limpio):
   - M1 quitar el recorte del agregado en `verCierreBodegaDetalle` → rojo R460 (integración).
   - M2 quitar el recorte en `verCierreDetalle` → rojo R462 (integración).
