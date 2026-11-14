@@ -52,7 +52,7 @@
   (archivos de A) y las reglas de `design.md §2-§3`.
   *Hecho:* verde sobre los archivos de A. *Mutaciones:* `truncate` en `FilaGestion.tsx`; `gap-1.5`
   en `PosOrderCardDetalle.tsx` → rojo, cada una.
-- [ ] **A8 E2E base a 360 px (R490-R493, R497, R501).** Depende de A1-A7.
+- [x] **A8 E2E base a 360 px (R490-R493, R497, R501).** Depende de A1-A7.
   `e2e/_pwa-mensajero-fixture.ts` (utilidades `sinDesborde`, `sinElipsis`, `sinSolapes`, `tactil` y
   datos largos de `design.md §12`) y `e2e/pwa-mensajero-base.spec.ts`: Reparto a 360 y 414 px sin
   desborde ni «…» en tarjetas; al bajar, los flotantes miden 44 px; `/cierre-dia` a 1280 px sin «…»
