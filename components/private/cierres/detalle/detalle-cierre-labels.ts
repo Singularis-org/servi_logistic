@@ -126,7 +126,14 @@ export const ACCION_APROBAR = "Aprobar";
 export const ACCION_REVISAR_Y_APROBAR = "Revisar paquetes y aprobar";
 export const ACCION_CERRAR = "Cerrar";
 export const ACCION_DESTRABAR = "Destrabar cierre vencido";
-export const ACCION_SOLICITAR = "Solicitar cierre";
+/** SLT-156 (R531): el botón principal del cierre en curso; solo lo ve el mensajero. */
+export const ACCION_SOLICITAR = "Solicitar cierre del día";
+/** SLT-156 (R531): el contador dentro del botón, «0 gestiones», «1 gestión», «12 gestiones». */
+export const contadorGestiones = (n: number): string => cuantos(n, "gestión", "gestiones");
+/** SLT-156 (R531): encima del botón desactivado cuando no hay nada que agrupar. */
+export const SIN_GESTIONES_PENDIENTES = "No tienes gestiones pendientes";
+/** SLT-156 (R537): sale del detalle a pantalla completa en el teléfono (canvas v35: CierreVer). */
+export const ACCION_VOLVER = "Volver";
 export const ACCION_SOLICITAR_RECHAZADO = "Solicitar aprobación del cierre rechazado";
 export const ACCION_SOLICITAR_VENCIDO = "Solicitar aprobación del cierre vencido";
 

@@ -26,6 +26,13 @@ export const ORDENES_DEL_CIERRE = "Órdenes del cierre";
 export const SIN_GESTIONES = "Este cierre no tiene gestiones.";
 export const SIN_GESTIONES_CON_SENALES = "Ninguna gestión de este cierre tiene señales.";
 
+// --- Lista en el teléfono (SLT-156, R526, R527) ---
+/** P2 de SLT-156 (Carlos, 2026-11-14): busca por guía, remisión o destinatario. */
+export const BUSCAR_GESTION_PLACEHOLDER = "Guía, remisión o nombre";
+export const BUSCAR_GESTION_LABEL = "Buscar gestión";
+export const SIN_COINCIDENCIAS = "Ninguna gestión coincide con la búsqueda.";
+export const PAGINACION_GESTIONES_LABEL = "Páginas de las gestiones";
+
 // --- Columnas (R23) ---
 export const COL_GUIA = "Guía";
 // SLT-152: «Destinatario · tienda» se parte en dos columnas (R440).

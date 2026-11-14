@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+// SLT-165: el corte de 768 px no existe en jsdom; `useIsMobile` se simula (por defecto, escritorio).
+const movil = vi.hoisted(() => ({ valor: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
+
 import {
   DetalleCierre,
   type AccionesPie,
@@ -15,10 +19,20 @@ import type {
   Modo,
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R531): el botón del pie dice «Solicitar
+// cierre del día» con su contador dentro («3 gestiones»), que entra en el nombre accesible. El
+// botón del diálogo sigue siendo «Solicitar cierre» (C8). Las ausencias miran el prefijo: con el
+// nombre exacto de antes saldrían verdes sin mirar nada.
+const SOLICITAR_DEL_DIA = /^Solicitar cierre del día \d+ gesti(?:ón|ones)$/;
+const ALGUN_SOLICITAR_DEL_DIA = /^Solicitar cierre del día/;
+
 // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T2.3) — el detalle único:
 // marco, cabecera, franja, pestañas, un solo scroll y pie. Los textos esperados van escritos aquí.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  movil.valor = false;
+});
 
 const MENSAJERO: DetalleMensajeroVista = {
   mensajeroNombre: "Ana Mensajera",
@@ -330,7 +344,7 @@ describe("R12 — el pie fijo y sus acciones", () => {
     const sinEmpresa = { ...MENSAJERO, empresa: null };
 
     mensajero("mensajero", "en curso", { marco: "pagina", acciones, detalle: { ...sinEmpresa, estado: null } });
-    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
     expect(solicitar).toHaveBeenCalledTimes(1);
     cleanup();
 
@@ -354,7 +368,7 @@ describe("R12 — el pie fijo y sus acciones", () => {
       deshabilitadas: { solicitar: motivo },
       detalle: { ...MENSAJERO, estado: null, folio: null, empresa: null },
     });
-    const boton = screen.getByRole("button", { name: "Solicitar cierre" });
+    const boton = screen.getByRole("button", { name: SOLICITAR_DEL_DIA });
     expect(boton).toBeDisabled();
     expect(boton).toHaveAttribute("title", motivo);
     expect(boton).toHaveAccessibleDescription(motivo);
@@ -528,5 +542,135 @@ describe("R1 — un componente para todo", () => {
       expect(screen.getByRole("tablist", { name: "Secciones del cierre" }), combo).toBeTruthy();
       cleanup();
     }
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D3, D4, D6; R530, R531, R534, R537). Las
+// clases van escritas a mano: son el contrato del pie fijo y del marco a pantalla completa.
+function clases(el: Element | null | undefined): string[] {
+  if (!el) throw new Error("sin elemento");
+  return el.className.split(/\s+/);
+}
+
+function enPagina(extra: Partial<Extract<DetalleCierreProps, { tipo: "mensajero" }>> = {}) {
+  return mensajero("mensajero", "en curso", { marco: "pagina", onCerrar: undefined, acciones: { solicitar: vi.fn() }, ...extra });
+}
+
+describe("SLT-165 R530 — las pestañas pasan a otra línea antes que desbordar", () => {
+  it("la lista de pestañas envuelve, con su hueco vertical y sin alto fijo", () => {
+    enPagina();
+    expect(clases(screen.getByRole("tablist", { name: "Secciones del cierre" }))).toEqual(
+      expect.arrayContaining(["flex-wrap", "gap-x-6", "gap-y-2", "h-auto"]),
+    );
+  });
+});
+
+describe("SLT-165 R531 — «Solicitar cierre del día» con su contador, en la barra fija del teléfono", () => {
+  it("el botón dice «Solicitar cierre del día» con «19 gestiones» dentro, a la derecha", () => {
+    enPagina();
+    const boton = screen.getByRole("button", { name: "Solicitar cierre del día 19 gestiones" });
+    expect(boton).toBeEnabled();
+    const partes = Array.from(boton.querySelectorAll("span")).map((s) => s.textContent);
+    expect(partes).toEqual(["Solicitar cierre del día", "19 gestiones"]);
+    expect(clases(boton)).toEqual(expect.arrayContaining(["justify-between", "max-md:h-13", "max-md:w-full"]));
+  });
+
+  it("el pie de la página: barra fija abajo en el teléfono (fondo, borde arriba) y pegado como hoy desde 768 px", () => {
+    enPagina();
+    const pie = screen.getByRole("button", { name: SOLICITAR_DEL_DIA }).closest("footer");
+    expect(clases(pie)).toEqual(
+      expect.arrayContaining([
+        "max-md:fixed",
+        "max-md:inset-x-0",
+        "max-md:bottom-0",
+        "max-md:z-30",
+        "md:sticky",
+        "md:bottom-0",
+        "bg-background",
+        "border-t",
+      ]),
+    );
+    expect(clases(pie)).not.toContain("sticky");
+  });
+
+  it("también en el rechazado y el vencido de la página", () => {
+    mensajero("mensajero", "rechazado", { marco: "pagina", onCerrar: undefined, acciones: { solicitarRechazado: vi.fn() } });
+    const pie = screen.getByRole("button", { name: "Solicitar aprobación del cierre rechazado" }).closest("footer");
+    expect(clases(pie)).toContain("max-md:fixed");
+  });
+
+  it("sin gestiones pendientes: desactivado con «0 gestiones» y «No tienes gestiones pendientes» encima", () => {
+    const vacio = { ...SIN_ASUNTOS, conteos: { ...SIN_ASUNTOS.conteos, gestiones: 0 } };
+    enPagina({ detalle: vacio });
+    const boton = screen.getByRole("button", { name: "Solicitar cierre del día 0 gestiones" });
+    expect(boton).toBeDisabled();
+    const pie = boton.closest("footer")!;
+    expect(within(pie).getByText("No tienes gestiones pendientes")).toBeInTheDocument();
+    // El aviso va antes (encima) del botón.
+    expect(within(pie).getByText("No tienes gestiones pendientes").compareDocumentPosition(boton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("el modal (solo lectura) no tiene barra fija ni «Solicitar cierre del día»", async () => {
+    mensajero("mensajero", "solo lectura");
+    const dialogo = await screen.findByRole("dialog");
+    expect(within(dialogo).queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
+    expect(clases(dialogo.querySelector("footer"))).not.toContain("max-md:fixed");
+  });
+});
+
+describe("SLT-165 B3 de la review — el panel de la página entre 768 y 1023 px", () => {
+  it("se desplaza de lado desde 768 px y entero desde `lg`; en el teléfono fluye con la ventana", () => {
+    enPagina();
+    const panel = screen.getByRole("tabpanel");
+    expect(clases(panel)).toEqual(expect.arrayContaining(["md:overflow-x-auto", "lg:overflow-auto"]));
+    expect(clases(panel)).not.toContain("overflow-auto");
+  });
+});
+
+describe("SLT-165 R534 — la barra publica su alto para los flotantes", () => {
+  it("en el teléfono, `--alto-barra-inferior` en `<html>`; se quita al desmontar", () => {
+    movil.valor = true;
+    const { unmount } = enPagina();
+    expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toMatch(/^\d+px$/);
+    // Lo que se desplaza a la vista (foco, `scrollIntoView`) queda encima de la barra, no debajo.
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe(
+      document.documentElement.style.getPropertyValue("--alto-barra-inferior"),
+    );
+    unmount();
+    expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe("");
+  });
+
+  it("en escritorio no hay barra fija: la variable no existe", () => {
+    enPagina();
+    expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toBe("");
+  });
+});
+
+describe("SLT-165 R537 — «Ver» en el teléfono: el detalle a pantalla completa con «Volver» arriba", () => {
+  it("marco de pantalla completa, sin la X; «Volver» de 44 px cierra", async () => {
+    movil.valor = true;
+    const onCerrar = vi.fn();
+    mensajero("mensajero", "solo lectura", { onCerrar });
+    const dialogo = await screen.findByRole("dialog");
+    expect(clases(dialogo)).toEqual(
+      expect.arrayContaining(["max-md:h-dvh", "max-md:w-screen", "max-md:rounded-none", "max-w-none"]),
+    );
+    expect(dialogo.querySelector('[data-slot="dialog-close"]')).toBeNull();
+    const volver = within(dialogo).getByRole("button", { name: "Volver" });
+    expect(clases(volver)).toContain("h-11");
+    // Arriba: antes del título.
+    const titulo = within(dialogo).getByRole("heading");
+    expect(volver.compareDocumentPosition(titulo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.setup().click(volver);
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("en escritorio, el marco de hoy con la X y sin «Volver»", async () => {
+    mensajero("mensajero", "solo lectura");
+    const dialogo = await screen.findByRole("dialog");
+    expect(clases(dialogo)).toEqual(expect.arrayContaining(["md:h-[calc(100dvh-2rem)]", "md:w-[75vw]"]));
+    expect(dialogo.querySelector('[data-slot="dialog-close"]')).not.toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: "Volver" })).toBeNull();
   });
 });

@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { money } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
@@ -67,7 +68,13 @@ import {
   type RolCola,
 } from "./cola-cierres-vista";
 import { CIFRAS_GANANCIA_LABEL, TABLIST_PROPIA } from "./cola-propia-vista";
-import { columnasTablaPropia, type AccionesColaPropia } from "./TablaColaPropia";
+import {
+  columnasTablaPropia,
+  columnasTablaPropiaMovil,
+  detallePropioMovil,
+  masDatosPropio,
+  type AccionesColaPropia,
+} from "./TablaColaPropia";
 
 export type { AccionesColaPropia } from "./TablaColaPropia";
 
@@ -226,6 +233,9 @@ interface TablaComun {
   vacio: string;
 }
 
+/** SLT-165 (R493): el botón de desplegar de la `DataTable` de la cola propia, a 44 px en el teléfono. */
+export const DESPLEGABLE_TACTIL = "max-md:[&_button[aria-expanded]]:min-h-11 max-md:[&_button[aria-expanded]]:min-w-11";
+
 /** La ÚNICA tabla de la cola (una sola en el censo), genérica en el tipo de fila. */
 function TablaCola<T>({
   region,
@@ -235,7 +245,18 @@ function TablaCola<T>({
   columns,
   filas,
   rowKey,
-}: Readonly<TablaComun & { columns: Column<T>[]; filas: readonly T[]; rowKey: keyof T }>) {
+  renderExpanded,
+  expandAriaLabel,
+}: Readonly<
+  TablaComun & {
+    columns: Column<T>[];
+    filas: readonly T[];
+    rowKey: keyof T;
+    /** SLT-156 (R535): el desplegable de cada fila en el teléfono. */
+    renderExpanded?: (fila: T) => ReactNode;
+    expandAriaLabel?: (fila: T) => string;
+  }
+>) {
   return (
     <DataTable
       ariaLabel={region}
@@ -245,12 +266,17 @@ function TablaCola<T>({
       isLoading={cargando}
       error={error}
       emptyMessage={vacio}
+      renderExpanded={renderExpanded}
+      expandAriaLabel={expandAriaLabel}
     />
   );
 }
 
 export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
   const { descripcion, pestanas, pestanaActiva, barra, descargar, pie, paginacion } = props;
+  // SLT-156 (R535): «Cierres solicitados» del mensajero, en el teléfono, con dos columnas y desplegable
+  // sobre la MISMA tabla. Las colas de la central y la satélite no cambian.
+  const esMovil = useIsMobile();
   const comun: TablaComun = {
     region: props.region,
     cargando: props.cargando,
@@ -304,13 +330,17 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
             {props.tipo === "propios" && props.tarjetas && props.tarjetas.length > 0 ? (
               <CifrasCierre cifras={props.tarjetas} ariaLabel={CIFRAS_GANANCIA_LABEL} />
             ) : null}
-            <section aria-label={comun.region}>
+            {/* SLT-165 (R493, B2 de la review): el desplegable de cada fila de «Cierres solicitados»
+                (el botón con `aria-expanded` de la tabla) mide 44 px en el teléfono. */}
+            <section aria-label={comun.region} className={props.tipo === "propios" ? DESPLEGABLE_TACTIL : undefined}>
               {props.tipo === "propios" ? (
                 <TablaCola
                   {...comun}
                   filas={props.filas}
-                  columns={columnasTablaPropia(props.acciones)}
+                  columns={esMovil ? columnasTablaPropiaMovil(props.acciones) : columnasTablaPropia(props.acciones)}
                   rowKey="cierreId"
+                  renderExpanded={esMovil ? detallePropioMovil : undefined}
+                  expandAriaLabel={esMovil ? masDatosPropio : undefined}
                 />
               ) : props.tipo === "bodega" ? (
                 <TablaColaBodega {...comun} filas={props.filas} acciones={props.acciones} />

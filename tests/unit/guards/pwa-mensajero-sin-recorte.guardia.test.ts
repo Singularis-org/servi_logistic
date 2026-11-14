@@ -8,7 +8,8 @@ import { describe, it, expect } from "vitest";
  *
  * 1. **Ningún dato se recorta** (R490, `design.md §2`): ni `truncate`, ni `text-ellipsis`, ni
  *    `line-clamp-*`, ni un `title={…}` que lleve un dato (el «…» con tooltip de SLT-152 no se lee en
- *    el móvil: no hay tooltip).
+ *    el móvil: no hay tooltip). SLT-165 (rebanada D, m7 de la review de A): tampoco `overflow-hidden`,
+ *    `overflow-x-hidden`, `overflow-clip` ni `text-clip`, que esconden el texto sin «…».
  * 2. **Escala de 4 px** (R494, `design.md §3`): sin medios pasos (`*-0.5`, `*-1.5`, `*-2.5`,
  *    `*-3.5`) ni valores arbitrarios (`p-[13px]`) en márgenes, rellenos y huecos. Los tamaños de
  *    letra, de icono (`size-3.5`) y las posiciones (`left-2.5`) no son espaciado y no entran.
@@ -21,7 +22,9 @@ import { describe, it, expect } from "vitest";
  * un `truncate`.
  */
 
-type Regla = "recorte" | "escala";
+/** «oculta» (SLT-165, m7): `overflow-hidden`/`text-clip`; solo en los archivos de D (en A, el chat
+ * lo usa en el marco de su diálogo, que no es un dato). */
+type Regla = "recorte" | "escala" | "oculta";
 
 interface ArchivoVigilado {
   archivo: string;
@@ -38,12 +41,13 @@ interface ArchivoVigilado {
 const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
   // Rebanada A — base común.
   { archivo: "components/shared/texto-entero.ts", reglas: ["recorte", "escala"] },
-  { archivo: "components/private/cierres/fila/FilaGestion.tsx", reglas: ["recorte", "escala"] },
-  { archivo: "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx", reglas: ["recorte", "escala"] },
+  // SLT-165 (m1 de su review): las tarjetas de D también con «oculta».
+  { archivo: "components/private/cierres/fila/FilaGestion.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx", reglas: ["recorte", "escala", "oculta"] },
   {
     archivo: "app/(app)/cierres-admin/_components/cierre-factura.tsx",
     segmentos: ["FilaSinGestion", "SeccionSinGestion"],
-    reglas: ["recorte", "escala"],
+    reglas: ["recorte", "escala", "oculta"],
     nota: "El comprobante (`CierreFacturaDetalle`) no es pantalla del mensajero en este alcance.",
   },
   { archivo: "app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle.tsx", reglas: ["recorte", "escala"] },
@@ -54,6 +58,28 @@ const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
   { archivo: "components/shared/ReporteBugBoton.tsx", reglas: ["recorte", "escala"] },
   { archivo: "components/shared/EscanerModal.tsx", reglas: ["recorte", "escala"] },
   { archivo: "hooks/use-flotante-compacto.ts", reglas: ["recorte", "escala"] },
+  // Rebanada D — Cierre del día (SLT-165).
+  { archivo: "components/private/cierres/fila/GestionesCierre.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/fila/fila-gestion-vista.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/fila/fila-gestion-labels.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/detalle/DetalleCierre.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/detalle/detalle-cierre-labels.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/detalle/CorregirCierre.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/cola/TablaColaPropia.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/cola/cola-propia-vista.ts", reglas: ["recorte", "escala", "oculta"] },
+  {
+    archivo: "components/private/cierres/cola/ColaCierres.tsx",
+    segmentos: ["TablaCola", "ColaCierres"],
+    reglas: ["recorte", "escala", "oculta"],
+    nota: "Las colas de la central y la satélite (`PanelAConsolidar`, `TablaColaBodega`…) no son pantalla del mensajero.",
+  },
+  { archivo: "app/(app)/cierre-dia/_components/FiltrosColaPropiaBarra.tsx", reglas: ["recorte", "escala", "oculta"] },
+  {
+    archivo: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
+    segmentos: ["CierreDiaModule"],
+    reglas: ["recorte", "escala", "oculta"],
+    nota: "Solo el componente: los helpers de arriba no pintan.",
+  },
   {
     archivo: "components/shared/BuscadorFiltros.tsx",
     reglas: ["escala"],
@@ -67,8 +93,15 @@ const PROPIEDADES_ESPACIADO =
   "(?:p|px|py|pt|pr|pb|pl|ps|pe|m|mx|my|mt|mr|mb|ml|ms|me|gap|gap-x|gap-y|space-x|space-y)";
 const MEDIO_PASO = new RegExp(`^-?${PROPIEDADES_ESPACIADO}-[0-3]\\.5$`);
 const ARBITRARIO = new RegExp(`^-?${PROPIEDADES_ESPACIADO}-\\[[^\\]]+\\]$`);
-/** `title={…}` con un dato: el texto de una celda o un campo de orden, gestión o cierre. */
-const TITLE_CON_DATO = /\btitle=\{\s*(?:texto\b|g\.|r\.|o\.|orden\.|mensajeroNombre\b)/;
+/**
+ * `title={…}` con un dato: el texto de una celda o un campo de orden, gestión o cierre. SLT-165 (m7):
+ * también los nombres de variable de la rebanada D (`c.` cierre, `p.` par de la cabecera, `i.` item
+ * de la lista, `gestion.`, `d.` detalle, `s.` señal, `destinatario`, `valor`).
+ */
+const TITLE_CON_DATO =
+  /\btitle=\{\s*(?:texto\b|g\.|r\.|o\.|orden\.|mensajeroNombre\b|c\.|p\.|i\.|gestion\.|d\.|s\.|destinatario\b|valor\b)/;
+/** SLT-165 (m7): utilidades que esconden el texto sin «…» (la caja corta lo que no cabe). */
+const OCULTA_TEXTO = new Set(["overflow-hidden", "overflow-x-hidden", "overflow-clip", "overflow-x-clip", "text-clip"]);
 
 /** El código sin comentarios de bloque, de JSX ni de línea (las URL `https://` se respetan). */
 function sinComentarios(fuente: string): string {
@@ -101,8 +134,14 @@ function hallazgos(codigo: string, reglas: readonly Regla[]): Hallazgo[] {
     const tokens = linea.split(/[\s"'`{}(),;]+/).filter(Boolean);
     for (const token of tokens) {
       const u = sinVariantes(token);
-      if (reglas.includes("recorte") && (u === "truncate" || u === "text-ellipsis" || /^line-clamp-(?!none$)/.test(u))) {
+      if (
+        reglas.includes("recorte") &&
+        (u === "truncate" || u === "text-ellipsis" || /^line-clamp-(?!none$)/.test(u))
+      ) {
         out.push({ regla: "recorte", linea: i + 1, texto: token });
+      }
+      if (reglas.includes("oculta") && OCULTA_TEXTO.has(u)) {
+        out.push({ regla: "oculta", linea: i + 1, texto: token });
       }
       if (reglas.includes("escala") && (MEDIO_PASO.test(u) || ARBITRARIO.test(u))) {
         out.push({ regla: "escala", linea: i + 1, texto: token });
@@ -151,9 +190,18 @@ describe("SLT-156 — la guardia detecta lo que dice (autocomprobación)", () =>
       '<p className="line-clamp-2">',
       "<span title={texto}>",
       "<span title={g.destinatario}>",
+      // SLT-165 (m7).
+      "<span title={c.destinatario}>",
+      "<dd title={p.valor}>",
+      "<span title={s.nota}>",
     ]) {
       expect(hallazgos(malo, ["recorte"]), malo).not.toEqual([]);
     }
+    // SLT-165 (m7): lo que esconde el texto sin «…».
+    for (const malo of ['<p className="overflow-hidden">', '<p className="max-md:overflow-x-hidden">', '<p className="text-clip">']) {
+      expect(hallazgos(malo, ["oculta"]), malo).not.toEqual([]);
+    }
+    expect(hallazgos('<p className="overflow-x-auto">', ["oculta"])).toEqual([]);
     expect(hallazgos('<p className="line-clamp-none whitespace-normal">', ["recorte"])).toEqual([]);
     expect(hallazgos("<Button title={motivoDeshabilitado}>", ["recorte"])).toEqual([]);
   });
