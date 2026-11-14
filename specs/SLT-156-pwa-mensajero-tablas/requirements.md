@@ -28,7 +28,7 @@
   columnas; lo único que cambia ahí es que ningún dato se recorta (quita el «…»/`title` de SLT-152
   «Tablas de cierres legibles», que afecta también a bodega y central).
 - **Sigue fuera:** el contenido del chat, el manifiesto, los iconos, el service worker, `/ayuda`,
-  **Ranking** (no aparece en el diseño aprobado; ver `## Preguntas abiertas`, P1) y el **voseo**
+  **Ranking** (va en la ficha aparte SLT-162 «Ranking del mensajero en tarjetas en el móvil», decisión de Carlos 2026-11-14) y el **voseo**
   fuera de cierres (D70 del proyecto: decisión aparte, no se corrige en esta ficha).
 - Ficha relacionada, ya cerrada: SLT-152 «Tablas de cierres legibles» (columnas separadas en
   `FilaGestion`). No la reabre: SLT-152 resolvió el texto montado en escritorio, no el móvil.
@@ -241,7 +241,8 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
   desbordarlo y, DONDE la pantalla lo declare fijo, DEBE quedar visible pegado al borde superior de
   la ventana mientras se desplaza la lista.
 - **R497** — CUANDO el usuario desplaza la página hacia abajo, el sistema DEBE reducir el botón
-  flotante «Reportar un problema» y el botón flotante del chat a 44 px de diámetro.
+  flotante «Reportar un problema» y el botón flotante del chat a 44 px de diámetro y volverlos
+  semitransparentes (canvas v35: nota «Diseño final» 12).
 - **R498** — CUANDO el usuario desplaza la página hacia arriba o vuelve al inicio, el sistema DEBE
   devolver los botones flotantes a su tamaño de hoy (48 px «Reportar un problema», 56 px el chat).
 - **R499** — MIENTRAS un botón flotante esté reducido, el sistema DEBE conservar su nombre
@@ -258,10 +259,11 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
 - **R502** — MIENTRAS la ventana sea móvil, el sistema DEBE pintar los cuatro KPI de Reparto
   («Pendientes», «Entregado», «Por cobrar», «Total a cobrar») en una rejilla de 2 columnas y 2
   filas.
-- **R503** — Fuera del modo foco, el sistema DEBE pintar Reparto en este orden: KPI; aviso de
-  bloqueo (si aplica); «Escanear o escribir guía»; `BuscadorFiltros` fijo arriba; sección «En
+- **R503** — Fuera del modo foco, el sistema DEBE pintar Reparto, en Mosaico y en Detalle, en este
+  orden: aviso de bloqueo (si aplica) o «Escanear o escribir guía» (bajo el encabezado, en la misma
+  posición que en Recoger en bodega y Recolección); KPI; `BuscadorFiltros` fijo arriba; sección «En
   reparto / por gestionar» con «Sincronizar ruta», los avisos de ruta, el mapa de ruta y la lista;
-  «Con ayuda solicitada» (si hay).
+  «Con ayuda solicitada» (si hay). (Decisión del leader 2026-11-14 (regla de Carlos: misma posición en todas las pantallas).)
 - **R504** — Fuera del modo foco, el sistema NO DEBE pintar el panel de gestión de ninguna orden
   en Reparto.
 - **R505** — El `BuscadorFiltros` de Reparto DEBE ofrecer en «Filtros» los filtros «Cantón» y
@@ -274,16 +276,23 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
   CUANDO el mensajero elige Detalle en el conmutador, DEBE mostrarla como lista de tarjetas
   compactas.
 - **R508** — En vista Detalle, cada tarjeta DEBE presentar en su fila principal el número de
-  parada, el destinatario, la guía, el estado y el monto a cobrar en columna fija, con las
-  acciones en su pie, sin recortar ningún dato.
+  parada, la guía (arriba, en mono) y el destinatario debajo (se parte en líneas), y en columna
+  fija a la derecha «Valor a cobrar» con el monto, sin recortar ningún dato; CUANDO el mensajero
+  toca la fila, DEBE desplegar la dirección completa y las acciones «Gestionar más tarde» y
+  «Gestionar» (canvas v35: RepartoDetalle).
 - **R509** — CUANDO aplica un aviso de ruta («El orden mostrado no está actualizado», «El orden de
-  las paradas es aproximado»), el sistema DEBE mostrarlo en una sola línea con su título y DEBE
-  desplegar su descripción completa al tocarlo.
+  las paradas es aproximado»), el sistema DEBE mostrarlo en una sola línea con su título, un botón
+  «Ver más» que despliega su descripción completa y, en la misma fila, «Mostrar mapa» (canvas v35:
+  RepartoMejorado, RepartoDetalle).
 - **R510** — CUANDO el mensajero pulsa «Gestionar» en una tarjeta y acepta «¿Gestionar esta
   orden?», el sistema DEBE pasar a modo foco con esa orden: solo su panel, con el bloque de
   verificación de la guía (escáner y campo «Número de guía») ya abierto.
-- **R511** — MIENTRAS Reparto esté en modo foco, el botón que envía la guía DEBE decir «Confirmar
-  guía» y la pantalla NO DEBE mostrar ningún otro botón «Gestionar» ni «Gestionar esta orden».
+- **R511** — MIENTRAS Reparto esté en modo foco, el bloque «Gestionar esta orden» DEBE ser el
+  escáner único (cámara «Escanear con cámara» / «Apunta al código de la guía», separador «o»,
+  campo «Número de guía» con placeholder «Ej. 1024»), el botón que envía la guía DEBE decir
+  «Confirmar guía» con la nota «Con la pistola o la cámara se confirma sola.» debajo, y la
+  pantalla NO DEBE mostrar ningún otro botón «Gestionar» ni «Gestionar esta orden» (canvas v35:
+  RepartoFoco).
 - **R512** — CUANDO el mensajero confirma en modo foco una guía que coincide con la de la orden, el
   sistema DEBE pasar al paso «¿Cómo terminó la gestión?»; SI no coincide, ENTONCES DEBE avisar «La
   guía {n} no corresponde a esta orden.» y quedarse en la verificación.
@@ -315,8 +324,8 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
   las dos listas («Por recolectar en tienda» y «Recogidos en tienda hoy»).
 - **R521** — SI el término no deja ninguna orden en una lista de Recoger en bodega o de
   Recolección, ENTONCES el sistema DEBE mostrar en esa lista el vacío de búsqueda («Ninguna guía
-  para recoger coincide con la búsqueda.» en Recoger, el de `design.md §9` en Recolección), distinto
-  del vacío sin órdenes.
+  para recoger coincide con la búsqueda.» en Recoger; «Ninguna guía por recolectar coincide con la
+  búsqueda.» en Recolección, decisión del leader 2026-11-14), distinto del vacío sin órdenes.
 - **R522** — CUANDO el mensajero confirma una guía en el escáner de Recoger en bodega o de
   Recolección, el sistema DEBE recogerla o recolectarla con el mismo resultado y los mismos
   mensajes de hoy.
@@ -336,10 +345,11 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
 - **R526** — MIENTRAS la ventana sea móvil y la lista de «Gestiones», ya filtrada, tenga más de 25
   gestiones, el sistema DEBE paginarla de 25 en 25 con `Pagination`; CUANDO cambian la pastilla de
   resultado o el término, DEBE volver a la página 1.
-- **R527** — MIENTRAS la ventana sea móvil, la pestaña «Gestiones» DEBE tener fijos arriba un
-  `BuscadorFiltros` con campo de búsqueda (por guía, remisión o destinatario, en AND con el
-  resultado) y las pastillas por resultado con su conteo («Todas ({n})», una por resultado, «Con
-  señales ({n})»).
+- **R527** — MIENTRAS la ventana sea móvil, la pestaña «Gestiones» DEBE tener fijo arriba un
+  `BuscadorFiltros` con campo de búsqueda (placeholder «Guía, remisión o nombre»; por guía, remisión
+  o destinatario, en AND con el resultado), el resultado como filtro del componente en «Filtros ({n})» (el elegido se ve como
+  pastilla con su conteo, p. ej. «Entregado (118)», con «Limpiar todo») y «Descargar» a la
+  derecha (canvas v35: GestionesVolumen).
 - **R528** — MIENTRAS la ventana sea móvil, el sistema DEBE pintar cada fila de «Rechazados por la
   tienda» como una tarjeta: destinatario; guía · tienda; fecha del rechazo en columna fija; motivo
   completo.
@@ -350,9 +360,12 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
   «Gestiones ({n})», «Rechazados por la tienda ({n})») DEBEN caber sin desbordar, pasando a otra
   línea si hace falta.
 - **R531** — MIENTRAS el cierre en curso se muestre en Cierre del día, su botón principal DEBE
-  decir «Solicitar cierre del día»; MIENTRAS la ventana sea móvil, el pie del cierre de la página
-  (con el contador «Recaudado {monto} · {n} gestiones» y su botón, también el del rechazado o
-  vencido) DEBE ir en una barra fija al borde inferior de la ventana, sin tapar la última fila.
+  decir «Solicitar cierre del día» con el contador «{n} gestiones» a la derecha dentro del botón;
+  MIENTRAS la ventana sea móvil, el pie del cierre de la página (también el del rechazado o
+  vencido) DEBE ir en una barra fija al borde inferior de la ventana (fondo blanco, borde superior,
+  botón negro de 52 px a todo el ancho), sin tapar la última fila; SI no hay gestiones pendientes,
+  ENTONCES el botón DEBE verse desactivado con «0 gestiones» y el texto «No tienes gestiones
+  pendientes» encima (canvas v35: GestionesVolumen, CierreDia, CierresSolicitados).
 - **R532** — El sistema NO DEBE mostrar «Solicitar cierre del día» en Reparto, Recoger en bodega
   ni Recolección.
 - **R533** — CUANDO el mensajero pulsa «Solicitar cierre del día», el sistema DEBE abrir el diálogo
@@ -366,19 +379,28 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
 - **R536** — MIENTRAS la ventana sea móvil, la barra de filtros de «Cierres solicitados»,
   «Descargar», las tarjetas de ganancia y la paginación DEBEN caber sin desbordar.
 - **R537** — CUANDO el mensajero pulsa «Ver» en móvil, el sistema DEBE abrir el detalle del cierre
-  a pantalla completa, con las tarjetas de R523, R528 y R529 y «Cerrar».
+  a pantalla completa, con la cabecera de rótulos de SLT-153 (Folio, Estado, Destino, Del día,
+  Solicitado, Aprobado, Aprobado por), las tarjetas de R523, R528 y R529 y «Volver» arriba
+  (canvas v35: CierreVer).
 - **R538** — «Descargar» de «Gestiones» y de «Cierres solicitados» DEBE entregar las mismas
   columnas y filas que hoy, en cualquier ancho.
 
 ### Mapa de ruta [E]
 
-- **R539** — Los marcadores del mapa de ruta (paradas, parada activa y origen) DEBEN pintarse con
-  los colores de la paleta de la app (`design.md §11`), sin colores fuera de ella.
+- **R539** — Los marcadores del mapa de ruta DEBEN pintarse con los colores de la paleta de la app
+  (`design.md §11`): siguiente parada amarilla con número negro y anillo, pendientes negras con
+  número blanco, gestionadas grises con check, y el origen «Tú»; bajo el mapa, la leyenda
+  «Siguiente · Pendiente · Gestionada · Tú» (canvas v35: RepartoMapa).
 - **R540** — CUANDO el mensajero toca el marcador de una parada, el sistema DEBE abrir una hoja
-  inferior con los datos de esa parada (número, destinatario, dirección, estado, monto a cobrar) y
-  la acción «Gestionar» de su tarjeta; CUANDO la cierra, DEBE volver al mapa.
-- **R541** — CUANDO el mensajero pulsa «Pantalla completa», el sistema DEBE mostrar el mapa a toda
-  la ventana; CUANDO pulsa «Salir de pantalla completa», DEBE devolverlo a su sitio en la página.
+  inferior con asa de arrastre y los datos de esa parada (número, remisión, destinatario, estado,
+  dirección completos, «COBRAR» y monto) y las acciones «Navegar» (abre la fila «Abrir en:» de
+  hoy) y «Gestionar» de su tarjeta; CUANDO la cierra, DEBE volver al mapa (canvas v35:
+  RepartoMapaCompleto).
+- **R541** — CUANDO el mensajero pulsa «Ver mapa completo», el sistema DEBE mostrar el mapa a toda
+  la ventana con una barra superior («Cerrar» y «Paradas {n} de {total}») y el botón «Centrar en mi
+  ubicación» (44 px); CUANDO pulsa «Cerrar», DEBE devolverlo a su sitio en la página. Bajo el mapa
+  en la página van «Ver mapa completo» y «Ocultar mapa» (canvas v35: RepartoMapa,
+  RepartoMapaCompleto).
 - **R542** — MIENTRAS el mapa esté abierto en vista Mosaico, CUANDO cambia la tarjeta visible del
   carrusel, el sistema DEBE centrar el mapa en la parada de esa tarjeta y marcarla como activa.
 - **R543** — SI una parada no tiene coordenadas, ENTONCES el sistema DEBE dejarla en la lista y
@@ -444,29 +466,35 @@ Técnicas 4-7 del borrador: resueltas en `design.md` (§5 columnas móviles sobr
 
 **Para Carlos (dependen de él):**
 
-- **P1. Ranking.** La `description` de la ficha dice «tablas y pantallas del mensajero», y Ranking
-  del día / Histórico tienen tres tablas sin vista móvil (T6-T8), pero el diseño aprobado no las
-  nombra. ¿Quedan fuera de SLT-156 (ficha aparte) o son una rebanada F? Recomendación: ficha
-  aparte; el podio (`RankingPodio`) ya es móvil y las tablas de debajo están marcadas como
-  «Versión anterior, debajo para comparar».
-- **P2. Buscador de «Gestiones del cierre».** La gestión de un cierre no trae el teléfono del
-  destinatario (`ICierreDiaService`): con el placeholder decidido («Guía, remisión, teléfono o
-  nombre») habría que añadirlo al repositorio del cierre. Recomendación: en «Gestiones» buscar por
-  guía, remisión o nombre, con el placeholder «Guía, remisión o nombre», sin tocar el backend
-  (es lo que dice R527).
+- **P1 — Ranking: CERRADA.** Carlos 2026-11-14: ficha aparte, SLT-162 «Ranking del mensajero en tarjetas en el móvil» (diseño en el canvas, artboards Ranking e Histórico).
+- **P2. Resuelta (decisión de Carlos 2026-11-14).** Placeholder del buscador de «Gestiones»:
+  «Guía, remisión o nombre»; busca por guía, remisión o destinatario, sin teléfono y sin tocar el
+  servidor (R527).
 
 **Para el leader, contra el canvas (no son de Carlos: el diseño ya está aprobado; si el canvas dice
 otra cosa, manda el canvas y se corrige el requisito):**
 
-- **C1.** Posición del escáner respecto de los KPI de Reparto (R503 lo pone debajo de los KPI).
-- **C2.** Texto del control para salir del modo foco antes de confirmar («Volver a la lista», R513).
-- **C3.** Qué hace el escáner de la lista de Reparto y su aviso de guía ajena (R514, R515).
-- **C4.** Datos de la fila principal de la tarjeta Detalle compacta (R508) y de la hoja inferior
-  del mapa (R540); textos «Pantalla completa» / «Salir de pantalla completa» (R541).
-- **C5.** «Avisos en una línea»: si la descripción se despliega al tocar (R509) o no se muestra.
-- **C6.** Si la paginación de 25 y el buscador de «Gestiones» son solo en móvil (R526, R527) o en
-  todos los anchos.
-- **C7.** La escala «4/8»: R494 la lee como múltiplos de 4 px; si el canvas usa solo 4, 8, 16, 24…
-  se endurece la guardia.
-- **C8.** Texto del botón de confirmar del diálogo (hoy «Solicitar cierre»; R533 no lo cambia) y
-  del vacío de búsqueda de Recolección (R521).
+- **C1. Resuelta (Decisión del leader 2026-11-14 (regla de Carlos: misma posición en todas las pantallas)).** Reparto lleva «Escanear o escribir guía» bajo el encabezado y encima de
+  la barra de filtros, en Mosaico y en Detalle, como Recoger y Recolección (R503).
+- **C2. Resuelta (canvas v35: RepartoFoco).** «Volver a la lista»: botón de 44 px a todo el ancho,
+  variante outline con flecha a la izquierda, entre los KPI y el panel. R513 sin cambios.
+- **C3. Resuelta (Decisión del leader 2026-11-14 (regla de Carlos: misma posición en todas las pantallas)).** Al leer una guía de su lista de reparto, se abre esa orden en modo foco
+  (R514); si no está: «La guía {n} no está en tu lista de reparto.» (R515). B7 y `design.md §7`
+  desbloqueadas.
+- **C4. Resuelta (canvas v35: RepartoDetalle, RepartoMapaCompleto, RepartoMapa).** Fila principal:
+  parada · guía y destinatario · «Valor a cobrar» en columna fija; al tocar, dirección y «Gestionar
+  más tarde» / «Gestionar» (R508 corregido). Hoja inferior con «Navegar» y «Gestionar» (R540
+  corregido). Pantalla completa: «Ver mapa completo» y, dentro, «Cerrar» (no «Pantalla completa» /
+  «Salir de pantalla completa»; R541 corregido).
+- **C5. Resuelta (canvas v35: RepartoMejorado, RepartoDetalle).** Una línea con el título y un botón
+  «Ver más» que despliega la descripción; «Mostrar mapa» en la misma fila (R509 corregido).
+- **C6. Resuelta en lo dibujado (canvas v35: GestionesVolumen y nota «Diseño final» 1).** La
+  paginación de 25 es solo por debajo de 768 px («Por debajo de 768 px… en listas largas,
+  paginación de 25»). El canvas solo dibuja móvil; el buscador de «Gestiones» sigue siendo solo
+  móvil (R527), sin contradicción. Placeholder: «Guía, remisión o nombre» (P2).
+- **C7. Resuelta (canvas v35: nota «Diseño final» 5).** «Escala 4/8 (16 px de margen, 24 entre
+  secciones, 12 entre tarjetas, 16 de padding)»: usa 12, así que la escala es de múltiplos de 4
+  (R494 tal cual); no se endurece la guardia.
+- **C8. Resuelta (canvas v35: SolicitarCierre; decisión del leader 2026-11-14).** El botón de
+  confirmar del diálogo es «Solicitar cierre», con «Cancelar» (R533 sin cambios). Vacío de búsqueda
+  de Recolección: «Ninguna guía por recolectar coincide con la búsqueda.» (R521).

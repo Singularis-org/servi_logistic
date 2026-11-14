@@ -84,8 +84,9 @@ Dos mecanismos, cada uno donde encaja:
 Escala de 4 px = clases enteras de Tailwind (`1`=4 px, `2`=8 px, `3`=12 px, `4`=16 px, `6`=24 px…).
 Prohibidos en los archivos de la ficha: medios pasos `p|m|gap|space-[xy]?-*(0.5|1.5|2.5|3.5)` y
 espaciados arbitrarios `p-[13px]`. Los tamaños de letra no son espaciado y no entran. La guardia
-de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «solo 4, 8, 16, 24…»
-(pregunta C7), se endurece la misma expresión.
+de §2 lo comprueba con una expresión sobre las clases. Canvas v35 (nota «Diseño final» 5): 16 px de
+margen, 24 entre secciones, 12 entre tarjetas, 16 de padding; usa 12, así que la escala es de
+múltiplos de 4 y la guardia no se endurece (C7).
 
 ## 4. Área táctil de 44 px (R493)
 
@@ -153,7 +154,12 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
 - `EscanerModal.tsx`: nueva constante exportada `ESCANER_LABEL_GUIA = "Escanear o escribir guía"`.
   El componente no cambia (sigue arrancando cerrado). Recoger y Recolección le pasan esa etiqueta;
   la tarjeta de dentro conserva su título («Recoger paquete», «Recolectar en tienda») y su flujo
-  (R522).
+  (R522). Canvas v35 (Recoger, Recolección, EscanerAbierto): disparador de 44 px a todo el ancho,
+  icono de cámara, «Escanear o escribir guía» y chevron, bajo el encabezado y encima de
+  `BuscadorFiltros`; abre un diálogo con el título de la tarjeta, «Cerrar» (44 px) y el escáner
+  único `EscanerGuiaCard`: «Escanear con cámara» / «Apunta al código de la guía», «o», «Número de
+  guía» (placeholder «Ej. 1024»), botón con el verbo («Recoger», «Confirmar recolección») y la nota
+  «Lee el QR o el código de barras de la etiqueta.».
 - Reparto, componente nuevo `MA/EscanerGuiaReparto.tsx`: `EscanerModal` con una tarjeta de campo
   «Número de guía» + `QrScanner` (mismo patrón que `VerificarGuiaGate`). Al confirmar un número:
   función pura `ordenPorGuia(ordenes, numGuia)` en `MA/reparto-escaner.ts` sobre
@@ -161,14 +167,17 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
   «¿Gestionar esta orden?» (el mismo diálogo de `GestionarOrdenCardButton`, extraído a un
   componente controlado `ConfirmarGestionDialog` para no duplicarlo); al aceptar → modo foco con
   la guía ya verificada (`gestionarPedido` + paso «resultados»). Si no hay → toast «La guía {n} no
-  está en tu lista de reparto.» (C3).
+  está en tu lista de reparto.» (C3). Decisión del leader 2026-11-14 (regla de Carlos: misma posición en todas las pantallas): el
+  disparador va en Reparto bajo el encabezado y encima de la barra de filtros, en Mosaico y en Detalle
+  (R503).
 - Bloqueado (R516): ninguna de las tres pantallas monta el disparador (Recoger y Recolección ya lo
   hacen así; Reparto lo hereda).
 
 ## 8. Reparto (R502-R513)
 
 - **KPI 2×2:** `KpisMensajero.tsx:58` `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` →
-  `grid-cols-2 lg:grid-cols-4`; círculo del icono 40 px en móvil y cifra `text-lg` con
+  `grid-cols-2 lg:grid-cols-4`; en móvil (canvas v35) círculo del icono de 36 px, rótulo arriba y
+  cifra de 20 px debajo (4 px entre ellos), 16 px de padding y 12 px entre tarjetas, con
   `COLUMNA_FIJA` para que «₡99 999 999» quepa en ~148 px sin partirse.
 - **Orden y lista primero (R503, R504):** se quita el `GestionarOrdenPanel` inline de la vista
   completa (`RepartoModule.tsx:809-820`). El panel solo se pinta en modo foco.
@@ -187,12 +196,14 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
 - **«Gestionar» de la tarjeta:** `onConfirmar` deja de seleccionar la orden para el panel inline y
   pasa a fijar `ordenEnFocoId`.
 - **Mosaico por defecto (R507):** ya es así (`RepartoModule.tsx:225-233`); se fija con test.
-- **Detalle compacto (R508):** `PosOrderCardDetalle` reordena su fila: parada | destinatario
-  (envuelve) y guía debajo | estado | monto (`COLUMNA_FIJA`). Botón de navegar de 44 px se
-  mantiene. Dirección, intentos y marcas siguen en la tarjeta en líneas propias (no se esconden:
-  R490).
-- **Avisos en una línea (R509):** cada `Alert` de ruta se vuelve un `Collapsible` cuyo disparador es
-  su título (`aria-expanded`, área de 44 px); la descripción va en el contenido.
+- **Detalle compacto (R508, canvas v35: RepartoDetalle):** `PosOrderCardDetalle` reordena su fila:
+  parada | guía (mono) y destinatario debajo (envuelve) | «Valor a cobrar» + monto
+  (`COLUMNA_FIJA`). Toda la fila es el disparador (`aria-expanded`); al tocarla se despliegan la
+  dirección completa y «Gestionar más tarde» / «Gestionar» (44 px, 12 px entre ellos). Intentos y
+  marcas siguen en el despliegue, en líneas propias (no se esconden: R490).
+- **Avisos en una línea (R509, canvas v35):** cada `Alert` de ruta se pinta en una fila: título
+  (se parte si no cabe), botón «Ver más» (`ghost`, 44 px, `aria-expanded`) que despliega la
+  descripción, y «Mostrar mapa» en la misma fila.
 - **Botones a 44 px:** `GestionarOrdenCardButton`, `MarcarLuegoToggle`, `RecuperarAyudaButton` y
   «Conversación» → `size="touch"`.
 
@@ -204,8 +215,8 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
   `fija tactil leerDeUrl={false}`, sin `filtros`.
 - Recolección: `BuscadorFiltros` nuevo; el término filtra `porRecolectar` y la lista de
   `RecolectadasHoyLista` (se le pasa el término o la lista ya filtrada). Conteos de las cabeceras:
-  los de hoy (total, sin filtrar). Vacío de búsqueda propuesto: «Ninguna guía coincide con la
-  búsqueda.» (C8; el de Recoger no cambia).
+  los de hoy (total, sin filtrar). Vacío de búsqueda: «Ninguna guía por recolectar coincide con la
+  búsqueda.» (C8, decisión del leader 2026-11-14; el de Recoger no cambia).
 - Mosaico por defecto: se verifica con test en las dos.
 
 ## 10. Cierre del día (R523-R538)
@@ -232,7 +243,10 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
   `padding-bottom: env(safe-area-inset-bottom)`; el cuerpo recibe un relleno inferior igual al alto
   de la barra (misma medición que publica `--alto-barra-inferior`). `ACCION_SOLICITAR`
   (`detalle-cierre-labels.ts:129`) → «Solicitar cierre del día»; solo lo usa la audiencia
-  mensajero (`detalle-cierre-vista.ts:541`). El texto del pie (contador) no cambia.
+  mensajero (`detalle-cierre-vista.ts:541`). Canvas v35: botón negro de 52 px a todo el ancho con el
+  contador «{n} gestiones» a la derecha dentro del botón (sustituye la línea «Recaudado {monto} ·
+  {n} gestiones»); sin gestiones, desactivado (gris) con «0 gestiones» y «No tienes gestiones
+  pendientes» encima.
 - **Diálogo (R533):** el de hoy (`CierreDiaModule.tsx:635-654`) ya tiene título «Solicitar cierre
   del día», resumen y «Cancelar» (por defecto de `Modal`); se fija con test. El botón de confirmar
   queda «Solicitar cierre» (C8).
@@ -246,7 +260,8 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
   (`tests/unit/descarga/censo-tablas.ts`) y la descarga no cambian (R538).
 - **«Ver» (R537):** `DetalleCierre` marco modal, en móvil `h-dvh w-screen max-w-none rounded-none`
   (hoy `h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)]`, `DetalleCierre.tsx:377`). Las tarjetas
-  salen solas: son los mismos componentes.
+  salen solas: son los mismos componentes. Canvas v35 (CierreVer): «Volver» (44 px, flecha) en la
+  barra superior del panel en lugar de «Cerrar».
 - **Trato:** los textos nuevos de cierres van en «tú» (guardia `cierres-trato-tu`).
 
 ## 11. Mapa de ruta (R539-R544)
@@ -256,12 +271,20 @@ de §2 lo comprueba con una expresión sobre las clases. Si el canvas fija «sol
   (`var(--navy)` parada, `var(--brand-light)` activa, `var(--success)` origen; texto
   `var(--card)`), en lugar de `#2563eb`/`#16a34a` (`RutaMapaInner.tsx:38-50`). El `divIcon` vive en
   el DOM, así que las variables y el tema oscuro aplican.
-- **Hoja inferior (R540):** `MA/HojaParadaMapa.tsx` sobre `Sheet side="bottom"`; recibe la orden
-  de la parada y monta el `GestionarOrdenCardButton` de su tarjeta (mismo flujo que R510). El
+- **Colores en el canvas v35 (RepartoMapa):** siguiente parada `#FFD000` con número negro y anillo;
+  pendientes `#111111` con número blanco; gestionadas `#a8a29e` con check; origen «Tú» (círculo con
+  borde blanco y etiqueta «Tú»). Leyenda bajo el mapa: «Siguiente · Pendiente · Gestionada · Tú».
+  Debajo, la nota del punto de partida de hoy y los botones «Ver mapa completo» / «Ocultar mapa»
+  (44 px). Bajo el carrusel, «El mapa se centra en la orden del carrusel.».
+- **Hoja inferior (R540):** `MA/HojaParadaMapa.tsx` sobre `Sheet side="bottom"` con asa
+  («Arrastrar para ampliar la hoja»); recibe la orden de la parada y muestra número, remisión,
+  destinatario, estado, dirección, «COBRAR» + monto, y «Navegar» (abre la fila «Abrir en:» de
+  `AbrirEnAppNavegacion`) y el `GestionarOrdenCardButton` de su tarjeta (mismo flujo que R510). El
   marcador abre la hoja vía `eventHandlers.click`.
 - **Pantalla completa (R541):** el MISMO contenedor del mapa alterna a `fixed inset-0 z-50` y llama
-  `map.invalidateSize()`; botón «Pantalla completa» / «Salir de pantalla completa»
-  (`size="icon-touch"` con texto accesible). Un solo `MapContainer`.
+  `map.invalidateSize()`; se entra con «Ver mapa completo» y se sale con «Cerrar» en la barra
+  superior, junto a «Paradas {n} de {total}»; botón flotante «Centrar en mi ubicación»
+  (`size="icon-touch"`, `aria-label`). Un solo `MapContainer`.
 - **Centrado con el carrusel (R542):** `CarruselCards` gana `onIndiceChange?(indice)` (ya escucha
   `select`, `CarruselCards.tsx:47`). `RepartoModule` traduce índice → parada y pasa
   `paradaActivaId` a `RutaMapa`; `RutaMapaInner` hace `map.panTo` y pinta esa parada como activa.

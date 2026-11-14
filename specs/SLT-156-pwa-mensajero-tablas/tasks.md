@@ -78,10 +78,12 @@
 - [ ] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
   `MA/RepartoModule.tsx`. *Hecho:* test nuevo `tests/components/RepartoMovil.test.tsx`: orden de
   secciones por `compareDocumentPosition`; sin región «Detalle de la orden» fuera de foco; vista
-  inicial Mosaico; aviso de ruta con `aria-expanded=false` y descripción oculta hasta tocarlo.
+  inicial Mosaico; aviso de ruta en una fila con «Ver más» (`aria-expanded=false`) y descripción
+  oculta hasta tocarlo.
   *Mutaciones:* volver el panel inline; vista inicial «detalle» → rojo.
 - [ ] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
-  fila principal: parada, destinatario, guía, estado y monto con `COLUMNA_FIJA`.
+  fila principal: parada, guía, destinatario y «Valor a cobrar» con `COLUMNA_FIJA`; al tocar,
+  dirección y «Gestionar más tarde» / «Gestionar».
   *Mutación:* quitar `COLUMNA_FIJA` del monto → rojo.
 - [ ] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
   (`ordenEnFocoId`), `MA/GestionarOrdenPanel.tsx` (`verificacionAbierta`, sin CTA pegajoso),
@@ -94,7 +96,7 @@
   `RepartoModule477Correccion.test.tsx` y `ChatContactoAntesDeRecoger.test.tsx` actualizados.
   *Mutaciones:* dejar el CTA «Gestionar esta orden»; «Volver a la lista» que llama a
   `gestionarPedido` → rojo.
-- [ ] **B7 Escáner de la lista (R500, R514-R516).** Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
+- [ ] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
   y `MA/reparto-escaner.ts` (`ordenPorGuia`). *Hecho:* `tests/unit/utils/reparto-escaner.test.ts`
   (encuentra por guía; ignora las de ayuda; `null` si no está) y
   `tests/components/EscanerGuiaReparto.test.tsx` (guía propia → diálogo → foco en «¿Cómo terminó
@@ -144,8 +146,9 @@
 - [ ] **D4 Barra fija y «Solicitar cierre del día» (R531-R534).** `DetalleCierre.tsx` (pie `fixed` en
   móvil, publica `--alto-barra-inferior`), `detalle-cierre-labels.ts`. *Hecho:*
   `tests/unit/utils/detalle-cierre-vista.test.ts`, `CierreDiaModule.test.tsx` y
-  `CierreDiaPagina.test.tsx` actualizados («Solicitar cierre del día»; diálogo con «Cancelar» que
-  no envía); test de las tres pantallas del portal sin ese botón. *Mutaciones:* `sticky` en vez de
+  `CierreDiaPagina.test.tsx` actualizados («Solicitar cierre del día» con «{n} gestiones» en el
+  botón; desactivado con «No tienes gestiones pendientes»; diálogo con «Solicitar cierre» y
+  «Cancelar» que no envía); test de las tres pantallas del portal sin ese botón. *Mutaciones:* `sticky` en vez de
   `fixed`; «Cancelar» que envía → rojo.
 - [ ] **D5 [P] Cola en tarjetas (R535, R536, R538).** `cola/TablaColaPropia.tsx`
   (`columnasTablaPropiaMovil`), `cola/cola-propia-vista.ts`, `cola/ColaCierres.tsx`,
@@ -154,7 +157,7 @@
   `renderExpanded` con folio, recaudado y pago; una sola `DataTable` (censo verde); descarga igual.
   *Mutación:* dos instancias de `DataTable` → rojo en el censo.
 - [ ] **D6 [P] «Ver» a pantalla completa (R537).** `DetalleCierre.tsx` marco modal. *Hecho:* test
-  con `h-dvh w-screen` en móvil. *Mutación:* volver `calc(100dvh-2rem)` → rojo.
+  con `h-dvh w-screen` en móvil y «Volver» de 44 px. *Mutación:* volver `calc(100dvh-2rem)` → rojo.
 - [ ] **D7 E2E a 360 px.** Depende de D1-D6. `e2e/pwa-mensajero-cierre-dia.spec.ts` (30 gestiones
   con textos largos: tarjetas, paginación, sin desborde ni «…», barra fija visible y flotantes
   encima, «Ver»); `e2e/cierre-dia.spec.ts` actualizado. Archivos de D en la guardia. *Hecho:*
@@ -172,8 +175,9 @@
   *Mutación:* no emitir en `select` → rojo.
 - [ ] **E3 Hoja inferior y pantalla completa (R540, R541, R543, R544).** Depende de E1.
   `MA/HojaParadaMapa.tsx`, `MA/RutaMapaInner.tsx`, `MA/RepartoModule.tsx`. *Hecho:* test nuevo
-  `tests/components/HojaParadaMapa.test.tsx` (datos de la parada y «Gestionar» → diálogo) y
-  `RutaMapaInner.test.tsx` (pantalla completa alterna clase y llama `invalidateSize`; parada sin
+  `tests/components/HojaParadaMapa.test.tsx` (datos de la parada, «Navegar» → «Abrir en:» y
+  «Gestionar» → diálogo) y `RutaMapaInner.test.tsx` («Ver mapa completo» alterna clase y llama
+  `invalidateSize`; «Cerrar» vuelve; «Centrar en mi ubicación» con `aria-label`; parada sin
   coordenadas fuera). *Mutación:* no llamar `invalidateSize` → rojo.
 - [ ] **E4 E2E a 360 px.** Depende de E1-E3. `e2e/pwa-mensajero-mapa.spec.ts` (mapa abierto sin
   desborde; marcador → hoja; pantalla completa y vuelta; «Mostrar mapa» ≥ 44). Archivos de E en la
