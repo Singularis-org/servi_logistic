@@ -354,28 +354,41 @@ describeSiHayBase("SL-39 R21–R23, R25 — el detalle del cierre separa el IVA 
   });
 
   it("R21–R23 cierre A: ganancia y neto sin IVA (1.700,00), IVA facturado 416,00 aparte, facturado 3.616,00", async () => {
-    const r = await conCorpus((k) => k.admin.verCierreDetalle(k.cierreA, k.adminSatelite));
+    // SLT-154 (R462, R465): las cifras de la empresa ya solo le llegan a la central; la satelite
+    // las recibe en `null`. Las de SL-39 se leen con el maestro y con los mismos esperados.
+    const { r, sat } = await conCorpus(async (k) => ({
+      r: await k.admin.verCierreDetalle(k.cierreA, k.maestro),
+      sat: await k.admin.verCierreDetalle(k.cierreA, k.adminSatelite),
+    }));
     expect(r.status).toBe("ok");
     if (r.status !== "ok") throw new Error(`detalle de A: ${r.status}`);
+    if (sat.status !== "ok") throw new Error(`detalle de A (satelite): ${sat.status}`);
+    expect([sat.ganancia, sat.netoEmpresa, sat.ivaFacturado, sat.totalesIngreso]).toEqual([null, null, null, null]);
 
     // Primero la ganancia: es el rojo que se espera hoy ("2116.00", con IVA).
     expect(r.ganancia).toBe("1700.00");
     expect(r.netoEmpresa).toBe("1700.00");
     expect(r.ivaFacturado).toBe("416.00");
     // Lo facturado NO cambia: sigue llevando IVA (R26).
-    expect(r.totalesIngreso.total).toBe("3616.00");
+    expect(r.totalesIngreso?.total).toBe("3616.00");
   });
 
   it("R22 cierre B: un rechazo cuyo IVA tapaba la perdida da ganancia −100,00", async () => {
-    const r = await conCorpus((k) => k.admin.verCierreDetalle(k.cierreB, k.adminSatelite));
+    // SLT-154 (R462, R465): como en A, la central con los esperados de SL-39; la satelite, `null`.
+    const { r, sat } = await conCorpus(async (k) => ({
+      r: await k.admin.verCierreDetalle(k.cierreB, k.maestro),
+      sat: await k.admin.verCierreDetalle(k.cierreB, k.adminSatelite),
+    }));
     expect(r.status).toBe("ok");
     if (r.status !== "ok") throw new Error(`detalle de B: ${r.status}`);
+    if (sat.status !== "ok") throw new Error(`detalle de B (satelite): ${sat.status}`);
+    expect([sat.ganancia, sat.netoEmpresa, sat.ivaFacturado, sat.totalesIngreso]).toEqual([null, null, null, null]);
 
     // Primero la ganancia: hoy da "160.00" y la tarjeta «Debe» no aparece.
     expect(r.ganancia).toBe("-100.00");
     expect(r.netoEmpresa).toBe("-100.00");
     expect(r.ivaFacturado).toBe("260.00");
-    expect(r.totalesIngreso.total).toBe("2260.00");
+    expect(r.totalesIngreso?.total).toBe("2260.00");
   });
 
   it("R21–R23 bodega, nivel de cada cierre del dia: A da 1.700,00 y B −100,00, cada uno con su IVA", async () => {
@@ -396,7 +409,8 @@ describeSiHayBase("SL-39 R21–R23, R25 — el detalle del cierre separa el IVA 
     expect({ a: a.ganancia, b: b.ganancia }).toEqual({ a: "1700.00", b: "-100.00" });
     expect({ a: a.netoEmpresa, b: b.netoEmpresa }).toEqual({ a: "1700.00", b: "-100.00" });
     expect({ a: a.ivaFacturado, b: b.ivaFacturado }).toEqual({ a: "416.00", b: "260.00" });
-    expect({ a: a.totalesIngreso.total, b: b.totalesIngreso.total }).toEqual({
+    // SLT-154 (R465): lectura del maestro; `?.` solo por el tipo, un `null` no da "3616.00".
+    expect({ a: a.totalesIngreso?.total, b: b.totalesIngreso?.total }).toEqual({
       a: "3616.00",
       b: "2260.00",
     });
@@ -411,7 +425,7 @@ describeSiHayBase("SL-39 R21–R23, R25 — el detalle del cierre separa el IVA 
     expect(r.ganancia).toBe("1600.00");
     expect(r.netoEmpresa).toBe("1600.00");
     expect(r.ivaFacturado).toBe("676.00");
-    expect(r.totalesIngreso.total).toBe("5876.00");
+    expect(r.totalesIngreso?.total).toBe("5876.00"); // SLT-154 (R465): lectura del maestro
   });
 
   it("R25: leer los detalles no cambia ni una fila de `cierre_detail` (el IVA se separa al leer)", async () => {

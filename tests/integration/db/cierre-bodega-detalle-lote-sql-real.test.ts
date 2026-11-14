@@ -823,6 +823,9 @@ function esperadoBX(c: Corpus) {
     totalIngresoBodegaRechazos: s.bodega,
     gestionesAjustadas: ajustadas,
     solicitadoAt: at,
+    // SLT-154 (R466, T2.3): la columna que separa los cierres del modelo nuevo del reparto del
+    // efectivo viaja en la fila. La siembra (`nuevoDia`) la escribe en `false`.
+    pagoIndependienteEfectivo: false,
   });
   return {
     cierre: cabecera(c, c.bodega.BX, S_BX, {
@@ -1030,6 +1033,7 @@ describeSiHayBase("SLT-148 — detalle del cierre de bodega en lote, contra Post
               totalIngresoBodegaRechazos: "0.00",
               gestionesAjustadas: 0,
               solicitadoAt: "2026-11-06T15:55:00.000Z",
+              pagoIndependienteEfectivo: false, // SLT-154 (R466, T2.3): `nuevoDia` la siembra en `false`
             },
             gestiones: [],
           },

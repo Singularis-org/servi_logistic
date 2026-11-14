@@ -11,6 +11,7 @@ import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/IC
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { CierreBodegaDetalleServiceResult } from "@/lib/interfaces/services/ICierresBodegaAdminService";
 import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 // Feature 393: el doble de la fila del repositorio deriva sus dos campos nuevos con las MISMAS
@@ -101,6 +102,9 @@ function detalleCierreRow(
     totalIngresoBodegaRechazos: "0.00", // feature 56/R19: snapshot del ingreso del cierre_dia
     gestionesAjustadas: 0, // SLT-56 (R20): campo nuevo del contrato del repo
     solicitadoAt: "2026-07-11T15:00:00.000Z", // SLT-104 (PA3): distinto del de la cabecera de bodega
+    // SLT-154 (R466): columna nueva del contrato del repositorio. Por defecto, cierre del modelo
+    // anterior (el pago sale del efectivo), como todos los casos de esta suite antes de la ficha.
+    pagoIndependienteEfectivo: false,
     ...overrides,
   };
 }
@@ -198,6 +202,36 @@ function newService(opts: { repo?: Repo; signedUrls?: ISignedUrlProvider } = {})
   const signedUrls = opts.signedUrls ?? fakeSignedUrls();
   const service = new CierresBodegaAdminService(repo, signedUrls, reglasPaisFijas());
   return { service, repo, signedUrls };
+}
+
+// SLT-154 (R460/R461/R465): las ocho cifras de la empresa del detalle pasan a `T | null` en el
+// tipo, porque a un lector sin acceso total le llegan en `null`. Los casos de esta suite que las
+// leen son lecturas de la CENTRAL (MAESTRO), que las recibe como antes (R465). Esta asercion lo
+// exige en ejecucion, en el agregado y en cada cierre del dia: un `null` rompe el caso con su
+// nombre, nunca se lee como cifra. No cambia ningun esperado.
+const CIFRAS_EMPRESA = [
+  "totalesIngreso",
+  "ivaFacturado",
+  "ganancia",
+  "pagoTienda",
+  "cobradoSobreRecaudado",
+  "netoEmpresa",
+  "ganaLaTienda",
+  "partesPorTienda",
+] as const;
+type CifraEmpresa = (typeof CIFRAS_EMPRESA)[number];
+type ConEmpresa<T> = Omit<T, CifraEmpresa> & { [K in CifraEmpresa & keyof T]: NonNullable<T[K]> };
+type DetalleBodegaOk = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
+type DetalleBodegaCentral = ConEmpresa<Omit<DetalleBodegaOk, "cierres">> & {
+  cierres: ConEmpresa<DetalleBodegaOk["cierres"][number]>[];
+};
+
+function exigirDineroEmpresa(r: CierreBodegaDetalleServiceResult): asserts r is DetalleBodegaCentral {
+  if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
+  const conNull = (x: object) =>
+    CIFRAS_EMPRESA.filter((k) => (x as Record<string, unknown>)[k] === null);
+  const faltan = [...conNull(r), ...r.cierres.flatMap((c, i) => conNull(c).map((k) => `cierres[${i}].${k}`))];
+  if (faltan.length > 0) throw new Error(`R465: la central recibio en null ${faltan.join(", ")}`);
 }
 
 // --- autorizacion (R2) ---
@@ -378,6 +412,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
 
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // Por cierre_dia: cada mensajero con SU ingreso y SU pago. SL-39 (R21/R22): la ganancia
     // parte de lo facturado SIN IVA, y el IVA de cada dia sale en su propia cifra.
@@ -423,6 +458,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
 
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
     expect(r.totalesIngreso.total).toBe("0.00");
     expect(r.ivaFacturado).toBe("0.00");
     expect(r.cierres[0].ivaFacturado).toBe("0.00");
@@ -1007,6 +1043,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     const { service } = newService({ repo: repoDeDosDias() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // Lo facturado, por concepto.
     expect(r.totalesIngreso.fleteConIva).toBe("4860.02");
@@ -1058,6 +1095,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     const { service } = newService({ repo: repoDeDosDias() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     const [cd1, cd2] = r.cierres;
 
@@ -1089,6 +1127,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     const { service } = newService({ repo: repoDeDosDias() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     const cd2 = r.cierres[1];
 
@@ -1138,6 +1177,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // El agregado sale de SUS numeros: 999.99 - 111.11 - 22.22.
     expect(r.paraLaCentral).toBe("866.66");
@@ -1409,6 +1449,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     const { service } = newService({ repo: repoDeDosMensajeros() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // Ana: 100.000,00 − 7.910,00 (6.215,00 de la entrega + 1.695,00 del rechazo).
     expect(r.cierres[0].ganaLaTienda).toBe("92090.00");
@@ -1496,6 +1537,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     const { service } = newService({ repo: repoDeDosMensajeros() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // Los DOS lados anclados a literales escritos a mano: la suma de las partes y el agregado
     // que el propio DTO emite. Si cualquiera de los dos se moviera, esto se entera.
@@ -1530,6 +1572,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     const { service } = newService({ repo: repoDeDosMensajeros() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     const dif = (p: { pagoTienda: string; ganaLaTienda: string }) =>
       new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
@@ -1565,6 +1608,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // El agregado, desde el SNAPSHOT: 200.000,00 − 7.345,00 − 5.593,50 y 200.000,00 − 14.633,50.
     expect(r.pagoTienda).toBe("187061.50");
@@ -1601,6 +1645,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     const { service } = newService({ repo: repoDeDosMensajeros() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     for (const parte of [...r.partesPorTienda, ...r.cierres.flatMap((c) => c.partesPorTienda)]) {
       expect(Object.keys(parte).sort()).toEqual([
@@ -1622,6 +1667,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     const { service } = newService({ repo: repoDeDosMensajeros() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // AGREGADO: lo facturado por concepto y los cinco derivados que ya existían.
     expect(r.totalesIngreso.fleteConIva).toBe("7345.00"); // 2.825,00 + 2.260,00 + 2.260,00
@@ -1693,6 +1739,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
 
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     expect(r.partesPorTienda).toEqual([
       {
@@ -1925,16 +1972,11 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — SLT-107 satelite 
       lectura: "zona",
       zonaId: Z_SAT,
     });
-    const tarifa = ingresoConFulfillment().tarifa;
-    expect(r.cierres[0].grupos.entregado[0].ingresoEmpresa).toEqual({
-      ...ingresoConFulfillment(),
-      fulfillment: null,
-      ivaFulfillment: null,
-      tarifa: tarifa === null ? null : { ...tarifa, fulfillment: null },
-      fulfillmentConIva: null,
-      ivaPctFulfillment: null,
-      fulfillmentCargadoAt: null, // D-H110
-    });
+    // SLT-154 (R463): el recorte de R283 (solo los seis campos del fulfillment) se queda corto: a
+    // quien no tiene acceso total el bloque `ingresoEmpresa` entero es cobro a la tienda y llega en
+    // `null` (el fulfillment va dentro). Solo el modelo de tarifa viaja aparte: «viejo», el del doble.
+    expect(r.cierres[0].grupos.entregado[0].ingresoEmpresa).toBeNull();
+    expect(r.cierres[0].grupos.entregado[0].tarifaModelo).toBe("viejo");
     expect(r.cierre.desmarcable).toBe(false);
   });
 
@@ -1945,20 +1987,44 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — SLT-107 satelite 
     const sat = await servicio(repoSat, zonaDe(Z_SAT)).verCierreBodegaDetalle("cb1", ADMIN_SATELITE);
     if (central.status !== "ok" || sat.status !== "ok") throw new Error("esperaba ok en las dos");
 
-    // La central no cambia: fulfillment entero y su `desmarcable`.
+    // La central no cambia: fulfillment entero y su `desmarcable`. SLT-154 (R465): y las ocho
+    // cifras de la empresa, en el agregado y en cada cierre del dia, llegan.
     expect(central.cierres[0].grupos.entregado[0].ingresoEmpresa).toEqual(ingresoConFulfillment());
     expect(central.cierre.desmarcable).toBe(true);
+    exigirDineroEmpresa(central);
 
-    // Todo lo demas, identico (cabecera, cierres, totales, derivados, desglose, reparto en %).
-    const sinR283 = (x: typeof central) => ({
+    // SLT-154 (R460, R461): a la satelite le llegan en `null` las ocho cifras de la empresa del
+    // agregado y de cada cierre del dia. Se mira cada una por su nombre, no "todo salvo".
+    const nulasEn = (x: object) => Object.fromEntries(CIFRAS_EMPRESA.map((k) => [k, (x as Record<string, unknown>)[k]]));
+    const ochoEnNull = Object.fromEntries(CIFRAS_EMPRESA.map((k) => [k, null]));
+    expect(nulasEn(sat)).toEqual(ochoEnNull);
+    expect(nulasEn(sat.cierres[0])).toEqual(ochoEnNull);
+
+    // Todo lo demas, identico (cabecera, cierres, totales, derivados, desglose, reparto en %, y
+    // SLT-154 R466 «La central debe»). La paridad de R284 se redefine para lo que la satelite SI
+    // ve: fuera R283 (`desmarcable`, las gestiones) y las cifras de la empresa de R460/R461.
+    const sinEmpresa = (x: object) => ({
       ...x,
+      ...Object.fromEntries(CIFRAS_EMPRESA.map((k) => [k, "R460"])),
+    });
+    const sinR283 = (x: DetalleBodegaOk) => ({
+      ...sinEmpresa(x),
       cierre: { ...x.cierre, desmarcable: "R283" },
-      cierres: x.cierres.map((c) => ({ ...c, grupos: "R283" })),
+      cierres: x.cierres.map((c) => ({ ...sinEmpresa(c), grupos: "R283" })),
     });
     expect(sinR283(sat)).toEqual(sinR283(central));
     expect(sat.porcentajesReparto).toBeDefined();
-    // Las gestiones, iguales salvo el fulfillment.
-    const g = (x: typeof central) => ({ ...x.cierres[0].grupos.entregado[0], ingresoEmpresa: null });
+    // R466: el unico cierre del dia, del modelo anterior, con efectivo 10,00 y pago 5,00: el
+    // efectivo alcanza, asi que la central no debe nada. Lo mismo para las dos.
+    expect(sat.centralDebe).toBe("0.00");
+    expect(central.centralDebe).toBe("0.00");
+    // Las gestiones, iguales salvo el cobro a la tienda (SLT-154 R463: el bloque entero, con su
+    // modelo de tarifa aparte en la satelite).
+    const g = (x: DetalleBodegaOk) => ({
+      ...x.cierres[0].grupos.entregado[0],
+      ingresoEmpresa: "R463",
+      tarifaModelo: "R463",
+    });
     expect(g(sat)).toEqual(g(central));
 
     // Ninguna lectura de mas para la satelite: la misma llamada (salvo el alcance) y nada mas.
