@@ -444,3 +444,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13, review m2 en `progress/review_SLT-149.md`). En `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`, `tests/unit/services/CierresAdminService.gestiones-completo.test.ts` y `tests/unit/services/cierre-desglose-tres-superficies.test.ts` (B6, B11, B12) los datos que devuelve el doble no cumplen el tipo de retorno (faltan `rechazosDeTienda` y `pagoIndependienteEfectivo`, o devuelven el DTO en vez de la fila). Antes lo escondía un `as unknown as` sobre el repositorio; ahora el cast va solo sobre el dato, para no cambiar lo que miden.
 - **Qué falta:** completar esos datos al contrato y quitar el cast; comprobar que las aserciones siguen verdes.
 - **Dueño:** ArqDev.
+
+### D76 — Búsqueda por folio corto: lista `IN` de ids sin tope
+- **Origen:** SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (2026-11-13, review m1 en `progress/review_SLT-153.md`). Con un trozo de folio corto (1-2 caracteres), `idsPorFolio` puede devolver miles de ids que luego entran en un `IN` del `where` de las colas.
+- **Qué falta:** medir con volumen real; si crece, filtrar por folio en la misma consulta (subconsulta o `right(id, 8) ILIKE`) en vez de la lista de ids, o exigir un mínimo de caracteres.
+- **Dueño:** ArqDev.

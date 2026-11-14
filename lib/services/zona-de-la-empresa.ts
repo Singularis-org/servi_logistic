@@ -1,6 +1,7 @@
 import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { normalizarFolio } from "@/lib/utils/folio-cierre";
 import {
   filtrosConLimites,
   tieneRangoDeFechas,
@@ -45,15 +46,39 @@ export function zonaPerezosa(
 }
 
 /**
+ * SLT-153 (R457) — lo que un listado hace con sus filtros: `vacio` (un folio que no puede existir:
+ * cero cierres y `total` 0 SIN leer la base) o `aplicar` (los filtros para el repositorio, o
+ * `undefined` si no vino el bloque). Discriminado para que ningun llamador pueda olvidar el `vacio`.
+ */
+export type FiltrosResueltos<F extends RangoDeFechasCierres> =
+  | { tipo: "vacio" }
+  | { tipo: "aplicar"; filtros: FiltrosEnRepositorio<F> | undefined };
+
+/**
  * Los filtros de cierres tal como los recibe el repositorio: `desde`/`hasta` (fechas del calendario
  * del pais) resueltos en instantes con la zona de la empresa (R22, R23). Sin rango no se lee la zona.
+ *
+ * SLT-153 (R456, R457): el `folio` sale NORMALIZADO con `normalizarFolio`, la misma regla de
+ * `/cierre-dia` (SLT-138, R171). Vacio tras normalizar → la clave desaparece (no recorta). Imposible
+ * (un caracter fuera de `0-9A-F` o mas de 8) → `vacio`, antes de leer la zona o la base.
  */
-export async function filtrosParaRepo<F extends RangoDeFechasCierres>(
+export async function filtrosParaRepo<F extends RangoDeFechasCierres & { folio?: string }>(
   filtros: F | undefined,
   zona: ZonaDeLaOperacion,
-): Promise<FiltrosEnRepositorio<F> | undefined> {
-  if (filtros === undefined) return undefined;
-  return filtrosConLimites(filtros, tieneRangoDeFechas(filtros) ? await zona() : null);
+): Promise<FiltrosResueltos<F>> {
+  if (filtros === undefined) return { tipo: "aplicar", filtros: undefined };
+  const { folio, ...resto } = filtros;
+  const normalizado = folio === undefined ? { tipo: "ignorar" as const } : normalizarFolio(folio);
+  if (normalizado.tipo === "imposible") return { tipo: "vacio" };
+  const conLimites = filtrosConLimites(resto, tieneRangoDeFechas(resto) ? await zona() : null);
+  return {
+    tipo: "aplicar",
+    // El cast solo reintroduce `folio`, que `resto` perdio al desestructurar: ya normalizado.
+    filtros: {
+      ...conLimites,
+      ...(normalizado.tipo === "buscar" ? { folio: normalizado.texto } : {}),
+    } as FiltrosEnRepositorio<F>,
+  };
 }
 
 /**

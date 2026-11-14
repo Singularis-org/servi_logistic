@@ -9,6 +9,9 @@ import {
   CATALOGO_FILTROS_CIERRES_VACIO,
   type CatalogoFiltrosCierresDTO,
   type FiltrosCierresBodega,
+  // SLT-153 (T3/T5): el compartido, que cuenta el folio; sin él la página 1 pre-cargada sin
+  // filtrar se serviría con un folio puesto.
+  sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
@@ -70,11 +73,6 @@ const TITULO_DESCARGA_PENDIENTES = "Cierres de bodega pendientes";
  */
 export const PAGINACION_POR_CONCILIAR_LABEL = "Paginación de los cierres de bodega por conciliar";
 export const PAGINACION_CONCILIADOS_LABEL = "Paginación de los cierres de bodega conciliados";
-
-/** `true` si el objeto no recorta nada: entonces la página pre-cargada del servidor sirve. */
-function sinFiltrosBodega(filtros: FiltrosCierresBodega): boolean {
-  return Object.values(filtros).every((v) => v === undefined);
-}
 
 // --- Las dos pestañas de la cola (SLT-127, R127): ids internos de `ColaCierres` ---
 const TAB_PENDIENTES = "pendientes";

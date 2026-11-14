@@ -22,7 +22,8 @@ afterEach(cleanup);
 
 const MENSAJERO: DetalleMensajeroVista = {
   mensajeroNombre: "Ana Mensajera",
-  destino: "Bodega central · GAM",
+  destino: "Bodega central",
+  zona: "GAM",
   folio: "8F2A11C4",
   estado: "solicitado",
   solicitadoAt: "2026-11-08T00:42:00.000Z",
@@ -137,6 +138,22 @@ async function cabecera(): Promise<HTMLElement> {
   return dialogo.querySelector("header") as HTMLElement;
 }
 
+/** La fila del título y la insignia de estado (sin los pares de datos, que repiten «Solicitado»). */
+async function filaTitulo(): Promise<HTMLElement> {
+  return (await cabecera()).firstElementChild as HTMLElement;
+}
+
+/**
+ * SLT-153 (R455): los pares de la cabecera como [término, definición], en orden. Falla si las dos
+ * cuentas no cuadran: cada término lleva su definición.
+ */
+function paresDe(raiz: HTMLElement): [string, string][] {
+  const terminos = within(raiz).queryAllByRole("term");
+  const definiciones = within(raiz).queryAllByRole("definition");
+  expect(definiciones).toHaveLength(terminos.length);
+  return terminos.map((t, i) => [t.textContent ?? "", definiciones[i]!.textContent ?? ""]);
+}
+
 describe("R13 — marco: modal con nombre accesible y X, o región sin X", () => {
   it("modal de mensajero: dialog «Detalle del cierre · Cierre de Ana Mensajera» con su X", async () => {
     mensajero("central", "decidir");
@@ -166,10 +183,10 @@ describe("R13 — marco: modal con nombre accesible y X, o región sin X", () =>
 describe("R2, R3 — identidad, estado y retención arriba", () => {
   it("el estado de cada modo sale de `EstadoCierreBadge` / `estadoConciliacionDe`", async () => {
     mensajero("central", "decidir");
-    expect(await screen.findByText("Solicitado")).toBeTruthy();
+    expect(within(await filaTitulo()).getByText("Solicitado")).toBeTruthy();
     cleanup();
     mensajero("central", "solo lectura", { detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z" } });
-    expect(await screen.findByText("Aprobado")).toBeTruthy();
+    expect(within(await filaTitulo()).getByText("Aprobado")).toBeTruthy();
     cleanup();
     mensajero("mensajero", "en curso", { marco: "pagina", detalle: { ...MENSAJERO, estado: null, folio: null, empresa: null } });
     expect(screen.getByText("Sin solicitar")).toBeTruthy();
@@ -183,53 +200,6 @@ describe("R2, R3 — identidad, estado y retención arriba", () => {
     cleanup();
     bodega("central", "solo lectura", { ...BODEGA, conciliado: true, faltaPorRecibir: "1234.56" });
     expect(within(await cabecera()).getByText("Recibido incompleto")).toBeTruthy();
-  });
-
-  it("cabecera: destino, folio y fecha de solicitud", async () => {
-    mensajero("central", "decidir");
-    const dialogo = await screen.findByRole("dialog");
-    expect(dialogo.textContent).toContain("Bodega central · GAM · 8F2A11C4 · Solicitado 2026-11-07 18:42");
-  });
-
-  it("aprobado: la fecha de resolución y quién lo resolvió", async () => {
-    mensajero("central", "solo lectura", {
-      detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: "Carlos R." },
-    });
-    expect((await cabecera()).textContent).toContain(
-      "Bodega central · GAM · 8F2A11C4 · Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10 por Carlos R.",
-    );
-  });
-
-  it("rechazado: la fecha del rechazo", async () => {
-    mensajero("central", "solo lectura", {
-      detalle: { ...MENSAJERO, estado: "rechazado", resueltoAt: "2026-11-08T01:20:00.000Z" },
-    });
-    expect((await cabecera()).textContent).toContain("Solicitado 2026-11-07 18:42 · Rechazado 2026-11-07 19:20");
-  });
-
-  it("vencido: «Del … · venció sin solicitarse»", async () => {
-    mensajero("central", "vencido", { detalle: { ...MENSAJERO, estado: "vencido" } });
-    expect((await cabecera()).textContent).toContain("8F2A11C4 · Del 2026-11-07 18:42 · venció sin solicitarse");
-  });
-
-  it("bodega: quién lo solicitó, cuántos mensajeros, folio y fecha", async () => {
-    bodega("central", "decidir");
-    expect((await cabecera()).textContent).toContain(
-      "Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros · C07B3E19 · Solicitado 2026-11-07 19:05",
-    );
-  });
-
-  it("bodega recibida: «Recibido … por …»", async () => {
-    bodega("central", "solo lectura", {
-      ...BODEGA,
-      conciliado: true,
-      faltaPorRecibir: "0.00",
-      conciliadoAt: "2026-11-08T15:12:00.000Z",
-      conciliadoPorNombre: "Carlos R.",
-    });
-    expect((await cabecera()).textContent).toContain(
-      "Solicitado 2026-11-07 19:05 · Recibido 2026-11-08 09:12 por Carlos R.",
-    );
   });
 
   it("con 2 reprogramadas retenidas la cabecera lo dice; con 0, nada", async () => {
@@ -400,16 +370,141 @@ describe("R12 — el pie fijo y sus acciones", () => {
   });
 });
 
-describe("SLT-109 (R241) — la cabecera del cierre de hoy", () => {
-  it("sin destino no queda un « · » suelto: «Solicitud nueva · Hoy · sin solicitar»", () => {
+// SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» — los rótulos y valores
+// van escritos aquí a mano; nunca se comparan contra la constante que los genera.
+describe("SLT-153 (R450-R455) — la cabecera reparte cada dato con su rótulo", () => {
+  it("R450: mensajero solicitado (central): Folio, Destino, Zona y Solicitado, en ese orden", async () => {
+    mensajero("central", "decidir");
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+    ]);
+  });
+
+  it("R450: aprobado (satélite): siguen «Aprobado» y «Aprobado por»", async () => {
+    mensajero("satelite", "solo lectura", {
+      detalle: {
+        ...MENSAJERO,
+        destino: "Bodega satélite",
+        estado: "aprobado",
+        resueltoAt: "2026-11-08T01:10:00.000Z",
+        resueltoPorNombre: "Carlos R.",
+      },
+    });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega satélite"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+      ["Aprobado", "2026-11-07 19:10"],
+      ["Aprobado por", "Carlos R."],
+    ]);
+  });
+
+  it("R450: rechazado: siguen «Rechazado» y «Rechazado por»", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, estado: "rechazado", resueltoAt: "2026-11-08T01:20:00.000Z", resueltoPorNombre: "Berta B." },
+    });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+      ["Rechazado", "2026-11-07 19:20"],
+      ["Rechazado por", "Berta B."],
+    ]);
+  });
+
+  it("R451: sin zona ni quién lo aprobó, esos pares no se pintan (ni rótulo ni «—»)", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, zona: "", estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: null },
+    });
+    const cab = await cabecera();
+    expect(paresDe(cab)).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Solicitado", "2026-11-07 18:42"],
+      ["Aprobado", "2026-11-07 19:10"],
+    ]);
+    expect(within(cab).queryByText("Zona")).toBeNull();
+    expect(within(cab).queryByText("Aprobado por")).toBeNull();
+    expect(cab.querySelector("dl")!.textContent).not.toContain("—");
+  });
+
+  it("R452: vencido: «Del día» en lugar de «Solicitado»", async () => {
+    mensajero("central", "vencido", { detalle: { ...MENSAJERO, estado: "vencido" } });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Del día", "2026-11-07 18:42"],
+    ]);
+  });
+
+  it("R453: el cierre de hoy sin solicitar: «Folio» → «Solicitud nueva» y «Día» → «Hoy», sin Destino", () => {
     mensajero("mensajero", "en curso", {
       marco: "pagina",
       onCerrar: undefined,
-      detalle: { ...MENSAJERO, destino: "", estado: null, folio: null, empresa: null, solicitadoAt: null },
+      detalle: { ...MENSAJERO, destino: "", zona: null, estado: null, folio: null, empresa: null, solicitadoAt: null },
     });
     const region = screen.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
-    const linea = within(region).getByText("Solicitud nueva").parentElement!;
-    expect(linea.textContent).toBe("Solicitud nueva · Hoy · sin solicitar");
+    const cab = region.querySelector("header") as HTMLElement;
+    expect(paresDe(cab)).toEqual([
+      ["Folio", "Solicitud nueva"],
+      ["Día", "Hoy"],
+    ]);
+    expect(within(cab).queryByText("Destino")).toBeNull();
+  });
+
+  it("R454: bodega sin marca: Folio, Origen, Zona, Solicitado por, Mensajeros y Solicitado", async () => {
+    bodega("central", "decidir", { ...BODEGA, conteos: { ...BODEGA.conteos, mensajeros: 3 } });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#C07B3E19"],
+      ["Origen", "Bodega satélite"],
+      ["Zona", "Limón"],
+      ["Solicitado por", "Sara Satélite"],
+      ["Mensajeros", "3"],
+      ["Solicitado", "2026-11-07 19:05"],
+    ]);
+  });
+
+  it("R454: bodega con la marca de recibido (satélite): siguen «Recibido» y «Recibido por»", async () => {
+    bodega("satelite", "solo lectura", {
+      ...BODEGA,
+      conciliado: true,
+      faltaPorRecibir: "0.00",
+      conciliadoAt: "2026-11-08T15:12:00.000Z",
+      conciliadoPorNombre: "Carlos R.",
+    });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#C07B3E19"],
+      ["Origen", "Bodega satélite"],
+      ["Zona", "Limón"],
+      ["Solicitado por", "Sara Satélite"],
+      ["Mensajeros", "2"],
+      ["Solicitado", "2026-11-07 19:05"],
+      ["Recibido", "2026-11-08 09:12"],
+      ["Recibido por", "Carlos R."],
+    ]);
+  });
+
+  it("R455: un término y una definición por par, y ya no hay línea única con « · »", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: "Carlos R." },
+    });
+    const cab = await cabecera();
+    expect(within(cab).getAllByRole("term")).toHaveLength(6);
+    expect(within(cab).getAllByRole("definition")).toHaveLength(6);
+    expect(cab.textContent).not.toContain(" · Solicitado ");
+    expect(cab.textContent).not.toContain("Bodega central · GAM");
+    cleanup();
+    bodega("central", "decidir");
+    const cabBodega = await cabecera();
+    expect(within(cabBodega).getAllByRole("term")).toHaveLength(6);
+    expect(within(cabBodega).getAllByRole("definition")).toHaveLength(6);
+    expect(cabBodega.textContent).not.toContain("lo solicitó");
   });
 });
 
