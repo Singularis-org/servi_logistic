@@ -149,6 +149,56 @@ async function cuentasA(detalle: Locator) {
   );
 }
 
+/**
+ * SLT-154 «Vista de la bodega satélite: solo lo suyo» (R471-R473) — el cierre A de la satélite como lo ve
+ * la satélite. A mano, desde la cabecera: recaudado 100.000 (70.000 efectivo + 30.000 SINPE), pago al
+ * mensajero 2 × 1.500 = 3.000, gana la bodega 500 (el rechazo manual), debe llegar a la central
+ * 100.000 − 3.000 − 500 = 96.500. Reparto en % de 100.000: 96,5 / 3 / 0,5 → pisos 96 + 3 + 0 = 99; el
+ * punto va al primero de los dos restos iguales (0,5) → [97, 3, 0]. Lo de la empresa que NO debe verse:
+ * se le paga hoy a la tienda 94.350, total facturado 7.910, le queda 3.500.
+ */
+async function cifrasSateliteA(detalle: Locator) {
+  // R471: sus cuatro tarjetas; recaudado, métodos y pago, los mismos de la central (`cifrasA`).
+  await expect(cifra(detalle, "recaudado")).toHaveText(importe(100000, { solo: true }));
+  await expect(cifra(detalle, "pago")).toHaveText(importe(3000, { solo: true }));
+  await expect(cifra(detalle, "ganaBodega")).toHaveText(importe(500, { solo: true }));
+  await expect(cifra(detalle, "paraCentral")).toHaveText(importe(96500, { solo: true }));
+  const grupo = detalle.getByRole("group", { name: "Cifras del cierre" });
+  await expect(grupo.locator("[data-cifra]")).toHaveCount(4);
+  const metodos = grupo.getByLabel("Métodos de pago de lo recaudado");
+  await expect(metodos.getByText("Efectivo", { exact: true }).locator("..")).toContainText(importe(70000));
+  await expect(metodos.getByText("SINPE", { exact: true }).locator("..")).toContainText(importe(30000));
+  // R471: ni «Se le paga hoy a la tienda» ni «Le queda a la empresa».
+  await expect(cifra(detalle, "paraTienda")).toHaveCount(0);
+  await expect(cifra(detalle, "leQueda")).toHaveCount(0);
+
+  // R473: abre en «Gestiones (3)»; la pestaña del dinero es «Lo que va a la central», no «Dinero».
+  const secciones = detalle.getByRole("tablist", { name: "Secciones del cierre" });
+  await expect(secciones.getByRole("tab", { name: "Gestiones (3)" })).toHaveAttribute("aria-selected", "true");
+  await expect(secciones.getByRole("tab", { name: "Dinero" })).toHaveCount(0);
+
+  // R472: la barra [debe llegar, pago, gana la bodega] con los % de R467 y la cuenta de la central. La
+  // pestaña y la cuenta se llaman igual: la una se busca por `tab`, la otra por `region`.
+  const central = secciones.getByRole("tab", { name: CENTRAL_CUENTA });
+  await central.click();
+  await expect(central).toHaveAttribute("aria-selected", "true");
+  await expect(detalle.getByRole("region", { name: "Reparto de lo recaudado" }).getByRole("listitem")).toHaveText([
+    "Debe llegar a la central ₡96.500 (97 %)",
+    "Pago al mensajero ₡3.000 (3 %)",
+    "Gana la bodega satélite ₡500 (0 %)",
+  ]);
+  await expect(montoDeCuenta(detalle, CENTRAL_CUENTA, "Total general")).toHaveText(importe(100000, { solo: true }));
+  await expect(montoDeCuenta(detalle, CENTRAL_CUENTA, "− Pago al mensajero")).toHaveText(importe(3000, { solo: true }));
+  await expect(montoDeCuenta(detalle, CENTRAL_CUENTA, "− Gana la bodega satélite")).toHaveText(importe(500, { solo: true }));
+  await expect(montoDeCuenta(detalle, CENTRAL_CUENTA, "Debe llegar a la central")).toHaveText(importe(96500, { solo: true }));
+  // R472: sin las dos cuentas de la empresa ni su barra.
+  await expect(detalle.getByRole("region", { name: FACTURA, exact: true })).toHaveCount(0);
+  await expect(detalle.getByRole("region", { name: QUEDA, exact: true })).toHaveCount(0);
+  for (const ausente of ["Se le paga hoy a la tienda", "Le queda a la empresa", "₡94.350", "₡7.910", "₡3.500"]) {
+    await expect(detalle).not.toContainText(ausente);
+  }
+}
+
 /** Los botones del pie, en orden. */
 async function pie(detalle: Locator): Promise<string[]> {
   return detalle.locator("footer").getByRole("button").allTextContents();
@@ -257,13 +307,14 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await cifrasA(resuelto);
   });
 
-  test("satélite, solicitado: las mismas cifras, sin pago ni fulfillment, y rechaza con motivo", async ({ browser }) => {
+  // SLT-154 (R471-R473): la satélite ya no ve las cifras de la empresa del cierre (R462). Lo que comparte
+  // con la central (recaudado, sus métodos, el pago) sigue al céntimo; el resto es lo suyo.
+  test("satélite, solicitado: sus cifras, sin las de la empresa ni pago ni fulfillment, y rechaza con motivo", async ({ browser }) => {
     test.setTimeout(180_000);
     const page = await paginaDe(browser, r.adminSatelite);
     const detalle = await abrirPendiente(page, satelite.m, "Ver / decidir");
 
-    await cifrasA(detalle);
-    await cuentasA(detalle);
+    await cifrasSateliteA(detalle);
     await expect(detalle.getByRole("tab", { name: "Pago al mensajero" })).toHaveCount(0);
 
     // FICHA 481: la satélite no ve el fulfillment en la fila desplegada.
@@ -273,6 +324,10 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     // información del resultado); ahora el botón que despliega la fila, por su nombre (R89).
     await ordenes.getByRole("button", { name: /^(Desglose de ingreso|Detalle) de la orden /, expanded: false }).first().click();
     await expect(ordenes.getByText("Fulfillment", { exact: true })).toHaveCount(0);
+    // SLT-154 (R475): desplegada conserva el pago al mensajero y no trae el cobro a la tienda.
+    await expect(ordenes.getByText("Se le paga al mensajero").first()).toBeVisible();
+    await expect(ordenes.getByText("Se le cobra a la tienda")).toHaveCount(0);
+    await expect(ordenes.getByRole("button", { name: "Ver cómo se calculó" })).toHaveCount(0);
 
     await detalle.locator("footer").getByRole("button", { name: "Rechazar" }).click();
     const rechazo = page.getByRole("dialog", { name: "Rechazar cierre" });
@@ -564,32 +619,36 @@ test.describe.serial("SLT-101 — la fila única en «Gestiones» (escenario S3-
     expect(filaXlsx(central.entrega)?.[7] ?? "").toBe("");
   });
 
-  test("satélite A: las mismas cifras de la fila, columna no GAM, sin Fulfillment y solo «Ajustar pago»", async ({ browser }) => {
+  // SLT-154 (R474, R475): la satélite ya no ve el cobro a la tienda ni «Ver cómo se calculó»; con él se va
+  // la comprobación de la columna no GAM, que solo se leía ahí (la central conserva la de la GAM, R477). Lo
+  // que comparte con la central (lo que recibió el mensajero y lo que se le paga) sigue al céntimo.
+  test("satélite A: lo del mensajero igual que la central, «Gana bodega», sin cobro ni Fulfillment y solo «Ajustar pago»", async ({ browser }) => {
     test.setTimeout(180_000);
     const page = await paginaDe(browser, r.adminSatelite);
     const detalle = await abrirPendiente(page, satelite.m, "Ver / decidir");
     await detalle.getByRole("tab", { name: "Gestiones (3)" }).click();
     await expect(filtros(detalle).getByRole("button")).toHaveText(FILTROS_S3_A);
 
+    // R474: «Gana bodega» en el sitio de «Cobro a la tienda»; el rechazo, 500 (el pago por rechazo, PAGO_A).
+    const cabecera = ordenesDe(detalle).locator(":scope > div").first();
+    await expect(cabecera.locator('[data-columna="ganaBodega"]')).toHaveText("Gana bodega");
+    await expect(cabecera).not.toContainText("Cobro a la tienda");
+    await expect(filaDe(detalle, satelite.rechazo).locator('[data-columna="ganaBodega"]')).toHaveText(importe(500, { solo: true }));
+    await expect(ordenesDe(detalle).locator('[data-gestion] [data-columna="cobro"]')).toHaveCount(0);
+
     const fila = await desplegarFila(detalle, satelite.entrega);
-    const cobro = tarjeta(fila, "Se le cobra a la tienda", satelite.entrega);
-    expect(await lineasDe(cobro)).toEqual([
-      ["Flete por entregado + IVA", "₡2.260"],
-      ["+ Comisión COD + IVA", "₡791"],
-      ["Se le cobra", "₡3.051"],
+    // R475: conserva «Recibió» y el pago al mensajero, con los literales de la central.
+    expect(await lineasDe(tarjeta(fila, "Recibió el mensajero", satelite.entrega))).toEqual([
+      ["Efectivo", "₡70.000"],
+      ["Recibió", "₡70.000"],
     ]);
-    await expect(cobro.locator("[data-aparte]")).toHaveText("de eso, IVA (no es de la empresa)₡351");
     expect(await lineasDe(tarjeta(fila, "Se le paga al mensajero", satelite.entrega))).toEqual([["Se le paga", "₡1.500"]]);
+    // R475: sin «Se le cobra a la tienda» (₡3.051 en la central) ni «Ver cómo se calculó».
+    await expect(tarjeta(fila, "Se le cobra a la tienda", satelite.entrega)).toHaveCount(0);
+    await expect(fila.getByRole("button", { name: "Ver cómo se calculó" })).toHaveCount(0);
+    await expect(fila).not.toContainText("₡3.051");
     // R25, R30 (ficha 481): la satélite no ve el fulfillment.
     await expect(fila.getByText("Fulfillment · se cobró al crear la orden", { exact: true })).toHaveCount(0);
-    // R29: la satélite (zona no GAM) aplica la columna no GAM.
-    await cobro.getByRole("button", { name: "Ver cómo se calculó" }).click();
-    const calculo = fila.getByRole("region", { name: "Cómo se calculó el cobro a la tienda" });
-    expect(await lineasDe(tarjeta(calculo, "Flete por entregado", satelite.entrega))).toEqual([
-      ["tarifa no GAM", "₡2.000"],
-      ["+ IVA flete (13 % de ₡2.000)", "₡260"],
-      ["Flete por entregado", "₡2.260"],
-    ]);
     // R26: solo «Ajustar pago».
     await expect(fila.getByRole("button", { name: `Ajustar pago al mensajero ${deLa(satelite.entrega)}` })).toBeVisible();
     await expect(fila.getByRole("button", { name: /^Corregir métodos de pago/ })).toHaveCount(0);
@@ -917,6 +976,36 @@ async function lecturaDeBodega(detalle: Locator): Promise<string[]> {
   return textos;
 }
 
+/**
+ * SLT-154 (R468-R470) — lo que la satélite lee de su cierre de bodega: sus cuatro tarjetas [recaudado,
+ * pago, gana la bodega, debe llegar] y la cuenta «Lo que va a la central» de su pestaña (la pestaña y la
+ * cuenta se llaman igual: la una se busca por `tab`, la otra por `region`). Abre en «Gestiones» (R470).
+ */
+async function lecturaDeBodegaSatelite(detalle: Locator): Promise<string[]> {
+  const secciones = detalle.getByRole("tablist", { name: "Secciones del cierre" });
+  await expect(secciones.getByRole("tab", { name: /^Gestiones \(/ })).toHaveAttribute("aria-selected", "true");
+  await expect(secciones.getByRole("tab", { name: "Dinero" })).toHaveCount(0);
+  // R468: ni «Le queda a la empresa» ni «La central debe» (el efectivo alcanza o el cierre es del modelo nuevo).
+  await expect(cifra(detalle, "recaudado")).toBeVisible();
+  await expect(cifra(detalle, "leQueda")).toHaveCount(0);
+  await expect(cifra(detalle, "centralDebe")).toHaveCount(0);
+  const textos: string[] = [];
+  for (const id of ["recaudado", "pago", "ganaBodega", "paraCentral"]) {
+    textos.push((await cifra(detalle, id).textContent()) ?? "");
+  }
+  const tab = secciones.getByRole("tab", { name: CENTRAL_CUENTA });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  for (const rotulo of ["Total general", "− Pago a mensajeros", "− Gana la bodega satélite", "Debe llegar a la central"]) {
+    textos.push((await montoDeCuenta(detalle, CENTRAL_CUENTA, rotulo).textContent()) ?? "");
+  }
+  // R469: sin las cuentas de la empresa.
+  await expect(detalle.getByRole("region", { name: FACTURA, exact: true })).toHaveCount(0);
+  await expect(detalle.getByRole("region", { name: QUEDA, exact: true })).toHaveCount(0);
+  await expect(detalle).not.toContainText("Le queda a la empresa");
+  return textos;
+}
+
 async function bodegaDeCierres(page: Page): Promise<void> {
   await page.goto("/cierres-admin");
   await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
@@ -955,6 +1044,10 @@ async function sateliteSoloLee(detalle: Locator): Promise<void> {
   await expect(desplegar).toHaveAttribute("aria-expanded", "true");
   await expect(detalle.getByRole("region", { name: /^Fulfillment/ })).toHaveCount(0);
   await expect(detalle.getByText(/Fulfillment/)).toHaveCount(0);
+  // SLT-154 (R474, R475): «Gana bodega» en la lista; desplegada, sin el cobro a la tienda.
+  await expect(detalle.getByRole("region", { name: "Órdenes del cierre" }).locator(":scope > div").first()).toContainText("Gana bodega");
+  await expect(detalle.getByText("Se le cobra a la tienda")).toHaveCount(0);
+  await expect(detalle.getByRole("button", { name: "Ver cómo se calculó" })).toHaveCount(0);
   await expect(
     detalle.getByRole("button", { name: /Marcar recibido|Desmarcar|Corregir|Ajustar pago|Aprobar|Rechazar/ }),
   ).toHaveCount(0);
@@ -1114,16 +1207,24 @@ test.describe.serial("SLT-104 — la central ve un cierre de bodega del modelo n
   });
 
   // SLT-107 (T4.3; R77, R51): la satélite abre el MISMO cierre de bodega del modelo nuevo desde «Solicitados».
-  test("satélite, B6: las mismas cifras que la central, al céntimo, sin fulfillment y solo «Cerrar»", async ({ browser }) => {
+  // SLT-154 (R468-R470): la satélite ya no ve «Le queda a la empresa» (₡780) ni lo facturado (₡3.503). La
+  // paridad al céntimo se redefine sobre lo que sí ve: la cuenta «Lo que va a la central» entera y las
+  // tarjetas que comparte con la central (recaudado, pago, debe llegar). La central, igual que antes (R477).
+  test("satélite, B6: lo suyo igual que la central, al céntimo, sin lo de la empresa ni fulfillment y solo «Cerrar»", async ({ browser }) => {
     const central = await paginaDe(browser, r.empresa.maestro);
     const loQueVeLaCentral = await lecturaDeBodega(await abrirBodegaComoCentral(central, r));
     await central.context().close();
+    expect(loQueVeLaCentral).toEqual(["₡10.000", "₡7.680", "₡2.200", "₡780", "₡10.000", "₡2.200", "₡120", "₡7.680"]);
 
     const page = await paginaDe(browser, r.adminSatelite);
     const detalle = await abrirBodegaComoSatelite(page, r);
-    const LITERALES = ["₡10.000", "₡7.680", "₡2.200", "₡780", "₡10.000", "₡2.200", "₡120", "₡7.680"];
-    expect(await lecturaDeBodega(detalle)).toEqual(LITERALES);
-    expect(loQueVeLaCentral).toEqual(LITERALES);
+    const loQueVeLaSatelite = await lecturaDeBodegaSatelite(detalle);
+    // [recaudado, pago, gana la bodega, debe llegar] + la cuenta, a mano (cabecera B6).
+    expect(loQueVeLaSatelite).toEqual(["₡10.000", "₡2.200", "₡120", "₡7.680", "₡10.000", "₡2.200", "₡120", "₡7.680"]);
+    const [recaudado, paraCentral, pago] = loQueVeLaCentral;
+    expect([loQueVeLaSatelite[0], loQueVeLaSatelite[1], loQueVeLaSatelite[3]]).toEqual([recaudado, pago, paraCentral]);
+    expect(loQueVeLaSatelite.slice(4)).toEqual(loQueVeLaCentral.slice(4));
+    for (const ausente of ["₡780", "₡3.503"]) await expect(detalle).not.toContainText(ausente);
     await sateliteSoloLee(detalle);
   });
 });
@@ -1149,15 +1250,21 @@ test.describe.serial("SLT-107 — la satélite lee su cierre de bodega del model
     await solicitarCierreBodega(r);
   });
 
-  test("central y satélite: las mismas cifras al céntimo; la satélite sin fulfillment y solo «Cerrar»", async ({ browser }) => {
+  // SLT-154 (R468-R470): como en B6, la paridad al céntimo sobre lo que la satélite sí ve; sin «Le queda»
+  // (₡1.750) ni lo facturado (2.500 + 1.250 = ₡3.750). La central, igual que antes (R477).
+  test("central y satélite: lo de la satélite igual al céntimo; la satélite sin lo de la empresa ni fulfillment y solo «Cerrar»", async ({ browser }) => {
     const LITERALES = ["₡9.000", "₡7.000", "₡1.500", "₡1.750", "₡9.000", "₡1.500", "₡500", "₡7.000"];
     const central = await paginaDe(browser, r.empresa.maestro);
-    expect(await lecturaDeBodega(await abrirBodegaComoCentral(central, r))).toEqual(LITERALES);
+    const loQueVeLaCentral = await lecturaDeBodega(await abrirBodegaComoCentral(central, r));
+    expect(loQueVeLaCentral).toEqual(LITERALES);
     await central.context().close();
 
     const page = await paginaDe(browser, r.adminSatelite);
     const detalle = await abrirBodegaComoSatelite(page, r);
-    expect(await lecturaDeBodega(detalle)).toEqual(LITERALES);
+    const loQueVeLaSatelite = await lecturaDeBodegaSatelite(detalle);
+    expect(loQueVeLaSatelite).toEqual(["₡9.000", "₡1.500", "₡500", "₡7.000", "₡9.000", "₡1.500", "₡500", "₡7.000"]);
+    expect(loQueVeLaSatelite.slice(4)).toEqual(loQueVeLaCentral.slice(4));
+    for (const ausente of ["₡1.750", "₡3.750"]) await expect(detalle).not.toContainText(ausente);
     await sateliteSoloLee(detalle);
   });
 });

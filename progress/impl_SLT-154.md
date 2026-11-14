@@ -462,3 +462,24 @@ tests 22 (tanda 1: 2 archivos, 661 líneas; tanda 2: 12, 786; tanda 3: 8, 299).
 
 T4-T6 hechos: los tests que la ficha cambia, ajustados con su R y sin debilitar (5 mutaciones
 muertas), gate verde; E2E escrito sin ejecutar; el tamaño queda en 40/40 archivos, a decidir.
+
+## Tanda 3b — E2E viejos de `e2e/cierres-rediseno.spec.ts` con el contrato de la satélite (escrito, SIN ejecutar)
+
+Rojos del grupo `dinero` que corrió el leader sobre 518ca85c: cuatro casos que esperaban que la satélite
+viera las cifras de la empresa. La central, sin cambio (R477). Cada caso de la satélite pasa a lo que ve y
+NO ve, con literales a mano y una paridad al céntimo sobre lo que sí comparte con la central:
+
+- SLT-100 «satélite, solicitado…» → `cifrasSateliteA`: tarjetas 100.000 / 3.000 / 500 / 96.500 (R471),
+  abre en «Gestiones (3)» sin «Dinero» (R473), barra [97, 3, 0] y cuenta «Lo que va a la central» (R472);
+  ausentes `paraTienda`, `leQueda`, las cuentas de la empresa, «₡94.350», «₡7.910», «₡3.500»; desplegada
+  sin cobro ni «Ver cómo se calculó» (R475).
+- SLT-101 «satélite A…»: «Gana bodega» en la cabecera y ₡500 en el rechazo (R474); «Recibió» y «Se le
+  paga» iguales a la central; sin la tarjeta del cobro (₡3.051) ni «Ver cómo se calculó» (R475). Se va la
+  comprobación de la columna no GAM de la satélite: solo se leía en «Ver cómo se calculó», que R475 quita.
+- SLT-104 «satélite, B6…» y SLT-107 «central y satélite…» → `lecturaDeBodegaSatelite`: [recaudado, pago,
+  gana la bodega, debe llegar] + la cuenta «Lo que va a la central» (R468-R470); la cuenta y las tarjetas
+  compartidas, iguales a la central al céntimo; ausentes «₡780» / «₡3.503» y «₡1.750» / «₡3.750».
+  `sateliteSoloLee` añade «Gana bodega» y la ausencia del cobro (R474, R475).
+
+Los títulos conservan su prefijo («satélite, solicitado:», «satélite A:», «satélite, B6:», «central y
+satélite:»), que es lo que citan `impl_SLT-107.md` y las demás bitácoras. Typecheck 0, lint sin problemas.
