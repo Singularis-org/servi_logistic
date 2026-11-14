@@ -16,6 +16,7 @@ import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
 // servidor vaya a rechazar, ni dejar de ofrecer uno que acepta.
 import {
   ESTADOS_FILTRO_CIERRES,
+  MAX_FOLIO_FILTRO,
   type CatalogoFiltrosCierresDTO,
   type FiltrosCierres,
 } from "@/lib/types/filtros-cierres";
@@ -404,6 +405,9 @@ export function FiltrosCierresBarra({
       <BuscadorFiltros
         label="Buscar"
         placeholder={BUSCA_POR_FOLIO}
+        // SLT-153 (R457): el borde rechaza más de `MAX_FOLIO_FILTRO`; el campo no deja escribirlos
+        // (pegar el id entero de 36 dejaba las dos listas en error).
+        maxLength={MAX_FOLIO_FILTRO}
         // SLT-153: el buscador NO se deshabilita mientras las listas cargan. Cada término que
         // emite pone las listas en vuelo, y un campo `disabled` pierde el foco: quien escribe el
         // folio tendría que volver a pulsarlo tras cada pausa. La clave de SWR lleva los filtros,

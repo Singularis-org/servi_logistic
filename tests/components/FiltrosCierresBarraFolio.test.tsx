@@ -200,6 +200,45 @@ describe("R456 — cierres de mensajeros: el buscador pone `filtros.folio`", () 
   });
 });
 
+describe("R457 — pegar el id entero (36) no deja las listas en error", () => {
+  it("el campo se queda en 20 caracteres, la action recibe como mucho 20 y no sale «No se pudo cargar…»", async () => {
+    // El doble hace lo que el borde: más de 20 → `validation_error`.
+    const comoElBorde = (a: unknown) => {
+      const folio = (a as { filtros?: FiltrosCierres }).filtros?.folio;
+      if (folio !== undefined && folio.length > 20) {
+        return Promise.resolve({ status: "validation_error" as const, message: "texto largo" });
+      }
+      return Promise.resolve(pagina([]));
+    };
+    pendientes.mockImplementation(comoElBorde);
+    historico.mockImplementation(comoElBorde);
+    const user = userEvent.setup();
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <CierresAdminModule
+          pendientes={{ items: [cierre("c1")], total: 1, pageSize: 25 }}
+          historico={{ items: [], total: 0, pageSize: 25 }}
+          sinZona={false}
+          catalogoFiltros={CATALOGO}
+        />
+      </SWRConfig>,
+    );
+    await screen.findByRole("region", { name: BARRA });
+    const ID_ENTERO = "3f2a9c1e-7b4d-4e8a-9c2f-0d1e2f3a4b5c";
+    expect(ID_ENTERO).toHaveLength(36);
+
+    await user.click(campo());
+    await user.paste(ID_ENTERO);
+
+    expect(campo().value).toBe("3f2a9c1e-7b4d-4e8a-9");
+    await waitFor(() => expect(filtrosDe(pendientes).some((f) => f?.folio !== undefined)).toBe(true));
+    for (const f of [...filtrosDe(pendientes), ...filtrosDe(historico)]) {
+      expect((f?.folio ?? "").length).toBeLessThanOrEqual(20);
+    }
+    expect(screen.queryByText("No se pudo cargar el histórico de cierres.")).toBeNull();
+  });
+});
+
 describe("R456 — consolidación de la satélite: el folio llega a «A consolidar» y «Solicitados»", () => {
   const CONSOLIDABLE: CierreConsolidableCola = {
     cierreDiaId: "cd-1",

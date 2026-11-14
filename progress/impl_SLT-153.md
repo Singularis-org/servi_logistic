@@ -150,3 +150,19 @@ Veredicto: servidor del folio buscable (R456-R459) hecho y probado contra Postgr
 - Más de 20 caracteres en el buscador → `validation_error` del servidor (mismo comportamiento que `/cierre-dia`); el campo no limita la longitud.
 
 Veredicto: cabecera con rótulos (R450-R455) y buscador por folio de la barra (R456) hechos; 2/2 mutaciones muertas; E2E 2 corridas verdes.
+
+## Review vuelta 1 (CAMBIOS) — arreglos
+- Mayor (pegar ≥21 caracteres → `validation_error` y las dos listas en error): el tope va en el
+  COMPARTIDO `components/shared/BuscadorFiltros.tsx`, prop opcional `maxLength` (atributo del `<Input>` +
+  recorte en `escribir`). Ausente = sin tope: los demás consumidores no cambian. La pasan
+  `FiltrosCierresBarra.tsx` y `FiltrosColaPropiaBarra.tsx` (/cierre-dia, mismo hueco de SLT-138) con
+  `MAX_FOLIO_FILTRO`.
+- Test: `FiltrosCierresBarraFolio.test.tsx` «R457 — pegar el id entero (36)…»: el campo queda en 20, la
+  action recibe ≤20 y no sale «No se pudo cargar el histórico de cierres.» (el doble responde
+  `validation_error` con >20, como el borde).
+- Mutación: sin `maxLength={MAX_FOLIO_FILTRO}` en la barra → M3_EXIT=1, 1 failed | 5 passed; revertida → 6/6 verde.
+- Menor: `idsPorFolio` sube encima del JSDoc de `idsRecibidosIncompletos` (solo se mueve el comentario).
+- TYPECHECK_EXIT=0, ESLINT_EXIT=0. GUARDS_EXIT=1 (solo `dependencias-declaradas-presentes`, ajeno).
+  RELATED_EXIT=1: 34 rojos en 6 archivos `tests/integration/db/` de conciliación de bodega («referencia a
+  otra empresa», estado de la base `slt153_wt`). Contraprueba con el repositorio de HEAD: CONTRA_EXIT=1,
+  los mismos 34 failed: no es regresión.

@@ -464,6 +464,12 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     return { items: await aResumenRows(this.prisma, rows), total };
   }
 
+  /** SLT-153 (R458): con folio, los ids de `cierre_bodega` que lo contienen; sin folio, ni una consulta. */
+  private async idsPorFolio(filtros: FiltrosCierresBodegaRepo | undefined): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsCierresBodegaPorFolio(this.prisma, filtros.folio);
+  }
+
   /**
    * SLT-105 (R122, R125; design «Como se lee lo que falta») — los ids de los cierres de bodega de la
    * empresa activa con la marca de recibido a los que AUN les falta dinero.
@@ -474,12 +480,6 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * mas) no falta. La empresa se filtra por escrito, ademas de la RLS. Sin filtros de pantalla: los
    * recortes los pone el `where` de Prisma que recibe este conjunto.
    */
-  /** SLT-153 (R458): con folio, los ids de `cierre_bodega` que lo contienen; sin folio, ni una consulta. */
-  private async idsPorFolio(filtros: FiltrosCierresBodegaRepo | undefined): Promise<string[] | undefined> {
-    if (filtros?.folio === undefined) return undefined;
-    return idsCierresBodegaPorFolio(this.prisma, filtros.folio);
-  }
-
   private async idsRecibidosIncompletos(): Promise<string[]> {
     const filas = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT cb."id"
