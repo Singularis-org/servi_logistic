@@ -673,3 +673,91 @@ describe("SLT-156 R490, R491 — «Órdenes sin gestión»: enteras, sin «…»
     }
   });
 });
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D3; R524, R528, R529). Las clases van
+// escritas a mano: son el contrato de la tarjeta (por debajo de 768 px) y de la tabla de escritorio.
+function clases(el: Element | null | undefined): string[] {
+  if (!el) throw new Error("sin elemento");
+  return el.className.split(/\s+/);
+}
+
+describe("SLT-165 R528, R524 — «Rechazados por la tienda»: tarjeta en el teléfono, tabla alineada en escritorio", () => {
+  it("R528: cada rechazo es una tarjeta — destinatario; guía · tienda; la fecha en su columna fija; el motivo entero", () => {
+    render(<RechazosDeTiendaCierre rechazos={[rechazo({ destinatario: LARGO_DESTINATARIO, tiendaNombre: LARGO_TIENDA })]} />);
+    const fila = within(screen.getByRole("list", { name: /rechaz/i })).getByRole("listitem");
+    expect(clases(fila)).toEqual(
+      expect.arrayContaining([
+        "max-md:grid",
+        "max-md:grid-cols-[max-content_minmax(0,1fr)_max-content]",
+        "max-md:[grid-template-areas:'dest_dest_fecha'_'guia_tienda_fecha'_'motivo_motivo_motivo']",
+      ]),
+    );
+    expect(clases(elementoConTexto(fila, LARGO_DESTINATARIO))).toContain("max-md:[grid-area:dest]");
+    expect(clases(elementoConTexto(fila, LARGO_TIENDA))).toContain("max-md:[grid-area:tienda]");
+    const fecha = fila.querySelector("time");
+    expect(clases(fecha)).toEqual(expect.arrayContaining(["max-md:[grid-area:fecha]", "shrink-0", "whitespace-nowrap"]));
+    expect(clases(fila.querySelector(".font-mono"))).toContain("max-md:[grid-area:guia]");
+    // El motivo, en su línea y entero.
+    const motivo = Array.from(fila.children).find((c) => c.className.includes("grid-area:motivo"));
+    expect(clases(motivo)).toEqual(expect.arrayContaining(["whitespace-normal", "wrap-anywhere"]));
+  });
+
+  it("R524 (m5 de la review de SLT-156 A): desde 768 px, cabecera y filas son `subgrid` de UNA rejilla con las columnas de hoy", () => {
+    render(<RechazosDeTiendaCierre rechazos={[rechazo(), rechazo({ gestionId: "g2", numGuia: 123456789012 })]} />);
+    const lista = screen.getByRole("list", { name: /rechaz/i });
+    const rejilla = lista.parentElement;
+    expect(clases(rejilla)).toEqual(
+      expect.arrayContaining([
+        "md:grid",
+        "md:grid-cols-[max-content_minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_max-content]",
+      ]),
+    );
+    const cabecera = rejilla!.firstElementChild;
+    expect(Array.from(cabecera!.children).map((c) => c.textContent)).toEqual(["Guía", "Destinatario", "Motivo", "Tienda", "Fecha del rechazo"]);
+    for (const el of [cabecera, lista, ...within(lista).getAllByRole("listitem")]) {
+      expect(clases(el)).toEqual(expect.arrayContaining(["md:col-span-full", "md:grid-cols-subgrid"]));
+    }
+    // En el teléfono no hay cabecera de columnas.
+    expect(clases(cabecera)).toContain("max-md:hidden");
+  });
+});
+
+describe("SLT-165 R529, R524 — «Órdenes sin gestión»: tarjeta en el teléfono, las tres columnas en escritorio", () => {
+  const SIN_GESTION: CierreOrdenSinGestion = {
+    ordenId: "o1",
+    numGuia: 19301246,
+    numRemision: "NA-947",
+    destinatario: LARGO_DESTINATARIO,
+    producto: "Sobre acolchado",
+    tiendaNombre: LARGO_TIENDA,
+    zonaNombre: "GAM",
+    estatusOrigen: null,
+  };
+
+  it("R529: destinatario; guía · tienda; remisión · producto con su estado de origen", () => {
+    render(<SeccionSinGestion ordenes={[SIN_GESTION]} registrado />);
+    const fila = within(screen.getByRole("list", { name: /^Lista de órdenes que pasaron a / })).getByRole("listitem");
+    expect(clases(fila)).toEqual(
+      expect.arrayContaining([
+        "md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)]",
+        "max-md:grid-cols-[max-content_minmax(0,1fr)]",
+        "max-md:[grid-template-areas:'dest_dest'_'guia_tienda'_'remision_remision']",
+      ]),
+    );
+    const destinatario = elementoConTexto(fila, LARGO_DESTINATARIO);
+    expect(clases(destinatario)).toContain("max-md:[grid-area:dest]");
+    // La columna de escritorio se deshace en el teléfono para que sus dos líneas tomen su sitio.
+    expect(clases(destinatario.parentElement)).toContain("max-md:contents");
+    expect(clases(elementoConTexto(fila, LARGO_TIENDA))).toContain("max-md:[grid-area:tienda]");
+    expect(clases(within(fila).getByText(/NA-947 · Sobre acolchado/).parentElement)).toContain("max-md:[grid-area:remision]");
+    expect(clases(within(fila).getByText("19301246"))).toContain("max-md:[grid-area:guia]");
+  });
+
+  it("R524: la cabecera de columnas (Guía, Destinatario, Tienda) solo desde 768 px", () => {
+    render(<SeccionSinGestion ordenes={[SIN_GESTION]} registrado />);
+    const lista = screen.getByRole("list", { name: /^Lista de órdenes que pasaron a / });
+    const cabecera = lista.previousElementSibling;
+    expect(Array.from(cabecera!.children).map((c) => c.textContent)).toEqual(["Guía", "Destinatario", "Tienda"]);
+    expect(clases(cabecera)).toEqual(expect.arrayContaining(["max-md:hidden", "md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)]"]));
+  });
+});

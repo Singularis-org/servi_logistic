@@ -444,12 +444,17 @@ describe("SLT-152 · cabecera y rejilla de la lista con columna Mensajero (R440,
     expect(cabecera.children).toHaveLength(10);
     // SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R492): la guía es una pista
     // `max-content` y cada importe `minmax(max-content,1fr)`, para que ninguno se monte en la columna vecina.
-    expect(cabecera.style.gridTemplateColumns).toBe(
+    // SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R523, R524): la plantilla viaja en
+    // `--plantilla-fila` y solo la aplica la clase `md:` (en el teléfono la fila es una tarjeta);
+    // nada de `gridTemplateColumns` en línea, que ganaría a la tarjeta.
+    expect(cabecera.style.getPropertyValue("--plantilla-fila")).toBe(
       "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
     );
+    expect(cabecera.style.gridTemplateColumns).toBe("");
     for (const fila of filasDom) {
       expect(fila.children).toHaveLength(cabecera.children.length);
-      expect(fila.style.gridTemplateColumns).toBe(cabecera.style.gridTemplateColumns);
+      expect(fila.style.getPropertyValue("--plantilla-fila")).toBe(cabecera.style.getPropertyValue("--plantilla-fila"));
+      expect(fila.style.gridTemplateColumns).toBe("");
     }
   });
 });

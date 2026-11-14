@@ -14,6 +14,7 @@ import { RESUMEN_SOLICITUD_TEXTO } from "@/components/private/cierres/dialogos/d
 import type { DataTableDescarga } from "@/components/shared/DataTable";
 import { Pagination } from "@/components/shared/Pagination";
 import { useToast } from "@/hooks/useToast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cierreConfig } from "@/lib/config/cierre";
 import { money } from "@/lib/config/moneda";
 import {
@@ -279,6 +280,9 @@ export function CierreDiaModule({
   const router = useRouter();
   const toast = useToast();
   const { mutate } = useSWRConfig();
+  // SLT-156 (R536): en el teléfono la paginación de «Cierres solicitados» va sin números de página
+  // (con ellos, a 44 px, no cabe en 360 px).
+  const esMovil = useIsMobile();
 
   // R240: el cierre que pinta la página. Con uno por reenviar, ESE (`aReenviarPrimero`, el mismo que
   // mueve `solicitarCierre`, que no recibe id: si se pintara otro, su botón enviaría un cierre
@@ -584,7 +588,9 @@ export function CierreDiaModule({
   const abiertoRechazado = cierreAbierto?.estado === "rechazado";
 
   return (
-    <div className="flex flex-col gap-8">
+    // SLT-156 (R531): con la barra fija del pie en el teléfono, la página reserva su alto al final
+    // (`--alto-barra-inferior`, lo publica `DetalleCierre`): lo último no queda debajo de ella.
+    <div className="flex flex-col gap-8 max-md:pb-(--alto-barra-inferior)">
       {cierreDeLaPaginaPintado()}
 
       {/* ---------- Cierres solicitados (histórico, R18) ----------
@@ -615,8 +621,10 @@ export function CierreDiaModule({
               total={pasadosData?.total ?? 0}
               disabled={pasadosCargando}
               showFirstLast
-              siblingCount={1}
+              siblingCount={esMovil ? undefined : 1}
               ariaLabel={PAGINACION_PASADOS_LABEL}
+              // SLT-156 (R493): botones de 44 px en el teléfono.
+              className="max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11"
               onPageChange={setPasadosPage}
               onPageSizeChange={(s) => {
                 setPasadosPageSize(s);

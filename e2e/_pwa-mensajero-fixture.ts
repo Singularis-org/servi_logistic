@@ -49,6 +49,11 @@ export const CONTENIDO = '[data-slot="sidebar-inset"]';
  * su vista y lo de dentro no puede salirse de su diapositiva.
  *
  * `selector` es opcional: además, cada contenedor que case cumple `scrollWidth <= clientWidth`.
+ *
+ * SLT-165 (m9, m10 de la review de SLT-156 A): `revisados` cuenta solo lo que de verdad se midió
+ * (DESPUÉS de la exención: si todo quedara dentro de un fijo o de un scroll propio, la medida no
+ * puede salir verde vacía), y se mide también el borde IZQUIERDO (un margen negativo o un
+ * `translate` que saque un dato por la izquierda también se recorta).
  */
 export async function sinDesborde(page: Page, selector?: string): Promise<void> {
   const r = await page.evaluate(
@@ -65,7 +70,9 @@ export async function sinDesborde(page: Page, selector?: string): Promise<void> 
 
       const raiz = document.querySelector<HTMLElement>(contenido);
       if (!raiz) return { medidas, hayContenido: false, revisados: 0, fuera: [] as string[] };
-      const borde = raiz.getBoundingClientRect().right;
+      const cajaRaiz = raiz.getBoundingClientRect();
+      const borde = cajaRaiz.right;
+      const bordeIzquierdo = cajaRaiz.left;
       const fuera: string[] = [];
       let revisados = 0;
 
@@ -83,8 +90,8 @@ export async function sinDesborde(page: Page, selector?: string): Promise<void> 
         const caja = el.getBoundingClientRect();
         if (caja.width === 0 || caja.height === 0) continue;
         if (getComputedStyle(el).visibility === "hidden") continue;
-        revisados++;
         if (exento(el)) continue;
+        revisados++;
         // Carrusel (`components/ui/carousel.tsx`): las diapositivas de fuera de la vista están a la
         // derecha POR DISEÑO. Ahí la regla es otra: la diapositiva no es más ancha que su vista, y lo
         // de dentro no se sale de su diapositiva.
@@ -98,10 +105,15 @@ export async function sinDesborde(page: Page, selector?: string): Promise<void> 
           continue;
         }
         const diapositiva = el.parentElement?.closest<HTMLElement>('[data-slot="carousel-item"]');
-        const limite = diapositiva && raiz.contains(diapositiva) ? diapositiva.getBoundingClientRect().right : borde;
+        const cajaLimite = diapositiva && raiz.contains(diapositiva) ? diapositiva.getBoundingClientRect() : null;
+        const limite = cajaLimite ? cajaLimite.right : borde;
+        const limiteIzquierdo = cajaLimite ? cajaLimite.left : bordeIzquierdo;
+        const nombre = `${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.split(/\s+/).slice(0, 3).join(".") : ""}`;
         if (caja.right > limite + 1) {
-          const nombre = `${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.split(/\s+/).slice(0, 3).join(".") : ""}`;
           fuera.push(`${nombre} acaba en ${Math.round(caja.right)} > ${Math.round(limite)}`);
+        }
+        if (caja.left < limiteIzquierdo - 1) {
+          fuera.push(`${nombre} empieza en ${Math.round(caja.left)} < ${Math.round(limiteIzquierdo)}`);
         }
       }
       return { medidas, hayContenido: true, revisados, fuera: fuera.slice(0, 10) };
@@ -110,12 +122,12 @@ export async function sinDesborde(page: Page, selector?: string): Promise<void> 
   );
 
   expect(r.hayContenido, `no hay contenido ${CONTENIDO} que medir`).toBe(true);
-  expect(r.revisados, "el contenido no tiene nada visible que medir").toBeGreaterThan(0);
+  expect(r.revisados, "el contenido no tiene nada visible (y no exento) que medir").toBeGreaterThan(0);
   if (selector) expect(r.medidas.length, `no hay ningún ${selector} que medir`).toBeGreaterThan(1);
   for (const m of r.medidas) {
     expect(m.scroll, `${m.que} desborda: scrollWidth ${m.scroll} > clientWidth ${m.client}`).toBeLessThanOrEqual(m.client);
   }
-  expect(r.fuera, "elementos que se salen del contenido por la derecha (recortados por el inset)").toEqual([]);
+  expect(r.fuera, "elementos que se salen del contenido por un lado (recortados por el inset)").toEqual([]);
 }
 
 /**

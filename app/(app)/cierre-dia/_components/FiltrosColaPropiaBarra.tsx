@@ -111,6 +111,8 @@ export function FiltrosColaPropiaBarra({ onChange }: Readonly<FiltrosColaPropiaB
         onActivosChange={setActivos}
         onLimpiarTodo={limpiarTodo}
         hayFiltrosAplicados={!sinFiltrosPropios(filtros) || activos.length > 0}
+        // SLT-156 (R493, R536): campo, «Filtros» y «Limpiar todo» de 44 px en el teléfono.
+        tactil
       >
         {montados.length > 0 ? (
           <FilterComponent key={reset} filters={montados} onChange={aplicarSeleccion} />

@@ -28,6 +28,9 @@ vi.mock("@/lib/actions/cierre-dia", () => ({
   listarCierresPasadosPaginado: vi.fn(),
   listarCierresPasadosCompleto: vi.fn(),
 }));
+// SLT-165: el corte de 768 px no existe en jsdom; `useIsMobile` se simula (por defecto, escritorio).
+const movil = vi.hoisted(() => ({ valor: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), show: vi.fn(), dismiss: vi.fn() }),
 }));
@@ -113,7 +116,10 @@ function celdas(region: HTMLElement, n: number): string[] {
 }
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  movil.valor = false;
+});
 
 describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
   it("R155: descripción, una pestaña con el total, su tablist y UNA región «Cierres solicitados»", () => {
@@ -289,5 +295,64 @@ describe("SLT-112 · /cierre-dia: las tarjetas de la ganancia (R358)", () => {
       ),
     );
     expect(cajas()).toEqual(antes);
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D5; R535, R536, R538). Esperados a mano.
+describe("SLT-165 R535 — «Cierres solicitados» en el teléfono: dos columnas y desplegable", () => {
+  it("dos columnas: «Cierre» (fecha, estado y destino) y «Ganancia» (importe y «Ver»)", () => {
+    movil.valor = true;
+    const region = montar();
+    // La primera cabecera es la del botón de desplegar de la tabla (solo para lector).
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual(["Desglose", "Cierre", "Ganancia"]);
+    const [, cierre, ganancia] = within(within(region).getAllByRole("row")[1]).getAllByRole("cell");
+    expect(cierre.textContent).toBe("2026-07-11 04:00AprobadoBodega central");
+    expect(ganancia.textContent).toBe("₡875Ver");
+    const ver = within(ganancia).getByRole("button", { name: "Ver del cierre del 2026-07-11" });
+    expect(ver.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-md:min-h-11", "max-md:min-w-11"]));
+    // El importe, en su columna fija a la derecha.
+    expect(within(ganancia).getByText("₡875").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums", "text-right"]),
+    );
+  });
+
+  it("al desplegar: folio, recaudado y pago", async () => {
+    movil.valor = true;
+    const user = userEvent.setup();
+    const region = montar();
+    await user.click(within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" }));
+    const dl = region.querySelector("tr[id$='-expandido'] dl");
+    expect(dl).not.toBeNull();
+    const pares = Array.from(dl!.children).map((e) => e.textContent);
+    expect(pares).toEqual(["Folio", "#AAAA1111", "Recaudado", "₡12.500", "Pago", "Pendiente de pago"]);
+  });
+
+  it("R538: una sola tabla y la misma «Descargar» en los dos anchos", () => {
+    movil.valor = true;
+    const region = montar();
+    expect(within(region).getAllByRole("table")).toHaveLength(1);
+    const descargas = () => screen.getAllByRole("button", { name: /^Descargar / }).map((b) => b.getAttribute("aria-label"));
+    // La de «Gestiones» (el cierre de hoy) y la de «Cierres solicitados», con el título de hoy.
+    expect(descargas()).toEqual(["Descargar Gestiones del cierre de hoy", "Descargar Cierres solicitados"]);
+    cleanup();
+    movil.valor = false;
+    montar();
+    expect(descargas()).toEqual(["Descargar Gestiones del cierre de hoy", "Descargar Cierres solicitados"]);
+  });
+
+  it("R536: en el teléfono la paginación va sin números de página y con botones de 44 px", () => {
+    movil.valor = true;
+    montar(CUATRO, 30);
+    const nav = screen.getByRole("navigation", { name: "Paginación de los cierres solicitados" });
+    expect(within(nav).queryByRole("button", { name: "Ir a la página 2" })).toBeNull();
+    expect(within(nav).getByRole("button", { name: "Página siguiente" })).toBeInTheDocument();
+    expect(nav.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-md:[&_button]:min-h-11", "max-md:[&_button]:min-w-11"]));
+  });
+
+  it("en escritorio, las ocho columnas de hoy sin desplegable", () => {
+    const region = montar();
+    expect(within(region).getAllByRole("columnheader")).toHaveLength(8);
+    expect(within(region).queryByRole("button", { name: /^Más datos del cierre/ })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "Paginación de los cierres solicitados" })).getByRole("button", { name: "Ir a la página 1" })).toBeInTheDocument();
   });
 });

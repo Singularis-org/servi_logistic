@@ -1,0 +1,193 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
+import {
+  ALTO_MOVIL,
+  ANCHOS_MOVIL,
+  DESTINATARIO_LARGO,
+  IMPORTE_LARGO,
+  sinDesborde,
+  sinElipsis,
+  sinSolapes,
+  tactil,
+} from "./_pwa-mensajero-fixture";
+
+/**
+ * E2E — SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (rebanada D de SLT-156 «PWA de los
+ * mensajeros: tablas usables en el móvil», D7; R501, R523, R526, R527, R530, R531, R533-R535, R537).
+ *
+ *  (a) R501, R523, R526, R527, R530, R531, R534: `/cierre-dia` a 360 y 414 px con 30 gestiones (una con
+ *      el destinatario más largo y otra con el importe más ancho): «Gestiones» son tarjetas sin «…» ni
+ *      datos montados, de 25 en 25 con `Pagination`; la barra de búsqueda queda arriba al bajar; nada
+ *      desborda; el pie es una barra fija abajo con «Solicitar cierre del día 30 gestiones» (≥ 44 px)
+ *      y el flotante «Reportar un problema» va encima de ella, sin solaparse.
+ *  (b) R533, R535, R537: a 360 px, «Cancelar» del diálogo no envía; luego se solicita, el cierre sale
+ *      en «Cierres solicitados» como tarjeta con «Ver», y «Ver» abre el detalle a pantalla completa con
+ *      «Volver» de 44 px, que lo cierra.
+ *
+ * DATOS: empresa nueva (`crearEscenarioReparto`), un mensajero por caso con SUS órdenes, gestionadas
+ * por los servicios reales. El escenario solo deja fijar destinatario, remisión y monto
+ * (`crearOrden`): la tienda, la dirección, el producto y el motivo de rechazo largos de
+ * `design.md §12` y las listas «Rechazados por la tienda» y «Órdenes sin gestión» necesitan un
+ * escenario que hoy no existe (lo cubren los tests de componente y la guardia). Sin datos, los
+ * `expect` fallan: no se salta nada.
+ */
+
+let r: RepartoE2E;
+let conTreinta: MensajeroE2E;
+
+const DETALLE = "Detalle del cierre · Tu cierre del día";
+const GESTIONES = "Órdenes del cierre";
+
+async function entregada(m: MensajeroE2E, destinatario: string, monto: number): Promise<OrdenE2E> {
+  const orden = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: monto, destinatario }), "en_reparto", {
+    mensajero: m,
+  });
+  await gestionar(r, orden, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto }] });
+  return orden;
+}
+
+/** La caja de un locator, que tiene que existir. */
+async function caja(page: Page, nombre: string, l: ReturnType<Page["locator"]>) {
+  const c = await l.boundingBox();
+  expect(c, `sin caja para ${nombre}`).not.toBeNull();
+  return c!;
+}
+
+test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => {
+  test.beforeAll(async () => {
+    test.setTimeout(600_000);
+    r = await crearEscenarioReparto("pwa-mensajero-cierre-dia");
+    conTreinta = await crearMensajero(r, "satelite");
+    await entregada(conTreinta, DESTINATARIO_LARGO, 2500);
+    await entregada(conTreinta, "Beto Ruiz", IMPORTE_LARGO);
+    for (let i = 0; i < 28; i++) await entregada(conTreinta, `Destinatario ${i + 3}`, 1000 + i);
+  });
+
+  for (const ancho of ANCHOS_MOVIL) {
+    test(`(a) R501, R523, R526, R527, R531, R534: /cierre-dia a ${ancho} px, tarjetas de 25 en 25 y barra fija`, async ({ browser }) => {
+      const page = await paginaDe(browser, conTreinta, { viewport: { width: ancho, height: ALTO_MOVIL } });
+      await page.goto("/cierre-dia");
+
+      // R523, R526: 25 tarjetas y la paginación.
+      const lista = page.getByRole("region", { name: GESTIONES });
+      await expect(lista.locator("[data-gestion]")).toHaveCount(25);
+      const paginas = page.getByRole("navigation", { name: "Páginas de las gestiones" });
+      await expect(paginas.getByText("1-25 de 30")).toBeVisible();
+
+      // R490, R523: el destinatario largo, entero y visible; la ganancia en su columna.
+      const larga = lista.locator("[data-gestion]").filter({ hasText: DESTINATARIO_LARGO });
+      await expect(larga).toHaveCount(1);
+      await expect(larga.getByText(DESTINATARIO_LARGO, { exact: true })).toBeVisible();
+      await sinElipsis(lista);
+      await sinSolapes(larga, "[data-columna]");
+      // R523: la columna «Recibido» no se pinta en la tarjeta (va en el detalle desplegado).
+      await expect(larga.locator('[data-columna="recibido"]')).toBeHidden();
+
+      // R501, R530: nada desborda (pestañas, barra, tarjetas, paginación).
+      await sinDesborde(page);
+      await sinDesborde(page, '[role="tablist"]');
+
+      // R531: barra fija abajo, con el botón negro de 52 px a todo el ancho y su contador.
+      const solicitar = page.getByRole("region", { name: DETALLE }).getByRole("button", { name: "Solicitar cierre del día 30 gestiones" });
+      await expect(solicitar).toBeVisible();
+      await tactil(solicitar);
+      const cajaBoton = await caja(page, "Solicitar", solicitar);
+      expect(Math.round(cajaBoton.height)).toBe(52);
+      const pie = page.locator("footer").filter({ has: page.getByRole("button", { name: "Solicitar cierre del día 30 gestiones" }) });
+      const cajaPie = await caja(page, "pie", pie);
+      expect(Math.round(cajaPie.y + cajaPie.height)).toBe(ALTO_MOVIL);
+      expect(Math.round(cajaPie.width)).toBe(ancho);
+
+      // R534: el flotante va por encima de la barra, sin solaparse.
+      const bug = page.getByRole("button", { name: "Reportar un problema" });
+      await expect(bug).toBeVisible();
+      // La barra publica su alto al hidratar (`--alto-barra-inferior`): se espera a que el flotante suba.
+      await expect
+        .poll(async () => {
+          const c = await bug.boundingBox();
+          return c ? c.y + c.height - cajaPie.y : Number.POSITIVE_INFINITY;
+        }, { message: "el flotante se monta sobre la barra fija" })
+        .toBeLessThanOrEqual(0.5);
+
+      // R527: al bajar, la barra de búsqueda queda arriba.
+      await page.mouse.wheel(0, 1500);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+      const buscar = page.getByRole("searchbox", { name: "Buscar gestión" });
+      await expect(buscar).toBeVisible();
+      await expect.poll(async () => Math.round((await buscar.boundingBox())?.y ?? -1)).toBeLessThan(60);
+      await tactil(buscar);
+
+      // R526: la página 2 trae las 5 restantes.
+      await paginas.getByRole("button", { name: "Página siguiente" }).click();
+      await expect(lista.locator("[data-gestion]")).toHaveCount(5);
+      await expect(paginas.getByText("26-30 de 30")).toBeVisible();
+
+      // R527: busca por destinatario y vuelve a la página 1.
+      await buscar.fill("Beto Ruiz");
+      await expect(lista.locator("[data-gestion]")).toHaveCount(1);
+      await expect(paginas).toHaveCount(0);
+      await sinDesborde(page);
+    });
+  }
+
+  test("(b) R533, R535, R537: «Cancelar» no envía; «Ver» abre el detalle a pantalla completa con «Volver»", async ({ browser }) => {
+    const m = await crearMensajero(r, "satelite");
+    await entregada(m, DESTINATARIO_LARGO, 3000);
+    await entregada(m, "Carla Mora", 2000);
+
+    const page = await paginaDe(browser, m, { viewport: { width: 360, height: ALTO_MOVIL } });
+    await page.goto("/cierre-dia");
+
+    const solicitar = page.getByRole("region", { name: DETALLE }).getByRole("button", { name: "Solicitar cierre del día 2 gestiones" });
+    await solicitar.click();
+    const dialogo = page.getByRole("dialog", { name: "Solicitar cierre del día" });
+    await expect(dialogo).toBeVisible();
+    await dialogo.getByRole("button", { name: "Cancelar" }).click();
+    await expect(dialogo).toBeHidden();
+    // Nada se envió: el cierre de hoy sigue por solicitar y la cola, vacía.
+    await expect(solicitar).toBeEnabled();
+    await expect(page.getByRole("tab", { name: "Cierres solicitados (0)" })).toBeVisible();
+
+    await solicitar.click();
+    await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
+    await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
+
+    // R535: la cola en tarjetas de dos columnas, con «Ver».
+    const cola = page.getByRole("region", { name: "Cierres solicitados" });
+    await expect(page.getByRole("tab", { name: "Cierres solicitados (1)" })).toBeVisible();
+    await expect(cola.getByRole("columnheader", { name: "Cierre" })).toBeVisible();
+    await expect(cola.getByRole("columnheader", { name: "Ganancia" })).toBeVisible();
+    await expect(cola.getByRole("columnheader", { name: "Folio" })).toHaveCount(0);
+    const ver = cola.getByRole("button", { name: /^Ver del cierre del \d{4}-\d{2}-\d{2}$/ });
+    await tactil(ver);
+    await sinDesborde(page);
+
+    // R537: pantalla completa, «Volver» de 44 px arriba, sin la X.
+    await ver.click();
+    const detalle = page.getByRole("dialog");
+    await expect(detalle).toBeVisible();
+    const cajaDetalle = await caja(page, "detalle", detalle);
+    expect(Math.round(cajaDetalle.width)).toBe(360);
+    expect(Math.round(cajaDetalle.height)).toBe(ALTO_MOVIL);
+    const volver = detalle.getByRole("button", { name: "Volver" });
+    await tactil(volver);
+    await expect(detalle.locator('[data-slot="dialog-close"]')).toHaveCount(0);
+    // Las tarjetas de R523 dentro del detalle (la pestaña «Gestiones»).
+    await detalle.getByRole("tab", { name: /^Gestiones \(2\)$/ }).click();
+    await expect(detalle.getByRole("region", { name: GESTIONES }).locator("[data-gestion]")).toHaveCount(2);
+    await sinElipsis(detalle.getByRole("region", { name: GESTIONES }));
+    await volver.click();
+    await expect(detalle).toBeHidden();
+  });
+});
