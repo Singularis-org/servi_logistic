@@ -142,3 +142,72 @@ conjunto SLT-156). Diff `origin/dev...5416c2e8`. Reviewer, 2026-11-14.
 **RECHAZADO**. Bloquean B1 (R491, el mensajero oculto en la tarjeta), B2 (R493, pastillas,
 desplegable y selector de la cola por debajo de 44 px) y B3 (recorte de «Gestiones» entre 768 y
 1023 px por quitar el scroll del panel). Los menores m1-m3 no bloquean.
+
+## Vuelta 2 (acotada a 5e2ed3c7..65fb89f4)
+
+### Checklist
+
+- [x] **B1 resuelto.** `FilaGestion.tsx:131` da a «mensajero» su área y el rótulo `::before` «Mensajero:»,
+  solo bajo `md`. `FilaGestion.tsx:264` usa `AREAS_TARJETA_CON_MENSAJERO` solo si hay esa columna.
+  - **Lector de pantalla:** el `content` de un `::before` entra en el texto accesible (accname), así que
+    se lee «Mensajero: Ana Mensajera» en el teléfono. En escritorio sigue la cabecera de la columna y el
+    DOM no cambia.
+  - **Test:** `tests/components/FilaGestion.test.tsx:248-262` exige el área, el rótulo y el
+    `grid-template-areas` con literales escritos a mano. Ya no exige `max-md:hidden`. `:264` comprueba
+    que sin esa columna no se reserva la línea.
+- [x] **B2 resuelto, sin tocar `FilterComponent`, `DataTable` ni `Pagination`.**
+  - **Pastillas:** envoltorio `max-md:[&_button]:min-h-11` (`GestionesCierre.tsx:78,164`). Solo está en
+    la rama `esMovil`, así que el escritorio no cambia. Test en `GestionesCierreMovil.test.tsx:281-282`.
+  - **Desplegable:** `max-md:[&_button[aria-expanded]]` va en la `section` de la cola propia
+    (`ColaCierres.tsx:237,335`), solo con `tipo === "propios"`, así que bodega, admin y satélite no
+    cambian. El único `aria-expanded` de `DataTable` es el desplegable (`DataTable.tsx:540`), y «Ver» no
+    lo lleva. Test en `CierreDiaColaPropia.test.tsx:312-317`.
+  - **Selector:** `max-md:[&_select]:min-h-11` (`CierreDiaModule.tsx:627`). `min-height` gana a `h-8`
+    porque es otra propiedad. El test comprueba que el `<select>` está dentro de esa `nav`
+    (`CierreDiaColaPropia.test.tsx:355-359`).
+  - **CSS real:** compilé las cuatro clases nuevas con Tailwind v4 del repo. Generan
+    `@media (width<48rem){& button[aria-expanded]{min-height:2.75rem}}`, `& select{…}`,
+    `::before{content:'Mensajero:'}` y el `grid-template-areas` con las cinco filas.
+- [x] **B3 resuelto.** `PANEL_PAGINA = "md:overflow-x-auto lg:overflow-auto"` (`DetalleCierre.tsx:306,430`).
+  - **A 360 px:** ninguna clase aplica, así que el panel fluye con la ventana. No vuelve el scroll
+    lateral y la barra fija de R527 (solo bajo `md`) sigue fuera de cualquier contenedor con overflow.
+  - **Test de componente:** `DetalleCierre.test.tsx:623-628`.
+  - **E2E (c) a 768/900 px** (`e2e/pwa-mensajero-cierre-dia.spec.ts:147-168`): puede ponerse rojo.
+    `sinDesborde` solo exime a los descendientes de un ancestro con `overflow-x: auto|scroll`. Con el
+    recorte de `SidebarInset` (`overflow-x-clip`), las celdas que se salen cuentan como «fuera».
+    Además, `toBeInViewport` tras `scrollIntoViewIfNeeded` falla si un ancestro recorta la celda. No lo
+    ejecuté: lo corre el leader.
+- [x] **m1 resuelto.** `FilaGestion.tsx`, `RechazosDeTiendaCierre.tsx` y los segmentos de
+  `cierre-factura.tsx` ya llevan «oculta». La guardia no puede quedar verde sin datos por dos cosas:
+  - exige más de 40 caracteres de código por archivo y `segmento()` lanza si falta la función
+    (`pwa-mensajero-sin-recorte.guardia.test.ts:160,178`);
+  - la autocomprobación caza `overflow-hidden`, `max-md:overflow-x-hidden` y `text-clip` (`:201-204`).
+- [x] **Verificación ejecutable:**
+  - los 5 archivos de test tocados: 139/139 en verde;
+  - `vitest related` sobre los 5 fuentes del diff: 53 archivos y 972 tests en verde, que incluyen
+    admin, bodega y satélite;
+  - `tsc --noEmit` y `eslint` de los 11 archivos del diff: exit 0;
+  - `tamano-pr`: 30/40 archivos, 713/1000 líneas de producción y 1135/3000 de tests.
+- [x] **Sin regresiones en escritorio, admin ni satélite.** Todo lo nuevo va tras `max-md:` o `md:`, y
+  en escritorio el panel de la página sigue con `lg:overflow-auto`. El desplegable solo se toca en
+  «propios» y las pastillas solo en la rama móvil.
+
+### Hallazgos
+
+- **m4 — menor — falta el `tactil()` del E2E sobre una pastilla y el desplegable.** Lo pedía B2 en la
+  vuelta 1 y no se añadió en `e2e/pwa-mensajero-cierre-dia.spec.ts`. Los tests de componente fijan las
+  clases, y el CSS compilado confirma que el selector es correcto. Falta medir los 44 px en un
+  navegador.
+- **m5 — menor — el test de las pastillas localiza el envoltorio con `closest(".max-w-full")`.**
+  `tests/components/GestionesCierreMovil.test.tsx:282`. Si un ancestro más cercano lleva `max-w-full`,
+  el test mira otro nodo y falla por el motivo equivocado. Sería más robusto un `data-*` o
+  `parentElement`.
+- **m6 — menor — «Mensajero:» duplica `COL_MENSAJERO` como literal dentro de la clase.**
+  `FilaGestion.tsx:131` frente a `fila-gestion-labels.ts:41`. Lo impone Tailwind, que necesita la clase
+  estática. Aceptado.
+- m2 y m3 siguen como en la vuelta 1. No bloquean.
+
+### Veredicto
+
+**OK**. B1, B2 y B3 quedan resueltos, cada uno con su test y sin regresiones. m1 está resuelto. m2-m6
+son menores y no bloquean. El E2E (c) a 768/900 px está pendiente de que lo corra el leader.
