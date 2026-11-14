@@ -169,3 +169,69 @@ salida. Y como es un rojo que el local no vio, el leader valora un disparador
 dentro de `SidebarInset`, probarlo con una mutación en rojo y anotarlo) y B2 (rojo nuevo en
 `CierreBodegaDetalleGestiones.test.tsx` por la plantilla de `FilaGestion`). Los menores no bloquean;
 m1 es barato y conviene hacerlo en la misma vuelta.
+
+## Vuelta 2 (acotada a 19e19d20..890e9dcf)
+
+Revisado: `git diff 19e19d20..HEAD` (commit de arreglos 3b139af1 y bitácora 890e9dcf) contra B1, B2 y
+m1-m8 de la vuelta 1, y sus regresiones. Gate (INIT_EXIT=0) y E2E `pwa-mensajero-base` 4/4 los
+confirma el leader; no los volví a correr.
+
+### Checklist
+
+- [x] **B1 resuelto.** `e2e/_pwa-mensajero-fixture.ts:81-161`: además del documento, mide cada
+  descendiente visible de `[data-slot="sidebar-inset"]` contra el borde derecho del inset, que es lo
+  que `overflow-x-clip` recortaba sin que el documento lo notara. Escapes revisados:
+  - `fixed`: solo exime al elemento fijo y a sus hijos (los flotantes); el contenido de Reparto no
+    es fijo.
+  - scroll horizontal propio: solo cuenta en ancestros ESTRICTOS por debajo del inset (`n !== el`,
+    `n !== raiz`); el `overflow-x-clip` del propio inset no exime nada. En `mis-asignaciones` el único
+    `overflow-x-auto` está en `ChatConversacion.tsx:836` (adjuntos del chat), fuera de las tarjetas.
+  - carrusel: la diapositiva se mide contra su vista (relleno aparte) y su contenido contra la
+    diapositiva, así que una tarjeta ancha dentro de un carrusel también cae.
+  - la mutación de la bitácora (`min-w-[500px]` en la tarjeta de Mosaico → «article… acaba en
+    525 > 335») es coherente con la medida. No la re-ejecuté (Playwright fuera de alcance).
+- [x] **B2 resuelto.** `tests/components/CierreBodegaDetalleGestiones.test.tsx:445-449`: literal
+  escrito a mano (`max-content … minmax(max-content,1fr) ×3 …`), no derivado de `FilaGestion`. El
+  archivo pasa (22/22). Mutación `guia: "auto"` en `components/private/cierres/fila/FilaGestion.tsx:72`
+  → R443 en rojo; restaurado.
+- [x] **m1.** `VistaCardsToggle.tsx:31` pasa a `max-md:[&>button]:h-11 max-md:[&>button]:px-4`; el
+  test (`button-tactil.test.tsx:49-54`) compara por clase exacta (`clases()` devuelve array), así
+  que el `not.toContain("[&>button]:h-11")` sí distingue la variante sin prefijo.
+- [x] **m4.** Decisión anotada en `progress/features/SLT-156.md:34` (`button.tsx` fuera de la escala,
+  con motivo).
+- [x] **m8.** `components/shared/texto-entero.ts:10,13,19` con `;`.
+- [x] **m3, m5, m6, m7 y la barra de B** anotados como condición de las rebanadas en
+  `progress/features/SLT-156.md:35-39`.
+- [x] **Hook `use-flotante-compacto` mide al montar** (`hooks/use-flotante-compacto.ts:45,72`). Test
+  nuevo «montado con la página ya desplazada» en verde; mutación (comentar `medir()` al montar) → ese
+  test en rojo; restaurado. Consumidores: `ReporteBugBoton.tsx:229` y `ChatFlotante.tsx:87`, sin
+  cambios. Con `scrollY = 0` al montar, `siguienteCompacto` devuelve `false` (estado de hoy), así que
+  en escritorio arriba del todo no cambia nada; montado ya desplazado, queda reducido igual que si el
+  usuario hubiera bajado con el JS cargado, que es el comportamiento que ya aprobó la vuelta 1.
+- [x] Tasks: A8 marcada `[x]` en `specs/SLT-156-pwa-mensajero-tablas/tasks.md:55`.
+- [x] Trazabilidad: R501 vuelve a tener un test que puede fallar (B1).
+
+### Hallazgos nuevos
+
+- **m9 (menor) — `sinDesborde` cuenta como «revisado» lo que luego exime.**
+  `e2e/_pwa-mensajero-fixture.ts:128-129`: `revisados++` va antes de `if (exento(el)) continue`, así
+  que si un día todo el contenido quedara dentro de un `overflow-x-auto` o de un `fixed`, la guarda
+  `revisados > 0` (`:155`) no lo notaría y la medida saldría verde vacía. Hoy no pasa en Reparto. Basta
+  con contar después de la exención.
+- **m10 (menor) — solo mide el borde derecho.** `e2e/_pwa-mensajero-fixture.ts:144`: un desborde por
+  la izquierda (margen negativo, `translate`) no se detecta. En LTR es el caso raro; anotarlo para
+  cuando B-E reutilicen la utilidad.
+- m2 (vuelta 1) sigue como estaba; no estaba en lo pedido para esta vuelta.
+
+### Verificación ejecutada
+
+- `vitest run` de `CierreBodegaDetalleGestiones.test.tsx`, `use-flotante-compacto.test.ts` y
+  `button-tactil.test.tsx` con la base desechable: 3 archivos, 35 tests en verde.
+- Dos mutaciones (hook sin `medir()` al montar; `guia: "auto"` en `FilaGestion`) → rojo cada una;
+  archivos restaurados, `git status` limpio.
+- No corrí init, prisma, dev server ni Playwright. MCP del grafo no usado; Grep/Read.
+
+### Veredicto vuelta 2
+
+**OK** — B1 y B2 resueltos y verificados; m1, m4 y m8 hechos; m3, m5, m6, m7 y la barra de B quedan
+como condición escrita de las rebanadas. m9 y m10 son menores y no bloquean.
