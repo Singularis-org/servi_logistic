@@ -609,10 +609,15 @@ export class CierresAdminService implements ICierresAdminService {
     // nunca en lugar de `scope.alcance`. Un `adminSatelite` que pida la zona del vecino obtiene
     // la interseccion (vacio), no la zona del vecino.
     const zona = this.zonaDeLaOperacion("listarHistoricoCierresAdminPaginado");
+    const resueltos = await filtrosParaRepo(input.filtros, zona);
+    // SLT-153 (R457): un folio imposible es una pagina vacia, sin leer la base.
+    if (resueltos.tipo === "vacio") {
+      return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 };
+    }
     const { items, total } = await this.repo.findHistoricoPaginado(
       scope.alcance,
       rangoDePagina(input),
-      await filtrosParaRepo(input.filtros, zona),
+      resueltos.filtros,
     );
 
     return {
@@ -654,11 +659,15 @@ export class CierresAdminService implements ICierresAdminService {
     }
 
     const zona = this.zonaDeLaOperacion("listarPendientesCierresAdminPaginado");
+    const resueltos = await filtrosParaRepo(input.filtros, zona);
+    if (resueltos.tipo === "vacio") {
+      return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
+    }
     const { items, total } = await this.repo.findColaPaginada(
       scope.alcance,
       rangoDePagina(input),
       // recorte DENTRO del alcance (ver la nota del historico)
-      await filtrosParaRepo(input.filtros, zona),
+      resueltos.filtros,
     );
 
     return {
@@ -719,10 +728,9 @@ export class CierresAdminService implements ICierresAdminService {
     // Los MISMOS filtros que la pagina: el archivo tiene que ser «esto que estoy viendo,
     // entero», no «todo lo del alcance» (ver la nota del schema completo, `lib/types`).
     const zona = this.zonaDeLaOperacion("listarHistoricoCierresAdminCompleto");
-    const conjunto = await this.repo.findHistoricoCompleto(
-      scope.alcance,
-      await filtrosParaRepo(filtros, zona),
-    );
+    const resueltos = await filtrosParaRepo(filtros, zona);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findHistoricoCompleto(scope.alcance, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -766,10 +774,9 @@ export class CierresAdminService implements ICierresAdminService {
     if (scope.status === "sinZona") return { status: "ok", items: [], total: 0 };
 
     const zona = this.zonaDeLaOperacion("listarPendientesCierresAdminCompleto");
-    const conjunto = await this.repo.findColaCompleta(
-      scope.alcance,
-      await filtrosParaRepo(filtros, zona), // idem
-    );
+    const resueltos = await filtrosParaRepo(filtros, zona); // idem
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findColaCompleta(scope.alcance, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {

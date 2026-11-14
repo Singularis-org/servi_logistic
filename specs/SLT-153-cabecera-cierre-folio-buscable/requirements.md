@@ -151,12 +151,12 @@ los genera. En los negativos, un valor imposible de encontrar por casualidad.
 - [ ] **T2 [P] — Tests de la cabecera.** Actualiza `DetalleCierre.test.tsx`, `CierreDiaPagina.test.tsx`,
   `detalle-cierre-vista.test.ts` y `e2e/cierres-rediseno.spec.ts:250`. *Hecho:* cada R450-R455 con su
   test y los literales a mano.
-- [ ] **T3 — Folio en el contrato de filtros.** `filtrosCierresSchema` y `filtrosCierresBodegaSchema`
+- [x] **T3 — Folio en el contrato de filtros.** (servidor hecho; usar `sinFiltrosBodega` en los dos módulos queda para T5, frontend) `filtrosCierresSchema` y `filtrosCierresBodegaSchema`
   aceptan `folio: z.string().max(MAX_FOLIO_FILTRO).optional()`; `sinFiltros` lo cuenta; un
   `sinFiltrosBodega` compartido sustituye a las dos copias locales de los módulos (si no, la página 1
   pre-cargada sin filtrar se serviría con un folio puesto). Revisa que ningún consumidor reenvíe
   `FiltrosCierres` a otro schema `.strict()` que lo rechace. *Hecho:* guardia de filtros actualizada y en verde.
-- [ ] **T4 — Servidor (depende de T3).** Los tres servicios normalizan con `normalizarFolio`: imposible
+- [x] **T4 — Servidor (depende de T3).** Los tres servicios normalizan con `normalizarFolio`: imposible
   → página y archivo vacíos sin leer la base. Los `where` de los tres repositorios añaden
   `{ id: { in: idsPorFolio } }` dentro del `AND` solo si hay folio, con los ids leídos por SQL a mano
   parametrizado (`strpos(upper(right(id, 8)), $texto) > 0`) sobre `cierre_dia` o `cierre_bodega`

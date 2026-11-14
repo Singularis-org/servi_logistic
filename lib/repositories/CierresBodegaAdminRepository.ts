@@ -63,6 +63,7 @@ import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+import { idsCierresBodegaPorFolio, recortePorFolio } from "@/lib/repositories/_shared/folio-cierres-sql";
 
 // Solo el estado que la 40 puede transicionar (R18): la guardia del updateMany.
 const ESTADO_SOLICITADO = "solicitado";
@@ -282,8 +283,10 @@ const ORDEN_CIERRES_BODEGA_ADMIN = {
 function historicoBodegaWhere(
   filtros: FiltrosCierresBodegaRepo | undefined,
   incompletos: readonly string[],
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreBodegaWhereInput {
-  const recortes = filtrosBodegaWhere(filtros);
+  // SLT-153 (R458): el folio DENTRO del `AND`; como clave hermana pisaria el `id: { notIn }`.
+  const recortes = [...filtrosBodegaWhere(filtros), ...recortePorFolio(idsPorFolio)];
   return {
     conciliadoAt: { not: null },
     id: { notIn: [...incompletos] },
@@ -304,8 +307,9 @@ function historicoBodegaWhere(
 function colaBodegaWhere(
   filtros: FiltrosCierresBodegaRepo | undefined,
   incompletos: readonly string[],
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreBodegaWhereInput {
-  const recortes = filtrosBodegaWhere(filtros);
+  const recortes = [...filtrosBodegaWhere(filtros), ...recortePorFolio(idsPorFolio)]; // SLT-153 (R458)
   return {
     OR: [{ conciliadoAt: null }, { id: { in: [...incompletos] } }],
     ...(recortes.length > 0 ? { AND: recortes } : {}),
@@ -369,7 +373,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
   ): Promise<CierreBodegaResumenRow[]> {
     const incompletos = await this.idsRecibidosIncompletos();
     const rows = await this.prisma.cierreBodega.findMany({
-      where: historicoBodegaWhere(filtros, incompletos),
+      where: historicoBodegaWhere(filtros, incompletos, await this.idsPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
@@ -394,7 +398,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
   ): Promise<CierreBodegaResumenRow[]> {
     const incompletos = await this.idsRecibidosIncompletos();
     const rows = await this.prisma.cierreBodega.findMany({
-      where: colaBodegaWhere(filtros, incompletos),
+      where: colaBodegaWhere(filtros, incompletos, await this.idsPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
@@ -415,7 +419,11 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     // el conjunto completo del que sale el archivo. SLT-105 (R122): «Conciliados» = con marca y
     // fuera de los incompletos; los incompletos se leen UNA vez y el `where` lo comparten
     // `findMany` y `count`.
-    const where = historicoBodegaWhere(filtros, await this.idsRecibidosIncompletos());
+    const where = historicoBodegaWhere(
+      filtros,
+      await this.idsRecibidosIncompletos(),
+      await this.idsPorFolio(filtros),
+    );
     const [rows, total] = await Promise.all([
       this.prisma.cierreBodega.findMany({
         where,
@@ -442,7 +450,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // Feature 184/R16: mismo criterio compartido que el conjunto completo de esta cola.
-    const where = colaBodegaWhere(filtros, await this.idsRecibidosIncompletos());
+    const where = colaBodegaWhere(filtros, await this.idsRecibidosIncompletos(), await this.idsPorFolio(filtros));
     const [rows, total] = await Promise.all([
       this.prisma.cierreBodega.findMany({
         where,
@@ -466,6 +474,12 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * mas) no falta. La empresa se filtra por escrito, ademas de la RLS. Sin filtros de pantalla: los
    * recortes los pone el `where` de Prisma que recibe este conjunto.
    */
+  /** SLT-153 (R458): con folio, los ids de `cierre_bodega` que lo contienen; sin folio, ni una consulta. */
+  private async idsPorFolio(filtros: FiltrosCierresBodegaRepo | undefined): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsCierresBodegaPorFolio(this.prisma, filtros.folio);
+  }
+
   private async idsRecibidosIncompletos(): Promise<string[]> {
     const filas = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT cb."id"
