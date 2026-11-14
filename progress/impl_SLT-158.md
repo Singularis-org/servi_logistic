@@ -1,6 +1,6 @@
 # SLT-158 «Entrada de escaneo para pistola» — implementación (frontend_dev)
 
-Tanda 1 · 2026-11-14 · T1-T5 · commit COMMIT_SHA. T6 (dispositivo) queda para el cliente
+Tanda 1 · 2026-11-14 · T1-T5 · commit a3acfa0c. T6 (dispositivo) queda para el cliente
 (decisión de Carlos); T7: gate abajo, los E2E los corre el leader.
 
 ## Archivos
