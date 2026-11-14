@@ -22,13 +22,13 @@ import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
  * LA SIEMBRA (importes escritos a mano). Zona satelite C; S = adminSatelite de C; M = maestro.
  * Tarifa vieja de la tienda: flete 2 000,00 (tambien GAM), flete devuelto 1 500,00, IVA 13 %, sin
  * comision (`cobraComision` false). Ninguna orden es central ni de zona especial.
- * Cierre de bodega BX (snapshot: efectivo 1 200, SINPE 2 500, general 3 700, pago 6 500, bodega 100)
+ * Cierre de bodega BX (snapshot: efectivo 1 400, SINPE 3 000, general 4 400, pago 6 500, bodega 100)
  * con tres cierres del dia aprobados:
- *   A (anterior): efectivo 1 000, SINPE 2 000 → general 3 000; pago 700; bodega 100.
+ *   A (anterior): efectivo 500, SINPE 2 500 → general 3 000; pago 700; bodega 100.
  *       gA1 entregada, recibido 3 000, pago 700, bodega 0  → flete 2 000 + IVA 260 = 2 260.
  *       gA2 rechazada, sin recibido, pago 0, bodega 100   → devuelto 1 500 + IVA 195 = 1 695.
- *   B (anterior): efectivo 200 → general 200; pago 800; bodega 0.
- *       gB1 entregada, recibido 200, pago 800             → 2 260 (IVA 260).
+ *   B (anterior): efectivo 900 → general 900; pago 800; bodega 0.
+ *       gB1 entregada, recibido 900, pago 800             → 2 260 (IVA 260).
  *   N (nuevo, `pago_independiente_efectivo`): SINPE 500 → general 500; pago 5 000; bodega 0.
  *       gN1 entregada, recibido 500, pago 5 000, modelo nuevo con `tienda_flete_entregado` monto
  *       3 500 e IVA 13 % → 3 500 + 455 = 3 955.
@@ -38,16 +38,18 @@ import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
  *      Le queda a la empresa 3 500 − 700 − 100 = 2 700. Se le paga a la tienda 3 000 − 2 260 = 740.
  *      Gana la tienda 3 000 − 3 955 = −955. Reparto [tienda 740, empresa 2 260] / 3 000:
  *      24,67 → 24 y 75,33 → 75 (suman 99; restos 0,67 y 0,33: el punto va a la tienda) = [25, 75].
- *      Debe llegar a la central 3 000 − 700 − 100 = 2 200; efectivo 1 000 ≥ 700 + 100 → cubre.
+ *      Debe llegar a la central 3 000 − 700 − 100 = 2 200; efectivo 500 < 700 + 100 → NO cubre
+ *      (aunque el general 3 000 si alcanzaria: la regla mira el efectivo).
  *      Reparto [2 200, 700, 100] / 3 000: 73,33 / 23,33 / 3,33 → pisos 73, 23, 3 (99); los tres
  *      restos son iguales (1/3) y gana el primero = [74, 23, 3].
- *   B: debe llegar 200 − 800 − 0 = −600; efectivo 200 < 800 → no cubre.
+ *   B: debe llegar 900 − 800 − 0 = 100; efectivo 900 ≥ 800 → cubre. Reparto [100, 800, 0] / 900:
+ *      11,11 / 88,89 / 0 → pisos 11, 88, 0 (99); el mayor resto es el de 800 → [11, 89, 0].
  *   N: debe llegar 500 − 5 000 − 0 = −4 500; efectivo 0 < 5 000 → no cubre.
  *   BX: facturado 3 955 + 2 260 + 3 955 = 10 170; IVA 455 + 260 + 455 = 1 170; sin IVA 9 000.
  *       Le queda a la empresa 9 000 − 6 500 − 100 = 2 400. Se le paga a las tiendas
- *       3 700 − (2 260 + 2 260 + 3 955) = −4 775.
- *       La central debe: efectivo de A y B = 1 200; pagos [700, 800]: 700 se paga, 700 + 800 =
- *       1 500 > 1 200 → 800 queda = «800.00». (Contando N: [700, 800, 5 000] → 5 800.)
+ *       4 400 − (2 260 + 2 260 + 3 955) = −4 075. Debe llegar 4 400 − 6 500 − 100 = −2 200.
+ *       La central debe: efectivo de A y B = 1 400; pagos [700, 800]: 700 se paga, 700 + 800 =
+ *       1 500 > 1 400 → 800 queda = «800.00». (Contando N: [700, 800, 5 000] → 5 800.)
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -124,9 +126,9 @@ async function sembrar(base: PrismaClient): Promise<Siembra> {
             zonaId: zonaC,
             solicitadoPor: sat.id,
             estado: "solicitado",
-            totalEfectivo: new Prisma.Decimal("1200.00"),
-            totalSimpe: new Prisma.Decimal("2500.00"),
-            totalGeneral: new Prisma.Decimal("3700.00"),
+            totalEfectivo: new Prisma.Decimal("1400.00"),
+            totalSimpe: new Prisma.Decimal("3000.00"),
+            totalGeneral: new Prisma.Decimal("4400.00"),
             totalPagoMensajero: new Prisma.Decimal("6500.00"),
             totalIngresoBodegaRechazos: new Prisma.Decimal("100.00"),
           },
@@ -239,8 +241,8 @@ async function sembrar(base: PrismaClient): Promise<Siembra> {
         ).id;
       };
 
-      const A = await cierreDia({ efectivo: "1000.00", simpe: "2000.00", general: "3000.00", pago: "700.00", bodega: "100.00", nuevo: false });
-      const B = await cierreDia({ efectivo: "200.00", simpe: "0.00", general: "200.00", pago: "800.00", bodega: "0.00", nuevo: false });
+      const A = await cierreDia({ efectivo: "500.00", simpe: "2500.00", general: "3000.00", pago: "700.00", bodega: "100.00", nuevo: false });
+      const B = await cierreDia({ efectivo: "900.00", simpe: "0.00", general: "900.00", pago: "800.00", bodega: "0.00", nuevo: false });
       const N = await cierreDia({ efectivo: "0.00", simpe: "500.00", general: "500.00", pago: "5000.00", bodega: "0.00", nuevo: true });
       const gA1 = await gestion(A, { clave: "A1", resultado: "entregado", recibido: "3000.00", pago: "700.00", bodega: "0.00", modelo: "viejo" });
       const gA2 = await gestion(A, {
@@ -251,7 +253,7 @@ async function sembrar(base: PrismaClient): Promise<Siembra> {
         bodega: "100.00",
         modelo: "viejo",
       });
-      const gB1 = await gestion(B, { clave: "B1", resultado: "entregado", recibido: "200.00", pago: "800.00", bodega: "0.00", modelo: "viejo" });
+      const gB1 = await gestion(B, { clave: "B1", resultado: "entregado", recibido: "900.00", pago: "800.00", bodega: "0.00", modelo: "viejo" });
       const gN1 = await gestion(N, { clave: "N1", resultado: "entregado", recibido: "500.00", pago: "5000.00", bodega: "0.00", modelo: "nuevo" });
 
       return {
@@ -368,8 +370,8 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
 
   it("R460: la satélite recibe el detalle de bodega sin las ocho cifras de la empresa", async () => {
     const r = await verBodega(S.satelite);
-    // Control: el detalle llegó con lo suyo (snapshot de BX: 3 700 − 6 500 − 100).
-    expect(r.cierre.paraLaCentral).toBe("-2900.00");
+    // Control: el detalle llegó con lo suyo (snapshot de BX: 4 400 − 6 500 − 100).
+    expect(r.cierre.paraLaCentral).toBe("-2200.00");
     expect(r.totalesIngreso).toBeNull();
     expect(r.ivaFacturado).toBeNull();
     expect(r.ganancia).toBeNull();
@@ -405,18 +407,18 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
       };
     };
     expect(propias(S.cierre.A)).toEqual({
-      totales: { efectivo: "1000.00", simpe: "2000.00", transferencia: "0.00", general: "3000.00" },
+      totales: { efectivo: "500.00", simpe: "2500.00", transferencia: "0.00", general: "3000.00" },
       pago: "700.00",
       bodega: "100.00",
       central: "2200.00", // 3 000 − 700 − 100
-      cubre: true, // 1 000 ≥ 700 + 100
+      cubre: false, // 500 < 700 + 100
     });
     expect(propias(S.cierre.B)).toEqual({
-      totales: { efectivo: "200.00", simpe: "0.00", transferencia: "0.00", general: "200.00" },
+      totales: { efectivo: "900.00", simpe: "0.00", transferencia: "0.00", general: "900.00" },
       pago: "800.00",
       bodega: "0.00",
-      central: "-600.00", // 200 − 800 − 0
-      cubre: false, // 200 < 800
+      central: "100.00", // 900 − 800 − 0
+      cubre: true, // 900 ≥ 800
     });
     expect(propias(S.cierre.N)).toEqual({
       totales: { efectivo: "0.00", simpe: "500.00", transferencia: "0.00", general: "500.00" },
@@ -485,7 +487,7 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
   it("R465: el maestro recibe los dos detalles con las cifras de la empresa de antes", async () => {
     const bodega = await verBodega(S.maestro);
     expect(bodega.netoEmpresa).toBe("2400.00"); // 9 000 sin IVA − 6 500 − 100
-    expect(bodega.pagoTienda).toBe("-4775.00"); // 3 700 − (2 260 + 2 260 + 3 955)
+    expect(bodega.pagoTienda).toBe("-4075.00"); // 4 400 − (2 260 + 2 260 + 3 955)
     expect(bodega.totalesIngreso?.total).toBe("10170.00"); // 3 955 + 2 260 + 3 955
     const diaA = bodega.cierres.find((c) => c.cierreDiaId === S.cierre.A);
     expect(diaA?.netoEmpresa).toBe("2700.00"); // 3 500 − 700 − 100
@@ -508,7 +510,7 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
   });
 
   it("R466: La central debe del cierre de bodega: reparte el efectivo de los cierres del modelo anterior", async () => {
-    // Efectivo de A y B = 1 200; pagos [700, 800]: se paga 700; 1 500 > 1 200 → quedan 800.
+    // Efectivo de A y B = 1 400; pagos [700, 800]: se paga 700; 1 500 > 1 400 → quedan 800.
     expect((await verBodega(S.satelite)).centralDebe).toBe("800.00");
     expect((await verBodega(S.maestro)).centralDebe).toBe("800.00");
   });
@@ -517,13 +519,17 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
     for (const quien of [S.satelite, S.maestro]) {
       const r = await verMensajero(quien, S.cierre.A);
       expect(r.paraLaCentral).toBe("2200.00"); // 3 000 − 700 − 100
-      expect(r.efectivoCubreDescuentos).toBe(true); // 1 000 ≥ 800
+      expect(r.efectivoCubreDescuentos).toBe(false); // efectivo 500 < 800 (el general 3 000 no cuenta)
       expect(r.porcentajesRepartoCentral).toEqual([74, 23, 3]);
     }
-    // B no cubre: 200 < 800, y su reparto no tiene barra (una parte negativa).
+    // B sí cubre: 900 ≥ 800; reparto [100, 800, 0] / 900 → [11, 89, 0].
     const b = await verMensajero(S.satelite, S.cierre.B);
-    expect(b.paraLaCentral).toBe("-600.00");
-    expect(b.efectivoCubreDescuentos).toBe(false);
-    expect(b.porcentajesRepartoCentral).toBeNull();
+    expect(b.paraLaCentral).toBe("100.00");
+    expect(b.efectivoCubreDescuentos).toBe(true);
+    expect(b.porcentajesRepartoCentral).toEqual([11, 89, 0]);
+    // N no tiene barra: una parte negativa (500 − 5 000).
+    const n = await verMensajero(S.satelite, S.cierre.N);
+    expect(n.paraLaCentral).toBe("-4500.00");
+    expect(n.porcentajesRepartoCentral).toBeNull();
   });
 });
