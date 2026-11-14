@@ -3,6 +3,7 @@
 import { MapPin, Navigation } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { IntentosDato, valorIntentos } from "@/components/shared/intentos-entrega";
 import {
   avisoReservaParaOtroDia,
@@ -77,7 +78,7 @@ export function PosOrderCardDetalle({
           ? `Gestionar orden ${orden.numRemision} · ${orden.destinatario}`
           : `Orden ${orden.numRemision} · ${orden.destinatario}`
       }
-      className={`flex flex-col gap-2 rounded-xl border bg-card p-2.5 shadow-sm transition-all ${
+      className={`flex flex-col gap-2 rounded-xl border bg-card p-3 shadow-sm transition-all ${
         esDetalle ? "border-brand ring-1 ring-brand" : "border-border"
       } ${
         seleccionable
@@ -115,16 +116,16 @@ export function PosOrderCardDetalle({
           <EstadoConInfo
             botonFlotante
             codigo={orden.estatusValue}
-            chipClassName={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
+            chipClassName={`rounded-full px-2 py-1 text-[9px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
           />
           {marcas.map((m) => (
-            <span key={m.texto} className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${m.clase}`}>
+            <span key={m.texto} className={`rounded-full px-2 py-1 text-[9px] font-bold tracking-wide ${m.clase}`}>
               {m.texto}
             </span>
           ))}
           {notaAyuda ? (
             <NotaAyudaConInfo
-              chipClassName={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
+              chipClassName={`rounded-full px-2 py-1 text-[9px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
             />
           ) : null}
           {/* Marcas de EXCEPCIÓN (R28 / feature 115/R18 / feature 246/R22), solo si aplican. */}
@@ -145,15 +146,16 @@ export function PosOrderCardDetalle({
             <Badge variant="warning">Gestionar más tarde</Badge>
           ) : null}
         </div>
-        <p className="truncate text-sm font-bold text-foreground">
+        {/* SLT-156 (R490): el destinatario entero, en varias líneas si no cabe (sin «…»). */}
+        <p className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
           {orden.destinatario}
         </p>
         {/* La línea de ubicación es parte de la NAVEGACIÓN, no del identificador: sin ella
             el "Sin dirección" del fallback afirmaría un hueco donde no hay dato que dar. */}
         {verNavegacion ? (
-          <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+          <p className="flex min-w-0 items-start gap-1 text-[11px] text-muted-foreground">
             <MapPin className="size-3 shrink-0" aria-hidden="true" />
-            {ubicacion || "Sin dirección"}
+            <span className={TEXTO_ENTERO}>{ubicacion || "Sin dirección"}</span>
           </p>
         ) : null}
         {/* Feature 160/R19: intentos siempre visibles, `0` incluido, en las superficies que
@@ -167,7 +169,7 @@ export function PosOrderCardDetalle({
             la fila y NO entre las marcas de excepción de arriba: es un dato, no una excepción.
             La compuerta es la PRESENCIA de la prop; el portal del mensajero no la pasa. */}
         {mensajero !== undefined ? (
-          <p className="truncate text-[11px] font-semibold text-muted-foreground">
+          <p className={`text-[11px] font-semibold text-muted-foreground ${TEXTO_ENTERO}`}>
             {textoMensajero(mensajero)}
           </p>
         ) : null}
@@ -188,7 +190,7 @@ export function PosOrderCardDetalle({
           <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
             Cobrar
           </span>
-          <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+          <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
             {formatMonto(orden.montoCobrar)}
           </span>
         </div>

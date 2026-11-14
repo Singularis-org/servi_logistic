@@ -2,12 +2,15 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 
+import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
 import {
   CierreFacturaDetalle,
+  SeccionSinGestion,
   type CierreFacturaAudiencia,
   type CierreFacturaCabecera,
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import type {
+  CierreOrdenSinGestion,
   CierreDetalleGestion,
   CierreGrupos,
   CierreRechazoDeTienda,
@@ -591,5 +594,82 @@ describe("ficha 425 — el comprobante del mensajero pinta LA MISMA sección (R1
     // No se comparan dos cadenas vacías.
     expect(delAdmin).toContain("NA-981");
     expect(delMensajero).toBe(delAdmin);
+  });
+});
+
+// ── SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (A2; R490, R491, R492) ────────────────
+// Las filas que SÍ se pintan en pantalla: la pestaña «Rechazados por la tienda» del detalle único
+// (`RechazosDeTiendaCierre`, en `/cierre-dia` y `/cierres-admin`) y «Órdenes sin gestión»
+// (`SeccionSinGestion`). Destinatario, tienda y motivo van ENTEROS (envuelven, sin «…» ni `title`:
+// en el móvil no hay tooltip); la guía y la fecha, en su columna fija.
+
+const LARGO_DESTINATARIO = "María Fernanda de los Ángeles Rodríguez Villalobos Supercalifragilístico";
+const LARGO_TIENDA = "Distribuidora Comercial del Valle Central Sociedad Anónima Sucursal Norte";
+
+/** Ni la celda ni nada dentro recorta: sin `truncate`/`text-ellipsis`/`line-clamp-*` ni `title`. */
+function sinRecorte(el: Element, que: string) {
+  for (const nodo of [el, ...Array.from(el.querySelectorAll("*"))]) {
+    const clases = (nodo.getAttribute("class") ?? "").split(/\s+/);
+    expect(clases, que).not.toContain("truncate");
+    expect(clases, que).not.toContain("text-ellipsis");
+    expect(clases.some((c) => c.startsWith("line-clamp-")), que).toBe(false);
+    expect(nodo.hasAttribute("title"), que).toBe(false);
+  }
+}
+
+/** El elemento más interno cuyo texto es exactamente `texto`. */
+function elementoConTexto(raiz: HTMLElement, texto: string): HTMLElement {
+  return within(raiz).getByText((_, el) => el?.textContent === texto && !Array.from(el.children).some((h) => h.textContent === texto));
+}
+
+describe("SLT-156 R490, R491 — «Rechazados por la tienda» del detalle: enteros, sin «…»", () => {
+  it("destinatario, motivo y tienda largos se leen enteros y envuelven", () => {
+    render(
+      <RechazosDeTiendaCierre
+        rechazos={[rechazo({ destinatario: LARGO_DESTINATARIO, tiendaNombre: LARGO_TIENDA })]}
+      />,
+    );
+    const lista = screen.getByRole("list", { name: "Lista de paquetes rechazados por la tienda" });
+    const fila = within(lista).getAllByRole("listitem")[0];
+    sinRecorte(fila, "fila de rechazo");
+    for (const texto of [LARGO_DESTINATARIO, LARGO_TIENDA]) {
+      const el = elementoConTexto(fila, texto);
+      expect(el.className.split(/\s+/), texto).toEqual(expect.arrayContaining(["whitespace-normal", "wrap-anywhere"]));
+    }
+  });
+
+  it("R492: la guía y la fecha van en columna fija (sin partirse ni encogerse)", () => {
+    render(<RechazosDeTiendaCierre rechazos={[rechazo()]} />);
+    const fila = within(screen.getByRole("list", { name: "Lista de paquetes rechazados por la tienda" })).getAllByRole("listitem")[0];
+    const guia = elementoConTexto(fila, "19301246");
+    expect(guia.className.split(/\s+/)).toEqual(expect.arrayContaining(["shrink-0", "whitespace-nowrap"]));
+    const fecha = fila.querySelector("time");
+    expect(fecha?.className.split(/\s+/)).toEqual(expect.arrayContaining(["shrink-0", "whitespace-nowrap", "text-right"]));
+  });
+});
+
+describe("SLT-156 R490, R491 — «Órdenes sin gestión»: enteras, sin «…»", () => {
+  const SIN_GESTION: CierreOrdenSinGestion = {
+    ordenId: "o1",
+    numGuia: 19301246,
+    numRemision: "NA-947",
+    destinatario: LARGO_DESTINATARIO,
+    producto: "Sobre acolchado",
+    tiendaNombre: LARGO_TIENDA,
+    zonaNombre: "GAM",
+    estatusOrigen: null,
+  };
+
+  it("la fila y la cabecera no recortan, y destinatario y tienda envuelven", () => {
+    render(<SeccionSinGestion ordenes={[SIN_GESTION]} registrado />);
+    const lista = screen.getByRole("list", { name: /^Lista de órdenes que pasaron a / });
+    const seccion = lista.closest("section");
+    if (!seccion) throw new Error("sin sección");
+    sinRecorte(seccion, "sección sin gestión");
+    const fila = within(lista).getByRole("listitem");
+    for (const texto of [LARGO_DESTINATARIO, LARGO_TIENDA]) {
+      const el = elementoConTexto(fila, texto);
+      expect(el.className.split(/\s+/), texto).toEqual(expect.arrayContaining(["whitespace-normal", "wrap-anywhere"]));
+    }
   });
 });

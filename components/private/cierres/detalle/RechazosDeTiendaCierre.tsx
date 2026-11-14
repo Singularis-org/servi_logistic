@@ -3,6 +3,7 @@
 import type { CierreRechazoDeTienda } from "@/lib/interfaces/services/ICierreDiaService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { cn } from "@/lib/utils";
+import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { motivoGestionLegible } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import {
   FILA_DESTINATARIO_COL,
@@ -24,7 +25,8 @@ import { RECHAZOS_VACIO } from "./detalle-cierre-labels";
 // y trae los conteos «paga / revisar», que en el detalle ya dicen la franja y el conteo de la pestaña.
 // Sin dinero: un rechazo de tienda no se cobra ni suma al pago del mensajero.
 
-const COLUMNAS = "grid-cols-[80px_minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto]";
+// SLT-156 (R492): la guía nunca baja de 80 px ni se monta en el destinatario; crece con su texto.
+const COLUMNAS = "grid-cols-[minmax(80px,max-content)_minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto]";
 
 export interface RechazosDeTiendaCierreProps {
   rechazos: readonly CierreRechazoDeTienda[];
@@ -33,7 +35,7 @@ export interface RechazosDeTiendaCierreProps {
 export function RechazosDeTiendaCierre({ rechazos }: Readonly<RechazosDeTiendaCierreProps>) {
   const cuantas = rechazos.length;
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <p className="m-0 text-sm text-muted-foreground">{RECHAZOS_NOTA}</p>
       {cuantas === 0 ? (
         <p role="status" className="m-0 text-sm text-foreground">
@@ -45,7 +47,7 @@ export function RechazosDeTiendaCierre({ rechazos }: Readonly<RechazosDeTiendaCi
           <p className="m-0 text-sm font-medium text-foreground">{efectoAlAprobar(cuantas)}</p>
           <div
             aria-hidden="true"
-            className={cn("grid gap-2 border-b border-border py-1.5 text-xs text-muted-foreground", COLUMNAS)}
+            className={cn("grid gap-2 border-b border-border py-2 text-xs text-muted-foreground", COLUMNAS)}
           >
             <span>{FILA_GUIA_COL}</span>
             <span>{FILA_DESTINATARIO_COL}</span>
@@ -59,11 +61,11 @@ export function RechazosDeTiendaCierre({ rechazos }: Readonly<RechazosDeTiendaCi
                 key={r.gestionId}
                 className={cn("grid items-start gap-2 border-b border-border/60 py-2 text-sm last:border-b-0", COLUMNAS)}
               >
-                <span className="font-mono text-[13px] tabular-nums">{r.numGuia}</span>
-                <span className="min-w-0 truncate">{r.destinatario}</span>
-                <span className="min-w-0">{motivoGestionLegible(r.motivo, true) ?? ""}</span>
-                <span className="min-w-0 truncate text-muted-foreground">{r.tiendaNombre}</span>
-                <time dateTime={r.rechazadoAt} className="whitespace-nowrap text-right tabular-nums">
+                <span className={cn("font-mono text-[13px]", COLUMNA_FIJA)}>{r.numGuia}</span>
+                <span className={TEXTO_ENTERO}>{r.destinatario}</span>
+                <span className={TEXTO_ENTERO}>{motivoGestionLegible(r.motivo, true) ?? ""}</span>
+                <span className={cn(TEXTO_ENTERO, "text-muted-foreground")}>{r.tiendaNombre}</span>
+                <time dateTime={r.rechazadoAt} className={cn("text-right", COLUMNA_FIJA)}>
                   {fechaCalendarioCR(new Date(r.rechazadoAt))}
                 </time>
               </li>

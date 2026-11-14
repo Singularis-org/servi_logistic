@@ -3,7 +3,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { FilaGestion } from "@/components/private/cierres/fila/FilaGestion";
+import { FilaGestion, plantillaFila } from "@/components/private/cierres/fila/FilaGestion";
+import { columnasDe } from "@/components/private/cierres/fila/fila-gestion-vista";
 import type { AccionesFila, AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
 import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
@@ -139,8 +140,10 @@ describe("R86 — fila cerrada", () => {
   });
 });
 
-// SLT-152 «Tablas de cierres legibles»: una columna por dato y el texto recortado dentro de ella.
-describe("R442, R444, R445 — Destinatario, Tienda y Mensajero en su columna", () => {
+// SLT-152 «Tablas de cierres legibles»: una columna por dato. SLT-156 «PWA de los mensajeros: tablas
+// usables en el móvil» (R490-R492): el texto ya no se recorta con «…» ni se lee por `title` (en el
+// móvil no hay tooltip): envuelve en varias líneas, y los importes van en una columna fija.
+describe("R442, R490, R491, R445 — Destinatario, Tienda y Mensajero en su columna, enteros", () => {
   const LARGO = "Mensajero Satélite Demo QA A con un nombre larguísimo";
 
   it("R442: destinatario y tienda, cada uno en su celda y sin «·» entre ambos", () => {
@@ -154,7 +157,7 @@ describe("R442, R444, R445 — Destinatario, Tienda y Mensajero en su columna", 
     }
   });
 
-  it("R444: el elemento con el texto es de bloque, recorta con «…», sin salto y con el texto entero en title", () => {
+  it("R490, R491: destinatario, tienda y mensajero enteros, que envuelven, sin «…» ni `title`", () => {
     montar(gestionFila({ gestionId: "e", destinatario: "Beatriz Elena Ruiz Montoya", tiendaNombre: "Tienda Norte Principal" }), {
       audiencia: "solo lectura",
       mensajero: LARGO,
@@ -167,14 +170,17 @@ describe("R442, R444, R445 — Destinatario, Tienda y Mensajero en su columna", 
     for (const [id, texto] of Object.entries(esperado)) {
       const el = textoDe(id);
       expect(el.textContent).toBe(texto);
-      expect(el.getAttribute("title")).toBe(texto);
-      // El recorte vive en el elemento que tiene el texto, no en un hijo en línea.
-      expect(el.children).toHaveLength(0);
-      for (const clase of ["block", "min-w-0", "truncate"]) expect(el.classList.contains(clase)).toBe(true);
+      expect(el.hasAttribute("title")).toBe(false);
+      for (const clase of ["truncate", "text-ellipsis", "whitespace-nowrap", "overflow-hidden"]) {
+        expect(el.classList.contains(clase)).toBe(false);
+      }
+      // Envuelve en varias líneas y parte una palabra sin espacios si hace falta.
+      for (const clase of ["min-w-0", "whitespace-normal", "wrap-anywhere"]) expect(el.classList.contains(clase)).toBe(true);
+      expect(celda(id).querySelector("[title]")).toBeNull();
     }
   });
 
-  it("R445: sin nombre de mensajero, la celda «Mensajero» dice «—» (también en title)", () => {
+  it("R445: sin nombre de mensajero, la celda «Mensajero» dice «—» (sin `title`)", () => {
     render(
       <FilaGestion
         gestion={gestionFila({ gestionId: "e" })}
@@ -186,7 +192,32 @@ describe("R442, R444, R445 — Destinatario, Tienda y Mensajero en su columna", 
       />,
     );
     expect(textoDe("mensajero").textContent).toBe("—");
-    expect(textoDe("mensajero").getAttribute("title")).toBe("—");
+    expect(textoDe("mensajero").hasAttribute("title")).toBe(false);
+  });
+
+  it("R492: guía en pista `max-content` e importes en `minmax(max-content,1fr)`, en las cuatro audiencias", () => {
+    for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
+      const columnas = columnasDe(audiencia, audiencia === "solo lectura");
+      const pistas = String(plantillaFila(columnas).gridTemplateColumns).split(" ");
+      columnas.forEach((c, i) => {
+        if (c.id === "guia") expect(pistas[i]).toBe("max-content");
+        if (["recibido", "cobro", "pago", "ganancia"].includes(c.id)) expect(pistas[i]).toBe("minmax(max-content,1fr)");
+      });
+    }
+    // La ganancia del mensajero es el importe que se veía montado en la columna vecina.
+    const mensajero = columnasDe("mensajero", false);
+    const i = mensajero.findIndex((c) => c.id === "ganancia");
+    expect(i).toBeGreaterThan(-1);
+    expect(String(plantillaFila(mensajero).gridTemplateColumns).split(" ")[i]).toBe("minmax(max-content,1fr)");
+  });
+
+  it("R492: el importe va en columna fija, alineado a la derecha y sin partirse", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const importe = textoDe("ganancia");
+    expect(importe.textContent).toBe("₡1.800");
+    for (const clase of ["shrink-0", "whitespace-nowrap", "tabular-nums", "text-right"]) {
+      expect(importe.classList.contains(clase)).toBe(true);
+    }
   });
 });
 

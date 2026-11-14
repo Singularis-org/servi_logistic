@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { EscanerModal } from "@/components/shared/EscanerModal";
+import { ESCANER_LABEL_GUIA, EscanerModal } from "@/components/shared/EscanerModal";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
 
 // La tarjeta REAL (R571 con la tarjeta de verdad) monta `QrScanner`, que pide un toast.
@@ -31,6 +31,25 @@ vi.mock("@/hooks/useToast", () => ({
 afterEach(() => cleanup());
 
 describe("EscanerModal", () => {
+  // SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (A6; R500): el disparador único de
+  // las pantallas del mensajero. El texto es el contrato (aprobado por Carlos): va tecleado.
+  it("R500: con la etiqueta «Escanear o escribir guía» arranca cerrado y abre al pulsar", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label={ESCANER_LABEL_GUIA}>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+
+    const disparador = screen.getByRole("button", { name: "Escanear o escribir guía" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+
+    await user.click(disparador);
+    expect(screen.getByRole("dialog", { name: "Escanear o escribir guía" })).toBeInTheDocument();
+    expect(screen.getByText("tarjeta de escaneo")).toBeInTheDocument();
+  });
+
   it("arranca cerrado: el contenido no está montado", () => {
     render(
       <EscanerModal>

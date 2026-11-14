@@ -442,8 +442,10 @@ describe("SLT-152 · cabecera y rejilla de la lista con columna Mensajero (R440,
     expect(filasDom).toHaveLength(7);
     // 9 columnas de datos + la de acciones.
     expect(cabecera.children).toHaveLength(10);
+    // SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R492): la guía es una pista
+    // `max-content` y cada importe `minmax(max-content,1fr)`, para que ninguno se monte en la columna vecina.
     expect(cabecera.style.gridTemplateColumns).toBe(
-      "auto minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr) minmax(110px,1.2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) auto",
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
     );
     for (const fila of filasDom) {
       expect(fila.children).toHaveLength(cabecera.children.length);
