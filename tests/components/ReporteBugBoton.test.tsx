@@ -86,8 +86,13 @@ describe("R3 — la posición del botón", () => {
       const { unmount } = render(<ReporteBugBoton usuarioId={USUARIO} />);
       const boton = botonFlotante();
       expect(boton.getAttribute("data-posicion"), ruta).toBe(posicion);
-      // El chat ocupa `bottom-5` con 56 px; encima de él, `bottom-24` no se solapa.
-      expect(boton.className.split(" "), ruta).toContain(posicion === "sobre-chat" ? "bottom-24" : "bottom-5");
+      // El chat ocupa `bottom-5` con 56 px; encima de él, `bottom-24` (6rem) no se solapa. SLT-156
+      // (design §6): las dos distancias suman el alto de la barra fija inferior, si la pantalla tiene.
+      expect(boton.className.split(" "), ruta).toContain(
+        posicion === "sobre-chat"
+          ? "bottom-[calc(6rem+var(--alto-barra-inferior,0px))]"
+          : "bottom-[calc(1.25rem+var(--alto-barra-inferior,0px))]",
+      );
       unmount();
     }
   });

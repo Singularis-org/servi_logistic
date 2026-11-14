@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { money } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
+import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { CierreDetalleGestion, CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
 import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
@@ -67,17 +68,20 @@ export interface FilaGestionProps {
 
 /** Ancho de cada columna (canvas: `70px 1.7fr 110px 1fr 1fr 1fr 1.3fr 40px`). */
 const ANCHO: Record<ColumnaFila["id"], string> = {
-  // La guía no se recorta (263): pista `auto` con un piso, igual en cabecera y fila.
-  guia: "auto",
-  // SLT-152 (D2): el 1.7fr de «Destinatario · tienda» se reparte entre las dos columnas.
+  // SLT-156 (R492): la guía es una columna fija del ancho de su texto, igual en cabecera y fila.
+  guia: "max-content",
+  // SLT-152 (D2): el 1.7fr de «Destinatario · tienda» se reparte entre las dos columnas. El texto
+  // de estas pistas envuelve (`TEXTO_ENTERO`), no se recorta (SLT-156, R490-R491).
   destinatario: "minmax(0,1.2fr)",
   tienda: "minmax(0,1fr)",
   mensajero: "minmax(0,1.1fr)",
   resultado: "minmax(110px,1.2fr)",
-  recibido: "minmax(0,1fr)",
-  cobro: "minmax(0,1fr)",
-  pago: "minmax(0,1fr)",
-  ganancia: "minmax(0,1fr)",
+  // SLT-156 (R492): un importe nunca baja de su ancho; así no se monta en la columna vecina (el
+  // fallo que SLT-152 tapaba con el recorte).
+  recibido: "minmax(max-content,1fr)",
+  cobro: "minmax(max-content,1fr)",
+  pago: "minmax(max-content,1fr)",
+  ganancia: "minmax(max-content,1fr)",
   senales: "minmax(0,1.3fr)",
 };
 
@@ -86,19 +90,13 @@ export function plantillaFila(columnas: readonly ColumnaFila[]): CSSProperties {
   return { gridTemplateColumns: `${columnas.map((c) => ANCHO[c.id]).join(" ")} auto` };
 }
 export const GUIA_CELDA = "min-w-[70px] whitespace-nowrap tabular-nums";
-/**
- * SLT-152 (R444, D1): recorta el texto DENTRO de su columna. Va en un elemento de bloque: en uno en
- * línea `overflow: hidden` no se aplica y el texto se pintaba encima de la columna siguiente.
- */
-export const CELDA_RECORTA = "block min-w-0 truncate";
 
-/** El texto de una celda de texto libre, recortado con «…» y entero en `title`. */
-function TextoRecortado({ texto, className }: Readonly<{ texto: string; className?: string }>) {
-  return (
-    <span className={cn(CELDA_RECORTA, className)} title={texto}>
-      {texto}
-    </span>
-  );
+/**
+ * SLT-156 (R490, R491): el texto libre de una celda va ENTERO, en varias líneas si no cabe. Sustituye
+ * al «…» con `title` de SLT-152, que en el móvil no se podía leer (no hay tooltip).
+ */
+function TextoCelda({ texto, className }: Readonly<{ texto: string; className?: string }>) {
+  return <span className={cn("block", TEXTO_ENTERO, className)}>{texto}</span>;
 }
 
 const TONO_RESULTADO: Record<CierreResultado, string> = {
@@ -133,25 +131,25 @@ export function FilaGestion({
       case "guia":
         return <span className={cn("font-mono text-[13px]", GUIA_CELDA)}>{g.numGuia ?? "—"}</span>;
       case "destinatario":
-        return <TextoRecortado texto={g.destinatario} />;
+        return <TextoCelda texto={g.destinatario} />;
       case "tienda":
-        return <TextoRecortado texto={g.tiendaNombre} className="text-muted-foreground" />;
+        return <TextoCelda texto={g.tiendaNombre} className="text-muted-foreground" />;
       case "mensajero":
         // R445: sin nombre, «—».
-        return <TextoRecortado texto={mensajeroNombre ?? "—"} />;
+        return <TextoCelda texto={mensajeroNombre ?? "—"} />;
       case "resultado":
         // Ficha 456: el nombre del resultado con su botón de información.
         return (
           <EstadoConInfo
             codigo={g.resultado}
-            chipClassName={cn("rounded-full px-2 py-0.5 text-xs font-medium", TONO_RESULTADO[g.resultado])}
+            chipClassName={cn("rounded-full px-2 py-1 text-xs font-medium", TONO_RESULTADO[g.resultado])}
           />
         );
       case "senales":
         return <span className="pl-4 text-xs text-warning-strong">{senales}</span>;
       default:
         // R86: un importe nulo es «—», nunca ₡0.
-        return <span className="text-right tabular-nums">{money(montoDeColumna(g, c.id))}</span>;
+        return <span className={cn("block text-right", COLUMNA_FIJA)}>{money(montoDeColumna(g, c.id))}</span>;
     }
   }
 
@@ -207,13 +205,13 @@ export function FilaGestion({
   return (
     // `break-inside-avoid` (feature 223): la fila no se parte entre dos páginas al imprimir.
     <div className="break-inside-avoid border-b border-border last:border-b-0" data-gestion={g.gestionId}>
-      <div className="grid items-center gap-2 px-4 py-2.5 text-sm" style={plantillaFila(columnas)}>
+      <div className="grid items-center gap-2 px-4 py-3 text-sm" style={plantillaFila(columnas)}>
         {columnas.map((c) => (
           <span key={c.id} data-columna={c.id} className={cn("min-w-0", c.derecha && "text-right")}>
             {celda(c)}
           </span>
         ))}
-        <span className="flex items-center justify-end gap-1.5">
+        <span className="flex items-center justify-end gap-2">
           {ofrecidas.devolver ? (
             // R244 (feature 237): deshabilitado CON SU MOTIVO, no oculto — en `title` y al final del
             // nombre accesible, porque un botón `disabled` sale del orden de tabulación.

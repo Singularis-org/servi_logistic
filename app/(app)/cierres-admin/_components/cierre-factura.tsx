@@ -20,6 +20,7 @@ import { BotonesEvidencia } from "./botones-evidencia";
 import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
 import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { cn } from "@/lib/utils";
+import { TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { EMPRESA } from "@/lib/config/marca";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
@@ -2423,7 +2424,7 @@ function FilaSinGestion({ o }: Readonly<{ o: CierreOrdenSinGestion }>) {
     <div
       role="listitem"
       className={cn(
-        "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-2.5",
+        "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-3",
         SIN_GESTION_GRID_COLS,
       )}
     >
@@ -2434,23 +2435,23 @@ function FilaSinGestion({ o }: Readonly<{ o: CierreOrdenSinGestion }>) {
             está vacío. Es el caso contrario al del estado de origen (R32). */}
         {o.numGuia ?? "—"}
       </span>
-      {/* `min-w-0`: sin él el mínimo automático del flex-item es el min-content del texto y
-          `truncate` no llega a activarse nunca (lección literal de la 258). */}
+      {/* SLT-156 (R490, R491): sin «…»: el destinatario, la remisión y el producto envuelven en
+          varias líneas (en el móvil no hay tooltip). `min-w-0` deja que la pista los parta. */}
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-[13px] text-foreground">
+        <span className={cn("text-[13px] text-foreground", TEXTO_ENTERO)}>
           {o.destinatario}
         </span>
         {/* FICHA 456 (T3.4, R9/R15): el estado de origen con su botón de información (un origen
             retirado sale con su nombre histórico y sin botón). */}
-        <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-          <span className="truncate">
+        <span className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+          <span className={TEXTO_ENTERO}>
             {o.numRemision} · {o.producto}
             {origen ? " · " : null}
           </span>
           {origen ? <EstadoConInfo codigo={origen} className="shrink-0" /> : null}
         </span>
       </span>
-      <span className="min-w-0 truncate text-[13px] text-muted-foreground">
+      <span className={cn("text-[13px] text-muted-foreground", TEXTO_ENTERO)}>
         {o.tiendaNombre}
       </span>
     </div>
@@ -2505,7 +2506,7 @@ export function SeccionSinGestion({
             // salida rutinaria del reparto (mismo criterio con el que la 158 puso `incidente`
             // en `warning`). Sin lista que contar no se pinta ningún número: un «0» aquí sería
             // exactamente el «no hubo ninguna» que R28 prohíbe.
-            <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[0.6875rem] text-warning-strong">
+            <span className="rounded-full bg-warning/15 px-2 py-1 text-[0.6875rem] text-warning-strong">
               {ordenes.length}
             </span>
           ) : null}
@@ -2526,8 +2527,8 @@ export function SeccionSinGestion({
             )}
           >
             <span className={FILA_GUIA_CELDA}>{FILA_GUIA_COL}</span>
-            <span className="min-w-0 truncate">{FILA_DESTINATARIO_COL}</span>
-            <span className="min-w-0 truncate">{FILA_TIENDA_LABEL}</span>
+            <span className={TEXTO_ENTERO}>{FILA_DESTINATARIO_COL}</span>
+            <span className={TEXTO_ENTERO}>{FILA_TIENDA_LABEL}</span>
           </div>
           {/* `list`/`listitem` y no una tabla: son filas de consulta sin cabecera semántica de
               columna, y el rol de lista le da a quien usa lector de pantalla el recuento sin
