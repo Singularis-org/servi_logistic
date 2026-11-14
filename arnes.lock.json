@@ -11,7 +11,7 @@
     ".claude/agents/implementer.md": "bf930a80f76dbc81c80666e9dc12e8ca6f7b4e57e80189587b6802645d9fadfd",
     ".claude/agents/leader.md": "908ca9eaf2b3707370b6c41f21e02dc9d85dd1a3854f68965aaab939f9585d35",
     ".claude/agents/reviewer.md": "0e2ae66ec66c864f4e134a906edacfa47389fd7431d3b3a834a97ac4880eeb83",
-    ".claude/agents/spec_author.md": "aca57ebc9652ba9f1bf46637c284e77f46526adb3f6e4ee3590b8603f4769031",
+    ".claude/agents/spec_author.md": "e58686ce5410be6ea8e02dad0eda59e1af39bd4f1508c4ac3ebb9ae588331be4",
     ".claude/commands/afinar-feature.md": "06e4856c7a33ac75ede2448e00a0652b3eb17d8769103c4c19e48b55571871d8",
     ".claude/commands/afinar-regla.md": "aa54673912ff8f55d5f10b73eeabc744d3e6cb424f6a0dc23bdefe2122bb82a4",
     ".claude/commands/arnes-init.md": "346afd031545f7b8f8c9c9ed504c11b97bf2a195bbf032058b57683d3d86e373",
@@ -27,12 +27,12 @@
     "CLAUDE.md": "911f37b70b91c385b49ec32c6ea76ea2fc0686f636011f551f395e313f0d81c4",
     "arnes.manifest": "40eb4b398e3f16a74fe28801a20a62f5f72f488f5c51068fc96077ae3f9a5a66",
     "docs/equipo.md": "6d0cd376aab0925294b1fc39ecd8a3b53181eb47dc069447a8feae596e1c45a7",
-    "docs/gate.md": "c0cb9f4230f1db7365d0f9e44df8dbfac3afaf7d8197cfa39f00a15d89acfcf3",
+    "docs/gate.md": "d3594ae466a94704a8ffff999e678dd33b30cdca95326156ffb08f02d9b6e7d1",
     "docs/grafo-de-codigo.md": "92d34dbbb3eacee96c66c0d69cdb90743550bde40560fd10e501fc64159c542a",
     "docs/guia-de-uso.md": "ffeafc2850873ff47f90d686c34ac13d3d1ac0b33872c45178ea12d859138b63",
     "docs/jira.md": "aa572944720ea0878de743fb69263030ac3a9592efefd5f6087b13a9f31e2618",
     "docs/lectura.md": "e981eef4e5424573e06e229b14b308cec86788c91780392f41f99b47f05254fc",
-    "docs/specs.md": "1e390553950c6b9178bfbc2ea63f16ec1eded7d92560c81803ee621cf767d958",
+    "docs/specs.md": "3a0728e7dfbfa79e063452b1ed487978bf46ac2606b4912dbf22dcff0459e2ea",
     "docs/trello.md": "e962a8613b3043e19e90ea481ab19760460c32e13593dcb864d2bf755841573c",
     "docs/worktrees.md": "c8183a5d2889f8d45f78111d8a7c438f0a00b198a02fba05638b8463dcc2e149",
     "init.sh": "1efd79c3a14039d3a77163ab358250f0a4143a1d1c710654906ad877ba5b9e2a",
@@ -48,8 +48,8 @@
     "scripts/disparadores.mjs": "30d9000650567901681474429593597197751be8af0da545ce45b39cca12c717",
     "scripts/metricas.mjs": "d9acf380d8f216330f7de20ce24c6de63cd5c596be0544045046987251ae263b",
     "scripts/nombres-de-fichas.mjs": "7654af19daf25d83eadaa8199c6b22078d96c92ee571786513284bd74387d63c",
-    "scripts/tamano-pr.mjs": "a9aef16c1a33b017e93599fee92bc4fbd96423c4efa935c568191ef7dfca2f13",
-    "scripts/test-rapido.mjs": "0ea002e826d88c875a3a498f6be8358ffa52bb3f5f2e1111ad9b90867c004611",
+    "scripts/tamano-pr.mjs": "bcdaaf70ef8daff6827766ec8edf1a6899e38ab475f3d03d06b727b3d480ee80",
+    "scripts/test-rapido.mjs": "fc7e3fd180032b8c01ef20e2fd10b386cef6ae1b88d9a9fab0771121a7e1ff45",
     "scripts/tests-de-arbol.mjs": "5b05da30a39f2374a267ca12f2eacbddbae05a202fc94eaf1273608962911629",
     "scripts/tracker.mjs": "a5403e37bb76ed3f8844d01dacbd1f3cd7a6f968e7bec00b2831271713990d89",
     "scripts/trello.mjs": "e28a8e0b4f9dae792bf990bfd56333c2043bfd200e17bd8d0acf486fdb3cd101",
@@ -59,13 +59,13 @@
     "tests/guards/guard-archivos-en-vuelo-sin-ruido.test.ts": "0df3143c40a699681ec55edcf2868825862fa8ce52b8253fe2bc5c6a1e98c511",
     "tests/guards/guard-ci.test.ts": "edd71997d8828881e0a15bbbe2caab6a1e7d2c41b58db4ce1ffe73ee06bd20e0",
     "tests/guards/guard-dependencias-aprobadas.test.ts": "22568afc7962c5c5eb647372c8e5d1f4e4c8118dce937c4281ce38ec50731210",
-    "tests/guards/guard-gate-rapido.test.ts": "91d7c10d5260372e66e62d6049af9bf63655bce339676e531f31a878843a498a",
+    "tests/guards/guard-gate-rapido.test.ts": "5563158596842f45b3c07db79f51f2b34eb902b0c487d6a06be53be9bca5471b",
     "tests/guards/guard-hooks-anclados.test.ts": "abb24db12674ee9b500cb3ca0bec58ca6dfdda9574efeb0d3dcfac83a9e0e4fc",
     "tests/guards/guard-init-node-modules-enlazado.test.ts": "f087dcf5e8504b326d3965989b27027af9b25f4bd9a852e0835d03268a194bb5",
     "tests/guards/guard-metricas.test.ts": "5a1e5ee98bed748c67bf843acee5e91f5d6920d58029641916dc5a896dc8c463",
     "tests/guards/guard-modelos-de-agentes.test.ts": "f992813344b14abf8a7c4b7905a20f370f07c95a3cf85e1cb37fe250c9e21bb9",
     "tests/guards/guard-nombres-de-fichas.test.ts": "e7d016b6c3bea89cf7bd0530546a464626461caa3878671b26873d81443863d7",
-    "tests/guards/guard-tamano-pr.test.ts": "98add132e7891b30b2becca3f6b37ddf4ee3f32d3dd81bc6866ac88544da34cb",
+    "tests/guards/guard-tamano-pr.test.ts": "e2ee37e90c92d3bee248bee78d9aa15f7fd453a9c039b50fd96b708df7270a2e",
     "tests/guards/guard-test-rapido-rojos-heredados.test.ts": "9b7bc186db608192ac5d9d03eb8690f2b89dbe7f638759e68b1a576b2ba3fbb6",
     "tests/guards/guard-tests-de-arbol-en-el-gate.test.ts": "ff947d5ac6ca9cf4642ed0cd0d375a1fcc7dd211e70b76f7648f0ef53cdf209e",
     "tests/guards/guard-trello-cliente.test.ts": "d298babf91f6b0b068cab2dc7d6434e26ce413796e7abaa36877071d934e7349",
@@ -152,6 +152,19 @@
         "docs/guia-de-uso.md"
       ],
       "fecha": "2026-11-12"
+    },
+    {
+      "pr": "https://github.com/singularis-co/harness_config/pull/32",
+      "archivos": [
+        ".claude/agents/spec_author.md",
+        "docs/gate.md",
+        "docs/specs.md",
+        "scripts/tamano-pr.mjs",
+        "scripts/test-rapido.mjs",
+        "tests/guards/guard-gate-rapido.test.ts",
+        "tests/guards/guard-tamano-pr.test.ts"
+      ],
+      "fecha": "2026-11-13"
     }
   ]
 }

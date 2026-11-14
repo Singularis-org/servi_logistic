@@ -267,3 +267,41 @@ describe("SLT-139 R319/R334/R335 — lo pagado por la satelite en «Cierres soli
     expect(porId["c-ns"]!.pendientePagoMensajero).toBeUndefined();
   });
 });
+
+// SLT-147 (D68) — la marca del pago independiente es OBLIGATORIA en la pagina que el repositorio
+// entrega al servicio. El tipo se toma de la firma de `findCierresByMensajeroPaginado`, no de un
+// alias: si la interfaz volviera a devolver `CierrePasadoDTO` (marca opcional), el
+// `@ts-expect-error` de abajo quedaria sin usar y `pnpm run typecheck` daria rojo (TS2578).
+type CierreDeLaPagina = Awaited<ReturnType<ICierreDiaRepository["findCierresByMensajeroPaginado"]>>["items"][number];
+
+describe("SLT-147 R416/R417 — la marca llega obligatoria y se usa tal cual", () => {
+  it("R416: un cierre de la pagina sin la marca no compila; con ella, si", () => {
+    // @ts-expect-error SLT-147 (R416): sin `pagoIndependienteEfectivo` el cierre no es de la pagina.
+    const sinMarca: CierreDeLaPagina = cierre("c-sin", "aprobado");
+    const conMarca: CierreDeLaPagina = { ...cierre("c-con", "aprobado"), pagoIndependienteEfectivo: false };
+    expect(sinMarca).not.toHaveProperty("pagoIndependienteEfectivo");
+    expect(conMarca.pagoIndependienteEfectivo).toBe(false);
+  });
+
+  it("R417: marca true, P 3 000 y E 5 000, pagado por la satelite 3 000 -> 0.00", async () => {
+    // Importes a mano. Con la marca el efectivo no entra: generado = P = 3 000; la satelite ya
+    // pago 3 000 -> 3 000 − 3 000 = 0.00. Si el servicio ignorara la marca seguiria dando 0.00 por
+    // la regla de la 44, por eso el caso «marca true sin conciliar» (3000.00) va en el de abajo.
+    const items: CierreDeLaPagina[] = [
+      {
+        ...cierre("c-sat", "aprobado", "3000.00", "5000.00"),
+        destinoTipo: "bodega_satelite",
+        destinoZonaId: "z-sat",
+        pagoIndependienteEfectivo: true,
+      },
+    ];
+    const conciliado = lecturas({}, {}, { "c-sat": "3000.00" });
+    const sinConciliar = lecturas();
+
+    const [filaConciliada] = await pagina(servicio(repoConPagina(items).repo, conciliado.pendientes));
+    const [filaSinConciliar] = await pagina(servicio(repoConPagina(items).repo, sinConciliar.pendientes));
+
+    expect(filaConciliada!.pendientePagoMensajero).toBe("0.00");
+    expect(filaSinConciliar!.pendientePagoMensajero).toBe("3000.00");
+  });
+});

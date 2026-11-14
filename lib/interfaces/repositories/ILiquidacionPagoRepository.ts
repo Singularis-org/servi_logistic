@@ -300,16 +300,12 @@ export interface ILiquidacionPagoRepository {
    * (R23) tiene que ocurrir DENTRO de la transaccion; la previsualizacion (R35) ocurre fuera.
    *
    * SOLO LEE (R26): no existe en esta clase ningun metodo que escriba en `cierre_dia`.
-   */
-  listarCierresImputables(
-    mensajeroId: string,
-    tx?: LiquidacionCierreTxClient,
-  ): Promise<CierreImputableDTO[]>;
-  /**
-   * SLT-122 (R9/R10, PA2) — `listarCierresImputables` con el alcance del actor en el WHERE: el
-   * reparto de `/wallet/mensajeros` solo imputa a cierres de los que el actor es dueno. Mismo
-   * `select`, mismo orden y el mismo `tx` opcional (previsualizacion fuera, relectura dentro).
-   * `IncentivoMensajeroService` sigue con el de arriba: no registra pagos.
+   *
+   * SLT-122 (R9/R10, PA2) — **el alcance del actor va en el WHERE**: el reparto de
+   * `/wallet/mensajeros` solo imputa a cierres de los que el actor es dueno. SLT-147 (D63): es la
+   * UNICA lectura de imputables; la version sin alcance se borro (ya no tenia consumidores y podia
+   * mezclar cierres de satelite con dinero de la central). No vuelve: lo vigila
+   * `tests/unit/guards/imputables-solo-en-alcance.guardia.test.ts`.
    */
   listarCierresImputablesEnAlcance(
     mensajeroId: string,
@@ -321,9 +317,9 @@ export interface ILiquidacionPagoRepository {
    * `aprobado`, agrupados por estado. Solo salen los estados que tienen al menos un cierre, y el
    * orden es por `estado` para que dos llamadas iguales pinten igual.
    *
-   * Es el complemento EXACTO de `listarCierresImputables`: aquel filtra `estado = aprobado`,
-   * este `estado != aprobado`. Los dos juntos son todos los cierres del mensajero y ninguno se
-   * cuenta dos veces — que es lo que R36 pide («que no desaparezcan en silencio»).
+   * Es el complemento EXACTO de `listarCierresImputablesEnAlcance`: aquel filtra
+   * `estado = aprobado`, este `estado != aprobado`, en el mismo alcance. Los dos juntos son todos
+   * los cierres del mensajero en ese alcance y ninguno se cuenta dos veces — que es lo que R36 pide («que no desaparezcan en silencio»).
    *
    * **El conteo lo hace la BASE, con un `groupBy`, y eso es la mitad del contrato.** Traer las
    * filas y contarlas en el proceso daria el mismo numero y dejaria intacto el problema que esta

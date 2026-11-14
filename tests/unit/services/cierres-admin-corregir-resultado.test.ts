@@ -10,6 +10,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // 💰 FICHA 398 (T3.2) — LAS CINCO GUARDIAS de la CORRECCION EN SITIO del resultado de una gestion
 // (`entregada -> rechazada`) desde el detalle de un cierre abierto. Dobles del repositorio, sin
@@ -50,31 +51,9 @@ function editable(overrides: Partial<GestionEditableDelCierre> = {}): GestionEdi
   };
 }
 
-function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
-  return {
-    leerTopeIntentos: vi.fn(async () => 3),
-    findGestionesDeCierresEnAlcance: vi.fn(async () => {
-      throw new Error("SLT-140: este doble no lee gestiones en lote");
-    }),
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
-    findBarridasDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
+function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}) {
+  return dobleCierresAdmin({
     findGestionEditableEnCierre: vi.fn(async () => editable()),
-    // La correccion del DESGLOSE: doble mudo, esta suite no la ejercita.
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     corregirResultadoGestionEnCierre: vi.fn(async () => ({
       status: "updated" as const,
       totales: {
@@ -85,7 +64,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
       },
     })),
     ...overrides,
-  };
+  });
 }
 
 /** El catalogo de estados, espiable: los dos ids que la correccion resuelve antes de escribir. */

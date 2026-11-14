@@ -14,6 +14,7 @@ import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaServ
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 /**
  * 💰 FICHA 396 (D4) — **LAS TRES SUPERFICIES PASAN DE VERDAD POR `partesPorTienda`.**
@@ -223,9 +224,17 @@ function fakeSignedUrls(): ISignedUrlProvider {
   };
 }
 
+/**
+ * SLT-149: la forma que devolvia el doble anterior, que no traia todos los campos del contrato. Se
+ * conserva tal cual (R436): completarla podria cambiar lo que el servicio pinta.
+ */
+type DetalleDelRepo = NonNullable<
+  Awaited<ReturnType<ICierresAdminRepository["findCierreByIdEnAlcance"]>>
+>;
+
 /** Superficie 1 — el detalle del cierre del MENSAJERO. */
 async function desgloseDelDetalleDeMensajero() {
-  const repo = {
+  const repo = dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async () => ({
       sinGestion: [],
       sinGestionRegistrado: true,
@@ -245,8 +254,8 @@ async function desgloseDelDetalleDeMensajero() {
         motivoRechazo: null,
       },
       gestiones: GESTIONES(),
-    })),
-  } as unknown as ICierresAdminRepository;
+    }) as unknown as DetalleDelRepo),
+  });
 
   const zonaRepo = {
     findCentralZonaId: vi.fn(async () => "z-central"),

@@ -4,6 +4,9 @@ import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaServ
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
+import { CifrasBodegaLoteRepository } from "@/lib/repositories/CifrasBodegaLoteRepository";
+import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
+import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
@@ -73,7 +76,14 @@ function toCierreBodegaActionError(
 
 function buildCierreBodegaService(): ICierreBodegaService {
   const prisma = getPrismaClient();
-  return new CierreBodegaService(new CierreBodegaRepository(prisma), new OrdenRepository(prisma), construirReglasPaisEmpresa(prisma));
+  return new CierreBodegaService(
+    new CierreBodegaRepository(prisma),
+    new OrdenRepository(prisma),
+    construirReglasPaisEmpresa(prisma),
+    undefined, // el reloj real
+    // SLT-141 (R389): la lectura en lote de las cifras de los cierres de bodega nuevos (sin pagos, F481).
+    new CifrasBodegaLoteRepository(prisma),
+  );
 }
 
 function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
@@ -86,6 +96,13 @@ function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
     construirReglasPaisEmpresa(prisma),
     // SLT-107 (R280): la zona del adminSatelite, de su usuario en la base.
     new OrdenRepository(prisma),
+    // SLT-141 (R389): la lectura en lote de las cifras de los cierres de bodega nuevos.
+    new CifrasBodegaLoteRepository(prisma),
+    // SLT-141 (R388, PA1): las tres lecturas de lo pagado al mensajero, para «Pago entregado».
+    {
+      liquidaciones: new LiquidacionPagoRepository(prisma),
+      premios: new PagoMensajeroMovimientoRepository(prisma),
+    },
   );
 }
 

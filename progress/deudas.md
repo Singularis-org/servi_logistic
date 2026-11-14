@@ -366,7 +366,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D63 — `listarCierresImputables` sin alcance se queda sin consumidores
 - **Origen:** SLT-124 (2026-11-11, review m1 en `progress/review_SLT-124.md`). El incentivo pasó a las lecturas `…EnAlcance` de SLT-122; la versión sin alcance ya no la llama nadie en `lib/`, pero la usan 7 tests.
 - **Qué falta:** borrarla con sus tests, o una guardia que prohíba llamarla desde `lib/`. Mientras exista, un consumidor nuevo podría volver a mezclar cierres de satélite con dinero de la central.
-- **Dueño:** ArqDev (se revisa con las deudas al cerrar la épica de cierres).
+- **Cerrada en SLT-147 «Limpieza de backend de cierres: deudas D63, D66, D68 y D72» (2026-11-13):** `listarCierresImputables` borrada del interfaz y del repositorio; la guardia `tests/unit/guards/imputables-solo-en-alcance.guardia.test.ts` impide que vuelva (R410-R411).
+- **Dueño:** cerrada.
 
 ### D64 — Fixture `caja-459`: premio movido a cierre central sin medir
 - **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
@@ -380,9 +381,64 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - el censo no incluye `DesglosePagoField.tsx` ni `EscanerGuiaCard.tsx`, y el control de censo no vacío no fija ningún archivo de `wallet/satelites` ni `shared/liquidacion`.
   Hoy ningún archivo cae en esos huecos.
 - **Qué falta:** cerrar los huecos con SLT-134 «Textos de pantalla de cierres en tú, con guardia», que redefine el censo del módulo (incluye los compartidos con `/wallet/*`, PA8).
-- **Dueño:** ArqDev (en el spec de SLT-134).
+- **Cerrada (2026-11-13):** SLT-134, commit 8656db4a (`cierres-dialogos-modal.guardia.test.ts` por AST):
+  - **R390** cierra el hueco de imports: `ui/sheet`, `@radix-ui/react-(alert-)dialog` y rutas relativas a `ui/(alert-dialog|dialog|sheet)`, en `import`, `export … from` e `import()`; el hallazgo nombra archivo y especificador.
+  - **R391** cierra el hueco del visor: título plegado (concatenación `+` y plantilla), lectura de `VISOR_EVIDENCIA_TEXTO.titulo` (`.titulo` y `["titulo"]`) y `VisorEvidencia` como `const` con flecha o `function` anónima.
+  - **R392** cierra el hueco del censo: sale de `tests/fixtures/censo-cierres.ts > censoPantalla()` (con `DesglosePagoField.tsx` y `EscanerGuiaCard.tsx`), compartido con la guardia de trato; el control positivo fija `ConciliacionSatelite.tsx`, `RegistrarPagoDialog.tsx` y los dos sueltos.
+  - Mutaciones M1-M7 (cada vía nueva en un archivo real del censo) rojas y revertidas: `progress/impl_SLT-134.md > T3.1`.
+- **Dueño:** cerrada.
 
 ### D66 — Incidente del modelo nuevo con ganancia > 0 sin probar de punta a punta
 - **Origen:** SLT-108 (2026-11-11, review m2 en `progress/review_SLT-108.md`). En el modelo viejo un incidente no paga al mensajero (`specs/158-incidente-indemnizacion/design.md:345`, R17), y el E2E de `/cierre-dia` afirma «₡0». En el modelo nuevo existe el concepto `mensajero_incidente` (`lib/tarifas/catalogo.ts:47`) que `importePagoNuevo` paga, pero `pago-modelo-nuevo.test.ts:44` usa justo «0.00» para el incidente y ningún E2E pinta una «Ganancia» de incidente mayor que cero.
 - **Qué falta:** un test de `lib/` con tarifa `mensajero_incidente` > 0 y su ganancia en la fila de Incidente de `/cierre-dia`.
-- **Dueño:** ArqDev (se revisa con las deudas al cerrar la épica de cierres).
+- **Cerrada en SLT-147 (2026-11-13):** tests de `lib/`, servicio y la celda «Ganancia» de la fila con `mensajero_incidente` > 0 (R412-R415); el código ya pagaba bien.
+- **Dueño:** cerrada.
+
+### D67 — `findCierreBodegaConDetalle` lee en N+1
+- **Origen:** épica de cierres (SLT-139/SLT-140, anotada al cerrar la sesión del 2026-11-13). El detalle de un cierre de bodega se arma con una lectura por fila. SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» no la usa para el Excel (lee en lote, tres consultas fijas).
+- **Qué falta:** pasar el detalle a lectura en lote, medido con el contador de consultas de los tests de integración.
+- **Cerrada en SLT-148 «Detalle del cierre de bodega sin N+1» (2026-11-13):** `findCierreBodegaConDetalle` lee en lote: con 1 y con 3 cierres del día emite 24 sentencias (antes 24 y 56); paridad con literales en `tests/integration/db/cierre-bodega-detalle-lote-sql-real.test.ts` (R420-R429).
+- **Dueño:** cerrada.
+
+### D68 — `CierrePasadoDTO.pagoIndependienteEfectivo` es opcional
+- **Origen:** SLT-139 «Pago al mensajero independiente del efectivo: satélite» (review m3). El campo se dejó opcional; un consumidor que no lo lea no da error de tipos.
+- **Qué falta:** hacerlo obligatorio y ajustar los dobles.
+- **Cerrada en SLT-147 (2026-11-13), opción A de Carlos:** la marca es obligatoria en el tipo que el repositorio entrega a la lectura paginada (R416-R417); `CierrePasadoDTO` no cambia.
+- **Dueño:** cerrada.
+
+### D69 — Sin fábrica de dobles de `ICierresAdminRepository`
+- **Origen:** SLT-113, SLT-140 y SLT-141 (2026-11-12/13). Cada método nuevo del repositorio obliga a tocar 12-13 archivos de test con dobles escritos a mano.
+- **Qué falta:** una fábrica de dobles única en `tests/` que los tests extiendan.
+- **Cerrada en SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13):** los 24 dobles a mano pasan a `tests/fixtures/dobles/cierres-admin-repository.ts`; un método nuevo del interfaz rompe en un solo sitio (la fábrica) y la guardia `dobles-cierres-admin-a-mano` impide volver a escribirlos a mano (R430-R439). Quedan fuera los dobles de `ICierreDiaRepository` e `ICierreBodegaRepository`, y los datos fuera de contrato de B6, B11 y B12 (D75).
+- **Dueño:** cerrada.
+
+### D70 — Voseo fuera del módulo de cierres
+- **Origen:** SLT-134 «Textos de pantalla de cierres en tú, con guardia», decisiones P1 y P2 de Carlos (2026-11-12): `ErrorState` (toda la app) y `estado-cuenta-labels` (`/mi-wallet`) quedaron fuera de su alcance.
+- **Qué falta:** pasar a «tú» el resto de la app con una guardia de trato de alcance global.
+- **Dueño:** ArqDev (ficha propia).
+
+### D71 — «SINPE» en encabezados
+- **Origen:** SL-22; anotada en la épica de cierres. Encabezados de pantalla y descarga nombran «SINPE», un medio de pago de un país, en una plataforma multipaís.
+- **Qué falta:** decidir con Carlos el rótulo genérico y aplicarlo.
+- **Dueño:** Carlos (decisión) / ArqDev.
+
+### D72 — Tests R190/R191 de SLT-106 cubiertos solo por SLT-107
+- **Origen:** SLT-106 (review). Sus requisitos R190 y R191 no tienen test propio; los cubren los tests de SLT-107.
+- **Qué falta:** confirmar que el mapa R→test de SLT-106 apunta a esos tests, o escribirle los suyos.
+- **Cerrada en SLT-147 (2026-11-13):** `progress/impl_SLT-106.md` cita para R190/R191 los tests (a) y (b) de `ConsolidacionBodegaRefresco.test.tsx` (R418).
+- **Dueño:** cerrada.
+
+### D73 — Guardia 420 `dependencias-declaradas-presentes` roja en `dev`
+- **Origen:** sync del arnés 2.14.0. La guardia espera en `init.sh` el marcador «(ficha 420)» y la llamada a `scripts/verificar-dependencias.mjs`, que el `init.sh` de `dev` no tiene. Está en el baseline y no bloquea, pero no vigila nada.
+- **Qué falta:** lo decide SL-29 «Paso de dependencias declaradas en el gate del arnés» (subir el paso a la plantilla o retirar la guardia y el script). La plantilla tampoco tiene el paso: un `--aplicar` no lo arregla.
+- **Dueño:** Camilo (SL-29).
+
+### D74 — T0.4 de SLT-123/SLT-139: conteo en producción diferido
+- **Origen:** SLT-123 y SLT-139 (T0.4). El conteo en producción no se hizo: la lectura de prod está bloqueada para agentes.
+- **Qué falta:** que Carlos corra la SQL de T0.4 (en sus specs) en producción y se anote el número.
+- **Dueño:** Carlos.
+
+### D75 — Dobles de cierres con datos fuera de contrato
+- **Origen:** SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13, review m2 en `progress/review_SLT-149.md`). En `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`, `tests/unit/services/CierresAdminService.gestiones-completo.test.ts` y `tests/unit/services/cierre-desglose-tres-superficies.test.ts` (B6, B11, B12) los datos que devuelve el doble no cumplen el tipo de retorno (faltan `rechazosDeTienda` y `pagoIndependienteEfectivo`, o devuelven el DTO en vez de la fila). Antes lo escondía un `as unknown as` sobre el repositorio; ahora el cast va solo sobre el dato, para no cambiar lo que miden.
+- **Qué falta:** completar esos datos al contrato y quitar el cast; comprobar que las aserciones siguen verdes.
+- **Dueño:** ArqDev.

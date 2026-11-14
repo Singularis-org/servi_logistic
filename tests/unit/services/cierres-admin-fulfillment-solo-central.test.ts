@@ -15,6 +15,7 @@ import type {
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 /**
  * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
@@ -170,8 +171,19 @@ function filaDescarga(): CierreGestionDescargaDTO {
   };
 }
 
+/**
+ * SLT-149: las formas que devolvia el doble anterior, que no traian todos los campos del contrato.
+ * Se conservan tal cual (R436): completarlas podria cambiar lo que el servicio pinta.
+ */
+type DetalleDelRepo = NonNullable<
+  Awaited<ReturnType<ICierresAdminRepository["findCierreByIdEnAlcance"]>>
+>;
+type FilasDescargaDelRepo = Awaited<
+  ReturnType<ICierresAdminRepository["findGestionesPorAlcanceCompleto"]>
+>;
+
 function newService() {
-  const repo = {
+  const repo = dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async () => ({
       sinGestion: [],
       sinGestionRegistrado: true,
@@ -192,9 +204,9 @@ function newService() {
         motivoRechazo: null,
       },
       gestiones: [gestionRow()],
-    })),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => [filaDescarga()]),
-  } as unknown as ICierresAdminRepository;
+    }) as unknown as DetalleDelRepo),
+    findGestionesPorAlcanceCompleto: vi.fn(async () => [filaDescarga()] as FilasDescargaDelRepo),
+  });
 
   return new CierresAdminService(
     repo,

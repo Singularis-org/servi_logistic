@@ -11,6 +11,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { conRetenidas, sinRetenidas, type RetenidasDoble } from "@/tests/fixtures/retenidas-doble";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // FICHA 462 (T2.9, S3, R26/R27/R28/R30/R51) — LA MARCA «Retiene N reprogramadas de hoy» EN LAS
 // FILAS DE `/cierres-admin`, con dobles.
@@ -51,27 +52,8 @@ function row(over: Partial<CierreAdminResumenRow> & { cierreId: string }): Cierr
   };
 }
 
-function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
-  return {
-    findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => [] as CierreAdminResumenRow[]),
-    findColaCompleta: vi.fn(async () => [] as CierreAdminResumenRow[]),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
-    findBarridasDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
-    findGestionEditableEnCierre: vi.fn(async () => null),
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-    ...overrides,
-  } as unknown as ICierresAdminRepository;
+function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}) {
+  return dobleCierresAdmin(overrides);
 }
 
 function newService(repo: ICierresAdminRepository, retenidas: RetenidasDoble = sinRetenidas()) {

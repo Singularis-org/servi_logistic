@@ -5,7 +5,6 @@ import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import type {
   Alcance,
   CierreAdminResumenRow,
-  ICierresAdminRepository,
 } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -16,6 +15,7 @@ import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { filtrosConLimites } from "@/lib/types/filtros-cierres";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 /**
  * FICHA 386 (2026-09-07) — el recorte por ESTADO no se pierde en la capa de servicio.
@@ -72,12 +72,12 @@ function dobles() {
     async (_alcance: Alcance, _filtros?: FiltrosCierres) => [] as CierreAdminResumenRow[],
   );
 
-  const repo = {
+  const repo = dobleCierresAdmin({
     findHistoricoPaginado,
     findColaPaginada,
     findHistoricoCompleto,
     findColaCompleta,
-  } as unknown as ICierresAdminRepository;
+  });
 
   const zonaRepo = {
     findCentralZonaId: vi.fn(async () => "z-central"),

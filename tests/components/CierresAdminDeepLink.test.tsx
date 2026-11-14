@@ -276,7 +276,7 @@ describe("R41 — el cierre que no existe o queda fuera de alcance", () => {
     renderModule();
 
     await waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith("Tu sesión expiró. Iniciá sesión de nuevo."),
+      expect(errorMock).toHaveBeenCalledWith("Tu sesión expiró. Inicia sesión de nuevo."),
     );
     // La pantalla sigue en pie: las dos secciones se siguen viendo.
     expect(screen.getByRole("region", { name: "Pendientes de decisión" })).toBeInTheDocument();

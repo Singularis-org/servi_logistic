@@ -338,3 +338,82 @@ describe("SLT-52 R40 — `pagosDelCierre` (puro)", () => {
     ]);
   });
 });
+
+/**
+ * SLT-147 (D66) · R414 — en `/cierre-dia` el Incidente con valor `mensajero_incidente` > 0 llega
+ * con su pago, en el grupo Incidente, y el total lo suma. Ninguna capa tiene rama para `incidente`:
+ * este caso cierra la cadena entre `lib/` (R412-R413) y la fila (R415). Esperados a mano.
+ */
+describe("SLT-147 R414 — Incidente del modelo nuevo con ganancia > 0 en /cierre-dia", () => {
+  const GESTIONES_INCIDENTE = [gestion("g1", "entregado", "d-norte"), gestion("g4", "incidente", "d-norte")];
+
+  function montarIncidente() {
+    const crearCierre = vi.fn<(input: CrearCierreInput) => Promise<string | null>>(async () => "c1");
+    const repo = {
+      findGestionesPendientes: vi.fn(async () => GESTIONES_INCIDENTE),
+      contarOrdenesPendientesGestion: vi.fn(async () => 0),
+      findCierreResolicitableMasViejo: vi.fn(async () => null),
+      findCierresByMensajero: vi.fn(async () => []),
+      findCierreParaAviso: vi.fn(async () => null),
+      crearCierre,
+    } as unknown as ICierreDiaRepository;
+    const ordenRepo = {
+      findUsuarioZonaId: vi.fn(async () => ZONA_MENSAJERO),
+      findUsuarioVehiculoId: vi.fn(async () => VEHICULO),
+      findEstatusIdByValue: vi.fn(async () => "s-reparto"),
+      findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
+      findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()),
+    } as unknown as IOrdenRepository;
+    const zonaRepo = { findCentralZonaId: vi.fn(async () => null) } as unknown as IZonaRepository;
+    const signedUrls = { createSignedUrls: vi.fn(async () => ({})) } as unknown as ISignedUrlProvider;
+    const tarifaRepo = {
+      resolvePagoTarifa: vi.fn(async () => ({ cobroEntregado: "9999.00", cobroRechazado: "8888.00" })),
+      resolvePagos: vi.fn(async (ctxs: readonly ContextoPagoGestion[]) =>
+        new Map(
+          ctxs.map((c) => [
+            c.gestionId,
+            {
+              modelo: "nuevo",
+              mensajero:
+                c.resultado === "incidente"
+                  ? valor("mensajero_incidente", "monto", "1250.00")
+                  : valor("mensajero_entregado", "monto", "1500.00"),
+              satelite: null,
+              baseFlete: "2000.00",
+            } satisfies TarifaPago,
+          ] as const),
+        ),
+      ),
+    } satisfies ITarifaZonaMensajeroRepository;
+    const service = new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo, undefined, undefined, reglasPaisFijas());
+    return { service, crearCierre };
+  }
+
+  it("la vista en vivo entrega g4 en el grupo Incidente con 1250.00 y el total 1500.00 + 1250.00 = 2750.00", async () => {
+    const { service } = montarIncidente();
+
+    const r = await service.listarCierreDia(MENSAJERO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.grupos.incidente.map((g) => [g.gestionId, g.pagoMensajero])).toEqual([["g4", "1250.00"]]);
+    expect(r.grupos.entregado.map((g) => [g.gestionId, g.pagoMensajero])).toEqual([["g1", "1500.00"]]);
+    expect(r.totalPagoMensajero).toBe("2750.00");
+  });
+
+  it("la solicitud congela el pago del Incidente y suma 2750.00 al cierre", async () => {
+    const { service, crearCierre } = montarIncidente();
+
+    await service.solicitarCierre(MENSAJERO);
+
+    const input = crearCierre.mock.calls[0]![0];
+    expect(input.pagoByGestionId).toEqual({ g1: "1500.00", g4: "1250.00" });
+    expect(input.totalPagoMensajero).toBe("2750.00");
+    expect(input.pagos?.congelados.find((c) => c.gestionId === "g4")).toEqual({
+      gestionId: "g4",
+      actor: "mensajero",
+      valor: valor("mensajero_incidente", "monto", "1250.00"),
+      base: null,
+      importe: "1250.00",
+    });
+  });
+});

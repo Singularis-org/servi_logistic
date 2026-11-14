@@ -49,18 +49,18 @@ import {
   type DescargaResumenCierres,
 } from "./DescargarCierresButton";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
-import {
-  descargaBodegaResueltos,
-  type CierresBodegaResueltosPagina,
-} from "./CierresBodegaResueltosLista";
 import { FiltrosCierresBarra } from "./FiltrosCierresBarra";
 import {
   AMBITO_DESCARGA_BODEGA_PENDIENTES,
+  AMBITO_DESCARGA_BODEGA_RESUELTOS,
   COLUMNAS_DESCARGA_BODEGA_PENDIENTES,
+  COLUMNAS_DESCARGA_BODEGA_RESUELTOS,
   filaDescargaBodegaPendiente,
+  filaDescargaBodegaResuelto,
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { PARAM_CIERRE_BODEGA } from "./cierre-enlace";
+import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
 
 /** Nombre visible de la cola: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PENDIENTES = "Cierres de bodega pendientes";
@@ -186,7 +186,10 @@ type DetalleAbierto = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }
  * Pedido humano del 2026-08-16 — con los mismos filtros que la página: el archivo es «esto que
  * estoy viendo, entero».
  */
-function descargaColaBodega(filtros: FiltrosCierresBodega): DescargaResumenCierres {
+export function descargaColaBodega(
+  filtros: FiltrosCierresBodega,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
     columnas: COLUMNAS_DESCARGA_BODEGA_PENDIENTES,
@@ -196,6 +199,62 @@ function descargaColaBodega(filtros: FiltrosCierresBodega): DescargaResumenCierr
       filasDesdeResultado(
         descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
         filaDescargaBodegaPendiente,
+      ),
+    // SLT-141 (R384, R385): con cierres de bodega del modelo nuevo, el libro «Cierres» + «Por tienda»
+    // (+ la hoja de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaPendiente,
+        columnasMarcadas,
+        audiencia,
+      ),
+  };
+}
+
+/** La página que pre-carga el Server Component (R44: es la que el usuario ve al entrar). */
+export interface CierresBodegaResueltosPagina {
+  items: CierreBodegaResumen[];
+  total: number;
+  pageSize: number;
+}
+
+/** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA = "Cierres de bodega resueltos";
+
+/**
+ * La configuración de descarga de «Cierres de bodega resueltos», para que la monte quien pinta
+ * la fila de las pestañas (pedido humano del 2026-08-16: el botón va alineado con las pestañas, no en una
+ * fila propia encima de la lista). Vive aquí, con el listado del que habla: el título, las
+ * columnas y la lectura de la que sale el archivo son suyos.
+ *
+ * Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo es el CONJUNTO, cortado en
+ * la BASE con el mismo criterio y el mismo orden que la página, y con el tope de filas evaluado
+ * en el servidor (R6). El alcance lo aplica el servicio desde la sesión: descargar no amplía lo
+ * que el actor podía ver (R44). Pedido humano del 2026-08-16: «el CONJUNTO» pasa a significar
+ * «el conjunto FILTRADO» — los `filtros` viajan porque el usuario los puso; el alcance, nunca.
+ */
+export function descargaBodegaResueltos(
+  filtros: FiltrosCierresBodega,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
+  return {
+    titulo: TITULO_DESCARGA,
+    columnas: COLUMNAS_DESCARGA_BODEGA_RESUELTOS,
+    // Ficha 314: enciende el selector de columnas de esta descarga (ámbito propio, R10).
+    ambitoColumnas: AMBITO_DESCARGA_BODEGA_RESUELTOS,
+    obtenerFilas: () =>
+      filasDesdeResultado(
+        descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaResuelto,
+      ),
+    // SLT-141 (R384, R385): el libro del modelo nuevo si el conjunto lo tiene; si no, el de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierresBodega(
+        () => descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
+        filaDescargaBodegaResuelto,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }
@@ -347,15 +406,15 @@ export function CierresBodegaAdminModule({
       return false;
     }
     if (result.status === "forbidden") {
-      toast.error("No tenés permiso para ver este cierre de bodega.");
+      toast.error("No tienes permiso para ver este cierre de bodega.");
       return false;
     }
     if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
       return false;
     }
     // validation_error (id malformado) u otro → feedback genérico.
-    toast.error("No se pudo abrir el detalle del cierre de bodega. Intentá de nuevo.");
+    toast.error("No se pudo abrir el detalle del cierre de bodega. Inténtalo de nuevo.");
     return false;
   }
 
@@ -469,7 +528,11 @@ export function CierresBodegaAdminModule({
           // Lo que cambia es la Server Action: aquí salen las gestiones de los cierres del día ya
           // CONSOLIDADOS en un cierre de bodega (design §2.6).
           <DescargarCierresButton
-            resumen={porConciliar ? descargaColaBodega(filtros) : descargaBodegaResueltos(filtros)}
+            resumen={
+              porConciliar
+                ? descargaColaBodega(filtros, audiencia)
+                : descargaBodegaResueltos(filtros, audiencia)
+            }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresBodegaCompleto", f)}
             disabled={pendientesCargando || conciliadosCargando}

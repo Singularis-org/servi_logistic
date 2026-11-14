@@ -208,8 +208,8 @@ const DESHACER_TITULO = "Devolver la orden a gestión";
 const DESHACER_DETALLE =
   "La gestión quedará anulada (queda el registro de quién la hizo y cuándo) y la orden volverá a tu lista para gestionar.";
 const DESHACER_OK = "Gestión deshecha; la orden volvió a tu lista para gestionar.";
-const DESHACER_FORBIDDEN = "No podés deshacer esta gestión.";
-const DESHACER_ERROR = "No se pudo deshacer la gestión. Intentá de nuevo.";
+const DESHACER_FORBIDDEN = "No puedes deshacer esta gestión.";
+const DESHACER_ERROR = "No se pudo deshacer la gestión. Inténtalo de nuevo.";
 
 /** Nombre visible del histórico: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PASADOS = "Cierres solicitados";
@@ -414,8 +414,8 @@ export function CierreDiaModule({
       result.status === "conflict" || result.status === "validation_error"
         ? mensajeError(result, "No se pudo solicitar el cierre.")
         : result.status === "forbidden"
-          ? "No tenés permiso para solicitar el cierre."
-          : "No se pudo solicitar el cierre. Intentá de nuevo.";
+          ? "No tienes permiso para solicitar el cierre."
+          : "No se pudo solicitar el cierre. Inténtalo de nuevo.";
     toast.error(mensaje);
     cerrarConfirmaciones();
   }

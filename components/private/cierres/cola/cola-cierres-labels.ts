@@ -175,10 +175,7 @@ export const notaLlegaronIncompletos = (n: number) =>
 export const PIE_SOLICITADOS =
   '"Ver" abre el cierre de bodega con su dinero, sus gestiones, sus mensajeros y lo que marcó la central.';
 
-/**
- * R289: región, vacío y error de hoy, sin cambios. Son los mismos textos que sigue pintando
- * `CierresBodegaSolicitadosLista` para la satélite sin zona (R202).
- */
+/** R289: región, vacío y error de hoy, sin cambios. */
 export const REGION_SOLICITADOS = "Cierres de bodega solicitados";
 export const VACIO_SOLICITADOS = "Aún no has solicitado ningún cierre de bodega.";
 export const ERROR_SOLICITADOS = "No se pudieron cargar los cierres de bodega solicitados.";
