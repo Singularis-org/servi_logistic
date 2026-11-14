@@ -20,15 +20,17 @@ import {
 export const FILTRAR_POR_RESULTADO = "Filtrar por resultado";
 export const FILTRO_TODAS = "Todas";
 export const FILTRO_CON_SENALES = "Con señales";
-/** «Entregado 12», como el canvas: el conteo detrás del nombre, separado por un espacio (R84). */
-export const textoFiltro = (nombre: string, n: number): string => `${nombre} ${n}`;
+/** «Entregado (12)»: el conteo entre paréntesis, como las pestañas de la cola (SLT-152 PA1, R450). */
+export const textoFiltro = (nombre: string, n: number): string => `${nombre} (${n})`;
 export const ORDENES_DEL_CIERRE = "Órdenes del cierre";
 export const SIN_GESTIONES = "Este cierre no tiene gestiones.";
 export const SIN_GESTIONES_CON_SENALES = "Ninguna gestión de este cierre tiene señales.";
 
 // --- Columnas (R23) ---
 export const COL_GUIA = "Guía";
-export const COL_DESTINO = "Destinatario · tienda";
+// SLT-152: «Destinatario · tienda» se parte en dos columnas (R440).
+export const COL_DESTINATARIO = "Destinatario";
+export const COL_TIENDA = "Tienda";
 export const COL_MENSAJERO = "Mensajero";
 export const COL_RESULTADO = "Resultado";
 export const COL_RECIBIDO = "Recibido";

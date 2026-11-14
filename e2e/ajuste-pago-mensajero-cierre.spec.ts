@@ -93,7 +93,7 @@ async function irA(detalle: Locator, pestana: "Dinero" | "Gestiones"): Promise<v
 
 /**
  * SLT-101 «Fila de gestión única y lista con filtros» (R84): las pestañas por resultado de la lista pasan a ser
- * el filtro «Filtrar por resultado» («<resultado> <n>»), encima de «Órdenes del cierre».
+ * el filtro «Filtrar por resultado» («<resultado> (<n>)»), encima de «Órdenes del cierre».
  */
 const filtro = (detalle: Locator, resultado: RegExp) =>
   detalle.getByRole("group", { name: "Filtrar por resultado" }).getByRole("button", { name: resultado });
@@ -161,7 +161,7 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
 
     await irA(detalle, "Gestiones");
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \(\d+\)$/).click();
     await desplegar(ordenes, rechazada);
     // El rechazo no paga (pago vigente 0) y todavía no tiene marca.
     await expect(ordenes.getByRole("button", { name: /^Pago ajustado/ })).toHaveCount(0);
@@ -181,7 +181,7 @@ test.describe("Ajuste del pago al mensajero al revisar el cierre", () => {
     await expect.poll(async () => aCentimos(await lineaNeto.innerText())).toBe(netoAntes - BigInt(70000));
     // Volver a «Gestiones» la monta de nuevo: arranca en su primera sección con órdenes.
     await irA(detalle, "Gestiones");
-    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \(\d+\)$/).click();
 
     // R19 — la orden con su pago nuevo, marcada «Ajustado»; al pulsar, quién, de cuánto a cuánto y por qué.
     await desplegar(ordenes, rechazada);

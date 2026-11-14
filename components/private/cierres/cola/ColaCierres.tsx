@@ -275,7 +275,7 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
         >
           {pestanas.map((p) => (
             <TabsTrigger key={p.id} value={p.id} className={TAB_TRIGGER}>
-              {`${p.label} ${p.conteo}`}
+              {`${p.label} (${p.conteo})`}
             </TabsTrigger>
           ))}
         </TabsList>

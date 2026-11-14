@@ -87,53 +87,53 @@ function pulsado(): string[] {
 }
 
 describe("R84, R89 — filtros por resultado con la barra de la app", () => {
-  it("sin campo de búsqueda; el grupo con sus 7 opciones y «Todas 4» activa al abrir", () => {
+  it("sin campo de búsqueda; el grupo con sus 7 opciones y «Todas (4)» activa al abrir", () => {
     montar();
     expect(screen.queryByRole("searchbox")).toBeNull();
     const grupo = screen.getByRole("group", { name: "Filtrar por resultado" });
     expect(within(grupo).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      "Todas 4",
-      "Entregado 2",
-      "Reprogramado 0",
-      "Novedad 0",
-      "Devolución a origen por rechazo 1",
-      "Incidente 1",
-      "Con señales 3",
+      "Todas (4)",
+      "Entregado (2)",
+      "Reprogramado (0)",
+      "Novedad (0)",
+      "Devolución a origen por rechazo (1)",
+      "Incidente (1)",
+      "Con señales (3)",
     ]);
-    expect(pulsado()).toEqual(["Todas 4"]);
+    expect(pulsado()).toEqual(["Todas (4)"]);
     // «Todas» por resultado (S3-5) y, dentro, en el orden del servidor.
     expect(guias()).toEqual(["1002", "1001", "1011", "5001"]);
   });
 
-  it("«Entregado 2» y «Con señales 3» filtran; «Todas 4» vuelve a todas", async () => {
+  it("«Entregado (2)» y «Con señales (3)» filtran; «Todas (4)» vuelve a todas", async () => {
     const user = montar();
-    await user.click(screen.getByRole("button", { name: "Entregado 2" }));
-    expect(pulsado()).toEqual(["Entregado 2"]);
+    await user.click(screen.getByRole("button", { name: "Entregado (2)" }));
+    expect(pulsado()).toEqual(["Entregado (2)"]);
     expect(guias()).toEqual(["1002", "1001"]);
-    await user.click(screen.getByRole("button", { name: "Con señales 3" }));
+    await user.click(screen.getByRole("button", { name: "Con señales (3)" }));
     expect(guias()).toEqual(["1001", "1011", "5001"]);
-    await user.click(screen.getByRole("button", { name: "Todas 4" }));
+    await user.click(screen.getByRole("button", { name: "Todas (4)" }));
     expect(guias()).toEqual(["1002", "1001", "1011", "5001"]);
   });
 
   it("un filtro sin gestiones muestra un estado vacío con texto", async () => {
     const user = montar();
-    await user.click(screen.getByRole("button", { name: "Reprogramado 0" }));
+    await user.click(screen.getByRole("button", { name: "Reprogramado (0)" }));
     expect(screen.getByRole("status")).toHaveTextContent("No hay gestiones con resultado «Reprogramado».");
     expect(guias()).toEqual([]);
   });
 
   it("filtrar NO navega ni toca la URL de /cierres-admin", async () => {
     const user = montar();
-    await user.click(screen.getByRole("button", { name: "Entregado 2" }));
-    await user.click(screen.getByRole("button", { name: "Con señales 3" }));
+    await user.click(screen.getByRole("button", { name: "Entregado (2)" }));
+    await user.click(screen.getByRole("button", { name: "Con señales (3)" }));
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("«Con señales» cuenta por audiencia: el mensajero no ve el ajuste", () => {
     montar({ audiencia: "mensajero" });
-    expect(screen.getByRole("button", { name: "Con señales 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Con señales (2)" })).toBeInTheDocument();
   });
 });
 
@@ -147,13 +147,14 @@ describe("R90, R23 — «Descargar» en la misma fila y columnas", () => {
     expect(fila.lastElementChild?.contains(descargar)).toBe(true);
   });
 
-  it("cabecera de la central sin «Mensajero»; con `columnaMensajero`, tras «Destinatario · tienda»", () => {
+  it("R440: cabecera de la central sin «Mensajero»; con `columnaMensajero`, tras «Destinatario» y «Tienda»", () => {
     montar();
     const region = screen.getByRole("region", { name: "Órdenes del cierre" });
     const cabecera = () => Array.from((region.firstElementChild as HTMLElement).children).map((c) => c.textContent);
     expect(cabecera()).toEqual([
       "Guía",
-      "Destinatario · tienda",
+      "Destinatario",
+      "Tienda",
       "Resultado",
       "Recibido",
       "Cobro a la tienda",
@@ -166,7 +167,8 @@ describe("R90, R23 — «Descargar» en la misma fila y columnas", () => {
     const region2 = screen.getByRole("region", { name: "Órdenes del cierre" });
     expect(Array.from((region2.firstElementChild as HTMLElement).children).map((c) => c.textContent)).toEqual([
       "Guía",
-      "Destinatario · tienda",
+      "Destinatario",
+      "Tienda",
       "Mensajero",
       "Resultado",
       "Recibido",
@@ -176,5 +178,29 @@ describe("R90, R23 — «Descargar» en la misma fila y columnas", () => {
       "",
     ]);
     expect(screen.getAllByText("Ana Mensajera")).toHaveLength(4);
+  });
+
+  it("R440: la cabecera del mensajero, con «Ganancia» y sin cobro a la tienda", () => {
+    montar({ audiencia: "mensajero" });
+    const region = screen.getByRole("region", { name: "Órdenes del cierre" });
+    expect(Array.from((region.firstElementChild as HTMLElement).children).map((c) => c.textContent)).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Resultado",
+      "Recibido",
+      "Ganancia",
+      "Señales",
+      "",
+    ]);
+  });
+
+  it("R441: ninguna audiencia muestra la cabecera «Destinatario · tienda»", () => {
+    for (const opciones of [{}, { audiencia: "satelite" as const }, { audiencia: "mensajero" as const }, { audiencia: "solo lectura" as const, columnaMensajero: true }]) {
+      montar(opciones);
+      expect(screen.queryByText("Destinatario · tienda")).toBeNull();
+      expect(screen.getByText("Destinatario")).toBeInTheDocument();
+      cleanup();
+    }
   });
 });

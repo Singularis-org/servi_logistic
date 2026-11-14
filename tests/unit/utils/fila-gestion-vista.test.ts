@@ -110,20 +110,24 @@ describe("R84, S3-5 — filtros, orden y filtrado", () => {
     expect(lista.map((g) => g.gestionId)).toEqual(["e1", "g-canvas", "g-dev", "g-inc"]);
   });
 
-  it("7 opciones «<nombre> <n>», «Todas» primero, «Con señales» al final con tono de aviso", () => {
-    expect(filtrosDe(lista, "central")).toEqual([
-      { value: "todas", label: "Todas 4" },
-      { value: "entregado", label: "Entregado 2" },
-      { value: "reprogramado", label: "Reprogramado 0" },
-      { value: "novedad", label: "Novedad 0" },
-      { value: "devolucion_a_origen_por_rechazo", label: "Devolución a origen por rechazo 1" },
-      { value: "incidente", label: "Incidente 1" },
-      { value: "con_senales", label: "Con señales 3", tono: "aviso" },
+  // SLT-152 PA1 (R450): las pastillas llevan el conteo entre paréntesis, como las pestañas.
+  it("R450 — 7 opciones «<nombre> (<n>)», «Todas» primero, «Con señales» al final con tono de aviso", () => {
+    const filtros = filtrosDe(lista, "central");
+    expect(filtros).toEqual([
+      { value: "todas", label: "Todas (4)" },
+      { value: "entregado", label: "Entregado (2)" },
+      { value: "reprogramado", label: "Reprogramado (0)" },
+      { value: "novedad", label: "Novedad (0)" },
+      { value: "devolucion_a_origen_por_rechazo", label: "Devolución a origen por rechazo (1)" },
+      { value: "incidente", label: "Incidente (1)" },
+      { value: "con_senales", label: "Con señales (3)", tono: "aviso" },
     ]);
+    // R450: ninguna pastilla con el conteo suelto detrás del nombre.
+    for (const f of filtros) expect(f.label).not.toMatch(/^\S.* \d+$/);
   });
 
   it("«Con señales» cuenta por audiencia: el mensajero no ve el ajuste", () => {
-    expect(filtrosDe(lista, "mensajero").at(-1)?.label).toBe("Con señales 2");
+    expect(filtrosDe(lista, "mensajero").at(-1)?.label).toBe("Con señales (2)");
   });
 
   it("filtrar devuelve el subconjunto sin reordenar", () => {
@@ -141,12 +145,13 @@ describe("R84, S3-5 — filtros, orden y filtrado", () => {
   });
 });
 
-describe("R23, R86 — columnas por audiencia", () => {
+describe("R23, R86, R440, R441 — columnas por audiencia", () => {
   it("central y satélite: cobro a la tienda, pago al mensajero y señales", () => {
     for (const a of ["central", "satelite"] as const) {
       expect(columnasDe(a).map((c) => c.label)).toEqual([
         "Guía",
-        "Destinatario · tienda",
+        "Destinatario",
+        "Tienda",
         "Resultado",
         "Recibido",
         "Cobro a la tienda",
@@ -156,10 +161,11 @@ describe("R23, R86 — columnas por audiencia", () => {
     }
   });
 
-  it("con mensajero (bodega): «Mensajero» tras «Destinatario · tienda»", () => {
+  it("con mensajero (bodega): «Mensajero» tras «Destinatario» y «Tienda»", () => {
     expect(columnasDe("solo lectura", true).map((c) => c.label)).toEqual([
       "Guía",
-      "Destinatario · tienda",
+      "Destinatario",
+      "Tienda",
       "Mensajero",
       "Resultado",
       "Recibido",
@@ -172,12 +178,19 @@ describe("R23, R86 — columnas por audiencia", () => {
   it("mensajero: «Ganancia», sin cobro a la tienda", () => {
     expect(columnasDe("mensajero").map((c) => c.label)).toEqual([
       "Guía",
-      "Destinatario · tienda",
+      "Destinatario",
+      "Tienda",
       "Resultado",
       "Recibido",
       "Ganancia",
       "Señales",
     ]);
+  });
+
+  it("R441 — ninguna audiencia muestra la columna «Destinatario · tienda»", () => {
+    for (const [a, m] of [["central", false], ["satelite", false], ["solo lectura", true], ["mensajero", false]] as const) {
+      expect(columnasDe(a, m).map((c) => c.label)).not.toContain("Destinatario · tienda");
+    }
   });
 
   it("los importes son el string del servidor; nulo se queda nulo (se pinta «—»)", () => {

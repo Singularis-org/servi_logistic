@@ -103,7 +103,7 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     // R7 de la 38: la evidencia de la rechazada abre por URL firmada y la imagen CARGA (bytes del doble).
     // SLT-101: las gestiones van en la lista única con su filtro por resultado; la fila se despliega.
     const ordenes = await ordenesDe(detalle);
-    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \(\d+\)$/).click();
     await ordenes.getByRole("button", { name: new RegExp(rechazada.numRemision), expanded: false }).click();
     await detalle.getByRole("button", { name: `Ver evidencia de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` }).click();
     const visor = page.getByRole("dialog", { name: "Evidencia de la gestión" });
@@ -198,7 +198,7 @@ test.describe("Cierres del día — corregir el resultado mueve Analítica en la
     const detalle = await abrirDetalle(page, m);
     await expect(recaudado(detalle)).toHaveText(importe(8500, { solo: true }));
     const ordenes = await ordenesDe(detalle);
-    await filtro(detalle, /^Entregado \d+$/).click();
+    await filtro(detalle, /^Entregado \(\d+\)$/).click();
     await ordenes.getByRole("button", { name: new RegExp(corregida.numRemision), expanded: false }).click();
     await detalle.getByRole("button", { name: `Corregir el resultado de la orden ${corregida.numRemision} · ${corregida.destinatario}` }).click();
 
@@ -216,7 +216,7 @@ test.describe("Cierres del día — corregir el resultado mueve Analítica en la
     // Y el detalle de detrás sigue abierto, releído del servidor.
     await expect(detalle).toBeVisible();
     await expect(recaudado(detalle)).toHaveText(importe(6000, { solo: true }));
-    await filtro(detalle, /^Devolución a origen por rechazo \d+$/).click();
+    await filtro(detalle, /^Devolución a origen por rechazo \(\d+\)$/).click();
     await expect(ordenes.getByRole("button", { name: new RegExp(corregida.numRemision) })).toBeVisible();
 
     // R13: la primera lectura tras responder trae la cifra nueva. R8: sigue cerrada, así que el rótulo no baja.

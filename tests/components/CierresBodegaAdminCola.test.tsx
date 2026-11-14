@@ -109,7 +109,7 @@ function montar(pendientes = PENDIENTES, historico = CONCILIADOS) {
 const PIE = "Un cierre «Recibido incompleto» se queda aquí hasta que la diferencia se reciba o se corrija.";
 
 async function irAConciliados(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("tab", { name: "Conciliados 21" }));
+  await user.click(screen.getByRole("tab", { name: "Conciliados (21)" }));
   await screen.findByRole("region", { name: "Cierres de bodega conciliados" });
 }
 
@@ -142,10 +142,10 @@ describe("CierresBodegaAdminModule — la cola única (R133)", () => {
     ).toBeInTheDocument();
     const lista = screen.getByRole("tablist", { name: "Cierres de bodega por estado" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Por conciliar 37",
-      "Conciliados 21",
+      "Por conciliar (37)",
+      "Conciliados (21)",
     ]);
-    expect(within(lista).getByRole("tab", { name: "Por conciliar 37" })).toHaveAttribute("aria-selected", "true");
+    expect(within(lista).getByRole("tab", { name: "Por conciliar (37)" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText(PIE)).toBeInTheDocument();
   });
 
@@ -242,7 +242,7 @@ describe("CierresBodegaAdminModule — vacío y error de cada pestaña (R132)", 
     const user = userEvent.setup();
     montar(paginaInicial([]), paginaInicial([]));
     expect(screen.getByText("No hay cierres de bodega por conciliar.")).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Conciliados 0" }));
+    await user.click(screen.getByRole("tab", { name: "Conciliados (0)" }));
     expect(await screen.findByText("Aún no hay cierres de bodega conciliados.")).toBeInTheDocument();
   });
 
