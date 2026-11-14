@@ -13,12 +13,12 @@
 
 ## Rebanada A — base común (R490-R499, R501)
 
-- [ ] **A1 [P] Utilidades de texto y táctil.** Crear `components/shared/texto-entero.ts` con
+- [x] **A1 [P] Utilidades de texto y táctil.** Crear `components/shared/texto-entero.ts` con
   `TEXTO_ENTERO`, `COLUMNA_FIJA`, `TACTIL_MOVIL` (`design.md §2, §4`). Añadir los tamaños `touch` e
   `icon-touch` a `components/ui/button.tsx`.
   *Hecho:* test `tests/unit/components/button-tactil.test.tsx` comprueba que `size="touch"` e
   `icon-touch` llevan `h-11`/`size-11`. *Mutación:* `h-10` → rojo.
-- [ ] **A2 Ningún dato se recorta en cierres (R490-R492).** Depende de A1. `FilaGestion.tsx`: borrar
+- [x] **A2 Ningún dato se recorta en cierres (R490-R492).** Depende de A1. `FilaGestion.tsx`: borrar
   `CELDA_RECORTA`/`TextoRecortado`, usar `TEXTO_ENTERO`; pistas de importe
   `minmax(max-content,1fr)` y guía `max-content`. Quitar `truncate` de `RechazosDeTiendaCierre.tsx`
   y de `FilaSinGestion`/cabecera en `cierre-factura.tsx`.
@@ -26,28 +26,28 @@
   sin clase `truncate` ni atributo `title`; la plantilla tiene `max-content` en las pistas de
   importe. `CierreRechazosDeTienda.test.tsx` sin `truncate`. *Mutaciones:* devolver `truncate`;
   volver `minmax(0,1fr)` en «ganancia» → rojo.
-- [ ] **A3 [P] Tarjetas POS sin recorte (R490, R492).** Depende de A1. `PosOrderCardDetalle.tsx`,
+- [x] **A3 [P] Tarjetas POS sin recorte (R490, R492).** Depende de A1. `PosOrderCardDetalle.tsx`,
   `PosOrderCardMosaico.tsx`, `PosNavBlock.tsx`: `truncate` → `TEXTO_ENTERO`; monto con
   `COLUMNA_FIJA`. `VistaCardsToggle.tsx` a 44 px.
   *Hecho:* `tests/components/PosOrderCard.estado-455.test.tsx` (o uno nuevo
   `tests/components/PosOrderCardSinRecorte.test.tsx`) afirma destinatario y dirección sin
   `truncate`. *Mutación:* devolver `truncate` al destinatario → rojo.
-- [ ] **A4 [P] `BuscadorFiltros` en 312 px (R495, R496).** `min-w-0 sm:min-w-[250px]`, fila que
+- [x] **A4 [P] `BuscadorFiltros` en 312 px (R495, R496).** `min-w-0 sm:min-w-[250px]`, fila que
   envuelve; props `fija` y `tactil` apagadas por defecto (`design.md §5`).
   *Hecho:* `tests/unit/components/buscador-filtros-movil.test.tsx`: con `fija` lleva `sticky
   top-0`; con `tactil` los controles `h-11`; sin props, las clases de hoy (otros consumidores sin
   cambio). *Mutaciones:* quitar `sticky`; volver `min-w-[250px]` sin `sm:` → rojo.
-- [ ] **A5 [P] Flotantes que se achican (R497-R499).** `hooks/use-flotante-compacto.ts` con la
+- [x] **A5 [P] Flotantes que se achican (R497-R499).** `hooks/use-flotante-compacto.ts` con la
   función pura `siguienteCompacto`; aplicar en `components/shared/ReporteBugBoton.tsx` y
   `MA/chat/ChatFlotante.tsx`; leer `--alto-barra-inferior` en `bottom` (`design.md §6`).
   *Hecho:* `tests/unit/hooks/use-flotante-compacto.test.ts` (bajar 9 px → `true`; subir 9 px →
   `false`; `scrollY 0` → `false`; 5 px no cambia) y `tests/components/FlotantesCompactos.test.tsx`
   (con `compacto` el botón tiene `size-11` y conserva `aria-label` y distintivo).
   *Mutaciones:* umbral a 0; `size-12` fijo → rojo.
-- [ ] **A6 [P] Constante del escáner (R500).** `ESCANER_LABEL_GUIA` en
+- [x] **A6 [P] Constante del escáner (R500).** `ESCANER_LABEL_GUIA` en
   `components/shared/EscanerModal.tsx`. *Hecho:* `tests/components/EscanerModal.test.tsx` con la
   etiqueta «Escanear o escribir guía» arranca cerrado. *Mutación:* `defaultOpen` → rojo.
-- [ ] **A7 Guardia estática (R490, R494).** Depende de A2-A5.
+- [x] **A7 Guardia estática (R490, R494).** Depende de A2-A5.
   `tests/unit/guards/pwa-mensajero-sin-recorte.guardia.test.ts` con `ARCHIVOS_PWA_MENSAJERO`
   (archivos de A) y las reglas de `design.md §2-§3`.
   *Hecho:* verde sobre los archivos de A. *Mutaciones:* `truncate` en `FilaGestion.tsx`; `gap-1.5`
