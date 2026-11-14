@@ -138,9 +138,9 @@ Literales a mano. `matchMedia` se dobla por test (fino / táctil). El tono se pr
 - [ ] **T6 — Dispositivo.** En Preview, con la pistola: abrir «Recibir paquete» en `/ordenes` y leer
   cinco etiquetas sin tocar la pantalla; en el teléfono, que la cámara salga arriba y no se abra el
   teclado. Nota en `progress/features/SLT-158.md`. *Hecho:* nota escrita.
-- [ ] **T7 — Cierre.** `./init.sh` en verde; E2E locales de las pantallas tocadas
+- [x] **T7 — Cierre.** `./init.sh` en verde; E2E locales de las pantallas tocadas
   (`e2e/recepcion-satelite.spec.ts`, `e2e/mis-asignaciones.spec.ts`, `e2e/cierres-admin.spec.ts`).
-  *Parcial (leader, 2026-11-14):* E2E 8/8 passed con 1f6dd999 (base desechable). `./init.sh` real verde salvo el tamaño del PR (1291/1000), que espera el OK de Carlos.
+  *Hecho (leader, 2026-11-14):* E2E 8/8 passed con 1f6dd999 (base desechable); `./init.sh` INIT_EXIT=0 tras mergear origin/dev (b2001f71), con el tamaño 1291/1000 aceptado por Carlos.
 
 ## Tamaño
 
