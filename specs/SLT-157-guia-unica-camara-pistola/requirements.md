@@ -141,9 +141,10 @@ valor imposible de encontrar por casualidad.
   en `progress/features/SLT-157.md` qué leyó cada uno y si el QR por pistola llegó deformado (Fuera).
   *Hecho:* nota escrita; si el CODE128 por cámara no lee con el marco cuadrado, se anota y se abre
   ficha aparte (no se cambia el marco aquí).
-- [ ] **T6 — Cierre.** `./init.sh` en verde; E2E locales que tocan estas pantallas
+- [x] **T6 — Cierre.** `./init.sh` en verde; E2E locales que tocan estas pantallas
   (`e2e/recepcion-satelite.spec.ts`, `e2e/mis-asignaciones.spec.ts`, `e2e/cierres-admin.spec.ts`;
   `docs/perfil-agentes.md > E2E en local antes del PR`).
+  *Hecho:* gate INIT_EXIT=0 (base desechable migrada); E2E 8/8 passed.
 
 ## Tamaño
 
