@@ -1,4 +1,5 @@
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { esPagoConfirmadoError } from "@/lib/db/errores-pago-plataforma";
 import type { IAjusteCajaAnulacionRepository } from "@/lib/interfaces/repositories/IAjusteCajaAnulacionRepository";
 import type { IWalletMovimientoRepository } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
 import type { AjusteCajaTxRunner } from "@/lib/interfaces/services/IAjusteCajaService";
@@ -108,6 +109,10 @@ export class EgresoCajaAnulacionService implements IEgresoCajaAnulacionService {
       });
     } catch (error) {
       if (error instanceof YaAnuladoError) return { status: "ya_anulado" };
+      // SLT-60 (design §3.5, §4.7; R10): el pago a la plataforma ya confirmado no lo anula la empresa. Lo
+      // decide el trigger `pago_plataforma_no_anular_confirmado`, bajo el candado de la empresa; la
+      // constancia de arriba se revierte con la transaccion, asi que no queda nada escrito.
+      if (esPagoConfirmadoError(error)) return { status: "forbidden" };
       throw error;
     }
     return { status: "ok" };

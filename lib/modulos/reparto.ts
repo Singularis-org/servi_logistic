@@ -196,6 +196,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "ordenes-guia": "nucleo",
   "order-status": "nucleo",
   organizaciones: "nucleo",
+  // SLT-60: el superadmin confirma los pagos a la plataforma en el detalle de la empresa, de plataforma.
+  "pagos-plataforma": "nucleo",
   "password-reset": "nucleo",
   // SLT-99: el cambio de plan del maestro en «Mi plan», que es núcleo como su ruta.
   "mi-plan": "nucleo",

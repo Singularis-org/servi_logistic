@@ -23,12 +23,21 @@ const findMany = vi.fn(async () => {
   ];
 });
 
-// SL-45 (R28): un cargo de 500 y un pago vigente de 200 → debe 300,00 y ha pagado 200,00.
+// SL-45 (R28): un cargo de 500 y 200 pagados → debe 300,00 y ha pagado 200,00.
+// SLT-60 (design §4.7; R7, R8): lo pagado es la Σ de las aplicaciones (los pagos CONFIRMADOS), agrupada por
+// empresa. El libro de la wallet ya no se lee: si se leyera, la trampa restaría 9.999.
 const groupBy = vi.fn(async () => [{ organizacionId: "org-1", tipo: "cargo", _sum: { monto: new Prisma.Decimal("500") } }]);
-const findManyLibro = vi.fn(async (args: { where: { categoria?: string } }) =>
-  args.where.categoria === "egreso_pago_plataforma"
-    ? [{ id: "pago-1", organizacionId: "org-1", monto: new Prisma.Decimal("200.00") }]
-    : [],
+const groupByAplicaciones = vi.fn<(args: unknown) => Promise<unknown[]>>(async () => [{ organizacionId: "org-1", _sum: { monto: new Prisma.Decimal("200.00") } }]);
+const findManyLibro = vi.fn(async () => [{ id: "pago-1", organizacionId: "org-1", monto: new Prisma.Decimal("9999.00") }]);
+
+/** SLT-60 (R27): el contador sale de `pago_plataforma_por_confirmar`; el resto de `$queryRaw` es el plan y el cobro. */
+const queryRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<unknown[]>>(async (sql) =>
+  sql.join("?").includes("pago_plataforma_por_confirmar(")
+    ? [{ id: "org-1", n: 3 }]
+    : // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, el global y sin plan.
+      // SLT-83 (R22): la fila de `cobro_plataforma_tarifa_de` gana `porcentaje` y `minimo`; el global es fijo (null).
+      // SLT-126 (R11): la regla ya no da la fuente `empresa`.
+      [{ id: "org-1", monto: "300.00", fuente: "global", porcentaje: null, minimo: null, plan_id: null, plan_nombre: null }],
 );
 
 vi.mock("@/lib/db/prisma-client", () => ({
@@ -36,14 +45,10 @@ vi.mock("@/lib/db/prisma-client", () => ({
     organizacion: { findMany },
     cobroPlataformaMovimiento: { groupBy },
     walletMovimiento: { findMany: findManyLibro },
+    pagoPlataformaAplicacion: { groupBy: groupByAplicaciones },
     // SLT-118 (design §5; R18): las cuotas de las facturas cerradas; aquí, ninguna.
     facturaPlataforma: { groupBy: async () => [] },
-    // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, el global y sin plan.
-    // SLT-83 (R22): la fila de `cobro_plataforma_tarifa_de` gana `porcentaje` y `minimo`; el global es fijo (null).
-    // SLT-126 (R11): la regla ya no da la fuente `empresa`.
-    $queryRaw: async () => [
-      { id: "org-1", monto: "300.00", fuente: "global", porcentaje: null, minimo: null, plan_id: null, plan_nombre: null },
-    ],
+    $queryRaw: queryRaw,
   }),
   PRISMA_OMIT: {},
 }));
@@ -54,6 +59,8 @@ beforeEach(() => {
   findMany.mockClear();
   groupBy.mockClear();
   findManyLibro.mockClear();
+  groupByAplicaciones.mockClear();
+  queryRaw.mockClear();
   contextos.length = 0;
 });
 
@@ -72,6 +79,7 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
           maestros: [{ nombre: "Maestro Ficticio", email: "maestro@example.test" }],
           deudaPlataforma: { deuda: "300.00", estado: "debe", importe: "300.00" },
           pagadoPlataforma: "200.00",
+          pagosPorConfirmar: 3, // SLT-60 R27
           cobroVigente: { modo: "fijo", monto: "300.00", fuente: "global" }, // SLT-66 R31; SLT-83 R22: con su modo
           plan: null, // SLT-66 R32
         },
@@ -85,6 +93,17 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
     expect(contextos).toEqual([
       { tipo: "plataforma", ficha: "SL-32", motivo: "listado de empresas del superadmin" },
     ]);
+    // SLT-60 (R7, R8): «Pagado» y la deuda salen de las aplicaciones de las empresas del listado, no del libro.
+    expect(groupByAplicaciones).toHaveBeenCalledWith({
+      by: ["organizacionId"],
+      where: { organizacionId: { in: ["org-1"] } },
+      _sum: { monto: true },
+    });
+    expect(findManyLibro).not.toHaveBeenCalled();
+    // SLT-60 (R27): el contador, una sola consulta para todas las empresas del listado.
+    const contador = queryRaw.mock.calls.filter(([sql]) => sql.join("?").includes("pago_plataforma_por_confirmar("));
+    expect(contador).toHaveLength(1);
+    expect(contador[0].slice(1)).toEqual([["org-1"]]);
   });
 
   it.each(Object.values(RolValue).filter((rol) => rol !== RolValue.superadmin))(
@@ -94,6 +113,8 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
       expect(findMany).not.toHaveBeenCalled();
       expect(groupBy).not.toHaveBeenCalled();
       expect(findManyLibro).not.toHaveBeenCalled();
+      expect(groupByAplicaciones).not.toHaveBeenCalled();
+      expect(queryRaw).not.toHaveBeenCalled();
     },
   );
 

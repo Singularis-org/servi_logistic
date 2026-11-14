@@ -473,7 +473,7 @@ describe("⭑ FICHA 459/461 — la frase del efecto, una línea por concepto (R6
         "La empresa le reconoce un incentivo al mensajero: sube lo que le debe y baja su ganancia.",
       // ⭑ SL-45 (R6): literal del requisito.
       pago_plataforma:
-        "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
+        "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago; baja la ganancia.",
       aporte_capital: "Llega dinero de la empresa a la caja; no es ganancia, la ganancia no cambia.",
       abono_tienda:
         "Llega dinero de la tienda a la caja: paga lo que debe y su saldo sube; la ganancia de la empresa no cambia.",
@@ -616,7 +616,7 @@ describe("⭑ SL-45 — «Pago a la plataforma» (design §7.1; R6)", () => {
   it("R6: sus dos frases, literales: la del efecto y la del libro", () => {
     const pago = conceptoPorId("pago_plataforma")!;
     expect(FRASE_DEL_EFECTO.pago_plataforma).toBe(
-      "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
+      "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago; baja la ganancia.",
     );
     expect(fraseDelLibro(pago)).toBe("Se registra en el libro como «Pago a la plataforma».");
     expect(nombreEnElLibroDeLaTienda(pago)).toBe("");

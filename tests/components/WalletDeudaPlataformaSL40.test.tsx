@@ -204,7 +204,7 @@ const DEUDA_ONCE_DIGITOS: DeudaPlataformaDTO = { deuda: "12345678901.99", estado
 // de SL-40 («Todavía no se cobra…») se retira.
 const ROTULO = "Lo que la empresa debe a la plataforma";
 const PISTA =
-  "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
+  "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la plataforma lo confirma.";
 
 const INSIGNIAS_DE_SIGNO = /^(Positivo|Negativo|En cero)$/;
 

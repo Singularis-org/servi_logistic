@@ -3,7 +3,7 @@ titulo: Wallet · Caja
 modulo: wallet
 pantalla: /wallet
 roles: [maestro, admin]
-actualizado: 2026-10-31
+actualizado: 2026-11-13
 fuentes:
   - app/(app)/wallet/_components/WalletModule.tsx
   - app/(app)/wallet/_components/CajaResumenCard.tsx
@@ -100,7 +100,7 @@ Cada concepto del libro se lee desde la empresa y dice quién le paga a quién. 
 | **La empresa paga un gasto de una tienda** / **Pago de un gasto de una tienda anulado** | Lo que la empresa le pagó a un tercero en nombre de la tienda, y su anulación |
 | **La empresa le paga a un mensajero** | El pago al mensajero |
 | **Sueldo**, **Gasto de la empresa**, **Gasto fijo de la empresa** | Lo que la empresa gasta |
-| **Pago a la plataforma** | Lo que la empresa le paga a la plataforma por el cobro de sus órdenes. Baja la deuda con la plataforma y la ganancia |
+| **Pago a la plataforma** | Lo que la empresa le paga a la plataforma por el cobro de sus órdenes. Baja la ganancia; la deuda con la plataforma baja cuando la plataforma confirma el pago |
 | **Corrección de caja (suma)** / **Corrección de caja (resta)** | Una corrección hecha a mano para cuadrar la caja |
 | **Aporte de dinero a la caja** / **Aporte de dinero a la caja anulado** | El saldo inicial o un aporte de la empresa, y su anulación |
 | **Una tienda le paga a la empresa** / **Pago de una tienda a la empresa anulado** | Lo que una tienda con saldo en contra le paga a la empresa, y su anulación. Es dinero de la tienda: sube lo que la empresa les debe a las tiendas |
@@ -180,7 +180,7 @@ según cómo esté la empresa con la plataforma:
 
 | Cómo está | Qué dice la región | Botón |
 | --- | --- | --- |
-| **Debe** | **Lo que la empresa debe a la plataforma**, con lo que se debe y la pista «Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.» | **Registrar pago a la plataforma** |
+| **Debe** | **Lo que la empresa debe a la plataforma**, con lo que se debe y la pista «Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la plataforma lo confirma.» | **Registrar pago a la plataforma** |
 | **Al día** | **Lo que la empresa debe a la plataforma**, en cero, con la pista «La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.» | — |
 | **A favor** | **Saldo a favor de la empresa con la plataforma**, con lo que tiene a favor y la pista «La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.» | — |
 
@@ -191,8 +191,9 @@ según cómo esté la empresa con la plataforma:
   contando**: no se eliminó.
 - **Es de toda la historia.** La cifra no depende del periodo ni de nada de la barra del libro: cambiar
   los filtros mueve las cifras de la caja, pero esta no.
-- **Lo ya pagado se descuenta.** Lo que se debe es lo que suman las órdenes, menos las eliminadas, menos
-  los pagos registrados que no se anularon.
+- **Lo ya pagado se descuenta cuando la plataforma lo confirma.** Lo que se debe es lo que suman las
+  órdenes, menos las eliminadas, menos los pagos que la plataforma ya confirmó. Un pago por confirmar
+  todavía no se descuenta.
 - **La deuda sola no cambia la caja.** Mientras no se paga, no es dinero que haya salido: la cifra grande,
   **Entró**, **Salió**, la ganancia, el IVA, la barra de reparto y **Cómo se compone la ganancia de la
   empresa** quedan igual que si no existiera. Por eso no lleva insignia ni color de signo.
@@ -209,21 +210,30 @@ dinero de la empresa**.
 - **Qué le pasa a la caja.** Es dinero de la empresa que sale: la cifra grande baja en el monto,
   **Salió** sube en el monto y **la ganancia de la empresa baja** en el monto, como con un sueldo. **Lo que
   la empresa les debe a las tiendas**, el **saldo inicial y aportes** y el IVA no cambian.
-- **La deuda baja** en el monto, y la región lo dice en cuanto se registra, sin recargar la página.
+- **La deuda no baja al registrar.** Baja cuando la plataforma confirma el pago (ver abajo).
 - En el libro sale como **Pago a la plataforma**, con dueño **La empresa**, y en **Cómo se compone la
   ganancia de la empresa** tiene su propia fila en **Egresos**.
 
-**No se puede pagar de más.** El pago no puede superar lo que la empresa debe en ese momento, y sin
-deuda no se registra. Si te pasás, el diálogo dice bajo el monto «El pago no puede ser mayor que lo que
-la empresa debe a la plataforma.» y no registra nada.
+**El pago queda por confirmar.** Al registrarlo, el pago queda **por confirmar** hasta que la plataforma
+lo revisa. El dinero ya salió de la caja, pero la deuda con la plataforma sigue igual: **la deuda baja al
+confirmarlo**, por el monto que la plataforma confirma.
+
+**Solo se pagan facturas cerradas.** Se paga lo que está en facturas de la plataforma ya cerradas; la
+factura del período en curso no recibe pagos. El pago puede llegar, como mucho, al saldo de las facturas
+cerradas menos los pagos que todavía están por confirmar. Por ejemplo: si la empresa tiene facturas
+cerradas por 380 000 y 200 000 por confirmar, puede registrar hasta 180 000. Sin facturas cerradas con
+saldo, no se registra. Si te pasás, el diálogo dice bajo el monto «El pago no puede ser mayor que lo
+pendiente de las facturas cerradas, descontados los pagos por confirmar.» y no registra nada.
 
 **Cuándo aparece el saldo a favor.** Solo de una forma: si, después de pagar, se eliminan órdenes que ya
 estaban pagadas. Lo que esas órdenes habían sumado se resta, y la empresa queda con dinero a favor, que
 se descuenta de los cobros de las órdenes que vengan.
 
 **Si un pago se registró mal**, no se edita: se anula desde su fila del libro (**Ver** y luego
-**Anular…**), con un motivo, y se registra otro. Al anularlo, la deuda vuelve a subir en el monto y la
-caja y la ganancia también. Se puede anular aunque la empresa esté al día o a favor.
+**Anular…**), con un motivo, y se registra otro. **El pago solo se anula mientras está por confirmar.** Al
+anularlo, el monto vuelve a la caja y a la ganancia, y vuelve a lo que se puede registrar; la deuda no
+cambia, porque ese pago todavía no la había bajado. Una vez que la plataforma lo confirma, la empresa ya
+no puede anularlo.
 
 ## De dónde entra el dinero solo
 
@@ -452,8 +462,8 @@ luego **Anular…**. Es la misma forma para todos:
   de la tienda a la empresa anulado».
 - Al anular una corrección de caja, aparece la corrección contraria por el mismo monto.
 - Al anular un **pago a la plataforma**, aparece una **Corrección de caja (suma)** por el mismo monto: la
-  cifra grande, **Entró** y la ganancia vuelven a subir, y **lo que la empresa debe a la plataforma** sube
-  en el monto.
+  cifra grande, **Entró** y la ganancia vuelven a subir. Solo se anula mientras está por confirmar, así
+  que **lo que la empresa debe a la plataforma** no cambia.
 - Un **cobro por devolución a origen** tiene dos líneas en la caja, el flete y su IVA: se anula desde **cualquiera de
   las dos** y se anulan **las dos juntas**. La **ganancia baja** en el flete y el **IVA cobrado** en su IVA, **lo que la empresa
   les debe a las tiendas** y el saldo de la tienda **vuelven a subir** en lo mismo (si al cobrarlo se le

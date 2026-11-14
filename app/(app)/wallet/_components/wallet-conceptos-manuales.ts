@@ -383,7 +383,7 @@ export const FRASE_DEL_EFECTO: Record<ConceptoManualId, string> = {
     `${EMPRESA.alInicio} le reconoce un incentivo al mensajero: sube lo que le debe y baja su ganancia.`,
   // SL-45 (design §7.1, R6): literal.
   pago_plataforma:
-    `Sale dinero de ${EMPRESA.enFrase} hacia la plataforma y baja lo que ${EMPRESA.enFrase} le debe; baja la ganancia.`,
+    `Sale dinero de ${EMPRESA.enFrase} hacia la plataforma; lo que ${EMPRESA.enFrase} le debe baja cuando la plataforma confirma el pago; baja la ganancia.`,
   aporte_capital: `Llega dinero de ${EMPRESA.enFrase} a la caja; no es ganancia, la ganancia no cambia.`,
   // Ficha 457 (design §8.2, R55): literal.
   abono_tienda:

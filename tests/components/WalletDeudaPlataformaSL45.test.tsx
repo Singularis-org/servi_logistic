@@ -191,7 +191,7 @@ const A_FAVOR: DeudaPlataformaDTO = { deuda: "-500.00", estado: "a_favor", impor
 const ROTULO_DEUDA = "Lo que la empresa debe a la plataforma";
 const ROTULO_A_FAVOR = "Saldo a favor de la empresa con la plataforma";
 const PISTA_DEBE =
-  "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
+  "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la plataforma lo confirma.";
 const PISTA_AL_DIA = "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.";
 const PISTA_A_FAVOR =
   "La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.";
@@ -289,7 +289,7 @@ describe("SL-45 R4 — el botón abre el registro con el pago ya elegido", () =>
     expect(within(dialog).getByRole("radio", { name: "Pago a la plataforma" })).toBeChecked();
     expect(within(dialog).getByRole("radio", { name: "Gasto de la empresa" })).not.toBeChecked();
     expect(dialog.querySelector("#movimiento-concepto-efecto")?.textContent).toBe(
-      "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
+      "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago; baja la ganancia.",
     );
   });
 
