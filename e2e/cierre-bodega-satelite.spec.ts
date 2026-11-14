@@ -114,6 +114,10 @@ interface CajaCelda {
  * fila de «Órdenes del cierre» pintan una celda encima de la siguiente. Se mide el borde derecho de
  * la celda Y de cada elemento dentro de ella: un texto en línea que se sale de su pista agranda su
  * propia caja aunque la celda no crezca (era el fallo de la captura de Preview).
+ *
+ * SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R490-R492) cambia el contrato del
+ * nombre: ya no se recorta con «…» (en el móvil no hay tooltip), se ve ENTERO y envuelve en varias
+ * líneas dentro de su columna. Lo que sigue igual: ninguna celda se monta sobre la vecina.
  */
 async function textoSinMontar(page: Page, ordenes: Locator, nombreMensajero: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -122,13 +126,22 @@ async function textoSinMontar(page: Page, ordenes: Locator, nombreMensajero: str
   const celdaMensajero = primeraFila.locator('[data-columna="mensajero"]');
   await expect(celdaMensajero).toHaveText(nombreMensajero);
 
-  // Antes de nada, que haya algo que recortar: el nombre es más ancho que su columna. Sin esto, la
-  // comprobación de abajo pasaría en verde sin probar nada.
+  // Antes de nada, que el nombre NO quepa en una línea de su columna: tiene que envolver. Sin esto,
+  // las comprobaciones de abajo pasarían en verde sin probar nada (un nombre corto cabe siempre).
   const medida = await celdaMensajero.evaluate((celda) => {
     const texto = celda.firstElementChild as HTMLElement;
-    return { columna: celda.clientWidth, nombre: Math.max(celda.scrollWidth, texto.scrollWidth), texto: { scroll: texto.scrollWidth, client: texto.clientWidth } };
+    const cs = getComputedStyle(texto);
+    const linea = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5;
+    return {
+      columna: celda.clientWidth,
+      lineas: texto.getBoundingClientRect().height / linea,
+      textOverflow: cs.textOverflow,
+      lineClamp: cs.getPropertyValue("-webkit-line-clamp"),
+      title: texto.getAttribute("title"),
+      texto: { scroll: texto.scrollWidth, client: texto.clientWidth },
+    };
   });
-  expect(medida.nombre).toBeGreaterThan(medida.columna);
+  expect(medida.lineas, "el nombre cabe en una línea: no prueba nada").toBeGreaterThan(1.5);
 
   for (const fila of [cabecera, primeraFila]) {
     const cajas: CajaCelda[] = await fila.locator(":scope > *").evaluateAll((celdas) =>
@@ -145,8 +158,13 @@ async function textoSinMontar(page: Page, ordenes: Locator, nombreMensajero: str
     }
   }
 
-  // Y el texto se recorta en su propio elemento: el que tiene el nombre esconde lo que no cabe.
-  expect(medida.texto.scroll).toBeGreaterThan(medida.texto.client);
+  // R490/R491: el nombre se ve entero — sin «…», sin `line-clamp`, sin depender de `title` — y no
+  // desborda su elemento ni su celda (lo que no cabe baja de línea).
+  expect(medida.textOverflow).not.toBe("ellipsis");
+  expect(["", "none"]).toContain(medida.lineClamp);
+  expect(medida.title).toBeNull();
+  expect(medida.texto.scroll).toBeLessThanOrEqual(medida.texto.client);
+  expect(medida.texto.scroll).toBeLessThanOrEqual(medida.columna);
 }
 
 let r: RepartoE2E;
