@@ -74,3 +74,22 @@ Ruta ligera, acotada a `git diff origin/dev...HEAD` (HEAD 56ff03ab). Revisor: re
 
 **RECHAZADO** (CAMBIOS): un bloqueante, el hallazgo 1. El resto del diff (servidor, aislamiento,
 cabecera, trazabilidad) está correcto.
+
+## Vuelta 2 (acotada a 407f522b..ca134316)
+
+Alcance: e1d25ca1 (tope en el buscador + JSDoc), 93818749 (D76, T6), merge ca134316 de origin/dev (SLT-151/SLT-152). No se amplía fuera de eso.
+
+### Checklist
+- [x] Mayor de la vuelta 1 cerrado: `BuscadorFiltros` gana `maxLength?` opcional (atributo del `<Input>` + `slice` en `escribir`); `FiltrosCierresBarra` y `FiltrosColaPropiaBarra` pasan `MAX_FOLIO_FILTRO`. Pegar 36 ya no emite un folio >20 ni deja las listas en error.
+- [x] Otros consumidores sin cambio: sin la prop, `maxLength` es `undefined` (React no pinta el atributo) y `escribir` no recorta. Los 6 tests unitarios de `BuscadorFiltros` (`buscador-filtros-*`, `ordenes-listado-buscador`) y `HistoricoFiltros`/`CierresAdminFiltros` en verde.
+- [x] Test `FiltrosCierresBarraFolio.test.tsx` «R457 — pegar el id entero (36)…»: el doble reproduce el borde (>20 → `validation_error`), afirma el valor literal de 20 caracteres (contrato, no su fuente), que toda llamada lleva ≤20 y que no sale el error. Mutación declarada (quitar la prop → 1 failed): coherente con el test; no la reapliqué (fuera de mi encargo), pero la aserción `campo().value` cae sin la prop por construcción.
+- [x] JSDoc de `idsPorFolio` recolocado; T6 marcada (0 `- [ ]` en requirements.md); D76 en `progress/deudas.md`.
+- [x] Merge de dev: sin marcadores de conflicto. Archivos que tocaron ambas ramas: `CierreDiaPagina.test.tsx`, `CierresAdminDetalleUnico.test.tsx`, `e2e/cierres-rediseno.spec.ts`. Vitest de esos dos más los tests de SLT-152 (`FilaGestion`, `fila-gestion-vista`, `CierreDiaCola*`, `CierresAdminModule`, `DetalleCierreGestiones`) y los de SLT-153 de detalle: 20 archivos, 420/420 verdes (VT_EXIT=0). El E2E lo corre el CI.
+- [x] `tsc --noEmit` TSC_EXIT=0; eslint de los 5 archivos del arreglo LINT_EXIT=0.
+- [x] Tamaño: 34/40 archivos, 561/1000 prod, 1406/3000 tests (aviso de cercanía, no excede).
+
+### Hallazgos
+- menor: el tope en `/cierre-dia` (`FiltrosColaPropiaBarra`) no tiene test propio; solo lo cubre el de `/cierres-admin`. Una línea igual de fácil de perder.
+- menor: la aserción negativa del test mira solo «No se pudo cargar el histórico de cierres.»; no comprueba el mensaje de error de la lista de pendientes. La mutación cae por el valor del campo, no por esta línea.
+
+### Veredicto: OK
