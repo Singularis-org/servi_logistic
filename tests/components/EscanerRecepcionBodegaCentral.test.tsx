@@ -336,3 +336,28 @@ describe("EscanerRecepcionBodegaCentral — guía única por cámara o pistola (
     expect(recibirMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-158 «Entrada de escaneo para pistola» (R576): de punta a punta, la acción rechaza y la
+// tarjeta deja escrito QUÉ se leyó y POR QUÉ falló, hasta que otra lectura acierte.
+describe("EscanerRecepcionBodegaCentral — línea de error persistente (SLT-158)", () => {
+  it("R576: no_encontrada deja «7777777» y «Orden no encontrada.» en un alert; un acierto lo quita", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValueOnce({ status: "no_encontrada" });
+    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
+
+    await recibirManual(user, "7777777");
+
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("7777777");
+    expect(alerta).toHaveTextContent("Orden no encontrada.");
+
+    recibirMock.mockResolvedValueOnce({
+      status: "ok",
+      ordenId: "o1",
+      estado: "en_bodega_central",
+    });
+    await recibirManual(user, "1024");
+
+    await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+});

@@ -7,6 +7,7 @@ import {
   prepararAudio,
   reiniciarAudioParaTests,
   reproducirTono,
+  reproducirTonoLectura,
 } from "@/lib/audio/tono-notificacion";
 
 // Feature 161 — R1-R9. jsdom NO implementa la Web Audio API: el contexto se stubbea y se
@@ -181,6 +182,46 @@ describe("reproducirTono", () => {
 
     expect(() => reproducirTono()).not.toThrow();
     expect(contextosCreados).toBe(0);
+  });
+});
+
+// SLT-158 «Entrada de escaneo para pistola» (R577): el tono de una lectura. Las frecuencias se
+// escriben a mano aquí, no se leen de las constantes del módulo: compararlas con su propia
+// fuente quedaría siempre en verde.
+describe("reproducirTonoLectura (SLT-158)", () => {
+  it("R577: acierto = una nota aguda (1318.51 Hz); error = dos graves (220 -> 174.61 Hz)", () => {
+    reproducirTonoLectura("acierto");
+    const acierto = notas.map((n) => n.frecuencia);
+    notas = [];
+    reproducirTonoLectura("error");
+    const error = notas.map((n) => n.frecuencia);
+
+    expect(acierto).toEqual([1318.51]);
+    expect(error).toEqual([220, 174.61]);
+  });
+
+  it("R577: los dos tonos de lectura son distintos entre sí y del aviso de notificaciones", () => {
+    reproducirTonoLectura("acierto");
+    const acierto = notas.map((n) => n.frecuencia);
+    notas = [];
+    reproducirTonoLectura("error");
+    const error = notas.map((n) => n.frecuencia);
+    notas = [];
+    reproducirTono();
+    const aviso = notas.map((n) => n.frecuencia);
+
+    expect(acierto).not.toEqual(error);
+    expect(aviso).toEqual([880, 1174.66]); // el aviso de notificaciones no cambió
+    expect(acierto).not.toEqual(aviso);
+    expect(error).not.toEqual(aviso);
+  });
+
+  it("R577: las notas del error van seguidas, no encima, y cada una se atenúa", () => {
+    reproducirTonoLectura("error");
+
+    const [primera, segunda] = notas;
+    expect(segunda.inicio).toBeCloseTo(primera.fin, 5);
+    expect(notas.every((n) => n.rampas === 1 && n.tipo === "sine")).toBe(true);
   });
 });
 
