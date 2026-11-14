@@ -201,6 +201,9 @@ describe("GestionOrdenRepository.sumMontoCobrarGestionadas (KPI 'Total a cobrar'
       mensajeroId: "m1",
       anuladaAt: null, // feature 67/R11: una gestion deshecha deja de contar
       createdAt: { gte: DIA.desde, lt: DIA.hasta }, // `lt`, NO `lte`
+      // SLT-151: fuera lo que ya esta en un cierre solicitado/aprobado; sin cierre o rechazado/vencido, dentro.
+      // La medicion contra Postgres: tests/integration/db/total-a-cobrar-sin-cerrado-sql-real.test.ts.
+      OR: [{ cierreId: null }, { cierre: { estado: { notIn: ["solicitado", "aprobado"] } } }],
     });
     expect(arg.where.gestiones.some.resultado).toBeUndefined();
   });

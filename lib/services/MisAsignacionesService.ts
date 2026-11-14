@@ -439,7 +439,8 @@ export class MisAsignacionesService implements IMisAsignacionesService {
       // puede gestionar desde ahi (R16), esas aristas son de la ficha 237- asi que no entra en el
       // primer sumando por la condicion de gestion, no por la de estatus. Ninguna orden se cuenta
       // dos veces. No se mueve al gestionar -la orden solo cambia de sumando- y se reinicia al
-      // cruzar la medianoche local.
+      // cruzar la medianoche local. SLT-151: tambien sale lo gestionado que ya esta en un cierre
+      // `solicitado`/`aprobado` (dinero ya declarado); el filtro vive en el repositorio.
       totalACobrar: codEnReparto + montoGestionadas,
     };
     return {
