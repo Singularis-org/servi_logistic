@@ -943,7 +943,8 @@ describe("feature 223 — que NO se parte, y donde NO se aplica (R19, R20)", () 
     //     razon: se repite N veces y es la que decide donde caen los cortes. Partida, deja la
     //     guia en una pagina y el destinatario en la siguiente. Es el gemelo de la pieza 1 sin
     //     desplegable (la fila no es un boton: la seccion es de consulta, R31).
-    "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-2.5",
+    //     SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R494): `py-2.5` → `py-3`, escala de 4 px.
+    "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-3",
     // 7 — el ENCABEZADO de esa seccion (titulo + conteo + la nota que dice que no tienen dinero
     //     asociado). Mismo criterio que la pieza 4, la cabecera de la hoja: partido, la primera
     //     pagina deja una lista de ordenes sin decir que son ni por que no llevan importe. La

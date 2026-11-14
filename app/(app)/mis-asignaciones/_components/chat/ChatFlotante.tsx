@@ -6,6 +6,8 @@ import useSWR from "swr";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useTonoAlIncrementar } from "@/hooks/useTonoAlIncrementar";
+import { BOTTOM_FLOTANTE_ESQUINA, useFlotanteCompacto } from "@/hooks/use-flotante-compacto";
+import { cn } from "@/lib/utils";
 import { marcarChatLeido, resumenNoLeidosChat } from "@/lib/actions/chat-whatsapp";
 import type { ResumenNoLeidosChatResult } from "@/lib/types/chat-whatsapp";
 
@@ -82,6 +84,7 @@ export function ChatFlotante({
   // La lista PLANA, para lo que no depende del grupo: elegir conversación y filtrar el
   // resumen de sin leer. El reparto en grupos sólo lo necesita la columna izquierda.
   const ordenes = contactos.todas;
+  const compacto = useFlotanteCompacto();
   const [seleccionadaId, setSeleccionadaId] = useState<string | null>(null);
   // En móvil solo cabe una columna: con una orden en detalle se entra directo a su
   // conversación; sin ninguna, a la lista. Se resincroniza al cerrar el modal.
@@ -181,13 +184,20 @@ export function ChatFlotante({
     <>
       <button
         type="button"
+        data-compacto={compacto ? "" : undefined}
         onClick={() => onAbiertoChange(true)}
         aria-label={
           total > 0
             ? `Abrir chat con clientes, ${total} sin leer`
             : "Abrir chat con clientes"
         }
-        className="fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 active:scale-95"
+        // SLT-156 (R497-R499): al bajar por la página se reduce a 44 px y se aclara; el nombre
+        // accesible, el distintivo y la acción no dependen de `compacto`.
+        className={cn(
+          "fixed right-5 z-40 flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-[width,height,opacity,transform] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 active:scale-95",
+          BOTTOM_FLOTANTE_ESQUINA,
+          compacto ? "size-11 opacity-80" : "size-14",
+        )}
       >
         <MessageCircle className="size-6" aria-hidden="true" />
         {total > 0 ? (

@@ -23,6 +23,13 @@ export interface VistaCardsToggleProps {
   onVistaChange: (vista: VistaCards) => void;
 }
 
+/**
+ * SLT-156 (R493): el conmutador mide 44 px de alto en MÓVIL (< 768 px). Se aplica a los botones hijos
+ * del grupo desde aquí, sin tocar el control compartido; en escritorio (y en `/novedades`, que también
+ * lo monta) sigue con su alto de siempre.
+ */
+export const VISTA_TOGGLE_TACTIL = "max-md:[&>button]:h-11 max-md:[&>button]:px-4";
+
 const OPCIONES = [
   { valor: "mosaico" as const, etiqueta: "Mosaico", Icono: LayoutGrid },
   { valor: "detalle" as const, etiqueta: "Detalle", Icono: Rows3 },
@@ -35,6 +42,7 @@ export function VistaCardsToggle({ vista, onVistaChange }: VistaCardsToggleProps
       valor={vista}
       onChange={onVistaChange}
       ariaLabel="Vista de las órdenes"
+      className={VISTA_TOGGLE_TACTIL}
     />
   );
 }
