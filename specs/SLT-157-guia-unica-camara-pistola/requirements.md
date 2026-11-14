@@ -126,15 +126,15 @@ valor imposible de encontrar por casualidad.
 
 ## Tasks
 
-- [ ] **T1 — Función única.** `leerGuia` en `lib/utils/paquete-url.ts` (D1-D3), reutilizando
+- [x] **T1 — Función única.** `leerGuia` en `lib/utils/paquete-url.ts` (D1-D3), reutilizando
   `parseNumGuia`; se retira `extractNumGuiaFromScan`. *Hecho:* R560-R563 y R568 en verde.
-- [ ] **T2 — Cámara (depende de nada) [P].** `QrScanner` pasa `formatsToSupport` (D5) al constructor
+- [x] **T2 — Cámara (depende de nada) [P].** `QrScanner` pasa `formatsToSupport` (D5) al constructor
   de `Html5Qrcode`. *Hecho:* R564 en verde; los tests existentes de `QrScanner` en verde.
-- [ ] **T3 — Superficies (depende de T1).** Las siete usan `leerGuia` en sus dos caminos; C5 quita
+- [x] **T3 — Superficies (depende de T1).** Las siete usan `leerGuia` en sus dos caminos; C5 quita
   `MedioDeCaptura` de `interpretarLectura` (el resto de sus desenlaces no cambia); C2 pasa a «Código
   inválido.»; C3, recogida, recolección y verificar guía dejan de rechazar en silencio. *Hecho:*
   R565-R566 en verde en los siete archivos de test.
-- [ ] **T4 — Guardia (depende de T3).** `lectura-guia-unica.guardia.test.ts`, matada con una mutación.
+- [x] **T4 — Guardia (depende de T3).** `lectura-guia-unica.guardia.test.ts`, matada con una mutación.
   *Hecho:* R567 en verde y rojo con la mutación.
 - [ ] **T5 — Dispositivo (depende de T2-T3).** En Preview, con una etiqueta impresa: la cámara del
   teléfono lee el CODE128 y el QR en C1; con la pistola de Carlos, el CODE128 y el QR en C1. Se anota
