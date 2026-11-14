@@ -1,7 +1,7 @@
 # SLT-159 «Escaneo continuo en recepciones y recogidas» — requirements
 
 Ruta: **completa** (zona frontend, complejidad medium; UI nueva dentro del modal, pasó por
-`/design`). Requisitos: **R580-R599**.
+`/design`). Requisitos: **R580-R599** y **R610-R614** (R600-R609 son de SLT-160).
 Sale de SLT-155 «Evaluar el lector de código de barras en toda la app»
 (`specs/SLT-155-lector-codigo-barras/evaluacion.md` §4.1 y §4.3 ficha 3, `brief-diseno.md` §4.2 (c)).
 **Depende de SLT-158 «Entrada de escaneo para pistola»** (cola, foco, limpieza, tono), que a su vez
@@ -46,7 +46,8 @@ teléfono (y la pistola Bluetooth si alguien la conecta, por el mismo campo):
   pone en modo continuo el contenido del `EscanerModal` que abra.
 - Armar lotes de asignación escaneando (ficha 5 de la evaluación, pospuesta).
 - Buscadores (SLT-160 «Buscar escaneando en los listados»).
-- Cualquier cambio de servidor, Server Action, esquema, permisos o dinero.
+- Acciones nuevas o en lote, esquema, migraciones, permisos o dinero. El único cambio de servidor es
+  que las tres acciones de recepción de hoy devuelven también destinatario y tienda (R614).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -57,6 +58,7 @@ teléfono (y la pistola Bluetooth si alguien la conecta, por el mismo campo):
 | DC3 | Pistola y uso en bodega y tienda. | Carlos, 2026-11-13 |
 | DC4 | El escaneo continuo incluye las recogidas del mensajero (M1, M2) con la cámara del teléfono; el modal se abre desde el escáner colapsado de SLT-156. | Carlos, 2026-11-14 |
 | DC5 | La recepción continua (C1, C2, C3/C4) es una **página** «Recibir paquetes» en escritorio, como el canvas (Main); en la PWA del mensajero (M1, M2) es el diálogo `EscanerModal`. En este spec, «el modal» nombra a cualquiera de los dos y «cerrar el modal» es «Terminar recepción ({n})» en la página o cerrar el diálogo. | Leader, 2026-11-14 (canvas aprobado) |
+| DC7 | SLT-159 no cabe en un PR (46 archivos): se implementa en tres rebanadas en orden, (a) resumen en las acciones R614, (b) recepciones de bodega y tienda con página y diálogo R580-R594 y R610-R613, (c) recogidas del mensajero R595-R599. Cada una se mergea sola. | Leader (corte de reserva pedido para >32 archivos), 2026-11-14 |
 | DC6 | «Código inválido» y «No se pudo recibir» son filas con ese estado y NO suman a ningún contador; «No se pudo recibir» lleva «Reintentar» (44 px). | Leader, 2026-11-14 |
 
 ## Requisitos (EARS)
@@ -121,18 +123,43 @@ teléfono (y la pistola Bluetooth si alguien la conecta, por el mismo campo):
   «Recogidas» (M1) o «Recolectadas» (M2), «Repetidas» (filas «Ya recolectada» y relecturas de la
   sesión) y «No encontradas» (filas «No está entre tus órdenes»); «No se pudo recoger» / «No se pudo
   recolectar» y «Código inválido» no suman (DC6). Textos propuestos por el leader (2026-11-14).
-- **R600** — En la página de recepción continua (DC5), el sistema DEBE mostrar: título «Recibir
-  paquetes»; el campo con el rótulo «Escanea la guía con la pistola» y el placeholder «Listo para
-  leer…»; tras cada lectura, la línea de estado de la última («Guía {n} recibida · {destinatario}»
-  cuando acierta); la ayuda «El campo vuelve a estar listo después de cada lectura. También acepta
-  el QR de la etiqueta.» con el botón «Escanear con cámara» a su lado; y arriba a la derecha el
-  botón «Terminar recepción ({n})», con {n} = filas «Recibida» (canvas: Main).
 - **R598** — CUANDO se cierra el modal de M1 o M2 después de al menos un éxito (o una «Ya
   recolectada»), la lista de órdenes de la pantalla DEBE refrescarse una vez; si no hubo ninguno, NO
   DEBE refrescarse. La relectura de SLT-69 ante una guía que no está en la lista cargada DEBE seguir
   ocurriendo en cada lectura que la necesite.
 - **R599** — SI la orden leída en M1 está reservada para otro día, ENTONCES su fila DEBE quedar en
   error con el aviso de hoy (feature 261, R13) y la acción NO DEBE llamarse.
+
+### Página de recepción en escritorio (DC5)
+
+R600-R609 son de SLT-160 «Buscar escaneando en los listados»; la página usa R610-R614 (libres en la
+reserva R560-R619). El antiguo «R600» de este archivo es ahora R610, con el mismo texto.
+
+- **R610** — En la página de recepción continua (DC5), el sistema DEBE mostrar: título «Recibir
+  paquetes»; el campo con el rótulo «Escanea la guía con la pistola» y el placeholder «Listo para
+  leer…»; tras cada lectura, la línea de estado de la última («Guía {n} recibida · {destinatario}»
+  cuando acierta); la ayuda «El campo vuelve a estar listo después de cada lectura. También acepta
+  el QR de la etiqueta.» con el botón «Escanear con cámara» a su lado; y arriba a la derecha el
+  botón «Terminar recepción ({n})», con {n} = filas «Recibida» (canvas: Main).
+- **R611** — MIENTRAS el puntero es fino, las pantallas de recepción de hoy (`/ordenes` para
+  maestro, admin y adminTienda; `/recepcion-satelite/por-recibir` y `/recepcion-satelite/en-bodega`
+  para adminSatelite) DEBEN mostrar, junto al disparador de guía suelta «Recibir paquete», un enlace
+  «Recibir paquetes» a la página de su rol (`/ordenes/recibir` o `/recepcion-satelite/recibir`).
+  MIENTRAS el puntero es táctil, el mismo botón «Recibir paquetes» DEBE abrir la sesión continua en
+  el diálogo `EscanerModal`, sin cambiar de página. El disparador «Recibir paquete» DEBE seguir
+  siendo de guía suelta en los dos casos.
+- **R612** — CUANDO se entra a `/ordenes/recibir`, el sistema DEBE servir la recepción en bodega
+  central a maestro y admin, la recepción en tienda a adminTienda, y DEBE responder «no encontrada»
+  a cualquier otro rol o sin sesión, antes de leer ningún dato. CUANDO se entra a
+  `/recepcion-satelite/recibir`, DEBE servirla solo a adminSatelite, con la misma regla.
+- **R613** — CUANDO se pulsa «Terminar recepción ({n})», el sistema DEBE volver a la pantalla desde la
+  que se entró (`/ordenes`, o la de la satélite indicada al entrar; `/recepcion-satelite/por-recibir`
+  si no se indicó o no es una de las dos) y esa pantalla DEBE mostrar los datos vigentes. Salir de la
+  página por otro camino DEBE descartar la sesión (R591).
+- **R614** — CUANDO la acción de recepción responde `ok` o `ya_recibida`, la respuesta DEBE traer el
+  destinatario y el nombre de la tienda de esa orden, para la fila (R581) y la línea de estado
+  (R610). SI la orden es de otra empresa o está fuera del alcance del actor, ENTONCES la respuesta
+  NO DEBE traerlos (la de hoy ya responde `tienda_ajena` o `zona_ajena` antes de `ya_recibida`).
 
 ## Trazabilidad (R → test)
 
@@ -160,16 +187,23 @@ las acciones se doblan en los tests de componente (su SQL ya tiene sus tests y n
 | R596 | `tests/components/RecogerPaqueteCard.test.tsx` — éxito → «Recogida»; guía `7777777` ausente tras la relectura doble → «No está entre tus órdenes»; `forbidden` → «No se pudo recoger» + «No tienes permiso para recoger esta orden.». `tests/components/RecoleccionModule.test.tsx` — éxito → «Recolectada»; ya recolectada → «Ya recolectada»; `forbidden` → «No se pudo recolectar» + «No tienes permiso para recolectar órdenes.». |
 | R597 | `tests/unit/utils/sesion-escaneo.test.ts` — con el verbo de M1: rótulos «Recogidas», «Repetidas», «No encontradas»; con el de M2: «Recolectadas»; una fila «No se pudo recolectar» no suma. |
 | R598 | `tests/components/RecogerModule.test.tsx` — dos éxitos y cerrar: el refresco de la lista se llama una vez y ninguna antes de cerrar; solo errores: cero. `tests/components/RecogerPaqueteCard.test.tsx` — dos guías fuera de la lista cargada: `listarMisAsignaciones` (doble) se llama dos veces. |
-| R600 | `tests/components/EscaneoContinuo.test.tsx` — en la página: `getByRole("heading", { name: "Recibir paquetes" })`, `getByLabelText("Escanea la guía con la pistola")` con placeholder «Listo para leer…», tras `ok` de `1024` el `status` dice «Guía 1024 recibida · » + el destinatario doble, la ayuda literal y `getByRole("button", { name: "Terminar recepción (1)" })`. |
+| R610 | `tests/components/RecepcionContinuaPagina.test.tsx` (nuevo) — en la página: `getByRole("heading", { name: "Recibir paquetes" })`, `getByLabelText("Escanea la guía con la pistola")` con placeholder «Listo para leer…», tras `ok` de `1024` el `status` dice «Guía 1024 recibida · » + el destinatario doble, la ayuda literal y `getByRole("button", { name: "Terminar recepción (1)" })`. |
 | R599 | `tests/components/RecogerPaqueteCard.test.tsx` — orden con `esParaManana`: fila en error con el aviso de reserva y `recogerAsignaciones` no llamada. |
+| R611 | `tests/components/EscanerRecepcionBodegaCentral.test.tsx` y `tests/components/PorRecibirModule.test.tsx` (nuevo) — `matchMedia` fino: `getByRole("link", { name: "Recibir paquetes" })` con `href` `/ordenes/recibir` (o `/recepcion-satelite/recibir?desde=por-recibir`) y el botón «Recibir paquete» abre un diálogo cuya cámara se cierra tras leer; táctil: no hay enlace y `getByRole("button", { name: "Recibir paquetes" })` abre el diálogo con la lista de la sesión. |
+| R612 | `tests/unit/app/recibir-paquetes-page.test.tsx` (nuevo) — con `resolveActorFromSession` doble: maestro y admin montan la recepción central, adminTienda la de tienda, adminSatelite en `/ordenes/recibir` y mensajero en las dos llaman a `notFound()` sin que se llame ninguna acción de lectura; adminSatelite monta la de satélite. |
+| R613 | `tests/components/RecepcionContinuaPagina.test.tsx` — con el `router` doble: «Terminar recepción (2)» llama a `push("/recepcion-satelite/en-bodega")` con `desde=en-bodega` y a `push("/recepcion-satelite/por-recibir")` con `desde=https://evil.test`; en `/ordenes`, a `push("/ordenes")`, y a `refresh()` una vez. |
+| R614 | `tests/unit/services/recepcion-resumen.test.ts` (nuevo) — en los tres servicios, `ok` y `ya_recibida` traen `destinatario` y `tienda` del doble; `tienda_ajena`, `zona_ajena` y `no_encontrada` no los traen. `tests/integration/db/recepcion-resumen-sql-real.test.ts` (nuevo, Postgres real) — la lectura del resumen por id devuelve el destinatario y la tienda sembrados (positivo) y nada para una orden sembrada en otra empresa leída con la sesión de la primera, ni para un id inexistente (`00000000-0000-0000-0000-00000000dead`); se mata con una mutación (quitar el filtro de empresa) antes de darlo por bueno. |
 
 ## Preguntas abiertas
 
 - **Resuelta (canvas BKro9B2dap6jrmGejRq6M3: Main, leído 2026-11-14; decisiones del leader
-  2026-11-14):** textos de la lista, contadores y página en R581, R583, R585, R586 y R600; página en
+  2026-11-14):** textos de la lista, contadores y página en R581, R583, R585, R586 y R610 (antes R600); página en
   escritorio y `EscanerModal` en la PWA (DC5); «Código inválido» y «No se pudo recibir» no suman y
   la segunda lleva «Reintentar» (DC6); M1/M2 con textos propuestos por el leader (R596, R597).
-- **Tamaño:** con M1 y M2 son 30 archivos (`tasks.md > Tamaño`), por debajo del 80 % (32). No se
-  propone partir. Si al implementar pasa de 32, el corte natural es: (a) recepciones de bodega y
-  tienda R580-R594; (b) recogidas del mensajero R595-R599, que depende de (a).
+- **Tamaño:** con la página (DC5), M1/M2 y el resumen en las acciones son **46 archivos** (`tasks.md >
+  Tamaño`), por encima del tope (40). Queda escrito como decisión **DC7** el corte en tres rebanadas
+  que se mergean solas, en orden: (a) resumen en las acciones (R614); (b) recepciones de bodega y
+  tienda, página y diálogo (R580-R594, R610-R613); (c) recogidas del mensajero (R595-R599). Hace
+  falta crear las dos fichas nuevas en el board (leader, `/afinar-feature` paso 5) o aceptar que
+  SLT-159 se implemente en tres PR con la misma key.
 - Ninguna para Carlos.

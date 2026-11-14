@@ -37,7 +37,8 @@ recepción.
 
 ## Rutas y contratos
 
-Sin rutas ni Server Actions nuevas. Se usan las de hoy:
+Sin Server Actions nuevas; dos páginas nuevas y el resultado de las tres acciones ampliado (ver
+«Página de recepción en escritorio»). Se usan las acciones de hoy:
 
 | Superficie | Acción | Respuestas |
 | --- | --- | --- |
@@ -141,12 +142,80 @@ Ninguna. `html5-qrcode` ya está instalada (`^2.3.8`); la cámara continua solo 
    «No se pudo recoger» / «No se pudo recolectar» (DC6, decisión del leader 2026-11-14): 44 px,
    reencola la guía. Pasar la etiqueta otra vez sigue funcionando igual (R585).
 
-## Pendiente de diseño (DC5, 2026-11-14)
+## Página de recepción en escritorio (DC5, R610-R614)
 
-- La recepción continua de C1, C2 y C3/C4 pasa de modal a **página** «Recibir paquetes» en escritorio
-  (canvas Main); falta fijar su ruta, desde dónde se entra (hoy los disparadores abren `EscanerModal`
-  sobre `/ordenes` y las recepciones) y si en la tienda con puntero táctil sigue siendo el modal. Lo
-  resuelve el spec_author en este documento antes de T4; los requisitos ya están cerrados.
+### Rutas
+
+| Ruta | Roles | Qué monta | Patrón |
+| --- | --- | --- | --- |
+| `app/(app)/ordenes/recibir/page.tsx` → `/ordenes/recibir` | maestro, admin (C1, `recibirEnBodegaCentralPorQr`); adminTienda (C2, `recibirEnOrigenPorQr`) | `RecepcionContinuaPagina` con la acción del rol | Hija de `/ordenes`, donde viven hoy C1 y C2; mismo reparto de rol que `OrdenesListado` (`puedeRecibirBodegaCentral` / tienda) |
+| `app/(app)/recepcion-satelite/recibir/page.tsx` → `/recepcion-satelite/recibir` | adminSatelite (C3/C4, `recibirPorQr`) | ídem con la acción de la satélite | Hermana de `por-recibir` y `en-bodega` |
+
+- **Permisos (R612):** el gate es el de las páginas hermanas (`recepcion-satelite/por-recibir/page.tsx:27-29`):
+  `resolveActorFromSession()` en el Server Component y `notFound()` para cualquier otro rol o sin
+  sesión, **antes** de leer nada. Cada Server Action vuelve a validar rol y alcance como hoy; la
+  página no amplía nada. Sin entrada nueva en el menú (`lib/auth/menu-visibility.ts`): se llega por el
+  enlace, y el menú sigue marcando su sección padre (`/ordenes`, `/recepcion-satelite`) por prefijo.
+- La página no lee datos en servidor: solo resuelve el rol y pasa al cliente qué acción usar y a dónde
+  volver.
+
+### Entrada y página frente a diálogo (R611)
+
+- En `OrdenesListado` (C1/C2), `PorRecibirModule` (C3) y `RecepcionSateliteModule` (C4), junto al
+  `EscanerModal` «Recibir paquete» de hoy (que **sigue siendo guía suelta**), aparece «Recibir
+  paquetes».
+- Se decide con el mismo criterio que SLT-158 D1: **puntero fino** (`(pointer: fine)`) → enlace
+  (`next/link`) a la página; **puntero táctil** → botón que abre un segundo `EscanerModal` con la
+  tarjeta en modo continuo (la tienda en el teléfono). El hook de puntero es el de SLT-158
+  (`hooks/useEntradaEscaneo.ts` o el que exporte para `matchMedia`); se evalúa en el cliente tras
+  montar para no romper la hidratación (antes de saberlo no se pinta ninguno de los dos).
+- En la satélite el enlace lleva `?desde=por-recibir` o `?desde=en-bodega`.
+
+### «Terminar recepción ({n})» (R613)
+
+- `router.push(destino)` + `router.refresh()`: `/ordenes`, o `/recepcion-satelite/<desde>` si `desde` es
+  `por-recibir` o `en-bodega` (lista blanca; cualquier otro valor, `por-recibir`). El refresco es el
+  «una vez» de R592 en la página: el listado de destino se vuelve a leer al llegar.
+- La sesión vive en el estado del componente de la página: salir por el menú o el navegador la
+  descarta (R591). No se avisa al salir: lo recibido ya está guardado, solo se pierde la lista.
+
+### Piezas
+
+- `components/shared/RecepcionContinuaPagina.tsx` (nuevo, cliente): título, campo «Escanea la guía con
+  la pistola», línea de estado, ayuda + «Escanear con cámara», `EscaneoContinuo` y «Terminar
+  recepción ({n})». Reutiliza `useSesionEscaneo`, `useEntradaEscaneo` (SLT-158) y `QrScanner` continuo;
+  no sabe de dominio: recibe `recibir(numGuia) => Promise<DesenlaceRecepcion>` y `volverA`.
+- `desenlace(result)` de cada superficie (C1, C2, C3) se exporta para que la página lo use igual que
+  el diálogo: un texto de motivo, un sitio.
+
+### Servidor: destinatario y tienda en la respuesta (R614)
+
+- **Evidencia de que hace falta:** R581 pide «Destinatario» y «Tienda» por fila y R610 «Guía {n}
+  recibida · {destinatario}», pero las respuestas de hoy solo traen `ordenId` y `estado`
+  (`lib/types/recepcion-bodega-central.ts:25-28`, `lib/types/recepcion-origen.ts:20-23`,
+  `lib/types/recepcion-satelite.ts:210-215`), y en `/ordenes/recibir` no hay lista cargada de donde
+  sacarlos (en M1/M2 sí: `porRecoger` y la lista de recolección traen la orden, y de ahí salen).
+- **Sin acción nueva ni en lote:** la cola de SLT-158 envía de una en una y las acciones de hoy
+  bastan. Cambia solo su resultado: `ok` y `ya_recibida` ganan `resumen: { destinatario: string;
+  tienda: string }`.
+- **De dónde:** método nuevo del repositorio `resumenRecepcion(ordenId)` (`OrdenRepository`, interfaz
+  en `IOrdenRepository`) que lee `orden.destinatario` y el nombre de la tienda dueña con el cliente de
+  la empresa de la sesión. Los tres servicios lo llaman solo en `ok` y `ya_recibida`, que en C2 y
+  C3 ya van **después** de `tienda_ajena` / `zona_ajena` (`RecepcionOrigenService.ts:51-54`; comentario
+  equivalente en la satélite), así que nunca se revela una orden ajena. En C1 la bodega central es
+  global dentro de la empresa.
+- Multi-empresa: la lectura filtra por `organizacion_id` (la de la sesión); probado contra Postgres
+  real con una orden de otra empresa (R614). Sin tabla, migración ni RLS nuevas.
+
+### Alternativas descartadas (página)
+
+7. **Solo diálogo, también en escritorio.** Descartada por DC5: el canvas aprobado (Main) es una
+   página con tabla de cinco columnas, que no cabe en `max-w-md`.
+8. **Una sola ruta `/recibir` para todos los roles.** Descartada: la satélite no tiene acceso a
+   `/ordenes` ni las tiendas a `/recepcion-satelite`; colgar la página de la sección de cada rol
+   conserva el menú marcado y el gate por pantalla que ya existe.
+9. **Buscar destinatario y tienda en el cliente con otra lectura por guía.** Descartada: duplica
+   cada viaje al servidor y abre una lectura por guía sin las guardas de alcance de la recepción.
 
 ## Riesgos
 
