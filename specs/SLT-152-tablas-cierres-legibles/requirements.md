@@ -61,8 +61,8 @@ elemento recorta.
 - Ningún cambio de datos ni de servidor: `destinatario` y `tiendaNombre` ya llegan en
   `CierreDetalleGestion` (`lib/interfaces/services/ICierreDiaService.ts:49,56`).
 - Las tablas de las colas (N1) y el código muerto de `cierre-factura.tsx` (N2).
-- Las pastillas del filtro «Filtrar por resultado» («Entregado 12», `textoFiltro`,
-  `fila-gestion-labels.ts:24`): no son pestañas; ver `## Preguntas abiertas`.
+- ~~Las pastillas del filtro «Filtrar por resultado»~~: **entran** por PA1 (Carlos, 2026-11-13):
+  `textoFiltro` pasa a «Entregado (12)» (R450).
 - Las tarjetas de la fila desplegada y su cabecera (`DATO_ORDEN`…): no cambian.
 
 ## Decisiones del spec (técnicas; las propone el spec_author)
@@ -107,33 +107,39 @@ elemento recorta.
 - **R448** — SI el conteo de una pestaña es 0, ENTONCES la pestaña DEBE mostrar «<nombre> (0)».
 - **R449** — La cola NO DEBE mostrar ninguna pestaña con la forma «<nombre> <n>» (conteo sin
   paréntesis).
+- **R450** — (PA1, Carlos 2026-11-13) CUANDO se pinta el filtro «Filtrar por resultado» de la lista de
+  gestiones, cada pastilla DEBE mostrar «<nombre> (<n>)» —«Todas (4)», «Entregado (2)», «Reprogramado
+  (0)», «Con señales (3)»— y NINGUNA DEBE tener la forma «<nombre> <n>».
 
 ## Tasks
 
-- [ ] **T1 — Columnas** (R440, R441, R443). En `fila-gestion-labels.ts` sustituir `COL_DESTINO` por
+- [x] **T1 — Columnas** (R440, R441, R443). En `fila-gestion-labels.ts` sustituir `COL_DESTINO` por
   `COL_DESTINATARIO = "Destinatario"` y `COL_TIENDA = "Tienda"`; en `fila-gestion-vista.ts`
   (`ColumnaId`, `columnasDe`) `destino` pasa a `destinatario` + `tienda`; `ANCHO` según D2.
   *Hecho:* typecheck verde; `tests/unit/utils/fila-gestion-vista.test.ts` afirma las listas de R440
   con los rótulos escritos a mano.
-- [ ] **T2 — Celdas que recortan** (R442, R444, R445). En `FilaGestion.tsx`, una celda por dato según
+- [x] **T2 — Celdas que recortan** (R442, R444, R445). En `FilaGestion.tsx`, una celda por dato según
   D1, con `title`. *Hecho:* `tests/components/FilaGestion.test.tsx` comprueba por gestión: texto de
   cada celda, ausencia de «·» entre destinatario y tienda, `title` = texto entero y clases de recorte
   en el elemento que tiene el texto (no en un hijo en línea).
-- [ ] **T3 — Cabecera** (R440, R441, R443). `GestionesCierre.tsx` pinta la cabecera de las nuevas
+- [x] **T3 — Cabecera** (R440, R441, R443). `GestionesCierre.tsx` pinta la cabecera de las nuevas
   columnas. *Hecho:* `tests/components/DetalleCierreGestiones.test.tsx` y
   `tests/components/CierreBodegaDetalleGestiones.test.tsx` afirman la cabecera literal (con y sin
   Mensajero) y que cabecera y fila tienen el mismo número de celdas y el mismo `gridTemplateColumns`.
-- [ ] **T4 — Pestañas** (R447-R449). `ColaCierres.tsx:278` según D3. *Hecho:*
+- [x] **T4 — Pestañas** (R447-R449). `ColaCierres.tsx:278` según D3. *Hecho:*
   `tests/components/ColaCierres.test.tsx` («Pendientes (37)», «Resueltos (12)» y un caso con «(0)»),
   `tests/components/ColaCierresConsolidar.test.tsx` («A consolidar (3)», «Solicitados (8)»),
   `tests/components/CierreDiaColaPropia.test.tsx` («Cierres solicitados (7)» / «(0)»), literales a
   mano; R449 con `not.toMatch(/^\S.* \d+$/)` sobre cada pestaña.
-- [ ] **T5 — Tests y E2E con el texto viejo.** Actualizar los que afirman «Destinatario · tienda»,
+- [x] **T4b — Pastillas del filtro** (R450, PA1). `textoFiltro` en `fila-gestion-labels.ts` pasa a
+  `` `${nombre} (${n})` ``. *Hecho:* `tests/unit/utils/fila-gestion-vista.test.ts` (las 7 opciones
+  literales y `not.toMatch` en cada una) y los tests/E2E que leían «Entregado 2» al día.
+- [x] **T5 — Tests y E2E con el texto viejo.** Actualizar los que afirman «Destinatario · tienda»,
   «destinatario · tienda» en la fila o «Nombre n» en las pestañas (lista en `## Archivos esperados`;
   el helper `pestanaDeCola` de `e2e/_escenarios/cierres.ts:164-167` pasa a `^${nombre} \(\d+\)$`).
   *Hecho:* `grep` de «Destinatario · tienda» y de `name: "… \d"` en pestañas sin resultados en
   `tests/` y `e2e/`.
-- [ ] **T6 — E2E sin texto montado** (R446). En `e2e/cierre-bodega-satelite.spec.ts`, donde ya se abre
+- [x] **T6 — E2E sin texto montado** (R446). En `e2e/cierre-bodega-satelite.spec.ts`, donde ya se abre
   el detalle de bodega («Órdenes del cierre», `:277`): medir con `boundingBox()` la cabecera y la
   primera fila y afirmar R446 para cada par de celdas vecinas. Para que no pase en verde sin probar
   nada, afirmar antes que la celda de «Mensajero» recorta de verdad (`scrollWidth > clientWidth`); si
@@ -186,7 +192,7 @@ R446 → `e2e/cierre-bodega-satelite.spec.ts`; R447-R449 → `tests/components/C
 Para Carlos:
 - **PA1** — Las pastillas del filtro «Filtrar por resultado» dentro del detalle («Entregado 12»,
   «Todas 20») usan la misma forma sin paréntesis. ¿También pasan a «Entregado (12)»? Por defecto no
-  entran (pediste las pestañas).
+  entran (pediste las pestañas). **Respondida (2026-11-13): SÍ** → R450, tarea T4b.
 
 Para el leader:
 - `CierreFacturaDetalle` (`app/(app)/cierres-admin/_components/cierre-factura.tsx:2552`) y su

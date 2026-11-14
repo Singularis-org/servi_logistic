@@ -523,13 +523,13 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
     const { dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), { audiencia });
     const grupo = within(dialogo).getByRole("group", { name: "Filtrar por resultado" });
     expect(within(grupo).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      "Todas 2",
-      "Entregado 2",
-      "Reprogramado 0",
-      "Novedad 0",
-      "Devolución a origen por rechazo 0",
-      "Incidente 0",
-      "Con señales 0",
+      "Todas (2)",
+      "Entregado (2)",
+      "Reprogramado (0)",
+      "Novedad (0)",
+      "Devolución a origen por rechazo (0)",
+      "Incidente (0)",
+      "Con señales (0)",
     ]);
     expect(within(dialogo).queryByRole("searchbox")).toBeNull();
     const descargar = within(dialogo).getByRole("button", { name: "Descargar Gestiones del cierre C0FFEE01" });

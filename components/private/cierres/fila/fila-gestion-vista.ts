@@ -161,7 +161,8 @@ export function estadoVacioDe(filtro: FiltroGestiones): string {
 
 export type ColumnaId =
   | "guia"
-  | "destino"
+  | "destinatario"
+  | "tienda"
   | "mensajero"
   | "resultado"
   | "recibido"
@@ -179,7 +180,8 @@ export interface ColumnaFila {
 export function columnasDe(a: AudienciaFila, conMensajero = false): ColumnaFila[] {
   const inicio: ColumnaFila[] = [
     { id: "guia", label: L.COL_GUIA },
-    { id: "destino", label: L.COL_DESTINO },
+    { id: "destinatario", label: L.COL_DESTINATARIO },
+    { id: "tienda", label: L.COL_TIENDA },
   ];
   if (esMensajero(a)) {
     return [

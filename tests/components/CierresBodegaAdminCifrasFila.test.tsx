@@ -252,13 +252,13 @@ describe("R65, R214 — la nota de Fulfillment lleva la fecha del cargo que mand
 });
 
 describe("R214 — «Sin tarifa de pago» en la celda, en «Con señales» y en «Descargar»", () => {
-  it("la celda «Señales» de la fila dice «Sin tarifa de pago» y el filtro cuenta «Con señales 1»", async () => {
+  it("la celda «Señales» de la fila dice «Sin tarifa de pago» y el filtro cuenta «Con señales (1)»", async () => {
     const { dialogo } = await abrirGestiones(gestionSinTarifa(CARGO_AT));
     const lista = within(dialogo).getByRole("region", { name: "Órdenes del cierre" });
     expect(within(lista).getAllByText("Sin tarifa de pago")).toHaveLength(1);
     const grupo = within(dialogo).getByRole("group", { name: "Filtrar por resultado" });
-    expect(within(grupo).getByRole("button", { name: "Con señales 1" })).toBeTruthy();
-    expect(within(grupo).getByRole("button", { name: "Todas 2" })).toBeTruthy();
+    expect(within(grupo).getByRole("button", { name: "Con señales (1)" })).toBeTruthy();
+    expect(within(grupo).getByRole("button", { name: "Todas (2)" })).toBeTruthy();
   });
 
   it("la columna «Señales» de «Descargar» lleva «Sin tarifa de pago» en su fila y nada en la otra", async () => {

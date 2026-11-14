@@ -145,7 +145,7 @@ export function importe(n: number, opts: { solo?: boolean } = {}): RegExp {
 //
 //   pestanaDeCola(page, "Pendientes" | "Resueltos") → Locator
 //     La pestaña (`tab`) del `tablist` «Cierres del día por estado». Su nombre lleva el conteo
-//     («Resueltos 12»), así que se busca por el comienzo.
+//     («Resueltos (12)»), así que se busca por el comienzo.
 //
 //   pestanaDeColaBodega(page, "Por conciliar" | "Conciliados") → Locator
 //   regionColaBodega(page, "Por conciliar" | "Conciliados") → Locator
@@ -164,14 +164,14 @@ export function filaDeCola(region: Locator, nombre: string): Locator {
 export function pestanaDeCola(page: Page, nombre: "Pendientes" | "Resueltos"): Locator {
   return page
     .getByRole("tablist", { name: "Cierres del día por estado" })
-    .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\(\\d+\\)$`) });
 }
 
-/** SLT-127: la pestaña de la cola de bodega de la central («Por conciliar 3», «Conciliados 21»). */
+/** SLT-127: la pestaña de la cola de bodega de la central («Por conciliar (3)», «Conciliados (21)»). */
 export function pestanaDeColaBodega(page: Page, nombre: "Por conciliar" | "Conciliados"): Locator {
   return page
     .getByRole("tablist", { name: "Cierres de bodega por estado" })
-    .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\(\\d+\\)$`) });
 }
 
 /** SLT-127: la región (y la tabla) de la pestaña activa de la cola de bodega. */

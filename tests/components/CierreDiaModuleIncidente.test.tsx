@@ -184,7 +184,7 @@ describe("R18 — el incidente es un resultado PROPIO de la lista del mensajero"
     grupos.incidente = [incidente()];
     renderModule(grupos);
 
-    expect(screen.getByText("Incidente 1")).toBeInTheDocument();
+    expect(screen.getByText("Incidente (1)")).toBeInTheDocument();
     const fila = filaDe("gi1");
     expect(within(fila).getByText("Incidente")).toBeInTheDocument();
   });
@@ -197,7 +197,7 @@ describe("R18 — el incidente es un resultado PROPIO de la lista del mensajero"
 
     expect(within(filaDe("gi1")).queryByText("Novedad")).toBeNull();
     expect(within(filaDe("gd1")).queryByText("Incidente")).toBeNull();
-    expect(screen.getByText("Novedad 1")).toBeInTheDocument();
+    expect(screen.getByText("Novedad (1)")).toBeInTheDocument();
   });
 
   it("la causa que él reportó sale en «Señales» (R9 de la 158)", () => {

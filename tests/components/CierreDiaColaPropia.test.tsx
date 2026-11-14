@@ -120,7 +120,10 @@ describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
     montar();
     expect(screen.getByText("Tus cierres enviados a aprobación y cómo terminaron.")).toBeInTheDocument();
     const tablist = screen.getByRole("tablist", { name: "Tus cierres" });
-    expect(within(tablist).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Cierres solicitados 7"]);
+    expect(within(tablist).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Cierres solicitados (7)"]);
+    // SLT-152 (R447, R449): el texto es el nombre accesible y lleva el conteo entre paréntesis.
+    expect(within(tablist).getByRole("tab", { name: "Cierres solicitados (7)" })).toBeInTheDocument();
+    expect(within(tablist).getByRole("tab").textContent).not.toMatch(/^\S.* \d+$/);
     expect(screen.getAllByRole("region", { name: "Cierres solicitados" })).toHaveLength(1);
   });
 
@@ -159,10 +162,10 @@ describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
     expect(screen.queryByText("MARCADOR-RESUMEN-PROPIO-Q7")).not.toBeInTheDocument();
   });
 
-  it("R160: vacío con el texto de hoy", () => {
+  it("R160, R448 (SLT-152): vacío con el texto de hoy y la pestaña «Cierres solicitados (0)»", () => {
     const region = montar([], 0);
     expect(within(region).getByText("Aún no has solicitado ningún cierre.")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 0" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (0)" })).toBeInTheDocument();
   });
 
   it("R160: error con el texto de hoy cuando la página no se puede leer", async () => {

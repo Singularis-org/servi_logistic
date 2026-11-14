@@ -101,7 +101,7 @@ test.describe("Cierres del día — el ingreso por rechazos separa SLA y manual"
     // «Filtrar por resultado», y la región por resultado, la lista «Órdenes del cierre».
     await detalle
       .getByRole("group", { name: "Filtrar por resultado" })
-      .getByRole("button", { name: /^Devolución a origen por rechazo \d+$/ })
+      .getByRole("button", { name: /^Devolución a origen por rechazo \(\d+\)$/ })
       .click();
     const rechazadas = detalle.getByRole("region", { name: "Órdenes del cierre" });
     // El `has` se busca DENTRO de cada fila: va desde `page`, no desde la región.

@@ -99,7 +99,7 @@ async function cobrosDeLaGestion(detalle: Locator, pestana: RegExp): Promise<Loc
   await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
   await detalle
     .getByRole("group", { name: "Filtrar por resultado" })
-    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\d+$`) })
+    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\(\\d+\\)$`) })
     .click();
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
   await ordenes.getByRole("button", { name: /^(Desglose de ingreso|Detalle) de la orden /, expanded: false }).first().click();

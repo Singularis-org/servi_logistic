@@ -879,7 +879,7 @@ describe("T M.1 · R53 — los 3 listados del Anexo IV siguen completos, sin con
     expect(seccion.querySelectorAll("[data-gestion]")).toHaveLength(FILAS_ANEXO_IV);
     // Los contadores, que es lo que paginar volvería mentira: dirían 25 de 30.
     expect(screen.getByRole("tab", { name: `Gestiones (${FILAS_ANEXO_IV})` })).toBeInTheDocument();
-    expect(screen.getByText(`Entregado ${FILAS_ANEXO_IV}`)).toBeInTheDocument();
+    expect(screen.getByText(`Entregado (${FILAS_ANEXO_IV})`)).toBeInTheDocument();
     expect(within(seccion).queryAllByRole("navigation")).toHaveLength(0);
 
     // Contraprueba de que la pantalla SÍ sabe paginar cuando toca: su otra tabla lleva control.
