@@ -225,13 +225,26 @@ function pie(dialogo: HTMLElement): string[] {
     .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 }
 
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R455): el valor del par
+ * con ese rótulo en la cabecera (`<dt>` → su `<dd>`), o `null` si el par no se pinta.
+ */
+function valorDelPar(raiz: HTMLElement, rotulo: string): string | null {
+  const header = raiz.querySelector("header") as HTMLElement;
+  const dt = within(header).queryAllByRole("term").find((t) => t.textContent === rotulo);
+  return dt?.nextElementSibling?.textContent ?? null;
+}
+
 describe("R40, R111, R112, R118, R119 — «Ver / decidir» abre el detalle único en modo decidir", () => {
   it("dialog con su nombre, pastilla «Pendiente de conciliar», franja y pie «Cerrar» + «Marcar recibido»", async () => {
     const user = montar();
     const dialogo = await abrirPendiente(user);
     const cabecera = dialogo.querySelector("header") as HTMLElement;
     expect(within(cabecera).getByText("Pendiente de conciliar")).toBeTruthy();
-    expect(cabecera.textContent).toContain("Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros");
+    // SLT-153 (R454): cada dato en su par.
+    expect(valorDelPar(dialogo, "Origen")).toBe("Bodega satélite");
+    expect(valorDelPar(dialogo, "Solicitado por")).toBe("Sara Satélite");
+    expect(valorDelPar(dialogo, "Mensajeros")).toBe("2");
     expect(within(dialogo).getByRole("status").textContent).toContain("falta marcar el dinero recibido");
     expect(pie(dialogo)).toEqual(["Cerrar", "Marcar recibido la consolidación de Limón del 2026-11-07"]);
     expect(
@@ -270,7 +283,8 @@ describe("R111 — «Ver» de Resueltos abre en solo lectura", () => {
     const user = montar();
     const dialogo = await abrirResuelto(user);
     const cabecera = dialogo.querySelector("header") as HTMLElement;
-    expect(within(cabecera).getByText("Recibido")).toBeTruthy();
+    // SLT-153: «Recibido» también es un rótulo de la cabecera; la pastilla vive en la fila del título.
+    expect(within(cabecera.firstElementChild as HTMLElement).getByText("Recibido")).toBeTruthy();
     expect(within(dialogo).queryByRole("status")).toBeNull();
     expect(pie(dialogo)).toEqual(["Desmarcar la consolidación de Limón del 2026-11-07", "Cerrar"]);
     expect(dialogo.querySelector("footer")!.textContent).not.toContain("márcalo recibido");
