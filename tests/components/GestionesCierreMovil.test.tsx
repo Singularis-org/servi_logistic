@@ -162,7 +162,8 @@ describe("SLT-165 R527 — barra fija con buscador, «Filtros» y «Descargar»"
     await buscarTexto(user, "Incidente 3");
     await waitFor(() => expect(guias()).toEqual(["3003"]));
     await user.click(screen.getByRole("button", { name: "Limpiar todo" }));
-    await waitFor(() => expect(guias()).toHaveLength(25));
+    // La primera página de todas otra vez: de la 2001 a la 2025 (ancla de contenido, no solo el conteo).
+    await waitFor(() => expect([guias()[0], guias()[24], guias().length]).toEqual(["2001", "2025", 25]));
     expect(screen.queryByRole("group", { name: "Filtrar por resultado" })).toBeNull();
   });
 });
