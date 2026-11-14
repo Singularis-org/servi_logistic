@@ -225,3 +225,121 @@ algo.
 Servidor de la rebanada 1 hecho y probado contra Postgres real (R460-R467 verdes, 13/13 mutaciones
 muertas); el gate queda rojo en typecheck por los consumidores de T3 y los tests de T4, como prevé
 el spec.
+
+---
+
+# Tanda 2 — vista (T3), frontend_dev, 2026-11-14
+
+## Archivos
+
+Producción (todos en `## Archivos esperados`):
+
+- `components/private/cierres/detalle/detalle-cierre-vista.ts` — `NivelCentral`; `DetalleBodegaVista`
+  con las cifras de la empresa `| null` y `centralDebe?`; `DetalleMensajeroVista.haciaLaCentral?`;
+  `cifrasDe` (S4 = `tarjetasAConsolidar`, S6 = recaudado/pago/gana bodega/debe llegar; central sin
+  tarjetas de la empresa si no llegan); `cuentaCentral(nivel, rotuloPago)` + `repartoCentral`;
+  `lineasDinero` decide por los datos (D4); `pestanasDe` con la rama satélite; `empresaDe` (todo o
+  `null`) y `haciaLaCentralDe` en `vistaMensajeroDesdeAdmin`; `centralDebe` en `vistaBodegaDesdeAdmin`.
+  Ningún `CifraId` nuevo.
+- `components/private/cierres/fila/fila-gestion-vista.ts` — `veDineroEmpresa` (y `veFulfillment`
+  delega), `ColumnaId "ganaBodega"`, `columnasDe` con tercer parámetro obligatorio,
+  `montoDeColumna("ganaBodega")`, `tarjetasDe` con el cobro solo para la central.
+- `components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts` — `columnasDescargaDetalle`,
+  `ganaBodega` en la fila.
+- Cableado: `GestionesCierre.tsx`, `FilaGestion.tsx` (+ ancho de la pista `ganaBodega`, que el
+  `Record<ColumnaId>` exige), `DetalleCierreBodegaAbierto.tsx`, `CierresAdminModule.tsx`
+  (`DetalleAbierto` nulable + los tres campos de R467; columnas de descarga).
+
+Tests:
+
+- En la lista: `tests/unit/utils/detalle-cierre-vista.test.ts`, `tests/unit/utils/fila-gestion-vista.test.ts`,
+  `tests/unit/descarga/detalle-cierre-descarga-columnas.test.ts`, `tests/components/DetalleCierre.test.tsx`,
+  `tests/components/FilaGestion.test.tsx`, `tests/components/CierresAdminDetalleUnico.test.tsx` (T4.1).
+- **Fuera de la lista** (los pidió el typecheck o el rojo que causa T3; cada cambio cita su `R`):
+  - `tests/fixtures/detalle-cierre-admin-anterior.tsx` — typecheck (12): el panel antiguo recibe las
+    cifras ya nulables; `exigir()` falla ruidoso si un doble trae `null` (no pinta nada inventado).
+  - `tests/components/CierresAdminModule.test.tsx` (7 tests), `CierreBodegaDesglosePorTienda.test.tsx`
+    (21), `CierreBodegaDetalleCascadas.test.tsx` (25), `DineroIdentidadesEnPantalla.test.tsx` (4):
+    montaban el módulo con su audiencia POR DEFECTO, `"satelite"`, y verificaban el dinero de la
+    empresa: justo la fuga que esta ficha cierra. Pasan a `audiencia="admin"` (R477), sin tocar un
+    solo esperado.
+  - `tests/components/ConsolidacionBodegaRefresco.test.tsx` (1): las pestañas de la satélite pasan a
+    `["Gestiones (1)", "Lo que va a la central", "Mensajeros (1)", "Conciliación"]` (R470).
+
+## Desvíos
+
+1. `haciaLaCentral?` y `centralDebe?` **opcionales** en la vista (el diseño los daba obligatorios),
+   por la misma razón que la tanda 1: obligatorios rompían los dobles de 4 tests de componentes más.
+   Ausente = `null` = sin dato: no se pinta nada de la central; nunca «₡0». `centralDebe` es
+   `string | null` (no `string`): sin dato del servidor no hay tarjeta, y así se distingue de «0.00».
+   `vistaMensajeroDesdeCierreDia` y `vistaMensajeroEnCurso` NO escriben `haciaLaCentral: null`
+   explícito (ausente = lo mismo) para no cambiar el `toEqual` de SLT-108.
+2. S4 sin `centralDebe` llama a `tarjetasAConsolidar` con `"0.00"`: esa función omite la caja en cero,
+   así que el resultado es el mismo que «sin dato» (ninguna caja, ningún «₡0»). Probado (R478).
+3. Tamaño: `scripts/tamano-pr.mjs` da **31/40 archivos** (692/1000 de producción, 1447/3000 de
+   tests). Con T4 (servicios + integraciones) y T5 (E2E) pasa del 80 % (32) y probablemente de 40:
+   lo decide el leader.
+
+## Mapa R → test (T3)
+
+| R | Test | Mutación que lo pone rojo |
+|---|---|---|
+| R468 | `detalle-cierre-vista.test.ts` › SLT-154 › S4 › «R468 — cuatro tarjetas…», «…La central debe 800…»; `DetalleCierre.test.tsx` › SLT-154 › S4 | M8 |
+| R469 | `detalle-cierre-vista.test.ts` › S4 › «R469 — «Lo que va a la central»…»; `DetalleCierre.test.tsx` › S4 | M11, M16 (las cuentas de la empresa) |
+| R470 | `detalle-cierre-vista.test.ts` › S4 › «R470 — pestañas…»; `DetalleCierre.test.tsx` › S4; `ConsolidacionBodegaRefresco` (d) | M12 |
+| R471 | `detalle-cierre-vista.test.ts` › S6 › «R471 — recaudado…», «…aunque llegara…»; `DetalleCierre.test.tsx` › S6 | M8b |
+| R472 | `detalle-cierre-vista.test.ts` › S6 › «R472 — la barra…», «R472, R478 — sin empresa ni…» | M15 (sin datos), M17 |
+| R473 | `detalle-cierre-vista.test.ts` › S6 › «R473 — pestañas…» y `pestanasDe` › «mensajero · satélite»; `DetalleCierre.test.tsx` › S6; `CierresAdminDetalleUnico` › «SLT-154 (R473, R471)» | M12b |
+| R474 | `fila-gestion-vista.test.ts` › SLT-154 › «R474 — …» (3); `FilaGestion.test.tsx` › SLT-154 › «R474 — la cabecera…», «…₡500…» | M9, M18 |
+| R475 | `fila-gestion-vista.test.ts` › SLT-154 › «R475 — …» y R25; `FilaGestion.test.tsx` › SLT-154 › «R475 — desplegada…»; `CierresAdminDetalleUnico` › «satélite: sin Fulfillment…» | M10 |
+| R476 | `detalle-cierre-descarga-columnas.test.ts` › SLT-154 › «R476 — …» (3) | M13 |
+| R477 | `detalle-cierre-vista.test.ts` › «la central (R477)…» (2); `fila-gestion-vista.test.ts` › «R477 — …» (2); `FilaGestion.test.tsx` › «R477 — …»; descarga › «R477 — la central…»; los 4 de componentes que pasan a `admin` | (contraprueba de M9/M10/M13: con la central siguen verdes) |
+| R478 | `detalle-cierre-vista.test.ts` › «R478 — …» (8: centralDebe, haciaLaCentral, empresa con una `null`, netoEmpresa, cobradoSobreRecaudado, totalesIngreso, mensajero central sin empresa) | M11, M14, M15, M16, M17, M19 |
+
+Literales a mano: corpus del E2E (recaudado 9 000 − pago 1 500 − bodega 500 = debe llegar 7 000;
+`money()` sin «,00»: «₡9.000», «₡1.500», «₡500», «₡7.000»). Reparto de entrada [78, 17, 5] =
+7000/9000 = 77,8 · 1500/9000 = 16,7 · 500/9000 = 5,6 por restos mayores (es entrada del doble; la
+vista solo lo pasa).
+
+## T3.6 — Mutaciones (aplicar, correr, anotar, `git checkout`, diff limpio; las 15)
+
+| M | Mutación | Rojo |
+|---|---|---|
+| M8 | `cifrasDe` bodega satélite → `cifrasBodega` | R468 ×3 (unidad) + S4 (componente) |
+| M8b | sin la rama satélite del mensajero | R471 ×2 + S6 (componente) |
+| M9 | `columnasDe` ignora `quienMiraEsCentral` (`true ?`) | R474 ×2 (unidad) + ×2 (componente) |
+| M10 | `tarjetasDe` siempre con cobro (`!esMensajero`) | R25, R95, R475 (unidad y componente; 6) |
+| M11 | `cuentaQueda` sin exigir `netoEmpresa` | R478 «con `netoEmpresa: null`…» |
+| M12 | `pestanasDe` bodega sin la rama satélite | R470 + S4 (componente) |
+| M12b | `pestanasDe` mensajero sin la rama satélite | R473 ×2 + S6 (componente) |
+| M13 | `columnasDescargaDetalle` ignora `veDineroEmpresa` | R476 ×2 |
+| M14 | `empresaDe` sin mirar `netoEmpresa` | R478 «basta UNA cifra…» |
+| M15 | `haciaLaCentralDe` sin la guarda de ausentes | R478 «sin los campos de R467…» |
+| M16 | `cuentaFactura` sin exigir `cobradoSobreRecaudado` | **sobrevivió** la 1.ª vez → se añadió «R478 — sin `cobradoSobreRecaudado`…» → rojo |
+| M17 | central sin `empresa` sin cortar las dos tarjetas | R478 «mensajero · central sin `empresa`…» |
+| M18 | `montoDeColumna("ganaBodega")` quitado | R474 «₡500» (componente) + unidad |
+| M19 | `centralDebe ?? "0.00"` en `vistaBodegaDesdeAdmin` | R466 «`centralDebe` pasa tal cual; ausente, `null`» |
+
+Ninguna sobrevive al final.
+
+## Verificación (tanda 2)
+
+- `pnpm run typecheck`: de 134 a **99 errores**, todos de T4 (servicios e integración, no tocados):
+  `tests/unit/services/cierres-bodega-admin-service.test.ts` 65, `tests/unit/services/cierres-admin-service.test.ts` 27,
+  `tests/integration/db/cierre-iva-aparte-sl39.test.ts` 5,
+  `tests/integration/db/cierres-resumen-modelo-nuevo-descarga-sql-real.test.ts` 2. Producción: 0.
+- `pnpm run lint`: **0 errores** (251 avisos, ninguno en líneas de esta tanda; el de
+  `DineroIdentidadesEnPantalla.test.tsx:541` es anterior).
+- vitest (base desechable exportada): los 5 de T3.5 → 5/5 archivos, 241 tests verdes; 70 archivos de
+  componentes/unidad de cierres (`grep` de `components/private/cierres`, los módulos y `cierre-labels`)
+  + 12 más de cierres de bodega → todos verdes tras los cambios de arriba (antes: 36 + 25 rojos, todos
+  por montar la satélite por defecto con el dinero de la empresa).
+- `git diff --diff-filter=A --name-only origin/dev -- '*.tsx'` → vacío (y contra el merge-base,
+  vacío). Ningún `CifraId` nuevo; ninguna prop nueva en `DineroCierre`, `Cuenta`, `CifrasCierre`,
+  `DetalleCierre`, `GestionesCierre` ni `FilaGestion`.
+- No corrido (fuera de la tanda): `./init.sh` (rojo por T4), E2E, dev server.
+
+## Veredicto (tanda 2)
+
+Vista de T3 hecha y probada con literales a mano (R468-R478, 15 mutaciones muertas); typecheck de
+producción en cero; quedan los 99 errores y los rojos de servicios/integración de T4.

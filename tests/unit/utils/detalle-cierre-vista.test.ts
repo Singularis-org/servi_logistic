@@ -1448,6 +1448,14 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
       expect(cifrasDe("bodega", "central", sinNeto).map((c) => c.id)).toEqual(["recaudado", "paraCentral", "pago"]);
     });
 
+    it("R478 — sin `cobradoSobreRecaudado`, sin «Lo que se le factura a la tienda» (la otra cuenta, sí)", () => {
+      const sinCobrado = { ...BODEGA, cobradoSobreRecaudado: null };
+      expect(lineasDinero("bodega", sinCobrado).cuentas.map((c) => c.titulo)).toEqual([
+        "Lo que va a la central",
+        "De lo facturado, le queda a la empresa",
+      ]);
+    });
+
     it("R478 — sin `totalesIngreso`, ninguna de las dos cuentas de la empresa ni «Por tienda»", () => {
       const sinEmpresa = { ...BODEGA, totalesIngreso: null, partesPorTienda: null };
       const dinero = lineasDinero("bodega", sinEmpresa);

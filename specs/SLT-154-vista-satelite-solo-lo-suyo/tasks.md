@@ -85,15 +85,15 @@
 
 ## T3 — Vista y cableado (depende de T2.1; [P] con T2.2–T2.6)
 
-- [ ] **T3.1** `detalle-cierre-vista.ts`: tipos de la vista, `vistaMensajeroDesdeAdmin` /
+- [x] **T3.1** `detalle-cierre-vista.ts`: tipos de la vista, `vistaMensajeroDesdeAdmin` /
   `vistaBodegaDesdeAdmin`, `cifrasDe`, `lineasDinero`, `cuentaCentral(nivel, rotuloPago)`,
   `pestanasDe` (`design.md > La vista`). Ningún `CifraId` nuevo.
-- [ ] **T3.2** `fila-gestion-vista.ts`: `veDineroEmpresa`, `ColumnaId "ganaBodega"`, `columnasDe` con
+- [x] **T3.2** `fila-gestion-vista.ts`: `veDineroEmpresa`, `ColumnaId "ganaBodega"`, `columnasDe` con
   tercer parámetro obligatorio, `montoDeColumna`, `tarjetasDe`.
-- [ ] **T3.3** `detalle-cierre-descarga-columnas.ts`: `columnasDescargaDetalle`, `ganaBodega` en la fila.
-- [ ] **T3.4** Cableado: `GestionesCierre.tsx`, `FilaGestion.tsx`, `DetalleCierreBodegaAbierto.tsx`,
+- [x] **T3.3** `detalle-cierre-descarga-columnas.ts`: `columnasDescargaDetalle`, `ganaBodega` en la fila.
+- [x] **T3.4** Cableado: `GestionesCierre.tsx`, `FilaGestion.tsx`, `DetalleCierreBodegaAbierto.tsx`,
   `CierresAdminModule.tsx` (`DetalleAbierto` y `abrirDetalle`).
-- [ ] **T3.5** Tests con literales a mano:
+- [x] **T3.5** Tests con literales a mano:
   - `tests/unit/utils/detalle-cierre-vista.test.ts`: R468–R473 y R478 para la satélite; R477 para la
     central. Fixture S4: general «9000.00» (efectivo), pago «1500.00», bodega «500.00», debe llegar
     «7000.00», `centralDebe` «0.00» → 4 tarjetas en orden [recaudado, pago, ganaBodega, paraCentral];
@@ -110,7 +110,7 @@
   - `tests/components/FilaGestion.test.tsx`: sin la central, cabecera con «Gana bodega» y sin «Cobro a
     la tienda»; al desplegar, sin «Se le cobra a la tienda» ni «Ver cómo se calculó»; con «₡500» en la
     gestión rechazada.
-- [ ] **T3.6** **Mutaciones**: M8 `cifrasDe` de la satélite devuelve las de la central → rojo R468;
+- [x] **T3.6** **Mutaciones**: M8 `cifrasDe` de la satélite devuelve las de la central → rojo R468;
   M9 `columnasDe` ignora `quienMiraEsCentral` → rojo R474; M10 `tarjetasDe` siempre con cobro → rojo
   R475; M11 `lineasDinero` pinta `cuentaQueda` con `null` → rojo R478; M12 `pestanasDe` sin la rama
   satélite → rojo R470.
