@@ -141,14 +141,14 @@ los genera. En los negativos, un valor imposible de encontrar por casualidad.
 
 ## Tasks
 
-- [ ] **T1 — Cabecera con rótulos.** `detalle-cierre-labels.ts` gana los rótulos (Folio, Destino, Zona,
+- [x] **T1 — Cabecera con rótulos.** `detalle-cierre-labels.ts` gana los rótulos (Folio, Destino, Zona,
   Solicitado, Aprobado, Aprobado por, Rechazado, Rechazado por, Del día, Día, Origen, Solicitado por,
   Mensajeros, Recibido, Recibido por) y pierde los textos de la línea única que queden sin uso.
   `detalle-cierre-vista.ts`: `DetalleMensajeroVista` separa destino (tipo) y zona, y una función pura
   arma la lista de pares de cada variante (sustituye a `fechasMensajero`/`fechasBodega`/`destinoLegible`
   en la cabecera). `DetalleCierre.tsx`: `LineaCabecera` pinta un `<dl>` con los pares.
   *Hecho:* R450-R455 en verde; `cierres-trato-tu.guardia.test.ts` en verde.
-- [ ] **T2 [P] — Tests de la cabecera.** Actualiza `DetalleCierre.test.tsx`, `CierreDiaPagina.test.tsx`,
+- [x] **T2 [P] — Tests de la cabecera.** Actualiza `DetalleCierre.test.tsx`, `CierreDiaPagina.test.tsx`,
   `detalle-cierre-vista.test.ts` y `e2e/cierres-rediseno.spec.ts:250`. *Hecho:* cada R450-R455 con su
   test y los literales a mano.
 - [x] **T3 — Folio en el contrato de filtros.** (servidor hecho; usar `sinFiltrosBodega` en los dos módulos queda para T5, frontend) `filtrosCierresSchema` y `filtrosCierresBodegaSchema`
@@ -162,7 +162,7 @@ los genera. En los negativos, un valor imposible de encontrar por casualidad.
   parametrizado (`strpos(upper(right(id, 8)), $texto) > 0`) sobre `cierre_dia` o `cierre_bodega`
   según la lista (D6). *Hecho:* R457-R459 en verde contra Postgres real; los `*-where.test.ts`
   existentes, sin tocar, en verde.
-- [ ] **T5 — Barra (depende de T3).** `FiltrosCierresBarra` cambia `SIN_BUSQUEDA` por un `onChange`
+- [x] **T5 — Barra (depende de T3).** `FiltrosCierresBarra` cambia `SIN_BUSQUEDA` por un `onChange`
   que pone `folio` en los filtros, con el placeholder `BUSCA_POR_FOLIO` importado (no copiado); la
   nota de cabecera «NO HAY BUSCADOR DE TEXTO» se actualiza. *Hecho:* R456 en verde.
 - [ ] **T6 — Cierre.** `./init.sh` en verde; E2E locales de `/cierres-admin` y `/cierre-dia` que

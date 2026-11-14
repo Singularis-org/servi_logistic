@@ -436,19 +436,30 @@ describe("SLT-100 R19, R21 — «Gestiones»: novedad interna, «Descargar» y s
   });
 });
 
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R455): el valor del par
+ * con ese rótulo en la cabecera (`<dt>` → su `<dd>`), o `null` si el par no se pinta.
+ */
+function valorDelPar(raiz: HTMLElement, rotulo: string): string | null {
+  const header = raiz.querySelector("header") as HTMLElement;
+  const dt = within(header).queryAllByRole("term").find((t) => t.textContent === rotulo);
+  return dt?.nextElementSibling?.textContent ?? null;
+}
+
 describe("SLT-100 R80 — la cabecera dice quién resolvió", () => {
   it("con el nombre del servidor: «Aprobado <fecha> por <nombre>»", async () => {
     const { dialogo } = await abrir(detalle("aprobado", { resueltoPorNombre: "Carla Resolutora" }));
-    expect(
-      within(dialogo).getByText(
-        /· Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10 por Carla Resolutora$/,
-      ),
-    ).toBeInTheDocument();
+    // SLT-153 (R450): cada dato en su par.
+    expect(valorDelPar(dialogo, "Solicitado")).toBe("2026-11-07 18:42");
+    expect(valorDelPar(dialogo, "Aprobado")).toBe("2026-11-07 19:10");
+    expect(valorDelPar(dialogo, "Aprobado por")).toBe("Carla Resolutora");
   });
 
   it("sin el nombre: la fecha sola, sin «por»", async () => {
     const { dialogo } = await abrir(detalle("aprobado"));
-    expect(within(dialogo).getByText(/· Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10$/)).toBeInTheDocument();
+    expect(valorDelPar(dialogo, "Aprobado")).toBe("2026-11-07 19:10");
+    // SLT-153 (R451): sin nombre, el par «Aprobado por» no se pinta.
+    expect(valorDelPar(dialogo, "Aprobado por")).toBeNull();
     expect(within(dialogo).queryByText(/Aprobado 2026-11-07 19:10 por/)).toBeNull();
   });
 });

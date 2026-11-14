@@ -125,7 +125,8 @@ describe("R59, R150, R161 — «Ver» abre el detalle único con audiencia mensa
     const { dialogo } = await abrir();
 
     expect(verCierrePasadoMock).toHaveBeenCalledWith({ cierreId: "c1d8a2b0-0000-4000-8000-0000aa11bb22" });
-    expect(within(dialogo).getByText("AA11BB22")).toBeInTheDocument();
+    // SLT-153 (R450, D2): el folio va con «#», como en la cola.
+    expect(within(dialogo).getByText("#AA11BB22")).toBeInTheDocument();
     expect(within(dialogo).getByText(/Bodega central/)).toBeInTheDocument();
     expect(cifra(dialogo, "Recaudado")).toContain("₡300");
     expect(cifra(dialogo, "Gestiones")).toContain("1");

@@ -189,7 +189,10 @@ describe("R121 (PA2) — la pestaña cuenta filas; la cabecera, mensajeros", () 
     const tab = await screen.findByRole("tab", { name: "Mensajeros (2)" });
     expect(screen.queryByRole("tab", { name: "Mensajeros (1)" })).toBeNull();
     const dialogo = screen.getByRole("dialog");
-    expect(dialogo.querySelector("header")!.textContent).toContain("Bodega satélite · lo solicitó Sara Satélite · 1 mensajero");
+    // SLT-153 (R454): «Mensajeros» → mensajeros DISTINTOS, en su par.
+    const header = dialogo.querySelector("header") as HTMLElement;
+    const dt = within(header).getAllByRole("term").find((t) => t.textContent === "Mensajeros");
+    expect(dt?.nextElementSibling?.textContent).toBe("1");
     await user.click(tab);
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3);
   });

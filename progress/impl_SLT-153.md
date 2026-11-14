@@ -96,3 +96,57 @@ Base desechable `slt153_wt` (DATABASE_URL exportada en el mismo comando; NODE_OP
   antes; ninguna consulta a cierres. Es el orden de autorización de siempre.
 
 Veredicto: servidor del folio buscable (R456-R459) hecho y probado contra Postgres real; 10/10 mutaciones muertas; rojos del related y de guardias son de base sin semilla / ajenos.
+
+---
+
+# Tanda frontend (R450-R456, T1, T2, T5)
+
+## Archivos
+- Producción: `components/private/cierres/detalle/{detalle-cierre-labels.ts,detalle-cierre-vista.ts,DetalleCierre.tsx}`
+  (rótulos; `DetalleMensajeroVista.zona` aparte de `destino`; `paresCabeceraMensajero`/`paresCabeceraBodega`
+  sustituyen a `fechasMensajero`/`fechasBodega`; `DatosCabecera` pinta un `<dl>` con `aria-label`),
+  `app/(app)/cierres-admin/_components/FiltrosCierresBarra.tsx` (buscador → `filtros.folio`, placeholder
+  `BUSCA_POR_FOLIO` importado, `SIN_BUSQUEDA` y la nota «NO HAY BUSCADOR» retirados; el buscador ya no se
+  deshabilita mientras cargan las listas: perdería el foco tras cada pausa),
+  `CierresBodegaAdminModule.tsx` y `ConsolidacionBodegaModule.tsx` (`sinFiltrosBodega` compartido).
+- Tests: nuevo `tests/components/FiltrosCierresBarraFolio.test.tsx`; actualizados `DetalleCierre`,
+  `CierreDiaPagina`, `CierreDiaDetalleUnico`, `CierreDiaModule477Correccion`, `CierresAdminDetalleUnico`,
+  `CierresBodegaAdminDetalleUnico`, `DetalleCierreBodega`, `DetalleCierreDinero`, `DineroIdentidadesEnPantalla`
+  (fixtures), `tests/unit/utils/detalle-cierre-vista.test.ts`, `tests/unit/guards/cierres-trato-tu.guardia.test.ts`
+  (fila I1 → «Busca por folio» en `cola-propia-vista.ts`: el texto viejo desapareció por R456).
+- E2E: `e2e/cierres-rediseno.spec.ts` (par «Aprobado por» → maestro), `e2e/cierre-vencido-modelo.spec.ts` («Del día»).
+- No tocados: `ColaCierres.tsx` ni la fila de gestión (SLT-152 «Tablas de cierres legibles»).
+
+## R → test
+| R | Test |
+| --- | --- |
+| R450 | `DetalleCierre.test.tsx` «R450: mensajero solicitado / aprobado (satélite) / rechazado»; `CierresAdminDetalleUnico.test.tsx` R80 |
+| R451 | `DetalleCierre.test.tsx` «R451: sin zona ni quién lo aprobó…»; `detalle-cierre-vista.test.ts` «R451: fecha inválida» |
+| R452 | `CierreDiaPagina.test.tsx` «SLT-153 (R452) — cierre pasado aprobado», R247 (rechazado), R249 (vencido «Del día») |
+| R453 | `CierreDiaPagina.test.tsx` R241/R453; `DetalleCierre.test.tsx` «R453» |
+| R454 | `DetalleCierre.test.tsx` «R454: bodega sin marca / con marca»; `CierresBodegaAdminDetalleUnico`, `DetalleCierreBodega` |
+| R455 | `DetalleCierre.test.tsx` «R455: un término y una definición por par»; `e2e/cierres-rediseno.spec.ts` (Aprobado por) |
+| R456 | `FiltrosCierresBarraFolio.test.tsx` (placeholder; «  #3f2a » → `filtros.folio` en las dos listas y página 1; consolidación; negativo «QZQ7Q» no viaja tras borrar; `.strict()` de bodega) |
+
+## Mutaciones (aplicadas con sed, revertidas con copia; `grep -c MUTACION` = 0 tras revertir)
+- M1 quitar el par «Zona» de `paresCabeceraMensajero` → `DetalleCierre.test.tsx` M1_EXIT=1, 5 failed | 24 passed. Revertida.
+- M2 el buscador no pasa el folio (`...(folio === "" ? {} : { folio })` comentado) → `FiltrosCierresBarraFolio.test.tsx`
+  M2_EXIT=1, 4 failed | 1 passed. Revertida.
+
+## Verificación
+- `pnpm run typecheck` → TYPECHECK_EXIT=0.
+- `pnpm exec eslint <tocados>` → ESLINT_EXIT=0 (1 warning previo en `DineroIdentidadesEnPantalla.test.tsx:541`, no tocado).
+- `vitest related --run <tocados>` → RELATED_EXIT=0, 72 archivos, 1531/1531.
+- `vitest run tests/unit/guards` → GUARDS_EXIT=1: 246/247 archivos; el rojo es `dependencias-declaradas-presentes`
+  (init.sh sin «FIN PASO 2», ajeno; ya anotado en la tanda backend). `cierres-trato-tu` verde.
+- E2E `dinero` (cierres-rediseno, cierre-vencido-modelo, cierres-admin, cierre-dia, cierre-bodega-satelite,
+  reglas-bloqueos-cierre, ajuste-pago-mensajero-cierre, cierre-modelo-nuevo-plan-porcentual), base `slt153_e2e`
+  nueva, `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3046`, `E2E_PUERTO=3046 E2E_STORAGE_PUERTO=54331`:
+  - corrida 1: 53 passed, 1 failed por caída de proceso Windows (`code=3221226505`, `cierres-rediseno.spec.ts:1152` SLT-107);
+  - corrida 2: el servidor de la app cayó al arrancar (`ERR_CONNECTION_REFUSED`/`fetch failed` desde el 1.er test): 25 failed, 29 did not run;
+  - corridas 3 y 4 seguidas: 54 passed, 0 failed, 0 skipped, 0 flaky (E2E_EXIT=0 las dos).
+
+## Abierto
+- Más de 20 caracteres en el buscador → `validation_error` del servidor (mismo comportamiento que `/cierre-dia`); el campo no limita la longitud.
+
+Veredicto: cabecera con rótulos (R450-R455) y buscador por folio de la barra (R456) hechos; 2/2 mutaciones muertas; E2E 2 corridas verdes.
