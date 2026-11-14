@@ -165,7 +165,7 @@ los genera. En los negativos, un valor imposible de encontrar por casualidad.
 - [x] **T5 — Barra (depende de T3).** `FiltrosCierresBarra` cambia `SIN_BUSQUEDA` por un `onChange`
   que pone `folio` en los filtros, con el placeholder `BUSCA_POR_FOLIO` importado (no copiado); la
   nota de cabecera «NO HAY BUSCADOR DE TEXTO» se actualiza. *Hecho:* R456 en verde.
-- [ ] **T6 — Cierre.** `./init.sh` en verde; E2E locales de `/cierres-admin` y `/cierre-dia` que
+- [x] **T6 — Cierre.** `./init.sh` en verde; E2E locales de `/cierres-admin` y `/cierre-dia` que
   tocan la cabecera o la barra (`docs/perfil-agentes.md > E2E en local antes del PR`).
 
 ## Tamaño
