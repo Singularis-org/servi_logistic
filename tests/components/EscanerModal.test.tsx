@@ -5,6 +5,19 @@ import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerModal } from "@/components/shared/EscanerModal";
+import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
+
+// La tarjeta REAL (R571 con la tarjeta de verdad) monta `QrScanner`, que pide un toast.
+vi.mock("@/hooks/useToast", () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    show: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
 
 // El disparador de la tarjeta de escaneo: la abre en un MODAL y la cierra. Lo que se fija
 // aquí es el CONTRATO (texto del disparador, montaje/desmontaje del contenido y las acciones
@@ -164,6 +177,31 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
     conPuntero(true);
     const user = userEvent.setup();
     render(<EscanerModal>{tarjeta}</EscanerModal>);
+
+    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+
+    const campo = await screen.findByLabelText("Número de guía");
+    await vi.waitFor(() => expect(document.activeElement).toBe(campo));
+  });
+
+  // Review de SLT-158, M7: con la tarjeta REAL. Si `EscanerGuiaCard` perdiera la marca
+  // `data-escaner-campo` de su campo, el modal no lo encontraría y este caso se pondría rojo.
+  it("R571: con la EscanerGuiaCard real y puntero fino, el foco queda en su campo", async () => {
+    conPuntero(true);
+    const user = userEvent.setup();
+    render(
+      <EscanerModal>
+        {/* Un tabulable ANTES de la tarjeta: sin él, el campo sería el primero y el foco por
+            defecto del Dialog ya caería ahí, con o sin la marca. */}
+        <button type="button">Antes de la tarjeta</button>
+        <EscanerGuiaCard
+          titulo="Recibir paquete"
+          descripcion="Escanea o ingresa el número de guía"
+          onDecoded={() => ({ tipo: "acierto" })}
+          manual={{ onSubmit: () => ({ tipo: "acierto" }), submitLabel: "Recibir" }}
+        />
+      </EscanerModal>,
+    );
 
     await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
 

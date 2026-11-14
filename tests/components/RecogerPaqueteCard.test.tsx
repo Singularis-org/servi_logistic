@@ -502,3 +502,36 @@ describe("RecogerPaqueteCard — guía única por cámara o pistola (SLT-157)", 
     expect(recogerMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-158 «Entrada de escaneo para pistola» (R574): la tarjeta encola la segunda lectura y la
+// envía en cuanto termina la primera. Si la guarda anti-doble envío de `useRecogerPorGuia`
+// volviera a ser ESTADO, esa segunda llamada vería todavía el `procesando` del render previo y
+// se descartaría: por eso la guarda es un ref. Este caso es el que se pone rojo si vuelve.
+describe("RecogerPaqueteCard — dos lecturas seguidas de la pistola (SLT-158)", () => {
+  it("dos Enter seguidos con la primera recogida pendiente: se recogen las DOS, en orden", async () => {
+    const user = userEvent.setup();
+    let soltarPrimera: () => void = () => {};
+    recogerMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((res) => {
+            soltarPrimera = () => res({ status: "ok", recogidas: ["ord-1"] });
+          }),
+      )
+      .mockResolvedValueOnce({ status: "ok", recogidas: ["ord-2"] });
+    await renderAbierta(user);
+
+    await tecleaYConfirma(user, "1001");
+    await tecleaYConfirma(user, "1002");
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(1));
+
+    // FUERA de `act` a propósito: así React agenda el render como en el navegador (en otra
+    // tarea), y la lectura en cola llega ANTES de ese render, con la clausura del anterior.
+    // Dentro de `act` el render se vacía antes y una guarda en estado pasaría en verde.
+    soltarPrimera();
+
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(2));
+    expect(recogerMock).toHaveBeenNthCalledWith(1, { ordenIds: ["ord-1"] });
+    expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["ord-2"] });
+  });
+});

@@ -30,6 +30,12 @@ export type ResultadoLectura =
   | { tipo: "acierto" }
   | { tipo: "error"; motivo: string };
 
+function esResultadoLectura(valor: unknown): valor is ResultadoLectura {
+  if (typeof valor !== "object" || valor === null) return false;
+  const r = valor as { tipo?: unknown; motivo?: unknown };
+  return r.tipo === "acierto" || (r.tipo === "error" && typeof r.motivo === "string");
+}
+
 /** Por dónde llegó la lectura: el campo (tecleo o pistola) o la cámara. */
 export type OrigenLectura = "campo" | "camara";
 
@@ -170,13 +176,28 @@ export function useEntradaEscaneo({
       for (;;) {
         const siguiente = cola.current.shift();
         if (!siguiente) break;
+        const fallo: ResultadoLectura = {
+          tipo: "error",
+          motivo: opciones.current.motivoFalloInesperado,
+        };
         let resultado: ResultadoLectura;
         try {
-          resultado = await opciones.current.procesar(siguiente.texto, siguiente.origen);
+          const devuelto: unknown = await opciones.current.procesar(
+            siguiente.texto,
+            siguiente.origen,
+          );
+          // Una superficie que devuelve otra cosa (p. ej. `undefined` de un `switch` que ganó
+          // un estado sin `return`) cuenta como fallo: la cola no se detiene por ella.
+          resultado = esResultadoLectura(devuelto) ? devuelto : fallo;
         } catch {
-          resultado = { tipo: "error", motivo: opciones.current.motivoFalloInesperado };
+          resultado = fallo;
         }
-        terminar(siguiente.texto, resultado);
+        try {
+          terminar(siguiente.texto, resultado);
+        } catch {
+          // Si falla el tono o el foco, la lectura ya quedó marcada: la cola sigue con la
+          // siguiente en vez de quedarse esperando y dejar una promesa rechazada sin manejar.
+        }
       }
     } finally {
       drenando.current = false;

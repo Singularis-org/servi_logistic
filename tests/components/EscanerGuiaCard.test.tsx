@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
+import { render, renderHook, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerGuiaCard, type ResultadoLectura } from "@/components/shared/EscanerGuiaCard";
+import { useEntradaEscaneo, type ProcesarLectura } from "@/hooks/useEntradaEscaneo";
 import { CLAVE_SONIDO } from "@/lib/audio/preferencia-sonido";
 import { reiniciarAudioParaTests } from "@/lib/audio/tono-notificacion";
 
@@ -354,5 +355,76 @@ describe("R579 — tras la cámara, el foco vuelve al campo (puntero fino)", () 
     // La cámara se cerró: vuelve el botón de abrirla.
     expect(botonCamara()).toBeInTheDocument();
     await vi.waitFor(() => expect(document.activeElement).toBe(campo()));
+  });
+});
+
+describe("R579 — en táctil el foco NO vuelve al campo (D1)", () => {
+  it("tras una lectura de la cámara, el campo no es el elemento activo", async () => {
+    conPuntero(false);
+    const user = userEvent.setup();
+    const onDecoded = vi.fn(() => ACIERTO);
+    render(tarjeta(() => ACIERTO, onDecoded));
+
+    await user.click(botonCamara());
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+    await act(async () => decodeCallback.current?.("1024"));
+
+    await vi.waitFor(() => expect(onDecoded).toHaveBeenCalledWith("1024"));
+    // La marca del resultado ya se pintó: la lectura terminó entera antes de mirar el foco.
+    await vi.waitFor(() => expect(campo()).toHaveAttribute("data-resultado", "acierto"));
+    // En el teléfono, enfocar el campo abriría el teclado sobre el visor.
+    expect(document.activeElement).not.toBe(campo());
+  });
+});
+
+// Review de SLT-158, M1: lo que pasa DESPUÉS de procesar tampoco detiene la cola.
+describe("la cola no se detiene por una lectura mal resuelta", () => {
+  it("si la superficie devuelve algo que no es un resultado, cuenta como error y la siguiente sale", async () => {
+    const user = userEvent.setup();
+    let soltar: () => void = () => {};
+    const onSubmit = vi
+      .fn<(v: string) => Promise<ResultadoLectura>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((res) => {
+            soltar = () => res(undefined as unknown as ResultadoLectura);
+          }),
+      )
+      // La segunda queda pendiente: así la línea de error de la primera sigue a la vista.
+      .mockImplementationOnce(() => new Promise<ResultadoLectura>(() => {}));
+    render(tarjeta(onSubmit));
+
+    await user.type(campo(), "1024{Enter}");
+    await user.type(campo(), "2048{Enter}");
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => soltar());
+
+    // La primera queda como error, con lo leído en la línea; la segunda sale igual.
+    expect(await screen.findByRole("alert")).toHaveTextContent("1024");
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenNthCalledWith(2, "2048"));
+  });
+
+  it("si `alTerminar` lanza, la lectura en cola se procesa igual", async () => {
+    const procesar = vi.fn<ProcesarLectura>(() => ACIERTO);
+    const { result } = renderHook(() =>
+      useEntradaEscaneo({
+        procesar,
+        campoRef: { current: null },
+        enfocarTrasLectura: false,
+        alTerminar: () => {
+          throw new Error("el tono falló");
+        },
+        motivoFalloInesperado: "No se pudo.",
+      }),
+    );
+
+    act(() => {
+      result.current.recibirLectura("1024", "camara");
+      result.current.recibirLectura("2048", "camara");
+    });
+
+    await vi.waitFor(() => expect(procesar).toHaveBeenCalledTimes(2));
+    expect(procesar.mock.calls.map((c) => c[0])).toEqual(["1024", "2048"]);
   });
 });

@@ -66,9 +66,11 @@ import {
   CONFIRMACION_DETALLE,
   CONFIRMACION_CONTINUAR,
   CONFIRMACION_APROBAR,
+  type AvisoLectura,
   type EntradaConfirmacionFisica,
   type FilaAConfirmar,
 } from "./cierre-confirmacion-fisica";
+import type { ResultadoLectura } from "@/components/shared/EscanerGuiaCard";
 // `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
 // simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
 import { moneyTope } from "./cierre-detalle-shared";
@@ -619,7 +621,7 @@ export function CierresAdminModule({
   // descarta en `cerrarDetalle`, junto a los montos. Mismo criterio que la 158.
   const [confirmadas, setConfirmadas] = useState<Record<string, number>>({});
   // R29-R32: qué pasó con la ÚLTIMA lectura. Persistente y no un toast, que se va solo.
-  const [avisoLectura, setAvisoLectura] = useState<string | null>(null);
+  const [avisoLectura, setAvisoLectura] = useState<AvisoLectura | null>(null);
   // Confirmación persistente del último acierto (patrón de `RecogerPaqueteCard`).
   const [ultimaGuiaConfirmada, setUltimaGuiaConfirmada] = useState<number | null>(null);
   // Errores del servidor de la confirmación física, por clave de fila. Conjunto de claves DISJUNTO
@@ -1025,22 +1027,27 @@ export function CierresAdminModule({
   }
 
   /**
-   * Feature 238 (R29-R32) — una guía leída, por cámara o tecleada. Devuelve `true` sólo si
-   * marcó una fila; con `false` el campo conserva lo escrito para poder corregirlo (patrón de
-   * `RecogerPaqueteCard`).
+   * Feature 238 (R29-R32) — una guía leída, por cámara, tecleada o con la pistola. Devuelve a la
+   * tarjeta el resultado de la lectura (SLT-158): acierto si marcó una fila o si es la relectura
+   * inocua de una ya confirmada; error con su motivo en los otros tres avisos. El campo se vacía
+   * siempre al enviar (R575): lo leído queda escrito en el aviso de la ventana (R576).
    *
    * Ninguno de los cuatro desenlaces manda nada al servidor: la resolución es local contra el
    * detalle ya cargado, y el envío ocurre una sola vez, al confirmar la ventana.
    */
-  function aplicarLectura(texto: string): boolean {
+  function aplicarLectura(texto: string): ResultadoLectura {
     const lectura = interpretarLectura(
       texto,
       filasDelCierreAbierto,
       confirmadas,
     );
     if (lectura.tipo === "aviso") {
-      setAvisoLectura(lectura.mensaje);
-      return false;
+      setAvisoLectura({ lectura: texto.trim(), mensaje: lectura.mensaje, inocuo: false });
+      return { tipo: "error", motivo: lectura.mensaje };
+    }
+    if (lectura.tipo === "repetida") {
+      setAvisoLectura({ lectura: texto.trim(), mensaje: lectura.mensaje, inocuo: true });
+      return { tipo: "acierto" };
     }
     // Una lectura puede cubrir MÁS DE UNA fila: hay un solo paquete físico, y si dos gestiones
     // vivas de la misma orden comparten guía, las dos quedan cubiertas por ese único gesto.
@@ -1061,7 +1068,7 @@ export function CierresAdminModule({
       for (const clave of lectura.claves) delete resto[clave];
       return resto;
     });
-    return true;
+    return { tipo: "acierto" };
   }
 
   /**

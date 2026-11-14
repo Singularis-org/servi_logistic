@@ -292,7 +292,22 @@ export function filasDelCierre(
  */
 export type LecturaInterpretada =
   | { tipo: "confirma"; claves: readonly string[]; numGuia: number }
-  | { tipo: "aviso"; mensaje: string };
+  | { tipo: "aviso"; mensaje: string }
+  // R32 + SLT-158 (decisión del leader, 2026-11-14): volver a leer una guía ya confirmada es
+  // INOCUO. No marca nada, pero tampoco es un error: suena a acierto y se dice como información,
+  // igual que `ya_recibida` en las recepciones.
+  | { tipo: "repetida"; mensaje: string };
+
+/**
+ * Qué pasó con la última lectura, para la barra de estado (R29-R32). Lleva LO LEÍDO (SLT-158,
+ * R576): el campo se vacía al enviar y, sin esto, quien tecleó «70O1» ya no vería qué escribió.
+ * `inocuo` = la relectura de una guía ya confirmada: se pinta como información, no como error.
+ */
+export interface AvisoLectura {
+  lectura: string;
+  mensaje: string;
+  inocuo: boolean;
+}
 
 /**
  * R29-R32 — de un texto leído a uno de los cuatro desenlaces. **Función pura**: no toca estado,
@@ -373,7 +388,7 @@ export function interpretarLectura(
   // el caso en que la segunda lectura del mismo bulto no cuenta. Mientras quede una fila
   // pendiente sí hay algo que confirmar, y avisar ahí era el defecto.
   if (pendientes.length === 0) {
-    return { tipo: "aviso", mensaje: LECTURA_YA_CONFIRMADA };
+    return { tipo: "repetida", mensaje: LECTURA_YA_CONFIRMADA };
   }
   return { tipo: "confirma", claves: pendientes.map((f) => f.clave), numGuia };
 }
@@ -488,11 +503,11 @@ export interface ConfirmacionFisicaCuerpoProps {
   /** Errores del servidor por clave de fila (`fieldErrors`), pintados en su fila. */
   errores: Readonly<Record<string, string>>;
   /** R29-R32: qué pasó con la última lectura; `null` si no hay nada que decir. */
-  aviso: string | null;
+  aviso: AvisoLectura | null;
   /** Confirmación persistente del último acierto, bajo el formulario. */
   ultimaGuiaConfirmada: number | null;
-  /** Interpreta y aplica una lectura. Devuelve `true` si marcó una fila (acierto, SLT-158). */
-  onLectura: (texto: string) => boolean;
+  /** Interpreta y aplica una lectura, y devuelve su resultado a la tarjeta (SLT-158, D4). */
+  onLectura: (texto: string) => ResultadoLectura;
 }
 
 interface FilaConfirmacionProps {
@@ -577,14 +592,6 @@ export function ConfirmacionFisicaCuerpo({
   const sinGuia = filas.filter((f) => f.numGuia === null).length;
   const barridas = filas.filter((f): f is FilaDeBarrida => f.origen === "barrida");
 
-  // SLT-158 (D4): la tarjeta necesita saber si la lectura marcó una fila (tono, marca del
-  // campo). El MOTIVO de una lectura rechazada ya lo pinta esta ventana en su aviso persistente
-  // de arriba (`aviso`, R29-R32), así que la tarjeta va con `lineaDeError={false}` y el motivo
-  // que se le devuelve no se muestra: repetirlo pondría dos `role="alert"` con el mismo texto.
-  function leer(texto: string): ResultadoLectura {
-    return onLectura(texto) ? { tipo: "acierto" } : { tipo: "error", motivo: "" };
-  }
-
   function pintarFila(f: FilaAConfirmar) {
     return (
       <FilaConfirmacion
@@ -633,12 +640,21 @@ export function ConfirmacionFisicaCuerpo({
         )}
         {/* R29-R32: qué pasó con la última lectura. Persistente y no un toast: el toast se va
             solo y quien está escaneando una tanda seguida necesita seguir viéndolo. */}
+        {/* SLT-158 (R576): con lo leído delante del motivo. Es el ÚNICO aviso de la lectura:
+            la tarjeta de abajo va con `lineaDeError={false}` para no repetirlo. La relectura de
+            una guía ya confirmada es información, no error (sin `role="alert"`). */}
         {aviso ? (
           <p
-            role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role={aviso.inocuo ? undefined : "alert"}
+            aria-live={aviso.inocuo ? "polite" : undefined}
+            className={
+              aviso.inocuo
+                ? "rounded-md border border-info/40 bg-info-soft px-3 py-2 text-sm text-info-strong dark:bg-info/15"
+                : "rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            }
           >
-            {aviso}
+            Lectura <span className="font-mono font-semibold">{aviso.lectura}</span>:{" "}
+            {aviso.mensaje}
           </p>
         ) : null}
       </div>
@@ -671,11 +687,11 @@ export function ConfirmacionFisicaCuerpo({
           titulo={ESCANER_TITULO}
           descripcion={ESCANER_DESCRIPCION}
           icono={PackageCheck}
-          onDecoded={leer}
+          onDecoded={onLectura}
           lineaDeError={false}
           mensajeErrorCamara={ESCANER_ERROR_CAMARA}
           manual={{
-            onSubmit: leer,
+            onSubmit: onLectura,
             submitLabel: ESCANER_BOTON,
           }}
           exito={

@@ -53,7 +53,8 @@ Tanda 1 · 2026-11-14 · T1-T5 · commit a3acfa0c. T6 (dispositivo) queda para e
 
 ## Comandos (salida real)
 - `pnpm run typecheck`: exit 0.
-- `eslint` sobre los 19 archivos tocados: 0 errores, 0 avisos.
+- `eslint` sobre los 19 archivos tocados: 0 errores, 2 avisos ya existentes en `origin/dev`
+  (`RecoleccionModule.tsx:3,7`: `useMemo` y `ContactoButtons` sin usar). (Corregido en la vuelta 2: decía «0 avisos».)
 - `vitest run` de los 12 archivos de las superficies tocadas (EscanerGuiaCard, EscanerModal,
   EscanerRecepcionOrigen, EscanerRecepcion, EscanerRecepcionBodegaCentral, RecogerPaqueteCard,
   RecoleccionModule, RecoleccionPage, CierresAdminConfirmacionFisica, useRecogerPorGuia,
@@ -74,3 +75,22 @@ Tanda 1 · 2026-11-14 · T1-T5 · commit a3acfa0c. T6 (dispositivo) queda para e
 
 ## Veredicto
 Código, tests y guardias en verde; el gate real queda rojo por el board (SLT-157 sin cerrar) y por el tamaño del PR, que necesita OK humano.
+
+## Vuelta 2 · menores de la review (progress/review_SLT-158.md)
+
+| Menor | Cambio | Test | Mutación (rojo confirmado) |
+| --- | --- | --- | --- |
+| M1 | `useEntradaEscaneo`: lo devuelto se valida (`esResultadoLectura`; si no, error) y `terminar` va en su propio `try` | EscanerGuiaCard «no es un resultado» y «alTerminar» | quitar la validación; `terminar` fuera del `try` |
+| M2 | — (test) | RecogerPaqueteCard «dos Enter seguidos» (resuelve FUERA de `act`, como el navegador) | guarda otra vez en estado con `procesando` en las deps. Dentro de `act` sobrevivía: por eso va fuera |
+| M3 | — (test) | EscanerGuiaCard «táctil el foco NO» | `enfocarTrasLectura: true` |
+| M4 | El aviso de C5 dice «Lectura <lo leído>: <motivo>»; `aviso` pasa a `AvisoLectura` | Cierres «vacía el campo» (`Lectura 70O1:`) | quitar lo leído del aviso |
+| M5 | Relectura de guía ya confirmada = `repetida`: acierto, aviso informativo sin `role="alert"` | Cierres «relectura de una guía ya confirmada» + los 3 R32 (sin alert) | devolver error en `repetida`; `interpretarLectura` devuelve `aviso` |
+| M6 | Comentario de `aplicarLectura` (`CierresAdminModule.tsx`) | — | — |
+| M7 | — (test) | EscanerModal «EscanerGuiaCard real» (con un tabulable antes de la tarjeta) | quitar `data-escaner-campo` de la tarjeta |
+| M8 | Esta bitácora | — | — |
+
+- `CierresAdminModule.tsx` entra al diff (M5/M6): `aplicarLectura` devuelve `ResultadoLectura`.
+- Vibración: R570-R579 no la piden (R577 es tono, R578 marca visual) ni `evaluacion.md`/`brief-diseno.md`
+  de SLT-155. No se implementa.
+- Comandos: `typecheck` exit 0; `eslint` de los 7 archivos tocados, sin avisos; `vitest run` de 14
+  archivos: `Test Files 14 passed · Tests 353 passed`. Las 8 mutaciones en rojo.
