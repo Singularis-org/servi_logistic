@@ -140,8 +140,11 @@ function sumIngresoBodega(items: { totalIngresoBodegaRechazos: string }[]): stri
  * siguiente cobra 1500, esos 500 se quedan en la bodega (el pago parcial no existe).
  *
  * Devuelve STRING escala 2 (money-safe): la aritmetica es Prisma.Decimal, nunca number.
+ *
+ * SLT-154 (R466): exportada para que el detalle del cierre de bodega derive «La central debe» con
+ * la MISMA regla que «A consolidar»; dos copias podrian divergir y la satelite veria dos numeros.
  */
-function repartirEfectivo(
+export function repartirEfectivo(
   efectivo: string,
   pagos: string[],
 ): { pagado: string; centralDebe: string } {

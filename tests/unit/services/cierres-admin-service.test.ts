@@ -21,6 +21,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { CierreDetalleAdminServiceResult } from "@/lib/interfaces/services/ICierresAdminService";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
@@ -33,6 +34,34 @@ const MAESTRO: Actor = { usuarioId: "adm-maestro", rol: "maestro" };
 const ADMIN: Actor = { usuarioId: "adm-admin", rol: "admin" }; // feature 94: paridad con maestro
 const ADMIN_SATELITE: Actor = { usuarioId: "adm-sat", rol: "adminSatelite" };
 const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
+
+// SLT-154 (R462/R465): las cifras de la empresa del detalle del cierre del mensajero pasan a
+// `T | null` en el tipo, porque a un lector sin acceso total le llegan en `null`. Los casos de esta
+// suite que las leen son lecturas de la CENTRAL (MAESTRO), que las recibe como antes (R465). Esta
+// asercion lo exige en ejecucion: un `null` rompe el caso con su nombre, nunca se lee como cifra.
+// No cambia ningun esperado. `porcentajesReparto` no entra: ya admitia `null` (lo recaudado en 0).
+const CIFRAS_EMPRESA = [
+  "totalesIngreso",
+  "ivaFacturado",
+  "ganancia",
+  "pagoTienda",
+  "cobradoSobreRecaudado",
+  "netoEmpresa",
+  "ganaLaTienda",
+  "fleteRechazoYaCobradoATienda",
+  "partesPorTienda",
+] as const;
+type CifraEmpresa = (typeof CIFRAS_EMPRESA)[number];
+type DetalleMensajeroOk = Extract<CierreDetalleAdminServiceResult, { status: "ok" }>;
+type DetalleMensajeroCentral = Omit<DetalleMensajeroOk, CifraEmpresa> & {
+  [K in CifraEmpresa]: NonNullable<DetalleMensajeroOk[K]>;
+};
+
+function exigirDineroEmpresa(r: CierreDetalleAdminServiceResult): asserts r is DetalleMensajeroCentral {
+  if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
+  const faltan = CIFRAS_EMPRESA.filter((k) => r[k] === null);
+  if (faltan.length > 0) throw new Error(`R465: la central recibio en null ${faltan.join(", ")}`);
+}
 
 const ZONA_SAT = "z-cartago";
 
@@ -452,6 +481,7 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
     expect(r.totalesIngreso.total).toBe("0.00");
     expect(r.ivaFacturado).toBe("0.00");
     expect(r.ganancia).toBe("-1500.00");
@@ -599,6 +629,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     // Lo FACTURADO incluye el flete por devolución a origen; lo DEDUCIBLE de lo recaudado, no.
     expect(r.totalesIngreso.total).toBe("4973.15"); // 3616.64 + 1356.51
@@ -666,6 +697,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     expect(r.totalesIngreso.fleteDevolucionConIva).toBe("0.00"); // no hubo ni un rechazo
     // La linea NO es condicional: sin ella la cascada perderia su eslabon justo en el cierre
@@ -696,6 +728,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     expect(r.totalesIngreso.total).toBe("0.00");
     // Un "0.00" aqui diria «la empresa no perdio nada en este cierre», que es falso.
@@ -734,6 +767,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     expect(r.ganaLaTienda).toBe("15027.40"); // 20000.55 − 4973.15
     // Los dos numeros conviven en la misma pantalla y NO son el mismo: se le pagan 16383.91
@@ -839,6 +873,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
     });
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
     expect(r.totalesIngreso.fleteDevolucionConIva).toBe("0.00");
     // `estado === "aprobado"` a secas daria `true` y la pantalla escribiria «se le cargo el
     // flete por devolución a origen» sobre un cierre donde no hubo ninguno.
@@ -1914,6 +1949,7 @@ describe("Feature 158 · verCierreDetalle — el incidente es un grupo PROPIO (R
     const r = await service.verCierreDetalle("c1", MAESTRO);
 
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
     expect(r.totalesIngreso.total).toBe("0.00");
     expect(r.totalesIngreso.fleteConIva).toBe("0.00");
     expect(r.totalesIngreso.comisionConIva).toBe("0.00");
@@ -2386,6 +2422,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     const suma = (montos: string[]) =>
       montos.reduce((a, m) => a.plus(new Prisma.Decimal(m)), new Prisma.Decimal(0)).toFixed(2);
@@ -2410,6 +2447,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     const dif = (p: { pagoTienda: string; ganaLaTienda: string }) =>
       new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
@@ -2425,6 +2463,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     expect(r.cierre.totales.general).toBe("140000.00");
     expect(r.totalesIngreso.total).toBe("11526.00"); // 6.215,00 + 1.695,00 + 3.616,00
@@ -2467,6 +2506,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     expect(r.partesPorTienda).toEqual([
       {
@@ -2488,6 +2528,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
+    exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
     for (const parte of r.partesPorTienda) {
       expect(Object.keys(parte).sort()).toEqual([

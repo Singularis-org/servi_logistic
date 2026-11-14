@@ -298,6 +298,9 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <CierresBodegaAdminModule
+        // SLT-154 (R469, R477): las cuentas de la empresa son de la central; la satélite (la
+        // audiencia por defecto del módulo) ya no las ve.
+        audiencia="admin"
         pendientes={paginaInicial([CABECERA])}
         historico={paginaInicial([])}
       />
@@ -716,7 +719,8 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
 
     render(
       <SWRAcme value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        <ModuloAcme pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} />
+        {/* SLT-154 (R477): la cuenta de la empresa es de la central. */}
+        <ModuloAcme audiencia="admin" pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} />
       </SWRAcme>,
     );
     const user = userEvent.setup();

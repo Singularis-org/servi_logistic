@@ -475,6 +475,11 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
 
       const d = await c.svc.verCierreDetalle(c.cierre.N1, c.maestro);
       if (d.status !== "ok") throw new Error(`detalle ${d.status}`);
+      // SLT-154 (R465): el maestro recibe las cifras de la empresa; el tipo las admite `null` por
+      // la satelite (R462), y un `null` aqui es un rojo, no una paridad que se cumple sola.
+      if (d.totalesIngreso === null || d.partesPorTienda === null) {
+        throw new Error("R465: el maestro recibio en null las cifras de la empresa del detalle");
+      }
       const cifras = r.cifrasModeloNuevo?.[0];
       expect(cifras?.pagoTienda).toBe(d.pagoTienda);
       expect(cifras?.ganaLaTienda).toBe(d.ganaLaTienda);

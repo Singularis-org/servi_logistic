@@ -556,6 +556,11 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
 
   it("R387 paridad: `cifrasAgregadasBodega` sobre el lote = el detalle de BN, con la central y con S", async () => {
     await conCorpus(async (c) => {
+      // SLT-154 (R460, R465): las cifras de la empresa del detalle solo le llegan a la central; a
+      // S, en `null`. La paridad de R387 se redefine: el lote leido con el alcance de CADA lector
+      // (toda la empresa / la zona de S) sigue dando lo mismo que el detalle de la CENTRAL.
+      const central = await c.svc.verCierreBodegaDetalle(c.bodega.BN, c.maestro);
+      if (central.status !== "ok") throw new Error(`detalle ${central.status} (maestro)`);
       for (const [actor, alcance] of [
         [c.maestro, { lectura: "toda_la_empresa" }],
         [c.satelite, { lectura: "zona", zonaId: c.zona.C }],
@@ -566,22 +571,44 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
         expect(filas.map((f) => f.cierreDiaId)).toEqual([c.d1]);
         const lote = cifrasAgregadasBodega(d.cierre, filas.flatMap((f) => f.gestiones));
         expect(lote).toEqual({
-          totalesIngreso: d.totalesIngreso,
-          ivaFacturado: d.ivaFacturado,
-          ganancia: d.ganancia,
-          pagoTienda: d.pagoTienda,
-          cobradoSobreRecaudado: d.cobradoSobreRecaudado,
-          netoEmpresa: d.netoEmpresa,
-          ganaLaTienda: d.ganaLaTienda,
-          partesPorTienda: d.partesPorTienda,
+          totalesIngreso: central.totalesIngreso,
+          ivaFacturado: central.ivaFacturado,
+          ganancia: central.ganancia,
+          pagoTienda: central.pagoTienda,
+          cobradoSobreRecaudado: central.cobradoSobreRecaudado,
+          netoEmpresa: central.netoEmpresa,
+          ganaLaTienda: central.ganaLaTienda,
+          partesPorTienda: central.partesPorTienda,
         });
-        // Y el detalle, contra los literales a mano (Σ «Se le paga hoy» 65 480 + 28 870 = 94 350).
-        expect(d.pagoTienda).toBe("94350.00");
-        expect(d.netoEmpresa).toBe("3500.00");
-        expect(d.ganaLaTienda).toBe("92090.00");
-        expect(d.partesPorTienda).toEqual(partesBN(c.tienda));
         expect(d.cierres.reduce((s, cd) => s + Object.values(cd.grupos).reduce((t, g) => t + g.length, 0), 0)).toBe(3);
       }
+      // Y el detalle de la central, contra los literales a mano (Σ «Se le paga hoy» 65 480 + 28 870 = 94 350).
+      expect(central.pagoTienda).toBe("94350.00");
+      expect(central.netoEmpresa).toBe("3500.00");
+      expect(central.ganaLaTienda).toBe("92090.00");
+      expect(central.partesPorTienda).toEqual(partesBN(c.tienda));
+      // SLT-154 (R460): S recibe en `null` las ocho cifras de la empresa del detalle.
+      const sat = await c.svc.verCierreBodegaDetalle(c.bodega.BN, c.satelite);
+      if (sat.status !== "ok") throw new Error(`detalle ${sat.status} (satelite)`);
+      expect({
+        totalesIngreso: sat.totalesIngreso,
+        ivaFacturado: sat.ivaFacturado,
+        ganancia: sat.ganancia,
+        pagoTienda: sat.pagoTienda,
+        cobradoSobreRecaudado: sat.cobradoSobreRecaudado,
+        netoEmpresa: sat.netoEmpresa,
+        ganaLaTienda: sat.ganaLaTienda,
+        partesPorTienda: sat.partesPorTienda,
+      }).toEqual({
+        totalesIngreso: null,
+        ivaFacturado: null,
+        ganancia: null,
+        pagoTienda: null,
+        cobradoSobreRecaudado: null,
+        netoEmpresa: null,
+        ganaLaTienda: null,
+        partesPorTienda: null,
+      });
     });
   });
 

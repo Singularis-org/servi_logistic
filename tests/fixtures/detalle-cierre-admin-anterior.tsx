@@ -19,6 +19,16 @@ import { hayGestionEnModeloNuevo } from "@/app/(app)/cierres-admin/_components/c
  * aserción mientras tanto. Lo que el admin VE ahora lo vigilan `DineroIdentidadesEnPantalla`,
  * `CierresAdminDetalleUnico` y `e2e/cierres-rediseno.spec.ts`.
  */
+/**
+ * SLT-154 (R462): las cifras de la empresa son `T | null` en el contrato (`null` para quien no es la
+ * central). Este panel antiguo solo se monta con las de la central: un `null` aquí es un doble mal
+ * armado y falla ruidoso, en vez de pintar algo que no llegó.
+ */
+function exigir<T>(valor: T | null, campo: string): T {
+  if (valor === null) throw new Error(`montarDetalleAnteriorDelAdmin: «${campo}» llegó en null`);
+  return valor;
+}
+
 export function montarDetalleAnteriorDelAdmin(
   d: Extract<CierreDetalleAdminServiceResult, { status: "ok" }>,
 ) {
@@ -28,26 +38,26 @@ export function montarDetalleAnteriorDelAdmin(
         mensajeroNombre={d.cierre.mensajeroNombre}
         estado={d.cierre.estado}
         general={d.cierre.totales.general}
-        totalesIngreso={d.totalesIngreso}
+        totalesIngreso={exigir(d.totalesIngreso, "totalesIngreso")}
         totalPagoMensajero={d.cierre.totalPagoMensajero}
         totalIngresoBodegaRechazos={d.cierre.totalIngresoBodegaRechazos}
-        pagoTienda={d.pagoTienda}
-        cobradoSobreRecaudado={d.cobradoSobreRecaudado}
-        ivaFacturado={d.ivaFacturado}
-        netoEmpresa={d.netoEmpresa}
-        ganaLaTienda={d.ganaLaTienda}
-        fleteRechazoYaCobradoATienda={d.fleteRechazoYaCobradoATienda}
-        partesPorTienda={d.partesPorTienda}
+        pagoTienda={exigir(d.pagoTienda, "pagoTienda")}
+        cobradoSobreRecaudado={exigir(d.cobradoSobreRecaudado, "cobradoSobreRecaudado")}
+        ivaFacturado={exigir(d.ivaFacturado, "ivaFacturado")}
+        netoEmpresa={exigir(d.netoEmpresa, "netoEmpresa")}
+        ganaLaTienda={exigir(d.ganaLaTienda, "ganaLaTienda")}
+        fleteRechazoYaCobradoATienda={exigir(d.fleteRechazoYaCobradoATienda, "fleteRechazoYaCobradoATienda")}
+        partesPorTienda={exigir(d.partesPorTienda, "partesPorTienda")}
         modeloNuevo={hayGestionEnModeloNuevo(d.grupos)}
       />
       <CierreFacturaDetalle
         cierre={d.cierre}
         grupos={d.grupos}
-        totalesIngreso={d.totalesIngreso}
+        totalesIngreso={exigir(d.totalesIngreso, "totalesIngreso")}
         desgloseIngresoBodegaRechazos={d.desgloseIngresoBodegaRechazos}
-        ganancia={d.ganancia}
-        ivaFacturado={d.ivaFacturado}
-        pagoTienda={d.pagoTienda}
+        ganancia={exigir(d.ganancia, "ganancia")}
+        ivaFacturado={exigir(d.ivaFacturado, "ivaFacturado")}
+        pagoTienda={exigir(d.pagoTienda, "pagoTienda")}
         audiencia="satelite"
         ordenesSinGestion={d.ordenesSinGestion}
         sinGestionRegistrado={d.sinGestionRegistrado}

@@ -553,9 +553,10 @@ describe("SLT-107 — «Ver»: el cierre de bodega en lectura (R50, R51, R292-R2
   it("(d) sin marca: pestañas, franja de la satélite, pie solo «Cerrar» y su texto", async () => {
     const { dialogo } = await verDesdeSolicitados(PENDIENTE);
     expect(verDetalle).toHaveBeenCalledWith({ cierreBodegaId: ID_CB });
+    // SLT-154 (R470): la satélite abre en Gestiones; su pestaña del dinero es «Lo que va a la central».
     expect(within(dialogo).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Dinero",
       "Gestiones (1)",
+      "Lo que va a la central",
       "Mensajeros (1)",
       "Conciliación",
     ]);

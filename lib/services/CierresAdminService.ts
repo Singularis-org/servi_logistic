@@ -28,6 +28,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IReprogramadasRetenidasService } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import type {
+  CierreDetalleGestion,
   CierreGrupos,
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
@@ -85,6 +86,7 @@ import { toDetalleDTO } from "@/lib/services/CierreDiaService";
 // SLT-140 (R380, R381): las cifras del cierre salen de UNA funcion, la misma que usa el Excel.
 import { cifrasDelCierre } from "@/lib/utils/cifras-cierre";
 import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
+import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 import { desglosarIngresoBodegaPorOrigen } from "@/lib/utils/desglose-rechazos-sla";
 // FICHA 398: el destino de la orden corregida sale del PUNTO UNICO de la regla `resultado ->
 // estado` (239/R3), no de un literal escrito en el servicio.
@@ -164,6 +166,83 @@ export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: Ingre
     },
   };
 }
+
+/**
+ * SLT-154 «Vista de la bodega satélite: solo lo suyo» (R463, D1) — en los DOS detalles, todo el
+ * bloque `ingresoEmpresa` de la gestion es cobro a la tienda (importes, IVA, tarifas, fulfillment):
+ * dato de la central. Para quien no tiene acceso total sale ENTERO en `null` y solo el modelo de
+ * tarifa viaja aparte, que la pantalla necesita para decidir el modelo nuevo. Anular el bloque y no
+ * campo a campo falla cerrado: un concepto de la tienda que se añada mañana tampoco llega.
+ *
+ * Mismo criterio que F481: «NO es acceso total», nunca «es adminSatelite» (R464). Para la central
+ * devuelve la fila tal cual, asi que su fulfillment sigue entero. Las descargas de la lista siguen
+ * con `ocultarFulfillmentSiNoCentral` (SLT-161).
+ */
+export function ocultarDineroEmpresaSiNoCentral<T extends CierreDetalleGestion>(fila: T, actor: Actor): T {
+  if (esAccesoTotal(actor.rol)) return fila;
+  return { ...fila, ingresoEmpresa: null, tarifaModelo: fila.ingresoEmpresa?.tarifaModelo ?? null };
+}
+
+/**
+ * SLT-154 (D3) — la clase de cada campo de un contrato: `"propio"` (de la satelite, viaja a todo
+ * lector) o `"empresa"` (de la central, `null` para quien no tiene acceso total). Solo un campo que
+ * admite `null` puede ser `"empresa"`, y TODOS los campos tienen que estar: uno que se añada al
+ * contrato rompe el typecheck hasta que alguien decida de quien es.
+ */
+export type ClasificacionDinero<T> = {
+  [K in Exclude<keyof T, "status">]-?: null extends T[K] ? "propio" | "empresa" : "propio";
+};
+
+/**
+ * SLT-154 (R460-R462, R464, R465): el recorte de un detalle, con el criterio de F481 en UN sitio:
+ * acceso total recibe `r` tal cual; cualquier otro rol, con las cifras `"empresa"` en `null`.
+ */
+export function anularEmpresaSiNoCentral<T extends object>(
+  r: T,
+  clase: ClasificacionDinero<T>,
+  actor: Actor,
+): T {
+  return esAccesoTotal(actor.rol) ? r : anularEmpresa(r, clase);
+}
+
+/** SLT-154 (D2, D3): pone en `null` —anulado, no omitido— cada campo `"empresa"` de `r`. */
+export function anularEmpresa<T extends object>(r: T, clase: ClasificacionDinero<T>): T {
+  const anulado: Record<string, unknown> = Object.fromEntries(Object.entries(r));
+  for (const [campo, deQuien] of Object.entries(clase)) {
+    if (deQuien === "empresa") anulado[campo] = null;
+  }
+  // La clasificacion solo admite `"empresa"` en campos que aceptan `null`: el resultado es un `T`.
+  return anulado as T;
+}
+
+type CierreDetalleAdminOk = Extract<CierreDetalleAdminServiceResult, { status: "ok" }>;
+
+/**
+ * SLT-154 (R462) — de quien es cada campo del detalle del cierre del mensajero. `grupos` es
+ * `"propio"` porque el cobro de cada gestion ya lo corta `ocultarDineroEmpresaSiNoCentral`.
+ */
+export const CLASE_DETALLE_MENSAJERO = {
+  cierre: "propio",
+  grupos: "propio",
+  totalesIngreso: "empresa",
+  desgloseIngresoBodegaRechazos: "propio",
+  ivaFacturado: "empresa",
+  ganancia: "empresa",
+  pagoTienda: "empresa",
+  cobradoSobreRecaudado: "empresa",
+  netoEmpresa: "empresa",
+  ganaLaTienda: "empresa",
+  fleteRechazoYaCobradoATienda: "empresa",
+  partesPorTienda: "empresa",
+  ordenesSinGestion: "propio",
+  sinGestionRegistrado: "propio",
+  rechazosDeTienda: "propio",
+  resueltoPorNombre: "propio",
+  porcentajesReparto: "empresa", // [tienda, empresa]
+  paraLaCentral: "propio",
+  efectivoCubreDescuentos: "propio",
+  porcentajesRepartoCentral: "propio",
+} as const satisfies ClasificacionDinero<CierreDetalleAdminOk>;
 
 // Mensaje accionable cuando falta el motivo de rechazo (R11).
 const MSG_MOTIVO_REQUERIDO = "El motivo de rechazo es obligatorio.";
@@ -986,8 +1065,9 @@ export class CierresAdminService implements ICierresAdminService {
       incidente: [],
     };
     for (const g of found.gestiones) {
-      // FICHA 481: el fulfillment de la fila solo viaja a la central.
-      grupos[g.resultado].push(ocultarFulfillmentSiNoCentral(toDetalleDTO(g, urlByPath), actor));
+      // FICHA 481 y SLT-154 (R463): el cobro a la tienda de la fila (con su fulfillment) solo
+      // viaja a la central.
+      grupos[g.resultado].push(ocultarDineroEmpresaSiNoCentral(toDetalleDTO(g, urlByPath), actor));
     }
 
     // Feature 172 (T C.2/R26): el detalle tambien trae el pendiente —R26 lo pide «en el listado
@@ -1030,7 +1110,15 @@ export class CierresAdminService implements ICierresAdminService {
       total: resumen.totalIngresoBodegaRechazos, // snapshot leido (R6), no recomputado
     };
 
-    return {
+    // SLT-154 (R467, D7): lo que debe llegar a la central de ESTE cierre y su reparto, de los
+    // snapshots y con las mismas funciones que el detalle de bodega usa por cierre del dia.
+    const haciaLaCentral = paraLaCentral(
+      resumen.totales.general,
+      resumen.totalPagoMensajero,
+      resumen.totalIngresoBodegaRechazos,
+    );
+
+    const detalle: CierreDetalleAdminOk = {
       status: "ok",
       cierre: resumen,
       grupos,
@@ -1077,7 +1165,20 @@ export class CierresAdminService implements ICierresAdminService {
         [pagoTienda, cobradoSobreLoRecaudado],
         resumen.totales.general,
       ),
+      paraLaCentral: haciaLaCentral,
+      efectivoCubreDescuentos: efectivoCubreDescuentos(
+        resumen.totales.efectivo,
+        resumen.totalPagoMensajero,
+        resumen.totalIngresoBodegaRechazos,
+      ),
+      porcentajesRepartoCentral: porcentajesReparto(
+        [haciaLaCentral, resumen.totalPagoMensajero, resumen.totalIngresoBodegaRechazos],
+        resumen.totales.general,
+      ),
     };
+    // SLT-154 (R462, R465): el calculo no cambia; el recorte actua sobre el resultado, asi que la
+    // central recibe exactamente lo de antes.
+    return anularEmpresaSiNoCentral(detalle, CLASE_DETALLE_MENSAJERO, actor);
   }
 
   async aprobarCierre(

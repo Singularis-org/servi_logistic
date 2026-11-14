@@ -100,7 +100,8 @@ export function GestionesCierre({
     audiencia,
   );
   const filtradas = filtrar(gestiones, filtro, audiencia);
-  const columnas = columnasDe(audiencia, columnaMensajero);
+  // SLT-154 (R474): sin el dinero de la empresa, «Gana bodega» en el sitio del cobro.
+  const columnas = columnasDe(audiencia, columnaMensajero, quienMiraEsCentral);
 
   // R526: el término y las páginas solo existen en el teléfono; en escritorio, la lista entera.
   const buscadas = esMovil ? filtradas.filter((i) => coincideGestion(i.gestion, termino)) : filtradas;

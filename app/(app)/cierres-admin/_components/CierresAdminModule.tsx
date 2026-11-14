@@ -91,7 +91,7 @@ import {
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
 import {
-  COLUMNAS_DESCARGA_DETALLE_CIERRE,
+  columnasDescargaDetalle,
   filaDescargaDetalleCierre,
 } from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
@@ -455,12 +455,16 @@ const INDEMNIZACION_MONTO_AYUDA = `Mayor que 0 y hasta ${moneyTope(INDEMNIZACION
 const INDEMNIZACION_FALTAN =
   "Falta el monto de al menos un incidente, o alguno no es válido. No se puede aprobar así.";
 
-/** Detalle abierto: la cabecera del cierre + sus gestiones agrupadas por resultado. */
+/**
+ * Detalle abierto: la cabecera del cierre + sus gestiones agrupadas por resultado.
+ * SLT-154 (R462): las cifras de la empresa llegan en `null` a quien no es la central; se guardan tal
+ * cual y la vista no las pinta (R478).
+ */
 interface DetalleAbierto {
   cierre: CierreAdminResumen;
   grupos: CierreGrupos;
   /** Ingreso de la empresa del cierre por concepto (derivado del snapshot, money-safe). */
-  totalesIngreso: TotalesIngresoEmpresa;
+  totalesIngreso: TotalesIngresoEmpresa | null;
   /**
    * Feature 102/R8/R10: desglose del ingreso de bodega por rechazos particionado por origen
    * (SLA del cron 99 / manual del mensajero). `total` = snapshot leído; `sla + manual === total`
@@ -471,11 +475,11 @@ interface DetalleAbierto {
    * SL-39 (R21) — el IVA facturado del cierre, derivado server-side. Va a la cascada «Lo que le
    * queda a la empresa» como línea propia (R24).
    */
-  ivaFacturado: string;
+  ivaFacturado: string | null;
   /** Ingreso sin IVA menos el pago al mensajero, derivado server-side (SL-39, R22; puede ser negativo). */
-  ganancia: string;
+  ganancia: string | null;
   /** Total general menos flete + IVA y comisión + IVA, derivado server-side (puede ser negativo). */
-  pagoTienda: string;
+  pagoTienda: string | null;
   /**
    * FICHA 395 — los cuatro derivados de las tres cascadas, tal como los emite el servidor. Los
    * tres importes son STRING con su signo y NINGUNO se recorta a cero.
@@ -485,10 +489,10 @@ interface DetalleAbierto {
    * NO es `pagoTienda` (aquel no descuenta el flete por rechazo, que nunca entró en lo
    * recaudado). Los cuatro se pasan tal cual a `CascadasCierreMensajero`: aquí no se deriva nada.
    */
-  cobradoSobreRecaudado: string;
-  netoEmpresa: string;
-  ganaLaTienda: string;
-  fleteRechazoYaCobradoATienda: boolean;
+  cobradoSobreRecaudado: string | null;
+  netoEmpresa: string | null;
+  ganaLaTienda: string | null;
+  fleteRechazoYaCobradoATienda: boolean | null;
   /**
    * FICHA 396 — de qué tienda es cada parte de `pagoTienda` y de `ganaLaTienda`: una entrada por
    * tienda del cierre, con sus tres cifras ya derivadas y **ya ordenadas por el servidor**.
@@ -496,7 +500,7 @@ interface DetalleAbierto {
    * Llega SIEMPRE, también con una sola tienda; el umbral de enseñarlo —dos o más— lo evalúa
    * `CascadasCierreMensajero`. Aquí no se ordena, no se filtra y no se suma nada.
    */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
   /**
    * Feature 264 (R7/R13) — las órdenes que el corte del día barrió a `sin_gestionar` al crear
    * ESTE cierre. Sin un solo campo de dinero: no tienen gestión, así que no hay nada que sumar.
@@ -517,6 +521,13 @@ interface DetalleAbierto {
   resueltoPorNombre?: string | null;
   /** SLT-111 (R267): el reparto en % ya derivado en el servidor; `null` o ausente = sin barra. */
   porcentajesReparto?: number[] | null;
+  /**
+   * SLT-154 (R467): lo que va a la central de este cierre, tal cual del servidor (dato de la
+   * satélite, viaja a todo lector). Ausentes = sin dato: la vista no pinta nada de la central.
+   */
+  paraLaCentral?: string;
+  efectivoCubreDescuentos?: boolean;
+  porcentajesRepartoCentral?: number[] | null;
 }
 
 /**
@@ -821,6 +832,10 @@ export function CierresAdminModule({
         resueltoPorNombre: result.resueltoPorNombre ?? null,
         // SLT-111 (R267): tal cual llega; aquí no se redondea ni se reordena.
         porcentajesReparto: result.porcentajesReparto ?? null,
+        // SLT-154 (R467): los tres, tal cual; aquí no se resta nada.
+        paraLaCentral: result.paraLaCentral,
+        efectivoCubreDescuentos: result.efectivoCubreDescuentos,
+        porcentajesRepartoCentral: result.porcentajesRepartoCentral ?? null,
       });
       return;
     }
@@ -1437,7 +1452,7 @@ export function CierresAdminModule({
                     // R21/R82/R91: las gestiones del detalle ya leído, todas, sea cual sea el filtro.
                     <DescargarDatasetButton
                       titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
-                      columnas={COLUMNAS_DESCARGA_DETALLE_CIERRE}
+                      columnas={columnasDescargaDetalle("mensajero", audiencia === "admin")}
                       obtenerFilas={async () => ({
                         status: "ok",
                         filas: Object.values(detalle.grupos)

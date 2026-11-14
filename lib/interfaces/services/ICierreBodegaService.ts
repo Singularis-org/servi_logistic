@@ -134,6 +134,7 @@ export type BloqueoConsolidacion = "sin_zona" | "sin_resolver" | "vacio";
 
 // Un cierre_dia incluido, con su detalle de gestiones (reuso 37) + su total snapshot.
 // R14/F1.4-f: NO incluye pago al mensajero (feature 39).
+// SLT-154 (R461): sus ocho cifras de la empresa llegan en `null` a quien no tiene acceso total.
 export interface CierreBodegaDetalleCierre {
   cierreDiaId: string;
   mensajeroId: string;
@@ -152,29 +153,29 @@ export interface CierreBodegaDetalleCierre {
   solicitadoAt?: string;
   grupos: CierreGrupos; // por resultado (reuso CierreDetalleGestion de la 37, R11)
   // Totales por concepto del ingreso de la empresa de ESTE cierre_dia (derivados del snapshot).
-  totalesIngreso: TotalesIngresoEmpresa;
+  totalesIngreso: TotalesIngresoEmpresa | null;
   // SL-39 (R21): IVA facturado de ESTE cierre_dia = `ivaFlete` + `ivaFleteDevolucion` +
   // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
-  ivaFacturado: string;
+  ivaFacturado: string | null;
   // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `totalPagoMensajero` de ESTE
   // cierre_dia (STRING). Lo que le queda a la empresa del dia de ese mensajero. Puede ser NEGATIVO.
-  ganancia: string;
+  ganancia: string | null;
   // DERIVADO: `totales.general` - `fleteConIva` - `comisionConIva` de ESTE cierre_dia
   // (STRING money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
-  pagoTienda: string;
+  pagoTienda: string | null;
   /**
    * Feature 393 (R7/R10) — LA LINEA PUENTE: `fleteConIva` + `comisionConIva` de ESTE
    * cierre_dia, o sea lo que la empresa cobra SOBRE LO RECAUDADO. Se emite SIEMPRE, tambien
    * cuando el flete por rechazo vale "0.00": es lo que enlaza «para la tienda» con «lo que
    * la empresa facturo» y sin ella la resta de la cascada no da en cuanto hay un rechazo.
    */
-  cobradoSobreRecaudado: string;
+  cobradoSobreRecaudado: string | null;
   /**
    * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
    * `totalPagoMensajero` − `totalIngresoBodegaRechazos` de ESTE cierre_dia. NO es `ganancia`: aquella no resta la
    * bodega, y por eso los dos numeros solo coinciden cuando la bodega es 0. Puede ser NEGATIVO.
    */
-  netoEmpresa: string;
+  netoEmpresa: string | null;
   /**
    * Ficha 396 (D1) — DERIVADO: `totales.general` − `totalesIngreso.total` de ESTE cierre_dia.
    * LO QUE LA TIENDA GANA EN TOTAL con el dia de ESE mensajero.
@@ -192,7 +193,7 @@ export interface CierreBodegaDetalleCierre {
    * Sale de SUS PROPIOS snapshot y desglose, nunca de los del agregado (R21). Puede ser NEGATIVO
    * y se emite CON SU SIGNO, nunca recortado a "0.00".
    */
-  ganaLaTienda: string;
+  ganaLaTienda: string | null;
   /**
    * 💰 Ficha 396 (R19) — DE QUIEN ES CADA PARTE de `pagoTienda` y `ganaLaTienda` DE ESTE
    * `cierre_dia`, o sea del dia de ESE mensajero.
@@ -224,7 +225,7 @@ export interface CierreBodegaDetalleCierre {
    * LO QUE NO SE REPARTE (R16): `totalPagoMensajero` y `totalIngresoBodegaRechazos` son del
    * cierre_dia ENTERO y se quedan agregados.
    */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
   /**
    * Feature 393 (R9/R15) — DERIVADO: `totales.general` − `totalPagoMensajero` −
    * `totalIngresoBodegaRechazos` de ESTE cierre_dia, desde SUS PROPIOS snapshots (nunca desde

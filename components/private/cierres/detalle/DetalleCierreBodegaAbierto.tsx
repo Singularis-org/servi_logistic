@@ -19,7 +19,7 @@ import { DetalleCierre } from "./DetalleCierre";
 import { MensajerosCierreBodega } from "./MensajerosCierreBodega";
 import { tituloDescargaGestiones } from "./detalle-cierre-labels";
 import {
-  COLUMNAS_DESCARGA_DETALLE_BODEGA,
+  columnasDescargaDetalle,
   filaDescargaDetalleBodega,
 } from "./detalle-cierre-descarga-columnas";
 import {
@@ -81,7 +81,7 @@ export function DetalleCierreBodegaAbierto({
             descargar={
               <DescargarDatasetButton
                 titulo={tituloDescargaGestiones(folioDe(detalle.cierre.cierreBodegaId))}
-                columnas={COLUMNAS_DESCARGA_DETALLE_BODEGA}
+                columnas={columnasDescargaDetalle("bodega", audiencia === "central")}
                 obtenerFilas={async () => ({
                   status: "ok",
                   filas: gestionesDeBodega(detalle.cierres).map((i) =>

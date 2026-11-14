@@ -436,6 +436,90 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     await pestanaDeColaBodega(page, "Conciliados").click();
     await expect(verRecibido).toBeVisible();
   });
+
+  // SLT-154 «Vista de la bodega satélite: solo lo suyo» (T5; R468-R471, R474, R475) — la satélite abre
+  // su cierre de bodega desde «Solicitados» (S4) y, por «Ver su cierre», el del mensajero (S6): ve solo
+  // su dinero. Literales de la cabecera, escritos a mano: Recaudado ₡9.000 · Pago ₡1.500 · Gana la
+  // bodega ₡500 · Debe llegar 9.000 − 1.500 − 500 = ₡7.000. Lo de la empresa que NO debe aparecer:
+  // facturado 2.500 + 1.250 = ₡3.750 y le queda 3.750 − 0 − 1.500 − 500 = ₡1.750. La consolidación ya
+  // está marcada (paso 2): «Solicitados» lista los cierres de la bodega en cualquier estado.
+  // T5.2: «Lo que va a la central» es a la vez pestaña y cuenta; cada localizador va acotado por su rol
+  // (`tab` en `irA`, `region` en `montoDeCuenta`).
+  test("4 — la satélite ve solo lo suyo", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    await pestanaBodega(page);
+    const bodega = page.getByRole("region", { name: "Cierre de bodega" });
+    await bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" }).getByRole("tab", { name: /^Solicitados/ }).click();
+    const [c] = await consolidacionDeLaZona();
+    const folio = `#${c.id.slice(-8).toUpperCase()}`;
+    const solicitados = bodega.getByRole("region", { name: "Cierres de bodega solicitados" });
+    await solicitados.getByRole("button", { name: `Ver el cierre de bodega ${folio}` }).click();
+    const detalle = detalleDeBodega(page);
+    await expect(detalle).toBeVisible();
+
+    // S4 · R468: las tarjetas de la satélite; sin «Le queda a la empresa» (ni «La central debe»: el efectivo alcanzó).
+    const cifra = (d: Locator, id: string) => d.locator(`[data-cifra="${id}"]`);
+    await expect(cifra(detalle, "recaudado")).toHaveText("₡9.000");
+    await expect(cifra(detalle, "pago")).toHaveText("₡1.500");
+    await expect(cifra(detalle, "ganaBodega")).toHaveText("₡500");
+    await expect(cifra(detalle, "paraCentral")).toHaveText("₡7.000");
+    await expect(cifra(detalle, "leQueda")).toHaveCount(0);
+    await expect(cifra(detalle, "centralDebe")).toHaveCount(0);
+
+    // R470: abre en «Gestiones (2)».
+    const secciones = detalle.getByRole("tablist", { name: "Secciones del cierre" });
+    await expect(secciones.getByRole("tab", { name: "Gestiones (2)" })).toHaveAttribute("aria-selected", "true");
+    await expect(secciones.getByRole("tab", { name: "Dinero" })).toHaveCount(0);
+
+    // R474: «Gana bodega» en el sitio de «Cobro a la tienda»; la fila del rechazo, ₡500.
+    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    const cabecera = ordenes.locator(":scope > div").first();
+    await expect(cabecera.locator('[data-columna="ganaBodega"]')).toHaveText("Gana bodega");
+    await expect(cabecera).not.toContainText("Cobro a la tienda");
+    const desplegar = page.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${rechazada.numRemision} · `) });
+    const fila = ordenes.locator("[data-gestion]").filter({ has: desplegar });
+    await expect(fila.locator('[data-columna="ganaBodega"]')).toHaveText("₡500");
+    // R474 con SLT-165 (R523): en el teléfono la fila es una tarjeta sin cabecera; «Gana bodega» no se
+    // pierde: va en su línea, con el rótulo delante. Después, de vuelta al escritorio.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const ganaBodegaMovil = fila.locator('[data-columna="ganaBodega"]');
+    await expect(ganaBodegaMovil).toBeVisible();
+    await expect(ganaBodegaMovil).toHaveText("₡500");
+    expect(await ganaBodegaMovil.evaluate((el) => getComputedStyle(el, "::before").content)).toBe('"Gana bodega:"');
+    await expect(fila.locator('[data-columna="cobro"]')).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // R475: desplegada, conserva lo del mensajero y no trae el cobro a la tienda.
+    await fila.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${rechazada.numRemision} · `) }).click();
+    await expect(fila.getByText("Recibió el mensajero")).toBeVisible();
+    await expect(fila.getByText("Se le cobra a la tienda")).toHaveCount(0);
+    await expect(fila.getByRole("button", { name: "Ver cómo se calculó" })).toHaveCount(0);
+
+    // R469: la pestaña del dinero se llama «Lo que va a la central» y solo lleva su cuenta.
+    await irA(detalle, CENTRAL);
+    await expect(montoDeCuenta(detalle, CENTRAL, "Total general")).toHaveText("₡9.000");
+    await expect(montoDeCuenta(detalle, CENTRAL, "− Pago a mensajeros")).toHaveText("₡1.500");
+    await expect(montoDeCuenta(detalle, CENTRAL, "− Gana la bodega satélite")).toHaveText("₡500");
+    await expect(montoDeCuenta(detalle, CENTRAL, "Debe llegar a la central")).toHaveText("₡7.000");
+    await expect(detalle.getByRole("region", { name: FACTURA, exact: true })).toHaveCount(0);
+    await expect(detalle.getByRole("region", { name: QUEDA, exact: true })).toHaveCount(0);
+    for (const ausente of ["Le queda a la empresa", FACTURA, QUEDA, "₡3.750", "₡1.750"]) {
+      await expect(detalle).not.toContainText(ausente);
+    }
+
+    // S6 · R471: «Ver su cierre» (R294) abre el cierre del mensajero con las tarjetas de la satélite.
+    await irA(detalle, "Mensajeros (1)");
+    await filaDeMensajeros(detalle, m.nombre).getByRole("link", { name: `Ver el cierre de ${m.nombre}` }).click();
+    await expect(detalle).toHaveCount(0);
+    const suCierre = page.getByRole("dialog", { name: `Detalle del cierre · Cierre de ${m.nombre}` });
+    await expect(suCierre).toBeVisible();
+    await expect(cifra(suCierre, "recaudado")).toHaveText("₡9.000");
+    await expect(cifra(suCierre, "pago")).toHaveText("₡1.500");
+    await expect(cifra(suCierre, "ganaBodega")).toHaveText("₡500");
+    await expect(cifra(suCierre, "paraCentral")).toHaveText("₡7.000");
+    await expect(cifra(suCierre, "paraTienda")).toHaveCount(0);
+    await expect(cifra(suCierre, "leQueda")).toHaveCount(0);
+    await expect(suCierre).not.toContainText("Se le paga hoy a la tienda");
+  });
 });
 
 /**

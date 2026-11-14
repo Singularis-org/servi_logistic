@@ -75,33 +75,36 @@ export type ListarPendientesCierresBodegaCompletoServiceResult = ConCifrasBodega
 // R2/R11-R13/R19: detalle agregado de UN cierre de bodega (por cada cierre_dia, su
 // detalle por resultado reuso 37 + totales). `no_encontrada` = id inexistente (R19).
 // `forbidden` = rol != maestro (R2).
+// SLT-154 (R460, R461, D2): las ocho cifras de la empresa del agregado y de cada `cierres[i]` llegan
+// en `null` a quien no tiene acceso total. Clasificacion en `CLASE_DETALLE_BODEGA` y
+// `CLASE_CIERRE_DEL_DIA_BODEGA` (`CierresBodegaAdminService`).
 export type CierreBodegaDetalleServiceResult =
   | {
       status: "ok";
       cierre: CierreBodegaResumen; // cabecera + totales agregados snapshot (R13)
       cierres: CierreBodegaDetalleCierre[]; // un elemento por cierre_dia incluido (R11)
       // Ingreso de la empresa AGREGADO de todo el cierre de bodega (suma de los cierre_dia).
-      totalesIngreso: TotalesIngresoEmpresa;
+      totalesIngreso: TotalesIngresoEmpresa | null;
       // SL-39 (R21): IVA facturado AGREGADO = `ivaFlete` + `ivaFleteDevolucion` +
       // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
-      ivaFacturado: string;
+      ivaFacturado: string | null;
       // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `cierre.totalPagoMensajero`
       // (STRING money-safe). Lo que le queda a la empresa de toda la bodega. Puede ser NEGATIVO.
-      ganancia: string;
+      ganancia: string | null;
       // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
       // money-safe). Lo que se le paga a las tiendas. Puede ser NEGATIVO.
-      pagoTienda: string;
+      pagoTienda: string | null;
       /**
        * Feature 393 (R7/R10) — LA LINEA PUENTE agregada: `fleteConIva` + `comisionConIva` de
        * TODO el cierre de bodega. Se emite SIEMPRE, tambien con flete por rechazo en "0.00".
        */
-      cobradoSobreRecaudado: string;
+      cobradoSobreRecaudado: string | null;
       /**
        * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
        * `cierre.totalPagoMensajero` − `cierre.totalIngresoBodegaRechazos`. NO es `ganancia` (que no resta la bodega). Puede
        * ser NEGATIVO.
        */
-      netoEmpresa: string;
+      netoEmpresa: string | null;
       /**
        * Ficha 396 (D1) — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LAS
        * TIENDAS GANAN EN TOTAL con todo el cierre de bodega.
@@ -120,7 +123,7 @@ export type CierreBodegaDetalleServiceResult =
        * la suma de sus `cierre_dia` (R21, decision explicita de la 393). Puede ser NEGATIVO y se
        * emite CON SU SIGNO, nunca recortado a "0.00".
        */
-      ganaLaTienda: string;
+      ganaLaTienda: string | null;
       /**
        * 💰 Ficha 396 (R20) — DE QUIEN ES CADA PARTE de `pagoTienda` y `ganaLaTienda` de TODA la
        * bodega: UNA fila por tienda, a traves de todos los mensajeros incluidos.
@@ -159,7 +162,7 @@ export type CierreBodegaDetalleServiceResult =
        * LO QUE NO SE REPARTE (R16): `cierre.totalPagoMensajero` y
        * `cierre.totalIngresoBodegaRechazos` son del cierre de bodega ENTERO.
        */
-      partesPorTienda: ParteDeTienda[];
+      partesPorTienda: ParteDeTienda[] | null;
       /**
        * Feature 393 (R9/R15/R17) — DERIVADO desde los snapshots AGREGADOS del propio cierre de
        * bodega, nunca sumando los de sus `cierre_dia`: cada nivel se lee de su propio snapshot
@@ -175,6 +178,16 @@ export type CierreBodegaDetalleServiceResult =
        * El servicio lo emite siempre; opcional solo para que los dobles no tengan que construirlo.
        */
       porcentajesReparto?: number[] | null;
+      /**
+       * SLT-154 (R466, D9): «La central debe» de este cierre de bodega — los pagos al mensajero de
+       * sus cierres del dia del modelo anterior que el efectivo de esos mismos cierres no alcanza a
+       * pagar (reparto de menor a mayor, sin pagos parciales; `repartirEfectivo`). Los del modelo
+       * nuevo no entran. Se deriva al leer de snapshots que no cambian: es el numero que la satelite
+       * vio en «A consolidar» al solicitar. Dato de la satelite: viaja a todo lector. El servicio lo
+       * emite SIEMPRE; opcional en el tipo solo para que los dobles de hoy no tengan que construirlo
+       * (como `porcentajesReparto`).
+       */
+      centralDebe?: string;
     }
   | { status: "forbidden" } // rol != maestro (R2)
   | { status: "no_encontrada" }; // id inexistente (R19)

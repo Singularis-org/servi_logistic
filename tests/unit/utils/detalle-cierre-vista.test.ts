@@ -116,15 +116,14 @@ const BODEGA: DetalleBodegaVista = {
 const valores = (c: { label: string; valor: string | null }[]) => c.map((x) => [x.label, x.valor]);
 
 describe("cifrasDe (R6, R8)", () => {
-  it("central y satélite: cuatro cifras, en orden, cada una del campo exacto", () => {
-    for (const audiencia of ["central", "satelite"] as const) {
-      expect(valores(cifrasDe("mensajero", audiencia, MENSAJERO))).toEqual([
-        ["Recaudado", "100000.00"],
-        ["Se le paga hoy a la tienda", "94350.00"],
-        ["Pago al mensajero", "3000.00"],
-        ["Le queda a la empresa", "3500.00"],
-      ]);
-    }
+  // SLT-154 (R471, R477): la satélite ya no ve estas cuatro (ver «SLT-154» abajo); la central, sí.
+  it("central: cuatro cifras, en orden, cada una del campo exacto", () => {
+    expect(valores(cifrasDe("mensajero", "central", MENSAJERO))).toEqual([
+      ["Recaudado", "100000.00"],
+      ["Se le paga hoy a la tienda", "94350.00"],
+      ["Pago al mensajero", "3000.00"],
+      ["Le queda a la empresa", "3500.00"],
+    ]);
   });
 
   it("el mensajero ve tres: Recaudado, Gestiones y Tu ganancia", () => {
@@ -273,10 +272,11 @@ describe("pestanasDe (R10, D11)", () => {
     ]);
   });
 
+  // SLT-154 (R473): la satélite abre en Gestiones y su pestaña del dinero es «Lo que va a la central».
   it("mensajero · satélite: nunca «Pago al mensajero»", () => {
     expect(labels("mensajero", "satelite", "solo lectura", true)).toEqual([
-      "Dinero",
       "Gestiones (19)",
+      "Lo que va a la central",
       "Rechazados por la tienda (0)",
     ]);
   });
@@ -1107,6 +1107,369 @@ describe("SLT-153 — paresCabeceraMensajero / paresCabeceraBodega", () => {
   it("R454: «Recibido por» solo con la fecha de la marca", () => {
     const sinFecha = paresCabeceraBodega({ ...BODEGA, conciliadoAt: null, conciliadoPorNombre: "Carlos R." });
     expect(filas(sinFecha).map(([r]) => r)).toEqual(["Folio", "Origen", "Zona", "Solicitado por", "Mensajeros", "Solicitado"]);
+  });
+});
+
+// ═══ SLT-154 «Vista de la bodega satélite: solo lo suyo» (T3.5) ═══════════════════════════════════
+// Corpus de `e2e/cierre-bodega-satelite.spec.ts` (cabecera), escrito a mano:
+//   recaudado 9 000 (todo efectivo) − pago 1 500 − gana la bodega 500 = debe llegar 7 000.
+//   S4 = el cierre de bodega (1 mensajero, 2 gestiones); S6 = el cierre del mensajero que contiene.
+//   Lo de la empresa llega en `null` a la satélite (R460, R462).
+// Reparto en % (entrada del doble; lo deriva el servidor): 7000/9000 = 77,8 · 1500/9000 = 16,7 ·
+//   500/9000 = 5,6 → [78, 17, 5] (restos mayores). La vista lo pasa tal cual.
+describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () => {
+  const TOTALES_S = { efectivo: "9000.00", simpe: "0.00", transferencia: "0.00", general: "9000.00" };
+
+  const S4: DetalleBodegaVista = {
+    zonaNombre: "Satélite Norte",
+    solicitadoPorNombre: "Sara Satélite",
+    folio: "5A7E0004",
+    solicitadoAt: "2026-11-13T23:00:00.000Z",
+    conciliado: false,
+    faltaPorRecibir: "7000.00",
+    montoRecibido: null,
+    conciliadoAt: null,
+    conciliadoPorNombre: null,
+    totales: TOTALES_S,
+    totalPagoMensajero: "1500.00",
+    totalIngresoBodegaRechazos: "500.00",
+    paraLaCentral: "7000.00",
+    efectivoCubreDescuentos: true,
+    pagoTienda: null,
+    cobradoSobreRecaudado: null,
+    ivaFacturado: null,
+    netoEmpresa: null,
+    totalesIngreso: null,
+    partesPorTienda: null,
+    centralDebe: "0.00",
+    modeloNuevo: false,
+    porcentajesReparto: [78, 17, 5],
+    conteos: { gestiones: 2, mensajeros: 1, cierres: 1, pagosAjustados: 0 },
+  };
+
+  const S6: DetalleMensajeroVista = {
+    mensajeroNombre: "Mario Mensajero",
+    destino: "Bodega satélite",
+    zona: "Satélite Norte",
+    folio: "5A7E0006",
+    estado: "aprobado",
+    solicitadoAt: "2026-11-13T22:00:00.000Z",
+    resueltoAt: "2026-11-13T22:30:00.000Z",
+    reprogramadasRetenidasHoy: 0,
+    motivoRechazo: null,
+    totales: TOTALES_S,
+    totalPagoMensajero: "1500.00",
+    empresa: null,
+    haciaLaCentral: {
+      totales: TOTALES_S,
+      pago: "1500.00",
+      ganaBodega: "500.00",
+      paraLaCentral: "7000.00",
+      efectivoCubreDescuentos: true,
+      porcentajes: [78, 17, 5],
+      modeloNuevo: false,
+    },
+    conteos: {
+      gestiones: 2,
+      entregadas: 1,
+      noEntregadas: 1,
+      pagosAjustados: 0,
+      incidentesSinIndemnizar: 0,
+      rechazosDeTienda: 0,
+      paquetesVuelven: 1,
+      tiendas: 0,
+    },
+  };
+
+  const tarjetas = (c: { id: string; label: string; valor: string | null }[]) => c.map((x) => [x.id, x.label, x.valor]);
+  const lineasDe = (c: { lineas: { label: string; monto: string; signo: string; tipo: string }[] }) =>
+    c.lineas.map((l) => [l.label, l.monto, l.signo, l.tipo]);
+
+  describe("S4 — el cierre de bodega", () => {
+    it("R468 — cuatro tarjetas en orden, «Debe llegar a la central» resaltada y sin «Le queda a la empresa»", () => {
+      const cifras = cifrasDe("bodega", "satelite", S4);
+      expect(tarjetas(cifras)).toEqual([
+        ["recaudado", "Recaudado", "9000.00"],
+        ["pago", "Pago a mensajeros", "1500.00"],
+        ["ganaBodega", "Gana la bodega satélite", "500.00"],
+        ["paraCentral", "Debe llegar a la central", "7000.00"],
+      ]);
+      expect(cifras.map((c) => c.destacada)).toEqual([false, false, false, true]);
+      // «con el número de mensajeros»; «Recaudado», con sus métodos.
+      expect(cifras[1].contexto).toBe("1 mensajero");
+      expect(cifras[0].conMetodos).toBe(true);
+      expect(cifras.map((c) => c.label)).not.toContain("Le queda a la empresa");
+    });
+
+    it("R468 — con «La central debe» 800, una quinta tarjeta en tono de aviso", () => {
+      const cifras = cifrasDe("bodega", "satelite", { ...S4, centralDebe: "800.00" });
+      expect(cifras).toHaveLength(5);
+      expect(tarjetas(cifras)[4]).toEqual(["centralDebe", "La central debe", "800.00"]);
+      expect(cifras[4].aviso).toBe(true);
+    });
+
+    it("R478 — sin «La central debe» del servidor, no hay su tarjeta (ni «₡0»)", () => {
+      const cifras = cifrasDe("bodega", "satelite", { ...S4, centralDebe: null });
+      expect(cifras.map((c) => c.id)).toEqual(["recaudado", "pago", "ganaBodega", "paraCentral"]);
+    });
+
+    it("R469 — «Lo que va a la central»: la barra [debe llegar, pago, bodega] y solo esa cuenta", () => {
+      const dinero = lineasDinero("bodega", S4);
+      expect(dinero.reparto).toEqual([
+        { label: "Debe llegar a la central", monto: "7000.00", porcentaje: 78 },
+        { label: "Pago a mensajeros", monto: "1500.00", porcentaje: 17 },
+        { label: "Gana la bodega satélite", monto: "500.00", porcentaje: 5 },
+      ]);
+      expect(dinero.cuentas.map((c) => c.titulo)).toEqual(["Lo que va a la central"]);
+      expect(lineasDe(dinero.cuentas[0])).toEqual([
+        ["Total general", "9000.00", "neutro", "partida"],
+        ["Pago a mensajeros", "1500.00", "resta", "partida"],
+        ["Gana la bodega satélite", "500.00", "resta", "partida"],
+        ["Debe llegar a la central", "7000.00", "neutro", "total"],
+      ]);
+      expect(dinero.porTienda).toBeNull();
+    });
+
+    it("R470 — pestañas: Gestiones primero (abre ahí), «Lo que va a la central», Mensajeros, Conciliación", () => {
+      const pestanas = pestanasDe("bodega", "satelite", "decidir", { gestiones: 2, mensajeros: 1 });
+      expect(pestanas.map((p) => p.label)).toEqual([
+        "Gestiones (2)",
+        "Lo que va a la central",
+        "Mensajeros (1)",
+        "Conciliación",
+      ]);
+      // RU5: el mismo `PestanaId` de siempre.
+      expect(pestanas.map((p) => p.id)).toEqual(["gestiones", "dinero", "mensajeros", "conciliacion"]);
+    });
+  });
+
+  describe("S6 — el cierre del mensajero", () => {
+    it("R471 — recaudado, «Pago al mensajero», «Gana la bodega satélite» y «Debe llegar a la central» resaltada", () => {
+      const cifras = cifrasDe("mensajero", "satelite", S6);
+      expect(tarjetas(cifras)).toEqual([
+        ["recaudado", "Recaudado", "9000.00"],
+        ["pago", "Pago al mensajero", "1500.00"],
+        ["ganaBodega", "Gana la bodega satélite", "500.00"],
+        ["paraCentral", "Debe llegar a la central", "7000.00"],
+      ]);
+      expect(cifras.map((c) => c.destacada)).toEqual([false, false, false, true]);
+      expect(cifras.map((c) => c.label)).not.toContain("Se le paga hoy a la tienda");
+      expect(cifras.map((c) => c.label)).not.toContain("Le queda a la empresa");
+    });
+
+    it("R471 — aunque llegara el dinero de la empresa, la satélite no ve sus tarjetas", () => {
+      const conEmpresa = { ...S6, empresa: MENSAJERO.empresa };
+      expect(cifrasDe("mensajero", "satelite", conEmpresa).map((c) => c.id)).toEqual([
+        "recaudado",
+        "pago",
+        "ganaBodega",
+        "paraCentral",
+      ]);
+    });
+
+    it("R478 — sin `haciaLaCentral`, solo recaudado y pago (falla cerrado)", () => {
+      const cifras = cifrasDe("mensajero", "satelite", { ...S6, haciaLaCentral: null });
+      expect(tarjetas(cifras)).toEqual([
+        ["recaudado", "Recaudado", "9000.00"],
+        ["pago", "Pago al mensajero", "1500.00"],
+      ]);
+    });
+
+    it("R472 — la barra [debe llegar, pago al mensajero, bodega] con los % del servidor y la cuenta de la central", () => {
+      const dinero = lineasDinero("mensajero", S6);
+      expect(dinero?.reparto).toEqual([
+        { label: "Debe llegar a la central", monto: "7000.00", porcentaje: 78 },
+        { label: "Pago al mensajero", monto: "1500.00", porcentaje: 17 },
+        { label: "Gana la bodega satélite", monto: "500.00", porcentaje: 5 },
+      ]);
+      expect(dinero?.cuentas.map((c) => c.titulo)).toEqual(["Lo que va a la central"]);
+      expect(lineasDe(dinero!.cuentas[0])).toEqual([
+        ["Total general", "9000.00", "neutro", "partida"],
+        ["Pago al mensajero", "1500.00", "resta", "partida"],
+        ["Gana la bodega satélite", "500.00", "resta", "partida"],
+        ["Debe llegar a la central", "7000.00", "neutro", "total"],
+      ]);
+      expect(dinero?.porTienda).toBeNull();
+      expect(dinero?.reparto.map((p) => p.label)).not.toContain("Se le paga hoy a la tienda");
+    });
+
+    it("R472, R478 — sin empresa ni `haciaLaCentral`, no hay dinero que pintar", () => {
+      expect(lineasDinero("mensajero", { ...S6, haciaLaCentral: null })).toBeNull();
+    });
+
+    it("R473 — pestañas: Gestiones primero, «Lo que va a la central», Rechazados por la tienda (0)", () => {
+      expect(pestanasDe("mensajero", "satelite", "solo lectura", { gestiones: 2, rechazos: 0 }).map((p) => p.label)).toEqual([
+        "Gestiones (2)",
+        "Lo que va a la central",
+        "Rechazados por la tienda (0)",
+      ]);
+    });
+  });
+
+  describe("del servidor a la vista (R462, R466, R467, R478)", () => {
+    const RESULTADO_S6 = {
+      status: "ok",
+      cierre: {
+        cierreId: "aaaaaaaa-bbbb-4ccc-8ddd-00005a7e0006",
+        mensajeroNombre: "Mario Mensajero",
+        destinoTipo: "bodega_satelite",
+        destinoZonaNombre: "Satélite Norte",
+        estado: "aprobado",
+        totales: TOTALES_S,
+        totalPagoMensajero: "1500.00",
+        totalIngresoBodegaRechazos: "500.00",
+        reprogramadasRetenidasHoy: 0,
+        solicitadoAt: "2026-11-13T22:00:00.000Z",
+        resueltoAt: "2026-11-13T22:30:00.000Z",
+        motivoRechazo: null,
+      },
+      grupos: { entregado: [], reprogramado: [], novedad: [], devolucion_a_origen_por_rechazo: [], incidente: [] },
+      desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "500.00", total: "500.00" },
+      totalesIngreso: null,
+      ivaFacturado: null,
+      ganancia: null,
+      pagoTienda: null,
+      cobradoSobreRecaudado: null,
+      netoEmpresa: null,
+      ganaLaTienda: null,
+      fleteRechazoYaCobradoATienda: null,
+      partesPorTienda: null,
+      porcentajesReparto: null,
+      ordenesSinGestion: [],
+      sinGestionRegistrado: true,
+      rechazosDeTienda: [],
+      paraLaCentral: "7000.00",
+      efectivoCubreDescuentos: true,
+      porcentajesRepartoCentral: [78, 17, 5],
+    } as unknown as Extract<CierreDetalleAdminServiceResult, { status: "ok" }>;
+
+    it("R462, R478 — con las cifras de la empresa en `null`, `empresa: null` y «Tiendas» 0", () => {
+      const v = vistaMensajeroDesdeAdmin(RESULTADO_S6);
+      expect(v.empresa).toBeNull();
+      expect(v.conteos.tiendas).toBe(0);
+    });
+
+    it("R478 — basta UNA cifra de la empresa en `null` para que no haya `empresa`", () => {
+      const casiCentral = {
+        ...RESULTADO_S6,
+        totalesIngreso: { fleteConIva: "0.00", comisionConIva: "0.00", fleteDevolucionConIva: "0.00", total: "0.00" },
+        ivaFacturado: "0.00",
+        pagoTienda: "9000.00",
+        cobradoSobreRecaudado: "0.00",
+        ganaLaTienda: "9000.00",
+        partesPorTienda: [],
+        netoEmpresa: null,
+      } as unknown as typeof RESULTADO_S6;
+      expect(vistaMensajeroDesdeAdmin(casiCentral).empresa).toBeNull();
+      // Contraprueba: con `netoEmpresa`, sí hay empresa.
+      expect(vistaMensajeroDesdeAdmin({ ...casiCentral, netoEmpresa: "-450.00" }).empresa?.netoEmpresa).toBe("-450.00");
+    });
+
+    it("R467 — lo que va a la central llega tal cual a la vista", () => {
+      expect(vistaMensajeroDesdeAdmin(RESULTADO_S6).haciaLaCentral).toEqual({
+        totales: TOTALES_S,
+        pago: "1500.00",
+        ganaBodega: "500.00",
+        paraLaCentral: "7000.00",
+        efectivoCubreDescuentos: true,
+        porcentajes: [78, 17, 5],
+        modeloNuevo: false,
+      });
+    });
+
+    it("R478 — sin los campos de R467 (un doble viejo), `haciaLaCentral: null`, nunca «0.00»", () => {
+      const sinCentral = { ...RESULTADO_S6 };
+      delete sinCentral.paraLaCentral;
+      delete sinCentral.efectivoCubreDescuentos;
+      expect(vistaMensajeroDesdeAdmin(sinCentral).haciaLaCentral).toBeNull();
+    });
+
+    it("R466 — `centralDebe` pasa tal cual; ausente, `null`", () => {
+      const bodega = {
+        status: "ok",
+        cierre: {
+          cierreBodegaId: "11111111-2222-4333-8444-00005a7e0004",
+          zonaNombre: "Satélite Norte",
+          solicitadoPorNombre: "Sara Satélite",
+          conciliado: false,
+          faltaPorRecibir: "7000.00",
+          montoRecibido: null,
+          conciliadoAt: null,
+          conciliadoPorNombre: null,
+          totales: TOTALES_S,
+          totalPagoMensajero: "1500.00",
+          totalIngresoBodegaRechazos: "500.00",
+          solicitadoAt: "2026-11-13T23:00:00.000Z",
+        },
+        cierres: [],
+        totalesIngreso: null,
+        ivaFacturado: null,
+        pagoTienda: null,
+        cobradoSobreRecaudado: null,
+        netoEmpresa: null,
+        partesPorTienda: null,
+        paraLaCentral: "7000.00",
+        efectivoCubreDescuentos: true,
+        centralDebe: "800.00",
+      } as unknown as Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
+      expect(vistaBodegaDesdeAdmin(bodega).centralDebe).toBe("800.00");
+      const sinCentralDebe = { ...bodega };
+      delete sinCentralDebe.centralDebe;
+      expect(vistaBodegaDesdeAdmin(sinCentralDebe).centralDebe).toBeNull();
+    });
+  });
+
+  describe("la central (R477) y los datos que no llegan (R478)", () => {
+    it("R477 — bodega · central: Dinero primero, «Le queda a la empresa» y las tres cuentas", () => {
+      expect(cifrasDe("bodega", "central", BODEGA).map((c) => c.label)).toContain("Le queda a la empresa");
+      expect(pestanasDe("bodega", "central", "decidir", { gestiones: 31, mensajeros: 2 })[0].label).toBe("Dinero");
+      expect(lineasDinero("bodega", BODEGA).cuentas.map((c) => c.titulo)).toEqual([
+        "Lo que va a la central",
+        "Lo que se le factura a la tienda",
+        "De lo facturado, le queda a la empresa",
+      ]);
+    });
+
+    it("R477 — mensajero · central: «Se le paga hoy a la tienda» y «Le queda a la empresa»; Dinero primero", () => {
+      expect(cifrasDe("mensajero", "central", MENSAJERO).map((c) => c.label)).toEqual([
+        "Recaudado",
+        "Se le paga hoy a la tienda",
+        "Pago al mensajero",
+        "Le queda a la empresa",
+      ]);
+      expect(pestanasDe("mensajero", "central", "decidir", { gestiones: 19 })[0].label).toBe("Dinero");
+    });
+
+    it("R478 — con `netoEmpresa: null` y audiencia central, sin «De lo facturado, le queda a la empresa» ni su tarjeta", () => {
+      const sinNeto = { ...BODEGA, netoEmpresa: null };
+      expect(lineasDinero("bodega", sinNeto).cuentas.map((c) => c.titulo)).toEqual([
+        "Lo que va a la central",
+        "Lo que se le factura a la tienda",
+      ]);
+      expect(cifrasDe("bodega", "central", sinNeto).map((c) => c.id)).toEqual(["recaudado", "paraCentral", "pago"]);
+    });
+
+    it("R478 — sin `cobradoSobreRecaudado`, sin «Lo que se le factura a la tienda» (la otra cuenta, sí)", () => {
+      const sinCobrado = { ...BODEGA, cobradoSobreRecaudado: null };
+      expect(lineasDinero("bodega", sinCobrado).cuentas.map((c) => c.titulo)).toEqual([
+        "Lo que va a la central",
+        "De lo facturado, le queda a la empresa",
+      ]);
+    });
+
+    it("R478 — sin `totalesIngreso`, ninguna de las dos cuentas de la empresa ni «Por tienda»", () => {
+      const sinEmpresa = { ...BODEGA, totalesIngreso: null, partesPorTienda: null };
+      const dinero = lineasDinero("bodega", sinEmpresa);
+      expect(dinero.cuentas.map((c) => c.titulo)).toEqual(["Lo que va a la central"]);
+      expect(dinero.porTienda).toBeNull();
+    });
+
+    it("R478 — mensajero · central sin `empresa`: sin sus dos tarjetas (ni «—» en su lugar)", () => {
+      expect(cifrasDe("mensajero", "central", { ...MENSAJERO, empresa: null }).map((c) => c.id)).toEqual([
+        "recaudado",
+        "pago",
+      ]);
+    });
   });
 });
 

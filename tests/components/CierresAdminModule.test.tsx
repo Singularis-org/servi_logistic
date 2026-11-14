@@ -448,7 +448,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -495,7 +496,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -530,7 +532,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -574,7 +577,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
 
@@ -660,7 +664,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -1013,7 +1018,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
@@ -1061,7 +1067,8 @@ describe("CierresAdminModule", () => {
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {

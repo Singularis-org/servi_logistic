@@ -536,7 +536,10 @@ describeSiHayBase("SLT-111 — reparto en % de lo recaudado en los dos detalles,
       empresa: "3390.00",
     });
     expect(medido.central.porcentajesReparto).toEqual([89, 11]);
-    expect(medido.satelite.porcentajesReparto).toEqual([89, 11]);
+    // SLT-154 (R462): el reparto [tienda, empresa] es cifra de la empresa; al adminSatelite ya no
+    // le llega (`null`), y sus partes tampoco. La central sigue con [89, 11] (R465).
+    expect(medido.satelite.porcentajesReparto).toBeNull();
+    expect([medido.satelite.pagoTienda, medido.satelite.cobradoSobreRecaudado]).toEqual([null, null]);
   });
 
   it("R261 MC (prepagada): general 0,00 y tienda −1 130,00 → null", async () => {

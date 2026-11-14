@@ -28,6 +28,12 @@ export interface CierreBodegaDetalleCierreRow {
   gestionesAjustadas: number; // SLT-56 (R20): gestiones de este cierre_dia con al menos un ajuste del pago
   /** SLT-104 (PA3, R120): ISO del `solicitado_at` de ESTE cierre_dia, no el del cierre de bodega. */
   solicitadoAt: string;
+  /**
+   * SLT-154 (R466): marca del modelo nuevo de ESTE cierre_dia (la satelite le paga al mensajero
+   * aparte del efectivo). Obligatorio: si el mapper la perdiera, «La central debe» contaria un
+   * cierre nuevo como viejo.
+   */
+  pagoIndependienteEfectivo: boolean;
 }
 
 /**

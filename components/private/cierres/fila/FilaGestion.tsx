@@ -80,6 +80,8 @@ const ANCHO: Record<ColumnaFila["id"], string> = {
   // fallo que SLT-152 tapaba con el recorte).
   recibido: "minmax(max-content,1fr)",
   cobro: "minmax(max-content,1fr)",
+  // SLT-154 (R474): ocupa el sitio de «Cobro a la tienda», con su mismo ancho.
+  ganaBodega: "minmax(max-content,1fr)",
   pago: "minmax(max-content,1fr)",
   ganancia: "minmax(max-content,1fr)",
   senales: "minmax(0,1.3fr)",
@@ -115,6 +117,23 @@ export const AREAS_TARJETA =
  */
 export const AREAS_TARJETA_CON_MENSAJERO =
   "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']";
+/**
+ * SLT-154 (R474) con SLT-165: quien no es la central ve «Gana bodega» en lugar del cobro, y en el
+ * teléfono no hay tarjeta desplegada que lo diga (la del cobro no existe para ella): va en su línea,
+ * bajo «guía · tienda» (y bajo «Mensajero» en el detalle de bodega). Nada se pierde en el móvil.
+ */
+export const AREAS_TARJETA_CON_GANA_BODEGA =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']";
+export const AREAS_TARJETA_CON_MENSAJERO_Y_GANA_BODEGA =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']";
+
+/** Las áreas de la tarjeta según las columnas que lleva la fila (literales: Tailwind no las compone). */
+export function areasTarjeta(columnas: readonly ColumnaFila[]): string {
+  const conMensajero = columnas.some((c) => c.id === "mensajero");
+  const conGanaBodega = columnas.some((c) => c.id === "ganaBodega");
+  if (conMensajero) return conGanaBodega ? AREAS_TARJETA_CON_MENSAJERO_Y_GANA_BODEGA : AREAS_TARJETA_CON_MENSAJERO;
+  return conGanaBodega ? AREAS_TARJETA_CON_GANA_BODEGA : AREAS_TARJETA;
+}
 
 /**
  * El sitio de cada celda en la tarjeta (`null` = no se pinta en la tarjeta). «Recibido» y «Cobro»
@@ -132,6 +151,9 @@ const AREA_TARJETA: Record<ColumnaFila["id"], string | null> = {
   resultado: "max-md:[grid-area:resultado] max-md:mt-1",
   recibido: null,
   cobro: null,
+  // SLT-154 (R474): con su rótulo delante, como «Mensajero» (en la tarjeta no hay cabecera).
+  ganaBodega:
+    "max-md:[grid-area:ganabodega] max-md:flex max-md:justify-between max-md:gap-1 max-md:text-muted-foreground max-md:before:shrink-0 max-md:before:content-['Gana_bodega:']",
   pago: "max-md:[grid-area:ganancia] max-md:text-base max-md:font-semibold",
   ganancia: "max-md:[grid-area:ganancia] max-md:text-base max-md:font-semibold",
   senales: "max-md:[grid-area:senales]",
@@ -172,7 +194,7 @@ export function FilaGestion({
   const [abierta, setAbierta] = useState(false);
   const [calculoAbierto, setCalculoAbierto] = useState(false);
   const idCalculo = useId();
-  const columnas = columnasDe(audiencia, columnaMensajero);
+  const columnas = columnasDe(audiencia, columnaMensajero, quienMiraEsCentral);
   const ofrecidas = accionesDe(g, audiencia, acciones);
   const delaOrden = `de la orden ${g.numRemision} · ${g.destinatario}`;
   const senales = textoSenales(g, audiencia);
@@ -261,7 +283,7 @@ export function FilaGestion({
           "grid items-center gap-2 px-4 py-3 text-sm",
           REJILLA_ESCRITORIO,
           REJILLA_TARJETA,
-          columnas.some((c) => c.id === "mensajero") ? AREAS_TARJETA_CON_MENSAJERO : AREAS_TARJETA,
+          areasTarjeta(columnas),
         )}
         style={plantillaFila(columnas)}
       >
