@@ -483,3 +483,23 @@ NO ve, con literales a mano y una paridad al céntimo sobre lo que sí comparte 
 
 Los títulos conservan su prefijo («satélite, solicitado:», «satélite A:», «satélite, B6:», «central y
 satélite:»), que es lo que citan `impl_SLT-107.md` y las demás bitácoras. Typecheck 0, lint sin problemas.
+
+## Tanda 3c — `e2e/tarifas-activacion.spec.ts` (R67 de SLT-54) con el contrato de la satélite
+
+Los dos casos de R67 leían como `adminSatelite` «Total de la empresa» (cuenta «Lo que se le factura a la
+tienda»), la línea de bodega de «De lo facturado, le queda a la empresa» y «Se le cobra» de la gestión: lo
+que R469/R472/R475 le quitan. R67 protege lo que se COBRA y PAGA con cada modelo, así que la pantalla la lee
+ahora la central (R477), con los mismos literales (4.237,50 / 2.825 / 300; 5.085 / 3.503 / 570), y la
+satélite abre el mismo cierre con `sateliteVeLoSuyo`: pago al mensajero (1.700 / 2.200) y lo que gana la
+bodega en su tarjeta y en «− Gana la bodega satélite» de «Lo que va a la central» (300 / 570); ausentes
+`paraTienda`, `leQueda`, las dos cuentas de la empresa y, en la entrega desplegada, «Se le cobra a la tienda»
+y «Se le cobra» (con «Se le paga al mensajero» visible). La central abre el cierre por `?cierre=`: en su
+«Histórico» de mensajeros la fila del cierre de la satélite no salió (medido en la primera corrida). El
+«Histórico» y la bodega de la satélite, sin cambio. Las aserciones de base (`congeladoDelCierre`), igual.
+
+Búsqueda en `e2e/` de otras lecturas de la satélite con cobro, factura, «Total de la empresa», «Le queda» o
+`paraTienda`: solo quedaban estas (`ajuste-pago-mensajero-cierre` las lee con el maestro;
+`tope-intentos-por-empresa` no lee dinero con la satélite).
+
+`pnpm exec playwright test e2e/tarifas-activacion.spec.ts` (base `slt154_e2e2`, `E2E_SERVIDOR=dev`):
+**9 passed, `E2E_EXIT=0`**. Typecheck 0, lint sin problemas.
