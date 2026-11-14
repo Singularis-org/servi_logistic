@@ -688,3 +688,17 @@ Verificación (en primer plano, sin E2E):
   `20261115120000_pago_satelite_enum` vaya justo detrás de `20261114120000_pago_independiente_efectivo`, pero en
   `origin/dev` ya está en medio `20261114120000_plan_cambio_por_empresa` (SLT-128). No está en `tests/baseline-rojos.json`.
   No se toca aquí (es test de otra ficha).
+
+## Fuera de Archivos esperados: tests/integration/db/empresas-plataforma.test.ts
+
+Motivo: rojo de CI en el run 43471695435 del PR #151. SLT-60 añadió `pagosPorConfirmar` al listado de
+`EmpresasPlataformaRepository` y la lectura de `pago_plataforma_aplicacion` (lo pagado confirmado), y el test de SL-32
+no los conocía. Solo cambia el test; el repositorio queda igual:
+- «trae las dos…»: `pagosPorConfirmar: 0` en las dos empresas esperadas (`nuevosSlt60`).
+- «ninguna fila trae password_hash…»: `"pagosPorConfirmar"` en la lista ordenada de claves.
+- «sin organizaciones devuelve []»: `pago_plataforma_aplicacion` entra en el bucle de copias vacías (`LIKE` a secas)
+  del esquema aislado `sl32_empresas_*`. No tiene columnas enum: no hay tipo que copiar.
+
+Verificación, en `servi_logistic_slt60` (`prisma migrate status`: al día, 20261116120000 incluida):
+- `vitest run tests/integration/db/empresas-plataforma.test.ts`: 5/5 pasados (1 archivo).
+- `eslint` sobre el archivo: limpio.

@@ -1027,6 +1027,10 @@
     "tests/integration/db/wallet-461-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
       "desde": "2026-10-22"
+    },
+    "tests/integration/db/migracion-slt139-ida-y-vuelta.test.ts": {
+      "motivo": "Deuda de dev: R337 de SLT-139 exige que 20261115120000_pago_satelite_enum vaya justo detras de 20261114120000_pago_independiente_efectivo, y 20261114120000_plan_cambio_por_empresa (SLT-128, mismo timestamp) quedo en medio al mergearse en dev. SLT-60 no toca esas migraciones. Lo corrige bc756367 (SLT-141) en origin/dev: sale de la lista en la proxima sincronizacion de SLT-60 con dev.",
+      "desde": "2026-11-13"
     }
   }
 }
