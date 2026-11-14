@@ -10,7 +10,7 @@ import { VerificarGuiaGate } from "@/app/(app)/mis-asignaciones/_components/Veri
 // debe COINCIDIR). Se mockean el toast y la lib de cámara (sin hardware en CI):
 // el doble captura el callback de decodificación que `start` recibe para simular
 // un escaneo, igual que en EscanerRecoger.test. El resto del gate (input, branch
-// null) usa el componente REAL + `extractNumGuiaFromScan` real.
+// null) usa el componente REAL + `leerGuia` real.
 const { successMock, errorMock, startMock, decodeCallback } = vi.hoisted(() => ({
   successMock: vi.fn(),
   errorMock: vi.fn(),
@@ -98,7 +98,8 @@ describe("VerificarGuiaGate (feature 98)", () => {
     expect(errorMock.mock.calls[0][0]).toMatch(/2002/);
   });
 
-  it("texto NO numérico en el input NO llama onVerificado ni avisa", async () => {
+  // SLT-157 (R566): antes se ignoraba en silencio; ahora avisa como el camino cámara.
+  it("texto NO numérico en el input NO llama onVerificado y avisa «Código inválido.»", async () => {
     const user = userEvent.setup();
     const onVerificado = vi.fn();
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
@@ -107,7 +108,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     await user.click(screen.getByRole("button", { name: "Gestionar" }));
 
     expect(onVerificado).not.toHaveBeenCalled();
-    expect(errorMock).not.toHaveBeenCalled();
+    expect(errorMock).toHaveBeenCalledWith("Código inválido.");
   });
 
   it("numGuiaEsperado null → muestra el aviso de bloqueo y NO hay input ni escáner", () => {
@@ -155,6 +156,41 @@ describe("VerificarGuiaGate (feature 98)", () => {
 
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
     expect(errorMock.mock.calls[0][0]).toMatch(/inválido/i);
+    expect(onVerificado).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`. Aquí
+// la «acción» es `onVerificado`: solo se llama si la guía leída coincide con la esperada.
+describe("VerificarGuiaGate — guía única por cámara o pistola (SLT-157)", () => {
+  it("R565: el CODE128 por cámara y la URL del QR tecleada verifican la misma guía", async () => {
+    const user = userEvent.setup();
+    const onVerificado = vi.fn();
+    render(<VerificarGuiaGate numGuiaEsperado={1024} onVerificado={onVerificado} />);
+
+    await escanear(user, "1024");
+    await vi.waitFor(() => expect(onVerificado).toHaveBeenCalledTimes(1));
+
+    await user.type(
+      screen.getByLabelText("Número de guía"),
+      "https://app.ejemplo.test/paquete/1024{Enter}",
+    );
+    expect(onVerificado).toHaveBeenCalledTimes(2);
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no verifica", async () => {
+    const user = userEvent.setup();
+    const onVerificado = vi.fn();
+    render(<VerificarGuiaGate numGuiaEsperado={1024} onVerificado={onVerificado} />);
+
+    await escanear(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+    await user.type(screen.getByLabelText("Número de guía"), "1024abc{Enter}");
+    expect(errorMock).toHaveBeenCalledTimes(2);
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
     expect(onVerificado).not.toHaveBeenCalled();
   });
 });

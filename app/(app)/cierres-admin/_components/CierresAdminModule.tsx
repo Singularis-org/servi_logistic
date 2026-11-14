@@ -68,7 +68,6 @@ import {
   CONFIRMACION_APROBAR,
   type EntradaConfirmacionFisica,
   type FilaAConfirmar,
-  type MedioDeCaptura,
 } from "./cierre-confirmacion-fisica";
 // `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
 // simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
@@ -1033,10 +1032,9 @@ export function CierresAdminModule({
    * Ninguno de los cuatro desenlaces manda nada al servidor: la resolución es local contra el
    * detalle ya cargado, y el envío ocurre una sola vez, al confirmar la ventana.
    */
-  function leerGuia(texto: string, medio: MedioDeCaptura): boolean {
+  function aplicarLectura(texto: string): boolean {
     const lectura = interpretarLectura(
       texto,
-      medio,
       filasDelCierreAbierto,
       confirmadas,
     );
@@ -1617,7 +1615,7 @@ export function CierresAdminModule({
             errores={confirmacionErrores}
             aviso={avisoLectura}
             ultimaGuiaConfirmada={ultimaGuiaConfirmada}
-            onLectura={leerGuia}
+            onLectura={aplicarLectura}
           />
         ) : null}
       </Modal>

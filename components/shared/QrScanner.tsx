@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, Loader2, ScanLine } from "lucide-react";
+import type { Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/useToast";
@@ -13,6 +14,16 @@ const MENSAJE_ERROR_CAMARA_DEFAULT =
 const LADO_MARCO_MINIMO = 50;
 /** Porción del lado corto del visor que ocupa el recuadro de escaneo. */
 const PROPORCION_MARCO = 0.7;
+
+/**
+ * SLT-157 (R564): los dos códigos de la etiqueta, QR y CODE128 (mismo `num_guia`), y
+ * SOLO esos: sin la lista la lib prueba todos los formatos (más lento y lee códigos
+ * ajenos a la etiqueta). Son los valores del enum `Html5QrcodeSupportedFormats` de la
+ * lib (`QR_CODE = 0`, `CODE_128 = 5`), escritos aquí y no leídos del import dinámico:
+ * los dobles de la lib que usan los tests de las superficies no exportan el enum, y
+ * leerlo de ahí apagaría su cámara. `QrScanner.test.tsx` los contrasta con la lib real.
+ */
+const FORMATOS_ETIQUETA: Html5QrcodeSupportedFormats[] = [0, 5];
 
 /**
  * Lado del recuadro de escaneo para un visor de `ancho`×`alto`. Cuadrado y
@@ -89,7 +100,10 @@ export function QrScanner({
       try {
         const { Html5Qrcode } = await import("html5-qrcode");
         if (cancelado) return;
-        const scanner = new Html5Qrcode(regionId);
+        const scanner = new Html5Qrcode(regionId, {
+          formatsToSupport: FORMATOS_ETIQUETA,
+          verbose: false,
+        });
         instancia = scanner as unknown as typeof instancia;
         await scanner.start(
           { facingMode: "environment" },
