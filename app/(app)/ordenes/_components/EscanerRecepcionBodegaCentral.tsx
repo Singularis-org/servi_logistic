@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import type { RecibirEnBodegaCentralResult } from "@/lib/types/recepcion-bodega-central";
 
 import { estatusLabel } from "./estatus-label";
@@ -96,13 +96,13 @@ export function EscanerRecepcionBodegaCentral({
   );
 
   /**
-   * El QR de la etiqueta codifica la URL del paquete (`<origin>/paquete/<numGuia>`);
-   * se extrae el num_guia del último segmento. Un texto que no resuelve a num_guia
+   * Lectura por cámara: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
+   * la etiqueta, los dos por `leerGuia` (SLT-157). Un texto que no resuelve a num_guia
    * (p. ej. el UUID de una etiqueta vieja) se rechaza aquí, sin llamar a la acción (R10).
    */
   const procesarEscaneo = useCallback(
     (escaneado: string) => {
-      const numGuia = extractNumGuiaFromScan(escaneado);
+      const numGuia = leerGuia(escaneado);
       if (numGuia === null) {
         toast.error("Código inválido.");
         return;
@@ -113,15 +113,15 @@ export function EscanerRecepcionBodegaCentral({
   );
 
   /**
-   * Entrada manual (R12b): parsea lo tecleado a entero positivo y dispara la misma
-   * acción. Un valor no numérico/no positivo se corta en cliente con el mismo
-   * mensaje "Código inválido", sin llamar a la acción (coherente con el borde, R10);
-   * devolver `false` deja el valor en el campo para corregirlo.
+   * Entrada manual (R12b) o pistola: lo tecleado pasa por la misma `leerGuia` que la
+   * cámara (SLT-157), así la pistola 2D que teclea la URL del QR también vale. Lo que
+   * no es guía se corta en cliente con "Código inválido", sin llamar a la acción
+   * (coherente con el borde, R10); devolver `false` deja el valor para corregirlo.
    */
   const enviarManual = useCallback(
     (valor: string) => {
-      const numGuia = Number(valor);
-      if (!Number.isSafeInteger(numGuia) || numGuia <= 0) {
+      const numGuia = leerGuia(valor);
+      if (numGuia === null) {
         toast.error("Código inválido.");
         return false;
       }

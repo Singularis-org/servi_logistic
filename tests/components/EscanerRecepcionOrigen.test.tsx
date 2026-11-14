@@ -178,9 +178,8 @@ describe("EscanerRecepcionOrigen", () => {
       expect(campoManual()).toBeInTheDocument();
     });
 
-    it("lo tecleado ES el número: no pasa por el desenvoltorio del QR", async () => {
-      // El helper del QR desenvuelve `<origin>/paquete/<numGuia>`; aplicarlo a lo tecleado
-      // rechazaría el número escrito a secas. Ahí está la diferencia entre las dos vías.
+    it("el número tecleado a secas se acepta", async () => {
+      // SLT-157: la lectura única acepta el número a secas y la URL del QR, por las dos vías.
       const user = userEvent.setup();
       const onRecibida = vi.fn();
       recibirMock.mockResolvedValue({
@@ -222,6 +221,46 @@ describe("EscanerRecepcionOrigen", () => {
 
       await vi.waitFor(() => expect(recibirMock).toHaveBeenCalled());
       expect(campoManual().value).toBe("77");
+    });
+  });
+
+  // SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
+  describe("guía única por cámara o pistola (SLT-157)", () => {
+    it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
+      const user = userEvent.setup();
+      recibirMock.mockResolvedValue({
+        status: "ok",
+        ordenId: "o1",
+        estado: "devuelta_a_tienda",
+      });
+      render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+
+      await escanear(user, "1024");
+      await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(1));
+      expect(recibirMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
+
+      await user.type(
+        screen.getByLabelText(/número de guía/i),
+        "https://app.ejemplo.test/paquete/1024",
+      );
+      await user.click(screen.getByRole("button", { name: "Recibir en tienda" }));
+      await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(2));
+      expect(recibirMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
+    });
+
+    it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la acción", async () => {
+      const user = userEvent.setup();
+      render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+
+      await escanear(user, "1024abc");
+      await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+      expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+      await user.type(screen.getByLabelText(/número de guía/i), "1024abc");
+      await user.click(screen.getByRole("button", { name: "Recibir en tienda" }));
+      await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
+      expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+      expect(recibirMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -28,8 +28,8 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 // día posterior. Son dos rechazos suaves con la misma forma y la misma defensa real detrás (el
 // servidor), y el texto del segundo sale de la fuente única, no se redacta aquí.
 //
-// NO parsea URLs de QR: el llamador entrega ya el `num_guia` (el escáner via
-// `extractNumGuiaFromScan`; el input, el texto tecleado tal cual). Tampoco decide la
+// NO parsea URLs de QR: el llamador entrega ya el `num_guia` (cámara y teclado via
+// `leerGuia`, la lectura única de SLT-157). Tampoco decide la
 // revalidación: `recoger` devuelve `true` en éxito y el consumidor dispara su refresh.
 
 export interface UseRecogerPorGuia {

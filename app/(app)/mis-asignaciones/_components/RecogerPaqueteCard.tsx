@@ -6,7 +6,7 @@ import { PackageCheck } from "lucide-react";
 import { EscanerModal } from "@/components/shared/EscanerModal";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { useRecogerPorGuia } from "./useRecogerPorGuia";
@@ -17,9 +17,9 @@ import { useRecogerPorGuia } from "./useRecogerPorGuia";
 // num_guia contra `porRecoger` (restriccion "asignada a mi") y aceptan con la MISMA
 // action via `useRecogerPorGuia`, directo al confirmar (sin modal).
 //
-// La diferencia entre los dos caminos es solo de PARSEO: la camara entrega la URL del
-// paquete (`<origin>/paquete/<numGuia>`) y hay que extraer el numero; lo tecleado ES el
-// numero y se compara tal cual.
+// SLT-157: los dos caminos leen con la MISMA `leerGuia`: la camara puede leer el QR (URL
+// del paquete) o el CODE128 (digitos), y la pistola teclea cualquiera de los dos. Lo que
+// no es guia se rechaza con mensaje por los dos caminos.
 
 export interface RecogerPaqueteCardProps {
   /** Órdenes en `por_recoger`: resuelven numGuia -> id. */
@@ -50,10 +50,10 @@ export function RecogerPaqueteCard({
     [recoger, onRecogida],
   );
 
-  /** Camino cámara: `QrScanner` ya cerró el visor; aquí solo se extrae el num_guia. */
+  /** Camino cámara: `QrScanner` ya cerró el visor; aquí solo se lee el num_guia. */
   const onDecoded = useCallback(
     (texto: string) => {
-      const numGuia = extractNumGuiaFromScan(texto);
+      const numGuia = leerGuia(texto);
       if (numGuia === null) {
         toast.error("Código inválido.");
         return;
@@ -64,16 +64,20 @@ export function RecogerPaqueteCard({
   );
 
   /**
-   * Camino manual: lo tecleado ES el número. Un valor que no son dígitos no resuelve a
-   * ninguna guía, así que no se llama a la action y el texto se queda en el campo para
-   * corregirlo (mismo criterio de `num_guia` que la URL del paquete: base 10).
+   * Camino manual o pistola: misma `leerGuia` que la cámara. Lo que no es guía se rechaza
+   * con mensaje (antes, en silencio), no se llama a la action y el texto se queda en el
+   * campo para corregirlo.
    */
   const onManual = useCallback(
     async (valor: string): Promise<boolean> => {
-      if (!/^\d+$/.test(valor)) return false;
-      return recogerGuia(Number(valor));
+      const numGuia = leerGuia(valor);
+      if (numGuia === null) {
+        toast.error("Código inválido.");
+        return false;
+      }
+      return recogerGuia(numGuia);
     },
-    [recogerGuia],
+    [recogerGuia, toast],
   );
 
   return (

@@ -1,11 +1,12 @@
 // URL pública del "paquete" (detalle de una orden) a la que apunta el QR de la
 // etiqueta. El QR codifica una URL absoluta `<origin>/paquete/<numGuia>` para que
 // una cámara externa (no el escáner in-app) la abra en el navegador; la ruta valida
-// sesión (middleware) y muestra los detalles. El escáner de recepción (feature 33)
-// escanea el MISMO QR, por eso `extractNumGuiaFromScan` devuelve el `num_guia` (Int,
-// UNIQUE en `orden`) que la URL codifica. CORTE LIMPIO: el QR ya NO codifica
-// `orden.id` (UUID) y NO se acepta un UUID escaneado; las etiquetas impresas con el
-// formato anterior dejan de escanear y se reimprimen.
+// sesión (middleware) y muestra los detalles. La etiqueta lleva ADEMÁS un CODE128
+// con el mismo `num_guia` en dígitos. `leerGuia` es la ÚNICA lectura de guía de la
+// app (SLT-157): entiende los dos códigos, venga el texto de la cámara o de una
+// pistola que teclea. CORTE LIMPIO: el QR ya NO codifica `orden.id` (UUID) y NO se
+// acepta un UUID escaneado; las etiquetas impresas con el formato anterior dejan de
+// escanear y se reimprimen.
 
 /** Segmento base de la ruta de detalle del paquete. */
 export const PAQUETE_BASE_PATH = "/paquete";
@@ -46,22 +47,41 @@ function parseNumGuia(segment: string): number | null {
 }
 
 /**
- * Extrae el `num_guia` de un valor escaneado. Espera la URL del paquete
- * (`.../paquete/<numGuia>`) y devuelve el entero del último segmento del path.
- * Devuelve `null` si el valor no es una URL o si el último segmento no es un entero
- * positivo válido (incluido el UUID pelado de etiquetas antiguas: NO hay
- * retrocompatibilidad). Siempre `trim`. Robusto ante barra final.
+ * Lo que una pistola o una persona deja en los EXTREMOS de una lectura: espacios,
+ * tabuladores, saltos de línea y caracteres de control (p. ej. `\u001d`, el separador
+ * GS que añaden algunas pistolas). Nunca se toca el medio: `10 24` no es una guía.
  */
-export function extractNumGuiaFromScan(scanned: string): number | null {
-  const text = scanned.trim();
+const RELLENO_EXTREMOS = /^[\s\p{Cc}]+|[\s\p{Cc}]+$/gu;
+
+/** Ruta del QR de la etiqueta: exactamente `/paquete/<segmento>`, con o sin barra final. */
+const RUTA_PAQUETE = new RegExp(`^${PAQUETE_BASE_PATH}/([^/]+)/?$`);
+
+/** `num_guia` de la URL del QR, con cualquier origen (Preview y producción difieren). */
+function guiaDeUrl(texto: string): number | null {
   let url: URL;
   try {
-    url = new URL(text);
+    url = new URL(texto);
   } catch {
-    return null; // No es una URL del paquete: no hay num_guia que extraer.
+    return null; // Ni dígitos ni URL: no es una guía.
   }
-  const segments = url.pathname.split("/").filter(Boolean);
-  const last = segments[segments.length - 1];
-  if (last === undefined) return null;
-  return parseNumGuia(last);
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const coincidencia = RUTA_PAQUETE.exec(url.pathname);
+  if (coincidencia === null) return null; // `/ordenes/1024` no es el QR de la etiqueta.
+  return parseNumGuia(coincidencia[1]);
+}
+
+/**
+ * Lee el `num_guia` de cualquier texto capturado, por cámara o por teclado (pistola):
+ * - el CODE128 de la etiqueta: solo dígitos (`"1024"`), admite UN `#` delante (`"#1024"`);
+ * - el QR de la etiqueta: la URL `<origin>/paquete/<numGuia>` (con o sin barra final).
+ * Ignora el relleno de los extremos (`RELLENO_EXTREMOS`). Devuelve `null` si el texto
+ * no es una guía (vacío, letras, espacios en medio, `0`, negativos, decimales, fuera
+ * de entero seguro, `##1024`, otra ruta, UUID de etiquetas viejas).
+ */
+export function leerGuia(texto: string): number | null {
+  const limpio = texto.replace(RELLENO_EXTREMOS, "");
+  if (limpio === "") return null;
+  if (limpio.startsWith("#")) return parseNumGuia(limpio.slice(1));
+  if (NUM_GUIA_PATTERN.test(limpio)) return parseNumGuia(limpio);
+  return guiaDeUrl(limpio);
 }

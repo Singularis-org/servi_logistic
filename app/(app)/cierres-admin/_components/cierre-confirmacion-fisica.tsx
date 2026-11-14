@@ -5,7 +5,7 @@ import { PackageCheck } from "lucide-react";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { Badge } from "@/components/ui/badge";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   RESULTADOS_QUE_VUELVEN,
   vuelveABodegaElPaquete,
@@ -31,12 +31,9 @@ import { RESULTADO_LABEL, RESULTADO_FILA_LABEL, tituloResultadoConCifra } from "
 // una función de sus props.
 //
 // Lo que NO se reinventa: la captura es `EscanerGuiaCard` con sus dos caminos (cámara y número
-// tecleado) y el parseo del QR es `extractNumGuiaFromScan`, los mismos que usan las otras seis
+// tecleado) y la lectura de la guía es `leerGuia` (SLT-157), los mismos que usan las otras seis
 // superficies de escaneo. Y **no** se usa `EscanerModal`: ese envoltorio trae su propio botón
 // disparador y su propio diálogo, y esto ya vive dentro de uno.
-
-/** Cómo llegó el texto que hay que interpretar: la cámara entrega una URL, el teclado un número. */
-export type MedioDeCaptura = "camara" | "manual";
 
 // --- Textos de la ventana (i18n-ready, separados de la lógica, como el resto del módulo) ---
 
@@ -333,20 +330,14 @@ export type LecturaInterpretada =
  */
 export function interpretarLectura(
   texto: string,
-  medio: MedioDeCaptura,
   filasDelCierreAbierto: readonly FilaAConfirmar[],
   yaConfirmadas: Readonly<Record<string, number>>,
 ): LecturaInterpretada {
-  // La cámara entrega la URL del paquete (`<origin>/paquete/<numGuia>`) y hay que extraer el
-  // número; lo tecleado ES el número. Es la ÚNICA diferencia entre los dos caminos, igual que
-  // en `RecogerPaqueteCard`: de aquí en adelante los dos recorren exactamente el mismo camino.
-  const numGuia =
-    medio === "camara"
-      ? extractNumGuiaFromScan(texto)
-      : /^\d+$/.test(texto.trim())
-        ? Number(texto.trim())
-        : null;
-  if (numGuia === null || !Number.isSafeInteger(numGuia) || numGuia <= 0) {
+  // SLT-157: cámara y teclado (o pistola) leen igual, con `leerGuia`: el QR (URL del paquete) o
+  // el CODE128 (dígitos) de la etiqueta, por cualquiera de los dos caminos. Ya no importa por
+  // dónde llegó el texto.
+  const numGuia = leerGuia(texto);
+  if (numGuia === null) {
     return { tipo: "aviso", mensaje: LECTURA_ILEGIBLE }; // R29
   }
 
@@ -498,7 +489,7 @@ export interface ConfirmacionFisicaCuerpoProps {
   /** Confirmación persistente del último acierto, bajo el formulario. */
   ultimaGuiaConfirmada: number | null;
   /** Interpreta y aplica una lectura. Devuelve `true` si marcó una fila (limpia el campo). */
-  onLectura: (texto: string, medio: MedioDeCaptura) => boolean;
+  onLectura: (texto: string) => boolean;
 }
 
 interface FilaConfirmacionProps {
@@ -670,11 +661,11 @@ export function ConfirmacionFisicaCuerpo({
           descripcion={ESCANER_DESCRIPCION}
           icono={PackageCheck}
           onDecoded={(texto) => {
-            onLectura(texto, "camara");
+            onLectura(texto);
           }}
           mensajeErrorCamara={ESCANER_ERROR_CAMARA}
           manual={{
-            onSubmit: (valor) => onLectura(valor, "manual"),
+            onSubmit: (valor) => onLectura(valor),
             submitLabel: ESCANER_BOTON,
           }}
           exito={
