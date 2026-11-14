@@ -56,6 +56,12 @@ B5 `/historico/acciones`, B6 `/wallet` (caja), B7 estado de cuenta de tienda y d
 - Atajo de teclado para enfocar el buscador (el brief lo dejaba por decidir; el canvas no lo pide).
 - Buscadores sin guía (usuarios, tiendas, mensajeros, monitoreo, entregas).
 
+## Decisiones cerradas (no reabrir)
+
+| # | Decisión | Quién / cuándo |
+| --- | --- | --- |
+| DC1 | Una guía escaneada que no está en el listado de la satélite cae a la búsqueda normal por contención (puede traer parecidas), como hoy en `/ordenes`. Se descarta buscar solo esa guía con lista vacía (exigía un filtro nuevo en la URL y en las descargas de los dos listados). Lo cubren D3, R606 y R608. | Carlos, 2026-11-14 |
+
 ## Decisiones (tomadas aquí)
 
 | # | Decisión | Por qué |
@@ -172,11 +178,6 @@ test de integración no está probado. En los negativos, guías imposibles por c
   que el suelo de `docs/specs.md > Tres rutas` no obliga a la completa; el riesgo lo cubren R608 y el
   test contra Postgres real. Si se prefiere, se parte en dos rebanadas que se mergean solas:
   (a) R600-R605 y R609, solo frontend; (b) R606-R608, la satélite exacta.
-- **Para Carlos, solo si no está de acuerdo con D3:** con D3, una guía leída que **no** está en el
-  listado de la satélite (p. ej. de otra bodega) cae a la búsqueda por contención y puede traer
-  parecidos (`10245`), igual que hoy en `/ordenes`. La alternativa es que una lectura con Enter o
-  cámara busque **solo** esa guía y muestre la lista vacía si no está; exige un filtro nuevo en la
-  URL de los dos listados y en sus descargas (más archivos y otro contrato). Recomendación: D3.
 - Conflicto de archivos: `EscanerModal.tsx` y `QrScanner.tsx` los tocan también SLT-157, SLT-158,
   SLT-159 y quizá SLT-156 «PWA de los mensajeros: tablas usables en el móvil»; lo mira
   `scripts/archivos-en-vuelo.mjs` al tomar la ficha.

@@ -63,17 +63,24 @@ Buscado `EscanerGuiaCard`, `initialFocus`, `autoFocus`, `reproducirTono`, `pisto
 | D2 | El campo se vacía **siempre** tras un envío, tecleado o de pistola, y el error queda escrito en una línea con la lectura. Se descarta detectar la ráfaga (`evaluacion.md` §4.1 la proponía). | Con la línea de error la persona que tecleó ve qué escribió y lo repite; distinguir pistola de tecleo por tiempos es frágil en tests y en equipos lentos, y no aporta si el campo siempre queda limpio. |
 | D3 | Las lecturas que llegan mientras otra se procesa entran en una **cola** y se envían en orden, una a la vez. | Hoy `if (procesando) return` (`EscanerRecepcionBodegaCentral.tsx:86`) tira la segunda; con el campo habilitado llegarían más rápido que la respuesta. SLT-159 la reutiliza. |
 | D4 | La tarjeta sabe si una lectura acertó o falló porque la superficie se lo devuelve (contrato de T1); sigue sin saber de dominio. | El tono y el destello dependen del resultado del servidor, que solo conoce la superficie. |
-| D5 | En C2 cambia el título de la tarjeta a «Recibir paquete»; su botón de enviar («Recibir en tienda») y su descripción no cambian. | Decisión de Carlos: botón (el disparador, que ya dice «Recibir paquete») y tarjeta. El botón de enviar no se nombró; no se toca sin pedirlo. |
+| D5 | En C2 la tarjeta y su botón de enviar dicen «Recibir paquete» (como su disparador); la descripción no cambia. | Decisión de Carlos 2026-11-14. |
 
 ## Requisitos (EARS)
 
 - **R570** — MIENTRAS el dispositivo tiene puntero fino, la tarjeta DEBE mostrar, de arriba abajo:
-  el campo «Número de guía» con su botón de enviar y, debajo, la cámara de hoy (botón «Escanear con
-  cámara»). MIENTRAS el puntero es táctil, la cámara DEBE ir arriba y el campo debajo.
+  el campo «Número de guía» (icono de código de barras, placeholder «Ej. 1024» en JetBrains Mono)
+  con su botón de enviar debajo, el separador «o» entre dos líneas finas y, debajo, la cámara de hoy
+  (botón con borde discontinuo «Escanear con cámara» y debajo «Apunta al código de la guía»).
+  MIENTRAS el puntero es táctil, la cámara DEBE ir arriba, el separador en medio y el campo debajo
+  (canvas BKro9B2dap6jrmGejRq6M3: EntradaGuia, TiendaMovil). En táctil el `EscanerGuiaCard` es el
+  mismo que en SLT-156 «PWA de los mensajeros: tablas usables en el móvil»: separador «o» y, bajo el
+  botón de enviar, la nota «Lee el QR o el código de barras de la etiqueta.» (decisión del leader
+  2026-11-14; no «o con la pistola»).
 - **R571** — CUANDO se abre el modal de escaneo con puntero fino, el foco DEBE quedar en el campo.
   Con puntero táctil, el foco NO DEBE ir al campo.
-- **R572** — MIENTRAS el campo tiene el foco, la tarjeta DEBE mostrar «Lista para la pistola»; sin
-  foco, ese texto NO DEBE estar.
+- **R572** — MIENTRAS el campo tiene el foco, la tarjeta DEBE mostrar «Lista para la pistola» (nada
+  más) como pastilla verde dentro del campo, a la derecha, y el campo un borde de 2 px negro; sin
+  foco, ese texto NO DEBE estar (canvas: EntradaGuia).
 - **R573** — MIENTRAS la superficie procesa una lectura, el campo NO DEBE estar deshabilitado y DEBE
   conservar el foco; el envío repetido se bloquea, no el campo.
 - **R574** — CUANDO llega una lectura (Enter en el campo, botón de enviar o cámara) mientras otra se
@@ -90,8 +97,8 @@ Buscado `EscanerGuiaCard`, `initialFocus`, `autoFocus`, `reproducirTono`, `pisto
 - **R578** — CUANDO termina una lectura, el campo DEBE marcar el resultado (acierto o error) de forma
   visible durante un momento y volver a su estado normal.
 - **R579** — CUANDO la cámara entrega una lectura, la cámara DEBE cerrarse (como hoy) y, con puntero
-  fino, el foco DEBE volver al campo. En `/ordenes` de la tienda (C2), el título de la tarjeta DEBE ser
-  «Recibir paquete» (D5).
+  fino, el foco DEBE volver al campo. En `/ordenes` de la tienda (C2), el título de la tarjeta y su
+  botón de enviar DEBEN decir «Recibir paquete» (D5).
 
 ## Trazabilidad (R → test)
 
@@ -109,7 +116,7 @@ Literales a mano. `matchMedia` se dobla por test (fino / táctil). El tono se pr
 | R576 | `tests/components/EscanerGuiaCard.test.tsx` — la superficie rechaza `"7777777"` con «Orden no encontrada.»: hay `role="alert"` con `7777777` y «Orden no encontrada.»; tras un acierto, no hay `alert`. `tests/components/EscanerRecepcionBodegaCentral.test.tsx` — de punta a punta con la acción doble devolviendo `no_encontrada`. |
 | R577 | `tests/unit/audio/tono-notificacion.test.ts` — el tono de acierto y el de error programan frecuencias distintas (se comparan los valores escritos a mano en el test, no las constantes); `tests/components/EscanerGuiaCard.test.tsx` — con `leerPreferenciaSonido` falsa no se crea ningún oscilador. |
 | R578 | `tests/components/EscanerGuiaCard.test.tsx` — tras un acierto el campo tiene `data-resultado="acierto"`, tras un error `"error"`; con timers falsos, al avanzar la duración desaparece el atributo. |
-| R579 | `tests/components/EscanerGuiaCard.test.tsx` — tras `onDecoded` de la cámara (doble), el campo es `activeElement` con puntero fino. `tests/components/EscanerRecepcionOrigen.test.tsx` — `getByRole("heading", { name: "Recibir paquete" })`. |
+| R579 | `tests/components/EscanerGuiaCard.test.tsx` — tras `onDecoded` de la cámara (doble), el campo es `activeElement` con puntero fino. `tests/components/EscanerRecepcionOrigen.test.tsx` — `getByRole("heading", { name: "Recibir paquete" })` y `getByRole("button", { name: "Recibir paquete" })`. |
 
 ## Tasks
 
@@ -165,9 +172,17 @@ Literales a mano. `matchMedia` se dobla por test (fino / táctil). El tono se pr
 
 ## Preguntas abiertas
 
-- **Para el leader (no para Carlos):** los textos exactos del canvas aprobado que este spec no pudo
-  leer (el artifact no es accesible desde el worktree): el separador entre campo y cámara (hoy «o
-  ingresa manualmente», que deja de tener sentido con el campo arriba) y si «Lista para la pistola»
-  lleva algo más. Copiarlos aquí antes de implementar; si no hay, el separador se quita.
+- **Resuelta (canvas BKro9B2dap6jrmGejRq6M3, leído 2026-11-14):** el separador con puntero fino es
+  «o» entre dos líneas finas (EntradaGuia); «Lista para la pistola» no lleva nada más (R570, R572).
+  Textos del canvas: tarjeta «Recibir paquete», «Número de guía», placeholder «Ej. 1024», botón
+  «Recibir» (bodega central; en la tienda «Recibir paquete», D5), «Escanear con cámara» / «Apunta al
+  código de la guía». En los buscadores (SLT-160,
+  BuscadorListado): botón de icono «Escanear con cámara» junto al campo y la ayuda «Escanea o
+  escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se
+  busca igual.».
+- **Resuelta (decisión del leader 2026-11-14):** el `EscanerGuiaCard` es uno; en táctil usa el
+  separador «o» y la nota «Lee el QR o el código de barras de la etiqueta.», como SLT-156 (R570).
+- **Resuelta (decisión de Carlos 2026-11-14):** en la tienda, tarjeta y botón «Recibir paquete» (D5,
+  R579).
 - Conflicto de archivos con SLT-156 «PWA de los mensajeros: tablas usables en el móvil» si toca
   `EscanerModal` o `EscanerGuiaCard`: lo mira `scripts/archivos-en-vuelo.mjs` al tomar la ficha.

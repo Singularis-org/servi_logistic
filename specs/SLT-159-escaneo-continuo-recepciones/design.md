@@ -16,7 +16,8 @@ indexado este worktree (`index_status`: proyecto no encontrado); se usó Grep/Re
 | Barra de progreso, faltantes y aviso persistente de C5 | `cierre-confirmacion-fisica.tsx:612-641` | Se queda tal cual; C5 solo gana la cámara continua (R588). |
 | Traducción de cada respuesta a texto | `notificar` en las tres superficies (p. ej. `EscanerRecepcionBodegaCentral.tsx:38-81`) | Los motivos de «No se pudo recibir» salen de ahí: se extrae la traducción a una función por superficie y la usan el toast (guía suelta, si quedara) y la fila. |
 | SLT-69 «Escáner rechaza guías asignadas después de abrir la pantalla» | board, `done` | No solapa: trata la lista de recoger del mensajero. |
-| SLT-156 «PWA de los mensajeros: tablas usables en el móvil» | board, `in_progress` | Usa `EscanerModal` para su escáner colapsado; el modo continuo es opcional (prop), así que su uso en guía suelta no cambia (R594). |
+| SLT-156 «PWA de los mensajeros: tablas usables en el móvil» | board, `in_progress` | Su escáner colapsado «Escanear o escribir guía» abre `EscanerModal`. El modo continuo vive en el **contenido** del modal (la tarjeta), no en el disparador: M1 y M2 son continuos con cualquier disparador, el de hoy o el de SLT-156 (DC4). |
+| `useRecogerPorGuia` (SLT-69 relectura, feature 261 reserva) y `useRecolectarPorGuia` | `app/(app)/mis-asignaciones/_components/`, `app/(app)/recoleccion/_components/` | Se conservan sus reglas (relectura una vez, reserva para otro día sin llamar). Cambia la salida: devuelven el desenlace en vez de `boolean` + toast, y sueltan su `if (procesando) return` (la cola de SLT-158 serializa). |
 
 Nada del board duplica esta ficha.
 
@@ -43,6 +44,11 @@ Sin rutas ni Server Actions nuevas. Se usan las de hoy:
 | C1 `/ordenes` | `recibirEnBodegaCentralPorQr({ numGuia })` (`lib/actions/recepcion-bodega-central`) | `ok` (con `estado`), `ya_recibida`, `estado_invalido`, `no_encontrada`, `validation_error`, `forbidden`, `unauthenticated`, `conflict` |
 | C2 `/ordenes` | `recibirEnOrigenPorQr` | las anteriores + `tienda_ajena` |
 | C3/C4 `/recepcion-satelite/*` | `recibirPorQr` | las de C1 + `zona_ajena`, `sin_zona` |
+| M1 `/mis-asignaciones` (mensajero) | `recogerAsignaciones({ ordenIds })` vía `useRecogerPorGuia` (y `listarMisAsignaciones` para la relectura) | `ok`, `conflict` (con `reservada_para_otro_dia`), `forbidden`, `unauthenticated`, `validation_error`…; más los rechazos de cliente «no está entre tus órdenes» y «reservada para otro día» |
+| M2 `/recoleccion` (mensajero) | acción de recolección vía `useRecolectarPorGuia` | éxito, ya recolectada, no está entre tus órdenes, motivo propio, `forbidden`, `unauthenticated`, `validation_error` |
+
+Autorización de M1/M2: la de hoy (solo el mensajero ve esas pantallas; las acciones revalidan rol y
+pertenencia de la orden en servidor). Sin cambios de servidor.
 
 ### Contratos internos nuevos (cliente)
 
@@ -64,22 +70,22 @@ type DesenlaceRecepcion =
   | { tipo: "recibida" } | { tipo: "ya_recibida" } | { tipo: "no_encontrada" }
   | { tipo: "no_se_pudo"; motivo: string };
 
-function contadores(filas: readonly FilaLectura[]): { recibidas: number; yaRecibidas: number; conError: number };
-function textoContador(n: number, singular: string, plural: string): string; // «1 recibida», «3 recibidas»
+function contadores(filas: readonly FilaLectura[]): { recibidas: number; repetidas: number; noEncontradas: number }; // rótulos del canvas: «Recibidas», «Repetidas», «No encontradas»
+function textoContador(n: number, singular: string, plural: string): string; // solo M1/M2 (R597, propuesta abierta); la recepción usa rótulo + número (R586)
 ```
 
 ```ts
 // hooks/useSesionEscaneo.ts — une la cola de SLT-158 con la lista.
 function useSesionEscaneo(recibir: (numGuia: number) => Promise<DesenlaceRecepcion>): {
   filas: readonly FilaLectura[];
-  contadores: { recibidas: number; yaRecibidas: number; conError: number };
+  contadores: { recibidas: number; repetidas: number; noEncontradas: number };
   leer: (texto: string) => void;          // lo llama la tarjeta (pistola, teclado y cámara)
   huboRecepcion: boolean;                 // para el refresco único al cerrar (R592)
 };
 ```
 
 - `leer` pasa el texto por `leerGuia`: `null` → fila «Código inválido» sin llamar (R584); guía ya en
-  la lista en curso o ya entrada → fila «Ya leída en esta sesión» sin llamar (R585); si no (también
+  la lista en curso o ya entrada → fila «Ya recibida» sin llamar, que suma a «Repetidas» (R585); si no (también
   si su fila anterior falló), fila «Recibiendo…» y a la cola.
 - La cola es la de SLT-158 (una a la vez, en orden, R587). Cada respuesta actualiza **su** fila por
   `id`, no «la última».
@@ -102,6 +108,12 @@ function useSesionEscaneo(recibir: (numGuia: number) => Promise<DesenlaceRecepci
   `desenlace(result)` (puro) y el toast desaparece en este modo (R590). `onRecibida` pasa a llamarse
   desde `onCerrado` si `huboRecepcion` (R592).
 - C5: solo pasa `continuo` a su tarjeta para la cámara (R588); su lógica de filas no cambia.
+- M1, M2: `useRecogerPorGuia` y `useRecolectarPorGuia` devuelven un `DesenlaceRecepcion` ampliado
+  con el verbo de la superficie (`recibida` se pinta «Recogida» / «Recolectada»; `ya_recibida`, «Ya
+  estaba recolectada»; un caso `no_esta_en_tus_ordenes`). La tabla de textos por superficie va en
+  `lib/utils/sesion-escaneo.ts` junto a `textoContador`, que recibe el verbo (R596-R597). El
+  refresco de la lista (`RecogerModule`, `RecoleccionModule`) pasa a `onCerrado` (R598).
+- `VerificarGuiaGate` no cambia: usa `QrScanner` en modo suelto (R594).
 
 ## Integraciones externas
 
@@ -122,8 +134,19 @@ Ninguna. `html5-qrcode` ya está instalada (`^2.3.8`); la cámara continua solo 
 4. **Frenar como repetida cualquier guía ya leída, también las que fallaron.** Descartada: un
    `conflict` («La orden cambió de estado. Vuelve a intentar.») pide justamente volver a pasarla.
    R585 solo frena las que están en curso o ya entraron; las que fallaron se reenvían.
-5. **Botón «Reintentar» en las filas con error.** Descartada por ahora: obliga a tocar la pantalla,
-   que es lo que esta ficha quita; volver a pasar la etiqueta hace lo mismo.
+5. **Un componente de sesión aparte para el mensajero.** Descartada: M1/M2 y las recepciones solo
+   difieren en la acción y en el verbo; dos listas acabarían divergiendo. Una sola
+   `EscaneoContinuo` con los textos por superficie.
+6. **Botón «Reintentar» en las filas con error.** Adoptada solo para «No se pudo recibir» /
+   «No se pudo recoger» / «No se pudo recolectar» (DC6, decisión del leader 2026-11-14): 44 px,
+   reencola la guía. Pasar la etiqueta otra vez sigue funcionando igual (R585).
+
+## Pendiente de diseño (DC5, 2026-11-14)
+
+- La recepción continua de C1, C2 y C3/C4 pasa de modal a **página** «Recibir paquetes» en escritorio
+  (canvas Main); falta fijar su ruta, desde dónde se entra (hoy los disparadores abren `EscanerModal`
+  sobre `/ordenes` y las recepciones) y si en la tienda con puntero táctil sigue siendo el modal. Lo
+  resuelve el spec_author en este documento antes de T4; los requisitos ya están cerrados.
 
 ## Riesgos
 

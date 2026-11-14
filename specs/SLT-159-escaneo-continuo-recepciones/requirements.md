@@ -1,7 +1,7 @@
 # SLT-159 «Escaneo continuo en recepciones y recogidas» — requirements
 
 Ruta: **completa** (zona frontend, complejidad medium; UI nueva dentro del modal, pasó por
-`/design`). Requisitos: **R580-R594** (reserva R580-R599).
+`/design`). Requisitos: **R580-R599**.
 Sale de SLT-155 «Evaluar el lector de código de barras en toda la app»
 (`specs/SLT-155-lector-codigo-barras/evaluacion.md` §4.1 y §4.3 ficha 3, `brief-diseno.md` §4.2 (c)).
 **Depende de SLT-158 «Entrada de escaneo para pistola»** (cola, foco, limpieza, tono), que a su vez
@@ -15,6 +15,9 @@ Decisiones de Carlos (`progress/features/SLT-155.md`):
 - 2026-11-13: diseño aprobado (canvas https://claude.ai/artifact/BKro9B2dap6jrmGejRq6M3): escaneo
   continuo con lista de lecturas y contadores; en el móvil de tienda la cámara arriba. **En el escaneo
   continuo la cámara se queda ABIERTA entre lecturas; en una guía suelta se sigue cerrando.**
+- 2026-11-14 (al revisar este spec): SLT-159 **sí incluye las recogidas del mensajero**, con la
+  cámara del teléfono. En la PWA el modal se abre desde el escáner colapsado «Escanear o escribir
+  guía» de SLT-156 «PWA de los mensajeros: tablas usables en el móvil», que monta `EscanerModal`.
 
 Hoy cada lectura es suelta: la cámara se cierra tras leer (`QrScanner.tsx:108-113`) y el resultado
 es un toast que se va solo. Recibir una tanda de 30 paquetes son 30 toques en «Escanear con cámara»
@@ -30,11 +33,17 @@ y ninguna cuenta de lo hecho.
 - C5 confirmación física de un cierre en `/cierres-admin`: solo la cámara abierta entre lecturas (ya
   tiene su propia barra de progreso, faltantes y aviso persistente; no gana la lista de esta ficha).
 
+**Dentro** — las recogidas del mensajero (`evaluacion.md` §2, filas 4 y 5), con la cámara del
+teléfono (y la pistola Bluetooth si alguien la conecta, por el mismo campo):
+- M1 `/mis-asignaciones`, «Recoger paquete» en bodega (`RecogerPaqueteCard`, montada en
+  `RecogerModule`; acción `recogerAsignaciones` vía `useRecogerPorGuia`);
+- M2 `/recoleccion`, «Recolectar en tienda» (`RecoleccionModule`; acción vía `useRecolectarPorGuia`).
+
 **Fuera:**
-- Las **recogidas y recolecciones del mensajero** (`RecogerPaqueteCard`, `RecoleccionModule`) y
-  verificar guía (`VerificarGuiaGate`): son del móvil del mensajero, fuera por la decisión de Carlos.
-  Siguen en guía suelta (la cámara se cierra tras leer). El título de la ficha dice «recogidas»
-  porque así nació; en bodega y tienda no hay recogida con escaneo.
+- Verificar guía antes de gestionar (`VerificarGuiaGate`): es una sola guía por orden; sigue en guía
+  suelta (la cámara se cierra tras leer).
+- El disparador colapsado «Escanear o escribir guía» de la PWA: lo hace SLT-156; esta ficha solo
+  pone en modo continuo el contenido del `EscanerModal` que abra.
 - Armar lotes de asignación escaneando (ficha 5 de la evaluación, pospuesta).
 - Buscadores (SLT-160 «Buscar escaneando en los listados»).
 - Cualquier cambio de servidor, Server Action, esquema, permisos o dinero.
@@ -45,7 +54,10 @@ y ninguna cuenta de lo hecho.
 | --- | --- | --- |
 | DC1 | En el escaneo continuo la cámara queda abierta entre lecturas; en guía suelta se cierra. | Carlos, 2026-11-13 |
 | DC2 | Lista de lecturas con estado y contadores dentro del modal, campo «Lista para la pistola» arriba y cámara debajo; en el móvil de tienda, la cámara arriba. | Carlos, canvas aprobado 2026-11-13 |
-| DC3 | Pistola y uso en bodega y tienda; el mensajero queda fuera por ahora. | Carlos, 2026-11-13 |
+| DC3 | Pistola y uso en bodega y tienda. | Carlos, 2026-11-13 |
+| DC4 | El escaneo continuo incluye las recogidas del mensajero (M1, M2) con la cámara del teléfono; el modal se abre desde el escáner colapsado de SLT-156. | Carlos, 2026-11-14 |
+| DC5 | La recepción continua (C1, C2, C3/C4) es una **página** «Recibir paquetes» en escritorio, como el canvas (Main); en la PWA del mensajero (M1, M2) es el diálogo `EscanerModal`. En este spec, «el modal» nombra a cualquiera de los dos y «cerrar el modal» es «Terminar recepción ({n})» en la página o cerrar el diálogo. | Leader, 2026-11-14 (canvas aprobado) |
+| DC6 | «Código inválido» y «No se pudo recibir» son filas con ese estado y NO suman a ningún contador; «No se pudo recibir» lleva «Reintentar» (44 px). | Leader, 2026-11-14 |
 
 ## Requisitos (EARS)
 
@@ -53,23 +65,26 @@ y ninguna cuenta de lo hecho.
   lecturas seguidas (pistola, teclado o cámara) sin cerrarse y sin que haga falta tocar la pantalla
   entre una y otra; cada lectura DEBE llegar a la acción de recepción de hoy de esa superficie.
 - **R581** — CUANDO llega una lectura, el modal DEBE añadir una fila a la lista de la sesión, la más
-  reciente arriba, con el número de guía (o lo leído, si no es una guía) y su estado.
+  reciente arriba, con las columnas «Hora», «Guía», «Destinatario», «Tienda» y «Estado» (lo leído
+  en «Guía» si no es una guía; «—» en Destinatario y Tienda si no se encontró) (canvas
+  BKro9B2dap6jrmGejRq6M3: Main).
 - **R582** — MIENTRAS la acción de una lectura no ha respondido, su fila DEBE mostrar el estado
   «Recibiendo…».
 - **R583** — CUANDO la acción responde, la fila DEBE pasar a uno de estos estados, con estos textos:
-  «Recibida» (`ok`), «Ya estaba recibida» (`ya_recibida`), «No encontrada» (`no_encontrada`) o «No se
+  «Recibida» (`ok`), «Ya recibida» (`ya_recibida`), «No encontrada» (`no_encontrada`) o «No se
   pudo recibir» seguido del motivo que hoy muestra el toast de esa respuesta (resto de respuestas,
-  p. ej. «Esta orden es de otra tienda.»).
+  p. ej. «Esta orden es de otra tienda.»). La fila «No se pudo recibir» DEBE llevar el botón
+  «Reintentar» (44 px), que vuelve a enviar esa guía a la cola (DC6).
 - **R584** — SI la lectura no es una guía, ENTONCES su fila DEBE mostrar «Código inválido» y la
   acción NO DEBE llamarse.
 - **R585** — SI la guía leída ya está en la lista de la sesión como «Recibiendo…», «Recibida» o «Ya
-  estaba recibida», ENTONCES el sistema NO DEBE volver a llamar a la acción, DEBE añadir una fila «Ya
-  leída en esta sesión» y NO DEBE sumarla a ningún contador. Una guía cuya fila anterior terminó en
-  error SÍ DEBE volver a enviarse.
-- **R586** — El modal DEBE mostrar tres contadores de la sesión: recibidas (filas «Recibida»), ya
-  recibidas (filas «Ya estaba recibida») y con error (filas «No encontrada», «No se pudo recibir» y
-  «Código inválido»), con el formato «3 recibidas», «1 ya recibida», «2 con error» (singular con 1,
-  plural con 0 y con más de 1).
+  recibida», ENTONCES el sistema NO DEBE volver a llamar a la acción, DEBE añadir una fila «Ya
+  recibida» y DEBE sumarla al contador «Repetidas» (canvas: Main, guía 60762858 leída dos veces).
+  Una guía cuya fila anterior terminó en error SÍ DEBE volver a enviarse.
+- **R586** — El modal DEBE mostrar un resumen con tres contadores de la sesión, cada uno con su
+  rótulo y su número: «Recibidas» (filas «Recibida»), «Repetidas» (filas «Ya recibida») y «No
+  encontradas» (filas «No encontrada») (canvas: Main). Las filas «Código inválido» y «No se pudo
+  recibir» NO DEBEN sumar a ningún contador (DC6).
 - **R587** — CUANDO llegan varias lecturas antes de que responda la primera, el sistema DEBE
   enviarlas a la acción de una en una y en el orden de llegada, y cada fila DEBE quedar con la
   respuesta de su propia guía.
@@ -82,13 +97,42 @@ y ninguna cuenta de lo hecho.
   lectura; el error de permisos de cámara sí sigue saliendo como toast.
 - **R591** — CUANDO se cierra el modal, el sistema DEBE descartar la sesión: al volver a abrirlo, la
   lista está vacía y los contadores en 0.
-- **R592** — CUANDO se cierra el modal después de al menos una fila «Recibida» o «Ya estaba
+- **R592** — CUANDO se cierra el modal después de al menos una fila «Recibida» o «Ya
   recibida», el listado de fondo DEBE refrescarse una vez; si no hubo ninguna, NO DEBE refrescarse.
 - **R593** — MIENTRAS el puntero es táctil, el modal DEBE mostrar la cámara arriba, el campo debajo y
   la lista y los contadores debajo de ambos; con puntero fino, el campo arriba, luego la cámara y
   luego la lista.
-- **R594** — Las superficies del mensajero (recoger paquete, recolectar en tienda, verificar guía)
-  DEBEN seguir en guía suelta: tras leer por cámara, la cámara se cierra y no hay lista de sesión.
+- **R594** — Verificar guía antes de gestionar (`VerificarGuiaGate`) DEBE seguir en guía suelta: tras
+  leer por cámara, la cámara se cierra y no hay lista de sesión.
+
+### Recogidas del mensajero (M1, M2)
+
+- **R595** — MIENTRAS el modal «Recoger paquete» (M1) o «Recolectar en tienda» (M2) está abierto, el
+  sistema DEBE funcionar en escaneo continuo igual que las recepciones (R580-R582, R584, R585,
+  R587-R591 y R593), con la acción de hoy de cada uno; la cámara del teléfono DEBE seguir abierta
+  entre lecturas.
+- **R596** — CUANDO responde la acción de M1 o M2, la fila DEBE pasar a: «Recogida» (M1, éxito),
+  «Recolectada» (M2, éxito), «Ya recolectada» (M2, ya recolectada), «No está entre tus órdenes» (la
+  guía no está en su lista ni tras la relectura de SLT-69 «Escáner rechaza guías asignadas después
+  de abrir la pantalla»), o «No se pudo recoger» / «No se pudo recolectar» seguido del motivo que
+  hoy muestra el toast de esa respuesta, con «Reintentar» (44 px). Textos propuestos por el leader
+  (2026-11-14), en «tú», con el patrón del canvas («Recibida» / «Ya recibida»).
+- **R597** — Los contadores de M1 y M2 DEBEN seguir la regla de R586 con el verbo de la superficie:
+  «Recogidas» (M1) o «Recolectadas» (M2), «Repetidas» (filas «Ya recolectada» y relecturas de la
+  sesión) y «No encontradas» (filas «No está entre tus órdenes»); «No se pudo recoger» / «No se pudo
+  recolectar» y «Código inválido» no suman (DC6). Textos propuestos por el leader (2026-11-14).
+- **R600** — En la página de recepción continua (DC5), el sistema DEBE mostrar: título «Recibir
+  paquetes»; el campo con el rótulo «Escanea la guía con la pistola» y el placeholder «Listo para
+  leer…»; tras cada lectura, la línea de estado de la última («Guía {n} recibida · {destinatario}»
+  cuando acierta); la ayuda «El campo vuelve a estar listo después de cada lectura. También acepta
+  el QR de la etiqueta.» con el botón «Escanear con cámara» a su lado; y arriba a la derecha el
+  botón «Terminar recepción ({n})», con {n} = filas «Recibida» (canvas: Main).
+- **R598** — CUANDO se cierra el modal de M1 o M2 después de al menos un éxito (o una «Ya
+  recolectada»), la lista de órdenes de la pantalla DEBE refrescarse una vez; si no hubo ninguno, NO
+  DEBE refrescarse. La relectura de SLT-69 ante una guía que no está en la lista cargada DEBE seguir
+  ocurriendo en cada lectura que la necesite.
+- **R599** — SI la orden leída en M1 está reservada para otro día, ENTONCES su fila DEBE quedar en
+  error con el aviso de hoy (feature 261, R13) y la acción NO DEBE llamarse.
 
 ## Trazabilidad (R → test)
 
@@ -100,10 +144,10 @@ las acciones se doblan en los tests de componente (su SQL ya tiene sus tests y n
 | R580 | `tests/components/EscaneoContinuo.test.tsx` (nuevo) — cinco Enter seguidos sin clics intermedios: la acción doble se llama cinco veces y el diálogo sigue abierto. `tests/components/EscanerRecepcionBodegaCentral.test.tsx`, `EscanerRecepcionOrigen.test.tsx`, `EscanerRecepcion.test.tsx` — una lectura en cada superficie llega a su acción (`recibirEnBodegaCentralPorQr`, `recibirEnOrigenPorQr`, `recibirPorQr`) con `numGuia`. |
 | R581 | `tests/components/EscaneoContinuo.test.tsx` — tras `1024` y `2048`, la primera fila es `2048`. |
 | R582 | `tests/components/EscaneoContinuo.test.tsx` — con la acción pendiente, la fila `1024` dice «Recibiendo…». |
-| R583 | `tests/components/EscaneoContinuo.test.tsx` — tabla: `ok` → «Recibida»; `ya_recibida` → «Ya estaba recibida»; `no_encontrada` → «No encontrada»; `estado_invalido` → «No se pudo recibir» + el motivo. `tests/components/EscanerRecepcionOrigen.test.tsx` — `tienda_ajena` → «No se pudo recibir» + «Esta orden es de otra tienda.». |
+| R583 | `tests/components/EscaneoContinuo.test.tsx` — tabla: `ok` → «Recibida»; `ya_recibida` → «Ya recibida»; `no_encontrada` → «No encontrada»; `estado_invalido` → «No se pudo recibir» + el motivo. `tests/components/EscanerRecepcionOrigen.test.tsx` — `tienda_ajena` → «No se pudo recibir» + «Esta orden es de otra tienda.». Con `estado_invalido`, pulsar «Reintentar» vuelve a llamar a la acción con la misma guía. |
 | R584 | `tests/components/EscaneoContinuo.test.tsx` — `"1024abc"`: fila «Código inválido», acción no llamada. |
-| R585 | `tests/components/EscaneoContinuo.test.tsx` — `1024`, `1024`: acción llamada una vez; segunda fila «Ya leída en esta sesión»; contadores «1 recibida», «0 ya recibidas», «0 con error». `7777777` con `no_encontrada` y otra vez `7777777`: la acción se llama dos veces. |
-| R586 | `tests/unit/utils/sesion-escaneo.test.ts` (nuevo) — reductor puro: secuencia de estados → contadores; textos «1 recibida», «2 recibidas», «0 recibidas», «1 ya recibida», «1 con error», «3 con error». |
+| R585 | `tests/components/EscaneoContinuo.test.tsx` — `1024`, `1024`: acción llamada una vez; segunda fila «Ya recibida»; contadores «Recibidas» 1, «Repetidas» 1, «No encontradas» 0. `7777777` con `no_encontrada` y otra vez `7777777`: la acción se llama dos veces. |
+| R586 | `tests/unit/utils/sesion-escaneo.test.ts` (nuevo) — reductor puro: secuencia de estados → contadores «Recibidas», «Repetidas» y «No encontradas» con su número (0, 1, 2). Una fila «Código inválido» y una «No se pudo recibir» dejan los tres en 0. |
 | R587 | `tests/unit/hooks/useSesionEscaneo.test.ts` (nuevo) — tres lecturas con respuestas resueltas en orden inverso: la acción se llama `1024`, `2048`, `4096` en ese orden y de una en una; cada fila con su respuesta. |
 | R588 | `tests/components/QrScanner.test.tsx` — en modo continuo, tras dos `decodedText` distintos, `stop()` del doble no se llamó y `onDecoded` se llamó dos veces; en modo suelto, tras uno, `stop()` se llamó. `tests/components/CierresAdminConfirmacionFisica.test.tsx` — C5 monta la cámara en modo continuo. |
 | R589 | `tests/components/QrScanner.test.tsx` — con timers falsos: mismo texto a 1 s → una entrega; mismo texto a 3,1 s → dos entregas; texto distinto a 0,5 s → dos entregas. |
@@ -111,12 +155,21 @@ las acciones se doblan en los tests de componente (su SQL ya tiene sus tests y n
 | R591 | `tests/components/EscaneoContinuo.test.tsx` — leer `1024`, cerrar, reabrir: ninguna fila; «0 recibidas». |
 | R592 | `tests/components/EscanerRecepcionBodegaCentral.test.tsx` — tres `ok` y cerrar: `onRecibida` llamada una vez, y ninguna antes de cerrar; solo `no_encontrada` y cerrar: cero veces. |
 | R593 | `tests/components/EscaneoContinuo.test.tsx` — `matchMedia` táctil: el botón «Escanear con cámara» precede al campo y el campo a la lista; fino: campo, cámara, lista. |
-| R594 | `tests/components/RecogerPaqueteCard.test.tsx` — tras `onDecoded`, `stop()` del doble se llamó y no existe la lista de la sesión. |
+| R594 | `tests/components/VerificarGuiaGate.test.tsx` — tras `onDecoded`, `stop()` del doble se llamó y no existe la lista de la sesión. |
+| R595 | `tests/components/RecogerPaqueteCard.test.tsx` y `tests/components/RecoleccionModule.test.tsx` — tres lecturas seguidas (cámara doble y Enter) sin cerrar: la acción doble se llama tres veces en orden, `stop()` no se llamó, sin toast por lectura, y una guía repetida no se reenvía. |
+| R596 | `tests/components/RecogerPaqueteCard.test.tsx` — éxito → «Recogida»; guía `7777777` ausente tras la relectura doble → «No está entre tus órdenes»; `forbidden` → «No se pudo recoger» + «No tienes permiso para recoger esta orden.». `tests/components/RecoleccionModule.test.tsx` — éxito → «Recolectada»; ya recolectada → «Ya recolectada»; `forbidden` → «No se pudo recolectar» + «No tienes permiso para recolectar órdenes.». |
+| R597 | `tests/unit/utils/sesion-escaneo.test.ts` — con el verbo de M1: rótulos «Recogidas», «Repetidas», «No encontradas»; con el de M2: «Recolectadas»; una fila «No se pudo recolectar» no suma. |
+| R598 | `tests/components/RecogerModule.test.tsx` — dos éxitos y cerrar: el refresco de la lista se llama una vez y ninguna antes de cerrar; solo errores: cero. `tests/components/RecogerPaqueteCard.test.tsx` — dos guías fuera de la lista cargada: `listarMisAsignaciones` (doble) se llama dos veces. |
+| R600 | `tests/components/EscaneoContinuo.test.tsx` — en la página: `getByRole("heading", { name: "Recibir paquetes" })`, `getByLabelText("Escanea la guía con la pistola")` con placeholder «Listo para leer…», tras `ok` de `1024` el `status` dice «Guía 1024 recibida · » + el destinatario doble, la ayuda literal y `getByRole("button", { name: "Terminar recepción (1)" })`. |
+| R599 | `tests/components/RecogerPaqueteCard.test.tsx` — orden con `esParaManana`: fila en error con el aviso de reserva y `recogerAsignaciones` no llamada. |
 
 ## Preguntas abiertas
 
-- **Para el leader (no para Carlos):** los textos exactos de la lista y los contadores en el canvas
-  aprobado (este spec no pudo abrir el artifact). R583, R585 y R586 fijan textos que salen del
-  vocabulario de los toasts de hoy y de `evaluacion.md` §4.1 («7 recibidas · 1 con error»). Si el
-  canvas dice otra cosa, gana el canvas y se corrigen esos tres requisitos antes de implementar.
+- **Resuelta (canvas BKro9B2dap6jrmGejRq6M3: Main, leído 2026-11-14; decisiones del leader
+  2026-11-14):** textos de la lista, contadores y página en R581, R583, R585, R586 y R600; página en
+  escritorio y `EscanerModal` en la PWA (DC5); «Código inválido» y «No se pudo recibir» no suman y
+  la segunda lleva «Reintentar» (DC6); M1/M2 con textos propuestos por el leader (R596, R597).
+- **Tamaño:** con M1 y M2 son 30 archivos (`tasks.md > Tamaño`), por debajo del 80 % (32). No se
+  propone partir. Si al implementar pasa de 32, el corte natural es: (a) recepciones de bodega y
+  tienda R580-R594; (b) recogidas del mensajero R595-R599, que depende de (a).
 - Ninguna para Carlos.
