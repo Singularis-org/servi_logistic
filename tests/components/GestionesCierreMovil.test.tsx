@@ -157,6 +157,9 @@ describe("SLT-165 R527 — barra fija con buscador, «Filtros» y «Descargar»"
     await user.click(screen.getByRole("button", { name: /^Filtros/ }));
     await user.click(await screen.findByRole("option", { name: "Resultado" }));
     expect(screen.getByRole("button", { name: /^Filtros \(1\)/ })).toBeInTheDocument();
+    // R493 (B2 de la review): las pastillas miden 44 px de alto en el teléfono (envoltorio de D).
+    const grupoPastillas = screen.getByRole("group", { name: "Filtrar por resultado" });
+    expect(grupoPastillas.closest(".max-w-full")?.className.split(/\s+/)).toContain("max-md:[&_button]:min-h-11");
     await user.click(screen.getByRole("button", { name: "Incidente (4)" }));
     expect(guias()).toEqual(["3001", "3002", "3003", "3004"]);
     await buscarTexto(user, "Incidente 3");

@@ -41,12 +41,13 @@ interface ArchivoVigilado {
 const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
   // Rebanada A — base común.
   { archivo: "components/shared/texto-entero.ts", reglas: ["recorte", "escala"] },
-  { archivo: "components/private/cierres/fila/FilaGestion.tsx", reglas: ["recorte", "escala"] },
-  { archivo: "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx", reglas: ["recorte", "escala"] },
+  // SLT-165 (m1 de su review): las tarjetas de D también con «oculta».
+  { archivo: "components/private/cierres/fila/FilaGestion.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx", reglas: ["recorte", "escala", "oculta"] },
   {
     archivo: "app/(app)/cierres-admin/_components/cierre-factura.tsx",
     segmentos: ["FilaSinGestion", "SeccionSinGestion"],
-    reglas: ["recorte", "escala"],
+    reglas: ["recorte", "escala", "oculta"],
     nota: "El comprobante (`CierreFacturaDetalle`) no es pantalla del mensajero en este alcance.",
   },
   { archivo: "app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle.tsx", reglas: ["recorte", "escala"] },

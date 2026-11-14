@@ -233,6 +233,9 @@ interface TablaComun {
   vacio: string;
 }
 
+/** SLT-165 (R493): el botón de desplegar de la `DataTable` de la cola propia, a 44 px en el teléfono. */
+export const DESPLEGABLE_TACTIL = "max-md:[&_button[aria-expanded]]:min-h-11 max-md:[&_button[aria-expanded]]:min-w-11";
+
 /** La ÚNICA tabla de la cola (una sola en el censo), genérica en el tipo de fila. */
 function TablaCola<T>({
   region,
@@ -327,7 +330,9 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
             {props.tipo === "propios" && props.tarjetas && props.tarjetas.length > 0 ? (
               <CifrasCierre cifras={props.tarjetas} ariaLabel={CIFRAS_GANANCIA_LABEL} />
             ) : null}
-            <section aria-label={comun.region}>
+            {/* SLT-165 (R493, B2 de la review): el desplegable de cada fila de «Cierres solicitados»
+                (el botón con `aria-expanded` de la tabla) mide 44 px en el teléfono. */}
+            <section aria-label={comun.region} className={props.tipo === "propios" ? DESPLEGABLE_TACTIL : undefined}>
               {props.tipo === "propios" ? (
                 <TablaCola
                   {...comun}

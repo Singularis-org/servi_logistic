@@ -105,19 +105,30 @@ export const REJILLA_ESCRITORIO = "md:[grid-template-columns:var(--plantilla-fil
  * la Ganancia, dato principal, en la columna fija de la derecha; las señales debajo.
  */
 export const REJILLA_TARJETA =
-  "max-md:grid-cols-[max-content_minmax(0,1fr)_max-content] max-md:items-start max-md:gap-x-3 max-md:gap-y-1 " +
+  "max-md:grid-cols-[max-content_minmax(0,1fr)_max-content] max-md:items-start max-md:gap-x-3 max-md:gap-y-1";
+/** Las áreas de la tarjeta sin la columna «Mensajero» (p. ej. el cierre del propio mensajero). */
+export const AREAS_TARJETA =
   "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'resultado_resultado_acciones'_'senales_senales_senales']";
+/**
+ * SLT-165 (R491, B1 de la review): con la columna «Mensajero» (el detalle del cierre de bodega), la
+ * tarjeta dice de quién es cada gestión en una línea propia, bajo «guía · tienda».
+ */
+export const AREAS_TARJETA_CON_MENSAJERO =
+  "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']";
 
 /**
- * El sitio de cada celda en la tarjeta (`null` = no se pinta en la tarjeta). «Recibido», «Cobro» y
- * «Mensajero» están en el detalle desplegado y en la cabecera del cierre de bodega; el «Pago» de la
- * administración ES la ganancia del mensajero (`montoDeColumna`), así que ocupa su sitio.
+ * El sitio de cada celda en la tarjeta (`null` = no se pinta en la tarjeta). «Recibido» y «Cobro»
+ * están en el detalle desplegado; el «Pago» de la administración ES la ganancia del mensajero
+ * (`montoDeColumna`), así que ocupa su sitio. «Mensajero» va en su línea (R491).
  */
 const AREA_TARJETA: Record<ColumnaFila["id"], string | null> = {
   guia: "max-md:[grid-area:guia]",
   destinatario: "max-md:[grid-area:dest] max-md:font-medium",
   tienda: "max-md:[grid-area:tienda] max-md:before:mr-1 max-md:before:content-['·']",
-  mensajero: null,
+  // En la tarjeta no hay cabecera de columnas: el rótulo va delante, solo en el teléfono (pseudo-elemento:
+  // el DOM y el texto de la celda en escritorio no cambian).
+  mensajero:
+    "max-md:[grid-area:mensajero] max-md:flex max-md:gap-1 max-md:text-muted-foreground max-md:before:shrink-0 max-md:before:content-['Mensajero:']",
   resultado: "max-md:[grid-area:resultado] max-md:mt-1",
   recibido: null,
   cobro: null,
@@ -246,7 +257,12 @@ export function FilaGestion({
     // `break-inside-avoid` (feature 223): la fila no se parte entre dos páginas al imprimir.
     <div className="break-inside-avoid border-b border-border last:border-b-0" data-gestion={g.gestionId}>
       <div
-        className={cn("grid items-center gap-2 px-4 py-3 text-sm", REJILLA_ESCRITORIO, REJILLA_TARJETA)}
+        className={cn(
+          "grid items-center gap-2 px-4 py-3 text-sm",
+          REJILLA_ESCRITORIO,
+          REJILLA_TARJETA,
+          columnas.some((c) => c.id === "mensajero") ? AREAS_TARJETA_CON_MENSAJERO : AREAS_TARJETA,
+        )}
         style={plantillaFila(columnas)}
       >
         {columnas.map((c) => (

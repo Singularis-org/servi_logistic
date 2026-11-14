@@ -74,6 +74,8 @@ const FILTROS_MOVIL = [{ key: CLAVE_RESULTADO, label: COL_RESULTADO }];
 
 /** SLT-156 (R493): los botones de la paginación y «Descargar» miden 44 px en el teléfono. */
 const BOTONES_TACTILES = "max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11";
+/** SLT-165 (R493, B2 de la review): las pastillas de resultado de 44 px de alto en el teléfono. */
+const PASTILLAS_TACTILES = "max-w-full max-md:[&_button]:min-h-11";
 
 export function GestionesCierre({
   gestiones,
@@ -159,7 +161,7 @@ export function GestionesCierre({
           onLimpiarTodo={limpiarTodo}
           hayFiltrosAplicados={filtro !== FILTRO_TODAS || activos.length > 0}
         >
-          {activos.includes(CLAVE_RESULTADO) ? pastillas : null}
+          {activos.includes(CLAVE_RESULTADO) ? <div className={PASTILLAS_TACTILES}>{pastillas}</div> : null}
           {descargar ? <div className={cn("order-last shrink-0", BOTONES_TACTILES)}>{descargar}</div> : null}
         </BuscadorFiltros>
       ) : (

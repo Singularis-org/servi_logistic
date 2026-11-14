@@ -623,8 +623,8 @@ export function CierreDiaModule({
               showFirstLast
               siblingCount={esMovil ? undefined : 1}
               ariaLabel={PAGINACION_PASADOS_LABEL}
-              // SLT-156 (R493): botones de 44 px en el teléfono.
-              className="max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11"
+              // SLT-156 (R493): botones y «Elementos por página» de 44 px en el teléfono.
+              className="max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_select]:min-h-11"
               onPageChange={setPasadosPage}
               onPageSizeChange={(s) => {
                 setPasadosPageSize(s);

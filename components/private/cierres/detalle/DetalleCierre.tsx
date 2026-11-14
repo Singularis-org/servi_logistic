@@ -302,6 +302,9 @@ function DatosCabecera({ pares }: Readonly<{ pares: ParCabecera[] }>) {
  */
 export const VARIABLE_ALTO_BARRA = "--alto-barra-inferior";
 
+/** El panel de la pestaña en el marco página: sin scroll en el teléfono, de lado en tableta, entero desde `lg`. */
+export const PANEL_PAGINA = "md:overflow-x-auto lg:overflow-auto";
+
 function usePublicarAltoBarra(ref: RefObject<HTMLElement | null>, activa: boolean) {
   useEffect(() => {
     const el = ref.current;
@@ -416,13 +419,15 @@ function Cuerpo({
           ))}
         </TabsList>
         {m.pestanas.map((p) => (
-          // El panel es la única región con scroll del modal y del escritorio (R11). En la página por
-          // debajo de `lg` fluye con la ventana: así la barra de «Gestiones» puede quedar fija arriba
-          // (R527) y nada se recorta ni se desplaza de lado (m6 de la review de SLT-156 A).
+          // El panel es la única región con scroll del modal y del escritorio (R11). En la página, por
+          // debajo de 768 px fluye con la ventana: así la barra de «Gestiones» puede quedar fija arriba
+          // (R527) y no hay scroll lateral (m6 de la review de SLT-156 A). Entre 768 y 1023 px (tableta,
+          // barra lateral abierta) la rejilla de escritorio puede no caber: ahí el panel se desplaza de
+          // lado en vez de dejar que `SidebarInset` la recorte (B3 de la review de SLT-165).
           <TabsContent
             key={p.id}
             value={p.id}
-            className={cn("mt-0 min-h-0 flex-1 pt-4", enPagina ? "lg:overflow-auto" : "overflow-auto")}
+            className={cn("mt-0 min-h-0 flex-1 pt-4", enPagina ? PANEL_PAGINA : "overflow-auto")}
           >
             {m.slots[p.id] ?? null}
           </TabsContent>

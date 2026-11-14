@@ -138,3 +138,19 @@ Rebanada D implementada (D1-D6) con R→test y 28 mutaciones muertas; D7 escrita
 - E2E_EXIT: `pwa-mensajero-cierre-dia` 0 (3/3) · `pwa-mensajero-base` 0 (4/4) · `cierre-bodega-satelite` 0 (6/6).
 - `./init.sh` tras el arreglo: 1.ª vuelta, INIT_EXIT=1 en el typecheck, por los tipos de `.next/dev` truncados
   al parar el dev server del E2E. Después de `rm -rf .next/dev`: INIT_EXIT=0. Tamaño: 30/40, 683/1000 y 1062/3000.
+
+## Tanda 3 — bloqueantes de la review (`progress/review_SLT-165.md`)
+
+| Hallazgo | Arreglo | Test | Mutación → rojo |
+|---|---|---|---|
+| B1 · R491 | Con la columna «Mensajero», la tarjeta le da su línea (`AREAS_TARJETA_CON_MENSAJERO`, `max-md:[grid-area:mensajero]`) y el rótulo «Mensajero:» va como pseudo-elemento solo en el teléfono. Así el DOM y el texto de la celda en escritorio no cambian; los tests de bodega leen ese texto | `FilaGestion.test.tsx` «R491 (B1 de la review…)» y «sin la columna «Mensajero»…»; el caso viejo ya no exige `max-md:hidden` | `mensajero: null`; las áreas sin la línea del mensajero |
+| B2 · R493 pastillas | Envoltorio `max-md:[&_button]:min-h-11` en `GestionesCierre` | `GestionesCierreMovil.test.tsx` «…como pastillas…» | quitar la clase |
+| B2 · R493 desplegable de la cola | `DESPLEGABLE_TACTIL` (`max-md:[&_button[aria-expanded]]:min-h-11/min-w-11`) en la sección de la cola propia (`ColaCierres`) | `CierreDiaColaPropia.test.tsx` «dos columnas…» | quitar la clase |
+| B2 · R493 «Elementos por página» | `max-md:[&_select]:min-h-11` en la `Pagination` de `CierreDiaModule` | `CierreDiaColaPropia.test.tsx` «R536…» (y el `select` vive en esa `nav`) | quitar la clase |
+| B3 | `PANEL_PAGINA = "md:overflow-x-auto lg:overflow-auto"`: de 768 a 1023 px, el panel se desplaza de lado | `DetalleCierre.test.tsx` «SLT-165 B3…»; E2E `pwa-mensajero-cierre-dia` (c) a 768 y 900 px con la barra lateral abierta: `sinDesborde`, sin «…», las acciones se alcanzan. ESCRITO, SIN EJECUTAR (lo corre el leader) | volver a `lg:overflow-auto` |
+| m1 | Regla «oculta» también en `FilaGestion`, `RechazosDeTiendaCierre` y los segmentos de `cierre-factura` | guardia `pwa-mensajero-sin-recorte` | `overflow-hidden` en `FilaGestion`; en `FilaSinGestion` |
+| m2 | Sin tocar (lo pidió el leader) | — | — |
+| m3 | Anotado como deuda en `progress/features/SLT-165.md` | — | — |
+
+8/8 mutaciones MATA (`slt165-mut2.log`). Las clases nuevas se compilaron con Tailwind 4.3.2 antes de usarlas, también los selectores anidados `[&_button[aria-expanded]]`.
+- `./init.sh` (después de `rm -rf .next/dev`): INIT_EXIT=0. Tamaño: 30/40, 713/1000 y 1135/3000.

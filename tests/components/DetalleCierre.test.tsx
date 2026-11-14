@@ -618,6 +618,15 @@ describe("SLT-165 R531 — «Solicitar cierre del día» con su contador, en la 
   });
 });
 
+describe("SLT-165 B3 de la review — el panel de la página entre 768 y 1023 px", () => {
+  it("se desplaza de lado desde 768 px y entero desde `lg`; en el teléfono fluye con la ventana", () => {
+    enPagina();
+    const panel = screen.getByRole("tabpanel");
+    expect(clases(panel)).toEqual(expect.arrayContaining(["md:overflow-x-auto", "lg:overflow-auto"]));
+    expect(clases(panel)).not.toContain("overflow-auto");
+  });
+});
+
 describe("SLT-165 R534 — la barra publica su alto para los flotantes", () => {
   it("en el teléfono, `--alto-barra-inferior` en `<html>`; se quita al desmontar", () => {
     movil.valor = true;

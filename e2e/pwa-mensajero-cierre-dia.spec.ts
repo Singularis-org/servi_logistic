@@ -144,6 +144,29 @@ test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => 
     });
   }
 
+  // B3 de la review de SLT-165: entre 768 y 1023 px (tableta) la rejilla de escritorio de «Gestiones»
+  // no puede quedar recortada por `SidebarInset` (`overflow-x-clip`) con la barra lateral abierta.
+  for (const ancho of [768, 900]) {
+    test(`(c) R490, R524: /cierre-dia a ${ancho} px con la barra lateral abierta, «Gestiones» sin recortar`, async ({ browser }) => {
+      const page = await paginaDe(browser, conTreinta, { viewport: { width: ancho, height: 900 } });
+      await page.goto("/cierre-dia");
+      // La barra lateral de escritorio, abierta (es la que deja menos ancho).
+      await expect(page.locator('[data-slot="sidebar"][data-state="expanded"]')).toHaveCount(1);
+      const lista = page.getByRole("region", { name: GESTIONES });
+      // R524: desde 768 px, la rejilla de hoy con su cabecera, las 30 filas y sin paginación.
+      await expect(lista.getByText("Ganancia", { exact: true })).toBeVisible();
+      await expect(lista.locator("[data-gestion]")).toHaveCount(30);
+      await expect(page.getByRole("navigation", { name: "Páginas de las gestiones" })).toHaveCount(0);
+      await sinElipsis(lista);
+      // Lo que no cabe se desplaza dentro del panel (scroll propio); nada lo recorta el inset.
+      await sinDesborde(page);
+      // Y lo que se desplaza llega: la última celda de la fila (acciones) se alcanza dentro del panel.
+      const acciones = lista.locator("[data-gestion]").first().getByRole("button", { name: /^(Detalle|Desglose de ingreso) de la orden/ });
+      await acciones.scrollIntoViewIfNeeded();
+      await expect(acciones).toBeInViewport();
+    });
+  }
+
   test("(b) R533, R535, R537: «Cancelar» no envía; «Ver» abre el detalle a pantalla completa con «Volver»", async ({ browser }) => {
     const m = await crearMensajero(r, "satelite");
     await entregada(m, DESTINATARIO_LARGO, 3000);

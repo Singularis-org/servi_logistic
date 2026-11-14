@@ -309,6 +309,12 @@ describe("SLT-165 R535 — «Cierres solicitados» en el teléfono: dos columnas
     expect(cierre.textContent).toBe("2026-07-11 04:00AprobadoBodega central");
     expect(ganancia.textContent).toBe("₡875Ver");
     const ver = within(ganancia).getByRole("button", { name: "Ver del cierre del 2026-07-11" });
+    // R493 (B2 de la review): el desplegable de la fila (botón con `aria-expanded`) a 44 px en el teléfono.
+    const desplegar = within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" });
+    expect(desplegar.hasAttribute("aria-expanded")).toBe(true);
+    expect(region.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["max-md:[&_button[aria-expanded]]:min-h-11", "max-md:[&_button[aria-expanded]]:min-w-11"]),
+    );
     expect(ver.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-md:min-h-11", "max-md:min-w-11"]));
     // El importe, en su columna fija a la derecha.
     expect(within(ganancia).getByText("₡875").className.split(/\s+/)).toEqual(
@@ -346,7 +352,11 @@ describe("SLT-165 R535 — «Cierres solicitados» en el teléfono: dos columnas
     const nav = screen.getByRole("navigation", { name: "Paginación de los cierres solicitados" });
     expect(within(nav).queryByRole("button", { name: "Ir a la página 2" })).toBeNull();
     expect(within(nav).getByRole("button", { name: "Página siguiente" })).toBeInTheDocument();
-    expect(nav.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-md:[&_button]:min-h-11", "max-md:[&_button]:min-w-11"]));
+    expect(nav.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["max-md:[&_button]:min-h-11", "max-md:[&_button]:min-w-11", "max-md:[&_select]:min-h-11"]),
+    );
+    // B2 de la review: el selector «Elementos por página» vive dentro de la `nav` que lleva la clase.
+    expect(within(nav).getByRole("combobox", { name: "Elementos por página" }).tagName).toBe("SELECT");
   });
 
   it("en escritorio, las ocho columnas de hoy sin desplegable", () => {

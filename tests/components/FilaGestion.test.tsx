@@ -590,8 +590,29 @@ describe("SLT-165 R523-R525 — la fila es una tarjeta en el teléfono y la reji
   it("R523, para cualquier audiencia: en la administración el «Pago» (la ganancia del mensajero) ocupa el sitio de la Ganancia", () => {
     montar(gestionFila({ gestionId: "c" }), { audiencia: "solo lectura", mensajero: "Ana Mensajera" });
     expect(celda("pago").classList.contains("max-md:[grid-area:ganancia]")).toBe(true);
-    for (const id of ["recibido", "cobro", "mensajero"]) expect(celda(id).classList.contains("max-md:hidden"), id).toBe(true);
+    for (const id of ["recibido", "cobro"]) expect(celda(id).classList.contains("max-md:hidden"), id).toBe(true);
     expect(celda("destinatario").classList.contains("max-md:[grid-area:dest]")).toBe(true);
+  });
+
+  it("R491 (B1 de la review de SLT-165): con la columna «Mensajero», la tarjeta dice de quién es la gestión en su línea", () => {
+    montar(gestionFila({ gestionId: "m" }), { audiencia: "solo lectura", mensajero: "Ana Mensajera" });
+    const m = celda("mensajero");
+    expect(m.classList.contains("max-md:hidden")).toBe(false);
+    expect(m.classList.contains("max-md:[grid-area:mensajero]")).toBe(true);
+    expect(textoDe("mensajero").textContent).toBe("Ana Mensajera");
+    // En la tarjeta no hay cabecera: el rótulo, solo en el teléfono y sin tocar el texto de la celda.
+    expect(m.classList.contains("max-md:before:content-['Mensajero:']")).toBe(true);
+    expect(m.textContent).toBe("Ana Mensajera");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("R523: sin la columna «Mensajero», la tarjeta no reserva su línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    expect(rejilla().className).not.toContain("mensajero_mensajero");
   });
 
   it("R523: sin señales, la tarjeta no reserva su línea; con señales, va debajo", () => {
