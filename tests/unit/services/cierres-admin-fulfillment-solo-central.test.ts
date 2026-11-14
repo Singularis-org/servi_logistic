@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { CierresAdminService } from "@/lib/services/CierresAdminService";
+import {
+  CLASE_DETALLE_MENSAJERO,
+  CierresAdminService,
+  anularEmpresaSiNoCentral,
+  ocultarDineroEmpresaSiNoCentral,
+} from "@/lib/services/CierresAdminService";
+import {
+  CLASE_CIERRE_DEL_DIA_BODEGA,
+  CLASE_DETALLE_BODEGA,
+} from "@/lib/services/CierresBodegaAdminService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import type { ICierresAdminRepository } from "@/lib/interfaces/repositories/ICierresAdminRepository";
@@ -246,6 +255,12 @@ async function ingresoDelDetalle(actor: Actor) {
   return r.grupos.entregado[0].ingresoEmpresa;
 }
 
+async function gestionDelDetalleCierre(actor: Actor) {
+  const r = await newService().verCierreDetalle("c1", actor);
+  if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
+  return r.grupos.entregado[0];
+}
+
 async function ingresoDeLaDescarga(actor: Actor) {
   const r = await newService().listarGestionesCierresAdminCompleto(actor, {
     mensajeroIds: ["m1"],
@@ -256,8 +271,12 @@ async function ingresoDeLaDescarga(actor: Actor) {
 
 describe("ficha 481 — el fulfillment de la fila solo llega a la central", () => {
   describe("detalle del cierre de mensajero (verCierreDetalle)", () => {
-    it("adminSatelite: la tarifa llega con fulfillment null y el resto intacto", async () => {
-      expect(await ingresoDelDetalle(SATELITE)).toEqual(INGRESO_SATELITE);
+    // SLT-154 (R463): en el detalle ya no se anula solo el fulfillment: el cobro a la tienda ENTERO
+    // (que lo incluye) llega `null` a la satelite, y el modelo de tarifa viaja aparte.
+    it("adminSatelite: el cobro a la tienda llega null entero (con su fulfillment) y el modelo aparte", async () => {
+      const g = await gestionDelDetalleCierre(SATELITE);
+      expect(g.ingresoEmpresa).toBeNull();
+      expect(g.tarifaModelo).toBe("viejo");
     });
 
     it.each([
@@ -294,9 +313,9 @@ describe("SLT-52 R46 — el fulfillment del modelo nuevo y su IVA tambien son so
     filaDelRepo = INGRESO;
   });
 
-  it("adminSatelite: fulfillment e IVA anulados (null, nunca \"0.00\") en el detalle y en el Excel", async () => {
+  it("adminSatelite: fulfillment e IVA anulados (null, nunca \"0.00\") en el Excel; en el detalle, todo el cobro (SLT-154 R463)", async () => {
     const esperado = { ...INGRESO_NUEVO, fulfillment: null, ivaFulfillment: null };
-    expect(await ingresoDelDetalle(SATELITE)).toEqual(esperado);
+    expect(await ingresoDelDetalle(SATELITE)).toBeNull();
     expect(await ingresoDeLaDescarga(SATELITE)).toEqual(esperado);
   });
 
@@ -364,16 +383,10 @@ describe("SLT-101 R94 — «Se cobró», su % de IVA y la fecha del cargo solo l
     return r.grupos.entregado[0];
   }
 
-  it("adminSatelite: los tres campos del fulfillment llegan null; el resto de las cifras, intacto", async () => {
+  it("adminSatelite: el cobro a la tienda llega null entero (SLT-154 R463); el pago por tarifa, intacto", async () => {
     const g = await gestionDelDetalle(SATELITE);
-    expect(g.ingresoEmpresa).toEqual({
-      ...INGRESO_CIFRAS,
-      fulfillment: null,
-      ivaFulfillment: null,
-      fulfillmentConIva: null,
-      ivaPctFulfillment: null,
-      fulfillmentCargadoAt: null,
-    });
+    expect(g.ingresoEmpresa).toBeNull();
+    expect(g.tarifaModelo).toBe("nuevo");
     expect(g.pagoPorTarifa).toEqual(PAGO_POR_TARIFA);
     expect(g.tarifaFaltante).toBe(true);
   });
@@ -401,5 +414,90 @@ describe("SLT-101 R94 — «Se cobró», su % de IVA y la fecha del cargo solo l
       ivaPctFulfillment: null,
       fulfillmentCargadoAt: null,
     });
+  });
+});
+
+/**
+ * SLT-154 «Vista de la bodega satélite: solo lo suyo» (R464) — el corte de los dos detalles usa el
+ * criterio de F481, «NO es acceso total», y no «es adminSatelite»: un rol que un dia llegue a esas
+ * lecturas sin estar previsto tampoco recibe el dinero de la empresa. Las lecturas de hoy dejan
+ * pasar solo a la central y a la satelite, asi que se prueba sobre las dos funciones que deciden el
+ * corte, con un rol sin acceso total que no es la satelite (`adminTienda`, `mensajero`).
+ */
+describe("SLT-154 R464 — el recorte es para todo rol sin acceso total", () => {
+  const TIENDA: Actor = { usuarioId: "u-tienda", rol: "adminTienda" };
+  const MENSAJERO: Actor = { usuarioId: "u-mensajero", rol: "mensajero" };
+  const FILA = { gestionId: "g-1", pagoMensajero: "700.00", ingresoEmpresa: INGRESO } as never;
+
+  it.each([
+    ["adminTienda", TIENDA],
+    ["mensajero", MENSAJERO],
+    ["adminSatelite", SATELITE],
+  ])("un rol sin acceso total que no es la satélite también recibe el recorte (%s)", (_n, actor) => {
+    const g = ocultarDineroEmpresaSiNoCentral(FILA, actor) as {
+      ingresoEmpresa: unknown;
+      tarifaModelo: unknown;
+      pagoMensajero: unknown;
+    };
+    expect(g.ingresoEmpresa).toBeNull();
+    expect(g.tarifaModelo).toBe("viejo");
+    expect(g.pagoMensajero).toBe("700.00");
+
+    const detalle = anularEmpresaSiNoCentral(
+      { pagoTienda: "740.00" as string | null, paraLaCentral: "2200.00" },
+      { pagoTienda: "empresa", paraLaCentral: "propio" },
+      actor,
+    );
+    expect(detalle).toEqual({ pagoTienda: null, paraLaCentral: "2200.00" });
+  });
+
+  it.each([
+    ["maestro", MAESTRO],
+    ["admin", ADMIN],
+  ])("%s: la fila y el detalle salen tal cual, sin `tarifaModelo` aparte", (_n, actor) => {
+    const g = ocultarDineroEmpresaSiNoCentral(FILA, actor) as { ingresoEmpresa: unknown };
+    expect(g.ingresoEmpresa).toEqual(INGRESO);
+    expect("tarifaModelo" in g).toBe(false);
+    expect(
+      anularEmpresaSiNoCentral({ pagoTienda: "740.00" as string | null }, { pagoTienda: "empresa" }, actor),
+    ).toEqual({ pagoTienda: "740.00" });
+  });
+
+  // Clasificacion exhaustiva (D3): el typecheck obliga a clasificar cada campo; esto fija CUALES son
+  // de la empresa, con las listas de R460, R461 y R462 escritas a mano.
+  const deLaEmpresa = (clase: Record<string, string>) =>
+    Object.entries(clase)
+      .filter(([, c]) => c === "empresa")
+      .map(([k]) => k)
+      .sort();
+
+  it("R462: las diez cifras de la empresa del detalle del cierre del mensajero", () => {
+    expect(deLaEmpresa(CLASE_DETALLE_MENSAJERO)).toEqual([
+      "cobradoSobreRecaudado",
+      "fleteRechazoYaCobradoATienda",
+      "ganaLaTienda",
+      "ganancia",
+      "ivaFacturado",
+      "netoEmpresa",
+      "pagoTienda",
+      "partesPorTienda",
+      "porcentajesReparto",
+      "totalesIngreso",
+    ]);
+  });
+
+  it("R460/R461: las ocho cifras de la empresa del agregado y de cada cierre del día de bodega", () => {
+    const ocho = [
+      "cobradoSobreRecaudado",
+      "ganaLaTienda",
+      "ganancia",
+      "ivaFacturado",
+      "netoEmpresa",
+      "pagoTienda",
+      "partesPorTienda",
+      "totalesIngreso",
+    ];
+    expect(deLaEmpresa(CLASE_DETALLE_BODEGA)).toEqual(ocho);
+    expect(deLaEmpresa(CLASE_CIERRE_DEL_DIA_BODEGA)).toEqual(ocho);
   });
 });

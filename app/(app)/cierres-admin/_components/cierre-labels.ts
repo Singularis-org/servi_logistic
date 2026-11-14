@@ -217,12 +217,17 @@ export function fleteDevConIvaDeGestion(
  * R65, los totales: los paneles no reciben el modelo, y lo dicen sus gestiones. Basta con una: un cierre
  * de bodega puede agregar días a ambos lados de la activación, y «no entregadas» sigue siendo cierto
  * para los rechazos del viejo. La otra frase no lo sería para una novedad del nuevo.
+ *
+ * SLT-154 (R463, D1): sin acceso total `ingresoEmpresa` llega en `null` y el modelo viaja en
+ * `tarifaModelo`; sin leerlo, la satélite perdería el modelo nuevo y sus notas dirían algo falso.
  */
 export function hayGestionEnModeloNuevo(
-  grupos: Readonly<Record<string, readonly Pick<CierreDetalleGestion, "ingresoEmpresa">[]>>,
+  grupos: Readonly<
+    Record<string, readonly Pick<CierreDetalleGestion, "ingresoEmpresa" | "tarifaModelo">[]>
+  >,
 ): boolean {
   return Object.values(grupos).some((lista) =>
-    lista.some((g) => g.ingresoEmpresa?.tarifaModelo === "nuevo"),
+    lista.some((g) => (g.tarifaModelo ?? g.ingresoEmpresa?.tarifaModelo) === "nuevo"),
   );
 }
 /**
