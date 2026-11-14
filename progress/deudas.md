@@ -420,7 +420,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D71 — «SINPE» en encabezados
 - **Origen:** SL-22; anotada en la épica de cierres. Encabezados de pantalla y descarga nombran «SINPE», un medio de pago de un país, en una plataforma multipaís.
 - **Qué falta:** decidir con Carlos el rótulo genérico y aplicarlo.
-- **Dueño:** Carlos (decisión) / ArqDev.
+- **Cerrada (2026-11-13, Carlos):** duplicada de SL-22 «Métodos de pago configurables por país». «SINPE» no es solo un rótulo (módulos `/configuracion/sinpe` y «Mi bodega», columnas `sinpe_*` y `total_simpe`): un rótulo genérico le quitaría al cliente de Costa Rica la palabra que usa. Se resuelve con los medios de pago por país.
+- **Dueño:** cerrada.
 
 ### D72 — Tests R190/R191 de SLT-106 cubiertos solo por SLT-107
 - **Origen:** SLT-106 (review). Sus requisitos R190 y R191 no tienen test propio; los cubren los tests de SLT-107.
@@ -436,7 +437,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D74 — T0.4 de SLT-123/SLT-139: conteo en producción diferido
 - **Origen:** SLT-123 y SLT-139 (T0.4). El conteo en producción no se hizo: la lectura de prod está bloqueada para agentes.
 - **Qué falta:** que Carlos corra la SQL de T0.4 (en sus specs) en producción y se anote el número.
-- **Dueño:** Carlos.
+- **Cerrada (2026-11-13, Carlos):** opcional e informativa; no condiciona el código. Ni SLT-123 ni SLT-139 están en `prod`: si se quiere el número, se corre justo antes de promover, en prod y `BEGIN READ ONLY`: `SELECT destino_tipo, estado, count(*) FROM cierre_dia WHERE estado IN ('solicitado','vencido') GROUP BY 1, 2;`.
+- **Dueño:** cerrada.
 
 ### D75 — Dobles de cierres con datos fuera de contrato
 - **Origen:** SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13, review m2 en `progress/review_SLT-149.md`). En `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`, `tests/unit/services/CierresAdminService.gestiones-completo.test.ts` y `tests/unit/services/cierre-desglose-tres-superficies.test.ts` (B6, B11, B12) los datos que devuelve el doble no cumplen el tipo de retorno (faltan `rechazosDeTienda` y `pagoIndependienteEfectivo`, o devuelven el DTO en vez de la fila). Antes lo escondía un `as unknown as` sobre el repositorio; ahora el cast va solo sobre el dato, para no cambiar lo que miden.

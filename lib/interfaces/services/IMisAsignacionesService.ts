@@ -288,6 +288,10 @@ export interface MisAsignacionesKpis {
    * Total a cobrar ACUMULADO: COD de las ordenes `en_reparto` + `entregada`. No baja al
    * ENTREGAR (la orden sale de reparto pero sigue sumando como entregada); se descuenta
    * cuando se gestiona como reprogramada/devuelta/rechazada (no entra en ningun set).
+   *
+   * SLT-151: SI baja cuando el mensajero solicita el cierre del dia (y sigue fuera al aprobarse): lo
+   * gestionado que ya esta en un cierre `solicitado`/`aprobado` no se cuenta. Vuelve a contar si el
+   * cierre se rechaza (el rechazo no desvincula las gestiones). Ver `sumMontoCobrarGestionadas`.
    */
   totalACobrar: number;
 }
