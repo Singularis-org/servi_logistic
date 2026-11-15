@@ -29,10 +29,12 @@ const COLUMNAS_LG: Record<number, string> = {
   5: "lg:grid-cols-5",
 };
 
-/** Aviso (SLT-106) sobre destacada: una deuda de la central no se lee como la cifra principal. */
+/** Aviso (SLT-106) sobre destacada: una deuda de la central no se lee como la cifra principal.
+ *  SLT-170: la destacada usa `bg-accent` (gira con el tema), no `bg-brand-soft` (crema fijo bajo
+ *  una tinta que en oscuro es clara, 1.01:1). En claro los dos valen #FFF8D9. */
 function tonoCaja(c: Cifra): string {
   if (c.aviso) return "border-warning/60 bg-warning-soft";
-  return c.destacada ? "border-brand/60 bg-brand-soft" : "border-border bg-card";
+  return c.destacada ? "border-brand/60 bg-accent" : "border-border bg-card";
 }
 
 function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales }>) {
