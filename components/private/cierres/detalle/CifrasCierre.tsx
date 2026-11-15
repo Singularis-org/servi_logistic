@@ -31,9 +31,10 @@ const COLUMNAS_LG: Record<number, string> = {
 
 /** Aviso (SLT-106) sobre destacada: una deuda de la central no se lee como la cifra principal.
  *  SLT-170: la destacada usa `bg-accent` (gira con el tema), no `bg-brand-soft` (crema fijo bajo
- *  una tinta que en oscuro es clara, 1.01:1). En claro los dos valen #FFF8D9. */
+ *  una tinta que en oscuro es clara, 1.01:1). En claro los dos valen #FFF8D9. El aviso compone
+ *  `warning/15` en oscuro por la misma razón (`bg-warning-soft` es fijo; rótulo 1.91 → 6.05). */
 function tonoCaja(c: Cifra): string {
-  if (c.aviso) return "border-warning/60 bg-warning-soft";
+  if (c.aviso) return "border-warning/60 bg-warning-soft dark:bg-warning/15";
   return c.destacada ? "border-brand/60 bg-accent" : "border-border bg-card";
 }
 

@@ -221,7 +221,7 @@ export function DestinatariosField({
       </div>
 
       {sinTelefono.length > 0 || compartidos.length > 0 ? (
-        <div role="status" className="rounded-lg border border-warning/60 bg-warning-soft p-3 text-warning-strong">
+        <div role="status" className="rounded-lg border border-warning/60 bg-warning-soft p-3 dark:bg-warning/15 text-warning-strong">
           {sinTelefono.length > 0 ? (
             <>
               <p className="text-sm font-semibold">

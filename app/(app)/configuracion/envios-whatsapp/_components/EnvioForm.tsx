@@ -446,7 +446,7 @@ export function EnvioForm({ envio, informes, eventos, plantillas, personas }: En
           </FormField>
 
           {faltaDocumento ? (
-            <div role="alert" className="rounded-lg border border-warning/60 bg-warning-soft p-3 text-warning-strong">
+            <div role="alert" className="rounded-lg border border-warning/60 bg-warning-soft p-3 dark:bg-warning/15 text-warning-strong">
               <p className="text-sm font-semibold">Esta plantilla no lleva documento</p>
               <p className="mt-1 text-xs leading-relaxed">
                 WhatsApp no deja pegar el PDF a <span className="font-mono">{plantilla?.nombre}</span>. Elige una

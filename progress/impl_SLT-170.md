@@ -71,4 +71,45 @@ Ver la sección «Salida del gate» de abajo.
   ni la base. No se arregló (fuera de alcance: base/backend).
 
 ## Veredicto
-Arreglo hecho y medido (oscuro 1.01 → 12.64 en la tarjeta reportada; claro intacto); gate rojo sólo por drift de la base local del worktree.
+Tanda 1: arreglo medido (oscuro 1.01 → 12.64 en la tarjeta reportada; claro intacto); gate rojo sólo por drift de la base del worktree. Tanda 2 abajo.
+
+## Tanda 2 — caja `aviso` y censo de `bg-warning-soft` (pedido del leader)
+`--color-warning-soft` (#fef3c7) es fijo, igual que brand-soft: bajo `text-warning-strong` (que gira a
+#fbbf24) o bajo `--foreground` claro no se lee en oscuro. No hay token opaco de aviso que gire, así que
+se usa el par del sistema que ya llevan `Badge` warning, Tarifas, RankingPodio o NotificationsBell:
+`bg-warning-soft dark:bg-warning/15`. El claro no cambia; al imprimir `dark:` no dispara (feature 221).
+
+### Archivos
+- `components/private/cierres/detalle/CifrasCierre.tsx` — caja `aviso` (+ comentario).
+- `components/private/cierres/detalle/DetalleCierre.tsx` — franja de aviso, tono warning.
+- `components/private/cierres/cola/ColaCierres.tsx` — aviso de consolidar.
+- `app/(app)/configuracion/envios-whatsapp/_components/DestinatariosField.tsx`, `EnvioForm.tsx`.
+- `app/(app)/configuracion/plantillas/_components/PlantillaInformeFields.tsx`.
+- `app/(app)/mis-asignaciones/_components/pos-card/pos-estado.ts` — `CLASE_NOTA_AYUDA` y `CLASE_NOTA`.
+- `tests/components/ContrasteBrandSoftOscuro.test.tsx` — 4 casos de la caja aviso + censo que pinta
+  cada lista de clases con `bg-warning-soft` del árbol y la mide en los dos temas.
+
+### Rojo → verde
+ANTES: 10 rojos, todos en oscuro (2 de la caja aviso, 8 del censo). DESPUÉS: 51/51 del archivo; y
+119 archivos de tests de componente/guardias afectados, 2362 tests verdes. `eslint` sobre el diff: 0.
+`tsc --noEmit` (8 GB): 0. No se corrió `./init.sh` (lo corre el leader sobre base migrada).
+
+### Contrastes (fondo `warning/15` compuesto sobre card #1C1C1A / background #111111)
+| Texto | Claro (sin cambio) | Oscuro antes | Oscuro después (card / bg) |
+|---|---|---|---|
+| `muted-foreground` (rótulo, contexto) | 9.22 | 1.91 | 6.05 / 6.94 |
+| `foreground` (cifra) | 16.96 | 1.04 | 11.98 / 13.73 |
+| `warning-strong` (cifra aviso, avisos) | 6.37 | 1.50 | 7.70 / 8.82 |
+| `danger-strong` (negativa) | 5.81 | 2.48 | 4.65 / 5.33 |
+
+### Censo de `bg-warning-soft`
+| Uso | Veredicto |
+|---|---|
+| CifrasCierre aviso, DetalleCierre franja, ColaCierres aviso, DestinatariosField, EnvioForm, PlantillaInformeFields, pos-estado ×2 | **ARREGLADOS** (`dark:bg-warning/15`). |
+| TarifasActivarDialog, TarifasEstado, TarifasTopeIntentos, ChatConversacion, FranjaReprogramadasRetenidas, RankingPodio, CajaResumenCard, NotificationsBell, SinpeAvisoRiesgo, badge.tsx | OK: ya llevan `dark:bg-warning/15`. |
+| Toast warning | OK: par `dark:` propio (tinta `color-mix`); fuera del lector del censo. |
+| CobrosGastoFijo/CobrosRechazoTienda (comentarios) | No son clases. |
+
+### Hallazgo abierto (no tocado)
+`DetalleCierre.tsx:213`, rama `peligro`: `bg-danger-soft text-danger-strong` sin `dark:` → #f87171 sobre
+#fee2e2 en oscuro = 2.26 (mismo patrón). Fuera del censo pedido.

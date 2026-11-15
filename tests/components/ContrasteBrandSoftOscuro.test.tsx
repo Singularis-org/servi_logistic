@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@testing-library/react";
 
@@ -84,7 +86,7 @@ afterEach(() => cleanup());
 const TEMAS: Tema[] = ["claro", "oscuro"];
 
 describe("SLT-170 — CifrasCierre: la caja destacada se lee en los dos temas", () => {
-  function cajaDestacada(valor: string): Element {
+  function cajaDestacada(valor: string, aviso = false): Element {
     const cifras: Cifra[] = [
       {
         id: "leQueda",
@@ -94,6 +96,7 @@ describe("SLT-170 — CifrasCierre: la caja destacada se lee en los dos temas", 
         contexto: "Lo que queda después de pagar",
         conMetodos: false,
         destacada: true,
+        aviso,
       },
     ];
     const { container } = render(<CifrasCierre cifras={cifras} />);
@@ -108,6 +111,58 @@ describe("SLT-170 — CifrasCierre: la caja destacada se lee en los dos temas", 
     it(`monto negativo ≥ 4.5:1 en ${tema}`, () => {
       expect(peorContraste(cajaDestacada("-5000.00"), tema)).toBeGreaterThanOrEqual(4.5);
     });
+    // SLT-106 «La central debe»: la caja `aviso` pisa a la destacada con `bg-warning-soft`, otro
+    // tono FIJO sin variante oscura (rótulo 1.91, cifra `warning-strong` 1.50 en oscuro).
+    it(`caja aviso, monto positivo ≥ 4.5:1 en ${tema}`, () => {
+      expect(peorContraste(cajaDestacada("125000.00", true), tema)).toBeGreaterThanOrEqual(4.5);
+    });
+    it(`caja aviso, monto negativo ≥ 4.5:1 en ${tema}`, () => {
+      expect(peorContraste(cajaDestacada("-5000.00", true), tema)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
+// SLT-170 — CENSO de `bg-warning-soft` (#fef3c7, fijo). Cada lista de clases del árbol que lo use se
+// pinta tal cual en una caja con un texto sin clase propia (hereda la tinta de la lista o
+// `--foreground`) y se mide en los dos temas. Una lista sin `dark:bg-*` cae aquí: su tinta gira con
+// el tema y el fondo no. Quedan fuera las tintas arbitrarias (`text-[color-mix(…)]`, `Toast`), que
+// este lector no resuelve; y los comentarios.
+describe("SLT-170 — censo de bg-warning-soft: toda lista se lee en los dos temas", () => {
+  const RAIZ = path.resolve(__dirname, "../..");
+  const listas: { archivo: string; clases: string }[] = [];
+  function recorrer(dir: string) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) recorrer(p);
+      else if (/\.(tsx?|ts)$/.test(e.name)) {
+        for (const linea of readFileSync(p, "utf8").split("\n")) {
+          if (/^\s*(\/\/|\*|\/\*)/.test(linea)) continue;
+          for (const m of linea.matchAll(/["`]([^"`]*\bbg-warning-soft\b[^"`]*)["`]/g)) {
+            if (/text-\[/.test(m[1]!)) continue;
+            listas.push({ archivo: path.relative(RAIZ, p).replaceAll("\\", "/"), clases: m[1]! });
+          }
+        }
+      }
+    }
+  }
+  recorrer(path.join(RAIZ, "app"));
+  recorrer(path.join(RAIZ, "components"));
+
+  it("el censo encuentra las listas (si baja de golpe, el lector se rompió)", () => {
+    expect(listas.length).toBeGreaterThanOrEqual(15);
+  });
+
+  for (const { archivo, clases } of listas) {
+    for (const tema of TEMAS) {
+      it(`${archivo} «${clases.slice(0, 60)}» ≥ 4.5:1 en ${tema}`, () => {
+        const { container } = render(
+          <div className={clases}>
+            <span>Texto</span>
+          </div>,
+        );
+        expect(peorContraste(container.firstElementChild!, tema)).toBeGreaterThanOrEqual(4.5);
+      });
+    }
   }
 });
 
