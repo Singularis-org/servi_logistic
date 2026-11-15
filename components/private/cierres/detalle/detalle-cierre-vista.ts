@@ -40,6 +40,7 @@ import {
   INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
   ORDEN_RESULTADOS,
   PAGO_MENSAJERO_LABEL,
+  esMontoNegativo,
   rotuloIngresoBodega,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { money } from "@/lib/config/moneda";
@@ -334,6 +335,8 @@ export interface Cifra {
   destacada: boolean;
   /** SLT-106 (R196): caja en tono de aviso («La central debe»). Ausente = tono normal. */
   aviso?: boolean;
+  /** SLT-169 (R625): junto al importe, p. ej. «(la tienda debe)». Ausente = nada. */
+  sufijo?: string;
 }
 
 function cifra(
@@ -381,12 +384,21 @@ export function cifrasDe(
   if (!e) return [recaudado, pago];
   return [
     recaudado,
-    cifra("paraTienda", L.SE_LE_PAGA_HOY_LABEL, e.pagoTienda, L.contextoTiendas(d.conteos.tiendas, e.ganaLaTienda)),
+    cifraParaTienda(e.pagoTienda, d.conteos.tiendas),
     pago,
     cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e.netoEmpresa, L.NOTA_LE_QUEDA_MENSAJERO, {
       destacada: true,
     }),
   ];
+}
+
+/**
+ * SLT-169 (R625): «Se le paga hoy a la tienda» ya resta todo lo facturado y puede ser negativa. El
+ * sufijo sale del signo del STRING del servidor (`esMontoNegativo`): la pantalla no resta (R71).
+ */
+function cifraParaTienda(pagoTienda: string, tiendas: number): Cifra {
+  const c = cifra("paraTienda", L.SE_LE_PAGA_HOY_LABEL, pagoTienda, L.contextoTiendas(tiendas));
+  return esMontoNegativo(pagoTienda) ? { ...c, sufijo: L.TIENDA_DEBE(tiendas) } : c;
 }
 
 function cifraPagoMensajero(d: DetalleMensajeroVista): Cifra {
@@ -739,13 +751,13 @@ const partida = (label: string, monto: string, signo: SignoLinea = "neutro"): Li
   tipo: "partida",
 });
 
-function cuentaFactura(t: DineroEmpresaMensajero["totalesIngreso"], cobrado: string, modeloNuevo: boolean): CuentaVista {
+/** SLT-169 (R626): sin el subtotal «Sale de lo recaudado»; todo lo facturado se resta del pago a la tienda. */
+function cuentaFactura(t: DineroEmpresaMensajero["totalesIngreso"], modeloNuevo: boolean): CuentaVista {
   return {
     titulo: L.CUENTA_FACTURA_TITULO,
     lineas: [
       partida(L.FLETE_POR_ENTREGADO_LABEL, t.fleteConIva),
       partida(L.COMISION_COD_LABEL, t.comisionConIva),
-      { label: L.SALE_DE_LO_RECAUDADO_LABEL, monto: cobrado, signo: "neutro", tipo: "subtotal" },
       partida(modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL, t.fleteDevolucionConIva, "suma"),
       { label: L.TOTAL_FACTURADO_LABEL, monto: t.total, signo: "neutro", tipo: "total" },
     ],
@@ -855,7 +867,7 @@ export function lineasDinero(
     const t = d.totalesIngreso;
     const cuentas: CuentaVista[] = [cuentaCentral(nivel, L.PAGO_A_MENSAJEROS_LABEL)];
     if (t !== null && d.cobradoSobreRecaudado !== null) {
-      cuentas.push(cuentaFactura(t, d.cobradoSobreRecaudado, d.modeloNuevo));
+      cuentas.push(cuentaFactura(t, d.modeloNuevo));
     }
     if (t !== null && d.ivaFacturado !== null && d.netoEmpresa !== null) {
       cuentas.push(
@@ -886,13 +898,14 @@ export function lineasDinero(
   return {
     reparto: reparto(
       [
+        // SLT-169 (R624): las dos partes suman lo recaudado.
         [L.SE_LE_PAGA_HOY_LABEL, e.pagoTienda],
-        [L.SALE_DE_LO_RECAUDADO_LABEL, e.cobradoSobreRecaudado],
+        [L.TOTAL_FACTURADO_LABEL, e.totalesIngreso.total],
       ],
       e.porcentajesReparto,
     ),
     cuentas: [
-      cuentaFactura(e.totalesIngreso, e.cobradoSobreRecaudado, e.modeloNuevo),
+      cuentaFactura(e.totalesIngreso, e.modeloNuevo),
       cuentaQueda(
         e.totalesIngreso.total,
         e.ivaFacturado,

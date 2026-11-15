@@ -522,6 +522,42 @@ describe("SLT-153 (R450-R455) — la cabecera reparte cada dato con su rótulo",
   });
 });
 
+// ═══ SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (R625) ═══════════════════════
+// El folio #C51B7B93 de producción, a mano: 19.900 − 3.273,05 − 12 × 2.486 = −13.205,05. Una sola cifra
+// con su signo; negativa, en rojo y con la marca de deuda junto al importe.
+describe("SLT-169 R625 — «Se le paga hoy a la tienda» negativa: rojo y «(la tienda debe)»", () => {
+  const caja = () => screen.getByRole("group", { name: "Se le paga hoy a la tienda" });
+  const conPago = (pagoTienda: string, tiendas: number): DetalleMensajeroVista => ({
+    ...MENSAJERO,
+    empresa: { ...MENSAJERO.empresa!, pagoTienda },
+    conteos: { ...MENSAJERO.conteos, tiendas },
+  });
+
+  it("una tienda: el importe en rojo, «(la tienda debe)» y «1 tienda», sin «gana en total»", () => {
+    mensajero("central", "solo lectura", { detalle: conPago("-13205.05", 1) });
+    const importe = caja().querySelector("[data-cifra]")!;
+    expect(importe.textContent).toBe("-₡13.205,05");
+    expect(importe.className).toContain("text-danger-strong");
+    expect(importe.className).not.toContain("text-success-strong");
+    expect(caja().textContent).toBe("Se le paga hoy a la tienda-₡13.205,05(la tienda debe)1 tienda");
+    expect(within(caja()).getByText("(la tienda debe)").className).toContain("text-danger-strong");
+  });
+
+  it("dos tiendas: «(las tiendas deben)»", () => {
+    mensajero("central", "solo lectura", { detalle: conPago("-13205.05", 2) });
+    expect(within(caja()).getByText("(las tiendas deben)")).toBeTruthy();
+    expect(caja().textContent).not.toContain("(la tienda debe)");
+    expect(caja().textContent).toContain("2 tiendas");
+  });
+
+  it("positiva: en verde y sin marca de deuda", () => {
+    mensajero("central", "solo lectura", { detalle: conPago("92090.00", 2) });
+    const importe = caja().querySelector("[data-cifra]")!;
+    expect(importe.className).toContain("text-success-strong");
+    expect(caja().textContent).toBe("Se le paga hoy a la tienda₡92.0902 tiendas");
+  });
+});
+
 describe("R1 — un componente para todo", () => {
   it("el mismo `DetalleCierre` pinta las nueve combinaciones de R12", async () => {
     const combos: [string, () => void][] = [

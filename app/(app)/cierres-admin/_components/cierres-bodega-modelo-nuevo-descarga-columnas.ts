@@ -1,6 +1,6 @@
 // SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (S15c, design «Hojas») — columnas y
 // proyección de la hoja «Cierres» del «Resumen» de los cierres de bodega del modelo nuevo. «Por
-// tienda» es la de SLT-140 tal cual (mismas cinco columnas sobre la misma forma de la parte), y el
+// tienda» es la de SLT-140 tal cual (mismas cuatro columnas sobre la misma forma de la parte), y el
 // libro (qué hojas, en qué orden) lo arma `cierres-bodega-modelo-nuevo-descarga.ts`.
 //
 // Lleva el sufijo `-descarga-columnas` porque declara columnas de export: así la guardia de datos
@@ -46,7 +46,8 @@ export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "paraLaCentral", encabezado: "Debe llegar a la central", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana la tienda en total", formato: "monto" },
+  // SLT-169 (R629): misma clave y posición; el valor ya resta todo lo facturado, como «Se le paga».
+  { clave: "ganaLaTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },

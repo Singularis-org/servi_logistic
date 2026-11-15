@@ -1,6 +1,7 @@
 "use client";
 
 import { money } from "@/lib/config/moneda";
+import { esMontoNegativo } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { cn } from "@/lib/utils";
 
 import { Cuenta } from "./Cuenta";
@@ -9,6 +10,7 @@ import {
   POR_TIENDA_TITULO,
   REPARTO_REGION_LABEL,
   REPARTO_TITULO,
+  TIENDA_DEBE,
 } from "./detalle-cierre-labels";
 import type { DineroVista } from "./detalle-cierre-vista";
 
@@ -80,9 +82,6 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
                   <th scope="col" className="py-1.5 text-right font-normal">
                     {POR_TIENDA_COLUMNAS.hoy}
                   </th>
-                  <th scope="col" className="py-1.5 text-right font-normal">
-                    {POR_TIENDA_COLUMNAS.gana}
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -92,8 +91,16 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
                       {t.tiendaNombre}
                     </th>
                     <td className="py-2.5 text-right tabular-nums">{money(t.recaudado)}</td>
-                    <td className="py-2.5 text-right tabular-nums">{money(t.pagoTienda)}</td>
-                    <td className="py-2.5 text-right tabular-nums">{money(t.ganaLaTienda)}</td>
+                    {/* SLT-169 (R627): una sola cifra con su signo; negativa, en rojo y «(la tienda debe)». */}
+                    <td
+                      className={cn(
+                        "py-2.5 text-right tabular-nums",
+                        esMontoNegativo(t.pagoTienda) && "text-danger-strong",
+                      )}
+                    >
+                      {money(t.pagoTienda)}
+                      {esMontoNegativo(t.pagoTienda) ? ` ${TIENDA_DEBE(1)}` : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
