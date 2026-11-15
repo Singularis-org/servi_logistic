@@ -62,7 +62,7 @@
 - [x] **T4.2** `./init.sh` verde con `.env`. **Hecho:** `INIT_EXIT=0` escrito en el log.
 - [x] **T4.3** Mapa `R480–R489 → test` en `progress/impl_SLT-161.md`, con el nombre exacto de cada
   `it(...)`. **Hecho:** las diez filas, ninguna vacía.
-- [ ] **T4.4** Antes del PR (lo corre el leader): `pnpm exec playwright test e2e/cierre-bodega-satelite.spec.ts`
+- [x] **T4.4** Antes del PR (lo corre el leader): `pnpm exec playwright test e2e/cierre-bodega-satelite.spec.ts`
   y `pnpm exec playwright test --project=dinero` en local, base desechable nueva. **Hecho:** verdes
   anotados en `progress/impl_SLT-161.md`.
 
