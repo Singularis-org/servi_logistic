@@ -5,51 +5,51 @@
 
 ## T0 — Antes de tocar código
 
-- [ ] **T0.1** Comprobar P1: que `WALLET_TIENDA_DEBITA_FLETE_DEVOLUCION` no está definida o vale `true`
+- [x] **T0.1** Comprobar P1: que `WALLET_TIENDA_DEBITA_FLETE_DEVOLUCION` no está definida o vale `true`
   en Preview y producción, **solo como booleano** (nunca imprimir el entorno ni una URL). Si vale
   `false`, PARAR y avisar al leader: decide Carlos.
   *Hecho:* resultado (sí/no) anotado en `progress/impl_SLT-169.md`.
-- [ ] **T0.2** Copiar `.env` al worktree antes del primer gate (sin `.env` la integración se salta).
+- [x] **T0.2** Copiar `.env` al worktree antes del primer gate (sin `.env` la integración se salta).
   *Hecho:* `./init.sh` corre los `*-sql-real` en verde antes del cambio.
 
 ## T1 — La cifra en el servidor (backend_dev)
 
-- [ ] **T1.1** `lib/utils/ingreso-empresa.ts`: en `partesPorTienda`, `pagoTienda` =
+- [x] **T1.1** `lib/utils/ingreso-empresa.ts`: en `partesPorTienda`, `pagoTienda` =
   `ganaLaTienda(recaudado, ingreso.total)` (el `ganaLaTienda` de la parte, igual). Orden y desempate
   sin cambio (ahora sobre la cifra nueva). `pagoTiendaEmpresa` NO se toca. Reescribir los comentarios
   que afirman que el pago no resta el flete por rechazo y la cuarta identidad.
   *Hecho:* R621, R622, R636 verdes en unit.
-- [ ] **T1.2** `lib/utils/cifras-cierre.ts`: `pagoTienda` = `ganaLaTienda(general, totalesIngreso.total)`.
+- [x] **T1.2** `lib/utils/cifras-cierre.ts`: `pagoTienda` = `ganaLaTienda(general, totalesIngreso.total)`.
   *Hecho:* R620 (folio #C51B7B93 → `-13205.05`), R635 (viejo y nuevo) verdes.
-- [ ] **T1.3** `lib/services/CierresBodegaAdminService.ts:515-519`: el `pagoTienda` de cada cierre del día
+- [x] **T1.3** `lib/services/CierresBodegaAdminService.ts:515-519`: el `pagoTienda` de cada cierre del día
   con la misma fórmula. *Hecho:* R623 verde (Σ días = agregado).
-- [ ] **T1.4** `lib/services/CierresAdminService.ts:1164-1167`: `porcentajesReparto([pagoTienda,
+- [x] **T1.4** `lib/services/CierresAdminService.ts:1164-1167`: `porcentajesReparto([pagoTienda,
   totalesIngreso.total], general)`. *Hecho:* R624 verde (con rechazo: [92, 8]; negativo: `null`).
-- [ ] **T1.5** [P] Comentarios de los campos en `lib/interfaces/services/ICierresAdminService.ts`,
+- [x] **T1.5** [P] Comentarios de los campos en `lib/interfaces/services/ICierresAdminService.ts`,
   `ICierresBodegaAdminService.ts` e `ICierreBodegaService.ts`: `pagoTienda` resta todo lo facturado;
   `ganaLaTienda` es alias de igual valor hasta P3. Sin cambiar tipos. *Hecho:* typecheck verde.
 
 ## T2 — El dinero real no cambia (backend_dev) [P con T1]
 
-- [ ] **T2.1** Guardia nueva `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`: ningún
+- [x] **T2.1** Guardia nueva `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`: ningún
   archivo de `lib/services/` que escribe dinero (`WalletTiendaFeedService`, `WalletFeedService`,
   `Caja*FeedService`, `LiquidacionService`, `CobroTiendaService`, `RechazoTiendaCobroService`,
   `RechazoTiendaService`, `CierreBodegaService`) importa `cifras-cierre`, `cifras-cierre-bodega`,
   `pagoTiendaEmpresa`, `ganaLaTienda` ni `partesPorTienda`. Incluye un caso que demuestra que la
   guardia ve un import (lee un texto de prueba con el import y falla).
   *Hecho:* R631 verde; mutación M6 roja.
-- [ ] **T2.2** No tocar `WalletTiendaFeedService.ts` ni sus tests; correr
+- [x] **T2.2** No tocar `WalletTiendaFeedService.ts` ni sus tests; correr
   `pnpm exec vitest related --run lib/services/WalletTiendaFeedService.ts lib/services/LiquidacionService.ts`.
   *Hecho:* verdes sin cambios en esos tests (R631).
 
 ## T3 — Integración contra Postgres (backend_dev)
 
-- [ ] **T3.1** Actualizar `tests/integration/db/cierre-desglose-por-tienda-sql-real.test.ts` y
+- [x] **T3.1** Actualizar `tests/integration/db/cierre-desglose-por-tienda-sql-real.test.ts` y
   `cierre-bodega-desglose-por-tienda-sql-real.test.ts` a la cifra nueva (con una tienda con rechazos y
   otra sin ellos, para que la partición equivocada no pase). *Hecho:* R621, R623 verdes en real.
-- [ ] **T3.2** Actualizar `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts`.
+- [x] **T3.2** Actualizar `tests/integration/db/cierre-reparto-porcentajes-sql-real.test.ts`.
   *Hecho:* R624 verde en real.
-- [ ] **T3.3** Nuevo `tests/integration/db/pago-tienda-neto-ledger-sql-real.test.ts`: aprobar un cierre con
+- [x] **T3.3** Nuevo `tests/integration/db/pago-tienda-neto-ledger-sql-real.test.ts`: aprobar un cierre con
   1 entrega y 2 rechazos de una tienda y 1 entrega de otra; para cada tienda,
   `ParteDeTienda.pagoTienda === Σ créditos − Σ débitos` de `wallet_tienda_movimiento` con ese
   `origen_id`; filtra por `organizacion_id`. Sin `if (!datos) return`: si no hay filas, falla.
@@ -57,35 +57,35 @@
 
 ## T4 — Pantalla (frontend_dev; depende de T1)
 
-- [ ] **T4.1** `detalle-cierre-labels.ts`: `contextoTiendas(tiendas)`, `POR_TIENDA_COLUMNAS` sin `gana`,
+- [x] **T4.1** `detalle-cierre-labels.ts`: `contextoTiendas(tiendas)`, `POR_TIENDA_COLUMNAS` sin `gana`,
   `TIENDA_DEBE(tiendas)`. *Hecho:* typecheck.
-- [ ] **T4.2** `detalle-cierre-vista.ts`: tarjeta con `sufijo` si es negativa; reparto
+- [x] **T4.2** `detalle-cierre-vista.ts`: tarjeta con `sufijo` si es negativa; reparto
   [«Se le paga hoy a la tienda», «Total facturado»]; `cuentaFactura` sin «Sale de lo recaudado».
   *Hecho:* R624-R626 verdes en `tests/unit/utils/detalle-cierre-vista.test.ts`.
-- [ ] **T4.3** `CifrasCierre.tsx` (pinta el `sufijo`) y `DineroCierre.tsx` (tres columnas; celda
+- [x] **T4.3** `CifrasCierre.tsx` (pinta el `sufijo`) y `DineroCierre.tsx` (tres columnas; celda
   negativa en rojo con «(la tienda debe)»). *Hecho:* R625, R627 verdes en componente.
 
 ## T5 — Excel (frontend_dev; depende de T1) [P con T4]
 
-- [ ] **T5.1** `cierres-resumen-modelo-nuevo-descarga-columnas.ts`: «Cierres» sin «Gana la tienda en
+- [x] **T5.1** `cierres-resumen-modelo-nuevo-descarga-columnas.ts`: «Cierres» sin «Gana la tienda en
   total»; «Por tienda» con 4 columnas. *Hecho:* R628, R630, R634 verdes.
-- [ ] **T5.2** `cierres-bodega-modelo-nuevo-descarga-columnas.ts`: encabezado «Se le paga a la tienda».
+- [x] **T5.2** `cierres-bodega-modelo-nuevo-descarga-columnas.ts`: encabezado «Se le paga a la tienda».
   *Hecho:* R629 verde.
 
 ## T6 — E2E y mutaciones
 
-- [ ] **T6.1** `e2e/cierres-rediseno.spec.ts`: `cifrasA` → `paraTienda` ₡92.090; reparto
+- [x] **T6.1** `e2e/cierres-rediseno.spec.ts`: `cifrasA` → `paraTienda` ₡92.090; reparto
   `["Se le paga hoy a la tienda ₡92.090 (92 %)", "Total facturado ₡7.910 (8 %)"]`; `cuentasA` sin
   «Sale de lo recaudado»; en la lista de lo que la satélite no ve, ₡92.090 en vez de ₡94.350.
   Correr en local con base desechable: ese archivo, `e2e/cierre-bodega-satelite.spec.ts` y
   `--project=dinero`. *Hecho:* verdes; constancia en `progress/impl_SLT-169.md`.
-- [ ] **T6.2** Correr las mutaciones de la tabla y anotar en `progress/impl_SLT-169.md` qué test se
+- [x] **T6.2** Correr las mutaciones de la tabla y anotar en `progress/impl_SLT-169.md` qué test se
   pone rojo con cada una (con la salida real, no con lo esperado). *Hecho:* las 7 mueren.
 
 ## T7 — Cierre
 
 - [ ] **T7.1** `./init.sh` verde; tamaño del PR por debajo del aviso.
-- [ ] **T7.2** Mapa R→test en `progress/impl_SLT-169.md`. *Hecho:* cada R620-R636 con un test que
+- [x] **T7.2** Mapa R→test en `progress/impl_SLT-169.md`. *Hecho:* cada R620-R636 con un test que
   existe y está verde.
 
 ## Trazabilidad

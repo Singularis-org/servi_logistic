@@ -107,3 +107,17 @@ Adicionales que cayeron con el cambio (fuera de la lista de tasks.md; 19 rojos e
 - Los componentes sin superficie (`CascadasCierreMensajero.tsx`, `DesglosePorTienda.tsx`) siguen con «Gana en total» (fuera de alcance).
 
 Veredicto: T4, T5 y T6.1 hechas; unit/componente y los dos E2E del detalle verdes, las 5 mutaciones mueren; `dinero` con 1 rojo ajeno al diff (`tope-intentos-por-empresa:427`) sin confirmar en dev.
+
+## Gate y cierre (implementer, 2026-11-14)
+
+- Tanda 1 (8603c6fc, servidor): `./init.sh` INIT_EXIT=0. R632 corrido aparte: 5 passed, 0 skipped.
+- Tanda 2 (a909e643, pantalla y Excel): `./init.sh` INIT_EXIT=1, **solo por tamaño**:
+  «42/40 archivos, 268/1000 lineas de produccion, 1656/3000 de tests». El gate corta ahí; los checks
+  se corrieron a mano: typecheck exit 0, lint exit 0, los 28 archivos de test del diff: 633 passed,
+  8 failed. Los 8 son de `cierre-desglose-por-tienda-sql-real` y `cierre-bodega-desglose-por-tienda-sql-real`,
+  los dos en `tests/baseline-rojos.json` (les falta el corpus sembrado: su «CONTROL POSITIVO» cae).
+- Desglose del tamaño (sin specs/progress): 13 de producción, 28 de tests, 1 E2E. Lo previsto eran 30;
+  sobran 12, todos de tests: 7 de servidor y 5 de componentes que fijaban la cifra vieja.
+  No se parte (ver memoria «tamaño del PR roto por tests»): decide el leader con Carlos.
+- Pendiente antes del PR: `e2e/tope-intentos-por-empresa.spec.ts:427` rojo en `--project=dinero`
+  (pantalla `/mis-asignaciones/reparto`, fuera del diff). Sin contrastar contra dev.
