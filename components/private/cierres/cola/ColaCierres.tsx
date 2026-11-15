@@ -393,7 +393,7 @@ function PanelAConsolidar({
         <div
           role="status"
           id={ID_AVISO_CONSOLIDAR}
-          className="rounded-lg border border-warning/60 bg-warning-soft px-4 py-3 text-sm text-warning-strong"
+          className="rounded-lg border border-warning/60 bg-warning-soft px-4 dark:bg-warning/15 py-3 text-sm text-warning-strong"
         >
           {aviso}
         </div>

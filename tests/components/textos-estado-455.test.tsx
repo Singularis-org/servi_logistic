@@ -49,7 +49,7 @@ describe("chat del mensajero (T2.2; R7, R12)", () => {
   it("R12: el color va por código; lo que no tiene familia cae al neutro (antes, el cajón «Asignada»)", () => {
     expect(chipDeEstado("en_reparto").className).toBe("bg-info-soft text-info-strong");
     expect(chipDeEstado("entregado").className).toBe("bg-success-soft text-success-strong");
-    expect(chipDeEstado("novedad").className).toBe("bg-danger-soft text-danger-strong");
+    expect(chipDeEstado("novedad").className).toBe("bg-danger-soft text-danger-strong dark:bg-danger/15");
     expect(chipDeEstado("recolectando").className).toBe("bg-muted text-muted-foreground");
     expect(chipDeEstado("codigo_inventado").className).toBe("bg-muted text-muted-foreground");
   });

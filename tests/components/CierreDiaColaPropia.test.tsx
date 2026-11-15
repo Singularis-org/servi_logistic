@@ -242,8 +242,8 @@ describe("SLT-112 · /cierre-dia: las tarjetas de la ganancia (R358)", () => {
       ["Ganancia pendiente de pago", "₡47.500,55", "2 cierres aprobados sin liquidar"],
       ["Ganancia pagada este mes", "₡3.500", "2 pagos"],
     ]);
-    expect(screen.getByRole("group", { name: "Ganancia pendiente de pago" }).className).toContain("bg-brand-soft");
-    expect(screen.getByRole("group", { name: "Ganancia pagada este mes" }).className).not.toContain("bg-brand-soft");
+    expect(screen.getByRole("group", { name: "Ganancia pendiente de pago" }).className).toContain("bg-accent");
+    expect(screen.getByRole("group", { name: "Ganancia pagada este mes" }).className).not.toContain("bg-accent");
   });
 
   it("van entre la barra y la tabla", () => {
