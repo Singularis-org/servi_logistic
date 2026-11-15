@@ -77,7 +77,7 @@ export function RecuperarAyudaButton({
     <Button
       type="button"
       variant="outline"
-      size="sm"
+      size="touch"
       className="shrink-0"
       disabled={enviando}
       onClick={handleClick}

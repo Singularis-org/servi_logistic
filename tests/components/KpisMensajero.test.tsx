@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import { KpisMensajero } from "@/app/(app)/mis-asignaciones/_components/KpisMensajero";
+import { COLUMNA_FIJA } from "@/components/shared/texto-entero";
 import { formatMonto } from "@/lib/config/moneda";
 
 import { contraste, paleta, token } from "../fixtures/contraste";
@@ -114,3 +115,25 @@ describe("KpisMensajero — brillo al pasar el cursor (D4)", () => {
     }
   });
 });
+
+// SLT-156 rebanada B (SLT-163, B1; R502) — en el teléfono los cuatro KPI van en 2 × 2: en una
+// columna empujaban la lista fuera de la primera pantalla. jsdom no aplica Tailwind: se afirman
+// las clases; la medida a 360 px es del E2E de la rebanada (B8).
+describe("KpisMensajero — 2 × 2 en el móvil (SLT-156 R502)", () => {
+  it("la rejilla tiene 2 columnas desde el ancho más chico, sin la columna única de antes", () => {
+    const { container } = montar();
+    const seccion = container.querySelector("section")!;
+    const clases = seccion.className.split(/\s+/);
+    expect(clases).toContain("grid-cols-2");
+    expect(clases).not.toContain("grid-cols-1");
+  });
+
+  it("cada cifra va en columna fija, a todo el ancho de la tarjeta: «₡99 999 999» no se parte", () => {
+    montar();
+    for (const cifra of ["3", "7", norm(formatMonto(12500)), norm(formatMonto(48000))]) {
+      const clases = screen.getByText(cifra).closest("span.col-span-2")?.className.split(/\s+/) ?? [];
+      for (const clase of COLUMNA_FIJA.split(" ")) expect(clases).toContain(clase);
+    }
+  });
+});
+

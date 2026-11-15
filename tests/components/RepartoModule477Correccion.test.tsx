@@ -112,6 +112,7 @@ function renderModule(props: {
 }) {
   return render(
     <RepartoModule
+      kpis={null}
       porGestionar={props.porGestionar}
       conAyuda={[]}
       porRecoger={[]}

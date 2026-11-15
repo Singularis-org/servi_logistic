@@ -206,6 +206,7 @@ async function abrirChat(): Promise<HTMLElement> {
 async function montarReparto(): Promise<void> {
   renderConSwr(
     <RepartoModule
+      kpis={null}
       porGestionar={[EN_REPARTO]}
       conAyuda={[]}
       porRecoger={[POR_RECOGER_HOY, POR_RECOGER_MANANA]}
@@ -285,6 +286,7 @@ describe("(1) la orden asignada y sin recoger YA tiene conversación", () => {
   it("sin ninguna asignada, el vacío ya no habla de «reparto»", async () => {
     renderConSwr(
       <RepartoModule
+        kpis={null}
         porGestionar={[]}
         conAyuda={[]}
         porRecoger={[]}

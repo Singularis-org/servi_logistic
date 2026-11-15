@@ -149,6 +149,7 @@ function renderModule(
 ) {
   return render(
     <RepartoModule
+      kpis={null}
       porGestionar={porGestionar}
       conAyuda={conAyuda}
       porRecoger={[]}
@@ -176,11 +177,23 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/**
+ * SLT-156 (R504): el panel ya no va inline con la primera orden; se abre en modo foco desde el
+ * botón "Gestionar" de la card y su confirmación.
+ */
+async function abrirPanel(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  const [gestionar] = screen.getAllByRole("button", { name: /^Gestionar la orden / });
+  await user.click(gestionar!);
+  await user.click(await screen.findByRole("button", { name: "Aceptar" }));
+  return screen.getByRole("region", { name: "Detalle de la orden" });
+}
+
 describe("Reparto · el cuarto botón «Ayuda» del panel", () => {
-  it("está junto a los otros tres gestos de la puerta y arranca sin marcar", () => {
+  it("está junto a los otros tres gestos de la puerta y arranca sin marcar", async () => {
+    const user = userEvent.setup();
     renderModule([makeAsignacion({ id: "g1" })]);
 
-    const panel = screen.getByRole("region", { name: "Detalle de la orden" });
+    const panel = await abrirPanel(user);
     // Los otros tres siguen ahí: este botón se AÑADE, no sustituye a ninguno.
     expect(within(panel).getByRole("link", { name: /^Llamar a / })).toBeTruthy();
     expect(within(panel).getByRole("button", { name: /^Abrir el chat con / })).toBeTruthy();
@@ -220,7 +233,7 @@ describe("Reparto · el cuarto botón «Ayuda» del panel", () => {
     });
     renderModule([makeAsignacion({ id: "g1" })]);
 
-    const panel = screen.getByRole("region", { name: "Detalle de la orden" });
+    const panel = await abrirPanel(user);
     await user.click(
       within(panel).getByRole("button", {
         name: "Solicitar ayuda con la orden de Ana Perez",

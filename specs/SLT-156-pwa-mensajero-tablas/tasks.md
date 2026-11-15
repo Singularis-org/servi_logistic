@@ -62,26 +62,26 @@
 
 ## Rebanada B — Reparto (R500 en Reparto, R502-R516)
 
-- [ ] **B1 [P] KPI 2×2 (R502).** `MA/KpisMensajero.tsx`. *Hecho:*
+- [x] **B1 [P] KPI 2×2 (R502).** `MA/KpisMensajero.tsx`. *Hecho:*
   `tests/components/KpisMensajero.test.tsx` comprueba `grid-cols-2` sin `grid-cols-1`.
   *Mutación:* volver `grid-cols-1` → rojo.
-- [ ] **B2 [P] Botones de tarjeta a 44 px (R493).** `MA/GestionarOrdenCardButton.tsx`,
+- [x] **B2 [P] Botones de tarjeta a 44 px (R493).** `MA/GestionarOrdenCardButton.tsx`,
   `MA/MarcarLuegoToggle.tsx`, `MA/RecuperarAyudaButton.tsx`, «Conversación» en
   `MA/RepartoModule.tsx`: `size="touch"`. Extraer `MA/ConfirmarGestionDialog.tsx` (diálogo
   «¿Gestionar esta orden?» controlado). *Hecho:* test de componente con los cuatro botones `h-11`.
   *Mutación:* `size="sm"` en uno → rojo.
-- [ ] **B3 `BuscadorFiltros` en Reparto (R495, R505, R506).** Depende de A4. `MA/RepartoModule.tsx`
+- [x] **B3 `BuscadorFiltros` en Reparto (R495, R505, R506).** Depende de A4. `MA/RepartoModule.tsx`
   y `MA/FiltroCantonDistrito.tsx` como `children`. *Hecho:* `tests/components/RepartoModule.test.tsx`:
   un solo `searchbox`, placeholder «Guía, remisión, teléfono o nombre», «Filtros» ofrece «Cantón» y
   «Distrito», distrito deshabilitado sin cantón, cambiar cantón vacía distrito, búsqueda por
   teléfono filtra. *Mutación:* no resetear distrito → rojo.
-- [ ] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
+- [x] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
   `MA/RepartoModule.tsx`. *Hecho:* test nuevo `tests/components/RepartoMovil.test.tsx`: orden de
   secciones por `compareDocumentPosition`; sin región «Detalle de la orden» fuera de foco; vista
   inicial Mosaico; aviso de ruta en una fila con «Ver más» (`aria-expanded=false`) y descripción
   oculta hasta tocarlo.
   *Mutaciones:* volver el panel inline; vista inicial «detalle» → rojo.
-- [ ] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
+- [x] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
   fila principal: parada, guía, destinatario y «Valor a cobrar» con `COLUMNA_FIJA`; al tocar,
   dirección y «Gestionar más tarde» / «Gestionar».
   *Mutación:* quitar `COLUMNA_FIJA` del monto → rojo.

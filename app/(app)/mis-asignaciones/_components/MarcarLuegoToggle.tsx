@@ -75,7 +75,7 @@ export function MarcarLuegoToggle({
     <Button
       type="button"
       variant={marcada ? "secondary" : "ghost"}
-      size="sm"
+      size="touch"
       className="w-fit"
       loading={procesando}
       aria-pressed={marcada}
