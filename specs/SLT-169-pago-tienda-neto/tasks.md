@@ -84,7 +84,7 @@
 
 ## T7 — Cierre
 
-- [ ] **T7.1** `./init.sh` verde; tamaño del PR por debajo del aviso.
+- [x] **T7.1** `./init.sh` verde; tamaño del PR por debajo del aviso.
 - [x] **T7.2** Mapa R→test en `progress/impl_SLT-169.md`. *Hecho:* cada R620-R636 con un test que
   existe y está verde.
 
