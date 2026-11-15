@@ -97,7 +97,7 @@ interface Corpus {
 function cifrasN1(cierreId: string, pagoEntregado: string | null) {
   return {
     cierreId,
-    pagoTienda: "94350.00",
+    pagoTienda: "92090.00", // SLT-169 R620: 100 000 − 7 910 (antes 94 350)
     ganaLaTienda: "92090.00",
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
@@ -106,7 +106,7 @@ function cifrasN1(cierreId: string, pagoEntregado: string | null) {
     pagoEntregado,
     partesPorTienda: [
       { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" }, // R622
     ],
   };
 }

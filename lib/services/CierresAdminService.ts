@@ -1078,7 +1078,8 @@ export class CierresAdminService implements ICierresAdminService {
     // que usa el Excel del «Resumen» (`listar…Completo`). El bloque que vivia aqui se movio tal cual:
     //  - totales por concepto desde el MISMO desglose por orden que ve el admin en las tablas;
     //  - ganancia y neto desde lo facturado SIN IVA (SL-39); los snapshots del `resumen` (R4);
-    //  - pago a la tienda = recibido − flete − comision; la linea puente y `ganaLaTienda` (395);
+    //  - pago a la tienda = recibido − TODO lo facturado (SLT-169 R620); la linea puente y
+    //    `ganaLaTienda`, alias de igual valor que el pago hasta P3 de SLT-169;
     //  - la particion por tienda (396), que SE EMITE SIEMPRE, tambien con una sola tienda: el umbral
     //    de «solo con dos o mas» es de presentacion y vive en la pantalla (264).
     const cifras = cifrasDelCierre(resumen, found.gestiones);
@@ -1134,7 +1135,7 @@ export class CierresAdminService implements ICierresAdminService {
       netoEmpresa: neto,
       ganaLaTienda: ganaTienda,
       fleteRechazoYaCobradoATienda,
-      // Ficha 396: la particion de `pagoTienda` y `ganaLaTienda` por tienda, ya ORDENADA por el
+      // Ficha 396: la particion de `pagoTienda` (y su alias `ganaLaTienda`) por tienda, ORDENADA por el
       // servidor (por lo que se le paga, de mayor a menor). La pantalla pinta en el orden que
       // recibe y no hace ni una operacion aritmetica.
       partesPorTienda: partesDeLasTiendas,
@@ -1161,8 +1162,10 @@ export class CierresAdminService implements ICierresAdminService {
           : null,
       // SLT-111 (R263, R265): el reparto en % de lo recaudado, de los importes de arriba y sin
       // ninguna lectura mas. Orden fijo: tienda y luego empresa; base, el `general` del snapshot.
+      // SLT-169 (R624): la parte de la empresa es TODO lo facturado (`totalesIngreso.total`), asi
+      // que `pagoTienda + total === general`. Con un pago negativo devuelve `null` (sin barra).
       porcentajesReparto: porcentajesReparto(
-        [pagoTienda, cobradoSobreLoRecaudado],
+        [pagoTienda, totalesIngreso.total],
         resumen.totales.general,
       ),
       paraLaCentral: haciaLaCentral,

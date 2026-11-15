@@ -74,16 +74,16 @@ const NOMBRE_COMPARTIDO = "Abastos del Valle";
  *     flete+IVA      2.260,00   (2.000,00 + 260,00)
  *     comisión+IVA   3.390,00   (3% de 100.000,00 = 3.000,00, + 390,00)
  *     facturado      7.345,00   (5.650,00 de la entrega + 1.695,00 del rechazo)
- *     se le paga    94.350,00   (100.000,00 − 2.260,00 − 3.390,00)
- *     gana          92.655,00   (100.000,00 − 7.345,00)
+ *     se le paga    92.655,00   (100.000,00 − 7.345,00; SLT-169 R621: resta TODO lo facturado)
+ *     gana          92.655,00   (alias de igual valor; antes «se le paga» era 94.350,00)
  *
  *   Tienda B (una entrega de 40.000,00, SIN rechazos)
  *     recaudado     40.000,00
- *     se le paga    36.384,00   (40.000,00 − 2.260,00 − 1.356,00)
- *     gana          36.384,00   (40.000,00 − 3.616,00)
+ *     se le paga    36.384,00   (40.000,00 − 3.616,00)
+ *     gana          36.384,00   (alias)
  */
 const A_RECAUDADO = "100000.00";
-const A_PAGO = "94350.00";
+const A_PAGO = "92655.00";
 const A_GANA = "92655.00";
 const B_RECAUDADO = "40000.00";
 const B_PAGO = "36384.00";
@@ -470,7 +470,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
     ]);
   });
 
-  it("las identidades se sostienen sobre datos que salieron de Postgres, no de un doble", async () => {
+  it("las identidades se sostienen sobre datos que salieron de Postgres, no de un doble (SLT-169 R621)", async () => {
     const { sumaPago, sumaGana, sumaRecaudado, difA, difB } = await conCorpus(async (ctx) => {
       const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
@@ -480,7 +480,8 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
       const dif = (id: string) => {
         const p = partes.find((x) => x.tiendaId === id);
         if (p === undefined) throw new Error("falta una tienda en el desglose");
-        return new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
+        // SLT-169: lo que se le paga MAS su flete por rechazo, contra lo que se le pagaba antes.
+        return new Prisma.Decimal(p.pagoTienda).minus(p.recaudado).toFixed(2);
       };
       return {
         sumaPago: suma(partes.map((p) => p.pagoTienda)),
@@ -492,13 +493,13 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
     });
 
     // R10 / R11 / R12, contra literales escritos a mano.
-    expect(sumaPago).toBe("130734.00"); // 94.350,00 + 36.384,00
-    expect(sumaGana).toBe("129039.00"); // 92.655,00 + 36.384,00
+    expect(sumaPago).toBe("129039.00"); // 92.655,00 + 36.384,00 (SLT-169 R621)
+    expect(sumaGana).toBe("129039.00"); // alias
     expect(sumaRecaudado).toBe("140000.00"); // 100.000,00 + 40.000,00
 
-    // La CUARTA identidad, por tienda: A tuvo un rechazo (1.695,00) y B no (0,00). Que una de
-    // las dos NO sea cero es lo que impide que este caso pase sin comprobar nada.
-    expect(difA).toBe("1695.00");
-    expect(difB).toBe("0.00");
+    // SLT-169 R621, por tienda: pago − recaudado = −(todo lo facturado a ESA tienda). A tuvo un
+    // rechazo, así que su facturado (7.345,00) incluye los 1.695,00 del flete por rechazo; B no.
+    expect(difA).toBe("-7345.00");
+    expect(difB).toBe("-3616.00");
   });
 });

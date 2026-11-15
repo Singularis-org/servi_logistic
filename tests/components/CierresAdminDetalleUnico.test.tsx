@@ -166,7 +166,8 @@ function detalle(estado: Estado, extra: Partial<DetalleOk> = {}, cierreExtra: Pa
     desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "500.00", total: "500.00" },
     ivaFacturado: "910.00",
     ganancia: "4000.00",
-    pagoTienda: "94350.00",
+    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+    pagoTienda: "92090.00",
     cobradoSobreRecaudado: "5650.00",
     netoEmpresa: "3500.00",
     ganaLaTienda: "92090.00",
@@ -634,22 +635,22 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
 
 // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.4, R267) — el reparto que
 // emite `verCierreDetalle` llega al detalle montado por el módulo: `abrirDetalle` lo guarda y el
-// mapeador lo pone en su hueco. Esperados escritos a mano (MA [94, 6]).
+// mapeador lo pone en su hueco. Esperados escritos a mano (MA [92, 8] desde SLT-169).
 describe("SLT-111 R267 — el reparto del servidor llega a «Dinero»", () => {
   // SLT-154 (R472): la satélite ya no ve esta barra (la de la empresa); la suya, en la vista (unidad).
-  it.each(["admin"] as const)("con audiencia %s la leyenda lleva «(94 %)» y «(6 %)»", async (audiencia) => {
-    const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: [94, 6] }), { audiencia });
+  it.each(["admin"] as const)("con audiencia %s la leyenda lleva «(92 %)» y «(8 %)»", async (audiencia) => {
+    const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: [92, 8] }), { audiencia });
     const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
     expect([...reparto.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
-      "Se le paga hoy a la tienda ₡94.350 (94 %)",
-      "Sale de lo recaudado ₡5.650 (6 %)",
+      "Se le paga hoy a la tienda ₡92.090 (92 %)",
+      "Total facturado ₡7.910 (8 %)",
     ]);
   });
 
   it("con `null` del servidor: solo la leyenda, sin «%»", async () => {
     const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: null }));
     const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
-    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡94.350");
+    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡92.090");
     expect(reparto.textContent).not.toContain("%");
   });
 });

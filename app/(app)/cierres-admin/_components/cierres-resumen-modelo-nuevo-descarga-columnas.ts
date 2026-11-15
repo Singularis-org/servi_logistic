@@ -31,7 +31,11 @@ import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fund
 /** La columna que es dato de la CENTRAL (R382, F481): la satélite no la recibe. */
 const CLAVE_PAGO_ENTREGADO = "pagoEntregado";
 
-/** Las 20 columnas de «Cierres» para la central, en el orden de R379. */
+/**
+ * Las 19 columnas de «Cierres» para la central, en el orden de R379. SLT-169 (R628): una sola columna
+ * de la tienda, «Se le paga a la tienda», que ya resta todo lo facturado; «Gana la tienda en total»
+ * valía lo mismo y sale.
+ */
 const COLUMNAS_CIERRES: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
   { clave: "mensajero", encabezado: "Mensajero" },
@@ -44,7 +48,6 @@ const COLUMNAS_CIERRES: DescargaColumna[] = [
   { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana la tienda en total", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
@@ -93,7 +96,6 @@ export function filaCierreModeloNuevo(
     transferencia: item.totales.transferencia,
     recaudado: item.totales.general,
     pagoTienda: cifras.pagoTienda,
-    ganaLaTienda: cifras.ganaLaTienda,
     pagoMensajero: item.totalPagoMensajero,
     pagoBodega: item.totalIngresoBodegaRechazos,
     totalFacturado: cifras.totalFacturado,
@@ -112,13 +114,12 @@ export function filaCierreModeloNuevo(
 
 // --- «Por tienda» -----------------------------------------------------------------------------
 
-/** Las 5 columnas de «Por tienda», en el orden de R379. */
+/** Las 4 columnas de «Por tienda», en el orden de R379; SLT-169 (R630): sin «Gana en total». */
 export const COLUMNAS_POR_TIENDA: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
   { clave: "tienda", encabezado: "Tienda" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "pagoTienda", encabezado: "Se le paga hoy", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana en total", formato: "monto" },
 ];
 
 /** Lo que proyecta UNA fila de «Por tienda»: una parte del reparto y el folio de su cierre. */
@@ -134,6 +135,5 @@ export function filaPorTienda({ folio, parte }: EntradaFilaPorTienda): DescargaF
     tienda: parte.tiendaNombre,
     recaudado: parte.recaudado,
     pagoTienda: parte.pagoTienda,
-    ganaLaTienda: parte.ganaLaTienda,
   };
 }

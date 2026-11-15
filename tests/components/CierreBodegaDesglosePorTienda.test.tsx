@@ -41,10 +41,12 @@ import type { ParteDeTienda } from "@/lib/utils/ingreso-empresa";
  *
  * ── LOS IMPORTES
  * Son los del fixture de la ficha 393 (`CierreBodegaDetalleCascadas.test.tsx`), partidos ahora por
- * tienda. Deliberado: el día de Ana tuvo un rechazo y el de Beto no, así que sólo en las tiendas de
- * Ana difieren «Se le paga hoy» y «Gana en total» — si todas difirieran igual, una derivación con
- * el subconjunto equivocado pasaría desapercibida. Y «Tienda Norte» aparece en LOS DOS mensajeros,
- * que es lo que hace comprobable Q8: una sola fila por tienda en el agregado.
+ * tienda. El día de Ana tuvo un rechazo y el de Beto no. Y «Tienda Norte» aparece en LOS DOS
+ * mensajeros, que es lo que hace comprobable Q8: una sola fila por tienda en el agregado.
+ *
+ * SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (D3, R627): «Se le paga hoy» ya
+ * resta todo lo facturado (también el flete por rechazo) y «Gana en total» se funde en ella. Los
+ * dobles llevan `pagoTienda` = `ganaLaTienda` (alias hasta P3) y la tabla tiene tres columnas.
  */
 
 vi.mock("@/lib/actions/cierre-bodega", () => ({
@@ -215,16 +217,16 @@ const CABECERA: CierreBodegaResumen = {
  * LAS TIENDAS DE ANA. Su día tuvo un rechazo (500,75 de flete + IVA) y lo trajo NORTE, así que
  * sólo en Norte difieren «Se le paga hoy» y «Gana en total», y difieren en exactamente eso.
  *
- *   Norte  recaudó 50.000,10 · se le pagan 40.000,00 · gana 39.499,25   (difieren en 500,75)
- *   Sur    recaudó 30.000,00 · se le pagan 22.499,75 · gana 22.499,75   (no difieren)
- *   ────────────────────────────────────────────────────────────────────────────────────────
- *   suma           80.000,10              62.499,75        61.999,00    = los de Ana
+ *   Norte  recaudó 50.000,10 · se le pagan 39.499,25   (ya restado el flete por rechazo, 500,75)
+ *   Sur    recaudó 30.000,00 · se le pagan 22.499,75
+ *   ──────────────────────────────────────────────────
+ *   suma           80.000,10              61.999,00    = los de Ana
  */
 const ANA_NORTE: ParteDeTienda = {
   tiendaId: "t-norte",
   tiendaNombre: "Tienda Norte",
   recaudado: "50000.10",
-  pagoTienda: "40000.00",
+  pagoTienda: "39499.25",
   ganaLaTienda: "39499.25",
 };
 const ANA_SUR: ParteDeTienda = {
@@ -264,17 +266,17 @@ const BETO_ESTE: ParteDeTienda = {
  * las dos suyas; Sur y Este vienen de un solo mensajero. Ordenado por lo que se le paga, de mayor
  * a menor, como lo emite el servidor (R8).
  *
- *   Norte  76.089,17 · 60.454,59 · 59.953,84   (= 50.000,10+26.089,07 · 40.000+20.454,59 · …)
- *   Sur    30.000,00 · 22.499,75 · 22.499,75
- *   Este   20.000,00 · 16.000,00 · 16.000,00
- *   ─────────────────────────────────────────
- *   suma  126.089,17 · 98.954,34 · 98.453,59   = los agregados de toda la bodega
+ *   Norte  76.089,17 · 59.953,84   (= 50.000,10+26.089,07 · 39.499,25+20.454,59)
+ *   Sur    30.000,00 · 22.499,75
+ *   Este   20.000,00 · 16.000,00
+ *   ─────────────────────────────
+ *   suma  126.089,17 · 98.453,59   = los agregados de toda la bodega
  */
 const AGG_NORTE: ParteDeTienda = {
   tiendaId: "t-norte",
   tiendaNombre: "Tienda Norte",
   recaudado: "76089.17",
-  pagoTienda: "60454.59",
+  pagoTienda: "59953.84",
   ganaLaTienda: "59953.84",
 };
 const AGG_SUR: ParteDeTienda = { ...ANA_SUR };
@@ -302,7 +304,7 @@ const DIA_ANA: CierreBodegaDetalleCierre = {
   }),
   ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
   ganancia: "9000.80",
-  pagoTienda: "62499.75",
+  pagoTienda: "61999.00",
   cobradoSobreRecaudado: "17500.35",
   netoEmpresa: "8750.55",
   ganaLaTienda: "61999.00",
@@ -358,7 +360,7 @@ const DETALLE_OK = {
   }),
   ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
   ganancia: "13635.03",
-  pagoTienda: "98954.34",
+  pagoTienda: "98453.59",
   cobradoSobreRecaudado: "27134.83",
   netoEmpresa: "13384.78",
   ganaLaTienda: "98453.59",
@@ -387,7 +389,7 @@ const UNA_TIENDA_CADA_MENSAJERO: DetalleOk = {
           tiendaId: "t-norte",
           tiendaNombre: "Tienda Norte",
           recaudado: "80000.10",
-          pagoTienda: "62499.75",
+          pagoTienda: "61999.00",
           ganaLaTienda: "61999.00",
         },
       ],
@@ -410,7 +412,7 @@ const UNA_TIENDA_CADA_MENSAJERO: DetalleOk = {
       tiendaId: "t-norte",
       tiendaNombre: "Tienda Norte",
       recaudado: "80000.10",
-      pagoTienda: "62499.75",
+      pagoTienda: "61999.00",
       ganaLaTienda: "61999.00",
     },
     {
@@ -450,7 +452,7 @@ const central = () => screen.getByRole("region", { name: "Lo que va a la central
 const queda = () => screen.getByRole("region", { name: "De lo facturado, le queda a la empresa" });
 const factura = () => screen.getByRole("region", { name: "Lo que se le factura a la tienda" });
 
-/** Las filas de la tabla como se leen: [tienda, recaudado, se le paga hoy, gana en total]. */
+/** Las filas de la tabla como se leen: [tienda, recaudado, se le paga hoy] (SLT-169 R627). */
 function filasPorTienda(): string[][] {
   return within(within(porTienda()).getByRole("table"))
     .getAllByRole("row")
@@ -465,7 +467,7 @@ function filaDe(nombre: string): HTMLElement {
   return encabezados[0]!.closest("tr") as HTMLElement;
 }
 
-/** La columna `i` (1 = recaudado, 2 = se le paga hoy, 3 = gana en total) de todas las filas. */
+/** La columna `i` (1 = recaudado, 2 = se le paga hoy) de todas las filas. */
 const columna = (i: number) => filasPorTienda().map((f) => f[i]!);
 
 /** Monta la pantalla, abre el detalle del cierre de bodega pendiente (en «Dinero») y devuelve el `user`. */
@@ -524,12 +526,12 @@ describe("396 · D3 — con dos mensajeros y tres tiendas, el desglose de toda l
     expect(within(porTienda()).getByRole("heading", { name: "Por tienda" })).toBeInTheDocument();
   });
 
-  it("el AGREGADO trae las TRES tiendas con sus NUEVE cifras, escritas a mano (R20)", async () => {
+  it("el AGREGADO trae las TRES tiendas con sus SEIS cifras, escritas a mano (R20; SLT-169 R627)", async () => {
     await abrirDetalle();
     expect(filasPorTienda()).toEqual([
-      ["Tienda Norte", "₡76.089,17", "₡60.454,59", "₡59.953,84"],
-      ["Tienda Sur", "₡30.000", "₡22.499,75", "₡22.499,75"],
-      ["Tienda Este", "₡20.000", "₡16.000", "₡16.000"],
+      ["Tienda Norte", "₡76.089,17", "₡59.953,84"],
+      ["Tienda Sur", "₡30.000", "₡22.499,75"],
+      ["Tienda Este", "₡20.000", "₡16.000"],
     ]);
   });
 
@@ -544,8 +546,8 @@ describe("396 · D3 · ⚠️ EL CASO QUE SEPARA LOS UMBRALES — R19 vs R20", (
   it("dos mensajeros con UNA tienda cada uno: el agregado SÍ se desglosa", async () => {
     await abrirDetalle(UNA_TIENDA_CADA_MENSAJERO);
     expect(filasPorTienda()).toEqual([
-      ["Tienda Norte", "₡80.000,10", "₡62.499,75", "₡61.999"],
-      ["Tienda Este", "₡46.089,07", "₡36.454,59", "₡36.454,59"],
+      ["Tienda Norte", "₡80.000,10", "₡61.999"],
+      ["Tienda Este", "₡46.089,07", "₡36.454,59"],
     ]);
   });
 
@@ -560,7 +562,7 @@ describe("396 · D3 · ⚠️ EL CASO QUE SEPARA LOS UMBRALES — R19 vs R20", (
       tiendaId: "t-norte",
       tiendaNombre: "Tienda Norte",
       recaudado: "126089.17",
-      pagoTienda: "98954.34",
+      pagoTienda: "98453.59",
       ganaLaTienda: "98453.59",
     };
     await abrirDetalle({
@@ -584,21 +586,18 @@ describe("396 · D3 · R10/R11/R12 — la suma de las partes ES el agregado", ()
 
   it("lo que se le paga hoy a cada tienda suma el «Para la tienda» del contrato, que esta pantalla NO pinta", async () => {
     // SLT-104: el Dinero de bodega no pinta «Para la tienda» (SLT-95 R16, canvas F6); el agregado es
-    // el `pagoTienda` del contrato, escrito a mano.
+    // el `pagoTienda` del contrato, escrito a mano. SLT-169 (R623): 126.089,17 − 27.635,58.
     await abrirDetalle();
-    laCuentaCierra(columna(2), "₡98.954,34", "Σ se le paga hoy");
+    laCuentaCierra(columna(2), "₡98.453,59", "Σ se le paga hoy");
   });
 
-  it("lo que gana cada tienda suma el agregado del contrato, que esta pantalla NO pinta", async () => {
+  it("Σ se le paga hoy + total facturado = Σ recaudado: ya resta todo lo facturado (SLT-169 R623)", async () => {
     await abrirDetalle();
-    laCuentaCierra(columna(3), "₡98.453,59", "Σ gana en total");
-  });
-
-  it("en Norte las dos cifras de pago DIFIEREN sólo donde hubo rechazo: en el flete por devolución", async () => {
-    await abrirDetalle();
-    const [, , hoy, gana] = filasPorTienda()[0]!;
-    expect(centimos(hoy!) - centimos(gana!)).toBe(centimos(importeTras(factura(), "+ Flete por devolución a origen + IVA")));
-    for (const [nombre, , h, g] of filasPorTienda().slice(1)) expect(h, nombre).toBe(g);
+    laCuentaCierra(
+      [...columna(2), importeTras(factura(), "Total facturado")],
+      importeTras(central(), "Total general"),
+      "Σ se le paga hoy + facturado",
+    );
   });
 });
 
@@ -610,11 +609,11 @@ describe("396 · D3 · R20/Q8 — una tienda en DOS mensajeros sale UNA sola vez
   });
 });
 
-describe("396 · D3 · R5 — TRES cifras por tienda, ni una cuarta", () => {
-  it("cada fila lee exactamente tres importes y las dos cifras de pago se pintan las dos", async () => {
+describe("396 · D3 · R5 — DOS cifras por tienda, ni una tercera (SLT-169 D3)", () => {
+  it("cada fila lee exactamente dos importes: lo recaudado y lo que se le paga hoy", async () => {
     await abrirDetalle();
     for (const fila of within(within(porTienda()).getByRole("table")).getAllByRole("row").slice(1)) {
-      expect(todosLosImportes(fila), fila.textContent ?? "").toHaveLength(3);
+      expect(todosLosImportes(fila), fila.textContent ?? "").toHaveLength(2);
     }
   });
 });
@@ -623,16 +622,16 @@ describe("396 · D3 · R22 — la misma plata se lee IGUAL que en el detalle del
   it("las columnas son los mismos textos aprobados (la misma tabla que el Dinero del mensajero)", async () => {
     await abrirDetalle();
     const cabecera = within(within(porTienda()).getByRole("table")).getAllByRole("columnheader");
-    expect(cabecera.map((c) => c.textContent)).toEqual(["Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
+    expect(cabecera.map((c) => c.textContent)).toEqual(["Tienda", "Recaudado", "Se le paga hoy"]);
   });
 
   it("los rótulos de dinero que nombran a la tienda son textos distintos", async () => {
     // Antes eran cinco (con «Para la tienda» y su marca); el Dinero de bodega pinta solo la tabla del
-    // canvas (SLT-95 R16, canvas F6), así que se vigilan los tres de sus columnas de dinero.
+    // canvas (SLT-95 R16, canvas F6), así que se vigilan los de sus columnas de dinero (dos desde SLT-169).
     await abrirDetalle();
     const cabecera = within(within(porTienda()).getByRole("table")).getAllByRole("columnheader");
     const rotulos = cabecera.slice(1).map((c) => c.textContent);
-    expect(rotulos).toHaveLength(3);
+    expect(rotulos).toHaveLength(2);
     expect(new Set(rotulos).size).toBe(rotulos.length);
   });
 });

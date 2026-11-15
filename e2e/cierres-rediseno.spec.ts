@@ -38,8 +38,9 @@ import { abrirTarifas, activarConFaltantes, digitarYGuardar, irAZona, type Digit
  * ESCENARIO A (modelo viejo). Tarifa de la tienda: flete 2.000 (las cuatro columnas iguales, así la satélite
  * da lo mismo), comisión COD 1 %, IVA 13 % en flete y comisión. Mensajero: 1.500 por entrega, 500 por rechazo.
  * Tres órdenes: 70.000 en efectivo y 30.000 por SINPE entregadas, y un rechazo manual.
- *   Recaudado 100.000 · flete con IVA 4.520 · comisión con IVA 1.130 · sale de lo recaudado 5.650
- *   se le paga hoy a la tienda 94.350 · flete de no entrega con IVA 2.260 · total facturado 7.910
+ *   Recaudado 100.000 · flete con IVA 4.520 · comisión con IVA 1.130 · flete de no entrega con IVA 2.260
+ *   total facturado 4.520 + 1.130 + 2.260 = 7.910 · se le paga hoy a la tienda 100.000 − 7.910 = 92.090
+ *   (SLT-169: resta todo lo facturado)
  *   IVA 910 · pago al mensajero 3.000 · pago a la bodega 500 · le queda a la empresa 3.500
  *   nota R81: automático 0 · manual 500.
  *
@@ -120,7 +121,7 @@ const BODEGA = "− Ingreso de bodega por devoluciones a origen";
 /** Las cuatro cifras y las dos cuentas del escenario A, al céntimo. */
 async function cifrasA(detalle: Locator) {
   await expect(cifra(detalle, "recaudado")).toHaveText(importe(100000, { solo: true }));
-  await expect(cifra(detalle, "paraTienda")).toHaveText(importe(94350, { solo: true }));
+  await expect(cifra(detalle, "paraTienda")).toHaveText(importe(92090, { solo: true }));
   await expect(cifra(detalle, "pago")).toHaveText(importe(3000, { solo: true }));
   await expect(cifra(detalle, "leQueda")).toHaveText(importe(3500, { solo: true }));
   const metodos = detalle.getByRole("group", { name: "Cifras del cierre" }).getByLabel("Métodos de pago de lo recaudado");
@@ -135,7 +136,8 @@ async function cuentasA(detalle: Locator) {
   const monto = (cuenta: string, rotulo: string) => linea(detalle, cuenta, rotulo).locator("[data-monto]");
   await expect(monto(FACTURA, "Flete por entregado + IVA")).toHaveText(importe(4520, { solo: true }));
   await expect(monto(FACTURA, "Comisión COD + IVA")).toHaveText(importe(1130, { solo: true }));
-  await expect(monto(FACTURA, "Sale de lo recaudado")).toHaveText(importe(5650, { solo: true }));
+  // SLT-169 (R626): sin el subtotal «Sale de lo recaudado».
+  await expect(detalle.getByRole("region", { name: FACTURA })).not.toContainText("Sale de lo recaudado");
   await expect(monto(FACTURA, "+ Flete por devolución a origen + IVA")).toHaveText(importe(2260, { solo: true }));
   await expect(monto(FACTURA, "Total facturado")).toHaveText(importe(7910, { solo: true }));
   await expect(monto(QUEDA, "Total facturado")).toHaveText(importe(7910, { solo: true }));
@@ -155,7 +157,7 @@ async function cuentasA(detalle: Locator) {
  * mensajero 2 × 1.500 = 3.000, gana la bodega 500 (el rechazo manual), debe llegar a la central
  * 100.000 − 3.000 − 500 = 96.500. Reparto en % de 100.000: 96,5 / 3 / 0,5 → pisos 96 + 3 + 0 = 99; el
  * punto va al primero de los dos restos iguales (0,5) → [97, 3, 0]. Lo de la empresa que NO debe verse:
- * se le paga hoy a la tienda 94.350, total facturado 7.910, le queda 3.500.
+ * se le paga hoy a la tienda 92.090, total facturado 7.910, le queda 3.500.
  */
 async function cifrasSateliteA(detalle: Locator) {
   // R471: sus cuatro tarjetas; recaudado, métodos y pago, los mismos de la central (`cifrasA`).
@@ -194,7 +196,7 @@ async function cifrasSateliteA(detalle: Locator) {
   // R472: sin las dos cuentas de la empresa ni su barra.
   await expect(detalle.getByRole("region", { name: FACTURA, exact: true })).toHaveCount(0);
   await expect(detalle.getByRole("region", { name: QUEDA, exact: true })).toHaveCount(0);
-  for (const ausente of ["Se le paga hoy a la tienda", "Le queda a la empresa", "₡94.350", "₡7.910", "₡3.500"]) {
+  for (const ausente of ["Se le paga hoy a la tienda", "Le queda a la empresa", "₡92.090", "₡7.910", "₡3.500"]) {
     await expect(detalle).not.toContainText(ausente);
   }
 }
@@ -241,11 +243,11 @@ test.describe.serial("SLT-100 — la central y la satélite ven el detalle únic
     await cuentasA(detalle);
 
     // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T6.1, R263, R266, R267): el reparto
-    // del servidor, a mano: 94.350 / 100.000 = 94,35 y 5.650 / 100.000 = 5,65 → 94 + 5 = 99; el punto que
-    // falta va al mayor resto (0,65) → [94, 6].
+    // del servidor, a mano. SLT-169 (R624): 92.090 / 100.000 = 92,09 y 7.910 / 100.000 = 7,91 → 92 + 7 = 99;
+    // el punto que falta va al mayor resto (0,91) → [92, 8].
     await expect(detalle.getByRole("region", { name: "Reparto de lo recaudado" }).getByRole("listitem")).toHaveText([
-      "Se le paga hoy a la tienda ₡94.350 (94 %)",
-      "Sale de lo recaudado ₡5.650 (6 %)",
+      "Se le paga hoy a la tienda ₡92.090 (92 %)",
+      "Total facturado ₡7.910 (8 %)",
     ]);
 
     // El pie se alcanza desplazando el panel: un solo scroll, y el pie fuera de él (R11 de SLT-95).
@@ -1361,14 +1363,14 @@ test.describe.serial("SLT-113 — el «Detalle» de /cierres-admin con un cierre
  * ESCRITOS A MANO con el ESCENARIO B de arriba (una entrega de 10.000 en efectivo; flete 3.100 + 13 %; pago al
  * mensajero 2.200) y un pago PARCIAL de 1.200 registrado desde la fila:
  *   Recaudado 10.000 · Total facturado 3.100 + 403 = 3.503 · IVA facturado 403
- *   Se le paga a la tienda 10.000 − 3.503 = 6.497 · Gana la tienda en total 10.000 − 3.503 = 6.497
+ *   Se le paga a la tienda 10.000 − 3.503 = 6.497 (SLT-169: sin «Gana la tienda en total»)
  *   Le queda a la empresa 3.503 − 403 − 2.200 − 0 = 900 · Gestiones 1
  *   Pendiente 2.200 − 1.200 = 1.000 → Pago entregado (2.200 + 0) − 1.000 = 1.200
- * La tienda de la única gestión se lleva una fila en «Por tienda»: 10.000 · 6.497 · 6.497.
+ * La tienda de la única gestión se lleva una fila en «Por tienda»: 10.000 · 6.497.
  */
 const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE", "Transferencia",
-  "Recaudado", "Se le paga a la tienda", "Gana la tienda en total", "Pago al mensajero",
+  "Recaudado", "Se le paga a la tienda", "Pago al mensajero",
   "Pago a la bodega satélite", "Total facturado", "IVA facturado", "Le queda a la empresa", "Gestiones",
   "Pagos ajustados", "Pago entregado",
 ];
@@ -1425,7 +1427,6 @@ test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre
     expect(celda("Estado")).toBe("Aprobado");
     expect(celda("Recaudado")).toBe(10000);
     expect(celda("Se le paga a la tienda")).toBe(6497);
-    expect(celda("Gana la tienda en total")).toBe(6497);
     expect(celda("Pago al mensajero")).toBe(2200);
     expect(celda("Total facturado")).toBe(3503);
     expect(celda("IVA facturado")).toBe(403);
@@ -1435,9 +1436,9 @@ test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre
 
     const porTienda = filasDeHoja(libro.worksheets[1]);
     const cabeceraTienda = porTienda.findIndex((f) => f[0] === "Folio");
-    expect(porTienda[cabeceraTienda]).toEqual(["Folio", "Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
+    expect(porTienda[cabeceraTienda]).toEqual(["Folio", "Tienda", "Recaudado", "Se le paga hoy"]);
     const tiendas = porTienda.slice(cabeceraTienda + 1);
-    expect(tiendas.map((f) => [f[0], f[2], f[3], f[4]])).toEqual([[celda("Folio"), 10000, 6497, 6497]]);
+    expect(tiendas.map((f) => [f[0], f[2], f[3]])).toEqual([[celda("Folio"), 10000, 6497]]);
 
     const anterior = filasDeHoja(libro.worksheets[2]);
     expect(anterior.some((f) => f.includes(viejo.nombre))).toBe(true);
@@ -1455,12 +1456,12 @@ test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre
  *     Recaudado 10.000 · Pago al mensajero 2.200 · Pago a la bodega satélite 120
  *     Debe llegar a la central 10.000 − 2.200 − 120 = 7.680 (se marca recibido 7.680; falta 0)
  *     Total facturado 3.100 + 403 = 3.503 · IVA facturado 403 · Le queda 3.503 − 403 − 2.200 − 120 = 780
- *     Gana la tienda en total 10.000 − 3.503 = 6.497 · Gestiones 1 · Cierres incluidos 1
- *   «Por tienda»: una fila del folio de BN, 10.000 · 6.497 · 6.497.
+ *     Se le paga a la tienda 10.000 − 3.503 = 6.497 · Gestiones 1 · Cierres incluidos 1
+ *   «Por tienda»: una fila del folio de BN, 10.000 · 6.497.
  */
 const ENCABEZADOS_CIERRES_BODEGA_CENTRAL = [
   "Folio", "Bodega", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE", "Transferencia",
-  "Recaudado", "Debe llegar a la central", "Gana la tienda en total", "Pago al mensajero",
+  "Recaudado", "Debe llegar a la central", "Se le paga a la tienda", "Pago al mensajero",
   "Pago a la bodega satélite", "Total facturado", "IVA facturado", "Le queda a la empresa", "Gestiones",
   "Pagos ajustados", "Pago entregado", "Cierres incluidos", "Recibido", "Falta por recibir",
   "Estado de conciliación", "Conciliado por", "Conciliado el",
@@ -1531,7 +1532,7 @@ test.describe.serial("SLT-141 — el «Resumen» de «Conciliados» (bodega) con
     expect(celda("Estado")).toBe("Recibido");
     expect(celda("Recaudado")).toBe(10000);
     expect(celda("Debe llegar a la central")).toBe(7680);
-    expect(celda("Gana la tienda en total")).toBe(6497);
+    expect(celda("Se le paga a la tienda")).toBe(6497);
     expect(celda("Pago al mensajero")).toBe(2200);
     expect(celda("Pago a la bodega satélite")).toBe(120);
     expect(celda("Total facturado")).toBe(3503);
@@ -1544,9 +1545,9 @@ test.describe.serial("SLT-141 — el «Resumen» de «Conciliados» (bodega) con
 
     const porTienda = filasDeHoja(libro.worksheets[1]);
     const cabeceraTienda = porTienda.findIndex((f) => f[0] === "Folio");
-    expect(porTienda[cabeceraTienda]).toEqual(["Folio", "Tienda", "Recaudado", "Se le paga hoy", "Gana en total"]);
+    expect(porTienda[cabeceraTienda]).toEqual(["Folio", "Tienda", "Recaudado", "Se le paga hoy"]);
     const tiendas = porTienda.slice(cabeceraTienda + 1);
-    expect(tiendas.map((f) => [f[0], f[2], f[3], f[4]])).toEqual([[folioNuevo, 10000, 6497, 6497]]);
+    expect(tiendas.map((f) => [f[0], f[2], f[3]])).toEqual([[folioNuevo, 10000, 6497]]);
 
     // «Cierres modelo anterior»: BV con el formato de hoy (Total general 9.000), y BN no está (sus 10.000).
     const anterior = filasDeHoja(libro.worksheets[2]);

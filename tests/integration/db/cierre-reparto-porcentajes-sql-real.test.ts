@@ -48,7 +48,9 @@ import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima"
 //   MA — mensajero, zona CENTRAL. Una entrega de 100 000,00 cobrada 70 000,00 en efectivo +
 //        30 000,00 por SINPE. Tarifa congelada: flete 4 000,00 + IVA 13 % = 4 520,00; comision COD
 //        1,00 % de 100 000,00 = 1 000,00 + IVA 13 % = 1 130,00.
-//        pagoTienda = 100 000,00 − 4 520,00 − 1 130,00 = 94 350,00 · sale de lo recaudado 5 650,00
+//        pagoTienda = 100 000,00 − 5 650,00 (todo lo facturado, SLT-169 R620) = 94 350,00 · total
+//        facturado 5 650,00 (sin rechazos: igual que lo que sale de lo recaudado). El caso CON
+//        rechazos contra Postgres vive en `pago-tienda-neto-ledger-sql-real.test.ts` ([62, 38]).
 //        94,35 % / 5,65 % → pisos 94 / 5, restos 0,35 / 0,65 → [94, 6].
 //   MB — mensajero, zona SATELITE. Tres entregas de 10 000,00 en efectivo, flete 1 000,00 + IVA 13 %
 //        cada una, sin comision → 30 000,00; sale 3 390,00; tienda 26 610,00.
@@ -516,7 +518,8 @@ describeSiHayBase("SLT-111 — reparto en % de lo recaudado en los dos detalles,
     const r = await conCorpus((k) => k.admin.verCierreDetalle(k.ma, k.maestro));
     if (r.status !== "ok") throw new Error(`detalle de MA: ${r.status}`);
     // Las partes, para que un rojo diga si fallo el importe o el reparto.
-    expect({ tienda: r.pagoTienda, empresa: r.cobradoSobreRecaudado, general: r.cierre.totales.general }).toEqual({
+    // SLT-169 (R624): la parte de la empresa es el TOTAL FACTURADO, no la linea puente.
+    expect({ tienda: r.pagoTienda, empresa: r.totalesIngreso?.total, general: r.cierre.totales.general }).toEqual({
       tienda: "94350.00",
       empresa: "5650.00",
       general: "100000.00",
@@ -531,7 +534,7 @@ describeSiHayBase("SLT-111 — reparto en % de lo recaudado en los dos detalles,
     }));
     if (medido.central.status !== "ok") throw new Error(`MB central: ${medido.central.status}`);
     if (medido.satelite.status !== "ok") throw new Error(`MB satelite: ${medido.satelite.status}`);
-    expect({ tienda: medido.central.pagoTienda, empresa: medido.central.cobradoSobreRecaudado }).toEqual({
+    expect({ tienda: medido.central.pagoTienda, empresa: medido.central.totalesIngreso?.total }).toEqual({
       tienda: "26610.00",
       empresa: "3390.00",
     });

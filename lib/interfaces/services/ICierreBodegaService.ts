@@ -160,8 +160,9 @@ export interface CierreBodegaDetalleCierre {
   // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `totalPagoMensajero` de ESTE
   // cierre_dia (STRING). Lo que le queda a la empresa del dia de ese mensajero. Puede ser NEGATIVO.
   ganancia: string | null;
-  // DERIVADO: `totales.general` - `fleteConIva` - `comisionConIva` de ESTE cierre_dia
-  // (STRING money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
+  // DERIVADO (SLT-169 R623): `totales.general` − `totalesIngreso.total` de ESTE cierre_dia
+  // (STRING money-safe): lo que se le paga hoy a la tienda, restado TODO lo facturado (flete por
+  // rechazo incluido). Puede ser NEGATIVO (la tienda debe) y viaja con su signo.
   pagoTienda: string | null;
   /**
    * Feature 393 (R7/R10) — LA LINEA PUENTE: `fleteConIva` + `comisionConIva` de ESTE
@@ -180,10 +181,8 @@ export interface CierreBodegaDetalleCierre {
    * Ficha 396 (D1) — DERIVADO: `totales.general` − `totalesIngreso.total` de ESTE cierre_dia.
    * LO QUE LA TIENDA GANA EN TOTAL con el dia de ESE mensajero.
    *
-   * **NO es `pagoTienda`**, que viaja aqui arriba y sigue significando lo mismo: aquel es lo que
-   * se le paga DE ESTE DINERO —no resta el flete por rechazo, que nunca entro en lo recaudado—;
-   * este es lo que le queda DESPUES de que tambien le cobren aquel flete. La diferencia entre los
-   * dos es exactamente `totalesIngreso.fleteDevolucionConIva` de este cierre_dia.
+   * Desde SLT-169 es ALIAS de `pagoTienda`, con el MISMO valor: el pago tambien resta todo lo
+   * facturado. Se retira del contrato en la ficha de limpieza (P3 de SLT-169).
    *
    * FALTABA, y por eso lo trae esta ficha: la 395 puso `ganaLaTienda` SOLO en el detalle del
    * cierre del mensajero, asi que el desglose por tienda de bodega sumaria hacia un total que no
@@ -200,7 +199,8 @@ export interface CierreBodegaDetalleCierre {
    *
    * ⚠️ **NO ES UNA CORRECCION DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos
    * separados por tienda desde siempre: a nadie se le paga mal, y esta ficha no toca ni una fila
-   * del ledger. `pagoTienda` y `ganaLaTienda` siguen valiendo lo mismo (R18); esto se AÑADE.
+   * del ledger; esto se AÑADE. (Desde SLT-169 `pagoTienda` resta todo lo facturado y
+   * `ganaLaTienda` es su alias; el ledger sigue igual, R631.)
    *
    * ⚠️ **SALE DE `cd.gestiones`, LAS DE ESTE MENSAJERO, y de ninguna otra.** No se deriva del
    * agregado de la bodega ni se corrige para cuadrar con el (R21). De ahi se sigue que el UMBRAL

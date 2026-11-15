@@ -275,8 +275,8 @@ describe.each(DESCARGAS)("SLT-141 — %s de la central con cierres de bodega nue
         // PA1: D1 con la marca: pendiente = 3 000 + 0 − 0 − 3 000 = 0; entregado = 3 000 − 0
         pagoEntregado: "3000.00",
         partesPorTienda: [
-          // T1: 70 000 − 4 520 = 65 480; gana 70 000 − 4 520 − 2 260 = 63 220
-          { tiendaId: "tienda-t1", tiendaNombre: "T1", recaudado: "70000.00", pagoTienda: "65480.00", ganaLaTienda: "63220.00" },
+          // T1 (SLT-169 R621): 70 000 − 4 520 − 2 260 = 63 220 (antes 65 480); gana, alias
+          { tiendaId: "tienda-t1", tiendaNombre: "T1", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
           // T2: 30 000 − 1 130 = 28 870
           { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
         ],

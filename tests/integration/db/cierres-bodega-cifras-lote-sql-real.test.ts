@@ -93,10 +93,13 @@ interface Corpus {
   tienda: Record<"T1" | "T2", string>;
 }
 
-/** «Por tienda» de BN, a mano. T1: 70 000 − 4 520 = 65 480 y 70 000 − (4 520 + 2 260) = 63 220. T2: 30 000 − 1 130. */
+/**
+ * «Por tienda» de BN, a mano. SLT-169 (R621): «Se le paga hoy» resta todo lo facturado.
+ * T1: 70 000 − (4 520 + 2 260) = 63 220 (antes 65 480). T2: 30 000 − 1 130.
+ */
 function partesBN(t: Corpus["tienda"]) {
   return [
-    { tiendaId: t.T1, tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "65480.00", ganaLaTienda: "63220.00" },
+    { tiendaId: t.T1, tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
     { tiendaId: t.T2, tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
   ];
 }
@@ -582,8 +585,9 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
         });
         expect(d.cierres.reduce((s, cd) => s + Object.values(cd.grupos).reduce((t, g) => t + g.length, 0), 0)).toBe(3);
       }
-      // Y el detalle de la central, contra los literales a mano (Σ «Se le paga hoy» 65 480 + 28 870 = 94 350).
-      expect(central.pagoTienda).toBe("94350.00");
+      // Y el detalle de la central, contra los literales a mano (SLT-169 R623: Σ «Se le paga hoy»
+      // 63 220 + 28 870 = 92 090 = 100 000 − 7 910).
+      expect(central.pagoTienda).toBe("92090.00");
       expect(central.netoEmpresa).toBe("3500.00");
       expect(central.ganaLaTienda).toBe("92090.00");
       expect(central.partesPorTienda).toEqual(partesBN(c.tienda));

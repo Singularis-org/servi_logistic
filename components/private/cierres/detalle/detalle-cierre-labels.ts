@@ -81,10 +81,11 @@ export const GESTIONES_LABEL = "Gestiones";
 export const TU_GANANCIA_LABEL = "Tu ganancia";
 export const METODOS_DEL_RECAUDADO_LABEL = "Métodos de pago de lo recaudado";
 
-export const contextoTiendas = (tiendas: number, ganaLaTienda: string): string =>
-  tiendas === 1
-    ? `1 tienda · gana en total ${money(ganaLaTienda)}`
-    : `${tiendas} tiendas · ganan en total ${money(ganaLaTienda)}`;
+// SLT-169 (R625): la tarjeta ya resta todo lo facturado; el contexto es solo el número de tiendas.
+export const contextoTiendas = (tiendas: number): string => cuantos(tiendas, "tienda", "tiendas");
+/** SLT-169 (R625, R627): junto a una cifra de la tienda negativa. Copia por confirmar en Preview (P2). */
+export const TIENDA_DEBE = (tiendas: number): string =>
+  tiendas > 1 ? "(las tiendas deben)" : "(la tienda debe)";
 export const contextoPagoMensajero = (gestiones: number, ajustadas: number): string =>
   ajustadas > 0
     ? `${cuantos(gestiones, "gestión", "gestiones")} · ${cuantos(ajustadas, "ajustada", "ajustadas")}`
@@ -194,7 +195,6 @@ export const REPARTO_TITULO = "¿A dónde va lo recaudado?";
 export const CUENTA_FACTURA_TITULO = "Lo que se le factura a la tienda";
 export const FLETE_POR_ENTREGADO_LABEL = `Flete por entregado + ${IMPUESTO_ROTULO}`;
 export const COMISION_COD_LABEL = `Comisión COD + ${IMPUESTO_ROTULO}`;
-export const SALE_DE_LO_RECAUDADO_LABEL = "Sale de lo recaudado";
 export const TOTAL_FACTURADO_LABEL = "Total facturado";
 export const CUENTA_QUEDA_TITULO = `De lo facturado, le queda a ${EMPRESA.enFrase}`;
 export const IVA_NO_ES_DE_LA_EMPRESA = `${IMPUESTO_ROTULO} (no es de ${EMPRESA.enFrase})`;
@@ -203,7 +203,6 @@ export const POR_TIENDA_COLUMNAS = {
   tienda: "Tienda",
   recaudado: RECAUDADO_LABEL,
   hoy: "Se le paga hoy",
-  gana: "Gana en total",
 } as const;
 
 // --- Pestañas que rellena S2 (SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)») ---

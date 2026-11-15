@@ -1051,11 +1051,9 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(r.totalesIngreso.fleteDevolucionConIva).toBe("1356.51");
     expect(r.totalesIngreso.total).toBe("8590.02");
 
-    // R6 — lo recaudado menos los DOS deducibles = para la tienda.
-    expect(r.pagoTienda).toBe("98855.66");
-    expect(suma(r.pagoTienda, r.totalesIngreso.fleteConIva, r.totalesIngreso.comisionConIva)).toBe(
-      r.cierre.totales.general,
-    );
+    // R6 · SLT-169 R623 — lo recaudado menos TODO lo facturado = se les paga hoy a las tiendas.
+    expect(r.pagoTienda).toBe("97499.15"); // 106089.17 − 8590.02 (antes 98855.66)
+    expect(suma(r.pagoTienda, r.totalesIngreso.total)).toBe(r.cierre.totales.general);
 
     // R7 — la linea puente mas el flete por devolución a origen = lo que la empresa facturo.
     expect(r.cobradoSobreRecaudado).toBe("7233.51");
@@ -1106,7 +1104,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(cd1.paraLaCentral).toBe("56999.90");
 
     expect(cd2.cobradoSobreRecaudado).toBe("3051.52");
-    expect(cd2.pagoTienda).toBe("38037.20");
+    expect(cd2.pagoTienda).toBe("36680.69"); // SLT-169 R623: 41088.72 − 4408.03 (antes 38037.20)
     expect(cd2.netoEmpresa).toBe("-3349.99"); // SL-39: (4408.03 − 507.12) − 6000.45 − 1250.45
     expect(cd2.paraLaCentral).toBe("33837.82");
 
@@ -1123,7 +1121,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(suma(cd1.ivaFacturado, cd2.ivaFacturado)).toBe(r.ivaFacturado);
   });
 
-  it("3 · con un rechazo, «para la tienda» NO es «recaudado − facturado», y la linea puente explica la diferencia exacta (R7/R10)", async () => {
+  it("3 · SLT-169 R623: con un rechazo, «se le paga hoy» ES «recaudado − facturado» en el dia y en el agregado", async () => {
     const { service } = newService({ repo: repoDeDosDias() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
@@ -1131,31 +1129,20 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
 
     const cd2 = r.cierres[1];
 
-    // (a) El dia con el rechazo: empezar por el bruto NO da «para la tienda».
-    const brutoDelDia = new Prisma.Decimal(cd2.totales.general)
-      .minus(cd2.totalesIngreso.total)
-      .toFixed(2);
-    expect(brutoDelDia).toBe("36680.69");
-    expect(brutoDelDia).not.toBe(cd2.pagoTienda);
-    // El hueco es, al centimo, el flete por devolución a origen + IVA: se factura pero no sale de lo
-    // recaudado, que es lo que la linea puente tiene que decir.
-    expect(new Prisma.Decimal(cd2.pagoTienda).minus(brutoDelDia).toFixed(2)).toBe(
-      cd2.totalesIngreso.fleteDevolucionConIva,
-    );
-    // Y con la linea puente SI da.
+    // (a) El dia con el rechazo: el flete por devolución a origen + IVA tambien se resta.
+    expect(cd2.totalesIngreso.fleteDevolucionConIva).toBe("1356.51");
+    expect(cd2.pagoTienda).toBe("36680.69"); // 41088.72 − 4408.03
+    // Con la definicion anterior (solo la puente) daba 38037.20: ya no.
     expect(new Prisma.Decimal(cd2.totales.general).minus(cd2.cobradoSobreRecaudado).toFixed(2)).toBe(
-      cd2.pagoTienda,
+      "38037.20",
     );
+    expect(cd2.pagoTienda).not.toBe("38037.20");
 
-    // (b) Lo mismo en el AGREGADO, que es donde se pinta la cascada A.
-    const brutoAgregado = new Prisma.Decimal(r.cierre.totales.general)
-      .minus(r.totalesIngreso.total)
-      .toFixed(2);
-    expect(brutoAgregado).toBe("97499.15");
-    expect(brutoAgregado).not.toBe(r.pagoTienda);
-    expect(new Prisma.Decimal(r.pagoTienda).minus(brutoAgregado).toFixed(2)).toBe(
-      r.totalesIngreso.fleteDevolucionConIva,
-    );
+    // (b) Lo mismo en el AGREGADO.
+    expect(r.pagoTienda).toBe("97499.15");
+    // Y el alias `ganaLaTienda` vale lo mismo en los dos niveles.
+    expect(cd2.ganaLaTienda).toBe(cd2.pagoTienda);
+    expect(r.ganaLaTienda).toBe(r.pagoTienda);
 
     // (c) El dia SIN rechazos tiene la linea puente igual: vale lo mismo que el bruto, y se
     // emite de todas formas — un cero explicito dice «aqui no hubo rechazos».
@@ -1240,9 +1227,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(r.cierres[0].paraLaCentral).toBe("56999.90");
   });
 
-  it("6 · `pagoTienda` sigue valiendo lo mismo (R31, SL-39 R26) y `ganancia` resta desde lo facturado sin IVA (SL-39 R22)", async () => {
-    // Esta ficha AÑADE lineas, las agrupa y las renombra; no recalcula dinero existente. Los
-    // dos derivados que ya existian se siguen devolviendo con la formula de siempre.
+  it("6 · `pagoTienda` resta TODO lo facturado (SLT-169 R623) y `ganancia` resta desde lo facturado sin IVA (SL-39 R22)", async () => {
     const { service } = newService({ repo: repoDeDosDias() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
@@ -1251,10 +1236,10 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(r.ganancia).toBe("-6399.21"); // 7601.79 - 14001.00
     expect(r.cierres[0].ganancia).toBe("-4299.67"); // (4181.99 - 481.11) - 8000.55
     expect(r.cierres[1].ganancia).toBe("-2099.54"); // (4408.03 - 507.12) - 6000.45
-    // `pagoTienda` = recaudado - flete+IVA - comision+IVA (SIN el flete por devolución a origen).
-    expect(r.pagoTienda).toBe("98855.66");
+    // SLT-169 R623: `pagoTienda` = recaudado − TODO lo facturado, flete por devolución incluido.
+    expect(r.pagoTienda).toBe("97499.15");
     expect(r.cierres[0].pagoTienda).toBe("60818.46");
-    expect(r.cierres[1].pagoTienda).toBe("38037.20");
+    expect(r.cierres[1].pagoTienda).toBe("36680.69");
   });
 });
 
@@ -1459,11 +1444,10 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     // Agregado: 165.000,00 − 14.633,50.
     expect(r.ganaLaTienda).toBe("150366.50");
 
-    // Y NO es `pagoTienda`: la diferencia es, al céntimo, el flete por devolución a origen de ese nivel.
-    expect(
-      new Prisma.Decimal(r.cierres[0].pagoTienda).minus(r.cierres[0].ganaLaTienda).toFixed(2),
-    ).toBe("1695.00");
-    expect(new Prisma.Decimal(r.pagoTienda).minus(r.ganaLaTienda).toFixed(2)).toBe("1695.00");
+    // SLT-169 (R623): desde que el pago resta todo lo facturado, `ganaLaTienda` es su alias de
+    // igual valor en los dos niveles (antes difería en el flete por devolución a origen).
+    expect(r.cierres[0].pagoTienda).toBe("92090.00");
+    expect(r.pagoTienda).toBe("150366.50");
   });
 
   it("⚠️ R19: el nivel de CADA MENSAJERO se desglosa con SUS gestiones — Ana tiene UNA tienda y la bodega DOS", async () => {
@@ -1479,8 +1463,8 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
         tiendaId: "t-norte",
         tiendaNombre: "Tienda Norte",
         recaudado: "100000.00",
-        pagoTienda: "93785.00", // 100.000,00 − 2.825,00 − 3.390,00
-        ganaLaTienda: "92090.00", // 100.000,00 − (6.215,00 + 1.695,00)
+        pagoTienda: "92090.00", // SLT-169 R621: 100.000,00 − (6.215,00 + 1.695,00)
+        ganaLaTienda: "92090.00", // alias
       },
     ]);
 
@@ -1490,14 +1474,14 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
         tiendaId: "t-sur",
         tiendaNombre: "Tienda Sur",
         recaudado: "40000.00",
-        pagoTienda: "36384.00", // 40.000,00 − 2.260,00 − 1.356,00
-        ganaLaTienda: "36384.00", // sin rechazos, coincide
+        pagoTienda: "36384.00", // 40.000,00 − 3.616,00
+        ganaLaTienda: "36384.00",
       },
       {
         tiendaId: "t-norte",
         tiendaNombre: "Tienda Norte",
         recaudado: "25000.00",
-        pagoTienda: "21892.50", // 25.000,00 − 2.260,00 − 847,50
+        pagoTienda: "21892.50", // 25.000,00 − 3.107,50
         ganaLaTienda: "21892.50",
       },
     ]);
@@ -1520,8 +1504,8 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
         tiendaId: "t-norte",
         tiendaNombre: "Tienda Norte",
         recaudado: "125000.00", // 100.000,00 + 25.000,00
-        pagoTienda: "115677.50", // 125.000,00 − 5.085,00 − 4.237,50
-        ganaLaTienda: "113982.50", // 125.000,00 − 11.017,50
+        pagoTienda: "113982.50", // SLT-169 R621: 125.000,00 − 11.017,50 (antes 115.677,50)
+        ganaLaTienda: "113982.50",
       },
       {
         tiendaId: "t-sur",
@@ -1542,8 +1526,8 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     // Los DOS lados anclados a literales escritos a mano: la suma de las partes y el agregado
     // que el propio DTO emite. Si cualquiera de los dos se moviera, esto se entera.
     const ana = r.cierres[0];
-    expect(sumar(ana.partesPorTienda.map((p) => p.pagoTienda))).toBe("93785.00");
-    expect(ana.pagoTienda).toBe("93785.00"); // R10
+    expect(sumar(ana.partesPorTienda.map((p) => p.pagoTienda))).toBe("92090.00");
+    expect(ana.pagoTienda).toBe("92090.00"); // R10 · SLT-169 R623
     expect(sumar(ana.partesPorTienda.map((p) => p.ganaLaTienda))).toBe("92090.00");
     expect(ana.ganaLaTienda).toBe("92090.00"); // R11
     expect(sumar(ana.partesPorTienda.map((p) => p.recaudado))).toBe("100000.00");
@@ -1557,37 +1541,35 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     expect(sumar(beto.partesPorTienda.map((p) => p.recaudado))).toBe("65000.00");
     expect(beto.totales.general).toBe("65000.00");
 
-    expect(sumar(r.partesPorTienda.map((p) => p.pagoTienda))).toBe("152061.50");
-    expect(r.pagoTienda).toBe("152061.50");
+    expect(sumar(r.partesPorTienda.map((p) => p.pagoTienda))).toBe("150366.50");
+    expect(r.pagoTienda).toBe("150366.50");
+    // SLT-169 R623: la suma de los cierres del día es el agregado de la bodega.
+    expect(sumar([ana.pagoTienda, beto.pagoTienda])).toBe("150366.50");
     expect(sumar(r.partesPorTienda.map((p) => p.ganaLaTienda))).toBe("150366.50");
     expect(r.ganaLaTienda).toBe("150366.50");
     expect(sumar(r.partesPorTienda.map((p) => p.recaudado))).toBe("165000.00");
     expect(r.cierre.totales.general).toBe("165000.00");
   });
 
-  it("la CUARTA identidad, por tienda: lo que se le paga − lo que gana = SU flete por devolución a origen", async () => {
-    // Es la que hace imposible derivar una de las dos con el subconjunto equivocado sin que se
-    // note. Norte tuvo un rechazo (1.695,00) y Sur no (0,00): si las dos dieran cero, este test
-    // pasaría sin comprobar nada.
+  it("SLT-169 R621/R623: por tienda, lo que se le paga resta SU flete por rechazo, y sólo en el subconjunto que lo trajo", async () => {
+    // Norte trajo un rechazo (1.695,00) sólo en el día de Ana; Sur, ninguno. Si las dos dieran
+    // cero de flete por rechazo, un pago que no lo restara pasaría igual.
     const { service } = newService({ repo: repoDeDosMensajeros() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
     exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
-    const dif = (p: { pagoTienda: string; ganaLaTienda: string }) =>
-      new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
-
     const norte = r.partesPorTienda.find((p) => p.tiendaId === "t-norte");
     const sur = r.partesPorTienda.find((p) => p.tiendaId === "t-sur");
     if (norte === undefined || sur === undefined) throw new Error("falta una tienda del agregado");
-    expect(dif(norte)).toBe("1695.00");
-    expect(dif(sur)).toBe("0.00");
+    expect(norte.pagoTienda).toBe("113982.50");
+    expect(norte.ganaLaTienda).toBe(norte.pagoTienda);
+    expect(sur.pagoTienda).toBe("36384.00");
 
-    // Y en el nivel de Beto, donde Norte NO trajo rechazos, su diferencia es cero: la resta
-    // depende del SUBCONJUNTO, no de la tienda.
+    // En el nivel de Beto, Norte NO trajo rechazos: 25.000,00 − 3.107,50.
     const norteDeBeto = r.cierres[1].partesPorTienda.find((p) => p.tiendaId === "t-norte");
     if (norteDeBeto === undefined) throw new Error("falta Norte en el nivel de Beto");
-    expect(dif(norteDeBeto)).toBe("0.00");
+    expect(norteDeBeto.pagoTienda).toBe("21892.50");
   });
 
   it("⚠️ R21: si el snapshot AGREGADO no es la suma de sus días, el descuadre SE VE — no se maquilla", async () => {
@@ -1610,12 +1592,12 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     if (r.status !== "ok") throw new Error("esperaba ok");
     exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
-    // El agregado, desde el SNAPSHOT: 200.000,00 − 7.345,00 − 5.593,50 y 200.000,00 − 14.633,50.
-    expect(r.pagoTienda).toBe("187061.50");
+    // El agregado, desde el SNAPSHOT: 200.000,00 − 14.633,50 (SLT-169: todo lo facturado).
+    expect(r.pagoTienda).toBe("185366.50");
     expect(r.ganaLaTienda).toBe("185366.50");
 
     // El desglose, desde las GESTIONES: exactamente el mismo de antes, sin enterarse.
-    expect(sumar(r.partesPorTienda.map((p) => p.pagoTienda))).toBe("152061.50");
+    expect(sumar(r.partesPorTienda.map((p) => p.pagoTienda))).toBe("150366.50");
     expect(sumar(r.partesPorTienda.map((p) => p.ganaLaTienda))).toBe("150366.50");
     expect(sumar(r.partesPorTienda.map((p) => p.recaudado))).toBe("165000.00");
 
@@ -1677,7 +1659,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     // SL-39 (R21–R23): IVA 325 + 390 + 195 + 260 + 156 + 260 + 97,50 = 1.683,50; sin IVA 12.950,00.
     expect(r.ivaFacturado).toBe("1683.50");
     expect(r.ganancia).toBe("3950.00"); // 12.950,00 − 9.000,00
-    expect(r.pagoTienda).toBe("152061.50");
+    expect(r.pagoTienda).toBe("150366.50"); // SLT-169 R623: 165.000,00 − 14.633,50
     expect(r.cobradoSobreRecaudado).toBe("12938.50"); // 7.345,00 + 5.593,50
     expect(r.netoEmpresa).toBe("3450.00"); // 12.950,00 − 9.000,00 − 500,00
     expect(r.paraLaCentral).toBe("155500.00"); // 165.000,00 − 9.000,00 − 500,00
@@ -1687,7 +1669,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     expect(r.cierres[0].totalesIngreso.total).toBe("7910.00");
     expect(r.cierres[0].ivaFacturado).toBe("910.00"); // 325,00 + 390,00 + 195,00
     expect(r.cierres[0].ganancia).toBe("2000.00"); // (7.910,00 − 910,00) − 5.000,00
-    expect(r.cierres[0].pagoTienda).toBe("93785.00");
+    expect(r.cierres[0].pagoTienda).toBe("92090.00"); // SLT-169 R623: 100.000,00 − 7.910,00
     expect(r.cierres[0].cobradoSobreRecaudado).toBe("6215.00"); // 2.825,00 + 3.390,00
     expect(r.cierres[0].netoEmpresa).toBe("1500.00"); // 7.000,00 − 5.000,00 − 500,00
     expect(r.cierres[0].paraLaCentral).toBe("94500.00"); // 100.000,00 − 5.000,00 − 500,00
@@ -1746,7 +1728,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
         tiendaId: "t-norte",
         tiendaNombre: "Tienda Norte",
         recaudado: "100000.00",
-        pagoTienda: "93785.00",
+        pagoTienda: "92090.00",
         ganaLaTienda: "92090.00",
       },
     ]);

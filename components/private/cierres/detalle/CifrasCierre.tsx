@@ -64,6 +64,8 @@ function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales 
       >
         {c.esMonto ? money(c.valor) : c.valor}
       </span>
+      {/* SLT-169 (R625): «(la tienda debe)» junto al importe; lo decide `cifrasDe`, aquí solo se pinta. */}
+      {c.sufijo ? <span className="text-sm font-semibold text-danger-strong">{c.sufijo}</span> : null}
       {c.conMetodos && totales ? (
         <dl aria-label={METODOS_DEL_RECAUDADO_LABEL} className="flex flex-col gap-0.5 text-xs text-muted-foreground">
           {metodosVisibles(totales).map((m) => (

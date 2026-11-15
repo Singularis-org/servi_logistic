@@ -91,8 +91,9 @@ export type CierreBodegaDetalleServiceResult =
       // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `cierre.totalPagoMensajero`
       // (STRING money-safe). Lo que le queda a la empresa de toda la bodega. Puede ser NEGATIVO.
       ganancia: string | null;
-      // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
-      // money-safe). Lo que se le paga a las tiendas. Puede ser NEGATIVO.
+      // DERIVADO (SLT-169 R623): `cierre.totales.general` − `totalesIngreso.total` (STRING
+      // money-safe): lo que se les paga hoy a las tiendas, restado TODO lo facturado (flete por
+      // rechazo incluido). Puede ser NEGATIVO (las tiendas deben) y viaja con su signo.
       pagoTienda: string | null;
       /**
        * Feature 393 (R7/R10) — LA LINEA PUENTE agregada: `fleteConIva` + `comisionConIva` de
@@ -109,10 +110,8 @@ export type CierreBodegaDetalleServiceResult =
        * Ficha 396 (D1) — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LAS
        * TIENDAS GANAN EN TOTAL con todo el cierre de bodega.
        *
-       * **NO es `pagoTienda`**, que viaja aqui arriba y sigue significando lo mismo: aquel es lo
-       * que se les paga DE ESTE DINERO —no resta el flete por rechazo, que nunca entro en lo
-       * recaudado—; este es lo que les queda DESPUES de que tambien les cobren aquel flete. La
-       * diferencia entre los dos es exactamente `totalesIngreso.fleteDevolucionConIva`.
+       * Desde SLT-169 es ALIAS de `pagoTienda`, con el MISMO valor: el pago tambien resta todo lo
+       * facturado. Se retira del contrato en la ficha de limpieza (P3 de SLT-169).
        *
        * FALTABA en este contrato, y por eso lo trae esta ficha: la 395 puso `ganaLaTienda` SOLO
        * en el detalle del cierre del mensajero, asi que el desglose por tienda de bodega sumaria
@@ -131,7 +130,8 @@ export type CierreBodegaDetalleServiceResult =
        * Es el peor de los tres casos del defecto que arregla la ficha: aqui «Pago a tienda»
        * agrega N mensajeros × M tiendas en un solo numero. ⚠️ **NO ES UNA CORRECCION DE DINERO**:
        * `wallet_tienda_movimiento` lleva los movimientos separados por tienda desde siempre, y
-       * `pagoTienda` sigue valiendo exactamente lo mismo que antes (R18).
+       * esta ficha no lo toca (desde SLT-169 `pagoTienda` resta todo lo facturado; R631: el
+       * ledger sigue igual).
        *
        * **UNA SOLA FILA POR TIENDA (Q8), cierto por construccion:** se agrupa por `tiendaId` sobre
        * el `flatMap` de las gestiones de TODOS los `cierre_dia`, asi que una tienda que aparece en

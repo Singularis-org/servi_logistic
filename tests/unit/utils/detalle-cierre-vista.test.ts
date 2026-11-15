@@ -53,7 +53,8 @@ const MENSAJERO: DetalleMensajeroVista = {
   totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
   totalPagoMensajero: "3000.00",
   empresa: {
-    pagoTienda: "94350.00",
+    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+    pagoTienda: "92090.00",
     cobradoSobreRecaudado: "5650.00",
     ganaLaTienda: "92090.00",
     totalIngresoBodegaRechazos: "500.00",
@@ -66,8 +67,8 @@ const MENSAJERO: DetalleMensajeroVista = {
       total: "7910.00",
     },
     partesPorTienda: [
-      { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "60000.00", pagoTienda: "56610.00", ganaLaTienda: "55480.00" },
-      { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "40000.00", pagoTienda: "37740.00", ganaLaTienda: "36610.00" },
+      { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "60000.00", pagoTienda: "55480.00", ganaLaTienda: "55480.00" },
+      { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "40000.00", pagoTienda: "36610.00", ganaLaTienda: "36610.00" },
     ],
     modeloNuevo: false,
   },
@@ -103,7 +104,7 @@ const BODEGA: DetalleBodegaVista = {
   totalIngresoBodegaRechazos: "500.00",
   paraLaCentral: "96500.00",
   efectivoCubreDescuentos: true,
-  pagoTienda: "94350.00",
+  pagoTienda: "92090.00",
   cobradoSobreRecaudado: "5650.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
@@ -120,7 +121,7 @@ describe("cifrasDe (R6, R8)", () => {
   it("central: cuatro cifras, en orden, cada una del campo exacto", () => {
     expect(valores(cifrasDe("mensajero", "central", MENSAJERO))).toEqual([
       ["Recaudado", "100000.00"],
-      ["Se le paga hoy a la tienda", "94350.00"],
+      ["Se le paga hoy a la tienda", "92090.00"],
       ["Pago al mensajero", "3000.00"],
       ["Le queda a la empresa", "3500.00"],
     ]);
@@ -148,7 +149,7 @@ describe("cifrasDe (R6, R8)", () => {
   it("las líneas de contexto salen de conteos y strings del servidor (R8)", () => {
     expect(cifrasDe("mensajero", "central", MENSAJERO).map((c) => c.contexto)).toEqual([
       "",
-      "2 tiendas · ganan en total ₡92.090",
+      "2 tiendas",
       "19 gestiones · 1 ajustada",
       "sin IVA, ya restados mensajero y bodega",
     ]);
@@ -158,6 +159,24 @@ describe("cifrasDe (R6, R8)", () => {
       "2 mensajeros · 2 ajustes",
       "sin IVA, ya restados mensajeros y satélite",
     ]);
+  });
+
+  // SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (R625): una sola cifra con su
+  // signo; negativa, lleva la marca de deuda. El signo lo decide el STRING del servidor.
+  it("R625 — «Se le paga hoy» negativa lleva «(la tienda debe)» / «(las tiendas deben)»; positiva, nada", () => {
+    const conPago = (pagoTienda: string, tiendas: number) =>
+      cifrasDe("mensajero", "central", {
+        ...MENSAJERO,
+        empresa: { ...MENSAJERO.empresa!, pagoTienda },
+        conteos: { ...MENSAJERO.conteos, tiendas },
+      })[1];
+    const una = conPago("-13205.05", 1);
+    expect([una.valor, una.sufijo, una.contexto]).toEqual(["-13205.05", "(la tienda debe)", "1 tienda"]);
+    const dos = conPago("-13205.05", 2);
+    expect([dos.sufijo, dos.contexto]).toEqual(["(las tiendas deben)", "2 tiendas"]);
+    expect(conPago("92090.00", 2).sufijo).toBeUndefined();
+    expect(conPago("0.00", 1).sufijo).toBeUndefined();
+    expect(cifrasDe("mensajero", "central", MENSAJERO).map((c) => c.contexto).join(" ")).not.toMatch(/gana/);
   });
 
   it("CONTRAPRUEBA: con otro `netoEmpresa` en el doble, la cifra 4 cambia con él", () => {
@@ -347,11 +366,12 @@ describe("lineasDinero (R14, R15, R16)", () => {
   const filas = (c: { lineas: { label: string; monto: string; signo: string; tipo: string }[] }) =>
     c.lineas.map((l) => [l.label, l.monto, l.signo, l.tipo]);
 
-  it("mensajero: reparto, lo que se factura y lo que le queda, con su signo", () => {
+  it("mensajero: reparto, lo que se factura y lo que le queda, con su signo (SLT-169 R624, R626)", () => {
     const d = lineasDinero("mensajero", MENSAJERO)!;
+    // R624: las dos partes suman lo recaudado (92.090 + 7.910 = 100.000).
     expect(d.reparto.map((p) => [p.label, p.monto, p.porcentaje])).toEqual([
-      ["Se le paga hoy a la tienda", "94350.00", null],
-      ["Sale de lo recaudado", "5650.00", null],
+      ["Se le paga hoy a la tienda", "92090.00", null],
+      ["Total facturado", "7910.00", null],
     ]);
     expect(d.cuentas.map((c) => c.titulo)).toEqual([
       "Lo que se le factura a la tienda",
@@ -360,7 +380,6 @@ describe("lineasDinero (R14, R15, R16)", () => {
     expect(filas(d.cuentas[0])).toEqual([
       ["Flete por entregado + IVA", "4520.00", "neutro", "partida"],
       ["Comisión COD + IVA", "1130.00", "neutro", "partida"],
-      ["Sale de lo recaudado", "5650.00", "neutro", "subtotal"],
       ["Flete por devolución a origen + IVA", "2260.00", "suma", "partida"],
       ["Total facturado", "7910.00", "neutro", "total"],
     ]);
@@ -376,7 +395,7 @@ describe("lineasDinero (R14, R15, R16)", () => {
   it("el modelo nuevo rotula la no entrega y la bodega como hoy", () => {
     const nuevo = { ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, modeloNuevo: true } };
     const d = lineasDinero("mensajero", nuevo)!;
-    expect(d.cuentas[0].lineas[3].label).toBe("Flete de gestiones no entregadas + IVA");
+    expect(d.cuentas[0].lineas[2].label).toBe("Flete de gestiones no entregadas + IVA");
     expect(d.cuentas[1].lineas[3].label).toBe("Ingreso de bodega");
   });
 
@@ -410,6 +429,13 @@ describe("lineasDinero (R14, R15, R16)", () => {
       ["Pago a mensajeros", "3000.00", "resta", "partida"],
       ["Gana la bodega satélite", "500.00", "resta", "partida"],
       ["Debe llegar a la central", "96500.00", "neutro", "total"],
+    ]);
+    // SLT-169 (R626): la de bodega tampoco lleva «Sale de lo recaudado».
+    expect(filas(d.cuentas[1])).toEqual([
+      ["Flete por entregado + IVA", "4520.00", "neutro", "partida"],
+      ["Comisión COD + IVA", "1130.00", "neutro", "partida"],
+      ["Flete por devolución a origen + IVA", "2260.00", "suma", "partida"],
+      ["Total facturado", "7910.00", "neutro", "total"],
     ]);
     expect(filas(d.cuentas[2]).slice(2, 4)).toEqual([
       ["Pago a mensajeros", "3000.00", "resta", "partida"],
