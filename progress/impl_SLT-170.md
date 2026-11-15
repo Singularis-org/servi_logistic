@@ -113,3 +113,35 @@ ANTES: 10 rojos, todos en oscuro (2 de la caja aviso, 8 del censo). DESPUÉS: 51
 ### Hallazgo abierto (no tocado)
 `DetalleCierre.tsx:213`, rama `peligro`: `bg-danger-soft text-danger-strong` sin `dark:` → #f87171 sobre
 #fee2e2 en oscuro = 2.26 (mismo patrón). Fuera del censo pedido.
+
+## Tanda 3 — `bg-danger-soft` (pedido de Carlos vía leader)
+`--color-danger-soft` (#fee2e2) es fijo. Arreglo: el par del sistema `bg-danger-soft dark:bg-danger/15`
+(el de `Badge` danger/destructive, ErrorState, NotificationsBell). Claro sin cambio.
+
+### Archivos
+- `components/private/cierres/detalle/DetalleCierre.tsx:213` — franja, rama `peligro` (el hallazgo).
+- `app/(app)/configuracion/envios-whatsapp/_components/DestinatariosField.tsx:182`, `EnvioForm.tsx:374,385`,
+  `EnviosModule.tsx:137` — alertas de error; `VistaPreviaMensaje.tsx:70` — icono «PDF».
+- `app/(app)/mis-asignaciones/_components/chat/chat-format.ts:20` — chip `novedad`.
+- `tests/components/ContrasteBrandSoftOscuro.test.tsx` — el censo cubre ahora `bg-(warning|danger)-soft`
+  y sólo excluye COLORES arbitrarios (`text-[color-mix…]`), no tamaños (`text-[10px]`).
+- `tests/components/textos-estado-455.test.tsx` — el literal del chip `novedad` (contrato de clases)
+  pasa a llevar `dark:bg-danger/15`.
+
+### Rojo → verde
+ANTES: 7 rojos, todos en oscuro (los 7 usos de arriba). DESPUÉS: 77/77 en el archivo; 36 archivos
+afectados, 708 tests verdes. eslint del diff: 0. `tsc --noEmit`: 0. Sin `./init.sh` (lo corre el leader).
+
+### Contrastes `danger-strong` (fondo `danger/15` sobre card #1C1C1A / background #111111)
+| Texto | Claro (sin cambio) | Oscuro antes | Oscuro después (card / bg) |
+|---|---|---|---|
+| `danger-strong` | 5.30 | 2.26 | 5.27 / 5.89 |
+| `foreground` | 15.46 | 1.14 | 13.58 / 15.19 |
+| `muted-foreground` | — | — | 6.86 / 7.68 |
+
+### Censo de `bg-danger-soft`
+ARREGLADOS: los 7 de arriba. OK (ya con `dark:bg-danger/15`): CajaResumenCard, ErrorState,
+NotificationsBell, badge.tsx ×2, button.tsx; Toast con par `dark:` propio; EmptyState:36 es comentario.
+
+### Hallazgo abierto (no tocado)
+`chat-format.ts`: los chips `bg-info-soft` y `bg-success-soft` tampoco llevan `dark:`; mismo patrón, sin medir.

@@ -371,7 +371,7 @@ export function EnvioForm({ envio, informes, eventos, plantillas, personas }: En
         </div>
 
         {motivosEncendido.length > 0 ? (
-          <div role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger-strong">
+          <div role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 dark:bg-danger/15 text-sm text-danger-strong">
             <p className="font-semibold">No se pudo encender. Sigue apagado porque:</p>
             <ul className="mt-1 list-disc pl-5">
               {motivosEncendido.map((m) => (
@@ -382,7 +382,7 @@ export function EnvioForm({ envio, informes, eventos, plantillas, personas }: En
         ) : null}
 
         {erroresSueltos.length > 0 ? (
-          <div role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger-strong">
+          <div role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 dark:bg-danger/15 text-sm text-danger-strong">
             {erroresSueltos.map((m) => (
               <p key={m}>{m}</p>
             ))}

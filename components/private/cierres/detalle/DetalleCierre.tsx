@@ -210,7 +210,7 @@ function Franja({ aviso }: Readonly<{ aviso: AvisoFranja }>) {
       role="status"
       className={cn(
         "flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-4 py-3 text-sm",
-        aviso.tono === "peligro" ? "bg-danger-soft text-danger-strong" : "bg-warning-soft text-warning-strong dark:bg-warning/15",
+        aviso.tono === "peligro" ? "bg-danger-soft text-danger-strong dark:bg-danger/15" : "bg-warning-soft text-warning-strong dark:bg-warning/15",
       )}
     >
       <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />

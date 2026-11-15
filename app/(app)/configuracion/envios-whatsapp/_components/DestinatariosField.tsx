@@ -179,7 +179,7 @@ export function DestinatariosField({
       </div>
 
       {informeNoAptoAdminTienda && eligeAdminTienda ? (
-        <p role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger-strong">
+        <p role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 dark:bg-danger/15 text-sm text-danger-strong">
           Este informe no se puede enviar a un admin de tienda: lleva datos de varias tiendas. Quita el rol
           «Admin de tienda» y a las personas con ese rol.
         </p>

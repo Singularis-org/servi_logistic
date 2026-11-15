@@ -122,12 +122,12 @@ describe("SLT-170 — CifrasCierre: la caja destacada se lee en los dos temas", 
   }
 });
 
-// SLT-170 — CENSO de `bg-warning-soft` (#fef3c7, fijo). Cada lista de clases del árbol que lo use se
+// SLT-170 — CENSO de `bg-warning-soft` (#fef3c7) y `bg-danger-soft` (#fee2e2), los dos fijos. Cada lista de clases del árbol que lo use se
 // pinta tal cual en una caja con un texto sin clase propia (hereda la tinta de la lista o
 // `--foreground`) y se mide en los dos temas. Una lista sin `dark:bg-*` cae aquí: su tinta gira con
-// el tema y el fondo no. Quedan fuera las tintas arbitrarias (`text-[color-mix(…)]`, `Toast`), que
+// el tema y el fondo no. Quedan fuera los colores arbitrarios (`text-[color-mix(…)]`, `Toast`), que
 // este lector no resuelve; y los comentarios.
-describe("SLT-170 — censo de bg-warning-soft: toda lista se lee en los dos temas", () => {
+describe("SLT-170 — censo de bg-warning-soft y bg-danger-soft: toda lista se lee en los dos temas", () => {
   const RAIZ = path.resolve(__dirname, "../..");
   const listas: { archivo: string; clases: string }[] = [];
   function recorrer(dir: string) {
@@ -137,8 +137,8 @@ describe("SLT-170 — censo de bg-warning-soft: toda lista se lee en los dos tem
       else if (/\.(tsx?|ts)$/.test(e.name)) {
         for (const linea of readFileSync(p, "utf8").split("\n")) {
           if (/^\s*(\/\/|\*|\/\*)/.test(linea)) continue;
-          for (const m of linea.matchAll(/["`]([^"`]*\bbg-warning-soft\b[^"`]*)["`]/g)) {
-            if (/text-\[/.test(m[1]!)) continue;
+          for (const m of linea.matchAll(/["`]([^"`]*\bbg-(?:warning|danger)-soft\b[^"`]*)["`]/g)) {
+            if (/text-\[(?:color|#|rgb|var)/.test(m[1]!)) continue;
             listas.push({ archivo: path.relative(RAIZ, p).replaceAll("\\", "/"), clases: m[1]! });
           }
         }
@@ -149,7 +149,7 @@ describe("SLT-170 — censo de bg-warning-soft: toda lista se lee en los dos tem
   recorrer(path.join(RAIZ, "components"));
 
   it("el censo encuentra las listas (si baja de golpe, el lector se rompió)", () => {
-    expect(listas.length).toBeGreaterThanOrEqual(15);
+    expect(listas.length).toBeGreaterThanOrEqual(28);
   });
 
   for (const { archivo, clases } of listas) {
