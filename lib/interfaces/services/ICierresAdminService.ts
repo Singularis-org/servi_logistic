@@ -221,22 +221,25 @@ export interface ParteDeTiendaDescargaDTO {
  * del modelo nuevo para la hoja «Cierres», derivadas con `cifrasDelCierre` (las mismas del detalle).
  * Todo OBLIGATORIO (lección de SLT-123): un campo opcional que un camino no puebla se lee como «no hay».
  * Importes: STRING de escala 2, con su signo.
+ *
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R481): las cifras de la empresa
+ * admiten `null` = quien lee no tiene acceso total. Siguen OBLIGATORIAS (nullables, nunca opcionales).
  */
 export interface CifrasCierreDescargaDTO {
   /** Une con el item (`CierreAdminResumen.cierreId`); nunca es columna. */
   cierreId: string;
-  pagoTienda: string;
-  ganaLaTienda: string;
+  pagoTienda: string | null;
+  ganaLaTienda: string | null;
   /** `totalesIngreso.total` del detalle. */
-  totalFacturado: string;
-  ivaFacturado: string;
-  netoEmpresa: string;
+  totalFacturado: string | null;
+  ivaFacturado: string | null;
+  netoEmpresa: string | null;
   /** Numero de gestiones del cierre (Σ de los grupos del detalle). */
   gestiones: number;
   /** `(P + premios vivos) − pendiente`; `null` si el cierre no esta aprobado o el actor no es central (R382). */
   pagoEntregado: string | null;
-  /** En el orden del detalle (de mayor a menor pago a la tienda). */
-  partesPorTienda: ParteDeTiendaDescargaDTO[];
+  /** En el orden del detalle (de mayor a menor pago a la tienda); `null` sin acceso total (R481). */
+  partesPorTienda: ParteDeTiendaDescargaDTO[] | null;
 }
 
 /** SLT-140 (R378): lo que la rama `ok` del «Resumen» de cierres lleva ademas de las filas. */
@@ -427,6 +430,13 @@ export interface CierreGestionDescargaDTO {
   tarifaFaltante?: boolean;
   /** Dia calendario (zona de la empresa) del cargo vigente de fulfillment; solo central (F481). */
   fulfillmentCargadoDia?: string | null;
+  // --- SLT-161 (R482): solo los pone el recorte de quien no tiene acceso total, que deja
+  // `ingresoEmpresa` en `null` y saca aparte estos dos con el valor que tenian dentro del bloque.
+  // Aditivos y opcionales (como los de SLT-113): la central los lee de `ingresoEmpresa`.
+  /** El COD a recaudar de la gestion (P2 de SLT-154: dato de la satelite). */
+  montoCobrar?: string | null;
+  /** El modelo de tarifa de la gestion, para poblar las celdas de la satelite del modelo nuevo. */
+  tarifaModelo?: "viejo" | "nuevo" | null;
 }
 
 /**

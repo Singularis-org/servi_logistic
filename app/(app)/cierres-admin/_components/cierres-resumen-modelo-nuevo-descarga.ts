@@ -74,7 +74,8 @@ export function libroResumenCierres({
     }
     const folio = folioCierre(item.cierreId);
     filasCierres.push(filaCierreModeloNuevo({ folio, item, cifras: suyas }, audiencia));
-    for (const parte of suyas.partesPorTienda) {
+    // SLT-161 (R480, R481): sin acceso total el servidor manda `null`; T3 quita la hoja para la satelite.
+    for (const parte of suyas.partesPorTienda ?? []) {
       filasTiendas.push(filaPorTienda({ folio, parte }));
     }
   }

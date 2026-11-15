@@ -215,7 +215,7 @@ describe("SLT-140 — celdas de «Cierres» y «Por tienda» (R379-R382)", () =>
   });
 
   it("«Por tienda»: la tienda que pierde sale con su signo, nunca recortada a 0 (R380; SLT-169 R630)", () => {
-    expect(filaPorTienda({ folio: "ABCD1234", parte: CIFRAS_N1.partesPorTienda[1] })).toEqual({
+    expect(filaPorTienda({ folio: "ABCD1234", parte: (CIFRAS_N1.partesPorTienda ?? [])[1] })).toEqual({
       folio: "ABCD1234",
       tienda: "Tienda Sur",
       recaudado: "0.00",

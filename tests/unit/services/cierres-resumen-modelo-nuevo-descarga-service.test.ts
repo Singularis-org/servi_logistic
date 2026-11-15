@@ -235,16 +235,42 @@ describe("SLT-140 (b) R378/R383 — conjunto mixto", () => {
   });
 });
 
-describe("SLT-140 (c) R382 — la satelite no recibe «Pago entregado»", () => {
-  it("`pagoEntregado` es null en todas sus entradas, con el alcance de su zona", async () => {
+/**
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R481): lo que la satélite recibe de
+ * N1. Solo `cierreId` y el número de gestiones; lo demás es de la empresa, en `null`. «Pago entregado»
+ * ya era `null` para ella (SLT-140 R382).
+ */
+function cifrasN1Satelite(cierreId: string) {
+  return {
+    cierreId,
+    pagoTienda: null,
+    ganaLaTienda: null,
+    totalFacturado: null,
+    ivaFacturado: null,
+    netoEmpresa: null,
+    gestiones: 2, // G1 y G2
+    pagoEntregado: null,
+    partesPorTienda: null,
+  };
+}
+
+describe("SLT-161 (R481) — la satelite no recibe las cifras de la empresa (SLT-140 R382: ni «Pago entregado»)", () => {
+  it("R481: cifras de la empresa en null para la satélite", async () => {
     const { svc, findGestionesDeCierresEnAlcance } = montar(
-      [nuevo("s1", { destinoTipo: "bodega_satelite", destinoZonaId: "z-a" })],
-      { s1: GESTIONES_N1 },
+      [
+        nuevo("s1", { destinoTipo: "bodega_satelite", destinoZonaId: "z-a" }),
+        nuevo("s2", { destinoTipo: "bodega_satelite", destinoZonaId: "z-a", estado: "solicitado", resueltoAt: null }),
+      ],
+      { s1: GESTIONES_N1, s2: GESTIONES_N1 },
     );
     const r = await svc.listarHistoricoCierresAdminCompleto(SATELITE);
     if (r.status !== "ok") throw new Error(`status ${r.status}`);
-    expect(r.cifrasModeloNuevo).toEqual([cifrasN1("s1", null)]);
+    expect(r.cifrasModeloNuevo).toEqual([cifrasN1Satelite("s1")]);
     expect(findGestionesDeCierresEnAlcance.mock.calls[0][1]).toEqual({ destinoTipo: "bodega_satelite", destinoZonaId: "z-a" });
+    // Pendientes: el mismo corte (las dos pestañas pasan por `completoConCifras`).
+    const cola = await svc.listarPendientesCierresAdminCompleto(SATELITE);
+    if (cola.status !== "ok") throw new Error(`status ${cola.status}`);
+    expect(cola.cifrasModeloNuevo).toEqual([cifrasN1Satelite("s2")]);
   });
 });
 
