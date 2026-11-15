@@ -52,7 +52,6 @@ import {
   ganaLaTienda,
   gananciaEmpresa,
   netoEmpresa,
-  pagoTiendaEmpresa,
   paraLaCentral,
   partesPorTienda,
   totalesIngresoEmpresa,
@@ -511,12 +510,10 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         ivaFacturado: ivaFacturado(totalesIngreso),
         // Ganancia del dia de ESE mensajero: su ingreso sin IVA menos SU pago (snapshot).
         ganancia: gananciaEmpresa(sinIva, cd.resumen.totalPagoMensajero),
-        // Pago a la tienda de ESTE cierre_dia: lo que recibio menos lo que se le facturo.
-        pagoTienda: pagoTiendaEmpresa(
-          cd.resumen.totales.general,
-          totalesIngreso.fleteConIva,
-          totalesIngreso.comisionConIva,
-        ),
+        // SLT-169 R623: «Se le paga hoy» de ESTE cierre_dia = lo que recibio menos TODO lo que se
+        // le facturo (flete por rechazo incluido). MISMA definicion que `cifrasDelCierre`, sobre
+        // los datos de ESTE dia: la suma de los dias da el agregado de la bodega.
+        pagoTienda: ganaLaTienda(cd.resumen.totales.general, totalesIngreso.total),
         // Feature 393 (R15): los cuatro derivados de ESTE cierre_dia salen de SUS PROPIOS
         // snapshots y de SU propio desglose. Ninguno se deriva de un agregado ni de otro
         // nivel: si el dia usara el pago AGREGADO, el neto del dia mentiria y la suma de los
@@ -535,9 +532,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         // mensajero, asi que aqui el desglose de abajo sumaria hacia un total que no estaba en
         // ninguna pantalla. MISMA funcion que alli, sobre los datos de ESTE cierre_dia.
         //
-        // NO es `pagoTienda` —dos lineas mas arriba—: aquel no resta el flete por rechazo, porque
-        // ese flete nunca entro en lo recaudado y se le cobra aparte contra la wallet de la
-        // tienda. La diferencia entre los dos es exactamente `fleteDevolucionConIva` de este dia.
+        // Desde SLT-169 es ALIAS de igual valor que `pagoTienda` (se retira en P3 de SLT-169).
         ganaLaTienda: ganaLaTienda(cd.resumen.totales.general, totalesIngreso.total),
         // 💰 FICHA 396 (R19) — DE QUIEN ES CADA PARTE, en el nivel del MENSAJERO.
         //

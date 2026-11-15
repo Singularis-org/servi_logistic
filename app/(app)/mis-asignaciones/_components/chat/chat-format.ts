@@ -17,7 +17,7 @@ import { nombreDeEstado, type OrderStatusValue } from "@/lib/types/order-status"
 const CLASE_CHIP_POR_CODIGO: Partial<Record<OrderStatusValue, string>> = {
   en_reparto: "bg-info-soft text-info-strong",
   entregado: "bg-success-soft text-success-strong",
-  novedad: "bg-danger-soft text-danger-strong",
+  novedad: "bg-danger-soft text-danger-strong dark:bg-danger/15",
 };
 
 /** Color neutro de todo estado sin familia propia (antes, «Por recoger» y el cajón «Asignada»). */

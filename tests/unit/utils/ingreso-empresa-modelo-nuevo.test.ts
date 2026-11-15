@@ -392,7 +392,7 @@ describe("SLT-52 R25 — fleteEntregadoSinTarifa decide el 409", () => {
   });
 });
 
-describe("SLT-52 R29 — las cuatro identidades de partesPorTienda con fletes de reprogramado", () => {
+describe("SLT-52 R29 · SLT-169 R621/R635 — las identidades de partesPorTienda con fletes de reprogramado", () => {
   /** Plomeria: el derivado a la forma del DTO que lee `totalesIngresoEmpresa` (no es dinero nuevo). */
   function dto(input: OrdenIngresoInput): IngresoEmpresaDTO {
     const d = derivarIngresoOrden(input, NUEVO);
@@ -450,15 +450,17 @@ describe("SLT-52 R29 — las cuatro identidades de partesPorTienda con fletes de
   ];
 
   it("cifras por tienda escritas a mano", () => {
-    // A: pago 14900 - 3108.12 - 589.30 = 11202.58; gana 14900 - (3108.12+589.30+904.00) = 10298.58
-    // B: pago 10000 - 3108.12 = 6891.88; gana 10000 - (3108.12+1864.90) = 5026.98
+    // SLT-169 (R621): el pago resta TODO lo facturado, tambien el flete del reprogramado (modelo
+    // nuevo, R635); `ganaLaTienda` es alias de igual valor.
+    // A: 14900 - (3108.12+589.30+904.00) = 10298.58 (antes 11202.58)
+    // B: 10000 - (3108.12+1864.90) = 5026.98 (antes 6891.88)
     expect(partesPorTienda(GESTIONES)).toStrictEqual([
-      { tiendaId: "A", tiendaNombre: "A", recaudado: "14900.00", pagoTienda: "11202.58", ganaLaTienda: "10298.58" },
-      { tiendaId: "B", tiendaNombre: "B", recaudado: "10000.00", pagoTienda: "6891.88", ganaLaTienda: "5026.98" },
+      { tiendaId: "A", tiendaNombre: "A", recaudado: "14900.00", pagoTienda: "10298.58", ganaLaTienda: "10298.58" },
+      { tiendaId: "B", tiendaNombre: "B", recaudado: "10000.00", pagoTienda: "5026.98", ganaLaTienda: "5026.98" },
     ]);
   });
 
-  it("R10/R11/R12 + la cuarta (pagoTienda - ganaLaTienda = flete no descontable + IVA de esa tienda)", () => {
+  it("R10/R11/R12: la suma de las partes es el agregado (SLT-169: pago = recaudado − todo lo facturado)", () => {
     const partes = partesPorTienda(GESTIONES);
     const todas = totalesIngresoEmpresa(GESTIONES);
     const general = computeTotales(GESTIONES).general;
@@ -470,12 +472,13 @@ describe("SLT-52 R29 — las cuatro identidades de partesPorTienda con fletes de
     expect(todas.fleteConIva).toBe("6216.24");
     expect(todas.comisionConIva).toBe("589.30");
     expect(todas.total).toBe("9574.44");
+    // `pagoTiendaEmpresa` no cambia (la usa la ficha 347, R636 de SLT-169), pero los cierres ya no.
     expect(pagoTiendaEmpresa(general, todas.fleteConIva, todas.comisionConIva)).toBe("18094.46");
     expect(ganaLaTienda(general, todas.total)).toBe("15325.56");
-    expect(suma("pagoTienda")).toBe("18094.46"); // 11202.58 + 6891.88
-    expect(suma("ganaLaTienda")).toBe("15325.56"); // 10298.58 + 5026.98
+    expect(suma("pagoTienda")).toBe("15325.56"); // 10298.58 + 5026.98
+    expect(suma("ganaLaTienda")).toBe("15325.56"); // alias
     expect(suma("recaudado")).toBe("24900.00"); // 14900.00 + 10000.00
-    // Cuarta: A 11202.58 - 10298.58 = 904.00 (reprogramado); B 6891.88 - 5026.98 = 1864.90.
+    // Lo que ahora tambien se resta: A 904.00 (reprogramado); B 1864.90 (rechazo).
     expect(totalesIngresoEmpresa(GESTIONES.slice(0, 2)).fleteDevolucionConIva).toBe("904.00");
     expect(totalesIngresoEmpresa(GESTIONES.slice(2)).fleteDevolucionConIva).toBe("1864.90");
   });

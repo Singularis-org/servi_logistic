@@ -473,7 +473,7 @@ describe("ColaCierres · bodega satélite — «Solicitados»: tarjetas (R49, R2
     ).toEqual(["Por llegar a la central", "Recibido por la central (30 días)", "Falta por recibir"]);
     expect(caja("Por llegar a la central")).toHaveTextContent("₡436.963,27");
     expect(caja("Por llegar a la central")).toHaveTextContent("3 cierres pendientes de conciliar");
-    expect(caja("Por llegar a la central")).toHaveClass("bg-brand-soft");
+    expect(caja("Por llegar a la central")).toHaveClass("bg-accent");
     expect(caja("Recibido por la central (30 días)")).toHaveTextContent("₡53.500");
     expect(caja("Recibido por la central (30 días)")).toHaveTextContent("2 cierres de bodega");
     expect(caja("Falta por recibir")).toHaveTextContent("₡15.000");

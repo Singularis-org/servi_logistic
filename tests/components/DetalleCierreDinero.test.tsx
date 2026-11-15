@@ -17,8 +17,8 @@ import type {
 afterEach(cleanup);
 
 const PARTES_DOS_TIENDAS = [
-  { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "60000.00", pagoTienda: "56610.00", ganaLaTienda: "55480.00" },
-  { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "40000.00", pagoTienda: "37740.00", ganaLaTienda: "36610.00" },
+  { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "60000.00", pagoTienda: "55480.00", ganaLaTienda: "55480.00" },
+  { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "40000.00", pagoTienda: "36610.00", ganaLaTienda: "36610.00" },
 ];
 
 const MENSAJERO: DetalleMensajeroVista = {
@@ -34,7 +34,8 @@ const MENSAJERO: DetalleMensajeroVista = {
   totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
   totalPagoMensajero: "3000.00",
   empresa: {
-    pagoTienda: "94350.00",
+    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+    pagoTienda: "92090.00",
     cobradoSobreRecaudado: "5650.00",
     ganaLaTienda: "92090.00",
     totalIngresoBodegaRechazos: "500.00",
@@ -71,7 +72,7 @@ const BODEGA: DetalleBodegaVista = {
   totalIngresoBodegaRechazos: "500.00",
   paraLaCentral: "96500.00",
   efectivoCubreDescuentos: true,
-  pagoTienda: "94350.00",
+  pagoTienda: "92090.00",
   cobradoSobreRecaudado: "5650.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
@@ -134,15 +135,17 @@ describe("mensajero · central: las cuatro cifras y su contexto (R6, R7, R8)", (
     const cifras = screen.getByRole("group", { name: "Cifras del cierre" });
     expect(within(cifras).getAllByRole("group").map((g) => g.querySelector("[data-cifra]")?.textContent)).toEqual([
       "₡100.000",
-      "₡94.350",
+      "₡92.090",
       "₡3.000",
       "₡3.500",
     ]);
     expect(cifra("Recaudado")).toBe("₡100.000");
-    expect(cifra("Se le paga hoy a la tienda")).toBe("₡94.350");
+    expect(cifra("Se le paga hoy a la tienda")).toBe("₡92.090");
     expect(cifra("Pago al mensajero")).toBe("₡3.000");
     expect(cifra("Le queda a la empresa")).toBe("₡3.500");
-    expect(screen.getByText("2 tiendas · ganan en total ₡92.090")).toBeTruthy();
+    // SLT-169 (R625): el contexto es solo el número de tiendas; positiva, sin marca de deuda.
+    expect(screen.getByText("2 tiendas")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/en total|deben?\)/);
     expect(screen.getByText("19 gestiones · 1 ajustada")).toBeTruthy();
   });
 
@@ -159,23 +162,24 @@ describe("mensajero · «Dinero»: reparto, dos cuentas y por tienda (R14, R15)"
     verMensajero();
     const reparto = screen.getByRole("region", { name: "Reparto de lo recaudado" });
     expect(reparto.textContent).toContain("¿A dónde va lo recaudado?");
-    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡94.350");
-    expect(reparto.textContent).toContain("Sale de lo recaudado ₡5.650");
+    // SLT-169 (R624): lo de la tienda y TODO lo facturado.
+    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡92.090");
+    expect(reparto.textContent).toContain("Total facturado ₡7.910");
+    expect(reparto.textContent).not.toContain("Sale de lo recaudado");
   });
 
-  it("«Lo que se le factura a la tienda»: partidas, subtotal punteado, «+» y total en negrita", () => {
+  it("«Lo que se le factura a la tienda»: partidas, «+» y total en negrita, sin subtotal (SLT-169 R626)", () => {
     verMensajero();
     expect(lineas("Lo que se le factura a la tienda")).toEqual([
       ["Flete por entregado + IVA", "₡4.520"],
       ["Comisión COD + IVA", "₡1.130"],
-      ["Sale de lo recaudado", "₡5.650"],
       ["+ Flete por devolución a origen + IVA", "₡2.260"],
       ["Total facturado", "₡7.910"],
     ]);
     const cuenta = screen.getByRole("region", { name: "Lo que se le factura a la tienda" });
-    const sub = cuenta.querySelector('[data-tipo="subtotal"]')!;
+    expect(cuenta.querySelector('[data-tipo="subtotal"]')).toBeNull();
+    expect(cuenta.textContent).not.toContain("Sale de lo recaudado");
     const total = cuenta.querySelector('[data-tipo="total"]')!;
-    expect(sub.className).toContain("border-dashed");
     expect(total.className).toContain("font-bold");
     expect(total.className).not.toContain("border-dashed");
   });
@@ -198,9 +202,15 @@ describe("mensajero · «Dinero»: reparto, dos cuentas y por tienda (R14, R15)"
       .getAllByRole("row")
       .slice(1)
       .map((f) => [...f.children].map((c) => c.textContent));
+    // SLT-169 (R627): tres columnas; «Gana en total» se funde en «Se le paga hoy».
+    expect(within(porTienda).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
+      "Tienda",
+      "Recaudado",
+      "Se le paga hoy",
+    ]);
     expect(filas).toEqual([
-      ["Tienda Norte", "₡60.000", "₡56.610", "₡55.480"],
-      ["Tienda Sur", "₡40.000", "₡37.740", "₡36.610"],
+      ["Tienda Norte", "₡60.000", "₡55.480"],
+      ["Tienda Sur", "₡40.000", "₡36.610"],
     ]);
     cleanup();
     verMensajero({
@@ -209,6 +219,38 @@ describe("mensajero · «Dinero»: reparto, dos cuentas y por tienda (R14, R15)"
       empresa: { ...MENSAJERO.empresa!, partesPorTienda: PARTES_DOS_TIENDAS.slice(0, 1) },
     });
     expect(screen.queryByRole("region", { name: "Por tienda" })).toBeNull();
+  });
+});
+
+// SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (R627): la tienda de puros
+// rechazos sale negativa; su celda va en rojo y con «(la tienda debe)», la positiva no.
+describe("SLT-169 — «Por tienda» con una tienda que debe (R627)", () => {
+  const CON_DEUDA = [
+    { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "105295.05", ganaLaTienda: "105295.05" },
+    { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-13205.05", ganaLaTienda: "-13205.05" },
+  ];
+  function celdasHoy(): HTMLElement[] {
+    const porTienda = screen.getByRole("region", { name: "Por tienda" });
+    return within(porTienda)
+      .getAllByRole("row")
+      .slice(1)
+      .map((f) => f.children[2] as HTMLElement);
+  }
+
+  it("mensajero: la negativa en rojo con «(la tienda debe)»; la positiva sin rojo ni marca", () => {
+    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, partesPorTienda: CON_DEUDA } });
+    const [norte, sur] = celdasHoy();
+    expect(sur.textContent).toBe("-₡13.205,05 (la tienda debe)");
+    expect(sur.className).toContain("text-danger-strong");
+    expect(norte.textContent).toBe("₡105.295,05");
+    expect(norte.className).not.toContain("text-danger-strong");
+  });
+
+  it("bodega: la misma regla en la tabla del cierre de bodega", async () => {
+    await verBodega({ ...BODEGA, partesPorTienda: CON_DEUDA });
+    const [, sur] = celdasHoy();
+    expect(sur.textContent).toBe("-₡13.205,05 (la tienda debe)");
+    expect(sur.className).toContain("text-danger-strong");
   });
 });
 
@@ -233,7 +275,13 @@ describe("bodega: «Debe llegar a la central» y las tres cuentas (R6, R16)", ()
       ["− Gana la bodega satélite", "₡500"],
       ["Debe llegar a la central", "₡96.500"],
     ]);
-    expect(lineas("Lo que se le factura a la tienda").at(-1)).toEqual(["Total facturado", "₡7.910"]);
+    // SLT-169 (R626): sin «Sale de lo recaudado» también en bodega.
+    expect(lineas("Lo que se le factura a la tienda")).toEqual([
+      ["Flete por entregado + IVA", "₡4.520"],
+      ["Comisión COD + IVA", "₡1.130"],
+      ["+ Flete por devolución a origen + IVA", "₡2.260"],
+      ["Total facturado", "₡7.910"],
+    ]);
     expect(lineas("De lo facturado, le queda a la empresa")).toEqual([
       ["Total facturado", "₡7.910"],
       ["− IVA (no es de la empresa)", "₡910"],
@@ -263,11 +311,12 @@ describe("R9 — dentro de «Dinero», una cifra tiene un solo nombre", () => {
     return Object.fromEntries(Object.entries(vistos).map(([k, v]) => [k, [...v]]));
   }
 
-  it("mensajero: «Se le paga hoy a la tienda» y «Sale de lo recaudado», sin otro rótulo", () => {
+  it("mensajero: «Se le paga hoy a la tienda» y «Total facturado», sin otro rótulo", () => {
     verMensajero();
     const r = rotulosPorImporte();
-    expect(r["₡94.350"]).toEqual(["Se le paga hoy a la tienda"]);
-    expect(r["₡5.650"]).toEqual(["Sale de lo recaudado"]);
+    expect(r["₡92.090"]).toEqual(["Se le paga hoy a la tienda"]);
+    expect(r["₡7.910"]).toEqual(["Total facturado"]);
+    expect(r["₡5.650"]).toBeUndefined();
   });
 
   it("bodega: «Debe llegar a la central», «Pago a mensajeros» y «Gana la bodega satélite», sin otro rótulo", async () => {
@@ -318,7 +367,7 @@ describe("lo que NO se pinta (R9)", () => {
 // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.3, R266, R71) — con los
 // porcentajes del servidor el bloque «¿A dónde va lo recaudado?» dibuja la barra y el «(n %)» de cada
 // entrada, con el entero recibido tal cual; sin ellos, solo la leyenda. Literales escritos a mano
-// (MA [94, 6]; BX [97, 3, 0], PA1: la parte de ₡500 queda «(0 %)»).
+// (MA [92, 8] desde SLT-169; BX [97, 3, 0], PA1: la parte de ₡500 queda «(0 %)»).
 describe("SLT-111 — la barra del reparto con los porcentajes del servidor (R266)", () => {
   function franjas(): string[] {
     const reparto = screen.getByRole("region", { name: "Reparto de lo recaudado" });
@@ -329,10 +378,10 @@ describe("SLT-111 — la barra del reparto con los porcentajes del servidor (R26
     return [...reparto.querySelectorAll("li")].map((li) => li.textContent ?? "");
   }
 
-  it("mensajero con [94, 6]: dos franjas de 94 % y 6 % y el «(n %)» en la leyenda", () => {
-    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: [94, 6] } });
-    expect(franjas()).toEqual(["94%", "6%"]);
-    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡94.350 (94 %)", "Sale de lo recaudado ₡5.650 (6 %)"]);
+  it("mensajero con [92, 8]: dos franjas de 92 % y 8 % y el «(n %)» en la leyenda", () => {
+    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: [92, 8] } });
+    expect(franjas()).toEqual(["92%", "8%"]);
+    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡92.090 (92 %)", "Total facturado ₡7.910 (8 %)"]);
   });
 
   it("bodega con [97, 3, 0]: tres franjas y «(0 %)» en «Gana la bodega satélite ₡500»", async () => {
@@ -346,16 +395,16 @@ describe("SLT-111 — la barra del reparto con los porcentajes del servidor (R26
   });
 
   it("el cliente pinta el entero recibido, sin derivarlo de los importes (R71)", () => {
-    // [61, 39] no sale de ₡94.350 / ₡5.650: si el cliente lo recalculara, no aparecería.
+    // [61, 39] no sale de ₡92.090 / ₡7.910: si el cliente lo recalculara, no aparecería.
     verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: [61, 39] } });
     expect(franjas()).toEqual(["61%", "39%"]);
-    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡94.350 (61 %)", "Sale de lo recaudado ₡5.650 (39 %)"]);
+    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡92.090 (61 %)", "Total facturado ₡7.910 (39 %)"]);
   });
 
   it("con `null` o sin el campo: ninguna franja y ningún «%», solo la leyenda con los importes", async () => {
     verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, porcentajesReparto: null } });
     expect(franjas()).toEqual([]);
-    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡94.350", "Sale de lo recaudado ₡5.650"]);
+    expect(leyenda()).toEqual(["Se le paga hoy a la tienda ₡92.090", "Total facturado ₡7.910"]);
     cleanup();
     await verBodega({ ...BODEGA, porcentajesReparto: null });
     expect(franjas()).toEqual([]);

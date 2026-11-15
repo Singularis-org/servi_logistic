@@ -70,7 +70,8 @@ const V1 = cierre({
 
 const CIFRAS_N1: CifrasCierreDescargaDTO = {
   cierreId: N1.cierreId,
-  pagoTienda: "94350.00",
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias en el DTO.
+  pagoTienda: "92090.00",
   ganaLaTienda: "92090.00",
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
@@ -79,7 +80,7 @@ const CIFRAS_N1: CifrasCierreDescargaDTO = {
   pagoEntregado: "1200.00",
   partesPorTienda: [
     { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-    { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+    { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" },
   ],
 };
 const CIFRAS_N2: CifrasCierreDescargaDTO = { ...CIFRAS_N1, cierreId: N2.cierreId, pagoEntregado: null };
@@ -91,9 +92,10 @@ const MARCADAS: DescargaColumna[] = [
   { clave: "motivo", encabezado: "Motivo" },
 ];
 
+// SLT-169 (R628): 19 columnas; una sola de la tienda, «Se le paga a la tienda», sin «Gana la tienda en total».
 const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
-  "Transferencia", "Recaudado", "Se le paga a la tienda", "Gana la tienda en total",
+  "Transferencia", "Recaudado", "Se le paga a la tienda",
   "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
   "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado",
 ];
@@ -109,8 +111,8 @@ const FILA_N1_CENTRAL = {
   sinpe: "30000.00",
   transferencia: "0.00",
   recaudado: "100000.00",
-  pagoTienda: "94350.00",
-  ganaLaTienda: "92090.00",
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias en el DTO.
+  pagoTienda: "92090.00",
   pagoMensajero: "3000.00",
   pagoBodega: "500.00",
   totalFacturado: "7910.00",
@@ -122,21 +124,29 @@ const FILA_N1_CENTRAL = {
 };
 
 const FILAS_TIENDA_N1 = [
-  { folio: "ABCD1234", tienda: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-  { folio: "ABCD1234", tienda: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+  { folio: "ABCD1234", tienda: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+  { folio: "ABCD1234", tienda: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" },
 ];
 
 // --- Columnas ---------------------------------------------------------------------------------
 
 describe("SLT-140 — columnas de «Cierres» y «Por tienda» (R379, R382)", () => {
-  it("«Cierres»: 20 columnas para la central, en el orden de R379", () => {
-    expect(columnasCierresModeloNuevoPara("admin").map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
+  it("«Cierres»: 19 columnas para la central, en el orden de R379, sin «Gana la tienda en total» (SLT-169 R628)", () => {
+    const encabezados = columnasCierresModeloNuevoPara("admin").map((c) => c.encabezado);
+    expect(encabezados).toHaveLength(19);
+    expect(encabezados).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
+    expect(encabezados).not.toContain("Gana la tienda en total");
   });
 
-  it("«Cierres»: 19 para la satélite, sin «Pago entregado» (R382)", () => {
+  it("«Cierres»: 18 para la satélite, sin «Pago entregado» y sin ninguna columna nueva (R382; SLT-169 R634)", () => {
     const encabezados = columnasCierresModeloNuevoPara("satelite").map((c) => c.encabezado);
-    expect(encabezados).toHaveLength(19);
-    expect(encabezados).toEqual(ENCABEZADOS_CIERRES_CENTRAL.slice(0, 19));
+    expect(encabezados).toHaveLength(18);
+    expect(encabezados).toEqual([
+      "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
+      "Transferencia", "Recaudado", "Se le paga a la tienda",
+      "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
+      "Le queda a la empresa", "Gestiones", "Pagos ajustados",
+    ]);
     expect(encabezados).not.toContain("Pago entregado");
   });
 
@@ -145,19 +155,18 @@ describe("SLT-140 — columnas de «Cierres» y «Por tienda» (R379, R382)", ()
       .filter((c) => c.formato === "monto")
       .map((c) => c.encabezado);
     expect(montos).toEqual([
-      "Efectivo", "SINPE", "Transferencia", "Recaudado", "Se le paga a la tienda", "Gana la tienda en total",
+      "Efectivo", "SINPE", "Transferencia", "Recaudado", "Se le paga a la tienda",
       "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
       "Le queda a la empresa", "Pago entregado",
     ]);
   });
 
-  it("«Por tienda»: Folio · Tienda · Recaudado · Se le paga hoy · Gana en total (R379)", () => {
+  it("«Por tienda»: Folio · Tienda · Recaudado · Se le paga hoy, sin «Gana en total» (R379; SLT-169 R630)", () => {
     expect(COLUMNAS_POR_TIENDA).toEqual([
       { clave: "folio", encabezado: "Folio" },
       { clave: "tienda", encabezado: "Tienda" },
       { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
       { clave: "pagoTienda", encabezado: "Se le paga hoy", formato: "monto" },
-      { clave: "ganaLaTienda", encabezado: "Gana en total", formato: "monto" },
     ]);
   });
 });
@@ -198,15 +207,20 @@ describe("SLT-140 — celdas de «Cierres» y «Por tienda» (R379-R382)", () =>
       pagoEntregado: "66.06",
     };
     const fila = filaCierreModeloNuevo({ folio: "ABCD1234", item: N1, cifras: senuelo }, "admin");
-    expect([fila.pagoTienda, fila.ganaLaTienda, fila.totalFacturado, fila.ivaFacturado, fila.netoEmpresa, fila.pagoEntregado]).toEqual([
-      "11.01", "22.02", "33.03", "44.04", "55.05", "66.06",
+    expect([fila.pagoTienda, fila.totalFacturado, fila.ivaFacturado, fila.netoEmpresa, fila.pagoEntregado]).toEqual([
+      "11.01", "33.03", "44.04", "55.05", "66.06",
     ]);
+    // SLT-169 (R628): el alias del DTO no viaja a la hoja.
+    expect(Object.keys(fila)).not.toContain("ganaLaTienda");
   });
 
-  it("«Por tienda»: la tienda que pierde sale con su signo, nunca recortada a 0 (R380)", () => {
-    expect(
-      filaPorTienda({ folio: "ABCD1234", parte: CIFRAS_N1.partesPorTienda[1] }),
-    ).toEqual(FILAS_TIENDA_N1[1]);
+  it("«Por tienda»: la tienda que pierde sale con su signo, nunca recortada a 0 (R380; SLT-169 R630)", () => {
+    expect(filaPorTienda({ folio: "ABCD1234", parte: CIFRAS_N1.partesPorTienda[1] })).toEqual({
+      folio: "ABCD1234",
+      tienda: "Tienda Sur",
+      recaudado: "0.00",
+      pagoTienda: "-2260.00",
+    });
   });
 });
 
@@ -234,7 +248,7 @@ describe("SLT-140 — `libroResumenCierres` (R377, R378, R381)", () => {
   it("mixto: tercera hoja «Cierres modelo anterior» con las columnas MARCADAS y la fila de hoy (R378)", () => {
     const hojas = libroResumenCierres({ ...base, items: [V1, N1, N2], cifras: [CIFRAS_N1, CIFRAS_N2] });
     expect(hojas?.map((h) => h.titulo)).toEqual(["Cierres", "Por tienda", "Cierres modelo anterior"]);
-    // «Cierres» no depende de las marcadas: las 20 de siempre.
+    // «Cierres» no depende de las marcadas: las 19 de siempre (SLT-169).
     expect(hojas?.[0].columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
     // Orden del listado entre los nuevos; ningún cierre en dos hojas.
     expect(hojas?.[0].filas.map((f) => f.folio)).toEqual(["ABCD1234", "BEEF0002"]);

@@ -922,9 +922,9 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
       // SL-39: los conceptos de esta fixtura no llevan IVA (`ivaFlete` & co. a "0.00").
       ivaFacturado: "0.00",
       ganancia: "13635.03",
-      // 126089.17 − 23000.33 − 4134.50 (el flete por devolución a origen NO se resta: no salió
-      // de lo recaudado, y por eso existe la línea puente).
-      pagoTienda: "98954.34",
+      // SLT-169 (R623): 126089.17 − 27635.58, todo lo facturado (antes no restaba el flete por
+      // devolución a origen y existía la línea puente «Sale de lo recaudado»).
+      pagoTienda: "98453.59",
       cobradoSobreRecaudado: "27134.83",
       netoEmpresa: "13384.78",
       // Ficha 396 (D1) — el agregado que le faltaba a este contrato: 126.089,17 - 27.635,58.
@@ -982,26 +982,22 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
   const montoDe = (cuenta: HTMLElement, tipo: "subtotal" | "total") =>
     cuenta.querySelector(`[data-tipo="${tipo}"] [data-monto]`)!.textContent!;
 
-  it("R6 — flete + comisión = lo que sale de lo recaudado", async () => {
-    // SLT-104: «Para la tienda» no es línea del Dinero de bodega (SLT-95 R16, canvas F6); la resta que
-    // sale de lo recaudado es el subtotal de «Lo que se le factura a la tienda».
+  it("R6/R7 — flete + comisión + flete por devolución a origen = lo facturado, sin línea puente (SLT-169 R626)", async () => {
+    // SLT-169: «Se le paga hoy a la tienda» ya resta todo lo facturado; el subtotal «Sale de lo
+    // recaudado» (la línea puente de la 393) no se pinta.
     const { factura } = await abrir();
+    cierraLaCuenta(factura, "detalle de bodega: lo facturado");
+    expect(factura.querySelector('[data-tipo="subtotal"]')).toBeNull();
+    expect(factura.textContent).not.toContain("Sale de lo recaudado");
     laCuentaCierra(
-      [importeTrasEn(factura, "Flete por entregado + IVA"), importeTrasEn(factura, "Comisión COD + IVA")],
-      montoDe(factura, "subtotal"),
-      "detalle de bodega: sale de lo recaudado",
+      [
+        importeTrasEn(factura, "Flete por entregado + IVA"),
+        importeTrasEn(factura, "Comisión COD + IVA"),
+        importeTrasEn(factura, "Flete por devolución a origen + IVA"),
+      ],
+      montoDe(factura, "total"),
+      "detalle de bodega: total facturado",
     );
-  });
-
-  it("R7 — lo que sale de lo recaudado + flete por devolución a origen = lo facturado", async () => {
-    const { factura } = await abrir();
-    cierraLaCuenta(factura, "detalle de bodega: línea puente");
-    // LA RAZÓN DE SER DE LA LÍNEA PUENTE, medida: lo facturado NO es lo que sale de lo recaudado; el
-    // hueco es exactamente el flete por devolución a origen.
-    const sale = centimosPintados(montoDe(factura, "subtotal"));
-    const facturado = centimosPintados(montoDe(factura, "total"));
-    expect(facturado).not.toBe(sale);
-    expect(facturado - sale).toBe(centimosDelServidor("500.75"));
   });
 
   it("R8 — facturado − IVA − mensajeros − gana la bodega = le queda a la empresa (SL-39)", async () => {
@@ -1337,8 +1333,8 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     totales: TOTALES,
     totalPagoMensajero: "14000.55",
     empresa: {
-      // 126089.17 − 27134.83
-      pagoTienda: "98954.34",
+      // SLT-169 (R620): 126089.17 − 27635.58, todo lo facturado; `ganaLaTienda` es su alias.
+      pagoTienda: "98453.59",
       cobradoSobreRecaudado: "27134.83",
       ganaLaTienda: "98453.59",
       totalIngresoBodegaRechazos: "250.25",
@@ -1377,7 +1373,7 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     // 126089.17 − 14000.55 − 250.25
     paraLaCentral: "111838.37",
     efectivoCubreDescuentos: true,
-    pagoTienda: "98954.34",
+    pagoTienda: "98453.59",
     cobradoSobreRecaudado: "27134.83",
     ivaFacturado: "3179.47",
     netoEmpresa: "10205.31",
@@ -1441,15 +1437,15 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     return screen.getByRole("group", { name: rotulo }).querySelector("[data-cifra]")?.textContent ?? "";
   }
 
-  it("recaudado − sale de lo recaudado = se le paga hoy a la tienda", () => {
+  it("recaudado − total facturado = se le paga hoy a la tienda (SLT-169 R620, R624)", () => {
     verMensajero();
-    const sale = screen
+    const facturado = screen
       .getByRole("region", { name: "Lo que se le factura a la tienda" })
-      .querySelector('[data-tipo="subtotal"] [data-monto]')!.textContent!;
-    laCuentaCierra([cifra("Recaudado"), `-${sale}`], cifra("Se le paga hoy a la tienda"), "detalle único: se le paga hoy");
+      .querySelector('[data-tipo="total"] [data-monto]')!.textContent!;
+    laCuentaCierra([cifra("Recaudado"), `-${facturado}`], cifra("Se le paga hoy a la tienda"), "detalle único: se le paga hoy");
   });
 
-  it("flete + comisión = sale de lo recaudado; + no entrega = total facturado", () => {
+  it("flete + comisión + no entrega = total facturado", () => {
     verMensajero();
     laCuentaDelDetalleCierra("Lo que se le factura a la tienda");
   });
@@ -1466,6 +1462,41 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     laCuentaDelDetalleCierra("Lo que se le factura a la tienda");
     laCuentaDelDetalleCierra("De lo facturado, le queda a la empresa");
     expect(centimosPintados(cifra("Debe llegar a la central"))).toBe(centimosDelServidor("111838.37"));
+  });
+
+  // SLT-169 (R633): sin regresión de SLT-154. A la satélite el servidor no le manda el dinero de la
+  // empresa (`empresa: null`): ni la cifra nueva, ni «Total facturado», ni el reparto con esas partes,
+  // ni «Por tienda».
+  it("R633 — la satélite no ve «Se le paga hoy a la tienda», «Total facturado» ni «Por tienda»", () => {
+    render(
+      <DetalleCierre
+        tipo="mensajero"
+        detalle={{
+          ...MENSAJERO,
+          empresa: null,
+          haciaLaCentral: {
+            totales: TOTALES,
+            pago: "14000.55",
+            ganaBodega: "250.25",
+            paraLaCentral: "111838.37",
+            efectivoCubreDescuentos: true,
+            porcentajes: null,
+            modeloNuevo: false,
+          },
+        }}
+        audiencia="satelite"
+        modo="solo lectura"
+        marco="pagina"
+        pestanas={{ gestiones: null, rechazos: null }}
+        acciones={{}}
+      />,
+    );
+    const texto = document.body.textContent ?? "";
+    for (const ajeno of ["Se le paga hoy", "Total facturado", "Lo que se le factura", "(la tienda debe)", "₡98.453,59", "₡27.635,58"]) {
+      expect(texto, ajeno).not.toContain(ajeno);
+    }
+    expect(screen.queryByRole("region", { name: "Por tienda" })).toBeNull();
+    expect(document.querySelector('[data-cifra="paraTienda"]')).toBeNull();
   });
 
   it("CONTRAPRUEBA: con una línea del doble cambiada un céntimo, la cuenta deja de cerrar", () => {
