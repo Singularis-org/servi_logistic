@@ -35,9 +35,9 @@ import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
  *
  * Cuentas a mano (las mismas en `progress/impl_SLT-154.md > T1`):
  *   A: facturado 2 260 + 1 695 = 3 955; IVA 260 + 195 = 455; sin IVA 3 500.
- *      Le queda a la empresa 3 500 − 700 − 100 = 2 700. Se le paga a la tienda 3 000 − 2 260 = 740.
- *      Gana la tienda 3 000 − 3 955 = −955. Reparto [tienda 740, empresa 2 260] / 3 000:
- *      24,67 → 24 y 75,33 → 75 (suman 99; restos 0,67 y 0,33: el punto va a la tienda) = [25, 75].
+ *      Le queda a la empresa 3 500 − 700 − 100 = 2 700. Se le paga a la tienda (SLT-169: todo lo
+ *      facturado) 3 000 − 3 955 = −955, igual que «gana la tienda». Reparto [tienda −955, empresa
+ *      3 955]: una parte negativa → `null` (antes [740, 2 260] = [25, 75]).
  *      Debe llegar a la central 3 000 − 700 − 100 = 2 200; efectivo 500 < 700 + 100 → NO cubre
  *      (aunque el general 3 000 si alcanzaria: la regla mira el efectivo).
  *      Reparto [2 200, 700, 100] / 3 000: 73,33 / 23,33 / 3,33 → pisos 73, 23, 3 (99); los tres
@@ -47,7 +47,7 @@ import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
  *   N: debe llegar 500 − 5 000 − 0 = −4 500; efectivo 0 < 5 000 → no cubre.
  *   BX: facturado 3 955 + 2 260 + 3 955 = 10 170; IVA 455 + 260 + 455 = 1 170; sin IVA 9 000.
  *       Le queda a la empresa 9 000 − 6 500 − 100 = 2 400. Se le paga a las tiendas
- *       4 400 − (2 260 + 2 260 + 3 955) = −4 075. Debe llegar 4 400 − 6 500 − 100 = −2 200.
+ *       4 400 − 10 170 = −5 770 (SLT-169; antes −4 075). Debe llegar 4 400 − 6 500 − 100 = −2 200.
  *       La central debe: efectivo de A y B = 1 400; pagos [700, 800]: 700 se paga, 700 + 800 =
  *       1 500 > 1 400 → 800 queda = «800.00». (Contando N: [700, 800, 5 000] → 5 800.)
  */
@@ -484,21 +484,22 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
     expect(porId(sat)).toEqual(porId(central));
   });
 
-  it("R465: el maestro recibe los dos detalles con las cifras de la empresa de antes", async () => {
+  it("R465: el maestro recibe los dos detalles con las cifras de la empresa (SLT-169: pago neto de todo lo facturado)", async () => {
     const bodega = await verBodega(S.maestro);
     expect(bodega.netoEmpresa).toBe("2400.00"); // 9 000 sin IVA − 6 500 − 100
-    expect(bodega.pagoTienda).toBe("-4075.00"); // 4 400 − (2 260 + 2 260 + 3 955)
+    expect(bodega.pagoTienda).toBe("-5770.00"); // SLT-169 R623: 4 400 − 10 170 (antes −4 075)
     expect(bodega.totalesIngreso?.total).toBe("10170.00"); // 3 955 + 2 260 + 3 955
     const diaA = bodega.cierres.find((c) => c.cierreDiaId === S.cierre.A);
     expect(diaA?.netoEmpresa).toBe("2700.00"); // 3 500 − 700 − 100
-    expect(diaA?.pagoTienda).toBe("740.00"); // 3 000 − 2 260
+    expect(diaA?.pagoTienda).toBe("-955.00"); // SLT-169 R623: 3 000 − 3 955 (antes 740)
 
     const mensajero = await verMensajero(S.maestro, S.cierre.A);
     expect(mensajero.netoEmpresa).toBe("2700.00");
-    expect(mensajero.pagoTienda).toBe("740.00");
-    expect(mensajero.ganaLaTienda).toBe("-955.00"); // 3 000 − 3 955
+    expect(mensajero.pagoTienda).toBe("-955.00"); // SLT-169 R620/R622: con su signo
+    expect(mensajero.ganaLaTienda).toBe("-955.00"); // 3 000 − 3 955 (alias)
     expect(mensajero.ivaFacturado).toBe("455.00"); // 260 + 195
-    expect(mensajero.porcentajesReparto).toEqual([25, 75]);
+    // SLT-169 R624: con el pago a la tienda negativo, el reparto va sin porcentajes (antes [25, 75]).
+    expect(mensajero.porcentajesReparto).toBeNull();
 
     const gestiones = [...bodega.cierres.flatMap((c) => gestionesDe(c.grupos)), ...gestionesDe(mensajero.grupos)];
     const gA1 = gestiones.filter((g) => g.gestionId === S.gestion.gA1);

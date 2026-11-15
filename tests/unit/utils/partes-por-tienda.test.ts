@@ -4,7 +4,6 @@ import type { GestionResultado, MetodoPagoValue } from "@prisma/client";
 
 import {
   partesPorTienda,
-  pagoTiendaEmpresa,
   ganaLaTienda,
   totalesIngresoEmpresa,
   type GestionDeTienda,
@@ -46,10 +45,6 @@ function suma(montos: readonly string[]): string {
     .toFixed(2);
 }
 
-/** Resta money-safe, para la CUARTA identidad. */
-function resta(a: string, b: string): string {
-  return new Prisma.Decimal(a).minus(b).toFixed(2);
-}
 
 /**
  * El desglose congelado de UNA gestión, con TODOS sus campos escritos a mano —incluidos los
@@ -111,8 +106,8 @@ function gestion(
 
 /**
  * Un cierre de UN mensajero con órdenes de DOS tiendas. Está construido a propósito para que
- * **una tenga rechazos y la otra no**: si las dos tuvieran flete por devolución a origen cero, la CUARTA
- * identidad daría `0.00 === 0.00` en las dos y el test pasaría sin comprobar nada.
+ * **una tenga rechazos y la otra no**: si las dos tuvieran flete por devolución a origen cero, un
+ * pago que olvidara restarlo (SLT-169 R621) daría la misma cifra y el test no lo vería.
  *
  *  · Tienda Norte — una entrega de 100.000,00 y UN RECHAZO (flete de devolución 1.500 + IVA 195)
  *  · Tienda Sur   — una entrega de  40.000,00 y NINGÚN rechazo
@@ -169,26 +164,29 @@ const CIERRE_DOS_TIENDAS = [NORTE_ENTREGA, NORTE_RECHAZO, SUR_ENTREGA];
  * si alguien lo sustituyera por la salida de `partesPorTienda`, todos los tests de abajo
  * quedarían siempre verdes y no comprobarían nada.
  *
+ * Desde SLT-169 (R621) `pagoTienda` resta TODO lo facturado a la tienda, flete por rechazo
+ * incluido, y `ganaLaTienda` es su alias de igual valor:
+ *
  *   Norte · recaudado 100.000,00
- *           pagoTienda    100.000,00 − 2.825,00 − 3.390,00 = 93.785,00
- *           ganaLaTienda  100.000,00 − (6.215,00 + 1.695,00) = 92.090,00
+ *           pagoTienda    100.000,00 − (6.215,00 + 1.695,00) = 92.090,00
+ *           ganaLaTienda  92.090,00 (alias)
  *   Sur   · recaudado  40.000,00
- *           pagoTienda     40.000,00 − 2.260,00 − 1.356,00 = 36.384,00
- *           ganaLaTienda   40.000,00 − 3.616,00 = 36.384,00
+ *           pagoTienda     40.000,00 − 3.616,00 = 36.384,00
+ *           ganaLaTienda   36.384,00 (alias)
+ *
+ * (Con la definición anterior —sin el flete por rechazo— Norte daba 93.785,00.)
  */
 const NORTE_RECAUDADO = "100000.00";
-const NORTE_PAGO = "93785.00";
+const NORTE_PAGO = "92090.00";
 const NORTE_GANA = "92090.00";
-const NORTE_FLETE_RECHAZO_CON_IVA = "1695.00";
 
 const SUR_RECAUDADO = "40000.00";
 const SUR_PAGO = "36384.00";
 const SUR_GANA = "36384.00";
-const SUR_FLETE_RECHAZO_CON_IVA = "0.00";
 
 /** Y los agregados del MISMO cierre, también a mano. */
 const AGREGADO_RECAUDADO = "140000.00"; // 100.000,00 + 40.000,00
-const AGREGADO_PAGO = "130169.00"; // 140.000,00 − 5.085,00 − 4.746,00
+const AGREGADO_PAGO = "128474.00"; // 140.000,00 − 11.526,00 (SLT-169: todo lo facturado)
 const AGREGADO_GANA = "128474.00"; // 140.000,00 − 11.526,00
 
 /* -------------------------------------------------------------------------- */
@@ -248,8 +246,8 @@ describe("396/R4 — dos tiendas, sus TRES cifras cada una", () => {
   });
 });
 
-describe("396/R10 — la suma de lo que se paga a cada tienda ES el agregado", () => {
-  it("Σ pagoTienda === el «Pago a tienda» del cierre entero, al céntimo", () => {
+describe("396/R10 · SLT-169 R621 — la suma de lo que se paga a cada tienda ES el agregado", () => {
+  it("Σ pagoTienda === el «Se le paga hoy» del cierre entero, al céntimo", () => {
     const partes = partesPorTienda(CIERRE_DOS_TIENDAS);
 
     // (1) La suma de las partes, contra el literal.
@@ -259,11 +257,7 @@ describe("396/R10 — la suma de lo que se paga a cada tienda ES el agregado", (
     //     contra el MISMO literal. Los dos lados anclados a la misma cifra escrita a mano: si
     //     cualquiera de los dos se mueve, esto se entera.
     const todas = totalesIngresoEmpresa(CIERRE_DOS_TIENDAS);
-    const agregado = pagoTiendaEmpresa(
-      computeTotales(CIERRE_DOS_TIENDAS).general,
-      todas.fleteConIva,
-      todas.comisionConIva,
-    );
+    const agregado = ganaLaTienda(computeTotales(CIERRE_DOS_TIENDAS).general, todas.total);
     expect(agregado).toBe(AGREGADO_PAGO);
   });
 });
@@ -289,32 +283,43 @@ describe("396/R12 — la suma de lo recaudado por tienda ES el total general", (
   });
 });
 
-describe("396 — LA CUARTA IDENTIDAD, por tienda: pagoTienda − ganaLaTienda === su flete por devolución a origen", () => {
+describe("SLT-169 R621 — por tienda, lo que se le paga resta SU flete por rechazo", () => {
   /**
-   * ⚠️ ES LA QUE MÁS PROTEGE. Hace imposible derivar una de las dos cifras de pago con el
-   * subconjunto equivocado sin que se note: si `ganaLaTienda` de una tienda saliera del `total`
-   * AGREGADO en vez del suyo, esta resta dejaría de dar su flete por devolución a origen.
-   *
-   * Y necesita **una tienda con rechazos y otra sin ellos**: si las dos dieran cero, el test
-   * pasaría sin comprobar nada. Por eso el fixture es el que es.
+   * Sustituye a la antigua CUARTA identidad de la 396 (`pagoTienda − ganaLaTienda === flete por
+   * rechazo`): desde SLT-169 las dos cifras son la misma. Necesita **una tienda con rechazos y
+   * otra sin ellos**: si las dos dieran cero de flete por rechazo, un pago que no lo restara
+   * pasaría igual.
    */
-  it("Norte, que SÍ tuvo un rechazo, difiere en exactamente 1.695,00", () => {
-    const partes = partesPorTienda(CIERRE_DOS_TIENDAS);
-    const norte = partes.find((p) => p.tiendaId === "t-norte");
-
+  it("Norte, que SÍ tuvo un rechazo: 100.000,00 − 6.215,00 − 1.695,00 = 92.090,00 (no 93.785,00)", () => {
+    const norte = partesPorTienda(CIERRE_DOS_TIENDAS).find((p) => p.tiendaId === "t-norte");
     expect(norte).toBeDefined();
-    expect(resta(norte!.pagoTienda, norte!.ganaLaTienda)).toBe(NORTE_FLETE_RECHAZO_CON_IVA);
-    // Y no es cero: el control que impide que este test pase por vacío.
-    expect(NORTE_FLETE_RECHAZO_CON_IVA).not.toBe("0.00");
+    expect(norte!.pagoTienda).toBe("92090.00");
+    expect(norte!.pagoTienda).not.toBe("93785.00");
   });
 
-  it("Sur, que NO tuvo rechazos, no difiere: las dos cifras coinciden", () => {
-    const partes = partesPorTienda(CIERRE_DOS_TIENDAS);
-    const sur = partes.find((p) => p.tiendaId === "t-sur");
+  it("y `ganaLaTienda` es alias de igual valor en las dos tiendas", () => {
+    for (const p of partesPorTienda(CIERRE_DOS_TIENDAS)) {
+      expect(p.ganaLaTienda).toBe(p.pagoTienda);
+    }
+  });
 
-    expect(sur).toBeDefined();
-    expect(resta(sur!.pagoTienda, sur!.ganaLaTienda)).toBe(SUR_FLETE_RECHAZO_CON_IVA);
-    expect(sur!.pagoTienda).toBe(sur!.ganaLaTienda);
+  it("el orden es por la cifra NUEVA: los rechazos pueden bajar a una tienda por debajo de otra", () => {
+    // Oeste: 10.000,00 recaudados, 1.000,00 facturado de la entrega y 6.000,00 de rechazos.
+    //   antes (sin el flete por rechazo): 9.000,00 · desde SLT-169: 3.000,00
+    // Este: 5.000,00 recaudados y nada facturado: 5.000,00 con las dos definiciones.
+    // Con la definición vieja Oeste iba primero; con la nueva va Este.
+    const oeste = [
+      gestion("t-oeste", "Oeste", "entregado", [{ metodo: "efectivo", monto: "10000.00" }],
+        ingreso({ flete: "1000.00", ivaFlete: "0.00", fleteConIva: "1000.00", total: "1000.00" })),
+      gestion("t-oeste", "Oeste", "devolucion_a_origen_por_rechazo", [],
+        ingreso({ fleteDevolucion: "6000.00", ivaFleteDevolucion: "0.00", fleteDevolucionConIva: "6000.00", total: "6000.00" })),
+    ];
+    const este = gestion("t-este", "Este", "entregado", [{ metodo: "efectivo", monto: "5000.00" }], null);
+    const partes = partesPorTienda([...oeste, este]);
+    expect(partes.map((p) => [p.tiendaId, p.pagoTienda])).toEqual([
+      ["t-este", "5000.00"],
+      ["t-oeste", "3000.00"],
+    ]);
   });
 });
 
@@ -357,7 +362,7 @@ describe("396/R9 — la tienda que sólo trajo RECHAZOS entra igual, y cuenta", 
     }),
   );
 
-  it("aparece con recaudado 0,00, pagoTienda 0,00 y ganaLaTienda NEGATIVO con su signo", () => {
+  it("SLT-169 R622: aparece con recaudado 0,00 y pagoTienda NEGATIVO con su signo (no 0,00)", () => {
     const partes = partesPorTienda([SUR_ENTREGA, ESTE_SOLO_RECHAZO]);
     const este = partes.find((p) => p.tiendaId === "t-este");
 
@@ -365,7 +370,7 @@ describe("396/R9 — la tienda que sólo trajo RECHAZOS entra igual, y cuenta", 
       tiendaId: "t-este",
       tiendaNombre: "Tienda Este",
       recaudado: "0.00",
-      pagoTienda: "0.00",
+      pagoTienda: "-1130.00",
       ganaLaTienda: "-1130.00",
     });
   });
@@ -375,10 +380,9 @@ describe("396/R9 — la tienda que sólo trajo RECHAZOS entra igual, y cuenta", 
     expect(partes).toHaveLength(2);
   });
 
-  it("y su CUARTA identidad se ve a simple vista: 0,00 − (−1.130,00) = 1.130,00", () => {
-    const partes = partesPorTienda([SUR_ENTREGA, ESTE_SOLO_RECHAZO]);
-    const este = partes.find((p) => p.tiendaId === "t-este")!;
-    expect(resta(este.pagoTienda, este.ganaLaTienda)).toBe("1130.00");
+  it("SLT-169 R621: la tienda en negativo va DETRÁS de la que cobra (orden por la cifra nueva)", () => {
+    const partes = partesPorTienda([ESTE_SOLO_RECHAZO, SUR_ENTREGA]);
+    expect(partes.map((p) => p.tiendaId)).toEqual(["t-sur", "t-este"]);
   });
 });
 

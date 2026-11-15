@@ -525,8 +525,9 @@ export type CierreDetalleAdminServiceResult =
       // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `cierre.totalPagoMensajero`
       // (STRING money-safe). Lo que le queda a la empresa del cierre. Puede ser NEGATIVO.
       ganancia: string | null;
-      // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
-      // money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
+      // DERIVADO (SLT-169 R620): `cierre.totales.general` − `totalesIngreso.total` (STRING
+      // money-safe): lo que se le paga hoy a la tienda, restado TODO lo facturado (flete por
+      // rechazo incluido). Puede ser NEGATIVO (la tienda debe) y viaja con su signo.
       pagoTienda: string | null;
       /**
        * Feature 395 — LA LINEA PUENTE de la cascada «de quien es el dinero recaudado»:
@@ -554,10 +555,8 @@ export type CierreDetalleAdminServiceResult =
        * Feature 395 — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LA
        * TIENDA GANA EN TOTAL con este cierre.
        *
-       * **NO es `pagoTienda`**, que viaja aqui al lado y sigue significando lo mismo: aquel es
-       * lo que se le paga DE ESTE DINERO (no resta el flete por rechazo, que nunca entro en lo
-       * recaudado); este es lo que le queda DESPUES de que tambien le cobren aquel flete. La
-       * diferencia entre los dos es exactamente `totalesIngreso.fleteDevolucionConIva`.
+       * Desde SLT-169 es ALIAS de `pagoTienda`, con el MISMO valor: el pago tambien resta todo lo
+       * facturado. Se retira del contrato en la ficha de limpieza (P3 de SLT-169).
        *
        * Cierra la identidad que la pantalla tiene que hacer evidente:
        * `ganaLaTienda + totalesIngreso.total === cierre.totales.general`.
@@ -592,8 +591,9 @@ export type CierreDetalleAdminServiceResult =
        *
        * ⚠️ **NO ES UNA CORRECCION DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos
        * separados por tienda desde siempre, con sus propias cifras: a nadie se le paga mal, y
-       * esta ficha no emite, borra ni corrige ni una fila del ledger. `pagoTienda` y
-       * `ganaLaTienda` —aqui al lado— siguen valiendo EXACTAMENTE lo mismo que antes (R18).
+       * esta ficha no emite, borra ni corrige ni una fila del ledger. (Desde SLT-169 `pagoTienda`
+       * resta todo lo facturado y `ganaLaTienda` es su alias de igual valor; sigue sin tocar el
+       * ledger, R631.)
        *
        * TRES cifras por tienda, y ni una mas: la tercera (`ganaLaTienda`) entro el 2026-09-08 por
        * firma explicita del humano (Q7 del spec); la cuarta necesitara otra firma.
@@ -608,12 +608,11 @@ export type CierreDetalleAdminServiceResult =
        * en `partesPorTienda`. La pantalla pinta en el orden que recibe.
        *
        * INVARIANTES, ciertas por construccion y con test propio:
-       *   Σ `.pagoTienda`   === `pagoTienda`               (R10)
+       *   Σ `.pagoTienda`   === `pagoTienda`               (R10, SLT-169 R621)
        *   Σ `.ganaLaTienda` === `ganaLaTienda`             (R11)
        *   Σ `.recaudado`    === `cierre.totales.general`   (R12)
-       * y, POR TIENDA, `.pagoTienda − .ganaLaTienda` === el flete por rechazo + IVA de ESA
-       * tienda — la que hace imposible derivar una de las dos con el subconjunto equivocado sin
-       * que se note.
+       * y, POR TIENDA, `.pagoTienda === .ganaLaTienda` desde SLT-169 (la antigua cuarta identidad,
+       * que daba el flete por rechazo, desaparece al fundirse las dos cifras).
        *
        * LO QUE NO SE REPARTE (R16): el pago al mensajero y el ingreso de bodega por rechazos son
        * del cierre ENTERO y se quedan agregados. Repartirlos exigiria inventar un criterio que
@@ -655,7 +654,8 @@ export type CierreDetalleAdminServiceResult =
       resueltoPorNombre?: string | null;
       /**
        * SLT-111 (R70/R263): el reparto de lo recaudado en % enteros que suman 100, en el orden
-       * [tienda (`pagoTienda`), empresa (`cobradoSobreRecaudado`)] y sobre `cierre.totales.general`.
+       * [tienda (`pagoTienda`), empresa (`totalesIngreso.total`, SLT-169 R624)] y sobre
+       * `cierre.totales.general`.
        * `null` = sin barra (nada recaudado, una parte negativa o partes que no cuadran). El servicio
        * lo emite siempre; opcional solo para que los dobles no tengan que construirlo.
        */
