@@ -260,3 +260,70 @@ Integración contra `servi_slt161_desechable`, nunca la del `.env`; corrió (0 s
 
 Veredicto: m1-m3 cerrados; R482 protegido donde decidió Carlos (indemnización, pago al mensajero e
 ingreso de bodega llegan tal cual), con 4 mutaciones que lo ponen rojo.
+
+## Tanda: rojo de CI en PR #175 (`gate-completo`) — R376 (c) contra R482
+
+### Archivos modificados
+
+- `tests/unit/services/cierres-gestiones-modelo-nuevo-descarga-service.test.ts` — el caso
+  «R376 (c)» (ahora «R376 (c) + R482») esperaba el bloque `ingresoEmpresa` de la satélite con solo el
+  fulfillment anulado; desde R482 el bloque entero va en `null`. Conserva lo de R376 (c) (la satélite
+  recibe `fulfillmentCargadoDia: null`; la central el día y el fulfillment intactos) y la parte de la
+  satélite afirma R482: `ingresoEmpresa` null, `montoCobrar` "24990.00" (distinto de `montoRecibido`
+  a propósito, para que no salga de otro campo) y `tarifaModelo` "nuevo". La central se compara con
+  la fila completa (`toEqual(fila(...))`) y sin `montoCobrar`/`tarifaModelo` aparte.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R376 (c), R482 | «R376 (c) + R482: la satelite recibe el dia del cargo y el bloque de la empresa en null; la central, intactos» |
+
+### Mutaciones (en `ocultarDineroEmpresaDescargaSiNoCentral`, una a una; `cmp` contra la copia + `git diff --quiet` = idéntico)
+
+| Mutación | Rojo |
+|---|---|
+| `ingresoEmpresa: fila.ingresoEmpresa` (el bloque vuelve a la satélite) | el caso |
+| sin anular `fulfillmentCargadoDia` | el caso |
+| `montoCobrar: fila.montoRecibido` | el caso |
+| `if (false && esAccesoTotal(...))` (la central también se recorta) | el caso + R372 (a) |
+
+### Otros tests revisados
+
+Grep por `ingresoEmpresa|ocultarFulfillment|fulfillment: null` en `tests/`: 66 archivos; filtrados a los
+que hablan de satélite y descarga: 28 (unidad, componentes e integración con Postgres real). Corridos
+contra la desechable: 28 archivos, 734 passed, 0 failed, 0 skipped. `ocultarFulfillmentSiNoCentral` ya
+no existe (borrada en m1), ningún test la nombra.
+
+### Por qué el gate local no lo vio
+
+`node scripts/test-rapido.mjs --seleccion`: «relacionados por imports: 388 -> FUERA (presupuesto 150)».
+El diff toca `lib/services/CierresAdminService.ts` y `lib/interfaces/services/ICierresAdminService.ts`,
+muy importados: `vitest related` sí relacionaba el test, pero el presupuesto descartó los 388 enteros
+y ningún disparador cubre ese servicio («disparadores: 0»).
+
+Propuesta de disparador (NO aplicada; entra por `/afinar-regla`), con la forma del de
+`LiquidacionService.ts`:
+
+```json
+{
+  "si_cambia": ["lib/services/CierresAdminService.ts", "lib/interfaces/services/ICierresAdminService.ts"],
+  "corre": ["tests/unit/services/cierres-", "tests/unit/services/CierresAdminService."]
+}
+```
+
+Selecciona 28 archivos de unidad (con dobles, sin base): estrecho por los dos lados y dentro del
+presupuesto. El caso que cayó en CI está entre ellos.
+
+### Salidas
+
+Ver «Salidas (tanda CI #175)» abajo.
+
+### Salidas (tanda CI #175)
+
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` del test tocado: «No issues found», exit 0.
+- `vitest run` del test (desechable): 8 passed. Los 28 vecinos: 734 passed, 0 skipped.
+- `./init.sh` (log a archivo, base desechable): «== init OK ==», `INIT_EXIT=0` en el log.
+
+Veredicto: el caso R376 (c) vuelve a verde afirmando R482, sin debilitar la central, y lo matan 4 mutaciones.
