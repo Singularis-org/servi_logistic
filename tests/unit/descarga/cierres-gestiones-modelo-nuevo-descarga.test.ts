@@ -244,18 +244,23 @@ describe("SLT-113 — encabezados (R373)", () => {
     expect(columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CENTRAL);
   });
 
-  it("«Gestiones» de la satélite: 32, sin «Fulfillment», «IVA de fulfillment» ni «Fulfillment cargado el» (R376)", () => {
+  it("R484: la satélite, 21 columnas en su orden", () => {
+    // 35 de la central − 3 de fulfillment (R376) − 11 del cobro a la tienda (flete, comisión COD y
+    // flete de no entregadas con su tarifa y su IVA, «Se le cobra a la tienda», «De eso, IVA») = 21.
     const columnas = columnasGestionesModeloNuevoPara("satelite");
-    expect(columnas).toHaveLength(32);
+    expect(columnas).toHaveLength(21);
     expect(columnas.map((c) => c.encabezado)).toEqual([
       "Folio del cierre", "Mensajero", "Fecha de gestión", "Nº Guía", "Nº Remisión", "Destinatario",
       "Tienda", "Resultado", "Motivo", "Recibido", "Efectivo", "SINPE", "Transferencia",
-      "Flete por entregado", "Tarifa del flete", "IVA del flete", "Comisión COD", "Tarifa de la comisión",
-      "IVA de la comisión", "Flete de gestiones no entregadas", "Tarifa del flete de gestiones no entregadas",
-      "IVA del flete de gestiones no entregadas", "Se le cobra a la tienda", "De eso, IVA", "Pago por tarifa",
-      "Tarifa del pago", "Ajuste", "Pago al mensajero", "Motivo del ajuste", "Ajustó",
+      "Pago por tarifa", "Tarifa del pago", "Ajuste", "Pago al mensajero", "Motivo del ajuste", "Ajustó",
       "Gana la bodega satélite", "Señales",
     ]);
+  });
+
+  it("R487: la central, como antes: 35 columnas en «Gestiones»", () => {
+    const columnas = columnasGestionesModeloNuevoPara("admin");
+    expect(columnas).toHaveLength(35);
+    expect(columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CENTRAL);
   });
 
   it("las columnas de importe llevan formato «monto» y las de texto no (R374)", () => {
@@ -365,11 +370,65 @@ describe("SLT-113 — celdas de «Gestiones» (R374, R375)", () => {
     ]);
   });
 
-  it("B, satélite: 32 celdas, las mismas sin las tres de fulfillment", () => {
+  it("B, satélite: 21 celdas, sin el cobro a la tienda ni el fulfillment", () => {
     const fila = celdas(B, "satelite");
-    expect(fila).toHaveLength(32);
+    expect(fila).toHaveLength(21);
     expect(fila.slice(-2)).toEqual([null, "Vuelve a bodega · Sin tarifa de pago"]);
-    expect(Object.keys(filaGestionModeloNuevo(B, "satelite"))).not.toContain("fulfillment");
+  });
+
+  it("R489: la fila de la satélite no lleva las claves quitadas", () => {
+    // Aunque el bloque de la empresa llegara (señuelos), la fila no lleva su clave: 21 claves, las de
+    // sus 21 columnas.
+    const senuelo = gestion({
+      ...A,
+      ingresoEmpresa: ingreso({
+        ...A.ingresoEmpresa!,
+        flete: "583914.61",
+        ivaFlete: "583914.62",
+        comisionCod: "583914.63",
+        ivaComisionCod: "583914.64",
+        fleteDevolucion: "583914.65",
+        ivaFleteDevolucion: "583914.66",
+        total: "583914.67",
+        ivaIncluido: "583914.68",
+        fulfillment: "583914.69",
+        ivaFulfillment: "583914.70",
+      }),
+    });
+    const fila = filaGestionModeloNuevo(senuelo, "satelite");
+    expect(Object.keys(fila).sort()).toEqual(
+      [
+        "folio", "mensajero", "fechaGestion", "numGuia", "numRemision", "destinatario", "tienda",
+        "resultado", "motivo", "recibido", "pago_efectivo", "pago_SINPE", "pago_transferencia", "pagoPorTarifa",
+        "tarifaPago", "ajuste", "pagoMensajero", "motivoAjuste", "ajusto", "gananciaBodega", "senales",
+      ].sort(),
+    );
+    expect(JSON.stringify(fila)).not.toContain("583914");
+    // Con lo que de verdad manda el servidor (R482: bloque en `null`), las celdas de la satélite.
+    const real = gestion({ ...A, ingresoEmpresa: null, montoCobrar: "25000.00", tarifaModelo: "nuevo", fulfillmentCargadoDia: null });
+    expect(celdas(real, "satelite")).toEqual([
+      "ABCD1234", // Folio del cierre
+      "Mario Mensajero",
+      "2026-11-06",
+      501,
+      "REM-A",
+      "Laura Díaz",
+      "Tienda Sol",
+      "Entregado",
+      null, // Motivo
+      "25000.00", // Recibido
+      "25000.00", // Efectivo
+      null, // SINPE
+      null, // Transferencia
+      "2500.00", // Pago por tarifa
+      "Monto fijo ₡2.500 · valor base de la zona Centro",
+      "-700.00", // Ajuste
+      "1800.00", // Pago al mensajero
+      "Ruta corta",
+      "Ana Pérez",
+      null, // Gana la bodega satélite
+      "Pago ajustado",
+    ]);
   });
 
   it("ningún importe se recalcula: cada celda es el string del servidor aunque no cuadre con los conceptos", () => {

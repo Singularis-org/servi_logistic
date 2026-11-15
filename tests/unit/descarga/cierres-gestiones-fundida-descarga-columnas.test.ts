@@ -26,6 +26,7 @@ import { describe, it, expect } from "vitest";
 import {
   AMBITO_DESCARGA_GESTIONES_FUNDIDA,
   COLUMNAS_DESCARGA_GESTIONES_FUNDIDA,
+  columnasDescargaGestionesFundidaPara,
   filaDescargaGestionFundida,
 } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas";
 import {
@@ -1052,5 +1053,99 @@ describe("SLT-54 (R72) — lo que el modelo nuevo cobra y paga no se pierde en l
     expect(fila.recibido).toBeNull();
     expect(fila.origenRechazo).toBeNull();
     expect(fila.nuevaFecha).toBeNull();
+  });
+});
+
+describe("SLT-161 — la hoja fundida de la satélite, sin el dinero de la empresa (R483, R487, R489)", () => {
+  /** Como llega a la satélite (R482): el bloque de la empresa en `null`, el COD y el modelo aparte. */
+  const deLaSatelite = (resultado: CierreResultado, tarifaModelo: "nuevo" | "viejo") =>
+    gestion({
+      resultado,
+      pagoMensajero: "100.00",
+      ingresoBodegaRechazo: "120.00",
+      ingresoEmpresa: null,
+      montoCobrar: "1000.10",
+      tarifaModelo,
+    });
+
+  it("R483: la satélite, 26 columnas sin las cuatro de la empresa", () => {
+    // 31 de la central − «Fulfillment» (F481) − «Flete + IVA», «Comisión + IVA», «Flete por
+    // devolución a origen + IVA», «Total de la empresa» = 26, en el orden relativo de siempre.
+    const encabezados = columnasDescargaGestionesFundidaPara("satelite").map((c) => c.encabezado);
+    expect(encabezados).toHaveLength(26);
+    expect(encabezados).toEqual([
+      "Mensajero",
+      "Fecha del cierre",
+      "Fecha de gestión",
+      "Día de reparto",
+      "Fecha de creación de la orden",
+      "Nº Guía",
+      "Nº Remisión",
+      "Destinatario",
+      "Dirección",
+      "Ubicación",
+      "Producto",
+      "Tienda",
+      "Intentos de entrega",
+      "Resultado",
+      "A cobrar",
+      "Recibido",
+      "Efectivo",
+      "SINPE",
+      "Transferencia",
+      "Nueva fecha",
+      "Origen",
+      "Causa",
+      "Motivo",
+      "Pago mensajero",
+      "Ingreso bodega",
+      "Indemnización",
+    ]);
+  });
+
+  it("R487: la central, como antes: 31 columnas con las de la empresa", () => {
+    const encabezados = columnasDescargaGestionesFundidaPara("admin").map((c) => c.encabezado);
+    expect(encabezados).toHaveLength(31);
+    expect(encabezados.slice(24, 28)).toEqual([
+      "Flete + IVA",
+      "Comisión + IVA",
+      "Flete por devolución a origen + IVA",
+      "Total de la empresa",
+    ]);
+    expect(encabezados[15]).toBe("Fulfillment");
+  });
+
+  // [a cobrar, pago mensajero, ingreso bodega], escritos a mano desde las tablas de hoy (SLT-54 R72 y
+  // la del viejo de arriba): el nuevo puebla las tres en los cinco resultados; el viejo, como siempre.
+  it.each<[CierreResultado, "nuevo" | "viejo", ReadonlyArray<string | null>]>([
+    ["entregado", "nuevo", ["1000.10", "100.00", "120.00"]],
+    ["reprogramado", "nuevo", ["1000.10", "100.00", "120.00"]],
+    ["novedad", "nuevo", ["1000.10", "100.00", "120.00"]],
+    ["devolucion_a_origen_por_rechazo", "nuevo", ["1000.10", "100.00", "120.00"]],
+    ["incidente", "nuevo", ["1000.10", "100.00", "120.00"]],
+    ["entregado", "viejo", ["1000.10", "100.00", null]],
+    ["reprogramado", "viejo", ["1000.10", "100.00", null]],
+    ["novedad", "viejo", ["1000.10", "100.00", null]],
+    ["devolucion_a_origen_por_rechazo", "viejo", ["1000.10", "100.00", "120.00"]],
+    ["incidente", "viejo", ["1000.10", null, null]],
+  ])(
+    "R483: monto a cobrar, pago e ingreso de bodega del modelo nuevo con ingresoEmpresa en null (%s, %s)",
+    (resultado, modelo, esperado) => {
+      const fila = filaDescargaGestionFundida(deLaSatelite(resultado, modelo));
+      expect([fila.montoCobrar, fila.pagoMensajero, fila.ingresoBodega]).toEqual(esperado);
+    },
+  );
+
+  it.each(LOS_CINCO)("R489: con ingresoEmpresa en null, las cuatro celdas de la empresa vacías (%s)", (resultado) => {
+    const fila = filaDescargaGestionFundida(deLaSatelite(resultado, "nuevo"));
+    // La fila es la de siempre (las 31 claves); la satélite no tiene esas columnas en su libro.
+    expect(Object.keys(fila)).toEqual(CLAVES_DECLARADAS);
+    expect([fila.fleteConIva, fila.comisionConIva, fila.fleteDevolucionConIva, fila.ingresoTotal]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(fila.fulfillment).toBeNull();
   });
 });

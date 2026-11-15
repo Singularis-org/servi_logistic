@@ -74,16 +74,24 @@ export function libroResumenCierres({
     }
     const folio = folioCierre(item.cierreId);
     filasCierres.push(filaCierreModeloNuevo({ folio, item, cifras: suyas }, audiencia));
-    // SLT-161 (R480, R481): sin acceso total el servidor manda `null`; T3 quita la hoja para la satelite.
-    for (const parte of suyas.partesPorTienda ?? []) {
-      filasTiendas.push(filaPorTienda({ folio, parte }));
+    // SLT-161 (R486): el reparto por tienda es de la empresa; solo la central lo recibe (a la
+    // satélite el servidor se lo manda en `null`).
+    if (audiencia === "admin") {
+      if (suyas.partesPorTienda === null) {
+        throw new Error("faltan las partes por tienda de un cierre del modelo nuevo");
+      }
+      for (const parte of suyas.partesPorTienda) {
+        filasTiendas.push(filaPorTienda({ folio, parte }));
+      }
     }
   }
 
   const hojas: [DescargaHoja, ...DescargaHoja[]] = [
     { titulo: HOJA_CIERRES, columnas: columnasCierresModeloNuevoPara(audiencia), filas: filasCierres },
-    { titulo: HOJA_POR_TIENDA, columnas: COLUMNAS_POR_TIENDA, filas: filasTiendas },
   ];
+  if (audiencia === "admin") {
+    hojas.push({ titulo: HOJA_POR_TIENDA, columnas: COLUMNAS_POR_TIENDA, filas: filasTiendas });
+  }
   if (anteriores.length > 0) {
     hojas.push({
       titulo: HOJA_CIERRES_ANTERIOR,
