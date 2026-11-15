@@ -33,8 +33,11 @@ import type { ICifrasBodegaLoteLectura } from "@/lib/interfaces/repositories/ICi
 import {
   cierresBodegaModeloNuevo,
   cifrasBodegaDescarga,
+  CLASE_CIFRAS_BODEGA_DESCARGA,
   LecturaCifrasBodegaAusenteError,
 } from "@/lib/services/cifras-bodega-descarga";
+// SLT-161 (R480): el recorte de SLT-154, con el criterio de F481 en un solo sitio.
+import { anularEmpresaSiNoCentral } from "@/lib/services/CierresAdminService";
 
 // Solo el rol autorizado (R1): el adminSatelite, SIEMPRE acotado a SU zona (el filtro
 // por zona vive en el repo, en el WHERE).
@@ -544,11 +547,15 @@ export class CierreBodegaService implements ICierreBodegaService {
       await zonaDeLaEmpresa(this.reglasPais, operacion),
     );
     // R386 (F481): las cifras SIN `pagoEntregado`; la clave no existe en el DTO de la satelite.
+    // SLT-161 (R480): y las de la empresa en `null`. El rol ya es el de la satelite (R4), pero el
+    // corte pregunta lo mismo que en las demas lecturas («no es acceso total»): un solo criterio.
     return {
       status: "ok",
       items: conjunto,
       total: conjunto.length,
-      cifrasModeloNuevo: cifrasBodegaDescarga(nuevos, filas),
+      cifrasModeloNuevo: cifrasBodegaDescarga(nuevos, filas).map((c) =>
+        anularEmpresaSiNoCentral(c, CLASE_CIFRAS_BODEGA_DESCARGA, actor),
+      ),
     };
   }
 

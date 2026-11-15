@@ -76,8 +76,15 @@ export function libroCierresBodega({
     }
     const folio = folioCierre(item.cierreBodegaId);
     filasCierres.push(filaCierreBodegaModeloNuevo({ folio, item, cifras: suyas }, audiencia));
-    for (const parte of suyas.partesPorTienda) {
-      filasTiendas.push(filaPorTienda({ folio, parte }));
+    // SLT-161 (R486): el reparto por tienda es de la empresa; solo la central lo recibe (a la
+    // satélite el servidor se lo manda en `null`).
+    if (audiencia === "admin") {
+      if (suyas.partesPorTienda === null) {
+        throw new Error("faltan las partes por tienda de un cierre de bodega del modelo nuevo");
+      }
+      for (const parte of suyas.partesPorTienda) {
+        filasTiendas.push(filaPorTienda({ folio, parte }));
+      }
     }
   }
 
@@ -87,8 +94,10 @@ export function libroCierresBodega({
       columnas: columnasCierresBodegaModeloNuevoPara(audiencia),
       filas: filasCierres,
     },
-    { titulo: HOJA_POR_TIENDA, columnas: COLUMNAS_POR_TIENDA, filas: filasTiendas },
   ];
+  if (audiencia === "admin") {
+    hojas.push({ titulo: HOJA_POR_TIENDA, columnas: COLUMNAS_POR_TIENDA, filas: filasTiendas });
+  }
   if (anteriores.length > 0) {
     hojas.push({
       titulo: HOJA_CIERRES_ANTERIOR,

@@ -329,6 +329,9 @@ export type ListarCierresBodegaSolicitadosCompletoServiceResult = ConCifrasBodeg
  * cierre de bodega del modelo nuevo para las hojas «Cierres» y «Por tienda». Salen de
  * `cifrasAgregadasBodega`, la misma funcion que el detalle. Todo OBLIGATORIO: un campo opcional que un
  * camino no puebla se lee como «no hay». Importes: STRING de escala 2, con su signo.
+ *
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R480): las cifras de la empresa
+ * admiten `null` = quien lee no tiene acceso total. La central las recibe siempre pobladas (R487).
  */
 export interface CifrasCierreBodegaDescargaDTO {
   /** Une con el item (`CierreBodegaResumen.cierreBodegaId`); nunca es columna. */
@@ -338,13 +341,14 @@ export interface CifrasCierreBodegaDescargaDTO {
   /** Numero de esas gestiones con al menos un ajuste del pago (Σ `gestionesAjustadas`). */
   pagosAjustados: number;
   /** `totalesIngreso.total` del detalle. */
-  totalFacturado: string;
-  ivaFacturado: string;
+  totalFacturado: string | null;
+  ivaFacturado: string | null;
   /** «Le queda a la empresa». */
-  netoEmpresa: string;
-  ganaLaTienda: string;
+  netoEmpresa: string | null;
+  /** «Se le paga a la tienda» (SLT-169 R629). */
+  ganaLaTienda: string | null;
   /** En el orden del detalle (de mayor a menor pago a la tienda). */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
 }
 
 /**

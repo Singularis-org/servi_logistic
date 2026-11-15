@@ -616,12 +616,25 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
     });
   });
 
-  it("R386/R389: «Solicitados» de S (mixto BN + BV): solo BN con cifras, sin `pagoEntregado`; nunca BZ", async () => {
+  it("R480: «Solicitados» de S: BN sin las cifras de la empresa, con gestiones y pagos ajustados", async () => {
+    // SLT-161 «Descargas de la satélite sin el dinero de la empresa». Sigue R386/R389: mixto BN + BV,
+    // solo BN con cifras, sin la clave `pagoEntregado`, nunca BZ (otra zona).
     await conCorpus(async (c) => {
       const r = await c.svcSatelite.listarCierresBodegaSolicitadosCompleto(c.satelite);
       if (r.status !== "ok") throw new Error(`status ${r.status}`);
       expect(r.items.map((i) => i.cierreBodegaId).sort()).toEqual([c.bodega.BN, c.bodega.BV].sort());
-      expect(r.cifrasModeloNuevo).toEqual([cifrasBN(c)]);
+      expect(r.cifrasModeloNuevo).toEqual([
+        {
+          cierreBodegaId: c.bodega.BN,
+          gestiones: 3, // las tres gestiones de D1
+          pagosAjustados: 1, // el ajuste de pago de D1
+          totalFacturado: null,
+          ivaFacturado: null,
+          netoEmpresa: null,
+          ganaLaTienda: null,
+          partesPorTienda: null,
+        },
+      ]);
       for (const cifras of r.cifrasModeloNuevo ?? []) expect("pagoEntregado" in cifras).toBe(false);
     });
   });

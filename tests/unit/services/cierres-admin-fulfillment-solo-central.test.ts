@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
+  CLASE_CIFRAS_DESCARGA_CIERRE,
   CLASE_DETALLE_MENSAJERO,
   CierresAdminService,
   anularEmpresaSiNoCentral,
+  ocultarDineroEmpresaDescargaSiNoCentral,
   ocultarDineroEmpresaSiNoCentral,
 } from "@/lib/services/CierresAdminService";
+import { CLASE_CIFRAS_BODEGA_DESCARGA } from "@/lib/services/cifras-bodega-descarga";
+import type { CifrasCierreBodegaDescargaDTO } from "@/lib/interfaces/services/ICierreBodegaService";
 import {
   CLASE_CIERRE_DEL_DIA_BODEGA,
   CLASE_DETALLE_BODEGA,
@@ -22,7 +26,10 @@ import type {
   IngresoEmpresaDTO,
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  CifrasCierreDescargaDTO,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
@@ -191,7 +198,7 @@ type FilasDescargaDelRepo = Awaited<
   ReturnType<ICierresAdminRepository["findGestionesPorAlcanceCompleto"]>
 >;
 
-function newService() {
+function newService(fila: CierreGestionDescargaDTO = filaDescarga()) {
   const repo = dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async () => ({
       sinGestion: [],
@@ -214,7 +221,7 @@ function newService() {
       },
       gestiones: [gestionRow()],
     }) as unknown as DetalleDelRepo),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => [filaDescarga()] as FilasDescargaDelRepo),
+    findGestionesPorAlcanceCompleto: vi.fn(async () => [fila] as FilasDescargaDelRepo),
   });
 
   return new CierresAdminService(
@@ -261,12 +268,16 @@ async function gestionDelDetalleCierre(actor: Actor) {
   return r.grupos.entregado[0];
 }
 
-async function ingresoDeLaDescarga(actor: Actor) {
-  const r = await newService().listarGestionesCierresAdminCompleto(actor, {
+async function filaDeLaDescarga(actor: Actor, fila?: CierreGestionDescargaDTO) {
+  const r = await newService(fila).listarGestionesCierresAdminCompleto(actor, {
     mensajeroIds: ["m1"],
   });
   if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
-  return r.items[0].ingresoEmpresa;
+  return r.items[0];
+}
+
+async function ingresoDeLaDescarga(actor: Actor) {
+  return (await filaDeLaDescarga(actor)).ingresoEmpresa;
 }
 
 describe("ficha 481 — el fulfillment de la fila solo llega a la central", () => {
@@ -290,8 +301,46 @@ describe("ficha 481 — el fulfillment de la fila solo llega a la central", () =
   });
 
   describe("hoja «Detalle» del Excel (listarGestionesCierresAdminCompleto)", () => {
-    it("adminSatelite: la tarifa llega con fulfillment null y el resto intacto", async () => {
-      expect(await ingresoDeLaDescarga(SATELITE)).toEqual(INGRESO_SATELITE);
+    // SLT-161 (R482): ya no se anula solo el fulfillment: el cobro a la tienda ENTERO (que lo
+    // incluye) llega `null` a la satelite, con el monto a cobrar y el modelo aparte.
+    it("adminSatelite: el cobro a la tienda llega null entero (con su fulfillment)", async () => {
+      expect(await ingresoDeLaDescarga(SATELITE)).toBeNull();
+    });
+
+    it("R482: la descarga de gestiones anula ingresoEmpresa y saca aparte monto a cobrar y modelo", async () => {
+      const g = await filaDeLaDescarga(SATELITE);
+      // Lo de la satelite, sin cambio; lo de la empresa, fuera; COD y modelo, del bloque (a mano).
+      expect(g).toEqual({
+        ...filaDescarga(),
+        ingresoEmpresa: null,
+        montoCobrar: "10000.00", // INGRESO.montoCobrar
+        tarifaModelo: "viejo", // INGRESO.tarifaModelo
+      });
+      expect(g.montoRecibido).toBe("10000.00");
+      expect(g.pagos).toEqual([{ metodo: "efectivo", monto: "10000.00" }]);
+      expect(g.pagoMensajero).toBe("0.00");
+      expect(g.indemnizacion).toBeNull();
+      // El fulfillment de la 481 sale con el bloque: no queda ningun «1500.00» en la fila.
+      expect(JSON.stringify(g)).not.toContain("1500.00");
+      // INGRESO_SATELITE (481) era el bloque con solo el fulfillment anulado: ya no llega ni eso.
+      expect(g.ingresoEmpresa).not.toEqual(INGRESO_SATELITE);
+    });
+
+    // SLT-161 (R482, decision de Carlos): la indemnizacion, el pago al mensajero y lo que gana la
+    // bodega por el rechazo son de la satelite y llegan TAL CUAL. Valores a mano, imposibles de
+    // encontrar por casualidad: un recorte que anulara o pusiera a cero cualquiera de los tres falla.
+    it("R482: la satélite recibe indemnización, pago al mensajero e ingreso de bodega del rechazo tal cual", async () => {
+      const fila: CierreGestionDescargaDTO = {
+        ...filaDescarga(),
+        indemnizacion: "731957.41",
+        pagoMensajero: "846213.52",
+        ingresoBodegaRechazo: "583914.63",
+      };
+      const g = await filaDeLaDescarga(SATELITE, fila);
+      expect(g.indemnizacion).toBe("731957.41");
+      expect(g.pagoMensajero).toBe("846213.52");
+      expect(g.ingresoBodegaRechazo).toBe("583914.63");
+      expect(g.ingresoEmpresa).toBeNull();
     });
 
     it.each([
@@ -313,10 +362,14 @@ describe("SLT-52 R46 — el fulfillment del modelo nuevo y su IVA tambien son so
     filaDelRepo = INGRESO;
   });
 
-  it("adminSatelite: fulfillment e IVA anulados (null, nunca \"0.00\") en el Excel; en el detalle, todo el cobro (SLT-154 R463)", async () => {
-    const esperado = { ...INGRESO_NUEVO, fulfillment: null, ivaFulfillment: null };
+  it("adminSatelite: todo el cobro (con fulfillment e IVA) null en el detalle (SLT-154 R463) y en el Excel (SLT-161 R482)", async () => {
     expect(await ingresoDelDetalle(SATELITE)).toBeNull();
-    expect(await ingresoDeLaDescarga(SATELITE)).toEqual(esperado);
+    const g = await filaDeLaDescarga(SATELITE);
+    expect(g.ingresoEmpresa).toBeNull();
+    expect(g.tarifaModelo).toBe("nuevo"); // INGRESO_NUEVO.tarifaModelo
+    expect(g.montoCobrar).toBe("10000.00");
+    expect(JSON.stringify(g)).not.toContain("450.00");
+    expect(JSON.stringify(g)).not.toContain("58.50");
   });
 
   it.each([
@@ -405,15 +458,11 @@ describe("SLT-101 R94 — «Se cobró», su % de IVA y la fecha del cargo solo l
     expect(g.tarifaFaltante).toBe(true);
   });
 
-  it("hoja «Detalle» del Excel: la satelite tampoco recibe los tres campos", async () => {
-    expect(await ingresoDeLaDescarga(SATELITE)).toEqual({
-      ...INGRESO_CIFRAS,
-      fulfillment: null,
-      ivaFulfillment: null,
-      fulfillmentConIva: null,
-      ivaPctFulfillment: null,
-      fulfillmentCargadoAt: null,
-    });
+  it("hoja «Detalle» del Excel: la satelite tampoco recibe los tres campos (SLT-161 R482: ni el bloque)", async () => {
+    const g = await filaDeLaDescarga(SATELITE);
+    expect(g.ingresoEmpresa).toBeNull();
+    expect(JSON.stringify(g)).not.toContain("508.50");
+    expect(JSON.stringify(g)).not.toContain("2026-11-06T15:00:00.000Z");
   });
 });
 
@@ -499,5 +548,116 @@ describe("SLT-154 R464 — el recorte es para todo rol sin acceso total", () => 
     ];
     expect(deLaEmpresa(CLASE_DETALLE_BODEGA)).toEqual(ocho);
     expect(deLaEmpresa(CLASE_CIERRE_DEL_DIA_BODEGA)).toEqual(ocho);
+  });
+});
+
+/**
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R488) — el corte de las tres
+ * descargas de la lista usa el criterio de F481, «NO es acceso total»: se prueba sobre las piezas
+ * que deciden el corte con roles sin acceso total que no son la satélite. Y la clasificación de las
+ * dos cifras de descarga, escrita a mano (el typecheck obliga a clasificar; esto fija CUÁLES).
+ */
+describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acceso total", () => {
+  const TIENDA: Actor = { usuarioId: "u-tienda", rol: "adminTienda" };
+  const MENSAJERO: Actor = { usuarioId: "u-mensajero", rol: "mensajero" };
+  const CIFRAS: CifrasCierreDescargaDTO = {
+    cierreId: "c1",
+    pagoTienda: "92090.00",
+    ganaLaTienda: "92090.00",
+    totalFacturado: "7910.00",
+    ivaFacturado: "910.00",
+    netoEmpresa: "3500.00",
+    gestiones: 2,
+    pagoEntregado: "1200.00",
+    partesPorTienda: [{ tiendaNombre: "T", recaudado: "100.00", pagoTienda: "90.00", ganaLaTienda: "90.00" }],
+  };
+  const CIFRAS_BODEGA: CifrasCierreBodegaDescargaDTO = {
+    cierreBodegaId: "cb1",
+    gestiones: 3,
+    pagosAjustados: 1,
+    totalFacturado: "1130.00",
+    ivaFacturado: "130.00",
+    netoEmpresa: "0.00",
+    ganaLaTienda: "28870.00",
+    partesPorTienda: [],
+  };
+
+  it.each([
+    ["adminTienda", TIENDA],
+    ["mensajero", MENSAJERO],
+    ["adminSatelite", SATELITE],
+  ])("R488: un rol sin acceso total que no es la satélite también recibe el recorte de las descargas (%s)", (_n, actor) => {
+    const fila = { ...filaDescarga(), fulfillmentCargadoDia: "2026-10-14" };
+    expect(ocultarDineroEmpresaDescargaSiNoCentral(fila, actor)).toEqual({
+      ...fila,
+      ingresoEmpresa: null,
+      montoCobrar: "10000.00",
+      tarifaModelo: "viejo",
+      fulfillmentCargadoDia: null, // SLT-113 R376
+    });
+    expect(anularEmpresaSiNoCentral(CIFRAS, CLASE_CIFRAS_DESCARGA_CIERRE, actor)).toEqual({
+      cierreId: "c1",
+      pagoTienda: null,
+      ganaLaTienda: null,
+      totalFacturado: null,
+      ivaFacturado: null,
+      netoEmpresa: null,
+      gestiones: 2,
+      pagoEntregado: null,
+      partesPorTienda: null,
+    });
+    expect(anularEmpresaSiNoCentral(CIFRAS_BODEGA, CLASE_CIFRAS_BODEGA_DESCARGA, actor)).toEqual({
+      cierreBodegaId: "cb1",
+      gestiones: 3,
+      pagosAjustados: 1,
+      totalFacturado: null,
+      ivaFacturado: null,
+      netoEmpresa: null,
+      ganaLaTienda: null,
+      partesPorTienda: null,
+    });
+  });
+
+  it("R482: sin la clave del día del cargo, el recorte no la añade", () => {
+    const g = ocultarDineroEmpresaDescargaSiNoCentral(filaDescarga(), SATELITE);
+    expect("fulfillmentCargadoDia" in g).toBe(false);
+  });
+
+  it.each([
+    ["maestro", MAESTRO],
+    ["admin", ADMIN],
+  ])("R487: %s recibe la gestión y las cifras tal cual, sin monto a cobrar ni modelo aparte", (_n, actor) => {
+    const fila = { ...filaDescarga(), fulfillmentCargadoDia: "2026-10-14" };
+    const g = ocultarDineroEmpresaDescargaSiNoCentral(fila, actor);
+    expect(g).toEqual(fila);
+    expect("montoCobrar" in g).toBe(false);
+    expect("tarifaModelo" in g).toBe(false);
+    expect(anularEmpresaSiNoCentral(CIFRAS, CLASE_CIFRAS_DESCARGA_CIERRE, actor)).toEqual(CIFRAS);
+    expect(anularEmpresaSiNoCentral(CIFRAS_BODEGA, CLASE_CIFRAS_BODEGA_DESCARGA, actor)).toEqual(CIFRAS_BODEGA);
+  });
+
+  const deLaEmpresa = (clase: Record<string, string>) =>
+    Object.entries(clase)
+      .filter(([, c]) => c === "empresa")
+      .map(([k]) => k)
+      .sort();
+
+  it("R488: las siete cifras de la empresa del «Resumen» de cierres y las cinco de los cierres de bodega", () => {
+    expect(deLaEmpresa(CLASE_CIFRAS_DESCARGA_CIERRE)).toEqual([
+      "ganaLaTienda",
+      "ivaFacturado",
+      "netoEmpresa",
+      "pagoEntregado",
+      "pagoTienda",
+      "partesPorTienda",
+      "totalFacturado",
+    ]);
+    expect(deLaEmpresa(CLASE_CIFRAS_BODEGA_DESCARGA)).toEqual([
+      "ganaLaTienda",
+      "ivaFacturado",
+      "netoEmpresa",
+      "partesPorTienda",
+      "totalFacturado",
+    ]);
   });
 });

@@ -33,6 +33,18 @@ import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fund
 /** La columna que es dato de la CENTRAL (R386, F481): la satélite no la recibe. */
 const CLAVE_PAGO_ENTREGADO = "pagoEntregado";
 
+/**
+ * Las columnas de «Cierres» de bodega que son dinero de la empresa (SLT-161 R485, R489): solo la
+ * central las recibe. «Pago entregado» (R386) ya lo era.
+ */
+const CLAVES_EMPRESA = new Set<string>([
+  CLAVE_PAGO_ENTREGADO,
+  "ganaLaTienda",
+  "totalFacturado",
+  "ivaFacturado",
+  "netoEmpresa",
+]);
+
 /** Las 26 columnas de «Cierres» de bodega para la central, en el orden de `design.md > Hojas`. */
 export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
@@ -64,12 +76,15 @@ export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "conciliadoEl", encabezado: "Conciliado el" },
 ];
 
-/** Columnas de «Cierres» de bodega para una audiencia: la satélite, sin «Pago entregado» (falla cerrado). */
+/**
+ * Columnas de «Cierres» de bodega para una audiencia: la satélite, sin las de la empresa (falla
+ * cerrado; SLT-161 R485).
+ */
 export function columnasCierresBodegaModeloNuevoPara(
   audiencia: AudienciaDescargaGestionesFundida,
 ): DescargaColumna[] {
   if (audiencia === "admin") return COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO;
-  return COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO.filter((columna) => columna.clave !== CLAVE_PAGO_ENTREGADO);
+  return COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO.filter((columna) => !CLAVES_EMPRESA.has(columna.clave));
 }
 
 /**
@@ -119,18 +134,18 @@ export function filaCierreBodegaModeloNuevo(
     transferencia: item.totales.transferencia,
     recaudado: item.totales.general,
     paraLaCentral: item.paraLaCentral,
-    ganaLaTienda: cifras.ganaLaTienda,
     pagoMensajero: item.totalPagoMensajero,
     pagoBodega: item.totalIngresoBodegaRechazos,
-    totalFacturado: cifras.totalFacturado,
-    ivaFacturado: cifras.ivaFacturado,
-    netoEmpresa: cifras.netoEmpresa,
     gestiones: cifras.gestiones,
     pagosAjustados: cifras.pagosAjustados,
   };
-  // R386: lo de la central solo entra en la fila de la central (el servidor ya no se lo manda a la
-  // satélite; aquí además no viaja la clave).
+  // R386, SLT-161 R489: lo de la empresa solo entra en la fila de la central (el servidor ya no se
+  // lo manda a la satélite; aquí además no viaja la clave).
   if (audiencia === "admin") {
+    fila.ganaLaTienda = cifras.ganaLaTienda;
+    fila.totalFacturado = cifras.totalFacturado;
+    fila.ivaFacturado = cifras.ivaFacturado;
+    fila.netoEmpresa = cifras.netoEmpresa;
     fila[CLAVE_PAGO_ENTREGADO] = cifras.pagoEntregado ?? null;
   }
   fila.cierresIncluidos = item.cantidadCierres;

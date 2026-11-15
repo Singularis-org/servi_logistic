@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
-import { LecturaCifrasBodegaAusenteError } from "@/lib/services/cifras-bodega-descarga";
+import { cifrasBodegaDescarga, LecturaCifrasBodegaAusenteError } from "@/lib/services/cifras-bodega-descarga";
 import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type {
@@ -123,7 +123,28 @@ describe("SLT-141 — «Solicitados» de la satélite con cierres de bodega nuev
     );
   });
 
-  it("R386 (F481): las cifras no llevan la clave `pagoEntregado`; R387: importes escritos a mano", async () => {
+  it("R387: importes escritos a mano (el cálculo, antes del recorte de la satélite)", () => {
+    // SLT-161: el servicio ya no se los entrega a la satélite (R480); el cálculo es el mismo que recibe
+    // la central (`CierresBodegaAdminService`), y se afirma aquí sobre la función que lo hace.
+    expect(cifrasBodegaDescarga([BS], [D_BS])).toEqual([
+      {
+        cierreBodegaId: "cb-bs",
+        gestiones: 1,
+        pagosAjustados: 0,
+        totalFacturado: "1130.00",
+        ivaFacturado: "130.00",
+        netoEmpresa: "0.00", // (1 130 − 130) − 1 000 − 0
+        ganaLaTienda: "28870.00", // 30 000 − 1 130
+        partesPorTienda: [
+          { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+        ],
+      },
+    ]);
+  });
+
+  it("R480: la satélite recibe las cifras de la empresa en null", async () => {
+    // SLT-161 «Descargas de la satélite sin el dinero de la empresa». R386 (F481) sigue: sin la
+    // clave `pagoEntregado`. Gestiones y pagos ajustados (de la satélite) sin cambio.
     const m = montar([BV, BS]);
 
     const r = await m.service.listarCierresBodegaSolicitadosCompleto(SATELITE);
@@ -137,15 +158,13 @@ describe("SLT-141 — «Solicitados» de la satélite con cierres de bodega nuev
     expect(r.cifrasModeloNuevo).toEqual([
       {
         cierreBodegaId: "cb-bs",
-        gestiones: 1,
-        pagosAjustados: 0,
-        totalFacturado: "1130.00",
-        ivaFacturado: "130.00",
-        netoEmpresa: "0.00", // (1 130 − 130) − 1 000 − 0
-        ganaLaTienda: "28870.00", // 30 000 − 1 130
-        partesPorTienda: [
-          { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
-        ],
+        gestiones: 1, // G2
+        pagosAjustados: 0, // D_BS.gestionesAjustadas
+        totalFacturado: null,
+        ivaFacturado: null,
+        netoEmpresa: null,
+        ganaLaTienda: null,
+        partesPorTienda: null,
       },
     ]);
   });
