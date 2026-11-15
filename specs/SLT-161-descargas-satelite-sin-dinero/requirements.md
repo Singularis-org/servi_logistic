@@ -146,11 +146,7 @@ función que los produce. Rutas exactas en `tasks.md > Archivos esperados`.
 
 ## Preguntas abiertas
 
-1. **«Indemnización» por gestión** (columna de la hoja fundida, y el texto de «Señales» de la hoja
-   «Gestiones»): ¿es dato de la empresa? El review de SLT-154 «Vista de la bodega satélite: solo lo
-   suyo» lo dejó anotado (`progress/review_SLT-154.md`, hallazgo sobre `ICierreDiaService.ts:139`) y
-   el inventario de SLT-154 no la clasifica como EMP. **Mientras Carlos no diga otra cosa, se queda**
-   (R482, R483 la conservan). Si es EMP, se quita en esta ficha con un requisito más (cabe: R480–R489
-   no se agotan y sería un campo y una columna).
+Ninguna. Cerrada 2026-11-15: Carlos decide que la «Indemnización» por gestión **se queda** en las
+descargas de la satélite («es dato importante de la gestión»); R482 y R483 la conservan.
 
 Las decisiones técnicas tomadas al especificar (y por qué) están en `design.md > Decisiones técnicas`.
