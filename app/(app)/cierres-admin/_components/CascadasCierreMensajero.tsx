@@ -343,6 +343,8 @@ function lineasNetoEmpresa(props: CascadasCierreMensajeroProps): LineaCascada[] 
  * Las tres cascadas, en el orden en que hay que leerlas. Cada una es una `region` accesible con
  * NOMBRE PROPIO —el título más el mensajero—: la pantalla monta varias y sin nombres distintos un
  * lector de pantalla las anunciaría todas igual.
+ *
+ * @sin-superficie SLT-100 sustituyó el modal del admin por el detalle único (su «Dinero»); lo retira SLT-115
  */
 export function CascadasCierreMensajero(props: Readonly<CascadasCierreMensajeroProps>) {
   const de = `cierre de ${props.mensajeroNombre}`;

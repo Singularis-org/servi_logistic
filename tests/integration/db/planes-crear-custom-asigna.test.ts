@@ -27,9 +27,17 @@ import { capturar, entradaAsignable, planesEnTx, revertida, sqlstateDe } from ".
 // SLT-86 (R2, R16, R17, R30): la entrada es siempre las 00:00 de la fecha; una fecha futura deja la
 // asignación pendiente (P4 = a, sin ciclo corto); con plan previo hace falta fecha de efecto, y el
 // `valor_nuevo` lleva la fecha delante del tipo.
+//
+// SLT-118 (R30, R31): con plan previo, la fecha de efecto se lleva al inicio del período siguiente del tipo de
+// referencia salvo que ya lo sea; «hoy» solo se aplica en el acto en un inicio. Los casos con «hoy» y plan previo
+// usan un reloj fijo en el 1 de enero de 2027 (`ENERO`), inicio de los cuatro tipos.
 
 /** Hoy en la plataforma. */
 const HOY = fechaCalendarioCR(new Date());
+
+/** SLT-118: un «hoy» fijo que es inicio de período de los cuatro tipos, para aplicar un cambio en el acto. */
+const ENERO = "2027-01-01";
+const servicioEnEnero = (tx: TxDeTest) => new PlanesService(planesEnTx(tx), () => new Date(`${ENERO}T18:00:00.000Z`));
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -139,7 +147,7 @@ describeSiHayBase("Ajuste planes-custom — crear un custom con empresa lo asign
 
   it("D2, SL-24 R12: la empresa ya pasa un tope del custom → tope_excedido y no se crea NADA", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = servicioEnEnero(tx);
       const org = (await crearOrganizacion(tx)).id;
       const grande = await servicio.crear(SUPERADMIN, entradaAsignable({ topes: { porRol: { adminTienda: 10 }, apiKeys: null } }));
       if (grande.estado !== "ok") throw new Error(grande.estado);
@@ -150,8 +158,9 @@ describeSiHayBase("Ajuste planes-custom — crear un custom con empresa lo asign
 
       const entrada = custom(org, { topes: { porRol: { adminTienda: 2 }, apiKeys: null } });
       const antes = await rastroDe(tx, org, entrada.nombre);
-      // SLT-86 (R16, R18): con plan previo lleva fecha de efecto; con la de hoy, un tope pasado rechaza.
-      const rechazo = await servicio.crear(SUPERADMIN, { ...entrada, vigenteDesde: HOY });
+      // SLT-86 (R16, R18): con plan previo lleva fecha de efecto; con la de hoy (inicio de año, SLT-118 R31), un
+      // tope pasado rechaza.
+      const rechazo = await servicio.crear(SUPERADMIN, { ...entrada, vigenteDesde: ENERO });
       return { rechazo, antes, despues: await rastroDe(tx, org, entrada.nombre), grande: grande.planId };
     });
     expect(r.rechazo).toMatchObject({ estado: "tope_excedido", excedidos: [{ tope: "adminTienda", usados: 3, maximo: 2 }] });
@@ -210,6 +219,43 @@ describeSiHayBase("Ajuste planes-custom — crear un custom con empresa lo asign
     expect(r.res).toEqual({ estado: "not_found" });
     expect(r.planes).toBe(0);
   });
+
+  it("R30, R32 (SLT-118): un custom para una empresa con plan mensual, elegido el 10 de noviembre → pendiente para el 1 de diciembre (mensual) o el 1 de enero (anual); la respuesta trae la fecha real", async () => {
+    const el10 = new Date("2026-11-10T18:00:00.000Z");
+    const r = await revertida(base, async (tx) => {
+      const servicio = new PlanesService(planesEnTx(tx), () => el10);
+      const actual = await servicio.crear(SUPERADMIN, entradaAsignable());
+      if (actual.estado !== "ok") throw new Error(actual.estado);
+      const [aMensual, aAnual] = [(await crearOrganizacion(tx)).id, (await crearOrganizacion(tx)).id];
+      for (const org of [aMensual, aAnual]) {
+        const asignado = await servicio.asignar(SUPERADMIN, { organizacionId: org, planId: actual.planId, tipoCobro: "mensual", inicioCiclo: "2026-11-01" });
+        if (asignado.estado !== "ok") throw new Error(asignado.estado);
+      }
+      const mensual = await servicio.crear(SUPERADMIN, custom(aMensual, { tipoCobro: "mensual", vigenteDesde: "2026-11-10" }));
+      const anual = await servicio.crear(SUPERADMIN, custom(aAnual, { tipoCobro: "anual", vigenteDesde: "2026-11-10" }));
+      const pendiente = (org: string) =>
+        tx.organizacion.findUniqueOrThrow({
+          where: { id: org },
+          select: { planId: true, planCambioPlanId: true, planCambioTipoCobro: true, planCambioDesdeAt: true },
+        });
+      return { actual: actual.planId, mensual, anual, enMensual: await pendiente(aMensual), enAnual: await pendiente(aAnual) };
+    });
+    expect(r.mensual).toEqual({ estado: "ok", planId: expect.any(String), cambio: true, avisos: [], vigenteDesde: "2026-12-01" });
+    expect(r.anual).toEqual({ estado: "ok", planId: expect.any(String), cambio: true, avisos: [], vigenteDesde: "2027-01-01" });
+    // Hasta entonces sigue el plan de antes; el pendiente apunta al custom con la fecha real.
+    expect(r.enMensual).toEqual({
+      planId: r.actual,
+      planCambioPlanId: r.mensual.estado === "ok" ? r.mensual.planId : "",
+      planCambioTipoCobro: "mensual",
+      planCambioDesdeAt: inicioDelDiaPlataforma("2026-12-01"),
+    });
+    expect(r.enAnual).toEqual({
+      planId: r.actual,
+      planCambioPlanId: r.anual.estado === "ok" ? r.anual.planId : "",
+      planCambioTipoCobro: "anual",
+      planCambioDesdeAt: inicioDelDiaPlataforma("2027-01-01"),
+    });
+  });
 });
 
 describeSiHayBase("Ajuste planes-custom — el tipo de cobro de cada asignación (D6)", () => {
@@ -223,7 +269,7 @@ describeSiHayBase("Ajuste planes-custom — el tipo de cobro de cada asignación
 
   it("una empresa nueva nace en mensual (DEFAULT); cada asignación guarda el tipo elegido y lo deja en el historial", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = servicioEnEnero(tx);
       const org = (await crearOrganizacion(tx)).id;
       const nueva = (await empresa(tx, org)).planTipoCobro;
       const [uno, dos] = [await servicio.crear(SUPERADMIN, entradaAsignable()), await servicio.crear(SUPERADMIN, entradaAsignable())];
@@ -231,13 +277,13 @@ describeSiHayBase("Ajuste planes-custom — el tipo de cobro de cada asignación
       const tipos: TipoCobro[] = [];
       await servicio.asignar(SUPERADMIN, { organizacionId: org, planId: uno.planId, tipoCobro: "anual" });
       tipos.push((await empresa(tx, org)).planTipoCobro as TipoCobro);
-      await servicio.asignar(SUPERADMIN, { organizacionId: org, planId: dos.planId, tipoCobro: "mensual", vigenteDesde: HOY });
+      await servicio.asignar(SUPERADMIN, { organizacionId: org, planId: dos.planId, tipoCobro: "mensual", vigenteDesde: ENERO });
       tipos.push((await empresa(tx, org)).planTipoCobro as TipoCobro);
       return { nueva, tipos, historial: (await asignaciones(tx, org)).map((a) => a.valorNuevo) };
     });
     expect(r.nueva).toBe("mensual");
     expect(r.tipos).toEqual(["anual", "mensual"]);
-    expect(r.historial).toEqual([`${HOY} · anual`, `${HOY} · mensual`]);
+    expect(r.historial).toEqual([`${ENERO} · anual`, `${ENERO} · mensual`]);
   });
 
   // SLT-86: se retiró «sin tipo, el repositorio asigna en mensual». `asignar` ya no tiene la firma de SL-24

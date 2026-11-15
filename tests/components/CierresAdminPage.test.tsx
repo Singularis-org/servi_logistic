@@ -266,8 +266,16 @@ describe("CierresAdminPage — control de acceso por rol (R1)", () => {
     // cada una en PENDIENTES / RESUELTOS. Al entrar se ve «Mensajero → Pendientes», que es lo
     // que esta pantalla dice ser; el histórico está a un clic, y este caso lo da para
     // comprobar que sigue estando y que el conmutador es el que lo trae.
+    //
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99, R106): la pestaña es un
+    // `tab` de la cola única, y la descripción vieja de la página (voseo) ya no se pinta: la de
+    // cada rol la pinta la cola.
+    expect(screen.queryByText(/^Revisá el detalle de cada cierre/)).toBeNull();
+    expect(
+      screen.getByText("Bodega central. Revisa el cierre de cada mensajero y apruébalo o recházalo."),
+    ).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^Resueltos/ }));
+    await user.click(screen.getByRole("tab", { name: /^Resueltos/ }));
     expect(screen.getByRole("region", { name: "Histórico" })).toBeInTheDocument();
 
     // Y las dos mitades existen: el conmutador de arriba ofrece la de bodega.
@@ -282,6 +290,22 @@ describe("CierresAdminPage — control de acceso por rol (R1)", () => {
 
     expect(
       screen.getByRole("region", { name: "Pendientes de decisión" }),
+    ).toBeInTheDocument();
+  });
+
+  it("SLT-102 (R106, PA3): la satélite lee el nombre de SU zona en el catálogo que ya trae la página", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u2", rol: "adminSatelite", zonaId: "z-limon" });
+    CATALOGO_FILTROS.zonas = [{ id: "z-limon", nombre: "Limón" }];
+    try {
+      const page = await CierresAdminPage();
+      render(page);
+    } finally {
+      CATALOGO_FILTROS.zonas = [];
+    }
+    expect(
+      screen.getByText(
+        "Bodega satélite · Limón. Revisa el cierre de cada mensajero de tu bodega y apruébalo o recházalo.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -336,7 +360,7 @@ describe("CierresAdminPage — control de acceso por rol (R1)", () => {
 
     expect(
       screen.getByRole("alert"),
-    ).toHaveTextContent("No tenés una zona asignada; contactá a tu administrador.");
+    ).toHaveTextContent("No tienes una zona asignada; contacta a tu administrador.");
     // Sin zona: NO se muestran las tablas de acción (R3).
     expect(
       screen.queryByRole("region", { name: "Pendientes de decisión" }),
@@ -466,7 +490,7 @@ describe("CierresAdminPage — Feature 172 [P3]/R6: quién recibe la oferta de p
     );
 
     await user.click(await screen.findByRole("button", { name: "Ver / decidir" }));
-    const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
 
     // El cierre queda aprobado —y el mensajero libre, feature 111— pase lo que pase con el
@@ -479,7 +503,7 @@ describe("CierresAdminPage — Feature 172 [P3]/R6: quién recibe la oferta de p
     // El detalle se cierra en la MISMA tanda de estado en la que se plantearía la oferta:
     // cuando esto se cumple, un diálogo de pago que tocara aparecer ya está en el DOM.
     await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Detalle del cierre" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: /^Detalle del cierre · / })).toBeNull(),
     );
   }
 

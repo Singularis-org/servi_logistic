@@ -28,7 +28,7 @@
   "cupos_por_persona": {
     "frontend": 2,
     "backend": 5,
-    "fullstack": 3
+    "fullstack": 5
   },
   "perfil": {
     "max_dias_sin_revisar": 60,
@@ -59,6 +59,19 @@
           "demo-qa",
           "sql-real",
           "tests/unit/scripts/verificar-rls"
+        ]
+      },
+      {
+        "si_cambia": "lib/utils/aporte-por-orden.ts",
+        "corre": [
+          "tests/unit/utils/aporte-por-orden",
+          "tests/unit/services/busqueda-por-guia-469"
+        ]
+      },
+      {
+        "si_cambia": "lib/services/LiquidacionService.ts",
+        "corre": [
+          "tests/unit/services/liquidacion-"
         ]
       }
     ]

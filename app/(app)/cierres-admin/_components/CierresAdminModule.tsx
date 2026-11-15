@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/shared/Modal";
+import {
+  VisorEvidencia,
+  type EvidenciaAbierta,
+} from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { Pagination } from "@/components/shared/Pagination";
-import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
 import { cierreConfig } from "@/lib/config/cierre";
@@ -64,34 +66,52 @@ import {
   CONFIRMACION_DETALLE,
   CONFIRMACION_CONTINUAR,
   CONFIRMACION_APROBAR,
+  type AvisoLectura,
   type EntradaConfirmacionFisica,
   type FilaAConfirmar,
-  type MedioDeCaptura,
 } from "./cierre-confirmacion-fisica";
+import type { ResultadoLectura } from "@/components/shared/EscanerGuiaCard";
 // `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
 // simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
-import { hayGestionEnModeloNuevo, money, moneyTope } from "./cierre-detalle-shared";
-// FICHA 395: las tres cascadas del detalle («de quién es el dinero», lo que la empresa le factura
-// a la tienda y lo que le queda a la empresa). Viven en su propio archivo para que la pantalla de
-// dinero tenga nombre en el censo de identidades (`DineroIdentidadesEnPantalla`).
-import { CascadasCierreMensajero } from "./CascadasCierreMensajero";
+import { moneyTope } from "./cierre-detalle-shared";
+// SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R38): el detalle del cierre es
+// el componente único de SLT-95 (S1). Sustituye al modal que montaba `CascadasCierreMensajero` +
+// `CierreFacturaDetalle`; de la hoja de hoy se reutilizan tal cual la lista de gestiones y la
+// sección de órdenes sin gestionar. SLT-101: la lista de gestiones es la de `fila/` (R90).
+import { SeccionSinGestion, type CierreFacturaAudiencia } from "./cierre-factura";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
+import { gestionesEnOrden } from "@/components/private/cierres/fila/fila-gestion-vista";
+import type { AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
+import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
+import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
 import {
-  CierreFacturaResumen,
-  CierreFacturaDetalle,
-  type CierreFacturaAudiencia,
-} from "./cierre-factura";
+  folioDe,
+  modoAdminDe,
+  vistaMensajeroDesdeAdmin,
+} from "@/components/private/cierres/detalle/detalle-cierre-vista";
+import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
+import {
+  columnasDescargaDetalle,
+  filaDescargaDetalleCierre,
+} from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
+import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import {
   DescargarCierresButton,
   type DescargaResumenCierres,
 } from "./DescargarCierresButton";
-import { ListaComprobantes } from "./ListaComprobantes";
 import { FiltrosCierresBarra } from "./FiltrosCierresBarra";
-import { PanelConmutado } from "./PanelConmutado";
+// SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R107): la cola única sustituye a
+// los comprobantes, al conmutador segmentado y a los dos paneles.
+import { ColaCierres } from "@/components/private/cierres/cola/ColaCierres";
+import type { PestanaCola } from "@/components/private/cierres/cola/cola-cierres-vista";
+import {
+  PIE_PENDIENTES,
+  descripcionCola,
+} from "@/components/private/cierres/cola/cola-cierres-labels";
 // FICHA 386: los nombres de las dos pestañas salieron a `cierre-labels` (módulo puro) porque
 // `FiltrosCierresBarra` también los necesita —agrupa los estados del filtro por la lista en la que
 // aparecen— y las dos superficies tienen que decir LA MISMA palabra.
 import {
-  destinoCierre,
   TAB_PENDIENTES_LABEL,
   TAB_RESUELTOS_LABEL,
 } from "./cierre-labels";
@@ -100,15 +120,15 @@ import {
 // pantalla (`/wallet/mensajeros`) y renombrarlo en un solo lado dejaría el enlace mudo.
 import { PARAM_CIERRE } from "./cierre-enlace";
 import {
-  CierresAdminHistoricoLista,
-  descargaHistoricoCierres,
-  type CierresAdminHistoricoPagina,
-} from "./CierresAdminHistoricoLista";
-import {
+  AMBITO_DESCARGA_CIERRES_HISTORICO,
   AMBITO_DESCARGA_CIERRES_PENDIENTES,
+  COLUMNAS_DESCARGA_CIERRES_HISTORICO,
   COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
+  filaDescargaCierreHistorico,
   filaDescargaCierrePendiente,
 } from "./cierres-admin-descarga-columnas";
+import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import { obtenerResumenCierres } from "./cierres-resumen-modelo-nuevo-descarga";
 // Feature 172 (TANDA E): el pago al mensajero. Tres piezas, ninguna con lógica de dominio
 // propia — el pendiente lo deriva el servidor (T C.2) y el rol lo decide el servicio (R1/R6).
 import { hayPendienteDeLiquidar } from "./PendienteLiquidarBadge";
@@ -223,21 +243,30 @@ export interface CierresAdminModuleProps {
    * enseña el fulfillment a nadie.
    */
   audiencia?: Exclude<CierreFacturaAudiencia, "mensajero">;
+  /**
+   * SLT-102 (R106, PA3) — el nombre de la zona de quien mira, para la descripción de la cola
+   * («Bodega satélite · Limón. …»). `null` u omitido = sin nombre («Bodega central. …»).
+   */
+  zonaNombre?: string | null;
 }
 
 /**
- * Feature 172 (T E.1, §8) — la oferta de pago que aparece TRAS APROBAR. Guarda los tres datos
- * que el diálogo necesita porque el detalle ya se cerró cuando se abre: el cierre aprobado
+ * Feature 172 (T E.1, §8) — el diálogo de pago abierto. Guarda los tres datos que el diálogo
+ * necesita porque, tras aprobar, el detalle ya se cerró cuando se abre: el cierre aprobado
  * desaparece de la cola y `detalle` vuelve a `null`.
  *
- * Es estado EFÍMERO de pantalla, no un estado del cierre (R18): «Ahora no» lo descarta y no
- * persiste nada; el pendiente se vuelve a derivar cada vez que alguien mira el cierre.
+ * SLT-102 (R103): se abre también desde la fila de Resueltos («Registrar pago»), con
+ * `trasAprobar: false` — sin «Ahora no», porque ahí no hay aprobación que separar del pago.
+ *
+ * Es estado EFÍMERO de pantalla, no un estado del cierre (R18): cerrarlo no persiste nada; el
+ * pendiente se vuelve a derivar cada vez que alguien mira el cierre.
  */
-interface OfertaPago {
+interface PagoAbierto {
   cierreId: string;
   mensajeroNombre: string;
-  /** El pendiente que devolvió `aprobarCierre`, STRING del servidor (R14). */
+  /** El pendiente del servidor (de `aprobarCierre` o de la fila), STRING tal cual (R14). */
   pendiente: string;
+  trasAprobar: boolean;
 }
 
 // --- Pedido humano del 2026-08-16: las dos mitades, en pestañas ---
@@ -245,8 +274,7 @@ const TAB_PENDIENTES = "pendientes";
 const TAB_RESUELTOS = "resueltos";
 type TabCierresAdmin = typeof TAB_PENDIENTES | typeof TAB_RESUELTOS;
 // `TAB_PENDIENTES_LABEL` y `TAB_RESUELTOS_LABEL` se importan de `./cierre-labels` (ficha 386).
-/** Nombre accesible del conmutador. Propio: la pantalla anida varios segmentados. */
-const TABS_CIERRES_LABEL = "Cierres del día por estado";
+// El nombre del `tablist` («Cierres del día por estado») vive en `ColaCierres` (SLT-102).
 
 /** Nombre visible de la cola: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PENDIENTES = "Cierres pendientes de decisión";
@@ -254,6 +282,10 @@ const TITULO_DESCARGA_PENDIENTES = "Cierres pendientes de decisión";
 export const PAGINACION_PENDIENTES_LABEL =
   "Paginación de los cierres del día pendientes";
 const ERROR_CARGA_PENDIENTES = "No se pudieron cargar los cierres pendientes.";
+const VACIO_PENDIENTES = "No hay cierres pendientes de decisión.";
+/** Nombres de las regiones de cada pestaña (R104): los de hoy, por los que se localizan. */
+const REGION_PENDIENTES = "Pendientes de decisión";
+const REGION_HISTORICO = "Histórico";
 
 // R40: el tamaño sale de la config del dominio (T H.1), nunca de un literal de pantalla, y
 // las opciones nunca superan el máximo que el borde acepta.
@@ -274,7 +306,10 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
  * El título no repite el del otro listado: dos controles en la misma pantalla necesitan nombres
  * accesibles distintos (R13).
  */
-function descargaColaCierres(filtros: FiltrosCierres): DescargaResumenCierres {
+export function descargaColaCierres(
+  filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
     columnas: COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
@@ -286,6 +321,76 @@ function descargaColaCierres(filtros: FiltrosCierres): DescargaResumenCierres {
       filasDesdeResultado(
         descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
         filaDescargaCierrePendiente,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro «Cierres» + «Por tienda» (+ la hoja
+    // de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy tal cual.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
+        filaDescargaCierrePendiente,
+        columnasMarcadas,
+        audiencia,
+      ),
+  };
+}
+
+/** La página del histórico que se está mostrando, tal como la devuelve el servidor. */
+export interface CierresAdminHistoricoPagina {
+  items: CierreAdminResumen[];
+  total: number;
+  pageSize: number;
+}
+
+/** Nombre visible del listado: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA = "Cierres del día resueltos";
+/** Nombre accesible del control (R43). Propio: la pantalla monta varios listados paginados. */
+export const PAGINACION_HISTORICO_LABEL = "Paginación del histórico de cierres del día";
+/** Textos de hoy del error y del vacío del histórico; SLT-102 los pasa a la cola única (R104). */
+export const ERROR_CARGA_HISTORICO = "No se pudo cargar el histórico de cierres.";
+export const VACIO_HISTORICO = "Aún no hay cierres resueltos.";
+
+/**
+ * La configuración de descarga de ESTE listado, para que la monte quien pinta la fila de las
+ * pestañas (pedido humano del 2026-08-16: el botón va alineado con «Pendientes/Resueltos», no
+ * en una fila propia encima de la lista).
+ *
+ * Vive AQUÍ y no en el módulo aunque allí se use: el título, las columnas y la lectura de la
+ * que sale el archivo son de este listado, y separarlas de él es como acaban divergiendo el
+ * nombre de la hoja y el de la pantalla.
+ *
+ * Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo es el CONJUNTO. Proyectar
+ * `pagina.items` habría convertido «descargar el histórico» en «descargar las 25 filas que veo»
+ * sin que nada fallara. Feature 184 — Tanda D (T D.3, R1): ese conjunto lo entrega una lectura
+ * DEDICADA, que corta por estado en la base con el mismo criterio y el mismo orden que la
+ * página, y cuyo tope de filas evalúa el servidor (R6).
+ *
+ * Pedido humano del 2026-08-16 — «el CONJUNTO» pasa a significar «el conjunto FILTRADO», y la
+ * distinción con el alcance sigue intacta: los `filtros` viajan porque el usuario los puso; el
+ * ALCANCE no viaja, lo pone el servidor desde la sesión, y un `adminSatelite` sigue descargando
+ * solo los cierres de su zona por mucho que filtre (R14/R44).
+ */
+export function descargaHistoricoCierres(
+  filtros: FiltrosCierres,
+  audiencia: AudienciaDescargaGestionesFundida,
+): DescargaResumenCierres {
+  return {
+    titulo: TITULO_DESCARGA,
+    columnas: COLUMNAS_DESCARGA_CIERRES_HISTORICO,
+    // Ficha 314: enciende el selector de columnas. El ámbito es el del HISTÓRICO y no el de la
+    // cola: son dos catálogos distintos y una sola clave los haría pisarse (R10).
+    ambitoColumnas: AMBITO_DESCARGA_CIERRES_HISTORICO,
+    obtenerFilas: () =>
+      filasDesdeResultado(
+        descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
+      ),
+    // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro; sin ellos, el archivo de hoy.
+    obtenerFilasConColumnas: (columnasMarcadas) =>
+      obtenerResumenCierres(
+        () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+        filaDescargaCierreHistorico,
+        columnasMarcadas,
+        audiencia,
       ),
   };
 }
@@ -321,7 +426,7 @@ async function leerPendientes(
 // separados de la lógica (i18n-ready), como el resto del módulo. ---
 const INDEMNIZACION_TITULO = "Indemnizar los incidentes del cierre";
 const INDEMNIZACION_DETALLE =
-  "Este cierre trae paquetes dañados, perdidos o robados. Indicá cuánto se indemniza por cada uno: al aprobar, la suma sale de la caja principal como un solo egreso.";
+  "Este cierre trae paquetes dañados, perdidos o robados. Indica cuánto se indemniza por cada uno: al aprobar, la suma sale de la caja principal como un solo egreso.";
 const INDEMNIZACION_CONFIRMAR = "Aprobar e indemnizar";
 const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 /**
@@ -339,9 +444,9 @@ const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 // es lo que el validador de esta misma pantalla rechaza y un dígito más de los «10 dígitos»
 // que la frase promete. `moneyTope` descarta la cola y el mensaje queda más estricto que la
 // realidad, que es el lado seguro.
-const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisá si sobra un dígito.`;
+const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisa si sobra un dígito.`;
 const INDEMNIZACION_MONTO_FORMATO =
-  "Escribí un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
+  "Escribe un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
 /** R34: rótulo de la causa en la fila del incidente (el dato que justifica el monto). */
 const INDEMNIZACION_CAUSA_LABEL = "Causa";
 /** Causa ausente: no debería pasar (el borde la exige, R9), pero no se inventa un valor. */
@@ -350,12 +455,16 @@ const INDEMNIZACION_MONTO_AYUDA = `Mayor que 0 y hasta ${moneyTope(INDEMNIZACION
 const INDEMNIZACION_FALTAN =
   "Falta el monto de al menos un incidente, o alguno no es válido. No se puede aprobar así.";
 
-/** Detalle abierto: la cabecera del cierre + sus gestiones agrupadas por resultado. */
+/**
+ * Detalle abierto: la cabecera del cierre + sus gestiones agrupadas por resultado.
+ * SLT-154 (R462): las cifras de la empresa llegan en `null` a quien no es la central; se guardan tal
+ * cual y la vista no las pinta (R478).
+ */
 interface DetalleAbierto {
   cierre: CierreAdminResumen;
   grupos: CierreGrupos;
   /** Ingreso de la empresa del cierre por concepto (derivado del snapshot, money-safe). */
-  totalesIngreso: TotalesIngresoEmpresa;
+  totalesIngreso: TotalesIngresoEmpresa | null;
   /**
    * Feature 102/R8/R10: desglose del ingreso de bodega por rechazos particionado por origen
    * (SLA del cron 99 / manual del mensajero). `total` = snapshot leído; `sla + manual === total`
@@ -366,11 +475,11 @@ interface DetalleAbierto {
    * SL-39 (R21) — el IVA facturado del cierre, derivado server-side. Va a la cascada «Lo que le
    * queda a la empresa» como línea propia (R24).
    */
-  ivaFacturado: string;
+  ivaFacturado: string | null;
   /** Ingreso sin IVA menos el pago al mensajero, derivado server-side (SL-39, R22; puede ser negativo). */
-  ganancia: string;
+  ganancia: string | null;
   /** Total general menos flete + IVA y comisión + IVA, derivado server-side (puede ser negativo). */
-  pagoTienda: string;
+  pagoTienda: string | null;
   /**
    * FICHA 395 — los cuatro derivados de las tres cascadas, tal como los emite el servidor. Los
    * tres importes son STRING con su signo y NINGUNO se recorta a cero.
@@ -380,10 +489,10 @@ interface DetalleAbierto {
    * NO es `pagoTienda` (aquel no descuenta el flete por rechazo, que nunca entró en lo
    * recaudado). Los cuatro se pasan tal cual a `CascadasCierreMensajero`: aquí no se deriva nada.
    */
-  cobradoSobreRecaudado: string;
-  netoEmpresa: string;
-  ganaLaTienda: string;
-  fleteRechazoYaCobradoATienda: boolean;
+  cobradoSobreRecaudado: string | null;
+  netoEmpresa: string | null;
+  ganaLaTienda: string | null;
+  fleteRechazoYaCobradoATienda: boolean | null;
   /**
    * FICHA 396 — de qué tienda es cada parte de `pagoTienda` y de `ganaLaTienda`: una entrada por
    * tienda del cierre, con sus tres cifras ya derivadas y **ya ordenadas por el servidor**.
@@ -391,7 +500,7 @@ interface DetalleAbierto {
    * Llega SIEMPRE, también con una sola tienda; el umbral de enseñarlo —dos o más— lo evalúa
    * `CascadasCierreMensajero`. Aquí no se ordena, no se filtra y no se suma nada.
    */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
   /**
    * Feature 264 (R7/R13) — las órdenes que el corte del día barrió a `sin_gestionar` al crear
    * ESTE cierre. Sin un solo campo de dinero: no tienen gestión, así que no hay nada que sumar.
@@ -408,6 +517,17 @@ interface DetalleAbierto {
    * son lo mismo, porque ningún cierre anterior a la ficha pudo llevarse uno.
    */
   rechazosDeTienda: CierreRechazoDeTienda[];
+  /** SLT-100 (R80): quién lo resolvió, para la cabecera del detalle. Solo aprobado/rechazado. */
+  resueltoPorNombre?: string | null;
+  /** SLT-111 (R267): el reparto en % ya derivado en el servidor; `null` o ausente = sin barra. */
+  porcentajesReparto?: number[] | null;
+  /**
+   * SLT-154 (R467): lo que va a la central de este cierre, tal cual del servidor (dato de la
+   * satélite, viaja a todo lector). Ausentes = sin dato: la vista no pinta nada de la central.
+   */
+  paraLaCentral?: string;
+  efectivoCubreDescuentos?: boolean;
+  porcentajesRepartoCentral?: number[] | null;
 }
 
 /**
@@ -459,6 +579,7 @@ export function CierresAdminModule({
   puedeAjustarPagoMensajero = false,
   catalogoFiltros = CATALOGO_FILTROS_CIERRES_VACIO,
   audiencia = "satelite",
+  zonaNombre = null,
 }: Readonly<CierresAdminModuleProps>) {
   const router = useRouter();
   const pathname = usePathname();
@@ -471,7 +592,7 @@ export function CierresAdminModule({
   // Detalle del cierre abierto (null = modal cerrado).
   const [detalle, setDetalle] = useState<DetalleAbierto | null>(null);
   // Evidencia (URL firmada, R7) en el visor; null = cerrado.
-  const [evidencia, setEvidencia] = useState<string | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenciaAbierta | null>(null);
   // Pedido humano (2026-08-19): la gestión cuyo desglose se está corrigiendo; `null` = diálogo
   // cerrado. Va aquí, con el resto de los hooks, y no junto al bloque que lo usa: los hooks se
   // llaman todos, siempre y en el mismo orden.
@@ -511,7 +632,7 @@ export function CierresAdminModule({
   // descarta en `cerrarDetalle`, junto a los montos. Mismo criterio que la 158.
   const [confirmadas, setConfirmadas] = useState<Record<string, number>>({});
   // R29-R32: qué pasó con la ÚLTIMA lectura. Persistente y no un toast, que se va solo.
-  const [avisoLectura, setAvisoLectura] = useState<string | null>(null);
+  const [avisoLectura, setAvisoLectura] = useState<AvisoLectura | null>(null);
   // Confirmación persistente del último acierto (patrón de `RecogerPaqueteCard`).
   const [ultimaGuiaConfirmada, setUltimaGuiaConfirmada] = useState<number | null>(null);
   // Errores del servidor de la confirmación física, por clave de fila. Conjunto de claves DISJUNTO
@@ -519,8 +640,9 @@ export function CierresAdminModule({
   // gestión puede estar en los dos (el servicio lo afirma con un test, no lo razona), y una
   // barrida no es una gestión.
   const [confirmacionErrores, setConfirmacionErrores] = useState<Record<string, string>>({});
-  // Feature 172/T E.1 (§8): oferta de pago tras aprobar; null = no se está ofreciendo nada.
-  const [ofertaPago, setOfertaPago] = useState<OfertaPago | null>(null);
+  // Feature 172/T E.1 (§8) + SLT-102 (R103): el diálogo de pago, tras aprobar o desde la fila de
+  // Resueltos; null = cerrado.
+  const [pagoAbierto, setPagoAbierto] = useState<PagoAbierto | null>(null);
 
   /**
    * Pedido humano del 2026-08-16 — los filtros de la pantalla (fecha, bodega destino,
@@ -619,7 +741,7 @@ export function CierresAdminModule({
         role="alert"
         className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
-        No tenés una zona asignada; contactá a tu administrador.
+        No tienes una zona asignada; contacta a tu administrador.
       </p>
     );
   }
@@ -678,7 +800,7 @@ export function CierresAdminModule({
     try {
       result = await verCierreDetalle({ cierreId });
     } catch {
-      toast.error("No se pudo abrir el detalle del cierre. Intentá de nuevo.");
+      toast.error("No se pudo abrir el detalle del cierre. Inténtalo de nuevo.");
       return;
     }
     if (result.status === "ok") {
@@ -707,6 +829,13 @@ export function CierresAdminModule({
         // FICHA 425 (R14): tal cual llega, sin filtrar ni reordenar. Es la misma lista que recibe
         // el mensajero en su comprobante: las dos pantallas pintan lo mismo para el mismo cierre.
         rechazosDeTienda: result.rechazosDeTienda,
+        resueltoPorNombre: result.resueltoPorNombre ?? null,
+        // SLT-111 (R267): tal cual llega; aquí no se redondea ni se reordena.
+        porcentajesReparto: result.porcentajesReparto ?? null,
+        // SLT-154 (R467): los tres, tal cual; aquí no se resta nada.
+        paraLaCentral: result.paraLaCentral,
+        efectivoCubreDescuentos: result.efectivoCubreDescuentos,
+        porcentajesRepartoCentral: result.porcentajesRepartoCentral ?? null,
       });
       return;
     }
@@ -716,10 +845,10 @@ export function CierresAdminModule({
       return;
     }
     if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
       return;
     }
-    toast.error("No se pudo abrir el detalle del cierre. Intentá de nuevo.");
+    toast.error("No se pudo abrir el detalle del cierre. Inténtalo de nuevo.");
   }
 
   /**
@@ -797,11 +926,11 @@ export function CierresAdminModule({
     } else if (status === "no_encontrada") {
       toast.error("El cierre ya no está disponible.");
     } else if (status === "forbidden") {
-      toast.error("No tenés permiso para resolver este cierre.");
+      toast.error("No tienes permiso para resolver este cierre.");
     } else if (status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo resolver el cierre. Intentá de nuevo.");
+      toast.error("No se pudo resolver el cierre. Inténtalo de nuevo.");
     }
     cerrarDetalle();
     refrescarListas();
@@ -843,7 +972,7 @@ export function CierresAdminModule({
       // [P3]/R6: un `adminSatelite` aprueba y aquí no ve nada; el flujo termina como hoy y la
       // deuda queda abierta y visible para quien tiene la caja (R26).
       if (puedeRegistrarPago && hayPendienteDeLiquidar(pendiente)) {
-        setOfertaPago({ cierreId, mensajeroNombre, pendiente });
+        setPagoAbierto({ cierreId, mensajeroNombre, pendiente, trasAprobar: true });
       }
       return;
     }
@@ -913,23 +1042,27 @@ export function CierresAdminModule({
   }
 
   /**
-   * Feature 238 (R29-R32) — una guía leída, por cámara o tecleada. Devuelve `true` sólo si
-   * marcó una fila; con `false` el campo conserva lo escrito para poder corregirlo (patrón de
-   * `RecogerPaqueteCard`).
+   * Feature 238 (R29-R32) — una guía leída, por cámara, tecleada o con la pistola. Devuelve a la
+   * tarjeta el resultado de la lectura (SLT-158): acierto si marcó una fila o si es la relectura
+   * inocua de una ya confirmada; error con su motivo en los otros tres avisos. El campo se vacía
+   * siempre al enviar (R575): lo leído queda escrito en el aviso de la ventana (R576).
    *
    * Ninguno de los cuatro desenlaces manda nada al servidor: la resolución es local contra el
    * detalle ya cargado, y el envío ocurre una sola vez, al confirmar la ventana.
    */
-  function leerGuia(texto: string, medio: MedioDeCaptura): boolean {
+  function aplicarLectura(texto: string): ResultadoLectura {
     const lectura = interpretarLectura(
       texto,
-      medio,
       filasDelCierreAbierto,
       confirmadas,
     );
     if (lectura.tipo === "aviso") {
-      setAvisoLectura(lectura.mensaje);
-      return false;
+      setAvisoLectura({ lectura: texto.trim(), mensaje: lectura.mensaje, inocuo: false });
+      return { tipo: "error", motivo: lectura.mensaje };
+    }
+    if (lectura.tipo === "repetida") {
+      setAvisoLectura({ lectura: texto.trim(), mensaje: lectura.mensaje, inocuo: true });
+      return { tipo: "acierto" };
     }
     // Una lectura puede cubrir MÁS DE UNA fila: hay un solo paquete físico, y si dos gestiones
     // vivas de la misma orden comparten guía, las dos quedan cubiertas por ese único gesto.
@@ -950,7 +1083,7 @@ export function CierresAdminModule({
       for (const clave of lectura.claves) delete resto[clave];
       return resto;
     });
-    return true;
+    return { tipo: "acierto" };
   }
 
   /**
@@ -1030,6 +1163,9 @@ export function CierresAdminModule({
       );
       setDestrabar(null);
       refrescarListas();
+      // SLT-100 (R83): destrabado desde el pie del detalle, el detalle se vuelve a leer del
+      // servidor y queda en modo decidir. Desde la cola (detalle cerrado) no se abre nada.
+      if (detalle?.cierre.cierreId === cierre.cierreId) await abrirDetalle(cierre.cierreId);
       return;
     }
     if (result.status === "conflict") {
@@ -1037,27 +1173,36 @@ export function CierresAdminModule({
     } else if (result.status === "no_encontrada") {
       toast.error("El cierre ya no está disponible.");
     } else if (result.status === "forbidden") {
-      toast.error("No tenés permiso para destrabar este cierre.");
+      toast.error("No tienes permiso para destrabar este cierre.");
     } else if (result.status === "unauthenticated") {
-      toast.error("Tu sesión expiró. Iniciá sesión de nuevo.");
+      toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
     } else {
-      toast.error("No se pudo destrabar el cierre. Intentá de nuevo.");
+      toast.error("No se pudo destrabar el cierre. Inténtalo de nuevo.");
     }
     setDestrabar(null);
     refrescarListas();
   }
 
   const cierreAbierto = detalle?.cierre ?? null;
+  /**
+   * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (PA1, R116): la central abre
+   * un cierre del día de una bodega SATÉLITE (desde «Ver su cierre» del detalle de bodega) SOLO PARA
+   * MIRARLO: solo lectura, filas «solo lectura», sin pago, decisión, destrabe, corrección ni ajuste.
+   * Ocultar no es la defensa: las Server Actions de escritura siguen con su alcance `bodega_central`
+   * y responden `no_encontrada` sobre ese cierre (T1); esto solo decide qué se OFRECE.
+   */
+  const soloLecturaSatelite = audiencia === "admin" && cierreAbierto?.destinoTipo === "bodega_satelite";
   // Feature 172 (T E.2, R19/R28): la sección «Pago al mensajero» solo existe en un cierre
   // APROBADO y solo para quien puede pagar ([P3]/R6). En cualquier otro estado no se muestra
   // ni se ofrece nada relativo al pago — y, como el componente ni se monta, tampoco se pide su
   // lista de comprobantes.
-  const ofrecerPagoEnDetalle = puedeRegistrarPago && cierreAbierto?.estado === "aprobado";
+  const ofrecerPagoEnDetalle =
+    !soloLecturaSatelite && puedeRegistrarPago && cierreAbierto?.estado === "aprobado";
   // Feature 111/R15 (Q1-B): la vía NORMAL aprobar/rechazar aplica SOLO a `solicitado`.
   // Un `vencido` YA NO es resoluble por la vía normal (revierte la 41 R20): su único
   // camino normal es que el mensajero lo solicite (→ `solicitado`); la excepción es la
   // válvula de escape del admin (R16). El histórico sigue siendo solo lectura.
-  const esResoluble = cierreAbierto?.estado === "solicitado";
+  const esResoluble = !soloLecturaSatelite && cierreAbierto?.estado === "solicitado";
   /**
    * Pedido humano (2026-08-19): el desglose se corrige mientras el cierre está ABIERTO — la
    * plata todavía no está aprobada—. NO es `esResoluble`: un `vencido` es un cierre abierto que
@@ -1065,6 +1210,7 @@ export function CierresAdminModule({
    * El servidor exige lo mismo; esto solo decide si se ofrece.
    */
   const ofrecerCorreccionPagos =
+    !soloLecturaSatelite &&
     puedeCorregirPagos &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
   /**
@@ -1078,6 +1224,7 @@ export function CierresAdminModule({
    * escribe nada: esto sólo decide si se OFRECE.
    */
   const ofrecerCorreccionResultado =
+    !soloLecturaSatelite &&
     puedeCorregirResultado &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
   /**
@@ -1085,8 +1232,16 @@ export function CierresAdminModule({
    * que exige el servidor—. Aprobado, queda fijo (se usa premio o descuento en la wallet).
    */
   const ofrecerAjustePago =
+    !soloLecturaSatelite &&
     puedeAjustarPagoMensajero &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
+  /** SLT-101 (R22, R90): la audiencia de la fila única; la central es el `admin` de acceso total. */
+  // SLT-104 (R116): un cierre de satélite abierto por la central, filas «solo lectura».
+  const audienciaFila: AudienciaFila = soloLecturaSatelite
+    ? "solo lectura"
+    : audiencia === "admin"
+      ? "central"
+      : "satelite";
 
   /**
    * SLT-56 (R11) — aplica en la pantalla, SIN recargar, lo que devolvió el servidor: el pago nuevo
@@ -1119,10 +1274,11 @@ export function CierresAdminModule({
     });
   }
 
+  // SLT-102 (R107): el rol de la cola sale del MISMO predicado que la audiencia del detalle
+  // (`audiencia === "admin"` ⇔ `esAccesoTotal`, resuelto en `page.tsx`).
+  const rolCola = audiencia === "admin" ? "central" : "satelite";
+
   return (
-    // `gap-4` y no `gap-8` (pedido humano del 2026-08-16): entre la barra de filtros y las
-    // pestañas había el mismo hueco que entre dos secciones distintas, y no lo son —el filtro
-    // acota justo lo que las pestañas reparten—. Se separan como lo que son: una cabecera.
     <div className="flex flex-col gap-4">
       {/* Feature 205 (T6.1, R39/R40): el cierre que nombra la URL se abre al llegar. No pinta
           nada; solo dispara la MISMA lectura por id que usa la tabla. */}
@@ -1131,296 +1287,193 @@ export function CierresAdminModule({
         onAbrir={abrirDetalle}
       />
 
-      {/* ---------- Filtros (pedido humano del 2026-08-16) ----------
-          UNA barra para los dos listados de abajo. Deshabilitada mientras alguna de las dos
-          páginas está en vuelo: cambiar un filtro a mitad de una lectura dispararía una
-          segunda con la primera todavía viva. */}
-      <FiltrosCierresBarra
-        catalogo={catalogoFiltros}
-        onChange={aplicarFiltros}
-        disabled={pendientesCargando || historicoCargando}
-        // FICHA 386 — ÉSTA es la única pantalla que puede ofrecerlo: `estados` vive en
-        // `filtrosCierresSchema` (los cierres del DÍA). Las dos de bodega usan
-        // `filtrosCierresBodegaSchema`, que no lo declara y es `.strict()`.
-        conEstado
-      />
+      {/* ---------- La cola única (SLT-102, R107) ----------
+          `ColaCierres` pinta la descripción del rol, las pestañas con conteo, UNA barra para las
+          dos listas con «Descargar» a su derecha, la tabla de la pestaña activa y el pie. El
+          estado sigue aquí: filtros, pestaña, página y tamaño de cada lista, y las dos lecturas.
 
-      {/* ---------- Pestañas: pendientes / resueltos (pedido humano del 2026-08-16) ----------
-          El conteo va DENTRO de cada pestaña, y no es adorno: al esconder la mitad que no se
-          mira, sin el número la pestaña apagada no diría si hay trabajo esperando. Los dos
-          salen del `total` del SERVIDOR (R42), nunca de `items.length`. */}
-      {/* Pedido humano del 2026-08-16: la descarga va ALINEADA con las pestañas, en su misma
-          fila y al otro extremo, en vez de en una fila propia encima de la lista. Se monta la
-          de la pestaña ACTIVA: solo hay un archivo que pedir en cada momento, y así el botón
-          no aparece dos veces (una por panel). */}
-      {/* `pb-1` (pedido humano del 2026-08-16): el grupo segmentado se estaba viendo cortado
-          por abajo. Su borde y su anillo de foco se salen del alto nominal del botón, y sin
-          este respiro el contenedor de la fila los recorta. */}
-<div className="flex flex-wrap items-center justify-between gap-2 pb-1">
-        <SegmentedToggle
-          options={[
-            {
-              valor: TAB_PENDIENTES,
-              etiqueta: TAB_PENDIENTES_LABEL,
-              conteo: colaPendientes.total,
-            },
-            {
-              valor: TAB_RESUELTOS,
-              etiqueta: TAB_RESUELTOS_LABEL,
-              conteo: historicoPagina.total,
-            },
-          ]}
-          valor={tab}
-          onChange={setTab}
-          ariaLabel={TABS_CIERRES_LABEL}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          {/* UN SOLO botón (pedido humano del 2026-09-05). Hasta hoy había dos —«Descargar» y
-              «Descargar detallada»— con el mismo verbo y sin decir en qué se diferenciaban; no
-              eran dos archivos, eran el mismo con dos GRANOS. Ahora el grano se elige DENTRO
-              del selector: «Resumen» es una fila por CIERRE y sale de lo que la pestaña enseña,
-              filtros incluidos; «Detalle» es una fila por GESTIÓN y su conjunto lo sigue
-              redactando el diálogo de mensajeros y rango, sin heredar nada de la barra (D11,
-              R34/R35). Por eso al detalle NO se le pasan `filtros`.
+          LOS CONTEOS salen del `total` del SERVIDOR (R42, R99), nunca de `items.length`: con
+          `items.length` diría «25» habiendo 300 cierres esperando decisión, y no fallaría nada.
+          Lo vigila `tests/unit/descarga/contadores-cabecera.guardia.test.ts`.
 
-              Desde aquí se cubre la GAM: en esta pantalla el maestro solo ve los cierres con
-              destino `bodega_central`, y los de las bodegas satélite le llegan únicamente
-              consolidados, por el control gemelo de `CierresBodegaAdminModule`. Los dos
-              conjuntos son DISJUNTOS y su unión es el total (design §2.6). */}
+          La barra se deshabilita mientras alguna de las dos páginas está en vuelo: cambiar un
+          filtro a mitad de una lectura dispararía una segunda con la primera todavía viva. */}
+      <ColaCierres
+        tipo="mensajero"
+        rol={rolCola}
+        descripcion={descripcionCola(rolCola, zonaNombre)}
+        pestanas={[
+          { id: TAB_PENDIENTES, label: TAB_PENDIENTES_LABEL, conteo: colaPendientes.total },
+          { id: TAB_RESUELTOS, label: TAB_RESUELTOS_LABEL, conteo: historicoPagina.total },
+        ]}
+        pestanaActiva={tab}
+        onPestana={(id: PestanaCola) => setTab(id)}
+        barra={
+          <FiltrosCierresBarra
+            catalogo={catalogoFiltros}
+            onChange={aplicarFiltros}
+            disabled={pendientesCargando || historicoCargando}
+            // FICHA 386 — ÉSTA es la única pantalla que puede ofrecerlo: `estados` vive en
+            // `filtrosCierresSchema` (los cierres del DÍA). Las dos de bodega usan
+            // `filtrosCierresBodegaSchema`, que no lo declara y es `.strict()`.
+            conEstado
+            // SLT-102 (R100, enmienda de Carlos 2026-11-10): sin «Bodega», como el canvas.
+            sinBodega
+          />
+        }
+        descargar={
+          // UN SOLO botón (pedido humano del 2026-09-05), de la pestaña ACTIVA: «Resumen» es una
+          // fila por CIERRE y sale de lo que la pestaña enseña, filtros incluidos; «Detalle» es
+          // una fila por GESTIÓN y su conjunto lo redacta el diálogo de mensajeros y rango, sin
+          // heredar nada de la barra (D11, R34/R35). Por eso al detalle NO se le pasan `filtros`.
+          //
+          // Desde aquí se cubre la GAM: en esta pantalla el maestro solo ve los cierres con
+          // destino `bodega_central`, y los de las bodegas satélite le llegan únicamente
+          // consolidados, por el control gemelo de `CierresBodegaAdminModule`. Los dos
+          // conjuntos son DISJUNTOS y su unión es el total (design §2.6).
           <DescargarCierresButton
             resumen={
               tab === TAB_PENDIENTES
-                ? descargaColaCierres(filtros)
-                : descargaHistoricoCierres(filtros)
+                ? descargaColaCierres(filtros, audiencia)
+                : descargaHistoricoCierres(filtros, audiencia)
             }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresAdminCompleto", f)}
             disabled={pendientesCargando || historicoCargando}
             audiencia={audiencia}
           />
-        </div>
-      </div>
-
-      <PanelConmutado activo={tab === TAB_PENDIENTES} ariaLabel={TAB_PENDIENTES_LABEL}>
-      {/* ---------- Pendientes de decisión (R4) ---------- */}
-      {/* SIN ENCABEZADO VISIBLE (pedido humano del 2026-08-16): la pestaña de arriba ya dice
-          «Pendientes», y repetirlo dos centímetros más abajo no añade nada. El `aria-label` SÍ
-          se queda: la sección sigue necesitando un nombre para quien no ve la pantalla, y es
-          por él por el que la localizan los tests y el E2E.
-
-          EL CONTADOR NO SE PIERDE, se mudó: vive en la pestaña (`conteo`), y sigue saliendo del
-          TOTAL del servidor. Con `items.length` diría «(25)» habiendo 300 cierres esperando
-          decisión, y no fallaría nada: compilaría, renderizaría y mentiría. Lo vigila
-          `tests/unit/descarga/contadores-cabecera.guardia.test.ts`. */}
-      <section
-        aria-label="Pendientes de decisión"
-        className="flex flex-col gap-3"
-      >
-        {/* Pedido humano del 2026-08-16: la cola se lee como COMPROBANTES, no como tabla.
-            Cada cierre es la misma hoja compacta que ya usaba la previsualización, con su
-            botonera y su desglose desplegable; la tabla que estaba aquí desaparece, y con
-            ella la duplicidad de tener los mismos cierres dos veces en la pantalla. */}
-        <ListaComprobantes
-          ariaLabel="Pendientes de decisión"
-          items={colaPendientes.items}
-          clave={(c) => c.cierreId}
-          isLoading={pendientesCargando}
-          error={pendientesError ? ERROR_CARGA_PENDIENTES : null}
-          emptyMessage="No hay cierres pendientes de decisión."
-          render={(c) => (
-            <CierreFacturaResumen
-              cierre={c}
-              acciones={
-                <AccionesCola
-                  cierre={c}
-                  abrir={abrirDetalle}
-                  pedirDestrabar={setDestrabar}
-                />
+        }
+        filas={tab === TAB_PENDIENTES ? colaPendientes.items : historicoPagina.items}
+        cargando={tab === TAB_PENDIENTES ? pendientesCargando : historicoCargando}
+        error={
+          tab === TAB_PENDIENTES
+            ? pendientesError
+              ? ERROR_CARGA_PENDIENTES
+              : null
+            : historicoError
+              ? ERROR_CARGA_HISTORICO
+              : null
+        }
+        vacio={tab === TAB_PENDIENTES ? VACIO_PENDIENTES : VACIO_HISTORICO}
+        // Los nombres de hoy de las dos regiones: por ellos localizan la lista los tests y los
+        // E2E (R104).
+        region={tab === TAB_PENDIENTES ? REGION_PENDIENTES : REGION_HISTORICO}
+        acciones={{
+          abrir: abrirDetalle,
+          destrabar: setDestrabar,
+          // R34/R103: solo se ofrece a quien puede pagar (`esAccesoTotal`, resuelto en el
+          // servidor). La Server Action responde `forbidden` a cualquier otro igualmente.
+          ...(puedeRegistrarPago && rolCola === "central"
+            ? {
+                registrarPago: (c: CierreAdminResumen, pendiente: string) =>
+                  setPagoAbierto({
+                    cierreId: c.cierreId,
+                    mensajeroNombre: c.mensajeroNombre,
+                    pendiente,
+                    trasAprobar: false,
+                  }),
               }
-            />
-          )}
-        />
-
-        <Pagination
-          page={pendientesPage}
-          pageSize={pendientesPageSize}
-          total={colaPendientes.total}
-          disabled={pendientesCargando}
-          showFirstLast
-          siblingCount={1}
-          ariaLabel={PAGINACION_PENDIENTES_LABEL}
-          onPageChange={setPendientesPage}
-          onPageSizeChange={(s) => {
-            setPendientesPageSize(s);
-            setPendientesPage(1);
-          }}
-          pageSizeOptions={PAGE_SIZE_OPTIONS}
-        />
-      </section>
-
-      </PanelConmutado>
-
-      <PanelConmutado activo={tab === TAB_RESUELTOS} ariaLabel={TAB_RESUELTOS_LABEL}>
-      {/* ---------- Histórico (solo lectura, R5) ----------
-          Feature 170 — FASE 2 (T I.2): el listado y su control viven en su propio componente;
-          la página la pide este módulo (ver el comentario del `useSWR`). */}
-      <CierresAdminHistoricoLista
-        pagina={historicoPagina}
-        page={historicoPage}
-        isLoading={historicoCargando}
-        hayError={Boolean(historicoError)}
-        onPageChange={setHistoricoPage}
-        onPageSizeChange={(s) => {
-          setHistoricoPageSize(s);
-          setHistoricoPage(1);
+            : {}),
         }}
-        onAbrir={abrirDetalle}
+        pie={tab === TAB_PENDIENTES ? PIE_PENDIENTES : undefined}
+        paginacion={
+          tab === TAB_PENDIENTES ? (
+            <Pagination
+              page={pendientesPage}
+              pageSize={pendientesPageSize}
+              total={colaPendientes.total}
+              disabled={pendientesCargando}
+              showFirstLast
+              siblingCount={1}
+              ariaLabel={PAGINACION_PENDIENTES_LABEL}
+              onPageChange={setPendientesPage}
+              onPageSizeChange={(s) => {
+                setPendientesPageSize(s);
+                setPendientesPage(1);
+              }}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+            />
+          ) : (
+            // Feature 170 (T I.2): la paginación del histórico vivía en
+            // `CierresAdminHistoricoLista`; con la cola única se monta aquí, con su mismo nombre.
+            <Pagination
+              page={historicoPage}
+              pageSize={historicoPagina.pageSize}
+              total={historicoPagina.total}
+              disabled={historicoCargando}
+              showFirstLast
+              siblingCount={1}
+              ariaLabel={PAGINACION_HISTORICO_LABEL}
+              onPageChange={setHistoricoPage}
+              onPageSizeChange={(s) => {
+                setHistoricoPageSize(s);
+                setHistoricoPage(1);
+              }}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+            />
+          )
+        }
       />
-
-      </PanelConmutado>
 
       {/* Los modales viven FUERA de los dos paneles: el detalle se abre desde cualquiera de las
           dos pestañas y no puede quedar escondido con la que no se está mirando. */}
-      {/* ---------- Detalle del cierre (R6-R8) ---------- */}
-      <Modal
-        open={detalle !== null}
-        onOpenChange={(next) => {
-          if (!next) cerrarDetalle();
-        }}
-        title="Detalle del cierre"
-        description={
-          cierreAbierto
-            ? `${cierreAbierto.mensajeroNombre} · ${destinoCierre(cierreAbierto)}`
-            : undefined
-        }
-        // Sin ancho propio: el default del Modal (75% de la pantalla) es el que corresponde
-        // a un detalle con tablas anchas.
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={cerrarDetalle}
-      >
-        {detalle ? (
-          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto pr-1">
-            {/* FICHA 395 — DE QUIÉN ES EL DINERO, ANTES QUE NADA.
-                Va ARRIBA DEL TODO, y el sitio es la mitad del arreglo: lo primero que se leía al
-                abrir este detalle era «Pago a tienda» junto a «Total de la empresa», dos cifras sueltas
-                que invitan a una resta que NO da. Ahora lo primero es la partición —recaudado
-                menos lo facturado igual a lo que gana la tienda—, que cierra siempre, y sólo
-                después el desglose de lo facturado y el pago de hoy. El comprobante entero sigue
-                justo debajo, sin tocar ni una línea.
-                Las tres cascadas no derivan nada: los cuatro campos llegan del servidor. */}
-            <CascadasCierreMensajero
-              mensajeroNombre={detalle.cierre.mensajeroNombre}
-              estado={detalle.cierre.estado}
-              general={detalle.cierre.totales.general}
-              totalesIngreso={detalle.totalesIngreso}
-              totalPagoMensajero={detalle.cierre.totalPagoMensajero}
-              totalIngresoBodegaRechazos={detalle.cierre.totalIngresoBodegaRechazos}
-              pagoTienda={detalle.pagoTienda}
-              cobradoSobreRecaudado={detalle.cobradoSobreRecaudado}
-              ivaFacturado={detalle.ivaFacturado}
-              netoEmpresa={detalle.netoEmpresa}
-              ganaLaTienda={detalle.ganaLaTienda}
-              fleteRechazoYaCobradoATienda={detalle.fleteRechazoYaCobradoATienda}
-              // FICHA 396: «Pago a tienda» y «Gana la tienda» son la SUMA de las tiendas del
-              // cierre. Con dos o más, la cascada lo dice y las desglosa; con una, nada cambia.
-              partesPorTienda={detalle.partesPorTienda}
-              modeloNuevo={hayGestionEnModeloNuevo(detalle.grupos)}
-            />
-
-            {/* El detalle es UNA sola lectura: el comprobante. Reemplazó a los paneles
-                sueltos + las 4 tablas por resultado (R6-R8) sin perder ningún dato: los
-                totales snapshot, el ingreso de la empresa, la liquidación y las gestiones
-                (ahora en pestañas, con su desglose por fila) viven todos ahí dentro. */}
-            <CierreFacturaDetalle
-              cierre={detalle.cierre}
-              grupos={detalle.grupos}
-              totalesIngreso={detalle.totalesIngreso}
-              desgloseIngresoBodegaRechazos={
-                detalle.desgloseIngresoBodegaRechazos
-              }
-              ganancia={detalle.ganancia}
-              // SL-39 (menor 1 de la revisión): el renglón del IVA en «Liquidación».
-              ivaFacturado={detalle.ivaFacturado}
-              pagoTienda={detalle.pagoTienda}
-              // FICHA 481: `satelite` no ve el fulfillment de la fila; todo lo demás, igual.
-              audiencia={audiencia}
-              // Feature 264 (R30): las MISMAS dos props que pasa el módulo del mensajero. El
-              // componente es uno; que pintara la sección en una superficie y la callara en la
-              // otra es el arreglo a medias que se corrigió en la 263.
-              ordenesSinGestion={detalle.ordenesSinGestion}
-              sinGestionRegistrado={detalle.sinGestionRegistrado}
-              // FICHA 425 (R14): la MISMA prop que pasa el módulo del mensajero, del resultado del
-              // servidor. La vigila la guardia de superficies del detalle del cierre.
-              rechazosDeTienda={detalle.rechazosDeTienda}
-              onVerEvidencia={setEvidencia}
-              // Ausente cuando no se puede corregir: la hoja vuelve a ser de solo lectura sin
-              // que la fila tenga que saber nada de roles ni de estados.
-              onCorregirPagos={ofrecerCorreccionPagos ? setCorrigiendo : undefined}
-              // FICHA 398 (R16): ausente cuando el cierre no está abierto o el rol no corrige
-              // resultados. La fila no sabe nada de estados ni de roles: recibe el callback o no.
-              onCorregirResultado={
-                ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined
-              }
-              // SLT-56 (R21): ausente en un cierre no abierto o para el rol que no ajusta.
-              onAjustarPago={ofrecerAjustePago ? setAjustandoPago : undefined}
-            />
-
-            {/* Pedido humano (2026-08-19): el editor del desglose, el MISMO que usa el
-                mensajero. Tras corregir se RELEE el detalle del servidor —los totales del
-                cierre los recalculó él en la misma transacción— y se refrescan las listas,
-                porque el total del cierre también cambia de balde en la tabla. */}
-            <CorregirPagosDialog
-              gestion={corrigiendo}
-              onOpenChange={(open) => {
-                if (!open) setCorrigiendo(null);
-              }}
-              onCorregido={async () => {
-                if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
-                refrescarListas();
-              }}
-            />
-
-            {/* FICHA 398 (T4.2, R16): la corrección del RESULTADO de una entrega que nunca
-                ocurrió. Mismo trato que su hermano de arriba: tras corregir se RELEE el detalle
-                del servidor —los seis totales del cierre los recalculó él en la misma
-                transacción— y se refrescan las listas, porque el total del cierre también cambia
-                en la tabla de la que se abrió. */}
-            <CorregirResultadoDialog
-              gestion={corrigiendoResultado}
-              onOpenChange={(open) => {
-                if (!open) setCorrigiendoResultado(null);
-              }}
-              onCorregido={async () => {
-                if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
-                refrescarListas();
-              }}
-            />
-
-            {/* SLT-56 (R11/R21): el ajuste del pago al mensajero. Al volver `ok` se pinta YA lo
-                que devolvió el servidor (pago de la gestión, su marca y el total del cierre) y
-                después se relee el detalle —lo que deriva del total lo recalcula él— y se
-                refrescan las listas, donde el total del cierre también se ve. */}
-            <AjustarPagoMensajeroDialog
-              gestion={ajustandoPago}
-              onOpenChange={(open) => {
-                if (!open) setAjustandoPago(null);
-              }}
-              onAjustado={(r) => {
-                aplicarAjusteLocal(r);
-                // Sin `await`: lo que el usuario necesita ver ya está pintado; la relectura
-                // llega detrás y no deja el botón del diálogo esperando.
-                if (cierreAbierto) void abrirDetalle(cierreAbierto.cierreId);
-                refrescarListas();
-              }}
-            />
-
-            {/* ---------- Feature 172 (T E.2, R19/R27/R28/R49): pago al mensajero ----------
-                El SEGUNDO camino del pago: un cierre aprobado se puede liquidar en cualquier
-                momento posterior desde su propio detalle. Tras registrar —o anular (T F.5)—
-                el pendiente se vuelve a LEER del servidor (`abrirDetalle`); no se recalcula
-                en el cliente. `puedeAnular` sale del MISMO permiso que pagar (R81). */}
-            {ofrecerPagoEnDetalle && cierreAbierto ? (
+      {/* ---------- Detalle del cierre (SLT-100: R38, R79) ----------
+          El detalle único de SLT-95, con `tipo` mensajero y `marco` modal. El modo sale del estado
+          (`modoAdminDe`); qué botón pinta el pie lo decide `accionesDe` con los callbacks que se
+          pasan, y estos siguen saliendo de los `ofrecer*`/`esResoluble` de hoy. La impresión
+          desaparece (D12): quien la necesite usa «Descargar» en «Gestiones» (R21). */}
+      {detalle && cierreAbierto ? (
+        <DetalleCierre
+          tipo="mensajero"
+          marco="modal"
+          detalle={vistaMensajeroDesdeAdmin(detalle)}
+          audiencia={audiencia === "admin" ? "central" : "satelite"}
+          // SLT-104 (R116): un cierre de satélite abierto por la central, siempre en solo lectura.
+          modo={soloLecturaSatelite ? "solo lectura" : modoAdminDe(cierreAbierto.estado)}
+          pestanas={{
+            gestiones: (
+              <div className="flex flex-col gap-4">
+                {/* SLT-101 (R90): la lista y la fila únicas con la audiencia del actor; «Descargar»
+                    en la fila de los filtros. Los callbacks son los de hoy. */}
+                <GestionesCierre
+                  gestiones={gestionesEnOrden(detalle.grupos).map((gestion) => ({ gestion }))}
+                  audiencia={audienciaFila}
+                  // FICHA 481 — fulfillment SOLO para la central.
+                  quienMiraEsCentral={audiencia === "admin"}
+                  congeladoAt={cierreAbierto.solicitadoAt}
+                  onVerEvidencia={setEvidencia}
+                  // Ausentes cuando no se puede corregir o ajustar (pedido 2026-08-19, 398, SLT-56).
+                  acciones={{
+                    corregirMetodos: ofrecerCorreccionPagos ? setCorrigiendo : undefined,
+                    corregirResultado: ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined,
+                    ajustarPago: ofrecerAjustePago ? setAjustandoPago : undefined,
+                  }}
+                  descargar={
+                    // R21/R82/R91: las gestiones del detalle ya leído, todas, sea cual sea el filtro.
+                    <DescargarDatasetButton
+                      titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
+                      columnas={columnasDescargaDetalle("mensajero", audiencia === "admin")}
+                      obtenerFilas={async () => ({
+                        status: "ok",
+                        filas: Object.values(detalle.grupos)
+                          .flat()
+                          .map((g) => filaDescargaDetalleCierre(g, audienciaFila)),
+                      })}
+                    />
+                  }
+                />
+                {/* R19 — las órdenes que el corte pasó a «Novedad interna» (264), con su marca. */}
+                <SeccionSinGestion
+                  ordenes={detalle.ordenesSinGestion}
+                  registrado={detalle.sinGestionRegistrado}
+                />
+              </div>
+            ),
+            // R17 — siempre visible, también con 0 (D11, D27).
+            rechazos: <RechazosDeTiendaCierre rechazos={detalle.rechazosDeTienda} />,
+            // R18 — Feature 172 (T E.2): solo aprobado y con permiso de pagar. Tras registrar o
+            // anular, el pendiente se vuelve a LEER del servidor; no se recalcula en el cliente.
+            pago: ofrecerPagoEnDetalle ? (
               <PagoMensajeroSeccion
                 cierreId={cierreAbierto.cierreId}
                 mensajeroNombre={cierreAbierto.mensajeroNombre}
@@ -1431,34 +1484,73 @@ export function CierresAdminModule({
                   refrescarListas();
                 }}
               />
-            ) : null}
+            ) : undefined,
+          }}
+          acciones={{
+            // R39 — los flujos de hoy: el sub-modal de motivo y `pedirAprobacion`, que encadena
+            // la confirmación física y la indemnización. Solo en un `solicitado` (111/R15).
+            rechazar: esResoluble
+              ? () => {
+                  setMotivo("");
+                  setMotivoError(null);
+                  setRechazando(true);
+                }
+              : undefined,
+            aprobar: esResoluble ? pedirAprobacion : undefined,
+            // R83 — el mismo diálogo y la misma `confirmarDestrabar` que la cola.
+            destrabar:
+              !soloLecturaSatelite && cierreAbierto.estado === "vencido"
+                ? () => setDestrabar(cierreAbierto)
+                : undefined,
+          }}
+          onCerrar={cerrarDetalle}
+        />
+      ) : null}
 
-            {/* Acciones: solo en un cierre `solicitado` (feature 111/R15); histórico y
-                `vencido` = sin decisión aquí (el `vencido` se destraba desde la cola, R16). */}
-            {esResoluble ? (
-              <section
-                aria-label="Decisión del cierre"
-                className="flex flex-wrap justify-end gap-3 border-t pt-4"
-              >
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => {
-                    setMotivo("");
-                    setMotivoError(null);
-                    setRechazando(true);
-                  }}
-                >
-                  Rechazar
-                </Button>
-                <Button type="button" onClick={pedirAprobacion}>
-                  Aprobar
-                </Button>
-              </section>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+      {/* Pedido humano (2026-08-19): el editor del desglose, el MISMO que usa el mensajero. Tras
+          corregir se RELEE el detalle del servidor —los totales del cierre los recalculó él en la
+          misma transacción— y se refrescan las listas. SLT-100: hermano del detalle, no hijo. */}
+      <CorregirPagosDialog
+        gestion={corrigiendo}
+        onOpenChange={(open) => {
+          if (!open) setCorrigiendo(null);
+        }}
+        onCorregido={async () => {
+          if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
+          refrescarListas();
+        }}
+      />
+
+      {/* FICHA 398 (T4.2, R16): la corrección del RESULTADO de una entrega que nunca ocurrió. Mismo
+          trato que su hermano de arriba: tras corregir se RELEE el detalle y se refrescan las
+          listas. */}
+      <CorregirResultadoDialog
+        gestion={corrigiendoResultado}
+        onOpenChange={(open) => {
+          if (!open) setCorrigiendoResultado(null);
+        }}
+        onCorregido={async () => {
+          if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
+          refrescarListas();
+        }}
+      />
+
+      {/* SLT-56 (R11/R21): el ajuste del pago al mensajero. Al volver `ok` se pinta YA lo que
+          devolvió el servidor y después se relee el detalle —lo que deriva del total lo recalcula
+          él— y se refrescan las listas. */}
+      <AjustarPagoMensajeroDialog
+        gestion={ajustandoPago}
+        onOpenChange={(open) => {
+          if (!open) setAjustandoPago(null);
+        }}
+        onAjustado={(r) => {
+          aplicarAjusteLocal(r);
+          // Sin `await`: lo que el usuario necesita ver ya está pintado; la relectura llega
+          // detrás y no deja el botón del diálogo esperando.
+          if (cierreAbierto) void abrirDetalle(cierreAbierto.cierreId);
+          refrescarListas();
+        }}
+      />
 
       {/* ---------- Sub-modal de rechazo con motivo obligatorio (R11) ---------- */}
       <Modal
@@ -1470,7 +1562,7 @@ export function CierresAdminModule({
           }
         }}
         title="Rechazar cierre"
-        description="Indicá el motivo del rechazo. El mensajero lo verá para corregir."
+        description="Indica el motivo del rechazo. El mensajero lo verá para corregir."
         confirmLabel="Rechazar cierre"
         confirmVariant="destructive"
         onConfirm={confirmarRechazo}
@@ -1545,7 +1637,7 @@ export function CierresAdminModule({
             errores={confirmacionErrores}
             aviso={avisoLectura}
             ultimaGuiaConfirmada={ultimaGuiaConfirmada}
-            onLectura={leerGuia}
+            onLectura={aplicarLectura}
           />
         ) : null}
       </Modal>
@@ -1673,96 +1765,30 @@ export function CierresAdminModule({
           aprobado). Si el pago pudiera tumbar la aprobación, el cierre volvería a
           `solicitado`, que BLOQUEA al mensajero (feature 111): se quedaría sin trabajar al día
           siguiente por un trámite administrativo ajeno a él. */}
-      {ofertaPago ? (
+      {/* SLT-102 (R103): el mismo diálogo se abre desde «Registrar pago» de la fila, sin
+          `trasAprobar` (sin «Ahora no»), y tras registrar relee las listas igual. */}
+      {pagoAbierto ? (
         <RegistrarPagoMensajeroDialog
           open
           onOpenChange={(next) => {
             // R17: cerrar —con «Ahora no», con Escape o con el overlay— no persiste nada.
-            if (!next) setOfertaPago(null);
+            if (!next) setPagoAbierto(null);
           }}
-          cierreId={ofertaPago.cierreId}
-          mensajeroNombre={ofertaPago.mensajeroNombre}
-          pendiente={ofertaPago.pendiente}
-          trasAprobar
+          cierreId={pagoAbierto.cierreId}
+          mensajeroNombre={pagoAbierto.mensajeroNombre}
+          pendiente={pagoAbierto.pendiente}
+          trasAprobar={pagoAbierto.trasAprobar}
           onRegistrado={async () => {
             // Refresco DIRIGIDO de los comprobantes de ESE cierre (R33) + la ruta, para que
             // el listado vuelva a traer el pendiente derivado por el servidor (R26).
-            await mutate(clavePagosDeCierre(ofertaPago.cierreId));
+            await mutate(clavePagosDeCierre(pagoAbierto.cierreId));
             refrescarListas();
           }}
         />
       ) : null}
 
-      {/* ---------- Visor de evidencia (URL firmada, R7) ---------- */}
-      <Modal
-        open={evidencia !== null}
-        onOpenChange={(next) => {
-          if (!next) setEvidencia(null);
-        }}
-        title="Evidencia de la gestión"
-        confirmLabel="Cerrar"
-        hideCancel
-        onConfirm={() => setEvidencia(null)}
-      >
-        {evidencia ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={evidencia}
-            alt="Evidencia fotográfica de la gestión"
-            className="max-h-[60vh] w-full rounded-md object-contain"
-          />
-        ) : null}
-      </Modal>
-    </div>
-  );
-}
-
-/**
- * Botonera de un cierre de la cola (R4). Es la que vivía en la columna «Acciones» de la
- * tabla, TAL CUAL —mismos rótulos y mismos nombres accesibles—: ahora que la tabla no existe,
- * estos botones ya no compiten con nadie por el nombre y recuperan el suyo, sin el sufijo
- * «desde el comprobante» que la previsualización necesitaba para no duplicarlos.
- *
- * Feature 111/R15/R16: un `solicitado` es resoluble por la vía normal ("Ver / decidir" abre el
- * detalle con aprobar/rechazar). Un `vencido` NO lo es; solo en él se ofrece la acción
- * DIFERENCIADA de excepción "Destrabar cierre vencido" (con confirmación).
- */
-function AccionesCola({
-  cierre,
-  abrir,
-  pedirDestrabar,
-}: Readonly<{
-  cierre: CierreAdminResumen;
-  abrir: (cierreId: string) => void;
-  pedirDestrabar: (c: CierreAdminResumen) => void;
-}>) {
-  if (cierre.estado !== "vencido") {
-    return (
-      <Button type="button" size="sm" onClick={() => abrir(cierre.cierreId)}>
-        Ver / decidir
-      </Button>
-    );
-  }
-  return (
-    <div className="flex flex-wrap justify-end gap-2">
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        aria-label={`Ver el cierre de ${cierre.mensajeroNombre}`}
-        onClick={() => abrir(cierre.cierreId)}
-      >
-        Ver
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="destructive"
-        onClick={() => pedirDestrabar(cierre)}
-        aria-label={`Destrabar cierre vencido abandonado de ${cierre.mensajeroNombre}`}
-      >
-        Destrabar cierre vencido
-      </Button>
+      {/* ---------- Visor de evidencia (URL firmada, R7; visor único SLT-103 R137) ---------- */}
+      <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
     </div>
   );
 }

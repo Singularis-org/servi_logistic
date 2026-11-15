@@ -10,6 +10,7 @@ import {
   TIPOS_COBRO,
   type CostoPorOrdenPorcentual,
   type DescuentoPeriodo,
+  type PeriodicidadOrdenes,
   type PrecioPlan,
   type RolConTope,
   type TipoCobro,
@@ -61,6 +62,41 @@ export function mensajeTopesPasados(topes: readonly TopePasado[]): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* SLT-99 (design §6; R13, R20, P4) — el maestro baja a un plan con menos topes  */
+/* -------------------------------------------------------------------------- */
+// Lo usan el rechazo del servicio (`mensaje` de `tope_excedido`) y el aviso previo del detalle del plan, así que
+// los dos dicen lo mismo. Nombres propios, no `ROL_LABELS`: el texto los lleva en singular y plural.
+
+/** Cómo se nombra cada tope en «sobra(n) N {rol}». */
+export const NOMBRES_DEL_TOPE: Readonly<Record<"api_keys" | RolConTope, { singular: string; plural: string }>> = {
+  admin: { singular: "administrador", plural: "administradores" },
+  mensajero: { singular: "mensajero", plural: "mensajeros" },
+  adminTienda: { singular: "admin de tienda", plural: "admins de tienda" },
+  adminSatelite: { singular: "admin satélite", plural: "admins satélite" },
+  api_keys: { singular: "API key", plural: "API keys" },
+};
+
+/** Lo que el texto mira de un tope pasado. */
+export interface TopeQueSobra {
+  tope: "api_keys" | RolConTope;
+  usados: number;
+  maximo: number;
+}
+
+/** Una línea por tope pasado: «{plan} permite {máximo} y tienes {usados}: sobra 1 {rol}.» o «… sobran {n} {roles}.» */
+export function lineaTopeSobra(planNombre: string, t: TopeQueSobra): string {
+  const sobran = t.usados - t.maximo;
+  const nombre = NOMBRES_DEL_TOPE[t.tope];
+  const cola = sobran === 1 ? `sobra 1 ${nombre.singular}` : `sobran ${sobran} ${nombre.plural}`;
+  return `${planNombre} permite ${t.maximo} y tienes ${t.usados}: ${cola}.`;
+}
+
+/** R13, R20: «No puedes cambiar a {plan}:» y una línea por tope pasado. */
+export function mensajeTopesSobran(planNombre: string, topes: readonly TopeQueSobra[]): string {
+  return [`No puedes cambiar a ${planNombre}:`, ...topes.map((t) => lineaTopeSobra(planNombre, t))].join("\n");
+}
+
+/* -------------------------------------------------------------------------- */
 /* SLT-58 (design §6.5, §11.4) — primera asignación con fecha de inicio        */
 /* -------------------------------------------------------------------------- */
 // Textos aprobados (P13, P15). Los conteos llegan YA pintados (`formatearConteo` de
@@ -95,6 +131,16 @@ export const FECHA_DE_EFECTO_PASADA = "La fecha de efecto no puede ser anterior 
 /** SLT-86 (R2, R16): error del campo `vigenteDesde` en una empresa sin plan, que lleva fecha de inicio. */
 export const SOLO_CON_PLAN = "La fecha de efecto es de un cambio a una empresa con plan; la primera asignación lleva fecha de inicio.";
 
+/**
+ * SLT-118 (R37, P12): error del campo `periodicidadOrdenes` al pasar un plan a órdenes mensuales con `empresas`
+ * empresas que lo tienen, o lo tienen como cambio pendiente, con tipo de cobro quincenal. El de `tipoCobro` es
+ * `TIPO_QUINCENAL_CON_ORDENES_MENSUALES` de `lib/types/planes.ts` (lo usa el esquema, que este módulo importa).
+ */
+export function periodicidadIncompatible(empresas: number): string {
+  const quien = empresas === 1 ? "1 empresa tiene" : `${empresas} empresas tienen`;
+  return `${quien} este plan, o lo tiene${empresas === 1 ? "" : "n"} como cambio pendiente, con tipo de cobro quincenal: con facturación de órdenes mensual su cuota del 16 no tendría factura. Cámbiales antes el tipo de cobro.`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Correos del cambio de plan (T12; design §16.4; R41, R42, R45)               */
 /* -------------------------------------------------------------------------- */
@@ -103,7 +149,9 @@ export const SOLO_CON_PLAN = "La fecha de efecto es de un cambio a una empresa c
 // `lineaReemplazo` (§16.2). El resto son propuestas de T12, pendientes de aprobación humana
 // (`progress/impl_SL-24.md > T12`).
 
-export type TipoCorreoCambioPlan = "guardado" | "recordatorio_7" | "recordatorio_1" | "cancelado";
+// SLT-128 (R21, R22): `recordatorio_3`, el de 3 días antes de la recepción de la empresa (de 4 a 7 días
+// entre guardar y su recepción). Asunto e intro, literales del spec.
+export type TipoCorreoCambioPlan = "guardado" | "recordatorio_7" | "recordatorio_3" | "recordatorio_1" | "cancelado";
 
 /** El asunto de cada correo. */
 export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string): string {
@@ -112,6 +160,8 @@ export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string)
       return `Cambios en el plan ${planNombre}`;
     case "recordatorio_7":
       return `El plan ${planNombre} cambia en 7 días`;
+    case "recordatorio_3":
+      return `El plan ${planNombre} cambia en 3 días`;
     case "recordatorio_1":
       return `El plan ${planNombre} cambia mañana`;
     case "cancelado":
@@ -132,6 +182,9 @@ export function introCambioPlan(
   if (tipo === "recordatorio_7") {
     return `Faltan 7 días: el plan ${planNombre} de ${empresaNombre} cambia a partir del ${fecha}.`;
   }
+  if (tipo === "recordatorio_3") {
+    return `Faltan 3 días: el plan ${planNombre} de ${empresaNombre} cambia a partir del ${fecha}.`;
+  }
   if (tipo === "recordatorio_1") {
     return `Mañana cambia el plan ${planNombre} de ${empresaNombre}: rige a partir del ${fecha}.`;
   }
@@ -143,6 +196,62 @@ export function introCambioPlan(
 /** §16.2: el correo de guardado de un cambio que reemplaza a otro (no sale correo de cancelación). */
 export function lineaReemplazo(fechaAnterior: string): string {
   return `Este cambio reemplaza al previsto para ${fechaAnterior}.`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* SLT-128 (design §7) — el cambio programado por empresa                      */
+/* -------------------------------------------------------------------------- */
+// Literales del spec. Los pinta la pantalla del plan según el rechazo `cambio_a_medias` de cada acción.
+
+/** R14 (P1, P8): «Cancelar cambio» con alguna empresa que ya recibió el pendiente, o el plan partido. */
+export const MENSAJE_CANCELAR_CAMBIO_A_MEDIAS =
+  "Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.";
+
+/** R15: archivar con un pendiente que aún no llegó a todas sus empresas. */
+export const MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS =
+  "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.";
+
+/** R16 (P7): la edición «De inmediato» con el plan partido. */
+export const MENSAJE_EDITAR_CAMBIO_A_MEDIAS =
+  "Alguna empresa ya recibió el cambio programado. Programa este cambio con una fecha.";
+
+/** R11: bajo «Cambio programado desde F» en el detalle del plan. */
+export function textoRecepcionesDelCambio(recibidas: number, total: number): string {
+  return `${recibidas} de ${total} empresas ya lo recibieron`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* SLT-128 (design §14; R28) — la recepción que no se pudo aplicar             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R28: los códigos de motivo de una recepción «no aplicada», los mismos que acepta el `CHECK` de
+ * `no_aplicada_motivo` en `20261114120000_plan_cambio_por_empresa`. Hoy solo el de R8.
+ */
+export const MOTIVOS_NO_APLICADA = ["cobro_quincenal_ordenes_mensuales"] as const;
+export type MotivoNoAplicada = (typeof MOTIVOS_NO_APLICADA)[number];
+
+/** R28, literal: el texto de cada motivo. */
+export function textoMotivoNoAplicada(motivo: MotivoNoAplicada): string {
+  switch (motivo) {
+    case "cobro_quincenal_ordenes_mensuales":
+      return "cobra por quincena y el plan nuevo factura las órdenes por mes";
+  }
+}
+
+/** R28, literal: la línea del detalle del plan por cada empresa que no recibió el cambio. */
+export function lineaNoAplicada(empresaNombre: string, motivo: MotivoNoAplicada): string {
+  return `${empresaNombre} no recibió el cambio: ${textoMotivoNoAplicada(motivo)}. Sigue con su versión anterior.`;
+}
+
+/** R28 (design §14.4): la primera frase del correo a la lista de alertas, con la fecha ya pintada. */
+export function introCambioPlanNoAplicado(planNombre: string, empresaNombre: string, fecha: string): string {
+  return `El cambio del plan ${planNombre} previsto para el ${fecha} no se aplicó a ${empresaNombre}.`;
+}
+
+/** R28 (design §14.4): el asunto del correo a la lista de alertas. */
+export function asuntoCambioPlanNoAplicado(planNombre: string, empresaNombre: string): string {
+  return `El cambio del plan ${planNombre} no se aplicó a ${empresaNombre}`;
 }
 
 /** R45, literal: el único texto del correo de cancelación (a mano o al archivar). */
@@ -192,6 +301,11 @@ export interface CambioDelPlanParaCorreo {
   costoPorOrden?: { antes: string | null; despues: string | null };
   /** SLT-83 (R4): un rastro anterior a la ficha no la trae y no pinta esa línea. */
   costoPorOrdenPorcentual?: { antes: CostoPorOrdenPorcentual | null; despues: CostoPorOrdenPorcentual | null };
+  /**
+   * SLT-118 (R35): la periodicidad de órdenes del plan. Un rastro anterior a la ficha no la trae; el alta
+   * la trae con `antes: null`: no es un cambio y no pinta línea.
+   */
+  periodicidadOrdenes?: { antes: PeriodicidadOrdenes | null; despues: PeriodicidadOrdenes | null };
 }
 
 type CambioDeDescuento = { antes: DescuentoPeriodo | null; despues: DescuentoPeriodo | null };
@@ -412,6 +526,11 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   if (c.costoPorOrdenPorcentual) {
     const { antes, despues } = c.costoPorOrdenPorcentual;
     lineas.push(`Costo por orden porcentual: ${textoDelPorcentualOVacio(antes)} → ${textoDelPorcentualOVacio(despues)}`);
+  }
+  // SLT-118 (R35; texto del humano, 2026-11-11): «Facturación de órdenes: quincenal → mensual», el valor tal
+  // cual, en minúscula.
+  if (c.periodicidadOrdenes?.antes && c.periodicidadOrdenes.despues) {
+    lineas.push(`Facturación de órdenes: ${c.periodicidadOrdenes.antes} → ${c.periodicidadOrdenes.despues}`);
   }
   return lineas;
 }

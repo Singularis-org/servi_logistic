@@ -313,13 +313,15 @@ describe("pwa · los atajos del manifiesto", () => {
     // (`/plataforma/vehiculos`, `ROLES_PLATAFORMA`). Nadie más se mueve. CERO atajos.
     // ⭑ SLT-54 (R56) — `admin` 15 -> 16 y NADIE más: entra su ítem «Tarifas». CERO atajos.
     // ⭑ SLT-91 (R1, R6) — `admin` 16 -> 15 y NADIE más: sale «Mi plan», ahora solo del `maestro`. CERO atajos.
+    // ⭑ SLT-97 (R1, R2) — `superadmin` 4 -> 5 y NADIE más: entra «Reportes» (`/plataforma/reportes`,
+    // `ROLES_PLATAFORMA`). Si se moviera un rol de empresa, vería los reportes de todas. CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
       maestro: 24,
       admin: 15,
       adminSatelite: 8,
       mensajero: 7,
       adminTienda: 5,
-      superadmin: 4,
+      superadmin: 5,
     });
 
     const interseccion = [...porRol.values()].reduce((acc, destinos) =>

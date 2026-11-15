@@ -178,9 +178,8 @@ describe("EscanerRecepcionOrigen", () => {
       expect(campoManual()).toBeInTheDocument();
     });
 
-    it("lo tecleado ES el número: no pasa por el desenvoltorio del QR", async () => {
-      // El helper del QR desenvuelve `<origin>/paquete/<numGuia>`; aplicarlo a lo tecleado
-      // rechazaría el número escrito a secas. Ahí está la diferencia entre las dos vías.
+    it("el número tecleado a secas se acepta", async () => {
+      // SLT-157: la lectura única acepta el número a secas y la URL del QR, por las dos vías.
       const user = userEvent.setup();
       const onRecibida = vi.fn();
       recibirMock.mockResolvedValue({
@@ -191,7 +190,7 @@ describe("EscanerRecepcionOrigen", () => {
       render(<EscanerRecepcionOrigen onRecibida={onRecibida} />);
 
       await user.type(campoManual(), "77");
-      await user.click(screen.getByRole("button", { name: "Recibir en tienda" }));
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
       await vi.waitFor(() =>
         expect(recibirMock).toHaveBeenCalledWith({ numGuia: 77 }),
@@ -204,24 +203,77 @@ describe("EscanerRecepcionOrigen", () => {
       render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
 
       await user.type(campoManual(), "abc");
-      await user.click(screen.getByRole("button", { name: "Recibir en tienda" }));
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
       await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
       expect(recibirMock).not.toHaveBeenCalled();
     });
 
-    it("un fallo conserva lo tecleado para corregirlo, en vez de vaciar el campo", async () => {
-      // Vaciarlo obligaría a reescribir la guía entera por un dígito mal puesto, de pie en
-      // el mostrador. `onSubmit` devuelve `false` justamente para eso.
+    // SLT-158 (R575/R576, D2): antes un fallo conservaba lo tecleado, y con la pistola la
+    // lectura siguiente se pegaba a la anterior ("10241025"). Ahora el campo se vacía siempre
+    // y lo leído queda escrito, con el motivo, en la línea de error de la tarjeta.
+    it("un fallo vacía el campo y deja lo leído y el motivo en la línea de error", async () => {
       const user = userEvent.setup();
       recibirMock.mockResolvedValue({ status: "tienda_ajena" });
       render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
 
       await user.type(campoManual(), "77");
-      await user.click(screen.getByRole("button", { name: "Recibir en tienda" }));
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
       await vi.waitFor(() => expect(recibirMock).toHaveBeenCalled());
-      expect(campoManual().value).toBe("77");
+      expect(campoManual().value).toBe("");
+      const alerta = await screen.findByRole("alert");
+      expect(alerta).toHaveTextContent("77");
+      expect(alerta).toHaveTextContent("Esta orden es de otra tienda.");
+    });
+  });
+
+  // SLT-158 (R579, D5, decisión de Carlos del 2026-11-14): en la tienda, la tarjeta y su botón
+  // dicen lo mismo que el disparador de `/ordenes`.
+  it("R579: título y botón de enviar dicen «Recibir paquete»", () => {
+    render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { name: "Recibir paquete" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recibir paquete" })).toBeInTheDocument();
+  });
+
+  // SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
+  describe("guía única por cámara o pistola (SLT-157)", () => {
+    it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
+      const user = userEvent.setup();
+      recibirMock.mockResolvedValue({
+        status: "ok",
+        ordenId: "o1",
+        estado: "devuelta_a_tienda",
+      });
+      render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+
+      await escanear(user, "1024");
+      await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(1));
+      expect(recibirMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
+
+      await user.type(
+        screen.getByLabelText(/número de guía/i),
+        "https://app.ejemplo.test/paquete/1024",
+      );
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+      await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(2));
+      expect(recibirMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
+    });
+
+    it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la acción", async () => {
+      const user = userEvent.setup();
+      render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+
+      await escanear(user, "1024abc");
+      await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+      expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+      await user.type(screen.getByLabelText(/número de guía/i), "1024abc");
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+      await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
+      expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+      expect(recibirMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -2,8 +2,10 @@
 // SL-40 (R9–R11, design §9.1 y §11.3) — EL COBRO POR ORDEN EN «EMPRESAS».
 //
 // Se monta el `EmpresasModule` real con las actions como dobles: el bloque del valor global, la
-// columna de cada fila con «propio» o «global», fijar y quitar la excepción, los errores junto al
-// campo o genéricos, que lo escrito se conserva tras un fallo y que un éxito refresca la página.
+// columna de cada fila con «del plan» o «global», los errores del global junto al campo o genéricos,
+// que lo escrito se conserva tras un fallo y que un éxito refresca la página.
+// SLT-126 (R1, R3, R4): la fila ya no tiene editor (ni «Cambiar», ni «Usar el global», ni campo), la
+// fuente «propio» desaparece y la ayuda del global cambia de texto.
 // Los importes de las aserciones son distintos entre sí (500, 300, 0) para que pintar el de otra
 // fila no pueda pasar en verde.
 import { readFileSync } from "node:fs";
@@ -31,10 +33,9 @@ const NORTE: EmpresaListada = {
   slug: "envios-norte",
   creadaEn: new Date("2026-10-20T12:00:00Z"),
   maestros: [{ nombre: "Ana Pérez", email: "ana@norte.test" }],
-  cobroPorOrden: "300.00",
-  // SLT-66 R31/R32: campos nuevos del listado; lo vigente es la excepción, como antes.
-  cobroVigente: { modo: "fijo", monto: "300.00", fuente: "empresa" },
-  plan: null,
+  // SLT-126 (R3): lo vigente sale de su plan, que fija 300,00 por orden.
+  cobroVigente: { modo: "fijo", monto: "300.00", fuente: "plan" },
+  plan: { id: "plan-1", nombre: "Plan Norte", tipoCobro: "mensual" },
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
   pagadoPlataforma: "0.00",
@@ -47,8 +48,7 @@ const SUR: EmpresaListada = {
   slug: "reparto-sur",
   creadaEn: new Date("2026-09-05T12:00:00Z"),
   maestros: [],
-  cobroPorOrden: null,
-  // SLT-66 R31/R32: campos nuevos del listado; sin excepción, el global de `montar` (500).
+  // SLT-66 R31/R32: sin plan, el global de `montar` (500).
   cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
   plan: null,
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
@@ -62,7 +62,9 @@ const SIN_CONFIGURAR = "Sin configurar (0,00)";
 const GUARDADO = "Cobro guardado.";
 const ERROR_MONTO = "Escribe un importe mayor o igual que cero, con dos decimales como máximo.";
 const ERROR_GENERICO = "No se pudo guardar el cobro. Inténtalo de nuevo.";
-const ERROR_NO_EXISTE = "Esa empresa ya no existe.";
+// SLT-126 (R4, P1): escrito a mano, no importado del componente, para que un cambio de texto no pase en verde.
+const AYUDA_GLOBAL =
+  "Se aplica a cada orden de las empresas cuyo plan no fija un cobro por orden. Las órdenes ya creadas conservan su importe.";
 
 type Fijar = ReturnType<typeof vi.fn<(input: unknown) => Promise<FijarCobroResult>>>;
 
@@ -70,10 +72,8 @@ function montar(opts: {
   cobroGlobal?: CobroGlobalDTO | null;
   empresas?: EmpresaListada[];
   fijarCobroGlobal?: Fijar;
-  fijarCobroEmpresa?: Fijar;
 } = {}) {
   const fijarCobroGlobal = opts.fijarCobroGlobal ?? vi.fn().mockResolvedValue({ status: "ok" });
-  const fijarCobroEmpresa = opts.fijarCobroEmpresa ?? vi.fn().mockResolvedValue({ status: "ok" });
   const props = {
     empresas: opts.empresas ?? [NORTE, SUR],
     tiposDocumento: [{ id: "t-1", value: "cedula" }],
@@ -82,13 +82,12 @@ function montar(opts: {
     altaEmpresa: vi.fn(),
     cobroGlobal: opts.cobroGlobal === undefined ? { monto: "500.00" } : opts.cobroGlobal,
     fijarCobroGlobal,
-    fijarCobroEmpresa,
     // SL-41: la columna «Bienvenida» no es de este test; sin pendientes, ninguna fila lleva el botón.
     reenviarBienvenida: vi.fn(),
     bienvenidaPendiente: [],
   };
   const utils = render(<EmpresasModule {...props} />);
-  return { ...utils, props, fijarCobroGlobal, fijarCobroEmpresa };
+  return { ...utils, props, fijarCobroGlobal };
 }
 
 const bloque = () => within(screen.getByRole("region", { name: "Cobro por orden" }));
@@ -132,22 +131,52 @@ describe("SL-40 (R9) — el bloque del valor global", () => {
   });
 });
 
-describe("SL-40 (R10) — la columna «Cobro por orden» de cada fila", () => {
-  it("la empresa con excepción pinta la suya y «propio»; la otra, el global y «global»", () => {
+describe("SLT-126 (R4) — la ayuda del valor global", () => {
+  it("R4: el campo del global lleva como ayuda exactamente el texto aprobado", () => {
+    montar();
+
+    expect(bloque().getByText(AYUDA_GLOBAL)).toBeInTheDocument();
+    expect(campoGlobal()).toHaveAccessibleDescription(expect.stringContaining(AYUDA_GLOBAL));
+    // La ayuda vieja hablaba del valor propio de la empresa.
+    expect(screen.queryByText(/sin valor propio/)).toBeNull();
+  });
+});
+
+describe("SLT-126 (R1) — ninguna fila permite cambiar su cobro por orden", () => {
+  it("R1: sin «Cambiar», sin «Usar el global» y sin campo de importe en ninguna fila", () => {
+    montar({ empresas: [NORTE, SUR] });
+
+    expect(screen.queryByRole("button", { name: /Cambiar/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Usar el global/ })).toBeNull();
+    for (const nombre of ["Envíos Norte", "Reparto Sur"]) {
+      const celda = celdaCobro(nombre);
+      expect(celda.queryByRole("button")).toBeNull();
+      expect(celda.queryByRole("textbox")).toBeNull();
+      expect(celda.queryByRole("form")).toBeNull();
+    }
+    // El único campo de importe del cobro es el del bloque global: la tabla no tiene ninguno.
+    const tabla = within(screen.getByRole("table"));
+    expect(tabla.queryByRole("textbox")).toBeNull();
+    expect(tabla.queryByRole("spinbutton")).toBeNull();
+  });
+});
+
+describe("SL-40 (R10), SLT-126 (R3) — la columna «Cobro por orden» de cada fila", () => {
+  it("R3: la empresa con plan pinta su importe y «del plan»; la otra, el global y «global»", () => {
     montar({ cobroGlobal: { monto: "500.00" } });
 
     const norte = celdaCobro("Envíos Norte");
     expect(norte.getByText(money("300.00"))).toBeInTheDocument();
-    expect(norte.getByText("propio")).toBeInTheDocument();
+    expect(norte.getByText("del plan")).toBeInTheDocument();
     expect(norte.queryByText("global")).toBeNull();
 
     const sur = celdaCobro("Reparto Sur");
     expect(sur.getByText(money("500.00"))).toBeInTheDocument();
     expect(sur.getByText("global")).toBeInTheDocument();
-    expect(sur.queryByText("propio")).toBeNull();
+    expect(sur.queryByText("del plan")).toBeNull();
   });
 
-  it("sin valor global, la empresa sin excepción pinta 0,00 y «global»", () => {
+  it("R3: sin valor global, la empresa sin plan pinta 0,00 y «global»", () => {
     // SLT-66 R31: lo vigente llega del servidor por fila; sin global, la fuente es `sin_configurar` a 0.
     montar({
       cobroGlobal: { monto: null },
@@ -159,36 +188,25 @@ describe("SL-40 (R10) — la columna «Cobro por orden» de cada fila", () => {
     expect(sur.getByText("global")).toBeInTheDocument();
   });
 
-  it("«Cambiar» abre el editor con lo vigente y «Guardar» fija la excepción de ESA empresa", async () => {
-    const user = userEvent.setup();
-    const { fijarCobroEmpresa } = montar();
+  it("R3: ninguna fila dice «propio», con cualquiera de las fuentes", () => {
+    montar({
+      cobroGlobal: { monto: null },
+      empresas: [
+        NORTE,
+        SUR,
+        {
+          ...SUR,
+          id: "org-3",
+          nombre: "Mensajería Este",
+          slug: "mensajeria-este",
+          cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
+        },
+      ],
+    });
 
-    await user.click(screen.getByRole("button", { name: "Cambiar · Envíos Norte" }));
-    const campo = celdaCobro("Envíos Norte").getByRole("textbox", {
-      name: "Cobro por orden · Envíos Norte",
-    }) as HTMLInputElement;
-    expect(campo.value).toBe("300.00");
-
-    await user.clear(campo);
-    await user.type(campo, "250.50");
-    await user.click(celdaCobro("Envíos Norte").getByRole("button", { name: "Guardar" }));
-
-    expect(fijarCobroEmpresa).toHaveBeenCalledTimes(1);
-    expect(fijarCobroEmpresa).toHaveBeenCalledWith({ organizacionId: "org-2", monto: "250.50" });
-  });
-
-  it("«Usar el global» quita la excepción (monto null) y solo aparece si la empresa tiene la suya", async () => {
-    const user = userEvent.setup();
-    const { fijarCobroEmpresa } = montar();
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Reparto Sur" }));
-    expect(celdaCobro("Reparto Sur").queryByRole("button", { name: "Usar el global" })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Envíos Norte" }));
-    await user.click(celdaCobro("Envíos Norte").getByRole("button", { name: "Usar el global" }));
-
-    expect(fijarCobroEmpresa).toHaveBeenCalledTimes(1);
-    expect(fijarCobroEmpresa).toHaveBeenCalledWith({ organizacionId: "org-2", monto: null });
+    const tabla = screen.getByRole("table");
+    expect(within(tabla).queryByText(/propio/i)).toBeNull();
+    expect(tabla.textContent).not.toMatch(/propio/i);
   });
 });
 
@@ -215,29 +233,6 @@ describe("SL-40 (R11) — tras un éxito, los valores nuevos sin recargar a mano
     );
     expect(bloque().getByText(/Valor global:/).textContent).toBe(`Valor global: ${money("650.00")}`);
     expect(celdaCobro("Reparto Sur").getByText(money("650.00"))).toBeInTheDocument();
-  });
-
-  it("fijar la excepción refresca, cierra el editor y avisa", async () => {
-    const user = userEvent.setup();
-    montar();
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Reparto Sur" }));
-    await user.type(celdaCobro("Reparto Sur").getByRole("textbox"), "120");
-    await user.click(celdaCobro("Reparto Sur").getByRole("button", { name: "Guardar" }));
-
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
-    expect(celdaCobro("Reparto Sur").queryByRole("textbox")).toBeNull();
-    expect(celdaCobro("Reparto Sur").getByRole("status")).toHaveTextContent(GUARDADO);
-  });
-
-  it("«Usar el global» con éxito también refresca", async () => {
-    const user = userEvent.setup();
-    montar();
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Envíos Norte" }));
-    await user.click(celdaCobro("Envíos Norte").getByRole("button", { name: "Usar el global" }));
-
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -287,52 +282,6 @@ describe("SL-40 (R11) — si falla, el error y lo escrito se conservan", () => {
     expect(campoGlobal()).not.toHaveAttribute("aria-invalid");
     expect(refreshMock).not.toHaveBeenCalled();
   });
-
-  it("not_found en una fila: «Esa empresa ya no existe.» y el editor sigue abierto con lo escrito", async () => {
-    const user = userEvent.setup();
-    const fijarCobroEmpresa: Fijar = vi.fn().mockResolvedValue({ status: "not_found" });
-    montar({ fijarCobroEmpresa });
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Reparto Sur" }));
-    await user.type(celdaCobro("Reparto Sur").getByRole("textbox"), "99.90");
-    await user.click(celdaCobro("Reparto Sur").getByRole("button", { name: "Guardar" }));
-
-    expect(await celdaCobro("Reparto Sur").findByText(ERROR_NO_EXISTE)).toBeInTheDocument();
-    expect((celdaCobro("Reparto Sur").getByRole("textbox") as HTMLInputElement).value).toBe("99.90");
-    expect(refreshMock).not.toHaveBeenCalled();
-  });
-
-  it("validation_error en una fila: el error bajo su campo y lo escrito intacto", async () => {
-    const user = userEvent.setup();
-    const fijarCobroEmpresa: Fijar = vi
-      .fn()
-      .mockResolvedValue({ status: "validation_error", fieldErrors: { monto: [ERROR_MONTO] } });
-    montar({ fijarCobroEmpresa });
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Envíos Norte" }));
-    const campo = celdaCobro("Envíos Norte").getByRole("textbox") as HTMLInputElement;
-    await user.clear(campo);
-    await user.type(campo, "40.10");
-    await user.click(celdaCobro("Envíos Norte").getByRole("button", { name: "Guardar" }));
-
-    await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
-    expect(campo).toHaveAccessibleDescription(expect.stringContaining(ERROR_MONTO));
-    expect(campo.value).toBe("40.10");
-    expect(refreshMock).not.toHaveBeenCalled();
-  });
-
-  it("«Usar el global» que falla: genérico y el editor sigue abierto", async () => {
-    const user = userEvent.setup();
-    const fijarCobroEmpresa: Fijar = vi.fn().mockResolvedValue({ status: "forbidden" });
-    montar({ fijarCobroEmpresa });
-
-    await user.click(screen.getByRole("button", { name: "Cambiar · Envíos Norte" }));
-    await user.click(celdaCobro("Envíos Norte").getByRole("button", { name: "Usar el global" }));
-
-    expect(await celdaCobro("Envíos Norte").findByText(ERROR_GENERICO)).toBeInTheDocument();
-    expect(celdaCobro("Envíos Norte").getByRole("textbox")).toBeInTheDocument();
-    expect(refreshMock).not.toHaveBeenCalled();
-  });
 });
 
 describe("SL-40 — los importes se pintan como texto", () => {
@@ -370,7 +319,6 @@ const A_FAVOR: EmpresaListada = {
   slug: "mensajeria-este",
   creadaEn: new Date("2026-10-01T12:00:00Z"),
   maestros: [],
-  cobroPorOrden: null,
   cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R31: campo nuevo; no es de este test.
   plan: null, // SLT-66 R32: campo nuevo; no es de este test.
   deudaPlataforma: { deuda: "-250.00", estado: "a_favor", importe: "250.00" },

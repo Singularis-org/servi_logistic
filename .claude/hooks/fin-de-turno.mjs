@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Hook Stop del arnes. Hace dos cosas al cerrar cada turno:
 //   1. Regla 9 de CLAUDE.md: si el ultimo mensaje nombra una key de ficha sin su titulo
-//      («ya hice la SL-50»), BLOQUEA el cierre y le pide al agente reescribirlo como
-//      `<key> «<title>»`, con los titulos de la copia del board (scripts/nombres-de-fichas.mjs).
-//      Una sola vez por turno: con `stop_hook_active` no vuelve a bloquear (sin bucles).
+//      («ya hice la SL-50»), anade debajo una NOTA con `<key> «<title>»` de la copia del board
+//      (scripts/nombres-de-fichas.mjs). No bloquea: el hook corre cuando el humano ya ve el
+//      mensaje, y un bloqueo se lo duplicaba entero (decision del humano, 2026-11-10).
 //   2. Corre el validador de features (offline, <1 s) y solo habla si falla: un recordatorio que
 //      sale en cada turno se deja de leer.
 // Nunca falla: un hook roto no debe impedir trabajar. Las rutas se resuelven contra la raiz del
@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const RAIZ = fileURLToPath(new URL('../..', import.meta.url));
 const VALIDADOR = join(RAIZ, 'scripts', 'validate-features.mjs');
 const salida = {};
+const avisos = [];
 
 /** La entrada del hook (stdin JSON). Vacia o ilegible = sin datos, nunca un error. */
 function leerEntrada() {
@@ -54,8 +55,8 @@ const entrada = leerEntrada();
 // --- 1. Regla 9: ninguna key sin su titulo -----------------------------------------------
 try {
   const mensaje = entrada.last_assistant_message;
-  if (typeof mensaje === 'string' && mensaje && entrada.stop_hook_active !== true) {
-    const { keysSinTitulo, motivoDeBloqueo } = await import(pathToFileURL(join(RAIZ, 'scripts', 'nombres-de-fichas.mjs')).href);
+  if (typeof mensaje === 'string' && mensaje) {
+    const { keysSinTitulo, notaDeTitulos } = await import(pathToFileURL(join(RAIZ, 'scripts', 'nombres-de-fichas.mjs')).href);
     const { resolverTracker } = await import(pathToFileURL(join(RAIZ, 'scripts', 'tracker.mjs')).href);
     const principal = raizPrincipal();
     const lista = leerJson(join(principal, 'feature_list.json'));
@@ -64,10 +65,7 @@ try {
     const t = resolverTracker(config, lista?.jira);
     const prefijos = [t.prefijo, ...(t.historicos ?? [])].filter(Boolean);
     const sueltas = keysSinTitulo(mensaje, { titulos, prefijos });
-    if (sueltas.length > 0) {
-      salida.decision = 'block';
-      salida.reason = motivoDeBloqueo(sueltas, titulos);
-    }
+    if (sueltas.length > 0) avisos.push(notaDeTitulos(sueltas, titulos));
   }
 } catch {
   /* sin scripts o sin datos: la regla no se puede comprobar, el turno sigue */
@@ -78,8 +76,10 @@ if (existsSync(VALIDADOR)) {
   const r = spawnSync(process.execPath, [VALIDADOR], { cwd: RAIZ, encoding: 'utf8' });
   if (r.status !== 0) {
     const detalle = (r.stderr || r.stdout || '').trim().split('\n').slice(0, 6).join(' | ');
-    salida.systemMessage = `[arnes] el validador de features esta en ROJO: ${detalle}`;
+    avisos.push(`[arnes] el validador de features esta en ROJO: ${detalle}`);
   }
 }
+
+if (avisos.length > 0) salida.systemMessage = avisos.join('\n');
 
 if (Object.keys(salida).length > 0) console.log(JSON.stringify(salida));

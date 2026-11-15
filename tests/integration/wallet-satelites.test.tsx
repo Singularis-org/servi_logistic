@@ -383,8 +383,9 @@ describe("R22/R24 — la conciliación de una bodega (458-D: en su estado de cue
     const region = await montarConciliacion();
     await waitFor(() => expect(listarConsolidacionesMock).toHaveBeenCalled());
 
-    // El «Pendiente de llegar» de la cabecera es el saldo que el SERVIDOR cuadró.
-    expect(within(region).getByText("₡115.000")).toBeInTheDocument();
+    // SLT-114 (PA1): la tarjeta «Pendiente de llegar» sale de la conciliación (la cifra está en
+    // «Por entregar hoy» del estado de cuenta).
+    expect(within(region).queryByText("Pendiente de llegar")).toBeNull();
     // Lo esperado es «Para la central» (SLT-73, D3), recibido es lo que se contó.
     expect(within(region).getByText("₡500.000")).toBeInTheDocument();
     expect(within(region).getByText("₡485.000")).toBeInTheDocument();

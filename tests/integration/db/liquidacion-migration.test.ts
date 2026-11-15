@@ -272,7 +272,9 @@ describe("UP — CHECK tipo <-> categoria de los dos libros (condicion heredada 
     //   - `incentivo` (devengo) y `reverso_incentivo` (pago) (SLT-68): los anade
     //     `20261030120100_incentivo_mensajero_checks`. Que el CHECK de HOY los ata a ESE tipo lo
     //     prueba contra la base `tests/integration/db/incentivo-mensajero-slt68.test.ts` (R12).
-    const AGREGADAS_DESPUES = ["premio_ranking", "incentivo", "reverso_incentivo"];
+    //   - `pago_satelite` (pago) (SLT-139): lo anade `20261115120100_pago_satelite_checks`; su CHECK
+    //     lo prueba contra la base `tests/integration/db/migracion-slt139-ida-y-vuelta.test.ts` (R330).
+    const AGREGADAS_DESPUES = ["premio_ranking", "incentivo", "reverso_incentivo", "pago_satelite"];
     const clasificadas = [...ramasMensajero.values()].flat();
     expect([...clasificadas].sort()).toEqual(
       valoresDelEnum("PagoMensajeroMovimientoCategoria")

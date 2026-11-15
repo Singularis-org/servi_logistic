@@ -156,7 +156,9 @@ export type GestionEscenario =
   | { resultado: "entregado"; pagos?: { metodo: "efectivo" | "SINPE" | "transferencia"; monto: number }[] }
   | { resultado: "devolucion_a_origen_por_rechazo"; motivo?: string }
   | { resultado: "reprogramado"; fecha?: string; motivo?: string }
-  | { resultado: "novedad"; causa?: "not_found" | "wrong_number" | "wrong_address"; motivo?: string };
+  | { resultado: "novedad"; causa?: "not_found" | "wrong_number" | "wrong_address"; motivo?: string }
+  // SLT-102 T6.1: el incidente (feature 158) por el mismo `gestionar` del portal; no recauda.
+  | { resultado: "incidente"; causa?: "danado" | "perdido" | "robado"; motivo?: string };
 
 export type DestinoReparto =
   | "en_bodega_central"
@@ -620,6 +622,14 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
           resultado: g.resultado,
           causaDevolucion: g.causa ?? "not_found",
           motivo: g.motivo ?? "No aparece",
+          evidencias: evidencia(),
+        };
+      case "incidente":
+        return {
+          ...base,
+          resultado: g.resultado,
+          causaIncidente: g.causa ?? "perdido",
+          motivo: g.motivo ?? "Se perdió en ruta",
           evidencias: evidencia(),
         };
     }

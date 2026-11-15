@@ -106,6 +106,7 @@ describe("313 · frente 1 — todo job recurrente tiene su siembra registrada", 
     // Y los dos que hay hoy, por su nombre: si desaparecen, que sea con un rojo delante.
     expect([...TIPOS_RECURRENTES].sort()).toEqual([
       "analitica_rollup_diario",
+      "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: el mantenimiento diario de los envios por WhatsApp
@@ -169,6 +170,9 @@ const MAS_TARDE = new Date("2026-08-03T02:00:00.000Z");
  */
 const MAS_TARDE_POR_TIPO: Partial<Record<JobTipo, Date>> = {
   plan_cambios_vencidos: new Date("2026-08-02T16:59:59.999Z"),
+  // SLT-118 (design §4.2): `factura_plataforma_cerrar` corre cada hora a los :10; desde `AHORA` (16:00) su
+  // ventana es la corrida de las 16:10, asi que el segundo instante cae justo antes de ella.
+  factura_plataforma_cerrar: new Date("2026-08-02T16:09:59.999Z"),
 };
 
 interface Encolado {
@@ -411,6 +415,8 @@ describe("313 · frente 4 — el build de Vercel corre el paso, y alguien mide e
       ],
       // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos.
       ["tests/integration/db/planes-cambio-programado.test.ts", "sembrarPlanCambiosVencidos"],
+      // SLT-118 (design §4.2): el cierre horario de las facturas de la plataforma.
+      ["tests/integration/db/factura-plataforma-cierre.test.ts", "sembrarCierreFacturas"],
     ];
     for (const [ruta, sembrador] of pruebas) {
       expect(pruebaLaIdempotenciaDe(ruta, sembrador), `${ruta} ya no prueba ${sembrador}`).toBe(

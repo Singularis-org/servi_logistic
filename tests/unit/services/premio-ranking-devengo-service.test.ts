@@ -761,3 +761,48 @@ describe("R29/R30/R31/R33 — la anulacion", () => {
     expect(d.confirmadoCaja).toHaveLength(1);
   });
 });
+
+// ── SLT-124 — el cierre del dia se resuelve SOLO entre los de la central ─────────────────────────
+//
+// El doble no ve el WHERE: aqui solo se afirma que el servicio PIDE el alcance de la central en las
+// dos rutas. Que la base filtre de verdad (satelite fuera, caso mixto -> central) lo prueba
+// `tests/integration/db/central-sin-satelite-premio-incentivo.test.ts`.
+describe("SLT-124 (R1, R4, R5) — el alcance de la central en la resolucion del cierre", () => {
+  // Literal escrito a mano: es el contrato (acceso total = cierres `bodega_central`, sin zona).
+  const ALCANCE_CENTRAL = { destinoTipo: "bodega_central", destinoZonaId: null };
+
+  it("R1/R5: registrar pide el cierre del dia con el alcance de la central", async () => {
+    const d = dobles();
+
+    const r = await d.service.registrarPremio({ filaId: "f1" }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", monto: "5000.00", cierreId: "c1" });
+    expect(d.cierreRepo.resolverCierreDelDia).toHaveBeenCalledTimes(1);
+    const args = d.cierreRepo.resolverCierreDelDia.mock.calls[0] as unknown[];
+    expect(args[0]).toBe("m1");
+    expect(args[2]).toEqual(ALCANCE_CENTRAL);
+  });
+
+  it("R4/R5: listar deriva el estado con el mismo alcance de la central", async () => {
+    const d = dobles();
+
+    const r = await d.service.listarPremiosDelDia({ fecha: "2026-08-26" }, ADMIN);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.filas[0]).toMatchObject({ estado: "no_registrado", cierreEstado: "aprobado" });
+    expect(d.cierreRepo.resolverCierreDelDia).toHaveBeenCalledTimes(1);
+    const args = d.cierreRepo.resolverCierreDelDia.mock.calls[0] as unknown[];
+    expect(args[2]).toEqual(ALCANCE_CENTRAL);
+  });
+
+  it("R2: si la central no tiene cierre ese dia (solo satelite), `sin_cierre` sin escribir nada", async () => {
+    const d = dobles({ cierre: null });
+
+    const r = await d.service.registrarPremio({ filaId: "f1" }, MAESTRO);
+
+    expect(r).toEqual({ status: "sin_cierre" });
+    expect(d.confirmadoLibro).toHaveLength(0);
+    expect(d.confirmadoCaja).toHaveLength(0);
+    expect(d.snapshotRepo.registrarAccionSobreFila).not.toHaveBeenCalled();
+  });
+});

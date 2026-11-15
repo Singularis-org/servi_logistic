@@ -17,6 +17,7 @@ function fila(clave: FilaConsumo["clave"], etiqueta: string, usados: number, max
 
 const PLAN: PlanConConsumo = {
   nombre: "Plan Crecer",
+  activoDesde: "2026-01-15",
   precioTexto: "45000 al mes",
   modulos: [],
   // SLT-86 (R8): las órdenes ya no son una fila con tope; van en `ordenesDelPeriodo`.

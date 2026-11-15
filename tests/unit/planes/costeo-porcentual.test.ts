@@ -73,16 +73,6 @@ describe("SLT-83 R23 — costeoDelCiclo en modo porcentual", () => {
     });
   });
 
-  it("con excepción en la empresa, el costeo es el fijo de la excepción aunque el plan sea porcentual", () => {
-    const c = costeoDelCiclo(plan(MENSUAL), "50000.00", { modo: "fijo", monto: "80.00", fuente: "empresa" }, 2, {
-      cobrado: "160.00",
-      pendientes: 0,
-    });
-    expect(c).toMatchObject({ modo: "fijo", costoPorOrden: "80.00", fuente: "empresa", subtotalOrdenes: "160.00", total: "50160.00" });
-    // R28/R5: el aviso mira el plan, que sí tiene costo concreto (porcentual).
-    expect(c.sinCostoConcreto).toBe(false);
-  });
-
   it("SLT-86 (R28): el total es la base del período que llega más lo cobrado; ya no hay aviso del anual", () => {
     const conDescuento = plan({ tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "20" } } });
     const c = costeoDelCiclo(conDescuento, "480000.00", PORCENTUAL, 0, { cobrado: "100.00", pendientes: 0 });
@@ -108,12 +98,13 @@ describe("SLT-83 R22, R23 — costoVigenteDeLaTarifa: la fila de cobro_plataform
     });
   });
 
-  it.each(["empresa", "plan", "global", "sin_configurar"] as const)("sin porcentaje → fijo con fuente %s", (fuente) => {
+  // SLT-126 (R11): la regla vigente ya no da la fuente `empresa`.
+  it.each(["plan", "global", "sin_configurar"] as const)("sin porcentaje → fijo con fuente %s", (fuente) => {
     expect(costoVigenteDeLaTarifa({ monto: "80.00", fuente, porcentaje: null, minimo: null })).toEqual({ modo: "fijo", monto: "80.00", fuente });
   });
 
   it("una forma imposible (porcentaje fuera del plan, o fijo sin importe) es un error", () => {
-    expect(() => costoVigenteDeLaTarifa({ monto: null, fuente: "empresa", porcentaje: "2.00", minimo: null })).toThrow(/solo el plan/);
+    expect(() => costoVigenteDeLaTarifa({ monto: null, fuente: "global", porcentaje: "2.00", minimo: null })).toThrow(/solo el plan/);
     expect(() => costoVigenteDeLaTarifa({ monto: null, fuente: "global", porcentaje: null, minimo: null })).toThrow(/sin importe/);
   });
 });

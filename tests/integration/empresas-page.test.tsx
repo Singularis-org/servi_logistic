@@ -49,7 +49,6 @@ const { verCobroMock } = vi.hoisted(() => ({ verCobroMock: vi.fn() }));
 vi.mock("@/lib/actions/cobro-plataforma", () => ({
   verCobroGlobalAction: () => verCobroMock(),
   fijarCobroGlobalAction: vi.fn(),
-  fijarCobroEmpresaAction: vi.fn(),
 }));
 
 // SL-20 (R9, R45): los países del `Select` del alta, solo los disponibles.
@@ -68,7 +67,6 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "envios-norte",
     creadaEn: new Date("2026-10-20T12:00:00Z"),
     maestros: [{ nombre: "Ana Pérez", email: "ana@norte.test" }],
-    cobroPorOrden: null,
     // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
     cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
     plan: null,
@@ -83,7 +81,6 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "reparto-sur",
     creadaEn: new Date("2026-09-05T12:00:00Z"),
     maestros: [],
-    cobroPorOrden: null,
     // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
     cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
     plan: null,

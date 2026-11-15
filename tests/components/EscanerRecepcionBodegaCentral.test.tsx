@@ -301,3 +301,63 @@ describe("EscanerRecepcionBodegaCentral — corte en cliente del código inváli
     expect(errorMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
+describe("EscanerRecepcionBodegaCentral — guía única por cámara o pistola (SLT-157)", () => {
+  it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValue({
+      status: "ok",
+      ordenId: "o1",
+      estado: "en_bodega_central",
+    });
+    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
+
+    await escanear(user, "1024");
+    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(1));
+    expect(recibirMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
+
+    await recibirManual(user, "https://app.ejemplo.test/paquete/1024");
+    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(2));
+    expect(recibirMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
+  });
+
+  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la acción", async () => {
+    const user = userEvent.setup();
+    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
+
+    await escanear(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+    await recibirManual(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+    expect(recibirMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-158 «Entrada de escaneo para pistola» (R576): de punta a punta, la acción rechaza y la
+// tarjeta deja escrito QUÉ se leyó y POR QUÉ falló, hasta que otra lectura acierte.
+describe("EscanerRecepcionBodegaCentral — línea de error persistente (SLT-158)", () => {
+  it("R576: no_encontrada deja «7777777» y «Orden no encontrada.» en un alert; un acierto lo quita", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValueOnce({ status: "no_encontrada" });
+    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
+
+    await recibirManual(user, "7777777");
+
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("7777777");
+    expect(alerta).toHaveTextContent("Orden no encontrada.");
+
+    recibirMock.mockResolvedValueOnce({
+      status: "ok",
+      ordenId: "o1",
+      estado: "en_bodega_central",
+    });
+    await recibirManual(user, "1024");
+
+    await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+});

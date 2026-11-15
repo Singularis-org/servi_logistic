@@ -15,6 +15,7 @@ const {
   clearMock,
   decodeCallback,
   configEscaneo,
+  configConstructor,
 } = vi.hoisted(
   () => ({
     errorMock: vi.fn(),
@@ -31,6 +32,8 @@ const {
         };
       },
     },
+    // Lo que el componente pasa al constructor de `Html5Qrcode` (SLT-157, R564).
+    configConstructor: { current: undefined as unknown },
   }),
 );
 
@@ -50,6 +53,9 @@ vi.mock("html5-qrcode", () => ({
     start = startMock;
     stop = stopMock;
     clear = clearMock;
+    constructor(_regionId: string, config?: unknown) {
+      configConstructor.current = config;
+    }
   },
 }));
 
@@ -64,6 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   decodeCallback.current = null;
   configEscaneo.current = null;
+  configConstructor.current = undefined;
   startMock.mockImplementation(
     async (
       _config: unknown,
@@ -127,6 +134,26 @@ describe("QrScanner", () => {
     expect(
       screen.getByRole("button", { name: "Escanear con cámara" }),
     ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // SLT-157 (R564): la etiqueta lleva QR y CODE128 con el mismo dato; el visor
+  // declara exactamente esos dos formatos, ni uno más.
+  it("R564: decodifica solo QR y CODE128", async () => {
+    const user = userEvent.setup();
+    render(<QrScanner onDecoded={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Escanear con cámara" }));
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+
+    // Los nombres salen de la lib REAL (no del doble): si una versión renumerara el
+    // enum, los literales del componente dejarían de ser QR y CODE128 y esto se pone rojo.
+    const { Html5QrcodeSupportedFormats } =
+      await vi.importActual<typeof import("html5-qrcode")>("html5-qrcode");
+    const config = configConstructor.current as { formatsToSupport?: number[] };
+    const nombres = (config.formatsToSupport ?? []).map(
+      (f) => Html5QrcodeSupportedFormats[f],
+    );
+    expect([...nombres].sort()).toEqual(["CODE_128", "QR_CODE"]);
   });
 
   it("si la cámara falla muestra el mensaje de error por defecto y la cierra", async () => {

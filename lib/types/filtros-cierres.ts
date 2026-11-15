@@ -32,6 +32,16 @@ import {
 /** Tope de ids por lista. Un filtro es un recorte, no un canal para mandar un dataset. */
 export const MAX_IDS_POR_FILTRO = 200;
 
+/** Tope del texto del folio ANTES de normalizar (R171, R457). Más largo → `validation_error`. */
+export const MAX_FOLIO_FILTRO = 20;
+
+/**
+ * SLT-153 (R456, R457) — el texto del buscador por folio, tal como lo escribe el usuario. Llega SIN
+ * normalizar: el servicio lo normaliza con `normalizarFolio` antes del repositorio, y uno imposible
+ * da cero cierres sin leer la base. Un recorte más, nunca un alcance.
+ */
+const textoFolio = z.string().max(MAX_FOLIO_FILTRO).optional();
+
 /** `YYYY-MM-DD` de calendario **de Costa Rica**, que es como el usuario piensa las fechas. */
 const fechaCalendario = z
   .string()
@@ -62,6 +72,8 @@ const camposComunes = {
    * la zona del propio cierre.
    */
   destinoZonaIds: listaDeIds,
+  /** SLT-153 (R456): el folio buscado, en los cinco listados de `/cierres-admin` y sus archivos. */
+  folio: textoFolio,
 };
 
 /**
@@ -165,7 +177,23 @@ export function sinFiltros(filtros: FiltrosCierres | undefined): boolean {
     filtros.mensajeroIds === undefined &&
     // FICHA 386: si esta línea faltara, con SOLO el estado puesto la pantalla se creería «sin
     // filtros» y escondería el «limpiar» de un recorte que sí está aplicado.
-    filtros.estados === undefined
+    filtros.estados === undefined &&
+    // SLT-153: idem con SOLO el folio puesto.
+    filtros.folio === undefined
+  );
+}
+
+/**
+ * SLT-153 (T3) — el `sinFiltros` de los listados de BODEGA. `true` si el bloque no recorta nada.
+ * Sin `folio` en la cuenta, la página 1 pre-cargada sin filtrar se serviría con un folio puesto.
+ */
+export function sinFiltrosBodega(filtros: FiltrosCierresBodega | undefined): boolean {
+  if (!filtros) return true;
+  return (
+    filtros.desde === undefined &&
+    filtros.hasta === undefined &&
+    filtros.destinoZonaIds === undefined &&
+    filtros.folio === undefined
   );
 }
 
@@ -332,9 +360,51 @@ export function filtrosConLimites<F extends RangoDeFechasCierres>(
   };
 }
 
-/** `FiltrosCierres` tal como los recibe el repositorio (SLT-42). */
+/**
+ * `FiltrosCierres` tal como los recibe el repositorio (SLT-42). SLT-153: `folio`, si viene, ya está
+ * NORMALIZADO (1-8 caracteres `0-9A-F` en mayúsculas): lo garantiza `filtrosParaRepo`.
+ */
 export type FiltrosCierresRepo = FiltrosEnRepositorio<FiltrosCierres>;
 /** `FiltrosCierresBodega` tal como los recibe el repositorio (SLT-42). */
 export type FiltrosCierresBodegaRepo = FiltrosEnRepositorio<FiltrosCierresBodega>;
 /** `FiltrosDescargaGestiones` tal como los recibe el repositorio (SLT-42). */
 export type FiltrosDescargaGestionesRepo = FiltrosEnRepositorio<FiltrosDescargaGestiones>;
+
+// ─── SLT-138 (R168-R171) — LOS FILTROS DE «CIERRES SOLICITADOS» DEL PROPIO MENSAJERO ─────────────
+
+/**
+ * SLT-138 (R168-R171): los filtros de «Cierres solicitados» del propio mensajero, en su página y en
+ * su archivo. Sin mensajero ni bodega: el alcance es el actor y no se recorta por nadie más, así
+ * que `mensajeroIds`/`destinoZonaIds` mueren aquí por `.strict()`. Desde las MISMAS primitivas que
+ * los demás bloques: el día que las fechas o los estados cambien de criterio, cambian para todos.
+ *
+ * `folio` llega sin normalizar; el servicio lo normaliza (`normalizarFolio`) antes del repositorio.
+ */
+export const filtrosColaPropiaSchema = z
+  .object({
+    desde: fechaCalendario.optional(),
+    hasta: fechaCalendario.optional(),
+    estados: listaDeEstados,
+    folio: textoFolio,
+  })
+  .strict()
+  .refine(rangoCoherente, MENSAJE_RANGO);
+
+export type FiltrosColaPropia = z.infer<typeof filtrosColaPropiaSchema>;
+
+/** `FiltrosColaPropia` tal como los recibe el repositorio: rango resuelto y folio normalizado. */
+export type FiltrosColaPropiaRepo = FiltrosEnRepositorio<Omit<FiltrosColaPropia, "folio">> & {
+  /** Ya normalizado: 1-8 caracteres `0-9A-F` en mayúsculas (lo garantiza el servicio). */
+  folio?: string;
+};
+
+/** `true` si el bloque no recorta nada: el listado es exactamente el de antes (R173). */
+export function sinFiltrosPropios(filtros: FiltrosColaPropia | undefined): boolean {
+  if (!filtros) return true;
+  return (
+    filtros.desde === undefined &&
+    filtros.hasta === undefined &&
+    filtros.estados === undefined &&
+    filtros.folio === undefined
+  );
+}

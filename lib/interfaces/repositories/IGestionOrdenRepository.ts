@@ -397,6 +397,10 @@ export interface IGestionOrdenRepository {
    * Las dos mitades son DISJUNTAS por construccion (esta excluye `en_reparto`), asi que
    * sumarlas no puede contar dos veces una orden gestionada y devuelta a reparto el mismo
    * dia. `null` (sin gestionadas o montos nulos) cuenta 0.
+   *
+   * SLT-151: una gestion de hoy que ya pertenece a un cierre `solicitado` o `aprobado` NO cuenta (ese
+   * dinero ya se declaro o se entrego). Sin cierre, o en un cierre `rechazado`/`vencido`, SI cuenta:
+   * el rechazo no desvincula la gestion y el dinero sigue en la mano del mensajero hasta re-solicitar.
    */
   sumMontoCobrarGestionadas(mensajeroId: string, dia: VentanaDia): Promise<number>;
 

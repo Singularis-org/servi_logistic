@@ -830,13 +830,15 @@ export async function sembrarEscenario459(
   // ── Premio del ranking y su anulacion ─────────────────────────────────────────────────────
   // Precondicion (no es dinero): un cierre APROBADO del mensajero con una gestion de ese dia y el
   // podio congelado. El cierre se siembra a mano con P = 0: no aporta ningun asiento propio.
+  // SLT-124 (R1): el premio solo se imputa a un cierre de la CENTRAL; uno de satelite daria
+  // `sin_cierre`. Por eso este cierre es `bodega_central` (antes `bodega_satelite`).
   const DIA_PREMIO_459 = diaDelPremio();
   const cierrePremio = await tx.cierreDia.create({
     data: {
       mensajeroId,
       estado: "aprobado",
-      destinoTipo: "bodega_satelite",
-      destinoZonaId: zona.id,
+      destinoTipo: "bodega_central",
+      destinoZonaId: cat.centralZonaId,
       totalPagoMensajero: new Prisma.Decimal("0.00"),
       totalEfectivo: new Prisma.Decimal("0.00"),
       solicitadoAt: new Date(`${DIA_PREMIO_459}T23:00:00.000Z`),

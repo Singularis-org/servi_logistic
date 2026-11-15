@@ -13,7 +13,6 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
 
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 · T4 (design §3.2; R13, R16, R19, R22) — las lecturas del superadmin con un repositorio doble.
 // Se mide el contrato (quién → zod → existe → repositorio) y la forma de lo que llega a la pantalla:
 // fechas de calendario en la hora de la plataforma, instantes en ISO, las líneas de «qué cambia» y el
@@ -75,7 +74,8 @@ function detalleLeido(): DetallePlanLeido {
   return {
     plan: plan(),
     empresaNombre: null,
-    pendiente: { vigenteDesde: RIGE, version: PENDIENTE },
+    pendiente: { vigenteDesde: RIGE, version: PENDIENTE, recibidas: 0, total: 1 }, // SLT-128 (R11): 0 de su única empresa
+    noAplicadas: [],
     empresas: [{ id: EMPRESA, nombre: "Mensajería Uno" }],
     rastro: [
       {
@@ -189,7 +189,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
+  servicio = new PlanesService(repo, () => AHORA);
 });
 
 describe("SLT-58 — lecturas del superadmin: autorización (R22)", () => {
@@ -258,9 +258,8 @@ describe("SLT-58 — catálogo (R13)", () => {
 });
 
 describe("SLT-42 — catálogo del superadmin: la fecha del pendiente, en UTC y con su etiqueta", () => {
-  it("un instante que en Costa Rica aún es el 14 sale como el 15 UTC, sin leer la zona de ninguna empresa", async () => {
-    const zonaDeOrganizacion = vi.fn(async () => ZONA_DE_CR);
-    const s = new PlanesService(repo, () => AHORA, zonaDeOrganizacion);
+  it("un instante que en Costa Rica aún es el 14 sale como el 15 UTC", async () => {
+    const s = new PlanesService(repo, () => AHORA);
     // 2026-11-15T03:00Z: las 21:00 del 14 en Costa Rica, el 15 en UTC.
     repo.catalogo.mockResolvedValue([
       { plan: plan(), empresaNombre: null, empresas: 2, vigenteDesdePendiente: new Date("2026-11-15T03:00:00.000Z") },
@@ -268,7 +267,6 @@ describe("SLT-42 — catálogo del superadmin: la fecha del pendiente, en UTC y 
     const r = await s.catalogo(SUPERADMIN);
     if (r.estado !== "ok") throw new Error("se esperaba ok");
     expect(r.planes[0].vigenteDesdePendiente).toBe("2026-11-15 UTC");
-    expect(zonaDeOrganizacion).not.toHaveBeenCalled();
   });
 });
 
@@ -279,7 +277,13 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     if (r.estado !== "ok") return;
     expect(r.detalle.plan).toEqual(plan());
     expect(r.detalle.empresaNombre).toBeNull();
-    expect(r.detalle.pendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Nombre del plan: Básico → Básico plus"] });
+    // SLT-128 (R11): con el conteo de recepciones tal cual lo lee el repositorio.
+    expect(r.detalle.pendiente).toEqual({
+      vigenteDesde: "2026-11-15",
+      lineas: ["Nombre del plan: Básico → Básico plus"],
+      recibidas: 0,
+      total: 1,
+    });
     expect(r.detalle.empresas).toEqual([{ id: EMPRESA, nombre: "Mensajería Uno" }]);
     expect(r.detalle.rastro).toEqual([
       { id: "r2", accion: "editado", cambios: { nombre: { antes: "Inicial", despues: "Básico" } }, actorNombre: "Ana Pérez", creadoAt: "2026-10-20T10:00:00.000Z" },
@@ -291,6 +295,28 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     repo.detalle.mockResolvedValueOnce({ ...detalleLeido(), pendiente: null });
     const r = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
     expect(r.estado === "ok" && r.detalle.pendiente).toBeNull();
+  });
+
+  it("SLT-128 R28: las empresas que no recibieron el cambio pasan tal cual, con el instante en ISO; sin ninguna, vacío", async () => {
+    const r0 = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
+    expect(r0.estado === "ok" && r0.detalle.noAplicadas).toEqual([]);
+
+    repo.detalle.mockResolvedValueOnce({
+      ...detalleLeido(),
+      pendiente: null,
+      noAplicadas: [
+        {
+          empresaId: EMPRESA,
+          empresa: "Mensajería Uno",
+          motivo: "cobro_quincenal_ordenes_mensuales",
+          desde: new Date("2026-12-01T06:00:00.000Z"),
+        },
+      ],
+    });
+    const r = await servicio.detallePlan(SUPERADMIN, { planId: PLAN });
+    expect(r.estado === "ok" && r.detalle.noAplicadas).toEqual([
+      { empresaId: EMPRESA, empresa: "Mensajería Uno", motivo: "cobro_quincenal_ordenes_mensuales", desde: "2026-12-01T06:00:00.000Z" },
+    ]);
   });
 });
 

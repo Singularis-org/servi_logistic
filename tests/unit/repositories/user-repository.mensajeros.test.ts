@@ -51,6 +51,21 @@ describe("UserRepository.listMensajeros (R1, R2, R3)", () => {
     expect(arg.orderBy).toEqual({ nombre: "asc" });
   });
 
+  it("SLT-124 (R12, R14): solo mensajeros de la ZONA CENTRAL — el `where` exacto", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const repo = new UserRepository(buildMockPrisma(findMany));
+
+    await repo.listMensajeros();
+
+    // `toEqual` con el literal escrito a mano: es el contrato. Un mensajero de satelite o sin zona
+    // no casa con `zona: { esCentral: true }`, y sin zona central marcada la lista sale vacia.
+    expect(findMany.mock.calls[0][0].where).toEqual({
+      rol: { value: "mensajero" },
+      estado: "activo",
+      zona: { esCentral: true },
+    });
+  });
+
   it("nunca proyecta email/telefono/cedula/passwordHash (R1)", async () => {
     const findMany = vi.fn().mockResolvedValue([{ id: "msg-1", nombre: "Ana" }]);
     const prisma = buildMockPrisma(findMany);

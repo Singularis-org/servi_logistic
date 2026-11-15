@@ -7,7 +7,6 @@ import { archivarPlanAction, cancelarCambioPlanAction, editarPlanAction } from "
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import type { PlanDTO } from "@/lib/types/planes";
 import { mananaCalendarioPlataforma } from "@/lib/planes/ciclo";
 
@@ -45,10 +44,11 @@ export default async function PlanDetallePage({ params }: { params: Promise<{ pl
   const { planId } = await params;
   const r = await verDetalleDePlan(actor, { planId });
   if (r.estado !== "ok") notFound();
-  // Solo se ofrecen si el plan se puede asignar (no archivado y con costo concreto): si no, ni se leen.
+  // Solo se ofrecen si el plan se puede asignar (no archivado): si no, ni se leen. SLT-99 (decisión del
+  // 2026-11-10, modifica SLT-66 R28): ya no hace falta costo concreto.
   const { plan } = r.detalle;
   const empresasCandidatas =
-    !plan.archivado && tieneCostoConcreto(plan) ? await leerEmpresasCandidatas(actor, plan) : [];
+    !plan.archivado ? await leerEmpresasCandidatas(actor, plan) : [];
 
   return (
     <AppPage title={r.detalle.plan.nombre}>

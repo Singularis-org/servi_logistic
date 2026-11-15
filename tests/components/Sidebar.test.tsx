@@ -423,6 +423,8 @@ describe("Feature 129 — ítem de sidebar de Analítica", () => {
     "layers",
     // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin.
     "car",
+    // SLT-97 (R1): «Reportes», los reportes de bugs del superadmin.
+    "bug",
   ] as const satisfies readonly IconKey[];
   // Comprobación de exhaustividad tipada: si `IconKey` gana una clave que no está en
   // el array de arriba, `Exclude<IconKey, (typeof TODAS_LAS_CLAVES)[number]>` deja de

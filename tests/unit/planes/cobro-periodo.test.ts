@@ -117,8 +117,9 @@ describe("R12 — costo de un tramo: costo del período × días del tramo ÷ d�
     expect(costoDelPeriodoEnCurso(plan("50000"), "anual", entrada("2026-11-05"), dia("2027-01-01"))).toBe("600000.00");
   });
 
-  it("sin costo base, el tramo también queda por definir", () => {
-    expect(costoDelPeriodoEnCurso({ tipo: "sin_precio" }, "mensual", entrada("2026-10-10"), dia("2026-10-20"))).toBeNull();
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28–R29): sin costo base cuesta como base 0, período y tramo", () => {
+    expect(costoDelPeriodoEnCurso({ tipo: "sin_precio" }, "mensual", entrada("2026-10-10"), dia("2026-10-20"))).toBe("0.00");
+    expect(costoDelPeriodoEnCurso({ tipo: "sin_precio" }, "anual", entrada("2026-01-01"), dia("2026-10-20"))).toBe("0.00");
   });
 });
 
@@ -176,7 +177,8 @@ describe("R27, D9 — cobroDelPlan: tipo, período, costo, siguiente cobro y pen
   it("con un pendiente, el siguiente cobro es su fecha y el pendiente viaja tal cual", () => {
     const pendiente: PendienteDeEmpresa = { planNombre: "Pro", tipo: "bimestral", desde: "2026-11-10" };
     const c = cobroDelPlan({ tipo: "sin_precio" }, "mensual", entrada("2026-01-01"), dia("2026-10-20"), pendiente);
-    expect(c).toMatchObject({ costo: null, siguienteCobro: "2026-11-10", pendiente });
+    // SLT-99 (decisión del 2026-11-10): sin costo base, cuota 0.
+    expect(c).toMatchObject({ costo: "0.00", siguienteCobro: "2026-11-10", pendiente });
   });
 });
 

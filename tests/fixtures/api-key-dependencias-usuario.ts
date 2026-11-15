@@ -396,4 +396,27 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
       "Las entregas se crean para los destinatarios RESUELTOS (solo roles de `ROLES_DESTINATARIO`, " +
       "R28) o para el maestro que prueba (R39). Ninguna via produce una entrega a una cuenta `apiKey`.",
   },
+  // ── SLT-87 (2026-11-09): los reportes de problema del botón flotante ──────────────────────────
+  // CASCADE: la tabla es de plataforma y no debe bloquear el borrado de una cuenta (design §2.1).
+  "BugReport.reporter": {
+    categoria: "no_alcanzable",
+    motivo:
+      "La UNICA escritura es `enviarReporteBugAction` (`lib/actions/reporte-bug.ts`), que fija al " +
+      "dueno con `resolveActorFromSession` antes de validar nada: no hay ruta de API, ni webhook, ni " +
+      "cron que cree un reporte, y el `usuarioId` NO existe en la entrada (el schema es `.strict()`, " +
+      "asi que inyectarlo es `validation_error`). El boton vive en el layout del portal, un gesto de " +
+      "PANTALLA, y la cuenta dedicada no entra por el formulario de login: su contrasena es aleatoria " +
+      "y no se le revela a nadie.",
+  },
+  // ── SLT-98 (2026-11-10): el tope diario de imágenes del reporte (design §16.2) ─────────────────
+  // CASCADE: el cupo es un contador efímero del usuario; no debe bloquear el borrado de una cuenta.
+  "BugReportUploadQuota.user": {
+    categoria: "no_alcanzable",
+    motivo:
+      "La UNICA escritura es `ReporteBugService.prepararSubidas` (consumir) y su devolucion, que se " +
+      "llega solo por `prepararSubidaImagenesReporteAction` (`lib/actions/reporte-bug.ts`) con el " +
+      "`usuarioId` del actor de la SESION: no hay ruta de API, ni webhook, ni cron que toque el cupo. " +
+      "Mismo gesto de PANTALLA que `BugReport.reporter`, y la cuenta dedicada no entra por el " +
+      "formulario de login: su contrasena es aleatoria y no se le revela a nadie.",
+  },
 };

@@ -401,7 +401,7 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
   it("R5/R6/R7: el cierre que el corte crea SOLO con rechazos (caso Arnel) nace con los seis totales en 0.00", () => {
     expect(soloRechazos.sonda).toEqual({
       status: "conflict",
-      motivo: "No tenes gestiones pendientes de cierre.",
+      motivo: "No tienes gestiones pendientes de cierre.",
     });
     expect(soloRechazos.vencidosCreados).toBe(1);
     expect(soloRechazos.estado).toBe("vencido");

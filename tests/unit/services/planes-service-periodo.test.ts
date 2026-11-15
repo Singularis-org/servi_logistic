@@ -3,15 +3,21 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RolValue } from "@prisma/client";
 
-import type { IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
+import type { EfectoElegido, IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
+import { efectoAlInicioDelPeriodo } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
-import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
+import type { PlanDTO, TipoCobro, VersionPlan } from "@/lib/types/planes";
 
 // SLT-86 · T9 (design §2, §5.1, §5.4; R3, R16, R22) — el borde del servicio con un repositorio doble y el
 // reloj fijo: quién (R3), la fecha de efecto de un cambio de empresa (R16) y la de una edición de precio
 // (R22). Lo que se mide es que ningún rechazo llegue al repositorio y que, cuando llega, lleve la fecha a
 // las 00:00 de la plataforma. El SQL se mide en `planes-cambio-empresa` y `plan-precio-historial`.
+//
+// SLT-118 (R30, R32, R34): el servicio pasa la fecha ELEGIDA (el rango se mira sobre ella) y responde con la
+// fecha REAL que devuelve el repositorio; la regla que la lleva al inicio del período (`efectoAlInicioDelPeriodo`,
+// que el repositorio aplica bajo el cerrojo) se mide aquí con los ejemplos de R30 y R31.
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -51,13 +57,30 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: OTRO })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => plan()),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: true })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async (_i, _a, asignacion) => ({
+      estado: "ok",
+      planId: PLAN,
+      avisos: [],
+      pendiente: true,
+      vigenteDesde: asignacion.efecto.fecha,
+    })),
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
-    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: true })),
+    asignar: vi.fn<IPlanesRepository["asignar"]>(async (_o, _p, _a, efecto) => ({
+      estado: "ok",
+      cambio: true,
+      avisos: [],
+      pendiente: true,
+      vigenteDesde: efecto.fecha,
+    })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({ avisos: [] })),
-    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "ok", cambio: true, pendiente: true })),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async (_o, _t, efecto) => ({
+      estado: "ok",
+      cambio: true,
+      pendiente: true,
+      vigenteDesde: efecto.fecha,
+    })),
     cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(async () => ({ estado: "ok" })),
     aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(async () => ({ estado: "sin_pendiente" })),
     cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(async () => []),
@@ -288,5 +311,113 @@ describe("SLT-86 — R22: editar el costo base o un descuento lleva fecha de efe
     repo.plan.mockResolvedValueOnce(plan({ archivado: true }));
     expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...PRECIO_NUEVO, vigenteDesde: null })).toEqual({ estado: "archivado" });
     expect(repo.editar).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-118 — R30, R31: la fecha real de un cambio del superadmin (`efectoAlInicioDelPeriodo`)", () => {
+  const cambio = (fecha: string): EfectoElegido => ({ clase: "cambio", fecha, desde: a0000(fecha), elegida: true });
+
+  // [vigente, nuevo, elegida, real]. El tipo de referencia es el más largo de los dos (P9).
+  it.each<[TipoCobro, TipoCobro, string, string]>([
+    // R30, mismo tipo
+    ["mensual", "mensual", "2026-11-10", "2026-12-01"],
+    ["quincenal", "quincenal", "2026-11-10", "2026-11-16"],
+    ["quincenal", "quincenal", "2026-11-20", "2026-12-01"],
+    ["bimestral", "bimestral", "2026-11-10", "2027-01-01"],
+    ["anual", "anual", "2026-11-10", "2027-01-01"],
+    // R30, a un tipo más largo
+    ["quincenal", "anual", "2026-11-10", "2027-01-01"],
+    ["quincenal", "mensual", "2026-11-10", "2026-12-01"],
+    ["mensual", "bimestral", "2026-11-10", "2027-01-01"],
+    // R30, a un tipo más corto
+    ["anual", "mensual", "2026-11-10", "2027-01-01"],
+    ["mensual", "quincenal", "2026-11-10", "2026-12-01"],
+    // R31: ya es inicio de un período del tipo de referencia → se respeta
+    ["mensual", "mensual", "2026-12-01", "2026-12-01"],
+    ["quincenal", "quincenal", "2026-11-16", "2026-11-16"],
+    ["anual", "anual", "2027-01-01", "2027-01-01"],
+    ["quincenal", "anual", "2027-01-01", "2027-01-01"],
+    ["mensual", "anual", "2027-01-01", "2027-01-01"],
+    // R31 → R30: inicio del vigente, no del de referencia
+    ["quincenal", "mensual", "2026-11-16", "2026-12-01"],
+    // R34: la elegida en el tope (hoy 10 nov 2026 + 12 meses) cae después de él
+    ["quincenal", "anual", "2027-11-10", "2028-01-01"],
+  ])("R30, R31: %s → %s elegido el %s → %s, a las 00:00 de la plataforma", (vigente, nuevo, elegida, real) => {
+    expect(efectoAlInicioDelPeriodo(cambio(elegida), vigente, nuevo)).toEqual({
+      clase: "cambio",
+      fecha: real,
+      desde: inicioDelDiaPlataforma(real),
+      elegida: true,
+    });
+  });
+
+  it("R33: una primera asignación (`inicio`) no se lleva, aunque caiga a mitad de período", () => {
+    const inicio: EfectoElegido = { clase: "inicio", fecha: "2026-11-10", desde: a0000("2026-11-10"), elegida: true };
+    expect(efectoAlInicioDelPeriodo(inicio, "mensual", "anual")).toBe(inicio);
+  });
+});
+
+describe("SLT-118 — R32, R34: el servicio valida la fecha elegida y responde con la real", () => {
+  /** 10 de noviembre de 2026, 12:00 en la plataforma: hoy + 12 meses = 2027-11-10. */
+  const EL_10 = new Date("2026-11-10T18:00:00.000Z");
+
+  it("R32: asignar pasa la elegida al repositorio y responde con la fecha real que este devuelve", async () => {
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: "2026-12-01" });
+    const r = await new PlanesService(repo, () => EL_10).asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", vigenteDesde: "2026-11-10" });
+    expect(r).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: "2026-12-01" });
+    expect(repo.asignar.mock.calls[0]?.[3]).toEqual({ clase: "cambio", fecha: "2026-11-10", desde: a0000("2026-11-10"), elegida: true });
+  });
+
+  it("R32: crear un custom para una empresa con plan responde con la fecha real del repositorio", async () => {
+    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true, vigenteDesde: "2027-01-01" });
+    const r = await new PlanesService(repo, () => EL_10).crear(SUPERADMIN, { ...CUSTOM, vigenteDesde: "2026-11-10" });
+    expect(r).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: "2027-01-01" });
+    expect(repo.crearYAsignar.mock.calls[0]?.[2].efecto.fecha).toBe("2026-11-10");
+  });
+
+  it("R32: cambiar el tipo responde con la fecha real; aplicado en el acto o sin cambio, `vigenteDesde: null`", async () => {
+    const servicio = new PlanesService(repo, () => EL_10);
+    const pedido = { organizacionId: EMPRESA, tipoCobro: "anual", vigenteDesde: "2026-11-10" };
+    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: "2027-01-01" });
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido)).toEqual({ estado: "ok", cambio: true, vigenteDesde: "2027-01-01" });
+    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: true, pendiente: false });
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido)).toEqual({ estado: "ok", cambio: true, vigenteDesde: null });
+    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: false, pendiente: false });
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido)).toEqual({ estado: "ok", cambio: false, vigenteDesde: null });
+  });
+
+  it("R32: asignar aplicado en el acto responde `vigenteDesde: null`", async () => {
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [], pendiente: false });
+    const r = await new PlanesService(repo, () => EL_10).asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", vigenteDesde: "2026-11-10" });
+    expect(r).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: null });
+  });
+
+  it("R34: elegida el 10 de noviembre de 2027 (el tope) entra aunque la real sea el 1 de enero de 2028, en asignar, crear un custom y cambiar el tipo", async () => {
+    const servicio = new PlanesService(repo, () => EL_10);
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [], pendiente: true, vigenteDesde: "2028-01-01" });
+    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true, vigenteDesde: "2028-01-01" });
+    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: "2028-01-01" });
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "anual", vigenteDesde: "2027-11-10" })).toMatchObject({
+      estado: "ok",
+      vigenteDesde: "2028-01-01",
+    });
+    expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, tipoCobro: "anual", vigenteDesde: "2027-11-10" })).toMatchObject({
+      estado: "ok",
+      vigenteDesde: "2028-01-01",
+    });
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual", vigenteDesde: "2027-11-10" })).toEqual({
+      estado: "ok",
+      cambio: true,
+      vigenteDesde: "2028-01-01",
+    });
+  });
+
+  it("R34: elegida el 11 de noviembre de 2027 → validation_error en vigenteDesde, sin tocar el repositorio (asignar, crear un custom y cambiar el tipo)", async () => {
+    const servicio = new PlanesService(repo, () => EL_10);
+    const esperado = { estado: "validation_error", fieldErrors: { vigenteDesde: ["Elige una fecha entre el 2026-11-10 y el 2027-11-10."] } };
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "anual", vigenteDesde: "2027-11-11" })).toEqual(esperado);
+    expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, tipoCobro: "anual", vigenteDesde: "2027-11-11" })).toEqual(esperado);
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual", vigenteDesde: "2027-11-11" })).toEqual(esperado);
+    expect(llamadasAlRepositorio()).toBe(0);
   });
 });

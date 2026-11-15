@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { SWRConfig } from "swr";
@@ -146,13 +146,16 @@ const SUPERFICIES: { nombre: string; cuenta: string; casillas: string[]; montar:
     nombre: "bodega satélite",
     cuenta: "Bodega Norte",
     casillas: ["Periodo", "Tipo de movimiento"],
-    montar: () =>
+    // SLT-114 (R231): el libro de la bodega vive en la pestaña «Movimientos».
+    montar: () => {
       envolver(
         <EstadoCuentaSatelite
           inicial={estado({ tipo: "bodega", id: UUID_BODEGA, nombre: "Bodega Norte", filas: [], total: 0 })}
           puedeConciliar={false}
         />,
-      ),
+      );
+      fireEvent.click(screen.getByRole("tab", { name: "Movimientos" }));
+    },
   },
   {
     nombre: "/mi-wallet",

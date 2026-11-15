@@ -39,9 +39,13 @@ async function idDelSuperadmin(dueno: PrismaClient): Promise<string> {
  * Crea un plan custom de la empresa sin topes (SLT-86 R8: ya no hay tope de órdenes) y con los módulos
  * apagables (todos: asignarlo no apaga ninguno de los que el humo ya recorrió) y se lo asigna en la
  * misma transacción (`crearYAsignar`, D2), con `PlanesRepository` real sobre el cliente dueño, como lo
- * hace el superadmin. Devuelve el id.
+ * hace el superadmin. Devuelve el id. SLT-126 (R3): `costoPorOrden` opcional, para una fila «del plan».
  */
-export async function asignarPlanCustom(dueno: PrismaClient, organizacionId: string): Promise<string> {
+export async function asignarPlanCustom(
+  dueno: PrismaClient,
+  organizacionId: string,
+  costoPorOrden: string | null = null,
+): Promise<string> {
   const actor = await idDelSuperadmin(dueno);
   const repo = new PlanesRepository(dueno);
   const entrada = crearPlanSchema.parse({
@@ -53,7 +57,7 @@ export async function asignarPlanCustom(dueno: PrismaClient, organizacionId: str
     precio: { tipo: "sin_precio" },
     // SLT-66 R8: `costoPorOrden` es obligatorio y `null` es vacío (como `entradaDePlan` de los tests de
     // integración). Sigue sin precio: R28 vive en el servicio y aquí se asigna con el repositorio real.
-    costoPorOrden: null,
+    costoPorOrden,
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     // Ajuste planes-custom (D2, D6): un custom se asigna al crearlo y lleva su tipo de cobro.
     tipoCobro: "mensual",

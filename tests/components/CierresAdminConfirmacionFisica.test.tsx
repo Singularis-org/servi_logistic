@@ -40,6 +40,9 @@ import type {
 // Todos los textos esperados están escritos A MANO, con sus tildes, y NO importados del módulo
 // que los produce: una aserción contra su propia fuente está siempre verde. El 2026-08-07 este
 // repo encontró siete etiquetas mal escritas que doce mil tests daban por buenas.
+/** SLT-100 (R39): el botón de aprobar del pie del detalle único, con o sin paquetes que vuelven. */
+const APROBAR_PIE = /^(Aprobar|Revisar paquetes y aprobar)$/;
+
 vi.mock("@/lib/actions/cierres-admin", () => ({
   listarGestionesCierresAdminCompleto: vi.fn(),
   verCierreDetalle: vi.fn(),
@@ -274,8 +277,10 @@ async function pulsarAprobar(user: ReturnType<typeof userEvent.setup>) {
     </SWRConfig>,
   );
   await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-  const dialog = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-  await user.click(within(dialog).getByRole("button", { name: "Aprobar" }));
+  const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+  // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+  // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+  await user.click(within(dialog).getByRole("button", { name: APROBAR_PIE }));
 }
 
 /** Abre la ventana de confirmación física y la devuelve. */
@@ -318,6 +323,11 @@ function fila(dialog: HTMLElement, gestionId: string): string {
   const li = dialog.querySelector(`[data-gestion="${gestionId}"]`);
   expect(li, `no se pintó la fila de ${gestionId}`).not.toBeNull();
   return li?.textContent ?? "";
+}
+
+/** El aviso informativo de la última lectura (SLT-158: la relectura inocua, sin `role="alert"`). */
+function avisoInocuo(dialog: HTMLElement): HTMLElement {
+  return within(dialog).getByText(/ya está confirmada/).closest("p") as HTMLElement;
 }
 
 /** El progreso, que vive en la barra de estado de la ventana. */
@@ -413,7 +423,7 @@ describe("T4.2 — la ventana dice, con palabras, qué acto físico se está pid
     const dialog = await abrirVentana(user);
 
     const DESCRIPCION =
-      "Antes de aprobar, tené delante cada paquete que vuelve a bodega y confirmá su guía: escaneá el código o escribí el número.";
+      "Antes de aprobar, ten delante cada paquete que vuelve a bodega y confirma su guía: escanea el código o escribe el número.";
     const nodo = within(dialog).getByText(DESCRIPCION);
     // Y no es un párrafo suelto en cualquier sitio: es la DESCRIPCIÓN ACCESIBLE del diálogo, que
     // es lo que un lector de pantalla anuncia al abrirlo. Si mañana el texto se mudara al cuerpo
@@ -439,7 +449,7 @@ describe("T4.2 — la ventana dice, con palabras, qué acto físico se está pid
     expect(
       within(tarjeta).getByRole("heading", { name: "Confirmar paquete recibido" }),
     ).toBeInTheDocument();
-    expect(tarjeta).toHaveTextContent("Escaneá el código de la guía o escribí su número");
+    expect(tarjeta).toHaveTextContent("Escanea el código de la guía o escribe su número");
     expect(within(tarjeta).getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
 
     // Y el acierto se dice CON EL NÚMERO: «confirmada» a secas no distingue cuál de las catorce
@@ -516,12 +526,14 @@ describe("T4.2/R36 — la cámara no se queda montada detrás de nada", () => {
 
     // 1) Con el detalle abierto pero la ventana cerrada: nada de cámara.
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
+    const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
     expect(screen.queryByRole("button", { name: BOTON_ESCANEAR })).toBeNull();
 
     // 2) Al abrir la ventana, aparece: la ausencia de arriba es del cierre de la ventana y no
     //    de un componente que nunca se montó.
-    await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
     const dialog = await screen.findByRole("dialog", { name: VENTANA });
     expect(within(dialog).getByRole("button", { name: BOTON_ESCANEAR })).toBeInTheDocument();
 
@@ -565,7 +577,7 @@ describe("T4.3/R29 — un código que no se puede interpretar como guía", () =>
     await escanear(user, dialog, "esto-no-es-una-url");
 
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "No se pudo leer un número de guía en ese código. Escaneá de nuevo o escribí el número.",
+      "No se pudo leer un número de guía en ese código. Escanea de nuevo o escribe el número.",
     );
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 2.");
     expect(fila(dialog, DEV_1.gestionId)).toContain("Pendiente");
@@ -636,9 +648,12 @@ describe("T4.3/R32 — una guía ya confirmada en esta sesión", () => {
 
     await teclear(user, dialog, "7001");
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    // SLT-158 (M5, decisión del leader): la relectura es INOCUA. Se dice como información, no
+    // como error: ningún `role="alert"`.
+    expect(avisoInocuo(dialog)).toHaveTextContent(
       "Esa guía ya está confirmada. No se cuenta dos veces.",
     );
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     // El contador NO avanza: dos lecturas de la misma guía no cubren dos paquetes.
     expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
     expect(
@@ -689,18 +704,39 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     );
   });
 
-  it("un número tecleado que no son dígitos se queda en el campo para corregirlo", async () => {
+  // SLT-158 (R575, D2): el campo se vacía siempre al enviar, para que la lectura siguiente de la
+  // pistola no se pegue a esta. Lo que falló lo sigue diciendo el aviso de la ventana, el ÚNICO
+  // `role="alert"`: la tarjeta va con `lineaDeError={false}` y no lo repite.
+  it("un número tecleado que no son dígitos vacía el campo y el aviso dice qué falló", async () => {
     const user = userEvent.setup();
     conGrupos({ novedad: [DEV_1] });
     const dialog = await abrirVentana(user);
 
     await teclear(user, dialog, "70O1"); // una «O» donde va un cero
 
-    expect(within(dialog).getByLabelText("Número de guía")).toHaveValue("70O1");
+    expect(within(dialog).getByLabelText("Número de guía")).toHaveValue("");
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
       "No se pudo leer un número de guía en ese código.",
     );
+    // SLT-158 (R576, review M4): el campo ya está vacío, así que el aviso dice LO LEÍDO.
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Lectura 70O1:");
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 1.");
+  });
+
+  // SLT-158 (review M5, decisión del leader 2026-11-14): volver a leer una guía ya confirmada es
+  // inocuo. La tarjeta lo trata como ACIERTO (tono y marca de acierto), igual que `ya_recibida`.
+  it("SLT-158: la relectura de una guía ya confirmada marca acierto, sin aviso de error", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1], devolucion_a_origen_por_rechazo: [REC_1] });
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "7001");
+    await teclear(user, dialog, "7001");
+
+    const campo = within(dialog).getByLabelText("Número de guía");
+    await vi.waitFor(() => expect(campo).toHaveAttribute("data-resultado", "acierto"));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(avisoInocuo(dialog)).toHaveTextContent("Lectura 7001:");
   });
 });
 
@@ -716,7 +752,7 @@ describe("T4.5/R27 — el bloqueo se dice con texto, no sólo con un botón apag
 
     // Se lee el TEXTO, no el `disabled`: un botón apagado y mudo se lee como una app rota.
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.",
     );
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 3.");
 
@@ -725,7 +761,7 @@ describe("T4.5/R27 — el bloqueo se dice con texto, no sólo con un botón apag
 
     // Con una sola pendiente, el texto pasa al singular y sigue nombrando la salida.
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Falta 1 paquete por confirmar. Si no llegó, rechazá el cierre indicando cuál falta.",
+      "Falta 1 paquete por confirmar. Si no llegó, rechaza el cierre indicando cuál falta.",
     );
     expect(
       within(dialog).getByRole("button", { name: "Confirmar y aprobar" }),
@@ -769,7 +805,7 @@ describe("T4.5/R27 — el bloqueo se dice con texto, no sólo con un botón apag
     const dialog = await abrirVentana(user);
 
     expect(fila(dialog, "g-dev-2")).toContain(
-      "Sin número de guía: no se puede confirmar. Avisá a un administrador.",
+      "Sin número de guía: no se puede confirmar. Avisa a un administrador.",
     );
     // Y la que SÍ tiene guía no lleva ese aviso: la línea es de la fila, no del bloque.
     expect(fila(dialog, DEV_1.gestionId)).not.toContain("Sin número de guía");
@@ -832,8 +868,10 @@ describe("T4.6/R35 — cerrar la ventana sin completarla no envía nada", () => 
 
     // Reabrir NO obliga a re-escanear lo ya leído: no existe una confirmación a medias
     // persistida, así que lo confirmado vive mientras el detalle siga abierto.
-    const detalle = screen.getByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+    const detalle = screen.getByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
     const dos = await screen.findByRole("dialog", { name: VENTANA });
     expect(progreso(dos)).toBe("Paquetes confirmados: 1 de 2.");
   });
@@ -846,15 +884,17 @@ describe("T4.6/R35 — cerrar la ventana sin completarla no envía nada", () => 
     await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
 
     await user.click(
-      within(screen.getByRole("dialog", { name: "Detalle del cierre" })).getAllByRole(
+      within(screen.getByRole("dialog", { name: /^Detalle del cierre · / })).getAllByRole(
         "button",
         { name: "Cerrar" },
       )[0],
     );
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
-    const detalle = await screen.findByRole("dialog", { name: "Detalle del cierre" });
-    await user.click(within(detalle).getByRole("button", { name: "Aprobar" }));
+    const detalle = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
+    // SLT-100 (R39): el pie del detalle único lanza la aprobación de hoy; su rótulo es «Revisar
+    // paquetes y aprobar» si hay paquetes que vuelven (R12 de SLT-95), y «Aprobar» si no.
+    await user.click(within(detalle).getByRole("button", { name: APROBAR_PIE }));
     const dos = await screen.findByRole("dialog", { name: VENTANA });
     expect(progreso(dos)).toBe("Paquetes confirmados: 0 de 2.");
     expect(aprobarMock).not.toHaveBeenCalled();
@@ -1067,9 +1107,12 @@ describe("guía repetida — una lectura confirma TODAS las filas de ese paquete
 
     await teclear(user, dialog, "7010");
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    // SLT-158 (M5, decisión del leader): la relectura es INOCUA. Se dice como información, no
+    // como error: ningún `role="alert"`.
+    expect(avisoInocuo(dialog)).toHaveTextContent(
       "Esa guía ya está confirmada. No se cuenta dos veces.",
     );
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
     expect(fila(dialog, "g-rec-1")).toContain("Pendiente");
     expect(
@@ -1129,7 +1172,7 @@ describe("el contador dice PAQUETES y cuenta paquetes, no filas", () => {
 
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 2.");
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Faltan 2 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+      "Faltan 2 paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.",
     );
     // Pero las TRES filas siguen ahí: R33 pide una fila por gestión, y agrupar el conteo no es
     // esconder ninguna.
@@ -1305,7 +1348,7 @@ describe("451/R31 — las barridas cuentan en el MISMO contador y en el MISMO «
     expect(within(dialog).getAllByRole("note")).toHaveLength(1);
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 3.");
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechaza el cierre indicando cuáles faltan.",
     );
 
     // Terminar las gestiones NO dice «están todos» con barridas pendientes detrás.
@@ -1352,9 +1395,12 @@ describe("451/R32 — leer la guía de una barrida pendiente la confirma", () =>
     await teclear(user, dialog, "8001");
     await teclear(user, dialog, "8001");
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    // SLT-158 (M5, decisión del leader): la relectura es INOCUA. Se dice como información, no
+    // como error: ningún `role="alert"`.
+    expect(avisoInocuo(dialog)).toHaveTextContent(
       "Esa guía ya está confirmada. No se cuenta dos veces.",
     );
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
   });
 });
@@ -1463,7 +1509,7 @@ describe("451/R19 (mitad cliente) — con una barrida pendiente no hay forma de 
     const boton = within(dialog).getByRole("button", { name: "Confirmar y aprobar" });
     expect(boton).toBeDisabled();
     expect(within(dialog).getByRole("note")).toHaveTextContent(
-      "Falta 1 paquete por confirmar. Si no llegó, rechazá el cierre indicando cuál falta.",
+      "Falta 1 paquete por confirmar. Si no llegó, rechaza el cierre indicando cuál falta.",
     );
     await user.click(boton);
     expect(aprobarMock).not.toHaveBeenCalled();
@@ -1505,7 +1551,7 @@ describe("451/R34 — si alguna fila no tiene guía, se dice ANTES de la lista, 
     expect(aviso.parentElement).toBe(within(dialog).getByRole("status").parentElement);
     // La advertencia por fila de la 238 se conserva, ahora también en la barrida.
     expect(filaBarrida(dialog, "o-bar-sin").textContent).toContain(
-      "Sin número de guía: no se puede confirmar. Avisá a un administrador.",
+      "Sin número de guía: no se puede confirmar. Avisa a un administrador.",
     );
     // Y el bloqueo sigue diciéndose con UN solo `note` (R27 de la 238).
     expect(within(dialog).getAllByRole("note")).toHaveLength(1);
@@ -1607,7 +1653,7 @@ describe("451/R36 — cerrar la ventana sin completarla no envía nada", () => {
 
     expect(aprobarMock).not.toHaveBeenCalled();
     // El detalle sigue abierto: el cierre no se tocó.
-    expect(screen.getByRole("dialog", { name: "Detalle del cierre" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /^Detalle del cierre · / })).toBeInTheDocument();
   });
 });
 
@@ -1639,5 +1685,61 @@ describe("PREMISA — `orden.numGuia` es @unique, y de eso depende que el arregl
     // dos aserciones de abajo pasarían a rojo por la razón correcta, no por un regex mudo.
     expect(modeloOrden).toContain('@@map("orden")');
     expect(modeloOrden).toMatch(/numGuia\s+Int\?\s+@unique\s+@map\("num_guia"\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`. La
+// «acción» de esta superficie es confirmar la fila: la guía 1024 la confirma por los dos.
+// ---------------------------------------------------------------------------------------------
+
+describe("SLT-157 — guía única por cámara o pistola", () => {
+  const DEV_1024 = makeGestion({
+    gestionId: "g-dev-1024",
+    resultado: "novedad",
+    numGuia: 1024,
+  });
+  const AVISO_ILEGIBLE =
+    "No se pudo leer un número de guía en ese código. Escanea de nuevo o escribe el número.";
+
+  it("R565: el CODE128 por cámara confirma la fila 1024", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+
+    await escanear(user, dialog, "1024");
+
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  it("R565: la URL del QR tecleada (pistola 2D) confirma la fila 1024", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "https://app.ejemplo.test/paquete/1024");
+
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  // Un caso por camino, cada uno con la ventana recién abierta: el aviso persiste entre
+  // lecturas, y con los dos en el mismo caso el segundo vería el aviso del primero.
+  it.each([
+    ["cámara", escanear],
+    ["teclado", teclear],
+  ] as const)("R566: lo que no es guía avisa (D4) por %s y no confirma nada", async (_camino, leer) => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+
+    await leer(user, dialog, "1024abc");
+
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(AVISO_ILEGIBLE);
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Pendiente");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 1.");
+    expect(aprobarMock).not.toHaveBeenCalled();
   });
 });

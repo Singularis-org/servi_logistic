@@ -192,6 +192,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     // FICHA 425 (B11): la CUARTA consulta del detalle — los rechazos de tienda que el cierre puso
     // delante de quien lo aprueba. Vacio por defecto (el cierre normal no incorporo ninguno).
     cierreRechazoTienda: { findMany: vi.fn().mockResolvedValue([]) },
+    // SLT-101 (R94): la QUINTA consulta del detalle, el ultimo movimiento de fulfillment por orden.
+    ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     // Feature 173/T B.2: al aprobar, el feed del contra-entrega LEE el ledger por tienda para
     // saber cuanto se le acredito a las tiendas en ESE cierre. En esta suite el repositorio
     // del ledger es un doble que no escribe nada, asi que el ledger esta VACIO — y devolver
@@ -231,6 +233,7 @@ function gestionRow(overrides: Record<string, unknown> = {}) {
     pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("12.50") }],
     historialEstados: [], // feature 102: acotado al origen SLA (vacio = rechazo NO-SLA/otro resultado)
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...overrides,
   };
 }

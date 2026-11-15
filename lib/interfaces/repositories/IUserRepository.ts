@@ -245,6 +245,9 @@ export interface IUserRepository {
   /**
    * Feature 16/R1/R2/R3: usuarios con rol `mensajero` y `estado = activo`,
    * proyectados a `{ id, nombre }` (nunca PII/hash), ordenados por `nombre`.
+   *
+   * SLT-124 (R12, R14): mensajeros activos DE LA ZONA CENTRAL (`zona.es_central`). Es el universo
+   * del ranking en vivo y del congelado. Sin zona central marcada en la empresa, sale vacia.
    */
   listMensajeros(): Promise<MensajeroDTO[]>;
   /**

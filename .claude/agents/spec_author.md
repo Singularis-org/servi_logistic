@@ -59,7 +59,8 @@ En la ruta completa, produce exactamente tres archivos en `specs/<feature>/`:
    invisible para el equipo.
 
 **Tamaño (cualquier ruta).** La feature tiene que caber en un PR: `arnes.config.json >
-gate.tamano_pr` (por defecto 40 archivos). Si `## Archivos esperados` pasa del 80% de
+gate.tamano_pr` (por defecto 40 archivos; las líneas de producción y las de tests tienen topes
+separados, y `## Tamaño` estima las dos por separado). Si `## Archivos esperados` pasa del 80% de
 `max_archivos`, **no escribas el resto del spec**: devuelve `BLOQUEADO: no cabe en un PR` con una
 propuesta de corte en rebanadas verticales que se mergean solas (`docs/specs.md > Partir una
 feature`), escrita en `## Preguntas abiertas` del `requirements.md`.

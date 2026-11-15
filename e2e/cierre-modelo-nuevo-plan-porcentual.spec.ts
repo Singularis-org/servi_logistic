@@ -16,7 +16,7 @@ import { crearUsuarioE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
 import { actorDe, exigirOk, servicios } from "../tests/fabricas/escenarios/reparto";
 
 import { marcarCasilla } from "./_escenarios/casillas";
-import { aprobarCierre, cierresDe, solicitarCierre } from "./_escenarios/cierres";
+import { aprobarCierre, cierresDe, filaDeCola, pestanaDeCola, solicitarCierre } from "./_escenarios/cierres";
 import { abrirCon } from "./_escenarios/pulsar";
 import {
   baseReparto,
@@ -113,6 +113,13 @@ import {
  *   B1     entregado    24.000  2.700 + 351 = 3.051        pago 1.600
  *   B2     rechazo      vacío   1.350 + 175,50 = 1.525,50  pago 0
  *   Total de la empresa 4.576,50 · cargo de plataforma 0 en cada orden, deuda 0.
+ *
+ * ── SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R77, T0.4) ────────
+ *   Las tres cifras que M1 lee en el detalle de su cierre de HOY antes de solicitarlo, a mano y de
+ *   las tablas de arriba (medidas en la base desechable `slt109_e2e` el 2026-11-12):
+ *   Viejo  · Recaudado 60.000 (V1 en efectivo; V2 no cobra) · Gestiones 2 (V1, V2) · Tu ganancia 1.700.
+ *   Nuevo  · Recaudado 110.000 (N1 100.000 + N2 10.000 en efectivo; N3 y N4 no cobran) · Gestiones 4
+ *            (N1-N4) · Tu ganancia 6.175 (2.900 + 2.900 + 90 + 285).
  *
  * Todo lleva sufijo aleatorio y nada se borra: dos corridas seguidas sobre la misma base pasan.
  */
@@ -257,15 +264,28 @@ async function deudaEnWallet(page: Page): Promise<string> {
 async function abrirCierreDelDia(browser: Browser, m: MensajeroE2E): Promise<Page> {
   const page = await paginaDe(browser, m);
   await page.goto("/cierre-dia");
-  await expect(page.getByRole("region", { name: "Totales del día" })).toBeVisible();
+  // SLT-109 (R61): el cierre de hoy es el detalle único en página; sus cifras sustituyen a «Totales del día».
+  await expect(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" })).toBeVisible();
   return page;
+}
+
+/**
+ * SLT-109 (R77): las tres cifras del detalle del cierre de hoy —Recaudado, Gestiones, Tu ganancia—
+ * con los literales escritos a mano en la cabecera de este archivo.
+ */
+async function esperarCifrasDelDia(page: Page, recaudado: string, gestiones: number, ganancia: string): Promise<void> {
+  const detalle = page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
+  const valor = (rotulo: string) => detalle.getByRole("group", { name: rotulo, exact: true }).locator("[data-cifra]");
+  await expect(valor("Recaudado")).toHaveText(cifra(recaudado, true));
+  await expect(valor("Gestiones")).toHaveText(String(gestiones));
+  await expect(valor("Tu ganancia")).toHaveText(cifra(ganancia, true));
 }
 
 /** El mensajero solicita su cierre en pantalla, con su sesión. Devuelve el id del cierre que acaba de nacer. */
 async function solicitarEnPantalla(page: Page, m: MensajeroE2E): Promise<string> {
   const previos = (await cierresDe(m)).length;
   const dialogo = page.getByRole("dialog", { name: "Solicitar cierre del día" });
-  await abrirCon(page.getByRole("region", { name: "Solicitar cierre" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
+  await abrirCon(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
   await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
   await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
   const cierres = await cierresDe(m);
@@ -273,12 +293,16 @@ async function solicitarEnPantalla(page: Page, m: MensajeroE2E): Promise<string>
   return cierres[cierres.length - 1].id;
 }
 
-/** Un KPI del comprobante, ya asentado: cuenta desde 0 al montar. */
-async function kpi(detalle: Locator, rotulo: string): Promise<string> {
-  const valor = detalle
-    .getByRole("region", { name: /^Comprobante detallado del cierre/ })
-    .locator(`xpath=.//span[normalize-space()='${rotulo}']/following-sibling::span[1]`)
-    .first();
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: el KPI «Pago al mensajero» es la cifra del
+ * mismo nombre del detalle único, y el KPI «Total de la empresa» es el «Total facturado» de la cuenta «Lo que se
+ * le factura a la tienda» (mismo importe). Se espera a que el texto se asiente, como antes.
+ */
+async function kpi(detalle: Locator, rotulo: "Pago al mensajero" | "Total de la empresa"): Promise<string> {
+  const valor =
+    rotulo === "Pago al mensajero"
+      ? detalle.locator('[data-cifra="pago"]')
+      : detalle.getByRole("region", { name: "Lo que se le factura a la tienda" }).locator('[data-tipo="total"] [data-monto]');
   return cifraAsentada(valor);
 }
 
@@ -291,7 +315,7 @@ async function aprobarEnPantalla(
 ): Promise<void> {
   await page.goto("/cierres-admin");
   const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
-  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(pendientes, m.nombre);
   await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
   await abrirCon(comprobante.getByRole("button", { name: "Ver / decidir" }), detalle);
@@ -299,7 +323,7 @@ async function aprobarEnPantalla(
   expect(await kpi(detalle, "Total de la empresa")).toMatch(cifra(esperado.empresa, true));
 
   const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
-  await abrirCon(detalle.getByRole("button", { name: "Aprobar", exact: true }), confirmar);
+  await abrirCon(detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }), confirmar);
   const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
   for (const o of vuelven) {
     await lector.getByLabel("Número de guía").fill(String(o.numGuia));
@@ -315,10 +339,8 @@ async function aprobarEnPantalla(
 /** Abre un cierre ya resuelto por su folio: un mensajero tiene varios en el histórico. */
 async function abrirResuelto(page: Page, m: MensajeroE2E, cierreId: string): Promise<Locator> {
   await page.goto("/cierres-admin");
-  await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
-  const comprobante = page
-    .getByRole("region", { name: "Histórico" })
-    .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` })
+  await pestanaDeCola(page, "Resueltos").click();
+  const comprobante = filaDeCola(page.getByRole("region", { name: "Histórico" }), m.nombre)
     .filter({ hasText: cierreId.slice(-8).toUpperCase() });
   await comprobante.getByRole("button", { name: `Ver el cierre resuelto de ${m.nombre}` }).click();
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
@@ -326,22 +348,57 @@ async function abrirResuelto(page: Page, m: MensajeroE2E, cierreId: string): Pro
   return detalle;
 }
 
-const renglon = (seccion: Locator, rotulo: string): Locator =>
-  seccion.getByText(rotulo, { exact: true }).locator("xpath=ancestor::div[1]");
+/** El importe de la línea de una tarjeta (`Cuenta`) cuyo rótulo casa con `rotulo`. */
+const montoDeLinea = (tarjeta: Locator, rotulo: RegExp): Locator =>
+  tarjeta
+    .locator("[data-signo]")
+    .filter({ has: tarjeta.page().locator("[data-rotulo]", { hasText: rotulo }) })
+    .locator("[data-monto]");
 
-/** Despliega la gestión de una orden en su pestaña, y comprueba sus renglones antes de plegarla. */
+/**
+ * Despliega la gestión de una orden con su filtro, y comprueba sus cifras antes de plegarla.
+ *
+ * SLT-101 «Fila de gestión única y lista con filtros» (D2, R27, R28, R97): ANTES se leían los renglones del panel
+ * «Cobros de esta gestión» de la ficha 338 («Valor flete GAM», «Flete», «IVA flete», «Total cobrado»). Ese panel
+ * no existe en la fila única: AHORA las MISMAS cifras se leen donde las pinta el canvas aprobado:
+ *   - «Total cobrado» → el total «Se le cobra» de la tarjeta «Se le cobra a la tienda»;
+ *   - «Valor flete GAM» → la línea «tarifa GAM» de la tarjeta «Flete por entregado» de «Ver cómo se calculó»;
+ *   - «Flete» → la primera línea de esa tarjeta («Monto fijo» o «<n> % de …», según el modo de la tarifa);
+ *   - «IVA flete» → su línea «+ IVA …».
+ * Los literales de las llamadas no cambian.
+ */
 async function cobrosDeLaOrden(detalle: Locator, pestana: RegExp, orden: OrdenE2E, renglones: Readonly<Record<string, string>>): Promise<void> {
+  // SLT-100: las órdenes viven en la pestaña «Gestiones» del detalle único.
+  await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
+  // SLT-101 (R84): la pestaña por resultado es ahora el filtro «Filtrar por resultado» («<resultado> <n>»).
+  await detalle
+    .getByRole("group", { name: "Filtrar por resultado" })
+    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\(\\d+\\)$`) })
+    .click();
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
-  await ordenes.getByRole("tab", { name: pestana }).click();
   const fila = ordenes.getByRole("button", { name: new RegExp(`^Desglose de ingreso de la orden ${orden.numRemision}`) });
   await fila.click();
-  const cobros = ordenes.getByRole("region", { name: "Cobros de esta gestión" });
-  await expect(cobros).toBeVisible();
+  const deLaOrden = (titulo: string) => ordenes.getByRole("region", { name: new RegExp(`^${titulo} de la orden ${orden.numRemision} · `) });
+  const cobro = deLaOrden("Se le cobra a la tienda");
+  await expect(cobro).toBeVisible();
+  const flete = deLaOrden("Flete por entregado");
+  if ("Valor flete GAM" in renglones || "Flete" in renglones || "IVA flete" in renglones) {
+    await ordenes.getByRole("button", { name: "Ver cómo se calculó" }).click();
+    await expect(flete).toBeVisible();
+  }
   for (const [rotulo, texto] of Object.entries(renglones)) {
-    await expect(renglon(cobros, rotulo)).toContainText(cifra(texto));
+    const monto =
+      rotulo === "Total cobrado"
+        ? cobro.locator("[data-tipo='total'] [data-monto]")
+        : rotulo === "Valor flete GAM"
+          ? montoDeLinea(flete, /^tarifa GAM$/)
+          : rotulo === "IVA flete"
+            ? montoDeLinea(flete, /^\+ IVA /)
+            : flete.locator("[data-signo]").first().locator("[data-monto]");
+    await expect(monto).toHaveText(cifra(texto, true));
   }
   await fila.click();
-  await expect(cobros).toHaveCount(0);
+  await expect(cobro).toHaveCount(0);
 }
 
 test.use({ actionTimeout: 30_000 });
@@ -478,7 +535,8 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     const v2 = await gestionada("V2", t2, m1, 0, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
 
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("1.700"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("1.700"));
+    await esperarCifrasDelDia(mensajero, "60.000", 2, "1.700");
     cierreViejo = await solicitarEnPantalla(mensajero, m1);
     await mensajero.context().close();
     await aprobarEnPantalla(page, m1, [v2], { pago: "1.700", empresa: "4.294" });
@@ -530,7 +588,8 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     n4 = await gestionada("N4", t2, m1, 45_000, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
 
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("6.175"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("6.175"));
+    await esperarCifrasDelDia(mensajero, "110.000", 4, "6.175");
     cierreNuevo = await solicitarEnPantalla(mensajero, m1);
     await mensajero.context().close();
     await aprobarEnPantalla(page, m1, [n3, n4], { pago: "6.175", empresa: "10.649,50" });
@@ -577,7 +636,8 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
       "empresa:ingreso_iva_flete=591.00",
       "empresa:ingreso_iva_flete_devolucion=108.50",
       "mensajero:pago_devengado=6175.00",
-      "mensajero:pago_efectivo=6175.00",
+      // SLT-123 «Pago al mensajero independiente del efectivo» (R313): la central aprobada ya no
+      // escribe `mensajero:pago_efectivo=6175.00`; la caja sigue con su egreso (R314).
     ]);
     libroAntes.set(cierreNuevo, libro);
 
@@ -625,7 +685,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     const z3 = await gestionada("Z3", t2, m2, 15_000, { resultado: "reprogramado" });
 
     const mensajero = await abrirCierreDelDia(browser, m2);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("2.360"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("2.360"));
     cierreZona = await solicitarEnPantalla(mensajero, m2);
     await mensajero.context().close();
     await aprobarEnPantalla(page, m2, [z2, z3], { pago: "2.360", empresa: "5.566" });
@@ -719,7 +779,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     // El control: el cambio de verdad rige. Sin él, «no se movió» pasaría también si el guardado no hubiera hecho nada.
     await gestionada("S1", t1, m1, 70_000, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 70_000 }] });
     const mensajero = await abrirCierreDelDia(browser, m1);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("3.000"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("3.000"));
     await mensajero.context().close();
     const siguiente = await solicitarCierre(r, m1);
     await aprobarCierre(r, siguiente);
@@ -741,7 +801,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
   test("«Mi plan» dice lo cobrado, lo que falta por llegar y el total", async () => {
     test.setTimeout(120_000);
     await page.goto("/mi-plan");
-    await expect(page.getByRole("heading", { name: nombrePlan, exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombrePlan, exact: true })).toBeVisible({ timeout: 60_000 });
     const lista = page.getByRole("list", { name: "Costo del período", exact: true });
     for (const linea of [
       "Costo base mensual: 1000.00",
@@ -764,7 +824,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
 
     const paginaB = await paginaDe(browser, b.empresa.maestro);
     const mensajero = await abrirCierreDelDia(browser, mB);
-    await expect(mensajero.getByRole("region", { name: "Ganancia" })).toContainText(cifra("1.600"));
+    await expect(mensajero.getByRole("group", { name: "Tu ganancia", exact: true })).toContainText(cifra("1.600"));
     const cierreB = await solicitarEnPantalla(mensajero, mB);
     await mensajero.context().close();
     await aprobarEnPantalla(paginaB, mB, [b2], { pago: "1.600", empresa: "4.576,50" });

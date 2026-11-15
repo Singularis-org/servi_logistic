@@ -34,12 +34,6 @@ import {
   COLUMNAS_DESCARGA_CIERRES_HISTORICO,
   COLUMNAS_DESCARGA_CIERRES_PENDIENTES,
 } from "@/app/(app)/cierres-admin/_components/cierres-admin-descarga-columnas";
-import {
-  TIENE_EVIDENCIA_COL,
-  TIENE_EVIDENCIA_SI,
-  TIENE_EVIDENCIA_NO,
-  COLUMNAS_DESCARGA_DIA_RECHAZADAS,
-} from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
 import type {
   CierreResultado,
   IngresoEmpresaDTO,
@@ -841,17 +835,9 @@ describe("la hoja fundida no tiene NADA de evidencia (T3.4, R40/R41)", () => {
     expect(cuerpo).not.toMatch(/^\s*ordenId/im);
   });
 
-  it("las constantes de la marca de evidencia siguen exportadas y sin cambios (R3)", () => {
-    // D8 retiró la COLUMNA de la fundida, no el mecanismo: `TIENE_EVIDENCIA_*` siguen sirviendo
-    // a las descargas por sección. FICHA 482: las del detalle del admin se borraron (478/P3); las
-    // que quedan son las del cierre del día, y es ahí donde se comprueba que la marca vive.
-    expect(TIENE_EVIDENCIA_COL).toBe("Tiene evidencia");
-    expect(TIENE_EVIDENCIA_SI).toBe("Sí");
-    expect(TIENE_EVIDENCIA_NO).toBe("No");
-    expect(
-      COLUMNAS_DESCARGA_DIA_RECHAZADAS.map((c) => c.encabezado),
-    ).toContain(TIENE_EVIDENCIA_COL);
-  });
+  // SLT-115 «Retirar los componentes de cierre sustituidos» (E2): aquí había un caso «las
+  // constantes de la marca de evidencia siguen exportadas (R3)». Quedó sin objeto: ya no hay
+  // descargas por sección, y `TIENE_EVIDENCIA_*` se retiraron con los catálogos del cierre del día.
 });
 
 // ---------------------------------------------------------------------------

@@ -100,10 +100,14 @@ export default defineConfig({
         "integraciones-por-empresa",
         // SLT-58 R28: el superadmin crea y asigna un plan custom; «Mi plan» por empresa y por rol.
         "planes-superadmin",
+        // SLT-99 R22: el maestro cambia de plan y cancela el cambio; archiva al final los planes públicos que crea.
+        "mi-plan-cambiar-plan",
         // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
         "planes-costeo",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
         "tarifas-maqueta",
+        // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.
+        "reporte-de-bugs",
       ),
     },
     {
@@ -148,6 +152,15 @@ export default defineConfig({
         // Tarifas activadas + valor propio + plan porcentual, en el mismo cierre aprobado. Usa el superadmin de prueba.
         "cierre-modelo-nuevo-plan-porcentual",
         "fulfillment-cobro-por-paquete",
+        // SLT-100 R77: lo que ven la central y la satélite en el detalle único, modelos viejo y nuevo.
+        "cierres-rediseno",
+        // SLT-119 R19: las facturas de la plataforma en «Mi plan» y en la pestaña «Facturación»; cierra una
+        // factura de su empresa con la función de cierre de la base y usa el superadmin de prueba.
+        "facturas-plataforma",
+        // SLT-156 A · R490-R492, R497, R501: Reparto a 360/414 px y «Gestiones» de /cierre-dia con importes.
+        "pwa-mensajero-base",
+        // SLT-165, rebanada D de SLT-156 · R523-R537: /cierre-dia a 360/414 px, tarjetas, barra fija y «Ver».
+        "pwa-mensajero-cierre-dia",
       ),
     },
   ],
@@ -182,6 +195,9 @@ export default defineConfig({
         INTEGRACIONES_PROBADOR_DOBLE: "1",
         INTEGRACIONES_CLAVES_CIFRADO,
         INTEGRACIONES_CLAVE_ACTIVA,
+        // SLT-87 (design §9; R15): la copia de cada reporte de problema. El dominio reservado va al
+        // emisor de consola, y con `AUTH_OTP_DEBUG_LOG=1` su cuerpo sale en el log.
+        BUG_REPORT_EMAILS: "reportes-e2e@example.test",
       },
       reuseExistingServer: !CI,
       // `next start` sube en segundos; `next dev` compila la primera ruta al pedir `url`.

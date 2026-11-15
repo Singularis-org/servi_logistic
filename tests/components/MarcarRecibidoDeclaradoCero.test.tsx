@@ -18,9 +18,9 @@ import {
 } from "@/components/shared/conciliacion/MarcarRecibidoDialog";
 import type { MarcaConciliacionActionResult } from "@/lib/actions/conciliacion-satelites";
 
-const AVISO_CON_CERO = "Escribí un monto válido, de cero o más y con dos decimales como máximo.";
+const AVISO_CON_CERO = "Escribe un monto válido, de cero o más y con dos decimales como máximo.";
 const AVISO_MAYOR_QUE_CERO =
-  "Escribí un monto válido, mayor que cero y con dos decimales como máximo.";
+  "Escribe un monto válido, mayor que cero y con dos decimales como máximo.";
 const MENSAJE_SERVIDOR = "Solo se puede registrar 0 cuando lo declarado es 0.";
 
 afterEach(() => {

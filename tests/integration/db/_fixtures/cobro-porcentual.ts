@@ -80,14 +80,6 @@ export async function asignar(tx: TxDeTest, e: EmpresaPorcentual, planId: string
   await asignarPlan(tx, e.id, planId);
 }
 
-export async function fijarExcepcion(tx: TxDeTest, e: EmpresaPorcentual, monto: string | null): Promise<void> {
-  await tx.$executeRawUnsafe(
-    `UPDATE "organizacion" SET "cobro_plataforma_por_orden" = $2::numeric WHERE "id" = $1`,
-    e.id,
-    monto,
-  );
-}
-
 const estatusCache = new Map<string, string>();
 
 export async function idDeEstado(tx: TxDeTest, valor: EstadoDeOrden): Promise<string> {

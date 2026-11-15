@@ -4,9 +4,12 @@ import { useCallback, useState } from "react";
 import { PackageCheck } from "lucide-react";
 
 import { EscanerModal } from "@/components/shared/EscanerModal";
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
+import {
+  EscanerGuiaCard,
+  type ResultadoLectura,
+} from "@/components/shared/EscanerGuiaCard";
 import { useToast } from "@/hooks/useToast";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { useRecogerPorGuia } from "./useRecogerPorGuia";
@@ -17,9 +20,12 @@ import { useRecogerPorGuia } from "./useRecogerPorGuia";
 // num_guia contra `porRecoger` (restriccion "asignada a mi") y aceptan con la MISMA
 // action via `useRecogerPorGuia`, directo al confirmar (sin modal).
 //
-// La diferencia entre los dos caminos es solo de PARSEO: la camara entrega la URL del
-// paquete (`<origin>/paquete/<numGuia>`) y hay que extraer el numero; lo tecleado ES el
-// numero y se compara tal cual.
+// SLT-157: los dos caminos leen con la MISMA `leerGuia`: la camara puede leer el QR (URL
+// del paquete) o el CODE128 (digitos), y la pistola teclea cualquiera de los dos. Lo que
+// no es guia se rechaza con mensaje por los dos caminos.
+//
+// SLT-158: la lectura DEVUELVE su resultado a la tarjeta (tono, marca, línea de error) y ya no
+// se deshabilita nada mientras se procesa: la tarjeta encola las lecturas (R574).
 
 export interface RecogerPaqueteCardProps {
   /** Órdenes en `por_recoger`: resuelven numGuia -> id. */
@@ -33,47 +39,30 @@ export function RecogerPaqueteCard({
   onRecogida,
 }: Readonly<RecogerPaqueteCardProps>) {
   const toast = useToast();
-  const { recoger, procesando } = useRecogerPorGuia(porRecoger);
+  const { recoger } = useRecogerPorGuia(porRecoger);
   // Confirmación PERSISTENTE de la última recogida: el toast se va solo y en una tanda
   // seguida el mensajero necesita ver que la anterior sí entró.
   const [ultimaRecogida, setUltimaRecogida] = useState<number | null>(null);
 
-  const recogerGuia = useCallback(
-    async (numGuia: number): Promise<boolean> => {
-      const ok = await recoger(numGuia);
-      if (ok) {
+  /**
+   * Cámara, tecleo o pistola: misma `leerGuia` para todos. Lo que no es guía se rechaza con
+   * mensaje y no se llama a la action.
+   */
+  const procesar = useCallback(
+    async (texto: string): Promise<ResultadoLectura> => {
+      const numGuia = leerGuia(texto);
+      if (numGuia === null) {
+        toast.error("Código inválido.");
+        return { tipo: "error", motivo: "Código inválido." };
+      }
+      const resultado = await recoger(numGuia);
+      if (resultado.tipo === "acierto") {
         setUltimaRecogida(numGuia);
         onRecogida();
       }
-      return ok;
+      return resultado;
     },
-    [recoger, onRecogida],
-  );
-
-  /** Camino cámara: `QrScanner` ya cerró el visor; aquí solo se extrae el num_guia. */
-  const onDecoded = useCallback(
-    (texto: string) => {
-      const numGuia = extractNumGuiaFromScan(texto);
-      if (numGuia === null) {
-        toast.error("Código inválido.");
-        return;
-      }
-      void recogerGuia(numGuia);
-    },
-    [recogerGuia, toast],
-  );
-
-  /**
-   * Camino manual: lo tecleado ES el número. Un valor que no son dígitos no resuelve a
-   * ninguna guía, así que no se llama a la action y el texto se queda en el campo para
-   * corregirlo (mismo criterio de `num_guia` que la URL del paquete: base 10).
-   */
-  const onManual = useCallback(
-    async (valor: string): Promise<boolean> => {
-      if (!/^\d+$/.test(valor)) return false;
-      return recogerGuia(Number(valor));
-    },
-    [recogerGuia],
+    [recoger, onRecogida, toast],
   );
 
   return (
@@ -89,10 +78,9 @@ export function RecogerPaqueteCard({
         titulo="Recoger paquete"
         descripcion="Escanea o ingresa el número de guía"
         icono={PackageCheck}
-        onDecoded={onDecoded}
-        procesando={procesando}
+        onDecoded={procesar}
         mensajeErrorCamara="No se pudo abrir la cámara."
-        manual={{ onSubmit: onManual, submitLabel: "Recoger" }}
+        manual={{ onSubmit: procesar, submitLabel: "Recoger" }}
         exito={
           ultimaRecogida === null ? undefined : (
             <>

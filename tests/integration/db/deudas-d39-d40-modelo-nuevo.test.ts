@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient, type TarifaModelo } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { consolidacionesConModeloNuevo } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
+import { CifrasBodegaLoteRepository } from "@/lib/repositories/CifrasBodegaLoteRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { FiltrosWalletRepository } from "@/lib/repositories/FiltrosWalletRepository";
 import { categoriasConModeloNuevoSql } from "@/lib/repositories/libro-caja-a-quien-sql";
@@ -460,9 +461,11 @@ interface LecturaBodega {
 }
 
 function servicioZona(cli: PrismaClient, zonaId: string) {
+  // SLT-141 (R389): con una consolidacion nueva, la descarga de «Solicitados» lee sus cifras en lote;
+  // sin la lectura el servicio lanza (no devuelve el archivo sin cifras). La real, como produccion.
   return new CierreBodegaService(new CierreBodegaRepository(cli), {
     findUsuarioZonaId: async () => zonaId,
-  } as never, reglasPaisFijas());
+  } as never, reglasPaisFijas(), undefined, new CifrasBodegaLoteRepository(cli));
 }
 
 async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
@@ -677,7 +680,9 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
       throw new Error("alguna lectura no devolvio ok");
     }
     expect(r.zona.valor.items.filter((c) => c.incluyeModeloNuevo === true)).toHaveLength(3);
-    expect(r.zona.n).toBe(1);
+    // D40: una sentencia para la marca de los tres. SLT-141 (R385, R389): con consolidaciones nuevas la
+    // descarga suma UNA lectura en lote de `cierre_detail` para sus cifras, fija con los tres: 1 + 1.
+    expect(r.zona.n).toBe(2);
     expect(r.saldos.valor.items.filter((c) => c.incluyeModeloNuevo === true)).toHaveLength(3);
     expect(r.saldos.n).toBe(1);
     expect(r.categorias.valor).toEqual([FLETE]);

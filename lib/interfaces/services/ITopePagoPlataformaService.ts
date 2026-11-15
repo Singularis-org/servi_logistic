@@ -4,8 +4,14 @@ import type { PrismaClient } from "@prisma/client";
 // deuda vigente. Se decide DENTRO de la transacción del registro, con el candado de la empresa
 // tomado, para que dos pagos simultáneos no pasen los dos (R10).
 
-/** El `tx` del registro: el candado (SQL a mano), los cargos y el libro de la caja. */
-export type TopePagoPlataformaTx = Pick<PrismaClient, "$executeRaw" | "cobroPlataformaMovimiento" | "walletMovimiento">;
+/**
+ * El `tx` del registro: el candado (SQL a mano), los cargos y el libro de la caja. SLT-118 (design §5;
+ * R19): y las facturas, cuyas cuotas cerradas suben el tope.
+ */
+export type TopePagoPlataformaTx = Pick<
+  PrismaClient,
+  "$executeRaw" | "cobroPlataformaMovimiento" | "walletMovimiento" | "facturaPlataforma"
+>;
 
 export interface ComprobarTopeInput {
   organizacionId: string;

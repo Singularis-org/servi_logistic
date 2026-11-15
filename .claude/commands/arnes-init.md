@@ -78,9 +78,10 @@ máximo 4 preguntas por tanda, y pon siempre como primera opción lo que el repo
    - cupo por persona y zona (por defecto 2/3/3).
 7. **CI:** ¿GitHub Actions disponible? ¿Plan gratuito (minutos limitados, sin protección de
    ramas en repos privados)? ¿Qué variables necesita la suite en una máquina limpia? ¿Hay una
-   máquina para un runner propio? Con ella, propón `GATE_RUNNER` y `GATE_EN_BORRADOR=true`
-   (`docs/gate.md > CI en cada tanda > Activarlo, paso a paso`); sin ella y en el plan gratuito, deja el CI solo al sacar el
-   PR de borrador.
+   máquina para un runner propio? Con ella, propón `GATE_RUNNER`
+   (`docs/gate.md > CI en cada tanda > Activarlo, paso a paso`). El PR se abre listo y el CI
+   corre en cada push: en un repo privado del plan gratuito, avisa del coste en minutos. Si el
+   repo lo permite (público o plan de pago), propón `gate-completo` como check obligatorio.
 
 En modo revisión, por cada doc del perfil:
 - muestra en 3–6 líneas lo que hoy afirma lo esencial;

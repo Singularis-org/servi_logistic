@@ -1,10 +1,10 @@
-import { expect, test, type Browser, type Locator, type Page, type Response } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
 import { crearUsuarioE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
 import { marcarCasilla } from "./_escenarios/casillas";
-import { aprobarCierre, cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { aprobarCierre, cierresDe, filaDeCola, importe, solicitarCierre } from "./_escenarios/cierres";
 import { correrCron } from "./_escenarios/crons";
 import { abrirCon } from "./_escenarios/pulsar";
 import {
@@ -172,7 +172,7 @@ async function solicitarEnPantalla(browser: Browser, m: MensajeroE2E): Promise<s
   const page = await paginaDe(browser, m);
   await page.goto("/cierre-dia");
   const dialogo = page.getByRole("dialog", { name: "Solicitar cierre del día" });
-  await abrirCon(page.getByRole("region", { name: "Solicitar cierre" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
+  await abrirCon(page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar cierre" }), dialogo);
   await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
   await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
   await page.context().close();
@@ -185,7 +185,7 @@ async function enviarVencidoEnPantalla(browser: Browser, m: MensajeroE2E): Promi
   await page.goto("/cierre-dia");
   const dialogo = page.getByRole("dialog", { name: "Solicitar aprobación del cierre vencido" });
   await abrirCon(
-    page.getByRole("region", { name: "Cierre vencido" }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }),
+    page.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }),
     dialogo,
   );
   await dialogo.getByRole("button", { name: "Solicitar aprobación" }).click();
@@ -197,16 +197,21 @@ async function enviarVencidoEnPantalla(browser: Browser, m: MensajeroE2E): Promi
 async function aprobarEnPantalla(browser: Browser, r: RepartoE2E, m: MensajeroE2E, orden: OrdenE2E, ingreso: number | null): Promise<void> {
   const page = await paginaDe(browser, r.empresa.maestro);
   await page.goto("/cierres-admin");
-  const comprobante = page
-    .getByRole("region", { name: "Pendientes de decisión" })
-    .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  const comprobante = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
   const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
   await abrirCon(comprobante.getByRole("button", { name: "Ver / decidir" }), detalle);
   if (ingreso !== null) {
-    await expect(detalle.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen del cierre" })).toContainText(importe(ingreso));
+    // SLT-100: la tarjeta del ingreso de bodega pasó a la línea «− pago a la bodega» de la cuenta del detalle único.
+    await expect(
+      detalle
+        .getByRole("region", { name: "De lo facturado, le queda a la empresa" })
+        .locator("[data-signo]")
+        .filter({ hasText: "− Ingreso de bodega por devoluciones a origen" }),
+    ).toContainText(importe(ingreso));
   }
   const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
-  await abrirCon(detalle.getByRole("button", { name: "Aprobar", exact: true }), confirmar);
+  // SLT-100: con paquetes que vuelven, el pie del detalle único dice «Revisar paquetes y aprobar» (R12 de SLT-95).
+  await abrirCon(detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }), confirmar);
   const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
   await lector.getByLabel("Número de guía").fill(String(orden.numGuia));
   await lector.getByRole("button", { name: "Confirmar", exact: true }).click();
@@ -239,18 +244,52 @@ async function asignarYVer(page: Page, orden: OrdenE2E, m: MensajeroE2E): Promis
   expect(await estadoDe(orden)).toBe("mensajero_recogiendo_en_bodega");
 }
 
-/** Lo que el servidor le mandó a esa página, sin el JS del bundle: documentos y respuestas de acción. */
-function escucharRespuestas(page: Page): () => Promise<string> {
-  const pendientes: Promise<string>[] = [];
-  page.on("response", (res: Response) => {
-    const tipo = res.headers()["content-type"] ?? "";
-    if (tipo.includes("text/html") || tipo.includes("text/x-component") || tipo.includes("application/json")) {
-      pendientes.push(res.text().catch(() => ""));
-    }
-  });
+const CABECERAS_DEL_CUERPO_ORIGINAL = new Set(["content-encoding", "content-length", "transfer-encoding"]);
+const TIPOS_QUE_SE_LEEN = ["text/html", "text/x-component", "application/json"];
+
+/**
+ * Lo que el servidor le mandó a esa página, sin el JS del bundle: documentos y respuestas de acción.
+ *
+ * El cuerpo se lee en el proceso del test (`route.fetch`), NO con `response.text()` de un `page.on("response")`:
+ * ese lee por CDP (`Network.getResponseBody`), y Chromium tira el cuerpo de las respuestas en streaming de Next
+ * («No data found for resource with given identifier»). Medido en local: 134 de 290 cuerpos perdidos en una tanda,
+ * acciones incluidas. Era lo que ponía rojo el paso 4 a ratos: la página sí recibía el motivo, el lector no.
+ * Un cuerpo que no se pudo leer hace caer `leer()`: un "" silencioso dejaría ciegas las búsquedas en negativo.
+ */
+async function escucharRespuestas(page: Page): Promise<() => Promise<string>> {
+  const capturas: Promise<{ texto: string } | { error: string }>[] = [];
+  await page.route(
+    (url) => !url.pathname.startsWith("/_next/static/"),
+    async (route) => {
+      const pedido = route.request();
+      if (!["document", "fetch", "xhr"].includes(pedido.resourceType())) return route.fallback();
+      // Sin seguir redirecciones: el navegador recibe el 3xx tal cual y lo sigue él, como sin la ruta.
+      const respuesta = route.fetch({ maxRedirects: 0 });
+      capturas.push(
+        respuesta.then(
+          async (r) => {
+            const tipo = r.headers()["content-type"] ?? "";
+            return { texto: TIPOS_QUE_SE_LEEN.some((t) => tipo.includes(t)) ? await r.text() : "" };
+          },
+          (e: unknown) => ({ error: `${pedido.method()} ${pedido.url()}: ${e instanceof Error ? e.message : String(e)}` }),
+        ),
+      );
+      const r = await respuesta.catch(() => null);
+      if (!r) return route.abort().catch(() => undefined);
+      // El cuerpo ya viene descomprimido: sin estas cabeceras el navegador lo trataría como gzip.
+      const headers = Object.fromEntries(Object.entries(r.headers()).filter(([k]) => !CABECERAS_DEL_CUERPO_ORIGINAL.has(k.toLowerCase())));
+      // Una prefetch que el navegador ya canceló no admite respuesta; su cuerpo ya quedó capturado.
+      await route.fulfill({ status: r.status(), headers, body: await r.body() }).catch(() => undefined);
+    },
+  );
   // Dentro de un documento, el JSON del servidor viaja escapado en un `<script>`: sin quitar las barras, una búsqueda de
   // `"umbral"` no vería nada aunque estuviera.
-  return async () => (await Promise.all(pendientes)).join("\n").replace(/\\+"/g, '"');
+  return async () => {
+    const leidas = await Promise.all(capturas);
+    const fallos = leidas.flatMap((l) => ("error" in l ? [l.error] : []));
+    if (fallos.length > 0) throw new Error(`SLT-77 E2E: no se pudo leer la respuesta de ${fallos.join("; ")}`);
+    return leidas.map((l) => ("texto" in l ? l.texto : "")).join("\n").replace(/\\+"/g, '"');
+  };
 }
 
 async function abrirGestionDelMensajero(page: Page, orden: OrdenE2E): Promise<Locator> {
@@ -391,7 +430,7 @@ test.describe.serial("Tope de intentos por empresa (SLT-77)", () => {
 
     // A, con tope 2: un intento ya está en el tope. B, con tope 3: todavía no.
     const pageA = await paginaDe(browser, a.mPanel, CONTEXTO_MENSAJERO);
-    const leerA = escucharRespuestas(pageA);
+    const leerA = await escucharRespuestas(pageA);
     const panelA = await abrirGestionDelMensajero(pageA, a.panel);
     await expect(panelA.getByRole("button", { name: "Reprogramar", exact: true })).toHaveCount(0);
     await expect(panelA.getByRole("button", { name: "Devolver", exact: true })).toHaveCount(0);
@@ -403,7 +442,7 @@ test.describe.serial("Tope de intentos por empresa (SLT-77)", () => {
     await pageA.context().close();
 
     const pageB = await paginaDe(browser, b.mPanel, CONTEXTO_MENSAJERO);
-    const leerB = escucharRespuestas(pageB);
+    const leerB = await escucharRespuestas(pageB);
     const panelB = await abrirGestionDelMensajero(pageB, b.panel);
     await expect(panelB.getByRole("button", { name: "Reprogramar", exact: true })).toBeVisible();
     await expect(panelB.getByRole("button", { name: "Devolver", exact: true })).toBeVisible();
@@ -489,7 +528,7 @@ test.describe.serial("Tope de intentos por empresa (SLT-77)", () => {
 
   test("paso 4 — en A, la orden de bodega con 2 intentos no se asigna; en B, sí (R20)", async ({ browser }) => {
     const page = await paginaDe(browser, a.r.adminSatelite);
-    const leer = escucharRespuestas(page);
+    const leer = await escucharRespuestas(page);
     const modal = await intentarAsignar(page, a.bodega, a.mBodega);
     // Lo que ve quien asigna (R42): la causa, porque actualizar la lista no arregla una orden agotada.
     await expect(page.getByText("Alguna orden de la selección ya agotó sus intentos de entrega y no puede volver a salir a reparto. Quítala de la selección.").first()).toBeVisible();

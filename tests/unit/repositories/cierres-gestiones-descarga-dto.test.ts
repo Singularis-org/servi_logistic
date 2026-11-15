@@ -65,6 +65,9 @@ function gestionEntregada(over: Record<string, unknown> = {}) {
     pagos: [{ metodo: "efectivo", monto: dec("15000.50") }],
     historialEstados: [],
     cierre: { solicitadoAt: new Date("2026-02-10T18:30:00.000Z"), mensajero: { nombre: "Ana" } },
+    // SLT-113: la proyeccion lee ademas los ajustes y el pago congelado del mensajero (vacios aqui).
+    ajustesPagoMensajero: [],
+    pagosCongelados: [],
     ...over,
   };
 }

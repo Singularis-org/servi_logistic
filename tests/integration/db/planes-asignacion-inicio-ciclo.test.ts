@@ -15,10 +15,6 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { capturar, entradaDePlan, planesEnTx, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
-
-// SLT-42: el servicio se construye con la zona del pais, como en produccion (tras SLT-86 ningun metodo la lee).
-const zonaDeCR = async (): Promise<string> => ZONA_DE_CR;
 
 // SLT-58 · T14 (design §11.4; R31, R36, R37, R39, R42) — la primera asignación con fecha de inicio contra
 // Postgres, con `PlanesService` y `PlanesRepository` REALES. El repositorio abre su transacción como
@@ -36,6 +32,10 @@ const zonaDeCR = async (): Promise<string> => ZONA_DE_CR;
 //     siguiente ciclo de la vista previa (P10).
 //
 // La suite de SL-24 (`planes-asignacion.test.ts`) sigue midiendo la asignación sin fecha (R12, P14).
+//
+// SLT-118 (R31): un cambio con «hoy» solo se aplica en el acto si «hoy» es el primer día de un período. Los
+// dos casos que cambian de plan mensual → mensual con «hoy» usan un reloj fijo en un 1 de mes (`HOY_FIJO`);
+// con el reloj real quedarían pendientes hasta el próximo 1.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -44,6 +44,11 @@ const UN_DIA_MS = 24 * 60 * 60 * 1000;
 
 /** La fecha de la plataforma de hoy ± `dias`. */
 const dia = (dias: number) => fechaCalendarioCR(new Date(Date.now() + dias * UN_DIA_MS));
+
+/** SLT-118 (R31): «hoy» fijo en un inicio de período mensual, y la fecha de la plataforma de ese «hoy» ± `dias`. */
+const HOY_FIJO = "2026-11-01";
+const AHORA_FIJO = new Date(`${HOY_FIJO}T18:00:00.000Z`);
+const diaFijo = (dias: number) => fechaCalendarioCR(new Date(AHORA_FIJO.getTime() + dias * UN_DIA_MS));
 
 let base: PrismaClient;
 
@@ -56,8 +61,9 @@ interface Caso {
   empresa: () => Promise<string>;
 }
 
-async function caso(tx: TxDeTest): Promise<Caso> {
-  const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
+/** `ahora`: el reloj del servicio; sin él, el real. */
+async function caso(tx: TxDeTest, ahora?: Date): Promise<Caso> {
+  const servicio = new PlanesService(planesEnTx(tx), ahora === undefined ? undefined : () => ahora);
   return {
     tx,
     servicio,
@@ -175,18 +181,18 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio (R31, R36,
 
   it("R39, SLT-86 R16/R17: un cambio de plan posterior lleva su fecha de efecto en valor_nuevo y la entrada pasa a esa fecha", async () => {
     const r = await revertida(base, async (tx) => {
-      const c = await caso(tx);
+      const c = await caso(tx, AHORA_FIJO);
       const [uno, dos] = [await c.plan(), await c.plan()];
       const org = await c.empresa();
-      await c.asignar(org, uno, { inicioCiclo: dia(-10) });
+      await c.asignar(org, uno, { inicioCiclo: diaFijo(-10) });
       const antes = await organizacion(tx, org);
-      const cambio = await c.asignar(org, dos, { vigenteDesde: dia(0) });
+      const cambio = await c.asignar(org, dos, { vigenteDesde: HOY_FIJO });
       return { antes, cambio, despues: await organizacion(tx, org), historial: await asignaciones(tx, org), dos };
     });
     expect(r.cambio).toEqual({ estado: "ok", planId: r.dos, cambio: true, avisos: [], vigenteDesde: null });
-    expect(r.historial.map((h) => h.valorNuevo)).toEqual([`${dia(-10)} · mensual`, `${dia(0)} · mensual`]);
-    expect(r.antes.planCicloAnclaAt?.toISOString()).toBe(inicioDelDiaPlataforma(dia(-10)).toISOString());
-    expect(r.despues).toEqual({ planId: r.dos, planCicloAnclaAt: inicioDelDiaPlataforma(dia(0)), planCambioId: null });
+    expect(r.historial.map((h) => h.valorNuevo)).toEqual([`${diaFijo(-10)} · mensual`, `${HOY_FIJO} · mensual`]);
+    expect(r.antes.planCicloAnclaAt?.toISOString()).toBe(inicioDelDiaPlataforma(diaFijo(-10)).toISOString());
+    expect(r.despues).toEqual({ planId: r.dos, planCicloAnclaAt: inicioDelDiaPlataforma(HOY_FIJO), planCambioId: null });
   });
 
   it("R31: con plan + fecha de inicio se rechaza sin escribir; también si el plan llegó entre el servicio y el cerrojo", async () => {
@@ -269,17 +275,17 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio (R31, R36,
 
   it("P14, R42: sin fecha, la primera asignación sigue rechazando (tope_excedido); un cambio a un plan menor con fecha de hoy, también (SLT-86 R18)", async () => {
     const r = await revertida(base, async (tx) => {
-      const c = await caso(tx);
+      const c = await caso(tx, AHORA_FIJO);
       const grande = await c.plan({ porRol: { adminTienda: 10 } });
       const chico = await c.plan({ porRol: { adminTienda: 2 } });
       const [sinFecha, conPlan] = [await c.empresa(), await c.empresa()];
       await tiendas(tx, sinFecha, 3);
-      await c.asignar(conPlan, grande, { inicioCiclo: dia(0) });
+      await c.asignar(conPlan, grande, { inicioCiclo: HOY_FIJO });
       await tiendas(tx, conPlan, 3);
       return {
         sinFecha: await c.asignar(sinFecha, chico),
         trasSinFecha: await organizacion(tx, sinFecha),
-        cambio: await c.asignar(conPlan, chico, { vigenteDesde: dia(0) }),
+        cambio: await c.asignar(conPlan, chico, { vigenteDesde: HOY_FIJO }),
         trasCambio: (await organizacion(tx, conPlan)).planId,
         grande,
       };

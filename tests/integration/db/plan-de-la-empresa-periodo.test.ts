@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { finDelPeriodoCalendario, inicioDelDiaPlataforma, inicioDelPeriodoCalendario } from "@/lib/planes/ciclo";
+import { fechaDeEfectoPorDefecto, finDelPeriodoCalendario, inicioDelDiaPlataforma, inicioDelPeriodoCalendario } from "@/lib/planes/ciclo";
 import { MiPlanRepository } from "@/lib/repositories/MiPlanRepository";
 import { MiPlanService } from "@/lib/services/MiPlanService";
 import type { MiPlanResult } from "@/lib/types/consumo-plan";
@@ -137,7 +137,8 @@ describeSiHayBase("SLT-86 — plan_de_la_empresa y «Mi plan» con el período d
 
   it("R26, R27, R32: el pendiente de la empresa llega sin actor; el siguiente cobro es su fecha", async () => {
     const ahora = new Date();
-    const futura = fechaCalendarioCR(new Date(ahora.getTime() + 10 * UN_DIA_MS));
+    // SLT-118 (R30, R31): mensual → bimestral se guarda en un inicio de bimestre; el próximo siempre se respeta.
+    const futura = fechaDeEfectoPorDefecto("bimestral", ahora);
     const r = await revertida(base, async (tx) => {
       const { e } = await empresaConPlan(tx, "mensual", LEJOS);
       const otro = await crearPlanConCosto(tx, { fijo: "100" });

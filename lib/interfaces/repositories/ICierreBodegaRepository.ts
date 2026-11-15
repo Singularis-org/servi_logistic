@@ -19,6 +19,15 @@ export interface CierreDiaConsolidableRow {
   totalPagoMensajero: string; // feature 39/R18: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
   incluyeModeloNuevo?: boolean; // SLT-54 (R71): ver `CierreBodegaResumenLite.incluyeModeloNuevo`
+  // SLT-106: requeridos a proposito. La fila de «A consolidar» los pinta sin derivar nada; un
+  // mapper que no los emitiera tiene que fallar al compilar, no pintar celdas vacias.
+  paraLaCentral: string; // R67: `paraLaCentral(general, pago, bodega)` de ESTE cierre, con su signo
+  aprobadoAt: string | null; // R194: `cierre_dia.resuelto_at` en ISO
+  gestionesAjustadas: number; // R194: gestiones de este cierre con al menos un ajuste del pago
+  // SLT-139 (R322, R323): la marca de la regla de pago del cierre. OBLIGATORIA (B1 de la review de
+  // SLT-123): una marca opcional en una fila de repositorio se pierde sin aviso si el mapper deja
+  // de emitirla. `true` = cierre nuevo (no aporta a «La central debe»; su P resta del neto).
+  pagoIndependienteEfectivo: boolean;
 }
 
 // Fila cruda de un cierre de bodega (cabecera). Totales ya como STRING (money-safe);
@@ -170,6 +179,13 @@ export interface ICierreBodegaRepository {
    * adminSatelite los resuelva). Precondicion para poder cerrar la bodega.
    */
   contarCierresDiaSolicitados(zonaId: string): Promise<number>;
+  /**
+   * SLT-106 (R199) — un nombre de mensajero por cada cierre_dia `solicitado` de la zona, con
+   * repetidos y sin orden; el servicio los junta. Mismo `where` que `contarCierresDiaSolicitados`:
+   * el aviso de la pantalla y la puerta de `solicitarCierreBodega` no pueden contar conjuntos
+   * distintos.
+   */
+  findMensajerosConCierreSinResolver(zonaId: string): Promise<string[]>;
   // ⭑ FICHA 431 — AQUI VIVIA `existeCierreBodegaSolicitado(zonaId)`, el gate «a lo sumo una
   // consolidacion `solicitado` por zona» de la feature 40 (su R8). SE RETIRO con el indice unico
   // parcial que lo respaldaba (`cierre_bodega_zona_solicitado_uq`), y no es una limpieza: es el

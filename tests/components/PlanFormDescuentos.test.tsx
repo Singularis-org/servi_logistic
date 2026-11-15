@@ -305,7 +305,8 @@ describe("SLT-86 R16, R25 — el custom para una empresa que ya tiene plan", () 
     const user = userEvent.setup();
     montarCrear();
     await customConPlan(user, "31000");
-    await user.click(screen.getByRole("radio", { name: "Quincenal" }));
+    // SLT-118 (R35): «Quincenal» también es una opción de «Facturación de órdenes».
+    await user.click(within(screen.getByRole("radiogroup", { name: "Tipo de cobro" })).getByRole("radio", { name: "Quincenal" }));
 
     expect(screen.getByText("Costo base quincenal: 15500.00")).toBeInTheDocument();
     expect(screen.getByText("Período: 2026-11-01 – 2026-11-15")).toBeInTheDocument();
@@ -315,7 +316,8 @@ describe("SLT-86 R16, R25 — el custom para una empresa que ya tiene plan", () 
     const user = userEvent.setup();
     montarCrear();
     await customConPlan(user, "31000");
-    await user.click(screen.getByRole("radio", { name: "Quincenal" }));
+    // SLT-118 (R35): «Quincenal» también es una opción de «Facturación de órdenes».
+    await user.click(within(screen.getByRole("radiogroup", { name: "Tipo de cobro" })).getByRole("radio", { name: "Quincenal" }));
     const fecha = screen.getByLabelText("Rige desde");
     await user.clear(fecha);
     await user.type(fecha, "2026-11-10");

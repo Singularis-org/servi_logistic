@@ -60,7 +60,8 @@ export const planDeLaEmpresaFilaSchema = z.object({
   // SLT-83 (M3): `monto` es null en el modo porcentual, que trae `porcentaje` y `minimo`.
   costo_vigente: z.object({
     monto: importe,
-    fuente: z.enum(["empresa", "plan", "global", "sin_configurar"]),
+    // SLT-126 (R11): sin "empresa". Si la base la devolviera (solo tras un `down.sql`), falla ruidosa.
+    fuente: z.enum(["plan", "global", "sin_configurar"]),
     porcentaje: importe,
     minimo: importe,
   }),

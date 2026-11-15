@@ -32,8 +32,15 @@ const findMany = vi.fn<(args: { where: { categoria?: string } }) => Promise<unkn
     : [{ origenId: "p-2" }],
 );
 
+// SLT-118 (design §5; R18): la deuda suma también las cuotas de las facturas cerradas; aquí, ninguna.
+const aggregate = vi.fn(async () => ({ _sum: { cuota: null, primeraCuota: null } }));
+
 vi.mock("@/lib/db/prisma-client", () => ({
-  getPrismaClient: () => ({ cobroPlataformaMovimiento: { groupBy }, walletMovimiento: { findMany } }),
+  getPrismaClient: () => ({
+    cobroPlataformaMovimiento: { groupBy },
+    walletMovimiento: { findMany },
+    facturaPlataforma: { aggregate },
+  }),
   PRISMA_OMIT: {},
 }));
 

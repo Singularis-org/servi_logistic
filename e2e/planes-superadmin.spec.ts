@@ -380,7 +380,7 @@ test("el maestro de A ve en «Mi plan» el nombre, sus topes y su consumo (R28)"
     expect(estado).toBeLessThan(400);
     expect(texto.includes(PANTALLA_DE_ERROR), "pantalla de error").toBe(false);
     expect(texto.includes(NO_ENCONTRADO), "«no encontrado» para el maestro").toBe(false);
-    await expect(page.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible();
     const consumo = page.getByRole("list", { name: "Consumo" });
     await expect(consumo).toContainText(ORDENES_EN_EL_PERIODO_CERO);
     await expect(consumo).toContainText(`1 de ${TOPE_MENSAJEROS} Mensajero`);

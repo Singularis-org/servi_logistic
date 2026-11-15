@@ -19,6 +19,7 @@ import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { asignarPlan, crearPlan } from "./_fixtures/planes";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
@@ -47,7 +48,7 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 //
 //   · A: dos órdenes a 500 (1.000,00), paga 300,00 y paga 200,00 que luego anula → debe 700,00 y ha
 //     pagado 300,00 (el anulado no cuenta).
-//   · B: una orden con su excepción de 300, la paga entera → al día y ha pagado 300,00. Luego elimina
+//   · B: una orden con su plan fijo de 300 (SLT-126: antes, una excepción del mismo importe), la paga entera → al día y ha pagado 300,00. Luego elimina
 //     la orden (reverso) → a favor 300,00, y lo pagado no cambia.
 //
 // Lo que se mide es la fila de cada empresa: el `WHERE` y el reparto por `organizacion_id` (dinero de
@@ -163,7 +164,10 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
     B = await sembrarEmpresa();
     const tarifas = new CobroPlataformaTarifaRepository(base);
     await tarifas.fijarGlobal("500.00");
-    if (!(await tarifas.fijarDeEmpresa(org(B), "300.00"))) throw new Error("siembra: la excepción de B no se fijó");
+    // SLT-126: sin valor propio de la empresa, el importe sale de un plan custom fijo (se va con la empresa).
+    const planB = await crearPlan(base, { custom: org(B) });
+    await base.$executeRawUnsafe(`UPDATE "plan" SET "costo_por_orden" = 300.00 WHERE "id" = $1`, planB);
+    await asignarPlan(base, org(B), planB);
     await crearOrdenes(A, 2);
     await crearOrdenes(B, 1);
   }, 180_000);

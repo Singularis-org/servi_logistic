@@ -4,12 +4,16 @@ import {
   TITULO_LINEAS_DE_CAMBIO,
   TITULO_TOPES_PASADOS,
   asuntoCambioPlan,
+  asuntoCambioPlanNoAplicado,
   introCambioPlan,
+  introCambioPlanNoAplicado,
+  lineaNoAplicada,
   lineaReemplazo,
   lineasDeCambioDelPlan,
   mensajeCambioCancelado,
   mensajeTopesPasados,
   type CambioDelPlanParaCorreo,
+  type MotivoNoAplicada,
   type TipoCorreoCambioPlan,
   type TopePasado,
 } from "@/lib/planes/mensajes";
@@ -31,6 +35,10 @@ export interface CambioPlanParams {
   reemplazaA: Date | null;
   /** Los topes que la empresa ya pasa con la versión nueva (R41, R42). */
   topesPasados: readonly TopePasado[];
+  /**
+   * SLT-128 (R21, R22): `recordatorio_3` sale cuando entre guardar y la recepción de la empresa hay de 4 a 7
+   * días; se compone como los otros recordatorios, con la fecha de SU recepción en `vigenteDesde`.
+   */
   tipo: TipoCorreoCambioPlan;
   /** Dirección de contacto del pie, o `null`. */
   contacto: string | null;
@@ -83,4 +91,37 @@ export function plantillaCambioPlan(p: CambioPlanParams): EmailMessage {
     for (const linea of mensajeTopesPasados(p.topesPasados).split("\n")) bloques.push({ tipo: "nota", texto: linea });
   }
   return componerCorreo({ to: p.to, asunto, preheader: intro, bloques, contacto: p.contacto });
+}
+
+/** SLT-128 (design §14.4; R28): el aviso a la lista de alertas de una recepción que no se pudo aplicar. */
+export interface CambioPlanNoAplicadoParams {
+  /** Una dirección de `PLAN_CHANGE_ALERT_EMAILS`. */
+  to: string;
+  empresaNombre: string;
+  planNombre: string;
+  /** La fecha de la recepción, YA pintada (en la hora de la plataforma: la lista no es de ninguna empresa). */
+  fecha: string;
+  motivo: MotivoNoAplicada;
+  /** Dirección de contacto del pie, o `null`. */
+  contacto: string | null;
+}
+
+/**
+ * SLT-128 (design §14.4; R28) — el correo a la lista de alertas cuando el cambio programado de un plan no se pudo
+ * aplicar a una empresa: qué plan, qué empresa, para qué fecha, por qué, y que sigue con su versión anterior. Sin
+ * saludo personal: la lista no es de personas con nombre.
+ */
+export function plantillaCambioPlanNoAplicado(p: CambioPlanNoAplicadoParams): EmailMessage {
+  const asunto = asuntoCambioPlanNoAplicado(p.planNombre, p.empresaNombre);
+  const intro = introCambioPlanNoAplicado(p.planNombre, p.empresaNombre, p.fecha);
+  return componerCorreo({
+    to: p.to,
+    asunto,
+    preheader: intro,
+    bloques: [
+      { tipo: "parrafo", texto: intro },
+      { tipo: "parrafo", texto: lineaNoAplicada(p.empresaNombre, p.motivo) },
+    ],
+    contacto: p.contacto,
+  });
 }

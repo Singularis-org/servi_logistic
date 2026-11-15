@@ -30,7 +30,7 @@ import { ZONA_CR } from "@/lib/utils/fecha-cr";
  */
 
 const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
-const MSG_DUPLICADO = "Ese cierre ya se envio a aprobacion; actualiza la pagina.";
+const MSG_DUPLICADO = "Ese cierre ya se envió a aprobación; actualiza la página.";
 const TARIFA_DESTINO: PagoTarifa = { cobroEntregado: "1700.00", cobroRechazado: "200.00" };
 
 function montar(opts: {

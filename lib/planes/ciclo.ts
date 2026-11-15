@@ -192,8 +192,8 @@ export function inicioDelDiaPlataforma(fecha: string): Date {
 
 // SLT-42 (R29, integración de SLT-86): la fecha de calendario de la plataforma vive aquí, junto a su
 // inversa `inicioDelDiaPlataforma`, para que el servicio, el repositorio y la página de planes no importen
-// el envoltorio de CR. Este archivo es excepción de R29 a cargo de SLT-86, que lo pasa a la zona de cada
-// empresa; al hacerlo, estas dos cambian con él.
+// el envoltorio de CR. Este archivo es excepción de R29 a cargo de SLT-90 (decisión del humano al cierre de
+// SLT-42), que lo pasa a la zona de cada empresa; al hacerlo, estas dos cambian con él.
 
 /** El `AAAA-MM-DD` de `instante` en la hora de la plataforma (la inversa de `inicioDelDiaPlataforma`). */
 export function fechaCalendarioPlataforma(instante: Date): string {

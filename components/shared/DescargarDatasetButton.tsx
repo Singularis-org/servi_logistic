@@ -245,6 +245,22 @@ export function DescargarDatasetButton({
       // R25 — Import DINÁMICO del generador común: mantiene `exceljs` fuera del
       // bundle inicial de todas las pantallas que montan un `DataTable`.
       const { construirDescarga } = await import("@/lib/utils/descarga-dataset");
+      if (resultado.libro !== undefined) {
+        // SLT-113 — el consumidor resolvió el libro entero: siempre xlsx, con SUS hojas, columnas y
+        // filas. El selector de columnas no se aplica aquí. El nombre de archivo sigue en `titulo`.
+        const [principal, ...demas] = resultado.libro.hojas;
+        // SLT-81: la UI sigue en la zona de CR
+        const archivo = await construirDescarga({
+          tipo: "xlsx",
+          titulo,
+          tituloHoja: principal.titulo,
+          columnas: principal.columnas,
+          filas: principal.filas,
+          hojasAdicionales: demas,
+        }, ZONA_CR);
+        descargarBlob(archivo.contenido, archivo.mime, archivo.nombreArchivo);
+        return;
+      }
       if (descargaDetalle && detalle !== undefined) {
         // Ficha 464 (R10/R36) — las dos hojas, de la MISMA respuesta. Sin filas de detalle no hay
         // archivo: una hoja vacía diría «ninguna orden» donde el consumidor no las leyó.

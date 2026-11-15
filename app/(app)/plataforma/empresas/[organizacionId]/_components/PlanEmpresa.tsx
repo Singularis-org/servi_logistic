@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 
@@ -22,6 +21,7 @@ import { useToast } from "@/hooks/useToast";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import {
   lineasDeCambioDelPlan,
+  MENSAJE_EDITAR_CAMBIO_A_MEDIAS,
   rangoInicioCiclo as textoRangoInicioCiclo,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
@@ -62,21 +62,9 @@ const TEXTOS = {
   elegirPlan: "Plan a asignar",
   placeholder: "Elige un plan",
   sinAsignables: "No hay otros planes que asignar a esta empresa.",
-  /**
-   * SLT-66 (design §6.5, R29): el servicio ya no trae ningún plan con costo concreto. Va en piezas para
-   * enlazar «Planes»: «No hay planes con costo concreto para esta empresa. Crea un custom con sus precios
-   * en «Planes».».
-   */
-  sinPlanesConCosto: {
-    antes: "No hay planes con costo concreto para esta empresa. Crea un custom con sus precios en «",
-    enlace: "Planes",
-    despues: "».",
-  },
   /** SLT-66 (design §6.5, R20): el plan actual no tiene costo base «monto» o le falta el costo por orden. */
   planSinCosto:
     "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.",
-  /** SLT-66 (design §6.3, P1): la nota del costo por orden cuando sale de la excepción de la empresa. */
-  excepcion: "excepción de la empresa",
   asignablesNoCargaron: "No se pudieron cargar los planes que se pueden asignar.",
   asignar: "Asignar plan",
   cambiar: "Cambiar plan",
@@ -198,7 +186,8 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
-  plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
+  // SLT-128 (design §3.4): asignar no lo devuelve; el texto de R16, el mismo que el formulario del plan.
+  cambio_a_medias: MENSAJE_EDITAR_CAMBIO_A_MEDIAS,
 };
 
 export interface PlanEmpresaProps {
@@ -489,7 +478,8 @@ export function PlanEmpresa({
       const r = await cambiarTipoCobro({ organizacionId, tipoCobro: nuevoTipoCobro, vigenteDesde });
       if (r.estado === "ok") {
         if (r.cambio) {
-          toast.success(TEXTOS.tipoCobroCambiado);
+          // SLT-118 (R32, P11): si quedó pendiente, la fecha real que devuelve el servidor, no la elegida.
+          toast.success(r.vigenteDesde === null ? TEXTOS.tipoCobroCambiado : TEXTOS.programado(r.vigenteDesde));
           router.refresh();
         } else {
           toast.info(TEXTOS.tipoCobroSinCambio);
@@ -582,7 +572,8 @@ export function PlanEmpresa({
         setPlanId("");
         // §11.5 y SLT-86 (R18): los topes ya pasados que no rechazaron, con el texto del modal.
         setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a)));
-        // SLT-86 (R17): con fecha futura el cambio queda pendiente hasta su fecha.
+        // SLT-86 (R17): con fecha futura el cambio queda pendiente hasta su fecha. SLT-118 (R32): la fecha
+        // real del servidor (llevada al inicio del próximo período), no la elegida.
         toast.success(r.vigenteDesde === null ? TEXTOS.asignado : TEXTOS.programado(r.vigenteDesde));
         router.refresh();
       } else if (primera && r.estado === "validation_error" && r.fieldErrors.inicioCiclo) {
@@ -639,7 +630,6 @@ export function PlanEmpresa({
             textoSinPlan={TEXTOS.sinPlan}
             pendienteSinPlan={vista.pendienteSinPlan}
             nivelDeTitulo={3}
-            textoExcepcion={TEXTOS.excepcion}
           />
           {pendiente !== null && (
             // SLT-86 (R19, R26): el pendiente con plan dice qué entra y desde cuándo (sin plan ya lo dice
@@ -678,17 +668,6 @@ export function PlanEmpresa({
 
           {asignables === null ? (
             <AvisoDeError>{TEXTOS.asignablesNoCargaron}</AvisoDeError>
-          ) : asignables.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {TEXTOS.sinPlanesConCosto.antes}
-              <Link
-                href="/plataforma/planes"
-                className="rounded-sm text-primary-strong underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
-              >
-                {TEXTOS.sinPlanesConCosto.enlace}
-              </Link>
-              {TEXTOS.sinPlanesConCosto.despues}
-            </p>
           ) : opciones.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinAsignables}</p>
           ) : (

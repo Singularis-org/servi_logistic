@@ -239,7 +239,7 @@ describe("EscanerRecepcion (cámara)", () => {
   });
 
   // Un QR que no es la URL del paquete (o cuyo último segmento no es un num_guia)
-  // lo rechaza `extractNumGuiaFromScan` en cliente: mismo mensaje que el
+  // lo rechaza `leerGuia` en cliente: mismo mensaje que el
   // `validation_error` del borde, pero sin llamar a la acción.
   it("R16: un QR ajeno se rechaza en cliente, sin llamar a recibirPorQr", async () => {
     const user = userEvent.setup();
@@ -332,5 +332,43 @@ describe("EscanerRecepcion — el modal (cámara apagada por defecto)", () => {
     expect(
       screen.getByRole("button", { name: "Recibir paquete" }),
     ).toBeInTheDocument();
+  });
+});
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
+describe("EscanerRecepcion — guía única por cámara o pistola (SLT-157)", () => {
+  it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValue({
+      status: "ok",
+      ordenId: "ord-1",
+      estado: "en_bodega_satelite",
+    });
+    await renderAbierto(user);
+
+    await escanear(user, "1024");
+    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(1));
+    expect(recibirMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
+
+    await user.type(screen.getByRole("textbox"), "https://app.ejemplo.test/paquete/1024");
+    await user.click(screen.getByRole("button", { name: "Recibir" }));
+    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(2));
+    expect(recibirMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
+  });
+
+  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la acción", async () => {
+    const user = userEvent.setup();
+    await renderAbierto(user);
+
+    await escanear(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO.
+    await user.type(screen.getByRole("textbox"), "1024abc");
+    await user.click(screen.getByRole("button", { name: "Recibir" }));
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+    expect(recibirMock).not.toHaveBeenCalled();
   });
 });

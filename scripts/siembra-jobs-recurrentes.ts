@@ -9,6 +9,7 @@ import { seedJobLiberarReprogramadas } from "./seed-jobs-liberar-reprogramadas";
 import { seedJobAnaliticaRollupDiario } from "./seed-jobs-analitica-rollup-diario";
 import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-mantenimiento";
 import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
+import { sembrarCierreFacturas } from "@/lib/planes/jobs-factura-plataforma";
 import { AVISO_SIN_ZONAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 
 // Ficha 313 — REGISTRO UNICO DE LAS SIEMBRAS DE LOS JOBS RECURRENTES, y lo que las corre.
@@ -102,6 +103,16 @@ export const SIEMBRAS_RECURRENTES: readonly SiembraRecurrente[] = [
       "un cambio programado de un plan cuyo trabajo puntual se perdio (base restaurada, dedupe_key " +
       "que choco) no se aplica nunca: el plan sigue con la version vieja pasada su fecha sin que nada falle",
     sembrar: sembrarPlanCambiosVencidos,
+  },
+  {
+    // SLT-118 (design §4.2; R25): el cierre horario de las facturas de la plataforma. El sembrador vive
+    // junto a su recurrencia, con la MISMA `dedupe_key`.
+    tipo: "factura_plataforma_cerrar",
+    script: "lib/planes/jobs-factura-plataforma.ts",
+    siNoCorre:
+      "las facturas de la plataforma no se emiten nunca: las cuotas de los planes no llegan a la deuda y " +
+      "la factura en curso de cada empresa se queda abierta sin que nada falle",
+    sembrar: sembrarCierreFacturas,
   },
 ];
 

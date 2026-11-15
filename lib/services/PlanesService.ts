@@ -16,13 +16,13 @@ import {
   rangoDelInicioDelCiclo,
 } from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
-import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
-import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
+import { noAplicadasDelDetalle, pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
   FECHA_DE_EFECTO_PASADA,
   mensajeTopesPasados,
+  periodicidadIncompatible,
   rangoInicioCiclo,
   SOLO_CON_PLAN,
   SOLO_PRIMERA_ASIGNACION,
@@ -53,10 +53,10 @@ import {
   type PlanResult,
   type PrecioDesde,
   type PreciosQueRigenResult,
+  TIPO_QUINCENAL_CON_ORDENES_MENSUALES,
   type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
-import type { ZonaDeOrganizacion } from "@/lib/services/zona-de-la-empresa";
 
 // SL-24 (design §5, §16.2; R2, R5, R6, R12, R13, R16, R37, R39) — el orden es fijo y es parte del contrato,
 // copiado de `ModulosEmpresaService` (SL-23): primero quién (R5), luego qué (zod: R2, R3), luego si
@@ -106,8 +106,9 @@ interface FechasDelCambio {
 
 /**
  * SLT-58 R30: la fecha de inicio entre «hoy − 1 mes» y «hoy + 1 mes» de la plataforma. SLT-86 R16: la de
- * efecto entre hoy y «hoy + 12 meses». «Hoy» es el del reloj del servicio y `AAAA-MM-DD` compara bien
- * como texto. `null` si las dos están dentro (o no vienen).
+ * efecto entre hoy y «hoy + 12 meses», sobre la fecha ELEGIDA (SLT-118 R34, P10: la real puede caer
+ * después). «Hoy» es el del reloj del servicio y `AAAA-MM-DD` compara bien como texto. `null` si las dos
+ * están dentro (o no vienen).
  */
 function fueraDeRango(fechas: FechasDelCambio, ahora: Date): ErrorDeValidacion | null {
   if (fechas.inicioCiclo !== undefined) {
@@ -156,11 +157,25 @@ function fechaDelCatalogo(instante: Date): string {
 
 const ZONA_DEL_CATALOGO = "UTC";
 
+/**
+ * SLT-118 (design §3.2; R37, P12): el rechazo de la periodicidad al asignar, crear el custom o cambiar el tipo:
+ * el tipo de cobro elegido es el que no cabe.
+ */
+function tipoIncompatible(): ErrorDeValidacion {
+  return { estado: "validation_error", fieldErrors: { tipoCobro: [TIPO_QUINCENAL_CON_ORDENES_MENSUALES] } };
+}
+
+/** SLT-118 (R37, P12): el rechazo de la periodicidad al editar, en el campo que la pasa a mensual. */
+function periodicidadQueNoCabe(empresas: number): ErrorDeValidacion {
+  return { estado: "validation_error", fieldErrors: { periodicidadOrdenes: [periodicidadIncompatible(empresas)] } };
+}
+
 /** Un rechazo del repositorio al asignar, como `PlanResult`: el de topes lleva su texto ya redactado. */
 function rechazoDeAsignar(r: Exclude<ResultadoAsignar, { estado: "ok" }>): PlanResult {
   if (r.estado === "tope_excedido") {
     return { estado: "tope_excedido", excedidos: r.excedidos, mensaje: mensajeTopesPasados(r.excedidos) };
   }
+  if (r.estado === "periodicidad_incompatible") return tipoIncompatible();
   return r;
 }
 
@@ -169,27 +184,21 @@ export class PlanesService implements IPlanesService {
     private readonly repo: IPlanesRepository,
     /** El reloj, inyectable para R37 («posterior al momento de guardar»). */
     private readonly ahora: () => Date = () => new Date(),
-    /**
-     * SLT-42 (R22, R28; decisión del humano tras T5.4) — la zona del país de una empresa, para la
-     * fecha que se MUESTRA de una empresa. Su único uso era `siguienteCiclo` de las vistas previas, que
-     * SLT-86 (R8) retiró: hoy ningún método la lee. Se mantiene cableada en los composition roots hasta
-     * que el humano decida si se borra o la usa SLT-86 al pasar el ciclo a la zona de cada empresa.
-     * El superadmin corre en plataforma, sin empresa en contexto, así que no es `IReglasPaisEmpresa`.
-     */
-    private readonly zonaDeOrganizacion?: ZonaDeOrganizacion,
   ) {}
 
   async crear(actor: Actor | null, input: unknown): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = crearPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
-    const { organizacionId, tipoCobro, inicioCiclo, vigenteDesde, ...plan } = parsed.data;
+    const { organizacionId, tipoCobro, inicioCiclo, vigenteDesde } = parsed.data;
     if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId), true);
 
     // Ajuste planes-custom (D2): un custom se asigna a su empresa al crearlo, en UNA operación. Las
     // mismas reglas que `asignar`, en su orden: el rango de la fecha (SLT-58 R30, SLT-86 R16), la empresa
-    // existe (R2), qué fecha toca según tenga plan (R31, R16) y el costo concreto (SLT-66 R28). «Mismo
-    // plan», «archivado» y «custom de otra empresa» no pueden darse con un plan que aún no existe.
+    // existe (R2) y qué fecha toca según tenga plan (R31, R16). «Mismo plan», «archivado» y «custom de
+    // otra empresa» no pueden darse con un plan que aún no existe. SLT-99 (decisión del 2026-11-10, modifica
+    // SLT-66 R28): ya no se exige costo concreto; sin costo por orden rige la tarifa global y sin costo base,
+    // cuota 0.
     const ahora = this.ahora();
     const fechas = { inicioCiclo, vigenteDesde };
     const fuera = fueraDeRango(fechas, ahora);
@@ -198,7 +207,6 @@ export class PlanesService implements IPlanesService {
     if (empresa === null) return { estado: "not_found" };
     const noCasa = fechaQueNoCasa(empresa.planId, fechas);
     if (noCasa !== null) return noCasa;
-    if (!tieneCostoConcreto(plan)) return { estado: "plan_sin_costo" };
 
     const efecto = efectoElegido(empresa.planId, fechas, ahora);
     const r = await this.repo.crearYAsignar(
@@ -208,7 +216,8 @@ export class PlanesService implements IPlanesService {
       { efecto, tipoCobro: tipoCobro ?? "mensual" },
       ahora,
     );
-    if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos, vigenteDesde: r.pendiente ? efecto.fecha : null });
+    // SLT-118 (R32): la fecha real del pendiente, la que dejó el repositorio (puede ser posterior a la elegida).
+    if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos, vigenteDesde: r.vigenteDesde ?? null });
     return rechazoDeAsignar(r);
   }
 
@@ -247,6 +256,7 @@ export class PlanesService implements IPlanesService {
         actor.usuarioId,
         ahora,
       );
+      if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
       if (p.estado !== "ok") return p;
       // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
       return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
@@ -257,6 +267,8 @@ export class PlanesService implements IPlanesService {
   /** La edición inmediata; `precioDesde` (las 00:00 de hoy) es desde cuándo rige un precio nuevo (R15). */
   private async editarYa(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<PlanResult> {
     const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde);
+    if (r.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(r.empresas);
+    // SLT-128 (R16): `cambio_a_medias` pasa tal cual; lo decide el repositorio bajo el cerrojo del plan.
     if (r.estado !== "ok") return r;
     return ok(planId, r.cambio, { avisos: r.avisos });
   }
@@ -268,6 +280,7 @@ export class PlanesService implements IPlanesService {
     const { planId } = parsed.data;
     if ((await this.repo.plan(planId)) === null) return { estado: "not_found" };
     const r = await this.repo.archivar(planId, actor.usuarioId);
+    // SLT-128 (R15): `cambio_a_medias` pasa tal cual.
     return r.estado === "ok" ? ok(planId, r.cambio) : r;
   }
 
@@ -283,14 +296,12 @@ export class PlanesService implements IPlanesService {
     if (fuera !== null) return fuera;
     const reglas = await this.reglasDeAsignar(organizacionId, planId, fechas);
     if ("estado" in reglas) return reglas;
-    // SLT-66 R28: el plan que la empresa ya tiene no se vuelve a mirar (cambiar solo el tipo, o R19).
-    if (reglas.empresa.planId !== planId && (await this.sinCostoConcreto(reglas.plan))) return { estado: "plan_sin_costo" };
 
     const efecto = efectoElegido(reglas.empresa.planId, fechas, ahora);
     const r = await this.repo.asignar(organizacionId, planId, actor.usuarioId, efecto, tipoCobro, ahora);
     // R36, R42 y SLT-86 R18: los topes ya pasados que no rechazaron viajan en `avisos`; con fecha futura,
-    // `vigenteDesde` es la fecha del pendiente.
-    if (r.estado === "ok") return ok(planId, r.cambio, { avisos: r.avisos, vigenteDesde: r.pendiente ? efecto.fecha : null });
+    // `vigenteDesde` es la fecha real del pendiente, llevada por el repositorio (SLT-118 R30–R32).
+    if (r.estado === "ok") return ok(planId, r.cambio, { avisos: r.avisos, vigenteDesde: r.vigenteDesde ?? null });
     return rechazoDeAsignar(r);
   }
 
@@ -308,8 +319,6 @@ export class PlanesService implements IPlanesService {
     if (fuera !== null) return fuera;
     const reglas = await this.reglasDeAsignar(organizacionId, planId, { inicioCiclo });
     if ("estado" in reglas) return reglas;
-    // SLT-66 R28: la vista previa no deja confirmar lo que `asignar` rechazaría.
-    if (await this.sinCostoConcreto(reglas.plan)) return { estado: "plan_sin_costo" };
 
     // SLT-86 (R8): los topes que quedan no dependen de la fecha; ya no hay siguiente ciclo que avisar.
     const leida = await this.repo.vistaPreviaAsignacion(organizacionId, planId);
@@ -355,7 +364,10 @@ export class PlanesService implements IPlanesService {
     if (empresa.planId === null) return { estado: "sin_plan" };
     const efecto = efectoElegido(empresa.planId, { vigenteDesde }, ahora);
     const r = await this.repo.cambiarTipoCobro(organizacionId, tipoCobro, efecto, actor.usuarioId, ahora);
-    return r.estado === "ok" ? { estado: "ok", cambio: r.cambio } : r;
+    // SLT-118 (R37): quincenal con el plan de órdenes mensuales de la empresa.
+    if (r.estado === "periodicidad_incompatible") return tipoIncompatible();
+    // SLT-118 (R32): con pendiente, la fecha real; el rango ya se miró sobre la elegida (R34).
+    return r.estado === "ok" ? { estado: "ok", cambio: r.cambio, vigenteDesde: r.vigenteDesde ?? null } : r;
   }
 
   /**
@@ -385,23 +397,13 @@ export class PlanesService implements IPlanesService {
     return fechaQueNoCasa(empresa.planId, fechas) ?? { empresa, plan };
   }
 
-  /**
-   * SLT-66 (design §4.2.1; R28): el plan, o la versión de su cambio programado pendiente, no tiene costo
-   * concreto. Mirar el pendiente aquí evita tener que comprobar nada al aplicar el cambio. El pendiente
-   * solo se lee si el vigente ya es concreto.
-   */
-  private async sinCostoConcreto(plan: PlanDTO): Promise<boolean> {
-    if (!tieneCostoConcreto(plan)) return true;
-    const pendiente = (await this.repo.detalle(plan.id))?.pendiente ?? null;
-    return pendiente !== null && !tieneCostoConcreto(pendiente.version);
-  }
-
   async cancelarCambio(actor: Actor | null, input: unknown): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = cancelarCambioPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { planId } = parsed.data;
     const r = await this.repo.cancelarCambio(planId, actor.usuarioId);
+    // SLT-128 (R14): `cambio_a_medias` pasa tal cual.
     return r.estado === "ok" ? ok(planId, true) : r;
   }
 
@@ -411,9 +413,8 @@ export class PlanesService implements IPlanesService {
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { organizacionId } = parsed.data;
     if ((await this.repo.empresa(organizacionId)) === null) return { estado: "not_found" };
-    // SLT-66 R29: solo los planes con costo concreto; la regla es de la asignación, no del dato (§4.2.1).
-    const planes = await this.repo.asignables(organizacionId);
-    return { estado: "ok", planes: planes.filter(tieneCostoConcreto) };
+    // SLT-99 (decisión del 2026-11-10, modifica SLT-66 R29): también los planes sin costo concreto.
+    return { estado: "ok", planes: await this.repo.asignables(organizacionId) };
   }
 
   /**
@@ -480,7 +481,10 @@ export class PlanesService implements IPlanesService {
       detalle: {
         plan,
         empresaNombre: leido.empresaNombre,
-        pendiente: leido.pendiente === null ? null : cambioPendienteDelPlan(plan, leido.pendiente),
+        // SLT-128 (R11): con «N de M empresas ya lo recibieron».
+        pendiente: leido.pendiente === null ? null : pendienteDelDetalle(plan, leido.pendiente),
+        // SLT-128 (R28): las empresas que no recibieron el cambio y siguen con su versión anterior.
+        noAplicadas: noAplicadasDelDetalle(leido.noAplicadas),
         empresas: leido.empresas,
         rastro: leido.rastro.map((r) => ({ ...r, creadoAt: r.creadoAt.toISOString() })),
       },

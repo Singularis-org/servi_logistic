@@ -72,6 +72,7 @@ describe("410/R36 · guardia: ningun tipo de job se queda sin handler", () => {
     // WhatsApp (03:30 CR) es el tercero; sus otros cuatro tipos se encolan por evento o por cadena.
     expect([...buildRecurrencias().keys()].sort()).toEqual([
       "analitica_rollup_diario",
+      "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento",

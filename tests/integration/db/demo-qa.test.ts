@@ -60,6 +60,7 @@ import { OrdenGeocodeRepository } from "@/lib/repositories/OrdenGeocodeRepositor
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { AsignabilidadCoordenadasService } from "@/lib/services/AsignabilidadCoordenadasService";
 import { AuthService } from "@/lib/services/AuthService";
+import { PlanesService } from "@/lib/services/PlanesService";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
 import { NodemailerEmailSender } from "@/lib/services/email/NodemailerEmailSender";
 import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
@@ -116,7 +117,7 @@ const TIPO_NO_ESPERADO = "whatsapp_bienvenida";
  */
 const CENTINELA_JOB = randomUUID();
 const CENTINELA_GEOCODE = randomUUID();
-/** El valor global que se fija mientras dura una foto: las dos demo tienen su excepción (R19). */
+/** El valor global que se fija mientras dura una foto: las dos demo tienen su plan con costo por orden (SLT-126 R13). */
 const TARIFA_GLOBAL_DE_CONTROL = "7.00";
 
 /**
@@ -218,6 +219,31 @@ let correosCorrida1: string[] = [];
 
 const espiaConsola = vi.spyOn(ConsoleEmailSender.prototype, "enviar").mockResolvedValue({ messageId: null } as never);
 const espiaSmtp = vi.spyOn(NodemailerEmailSender.prototype, "enviar").mockResolvedValue({ messageId: null } as never);
+
+/**
+ * SLT-126 R13 (design §4): los módulos de cada empresa demo justo ANTES de que la receta le cree y asigne
+ * su plan, por `organizacionId`. La asignación deja encendidos exactamente los del plan: el caso de R13
+ * compara esto con lo que queda al final. El servicio sigue siendo el real.
+ */
+const modulosAntesDelPlan = new Map<string, string[]>();
+const crearPlanReal = PlanesService.prototype.crear;
+vi.spyOn(PlanesService.prototype, "crear").mockImplementation(async function (
+  this: PlanesService,
+  actor,
+  input,
+) {
+  const organizacionId = (input as { organizacionId?: unknown }).organizacionId;
+  if (typeof organizacionId === "string") modulosAntesDelPlan.set(organizacionId, await modulosDe(organizacionId));
+  return crearPlanReal.call(this, actor, input);
+});
+
+async function modulosDe(organizacionId: string): Promise<string[]> {
+  const filas = await base.$queryRawUnsafe<{ m: string }[]>(
+    `SELECT modulo::text AS m FROM organizacion_modulo WHERE organizacion_id = $1 ORDER BY 1`,
+    organizacionId,
+  );
+  return filas.map((f) => f.m);
+}
 
 /**
  * El aviso de `pg` por consultas lanzadas sobre una conexión ocupada (medición del build, 2026-10-26):
@@ -386,7 +412,7 @@ async function huella(organizacionId: string): Promise<Record<string, string>> {
   }
   const [org] = await base.$queryRawUnsafe<{ m: string | null }[]>(
     // Sin `updated_at`: R10 cambia el slug de la real y lo restaura; el contenido es lo que cuenta.
-    `SELECT md5((x.id, x.nombre, x.slug, x.cobro_plataforma_por_orden, x.es_demo, x.created_at)::text) AS m
+    `SELECT md5((x.id, x.nombre, x.slug, x.plan_id, x.es_demo, x.created_at)::text) AS m
        FROM organizacion x WHERE id = $1`,
     organizacionId,
   );
@@ -885,16 +911,12 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       }
       expect(await contar(`SELECT count(*)::int AS n FROM abono_tienda WHERE organizacion_id = $1`, org)).toBeGreaterThanOrEqual(1);
 
-      // R19: excepción de cobro propia, un cargo de la plataforma por orden y un pago a la plataforma.
-      const fila = await base.$queryRawUnsafe<{ c: string | null }[]>(
-        `SELECT cobro_plataforma_por_orden::text AS c FROM organizacion WHERE id = $1`,
-        org,
-      );
-      expect(Number(fila[0].c)).toBe(100);
+      // R19: el plan con costo por orden y el cargo de 100 por orden los comprueba el caso de SLT-126 R13
+      // (abajo); el pago a la plataforma, `egreso_pago_plataforma` de arriba.
       // R11 también: cada orden nació por un camino con trigger, que deja su cargo.
       // SLT-83 (design §13, T5): solo las órdenes SIN condiciones porcentuales congeladas. Una orden
       // porcentual no lleva cargo hasta su estado final, así que «toda orden tiene su cargo» ya no es cierto
-      // para ellas. La demo tiene excepción propia (no congela nada): el acotado no le quita ninguna orden.
+      // para ellas. El plan de la demo es de costo fijo (no congela nada): el acotado no le quita ninguna orden.
       const sinCargoUnico = await contar(
         `SELECT count(*)::int AS n FROM orden o
           WHERE o.organizacion_id = $1
@@ -903,13 +925,6 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
         org,
       );
       expect(sinCargoUnico, "órdenes sin exactamente un cargo de SL-40").toBe(0);
-      expect(
-        await contar(
-          `SELECT count(*)::int AS n FROM cobro_plataforma_movimiento
-            WHERE organizacion_id = $1 AND tipo = 'cargo' AND fuente = 'empresa' AND monto = 100`,
-          org,
-        ),
-      ).toBe(await contar(`SELECT count(*)::int AS n FROM orden WHERE organizacion_id = $1`, org));
 
       // R11: todo el historial con un origen de servicio, y cada orden con su alta en él.
       const origenes = (
@@ -939,6 +954,42 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     corrida1 = { organizaciones: demo.map((d) => d.id), usuarios: usuariosTodos, ordenes: ordenesTodas };
     correosCorrida1 = [...correos].sort();
   }, 300_000);
+
+  it("SLT-126 R13: cada empresa demo con su plan custom de 100.00 por orden, un cargo `plan` de 100 por orden y los mismos módulos", async () => {
+    const demo = await empresasDemo();
+    expect(demo.map((d) => d.slug)).toEqual([...SLUGS]);
+    for (const { id: org, slug } of demo) {
+      // El plan asignado es el custom de la empresa, con costo fijo y sin porcentual.
+      const planes = await base.$queryRawUnsafe<{ visibilidad: string; exclusiva: string | null; costo: string | null; pct: string | null }[]>(
+        `SELECT p.visibilidad::text AS visibilidad, p.organizacion_exclusiva_id AS exclusiva,
+                p.costo_por_orden::text AS costo, p.costo_por_orden_pct::text AS pct
+           FROM organizacion o JOIN plan p ON p.id = o.plan_id
+          WHERE o.id = $1`,
+        org,
+      );
+      expect(planes, `${slug}: plan asignado`).toEqual([{ visibilidad: "custom", exclusiva: org, costo: "100.00", pct: null }]);
+
+      // Desde antes de la primera orden: TODA orden nació con su cargo de 100 de fuente `plan`, y ninguno
+      // de otra fuente (`empresa` ya no existe como valor propio; `global` sería el plan llegando tarde).
+      const ordenes = await contar(`SELECT count(*)::int AS n FROM orden WHERE organizacion_id = $1`, org);
+      expect(ordenes, `${slug}: órdenes`).toBeGreaterThan(0);
+      const cargos = await base.$queryRawUnsafe<{ fuente: string; monto: string; n: number }[]>(
+        `SELECT fuente::text AS fuente, monto::text AS monto, count(DISTINCT orden_id)::int AS n
+           FROM cobro_plataforma_movimiento
+          WHERE organizacion_id = $1 AND tipo = 'cargo'
+          GROUP BY 1, 2`,
+        org,
+      );
+      expect(cargos, `${slug}: cargos por fuente y monto`).toEqual([{ fuente: "plan", monto: "100.00", n: ordenes }]);
+
+      // Los módulos no cambian al asignar el plan: los de justo antes (espía de `PlanesService.crear`)
+      // son los de ahora, y son los tres apagables con que nace la empresa demo.
+      const antes = modulosAntesDelPlan.get(org);
+      expect(antes, `${slug}: la receta no pasó por PlanesService.crear`).toBeDefined();
+      expect(antes!.length, `${slug}: módulos antes del plan`).toBeGreaterThan(0);
+      expect(await modulosDe(org), `${slug}: módulos después del plan`).toEqual(antes);
+    }
+  });
 
   it("órdenes ubicadas y asignables, cola sin pendientes, sin integraciones ni correo (R20–R24)", async () => {
     exigirCorrida1();

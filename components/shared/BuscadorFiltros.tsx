@@ -39,6 +39,15 @@ import { cn } from "@/lib/utils";
  */
 const ALTO_CONTROL = "h-8";
 
+/**
+ * SLT-156 (R493): con `tactil`, el campo, «Filtros» y «Limpiar todo» miden 44 px en móvil (las
+ * pantallas del mensajero); en escritorio siguen con `ALTO_CONTROL`.
+ */
+const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
+
+/** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
+export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
+
 /** Un filtro OFRECIDO en el selector: su clave y como se llama. Nada mas. */
 export interface FiltroDisponible {
   key: string;
@@ -63,6 +72,12 @@ export interface BuscadorFiltrosProps {
    * faltan; no es un error de validación, es "todavía no hay búsqueda". Default `0`.
    */
   minChars?: number;
+  /**
+   * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» — tope de caracteres del
+   * campo, tal como se escribe. Lo que pase del tope (también al pegar) no entra ni se emite: así el
+   * término nunca supera lo que acepta el borde del servidor. Ausente = sin tope (como antes).
+   */
+  maxLength?: number;
   /**
    * Espera (ms) entre la última pulsación y la emisión. El campo responde al
    * instante; lo que se aplaza es AVISAR al consumidor, para que teclear una guía no
@@ -147,6 +162,23 @@ export interface BuscadorFiltrosProps {
    * `children`, y una pantalla solo puede inyectar `children`, que se pintan después.
    */
   vistas?: VistasFiltroBarra;
+  /**
+   * SLT-101 (S3-4) — `false` no monta el campo de búsqueda ni su línea de aviso: la barra queda
+   * con sus `children` (los controles puestos) y, si aplica, el selector y «Limpiar todo», que
+   * entonces solo depende de `hayFiltrosAplicados`. Existe para la lista de gestiones de un
+   * cierre, cuyo canvas no dibuja buscador. Default `true`: los demás consumidores no cambian.
+   */
+  buscador?: boolean;
+  /**
+   * SLT-156 (R496) — la barra queda pegada al borde superior de la ventana mientras se desplaza la
+   * lista. Apagada por defecto: los demás consumidores no cambian.
+   */
+  fija?: boolean;
+  /**
+   * SLT-156 (R493) — controles de 44 px en móvil (campo, «Filtros», «Limpiar todo»). Apagada por
+   * defecto: los demás consumidores no cambian.
+   */
+  tactil?: boolean;
   className?: string;
 }
 
@@ -208,6 +240,7 @@ export function BuscadorFiltros({
   label = "Buscar",
   placeholder,
   minChars = 0,
+  maxLength,
   debounceMs = DEBOUNCE_MS_DEFAULT,
   disabled = false,
   onChange,
@@ -222,8 +255,12 @@ export function BuscadorFiltros({
   terminoKey = PARAM_TERMINO_DEFAULT,
   siembra,
   vistas,
+  buscador = true,
+  fija = false,
+  tactil = false,
   className,
 }: BuscadorFiltrosProps) {
+  const alto = tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
   const idBase = useId();
   const idAviso = `${idBase}-minimo`;
 
@@ -378,7 +415,10 @@ export function BuscadorFiltros({
     onChangeRef.current(siguiente);
   }
 
-  function escribir(valor: string) {
+  function escribir(entrada: string) {
+    // El atributo `maxLength` ya frena el teclado; el recorte cubre lo que el atributo no frena
+    // (un valor puesto por código o un navegador que no lo respete).
+    const valor = maxLength === undefined ? entrada : entrada.slice(0, maxLength);
     setTexto(valor);
     const recortado = valor.trim();
     // `!== ""` aparte del mínimo: con `minChars` 0 (default) un campo vacío seguiría
@@ -453,7 +493,7 @@ export function BuscadorFiltros({
     // por sí mismo —el campo con el borde de `Input`, el selector con el de `Button`—,
     // que es como se ven en el resto de la app, y así el primer elemento arranca
     // pegado al borde izquierdo, sin sangría.
-    <div className={cn("w-full", className)}>
+    <div className={cn("w-full", fija && BARRA_FIJA, className)}>
       {/* `flex-wrap`: con varios filtros puestos la línea salta antes que estrujar el
           campo por debajo de su mínimo. */}
       <div className="flex w-full flex-wrap items-center gap-2">
@@ -484,14 +524,15 @@ export function BuscadorFiltros({
         {/* Los controles de los filtros puestos van DELANTE del campo. */}
         {children}
 
-        {/* El campo se lleva todo el espacio sobrante (`flex-1`) pero nunca baja de
-            250px: por debajo de eso una guía deja de verse entera mientras se teclea.
-            `min-w-0` en el contenedor flexible no aplica aquí a propósito — el mínimo
-            es justamente lo que no queremos que el flex ignore. */}
+        {/* El campo se lleva todo el espacio sobrante (`flex-1`) y desde `sm` nunca baja de
+            250px: por debajo de eso una guía deja de verse entera mientras se teclea. En el
+            móvil (SLT-156, R496) el mínimo es 0: 250px más «Filtros» no caben en 312px y la
+            barra desbordaba; ahí la fila envuelve y el campo ocupa la línea entera. */}
+        {buscador ? (
         <div
           className={cn(
-            "relative flex min-w-[250px] flex-1 items-center",
-            ALTO_CONTROL,
+            "relative flex min-w-0 flex-1 items-center sm:min-w-[250px]",
+            alto,
           )}
         >
           <Search
@@ -504,6 +545,7 @@ export function BuscadorFiltros({
             aria-label={label}
             aria-describedby={faltanCaracteres ? idAviso : undefined}
             placeholder={placeholder}
+            maxLength={maxLength}
             disabled={disabled}
             // El campo ocupa el 100% de su hueco, alto incluido, y conserva su marco y
             // su anillo de foco de `Input`. `text-ellipsis` porque el placeholder
@@ -532,6 +574,7 @@ export function BuscadorFiltros({
             </Button>
           ) : null}
         </div>
+        ) : null}
 
         {/* El selector va AL FINAL de la barra. `listbox` multiseleccionable con el
             mismo ARIA que `MultiSelectFilter`: marcar una opción PONE su filtro y no
@@ -545,7 +588,7 @@ export function BuscadorFiltros({
               className={cn(
                 buttonVariants({ variant: "outline" }),
                 "shrink-0 gap-2 font-normal",
-                ALTO_CONTROL,
+                alto,
               )}
             >
               <SlidersHorizontal className="size-4" aria-hidden />
@@ -580,7 +623,7 @@ export function BuscadorFiltros({
                         role="option"
                         aria-selected={marcado}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
+                          "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm",
                           "hover:bg-accent hover:text-accent-foreground",
                           marcado && "font-medium",
                         )}
@@ -618,7 +661,7 @@ export function BuscadorFiltros({
             variant="outline"
             size="sm"
             disabled={disabled}
-            className="shrink-0"
+            className={cn("shrink-0", tactil && "max-md:h-11")}
             onClick={limpiarTodo}
           >
             Limpiar todo
@@ -630,13 +673,15 @@ export function BuscadorFiltros({
           ya dentro no se anuncia— y solo cambia su contenido. Su alto está RESERVADO
           (`h-4`, vacía incluida): el aviso aparece y desaparece sin empujar ni un
           píxel de lo que hay debajo, que en esta barra es la tabla entera. */}
-      <p
-        id={idAviso}
-        role="status"
-        className="mt-1 h-4 text-xs text-muted-foreground"
-      >
-        {faltanCaracteres ? avisoMinimoCaracteres(minChars) : ""}
-      </p>
+      {buscador ? (
+        <p
+          id={idAviso}
+          role="status"
+          className="mt-1 h-4 text-xs text-muted-foreground"
+        >
+          {faltanCaracteres ? avisoMinimoCaracteres(minChars) : ""}
+        </p>
+      ) : null}
     </div>
   );
 }

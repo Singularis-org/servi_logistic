@@ -440,7 +440,7 @@ describeSiHayBase(
       // Sin esto, todo lo de abajo podría estar midiendo el vacío. Nada de `if (!filas) return;`:
       // un `return` silencioso reporta `passed` sin haber comprobado nada.
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const todas = r.cierresDia.flatMap((cd) => cd.gestiones);
         return {
@@ -464,7 +464,7 @@ describeSiHayBase(
       // dice HOY. Si `DETALLE_ADMIN_SELECT` dejara de proyectar `tienda_id`, o si el mapper
       // leyera `orden.tienda_id`, estas dos columnas coincidirían y el caso cae.
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const porRemision = new Map(
           r.cierresDia.flatMap((cd) => cd.gestiones).map((g) => [g.numRemision, g.tiendaId]),
@@ -507,7 +507,7 @@ describeSiHayBase(
       // derivara del conjunto de toda la bodega, a Ana le saldrían DOS tiendas: enseñaría un
       // desglose en un mensajero que sólo llevó una.
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const etiqueta = (id: string) =>
           id === ctx.tiendaA ? "A" : id === ctx.tiendaB ? "B" : "DESCONOCIDA";
@@ -556,7 +556,7 @@ describeSiHayBase(
 
     it("las identidades de los TRES niveles se sostienen sobre datos que salieron de Postgres", async () => {
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const suma = (montos: string[]) =>
           montos.reduce((a, m) => a.plus(new Prisma.Decimal(m)), new Prisma.Decimal(0)).toFixed(2);

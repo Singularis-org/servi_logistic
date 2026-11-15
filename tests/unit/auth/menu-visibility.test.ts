@@ -1007,7 +1007,8 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
     const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("superadmin"));
     // SLT-58 R23: «Planes» entre «Empresas» y «Geografía»; el aterrizaje sigue en «Empresas».
     // SL-42 R1/R3: «Vehículos» detrás de «Geografía»; el aterrizaje sigue en «Empresas».
-    expect(labels(visibles)).toEqual(["Empresas", "Planes", "Geografía", "Vehículos"]);
+    // SLT-97 R1: «Reportes» detrás de «Vehículos»; el aterrizaje sigue en «Empresas».
+    expect(labels(visibles)).toEqual(["Empresas", "Planes", "Geografía", "Vehículos", "Reportes"]);
     expect(primerDestino(visibles)).toBe("/plataforma/empresas");
     expect(visibles[0].href).toBe("/plataforma/empresas");
     expect(visibles[0].iconKey).toBe("building");
@@ -1029,11 +1030,13 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
     expect(SIDEBAR_ITEMS.filter((i) => i.href === "/plataforma/empresas")).toHaveLength(1);
     // SLT-58 R23: «Planes» entra entre «Empresas» y «Geografía».
     // SL-42 R1: «Vehículos» entra entre «Geografía» y «Mi bodega».
-    expect(SIDEBAR_ITEMS.slice(-6).map((i) => i.label)).toEqual([
+    // SLT-97 R1: «Reportes» entra entre «Vehículos» y «Mi bodega».
+    expect(SIDEBAR_ITEMS.slice(-7).map((i) => i.label)).toEqual([
       "Empresas",
       "Planes",
       "Geografía",
       "Vehículos",
+      "Reportes",
       "Mi bodega",
       "Ayuda",
     ]);
@@ -1134,5 +1137,46 @@ describe("SL-42 — ítem «Vehículos» del superadmin", () => {
   it("R16: ningún ítem ni subítem del menú apunta a /configuracion/vehiculos", () => {
     const hrefs = SIDEBAR_ITEMS.flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
     expect(hrefs).not.toContain(RUTA_RETIRADA);
+  });
+});
+
+// SLT-97 (R1, R2): «Reportes», los reportes de bugs de todas las empresas, es del superadmin y de
+// nadie más. Barrido de los siete `RolValue` con el esperado escrito a mano.
+describe("SLT-97 — ítem «Reportes» del superadmin", () => {
+  const SIETE: RolValue[] = [
+    "maestro",
+    "admin",
+    "adminTienda",
+    "adminSatelite",
+    "mensajero",
+    "apiKey",
+    "superadmin",
+  ];
+  const HREF = "/plataforma/reportes";
+
+  it("R1: el superadmin ve exactamente [Empresas, Planes, Geografía, Vehículos, Reportes] y aterriza en /plataforma/empresas", () => {
+    const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("superadmin"));
+    expect(labels(visibles)).toEqual(["Empresas", "Planes", "Geografía", "Vehículos", "Reportes"]);
+    expect(primerDestino(visibles)).toBe("/plataforma/empresas");
+  });
+
+  it("R1: hay un solo ítem a /plataforma/reportes, con el icono «bug» y sin subítems", () => {
+    const items = SIDEBAR_ITEMS.filter((i) => i.href === HREF);
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toBe("Reportes");
+    expect(items[0].iconKey).toBe("bug");
+    expect(items[0].children).toBeUndefined();
+  });
+
+  it("R2: solo el superadmin ve «Reportes»; ningún rol de empresa, y sin sesión tampoco", () => {
+    const item = SIDEBAR_ITEMS.find((i) => i.href === HREF)!;
+    expect(SIETE.filter((rol) => puedeVer(item, actor(rol)))).toEqual(["superadmin"]);
+    for (const rol of SIETE.filter((r) => r !== "superadmin")) {
+      const visibles = itemsVisibles(SIDEBAR_ITEMS, actor(rol));
+      expect(labels(visibles)).not.toContain("Reportes");
+      expect(visibles.map((i) => i.href)).not.toContain(HREF);
+    }
+    expect(puedeVer(item, null)).toBe(false);
+    expect(itemsVisibles(SIDEBAR_ITEMS, null)).toEqual([]);
   });
 });

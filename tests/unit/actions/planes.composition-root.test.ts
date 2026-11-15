@@ -31,6 +31,8 @@ const filaPlan = {
   // SLT-83 (R1): la fila de un plan de costo fijo trae las dos columnas del porcentual en null.
   costoPorOrdenPct: null,
   costoPorOrdenMinimo: null,
+  // SLT-118 (R35): la columna `periodicidad_ordenes` (NOT NULL, DEFAULT quincenal).
+  periodicidadOrdenes: "quincenal",
   archivadoAt: null,
   topesPorRol: [{ rol: "adminTienda", maximo: 3 }],
   modulos: [{ modulo: "ranking" }],
@@ -88,6 +90,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         precio: { tipo: "monto", mensual: "1000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.00" } } },
         costoPorOrden: "100.00", // SLT-66 R28
         costoPorOrdenPorcentual: null, // SLT-83 R1: plan de costo fijo
+        periodicidadOrdenes: "quincenal", // SLT-118 R35: las lecturas la llenan siempre
         archivado: false,
       },
     ]);

@@ -32,6 +32,7 @@ export type CampoDelPlan =
   | ClaveDeDescuento
   | "costoPorOrden"
   | "costoPorOrdenPorcentual"
+  | "periodicidadOrdenes"
   | "archivado";
 export type CambiosDelPlan = Partial<Record<CampoDelPlan, { antes: unknown; despues: unknown }>>;
 
@@ -48,6 +49,7 @@ const CAMPOS: readonly CampoDelPlan[] = [
   ...TIPOS_COBRO.map(claveDeDescuento),
   "costoPorOrden",
   "costoPorOrdenPorcentual",
+  "periodicidadOrdenes",
   "archivado",
 ];
 
@@ -98,6 +100,8 @@ export function planCanonico(p: PlanDTO): Record<CampoDelPlan, unknown> {
     // SLT-66 (R11): «100» y el «100.00» de la base son el mismo costo; vacío sigue siendo `null`.
     costoPorOrden: p.costoPorOrden === null ? null : importeCanonico(p.costoPorOrden),
     costoPorOrdenPorcentual: porcentualCanonico(p.costoPorOrdenPorcentual),
+    // SLT-118 (R35): un DTO sin ella (los dobles de los tests) es un plan quincenal, el DEFAULT de la columna.
+    periodicidadOrdenes: p.periodicidadOrdenes ?? "quincenal",
     archivado: p.archivado,
   };
   for (const tipo of TIPOS_COBRO) canonico[claveDeDescuento(tipo)] = descuentoCanonico(p.precio, tipo);

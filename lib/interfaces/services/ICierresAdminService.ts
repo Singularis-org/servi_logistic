@@ -22,6 +22,7 @@ import type {
   CierreResultado,
   CierreTotales,
   IngresoEmpresaDTO,
+  PagoPorTarifaDTO,
   TotalesIngresoEmpresa,
 } from "@/lib/interfaces/services/ICierreDiaService";
 // Ficha 396 — la parte de UNA tienda se DECLARA junto a la funcion que la produce
@@ -61,6 +62,21 @@ export interface BloqueoMensajeroEnFila {
   cierresPorReenviar: number;
 }
 
+/**
+ * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R70, R109) — tres conteos de
+ * gestiones de UN cierre, para la celda Señales de la cola. Enteros, no dinero.
+ *
+ * Cada conteo es el número de filas de la lista «Gestiones» del detalle de ese cierre que llevan la
+ * señal: `incidentesSinIndemnizar` (resultado `incidente` con `indemnizacion` nula),
+ * `pagosAjustados` (al menos un ajuste de pago, SLT-56) y `vuelvenABodega`
+ * (`RESULTADOS_QUE_VUELVEN`). Las barridas del corte no son gestiones y no cuentan aquí.
+ */
+export interface SenalesColaCierre {
+  incidentesSinIndemnizar: number;
+  pagosAjustados: number;
+  vuelvenABodega: number;
+}
+
 export interface CierreAdminResumen {
   cierreId: string;
   mensajeroId: string;
@@ -85,9 +101,18 @@ export interface CierreAdminResumen {
    */
   incluyeModeloNuevo?: boolean;
   /**
+   * SLT-123 (R310, R320) — `cierre_dia.pago_independiente_efectivo`: la regla de pago al mensajero
+   * de ESTE cierre (`true` = su pago es independiente del efectivo). La puebla el repositorio en toda
+   * lectura (`toResumenRow`). Opcional en el tipo (aditivo, como `incluyeModeloNuevo`); ausente se
+   * lee como `false`, igual que el `DEFAULT` de la columna: la regla de la feature 44.
+   */
+  pagoIndependienteEfectivo?: boolean;
+  /**
    * Feature 172 (T C.2, §5/R22/R26/R28) — lo que de ESTE cierre sigue sin entregarse al
-   * mensajero, DERIVADO en el servidor: `min(P, E)` menos los pagos VIGENTES registrados contra
-   * el (`derivarPendienteCierre`). STRING de escala 2, money-safe: la pantalla no hace
+   * mensajero, DERIVADO en el servidor (`derivarPendienteCierre`): en un cierre NUEVO
+   * (SLT-123, `pagoIndependienteEfectivo`), `P` menos los pagos VIGENTES registrados contra el;
+   * en uno VIEJO, lo que el efectivo no cubrio, `P − min(P, E)`, menos esos mismos pagos
+   * vigentes (en los dos, mas los premios vivos de la 293). STRING de escala 2, money-safe: la pantalla no hace
    * aritmetica con dinero (R14), solo lo pinta.
    *
    * **`null` = el cierre NO esta aprobado** (R28). No es «cero» ni «no se sabe»: en un cierre
@@ -113,6 +138,12 @@ export interface CierreAdminResumen {
    * NO entra en las descargas (R31): `cierres-admin-descarga-columnas.ts` no lo nombra.
    */
   reprogramadasRetenidasHoy?: number;
+  /**
+   * SLT-102 (R109) — las tres señales de la cola, contadas en el servidor con UNA consulta por
+   * página (`contarSenalesPorCierre`). Opcional (aditivo): ausente, la fila no pinta esas señales y
+   * no afirma «0». Un cierre sin gestiones con señal llega con los tres a `0`.
+   */
+  senalesCola?: SenalesColaCierre;
   solicitadoAt: string; // ISO
   resueltoAt: string | null; // ISO; null si solicitado (F1.4-e)
   motivoRechazo: string | null; // solo rechazado (F1.4-e)
@@ -162,8 +193,9 @@ export type ListarPendientesCierresAdminServiceResult =
  * las columnas que la tabla enseña (R12) y las proyecta con la misma funcion. `limite_excedido`
  * lleva SOLO conteos: ni una fila, ni un conjunto truncado (R6).
  */
-export type ListarHistoricoCierresAdminCompletoServiceResult =
-  ListarCompletoServiceResult<CierreAdminResumen>;
+export type ListarHistoricoCierresAdminCompletoServiceResult = ConCifrasModeloNuevoEnOk<
+  ListarCompletoServiceResult<CierreAdminResumen>
+>;
 
 /**
  * Feature 184 — Tanda D (T D.2, R1/R6) — la COLA ENTERA de pendientes de decision del alcance.
@@ -172,8 +204,52 @@ export type ListarHistoricoCierresAdminCompletoServiceResult =
  * schemas de pagina: son dos listados distintos y el nombre es lo unico que dice cual de las
  * dos mitades se esta pidiendo.
  */
-export type ListarPendientesCierresAdminCompletoServiceResult =
-  ListarCompletoServiceResult<CierreAdminResumen>;
+export type ListarPendientesCierresAdminCompletoServiceResult = ConCifrasModeloNuevoEnOk<
+  ListarCompletoServiceResult<CierreAdminResumen>
+>;
+
+/** SLT-140 (R381): una tienda de un cierre en la hoja «Por tienda». Sin `tiendaId`: nunca es columna. */
+export interface ParteDeTiendaDescargaDTO {
+  tiendaNombre: string;
+  recaudado: string;
+  pagoTienda: string;
+  ganaLaTienda: string;
+}
+
+/**
+ * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (R379-R382) — las cifras de UN cierre
+ * del modelo nuevo para la hoja «Cierres», derivadas con `cifrasDelCierre` (las mismas del detalle).
+ * Todo OBLIGATORIO (lección de SLT-123): un campo opcional que un camino no puebla se lee como «no hay».
+ * Importes: STRING de escala 2, con su signo.
+ */
+export interface CifrasCierreDescargaDTO {
+  /** Une con el item (`CierreAdminResumen.cierreId`); nunca es columna. */
+  cierreId: string;
+  pagoTienda: string;
+  ganaLaTienda: string;
+  /** `totalesIngreso.total` del detalle. */
+  totalFacturado: string;
+  ivaFacturado: string;
+  netoEmpresa: string;
+  /** Numero de gestiones del cierre (Σ de los grupos del detalle). */
+  gestiones: number;
+  /** `(P + premios vivos) − pendiente`; `null` si el cierre no esta aprobado o el actor no es central (R382). */
+  pagoEntregado: string | null;
+  /** En el orden del detalle (de mayor a menor pago a la tienda). */
+  partesPorTienda: ParteDeTiendaDescargaDTO[];
+}
+
+/** SLT-140 (R378): lo que la rama `ok` del «Resumen» de cierres lleva ademas de las filas. */
+export interface ExtraCifrasModeloNuevo {
+  /** Presente solo si algun cierre del conjunto es del modelo nuevo; uno por cierre nuevo, en el orden de `items`. */
+  cifrasModeloNuevo?: CifrasCierreDescargaDTO[];
+}
+
+/**
+ * SLT-140 — añade `cifrasModeloNuevo?` SOLO a la rama `ok`, como `ConRechazosDeTiendaEnOk` de SLT-113.
+ * El generico comun `ListarCompleto*Result` no cambia.
+ */
+export type ConCifrasModeloNuevoEnOk<R> = R extends { status: "ok" } ? R & ExtraCifrasModeloNuevo : R;
 
 /**
  * Feature 230 (T1.1, design §2.4) — UNA GESTION de un cierre, lista para proyectar a una fila
@@ -335,7 +411,69 @@ export interface CierreGestionDescargaDTO {
   ingresoBodegaRechazo: string | null;
   /** `null` = la orden no tenia tarifa vigente al solicitar (gap conocido de la feature 69). */
   ingresoEmpresa: IngresoEmpresaDTO | null;
+  // --- SLT-113 (R371, R374, R375): lo que la hoja «Gestiones» del modelo nuevo necesita ---
+  // Opcionales en el DTO (como los aditivos de SLT-101): un doble de test de hoy sigue valiendo y
+  // la ausencia se lee como modelo viejo. El repositorio los emite SIEMPRE: su tipo de retorno es
+  // `CierreGestionDescargaRow`, donde son obligatorios.
+  /** Folio del cierre al que pertenece la gestion: el mismo que la pantalla (`folioCierre`). */
+  folioCierre?: string;
+  /** R371: modelo del CIERRE (no de la fila): "nuevo" si alguna de sus filas congeladas lo es. */
+  cierreModelo?: "viejo" | "nuevo";
+  /** El pago «por tarifa» congelado del mensajero; `null` si no hay fila congelada. */
+  pagoPorTarifa?: PagoPorTarifaDTO | null;
+  /** Los ajustes del pago al mensajero, del mas viejo al mas nuevo. */
+  ajustesPago?: AjustePagoGestionDTO[];
+  /** «Sin tarifa de pago»: modelo nuevo, resultado con pago al mensajero y sin fila congelada. */
+  tarifaFaltante?: boolean;
+  /** Dia calendario (zona de la empresa) del cargo vigente de fulfillment; solo central (F481). */
+  fulfillmentCargadoDia?: string | null;
 }
+
+/**
+ * SLT-113 (R371, R374, R375) — la fila de la hoja fundida tal como la EMITE el repositorio: los
+ * campos del modelo nuevo son OBLIGATORIOS aqui. Si un camino de lectura se olvida de uno, el
+ * typecheck lo dice; en el DTO de borde siguen opcionales para los consumidores y dobles de hoy.
+ */
+export type CierreGestionDescargaRow = CierreGestionDescargaDTO &
+  Required<
+    Pick<
+      CierreGestionDescargaDTO,
+      | "folioCierre"
+      | "cierreModelo"
+      | "pagoPorTarifa"
+      | "ajustesPago"
+      | "tarifaFaltante"
+      | "fulfillmentCargadoDia"
+    >
+  >;
+
+/**
+ * SLT-113 (R373) — un rechazo de la tienda de un cierre del modelo nuevo, para la hoja «Rechazados
+ * por la tienda». Lo congelado al incorporar, sin ids (R42 de la 230), sin evidencia y sin importes
+ * (la tabla no tiene ninguno).
+ */
+export interface RechazoTiendaDescargaDTO {
+  folioCierre: string;
+  numGuia: number | null;
+  destinatario: string;
+  motivo: string | null;
+  tiendaNombre: string;
+  /** Dia calendario YYYY-MM-DD en la zona de la empresa. */
+  fechaRechazo: string;
+}
+
+/** SLT-113 (R372): lo que la rama `ok` de la descarga de gestiones lleva ademas de las filas. */
+export interface ExtraRechazosDeTienda {
+  /** Presente solo si algun cierre del conjunto es del modelo nuevo. */
+  rechazosDeTienda?: RechazoTiendaDescargaDTO[];
+}
+
+/**
+ * SLT-113 — añade `rechazosDeTienda?` SOLO a la rama `ok` de un resultado de descarga. Se declara
+ * una vez y la usan el servicio y los dos tipos de borde; el generico comun `ListarCompleto*Result`
+ * no cambia (lo usan ~25 descargas).
+ */
+export type ConRechazosDeTiendaEnOk<R> = R extends { status: "ok" } ? R & ExtraRechazosDeTienda : R;
 
 /**
  * Feature 230 (T1.1) — el conjunto de gestiones del que sale la hoja fundida, tal como lo
@@ -345,9 +483,12 @@ export interface CierreGestionDescargaDTO {
  * `limite_excedido` ni `forbidden` llevan nunca `items`. El tope lo evalua el SERVICIO —el
  * mismo `descargaConfig.MAX_FILAS` que sus dos hermanos, sin constante nueva (D13/R21)— y
  * superarlo es un ERROR ACCIONABLE con los conteos, jamas un archivo truncado en silencio.
+ *
+ * SLT-113 (R372): la rama `ok` puede llevar ademas `rechazosDeTienda`.
  */
-export type ListarGestionesDescargaServiceResult =
-  ListarCompletoServiceResult<CierreGestionDescargaDTO>;
+export type ListarGestionesDescargaServiceResult = ConRechazosDeTiendaEnOk<
+  ListarCompletoServiceResult<CierreGestionDescargaDTO>
+>;
 
 // R6-R9/R13: detalle completo de UN cierre. Reusa CierreGrupos (grupos por
 // resultado) de la 37. `no_encontrada` = id inexistente o fuera de alcance (R13, no
@@ -362,13 +503,16 @@ export type { CierreOrdenSinGestion } from "@/lib/interfaces/services/ICierreDia
 // mensajero (el que recorre su panel) y aqui solo se RE-EXPORTA.
 export type { CierreRechazoDeTienda } from "@/lib/interfaces/services/ICierreDiaService";
 
+// SLT-154 (R462, D2): las cifras de la empresa (`totalesIngreso` … `porcentajesReparto`) llegan en
+// `null` a quien no tiene acceso total: el dato existe y a ese lector no le toca. La clasificacion
+// campo a campo vive en `CLASE_DETALLE_MENSAJERO` (`CierresAdminService`).
 export type CierreDetalleAdminServiceResult =
   | {
       status: "ok";
       cierre: CierreAdminResumen;
       grupos: CierreGrupos; // por resultado (reuso 37)
       // Totales por concepto del ingreso de la empresa del cierre, derivados del snapshot.
-      totalesIngreso: TotalesIngresoEmpresa;
+      totalesIngreso: TotalesIngresoEmpresa | null;
       // Feature 102/R4-R8/R10: desglose money-safe (STRING escala 2) del ingreso de bodega por
       // rechazos, particionado por origen. `sla` = escalados del cron SLA (99); `manual` =
       // rechazos del mensajero; `total` = el SNAPSHOT `cierre.totalIngresoBodegaRechazos` (leido,
@@ -377,13 +521,13 @@ export type CierreDetalleAdminServiceResult =
       desgloseIngresoBodegaRechazos: { sla: string; manual: string; total: string };
       // SL-39 (R21): IVA facturado del cierre = `ivaFlete` + `ivaFleteDevolucion` +
       // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
-      ivaFacturado: string;
+      ivaFacturado: string | null;
       // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `cierre.totalPagoMensajero`
       // (STRING money-safe). Lo que le queda a la empresa del cierre. Puede ser NEGATIVO.
-      ganancia: string;
+      ganancia: string | null;
       // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
       // money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
-      pagoTienda: string;
+      pagoTienda: string | null;
       /**
        * Feature 395 — LA LINEA PUENTE de la cascada «de quien es el dinero recaudado»:
        * `totalesIngreso.fleteConIva` + `totalesIngreso.comisionConIva`, o sea el subconjunto
@@ -395,7 +539,7 @@ export type CierreDetalleAdminServiceResult =
        * misma funcion (`cobradoSobreRecaudado`) y con los mismos dos sumandos: la ficha 393 la
        * monto solo alli, y este detalle —el que se mira todos los dias— se quedo sin ella.
        */
-      cobradoSobreRecaudado: string;
+      cobradoSobreRecaudado: string | null;
       /**
        * Feature 395 — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
        * `cierre.totalPagoMensajero` − `cierre.totalIngresoBodegaRechazos`.
@@ -405,7 +549,7 @@ export type CierreDetalleAdminServiceResult =
        * rechazos vale "0.00" y divergen en cuanto hay un rechazo. Puede ser NEGATIVO y se emite
        * CON SU SIGNO, nunca recortado a "0.00".
        */
-      netoEmpresa: string;
+      netoEmpresa: string | null;
       /**
        * Feature 395 — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LA
        * TIENDA GANA EN TOTAL con este cierre.
@@ -420,7 +564,7 @@ export type CierreDetalleAdminServiceResult =
        *
        * Puede ser NEGATIVO y se emite CON SU SIGNO, nunca recortado a "0.00".
        */
-      ganaLaTienda: string;
+      ganaLaTienda: string | null;
       /**
        * Feature 395 — ¿el flete por rechazo YA esta cobrado en la wallet de la tienda?
        *
@@ -437,7 +581,7 @@ export type CierreDetalleAdminServiceResult =
        * mayor que cero— y `false` cubre los dos casos en que la frase no se puede escribir en
        * pasado: todavia no se aprueba, o no hay nada que cobrar.
        */
-      fleteRechazoYaCobradoATienda: boolean;
+      fleteRechazoYaCobradoATienda: boolean | null;
       /**
        * 💰 Ficha 396 — DE QUIEN ES CADA PARTE de `pagoTienda` y de `ganaLaTienda`.
        *
@@ -475,7 +619,7 @@ export type CierreDetalleAdminServiceResult =
        * del cierre ENTERO y se quedan agregados. Repartirlos exigiria inventar un criterio que
        * nadie ha firmado, y un numero repartido con un criterio inventado miente con precision.
        */
-      partesPorTienda: ParteDeTienda[];
+      partesPorTienda: ParteDeTienda[] | null;
       /**
        * Feature 264 (R7) — las ordenes que el corte barrio al crear ESTE cierre y ningun otro.
        * `[]` significa «no hubo ninguna» SOLO si `sinGestionRegistrado` es `true`.
@@ -503,6 +647,34 @@ export type CierreDetalleAdminServiceResult =
        * no hace falta la marca `…Registrado` que la 264 si necesito.
        */
       rechazosDeTienda: CierreRechazoDeTienda[];
+      /**
+       * SLT-100 (R80): quien resolvio el cierre, para la cabecera («Aprobado <fecha> por <nombre>»).
+       * Solo con estado `aprobado`/`rechazado`; en otro estado o sin resolutor, `null`. Opcional y
+       * ausente se pinta igual que `null`: sin «por …».
+       */
+      resueltoPorNombre?: string | null;
+      /**
+       * SLT-111 (R70/R263): el reparto de lo recaudado en % enteros que suman 100, en el orden
+       * [tienda (`pagoTienda`), empresa (`cobradoSobreRecaudado`)] y sobre `cierre.totales.general`.
+       * `null` = sin barra (nada recaudado, una parte negativa o partes que no cuadran). El servicio
+       * lo emite siempre; opcional solo para que los dobles no tengan que construirlo.
+       */
+      porcentajesReparto?: number[] | null;
+      /**
+       * SLT-154 (R467, D7): lo que debe llegar a la central de ESTE cierre —`general` − pago al
+       * mensajero − gana la bodega, de los snapshots—. Dato de la satelite: viaja a todo lector.
+       * Los tres campos de R467 los emite SIEMPRE el servicio; opcionales en el tipo solo para que
+       * los dobles de hoy no tengan que construirlos (como `porcentajesReparto`). Ausentes, la
+       * pantalla no pinta nada de la central (falla cerrado).
+       */
+      paraLaCentral?: string;
+      /** SLT-154 (R467): ¿el efectivo de este cierre cubre el pago al mensajero y lo que gana la bodega? */
+      efectivoCubreDescuentos?: boolean;
+      /**
+       * SLT-154 (R467): reparto en % de `cierre.totales.general` en el orden [debe llegar a la central,
+       * pago al mensajero, gana la bodega]. `null` = sin barra (regla de `porcentajesReparto`).
+       */
+      porcentajesRepartoCentral?: number[] | null;
     }
   | { status: "forbidden" } // rol invalido (R1)
   | { status: "no_encontrada" }; // id inexistente o de otra bodega/zona (R13)

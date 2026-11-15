@@ -81,6 +81,7 @@ function filaAdmin(over: Record<string, unknown> = {}) {
     pagos: [] as { metodo: string; monto: Prisma.Decimal }[],
     historialEstados: [],
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...over,
   };
 }

@@ -48,7 +48,8 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
      nuevo (`docs/gate.md > Disparadores`).
    - **CI:** la suite completa corre en `.github/workflows/gate.yml` en cada PR a la rama de
      integración; en el PR a producción, también el E2E.
-   - **Nadie mergea con el check `gate-completo` en rojo o sin terminar.**
+   - **Nadie mergea con el check `gate-completo` en rojo o sin terminar, ni antes del aviso
+     «#n listo para mergear» del leader.**
    - `./init.sh --completo` sirve para reproducir en local un rojo de CI.
 6. **No inventes.** Si un dato no está en `docs/`, `specs/` o el código, es desconocido:
    pregunta o márcalo como abierto. No lo rellenes con supuestos.
@@ -65,10 +66,13 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
      reconoce por `arnes.lock.json` y el gate avisa de ella hasta que se sube.
    - Nadie edita la plantilla a mano ni copia archivos entre repos a mano.
 9. **Una key de ficha nunca va sola.** En todo lo que lee el humano —tus mensajes, los informes
-   de los subagentes, el título del PR— cada key va con su título: `SL-50 «Zonas separadas de
-   Tarifas»`, nunca `SL-50` a secas. El título sale de `feature_list.json` (`title`).
-   - Lo hace cumplir el hook `Stop`: si tu mensaje nombra una key sin título, bloquea el cierre del
-     turno y te pide reescribirlo (`scripts/nombres-de-fichas.mjs`).
+   de los subagentes, el título del PR— cada key va con su título **al menos una vez por
+   mensaje**: `SL-50 «Zonas separadas de Tarifas»`, nunca solo `SL-50` en todo el mensaje. Las
+   siguientes menciones de esa key en el mismo mensaje pueden ir solas. El título sale de
+   `feature_list.json` (`title`).
+   - Lo vigila el hook `Stop`: si tu mensaje nombra una key que no lleva su título en ninguna
+     mención, añade debajo una nota con su título (`scripts/nombres-de-fichas.mjs`). No bloquea:
+     un bloqueo le duplicaba el mensaje al humano. La nota es un fallo tuyo; no cuentes con ella.
    - No cuentan las keys en código, rutas o ramas (`specs/SL-50-zonas/`). Detalle:
      `docs/jira.md > Cómo se nombra una ficha`.
 

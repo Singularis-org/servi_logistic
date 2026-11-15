@@ -11,7 +11,6 @@ import { ModulosEmpresaRepository } from "@/lib/repositories/ModulosEmpresaRepos
 import { ModulosEmpresaService } from "@/lib/services/ModulosEmpresaService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { CrearPlanInput } from "@/lib/types/planes";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -31,13 +30,17 @@ import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 // lleva fecha de efecto. Aquí todos los cambios van con la de hoy, que se aplica en el acto y rechaza por
 // topes (R18); los pendientes con fecha futura: `planes-cambio-empresa.test.ts`. Se retiró el caso
 // «R12 (órdenes)»: no hay tope de órdenes (R8).
+//
+// SLT-118 (R31): «hoy» solo se aplica en el acto si es el primer día de un período; por eso «hoy» es aquí un
+// reloj fijo en un 1 de mes (todos los cambios de este archivo son mensual → mensual).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
 
-/** Hoy en la plataforma: la fecha de efecto de los cambios de este archivo. */
-const HOY = fechaCalendarioCR(new Date());
+/** Hoy en la plataforma: la fecha de efecto de los cambios de este archivo (SLT-118: un 1 de mes fijo). */
+const HOY = "2026-11-01";
+const AHORA = new Date("2026-11-01T18:00:00.000Z");
 const HOY_SIN_ELEGIR: EfectoElegido = { clase: "inicio", fecha: HOY, desde: inicioDelDiaPlataforma(HOY), elegida: false };
 const CAMBIO_HOY: EfectoElegido = { clase: "cambio", fecha: HOY, desde: inicioDelDiaPlataforma(HOY), elegida: true };
 
@@ -53,7 +56,7 @@ interface Caso {
 }
 
 async function caso(tx: TxDeTest): Promise<Caso> {
-  const servicio = new PlanesService(planesEnTx(tx));
+  const servicio = new PlanesService(planesEnTx(tx), () => AHORA);
   return {
     tx,
     servicio,
@@ -274,9 +277,9 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const repo = planesEnTx(tx);
       await c.asignar(org, plan);
       return {
-        deOtra: await repo.asignar(org, deOtra, SUPERADMIN.usuarioId, CAMBIO_HOY, "mensual", new Date()),
-        mismo: await repo.asignar(org, plan, SUPERADMIN.usuarioId, CAMBIO_HOY, "mensual", new Date()),
-        noExiste: await repo.asignar(randomUUID(), plan, SUPERADMIN.usuarioId, HOY_SIN_ELEGIR, "mensual", new Date()),
+        deOtra: await repo.asignar(org, deOtra, SUPERADMIN.usuarioId, CAMBIO_HOY, "mensual", AHORA),
+        mismo: await repo.asignar(org, plan, SUPERADMIN.usuarioId, CAMBIO_HOY, "mensual", AHORA),
+        noExiste: await repo.asignar(randomUUID(), plan, SUPERADMIN.usuarioId, HOY_SIN_ELEGIR, "mensual", AHORA),
         historial: await historial(tx, org),
       };
     });

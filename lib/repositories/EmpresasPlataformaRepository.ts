@@ -11,9 +11,10 @@ import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 
 /** Lo que lee el listado: las empresas, sus cargos de la plataforma y sus pagos (SL-45). */
 /** SL-36 (R37): y el estado de sus integraciones. SLT-66 (R31, R32): y su plan y cobro vigente (`$queryRaw`). */
+/** SLT-118 (design §5; R18): y las cuotas de sus facturas cerradas. */
 export type EmpresasPlataformaPrismaClient = Pick<
   PrismaClient,
-  "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion" | "$queryRaw"
+  "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion" | "facturaPlataforma" | "$queryRaw"
 >;
 
 /** SLT-66 (R31, R32): una fila de `planYCobroVigente`. SLT-83 (R22): la tarifa con su modo. */
@@ -51,7 +52,6 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
           nombre: true,
           slug: true,
           createdAt: true,
-          cobroPlataformaPorOrden: true,
           // SL-20 (R9): el país, solo código y nombre.
           pais: { select: { id: true, nombre: true } },
           // Solo nombre y email: ni `password_hash`, ni telefono, ni documento salen de la base.
@@ -72,7 +72,6 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         slug: f.slug,
         creadaEn: f.createdAt,
         maestros: f.usuarios,
-        cobroPorOrden: f.cobroPlataformaPorOrden === null ? null : f.cobroPlataformaPorOrden.toFixed(2),
         ...planYCobroDe(f.id),
         deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
         pagadoPlataforma: pagadoDe(f.id),
@@ -118,7 +117,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
    *
    * Parte de la lista de ids (`unnest`) y no de `organizacion`: cada id pedido tiene su fila aunque la
    * empresa ya no esté (p. ej. borrada entre las dos lecturas); la función le da entonces la regla de
-   * una empresa sin excepción ni plan. Los enums van como texto: el driver no conoce el tipo de Postgres.
+   * una empresa sin plan. Los enums van como texto: el driver no conoce el tipo de Postgres.
    */
   private async planYCobroVigente(organizacionIds: string[]) {
     const filas = await this.prisma.$queryRaw<PlanYCobroLeido[]>`
@@ -151,12 +150,20 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
    *
    * Cada consulta acota a las empresas del listado: en plataforma no hay extensión que filtre, y el
    * `organizacion_id` de la fila es lo que reparte cada suma a su empresa.
+   *
+   * SLT-118 (design §5; R18): y las cuotas de sus facturas cerradas (`cuota` + `primera_cuota`), como el
+   * tipo `cuota` de `CobroPlataformaMovimientoRepository.sumasPorTipo`: la misma deuda que la wallet.
    */
   private async cuentasConLaPlataforma(organizacionIds: string[]) {
     const cargos = await this.prisma.cobroPlataformaMovimiento.groupBy({
       by: ["organizacionId", "tipo"],
       where: { organizacionId: { in: organizacionIds } },
       _sum: { monto: true },
+    });
+    const cuotas = await this.prisma.facturaPlataforma.groupBy({
+      by: ["organizacionId"],
+      where: { organizacionId: { in: organizacionIds }, estado: "cerrada" },
+      _sum: { cuota: true, primeraCuota: true },
     });
     const pagos = await this.prisma.walletMovimiento.findMany({
       where: { organizacionId: { in: organizacionIds }, tipo: "egreso", categoria: "egreso_pago_plataforma" },
@@ -180,6 +187,14 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
     for (const c of cargos) {
       const lista = sumasPorEmpresa.get(c.organizacionId) ?? [];
       lista.push({ tipo: c.tipo, monto: c._sum.monto === null ? "0.00" : c._sum.monto.toFixed(2) });
+      sumasPorEmpresa.set(c.organizacionId, lista);
+    }
+    // SLT-118 (R18): las dos cuotas (P18) se suman en decimal; sin ninguna, la empresa no lleva entrada.
+    for (const c of cuotas) {
+      if (c._sum.cuota === null && c._sum.primeraCuota === null) continue;
+      const total = (c._sum.cuota ?? new Prisma.Decimal(0)).add(c._sum.primeraCuota ?? new Prisma.Decimal(0));
+      const lista = sumasPorEmpresa.get(c.organizacionId) ?? [];
+      lista.push({ tipo: "cuota", monto: total.toFixed(2) });
       sumasPorEmpresa.set(c.organizacionId, lista);
     }
     const anulados = new Set(contra.map((c) => c.origenId));

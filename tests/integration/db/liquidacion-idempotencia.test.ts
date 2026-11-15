@@ -1112,6 +1112,7 @@ describe("el documento y el libro NO divergen (design §5)", () => {
         // 293/T2.3 — NO-REGRESION: sin premios, esta cifra es EXACTAMENTE la de antes.
         premiosVivos: "0.00",
         pagadoVigente: sumaDocumentos,
+        pagoIndependienteEfectivo: false, // SLT-123: cierre de fixture, regla de la 44
       }),
     ).toBe("14999.50");
     expect(ultima).toMatchObject({ status: "ok", restante: "14999.50" });
@@ -1379,6 +1380,7 @@ describe("T F.3/R79/R80 — MENSAJERO: pagar, anular y volver a pagar lo mismo",
         efectivo: cierre.totalEfectivo,
         premiosVivos: "0.00", // 293/T2.3 — no-regresion
         pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: false, // SLT-123: cierre de fixture, regla de la 44
       }),
     ).toBe("50000.00");
 

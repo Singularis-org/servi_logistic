@@ -131,6 +131,20 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
     expect(r.plan.cambioPendiente).toBeNull();
   });
 
+  it("SLT-99 R8 — «Activo desde» es la entrada de la empresa (`plan_ciclo_ancla_at`) en la fecha de la plataforma", async () => {
+    // 2026-10-15T06:00Z son las 00:00 del 15 de octubre en Costa Rica: el día de la plataforma, no el de UTC.
+    const r = await servicio(new RepoEnMemoria(leido())).ver(actor("maestro"));
+    if (r.estado !== "ok" || r.plan === null) throw new Error("se esperaba un plan");
+    expect(r.plan.activoDesde).toBe("2026-10-15");
+
+    // Una entrada de antes de las 06:00 UTC sigue siendo el día anterior de la plataforma.
+    const tarde = await servicio(new RepoEnMemoria({ ...leido(), entrada: new Date("2026-10-15T05:59:59.999Z") })).ver(
+      actor("maestro"),
+    );
+    if (tarde.estado !== "ok" || tarde.plan === null) throw new Error("se esperaba un plan");
+    expect(tarde.plan.activoDesde).toBe("2026-10-14");
+  });
+
   it("D9, SLT-86 R12/R27 — «Mi plan» trae el tipo, el período en curso (tramo desde la entrada), su costo y el siguiente cobro", async () => {
     const mensual = await servicio(new RepoEnMemoria(leido())).ver(actor("maestro"));
     if (mensual.estado !== "ok" || mensual.plan === null) throw new Error("se esperaba un plan");

@@ -18,7 +18,6 @@ import {
   crearPlanConCosto,
   deuda,
   fijarCostoDelPlan,
-  fijarExcepcion,
   movimientos,
   reverso,
   type EmpresaPorcentual,
@@ -104,8 +103,8 @@ describeSiHayBase("SLT-83 — el cobro porcentual de una orden (Postgres, R6–R
       const pasos: Record<string, unknown> = {};
       const { e: A, plan: P } = await empresaPorcentual(tx, "2", "500");
       const B = await crearEmpresa(tx);
-      await asignar(tx, B, P);
-      await fijarExcepcion(tx, B, "80.00");
+      // SLT-126: sin valor propio, la otra empresa (p1) se cobra al crear con un plan fijo de 80,00.
+      await asignar(tx, B, await crearPlanConCosto(tx, { fijo: "80.00" }));
       const o: Record<string, string> = {};
       const foto = async () => ({
         o1: await movimientos(tx, o.o1),
@@ -148,7 +147,7 @@ describeSiHayBase("SLT-83 — el cobro porcentual de una orden (Postgres, R6–R
       o1: [],
       o2: [],
       o3: null,
-      p1: [cargo("80.00", 1, "empresa")],
+      p1: [cargo("80.00")],
       deudaA: "0.00",
       c1: { porcentaje: "2.00", minimo: "500.00" },
       c2: { porcentaje: "2.00", minimo: "500.00" },
@@ -181,19 +180,6 @@ describeSiHayBase("SLT-83 — el cobro porcentual de una orden (Postgres, R6–R
   });
 
   /* -------------------------------- R7 ----------------------------------- */
-
-  it("R7: con excepción, la orden se cobra al crearla por la excepción y no congela nada, aunque el plan sea porcentual", async () => {
-    const r = await revertida(base, async (tx) => {
-      const { e } = await empresaPorcentual(tx);
-      await fijarExcepcion(tx, e, "80.00");
-      const id = await crearOrden(tx, e, { montoCobrar: "100000" });
-      const alta = { m: await movimientos(tx, id), c: await condicionDe(tx, id) };
-      await cambiarEstado(tx, id, "entregado");
-      return { alta, final: await movimientos(tx, id) };
-    });
-    expect(r.alta).toEqual({ m: [cargo("80.00", 1, "empresa")], c: null });
-    expect(r.final).toEqual([cargo("80.00", 1, "empresa")]);
-  });
 
   it("R7: con plan fijo o vacío el cobro sigue siendo el de SLT-66 (cargo al crear, plan o global)", async () => {
     const r = await revertida(base, async (tx) => {
@@ -263,14 +249,12 @@ describeSiHayBase("SLT-83 — el cobro porcentual de una orden (Postgres, R6–R
 
   /* -------------------------------- R11 ---------------------------------- */
 
-  it("R11: cambie lo que cambie después del alta (plan, excepción, global, otro plan), se cobra con lo congelado", async () => {
+  it("R11: cambie lo que cambie después del alta (plan, global, otro plan), se cobra con lo congelado", async () => {
     const r = await revertida(base, async (tx) => {
       const { e, plan } = await empresaPorcentual(tx, "2", "500");
       const id = await crearOrden(tx, e, { montoCobrar: "100000" });
       await fijarCostoDelPlan(tx, plan, { pct: "5", minimo: null });
       await fijarCostoDelPlan(tx, plan, { fijo: "999.00" });
-      await fijarExcepcion(tx, e, "1.00");
-      await fijarExcepcion(tx, e, null);
       await tx.$executeRawUnsafe(`UPDATE "cobro_plataforma_tarifa" SET "monto" = 7.00`);
       await asignar(tx, e, await crearPlanConCosto(tx, { pct: "10", minimo: "0" }));
       await cambiarEstado(tx, id, "entregado");

@@ -1,8 +1,35 @@
+import type { Browser, Locator, Page } from "@playwright/test";
+
+import { conEmpresa } from "../../lib/db/contexto-empresa";
+import { getPrismaClient } from "../../lib/db/prisma-client";
 import type { Actor } from "../../lib/interfaces/services/IOrdenService";
-import { escenarioCierres, solicitarCierre as solicitarCierreNucleo } from "../../tests/fabricas/escenarios/cierres";
+import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
+import { CierresBodegaAdminRepository } from "../../lib/repositories/CierresBodegaAdminRepository";
+import { OrdenRepository } from "../../lib/repositories/OrdenRepository";
+import { SaldosSatelitesRepository } from "../../lib/repositories/SaldosSatelitesRepository";
+import { CierreBodegaService } from "../../lib/services/CierreBodegaService";
+import { ConciliacionSatelitesService } from "../../lib/services/ConciliacionSatelitesService";
+import { construirReglasPaisEmpresa } from "../../lib/services/ReglasPaisEmpresaService";
+import {
+  cierresAdmin,
+  escenarioCierres,
+  solicitarCierre as solicitarCierreNucleo,
+} from "../../tests/fabricas/escenarios/cierres";
 import { fijarEmpresa } from "../../tests/fabricas/organizaciones";
 
-import { baseReparto, type MensajeroE2E, type RepartoE2E } from "./reparto";
+import { abrirTarifas, activarConFaltantes, digitarYGuardar, irAZona, type Digitado } from "../_tarifas-activacion-fixture";
+
+import {
+  baseReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./reparto";
 
 /**
  * SL-44 T3.2 (design D4; R8) — EL CIERRE DEL DÍA, lo mínimo que el grupo `reparto` necesita para
@@ -107,4 +134,158 @@ export function importe(n: number, opts: { solo?: boolean } = {}): RegExp {
   // `solo`: el texto ENTERO del elemento es el importe (con su símbolo). Sirve donde el importe va
   // pegado a otros números en el texto del contenedor (p. ej. «₡9.0001-1 de 1» de la paginación).
   return opts.solo ? new RegExp(`^\\s*[^\\d\\s]{0,3}\\s?${cifra}\\s*$`) : new RegExp(`(?<![\\d.,])${cifra}(?!\\d)`);
+}
+
+// ── Cola única de cierres de mensajeros (SLT-102 T6.1) ──────────────────────────────────────────
+//
+//   filaDeCola(region, nombre) → Locator
+//     La FILA de la cola (`ColaCierres`) del cierre de ese mensajero, dentro de la región de la
+//     pestaña: «Pendientes de decisión» o «Histórico». Antes era el comprobante
+//     (`region` «Comprobante del cierre de <m>»); la cola pinta una tabla con una fila por cierre.
+//
+//   pestanaDeCola(page, "Pendientes" | "Resueltos") → Locator
+//     La pestaña (`tab`) del `tablist` «Cierres del día por estado». Su nombre lleva el conteo
+//     («Resueltos (12)»), así que se busca por el comienzo.
+//
+//   pestanaDeColaBodega(page, "Por conciliar" | "Conciliados") → Locator
+//   regionColaBodega(page, "Por conciliar" | "Conciliados") → Locator
+//     SLT-127: lo mismo para la cola de bodega de la central (`tablist` «Cierres de bodega por
+//     estado»; regiones «Cierres de bodega por conciliar» / «… conciliados»). La fila, con filaDeCola.
+//
+//   ajustarPagoMensajero(r, gestionId, { anterior, nuevo, motivo }) → void
+//     `CierresAdminService.ajustarPagoMensajeroGestion` con el maestro, sobre un cierre abierto
+//     (SLT-56). Es lo que hace el diálogo «Ajustar pago» del detalle; aquí siembra la señal
+//     «pago ajustado» de la cola.
+
+export function filaDeCola(region: Locator, nombre: string): Locator {
+  return region.getByRole("row").filter({ hasText: nombre });
+}
+
+export function pestanaDeCola(page: Page, nombre: "Pendientes" | "Resueltos"): Locator {
+  return page
+    .getByRole("tablist", { name: "Cierres del día por estado" })
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\(\\d+\\)$`) });
+}
+
+/** SLT-127: la pestaña de la cola de bodega de la central («Por conciliar (3)», «Conciliados (21)»). */
+export function pestanaDeColaBodega(page: Page, nombre: "Por conciliar" | "Conciliados"): Locator {
+  return page
+    .getByRole("tablist", { name: "Cierres de bodega por estado" })
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\(\\d+\\)$`) });
+}
+
+/** SLT-127: la región (y la tabla) de la pestaña activa de la cola de bodega. */
+export function regionColaBodega(page: Page, nombre: "Por conciliar" | "Conciliados"): Locator {
+  return page.getByRole("region", {
+    name: nombre === "Por conciliar" ? "Cierres de bodega por conciliar" : "Cierres de bodega conciliados",
+  });
+}
+
+export async function ajustarPagoMensajero(
+  r: RepartoE2E,
+  gestionId: string,
+  a: { anterior: string; nuevo: string; motivo: string },
+): Promise<void> {
+  const res = await conEmpresa(r.empresa.organizacionId, () =>
+    cierresAdmin().ajustarPagoMensajeroGestion(
+      { gestionId, pagoAnterior: a.anterior, pagoNuevo: a.nuevo, motivo: a.motivo },
+      r.actores.maestro,
+    ),
+  );
+  if (res.status !== "ok") throw new Error(`SLT-102 E2E: ajustarPagoMensajero no fue ok: ${JSON.stringify(res)}`);
+}
+
+// ── Cierre de bodega (SLT-104 T6.1) ─────────────────────────────────────────────────
+//
+//   solicitarCierreBodega(r, { quien? }) → cierreBodegaId
+//     `CierreBodegaService.solicitarCierreBodega` con el `adminSatelite` (o `quien`), montado como en
+//     `lib/actions/cierre-bodega.ts`. Consolida los cierres del día APROBADOS de su zona. Es lo que hace
+//     el botón «Solicitar cierre de bodega»; aquí evita repetir sus clics donde lo que se prueba es lo
+//     que ve la central después (el paso 1 de `cierre-bodega-satelite` sigue recorriendo la pantalla).
+//
+//   montoDeCuenta(detalle, cuenta, rotulo) → Locator
+//     El importe (`data-monto`) de la línea de una cuenta del detalle único (`Cuenta`), por el título de
+//     la cuenta y el rótulo EXACTO que se lee, con su operador («− Recibido»).
+//
+//   filaDeMensajeros(detalle, nombre) → Locator
+//     La fila de ese mensajero en la tabla «Mensajeros del cierre de bodega» (pestaña «Mensajeros»).
+//     Sus celdas, en orden: Mensajero · Gestiones · Recaudado · Pago · A la central · Señales · enlace.
+
+export function montoDeCuenta(detalle: Locator, cuenta: string, rotulo: string): Locator {
+  const exacto = new RegExp(`^${rotulo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  return detalle
+    .getByRole("region", { name: cuenta, exact: true })
+    .locator("[data-signo]")
+    .filter({ has: detalle.page().locator("[data-rotulo]", { hasText: exacto }) })
+    .locator("[data-monto]");
+}
+
+export function filaDeMensajeros(detalle: Locator, nombre: string): Locator {
+  return detalle
+    .getByRole("table", { name: "Mensajeros del cierre de bodega" })
+    .getByRole("row")
+    .filter({ has: detalle.page().getByRole("cell", { name: nombre, exact: true }) });
+}
+
+export async function solicitarCierreBodega(r: RepartoE2E, opts: { quien?: Actor } = {}): Promise<string> {
+  const quien = opts.quien ?? r.actores.adminSatelite;
+  const prisma = getPrismaClient();
+  const res = await conEmpresa(r.empresa.organizacionId, () =>
+    new CierreBodegaService(
+      new CierreBodegaRepository(prisma),
+      new OrdenRepository(prisma),
+      construirReglasPaisEmpresa(prisma),
+    ).solicitarCierreBodega(quien),
+  );
+  if (res.status !== "ok") throw new Error(`SLT-104 E2E: solicitarCierreBodega no fue ok: ${JSON.stringify(res)}`);
+  return res.cierreBodegaId;
+}
+
+// ── Un cierre del modelo nuevo (SLT-140 T5.1) ───────────────────────────────────────────────────
+//
+//   cierreModeloNuevo(browser, r, { cobro, pago, montoCobrar }) → { m, orden, cierreId }
+//     Activa POR LA PANTALLA de Tarifas, como el maestro, el cobro a la tienda y el pago al mensajero
+//     digitados en la zona central (`_tarifas-activacion-fixture`); después un mensajero NUEVO de la
+//     central entrega UNA orden cobrada entera en efectivo y solicita su cierre, que queda congelado
+//     con el modelo nuevo. Los cierres solicitados ANTES de llamarlo siguen siendo del modelo viejo.
+
+export async function cierreModeloNuevo(
+  browser: Browser,
+  r: RepartoE2E,
+  a: { cobro: readonly Digitado[]; pago: readonly Digitado[]; montoCobrar: number },
+): Promise<{ m: MensajeroE2E; orden: OrdenE2E; cierreId: string }> {
+  const page = await paginaDe(browser, r.empresa.maestro);
+  await abrirTarifas(page);
+  await irAZona(page, r.zonaCentral.nombre);
+  await digitarYGuardar(page, "Cobro a la tienda", a.cobro);
+  await digitarYGuardar(page, "Pago al mensajero", a.pago);
+  await activarConFaltantes(page);
+  await page.context().close();
+
+  const m = await crearMensajero(r, "central");
+  const orden = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: a.montoCobrar }), "en_reparto", {
+    mensajero: m,
+  });
+  await gestionar(r, orden, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: a.montoCobrar }] });
+  return { m, orden, cierreId: await solicitarCierre(r, m) };
+}
+
+// ── Conciliar un cierre de bodega (SLT-141 T5.1) ────────────────────────────────────────────────
+//
+//   conciliarCierreBodega(r, cierreBodegaId, montoRecibido) → void
+//     `ConciliacionSatelitesService.marcarRecibida` con el maestro, montado como en
+//     `lib/actions/conciliacion-satelites.ts`. Es lo que hace «Marcar recibido» en el pie del detalle
+//     (el recorrido por la pantalla vive en `cierre-bodega-satelite.spec.ts`); aquí deja el cierre en
+//     «Conciliados» cuando el monto es el que debía llegar a la central.
+
+export async function conciliarCierreBodega(r: RepartoE2E, cierreBodegaId: string, montoRecibido: string): Promise<void> {
+  const prisma = getPrismaClient();
+  const res = await conEmpresa(r.empresa.organizacionId, () =>
+    new ConciliacionSatelitesService(
+      new SaldosSatelitesRepository(prisma),
+      new CierresBodegaAdminRepository(prisma),
+      construirReglasPaisEmpresa(prisma),
+    ).marcarRecibida({ cierreBodegaId, montoRecibido }, r.actores.maestro),
+  );
+  if (res.status !== "ok") throw new Error(`SLT-141 E2E: marcarRecibida no fue ok: ${JSON.stringify(res)}`);
 }

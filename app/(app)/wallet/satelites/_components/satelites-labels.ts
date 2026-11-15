@@ -181,7 +181,6 @@ export const SALDOS_SATELITES_ERROR = "No se pudieron cargar los saldos de las b
 
 /** El desglose de UNA bodega. */
 export const DESGLOSE_SATELITE = {
-  pendienteRotulo: "Pendiente de llegar",
   /** El aviso `warning` de la cabecera cuando alguna consolidación llegó incompleta. */
   diferenciaTitulo: (n: number) =>
     n === 1
@@ -204,7 +203,11 @@ export const DESGLOSE_SATELITE = {
 export const DESGLOSE_SATELITE_COLUMNAS = {
   consolidada: "Consolidada",
   declarado: "Declarado",
+  /** SLT-114 (R239, PA2): el título corto del canvas para `paraLaCentral`. */
+  debeLlegar: "Debe llegar",
   recibido: "Recibido",
+  /** SLT-114 (R239, PA2): el título corto del canvas para `faltaPorRecibir`. */
+  falta: "Falta",
   estado: "Estado",
   conciliadoPor: "Conciliado por",
 } as const;
@@ -213,6 +216,17 @@ export const DESGLOSE_SATELITE_COLUMNAS = {
 export const CASCADA_CONSOLIDACION_NOMBRE = {
   expandir: (fecha: string) => `Ver la cuenta de la consolidación del ${fecha}`,
   region: (titulo: string, fecha: string) => `${titulo} · consolidación del ${fecha}`,
+} as const;
+
+/**
+ * SLT-114 (R230, R233, R237) — las pestañas del estado de cuenta de la bodega y el enlace de la fila
+ * desplegada. El conteo es el `total` del listado «Sin conciliar» que da el servidor.
+ */
+export const PESTANAS_ESTADO_CUENTA_BODEGA = {
+  nombre: (bodega: string) => `Pestañas del estado de cuenta de ${bodega}`,
+  movimientos: "Movimientos",
+  sinConciliar: (n: number) => `${n} sin conciliar`,
+  verCierreBodega: "Ver el cierre de bodega completo",
 } as const;
 
 /** Nombres accesibles de la conciliación de UNA bodega, con su nombre dentro. FICHA 458-D (R31): la

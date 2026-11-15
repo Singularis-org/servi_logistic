@@ -205,7 +205,7 @@ async function movimientos(): Promise<string[]> {
 async function costoDelPeriodo(page: Page): Promise<Locator> {
   const res = await page.goto("/mi-plan", { waitUntil: "load", timeout: 180_000 });
   expect(res?.status()).toBeLessThan(400);
-  await expect(page.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
   const lista = page.getByRole("list", { name: TEXTO.costoDelPeriodo, exact: true });
   await expect(lista).toBeVisible();
   return lista;

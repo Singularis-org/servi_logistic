@@ -6,6 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import { FilterComponent, type FilterDef, type FilterSelection } from "@/components/shared/FilterComponent";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
@@ -196,6 +197,27 @@ export interface AccionDeFila {
   render: (fila: FilaEstadoCuentaDTO) => ReactNode;
 }
 
+/**
+ * SLT-114 (R230-R234) — una pestaña que va ANTES del libro (la conciliación de la bodega satélite). Con
+ * ella, bajo las tarjetas y las acciones hay dos pestañas: ésta, que abre seleccionada, y el libro.
+ * Recibe lo mismo que `pie`: el estado VIGENTE y la función que relee esta cuenta.
+ */
+export interface PestanaPreviaAlLibro {
+  /** Lo que dice su pestaña (el rótulo y, si hay, su conteo). */
+  rotulo: ReactNode;
+  /** El rótulo de la pestaña del libro. */
+  rotuloLibro: string;
+  /** Nombre accesible de la lista de pestañas. */
+  ariaLabel: string;
+  contenido: (vigente: EstadoCuentaDTO, refrescarCuenta: () => Promise<void>) => ReactNode;
+}
+
+/** Las mismas pestañas subrayadas del detalle único (`DetalleCierre`, D15). */
+const PESTANA_SUBRAYADA =
+  "rounded-none border-0 border-b-2 border-transparent bg-transparent px-0.5 py-2.5 text-muted-foreground shadow-none hover:bg-transparent aria-selected:border-foreground aria-selected:bg-transparent aria-selected:text-foreground aria-selected:shadow-none aria-selected:hover:bg-transparent";
+const PESTANA_PREVIA = "previa";
+const PESTANA_LIBRO = "libro";
+
 export interface EstadoCuentaProps {
   /** La primera página, resuelta en el servidor (sin periodo ni chip). */
   inicial: EstadoCuentaDTO;
@@ -234,6 +256,10 @@ export interface EstadoCuentaProps {
    * de `/mi-wallet`, 172 R55): se relee con cada lectura, así que nunca queda distinto de la tarjeta.
    */
   encabezado?: (vigente: EstadoCuentaDTO) => ReactNode;
+  /**
+   * SLT-114 — sin ella (tienda, `/mi-wallet`, mensajero) no hay pestañas y el DOM es el de siempre (R234).
+   */
+  pestanaPrevia?: PestanaPreviaAlLibro;
 }
 
 type Periodo = { desde: string; hasta: string };
@@ -520,6 +546,7 @@ export function EstadoCuenta({
   acciones,
   pie,
   encabezado,
+  pestanaPrevia,
 }: Readonly<EstadoCuentaProps>) {
   const { tipo, id, nombre } = inicial.cuenta;
   const lector = lectorDado ?? lectorDeLaCuenta(inicial.cuenta);
@@ -704,19 +731,10 @@ export function EstadoCuenta({
       ? null
       : posicionSaldoInicial(data.seleccion.sortDir, data.seleccion.page, data.seleccion.pageSize, data.estado.total);
 
-  return (
-    <div className="flex flex-col gap-6">
-      {/* FICHA 467 (R1) — la sección de periodo de la 463 ya no está aquí: el Periodo es una casilla de la
-          barra única del libro y sigue moviendo las tarjetas (R14). */}
-      {encabezado ? encabezado(vigente) : null}
-      <TarjetasEstadoCuenta estado={vigente} vista={vista} />
-
-      {acciones ? (
-        <section aria-label={ESTADO_CUENTA_TEXTO.acciones(nombre)} className="flex flex-col gap-3">
-          {acciones(vigente, refrescarCuenta)}
-        </section>
-      ) : null}
-
+  // El libro (aviso de fallo, barra, tabla y paginación). Sin `pestanaPrevia` va suelto en la columna,
+  // como siempre; con ella, dentro de su pestaña.
+  const libro = (
+    <>
       {/* R49 — el fallo se dice JUNTO al libro; el libro de la última lectura buena sigue debajo. */}
       {hayFallo ? (
         <p role="alert" className="text-sm text-destructive">
@@ -826,6 +844,47 @@ export function EstadoCuenta({
         }}
         pageSizeOptions={[10, 20, 50, 100].filter((s) => s <= estadoCuentaConfig.MAX_PAGE_SIZE)}
       />
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* FICHA 467 (R1) — la sección de periodo de la 463 ya no está aquí: el Periodo es una casilla de la
+          barra única del libro y sigue moviendo las tarjetas (R14). */}
+      {encabezado ? encabezado(vigente) : null}
+      <TarjetasEstadoCuenta estado={vigente} vista={vista} />
+
+      {acciones ? (
+        <section aria-label={ESTADO_CUENTA_TEXTO.acciones(nombre)} className="flex flex-col gap-3">
+          {acciones(vigente, refrescarCuenta)}
+        </section>
+      ) : null}
+
+      {pestanaPrevia ? (
+        // SLT-114 (R232): las dos pestañas siguen montadas (`keepMounted`) para que cada una conserve su
+        // estado al alternar; el del libro vive además aquí arriba, en este componente.
+        <Tabs defaultValue={PESTANA_PREVIA} className="flex flex-col">
+          <TabsList
+            aria-label={pestanaPrevia.ariaLabel}
+            className="justify-start gap-6 rounded-none border-b border-border p-0"
+          >
+            <TabsTrigger value={PESTANA_PREVIA} className={PESTANA_SUBRAYADA}>
+              {pestanaPrevia.rotulo}
+            </TabsTrigger>
+            <TabsTrigger value={PESTANA_LIBRO} className={PESTANA_SUBRAYADA}>
+              {pestanaPrevia.rotuloLibro}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value={PESTANA_PREVIA} keepMounted className="mt-0 pt-4">
+            {pestanaPrevia.contenido(vigente, refrescarCuenta)}
+          </TabsContent>
+          <TabsContent value={PESTANA_LIBRO} keepMounted className="mt-0 flex flex-col gap-6 pt-4">
+            {libro}
+          </TabsContent>
+        </Tabs>
+      ) : (
+        libro
+      )}
 
       {pie ? pie(vigente, refrescarCuenta) : null}
 

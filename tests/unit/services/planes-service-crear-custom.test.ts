@@ -8,7 +8,6 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, TopeExcedido } from "@/lib/types/planes";
 
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ajuste planes-custom (D2, D4, D6; 2026-10-31) — crear un custom con empresa es crear Y asignar en una
 // sola operación, y cada asignación elige el tipo de cobro. Aquí, con un repositorio doble, el ORDEN del
 // contrato (quién → zod → reglas → repositorio) y que ningún rechazo llegue a `crearYAsignar`. La
@@ -98,7 +97,7 @@ function efecto(clase: "inicio" | "cambio", fecha: string, elegida = true) {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
+  servicio = new PlanesService(repo, () => AHORA);
 });
 
 describe("D2 — crear un custom con empresa lo asigna en la misma operación", () => {
@@ -132,7 +131,8 @@ describe("D2 — crear un custom con empresa lo asigna en la misma operación", 
   });
 
   it("SLT-86 R17: si el repositorio lo deja pendiente, `vigenteDesde` vuelve con la fecha", async () => {
-    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true });
+    // SLT-118 (R32): la fecha del pendiente la deja el repositorio; el servicio ya no la deduce.
+    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true, vigenteDesde: "2026-11-01" });
     expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, inicioCiclo: "2026-11-01" })).toMatchObject({ estado: "ok", vigenteDesde: "2026-11-01" });
   });
 
@@ -143,6 +143,14 @@ describe("D2 — crear un custom con empresa lo asigna en la misma operación", 
       estado: "ok",
       avisos: [aviso],
     });
+  });
+
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28): sin costo base ni costo por orden → ok, se crea y asigna", async () => {
+    for (const extra of [{ precio: { tipo: "sin_precio" } }, { costoPorOrden: null }, { precio: { tipo: "sin_precio" }, costoPorOrden: null }] as const) {
+      expect((await servicio.crear(SUPERADMIN, { ...CUSTOM, ...extra })).estado).toBe("ok");
+    }
+    expect(repo.crearYAsignar).toHaveBeenCalledTimes(3);
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("un público se crea como siempre, sin asignar", async () => {
@@ -167,14 +175,6 @@ describe("D2, SL-24 R5 — solo el superadmin, sin tocar el repositorio", () => 
 });
 
 describe("D2 — un rechazo de la asignación no crea nada (no llega a crearYAsignar)", () => {
-  it("SLT-66 R28: sin costo concreto → plan_sin_costo", async () => {
-    for (const extra of [{ precio: { tipo: "sin_precio" } }, { costoPorOrden: null }] as const) {
-      expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, ...extra })).toEqual({ estado: "plan_sin_costo" });
-    }
-    expect(repo.crearYAsignar).not.toHaveBeenCalled();
-    expect(repo.crear).not.toHaveBeenCalled();
-  });
-
   it("SL-24 R2: la empresa no existe → not_found", async () => {
     repo.empresa.mockResolvedValueOnce(null);
     expect(await servicio.crear(SUPERADMIN, CUSTOM)).toEqual({ estado: "not_found" });

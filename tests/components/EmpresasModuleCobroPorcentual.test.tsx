@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SLT-83 (design §6.3; R22) — la columna «Cobro por orden» del listado de «Empresas» con un plan
-// porcentual: «{p} % (mín. {m})» o «{p} %», con la fuente «del plan». Con excepción sigue el importe y
-// «propio» (SLT-66 R31). Se monta el `EmpresasModule` real con las actions como dobles.
+// porcentual: «{p} % (mín. {m})» o «{p} %», con la fuente «del plan». Sin plan, el importe global y
+// «global» (SLT-66 R31; SLT-126 R3 quitó «propio»). Se monta el `EmpresasModule` real con las actions como dobles.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 
@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 
 import { EmpresasModule } from "@/app/(app)/plataforma/empresas/_components/EmpresasModule";
 
-function empresa(id: string, nombre: string, extra: Pick<EmpresaListada, "cobroPorOrden" | "cobroVigente">): EmpresaListada {
+function empresa(id: string, nombre: string, extra: Pick<EmpresaListada, "cobroVigente">): EmpresaListada {
   return {
     id,
     nombre,
@@ -30,16 +30,13 @@ function empresa(id: string, nombre: string, extra: Pick<EmpresaListada, "cobroP
 }
 
 const CON_MINIMO = empresa("org-1", "Envíos Norte", {
-  cobroPorOrden: null,
   cobroVigente: { modo: "porcentual", porcentaje: "2.00", minimo: "500.00", fuente: "plan" },
 });
 const SIN_MINIMO = empresa("org-2", "Reparto Sur", {
-  cobroPorOrden: null,
   cobroVigente: { modo: "porcentual", porcentaje: "2.35", minimo: null, fuente: "plan" },
 });
-const CON_EXCEPCION = empresa("org-3", "Mensajería Este", {
-  cobroPorOrden: "300.00",
-  cobroVigente: { modo: "fijo", monto: "300.00", fuente: "empresa" },
+const GLOBAL_FIJO = empresa("org-3", "Mensajería Este", {
+  cobroVigente: { modo: "fijo", monto: "300.00", fuente: "global" },
 });
 
 function montar(empresas: EmpresaListada[]) {
@@ -51,7 +48,6 @@ function montar(empresas: EmpresaListada[]) {
       altaEmpresa={vi.fn()}
       cobroGlobal={{ monto: "100.00" }}
       fijarCobroGlobal={vi.fn()}
-      fijarCobroEmpresa={vi.fn()}
       reenviarBienvenida={vi.fn()}
       bienvenidaPendiente={[]}
     />,
@@ -73,7 +69,7 @@ afterEach(() => cleanup());
 
 describe("SLT-83 R22 — la columna «Cobro por orden» con un plan porcentual", () => {
   it("R22: con mínimo pinta «{p} % (mín. {m})» y «del plan», sin el importe global", () => {
-    montar([CON_MINIMO, SIN_MINIMO, CON_EXCEPCION]);
+    montar([CON_MINIMO, SIN_MINIMO, GLOBAL_FIJO]);
     const celda = celdaCobro("Envíos Norte");
     expect(celda.getByText("2.00 % (mín. 500.00)")).toBeInTheDocument();
     expect(celda.getByText("del plan")).toBeInTheDocument();
@@ -82,18 +78,19 @@ describe("SLT-83 R22 — la columna «Cobro por orden» con un plan porcentual",
   });
 
   it("R22: sin mínimo pinta «{p} %» y «del plan»", () => {
-    montar([CON_MINIMO, SIN_MINIMO, CON_EXCEPCION]);
+    montar([CON_MINIMO, SIN_MINIMO, GLOBAL_FIJO]);
     const celda = celdaCobro("Reparto Sur");
     expect(celda.getByText("2.35 %")).toBeInTheDocument();
     expect(celda.queryByText(/mín\./)).toBeNull();
     expect(celda.getByText("del plan")).toBeInTheDocument();
   });
 
-  it("R22: con excepción sigue el importe con «propio» (SLT-66 R31)", () => {
-    montar([CON_MINIMO, SIN_MINIMO, CON_EXCEPCION]);
+  it("R22: sin plan porcentual sigue el importe fijo con «global» (SLT-66 R31, SLT-126 R3)", () => {
+    montar([CON_MINIMO, SIN_MINIMO, GLOBAL_FIJO]);
     const celda = celdaCobro("Mensajería Este");
     expect(celda.getByText(money("300.00"))).toBeInTheDocument();
-    expect(celda.getByText("propio")).toBeInTheDocument();
+    expect(celda.getByText("global")).toBeInTheDocument();
+    expect(celda.queryByText("propio")).toBeNull();
     expect(celda.queryByText(/%/)).toBeNull();
   });
 });

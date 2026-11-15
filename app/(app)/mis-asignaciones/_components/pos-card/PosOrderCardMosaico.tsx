@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown, MapPin, Navigation, Package } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import {
   Collapsible,
   CollapsibleContent,
@@ -81,7 +82,7 @@ export function PosOrderCardMosaico({
           ? `Gestionar orden ${orden.numRemision} · ${orden.destinatario}`
           : `Orden ${orden.numRemision} · ${orden.destinatario}`
       }
-      className={`flex flex-col gap-2.5 rounded-xl border bg-card p-3 shadow-sm transition-all ${
+      className={`flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm transition-all ${
         esDetalle ? "border-brand ring-1 ring-brand" : "border-border"
       } ${
         seleccionable
@@ -90,7 +91,7 @@ export function PosOrderCardMosaico({
       }`}
     >
       <header className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
           {mostrarRuta ? (
             <span
               aria-hidden="true"
@@ -100,12 +101,12 @@ export function PosOrderCardMosaico({
             </span>
           ) : null}
           <div className="min-w-0 leading-none">
-            <p className="truncate font-mono text-xs font-bold tracking-wide text-foreground">
+            <p className={`font-mono text-xs font-bold tracking-wide text-foreground ${TEXTO_ENTERO}`}>
               {orden.numRemision}
             </p>
             {/* R28: posición en la ruta + peso, mismo texto que la cabecera de la card
                 completa (`PosCardHeader`) para no perder la señal al compactar. */}
-            <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+            <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
               {mostrarRuta ? (
                 <>
                   {orden.secuenciaRuta !== null ? (
@@ -127,41 +128,43 @@ export function PosOrderCardMosaico({
           {/* FICHA 456 (T3.6, R9): el chip con su botón de información (nombre calculado dentro). */}
           <EstadoConInfo
             codigo={orden.estatusValue}
-            chipClassName={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
+            chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
           />
           {marcas.map((m) => (
-            <span key={m.texto} className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${m.clase}`}>
+            <span key={m.texto} className={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${m.clase}`}>
               {m.texto}
             </span>
           ))}
           {notaAyuda ? (
             <NotaAyudaConInfo
-              chipClassName={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
+              chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
             />
           ) : null}
         </div>
       </header>
 
       <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-foreground">
+        {/* SLT-156 (R490): destinatario, producto y mensajero enteros, en varias líneas si no
+            caben (sin «…»: en el móvil no hay tooltip). */}
+        <p className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
           {orden.destinatario}
         </p>
-        <p className="flex items-center gap-1 truncate font-mono text-[11px] text-muted-foreground">
+        <p className="flex min-w-0 items-start gap-1 font-mono text-[11px] text-muted-foreground">
           <Package className="size-3 shrink-0 text-brand" aria-hidden="true" />
-          {orden.producto}
+          <span className={TEXTO_ENTERO}>{orden.producto}</span>
         </p>
         {/* Feature 160/R19: los intentos son un DATO de la orden, siempre visible (`0` incluido)
             en las superficies que los tienen; la 196 permite apagarlos donde no existen. */}
         {verIntentos ? (
-          <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+          <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
             <IntentosDato intentos={valorIntentos(orden)} />
           </p>
         ) : null}
         {/* FICHA 296 — quién lleva esta orden, en el MISMO bloque de campos que destinatario,
-            producto e intentos: es un dato de la orden, no una marca de excepción. `truncate`
-            como sus hermanos, para que un nombre largo no ensanche la card del mosaico. */}
+            producto e intentos: es un dato de la orden, no una marca de excepción. Envuelve como
+            sus hermanos (SLT-156): un nombre largo baja de línea, no ensancha la card. */}
         {mensajero !== undefined ? (
-          <p className="mt-0.5 truncate text-[11px] font-semibold text-muted-foreground">
+          <p className={`mt-1 text-[11px] font-semibold text-muted-foreground ${TEXTO_ENTERO}`}>
             {textoMensajero(mensajero)}
           </p>
         ) : null}
@@ -175,20 +178,20 @@ export function PosOrderCardMosaico({
         <UbicacionTrigger
           orden={orden}
           ariaLabel={`Ver en el mapa la ruta hasta ${orden.direccion ?? orden.cantonNombre}`}
-          className="flex w-full items-center gap-2 rounded-lg bg-navy px-2 py-1.5 text-left text-white transition-colors hover:bg-navy-deep"
+          className="flex w-full items-center gap-2 rounded-lg bg-navy px-2 py-2 text-left text-white transition-colors hover:bg-navy-deep"
         >
           <MapPin className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
-          {/* `min-w-0` en el contenedor + `truncate` en cada línea: una dirección larga se
-              corta con elipsis en vez de ensanchar la card del mosaico. */}
+          {/* `min-w-0` en el contenedor + texto que envuelve (SLT-156, R490): una dirección larga
+              baja de línea, entera, en vez de cortarse con «…» o ensanchar la card. */}
           <div className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-semibold">
+            <span className={`block text-xs font-semibold ${TEXTO_ENTERO}`}>
               {orden.cantonNombre}
               {orden.distritoNombre ? (
                 <span className="text-white/60"> · {orden.distritoNombre}</span>
               ) : null}
             </span>
             {orden.direccion ? (
-              <span className="block truncate text-[0.6875rem] text-white/70">
+              <span className={`block text-[0.6875rem] text-white/70 ${TEXTO_ENTERO}`}>
                 {orden.direccion}
               </span>
             ) : null}
@@ -202,7 +205,7 @@ export function PosOrderCardMosaico({
       {(mostrarRuta && orden.secuenciaRuta === null) ||
       orden.marcarLuego ||
       orden.esParaManana ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {mostrarRuta && orden.secuenciaRuta === null ? (
             <Badge variant="outline" className="w-fit">
               Pendiente de optimizar
@@ -250,7 +253,7 @@ export function PosOrderCardMosaico({
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Cobrar
           </span>
-          <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+          <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
             {formatMonto(orden.montoCobrar)}
           </span>
         </div>
@@ -265,7 +268,7 @@ export function PosOrderCardMosaico({
         <Collapsible
           open={detalleAbierto}
           onOpenChange={setDetalleAbierto}
-          className="group/detalle rounded-lg border border-border bg-muted/40 px-2.5 py-1.5"
+          className="group/detalle rounded-lg border border-border bg-muted/40 px-3 py-2"
         >
           <CollapsibleTrigger className="flex w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
             Ver detalle completo

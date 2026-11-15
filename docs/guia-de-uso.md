@@ -49,13 +49,13 @@ en curso a la vez).
 | Spec | «escribe el spec» (lanza `spec_author`) | según la ruta (`docs/specs.md > Tres rutas`): directa, ninguno; ligera, un `requirements.md` con alcance, EARS, `## Tasks` y `## Archivos esperados`; completa, `requirements.md` (EARS `R1…`), `design.md` (+ una alternativa descartada) y `tasks.md` (con `## Archivos esperados`) |
 | ¿Cabe en un PR? | lo mira solo en F1.0 y en el spec | si promete más de `gate.tamano_pr` (40 archivos por defecto), pártela en el board en rebanadas que se mergean solas (`docs/specs.md > Partir una feature`) |
 | **Aprobar el spec** | — (lo decides tú) | mueve la tarjeta del estado de `spec_ready` al de `in_progress` (según `arnes.config.json > tracker.estados` o `jira.estados`), o escribe «aprobado» al agente |
-| Implementar | «implementa» (lanza `implementer`) | trabaja dentro de `.worktrees/PROY-123-<slug>/`, marca `[x]` en las tasks. Tras el primer push: `gh pr create --draft --base dev --title "PROY-123 «<title>»"` |
+| Implementar | «implementa» (lanza `implementer`) | trabaja dentro de `.worktrees/PROY-123-<slug>/`, marca `[x]` en las tasks. Tras el primer push abre el PR listo (no en borrador): `gh pr create --base dev --title "PROY-123 «<title>»"`; no se mergea hasta el aviso |
 | Cerrar una tanda | lo hace solo | `./init.sh` en el worktree + `git push` (**siempre**: así el equipo ve lo que tocas) |
 | Revisión | «revisa» (lanza `reviewer`) | recorre `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md`; cada `R<n>` con su test |
 | Sincronizar | lo hace solo | `git fetch origin dev && git merge origin/dev && git push` |
-| Sacar el PR de borrador | lo hace solo | `./init.sh` · `gh pr ready <n>` |
+| Avisar que está listo | lo hace solo | `./init.sh` · «#n listo para mergear» con review OK + `gate-completo` verde |
 | Esperar el CI | lo hace solo (`gh pr checks --watch`) | mira el check **`gate-completo`** en el PR. Rojo → `node scripts/test-rapido.mjs --comprobar <tests en rojo>`: si «NO entra», falta un disparador (`docs/gate.md > Cuando el CI sale rojo y el local salió verde`); si entra, `./init.sh` lo reproduce en local |
-| **Mergear** | — | solo con `gate-completo` en **verde** (en el plan gratuito GitHub no lo impide: es regla nuestra) |
+| **Mergear** | — | solo tras el aviso «#n listo para mergear» y con `gate-completo` en **verde**. Si `gate-completo` es check obligatorio (`docs/gate.md > CI en cada tanda`), GitHub no deja antes; si no, es regla nuestra |
 
 ## 5. Cerrar la feature (tras el merge)
 

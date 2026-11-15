@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-42 | telefono-documento-hora-por-pais | backend | high | feature/SLT-42-telefono-documento-hora-por-pais | Camilo (6ace53aa94bfd46ee6a600a5) | pending |
+| SLT-42 | telefono-documento-hora-por-pais | backend | high | feature/SLT-42-telefono-documento-hora-por-pais | Camilo (6ace53aa94bfd46ee6a600a5) | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -124,6 +124,10 @@ Bloqueos de F2.0:
   1. m1: `lib/validacion/telefono.ts` queda sin `import "server-only"` (el paquete no está y sería dependencia nueva); desvío 8 del design aceptado (humano).
   2. `POSTULACION_VALIDADA_POR_PAIS_DESDE` queda en `2026-11-07T12:00Z` (primera migración renombrada; era `2026-11-06T12:00Z` antes de integrar SLT-86); se reemplaza por el instante real del deploy en T1.0 (humano).
 
+- 2026-11-07 (tras el merge de SLT-86, PR #90):
+  1. SLT-86 quedó Finalizado sin pasar `lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts` a la zona de cada empresa: las 3 excepciones de R29 pasan a la ficha nueva **SLT-90** «Planes: ciclo y cobro en la zona de cada empresa» (pending, backend, depende de SLT-42), creada en Trello. Tope de excepciones sigue en 8 (humano).
+  2. Se borra el parámetro `zonaDeOrganizacion` de `PlanesService` (sin uso tras SLT-86) y su cableado en `lib/actions/planes.ts` y `lib/actions/_shared/planes-plataforma.ts`; SLT-90 lo vuelve a agregar si lo necesita (humano).
+
 ## Pendiente para el cierre
 **Hecho el 2026-11-06** (tanda 7): `progress/impl_SLT-42.md > Errores nuevos y prevención`.
 - 2026-11-05, pedido del humano: al terminar la feature, resumen de TODOS los errores nuevos que puede lanzar SLT-42 (p. ej. `PaisIncompleto`, `PaisSinZonaHoraria`, `EmpresaNoResuelta`, documento/teléfono inválido por país, tipo de documento inactivo): dónde salen, qué ve el usuario y qué hay que completar o configurar (catálogo de país, zona, prefijo, tipos de documento, `POSTULACION_VALIDADA_POR_PAIS_DESDE`, T1.0) para que no se disparen. Va a `progress/impl_SLT-42.md > Errores nuevos y prevención` y se resume al humano.
@@ -150,3 +154,9 @@ Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horari
 ## Modelos (overrides)
 
 ## Cierre
+- **PR:** #90 (https://github.com/Singularis-org/servi_logistic/pull/90), mergeado en `dev` el 2026-11-06 (45604b4c). Tarjeta en Finalizado con la URL comentada.
+- **Resumen:** catálogo por país (prefijo y dígitos de teléfono, zona horaria IANA, tipos de documento) con CR sembrado por migración (`20261107120000`–`120200`, con `down.sql`); teléfono validado con `libphonenumber-js`; documento por tipo y país, único por empresa y tipo; todo «hoy», corte de día, cierre, wallet, liquidación, caja, analítica, rastreo público, jobs y crons en la zona de la empresa (`construirReglasPaisEmpresa`, `zonaDelBorde`; agrupación por día con `AT TIME ZONE` parametrizado); guardias `pais-sin-literales` (R29) y de composition roots.
+- **Verificación:** CI del PR #90 en verde en la última corrida (run 42288945705): `gate-completo`, 3 shards de vitest, `estatico` y `e2e` (aislamiento, dinero, reparto). El E2E del PR resuelve B1 de `progress/review_SLT-42.md`. Trazabilidad R1–R31 → test en la revisión.
+- **Baseline de rojos:** la corrida final no deja entradas que pasen (245 de 245 siguen); sin poda.
+- **Pendiente antes del deploy a producción:** T1.0 (persona): consultas de solo lectura, índice `CONCURRENTLY` si `usuario` > 100 000 filas, ensayo de migraciones en copia de producción, `POSTULACION_VALIDADA_POR_PAIS_DESDE` (hoy `2026-11-07T12:00Z`) al instante real del deploy. Checklists en `progress/impl_SLT-42.md > Errores nuevos y prevención`.
+- **Deudas y fichas que deja:** SLT-81 (pantalla del superadmin y formularios), SLT-90 (planes: ciclo y cobro en la zona de cada empresa; 3 excepciones de R29, tope 8), D57 (crons de Vercel a hora fija UTC), pregunta abierta «normalizar teléfonos guardados». En este cierre: excepciones de planes de SLT-86 a SLT-90 y retiro de `zonaDeOrganizacion` de `PlanesService` (decisiones «tras el merge de SLT-86»).

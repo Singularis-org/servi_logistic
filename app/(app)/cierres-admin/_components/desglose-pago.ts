@@ -1,20 +1,19 @@
 /**
  * Feature 213 (T6) — el ÚNICO formateador del desglose de pago de una entrega.
  *
- * Desde 2026-08-19 tiene DOS clientelas. Las dos funciones de FORMATO de aquí abajo
- * (`desglosePantalla` / `desgloseDescarga`) concatenan el desglose en UNA celda, y las siguen
- * usando el cierre del día del mensajero (tabla y descarga) y el comprobante de factura. El
- * detalle de cierres del admin y sus dos descargas pasaron a UNA COLUMNA POR MEDIO, que se
- * arma con `montoPorMetodo` (ver el bloque del final del archivo).
+ * Desde 2026-08-19 tiene DOS clientelas. La función de FORMATO de aquí abajo
+ * (`desglosePantalla`) concatena el desglose en UNA celda de pantalla. El detalle de cierres y
+ * sus descargas pasaron a UNA COLUMNA POR MEDIO, que se arma con `montoPorMetodo` (ver el bloque
+ * del final del archivo).
+ *
+ * SLT-115 «Retirar los componentes de cierre sustituidos» (R405): aquí vivía también
+ * `desgloseDescarga`, la celda concatenada del ARCHIVO. Su único consumidor eran los cinco
+ * catálogos por resultado de `cierre-dia-descarga-columnas.ts`, que SLT-109 dejó sin uso; se
+ * retiró con ellos. Si un archivo vuelve a necesitar el desglose, que use una columna por medio
+ * (`montoPorMetodo`), money-safe: el archivo NUNCA pasa por `money()` (R31).
  *
  * Módulo PURO: sin React y sin runtime de `@prisma/client` (solo `import type`), igual que
  * su vecino `cierre-labels.ts`, porque lo importan módulos de descarga que se declaran puros.
- *
- * Hay DOS funciones y no una con un flag (design §2): la pantalla formatea con `money()`
- * —moneda de configuración, nunca un símbolo incrustado— y el archivo NO puede hacerlo
- * (R31: money-safe, el STRING del servidor tal cual, sin `parseFloat`/`Number`/`toFixed`).
- * Un solo formateador con un flag sería una invitación permanente a colar el flag
- * equivocado en el camino equivocado.
  *
  * Reglas comunes (R20/R21/R24/R25/R29/R30):
  *   0 líneas -> `null` (el llamador pinta su propio marcador de ausencia o deja la celda vacía)
@@ -49,21 +48,6 @@ export function desglosePantalla(pagos: readonly LineaPagoDTO[]): string | null 
     .join(SEPARADOR_DESGLOSE);
 }
 
-/**
- * Texto de ARCHIVO. `null` si no hay líneas -> celda VACÍA (R30), nunca el "—" de pantalla.
- *
- * MONEY-SAFE (R31): el monto es el STRING del servidor TAL CUAL. Aquí no hay `money()`, ni
- * símbolo, ni separador de miles: el archivo lo consume una hoja de cálculo, no una persona
- * ([Q1] cerrada en la puerta del 2026-08-13).
- */
-export function desgloseDescarga(pagos: readonly LineaPagoDTO[]): string | null {
-  if (pagos.length === 0) return null;
-  if (pagos.length === 1) return METODO_LABEL[pagos[0].metodo];
-  return pagos
-    .map((p) => `${METODO_LABEL[p.metodo]} ${p.monto}`)
-    .join(SEPARADOR_DESGLOSE);
-}
-
 // ---------------------------------------------------------------------------
 // Una COLUMNA POR MEDIO DE PAGO (2026-08-19)
 // ---------------------------------------------------------------------------
@@ -78,9 +62,8 @@ export function desgloseDescarga(pagos: readonly LineaPagoDTO[]): string | null 
 // vez y su monto ya viene sumado del servidor. Money-safe por construccion: se devuelve el
 // STRING del snapshot tal cual, sin `parseFloat` ni aritmetica.
 //
-// `desglosePantalla` / `desgloseDescarga` siguen VIVAS y no se retiran: las consume el cierre
-// del dia del mensajero (tabla y descarga) y el comprobante de factura, que siguen con la celda
-// unica.
+// `desglosePantalla` sigue VIVA: la consumen las pantallas que siguen con la celda unica.
+// `desgloseDescarga` se retiro en SLT-115 (ver la cabecera).
 
 /**
  * Los medios de pago, EN EL ORDEN de declaracion del enum (`efectivo`, `SINPE`,

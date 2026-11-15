@@ -183,6 +183,9 @@ export async function construirDescarga(
 ): Promise<DescargaArchivo> {
   const { titulo, columnas, filas } = config;
   const hojasAdicionales = config.hojasAdicionales ?? [];
+  // SLT-113 (design «Contrato del control»): nombre de la hoja principal. Ausente => el titulo,
+  // como siempre; el nombre del ARCHIVO sigue saliendo de `titulo`.
+  const tituloHoja = config.tituloHoja ?? titulo;
 
   if (columnas.length === 0) {
     throw new Error(
@@ -222,14 +225,14 @@ export async function construirDescarga(
   // exceljs. Una que pase del limite de Excel no produce archivo: lanza `LimiteExcelExcedidoError`
   // con la hoja y sus filas, y el control redacta el aviso accionable. El csv no tiene hojas: lo
   // acota el tope de servicio.
-  comprobarLimiteExcel([{ titulo, filas }, ...hojasAdicionales]);
+  comprobarLimiteExcel([{ titulo: tituloHoja, filas }, ...hojasAdicionales]);
 
   if (hojasAdicionales.length === 0) {
     return {
       // El nombre de la HOJA se sanea (ver `nombreHoja`); el del ARCHIVO conserva el slug
       // del titulo entero, que es donde el usuario reconoce lo que descargo.
       // Ficha 464 (R41): sin hojas adicionales, EXACTAMENTE el camino de siempre.
-      contenido: await buildXlsxRows(columnasGenerador, filas, nombreHoja(titulo), config.filasDestacadas),
+      contenido: await buildXlsxRows(columnasGenerador, filas, nombreHoja(tituloHoja), config.filasDestacadas),
       mime: XLSX_MIME,
       nombreArchivo,
     };
@@ -245,7 +248,7 @@ export async function construirDescarga(
     }
   }
   const nombres = nombresDeHojaUnicos([
-    nombreHoja(titulo),
+    nombreHoja(tituloHoja),
     ...hojasAdicionales.map((hoja) => nombreHoja(hoja.titulo)),
   ]);
   return {

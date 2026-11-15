@@ -556,24 +556,24 @@ import {
   CASCADA_CENTRAL_TITULO,
   CASCADA_DUENO_TITULO,
   CASCADA_NETO_EMPRESA_TITULO,
-  COBRADO_SOBRE_RECAUDADO_LABEL,
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   IVA_FACTURADO_LABEL,
   NETO_EMPRESA_LABEL,
   PARA_LA_CENTRAL_LABEL,
-  PARA_LA_TIENDA_LABEL,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import {
-  COMISION_CON_IVA_LABEL,
-  FLETE_CON_IVA_LABEL,
-  FLETE_DEV_CON_IVA_LABEL,
   INGRESO_BODEGA_RECHAZOS_LABEL,
   PAGO_MENSAJERO_LABEL,
   PAGO_TIENDA_LABEL,
   TOTAL_GENERAL_LABEL,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
+import { DetalleCierre } from "@/components/private/cierres/detalle/DetalleCierre";
+import type {
+  DetalleBodegaVista,
+  DetalleMensajeroVista,
+} from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
 
 import { marcaRecibida, marcaSinConciliar } from "@/tests/fixtures/marca-conciliacion";
@@ -940,6 +940,9 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
         <CierresBodegaAdminModule
+          // SLT-154 (R469, R477): las cuentas de la empresa son de la central; la satélite (la
+          // audiencia por defecto del módulo) ya no las ve.
+          audiencia="admin"
           pendientes={paginaInicial([BODEGA_CABECERA])}
           historico={paginaInicial([])}
         />
@@ -948,78 +951,69 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
     const user = userEvent.setup();
     await user.click(
       await screen.findByRole("button", {
-        name: "Ver / decidir el cierre de bodega de Limón",
+        name: "Ver / conciliar el cierre de bodega de Limón",
       }),
     );
+    // SLT-104 «Detalle de cierre de bodega en el detalle único (central)»: el detalle es el único de
+    // SLT-95 (R40); las cascadas de la 393 son las cuentas de su «Dinero» (SLT-95 R14-R16, canvas F6).
+    await screen.findByRole("dialog", { name: /^Detalle del cierre de bodega · / });
     return {
-      central: await screen.findByRole("region", {
-        name: `${CASCADA_CENTRAL_TITULO} · cierre de bodega`,
-      }),
-      dueno: screen.getByRole("region", {
-        name: `${CASCADA_DUENO_TITULO} · cierre de bodega`,
-      }),
+      central: screen.getByRole("region", { name: "Lo que va a la central" }),
+      factura: screen.getByRole("region", { name: "Lo que se le factura a la tienda" }),
+      queda: screen.getByRole("region", { name: "De lo facturado, le queda a la empresa" }),
     };
   }
 
-  it("R6 — recaudado − flete − comisión = para la tienda", async () => {
-    const { dueno } = await abrir();
+  /**
+   * Recorre la cuenta como se lee (el «−» vive en el rótulo, `data-signo`) y exige que el subtotal y
+   * el total cierren al céntimo con lo pintado.
+   */
+  function cierraLaCuenta(cuenta: HTMLElement, quien: string): void {
+    const lineas = [...cuenta.querySelectorAll<HTMLElement>("[data-signo]")];
+    expect(lineas.length, `${quien}: sin líneas`).toBeGreaterThan(2);
+    let acumulado = BigInt(0);
+    for (const linea of lineas) {
+      const centimos = centimosPintados(linea.querySelector("[data-monto]")?.textContent ?? "");
+      if (linea.dataset.tipo === "partida") acumulado += linea.dataset.signo === "resta" ? -centimos : centimos;
+      else expect(acumulado, `${quien}: no cierra en «${linea.textContent}»`).toBe(centimos);
+    }
+  }
+
+  const montoDe = (cuenta: HTMLElement, tipo: "subtotal" | "total") =>
+    cuenta.querySelector(`[data-tipo="${tipo}"] [data-monto]`)!.textContent!;
+
+  it("R6 — flete + comisión = lo que sale de lo recaudado", async () => {
+    // SLT-104: «Para la tienda» no es línea del Dinero de bodega (SLT-95 R16, canvas F6); la resta que
+    // sale de lo recaudado es el subtotal de «Lo que se le factura a la tienda».
+    const { factura } = await abrir();
     laCuentaCierra(
-      [
-        importeTrasEn(dueno, TOTAL_GENERAL_LABEL),
-        importeTrasEn(dueno, FLETE_CON_IVA_LABEL),
-        importeTrasEn(dueno, COMISION_CON_IVA_LABEL),
-      ],
-      importeTrasEn(dueno, PARA_LA_TIENDA_LABEL),
-      "detalle de bodega: para la tienda",
+      [importeTrasEn(factura, "Flete por entregado + IVA"), importeTrasEn(factura, "Comisión COD + IVA")],
+      montoDe(factura, "subtotal"),
+      "detalle de bodega: sale de lo recaudado",
     );
   });
 
-  it("R7 — cobrado sobre lo recaudado + flete por devolución a origen = lo que la empresa facturó", async () => {
-    const { dueno } = await abrir();
-    laCuentaCierra(
-      [
-        importeTrasEn(dueno, COBRADO_SOBRE_RECAUDADO_LABEL),
-        importeTrasEn(dueno, FLETE_DEV_CON_IVA_LABEL),
-      ],
-      importeTrasEn(dueno, FACTURADO_EMPRESA_LABEL),
-      "detalle de bodega: línea puente",
-    );
-
-    // LA RAZÓN DE SER DE LA LÍNEA PUENTE, medida: sin ella, la resta que quedaría a
-    // la vista NO da. El hueco es exactamente el flete por devolución a origen.
-    const recaudado = centimosPintados(importeTrasEn(dueno, TOTAL_GENERAL_LABEL));
-    const facturado = centimosPintados(importeTrasEn(dueno, FACTURADO_EMPRESA_LABEL));
-    const tienda = centimosPintados(importeTrasEn(dueno, PARA_LA_TIENDA_LABEL));
-    expect(recaudado - facturado).not.toBe(tienda);
-    expect(tienda - (recaudado - facturado)).toBe(centimosDelServidor("500.75"));
+  it("R7 — lo que sale de lo recaudado + flete por devolución a origen = lo facturado", async () => {
+    const { factura } = await abrir();
+    cierraLaCuenta(factura, "detalle de bodega: línea puente");
+    // LA RAZÓN DE SER DE LA LÍNEA PUENTE, medida: lo facturado NO es lo que sale de lo recaudado; el
+    // hueco es exactamente el flete por devolución a origen.
+    const sale = centimosPintados(montoDe(factura, "subtotal"));
+    const facturado = centimosPintados(montoDe(factura, "total"));
+    expect(facturado).not.toBe(sale);
+    expect(facturado - sale).toBe(centimosDelServidor("500.75"));
   });
 
-  it("R8 — facturado − IVA − mensajeros − gana la bodega = neto de la empresa (SL-39)", async () => {
-    const { dueno } = await abrir();
-    laCuentaCierra(
-      [
-        importeTrasEn(dueno, FACTURADO_EMPRESA_LABEL),
-        importeTrasEn(dueno, IVA_FACTURADO_LABEL),
-        importeTrasEn(dueno, PAGO_MENSAJERO_LABEL),
-        importeTrasEn(dueno, GANA_BODEGA_SATELITE_LABEL),
-      ],
-      importeTrasEn(dueno, NETO_EMPRESA_LABEL),
-      "detalle de bodega: neto de la empresa",
-    );
+  it("R8 — facturado − IVA − mensajeros − gana la bodega = le queda a la empresa (SL-39)", async () => {
+    const { queda } = await abrir();
+    cierraLaCuenta(queda, "detalle de bodega: le queda a la empresa");
+    expect(centimosPintados(montoDe(queda, "total"))).toBe(centimosDelServidor("13384.78"));
   });
 
-  it("R9 — recaudado − mensajeros − gana la bodega = para la central, y es la MISMA cifra que la tarjeta", async () => {
+  it("R9 — recaudado − mensajeros − gana la bodega = debe llegar a la central, y es la MISMA cifra que la tarjeta", async () => {
     const { central } = await abrir();
-    laCuentaCierra(
-      [
-        importeTrasEn(central, TOTAL_GENERAL_LABEL),
-        importeTrasEn(central, PAGO_MENSAJERO_LABEL),
-        importeTrasEn(central, GANA_BODEGA_SATELITE_LABEL),
-      ],
-      importeTrasEn(central, PARA_LA_CENTRAL_LABEL),
-      "detalle de bodega: para la central",
-    );
-    expect(centimosPintados(importeTrasEn(central, PARA_LA_CENTRAL_LABEL))).toBe(
+    cierraLaCuenta(central, "detalle de bodega: debe llegar a la central");
+    expect(centimosPintados(montoDe(central, "total"))).toBe(
       centimosDelServidor(BODEGA_CABECERA.paraLaCentral),
     );
   });
@@ -1308,6 +1302,175 @@ describe("ficha 359 · C — el resto del censo, por su propia etiqueta", () => 
     expect(moneyTope("9999999999.999")).toBe(alAlza);
     expect(money("9999999999.999")).not.toBe(alAlza);
     expect(montoValido("10000000000.00", INDEMNIZACION_MONTO_MAX)).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SLT-95 · B7 — EL DETALLE ÚNICO DE CIERRE: LAS CUENTAS LEÍDAS POR `data-signo`
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T3.2, R14-R16). Las cuentas del
+// detalle nuevo (`Cuenta.tsx`) ponen el operador DELANTE DEL RÓTULO y no pegado al importe, así que
+// `importeTrasEn` no basta: cada línea dice cómo entra en la cuenta con `data-signo` y si cierra un
+// tramo con `data-tipo` («subtotal» o «total»). Se recorren en el orden en que se ven y el tramo
+// tiene que cerrar AL CÉNTIMO con las cadenas pintadas. Todos los importes llevan céntimos.
+
+describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con lo que se lee", () => {
+  const TOTALES_INGRESO = {
+    fleteConIva: "23000.33",
+    comisionConIva: "4134.50",
+    fleteDevolucionConIva: "500.75",
+    total: "27635.58",
+  };
+  const TOTALES = { efectivo: "100000.17", simpe: "26089.00", transferencia: "0.00", general: "126089.17" };
+
+  const MENSAJERO: DetalleMensajeroVista = {
+    mensajeroNombre: "Ana Mensajera",
+    destino: "Bodega central",
+    zona: "GAM",
+    folio: "8F2A11C4",
+    estado: "solicitado",
+    solicitadoAt: "2026-11-08T00:42:00.000Z",
+    resueltoAt: null,
+    reprogramadasRetenidasHoy: 0,
+    motivoRechazo: null,
+    totales: TOTALES,
+    totalPagoMensajero: "14000.55",
+    empresa: {
+      // 126089.17 − 27134.83
+      pagoTienda: "98954.34",
+      cobradoSobreRecaudado: "27134.83",
+      ganaLaTienda: "98453.59",
+      totalIngresoBodegaRechazos: "250.25",
+      ivaFacturado: "3179.47",
+      // 27635.58 − 3179.47 − 14000.55 − 250.25
+      netoEmpresa: "10205.31",
+      totalesIngreso: TOTALES_INGRESO,
+      partesPorTienda: [],
+      modeloNuevo: false,
+    },
+    conteos: {
+      gestiones: 19,
+      entregadas: 12,
+      noEntregadas: 7,
+      pagosAjustados: 0,
+      incidentesSinIndemnizar: 0,
+      rechazosDeTienda: 0,
+      paquetesVuelven: 0,
+      tiendas: 1,
+    },
+  };
+
+  const BODEGA: DetalleBodegaVista = {
+    zonaNombre: "Limón",
+    solicitadoPorNombre: "Sara Satélite",
+    folio: "C07B3E19",
+    solicitadoAt: "2026-11-08T01:05:00.000Z",
+    conciliado: false,
+    faltaPorRecibir: "111838.37",
+    montoRecibido: null,
+    conciliadoAt: null,
+    conciliadoPorNombre: null,
+    totales: TOTALES,
+    totalPagoMensajero: "14000.55",
+    totalIngresoBodegaRechazos: "250.25",
+    // 126089.17 − 14000.55 − 250.25
+    paraLaCentral: "111838.37",
+    efectivoCubreDescuentos: true,
+    pagoTienda: "98954.34",
+    cobradoSobreRecaudado: "27134.83",
+    ivaFacturado: "3179.47",
+    netoEmpresa: "10205.31",
+    totalesIngreso: TOTALES_INGRESO,
+    partesPorTienda: [],
+    modeloNuevo: false,
+    conteos: { gestiones: 31, mensajeros: 2, cierres: 2, pagosAjustados: 0 },
+  };
+
+  function verMensajero(detalle: DetalleMensajeroVista = MENSAJERO) {
+    render(
+      <DetalleCierre
+        tipo="mensajero"
+        detalle={detalle}
+        audiencia="central"
+        modo="solo lectura"
+        marco="pagina"
+        pestanas={{ gestiones: null, rechazos: null }}
+        acciones={{}}
+      />,
+    );
+  }
+
+  async function verBodega() {
+    render(
+      <DetalleCierre
+        tipo="bodega"
+        detalle={BODEGA}
+        audiencia="central"
+        modo="decidir"
+        marco="modal"
+        pestanas={{ gestiones: null, mensajeros: null, conciliacion: null }}
+        acciones={{}}
+        onCerrar={() => {}}
+      />,
+    );
+    await screen.findByRole("dialog");
+  }
+
+  /** Recorre la cuenta como se lee y exige que cada subtotal y el total cierren al céntimo. */
+  function laCuentaDelDetalleCierra(rotulo: string): void {
+    const cuenta = screen.getByRole("region", { name: rotulo });
+    const lineas = [...cuenta.querySelectorAll<HTMLElement>("[data-signo]")];
+    expect(lineas.length, `${rotulo}: sin líneas`).toBeGreaterThan(2);
+    let acumulado = BigInt(0);
+    const leido: string[] = [];
+    for (const linea of lineas) {
+      const pintado = linea.querySelector("[data-monto]")?.textContent ?? "";
+      const centimos = centimosPintados(pintado);
+      if (linea.dataset.tipo === "partida") {
+        acumulado += linea.dataset.signo === "resta" ? -centimos : centimos;
+        leido.push(`${linea.dataset.signo === "resta" ? "−" : "+"} ${pintado}`);
+      } else {
+        expect(acumulado, `${rotulo}: ${leido.join(" ")} = ${pintado}, y no da`).toBe(centimos);
+        leido.push(`= ${pintado}`);
+      }
+    }
+  }
+
+  function cifra(rotulo: string): string {
+    return screen.getByRole("group", { name: rotulo }).querySelector("[data-cifra]")?.textContent ?? "";
+  }
+
+  it("recaudado − sale de lo recaudado = se le paga hoy a la tienda", () => {
+    verMensajero();
+    const sale = screen
+      .getByRole("region", { name: "Lo que se le factura a la tienda" })
+      .querySelector('[data-tipo="subtotal"] [data-monto]')!.textContent!;
+    laCuentaCierra([cifra("Recaudado"), `-${sale}`], cifra("Se le paga hoy a la tienda"), "detalle único: se le paga hoy");
+  });
+
+  it("flete + comisión = sale de lo recaudado; + no entrega = total facturado", () => {
+    verMensajero();
+    laCuentaDelDetalleCierra("Lo que se le factura a la tienda");
+  });
+
+  it("facturado − IVA − pago al mensajero − bodega = le queda a la empresa", () => {
+    verMensajero();
+    laCuentaDelDetalleCierra("De lo facturado, le queda a la empresa");
+    expect(centimosPintados(cifra("Le queda a la empresa"))).toBe(centimosDelServidor("10205.31"));
+  });
+
+  it("bodega: recaudado − mensajeros − bodega = debe llegar a la central, y las otras dos cuentas", async () => {
+    await verBodega();
+    laCuentaDelDetalleCierra("Lo que va a la central");
+    laCuentaDelDetalleCierra("Lo que se le factura a la tienda");
+    laCuentaDelDetalleCierra("De lo facturado, le queda a la empresa");
+    expect(centimosPintados(cifra("Debe llegar a la central"))).toBe(centimosDelServidor("111838.37"));
+  });
+
+  it("CONTRAPRUEBA: con una línea del doble cambiada un céntimo, la cuenta deja de cerrar", () => {
+    verMensajero({ ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, ivaFacturado: "3179.48" } });
+    expect(() => laCuentaDelDetalleCierra("De lo facturado, le queda a la empresa")).toThrow(/y no da/);
   });
 });
 

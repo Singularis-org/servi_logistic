@@ -297,7 +297,15 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
     expect(caja).toEqual([]);
   });
 
-  it("«Cierres del día»: registrarPagoMensajeroAction registra el pago al mensajero", async () => {
+  // SLT-122 «Pago al mensajero: solo la bodega dueña del cierre» (R1, D1): el cierre de este escenario
+  // es de la SATÉLITE, así que la central ya no lo paga: la action corre con todos los módulos
+  // apagados (no la para ninguna puerta de módulo) y responde `no_encontrado` sin escribir el pago.
+  // Antes de SLT-122 este caso afirmaba `ok`: era el hueco. Que un cierre CENTRAL se sigue pagando
+  // lo mide `pago-mensajero-bodega-duena.test.ts` (R3).
+  it("«Cierres del día»: registrarPagoMensajeroAction corre sin módulos y no paga un cierre de satélite (SLT-122)", async () => {
+    expect(
+      (await base.cierreDia.findUniqueOrThrow({ where: { id: vencidoId }, select: { estado: true, destinoTipo: true } })),
+    ).toEqual({ estado: "aprobado", destinoTipo: "bodega_satelite" });
     const r = await comoEmpresa(() =>
       registrarPagoMensajeroAction(
         {
@@ -310,9 +318,9 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
         como(s!.maestro),
       ),
     );
-    expect(r.status).toBe("ok");
+    expect(r.status).toBe("no_encontrado");
     expect(
       await base.liquidacionPago.count({ where: { organizacionId: s!.organizacionId, cierreId: vencidoId } }),
-    ).toBe(1);
+    ).toBe(0);
   });
 });

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 import type {
   CatalogoFiltrosCierresDTO,
   FiltrosCierres,
@@ -10,18 +11,24 @@ import { cierreConfig } from "@/lib/config/cierre";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type {
   Alcance,
+  AlcanceLecturaDetalle,
   CierreAdminResumenRow,
   GestionIncidenteDelCierre,
   ICierresAdminRepository,
 } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { OrigenDelPaquete } from "@/lib/types/gestion-retorno";
+import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { ILiquidacionPagoRepository } from "@/lib/interfaces/repositories/ILiquidacionPagoRepository";
-import type { IPagoMensajeroMovimientoRepository } from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
+import type {
+  IPagadoPorSateliteLectura,
+  IPagoMensajeroMovimientoRepository,
+} from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IReprogramadasRetenidasService } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import type {
+  CierreDetalleGestion,
   CierreGrupos,
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
@@ -37,6 +44,7 @@ import type {
   AprobarCierreServiceResult,
   CorregirResultadoGestionServiceResult,
   CierreAdminResumen,
+  CifrasCierreDescargaDTO,
   CierreDetalleAdminServiceResult,
   ForzarSolicitudVencidoServiceResult,
   ICierresAdminService,
@@ -49,6 +57,7 @@ import type {
   ListarPendientesCierresAdminCompletoServiceResult,
   ListarPendientesCierresAdminServiceResult,
   RechazarCierreServiceResult,
+  SenalesColaCierre,
 } from "@/lib/interfaces/services/ICierresAdminService";
 import { descargaConfig } from "@/lib/config/descarga";
 import { esColaCierreDia } from "@/lib/utils/colas-cierre";
@@ -64,21 +73,20 @@ import {
   type ZonaDeLaOperacion,
 } from "@/lib/services/zona-de-la-empresa";
 import { filtrosConLimites } from "@/lib/types/filtros-cierres";
-import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import {
+  derivarPagoEntregadoCierre,
+  derivarPendienteCierre,
+  LecturaPagadoSateliteAusenteError,
+  type PendienteCierreInput,
+} from "@/lib/utils/pendiente-cierre";
 import { excesoIndemnizacion } from "@/lib/utils/tope-indemnizacion";
 import { validarAjustePago } from "@/lib/utils/ajuste-pago-mensajero";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { toDetalleDTO } from "@/lib/services/CierreDiaService";
-import {
-  cobradoSobreRecaudado,
-  ganaLaTienda,
-  gananciaEmpresa,
-  netoEmpresa,
-  pagoTiendaEmpresa,
-  partesPorTienda,
-  totalesIngresoEmpresa,
-} from "@/lib/utils/ingreso-empresa";
-import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
+// SLT-140 (R380, R381): las cifras del cierre salen de UNA funcion, la misma que usa el Excel.
+import { cifrasDelCierre } from "@/lib/utils/cifras-cierre";
+import { porcentajesReparto } from "@/lib/utils/porcentajes-reparto";
+import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 import { desglosarIngresoBodegaPorOrigen } from "@/lib/utils/desglose-rechazos-sla";
 // FICHA 398: el destino de la orden corregida sale del PUNTO UNICO de la regla `resultado ->
 // estado` (239/R3), no de un literal escrito en el servicio.
@@ -109,6 +117,20 @@ import {
 const ROL_ADMIN_SATELITE = "adminSatelite";
 
 /**
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» (PA1, R116) — el alcance con
+ * el que se LEE un detalle. Acceso total lee cualquier cierre del dia de su empresa, tambien los
+ * de una bodega satelite (el enlace «Ver su cierre» del detalle de bodega); el resto, el alcance de
+ * `resolveAlcance` sin cambios.
+ *
+ * Solo la usa `verCierreDetalle`. Las listas y las escrituras (aprobar, rechazar, destrabar,
+ * corregir, ajustar) siguen con `resolveAlcance`, que para acceso total es `bodega_central`: sobre
+ * un cierre de satelite responden `no_encontrada` como antes.
+ */
+function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle {
+  return esAccesoTotal(actor.rol) ? { lectura: "toda_la_empresa" } : alcance;
+}
+
+/**
  * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
  * (`ingresoEmpresa.tarifa.fulfillment`) es dato de la CENTRAL: es el servicio de su bodega, no
  * de la satelite. Para un actor sin acceso total sale ANULADO (`null`), no omitido: el tipo
@@ -119,7 +141,7 @@ const ROL_ADMIN_SATELITE = "adminSatelite";
  * un dia llegue aqui sin estar previsto tampoco lo recibe. Solo toca la tarifa: ningun total se
  * recalcula (el fulfillment no entra en `ingresoEmpresa.total`, ver `TarifaSnapshotDTO`).
  */
-function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
+export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
   fila: T,
   actor: Actor,
 ): T {
@@ -135,9 +157,92 @@ function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpre
       fulfillment: null,
       ivaFulfillment: null,
       tarifa: ingreso.tarifa === null ? null : { ...ingreso.tarifa, fulfillment: null },
+      // SLT-101 (R94): los tres campos nuevos del fulfillment («Se cobró», su % de IVA y la fecha
+      // del cargo) son el mismo dato de la central. Se anulan si vienen; si no vienen no hay nada
+      // que filtrar, y no se añade la clave (los campos son aditivos).
+      ...(ingreso.fulfillmentConIva !== undefined ? { fulfillmentConIva: null } : {}),
+      ...(ingreso.ivaPctFulfillment !== undefined ? { ivaPctFulfillment: null } : {}),
+      ...(ingreso.fulfillmentCargadoAt !== undefined ? { fulfillmentCargadoAt: null } : {}),
     },
   };
 }
+
+/**
+ * SLT-154 «Vista de la bodega satélite: solo lo suyo» (R463, D1) — en los DOS detalles, todo el
+ * bloque `ingresoEmpresa` de la gestion es cobro a la tienda (importes, IVA, tarifas, fulfillment):
+ * dato de la central. Para quien no tiene acceso total sale ENTERO en `null` y solo el modelo de
+ * tarifa viaja aparte, que la pantalla necesita para decidir el modelo nuevo. Anular el bloque y no
+ * campo a campo falla cerrado: un concepto de la tienda que se añada mañana tampoco llega.
+ *
+ * Mismo criterio que F481: «NO es acceso total», nunca «es adminSatelite» (R464). Para la central
+ * devuelve la fila tal cual, asi que su fulfillment sigue entero. Las descargas de la lista siguen
+ * con `ocultarFulfillmentSiNoCentral` (SLT-161).
+ */
+export function ocultarDineroEmpresaSiNoCentral<T extends CierreDetalleGestion>(fila: T, actor: Actor): T {
+  if (esAccesoTotal(actor.rol)) return fila;
+  return { ...fila, ingresoEmpresa: null, tarifaModelo: fila.ingresoEmpresa?.tarifaModelo ?? null };
+}
+
+/**
+ * SLT-154 (D3) — la clase de cada campo de un contrato: `"propio"` (de la satelite, viaja a todo
+ * lector) o `"empresa"` (de la central, `null` para quien no tiene acceso total). Solo un campo que
+ * admite `null` puede ser `"empresa"`, y TODOS los campos tienen que estar: uno que se añada al
+ * contrato rompe el typecheck hasta que alguien decida de quien es.
+ */
+export type ClasificacionDinero<T> = {
+  [K in Exclude<keyof T, "status">]-?: null extends T[K] ? "propio" | "empresa" : "propio";
+};
+
+/**
+ * SLT-154 (R460-R462, R464, R465): el recorte de un detalle, con el criterio de F481 en UN sitio:
+ * acceso total recibe `r` tal cual; cualquier otro rol, con las cifras `"empresa"` en `null`.
+ */
+export function anularEmpresaSiNoCentral<T extends object>(
+  r: T,
+  clase: ClasificacionDinero<T>,
+  actor: Actor,
+): T {
+  return esAccesoTotal(actor.rol) ? r : anularEmpresa(r, clase);
+}
+
+/** SLT-154 (D2, D3): pone en `null` —anulado, no omitido— cada campo `"empresa"` de `r`. */
+export function anularEmpresa<T extends object>(r: T, clase: ClasificacionDinero<T>): T {
+  const anulado: Record<string, unknown> = Object.fromEntries(Object.entries(r));
+  for (const [campo, deQuien] of Object.entries(clase)) {
+    if (deQuien === "empresa") anulado[campo] = null;
+  }
+  // La clasificacion solo admite `"empresa"` en campos que aceptan `null`: el resultado es un `T`.
+  return anulado as T;
+}
+
+type CierreDetalleAdminOk = Extract<CierreDetalleAdminServiceResult, { status: "ok" }>;
+
+/**
+ * SLT-154 (R462) — de quien es cada campo del detalle del cierre del mensajero. `grupos` es
+ * `"propio"` porque el cobro de cada gestion ya lo corta `ocultarDineroEmpresaSiNoCentral`.
+ */
+export const CLASE_DETALLE_MENSAJERO = {
+  cierre: "propio",
+  grupos: "propio",
+  totalesIngreso: "empresa",
+  desgloseIngresoBodegaRechazos: "propio",
+  ivaFacturado: "empresa",
+  ganancia: "empresa",
+  pagoTienda: "empresa",
+  cobradoSobreRecaudado: "empresa",
+  netoEmpresa: "empresa",
+  ganaLaTienda: "empresa",
+  fleteRechazoYaCobradoATienda: "empresa",
+  partesPorTienda: "empresa",
+  ordenesSinGestion: "propio",
+  sinGestionRegistrado: "propio",
+  rechazosDeTienda: "propio",
+  resueltoPorNombre: "propio",
+  porcentajesReparto: "empresa", // [tienda, empresa]
+  paraLaCentral: "propio",
+  efectivoCubreDescuentos: "propio",
+  porcentajesRepartoCentral: "propio",
+} as const satisfies ClasificacionDinero<CierreDetalleAdminOk>;
 
 // Mensaje accionable cuando falta el motivo de rechazo (R11).
 const MSG_MOTIVO_REQUERIDO = "El motivo de rechazo es obligatorio.";
@@ -200,7 +305,7 @@ const MSG_CONFIRMACION_GUIA_DISTINTA = "La guía leída no es la de este paquete
 // Se bloquea y se DICE, nunca se omite en silencio — omitirla dejaria un paquete aprobado sin
 // que nadie lo tuviera delante, que es justo lo que esta feature viene a impedir.
 const MSG_CONFIRMACION_SIN_GUIA =
-  "Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador.";
+  "Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador.";
 
 // Feature 239 (T2.1, R9): catalogo incompleto -> la aprobacion NO ocurre. Texto SIN PII y con el
 // mismo tono accionable que el resto (patron `MSG_CATALOGO` de la 36/67).
@@ -263,7 +368,11 @@ type LiquidacionLecturaRepo = Pick<
  * pagable con el premio dentro, y NO puede escribir un premio (R3: el premio solo nace de un
  * acto humano en `Wallet > Mensajeros`).
  */
-type PremiosLecturaRepo = Pick<IPagoMensajeroMovimientoRepository, "sumarPremiosVivosPorCierre">;
+type PremiosLecturaRepo = Pick<IPagoMensajeroMovimientoRepository, "sumarPremiosVivosPorCierre"> &
+  // SLT-139 (R335, design §5.3): opcional en el TIPO (decenas de suites pasan un doble de una sola
+  // funcion) y RUIDOSA si falta: con un cierre nuevo delante, `conPendiente` lanza. En produccion la
+  // trae el `PagoMensajeroMovimientoRepository` real (cierre-dia-pendiente-cableado.test.ts).
+  Partial<IPagadoPorSateliteLectura>;
 
 /**
  * FICHA 412 (T5.2) — lo que las lecturas posteriores al rechazo dejan en la mano, y que los DOS
@@ -285,6 +394,13 @@ type AlcanceResult =
   | { status: "ok"; alcance: Alcance }
   | { status: "sinZona" } // adminSatelite sin zona (R3)
   | { status: "forbidden" }; // rol invalido (R1)
+
+/** SLT-102 (R109): el cierre cuyas gestiones no llevan ninguna de las tres señales. */
+const SIN_SENALES_COLA: SenalesColaCierre = Object.freeze({
+  incidentesSinIndemnizar: 0,
+  pagosAjustados: 0,
+  vuelvenABodega: 0,
+});
 
 /**
  * Feature 38 — logica de negocio de "Cierres del dia" del admin (maestro /
@@ -497,7 +613,7 @@ export class CierresAdminService implements ICierresAdminService {
   // todos los `bodega_central` (sin filtro de zona); el adminSatelite solo su zona satelite.
   private async resolveAlcance(actor: Actor): Promise<AlcanceResult> {
     if (esAccesoTotal(actor.rol)) {
-      return { status: "ok", alcance: { destinoTipo: "bodega_central", destinoZonaId: null } };
+      return { status: "ok", alcance: ALCANCE_ACCESO_TOTAL }; // SLT-122: compartido con el pago
     }
     if (actor.rol === ROL_ADMIN_SATELITE) {
       const zonaId = await this.ordenRepo.findUsuarioZonaId(actor.usuarioId);
@@ -572,10 +688,15 @@ export class CierresAdminService implements ICierresAdminService {
     // nunca en lugar de `scope.alcance`. Un `adminSatelite` que pida la zona del vecino obtiene
     // la interseccion (vacio), no la zona del vecino.
     const zona = this.zonaDeLaOperacion("listarHistoricoCierresAdminPaginado");
+    const resueltos = await filtrosParaRepo(input.filtros, zona);
+    // SLT-153 (R457): un folio imposible es una pagina vacia, sin leer la base.
+    if (resueltos.tipo === "vacio") {
+      return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 };
+    }
     const { items, total } = await this.repo.findHistoricoPaginado(
       scope.alcance,
       rangoDePagina(input),
-      await filtrosParaRepo(input.filtros, zona),
+      resueltos.filtros,
     );
 
     return {
@@ -617,11 +738,15 @@ export class CierresAdminService implements ICierresAdminService {
     }
 
     const zona = this.zonaDeLaOperacion("listarPendientesCierresAdminPaginado");
+    const resueltos = await filtrosParaRepo(input.filtros, zona);
+    if (resueltos.tipo === "vacio") {
+      return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
+    }
     const { items, total } = await this.repo.findColaPaginada(
       scope.alcance,
       rangoDePagina(input),
       // recorte DENTRO del alcance (ver la nota del historico)
-      await filtrosParaRepo(input.filtros, zona),
+      resueltos.filtros,
     );
 
     return {
@@ -682,10 +807,9 @@ export class CierresAdminService implements ICierresAdminService {
     // Los MISMOS filtros que la pagina: el archivo tiene que ser «esto que estoy viendo,
     // entero», no «todo lo del alcance» (ver la nota del schema completo, `lib/types`).
     const zona = this.zonaDeLaOperacion("listarHistoricoCierresAdminCompleto");
-    const conjunto = await this.repo.findHistoricoCompleto(
-      scope.alcance,
-      await filtrosParaRepo(filtros, zona),
-    );
+    const resueltos = await filtrosParaRepo(filtros, zona);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findHistoricoCompleto(scope.alcance, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -698,7 +822,8 @@ export class CierresAdminService implements ICierresAdminService {
     // asi que su coste no crece con el numero de filas. Se paga aunque el archivo no lleve la
     // columna del pendiente: emitir `null` ahi seria decir «este cierre no esta aprobado»
     // (172/R28) de cierres que SI lo estan, y eso es un dato equivocado en un DTO de dinero.
-    return { status: "ok", items: await this.conPendiente(conjunto, zona), total: conjunto.length };
+    // SLT-140 (R378, R383): con cierres del modelo nuevo, ademas sus cifras (una lectura en lote).
+    return this.completoConCifras(conjunto, scope.alcance, zona, actor);
   }
 
   /**
@@ -728,17 +853,60 @@ export class CierresAdminService implements ICierresAdminService {
     if (scope.status === "sinZona") return { status: "ok", items: [], total: 0 };
 
     const zona = this.zonaDeLaOperacion("listarPendientesCierresAdminCompleto");
-    const conjunto = await this.repo.findColaCompleta(
-      scope.alcance,
-      await filtrosParaRepo(filtros, zona), // idem
-    );
+    const resueltos = await filtrosParaRepo(filtros, zona); // idem
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findColaCompleta(scope.alcance, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {
       return { status: "limite_excedido", total: conjunto.length, limite }; // R6
     }
 
-    return { status: "ok", items: await this.conPendiente(conjunto, zona), total: conjunto.length };
+    // SLT-140 (R378, R383): con cierres del modelo nuevo, ademas sus cifras (una lectura en lote).
+    return this.completoConCifras(conjunto, scope.alcance, zona, actor);
+  }
+
+  /**
+   * SLT-140 «Excel del modelo nuevo: hojas por cierre de mensajeros» (R377-R383) — la rama `ok` de los
+   * dos `listar…Completo`: las filas de hoy y, SOLO si algun cierre del conjunto es del modelo nuevo,
+   * `cifrasModeloNuevo` (una entrada por cierre nuevo, en el orden de `items`).
+   *
+   *  - El modelo lo dice `incluyeModeloNuevo` de la fila (SLT-54, R71), nunca el destino ni la marca.
+   *  - Sin cierres nuevos: ni la clave ni una consulta mas (R377, R383).
+   *  - Con cierres nuevos: UNA lectura en lote de sus gestiones (`findGestionesDeCierresEnAlcance`),
+   *    con el MISMO alcance que acaba de dar el conjunto (no el ancho del detalle): ids y `WHERE`
+   *    dicen lo mismo.
+   *  - «Pago entregado» solo para el acceso total (`esAccesoTotal`, la puerta de F481); la satelite
+   *    recibe `null` (R382).
+   */
+  private async completoConCifras(
+    conjunto: CierreAdminResumenRow[],
+    alcance: Alcance,
+    zona: ZonaDeLaOperacion,
+    actor: Actor,
+  ): Promise<ListarHistoricoCierresAdminCompletoServiceResult> {
+    const { items, entregado } = await this.conPendienteYEntregado(conjunto, zona);
+    const total = conjunto.length;
+    const nuevos = items.filter((c) => c.incluyeModeloNuevo === true);
+    if (nuevos.length === 0) return { status: "ok", items, total }; // R377, R383: cero consultas mas
+    const gestiones = await this.repo.findGestionesDeCierresEnAlcance(
+      nuevos.map((c) => c.cierreId),
+      alcance,
+      await zona(),
+    );
+    const central = esAccesoTotal(actor.rol);
+    return {
+      status: "ok",
+      items,
+      total,
+      cifrasModeloNuevo: nuevos.map((c) =>
+        toCifrasDescarga(
+          c,
+          gestiones.get(c.cierreId) ?? [],
+          central ? (entregado.get(c.cierreId) ?? null) : null,
+        ),
+      ),
+    };
   }
 
   /**
@@ -789,9 +957,11 @@ export class CierresAdminService implements ICierresAdminService {
       this.reglasPais,
       "CierresAdminService.listarGestionesCierresAdminCompleto",
     );
+    // SLT-113: los MISMOS recortes para las gestiones y para los rechazos (un solo objeto).
+    const filtrosRepo = filtrosConLimites(filtros, zona);
     const conjunto = await this.repo.findGestionesPorAlcanceCompleto(
       scope.alcance,
-      filtrosConLimites(filtros, zona),
+      filtrosRepo,
       zona,
     );
 
@@ -802,8 +972,28 @@ export class CierresAdminService implements ICierresAdminService {
     }
 
     // FICHA 481: la hoja «Detalle» de la satelite no lleva el fulfillment de la central.
-    const items = conjunto.map((fila) => ocultarFulfillmentSiNoCentral(fila, actor));
-    return { status: "ok", items, total: conjunto.length };
+    // SLT-113 (R376): tampoco el dia en que se cargo a la tienda. Falla cerrado como la 481: el
+    // criterio es «NO es acceso total». El repositorio emite siempre la clave; si no viene, no se
+    // añade (mismo trato que los campos aditivos de `ocultarFulfillmentSiNoCentral`).
+    const items = conjunto.map((fila) =>
+      ocultarFulfillmentSiNoCentral(
+        esAccesoTotal(actor.rol) || fila.fulfillmentCargadoDia === undefined
+          ? fila
+          : { ...fila, fulfillmentCargadoDia: null },
+        actor,
+      ),
+    );
+    // SLT-113 (R372): la hoja de rechazos solo existe si algun cierre del conjunto es del modelo
+    // nuevo. Sin ninguno (todo el historico de hoy, D19) no se consulta nada y la clave no va.
+    if (!conjunto.some((fila) => fila.cierreModelo === "nuevo")) {
+      return { status: "ok", items, total: conjunto.length };
+    }
+    const rechazosDeTienda = await this.repo.findRechazosTiendaModeloNuevoCompleto(
+      scope.alcance,
+      filtrosRepo,
+      zona,
+    );
+    return { status: "ok", items, total: conjunto.length, rechazosDeTienda };
   }
 
   /**
@@ -841,7 +1031,7 @@ export class CierresAdminService implements ICierresAdminService {
     // distingue "no existe" de "otra bodega/zona").
     // SLT-42 (R22): la zona fecha las gestiones del detalle y el «hoy» de su marca de retenidas.
     const zona = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.verCierreDetalle");
-    const found = await this.repo.findCierreByIdEnAlcance(cierreId, scope.alcance, zona);
+    const found = await this.repo.findCierreByIdEnAlcance(cierreId, alcanceDeLectura(actor, scope.alcance), zona);
     if (found === null) return { status: "no_encontrada" };
 
     // R7: firma en lote las evidencias (path crudo -> URL firmada de TTL acotado).
@@ -875,65 +1065,27 @@ export class CierresAdminService implements ICierresAdminService {
       incidente: [],
     };
     for (const g of found.gestiones) {
-      // FICHA 481: el fulfillment de la fila solo viaja a la central.
-      grupos[g.resultado].push(ocultarFulfillmentSiNoCentral(toDetalleDTO(g, urlByPath), actor));
+      // FICHA 481 y SLT-154 (R463): el cobro a la tienda de la fila (con su fulfillment) solo
+      // viaja a la central.
+      grupos[g.resultado].push(ocultarDineroEmpresaSiNoCentral(toDetalleDTO(g, urlByPath), actor));
     }
 
-    // Totales por concepto del cierre: se suman desde el MISMO desglose por orden que ve el
-    // admin en las tablas, no por una consulta aparte que podria no cuadrar con ellas.
-    const totalesIngreso = totalesIngresoEmpresa(found.gestiones);
-    // SL-39 (R21–R23): el IVA de lo facturado no es de la empresa. La ganancia y el neto restan
-    // desde lo facturado SIN IVA; lo facturado (`totalesIngreso.total`) sigue llevandolo (R26).
-    const sinIva = facturadoSinIva(totalesIngreso);
-
-    // Ganancia DERIVADA: lo facturado sin IVA MENOS lo que se le debe al mensajero. El pago sale
-    // del snapshot del cierre (no se recomputa, R4); el ingreso, del desglose por orden.
     // Feature 172 (T C.2/R26): el detalle tambien trae el pendiente —R26 lo pide «en el listado
     // de cierres Y en el detalle de ese cierre»—, por el mismo camino y con una sola agregacion.
     const [resumen] = await this.conPendiente([found.cierre], async () => zona);
-    const ganancia = gananciaEmpresa(sinIva, resumen.totalPagoMensajero);
 
-    // Pago a la tienda DERIVADO: lo RECIBIDO (total general) menos lo que la empresa le factura
-    // sobre esa plata. Sale de otra resta que la ganancia: parte de lo cobrado, no del bruto.
-    const pagoTienda = pagoTiendaEmpresa(
-      resumen.totales.general,
-      totalesIngreso.fleteConIva,
-      totalesIngreso.comisionConIva,
-    );
-
-    // FEATURE 395 — LAS DOS LINEAS QUE LE FALTABAN A ESTE DETALLE. La ficha 393 monto las dos
-    // cascadas del dinero SOLO en los cierres de bodega; este —el que se mira todos los dias—
-    // se quedo con las tarjetas sueltas y sin la resta que las une.
-    //
-    // Se derivan con las MISMAS funciones que el cierre de bodega, nunca con una suma o una
-    // resta escrita aqui: si divergieran, la misma plata se leeria distinta segun por que
-    // pantalla se entra. Ese motivo esta escrito en los docstrings de las dos funciones.
-
-    // LA LINEA PUENTE: lo que la empresa cobra SOBRE LO RECAUDADO. Se emite SIEMPRE, tambien con
-    // el flete por rechazo en "0.00": no es una linea condicional, es la que hace que
-    // «recaudado − esto = para la tienda» de en TODOS los cierres, con rechazos o sin ellos.
-    const cobradoSobreLoRecaudado = cobradoSobreRecaudado(
-      totalesIngreso.fleteConIva,
-      totalesIngreso.comisionConIva,
-    );
-
-    // EL NETO: lo facturado sin IVA (SL-39) menos los DOS pagos de la empresa. NO es `ganancia` y NO se encadena
-    // con ella —`gananciaEmpresa` resta solo el pago al mensajero—: coinciden cuando el ingreso
-    // de bodega por rechazos vale "0.00" y divergen en cuanto hay un rechazo. `ganancia` sigue
-    // saliendo intacta en este mismo DTO; esta es OTRA resta, no su sustituta.
-    //
-    // Los dos snapshots salen del `resumen` del propio cierre (R4: leidos, no recomputados).
-    const neto = netoEmpresa(
-      sinIva,
-      resumen.totalPagoMensajero,
-      resumen.totalIngresoBodegaRechazos,
-    );
-
-    // LA PARTICION DE LO RECAUDADO: lo que la tienda gana EN TOTAL. NO es `pagoTienda` —aquel
-    // es lo que se le paga de ESTE dinero, sin restar el flete por rechazo, que se le cobra
-    // aparte contra su wallet—. Este cierra la identidad que la pantalla tiene que hacer
-    // evidente: `ganaLaTienda + totalesIngreso.total === totales.general`.
-    const ganaTienda = ganaLaTienda(resumen.totales.general, totalesIngreso.total);
+    // SLT-140 (R380, R381): TODAS las cifras del cierre salen de `cifrasDelCierre`, la MISMA funcion
+    // que usa el Excel del «Resumen» (`listar…Completo`). El bloque que vivia aqui se movio tal cual:
+    //  - totales por concepto desde el MISMO desglose por orden que ve el admin en las tablas;
+    //  - ganancia y neto desde lo facturado SIN IVA (SL-39); los snapshots del `resumen` (R4);
+    //  - pago a la tienda = recibido − flete − comision; la linea puente y `ganaLaTienda` (395);
+    //  - la particion por tienda (396), que SE EMITE SIEMPRE, tambien con una sola tienda: el umbral
+    //    de «solo con dos o mas» es de presentacion y vive en la pantalla (264).
+    const cifras = cifrasDelCierre(resumen, found.gestiones);
+    const { totalesIngreso, ganancia, pagoTienda, partesPorTienda: partesDeLasTiendas } = cifras;
+    const cobradoSobreLoRecaudado = cifras.cobradoSobreRecaudado;
+    const neto = cifras.netoEmpresa;
+    const ganaTienda = cifras.ganaLaTienda;
 
     // ¿Ese flete por rechazo YA esta cobrado, o se cobrara? El cargo a la wallet de la tienda
     // lo emite `WalletTiendaFeedService` DENTRO de la transaccion de aprobacion
@@ -947,25 +1099,6 @@ export class CierresAdminService implements ICierresAdminService {
       resumen.estado === "aprobado" &&
       new Prisma.Decimal(totalesIngreso.fleteDevolucionConIva).gt(0);
 
-    // 💰 FICHA 396 — DE QUIEN ES CADA PARTE. El cierre es del MENSAJERO, no de la tienda: puede
-    // llevar ordenes de varias (medido el 2026-09-08: de 56 cierres, 17 tienen DOS), y hasta hoy
-    // `pagoTienda` era la SUMA de todas ellas sin que la pantalla lo dijera en ninguna parte.
-    //
-    // NADA DE LO DE ARRIBA CAMBIA (R18): `pagoTienda`, `ganancia`, `totalesIngreso`, el neto, la
-    // linea puente y `ganaLaTienda` siguen saliendo de donde salian y valiendo lo mismo. Esto se
-    // AÑADE al lado, y es la PARTICION de dos de esos numeros.
-    //
-    // Mismo argumento que sus hermanas —`found.gestiones`, el desglose ya congelado que el admin
-    // ve en las tablas—, asi que las tres identidades cuadran por construccion: `partesPorTienda`
-    // llama, sobre cada subconjunto, a las MISMAS funciones que produjeron los agregados.
-    //
-    // SE EMITE SIEMPRE, tambien con UNA sola tienda (un elemento, cuyas tres cifras son iguales a
-    // las agregadas). El umbral de «solo con dos o mas» es de PRESENTACION y vive en la pantalla:
-    // un contrato que a veces trae la lista y a veces no obliga a cada consumidor a distinguir dos
-    // formas del mismo dato, que es el error que la 264 ya documento con
-    // `ordenesSinGestion`/`sinGestionRegistrado`.
-    const partesDeLasTiendas = partesPorTienda(found.gestiones);
-
     // Feature 102/R4-R8/R10: desglose SLA/manual del ingreso de bodega por rechazos, particionando
     // los montos por gestion YA snapshoteados por su clasificacion (esRechazoSla). SOLO LECTURA
     // (R6/R16): el `total` se LEE del snapshot del cierre (no se recomputa); la particion asegura
@@ -977,14 +1110,22 @@ export class CierresAdminService implements ICierresAdminService {
       total: resumen.totalIngresoBodegaRechazos, // snapshot leido (R6), no recomputado
     };
 
-    return {
+    // SLT-154 (R467, D7): lo que debe llegar a la central de ESTE cierre y su reparto, de los
+    // snapshots y con las mismas funciones que el detalle de bodega usa por cierre del dia.
+    const haciaLaCentral = paraLaCentral(
+      resumen.totales.general,
+      resumen.totalPagoMensajero,
+      resumen.totalIngresoBodegaRechazos,
+    );
+
+    const detalle: CierreDetalleAdminOk = {
       status: "ok",
       cierre: resumen,
       grupos,
       totalesIngreso,
       desgloseIngresoBodegaRechazos,
       // SL-39 (R21): la linea propia del IVA, derivada aqui y emitida como STRING.
-      ivaFacturado: ivaFacturado(totalesIngreso),
+      ivaFacturado: cifras.ivaFacturado,
       ganancia,
       pagoTienda,
       // Feature 395: las tres lineas derivadas arriba (STRING con su signo) y el booleano que
@@ -1011,7 +1152,33 @@ export class CierresAdminService implements ICierresAdminService {
       // `grupos`, `totalesIngreso`, `ganancia`, `pagoTienda`, `partesPorTienda` ni el desglose: R6/R7
       // se cumplen aqui por AUSENCIA de codigo, porque la lista no trae nada que sumar.
       rechazosDeTienda: found.rechazosDeTienda,
+      // SLT-100 (R80): solo un cierre RESUELTO tiene a quien nombrar. Un `rechazado` que el
+      // mensajero vuelve a solicitar conserva `resuelto_por`; sin esta regla arrastraria al
+      // resolutor anterior a la cabecera de un `solicitado`.
+      resueltoPorNombre:
+        found.cierre.estado === "aprobado" || found.cierre.estado === "rechazado"
+          ? (found.resueltoPorNombre ?? null)
+          : null,
+      // SLT-111 (R263, R265): el reparto en % de lo recaudado, de los importes de arriba y sin
+      // ninguna lectura mas. Orden fijo: tienda y luego empresa; base, el `general` del snapshot.
+      porcentajesReparto: porcentajesReparto(
+        [pagoTienda, cobradoSobreLoRecaudado],
+        resumen.totales.general,
+      ),
+      paraLaCentral: haciaLaCentral,
+      efectivoCubreDescuentos: efectivoCubreDescuentos(
+        resumen.totales.efectivo,
+        resumen.totalPagoMensajero,
+        resumen.totalIngresoBodegaRechazos,
+      ),
+      porcentajesRepartoCentral: porcentajesReparto(
+        [haciaLaCentral, resumen.totalPagoMensajero, resumen.totalIngresoBodegaRechazos],
+        resumen.totales.general,
+      ),
     };
+    // SLT-154 (R462, R465): el calculo no cambia; el recorte actua sobre el resultado, asi que la
+    // central recibe exactamente lo de antes.
+    return anularEmpresaSiNoCentral(detalle, CLASE_DETALLE_MENSAJERO, actor);
   }
 
   async aprobarCierre(
@@ -1251,6 +1418,19 @@ export class CierresAdminService implements ICierresAdminService {
     rows: CierreAdminResumenRow[],
     zonaDeLaOperacion: ZonaDeLaOperacion,
   ): Promise<CierreAdminResumen[]> {
+    return (await this.conPendienteYEntregado(rows, zonaDeLaOperacion)).items;
+  }
+
+  /**
+   * SLT-140 (R382) — `conPendiente` con, ADEMAS, lo entregado al mensajero de cada cierre aprobado
+   * (`derivarPagoEntregadoCierre`). Mismas lecturas, en el mismo numero: ninguna consulta nueva. El
+   * pendiente y lo entregado salen de la MISMA entrada (`basePendiente` + `reglaDelCierre`), asi que no pueden divergir.
+   * Los no aprobados no estan en `entregado`.
+   */
+  private async conPendienteYEntregado(
+    rows: CierreAdminResumenRow[],
+    zonaDeLaOperacion: ZonaDeLaOperacion,
+  ): Promise<{ items: CierreAdminResumen[]; entregado: ReadonlyMap<string, string> }> {
     const resumenes = rows.map(toResumen); // R8/R9: snapshots tal cual, sin recomputar
     const idsAprobados = resumenes
       .filter((r) => r.estado === "aprobado")
@@ -1270,6 +1450,13 @@ export class CierresAdminService implements ICierresAdminService {
       resumenes.map((r) => r.cierreId),
     );
 
+    // SLT-102 (R109): las tres señales de la cola, UNA llamada para toda la pagina (tambien vacia),
+    // como `retenidas`. `null` si el repositorio no la implementa (dobles de otras suites): entonces
+    // la fila no lleva `senalesCola` y la cola no afirma «0».
+    const senales = this.repo.contarSenalesPorCierre
+      ? await this.repo.contarSenalesPorCierre(resumenes.map((r) => r.cierreId))
+      : null;
+
     // UNA sola llamada, siempre: tambien con la lista vacia, para que el conteo de consultas de
     // este listado sea el mismo se pinte lo que se pinte.
     const pagados = await this.liquidacionRepo.sumarVigentesPorCierre(idsAprobados);
@@ -1277,6 +1464,19 @@ export class CierresAdminService implements ICierresAdminService {
     // propiedad —UNA llamada por listado, no una por fila—. Es lo que hace que un cierre saldado
     // al que se le registra un premio vuelva a aparecer con «Pendiente de liquidar».
     const premios = await this.premiosRepo.sumarPremiosVivosPorCierre(idsAprobados);
+    // SLT-139 (R319, R334, R338): lo pagado por la satelite, UNA lectura por pagina y solo de los
+    // cierres NUEVOS aprobados; sin ninguno, no se consulta. Sin la lectura y con un cierre nuevo,
+    // no se inventa un pendiente: se lanza (R335).
+    const idsNuevos = resumenes
+      .filter((r) => r.estado === "aprobado" && r.pagoIndependienteEfectivo === true)
+      .map((r) => r.cierreId);
+    let pagadoSatelite: Record<string, string> = {};
+    if (idsNuevos.length > 0) {
+      if (typeof this.premiosRepo.sumarPagadoSatelitePorCierre !== "function") {
+        throw new LecturaPagadoSateliteAusenteError("CierresAdminService.conPendiente");
+      }
+      pagadoSatelite = await this.premiosRepo.sumarPagadoSatelitePorCierre(idsNuevos);
+    }
 
     // FEATURE 271 (T7.1, R48) — EL ESTADO DE BLOQUEO DEL MENSAJERO, EN LA FILA.
     //
@@ -1291,7 +1491,9 @@ export class CierresAdminService implements ICierresAdminService {
       ...new Set(resumenes.map((r) => r.mensajeroId)),
     ]);
 
-    return resumenes.map((r) => {
+    // SLT-140 (R382): «Pago entregado» de cada aprobado, de la MISMA entrada que su pendiente.
+    const entregado = new Map<string, string>();
+    const items = resumenes.map((r) => {
       const c = conteo.get(r.mensajeroId) ?? SIN_CIERRES_ABIERTOS;
       const bloqueoMensajero = {
         bloqueado: estaBloqueadoPorCierres(c),
@@ -1300,20 +1502,28 @@ export class CierresAdminService implements ICierresAdminService {
       };
       // FICHA 462 (R27/R28): el aprobado retiene 0 por construccion; los demas, lo que diga el conteo.
       const reprogramadasRetenidasHoy = retenidas.get(r.cierreId) ?? 0;
-      return r.estado === "aprobado"
-        ? {
-            ...r,
-            bloqueoMensajero,
-            reprogramadasRetenidasHoy,
-            pendientePagoMensajero: derivarPendienteCierre({
-              pagoDebido: r.totalPagoMensajero, // P — snapshot de la 39, NUNCA reescrito (293/R13)
-              efectivo: r.totales.efectivo, // E — snapshot de la 37
-              premiosVivos: premios[r.cierreId] ?? "0.00", // Σ premios VIVOS del cierre (293/R24)
-              pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
-            }),
-          }
-        : { ...r, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
+      // SLT-102 (R109): un cierre que no sale en el mapa no tiene gestiones con señal: los tres a 0.
+      const conSenales =
+        senales === null ? {} : { senalesCola: senales.get(r.cierreId) ?? SIN_SENALES_COLA };
+      if (r.estado !== "aprobado") {
+        return { ...r, ...conSenales, bloqueoMensajero, reprogramadasRetenidasHoy }; // R28: no aprobado -> `null` (lo que ya puso `toResumen`)
+      }
+      // SLT-140 (R382): el pendiente y «Pago entregado» salen de la MISMA entrada: la base (P, E,
+      // premios, pagos vigentes) y la regla del cierre (SLT-123 / SLT-139, `reglaDelCierre`).
+      const base = basePendiente(r, premios, pagados);
+      entregado.set(
+        r.cierreId,
+        derivarPagoEntregadoCierre({ ...base, ...reglaDelCierre(r.pagoIndependienteEfectivo, pagadoSatelite[r.cierreId]) }),
+      );
+      return {
+        ...r,
+        ...conSenales,
+        bloqueoMensajero,
+        reprogramadasRetenidasHoy,
+        pendientePagoMensajero: derivarPendienteCierre({ ...base, ...reglaDelCierre(r.pagoIndependienteEfectivo, pagadoSatelite[r.cierreId]) }),
+      };
     });
+    return { items, entregado };
   }
 
   /**
@@ -1336,11 +1546,22 @@ export class CierresAdminService implements ICierresAdminService {
     // siempre. Se hace igual, y a proposito: dos formulas para el mismo numero es como dos
     // pantallas acaban diciendo cifras distintas (R26).
     const premios = await this.premiosRepo.sumarPremiosVivosPorCierre([cierreId]);
+    // SLT-139 (R319, R335): en un cierre nuevo, lo pagado por la satelite. Sin la lectura, `"0.00"`:
+    // la respuesta segura que ya documenta este metodo (no ofrece pagar una cifra no derivada).
+    let pagadoSatelite = "0.00";
+    if (cierre.pagoIndependienteEfectivo === true) {
+      if (typeof this.premiosRepo.sumarPagadoSatelitePorCierre !== "function") return "0.00";
+      pagadoSatelite = (await this.premiosRepo.sumarPagadoSatelitePorCierre([cierreId]))[cierreId] ?? "0.00";
+    }
     return derivarPendienteCierre({
       pagoDebido: cierre.totalPagoMensajero,
       efectivo: cierre.totalEfectivo,
       premiosVivos: premios[cierreId] ?? "0.00",
       pagadoVigente: pagados[cierreId] ?? "0.00",
+      // SLT-123 (R321): la marca que la aprobacion acaba de escribir en la misma fila.
+      ...(cierre.pagoIndependienteEfectivo === true
+        ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoSatelite }
+        : { pagoIndependienteEfectivo: false }),
     });
   }
 
@@ -1822,6 +2043,67 @@ export class CierresAdminService implements ICierresAdminService {
   }
 }
 
+/**
+ * SLT-140 (R379-R382) — proyecta las cifras de UN cierre nuevo al DTO de la hoja «Cierres». Las cifras
+ * salen de `cifrasDelCierre`, la misma funcion que el detalle; aqui no se suma ni se resta nada.
+ * `gestiones` es el numero de gestiones del cierre (Σ de los grupos del detalle).
+ */
+function toCifrasDescarga(
+  c: CierreAdminResumen,
+  gestiones: CierreGestionPendienteRow[],
+  pagoEntregado: string | null,
+): CifrasCierreDescargaDTO {
+  const cifras = cifrasDelCierre(c, gestiones);
+  return {
+    cierreId: c.cierreId,
+    pagoTienda: cifras.pagoTienda,
+    ganaLaTienda: cifras.ganaLaTienda,
+    totalFacturado: cifras.totalesIngreso.total,
+    ivaFacturado: cifras.ivaFacturado,
+    netoEmpresa: cifras.netoEmpresa,
+    gestiones: gestiones.length,
+    pagoEntregado,
+    partesPorTienda: cifras.partesPorTienda.map((p) => ({
+      tiendaNombre: p.tiendaNombre,
+      recaudado: p.recaudado,
+      pagoTienda: p.pagoTienda,
+      ganaLaTienda: p.ganaLaTienda,
+    })),
+  };
+}
+
+/**
+ * SLT-140 (R382) — la parte COMUN de la entrada de `derivarPendienteCierre` y de
+ * `derivarPagoEntregadoCierre` de un cierre aprobado: los dos snapshots y las dos sumas en lote. Es
+ * la que habia en linea en `conPendiente`, sacada para que el pendiente y lo entregado la compartan.
+ */
+function basePendiente(
+  r: CierreAdminResumen,
+  premios: Record<string, string>,
+  pagados: Record<string, string>,
+): Omit<PendienteCierreInput, "pagoIndependienteEfectivo" | "pagadoPorSatelite"> {
+  return {
+    pagoDebido: r.totalPagoMensajero, // P — snapshot de la 39, NUNCA reescrito (293/R13)
+    efectivo: r.totales.efectivo, // E — snapshot de la 37
+    premiosVivos: premios[r.cierreId] ?? "0.00", // Σ premios VIVOS del cierre (293/R24)
+    pagadoVigente: pagados[r.cierreId] ?? "0.00", // Σ pagos VIGENTES del cierre (R80)
+  };
+}
+
+/**
+ * La regla de pago del cierre, como en `LiquidacionService.reglaDelCierre`. SLT-123 (R320, R327): la
+ * da la marca de ESTA fila; ausente = `false` (44). SLT-139 (R338): con la marca, ademas lo pagado
+ * por la satelite.
+ */
+function reglaDelCierre(
+  marca: boolean | undefined,
+  pagadoPorSatelite: string | undefined,
+): { pagoIndependienteEfectivo: false } | { pagoIndependienteEfectivo: true; pagadoPorSatelite: string } {
+  return marca === true
+    ? { pagoIndependienteEfectivo: true, pagadoPorSatelite: pagadoPorSatelite ?? "0.00" }
+    : { pagoIndependienteEfectivo: false };
+}
+
 // Row cruda -> resumen de dominio. La fila ya trae los totales como STRING (R9) y las
 // marcas de tiempo en ISO; el service no recomputa nada (R8, snapshot money-critical).
 function toResumen(row: CierreAdminResumenRow): CierreAdminResumen {
@@ -1837,6 +2119,8 @@ function toResumen(row: CierreAdminResumenRow): CierreAdminResumen {
     totalPagoMensajero: row.totalPagoMensajero, // R17: snapshot, sin recomputar
     totalIngresoBodegaRechazos: row.totalIngresoBodegaRechazos, // feature 56/R16: snapshot, sin recomputar
     incluyeModeloNuevo: row.incluyeModeloNuevo, // SLT-54 (R71)
+    // SLT-123 (R320): la marca viaja hasta `conPendiente`, que deriva lo pendiente con ella.
+    pagoIndependienteEfectivo: row.pagoIndependienteEfectivo,
     // Feature 172 (T C.2): el mapper NO deriva dinero. Emite `null` —el valor de un cierre no
     // aprobado (R28)— y el servicio lo rellena en `conPendiente` para los aprobados, con UNA
     // agregacion por pagina. Si la derivacion viviera aqui, seria una consulta por fila.

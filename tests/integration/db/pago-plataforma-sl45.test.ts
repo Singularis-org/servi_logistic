@@ -20,6 +20,7 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, etiquetasDeEnum } from "./_postgres-real";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { asignarPlan, crearPlan } from "./_fixtures/planes";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 import { menos } from "./_fixtures/caja-459";
 
@@ -52,8 +53,9 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // aquí: si el composition root no lo pasa, los pasos R9 se ponen en rojo.
 //
 // Las órdenes nacen por `OrdenRepository.createManyOrdenes` real (el trigger de SL-40 escribe el
-// cargo), y se anulan con `EliminarOrdenService`, el de la pantalla. El valor global y la excepción de
-// B los fija el repositorio real del superadmin, bajo el lock del valor global de SL-40.
+// cargo), y se anulan con `EliminarOrdenService`, el de la pantalla. El valor global lo fija el
+// repositorio real del superadmin, bajo el lock del valor global de SL-40; B se cobra con un plan custom
+// fijo de 300,00 (SLT-126: antes, una excepción del mismo importe).
 //
 // Lo que se mide se lee con el cliente BASE (dueño, sin extensión ni RLS): las filas que hay de verdad.
 
@@ -279,7 +281,10 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     B = await sembrarEmpresa();
     const tarifas = new CobroPlataformaTarifaRepository(base);
     await tarifas.fijarGlobal("500.00");
-    if (!(await tarifas.fijarDeEmpresa(org(B), "300.00"))) throw new Error("siembra: la excepción de B no se fijó");
+    // SLT-126: sin valor propio de la empresa, el importe sale de un plan custom fijo (se va con la empresa).
+    const planB = await crearPlan(base, { custom: org(B) });
+    await base.$executeRawUnsafe(`UPDATE "plan" SET "costo_por_orden" = 300.00 WHERE "id" = $1`, planB);
+    await asignarPlan(base, org(B), planB);
 
     // Dinero en las dos cajas, por la action real: un pago no debe dejar la caja en negativo para
     // que el caso sea el de una empresa normal, y la caja de B no está en cero para que «no cambia»

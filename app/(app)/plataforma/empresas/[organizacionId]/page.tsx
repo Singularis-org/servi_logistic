@@ -2,8 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
+import { FacturasDeLaEmpresa } from "@/components/shared/facturas/FacturasDeLaEmpresa";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { verFacturasDeEmpresa } from "@/lib/actions/_shared/facturas-plataforma";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
 import { verDetalleDePlan, verPlanDeEmpresa, verPreciosQueRigen } from "@/lib/actions/_shared/planes-plataforma";
+import { verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
   asignarPlanAction,
@@ -22,6 +26,7 @@ import {
   rangoDeLaFechaDeEfecto,
   rangoDelInicioDelCiclo,
 } from "@/lib/planes/ciclo";
+import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 import type { PlanDeEmpresaVista, PlanDTO, PreciosQueRigen } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
@@ -31,6 +36,10 @@ import { PlanEmpresa } from "./_components/PlanEmpresa";
 const TEXTOS = {
   volver: "Volver a Empresas",
   nucleo: "Núcleo (siempre activo)",
+  /** SLT-119 (P6): las dos pestañas del detalle. */
+  pestanas: "Secciones de la empresa",
+  pestanaEmpresa: "Empresa",
+  pestanaFacturacion: "Facturación",
 } as const;
 
 /**
@@ -43,6 +52,21 @@ async function leerPlan(actor: Actor, organizacionId: string): Promise<PlanDeEmp
     return r.estado === "ok" ? r.vista : null;
   } catch (error) {
     console.error("[EmpresaDetallePage] verPlanDeEmpresa lanzó", error);
+    return null;
+  }
+}
+
+/**
+ * SLT-119 (design §6.3; R12, R17) — las facturas de la empresa, aisladas como el plan: `null` = no se pudieron leer y
+ * la pestaña «Facturación» lo dice, sin tumbar la pantalla. Se leen al abrir, no al elegir la pestaña: es una
+ * sola sentencia.
+ */
+async function leerFacturas(actor: Actor, organizacionId: string): Promise<FacturaPlataformaDTO[] | null> {
+  try {
+    const r = await verFacturasDeEmpresa(actor, { organizacionId });
+    return r.estado === "ok" ? r.facturas : null;
+  } catch (error) {
+    console.error("[EmpresaDetallePage] verFacturasDeEmpresa lanzó", error);
     return null;
   }
 }
@@ -112,6 +136,10 @@ async function leerPreciosQueRigen(
  *
  * SLT-58 (design §6.3; R19–R21): el plan de la empresa se lee en paralelo con los módulos y su
  * sección va antes de ellos. Su fallo no tumba la página.
+ *
+ * SLT-119 (design §6.3; R12, P6): dos pestañas. «Empresa», la elegida al abrir, lleva lo de siempre (plan, núcleo
+ * y módulos) sin cambios; «Facturación», las facturas de la empresa de la URL con su detalle. La pestaña elegida
+ * no va en la URL: al recargar se vuelve a «Empresa».
  */
 export default async function EmpresaDetallePage({
   params,
@@ -125,10 +153,11 @@ export default async function EmpresaDetallePage({
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const { organizacionId } = await params;
-  const [r, plan, asignables] = await Promise.all([
+  const [r, plan, asignables, facturas] = await Promise.all([
     verModulosEmpresa(actor, { organizacionId }),
     leerPlan(actor, organizacionId),
     leerAsignables(organizacionId),
+    leerFacturas(actor, organizacionId),
   ]);
   if (r.estado !== "ok") notFound();
   const planActual = await leerPlanActual(actor, plan, asignables);
@@ -150,49 +179,66 @@ export default async function EmpresaDetallePage({
           {TEXTOS.volver}
         </Link>
 
-        <PlanEmpresa
-          organizacionId={empresa.organizacionId}
-          empresaNombre={empresa.nombre}
-          vista={plan}
-          asignables={asignables}
-          planActual={planActual}
-          asignarPlan={asignarPlanAction}
-          // SLT-58 §11.5: el rango sale del reloj del servidor, el mismo que valida el servicio (R30).
-          rangoInicioCiclo={rangoDelInicioDelCiclo(ahora)}
-          // Ajuste planes-custom (D5): la primera asignación propone MAÑANA, del mismo reloj.
-          inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
-          // SLT-86 (R16, R25): «Rige desde» de un cambio, con su rango y el inicio del siguiente período.
-          rangoFechaDeEfecto={rangoDeLaFechaDeEfecto(ahora)}
-          fechaDeEfectoPorDefecto={plan?.plan ? fechaDeEfectoPorDefecto(plan.plan.cobro.tipo, ahora) : null}
-          // Review m4: el costo del primer período, con el precio que regirá en la fecha elegida.
-          preciosQueRigen={preciosQueRigen}
-          previsualizarAsignacion={previsualizarAsignacionPlanAction}
-          planPreseleccionado={planPreseleccionado}
-          cambiarTipoCobro={cambiarTipoCobroAction}
-          cancelarCambioEmpresa={cancelarCambioEmpresaAction}
-        />
+        <Tabs defaultValue="empresa" className="flex flex-col gap-6">
+          <TabsList aria-label={TEXTOS.pestanas} className="w-fit">
+            <TabsTrigger value="empresa">{TEXTOS.pestanaEmpresa}</TabsTrigger>
+            <TabsTrigger value="facturacion">{TEXTOS.pestanaFacturacion}</TabsTrigger>
+          </TabsList>
 
-        <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">
-          <h2 id="nucleo-titulo" className="text-base font-semibold">
-            {TEXTOS.nucleo}
-          </h2>
-          <ul className="flex flex-wrap gap-2">
-            {NUCLEO.map((nombre) => (
-              <li
-                key={nombre}
-                className="rounded-md border border-border bg-muted px-2.5 py-1 text-sm"
-              >
-                {nombre}
-              </li>
-            ))}
-          </ul>
-        </section>
+          <TabsContent value="empresa" className="flex flex-col gap-6">
+            <PlanEmpresa
+              organizacionId={empresa.organizacionId}
+              empresaNombre={empresa.nombre}
+              vista={plan}
+              asignables={asignables}
+              planActual={planActual}
+              asignarPlan={asignarPlanAction}
+              // SLT-58 §11.5: el rango sale del reloj del servidor, el mismo que valida el servicio (R30).
+              rangoInicioCiclo={rangoDelInicioDelCiclo(ahora)}
+              // Ajuste planes-custom (D5): la primera asignación propone MAÑANA, del mismo reloj.
+              inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
+              // SLT-86 (R16, R25): «Rige desde» de un cambio, con su rango y el inicio del siguiente período.
+              rangoFechaDeEfecto={rangoDeLaFechaDeEfecto(ahora)}
+              fechaDeEfectoPorDefecto={plan?.plan ? fechaDeEfectoPorDefecto(plan.plan.cobro.tipo, ahora) : null}
+              // Review m4: el costo del primer período, con el precio que regirá en la fecha elegida.
+              preciosQueRigen={preciosQueRigen}
+              previsualizarAsignacion={previsualizarAsignacionPlanAction}
+              planPreseleccionado={planPreseleccionado}
+              cambiarTipoCobro={cambiarTipoCobroAction}
+              cancelarCambioEmpresa={cancelarCambioEmpresaAction}
+            />
 
-        <ModulosEmpresa
-          organizacionId={empresa.organizacionId}
-          modulos={empresa.modulos}
-          fijarModulo={fijarModuloEmpresaAction}
-        />
+            <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">
+              <h2 id="nucleo-titulo" className="text-base font-semibold">
+                {TEXTOS.nucleo}
+              </h2>
+              <ul className="flex flex-wrap gap-2">
+                {NUCLEO.map((nombre) => (
+                  <li
+                    key={nombre}
+                    className="rounded-md border border-border bg-muted px-2.5 py-1 text-sm"
+                  >
+                    {nombre}
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <ModulosEmpresa
+              organizacionId={empresa.organizacionId}
+              modulos={empresa.modulos}
+              fijarModulo={fijarModuloEmpresaAction}
+            />
+          </TabsContent>
+
+          <TabsContent value="facturacion">
+            <FacturasDeLaEmpresa
+              facturas={facturas}
+              // R12: la empresa la liga el servidor; el panel solo manda la factura y la página.
+              cargarDetalle={verDetalleFacturaEmpresaAction.bind(null, empresa.organizacionId)}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppPage>
   );

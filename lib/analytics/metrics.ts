@@ -886,6 +886,8 @@ const CATALOGO = [
         // SLT-68 (R20): el incentivo (devengo) y su contraasiento (pago). El calculo no cambia.
         "incentivo",
         "reverso_incentivo",
+        // SLT-139 (R329): lo pagado por la satélite (pago). El calculo no cambia: agrega por `tipo`.
+        "pago_satelite",
       ],
     },
   },

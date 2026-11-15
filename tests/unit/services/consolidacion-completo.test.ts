@@ -108,6 +108,11 @@ function consolidable(
       },
       totalPagoMensajero: dinero.pago,
       totalIngresoBodegaRechazos: dinero.ingreso,
+      // SLT-106 (R67/R194): campos requeridos de la fila. No vigilados: el servicio no los lee.
+      paraLaCentral: "0.00",
+      aprobadoAt: null,
+      gestionesAjustadas: 0,
+      pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
     },
     ["totales", "totalPagoMensajero", "totalIngresoBodegaRechazos"],
     lecturas,
@@ -224,6 +229,11 @@ function repoEnMemoria(sobre?: {
       llamadas.push("contarCierresDiaSolicitados");
       return 0;
     }),
+    // SLT-106 (R199): los nombres de los cierres sin resolver; lo lee `listarConsolidacion`.
+    findMensajerosConCierreSinResolver: vi.fn(async () => {
+      llamadas.push("findMensajerosConCierreSinResolver");
+      return [] as string[];
+    }),
     // ⭑ FICHA 431: `existeCierreBodegaSolicitado` se retiro del contrato con su indice unico parcial.
     crearCierreBodega: vi.fn(async () => "cb-nuevo"),
   } as unknown as ICierreBodegaRepository;
@@ -254,6 +264,10 @@ function consolidablesPlanos(n: number): CierreDiaConsolidableRow[] {
     totales: { efectivo: "1.00", simpe: "0.00", transferencia: "0.00", general: "1.00" },
     totalPagoMensajero: "1.00",
     totalIngresoBodegaRechazos: "0.00",
+    paraLaCentral: "0.00", // SLT-106: 1.00 − 1.00 − 0.00
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
+    pagoIndependienteEfectivo: false, // SLT-139: cierre viejo por defecto
   }));
 }
 
@@ -297,6 +311,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     expect(seis.llamadas).toEqual(["findCierresBodegaByZona"]);
     expect(seis.llamadas).not.toContain("findCierresDiaConsolidables");
     expect(seis.llamadas).not.toContain("contarCierresDiaSolicitados");
+    expect(seis.llamadas).not.toContain("findMensajerosConCierreSinResolver"); // SLT-106
     // Y el espía de dinero, en CERO: ni un campo de importe se llegó a leer.
     expect(dineroSeis).toEqual([]);
 
@@ -310,6 +325,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     expect(siete.llamadas).toEqual(["findCierresDiaConsolidables"]);
     expect(siete.llamadas).not.toContain("findCierresBodegaByZona");
     expect(siete.llamadas).not.toContain("contarCierresDiaSolicitados");
+    expect(siete.llamadas).not.toContain("findMensajerosConCierreSinResolver"); // SLT-106
     expect(dineroSiete).toEqual([]);
 
     // (c) Ni un agregado viaja en el resultado: el archivo lleva filas, no totales.
@@ -329,9 +345,10 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     // adorno.
     const compuesto = repoEnMemoria();
     const rCompuesto = await servicio(compuesto.repo).listarConsolidacion(SAT_A);
+    // SLT-106 (R199): el contador de pendientes pasa a leer sus NOMBRES; siguen siendo cuatro consultas.
     expect(compuesto.llamadas).toEqual([
       "findCierresDiaConsolidables",
-      "contarCierresDiaSolicitados",
+      "findMensajerosConCierreSinResolver",
       "findCierresBodegaByZona",
     ]);
     expect(compuesto.lecturasDinero.length).toBeGreaterThan(0);

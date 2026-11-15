@@ -100,6 +100,7 @@ function fakeRepo(gestiones: GestionPendienteDeCierreRow[]) {
     findCierresByMensajero: vi.fn(async () => []),
     findCierrePropioConGestiones: vi.fn(async () => null),
     findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [], total: 0 })),
+    findAprobadosParaPendiente: vi.fn(async () => []),
     findGestionParaDeshacer: vi.fn(async () => null),
     findUltimaGestionNoAnuladaId: vi.fn(async () => null),
     anularGestionYDevolverAGestion: vi.fn(async () => true),
@@ -220,11 +221,11 @@ describe("R29 — el `min(P, E)` del pago al mensajero se calcula con ESA `E`", 
     // Sin pagos vigentes contra el cierre todavía.
     // 293/T2.3 — NO-REGRESION: con `premiosVivos: "0.00"` las dos cifras son las de antes.
     expect(
-      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "0.00" }),
+      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "0.00", pagoIndependienteEfectivo: false }),
     ).toBe("1000.00");
     // Y si ya se le entregaron 400 de esos 1.000, quedan 600.
     expect(
-      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "400.00" }),
+      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "400.00", pagoIndependienteEfectivo: false }),
     ).toBe("600.00");
   });
 

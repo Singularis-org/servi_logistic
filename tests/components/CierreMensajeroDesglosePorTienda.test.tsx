@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SWRConfig } from "swr";
 
 import { monedaConfig } from "@/lib/config/moneda";
 import type {
@@ -87,13 +86,7 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-import {
-  listarHistoricoCierresAdminPaginado,
-  listarPendientesCierresAdminPaginado,
-  verCierreDetalle,
-} from "@/lib/actions/cierres-admin";
-import { CierresAdminModule } from "@/app/(app)/cierres-admin/_components/CierresAdminModule";
-import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
+import { montarDetalleAnteriorDelAdmin } from "@/tests/fixtures/detalle-cierre-admin-anterior";
 
 // ---------------------------------------------------------------------------
 // Lectura de lo PINTADO
@@ -354,33 +347,13 @@ const tienda = (nombre: string) => screen.getByRole("region", { name: nombraA(no
 
 /** Monta la pantalla y abre el detalle del cierre. */
 async function abrirDetalle(detalle: DetalleOk = DOS_TIENDAS) {
-  const cola = paginaInicial([detalle.cierre]);
-  vi.mocked(listarPendientesCierresAdminPaginado).mockResolvedValue({
-    status: "ok",
-    page: 1,
-    ...cola,
-  });
-  vi.mocked(listarHistoricoCierresAdminPaginado).mockResolvedValue({
-    status: "ok",
-    page: 1,
-    ...paginaInicial([]),
-  });
-  vi.mocked(verCierreDetalle).mockResolvedValue(detalle);
-
-  render(
-    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-      <CierresAdminModule pendientes={cola} historico={paginaInicial([])} sinZona={false} />
-    </SWRConfig>,
-  );
-
-  const user = userEvent.setup();
-  const abrir =
-    detalle.cierre.estado === "vencido"
-      ? `Ver el cierre de ${detalle.cierre.mensajeroNombre}`
-      : "Ver / decidir";
-  await user.click(await screen.findByRole("button", { name: abrir }));
+  // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: el módulo del admin ya no
+  // monta estas cascadas (las sustituyó el detalle único). Se monta el interior del modal de antes,
+  // con las mismas props, para no perder ninguna aserción hasta que SLT-115 las retire
+  // (`tests/fixtures/detalle-cierre-admin-anterior.tsx`).
+  montarDetalleAnteriorDelAdmin(detalle);
   await screen.findByRole("region", { name: `${CASCADA_DUENO_TITULO} · ${DE}` });
-  return user;
+  return userEvent.setup();
 }
 
 beforeEach(() => vi.clearAllMocks());

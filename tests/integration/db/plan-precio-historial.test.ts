@@ -23,6 +23,9 @@ import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 //     desde el 1 de enero), evaluando la misma regla que `plan_de_la_empresa` — `desde_at <=
 //     plan_inicio_ciclo_de(entrada, tipo, ahora)` — porque dentro de la transacción `now()` no se mueve.
 // `desde_at` se lee como texto: la fila de alta es `-infinity`, que no cabe en un `Date`.
+//
+// SLT-128 (design §3.3; R3): un precio programado lo escribe en el historial, con `desde_at = F`, la primera
+// empresa que lo recibe; el plan cambia su precio vigente con la última (R10).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -226,6 +229,65 @@ describeSiHayBase("SLT-86 — el historial de precio de un plan (R15, R22)", () 
       ["-infinity", "31000.00"],
       [a0000(futura), "35000.00"],
     ]);
+  });
+
+  it("SLT-128 R3: con F futura aplicada por la cola, la quincenal lo ve desde su recepción y la anual desde el 1 de enero; el plan cambia con la última", async () => {
+    const r = await revertida(base, async (tx) => {
+      // Guardado el 10 de noviembre con F = 20 (a mitad de quincena): la quincenal lo recibe el 1 de diciembre y
+      // la anual el 1 de enero de 2027.
+      const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-11-10T15:00:00.000Z"));
+      const planId = await crearPlan(servicio);
+      const quincenal = await conPlan(tx, planId, "quincenal", "2026-01-01 06:00:00");
+      const anual = await conPlan(tx, planId, "anual", "2025-01-01 06:00:00");
+      await fijarEmpresa(tx, "");
+      const res = await servicio.editar(SUPERADMIN, { planId, ...version(P35), vigenteDesde: "2026-11-20" });
+      const trasProgramar = await historial(tx, planId);
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+      const recepciones = await tx.planCambioRecepcion.findMany({ where: { cambioId }, select: { empresaId: true, recibeAt: true } });
+      const repo = planesEnTx(tx);
+      const recibeQuincenal = await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-12-01T06:00:30.000Z"));
+      const trasQuincenal = await historial(tx, planId);
+      const precioDelPlan = async () =>
+        (await tx.plan.findUniqueOrThrow({ where: { id: planId }, select: { precioMensual: true } })).precioMensual?.toFixed(2);
+      const planTrasQuincenal = await precioDelPlan();
+      const q = (ahora: string) => precioEn(tx, planId, "2026-01-01 06:00:00", "quincenal", ahora);
+      const a = (ahora: string) => precioEn(tx, planId, "2025-01-01 06:00:00", "anual", ahora);
+      const recibeAnual = await repo.recibirCambio({ planId, cambioId }, anual, new Date("2027-01-01T06:00:30.000Z"));
+      return {
+        res,
+        quincenal,
+        anual,
+        trasProgramar,
+        recepciones,
+        recibeQuincenal,
+        trasQuincenal,
+        planTrasQuincenal,
+        recibeAnual,
+        final: await historial(tx, planId),
+        planFinal: await precioDelPlan(),
+        quincenalVe: [await q("2026-11-25 12:00:00"), await q("2026-12-01 05:59:59.999"), await q("2026-12-01 06:00:00")],
+        anualVe: [await a("2026-12-31 12:00:00"), await a("2027-01-01 06:00:00")],
+      };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-20" });
+    expect(r.trasProgramar.map((f) => f.desde)).toEqual(["-infinity"]);
+    expect(Object.fromEntries(r.recepciones.map((x) => [x.empresaId, x.recibeAt.toISOString()]))).toEqual({
+      [r.quincenal]: "2026-12-01T06:00:00.000Z",
+      [r.anual]: "2027-01-01T06:00:00.000Z",
+    });
+    expect([r.recibeQuincenal, r.recibeAnual]).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }]);
+    // La primera recepción escribe la fila en F; la segunda (y la promoción) la dejan como está.
+    expect(r.trasQuincenal.map((f) => [f.desde, f.mensual])).toEqual([
+      ["-infinity", "31000.00"],
+      [a0000("2026-11-20"), "35000.00"],
+    ]);
+    expect(r.final).toEqual(r.trasQuincenal);
+    // R10: el precio del plan cambia con la última empresa, no antes.
+    expect(r.planTrasQuincenal).toBe("31000.00");
+    expect(r.planFinal).toBe("35000.00");
+    // Ninguna cuota con el precio nuevo antes de la recepción de cada una, ni con el viejo después.
+    expect(r.quincenalVe).toEqual(["31000.00", "31000.00", "35000.00"]);
+    expect(r.anualVe).toEqual(["31000.00", "35000.00"]);
   });
 
   it("R15: un cambio de precio programado y cancelado no deja fila", async () => {

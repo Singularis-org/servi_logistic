@@ -30,10 +30,5 @@ export function fechaLargaEnZona(instante: Date, zona: string): string {
   return `${DIAS_SEMANA[semana]} ${dia} de ${MESES[mes - 1]} de ${anio}`;
 }
 
-const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-
-/** «5 oct 2026», del dia calendario de `zona` (pie del PDF de picking, 476). */
-export function fechaCortaEnZona(instante: Date, zona: string): string {
-  const [anio, mes, dia] = fechaCalendario(instante, zona).split("-").map((n) => Number.parseInt(n, 10));
-  return `${dia} ${MESES_CORTOS[mes - 1]} ${anio}`;
-}
+/** «5 oct 2026» (pie del PDF de picking, 476). Vive en `lib/utils/fecha-corta` (SLT-99, m2); aquí se reexporta. */
+export { fechaCortaEnZona } from "@/lib/utils/fecha-corta";

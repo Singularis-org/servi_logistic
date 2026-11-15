@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { describe, it, expect, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedService";
@@ -9,7 +11,15 @@ import type { WalletMensajeroFeedTxClient } from "@/lib/interfaces/services/IWal
 // Ademas (Qa=SI, R17) emite el EGRESO egreso_pago_mensajero = P en la caja 42.
 
 // tx con un solo cierre en memoria (findUnique por id).
-function buildTx(cierre: { mensajeroId: string; totalPagoMensajero: string; totalEfectivo: string } | null) {
+function buildTx(
+  cierre: {
+    mensajeroId: string;
+    totalPagoMensajero: string;
+    totalEfectivo: string;
+    // SLT-123: la marca de la regla; ausente = `false`, como el DEFAULT de la columna.
+    pagoIndependienteEfectivo?: boolean;
+  } | null,
+) {
   return {
     cierreDia: {
       findUnique: vi.fn(async () =>
@@ -19,6 +29,7 @@ function buildTx(cierre: { mensajeroId: string; totalPagoMensajero: string; tota
               mensajeroId: cierre.mensajeroId,
               totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
               totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),
+              pagoIndependienteEfectivo: cierre.pagoIndependienteEfectivo ?? false,
             },
       ),
     },
@@ -175,5 +186,75 @@ describe("WalletMensajeroFeedService — INVARIANTE de cuadre (R15)", () => {
     }
     expect(sumDevengado.toFixed(2)).toBe(sumSnapshot.toFixed(2)); // Σ devengo = Σ snapshot
     expect(sumEgreso42.toFixed(2)).toBe(sumSnapshot.toFixed(2)); // Σ egreso 42 = Σ snapshot (Qa cuadre)
+  });
+});
+
+// ── SLT-123 (T3.1) — la marca del cierre decide que escribe el libro ────────────────────────────
+//
+// Importes escritos a mano. El feed no sabe el destino: un cierre de satelite llega aqui (al
+// conciliar) con la marca en `false` y escribe lo de siempre (R325, design §13). Con la marca en
+// `true` (cierre de la central aprobado desde SLT-123) el libro lleva SOLO el devengo (R313) y el
+// egreso de caja no cambia (R314).
+
+/** Las filas del libro como `categoria monto`, ordenadas: compara el CONJUNTO entero, no un mapa. */
+function filas(libro: { categoria: string; monto: string }[]): string[] {
+  return libro.map((m) => `${m.categoria} ${m.monto}`).sort();
+}
+
+describe("SLT-123 R313/R325 — el feed segun la marca `pagoIndependienteEfectivo`", () => {
+  const svc = new WalletMensajeroFeedService();
+
+  it("viejo central (marca false, E < P): devengo P y pago_efectivo E, como siempre", async () => {
+    const tx = buildTx({ mensajeroId: "m1", totalPagoMensajero: "3000.00", totalEfectivo: "1000.00", pagoIndependienteEfectivo: false });
+    const { libro, egresoCaja } = await svc.construirMovimientosDePago("v1", tx);
+    expect(filas(libro)).toEqual(["pago_devengado 3000.00", "pago_efectivo 1000.00"]);
+    expect(egresoCaja.map((e) => `${e.categoria} ${e.monto}`)).toEqual(["egreso_pago_mensajero 3000.00"]);
+  });
+
+  it("viejo satelite al conciliar (marca false, E >= P): devengo P y pago_efectivo P (min(P,E))", async () => {
+    const tx = buildTx({ mensajeroId: "m2", totalPagoMensajero: "2500.00", totalEfectivo: "4000.00", pagoIndependienteEfectivo: false });
+    const { libro, egresoCaja } = await svc.construirMovimientosDePago("s1", tx);
+    expect(filas(libro)).toEqual(["pago_devengado 2500.00", "pago_efectivo 2500.00"]);
+    expect(egresoCaja.map((e) => `${e.categoria} ${e.monto}`)).toEqual(["egreso_pago_mensajero 2500.00"]);
+  });
+
+  it("nuevo central con E >= P: SOLO el devengo P; el egreso de caja sigue siendo P", async () => {
+    const tx = buildTx({ mensajeroId: "m1", totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: true });
+    const { libro, egresoCaja } = await svc.construirMovimientosDePago("n1", tx);
+    expect(filas(libro)).toEqual(["pago_devengado 3000.00"]);
+    expect(libro[0]).toMatchObject({ tipo: "devengo", mensajeroId: "m1", origenTipo: "cierre_dia", origenId: "n1" });
+    expect(egresoCaja.map((e) => `${e.categoria} ${e.monto}`)).toEqual(["egreso_pago_mensajero 3000.00"]);
+  });
+
+  it("nuevo central con E < P: SOLO el devengo P (ningun pago tomado del efectivo)", async () => {
+    const tx = buildTx({ mensajeroId: "m1", totalPagoMensajero: "3000.00", totalEfectivo: "1000.00", pagoIndependienteEfectivo: true });
+    const { libro, egresoCaja } = await svc.construirMovimientosDePago("n2", tx);
+    expect(filas(libro)).toEqual(["pago_devengado 3000.00"]);
+    expect(egresoCaja.map((e) => `${e.categoria} ${e.monto}`)).toEqual(["egreso_pago_mensajero 3000.00"]);
+  });
+
+  it("P = 0: nada en el libro ni en caja, con la marca y sin ella", async () => {
+    for (const marca of [false, true]) {
+      const tx = buildTx({ mensajeroId: "m1", totalPagoMensajero: "0.00", totalEfectivo: "1000.00", pagoIndependienteEfectivo: marca });
+      const { libro, egresoCaja } = await svc.construirMovimientosDePago("n3", tx);
+      expect(libro, `marca ${marca}`).toEqual([]);
+      expect(egresoCaja, `marca ${marca}`).toEqual([]);
+    }
+  });
+
+  it("lee la marca en la MISMA lectura del cierre (un solo findUnique que la pide)", async () => {
+    const tx = buildTx({ mensajeroId: "m1", totalPagoMensajero: "3000.00", totalEfectivo: "5000.00", pagoIndependienteEfectivo: true });
+    await svc.construirMovimientosDePago("n1", tx);
+    const findUnique = (tx as unknown as { cierreDia: { findUnique: ReturnType<typeof vi.fn> } }).cierreDia.findUnique;
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(findUnique.mock.calls[0][0]).toMatchObject({ select: { pagoIndependienteEfectivo: true } });
+  });
+
+  it("R332: el feed no toca coma flotante (lee el archivo)", () => {
+    const fuente = fs.readFileSync(
+      path.join(__dirname, "..", "..", "..", "lib", "services", "WalletMensajeroFeedService.ts"),
+      "utf8",
+    );
+    expect(fuente).not.toMatch(/Number\(|parseFloat|Math\.|toNumber\(/);
   });
 });

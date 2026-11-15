@@ -25,7 +25,6 @@ function empresa(id: string, nombre: string, plan: EmpresaListada["plan"]): Empr
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
     pais: { id: "CR", nombre: "Costa Rica" },
-    cobroPorOrden: null,
     cobroVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
     plan,
   };
@@ -52,7 +51,6 @@ function montar() {
       altaEmpresa={vi.fn()}
       cobroGlobal={{ monto: "999.00" }}
       fijarCobroGlobal={vi.fn()}
-      fijarCobroEmpresa={vi.fn()}
       reenviarBienvenida={vi.fn()}
       bienvenidaPendiente={[]}
     />,

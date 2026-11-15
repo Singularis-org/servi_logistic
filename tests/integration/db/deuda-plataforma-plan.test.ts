@@ -232,10 +232,9 @@ describeSiHayBase("SLT-66 — la deuda de la wallet con cargos del plan (Postgre
     expect(deudaAntes).toBe("0.00");
     const asignado = await base.organizacion.findUniqueOrThrow({
       where: { id: org() },
-      select: { planId: true, cobroPlataformaPorOrden: true, plan: { select: { costoPorOrden: true } } },
+      select: { planId: true, plan: { select: { costoPorOrden: true } } },
     });
     expect(asignado.planId).toBe(planId);
-    expect(asignado.cobroPlataformaPorOrden).toBeNull();
     expect(asignado.plan?.costoPorOrden?.toFixed(2)).toBe("100.00");
   });
 

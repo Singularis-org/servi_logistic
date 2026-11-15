@@ -73,7 +73,7 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
     },
   });
   const actorId = randomUUID();
-  await tx.planCambioProgramado.create({
+  const cambio = await tx.planCambioProgramado.create({
     data: {
       planId: planA,
       vigenteDesde: new Date("2099-01-01T06:00:00.000Z"),
@@ -84,6 +84,10 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
     },
   });
   await asignarPlan(tx, A, planA);
+  // SLT-128 (R12, R24): la empresa solo ve el pendiente con su recepción sin recibir; aquí, en F.
+  await tx.planCambioRecepcion.create({
+    data: { cambioId: cambio.id, empresaId: A, recibeAt: new Date("2099-01-01T06:00:00.000Z") },
+  });
 
   await fijarEmpresa(tx, A);
   const fks = await crearFksDeOrden(tx); // crea un admin de tienda activo

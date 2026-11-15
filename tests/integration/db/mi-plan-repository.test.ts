@@ -59,7 +59,7 @@ async function escenario(tx: TxDeTest, version: unknown = PENDIENTE): Promise<{ 
       descuentos: { create: [{ periodo: "anual", monto: "99.80" }] },
     },
   });
-  await tx.planCambioProgramado.create({
+  const cambio = await tx.planCambioProgramado.create({
     data: {
       planId: plan,
       vigenteDesde: new Date(VIGENTE_DESDE),
@@ -68,6 +68,10 @@ async function escenario(tx: TxDeTest, version: unknown = PENDIENTE): Promise<{ 
       actorUsuarioId: randomUUID(),
       actorNombre: "Superadmin SLT58",
     },
+  });
+  // SLT-128 (R12, R24): la empresa solo ve el pendiente con su recepción sin recibir; aquí, en F.
+  await tx.planCambioRecepcion.create({
+    data: { cambioId: cambio.id, empresaId: A, recibeAt: new Date(VIGENTE_DESDE) },
   });
   await tx.$executeRawUnsafe(
     `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = $2::timestamp WHERE "id" = $3`,

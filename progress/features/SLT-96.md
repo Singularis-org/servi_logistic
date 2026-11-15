@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-96 | consolidacion-cero-recibida | fullstack | low | feature/SLT-96-consolidacion-cero-recibida | Carlos Restrepo | pending |
+| SLT-96 | consolidacion-cero-recibida | fullstack | low | feature/SLT-96-consolidacion-cero-recibida | Carlos Restrepo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -25,3 +25,6 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-09: PR #101 mergeado a `prod` (a476a295) por Carlos; tarjeta en Finalizado. Sincronización a `dev`: PR #102.
+- Worktree borrado. Base desechable `slt96_t1` sin borrar (falta OK de Carlos).
+- Pendiente de Carlos: marcar recibida con ₡0 la consolidación de Turrialba (Oscar) del 2026-11-07 en prod.

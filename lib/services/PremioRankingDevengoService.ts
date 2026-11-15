@@ -29,6 +29,7 @@ import type {
 import { fechaComoDate, ventanaDelDia } from "@/lib/ranking/snapshot-dia";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 
 /**
  * Feature 293 (T4.2, design §7) — EL MAESTRO REGISTRA EL PREMIO DEL PODIO COMO DEVENGO IMPUTADO
@@ -146,9 +147,12 @@ export class PremioRankingDevengoService implements IPremioRankingDevengoService
       return { ...base, estado: registro, cierreEstado: null };
     }
 
+    // SLT-124 (R4): la misma resolucion que el registro. Solo cierres de la central: con solo
+    // cierres de satelite sale `sin_cierre`, y en el caso mixto manda el estado del central.
     const cierre = await this.cierreRepo.resolverCierreDelDia(
       fila.mensajeroId,
       ventanaDelDia(fechaTexto, await this.zona("listarPremiosDelDia")),
+      ALCANCE_ACCESO_TOTAL,
     );
     if (cierre === null) return { ...base, estado: "sin_cierre", cierreEstado: null };
     if (cierre.estado !== "aprobado") {
@@ -183,9 +187,12 @@ export class PremioRankingDevengoService implements IPremioRankingDevengoService
     const monto = fila.premioMonto as string;
 
     const fechaTexto = textoDeFecha(fila.fecha);
+    // SLT-124 (R1-R3): la central solo imputa el premio a un cierre suyo (`bodega_central`). Un
+    // cierre de satelite no lo paga nadie en el sistema (SLT-122, D1), asi que nunca se elige.
     const cierre = await this.cierreRepo.resolverCierreDelDia(
       fila.mensajeroId,
       ventanaDelDia(fechaTexto, await this.zona("registrarPremio")),
+      ALCANCE_ACCESO_TOTAL,
     );
     // R11: no hay cierre de ese dia. Causa EXACTA, no un error generico.
     if (cierre === null) return { status: "sin_cierre" };

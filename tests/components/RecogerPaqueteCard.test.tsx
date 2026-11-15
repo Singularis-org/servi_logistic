@@ -326,15 +326,19 @@ describe("RecogerPaqueteCard — camino manual (número tecleado)", () => {
     expect(recogerMock).not.toHaveBeenCalled();
   });
 
-  it("robustez: entrada NO numérica no llama a la action y CONSERVA lo tecleado", async () => {
+  it("robustez: entrada NO numérica no llama a la action y deja lo tecleado en la línea de error", async () => {
     const user = userEvent.setup();
     await renderAbierta(user);
 
     await tecleaYConfirma(user, "abc");
 
     expect(recogerMock).not.toHaveBeenCalled();
-    // Se queda en el campo para corregirlo, en vez de borrarse sin explicacion.
-    expect(screen.getByLabelText("Número de guía")).toHaveValue("abc");
+    // SLT-158 (R575/R576): el campo se vacía —la lectura siguiente de la pistola no se pega a
+    // esta— y lo tecleado queda escrito, con el motivo, en la línea de error de la tarjeta.
+    expect(screen.getByLabelText("Número de guía")).toHaveValue("");
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("abc");
+    expect(alerta).toHaveTextContent("Código inválido.");
   });
 
   it("forbidden → toast de error 'sin permiso', sin onRecogida", async () => {
@@ -454,5 +458,80 @@ describe("RecogerPaqueteCard — guía asignada después de abrir la pantalla (S
     expect(successMock).toHaveBeenCalledWith("Guía 34991060 recogida.");
     const confirmacion = screen.getByText(/recogida correctamente/);
     expect(confirmacion).toHaveTextContent("Guía 34991060 recogida correctamente.");
+  });
+});
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`. La
+// action recibe el id de la orden de esa guía, así que «mismo numGuia» = misma orden.
+describe("RecogerPaqueteCard — guía única por cámara o pistola (SLT-157)", () => {
+  const conGuia1024 = [makeAsignacion({ id: "ord-1024", numGuia: 1024 })];
+
+  async function renderCon1024(user: ReturnType<typeof userEvent.setup>) {
+    listarMock.mockResolvedValue(listaVigente(conGuia1024));
+    render(<RecogerPaqueteCard porRecoger={conGuia1024} onRecogida={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Recoger paquete" }));
+  }
+
+  it("R565: el CODE128 por cámara y la URL del QR tecleada recogen la misma orden", async () => {
+    const user = userEvent.setup();
+    // `forbidden`: sin recogida efectiva, la tarjeta no cambia entre las dos lecturas.
+    recogerMock.mockResolvedValue({ status: "forbidden" });
+    await renderCon1024(user);
+
+    await escanear(user, "1024");
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(1));
+    expect(recogerMock).toHaveBeenNthCalledWith(1, { ordenIds: ["ord-1024"] });
+
+    await tecleaYConfirma(user, "https://app.ejemplo.test/paquete/1024");
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(2));
+    expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["ord-1024"] });
+  });
+
+  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la action", async () => {
+    const user = userEvent.setup();
+    await renderCon1024(user);
+
+    await escanear(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+
+    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO.
+    await tecleaYConfirma(user, "1024abc");
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
+    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
+    expect(recogerMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-158 «Entrada de escaneo para pistola» (R574): la tarjeta encola la segunda lectura y la
+// envía en cuanto termina la primera. Si la guarda anti-doble envío de `useRecogerPorGuia`
+// volviera a ser ESTADO, esa segunda llamada vería todavía el `procesando` del render previo y
+// se descartaría: por eso la guarda es un ref. Este caso es el que se pone rojo si vuelve.
+describe("RecogerPaqueteCard — dos lecturas seguidas de la pistola (SLT-158)", () => {
+  it("dos Enter seguidos con la primera recogida pendiente: se recogen las DOS, en orden", async () => {
+    const user = userEvent.setup();
+    let soltarPrimera: () => void = () => {};
+    recogerMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((res) => {
+            soltarPrimera = () => res({ status: "ok", recogidas: ["ord-1"] });
+          }),
+      )
+      .mockResolvedValueOnce({ status: "ok", recogidas: ["ord-2"] });
+    await renderAbierta(user);
+
+    await tecleaYConfirma(user, "1001");
+    await tecleaYConfirma(user, "1002");
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(1));
+
+    // FUERA de `act` a propósito: así React agenda el render como en el navegador (en otra
+    // tarea), y la lectura en cola llega ANTES de ese render, con la clausura del anterior.
+    // Dentro de `act` el render se vacía antes y una guarda en estado pasaría en verde.
+    soltarPrimera();
+
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(2));
+    expect(recogerMock).toHaveBeenNthCalledWith(1, { ordenIds: ["ord-1"] });
+    expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["ord-2"] });
   });
 });
