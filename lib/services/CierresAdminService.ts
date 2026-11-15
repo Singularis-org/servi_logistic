@@ -30,7 +30,6 @@ import type { IReprogramadasRetenidasService } from "@/lib/interfaces/services/I
 import type {
   CierreDetalleGestion,
   CierreGrupos,
-  IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type {
   ActualizarPagosGestionInput,
@@ -129,43 +128,6 @@ const ROL_ADMIN_SATELITE = "adminSatelite";
  */
 function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle {
   return esAccesoTotal(actor.rol) ? { lectura: "toda_la_empresa" } : alcance;
-}
-
-/**
- * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
- * (`ingresoEmpresa.tarifa.fulfillment`) es dato de la CENTRAL: es el servicio de su bodega, no
- * de la satelite. Para un actor sin acceso total sale ANULADO (`null`), no omitido: el tipo
- * (`TarifaSnapshotDTO.fulfillment: string | null`) no admite la ausencia, y `null` es su
- * «no hay dato que mostrar». Nunca "0.00": eso afirmaria que no se cobro.
- *
- * Falla CERRADO: el criterio es «NO es acceso total», no «es adminSatelite», asi que un rol que
- * un dia llegue aqui sin estar previsto tampoco lo recibe. Solo toca la tarifa: ningun total se
- * recalcula (el fulfillment no entra en `ingresoEmpresa.total`, ver `TarifaSnapshotDTO`).
- */
-export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
-  fila: T,
-  actor: Actor,
-): T {
-  if (esAccesoTotal(actor.rol)) return fila;
-  const ingreso = fila.ingresoEmpresa;
-  if (ingreso === undefined || ingreso === null) return fila;
-  // SLT-52 (R46): el fulfillment de la fila y su IVA son el mismo dato de la central; se anulan
-  // con el de la tarifa. En el modelo nuevo `tarifa` es `null` y estos dos son los unicos.
-  return {
-    ...fila,
-    ingresoEmpresa: {
-      ...ingreso,
-      fulfillment: null,
-      ivaFulfillment: null,
-      tarifa: ingreso.tarifa === null ? null : { ...ingreso.tarifa, fulfillment: null },
-      // SLT-101 (R94): los tres campos nuevos del fulfillment («Se cobró», su % de IVA y la fecha
-      // del cargo) son el mismo dato de la central. Se anulan si vienen; si no vienen no hay nada
-      // que filtrar, y no se añade la clave (los campos son aditivos).
-      ...(ingreso.fulfillmentConIva !== undefined ? { fulfillmentConIva: null } : {}),
-      ...(ingreso.ivaPctFulfillment !== undefined ? { ivaPctFulfillment: null } : {}),
-      ...(ingreso.fulfillmentCargadoAt !== undefined ? { fulfillmentCargadoAt: null } : {}),
-    },
-  };
 }
 
 /**

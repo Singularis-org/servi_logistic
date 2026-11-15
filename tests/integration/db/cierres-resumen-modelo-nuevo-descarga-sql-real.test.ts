@@ -598,6 +598,32 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
     });
   });
 
+  it("R482: la satélite recibe de la base la indemnización, el pago al mensajero y el ingreso de bodega del rechazo tal cual", async () => {
+    // SLT-161 (decision de Carlos): estos tres importes son de la satelite y la hoja Detalle los
+    // lleva. Se escriben en G1 y G2 de S1 dentro de la transaccion (se revierte) con valores a mano,
+    // imposibles de encontrar por casualidad: un recorte que anulara o pusiera a cero cualquiera falla.
+    await conCorpus(async (c) => {
+      const escritas = await c.tx.gestionOrden.updateMany({
+        where: { cierreId: c.cierre.S1 },
+        data: {
+          indemnizacion: new Prisma.Decimal("731957.41"),
+          pagoMensajero: new Prisma.Decimal("846213.52"),
+          ingresoBodegaRechazo: new Prisma.Decimal("583914.63"),
+        },
+      });
+      expect(escritas.count).toBe(2); // G1 y G2 de S1: sin filas, el caso no comprobaria nada
+      const r = await c.svc.listarGestionesCierresAdminCompleto(c.satelite, { mensajeroIds: [c.m.S1] });
+      if (r.status !== "ok") throw new Error(`status ${r.status}`);
+      expect(r.items).toHaveLength(2);
+      for (const g of r.items) {
+        expect(g.indemnizacion).toBe("731957.41");
+        expect(g.pagoMensajero).toBe("846213.52");
+        expect(g.ingresoBodegaRechazo).toBe("583914.63");
+        expect(g.ingresoEmpresa).toBeNull();
+      }
+    });
+  });
+
   it("R383: el alcance va en el WHERE de la lectura en lote: un id de otra zona pasado a mano no devuelve nada", async () => {
     await conCorpus(async (c) => {
       const soloAjeno = await c.repo.findGestionesDeCierresEnAlcance([c.cierre.N3], c.alcanceS, ZONA_CR);

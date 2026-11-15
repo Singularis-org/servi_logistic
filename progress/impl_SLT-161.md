@@ -16,8 +16,9 @@ Modificados (código):
   cuatro EMP `string | null` y `partesPorTienda … | null`.
 - `lib/services/CierresAdminService.ts` — T2.1: `CLASE_CIFRAS_DESCARGA_CIERRE` + `anularEmpresaSiNoCentral`
   en `completoConCifras` (F4). T2.2: `ocultarDineroEmpresaDescargaSiNoCentral` sustituye el `map` de
-  fulfillment de `listarGestionesCierresAdminCompleto` (F5). `ocultarFulfillmentSiNoCentral` sigue
-  exportada (la usan tests), ya sin uso en producción.
+  fulfillment de `listarGestionesCierresAdminCompleto` (F5). `ocultarFulfillmentSiNoCentral` quedó
+  exportada y sin uso, ni en producción ni en tests (corregido: no la usaba ningún test); se borró en
+  la tanda «menores de la review».
 - `lib/services/cifras-bodega-descarga.ts` — T2.3: `CLASE_CIFRAS_BODEGA_DESCARGA` (import solo de tipo
   de `ClasificacionDinero`).
 - `lib/services/CierreBodegaService.ts` — T2.3: corte en `listarCierresBodegaSolicitadosCompleto` (F3)
@@ -213,3 +214,49 @@ Modificados (tests):
   cuatro de la empresa en `null` para la satélite; la columna no existe en su libro.
 
 Veredicto T3: R483, R484, R485, R486, R489 y R487 (libro) con test literal y mutación que los mata.
+
+## Tanda «menores de la review» m1-m3 (backend_dev, 2026-11-15)
+
+Arregla los menores 1-3 de `progress/review_SLT-161.md`. Grep/Read (el grafo no indexa este worktree).
+Integración contra `servi_slt161_desechable`, nunca la del `.env`; corrió (0 saltados).
+
+### Archivos
+
+- `lib/services/CierresAdminService.ts` — m3: borrada `ocultarFulfillmentSiNoCentral` y el import
+  de tipo `IngresoEmpresaDTO`, que solo usaba ella. Grep en todo el repo (lib, app, tests, scripts):
+  ningún uso en código; solo menciones históricas en `progress/` y `specs/` de fichas cerradas.
+- `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts` — m2: `newService` y
+  `filaDeLaDescarga` aceptan una fila opcional; caso nuevo «R482: la satélite recibe indemnización,
+  pago al mensajero e ingreso de bodega del rechazo tal cual» (731957.41 / 846213.52 / 583914.63).
+- `tests/integration/db/cierres-resumen-modelo-nuevo-descarga-sql-real.test.ts` — m2: caso nuevo
+  «R482: la satélite recibe de la base la indemnización, el pago al mensajero y el ingreso de bodega
+  del rechazo tal cual»: escribe los tres importes en G1 y G2 de S1 dentro de la transacción
+  revertida (`updateMany`, afirma `count === 2` para que no pase en verde sin filas).
+- `specs/SLT-161-descargas-satelite-sin-dinero/tasks.md` — m1: T1.1-T4.3 marcadas `[x]`; T4.4 (E2E,
+  del leader) sin marcar.
+
+### Mapa R → test (añadidos)
+
+| R | Test |
+|---|---|
+| R482 | unidad: «R482: la satélite recibe indemnización, pago al mensajero e ingreso de bodega del rechazo tal cual»; integración: «R482: la satélite recibe de la base la indemnización, el pago al mensajero y el ingreso de bodega del rechazo tal cual» |
+
+### Mutaciones (en `ocultarDineroEmpresaDescargaSiNoCentral`, una a una, revertidas; `cmp` contra la copia = idéntico)
+
+| Mutación | Rojo |
+|---|---|
+| `indemnizacion: null` | solo los 2 casos nuevos (antes ningún test la veía) |
+| `pagoMensajero: null` | los 2 nuevos + R482 previo de unidad e integración + R488 (x3) |
+| `pagoMensajero: "0.00"` | solo los 2 casos nuevos (el valor de los fixtures previos) |
+| `ingresoBodegaRechazo: null` | solo los 2 casos nuevos |
+
+### Salidas
+
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` de los 3 `.ts` tocados: exit 0.
+- `pnpm exec vitest run` de los 2 archivos de test: 2 archivos, 37 tests, 37 passed, 0 skipped.
+- `./init.sh` (log a archivo, `DATABASE_URL` de la desechable): «== init OK ==», `INIT_EXIT=0` escrito
+  en el log.
+
+Veredicto: m1-m3 cerrados; R482 protegido donde decidió Carlos (indemnización, pago al mensajero e
+ingreso de bodega llegan tal cual), con 4 mutaciones que lo ponen rojo.

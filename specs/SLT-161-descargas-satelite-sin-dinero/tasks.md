@@ -7,30 +7,30 @@
 
 ## T1 — Contratos (backend_dev)
 
-- [ ] **T1.1** `CifrasCierreDescargaDTO`: `pagoTienda`, `ganaLaTienda`, `totalFacturado`,
+- [x] **T1.1** `CifrasCierreDescargaDTO`: `pagoTienda`, `ganaLaTienda`, `totalFacturado`,
   `ivaFacturado`, `netoEmpresa` a `string | null`; `partesPorTienda` a `… | null` (obligatorios).
   `CierreGestionDescargaDTO`: `montoCobrar?` y `tarifaModelo?` aditivos.
   **Hecho:** `pnpm run typecheck` muestra solo los errores de los consumidores que T2/T3 arreglan.
-- [ ] **T1.2** [P con T1.1] `CifrasCierreBodegaDescargaDTO`: `totalFacturado`, `ivaFacturado`,
+- [x] **T1.2** [P con T1.1] `CifrasCierreBodegaDescargaDTO`: `totalFacturado`, `ivaFacturado`,
   `netoEmpresa`, `ganaLaTienda` a `string | null`; `partesPorTienda` a `… | null`.
   **Hecho:** ídem.
 
 ## T2 — Corte en el servidor (backend_dev; depende de T1)
 
-- [ ] **T2.1** `CLASE_CIFRAS_DESCARGA_CIERRE` + `anularEmpresaSiNoCentral` en `completoConCifras`
+- [x] **T2.1** `CLASE_CIFRAS_DESCARGA_CIERRE` + `anularEmpresaSiNoCentral` en `completoConCifras`
   (F4). **Hecho:** R481 y R488 verdes en `cierres-resumen-modelo-nuevo-descarga-service.test.ts` y
   `cierres-admin-fulfillment-solo-central.test.ts`; los casos de la central de ese archivo, sin tocar,
   verdes.
-- [ ] **T2.2** `ocultarDineroEmpresaDescargaSiNoCentral` en `listarGestionesCierresAdminCompleto` (F5),
+- [x] **T2.2** `ocultarDineroEmpresaDescargaSiNoCentral` en `listarGestionesCierresAdminCompleto` (F5),
   sustituyendo el `map` de fulfillment. **Hecho:** R482 y R488 verdes en
   `cierres-admin-fulfillment-solo-central.test.ts`; los tests de F481/SLT-113 del fulfillment siguen
   verdes (el `null` del bloque los incluye; si alguno afirmaba el bloque con solo el fulfillment
   anulado para la satélite, se actualiza a R482 y se anota en `progress/impl_SLT-161.md`).
-- [ ] **T2.3** `CLASE_CIFRAS_BODEGA_DESCARGA` en `cifras-bodega-descarga.ts` + corte en
+- [x] **T2.3** `CLASE_CIFRAS_BODEGA_DESCARGA` en `cifras-bodega-descarga.ts` + corte en
   `listarCierresBodegaSolicitadosCompleto` (F3). Si el import desde `CierresAdminService.ts` cierra un
   ciclo, mover `anularEmpresa`/`ClasificacionDinero` a `lib/services/anular-empresa.ts` con reexport.
   **Hecho:** R480 verde en `cierre-bodega-solicitados-modelo-nuevo-service.test.ts`.
-- [ ] **T2.4** Integración (depende de T2.1–T2.3):
+- [x] **T2.4** Integración (depende de T2.1–T2.3):
   - `cierres-bodega-cifras-lote-sql-real.test.ts`: el caso R386/R389 pasa a afirmar R480 (BN con
     `gestiones`/`pagosAjustados` literales y las cinco EMP en `null`, sin `pagoEntregado`).
   - `cierres-resumen-modelo-nuevo-descarga-sql-real.test.ts`: el caso R382/R383 pasa a afirmar R481 en
@@ -42,25 +42,25 @@
 
 ## T3 — El libro de la satélite (frontend_dev; depende de T1, [P] con T2)
 
-- [ ] **T3.1** [P] Fundida: claves EMP en el conjunto de la central (26 columnas para la satélite);
+- [x] **T3.1** [P] Fundida: claves EMP en el conjunto de la central (26 columnas para la satélite);
   `montoCobrar` y `tarifaModelo` leídos también de la gestión. **Hecho:** R483, R489 (fundida) y R487
   (31) verdes en `cierres-gestiones-fundida-descarga-columnas.test.ts`, con una gestión del modelo nuevo
   `incidente` con `ingresoEmpresa: null` que conserva «Pago al mensajero» y «Gana la bodega».
-- [ ] **T3.2** [P] «Gestiones» del modelo nuevo: 21 columnas y claves EMP solo para `"admin"`.
+- [x] **T3.2** [P] «Gestiones» del modelo nuevo: 21 columnas y claves EMP solo para `"admin"`.
   **Hecho:** R484, R489 y R487 (35) verdes en `cierres-gestiones-modelo-nuevo-descarga.test.ts`.
-- [ ] **T3.3** [P] «Cierres» y libro de mensajeros: 14 columnas, claves EMP solo para `"admin"`, sin
+- [x] **T3.3** [P] «Cierres» y libro de mensajeros: 14 columnas, claves EMP solo para `"admin"`, sin
   «Por tienda» para la satélite. **Hecho:** R485, R486, R489 y R487 (19 + «Por tienda») verdes en
   `cierres-resumen-modelo-nuevo-descarga.test.ts` (solo nuevo y mixto).
-- [ ] **T3.4** [P] «Cierres» y libro de bodega: 21 columnas, claves EMP solo para `"admin"`, sin «Por
+- [x] **T3.4** [P] «Cierres» y libro de bodega: 21 columnas, claves EMP solo para `"admin"`, sin «Por
   tienda» para la satélite. **Hecho:** R485, R486, R489 y R487 (26 + «Por tienda») verdes en
   `cierres-bodega-modelo-nuevo-descarga.test.ts`.
 
 ## T4 — Cierre (depende de T2 y T3)
 
-- [ ] **T4.1** `pnpm run test:guardias` verde (en especial `columnas-sensibles.guardia` y
+- [x] **T4.1** `pnpm run test:guardias` verde (en especial `columnas-sensibles.guardia` y
   `ambito-columnas.guardia`, sin tocarlas). **Hecho:** salida en `progress/impl_SLT-161.md`.
-- [ ] **T4.2** `./init.sh` verde con `.env`. **Hecho:** `INIT_EXIT=0` escrito en el log.
-- [ ] **T4.3** Mapa `R480–R489 → test` en `progress/impl_SLT-161.md`, con el nombre exacto de cada
+- [x] **T4.2** `./init.sh` verde con `.env`. **Hecho:** `INIT_EXIT=0` escrito en el log.
+- [x] **T4.3** Mapa `R480–R489 → test` en `progress/impl_SLT-161.md`, con el nombre exacto de cada
   `it(...)`. **Hecho:** las diez filas, ninguna vacía.
 - [ ] **T4.4** Antes del PR (lo corre el leader): `pnpm exec playwright test e2e/cierre-bodega-satelite.spec.ts`
   y `pnpm exec playwright test --project=dinero` en local, base desechable nueva. **Hecho:** verdes

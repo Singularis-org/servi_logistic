@@ -198,7 +198,7 @@ type FilasDescargaDelRepo = Awaited<
   ReturnType<ICierresAdminRepository["findGestionesPorAlcanceCompleto"]>
 >;
 
-function newService() {
+function newService(fila: CierreGestionDescargaDTO = filaDescarga()) {
   const repo = dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async () => ({
       sinGestion: [],
@@ -221,7 +221,7 @@ function newService() {
       },
       gestiones: [gestionRow()],
     }) as unknown as DetalleDelRepo),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => [filaDescarga()] as FilasDescargaDelRepo),
+    findGestionesPorAlcanceCompleto: vi.fn(async () => [fila] as FilasDescargaDelRepo),
   });
 
   return new CierresAdminService(
@@ -268,8 +268,8 @@ async function gestionDelDetalleCierre(actor: Actor) {
   return r.grupos.entregado[0];
 }
 
-async function filaDeLaDescarga(actor: Actor) {
-  const r = await newService().listarGestionesCierresAdminCompleto(actor, {
+async function filaDeLaDescarga(actor: Actor, fila?: CierreGestionDescargaDTO) {
+  const r = await newService(fila).listarGestionesCierresAdminCompleto(actor, {
     mensajeroIds: ["m1"],
   });
   if (r.status !== "ok") throw new Error(`esperaba ok, llego ${r.status}`);
@@ -324,6 +324,23 @@ describe("ficha 481 — el fulfillment de la fila solo llega a la central", () =
       expect(JSON.stringify(g)).not.toContain("1500.00");
       // INGRESO_SATELITE (481) era el bloque con solo el fulfillment anulado: ya no llega ni eso.
       expect(g.ingresoEmpresa).not.toEqual(INGRESO_SATELITE);
+    });
+
+    // SLT-161 (R482, decision de Carlos): la indemnizacion, el pago al mensajero y lo que gana la
+    // bodega por el rechazo son de la satelite y llegan TAL CUAL. Valores a mano, imposibles de
+    // encontrar por casualidad: un recorte que anulara o pusiera a cero cualquiera de los tres falla.
+    it("R482: la satélite recibe indemnización, pago al mensajero e ingreso de bodega del rechazo tal cual", async () => {
+      const fila: CierreGestionDescargaDTO = {
+        ...filaDescarga(),
+        indemnizacion: "731957.41",
+        pagoMensajero: "846213.52",
+        ingresoBodegaRechazo: "583914.63",
+      };
+      const g = await filaDeLaDescarga(SATELITE, fila);
+      expect(g.indemnizacion).toBe("731957.41");
+      expect(g.pagoMensajero).toBe("846213.52");
+      expect(g.ingresoBodegaRechazo).toBe("583914.63");
+      expect(g.ingresoEmpresa).toBeNull();
     });
 
     it.each([
