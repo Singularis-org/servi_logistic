@@ -102,3 +102,59 @@ Guardia limpia: **17 passed** (5 de SLT-169 + 12 de SLT-175).
 | Añadir una excepción inexistente (`LiquidacionService`, `fecha-cr`) | 3 (entrada muerta, tope 2) | `excepcion muerta: …` | ídem |
 
 Tras las cuatro: `git status --short` sin `lib/`, `_m7.ts` borrado.
+
+## T7 — Cierre (parte local)
+
+- `./init.sh` con la `DATABASE_URL` de `servi_slt175_desechable` en el entorno (el gate lo confirma:
+  «DATABASE_URL viene del entorno; no se carga el .env») y `NODE_OPTIONS=--max-old-space-size=8192`
+  (sin él, el typecheck del gate cayó por falta de memoria, no por un error de tipos):
+  typecheck pasó, lint pasó, `test:rapido` verde (incluye las dos sql-real con 4 tests cada una y la
+  guardia con 17), `== init OK ==`, `INIT_EXIT=0` escrito en el log.
+- `git diff --name-only origin/dev -- lib/ app/ components/ db/`: vacío (0 archivos).
+- **Abierto:** la línea del log de `gate-completo` en el CI del PR, con los dos archivos ejecutados y
+  verdes (no saltados). Sin push en esta tanda: la anota quien abra el PR.
+
+## Archivos
+
+- `specs/SLT-175-pruebas-r621-r623-guardia-r631/requirements.md` — P1/P2 a D2/D3; tasks T1-T6 marcadas.
+- `progress/features/SLT-175.md` — cambio del leader, incluido en el primer commit.
+- `tests/integration/db/cierre-desglose-por-tienda-sql-real.test.ts` — siembra propia en la tx.
+- `tests/integration/db/cierre-bodega-desglose-por-tienda-sql-real.test.ts` — ídem.
+- `tests/baseline-rojos.json` — salen las dos claves (8 líneas).
+- `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts` — guardia R631 transitiva.
+- `progress/impl_SLT-175.md` — esta bitácora.
+
+## Mapa R → test
+
+| R | Test |
+|---|---|
+| R670 | `cierre-desglose-por-tienda-sql-real.test.ts`: 4/0/0 en `servi_slt175_desechable` |
+| R671 | `cierre-bodega-desglose-por-tienda-sql-real.test.ts`: 4/0/0 en la misma |
+| R672 | los dos archivos, casos «identidades» y «CONTROL POSITIVO», literales sin cambios |
+| R673 | los dos «CONTROL POSITIVO» + mutación de siembra (T4); falta de catálogo: lanzan `crearFksDeOrden`/`crearUsuarioDePrueba` y el `findFirst` de `en_reparto`, nombrándolo |
+| R674 | casos «R6», «R6/R7», «R19 vs R20» e «identidades» + mutaciones (a) y (b) (T4) |
+| R675 | `tests/baseline-rojos.json` sin las dos claves; `gate-cableado-arnes-v2.guardia.test.ts` (5 passed); `comparar-baseline-rojos.mjs` en `gate-completo` (CI) |
+| R676 | guardia: «ningun camino de valor … (R676-R678)» sobre el árbol real + en memoria (a), (b), (d), (e), (f) |
+| R677 | guardia, en memoria (c) |
+| R678 | guardia: «la lista de excepciones solo encoge», «quitar una excepcion da rojo», en memoria (g) |
+| R679 | guardia: contraprueba en memoria (a)-(g) y «el barrido no es vacuo» |
+
+## Salidas
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .` → exit 0, sin salida.
+- `pnpm exec eslint` de los tres archivos de test tocados → exit 0, sin salida.
+- `vitest run` guardia R631 → 17 passed. Sql-real en la desechable → 2 files, 8 passed, 0 skipped.
+- `./init.sh` → `== init OK ==`, `INIT_EXIT=0`.
+
+## Incidencia
+
+Al crear la base, un primer intento del script de un solo uso falló al parsear la URL del `.env`
+(venía entre comillas simples) y el error de Node imprimió la URL en la salida de la herramienta. No
+salió del entorno local ni se escribió en ningún archivo del repo. Se corrigió el script (sin
+comillas y `try/catch` sin eco). Conviene rotar la contraseña de la base local si se considera
+necesario.
+
+## Veredicto
+
+SLT-175 T1-T6 hechos y verificados en local sobre una base solo migrada; sin código de producción;
+queda la línea del CI de T7 y borrar `servi_slt175_desechable`.
