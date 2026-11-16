@@ -8,9 +8,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
@@ -122,31 +122,10 @@ describeSiHayBase(
     beforeAll(async () => {
       prisma = crearPrismaDeTest();
 
-      const fks = await fksDeOrden(prisma);
-      // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catálogo este archivo no
-      // puede comprobar nada, y un `passed` en esas condiciones es peor que no tener el test.
-      if (fks === null) {
-        throw new Error(
-          "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-            "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-        );
-      }
-
-      const plantilla = await prisma.usuario.findFirst({
-        select: { tipoIdentificacionId: true, rolId: true, passwordHash: true },
-      });
-      if (plantilla === null) {
-        throw new Error(
-          "la tabla `usuario` esta vacia: no hay de donde tomar `tipo_identificacion_id` ni " +
-            "`rol_id` para crear las tiendas y los mensajeros del corpus. Corre las semillas.",
-        );
-      }
-
-      // `cierre_bodega.solicitado_por` es FK -> `usuario`. Se reusa uno REAL: lo que se mide
-      // aqui es el agrupamiento por tienda, no un rol.
-      const solicitante = await prisma.usuario.findFirst({ select: { id: true } });
-      if (solicitante === null) throw new Error("no hay ningun usuario para ser el solicitante");
-
+      // SLT-175 R671: de la base solo se leen CATÁLOGOS por su clave. La zona, la geografía, las
+      // dos tiendas, Ana, Beto y el solicitante se crean dentro de la transacción de cada caso
+      // (`conCorpus`), con el fixture de SL-11, y el rollback se los lleva. Si falta un catálogo,
+      // el fixture o este `findFirst` LANZAN nombrándolo: nunca un `return` silencioso (R673).
       const estatus = await prisma.orderStatus.findFirst({
         where: { value: "en_reparto" },
         select: { id: true },
@@ -164,28 +143,29 @@ describeSiHayBase(
           // reales de `public` (ver `_postgres-real.ts`).
           await serializarEscriturasReales(tx);
 
-          const nuevoUsuario = async (clave: string, nombre: string) =>
-            (
-              await tx.usuario.create({
-                data: {
-                  nombre,
-                  email: `u-${clave}-${SUFIJO}@ejemplo.test`,
-                  telefono: "88880000",
-                  passwordHash: plantilla.passwordHash,
-                  cedula: `C-${clave}-${SUFIJO}`,
-                  tipoIdentificacionId: plantilla.tipoIdentificacionId,
-                  rolId: plantilla.rolId,
-                },
-                select: { id: true },
-              })
-            ).id;
+          // Zona y geografía propias (SLT-175). La tienda que crea el fixture no se usa: las dos
+          // del corpus se crean aparte para que ninguna tenga tarifa propia y compartan nombre.
+          const fks = await crearFksDeOrden(tx);
+          // `cierre_bodega.solicitado_por` es FK -> `usuario`: el actor del cierre de bodega.
+          const solicitante = await crearUsuarioDePrueba(tx, "adminSatelite");
+
+          // Usuarios del corpus con el nombre que el caso pide. El fixture les da uno propio; se
+          // renombran en la tx.
+          const nuevoUsuario = async (rol: "adminTienda" | "mensajero", nombre: string) => {
+            const usuario = await crearUsuarioDePrueba(tx, rol);
+            await tx.usuario.update({
+              where: { id: usuario.id },
+              data: { nombre, primerApellido: null },
+            });
+            return usuario.id;
+          };
 
           // El nombre VIVO también es el mismo en las dos tiendas: nada en el corpus permite
           // distinguirlas por texto.
-          const tiendaA = await nuevoUsuario("tienda-a", NOMBRE_COMPARTIDO);
-          const tiendaB = await nuevoUsuario("tienda-b", NOMBRE_COMPARTIDO);
-          const ana = await nuevoUsuario("mensajera-ana", "Ana Mensajera");
-          const beto = await nuevoUsuario("mensajero-beto", "Beto Mensajero");
+          const tiendaA = await nuevoUsuario("adminTienda", NOMBRE_COMPARTIDO);
+          const tiendaB = await nuevoUsuario("adminTienda", NOMBRE_COMPARTIDO);
+          const ana = await nuevoUsuario("mensajero", "Ana Mensajera");
+          const beto = await nuevoUsuario("mensajero", "Beto Mensajero");
 
           // LA TARIFA CONGELADA del corpus. `cierre_detail.tarifa_id` es FK con ON DELETE
           // RESTRICT, asi que tiene que apuntar a una fila real; se crea una sola y la comparten
