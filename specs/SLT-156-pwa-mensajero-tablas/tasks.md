@@ -167,22 +167,23 @@
 
 ## Rebanada E — mapa de ruta (R539-R544)
 
-- [ ] **E1 [P] Marcadores con la paleta (R539).** `MA/ruta-mapa-iconos.ts`, `MA/RutaMapaInner.tsx`.
+- [x] **E1 [P] Marcadores con la paleta (R539).** `MA/ruta-mapa-iconos.ts`, `MA/RutaMapaInner.tsx`.
   *Hecho:* `tests/unit/utils/ruta-mapa-iconos.test.ts`: el HTML usa `var(--navy)`,
   `var(--brand-light)`, `var(--success)` y ningún `#hex`. *Mutación:* `#2563eb` → rojo.
-- [ ] **E2 [P] Carrusel → mapa (R542).** `components/shared/CarruselCards.tsx` (`onIndiceChange`),
+- [x] **E2 [P] Carrusel → mapa (R542).** `components/shared/CarruselCards.tsx` (`onIndiceChange`),
   `MA/RepartoModule.tsx`, `MA/RutaMapa.tsx`. *Hecho:* `tests/components/CarruselCards.test.tsx`
   (emite el índice al cambiar) y `RutaMapaInner.test.tsx` (con `paradaActivaId` llama `panTo`).
   *Mutación:* no emitir en `select` → rojo.
-- [ ] **E3 Hoja inferior y pantalla completa (R540, R541, R543, R544).** Depende de E1.
+- [x] **E3 Hoja inferior y pantalla completa (R540, R541, R543, R544).** Depende de E1.
   `MA/HojaParadaMapa.tsx`, `MA/RutaMapaInner.tsx`, `MA/RepartoModule.tsx`. *Hecho:* test nuevo
   `tests/components/HojaParadaMapa.test.tsx` (datos de la parada, «Navegar» → «Abrir en:» y
   «Gestionar» → diálogo) y `RutaMapaInner.test.tsx` («Ver mapa completo» alterna clase y llama
   `invalidateSize`; «Cerrar» vuelve; «Centrar en mi ubicación» con `aria-label`; parada sin
   coordenadas fuera). *Mutación:* no llamar `invalidateSize` → rojo.
-- [ ] **E4 E2E a 360 px.** Depende de E1-E3. `e2e/pwa-mensajero-mapa.spec.ts` (mapa abierto sin
+- [x] **E4 E2E a 360 px.** Depende de E1-E3. `e2e/pwa-mensajero-mapa.spec.ts` (mapa abierto sin
   desborde; marcador → hoja; pantalla completa y vuelta; «Mostrar mapa» ≥ 44). Archivos de E en la
-  guardia. *Hecho:* verde en local. *Mutación:* `size="xs"` en «Mostrar mapa» → rojo.
+  guardia. *Hecho:* verde en local. *Mutación:* `size="xs"` en «Mostrar mapa» → rojo. *(SLT-166: hecho y
+  verificado; variables y desviaciones en `progress/impl_SLT-166.md`.)*
 
 ## Trazabilidad prevista (R → test)
 

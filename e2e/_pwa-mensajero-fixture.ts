@@ -82,6 +82,9 @@ export async function sinDesborde(page: Page, selector?: string): Promise<void> 
           const cs = getComputedStyle(n);
           if (cs.position === "fixed") return true;
           if (n !== el && (cs.overflowX === "auto" || cs.overflowX === "scroll")) return true;
+          // SLT-166: dentro del mapa, Leaflet monta los tiles y los marcadores fuera de la vista POR
+          // DISEÑO y los recorta su contenedor. Se mide el contenedor (no está exento), no sus tiles.
+          if (n !== el && n.classList.contains("leaflet-container")) return true;
         }
         return false;
       }

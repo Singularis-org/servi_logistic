@@ -1,0 +1,268 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { ReactNode } from "react";
+import { render, screen, within, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { escogerParaGestion } from "@/lib/actions/mis-asignaciones";
+import { KpisMensajero } from "@/app/(app)/mis-asignaciones/_components/KpisMensajero";
+import { RepartoModule } from "@/app/(app)/mis-asignaciones/_components/RepartoModule";
+import type { RutaMapaProps } from "@/app/(app)/mis-asignaciones/_components/RutaMapa";
+import type {
+  MiAsignacionDTO,
+  RutaResumenDTO,
+} from "@/lib/interfaces/services/IMisAsignacionesService";
+import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+
+// SLT-166 «PWA del mensajero: mapa de ruta» — lo que el MÓDULO de Reparto hace con el mapa:
+//   - R542: la tarjeta a la vista del carrusel es la parada activa del mapa (solo en Mosaico);
+//   - R543: una parada sin coordenadas sigue en la lista y fuera del mapa, y cuenta en el total;
+//   - R540: tocar un marcador abre su hoja, y su «Gestionar» lleva al MISMO modo foco que la
+//     tarjeta, sin llamar al servidor antes de «Confirmar guía»;
+//   - R544: «Mostrar mapa» / «Ocultar mapa» con sus textos, a 44 px.
+// El mapa (Leaflet) y el carrusel (embla) se sustituyen por dobles que exponen sus props: aquí se
+// prueba el cableado del módulo; los dos componentes tienen sus propios tests.
+
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
+vi.mock("@/lib/actions/mis-asignaciones", () => ({
+  recogerAsignaciones: vi.fn(),
+  escogerParaGestion: vi.fn(),
+  gestionar: vi.fn(),
+  liberarGestion: vi.fn(),
+}));
+
+vi.mock("@/lib/actions/orden-ayuda", () => ({
+  solicitarAyudaOrden: vi.fn(),
+  recuperarOrdenAyuda: vi.fn(),
+}));
+
+vi.mock("@/lib/actions/orden-notas", () => ({
+  listarNotasOrden: vi.fn().mockResolvedValue({ status: "ok", notas: [], puedeEscribir: false }),
+  publicarNotaOrden: vi.fn(),
+  borrarNotaOrden: vi.fn(),
+}));
+
+const { rutaMapaMock } = vi.hoisted(() => ({ rutaMapaMock: vi.fn() }));
+vi.mock("@/app/(app)/mis-asignaciones/_components/RutaMapa", () => ({
+  RutaMapa: (props: RutaMapaProps) => {
+    rutaMapaMock(props);
+    return (
+      <div data-testid="ruta-mapa">
+        {props.paradas.map((p) => (
+          <button key={p.id} type="button" onClick={() => props.onSeleccionarParada?.(p.id)}>
+            {`marcador ${p.id}`}
+          </button>
+        ))}
+      </div>
+    );
+  },
+}));
+
+vi.mock("@/components/shared/CarruselCards", () => ({
+  CarruselCards: (props: {
+    items: unknown[];
+    getKey: (item: unknown) => string;
+    renderItem: (item: unknown) => ReactNode;
+    ariaLabel: string;
+    onIndiceChange?: (indice: number) => void;
+  }) => (
+    <div role="region" aria-label={props.ariaLabel}>
+      {props.items.map((item, i) => (
+        <div key={props.getKey(item)}>
+          {props.renderItem(item)}
+          <button type="button" onClick={() => props.onIndiceChange?.(i)}>
+            {`deslizar a la tarjeta ${i}`}
+          </button>
+        </div>
+      ))}
+    </div>
+  ),
+}));
+
+vi.mock("@/lib/actions/ruta-mensajero", () => ({
+  sincronizarRuta: vi.fn().mockResolvedValue({ status: "ok", omitida: false }),
+}));
+
+vi.mock("@/lib/actions/orden-mensajero-meta", () => ({
+  marcarGestionarLuego: vi.fn(),
+}));
+
+vi.mock("@/hooks/useToast", () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+    show: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
+function orden(over: Partial<MiAsignacionDTO> & { id: string }): MiAsignacionDTO {
+  return {
+    numGuia: 1001,
+    numRemision: "REM-001",
+    estatusValue: "en_reparto",
+    destinatario: "Ana Perez",
+    telefonoDest: "88880000",
+    direccion: "Calle 1, casa 2",
+    producto: "Caja mediana",
+    peso: 1.5,
+    montoCobrar: 150,
+    latitud: 9.9281244,
+    longitud: -84.0907246,
+    notas: null,
+    tiendaNombre: "Tienda X",
+    zonaNombre: "GAM",
+    provinciaNombre: "San Jose",
+    cantonNombre: "Central",
+    distritoNombre: "Carmen",
+    sinpeNumero: "80000000",
+    sinpeNombre: "Titular de Prueba",
+    secuenciaRuta: 1,
+    ...over,
+  };
+}
+
+const RUTA: RutaResumenDTO = {
+  estado: "vigente",
+  calculadaAt: null,
+  origenFuente: "gps",
+  secuenciaFuente: null,
+  paradasSinOptimizar: 0,
+  trazado: null,
+  tramoSiguiente: null,
+};
+
+const TRES = [
+  orden({ id: "g1", numRemision: "REM-G1", destinatario: "Uno", secuenciaRuta: 1 }),
+  orden({ id: "g2", numRemision: "REM-G2", destinatario: "Dos", secuenciaRuta: 2, latitud: 9.95, longitud: -84.11 }),
+  // R543: sin coordenadas.
+  orden({ id: "g3", numRemision: "REM-G3", destinatario: "Tres", secuenciaRuta: 3, latitud: null, longitud: null }),
+];
+
+function montar(porGestionar: MiAsignacionDTO[] = TRES) {
+  return render(
+    <RepartoModule
+      kpis={<KpisMensajero kpis={{ pendientes: 3, entregadas: 0, porCobrar: 0, totalACobrar: 0 }} />}
+      porGestionar={porGestionar}
+      conAyuda={[]}
+      porRecoger={[]}
+      ordenEnGestionId={null}
+      ruta={RUTA}
+      bloqueo={SIN_BLOQUEO}
+    />,
+  );
+}
+
+function ultimasPropsDelMapa(): RutaMapaProps {
+  const props = rutaMapaMock.mock.calls.at(-1)?.[0] as RutaMapaProps | undefined;
+  expect(props, "el mapa tiene que estar montado").toBeDefined();
+  return props!;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+afterEach(cleanup);
+
+describe("SLT-166 R542 — el carrusel manda la parada activa del mapa", () => {
+  it("en Mosaico, al deslizar a otra tarjeta su parada pasa a ser la activa", async () => {
+    const user = userEvent.setup();
+    montar();
+    expect(ultimasPropsDelMapa().paradaActivaId).toBe("g1");
+    expect(screen.getByText("El mapa se centra en la orden del carrusel.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "deslizar a la tarjeta 1" }));
+
+    expect(ultimasPropsDelMapa().paradaActivaId).toBe("g2");
+  });
+
+  it("en Detalle no hay carrusel: el módulo no impone parada activa (el mapa marca la primera)", async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(screen.getByRole("button", { name: "deslizar a la tarjeta 1" }));
+    const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
+    await user.click(within(conmutador).getByRole("button", { name: /Detalle/ }));
+
+    // El cambio de vista va animado (`useTransicionVista`): se espera a que se vaya el carrusel.
+    await vi.waitFor(() => expect(screen.queryByRole("region", { name: "Órdenes en reparto" })).toBeNull());
+    expect(ultimasPropsDelMapa().paradaActivaId).toBeNull();
+  });
+});
+
+describe("SLT-166 R543 — una parada sin coordenadas sigue en la lista y fuera del mapa", () => {
+  it("el mapa recibe g1 y g2; la lista tiene las tres y el total del mapa cuenta las tres", () => {
+    montar();
+    const props = ultimasPropsDelMapa();
+    expect(props.paradas.map((p) => p.id)).toEqual(["g1", "g2"]);
+    expect(props.totalParadas).toBe(3);
+    expect(screen.getByRole("article", { name: /Orden REM-G3/ })).toBeInTheDocument();
+  });
+});
+
+describe("SLT-166 R540 — el marcador abre su hoja y «Gestionar» sigue el camino de la tarjeta", () => {
+  it("tocar el marcador de g2 abre su hoja; «Gestionar» → «Aceptar» → modo foco, sin llamar al servidor", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await user.click(screen.getByRole("button", { name: "marcador g2" }));
+    const hoja = screen.getByRole("dialog", { name: "Parada 2 de 3" });
+    expect(within(hoja).getByText("REM-G2")).toBeInTheDocument();
+    expect(within(hoja).getByText("Dos")).toBeInTheDocument();
+
+    await user.click(within(hoja).getByRole("button", { name: "Gestionar la orden REM-G2" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "¿Gestionar esta orden?" })).getByRole("button", {
+        name: "Aceptar",
+      }),
+    );
+
+    // Modo foco de esa orden (R510): el panel con «Confirmar guía» y sin la lista.
+    const panel = screen.getByRole("region", { name: "Detalle de la orden" });
+    // Y es la de la hoja (g2, «Dos»), no la primera de la lista que el panel tomaría solo.
+    expect(panel).toHaveTextContent("Dos");
+    expect(panel).not.toHaveTextContent("Uno");
+    expect(screen.getByRole("button", { name: "Confirmar guía" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Órdenes en reparto" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Parada 2 de 3" })).toBeNull();
+    // Como desde la tarjeta: el servidor no se entera hasta confirmar la guía.
+    expect(vi.mocked(escogerParaGestion)).not.toHaveBeenCalled();
+  });
+
+  it("cerrar la hoja vuelve al mapa", async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(screen.getByRole("button", { name: "marcador g1" }));
+    const hoja = screen.getByRole("dialog", { name: "Parada 1 de 3" });
+    await user.click(within(hoja).getByRole("button", { name: "Cerrar" }));
+    expect(screen.queryByRole("dialog", { name: "Parada 1 de 3" })).toBeNull();
+    expect(screen.getByTestId("ruta-mapa")).toBeInTheDocument();
+  });
+});
+
+describe("SLT-166 R544 — «Mostrar mapa» / «Ocultar mapa» a 44 px", () => {
+  it("conserva sus textos, abre y cierra el mapa y mide 44 px", async () => {
+    const user = userEvent.setup();
+    montar();
+    const grupo = screen.getByRole("group", { name: "Mapa de ruta" });
+    const boton = within(grupo).getByRole("button", { name: "Ocultar mapa" });
+    expect(boton.className).toContain("h-11");
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(boton);
+    expect(within(grupo).getByRole("button", { name: "Mostrar mapa" })).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(within(grupo).getByRole("button", { name: "Mostrar mapa" }));
+    expect(within(grupo).getByRole("button", { name: "Ocultar mapa" })).toBeInTheDocument();
+    expect(await screen.findByTestId("ruta-mapa")).toBeInTheDocument();
+  });
+});
