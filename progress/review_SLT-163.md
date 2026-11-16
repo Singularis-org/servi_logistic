@@ -133,3 +133,61 @@ Grafo: no lo usé (el worktree tiene la tanda sin indexar); exploré con Grep/Re
 **RECHAZADO**: tres bloqueantes (B1 test del camino reservada por el escáner; B2 R493 del disparador
 del escáner; B3 R492 en los KPI). B1 se arregla con un test. B2 y B3 se arreglan en código o con la
 decisión registrada.
+
+## Vuelta 2 (acotada a a820c4d5..5715a4df)
+
+Revisado solo el diff de la tanda 4 contra B1-B3 y m1-m3 de la vuelta 1, y sus regresiones.
+
+### Checklist
+
+- [x] **B1 (261/R12) cerrado.** `EscanerGuiaReparto.test.tsx` tiene dos casos nuevos:
+  - Caso 1, por el escáner real: la guía 6211 (`esParaManana`, 2026-11-27) da el aviso de reserva. Se
+    compara con un literal en regex, no con `avisoReservaParaOtroDia`, así que no es su propia fuente.
+    No abre «¿Gestionar esta orden?», no abre el detalle y no llama a `escoger`. Si se quita la guarda
+    de `EscanerGuiaReparto.tsx:60`, la orden llega a `onOrdenEncontrada`, se abre el diálogo y el caso
+    cae.
+  - Caso 2: la segunda guarda (`RepartoModule.tsx:516`, en `escoger`) se prueba con un doble que
+    entrega la reservada saltándose el escáner. «Aceptar» lleva a `gestionarEscaneada` y de ahí a
+    `escoger`, que la frena: hay aviso y no se llama al servidor.
+  - El doble solo actúa con `simulacion.saltarGuardaDelEscaner = true`. `beforeEach` lo vuelve a
+    `false` y, en ese caso, el mock devuelve el componente real con las mismas props. El resto del
+    archivo prueba el escáner real; no queda vaciado.
+- [x] **B2 (R493) cerrado.** `EscanerModal` tiene la prop opcional `tactil` (por defecto `false`), que
+  pone `size="touch"` (`h-11`) y `w-full`. Solo la pasa `EscanerGuiaReparto`. Los otros cuatro usos
+  (`RecogerPaqueteCard`, `OrdenesListado`, `EscanerRecepcion`, `RecoleccionModule`) no la pasan y
+  siguen con `default`, y sus tests están en verde. Hay test de clases (`h-11`, `w-full`, sin `h-8`)
+  y aserción `tactil` en el E2E (a).
+- [x] **B3 (R492) cerrado.** `CIFRA_KPI` = `COLUMNA_FIJA text-sm md:text-2xl`: el importe va en una
+  línea. `KpiValorAnimado` ya no recibe la clase que envolvía. El test fija literales (`shrink-0`,
+  `whitespace-nowrap`, `tabular-nums`, `text-sm`, `md:text-2xl`) y prohíbe `wrap-anywhere`,
+  `whitespace-normal`, `text-base`, `text-xl` y `truncate`. No importa `CIFRA_KPI` ni `COLUMNA_FIJA`,
+  así que no compara contra su propia fuente. El desborde real lo mide `kpiQueNoCaben` en el E2E (a)
+  a 360 y 414 px. `text-sm` es decisión del leader (bitácora).
+- [x] **m1** cerrado: `ConfirmarGestionDialog` subió antes del bloque de comentarios del chat y del
+  hilo, y «Feature 235» vuelve a quedar sobre `HiloNotasAyudaModal`.
+- [x] **m2** cerrado: el `user` sin uso ya no está.
+- [x] **m3** cerrado: no queda `₡` en `KpisMensajero.tsx`.
+- [x] **Ejecutado por mí:**
+  - vitest de los 8 archivos tocados o afectados (`EscanerGuiaReparto`, `KpisMensajero`,
+    `GestionarOrdenPanelIncidente`, `EscanerModal`, `EscanerRecepcion`, `RecogerPaqueteCard`,
+    `RecoleccionModule`, guardia `pwa-mensajero-sin-recorte`): 168/168.
+  - Los 27 archivos que tocan `RepartoModule`, `KpisMensajero` o `CIFRA_KPI`: 725/725.
+  - `tsc --noEmit` en verde y eslint de lo tocado con 0 errores.
+- [x] **Tamaño:** pasa del máximo, con aceptación registrada.
+
+### Hallazgos
+
+- **menor (v2-m1).** El tamaño medido ahora es 1311/1000 líneas de producción y 1831/3000 de tests.
+  La línea de aceptación cita 1304 y 1743. La diferencia es pequeña y viene de esta tanda, pero
+  conviene actualizar las cifras de la nota de `progress/features/SLT-163.md` antes del PR.
+- **menor (v2-m2, informativo).** eslint avisa de `EnviarPlantillaWhatsappButton` sin uso en
+  `GestionarOrdenPanel.tsx:72`. Ya está en `origin/dev` (el uso está comentado allí también), así que
+  no es de esta feature.
+- Los menores m4-m6 de la vuelta 1 siguen como estaban: son para Preview con Carlos o de otra
+  rebanada.
+- No he ejecutado el E2E (lo corre el CI). Según la bitácora, reparto da 10/10 y dinero 21/21.
+
+### Veredicto
+
+**OK**: B1, B2 y B3 están cerrados, con tests que fallarían si se quitara el arreglo, y no hay
+regresiones en lo que ya estaba OK.
