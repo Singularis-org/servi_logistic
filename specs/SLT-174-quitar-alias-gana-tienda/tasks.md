@@ -7,7 +7,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
 
 ## Tasks
 
-- [ ] **T1 — Mapa de rescate, antes de borrar nada.**
+- [x] **T1 — Mapa de rescate, antes de borrar nada.**
   - En `progress/impl_SLT-174.md`, anotar cada `describe`/`it` que se borra, qué comprueba y si eso
     sigue vivo:
     - `tests/components/CascadaDinero.test.tsx` entero;
