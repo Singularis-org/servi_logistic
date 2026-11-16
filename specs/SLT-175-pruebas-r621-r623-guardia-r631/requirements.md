@@ -247,7 +247,7 @@ imports indirectos). D2 → R678. D3 → R675 (solo salen dos claves).
   - *Hecho:* `git diff tests/baseline-rojos.json` muestra solo esas 8 líneas, y
     `tests/unit/guards/gate-cableado-arnes-v2.guardia.test.ts` sigue verde.
   - Depende de T2 y T3.
-- [ ] **T6 [P con T2] — Guardia R631 transitiva** (R676-R679), en
+- [x] **T6 [P con T2] — Guardia R631 transitiva** (R676-R679), en
   `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`.
   - Copiar el método de `superficie-de-uso.guardia.test.ts:133-166,181-186` a funciones que reciban un
     lector (ruta → texto) para poder pasarles el árbol en memoria:

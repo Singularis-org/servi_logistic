@@ -82,3 +82,23 @@ correcto. La tabla recoge la buena.
 Salen solo `tests/integration/db/cierre-desglose-por-tienda-sql-real.test.ts` y
 `tests/integration/db/cierre-bodega-desglose-por-tienda-sql-real.test.ts`: `git diff --stat` = 8
 borradas, 0 añadidas; el JSON parsea. `gate-cableado-arnes-v2.guardia.test.ts`: 5 passed.
+
+## T6 — Guardia R631 transitiva
+
+`tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`: los 5 casos de SLT-169 se quedan
+tal cual; se añaden las funciones con lector inyectable (`resolverEspecificador`, `importsDeValor`,
+`barrer`, `nombresDeOrigen`, `simbolosProhibidos`, `veredicto`), `EXCEPCIONES` (las dos de D2, con
+`archivo:línea` y porqué citando SLT-176) con `TOPE_EXCEPCIONES = 2`, y 12 casos nuevos: 4 sobre el
+árbol real y 8 en memoria (a-g). Barrido real: 19 servicios, más módulos leídos que servicios,
+`lib/utils/ingreso-empresa.ts` incluido, y exactamente las dos cadenas de T1.
+
+Guardia limpia: **17 passed** (5 de SLT-169 + 12 de SLT-175).
+
+| Mutación | Casos rojos | Mensaje | Restaurado |
+|---|---|---|---|
+| M6 de SLT-169: `import { cifrasDelCierre } from "@/lib/utils/cifras-cierre"` en `WalletTiendaFeedService.ts` | 4 (la directa de SLT-169 y las 3 del árbol real) | — | `git checkout -- lib/` |
+| M7 transitiva: `lib/utils/_m7.ts` re-exporta `cifrasDelCierre`; `WalletTiendaFeedService.ts` importa `cifrasDelCierre as c7` de `_m7` | 3 (las del árbol real; la directa de SLT-169 NO lo ve) | `camino a modulo prohibido (lib/services/WalletTiendaFeedService.ts:13): lib/services/WalletTiendaFeedService.ts → lib/utils/_m7.ts → lib/utils/cifras-cierre.ts` | `git checkout -- lib/` + `rm lib/utils/_m7.ts` |
+| Borrar la excepción (`CierreBodegaService`, `CierresAdminService`) | 2 | camino no exceptuado por `:40` | copia de seguridad restaurada; `diff -q` igual |
+| Añadir una excepción inexistente (`LiquidacionService`, `fecha-cr`) | 3 (entrada muerta, tope 2) | `excepcion muerta: …` | ídem |
+
+Tras las cuatro: `git status --short` sin `lib/`, `_m7.ts` borrado.
