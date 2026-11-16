@@ -98,11 +98,11 @@ const ABREVIATURA_BODEGA = /(?<![A-Za-zÁÉÍÓÚáéíóúÑñ])B\.\s/;
 // permitido); ahora el hallazgo tiene que ser EXACTAMENTE uno de `textos`, y todos tienen que estar.
 const EXCEPCIONES: Record<string, { textos: readonly string[]; motivo: string }> = {
   "app/(app)/cierres-admin/_components/cierre-labels.ts": {
-    textos: ["entregadas", "entregadas", "entregadas", "entregadas"],
+    textos: ["entregadas", "entregadas", "entregadas"],
     motivo:
       "SLT-54 (R65, design §11): «Flete de gestiones no entregadas» es el rótulo aprobado de un GRUPO de " +
-      "gestiones, en negativo; no nombra el estado (R6). D40: las tres notas `_MODELO_NUEVO` del cierre " +
-      "repiten esa frase, «flete de gestiones no entregadas»",
+      "gestiones, en negativo; no nombra el estado (R6). D40: las notas `_MODELO_NUEVO` del cierre " +
+      "repiten esa frase, «flete de gestiones no entregadas» (SLT-172 retiró la del desglose por tienda)",
   },
   "lib/constants/wallet-rotulos.ts": {
     textos: ["entregadas", "entregadas"],
