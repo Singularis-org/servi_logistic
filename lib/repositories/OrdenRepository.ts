@@ -3501,7 +3501,9 @@ export class OrdenRepository implements IOrdenRepository {
        WHERE o."id" = ${ordenId}
          AND o."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
        LIMIT 1`;
-    return fila ? { destinatario: fila.destinatario, tienda: fila.tienda } : null;
+    // R713: las dos claves, ambas texto. Una fila que no las trae como texto no es un resumen.
+    if (typeof fila?.destinatario !== "string" || typeof fila.tienda !== "string") return null;
+    return { destinatario: fila.destinatario, tienda: fila.tienda };
   }
 
   // --- Feature 106: canal integrador de lectura/cancelacion por API key ---

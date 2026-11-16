@@ -103,7 +103,7 @@ seed antes del primer gate (si no, la integración se salta y el gate sale verde
   (también en la relectura tras carrera), después de todas las guardas; si devuelve `null` o lanza,
   responden sin `resumen` (R715). Las acciones no cambian. *Hecho:* R710-R712 y R715 en verde en
   `tests/unit/services/recepcion-resumen.test.ts`.
-- [ ] **T3 — Sin regresión (depende de T2).** Dobles de los tests existentes con `resumenRecepcion`
+- [x] **T3 — Sin regresión (depende de T2).** Dobles de los tests existentes con `resumenRecepcion`
   donde lleguen a `ok`/`ya_recibida`; sus aserciones de `status`, `ordenId` y `estado` intactas.
   *Hecho:* R716: los archivos de su fila en verde con `pnpm exec vitest related --run`, y
   `pnpm run typecheck` en verde (los componentes que consumen las acciones compilan sin tocarse).
