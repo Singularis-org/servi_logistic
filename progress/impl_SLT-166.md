@@ -80,3 +80,33 @@ Tras revertir: `git diff --stat` igual que antes de mutar; `size="xs"` 0 veces e
   local.
 
 Veredicto: rebanada E hecha y verificada (R539-R544 con test, 6 mutaciones rojas, E2E 13/13, init verde).
+
+## Tanda 2 (menores de la review: m1-m4) · frontend_dev · 2026-11-15
+
+- m3: `MA/RepartoModule.tsx` — `totalParadas={porGestionar.length}`: la barra de pantalla completa cuenta el total
+  de la ruta sin filtrar, como la tarjeta y la hoja. Test: `RepartoMapa.test.tsx` «(review m3) con la búsqueda
+  activa, la tarjeta, la hoja y el mapa cuentan las mismas 3 órdenes».
+- m4: `MA/RutaMapaInner.tsx` — Escape sale de la pantalla completa solo si no hay otro `[role="dialog"]` abierto.
+  Test: `RutaMapaInner.test.tsx` «(review m4) el primer Escape cierra solo la hoja; el segundo, la pantalla completa»
+  (mapa + `HojaParadaMapa` reales montados juntos).
+  Hallazgo: con base-ui 1.6 el bug no se reproduce. `useDismiss` del Sheet escucha `keydown` en `document`
+  y hace `stopPropagation`, así que el listener de `window` no llega a ver el primer Escape. La guarda protege
+  si otro diálogo deja pasar el evento o si el listener se adelanta.
+- m1: notas «Desviación aceptada (leader, 2026-11-15; ver progress/features/SLT-166.md)» en `tasks.md` (E1),
+  `design.md §11` (variables) y `requirements.md` (R541, un solo control).
+- m2: «Gestionada no se pinta» pasa a `## Deudas` en `progress/features/SLT-166.md`.
+
+Mutaciones (revertidas, `cmp` igual):
+| Mutación | Resultado |
+|---|---|
+| M3 `totalParadas={porGestionarFiltrado.length}` | rojo: `RepartoMapa.test.tsx` m3 (1) |
+| M4 quitar `if (otroDialogo) return;` | VERDE: base-ui ya corta la propagación (ver hallazgo) |
+| M4b quitar la guarda + listener en captura (ve el Escape antes que base-ui) | rojo: `RutaMapaInner.test.tsx` m4 (1) |
+| control: guarda puesta + listener en captura | verde: la guarda es lo que lo protege |
+
+E2E (base nueva `servi_slt166_e2e`, `next build`, puerto 3102): `pwa-mensajero-mapa` + `pwa-mensajero-reparto`
+→ `7 passed (38.4s)`, `E2E_EXIT=0`.
+
+`./init.sh` (con `slt166_gate`): `== init OK ==`, `INIT_EXIT=0`; tamaño 15/40 archivos, 671/1000 de producción, 1003/3000 de tests.
+
+Veredicto: menores m1-m4 resueltos; m5 sin tocar por indicación.

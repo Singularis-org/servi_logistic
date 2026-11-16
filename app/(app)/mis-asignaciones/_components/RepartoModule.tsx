@@ -940,7 +940,8 @@ export function RepartoModule({
                       tramoSiguiente={tramoResaltado}
                       paradaActivaId={paradaActivaId}
                       onSeleccionarParada={setParadaHojaId}
-                      totalParadas={porGestionarFiltrado.length}
+                      // El total de la RUTA, sin filtrar: el mismo que la tarjeta y la hoja.
+                      totalParadas={porGestionar.length}
                     />
                   </div>
                 ) : null}

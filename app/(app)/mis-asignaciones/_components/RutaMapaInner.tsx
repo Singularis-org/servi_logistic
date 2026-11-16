@@ -54,7 +54,7 @@ export const LEYENDA_MAPA: { tipo: TipoMarcador; texto: string }[] = [
   { tipo: "origen", texto: "Tú" },
 ];
 
-/** «Paradas {n} de {total}»: las que el mapa dibuja frente a las de la lista (R543: sin coordenadas no se dibujan). */
+/** «Paradas {n} de {total}»: las que el mapa dibuja frente al total de la ruta (R543: sin coordenadas no se dibujan). */
 export function textoParadasEnMapa(enMapa: number, total: number): string {
   return `Paradas ${enMapa} de ${total}`;
 }
@@ -190,7 +190,7 @@ export interface RutaMapaInnerProps {
   paradaActivaId?: string | null;
   /** SLT-166 (R540): el mensajero tocó el marcador de esa parada. */
   onSeleccionarParada?: (id: string) => void;
-  /** SLT-166 (R541): paradas de la lista, con y sin coordenadas, para «Paradas {n} de {total}». */
+  /** SLT-166 (R541): paradas de la ruta sin filtrar, con y sin coordenadas, para «Paradas {n} de {total}». */
   totalParadas?: number;
 }
 
@@ -259,10 +259,18 @@ export function RutaMapaInner({
   // R541: el MISMO contenedor alterna a pantalla completa (un solo `MapContainer`: los tiles, el
   // zoom y la posición no se pierden al entrar ni al salir).
   const [completo, setCompleto] = useState(false);
+  const contenedor = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!completo) return;
     function alTeclear(e: KeyboardEvent) {
-      if (e.key === "Escape") setCompleto(false);
+      if (e.key !== "Escape") return;
+      // Con otro diálogo encima (la hoja de la parada, el «¿Gestionar esta orden?») el Escape es
+      // suyo: el primero cierra ese diálogo y solo el siguiente sale de la pantalla completa.
+      const otroDialogo = Array.from(document.querySelectorAll('[role="dialog"]')).some(
+        (d) => d !== contenedor.current,
+      );
+      if (otroDialogo) return;
+      setCompleto(false);
     }
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
@@ -270,6 +278,7 @@ export function RutaMapaInner({
 
   return (
     <div
+      ref={contenedor}
       data-testid="ruta-mapa"
       data-completo={completo ? "true" : "false"}
       role={completo ? "dialog" : undefined}

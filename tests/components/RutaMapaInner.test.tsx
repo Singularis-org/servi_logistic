@@ -73,7 +73,11 @@ vi.mock("react-leaflet", () => ({
   useMap: () => mapa,
 }));
 
+import { useState } from "react";
+
 import { RutaMapaInner } from "@/app/(app)/mis-asignaciones/_components/RutaMapaInner";
+import { HojaParadaMapa } from "@/app/(app)/mis-asignaciones/_components/HojaParadaMapa";
+import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { codificarPolilinea } from "@/lib/geo/polilinea";
 
 afterEach(cleanup);
@@ -266,5 +270,68 @@ describe("SLT-166 R542 — la parada activa centra el mapa", () => {
     expect(mapa.panTo).toHaveBeenCalledWith([9.96, -84.12]);
     const [, , tres] = htmlDeMarcadores();
     expect(tres).toContain("background:var(--color-brand-light)");
+  });
+});
+
+describe("SLT-166 (review m4) — Escape con la hoja abierta sobre la pantalla completa", () => {
+  const ORDEN = {
+    id: "o2",
+    numGuia: 1002,
+    numRemision: "REM-2",
+    estatusValue: "en_reparto",
+    destinatario: "Dos",
+    telefonoDest: "88880000",
+    direccion: "Calle 2",
+    producto: "Caja",
+    peso: 1,
+    montoCobrar: 1000,
+    latitud: 9.95,
+    longitud: -84.11,
+    notas: null,
+    tiendaNombre: "Tienda",
+    zonaNombre: "GAM",
+    provinciaNombre: "San José",
+    cantonNombre: "Central",
+    distritoNombre: "Carmen",
+    sinpeNumero: "80000000",
+    sinpeNombre: "Titular",
+    secuenciaRuta: 2,
+  } as MiAsignacionDTO;
+
+  /** El mapa y su hoja montados juntos, como en `RepartoModule`. */
+  function MapaConHoja() {
+    const [hoja, setHoja] = useState<string | null>(null);
+    return (
+      <>
+        <RutaMapaInner paradas={TRES} onSeleccionarParada={setHoja} />
+        <HojaParadaMapa
+          orden={hoja === null ? null : ORDEN}
+          total={3}
+          onOpenChange={(abierta) => {
+            if (!abierta) setHoja(null);
+          }}
+          gestionarDeshabilitado={false}
+          onGestionar={() => setHoja(null)}
+        />
+      </>
+    );
+  }
+
+  it("el primer Escape cierra solo la hoja; el segundo, la pantalla completa", async () => {
+    const user = userEvent.setup();
+    render(<MapaConHoja />);
+    await user.click(screen.getByRole("button", { name: "Ver mapa completo" }));
+    const contenedor = screen.getByTestId("ruta-mapa");
+    await user.click(screen.getAllByRole("button", { name: "tocar marcador" })[1]!);
+    expect(screen.getByRole("dialog", { name: "Parada 2 de 3" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Parada 2 de 3" })).toBeNull());
+    expect(contenedor).toHaveAttribute("data-completo", "true");
+
+    await user.keyboard("{Escape}");
+
+    expect(contenedor).toHaveAttribute("data-completo", "false");
   });
 });

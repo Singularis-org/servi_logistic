@@ -170,6 +170,8 @@
 - [x] **E1 [P] Marcadores con la paleta (R539).** `MA/ruta-mapa-iconos.ts`, `MA/RutaMapaInner.tsx`.
   *Hecho:* `tests/unit/utils/ruta-mapa-iconos.test.ts`: el HTML usa `var(--navy)`,
   `var(--brand-light)`, `var(--success)` y ningún `#hex`. *Mutación:* `#2563eb` → rojo.
+  > Desviación aceptada (leader, 2026-11-15; ver progress/features/SLT-166.md): esas tres variables no existen en `app/globals.css`; los marcadores usan
+  > `--color-brand-light`, `--color-brand-dark`, `--color-asfalto-4`, `--color-success` y `--color-white`.
 - [x] **E2 [P] Carrusel → mapa (R542).** `components/shared/CarruselCards.tsx` (`onIndiceChange`),
   `MA/RepartoModule.tsx`, `MA/RutaMapa.tsx`. *Hecho:* `tests/components/CarruselCards.test.tsx`
   (emite el índice al cambiar) y `RutaMapaInner.test.tsx` (con `paradaActivaId` llama `panTo`).

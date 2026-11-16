@@ -266,3 +266,19 @@ describe("SLT-166 R544 — «Mostrar mapa» / «Ocultar mapa» a 44 px", () => {
     expect(await screen.findByTestId("ruta-mapa")).toBeInTheDocument();
   });
 });
+
+describe("SLT-166 (review m3) — un solo total: el de la ruta sin filtrar", () => {
+  it("con la búsqueda activa, la tarjeta, la hoja y el mapa cuentan las mismas 3 órdenes", async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.type(screen.getByRole("searchbox", { name: "Buscar guías" }), "Dos");
+    // El filtro está puesto: solo queda la tarjeta de g2.
+    await vi.waitFor(() => expect(screen.queryByRole("article", { name: /Orden REM-G1/ })).toBeNull());
+
+    const tarjeta = screen.getByRole("article", { name: /Orden REM-G2/ });
+    expect(tarjeta).toHaveTextContent("2 de 3");
+    expect(ultimasPropsDelMapa().totalParadas).toBe(3);
+    await user.click(screen.getByRole("button", { name: "marcador g2" }));
+    expect(screen.getByRole("dialog", { name: "Parada 2 de 3" })).toBeInTheDocument();
+  });
+});
