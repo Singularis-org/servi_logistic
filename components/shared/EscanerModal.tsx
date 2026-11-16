@@ -33,8 +33,10 @@ import { cn } from "@/lib/utils";
 //
 // No sabe de dominio: el acto lo nombra cada superficie con `label`. El valor por defecto
 // es "Recibir paquete" —el acto de las dos superficies de recepción, que son la mayoría—,
-// pero una pantalla que hace OTRA cosa ("Recoger paquete", "Recolectar en tienda") debe
-// pasarlo: heredar en silencio el vocabulario ajeno es lo que se quiere evitar.
+// pero una pantalla que hace OTRA cosa debe pasarlo: heredar en silencio el vocabulario ajeno
+// es lo que se quiere evitar. Las del mensajero (Reparto, Recoger en bodega y Recolección) pasan
+// `ESCANER_LABEL_GUIA` («Escanear o escribir guía», SLT-156 R500); la tarjeta de dentro nombra el
+// acto («Recoger paquete», «Recolectar en tienda»).
 //
 // El cierre lo pone el propio Dialog (la "X" con nombre accesible "Cerrar"), así que ya no
 // hay un segundo texto que mantener por superficie.

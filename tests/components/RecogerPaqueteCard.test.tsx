@@ -149,7 +149,7 @@ async function renderAbierta(
   onRecogida: () => void = vi.fn(),
 ) {
   render(<RecogerPaqueteCard porRecoger={porRecoger} onRecogida={onRecogida} />);
-  await user.click(screen.getByRole("button", { name: "Recoger paquete" }));
+  await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
 }
 
 /** Teclea el número de guía y confirma con Enter (submit del form). */
@@ -395,7 +395,7 @@ describe("RecogerPaqueteCard — el desplegable (cámara apagada por defecto)", 
 
     // El acceso a recoger sigue estando (nombra su propio acto, no el de otra pantalla).
     expect(
-      screen.getByRole("button", { name: "Recoger paquete" }),
+      screen.getByRole("button", { name: "Escanear o escribir guía" }),
     ).toBeInTheDocument();
     // Pero nada del escáner está en el DOM todavía.
     expect(
@@ -427,7 +427,7 @@ describe("RecogerPaqueteCard — el desplegable (cámara apagada por defecto)", 
     expect(screen.queryByRole("button", { name: "Cerrar cámara" })).toBeNull();
     // Y el acceso sigue ahí: cerrar no es perder la forma de recoger.
     expect(
-      screen.getByRole("button", { name: "Recoger paquete" }),
+      screen.getByRole("button", { name: "Escanear o escribir guía" }),
     ).toBeInTheDocument();
   });
 });
@@ -469,7 +469,7 @@ describe("RecogerPaqueteCard — guía única por cámara o pistola (SLT-157)", 
   async function renderCon1024(user: ReturnType<typeof userEvent.setup>) {
     listarMock.mockResolvedValue(listaVigente(conGuia1024));
     render(<RecogerPaqueteCard porRecoger={conGuia1024} onRecogida={vi.fn()} />);
-    await user.click(screen.getByRole("button", { name: "Recoger paquete" }));
+    await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
   }
 
   it("R565: el CODE128 por cámara y la URL del QR tecleada recogen la misma orden", async () => {
