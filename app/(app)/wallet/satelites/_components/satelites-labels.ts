@@ -69,15 +69,15 @@ export const SATELITES_PAGINA = {
  * ⚠️ LA NOTA QUE IMPIDE QUE ALGUIEN SUME ESTE NÚMERO A LA CAJA Y CUENTE DOS VECES.
  *
  * Va al pie de la tabla, visible y sin desplegable. El saldo de esta pantalla NO es un movimiento
- * de caja: ese dinero **ya entró** a la caja de la empresa cuando se aprobó el cierre de cada
- * mensajero, y aquí sólo se dice DÓNDE ESTÁ FÍSICAMENTE. Sin la nota, un número de siete cifras
- * llamado «pendiente» dentro del módulo Wallet se lee como plata por cobrar, y quien la sume al
- * balance la habrá contado dos veces.
+ * de caja: ese dinero entra a la caja de la empresa **al conciliar** la consolidación de la bodega
+ * (SLT-73: aprobar el cierre del mensajero satélite no asienta dinero), y aquí sólo se dice DÓNDE
+ * ESTÁ FÍSICAMENTE. Sin la nota, un número de siete cifras llamado «pendiente» dentro del módulo
+ * Wallet se lee como plata por cobrar, y quien la sume al balance la habrá contado dos veces.
  */
 export const SALDO_NO_ES_CAJA_TITULO = "El saldo no es un movimiento de caja.";
 export const SALDO_NO_ES_CAJA_NOTA_A =
-  `Ese dinero ya entró a la caja de ${EMPRESA.enFrase} cuando se aprobó el cierre de cada mensajero. Lo que ` +
-  "esta pantalla dice es";
+  `Ese dinero entra a la caja de ${EMPRESA.enFrase} cuando se concilia la consolidación de la bodega, ` +
+  "no antes. Lo que esta pantalla dice es";
 export const SALDO_NO_ES_CAJA_NOTA_DESTACADO = "dónde está físicamente";
 export const SALDO_NO_ES_CAJA_NOTA_B =
   ": cuánto queda en manos de cada bodega esperando llegar a la central.";
