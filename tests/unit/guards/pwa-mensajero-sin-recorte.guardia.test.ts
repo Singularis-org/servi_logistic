@@ -80,6 +80,18 @@ const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
     reglas: ["recorte", "escala", "oculta"],
     nota: "Solo el componente: los helpers de arriba no pintan.",
   },
+  // Rebanada B — Reparto (SLT-163; m7 de la review de A: también «oculta»).
+  { archivo: "app/(app)/mis-asignaciones/_components/RepartoModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/KpisMensajero.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/ConfirmarGestionDialog.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/GestionarOrdenCardButton.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/MarcarLuegoToggle.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RecuperarAyudaButton.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/FiltroCantonDistrito.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/AvisoRutaLinea.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/VerificarGuiaGate.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/EscanerGuiaReparto.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/reparto-escaner.ts", reglas: ["recorte", "escala", "oculta"] },
   {
     archivo: "components/shared/BuscadorFiltros.tsx",
     reglas: ["escala"],

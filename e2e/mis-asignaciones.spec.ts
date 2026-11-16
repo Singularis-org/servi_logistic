@@ -22,9 +22,10 @@ import {
  * Reescrito contra la UI ACTUAL:
  *  - RECOGER es por número de guía (o escáner) desde «Recoger paquete» en `/mis-asignaciones/recoger`
  *    (feature 96; ya no hay «Recoger» por fila ni modal de confirmación);
- *  - GESTIONAR es un panel EN LÍNEA en `/mis-asignaciones/reparto` (feature 113): «Gestionar esta
- *    orden» abre la verificación de la guía (feature 98), y el resultado se elige con BOTONES
- *    («Entregar», «Rechazar», «Reprogramar»), no con un select;
+ *  - GESTIONAR se abre en MODO FOCO desde la tarjeta de `/mis-asignaciones/reparto` (SLT-156 R510):
+ *    «Gestionar» + «Aceptar» deja solo el panel, con la verificación de la guía ya abierta (feature
+ *    98) y su botón «Confirmar guía» (R511); el resultado se elige con BOTONES («Entregar»,
+ *    «Rechazar», «Reprogramar»), no con un select;
  *  - el cobro es un desglose por líneas (feature 213): «Método de pago línea N» + «Monto línea N».
  *
  * Casos:
@@ -59,7 +60,7 @@ async function prepararCaso(montoCobrar: number): Promise<{ m: MensajeroE2E; ord
   return { m, orden };
 }
 
-/** Recoge la orden por su guía y abre su gestión en el panel en línea, ya verificada. */
+/** Recoge la orden por su guía y abre su gestión en modo foco, ya verificada. */
 async function recogerYAbrirGestion(browser: Browser, m: MensajeroE2E, orden: OrdenE2E): Promise<{ page: Page; panel: ReturnType<Page["getByRole"]> }> {
   const page = await paginaDe(browser, m, CONTEXTO_MENSAJERO);
   await page.goto("/mis-asignaciones/recoger");
@@ -72,12 +73,14 @@ async function recogerYAbrirGestion(browser: Browser, m: MensajeroE2E, orden: Or
   await expect.poll(() => estadoDe(orden)).toBe("en_reparto");
 
   await page.goto("/mis-asignaciones/reparto");
+  // SLT-156 (R504, R510): sin panel en la lista; la tarjeta lleva al foco tras «¿Gestionar esta orden?».
+  await page.getByRole("button", { name: `Gestionar la orden ${orden.numRemision}` }).click();
+  await page.getByRole("dialog", { name: "¿Gestionar esta orden?" }).getByRole("button", { name: "Aceptar" }).click();
   const panel = page.getByRole("region", { name: "Detalle de la orden" });
   await expect(panel.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
-  await panel.getByRole("button", { name: "Gestionar esta orden" }).click();
   const gate = panel.getByRole("region", { name: "Verificar la guía del paquete antes de gestionar" });
   await gate.getByLabel("Número de guía").fill(String(orden.numGuia));
-  await gate.getByRole("button", { name: "Gestionar", exact: true }).click();
+  await gate.getByRole("button", { name: "Confirmar guía", exact: true }).click();
   await expect(panel.getByText("¿Cómo terminó la gestión?")).toBeVisible();
   return { page, panel };
 }

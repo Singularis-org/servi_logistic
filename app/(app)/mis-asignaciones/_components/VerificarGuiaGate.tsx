@@ -86,6 +86,9 @@ export function VerificarGuiaGate({
     );
   }
 
+  // SLT-156 (R511, canvas v35: RepartoFoco): el escáner ÚNICO del modo foco. Cámara arriba, «o» y el
+  // número de guía debajo; el botón dice lo que hace («Confirmar guía», no «Gestionar»: el único
+  // «Gestionar» de la pantalla es el de la tarjeta, que ya llevó hasta aquí).
   return (
     <section
       aria-label="Verificar la guía del paquete antes de gestionar"
@@ -96,14 +99,26 @@ export function VerificarGuiaGate({
         que tienes el paquete correcto.
       </p>
 
+      <QrScanner
+        onDecoded={handleLectura}
+        disabled={disabled}
+        mensajeErrorCamara="No se pudo abrir la cámara."
+      />
+
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-border" />
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">o</span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
       <form
-        className="flex items-end gap-2"
+        className="flex flex-col gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           handleLectura(valor);
         }}
       >
-        <div className="flex flex-1 flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <label htmlFor={inputId} className="text-sm font-medium">
             Número de guía
           </label>
@@ -114,19 +129,22 @@ export function VerificarGuiaGate({
             value={valor}
             disabled={disabled}
             onChange={(event) => setValor(event.target.value)}
-            placeholder="Ingresa el número de guía"
+            placeholder="Ej. 1024"
+            className="h-11"
           />
         </div>
-        <Button type="submit" disabled={disabled || valor.trim() === ""}>
-          Gestionar
+        <Button
+          type="submit"
+          size="touch"
+          className="w-full"
+          disabled={disabled || valor.trim() === ""}
+        >
+          Confirmar guía
         </Button>
+        <p className="text-xs text-muted-foreground">
+          Con la pistola o la cámara se confirma sola.
+        </p>
       </form>
-
-      <QrScanner
-        onDecoded={handleLectura}
-        disabled={disabled}
-        mensajeErrorCamara="No se pudo abrir la cámara."
-      />
     </section>
   );
 }

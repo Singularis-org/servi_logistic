@@ -7,6 +7,16 @@ import { NOMBRE_ESTADO } from "@/lib/types/order-status";
 
 import { KpiValorAnimado } from "./KpiValorAnimado";
 
+import { COLUMNA_FIJA } from "@/components/shared/texto-entero";
+
+/**
+ * SLT-163 (R492, R501, R502): la cifra de un KPI. Un importe no se parte en líneas: va en columna fija
+ * (`COLUMNA_FIJA`, una sola línea). En el teléfono la tarjeta de la rejilla 2 × 2 deja unos 120 px a
+ * la cifra y un importe de ocho cifras con decimales no cabe a 20 px: baja a 14 px, donde cabe entero.
+ * Desde `md`, 24 px como siempre. Lo que puede saltar de línea es el rótulo, no el número.
+ */
+export const CIFRA_KPI = `${COLUMNA_FIJA} text-sm md:text-2xl`;
+
 // Feature 61 — fila de KPIs del portal del mensajero, sobre la lista de sus
 // asignaciones. Los 3 indicadores vienen ya calculados server-side (autoritativos):
 // `pendientes` = órdenes en reparto (en camino), `entregadas` = entregadas del
@@ -55,7 +65,9 @@ export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
   return (
     <section
       aria-label="Indicadores de mis asignaciones"
-      className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+      // SLT-156 (R502): 2 × 2 desde el teléfono; en una columna los cuatro KPI empujaban la
+      // lista fuera de la primera pantalla. 12 px entre tarjetas en el móvil (canvas v35).
+      className="grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-4"
     >
       {TILES.map((tile) => (
         <Card
@@ -73,28 +85,32 @@ export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
           // dark:before:to-transparent` pisa el degradado claro: blanco al 10% desvaneciéndose,
           // que sobre la tarjeta compone un reflejo sin blanquear el fondo y deja el
           // `text-foreground` legible. La metáfora —un reflejo que cruza la tarjeta— es la misma.
-          className="relative overflow-hidden shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-brand-soft before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
+          className="relative shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-brand-soft before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
         >
-          <CardContent className="relative flex items-center gap-3 py-4">
+          {/* SLT-156 (R502, canvas v35): UNA rejilla para los dos anchos. En el teléfono la
+              tarjeta mide la mitad de la pantalla y al lado del icono no cabe un importe de ocho cifras: el
+              icono y el rótulo comparten la primera fila y la cifra ocupa sola la segunda, a todo
+              el ancho. Desde `md` el icono abarca las dos filas, como siempre. */}
+          <CardContent className="relative grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 py-4 max-md:px-4">
             {/* `size-14` conserva el hueco de 56 px del icono anterior: la tarjeta no cambia de alto.
                 Fondo y trazo son tokens que giran con el tema (`--accent` / `--accent-foreground`). */}
             <span
               aria-hidden="true"
-              className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground md:row-span-2 md:size-14"
             >
-              <tile.Icono className="size-7" strokeWidth={1.75} aria-hidden="true" />
+              <tile.Icono className="size-5 md:size-7" strokeWidth={1.75} aria-hidden="true" />
             </span>
-            <div className="flex flex-col">
-              <span className="text-xs font-medium text-muted-foreground">
-                {tile.label}
-              </span>
-              {/* Feature 208: era `text-navy` fijo. Estos KPIs son DINERO ("Por
-                  cobrar", "Total a cobrar") sobre una `Card`, que sí gira con el
-                  tema: en oscuro la cifra medía 1.06:1, o sea no se veía. */}
-              <span className="text-2xl font-semibold text-foreground">
-                {tile.render(kpis)}
-              </span>
-            </div>
+            <span className="min-w-0 self-end text-xs font-medium text-muted-foreground max-md:self-center">
+              {tile.label}
+            </span>
+            {/* Feature 208: era `text-navy` fijo. Estos KPIs son DINERO ("Por
+                cobrar", "Total a cobrar") sobre una `Card`, que sí gira con el
+                tema: en oscuro la cifra medía 1.06:1, o sea no se veía. */}
+            <span
+              className={`${CIFRA_KPI} col-span-2 self-start font-semibold text-foreground md:col-span-1 md:col-start-2`}
+            >
+              {tile.render(kpis)}
+            </span>
           </CardContent>
         </Card>
       ))}

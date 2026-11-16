@@ -294,12 +294,15 @@ async function escucharRespuestas(page: Page): Promise<() => Promise<string>> {
 
 async function abrirGestionDelMensajero(page: Page, orden: OrdenE2E): Promise<Locator> {
   await page.goto("/mis-asignaciones/reparto");
+  // SLT-156 (R504, R510): la gestión se abre en modo foco desde la tarjeta, tras «¿Gestionar esta orden?».
+  const confirmar = page.getByRole("dialog", { name: "¿Gestionar esta orden?" });
+  await abrirCon(page.getByRole("button", { name: `Gestionar la orden ${orden.numRemision}` }), confirmar);
+  await confirmar.getByRole("button", { name: "Aceptar" }).click();
   const panel = page.getByRole("region", { name: "Detalle de la orden" });
   await expect(panel.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
   const gate = panel.getByRole("region", { name: "Verificar la guía del paquete antes de gestionar" });
-  await abrirCon(panel.getByRole("button", { name: "Gestionar esta orden" }), gate);
   await gate.getByLabel("Número de guía").fill(String(orden.numGuia));
-  await gate.getByRole("button", { name: "Gestionar", exact: true }).click();
+  await gate.getByRole("button", { name: "Confirmar guía", exact: true }).click();
   await expect(panel.getByText("¿Cómo terminó la gestión?")).toBeVisible();
   return panel;
 }

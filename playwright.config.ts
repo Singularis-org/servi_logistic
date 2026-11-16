@@ -122,6 +122,8 @@ export default defineConfig({
         "reintentos-escalado",
         "reprogramacion-liberacion",
         "etiquetas-lote-tienda",
+        // SLT-163, rebanada B de SLT-156 · R493, R496, R500-R513: Reparto a 360/414 px, KPI 2 × 2 y modo foco.
+        "pwa-mensajero-reparto",
       ),
     },
     {

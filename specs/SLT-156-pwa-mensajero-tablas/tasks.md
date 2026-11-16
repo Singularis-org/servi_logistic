@@ -62,30 +62,30 @@
 
 ## Rebanada B — Reparto (R500 en Reparto, R502-R516)
 
-- [ ] **B1 [P] KPI 2×2 (R502).** `MA/KpisMensajero.tsx`. *Hecho:*
+- [x] **B1 [P] KPI 2×2 (R502).** `MA/KpisMensajero.tsx`. *Hecho:*
   `tests/components/KpisMensajero.test.tsx` comprueba `grid-cols-2` sin `grid-cols-1`.
   *Mutación:* volver `grid-cols-1` → rojo.
-- [ ] **B2 [P] Botones de tarjeta a 44 px (R493).** `MA/GestionarOrdenCardButton.tsx`,
+- [x] **B2 [P] Botones de tarjeta a 44 px (R493).** `MA/GestionarOrdenCardButton.tsx`,
   `MA/MarcarLuegoToggle.tsx`, `MA/RecuperarAyudaButton.tsx`, «Conversación» en
   `MA/RepartoModule.tsx`: `size="touch"`. Extraer `MA/ConfirmarGestionDialog.tsx` (diálogo
   «¿Gestionar esta orden?» controlado). *Hecho:* test de componente con los cuatro botones `h-11`.
   *Mutación:* `size="sm"` en uno → rojo.
-- [ ] **B3 `BuscadorFiltros` en Reparto (R495, R505, R506).** Depende de A4. `MA/RepartoModule.tsx`
+- [x] **B3 `BuscadorFiltros` en Reparto (R495, R505, R506).** Depende de A4. `MA/RepartoModule.tsx`
   y `MA/FiltroCantonDistrito.tsx` como `children`. *Hecho:* `tests/components/RepartoModule.test.tsx`:
   un solo `searchbox`, placeholder «Guía, remisión, teléfono o nombre», «Filtros» ofrece «Cantón» y
   «Distrito», distrito deshabilitado sin cantón, cambiar cantón vacía distrito, búsqueda por
   teléfono filtra. *Mutación:* no resetear distrito → rojo.
-- [ ] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
+- [x] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
   `MA/RepartoModule.tsx`. *Hecho:* test nuevo `tests/components/RepartoMovil.test.tsx`: orden de
   secciones por `compareDocumentPosition`; sin región «Detalle de la orden» fuera de foco; vista
   inicial Mosaico; aviso de ruta en una fila con «Ver más» (`aria-expanded=false`) y descripción
   oculta hasta tocarlo.
   *Mutaciones:* volver el panel inline; vista inicial «detalle» → rojo.
-- [ ] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
+- [x] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
   fila principal: parada, guía, destinatario y «Valor a cobrar» con `COLUMNA_FIJA`; al tocar,
   dirección y «Gestionar más tarde» / «Gestionar».
   *Mutación:* quitar `COLUMNA_FIJA` del monto → rojo.
-- [ ] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
+- [x] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
   (`ordenEnFocoId`), `MA/GestionarOrdenPanel.tsx` (`verificacionAbierta`, sin CTA pegajoso),
   `MA/VerificarGuiaGate.tsx` («Confirmar guía»). *Hecho:* test nuevo
   `tests/components/RepartoModoFoco.test.tsx`: tras «Gestionar» + «Aceptar» solo hay el panel, el
@@ -96,13 +96,13 @@
   `RepartoModule477Correccion.test.tsx` y `ChatContactoAntesDeRecoger.test.tsx` actualizados.
   *Mutaciones:* dejar el CTA «Gestionar esta orden»; «Volver a la lista» que llama a
   `gestionarPedido` → rojo.
-- [ ] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
+- [x] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
   y `MA/reparto-escaner.ts` (`ordenPorGuia`). *Hecho:* `tests/unit/utils/reparto-escaner.test.ts`
   (encuentra por guía; ignora las de ayuda; `null` si no está) y
   `tests/components/EscanerGuiaReparto.test.tsx` (guía propia → diálogo → foco en «¿Cómo terminó
   la gestión?»; ajena → «La guía {n} no está en tu lista de reparto.»; bloqueado → sin
   disparador). *Mutación:* `ordenPorGuia` que incluye las de ayuda → rojo.
-- [ ] **B8 E2E de Reparto a 360 px.** Depende de B1-B7. `e2e/pwa-mensajero-reparto.spec.ts`
+- [x] **B8 E2E de Reparto a 360 px.** Depende de B1-B7. `e2e/pwa-mensajero-reparto.spec.ts`
   (KPI en 2 columnas, sin desborde ni «…» con el destinatario largo, botones ≥ 44, Gestionar →
   foco → Confirmar guía → resultado). Actualizar `e2e/mis-asignaciones.spec.ts`,
   `e2e/tope-intentos-por-empresa.spec.ts` y `e2e/reintentos-escalado.spec.ts` al flujo nuevo;

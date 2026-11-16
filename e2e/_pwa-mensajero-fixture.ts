@@ -144,6 +144,9 @@ export async function sinElipsis(region: Locator): Promise<void> {
         const propio = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "");
         if (!propio) continue;
         const cs = getComputedStyle(el);
+        // SLT-163: el texto SOLO para lectores de pantalla (`sr-only`: absoluto, 1 × 1 px, recortado) no
+        // es un dato visible que se recorte; es su forma de existir. Se reconoce por esa firma exacta.
+        if (cs.position === "absolute" && el.clientWidth <= 1 && el.clientHeight <= 1) continue;
         const clamp = cs.getPropertyValue("-webkit-line-clamp");
         const texto = (el.textContent ?? "").trim().slice(0, 40);
         if (cs.textOverflow === "ellipsis") out.push(`ellipsis: «${texto}»`);

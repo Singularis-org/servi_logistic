@@ -213,6 +213,7 @@ const RUTA_VIGENTE: RutaResumenDTO = {
 function renderModule(props?: Partial<Parameters<typeof RepartoModule>[0]>) {
   return render(
     <RepartoModule
+      kpis={props?.kpis ?? null}
       porGestionar={props?.porGestionar ?? []}
       // Feature 235 (R18): el tercer grupo llega ya separado del servidor. Los escenarios de este
       // archivo no tienen ordenes en ayuda; los que si, viven en `RepartoAyuda.test.tsx`.
@@ -285,22 +286,39 @@ async function subirEvidencia(user: ReturnType<typeof userEvent.setup>, label: s
   return file;
 }
 
+/**
+ * SLT-156 (R505): pone un filtro desde «Filtros» de la barra (`BuscadorFiltros`) y cierra el
+ * selector. Al ponerlo se monta su `Select` delante del campo.
+ */
+async function ponerFiltroZona(
+  user: ReturnType<typeof userEvent.setup>,
+  filtro: "Cantón" | "Distrito",
+) {
+  await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+  const selector = await screen.findByRole("listbox", { name: "Filtros" });
+  await user.click(within(selector).getByRole("option", { name: filtro }));
+  await user.keyboard("{Escape}");
+}
+
 /** Selecciona una opción en un Select de base-ui por su nombre accesible. */
 async function elegirEnSelect(
   user: ReturnType<typeof userEvent.setup>,
   comboboxName: string,
   optionName: string,
 ) {
+  // SLT-156 (R505): los selects de cantón y distrito viven en «Filtros» de la barra; se montan al
+  // PONER su filtro. Si todavía no están, se ponen primero, como lo haría el mensajero.
+  if (
+    comboboxName.startsWith("Filtrar por") &&
+    screen.queryByRole("combobox", { name: comboboxName }) === null
+  ) {
+    await ponerFiltroZona(user, comboboxName === "Filtrar por cantón" ? "Cantón" : "Distrito");
+  }
   await user.click(screen.getByRole("combobox", { name: comboboxName }));
   const listbox = await screen.findByRole("listbox");
   await user.click(within(listbox).getByRole("option", { name: optionName }));
 }
 
-/**
- * Rediseño ux: el bloque de verificación de guía arranca CERRADO; lo abre el CTA
- * "Gestionar esta orden" (fijo al pie del panel). Todo test que vaya al gate pasa por aquí.
- * Devuelve el panel, ya con el gate montado.
- */
 /**
  * Lleva la orden de una card al panel de detalle por la vía nueva: botón "Gestionar" del
  * pie de la card + confirmación en el modal ("puede cambiar tu ruta de reparto").
@@ -322,11 +340,15 @@ async function gestionarDesdeCard(
 async function abrirGestion(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<HTMLElement> {
-  const panel = panelDetalle();
-  await user.click(
-    within(panel).getByRole("button", { name: "Gestionar esta orden" }),
-  );
-  return panel;
+  // SLT-156 (R504): fuera de foco ya no hay panel inline con la primera orden. Si todavía no hay
+  // panel, se lleva la PRIMERA card al foco por la vía del mensajero ("Gestionar" + "Aceptar").
+  if (screen.queryByRole("region", { name: "Detalle de la orden" }) === null) {
+    const [primera] = screen.getAllByRole("button", { name: /^Gestionar la orden / });
+    await user.click(primera!);
+    await user.click(await screen.findByRole("button", { name: "Aceptar" }));
+  }
+  // SLT-156 (R510): el panel monta con el bloque de verificación ya abierto, sin CTA que lo abra.
+  return panelDetalle();
 }
 
 /**
@@ -342,16 +364,11 @@ async function iniciarGestion(
   user: ReturnType<typeof userEvent.setup>,
   { card, resultado, numGuia = 1001 }: { card: string; resultado?: string; numGuia?: number },
 ) {
-  // La orden que YA está en el panel tiene su botón "Gestionar" deshabilitado (no hay nada
-  // que llevar: es la que se está gestionando), así que solo se pasa por la card cuando hace
-  // falta cambiar de orden.
-  const boton = within(cardDe(card)).getByRole("button", {
-    name: /^Gestionar la orden /,
-  });
-  if (!(boton as HTMLButtonElement).disabled) await gestionarDesdeCard(user, card);
+  // SLT-156 (R504): la gestión siempre se abre desde la card ("Gestionar" + "Aceptar").
+  await gestionarDesdeCard(user, card);
   const panel = await abrirGestion(user);
   await user.type(within(panel).getByLabelText("Número de guía"), String(numGuia));
-  await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+  await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
   if (resultado) {
     await user.click(await screen.findByRole("button", { name: resultado }));
   }
@@ -437,7 +454,10 @@ describe("RepartoModule", () => {
     ).toBeNull();
   });
 
-  it("Rediseño: cards en GRILLA y la PRIMERA orden en el PANEL de detalle por default", async () => {
+  // SLT-156 (R504): hasta esta ficha el panel «Detalle de la orden» iba inline, encima de la
+  // lista, con la PRIMERA orden por defecto. Ahora la lista va sola y la gestión se abre en
+  // MODO FOCO desde el botón "Gestionar" de la card, tras confirmar.
+  it("SLT-156 R504: fuera de foco hay cards y NINGÚN panel; 'Gestionar' + confirmar abre el foco de ESA orden", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -447,34 +467,29 @@ describe("RepartoModule", () => {
     });
 
     const region = screen.getByRole("region", { name: "En reparto / por gestionar" });
-    // Una card seleccionable por orden (button con aria-label descriptivo).
     expect(
       within(region).getByRole("article", { name: /Orden REM-G1/ }),
     ).toBeInTheDocument();
     expect(
       within(region).getByRole("article", { name: /Orden REM-G2/ }),
     ).toBeInTheDocument();
-    // El panel inline muestra por defecto la PRIMERA orden (sin fijar el puntero).
-    expect(
-      within(panelDetalle()).getByText("Uno"),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
+
+    await gestionarDesdeCard(user, "REM-G2");
+
+    // Foco: solo el panel de la orden elegida; la lista ya no está.
+    expect(within(panelDetalle()).getByText("Dos")).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: /Orden REM-G1/ })).toBeNull();
+    // Elegirla NO fija el puntero 1-a-1: eso sigue siendo del gate de la guía.
     expect(escogerMock).not.toHaveBeenCalled();
-    // Feature 98 + rediseño ux: el gate ya no está montado de entrada (la sección arranca
-    // cerrada), pero el panel sigue exigiéndolo antes de gestionar: al abrirla con
-    // "Gestionar esta orden" aparece el input "Número de guía" + el botón "Gestionar".
+    // Feature 98: el panel sigue exigiendo la guía antes de gestionar; SLT-156 (R510): ya abierto.
+    expect(within(panelDetalle()).getByLabelText("Número de guía")).toBeInTheDocument();
     expect(
-      within(panelDetalle()).queryByLabelText("Número de guía"),
-    ).toBeNull();
-    await abrirGestion(user);
-    expect(
-      within(panelDetalle()).getByLabelText("Número de guía"),
-    ).toBeInTheDocument();
-    expect(
-      within(panelDetalle()).getByRole("button", { name: "Gestionar" }),
+      within(panelDetalle()).getByRole("button", { name: "Confirmar guía" }),
     ).toBeInTheDocument();
   });
 
-  it("Rediseño: 'Gestionar' en la card, tras CONFIRMAR, lleva la orden al PANEL de detalle", async () => {
+  it("SLT-156: «Volver a la lista» sale del foco sin llamar al servidor", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -483,17 +498,17 @@ describe("RepartoModule", () => {
       ],
     });
 
-    // Por defecto la primera; al gestionar la segunda (con confirmación), el panel la refleja.
-    expect(within(panelDetalle()).getByText("Uno")).toBeInTheDocument();
     await gestionarDesdeCard(user, "REM-G2");
+    await user.click(screen.getByRole("button", { name: "Volver a la lista" }));
 
-    expect(within(panelDetalle()).getByText("Dos")).toBeInTheDocument();
-    // Cambiar de orden en el panel NO fija el puntero 1-a-1: eso sigue siendo del gate.
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
+    expect(cardDe("REM-G1")).toBeInTheDocument();
+    expect(cardDe("REM-G2")).toBeInTheDocument();
     expect(escogerMock).not.toHaveBeenCalled();
+    expect(liberarMock).not.toHaveBeenCalled();
   });
 
-  it("Pedido humano: la orden que YA se está gestionando tiene 'Gestionar' DESHABILITADO", async () => {
-    const user = userEvent.setup();
+  it("SLT-156 R504: fuera de foco ninguna card tiene 'Gestionar' apagado (no hay orden «ya en el panel»)", () => {
     renderModule({
       porGestionar: [
         makeAsignacion({ id: "g1", numRemision: "REM-G1", destinatario: "Uno" }),
@@ -503,19 +518,11 @@ describe("RepartoModule", () => {
 
     const botonDe = (rem: string) =>
       within(cardDe(rem)).getByRole("button", { name: /^Gestionar la orden / });
-
-    // Por defecto el panel muestra la primera: su botón no ofrece nada.
-    expect(botonDe("REM-G1")).toBeDisabled();
-    expect(botonDe("REM-G2")).toBeEnabled();
-
-    // Al llevar la segunda al panel, se invierte.
-    await gestionarDesdeCard(user, "REM-G2");
-    expect(within(panelDetalle()).getByText("Dos")).toBeInTheDocument();
-    expect(botonDe("REM-G2")).toBeDisabled();
     expect(botonDe("REM-G1")).toBeEnabled();
+    expect(botonDe("REM-G2")).toBeEnabled();
   });
 
-  it("Pedido humano: el modal AVISA de que la ruta puede cambiar y CANCELAR no toca el panel", async () => {
+  it("Pedido humano: el modal AVISA de que la ruta puede cambiar y CANCELAR no abre la gestión", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -535,14 +542,14 @@ describe("RepartoModule", () => {
 
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
-    // Sin confirmación no pasa nada: el panel sigue en la primera orden.
-    expect(within(panelDetalle()).getByText("Uno")).toBeInTheDocument();
-    expect(within(panelDetalle()).queryByText("Dos")).toBeNull();
+    // Sin confirmación no pasa nada: sigue la lista y no hay panel.
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
+    expect(cardDe("REM-G2")).toBeInTheDocument();
   });
 
-  // Pedido humano (rama ux): tocar la card ya NO cambia el detalle mostrado; para eso está
-  // el botón "Gestionar" del pie, con su confirmación.
-  it("Rediseño: el click en el CUERPO de la card NO cambia el PANEL de detalle", async () => {
+  // Pedido humano (rama ux): tocar la card ya NO abre la gestión; para eso está el botón
+  // "Gestionar" del pie, con su confirmación.
+  it("Rediseño: el click en el CUERPO de la card NO abre la gestión", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -551,16 +558,14 @@ describe("RepartoModule", () => {
       ],
     });
 
-    expect(within(panelDetalle()).getByText("Uno")).toBeInTheDocument();
     // Click en una zona NO interactiva de la segunda card (su cabecera).
     await user.click(within(cardDe("REM-G2")).getByText("REM-G2"));
 
-    expect(within(panelDetalle()).getByText("Uno")).toBeInTheDocument();
-    expect(within(panelDetalle()).queryByText("Dos")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
     expect(escogerMock).not.toHaveBeenCalled();
   });
 
-  it("Rediseño: los controles propios de la card NO seleccionan de rebote", async () => {
+  it("Rediseño: los controles propios de la card NO abren la gestión de rebote", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -575,8 +580,8 @@ describe("RepartoModule", () => {
     });
 
     const card2 = cardDe("REM-G2");
-    // Abrir el detalle de la segunda card y pulsar su "Ir" (navegación) no cambia la
-    // selección: esos controles hacen lo suyo, no eligen la orden.
+    // Abrir el detalle de la segunda card y pulsar su "Ir" (navegación) no elige la orden:
+    // esos controles hacen lo suyo.
     await user.click(within(card2).getByText("Ver detalle completo"));
     // Rama ux: "Ir" ya no sale a Google Maps; abre el minimapa con el destino + el GPS del
     // mensajero (`UbicacionTrigger`), así que es un BOTÓN, no un enlace.
@@ -588,13 +593,10 @@ describe("RepartoModule", () => {
     // cierra para poder mirar las cards de nuevo.
     await user.keyboard("{Escape}");
 
-    // La selección sigue en la primera card. Ya no se comprueba contra el panel "Detalle de
-    // la orden": el rediseño lo reserva al MODO FOCO (con una gestión activa), y en vista
-    // completa la orden elegida se distingue por la marca de su propia card.
-    // ⏳ 2026-09-24 (FICHA 455, R8): la marca es «Abierta en detalle», aparte del chip de estado
-    // (antes el chip decía «En detalle», un nombre retirado).
-    expect(within(cardDe("REM-G1")).getByText("Abierta en detalle")).toBeInTheDocument();
-    expect(within(cardDe("REM-G2")).queryByText("Abierta en detalle")).toBeNull();
+    // Sigue la lista, sin foco: ninguna orden quedó elegida.
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
+    expect(cardDe("REM-G1")).toBeInTheDocument();
+    expect(within(cardDe("REM-G1")).queryByText("Abierta en detalle")).toBeNull();
   });
 
   // Feature 113 (T6) reescribe el antiguo test de R19/R20: el spec 36 dejaba las demás
@@ -635,7 +637,7 @@ describe("RepartoModule", () => {
     // Feature 98: el gate exige confirmar la guía del paquete antes de gestionar.
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() =>
       expect(escogerMock).toHaveBeenCalledWith({ ordenId: "g1" }),
@@ -659,7 +661,7 @@ describe("RepartoModule", () => {
 
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "9999");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     // La guía no corresponde: avisa nombrándola y NO fija el puntero.
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
@@ -682,7 +684,7 @@ describe("RepartoModule", () => {
     // Feature 98: verifica con la guía correcta; el conflict lo devuelve escoger.
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
     // Sigue en el paso de detalle: el gate de verificación visible, sin los 4 botones.
@@ -1005,7 +1007,7 @@ describe("RepartoModule", () => {
     // Feature 98: verifica la guía para fijar el puntero y revelar los 4 botones.
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
     await screen.findByRole("button", { name: "Entregar" });
 
     // Cancelar la gestión SIN registrar resultado → libera el puntero.
@@ -1036,7 +1038,8 @@ describe("RepartoModule", () => {
   // Feature 87 (R17) + feature 120 + rediseño ux: el panel de detalle ofrece "Llamar" (tel:
   // con el teléfono crudo) y NO el WhatsApp wa.me PLANO — el contacto por WhatsApp vive en el
   // chat de la app, al que se llega con la acción "Mensaje" de la misma fila.
-  it("R17: el detalle ofrece Llamar (tel:) y Mensaje (chat), y ya no el WhatsApp wa.me plano", () => {
+  it("R17: el detalle ofrece Llamar (tel:) y Mensaje (chat), y ya no el WhatsApp wa.me plano", async () => {
+    const user = userEvent.setup();
     renderModule({
       porGestionar: [
         makeAsignacion({
@@ -1051,7 +1054,9 @@ describe("RepartoModule", () => {
     // El panel arranca en el paso "detalle" y ahí vive la acción de Llamar. Rediseño ux:
     // la fila de tres acciones (Llamar / Mensaje / Navegar) sustituye a `ContactoButtons`,
     // así que Llamar es un ENLACE `tel:` —con el teléfono crudo, igual que antes— y no un
-    // botón que abra la marcación por `window.open`.
+    // botón que abra la marcación por `window.open`. SLT-156 (R504): al panel se llega desde
+    // la card, en modo foco.
+    await gestionarDesdeCard(user, "REM-G1");
     const panel = panelDetalle();
     const llamar = within(panel).getByRole("link", { name: "Llamar a Ana Pérez" });
     expect(llamar).toHaveAttribute("href", "tel:88880000");
@@ -1369,11 +1374,17 @@ describe("RepartoModule", () => {
     ).toBeNull();
   });
 
-  it("R14: sin bloqueo, los controles de gestión siguen operativos (el panel se monta)", () => {
+  it("R14: sin bloqueo, los controles de gestión siguen operativos (el panel se monta)", async () => {
+    const user = userEvent.setup();
     renderModule({
       porGestionar: [makeAsignacion({ id: "g1", numRemision: "REM-G1" })],
     });
 
+    // SLT-156 (R504): el panel se monta en modo foco, desde el "Gestionar" de la card.
+    expect(
+      within(cardDe("REM-G1")).getByRole("button", { name: /^Gestionar la orden / }),
+    ).toBeEnabled();
+    await gestionarDesdeCard(user, "REM-G1");
     expect(
       screen.getByRole("region", { name: "Detalle de la orden" }),
     ).toBeInTheDocument();
@@ -1497,7 +1508,7 @@ describe("RepartoModule", () => {
 
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     // Contrato del bloqueo 1-a-1 sin cambios: mismo payload y una sola llamada.
     await vi.waitFor(() =>
@@ -1576,6 +1587,7 @@ describe("RepartoModule", () => {
     ];
     const { rerender } = render(
       <RepartoModule
+        kpis={null}
         porGestionar={porGestionar}
         conAyuda={[]}
         porRecoger={[]}
@@ -1594,6 +1606,7 @@ describe("RepartoModule", () => {
     // Puntero liberado (gestión finalizada/cancelada) → vuelve la vista completa.
     rerender(
       <RepartoModule
+        kpis={null}
         porGestionar={porGestionar}
         conAyuda={[]}
         porRecoger={[]}
@@ -1854,11 +1867,15 @@ describe("RepartoModule", () => {
   // Compone en AND con el buscador (114) sobre las MISMAS listas visibles; el mapa y el
   // panel reflejan el conjunto filtrado (R14) y la orden en gestión nunca se oculta (R10).
 
-  it("117/R1: renderiza los selects de Cantón y Distrito en el módulo del mensajero", () => {
+  it("117/R1: renderiza los selects de Cantón y Distrito en el módulo del mensajero", async () => {
+    const user = userEvent.setup();
     renderModule({
       porGestionar: [makeAsignacion({ id: "g1", numRemision: "REM-G1" })],
     });
 
+    // SLT-156 (R505): se montan al ponerlos en «Filtros».
+    await ponerFiltroZona(user, "Cantón");
+    await ponerFiltroZona(user, "Distrito");
     expect(
       screen.getByRole("combobox", { name: "Filtrar por cantón" }),
     ).toBeInTheDocument();
@@ -1907,6 +1924,7 @@ describe("RepartoModule", () => {
       ],
     });
 
+    await ponerFiltroZona(user, "Cantón");
     await user.click(screen.getByRole("combobox", { name: "Filtrar por cantón" }));
     const listbox = await screen.findByRole("listbox");
     // Centinela "todos" + dos cantones únicos, ordenados alfabéticamente.
@@ -1920,11 +1938,13 @@ describe("RepartoModule", () => {
     ]);
   });
 
-  it("117/R3: sin cantón elegido, el select de Distrito está deshabilitado", () => {
+  it("117/R3: sin cantón elegido, el select de Distrito está deshabilitado", async () => {
+    const user = userEvent.setup();
     renderModule({
       porGestionar: [makeAsignacion({ id: "g1", numRemision: "REM-G1" })],
     });
 
+    await ponerFiltroZona(user, "Distrito");
     expect(
       screen.getByRole("combobox", { name: "Filtrar por distrito" }),
     ).toBeDisabled();
@@ -1963,6 +1983,7 @@ describe("RepartoModule", () => {
     });
 
     await elegirEnSelect(user, "Filtrar por cantón", "Central (San José)");
+    await ponerFiltroZona(user, "Distrito");
     await user.click(screen.getByRole("combobox", { name: "Filtrar por distrito" }));
     const listbox = await screen.findByRole("listbox");
     const opciones = within(listbox)
@@ -2081,7 +2102,7 @@ describe("RepartoModule", () => {
     }
   });
 
-  it("117/R8: 'Limpiar filtros' restaura la lista completa y limpia ambos selects", async () => {
+  it("117/R8 + SLT-156 R505: 'Limpiar todo' restaura la lista completa y quita término y filtros", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -2111,15 +2132,23 @@ describe("RepartoModule", () => {
       screen.queryByRole("article", { name: /Orden REM-G2/ }),
     ).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    await user.type(buscador(), "REM");
 
-    // Reaparecen todas; los selects vuelven a su placeholder y el distrito se deshabilita.
+    await user.click(screen.getByRole("button", { name: "Limpiar todo" }));
+
+    // Reaparecen todas, el campo queda vacío y los selects se retiran de la barra.
     expect(
       screen.getByRole("article", { name: /Orden REM-G1/ }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("article", { name: /Orden REM-G2/ }),
     ).toBeInTheDocument();
+    expect(buscador()).toHaveValue("");
+    expect(screen.queryByRole("combobox", { name: "Filtrar por cantón" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Filtrar por distrito" })).toBeNull();
+    // Y vacíos: al volver a ponerlos, arrancan en «todos» y el distrito deshabilitado.
+    await ponerFiltroZona(user, "Cantón");
+    await ponerFiltroZona(user, "Distrito");
     const canton = screen.getByRole("combobox", { name: "Filtrar por cantón" });
     expect(within(canton).getByText("Todos los cantones")).toBeInTheDocument();
     expect(
@@ -2166,7 +2195,7 @@ describe("RepartoModule", () => {
     ).toBeInTheDocument();
   });
 
-  it("117/R9: 'Limpiar filtros' solo aparece cuando hay un filtro activo", async () => {
+  it("117/R9 + SLT-156: 'Limpiar todo' solo aparece cuando hay un filtro puesto", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -2180,19 +2209,19 @@ describe("RepartoModule", () => {
 
     // Sin filtro: no está disponible.
     expect(
-      screen.queryByRole("button", { name: "Limpiar filtros" }),
+      screen.queryByRole("button", { name: "Limpiar todo" }),
     ).toBeNull();
 
     // Con un cantón elegido: aparece.
     await elegirEnSelect(user, "Filtrar por cantón", "Central (San José)");
     expect(
-      screen.getByRole("button", { name: "Limpiar filtros" }),
+      screen.getByRole("button", { name: "Limpiar todo" }),
     ).toBeInTheDocument();
 
     // Al limpiar: vuelve a desaparecer.
-    await user.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    await user.click(screen.getByRole("button", { name: "Limpiar todo" }));
     expect(
-      screen.queryByRole("button", { name: "Limpiar filtros" }),
+      screen.queryByRole("button", { name: "Limpiar todo" }),
     ).toBeNull();
   });
 
@@ -2271,7 +2300,7 @@ describe("RepartoModule", () => {
   // sigue cubierto por 114/R6 (el "sin resultados" del buscador, arriba), que es el único
   // vacío-con-causa que esta pantalla puede producir.
 
-  it("117/R14: con filtro activo, panel de detalle y mapa reflejan el conjunto filtrado", async () => {
+  it("117/R14: con filtro activo, lista y mapa reflejan el conjunto filtrado", async () => {
     const user = userEvent.setup();
     renderModule({
       porGestionar: [
@@ -2299,15 +2328,11 @@ describe("RepartoModule", () => {
       ],
     });
 
-    // Por defecto el panel muestra la PRIMERA (g1).
-    expect(
-      within(panelDetalle()).getByText("Uno"),
-    ).toBeInTheDocument();
-
-    // Al filtrar por Escazú, el conjunto filtrado es [g2]: el panel y el mapa lo reflejan.
+    // SLT-156 (R504): sin panel inline, el conjunto filtrado se ve en la lista y en el mapa.
+    // Al filtrar por Escazú, el conjunto filtrado es [g2].
     await elegirEnSelect(user, "Filtrar por cantón", "Escazú (San José)");
     expect(
-      within(panelDetalle()).getByText("Dos"),
+      screen.getByRole("article", { name: /Orden REM-G2/ }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("article", { name: /Orden REM-G1/ }),
@@ -2772,12 +2797,12 @@ describe("RepartoModule — el botón de gestionar de una reservada (feature 261
     expect(diceParada(cardDe("REM-MAN"), 1, 1)).toBe(true);
   });
 
-  it("R12: y por el panel tampoco — pulsar «Gestionar» dice el motivo y NO fija el puntero", async () => {
+  it("R12: y por el panel tampoco — la reservada no llega al panel ni fija el puntero", async () => {
     const user = userEvent.setup();
-    // ⚠️ ESTE CASO NO ES REDUNDANTE CON EL BOTÓN GRIS: el panel arranca en la PRIMERA orden del
-    // grupo, así que una reservada puede estar delante sin que nadie haya pulsado la card. Sin
-    // esta guarda, el `conflict` del servidor se traduciría a «ya tienes otra orden activa en
-    // gestión» — falso, y mandaría a buscar un problema que no existe.
+    // Hasta SLT-156 el panel arrancaba inline en la PRIMERA orden del grupo, así que una
+    // reservada podía estar delante sin que nadie pulsara la card, y la guarda de
+    // `gestionarPedido` decía el motivo. Desde R504 el panel solo existe en modo foco, y al foco
+    // se entra por el botón de la card, que con la reservada está apagado: no hay camino.
     renderModule({
       porGestionar: [
         makeAsignacion({
@@ -2791,13 +2816,11 @@ describe("RepartoModule — el botón de gestionar de una reservada (feature 261
       ],
     });
 
-    const panel = await abrirGestion(user);
-    await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledWith(AVISO_22));
-    // Que se diga es la mitad; que el puntero NO se fije es la otra. Sin ella, el caso pasaría
-    // igual con un aviso que avisa y escoge de todos modos.
+    const boton = within(cardDe("REM-MAN")).getByRole("button", { name: /^Gestionar la orden / });
+    expect(boton).toBeDisabled();
+    await user.click(boton);
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
     expect(escogerMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Entregar" })).toBeNull();
   });
@@ -2820,7 +2843,7 @@ describe("RepartoModule — el botón de gestionar de una reservada (feature 261
 
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() => expect(escogerMock).toHaveBeenCalledWith({ ordenId: "g1" }));
     expect(await screen.findByRole("button", { name: "Entregar" })).toBeInTheDocument();
@@ -2860,7 +2883,8 @@ describe("RepartoModule — el orden de las paradas es aproximado (feature 265)"
     makeAsignacion({ id: "g1", numRemision: "REM-G1", secuenciaRuta: 1 }),
   ];
 
-  it("R38/R40: con el orden calculado en la app, el aviso está desde el PRIMER render — sin pulsar nada", () => {
+  it("R38/R40: con el orden calculado en la app, el aviso está desde el PRIMER render — sin pulsar nada", async () => {
+    const user = userEvent.setup();
     renderModule({
       porGestionar: UNA_PARADA,
       ruta: { ...RUTA_VIGENTE, secuenciaFuente: "local" },
@@ -2870,7 +2894,11 @@ describe("RepartoModule — el orden de las paradas es aproximado (feature 265)"
     const aviso = avisoOrden();
     expect(aviso).not.toBeNull();
     // R40: dice QUÉ pasa (el título) y QUÉ HACER (el cuerpo). Un aviso que no dice qué hacer
-    // es ruido, y el mensajero está a punto de salir.
+    // es ruido, y el mensajero está a punto de salir. SLT-156 (R509): el cuerpo, entero, a un
+    // toque de «Ver más».
+    await user.click(
+      within(aviso as HTMLElement).getByRole("button", { name: /^Ver más/ }),
+    );
     expect(
       within(aviso as HTMLElement).getByText(CUERPO_ORDEN),
     ).toBeInTheDocument();
@@ -3004,7 +3032,7 @@ describe("RepartoModule — un tropiezo de base se cuenta, no se traga (ficha 44
     const panel = await abrirGestion(user);
     await within(panel).findByLabelText("Número de guía");
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     // LO QUE IMPIDE EL FALLO MUDO: se pinta un aviso. Sin esta asercion, tragarse el desenlace
     // pasaria la suite entera.
@@ -3025,7 +3053,7 @@ describe("RepartoModule — un tropiezo de base se cuenta, no se traga (ficha 44
     const panel = await abrirGestion(user);
     await within(panel).findByLabelText("Número de guía");
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
     const texto = String(errorMock.mock.calls.at(-1)?.[0]);
@@ -3142,5 +3170,94 @@ describe("RepartoModule — sin la primera ruta del día (SLT-59, R65)", () => {
     };
     expect(props.paradas.map((p) => p.id)).toEqual(["s1", "s2"]);
     expect(props.paradas.every((p) => p.secuencia === null)).toBe(true);
+  });
+});
+
+// SLT-156 rebanada B (SLT-163, B3; R495, R505, R506) — UNA `BuscadorFiltros` por lista: el campo de
+// búsqueda y los filtros de cantón y distrito viven en la misma barra, sin otra fila de filtros.
+describe("RepartoModule — una sola barra de búsqueda y filtros (SLT-156 R495, R505, R506)", () => {
+  const ZONAS = [
+    makeAsignacion({
+      id: "z1",
+      numRemision: "REM-Z1",
+      destinatario: "Uno",
+      telefonoDest: "70009999",
+      cantonNombre: "Central",
+      provinciaNombre: "San José",
+      distritoNombre: "Carmen",
+    }),
+    makeAsignacion({
+      id: "z2",
+      numRemision: "REM-Z2",
+      destinatario: "Dos",
+      telefonoDest: "88881111",
+      cantonNombre: "Escazú",
+      provinciaNombre: "San José",
+      distritoNombre: "San Rafael",
+    }),
+  ];
+
+  it("R495/R506: un solo campo de búsqueda, con el placeholder aprobado", () => {
+    renderModule({ porGestionar: ZONAS });
+    const campos = screen.getAllByRole("searchbox");
+    expect(campos).toHaveLength(1);
+    expect(campos[0]).toHaveAttribute("placeholder", "Guía, remisión, teléfono o nombre");
+    // Ningún select de filtro suelto fuera de la barra hasta ponerlo en «Filtros».
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("R505: «Filtros» ofrece exactamente Cantón y Distrito", async () => {
+    const user = userEvent.setup();
+    renderModule({ porGestionar: ZONAS });
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    expect(within(selector).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Cantón",
+      "Distrito",
+    ]);
+  });
+
+  it("R505: el distrito va deshabilitado sin cantón, y cambiar de cantón lo vacía", async () => {
+    const user = userEvent.setup();
+    renderModule({ porGestionar: ZONAS });
+
+    await ponerFiltroZona(user, "Distrito");
+    expect(screen.getByRole("combobox", { name: "Filtrar por distrito" })).toBeDisabled();
+
+    await elegirEnSelect(user, "Filtrar por cantón", "Central (San José)");
+    await elegirEnSelect(user, "Filtrar por distrito", "Carmen");
+    expect(screen.queryByRole("article", { name: /Orden REM-Z2/ })).toBeNull();
+
+    await elegirEnSelect(user, "Filtrar por cantón", "Escazú (San José)");
+    const distrito = screen.getByRole("combobox", { name: "Filtrar por distrito" });
+    expect(within(distrito).getByText("Todos los distritos")).toBeInTheDocument();
+    // Con el distrito vacío, Escazú entero: la de San Rafael está.
+    expect(screen.getByRole("article", { name: /Orden REM-Z2/ })).toBeInTheDocument();
+  });
+
+  it("R505: quitar el cantón de «Filtros» deja de filtrar por él", async () => {
+    const user = userEvent.setup();
+    renderModule({ porGestionar: ZONAS });
+
+    await elegirEnSelect(user, "Filtrar por cantón", "Central (San José)");
+    expect(screen.queryByRole("article", { name: /Orden REM-Z2/ })).toBeNull();
+
+    await ponerFiltroZona(user, "Cantón"); // lo quita
+    expect(screen.queryByRole("combobox", { name: "Filtrar por cantón" })).toBeNull();
+    expect(screen.getByRole("article", { name: /Orden REM-Z2/ })).toBeInTheDocument();
+  });
+
+  it("R506: buscar por teléfono filtra, en AND con el filtro de cantón", async () => {
+    const user = userEvent.setup();
+    renderModule({ porGestionar: ZONAS });
+
+    await user.type(screen.getByRole("searchbox", { name: "Buscar guías" }), "8888");
+    expect(screen.queryByRole("article", { name: /Orden REM-Z1/ })).toBeNull();
+    expect(screen.getByRole("article", { name: /Orden REM-Z2/ })).toBeInTheDocument();
+
+    // AND: el teléfono es de Escazú; con el cantón Central no queda ninguna.
+    await elegirEnSelect(user, "Filtrar por cantón", "Central (San José)");
+    expect(screen.queryByRole("article", { name: /Orden REM-Z/ })).toBeNull();
+    expect(screen.getByText("Ninguna guía en reparto coincide con la búsqueda.")).toBeInTheDocument();
   });
 });

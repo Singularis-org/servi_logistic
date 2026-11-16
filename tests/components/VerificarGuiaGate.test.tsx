@@ -79,7 +79,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
 
     await user.type(screen.getByLabelText("Número de guía"), "1001");
-    await user.click(screen.getByRole("button", { name: "Gestionar" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar guía" }));
 
     expect(onVerificado).toHaveBeenCalledTimes(1);
     expect(errorMock).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
 
     await user.type(screen.getByLabelText("Número de guía"), "2002");
-    await user.click(screen.getByRole("button", { name: "Gestionar" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar guía" }));
 
     expect(onVerificado).not.toHaveBeenCalled();
     expect(errorMock).toHaveBeenCalled();
@@ -105,7 +105,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
 
     await user.type(screen.getByLabelText("Número de guía"), "abc");
-    await user.click(screen.getByRole("button", { name: "Gestionar" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar guía" }));
 
     expect(onVerificado).not.toHaveBeenCalled();
     expect(errorMock).toHaveBeenCalledWith("Código inválido.");
