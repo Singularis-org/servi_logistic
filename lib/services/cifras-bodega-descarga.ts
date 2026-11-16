@@ -53,7 +53,7 @@ export const CLASE_CIFRAS_BODEGA_DESCARGA = {
   totalFacturado: "empresa",
   ivaFacturado: "empresa",
   netoEmpresa: "empresa",
-  ganaLaTienda: "empresa",
+  pagoTienda: "empresa",
   partesPorTienda: "empresa",
 } as const satisfies ClasificacionDinero<CifrasCierreBodegaDescargaDTO>;
 
@@ -95,7 +95,7 @@ export function cifrasBodegaDescarga(
       totalFacturado: cifras.totalesIngreso.total,
       ivaFacturado: cifras.ivaFacturado,
       netoEmpresa: cifras.netoEmpresa,
-      ganaLaTienda: cifras.ganaLaTienda,
+      pagoTienda: cifras.pagoTienda,
       partesPorTienda: cifras.partesPorTienda,
     };
   });

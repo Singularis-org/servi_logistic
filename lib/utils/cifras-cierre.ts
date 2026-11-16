@@ -32,7 +32,6 @@ export interface CifrasCierre {
   pagoTienda: string;
   cobradoSobreRecaudado: string;
   netoEmpresa: string;
-  ganaLaTienda: string;
   partesPorTienda: ParteDeTienda[];
 }
 
@@ -49,7 +48,6 @@ export interface CifrasCierre {
  *  - `pagoTienda` = recaudado − TODO lo facturado con IVA, flete por rechazo incluido (SLT-169 R620,
  *    D1 de Carlos). Puede ser negativo (la tienda debe) y viaja con su signo. Es solo presentacion:
  *    ningun servicio que mueve dinero lee esta funcion (guardia `pago-tienda-no-mueve-dinero`).
- *  - `ganaLaTienda` = alias de igual valor que `pagoTienda` hasta P3 de SLT-169.
  *  - `partesPorTienda` reparte esa cifra por tienda con las MISMAS funciones (396), en el
  *    orden que les da `partesPorTienda` (de mayor a menor pago).
  */
@@ -69,8 +67,6 @@ export function cifrasDelCierre(
   // Feature 395: la linea puente y el neto (lo facturado sin IVA menos los DOS pagos de la empresa).
   const cobrado = cobradoSobreRecaudado(totalesIngreso.fleteConIva, totalesIngreso.comisionConIva);
   const neto = netoEmpresa(sinIva, c.totalPagoMensajero, c.totalIngresoBodegaRechazos);
-  // Feature 395: alias de igual valor que `pagoTienda` desde SLT-169 (se retira en P3).
-  const ganaTienda = pagoTienda;
   // Ficha 396: la particion por tienda, con las mismas funciones sobre cada subconjunto.
   const partes = partesPorTienda(gestiones);
   return {
@@ -80,7 +76,6 @@ export function cifrasDelCierre(
     pagoTienda,
     cobradoSobreRecaudado: cobrado,
     netoEmpresa: neto,
-    ganaLaTienda: ganaTienda,
     partesPorTienda: partes,
   };
 }

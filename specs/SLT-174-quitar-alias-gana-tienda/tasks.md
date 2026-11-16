@@ -37,7 +37,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
       («ningún módulo del árbol importa `@prisma/client` como VALOR»);
     - volver a `readonly unknown[]` pone rojo el typecheck por el `expectTypeOf`.
 
-- [ ] **T3 — Quitar el alias de producción (R650-R655, R657, §3, §6).** Depende de T2.
+- [x] **T3 — Quitar el alias de producción (R650-R655, R657, §3, §6).** Depende de T2.
   - **`lib/`:**
     - `cifras-cierre.ts`: el campo, `:73` y `:83`;
     - `ingreso-empresa.ts`: el campo en `lib/types/parte-de-tienda.ts`, la llamada `:708` y el JSDoc

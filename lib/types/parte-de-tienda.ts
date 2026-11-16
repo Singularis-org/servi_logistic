@@ -9,8 +9,8 @@
 /**
  * 💰 Ficha 396 — UNA TIENDA de un cierre, con SUS cifras. Todas STRING escala 2.
  *
- * CINCO CLAVES Y NI UNA MAS (R5). `fleteConIva` y `comisionConIva` por tienda se calculan
- * DENTRO de `partesPorTienda` —hacen falta para derivar `pagoTienda`— y NO se emiten: un
+ * CUATRO CLAVES Y NI UNA MAS (R5; SLT-174 R652 retiró la quinta, que valía lo mismo que
+ * `pagoTienda`). `fleteConIva` y `comisionConIva` por tienda se calculan DENTRO de `partesPorTienda` —hacen falta para derivar `pagoTienda`— y NO se emiten: un
  * contrato que ofrece lo que la pantalla no debe ensenar acaba ensenandose, porque bastaria con
  * que alguien las pintara «ya que estan».
  */
@@ -32,10 +32,4 @@ export interface ParteDeTienda {
    * subconjunto. Puede ser NEGATIVO (la tienda debe) y viaja con su signo, nunca "0.00".
    */
   pagoTienda: string;
-  /**
-   * ALIAS de `pagoTienda`, con el MISMO valor desde SLT-169 (antes era la unica cifra que restaba
-   * el flete por rechazo). Se mantiene para no ensanchar el PR; se retira en la ficha de limpieza
-   * (P3 de SLT-169).
-   */
-  ganaLaTienda: string;
 }

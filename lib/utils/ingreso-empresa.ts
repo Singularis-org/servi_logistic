@@ -504,8 +504,8 @@ export function pagoTiendaEmpresa(
  * deja al aprobar: `WalletTiendaFeedService` acredita el COD y debita CADA concepto de
  * `derivarIngresoOrden`, flete por devolucion incluido (R632).
  *
- * Los campos `ganaLaTienda` de los contratos quedan como ALIAS de igual valor que `pagoTienda`
- * hasta la ficha de limpieza (P3 de SLT-169).
+ * SLT-174 retiro de los contratos el campo que duplicaba `pagoTienda` con esta misma cifra (P3 de
+ * SLT-169). Esta funcion conserva su nombre (D6 de SLT-174): es la formula.
  *
  * EXISTE POR LA IDENTIDAD QUE HACE EVIDENTE LA PANTALLA, y que hasta hoy no se podia leer en
  * ningun sitio —el humano la estaba calculando a mano cada vez que miraba el cierre—:
@@ -573,7 +573,6 @@ export type GestionDeTienda = GestionConPagos & {
  *   `recaudado`     -> `computeTotales(subconjunto).general`      (`lib/utils/cierre-totales.ts`)
  *   (interno)       -> `totalesIngresoEmpresa(subconjunto)`       (arriba, en este archivo)
  *   `pagoTienda`    -> `ganaLaTienda(recaudado, total)`   (SLT-169: resta TODO lo facturado)
- *   `ganaLaTienda`  -> el mismo valor (alias hasta P3 de SLT-169)
  *
  * Es el mismo patron que `lib/utils/dinero-por-producto.ts` (`repartoDeOrden`, ficha 347) usa
  * para partir un importe por OTRA dimension —el producto—, reusando funciones del agregado sobre
@@ -615,8 +614,9 @@ export type GestionDeTienda = GestionConPagos & {
  * `Σ(gᵢ − totalᵢ) = Σgᵢ − Σtotalᵢ`. Sin deriva de redondeo: todos los sumandos ya vienen a
  * escala 2 y sumar decimales de escala 2 da escala 2.
  *
- * La antigua CUARTA identidad de la 396 (`pagoTienda − ganaLaTienda === flete por rechazo + IVA`)
- * pasa a ser `pagoTienda === ganaLaTienda` desde SLT-169: las dos son la misma cifra.
+ * La antigua CUARTA identidad de la 396 (pago − lo que gana === flete por rechazo + IVA) y la R11
+ * (Σ de lo que gana === su agregado) desaparecen: desde SLT-169 las dos cifras eran la misma, y
+ * SLT-174 retiro ese campo duplicado. Queda R10/R621 sobre `pagoTienda`.
  *
  * ⚠️ «Por construccion» es un RAZONAMIENTO, y en este repo ya se midio que un razonamiento sobre
  * el codigo puede ser desmentido por Postgres. Llevan test propio, y R632 de SLT-169 ademas ata
@@ -626,13 +626,13 @@ export type GestionDeTienda = GestionConPagos & {
  * que le entrara un tope o un `min()` a nivel de cierre, R12 dejaria de ser cierta EN SILENCIO.
  * El test de identidad es lo que lo caza.
  *
- * ─── LA TERCERA CIFRA ENTRO POR FIRMA, NO DE PASO ─────────────────────────────────────────
+ * ─── LA TERCERA CIFRA ENTRO POR FIRMA Y SALIO POR FIRMA ──────────────────────────────────
  *
- * La revision 2 del spec PROHIBIA una tercera cifra por tienda. `ganaLaTienda` entro el
- * **2026-09-08 por firma explicita del humano** (Q7 de `specs/396-.../requirements.md`), con su
- * motivo escrito: desglosar una cifra y dejar la otra agregada es exactamente el fallo que se
- * esta arreglando, un nivel mas abajo. La guardia no se relajo, se movio: hoy prohibe la CUARTA
- * con la misma fuerza. **Una cuarta cifra necesita otra firma, no un `git push`.**
+ * La revision 2 del spec PROHIBIA una tercera cifra por tienda. Una cifra «lo que gana la
+ * tienda» entro el **2026-09-08 por firma explicita del humano** (Q7 de
+ * `specs/396-.../requirements.md`); desde SLT-169 valia lo mismo que `pagoTienda` y SLT-174 la
+ * retiro (R652): cada parte lleva cuatro claves. **Una cifra mas necesita otra firma, no un
+ * `git push`.**
  *
  * ─── EL ORDEN (R8, Q6) ────────────────────────────────────────────────────────────────────
  *
@@ -678,8 +678,6 @@ export function partesPorTienda(gestiones: ReadonlyArray<GestionDeTienda>): Part
       // SLT-169 R621: resta TODO lo facturado A ESTA TIENDA. Este `ingreso.total` es el DE ESTA
       // TIENDA: con el total del cierre entero, Σ partes dejaria de dar la cifra del cierre.
       pagoTienda: ganaLaTienda(recaudado, ingreso.total),
-      // Alias de igual valor hasta P3 de SLT-169.
-      ganaLaTienda: ganaLaTienda(recaudado, ingreso.total),
     });
   }
 

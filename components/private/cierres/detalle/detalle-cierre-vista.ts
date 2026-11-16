@@ -81,7 +81,6 @@ export interface ConteosMensajero {
 export interface DineroEmpresaMensajero {
   pagoTienda: string;
   cobradoSobreRecaudado: string;
-  ganaLaTienda: string;
   totalIngresoBodegaRechazos: string;
   ivaFacturado: string;
   netoEmpresa: string;
@@ -977,11 +976,10 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
  * en `null` (quien mira no es la central), `null` entero y la pantalla no pinta nada de la empresa.
  */
 function empresaDe(r: DetalleAdminOk, modeloNuevo: boolean): DineroEmpresaMensajero | null {
-  const { pagoTienda, cobradoSobreRecaudado, ganaLaTienda, ivaFacturado, netoEmpresa, totalesIngreso, partesPorTienda } = r;
+  const { pagoTienda, cobradoSobreRecaudado, ivaFacturado, netoEmpresa, totalesIngreso, partesPorTienda } = r;
   if (
     pagoTienda === null ||
     cobradoSobreRecaudado === null ||
-    ganaLaTienda === null ||
     ivaFacturado === null ||
     netoEmpresa === null ||
     totalesIngreso === null ||
@@ -992,7 +990,6 @@ function empresaDe(r: DetalleAdminOk, modeloNuevo: boolean): DineroEmpresaMensaj
   return {
     pagoTienda,
     cobradoSobreRecaudado,
-    ganaLaTienda,
     totalIngresoBodegaRechazos: r.cierre.totalIngresoBodegaRechazos,
     ivaFacturado,
     netoEmpresa,

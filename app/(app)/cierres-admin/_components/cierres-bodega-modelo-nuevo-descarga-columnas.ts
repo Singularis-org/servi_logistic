@@ -39,7 +39,7 @@ const CLAVE_PAGO_ENTREGADO = "pagoEntregado";
  */
 const CLAVES_EMPRESA = new Set<string>([
   CLAVE_PAGO_ENTREGADO,
-  "ganaLaTienda",
+  "pagoTienda",
   "totalFacturado",
   "ivaFacturado",
   "netoEmpresa",
@@ -58,8 +58,9 @@ export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "paraLaCentral", encabezado: "Debe llegar a la central", formato: "monto" },
-  // SLT-169 (R629): misma clave y posición; el valor ya resta todo lo facturado, como «Se le paga».
-  { clave: "ganaLaTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
+  // SLT-169 (R629): el valor resta todo lo facturado. SLT-174 (R653): la clave interna pasa a
+  // `pagoTienda`, con el mismo valor; el encabezado y la posición no cambian.
+  { clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
@@ -142,7 +143,7 @@ export function filaCierreBodegaModeloNuevo(
   // R386, SLT-161 R489: lo de la empresa solo entra en la fila de la central (el servidor ya no se
   // lo manda a la satélite; aquí además no viaja la clave).
   if (audiencia === "admin") {
-    fila.ganaLaTienda = cifras.ganaLaTienda;
+    fila.pagoTienda = cifras.pagoTienda;
     fila.totalFacturado = cifras.totalFacturado;
     fila.ivaFacturado = cifras.ivaFacturado;
     fila.netoEmpresa = cifras.netoEmpresa;
