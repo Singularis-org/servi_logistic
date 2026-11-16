@@ -56,9 +56,9 @@ cambios en literales esperados. (R690-R695, R698, R705)
 
 ## T5 [P] · Tests de integración apuntados al servicio nuevo (depende de T3)
 
-- [ ] `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts:495-501`: `svcSatelite` es el
+- [x] `tests/integration/db/cierres-bodega-cifras-lote-sql-real.test.ts:495-501`: `svcSatelite` es el
   servicio nuevo con `lote`.
-- [ ] `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts:463-481`: `servicioZona` devuelve las dos
+- [x] `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts:463-481`: `servicioZona` devuelve las dos
   construcciones; `completo` sale del servicio nuevo, el paginado y `listarConsolidacion` de
   `CierreBodegaService` (sin `cifrasLote`).
 
