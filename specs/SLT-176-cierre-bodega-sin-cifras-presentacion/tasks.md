@@ -28,7 +28,7 @@ vacío. (R699)
 
 ## T3 · La acción usa el servicio nuevo (depende de T1, T2)
 
-- [ ] `lib/actions/cierre-bodega.ts`: `buildCierreBodegaService` sin `undefined` ni
+- [x] `lib/actions/cierre-bodega.ts`: `buildCierreBodegaService` sin `undefined` ni
   `CifrasBodegaLoteRepository`; `buildCierresBodegaSateliteDescargaService()` nuevo;
   `CierreBodegaDeps.cierresBodegaSateliteDescargaService?`; la acción `listarCierresBodegaSolicitadosCompleto`
   lo usa. Nombre, schema y `withErrorHandler` intactos.

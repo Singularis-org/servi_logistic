@@ -10,12 +10,14 @@ import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensaj
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { gestionConfig } from "@/lib/config/gestion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ICierreBodegaService } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { ICierresBodegaAdminService } from "@/lib/interfaces/services/ICierresBodegaAdminService";
+import type { ICierresBodegaSateliteDescargaService } from "@/lib/interfaces/services/ICierresBodegaSateliteDescargaService";
 import {
   cierreBodegaIdSchema,
   aprobarCierreBodegaSchema,
@@ -80,7 +82,19 @@ function buildCierreBodegaService(): ICierreBodegaService {
     new CierreBodegaRepository(prisma),
     new OrdenRepository(prisma),
     construirReglasPaisEmpresa(prisma),
-    undefined, // el reloj real
+  );
+}
+
+/**
+ * SLT-176 (R698): la descarga de «Solicitados» de la satelite, en su servicio de solo lectura. No
+ * construye `CierreBodegaService`, que escribe dinero.
+ */
+function buildCierresBodegaSateliteDescargaService(): ICierresBodegaSateliteDescargaService {
+  const prisma = getPrismaClient();
+  return new CierresBodegaSateliteDescargaService(
+    new CierreBodegaRepository(prisma),
+    new OrdenRepository(prisma),
+    construirReglasPaisEmpresa(prisma),
     // SLT-141 (R389): la lectura en lote de las cifras de los cierres de bodega nuevos (sin pagos, F481).
     new CifrasBodegaLoteRepository(prisma),
   );
@@ -109,6 +123,7 @@ function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
 export interface CierreBodegaDeps {
   cierreBodegaService?: ICierreBodegaService; // lado adminSatelite (consolidar/solicitar)
   cierresBodegaAdminService?: ICierresBodegaAdminService; // lado maestro (aprobar/rechazar)
+  cierresBodegaSateliteDescargaService?: ICierresBodegaSateliteDescargaService; // SLT-176: descarga de «Solicitados»
   getActor?: () => Promise<Actor | null>;
 }
 
@@ -284,7 +299,7 @@ export async function listarCierresBodegaSolicitadosCompleto(
     // Pedido humano del 2026-08-16: la lista blanca ya no esta vacia — trae `filtros`, y lo
     // que valida se USA. Antes se parseaba y se tiraba, porque no habia nada que transportar.
     const data = listarCierresBodegaSolicitadosCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
-    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    const service = deps.cierresBodegaSateliteDescargaService ?? buildCierresBodegaSateliteDescargaService();
     return service.listarCierresBodegaSolicitadosCompleto(actor, data.filtros);
   });
   return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
