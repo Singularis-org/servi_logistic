@@ -84,16 +84,16 @@ En `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`, según `desi
 
 ## T7 · Mutaciones, gate, E2E y trazabilidad (depende de T4, T5, T6)
 
-- [ ] Mutaciones en el servicio nuevo, cada una con su test en rojo (y revertida):
+- [x] Mutaciones en el servicio nuevo, cada una con su test en rojo (y revertida):
   - quitar `anularEmpresaSiNoCentral` → rojo «R480: la satélite recibe las cifras de la empresa en null» (R692);
   - pasar `{ lectura: "zona", zonaId: "otra" }` → rojo R389 (R691);
   - quitar la comprobación de rol → rojo el `forbidden` de `consolidacion-completo` (R693).
-- [ ] `git diff --name-only origin/dev` no lista nada de `db/` ni `CierresAdminService.ts` /
+- [x] `git diff --name-only origin/dev` no lista nada de `db/` ni `CierresAdminService.ts` /
   `ICierresAdminService.ts`. (R703, R704)
 - [ ] `./init.sh` verde (con `.env`; mirar que la integración no se salta).
 - [ ] E2E en local con base desechable y build: `e2e/cierres-rediseno.spec.ts`,
   `e2e/cierre-bodega-satelite.spec.ts` y `--project=dinero`.
-- [ ] Mapa `R → test` en `progress/impl_SLT-176.md` (abajo, el previsto).
+- [x] Mapa `R → test` en `progress/impl_SLT-176.md` (abajo, el previsto).
 
 **Hecho:** todo lo anterior en verde y anotado.
 
