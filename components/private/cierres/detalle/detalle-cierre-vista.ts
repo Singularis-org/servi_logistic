@@ -46,7 +46,7 @@ import {
 import { money } from "@/lib/config/moneda";
 import { hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
-import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
+import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 
 import { NOTA_DEBE_LLEGAR, NOTA_GANA_BODEGA_VIEJO, TARJETA_GANA_BODEGA, pagosAjustados } from "../cola/cola-cierres-labels";
 // SLT-154 (D8): ciclo entre dos módulos de funciones (este exporta `fechaHora`/`folioDe` a aquel); ninguno
