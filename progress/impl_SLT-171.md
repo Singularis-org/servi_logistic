@@ -32,6 +32,7 @@ queda en manos de cada bodega esperando llegar a la central.»
 ## Otros textos con la afirmación vieja (no tocados)
 - `app/(app)/wallet/satelites/_components/SaldosSatelitesTable.tsx:398-399` — comentario JSX sobre esta misma nota:
   «Ese dinero YA entró a la caja cuando se aprobó el cierre de cada mensajero». No se renderiza.
+  Corregido después con autorización del coordinador (commit docs aparte): ahora dice que entra al conciliar.
 - Sin hallazgos en `docs/` ni en textos de UI renderizados.
 
 Veredicto: nota corregida y cubierta con literal + negativa; rojo→verde confirmado.
