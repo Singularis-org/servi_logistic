@@ -1346,6 +1346,17 @@ export class TraspasoMensajeroConflictoError extends Error {
   }
 }
 
+/**
+ * SLT-167 (R710, R713) — lo que la recepcion por guia devuelve para reconocer el paquete: el
+ * destinatario de la orden y el nombre de la tienda duena. EXACTAMENTE estas dos claves: ni
+ * telefono, ni direccion, ni correo (privacidad). Lo reutilizan los resultados de las tres
+ * recepciones.
+ */
+export interface ResumenRecepcion {
+  destinatario: string;
+  tienda: string;
+}
+
 export interface IOrdenRepository {
   /**
    * Feature 106/R6/R7/R11: pagina de ordenes cuyo `tienda_id` = `ownerId` (owner FORZADO en
@@ -1811,6 +1822,11 @@ export interface IOrdenRepository {
    * tiene ese `num_guia`.
    */
   findByNumGuiaForTransicion(numGuia: number): Promise<OrdenTransicionRow | null>;
+  /**
+   * SLT-167 (R713, R714): destinatario y nombre de la tienda de la orden `ordenId`, solo si es de la
+   * empresa de la sesion; `null` si es de otra empresa o no existe.
+   */
+  resumenRecepcion(ordenId: string): Promise<ResumenRecepcion | null>;
   /**
    * R28: subconjunto de `ids` que corresponde a un usuario con rol `mensajero`,
    * SIN filtro de zona (el filtrado por zona/GAM es la feature 30, ver design.md

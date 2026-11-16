@@ -95,6 +95,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // CRUD (feature 6) pero exigidos por la interfaz IOrdenRepository.
     findByIdsForTransicion: vi.fn().mockResolvedValue([]),
     findByNumGuiaForTransicion: vi.fn().mockResolvedValue(null),
+    resumenRecepcion: vi.fn().mockResolvedValue(null),
     findMensajeroIdsValidos: vi.fn().mockResolvedValue(new Set()),
     findAllMensajeros: vi.fn().mockResolvedValue([]),
     listOrderStatus: vi.fn().mockResolvedValue([]),

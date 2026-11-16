@@ -85,7 +85,7 @@ por casualidad: guía `7777777`, id `00000000-0000-0000-0000-00000000dead`.
 Todas `backend_dev`. Requisito previo: `.env` en el worktree y base local desechable migrada y con
 seed antes del primer gate (si no, la integración se salta y el gate sale verde a ciegas).
 
-- [ ] **T1 — Lectura del resumen.** `resumenRecepcion(ordenId)` en `IOrdenRepository` y
+- [x] **T1 — Lectura del resumen.** `resumenRecepcion(ordenId)` en `IOrdenRepository` y
   `OrdenRepository`: selecciona solo `destinatario` y `tienda.nombre` y devuelve
   `{ destinatario, tienda } | null`; acotada a la empresa de la sesión con el mismo mecanismo que
   el resto de lecturas de `OrdenRepository` (extensión del cliente; si el implementer necesita SQL a
