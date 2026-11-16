@@ -3,6 +3,9 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
+
 /**
  * SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» · R631 — GUARDIA: LAS CIFRAS
  * DE PRESENTACION DEL CIERRE NO ENTRAN EN UN SERVICIO QUE MUEVE DINERO.
@@ -313,10 +316,13 @@ function simbolosProhibidos(leer: Lector, servicio: string): string[] {
 }
 
 /**
- * R678 — LAS UNICAS EXCEPCIONES. Cada una es un par (servicio de dinero, primer modulo que
- * importa), con su `archivo:linea` y su porque. ESTA LISTA SOLO PUEDE ENCOGER: el tope de abajo
- * es el numero de hoy, y la vacia SLT-176 «Sacar de CierreBodegaService las lecturas de cifras de
- * presentacion del cierre». Una entrada sin camino es una entrada muerta y da rojo.
+ * R678 — LAS EXCEPCIONES: pares (servicio de dinero, primer modulo que importa), con su
+ * `archivo:linea` y su porque. ESTA LISTA SOLO PUEDE ENCOGER, y SLT-176 «Sacar de
+ * CierreBodegaService las lecturas de cifras de presentacion del cierre» la VACIO (R700): los dos
+ * caminos de `CierreBodegaService` (`cifras-bodega-descarga` y `CierresAdminService`) se fueron con
+ * la descarga de la satelite a `CierresBodegaSateliteDescargaService`, que no escribe dinero. El
+ * tope es 0: una excepcion nueva no cabe, y como la excepcion es por par, mientras viviera tapaba
+ * cualquier camino NUEVO por el mismo primer modulo (m2 del review de SLT-175).
  */
 interface Excepcion {
   servicio: string;
@@ -325,31 +331,10 @@ interface Excepcion {
   porque: string;
 }
 
-const EXCEPCIONES: readonly Excepcion[] = [
-  {
-    servicio: "lib/services/CierreBodegaService.ts",
-    primerModulo: "lib/services/cifras-bodega-descarga.ts",
-    donde:
-      "CierreBodegaService.ts:33 importa cifrasBodegaDescarga (lo llama en :556) → " +
-      "cifras-bodega-descarga.ts:13 → cifras-cierre-bodega.ts (llamada en :90)",
-    porque:
-      "Lectura para el listado y la descarga de cierres de bodega, no el asiento de dinero. " +
-      "Decision D2 de SLT-175 (Carlos, 2026-11-16); la quita SLT-176.",
-  },
-  {
-    servicio: "lib/services/CierreBodegaService.ts",
-    primerModulo: "lib/services/CierresAdminService.ts",
-    donde:
-      "CierreBodegaService.ts:40 importa anularEmpresaSiNoCentral → CierresAdminService.ts:87 " +
-      "importa cifrasDelCierre (el modulo; anularEmpresaSiNoCentral, :188, no lo llama)",
-    porque:
-      "Camino de MODULO, no de simbolo: lo que se usa no toca las cifras. Decision D2 de " +
-      "SLT-175 (Carlos, 2026-11-16); la quita SLT-176.",
-  },
-];
+const EXCEPCIONES: readonly Excepcion[] = [];
 
-/** Tope de `EXCEPCIONES`. Solo puede BAJAR (R678, D2). */
-const TOPE_EXCEPCIONES = 2;
+/** Tope de `EXCEPCIONES`. Solo puede BAJAR (R678, D2); SLT-176 lo dejo en 0 (R700). */
+const TOPE_EXCEPCIONES = 0;
 
 /** El veredicto entero de R676-R678 sobre un arbol. Vacio = verde. */
 function veredicto(
@@ -446,27 +431,56 @@ describe("SLT-175 R676-R679 — R631 tambien por imports indirectos", () => {
       expect(barrido.leidos.size).toBeGreaterThan(servicios.length);
       // `WalletTiendaFeedService.ts:9` importa `derivarIngresoOrden` de aqui.
       expect(barrido.leidos.has("lib/utils/ingreso-empresa.ts")).toBe(true);
-      // Las dos excepciones de hoy tienen su camino, y es este:
-      expect(barrido.caminos.map((c) => `${c.donde} ${c.cadena.join(" → ")}`).sort()).toEqual([
-        "lib/services/CierreBodegaService.ts:33 lib/services/CierreBodegaService.ts → lib/services/cifras-bodega-descarga.ts → lib/utils/cifras-cierre-bodega.ts",
-        "lib/services/CierreBodegaService.ts:40 lib/services/CierreBodegaService.ts → lib/services/CierresAdminService.ts → lib/utils/cifras-cierre.ts",
-      ]);
+      // SLT-176 (R700): ningun servicio de dinero llega por valor a cifras-cierre ni a
+      // cifras-cierre-bodega. Antes de SLT-176 eran los dos caminos de CierreBodegaService.
+      expect(barrido.caminos).toEqual([]);
     });
 
-    it("la lista de excepciones solo encoge (R678, D2): tope 2, la vacia SLT-176", () => {
+    it("la lista de excepciones solo encoge (R678, D2): SLT-176 la vacio y el tope es 0 (R700)", () => {
+      expect(EXCEPCIONES).toEqual([]);
+      expect(TOPE_EXCEPCIONES).toBe(0);
       expect(EXCEPCIONES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
-      expect(TOPE_EXCEPCIONES).toBeLessThanOrEqual(2);
-      for (const e of EXCEPCIONES) {
-        expect(e.donde, e.primerModulo).toMatch(/\.ts:\d+/);
-        expect(e.porque, e.primerModulo).toMatch(/SLT-176/);
-      }
     });
 
-    it("quitar una excepcion da rojo nombrando su cadena (R678)", () => {
-      const { errores } = veredicto(lectorDelArbol, serviciosReales(), EXCEPCIONES.slice(1));
-      expect(errores).toEqual([
-        "camino a modulo prohibido (lib/services/CierreBodegaService.ts:33): lib/services/CierreBodegaService.ts → lib/services/cifras-bodega-descarga.ts → lib/utils/cifras-cierre-bodega.ts",
-      ]);
+    describe("contraprueba sobre el arbol real: CierreBodegaService con un import de vuelta (R701)", () => {
+      const CIERRE_BODEGA = "lib/services/CierreBodegaService.ts";
+      /** El arbol real, salvo `CierreBodegaService.ts`: su texto real con `linea` delante (linea 1). */
+      const conImport = (linea: string): Lector => (ruta) =>
+        ruta === CIERRE_BODEGA ? `${linea}\n${lectorDelArbol(ruta) ?? ""}` : lectorDelArbol(ruta);
+      const erroresCon = (linea: string) => veredicto(conImport(linea), serviciosReales(), EXCEPCIONES).errores;
+
+      it("el texto real existe y, sin la linea, el veredicto es verde (control)", () => {
+        expect(lectorDelArbol(CIERRE_BODEGA)).not.toBeNull();
+        expect(serviciosReales()).toContain(CIERRE_BODEGA);
+        expect(veredicto(lectorDelArbol, serviciosReales(), EXCEPCIONES).errores).toEqual([]);
+      });
+
+      it("volver a importar cifrasBodegaDescarga da rojo con la cadena hasta cifras-cierre-bodega", () => {
+        expect(
+          erroresCon('import { cifrasBodegaDescarga } from "@/lib/services/cifras-bodega-descarga";'),
+        ).toEqual([
+          "camino a modulo prohibido (lib/services/CierreBodegaService.ts:1): lib/services/CierreBodegaService.ts → lib/services/cifras-bodega-descarga.ts → lib/utils/cifras-cierre-bodega.ts",
+        ]);
+      });
+
+      it("volver a importar anularEmpresaSiNoCentral da rojo con la cadena hasta cifras-cierre", () => {
+        expect(
+          erroresCon('import { anularEmpresaSiNoCentral } from "@/lib/services/CierresAdminService";'),
+        ).toEqual([
+          "camino a modulo prohibido (lib/services/CierreBodegaService.ts:1): lib/services/CierreBodegaService.ts → lib/services/CierresAdminService.ts → lib/utils/cifras-cierre.ts",
+        ]);
+      });
+
+      it("un camino NUEVO por otro modulo (el servicio de solo lectura) tambien da rojo: ya no hay par que lo tape (m2)", () => {
+        expect(
+          erroresCon(
+            'import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";',
+          ).sort(),
+        ).toEqual([
+          "camino a modulo prohibido (lib/services/CierreBodegaService.ts:1): lib/services/CierreBodegaService.ts → lib/services/CierresBodegaSateliteDescargaService.ts → lib/services/CierresAdminService.ts → lib/utils/cifras-cierre.ts",
+          "camino a modulo prohibido (lib/services/CierreBodegaService.ts:1): lib/services/CierreBodegaService.ts → lib/services/CierresBodegaSateliteDescargaService.ts → lib/services/cifras-bodega-descarga.ts → lib/utils/cifras-cierre-bodega.ts",
+        ]);
+      });
     });
   });
 
@@ -613,5 +627,116 @@ describe("SLT-175 R676-R679 — R631 tambien por imports indirectos", () => {
         "camino a modulo prohibido (lib/services/A.ts:2): lib/services/A.ts → lib/services/D.ts → lib/utils/cifras-cierre-bodega.ts",
       ]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SLT-176 «Sacar de CierreBodegaService las lecturas de cifras de presentacion del cierre» ·
+// R696-R699 — LA DESCARGA DE LA SATELITE VIVE EN UN SERVICIO DE SOLO LECTURA.
+//
+// Se quedan aqui porque reutilizan el resolvedor y el lector de la guardia R631.
+// ---------------------------------------------------------------------------
+
+const SOLO_LECTURA = "lib/services/CierresBodegaSateliteDescargaService.ts";
+
+/**
+ * R697 — los imports de VALOR de un archivo de solo lectura que van a la escritura: repositorios,
+ * `lib/db/`, `@prisma/client` o un servicio de dinero de R631. Por especificador y por ruta
+ * resuelta (asi tambien un relativo). `import type` no cuenta: se borra al compilar.
+ */
+function importsDeEscritura(leer: Lector, ruta: string): string[] {
+  const salida: string[] = [];
+  for (const imp of importsDeValor(leer(ruta) ?? "")) {
+    const esp = imp.especificador;
+    const r = resolverEspecificador(leer, ruta, esp);
+    const destino = r.tipo === "modulo" ? r.ruta : "";
+    const prohibido =
+      esp === "@prisma/client" ||
+      esp.startsWith("@prisma/client/") ||
+      esp.startsWith("@/lib/repositories/") ||
+      esp.startsWith("@/lib/db/") ||
+      destino.startsWith("lib/repositories/") ||
+      destino.startsWith("lib/db/") ||
+      (destino.startsWith("lib/services/") && esServicioDeDinero(path.posix.basename(destino)));
+    if (prohibido) salida.push(`${ruta}:${imp.linea} importa ${esp}`);
+  }
+  return salida;
+}
+
+describe("SLT-176 R696-R699 — la descarga de la satelite, en un servicio de solo lectura", () => {
+  it("R696: el servicio existe y NO es servicio de dinero para R631", () => {
+    expect(lectorDelArbol(SOLO_LECTURA)).not.toBeNull();
+    expect(esServicioDeDinero("CierresBodegaSateliteDescargaService.ts")).toBe(false);
+    expect(serviciosDeDinero()).not.toContain("CierresBodegaSateliteDescargaService.ts");
+    // CierreBodegaService sigue vigilado (fuera de alcance quitarlo de la lista).
+    expect(serviciosDeDinero()).toContain("CierreBodegaService.ts");
+  });
+
+  it("R696: su constructor recibe SOLO los cuatro puertos de lectura", () => {
+    const texto = sinComentarios(lectorDelArbol(SOLO_LECTURA) ?? "");
+    const tipos = [...texto.matchAll(/private readonly \w+\??:\s*(Pick<\w+, "[^"]+">|\w+)/g)].map((m) => m[1]);
+    expect(tipos).toEqual([
+      'Pick<ICierreBodegaRepository, "findCierresBodegaByZona">',
+      'Pick<IOrdenRepository, "findUsuarioZonaId">',
+      'Pick<IReglasPaisEmpresa, "zonaHoraria">',
+      "ICifrasBodegaLoteLectura",
+    ]);
+    expect(CierresBodegaSateliteDescargaService.length).toBe(4);
+  });
+
+  it("R697: no importa por valor repositorios, lib/db, Prisma ni servicios de dinero", () => {
+    expect(importsDeEscritura(lectorDelArbol, SOLO_LECTURA)).toEqual([]);
+    // No vacuo: si lee sus imports (las cifras de la descarga y el recorte R480).
+    const especificadores = importsDeValor(lectorDelArbol(SOLO_LECTURA) ?? "").map((i) => i.especificador);
+    expect(especificadores).toContain("@/lib/services/cifras-bodega-descarga");
+    expect(especificadores).toContain("@/lib/services/CierresAdminService");
+  });
+
+  it("R697: contraprueba en memoria — cada import de escritura da rojo nombrandolo", () => {
+    const con = (linea: string): Lector => (ruta) =>
+      ruta === SOLO_LECTURA ? `${linea}\n${lectorDelArbol(ruta) ?? ""}` : lectorDelArbol(ruta);
+    const casos: Array<[string, string]> = [
+      [
+        'import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";',
+        "lib/services/CierresBodegaSateliteDescargaService.ts:1 importa @/lib/repositories/CierreBodegaRepository",
+      ],
+      [
+        'import { CierreBodegaRepository } from "../repositories/CierreBodegaRepository";',
+        "lib/services/CierresBodegaSateliteDescargaService.ts:1 importa ../repositories/CierreBodegaRepository",
+      ],
+      [
+        'import { getPrismaClient } from "@/lib/db/prisma-client";',
+        "lib/services/CierresBodegaSateliteDescargaService.ts:1 importa @/lib/db/prisma-client",
+      ],
+      [
+        'import { Prisma } from "@prisma/client";',
+        "lib/services/CierresBodegaSateliteDescargaService.ts:1 importa @prisma/client",
+      ],
+      [
+        'import { motivoSinResolver } from "./CierreBodegaService";',
+        "lib/services/CierresBodegaSateliteDescargaService.ts:1 importa ./CierreBodegaService",
+      ],
+    ];
+    for (const [linea, error] of casos) {
+      expect(importsDeEscritura(con(linea), SOLO_LECTURA), linea).toEqual([error]);
+    }
+    // Un import de TIPO no lleva valor: no da rojo.
+    expect(
+      importsDeEscritura(
+        con('import type { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";'),
+        SOLO_LECTURA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("R699: CierreBodegaService ni ICierreBodegaService tienen ya la descarga de «Solicitados»", () => {
+    expect("listarCierresBodegaSolicitadosCompleto" in CierreBodegaService.prototype).toBe(false);
+    // Control: el metodo SI esta donde debe.
+    expect("listarCierresBodegaSolicitadosCompleto" in CierresBodegaSateliteDescargaService.prototype).toBe(true);
+    const contrato = sinComentarios(lectorDelArbol("lib/interfaces/services/ICierreBodegaService.ts") ?? "");
+    expect(contrato).not.toMatch(/\blistarCierresBodegaSolicitadosCompleto\s*\(/);
+    // Ni recibe la lectura en lote: su texto ya no nombra el puerto ni el modulo de las cifras.
+    const servicio = sinComentarios(lectorDelArbol("lib/services/CierreBodegaService.ts") ?? "");
+    expect(servicio).not.toMatch(/\bcifrasLote\b|ICifrasBodegaLoteLectura|cifras-bodega-descarga|CierresAdminService/);
   });
 });

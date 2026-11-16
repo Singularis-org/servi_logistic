@@ -69,12 +69,12 @@ muestra). Sin cambios en literales esperados. (R690, R691, R705)
 
 En `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`, según `design.md > La guardia R631`:
 
-- [ ] `EXCEPCIONES = []`, `TOPE_EXCEPCIONES = 0`; el test «solo encoge» afirma `toBe(0)` con el literal;
+- [x] `EXCEPCIONES = []`, `TOPE_EXCEPCIONES = 0`; el test «solo encoge» afirma `toBe(0)` con el literal;
   comentario de `:315-320` al día. (R700)
-- [ ] Caminos del árbol real `toEqual([])`; barrido no vacuo intacto. (R700, R702)
-- [ ] Sustituir «quitar una excepción da rojo» por la contraprueba con el árbol real y
+- [x] Caminos del árbol real `toEqual([])`; barrido no vacuo intacto. (R700, R702)
+- [x] Sustituir «quitar una excepción da rojo» por la contraprueba con el árbol real y
   `CierreBodegaService.ts` con un import añadido, en sus tres casos. (R701)
-- [ ] Bloque «SLT-176 R696-R699»: servicio nuevo no es de dinero; sus imports de valor no van a
+- [x] Bloque «SLT-176 R696-R699»: servicio nuevo no es de dinero; sus imports de valor no van a
   repositorios, `db`, Prisma ni servicios de dinero, con contraprueba en memoria; el prototipo de
   `CierreBodegaService` no tiene el método. (R696, R697, R699)
 
