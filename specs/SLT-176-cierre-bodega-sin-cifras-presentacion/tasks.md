@@ -19,9 +19,9 @@ Requisitos R690-R705 (`requirements.md`). Diseño en `design.md`. Zona backend: 
 
 ## T2 · Retirar la lectura de CierreBodegaService (depende de T1)
 
-- [ ] `lib/services/CierreBodegaService.ts`: fuera el método (`:484-560`), el parámetro `cifrasLote`
+- [x] `lib/services/CierreBodegaService.ts`: fuera el método (`:484-560`), el parámetro `cifrasLote`
   (`:251-256`), los imports `:32`, `:33-38`, `:39-40` y el tipo de resultado de `:17`.
-- [ ] `lib/interfaces/services/ICierreBodegaService.ts`: fuera la firma `:415-428`; los tipos se quedan.
+- [x] `lib/interfaces/services/ICierreBodegaService.ts`: fuera la firma `:415-428`; los tipos se quedan.
 
 **Hecho:** `grep -n "cifras-bodega-descarga\|CierresAdminService\|cifrasLote" lib/services/CierreBodegaService.ts`
 vacío. (R699)

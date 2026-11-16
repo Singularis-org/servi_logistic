@@ -14,7 +14,6 @@ import type {
   CifraConConteo,
   ICierreBodegaService,
   ResumenSolicitados,
-  ListarCierresBodegaSolicitadosCompletoServiceResult,
   ListarCierresBodegaSolicitadosServiceResult,
   ListarConsolidablesCompletoServiceResult,
   ListarConsolidablesServiceResult,
@@ -29,15 +28,6 @@ import { ConsolidacionParcialError } from "@/lib/utils/consolidacion-parcial";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 // SLT-106 (R67): la UNICA derivacion de «Debe llegar a la central», la misma de la fila.
 import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
-import type { ICifrasBodegaLoteLectura } from "@/lib/interfaces/repositories/ICifrasBodegaLoteLectura";
-import {
-  cierresBodegaModeloNuevo,
-  cifrasBodegaDescarga,
-  CLASE_CIFRAS_BODEGA_DESCARGA,
-  LecturaCifrasBodegaAusenteError,
-} from "@/lib/services/cifras-bodega-descarga";
-// SLT-161 (R480): el recorte de SLT-154, con el criterio de F481 en un solo sitio.
-import { anularEmpresaSiNoCentral } from "@/lib/services/CierresAdminService";
 
 // Solo el rol autorizado (R1): el adminSatelite, SIEMPRE acotado a SU zona (el filtro
 // por zona vive en el repo, en el WHERE).
@@ -248,12 +238,6 @@ export class CierreBodegaService implements ICierreBodegaService {
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
     /** SLT-107 (R287): el reloj, para que el corte de «30 dias» se pruebe con un «hoy» fijo. */
     private readonly ahora: () => Date = () => new Date(),
-    /**
-     * SLT-141 (R389): la lectura en lote de los cierres del dia de los cierres de bodega NUEVOS de la
-     * descarga de «Solicitados». Opcional para no tocar los dobles de hoy; con un cierre nuevo y sin
-     * ella, lanza. Sin lecturas de pago: la satelite no recibe «Pago entregado» (F481, R386).
-     */
-    private readonly cifrasLote?: ICifrasBodegaLoteLectura,
   ) {}
 
   /**
@@ -482,88 +466,11 @@ export class CierreBodegaService implements ICierreBodegaService {
   }
 
   /**
-   * Feature 184 — Tanda B (R1/R4/R6/R10) — el CONJUNTO de «Cierres de bodega solicitados» de la
-   * zona, sin recorte, que es del que sale el archivo.
-   *
-   * **Lo que cierra.** Hasta hoy ese archivo se producia releyendo `listarConsolidacion()`, que
-   * es el listado COMPUESTO de la otra pantalla: cuatro consultas (la zona, los consolidables,
-   * el contador de pendientes y este historico), los cinco agregados de dinero y el reparto del
-   * efectivo entre todos los pagos individuales ordenados. De todo eso, el archivo usaba UN
-   * campo. Aqui son DOS consultas —la zona y el listado— y ni un calculo de dinero (R10).
-   *
-   * **No lleva `input`, y es deliberado.** Este listado no admite filtros: su schema de pagina
-   * solo tenia `page`/`pageSize`, y quitarlos deja una lista blanca de CERO claves. El borde la
-   * sigue aplicando —una clave colada, `zonaId` incluida, muere alli con `validation_error`
-   * (R17)— pero no hay nada que transportar hasta aqui. El alcance sale del actor, como en la
-   * pagina.
-   *
-   * Sin zona -> conjunto vacio, no `forbidden`: el rol tiene acceso al modulo, lo que no tiene
-   * es alcance. Es lo mismo que devuelve hoy `listarConsolidacion` (`cierresBodegaPasados: []`).
-   *
-   * **Excepcion declarada a R29 de la 170.** R29 —feature `done`, requisito vivo— pide dos cosas
-   * y aqui se cumple una: por encima del tope no se transporta ni una fila (van el total y el
-   * tope, nada mas), pero el conjunto SI se materializa entero —`findCierresBodegaByZona` es un
-   * `findMany` sin `take`— y el tope lo mide este servicio despues. El conjunto es el historico
-   * de cierres de bodega de UNA zona: acotado por el alcance, que es lo que lo hace mas llevadero
-   * que su gemelo de `CierresBodegaAdminService` —aquel ve todas las zonas—, pero acumulativo,
-   * uno por dia operado y sin purga.
-   *
-   * Se acepta por el coste de la alternativa: pedir `limite + 1` obliga a un `count` aparte para
-   * conservar el total exacto del aviso (R6), que es la segunda consulta que R15 de esta feature
-   * mide y prohibe. Decision humana del 2026-08-05, anotada en el design §3.1; es una excepcion
-   * declarada, no un cumplimiento de R29.
-   */
-  async listarCierresBodegaSolicitadosCompleto(
-    actor: Actor,
-    filtros?: FiltrosCierresBodega,
-  ): Promise<ListarCierresBodegaSolicitadosCompletoServiceResult> {
-    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R4: antes del repo
-
-    const zonaId = await this.ordenRepo.findUsuarioZonaId(actor.usuarioId); // R4
-    if (zonaId === null) return { status: "ok", items: [], total: 0 };
-
-    // El MISMO metodo del que la pagina saca su recorte: mismo where, mismo orden y —lo que en
-    // una pantalla de dinero no es estilo— el MISMO mapper de totales.
-    // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const resueltos = await this.filtrosRepo(filtros);
-    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
-    const conjunto = await this.repo.findCierresBodegaByZona(zonaId, resueltos.filtros);
-
-    const limite = descargaConfig.MAX_FILAS;
-    // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
-    if (conjunto.length > limite) {
-      return { status: "limite_excedido", total: conjunto.length, limite };
-    }
-
-    // SLT-141 (R384): sin cierres nuevos, la respuesta de hoy y ni una lectura mas.
-    const nuevos = cierresBodegaModeloNuevo(conjunto);
-    if (nuevos.length === 0) return { status: "ok", items: conjunto, total: conjunto.length };
-    const operacion = "CierreBodegaService.listarCierresBodegaSolicitadosCompleto";
-    if (this.cifrasLote === undefined) throw new LecturaCifrasBodegaAusenteError(operacion);
-    // R389: el alcance de la satelite (su zona) va DENTRO de la lectura en lote.
-    const filas = await this.cifrasLote.leerCierresDiaDeBodegas(
-      nuevos.map((c) => c.cierreBodegaId),
-      { lectura: "zona", zonaId },
-      await zonaDeLaEmpresa(this.reglasPais, operacion),
-    );
-    // R386 (F481): las cifras SIN `pagoEntregado`; la clave no existe en el DTO de la satelite.
-    // SLT-161 (R480): y las de la empresa en `null`. El rol ya es el de la satelite (R4), pero el
-    // corte pregunta lo mismo que en las demas lecturas («no es acceso total»): un solo criterio.
-    return {
-      status: "ok",
-      items: conjunto,
-      total: conjunto.length,
-      cifrasModeloNuevo: cifrasBodegaDescarga(nuevos, filas).map((c) =>
-        anularEmpresaSiNoCentral(c, CLASE_CIFRAS_BODEGA_DESCARGA, actor),
-      ),
-    };
-  }
-
-  /**
    * Feature 184 — Tanda B (R1/R4/R6/R10) — el CONJUNTO de «Cierres del dia a consolidar» de la
    * zona, sin recorte, para el archivo.
    *
-   * Comparte con el de arriba la relectura que evita: la pantalla de consolidacion pedia el
+   * Comparte con la descarga de «Solicitados» (desde SLT-176 en
+   * `CierresBodegaSateliteDescargaService`) la relectura que evita: la pantalla de consolidacion pedia el
    * listado compuesto entero —incluido el historico de cierres de bodega, que este archivo no
    * usa— y con el los cinco agregados y `repartirEfectivo`, que ordena TODOS los pagos
    * individuales de la zona. El archivo no necesita ninguno de esos numeros: la cabecera los
