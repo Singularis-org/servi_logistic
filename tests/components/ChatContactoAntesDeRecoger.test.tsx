@@ -401,6 +401,8 @@ describe("(4) conversar no es aceptar: el chat no ofrece trabajar la orden", () 
     // acciones de la card del portal.
     expect(within(modal).queryByRole("button", { name: /Gestionar/ })).toBeNull();
     expect(within(modal).queryByRole("button", { name: /más tarde/i })).toBeNull();
+    // SLT-156 (R511): el verbo del gate de la guía tampoco; confirmar la guía es del modo foco.
+    expect(within(modal).queryByRole("button", { name: /Confirmar guía/ })).toBeNull();
   });
 
   // ⏳ 2026-09-24 (FICHA 455, R7): el chip dice el NOMBRE del estado de la orden, no «Por recoger».

@@ -32,6 +32,8 @@ import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { normalizeName } from "@/lib/utils/normalize";
 
 import { AvisoRutaLinea } from "./AvisoRutaLinea";
+import { ConfirmarGestionDialog } from "./ConfirmarGestionDialog";
+import { EscanerGuiaReparto } from "./EscanerGuiaReparto";
 import { coincideBusqueda } from "./mis-asignaciones-buscador";
 import { FiltroCantonDistrito } from "./FiltroCantonDistrito";
 import { useFiltroCantonDistrito } from "./useFiltroCantonDistrito";
@@ -418,6 +420,11 @@ export function RepartoModule({
   // mostrada se DERIVA (ver `detalleOrden`) para no quedar pegada a una orden que ya no existe
   // tras `router.refresh()`.
   const [ordenEnFocoId, setOrdenEnFocoId] = useState<string | null>(null);
+  // SLT-156 (R514): la orden del foco cuya guía YA se confirmó con el escáner de la lista. El panel
+  // arranca en «¿Cómo terminó la gestión?» sin esperar a que `router.refresh()` traiga el puntero.
+  const [guiaConfirmadaId, setGuiaConfirmadaId] = useState<string | null>(null);
+  // SLT-156 (R514): la orden leída por el escáner de la lista, pendiente de «¿Gestionar esta orden?».
+  const [ordenEscaneada, setOrdenEscaneada] = useState<MiAsignacionDTO | null>(null);
 
   // Orden mostrada en el panel de detalle. Nunca `null` si hay al menos una en
   // reparto. Prioridad: (1) la ACTIVA (puntero fijado); (2) la elegida por el
@@ -438,19 +445,21 @@ export function RepartoModule({
   // transicionar, así que `porGestionarFiltrado` ya no las contiene y la exclusión sobra.
 
   const detalleOrden = useMemo<MiAsignacionDTO | null>(() => {
-    if (porGestionarFiltrado.length === 0) return null;
     if (ordenEnGestionId !== null) {
       return (
         porGestionarFiltrado.find((o) => o.id === ordenEnGestionId) ??
-        porGestionarFiltrado[0]
+        porGestionarFiltrado[0] ??
+        null
       );
     }
+    // SLT-156 (R514): la elegida se busca en la lista ENTERA: el escáner encuentra la guía aunque la
+    // búsqueda de la barra la tenga oculta, y el mensajero la eligió a ella.
     if (ordenEnFocoId !== null) {
-      const elegida = porGestionarFiltrado.find((o) => o.id === ordenEnFocoId);
+      const elegida = porGestionar.find((o) => o.id === ordenEnFocoId);
       if (elegida) return elegida;
     }
-    return porGestionarFiltrado[0];
-  }, [porGestionarFiltrado, ordenEnGestionId, ordenEnFocoId]);
+    return porGestionarFiltrado[0] ?? null;
+  }, [porGestionar, porGestionarFiltrado, ordenEnGestionId, ordenEnFocoId]);
 
   // Feature 113/R5 — MODO FOCO: flag DERIVADO de una sola fuente de verdad
   // (`ordenEnGestionId`, backend, robusto a recarga). Con una gestión activa y sin
@@ -488,9 +497,14 @@ export function RepartoModule({
   // panel revela los 4 botones).
   async function gestionarPedido(): Promise<boolean> {
     if (!detalleOrden) return false;
+    return escoger(detalleOrden);
+  }
+
+  // SLT-156 (R514): fijar el puntero sobre una orden concreta, la del panel o la que leyó el escáner.
+  async function escoger(orden: MiAsignacionDTO): Promise<boolean> {
     // Feature 111/R14: guarda suave. El mensajero bloqueado no puede escoger para
     // gestión; se le remite a resolver su cierre. El backend (R1/R4) rechaza igual.
-    if (bloqueadaPara(detalleOrden)) {
+    if (bloqueadaPara(orden)) {
       toast.error(avisoDeBloqueo);
       return false;
     }
@@ -499,11 +513,11 @@ export function RepartoModule({
     // ningún botón de card. Sin esto, el `conflict` del servidor se traduciría a «ya tienes otra
     // orden activa en gestión», que es falso y manda a buscar un problema que no existe. El texto
     // sale de la fuente única, con el día que la orden trae consigo (R15).
-    if (detalleOrden.esParaManana) {
-      toast.error(avisoReservaParaOtroDia(detalleOrden.fechaRepartoISO));
+    if (orden.esParaManana) {
+      toast.error(avisoReservaParaOtroDia(orden.fechaRepartoISO));
       return false;
     }
-    const result = await escogerParaGestion({ ordenId: detalleOrden.id });
+    const result = await escogerParaGestion({ ordenId: orden.id });
     if (result.status === "ok") {
       router.refresh(); // refleja el bloqueo de las demás (ordenEnGestionId)
       return true;
@@ -524,10 +538,19 @@ export function RepartoModule({
     return false;
   }
 
+  // SLT-156 (R514): el mensajero aceptó gestionar la orden que leyó el escáner. La guía ya está
+  // confirmada (la acaba de leer): se fija el puntero y el foco abre directo en los resultados.
+  async function gestionarEscaneada(orden: MiAsignacionDTO) {
+    if (!(await escoger(orden))) return;
+    setGuiaConfirmadaId(orden.id);
+    setOrdenEnFocoId(orden.id);
+  }
+
   function handleGestionSuccess() {
     // Path de ÉXITO: el backend YA limpió el puntero dentro de la transacción de
     // `gestionar`. NO se llama a `liberarGestion` aquí (evita doble limpieza).
     setOrdenEnFocoId(null);
+    setGuiaConfirmadaId(null);
     router.refresh();
   }
 
@@ -539,6 +562,7 @@ export function RepartoModule({
     await liberarGestion({ ordenId: detalleOrden.id });
     // SLT-156: soltar la gestión devuelve a la lista, como antes de esta ficha.
     setOrdenEnFocoId(null);
+    setGuiaConfirmadaId(null);
     router.refresh();
   }
 
@@ -747,12 +771,14 @@ export function RepartoModule({
            guía todavía sin confirmar); en ese segundo caso «Volver a la lista» deshace la
            elección sin tocar el servidor. */
         <div className="flex flex-col gap-3">
-          {ordenEnGestionId === null ? (
+          {/* SLT-156 (R513, C2): solo antes de confirmar la guía; después ya existe «Cancelar
+              gestión». A todo el ancho, como el canvas. */}
+          {ordenEnGestionId === null && guiaConfirmadaId !== detalleOrden.id ? (
             <Button
               type="button"
               variant="outline"
               size="touch"
-              className="w-fit"
+              className="w-full"
               onClick={() => setOrdenEnFocoId(null)}
             >
               <ArrowLeft aria-hidden="true" />
@@ -762,7 +788,9 @@ export function RepartoModule({
           <GestionarOrdenPanel
             key={detalleOrden.id}
             orden={detalleOrden}
-            yaActiva={ordenEnGestionId === detalleOrden.id}
+            yaActiva={
+              ordenEnGestionId === detalleOrden.id || guiaConfirmadaId === detalleOrden.id
+            }
             onGestionarPedido={gestionarPedido}
             onCancelarGestion={cancelarGestion}
             onSuccess={handleGestionSuccess}
@@ -773,6 +801,17 @@ export function RepartoModule({
       ) : (
         /* ---------- VISTA COMPLETA (fuera de foco) ---------- */
         <>
+          {/* SLT-156 (R500, R503, R516): el escáner de la lista, bajo el encabezado y encima de los
+              KPI y la barra, en la misma posición que en Recoger y Recolección. Con el mensajero
+              bloqueado no se monta: en su sitio va el aviso de bloqueo. */}
+          {bloqueado ? null : (
+            <EscanerGuiaReparto
+              porGestionar={porGestionar}
+              conAyuda={conAyuda}
+              onOrdenEncontrada={setOrdenEscaneada}
+            />
+          )}
+
           {/* SLT-156 (R503): KPI bajo el aviso, y la barra de filtros DEBAJO de ellos. */}
           {kpis}
 
@@ -980,6 +1019,17 @@ export function RepartoModule({
           si se borra, el mensajero se queda sin poder escribirle al cliente. */}
       {/* Feature 235 (R35): el hilo del mensajero para una orden en ayuda. `key` por orden para que
           la lectura arranque fresca en cada apertura; se monta solo con una orden abierta. */}
+      {/* SLT-156 (R514): el MISMO «¿Gestionar esta orden?» que el botón de la tarjeta. */}
+      <ConfirmarGestionDialog
+        abierto={ordenEscaneada !== null}
+        onAbiertoChange={(abierto) => {
+          if (!abierto) setOrdenEscaneada(null);
+        }}
+        onAceptar={() => {
+          if (ordenEscaneada) void gestionarEscaneada(ordenEscaneada);
+        }}
+      />
+
       {hiloOrden !== null ? (
         <HiloNotasAyudaModal
           key={hiloOrden.id}

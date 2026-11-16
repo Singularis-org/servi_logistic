@@ -58,8 +58,12 @@ export interface EscanerModalProps {
   label?: string;
   /** Acciones que acompañan al disparador, alineadas al lado contrario. */
   acciones?: ReactNode;
-  /** La tarjeta de escaneo propiamente dicha; vive DENTRO del modal. */
-  children: ReactNode;
+  /**
+   * La tarjeta de escaneo propiamente dicha; vive DENTRO del modal. Como función recibe `cerrar`:
+   * SLT-156 (R514), Reparto cierra el modal al encontrar la orden para pasar a «¿Gestionar esta
+   * orden?». Solo se puede CERRAR desde dentro; abrir sigue siendo el gesto del mensajero.
+   */
+  children: ReactNode | ((cerrar: () => void) => ReactNode);
   className?: string;
 }
 
@@ -98,7 +102,7 @@ export function EscanerModal({
           {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
               que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
           <DialogTitle className="sr-only">{label}</DialogTitle>
-          {children}
+          {typeof children === "function" ? children(() => setAbierto(false)) : children}
         </DialogContent>
       </Dialog>
     </div>

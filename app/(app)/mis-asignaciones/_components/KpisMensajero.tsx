@@ -76,7 +76,7 @@ export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
           // dark:before:to-transparent` pisa el degradado claro: blanco al 10% desvaneciéndose,
           // que sobre la tarjeta compone un reflejo sin blanquear el fondo y deja el
           // `text-foreground` legible. La metáfora —un reflejo que cruza la tarjeta— es la misma.
-          className="relative overflow-hidden shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-brand-soft before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
+          className="relative shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-brand-soft before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
         >
           {/* SLT-156 (R502, canvas v35): UNA rejilla para los dos anchos. En el teléfono la
               tarjeta mide la mitad de la pantalla y al lado del icono no cabe «₡99 999 999»: el

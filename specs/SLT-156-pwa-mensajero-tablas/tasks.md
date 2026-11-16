@@ -85,7 +85,7 @@
   fila principal: parada, guía, destinatario y «Valor a cobrar» con `COLUMNA_FIJA`; al tocar,
   dirección y «Gestionar más tarde» / «Gestionar».
   *Mutación:* quitar `COLUMNA_FIJA` del monto → rojo.
-- [ ] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
+- [x] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
   (`ordenEnFocoId`), `MA/GestionarOrdenPanel.tsx` (`verificacionAbierta`, sin CTA pegajoso),
   `MA/VerificarGuiaGate.tsx` («Confirmar guía»). *Hecho:* test nuevo
   `tests/components/RepartoModoFoco.test.tsx`: tras «Gestionar» + «Aceptar» solo hay el panel, el
@@ -96,7 +96,7 @@
   `RepartoModule477Correccion.test.tsx` y `ChatContactoAntesDeRecoger.test.tsx` actualizados.
   *Mutaciones:* dejar el CTA «Gestionar esta orden»; «Volver a la lista» que llama a
   `gestionarPedido` → rojo.
-- [ ] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
+- [x] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
   y `MA/reparto-escaner.ts` (`ordenPorGuia`). *Hecho:* `tests/unit/utils/reparto-escaner.test.ts`
   (encuentra por guía; ignora las de ayuda; `null` si no está) y
   `tests/components/EscanerGuiaReparto.test.tsx` (guía propia → diálogo → foco en «¿Cómo terminó

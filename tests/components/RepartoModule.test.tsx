@@ -320,11 +320,6 @@ async function elegirEnSelect(
 }
 
 /**
- * Rediseño ux: el bloque de verificación de guía arranca CERRADO; lo abre el CTA
- * "Gestionar esta orden" (fijo al pie del panel). Todo test que vaya al gate pasa por aquí.
- * Devuelve el panel, ya con el gate montado.
- */
-/**
  * Lleva la orden de una card al panel de detalle por la vía nueva: botón "Gestionar" del
  * pie de la card + confirmación en el modal ("puede cambiar tu ruta de reparto").
  */
@@ -352,11 +347,8 @@ async function abrirGestion(
     await user.click(primera!);
     await user.click(await screen.findByRole("button", { name: "Aceptar" }));
   }
-  const panel = panelDetalle();
-  await user.click(
-    within(panel).getByRole("button", { name: "Gestionar esta orden" }),
-  );
-  return panel;
+  // SLT-156 (R510): el panel monta con el bloque de verificación ya abierto, sin CTA que lo abra.
+  return panelDetalle();
 }
 
 /**
@@ -376,7 +368,7 @@ async function iniciarGestion(
   await gestionarDesdeCard(user, card);
   const panel = await abrirGestion(user);
   await user.type(within(panel).getByLabelText("Número de guía"), String(numGuia));
-  await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+  await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
   if (resultado) {
     await user.click(await screen.findByRole("button", { name: resultado }));
   }
@@ -490,12 +482,10 @@ describe("RepartoModule", () => {
     expect(screen.queryByRole("article", { name: /Orden REM-G1/ })).toBeNull();
     // Elegirla NO fija el puntero 1-a-1: eso sigue siendo del gate de la guía.
     expect(escogerMock).not.toHaveBeenCalled();
-    // Feature 98: el panel sigue exigiendo la guía antes de gestionar.
-    expect(within(panelDetalle()).queryByLabelText("Número de guía")).toBeNull();
-    await abrirGestion(user);
+    // Feature 98: el panel sigue exigiendo la guía antes de gestionar; SLT-156 (R510): ya abierto.
     expect(within(panelDetalle()).getByLabelText("Número de guía")).toBeInTheDocument();
     expect(
-      within(panelDetalle()).getByRole("button", { name: "Gestionar" }),
+      within(panelDetalle()).getByRole("button", { name: "Confirmar guía" }),
     ).toBeInTheDocument();
   });
 
@@ -647,7 +637,7 @@ describe("RepartoModule", () => {
     // Feature 98: el gate exige confirmar la guía del paquete antes de gestionar.
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() =>
       expect(escogerMock).toHaveBeenCalledWith({ ordenId: "g1" }),
@@ -671,7 +661,7 @@ describe("RepartoModule", () => {
 
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "9999");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     // La guía no corresponde: avisa nombrándola y NO fija el puntero.
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
@@ -694,7 +684,7 @@ describe("RepartoModule", () => {
     // Feature 98: verifica con la guía correcta; el conflict lo devuelve escoger.
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
     // Sigue en el paso de detalle: el gate de verificación visible, sin los 4 botones.
@@ -1017,7 +1007,7 @@ describe("RepartoModule", () => {
     // Feature 98: verifica la guía para fijar el puntero y revelar los 4 botones.
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
     await screen.findByRole("button", { name: "Entregar" });
 
     // Cancelar la gestión SIN registrar resultado → libera el puntero.
@@ -1518,7 +1508,7 @@ describe("RepartoModule", () => {
 
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     // Contrato del bloqueo 1-a-1 sin cambios: mismo payload y una sola llamada.
     await vi.waitFor(() =>
@@ -2853,7 +2843,7 @@ describe("RepartoModule — el botón de gestionar de una reservada (feature 261
 
     const panel = await abrirGestion(user);
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() => expect(escogerMock).toHaveBeenCalledWith({ ordenId: "g1" }));
     expect(await screen.findByRole("button", { name: "Entregar" })).toBeInTheDocument();
@@ -3042,7 +3032,7 @@ describe("RepartoModule — un tropiezo de base se cuenta, no se traga (ficha 44
     const panel = await abrirGestion(user);
     await within(panel).findByLabelText("Número de guía");
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     // LO QUE IMPIDE EL FALLO MUDO: se pinta un aviso. Sin esta asercion, tragarse el desenlace
     // pasaria la suite entera.
@@ -3063,7 +3053,7 @@ describe("RepartoModule — un tropiezo de base se cuenta, no se traga (ficha 44
     const panel = await abrirGestion(user);
     await within(panel).findByLabelText("Número de guía");
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
     const texto = String(errorMock.mock.calls.at(-1)?.[0]);

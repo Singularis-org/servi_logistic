@@ -133,3 +133,145 @@ M5c-reparto-detalle-no-compacta: ROJO · 1 failed | 8 passed (9)
 ### Veredicto
 
 B1-B5 hechas, cada R con su test y su mutación en rojo; gate `INIT_EXIT=0`; el tamaño queda al borde (996/1000).
+
+## Tanda 2 (B6, B7, B8) · frontend_dev · 2026-11-15
+
+Spec: `specs/SLT-156-pwa-mensajero-tablas/` (R500, R503, R510-R516; tasks.md B6-B8). Grafo no consultado:
+lo tocado en la tanda 1 no estaba indexado; se exploró con Grep/Read.
+
+### Archivos
+
+Producción (`MA/` = `app/(app)/mis-asignaciones/_components/`):
+- `MA/VerificarGuiaGate.tsx` — B6 (R511): escáner único del foco: cámara (`QrScanner`), separador «o», «Número
+  de guía» (placeholder «Ej. 1024», 44 px), botón «Confirmar guía» (`touch`, a todo el ancho) y la nota «Con
+  la pistola o la cámara se confirma sola.». La comparación y el aviso de no coincidencia, los de hoy (R512).
+- `MA/GestionarOrdenPanel.tsx` — B6 (R510, R511): fuera el CTA pegajoso «Gestionar esta orden», el
+  `ChevronUp` de ocultar, `useSeccionColapsable`, el ancla y el efecto de scroll/foco: en el paso «detalle»
+  el bloque de verificación está SIEMPRE abierto.
+- `MA/RepartoModule.tsx` — B6: «Volver a la lista» a todo el ancho (C2) y oculto cuando la guía ya está
+  confirmada; B7: `EscanerGuiaReparto` bajo el aviso y encima de los KPI (R500, R503), no se monta con
+  bloqueo (R516); `ConfirmarGestionDialog` para la orden escaneada; `escoger(orden)` (lo que era
+  `gestionarPedido`, ahora sobre una orden concreta); `guiaConfirmadaId` para que el panel abra en
+  «¿Cómo terminó la gestión?» sin esperar al refresh (R514); la orden elegida (`ordenEnFocoId`) se busca
+  en la lista ENTERA (el escáner la encuentra aunque la búsqueda la oculte).
+- `MA/EscanerGuiaReparto.tsx` (nuevo) — B7: `EscanerModal` («Escanear o escribir guía») + `EscanerGuiaCard`
+  (cámara, número o pistola); guía propia → cierra el modal y avisa al módulo; ajena → toast «La guía {n}
+  no está en tu lista de reparto.» (R515); reservada para otro día → el aviso de la 261; no guía →
+  «Código inválido.».
+- `MA/reparto-escaner.ts` (nuevo) — B7: `ordenPorGuia(porGestionar, conAyuda, numGuia)`.
+- `components/shared/EscanerModal.tsx` — `children` puede ser función que recibe `cerrar` (solo cerrar
+  desde dentro; abrir sigue siendo del mensajero, decisión del 2026-07-31 intacta).
+- `MA/KpisMensajero.tsx` — fuera un `overflow-hidden` redundante (la primitiva `Card` ya lo lleva) para
+  que el archivo entre en la regla «oculta» de la guardia; el E2E mide que cada cifra quepa.
+
+Tests y E2E:
+- `tests/components/RepartoModoFoco.test.tsx` (nuevo, 6) — R510-R513.
+- `tests/components/EscanerGuiaReparto.test.tsx` (nuevo, 6) — R500, R503, R514-R516.
+- `tests/unit/utils/reparto-escaner.test.ts` (nuevo, 3) — `ordenPorGuia`.
+- Actualizados al gate nuevo: `VerificarGuiaGate.test.tsx` («Confirmar guía»),
+  `GestionarOrdenPanelIncidente.test.tsx` (sin CTA: `abrirGate` comprueba el campo),
+  `RepartoModule.test.tsx` (`abrirGestion` ya no pulsa el CTA; «Confirmar guía»; el caso que afirmaba el
+  bloque cerrado al entrar ahora lo afirma abierto), `RepartoModule477Correccion.test.tsx`,
+  `ChatContactoAntesDeRecoger.test.tsx` (tampoco «Confirmar guía» en el chat).
+- `tests/unit/guards/pwa-mensajero-sin-recorte.guardia.test.ts` — m7: entran los 11 archivos de B
+  (`RepartoModule`, `KpisMensajero`, `ConfirmarGestionDialog`, `GestionarOrdenCardButton`,
+  `MarcarLuegoToggle`, `RecuperarAyudaButton`, `FiltroCantonDistrito`, `AvisoRutaLinea`,
+  `VerificarGuiaGate`, `EscanerGuiaReparto`, `reparto-escaner`) con las tres reglas (recorte, escala,
+  oculta). `GestionarOrdenPanel` (1 360 líneas, solo se le quitó el CTA) queda fuera.
+- `e2e/pwa-mensajero-reparto.spec.ts` (nuevo, B8) — (a) 360 y 414 px: KPI 2 × 2 y cada cifra dentro de su
+  tarjeta, sin desborde ni «…» en Mosaico y en Detalle (fila desplegada, dirección entera); (b) 360 px:
+  botones ≥ 44 (tarjeta, conmutador, diálogo, «Volver a la lista», «Confirmar guía»), Gestionar → foco
+  (sin KPI, barra ni tarjetas; un único «Confirmar guía»; ningún «Gestionar…») → guía → «¿Cómo terminó la
+  gestión?»; (c) escáner → KPI → barra de arriba abajo; al bajar la barra queda en `top ≤ 1` y el
+  `SidebarTrigger` ni cruza su caja ni tapa ningún punto de la barra (`elementFromPoint`).
+- m3: dirección (200), producto (120) y tienda (60) largos. `crearOrden` acepta `direccion`/`producto`
+  (`tests/fabricas/escenarios/reparto.ts`, `e2e/_escenarios/reparto.ts`); `crearEscenarioReparto` acepta
+  `nombreTienda` (pasa como `nombre` del alta del adminTienda; `tests/fabricas/e2e.ts` lo admite).
+- `e2e/mis-asignaciones.spec.ts`, `e2e/tope-intentos-por-empresa.spec.ts`, `e2e/reintentos-escalado.spec.ts`
+  — al flujo nuevo: «Gestionar la orden {remisión}» → «Aceptar» → foco → «Confirmar guía».
+- `playwright.config.ts` — `pwa-mensajero-reparto` en el proyecto `reparto` (guardia `e2e-sin-saltos`).
+
+### R → test
+
+| R | Test | Mutación que lo mata |
+|---|---|---|
+| R510 | `RepartoModoFoco.test.tsx` «solo queda el panel…», «la verificación ya está abierta…» | M6d placeholder viejo; M6f sin la nota |
+| R511 | `RepartoModoFoco.test.tsx` «un único botón «Confirmar guía» y ningún «Gestionar»…»; `VerificarGuiaGate.test.tsx` | M6a CTA «Gestionar esta orden» de vuelta; M6c el gate dice «Gestionar» |
+| R512 | `RepartoModoFoco.test.tsx` «la guía de la orden pasa a «¿Cómo terminó la gestión?»…», «otra guía avisa «La guía {n} no corresponde…»» | M6c |
+| R513 | `RepartoModoFoco.test.tsx` «sale del foco y restaura la vista completa sin llamar al servidor» (44 px, a todo el ancho) | M6b «Volver» llama a `gestionarPedido`; M6e `w-fit` |
+| R500, R503 (escáner) | `EscanerGuiaReparto.test.tsx` «arranca cerrado y va encima de los KPI y de la barra» | M7g escáner bajo los KPI |
+| R514 | `EscanerGuiaReparto.test.tsx` «cierra el escáner, pide «¿Gestionar esta orden?» y al aceptar abre el foco en los resultados», «Cancelar no fija nada» | M7c no cierra el modal; M7d sin `guiaConfirmadaId` |
+| R515 | `EscanerGuiaReparto.test.tsx` «avisa «La guía {n} no está en tu lista de reparto.»…», «…con ayuda solicitada tampoco»; `reparto-escaner.test.ts` (3) | M7a `ordenPorGuia` incluye las de ayuda; M7e otro texto; M7f la ajena abre la primera |
+| R516 | `EscanerGuiaReparto.test.tsx` «bloqueado: no hay «Escanear o escribir guía»» | M7b disparador con bloqueo |
+| R502, R493, R496, R501 (E2E) | `e2e/pwa-mensajero-reparto.spec.ts` (a)-(c) | sin ejecutar (B8: lo corre el leader); su mutación de tasks.md: `grid-cols-1` en KPI |
+
+### Mutaciones
+
+Arnés en el scratchpad (`mutar.py`): aplica el cambio (exige el texto UNA vez), corre los tests, restaura y
+compara byte a byte. Las 13 en ROJO, las 13 con `restaurado_identico=True`:
+
+```
+M6a-cta-gestionar-esta-orden: ROJO · 1 failed | 5 passed (6)
+M6b-volver-llama-gestionarPedido: ROJO · 1 failed | 5 passed (6)
+M6c-gate-dice-gestionar: ROJO · 6 failed | 9 passed (15)   (RepartoModoFoco + VerificarGuiaGate)
+M6d-placeholder-viejo: ROJO · 1 failed | 5 passed (6)
+M6e-volver-w-fit: ROJO · 1 failed | 5 passed (6)
+M6f-sin-nota-pistola: ROJO · 1 failed | 5 passed (6)
+M7a-ordenPorGuia-incluye-ayuda: ROJO · 1 failed | 2 passed (3)
+M7b-escaner-con-bloqueo: ROJO · 1 failed | 5 passed (6)
+M7c-no-cierra-el-modal: ROJO · 1 failed | 5 passed (6)
+M7d-sin-guia-confirmada: ROJO · 1 failed | 5 passed (6)
+M7e-aviso-ajena-otro-texto: ROJO · 2 failed | 4 passed (6)
+M7f-ajena-abre-la-primera: ROJO · 2 failed | 4 passed (6)
+M7g-escaner-bajo-los-kpi: ROJO · 1 failed | 5 passed (6)
+```
+
+### Comandos
+
+- `npx tsc --noEmit -p .` (incluye `e2e/`): verde.
+- `npx eslint` sobre los archivos tocados: 0 errores; avisos ya existentes (`EnviarPlantillaWhatsappButton` en
+  `GestionarOrdenPanel.tsx`, `ordenCardsEnReparto` en `RepartoModule.test.tsx`).
+- vitest de los afectados (Reparto*, VerificarGuiaGate, GestionarOrdenPanel*, ChatContactoAntesDeRecoger,
+  Escaner*, Recoger*, `tests/unit/guards`): verde salvo `dependencias-declaradas-presentes.guardia` (4, el de
+  la tanda 1, ajeno: `init.sh` sin tocar). `sin-estados-retirados` cazó un `ayuda_tienda` en la primera
+  versión de `reparto-escaner.ts` (estado retirado por la 454): se rehízo con la lista `conAyuda`.
+- Base desechable `slt163_gate` (URL a un archivo del scratchpad, nunca impresa; `migrate status`: al día).
+  El primer gate salió rojo en `tests/integration/db/demo-qa.test.ts` (lo arrastra el cambio en
+  `tests/fabricas/`): «faltan catálogos… vehiculo». Se sembró la desechable con `pnpm run db:seed` (solo
+  catálogos) y pasó (13/13).
+- `./init.sh` con `DATABASE_URL` a la desechable, log fuera del árbol: **`INIT_EXIT=0`** (typecheck, lint,
+  test:rapido 100+100+100+100+36 archivos en verde, guardias). Tamaño: **40/40 archivos, 1290/1000 líneas
+  de producción, 1727/3000 de tests**: aviso, aceptado con la marca `tamano-pr-aceptado` (ver desviaciones).
+
+### Decisiones y desviaciones
+
+- **`verificacionAbierta` no es prop: el CTA y el plegado se quitan del todo.** Tras R504 el panel solo se monta
+  en modo foco (único consumidor: Reparto), así que la prop valdría siempre `true` y la rama cerrada sería
+  código muerto. El efecto es el de `design.md §8`: verificación abierta, sin CTA ni `ChevronUp`.
+- **`ordenPorGuia(porGestionar, conAyuda, numGuia)`** en vez de `(ordenes, numGuia)`: el DTO ya no dice si una
+  orden tiene ayuda (`ayuda_tienda` está retirado, guardia `sin-estados-retirados`); la separación la hace
+  el servidor en `conAyuda`. Una orden que figurara en las dos listas no se abre.
+- **Escaneada reservada para otro día** (`esParaManana`): avisa con el texto de la 261 y no abre el diálogo.
+- **`EscanerModal` acepta `children` como función** para cerrarse al encontrar la orden (design §7: «cierra el
+  modal»). No se puede abrir desde fuera: la decisión del 2026-07-31 (arranca siempre cerrado) sigue.
+- **Textos de la tarjeta del escáner de Reparto** (no están en el spec ni en el brief): título «Abrir orden
+  por guía», descripción «Escanea o ingresa el número de guía de una orden de tu reparto.», botón «Abrir
+  orden». A revisar con Carlos en Preview.
+- **El disparador «Escanear o escribir guía» conserva el tamaño de `EscanerModal`** (botón `outline` de
+  siempre). El canvas lo dibuja de 44 px a todo el ancho con chevron (design §7), pero es el componente
+  compartido de todas las superficies de escaneo; queda para C (SLT-164), que lo pide también en Recoger y
+  Recolección. El E2E de B no lo mide.
+- **`KpisMensajero`**: el `overflow-hidden` propio era redundante (la `Card` lo trae); se quita para que el
+  archivo cumpla la regla «oculta». El E2E (a) mide que cada cifra quepa en su tarjeta.
+- **m3**: la tienda larga entra por `crearEscenarioReparto(…, { nombreTienda })`; la dirección y el producto,
+  por `crearOrden`. Por defecto, los valores de siempre (los demás E2E no cambian).
+- **Marca de tamaño**: el gate pone rojo el tamaño sin la marca de `docs/gate.md > Tamaño del PR`. Se añadió a
+  `progress/features/SLT-163.md` la línea `tamano-pr-aceptado` transcribiendo el OK de Carlos ya anotado por
+  el leader («Todo en un PR»). **El leader debe confirmarla.**
+- **E2E sin ejecutar** (B8 sin marcar): `pwa-mensajero-reparto` y los tres actualizados los corre el leader.
+- **Guardia m7**: `GestionarOrdenPanel.tsx` y `PosOrderCard.tsx` no entran (el primero solo pierde el CTA y
+  sus 1 360 líneas tienen escala de antes; el segundo solo ganó una prop).
+
+### Veredicto
+
+B6 y B7 hechas, cada R con su test y su mutación en rojo; B8 escrita y compilando (sin ejecutar); gate `INIT_EXIT=0`.

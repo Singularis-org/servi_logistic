@@ -184,9 +184,8 @@ describe("477 — Entregas con el mensajero bloqueado (R27)", () => {
 
     const panel = screen.getByRole("region", { name: "Detalle de la orden" });
     expect(panel).toHaveTextContent("NombreTres");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar esta orden" }));
     await user.type(within(panel).getByLabelText("Número de guía"), "1001");
-    await user.click(within(panel).getByRole("button", { name: "Gestionar" }));
+    await user.click(within(panel).getByRole("button", { name: "Confirmar guía" }));
 
     expect(escogerMock).toHaveBeenCalledWith({ ordenId: "g3" });
     expect(errorMock).not.toHaveBeenCalled();
