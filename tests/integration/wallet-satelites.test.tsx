@@ -367,9 +367,12 @@ describe("R23 — la tabla de saldos y sus tres tarjetas", () => {
     renderTabla();
     const nota = screen.getByRole("note");
     expect(nota).toHaveTextContent("El saldo no es un movimiento de caja.");
+    // SLT-171: desde SLT-73 el dinero de un cierre satélite entra a la caja al CONCILIAR la
+    // consolidación, no al aprobar el cierre del mensajero. Texto literal, no la constante.
     expect(nota).toHaveTextContent(
-      /Ese dinero ya entró a la caja de la empresa cuando se aprobó el cierre de cada mensajero/,
+      "Ese dinero entra a la caja de la empresa cuando se concilia la consolidación de la bodega, no antes.",
     );
+    expect(nota).not.toHaveTextContent(/cuando se aprobó el cierre/);
     expect(nota).toHaveTextContent(/dónde está físicamente/);
     expect(nota).toHaveTextContent(
       /cuánto queda en manos de cada bodega esperando llegar a la central/,

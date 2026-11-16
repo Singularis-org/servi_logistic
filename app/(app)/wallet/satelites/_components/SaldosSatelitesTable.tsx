@@ -395,8 +395,8 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
       {/*
         ⚠️ LA NOTA QUE IMPIDE CONTAR DOS VECES. Va aquí, bajo la tabla y sin desplegable: un
         número de siete cifras llamado «pendiente» dentro del módulo Wallet se lee como plata por
-        cobrar, y quien lo sume al balance la habrá contado dos veces. Ese dinero YA entró a la
-        caja cuando se aprobó el cierre de cada mensajero.
+        cobrar, y quien lo sume al balance la habrá contado dos veces. Ese dinero entra a la caja
+        al CONCILIAR la consolidación de la bodega, no al aprobar el cierre del mensajero (SLT-73).
       */}
       <p role="note" className="text-xs leading-relaxed text-muted-foreground">
         <strong className="font-semibold text-foreground">{SALDO_NO_ES_CAJA_TITULO}</strong>{" "}
