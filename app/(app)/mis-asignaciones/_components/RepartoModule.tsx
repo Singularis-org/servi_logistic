@@ -47,6 +47,7 @@ import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { RecuperarAyudaButton } from "./RecuperarAyudaButton";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
 import { RutaMapa } from "./RutaMapa";
+import { HojaParadaMapa } from "./HojaParadaMapa";
 import { useSeguimientoUbicacion } from "./useSeguimientoUbicacion";
 import { SincronizarRutaButton } from "./SincronizarRutaButton";
 import { CarruselCards } from "@/components/shared/CarruselCards";
@@ -169,6 +170,9 @@ const AYUDA_ACCION_HILO = "Conversación";
 // FICHA 455 (2026-09-24, R7/R8/R6; design §2.1): aquí vivía `AYUDA_CARD_ESTADO = «En ayuda»`, un
 // rótulo que SUSTITUÍA al chip de estado de la card de ayuda. La orden está `en_reparto` y el chip
 // lo dice; la ayuda de la 454 va como NOTA aparte (`NOTA_AYUDA_SOLICITADA`, texto de la 456).
+// SLT-166 (R542, canvas v35: RepartoMapa): bajo el carrusel, con el mapa abierto.
+const MAPA_SIGUE_AL_CARRUSEL = "El mapa se centra en la orden del carrusel.";
+
 const SIN_PENDIENTES_TODAS_CON_AYUDA =
   "Todas tus órdenes en reparto tienen ayuda solicitada; están abajo.";
 
@@ -425,6 +429,10 @@ export function RepartoModule({
   const [guiaConfirmadaId, setGuiaConfirmadaId] = useState<string | null>(null);
   // SLT-156 (R514): la orden leída por el escáner de la lista, pendiente de «¿Gestionar esta orden?».
   const [ordenEscaneada, setOrdenEscaneada] = useState<MiAsignacionDTO | null>(null);
+  // SLT-166 (R542): la primera tarjeta de la página del carrusel a la vista; el mapa se centra en ella.
+  const [indiceCarrusel, setIndiceCarrusel] = useState(0);
+  // SLT-166 (R540): la parada cuyo marcador se tocó; su hoja inferior está abierta.
+  const [paradaHojaId, setParadaHojaId] = useState<string | null>(null);
 
   // Orden mostrada en el panel de detalle. Nunca `null` si hay al menos una en
   // reparto. Prioridad: (1) la ACTIVA (puntero fijado); (2) la elegida por el
@@ -737,7 +745,8 @@ export function RepartoModule({
     <Button
       type="button"
       variant="ghost"
-      size="xs"
+      // SLT-166 (R544): 44 px; era `xs` (24 px) y el mensajero lo pulsa con el pulgar.
+      size="touch"
       aria-expanded={mapa.abierta}
       onClick={mapa.abierta ? mapa.cerrar : mapa.abrir}
     >
@@ -745,6 +754,14 @@ export function RepartoModule({
     </Button>
   );
   const mapaEnAviso = hayMapa && avisosRuta.length > 0;
+  // SLT-166 (R542): en Mosaico, la parada activa es la de la tarjeta a la vista; en Detalle no hay
+  // carrusel y el mapa marca la primera de la ruta (`null` = que la elija `RutaMapaInner`).
+  const paradaActivaId =
+    vistaCards === "mosaico"
+      ? (visualSinAyuda[indiceCarrusel] ?? visualSinAyuda[0])?.id ?? null
+      : null;
+  const ordenHoja =
+    paradaHojaId === null ? null : (porGestionar.find((o) => o.id === paradaHojaId) ?? null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -921,6 +938,10 @@ export function RepartoModule({
                       origen={origenMapa}
                       trazado={trazadoRuta}
                       tramoSiguiente={tramoResaltado}
+                      paradaActivaId={paradaActivaId}
+                      onSeleccionarParada={setParadaHojaId}
+                      // El total de la RUTA, sin filtrar: el mismo que la tarjeta y la hoja.
+                      totalParadas={porGestionar.length}
                     />
                   </div>
                 ) : null}
@@ -955,7 +976,13 @@ export function RepartoModule({
                   singular="Orden"
                   plural="Órdenes"
                   renderItem={(orden) => renderCardEnReparto(orden, "mosaico")}
+                  onIndiceChange={setIndiceCarrusel}
                 />
+                {hayMapa && mapa.abierta ? (
+                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                    {MAPA_SIGUE_AL_CARRUSEL}
+                  </p>
+                ) : null}
               </div>
             ) : (
               /* La clase de fase anima la lista ENTERA como bloque (bajar+desvanecer /
@@ -997,6 +1024,26 @@ export function RepartoModule({
           </section>
         </>
       )}
+
+      {/* SLT-166 (R540): la hoja del marcador. Su «Gestionar» es el de la tarjeta (mismo diálogo) y
+          al aceptar sigue el MISMO camino: `seleccionar` → modo foco con «Confirmar guía». */}
+      <HojaParadaMapa
+        orden={ordenHoja}
+        total={porGestionar.length}
+        onOpenChange={(abierta) => {
+          if (!abierta) setParadaHojaId(null);
+        }}
+        gestionarDeshabilitado={
+          ordenHoja === null ||
+          bloqueadaPara(ordenHoja) ||
+          Boolean(ordenHoja.esParaManana) ||
+          ordenEnGestionId !== null
+        }
+        onGestionar={(orden) => {
+          setParadaHojaId(null);
+          seleccionar(orden);
+        }}
+      />
 
       {/* SLT-156 (R514): el MISMO «¿Gestionar esta orden?» que el botón de la tarjeta. */}
       <ConfirmarGestionDialog

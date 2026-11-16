@@ -124,6 +124,8 @@ export default defineConfig({
         "etiquetas-lote-tienda",
         // SLT-163, rebanada B de SLT-156 · R493, R496, R500-R513: Reparto a 360/414 px, KPI 2 × 2 y modo foco.
         "pwa-mensajero-reparto",
+        // SLT-166, rebanada E de SLT-156 · R539-R544: el mapa de ruta a 360/414 px, su hoja y la pantalla completa.
+        "pwa-mensajero-mapa",
       ),
     },
     {
