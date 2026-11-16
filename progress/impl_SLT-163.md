@@ -275,3 +275,47 @@ M7g-escaner-bajo-los-kpi: ROJO · 1 failed | 5 passed (6)
 ### Veredicto
 
 B6 y B7 hechas, cada R con su test y su mutación en rojo; B8 escrita y compilando (sin ejecutar); gate `INIT_EXIT=0`.
+
+## Tanda 3 (arreglo de B8 tras la corrida del leader) · frontend_dev · 2026-11-15
+
+El leader corrió los E2E sobre la base nueva `servi_slt163_e2e`. Resultado: reparto 8/10. El (a) salía rojo a 360 y 414 px
+porque las cifras grandes de los KPI («₡8.328.638,65») se salían de su tarjeta (R501). Era un fallo real.
+
+### Causa y arreglo
+- La cifra llevaba `COLUMNA_FIJA` (`whitespace-nowrap shrink-0`) a 20 px, y el contador (`KpiValorAnimado`) trae su propio
+  `whitespace-nowrap`. En la rejilla 2 × 2 a 360 px quedan unos 120 px y el importe no cabía. El `overflow-hidden` que quité
+  en la tanda 2 no era la causa: la primitiva `Card` lo sigue llevando, y con él la cifra solo quedaba recortada en vez de salirse.
+- `MA/KpisMensajero.tsx`: `CIFRA_KPI` (literal, para Tailwind) = 16 px en el móvil, `min-w-0 wrap-anywhere` y la cifra salta
+  de línea entera si no cabe. Desde `md` sigue la columna fija (`md:whitespace-nowrap md:shrink-0 md:text-2xl`). Los dos
+  importes pasan `className="whitespace-normal md:whitespace-nowrap"` al contador. Nada de `truncate` ni «…».
+- `tests/components/KpisMensajero.test.tsx`: el caso de la cifra ahora afirma las clases del móvil (`wrap-anywhere`,
+  `text-base`, sin `whitespace-nowrap`/`shrink-0`/`text-xl`), las de `md` y que el contador de los importes envuelva.
+  Antes afirmaba `COLUMNA_FIJA`, que era justo el fallo.
+
+### Ajustes del E2E (`e2e/pwa-mensajero-reparto.spec.ts` y el fixture)
+- (a) Al pasar a Detalle espera a `aria-pressed` y a que se vaya el carrusel. La fila se localiza como `:scope > button[aria-expanded]`:
+  con `.first()` caía en un desplegable de 16 px de dentro.
+- (a) La dirección desplegada se pinta tras cantón y distrito («San Pablo · San Pablo — …»). Se busca entera como subcadena,
+  no `exact`. Lo comprobé imprimiendo el texto de la tarjeta.
+- `e2e/_pwa-mensajero-fixture.ts > sinElipsis`: exime el texto `sr-only`, reconocido por su firma (absoluto, 1 × 1 px).
+  «Sin posición en la ruta» es el nombre accesible del «·» de la parada, no un dato visible recortado.
+
+### E2E (base `servi_slt163_e2e`, `next build` con cada cambio de app)
+- reparto: `pwa-mensajero-reparto` + `mis-asignaciones` + `reintentos-escalado`: **10 passed, E2E_EXIT=0**.
+- dinero: `pwa-mensajero-base` + `pwa-mensajero-cierre-dia` + `tope-intentos-por-empresa`: **21 passed, E2E_EXIT=0**. Se corrió
+  porque cambió el fixture compartido.
+
+### Mutaciones
+- E2E: con `KpisMensajero.tsx` del commit 0113f39b (sin el arreglo) y build, (a) sale ROJO: «más ancho que su caja /
+  fuera de la tarjeta: ₡8.339.305,71». En esta corrida cayó el de 360 y pasó el de 414 (1 failed, 1 passed). Restaurado con `cmp`.
+- E2E: `grid-cols-1` en los KPI y build: (a) ROJO a 360 y 414 (`columnas: 1, filas: 4`, 2 failed). Restaurado con `cmp`.
+- Unitario: sin el arreglo, `KpisMensajero.test.tsx` ROJO (1 failed | 6 passed). Restaurado con `cmp`.
+
+### Gate
+`./init.sh` con la desechable `slt163_gate`, log fuera del árbol: **INIT_EXIT=0**. Tamaño: 41/40 archivos, 1304/1000 de
+producción, 1727→1743/3000 de tests. El archivo 41 es el fixture. Queda en aviso por la marca `tamano-pr-aceptado`; que el leader
+confirme que también cubre los 41 archivos.
+
+### Veredicto
+B8 en verde: los 3 archivos de reparto 10/10 y los de dinero que tocan el fixture 21/21. El arreglo deja el importe entero en su
+tarjeta, la mutación lo pone rojo y el gate da `INIT_EXIT=0`.

@@ -133,14 +133,20 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
       await sinElipsis(page.locator("article"));
 
       // R508: en Detalle, la fila compacta; desplegada, la dirección entera.
-      await page.getByRole("group", { name: "Vista de las órdenes" }).getByRole("button", { name: /Detalle/ }).click();
+      const conmutador = page.getByRole("group", { name: "Vista de las órdenes" });
+      await conmutador.getByRole("button", { name: /Detalle/ }).click();
+      await expect(conmutador.getByRole("button", { name: /Detalle/ })).toHaveAttribute("aria-pressed", "true");
+      // El cambio de vista va animado: hasta que se va el carrusel, las tarjetas de Mosaico siguen ahí.
+      await expect(page.getByRole("region", { name: "Órdenes en reparto" })).toHaveCount(0);
       const fila = page.locator("article").filter({ hasText: DESTINATARIO_LARGO }).first();
-      const disparador = fila.locator("button[aria-expanded]").first();
+      // La fila compacta es el botón hijo directo de la tarjeta (dentro hay otros desplegables).
+      const disparador = fila.locator(":scope > button[aria-expanded]");
       await expect(disparador).toHaveAttribute("aria-expanded", "false");
       await tactil(disparador);
       await disparador.click();
       await expect(disparador).toHaveAttribute("aria-expanded", "true");
-      await expect(fila.getByText(DIRECCION_LARGA, { exact: true }).first()).toBeVisible();
+      // La fila desplegada la pinta tras cantón y distrito («San Pablo · San Pablo — …»): entera, no sola.
+      await expect(fila.getByText(DIRECCION_LARGA).first()).toBeVisible();
       await sinDesborde(page);
       await sinElipsis(page.locator("article"));
     });

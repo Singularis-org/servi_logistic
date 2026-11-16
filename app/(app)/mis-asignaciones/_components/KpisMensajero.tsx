@@ -1,12 +1,24 @@
 import { HandCoins, PackageCheck, Truck, Wallet, type LucideIcon } from "lucide-react";
 
-import { COLUMNA_FIJA } from "@/components/shared/texto-entero";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MisAsignacionesKpis } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { NOMBRE_ESTADO } from "@/lib/types/order-status";
 
 import { KpiValorAnimado } from "./KpiValorAnimado";
+
+/**
+ * SLT-163 (R501, R502): la cifra de un KPI. En el teléfono la tarjeta de la rejilla 2 × 2 deja unos
+ * 120 px a la cifra y «₡8.328.638,65» a 20 px no cabe: baja a 16 px y, si aun así no cabe, salta de
+ * línea entera (nunca «…»). Con `whitespace-nowrap` la cifra se salía de su tarjeta. Desde `md`, la
+ * columna fija de siempre.
+ */
+// Literal a propósito: Tailwind solo genera las clases que lee escritas en el código. Desde `md` es
+// `COLUMNA_FIJA` con su variante.
+export const CIFRA_KPI =
+  "min-w-0 tabular-nums wrap-anywhere text-base md:shrink-0 md:whitespace-nowrap md:wrap-normal md:text-2xl";
+/** El contador (`KpiValorAnimado`) trae `whitespace-nowrap` propio: en el móvil también envuelve. */
+const CIFRA_KPI_ENVUELVE = "whitespace-normal md:whitespace-nowrap";
 
 // Feature 61 — fila de KPIs del portal del mensajero, sobre la lista de sus
 // asignaciones. Los 3 indicadores vienen ya calculados server-side (autoritativos):
@@ -43,12 +55,12 @@ const TILES: Tile[] = [
   {
     label: "Por cobrar",
     Icono: HandCoins,
-    render: (k) => <KpiValorAnimado value={k.porCobrar} moneda />,
+    render: (k) => <KpiValorAnimado value={k.porCobrar} moneda className={CIFRA_KPI_ENVUELVE} />,
   },
   {
     label: "Total a cobrar",
     Icono: Wallet,
-    render: (k) => <KpiValorAnimado value={k.totalACobrar} moneda />,
+    render: (k) => <KpiValorAnimado value={k.totalACobrar} moneda className={CIFRA_KPI_ENVUELVE} />,
   },
 ];
 
@@ -98,7 +110,7 @@ export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
                 cobrar", "Total a cobrar") sobre una `Card`, que sí gira con el
                 tema: en oscuro la cifra medía 1.06:1, o sea no se veía. */}
             <span
-              className={`${COLUMNA_FIJA} col-span-2 self-start text-xl font-semibold text-foreground md:col-span-1 md:col-start-2 md:text-2xl`}
+              className={`${CIFRA_KPI} col-span-2 self-start font-semibold text-foreground md:col-span-1 md:col-start-2`}
             >
               {tile.render(kpis)}
             </span>

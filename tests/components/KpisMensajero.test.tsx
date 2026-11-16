@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import { KpisMensajero } from "@/app/(app)/mis-asignaciones/_components/KpisMensajero";
-import { COLUMNA_FIJA } from "@/components/shared/texto-entero";
 import { formatMonto } from "@/lib/config/moneda";
 
 import { contraste, paleta, token } from "../fixtures/contraste";
@@ -128,12 +127,24 @@ describe("KpisMensajero — 2 × 2 en el móvil (SLT-156 R502)", () => {
     expect(clases).not.toContain("grid-cols-1");
   });
 
-  it("cada cifra va en columna fija, a todo el ancho de la tarjeta: «₡99 999 999» no se parte", () => {
+  it("cada cifra cabe en su tarjeta del móvil: 16 px y salta de línea si hace falta; columna fija desde md", () => {
     montar();
     for (const cifra of ["3", "7", norm(formatMonto(12500)), norm(formatMonto(48000))]) {
       const clases = screen.getByText(cifra).closest("span.col-span-2")?.className.split(/\s+/) ?? [];
-      for (const clase of COLUMNA_FIJA.split(" ")) expect(clases).toContain(clase);
+      // SLT-163 (R501): en el teléfono la cifra NO es columna fija — se salía de la tarjeta.
+      expect(clases).toEqual(expect.arrayContaining(["min-w-0", "wrap-anywhere", "text-base", "tabular-nums"]));
+      expect(clases).not.toContain("whitespace-nowrap");
+      expect(clases).not.toContain("shrink-0");
+      expect(clases).not.toContain("text-xl");
+      expect(clases).not.toContain("truncate");
+      // Desde md, la columna fija de siempre.
+      expect(clases).toEqual(expect.arrayContaining(["md:whitespace-nowrap", "md:shrink-0", "md:text-2xl"]));
+    }
+    // Los importes: el contador animado también envuelve en el móvil (trae su propio `nowrap`).
+    for (const importe of [norm(formatMonto(12500)), norm(formatMonto(48000))]) {
+      const propias = screen.getByText(importe).className.split(/\s+/);
+      expect(propias).toContain("whitespace-normal");
+      expect(propias).not.toContain("whitespace-nowrap");
     }
   });
 });
-

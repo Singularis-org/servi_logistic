@@ -102,7 +102,7 @@
   `tests/components/EscanerGuiaReparto.test.tsx` (guía propia → diálogo → foco en «¿Cómo terminó
   la gestión?»; ajena → «La guía {n} no está en tu lista de reparto.»; bloqueado → sin
   disparador). *Mutación:* `ordenPorGuia` que incluye las de ayuda → rojo.
-- [ ] **B8 E2E de Reparto a 360 px.** Depende de B1-B7. `e2e/pwa-mensajero-reparto.spec.ts`
+- [x] **B8 E2E de Reparto a 360 px.** Depende de B1-B7. `e2e/pwa-mensajero-reparto.spec.ts`
   (KPI en 2 columnas, sin desborde ni «…» con el destinatario largo, botones ≥ 44, Gestionar →
   foco → Confirmar guía → resultado). Actualizar `e2e/mis-asignaciones.spec.ts`,
   `e2e/tope-intentos-por-empresa.spec.ts` y `e2e/reintentos-escalado.spec.ts` al flujo nuevo;
