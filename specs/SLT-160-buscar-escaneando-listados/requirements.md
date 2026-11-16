@@ -181,3 +181,8 @@ test de integración no está probado. En los negativos, guías imposibles por c
 - Conflicto de archivos: `EscanerModal.tsx` y `QrScanner.tsx` los tocan también SLT-157, SLT-158,
   SLT-159 y quizá SLT-156 «PWA de los mensajeros: tablas usables en el móvil»; lo mira
   `scripts/archivos-en-vuelo.mjs` al tomar la ficha.
+- **Spec ya escrito (spec_author, 2026-11-16):** se pidió reescribir este spec en ruta ligera con
+  R770-R789. Este archivo ya está en `dev` (825ba66d) con R600-R609 y DC1 de Carlos (2026-11-14), y
+  `specs/SLT-159-escaneo-continuo-recepciones/requirements.md` (líneas 4 y 135) cita R600-R609 como
+  de SLT-160. Renumerar rompería esas referencias. No se reescribe: el humano decide si se aprueba
+  tal cual (con la pregunta de ruta de arriba) o qué se cambia.
