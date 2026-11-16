@@ -20,7 +20,7 @@ import {
  * E2E — «Mis asignaciones», el portal del mensajero (features 36, 96, 98, 113, 213; SL-44 T5.2, R18).
  *
  * Reescrito contra la UI ACTUAL:
- *  - RECOGER es por número de guía (o escáner) desde «Recoger paquete» en `/mis-asignaciones/recoger`
+ *  - RECOGER es por número de guía (o escáner) desde «Escanear o escribir guía» (tarjeta «Recoger paquete») en `/mis-asignaciones/recoger`
  *    (feature 96; ya no hay «Recoger» por fila ni modal de confirmación);
  *  - GESTIONAR se abre en MODO FOCO desde la tarjeta de `/mis-asignaciones/reparto` (SLT-156 R510):
  *    «Gestionar» + «Aceptar» deja solo el panel, con la verificación de la guía ya abierta (feature
@@ -65,7 +65,8 @@ async function recogerYAbrirGestion(browser: Browser, m: MensajeroE2E, orden: Or
   const page = await paginaDe(browser, m, CONTEXTO_MENSAJERO);
   await page.goto("/mis-asignaciones/recoger");
   await expect(page.getByRole("region", { name: "Recoger en bodega" }).getByText(orden.numRemision).first()).toBeVisible();
-  await page.getByRole("button", { name: "Recoger paquete" }).click();
+  // SLT-156 (R500): el disparador único de las pantallas del mensajero; dentro, la tarjeta «Recoger paquete».
+  await page.getByRole("button", { name: "Escanear o escribir guía" }).click();
   const tarjeta = page.getByRole("region", { name: "Recoger por número de guía o escaneo" });
   await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
   await tarjeta.getByRole("button", { name: "Recoger", exact: true }).click();

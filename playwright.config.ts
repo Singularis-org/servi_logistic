@@ -124,6 +124,8 @@ export default defineConfig({
         "etiquetas-lote-tienda",
         // SLT-163, rebanada B de SLT-156 · R493, R496, R500-R513: Reparto a 360/414 px, KPI 2 × 2 y modo foco.
         "pwa-mensajero-reparto",
+        // SLT-164, rebanada C de SLT-156 · R500, R517-R522: Recoger en bodega y Recolección a 360/414 px.
+        "pwa-mensajero-recoger-recoleccion",
       ),
     },
     {

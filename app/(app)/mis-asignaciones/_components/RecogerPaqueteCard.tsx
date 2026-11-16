@@ -3,7 +3,10 @@
 import { useCallback, useState } from "react";
 import { PackageCheck } from "lucide-react";
 
-import { EscanerModal } from "@/components/shared/EscanerModal";
+import {
+  ESCANER_LABEL_GUIA,
+  EscanerModal,
+} from "@/components/shared/EscanerModal";
 import {
   EscanerGuiaCard,
   type ResultadoLectura,
@@ -71,8 +74,9 @@ export function RecogerPaqueteCard({
        tiempo que el mensajero tuviera abierta la pantalla — o sea, la cámara encendida en la
        calle. La confirmación de la última recogida vive FUERA de la tarjeta (en el estado de
        este componente), así que cerrar y reabrir no la pierde.
-       El label NO es el de por defecto: aquí se RECOGE, no se recibe. */
-    <EscanerModal label="Recoger paquete">
+       El label NO es el de por defecto: SLT-156 (R500) es el disparador único de las pantallas
+       del mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recoger paquete». */
+    <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
       <EscanerGuiaCard
         ariaLabel="Recoger por número de guía o escaneo"
         titulo="Recoger paquete"

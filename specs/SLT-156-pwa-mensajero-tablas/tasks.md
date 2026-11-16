@@ -111,18 +111,18 @@
 
 ## Rebanada C — Recoger en bodega y Recolección (R500, R506, R516, R517-R522)
 
-- [ ] **C1 [P] Recoger en bodega (R517, R518, R521, R522).** `MA/RecogerModule.tsx`,
+- [x] **C1 [P] Recoger en bodega (R517, R518, R521, R522).** `MA/RecogerModule.tsx`,
   `MA/RecogerPaqueteCard.tsx` (`ESCANER_LABEL_GUIA`). *Hecho:* `tests/components/RecogerModule.test.tsx`
   (orden de secciones; un solo `BuscadorFiltros` fijo; placeholder; Mosaico inicial; vacío de
   búsqueda) y `RecogerPaqueteCard.test.tsx`, `RecogerModuleRefrescoAlVolver.test.tsx` actualizados.
   *Mutación:* escáner debajo del buscador → rojo.
-- [ ] **C2 [P] Recolección (R517, R519-R522).** `app/(app)/recoleccion/_components/RecoleccionModule.tsx`,
+- [x] **C2 [P] Recolección (R517, R519-R522).** `app/(app)/recoleccion/_components/RecoleccionModule.tsx`,
   `RecolectadasHoyLista.tsx`; reutilizar `MA/mis-asignaciones-buscador.ts` (generalizar la firma si
   hace falta). *Hecho:* `tests/components/RecoleccionModule.test.tsx`: el término filtra las dos
   listas; vacío de búsqueda distinto del vacío sin órdenes; Mosaico inicial; bloqueado sin
   disparador. `RecoleccionPage.test.tsx` actualizado. *Mutación:* filtrar solo «Por recolectar» →
   rojo.
-- [ ] **C3 E2E a 360 px.** Depende de C1-C2. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (las dos
+- [x] **C3 E2E a 360 px.** Depende de C1-C2. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (las dos
   pantallas con textos largos, sin desborde ni «…», búsqueda en Recolección). Añadir archivos de C
   a la guardia. *Hecho:* verde en local. *Mutación:* `truncate` en `RecolectadasHoyLista` → rojo.
 

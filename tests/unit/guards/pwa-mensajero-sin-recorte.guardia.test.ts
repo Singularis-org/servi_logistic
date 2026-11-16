@@ -92,6 +92,12 @@ const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
   { archivo: "app/(app)/mis-asignaciones/_components/VerificarGuiaGate.tsx", reglas: ["recorte", "escala", "oculta"] },
   { archivo: "app/(app)/mis-asignaciones/_components/EscanerGuiaReparto.tsx", reglas: ["recorte", "escala", "oculta"] },
   { archivo: "app/(app)/mis-asignaciones/_components/reparto-escaner.ts", reglas: ["recorte", "escala", "oculta"] },
+  // Rebanada C — Recoger en bodega y Recolección (SLT-164).
+  { archivo: "app/(app)/mis-asignaciones/_components/RecogerModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RecogerPaqueteCard.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/mis-asignaciones-buscador.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/recoleccion/_components/RecoleccionModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/recoleccion/_components/RecolectadasHoyLista.tsx", reglas: ["recorte", "escala", "oculta"] },
   {
     archivo: "components/shared/BuscadorFiltros.tsx",
     reglas: ["escala"],

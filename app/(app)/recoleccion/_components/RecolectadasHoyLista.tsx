@@ -37,6 +37,13 @@ import type { RecolectadaHoyDTO } from "@/lib/types/recoleccion-tienda";
 
 const TITULO = "Recogidos en tienda hoy";
 
+/**
+ * SLT-156 (R521, decisión del leader 2026-11-14): el vacío de búsqueda de Recolección, el mismo en
+ * sus dos listas porque el término es uno solo.
+ */
+export const SIN_RESULTADOS_BUSQUEDA =
+  "Ninguna guía por recolectar coincide con la búsqueda.";
+
 /** R30: el vacío se DICE, no se omite — omitir la lista parecería que el trabajo se perdió. */
 const VACIO =
   "Todavía no has recolectado ninguna orden hoy. Las que escanees aparecerán aquí.";
@@ -66,6 +73,13 @@ function horaDe(fecha: Date): string {
 export interface RecolectadasHoyListaProps {
   /** R28: de la MÁS RECIENTE a la más antigua, tal como llega del servidor. */
   recolectadasHoy: readonly RecolectadaHoyDTO[];
+  /**
+   * SLT-156 (R520): lo que deja a la vista el término del buscador de la pantalla. Ausente = la
+   * lista entera. La cabecera sigue contando `recolectadasHoy` (lo que el mensajero tiene).
+   */
+  visibles?: readonly RecolectadaHoyDTO[];
+  /** SLT-156 (R521): hay un término escrito; con `visibles` vacía se pinta el vacío de búsqueda. */
+  buscando?: boolean;
   /** R31: hoy hay más recolecciones de las que trae la lista. */
   recortada?: boolean;
   /** Vista EFECTIVA (la que toca pintar), decidida por el módulo. */
@@ -80,6 +94,8 @@ export interface RecolectadasHoyListaProps {
 
 export function RecolectadasHoyLista({
   recolectadasHoy,
+  visibles = recolectadasHoy,
+  buscando = false,
   recortada = false,
   vista,
   vistaPedida,
@@ -97,8 +113,10 @@ export function RecolectadasHoyLista({
     return (
       <CardVista
         orden={orden}
-        total={recolectadasHoy.length}
+        total={visibles.length}
         mostrarRuta={false}
+        // SLT-156 (R517): en Detalle, la tarjeta compacta de Reparto; la hora va en su despliegue.
+        compacta={vistaCard === "detalle"}
         acciones={
           <p className="text-[11px] font-semibold text-muted-foreground">
             Recogido a las{" "}
@@ -139,12 +157,15 @@ export function RecolectadasHoyLista({
 
       {recolectadasHoy.length === 0 ? (
         <p className="text-sm text-muted-foreground">{VACIO}</p>
+      ) : buscando && visibles.length === 0 ? (
+        /* SLT-156 (R521): hay recolecciones hoy, pero el término no deja ninguna. */
+        <p className="text-sm text-muted-foreground">{SIN_RESULTADOS_BUSQUEDA}</p>
       ) : (
         <>
           {vista === "mosaico" ? (
             <div className={CLASE_FASE[fase]}>
               <CarruselCards
-                items={[...recolectadasHoy]}
+                items={[...visibles]}
                 getKey={(orden) => orden.id}
                 ariaLabel="Paquetes recogidos en tienda hoy"
                 singular="Orden"
@@ -154,7 +175,7 @@ export function RecolectadasHoyLista({
             </div>
           ) : (
             <ul className={`flex flex-col gap-3 ${CLASE_FASE[fase]}`}>
-              {recolectadasHoy.map((orden) => (
+              {visibles.map((orden) => (
                 <li key={orden.id}>{renderCard(orden, "detalle")}</li>
               ))}
             </ul>

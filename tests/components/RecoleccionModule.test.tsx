@@ -137,7 +137,7 @@ const escaner = () =>
 
 /** El disparador del desplegable: el acceso al escaneo, esté la tarjeta abierta o no. */
 const disparador = () =>
-  screen.queryByRole("button", { name: "Recolectar en tienda" });
+  screen.queryByRole("button", { name: "Escanear o escribir guía" });
 
 /**
  * Despliega la tarjeta de escaneo. El escáner arranca PLEGADO en toda la app (decisión del
@@ -146,7 +146,7 @@ const disparador = () =>
  * es lo que hace el mensajero.
  */
 async function abrirEscaner(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Recolectar en tienda" }));
+  await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
 }
 
 /**
@@ -914,5 +914,161 @@ describe("RecoleccionModule — guía única por cámara o pistola (SLT-157)", (
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
     expect(toastError).toHaveBeenLastCalledWith("Código inválido.");
     expect(recolectarMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-164 «PWA del mensajero: Recoger en bodega y Recolección» (rebanada C de SLT-156): el escáner
+// único bajo el encabezado, UNA barra fija para las dos listas, Mosaico de entrada y Detalle con la
+// tarjeta compacta de Reparto.
+describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R517, R519-R522)", () => {
+  /** `true` si `a` va ANTES que `b` en el documento. */
+  const antes = (a: Element, b: Element) =>
+    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  const buscador = () => screen.getByRole("searchbox", { name: "Buscar guías" });
+  const seccionPor = () => screen.getByRole("region", { name: "Por recolectar en tienda" });
+  const seccionHoy = () => screen.getByRole("region", { name: "Recogidos en tienda hoy" });
+  const VACIO_BUSQUEDA = "Ninguna guía por recolectar coincide con la búsqueda.";
+
+  const DOS_POR_RECOLECTAR = [
+    makeOrden({ id: "p1", numGuia: 2001, numRemision: "REM-P1", destinatario: "Ana Gómez" }),
+    makeOrden({
+      id: "p2",
+      numGuia: 2002,
+      numRemision: "REM-P2",
+      destinatario: "Bruno Solís",
+      telefonoDest: "61234567",
+    }),
+  ];
+  const DOS_RECOGIDAS = [
+    makeRecolectada({ id: "h1", numGuia: 5001, numRemision: "REM-H1", destinatario: "Ána Torres" }),
+    makeRecolectada({ id: "h2", numGuia: 5002, numRemision: "REM-H2", destinatario: "Carla Mora" }),
+  ];
+
+  it("R519/R500: «Escanear o escribir guía» (cerrado) → barra fija → «Por recolectar en tienda» → «Recogidos en tienda hoy»", () => {
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
+
+    const boton = disparador();
+    expect(boton).not.toBeNull();
+    // Arranca cerrado: sin diálogo ni tarjeta montada.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(escaner()).toBeNull();
+    expect(antes(boton!, buscador())).toBe(true);
+    expect(antes(buscador(), seccionPor())).toBe(true);
+    expect(antes(seccionPor(), seccionHoy())).toBe(true);
+    // La barra está pegada arriba y su padre llega hasta la última lista (`sticky` se pega
+    // dentro de su padre).
+    const barra = buscador().closest(".sticky");
+    expect(barra).not.toBeNull();
+    expect(barra!.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0"]));
+    expect(barra!.parentElement!.contains(seccionHoy())).toBe(true);
+  });
+
+  it("R493: el disparador mide 44 px (`h-11`) y va a todo el ancho", () => {
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
+    expect(disparador()!.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["h-11", "w-full"]),
+    );
+  });
+
+  it("R516/R519: bloqueado no hay disparador; el aviso va primero y la barra sigue", () => {
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, bloqueo: bloqueoConVencido() });
+    expect(disparador()).toBeNull();
+    const aviso = screen.getByRole("alert");
+    expect(antes(aviso, buscador())).toBe(true);
+    expect(antes(buscador(), seccionPor())).toBe(true);
+  });
+
+  it("R495/R506: un solo campo, con el placeholder «Guía, remisión, teléfono o nombre», que busca también por teléfono", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
+
+    expect(screen.getAllByRole("searchbox")).toHaveLength(1);
+    expect(buscador()).toHaveAttribute("placeholder", "Guía, remisión, teléfono o nombre");
+
+    await user.type(buscador(), "6123-4567");
+    expect(within(seccionPor()).getByText("REM-P2")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-P1")).toBeNull();
+  });
+
+  it("R520: el término filtra las DOS listas y las cabeceras siguen contando el día entero", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
+
+    await user.type(buscador(), "ana");
+
+    // Sin distinguir mayúsculas ni acentos: «Ana Gómez» y «Ána Torres» quedan; las otras no.
+    expect(within(seccionPor()).getByText("REM-P1")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-P2")).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-H1")).toBeInTheDocument();
+    expect(within(seccionHoy()).queryByText("REM-H2")).toBeNull();
+    expect(
+      within(seccionPor()).getByText("2 paquetes por recolectar en tienda."),
+    ).toBeInTheDocument();
+    expect(
+      within(seccionHoy()).getByText("2 paquetes recogidos en tienda hoy."),
+    ).toBeInTheDocument();
+  });
+
+  it("R521: sin coincidencias cada lista dice el vacío de búsqueda, distinto del vacío sin órdenes", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderModule({
+      porRecolectar: DOS_POR_RECOLECTAR,
+      recolectadasHoy: DOS_RECOGIDAS,
+    });
+
+    await user.type(buscador(), "zzzz");
+    expect(within(seccionPor()).getByText(VACIO_BUSQUEDA)).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText(VACIO_BUSQUEDA)).toBeInTheDocument();
+    expect(screen.queryByText(/No tienes órdenes por recolectar/)).toBeNull();
+    expect(screen.queryByText(/Todavía no has recolectado/)).toBeNull();
+    unmount();
+
+    // Sin órdenes, el término no cambia el vacío de siempre.
+    renderModule({});
+    await user.type(buscador(), "zzzz");
+    expect(within(seccionPor()).getByText(/No tienes órdenes por recolectar/)).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText(/Todavía no has recolectado/)).toBeInTheDocument();
+    expect(screen.queryByText(VACIO_BUSQUEDA)).toBeNull();
+  });
+
+  it("R517: arranca en Mosaico (carruseles) y Detalle pinta las tarjetas compactas, sin acciones", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
+
+    const conmutador = within(seccionPor()).getByRole("group", { name: "Vista de las órdenes" });
+    expect(within(conmutador).getByRole("button", { name: /Mosaico/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: "Órdenes por recolectar" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Paquetes recogidos en tienda hoy" }),
+    ).toBeInTheDocument();
+
+    await user.click(within(conmutador).getByRole("button", { name: /Detalle/ }));
+    expect(
+      await within(seccionPor()).findByRole("button", { expanded: false, name: /REM-P1/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(seccionHoy()).getByRole("button", { expanded: false, name: /REM-H1/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Gestionar/ })).toBeNull();
+  });
+
+  it("R522: la guía confirmada en el escáner se recolecta con el mismo resultado y mensaje de hoy", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
+
+    await abrirEscaner(user);
+    expect(screen.getByRole("dialog")).toHaveTextContent("Recolectar en tienda");
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/recolectada/)).toHaveTextContent(
+      "Guía 1001 recolectada correctamente.",
+    );
+    expect(refreshMock).toHaveBeenCalled();
   });
 });
