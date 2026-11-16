@@ -39,15 +39,15 @@ vacío. (R699)
 
 Solo cambia cómo se construye el servicio o el doble. **Ningún valor esperado cambia** (R705).
 
-- [ ] `tests/unit/services/cierre-bodega-solicitados-modelo-nuevo-service.test.ts`: `montar` construye
+- [x] `tests/unit/services/cierre-bodega-solicitados-modelo-nuevo-service.test.ts`: `montar` construye
   `CierresBodegaSateliteDescargaService(repo, ordenRepo, { zonaHoraria }, lote?)`.
-- [ ] `tests/unit/services/consolidacion-completo.test.ts`: una segunda fábrica para el conjunto «seis»;
+- [x] `tests/unit/services/consolidacion-completo.test.ts`: una segunda fábrica para el conjunto «seis»;
   el conjunto «siete» y las comparaciones con la página siguen en `CierreBodegaService`.
-- [ ] `tests/unit/services/cierres-filtro-folio.test.ts`: el camino «satélite · solicitados (archivo)»
+- [x] `tests/unit/services/cierres-filtro-folio.test.ts`: el camino «satélite · solicitados (archivo)»
   llama al servicio nuevo con el mismo doble.
-- [ ] `tests/unit/actions/cierre-bodega-descarga-action.test.ts`: el doble del borde «seis» va en
+- [x] `tests/unit/actions/cierre-bodega-descarga-action.test.ts`: el doble del borde «seis» va en
   `cierresBodegaSateliteDescargaService`.
-- [ ] `tests/unit/actions/cierre-bodega-cifras-cableado.test.ts`: la acción de la satélite construye
+- [x] `tests/unit/actions/cierre-bodega-cifras-cableado.test.ts`: la acción de la satélite construye
   `CierresBodegaSateliteDescargaService` con 4 argumentos, el cuarto es la lectura en lote real, y
   `CierreBodegaService` NO se construye (`argsSatelite` vacío).
 

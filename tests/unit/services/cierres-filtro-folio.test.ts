@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { CierresAdminService } from "@/lib/services/CierresAdminService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
@@ -140,6 +141,12 @@ function montar() {
     { findUsuarioZonaId: vi.fn(async () => ZONA_SAT) } as unknown as IOrdenRepository,
     reglasContadas(zona),
   );
+  // SLT-176 (R705): el archivo de la satélite sale del servicio de solo lectura, con el MISMO doble.
+  const svcSateliteDescarga = new CierresBodegaSateliteDescargaService(
+    satelite.doble as unknown as ICierreBodegaRepository,
+    { findUsuarioZonaId: vi.fn(async () => ZONA_SAT) } as unknown as IOrdenRepository,
+    reglasContadas(zona),
+  );
 
   const p = { page: 1, pageSize: 25 };
   const caminos: Array<Camino & { llamadas: Array<{ metodo: string; args: unknown[] }> }> = [
@@ -164,7 +171,7 @@ function montar() {
     { nombre: "satélite · a consolidar (página)", llamadas: satelite.llamadas, metodoRepo: "findCierresDiaConsolidablesPaginado", posicionFiltros: 2,
       llamar: (f) => svcSatelite.listarConsolidablesPaginado({ ...p, filtros: f }, SATELITE) },
     { nombre: "satélite · solicitados (archivo)", llamadas: satelite.llamadas, metodoRepo: "findCierresBodegaByZona", posicionFiltros: 1,
-      llamar: (f) => svcSatelite.listarCierresBodegaSolicitadosCompleto(SATELITE, f) },
+      llamar: (f) => svcSateliteDescarga.listarCierresBodegaSolicitadosCompleto(SATELITE, f) },
     { nombre: "satélite · a consolidar (archivo)", llamadas: satelite.llamadas, metodoRepo: "findCierresDiaConsolidables", posicionFiltros: 1,
       llamar: (f) => svcSatelite.listarConsolidablesCompleto(SATELITE, f) },
   ];

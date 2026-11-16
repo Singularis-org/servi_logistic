@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CifrasBodegaLoteRepository } from "@/lib/repositories/CifrasBodegaLoteRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 
@@ -19,7 +21,10 @@ import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensaj
  */
 
 const argsAdmin: unknown[][] = [];
+// SLT-176 (R698): `argsSatelite` son los de `CierreBodegaService` (que escribe dinero) y
+// `argsDescargaSatelite` los del servicio de solo lectura que ahora sirve la descarga.
 const argsSatelite: unknown[][] = [];
+const argsDescargaSatelite: unknown[][] = [];
 
 vi.mock("@/lib/db/prisma-client", () => ({
   // Los repositorios solo lo guardan en su constructor; ninguno consulta al construirse.
@@ -52,6 +57,21 @@ vi.mock("@/lib/services/CierreBodegaService", async (importOriginal) => {
     CierreBodegaService: class {
       constructor(...args: unknown[]) {
         argsSatelite.push(args);
+      }
+      async listarCierresBodegaSolicitadosCompleto() {
+        return { status: "ok" as const, items: [], total: 0 };
+      }
+    },
+  };
+});
+
+vi.mock("@/lib/services/CierresBodegaSateliteDescargaService", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/services/CierresBodegaSateliteDescargaService")>();
+  return {
+    ...real,
+    CierresBodegaSateliteDescargaService: class {
+      constructor(...args: unknown[]) {
+        argsDescargaSatelite.push(args);
       }
       async listarCierresBodegaSolicitadosCompleto() {
         return { status: "ok" as const, items: [], total: 0 };
@@ -97,18 +117,23 @@ describe("SLT-141 · las acciones de la central construyen CierresBodegaAdminSer
   });
 });
 
-describe("SLT-141 · la accion de la satelite construye CierreBodegaService con la lectura en lote y sin pagos", () => {
-  it("«Solicitados»: el quinto argumento es la lectura en lote real y no hay sexto (F481)", async () => {
+describe("SLT-141/SLT-176 · la accion de la satelite construye el servicio de solo lectura con la lectura en lote y sin pagos", () => {
+  it("«Solicitados»: el cuarto argumento es la lectura en lote real, no hay quinto (F481) y CierreBodegaService no se construye (R698)", async () => {
     const { listarCierresBodegaSolicitadosCompleto } = await import("@/lib/actions/cierre-bodega");
     argsSatelite.length = 0;
+    argsDescargaSatelite.length = 0;
 
     const r = await listarCierresBodegaSolicitadosCompleto({}, { getActor: async () => SATELITE });
 
     expect(r.status).toBe("ok");
-    expect(argsSatelite).toHaveLength(1);
-    const args = argsSatelite[0]!;
-    // (repo, ordenRepo, reglasPais, ahora, cifrasLote)
-    expect(args).toHaveLength(5);
-    esLecturaEnLote(args[4]);
+    expect(argsDescargaSatelite).toHaveLength(1);
+    const args = argsDescargaSatelite[0]!;
+    // (repo, ordenRepo, reglasPais, cifrasLote)
+    expect(args).toHaveLength(4);
+    expect(args[0]).toBeInstanceOf(CierreBodegaRepository);
+    expect(args[1]).toBeInstanceOf(OrdenRepository);
+    esLecturaEnLote(args[3]);
+    // El servicio que escribe dinero no interviene en la descarga.
+    expect(argsSatelite).toHaveLength(0);
   });
 });
