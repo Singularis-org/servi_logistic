@@ -11,7 +11,10 @@ import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EscanerModal } from "@/components/shared/EscanerModal";
+import { QrScanner } from "@/components/shared/QrScanner";
 import {
   avisoMinimoCaracteres,
   DEBOUNCE_MS_DEFAULT,
@@ -21,6 +24,7 @@ import {
   type VistasFiltroBarra,
 } from "@/components/shared/VistasFiltro";
 import { useFiltrosUrl } from "@/hooks/useFiltrosUrl";
+import { useToast } from "@/hooks/useToast";
 import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   activosDesdeUrl,
@@ -48,6 +52,49 @@ const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
 
 /** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
 export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
+
+/** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
+export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
+
+/** SLT-160 (R605): lo que dice la cámara del buscador cuando lee algo que no es una guía. */
+const CODIGO_INVALIDO = "Código inválido.";
+
+/**
+ * SLT-160 (R604, R605) — el visor de la cámara del buscador, ya encendido (D4). Vive DENTRO del
+ * modal, y es ahí donde pide el toast: solo se monta al abrirlo, así la barra sigue sin exigir un
+ * `ToastProvider` a quien la monta. Una guía cierra el modal y se busca; otra cosa avisa y no toca
+ * el término.
+ */
+function CamaraDelBuscador({
+  onGuia,
+  cerrar,
+}: {
+  onGuia: (guia: number) => void;
+  cerrar: () => void;
+}) {
+  const toast = useToast();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{ESCANEAR_CON_CAMARA}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <QrScanner
+          encendidaAlMontar
+          onDecoded={(texto) => {
+            const guia = leerGuia(texto);
+            if (guia === null) {
+              toast.error(CODIGO_INVALIDO);
+              return;
+            }
+            cerrar();
+            onGuia(guia);
+          }}
+        />
+      </CardContent>
+    </Card>
+  );
+}
 
 /** Un filtro OFRECIDO en el selector: su clave y como se llama. Nada mas. */
 export interface FiltroDisponible {
@@ -600,7 +647,11 @@ export function BuscadorFiltros({
             // quita la del navegador y no la propia porque la nativa no existe en
             // todos (Firefox no la pinta), así que dejar solo esa daría un campo sin
             // forma de limpiarse en unos navegadores sí y en otros no.
-            className="h-full w-full pr-9 pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+            className={cn(
+              "h-full w-full pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden",
+              // SLT-160: con la cámara, sitio para dos botones a la derecha («X» y cámara).
+              escaneo ? "pr-16" : "pr-9",
+            )}
             onChange={(e) => escribir(e.target.value)}
             onKeyDown={
               escaneo
@@ -619,11 +670,26 @@ export function BuscadorFiltros({
               size="icon-xs"
               disabled={disabled}
               aria-label={`Limpiar ${label}`}
-              className="absolute right-1.5 hover:bg-transparent hover:text-foreground"
+              className={cn(
+                "absolute hover:bg-transparent hover:text-foreground",
+                escaneo ? "right-8" : "right-1.5",
+              )}
               onClick={() => escribir("")}
             >
               <X className="size-4 opacity-60" aria-hidden />
             </Button>
+          ) : null}
+          {/* SLT-160 (R600, R604): la cámara, el último botón del campo y siempre en el mismo sitio
+              (la «X» aparece y desaparece a su izquierda). Abre el visor de hoy ya encendido. */}
+          {escaneo ? (
+            <EscanerModal label={ESCANEAR_CON_CAMARA} soloIcono className="absolute right-1.5">
+              {(cerrar) => (
+                <CamaraDelBuscador
+                  cerrar={cerrar}
+                  onGuia={(guia) => buscarYa(String(guia))}
+                />
+              )}
+            </EscanerModal>
           ) : null}
         </div>
         ) : null}

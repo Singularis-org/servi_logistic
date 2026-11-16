@@ -285,3 +285,21 @@ describe("QrScanner", () => {
     await vi.waitFor(() => expect(clearMock).toHaveBeenCalled());
   });
 });
+
+describe("QrScanner — SLT-160 (D4) `encendidaAlMontar`", () => {
+  it("arranca la cámara sin clic y entrega la lectura", async () => {
+    const onDecoded = vi.fn();
+    render(<QrScanner onDecoded={onDecoded} encendidaAlMontar />);
+
+    expect(screen.queryByRole("button", { name: "Escanear con cámara" })).toBeNull();
+    await vi.waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    await decodificar("1024");
+    expect(onDecoded).toHaveBeenCalledWith("1024");
+  });
+
+  it("sin la prop arranca apagada, como siempre", () => {
+    render(<QrScanner onDecoded={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Escanear con cámara" })).toBeInTheDocument();
+    expect(startMock).not.toHaveBeenCalled();
+  });
+});

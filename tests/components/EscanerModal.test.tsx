@@ -63,6 +63,23 @@ describe("EscanerModal", () => {
     expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
   });
 
+  it("SLT-160 (R604): con `soloIcono` el disparador es un icono con `label` de nombre; abre igual", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label="Escanear con cámara" soloIcono>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+
+    const boton = screen.getByRole("button", { name: "Escanear con cámara" });
+    expect(boton).toHaveTextContent("");
+    expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+
+    await user.click(boton);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleName("Escanear con cámara");
+    expect(screen.getByText("tarjeta de escaneo")).toBeInTheDocument();
+  });
+
   it("al pulsar abre el modal con el contenido dentro", async () => {
     const user = userEvent.setup();
     render(
