@@ -208,7 +208,7 @@ imports indirectos). D2 → R678. D3 → R675 (solo salen dos claves).
 
 ## Tasks
 
-- [ ] **T1 — Medir antes de tocar nada.**
+- [x] **T1 — Medir antes de tocar nada.**
   - Antes de cualquier `vitest`, base desechable: crear una base nueva, `prisma migrate deploy`, sin
     `db:seed`, y exportar su `DATABASE_URL`. Nunca la de desarrollo.
   - Correr los dos archivos sql-real y anotar en `progress/impl_SLT-175.md` el primer rojo de cada uno.
@@ -219,7 +219,7 @@ imports indirectos). D2 → R678. D3 → R675 (solo salen dos claves).
     `archivo:línea`.
   - *Hecho:* la tabla está en la bitácora. Si aparecen caminos aparte de los dos de `## Medición`, se
     para y el leader los lleva a P1 antes de seguir.
-- [ ] **T2 [P con T4] — Sembrar `cierre-desglose-por-tienda-sql-real.test.ts`** (R670, R672, R673).
+- [x] **T2 [P con T4] — Sembrar `cierre-desglose-por-tienda-sql-real.test.ts`** (R670, R672, R673).
   - Quitar `fksDeOrden` y los `usuario.findFirst` del `beforeAll`.
   - Dentro de `conCorpus`, después de `serializarEscriturasReales`, crear con `crearFksDeOrden(tx)` y
     `crearUsuarioDePrueba(tx, rol)`:
@@ -230,12 +230,12 @@ imports indirectos). D2 → R678. D3 → R675 (solo salen dos claves).
   - `en_reparto` se sigue leyendo del catálogo con su `where`.
   - Ningún `it`, `expect` ni literal cambia.
   - *Hecho:* en la base de T1, 4 passed / 0 skipped / 0 failed.
-- [ ] **T3 [P con T2] — Sembrar `cierre-bodega-desglose-por-tienda-sql-real.test.ts`** (R671-R673).
+- [x] **T3 [P con T2] — Sembrar `cierre-bodega-desglose-por-tienda-sql-real.test.ts`** (R671-R673).
   - Lo mismo que T2.
   - Ana y Beto con rol `mensajero`, y el solicitante con el rol que pida `cierre_bodega`. Si ninguno
     lo exige, `adminSatelite`.
   - *Hecho:* 4 passed / 0 skipped / 0 failed en la base de T1.
-- [ ] **T4 — Mutaciones de R673 y R674**, una a una, sobre la base de T1 y nunca a la vez que el gate.
+- [x] **T4 — Mutaciones de R673 y R674**, una a una, sobre la base de T1 y nunca a la vez que el gate.
   - Quitar la siembra de una gestión: el control positivo cae.
   - Mutación (a): en el mapper del detalle, leer `orden.tiendaId` en vez del `tienda_id` congelado.
     Caen los casos R6 de los dos archivos.
@@ -243,7 +243,7 @@ imports indirectos). D2 → R678. D3 → R675 (solo salen dos claves).
   - Tras cada mutación, `git diff --stat -- lib/` vacío y el árbol restaurado.
   - *Hecho:* tabla mutación → caso rojo → restaurado en `progress/impl_SLT-175.md`.
   - Depende de T2 y T3.
-- [ ] **T5 — Baseline** (R675). Borrar las dos claves de `tests/baseline-rojos.json` y nada más.
+- [x] **T5 — Baseline** (R675). Borrar las dos claves de `tests/baseline-rojos.json` y nada más.
   - *Hecho:* `git diff tests/baseline-rojos.json` muestra solo esas 8 líneas, y
     `tests/unit/guards/gate-cableado-arnes-v2.guardia.test.ts` sigue verde.
   - Depende de T2 y T3.

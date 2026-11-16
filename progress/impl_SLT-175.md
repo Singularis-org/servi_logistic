@@ -35,3 +35,50 @@ y `{ type X }` puros fuera, alias `@/` y relativos, BFS por primer módulo). 19 
 | `CierreBodegaService.ts` | `lib/services/CierresAdminService.ts` (`CierreBodegaService.ts:40`) | → `lib/utils/cifras-cierre.ts` |
 
 Exactamente los dos de `## Medición` del spec. No hay caminos nuevos: no se para.
+
+## T2 y T3 — Siembra dentro de la tx
+
+- `beforeAll`: fuera `fksDeOrden` y los `usuario.findFirst` (plantilla, mensajero, solicitante). Queda
+  solo `orderStatus.findFirst({ where: { value: "en_reparto" } })`, que lanza si falta.
+- Dentro de `conCorpus`, tras `serializarEscriturasReales`: `crearFksDeOrden(tx)` (zona y geografía),
+  `crearUsuarioDePrueba(tx, rol)` para cada usuario y `usuario.update` en la tx para el nombre del
+  caso (`NOMBRE_COMPARTIDO`, «Ana Mensajera», «Beto Mensajero») con `primerApellido: null`, que es
+  como los creaba antes. Roles: tiendas `adminTienda`, mensajeros `mensajero`, solicitante del cierre
+  de bodega `adminSatelite` (el `schema.prisma` lo anota como actor; ninguna restricción lo exige).
+- El fixture no se tocó. Ningún `it`, `expect` ni literal cambió: `git diff -U0` de los dos archivos
+  no tiene ni una línea con `expect`, `it(`, `toBe`, `toEqual`, `000.00` ni `.50"`.
+
+Resultado en `servi_slt175_desechable` (solo migraciones, sin seed), `vitest run --reporter=verbose`:
+
+```
+ ✓ cierre-desglose-por-tienda-sql-real.test.ts > 396/B3 > CONTROL POSITIVO …
+ ✓ cierre-desglose-por-tienda-sql-real.test.ts > 396/B3 > R6: la proyección sube el `tienda_id` CONGELADO …
+ ✓ cierre-desglose-por-tienda-sql-real.test.ts > 396/B3 > R6/R7: el desglose sale de lo congelado …
+ ✓ cierre-desglose-por-tienda-sql-real.test.ts > 396/B3 > las identidades se sostienen …
+ ✓ cierre-bodega-desglose-por-tienda-sql-real.test.ts > 396/D > CONTROL POSITIVO …
+ ✓ cierre-bodega-desglose-por-tienda-sql-real.test.ts > 396/D > R6: cada `cierre_dia` sube el `tienda_id` CONGELADO …
+ ✓ cierre-bodega-desglose-por-tienda-sql-real.test.ts > 396/D > ⚠️ R19 vs R20 …
+ ✓ cierre-bodega-desglose-por-tienda-sql-real.test.ts > 396/D > las identidades de los TRES niveles …
+ Test Files  2 passed (2)
+      Tests  8 passed (8)
+```
+
+Por archivo: **4 passed / 0 skipped / 0 failed** en cada uno.
+
+## T4 — Mutaciones (una a una, en la desechable, sin gate en paralelo)
+
+| Mutación | Dónde | Casos rojos | Restaurado |
+|---|---|---|---|
+| Siembra: `b1-entrega` vuelve antes de crear su gestión | los dos archivos sql-real, en `sembrar` | 8/8; los dos CONTROL POSITIVO por cardinal: `expected 2 to be 3` (mensajero) y `expected 3 to be 4` (bodega) | `git checkout -- tests/integration` |
+| (a) el mapper lee la tienda VIVA (`GESTION_ADMIN_SELECT` + `orden.tiendaId`, `toPendienteRowDesdeSnapshot`) en vez de `d.tiendaId` | `lib/repositories/CierresAdminRepository.ts:369,765` | 6/8: los dos R6, R6/R7, R19 vs R20 y las dos identidades (ids cruzados, `difA` −3616.00 en vez de −7345.00 / −10452.50). Los CONTROL POSITIVO siguen verdes (el conjunto de tiendas es el mismo) | `git checkout -- lib/`; `git diff --stat -- lib/` vacío |
+| (b) `partesPorTienda` no resta el flete por rechazo (`totalesIngresoEmpresa` sin las gestiones de rechazo) | `lib/utils/ingreso-empresa.ts:673` | 4/8: las dos identidades, R6/R7 y R19 vs R20 (`pago 94350.00` en vez de `92655.00`; Σ `130734.00` en vez de `129039.00`) | `git checkout -- lib/`; `git diff --stat -- lib/` vacío |
+
+Nota: el primer intento de (a) añadió `tiendaId` a `GESTION_DESCARGA_SELECT` (otro select) y dio 8/8
+rojos por `TypeError`, no por la aserción: no vale como mutación; se restauró y se repitió en el select
+correcto. La tabla recoge la buena.
+
+## T5 — Baseline
+
+Salen solo `tests/integration/db/cierre-desglose-por-tienda-sql-real.test.ts` y
+`tests/integration/db/cierre-bodega-desglose-por-tienda-sql-real.test.ts`: `git diff --stat` = 8
+borradas, 0 añadidas; el JSON parsea. `gate-cableado-arnes-v2.guardia.test.ts`: 5 passed.
