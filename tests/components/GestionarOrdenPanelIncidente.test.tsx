@@ -189,9 +189,8 @@ describe("R33 — la opción de incidente existe y está DIFERENCIADA de los 4 d
 
 describe("R12 — el gate de verificación de guía sigue siendo la puerta, también del incidente", () => {
   it("sin verificar la guía NO se ofrece ningún resultado, tampoco el incidente", async () => {
-    const user = userEvent.setup();
     montar(false);
-    // El panel arranca en el paso "detalle": sólo el gate (que además arranca cerrado).
+    // El panel arranca en el paso "detalle": sólo el gate (SLT-156 R510: ya abierto).
     abrirGate();
     expect(
       await screen.findByRole("region", {

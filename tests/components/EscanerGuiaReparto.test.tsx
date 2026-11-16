@@ -28,6 +28,27 @@ vi.mock("html5-qrcode", () => ({
   },
 }));
 
+// `saltarGuardaDelEscaner`: un caso necesita llegar al módulo con una reservada SIN pasar por la guarda
+// del escáner, para probar la segunda guarda (la de `escoger`). El resto usa el escáner real.
+const simulacion = vi.hoisted(() => ({ saltarGuardaDelEscaner: false }));
+vi.mock("@/app/(app)/mis-asignaciones/_components/EscanerGuiaReparto", async (original) => {
+  const real = await original<typeof import("@/app/(app)/mis-asignaciones/_components/EscanerGuiaReparto")>();
+  return {
+    ...real,
+    EscanerGuiaReparto: (props: Parameters<typeof real.EscanerGuiaReparto>[0]) =>
+      simulacion.saltarGuardaDelEscaner ? (
+        <button
+          type="button"
+          onClick={() => props.onOrdenEncontrada(props.porGestionar.find((o) => o.esParaManana)!)}
+        >
+          Lectura sin guarda
+        </button>
+      ) : (
+        <real.EscanerGuiaReparto {...props} />
+      ),
+  };
+});
+
 const { escogerMock, gestionarMock, liberarMock, errorMock } = vi.hoisted(() => ({
   escogerMock: vi.fn(),
   gestionarMock: vi.fn(),
@@ -121,7 +142,7 @@ const RUTA: RutaResumenDTO = {
   tramoSiguiente: null,
 };
 
-function montar(opciones?: { bloqueo?: BloqueoDetalle; conAyuda?: MiAsignacionDTO[] }) {
+function montar(opciones?: { bloqueo?: BloqueoDetalle; conAyuda?: MiAsignacionDTO[]; extra?: MiAsignacionDTO[] }) {
   return render(
     <RepartoModule
       kpis={<KpisMensajero kpis={{ pendientes: 2, entregadas: 0, porCobrar: 0, totalACobrar: 0 }} />}
@@ -134,6 +155,7 @@ function montar(opciones?: { bloqueo?: BloqueoDetalle; conAyuda?: MiAsignacionDT
           numGuia: 7305,
           secuenciaRuta: 2,
         }),
+        ...(opciones?.extra ?? []),
       ]}
       conAyuda={opciones?.conAyuda ?? []}
       porRecoger={[]}
@@ -156,6 +178,7 @@ async function leerGuia(user: ReturnType<typeof userEvent.setup>, guia: string) 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  simulacion.saltarGuardaDelEscaner = false;
   escogerMock.mockResolvedValue({ status: "ok", ordenId: "g2" });
 });
 afterEach(cleanup);
@@ -169,6 +192,13 @@ describe("SLT-156 R500/R503 — el disparador del escáner", () => {
     const barra = screen.getByRole("searchbox", { name: "Buscar guías" });
     expect(boton.compareDocumentPosition(kpis) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(kpis.compareDocumentPosition(barra) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it("R493: el disparador mide 44 px (`h-11`) y va a todo el ancho", () => {
+    montar();
+    const clases = disparador().className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["h-11", "w-full"]));
+    expect(clases).not.toContain("h-8");
   });
 });
 
@@ -233,6 +263,60 @@ describe("SLT-156 R515 — una guía que no es de su reparto", () => {
 
     expect(errorMock).toHaveBeenCalledWith("La guía 5923 no está en tu lista de reparto.");
     expect(screen.queryByRole("dialog", { name: "¿Gestionar esta orden?" })).toBeNull();
+  });
+});
+
+describe("Feature 261 (R12, R15) — la guía de una orden reservada para otro día", () => {
+  it("avisa de la reserva con su día, no pide «¿Gestionar esta orden?» y no fija nada", async () => {
+    const user = userEvent.setup();
+    montar({
+      extra: [
+        orden({
+          id: "g3",
+          numRemision: "REM-G3",
+          numGuia: 6211,
+          secuenciaRuta: 3,
+          esParaManana: true,
+          fechaRepartoISO: "2026-11-27",
+        }),
+      ],
+    });
+
+    await leerGuia(user, "6211");
+
+    expect(errorMock).toHaveBeenCalledTimes(1);
+    const aviso = String(errorMock.mock.calls[0]![0]);
+    expect(aviso).toMatch(/^Esta orden es para el reparto del .*27.*\. Ese día podrás recogerla y gestionarla\.$/);
+    expect(aviso).not.toMatch(/no está en tu lista de reparto/);
+    expect(screen.queryByRole("dialog", { name: "¿Gestionar esta orden?" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
+    expect(escogerMock).not.toHaveBeenCalled();
+  });
+
+  it("si una reservada llegara al diálogo por otro camino, «Aceptar» la frena en `escoger`: aviso de reserva, sin servidor", async () => {
+    simulacion.saltarGuardaDelEscaner = true;
+    const user = userEvent.setup();
+    montar({
+      extra: [
+        orden({
+          id: "g3",
+          numRemision: "REM-G3",
+          numGuia: 6211,
+          secuenciaRuta: 3,
+          esParaManana: true,
+          fechaRepartoISO: "2026-11-27",
+        }),
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Lectura sin guarda" }));
+    const dialogo = await screen.findByRole("dialog", { name: "¿Gestionar esta orden?" });
+    await user.click(within(dialogo).getByRole("button", { name: "Aceptar" }));
+
+    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
+    expect(String(errorMock.mock.calls[0]![0])).toMatch(/^Esta orden es para el reparto del .*27/);
+    expect(escogerMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("¿Cómo terminó la gestión?")).toBeNull();
   });
 });
 

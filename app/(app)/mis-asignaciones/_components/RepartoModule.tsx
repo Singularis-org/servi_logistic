@@ -998,6 +998,17 @@ export function RepartoModule({
         </>
       )}
 
+      {/* SLT-156 (R514): el MISMO «¿Gestionar esta orden?» que el botón de la tarjeta. */}
+      <ConfirmarGestionDialog
+        abierto={ordenEscaneada !== null}
+        onAbiertoChange={(abierto) => {
+          if (!abierto) setOrdenEscaneada(null);
+        }}
+        onAceptar={() => {
+          if (ordenEscaneada) void gestionarEscaneada(ordenEscaneada);
+        }}
+      />
+
       {/* Chat del mensajero — CÓDIGO VIVO Y ÚNICA ENTRADA AL CHAT. Esto NO es una maqueta:
           el hilo lo sirve `listarHiloChat` (feature 120) y las plantillas
           `listarPlantillasParaEnvio` (feature 87), las dos REALES y contra la misma
@@ -1019,17 +1030,6 @@ export function RepartoModule({
           si se borra, el mensajero se queda sin poder escribirle al cliente. */}
       {/* Feature 235 (R35): el hilo del mensajero para una orden en ayuda. `key` por orden para que
           la lectura arranque fresca en cada apertura; se monta solo con una orden abierta. */}
-      {/* SLT-156 (R514): el MISMO «¿Gestionar esta orden?» que el botón de la tarjeta. */}
-      <ConfirmarGestionDialog
-        abierto={ordenEscaneada !== null}
-        onAbiertoChange={(abierto) => {
-          if (!abierto) setOrdenEscaneada(null);
-        }}
-        onAceptar={() => {
-          if (ordenEscaneada) void gestionarEscaneada(ordenEscaneada);
-        }}
-      />
-
       {hiloOrden !== null ? (
         <HiloNotasAyudaModal
           key={hiloOrden.id}

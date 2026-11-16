@@ -319,3 +319,57 @@ confirme que también cubre los 41 archivos.
 ### Veredicto
 B8 en verde: los 3 archivos de reparto 10/10 y los de dinero que tocan el fixture 21/21. El arreglo deja el importe entero en su
 tarjeta, la mutación lo pone rojo y el gate da `INIT_EXIT=0`.
+
+## Tanda 4 (review RECHAZADA: B1-B3 y m1-m3) · frontend_dev · 2026-11-15
+
+La review está en `progress/review_SLT-163.md` (a820c4d5). Las decisiones las tomó el leader.
+
+### Bloqueantes
+- **B1 (261/R12).** Dos casos nuevos en `tests/components/EscanerGuiaReparto.test.tsx`:
+  - Al escanear la guía de una orden reservada (`esParaManana`, 2026-11-27) sale el aviso de reserva, que se comprueba
+    con un literal en forma de regex y no con `avisoReservaParaOtroDia`. No se abre «¿Gestionar esta orden?» y no se llama a `escoger`.
+  - La segunda guarda (`escoger`, `RepartoModule.tsx:516`) se prueba con un doble de `EscanerGuiaReparto` que entrega la
+    reservada al módulo saltándose la guarda del escáner (`simulacion.saltarGuardaDelEscaner`). «Aceptar» se frena con el
+    aviso de reserva y no se llama al servidor. El resto del archivo usa el escáner real.
+- **B2 (R493).** `EscanerModal` gana la prop opcional `tactil`: `size="touch"` (44 px) y `w-full`. Solo la pasa
+  `EscanerGuiaReparto`, así que los demás usos no cambian (`EscanerModal.test`, `RecogerPaqueteCard.test` en verde).
+  - Test de componente: «R493: el disparador mide 44 px (`h-11`) y va a todo el ancho».
+  - El E2E (b) mide el disparador con `tactil()`.
+- **B3 (R492).** La cifra del KPI vuelve a `COLUMNA_FIJA`: una sola línea, sin `wrap-anywhere` ni `whitespace-normal`, y el contador
+  ya no se sobrescribe. Mide 14 px (`text-sm`) en el móvil y 24 px desde `md`. Corregidos el comentario (ahora dice
+  que el número no se parte y lo que salta es el rótulo) y el test de clases, que ahora fija `whitespace-nowrap` + `text-sm` como
+  contrato y prohíbe `wrap-anywhere`/`whitespace-normal`/`text-base`/`text-xl`/`truncate`.
+
+### Menores
+- m1: el comentario de la feature 235 vuelve encima de `HiloNotasAyudaModal`. `ConfirmarGestionDialog` sube por encima del
+  comentario del chat, así que ese comentario vuelve a quedar sobre el hilo y el `ChatFlotante`.
+- m2: fuera el `user` sin uso de `GestionarOrdenPanelIncidente.test.tsx`.
+- m3: sin `₡` en los comentarios de `KpisMensajero.tsx` («un importe de ocho cifras»).
+
+### Mutaciones (arnés `mutar4.py` y `e2e4.sh` en el scratchpad; cada archivo restaurado, `cmp` idéntico)
+```
+U1-sin-guarda-reservada-escaner (EscanerGuiaReparto.tsx:60): ROJO · 1 failed | 8 passed (9)
+U2-sin-guarda-reservada-escoger (RepartoModule.tsx:516-519): ROJO · 1 failed | 8 passed (9)
+U3-disparador-sin-tactil: ROJO · 1 failed | 8 passed (9)
+U4-cifra-text-base: ROJO · 1 failed | 6 passed (7)        (test de clases)
+U5-cifra-wrap-anywhere: ROJO · 1 failed | 6 passed (7)
+E2E (a) con text-base + build: VERDE a 360 y 414 (2 passed). Con el importe del escenario (13 caracteres)
+  16 px aún cabe; la primera corrida de esta mutación cayó por la geocodificación del escenario, no por el KPI.
+E2E (a) con text-xl + build (el tamaño que se desbordaba): ROJO a 360 («más ancho que su caja / fuera
+  de la tarjeta: ₡8.339.305,71»).
+E2E (b) sin `tactil` + build: ROJO (alto 32 < 44).
+```
+Se eligió `text-sm` y no `text-base` para dejar margen a importes más largos (por ejemplo ₡99.999.999,99, de 14
+caracteres). La mutación E2E que lo prueba es `text-xl`, porque con `text-base` el E2E sigue en verde.
+
+### E2E (base `servi_slt163_e2e`, `next build` con el arreglo)
+- reparto (`pwa-mensajero-reparto`, `mis-asignaciones`, `reintentos-escalado`): **10 passed, E2E_EXIT=0**.
+- dinero (`pwa-mensajero-base`, `pwa-mensajero-cierre-dia`, `tope-intentos-por-empresa`): **21 passed, E2E_EXIT=0**.
+- El último build del árbol se hizo con la mutación `text-xl` (ya revertida): antes de otra corrida E2E hay que volver a hacer `next build`.
+
+### Gate
+`./init.sh` con la base desechable `slt163_gate`: **INIT_EXIT=0**. Tamaño: 41/40 archivos, 1311/1000 líneas de producción y 1831/3000 de tests
+(aviso, con la marca).
+
+### Veredicto
+B1-B3 y m1-m3 resueltos, cada uno con su mutación en rojo. E2E: reparto 10/10 y dinero 21/21. Gate `INIT_EXIT=0`.

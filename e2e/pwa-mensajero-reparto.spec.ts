@@ -162,6 +162,8 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
     const gestionar = page.getByRole("button", { name: `Gestionar la orden ${orden.numRemision}` });
     await expect(gestionar).toBeVisible();
     await tactil(gestionar);
+    // R493 (design §4): el disparador del escáner de la lista también.
+    await tactil(page.getByRole("button", { name: "Escanear o escribir guía" }));
     await tactil(page.getByRole("button", { name: `Marcar la orden ${orden.numRemision} para gestionar más tarde` }));
     const conmutador = page.getByRole("group", { name: "Vista de las órdenes" });
     await tactil(conmutador.getByRole("button", { name: /Mosaico/ }));

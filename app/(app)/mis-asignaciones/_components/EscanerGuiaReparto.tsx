@@ -64,7 +64,7 @@ export function EscanerGuiaReparto({
   }
 
   return (
-    <EscanerModal label={ESCANER_LABEL_GUIA}>
+    <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
       {(cerrar) => (
         <EscanerGuiaCard
           titulo={TITULO}

@@ -64,6 +64,11 @@ export interface EscanerModalProps {
    * orden?». Solo se puede CERRAR desde dentro; abrir sigue siendo el gesto del mensajero.
    */
   children: ReactNode | ((cerrar: () => void) => ReactNode);
+  /**
+   * SLT-156 (R493, design §4): disparador de 44 px a todo el ancho, para las pantallas del mensajero
+   * que ya lo piden (Reparto). Sin ella, el botón de siempre: los demás usos no cambian.
+   */
+  tactil?: boolean;
   className?: string;
 }
 
@@ -71,6 +76,7 @@ export function EscanerModal({
   label = ESCANER_LABEL_POR_DEFECTO,
   acciones,
   children,
+  tactil = false,
   className,
 }: Readonly<EscanerModalProps>) {
   const [abierto, setAbierto] = useState(false);
@@ -85,7 +91,13 @@ export function EscanerModal({
 
   return (
     <div className={cn("flex w-full flex-wrap items-center gap-2", className)}>
-      <Button type="button" variant="outline" onClick={() => setAbierto(true)}>
+      <Button
+        type="button"
+        variant="outline"
+        size={tactil ? "touch" : "default"}
+        className={tactil ? "w-full" : undefined}
+        onClick={() => setAbierto(true)}
+      >
         <ScanLine aria-hidden="true" />
         {label}
       </Button>

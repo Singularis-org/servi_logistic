@@ -7,18 +7,15 @@ import { NOMBRE_ESTADO } from "@/lib/types/order-status";
 
 import { KpiValorAnimado } from "./KpiValorAnimado";
 
+import { COLUMNA_FIJA } from "@/components/shared/texto-entero";
+
 /**
- * SLT-163 (R501, R502): la cifra de un KPI. En el teléfono la tarjeta de la rejilla 2 × 2 deja unos
- * 120 px a la cifra y «₡8.328.638,65» a 20 px no cabe: baja a 16 px y, si aun así no cabe, salta de
- * línea entera (nunca «…»). Con `whitespace-nowrap` la cifra se salía de su tarjeta. Desde `md`, la
- * columna fija de siempre.
+ * SLT-163 (R492, R501, R502): la cifra de un KPI. Un importe no se parte en líneas: va en columna fija
+ * (`COLUMNA_FIJA`, una sola línea). En el teléfono la tarjeta de la rejilla 2 × 2 deja unos 120 px a
+ * la cifra y un importe de ocho cifras con decimales no cabe a 20 px: baja a 14 px, donde cabe entero.
+ * Desde `md`, 24 px como siempre. Lo que puede saltar de línea es el rótulo, no el número.
  */
-// Literal a propósito: Tailwind solo genera las clases que lee escritas en el código. Desde `md` es
-// `COLUMNA_FIJA` con su variante.
-export const CIFRA_KPI =
-  "min-w-0 tabular-nums wrap-anywhere text-base md:shrink-0 md:whitespace-nowrap md:wrap-normal md:text-2xl";
-/** El contador (`KpiValorAnimado`) trae `whitespace-nowrap` propio: en el móvil también envuelve. */
-const CIFRA_KPI_ENVUELVE = "whitespace-normal md:whitespace-nowrap";
+export const CIFRA_KPI = `${COLUMNA_FIJA} text-sm md:text-2xl`;
 
 // Feature 61 — fila de KPIs del portal del mensajero, sobre la lista de sus
 // asignaciones. Los 3 indicadores vienen ya calculados server-side (autoritativos):
@@ -55,12 +52,12 @@ const TILES: Tile[] = [
   {
     label: "Por cobrar",
     Icono: HandCoins,
-    render: (k) => <KpiValorAnimado value={k.porCobrar} moneda className={CIFRA_KPI_ENVUELVE} />,
+    render: (k) => <KpiValorAnimado value={k.porCobrar} moneda />,
   },
   {
     label: "Total a cobrar",
     Icono: Wallet,
-    render: (k) => <KpiValorAnimado value={k.totalACobrar} moneda className={CIFRA_KPI_ENVUELVE} />,
+    render: (k) => <KpiValorAnimado value={k.totalACobrar} moneda />,
   },
 ];
 
@@ -91,7 +88,7 @@ export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
           className="relative shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-brand-soft before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
         >
           {/* SLT-156 (R502, canvas v35): UNA rejilla para los dos anchos. En el teléfono la
-              tarjeta mide la mitad de la pantalla y al lado del icono no cabe «₡99 999 999»: el
+              tarjeta mide la mitad de la pantalla y al lado del icono no cabe un importe de ocho cifras: el
               icono y el rótulo comparten la primera fila y la cifra ocupa sola la segunda, a todo
               el ancho. Desde `md` el icono abarca las dos filas, como siempre. */}
           <CardContent className="relative grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 py-4 max-md:px-4">
