@@ -104,3 +104,38 @@ Grafo no consultado: el worktree no estaba indexado; se exploró con Grep/Read.
 
 **RECHAZADO** · por B1. Todo lo demás está bien. Para la vuelta 2, revisaré solo el arreglo de
 `tests/components/RepartoModule.test.tsx` y su mutación.
+
+## Vuelta 2 (acotada a 2029dccc..c6238b0a)
+
+### Checklist
+
+- [x] **B1 cerrado.** `disparadoresEscaneo()` cuenta los «Escanear o escribir guía» (exactamente 1), abre
+  el único y exige que su diálogo no traiga la región «Recoger por número de guía o escaneo» ni el texto
+  «Recoger paquete» (`tests/components/RepartoModule.test.tsx:241-243, 401-420`). Mutaciones corridas por
+  mí, revertidas después (`git status` limpio):
+  - B1a: `<RecogerPaqueteCard porRecoger={[]} onRecogida={() => {}} />` junto al escáner, antes de
+    `{kpis}` → **rojo**, por la razón buena: `expected [...] to have a length of 1 but got 2`.
+  - B1b: `RecogerPaqueteCard` en el sitio de `EscanerGuiaReparto` → **rojo** (el caso falla).
+  - Sin mutación → verde. El caso vuelve a proteger la decisión del 2026-07-31.
+- [x] **m1:** sobran los dos `queryByRole(/^Gestionar/)` vacíos y el título ya no dice «sin acciones».
+  La parte que vale del R517 (Mosaico y la fila compacta `expanded=false`) se queda.
+- [x] **m2:** el comentario de `EscanerModal.tsx` ya explica cómo se nombra hoy: las pantallas del
+  mensajero usan `ESCANER_LABEL_GUIA` y la tarjeta de dentro nombra el acto.
+- [x] **m5:** el R522 escribe la 2001, que está en `DOS_POR_RECOLECTAR`, y ahora afirma
+  `toHaveBeenCalledWith({ numGuia: 2001 })`. Antes solo contaba las llamadas.
+- [x] **m6:** se quitó el import `ContactoButtons`, que no se usaba (tsc verde).
+- [x] **Sin regresiones:** los tres archivos de componente (Reparto, Recoger, Recolección) dan
+  241/241 en verde y `tsc --noEmit` también. Lint de los archivos tocados: 0 errores y 1 aviso
+  (`ordenCardsEnReparto` sin usar, `RepartoModule.test.tsx:161`), que ya estaba en 2029dccc.
+  `tamano-pr`: 16/40 archivos, 329/1000 líneas de producción y 647/3000 de tests.
+- [x] Guardias (`pnpm run test:guardias`): 351/352 en verde. El único rojo es
+  `dependencias-declaradas-presentes.guardia.test.ts`, que está en `tests/baseline-rojos.json` y que
+  este diff no toca. No es un hallazgo.
+
+### Hallazgos
+
+- Ninguno nuevo. m3, m4 y m7 siguen como en la vuelta 1: aceptados o para Preview.
+
+### Veredicto
+
+**OK**
