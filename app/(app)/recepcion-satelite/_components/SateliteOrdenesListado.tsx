@@ -712,6 +712,7 @@ export function SateliteOrdenesListado({
         // `ReactNode` opaco): solo lo coloca.
         filtros={
           <BuscadorFiltros
+            escaneo
             label="Buscar"
             placeholder={PLACEHOLDER_BUSQUEDA}
             minChars={BUSQUEDA_MIN_CHARS}

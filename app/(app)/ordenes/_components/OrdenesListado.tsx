@@ -1450,6 +1450,7 @@ export function OrdenesListado({
         // y se traduce lo emitido.
         filtros={
           <BuscadorFiltros
+            escaneo
             // El mismo nombre accesible que tenía como control de la barra: el campo
             // cambió de sitio, no de identidad.
             label="Buscar"

@@ -141,6 +141,7 @@ export function LibroCajaBarra({
 
   return (
     <BuscadorFiltros
+      escaneo
       label={ZONA_LIBRO_TEXTO.buscar}
       placeholder={BUSCADOR_LIBRO_CAJA_PLACEHOLDER}
       minChars={BUSQUEDA_LIBRO_MIN_CHARS}

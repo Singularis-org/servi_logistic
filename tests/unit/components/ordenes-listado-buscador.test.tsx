@@ -235,6 +235,20 @@ describe("OrdenesListado — el termino llega a `listarOrdenes` (R34, R36)", () 
     expect(listarOrdenesMock.mock.calls.length).toBe(llamadasPrevias + 1);
   });
 
+  it("SLT-160 R601: la URL del QR + Enter llega como `q: \"1024\"` y el campo queda con el número", async () => {
+    const user = userEvent.setup();
+    renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
+    await screen.findByRole("searchbox", { name: "Buscar" });
+
+    await user.click(buscador());
+    await user.paste("https://app.ejemplo.test/paquete/1024");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(ultimoFilter()).toEqual({ q: "1024" }), ESPERA);
+    expect(buscador()).toHaveValue("1024");
+    expect(screen.getByRole("button", { name: "Escanear con cámara" })).toBeInTheDocument();
+  });
+
   it("R35: por debajo del minimo no se consulta nada y se avisa del minimo", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
