@@ -121,7 +121,7 @@ Cobertura: D1 → R640-R645 (todo lo de abajo cae dentro de la rebanada A; `lib/
 
 ## Tasks
 
-- [ ] **T1 — Mapa de rescate, antes de borrar nada.**
+- [x] **T1 — Mapa de rescate, antes de borrar nada.**
   - Para cada `describe`/`it` que se borra:
     - de `CierreMensajeroDetalleCascadas.test.tsx` y `CierreMensajeroDesglosePorTienda.test.tsx`;
     - de los recortes de `CierreDesgloseModeloNuevo`, `CierreIngresoBodegaModeloNuevo`,
@@ -132,23 +132,23 @@ Cobertura: D1 → R640-R645 (todo lo de abajo cae dentro de la rebanada A; `lib/
     vivo; lo previsible es `tests/components/DetalleCierreDinero.test.tsx` o
     `tests/unit/utils/detalle-cierre-vista.test.ts`.
   - *Hecho:* la tabla existe y no queda ni una fila «vivo, sin cubrir».
-- [ ] **T2 — Mudar `marcaDeVariasTiendas` a `cierre-labels.ts`** y cambiar el import de
+- [x] **T2 — Mudar `marcaDeVariasTiendas` a `cierre-labels.ts`** y cambiar el import de
   `detalle-cierre-vista.ts:49`. Test nuevo `tests/unit/utils/marca-varias-tiendas.test.ts`, con
   literales escritos a mano: 0 tiendas → `null`, 1 → `null`, 2 → el texto de R642 con «2», 3 → con «3».
   - *Hecho:* R642 verde, y `tests/unit/utils/detalle-cierre-vista.test.ts:402-408` sigue verde sin
     cambios (R643).
   - *Mutación:* cambiar `>= 2` por `>= 1` pone rojos el test nuevo y `detalle-cierre-vista.test.ts:408`.
-- [ ] **T3 — Borrar** los dos componentes, `lineasCascadaDueno` con sus imports sin uso y los textos
+- [x] **T3 — Borrar** los dos componentes, `lineasCascadaDueno` con sus imports sin uso y los textos
   de R644.
   - *Hecho:* `pnpm run typecheck` y `pnpm run lint` en verde, y `tests/unit/utils/detalle-cierre-vista.test.ts`
     verde sin tocarlo (lo de R641 sobre la cascada central).
   - Depende de T1 y T2.
-- [ ] **T4 [P con T3] — Tests.** Borrar el fixture y los dos tests, y recortar los otros cuatro
+- [x] **T4 [P con T3] — Tests.** Borrar el fixture y los dos tests, y recortar los otros cuatro
   según el mapa de T1.
   - En `DineroIdentidadesEnPantalla` se quitan las dos entradas del censo y se ajusta a mano el
     número del título (R645).
   - *Hecho:* `pnpm exec vitest related --run` sobre el diff, en verde.
-- [ ] **T5 — Guardia nueva `tests/unit/guards/cierres-componentes-retirados.guardia.test.ts`**
+- [x] **T5 — Guardia nueva `tests/unit/guards/cierres-componentes-retirados.guardia.test.ts`**
   (R640, R641, R644).
   - Lee el árbol real:
     - los dos archivos no existen;
@@ -160,7 +160,7 @@ Cobertura: D1 → R640-R645 (todo lo de abajo cae dentro de la rebanada A; `lib/
     por `import()` tiene que dar rojo, y el barrido tiene que haber leído más de 0 archivos.
   - *Hecho:* verde en el árbol, y rojo si se restaura `DesglosePorTienda.tsx` o se añade
     `export function lineasCascadaDueno`.
-- [ ] **T6 — Cierre.**
+- [ ] **T6 — Cierre.** *(Parcial: `git diff --name-only origin/dev -- lib/` vacío, comprobado; `./init.sh` y los dos E2E los corre el leader.)*
   - `./init.sh` en verde.
   - `git diff --name-only origin/dev -- lib/` vacío: ni el alias ni el contrato cambian.
   - E2E en local, porque el diff toca `app/` (`docs/perfil-agentes.md > Todos los agentes`):
