@@ -103,14 +103,13 @@ const V1 = cierre({
 const VP = cierre({ ...V1, cierreId: "00000000-0000-4000-8000-0000cafe0004", estado: "solicitado", resueltoAt: null });
 
 const PARTES = [
-  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" },
+  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" },
 ];
 const CIFRAS_N1: CifrasCierreDescargaDTO = {
   cierreId: N1.cierreId,
-  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
   pagoTienda: "92090.00",
-  ganaLaTienda: "92090.00",
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
@@ -313,7 +312,6 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
         {
           ...CIFRAS_N1,
           pagoTienda: null,
-          ganaLaTienda: null,
           totalFacturado: null,
           ivaFacturado: null,
           netoEmpresa: null,

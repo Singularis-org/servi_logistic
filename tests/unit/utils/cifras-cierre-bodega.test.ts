@@ -99,15 +99,15 @@ describe("SLT-141 — cifrasAgregadasBodega (R387)", () => {
     expect(c.pagoTienda).toBe("92090.00"); // SLT-169 R623: 100 000 − 7 910 (el rechazo TAMBIEN se resta)
     expect(c.cobradoSobreRecaudado).toBe("5650.00"); // 4 520 + 1 130
     expect(c.netoEmpresa).toBe("3500.00"); // 7 910 − 910 − 3 000 − 500
-    expect(c.ganaLaTienda).toBe("92090.00"); // 100 000 − 7 910
+    expect(c).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
   });
 
   it("BN: «Por tienda» en el orden del detalle (de mayor a menor pago), sin repartir el agregado", () => {
     const c = cifrasAgregadasBodega(SNAPSHOTS_BN, [G2, G1, G3]);
 
     expect(c.partesPorTienda).toEqual([
-      { tiendaId: "tienda-t1", tiendaNombre: "T1", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
-      { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+      { tiendaId: "tienda-t1", tiendaNombre: "T1", recaudado: "70000.00", pagoTienda: "63220.00" },
+      { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00" },
     ]);
   });
 
@@ -122,7 +122,6 @@ describe("SLT-141 — cifrasAgregadasBodega (R387)", () => {
     const c = cifrasAgregadasBodega(snapshotDistinto, [G1, G2, G3]);
 
     expect(c.pagoTienda).toBe("93090.00"); // SLT-169: 101 000 − 7 910
-    expect(c.ganaLaTienda).toBe("93090.00"); // 101 000 − 7 910
     expect(c.ganancia).toBe("3800.00"); // 7 000 − 3 200
     expect(c.netoEmpresa).toBe("3300.00"); // 7 000 − 3 200 − 500
     expect(c.partesPorTienda.map((p) => p.recaudado)).toEqual(["70000.00", "30000.00"]);
@@ -133,7 +132,7 @@ describe("SLT-141 — cifrasAgregadasBodega (R387)", () => {
 
     expect(c.totalesIngreso.total).toBe("0.00");
     expect(c.netoEmpresa).toBe("-3500.00");
-    expect(c.ganaLaTienda).toBe("100000.00");
+    expect(c.pagoTienda).toBe("100000.00");
     expect(c.partesPorTienda).toEqual([]);
   });
 });

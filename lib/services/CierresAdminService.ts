@@ -211,7 +211,6 @@ export const CLASE_CIFRAS_DESCARGA_CIERRE = {
   cierreId: "propio",
   gestiones: "propio",
   pagoTienda: "empresa",
-  ganaLaTienda: "empresa",
   totalFacturado: "empresa",
   ivaFacturado: "empresa",
   netoEmpresa: "empresa",
@@ -235,7 +234,6 @@ export const CLASE_DETALLE_MENSAJERO = {
   pagoTienda: "empresa",
   cobradoSobreRecaudado: "empresa",
   netoEmpresa: "empresa",
-  ganaLaTienda: "empresa",
   fleteRechazoYaCobradoATienda: "empresa",
   partesPorTienda: "empresa",
   ordenesSinGestion: "propio",
@@ -1079,15 +1077,13 @@ export class CierresAdminService implements ICierresAdminService {
     // que usa el Excel del «Resumen» (`listar…Completo`). El bloque que vivia aqui se movio tal cual:
     //  - totales por concepto desde el MISMO desglose por orden que ve el admin en las tablas;
     //  - ganancia y neto desde lo facturado SIN IVA (SL-39); los snapshots del `resumen` (R4);
-    //  - pago a la tienda = recibido − TODO lo facturado (SLT-169 R620); la linea puente y
-    //    `ganaLaTienda`, alias de igual valor que el pago hasta P3 de SLT-169;
+    //  - pago a la tienda = recibido − TODO lo facturado (SLT-169 R620) y la linea puente;
     //  - la particion por tienda (396), que SE EMITE SIEMPRE, tambien con una sola tienda: el umbral
     //    de «solo con dos o mas» es de presentacion y vive en la pantalla (264).
     const cifras = cifrasDelCierre(resumen, found.gestiones);
     const { totalesIngreso, ganancia, pagoTienda, partesPorTienda: partesDeLasTiendas } = cifras;
     const cobradoSobreLoRecaudado = cifras.cobradoSobreRecaudado;
     const neto = cifras.netoEmpresa;
-    const ganaTienda = cifras.ganaLaTienda;
 
     // ¿Ese flete por rechazo YA esta cobrado, o se cobrara? El cargo a la wallet de la tienda
     // lo emite `WalletTiendaFeedService` DENTRO de la transaccion de aprobacion
@@ -1134,9 +1130,8 @@ export class CierresAdminService implements ICierresAdminService {
       // dice en que TIEMPO VERBAL se puede hablar del cargo del flete por rechazo.
       cobradoSobreRecaudado: cobradoSobreLoRecaudado,
       netoEmpresa: neto,
-      ganaLaTienda: ganaTienda,
       fleteRechazoYaCobradoATienda,
-      // Ficha 396: la particion de `pagoTienda` (y su alias `ganaLaTienda`) por tienda, ORDENADA por el
+      // Ficha 396: la particion de `pagoTienda` por tienda, ORDENADA por el
       // servidor (por lo que se le paga, de mayor a menor). La pantalla pinta en el orden que
       // recibe y no hace ni una operacion aritmetica.
       partesPorTienda: partesDeLasTiendas,
@@ -2061,7 +2056,6 @@ function toCifrasDescarga(
   return {
     cierreId: c.cierreId,
     pagoTienda: cifras.pagoTienda,
-    ganaLaTienda: cifras.ganaLaTienda,
     totalFacturado: cifras.totalesIngreso.total,
     ivaFacturado: cifras.ivaFacturado,
     netoEmpresa: cifras.netoEmpresa,
@@ -2071,7 +2065,6 @@ function toCifrasDescarga(
       tiendaNombre: p.tiendaNombre,
       recaudado: p.recaudado,
       pagoTienda: p.pagoTienda,
-      ganaLaTienda: p.ganaLaTienda,
     })),
   };
 }

@@ -46,7 +46,7 @@ import type { ParteDeTienda } from "@/lib/utils/ingreso-empresa";
  *
  * SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (D3, R627): «Se le paga hoy» ya
  * resta todo lo facturado (también el flete por rechazo) y «Gana en total» se funde en ella. Los
- * dobles llevan `pagoTienda` = `ganaLaTienda` (alias hasta P3) y la tabla tiene tres columnas.
+ * dobles llevan solo `pagoTienda` (SLT-174 retiró el campo duplicado) y la tabla tiene tres columnas.
  */
 
 vi.mock("@/lib/actions/cierre-bodega", () => ({
@@ -227,14 +227,12 @@ const ANA_NORTE: ParteDeTienda = {
   tiendaNombre: "Tienda Norte",
   recaudado: "50000.10",
   pagoTienda: "39499.25",
-  ganaLaTienda: "39499.25",
 };
 const ANA_SUR: ParteDeTienda = {
   tiendaId: "t-sur",
   tiendaNombre: "Tienda Sur",
   recaudado: "30000.00",
   pagoTienda: "22499.75",
-  ganaLaTienda: "22499.75",
 };
 
 /**
@@ -251,14 +249,12 @@ const BETO_NORTE: ParteDeTienda = {
   tiendaNombre: "Tienda Norte",
   recaudado: "26089.07",
   pagoTienda: "20454.59",
-  ganaLaTienda: "20454.59",
 };
 const BETO_ESTE: ParteDeTienda = {
   tiendaId: "t-este",
   tiendaNombre: "Tienda Este",
   recaudado: "20000.00",
   pagoTienda: "16000.00",
-  ganaLaTienda: "16000.00",
 };
 
 /**
@@ -277,7 +273,6 @@ const AGG_NORTE: ParteDeTienda = {
   tiendaNombre: "Tienda Norte",
   recaudado: "76089.17",
   pagoTienda: "59953.84",
-  ganaLaTienda: "59953.84",
 };
 const AGG_SUR: ParteDeTienda = { ...ANA_SUR };
 const AGG_ESTE: ParteDeTienda = { ...BETO_ESTE };
@@ -307,7 +302,6 @@ const DIA_ANA: CierreBodegaDetalleCierre = {
   pagoTienda: "61999.00",
   cobradoSobreRecaudado: "17500.35",
   netoEmpresa: "8750.55",
-  ganaLaTienda: "61999.00",
   partesPorTienda: [ANA_NORTE, ANA_SUR],
   paraLaCentral: "70749.55",
   efectivoCubreDescuentos: true,
@@ -340,7 +334,6 @@ const DIA_BETO: CierreBodegaDetalleCierre = {
   pagoTienda: "36454.59",
   cobradoSobreRecaudado: "9634.48",
   netoEmpresa: "4634.23",
-  ganaLaTienda: "36454.59",
   partesPorTienda: [BETO_NORTE, BETO_ESTE],
   paraLaCentral: "41088.82",
   efectivoCubreDescuentos: true,
@@ -363,7 +356,6 @@ const DETALLE_OK = {
   pagoTienda: "98453.59",
   cobradoSobreRecaudado: "27134.83",
   netoEmpresa: "13384.78",
-  ganaLaTienda: "98453.59",
   partesPorTienda: [AGG_NORTE, AGG_SUR, AGG_ESTE],
   paraLaCentral: "111838.37",
   efectivoCubreDescuentos: true,
@@ -390,7 +382,6 @@ const UNA_TIENDA_CADA_MENSAJERO: DetalleOk = {
           tiendaNombre: "Tienda Norte",
           recaudado: "80000.10",
           pagoTienda: "61999.00",
-          ganaLaTienda: "61999.00",
         },
       ],
     },
@@ -402,7 +393,6 @@ const UNA_TIENDA_CADA_MENSAJERO: DetalleOk = {
           tiendaNombre: "Tienda Este",
           recaudado: "46089.07",
           pagoTienda: "36454.59",
-          ganaLaTienda: "36454.59",
         },
       ],
     },
@@ -413,14 +403,12 @@ const UNA_TIENDA_CADA_MENSAJERO: DetalleOk = {
       tiendaNombre: "Tienda Norte",
       recaudado: "80000.10",
       pagoTienda: "61999.00",
-      ganaLaTienda: "61999.00",
     },
     {
       tiendaId: "t-este",
       tiendaNombre: "Tienda Este",
       recaudado: "46089.07",
       pagoTienda: "36454.59",
-      ganaLaTienda: "36454.59",
     },
   ],
 };
@@ -563,7 +551,6 @@ describe("396 · D3 · ⚠️ EL CASO QUE SEPARA LOS UMBRALES — R19 vs R20", (
       tiendaNombre: "Tienda Norte",
       recaudado: "126089.17",
       pagoTienda: "98453.59",
-      ganaLaTienda: "98453.59",
     };
     await abrirDetalle({
       ...DETALLE_OK,

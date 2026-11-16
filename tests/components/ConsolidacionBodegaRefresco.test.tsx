@@ -417,7 +417,6 @@ function detalle(cierre: CierreBodegaResumen): Ok {
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     partesPorTienda: [],
     paraLaCentral: cierre.paraLaCentral,
     efectivoCubreDescuentos: true,

@@ -16,6 +16,7 @@ import type {
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
+import type { ParteDeTienda } from "@/lib/types/parte-de-tienda";
 import { EMPRESA } from "@/lib/config/marca";
 // FICHA 408 — los dos módulos del vocabulario de la causa de devolución. Los DOS son PUROS
 // (sin React, sin DOM), así que este archivo lo sigue siendo. El precedente de importar
@@ -184,8 +185,6 @@ export const FLETE_DEV_CON_IVA_LABEL = "Flete por devolución a origen + IVA";
 // (SLT-52 R29). Llamarlo «devolución a origen» diría que se cobró una que no hubo.
 export const FLETE_NO_ENTREGADAS_LABEL = "Flete de gestiones no entregadas";
 export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = `${FLETE_NO_ENTREGADAS_LABEL} + IVA`;
-export const FLETE_NO_ENTREGADAS_NOTA =
-  "Se le factura a la tienda, pero no sale de lo recaudado: una gestión no entregada no cobra contra entrega.";
 // Menor 2 de la revisión F2.2: en el nuevo tampoco se descuentan los fletes de reprogramado, novedad e
 // incidente. `PAGO_TIENDA_NOTA` es cierta y completa solo en el viejo, donde esos no se cobran.
 export const PAGO_TIENDA_NOTA_MODELO_NUEVO =
@@ -260,8 +259,6 @@ export const INDEMNIZACION_COL = "Indemnización";
 // `PAGO_TIENDA_LABEL`) NO se tocan (R21/R30).
 // ---------------------------------------------------------------------------
 
-/** Rótulo y nombre accesible de la cascada A. Responde: ¿de quién es este dinero? */
-export const CASCADA_DUENO_TITULO = "De quién es el dinero";
 /**
  * Rótulo y nombre accesible de la cascada B. Responde: ¿cuánto le entrega esta bodega a la
  * central? Es la única de las dos que alcanza al `adminSatelite` (R39).
@@ -294,12 +291,6 @@ export const PARA_LA_CENTRAL_LABEL = "Para la central";
  * satélite, así que las dos sólo coinciden cuando ese pago es cero.
  */
 export const NETO_EMPRESA_LABEL = `Neto de ${EMPRESA.enFrase}`;
-
-/**
- * La LÍNEA PUENTE (R10): lo que la empresa cobra sobre lo recaudado. Sin ella la cascada A enseña
- * «recaudado − facturado = para la tienda», que NO da en cuanto hay un rechazo.
- */
-export const COBRADO_SOBRE_RECAUDADO_LABEL = "Cobrado sobre lo recaudado";
 
 /** El mismo número que el «Ingreso bruto» del cierre de mensajero, dicho como lo dice quien lo lee. */
 export const FACTURADO_EMPRESA_LABEL = `Lo que ${EMPRESA.enFrase} facturó`;
@@ -348,10 +339,6 @@ export const GANA_BODEGA_SATELITE_NOTA =
 export const GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO =
   "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
 
-/** R10 — por qué esa línea SUMA a lo facturado pero no se resta de lo recaudado. */
-export const FLETE_RECHAZO_NO_DEDUCIBLE_NOTA =
-  "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.";
-
 // ---------------------------------------------------------------------------
 // FICHA 395 (2026-09-08) — LAS TRES CASCADAS DEL CIERRE DE **MENSAJERO**.
 //
@@ -371,106 +358,12 @@ export const FLETE_RECHAZO_NO_DEDUCIBLE_NOTA =
 // ---------------------------------------------------------------------------
 
 /**
- * FICHA 395 — el resultado de la PARTICIÓN: lo que le queda a la tienda EN TOTAL.
- *
- * Rima con `GANA_BODEGA_SATELITE_LABEL` («Gana la bodega satélite») a propósito: mismo verbo,
- * misma forma, misma familia de preguntas. Y NO se reusa `PARA_LA_TIENDA_LABEL` («Para la
- * tienda»), que en el cierre de BODEGA nombra `pagoTienda`: darle aquí un segundo significado
- * haría que la misma etiqueta valiera dos cifras distintas según por qué pantalla se entre, que
- * es exactamente el defecto que la 393 cerró (R24).
- *
- * Elección de redacción del `frontend_dev`; el encargo la escribió «La tienda gana», con el
- * mismo verbo y el orden invertido.
- */
-export const GANA_LA_TIENDA_LABEL = "Gana la tienda";
-
-/**
- * FICHA 395 — la frase que impide confundirlo con «Pago a tienda». Las dos notas son un PAR y
- * se leen juntas: una dice «no es lo que se le paga hoy», la otra «no es lo que gana en total».
- */
-export const GANA_LA_TIENDA_NOTA =
-  `Lo recaudado menos todo lo que ${EMPRESA.enFrase} le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.`;
-/** D40: en el nuevo ese flete suma también reprogramado, novedad e incidente (SLT-52 R29). */
-export const GANA_LA_TIENDA_NOTA_MODELO_NUEVO =
-  `Lo recaudado menos todo lo que ${EMPRESA.enFrase} le factura, incluido el flete de gestiones no entregadas. No es lo que se le paga hoy.`;
-
-/** FICHA 395 — la otra mitad del par: por qué el pago de hoy no es lo que la tienda gana. */
-export const PAGO_TIENDA_HOY_NOTA =
-  "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete por devolución a origen se le cobra aparte.";
-/** D40: la misma frase en el modelo nuevo. El feed lo debita igual (`CONCEPTOS_DEVOLUCION`). */
-export const PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO =
-  "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete de gestiones no entregadas se le cobra aparte.";
-
-/**
- * FICHA 395 — qué significa que la tienda gane un NEGATIVO. Mismo criterio que
- * `PARA_LA_CENTRAL_NEGATIVO_NOTA`: un «−₡3.400» sin explicación en una pantalla de dinero es
- * peor que no tener el número.
- */
-export const GANA_LA_TIENDA_NEGATIVO_NOTA =
-  `${EMPRESA.alInicio} le factura más de lo que se recaudó en este cierre: a la tienda no le queda nada y pasa a deber la diferencia.`;
-
-/** FICHA 395 — de qué se compone la línea puente, dicho sin jerga contable. */
-export const COBRADO_SOBRE_RECAUDADO_NOTA =
-  "Flete + IVA y comisión + IVA de lo que sí se entregó: sale del dinero que el mensajero recaudó.";
-
-/**
- * FICHA 395 — de qué resta sale el neto de la empresa, en el idioma de quien la hace.
- * SL-39 (R23/R24) — dice «sin el IVA»: el IVA facturado tiene su propia línea en la cascada y no es
- * de la empresa.
- */
-export const NETO_EMPRESA_NOTA =
-  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
-/** SLT-54 (R71): el mismo renglón en el modelo nuevo, donde ese ingreso no sale solo de devoluciones. */
-export const NETO_EMPRESA_NOTA_MODELO_NUEVO =
-  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega.`;
-
-/**
  * SL-39 (R24) — la línea propia del IVA en la cascada «Lo que le queda a la empresa», justo después
  * de «Lo que la empresa facturó». El importe llega derivado del servidor (`ivaFacturado`, R21).
  * También es el renglón del IVA en el bloque «Liquidación» del detalle (menor 1 de la revisión).
  * La palabra del impuesto se compone desde `IMPUESTO_ROTULO`: SL-21 la cambia en un solo sitio.
  */
 export const IVA_FACTURADO_LABEL = `${IMPUESTO_ROTULO} facturado`;
-
-/** SL-39 (R24) — de quién es ese IVA. */
-export const IVA_FACTURADO_NOTA =
-  `El IVA que se le cobró a la tienda en este cierre. No es de ${EMPRESA.enFrase}.`;
-
-/** FICHA 395 — qué significa un neto NEGATIVO: no es un fallo, es una pérdida del cierre. */
-export const NETO_EMPRESA_NEGATIVO_NOTA =
-  `${EMPRESA.alInicio} pagó más de lo que facturó en este cierre: ese neto es una pérdida, no una ganancia.`;
-
-/**
- * FICHA 395 — EL TIEMPO VERBAL DEL CARGO DEL FLETE POR RECHAZO, y es una trampa real.
- *
- * El cargo se escribe en el saldo de la tienda **al APROBAR** el cierre (`WalletTiendaFeedService`,
- * dentro de la transacción de `CierresAdminRepository.resolverCierre`). Medido contra producción
- * el 2026-09-08: de 37 cierres aprobados con rechazos, los 37 lo tienen; los `solicitado` y el
- * `vencido`, ninguno. Escribir «se le cargó» en un cierre que todavía no se aprueba es MENTIRA, y
- * el cierre que abrió esta ficha estaba «Vencido».
- *
- * Cuál de las tres se pinta NO se infiere del estado a ojo: `fleteRechazoYaCobradoATienda` viaja
- * ya resuelto del servidor —exige aprobado Y flete por rechazo mayor que cero— y el `estado` sólo
- * distingue «todavía no» de «ya no».
- *
- * Se dice «al saldo de la tienda» y no «a su wallet»: «Saldo a favor» y «Cargos de la empresa» es lo
- * que la tienda lee en su propia pantalla (`mi-wallet-labels`). Elección del `frontend_dev`.
- */
-export const FLETE_RECHAZO_YA_COBRADO_NOTA =
-  "Ya se le cargó al saldo de la tienda: ese cargo se hace al aprobar el cierre.";
-export const FLETE_RECHAZO_AUN_NO_COBRADO_NOTA =
-  "Todavía no se le ha cargado al saldo de la tienda: ese cargo se hace al aprobar el cierre.";
-export const FLETE_RECHAZO_NO_SE_COBRARA_NOTA =
-  "Este cierre se rechazó, así que ese cargo no se le hizo a la tienda ni se le va a hacer.";
-
-/**
- * FICHA 395 — los títulos de las dos cascadas que la ficha ESTRENA. La primera —la partición—
- * reusa `CASCADA_DUENO_TITULO` («De quién es el dinero»): es literalmente la misma pregunta que
- * responde en el cierre de bodega, y estrenar un segundo título para ella sería dar dos nombres a
- * la misma sección según por qué pantalla se entre.
- */
-export const CASCADA_FACTURA_TIENDA_TITULO = `Lo que ${EMPRESA.enFrase} le factura a la tienda`;
-export const CASCADA_NETO_EMPRESA_TITULO = `Lo que le queda a ${EMPRESA.enFrase}`;
 
 // ---------------------------------------------------------------------------
 // FICHA 396 (2026-09-08) — DE QUÉ TIENDA ES CADA PARTE DEL «PAGO A TIENDA».
@@ -524,12 +417,11 @@ export function totalDeVariasTiendasNota(cuantasTiendas: number): string {
  * SLT-172 la mudó aquí desde `DesglosePorTienda.tsx`, que se retiró sin superficie: su único
  * consumidor vivo es `components/private/cierres/detalle/detalle-cierre-vista.ts`.
  *
- * Recibe `readonly unknown[]` y no `readonly ParteDeTienda[]`: solo cuenta elementos, y pedir el
- * tipo a `lib/utils/ingreso-empresa` metería ese módulo (que importa `Prisma` como valor) en el
- * árbol del panel del mensajero que vigila `pagos-captura.guardia` (R19). Toda lista de
- * `ParteDeTienda` se le sigue pasando tal cual.
+ * SLT-174 (R661): recibe `readonly ParteDeTienda[]`, pedido a `lib/types/parte-de-tienda`, un
+ * módulo sin imports. Pedirlo a `lib/utils/ingreso-empresa` metería ese módulo (que importa
+ * `Prisma` como valor) en el árbol del panel del mensajero que vigila `pagos-captura.guardia` (R19).
  */
-export function marcaDeVariasTiendas(partes: readonly unknown[]): string | null {
+export function marcaDeVariasTiendas(partes: readonly ParteDeTienda[]): string | null {
   return partes.length >= 2 ? totalDeVariasTiendasNota(partes.length) : null;
 }
 

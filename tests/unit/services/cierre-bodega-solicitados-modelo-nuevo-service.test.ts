@@ -134,9 +134,9 @@ describe("SLT-141 — «Solicitados» de la satélite con cierres de bodega nuev
         totalFacturado: "1130.00",
         ivaFacturado: "130.00",
         netoEmpresa: "0.00", // (1 130 − 130) − 1 000 − 0
-        ganaLaTienda: "28870.00", // 30 000 − 1 130
+        pagoTienda: "28870.00", // 30 000 − 1 130
         partesPorTienda: [
-          { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+          { tiendaId: "tienda-t2", tiendaNombre: "T2", recaudado: "30000.00", pagoTienda: "28870.00" },
         ],
       },
     ]);
@@ -163,7 +163,7 @@ describe("SLT-141 — «Solicitados» de la satélite con cierres de bodega nuev
         totalFacturado: null,
         ivaFacturado: null,
         netoEmpresa: null,
-        ganaLaTienda: null,
+        pagoTienda: null,
         partesPorTienda: null,
       },
     ]);

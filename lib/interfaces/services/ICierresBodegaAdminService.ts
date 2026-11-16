@@ -107,24 +107,7 @@ export type CierreBodegaDetalleServiceResult =
        */
       netoEmpresa: string | null;
       /**
-       * Ficha 396 (D1) — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LAS
-       * TIENDAS GANAN EN TOTAL con todo el cierre de bodega.
-       *
-       * Desde SLT-169 es ALIAS de `pagoTienda`, con el MISMO valor: el pago tambien resta todo lo
-       * facturado. Se retira del contrato en la ficha de limpieza (P3 de SLT-169).
-       *
-       * FALTABA en este contrato, y por eso lo trae esta ficha: la 395 puso `ganaLaTienda` SOLO
-       * en el detalle del cierre del mensajero, asi que el desglose por tienda de bodega sumaria
-       * hacia un total que no estaba en ninguna parte (`design.md §5.2`). Se deriva con la MISMA
-       * funcion (`ganaLaTienda`, `lib/utils/ingreso-empresa.ts`), no con una resta escrita aqui.
-       *
-       * MISMO minuendo que `pagoTienda`: el snapshot AGREGADO del propio cierre de bodega, nunca
-       * la suma de sus `cierre_dia` (R21, decision explicita de la 393). Puede ser NEGATIVO y se
-       * emite CON SU SIGNO, nunca recortado a "0.00".
-       */
-      ganaLaTienda: string | null;
-      /**
-       * 💰 Ficha 396 (R20) — DE QUIEN ES CADA PARTE de `pagoTienda` y `ganaLaTienda` de TODA la
+       * 💰 Ficha 396 (R20) — DE QUIEN ES CADA PARTE de `pagoTienda` de TODA la
        * bodega: UNA fila por tienda, a traves de todos los mensajeros incluidos.
        *
        * Es el peor de los tres casos del defecto que arregla la ficha: aqui «Pago a tienda»
@@ -146,9 +129,8 @@ export type CierreBodegaDetalleServiceResult =
        *
        * ⚠️ **LAS INVARIANTES DE ESTE NIVEL DEPENDEN DE UNA CONDICION MEDIDA, NO GARANTIZADA.**
        *   Σ `.pagoTienda`   === `pagoTienda`               (R10)
-       *   Σ `.ganaLaTienda` === `ganaLaTienda`             (R11)
        *   Σ `.recaudado`    === `cierre.totales.general`   (R12)
-       * Los tres agregados salen del snapshot AGREGADO (`cierre.totales.general`) y el desglose
+       * (R11 desaparecio con SLT-174.) Los dos agregados salen del snapshot AGREGADO (`cierre.totales.general`) y el desglose
        * solo puede salir de las gestiones, o sea de la suma de los `cierre_dia`. Que las dos vias
        * den lo mismo se midio contra produccion el 2026-09-08: **14 cierres, 14 cuadran, 0
        * descuadran** — la misma medicion que hizo la 393. **Sigue siendo una MEDICION, no una

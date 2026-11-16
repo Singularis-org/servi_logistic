@@ -922,7 +922,6 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
       // Ficha 396 (D1) — el agregado que le faltaba a este contrato: 126.089,17 - 27.635,58.
       // Este bloque es de la 393 y NO lo pinta; los dos campos van porque el DTO los declara
       // REQUERIDOS. Ni una aserción de este archivo cambia.
-      ganaLaTienda: "98453.59",
       // Sin `cierre_dia` en el fixture (`cierres: []`) no hay gestiones que partir.
       partesPorTienda: [],
       paraLaCentral: "111838.37",
@@ -1285,10 +1284,9 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     totales: TOTALES,
     totalPagoMensajero: "14000.55",
     empresa: {
-      // SLT-169 (R620): 126089.17 − 27635.58, todo lo facturado; `ganaLaTienda` es su alias.
+      // SLT-169 (R620): 126089.17 − 27635.58, todo lo facturado.
       pagoTienda: "98453.59",
       cobradoSobreRecaudado: "27134.83",
-      ganaLaTienda: "98453.59",
       totalIngresoBodegaRechazos: "250.25",
       ivaFacturado: "3179.47",
       // 27635.58 − 3179.47 − 14000.55 − 250.25
@@ -1521,11 +1519,9 @@ const CENSO: readonly { ruta: string; identidad: string }[] = [
   },
   // FICHA 393 — las dos superficies de las cascadas del cierre de bodega. La tarjeta
   // no estrena archivo (vive en `cierre-factura.tsx`, ya censado por la identidad de
-  // los métodos de pago); lo que estrena son ESTAS dos.
-  {
-    ruta: "app/(app)/cierres-admin/_components/CascadaDinero.tsx",
-    identidad: "los sumandos de una cascada, con su operador, dan su resultado destacado",
-  },
+  // los métodos de pago); lo que estrena son ESTAS dos. SLT-174 «Quitar el alias
+  // ganaLaTienda y los restos de la cascada del mensajero» (R660) retira `CascadaDinero.tsx`,
+  // que ya no montaba nadie.
   {
     ruta: "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
     identidad:
@@ -1565,20 +1561,22 @@ function importadosPor(rutaRelativa: string): string[] {
 }
 
 describe("ficha 359 · D — el censo de las pantallas de dinero", () => {
-  it("las quince existen, no se repiten y cada una declara su identidad", () => {
+  it("las catorce existen, no se repiten y cada una declara su identidad", () => {
     // Trece hasta la ficha 393, que añade las dos superficies de las cascadas del
     // cierre de bodega; dieciséis desde la 395, que añade la del cierre de MENSAJERO;
     // diecisiete desde la 396, que añade el desglose por tienda. QUINCE desde SLT-172
     // «Limpieza tras el pago neto a la tienda: componentes de cierres sin uso», que
-    // retira esas dos últimas (sin superficie desde el detalle único). El número es una
-    // FOTO a propósito: una pantalla de dinero nueva tiene que pasar por aquí, no
-    // colarse en silencio.
-    expect(CENSO.length).toBe(15);
-    expect(new Set(CENSO.map((c) => c.ruta)).size).toBe(15);
-    // R645: las dos superficies retiradas no siguen censadas.
+    // retira esas dos últimas (sin superficie desde el detalle único). CATORCE desde SLT-174
+    // «Quitar el alias ganaLaTienda y los restos de la cascada del mensajero» (R660), que
+    // retira `CascadaDinero.tsx`: ya no lo montaba nadie. El número es una FOTO a propósito:
+    // una pantalla de dinero nueva tiene que pasar por aquí, no colarse en silencio.
+    expect(CENSO.length).toBe(14);
+    expect(new Set(CENSO.map((c) => c.ruta)).size).toBe(14);
+    // R645 y R660: las superficies retiradas no siguen censadas.
     for (const retirada of [
       "app/(app)/cierres-admin/_components/CascadasCierreMensajero.tsx",
       "app/(app)/cierres-admin/_components/DesglosePorTienda.tsx",
+      "app/(app)/cierres-admin/_components/CascadaDinero.tsx",
     ]) {
       expect(CENSO.map((c) => c.ruta), `${retirada} sigue en el censo`).not.toContain(retirada);
     }
@@ -1588,7 +1586,7 @@ describe("ficha 359 · D — el censo de las pantallas de dinero", () => {
     }
   });
 
-  it("las quince pintan su dinero con el formateador compartido, no con uno propio", () => {
+  it("las catorce pintan su dinero con el formateador compartido, no con uno propio", () => {
     const sinFormateador: string[] = [];
     for (const { ruta } of CENSO) {
       const propio = USA_EL_FORMATEADOR.test(readFileSync(path.join(RAIZ, ruta), "utf8"));

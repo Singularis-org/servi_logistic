@@ -111,11 +111,11 @@ const CIFRAS_BN: CifrasCierreBodegaCentralDescargaDTO = {
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
-  ganaLaTienda: "92090.00",
+  pagoTienda: "92090.00",
   pagoEntregado: "3000.00",
   partesPorTienda: [
-    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
-    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ],
 };
 
@@ -216,7 +216,7 @@ const COLUMNAS_CIERRES_CENTRAL: DescargaColumna[] = [
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "paraLaCentral", encabezado: "Debe llegar a la central", formato: "monto" },
   // SLT-169 (R629): misma clave y posición, otro rótulo.
-  { clave: "ganaLaTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
+  { clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
@@ -272,7 +272,7 @@ const FILA_CIERRES_BN_CENTRAL = {
   transferencia: "0.00",
   recaudado: "100000.00",
   paraLaCentral: "96500.00",
-  ganaLaTienda: "92090.00",
+  pagoTienda: "92090.00",
   pagoMensajero: "3000.00",
   pagoBodega: "500.00",
   totalFacturado: "7910.00",

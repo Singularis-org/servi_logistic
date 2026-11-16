@@ -451,20 +451,20 @@ describe("SLT-52 R29 · SLT-169 R621/R635 — las identidades de partesPorTienda
 
   it("cifras por tienda escritas a mano", () => {
     // SLT-169 (R621): el pago resta TODO lo facturado, tambien el flete del reprogramado (modelo
-    // nuevo, R635); `ganaLaTienda` es alias de igual valor.
+    // nuevo, R635).
     // A: 14900 - (3108.12+589.30+904.00) = 10298.58 (antes 11202.58)
     // B: 10000 - (3108.12+1864.90) = 5026.98 (antes 6891.88)
     expect(partesPorTienda(GESTIONES)).toStrictEqual([
-      { tiendaId: "A", tiendaNombre: "A", recaudado: "14900.00", pagoTienda: "10298.58", ganaLaTienda: "10298.58" },
-      { tiendaId: "B", tiendaNombre: "B", recaudado: "10000.00", pagoTienda: "5026.98", ganaLaTienda: "5026.98" },
+      { tiendaId: "A", tiendaNombre: "A", recaudado: "14900.00", pagoTienda: "10298.58" },
+      { tiendaId: "B", tiendaNombre: "B", recaudado: "10000.00", pagoTienda: "5026.98" },
     ]);
   });
 
-  it("R10/R11/R12: la suma de las partes es el agregado (SLT-169: pago = recaudado − todo lo facturado)", () => {
+  it("R10/R12: la suma de las partes es el agregado (SLT-169: pago = recaudado − todo lo facturado)", () => {
     const partes = partesPorTienda(GESTIONES);
     const todas = totalesIngresoEmpresa(GESTIONES);
     const general = computeTotales(GESTIONES).general;
-    const suma = (k: "pagoTienda" | "ganaLaTienda" | "recaudado") =>
+    const suma = (k: "pagoTienda" | "recaudado") =>
       partes.reduce((acc, p) => acc.plus(p[k]), new Prisma.Decimal(0)).toFixed(2);
     // Literales de las identidades: general 24900.00; fleteConIva 6216.24; comisionConIva 589.30;
     // total 9574.44.
@@ -476,7 +476,6 @@ describe("SLT-52 R29 · SLT-169 R621/R635 — las identidades de partesPorTienda
     expect(pagoTiendaEmpresa(general, todas.fleteConIva, todas.comisionConIva)).toBe("18094.46");
     expect(ganaLaTienda(general, todas.total)).toBe("15325.56");
     expect(suma("pagoTienda")).toBe("15325.56"); // 10298.58 + 5026.98
-    expect(suma("ganaLaTienda")).toBe("15325.56"); // alias
     expect(suma("recaudado")).toBe("24900.00"); // 14900.00 + 10000.00
     // Lo que ahora tambien se resta: A 904.00 (reprogramado); B 1864.90 (rechazo).
     expect(totalesIngresoEmpresa(GESTIONES.slice(0, 2)).fleteDevolucionConIva).toBe("904.00");

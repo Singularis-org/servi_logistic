@@ -102,11 +102,11 @@ const CIFRAS_BN: CifrasCierreBodegaDescarga = {
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
-  ganaLaTienda: "92090.00",
+  pagoTienda: "92090.00",
   pagoEntregado: "3000.00",
   partesPorTienda: [
-    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
-    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ],
 };
 const CIFRAS_BX: CifrasCierreBodegaDescarga = {
@@ -116,10 +116,10 @@ const CIFRAS_BX: CifrasCierreBodegaDescarga = {
   totalFacturado: "2260.00",
   ivaFacturado: "260.00",
   netoEmpresa: "-1250.00",
-  ganaLaTienda: "-2260.00",
+  pagoTienda: "-2260.00",
   pagoEntregado: null,
   partesPorTienda: [
-    { tiendaId: "t3", tiendaNombre: "Tienda Tres", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" },
+    { tiendaId: "t3", tiendaNombre: "Tienda Tres", recaudado: "0.00", pagoTienda: "-2260.00" },
   ],
 };
 
@@ -144,7 +144,7 @@ const SIN_EMPRESA = {
   totalFacturado: null,
   ivaFacturado: null,
   netoEmpresa: null,
-  ganaLaTienda: null,
+  pagoTienda: null,
   partesPorTienda: null,
 };
 // Sin la clave `pagoEntregado`, como le llega a la satélite (SLT-141 R386).
@@ -167,7 +167,7 @@ const SENUELOS_EMPRESA: CifrasCierreBodegaDescarga = {
   totalFacturado: "846213.51",
   ivaFacturado: "846213.52",
   netoEmpresa: "846213.53",
-  ganaLaTienda: "846213.54",
+  pagoTienda: "846213.54",
   pagoEntregado: "846213.55",
 };
 
@@ -187,7 +187,7 @@ describe("SLT-141 — columnas de «Cierres» y «Por tienda» de bodega (R386)"
   it("«Cierres» de la central: 26 columnas en el orden del documento; «Se le paga a la tienda» donde iba «Gana la tienda en total» (SLT-169 R629)", () => {
     const columnas = columnasCierresBodegaModeloNuevoPara("admin");
     expect(columnas).toHaveLength(26);
-    expect(columnas[11]).toEqual({ clave: "ganaLaTienda", encabezado: "Se le paga a la tienda", formato: "monto" });
+    expect(columnas[11]).toEqual({ clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" });
     expect(columnas.map((c) => c.encabezado)).not.toContain("Gana la tienda en total");
     expect(columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
     expect(COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
@@ -247,7 +247,7 @@ describe("SLT-141 — celdas de «Cierres» y «Por tienda» (R387, R388)", () =
         transferencia: "0.00",
         recaudado: "100000.00",
         paraLaCentral: "96500.00",
-        ganaLaTienda: "92090.00",
+        pagoTienda: "92090.00",
         pagoMensajero: "3000.00",
         pagoBodega: "500.00",
         totalFacturado: "7910.00",
@@ -283,7 +283,7 @@ describe("SLT-141 — celdas de «Cierres» y «Por tienda» (R387, R388)", () =
       estado: "Pendiente de conciliar",
       resuelto: null,
       paraLaCentral: "-1250.00",
-      ganaLaTienda: "-2260.00",
+      pagoTienda: "-2260.00",
       netoEmpresa: "-1250.00",
       pagoEntregado: null,
       cierresIncluidos: 2,

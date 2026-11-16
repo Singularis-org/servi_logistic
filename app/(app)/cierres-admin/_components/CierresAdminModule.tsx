@@ -481,24 +481,23 @@ interface DetalleAbierto {
   /** Total general menos flete + IVA y comisión + IVA, derivado server-side (puede ser negativo). */
   pagoTienda: string | null;
   /**
-   * FICHA 395 — los cuatro derivados de las tres cascadas, tal como los emite el servidor. Los
-   * tres importes son STRING con su signo y NINGUNO se recorta a cero.
+   * FICHA 395 — los derivados de la cuenta, tal como los emite el servidor. Los importes son
+   * STRING con su signo y NINGUNO se recorta a cero.
    *
    * `ganancia` y `pagoTienda` siguen aquí arriba, intactos y con el mismo significado: nadie los
-   * absorbió. `netoEmpresa` NO es `ganancia` (resta ADEMÁS el ingreso de bodega) y `ganaLaTienda`
-   * NO es `pagoTienda` (aquel no descuenta el flete por rechazo, que nunca entró en lo
-   * recaudado). Los cuatro se pasan tal cual a `CascadasCierreMensajero`: aquí no se deriva nada.
+   * absorbió. `netoEmpresa` NO es `ganancia` (resta ADEMÁS el ingreso de bodega). Se pasan tal
+   * cual a `DetalleCierre` (`detalle-cierre-vista.ts`): aquí no se deriva nada.
    */
   cobradoSobreRecaudado: string | null;
   netoEmpresa: string | null;
-  ganaLaTienda: string | null;
   fleteRechazoYaCobradoATienda: boolean | null;
   /**
-   * FICHA 396 — de qué tienda es cada parte de `pagoTienda` y de `ganaLaTienda`: una entrada por
-   * tienda del cierre, con sus tres cifras ya derivadas y **ya ordenadas por el servidor**.
+   * FICHA 396 — de qué tienda es cada parte de `pagoTienda`: una entrada por tienda del cierre,
+   * con sus cifras ya derivadas y **ya ordenadas por el servidor**.
    *
    * Llega SIEMPRE, también con una sola tienda; el umbral de enseñarlo —dos o más— lo evalúa
-   * `CascadasCierreMensajero`. Aquí no se ordena, no se filtra y no se suma nada.
+   * `marcaDeVariasTiendas` desde `detalle-cierre-vista.ts`. Aquí no se ordena, no se filtra y no
+   * se suma nada.
    */
   partesPorTienda: ParteDeTienda[] | null;
   /**
@@ -816,7 +815,6 @@ export function CierresAdminModule({
         // resta aquí: el navegador no hace aritmética de dinero.
         cobradoSobreRecaudado: result.cobradoSobreRecaudado,
         netoEmpresa: result.netoEmpresa,
-        ganaLaTienda: result.ganaLaTienda,
         fleteRechazoYaCobradoATienda: result.fleteRechazoYaCobradoATienda,
         // FICHA 396: el desglose por tienda, tal cual llega. Ya viene ordenado por el servidor
         // (R8) y con las tres cifras derivadas: aquí no se reordena ni se recalcula nada.

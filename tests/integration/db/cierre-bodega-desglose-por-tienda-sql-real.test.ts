@@ -77,28 +77,28 @@ const NOMBRE_COMPARTIDO = "Comercial Talamanca";
  *   ANA (cierre_dia 1) — snapshot general 100.000,00 · UNA sola tienda (la A)
  *     a1 · entrega de 100.000,00 → flete+IVA 2.260,00 · comisión+IVA 3.390,00 · total 5.650,00
  *     a2 · RECHAZO de 20.000,00  → flete devuelto+IVA 1.695,00 · total 1.695,00
- *     tienda A: recaudado 100.000,00 · se le paga 92.655,00 · gana 92.655,00
+ *     tienda A: recaudado 100.000,00 · se le paga 92.655,00
  *               (SLT-169 R621: se le paga resta TODO lo facturado; antes 94.350,00)
  *
  *   BETO (cierre_dia 2) — snapshot general 65.000,00 · DOS tiendas
  *     b1 · entrega de 40.000,00 (tienda B) → 2.260,00 · 1.356,00 · total 3.616,00
  *     b2 · entrega de 25.000,00 (tienda A) → 2.260,00 ·   847,50 · total 3.107,50
- *     tienda B: recaudado 40.000,00 · se le paga 36.384,00 · gana 36.384,00
- *     tienda A: recaudado 25.000,00 · se le paga 21.892,50 · gana 21.892,50
+ *     tienda B: recaudado 40.000,00 · se le paga 36.384,00
+ *     tienda A: recaudado 25.000,00 · se le paga 21.892,50
  *
  *   AGREGADO — snapshot general 165.000,00 · DOS tiendas (A sale UNA vez, no dos)
- *     tienda A: recaudado 125.000,00 · se le paga 114.547,50 · gana 114.547,50 (antes 116.242,50)
- *     tienda B: recaudado  40.000,00 · se le paga  36.384,00 · gana  36.384,00
+ *     tienda A: recaudado 125.000,00 · se le paga 114.547,50 (antes 116.242,50)
+ *     tienda B: recaudado  40.000,00 · se le paga  36.384,00
  */
 const ANA_GENERAL = "100000.00";
 const BETO_GENERAL = "65000.00";
 const BODEGA_GENERAL = "165000.00";
 
-const ANA_A = { recaudado: "100000.00", pagoTienda: "92655.00", ganaLaTienda: "92655.00" };
-const BETO_B = { recaudado: "40000.00", pagoTienda: "36384.00", ganaLaTienda: "36384.00" };
-const BETO_A = { recaudado: "25000.00", pagoTienda: "21892.50", ganaLaTienda: "21892.50" };
-const AGREGADO_A = { recaudado: "125000.00", pagoTienda: "114547.50", ganaLaTienda: "114547.50" };
-const AGREGADO_B = { recaudado: "40000.00", pagoTienda: "36384.00", ganaLaTienda: "36384.00" };
+const ANA_A = { recaudado: "100000.00", pagoTienda: "92655.00" };
+const BETO_B = { recaudado: "40000.00", pagoTienda: "36384.00" };
+const BETO_A = { recaudado: "25000.00", pagoTienda: "21892.50" };
+const AGREGADO_A = { recaudado: "125000.00", pagoTienda: "114547.50" };
+const AGREGADO_B = { recaudado: "40000.00", pagoTienda: "36384.00" };
 
 describeSiHayBase(
   "396/D — el desglose por tienda del cierre de BODEGA, nivel a nivel, contra Postgres",
@@ -518,7 +518,6 @@ describeSiHayBase(
             tiendaNombre: p.tiendaNombre,
             recaudado: p.recaudado,
             pagoTienda: p.pagoTienda,
-            ganaLaTienda: p.ganaLaTienda,
           }));
         const deAna = r.cierresDia.find((cd) => cd.resumen.cierreDiaId === ctx.cierreAnaId);
         const deBeto = r.cierresDia.find((cd) => cd.resumen.cierreDiaId === ctx.cierreBetoId);
@@ -565,7 +564,6 @@ describeSiHayBase(
           const partes = partesPorTienda(gestiones);
           return {
             pago: suma(partes.map((p) => p.pagoTienda)),
-            gana: suma(partes.map((p) => p.ganaLaTienda)),
             recaudado: suma(partes.map((p) => p.recaudado)),
           };
         };
@@ -588,24 +586,21 @@ describeSiHayBase(
         };
       });
 
-      // R10 / R11 / R12 en el nivel de ANA, contra literales escritos a mano.
+      // R10 / R12 en el nivel de ANA, contra literales escritos a mano (R11 se fue con SLT-174).
       expect(medido.ana).toEqual({
         pago: "92655.00",
-        gana: "92655.00",
         recaudado: ANA_GENERAL,
       });
 
       // …en el nivel de BETO: 36.384,00 + 21.892,50 y 40.000,00 + 25.000,00.
       expect(medido.beto).toEqual({
         pago: "58276.50",
-        gana: "58276.50",
         recaudado: BETO_GENERAL,
       });
 
-      // …y en el AGREGADO: 114.547,50 + 36.384,00 · igual · 125.000,00 + 40.000,00.
+      // …y en el AGREGADO: 114.547,50 + 36.384,00 y 125.000,00 + 40.000,00.
       expect(medido.agregado).toEqual({
         pago: "150931.50",
-        gana: "150931.50",
         recaudado: BODEGA_GENERAL,
       });
       // SLT-169 R623: la suma de los cierres del día es el agregado (92.655,00 + 58.276,50).

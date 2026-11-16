@@ -99,9 +99,8 @@ describe("SLT-140 R380 — cifrasDelCierre: las cifras de N1 contra literales a 
     expect(cifras.ivaFacturado).toBe("910.00");
   });
 
-  it("Gana la tienda en total = 100 000,00 − 7 910,00 = 92 090,00 (alias de igual valor que el pago)", () => {
-    expect(cifras.ganaLaTienda).toBe("92090.00");
-    expect(cifras.ganaLaTienda).toBe(cifras.pagoTienda);
+  it("SLT-174 (R651): las cifras del cierre ya no llevan el campo que duplicaba el pago", () => {
+    expect(cifras).not.toHaveProperty("ganaLaTienda");
   });
 
   it("Le queda a la empresa = 7 910,00 − 910,00 − 3 000,00 − 500,00 = 3 500,00", () => {
@@ -124,26 +123,23 @@ describe("SLT-140 R381 — cifrasDelCierre: la particion por tienda", () => {
         tiendaNombre: "Tienda Norte",
         recaudado: "100000.00",
         pagoTienda: "94350.00",
-        ganaLaTienda: "94350.00",
       },
       {
         tiendaId: "tienda-sur",
         tiendaNombre: "Tienda Sur",
         recaudado: "0.00",
         pagoTienda: "-2260.00",
-        ganaLaTienda: "-2260.00",
       },
     ]);
   });
 
-  it("las tres sumas de las partes dan las del cierre: 100 000,00 · 92 090,00 · 92 090,00", () => {
+  it("las dos sumas de las partes dan las del cierre: 100 000,00 · 92 090,00", () => {
     // Las sumas se hacen sobre literales de dos decimales: comparar centimos enteros evita floats.
     const centimos = (s: string) => BigInt(s.replace(".", ""));
-    const suma = (k: "recaudado" | "pagoTienda" | "ganaLaTienda") =>
+    const suma = (k: "recaudado" | "pagoTienda") =>
       cifras.partesPorTienda.reduce((acc, p) => acc + centimos(p[k]), BigInt(0));
     expect(suma("recaudado")).toBe(BigInt(10000000));
     expect(suma("pagoTienda")).toBe(BigInt(9209000));
-    expect(suma("ganaLaTienda")).toBe(BigInt(9209000));
   });
 });
 
@@ -212,6 +208,9 @@ describe("SLT-169 R620/R622 — el pago a la tienda resta TODO lo facturado (fol
 
   it("R624: lo que se le paga + Total facturado = lo recaudado (−13.205,05 + 33.105,05 = 19.900)", () => {
     expect(cifras.totalesIngreso.total).toBe("33105.05");
+    // SLT-174 (R656): la identidad misma, en céntimos enteros, contra el recaudado escrito a mano.
+    const centimos = (s: string) => BigInt(s.replace(".", ""));
+    expect(centimos(cifras.pagoTienda) + centimos(cifras.totalesIngreso.total)).toBe(BigInt(1990000));
   });
 });
 

@@ -69,15 +69,14 @@ const V1 = cierre({
 });
 
 const PARTES_N1 = [
-  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" },
+  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" },
 ];
 
 const CIFRAS_N1: CifrasCierreDescargaDTO = {
   cierreId: N1.cierreId,
-  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias en el DTO.
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
   pagoTienda: "92090.00",
-  ganaLaTienda: "92090.00",
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
@@ -90,7 +89,6 @@ const CIFRAS_N2: CifrasCierreDescargaDTO = { ...CIFRAS_N1, cierreId: N2.cierreId
 /** SLT-161 (R481): lo que el servidor le manda a la satélite, las cifras de la empresa en `null`. */
 const SIN_EMPRESA = {
   pagoTienda: null,
-  ganaLaTienda: null,
   totalFacturado: null,
   ivaFacturado: null,
   netoEmpresa: null,
@@ -107,7 +105,6 @@ const CIFRAS_N2_SATELITE: CifrasCierreDescargaDTO = { ...CIFRAS_N2, ...SIN_EMPRE
 const SENUELOS_EMPRESA: CifrasCierreDescargaDTO = {
   ...CIFRAS_N1,
   pagoTienda: "731957.41",
-  ganaLaTienda: "731957.42",
   totalFacturado: "731957.43",
   ivaFacturado: "731957.44",
   netoEmpresa: "731957.45",
@@ -140,7 +137,7 @@ const FILA_N1_CENTRAL = {
   sinpe: "30000.00",
   transferencia: "0.00",
   recaudado: "100000.00",
-  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias en el DTO.
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
   pagoTienda: "92090.00",
   pagoMensajero: "3000.00",
   pagoBodega: "500.00",
@@ -267,7 +264,6 @@ describe("SLT-140 — celdas de «Cierres» y «Por tienda» (R379-R382)", () =>
     const senuelo: CifrasCierreDescargaDTO = {
       ...CIFRAS_N1,
       pagoTienda: "11.01",
-      ganaLaTienda: "22.02",
       totalFacturado: "33.03",
       ivaFacturado: "44.04",
       netoEmpresa: "55.05",
