@@ -890,6 +890,13 @@ export interface RecepcionSateliteFiltro {
    */
   busquedaDigitos?: string;
   /**
+   * SLT-160 «Buscar escaneando en los listados» (R606-R608) — GUIA EXACTA. La pone el servicio
+   * en lugar de `busqueda` cuando el termino son solo digitos y `existeGuiaEnBodega` confirma que
+   * es la guia de una orden del listado (con su alcance y sus filtros). Va en el AND, nunca en un
+   * `OR`: solo estrecha.
+   */
+  numGuia?: number;
+  /**
    * FICHA 370 — SALIDA A REPARTO, el MISMO criterio y el MISMO tipo que el listado de
    * `/ordenes` (`ListOrdenesWhere.salioAReparto`). Aqui esta el grueso del valor: medido en
    * produccion, 44 de las 48 ordenes «nuevas» viven en bodega satelite (en la central son 2 de
@@ -2065,6 +2072,15 @@ export interface IOrdenRepository {
     filtro: RecepcionSateliteFiltro,
     ids: readonly string[],
   ): Promise<string[]>;
+  /**
+   * SLT-160 (R606, R608): ¿hay en el listado de la bodega —el MISMO criterio que la pagina:
+   * zona, no borradas, paso por la bodega, estados y filtros— una orden con `filtro.numGuia`?
+   * Lo pregunta el servicio una vez por peticion para decidir entre guia exacta y contencion.
+   * `false` sin consultar si `estatusValues` esta vacio. Solo query.
+   */
+  existeGuiaEnBodega(
+    filtro: RecepcionSateliteFiltro & { numGuia: number },
+  ): Promise<boolean>;
   /**
    * Feature 33/R11/R18: transicion atomica y concurrencia-segura de UNA orden a
    * `en_bodega_satelite`. UPDATE guardado por estado de ORIGEN (solo si sigue en
