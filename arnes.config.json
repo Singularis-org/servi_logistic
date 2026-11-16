@@ -73,6 +73,16 @@
         "corre": [
           "tests/unit/services/liquidacion-"
         ]
+      },
+      {
+        "si_cambia": [
+          "lib/services/CierresAdminService.ts",
+          "lib/interfaces/services/ICierresAdminService.ts"
+        ],
+        "corre": [
+          "tests/unit/services/cierres-",
+          "tests/unit/services/CierresAdminService."
+        ]
       }
     ]
   }
