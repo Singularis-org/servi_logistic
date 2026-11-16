@@ -98,6 +98,12 @@ const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
   { archivo: "app/(app)/mis-asignaciones/_components/mis-asignaciones-buscador.ts", reglas: ["recorte", "escala", "oculta"] },
   { archivo: "app/(app)/recoleccion/_components/RecoleccionModule.tsx", reglas: ["recorte", "escala", "oculta"] },
   { archivo: "app/(app)/recoleccion/_components/RecolectadasHoyLista.tsx", reglas: ["recorte", "escala", "oculta"] },
+  // Rebanada E — mapa de ruta (SLT-166).
+  { archivo: "app/(app)/mis-asignaciones/_components/ruta-mapa-iconos.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RutaMapaInner.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RutaMapa.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/HojaParadaMapa.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/shared/CarruselCards.tsx", reglas: ["recorte", "escala", "oculta"] },
   {
     archivo: "components/shared/BuscadorFiltros.tsx",
     reglas: ["escala"],

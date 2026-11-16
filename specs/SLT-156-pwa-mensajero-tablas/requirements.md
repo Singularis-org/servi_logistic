@@ -401,6 +401,8 @@ cada requisito está entre corchetes; el corte, en `## Partir una feature`.
   ubicación» (44 px); CUANDO pulsa «Cerrar», DEBE devolverlo a su sitio en la página. Bajo el mapa
   en la página van «Ver mapa completo» y «Ocultar mapa» (canvas v35: RepartoMapa,
   RepartoMapaCompleto).
+  > Desviación aceptada (leader, 2026-11-15; ver progress/features/SLT-166.md): un solo control «Mostrar mapa» / «Ocultar mapa», en su
+  > sitio (R509); bajo el mapa solo va «Ver mapa completo».
 - **R542** — MIENTRAS el mapa esté abierto en vista Mosaico, CUANDO cambia la tarjeta visible del
   carrusel, el sistema DEBE centrar el mapa en la parada de esa tarjeta y marcarla como activa.
 - **R543** — SI una parada no tiene coordenadas, ENTONCES el sistema DEBE dejarla en la lista y
