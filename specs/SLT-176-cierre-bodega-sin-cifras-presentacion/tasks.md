@@ -8,9 +8,9 @@ Requisitos R690-R705 (`requirements.md`). Diseño en `design.md`. Zona backend: 
 
 ## T1 · El servicio de solo lectura
 
-- [ ] Crear `lib/interfaces/services/ICierresBodegaSateliteDescargaService.ts` con la firma de
+- [x] Crear `lib/interfaces/services/ICierresBodegaSateliteDescargaService.ts` con la firma de
   `design.md > Contrato` (tipos importados con `import type` de `ICierreBodegaService.ts`).
-- [ ] Crear `lib/services/CierresBodegaSateliteDescargaService.ts`: constructor con los cuatro puertos de
+- [x] Crear `lib/services/CierresBodegaSateliteDescargaService.ts`: constructor con los cuatro puertos de
   lectura (`Pick`) y el método `listarCierresBodegaSolicitadosCompleto` copiado de
   `CierreBodegaService.ts:484-560`, con su comentario. Solo cambia la etiqueta de la operación.
 
