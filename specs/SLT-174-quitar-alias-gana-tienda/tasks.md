@@ -83,7 +83,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
     rojos `cierres-admin-service.test.ts` (`not.toHaveProperty`) y
     `cierres-resumen-modelo-nuevo-descarga-service.test.ts`.
 
-- [ ] **T5 [P con T3] — Rótulos y `CascadaDinero` (R658-R660, R663, §5).** Depende de T2, porque
+- [x] **T5 [P con T3] — Rótulos y `CascadaDinero` (R658-R660, R663, §5).** Depende de T2, porque
   los dos editan `cierre-labels.ts`.
   - **`cierre-labels.ts`:** borrar los 20 rótulos con su JSDoc: los 8 de R658 y los 12 de R663.
     `CASCADA_CENTRAL_TITULO` se queda.

@@ -21,7 +21,28 @@ import {
   GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
   esMontoNegativo,
 } from "./cierre-detalle-shared";
-import type { LineaCascada } from "./CascadaDinero";
+
+// SLT-174 «Quitar el alias ganaLaTienda y los restos de la cascada del mensajero» (R659): los dos
+// tipos de la línea de cascada, mudados tal cual desde `CascadaDinero.tsx`, que ya no monta nadie.
+/** Cómo entra una línea en la cuenta de su cascada. */
+export type SignoCascada = "suma" | "resta" | "neutro";
+
+/** Una línea de la cascada: rótulo, importe YA derivado y cómo entra en la cuenta. */
+export interface LineaCascada {
+  label: string;
+  /** STRING money-safe escala 2, con su signo si lo tiene. El componente NO lo calcula. */
+  monto: string;
+  signo: SignoCascada;
+  /** El resultado de la cascada: se destaca frente a las líneas que lo componen (R3/R4). */
+  destacado?: boolean;
+  /**
+   * Explicaciones bajo el rótulo (de qué resta sale, qué significa el signo, por qué esa línea
+   * no se resta de lo recaudado). Son VARIAS y no una cadena unida: un resultado negativo lleva
+   * su nota además de la fija, y fundirlas en un párrafo dejaría a quien lee —y a quien la
+   * busca en un test— sin poder distinguir cuál de ellas está puesta.
+   */
+  notas?: readonly string[];
+}
 
 /**
  * Feature 393 (§4) — LAS LÍNEAS DE LA CASCADA «lo que va a la central», en un solo sitio.
