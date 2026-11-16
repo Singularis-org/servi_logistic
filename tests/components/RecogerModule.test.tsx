@@ -1901,7 +1901,7 @@ describe("SLT-156 rebanada C — Recoger en bodega en el móvil (R500, R506, R51
     expect(screen.queryByText("No hay órdenes para recoger hoy.")).toBeNull();
   });
 
-  it("R517: arranca en Mosaico (carrusel) y Detalle pinta las tarjetas compactas, sin acciones", async () => {
+  it("R517: arranca en Mosaico (carrusel) y Detalle pinta las tarjetas compactas", async () => {
     const user = userEvent.setup();
     renderModule({ porRecoger: [HOY_1, HOY_2] });
 
@@ -1918,6 +1918,5 @@ describe("SLT-156 rebanada C — Recoger en bodega en el móvil (R500, R506, R51
     expect(
       await screen.findByRole("button", { expanded: false, name: /REM-C1/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Gestionar/ })).toBeNull();
   });
 });

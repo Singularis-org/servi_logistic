@@ -1032,7 +1032,7 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
     expect(screen.queryByText(VACIO_BUSQUEDA)).toBeNull();
   });
 
-  it("R517: arranca en Mosaico (carruseles) y Detalle pinta las tarjetas compactas, sin acciones", async () => {
+  it("R517: arranca en Mosaico (carruseles) y Detalle pinta las tarjetas compactas", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
 
@@ -1053,7 +1053,6 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
     expect(
       within(seccionHoy()).getByRole("button", { expanded: false, name: /REM-H1/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Gestionar/ })).toBeNull();
   });
 
   it("R522: la guía confirmada en el escáner se recolecta con el mismo resultado y mensaje de hoy", async () => {
@@ -1062,12 +1061,12 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
 
     await abrirEscaner(user);
     expect(screen.getByRole("dialog")).toHaveTextContent("Recolectar en tienda");
-    await user.type(screen.getByRole("textbox"), "1001");
+    await user.type(screen.getByRole("textbox"), "2001");
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
 
-    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 2001 }));
     expect(await screen.findByText(/recolectada/)).toHaveTextContent(
-      "Guía 1001 recolectada correctamente.",
+      "Guía 2001 recolectada correctamente.",
     );
     expect(refreshMock).toHaveBeenCalled();
   });

@@ -134,3 +134,43 @@ del archivo igual que antes de la mutación.
 ### Veredicto
 
 C1-C3 hechas, cada R con su test y su mutación en rojo; E2E 13/13 y 9/9; gate `INIT_EXIT=0`.
+
+## Tanda 2 (review: B1, m1, m2, m5, m6) · frontend_dev · 2026-11-15
+
+Review: `progress/review_SLT-164.md` (2029dccc). m3 (deuda) y m4 (Preview) no se tocan.
+
+### Cambios
+
+- **B1** `tests/components/RepartoModule.test.tsx`: `accesoRecogida` («Recoger paquete», que ya no podía fallar) pasa
+  a `disparadoresEscaneo()`. El caso «Corte: Reparto monta SU apartado y ninguna superficie de recogida» afirma
+  exactamente UN «Escanear o escribir guía» y, al abrirlo, que su diálogo no trae la región «Recoger por número de
+  guía o escaneo» ni el texto «Recoger paquete». `RepartoModule.tsx` sin tocar.
+- **m1** fuera los negativos `/^Gestionar/` de los casos R517 de `RecogerModule.test.tsx` y `RecoleccionModule.test.tsx`
+  (no podían fallar: las tarjetas de esas pantallas no reciben `onGestionar`); el título ya no dice «sin acciones».
+- **m2** `components/shared/EscanerModal.tsx`: el comentario nombra `ESCANER_LABEL_GUIA` en las tres pantallas del
+  mensajero y los títulos de las tarjetas.
+- **m5** caso R522 de `RecoleccionModule.test.tsx`: guía 2001 (la de REM-P1 del caso) y `toHaveBeenCalledWith({ numGuia: 2001 })`.
+- **m6** fuera el import sin uso de `ContactoButtons` en `RecoleccionModule.tsx`.
+
+### Mutación de B1
+
+Arnés `c164-mut-b1.py` (scratchpad): aplica, corre el caso, restaura y compara byte a byte.
+
+```
+B1a-recoger-junto-al-de-reparto (RecogerPaqueteCard montada junto a EscanerGuiaReparto): ROJO · 1 failed (length 2, se esperaba 1) · restaurado_identico=True
+B1b-recoger-en-lugar-del-de-reparto (RecogerPaqueteCard en su sitio): ROJO · 1 failed (la región de recoger está en el diálogo) · restaurado_identico=True
+```
+
+`git status` de `RepartoModule.tsx` limpio tras las dos.
+
+### Comandos
+
+- vitest `RepartoModule`, `RecogerModule`, `RecoleccionModule`, `RecoleccionPage`, `EscanerModal` +
+  `pwa-mensajero-sin-recorte`: 6 archivos, 304 passed.
+- `pnpm run typecheck`: verde. `eslint` de los tocados: 0 errores (1 aviso ya existente, `ordenCardsEnReparto`).
+- E2E no repetidos: la producción solo cambia en un import sin uso y un comentario.
+- `./init.sh` (desechable `slt164_gate`): ver la línea de Tandas en `progress/features/SLT-164.md`.
+
+### Veredicto
+
+B1, m1, m2, m5 y m6 arreglados; la mutación de B1 en rojo de las dos formas.

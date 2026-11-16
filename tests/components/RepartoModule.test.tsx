@@ -235,12 +235,12 @@ function panelDetalle() {
 }
 
 /**
- * El acceso a la recogida por guía/escaneo (el disparador de la tarjeta plegada). Aquí solo
- * se usa para comprobar su AUSENCIA: la recogida se mudó a `/mis-asignaciones/recoger` y
- * esta pantalla no debe volver a montarla.
+ * Los disparadores «Escanear o escribir guía». SLT-156 (R500): el de Reparto y el de Recoger
+ * (`RecogerPaqueteCard`) se llaman igual, así que la AUSENCIA de la recogida se prueba contando
+ * (uno solo, el de Reparto) y mirando qué abre.
  */
-const accesoRecogida = () =>
-  screen.queryByRole("button", { name: "Recoger paquete" });
+const disparadoresEscaneo = () =>
+  screen.queryAllByRole("button", { name: "Escanear o escribir guía" });
 
 /**
  * Card de una remisión: el `<article>` de `PosOrderCard`, con `aria-label`
@@ -398,7 +398,8 @@ describe("RepartoModule", () => {
   // las ausencias se rompen sin que nadie se entere: si un merge devuelve el listado o el
   // escáner a esta pantalla, el escáner vuelve a quedar enterrado bajo el panel de gestión
   // —exactamente el problema que el corte resolvió— y falla aquí, no en la calle.
-  it("Corte: Reparto monta SU apartado y ninguna superficie de recogida", () => {
+  it("Corte: Reparto monta SU apartado y ninguna superficie de recogida", async () => {
+    const user = userEvent.setup();
     renderModule({
       porGestionar: [makeAsignacion({ id: "g1", numRemision: "REM-G1" })],
     });
@@ -408,10 +409,15 @@ describe("RepartoModule", () => {
     ).toBeInTheDocument();
     // Ni el listado, ni la tarjeta de recogida, ni su input.
     expect(screen.queryByRole("region", { name: "Por recoger" })).toBeNull();
-    expect(accesoRecogida()).toBeNull();
+    // SLT-156 (R500): un ÚNICO disparador, el de Reparto; con `RecogerPaqueteCard` montada
+    // habría dos. Y lo que abre no es la tarjeta de recoger.
+    expect(disparadoresEscaneo()).toHaveLength(1);
+    await user.click(disparadoresEscaneo()[0]);
+    const dialogo = await screen.findByRole("dialog");
     expect(
-      screen.queryByRole("region", { name: "Recoger por número de guía o escaneo" }),
+      within(dialogo).queryByRole("region", { name: "Recoger por número de guía o escaneo" }),
     ).toBeNull();
+    expect(within(dialogo).queryByText("Recoger paquete")).toBeNull();
     // OJO: NO se afirma "ningún escáner en la pantalla". Reparto tiene el suyo, dentro del
     // gate de verificación de guía del panel de gestión (`VerificarGuiaGate`, feature 98),
     // y es legítimo: verifica la guía que se va a gestionar, no recoge nada. La ausencia

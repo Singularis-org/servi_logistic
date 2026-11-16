@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
 
-import { ContactoButtons } from "@/components/shared/ContactoButtons";
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import {
   ESCANER_LABEL_GUIA,
