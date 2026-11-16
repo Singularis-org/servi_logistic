@@ -96,7 +96,7 @@ seed antes del primer gate (si no, la integración se salta y el gate sale verde
   `tests/integration/db/zona-especial-dos-empresas.test.ts` y
   `ruta-primera-pendiente-dos-empresas-sql-real.test.ts`), falla cerrado si faltan catálogos, solo
   corre contra host local, y se pone rojo con la mutación de R714.
-- [ ] **T2 — Resumen en los tres servicios (depende de T1).** Los tipos de resultado
+- [x] **T2 — Resumen en los tres servicios (depende de T1).** Los tipos de resultado
   (`lib/types/recepcion-*.ts` y `lib/interfaces/services/IRecepcion*Service.ts`) ganan
   `resumen?: ResumenRecepcion` en `ok` y `ya_recibida`; los tres servicios añaden
   `"resumenRecepcion"` a su `Pick` y lo llaman solo justo antes de devolver `ok` o `ya_recibida`
