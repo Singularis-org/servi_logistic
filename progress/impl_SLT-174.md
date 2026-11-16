@@ -156,3 +156,83 @@ mutación T7-b no lo ponía rojo a él sino a sus vecinos.
 
 **Veredicto tanda 1:** T1-T4 y T7 hechas. Typecheck en 0, tests de unidad y componente en verde y
 cada mutación en rojo. Queda la integración para el gate y la tanda 2 (T5, T6).
+
+## Tanda 2 (frontend_dev): T5, T6
+
+### Archivos
+
+T5 (5bdd136c):
+- `app/(app)/cierres-admin/_components/cierre-labels.ts`: fuera los 20 rótulos (8 de R658, 12 de
+  R663) con su JSDoc. `CASCADA_CENTRAL_TITULO` se queda.
+- `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx`: solo las líneas de §6. Fuera los
+  imports y re-exports de los 20, comentarios de bloque recontados («doce»), el bloque FICHA 395
+  vacío, los dos comentarios SL-39 (ya no hay cascadas que pinten el IVA: lo lee el bloque
+  «Liquidación» de `cierre-factura`) y el de `esMontoCero` sin `CascadasCierreMensajero` (R662).
+- `app/(app)/cierres-admin/_components/CascadaDinero.tsx`: borrado.
+- `app/(app)/cierres-admin/_components/cascadas-bodega.ts`: `SignoCascada` y `LineaCascada`, tal
+  cual con su JSDoc; fuera el import de `./CascadaDinero`.
+- `components/private/cierres/detalle/Cuenta.tsx:16`: el comentario no compara con el retirado.
+- `tests/components/CascadaDinero.test.tsx`: borrado (mapa de rescate en T1).
+- `tests/unit/guards/cierre-bodega-vocabulario.guardia.test.ts`: fuera 9 imports, filas de
+  `CASCADA_DUENO_TITULO`, `COBRADO_SOBRE_RECAUDADO_LABEL`, `FLETE_RECHAZO_NO_DEDUCIBLE_NOTA` y las
+  6 de SL-15 R3; `CascadaDinero.tsx` fuera de `SUPERFICIES_ENTERAS`. `CASCADA_CENTRAL_TITULO` igual.
+- `tests/unit/components/rechazo-nombre-466-app.test.ts`: fuera 2 imports y sus 2 aserciones.
+- `tests/unit/guards/nombres-estado-retirados.guardia.test.ts`: una sola «entregadas», con motivo.
+- `tests/components/DineroIdentidadesEnPantalla.test.tsx`: entrada fuera, «catorce» / `14`, y
+  `CascadaDinero.tsx` en la lista de retiradas (R660).
+
+T6:
+- `tests/unit/guards/cierres-componentes-retirados.guardia.test.ts`: `CascadaDinero` en
+  `MODULOS_RETIRADOS`; vecino de nombre parecido → `./cascadas-bodega`; restaurar cualquiera de los
+  dos se detecta; cinco bloques `SLT-174 · R659`, `R658/R663`, `R650`, `R661`, `R662` y su
+  autocomprobación en memoria (20 rótulos inyectados, 7 formas del alias en rojo y 6 en verde, el
+  mismo nombre importado de otro módulo, copia de la interfaz, import en el módulo de tipos,
+  comentario nuevo de `CascadasCierreMensajero`).
+
+Antes de borrar se repitió la medición de §5 (`grep -rlw` en `app components lib tests e2e`): ningún
+nombre ganó un importador vivo desde e92741e5.
+
+### Mapa R → test (tanda 2)
+
+| R | Test |
+|---|---|
+| R650 | `cierres-componentes-retirados.guardia.test.ts` «SLT-174 · R650» (+ no-vacuidad) |
+| R658 | ídem «SLT-174 · R658/R663» |
+| R659 | ídem «SLT-174 · R659» y R640/R641 de SLT-172; `detalle-cierre-vista.test.ts` sin cambios |
+| R660 | `DineroIdentidadesEnPantalla.test.tsx` «ficha 359 · D» (14, escrito a mano) |
+| R661 | guardia «SLT-174 · R661»; `marca-varias-tiendas.test.ts`; `pagos-captura.guardia.test.ts` sin cambios |
+| R662 | guardia «SLT-174 · R662» (foto a mano: `CierresAdminModule.tsx: 1`, con «Sustituye») |
+| R663 | guardia «SLT-174 · R658/R663» con el control de `CASCADA_CENTRAL_TITULO`; vocabulario «Lo que va a la central» sin cambios |
+
+### Contrapruebas sobre el árbol (aplicar → rojo → revertir, en secuencia, sin gate en paralelo)
+
+| Mutación | Resultado |
+|---|---|
+| M1 R659: se restaura `CascadaDinero.tsx` | 2 rojos: R640 «ninguno de los … archivos existe» y R659 «el archivo no existe» |
+| M2 R658: `export const COBRADO_SOBRE_RECAUDADO_LABEL = "x"` en `cierre-labels.ts` | 2 rojos (export + nombrado en código) |
+| M3 R663: `export const CASCADA_DUENO_TITULO = "x"` en `cierre-labels.ts` | 2 rojos (ídem) |
+| M3b R663 control: `CASCADA_CENTRAL_TITULO` sin `export` | 1 rojo (el control) |
+| M4 R650: `fila.ganaLaTienda = cifras.pagoTienda;` en `cierres-bodega-modelo-nuevo-descarga-columnas.ts` | 1 rojo «lo usa como campo» |
+| M5 R661: `interface ParteDeTienda` copiada en `ingreso-empresa.ts` | 1 rojo «no la copia» |
+| M5b R661: `import type { Prisma }` en `lib/types/parte-de-tienda.ts` | 1 rojo «no importa nada» |
+| M6 R662: `// lo pinta \`CascadasCierreMensajero\`` en `cierre-detalle-shared.tsx` | 2 rojos (la foto y la autocomprobación, que lee el archivo real) |
+| Final, todo revertido con `git checkout --` | 80/80 verde; `git status` solo con la guardia en edición |
+
+### Salidas (tanda 2)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .` → `TSC_EXIT=0` (tras T5 y tras T6).
+- `pnpm exec eslint` sobre los 9 archivos tocados → 0 errores; 1 aviso preexistente en
+  `DineroIdentidadesEnPantalla.test.tsx:541` (directiva `eslint-disable` sin uso, no tocada).
+- `pnpm exec vitest run` de los 10 archivos (las tres guardias tocadas, `superficie-de-uso`,
+  `pagos-captura`, `rechazo-nombre-466-app`, `DineroIdentidadesEnPantalla`,
+  `CierreBodegaDetalleCascadas`, `detalle-cierre-vista`, `marca-varias-tiendas`) →
+  `Test Files 10 passed (10)`, `Tests 346 passed (346)`.
+- `git diff origin/dev --stat -- cierre-factura.tsx` → vacío (D7).
+
+### Abierto
+
+- `docs/ayuda/oficina/cierres.md` lista `CascadaDinero.tsx` en `fuentes:` del frontmatter. No está en
+  el spec ni hay guardia que lo lea; queda para el leader (quitar la línea).
+- `cierre-factura.tsx:515` nombra `CascadaDinero`: deuda D7 (§12), no se toca.
+
+**Veredicto tanda 2:** T5 y T6 hechas; typecheck en 0, tests tocados en verde y cada mutación de §7 en rojo.

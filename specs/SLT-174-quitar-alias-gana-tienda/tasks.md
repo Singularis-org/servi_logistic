@@ -119,7 +119,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
       cascada central** (R659);
     - `superficie-de-uso.guardia.test.ts` en verde.
 
-- [ ] **T6 — Ampliar la guardia `cierres-componentes-retirados` (R650, R658, R659, R661, R662, R663, §7).**
+- [x] **T6 — Ampliar la guardia `cierres-componentes-retirados` (R650, R658, R659, R661, R662, R663, §7).**
   Depende de T3 y T5.
   - Cinco bloques `SLT-174 · R…`, cada uno con autocomprobación.
   - Cambiar el ejemplo «vecino de nombre parecido» de `:188` por `./cascadas-bodega`.
