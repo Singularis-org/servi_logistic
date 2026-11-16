@@ -119,16 +119,16 @@ test de integración no está probado. En los negativos, guías imposibles por c
 
 ## Tasks
 
-- [ ] **T1 — Buscador.** `BuscadorFiltros` prop `escaneo`: Enter (D2) con `leerGuia`, búsqueda
+- [x] **T1 — Buscador.** `BuscadorFiltros` prop `escaneo`: Enter (D2) con `leerGuia`, búsqueda
   inmediata (cancela el debounce pendiente), selección del texto, botón de cámara junto a la «X» que
   cabe en el ancho mínimo de 250 px. *Hecho:* R600-R603, R609 (comportamiento) en verde.
-- [ ] **T2 — Cámara (depende de T1).** `EscanerModal` acepta un disparador de solo icono (nombre
+- [x] **T2 — Cámara (depende de T1).** `EscanerModal` acepta un disparador de solo icono (nombre
   accesible «Escanear con cámara»); `QrScanner` prop para arrancar encendido (D4). El
   `EscanerModal` con su texto de hoy no cambia. *Hecho:* R604-R605 en verde; `EscanerModal.test.tsx`
   y `QrScanner.test.tsx` existentes en verde.
-- [ ] **T3 [P] — Montajes (depende de T1).** B1-B8 pasan `escaneo`. Guardia
+- [x] **T3 [P] — Montajes (depende de T1).** B1-B8 pasan `escaneo`. Guardia
   `buscadores-con-escaneo.guardia.test.ts`. *Hecho:* R609 (guardia) en verde.
-- [ ] **T4 [P] — Satélite exacta (backend_dev).** `RecepcionSateliteService.filtroDeRepo` resuelve, una
+- [x] **T4 [P] — Satélite exacta (backend_dev).** `RecepcionSateliteService.filtroDeRepo` resuelve, una
   vez por petición, si el término de solo dígitos (entero positivo hasta el máximo de `num_guia`) es
   la guía de una orden del listado con sus filtros; si lo es, el filtro lleva la guía exacta y no
   `busqueda`. `condicionesSatelite` añade `o."num_guia" = $guia` dentro del `AND`, nunca en un `OR`.
