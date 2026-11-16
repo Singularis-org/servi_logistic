@@ -21,6 +21,7 @@ import {
   type VistasFiltroBarra,
 } from "@/components/shared/VistasFiltro";
 import { useFiltrosUrl } from "@/hooks/useFiltrosUrl";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   activosDesdeUrl,
   PARAM_TERMINO_DEFAULT,
@@ -179,6 +180,13 @@ export interface BuscadorFiltrosProps {
    * defecto: los demás consumidores no cambian.
    */
   tactil?: boolean;
+  /**
+   * SLT-160 «Buscar escaneando en los listados» (D1, D2) — buscador de un listado con guía (B1-B8):
+   * Enter busca en el acto (una guía leída por pistola, URL del QR o `#n`, queda como el número,
+   * `leerGuia`) y deja el texto seleccionado para que la siguiente lectura lo sustituya; y un botón
+   * de cámara dentro del campo, junto a la «X». Apagada por defecto: los demás no cambian (R609).
+   */
+  escaneo?: boolean;
   className?: string;
 }
 
@@ -258,6 +266,7 @@ export function BuscadorFiltros({
   buscador = true,
   fija = false,
   tactil = false,
+  escaneo = false,
   className,
 }: BuscadorFiltrosProps) {
   const alto = tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
@@ -443,6 +452,39 @@ export function BuscadorFiltros({
   }
 
   /**
+   * SLT-160 (R601-R603) — BUSCAR YA, sin debounce: Enter o una lectura de la cámara. Si `entrada`
+   * es una guía (`leerGuia`), el campo pasa a mostrar solo el número. Se cancela lo pendiente y se
+   * emite aunque coincida con lo emitido si había un debounce en vuelo (ese llevaba este mismo
+   * término); por debajo de `minChars` el término es `""`, como al teclear. Al final se pide
+   * seleccionar el texto: la siguiente lectura lo sustituye en vez de añadirse.
+   */
+  const campoRef = useRef<HTMLInputElement>(null);
+  const [seleccionPedida, setSeleccionPedida] = useState(0);
+  useEffect(() => {
+    if (seleccionPedida > 0) campoRef.current?.select();
+  }, [seleccionPedida]);
+
+  function buscarYa(entrada: string) {
+    const guia = leerGuia(entrada);
+    const leido = guia === null ? entrada : String(guia);
+    const valor = maxLength === undefined ? leido : leido.slice(0, maxLength);
+    setTexto(valor);
+    const recortado = valor.trim();
+    const siguiente =
+      recortado !== "" && recortado.length >= minChars ? recortado : "";
+    const habiaPendiente = temporizador.current !== null;
+    if (temporizador.current) {
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+    }
+    if (siguiente !== emitido.current || habiaPendiente) {
+      emitido.current = siguiente;
+      emitir(siguiente);
+    }
+    setSeleccionPedida((n) => n + 1);
+  }
+
+  /**
    * Pone o retira un filtro. El ORDEN es el de la lista ofrecida, no el de los clics:
    * así los controles no bailan de sitio entre sesiones ni según en qué orden se
    * marcaron, que es lo que convierte una barra en un rompecabezas.
@@ -540,6 +582,7 @@ export function BuscadorFiltros({
             aria-hidden
           />
           <Input
+            ref={campoRef}
             type="search"
             value={texto}
             aria-label={label}
@@ -559,6 +602,15 @@ export function BuscadorFiltros({
             // forma de limpiarse en unos navegadores sí y en otros no.
             className="h-full w-full pr-9 pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             onChange={(e) => escribir(e.target.value)}
+            onKeyDown={
+              escaneo
+                ? (e) => {
+                    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    buscarYa(e.currentTarget.value);
+                  }
+                : undefined
+            }
           />
           {texto !== "" ? (
             <Button
