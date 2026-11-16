@@ -520,11 +520,10 @@ describe("SLT-154 R464 — el recorte es para todo rol sin acceso total", () => 
       .map(([k]) => k)
       .sort();
 
-  it("R462: las diez cifras de la empresa del detalle del cierre del mensajero", () => {
+  it("R462: las nueve cifras de la empresa del detalle del cierre del mensajero (SLT-174 quitó el campo duplicado)", () => {
     expect(deLaEmpresa(CLASE_DETALLE_MENSAJERO)).toEqual([
       "cobradoSobreRecaudado",
       "fleteRechazoYaCobradoATienda",
-      "ganaLaTienda",
       "ganancia",
       "ivaFacturado",
       "netoEmpresa",
@@ -535,10 +534,9 @@ describe("SLT-154 R464 — el recorte es para todo rol sin acceso total", () => 
     ]);
   });
 
-  it("R460/R461: las ocho cifras de la empresa del agregado y de cada cierre del día de bodega", () => {
-    const ocho = [
+  it("R460/R461: las siete cifras de la empresa del agregado y de cada cierre del día de bodega (SLT-174)", () => {
+    const siete = [
       "cobradoSobreRecaudado",
-      "ganaLaTienda",
       "ganancia",
       "ivaFacturado",
       "netoEmpresa",
@@ -546,8 +544,8 @@ describe("SLT-154 R464 — el recorte es para todo rol sin acceso total", () => 
       "partesPorTienda",
       "totalesIngreso",
     ];
-    expect(deLaEmpresa(CLASE_DETALLE_BODEGA)).toEqual(ocho);
-    expect(deLaEmpresa(CLASE_CIERRE_DEL_DIA_BODEGA)).toEqual(ocho);
+    expect(deLaEmpresa(CLASE_DETALLE_BODEGA)).toEqual(siete);
+    expect(deLaEmpresa(CLASE_CIERRE_DEL_DIA_BODEGA)).toEqual(siete);
   });
 });
 
@@ -563,13 +561,12 @@ describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acce
   const CIFRAS: CifrasCierreDescargaDTO = {
     cierreId: "c1",
     pagoTienda: "92090.00",
-    ganaLaTienda: "92090.00",
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
     gestiones: 2,
     pagoEntregado: "1200.00",
-    partesPorTienda: [{ tiendaNombre: "T", recaudado: "100.00", pagoTienda: "90.00", ganaLaTienda: "90.00" }],
+    partesPorTienda: [{ tiendaNombre: "T", recaudado: "100.00", pagoTienda: "90.00" }],
   };
   const CIFRAS_BODEGA: CifrasCierreBodegaDescargaDTO = {
     cierreBodegaId: "cb1",
@@ -578,7 +575,7 @@ describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acce
     totalFacturado: "1130.00",
     ivaFacturado: "130.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "28870.00",
+    pagoTienda: "28870.00",
     partesPorTienda: [],
   };
 
@@ -598,7 +595,6 @@ describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acce
     expect(anularEmpresaSiNoCentral(CIFRAS, CLASE_CIFRAS_DESCARGA_CIERRE, actor)).toEqual({
       cierreId: "c1",
       pagoTienda: null,
-      ganaLaTienda: null,
       totalFacturado: null,
       ivaFacturado: null,
       netoEmpresa: null,
@@ -613,7 +609,7 @@ describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acce
       totalFacturado: null,
       ivaFacturado: null,
       netoEmpresa: null,
-      ganaLaTienda: null,
+      pagoTienda: null,
       partesPorTienda: null,
     });
   });
@@ -642,9 +638,8 @@ describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acce
       .map(([k]) => k)
       .sort();
 
-  it("R488: las siete cifras de la empresa del «Resumen» de cierres y las cinco de los cierres de bodega", () => {
+  it("R488: las seis cifras de la empresa del «Resumen» de cierres y las cinco de los cierres de bodega (SLT-174)", () => {
     expect(deLaEmpresa(CLASE_CIFRAS_DESCARGA_CIERRE)).toEqual([
-      "ganaLaTienda",
       "ivaFacturado",
       "netoEmpresa",
       "pagoEntregado",
@@ -653,9 +648,9 @@ describe("SLT-161 R488 — el recorte de las descargas es para todo rol sin acce
       "totalFacturado",
     ]);
     expect(deLaEmpresa(CLASE_CIFRAS_BODEGA_DESCARGA)).toEqual([
-      "ganaLaTienda",
       "ivaFacturado",
       "netoEmpresa",
+      "pagoTienda",
       "partesPorTienda",
       "totalFacturado",
     ]);

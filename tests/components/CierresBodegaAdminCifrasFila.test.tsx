@@ -180,7 +180,6 @@ function detalle(gestion: CierreDetalleGestion): Ok {
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     partesPorTienda: [],
     paraLaCentral: PENDIENTE.paraLaCentral,
     efectivoCubreDescuentos: true,

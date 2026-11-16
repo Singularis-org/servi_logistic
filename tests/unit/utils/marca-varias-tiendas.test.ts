@@ -14,7 +14,6 @@ function tiendas(cuantas: number): ParteDeTienda[] {
     tiendaNombre: `Tienda ${i + 1}`,
     recaudado: "1000.00",
     pagoTienda: "900.00",
-    ganaLaTienda: "900.00",
   }));
 }
 

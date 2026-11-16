@@ -98,15 +98,14 @@ function cifrasN1(cierreId: string, pagoEntregado: string | null) {
   return {
     cierreId,
     pagoTienda: "92090.00", // SLT-169 R620: 100 000 − 7 910 (antes 94 350)
-    ganaLaTienda: "92090.00",
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
     gestiones: 2,
     pagoEntregado,
     partesPorTienda: [
-      { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" }, // R622
+      { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" }, // R622
     ],
   };
 }
@@ -482,7 +481,7 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
       }
       const cifras = r.cifrasModeloNuevo?.[0];
       expect(cifras?.pagoTienda).toBe(d.pagoTienda);
-      expect(cifras?.ganaLaTienda).toBe(d.ganaLaTienda);
+      expect(cifras).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
       expect(cifras?.totalFacturado).toBe(d.totalesIngreso.total);
       expect(cifras?.ivaFacturado).toBe(d.ivaFacturado);
       expect(cifras?.netoEmpresa).toBe(d.netoEmpresa);
@@ -492,7 +491,6 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
           tiendaNombre: p.tiendaNombre,
           recaudado: p.recaudado,
           pagoTienda: p.pagoTienda,
-          ganaLaTienda: p.ganaLaTienda,
         })),
       );
       expect(d.cierre.pendientePagoMensajero).toBe("1800.00");
@@ -521,7 +519,6 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
       if (d.status !== "ok") throw new Error(`detalle ${d.status}`);
       expect(r.cifrasModeloNuevo?.[0].netoEmpresa).toBe(d.netoEmpresa);
       expect(r.cifrasModeloNuevo?.[0].pagoTienda).toBe(d.pagoTienda);
-      expect(r.cifrasModeloNuevo?.[0].ganaLaTienda).toBe(d.ganaLaTienda);
     });
   });
 
@@ -531,7 +528,6 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
     const sinEmpresa = (cierreId: string) => ({
       cierreId,
       pagoTienda: null,
-      ganaLaTienda: null,
       totalFacturado: null,
       ivaFacturado: null,
       netoEmpresa: null,

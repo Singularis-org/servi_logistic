@@ -399,7 +399,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       // Ficha 396: el desglose por tienda viaja SIEMPRE en el DTO, tambien con una sola
       // tienda. Estas pruebas no lo miran, asi que aqui va vacio; las suyas estan en
@@ -444,7 +443,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -492,7 +490,6 @@ describe("CierresAdminModule", () => {
       // resto de fixturas: esta si lleva importes, y un cero mentiria sobre la resta de arriba.
       cobradoSobreRecaudado: "3672.50", // 2825.00 + 847.50
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -528,7 +525,6 @@ describe("CierresAdminModule", () => {
       // SLT-100: el neto que deriva el servidor para este cierre (0 − 0 − 1.500 − 0); con "0.00"
       // la fixtura mentía sobre la cifra que ahora se pinta.
       netoEmpresa: "-1500.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -573,7 +569,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -660,7 +655,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -758,7 +752,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -806,7 +799,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -861,7 +853,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -920,7 +911,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -971,7 +961,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1014,7 +1003,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1063,7 +1051,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1133,7 +1120,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1183,7 +1169,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1231,7 +1216,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1272,7 +1256,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1312,7 +1295,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1364,7 +1346,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1405,7 +1386,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1507,7 +1487,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });

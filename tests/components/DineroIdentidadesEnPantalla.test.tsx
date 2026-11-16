@@ -922,7 +922,6 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
       // Ficha 396 (D1) — el agregado que le faltaba a este contrato: 126.089,17 - 27.635,58.
       // Este bloque es de la 393 y NO lo pinta; los dos campos van porque el DTO los declara
       // REQUERIDOS. Ni una aserción de este archivo cambia.
-      ganaLaTienda: "98453.59",
       // Sin `cierre_dia` en el fixture (`cierres: []`) no hay gestiones que partir.
       partesPorTienda: [],
       paraLaCentral: "111838.37",
@@ -1285,10 +1284,9 @@ describe("SLT-95 · B7 — el detalle único de cierre: cada cuenta cierra con l
     totales: TOTALES,
     totalPagoMensajero: "14000.55",
     empresa: {
-      // SLT-169 (R620): 126089.17 − 27635.58, todo lo facturado; `ganaLaTienda` es su alias.
+      // SLT-169 (R620): 126089.17 − 27635.58, todo lo facturado.
       pagoTienda: "98453.59",
       cobradoSobreRecaudado: "27134.83",
-      ganaLaTienda: "98453.59",
       totalIngresoBodegaRechazos: "250.25",
       ivaFacturado: "3179.47",
       // 27635.58 − 3179.47 − 14000.55 − 250.25

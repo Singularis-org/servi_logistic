@@ -99,8 +99,8 @@ interface Corpus {
  */
 function partesBN(t: Corpus["tienda"]) {
   return [
-    { tiendaId: t.T1, tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
-    { tiendaId: t.T2, tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { tiendaId: t.T1, tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { tiendaId: t.T2, tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ];
 }
 
@@ -116,7 +116,7 @@ function cifrasBN(c: Corpus) {
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
-    ganaLaTienda: "92090.00",
+    pagoTienda: "92090.00",
     partesPorTienda: partesBN(c.tienda),
   };
 }
@@ -134,9 +134,9 @@ function cifrasB2(c: Corpus) {
     totalFacturado: "1130.00",
     ivaFacturado: "130.00",
     netoEmpresa: "200.00",
-    ganaLaTienda: "10870.00",
+    pagoTienda: "10870.00",
     partesPorTienda: [
-      { tiendaId: c.tienda.T1, tiendaNombre: "Tienda Uno", recaudado: "10000.00", pagoTienda: "8870.00", ganaLaTienda: "8870.00" },
+      { tiendaId: c.tienda.T1, tiendaNombre: "Tienda Uno", recaudado: "10000.00", pagoTienda: "8870.00" },
     ],
     pagoEntregado: "600.00",
   };
@@ -151,9 +151,9 @@ function cifrasB3(c: Corpus) {
     totalFacturado: "1130.00",
     ivaFacturado: "130.00",
     netoEmpresa: "1000.00",
-    ganaLaTienda: "8870.00",
+    pagoTienda: "8870.00",
     partesPorTienda: [
-      { tiendaId: c.tienda.T2, tiendaNombre: "Tienda Dos", recaudado: "10000.00", pagoTienda: "8870.00", ganaLaTienda: "8870.00" },
+      { tiendaId: c.tienda.T2, tiendaNombre: "Tienda Dos", recaudado: "10000.00", pagoTienda: "8870.00" },
     ],
     pagoEntregado: "0.00",
   };
@@ -580,7 +580,6 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
           pagoTienda: central.pagoTienda,
           cobradoSobreRecaudado: central.cobradoSobreRecaudado,
           netoEmpresa: central.netoEmpresa,
-          ganaLaTienda: central.ganaLaTienda,
           partesPorTienda: central.partesPorTienda,
         });
         expect(d.cierres.reduce((s, cd) => s + Object.values(cd.grupos).reduce((t, g) => t + g.length, 0), 0)).toBe(3);
@@ -589,7 +588,7 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
       // 63 220 + 28 870 = 92 090 = 100 000 − 7 910).
       expect(central.pagoTienda).toBe("92090.00");
       expect(central.netoEmpresa).toBe("3500.00");
-      expect(central.ganaLaTienda).toBe("92090.00");
+      expect(central).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
       expect(central.partesPorTienda).toEqual(partesBN(c.tienda));
       // SLT-154 (R460): S recibe en `null` las ocho cifras de la empresa del detalle.
       const sat = await c.svc.verCierreBodegaDetalle(c.bodega.BN, c.satelite);
@@ -601,7 +600,6 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
         pagoTienda: sat.pagoTienda,
         cobradoSobreRecaudado: sat.cobradoSobreRecaudado,
         netoEmpresa: sat.netoEmpresa,
-        ganaLaTienda: sat.ganaLaTienda,
         partesPorTienda: sat.partesPorTienda,
       }).toEqual({
         totalesIngreso: null,
@@ -610,7 +608,6 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
         pagoTienda: null,
         cobradoSobreRecaudado: null,
         netoEmpresa: null,
-        ganaLaTienda: null,
         partesPorTienda: null,
       });
     });
@@ -631,7 +628,7 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
           totalFacturado: null,
           ivaFacturado: null,
           netoEmpresa: null,
-          ganaLaTienda: null,
+          pagoTienda: null,
           partesPorTienda: null,
         },
       ]);

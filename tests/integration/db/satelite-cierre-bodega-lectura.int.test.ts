@@ -408,7 +408,8 @@ async function limpiar(base: PrismaClient, tablas: string[], ids: string[]): Pro
 }
 
 /**
- * SLT-154 (R460, R461): las ocho cifras de la empresa del detalle de bodega, en el agregado y en
+ * SLT-154 (R460, R461): las siete cifras de la empresa del detalle de bodega (SLT-174 quitó el
+ * campo que duplicaba `pagoTienda`), en el agregado y en
  * cada cierre del dia. A la satelite le llegan en `null`; a la central, con su valor (R465).
  */
 const CIFRAS_EMPRESA = [
@@ -418,12 +419,11 @@ const CIFRAS_EMPRESA = [
   "pagoTienda",
   "cobradoSobreRecaudado",
   "netoEmpresa",
-  "ganaLaTienda",
   "partesPorTienda",
 ] as const;
 const cifrasEmpresaDe = (x: object) =>
   Object.fromEntries(CIFRAS_EMPRESA.map((k) => [k, (x as Record<string, unknown>)[k]]));
-const ochoEnNull = Object.fromEntries(CIFRAS_EMPRESA.map((k) => [k, null]));
+const sieteEnNull = Object.fromEntries(CIFRAS_EMPRESA.map((k) => [k, null]));
 
 describeSiHayBase("SLT-107 — la satélite lee su cierre de bodega y sus cifras de «Solicitados» (Postgres real)", () => {
   let base: PrismaClient;
@@ -513,13 +513,13 @@ describeSiHayBase("SLT-107 — la satélite lee su cierre de bodega y sus cifras
     expect(gA?.ingresoEmpresa?.fulfillmentCargadoAt).toBe("2026-11-06T15:00:00.000Z");
     expect(gC?.ingresoEmpresa?.tarifa?.fulfillment).toBe("450.00");
 
-    // SLT-154 (R465): la central recibe las ocho cifras de la empresa, en el agregado y en el
-    // cierre del dia; (R460, R461) la satelite, las ocho en `null`.
+    // SLT-154 (R465): la central recibe las siete cifras de la empresa, en el agregado y en el
+    // cierre del dia; (R460, R461) la satelite, las siete en `null`.
     for (const x of [central, ...central.cierres]) {
       expect(CIFRAS_EMPRESA.filter((k) => cifrasEmpresaDe(x)[k] === null)).toEqual([]);
     }
-    expect(cifrasEmpresaDe(sat)).toEqual(ochoEnNull);
-    for (const c of sat.cierres) expect(cifrasEmpresaDe(c)).toEqual(ochoEnNull);
+    expect(cifrasEmpresaDe(sat)).toEqual(sieteEnNull);
+    for (const c of sat.cierres) expect(cifrasEmpresaDe(c)).toEqual(sieteEnNull);
 
     // La paridad de R284 se redefine para lo que la satelite SI ve: todo lo demas igual (cabecera,
     // cierres del dia, totales, «Debe llegar a la central», «La central debe», reparto en %), salvo

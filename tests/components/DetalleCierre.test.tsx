@@ -49,7 +49,6 @@ const MENSAJERO: DetalleMensajeroVista = {
   empresa: {
     pagoTienda: "94350.00",
     cobradoSobreRecaudado: "5650.00",
-    ganaLaTienda: "92090.00",
     totalIngresoBodegaRechazos: "500.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",

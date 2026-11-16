@@ -47,7 +47,6 @@ const CIFRAS_EMPRESA = [
   "pagoTienda",
   "cobradoSobreRecaudado",
   "netoEmpresa",
-  "ganaLaTienda",
   "fleteRechazoYaCobradoATienda",
   "partesPorTienda",
 ] as const;
@@ -769,18 +768,19 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
     if (r.status !== "ok") throw new Error("esperaba ok");
     exigirDineroEmpresa(r); // SLT-154 (R465): la central, con las cifras de la empresa
 
-    expect(r.ganaLaTienda).toBe("15027.40"); // 20000.55 − 4973.15
     // SLT-169 (R620, D1): una sola cifra. Antes se le «pagaban» 16383.91 y «ganaba» 15027.40;
-    // ahora las dos restan el flete por devolución a origen y `ganaLaTienda` es alias.
-    expect(r.pagoTienda).toBe("15027.40");
+    // ahora resta el flete por devolución a origen, y SLT-174 quitó el campo que la duplicaba.
+    expect(r.pagoTienda).toBe("15027.40"); // 20000.55 − 4973.15
+    expect(r).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
     expect(r.pagoTienda).not.toBe("16383.91");
 
     // LA IDENTIDAD que hace evidente la pantalla: lo que gana la tienda + lo que factura
     // la empresa = lo recaudado. Es la particion, y va ANTES del desglose en la cascada.
     expect(
-      new Prisma.Decimal(r.ganaLaTienda).plus(r.totalesIngreso.total).toFixed(2),
-    ).toBe(r.cierre.totales.general);
-    expect(typeof r.ganaLaTienda).toBe("string"); // money-safe
+      new Prisma.Decimal(r.pagoTienda).plus(r.totalesIngreso.total).toFixed(2),
+    ).toBe("20000.55"); // SLT-169 R624: pagoTienda + total facturado === recaudado
+    expect(r.cierre.totales.general).toBe("20000.55");
+    expect(typeof r.pagoTienda).toBe("string"); // money-safe
   });
 
   it("SIN rechazos: lo que gana y lo que se le paga coinciden EXACTAMENTE", async () => {
@@ -805,8 +805,8 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     // Sin flete por devolución a origen no hay nada que cobrar aparte, asi que las dos preguntas tienen la
     // misma respuesta. Si divergieran AQUI, una de las dos estaria restando de mas.
-    expect(r.ganaLaTienda).toBe("16383.91"); // 20000.55 − 3616.64
-    expect(r.ganaLaTienda).toBe(r.pagoTienda);
+    expect(r.pagoTienda).toBe("16383.91"); // 20000.55 − 3616.64
+    expect(r).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
   });
 
   it("puros rechazos: lo que gana la tienda sale NEGATIVO, con su signo", async () => {
@@ -826,7 +826,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     // Un rechazo factura y no recauda: la tienda no gana, DEBE. Un "0.00" aqui diria «no gana
     // ni pierde», que es justo la lectura que esta ficha viene a impedir.
-    expect(r.ganaLaTienda).toBe("-1356.51"); // 0.00 − 1356.51
+    expect(r.pagoTienda).toBe("-1356.51"); // 0.00 − 1356.51
   });
 
   // ── EL TIEMPO VERBAL DEL CARGO A LA WALLET ──────────────────────────────────────────────
@@ -2398,7 +2398,6 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
         // SLT-169 R621: 100.000,00 − (6.215,00 + 1.695,00); antes 93.785,00
         pagoTienda: "92090.00",
         // alias de igual valor
-        ganaLaTienda: "92090.00",
       },
       {
         tiendaId: "t-sur",
@@ -2406,12 +2405,11 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
         recaudado: "40000.00",
         // 40.000,00 − 3.616,00
         pagoTienda: "36384.00",
-        ganaLaTienda: "36384.00",
       },
     ]);
   });
 
-  it("R10/R11/R12: la suma de las partes ES cada agregado del MISMO detalle, al céntimo", async () => {
+  it("R10/R12: la suma de las partes ES cada agregado del MISMO detalle, al céntimo", async () => {
     const { service } = newService({ repo: repoDeDosTiendas() });
 
     const r = await service.verCierreDetalle("c1", MAESTRO);
@@ -2426,8 +2424,9 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
     expect(suma(r.partesPorTienda.map((p) => p.pagoTienda))).toBe("128474.00");
     expect(r.pagoTienda).toBe("128474.00"); // R10 · SLT-169 R621
 
-    expect(suma(r.partesPorTienda.map((p) => p.ganaLaTienda))).toBe("128474.00");
-    expect(r.ganaLaTienda).toBe("128474.00"); // R11
+    // SLT-174 (R651): R11 desaparece con el campo; ni el detalle ni sus partes lo llevan.
+    expect(r).not.toHaveProperty("ganaLaTienda");
+    for (const parte of r.partesPorTienda) expect(parte).not.toHaveProperty("ganaLaTienda");
 
     expect(suma(r.partesPorTienda.map((p) => p.recaudado))).toBe("140000.00");
     expect(r.cierre.totales.general).toBe("140000.00"); // R12
@@ -2506,7 +2505,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
     // Los campos de la ficha 395 que SL-39 no toca, intactos (R26).
     expect(r.cobradoSobreRecaudado).toBe("9831.00"); // 5.085,00 + 4.746,00
     expect(r.netoEmpresa).toBe("6700.00"); // 10.200,00 − 3.000,00 − 500,00
-    expect(r.ganaLaTienda).toBe("128474.00");
+    expect(r).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
     expect(r.fleteRechazoYaCobradoATienda).toBe(false); // el cierre está `solicitado`
   });
 
@@ -2542,12 +2541,10 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
         tiendaNombre: "Tienda Sur",
         recaudado: "40000.00",
         pagoTienda: "36384.00",
-        ganaLaTienda: "36384.00",
       },
     ]);
-    // Y sus tres cifras son EXACTAMENTE las agregadas del mismo detalle.
+    // Y sus cifras son EXACTAMENTE las agregadas del mismo detalle.
     expect(r.partesPorTienda[0].pagoTienda).toBe(r.pagoTienda);
-    expect(r.partesPorTienda[0].ganaLaTienda).toBe(r.ganaLaTienda);
     expect(r.partesPorTienda[0].recaudado).toBe(r.cierre.totales.general);
   });
 
@@ -2560,7 +2557,6 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
 
     for (const parte of r.partesPorTienda) {
       expect(Object.keys(parte).sort()).toEqual([
-        "ganaLaTienda",
         "pagoTienda",
         "recaudado",
         "tiendaId",

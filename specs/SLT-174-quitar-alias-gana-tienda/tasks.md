@@ -65,7 +65,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
     - `rg -n "alias" lib/utils/ingreso-empresa.ts lib/utils/cifras-cierre.ts lib/interfaces/services/I*Cierre*.ts`
       no devuelve ninguna frase sobre el alias de `pagoTienda`.
 
-- [ ] **T4 — Tests del alias (R651-R657, §8).** Depende de T3.
+- [x] **T4 — Tests del alias (R651-R657, §8).** Depende de T3.
   - Aplicar la tabla de §8 a los 44 archivos de `tests/` de `## Archivos esperados` que nombran el
     alias. `pago-tienda-no-mueve-dinero.guardia.test.ts` **no se toca**: es de SLT-175 y solo nombra
     la función.

@@ -378,7 +378,7 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
     expect(r.pagoTienda).toBeNull();
     expect(r.cobradoSobreRecaudado).toBeNull();
     expect(r.netoEmpresa).toBeNull();
-    expect(r.ganaLaTienda).toBeNull();
+    expect(r).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
     expect(r.partesPorTienda).toBeNull();
   });
 
@@ -392,7 +392,7 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
       expect(c.pagoTienda).toBeNull();
       expect(c.cobradoSobreRecaudado).toBeNull();
       expect(c.netoEmpresa).toBeNull();
-      expect(c.ganaLaTienda).toBeNull();
+      expect(c).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
       expect(c.partesPorTienda).toBeNull();
     }
     const propias = (id: string) => {
@@ -440,7 +440,7 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
     expect(r.pagoTienda).toBeNull();
     expect(r.cobradoSobreRecaudado).toBeNull();
     expect(r.netoEmpresa).toBeNull();
-    expect(r.ganaLaTienda).toBeNull();
+    expect(r).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
     expect(r.fleteRechazoYaCobradoATienda).toBeNull();
     expect(r.partesPorTienda).toBeNull();
     expect(r.porcentajesReparto).toBeNull();
@@ -496,7 +496,7 @@ describeSiHayBase("SLT-154 — la satélite lee sus dos detalles sin las cifras 
     const mensajero = await verMensajero(S.maestro, S.cierre.A);
     expect(mensajero.netoEmpresa).toBe("2700.00");
     expect(mensajero.pagoTienda).toBe("-955.00"); // SLT-169 R620/R622: con su signo
-    expect(mensajero.ganaLaTienda).toBe("-955.00"); // 3 000 − 3 955 (alias)
+    expect(mensajero).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
     expect(mensajero.ivaFacturado).toBe("455.00"); // 260 + 195
     // SLT-169 R624: con el pago a la tienda negativo, el reparto va sin porcentajes (antes [25, 75]).
     expect(mensajero.porcentajesReparto).toBeNull();

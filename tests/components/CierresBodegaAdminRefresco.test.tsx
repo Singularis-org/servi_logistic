@@ -100,7 +100,6 @@ const DETALLE = {
   pagoTienda: "9000.00",
   cobradoSobreRecaudado: "0.00",
   netoEmpresa: "0.00",
-  ganaLaTienda: "9000.00",
   partesPorTienda: [],
   paraLaCentral: "9000.00",
   efectivoCubreDescuentos: true,
