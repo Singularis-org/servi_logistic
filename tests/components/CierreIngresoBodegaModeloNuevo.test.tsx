@@ -8,14 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { CascadasCierreMensajero } from "@/app/(app)/cierres-admin/_components/CascadasCierreMensajero";
-import { DesglosePorTienda } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
 import {
   CierreFacturaDetalle,
   GestionesPorResultado,
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import type { CierreFacturaAudiencia } from "@/app/(app)/cierres-admin/_components/cierre-factura";
-import { EMPRESA } from "@/lib/config/marca";
 import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { gestion478, grupos478, ingreso478 } from "@/tests/fixtures/gestion-detalle-478";
 
@@ -202,76 +199,5 @@ describe("SLT-54 R71 — modelo viejo: ni texto ni importe cambian", () => {
     });
     render(<GestionesPorResultado grupos={grupos478({ devolucion_a_origen_por_rechazo: [sinTarifa] })} />);
     expect(await ingresoDeFila(/REM-X/, /Devoluci/, VIEJO)).toBe("₡300");
-  });
-});
-
-describe("SLT-54 R71 — las cascadas siguen al modelo", () => {
-  const TOTALES = {
-    montoCobrar: "0.00",
-    fleteConIva: "0.00",
-    fleteDevolucionConIva: "0.00",
-    comisionConIva: "0.00",
-    total: "0.00",
-    flete: "0.00",
-    ivaFlete: "0.00",
-    fleteDevolucion: "0.00",
-    ivaFleteDevolucion: "0.00",
-    comisionCod: "0.00",
-    ivaComisionCod: "0.00",
-  };
-  const cascadas = (modeloNuevo?: boolean) => (
-    <CascadasCierreMensajero
-      mensajeroNombre="Beto"
-      estado="aprobado"
-      general="10000.00"
-      totalesIngreso={TOTALES}
-      totalPagoMensajero="2200.00"
-      totalIngresoBodegaRechazos="570.00"
-      pagoTienda="9000.00"
-      cobradoSobreRecaudado="0.00"
-      ivaFacturado="0.00"
-      netoEmpresa="0.00"
-      ganaLaTienda="9000.00"
-      fleteRechazoYaCobradoATienda={false}
-      partesPorTienda={[]}
-      modeloNuevo={modeloNuevo}
-    />
-  );
-
-  it("nuevo: «Ingreso de bodega», en la línea y en la nota", () => {
-    render(cascadas(true));
-    expect(screen.getByText(NUEVO)).toBeInTheDocument();
-    expect(screen.queryByText(VIEJO)).toBeNull();
-    expect(
-      screen.getByText(
-        `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega.`,
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("viejo: rótulo y nota, literales", () => {
-    render(cascadas());
-    expect(screen.getByText(VIEJO)).toBeInTheDocument();
-    expect(screen.queryByText(NUEVO)).toBeNull();
-    expect(
-      screen.getByText(
-        `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`,
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("el desglose por tienda: su nota, en los dos modelos", () => {
-    const { rerender } = render(<DesglosePorTienda partes={[]} de="cierre de Beto" modeloNuevo />);
-    expect(
-      screen.getByText(
-        "El pago al mensajero y el ingreso de bodega son del cierre completo: no están repartidos entre las tiendas.",
-      ),
-    ).toBeInTheDocument();
-    rerender(<DesglosePorTienda partes={[]} de="cierre de Beto" />);
-    expect(
-      screen.getByText(
-        "El pago al mensajero y el ingreso de bodega por devoluciones a origen son del cierre completo: no están repartidos entre las tiendas.",
-      ),
-    ).toBeInTheDocument();
   });
 });

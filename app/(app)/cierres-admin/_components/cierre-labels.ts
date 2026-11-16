@@ -494,16 +494,6 @@ export const CASCADA_NETO_EMPRESA_TITULO = `Lo que le queda a ${EMPRESA.enFrase}
 // ---------------------------------------------------------------------------
 
 /**
- * FICHA 396 — el título de la sección del desglose. Rima con `CASCADA_DUENO_TITULO` («De quién
- * es el dinero») a propósito: es la MISMA pregunta bajada un nivel, de «la empresa o la tienda» a
- * «cuál de las tiendas». Dos preguntas de la misma familia, dos títulos de la misma forma.
- *
- * Elección de redacción del `frontend_dev`; el spec pedía que el texto existiera y saliera de una
- * constante (R3), no qué decía.
- */
-export const DESGLOSE_POR_TIENDA_TITULO = "De qué tienda es cada parte";
-
-/**
  * FICHA 396 (R1) — LA MARCA: dice que el importe de al lado es un total de VARIAS tiendas, y de
  * cuántas. Va pegada a los DOS agregados que el desglose parte —«Pago a tienda» y «Gana la
  * tienda»—, porque los dos engañan igual: un número solo, sin esta frase, se lee como si fuera
@@ -523,87 +513,24 @@ export function totalDeVariasTiendasNota(cuantasTiendas: number): string {
 }
 
 /**
- * FICHA 396 (R4) — LAS TRES CIFRAS DE UNA TIENDA. Y son TRES, no cuatro: R5 lo prohíbe, y la
- * tercera entró el 2026-09-08 por firma explícita del humano (Q7 del spec), no de paso.
+ * FICHA 396 — EL UMBRAL (R2, Q5) Y LA MARCA (R1), en UNA sola función para todos los niveles del
+ * detalle. Devuelve la frase de `totalDeVariasTiendasNota` cuando el nivel tiene dos o más
+ * tiendas, y `null` con una o ninguna: ahí la pantalla no enseña ni marca ni «Por tienda».
  *
- * ⚠️ LOS DOS ÚLTIMOS TIENEN QUE SER IMPOSIBLES DE CONFUNDIR, y por eso dicen «hoy» y «en total»
- * con todas las letras: confundir lo que se le paga con lo que gana es exactamente el fallo que
- * la ficha 395 acaba de arreglar un nivel más arriba, y aquí se multiplica por el número de
- * tiendas. La diferencia entre las dos, por tienda, es el flete por rechazo + IVA de ESA tienda,
- * que se le cobra aparte contra su saldo (`DESGLOSE_POR_TIENDA_NOTA`).
+ * El umbral se evalúa sobre las tiendas del NIVEL que se pinta (el cierre de un mensajero, o el
+ * agregado de bodega), nunca sobre una lista de más arriba. Está en un solo sitio a propósito: la
+ * marca y el desglose tienen que aparecer y desaparecer JUNTOS.
  *
- * NO se reusan `PAGO_TIENDA_LABEL` («Pago a tienda») ni `GANA_LA_TIENDA_LABEL` («Gana la
- * tienda»): esos dos nombran los AGREGADOS del cierre entero, y darles aquí un segundo
- * significado —el de UNA tienda— haría que la misma etiqueta valiera dos cifras distintas en la
- * misma pantalla, que es el defecto que la 393 cerró (R24) y el que esta ficha viene a arreglar.
- * Dentro de la cascada de una tienda el sujeto ya ES esa tienda: el rótulo dice qué se le hace,
- * no a quién.
+ * SLT-172 la mudó aquí desde `DesglosePorTienda.tsx`, que se retiró sin superficie: su único
+ * consumidor vivo es `components/private/cierres/detalle/detalle-cierre-vista.ts`.
  *
- * Elección de redacción del `frontend_dev`.
+ * Recibe `readonly unknown[]` y no `readonly ParteDeTienda[]`: solo cuenta elementos, y pedir el
+ * tipo a `lib/utils/ingreso-empresa` metería ese módulo (que importa `Prisma` como valor) en el
+ * árbol del panel del mensajero que vigila `pagos-captura.guardia` (R19). Toda lista de
+ * `ParteDeTienda` se le sigue pasando tal cual.
  */
-export const TIENDA_RECAUDADO_LABEL = "Recaudado de esta tienda";
-export const TIENDA_PAGO_HOY_LABEL = "Se le paga hoy";
-export const TIENDA_GANA_TOTAL_LABEL = "Gana en total";
-
-/**
- * FICHA 396 — la frase que impide leer las dos cifras de pago como un descuadre. Es el par
- * `PAGO_TIENDA_HOY_NOTA` / `GANA_LA_TIENDA_NOTA` de la 395 dicho UNA vez para todo el desglose:
- * repetir las dos notas dentro de cada tienda las convertiría en ruido justo donde hay que
- * leerlas, y con dos tiendas ya serían cuatro párrafos casi iguales.
- */
-export const DESGLOSE_POR_TIENDA_NOTA =
-  "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete por devolución a origen, que a la tienda se le cobra aparte, contra su saldo.";
-/** D40: la misma identidad en el nuevo: `pagoTienda − ganaLaTienda` es `fleteDevolucionConIva`. */
-export const DESGLOSE_POR_TIENDA_NOTA_MODELO_NUEVO =
-  "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete de gestiones no entregadas, que a la tienda se le cobra aparte, contra su saldo.";
-
-/**
- * FICHA 396 (R17) — lo que el desglose NO reparte, dicho mientras se enseña el desglose.
- *
- * El pago al mensajero y el ingreso de bodega por rechazos son del cierre ENTERO y se quedan
- * agregados (R16, Q2): repartirlos exigiría inventar un criterio —¿por órdenes? ¿por importe?—
- * que nadie ha firmado, y un número repartido con un criterio inventado miente con precisión,
- * mientras que uno agregado y rotulado sólo calla. Sin esta frase, quien vea unas cifras
- * partidas por tienda y otras no supondría que el reparto está en alguna parte.
- */
-export const DESGLOSE_NO_REPARTIDO_NOTA =
-  "El pago al mensajero y el ingreso de bodega por devoluciones a origen son del cierre completo: no están repartidos entre las tiendas.";
-/** SLT-54 (R71): la misma frase en el modelo nuevo. */
-export const DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO =
-  "El pago al mensajero y el ingreso de bodega son del cierre completo: no están repartidos entre las tiendas.";
-
-/**
- * FICHA 396 (D2) — EL NOMBRE ACCESIBLE de la cascada de UNA tienda, y tiene que ser ÚNICO.
- *
- * ⚠️ EL NOMBRE DE LA TIENDA NO BASTA, y no es un caso teórico: el servidor agrupa por el
- * `tiendaId` congelado precisamente para que **dos tiendas homónimas no se fundan** (R7, atado
- * con un test contra Postgres real), así que dos cascadas pueden llegar con el MISMO nombre
- * visible y con dinero distinto. Dos regiones con el mismo nombre accesible dejan a quien navega
- * por landmarks sin manera de decir cuál es cuál — y el modal del cierre de BODEGA lo multiplica:
- * el desglose se monta una vez por mensajero incluido MÁS una para el agregado, así que la misma
- * tienda aparece varias veces a propósito.
- *
- * Por eso el nombre lleva DOS discriminantes:
- *  - la POSICIÓN dentro de su nivel («1 de 3»), que separa a dos homónimas del MISMO nivel y de
- *    paso dice cuántas hay. El orden es el que emitió el servidor (R8), no uno del navegador;
- *  - el CONTEXTO —«cierre de bodega», o el nombre del mensajero—, que separa el mismo nombre
- *    repetido en dos niveles del mismo modal.
- *
- * El `indice + 1` se hace AQUÍ, en el módulo de textos, y no en el componente: es el ordinal de
- * una frase, no un importe, y el componente del desglose no hace ni una operación (R14).
- *
- * El nombre VISIBLE de la cascada sigue siendo sólo el de la tienda: esto nombra la región para
- * quien no la ve, no añade texto a la pantalla.
- *
- * Elección de redacción del `frontend_dev`.
- */
-export function nombreAccesibleDeTienda(
-  tiendaNombre: string,
-  indice: number,
-  cuantasTiendas: number,
-  contexto: string,
-): string {
-  return `${tiendaNombre} (${indice + 1} de ${cuantasTiendas}) · ${contexto}`;
+export function marcaDeVariasTiendas(partes: readonly unknown[]): string | null {
+  return partes.length >= 2 ? totalDeVariasTiendasNota(partes.length) : null;
 }
 
 // ---------------------------------------------------------------------------
