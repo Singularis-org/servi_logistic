@@ -142,7 +142,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
       pone rojo R624 de `cifras-cierre.test.ts:213`.
   - *Hecho:* verde, con las dos mutaciones anotadas.
 
-- [ ] **T8 — Cierre.** Depende de T1-T7.
+- [x] **T8 — Cierre.** Depende de T1-T7.
   - `./init.sh` en verde, con `INIT_EXIT` escrito dentro del log.
   - **E2E en local** (`docs/perfil-agentes.md > Todos los agentes`, toca dinero):
     - `e2e/cierres-rediseno.spec.ts`;

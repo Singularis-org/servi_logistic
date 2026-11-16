@@ -236,3 +236,9 @@ nombre ganó un importador vivo desde e92741e5.
 - `cierre-factura.tsx:515` nombra `CascadaDinero`: deuda D7 (§12), no se toca.
 
 **Veredicto tanda 2:** T5 y T6 hechas; typecheck en 0, tests tocados en verde y cada mutación de §7 en rojo.
+
+## T8 — Cierre (leader, 2026-11-16)
+
+- `./init.sh` (rápido) en el worktree: tanda 1 `INIT_EXIT=0` (tras anotar `tamano-pr-aceptado`), tanda 2 `INIT_EXIT=0` sobre `dd2d4bb7`, con `.env` cargado. Los 1026 tests relacionados pasan del presupuesto local (150): los corre CI.
+- E2E de dinero (`cierres-rediseno`, `cierre-bodega-satelite`, proyecto `dinero`): no se corren en local; los corre el job `e2e (dinero)` de `gate.yml` en el PR #183. Tanda 1 (`255e344f`): `gate-completo`, vitest 1-3/3 (con integración, incluidos los 6 `sql-real`/`.int` tocados) y `e2e (dinero)` en verde. El resultado del último push queda en el PR.
+- Review: OK (`progress/review_SLT-174.md`, 62335d49). Menores de comentarios (`cascadas-bodega.ts:26`, `CierresAdminService.ts:1129`, `cierre-factura.tsx:515`, líneas largas en `parte-de-tienda.ts:13`, `ICierresBodegaAdminService.ts:133`, `cierre-detalle-shared.tsx:141`) quedan para un chore tras el merge de SLT-125 (#161).
