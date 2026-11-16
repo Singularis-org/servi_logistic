@@ -126,9 +126,11 @@ T1 mide el conjunto entero, porque puede haber más caminos que estos dos.
 | Id | Fecha · quién | Decisión |
 |---|---|---|
 | D1 | 2026-11-16 · Carlos | (Heredada de SLT-172, `specs/SLT-172-limpieza-pago-neto/requirements.md:91`.) Corte en tres. R621/R623 en el baseline y la guardia R631 van a SLT-175. |
+| D2 | 2026-11-16 · Carlos | (Era P1.) Los dos caminos de `CierreBodegaService` (`:556` → `cifras-bodega-descarga.ts:90`; `:40` → `CierresAdminService.ts:87`) quedan como excepciones con nombre y `archivo:línea` en la guardia R631. La lista solo puede encoger. La vacía SLT-176 «Sacar de CierreBodegaService las lecturas de cifras de presentación del cierre»; esta ficha sale con las excepciones. |
+| D3 | 2026-11-16 · Carlos | (Era P2.) Las otras 239 entradas del baseline con el motivo SL-31 van a una ficha aparte, SLT-177 «Volver a medir los rojos heredados del baseline que esperaban a SL-31». Fuera de alcance aquí. |
 
 Cobertura: D1 → R670-R675 (R621/R623 con datos propios y fuera del baseline) y R676-R679 (R631 con
-imports indirectos).
+imports indirectos). D2 → R678. D3 → R675 (solo salen dos claves).
 
 ## Requisitos (EARS)
 
@@ -323,13 +325,4 @@ opción de nombre en `crearUsuarioDePrueba`, se renombra en la tx en vez de camb
 
 ## Preguntas abiertas
 
-- **P1 — Los dos caminos que ya existen** (bloquea F1.4: lo responde el humano al aprobar).
-  - `CierreBodegaService` llega a `cifras-cierre-bodega` por `cifrasBodegaDescarga`
-    (`CierreBodegaService.ts:556`) y a `cifras-cierre` por el módulo `CierresAdminService`
-    (`:40` → `CierresAdminService.ts:87`).
-  - **Propuesta:** aceptarlos como excepciones con nombre (R678). Es lectura para el listado o la
-    descarga, no el asiento, y la lista solo puede encoger.
-  - **Alternativa:** abrir una ficha de ruta completa que los saque de `CierreBodegaService`. En ese
-    caso, ¿esta ficha espera a esa, o sale con las excepciones y la otra las borra?
-- **P2 — Las otras 239 entradas del baseline** dicen «La retira SL-31» y SL-31 está `done`. ¿Se abre una
-  ficha para re-medirlas y re-atribuirlas? No es de esta.
+Ninguna. P1 y P2 se cerraron al aprobar el spec: ver D2 y D3 en `## Decisiones cerradas`.
