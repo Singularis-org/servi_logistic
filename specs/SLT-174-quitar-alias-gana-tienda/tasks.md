@@ -132,7 +132,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
   - Cada mutación se aplica, se ve el rojo, se revierte y se anota en `progress/impl_SLT-174.md`. Que
     sea en ese orden, no en paralelo con el gate (memoria «Gate y mutaciones no en paralelo»).
 
-- [ ] **T7 — Invariantes de dinero (R656, §9).** Depende de T4.
+- [x] **T7 — Invariantes de dinero (R656, §9).** Depende de T4.
   - Correr los tests de la tabla de §9 y comprobar que sus literales no cambiaron con
     `git diff origin/dev -- <archivo>` sobre esas líneas.
   - *Mutación* (aplicar, ver rojo, revertir):

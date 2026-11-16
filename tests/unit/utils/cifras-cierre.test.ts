@@ -208,6 +208,9 @@ describe("SLT-169 R620/R622 — el pago a la tienda resta TODO lo facturado (fol
 
   it("R624: lo que se le paga + Total facturado = lo recaudado (−13.205,05 + 33.105,05 = 19.900)", () => {
     expect(cifras.totalesIngreso.total).toBe("33105.05");
+    // SLT-174 (R656): la identidad misma, en céntimos enteros, contra el recaudado escrito a mano.
+    const centimos = (s: string) => BigInt(s.replace(".", ""));
+    expect(centimos(cifras.pagoTienda) + centimos(cifras.totalesIngreso.total)).toBe(BigInt(1990000));
   });
 });
 

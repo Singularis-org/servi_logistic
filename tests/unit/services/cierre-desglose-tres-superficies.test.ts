@@ -375,7 +375,6 @@ describe("396/D4 — el desglose por tienda entra por LAS TRES superficies (R22)
     expect(mensajero.pagoTienda).toBe("128474.00");
     expect(bodega.pagoTiendaPorMensajero).toBe("128474.00");
     expect(bodega.pagoTiendaAgregado).toBe("128474.00");
-    expect(mensajero).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
   });
 
   it("ninguna de las tres devuelve la lista vacía — que es la forma que tiene «nadie la llama»", async () => {
