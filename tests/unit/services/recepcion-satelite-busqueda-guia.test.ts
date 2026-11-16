@@ -26,9 +26,15 @@ function montar(guiasDelListado: number[]) {
   const existeGuiaEnBodega = vi.fn(async (filtro: RecepcionSateliteFiltro) =>
     guiasDelListado.includes(filtro.numGuia ?? -1),
   );
-  const findRecepcionSatelitePaginada = vi.fn(async () => ({ items: [], total: 0 }));
-  const findRecepcionSateliteCompleta = vi.fn(async () => []);
-  const findIdsVigentesEnBodega = vi.fn(async () => [] as string[]);
+  const findRecepcionSatelitePaginada = vi.fn<
+    (filtro: RecepcionSateliteFiltro, rango: unknown) => Promise<{ items: []; total: number }>
+  >(async () => ({ items: [], total: 0 }));
+  const findRecepcionSateliteCompleta = vi.fn<
+    (filtro: RecepcionSateliteFiltro) => Promise<[]>
+  >(async () => []);
+  const findIdsVigentesEnBodega = vi.fn<
+    (filtro: RecepcionSateliteFiltro, ids: readonly string[]) => Promise<string[]>
+  >(async () => []);
   const repo = {
     findUsuarioZonaId: vi.fn(async () => "z-a"),
     existeGuiaEnBodega,
@@ -52,7 +58,7 @@ function montar(guiasDelListado: number[]) {
 async function filtroDePagina(q: string, guias: number[]) {
   const m = montar(guias);
   await m.svc.listarOrdenesBodegaPaginado(listarOrdenesBodegaPaginadoSchema.parse({ q }), SAT);
-  return { ...m, filtro: m.findRecepcionSatelitePaginada.mock.calls[0]![0] as RecepcionSateliteFiltro };
+  return { ...m, filtro: m.findRecepcionSatelitePaginada.mock.calls[0]![0] };
 }
 
 describe("SLT-160 — R606: guía exacta en la satélite", () => {
@@ -108,7 +114,7 @@ describe("SLT-160 — R607: el mismo criterio en la descarga y en la vigencia", 
       listarOrdenesBodegaCompletoSchema.parse({ q: "91024" }),
       SAT,
     );
-    const filtro = m.findRecepcionSateliteCompleta.mock.calls[0]![0] as RecepcionSateliteFiltro;
+    const filtro = m.findRecepcionSateliteCompleta.mock.calls[0]![0];
     expect(filtro.numGuia).toBe(91024);
     expect(filtro).not.toHaveProperty("busqueda");
   });
@@ -119,7 +125,7 @@ describe("SLT-160 — R607: el mismo criterio en la descarga y en la vigencia", 
       listarIdsVigentesBodegaSchema.parse({ q: "91024", ids: [ID] }),
       SAT,
     );
-    const filtro = m.findIdsVigentesEnBodega.mock.calls[0]![0] as RecepcionSateliteFiltro;
+    const filtro = m.findIdsVigentesEnBodega.mock.calls[0]![0];
     expect(filtro.numGuia).toBe(91024);
     expect(filtro).not.toHaveProperty("busqueda");
   });
