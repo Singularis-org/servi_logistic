@@ -16,6 +16,7 @@ import type {
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
+import type { ParteDeTienda } from "@/lib/types/parte-de-tienda";
 import { EMPRESA } from "@/lib/config/marca";
 // FICHA 408 — los dos módulos del vocabulario de la causa de devolución. Los DOS son PUROS
 // (sin React, sin DOM), así que este archivo lo sigue siendo. El precedente de importar
@@ -524,12 +525,11 @@ export function totalDeVariasTiendasNota(cuantasTiendas: number): string {
  * SLT-172 la mudó aquí desde `DesglosePorTienda.tsx`, que se retiró sin superficie: su único
  * consumidor vivo es `components/private/cierres/detalle/detalle-cierre-vista.ts`.
  *
- * Recibe `readonly unknown[]` y no `readonly ParteDeTienda[]`: solo cuenta elementos, y pedir el
- * tipo a `lib/utils/ingreso-empresa` metería ese módulo (que importa `Prisma` como valor) en el
- * árbol del panel del mensajero que vigila `pagos-captura.guardia` (R19). Toda lista de
- * `ParteDeTienda` se le sigue pasando tal cual.
+ * SLT-174 (R661): recibe `readonly ParteDeTienda[]`, pedido a `lib/types/parte-de-tienda`, un
+ * módulo sin imports. Pedirlo a `lib/utils/ingreso-empresa` metería ese módulo (que importa
+ * `Prisma` como valor) en el árbol del panel del mensajero que vigila `pagos-captura.guardia` (R19).
  */
-export function marcaDeVariasTiendas(partes: readonly unknown[]): string | null {
+export function marcaDeVariasTiendas(partes: readonly ParteDeTienda[]): string | null {
   return partes.length >= 2 ? totalDeVariasTiendasNota(partes.length) : null;
 }
 

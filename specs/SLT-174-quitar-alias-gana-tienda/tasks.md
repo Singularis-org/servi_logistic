@@ -17,7 +17,7 @@ del leader «Worktree sin .env = gate ciego» y «vitest related toca la base lo
   - Lo vivo que no esté cubierto en otro sitio se reubica en un test vivo.
   - *Hecho:* la tabla existe y no queda ni una fila «vivo, sin cubrir».
 
-- [ ] **T2 — `ParteDeTienda` a `lib/types/parte-de-tienda.ts` (R661, §4).** Depende de T1.
+- [x] **T2 — `ParteDeTienda` a `lib/types/parte-de-tienda.ts` (R661, §4).** Depende de T1.
   - Crear el módulo, sin un solo `import`. En esta task se mueve con sus cinco claves; T3 le quita
     la quinta.
   - En `ingreso-empresa.ts`: `import type` + `export type { ParteDeTienda }`, y borrar la interfaz

@@ -8,6 +8,7 @@ import type {
 import type { WalletIngresoConcepto } from "@/lib/types/wallet";
 import type { OrigenFlete } from "@/lib/types/tarifa";
 import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
+import type { ParteDeTienda } from "@/lib/types/parte-de-tienda";
 import { importeDe, ivaDe } from "@/lib/tarifas/calculo";
 import { conceptoPorResultado } from "@/lib/tarifas/catalogo";
 // Ficha 396 — `partesPorTienda` particiona el recaudo con LA MISMA funcion que produce el total
@@ -529,38 +530,11 @@ export function ganaLaTienda(totalGeneral: string, ingresoTotal: string): string
 /* -------------------------------------------------------------------------- */
 
 /**
- * 💰 Ficha 396 — UNA TIENDA de un cierre, con SUS TRES cifras. Todas STRING escala 2.
- *
- * CINCO CLAVES Y NI UNA MAS (R5). `fleteConIva` y `comisionConIva` por tienda se calculan
- * DENTRO de `partesPorTienda` —hacen falta para derivar `pagoTienda`— y NO se emiten: un
- * contrato que ofrece lo que la pantalla no debe ensenar acaba ensenandose, porque bastaria con
- * que alguien las pintara «ya que estan».
+ * 💰 Ficha 396 — UNA TIENDA de un cierre. SLT-174 (R661) mudó la interfaz a
+ * `lib/types/parte-de-tienda.ts`, un módulo sin imports; aquí se re-exporta EL MISMO tipo, no una
+ * copia, para que sus importadores de siempre no cambien.
  */
-export interface ParteDeTienda {
-  /** La CLAVE del grupo: `cierre_detail.tienda_id`, congelado (R7). Nunca el nombre. */
-  tiendaId: string;
-  /** El nombre congelado, SOLO para mostrarlo. No agrupa nada (R7). */
-  tiendaNombre: string;
-  /**
-   * Lo RECAUDADO atribuido a esta tienda. Sale de `computeTotales` sobre SUS gestiones, o sea
-   * con EXACTAMENTE el mismo criterio que el `total general` del cierre entero (R13): solo las
-   * `entregada`, y solo por sus lineas de pago. Puede ser "0.00" (una tienda que solo trajo
-   * rechazos recauda cero y aun asi aparece, R9).
-   */
-  recaudado: string;
-  /**
-   * «Se le paga hoy» A ESTA TIENDA: lo recaudado menos TODO lo que la empresa le factura,
-   * flete por rechazo + IVA incluido (SLT-169 R621). `ganaLaTienda(recaudado, total)` sobre SU
-   * subconjunto. Puede ser NEGATIVO (la tienda debe) y viaja con su signo, nunca "0.00".
-   */
-  pagoTienda: string;
-  /**
-   * ALIAS de `pagoTienda`, con el MISMO valor desde SLT-169 (antes era la unica cifra que restaba
-   * el flete por rechazo). Se mantiene para no ensanchar el PR; se retira en la ficha de limpieza
-   * (P3 de SLT-169).
-   */
-  ganaLaTienda: string;
-}
+export type { ParteDeTienda };
 
 /**
  * Lo UNICO que `partesPorTienda` lee de una gestion. `GestionConPagos` se REUSA de
