@@ -8,6 +8,7 @@ import { CifrasCierre } from "@/components/private/cierres/detalle/CifrasCierre"
 import type { Cifra } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { HiloNotasOrden } from "@/components/shared/HiloNotasOrden";
 import { BulkUpload } from "@/components/shared/BulkUpload";
+import { chipDeEstado } from "@/app/(app)/mis-asignaciones/_components/chat/chat-format";
 import { componer, contraste, token, utilidad } from "../fixtures/contraste";
 
 // SLT-170 «Contraste en modo oscuro de la tarjeta «Le queda a la empresa»». `--color-brand-soft`
@@ -213,5 +214,25 @@ describe("SLT-170 — BulkUpload: la zona de carga se lee al arrastrar y al pasa
     it(`hover ≥ 4.5:1 en ${tema}`, () => {
       expect(peorContraste(zona(), tema, "hover:")).toBeGreaterThanOrEqual(4.5);
     });
+  }
+});
+
+// SLT-173 «Chips del chat del mensajero sin variante oscura». Pendiente que dejó SLT-170: los
+// chips `en_reparto` (`bg-info-soft`) y `entregado` (`bg-success-soft`) del chat no llevaban
+// `dark:bg-*`; su fondo fijo no gira con el tema. Se miden las clases que DEVUELVE `chipDeEstado`
+// (la función real que pinta el chip), no una copia, en los dos temas.
+describe("SLT-173 — chips del chat del mensajero: se leen en los dos temas", () => {
+  for (const codigo of ["en_reparto", "entregado", "novedad"]) {
+    for (const tema of TEMAS) {
+      it(`chip ${codigo} ≥ 4.5:1 en ${tema}`, () => {
+        const { label, className } = chipDeEstado(codigo);
+        const { container } = render(
+          <span className={className}>
+            <span>{label}</span>
+          </span>,
+        );
+        expect(peorContraste(container.firstElementChild!, tema)).toBeGreaterThanOrEqual(4.5);
+      });
+    }
   }
 });
