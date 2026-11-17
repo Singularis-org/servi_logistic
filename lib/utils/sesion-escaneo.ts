@@ -127,20 +127,74 @@ export function horaLectura(d: Date): string {
   return `${dosCifras(d.getHours())}:${dosCifras(d.getMinutes())}:${dosCifras(d.getSeconds())}`;
 }
 
-/** Texto de la columna «Estado» (R582-R585). El motivo de «No se pudo recibir» va aparte. */
-export function textoEstado(estado: EstadoFila): string {
+/**
+ * SLT-168 «Escaneo continuo en las recogidas del mensajero» — los textos de cada superficie
+ * (R596, R597, R830, R831). «Repetidas», «No encontradas» y «Código inválido» son iguales en
+ * todas y no van aquí. Sin `textos`, las recepciones siguen con los suyos (R834).
+ */
+export interface TextosSesion {
+  enCurso: string;
+  exito: string;
+  /** `ya_recibida` del servidor. */
+  yaHecha: string;
+  /** `repetida_en_sesion` (R585/R831). */
+  repetida: string;
+  noEncontrada: string;
+  noSePudo: string;
+  /** Rótulo del primer contador (R586/R597). */
+  contadorExitos: string;
+}
+
+export const TEXTOS_RECEPCION: TextosSesion = {
+  enCurso: "Recibiendo…",
+  exito: "Recibida",
+  yaHecha: "Ya recibida",
+  repetida: "Ya recibida",
+  noEncontrada: "No encontrada",
+  noSePudo: "No se pudo recibir",
+  contadorExitos: "Recibidas",
+};
+
+/** M1 «Recoger paquete» (textos aprobados por Carlos el 2026-11-17). */
+export const TEXTOS_RECOGIDA: TextosSesion = {
+  enCurso: "Recogiendo…",
+  exito: "Recogida",
+  yaHecha: "Ya recogida",
+  repetida: "Ya recogida",
+  noEncontrada: "No está entre tus órdenes",
+  noSePudo: "No se pudo recoger",
+  contadorExitos: "Recogidas",
+};
+
+/** M2 «Recolectar en tienda» (textos aprobados por Carlos el 2026-11-17). */
+export const TEXTOS_RECOLECCION: TextosSesion = {
+  enCurso: "Recolectando…",
+  exito: "Recolectada",
+  yaHecha: "Ya recolectada",
+  repetida: "Ya recolectada",
+  noEncontrada: "No está entre tus órdenes",
+  noSePudo: "No se pudo recolectar",
+  contadorExitos: "Recolectadas",
+};
+
+/** Texto de la columna «Estado» (R582-R585). El motivo de «No se pudo …» va aparte. */
+export function textoEstado(
+  estado: EstadoFila,
+  textos: TextosSesion = TEXTOS_RECEPCION,
+): string {
   switch (estado.tipo) {
     case "recibiendo":
-      return "Recibiendo…";
+      return textos.enCurso;
     case "recibida":
-      return "Recibida";
+      return textos.exito;
     case "ya_recibida":
+      return textos.yaHecha;
     case "repetida_en_sesion":
-      return "Ya recibida";
+      return textos.repetida;
     case "no_encontrada":
-      return "No encontrada";
+      return textos.noEncontrada;
     case "no_se_pudo":
-      return "No se pudo recibir";
+      return textos.noSePudo;
     case "codigo_invalido":
       return "Código inválido";
   }

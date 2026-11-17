@@ -3,7 +3,7 @@
 Requisito previo cumplido en `dev`: SLT-159 «Escaneo continuo en recepciones y recogidas» (rebanada b,
 PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
 
-- [ ] **T1 — Textos por superficie.** `lib/utils/sesion-escaneo.ts`: `TextosSesion`,
+- [x] **T1 — Textos por superficie.** `lib/utils/sesion-escaneo.ts`: `TextosSesion`,
   `TEXTOS_RECEPCION` (los literales de hoy), `TEXTOS_RECOGIDA`, `TEXTOS_RECOLECCION`; `textoEstado`
   con `textos` opcional. `components/shared/EscaneoContinuo.tsx`: `textos?` en `ContadoresEscaneo`,
   `LecturasEscaneo` y `TarjetaEscaneoContinuo`, `icono?` en la tarjeta. *Hecho:* R597, R830 y la parte

@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
@@ -13,6 +13,7 @@ import {
   type DesenlaceRecepcion,
   type EstadoFila,
   type FilaLectura,
+  type TextosSesion,
 } from "@/lib/utils/sesion-escaneo";
 import { cn } from "@/lib/utils";
 
@@ -37,9 +38,16 @@ export function ContadoresEscaneo({
   contadores,
   apilado = false,
   className,
-}: Readonly<{ contadores: ContadoresSesion; apilado?: boolean; className?: string }>) {
+  textos,
+}: Readonly<{
+  contadores: ContadoresSesion;
+  apilado?: boolean;
+  className?: string;
+  /** SLT-168: el verbo de la superficie en el primer contador; sin él, «Recibidas» (R834). */
+  textos?: TextosSesion;
+}>) {
   const items = [
-    { rotulo: "Recibidas", valor: contadores.recibidas },
+    { rotulo: textos?.contadorExitos ?? "Recibidas", valor: contadores.recibidas },
     { rotulo: "Repetidas", valor: contadores.repetidas },
     { rotulo: "No encontradas", valor: contadores.noEncontradas },
   ];
@@ -61,7 +69,12 @@ export function ContadoresEscaneo({
 function Estado({
   fila,
   onReintentar,
-}: Readonly<{ fila: FilaLectura; onReintentar: (id: number) => void }>) {
+  textos,
+}: Readonly<{
+  fila: FilaLectura;
+  onReintentar: (id: number) => void;
+  textos?: TextosSesion;
+}>) {
   return (
     <div className="flex flex-col items-start gap-1.5">
       <span
@@ -70,7 +83,7 @@ function Estado({
           COLOR_ESTADO[fila.estado.tipo],
         )}
       >
-        {textoEstado(fila.estado)}
+        {textoEstado(fila.estado, textos)}
       </span>
       {fila.estado.tipo === "no_se_pudo" ? (
         <>
@@ -90,6 +103,8 @@ export interface LecturasEscaneoProps {
   onReintentar: (filaId: number) => void;
   variante: "lista" | "tabla";
   className?: string;
+  /** SLT-168: textos de la superficie; sin ellos, los de las recepciones (R834). */
+  textos?: TextosSesion;
 }
 
 /** La lista de lecturas (`role="log"`), la más reciente arriba (R581). */
@@ -98,6 +113,7 @@ export function LecturasEscaneo({
   onReintentar,
   variante,
   className,
+  textos,
 }: Readonly<LecturasEscaneoProps>) {
   if (variante === "lista") {
     return (
@@ -112,7 +128,7 @@ export function LecturasEscaneo({
             <li key={fila.id} className="flex flex-col gap-1 py-2.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-sm break-all">{fila.numGuia ?? fila.leido}</span>
-                <Estado fila={fila} onReintentar={onReintentar} />
+                <Estado fila={fila} onReintentar={onReintentar} textos={textos} />
               </div>
               <span className="text-xs text-muted-foreground">
                 {resumen?.destinatario ?? SIN_DATO} · {resumen?.tienda ?? SIN_DATO} ·{" "}
@@ -153,7 +169,7 @@ export function LecturasEscaneo({
                 <td className="px-4 py-3">{resumen?.destinatario ?? SIN_DATO}</td>
                 <td className="px-4 py-3 text-muted-foreground">{resumen?.tienda ?? SIN_DATO}</td>
                 <td className="px-4 py-3">
-                  <Estado fila={fila} onReintentar={onReintentar} />
+                  <Estado fila={fila} onReintentar={onReintentar} textos={textos} />
                 </td>
               </tr>
             );
@@ -173,6 +189,10 @@ export interface TarjetaEscaneoContinuoProps {
   descripcion: string;
   ariaLabel: string;
   submitLabel: string;
+  /** SLT-168: textos de la superficie (recogida, recolección); sin ellos, los de recepción. */
+  textos?: TextosSesion;
+  /** SLT-168: icono de la tarjeta (`PackageCheck`, `Store`); sin él, el de `EscanerGuiaCard`. */
+  icono?: LucideIcon;
 }
 
 /**
@@ -187,6 +207,8 @@ export function TarjetaEscaneoContinuo({
   descripcion,
   ariaLabel,
   submitLabel,
+  textos,
+  icono,
 }: Readonly<TarjetaEscaneoContinuoProps>) {
   const sesion = useSesionEscaneo(recibir, { alCerrarConRecepcion });
   return (
@@ -195,17 +217,19 @@ export function TarjetaEscaneoContinuo({
       ariaLabel={ariaLabel}
       titulo={titulo}
       descripcion={descripcion}
+      icono={icono}
       onDecoded={sesion.procesar}
       manual={{ onSubmit: sesion.procesar, submitLabel }}
       alLlegar={sesion.registrar}
       lineaDeError={false}
       mensajeErrorCamara="No se pudo abrir la cámara."
     >
-      <ContadoresEscaneo contadores={sesion.contadores} className="mt-6" />
+      <ContadoresEscaneo contadores={sesion.contadores} textos={textos} className="mt-6" />
       <LecturasEscaneo
         variante="lista"
         filas={sesion.filas}
         onReintentar={sesion.reintentar}
+        textos={textos}
         className="mt-3"
       />
     </EscanerGuiaCard>
