@@ -6,6 +6,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
+import type { ApiOrdenListadoDTO } from "@/lib/types/api-orden";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo65, type EmpresaGeo65 } from "../db/_fixtures/geo-65";
 import { comoDueno, revertida } from "../db/_fixtures/pais-20";
@@ -32,6 +33,22 @@ const SIN_URLS: ISignedUrlProvider = {
   createSignedUrls: async (rutas: string[]) => Object.fromEntries(rutas.map((r) => [r, `https://firmada.test/${r}`])),
 };
 
+/**
+ * El listado de v1 ordena solo por `createdAt desc` (R10 de su ficha). Todas las ordenes del fixture
+ * se insertan en la misma transaccion con `now()`, que en Postgres es la hora de INICIO de la
+ * transaccion: empatan todas, y el orden entre empatadas no esta definido. El `UPDATE` de las 3 FK
+ * reescribe las filas y puede cambiar ese orden entre las dos lecturas: era la causa del rojo
+ * intermitente (no una colision con otro archivo). Se ordenan los empates por `numRemision`; el orden
+ * por `createdAt` se sigue comprobando entero.
+ */
+function conEmpatesOrdenados(listado: ApiOrdenListadoDTO): ApiOrdenListadoDTO {
+  const items = [...listado.items].sort(
+    (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt) || a.numRemision.localeCompare(b.numRemision),
+  );
+  expect(items.map((i) => +new Date(i.createdAt))).toEqual(listado.items.map((i) => +new Date(i.createdAt)));
+  return { ...listado, items };
+}
+
 async function lecturaV1(tx: TxDeTest, e: EmpresaGeo65, ids: readonly string[]) {
   await comoApp(tx, e.base.empresaId);
   try {
@@ -42,7 +59,7 @@ async function lecturaV1(tx: TxDeTest, e: EmpresaGeo65, ids: readonly string[]) 
       const listado = await servicio.listar(actor, { limit: 100, offset: 0 });
       const detalles = [];
       for (const id of ids) detalles.push(await servicio.detallePorOrdenId(actor, id));
-      return { listado, detalles };
+      return { listado: conEmpatesOrdenados(listado), detalles };
     });
   } finally {
     await comoDueno(tx);

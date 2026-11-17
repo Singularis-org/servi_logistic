@@ -318,9 +318,12 @@ describe("312 / R14 — la correccion no escribe en ninguna otra tabla", () => {
     expect(bloque).toContain("producto");
     expect(bloque).toContain("notas");
     expect(bloque).toContain("direccion");
-    expect(bloque).toContain("provinciaId");
-    expect(bloque).toContain("cantonId");
-    expect(bloque).toContain("distritoId");
+    // SLT-48 R16/R29: la geografia que escribe la correccion es el nodo; la terna ya no esta en el tipo
+    // (el repositorio pone las 3 FK en NULL por su cuenta, sin que el llamador pueda mandarlas).
+    expect(bloque).toContain("nodoGeograficoId");
+    expect(bloque).not.toContain("provinciaId");
+    expect(bloque).not.toContain("cantonId");
+    expect(bloque).not.toContain("distritoId");
     expect(bloque).toContain("zonaId");
     expect(bloque).toContain("peso");
     // Y LOS SIETE QUE NO, uno por uno.
@@ -343,7 +346,9 @@ describe("312 / R14 — la correccion no escribe en ninguna otra tabla", () => {
     expect(inicio, "desaparecio `corregirDatosClienteSchema`").toBeGreaterThan(-1);
     const pick = tipos.slice(inicio, tipos.indexOf(".strict()", inicio));
     // Anti-vacuidad: el recorte ES el `.pick(...)` y trae lo que tiene que traer.
-    expect(pick).toContain("distritoId");
+    // SLT-48 R16: la geografia del borde es `nodoId` (antes la terna, con `distritoId`).
+    expect(pick).toContain("nodoId");
+    expect(pick).not.toContain("distritoId");
     expect(pick).toContain("direccion");
     expect(pick).not.toContain("zonaId");
     expect(pick).not.toContain("estatusId");

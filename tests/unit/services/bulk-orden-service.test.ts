@@ -339,9 +339,10 @@ describe("BulkOrdenService.cargarMasiva — geografia (R19/R20/R21)", () => {
 
     const arg = createManyArg(repo);
     expect(arg[0].zonaId).toBe("z1");
-    expect(arg[0].provinciaId).toBe("p1");
-    expect(arg[0].cantonId).toBe("c1");
-    expect(arg[0].distritoId).toBe("d1");
+    // SLT-48 R15: la orden guarda solo su nodo (el distrito resuelto); las 3 FK ya no se escriben.
+    expect(arg[0].nodoGeograficoId).toBe("d1");
+    const fks = arg[0] as unknown as Record<string, unknown>;
+    expect([fks.provinciaId, fks.cantonId, fks.distritoId]).toEqual([undefined, undefined, undefined]);
   });
 
   // Feature 276/R14 + R27b: un `canton_distrito` SIN parentesis no es un error de
@@ -382,7 +383,8 @@ describe("BulkOrdenService.cargarMasiva — geografia (R19/R20/R21)", () => {
 
     expect(r.status).toBe("ok");
     if (r.status === "ok") expect(r.summary.filas[0].resultado).toBe("creada");
-    expect(createManyArg(repo)[0].distritoId).toBe("d1");
+    // SLT-48 R15: el distrito resuelto viaja como nodo de la orden, no como FK.
+    expect(createManyArg(repo)[0].nodoGeograficoId).toBe("d1");
   });
 
   it("distrito sin zona asignada -> error de fila", async () => {
@@ -432,7 +434,10 @@ describe("BulkOrdenService.cargarMasiva — geografia (R19/R20/R21)", () => {
     );
 
     const arg = createManyArg(repo);
-    expect(arg[0]).toMatchObject({ provinciaId: "p1", cantonId: "c1", distritoId: "d1", zonaId: "z1" });
+    // SLT-48 R15: la misma geografia es el mismo nodo; las 3 FK ya no se escriben.
+    expect(arg[0]).toMatchObject({ nodoGeograficoId: "d1", zonaId: "z1" });
+    const fks = arg[0] as unknown as Record<string, unknown>;
+    expect([fks.provinciaId, fks.cantonId, fks.distritoId]).toEqual([undefined, undefined, undefined]);
   });
 });
 

@@ -29,7 +29,8 @@ describe("312/A2 + 327/A3 — R1/R2: los NUEVE campos, y ni uno mas", () => {
     expect(r.success).toBe(true);
   });
 
-  it("327/R1: acepta los NUEVE juntos", () => {
+  // SLT-48 R16: la geografia de la correccion es UN nodo (la hoja elegida); la terna sale del schema.
+  it("327/R1: acepta todos juntos (SLT-48 R16: la terna es ahora `nodoId`)", () => {
     const r = corregirDatosClienteSchema.safeParse({
       ordenId: ORDEN_ID,
       destinatario: "Ana Perez",
@@ -37,9 +38,7 @@ describe("312/A2 + 327/A3 — R1/R2: los NUEVE campos, y ni uno mas", () => {
       producto: "caja de zapatos",
       notas: "dejar en porteria",
       direccion: "avenida siempre viva 742",
-      provinciaId: "p-1",
-      cantonId: "c-1",
-      distritoId: "d-1",
+      nodoId: "d-1",
       peso: 2.5,
     });
     expect(r.success).toBe(true);
@@ -79,11 +78,10 @@ describe("312/A2 + 327/A3 — R1/R2: los NUEVE campos, y ni uno mas", () => {
 
   it("327/R2: `zonaId` no cuela ni con la confirmacion puesta", () => {
     // El gate de confirmacion NO es una llave maestra: `.strict()` sigue siendo `.strict()`.
+    // SLT-48 R16: la geografia va como `nodoId`; asi lo unico que puede hacer fallar el parse es `zonaId`.
     const r = corregirDatosClienteSchema.safeParse({
       ordenId: ORDEN_ID,
-      provinciaId: "p-1",
-      cantonId: "c-1",
-      distritoId: "d-1",
+      nodoId: "d-1",
       zonaId: "z-9",
       confirmaCambioDeUbicacion: true,
     });
@@ -104,9 +102,11 @@ describe("327/A3 — R3: la geografia viaja COMPLETA o no viaja", () => {
     expect(r.success).toBe(false);
   });
 
-  it("los tres juntos son validos", () => {
+  // SLT-48 R16: la terna ya no viaja, ni completa; la geografia es UN `nodoId` y la cadena la da el arbol.
+  it("los tres juntos ya no son validos (SLT-48 R16); un `nodoId` si", () => {
     const r = corregirDatosClienteSchema.safeParse({ ordenId: ORDEN_ID, ...GEO });
-    expect(r.success).toBe(true);
+    expect(r.success).toBe(false);
+    expect(corregirDatosClienteSchema.safeParse({ ordenId: ORDEN_ID, nodoId: GEO.distritoId }).success).toBe(true);
   });
 
   it("ninguno de los tres, con otro campo, tambien es valido", () => {
@@ -181,11 +181,10 @@ describe("327/A3 — la confirmacion no cuenta como campo a corregir", () => {
   });
 
   it("con un campo de verdad al lado si pasa, y llega como `true`", () => {
+    // SLT-48 R16: el campo de verdad de geografia es `nodoId`.
     const r = corregirDatosClienteSchema.safeParse({
       ordenId: ORDEN_ID,
-      provinciaId: "p-1",
-      cantonId: "c-1",
-      distritoId: "d-1",
+      nodoId: "d-1",
       confirmaCambioDeUbicacion: true,
     });
     expect(r.success).toBe(true);

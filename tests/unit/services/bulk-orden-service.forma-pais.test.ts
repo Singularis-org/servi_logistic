@@ -6,7 +6,7 @@ import {
   type EntradaDelMotor,
 } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
-import { MSG_PAIS_NO_HABILITADO, type EntradaUbicacion } from "@/lib/services/geo-ubicacion";
+import { msgUbicacionIncompleta, type EntradaUbicacion } from "@/lib/services/geo-ubicacion";
 import { crearAsignaciones, type CatalogoGeografico, type ZonaAsignada } from "@/lib/services/geografia-dominio";
 import type {
   CreateOrdenData,
@@ -142,11 +142,20 @@ function filaV1(numRemision: string, over: Partial<RawRow> = {}): RawRow {
   };
 }
 
+/** SLT-48 R15: las 3 FK viejas de una orden creada; deben venir las tres sin valor. */
+function fksViejas(o: CreateOrdenData): unknown[] {
+  const r = o as unknown as Record<string, unknown>;
+  return [r.provinciaId, r.cantonId, r.distritoId];
+}
+
 describe("R5 — carga v1: la forma del pais se comprueba antes de resolver las filas", () => {
+  // SLT-48 R18: la comprobacion de forma desaparece; «pais no habilitado» no sale nunca mas. Cada fila
+  // de v1 se resuelve con `resolveGeo` sobre la geografia de v1 del doble, como en un pais de 3 niveles
+  // (la regla de hoja de v1, R19, la cubre `geo-resolucion-v1-mensajes.test.ts`).
   it.each([
     ["2 niveles", DOS],
     ["4 niveles", CUATRO],
-  ])("pais de %s: cada fila sale con «pais no habilitado» bajo `ubicacion` y no se crea nada", async (_n, cat) => {
+  ])("pais de %s: ya no hay «pais no habilitado» (SLT-48 R18); cada fila se resuelve por v1", async (_n, cat) => {
     const repo = buildRepo();
     const tarifas = tarifaRepo();
     const r = await bulk(repo, tarifas, catalogoRepo(cat)).cargarViaApi(
@@ -156,26 +165,21 @@ describe("R5 — carga v1: la forma del pais se comprueba antes de resolver las 
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
-    expect(r.summary).toEqual({
+    // SLT-48 R18: las dos filas buenas se crean; la tercera falla por lo suyo, no por la forma del pais.
+    expect(r.summary).toMatchObject({
       total: 3,
-      creadas: 0,
+      creadas: 2,
       duplicadas: 0,
-      conError: 3,
-      filas: [],
-      errores: [
-        { fila: 1, numRemision: "R-1", resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
-        { fila: 2, numRemision: "R-2", resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
-        { fila: 3, numRemision: "", resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
-      ],
-      ordenes: [],
-      cargaId: null,
+      conError: 1,
+      errores: [{ fila: 3, numRemision: "", resultado: "error", errores: { num_remision: ["num_remision es obligatorio"] } }],
     });
-    expect(r.manifiestoOrdenIds).toEqual([]);
-    // Ni orden, ni lote, ni tarifa, ni lectura de la geografia de v1.
-    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+    expect(JSON.stringify(r.summary)).not.toMatch(/no habilitado/);
+    expect(r.manifiestoOrdenIds).toHaveLength(2);
+    // SLT-48 R18: se crea, se tarifa y se lee la geografia de v1, como en cualquier pais.
+    expect(repo.createManyOrdenesConGuia).toHaveBeenCalledTimes(1);
     expect(repo.createManyOrdenes).not.toHaveBeenCalled();
-    expect(tarifas.resolveTarifas).not.toHaveBeenCalled();
-    expect(repo.findAllProvincias).not.toHaveBeenCalled();
+    expect(tarifas.resolveTarifas).toHaveBeenCalled();
+    expect(repo.findAllProvincias).toHaveBeenCalled();
   });
 
   it("pais de 3 niveles: la comprobacion pasa y la carga es la de siempre", async () => {
@@ -189,8 +193,9 @@ describe("R5 — carga v1: la forma del pais se comprueba antes de resolver las 
     expect(r.summary.creadas).toBe(1);
     expect(r.summary.errores).toEqual([]);
     const creadas = vi.mocked(repo.createManyOrdenesConGuia).mock.calls[0][0];
-    // La via de `resolveGeo`: nodo = distrito (R25).
-    expect(creadas[0]).toMatchObject({ provinciaId: "p1", cantonId: "c1", distritoId: "d1", nodoGeograficoId: "d1" });
+    // La via de `resolveGeo`: nodo = distrito (R25). SLT-48 R15: las 3 FK ya no se escriben.
+    expect(creadas[0]).toMatchObject({ nodoGeograficoId: "d1" });
+    expect(fksViejas(creadas[0])).toEqual([undefined, undefined, undefined]);
   });
 
   it("sin catalogo inyectado (dobles anteriores) no se comprueba nada", async () => {
@@ -204,7 +209,7 @@ describe("R5 — cotizacion v1: la forma del pais se comprueba antes de resolver
   it.each([
     ["2 niveles", DOS],
     ["4 niveles", CUATRO],
-  ])("pais de %s: cada fila sale con «pais no habilitado», sin importes ni tarifa", async (_n, cat) => {
+  ])("pais de %s: ya no hay «pais no habilitado» (SLT-48 R18); cada fila se cotiza por v1", async (_n, cat) => {
     const repo = buildRepo();
     const tarifas = tarifaRepo();
     const r = await new CotizacionOrdenService(repo, tarifas, catalogoRepo(cat)).cotizar(
@@ -212,21 +217,14 @@ describe("R5 — cotizacion v1: la forma del pais se comprueba antes de resolver
       APIKEY,
     );
 
-    expect(r).toEqual({
+    // SLT-48 R18: sin comprobacion de forma, las dos filas se cotizan con la geografia de v1.
+    expect(r).toMatchObject({
       status: "ok",
-      resumen: {
-        total: 2,
-        cotizadas: 0,
-        conError: 2,
-        filas: [],
-        errores: [
-          { fila: 1, numRemision: "R-1", resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
-          { fila: 2, numRemision: null, resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
-        ],
-      },
+      resumen: { total: 2, cotizadas: 2, conError: 0, errores: [] },
     });
-    expect(tarifas.resolveTarifas).not.toHaveBeenCalled();
-    expect(repo.findAllProvincias).not.toHaveBeenCalled();
+    expect(JSON.stringify(r)).not.toMatch(/no habilitado/);
+    expect(tarifas.resolveTarifas).toHaveBeenCalled();
+    expect(repo.findAllProvincias).toHaveBeenCalled();
   });
 
   it("pais de 3 niveles: la comprobacion pasa y la fila se cotiza como siempre", async () => {
@@ -279,43 +277,47 @@ describe("§2.3 / R25 — la rama del motor de `resolveFila`", () => {
     return service["resolveFila"](filaV2, ctx(geografia), new Map(), extractor(entrada));
   }
 
-  it("profundidad 3 por ruta: nodo = distrito y las 3 FK de su ruta, con la zona del motor", () => {
+  // SLT-48 R15: la orden guarda solo su nodo; las 3 FK de la ruta ya no se escriben.
+  it("profundidad 3 por ruta: nodo = distrito, sin las 3 FK (SLT-48 R15), con la zona del motor", () => {
     const geo = { catalogo: TRES, asignaciones: crearAsignaciones([{ nodoId: "d1", zona: ZONA }], ["d1"]) };
     const r = resolver(geo, { tipo: "ruta", nombres: ["Alta", "Media", "Baja"] });
 
     expect(r.status).toBe("creada");
     if (r.status !== "creada") return;
     expect(r.createData).toMatchObject({
-      provinciaId: "p1",
-      cantonId: "c1",
-      distritoId: "d1",
       nodoGeograficoId: "d1",
       zonaId: "z1",
       direccion: "Calle 9",
     });
+    expect(fksViejas(r.createData)).toEqual([undefined, undefined, undefined]);
     expect(r.esCentral).toBe(true);
     expect(r.esZonaEspecial).toBe(true);
   });
 
-  it("profundidad 2 por codigo (con zona): nodo = canton, distrito vacio", () => {
+  // SLT-48 R15/R17: el canton sin distritos es hoja; se guarda su nodo y ninguna FK.
+  it("profundidad 2 por codigo (con zona): nodo = canton hoja, sin las 3 FK (SLT-48 R15)", () => {
     const geo = { catalogo: TRES, asignaciones: crearAsignaciones([{ nodoId: "c2", zona: ZONA }], []) };
     const r = resolver(geo, { tipo: "codigo", codigo: "102" });
 
     expect(r.status).toBe("creada");
     if (r.status !== "creada") return;
     expect(r.createData).toMatchObject({
-      provinciaId: "p1",
-      cantonId: "c2",
-      distritoId: null,
       nodoGeograficoId: "c2",
       zonaId: "z1",
     });
+    expect(fksViejas(r.createData)).toEqual([undefined, undefined, undefined]);
   });
 
   it("un fallo del motor deja la fila en error bajo `ubicacion`", () => {
     const geo = { catalogo: DOS, asignaciones: crearAsignaciones([{ nodoId: "A1", zona: ZONA }], []) };
-    const r = resolver(geo, { tipo: "ruta", nombres: ["Alfa", "Uno"] });
-    expect(r).toEqual({ status: "error", numRemision: "R-9", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } });
+    // SLT-48 R18: en un pais de 2 niveles la hoja ya entra, asi que el fallo del motor es ahora la regla
+    // de hoja (R17): la raiz sola.
+    const r = resolver(geo, { tipo: "ruta", nombres: ["Alfa"] });
+    expect(r).toEqual({
+      status: "error",
+      numRemision: "R-9",
+      errores: { ubicacion: [msgUbicacionIncompleta("Alfa", "Niveles 2")] },
+    });
   });
 
   it("sin catalogo, la rama del motor lanza un error de configuracion (nunca cae a `resolveGeo`)", () => {

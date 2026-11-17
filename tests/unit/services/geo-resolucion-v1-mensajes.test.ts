@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { indexBy, normalize, resolveGeo } from "@/lib/services/geo-resolucion";
 import type { CantonRow, DistritoRow, ProvinciaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
+import { crearAsignaciones } from "@/lib/services/geografia-dominio";
+import { resolverUbicacion } from "@/lib/services/geo-ubicacion";
+import { catalogoEnMemoria } from "../../fixtures/doble-catalogo-geografico";
 
 // SLT-45 (T2.2; R3, design §2.1) — LOS 11 MENSAJES DE v1, CON SU CLAVE Y SU PRECEDENCIA.
 //
@@ -130,7 +133,8 @@ describe("SLT-45 R3 — los 11 mensajes de v1, con su clave", () => {
     const r = resolver({ provincia: " MONTANA ", canton: "rio  claro", distrito: "penas" });
     expect(r).toEqual({
       ok: true,
-      geo: { provinciaId: "p1", cantonId: "c1", distritoId: "d1", zonaId: "z1", esCentral: false, esZonaEspecial: false },
+      // SLT-48 R15: la orden guarda solo su nodo; `geo` trae el nodo y el lugar de tarifa, no la terna.
+      geo: { nodoId: "d1", distritoId: "d1", zonaId: "z1", esCentral: false, esZonaEspecial: false },
     });
   });
 });
@@ -222,5 +226,52 @@ describe("SLT-48 R19 — v1 aplica la regla de hoja: un distrito con hijos activ
       ok: true,
       geo: { nodoId: "d1", distritoId: "d1", zonaId: "z1", esCentral: false, esZonaEspecial: false },
     });
+  });
+});
+
+// =================================================================================================
+// SLT-48 — decision cerrada «API v1 y el canton sin distritos» (2026-11-17)
+// =================================================================================================
+//
+// v1 queda igual: sigue exigiendo el distrito, tambien cuando el canton no tiene distritos y por la
+// regla de hoja (R17) seria un lugar valido. Ese canton solo entra por v2 (el motor de N niveles) o
+// por la pantalla. Cambiarlo seria tocar el contrato publico de v1 (R28).
+
+describe("SLT-48 — v1 sigue exigiendo el distrito; un canton sin distritos solo entra por v2", () => {
+  const sinDistritos: Mundo = {
+    provincias: [P("p1", "Montaña")],
+    cantones: [C("c1", "p1", "Río Claro"), C("c9", "p1", "Solitario")],
+    distritos: [D("d1", "c1", "Peñas")],
+  };
+  const catalogoV2 = catalogoEnMemoria([
+    { id: "p1", nombre: "Montaña", codigoOficial: "1" },
+    { id: "c1", padreId: "p1", nombre: "Río Claro", codigoOficial: "101" },
+    { id: "d1", padreId: "c1", nombre: "Peñas", codigoOficial: "10101" },
+    { id: "c9", padreId: "p1", nombre: "Solitario", codigoOficial: "109" },
+  ]);
+  const asignaciones = crearAsignaciones([{ nodoId: "p1", zona: { id: "z1", nombre: "Uno", esCentral: false } }], []);
+
+  it("v1: el canton sin distritos con el distrito vacio se rechaza con el mensaje de hoy", () => {
+    const r = resolver({ provincia: "Montaña", canton: "Solitario", distrito: "" }, sinDistritos);
+    expect(r).toEqual({
+      ok: false,
+      fieldErrors: { distrito: ["distrito requerido: la zona de la orden se deriva del distrito"] },
+    });
+  });
+
+  it("v1: nombrar el canton tambien como distrito no lo cuela: «distrito no encontrado en el canton»", () => {
+    const r = resolver({ provincia: "Montaña", canton: "Solitario", distrito: "Solitario" }, sinDistritos);
+    expect(r).toEqual({ ok: false, fieldErrors: { distrito: ["distrito no encontrado en el canton"] } });
+  });
+
+  it("v2: el mismo canton sin distritos es hoja y entra, por ruta y por codigo", () => {
+    const porRuta = resolverUbicacion({ tipo: "ruta", nombres: ["Montaña", "Solitario"] }, catalogoV2, asignaciones);
+    const porCodigo = resolverUbicacion({ tipo: "codigo", codigo: "109" }, catalogoV2, asignaciones);
+    for (const r of [porRuta, porCodigo]) {
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      expect(r.u.nodo.id).toBe("c9");
+      expect(r.u.zona.id).toBe("z1");
+    }
   });
 });

@@ -8,7 +8,6 @@ import {
   msgColumnaObligatoriaSiSeIndica,
 } from "@/lib/services/geo-resolucion";
 import {
-  MSG_PAIS_NO_HABILITADO,
   msgNivelNoEncontrado,
   msgNivelRetirado,
   msgSinZona,
@@ -157,6 +156,12 @@ async function cargar(cat: ICatalogoGeograficoRepository | undefined, filas: Raw
   return { summary: r.summary, errores, creadas };
 }
 
+/** SLT-48 R15: las 3 FK viejas de una orden creada; deben venir las tres sin valor. */
+function fksViejas(o: CreateOrdenData): unknown[] {
+  const r = o as unknown as Record<string, unknown>;
+  return [r.provinciaId, r.cantonId, r.distritoId];
+}
+
 describe("R31 — `geoInputDesdeColumnasDeNivel`: la ruta hasta la primera columna vacia", () => {
   const columnas = [{ key: "departamento" }, { key: "municipio" }, { key: "barrio" }];
   const extraer = geoInputDesdeColumnasDeNivel(columnas);
@@ -201,7 +206,8 @@ describe("R31 + R13/R16 — carga por sesion de un pais de 3 niveles que no es d
     expect(columnasGeoDePlantilla(TRES_NO_CR)?.map((c) => c.key)).toEqual(["departamento", "municipio", "barrio"]);
   });
 
-  it("ruta completa → crea con el nodo de profundidad 3 y sus 3 FK", async () => {
+  // SLT-48 R15: la orden guarda solo su nodo; las 3 FK ya no se escriben.
+  it("ruta completa → crea con el nodo de profundidad 3 y sin las 3 FK (SLT-48 R15)", async () => {
     const { summary, errores, creadas } = await cargar(catalogoRepo(TRES_NO_CR, [{ nodoId: "A1x", zona: ZONA }]), [
       fila("R-1", { departamento: "alfa", municipio: "UNO", barrio: "Centro" }),
     ]);
@@ -209,21 +215,21 @@ describe("R31 + R13/R16 — carga por sesion de un pais de 3 niveles que no es d
     expect(summary.creadas).toBe(1);
     expect(creadas[0]).toMatchObject({
       numRemision: "R-1",
-      provinciaId: "A",
-      cantonId: "A1",
-      distritoId: "A1x",
       nodoGeograficoId: "A1x",
       zonaId: "z1",
       direccion: "Calle 1",
     });
+    expect(fksViejas(creadas[0])).toEqual([undefined, undefined, undefined]);
   });
 
-  it("ruta hasta la primera vacia → resuelve el nodo de profundidad 2 (distrito vacio)", async () => {
+  // SLT-48 R15/R17: el municipio sin barrios es hoja y entra; se guarda solo su nodo.
+  it("ruta hasta la primera vacia → resuelve el nodo de profundidad 2, hoja, sin las 3 FK (SLT-48 R15)", async () => {
     const { errores, creadas } = await cargar(catalogoRepo(TRES_NO_CR, [{ nodoId: "A2", zona: ZONA }]), [
       fila("R-1", { departamento: "Alfa", municipio: "Dos", barrio: "" }),
     ]);
     expect(errores).toEqual([]);
-    expect(creadas[0]).toMatchObject({ provinciaId: "A", cantonId: "A2", distritoId: null, nodoGeograficoId: "A2" });
+    expect(creadas[0]).toMatchObject({ nodoGeograficoId: "A2" });
+    expect(fksViejas(creadas[0])).toEqual([undefined, undefined, undefined]);
   });
 
   it("hueco → error de esa columna, sin llegar al motor ni crear nada", async () => {
@@ -261,15 +267,17 @@ describe("R31 + R13/R16 — carga por sesion de un pais de 3 niveles que no es d
     expect(errores[0].errores).toEqual({ ubicacion: ["la ubicacion 'Centro' no tiene zona asignada"] });
   });
 
-  it("R15 antes que R16: la profundidad 1 no se guarda aunque tenga zona", async () => {
+  // SLT-48 R17: la regla de hoja reemplaza a la de SLT-45; la raiz no es hoja y el mensaje la nombra.
+  it("R15 antes que R16 (SLT-48 R17: la hoja): la profundidad 1 no se guarda aunque tenga zona", async () => {
     const { errores } = await cargar(catalogoRepo(TRES_NO_CR, [{ nodoId: "A", zona: ZONA }]), [
       fila("R-1", { departamento: "Alfa" }),
     ]);
-    expect(errores[0].errores).toEqual({ ubicacion: [MSG_PAIS_NO_HABILITADO] });
+    expect(errores[0].errores).toEqual({ ubicacion: [msgUbicacionIncompleta("Alfa", "Niveles 2")] });
   });
 });
 
-describe("R15 — pais de 2 o 4 niveles: cada fila resuelta sale con «pais no habilitado»", () => {
+// SLT-48 R18: los paises de 2 a 10 niveles se habilitan; «pais no habilitado» no sale nunca mas.
+describe("R15 — pais de 2 o 4 niveles (SLT-48 R18: la fila resuelta en una hoja se crea)", () => {
   it.each([
     ["2 niveles", DOS, { departamento: "Beta", municipio: "Uno" }, "B1"],
     ["4 niveles", CUATRO, { region: "Equis", provincia: "Uno", comuna: "Dos", sector: "Tres" }, "X3"],
@@ -277,10 +285,9 @@ describe("R15 — pais de 2 o 4 niveles: cada fila resuelta sale con «pais no h
     const { errores, creadas } = await cargar(catalogoRepo(cat, [{ nodoId: nodoConZona, zona: ZONA }]), [
       fila("R-1", geo),
     ]);
-    expect(creadas).toEqual([]);
-    expect(errores).toEqual([
-      { fila: 1, numRemision: "R-1", resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
-    ]);
+    // SLT-48 R18: la hoja entra, con su nodo; antes se rechazaba con «pais no habilitado».
+    expect(creadas.map((c) => [c.numRemision, c.nodoGeograficoId])).toEqual([["R-1", nodoConZona]]);
+    expect(errores).toEqual([]);
   });
 
   it("4 niveles: la columna `provincia` es la profundidad 2 del pais, no la de forma CR", async () => {
@@ -297,7 +304,9 @@ describe("R29/R32 — un pais de forma CR sigue con `provincia` + `canton_distri
       fila("R-1", { provincia: "Alta", canton_distrito: "Media (Baja)" }),
     ]);
     expect(errores).toEqual([]);
-    expect(creadas[0]).toMatchObject({ provinciaId: "p1", cantonId: "c1", distritoId: "d1", nodoGeograficoId: "d1" });
+    // SLT-48 R15: el nodo = distrito, como hoy; las 3 FK ya no se escriben.
+    expect(creadas[0]).toMatchObject({ nodoGeograficoId: "d1" });
+    expect(fksViejas(creadas[0])).toEqual([undefined, undefined, undefined]);
   });
 
   it("con catalogo de forma CR: los mensajes de la plantilla de hoy no cambian", async () => {
@@ -312,7 +321,9 @@ describe("R29/R32 — un pais de forma CR sigue con `provincia` + `canton_distri
       fila("R-1", { provincia: "Alta", canton_distrito: "Media (Baja)" }),
     ]);
     expect(errores).toEqual([]);
-    expect(creadas[0]).toMatchObject({ distritoId: "d1", nodoGeograficoId: "d1" });
+    // SLT-48 R15: el nodo = distrito; la FK `distritoId` ya no se escribe.
+    expect(creadas[0]).toMatchObject({ nodoGeograficoId: "d1" });
+    expect(fksViejas(creadas[0])).toEqual([undefined, undefined, undefined]);
   });
 });
 

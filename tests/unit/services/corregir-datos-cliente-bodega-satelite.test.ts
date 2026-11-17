@@ -204,8 +204,9 @@ describe("377/R16 — lo que el gate NO bloquea, y por eso no se toco `ESTADOS_S
 
     expect(r.status).toBe("ok");
     expect(corregirDatosCliente).toHaveBeenCalledTimes(1);
+    // SLT-48 R16: se escribe el nodo nuevo, no la FK `distritoId`.
     expect(corregirDatosCliente.mock.calls[0][1]).toMatchObject({
-      distritoId: "d-2",
+      nodoGeograficoId: "d-2",
       zonaId: "z-1",
     });
   });

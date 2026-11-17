@@ -139,7 +139,9 @@ describeSiHayBase("SLT-89 · R28/R29 — el nodo de la orden", () => {
     expect(r.nodo).toBe(r.e.sectorId);
   });
 
-  it("R28: un nodo fuera de la rama del lugar se pisa con el lugar", async () => {
+  // SLT-48 R9: «SI la orden trae nodo, la base NO DEBE cambiarlo». La busqueda subiendo de SLT-89 se
+  // quita (design §2.1.4): un nodo fuera de la rama de las FK ya no se pisa, se conserva tal cual.
+  it("R28: un nodo fuera de la rama del lugar se conserva (SLT-48 R9; antes se pisaba con el lugar)", async () => {
     const r = await revertida(base, async (tx) => {
       const e = await escenario(tx);
       // El sector del OTRO distrito, el otro distrito (hermano) y la provincia (antepasado, no descendiente).
@@ -151,7 +153,8 @@ describeSiHayBase("SLT-89 · R28/R29 — el nodo de la orden", () => {
         nodos: [await nodoDe(tx, sectorAjeno), await nodoDe(tx, hermano), await nodoDe(tx, antepasado)],
       };
     });
-    expect(r.nodos).toEqual([r.e.geo.distritoId, r.e.geo.distritoId, r.e.geo.distritoId]);
+    // SLT-48 R9: cada orden conserva el nodo con el que se inserto.
+    expect(r.nodos).toEqual([r.e.sectorDelOtroId, r.e.geo.otroDistritoId, r.e.geo.provinciaId]);
   });
 
   it("R28: cambiar el distrito deja fuera de la rama al sector que traía y queda el distrito nuevo", async () => {

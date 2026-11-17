@@ -73,10 +73,12 @@ describe("dosMasHondos (R11; P7 opcion a)", () => {
     expect(dosMasHondos(ruta("San José", "Escazú"), 3)).toEqual({ arriba: "Escazú", abajo: null });
   });
 
-  it("pais de 4 niveles: los niveles 2·3 de la ruta de la orden hasta SLT-48", () => {
+  // SLT-48 R25: D = P (antes D = min(P, 3)). En un pais de 4 niveles salen los niveles 3·4; una orden
+  // vieja de nivel 3 muestra el 3 arriba y deja vacio el 4.
+  it("pais de 4 niveles: los niveles 3·4 (SLT-48 R25); una orden de nivel 3 deja vacio el 4", () => {
     expect(dosMasHondos(ruta("Metropolitana", "Providencia", "Bellavista"), 4)).toEqual({
-      arriba: "Providencia",
-      abajo: "Bellavista",
+      arriba: "Bellavista",
+      abajo: null,
     });
   });
 
@@ -84,8 +86,10 @@ describe("dosMasHondos (R11; P7 opcion a)", () => {
     expect(dosMasHondos(ruta("Norte", "Arica"), 2)).toEqual({ arriba: "Norte", abajo: "Arica" });
   });
 
-  it("pais de 10 niveles: tambien los niveles 2·3, porque una orden no pasa del 3", () => {
-    expect(dosMasHondos(ruta("A", "B", "C"), 10)).toEqual({ arriba: "B", abajo: "C" });
+  // SLT-48 R18/R25: una orden ya puede pasar del nivel 3; en un pais de 10 niveles salen los niveles
+  // 9·10, que una ruta de 3 no tiene.
+  it("pais de 10 niveles: los niveles 9·10 (SLT-48 R25); una ruta de 3 niveles no los tiene", () => {
+    expect(dosMasHondos(ruta("A", "B", "C"), 10)).toEqual({ arriba: null, abajo: null });
   });
 
   it("ruta vacia (lugar fuera del catalogo, R18): los dos null, sin fallar", () => {
@@ -98,8 +102,9 @@ describe("tiposDeDosMasHondos (R13)", () => {
     expect(tiposDeDosMasHondos(CR)).toEqual(["Cantón", "Distrito"]);
   });
 
-  it("pais de 4 niveles: los tipos de los niveles 2 y 3 (Comuna · Barrio)", () => {
-    expect(tiposDeDosMasHondos(CUATRO)).toEqual(["Comuna", "Barrio"]);
+  // SLT-48 R25: el titulo usa los tipos de los 2 niveles mas hondos del pais (D = P).
+  it("pais de 4 niveles: los tipos de los niveles 3 y 4 (Barrio · Sector, SLT-48 R25)", () => {
+    expect(tiposDeDosMasHondos(CUATRO)).toEqual(["Barrio", "Sector"]);
   });
 
   it("pais de 2 niveles: los tipos de los niveles 1 y 2", () => {
@@ -107,11 +112,13 @@ describe("tiposDeDosMasHondos (R13)", () => {
   });
 
   it("no depende del orden en que llegan los niveles", () => {
-    expect(tiposDeDosMasHondos([...CUATRO].reverse())).toEqual(["Comuna", "Barrio"]);
+    // SLT-48 R25: D = P, los niveles 3 y 4.
+    expect(tiposDeDosMasHondos([...CUATRO].reverse())).toEqual(["Barrio", "Sector"]);
   });
 
-  it("pais de 10 niveles: los niveles 2 y 3", () => {
-    expect(tiposDeDosMasHondos(DIEZ)).toEqual(["Tramo 2", "Tramo 3"]);
+  // SLT-48 R25: D = P, los niveles 9 y 10.
+  it("pais de 10 niveles: los niveles 9 y 10 (SLT-48 R25)", () => {
+    expect(tiposDeDosMasHondos(DIEZ)).toEqual(["Tramo 9", "Tramo 10"]);
   });
 });
 

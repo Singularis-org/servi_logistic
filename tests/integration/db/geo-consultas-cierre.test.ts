@@ -195,7 +195,8 @@ describeSiHayBase("SLT-65 T3.2 — el cierre congela nombres y marca del catalog
 
     expect(r.intento.cierreId).toBeNull();
     expect(r.intento.error).toBeInstanceOf(Error);
-    expect((r.intento.error as Error).message).toMatch(/falta la fila de `(canton|distrito)`/);
+    // SLT-48 R27: el cierre lee el lugar del nodo de la orden; la fila que falta es la de `nodo_geografico`.
+    expect((r.intento.error as Error).message).toMatch(/falta la fila de `nodo_geografico`/);
     // Solo queda el cierre que ya traia el fixture; ninguna gestion vinculada ni fila de detalle nueva.
     expect(r.cierres).toEqual([{ id: r.cierreDelFixture }]);
     expect(r.vinculadas).toBe(0);

@@ -739,11 +739,12 @@ describe("cargarViaApi — no-regresión del contrato 88 frente a las plantillas
       expect(r.summary.filas[0]).toMatchObject({ resultado: "creada", numGuia: 1000 });
     }
     // La geografia se deriva de las 4 columnas separadas, no de ninguna columna unificada.
+    // SLT-48 R15: la orden guarda solo su nodo (el distrito); las 3 FK ya no se escriben.
+    const fks = conGuiaArg(repo)[0] as unknown as Record<string, unknown>;
+    expect([fks.provinciaId, fks.cantonId, fks.distritoId]).toEqual([undefined, undefined, undefined]);
     expect(conGuiaArg(repo)[0]).toMatchObject({
       numRemision: "REM-88",
-      provinciaId: "p1",
-      cantonId: "c1",
-      distritoId: "d1",
+      nodoGeograficoId: "d1",
       zonaId: "z1",
       direccion: "Avenida Principal N33-12",
     });

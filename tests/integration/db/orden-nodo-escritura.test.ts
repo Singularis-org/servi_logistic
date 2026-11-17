@@ -11,7 +11,7 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import type { CatalogoGeografico } from "@/lib/services/geografia-dominio";
-import { fksDeNodo, resolverUbicacion } from "@/lib/services/geo-ubicacion";
+import { resolverUbicacion } from "@/lib/services/geo-ubicacion";
 import { ESTADOS_SIN_CORRECCION } from "@/lib/types/correccion-datos-cliente";
 import { comoApp, datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
@@ -39,6 +39,10 @@ import {
 // En cada fila se lee lo que quedo en la base: las 3 FK derivadas de la ruta del nodo (R25, R26),
 // `nodo_geografico_id` = el nodo resuelto = `COALESCE(distrito_id, canton_id)` (R27). Y aparte, que
 // el trigger de SLT-43 sigue derivando el nodo de las FK (R28).
+//
+// SLT-48 (R9, R15, R16): la orden guarda SOLO su nodo y las 3 FK quedan en NULL; la ruta que antes
+// se leia en las FK se lee ahora en el arbol, subiendo por `padre_id` desde el nodo. El trigger de
+// SLT-43 se rehizo (R9): sin nodo pone el de las FK; con nodo, lo conserva.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -62,11 +66,11 @@ const TARIFA_FIJA = {
 
 interface FilaDeOrden {
   id: string;
-  provincia_id: string;
-  canton_id: string;
+  provincia_id: string | null;
+  canton_id: string | null;
   distrito_id: string | null;
   nodo_geografico_id: string | null;
-  coalesce: string;
+  coalesce: string | null;
 }
 
 interface Contexto {
@@ -168,7 +172,7 @@ async function conEmpresaSembrada<T>(prisma: PrismaClient, fn: (c: Contexto) => 
   });
 }
 
-function datosDeOrden(c: Contexto, numRemision: string, geo: Pick<CreateOrdenData, "provinciaId" | "cantonId" | "distritoId" | "nodoGeograficoId">): CreateOrdenData {
+function datosDeOrden(c: Contexto, numRemision: string, geo: Pick<CreateOrdenData, "nodoGeograficoId">): CreateOrdenData {
   return {
     numRemision,
     estatusId: c.estatusId,
@@ -185,14 +189,15 @@ function datosDeOrden(c: Contexto, numRemision: string, geo: Pick<CreateOrdenDat
   };
 }
 
-/** Lo que haran v2 y la sesion con el motor: crear por el repositorio con las FK de `fksDeNodo`. */
+/**
+ * Lo que hacen v2 y la sesion con el motor: crear por el repositorio. SLT-48 R15: solo con el nodo
+ * (`fksDeNodo` sale con T2.1). La regla de hoja es del servicio, no del repositorio.
+ */
 async function crearPorElRepositorio(c: Contexto, numRemision: string, nodoId: string): Promise<FilaDeOrden> {
   const nodo = c.catalogo.porId.get(nodoId);
   if (nodo === undefined) throw new Error(`el nodo ${nodoId} no esta en el catalogo de la empresa`);
-  const fks = fksDeNodo(c.catalogo, nodo);
-  if (fks === null) throw new Error(`el nodo ${nodoId} no admite guardado`);
   const r = await c.repo.createManyOrdenesConGuia(
-    [datosDeOrden(c, numRemision, { ...fks, nodoGeograficoId: nodo.id })],
+    [datosDeOrden(c, numRemision, { nodoGeograficoId: nodo.id })],
     500,
     { actorUsuarioId: c.tiendaId, origenTipo: "carga_api" },
     { cargaId: null, usuarioCargaId: c.tiendaId, totalFiles: 1, name: null },
@@ -202,17 +207,37 @@ async function crearPorElRepositorio(c: Contexto, numRemision: string, nodoId: s
   return leerOrden(c.tx, { numRemision });
 }
 
-function esperarRuta(fila: FilaDeOrden, ruta: { provincia: string; canton: string; distrito: string | null }, nodo: string) {
-  // R25/R26: las 3 FK derivadas de la ruta del nodo.
-  expect(fila.provincia_id).toBe(ruta.provincia);
-  expect(fila.canton_id).toBe(ruta.canton);
-  expect(fila.distrito_id).toBe(ruta.distrito);
-  // R27: el nodo guardado es el resuelto y es `COALESCE(distrito_id, canton_id)`.
-  expect(fila.nodo_geografico_id).toBe(nodo);
-  expect(fila.nodo_geografico_id).toBe(fila.coalesce);
+/** De la raiz al nodo, subiendo por `padre_id` en la base. */
+async function rutaDelNodo(tx: TxDeTest, nodoId: string): Promise<string[]> {
+  const filas = await tx.$queryRawUnsafe<{ id: string }[]>(
+    `WITH RECURSIVE r AS (
+       SELECT id, padre_id, profundidad FROM nodo_geografico WHERE id = $1
+       UNION ALL
+       SELECT n.id, n.padre_id, n.profundidad FROM nodo_geografico n JOIN r ON n.id = r.padre_id
+     ) SELECT id FROM r ORDER BY profundidad`,
+    nodoId,
+  );
+  return filas.map((f) => f.id);
 }
 
-describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28)", () => {
+async function esperarRuta(
+  tx: TxDeTest,
+  fila: FilaDeOrden,
+  ruta: { provincia: string; canton: string; distrito: string | null },
+  nodo: string,
+) {
+  // SLT-48 R15/R16 (antes R25/R26 de SLT-45): las 3 FK ya no se escriben; quedan en NULL.
+  expect(fila.provincia_id).toBeNull();
+  expect(fila.canton_id).toBeNull();
+  expect(fila.distrito_id).toBeNull();
+  // SLT-48 R22: la ruta que antes llevaban las FK es la del nodo en el arbol.
+  expect(await rutaDelNodo(tx, nodo)).toEqual([ruta.provincia, ruta.canton, ...(ruta.distrito === null ? [] : [ruta.distrito])]);
+  // R27: el nodo guardado es el resuelto. SLT-48 R15: `COALESCE(distrito_id, canton_id)` ya es NULL.
+  expect(fila.nodo_geografico_id).toBe(nodo);
+  expect(fila.coalesce).toBeNull();
+}
+
+describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28; SLT-48 R15: solo el nodo)", () => {
   let prisma: PrismaClient;
 
   beforeAll(() => {
@@ -223,7 +248,7 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
     await prisma?.$disconnect();
   });
 
-  it("R25/R27 — v1 (`cargarViaApi`), profundidad 3: provincia, canton y distrito de la terna; nodo = distrito", async () => {
+  it("R25/R27 — v1 (`cargarViaApi`), profundidad 3: la ruta del nodo es la terna (SLT-48 R15: FK en NULL); nodo = distrito", async () => {
     await conEmpresaSembrada(prisma, async (c) => {
       const servicio = new BulkOrdenService(c.repo, new TarifaVigenteRepository(c.cli), undefined, new CupoPlanRepository(c.cli));
       const r = await servicio.cargarViaApi(
@@ -247,11 +272,11 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
       const provincia = await nodoPorRuta(c.tx, ["Cartago"]);
       const canton = await nodoPorRuta(c.tx, ["Cartago", "Cartago"]);
       const distrito = await nodoPorRuta(c.tx, ["Cartago", "Cartago", "Occidental"]);
-      esperarRuta(await leerOrden(c.tx, { numRemision: "SLT45-V1-1" }), { provincia, canton, distrito }, distrito);
+      await esperarRuta(c.tx, await leerOrden(c.tx, { numRemision: "SLT45-V1-1" }), { provincia, canton, distrito }, distrito);
     });
   });
 
-  it("R25/R27 — v2 (motor + repositorio), profundidad 3: abuelo, padre y nodo; nodo = distrito", async () => {
+  it("R25/R27 — v2 (motor + repositorio), profundidad 3: abuelo, padre y nodo en la ruta (SLT-48 R15: FK en NULL); nodo = distrito", async () => {
     await conEmpresaSembrada(prisma, async (c) => {
       const resultado = resolverUbicacion(
         { tipo: "ruta", nombres: ["Cartago", "Cartago", "Oriental"] },
@@ -266,24 +291,25 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
       const fila = await crearPorElRepositorio(c, "SLT45-V2-3", nodo.id);
       const canton = await nodoPorRuta(c.tx, ["Cartago", "Cartago"]);
       const provincia = await nodoPorRuta(c.tx, ["Cartago"]);
-      esperarRuta(fila, { provincia, canton, distrito: nodo.id }, nodo.id);
-      // Las FK que escribio la app son las del motor, no otras.
-      expect(resultado.u.fks).toEqual({ provinciaId: provincia, cantonId: canton, distritoId: nodo.id });
+      await esperarRuta(c.tx, fila, { provincia, canton, distrito: nodo.id }, nodo.id);
+      // SLT-48 R15: el motor ya no da FK; da la ruta del nodo, que es la del arbol.
+      expect(resultado.u.ruta.map((n) => n.id)).toEqual([provincia, canton, nodo.id]);
     });
   });
 
-  it("R25/R27 — profundidad 2 (canton, por el repositorio): provincia = padre, canton = nodo, distrito vacio; nodo = canton", async () => {
+  it("R25/R27 — profundidad 2 (canton, por el repositorio): ruta padre › canton (SLT-48 R15: FK en NULL); nodo = canton", async () => {
     await conEmpresaSembrada(prisma, async (c) => {
       const provincia = await nodoPorRuta(c.tx, ["Cartago"]);
       const canton = await nodoPorRuta(c.tx, ["Cartago", "Paraíso"]);
       expect(c.catalogo.porId.get(canton)?.profundidad).toBe(2);
 
       const fila = await crearPorElRepositorio(c, "SLT45-V2-2", canton);
-      esperarRuta(fila, { provincia, canton, distrito: null }, canton);
+      await esperarRuta(c.tx, fila, { provincia, canton, distrito: null }, canton);
     });
   });
 
-  it("R26/R27 — corregir la ubicacion escribe el distrito nuevo en las 3 FK y en el nodo, en la misma escritura", async () => {
+  // SLT-48 R16: la correccion escribe el nodo nuevo y vacia las 3 FK, en la misma escritura.
+  it("R26/R27 — corregir la ubicacion escribe el distrito nuevo en el nodo (SLT-48 R16: FK en NULL), en la misma escritura", async () => {
     await conEmpresaSembrada(prisma, async (c) => {
       const provincia = await nodoPorRuta(c.tx, ["Cartago"]);
       const cantonViejo = await nodoPorRuta(c.tx, ["Cartago", "Paraíso"]);
@@ -296,28 +322,30 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
       expect(
         await c.repo.corregirDatosCliente(
           de3.id,
-          { provinciaId: provincia, cantonId: canton, distritoId: oriental, nodoGeograficoId: oriental, zonaId: c.zonaId },
+          { nodoGeograficoId: oriental, zonaId: c.zonaId },
           ESTADOS_SIN_CORRECCION,
           { actorUsuarioId: null, ubicacionCorregida: false },
         ),
       ).toBe("ok");
-      esperarRuta(await leerOrden(c.tx, { id: de3.id }), { provincia, canton, distrito: oriental }, oriental);
+      await esperarRuta(c.tx, await leerOrden(c.tx, { id: de3.id }), { provincia, canton, distrito: oriental }, oriental);
 
       // De profundidad 2 (canton, sin distrito) a un distrito de otro canton: cambian canton y distrito.
       const de2 = await crearPorElRepositorio(c, "SLT45-COR-2", cantonViejo);
       expect(
         await c.repo.corregirDatosCliente(
           de2.id,
-          { cantonId: canton, distritoId: occidental, nodoGeograficoId: occidental, zonaId: c.zonaId },
+          { nodoGeograficoId: occidental, zonaId: c.zonaId },
           ESTADOS_SIN_CORRECCION,
           { actorUsuarioId: null, ubicacionCorregida: false },
         ),
       ).toBe("ok");
-      esperarRuta(await leerOrden(c.tx, { id: de2.id }), { provincia, canton, distrito: occidental }, occidental);
+      await esperarRuta(c.tx, await leerOrden(c.tx, { id: de2.id }), { provincia, canton, distrito: occidental }, occidental);
     });
   });
 
-  it("R28 — el trigger `orden_nodo_geografico` de SLT-43 sigue derivando el nodo de las FK", async () => {
+  // SLT-48 R9: el trigger se rehizo; deriva el nodo de las FK solo cuando la orden no trae nodo, y
+  // si lo trae lo conserva (salvo un UPDATE que cambia las FK y no el nodo).
+  it("R28 — el trigger `orden_nodo_geografico` deriva el nodo de las FK solo si falta (SLT-48 R9)", async () => {
     const [funcion] = await prisma.$queryRawUnsafe<{ def: string }[]>(
       `SELECT pg_get_functiondef(p.oid) AS def
          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -325,7 +353,9 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
     );
     expect(funcion, "desaparecio la funcion `orden_nodo_geografico`").toBeDefined();
     const cuerpo = funcion.def.replace(/\s+/g, " ");
-    expect(cuerpo).toContain("NEW.nodo_geografico_id := COALESCE(NEW.distrito_id, NEW.canton_id);");
+    expect(cuerpo).toContain("v_lugar text := COALESCE(NEW.distrito_id, NEW.canton_id);");
+    expect(cuerpo).toContain("IF NEW.nodo_geografico_id IS NULL OR (TG_OP = 'UPDATE'");
+    expect(cuerpo).toContain("NEW.nodo_geografico_id := v_lugar;");
 
     const [trigger] = await prisma.$queryRawUnsafe<{ def: string }[]>(
       `SELECT pg_get_triggerdef(t.oid) AS def

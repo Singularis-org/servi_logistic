@@ -145,7 +145,10 @@ describeSiHayBase("SLT-48 — geografía vieja como vistas de nodo_geografico", 
     }
   });
 
-  it("R2: INSERT, UPDATE y DELETE sobre las vistas se rechazan como dueño (SL048, nombra nodo_geografico) y como servi_app, sin cambiar nada", async () => {
+  // R2 (texto corregido por el humano, 2026-11-17): el dueño de la base y los scripts reciben `SL048`
+  // con un mensaje que nombra `nodo_geografico`; `servi_app`, que solo tiene SELECT, recibe el rechazo
+  // de permisos (`42501`). No se le da ningun permiso de escritura sobre las vistas.
+  it("R2: INSERT, UPDATE y DELETE sobre las vistas: el dueño recibe SL048 (nombra nodo_geografico), servi_app 42501 (solo SELECT); nada cambia", async () => {
     const r = await revertida(base, async (tx) => {
       const { id: paisId } = await crearPaisDePrueba(tx, "XA");
       const empresa = await crearOrganizacionEnPais(tx, paisId);
@@ -183,14 +186,27 @@ describeSiHayBase("SLT-48 — geografía vieja como vistas de nodo_geografico", 
         return salida;
       };
       const comoDuenoR = await intentarTodas();
+      const permisos = await filas<{ vista: string; sel: boolean; ins: boolean; upd: boolean; del: boolean }>(
+        tx,
+        `SELECT v AS vista,
+                has_table_privilege('servi_app', v, 'SELECT') AS sel,
+                has_table_privilege('servi_app', v, 'INSERT') AS ins,
+                has_table_privilege('servi_app', v, 'UPDATE') AS upd,
+                has_table_privilege('servi_app', v, 'DELETE') AS del
+           FROM unnest(ARRAY['provincia', 'canton', 'distrito']) AS v ORDER BY v`,
+      );
       await comoApp(tx, empresa.id);
       const comoServiApp = await intentarTodas();
       await comoDueno(tx);
-      return { comoDuenoR, comoServiApp, igual: (await huella()) === antes };
+      return { comoDuenoR, comoServiApp, permisos, igual: (await huella()) === antes };
     });
     expect(r.comoDuenoR).toEqual(Array(9).fill({ codigo: "SL048", nombraNodo: true }));
     // `servi_app` solo tiene SELECT (design §2.1, §10): Postgres lo para antes de llegar al trigger.
     expect(r.comoServiApp.map((x) => x.codigo)).toEqual(Array(9).fill("42501"));
+    // R2: `servi_app` tiene SELECT y ningun permiso de escritura sobre las tres vistas.
+    expect(r.permisos).toEqual(
+      ["canton", "distrito", "provincia"].map((vista) => ({ vista, sel: true, ins: false, upd: false, del: false })),
+    );
     expect(r.igual).toBe(true);
   });
 

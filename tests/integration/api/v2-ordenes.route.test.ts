@@ -7,7 +7,7 @@ import type { PrismaClient } from "@prisma/client";
 import { handleCargaApi } from "@/app/api/ordenes/api-key/carga/route";
 import { handleCrearOrdenV2 } from "@/app/api/v2/ordenes/route";
 import type { AutenticadorApiKey } from "@/lib/api/api-key-request";
-import { MSG_PAIS_NO_HABILITADO, MSG_UBICACION_UNA_DE_LAS_DOS } from "@/lib/services/geo-ubicacion";
+import { MSG_UBICACION_UNA_DE_LAS_DOS, msgUbicacionIncompleta } from "@/lib/services/geo-ubicacion";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "../db/_postgres-real";
 import { asignarPlan, crearPlan } from "../db/_fixtures/planes";
@@ -299,7 +299,9 @@ describeSiHayBase("SLT-45 — crear una orden y carga por lote de v2 (Postgres r
     );
   }, 120_000);
 
-  it("R15: una ubicacion que no cumple la regla de guardado (provincia de CR) da pais no habilitado en crear y lote, sin crear nada", async () => {
+  // SLT-48 R17/R18: la regla de guardado es ahora la de hoja; la provincia de CR no es hoja y el mensaje
+  // la nombra con el tipo que falta. «pais no habilitado» no sale nunca mas.
+  it("R15: una ubicacion que no cumple la regla de guardado (provincia de CR) da «ubicacion incompleta» (SLT-48 R17) en crear y lote, sin crear nada", async () => {
     await conEscenario(base, {}, async (c) => {
       const provincia = (
         await c.tx.nodoGeografico.findUniqueOrThrow({ where: { id: await nodoPorRuta(c.tx, ["Cartago"]) }, select: { codigoOficial: true } })
@@ -309,20 +311,23 @@ describeSiHayBase("SLT-45 — crear una orden y carga por lote de v2 (Postgres r
       const r = await lote(c, { ordenes: [porNombre, porCodigo] });
       expect(r.status).toBe(200);
       expect(r.cuerpo).toMatchObject({ total: 2, creadas: 0, conError: 2, ordenes: [] });
+      const incompleta = msgUbicacionIncompleta("Cartago", "Cantones");
       expect(r.cuerpo.errores).toEqual([
-        errorDeUbicacion(1, porNombre.num_remision, MSG_PAIS_NO_HABILITADO),
-        errorDeUbicacion(2, porCodigo.num_remision, MSG_PAIS_NO_HABILITADO),
+        errorDeUbicacion(1, porNombre.num_remision, incompleta),
+        errorDeUbicacion(2, porCodigo.num_remision, incompleta),
       ]);
 
       const unica = fila({ ubicacion: ["Cartago"] });
       const rc = await crear(c, { orden: unica });
       expect(rc.status).toBe(200);
-      expect(rc.cuerpo.errores).toEqual([errorDeUbicacion(1, unica.num_remision, MSG_PAIS_NO_HABILITADO)]);
+      expect(rc.cuerpo.errores).toEqual([errorDeUbicacion(1, unica.num_remision, incompleta)]);
       expect(await ordenesDeLaTienda(c.tx, c.tiendaId)).toBe(0);
     });
   }, 120_000);
 
-  it("R16: un canton de CR (las zonas cubren distritos) y un distrito sin zona salen con «sin zona», sin crearse", async () => {
+  // SLT-48 R17: un canton de CR con distritos ya no llega a la zona: no es hoja y pide el distrito. El
+  // distrito sin zona sigue en «sin zona».
+  it("R16: un canton de CR con distritos (SLT-48 R17: «incompleta») y un distrito sin zona («sin zona») no se crean", async () => {
     await conEscenario(base, {}, async (c) => {
       const canton = fila({ ubicacion: ["Cartago", "Paraíso"] });
       const distrito = fila({ ubicacion: ["Cartago", "Cartago", "Carmen"] });
@@ -330,12 +335,14 @@ describeSiHayBase("SLT-45 — crear una orden y carga por lote de v2 (Postgres r
       expect(r.status).toBe(200);
       expect(r.cuerpo).toMatchObject({ total: 2, creadas: 0, conError: 2, ordenes: [] });
       expect(r.cuerpo.errores).toEqual([
-        errorDeUbicacion(1, canton.num_remision, "la ubicacion 'Paraíso' no tiene zona asignada"),
+        errorDeUbicacion(1, canton.num_remision, "ubicacion incompleta: 'Paraíso' tiene distritos debajo; indica el ultimo nivel"),
         errorDeUbicacion(2, distrito.num_remision, "la ubicacion 'Carmen' no tiene zona asignada"),
       ]);
 
       const rc = await crear(c, { orden: fila({ ubicacion: ["Cartago", "Paraíso"] }) });
-      expect(rc.cuerpo.errores[0].errores).toEqual({ ubicacion: ["la ubicacion 'Paraíso' no tiene zona asignada"] });
+      expect(rc.cuerpo.errores[0].errores).toEqual({
+        ubicacion: ["ubicacion incompleta: 'Paraíso' tiene distritos debajo; indica el ultimo nivel"],
+      });
       expect(await ordenesDeLaTienda(c.tx, c.tiendaId)).toBe(0);
     });
   }, 120_000);
@@ -408,7 +415,8 @@ describeSiHayBase("SLT-45 — crear una orden y carga por lote de v2 (Postgres r
     expect(normalizarVolatiles(comoV1)).toEqual(normalizarVolatiles(v1.respuestas.map((r) => r.cuerpo)));
   }, 120_000);
 
-  it("R17: la orden creada por v2 guarda su nodo y las FK de su ruta", async () => {
+  // SLT-48 R15: la orden guarda solo su nodo; las 3 FK quedan en NULL.
+  it("R17: la orden creada por v2 guarda su nodo y deja las 3 FK en NULL (SLT-48 R15)", async () => {
     await conEscenario(base, {}, async (c) => {
       const f = fila({ ubicacion: OCCIDENTAL });
       const r = await lote(c, { ordenes: [f] });
@@ -420,9 +428,9 @@ describeSiHayBase("SLT-45 — crear una orden y carga por lote de v2 (Postgres r
       const ruta = await rutaEsperada(c.tx, OCCIDENTAL);
       expect(orden).toEqual({
         id: r.cuerpo.ordenes[0].id,
-        provinciaId: ruta[0].id,
-        cantonId: ruta[1].id,
-        distritoId: ruta[2].id,
+        provinciaId: null,
+        cantonId: null,
+        distritoId: null,
         nodoGeograficoId: ruta[2].id,
       });
     });

@@ -493,3 +493,112 @@ las aserciones viejas listadas (piden autorización) y los tests de T5/T6.
 - **R28:** la v1 responde exactamente lo mismo que hoy, sin campos nuevos. Se corrigió el texto.
 - **Aserciones:** hay autorización para cambiar las ~70 que contradicen una decisión cerrada de SLT-48, incluida `orden-nodo-mas-profundo` › R28 de SLT-89, que contradice R9. Cada cambio cita su R de SLT-48 en un comentario y en esta bitácora.
 - **Archivos fuera de la lista:** están añadidos a `tasks.md > Archivos esperados > Añadidos tras T2`.
+
+## Aserciones autorizadas (backend_dev, 2026-11-17)
+
+Autorización del humano del 2026-11-17 («Decisiones del humano tras T2»). Cada aserción cambiada lleva en el test un
+comentario `// SLT-48 R<n>: …`. Base: `servi_logistic_slt48` local. Las de `tests/components/CorregirDatosCliente.*`
+son del frontend_dev (T4.2) y no se tocaron.
+
+| Archivo › test | Antes → después | R |
+|---|---|---|
+| `tests/unit/services/geo-ubicacion.test.ts` › «es de 3 niveles solo si…» (renombrado «la forma del pais ya no decide…») | `esPaisDeTresNiveles(DOS/TRES/CUATRO/[])` → `esHoja` de la hoja de 2, 3 y 4 niveles `true`, nivel 3 de 4 `false` | R18 |
+| idem › «en un pais de 3 niveles admite las profundidades 2 y 3, no la 1» (renombrado) | `admiteGuardado` R1/C1/D1 = `false/true/true` → `esHoja` R1/C1/C4/D1 = `false/false/true/true` | R17 |
+| idem › «en paises de 2 y 4 niveles no admite ninguna…» (renombrado) | todo `false` → `[false,true]` y `[false,false,false,true]` | R18 |
+| idem › «una raiz de un pais de 3 niveles da «pais no habilitado»…» (renombrado) | `MSG_PAIS_NO_HABILITADO` → `msgUbicacionIncompleta("Montaña","Niveles 2")` | R17, R18 |
+| idem › «R33: en un pais de 2 niveles…» | todo «pais no habilitado» → la raíz «incompleta», `A1` resuelve | R18 |
+| idem › «R33: en un pais de 4 niveles…» | X2/X3 «pais no habilitado» → X3 resuelve, X2 «incompleta … niveles 4» | R18 |
+| idem › «un canton con zona propia resuelve en profundidad 2» | `u.fks` = terna → `u.ruta` = `[R2, C5]` y sin `fks` | R15 |
+| idem › describe «R25 — las tres FK…» (4 tests) | `fksDeNodo(...)` → `rutaPublica(...)`, `esHoja`, `u.ruta`, y `u` sin `fks` | R15, R17, R18 |
+| `tests/unit/repositories/lugar-orden.test.ts` › «no mira ninguna otra columna…» | `"c-1"` (FK) → `"otro"` (el nodo) | R22 |
+| idem › 4 de «SLT-65 — whereLugarEn» | `{ OR: [distrito, canton] }` → `{ nodoGeograficoId: { in } }` | R23 |
+| idem › 4 de «SLT-71 — sqlLugarEn» | SQL `(o.distrito_id … OR … canton_id …)` con dos parámetros → `o."nodo_geografico_id" = ANY($1)` con uno | R23 |
+| `tests/unit/repositories/lugares-del-filtro.test.ts` › «R11: un parametro de array por rama…» | 2 arrays → 1 | R23 |
+| `tests/unit/repositories/orden-repository-filtros.test.ts` › «un lugar de distrito no puede seleccionar…» | `AND: [{ OR: … }]` → `AND: [{ nodoGeograficoId: { in: ["d1"] } }]` | R23 |
+| `tests/unit/utils/ubicacion-presentacion.test.ts` › «pais de 4 niveles: los niveles 2·3…» | `{Providencia, Bellavista}` → `{Bellavista, null}` (D = P) | R25 |
+| idem › «pais de 10 niveles: tambien los niveles 2·3…» | `{B, C}` → `{null, null}` | R25 |
+| idem › «pais de 4 niveles: los tipos de los niveles 2 y 3» | `[Comuna, Barrio]` → `[Barrio, Sector]` | R25 |
+| idem › «no depende del orden…» | `[Comuna, Barrio]` → `[Barrio, Sector]` | R25 |
+| idem › «pais de 10 niveles: los niveles 2 y 3» | `[Tramo 2, Tramo 3]` → `[Tramo 9, Tramo 10]` | R25 |
+| `tests/unit/services/geo-resolucion-v1-mensajes.test.ts` › «con todo bien, resuelve (control positivo)» | `geo` con `provinciaId/cantonId` → `{ nodoId, distritoId, … }` | R15 |
+| `tests/unit/services/bulk-orden-service.n-niveles.test.ts` › «ruta completa → … sus 3 FK», «… (distrito vacio)», «con catalogo de forma CR…», «sin catalogo inyectado…» | terna en `CreateOrdenData` → solo `nodoGeograficoId`, las 3 FK `undefined` | R15 |
+| idem › «R15 antes que R16: la profundidad 1 no se guarda…» | «pais no habilitado» → `msgUbicacionIncompleta("Alfa","Niveles 2")` | R17 |
+| idem › «pais de 2 niveles» / «pais de 4 niveles» (it.each) | error «pais no habilitado», nada creado → la hoja se crea con su nodo, sin errores | R18 |
+| `tests/unit/services/bulk-orden-service.forma-pais.test.ts` › carga v1, 2 y 4 niveles (it.each) | 3 errores «pais no habilitado», nada creado ni leído → 2 creadas, 1 error de `num_remision`, sin «no habilitado»; se crea, se tarifa y se lee la geografía de v1 | R18 |
+| idem › «pais de 3 niveles: la comprobacion pasa…» | terna → `nodoGeograficoId` y FK `undefined` | R15 |
+| idem › cotización v1, 2 y 4 niveles (it.each) | 2 errores «pais no habilitado» → 2 cotizadas, sin «no habilitado» | R18 |
+| idem › «profundidad 3 por ruta…», «profundidad 2 por codigo…» | terna en `createData` → solo nodo, FK `undefined` | R15 |
+| idem › «un fallo del motor deja la fila en error…» | entrada `["Alfa","Uno"]` + «pais no habilitado» → entrada `["Alfa"]` + «incompleta» (la hoja de 2 niveles ya entra) | R17, R18 |
+| `tests/unit/services/api-v2-servicios.test.ts` › «R17/R21 — misma respuesta que v1…» | terna en la orden creada → nodo y FK `undefined` | R15 |
+| idem › «R12–R16 — cada fila mala…» (fila R-8) | «pais no habilitado» → «incompleta: 'Alta' … niveles 2» | R17 |
+| idem › «R15 — pais de 2 niveles: «pais no habilitado»…» (renombrado) | 2 errores, nada creado → 0 errores, 2 creadas en `A1` | R18 |
+| idem › cotización «R12–R16» (fila 4) | «pais no habilitado» → «incompleta» | R17 |
+| `tests/unit/services/bulk-orden-service.test.ts` › «deriva zonaId…», «R14: … la fila se CREA», «R27/R33: acentos…» | `provinciaId/cantonId/distritoId` → `nodoGeograficoId: "d1"` y FK `undefined` | R15 |
+| `tests/unit/services/bulk-orden-service.carga-api.test.ts` › «R28: fila con provincia/canton/distrito separados…» | terna en `createManyOrdenesConGuia` → nodo y FK `undefined` | R15 |
+| `tests/unit/services/corregir-datos-cliente-service.test.ts` › «327/P2: el adminTienda SI puede mover…», «R15/R5 — CON la confirmacion…», «NO bloquea: con la confirmacion…» | `cambios: ["distritoId"]` → `["nodoId"]`; `data` `{distritoId, zonaId, nodo}` → `{zonaId, nodoGeograficoId}` | R16 |
+| idem › «mover los TRES ids…» (renombrado) | `cambios` con la terna → `["nodoId"]` | R16 |
+| idem › «el distrito no pertenece al CANTON…» y «el canton no pertenece a la PROVINCIA…» (reescritos) | `validation_error` por la cadena → (1) con un nodo no hay cadena: se busca el lugar por el nodo y sigue al gate; (2) un nodo que no es hoja da `validation_error` «incompleta» sin escribir. Sus entradas (`cantonId`/`provinciaId` en `LugarResueltoRow`) ya no existen | R16, R17 |
+| idem › «con permiso devuelve los NUEVE valores…» | precarga sin `nodoId`/`ruta` → con `nodoId` y `ruta` | R16 (R43) |
+| idem › «los NUEVE valores identicos…» | solo la entrada: terna → `nodoId` (no compilaba) | R16 |
+| `tests/unit/services/corregir-datos-cliente-bodega-satelite.test.ts` › «⭑ corregir el distrito DENTRO de la misma zona…» | `distritoId: "d-2"` → `nodoGeograficoId: "d-2"` | R16 |
+| `tests/unit/actions/corregir-datos-cliente.action.test.ts` › «327/R1: los NUEVE campos…» (renombrado), «el aviso del servidor llega…» | terna en la entrada y en la llamada → `nodoId` | R16 |
+| `tests/unit/types/correccion-datos-cliente-schema.test.ts` › «327/R1: acepta los NUEVE juntos» (renombrado), «327/R2: `zonaId` no cuela…», «con un campo de verdad al lado…» | entrada con la terna → con `nodoId` | R16 |
+| idem › «los tres juntos son validos» (renombrado) | `true` → `false` (la terna ya no es válida), y `nodoId` solo es válido | R16 |
+| `tests/unit/guards/corregir-datos-sin-rastro.guardia.test.ts` › «el tipo de escritura … SIETE prohibidos» | `CorregirDatosClienteData` contiene la terna → contiene `nodoGeograficoId` y no la terna | R16, R29 |
+| idem › «327/R5 — `zonaId` esta en el tipo…» | el `.pick()` contiene `distritoId` → contiene `nodoId` y no `distritoId` | R16 |
+| `tests/unit/components/ordenes-descarga-columnas.test.ts` › ids que no deben salir | `orden.provinciaId/cantonId/distritoId` (ya no están en el DTO) → `orden.nodoGeograficoId` | R15, R22 |
+| `tests/integration/api/v2-paises-de-prueba.route.test.ts` › «R33/R15 … por nombre y por codigo…» (renombrado) | cada nodo activo «pais no habilitado» → hoja «sin zona», no hoja «incompleta» (calculado del fixture); contrapruebas iguales | R17, R18 |
+| idem › «R15/R33 … crear, lote y cotizacion de v2…» (renombrado) | 7 × «pais no habilitado» → la hoja «sin zona», la raíz «incompleta» | R17, R18 |
+| idem › «R5 … la carga y la cotizacion de v1…» (renombrado) | «pais no habilitado» bajo `ubicacion` → 4 niveles: «incompleta» (R19) bajo `ubicacion`; 2 niveles: «distrito no encontrado en el canton»; la otra fila «provincia no encontrada» | R18, R19 |
+| `tests/integration/api/v2-ordenes.route.test.ts` › «R15: una ubicacion que no cumple la regla de guardado…» (renombrado) | «pais no habilitado» → «incompleta: 'Cartago' … cantones» | R17 |
+| idem › «R16: un canton de CR…» (renombrado). **No estaba en la lista de T2; contradice R17** | Paraíso «sin zona» → «incompleta: 'Paraíso' tiene distritos debajo» | R17 |
+| idem › «R17: la orden creada por v2 guarda su nodo y las FK…» (renombrado). **No estaba en la lista de T2; contradice R15** | FK = ruta → FK `null` | R15 |
+| `tests/integration/api/v2-cotizacion.route.test.ts` › «R19 (+R12, R15, R16): una fila mala…» | fila 3 «pais no habilitado» → «incompleta»; fila 4 (Paraíso) «sin zona» → «incompleta» | R17 |
+| `tests/integration/db/orden-nodo-escritura.test.ts` › los 4 de «SLT-45 T3.3» (renombrados) | FK = ruta del nodo y nodo = `COALESCE` → FK `NULL`, la ruta se lee del árbol (`padre_id`), `COALESCE` es `NULL`; `u.fks` → `u.ruta`; la corrección manda solo `nodoGeograficoId` | R15, R16, R22 |
+| idem › «R28 — el trigger `orden_nodo_geografico`…» (renombrado) | cuerpo `NEW.nodo := COALESCE(...)` → el cuerpo de R9 (deriva solo si falta) | R9 |
+| `tests/integration/db/orden-nodo-mas-profundo.test.ts` › «R28: un nodo fuera de la rama del lugar se pisa…» (SLT-89; renombrado) | `[distrito, distrito, distrito]` → `[sectorDelOtro, otroDistrito, provincia]` (el nodo se conserva) | R9 |
+| `tests/integration/db/geo-consultas-cierre.test.ts` › «R6: si el canton…» | mensaje con `canton` o `distrito` → con `nodo_geografico` | R27 |
+| `tests/integration/db/geo-consultas-ordenes.test.ts` › «cobro de la devolucion y correccion…» | `correccionNueva == correccionHoy` → igual salvo la terna, que pasa a `nodoId` (= distrito ?? cantón), `distritoTarifaId` (= distrito) y `ruta` (= las FK de hoy, sin nulos) | R16, R22 |
+
+No se cambiaron (no contradicen una decisión cerrada y pasan tal cual):
+- `tests/unit/services/geo-resolucion-retirados.test.ts` › «la terna resuelve igual que siempre»: estaba en la lista de T2,
+  pero pasa sin cambios (`geo.distritoId` es el lugar de tarifa y coincide con el distrito).
+- `tests/unit/actions/corregir-datos-cliente.action.test.ts` › «delega…» y «los campos ausentes viajan como `undefined`»:
+  nombran `provinciaId: undefined` en el objeto esperado y pasan porque `toHaveBeenCalledWith` iguala `undefined` con
+  ausente. No contradicen nada.
+
+### R2 (punto 2)
+
+`tests/integration/db/slt48-vistas-geografia.test.ts` › R2: el nombre y el comentario citan el texto corregido de R2.
+Se añade que `servi_app` tiene `SELECT` y ningún `INSERT/UPDATE/DELETE` sobre las tres vistas (`has_table_privilege`).
+Las aserciones de antes se quedan: `SL048` que nombra `nodo_geografico` para el dueño, `42501` para `servi_app` y la
+huella intacta.
+
+### API v1 y el cantón sin distritos (punto 3)
+
+`tests/unit/services/geo-resolucion-v1-mensajes.test.ts` › describe «SLT-48 — v1 sigue exigiendo el distrito; un canton
+sin distritos solo entra por v2» (3 tests):
+- por v1, el cantón sin distritos con el distrito vacío da «distrito requerido: la zona de la orden se deriva del
+  distrito» bajo `distrito`;
+- nombrándolo también como distrito, da «distrito no encontrado en el canton»;
+- por v2 (`resolverUbicacion`, por ruta y por código) el mismo cantón es hoja y resuelve con su zona.
+
+### Test intermitente `v1-ordenes-lugar.route.test.ts` (punto 4)
+
+**Causa: no es una colisión de datos entre archivos.** El listado de v1 ordena solo por `createdAt desc`. El fixture
+`geo-65` inserta todas las órdenes con `now()` dentro de una misma transacción, y en Postgres `now()` es la hora de
+inicio de la transacción: todas empatan y el orden entre ellas no está definido. El `UPDATE` que pone las 3 FK en NULL
+reescribe las filas y puede cambiar ese orden entre la primera y la segunda lectura. Se reprodujo **solo**, sin otro
+archivo en paralelo: la diferencia era la misma orden en otra posición del listado («Zona sur» antes o después de
+«Zona central»), con los mismos datos.
+
+**Arreglo (solo en el test):** `conEmpatesOrdenados` ordena los empates por `numRemision` y comprueba antes que el orden
+por `createdAt` es el que devolvió el servicio. El contrato de v1 (R28: misma respuesta) no cambia; el orden entre
+órdenes con la misma hora nunca estuvo definido. No se tocó el `orderBy` de producción (fuera del alcance de SLT-48).
+
+Evidencia:
+```
+solo, 3 veces:                                   Tests  1 passed (1)  ×3
+en paralelo con geo-consultas-ordenes y cierre-dia-snapshot-nodo (--maxWorkers=3), 3 veces:
+                                                 Test Files  3 passed (3) · Tests  9 passed (9)  ×3
+```
