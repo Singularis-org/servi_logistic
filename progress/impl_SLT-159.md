@@ -131,3 +131,7 @@ parte son comentarios de contrato al estilo del repo.
 - T9: `./init.sh` del leader.
 
 Veredicto: rebanada (b) implementada y verificada en local (typecheck, lint, 77 archivos de tests y mutaciones en rojo); el tamaño (1182 líneas) pide decisión.
+
+## T9 — gate (leader, 2026-11-16)
+
+- `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0` (tamaño aceptado por Carlos). E2E `recibir-paquetes` en CI (proyecto `reparto`). Prueba en dispositivo (pistola y teléfono): Carlos en Preview.
