@@ -728,3 +728,144 @@ $ pnpm run test:guardias    → Test Files 2 failed | 334 passed | 3 skipped · 
 
 **Veredicto T4 (sin T4.1):** T4.3–T4.6 hechas y verdes; T4.2 hecha, con 2 aserciones de carga útil (terna → `nodoId`)
 pendientes de autorización y 6 textos de CR sin artículo para confirmar.
+
+## T3 — Mover nodo, servidor (backend_dev, 2026-11-17)
+
+Base `servi_logistic_slt48` local. Ninguna dependencia ni migración nueva (el valor de enum es de T1.2). El MCP del
+grafo no se usó (Grep/Read).
+
+### Archivos
+
+Producción:
+- `lib/types/geografia-nodo.ts`: `vistaPreviaMoverNodoSchema`, `moverNodoSchema`, `MotivoDeNoMover`,
+  `MENSAJE_DE_MOTIVO_DE_MOVER` y los DTO de la vista previa (descendientes por nivel, bloqueo).
+- `lib/services/geografia-dominio.ts`: `catalogoConPadre`, `grupoYMarcaDeOrden`, `ordenesQueCambiarianAlMover` (puras).
+- `lib/interfaces/repositories/IGeoRepository.ts` y `lib/repositories/GeoRepository.ts`: `vistaPreviaMover`, `mover`.
+- `lib/interfaces/services/IGeografiaService.ts` y `lib/services/GeografiaService.ts`: `vistaPreviaMoverNodo`, `moverNodo`.
+- `lib/actions/geografia-plataforma.ts`: `vistaPreviaMoverNodoAction`, `moverNodoAction`.
+
+Tests:
+- nuevos: `tests/unit/actions/geografia-plataforma.mover.test.ts`, `tests/integration/db/geografia-mover-nodo.test.ts`,
+  `tests/integration/db/geografia-mover-nodo-ordenes.test.ts`;
+- `tests/unit/actions/geografia-plataforma-action.test.ts`: el doble gana los dos métodos (entrada) y **una aserción
+  autorizada** › «son exactamente estas actions…»: la lista de exports gana `moverNodoAction` y
+  `vistaPreviaMoverNodoAction`, y `mover` sale de la regex prohibida (`padre` y el resto se quedan). La de SLT-46 R22
+  decía «ninguna mueve un nodo de padre»; contradice SLT-48 R34 (decisión heredada «Mover nodos: va en SLT-48»). Lleva
+  su comentario `// SLT-48 R34`.
+
+### Firmas para el frontend (T4.1)
+
+```ts
+// lib/actions/geografia-plataforma.ts  ("use server")
+export async function vistaPreviaMoverNodoAction(input: unknown, deps?: GeografiaPlataformaDeps): Promise<VistaPreviaMoverNodoActionResult>;
+//   input: { id: string; padreIdNuevo: string }                         (vistaPreviaMoverNodoSchema, .strict())
+export async function moverNodoAction(input: unknown, deps?: GeografiaPlataformaDeps): Promise<MoverNodoActionResult>;
+//   input: { id: string; padreIdNuevo: string; padreIdAnterior: string } (moverNodoSchema, .strict())
+//   padreIdAnterior = `vista.padreIdAnterior` de la vista previa (R37)
+
+export type VistaPreviaMoverNodoActionResult = VistaPreviaMoverNodoServiceResult | ErrorDeValidacion | SinPermiso | ErrorInterno;
+export type MoverNodoActionResult = MoverNodoServiceResult | ErrorDeValidacion | SinPermiso | ErrorInterno;
+//   SinPermiso = { status: "unauthenticated" } | { status: "forbidden" }; ErrorInterno = { status: "error" }
+//   ErrorDeValidacion = { status: "validation_error"; fieldErrors: Record<string, string[]> }
+
+// lib/interfaces/services/IGeografiaService.ts
+export type VistaPreviaMoverNodoServiceResult =
+  | { status: "ok"; vista: VistaPreviaMoverNodoDTO }                 // vista.bloqueo !== null → no dejar confirmar (P1)
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R35: en `id` (raíz) o `padreIdNuevo`
+  | { status: "conflict" }                                           // el destino ya tiene un hijo con ese nombre
+  | { status: "not_found" }
+  | { status: "forbidden" };
+export type MoverNodoServiceResult =
+  | { status: "ok"; id: string; padreId: string }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]>; bloqueo?: BloqueoDeMoverDTO } // R35, o P1 en `id`
+  | { status: "conflict" }                                           // hermano con el mismo nombre (también en carrera)
+  | { status: "conflict"; motivo: "cambio_concurrente" }             // R37
+  | { status: "not_found" }
+  | { status: "forbidden" };
+
+// lib/types/geografia-nodo.ts
+export interface VistaPreviaMoverNodoDTO {
+  nodo: { id: string; nombre: string; profundidad: number; tipoSingular: string };
+  padreIdAnterior: string;
+  rutaActual: PasoDeRuta[];   // de la raíz al nodo: { id, nombre }[]
+  rutaNueva: PasoDeRuta[];
+  descendientes: { total: number; porNivel: DescendientesDeNivelDTO[] };
+  ordenesQueCambianDeNombre: number;
+  bloqueo: BloqueoDeMoverDTO | null;
+}
+export interface DescendientesDeNivelDTO { profundidad: number; tipoSingular: string; tipoPlural: string; cantidad: number }
+export interface BloqueoDeMoverDTO { ordenes: number; empresas: EmpresaConOrdenesAfectadasDTO[] }
+export interface EmpresaConOrdenesAfectadasDTO { id: string; nombre: string; ordenes: number }
+export type MotivoDeNoMover = "es_raiz" | "destino_no_existe" | "destino_de_otro_pais"
+  | "destino_de_otra_profundidad" | "destino_es_el_padre_actual" | "destino_retirado";
+export const MENSAJE_DE_MOTIVO_DE_MOVER: Record<MotivoDeNoMover, string>;
+```
+
+Los descendientes por nivel vienen ordenados de arriba abajo, con el tipo del país: «2 comunas y 2 sectores» se arma
+con `cantidad` + `tipoSingular`/`tipoPlural`. El bloqueo trae las empresas ordenadas por órdenes (más primero).
+
+### Mapa R → test (T3)
+
+| R | Test |
+|---|---|
+| R34 | `geografia-plataforma.mover.test.ts` › «SLT-48 R34 — solo el superadmin mueve…» (sin sesión, 4 roles de empresa en el borde y en el servicio, sin escribir; el superadmin corre en `comoPlataforma`) |
+| R35 | `geografia-mover-nodo.test.ts` › «R35, P4: cada motivo…» (6 motivos + no existe, en la vista previa y al mover, huella intacta), «P4: … en cascada», «R35: un hermano con el mismo nombre…» (`conflict`); `geografia-plataforma.mover.test.ts` (traducción de cada desenlace, `conflict` del único en carrera) |
+| R36 | `geografia-mover-nodo.test.ts` › «R36: la vista previa da las rutas, los descendientes por nivel…»; `geografia-mover-nodo-ordenes.test.ts` (órdenes que cambian de nombre, bloqueo en la vista previa) |
+| R37 | `geografia-mover-nodo.test.ts` › «R37: si el padre ya no es el que mostró el modal…» |
+| R38 | `geografia-mover-nodo.test.ts` › «R34, R38: mover escribe solo `padre_id` y su fila…» y «R38: si la fila de historial no se puede escribir, el movimiento no persiste» |
+| R39 | `geografia-mover-nodo-ordenes.test.ts` › «R39, R40: sin grupo ni marca heredados…» (huella de `orden` idéntica, ruta nueva, zona igual, dos empresas) |
+| R40 | idem (precio y marca iguales) y › «P1: un grupo y una marca heredados del padre viejo bloquean…» (3 abiertas de 2 empresas; la cerrada no cuenta) y › «R40: un grupo y una marca PROPIOS…»; `geografia-plataforma.mover.test.ts` › «SLT-48 P1 — …» (regla pura) |
+| R41 | `geografia-mover-nodo-ordenes.test.ts` › «… R41: una orden nueva usa la zona, el grupo y la marca de la posición nueva» |
+
+### Desvíos y decisiones
+
+1. **Nombres de las actions:** `moverNodoAction` y `vistaPreviaMoverNodoAction`, como el resto del archivo
+   (`renombrarNodoAction`…). Design §7.1 decía `moverNodoGeografico`/`vistaPreviaMoverNodoGeografico`.
+2. **Descendientes sin CTE recursiva:** design §7.1 hablaba de una CTE sobre `padre_id`; la guardia
+   `geografia-sin-cte-recursiva` la prohíbe en `lib/`. Salen del catálogo del país en memoria (`nodosBajo`).
+3. **«Retirado» (P4) es en cascada:** un destino activo bajo un antepasado retirado también se rechaza. Es la
+   disponibilidad efectiva de todo el catálogo (SLT-44 R5).
+4. **Orden abierta** = sin fila en `cierre_detail` y sin borrar. **Órdenes que cambian de nombre** = todas las no
+   borradas del subárbol (también las cerradas), de todas las empresas.
+5. **P1 compara el grupo con la misma regla que la tarifa:** `grupo_distritos_distrito` solo cuenta para el lugar exacto
+   (no cambia nunca al mover) y `grupo_distritos_nodo` se hereda; la marca (`distrito_zona_especial`) se hereda. Lugar de
+   tarifa con `distritoDeTarifa` (P3). La zona está guardada en la orden y no entra.
+6. **Carrera de P1:** el bloqueo se calcula dentro de la transacción de `mover`, pero una orden creada por otra
+   transacción entre esa lectura y el `COMMIT` no se ve. El `padre_id` sí está protegido (R37, `updateMany` con el padre
+   de antes). No se añadió un candado sobre `orden` (ningún requisito lo pide y costaría bloquear las altas).
+7. **Etiqueta del historial:** design §7.1 pedía «la etiqueta en `lib/types/historial-accion.ts`». Ese catálogo es el del
+   historial de EMPRESA (`HistorialAccionTipo`); `nodo_geografico_movido` es de `HistorialPlataformaAccion`, que no tiene
+   catálogo de etiquetas en `lib/` ni pantalla que lo liste (ningún valor de plataforma está allí). No se tocó.
+8. **`valorAnterior`/`valorNuevo`** = rutas de los padres de la hoja a la raíz («Marga Marga · Valparaíso»), recortadas a
+   `GEO_NOMBRE_MAX` (80, el ancho de la columna). La etiqueta es la cadena del nodo ya movido.
+9. **Bloqueo al mover** = `validation_error` en `id` con el mensaje y el `bloqueo` (design §7.1: «`mover` la rechaza con
+   `validation_error`»).
+10. **Marcas por empresa en el punto único:** la guardia `zona-especial-punto-unico` no deja leer
+    `distritoZonaEspecial` fuera de `_shared/zona-especial.ts`. Se añadió allí `leerNodosConMarcaPorEmpresa(tx, ids)`
+    (filtro explícito por empresa, porque la plataforma corre sin empresa en el contexto). Archivo fuera de la lista
+    de `tasks.md`: `lib/repositories/_shared/zona-especial.ts`.
+11. **`@sin-superficie` provisional:** `superficie-de-uso` exige que toda Server Action la importe una pantalla. Hasta
+    que T4.1 monte `MoverNodoDialog`, las dos actions llevan `@sin-superficie SLT-48 T4.1 … quitar esta anotación al
+    montarla`. La misma guardia se pondrá roja si la anotación sobrevive a la pantalla: **el frontend_dev la quita en
+    T4.1**.
+
+### Salida real (resumida)
+
+```
+$ vitest run tests/unit/actions/geografia-plataforma.mover.test.ts tests/unit/actions/geografia-plataforma-action.test.ts
+      Tests  154 passed (154)          (el nuevo: 27)
+$ vitest run tests/integration/db/geografia-mover-nodo.test.ts tests/integration/db/geografia-mover-nodo-ordenes.test.ts
+      Tests  10 passed (10)
+$ pnpm run test:guardias
+      Test Files 9 failed | 328 passed — de los 9:
+        superficie-de-uso, zona-especial-punto-unico: míos, arreglados (desvíos 10 y 11) → 54 passed (54) junto al test nuevo
+        catalogo-postgres-acota-esquema, descargas-por-registro, sin-estados-retirados: timeout de 20 s con la máquina
+          cargada; solos → 78 passed (78) con geografia-sin-cte-recursiva, nodo-geografico-escritor-unico y geografia-dominio-puro
+        dependencias-declaradas-presentes: baseline (init.sh sin el marcador; ajeno)
+        zona-central-guarda-y-rastro, zona-guardado-conserva-costos, zona-guardado-conserva-inactivos: T5
+$ eslint (archivos de T3)   → 0 errores, 0 avisos
+$ pnpm run typecheck        → 0 errores fuera de tests/integration/db y e2e (T5/T6)
+```
+
+**Veredicto T3:** mover un nodo en el servidor hecho (R34–R41, P1, P4), con vista previa desglosada por nivel y
+bloqueo por empresa; verde contra Postgres. La pantalla es T4.1.

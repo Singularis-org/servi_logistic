@@ -6,9 +6,12 @@ import type {
 } from "@/lib/types/filtros-ordenes";
 import type {
   ArbolDeZonasDTO,
+  BloqueoDeMoverDTO,
+  MotivoDeNoMover,
   NodoArbolPlataformaDTO,
   ProvinciaArbolDTO,
   TipoNivelDTO,
+  VistaPreviaMoverNodoDTO,
 } from "@/lib/types/geografia-nodo";
 import type {
   NodoExistenteConProfundidad,
@@ -70,6 +73,37 @@ export interface DivisionPorProfundidadDePais {
  */
 export type DesenlaceDeRenombre = "no_existe" | "sin_cambio" | "cambio_concurrente" | "renombrado";
 export type DesenlaceDeActivacion = "no_existe" | "sin_cambio" | "cambiado";
+
+/**
+ * SLT-48 (design §7.1; R35–R37, R40) — lo que responden la vista previa y el movimiento, sin escribir
+ * salvo en `movido`:
+ *  - `no_existe`: el nodo a mover no existe;
+ *  - `invalido`: un motivo de R35 (el destino no existe, es de otro país o de otra profundidad, es el
+ *    padre actual o está retirado, o el nodo es una raíz);
+ *  - `conflict`: el destino ya tiene un hijo con ese nombre (por la clave normalizada);
+ *  - `bloqueado`: hay órdenes abiertas cuyo grupo o marca cambiaría (P1, R40);
+ *  - `cambio_concurrente` (solo al mover): el padre ya no es el que mostró el modal (R37).
+ */
+export type DesenlaceDeVistaPreviaMover =
+  | { estado: "no_existe" }
+  | { estado: "invalido"; motivo: MotivoDeNoMover }
+  | { estado: "conflict" }
+  | { estado: "ok"; vista: VistaPreviaMoverNodoDTO };
+
+export type DesenlaceDeMover =
+  | { estado: "no_existe" }
+  | { estado: "invalido"; motivo: MotivoDeNoMover }
+  | { estado: "conflict" }
+  | { estado: "bloqueado"; bloqueo: BloqueoDeMoverDTO }
+  | { estado: "cambio_concurrente" }
+  | { estado: "movido" };
+
+/** El movimiento pedido: el nodo, el padre de destino y el padre que mostró el modal. */
+export interface DatosDeMover {
+  id: string;
+  padreIdNuevo: string;
+  padreIdAnterior: string;
+}
 
 // El catalogo geografico global.
 //
@@ -209,6 +243,23 @@ export interface IGeoRepository {
     activo: boolean,
     actorUsuarioId: string | null,
   ): Promise<DesenlaceDeActivacion>;
+
+  /**
+   * SLT-48 (R36) — el modal antes → después de mover `id` bajo `padreIdNuevo`, solo lectura: corre las
+   * validaciones de R35 y, si pasan, da las rutas, los descendientes por nivel, las órdenes que cambian
+   * de nombre (todas las empresas: es plataforma) y el bloqueo de P1 con cuántas órdenes y de qué
+   * empresas.
+   */
+  vistaPreviaMover(id: string, padreIdNuevo: string): Promise<DesenlaceDeVistaPreviaMover>;
+
+  /**
+   * SLT-48 (R34–R40) — cambia SOLO el `padre_id` del nodo, en una transacción con las mismas
+   * validaciones que la vista previa, el bloqueo de P1 y la fila `nodo_geografico_movido` del historial
+   * de plataforma (R38). No escribe ninguna fila de `orden` (R39). El padre se compara con
+   * `padreIdAnterior` en la misma sentencia que escribe (R37). Deja escapar la violación de UNIQUE de
+   * `(padre_id, nombre_normalizado)` si otra persona creó el hermano entre medias: el borde la traduce.
+   */
+  mover(datos: DatosDeMover, actorUsuarioId: string | null): Promise<DesenlaceDeMover>;
 
   /** La profundidad del nodo, o `null` si no existe (el conteo de R20). */
   profundidadDeNodo(id: string): Promise<number | null>;

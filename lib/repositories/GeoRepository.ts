@@ -5,8 +5,11 @@ import type {
   ArbolDePais,
   ContextoDeAltaDeNodo,
   DatosDeAltaDeNodo,
+  DatosDeMover,
   DesenlaceDeActivacion,
+  DesenlaceDeMover,
   DesenlaceDeRenombre,
+  DesenlaceDeVistaPreviaMover,
   DestinoDeAlta,
   DivisionPorProfundidadDePais,
   IGeoRepository,
@@ -22,12 +25,17 @@ import type {
 import {
   GEO_NOMBRE_MAX,
   type ArbolDeZonasDTO,
+  type BloqueoDeMoverDTO,
   type CantonArbolDTO,
+  type DescendientesDeNivelDTO,
   type DistritoArbolDTO,
+  type MotivoDeNoMover,
   type NodoArbolPlataformaDTO,
   type NodoDeZonasDTO,
+  type PasoDeRuta,
   type ProvinciaArbolDTO,
   type TipoNivelDTO,
+  type VistaPreviaMoverNodoDTO,
 } from "@/lib/types/geografia-nodo";
 import type {
   NodoExistenteConProfundidad,
@@ -37,14 +45,18 @@ import type {
 } from "@/lib/types/division-csv";
 import { PAIS_NIVELES_MAX } from "@/lib/types/pais";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
-import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { leerNodosConMarcaPorEmpresa, type ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
+  catalogoConPadre,
   esZonaEspecial,
   estaActivo,
   nodosBajo,
+  ordenesQueCambiarianAlMover,
+  type OrdenAbiertaEnElArbol,
+  type TarifaYMarcaDeLaEmpresa,
   nodosDeProfundidad,
   tiposDelPais,
   zonaQueCubre,
@@ -59,7 +71,7 @@ import {
   appendAccionPlataforma,
   type ActorPlataformaCongelado,
 } from "@/lib/repositories/registrar-accion-plataforma";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { etiquetaDeEntidad, rutaDeHojaARaiz } from "@/lib/types/historial-accion-etiquetas";
 
 // FICHA 374: el `Pick` gana `$transaction` y `usuario` porque las escrituras registran su accion en
 // la MISMA transaccion del cambio — igual que `VehiculoPrismaClient` en la ficha 362.
@@ -82,8 +94,38 @@ type GeoPrismaClient = Pick<
   | "zonaDistrito"
   | "zonaNodo" // SLT-89: el cargador del catalogo lee tambien `zona_nodo`
   | "organizacion"
+  // SLT-48 (design §7.1, §7.2): mover un nodo cuenta las ordenes del subarbol y, por P1, lee el grupo
+  // y la marca de las abiertas. Solo lectura: mover no escribe ninguna fila de `orden` (R39).
+  | "orden"
+  | "grupoDistritosDistrito"
+  | "grupoDistritosNodo"
 > &
   ClienteDeMarcas;
+
+/** Lo que la evaluacion de un movimiento lee, sea del cliente o de la transaccion de `mover`. */
+type LecturasDeMover = Pick<
+  GeoPrismaClient,
+  "nodoGeografico" | "orden" | "organizacion" | "grupoDistritosDistrito" | "grupoDistritosNodo"
+> &
+  ClienteDeMarcas;
+
+/** El movimiento ya validado (R35) y medido (R36, P1). */
+interface MovimientoEvaluado {
+  vista: VistaPreviaMoverNodoDTO;
+  /** Nombres de la cadena del padre de hoy, de la hoja a la raiz: el «antes» del historial (R38). */
+  cadenaDelPadreAnterior: string[];
+  paisId: string;
+}
+
+type EvaluacionDeMover =
+  | { estado: "no_existe" }
+  | { estado: "invalido"; motivo: MotivoDeNoMover }
+  | { estado: "conflict" }
+  | { estado: "ok"; movimiento: MovimientoEvaluado };
+
+// Un nodo de las primeras profundidades puede arrastrar miles de ordenes abiertas: P1 las lee todas y
+// el limite por defecto de 5 s de una transaccion interactiva no da margen.
+const TIMEOUT_MOVER_MS = 30_000;
 
 type GeoTx = Pick<GeoPrismaClient, "nodoGeografico">;
 
@@ -252,6 +294,184 @@ function nodoDeZonas(cat: CatalogoGeografico, asig: AsignacionesDeLaEmpresa, n: 
         ? null
         : { zonaId: heredada.id, zonaNombre: heredada.nombre, nodoId: nodoDelQueHereda.id, nodoNombre: nodoDelQueHereda.nombre },
     hijos: (cat.hijos.get(n.id) ?? []).map((h) => nodoDeZonas(cat, asig, h)),
+  };
+}
+
+// --- SLT-48 (design §7): mover un nodo ---
+
+/** De la raiz al nodo, con el nombre del catalogo dado. */
+function rutaEnCatalogo(cat: CatalogoGeografico, n: NodoDelCatalogo): PasoDeRuta[] {
+  return [...ancestros(cat, n.id).reverse(), n].map((p) => ({ id: p.id, nombre: p.nombre }));
+}
+
+/** Los descendientes agrupados por nivel, de arriba abajo, con el tipo de cada nivel (regla 1 de la maqueta). */
+function descendientesPorNivel(cat: CatalogoGeografico, debajo: readonly NodoDelCatalogo[]): DescendientesDeNivelDTO[] {
+  const porTipo = new Map<string, { profundidad: number; cantidad: number }>();
+  for (const n of debajo) {
+    const actual = porTipo.get(n.tipoId);
+    if (actual) actual.cantidad += 1;
+    else porTipo.set(n.tipoId, { profundidad: n.profundidad, cantidad: 1 });
+  }
+  return [...porTipo.entries()]
+    .map(([tipoId, { profundidad, cantidad }]) => {
+      const tipo = cat.tipos.find((t) => t.id === tipoId);
+      if (tipo === undefined) throw new Error(`mover: el tipo ${tipoId} no esta en el catalogo del pais`);
+      return { profundidad, tipoSingular: tipo.nombreSingular, tipoPlural: tipo.nombrePlural, cantidad };
+    })
+    .sort((a, b) => a.profundidad - b.profundidad);
+}
+
+/**
+ * P1 (design §7.2): lo que decide el grupo y la marca de las ordenes abiertas, por empresa. Plataforma
+ * (sin empresa en el contexto): se filtra a mano por las empresas que tienen ordenes en el subarbol.
+ * `grupo_distritos_distrito` solo cuenta para el lugar exacto, asi que basta el del subarbol;
+ * `grupo_distritos_nodo` y las marcas se heredan, asi que van enteros.
+ */
+async function tarifaYMarcaPorEmpresa(
+  db: LecturasDeMover,
+  organizacionIds: readonly string[],
+  subarbol: readonly string[],
+): Promise<Map<string, TarifaYMarcaDeLaEmpresa>> {
+  const porEmpresa = new Map<
+    string,
+    { gruposPorDistrito: Map<string, string>; miembrosPorZona: Map<string, Map<string, string>>; marcas: Set<string> }
+  >();
+  const de = (organizacionId: string) => {
+    let e = porEmpresa.get(organizacionId);
+    if (e === undefined) {
+      e = { gruposPorDistrito: new Map(), miembrosPorZona: new Map(), marcas: new Set() };
+      porEmpresa.set(organizacionId, e);
+    }
+    return e;
+  };
+  for (const id of organizacionIds) de(id);
+  const empresas = { in: [...organizacionIds] };
+
+  const exactos = await db.grupoDistritosDistrito.findMany({
+    where: { organizacionId: empresas, distritoId: { in: [...subarbol] } },
+    select: { organizacionId: true, zonaId: true, distritoId: true, grupoId: true },
+  });
+  for (const f of exactos) de(f.organizacionId).gruposPorDistrito.set(`${f.zonaId}|${f.distritoId}`, f.grupoId);
+
+  const heredables = await db.grupoDistritosNodo.findMany({
+    where: { organizacionId: empresas },
+    select: { organizacionId: true, zonaId: true, nodoGeograficoId: true, grupoId: true },
+  });
+  for (const f of heredables) {
+    const miembros = de(f.organizacionId).miembrosPorZona;
+    const deLaZona = miembros.get(f.zonaId) ?? new Map<string, string>();
+    deLaZona.set(f.nodoGeograficoId, f.grupoId);
+    miembros.set(f.zonaId, deLaZona);
+  }
+
+  for (const f of await leerNodosConMarcaPorEmpresa(db, organizacionIds)) de(f.organizacionId).marcas.add(f.nodoId);
+
+  return porEmpresa;
+}
+
+/** P1: cuantas ordenes abiertas cambiarian de grupo o de marca, y de que empresas. `null` si ninguna. */
+async function bloqueoDeMover(
+  db: LecturasDeMover,
+  antes: CatalogoGeografico,
+  despues: CatalogoGeografico,
+  subarbol: readonly string[],
+): Promise<BloqueoDeMoverDTO | null> {
+  // Abierta = sin cierre (su precio no esta congelado) y sin borrar.
+  const filas = await db.orden.findMany({
+    where: { nodoGeograficoId: { in: [...subarbol] }, deletedAt: null, cierreDetalles: { none: {} } },
+    select: { id: true, organizacionId: true, zonaId: true, nodoGeograficoId: true },
+  });
+  const abiertas: OrdenAbiertaEnElArbol[] = filas.flatMap((o) =>
+    o.nodoGeograficoId === null ? [] : [{ id: o.id, organizacionId: o.organizacionId, zonaId: o.zonaId, nodoId: o.nodoGeograficoId }],
+  );
+  if (abiertas.length === 0) return null;
+
+  const datos = await tarifaYMarcaPorEmpresa(db, [...new Set(abiertas.map((o) => o.organizacionId))], subarbol);
+  const afectadas = ordenesQueCambiarianAlMover(antes, despues, abiertas, (id) => datos.get(id));
+  if (afectadas.length === 0) return null;
+
+  const porEmpresa = new Map<string, number>();
+  for (const o of afectadas) porEmpresa.set(o.organizacionId, (porEmpresa.get(o.organizacionId) ?? 0) + 1);
+  const nombres = await db.organizacion.findMany({
+    where: { id: { in: [...porEmpresa.keys()] } },
+    select: { id: true, nombre: true },
+  });
+  const nombreDe = new Map(nombres.map((o) => [o.id, o.nombre]));
+  return {
+    ordenes: afectadas.length,
+    empresas: [...porEmpresa.entries()]
+      .map(([id, ordenes]) => ({ id, nombre: nombreDe.get(id) ?? id, ordenes }))
+      .sort((a, b) => b.ordenes - a.ordenes || a.nombre.localeCompare(b.nombre)),
+  };
+}
+
+/**
+ * SLT-48 (R35, R36, P1, P4) — lo comun a la vista previa y a `mover`, sin escribir. El catalogo lo da
+ * quien llama: la vista previa lee el suyo y `mover` el de su transaccion. Los descendientes salen del
+ * catalogo en memoria (sin CTE recursiva, guardia `geografia-sin-cte-recursiva`).
+ */
+async function evaluarMovimiento(
+  db: LecturasDeMover,
+  id: string,
+  padreIdNuevo: string,
+  catalogoDe: (paisId: string) => Promise<CatalogoGeografico>,
+): Promise<EvaluacionDeMover> {
+  const nodoLeido = await db.nodoGeografico.findUnique({
+    where: { id },
+    select: { paisId: true, padreId: true, profundidad: true },
+  });
+  if (nodoLeido === null) return { estado: "no_existe" };
+  if (nodoLeido.padreId === null) return { estado: "invalido", motivo: "es_raiz" };
+
+  const destino = await db.nodoGeografico.findUnique({
+    where: { id: padreIdNuevo },
+    select: { paisId: true, profundidad: true },
+  });
+  if (destino === null) return { estado: "invalido", motivo: "destino_no_existe" };
+  if (destino.paisId !== nodoLeido.paisId) return { estado: "invalido", motivo: "destino_de_otro_pais" };
+  if (destino.profundidad !== nodoLeido.profundidad - 1) {
+    return { estado: "invalido", motivo: "destino_de_otra_profundidad" };
+  }
+  if (padreIdNuevo === nodoLeido.padreId) return { estado: "invalido", motivo: "destino_es_el_padre_actual" };
+
+  const antes = await catalogoDe(nodoLeido.paisId);
+  const nodo = antes.porId.get(id);
+  const padreAnterior = antes.porId.get(nodoLeido.padreId);
+  if (nodo === undefined || padreAnterior === undefined || !antes.porId.has(padreIdNuevo)) {
+    throw new Error(`mover: el nodo ${id} o sus padres no estan en el catalogo de ${nodoLeido.paisId}`);
+  }
+  // P4: retirado en cascada. Un destino bajo un antepasado retirado tampoco esta disponible.
+  if (estaActivo(antes, padreIdNuevo) !== true) return { estado: "invalido", motivo: "destino_retirado" };
+  // El unico de la base es `(padre_id, nombre_normalizado)`: se mira antes de escribir para decirlo
+  // en el modal (R36); si otra persona crea el hermano despues, lo para la base.
+  if ((antes.hijos.get(padreIdNuevo) ?? []).some((h) => h.nombreNormalizado === nodo.nombreNormalizado)) {
+    return { estado: "conflict" };
+  }
+
+  const debajo = nodosBajo(antes, id);
+  const subarbol = [id, ...debajo.map((n) => n.id)];
+  const despues = catalogoConPadre(antes, id, padreIdNuevo);
+  const tipo = antes.tipos.find((t) => t.id === nodo.tipoId);
+  if (tipo === undefined) throw new Error(`mover: el tipo del nodo ${id} no esta en el catalogo`);
+
+  const vista: VistaPreviaMoverNodoDTO = {
+    nodo: { id, nombre: nodo.nombre, profundidad: nodo.profundidad, tipoSingular: tipo.nombreSingular },
+    padreIdAnterior: padreAnterior.id,
+    rutaActual: rutaEnCatalogo(antes, nodo),
+    rutaNueva: rutaEnCatalogo(despues, nodo),
+    descendientes: { total: debajo.length, porNivel: descendientesPorNivel(antes, debajo) },
+    ordenesQueCambianDeNombre: await db.orden.count({
+      where: { nodoGeograficoId: { in: subarbol }, deletedAt: null },
+    }),
+    bloqueo: await bloqueoDeMover(db, antes, despues, subarbol),
+  };
+  return {
+    estado: "ok",
+    movimiento: {
+      vista,
+      cadenaDelPadreAnterior: [padreAnterior, ...ancestros(antes, padreAnterior.id)].map((n) => n.nombre),
+      paisId: nodoLeido.paisId,
+    },
   };
 }
 
@@ -672,6 +892,67 @@ export class GeoRepository implements IGeoRepository {
       ]);
       return "cambiado";
     });
+  }
+
+  /**
+   * SLT-48 (R36) — la vista previa del modal, solo lectura. El catalogo es el del pais del nodo (no el
+   * de una empresa: es plataforma), leido en su propia foto.
+   */
+  async vistaPreviaMover(id: string, padreIdNuevo: string): Promise<DesenlaceDeVistaPreviaMover> {
+    const r = await evaluarMovimiento(this.prisma, id, padreIdNuevo, (paisId) => this.catalogo().dePais(paisId));
+    return r.estado === "ok" ? { estado: "ok", vista: r.movimiento.vista } : r;
+  }
+
+  /**
+   * SLT-48 (R34–R40) — mueve el nodo en UNA transaccion:
+   *   1. el padre de hoy contra el que mostro el modal: si ya es otro, `cambio_concurrente` (R37);
+   *   2. las validaciones de R35 y el bloqueo de P1, con el catalogo de esta misma transaccion;
+   *   3. el `updateMany` con `padre_id = padreIdAnterior` en el `where`, la UNICA escritura, y solo
+   *      de `padre_id`: si otra persona lo movio entre la lectura y aqui, toca 0 filas →
+   *      `cambio_concurrente`. El trigger de invariantes de SLT-43 vuelve a comprobar la profundidad;
+   *   4. `nodo_geografico_movido` con las rutas de los dos padres (R38).
+   * Ninguna fila de `orden` se escribe (R39): su ruta se lee del arbol y su zona esta guardada.
+   */
+  async mover(datos: DatosDeMover, actorUsuarioId: string | null): Promise<DesenlaceDeMover> {
+    return this.prisma.$transaction(
+      async (tx): Promise<DesenlaceDeMover> => {
+        const previo = await tx.nodoGeografico.findUnique({ where: { id: datos.id }, select: { padreId: true } });
+        if (previo === null) return { estado: "no_existe" };
+        if (previo.padreId === null) return { estado: "invalido", motivo: "es_raiz" };
+        if (previo.padreId !== datos.padreIdAnterior) return { estado: "cambio_concurrente" };
+
+        const catalogo = new CatalogoGeograficoRepository(tx);
+        const r = await evaluarMovimiento(tx, datos.id, datos.padreIdNuevo, (paisId) => catalogo.dePais(paisId));
+        if (r.estado !== "ok") return r;
+        const { vista, cadenaDelPadreAnterior, paisId } = r.movimiento;
+        if (vista.bloqueo !== null) return { estado: "bloqueado", bloqueo: vista.bloqueo };
+
+        const { count } = await tx.nodoGeografico.updateMany({
+          where: { id: datos.id, padreId: datos.padreIdAnterior },
+          data: { padreId: datos.padreIdNuevo },
+        });
+        if (count === 0) return { estado: "cambio_concurrente" };
+
+        const nombres = await cadenaDeNombres(tx, vista.nodo.nombre, datos.padreIdNuevo);
+        const actor = await actorDePlataforma(tx, actorUsuarioId);
+        await appendAccionPlataforma(tx, [
+          {
+            accion: "nodo_geografico_movido",
+            entidadTipo: "nodo_geografico",
+            entidadId: datos.id,
+            entidadEtiqueta: etiquetaDeNodo(nombres),
+            paisId,
+            ...actor,
+            // Las rutas de los padres, de la hoja a la raiz como la etiqueta. Las columnas miden
+            // GEO_NOMBRE_MAX y Postgres no trunca: aborta. Por eso se recortan aqui.
+            valorAnterior: rutaDeHojaARaiz(cadenaDelPadreAnterior).slice(0, GEO_NOMBRE_MAX),
+            valorNuevo: rutaDeHojaARaiz(nombres.slice(1)).slice(0, GEO_NOMBRE_MAX),
+          },
+        ]);
+        return { estado: "movido" };
+      },
+      { timeout: TIMEOUT_MOVER_MS },
+    );
   }
 
   async profundidadDeNodo(id: string): Promise<number | null> {

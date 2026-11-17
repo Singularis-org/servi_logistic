@@ -17,7 +17,9 @@ import type {
   CrearNodoGeograficoServiceResult,
   IGeografiaService,
   ListarArbolDePaisServiceResult,
+  MoverNodoServiceResult,
   RenombrarNodoGeograficoServiceResult,
+  VistaPreviaMoverNodoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
 import type {
   AgregarNivelPaisServiceResult,
@@ -37,8 +39,10 @@ import { GeografiaService } from "@/lib/services/GeografiaService";
 import {
   cambiarActivacionGeograficaSchema,
   crearNodoGeograficoSchema,
+  moverNodoSchema,
   nodoGeograficoSchema,
   renombrarNodoGeograficoSchema,
+  vistaPreviaMoverNodoSchema,
   type CrearNodoGeograficoInput,
 } from "@/lib/types/geografia-nodo";
 import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
@@ -58,8 +62,9 @@ import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
 // catálogo (R23).
 //
 // SLT-46 (design §4.1, §4.2; R22, R50): los nodos viajan por id, sin `nivel`, a cualquier profundidad.
-// No hay action para mover un nodo de padre ni para quitar un tipo o un nivel de un país; la lista de
-// exports la fija `geografia-plataforma-action.test.ts`.
+// No hay action para quitar un tipo o un nivel de un país; la lista de exports la fija
+// `geografia-plataforma-action.test.ts`. SLT-48 (design §7.1; R34) añade mover un nodo de padre, con
+// su vista previa.
 //
 // Errores (R36; decisión del humano en la tanda 4): las actions que escriben (altas, renombre,
 // retiro, disponibilidad, carga) y el conteo de la confirmación responden `error` y dejan el log
@@ -397,6 +402,60 @@ export async function contarOrdenesSinEntregarAction(
     return await enPlataforma(() => servicio.contarOrdenesSinEntregar(parsed.data, p.actor));
   } catch (error) {
     return registrarFallo("conteo de ordenes", `nodo=${parsed.data.id}`, error);
+  }
+}
+
+export type VistaPreviaMoverNodoActionResult =
+  | VistaPreviaMoverNodoServiceResult
+  | ErrorDeValidacion
+  | SinPermiso
+  | ErrorInterno;
+
+/**
+ * SLT-48 (R36): el modal antes → después de mover un nodo. Solo lectura, con las validaciones de R35;
+ * si la base falla, `error` con log (R36 de SL-20).
+ *
+ * @sin-superficie SLT-48 T4.1 (frontend_dev, en curso): la monta `MoverNodoDialog` en `/plataforma/geografia`; quitar esta anotacion al montarla.
+ */
+export async function vistaPreviaMoverNodoAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<VistaPreviaMoverNodoActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const parsed = vistaPreviaMoverNodoSchema.safeParse(input);
+  if (!parsed.success) return errorDeValidacion(parsed.error);
+  const servicio = deps.geografiaService ?? construirGeografiaService();
+  try {
+    return await enPlataforma(() => servicio.vistaPreviaMoverNodo(parsed.data, p.actor));
+  } catch (error) {
+    return registrarFallo("vista previa de mover nodo", `nodo=${parsed.data.id}`, error);
+  }
+}
+
+export type MoverNodoActionResult = MoverNodoServiceResult | ErrorDeValidacion | SinPermiso | ErrorInterno;
+
+/**
+ * SLT-48 (R34–R40): mueve un nodo a otro padre. Solo superadmin (`puerta`); el servicio lo vuelve a
+ * mirar. Un hermano con el mismo nombre creado en carrera lo para el único de la base: `conflict`,
+ * como el alta y el renombre. Cualquier otro fallo es `error` con log.
+ *
+ * @sin-superficie SLT-48 T4.1 (frontend_dev, en curso): la monta `MoverNodoDialog` en `/plataforma/geografia`; quitar esta anotacion al montarla.
+ */
+export async function moverNodoAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<MoverNodoActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const parsed = moverNodoSchema.safeParse(input);
+  if (!parsed.success) return errorDeValidacion(parsed.error);
+  const servicio = deps.geografiaService ?? construirGeografiaService();
+  try {
+    return await enPlataforma(() => servicio.moverNodo(parsed.data, p.actor));
+  } catch (error) {
+    if (esViolacionDeUnico(error)) return { status: "conflict" };
+    return registrarFallo("mover nodo", `nodo=${parsed.data.id}`, error);
   }
 }
 

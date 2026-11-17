@@ -116,18 +116,18 @@
 
 ## T3 — Mover nodo, servidor (backend_dev) · depende de T1.2 y T2.4
 
-- [ ] **T3.1** `moverNodoSchema`, `GeoRepository.mover` e `IGeoRepository` (design §7.1). Rechaza un
+- [x] **T3.1** `moverNodoSchema`, `GeoRepository.mover` e `IGeoRepository` (design §7.1). Rechaza un
   destino retirado (P4).
   **Hecho:** `geografia-mover-nodo.test.ts` cubre éxito, cada rechazo de R35, `conflict` por nombre,
   `cambio_concurrente` (R37) y la fila de historial en la misma transacción (R38).
-- [ ] **T3.2** `GeoRepository.vistaPreviaMover`: rutas, descendientes y órdenes del subárbol (R36).
+- [x] **T3.2** `GeoRepository.vistaPreviaMover`: rutas, descendientes y órdenes del subárbol (R36).
   **Hecho:** cubierto en `geografia-mover-nodo.test.ts`.
-- [ ] **T3.3** Órdenes abiertas afectadas (design §7.2): `catalogoConPadre` y la comparación de grupo y
+- [x] **T3.3** Órdenes abiertas afectadas (design §7.2): `catalogoConPadre` y la comparación de grupo y
   marca por empresa. Bloqueo en la vista previa y en `mover`, con cuántas órdenes y de qué empresas (P1).
   **Hecho:** `geografia-mover-nodo-ordenes.test.ts` comprueba con dos empresas que no hay escrituras en
   `orden`, que la ruta es la nueva, que la zona se conserva, que el precio y la marca no cambian (o el
   movimiento se bloquea) y que una orden nueva usa la zona nueva (R39–R41).
-- [ ] **T3.4** `GeografiaService.moverNodo`/`vistaPreviaMoverNodo`, `IGeografiaService`, las actions con
+- [x] **T3.4** `GeografiaService.moverNodo`/`vistaPreviaMoverNodo`, `IGeografiaService`, las actions con
   `comoPlataforma` y la etiqueta en `lib/types/historial-accion.ts`.
   **Hecho:** `geografia-plataforma.mover.test.ts` verde: `forbidden` sin superadmin, sin escribir (R34).
 

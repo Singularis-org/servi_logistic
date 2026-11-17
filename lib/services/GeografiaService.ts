@@ -10,14 +10,21 @@ import type {
   ListarArbolDePaisServiceResult,
   ListarArbolDeZonasServiceResult,
   ListarArbolGeograficoServiceResult,
+  MoverNodoServiceResult,
   RenombrarNodoGeograficoServiceResult,
+  VistaPreviaMoverNodoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
 import {
+  MENSAJE_DE_MOTIVO_DE_MOVER,
   NIVELES_GEOGRAFICOS,
+  type BloqueoDeMoverDTO,
   type CambiarActivacionGeograficaInput,
   type CrearNodoGeograficoInput,
+  type MotivoDeNoMover,
+  type MoverNodoInput,
   type NodoGeograficoInput,
   type RenombrarNodoGeograficoInput,
+  type VistaPreviaMoverNodoInput,
 } from "@/lib/types/geografia-nodo";
 import { validarCodigoDeTipo } from "@/lib/utils/codigo-geografico";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
@@ -222,6 +229,52 @@ export class GeografiaService implements IGeografiaService {
   }
 
   /**
+   * SLT-48 (R36) — la vista previa del modal antes → después. Las validaciones de R35 corren aqui, al
+   * abrir el modal, y no solo al guardar. El rol se mira ANTES de leer nada (R34).
+   */
+  async vistaPreviaMoverNodo(
+    input: VistaPreviaMoverNodoInput,
+    actor: Actor,
+  ): Promise<VistaPreviaMoverNodoServiceResult> {
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const r = await this.repo.vistaPreviaMover(input.id, input.padreIdNuevo);
+    switch (r.estado) {
+      case "no_existe":
+        return { status: "not_found" };
+      case "invalido":
+        return { status: "validation_error", fieldErrors: errorDeMotivo(r.motivo) };
+      case "conflict":
+        return { status: "conflict" };
+      case "ok":
+        return { status: "ok", vista: r.vista };
+    }
+  }
+
+  /**
+   * SLT-48 (R34–R41) — mover. Toda la regla vive en el repositorio, en una transaccion: aqui se mira
+   * el rol y se traducen los desenlaces. P1 (bloqueado) es `validation_error` con el bloqueo, para que
+   * la pantalla diga cuantas ordenes y de que empresas; R37 es el `conflict` con motivo de SLT-46.
+   */
+  async moverNodo(input: MoverNodoInput, actor: Actor): Promise<MoverNodoServiceResult> {
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const r = await this.repo.mover(input, actor.usuarioId);
+    switch (r.estado) {
+      case "no_existe":
+        return { status: "not_found" };
+      case "invalido":
+        return { status: "validation_error", fieldErrors: errorDeMotivo(r.motivo) };
+      case "conflict":
+        return { status: "conflict" };
+      case "bloqueado":
+        return { status: "validation_error", fieldErrors: { id: [mensajeDeBloqueo(r.bloqueo)] }, bloqueo: r.bloqueo };
+      case "cambio_concurrente":
+        return { status: "conflict", motivo: "cambio_concurrente" };
+      case "movido":
+        return { status: "ok", id: input.id, padreId: input.padreIdNuevo };
+    }
+  }
+
+  /**
    * SOLO LECTURA (R60). El conteo de ordenes (SLT-65) sigue por nivel: las ordenes solo guardan su
    * lugar en las profundidades 1–3. Por eso se lee antes la profundidad del nodo: 1/2/3 pasan a
    * provincia/canton/distrito, y un nodo mas profundo —o uno que no existe— no tiene ordenes que
@@ -239,6 +292,18 @@ export class GeografiaService implements IGeografiaService {
     const ordenes = await this.ordenes.contarSinEntregarPorNodoGeografico(nivel, input.id);
     return { status: "ok", ordenes };
   }
+}
+
+/** SLT-48 (R35): el motivo bajo el campo que lo causa: el nodo (una raiz) o el destino. */
+function errorDeMotivo(motivo: MotivoDeNoMover): Record<string, string[]> {
+  return { [motivo === "es_raiz" ? "id" : "padreIdNuevo"]: [MENSAJE_DE_MOTIVO_DE_MOVER[motivo]] };
+}
+
+/** SLT-48 (P1, R40): cuantas ordenes abiertas lo impiden y de que empresas. */
+function mensajeDeBloqueo(b: BloqueoDeMoverDTO): string {
+  const ordenes = b.ordenes === 1 ? "1 orden abierta" : `${b.ordenes} órdenes abiertas`;
+  const empresas = b.empresas.map((e) => `${e.nombre} (${e.ordenes})`).join(", ");
+  return `No se puede mover: ${ordenes} cambiaría${b.ordenes === 1 ? "" : "n"} de precio o de zona especial (${empresas}).`;
 }
 
 /**

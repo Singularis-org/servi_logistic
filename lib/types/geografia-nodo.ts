@@ -180,6 +180,84 @@ export const nodoGeograficoSchema = z.object({ id: idDeNodoSchema }).strict();
 
 export type NodoGeograficoInput = z.infer<typeof nodoGeograficoSchema>;
 
+// ── SLT-48 (design §7.1; R34–R38) — mover un nodo a otro padre ──────────────────────────────────
+
+/**
+ * La vista previa del modal antes → después (R36): el nodo y el padre al que se quiere llevar. Sin
+ * el padre de hoy: lo devuelve la vista previa y la pantalla lo manda al confirmar.
+ */
+export const vistaPreviaMoverNodoSchema = z.object({ id: idDeNodoSchema, padreIdNuevo: idDeNodoSchema }).strict();
+
+export type VistaPreviaMoverNodoInput = z.infer<typeof vistaPreviaMoverNodoSchema>;
+
+/**
+ * Mover. `padreIdAnterior` es el padre que mostró el modal como «antes» (R37): si en la base ya es
+ * otro, nada se escribe y la respuesta es `cambio_concurrente`. `.strict()`: ni nombre ni código
+ * viajan por aquí; mover no renombra.
+ */
+export const moverNodoSchema = z
+  .object({ id: idDeNodoSchema, padreIdNuevo: idDeNodoSchema, padreIdAnterior: idDeNodoSchema })
+  .strict();
+
+export type MoverNodoInput = z.infer<typeof moverNodoSchema>;
+
+/**
+ * Por qué no se puede mover (R35). Cada motivo lleva su mensaje (`MENSAJE_DE_MOTIVO_DE_MOVER`); el
+ * nombre de un hermano repetido en el destino no es un motivo de estos, es `conflict`.
+ */
+export type MotivoDeNoMover =
+  | "es_raiz"
+  | "destino_no_existe"
+  | "destino_de_otro_pais"
+  | "destino_de_otra_profundidad"
+  | "destino_es_el_padre_actual"
+  | "destino_retirado";
+
+export const MENSAJE_DE_MOTIVO_DE_MOVER: Record<MotivoDeNoMover, string> = {
+  es_raiz: "Un nodo del primer nivel no tiene padre: no se puede mover.",
+  destino_no_existe: "El destino no existe.",
+  destino_de_otro_pais: "El destino es de otro país.",
+  destino_de_otra_profundidad: "El destino no está en el mismo nivel que el padre actual.",
+  destino_es_el_padre_actual: "El nodo ya cuelga de ese destino.",
+  destino_retirado: "El destino está retirado del catálogo.",
+};
+
+/** Cuántos nodos de un nivel cuelgan del que se mueve (regla 1 de la maqueta: «6 manzanas y 32 lotes»). */
+export interface DescendientesDeNivelDTO {
+  profundidad: number;
+  tipoSingular: string;
+  tipoPlural: string;
+  cantidad: number;
+}
+
+/** Una empresa con órdenes abiertas cuyo precio o marca cambiaría al mover (P1). */
+export interface EmpresaConOrdenesAfectadasDTO {
+  id: string;
+  nombre: string;
+  ordenes: number;
+}
+
+/** P1: el movimiento se bloquea mientras haya órdenes abiertas afectadas. */
+export interface BloqueoDeMoverDTO {
+  ordenes: number;
+  empresas: EmpresaConOrdenesAfectadasDTO[];
+}
+
+/** El modal antes → después (R36), con las validaciones de R35 ya pasadas. */
+export interface VistaPreviaMoverNodoDTO {
+  nodo: { id: string; nombre: string; profundidad: number; tipoSingular: string };
+  /** El padre de hoy: la pantalla lo devuelve como `padreIdAnterior` al confirmar (R37). */
+  padreIdAnterior: string;
+  /** De la raíz al nodo, hoy y después. */
+  rutaActual: PasoDeRuta[];
+  rutaNueva: PasoDeRuta[];
+  descendientes: { total: number; porNivel: DescendientesDeNivelDTO[] };
+  /** Órdenes no borradas, de todas las empresas, en el nodo o debajo: cambian el nombre de lugar (R39). */
+  ordenesQueCambianDeNombre: number;
+  /** `null` = se puede confirmar. */
+  bloqueo: BloqueoDeMoverDTO | null;
+}
+
 // ── Los DTO del arbol ────────────────────────────────────────────────────────────────────────
 //
 // VIVEN AQUI Y NO EN LA SERVER ACTION porque desde la ficha 374 los produce `GeoRepository`, y un

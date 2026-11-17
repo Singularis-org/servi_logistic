@@ -2,13 +2,17 @@ import type { CambioConcurrenteResult } from "@/lib/interfaces/services/IPaisSer
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
   ArbolDeZonasDTO,
+  BloqueoDeMoverDTO,
   CambiarActivacionGeograficaInput,
   CrearNodoGeograficoInput,
+  MoverNodoInput,
   NodoArbolPlataformaDTO,
   NodoGeograficoInput,
   ProvinciaArbolDTO,
   RenombrarNodoGeograficoInput,
   TipoNivelDTO,
+  VistaPreviaMoverNodoDTO,
+  VistaPreviaMoverNodoInput,
 } from "@/lib/types/geografia-nodo";
 
 // FICHA 374 (design §5.2) — el contrato del servicio que administra el catalogo geografico.
@@ -90,6 +94,31 @@ export type RenombrarNodoGeograficoServiceResult =
   | { status: "not_found" }
   | { status: "forbidden" };
 
+/**
+ * SLT-48 (R35, R36) — el modal antes → después. `validation_error` lleva el motivo de R35 en `id` (el
+ * nodo es una raíz) o en `padreIdNuevo` (el destino). `conflict`: el destino ya tiene un hijo con ese
+ * nombre. Un `ok` con `vista.bloqueo` distinto de `null` es P1: el modal lo explica y no deja confirmar.
+ */
+export type VistaPreviaMoverNodoServiceResult =
+  | { status: "ok"; vista: VistaPreviaMoverNodoDTO }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "conflict" }
+  | { status: "not_found" }
+  | { status: "forbidden" };
+
+/**
+ * SLT-48 (R34–R40) — mover. Lo mismo que la vista previa, más:
+ *  - P1: `validation_error` en `id` con el `bloqueo` (cuántas órdenes y de qué empresas), sin escribir;
+ *  - R37: `conflict` con `motivo: "cambio_concurrente"` si el padre ya no es el que mostró el modal.
+ */
+export type MoverNodoServiceResult =
+  | { status: "ok"; id: string; padreId: string }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]>; bloqueo?: BloqueoDeMoverDTO }
+  | { status: "conflict" }
+  | CambioConcurrenteResult
+  | { status: "not_found" }
+  | { status: "forbidden" };
+
 export type ContarOrdenesSinEntregarServiceResult =
   | { status: "ok"; ordenes: number }
   | { status: "not_found" }
@@ -150,6 +179,20 @@ export interface IGeografiaService {
     input: RenombrarNodoGeograficoInput,
     actor: Actor,
   ): Promise<RenombrarNodoGeograficoServiceResult>;
+
+  /**
+   * SLT-48 (R36) — la vista previa de mover un nodo, solo lectura. Solo plataforma (R34).
+   */
+  vistaPreviaMoverNodo(
+    input: VistaPreviaMoverNodoInput,
+    actor: Actor,
+  ): Promise<VistaPreviaMoverNodoServiceResult>;
+
+  /**
+   * SLT-48 (R34–R41) — mueve un nodo a otro padre de la misma profundidad que el de hoy, dentro del
+   * país. Solo plataforma (R34): cualquier otro rol recibe `forbidden` sin leer ni escribir.
+   */
+  moverNodo(input: MoverNodoInput, actor: Actor): Promise<MoverNodoServiceResult>;
 
   /**
    * SOLO LECTURA — cuantas ordenes SIN ENTREGAR cuelgan del nodo (R60). Alimenta la confirmacion
