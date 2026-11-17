@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { PlanDTO } from "@/lib/types/planes";
 
 import { versionDe, type PropsDelPaso } from "./estado";
+import { FechasPorEmpresa, type FechasDelCambio } from "./FechasPorEmpresa";
 import { ListaDelPrimerPeriodo } from "./PasoGeneral";
 import { filasDeRevision, haySoloExtras, type FilaDeRevision } from "./revision";
 import { TEXTOS_PLAN_FORM } from "./textos";
@@ -35,13 +36,17 @@ export type PasoRevisarProps = PropsDelPaso & {
   /** Id del motivo de `faltan`, para el `aria-describedby` del botón final. */
   idFaltan: string;
   onIrAlPrimeroQueFalta: () => void;
+  /** SLT-144 (R17–R20): al editar, la fecha de cada empresa; `null` al crear o sin una entrada válida. */
+  fechas: FechasDelCambio | null;
+  onReintentarFechas: () => void;
 };
 
 /**
  * SLT-130 (R22, R23, R26, R28) — el último paso. Al crear lista los valores finales; al editar, solo lo
  * que cambia («antes → después») y cuándo rige. No valida: lo hace el botón final. Debajo, el aviso
  * general y, si la vista previa del custom bloquea el botón, el motivo con un enlace al paso Topes.
- * SLT-144 (R8): y, si faltan pasos por guardar, cuáles, con un enlace al primero.
+ * SLT-144 (R8): y, si faltan pasos por guardar, cuáles, con un enlace al primero. Al editar (R17–R20), la fecha
+ * en que cada empresa recibe el cambio y los topes que ya pasa.
  */
 export function PasoRevisar({
   modo,
@@ -59,6 +64,8 @@ export function PasoRevisar({
   faltan,
   idFaltan,
   onIrAlPrimeroQueFalta,
+  fechas,
+  onReintentarFechas,
 }: PasoRevisarProps) {
   const despues: PlanDTO =
     plan !== null
@@ -81,6 +88,8 @@ export function PasoRevisar({
           </div>
         ))}
       </dl>
+      {/* SLT-144 (design §5.3): al editar, debajo de la fila de cuándo rige (la última), la fecha de cada empresa. */}
+      {modo === "editar" ? <FechasPorEmpresa fechas={fechas} onReintentar={onReintentarFechas} /> : null}
       {/* R22 (design §6): al crear un custom, el primer período que abre, como en General. */}
       {modo === "crear" && lineasDelPrimerPeriodo.length > 0 ? (
         <ListaDelPrimerPeriodo lineas={lineasDelPrimerPeriodo} />

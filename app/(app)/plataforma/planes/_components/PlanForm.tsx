@@ -15,10 +15,10 @@ import {
   crearPlanSchema,
   editarPlanSchema,
   precioPlanSchema,
+  previsualizarCambioSchema,
   previsualizarCustomSchema,
   type PlanDTO,
   type PlanResult,
-  type previsualizarCambioSchema,
   type PrevisualizarCustomInput,
   type TopeExcedido,
   type VistaPreviaCambioResult,
@@ -47,7 +47,8 @@ import {
   type PropsDelPaso,
 } from "./plan-form/estado";
 import { PasoCobroPorOrden } from "./plan-form/PasoCobroPorOrden";
-import { PasoCuandoRige } from "./plan-form/PasoCuandoRige";
+import type { FechasDelCambio } from "./plan-form/FechasPorEmpresa";
+import { PasoCuandoRigeConFechas } from "./plan-form/PasoCuandoRige";
 import { PasoGeneral } from "./plan-form/PasoGeneral";
 import { PasoModulos } from "./plan-form/PasoModulos";
 import { PasoPrecio } from "./plan-form/PasoPrecio";
@@ -67,7 +68,7 @@ import {
 export { TEXTOS_PLAN_FORM };
 export type { AccionesDelBorrador, EmpresaParaCustom };
 
-/** SLT-144 (design §3.1, §5): la entrada de la fecha de cada empresa; la usa T4 (`FechasPorEmpresa`). */
+/** SLT-144 (design §3.1, §5): la entrada de la fecha de cada empresa (`FechasPorEmpresa`). */
 export type PrevisualizarCambioInput = z.infer<typeof previsualizarCambioSchema>;
 
 /**
@@ -181,7 +182,7 @@ export type PlanFormProps = PropsComunes &
         precioDesdePorDefecto?: string;
         /**
          * SLT-144 (design §4.7, §5): `previsualizarCambioPlanAction`, inyectada desde la página; la fecha en que
-         * cada empresa recibiría el cambio. La pinta `FechasPorEmpresa` (T4).
+         * cada empresa recibiría el cambio. La pinta `FechasPorEmpresa`.
          */
         previsualizarCambio: (input: PrevisualizarCambioInput) => Promise<VistaPreviaCambioResult>;
       }
@@ -420,6 +421,71 @@ export function PlanForm(props: PlanFormProps) {
       esperaPrevia.current = null;
     }
     return leerVistaPrevia(entradaPrevia, clavePrevia);
+  }
+
+  /**
+   * SLT-144 (design §5.1): al editar, en «Cuándo rige» y «Revisar», la entrada de la fecha de cada empresa: la F
+   * que se programaría (la de `erroresDelFormulario`) y los topes en pantalla. Inválida, no se lee: el error sale
+   * al guardar el paso.
+   */
+  const entradaFechas = (() => {
+    if (props.modo !== "editar" || (paso !== "vigencia" && paso !== "revisar")) return null;
+    const v = previsualizarCambioSchema.safeParse({
+      planId: props.plan.id,
+      vigenteDesde: cambiaPrecio ? form.precioDesde : form.aplicar === "inmediato" ? null : form.vigenteDesde,
+      topes: versionDe(form).topes,
+    });
+    return v.success ? v.data : null;
+  })();
+  const claveFechas = entradaFechas === null ? null : JSON.stringify(entradaFechas);
+  const previsualizarCambio = props.modo === "editar" ? props.previsualizarCambio : null;
+  const [fechas, setFechas] = useState<(FechasDelCambio & { clave: string }) | null>(null);
+  /** R20: la entrada vigente de las fechas; la respuesta de una F o unos topes que ya no están no se pinta. */
+  const claveFechasVigente = useRef<string | null>(null);
+  const lecturaDeFechas = useRef<string | null>(null);
+
+  /** R17, R18, R20: lee la fecha de cada empresa y los topes pasados de esa entrada, como la vista previa del custom. */
+  const leerFechas = useCallback(
+    (entrada: PrevisualizarCambioInput, clave: string) => {
+      if (previsualizarCambio === null || lecturaDeFechas.current === clave) return;
+      lecturaDeFechas.current = clave;
+      setFechas({ clave, fase: "cargando" });
+      void (async () => {
+        let nuevas: FechasDelCambio;
+        try {
+          const r = await previsualizarCambio(entrada);
+          nuevas =
+            r.estado === "ok"
+              ? { fase: "ok", vigenteDesde: entrada.vigenteDesde, empresas: r.empresas, avisos: r.avisos }
+              : { fase: "fallo" };
+        } catch (error) {
+          console.error("[PlanForm] previsualizarCambio lanzó", error);
+          nuevas = { fase: "fallo" };
+        }
+        if (lecturaDeFechas.current === clave) lecturaDeFechas.current = null;
+        if (claveFechasVigente.current === clave) setFechas({ clave, ...nuevas });
+      })();
+    },
+    [previsualizarCambio],
+  );
+
+  // Design §5.1: cada cambio de F o de topes relee las fechas tras la misma pausa que la vista previa del custom.
+  useEffect(() => {
+    claveFechasVigente.current = claveFechas;
+    if (claveFechas === null) return;
+    const entrada = JSON.parse(claveFechas) as PrevisualizarCambioInput;
+    const espera = setTimeout(() => leerFechas(entrada, claveFechas), ESPERA_VISTA_PREVIA_MS);
+    return () => clearTimeout(espera);
+  }, [claveFechas, leerFechas]);
+
+  // Hasta que llega la primera lectura de esta entrada (la pausa incluida) se dice que se calcula (R20).
+  const fechasVigentes: FechasDelCambio | null =
+    claveFechas === null ? null : fechas !== null && fechas.clave === claveFechas ? fechas : { fase: "cargando" };
+
+  /** R20: «Reintentar» relee la entrada vigente. */
+  function reintentarFechas() {
+    if (entradaFechas === null || claveFechas === null) return;
+    leerFechas(entradaFechas, claveFechas);
   }
 
   /**
@@ -734,7 +800,14 @@ export function PlanForm(props: PlanFormProps) {
       case "modulos":
         return <PasoModulos {...delPaso} />;
       case "vigencia":
-        return <PasoCuandoRige {...delPaso} cambiaPrecio={cambiaPrecio} />;
+        return (
+          <PasoCuandoRigeConFechas
+            {...delPaso}
+            cambiaPrecio={cambiaPrecio}
+            fechas={fechasVigentes}
+            onReintentarFechas={reintentarFechas}
+          />
+        );
       case "revisar":
         return (
           <PasoRevisar
@@ -754,6 +827,8 @@ export function PlanForm(props: PlanFormProps) {
               const primero = faltan[0];
               if (primero !== undefined) irA(primero);
             }}
+            fechas={fechasVigentes}
+            onReintentarFechas={reintentarFechas}
           />
         );
     }

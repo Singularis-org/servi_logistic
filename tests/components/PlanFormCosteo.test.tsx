@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
-import { avanzarHasta, terminar } from "./plan-form-pasos";
+import { avanzarHasta, terminar, conBorrador, conBorradorDeCambio } from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
@@ -36,7 +36,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
       rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
@@ -113,7 +113,7 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
 
   it("R23: al editar precarga el costo del plan sin «.00»", async () => {
     const user = userEvent.setup();
-    render(<PlanForm modo="editar" plan={PLAN} enviar={vi.fn()} onGuardado={vi.fn()} />);
+    render(<PlanForm modo="editar" plan={PLAN} {...conBorradorDeCambio(vi.fn())} onGuardado={vi.fn()} />);
     await avanzarHasta(user, "Precio y descuentos");
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("50000");
     await avanzarHasta(user, "Cobro por orden");
@@ -127,7 +127,7 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
       fieldErrors: { costoPorOrden: ["Importe inválido."] },
     } satisfies PlanResult);
     const onGuardado = vi.fn();
-    render(<PlanForm modo="editar" plan={PLAN} enviar={enviar} onGuardado={onGuardado} />);
+    render(<PlanForm modo="editar" plan={PLAN} {...conBorradorDeCambio(enviar)} onGuardado={onGuardado} />);
 
     await avanzarHasta(user, "Cobro por orden");
     await user.clear(screen.getByLabelText("Costo por orden"));
@@ -153,8 +153,8 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Mal");
     await avanzarHasta(user, "Cobro por orden");
     await user.type(screen.getByLabelText("Costo por orden"), "1.234");
-    // SLT-130 (R18): «Siguiente» valida el paso con el mismo esquema que la action.
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    // SLT-130 (R18): «Guardar y continuar» valida el paso con el mismo esquema que la action.
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     await waitFor(() => expect(screen.getByLabelText("Costo por orden")).toHaveAttribute("aria-invalid", "true"));
     expect(enviar).not.toHaveBeenCalled();

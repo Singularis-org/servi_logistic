@@ -24,7 +24,7 @@ import type {
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
-import { avanzarHasta, tituloDelPasoActual } from "./plan-form-pasos";
+import { avanzarHasta, tituloDelPasoActual, conBorrador, accionesFalsas } from "./plan-form-pasos";
 
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
@@ -67,7 +67,7 @@ function montarForm(previsualizar: Previsualizar = vi.fn<Previsualizar>().mockRe
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO_EFECTO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={previsualizar}
       onGuardado={onGuardado}
     />,
@@ -347,7 +347,8 @@ describe("Ajuste planes-custom D12 — los avisos del `ok` al crear un custom co
         inicioCicloPorDefecto={MANANA}
         rangoInicioCiclo={RANGO}
         rangoFechaDeEfecto={RANGO_EFECTO}
-        crearPlan={crearPlan}
+        borradores={[]}
+        borrador={accionesFalsas(crearPlan)}
         previsualizarCustom={previsualizar}
       />,
     );

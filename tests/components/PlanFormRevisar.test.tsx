@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { CrearPlanInput, EditarPlanInput, PlanDTO, PlanResult } from "@/lib/types/planes";
 
-import { avanzarHasta } from "./plan-form-pasos";
+import { avanzarHasta, conBorrador, conBorradorDeCambio, botonDeLaLista } from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
@@ -45,7 +45,7 @@ function montarCrear(enviar = vi.fn<Crear>().mockResolvedValue(OK)) {
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
@@ -54,7 +54,7 @@ function montarCrear(enviar = vi.fn<Crear>().mockResolvedValue(OK)) {
 }
 
 function montarEditar(enviar = vi.fn<Editar>().mockResolvedValue(OK)) {
-  render(<PlanForm modo="editar" plan={PLAN} precioDesdePorDefecto={MANANA} enviar={enviar} onGuardado={vi.fn()} />);
+  render(<PlanForm modo="editar" plan={PLAN} precioDesdePorDefecto={MANANA} {...conBorradorDeCambio(enviar)} onGuardado={vi.fn()} />);
   return enviar;
 }
 
@@ -135,7 +135,7 @@ describe("SLT-130 R23 — «Revisar y programar»", () => {
     expect(screen.queryByText("Sin cambios.")).toBeNull();
 
     // Con «A partir de», la fila de cuándo rige lleva su fecha y el botón pasa a «Programar cambio».
-    await user.click(screen.getByRole("button", { name: "Cuándo rige" }));
+    await user.click(botonDeLaLista("Cuándo rige"));
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
     const fecha = screen.getByLabelText("Fecha");
     await user.clear(fecha);

@@ -222,7 +222,8 @@ describe("SLT-83 R21 — catálogo y detalle del plan", () => {
         inicioCicloPorDefecto="2026-10-30"
         rangoFechaDeEfecto={{ hoy: "2026-10-10", min: "2026-10-10", max: "2027-10-10" }}
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
-        crearPlan={vi.fn()}
+        borradores={[]}
+        borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }}
         previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       />,
     );

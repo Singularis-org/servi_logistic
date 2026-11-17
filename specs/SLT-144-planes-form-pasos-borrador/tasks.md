@@ -44,7 +44,7 @@
   *Hecho:* `tests/components/PlanFormBorrador.test.tsx` verde en R1, R3–R12 y R16.
 - [x] **T3.3** Crear `plan-form/AbrirPlanForm.tsx` (design §4.5). Depende de T3.2.
   *Hecho:* los casos R14 y R15 de `tests/components/PlanFormBorrador.test.tsx` están verdes.
-- [ ] **T3.4** Adaptar los tests de hoy con el helper (`accionesFalsas`, «Guardar y continuar»,
+- [x] **T3.4** Adaptar los tests de hoy con el helper (`accionesFalsas`, «Guardar y continuar»,
   `peticionConfirmada`) sin cambiar sus aserciones de carga útil (design §11). Depende de T3.2.
   *Hecho:* verdes `tests/components/PlanForm.test.tsx`, `PlanFormCosteo`, `PlanFormCostoPorcentual`,
   `PlanFormCustomAsigna`, `PlanFormPeriodicidad`, `PlanFormVistaPreviaCustom`, `PlanFormDescuentos`,
@@ -53,7 +53,7 @@
 
 ## T4 · Fecha de cada empresa en el formulario — frontend_dev
 
-- [ ] **T4.1** Crear `plan-form/FechasPorEmpresa.tsx`. Poner en `PlanForm` el estado de la lectura (debounce y clave
+- [x] **T4.1** Crear `plan-form/FechasPorEmpresa.tsx`. Poner en `PlanForm` el estado de la lectura (debounce y clave
   vigente). Montarlo en `PasoCuandoRige.tsx` (solo se añade debajo) y en `PasoRevisar.tsx` al editar (design §5).
   Depende de T1.2 y T3.2.
   *Hecho:* `tests/components/PlanFormFechasPorEmpresa.test.tsx` verde (R17–R20). `PasoCuandoRige.tsx` no cambia
@@ -61,7 +61,7 @@
 
 ## T5 · Lista de planes y detalle — frontend_dev
 
-- [ ] **T5.1 [P]** Crear `BorradoresDePlanes.tsx` y conectar `PlanesModule.tsx`: la sección, la marca, «Retomar»,
+- [x] **T5.1 [P]** Crear `BorradoresDePlanes.tsx` y conectar `PlanesModule.tsx`: la sección, la marca, «Retomar»,
   «Descartar» y el aviso al cerrar. En `planes/page.tsx`, los borradores y las actions, y quitar `crearPlan`
   (design §6). Depende de T1.5 y T3.3.
   *Hecho:* `tests/components/PlanesModule.test.tsx` verde (R13, R24–R27, más los casos de hoy).

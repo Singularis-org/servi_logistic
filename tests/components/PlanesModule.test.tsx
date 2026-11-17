@@ -4,10 +4,26 @@
 // Se lee lo que pinta la tabla con el catálogo que baja de la página: nombre, visibilidad («Público»
 // o «Custom de <empresa>»), precio sin moneda, topes, cuántas empresas lo tienen y la fecha del cambio
 // programado. Los archivados se esconden por defecto y, al mostrarlos, llevan la marca «Archivado».
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+//
+// SLT-144 «Planes: formulario por pasos conectado al borrador y a la fecha de cada empresa» (design §6; R13,
+// R24–R27): la sección «Borradores», la marca «Cambio en borrador», «Retomar», «Descartar» y el aviso al cerrar.
+// El alta ya no llama a `crearPlan`: guarda por pasos y confirma el borrador. Las cuatro actions son un borrador
+// en memoria, y la petición que llegaría a crear se reconstruye con `peticionDeCrear` (la del servidor), así que
+// los casos de hoy siguen comprobando la misma carga útil.
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 
+import type { AccionesDelBorrador } from "@/app/(app)/plataforma/planes/_components/PlanForm";
+import { peticionDeCrear } from "@/lib/planes/borrador";
+import {
+  PASOS_DE_EDITAR,
+  type BorradorResumen,
+  type BorradorVista,
+  type IdPasoBorrador,
+  type PasosDeCrear,
+  type ValoresDelPaso,
+} from "@/lib/types/plan-borrador";
 import type { PlanDelCatalogo, PlanResult } from "@/lib/types/planes";
 
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
@@ -17,7 +33,7 @@ vi.mock("next/navigation", () => ({
 
 import { PlanesModule } from "@/app/(app)/plataforma/planes/_components/PlanesModule";
 
-import { avanzarHasta, terminar, tituloDelPasoActual } from "./plan-form-pasos";
+import { tituloDelPasoActual } from "./plan-form-pasos";
 
 const PUBLICO: PlanDelCatalogo = {
   id: "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b",
@@ -64,7 +80,59 @@ const ARCHIVADO: PlanDelCatalogo = {
 
 const OK: PlanResult = { estado: "ok", planId: PUBLICO.id, cambio: true, avisos: [], vigenteDesde: null };
 
-function montar(crearPlan = vi.fn().mockResolvedValue(OK)) {
+const B_CREA = "1a2b3c4d-1111-4e5f-8a9b-0c1d2e3f4a5b";
+const B_CAMBIO = "1a2b3c4d-2222-4e5f-8a9b-0c1d2e3f4a5b";
+const B_NUEVO = "1a2b3c4d-3333-4e5f-8a9b-0c1d2e3f4a5b";
+
+/** Un borrador de creación sin General guardado (sin nombre) y el de cambio de «Básico». */
+const CREACION: BorradorResumen = {
+  id: B_CREA,
+  modo: "crear",
+  planId: null,
+  nombre: null,
+  iniciadoPor: "Ana",
+  // 15:30 UTC son las 09:30 en la hora de la plataforma.
+  iniciadoAt: "2026-11-16T15:30:00.000Z",
+  actualizadoAt: "2026-11-17T15:30:00.000Z",
+};
+const CAMBIO: BorradorResumen = {
+  id: B_CAMBIO,
+  modo: "editar",
+  planId: PUBLICO.id,
+  nombre: "Básico",
+  iniciadoPor: "Marta",
+  iniciadoAt: "2026-11-15T14:00:00.000Z",
+  actualizadoAt: "2026-11-16T14:05:00.000Z",
+};
+
+type Dobles = { [K in keyof AccionesDelBorrador]: Mock<AccionesDelBorrador[K]> };
+
+/**
+ * Un servidor del borrador en memoria: cada guardado `ok` suma su paso con sus valores, y `confirmar` responde
+ * `alConfirmar`. `peticionConfirmada` reconstruye la petición de crear con lo que se confirmaría.
+ */
+function borradorEnMemoria(alConfirmar: PlanResult = OK, sobre: Partial<Dobles> = {}) {
+  const pasos: Partial<Record<IdPasoBorrador, ValoresDelPaso>> = {};
+  const acciones: Dobles = {
+    guardarPaso: vi.fn<AccionesDelBorrador["guardarPaso"]>(async (input) => {
+      pasos[input.paso] = input.valores;
+      return {
+        estado: "ok",
+        borradorId: B_NUEVO,
+        pasosGuardados: PASOS_DE_EDITAR.filter((p) => p in pasos),
+        actualizadoAt: "2026-11-17T15:30:00.000Z",
+      };
+    }),
+    leer: vi.fn<AccionesDelBorrador["leer"]>().mockResolvedValue({ estado: "ok", borrador: null }),
+    descartar: vi.fn<AccionesDelBorrador["descartar"]>().mockResolvedValue({ estado: "ok" }),
+    confirmar: vi.fn<AccionesDelBorrador["confirmar"]>().mockResolvedValue(alConfirmar),
+    ...sobre,
+  };
+  return { acciones, peticionConfirmada: () => peticionDeCrear(pasos as PasosDeCrear) };
+}
+
+function montar({ acciones, borradores = [] }: { acciones?: Dobles; borradores?: BorradorResumen[] | null } = {}) {
+  const a = acciones ?? borradorEnMemoria().acciones;
   render(
     <PlanesModule
       planes={[PUBLICO, CUSTOM, ARCHIVADO]}
@@ -72,18 +140,46 @@ function montar(crearPlan = vi.fn().mockResolvedValue(OK)) {
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
       rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
-      crearPlan={crearPlan}
+      borradores={borradores}
+      borrador={a}
       previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
     />,
   );
-  return { crearPlan };
+  return { acciones: a };
+}
+
+const guardarYContinuar = () => screen.queryByRole("button", { name: "Guardar y continuar" });
+
+/** Pulsa «Guardar y continuar» hasta que el paso actual es `titulo`; cada guardado responde antes de seguir. */
+async function guardarHasta(user: UserEvent, titulo: string) {
+  for (let i = 0; i < 8 && tituloDelPasoActual() !== titulo; i++) {
+    const antes = tituloDelPasoActual();
+    await user.click(guardarYContinuar()!);
+    await waitFor(() => expect(tituloDelPasoActual()).not.toBe(antes));
+  }
+  expect(tituloDelPasoActual()).toBe(titulo);
+}
+
+/** Guarda los pasos que quedan hasta «Revisar» y pulsa «Crear plan» cuando se habilita. */
+async function terminar(user: UserEvent) {
+  for (let i = 0; i < 8 && guardarYContinuar() !== null; i++) {
+    const antes = tituloDelPasoActual();
+    await user.click(guardarYContinuar()!);
+    await waitFor(() => expect(tituloDelPasoActual()).not.toBe(antes));
+  }
+  const crear = screen.getByRole("button", { name: "Crear plan" });
+  await waitFor(() => expect(crear).toBeEnabled());
+  await user.click(crear);
 }
 
 const filaDe = (nombre: string) => screen.getByRole("link", { name: `Ver el plan ${nombre}` }).closest("tr")!;
 const celdas = (fila: HTMLElement) => within(fila).getAllByRole("cell").map((c) => c.textContent);
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("SLT-58 R13 — el catálogo de planes", () => {
   it("R13: una fila por plan con visibilidad, precio sin moneda, topes, nº de empresas y fecha del cambio", () => {
@@ -137,14 +233,15 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
 
   it("R14: «Nuevo plan» abre el formulario; al crear, cierra, avisa y relee", async () => {
     const user = userEvent.setup();
-    const { crearPlan } = montar();
+    const { acciones } = montar();
 
     await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
     const panel = await screen.findByRole("dialog");
     await user.type(within(panel).getByRole("textbox", { name: "Nombre" }), "Libre");
     await terminar(user);
 
-    await waitFor(() => expect(crearPlan).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(acciones.confirmar).toHaveBeenCalledTimes(1));
+    expect(acciones.confirmar).toHaveBeenCalledWith({ borradorId: B_NUEVO });
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Libre» creado.");
     expect(refreshMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -152,7 +249,8 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
 
   it("SLT-118 R32: crear un custom para una empresa con plan avisa con la fecha real del servidor y no la elegida", async () => {
     const user = userEvent.setup();
-    const { crearPlan } = montar(vi.fn().mockResolvedValue({ ...OK, vigenteDesde: "2026-12-01" } satisfies PlanResult));
+    const memoria = borradorEnMemoria({ ...OK, vigenteDesde: "2026-12-01" } satisfies PlanResult);
+    const { acciones } = montar({ acciones: memoria.acciones });
 
     await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
     const panel = await screen.findByRole("dialog");
@@ -160,16 +258,16 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     await user.click(within(panel).getByRole("radio", { name: "Custom" }));
     await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
     await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
-    await avanzarHasta(user, "Precio y descuentos");
+    await guardarHasta(user, "Precio y descuentos");
     await user.click(within(panel).getByRole("radio", { name: "Con monto" }));
     await user.type(within(panel).getByLabelText("Costo base mensual"), "50000");
-    await avanzarHasta(user, "Cobro por orden");
+    await guardarHasta(user, "Cobro por orden");
     await user.type(within(panel).getByLabelText("Costo por orden"), "100");
     await terminar(user);
 
     // La elegida es la propuesta por defecto de la empresa (2026-11-01); el servidor devuelve la real.
-    await waitFor(() => expect(crearPlan).toHaveBeenCalledTimes(1));
-    expect(crearPlan.mock.calls[0]![0]).toMatchObject({ vigenteDesde: "2026-11-01" });
+    await waitFor(() => expect(acciones.confirmar).toHaveBeenCalledTimes(1));
+    expect(memoria.peticionConfirmada()).toMatchObject({ vigenteDesde: "2026-11-01" });
     const aviso = await screen.findByRole("status");
     expect(aviso).toHaveTextContent("Plan «Norte a medida» creado. Cambio programado desde 2026-12-01.");
     expect(aviso).not.toHaveTextContent("2026-11-01");
@@ -210,7 +308,8 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     ]);
     expect(tituloDelPasoActual()).toBe("General");
     expect(within(panel).getByText("Paso 1 de 6")).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "Siguiente" })).toBeInTheDocument();
+    // SLT-144 (R1): el botón de avance guarda el paso.
+    expect(within(panel).getByRole("button", { name: "Guardar y continuar" })).toBeInTheDocument();
   });
 
   it("SLT-83 (texto aprobado 2026-11-04): el panel «Nuevo plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
@@ -259,7 +358,8 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
         inicioCicloPorDefecto="2026-10-30"
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
-        crearPlan={vi.fn()}
+        borradores={[]}
+        borrador={borradorEnMemoria().acciones}
         previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       />,
     );
@@ -271,6 +371,190 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
     expect(screen.queryByRole("button", { name: "Nuevo plan" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SLT-144 R24 — la sección «Borradores»", () => {
+  const seccion = () => screen.getByRole("region", { name: "Borradores" });
+  const filaDelBorrador = (texto: string) => within(seccion()).getByText(texto).closest("tr")!;
+
+  it("R24: un borrador de creación y uno de cambio", () => {
+    montar({ borradores: [CREACION, CAMBIO] });
+
+    expect(within(seccion()).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
+      "Nombre",
+      "Tipo",
+      "Empezado por",
+      "Empezado el",
+      "Guardado el",
+      "Acciones",
+    ]);
+    const creacion = filaDelBorrador("Sin nombre");
+    expect(celdas(creacion).slice(0, 5)).toEqual(["Sin nombre", "Plan nuevo", "Ana", "2026-11-16 09:30", "2026-11-17 09:30"]);
+    expect(within(creacion).getByRole("button", { name: "Retomar" })).toBeInTheDocument();
+    expect(within(creacion).getByRole("button", { name: "Descartar" })).toBeInTheDocument();
+
+    const cambio = filaDelBorrador("Cambio de Básico");
+    expect(celdas(cambio).slice(0, 5)).toEqual(["Básico", "Cambio de Básico", "Marta", "2026-11-15 08:00", "2026-11-16 08:05"]);
+    expect(within(cambio).getByRole("link", { name: "Retomar" })).toBeInTheDocument();
+    expect(within(cambio).getByRole("button", { name: "Descartar" })).toBeInTheDocument();
+
+    // La sección va sobre el catálogo.
+    const catalogo = screen.getByRole("link", { name: "Ver el plan Básico" });
+    expect(seccion().compareDocumentPosition(catalogo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("R24: sin borradores no hay sección", () => {
+    montar({ borradores: [] });
+    expect(screen.queryByRole("region", { name: "Borradores" })).toBeNull();
+    expect(screen.queryByText("No se pudieron cargar los borradores.")).toBeNull();
+  });
+
+  it("R24: error de lectura con el catálogo", () => {
+    montar({ borradores: null });
+    expect(within(seccion()).getByText("No se pudieron cargar los borradores.")).toBeInTheDocument();
+    expect(within(seccion()).queryByRole("table")).toBeNull();
+    // El catálogo sigue, sin la marca: no se sabe qué plan tiene borrador.
+    expect(filaDe("Básico")).toBeInTheDocument();
+    expect(screen.queryByText("Cambio en borrador")).toBeNull();
+  });
+});
+
+describe("SLT-144 R25 — la marca «Cambio en borrador»", () => {
+  it("R25: la marca solo en el plan con borrador", () => {
+    montar({ borradores: [CREACION, CAMBIO] });
+
+    expect(within(filaDe("Básico")).getByText("Cambio en borrador")).toBeInTheDocument();
+    expect(within(filaDe("Norte a medida")).queryByText("Cambio en borrador")).toBeNull();
+    expect(screen.getAllByText("Cambio en borrador")).toHaveLength(1);
+  });
+});
+
+describe("SLT-144 R26 — retomar desde la lista", () => {
+  it("R26: retomar una creación abre el panel con su id", async () => {
+    const user = userEvent.setup();
+    const retomado: BorradorVista = {
+      id: B_CREA,
+      modo: "crear",
+      planId: null,
+      pasos: { general: { nombre: "Pro", visibilidad: "publico", organizacionId: null } },
+      pasosGuardados: ["general"],
+      iniciadoPor: "Ana",
+      iniciadoAt: CREACION.iniciadoAt,
+      actualizadoAt: CREACION.actualizadoAt,
+    };
+    const { acciones } = borradorEnMemoria(OK, {
+      leer: vi.fn<AccionesDelBorrador["leer"]>().mockResolvedValue({ estado: "ok", borrador: retomado }),
+    });
+    montar({ acciones, borradores: [CREACION, CAMBIO] });
+
+    // El de cambio va al detalle de su plan con el formulario de editar abierto.
+    expect(within(screen.getByText("Cambio de Básico").closest("tr")!).getByRole("link", { name: "Retomar" })).toHaveAttribute(
+      "href",
+      `/plataforma/planes/${PUBLICO.id}?editar=1`,
+    );
+
+    await user.click(within(screen.getByText("Sin nombre").closest("tr")!).getByRole("button", { name: "Retomar" }));
+
+    const panel = await screen.findByRole("dialog");
+    expect(acciones.leer).toHaveBeenCalledWith({ borradorId: B_CREA });
+    expect(await within(panel).findByText("Borrador de Ana, guardado el 2026-11-17 09:30")).toBeInTheDocument();
+    // Sigue donde se dejó (R15): el primer paso sin guardar.
+    expect(tituloDelPasoActual()).toBe("Precio y descuentos");
+  });
+});
+
+describe("SLT-144 R27 — descartar desde la lista", () => {
+  const TEXTO = "¿Descartar el borrador «Sin nombre»? Se borran todos sus pasos guardados. No se puede deshacer.";
+  const descartarDeLaFila = () =>
+    within(screen.getByText("Sin nombre").closest("tr")!).getByRole("button", { name: "Descartar" });
+
+  async function descartarCreacion(user: UserEvent) {
+    await user.click(descartarDeLaFila());
+    const dialogo = await screen.findByRole("dialog");
+    expect(dialogo).toHaveAccessibleDescription(TEXTO);
+    await user.click(within(dialogo).getByRole("button", { name: "Descartar" }));
+    return dialogo;
+  }
+
+  it("R27: descartar con confirmación", async () => {
+    const user = userEvent.setup();
+    const { acciones } = montar({ borradores: [CREACION] });
+
+    // Cancelar no descarta.
+    await user.click(descartarDeLaFila());
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(acciones.descartar).not.toHaveBeenCalled();
+
+    await descartarCreacion(user);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(acciones.descartar).toHaveBeenCalledTimes(1);
+    expect(acciones.descartar).toHaveBeenCalledWith({ borradorId: B_CREA });
+    expect(screen.getByRole("status")).toHaveTextContent("Borrador descartado.");
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("R27: ya no existe", async () => {
+    const user = userEvent.setup();
+    const { acciones } = borradorEnMemoria(OK, {
+      descartar: vi.fn<AccionesDelBorrador["descartar"]>().mockResolvedValue({ estado: "borrador_no_encontrado" }),
+    });
+    montar({ acciones, borradores: [CREACION] });
+
+    await descartarCreacion(user);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("Ese borrador ya no existe.");
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("R27: un fallo deja la fila", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { acciones } = borradorEnMemoria(OK, {
+      descartar: vi.fn<AccionesDelBorrador["descartar"]>().mockRejectedValue(new Error("red")),
+    });
+    montar({ acciones, borradores: [CREACION] });
+
+    const dialogo = await descartarCreacion(user);
+
+    expect(await within(dialogo).findByRole("alert")).toHaveTextContent(
+      "No se pudo descartar el borrador. Inténtalo de nuevo.",
+    );
+    expect(screen.getByRole("dialog")).toBe(dialogo);
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("Borrador descartado.")).toBeNull();
+    expect(screen.getByText("Plan nuevo")).toBeInTheDocument();
+  });
+});
+
+describe("SLT-144 R13 — cerrar el panel con el borrador guardado", () => {
+  it("R13: cerrar con un paso guardado avisa", async () => {
+    const user = userEvent.setup();
+    const { acciones } = montar();
+
+    // Sin guardar nada, cerrar no avisa.
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    await user.type(within(panel).getByRole("textbox", { name: "Nombre" }), "Libre");
+    await guardarHasta(user, "Precio y descuentos");
+    expect(acciones.guardarPaso).toHaveBeenCalledTimes(1);
+
+    await user.click(within(panel).getByRole("button", { name: "Cerrar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("El borrador queda guardado. Puedes retomarlo luego.");
+    expect(acciones.confirmar).not.toHaveBeenCalled();
+    // Relee para que la sección «Borradores» traiga el que se acaba de guardar.
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -92,7 +92,8 @@ describe("SLT-66 R24 — catálogo", () => {
         inicioCicloPorDefecto="2026-10-30"
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
-        crearPlan={vi.fn()}
+        borradores={[]}
+        borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }}
         previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       />,
     );
