@@ -522,7 +522,8 @@ describe("327/R33 — desde `/novedades`, cambiar el distrito tampoco se guarda 
     await user.click(screen.getByRole("button", { name: AVISO_CONFIRMAR }));
     await waitFor(() => expect(corregirMock).toHaveBeenCalledTimes(2));
     expect(entradaDeLlamada(1).confirmaCambioDeUbicacion).toBe(true);
-    expect(entradaDeLlamada(1).distritoId).toBe("dis-patarra");
+    // SLT-48 R16: la corrección guarda el nodo; la terna vieja ya no viaja en la petición.
+    expect(entradaDeLlamada(1).nodoId).toBe("dis-patarra");
     await waitFor(() => expect(listarNovedadesMock).toHaveBeenCalledTimes(1));
   });
 });

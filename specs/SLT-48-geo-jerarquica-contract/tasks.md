@@ -137,11 +137,11 @@
   el aviso de «aún no habilitado».
   **Hecho:** `MoverNodoDialog.test.tsx` y `GeografiaPlataformaSinAviso.test.tsx` verdes, igual que la
   maqueta (R21, R36).
-- [ ] **T4.2** [P] `CorregirUbicacionAviso.tsx` y `CorregirDatosClienteModal.tsx` con N selectores.
+- [x] **T4.2** [P] `CorregirUbicacionAviso.tsx` y `CorregirDatosClienteModal.tsx` con N selectores.
   **Hecho:** `CorregirUbicacionNNiveles.test.tsx` verde; los tests de hoy de `CorregirDatosCliente.*`
   pasan en CR sin cambiar aserciones visibles (R43).
-  *(Código hecho, commit eb76740a. Pendiente: 2 aserciones de carga útil (`.distritoId` → `.nodoId`) piden
-  autorización; ver `progress/impl_SLT-48.md > T4 (sin T4.1)`.)*
+  *(Código: commit eb76740a. Las 2 aserciones de carga útil (`.distritoId` → `.nodoId`, R16) se cambiaron con
+  autorización del humano del 2026-11-17; ver `progress/impl_SLT-48.md > T4 (sin T4.1)`.)*
 - [x] **T4.3** [P] Etiquetas de historial con la ruta entera (`historial-accion-etiquetas.ts`).
   **Hecho:** `historial-accion-etiquetas-ruta.test.ts` verde; CR igual que hoy (R44).
 - [x] **T4.4** [P] Tarifas y zonas hasta P: `TarifasGrupos.tsx`, `TarifasZonas.tsx`, `CrearZonaForm.tsx`,

@@ -643,9 +643,9 @@ describe("327/R33 — cambiar el distrito no se guarda hasta confirmar", () => {
     const segunda = corregirDatosClienteMock.mock.calls[1][0];
     expect(segunda.confirmaCambioDeUbicacion).toBe(true);
     // Confirma LO QUE SE ENSEÑÓ: el mismo distrito, no otro.
-    expect(segunda.distritoId).toBe("dis-patarra");
-    expect(segunda.cantonId).toBe("can-desamp");
-    expect(segunda.provinciaId).toBe("prov-sj");
+    // SLT-48 R16: la corrección guarda el nodo; la terna vieja ya no viaja en la petición.
+    expect(segunda.nodoId).toBe("dis-patarra");
+    expect(segunda).not.toHaveProperty("distritoId");
     await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
   });
 

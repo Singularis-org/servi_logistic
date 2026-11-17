@@ -696,6 +696,16 @@ R16). No son visibles. Con el modal nuevo están en rojo:
 
 Las de «precarga caída» (`entrada.provinciaId|cantonId|distritoId` `toBeUndefined()`) siguen verdes.
 
+**Cambiadas (autorizadas por el humano el 2026-11-17; contradicen R16), frontend_dev:**
+
+| Archivo | Test | Antes → después | R |
+|---|---|---|---|
+| `tests/components/CorregirDatosCliente.ordenes.test.tsx` | «y sólo el botón del panel reenvía CONFIRMANDO, con el distrito nuevo» | `segunda.distritoId`/`cantonId`/`provinciaId` = `dis-patarra`/`can-desamp`/`prov-sj` → `segunda.nodoId` = `"dis-patarra"` y `not.toHaveProperty("distritoId")` | R16 |
+| `tests/components/CorregirDatosCliente.novedades.test.tsx` | «enseña la comparación, no escribe, y sólo el botón del panel confirma» | `entradaDeLlamada(1).distritoId` = `"dis-patarra"` → `entradaDeLlamada(1).nodoId` = `"dis-patarra"` | R16 |
+
+Cada una lleva su `// SLT-48 R16: ...`. Con eso: `CorregirDatosCliente.{ordenes,novedades}` + `CorregirUbicacionNNiveles`
+→ `Test Files 3 passed (3) · Tests 65 passed (65)`. T4.2 cerrada.
+
 ### Lo que T4 deja para otros
 
 - T3 (backend): `valorDeRuta` está listo para el `valor_anterior`/`valor_nuevo` de «nodo movido» (R38).
