@@ -117,9 +117,9 @@
 
 ## Tanda 8 — E2E y cierre
 
-- [ ] **T8.1** Ampliar `e2e/facturas-plataforma.spec.ts` como dice §9 (R33). Depende de T4.2.
+- [x] **T8.1** Ampliar `e2e/facturas-plataforma.spec.ts` como dice §9 (R33). Depende de T4.2.
   *Hecho:* `pnpm exec playwright test e2e/facturas-plataforma.spec.ts` en verde en local, con base desechable.
-- [ ] **T8.2** Pasar `./init.sh` y el proyecto `dinero` en local, y anotar el mapa R → test en
+- [x] **T8.2** Pasar `./init.sh` y el proyecto `dinero` en local, y anotar el mapa R → test en
   `progress/impl_SLT-136.md`.
   *Hecho:* todo en verde y R1–R33 mapeados.
 

@@ -1,6 +1,6 @@
 # SLT-136 «Planes: aviso, correo y descarga de la factura» · bitácora
 
-## Tanda 1 (T1.1–T1.4) · datos y lectura de la descarga · sin commit (lo hace el leader)
+## Tanda 1 (T1.1–T1.4) · datos y lectura de la descarga · commit be835d50
 Subagente: `backend_dev`. Sin dependencias nuevas ni migraciones. Plan B de §2.2 **no** hizo falta: la remisión
 de una orden eliminada sale por la relación (ni la extensión ni la RLS de `orden` filtran `deleted_at`).
 
@@ -52,7 +52,7 @@ montar los botones; la guardia `superficie-de-uso` se pone roja si se dejan.
 
 Veredicto: tanda 1 verde; R1–R6 mapeados.
 
-## Tandas 2-3 (T2.1–T2.4, T3.1) · resumen, PDF y Excel (lib puro) · sin commit (lo hace el leader)
+## Tandas 2-3 (T2.1–T2.4, T3.1) · resumen, PDF y Excel (lib puro) · commit 9fdb4b65
 Subagente: `frontend_dev`. No hay dependencias nuevas: jsPDF y exceljs ya estaban aprobadas. No toca archivos de la tanda 5.
 
 Archivos:
@@ -118,3 +118,115 @@ Salida:
 - `eslint` de los archivos tocados: limpio.
 
 Veredicto: tandas 2-3 en verde; R7–R13 y R16–R18 cubiertos en lib, y R14 y R15 en lib a falta del componente (T4.1).
+(Las guardias `pais-sin-literales` y `sin-nombre-heredado` que estos archivos ponían rojas se arreglaron en la tanda 7.)
+
+## Tanda 4 (T4.1, T4.2) · botones de descarga · commit 47ff35a6
+
+- Nuevos: `components/shared/facturas/DescargarFactura.tsx`, `tests/components/DescargarFactura.test.tsx`.
+- Modificados: `components/shared/facturas/{DetalleDeFactura.tsx,FacturasDeLaEmpresa.tsx,facturas-vista.ts}`,
+  `app/(app)/mi-plan/{page.tsx,_components/MiPlanModule.tsx}`,
+  `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` (`.bind` con la empresa de la URL),
+  `lib/actions/facturas-plataforma.ts` (quitadas las dos anotaciones `@sin-superficie`), y los tests
+  `DetalleDeFactura`, `FacturasDeLaEmpresa`, `MiPlanModule` y `tests/integration/plataforma-empresa-detalle-page.test.tsx`.
+- Decisión menor: los botones van bajo el encabezado del panel, antes de las cuotas, y dependen de la fila elegida
+  (se ven aunque falle la lectura del detalle).
+- Salida: 6 archivos, 117 tests verdes; typecheck y eslint limpios; `superficie-de-uso` verde sin las anotaciones.
+
+## Tanda 5 (T5.1–T5.5) · enums, outbox del cierre, campanita, push y manejador · commit 3e78a8ca
+
+- Migración `db/migrations/20261117120000_factura_plataforma_aviso_enums/` (sin renumerar: la última de `dev` era
+  `20261116120000`), aplicada en `servi_logistic_slt136`; `prisma generate` limpio.
+- Nuevos: `lib/repositories/_shared/encolar-en-empresas.ts`, `lib/planes/jobs-factura-aviso.ts` y los tests
+  `factura-plataforma-aviso-migration`, `factura-plataforma-cierre-aviso`, `jobs-factura-aviso`, `emitir-factura-emitida`.
+- Modificados: `db/schema.prisma`, `PlanesRepository`, `FacturaPlataformaRepository.cerrar` (transacción + outbox),
+  `lib/types/notificacion.ts`, `lib/notificaciones/{emitir,notificadores,catalogo-avisos,push-elegibles}.ts`,
+  `lib/whatsapp-envios/eventos.ts`, `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`.
+- Inventarios de enums: los cinco de §9 y seis más que se ponían rojos (`notificacion-productores-wiring`,
+  `fila-puenteable`, `eventos-envio`, `push-elegibles`, `procesar-jobs-webhook-estado`, `procesar-jobs-geocodificacion`).
+  El de `462/` no hizo falta tocarlo (usa `toContain`).
+- Decisión menor: el período de la campanita lo calcula `emitir.ts` con `fechaCalendarioPlataforma`
+  (`lib/planes/ciclo.ts`), por la guardia `pais-sin-literales`.
+- Nota: en `servi_logistic_slt136` fallan 4 tests de migración ajenos a §9 (`traspaso`, `cierre-rechazado`,
+  `reparto-manana`, `geocodificacion-caida`) porque esa base no tiene filas en `usuario`; no es por los enums.
+
+## Tanda 6 (T6.1, T6.2) · correo · commit a6a2836a
+
+- Nuevos: `lib/services/email/plantillas/factura-emitida.ts`, `tests/unit/services/email/plantilla-factura-emitida.test.ts`.
+- `lib/planes/jobs-factura-aviso.ts`: paso 5 (un correo por maestro; si uno falla sigue con los demás y después lanza
+  sin el correo en el motivo); `sender`, `contacto` y `urlApp` en las deps.
+- Decisiones menores: los importes van como párrafos «Concepto: importe» (la plantilla común no tiene bloque de
+  lista); la frase del período es la misma de la campanita.
+
+## Tanda 7 (T7.1–T7.3) · enmiendas, docs y guardias · commit d8c7b526
+
+- T7.1: enmienda de SLT-118 R25 en `jobs-factura-plataforma.test.ts` y en el comentario de
+  `lib/planes/jobs-factura-plataforma.ts`; caso nuevo: `factura_plataforma_aviso` registrado.
+- T7.2: `mi-plan-solo-maestro.guardia.test.ts` admite `catalogo-avisos.ts` y `factura-emitida.ts`, con
+  autocomprobación que los exige.
+- T7.3: `docs/architecture.md > Facturas de la plataforma` (descarga, aviso al cerrar, enmiendas, logo provisional).
+  `node scripts/check-perfil.mjs`: 6/6 docs revisados, exit 0.
+- Guardias de las tandas 2-3: `pais-sin-literales` (`resumen.ts` y `excel.ts` dejan `fecha-cr`; nueva
+  `horaDeParedPlataforma` en `lib/planes/ciclo.ts`, que ya era excepción de la guardia) y `sin-nombre-heredado`
+  (comentario de `pdf.ts`). Los tests de `tests/unit/facturas-plataforma/` siguen verdes sin tocar expectativas.
+
+## Tanda 8 (T8.1, T8.2) · E2E y cierre
+
+- `e2e/facturas-plataforma.spec.ts` ampliado: la en curso sin botones; el maestro descarga el PDF (`%PDF`) y el Excel
+  (releído con exceljs: hoja «Movimientos», cabeceras, 2 «Cobrado» de 300 y 1 «Reverso» de −300, guías y remisiones);
+  el superadmin descarga el PDF desde «Facturación». Nombres `factura-1-<empresa>.{pdf,xlsx}`.
+- Base desechable `servi_logistic_slt136_e2e` (creada nueva por `migrate deploy` + `db:seed`); `next build` con
+  `NEXT_PUBLIC_APP_URL=http://localhost:3044` como `gate.yml`.
+
+Salida real:
+```
+E2E_PUERTO=3044 pnpm exec playwright test e2e/facturas-plataforma.spec.ts --reporter=list
+  corrida 1: 4 passed (44.2s) · corrida 2 (misma base): 4 passed (29.0s) · 0 failed, 0 flaky
+E2E_PUERTO=3044 pnpm exec playwright test --project=dinero --reporter=list
+  126 passed (16.1m), 0 failed, 0 flaky, 0 skipped
+vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts: 38 passed
+```
+
+### Verificación final (implementer)
+```
+vitest run <30 archivos de la feature, contra servi_logistic_slt136>
+ Test Files  30 passed (30)
+      Tests  524 passed (524)
+pnpm run typecheck: exit 0
+pnpm run test:guardias:
+ Test Files  2 failed | 349 passed | 3 skipped (354)
+  - dependencias-declaradas-presentes (4 tests): en tests/baseline-rojos.json, ajeno
+  - filtros-url-r25: "Hook timed out in 60000ms" con la máquina cargada; solo: 3 passed
+node scripts/check-perfil.mjs: exit 0
+```
+Lint: cada subagente corrió `eslint` sobre todos los archivos que tocó, limpio en cada tanda. El `pnpm run lint`
+completo del implementer lo paró el sistema por falta de memoria (no es un fallo del lint); queda para el gate de CI.
+
+## Mapa R → test (R1–R33)
+
+| R | Test |
+|---|---|
+| R1, R2 | `tests/integration/db/factura-plataforma-descarga.test.ts`, `tests/unit/actions/facturas-plataforma.test.ts`, `tests/unit/services/factura-plataforma-service.test.ts`; R2 también `tests/integration/plataforma-empresa-detalle-page.test.tsx` |
+| R3, R5 | `tests/unit/services/factura-plataforma-service.test.ts`, `tests/unit/actions/facturas-plataforma.test.ts` |
+| R4 | `tests/integration/db/factura-plataforma-descarga.test.ts`, `tests/unit/services/factura-plataforma-service.test.ts` |
+| R6 | `tests/integration/db/factura-plataforma-descarga.test.ts` |
+| R7, R12, R13 | `tests/unit/facturas-plataforma/pdf.test.ts` |
+| R8, R9, R10, R11 | `tests/unit/facturas-plataforma/resumen.test.ts`, `tests/unit/facturas-plataforma/pdf.test.ts` |
+| R14 | `tests/unit/facturas-plataforma/pdf.test.ts`, `tests/components/DescargarFactura.test.tsx` |
+| R15 | `tests/unit/facturas-plataforma/resumen.test.ts`, `tests/components/DescargarFactura.test.tsx` |
+| R16 | `tests/unit/facturas-plataforma/excel.test.ts`, `e2e/facturas-plataforma.spec.ts` |
+| R17 | `tests/unit/facturas-plataforma/{excel,pdf,resumen}.test.ts` |
+| R18 | `tests/unit/facturas-plataforma/resumen.test.ts`, `e2e/facturas-plataforma.spec.ts` |
+| R19 | `tests/components/DetalleDeFactura.test.tsx`, `tests/components/MiPlanModule.test.tsx`, `tests/integration/plataforma-empresa-detalle-page.test.tsx`, `e2e/facturas-plataforma.spec.ts` |
+| R20 | `tests/components/DescargarFactura.test.tsx`, `tests/components/DetalleDeFactura.test.tsx` |
+| R21 | `tests/integration/db/factura-plataforma-cierre-aviso.test.ts`, `tests/unit/planes/jobs-factura-plataforma.test.ts` |
+| R22 | `tests/unit/notificaciones/emitir-factura-emitida.test.ts`, `tests/unit/planes/jobs-factura-aviso.test.ts` |
+| R23 | `tests/unit/notificaciones/catalogo-avisos.test.ts`, `tests/unit/notificaciones/push-elegibles.test.ts`, `tests/unit/whatsapp-envios/eventos-envio.test.ts`, `tests/unit/services/notificacion-notificadores-reales.test.ts` |
+| R24 | `tests/unit/notificaciones/emitir-factura-emitida.test.ts`, `tests/unit/notificaciones/push-elegibles.test.ts`, `tests/unit/planes/jobs-factura-aviso.test.ts` |
+| R25 | `tests/integration/db/factura-plataforma-cierre-aviso.test.ts`, `tests/unit/planes/jobs-factura-aviso.test.ts` |
+| R26 | `tests/unit/services/email/plantilla-factura-emitida.test.ts`, `tests/unit/planes/jobs-factura-aviso.test.ts` |
+| R27, R28 | `tests/unit/planes/jobs-factura-aviso.test.ts` |
+| R29 | `tests/unit/services/email/plantilla-factura-emitida.test.ts`, `tests/unit/planes/jobs-factura-aviso.test.ts` |
+| R30 | `tests/unit/planes/jobs-factura-aviso.test.ts`, `tests/unit/api/procesar-jobs-registro.test.ts` |
+| R31 | `tests/integration/db/factura-plataforma-aviso-migration.test.ts` (+ inventarios de enums) |
+| R32 | `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts` |
+| R33 | `e2e/facturas-plataforma.spec.ts` |
