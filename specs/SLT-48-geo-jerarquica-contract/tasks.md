@@ -19,7 +19,7 @@
 
 ## T0 — Maqueta (leader + humano) · bloquea T4
 
-- [ ] **T0.1** El leader arma la maqueta (`/design`) en un país de 2, 3 (Costa Rica), 4 y 10 niveles.
+- [x] **T0.1** El leader arma la maqueta (`/design`) en un país de 2, 3 (Costa Rica), 4 y 10 niveles.
   Cubre:
   - en `/plataforma/geografia`, la acción «Mover» y el modal antes → después: rutas, descendientes,
     órdenes que cambian de nombre, y el estado bloqueado con cuántas órdenes y de qué empresas (P1);
@@ -29,7 +29,7 @@
   - las pantallas de grupos de tarifas y de zonas con el árbol hasta P;
   - la plantilla de carga masiva de un país de 4 niveles, aunque no haya cambio visual.
   **Hecho:** la maqueta está en el repo o enlazada desde `progress/impl_SLT-48.md`.
-- [ ] **T0.2** El humano aprueba la maqueta.
+- [x] **T0.2** El humano aprueba la maqueta.
   **Hecho:** fecha, referencia y quién aprobó, anotados en `progress/impl_SLT-48.md` (R42).
 
 ## T1 — Base y Prisma (backend_dev) · sin dependencias
