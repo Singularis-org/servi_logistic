@@ -194,7 +194,7 @@ diseño aprobado por Carlos 2026-11-14) y fijadas por el canvas v.1794871729-fd7
 
 Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su hermana.
 
-- [ ] **T1 — Base compartida.** Mover `DESPLEGABLE_TACTIL` de `ColaCierres.tsx:237` a
+- [x] **T1 — Base compartida.** Mover `DESPLEGABLE_TACTIL` de `ColaCierres.tsx:237` a
   `components/shared/texto-entero.ts` e importarlo desde ahí en `ColaCierres`. Añadir ahí también
   `DESCARGA_MOVIL`: clase de selector de descendiente (mismo mecanismo que `DESPLEGABLE_TACTIL`) que
   pone el control de descarga de la `DataTable` a todo el ancho y `min-h-11` solo en `max-md:`. Si

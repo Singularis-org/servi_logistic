@@ -17,3 +17,22 @@ export const COLUMNA_FIJA = "shrink-0 whitespace-nowrap tabular-nums";
  * (en escritorio no cambia nada).
  */
 export const TACTIL_MOVIL = "max-md:min-h-11 max-md:min-w-11";
+
+/**
+ * SLT-165 (R493), promovido por SLT-162 (dos consumidores): el botón de desplegar de una `DataTable`
+ * (el único `button[aria-expanded]` de la fila) a 44 × 44 px en el teléfono. Va en el contenedor de
+ * la tabla, por selector de descendiente: la `DataTable` no cambia.
+ */
+export const DESPLEGABLE_TACTIL =
+  "max-md:[&_button[aria-expanded]]:min-h-11 max-md:[&_button[aria-expanded]]:min-w-11";
+
+/**
+ * SLT-162 (R766): «Descargar» de una `DataTable` en el teléfono a todo el ancho y 44 px de alto,
+ * encima de la lista (la barra de la tabla ya va encima). Va en el contenedor de la tabla, por
+ * selector de descendiente sobre el botón de `DescargarDatasetButton` (`data-slot="button"` con
+ * nombre accesible «Descargar …») y su envoltorio. En escritorio no cambia nada.
+ */
+export const DESCARGA_MOVIL =
+  "max-md:[&_div:has(>[data-slot=button][aria-label^=Descargar])]:w-full " +
+  "max-md:[&_[data-slot=button][aria-label^=Descargar]]:w-full " +
+  "max-md:[&_[data-slot=button][aria-label^=Descargar]]:min-h-11";
