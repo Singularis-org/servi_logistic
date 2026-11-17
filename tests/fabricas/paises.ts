@@ -48,7 +48,46 @@ export interface GeografiaDePrueba {
   distritoId: string;
 }
 
-type ClienteDeSql = Pick<Prisma.TransactionClient, "$executeRawUnsafe">;
+type ClienteDeSql = Pick<Prisma.TransactionClient, "$executeRawUnsafe" | "$queryRawUnsafe">;
+
+/**
+ * `true` si `provincia` es todavia una TABLA: una base sin SLT-48 (las idas y vueltas de migraciones
+ * anteriores, o tras el `down.sql` de SLT-48 con `sin-slt48.ts`). Ahi no siempre existe
+ * `nodo_geografico` (antes de SLT-43) y, si existe, la sincronia de entonces lo rellena desde la tabla.
+ */
+async function geografiaViejaEsTabla(tx: ClienteDeSql): Promise<boolean> {
+  const filas = await tx.$queryRawUnsafe<{ relkind: string }[]>(
+    `SELECT c.relkind::text AS relkind FROM pg_class c JOIN pg_namespace s ON s.oid = c.relnamespace
+      WHERE s.nspname = current_schema() AND c.relname = 'provincia'`,
+  );
+  return filas[0]?.relkind === "r";
+}
+
+const TABLA_VIEJA = { 1: "provincia", 2: "canton", 3: "distrito" } as const;
+const COLUMNA_PADRE = { 2: "provincia_id", 3: "canton_id" } as const;
+
+/** El `create` de antes de SLT-48, en la tabla vieja: el pais de un hijo lo pone su trigger desde el padre. */
+async function crearEnLaTablaVieja(
+  tx: ClienteDeSql,
+  profundidad: 1 | 2 | 3,
+  id: string,
+  n: NodoDeNivel,
+): Promise<{ id: string }> {
+  const columnas = ["id", "nombre", "codigo_dta", "activo"];
+  const valores: unknown[] = [id, n.nombre, n.codigoDta ?? null, n.activo ?? true];
+  if (profundidad === 1) {
+    columnas.push("pais_id");
+    valores.push(n.paisId ?? "CR");
+  } else {
+    columnas.push(COLUMNA_PADRE[profundidad]);
+    valores.push(n.padreId);
+  }
+  await tx.$executeRawUnsafe(
+    `INSERT INTO ${TABLA_VIEJA[profundidad]} (${columnas.join(", ")}) VALUES (${valores.map((_, i) => `$${i + 1}`).join(", ")})`,
+    ...valores,
+  );
+  return { id };
+}
 
 /** Un nodo de los tres primeros niveles, con los campos que tenían `provincia`, `canton` y `distrito`. */
 export interface NodoDeNivel {
@@ -79,6 +118,7 @@ export async function crearNodoDeNivel(
     throw new Error(`crearNodoDeNivel: un nodo de profundidad ${profundidad} necesita padre`);
   }
   const id = n.id ?? randomUUID();
+  if (await geografiaViejaEsTabla(tx)) return crearEnLaTablaVieja(tx, profundidad, id, n);
   const filas = await tx.$executeRawUnsafe(
     `INSERT INTO nodo_geografico
          (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo)

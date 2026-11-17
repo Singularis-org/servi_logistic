@@ -299,10 +299,12 @@ describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44
     // SLT-89 (decision humana del 2026-11-10, requirements.md > Decisiones cerradas): SLT-89 redefine
     // `orden_nodo_geografico` con `CREATE OR REPLACE FUNCTION` (R28, T1.1), asi que su cuerpo esperado
     // sale de esa migracion. El resto de lo que afirma este caso no cambia.
-    const sql89 = readFileSync(path.join(MIGRACIONES, "20261110130000_slt89_zona_nodo", "migration.sql"), "utf8");
+    // SLT-48 R9: SLT-48 vuelve a redefinir `orden_nodo_geografico` (con nodo, se conserva); el cuerpo
+    // esperado sale ahora de su migracion.
+    const sql89 = readFileSync(path.join(MIGRACIONES, "20261117120100_slt48_geografia_vieja_a_vistas", "migration.sql"), "utf8");
     const cuerpoReemplazado = (funcion: string) => {
       const m = new RegExp(String.raw`CREATE OR REPLACE FUNCTION ${funcion}\(\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;`).exec(sql89);
-      if (m === null) throw new Error(`no encuentro ${funcion} en la migración de SLT-89`);
+      if (m === null) throw new Error(`no encuentro ${funcion} en la migración de SLT-48`);
       return m[1];
     };
     const r = await revertida(base, async (tx) => {
@@ -335,10 +337,10 @@ describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44
       'CREATE TRIGGER orden_nodo_geografico BEFORE INSERT OR UPDATE OF provincia_id, canton_id, distrito_id, nodo_geografico_id ON public.orden FOR EACH ROW EXECUTE FUNCTION orden_nodo_geografico()',
       'CREATE TRIGGER zona_distrito_nodo_geografico BEFORE INSERT OR UPDATE OF distrito_id, nodo_geografico_id ON public.zona_distrito FOR EACH ROW EXECUTE FUNCTION zona_nodo_geografico_del_distrito()',
     ]);
+    // SLT-48 R4: la migracion quita las FK de `zona_distrito` y `distrito_zona_especial` a `distrito`;
+    // quedan las del nodo.
     expect(r.fks).toEqual([
-      "distrito_zona_especial -> distrito distrito_id",
       "distrito_zona_especial -> nodo_geografico nodo_geografico_id",
-      "zona_distrito -> distrito distrito_id",
       "zona_distrito -> nodo_geografico nodo_geografico_id",
     ]);
   });

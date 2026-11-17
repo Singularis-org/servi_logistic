@@ -62,7 +62,8 @@ async function nombresDeLasTablasViejas(tx: TxDeTest, e: EmpresaGeo125): Promise
     },
   });
   return new Map(
-    filas.map((f) => [f.id, { provincia: f.provincia.nombre, canton: f.canton.nombre, distrito: f.distrito?.nombre ?? null }]),
+    // SLT-48 R4: las FK de la orden son nullable; las ordenes de este fixture son viejas (con FK).
+    filas.map((f) => [f.id, { provincia: f.provincia!.nombre, canton: f.canton!.nombre, distrito: f.distrito?.nombre ?? null }]),
   );
 }
 
@@ -72,7 +73,8 @@ async function nombresDeLosNodos(tx: TxDeTest, e: EmpresaGeo125): Promise<Map<st
     where: { id: { in: idsDe(e) } },
     select: { id: true, provinciaId: true, cantonId: true, distritoId: true },
   });
-  const ids = ordenes.flatMap((o) => [o.provinciaId, o.cantonId, ...(o.distritoId === null ? [] : [o.distritoId])]);
+  // SLT-48 R4: las FK de la orden son nullable; las ordenes de este fixture son viejas (con FK).
+  const ids = ordenes.flatMap((o) => [o.provinciaId!, o.cantonId!, ...(o.distritoId === null ? [] : [o.distritoId])]);
   const nodos = new Map(
     (await tx.nodoGeografico.findMany({ where: { id: { in: ids } }, select: { id: true, nombre: true } })).map((n) => [
       n.id,
@@ -83,8 +85,8 @@ async function nombresDeLosNodos(tx: TxDeTest, e: EmpresaGeo125): Promise<Map<st
     ordenes.map((o) => [
       o.id,
       {
-        provincia: nodos.get(o.provinciaId) ?? null,
-        canton: nodos.get(o.cantonId) ?? null,
+        provincia: nodos.get(o.provinciaId!) ?? null,
+        canton: nodos.get(o.cantonId!) ?? null,
         distrito: o.distritoId === null ? null : (nodos.get(o.distritoId) ?? null),
       },
     ]),

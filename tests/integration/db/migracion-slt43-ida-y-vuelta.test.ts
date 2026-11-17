@@ -23,6 +23,7 @@ import {
   type Conexion,
   type Foto,
 } from "./_fixtures/ida-y-vuelta-32";
+import { M_SLT48_VISTAS } from "./_fixtures/sin-slt48";
 import { crearOrdenGeo43, sembrarEscenarioGeo43, type EscenarioGeo43SinTipos } from "./_fixtures/geo-43";
 import { revertida } from "./_fixtures/pais-20";
 
@@ -76,6 +77,10 @@ const SOBRE_SLT43 = [
   // el `CREATE FUNCTION` de la ida (42723). La del enum va con ella: es su pareja de ida y vuelta.
   "20261110130000_slt89_zona_nodo",
   "20261110130100_slt89_historial_zona_nodo",
+  // SLT-48 (design §9): las vistas leen `nodo_geografico` y su precondicion lee `orden.nodo_geografico_id`
+  // (42703 sin SLT-43). La del enum va con ella, como la pareja de SLT-89.
+  "20261117120000_slt48_historial_nodo_movido",
+  M_SLT48_VISTAS,
 ];
 
 const BASE = `slt43_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -375,8 +380,10 @@ describeSiHayBase("SLT-43 — geografía jerárquica de ida y vuelta, con el scr
       const e = await sembrarEscenarioGeo43(tx, "XB");
       const otraOrden = await crearOrdenGeo43(tx, e, { distritoId: e.geo.otroDistritoId });
 
-      await tx.provincia.update({ where: { id: e.geo.provinciaId }, data: { nombre: "Región renombrada" }, select: { id: true } });
-      await tx.distrito.update({ where: { id: e.geo.otroDistritoId }, data: { activo: false }, select: { id: true } });
+      // SLT-48 (design §9): el cliente de Prisma modela `provincia`/`distrito` como vistas y no tiene
+      // `update`; en esta base (sin SLT-43 ni SLT-48) son tablas, y se escriben por SQL, como antes.
+      await tx.$executeRawUnsafe(`UPDATE provincia SET nombre = 'Región renombrada' WHERE id = $1`, e.geo.provinciaId);
+      await tx.$executeRawUnsafe(`UPDATE distrito SET activo = false WHERE id = $1`, e.geo.otroDistritoId);
       await tx.$executeRawUnsafe(`UPDATE orden SET distrito_id = $1 WHERE id = $2`, e.geo.otroDistritoId, e.ordenConDistritoId);
       await tx.zonaDistrito.update({
         where: { id: e.zonaDistritoId },

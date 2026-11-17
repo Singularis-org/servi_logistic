@@ -6,7 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 import { planificarDivision } from "@/lib/utils/division-csv";
-import { crearPaisDePrueba } from "@/tests/fabricas/paises";
+import { crearPaisDePrueba, crearNodoDeNivel } from "@/tests/fabricas/paises";
 import { crearEscenarioGeo43, tiposDeNivel } from "./_fixtures/geo-43";
 import { comoDueno, errorEnSavepoint, intentar, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -96,7 +96,7 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
   it("R15, R16: la carga CSV (`importarDivision`) crea los nodos de sus altas y les pasa los códigos que completa", async () => {
     const r = await conGeo(async ({ tx, geo }) => {
       // Un existente sin código, que la carga completa (R26 de SL-20): el UPDATE llega al nodo.
-      const existente = await tx.provincia.create({ data: { nombre: "Región Norte", paisId: "XA" }, select: { id: true } });
+      const existente = await crearNodoDeNivel(tx, 1, { nombre: "Región Norte", paisId: "XA" });
       // SLT-46 (T4): la division se lee y se planifica por profundidad; mismas filas que en SLT-43.
       const division = await geo.leerDivisionDePais("XA");
       const fila = (linea: number, ...celdas: [string, string][]) => ({
@@ -169,10 +169,10 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
       await crearPaisDePrueba(tx, "XB");
       const xb = await tiposDeNivel(tx, "XB");
       const s = sufijo();
-      const p1 = (await tx.provincia.create({ data: { nombre: `Uno ${s}`, paisId: "XA" }, select: { id: true } })).id;
-      const p2 = (await tx.provincia.create({ data: { nombre: `Dos ${s}`, paisId: "XA" }, select: { id: true } })).id;
-      const c = (await tx.canton.create({ data: { nombre: `Comuna ${s}`, provinciaId: p1 }, select: { id: true } })).id;
-      const d = (await tx.distrito.create({ data: { nombre: `Barrio ${s}`, cantonId: c }, select: { id: true } })).id;
+      const p1 = (await crearNodoDeNivel(tx, 1, { nombre: `Uno ${s}`, paisId: "XA" })).id;
+      const p2 = (await crearNodoDeNivel(tx, 1, { nombre: `Dos ${s}`, paisId: "XA" })).id;
+      const c = (await crearNodoDeNivel(tx, 2, { nombre: `Comuna ${s}`, padreId: p1 })).id;
+      const d = (await crearNodoDeNivel(tx, 3, { nombre: `Barrio ${s}`, padreId: c })).id;
 
       await tx.canton.update({ where: { id: c }, data: { provinciaId: p2 } });
       const cantonMovido = await nodo(tx, c);
@@ -194,7 +194,7 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
 
   it("R16: un UPDATE que no cambia nada del nodo no lo reescribe", async () => {
     const r = await conGeo(async ({ tx }) => {
-      const p = (await tx.provincia.create({ data: { nombre: `Quieta ${sufijo()}`, paisId: "XA" }, select: { id: true } })).id;
+      const p = (await crearNodoDeNivel(tx, 1, { nombre: `Quieta ${sufijo()}`, paisId: "XA" })).id;
       const xmin = async () =>
         (await tx.$queryRawUnsafe<{ x: string }[]>(`SELECT xmin::text AS x FROM nodo_geografico WHERE id = $1`, p))[0].x;
       // Se fuerza otra subtransacción: un UPDATE del nodo dentro de ella cambiaría su xmin.
@@ -245,7 +245,7 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
     const r = await conGeo(async ({ tx }) => {
       const antes = await contarHistorial(tx);
       const s = sufijo();
-      const p = (await tx.provincia.create({ data: { nombre: `Región ${s}`, paisId: "XA" }, select: { id: true } })).id;
+      const p = (await crearNodoDeNivel(tx, 1, { nombre: `Región ${s}`, paisId: "XA" })).id;
       // El país que se manda se ignora: lo pisa `canton_pais_del_padre`, y el nodo nace con el del padre.
       const c = randomUUID();
       await tx.$executeRawUnsafe(`INSERT INTO canton (id, nombre, provincia_id, pais_id) VALUES ($1, $2, $3, 'CR')`, c, `Comuna ${s}`, p);

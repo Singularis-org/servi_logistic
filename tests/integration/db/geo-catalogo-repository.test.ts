@@ -276,7 +276,7 @@ describeSiHayBase("SLT-44 T3.2 — CatalogoGeograficoRepository contra Postgres 
       const e = await crearEscenarioGeo44(tx);
       const vieja = new CatalogoGeograficoRepository(clienteConSavepoint(tx));
       const antes = await cargarComo(tx, vieja, e.cr);
-      await tx.distrito.update({ where: { id: e.cr.geo.distritoSinZonaId }, data: { nombre: "Renombrado SLT44" } });
+      await tx.nodoGeografico.update({ where: { id: e.cr.geo.distritoSinZonaId }, data: { nombre: "Renombrado SLT44" } });
       const nueva = new CatalogoGeograficoRepository(clienteConSavepoint(tx));
       const despues = await cargarComo(tx, nueva, e.cr);
       const deLaVieja = await cargarComo(tx, vieja, e.cr);

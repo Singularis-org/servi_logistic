@@ -5,14 +5,12 @@ import type { PrismaClient } from "@prisma/client";
 
 import { GeografiaDeOtroPais, traducirErrorDePais } from "@/lib/db/errores-pais";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
-import {
-  crearGeografiaDePrueba,
+import { crearGeografiaDePrueba,
   crearOrganizacionEnPais,
   crearPaisDePrueba,
-  type GeografiaDePrueba,
-} from "@/tests/fabricas/paises";
+  type GeografiaDePrueba, crearNodoDeNivel } from "@/tests/fabricas/paises";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
-import { comoDueno, errorEnSavepoint, intentar, revertida } from "./_fixtures/pais-20";
+import { comoDueno, errorEnSavepoint, intentar, revertida, sqlstateDe } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type FksDeOrden, type TxDeTest } from "./_postgres-real";
 
 // SL-20 (T1.2, T1.4, T1.7; design §2.3–§2.5) — la geografía cuelga del país, contra Postgres real.
@@ -129,6 +127,8 @@ describeSiHayBase("SL-20 — geografía por país", () => {
     expect(r).toEqual({ canton: "XA", distrito: "XA", pedidoCR: "XA", distritoCR: "CR" });
   });
 
+  // SLT-48 (design §9): las tablas viejas son vistas; la FK compuesta `(padre_id, pais_id)` que se mide
+  // es la de `nodo_geografico`, que es la que guarda la geografia.
   it("R11: un nodo en otro país que su padre lo rechaza la base (23503) y nada cambia", async () => {
     const r = await revertida(base, async (tx) => {
       const xa = await paisXA(tx);
@@ -136,11 +136,18 @@ describeSiHayBase("SL-20 — geografía por país", () => {
       return {
         // El cantón de XA tiene un distrito que lo referencia con la FK compuesta RESTRICT: PG18
         // lo reporta como 23001 (medido en SLT-76 T7.2).
-        cantonAOtroPais: rechazoPorRestrict(await intentar(tx, `UPDATE canton SET pais_id = 'CR' WHERE id = $1`, xa.cantonId)),
-        distritoAOtroPais: await intentar(tx, `UPDATE distrito SET pais_id = 'XA' WHERE id = $1`, cr.distritoId),
+        cantonAOtroPais: rechazoPorRestrict(await intentar(tx, `UPDATE nodo_geografico SET pais_id = 'CR' WHERE id = $1`, xa.cantonId)),
+        distritoAOtroPais: await intentar(tx, `UPDATE nodo_geografico SET pais_id = 'XA' WHERE id = $1`, cr.distritoId),
         // ON UPDATE RESTRICT: mover la provincia de país no arrastra a sus cantones.
-        provinciaConHijos: rechazoPorRestrict(await intentar(tx, `UPDATE provincia SET pais_id = 'CR' WHERE id = $1`, xa.provinciaId)),
-        padreInexistente: await intentar(tx, `INSERT INTO canton (id, nombre, provincia_id) VALUES ($1, 'x', 'no-existe')`, randomUUID()),
+        provinciaConHijos: rechazoPorRestrict(await intentar(tx, `UPDATE nodo_geografico SET pais_id = 'CR' WHERE id = $1`, xa.provinciaId)),
+        // SLT-48 R1: un hijo sin padre lo para antes el trigger de invariantes del nodo (SLT-43), con su
+        // codigo propio, en vez de la FK de la tabla vieja (23503).
+        padreInexistente: await intentar(
+          tx,
+          `INSERT INTO nodo_geografico (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado)
+             SELECT $1, 'XA', t.id, 'no-existe', 2, 'x', '' FROM tipo_nivel_geografico t WHERE t.pais_id = 'XA' AND t.clave = 'nivel_2'`,
+          randomUUID(),
+        ),
         tras: [
           await paisDe(tx, "provincia", xa.provinciaId),
           await paisDe(tx, "canton", xa.cantonId),
@@ -152,7 +159,7 @@ describeSiHayBase("SL-20 — geografía por país", () => {
       cantonAOtroPais: "rechazo-por-restrict",
       distritoAOtroPais: "23503",
       provinciaConHijos: "rechazo-por-restrict",
-      padreInexistente: "23503",
+      padreInexistente: "SLT43",
       tras: ["XA", "XA", "CR"],
     });
   });
@@ -161,7 +168,8 @@ describeSiHayBase("SL-20 — geografía por país", () => {
     const r = await revertida(base, async (tx) => {
       const xa = await paisXA(tx);
       const cr = await geografiaCR(tx);
-      const fallo = await intentar(tx, `UPDATE canton SET provincia_id = $1 WHERE id = $2`, cr.provinciaId, xa.cantonId);
+      // SLT-48 (design §9): el padre se cambia en el nodo; la vista `canton` lo enseña.
+      const fallo = await intentar(tx, `UPDATE nodo_geografico SET padre_id = $1 WHERE id = $2`, cr.provinciaId, xa.cantonId);
       const [tras] = await tx.$queryRawUnsafe<{ provincia_id: string; pais_id: string }[]>(
         `SELECT provincia_id, pais_id FROM canton WHERE id = $1`,
         xa.cantonId,
@@ -181,37 +189,25 @@ describeSiHayBase("SL-20 — geografía por país", () => {
       // XA repite el nombre «Cartago» y los tres códigos de CR: vale.
       await crearPaisDePrueba(tx, "XA");
       const repetidos = await errorEnSavepoint(tx, async () => {
-        const p = await tx.provincia.create({ data: { nombre: "Cartago", paisId: "XA", codigoDta: cr?.codigoDta } });
-        const c = await tx.canton.create({ data: { nombre: "Cartago", provinciaId: p.id, codigoDta: cantonCR?.codigoDta } });
-        await tx.distrito.create({ data: { nombre: "Cartago", cantonId: c.id, codigoDta: distritoCR?.codigoDta } });
+        const p = await crearNodoDeNivel(tx, 1, { nombre: "Cartago", paisId: "XA", codigoDta: cr?.codigoDta });
+        const c = await crearNodoDeNivel(tx, 2, { nombre: "Cartago", padreId: p.id, codigoDta: cantonCR?.codigoDta });
+        await crearNodoDeNivel(tx, 3, { nombre: "Cartago", padreId: c.id, codigoDta: distritoCR?.codigoDta });
       });
       const xa = await crearGeografiaDePrueba(tx, "XA");
+      // SLT-48 (design §9): las altas van al nodo (las tablas viejas son vistas); los unicos que se miden
+      // son los del nodo, por pais: raices por nombre normalizado y codigo por tipo.
+      const alta = async (profundidad: 1 | 2 | 3, n: Parameters<typeof crearNodoDeNivel>[2]) => {
+        const e = await errorEnSavepoint(tx, () => crearNodoDeNivel(tx, profundidad, n));
+        return e === null ? null : sqlstateDe(e);
+      };
       return {
         otroPaisRepite: repetidos,
-        mismoPaisNombre: await intentar(tx, `INSERT INTO provincia (id, nombre, pais_id) VALUES ($1, 'Cartago', 'XA')`, randomUUID()),
-        mismoPaisCodigoProvincia: await intentar(
-          tx,
-          `INSERT INTO provincia (id, nombre, pais_id, codigo_dta) VALUES ($1, $2, 'XA', $3)`,
-          randomUUID(),
-          `Otra ${randomUUID()}`,
-          cr?.codigoDta,
-        ),
-        mismoPaisCodigoCanton: await intentar(
-          tx,
-          `INSERT INTO canton (id, nombre, provincia_id, codigo_dta) VALUES ($1, 'Otro', $2, $3)`,
-          randomUUID(),
-          xa.provinciaId,
-          cantonCR?.codigoDta,
-        ),
-        mismoPaisCodigoDistrito: await intentar(
-          tx,
-          `INSERT INTO distrito (id, nombre, canton_id, codigo_dta) VALUES ($1, 'Otro', $2, $3)`,
-          randomUUID(),
-          xa.cantonId,
-          distritoCR?.codigoDta,
-        ),
+        mismoPaisNombre: await alta(1, { nombre: "Cartago", paisId: "XA" }),
+        mismoPaisCodigoProvincia: await alta(1, { nombre: `Otra ${randomUUID()}`, paisId: "XA", codigoDta: cr?.codigoDta }),
+        mismoPaisCodigoCanton: await alta(2, { nombre: "Otro", padreId: xa.provinciaId, codigoDta: cantonCR?.codigoDta }),
+        mismoPaisCodigoDistrito: await alta(3, { nombre: "Otro", padreId: xa.cantonId, codigoDta: distritoCR?.codigoDta }),
         // Los NULL no compiten: dos provincias sin código en el mismo país.
-        sinCodigo: await intentar(tx, `INSERT INTO provincia (id, nombre, pais_id) VALUES ($1, $2, 'XA')`, randomUUID(), `Sin código ${randomUUID()}`),
+        sinCodigo: await alta(1, { nombre: `Sin código ${randomUUID()}`, paisId: "XA" }),
       };
     });
     expect(r).toEqual({

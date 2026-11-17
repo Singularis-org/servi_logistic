@@ -159,6 +159,8 @@
   Tests existentes` (design §9). Los de idas y vueltas usan `sin-slt48.ts`.
   **Hecho:** todos verdes. Ningún test se borra ni pierde aserciones sin autorización del humano; si uno
   queda sin objeto (por ejemplo `slt46-nodo-copia-vieja`), se para y se pregunta.
+  > 2026-11-17 (backend_dev): hecha salvo 17 casos sin objeto, parados sin tocar y pendientes de decisión humana
+  > (lista en `progress/impl_SLT-48.md` › T5 › «Sin objeto»). Por eso sigue sin marcar.
 
 ## T6 — E2E (frontend_dev) · depende de T4 y T5
 

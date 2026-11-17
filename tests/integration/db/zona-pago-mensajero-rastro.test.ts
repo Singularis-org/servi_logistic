@@ -21,6 +21,7 @@ import {
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 380 / T8 — EL RASTRO DE LA REESCRITURA DEL PAGO AL MENSAJERO, CONTRA POSTGRES REAL.
@@ -173,10 +174,8 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
         vehiculos: { moto: moto.id, carro: carro.id },
 
         crearDistrito: async (zonaIds) => {
-          const d = await tx.distrito.create({
-            data: { nombre: `380 D ${unico()}`, cantonId: FKS.cantonId },
-            select: { id: true },
-          });
+          // SLT-48 (design §9): `distrito` es una vista; el distrito de prueba es un nodo de profundidad 3.
+          const d = await crearNodoDeNivel(tx, 3, { nombre: `380 D ${unico()}`, padreId: FKS.cantonId });
           for (const zonaId of zonaIds) {
             await tx.zonaDistrito.create({ data: { zonaId, distritoId: d.id } });
           }

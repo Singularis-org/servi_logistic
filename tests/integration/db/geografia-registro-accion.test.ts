@@ -18,6 +18,7 @@ import {
 import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 374 (R51–R55) — **EL RASTRO DE RETIRAR Y DEVOLVER UN NODO DEL CATALOGO GEOGRAFICO.**
@@ -112,22 +113,13 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
       await sembrarActor(tx);
 
       const provincia = (
-        await tx.provincia.create({
-          data: { nombre: `${PROVINCIA} ${SUFIJO}` },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 1, { nombre: `${PROVINCIA} ${SUFIJO}` })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: `${CANTON} ${SUFIJO}`, provinciaId: provincia },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `${CANTON} ${SUFIJO}`, padreId: provincia })
       ).id;
       const distrito = (
-        await tx.distrito.create({
-          data: { nombre: `${DISTRITO} ${SUFIJO}`, cantonId: canton },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: `${DISTRITO} ${SUFIJO}`, padreId: canton })
       ).id;
 
       const registro = async (entidadId: string): Promise<FilaRegistro[]> =>
@@ -398,22 +390,13 @@ describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (P
 
       const provincia = (
         // Retirada de entrada, para que el `maestro` pida reactivarla.
-        await tx.provincia.create({
-          data: { nombre: `${PROVINCIA} m${SUFIJO}`, activo: false },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 1, { nombre: `${PROVINCIA} m${SUFIJO}`, activo: false })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: `${CANTON} m${SUFIJO}`, provinciaId: provincia },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `${CANTON} m${SUFIJO}`, padreId: provincia })
       ).id;
       const distrito = (
-        await tx.distrito.create({
-          data: { nombre: `${DISTRITO} m${SUFIJO}`, cantonId: canton },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: `${DISTRITO} m${SUFIJO}`, padreId: canton })
       ).id;
 
       const cliente = clienteConSavepoint(tx);

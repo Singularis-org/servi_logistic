@@ -16,6 +16,7 @@ import {
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * ⭑ FICHA 374 / H4 — R48: GUARDAR UNA ZONA SIN TOCAR EL SELECTOR NO LE BORRA NINGÚN DISTRITO,
@@ -110,14 +111,14 @@ describeSiHayBase("⭑ 374/R48 — guardar una zona conserva sus distritos RETIR
 
       // Un distrito DISPONIBLE y otro RETIRADO, los dos dentro de la zona. Con uno solo, «no se
       // pierde ninguno» pasaria en verde con un selector que los filtrase todos menos el primero.
-      const activo = await tx.distrito.create({
-        data: { nombre: `374 D activo ${unico()}`, cantonId: FKS.cantonId, activo: true },
-        select: { id: true, nombre: true, activo: true },
+      // SLT-48 (design §9): `distrito` es una vista; los distritos de prueba son nodos de profundidad 3.
+      const nuevoDistrito = async (nombre: string, activo: boolean) => ({
+        ...(await crearNodoDeNivel(tx, 3, { nombre, padreId: FKS.cantonId, activo })),
+        nombre,
+        activo,
       });
-      const retirado = await tx.distrito.create({
-        data: { nombre: `374 D retirado ${unico()}`, cantonId: FKS.cantonId, activo: false },
-        select: { id: true, nombre: true, activo: true },
-      });
+      const activo = await nuevoDistrito(`374 D activo ${unico()}`, true);
+      const retirado = await nuevoDistrito(`374 D retirado ${unico()}`, false);
       await tx.zonaDistrito.createMany({
         data: [
           { zonaId: zona.id, distritoId: activo.id },
@@ -209,14 +210,9 @@ describeSiHayBase("⭑ 374/R48 — guardar una zona conserva sus distritos RETIR
 
       const nombreZona = `374 Z ${unico()}`;
       const zona = await tx.zona.create({ data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: nombreZona }, select: { id: true } });
-      const activo = await tx.distrito.create({
-        data: { nombre: `374 D activo ${unico()}`, cantonId: FKS.cantonId, activo: true },
-        select: { id: true },
-      });
-      const retirado = await tx.distrito.create({
-        data: { nombre: `374 D retirado ${unico()}`, cantonId: FKS.cantonId, activo: false },
-        select: { id: true },
-      });
+      // SLT-48 (design §9): `distrito` es una vista; los distritos de prueba son nodos de profundidad 3.
+      const activo = await crearNodoDeNivel(tx, 3, { nombre: `374 D activo ${unico()}`, padreId: FKS.cantonId, activo: true });
+      const retirado = await crearNodoDeNivel(tx, 3, { nombre: `374 D retirado ${unico()}`, padreId: FKS.cantonId, activo: false });
       await tx.zonaDistrito.createMany({
         data: [
           { zonaId: zona.id, distritoId: activo.id },

@@ -15,6 +15,7 @@ import {
 } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ SLT-76 / T6 (R8, R9, R10) — EL RASTRO DE LOS DISTRITOS DE UNA ZONA, CONTRA POSTGRES REAL.
@@ -98,14 +99,12 @@ describeSiHayBase("SLT-76 — rastro de los distritos de una zona (Postgres real
 
       // ── La siembra, como dueno de las tablas. ────────────────────────────────────────────
       const empresa = (await crearOrganizacion(tx, { nombre: `Empresa ${unico()}` })).id;
-      const provincia = await tx.provincia.create({
-        data: { nombre: `Provincia ${unico()}` },
-        select: { id: true },
-      });
-      const c1 = await tx.canton.create({ data: { nombre: "C1", provinciaId: provincia.id }, select: { id: true } });
-      const c3 = await tx.canton.create({ data: { nombre: "C3", provinciaId: provincia.id }, select: { id: true } });
+      // SLT-48 (design §9): las tablas viejas son vistas; la geografia de prueba se escribe en nodos.
+      const provincia = await crearNodoDeNivel(tx, 1, { nombre: `Provincia ${unico()}` });
+      const c1 = await crearNodoDeNivel(tx, 2, { nombre: "C1", padreId: provincia.id });
+      const c3 = await crearNodoDeNivel(tx, 2, { nombre: "C3", padreId: provincia.id });
       const distrito = async (nombre: string, cantonId: string) =>
-        (await tx.distrito.create({ data: { nombre, cantonId }, select: { id: true } })).id;
+        (await crearNodoDeNivel(tx, 3, { nombre, padreId: cantonId })).id;
       const d = {
         d1: await distrito("D1", c1.id),
         d2: await distrito("D2", c1.id),

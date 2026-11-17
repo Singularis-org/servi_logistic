@@ -211,10 +211,12 @@ describeSiHayBase("SLT-125 T2.2 — el cierre escribe ubicacion_snapshot (Postgr
 
   it("R18: si el lugar de una orden no esta en el catalogo, crear el cierre sigue revirtiendose entero", async () => {
     const r = await conEscenario(async (tx, e) => {
-      const orden = await tx.orden.findUniqueOrThrow({
+      const fila = await tx.orden.findUniqueOrThrow({
         where: { id: e.cr.ordenes.sinDistritoId },
         select: { cantonId: true },
       });
+      // SLT-48 R4: las FK de la orden son nullable; las ordenes de este fixture son viejas (con FK).
+      const orden = { cantonId: fila.cantonId! };
       // Sin el canton de la orden sin distrito ni lo que cuelga de el: el catalogo sigue siendo un arbol.
       const fuera = new Set(
         (await tx.nodoGeografico.findMany({ where: { padreId: orden.cantonId }, select: { id: true } }))

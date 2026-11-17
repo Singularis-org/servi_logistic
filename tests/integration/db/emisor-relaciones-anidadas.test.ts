@@ -19,6 +19,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import { crearPrismaContado, resumenDeLaSonda, type PrismaContado } from "./_consultas-en-vuelo";
 
 /**
@@ -280,14 +281,19 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
           select: SNAPSHOT_SELECT,
         });
         const d = await leerDescriptivosDeOrdenes([fila], tx);
+        // SLT-48 (design §5, R27): el camino nuevo ya no lee las 3 FK; los niveles salen de la ruta del
+        // nodo de la orden en el catalogo que `leerDescriptivosDeOrdenes` ya cargo. La orden sembrada es
+        // vieja (con FK), asi que el camino de antes las sigue teniendo.
+        const ruta = rutaDelLugar(d.catalogo, fila.orden);
+        const [provinciaId, cantonId, distritoId = null] = ruta.map((p) => p.id);
 
         return {
           viejo: {
             esCentral: antes.orden.zona.esCentral,
             zonaNombre: antes.orden.zona.nombre,
             tiendaNombre: antes.orden.tienda.nombre,
-            provinciaNombre: antes.orden.provincia.nombre,
-            cantonNombre: antes.orden.canton.nombre,
+            provinciaNombre: antes.orden.provincia!.nombre,
+            cantonNombre: antes.orden.canton!.nombre,
             distritoNombre: antes.orden.distrito?.nombre ?? null,
             esZonaEspecial: esZonaEspecialDeLaEmpresa(antes.orden.distrito),
           },
@@ -295,16 +301,10 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
             esCentral: d.zonas.get(fila.orden.zonaId)!.esCentral,
             zonaNombre: d.zonas.get(fila.orden.zonaId)!.nombre,
             tiendaNombre: d.tiendas.get(fila.orden.tiendaId)!.nombre,
-            provinciaNombre: d.provincias.get(fila.orden.provinciaId)!.nombre,
-            cantonNombre: d.cantones.get(fila.orden.cantonId)!.nombre,
-            distritoNombre:
-              fila.orden.distritoId === null
-                ? null
-                : d.distritos.get(fila.orden.distritoId)!.nombre,
-            esZonaEspecial:
-              (fila.orden.distritoId === null
-                ? null
-                : d.distritos.get(fila.orden.distritoId)!.zonaEspecial) === true,
+            provinciaNombre: d.provincias.get(provinciaId)!.nombre,
+            cantonNombre: d.cantones.get(cantonId)!.nombre,
+            distritoNombre: distritoId === null ? null : d.distritos.get(distritoId)!.nombre,
+            esZonaEspecial: (distritoId === null ? null : d.distritos.get(distritoId)!.zonaEspecial) === true,
           },
         };
       });

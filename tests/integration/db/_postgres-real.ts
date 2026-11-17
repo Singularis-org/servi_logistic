@@ -493,7 +493,9 @@ export interface FksDeOrden {
 }
 
 export async function fksDeOrden(prisma: PrismaClient): Promise<FksDeOrden | null> {
+  // SLT-48 R4: las FK de la orden son nullable; una orden nueva solo tiene nodo. Se toma una vieja.
   const fila = await prisma.orden.findFirst({
+    where: { provinciaId: { not: null }, cantonId: { not: null } },
     select: {
       estatusId: true,
       tiendaId: true,
@@ -502,7 +504,7 @@ export async function fksDeOrden(prisma: PrismaClient): Promise<FksDeOrden | nul
       cantonId: true,
     },
   });
-  return fila ?? null;
+  return fila === null ? null : { ...fila, provinciaId: fila.provinciaId!, cantonId: fila.cantonId! };
 }
 
 /**

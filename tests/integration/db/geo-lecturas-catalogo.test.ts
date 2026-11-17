@@ -390,7 +390,8 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
             const repo = new OrdenRepository(clienteConSavepoint(tx));
             const filas = [];
             for (const id of ids) {
-              filas.push({ id, nuevo: await repo.findDistritoParaCorreccion(id), deHoy: await hoy.findDistritoParaCorreccion(tx, id) });
+              // SLT-48 (T2.3): `findDistritoParaCorreccion` pasa a `findLugarParaCorreccion(nodoId)`.
+              filas.push({ id, nuevo: await repo.findLugarParaCorreccion(id), deHoy: await hoy.findDistritoParaCorreccion(tx, id) });
             }
             return filas;
           });
@@ -399,7 +400,17 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
         return salida;
       });
 
-      for (const { nuevo, deHoy } of r) expect(nuevo).toEqual(deHoy);
+      // SLT-48 R16/R17: la correccion recibe UN nodo de cualquier nivel; la regla de hoja la aplica el
+      // servicio. Asi que la fila nueva ya no trae la cadena (`cantonId`/`provinciaId`) sino si es hoja
+      // (`tipoHijosActivos`) y su lugar de tarifa (`distritoTarifaId`, P3), y un canton o una provincia
+      // tambien devuelven fila (no hoja). Para cada distrito, lo que la correccion cobra es lo de hoy.
+      for (const { nuevo, deHoy } of r) {
+        if (deHoy === null) continue;
+        const { cantonId: _c, provinciaId: _p, ...igualQueHoy } = deHoy;
+        void _c;
+        void _p;
+        expect(nuevo).toEqual({ ...igualQueHoy, tipoHijosActivos: null, distritoTarifaId: deHoy.id });
+      }
 
       const de = (empresa: EmpresaGeo44, id: string) =>
         r.find((s) => s.empresa.empresaId === empresa.empresaId && s.id === id)!.nuevo;
@@ -407,8 +418,9 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
         expect(de(empresa, empresa.geo.distritoCentralId)).toEqual({
           id: empresa.geo.distritoCentralId,
           nombre: expect.stringContaining("Central SLT44"),
-          cantonId: empresa.geo.cantonId,
-          provinciaId: empresa.geo.provinciaId,
+          // SLT-48 R16/R17: sin cadena; hoja y lugar de tarifa.
+          tipoHijosActivos: null,
+          distritoTarifaId: empresa.geo.distritoCentralId,
           zonaId: empresa.zonas.centralId,
           zonaNombre: expect.stringContaining("Zona central SLT44"),
           esCentral: true,
@@ -421,12 +433,15 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
           zonaNombre: expect.stringContaining("Zona norte SLT44"),
           esCentral: false,
         });
+        // SLT-48 R16: sin `cantonId` en la fila; el distrito bajo el canton retirado sigue sin estar disponible.
         expect(de(empresa, empresa.geo.distritoBajoCantonRetiradoId)).toMatchObject({
-          cantonId: empresa.geo.cantonRetiradoId,
+          id: empresa.geo.distritoBajoCantonRetiradoId,
           disponible: false,
         });
-        expect(de(empresa, empresa.geo.cantonId)).toBeNull();
-        expect(de(empresa, empresa.geo.provinciaId)).toBeNull();
+        // SLT-48 R16/R17: un canton o una provincia se encuentran (antes `null`) y no son hoja: el
+        // servicio los rechaza con «ubicacion incompleta».
+        expect(de(empresa, empresa.geo.cantonId)).toMatchObject({ id: empresa.geo.cantonId, tipoHijosActivos: expect.any(String) });
+        expect(de(empresa, empresa.geo.provinciaId)).toMatchObject({ id: empresa.geo.provinciaId, tipoHijosActivos: expect.any(String) });
         expect(de(empresa, otra.geo.distritoCentralId)).toBeNull();
       }
     });

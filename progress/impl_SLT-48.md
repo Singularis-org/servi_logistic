@@ -869,3 +869,95 @@ $ pnpm run typecheck        → 0 errores fuera de tests/integration/db y e2e (T
 
 **Veredicto T3:** mover un nodo en el servidor hecho (R34–R41, P1, P4), con vista previa desglosada por nivel y
 bloqueo por empresa; verde contra Postgres. La pantalla es T4.1.
+
+## T5 — Tests que escriben las tablas viejas (backend_dev, 2026-11-17)
+
+Base `servi_logistic_slt48` local. Ninguna dependencia, ningún archivo de producción. Las tablas viejas son vistas:
+cada test que escribía `provincia`/`canton`/`distrito` escribe ahora el nodo (`crearNodoDeNivel`, o
+`tx.nodoGeografico.update` para renombres y retiros), y los que leían las 3 FK de una orden leen su nodo o su ruta.
+
+### Cómo
+
+- **`tests/fabricas/paises.ts` › `crearNodoDeNivel`:** si `provincia` es todavía una TABLA (una base sin SLT-48: las
+  idas y vueltas de migraciones anteriores, o tras el `down.sql` con `sin-slt48.ts`), escribe en la tabla vieja como
+  antes; si es vista, escribe el nodo. Así `geo-43.ts` siembra también en la base previa a SLT-43.
+- **Conversión mecánica** (`X.create` → `crearNodoDeNivel`, `X.update` → `nodoGeografico.update`, sin tocar ningún
+  `expect`): `aislamiento-mecanismo` (el clon del esquema desechable pasa a ser de `nodo_geografico`), `carga-division`
+  (y su `ctid` se mide en el nodo), `cobertura-repository`, `geo-backfill`, `geo-catalogo-repository`,
+  `geografia-alta`, `geografia-cascada-reversible`, `geografia-catalogo-activo`, `geografia-historico-intacto`,
+  `geografia-ordenes-sin-entregar`, `geografia-registro-accion`, `geografia-renombrado`, `salida-a-reparto-sql-real`,
+  `zona-central-guarda-y-rastro`, `zona-distrito-rastro`, `zona-distrito-unica`, `zona-guardado-conserva-costos`,
+  `zona-guardado-conserva-inactivos`, `zona-pago-mensajero-rastro`, `zona-reconciliacion-ordenes`,
+  `geo-sincronia-orden-zonas` (fixture), `geografia-por-pais` (altas).
+- **Idas y vueltas de migraciones anteriores:** `migracion-slt43` y `migracion-slt46` construyen su base SIN las
+  migraciones de SLT-48 (se apoyan en objetos de SLT-43/46: 42703 y 42704), como ya hacían con las de SLT-46/89;
+  en esa base el `UPDATE` de R35 va por SQL (el cliente de Prisma modela vistas). `migracion-sl20`, `-sl38`,
+  `geografia-dta-2026-migration`, `tarifas-flexibles-migration` y `caja-459-migration` pasan sin cambios: el
+  helper `sin-slt48.ts` no hizo falta en ninguno.
+- **Tipos** (FK de la orden `string | null`, R4): `_fixtures/geo-65.ts`, `geo-125-geocode-cache`,
+  `geo-125-nombres-catalogo`, `geo-125-cierre-snapshot`, `geo-equivalencia-presentacion` (`!` sobre órdenes viejas
+  con FK); `_postgres-real.ts › fksDeOrden` y `_fixtures/caja-459.ts` toman una orden con FK.
+- **Entradas** (`CreateOrdenData`/`CorregirDatosClienteData` sin la terna, `findLugarParaCorreccion`):
+  `cobro-plataforma-plan`, `pago-plataforma-sl45-concurrencia`, `orden-remision-borrada-libera-numero`,
+  `corregir-ubicacion-geocode`, `geografia-dos-paises`, `zona-especial-dos-empresas`, `emisor-relaciones-anidadas`
+  (los niveles salen de `rutaDelLugar` sobre el catálogo de `leerDescriptivosDeOrdenes`).
+
+### Aserciones cambiadas en T5 (autorizadas: contradicen una decisión cerrada; cada una con su `// SLT-48 R<n>`)
+
+| Archivo › test | Antes → después | R |
+|---|---|---|
+| `corregir-datos-cliente.repo` › «327 caso 1+2» | `fila.distritoId` = nuevo → `nodoGeograficoId` = nuevo y las 3 FK `null` | R16 |
+| idem › «327 caso 3+4» | cambian `direccion, distritoId, peso, updatedAt, zonaId` → además `cantonId, nodoGeograficoId, provinciaId` | R16 |
+| idem › «327 caso 7» | `una.cantonId`/`una.provinciaId` → `una.id`, `tipoHijosActivos: null`, `distritoTarifaId` | R16, R17 |
+| idem › «327 (R30)» | `fila.distritoId` → `fila.nodoId` | R16, R22 |
+| `geo-lecturas-catalogo` › «R19 — el distrito propuesto…» | fila nueva = fila de hoy → igual salvo la cadena (sin `cantonId`/`provinciaId`, con `tipoHijosActivos`/`distritoTarifaId`); un cantón o una provincia `null` → fila con `tipoHijosActivos` (no hoja) | R16, R17 |
+| `geografia-catalogo-activo` › «`findLugarParaCorreccion` devuelve el retirado…» | `cantonId`/`provinciaId` → `id` y `tipoHijosActivos: null` | R16 |
+| `geografia-historico-intacto` › «la orden conserva su terna…» | `item.distritoId` → `item.nodoGeograficoId` | R15, R22 |
+| `zona-nodo-herencia` › «v2: el distrito … y la provincia…» (renombrado) | cantón con distritos «sin zona» → «incompleta»; `u.fks` → `u.ruta`; provincia «país no habilitado» → «incompleta» | R15, R17, R18 |
+| idem › «carga masiva v1: la orden del distrito heredado…» | `distritoId` = distrito → `nodoGeograficoId` = distrito y `distritoId` `null` | R15 |
+| `geo-sincronia-orden-zonas` › «R20: un nodo puesto a mano…» (renombrado) | se pisa con las FK → se conserva | R9 |
+| idem › «orden sin cantón…» (renombrado) | 23502 y `NOT NULL` → entra, `nullable = YES`, nodo `null` | R4 |
+| idem › «los triggers que los casos apagan…» | lista con `distrito_sincroniza_nodo_geografico` → sin él | R5 |
+| `geografia-por-pais` › «R11: un nodo en otro país…» | sobre `canton`/`distrito`/`provincia` → sobre `nodo_geografico`; `padreInexistente` 23503 → `SLT43` (lo para antes el trigger de invariantes del nodo) | R1 |
+| `slt46-nodo-copia-vieja` › «R44» | cuerpo de `orden_nodo_geografico` de SLT-89 → el de SLT-48; FK de las zonas a `distrito` → solo al nodo | R9, R4 |
+
+### Sin objeto: PARADOS, sin tocar (piden decisión humana)
+
+Prueban objetos que SLT-48 quita a propósito (la sincronía vieja ↔ nodo, la copia nodo → tabla vieja, el `DEFAULT`
+de país de `provincia`, el borrado físico por las tablas viejas). No se reescribieron ni se borraron:
+
+| Archivo › test | Por qué no tiene objeto |
+|---|---|
+| `slt46-nodo-copia-vieja` › R4, R5, R6 | la copia nodo → tabla vieja (`nodo_geografico_copia_a_geografia_vieja`) ya no existe (R5) |
+| `geo-sincronia-geografia` › «R16: cambio de padre…», «R16: un UPDATE que no cambia nada…», «R17: el borrado físico…», «R18: `canton.pais_id`…», «lo que la sincronía tumba…» | la sincronía tabla vieja → nodo ya no existe (R5); escriben `provincia`/`canton`/`distrito` (4 errores de typecheck) |
+| `geo-sincronia-orden-zonas` › «borrar un distrito con orden no falla…», «la FK nueva solo rechaza un distrito SIN nodo…» | `DELETE FROM distrito` es `SL048` (R2); la FK y la sincronía que se apagaba no existen (R4, R5) |
+| `geografia-por-pais` › «R10: una provincia creada sin país queda en CR», «R11: el cantón y el distrito heredan el país del padre aunque se pida otro» | el `DEFAULT 'CR'` de `provincia` y el trigger `geografia_pais_del_padre` ya no existen; el nodo exige su país y la FK `(padre_id, pais_id)` rechaza el otro (1 error de typecheck) |
+| `geo-equivalencia-geografia` › los 4 «R13» que descuadran la tabla vieja | la tabla vieja es una vista del nodo: no puede diferir de él |
+| `geo-equivalencia` › «R32: un distrito sin nodo…» | ídem: no puede haber distrito sin nodo (1 error de typecheck) |
+
+Opciones para cada uno: retirarlo (con su `@test-desaparecido` si un `design.md` lo cita) o reescribirlo contra las
+vistas (R1–R3, R5 ya los cubre `slt48-vistas-geografia.test.ts`).
+
+### Salida real (resumida)
+
+```
+$ vitest run --maxWorkers=3 <los 43 archivos tocados + migracion-sl20/-sl38, geografia-dta-2026, tarifas-flexibles-migration,
+    caja-459-migration, geo-65-fixture, geo-125-fixture, aislamiento-rls, distrito-zona-especial-por-empresa,
+    satelite-conjunto-sql-real, tarifas-flexibles-resolver, slt89-equivalencia-cr, geo-equivalencia*, slt46-nodo-copia-vieja>
+ Test Files  11 failed | 43 passed (54)
+      Tests  19 failed | 467 passed | 48 skipped (534)
+  - los 17 casos «sin objeto» de arriba (después, `slt46-nodo-copia-vieja` › R44 quedó verde: 6/9, los 3 rojos son R4–R6);
+  - 5 suites que piden la base sembrada (sin órdenes o sin `adminTienda` en la local): `corregir-datos-cliente.repo`,
+    `corregir-ubicacion-geocode`, `emisor-relaciones-anidadas`, `orden-remision-borrada-libera-numero` y el describe
+    «465» de `cobertura-repository`, más «SLT-54 R30 … la marca sigue en el Excel» del mismo archivo
+    (`EmpresaNoResuelta` al leer la empresa). Los cinco archivos están en `tests/baseline-rojos.json` («La app nace
+    vacia», SL-31). Compilan; no se pudieron correr aquí.
+$ pnpm run test:guardias   → Test Files 1 failed | 338 passed · solo `dependencias-declaradas-presentes` (baseline)
+$ eslint (archivos de T5)  → 0 errores, 2 avisos previos (variables sin usar que no son de T5)
+$ pnpm run typecheck       → 9 errores, todos fuera de mi alcance o parados:
+    e2e/geo-presentacion-4-niveles.spec.ts (3)            T6.1 (frontend_dev)
+    geo-sincronia-geografia (4), geografia-por-pais (1), geo-equivalencia (1)   casos «sin objeto» parados
+```
+
+**Veredicto T5:** 43 archivos de integración pasados a nodos o a las vistas, sin borrar tests; quedan 17 casos sin
+objeto parados y pendientes de decisión humana, y 5 suites que solo corren con la base sembrada (baseline).

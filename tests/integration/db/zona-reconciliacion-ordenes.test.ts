@@ -19,6 +19,7 @@ import {
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZonaRepositoryConAntes, type DatosSinAntes } from "./_fixtures/antes-de-zona";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * ⭑ FICHA 366 / T5 — EL CORTE DE ELEGIBILIDAD, MEDIDO CONTRA POSTGRES REAL.
@@ -186,10 +187,8 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
         },
 
         crearDistrito: async (zonaIds) => {
-          const d = await tx.distrito.create({
-            data: { nombre: `366 D ${unico()}`, cantonId: FKS.cantonId },
-            select: { id: true },
-          });
+          // SLT-48 (design §9): `distrito` es una vista; el distrito de prueba es un nodo de profundidad 3.
+          const d = await crearNodoDeNivel(tx, 3, { nombre: `366 D ${unico()}`, padreId: FKS.cantonId });
           for (const zonaId of zonaIds) {
             await tx.zonaDistrito.create({ data: { zonaId, distritoId: d.id } });
           }

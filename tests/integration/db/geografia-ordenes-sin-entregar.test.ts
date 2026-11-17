@@ -13,6 +13,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 374 (R60/R61) — **CUANTAS ORDENES SIN ENTREGAR CUELGAN DE UN NODO.** Contra Postgres.
@@ -99,25 +100,16 @@ describeSiHayBase("374/R61 — el conteo de ordenes sin entregar (Postgres real)
       await sembrarFks(tx);
 
       const provincia = (
-        await tx.provincia.create({ data: { nombre: `Prov cnt ${SUFIJO}` }, select: { id: true } })
+        await crearNodoDeNivel(tx, 1, { nombre: `Prov cnt ${SUFIJO}` })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: `Canton cnt ${SUFIJO}`, provinciaId: provincia },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton cnt ${SUFIJO}`, padreId: provincia })
       ).id;
       const distrito = (
-        await tx.distrito.create({
-          data: { nombre: `Distrito cnt ${SUFIJO}`, cantonId: canton },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: `Distrito cnt ${SUFIJO}`, padreId: canton })
       ).id;
       const distritoHermano = (
-        await tx.distrito.create({
-          data: { nombre: `Distrito hermano ${SUFIJO}`, cantonId: canton },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: `Distrito hermano ${SUFIJO}`, padreId: canton })
       ).id;
 
       let n = 0;
