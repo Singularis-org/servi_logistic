@@ -33,7 +33,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
   `rutas-336-retiradas.guardia.test.ts` según `design.md > Guardias`. *Hecho:* `pnpm run
   test:guardias` en verde; mutación anotada en `progress/impl_SLT-168.md`: quitar
   `<TarjetaEscaneoContinuo` de `RecogerPaqueteCard.tsx` pone las dos en rojo.
-- [ ] **T7 — E2E (depende de T4, T5).** `e2e/mis-asignaciones.spec.ts:73`: el toast «Guía {n}
+- [x] **T7 — E2E (depende de T4, T5).** *(Ajustados 2026-11-17; sin correr: los corre el leader con base desechable y build.)* `e2e/mis-asignaciones.spec.ts:73`: el toast «Guía {n}
   recogida.» pasa a la fila «Recogida» del diálogo. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (b):
   dos guías sembradas seguidas con Enter → dos filas «Recolectada» con el diálogo abierto; al cerrar,
   las listas se actualizan (ya lo comprueba). *Hecho:* los dos E2E en verde en local con base

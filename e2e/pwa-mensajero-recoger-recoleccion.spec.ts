@@ -36,8 +36,9 @@ import {
  *      «Escanear o escribir guía» (44 px, a todo el ancho) → barra → pestañas (44 px) de arriba abajo;
  *      ni el documento ni ningún dato se sale; ninguna tarjeta recorta con «…», en Mosaico ni en
  *      Detalle (fila desplegada: dirección entera); el importe, en una línea.
- *  (b) Recolección a 360 y 414 px, igual de larga: el escáner recolecta una guía con el mensaje de hoy
- *      (R522) y la orden pasa a «Recogidos en tienda hoy»; orden escáner → barra → «Por recolectar en
+ *  (b) Recolección a 360 y 414 px, igual de larga: el escáner recolecta (R522) dos guías seguidas con
+ *      Enter sin cerrar el diálogo (SLT-168, R595: dos filas «Recolectada») y, al cerrar, las órdenes
+ *      pasan a «Recogidos en tienda hoy»; orden escáner → barra → «Por recolectar en
  *      tienda» → «Recogidos en tienda hoy»; sin desborde ni «…» en las dos listas, en Mosaico y en
  *      Detalle; importes en una línea; la búsqueda filtra las DOS listas (R520) y la que se queda sin
  *      coincidencias dice «Ninguna guía por recolectar coincide con la búsqueda.» (R521).
@@ -233,26 +234,43 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       await porRecolectar(m, datosLargos());
       await porRecolectar(m, { destinatario: "Beto Ruiz", montoCobrar: 4000 });
       const aRecolectar = await porRecolectar(m, { ...datosLargos(), destinatario: `Carla Mora ${DESTINATARIO_LARGO}` });
+      // SLT-168 (R595): la segunda guía de la tanda seguida.
+      const otraARecolectar = await porRecolectar(m, { destinatario: "Dora Soto", montoCobrar: 3000 });
 
       const page = await paginaDe(browser, m, { viewport: { width: ancho, height: ALTO_MOVIL } });
       await page.goto(RECOLECCION);
 
       const seccionPor = page.getByRole("region", { name: "Por recolectar en tienda", exact: true });
       const seccionHoy = page.getByRole("region", { name: "Recogidos en tienda hoy", exact: true });
-      await expect(seccionPor.getByText("3 paquetes por recolectar en tienda.")).toBeVisible();
+      await expect(seccionPor.getByText("4 paquetes por recolectar en tienda.")).toBeVisible();
 
-      // R522: el escáner recolecta con el mismo resultado y el mismo mensaje de hoy.
+      // R522: el escáner recolecta con el mismo resultado. SLT-168 (R595, R596, R833): dos guías
+      // seguidas con Enter, el diálogo sigue abierto con su título y cada una es una fila «Recolectada».
       const escaner = page.getByRole("button", { name: "Escanear o escribir guía" });
       await tactil(escaner);
       await escaner.click();
       const dialogo = page.getByRole("dialog");
       await expect(dialogo.getByText("Recolectar en tienda", { exact: true })).toBeVisible();
-      await dialogo.getByRole("textbox").fill(String(aRecolectar.numGuia));
-      await dialogo.getByRole("button", { name: "Confirmar recolección" }).click();
-      await expect(dialogo.getByText(`Guía ${aRecolectar.numGuia} recolectada correctamente.`)).toBeVisible();
+      const campo = dialogo.getByRole("textbox");
+      await campo.fill(String(aRecolectar.numGuia));
+      await campo.press("Enter");
+      await campo.fill(String(otraARecolectar.numGuia));
+      await campo.press("Enter");
+      const lecturas = dialogo.getByRole("log", { name: "Lecturas" });
+      for (const orden of [aRecolectar, otraARecolectar]) {
+        await expect(
+          lecturas
+            .getByRole("listitem")
+            .filter({ hasText: String(orden.numGuia) })
+            .getByText("Recolectada", { exact: true }),
+        ).toBeVisible();
+      }
+      await expect(dialogo).toBeVisible();
+      await expect(dialogo.getByText("Recolectar en tienda", { exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(dialogo).toHaveCount(0);
-      await expect(seccionHoy.getByText("1 paquete recogido en tienda hoy.")).toBeVisible();
+      // R598: al cerrar, la lista se relee una vez.
+      await expect(seccionHoy.getByText("2 paquetes recogidos en tienda hoy.")).toBeVisible();
       await expect(seccionPor.getByText("2 paquetes por recolectar en tienda.")).toBeVisible();
 
       // R500, R519: escáner → barra → «Por recolectar en tienda» → «Recogidos en tienda hoy».
@@ -291,7 +309,7 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       await page.getByRole("searchbox", { name: "Buscar guías" }).fill("Beto Ruiz");
       await expect(seccionPor.locator("article")).toHaveCount(1);
       await expect(seccionHoy.getByText(VACIO_BUSQUEDA_RECOLECCION)).toBeVisible();
-      await expect(seccionHoy.getByText("1 paquete recogido en tienda hoy.")).toBeVisible();
+      await expect(seccionHoy.getByText("2 paquetes recogidos en tienda hoy.")).toBeVisible();
       await sinDesborde(page);
     });
   }

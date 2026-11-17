@@ -70,7 +70,12 @@ async function recogerYAbrirGestion(browser: Browser, m: MensajeroE2E, orden: Or
   const tarjeta = page.getByRole("region", { name: "Recoger por número de guía o escaneo" });
   await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
   await tarjeta.getByRole("button", { name: "Recoger", exact: true }).click();
-  await expect(page.getByText(`Guía ${orden.numGuia} recogida.`, { exact: true })).toBeVisible();
+  // SLT-168 (R596): el diálogo es continuo; la lectura es una fila de «Lecturas» que dice «Recogida».
+  const lectura = page
+    .getByRole("log", { name: "Lecturas" })
+    .getByRole("listitem")
+    .filter({ hasText: String(orden.numGuia) });
+  await expect(lectura.getByText("Recogida", { exact: true })).toBeVisible();
   await expect.poll(() => estadoDe(orden)).toBe("en_reparto");
 
   await page.goto("/mis-asignaciones/reparto");
