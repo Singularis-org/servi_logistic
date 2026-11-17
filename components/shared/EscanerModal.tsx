@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { ScanLine } from "lucide-react";
+import { Camera, ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -71,6 +71,11 @@ export interface EscanerModalProps {
    * que ya lo piden (Reparto). Sin ella, el botón de siempre: los demás usos no cambian.
    */
   tactil?: boolean;
+  /**
+   * SLT-160 (R600, R604): disparador de solo icono (cámara), con `label` como nombre accesible, para ir
+   * junto al campo del buscador de los listados. Sin envoltorio de fila. Arranca cerrado igual.
+   */
+  soloIcono?: boolean;
   className?: string;
 }
 
@@ -79,6 +84,7 @@ export function EscanerModal({
   acciones,
   children,
   tactil = false,
+  soloIcono = false,
   className,
 }: Readonly<EscanerModalProps>) {
   const [abierto, setAbierto] = useState(false);
@@ -89,6 +95,41 @@ export function EscanerModal({
   function focoInicial(): HTMLElement | true {
     if (!punteroFino) return true;
     return popupRef.current?.querySelector<HTMLElement>(SELECTOR_CAMPO_ESCANER) ?? true;
+  }
+
+  const dialogo = (
+    <Dialog open={abierto} onOpenChange={setAbierto}>
+      {/* El popup no pinta superficie propia: la tarjeta que entra como `children` YA es
+          una tarjeta (borde, fondo, sombra), y envolverla en otra la enmarcaba dos veces.
+          El alto lo limita el viewport: la tarjeta es alta y en un teléfono no cabe. */}
+      <DialogContent
+        ref={popupRef}
+        initialFocus={focoInicial}
+        className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
+        {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
+            que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
+        <DialogTitle className="sr-only">{label}</DialogTitle>
+        {typeof children === "function" ? children(() => setAbierto(false)) : children}
+      </DialogContent>
+    </Dialog>
+  );
+
+  if (soloIcono) {
+    return (
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label={label}
+          className={className}
+          onClick={() => setAbierto(true)}
+        >
+          <Camera className="size-5" aria-hidden="true" />
+        </Button>
+        {dialogo}
+      </>
+    );
   }
 
   return (
@@ -105,20 +146,7 @@ export function EscanerModal({
       </Button>
       {acciones ? <div className="ms-auto flex gap-2">{acciones}</div> : null}
 
-      <Dialog open={abierto} onOpenChange={setAbierto}>
-        {/* El popup no pinta superficie propia: la tarjeta que entra como `children` YA es
-            una tarjeta (borde, fondo, sombra), y envolverla en otra la enmarcaba dos veces.
-            El alto lo limita el viewport: la tarjeta es alta y en un teléfono no cabe. */}
-        <DialogContent
-          ref={popupRef}
-          initialFocus={focoInicial}
-          className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
-          {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
-              que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
-          <DialogTitle className="sr-only">{label}</DialogTitle>
-          {typeof children === "function" ? children(() => setAbierto(false)) : children}
-        </DialogContent>
-      </Dialog>
+      {dialogo}
     </div>
   );
 }

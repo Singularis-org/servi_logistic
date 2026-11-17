@@ -8,6 +8,8 @@ import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { enLaEraAnterior455 } from "../455/_era-anterior";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "./_escenario";
 
+const SIN_ROL_DE_APP = { rolDeLaApp: false } as const;
+
 /**
  * FICHA 454 (T1.24, design §1.6; R38-R42) — M3: BACKFILL Y RETIRO DE `ayuda_tienda` Y
  * `devolucion_por_confirmar`, contra Postgres real.
@@ -227,7 +229,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
         down,
         up3,
       };
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   function falla(prep: (e: Escenario) => Promise<unknown>) {
@@ -239,7 +241,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
       } catch (err) {
         return String((err as Error).message);
       }
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   beforeAll(async () => {

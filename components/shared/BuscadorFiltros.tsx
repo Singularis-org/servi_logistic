@@ -11,7 +11,10 @@ import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EscanerModal } from "@/components/shared/EscanerModal";
+import { QrScanner } from "@/components/shared/QrScanner";
 import {
   avisoMinimoCaracteres,
   DEBOUNCE_MS_DEFAULT,
@@ -21,6 +24,8 @@ import {
   type VistasFiltroBarra,
 } from "@/components/shared/VistasFiltro";
 import { useFiltrosUrl } from "@/hooks/useFiltrosUrl";
+import { useToast } from "@/hooks/useToast";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   activosDesdeUrl,
   PARAM_TERMINO_DEFAULT,
@@ -45,8 +50,58 @@ const ALTO_CONTROL = "h-8";
  */
 const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
 
+/** SLT-160 (R771, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas. */
+const ALTO_CONTROL_ESCANEO = "h-11";
+
 /** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
 export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
+
+/** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
+export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
+
+/** SLT-160 (R770, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
+export const AYUDA_ESCANEO =
+  "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
+
+/** SLT-160 (R605): lo que dice la cámara del buscador cuando lee algo que no es una guía. */
+const CODIGO_INVALIDO = "Código inválido.";
+
+/**
+ * SLT-160 (R604, R605) — el visor de la cámara del buscador, ya encendido (D4). Vive DENTRO del
+ * modal, y es ahí donde pide el toast: solo se monta al abrirlo, así la barra sigue sin exigir un
+ * `ToastProvider` a quien la monta. Una guía cierra el modal y se busca; otra cosa avisa y no toca
+ * el término.
+ */
+function CamaraDelBuscador({
+  onGuia,
+  cerrar,
+}: {
+  onGuia: (guia: number) => void;
+  cerrar: () => void;
+}) {
+  const toast = useToast();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{ESCANEAR_CON_CAMARA}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <QrScanner
+          encendidaAlMontar
+          onDecoded={(texto) => {
+            const guia = leerGuia(texto);
+            if (guia === null) {
+              toast.error(CODIGO_INVALIDO);
+              return;
+            }
+            cerrar();
+            onGuia(guia);
+          }}
+        />
+      </CardContent>
+    </Card>
+  );
+}
 
 /** Un filtro OFRECIDO en el selector: su clave y como se llama. Nada mas. */
 export interface FiltroDisponible {
@@ -179,6 +234,19 @@ export interface BuscadorFiltrosProps {
    * defecto: los demás consumidores no cambian.
    */
   tactil?: boolean;
+  /**
+   * SLT-160 «Buscar escaneando en los listados» (D1, D2) — buscador de un listado con guía (B1-B8):
+   * Enter busca en el acto (una guía leída por pistola, URL del QR o `#n`, queda como el número,
+   * `leerGuia`) y deja el texto seleccionado para que la siguiente lectura lo sustituya; y un botón
+   * de cámara dentro del campo, junto a la «X». Apagada por defecto: los demás no cambian (R609).
+   */
+  escaneo?: boolean;
+  /**
+   * SLT-189 (DS3, R795) — controles propios de la pantalla que van DESPUÉS de «Filtros», en la misma
+   * fila (p. ej. el conmutador Mosaico/Detalle de Reparto). Los `children` no sirven: se pintan antes
+   * del campo. Sin la prop no se monta nada: los demás consumidores no cambian.
+   */
+  trasFiltros?: ReactNode;
   className?: string;
 }
 
@@ -258,11 +326,14 @@ export function BuscadorFiltros({
   buscador = true,
   fija = false,
   tactil = false,
+  escaneo = false,
+  trasFiltros,
   className,
 }: BuscadorFiltrosProps) {
-  const alto = tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
+  const alto = escaneo ? ALTO_CONTROL_ESCANEO : tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
   const idBase = useId();
   const idAviso = `${idBase}-minimo`;
+  const idAyuda = `${idBase}-ayuda`;
 
   const { params, borrarParams } = useFiltrosUrl(leerDeUrl);
 
@@ -443,6 +514,39 @@ export function BuscadorFiltros({
   }
 
   /**
+   * SLT-160 (R601-R603) — BUSCAR YA, sin debounce: Enter o una lectura de la cámara. Si `entrada`
+   * es una guía (`leerGuia`), el campo pasa a mostrar solo el número. Se cancela lo pendiente y se
+   * emite aunque coincida con lo emitido si había un debounce en vuelo (ese llevaba este mismo
+   * término); por debajo de `minChars` el término es `""`, como al teclear. Al final se pide
+   * seleccionar el texto: la siguiente lectura lo sustituye en vez de añadirse.
+   */
+  const campoRef = useRef<HTMLInputElement>(null);
+  const [seleccionPedida, setSeleccionPedida] = useState(0);
+  useEffect(() => {
+    if (seleccionPedida > 0) campoRef.current?.select();
+  }, [seleccionPedida]);
+
+  function buscarYa(entrada: string) {
+    const guia = leerGuia(entrada);
+    const leido = guia === null ? entrada : String(guia);
+    const valor = maxLength === undefined ? leido : leido.slice(0, maxLength);
+    setTexto(valor);
+    const recortado = valor.trim();
+    const siguiente =
+      recortado !== "" && recortado.length >= minChars ? recortado : "";
+    const habiaPendiente = temporizador.current !== null;
+    if (temporizador.current) {
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+    }
+    if (siguiente !== emitido.current || habiaPendiente) {
+      emitido.current = siguiente;
+      emitir(siguiente);
+    }
+    setSeleccionPedida((n) => n + 1);
+  }
+
+  /**
    * Pone o retira un filtro. El ORDEN es el de la lista ofrecida, no el de los clics:
    * así los controles no bailan de sitio entre sesiones ni según en qué orden se
    * marcaron, que es lo que convierte una barra en un rompecabezas.
@@ -540,10 +644,15 @@ export function BuscadorFiltros({
             aria-hidden
           />
           <Input
+            ref={campoRef}
             type="search"
             value={texto}
             aria-label={label}
-            aria-describedby={faltanCaracteres ? idAviso : undefined}
+            aria-describedby={
+              [escaneo ? idAyuda : null, faltanCaracteres ? idAviso : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
             placeholder={placeholder}
             maxLength={maxLength}
             disabled={disabled}
@@ -559,6 +668,15 @@ export function BuscadorFiltros({
             // forma de limpiarse en unos navegadores sí y en otros no.
             className="h-full w-full pr-9 pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             onChange={(e) => escribir(e.target.value)}
+            onKeyDown={
+              escaneo
+                ? (e) => {
+                    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    buscarYa(e.currentTarget.value);
+                  }
+                : undefined
+            }
           />
           {texto !== "" ? (
             <Button
@@ -574,6 +692,16 @@ export function BuscadorFiltros({
             </Button>
           ) : null}
         </div>
+        ) : null}
+
+        {/* SLT-160 (R600, R604, DC2): la cámara es un botón APARTE de 44 px, pegado al campo y fuera
+            de él, como en el canvas. Abre el visor de hoy ya encendido. */}
+        {buscador && escaneo ? (
+          <EscanerModal label={ESCANEAR_CON_CAMARA} soloIcono className="size-11 shrink-0">
+            {(cerrar) => (
+              <CamaraDelBuscador cerrar={cerrar} onGuia={(guia) => buscarYa(String(guia))} />
+            )}
+          </EscanerModal>
         ) : null}
 
         {/* El selector va AL FINAL de la barra. `listbox` multiseleccionable con el
@@ -651,6 +779,9 @@ export function BuscadorFiltros({
           </Popover.Root>
         ) : null}
 
+        {/* SLT-189 (DS3): el hueco opcional tras «Filtros». */}
+        {trasFiltros}
+
         {/* "Limpiar todo" cierra la barra por la derecha, DESPUÉS del selector: es la
             última pieza de la fila porque es lo último que se hace con ella. Solo
             existe cuando hay algo que limpiar —búsqueda escrita o filtros aplicados—;
@@ -661,7 +792,7 @@ export function BuscadorFiltros({
             variant="outline"
             size="sm"
             disabled={disabled}
-            className={cn("shrink-0", tactil && "max-md:h-11")}
+            className={cn("shrink-0", tactil && "max-md:h-11", escaneo && ALTO_CONTROL_ESCANEO)}
             onClick={limpiarTodo}
           >
             Limpiar todo
@@ -673,6 +804,12 @@ export function BuscadorFiltros({
           ya dentro no se anuncia— y solo cambia su contenido. Su alto está RESERVADO
           (`h-4`, vacía incluida): el aviso aparece y desaparece sin empujar ni un
           píxel de lo que hay debajo, que en esta barra es la tabla entera. */}
+      {/* SLT-160 (R770): la ayuda del escaneo, debajo del campo y descripción accesible de él. */}
+      {buscador && escaneo ? (
+        <p id={idAyuda} className="mt-1 text-xs text-muted-foreground">
+          {AYUDA_ESCANEO}
+        </p>
+      ) : null}
       {buscador ? (
         <p
           id={idAviso}

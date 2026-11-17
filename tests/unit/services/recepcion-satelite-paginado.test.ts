@@ -217,6 +217,9 @@ function repoEnMemoria(filas: FilaAlmacen[] = ALMACEN) {
     findUsuarioZonaId,
     findRecepcionSateliteByZona,
     findRecepcionSatelitePaginada,
+    // SLT-160 (R606): ninguna fila de este almacén tiene por guía un término de los tests
+    // («88880000» es un teléfono), así que el doble responde que no: contención como siempre.
+    existeGuiaEnBodega: vi.fn(async () => false),
   } as unknown as IOrdenRepository;
 
   return { repo, llamadas, findRecepcionSatelitePaginada };

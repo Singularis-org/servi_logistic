@@ -413,20 +413,6 @@ export interface ICierreBodegaService {
     actor: Actor,
   ): Promise<ListarConsolidablesServiceResult>;
   /**
-   * Feature 184 — Tanda B (R1/R4/R6/R10): el CONJUNTO de «Cierres de bodega solicitados» de la
-   * zona del actor, sin recorte, para producir el archivo.
-   *
-   * Mismo guard y misma resolucion de zona que su hermana paginada. **No recibe entrada**: este
-   * listado no admite filtros, asi que su lista blanca —derivada de la de la pagina quitando
-   * `page`/`pageSize`— no deja ninguna clave, y la barrera se aplica entera en el borde (R17).
-   * El tope de filas se evalua aqui (R6): superarlo NO entrega filas ni un conjunto truncado.
-   * Sin zona -> conjunto vacio, no `forbidden`.
-   */
-  listarCierresBodegaSolicitadosCompleto(
-    actor: Actor,
-    filtros?: FiltrosCierresBodega,
-  ): Promise<ListarCierresBodegaSolicitadosCompletoServiceResult>;
-  /**
    * Feature 184 — Tanda B (R1/R4/R6/R10): el CONJUNTO de «Cierres del dia a consolidar» de la
    * zona del actor, sin recorte, para producir el archivo.
    *

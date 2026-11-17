@@ -1,5 +1,5 @@
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
-import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { IOrdenRepository, ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
 import type {
@@ -45,7 +45,7 @@ const ESTADOS_RECIBIDA = new Set<string>(Object.values(TRANSICIONES).map((t) => 
 // para dobles de test sin DB/HTTP (patron RecepcionOrigenService).
 type RecepcionBodegaCentralRepo = Pick<
   IOrdenRepository,
-  "findByNumGuiaForTransicion" | "findEstatusIdByValue" | "recibirEnBodegaCentral"
+  "findByNumGuiaForTransicion" | "findEstatusIdByValue" | "recibirEnBodegaCentral" | "resumenRecepcion"
 >;
 
 /**
@@ -75,7 +75,9 @@ export class RecepcionBodegaCentralService implements IRecepcionBodegaCentralSer
 
     // 3. Idempotencia: ya en cualquiera de los destinos (en_bodega_central / por_devolver_a_tienda)
     //    -> no re-transiciona ni toca el historial (R7).
-    if (ESTADOS_RECIBIDA.has(row.estatusValue)) return { status: "ya_recibida" };
+    if (ESTADOS_RECIBIDA.has(row.estatusValue)) {
+      return { status: "ya_recibida", ...(await this.conResumen(row.id)) };
+    }
 
     // 4. Guardia de estado STATE-AWARE: resuelve el par ORIGEN->DESTINO por el estado actual. Si no
     //    es un origen valido de la recepcion central, `estado_invalido` con el estado actual para que
@@ -109,10 +111,26 @@ export class RecepcionBodegaCentralService implements IRecepcionBodegaCentralSer
       // R9: perdio la carrera — el estado cambio entre la lectura y el UPDATE. Se re-lee para
       // distinguir "otro la recibio primero" (idempotente, ya en un destino) de un conflicto real.
       const despues = await this.repo.findByNumGuiaForTransicion(numGuia);
-      if (despues && ESTADOS_RECIBIDA.has(despues.estatusValue)) return { status: "ya_recibida" };
+      if (despues && ESTADOS_RECIBIDA.has(despues.estatusValue)) {
+        return { status: "ya_recibida", ...(await this.conResumen(row.id)) };
+      }
       return { status: "conflict" };
     }
 
-    return { status: "ok", ordenId: row.id, estado: transicion.destino };
+    return { status: "ok", ordenId: row.id, estado: transicion.destino, ...(await this.conResumen(row.id)) };
+  }
+
+  /**
+   * SLT-167 (R710, R711, R715): el `resumen` de la orden ya recibida, solo tras todas las guardas. Si
+   * la lectura no da datos o falla, la respuesta sale sin `resumen`: la recepcion ya se hizo y un
+   * error haria reintentar algo hecho.
+   */
+  private async conResumen(ordenId: string): Promise<{ resumen?: ResumenRecepcion }> {
+    try {
+      const resumen = await this.repo.resumenRecepcion(ordenId);
+      return resumen ? { resumen } : {};
+    } catch {
+      return {};
+    }
   }
 }

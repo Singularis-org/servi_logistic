@@ -20,6 +20,7 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * Ficha 344 (T5.1, design §6) — EL DETALLE DE UNA FILA DEL LIBRO, CONTRA POSTGRES DE VERDAD.
@@ -234,19 +235,39 @@ async function crearUsuario(
 async function sembrar(tx: Tx, semilla: Semilla[] = SEMILLA): Promise<Sembrado> {
   await serializarEscriturasReales(tx);
 
-  const fk = await tx.orden.findFirst({
-    select: { estatusId: true, zonaId: true, provinciaId: true, cantonId: true },
-  });
+  // SLT-177 (R737): nada de «la primera orden / usuario / tarifa» de la base. En CI esa lectura
+  // devolvia filas de OTRA empresa (SL017). Todo se crea aqui, en la transaccion revertida del caso.
+  const propias = await crearFksDeOrden(tx);
+  const fk = { estatusId: propias.estatusId, zonaId: propias.zonaId, provinciaId: propias.provinciaId, cantonId: propias.cantonId };
   expect(
     fk,
     "la base no tiene ni una orden de la que tomar los FK (estatus/zona/provincia/canton): el caso no puede sembrar",
   ).not.toBeNull();
-  const base = await tx.usuario.findFirst({
+  const base = await tx.usuario.findUnique({
+    where: { id: propias.tiendaId },
     select: { rolId: true, tipoIdentificacionId: true },
   });
   expect(base, "la base no tiene ni un usuario del que tomar rol y tipo de identificacion").not.toBeNull();
-  const tarifa = await tx.tarifa.findFirst({ select: { id: true } });
+  const tarifaSembrada = await tx.tarifa.create({
+    data: {
+      tiendaId: null,
+      zonaId: null,
+      valorFlete: "2000.00",
+      valorFleteGam: "2500.00",
+      valorFleteDevuelto: "1000.00",
+      valorFleteDevueltoGam: "1200.00",
+      comisionCod: "3.50",
+      ivaFlete: "13.00",
+      ivaComisionCod: "13.00",
+    },
+    select: { id: true },
+  });
+  const tarifa = await tx.tarifa.findUnique({ where: { id: tarifaSembrada.id }, select: { id: true } });
   expect(tarifa, "la base no tiene ni una tarifa a la que apuntar `cierre_detail.tarifa_id`").not.toBeNull();
+  // Control positivo (R739): lo sembrado esta en la base, exactamente una fila de cada.
+  expect(await tx.zona.count({ where: { id: propias.zonaId } })).toBe(1);
+  expect(await tx.usuario.count({ where: { id: propias.tiendaId } })).toBe(1);
+  expect(await tx.tarifa.count({ where: { id: tarifaSembrada.id } })).toBe(1);
 
   const fks = fk!;
   const usuarioBase = base!;

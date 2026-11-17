@@ -150,6 +150,7 @@ import {
   type OrdenBaseCobroDevolucionRow,
   type OrdenParaCorreccionRow,
   type OrdenTransicionRow,
+  type ResumenRecepcion,
   type OrderStatusLiteRow,
   type ProvinciaRow,
   type RecepcionSateliteFiltro,
@@ -1723,6 +1724,10 @@ function condicionesSatelite(filtro: RecepcionSateliteFiltro): Prisma.Sql[] {
   // acotamiento por zona queda FUERA del `OR` y sigue mandando.
   if (filtro.busqueda) {
     condiciones.push(condicionBusquedaSatelite(filtro.busqueda, filtro.busquedaDigitos));
+  }
+  // SLT-160 (R606-R608): guia exacta, hermana del acotamiento en el AND (nunca en un `OR`).
+  if (filtro.numGuia !== undefined) {
+    condiciones.push(Prisma.sql`o."num_guia" = ${filtro.numGuia}`);
   }
   return condiciones;
 }
@@ -3484,6 +3489,27 @@ export class OrdenRepository implements IOrdenRepository {
     };
   }
 
+  /**
+   * SLT-167 (R713, R714): destinatario y nombre de la tienda de una orden, para la respuesta de la
+   * recepcion por guia. Solo esas dos columnas (privacidad).
+   *
+   * Va en SQL a mano para que el acotado por empresa quede ESCRITO y se pueda medir: la RLS de la
+   * envoltura ya esconde las filas de otra empresa, pero el `organizacion_id` explicito es la segunda
+   * barrera (mismo criterio que `CierresBodegaAdminRepository.idsRecibidosIncompletos`).
+   */
+  async resumenRecepcion(ordenId: string): Promise<ResumenRecepcion | null> {
+    const [fila] = await this.prisma.$queryRaw<ResumenRecepcion[]>`
+      SELECT o."destinatario" AS "destinatario", t."nombre" AS "tienda"
+        FROM "orden" o
+        JOIN "usuario" t ON t."id" = o."tienda_id"
+       WHERE o."id" = ${ordenId}
+         AND o."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
+       LIMIT 1`;
+    // R713: las dos claves, ambas texto. Una fila que no las trae como texto no es un resumen.
+    if (typeof fila?.destinatario !== "string" || typeof fila.tienda !== "string") return null;
+    return { destinatario: fila.destinatario, tienda: fila.tienda };
+  }
+
   // --- Feature 106: canal integrador de lectura/cancelacion por API key ---
 
   /**
@@ -4348,6 +4374,23 @@ export class OrdenRepository implements IOrdenRepository {
       ${desdeSatelite(condiciones)}
     `);
     return filas.map((fila) => fila.id);
+  }
+
+  /**
+   * SLT-160 (R606, R608) — ¿la guia es de una orden del listado? El MISMO `condicionesSatelite`
+   * que la pagina, la descarga y la vigencia (con `numGuia` en su AND): una guia de otra zona,
+   * otra empresa o fuera de los filtros no activa la busqueda exacta.
+   */
+  async existeGuiaEnBodega(
+    filtro: RecepcionSateliteFiltro & { numGuia: number },
+  ): Promise<boolean> {
+    if (filtro.estatusValues.length === 0) return false;
+    const filas = await this.prisma.$queryRaw<{ existe: number }[]>(Prisma.sql`
+      SELECT 1 AS "existe"
+      ${desdeSatelite(condicionesSatelite(filtro))}
+      LIMIT 1
+    `);
+    return filas.length > 0;
   }
 
   /**

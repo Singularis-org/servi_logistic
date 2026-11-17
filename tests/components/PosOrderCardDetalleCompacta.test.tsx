@@ -134,3 +134,96 @@ describe("SLT-156 R508 — tarjeta compacta de la vista Detalle", () => {
     expect(screen.getByText(new RegExp(DIRECCION))).toBeInTheDocument();
   });
 });
+
+// SLT-189 «Reparto del mensajero según el canvas» — la fila de REPARTO (`filaReparto`). La guía y la
+// remisión del fixture difieren a propósito (1001 / REM-7731): una fila que volviera a la remisión
+// se ve. Los literales van escritos a mano, no derivados del componente.
+function montarReparto(over: Partial<MiAsignacionDTO> = {}, fila: "direccion" | "tienda" = "direccion") {
+  return render(
+    <PosOrderCardDetalle
+      orden={makeOrden(over)}
+      total={9}
+      compacta
+      filaReparto={fila}
+      acciones={
+        <div>
+          <button type="button">Gestionar más tarde</button>
+          <button type="button">Gestionar</button>
+        </div>
+      }
+    />,
+  );
+}
+
+describe("SLT-189 — fila compacta de Reparto", () => {
+  it("R790: arriba la guía en mono y no la remisión", () => {
+    montarReparto();
+    const fila = screen.getByRole("button", { expanded: false });
+    const guia = within(fila).getByText("1001");
+    expect(clases(guia)).toContain("font-mono");
+    expect(within(fila).queryByText(/REM-7731/)).toBeNull();
+  });
+
+  it("R791: sin guía, la remisión ocupa su sitio", () => {
+    montarReparto({ numGuia: null });
+    const fila = screen.getByRole("button", { expanded: false });
+    const sitio = within(fila).getByText("REM-7731");
+    expect(clases(sitio)).toContain("font-mono");
+  });
+
+  it("R792: debajo «destinatario · dirección» entero; sin dirección, el nombre solo sin « · »", () => {
+    montarReparto();
+    const fila = screen.getByRole("button", { expanded: false });
+    const linea = within(fila).getByText(
+      "María Fernanda de los Ángeles Rodríguez VillalobosSinEspaciosNiPausasHastaElFinal · Del antiguo Higuerón de San Pedro 300 metros al este y 25 al oeste, casa esquinera color verde",
+    );
+    for (const clase of TEXTO_ENTERO.split(" ")) expect(clases(linea)).toContain(clase);
+    expect(clases(linea)).not.toContain("truncate");
+    const guia = within(fila).getByText("1001");
+    expect(guia.compareDocumentPosition(linea) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    cleanup();
+
+    montarReparto({ direccion: null });
+    const sinDireccion = screen.getByRole("button", { expanded: false });
+    expect(within(sinDireccion).getByText(DESTINATARIO)).toBeInTheDocument();
+    expect(within(sinDireccion).queryByText(/ · /)).toBeNull();
+  });
+
+  it("R800 (fila): con `tienda`, debajo «destinatario · tienda»", () => {
+    montarReparto({}, "tienda");
+    const fila = screen.getByRole("button", { expanded: false });
+    expect(within(fila).getByText(`${DESTINATARIO} · Tienda Norte`)).toBeInTheDocument();
+    expect(within(fila).getByText("1001")).toBeInTheDocument();
+  });
+
+  it("R793: plegada sin «Gestionar»; al tocarla despliega lo de hoy (estado, ubicación con navegar, intentos y acciones)", async () => {
+    const user = userEvent.setup();
+    montarReparto();
+    expect(screen.queryByRole("button", { name: "Gestionar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Gestionar más tarde" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { expanded: false }));
+    const fila = screen.getByRole("button", { expanded: true });
+    const despliegue = document.getElementById(fila.getAttribute("aria-controls") ?? "")!;
+    expect(
+      within(despliegue).getByText(
+        "Montes de Oca · San Pedro — Del antiguo Higuerón de San Pedro 300 metros al este y 25 al oeste, casa esquinera color verde",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(despliegue).getByRole("button", { name: `Ver en el mapa la ubicación de ${DESTINATARIO}` }),
+    ).toBeInTheDocument();
+    expect(within(despliegue).getByText("Intentos: 2")).toBeInTheDocument();
+    expect(within(despliegue).getByRole("button", { name: "Gestionar más tarde" })).toBeInTheDocument();
+    expect(within(despliegue).getByRole("button", { name: "Gestionar" })).toBeInTheDocument();
+  });
+
+  it("R794: sin `filaReparto` (Recoger, Recolección) la fila sigue con la remisión y el destinatario solo", () => {
+    montar();
+    const fila = screen.getByRole("button", { expanded: false });
+    expect(within(fila).getByText("REM-7731")).toBeInTheDocument();
+    expect(within(fila).queryByText("1001")).toBeNull();
+    expect(within(fila).getByText(DESTINATARIO)).toBeInTheDocument();
+    expect(within(fila).queryByText(/ · /)).toBeNull();
+  });
+});

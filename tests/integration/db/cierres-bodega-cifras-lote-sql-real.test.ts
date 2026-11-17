@@ -11,7 +11,8 @@ import { CifrasBodegaLoteRepository } from "@/lib/repositories/CifrasBodegaLoteR
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
-import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+// SLT-176 (R705): la descarga de la satélite vive en su servicio de solo lectura.
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
 import { cifrasAgregadasBodega } from "@/lib/utils/cifras-cierre-bodega";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
@@ -83,7 +84,7 @@ type ClaveBodega = "BN" | "BV" | "BZ" | "B2" | "B3";
 
 interface Corpus {
   svc: CierresBodegaAdminService;
-  svcSatelite: CierreBodegaService;
+  svcSatelite: CierresBodegaSateliteDescargaService;
   lote: CifrasBodegaLoteRepository;
   maestro: Actor;
   satelite: Actor;
@@ -492,11 +493,10 @@ async function sembrar(tx: TxDeTest): Promise<Corpus> {
     lote,
     { liquidaciones: new LiquidacionPagoRepository(c), premios: new PagoMensajeroMovimientoRepository(c) },
   );
-  const svcSatelite = new CierreBodegaService(
+  const svcSatelite = new CierresBodegaSateliteDescargaService(
     new CierreBodegaRepository(c),
     new OrdenRepository(c),
     reglasPaisFijas(),
-    undefined,
     lote,
   );
   return {

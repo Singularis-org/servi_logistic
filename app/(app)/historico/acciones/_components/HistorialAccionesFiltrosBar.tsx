@@ -130,6 +130,7 @@ export function HistorialAccionesFiltrosBar({
 
   return (
     <BuscadorFiltros
+      escaneo
       label={ETIQUETA_BUSCADOR}
       placeholder={defBusqueda?.placeholder}
       minChars={defBusqueda?.minChars}

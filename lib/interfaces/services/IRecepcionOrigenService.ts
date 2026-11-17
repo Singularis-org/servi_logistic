@@ -1,4 +1,5 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 // Recepcion en la tienda de ORIGEN — contrato del servicio. Cierra el flujo de
 // devolucion: la orden que viaja de vuelta (`devolviendo_a_tienda`, "En ruta a origen")
@@ -21,10 +22,10 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
  * - `conflict`: perdio una carrera (el estado cambio entre la lectura y el UPDATE).
  */
 export type RecibirEnOrigenServiceResult =
-  | { status: "ok"; ordenId: string; estado: "devuelta_a_tienda" }
+  | { status: "ok"; ordenId: string; estado: "devuelta_a_tienda"; resumen?: ResumenRecepcion } // SLT-167 (R710)
   | { status: "forbidden" }
   | { status: "tienda_ajena" }
-  | { status: "ya_recibida" }
+  | { status: "ya_recibida"; resumen?: ResumenRecepcion } // SLT-167 (R711)
   | { status: "estado_invalido"; estado: string }
   | { status: "no_encontrada" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }

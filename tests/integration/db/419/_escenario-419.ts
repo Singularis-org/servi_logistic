@@ -8,10 +8,11 @@ import { DevolucionTiendaRepository } from "@/lib/repositories/DevolucionTiendaR
 import { DevolucionTiendaService } from "@/lib/services/DevolucionTiendaService";
 import {
   crearPrismaDeTest,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "../_postgres-real";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { crearOrganizacion, fijarEmpresa } from "../../../fabricas/organizaciones";
 
 /**
  * FICHA 419 — escenario de los tests contra Postgres real de la confirmacion CENTRAL de entrega a
@@ -32,7 +33,6 @@ export interface Mundo419 {
   prisma: PrismaClient;
   provinciaId: string;
   cantonId: string;
-  centralZonaId: string;
   tipoIdentificacionId: string;
   rolId: Map<string, string>;
   estatus: Map<string, string>;
@@ -54,10 +54,15 @@ function guia(): number {
 
 export async function prepararMundo419(): Promise<Mundo419> {
   const prisma = crearPrismaDeTest();
-  const fks = await fksDeOrden(prisma);
-  if (fks === null) throw new Error("tabla `orden` vacia: corre `pnpm run db:seed`.");
-  const u = await prisma.usuario.findFirst({ select: { tipoIdentificacionId: true } });
-  if (u === null) throw new Error("hace falta al menos un usuario en la base.");
+  // SLT-177 (R737): del `beforeAll` solo se leen catalogos y geografia por su clave; orden, usuario y
+  // zona son datos de negocio que la base migrada no trae.
+  const canton = await prisma.canton.findFirst({
+    where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
+    select: { id: true, provinciaId: true },
+  });
+  if (canton === null) throw new Error("falta la geografia Cartago/Cartago: aplica las migraciones.");
+  const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+  if (tipo === null) throw new Error("falta el tipo de identificacion «cedula»: aplica las migraciones.");
   const roles = await prisma.rol.findMany({ select: { id: true, value: true } });
   const rolId = new Map(roles.map((r) => [r.value as string, r.id]));
   for (const r of ["maestro", "admin", "adminTienda", "adminSatelite", "mensajero"]) {
@@ -68,22 +73,18 @@ export async function prepararMundo419(): Promise<Mundo419> {
   for (const v of ["devolviendo_a_tienda", "devuelta_a_tienda", "por_devolver_a_tienda"]) {
     if (!estatus.has(v)) throw new Error(`falta el estatus «${v}» en \`order_status\``);
   }
-  const central = await prisma.zona.findFirst({ where: { esCentral: true }, select: { id: true } });
-  if (central === null) {
-    throw new Error(
-      "la base no tiene zona central: esta suite necesita crear su zona en el test (SL-31).",
-    );
-  }
   return {
     prisma,
-    provinciaId: fks.provinciaId,
-    cantonId: fks.cantonId,
-    centralZonaId: central.id,
-    tipoIdentificacionId: u.tipoIdentificacionId,
+    provinciaId: canton.provinciaId,
+    cantonId: canton.id,
+    tipoIdentificacionId: tipo.id,
     rolId,
     estatus,
   };
 }
+
+/** Zonas creadas en modo CONFIRMADO: `limpiar419` las borra (las de una tx revertida no existen). */
+const zonasCreadas419: string[] = [];
 
 /** Error con el que `clienteConSavepoint419(tx, "enlace")` fuerza el fallo del paso 6 (R13). */
 export class EnlaceCaido extends Error {
@@ -155,6 +156,17 @@ export type Estatus419 = "devolviendo_a_tienda" | "devuelta_a_tienda" | "por_dev
 
 /** Personas propias + verbos. `db` es el cliente donde se escribe (tx o cliente comprometido). */
 export async function crearPersonas419(mundo: Mundo419, db: TxDeTest | PrismaClient) {
+  // SLT-177 (R737): la zona central es propia del escenario, creada en el mismo cliente.
+  const central = await db.zona.create({
+    data: { nombre: `Central 419 ${clave()}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", esCentral: true },
+    select: { id: true },
+  });
+  zonasCreadas419.push(central.id);
+  // Control positivo (R739): la zona sembrada se lee de vuelta, exactamente una.
+  const centrales = await db.zona.count({ where: { id: central.id, esCentral: true } });
+  if (centrales !== 1) throw new Error(`419: la zona central sembrada no esta en la base (${centrales})`);
+  const centralZonaId = central.id;
+
   async function crearUsuario(rol: string): Promise<string> {
     const k = clave();
     const u = await db.usuario.create({
@@ -166,7 +178,7 @@ export async function crearPersonas419(mundo: Mundo419, db: TxDeTest | PrismaCli
         cedula: `C419${k}`,
         tipoIdentificacionId: mundo.tipoIdentificacionId,
         rolId: mundo.rolId.get(rol) as string,
-        zonaId: rol === "adminSatelite" ? mundo.centralZonaId : null,
+        zonaId: rol === "adminSatelite" ? centralZonaId : null,
         estado: "activo",
       },
       select: { id: true },
@@ -205,7 +217,7 @@ export async function crearPersonas419(mundo: Mundo419, db: TxDeTest | PrismaCli
         estatusId: id(o.estatus),
         montoCobrar: 0,
         tiendaId: o.tiendaId ?? tiendaA,
-        zonaId: mundo.centralZonaId,
+        zonaId: centralZonaId,
         provinciaId: mundo.provinciaId,
         cantonId: mundo.cantonId,
         deletedAt: o.borrada ? new Date() : null,
@@ -296,7 +308,11 @@ export async function conEscenario419<T>(
     await mundo.prisma.$transaction(
       async (tx) => {
         await serializarEscriturasReales(tx);
-        throw new Revertir(await fn(tx));
+        // SL-17: `organizacion_id NOT NULL` sale de `app.organizacion_id`. La empresa del escenario
+        // nace aqui, despues del lock (igual que `enTransaccionRevertida459`), y el rollback se la lleva.
+        const { id } = await crearOrganizacion(tx);
+        await fijarEmpresa(tx, id);
+        throw new Revertir(await conEmpresa(id, () => fn(tx)));
       },
       { timeout: 60_000, maxWait: 30_000 },
     );
@@ -330,4 +346,5 @@ export async function limpiar419(
     where: { OR: [{ destinatarioUsuarioId: { in: s.usuarios } }, { tiendaId: { in: s.usuarios } }] },
   });
   await prisma.usuario.deleteMany({ where: { id: { in: s.usuarios } } });
+  await prisma.zona.deleteMany({ where: { id: { in: zonasCreadas419 } } });
 }

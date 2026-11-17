@@ -42,6 +42,11 @@ export interface QrScannerProps {
   disabled?: boolean;
   /** Mensaje del toast cuando la cámara no se puede abrir (permisos). */
   mensajeErrorCamara?: string;
+  /**
+   * SLT-160 (D4) — arranca con el visor ya encendido: el gesto fue el toque que abrió el contenedor
+   * (el botón de cámara del buscador). Apagada por defecto: los demás usos arrancan con el botón.
+   */
+  encendidaAlMontar?: boolean;
 }
 
 /**
@@ -54,13 +59,14 @@ export function QrScanner({
   onDecoded,
   disabled = false,
   mensajeErrorCamara = MENSAJE_ERROR_CAMARA_DEFAULT,
+  encendidaAlMontar = false,
 }: Readonly<QrScannerProps>) {
   const toast = useToast();
-  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  const [camaraAbierta, setCamaraAbierta] = useState(encendidaAlMontar);
   // Entre abrir el visor y el primer frame hay un hueco (permisos + arranque de la
   // lib): sin esto el usuario mira un rectangulo negro sin saber si algo pasa. Se
   // enciende en el propio clic (no en un efecto) y se apaga cuando la camara arranca.
-  const [iniciando, setIniciando] = useState(false);
+  const [iniciando, setIniciando] = useState(encendidaAlMontar);
   // Lado en px del recuadro que html5-qrcode recorta del frame. Lo publica la
   // propia lib al medir el visor (ver `calcularLadoMarco`) y lo pintamos con ese
   // mismo tamaño: el marco que ve el usuario ES la zona que se decodifica.

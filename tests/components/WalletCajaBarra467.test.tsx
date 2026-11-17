@@ -522,7 +522,9 @@ describe("467 R18/R20/R23 — «A quién» y Concepto", () => {
     expect(alto(aQuienBoton() as HTMLElement)).toBe(true);
     expect(alto(within(libro()).getByRole("combobox", { name: "Entra/Sale" }))).toBe(true);
     expect(alto(within(libro()).getByRole("combobox", { name: "Concepto" }))).toBe(true);
-    expect(alto(buscador().parentElement as HTMLElement)).toBe(true);
+    // SLT-160 (R771, DC2 de Carlos): con `escaneo` el buscador mide 44 px (`h-11`); igualar los
+    // controles de filtro a 44 px queda para SLT-194.
+    expect(buscador().parentElement).toHaveClass("h-11");
   });
 });
 

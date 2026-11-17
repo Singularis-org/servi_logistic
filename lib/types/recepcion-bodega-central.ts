@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 // Feature 138 — Recepcion en la BODEGA CENTRAL: validacion de borde (zod) y resultado tipado
 // expuesto por la Server Action. Espejo de `lib/types/recepcion-origen.ts`.
@@ -22,10 +23,15 @@ export type RecibirEnBodegaCentralActionInput = z.infer<
  * (`en_bodega_central` para el caso 138, `por_devolver_a_tienda` para el 139).
  */
 export type RecibirEnBodegaCentralResult =
-  | { status: "ok"; ordenId: string; estado: "en_bodega_central" | "por_devolver_a_tienda" }
+  | {
+      status: "ok";
+      ordenId: string;
+      estado: "en_bodega_central" | "por_devolver_a_tienda";
+      resumen?: ResumenRecepcion; // SLT-167 (R710)
+    }
   | { status: "forbidden" }
   | { status: "estado_invalido"; estado: string }
-  | { status: "ya_recibida" }
+  | { status: "ya_recibida"; resumen?: ResumenRecepcion } // SLT-167 (R711)
   | { status: "no_encontrada" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "conflict" }
