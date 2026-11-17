@@ -141,3 +141,46 @@ Mayores: 0. Menores: 5.
 
 **OK.** No hay bloqueantes. Antes del merge siguen pendientes T8.1 (`./init.sh`) y `gate-completo` en verde, y la
 decisión 5 pasa al humano como informativa.
+
+## Vuelta 2 (acotada a f228b910..HEAD)
+
+Diff revisado: `migration.sql` (UNIQUE a índice), `lib/actions/plan-borrador.ts` (`@sin-superficie`),
+`schema-drift-saneamiento.test.ts` (censo), `arnes.config.json` (disparador `schema-drift`, del leader),
+`tasks.md` (T8.1) y bitácora. Corrido aquí: `unicos-por-empresa.guardia` + `superficie-de-uso.guardia`
+(2 archivos, 33 passed) y `schema-drift-saneamiento.test.ts` (16 passed).
+
+### Checklist
+- [x] **Migración.** `CREATE UNIQUE INDEX "plan_borrador_plan_id_key" ON "plan_borrador" ("plan_id")` conserva el
+  nombre que antes tenía la constraint y es el que Prisma espera por defecto para `planId @unique`. `down.sql`
+  (`DROP TABLE IF EXISTS "plan_borrador"`) sigue revirtiendo todo: el índice cae con la tabla, y su comentario
+  («el UNIQUE … cae con la tabla») sigue siendo cierto.
+- [x] **El 23505.** El repositorio no traduce ningún 23505 ni P2002 por nombre para esta tabla: R5 se resuelve con
+  `INSERT … ON CONFLICT ("plan_id") DO UPDATE` (`PlanesRepository.ts:1582-1587`). Esa sentencia busca el índice único
+  por la columna y no por su nombre, así que funciona igual con el índice. No hay nombre que haya quedado colgado.
+- [x] **`@sin-superficie`.** Es el uso previsto: la guardia (`superficie-de-uso.guardia.test.ts:40-47, 80-83, 690`)
+  pide la anotación pegada al export, con un motivo escrito en la misma línea, y la da por **caducada** cuando la
+  acción ya se alcanza desde una ruta. «Hasta SLT-144» es justo eso: una excepción que tiene fecha de vencimiento
+  y que la guardia obliga a quitar. Anota los 4 exports y no es una allowlist. La guardia pasa en verde.
+- [x] **Censo a mano.** Es correcto así. El propio test lo explica (`:107-112`): la lista de la izquierda se deriva
+  de las migraciones y la de la derecha la escribe una persona a propósito. Si las dos se derivaran, el caso daría
+  verde por construcción. `plan_borrador` va en orden alfabético y con el comentario de origen que siguen las demás
+  entradas. El modelo declara `@default(now()) @updatedAt`, así que el caso de modelo contra SQL también pasa.
+- [x] **m1 cerrado.** T8.1 está `[x]` y `tasks.md` no tiene ninguna casilla `[ ]`.
+- [x] **m2 cerrado.** `impl_SLT-129.md > Tanda 4` deja constancia de `e2e/dos-empresas-humo.spec.ts`: 8 passed sobre
+  `servi_logistic_slt129_e2e`.
+- [x] **Disparador del leader.** Con `schema-drift` en el disparador de `db/schema.prisma` y `db/migrations/**`, ese
+  rojo ahora sale también en local. Es coherente con `docs/gate.md > Disparadores`.
+
+### Hallazgos
+1. **menor**: `specs/SLT-129-planes-borrador-servidor/design.md:37` sigue mostrando
+   `CONSTRAINT "plan_borrador_plan_id_key" UNIQUE ("plan_id")` dentro del `CREATE TABLE`. El SQL real ahora usa
+   `CREATE UNIQUE INDEX`. Hay que alinear el design (una línea y una nota que remita a la guardia
+   `unicos-por-empresa`) para que SLT-144 o quien copie el molde no vuelva a la forma que tumba la guardia.
+2. **menor**: el título del caso `schema-drift-saneamiento.test.ts:103` dice «DIECIOCHO tablas», pero la lista tiene
+   20 (ya eran 19 antes de esta ficha, así que el desfase viene de antes). Solo afecta al texto y no al assert;
+   conviene corregirlo de paso.
+
+Sin regresiones sobre los hallazgos 3-5 de la vuelta 1: siguen como estaban, aceptados o en deudas.
+
+### Veredicto
+**OK** (0 bloqueantes, 2 menores).
