@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { verFacturasDeMiPlan } from "@/lib/actions/_shared/facturas-plataforma";
 import { verMiPlan, verPlanesDeMiPlan } from "@/lib/actions/_shared/mi-plan";
-import { verDetalleFacturaMiPlanAction } from "@/lib/actions/facturas-plataforma";
+import { descargarFacturaMiPlanAction, verDetalleFacturaMiPlanAction } from "@/lib/actions/facturas-plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
@@ -40,7 +40,12 @@ export default async function MiPlanPage() {
         plan={r.plan}
         pendienteSinPlan={r.pendienteSinPlan}
         planes={planes}
-        facturas={{ lista: facturas, cargarDetalle: verDetalleFacturaMiPlanAction }}
+        facturas={{
+          lista: facturas,
+          cargarDetalle: verDetalleFacturaMiPlanAction,
+          // SLT-136 (R1, R19): la descarga de una factura cerrada de la empresa de la sesión.
+          descargar: descargarFacturaMiPlanAction,
+        }}
       />
     </AppPage>
   );

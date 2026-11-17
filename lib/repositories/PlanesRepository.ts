@@ -61,6 +61,7 @@ import {
   type MotivoNoAplicada,
 } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan, hayCambios, importeCanonico, type CambiosDelPlan } from "@/lib/planes/rastro";
+import { encolarEnEmpresas } from "@/lib/repositories/_shared/encolar-en-empresas";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { pendienteDeEmpresa, precioDelHistorial } from "@/lib/repositories/_shared/precio-del-periodo";
 import { JobRepository } from "@/lib/repositories/JobRepository";
@@ -645,24 +646,6 @@ async function encolarAvisos(
       encolar: () => jobs.enqueue("plan_aviso_correo", { ...a.payload }, { dedupeKey: a.dedupeKey }, tx),
     })),
   );
-}
-
-/**
- * Encola cada trabajo con su empresa fijada en `app.organizacion_id` y deja el valor de antes al final.
- * Sin `finally` a propósito: si un encolado falla, la transacción ya está abortada y otra sentencia
- * taparía el error de verdad; el `set_config` es local a la transacción y se va con ella.
- */
-async function encolarEnEmpresas(
-  tx: Tx,
-  trabajos: readonly { organizacionId: string; encolar: () => Promise<unknown> }[],
-): Promise<void> {
-  const [{ previa }] = await tx.$queryRaw<{ previa: string | null }[]>`
-    SELECT current_setting('app.organizacion_id', true) AS "previa"`;
-  for (const t of trabajos) {
-    await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${t.organizacionId}, true)`;
-    await t.encolar();
-  }
-  await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${previa ?? ""}, true)`;
 }
 
 /** Las empresas que tienen el plan AHORA, en orden estable. */

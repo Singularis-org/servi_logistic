@@ -41,6 +41,7 @@ import {
   emitirCierreDiaVencido,
   emitirDevolucionesRepresadas,
   emitirDiaRepartoCorregido,
+  emitirFacturaEmitida,
   emitirGastoFijoCobroPendiente,
   emitirGeocodificacionCaida,
   emitirMensajeroBloqueado,
@@ -58,6 +59,7 @@ import {
   type CierreVencidoContexto,
   type DevolucionesRepresadasContexto,
   type DiaRepartoCorregidoContexto,
+  type FacturaEmitidaContexto,
   type GastoFijoCobroPendienteContexto,
   type GeocodificacionCaidaContexto,
   type MensajeroBloqueadoContexto,
@@ -679,3 +681,16 @@ export function notificarReprogramadasEsperanCierreCon(
 export const notificarReprogramadasEsperanCierreReal: ReprogramadasEsperanCierreNotificador = async (
   ctx,
 ) => notificarReprogramadasEsperanCierreCon(repoReal())(ctx);
+
+/**
+ * SLT-136 (design §7.3; R22, R23) — emite «se emitió la factura N.º n» al maestro. NO es best-effort: lo
+ * llama el job `factura_plataforma_aviso`, que debe fallar (y reintentarse) si el aviso no se creó; el
+ * reintento no lo duplica porque la entidad es la factura. Devuelve las filas creadas (0 si ya existía).
+ *
+ * Resuelve su repositorio por `repoReal()`, así que hereda el push y el puente de WhatsApp (410 §6) sin
+ * construir `new NotificacionRepository(...)` por su cuenta (guardia de 410/R51).
+ */
+export type FacturaEmitidaNotificador = (ctx: FacturaEmitidaContexto) => Promise<number>;
+
+export const emitirFacturaEmitidaReal: FacturaEmitidaNotificador = async (ctx) =>
+  emitirFacturaEmitida(repoReal(), ctx);
