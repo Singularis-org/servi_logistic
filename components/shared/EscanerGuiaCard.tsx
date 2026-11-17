@@ -8,6 +8,7 @@ import { QrScanner } from "@/components/shared/QrScanner";
 import {
   useEntradaEscaneo,
   usePunteroFino,
+  type OrigenLectura,
   type ResultadoLectura,
 } from "@/hooks/useEntradaEscaneo";
 import { prepararAudio, reproducirTonoLectura } from "@/lib/audio/tono-notificacion";
@@ -63,6 +64,15 @@ export interface EscanerGuiaCardProps {
   /** Nombre accesible de la tarjeta como region. Por defecto, el título. */
   ariaLabel?: string;
   className?: string;
+  /**
+   * SLT-159 (R588): escaneo continuo. La cámara sigue abierta entre lecturas y no se pinta
+   * `exito` (la lista de la sesión lo dice). Por defecto, guía suelta.
+   */
+  continuo?: boolean;
+  /** SLT-159: se llama al llegar cada lectura, antes de la cola (la fila nace ya, R581-R582). */
+  alLlegar?: (texto: string, origen: OrigenLectura) => void;
+  /** SLT-159 (R593): lo que va debajo de cámara y campo (la lista de la sesión). */
+  children?: ReactNode;
 }
 
 /** Motivo si la superficie lanza en vez de devolver un resultado (p. ej., sin red). */
@@ -102,6 +112,9 @@ export function EscanerGuiaCard({
   icono: Icono = Package,
   ariaLabel,
   className,
+  continuo = false,
+  alLlegar,
+  children,
 }: Readonly<EscanerGuiaCardProps>) {
   const inputId = useId();
   const campoRef = useRef<HTMLInputElement>(null);
@@ -115,6 +128,7 @@ export function EscanerGuiaCard({
     enfocarTrasLectura: punteroFino,
     alTerminar: sonarResultado,
     motivoFalloInesperado: MOTIVO_FALLO_INESPERADO,
+    alLlegar,
   });
 
   // La política de autoplay hace nacer el audio suspendido: se desbloquea en el primer gesto.
@@ -126,6 +140,7 @@ export function EscanerGuiaCard({
     <QrScanner
       onDecoded={(texto) => entrada.recibirLectura(texto, "camara")}
       mensajeErrorCamara={mensajeErrorCamara}
+      continuo={continuo}
     />
   );
 
@@ -255,12 +270,14 @@ export function EscanerGuiaCard({
         </p>
       ) : null}
 
-      {exito ? (
+      {exito && !continuo ? (
         <p className="mt-4 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-sm text-card-foreground">
           <CheckCircle2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
           <span>{exito}</span>
         </p>
       ) : null}
+
+      {children}
     </section>
   );
 }

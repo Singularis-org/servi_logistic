@@ -24,7 +24,7 @@ mismo.
 - [x] **T3 [P] — Cámara continua.** `QrScanner` props `continuo` (no cierra; mismo texto antes de
   `ESPERA_MISMO_CODIGO_MS = 3000` se ignora) y `alCerrar`. Modo suelto intacto. *Hecho:* R588-R589 en
   verde en `tests/components/QrScanner.test.tsx`; sus casos existentes sin tocar y en verde.
-- [ ] **T4 — Lista y tarjeta (depende de T1-T3).** `components/shared/EscaneoContinuo.tsx` (variantes
+- [x] **T4 — Lista y tarjeta (depende de T1-T3).** `components/shared/EscaneoContinuo.tsx` (variantes
   `lista` y `tabla`, `role="log"`, «Reintentar» 44 px). `EscanerGuiaCard`: `continuo`, `alLlegar`,
   `children`. *Hecho:* R581-R584, R590, R591 y R593 en verde en
   `tests/components/EscaneoContinuo.test.tsx` (tarjeta continua + sesión + acción doble).
