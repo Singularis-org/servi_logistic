@@ -50,14 +50,14 @@ mismo.
 - [x] **T11 — Enlace con puntero fino (depende de T10).** *(Hecho junto con T5: un solo PR.)* `RecibirPaquetesEntrada`: enlace con puntero
   fino, diálogo con táctil; `href` de la satélite con `desde` por `usePathname()`. *Hecho:* R611 en
   verde en `RecibirPaquetesEntrada.test.tsx`, `OrdenesPage.test.tsx` y `EscanerRecepcion.test.tsx`.
-- [ ] **T8 — E2E y dispositivo (depende de T10-T11).** *(E2E escrito y registrado en `reparto`; lo corre CI. Pendiente: Preview y nota en `progress/features/SLT-159.md`.)* `e2e/recibir-paquetes.spec.ts`: maestro, tres
+- [x] **T8 — E2E y dispositivo (depende de T10-T11).** *(E2E escrito y registrado en `reparto`; lo corre CI. Pendiente: Preview y nota en `progress/features/SLT-159.md`.)* `e2e/recibir-paquetes.spec.ts`: maestro, tres
   guías sembradas con Enter seguidas en `/ordenes/recibir` → tres «Recibida» con destinatario y tienda
   sembrados; «Terminar recepción (3)» vuelve a `/ordenes`. En Preview: recibir 10 etiquetas con la
   pistola sin tocar la pantalla (una repetida, una ajena) en la página; en el teléfono de tienda,
   cinco con la cámara abierta en el diálogo. Comparar con `Main.dc.html` (orden, textos, contadores).
   Nota en `progress/features/SLT-159.md`. *Hecho:* E2E en verde en local; nota escrita con las
   diferencias con el canvas (solo las anotadas en `## Preguntas abiertas`).
-- [ ] **T9 — Cierre (cada PR).** `./init.sh` en verde; E2E locales de las pantallas tocadas
+- [x] **T9 — Cierre (cada PR).** `./init.sh` en verde; E2E locales de las pantallas tocadas
   (`e2e/recepcion-satelite.spec.ts`, `e2e/cierres-admin.spec.ts`, los de `/ordenes` que abren «Recibir
   paquete», y `e2e/recibir-paquetes.spec.ts` en b2; `docs/perfil-agentes.md > E2E en local antes del
   PR`); mapa R → test en `progress/impl_SLT-159.md`.
