@@ -34,7 +34,6 @@ CREATE TABLE "plan_borrador" (
   "iniciado_por_nombre"     VARCHAR(120) NOT NULL,
   "created_at"              TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at"              TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "plan_borrador_plan_id_key" UNIQUE ("plan_id"),                       -- R5
   CONSTRAINT "plan_borrador_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "plan"("id")
     ON DELETE CASCADE ON UPDATE CASCADE,                                            -- R22
   CONSTRAINT "plan_borrador_pasos_objeto" CHECK (jsonb_typeof("pasos") = 'object'),
@@ -43,6 +42,9 @@ CREATE TABLE "plan_borrador" (
   CONSTRAINT "plan_borrador_vigencia_solo_cambio"
     CHECK ("plan_id" IS NOT NULL OR NOT ("pasos" ? 'vigencia'))
 );
+-- R5. Índice aparte, no UNIQUE dentro del CREATE TABLE: es la forma que reconoce la guardia
+-- unicos-por-empresa (como plan_cambio_programado_plan_id_key).
+CREATE UNIQUE INDEX "plan_borrador_plan_id_key" ON "plan_borrador" ("plan_id");
 ALTER TABLE "plan_borrador" ENABLE ROW LEVEL SECURITY;   -- sin políticas (R23)
 REVOKE ALL ON "plan_borrador" FROM servi_app;            -- como el resto de plan_* (R23)
 ```
