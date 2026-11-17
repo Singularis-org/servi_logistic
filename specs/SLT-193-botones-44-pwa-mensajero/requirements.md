@@ -4,6 +4,7 @@ Zona frontend, complexity low. Rango de requisitos: **R910-R939** (usados R910-R
 
 > **Tamaño aceptado por encima del tope.** Un solo PR de 37 archivos (24 de producción y 13 de
 > tests), el 92,5% del tope de 40. Carlos aceptó superar el tope el 2026-11-17 (`## Decisiones`).
+> **Real: 41 archivos de código**: los 37 previstos más 4 justificados: `tests/components/EscaneoContinuo.test.tsx` (`titulo=`, lo exige el typecheck; R927), `tests/components/NotificationsBell.test.tsx` (R911 con pendientes), `playwright.config.ts` (registrar el E2E, lo exige `e2e-sin-saltos`) y `components/shared/EscanerGuiaCard.tsx` (review m7: dentro de `EscanerModal` la tarjeta no pinta su título).
 > Los bloques A y B agrupan los requisitos, pero no son un corte: van en el mismo PR.
 
 ## Alcance
@@ -217,7 +218,7 @@ de `e2e/_pwa-mensajero-fixture.ts`.
   - El R871 de SLT-190 («los demás usos, la X de siempre») queda sustituido por R925 y su test se reescribe.
   - `tactil` se queda, porque solo gobierna el disparador.
 - **2026-11-17 · Carlos (P5): un solo PR de 37 archivos** (24 de producción y 13 de tests), por
-  encima del tope de 40 × 80%. No se parte; Carlos aceptó superar el tope.
+  encima del tope de 40 × 80%. No se parte; Carlos aceptó superar el tope. Recuento real en `## Tamaño`.
 - **2026-11-17 · Carlos (P6):** «Cerrar cámara» (`QrScanner.tsx:281-293`) se queda como está, fuera de
   alcance.
 - **2026-11-17 · Carlos (P7):** solo hay un componente de escáner, así que el título vive en la barra
@@ -286,6 +287,8 @@ Pasa del 80% y del tope; **Carlos lo aceptó el 2026-11-17** (`## Decisiones`, P
 líneas de producción y ~750 de tests, ambos por debajo de sus topes (1000 y 3000).
 - Bloque A: 21 archivos.
 - Bloque B: 17 archivos (el E2E es compartido).
+
+**Real: 41 archivos de código**: los 37 previstos más 4 justificados: `tests/components/EscaneoContinuo.test.tsx` (`titulo=`, lo exige el typecheck; R927), `tests/components/NotificationsBell.test.tsx` (R911 con pendientes), `playwright.config.ts` (registrar el E2E, lo exige `e2e-sin-saltos`) y `components/shared/EscanerGuiaCard.tsx` (review m7: dentro de `EscanerModal` la tarjeta no pinta su título). Sin contar este spec ni `progress/`.
 
 ## Archivos esperados
 

@@ -10,7 +10,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
+import { DentroDeEscanerContext, SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
 import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
 import { cn } from "@/lib/utils";
 
@@ -141,7 +141,10 @@ export function EscanerModal({
             <X className="size-5" aria-hidden="true" />
           </DialogClose>
         </div>
-        {typeof children === "function" ? children(() => setAbierto(false)) : children}
+        {/* SLT-193 (R927): la tarjeta de dentro no repite el título de la barra. */}
+        <DentroDeEscanerContext.Provider value>
+          {typeof children === "function" ? children(() => setAbierto(false)) : children}
+        </DentroDeEscanerContext.Provider>
       </DialogContent>
     </Dialog>
   );

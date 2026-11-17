@@ -115,6 +115,34 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R927, review m7): dentro de un
+// `EscanerModal`, la tarjeta no repite el título de la barra aunque nadie le pase `sinEncabezado`.
+describe("EscaneoContinuo — un solo título dentro del escáner (SLT-193)", () => {
+  it("R927: el diálogo tiene un único título, el de la barra; la región conserva su nombre", async () => {
+    const user = userEvent.setup();
+    render(dialogo(vi.fn()));
+    await abrir(user);
+    const dlg = await screen.findByRole("dialog", { name: "Recibir paquetes" });
+    expect(within(dlg).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Recibir paquetes"]);
+    expect(within(dlg).queryByText("Escanea las guías una tras otra")).toBeNull();
+    expect(within(dlg).getByRole("region", { name: "Recepción continua" })).toBeInTheDocument();
+  });
+
+  it("R927: fuera del escáner, la tarjeta sigue con su encabezado", () => {
+    render(
+      <TarjetaEscaneoContinuo
+        recibir={vi.fn()}
+        titulo="Recibir paquetes"
+        descripcion="Escanea las guías una tras otra"
+        ariaLabel="Recepción continua"
+        submitLabel="Recibir"
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Recibir paquetes" })).toBeInTheDocument();
+    expect(screen.getByText("Escanea las guías una tras otra")).toBeInTheDocument();
+  });
+});
+
 describe("EscaneoContinuo — lecturas seguidas (R580-R582, R584)", () => {
   it("R580: cinco Enter seguidos sin clics: la acción se llama cinco veces y el diálogo sigue abierto", async () => {
     const user = userEvent.setup();

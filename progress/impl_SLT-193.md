@@ -74,3 +74,10 @@ Las cuatro revertidas (sin `.orig` ni diff residual).
 - En Órdenes, si un rol monta las dos tarjetas a la vez (bodega central y tienda), las dos van sin encabezado bajo una sola barra; hoy los permisos no las juntan.
 
 Veredicto: bloque A y bloque B hechos, con E2E y tests en verde; falta `./init.sh` del leader.
+
+## Review (menores m3, m4, m6, m7) — 2026-11-17
+
+- m3: la guardia `escaner-un-solo-cierre` mira el CONTENIDO de cada `<EscanerModal>` y de sus envoltorios con `{children}` (`RecibirPaquetesEntrada`), y sigue los componentes montados dentro (tarjetas, `QrScanner`…), no el archivo entero: un «Cerrar» de otro diálogo o de las `acciones` no da rojo.
+- m4: detecta texto JSX, `"Cerrar"` como literal en cualquier prop o expresión y constantes con valor «Cerrar». Mutaciones: `{"Cerrar"}` en `EscanerGuiaCard` → rojo; `aria-label="Cerrar"` en `TarjetaEscaneoContinuo` → rojo; un «Cerrar» en las `acciones` de Órdenes → verde.
+- m6: recuento real en el spec: 41 archivos de código (37 + 4 justificados).
+- m7: `EscanerModal` da un contexto (`DentroDeEscanerContext`) y `EscanerGuiaCard` no pinta su encabezado dentro. En producción no pasaba (todos los usos pasan `sinEncabezado`); solo el test lo montaba con dos títulos. Ahora queda garantizado por construcción.
